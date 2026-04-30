@@ -1,0 +1,12 @@
+[build]
+# Disable incremental compilation on Windows to fix hot-reload issues
+# Incremental causes file locks that prevent cargo-watch from detecting changes
+incremental = false
+
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "link-args=/DEBUG"]
+
+[watch]
+# Watch only src directory, ignore target and other dirs
+check-first = true
+force-reload = true

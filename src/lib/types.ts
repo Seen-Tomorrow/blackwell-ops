@@ -1,0 +1,252 @@
+export interface ModelEntry {
+  path: string;
+  author: string;
+  name: string;
+  quant: string;
+  size_str: string;
+  vision: boolean;
+  mmproj?: string;
+  backend_type?: string;
+  mmproj_size_mib?: number;
+}
+
+export interface EngineConfig {
+  alias: string;
+  model_path: string;
+  port: number;
+  device: string;
+  kv_quant: string;
+  ctx_size: string;
+  batch: number;
+  ubatch: number;
+  parallel: number;
+  offload: string;
+  offload_mode: string;
+  split_mode: string;
+  vision: string;
+  flash_attn: boolean;
+  jinja: boolean;
+  cont_batching: boolean;
+  metrics: boolean;
+  reasoning: boolean;
+  mmap: boolean;
+  verbose?: boolean;
+  log_timestamps?: boolean;
+  unified_kv?: boolean;
+  backend_type?: string;
+  extra_params?: Record<string, any>;
+}
+
+export interface ParamDef {
+  key: string;
+  label: string;
+  values: (string | number)[];
+  order: number;
+  hidden?: boolean;
+  hiddenValues?: (string | number)[];
+  defaultValue?: string | number;
+
+  // ── CLI Mapping Fields (schema-driven command generation) ──
+  config_key?: string;
+  flag?: string | null;
+  ptype?: 'switch' | 'switch_onoff' | 'switch_inverted' | 'arg_select' | 'mapper' | 'path_scanner' | 'logic_only';
+  map_id?: string;
+  ui_group?: string;
+  note?: string;
+  pattern?: string;
+  sub_params?: Record<string, string[]>;
+  userAddedValues?: (string | number)[];
+  /** Factory default from genesis_template.json — set once at load. Never changes via admin edits. */
+  factoryDefault?: string | number;
+}
+
+export interface ProviderConfig {
+  id: string;
+  display_name: string;
+  binary_path: string;
+  enabled: boolean;
+  params?: Record<string, any>;
+  param_definitions?: ParamDef[];
+  _original_id?: string;
+  git_url?: string;
+  branch?: string;
+  build_profile?: string;
+  template_type?: string; // "ggml-llama" | "ik-llama" | "" (custom)
+  buildInfoPerEnv?: Record<string, BuildInfo>;
+}
+
+/** Full provider template — loaded from templates.json */
+export interface ProviderTemplate {
+  binary_name: string;
+  description: string;
+  params: TemplateParam[];
+}
+
+export interface TemplateParam extends Omit<ParamDef, 'values'> {
+  values: (string | number)[];
+  default: string | number;
+  flag: string | null;
+  ptype: 'switch' | 'switch_onoff' | 'switch_inverted' | 'arg_select' | 'mapper' | 'path_scanner' | 'logic_only';
+  sub_params?: Record<string, string[]>;
+}
+
+/** Build metadata extracted from a compiled binary via --version + file mtime. */
+export interface BuildInfo {
+  version: string;
+  buildDate: string;
+  cudaVersion?: string;
+}
+
+/** Burst benchmark result from cmd_burst_bench IPC command. */
+export interface BenchResult {
+  prompt_tokens: number;
+  gen_tokens: number;
+  prompt_tps_min: number;
+  prompt_tps_avg: number;
+  prompt_tps_max: number;
+  gen_tps_min: number;
+  gen_tps_avg: number;
+  gen_tps_max: number;
+  itl_ms_avg: number;
+  runs_count: number;
+  success: boolean;
+  error?: string;
+}
+
+export interface GpuInfo {
+  index: number;
+  name: string;
+  memory_total: number;
+  memory_total_manufactured: number;
+  memory_used: number;
+  memory_free: number;
+  temperature_gpu: number;
+  temperature_hot_spot: number | null;
+  temperature_memory: number | null;
+  power_draw: number;
+  power_limit: number;
+  utilization_gpu: number;
+  utilization_memory: number;
+}
+
+export interface CpuInfo {
+  name: string;
+  cores: number;
+  threads: number;
+  max_clock_mhz: number;
+  avg_usage_percent: number;
+  core_usages: number[]; // per-core usage percentage (0-100)
+}
+
+export interface StackEntry {
+  idx: number;
+  alias: string;
+  model_name: string;
+  port: number;
+  gpu: string;
+  status: string;
+  slot_id?: number;
+  provider_type?: string;
+  ready_at?: string;
+  model_path?: string;
+  vram_mib?: number;
+  n_ctx?: number;
+  provider_name?: string;
+  build_info?: BuildInfo;
+}
+
+export interface EnginePerfEvent {
+  slot: number;
+  alias: string;
+  tps: number;
+  ttft_ms?: number | null;
+  fuel_alpha_pct?: number | null;
+  fuel_beta_pct?: number | null;
+  n_tokens?: number;
+  prompt_tokens?: number;
+  kv_cache_pct?: number | null;
+  prompt_progress?: number | null;
+}
+
+export interface VramFitResult {
+  total_vram_gb: number;
+  fits: boolean;
+  gpu_total_gb: number;
+  breakdown: {
+    model_weights_gb: number;
+    kv_cache_gb: number;
+    overhead_gb: number;
+  };
+}
+
+/** VRAM profile from 3 anchor scans — used for interpolation */
+export interface VramProfile {
+  anchor_a_mib: number;   // 8K / f16
+  anchor_b_mib: number;   // 128K / f16
+  anchor_c_mib: number;   // 128K / q4_k
+}
+
+/** Single fit scan result for one model at one context/KV setting */
+export interface FitScanResult {
+  model_path: string;
+  vram_mib: number;
+  ctx: number;
+  kv_quant: string;
+  fits: boolean;
+}
+
+/** Progress update during library scanning */
+export interface FitScanProgress {
+  model_path: string;
+  model_name: string;
+  status: 'scanning' | 'complete' | 'error';
+  args?: string;
+  vram_mib?: number;
+}
+
+/** Complete result from a library scan */
+export interface FitScanComplete {
+  provider_id: string;
+  total_models: number;
+  completed: number;
+  failed: number;
+  results: Record<string, FitAnchorResults>;
+}
+
+/** Anchor scan results for one model */
+export interface FitAnchorResults {
+  model_path: string;
+  anchor_a_mib?: number; // 8K / f16
+  anchor_b_mib?: number; // 128K / f16
+  anchor_c_mib?: number; // 128K / q4_k
+}
+
+export interface LogEntry {
+  slot: number;
+  alias: string;
+  text: string;
+  timestamp: string;
+}
+
+export interface LogBatch {
+  slot: number;
+  alias: string;
+  entries: LogEntry[];
+}
+
+export interface SystemEvent {
+  slot: number;
+  alias: string;
+  text: string;
+  timestamp: string;
+}
+
+export interface IntelItem {
+  id: string;
+  title: string;
+  url: string;
+  source: string;
+  author: string;
+  body_preview: string;
+  timestamp: string;
+}

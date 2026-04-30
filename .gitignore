@@ -1,0 +1,50 @@
+# --- OS & IDE Junk ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# --- Node / Frontend (React + Vite) ---
+node_modules/
+dist/
+dist-ssr/
+*.local
+.env
+.env.*
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# --- Rust / Tauri v2 ---
+# This is where your 9GB lives - KILL IT
+target/
+src-tauri/target/
+src-tauri/gen/
+src-tauri/binaries/*
+!src-tauri/binaries/.gitkeep
+
+# --- AI / Llama Server Specific ---
+# Ignore the actual server executable if you download it externally
+# but keep your integration logic.
+*.exe
+*.pdb
+*.d
+llama-server.exe
+
+# IMPORTANT: Ignore large Model files (GGUF, etc) 
+# You do NOT want to push 4GB-70GB models to GitHub
+*.gguf
+*.bin
+models/
+
+# --- OpenCode Specific ---
+.local/
+opencode.db*
+worktree/
+snapshot/
+log/

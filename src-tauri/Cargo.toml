@@ -1,0 +1,51 @@
+[package]
+name = "blackwell-ops"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "blackwell-ops"
+path = "src/main.rs"
+
+[features]
+default = []
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-shell = "2"
+tauri-plugin-mcp-bridge = "0.11.0"
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+reqwest = { version = "0.12", features = ["json", "stream"] }
+thiserror = "2"
+chrono = "0.4"
+log = "0.4"
+env_logger = "0.11"
+dirs = "5"
+async-trait = "0.1"
+rfd = "0.15"
+sysinfo = "0.33"
+sha2 = "0.10"
+libloading = "0.8"
+num_cpus = "1"
+regex = "1.10"
+
+# ConPTY — forces llama-server line-buffered output (pseudo-console = real TTY)
+[target.'cfg(windows)'.dependencies]
+conpty = "0.7"
+windows-core = "0.61"
+
+# Mobile Sentinel Bridge (WebSocket)
+tokio-tungstenite = "0.26"
+futures-util = "0.3"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
