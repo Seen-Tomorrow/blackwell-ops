@@ -1,34 +1,46 @@
-import { motion } from "framer-motion";
-import { useState, useCallback, useMemo, useEffect } from "react";
-import type { ModelEntry, EngineConfig, GpuInfo, VramFitResult, ParamDef, ProviderConfig, ProviderTemplate, StackEntry, VramProfile, FitScanResult } from "../lib/types";
-import { invoke } from "@tauri-apps/api/core";
-import { useInferenceLauncher } from "../hooks/useInferenceLauncher";
+/**
+ * Engine Config Panel — Model-specific parameter configuration and launch control
+ *
+ * Responsibilities:
+ * - Display model identity (name, author, quant, size)
+ * - Provider selection pills
+ * - VRAM estimation with dirty math + tiered scan system
+ * - Parameter value selection chips
+ * - Launch button to add engine to stack
+ */
 
-const OVERRIDES_KEY_PREFIX = "BlackOps-admin-catalog-override:";
+import { motion } from "framer-motion";
+import { useState, useCallback, useEffect, useMemo } from "react";
+import type { ModelEntry, EngineConfig, GpuInfo, ParamDef, ProviderConfig, ProviderTemplate, StackEntry, SystemInfo } from "../lib/types";
+import { invoke } from "@tauri-apps/api/core";
+import VramBadge from "./VramBadge";
+import { useVramCalculator } from "../hooks/useVramCalculator";
+import { useConfigResolver } from "../hooks/useConfigResolver";
+
 const BASE_PORT = 9090;
+
+const PARAM_GROUPS: { id: string; label: string; alwaysOpen: boolean; elevatable?: boolean }[] = [
+  { id: 'Core', label: 'CORE', alwaysOpen: true },
+  { id: 'Performance', label: 'PERFORMANCE', alwaysOpen: true },
+  { id: 'Multi-GPU', label: 'MULTI-GPU', alwaysOpen: false, elevatable: true },
+  { id: 'Feature Flags', label: 'FEATURE FLAGS', alwaysOpen: false },
+];
 
 interface EngineConfigPanelProps {
   model: ModelEntry | null;
   gpus: GpuInfo[];
   providers?: ProviderConfig[];
   committedVramMib: number;
-  osOverheadMib: number;
   isAdminUnlocked: boolean;
+  systemInfo?: SystemInfo | null;
   onLaunch: (config: EngineConfig) => void;
 }
 
 export default function EngineConfigPanel(props: EngineConfigPanelProps) {
-  const { model, gpus, providers: externalProviders, committedVramMib, osOverheadMib, isAdminUnlocked, onLaunch } = props;
+  const { model, gpus, providers: externalProviders, committedVramMib, isAdminUnlocked, systemInfo, onLaunch } = props;
 
-  // ── State ────────────────────────
+  // ── State ───────────────────────────────────────────────────────────────
   const [adminParamDefs, setAdminParamDefs] = useState<ParamDef[]>([]);
-  const [config, setConfig] = useState<Record<string, any>>({});
-  const [fitScanning, setFitScanning] = useState(false);
-  const [fitResult, setFitResult] = useState<FitScanResult | null>(null);
-  const [cachedProfile, setCachedProfile] = useState<VramProfile | null>(null);
-  const [interpolating, setInterpolating] = useState(false);
-  const [estimatedVramMib, setEstimatedVramMib] = useState<number | null>(null);
-  const [estimatingVram, setEstimatingVram] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState<string | null>(() => {
     try { return localStorage.getItem("BlackOps-last-provider") || null; } catch { return null; }
   });
@@ -39,25 +51,153 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     try { return localStorage.getItem("BlackOps-testFlagsOn") === "1"; } catch { return false; }
   });
 
+  // Blaze animation state — triggers fire effect on launch button
+  const [isBlazing, setIsBlazing] = useState(false);
+
+  // Collapsible group state — persisted across sessions
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem('BlackOps-collapsed-groups');
+      return saved ? new Set(JSON.parse(saved)) : new Set(['Multi-GPU', 'Feature Flags']);
+    } catch { return new Set(['Multi-GPU', 'Feature Flags']); }
+  });
+
+  const toggleGroup = useCallback((groupId: string) => {
+    setCollapsedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(groupId)) next.delete(groupId); else next.add(groupId);
+      try { localStorage.setItem('BlackOps-collapsed-groups', JSON.stringify([...next])); } catch {}
+      return next;
+    });
+  }, []);
+
+  // Multi-GPU elevation: model exceeds single GPU VRAM (needs split to run)
+  const shouldElevateMultiGpu = useMemo(() => {
+    if (!model || gpus.length < 2) return false;
+    const sizeMatch = model.size_str?.match(/([\d.]+)\s*GB/i);
+    if (!sizeMatch) return false;
+    const modelSizeMib = parseFloat(sizeMatch[1]) * 1024;
+    const singleGpuVram = gpus[0].memory_total_manufactured || gpus[0].memory_total;
+    return modelSizeMib > singleGpuVram;
+  }, [model?.path, model?.size_str, gpus.length]);
+
+  // Persist test flags
   useEffect(() => {
     try { localStorage.setItem("BlackOps-testFlags", testFlags); } catch {}
   }, [testFlags]);
-
   useEffect(() => {
     try { localStorage.setItem("BlackOps-testFlagsOn", testFlagsEnabled ? "1" : "0"); } catch {}
   }, [testFlagsEnabled]);
 
-  // Effective backend type — provider selector overrides model's default
+  // ── Derived state ───────────────────────────────────────────────────────────
   const effectiveBackendType = useMemo(() => {
     if (!model) return selectedProvider || "ggml-stable";
     return selectedProvider || (model.backend_type || "ggml-stable");
   }, [model, selectedProvider]);
 
-  // Load admin param definitions when model changes
+  const mergedParamDefs = useMemo(() => {
+    return [...adminParamDefs].sort((a, b) => a.order - b.order);
+  }, [adminParamDefs]);
+
+  // ── Hooks ────────────────────────────────────────────────────────────────
+  const { config, updateParam } = useConfigResolver({
+    model,
+    paramDefs: mergedParamDefs,
+    backendType: effectiveBackendType,
+  });
+
+  // Display value — manufactured capacity, no deductions (what users see)
+  const displayVramMib = gpus.reduce((sum, g) => sum + (g.memory_total_manufactured || g.memory_total), 0);
+
+  // Calculation value — real available for fit decisions
+  const availableVramMib = Math.max(0, gpus.reduce((sum, g) => sum + g.memory_free, 0) - committedVramMib);
+  
+  const vramCalc = useVramCalculator({
+    model,
+    config: { ...config, providerId: effectiveBackendType },
+    gpus,
+    availableMib: availableVramMib,
+    systemInfo,
+  });
+
+  // RAM offload needed: auto-offload calculation (accurate) or fallback to raw size check
+  const needsRamOffload = useMemo(() => {
+    if (vramCalc.autoOffload) {
+      return vramCalc.autoOffload.ramLayers > 0;
+    }
+    if (!model || gpus.length === 0) return false;
+    const sizeMatch = model.size_str?.match(/([\d.]+)\s*GB/i);
+    if (!sizeMatch) return false;
+    const modelSizeMib = parseFloat(sizeMatch[1]) * 1024;
+    const totalVramMib = gpus.reduce((sum, g) => sum + (g.memory_total_manufactured || g.memory_total), 0);
+    return modelSizeMib > totalVramMib;
+  }, [model?.path, vramCalc.autoOffload, gpus.length]);
+
+  // Extracted param row renderer for reuse (inline + elevated Multi-GPU)
+  const renderParamRow = useCallback((def: ParamDef) => {
+    // Merge values + userAddedValues (user-added params from ConfigPage admin edit)
+    const seenVals = new Set((def.values || []).map(v => String(v)));
+    const allValues = [...(def.values || []), ...(def.userAddedValues || []).filter(v => !seenVals.has(String(v)))];
+    const baseValues = allValues.filter(v => !(def.hiddenValues || []).some(hv => String(hv) === String(v)));
+    const isAdminParam = adminParamDefs.some(d => d.key === def.key);
+    const currentValue = config[def.key] ?? config[def.config_key || def.key];
+
+    return (
+      <div key={def.key} data-param-row className="flex items-center gap-2">
+        <span
+          className="text-[9px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider truncate"
+          title={def.label}
+        >
+          {def.label}
+        </span>
+
+        {!isAdminParam && (
+          <span className="text-[7px] font-mono text-yellow-400 bg-yellow-400/15 px-1 py-0 rounded-sm flex-shrink-0">
+            CUSTOM
+          </span>
+        )}
+
+        <div className="flex gap-1 flex-wrap flex-1 min-w-0">
+          {baseValues.filter((v: any) => !(v?._hidden)).map((val) => (
+            <button
+              key={`${def.key}-${val}`}
+              tabIndex={0}
+              onClick={() => updateParam(def.key, val)}
+              className={`px-2 py-0.5 text-[9px] font-mono rounded-sm focus:outline-none ${
+                currentValue === val || config[def.config_key || def.key] === val
+                  ? "value-chip-active"
+                  : "value-chip"
+              }`}
+            >
+              {String(val)}
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }, [adminParamDefs, config, updateParam]);
+
+  // Grouped params
+  const groupedParams = useMemo(() => {
+    const groups: Record<string, ParamDef[]> = {};
+    for (const def of mergedParamDefs) {
+      if (def.hidden) continue;
+      const groupId = def.ui_group || 'Feature Flags';
+      if (!groups[groupId]) groups[groupId] = [];
+      groups[groupId].push(def);
+    }
+    return groups;
+  }, [mergedParamDefs]);
+
+  // Multi-GPU params for elevation
+  const multiGpuParams = useMemo(() => {
+    return mergedParamDefs.filter(d => d.ui_group === 'Multi-GPU' && !d.hidden);
+  }, [mergedParamDefs]);
+
+  // ── Load param definitions when model/provider changes ───────────────────
   useEffect(() => {
     if (!model) {
       setAdminParamDefs([]);
-      setCachedProfile(null);
       return;
     }
 
@@ -65,97 +205,44 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
     const prov = externalProviders?.find(p => p.id === backendType);
     if (prov && prov.param_definitions) {
-      setAdminParamDefs(prov.param_definitions);
+      setAdminParamDefs(prov.param_definitions || []);
     } else {
       invoke<ProviderTemplate>("get_template", { providerId: backendType })
         .then((template: ProviderTemplate) => {
           const tDefs: ParamDef[] = (template.params || []).map((p, i) => ({
-            key: p.key, label: p.label, values: p.values as (string | number)[], order: i, hidden: false, defaultValue: p.default,
-            config_key: p.config_key, flag: p.flag ?? undefined, ptype: p.ptype, map_id: p.map_id,
-            ui_group: p.ui_group, note: p.note, pattern: p.pattern, sub_params: p.sub_params,
+            key: p.key,
+            label: p.label,
+            values: p.values as (string | number)[],
+            order: i,
+            hidden: false,
+            defaultValue: p.default,
+            config_key: p.config_key,
+            flag: p.flag ?? undefined,
+            ptype: p.ptype,
+            map_id: p.map_id,
+            ui_group: p.ui_group,
+            note: p.note,
+            pattern: p.pattern,
+            sub_params: p.sub_params,
           }));
-          setAdminParamDefs(tDefs);
-        })
-        .catch(() => {});
+           setAdminParamDefs(tDefs);
+         })
+         .catch(() => {});
     }
-
-    invoke<VramProfile | null>("fit_get_cached_profile", { modelPath: model.path })
-      .then((profile) => {
-        if (profile) {
-          setCachedProfile(profile);
-        }
-      })
-      .catch(() => {});
-
-    invoke<number>("get_mmproj_size_mib", { modelPath: model.path })
-      .then((mmprojMib) => {
-        if (model && mmprojMib > 0) {
-          // Update parent's model with mmproj size via a custom event or just use it locally
-          // For now, we store it in a ref-like state
-          setCachedProfile(prev => prev ? { ...prev } : null);
-        }
-      })
-      .catch(() => {});
 
   }, [model, effectiveBackendType, externalProviders]);
 
-  // Merge admin defs for display
-  const mergedParamDefs = useMemo(() => {
-    if (!adminParamDefs.length) return [];
-    return [...adminParamDefs].sort((a, b) => a.order - b.order);
-  }, [adminParamDefs]);
-
-  // Use the inference launcher hook for merge logic
-  const launcher = useInferenceLauncher({
-    paramDefs: mergedParamDefs,
-    currentConfig: config,
-    backendType: effectiveBackendType,
-    testFlagsRaw: testFlagsEnabled ? testFlags : "",
-  });
-
-  // Build config from param defs defaults + user overrides when params change
-  const resolveConfig = useCallback((backendType: string, paramDefs: ParamDef[]) => {
-    const resolved: Record<string, any> = {};
-    for (const p of paramDefs) {
-      if (p.values.length > 0) {
-        resolved[p.key] = p.defaultValue ?? p.values[0];
-      }
-    }
-    try {
-      const stored = localStorage.getItem(OVERRIDES_KEY_PREFIX + backendType);
-      if (stored) {
-        const overrides: Record<string, any> = JSON.parse(stored);
-        Object.assign(resolved, overrides);
-      }
-    } catch {}
-    return resolved;
-  }, []);
-
+  // Keyboard launch — Ctrl+Enter triggers ignite
   useEffect(() => {
-    if (!model || mergedParamDefs.length === 0) return;
-    const backendType = effectiveBackendType;
-    setConfig(resolveConfig(backendType, mergedParamDefs));
-  }, [mergedParamDefs, model]);
-
-  // Sync params when Config page updates via param-config-changed event
-  useEffect(() => {
-    const handler = () => {
-      if (!model || mergedParamDefs.length === 0) return;
-      const backendType = effectiveBackendType;
-      setConfig(resolveConfig(backendType, mergedParamDefs));
+    const handler = (e: Event) => {
+      if (!(e instanceof CustomEvent)) return;
+      handleAddToStack();
     };
-    window.addEventListener("param-config-changed", handler);
-    return () => window.removeEventListener("param-config-changed", handler);
-  }, [model, mergedParamDefs, effectiveBackendType]);
+    window.addEventListener("blackops-launch-engine", handler);
+    return () => window.removeEventListener("blackops-launch-engine", handler);
+  }, [model, config, effectiveBackendType]);
 
-  // Reset config when provider changes
-  useEffect(() => {
-    if (!model || mergedParamDefs.length === 0) return;
-    const backendType = effectiveBackendType;
-    setConfig(resolveConfig(backendType, mergedParamDefs));
-  }, [effectiveBackendType, mergedParamDefs, model]);
-
-  // ── Port / name helpers ────────────────
+  // ── Port / name helpers ────────────────────────────────────────────────────
   const getNextPort = useCallback(async (): Promise<number> => {
     try {
       const stack = await invoke<StackEntry[]>("get_stack_status");
@@ -189,346 +276,51 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     return "ENGINE_1";
   }, []);
 
-  // ── FIT CHECK (single source of truth) ────────────────
-  const handleFitCheck = useCallback(async () => {
-    if (!model) return;
-
-    setFitScanning(true);
-    try {
-      const result = await invoke<FitScanResult>("fit_scan_model", {
-        modelPath: model.path,
-        providerId: effectiveBackendType,
-        ctxSize: config.CTX || "32K",
-        kvQuant: config["KV-Quant"] || "f16",
-        device: config.Device || "GPU-0",
-        splitMode: config.Split || "NONE",
-      });
-
-      setFitResult(result);
-
-      const profile = await invoke<VramProfile | null>("fit_get_cached_profile", { modelPath: model.path });
-      if (profile) {
-        setCachedProfile(profile);
-      }
-    } catch (err) {
-      console.error("FIT check failed:", err);
-    } finally {
-      setFitScanning(false);
-    }
-  }, [model, config, effectiveBackendType]);
-
-  // ── VRAM estimation ────────────────
-  const ctxToTokens = useCallback((ctxStr: string): number => {
-    switch (ctxStr) {
-      case "4K": return 4096;
-      case "8K": return 8192;
-      case "16K": return 16384;
-      case "32K": return 32768;
-      case "64K": return 65536;
-      case "128K": return 131072;
-      case "256K": return 262144;
-      case "512K": return 524288;
-      case "1M": return 1048576;
-      default: return parseInt(ctxStr) || 32768;
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!model || !cachedProfile) {
-      setEstimatedVramMib(null);
-      return;
-    }
-
-    let cancelled = false;
-    const ctxTokens = ctxToTokens(config.CTX || "32K");
-    const kvQuant = config["KV-Quant"] || "f16";
-
-    setEstimatingVram(true);
-    invoke<number | null>("fit_estimate_vram", {
-      modelPath: model.path,
-      ctx: ctxTokens,
-      kvQuant,
-    }).then((result) => {
-      if (!cancelled && result !== null) {
-        setEstimatedVramMib(result as number);
-      }
-    }).finally(() => {
-      if (!cancelled) setEstimatingVram(false);
-    });
-
-    return () => { cancelled = true; };
-  }, [model, cachedProfile, config.CTX, config["KV-Quant"], config.uBatch, config.Parallel, config.Split, config.Vision, config["Unified-KV"], ctxToTokens]);
-
-  // ── Launch handler ────────────────
+  // ── Launch handler ───────────────────────────────────────────────────────
   const handleAddToStack = async () => {
     if (!model) return;
 
     const port = await getNextPort();
     const engineName = await getNextEngineName();
 
-    const backendType = effectiveBackendType;
-
-    const baseConfig: Omit<EngineConfig, 'extra_params'> = {
+    // Build typed EngineConfig for Rust's launch_engine command
+    const fullConfig: EngineConfig = {
       alias: engineName,
       model_path: model.path,
       port,
-      device: "GPU-0",
-      kv_quant: "f16",
-      ctx_size: "32K",
-      batch: 2048,
-      ubatch: 512,
-      parallel: 1,
-      offload: "ALL",
-      offload_mode: "REGULAR",
-      split_mode: "NONE",
-      vision: "AUTO",
-      flash_attn: true,
-      jinja: true,
-      cont_batching: true,
-      metrics: false,
-      reasoning: false,
-      mmap: true,
-      unified_kv: true,
+      device: config.Device || "GPU-0",
+      kv_quant: config["KV-Quant"] || "f16",
+      ctx_size: config.CTX || "32K",
+      batch: typeof config.Batch === 'number' ? config.Batch : parseInt(String(config.Batch), 10) || 2048,
+      ubatch: typeof config.uBatch === 'number' ? config.uBatch : parseInt(String(config.uBatch), 10) || 512,
+      parallel: typeof config.Parallel === 'number' ? config.Parallel : parseInt(String(config.Parallel), 10) || 1,
+      // Auto-offload: use calculated layers from metadata, fallback to config value
+      offload: vramCalc.autoOffload?.nGpuLayers ?? ((config.Offload || "ALL").toUpperCase() === "ALL" ? "ALL" : String(config.Offload)),
+      offload_mode: (config["Offload-Mode"] || "REGULAR").toString().toUpperCase(),
+      split_mode: (config.Split || "NONE").toString().toLowerCase(),
+      vision: config.Vision?.toUpperCase() === "OFF" ? "OFF" : "AUTO",
+      flash_attn: config["Flash-Attn"]?.toString().toLowerCase() !== "off",
+      jinja: config.Jinja?.toString().toUpperCase() !== "OFF",
+      cont_batching: config["Cont-Batch"]?.toString().toUpperCase() !== "OFF",
+      metrics: config.Metrics?.toString().toUpperCase() === "ON",
+      reasoning: config.Reasoning?.toString().toUpperCase() === "ON",
+      mmap: config.MMap?.toString().toUpperCase() !== "OFF",
       verbose: false,
       log_timestamps: true,
-      backend_type: selectedProvider || "",
+      backend_type: effectiveBackendType,
     };
 
-    let templateParams: ParamDef[] = [];
-    try {
-      const template = await invoke<ProviderTemplate>("get_template", { providerId: backendType });
-      templateParams = (template.params || []).map((p, i) => ({
-        key: p.key, label: p.label, values: p.values as (string | number)[], order: i, hidden: false, defaultValue: p.default,
-        config_key: p.config_key, flag: p.flag ?? undefined, ptype: p.ptype, map_id: p.map_id,
-        ui_group: p.ui_group, note: p.note, pattern: p.pattern, sub_params: p.sub_params,
-      }));
-    } catch {}
+    // Trigger blaze animation
+    setIsBlazing(true);
+    setTimeout(() => setIsBlazing(false), 800);
 
-    for (const tmpl of templateParams) {
-      if (!tmpl.config_key) continue;
-      const value = config[tmpl.key] ?? config[tmpl.config_key];
-      if (value === undefined) continue;
+    // Dispatch success event for toast + status bar
+    window.dispatchEvent(new CustomEvent("blackops-launch-success", { detail: { alias: engineName, port } }));
 
-      switch (tmpl.config_key) {
-        case "kv_quant": baseConfig.kv_quant = String(value); break;
-        case "ctx_size": baseConfig.ctx_size = String(value); break;
-        case "batch": baseConfig.batch = typeof value === "number" ? value : parseInt(String(value), 10) || 2048; break;
-        case "ubatch": baseConfig.ubatch = typeof value === "number" ? value : parseInt(String(value), 10) || 512; break;
-        case "parallel": baseConfig.parallel = typeof value === "number" ? value : parseInt(String(value), 10) || 1; break;
-        case "offload": {
-          const v = String(value).toUpperCase();
-          baseConfig.offload = v === "ALL" ? "ALL" : String(value);
-          break;
-        }
-        case "offload_mode": baseConfig.offload_mode = String(value).toUpperCase() || "REGULAR"; break;
-        case "split_mode": baseConfig.split_mode = String(value).toLowerCase() || "none"; break;
-        case "vision": {
-          const vv = String(value).toUpperCase();
-          baseConfig.vision = vv === "OFF" ? "OFF" : "AUTO";
-          break;
-        }
-        case "flash_attn": {
-          const fa = String(value).toLowerCase();
-          baseConfig.flash_attn = fa !== "off";
-          break;
-        }
-        case "jinja": {
-          const jv = String(value).toUpperCase();
-          baseConfig.jinja = jv !== "OFF";
-          break;
-        }
-        case "cont_batching": {
-          const cb = String(value).toUpperCase();
-          baseConfig.cont_batching = cb !== "OFF";
-          break;
-        }
-        case "metrics": {
-          const mv = String(value).toUpperCase();
-          baseConfig.metrics = mv !== "OFF";
-          break;
-        }
-        case "reasoning": {
-          const rv = String(value).toUpperCase();
-          baseConfig.reasoning = rv === "ON";
-          break;
-        }
-        case "mmap": {
-          const mmv = String(value).toUpperCase();
-          baseConfig.mmap = mmv !== "OFF";
-          break;
-        }
-        case "unified_kv": {
-          const ukv = String(value).toUpperCase();
-          baseConfig.unified_kv = ukv === "ON";
-          break;
-        }
-        case "verbose": {
-          const vb = String(value).toLowerCase();
-          baseConfig.verbose = vb === "on";
-          break;
-        }
-        case "log_timestamps":
-        case "log-timestamps": {
-          const lt = String(value).toLowerCase();
-          baseConfig.log_timestamps = lt === "on";
-          break;
-        }
-      }
-    }
-
-    const fullConfig = launcher.buildInferenceConfig(baseConfig);
     onLaunch(fullConfig);
   };
 
-  // ── VRAM calculations ────────────────
-  const totalGpuMib = gpus.reduce((sum, g) => sum + g.memory_total, 0);
-  const availableVramMib = Math.max(0, totalGpuMib - osOverheadMib - committedVramMib);
-  const availableVramGb = availableVramMib / 1024;
-
-  const applyHeuristics = useCallback((baseVramMib: number): number => {
-    let adjusted = baseVramMib;
-
-    const ubatchVal = config.uBatch || 512;
-    const batchBuffer = (ubatchVal / 512) * 128;
-    adjusted += batchBuffer;
-
-    const parallelVal = config.Parallel || 1;
-    if (parallelVal > 1 && config["Unified-KV"] !== "ON") {
-      if (cachedProfile) {
-        const kvOverhead = baseVramMib - cachedProfile.anchor_a_mib;
-        adjusted = cachedProfile.anchor_a_mib + kvOverhead * parallelVal + batchBuffer;
-      }
-    }
-
-    if (config.Vision !== "OFF" && model?.mmproj) {
-      const mmprojMib = model.mmproj_size_mib || 0;
-      adjusted += mmprojMib;
-    }
-
-    return adjusted;
-  }, [config, cachedProfile, model]);
-
-  const getFitStatus = (): { fits: boolean; vramGb: string; vramMib: number } | null => {
-    let baseVramMib = 0;
-    let isProbe = false;
-
-    if (fitResult) {
-      baseVramMib = fitResult.vram_mib;
-      isProbe = true;
-    }
-    else if (estimatedVramMib !== null && estimatedVramMib > 0) {
-      baseVramMib = estimatedVramMib;
-    }
-    else if (model) {
-      const nameLower = model.name.toLowerCase();
-      let baseSize: number;
-      if (nameLower.includes("405b")) baseSize = 405;
-      else if (nameLower.includes("70b") || nameLower.includes("72b")) baseSize = 70;
-      else if (nameLower.includes("34b") || nameLower.includes("32b")) baseSize = 34;
-      else if (nameLower.includes("13b") || nameLower.includes("14b")) baseSize = 13;
-      else if (nameLower.includes("8b") || nameLower.includes("7b")) baseSize = 7.5;
-      else if (nameLower.includes("2b") || nameLower.includes("1.5b")) baseSize = 2;
-      else baseSize = 7.5;
-
-      const quantFactor: Record<string, number> = {
-        "q8_0": 0.7, f16: 1.0, bf16: 1.0, f32: 2.0,
-        "q5_0": 0.6, "q5_1": 0.6,
-        "q4_0": 0.5, "q4_1": 0.5, "q4_k_s": 0.5, "q4_k_m": 0.5, "q4_k": 0.5,
-        "q3_k": 0.4, q2_k: 0.35,
-      };
-
-      const factor = quantFactor[model.quant] || 0.5;
-      baseVramMib = (baseSize * factor + 2) * 1024;
-    } else {
-      return null;
-    }
-
-    const adjustedVramMib = isProbe ? baseVramMib : applyHeuristics(baseVramMib);
-    const fits = adjustedVramMib <= availableVramMib;
-
-    return {
-      fits,
-      vramGb: `${(adjustedVramMib / 1024).toFixed(1)} GB`,
-      vramMib: adjustedVramMib,
-    };
-  };
-
-  const fitStatus = getFitStatus();
-  const isGoldenSeal = fitStatus?.fits && (!!fitResult || (estimatedVramMib !== null && estimatedVramMib > 0));
-
-  const handleParamChange = useCallback((key: string, value: any) => {
-    setConfig((prev) => ({ ...prev, [key]: value }));
-
-    if (!model) return;
-    const backendType = selectedProvider || "ggml-stable";
-    try {
-      const overridesKey = OVERRIDES_KEY_PREFIX + backendType;
-      const stored = localStorage.getItem(overridesKey);
-      const overrides: Record<string, any> = stored ? JSON.parse(stored) : {};
-      overrides[key] = value;
-      localStorage.setItem(overridesKey, JSON.stringify(overrides));
-    } catch {}
-
-    const vramKeys = ["CTX", "KV-Quant", "uBatch", "Parallel", "Split", "Vision", "Unified-KV"];
-    if (vramKeys.includes(key)) {
-      setInterpolating(true);
-      setTimeout(() => setInterpolating(false), 400);
-    }
-  }, [model, selectedProvider, mergedParamDefs]);
-
-  // ── VRAM bar helper ────────────────
-  const renderVramBar = () => {
-    if (!fitStatus) return null;
-    const pct = Math.min(100, (fitStatus.vramMib / availableVramMib) * 100);
-    const barClass = fitStatus.fits ? "vram-bar-fit" : pct > 85 ? "vram-bar-warn" : "vram-bar-overflow";
-
-    return (
-      <div className="space-y-2.5">
-        {/* Top row: status label + FIT CHECK button */}
-        <div className="flex items-center justify-between">
-          <span className={`text-[10px] font-mono ${fitStatus.fits ? "text-nv-green" : "text-telemetry-red"} glitch-text`}>
-            {isGoldenSeal && !estimatingVram
-              ? "✦ VERIFIED FIT"
-              : isGoldenSeal && estimatingVram
-                ? "✦ CALCULATING..."
-                : fitStatus.fits
-                  ? "◉ ESTIMATED VRAM"
-                  : "◉ OVERFLOW"}
-          </span>
-          <button
-            onClick={handleFitCheck}
-            disabled={fitScanning || !model}
-            className="px-3 py-1 text-[9px] font-mono border neon-border-cyan text-telemetry-cyan hover:text-nv-green hover:border-nv-green/60 transition-all duration-150 disabled:opacity-40 rounded-sm"
-          >
-            {fitScanning ? "▲ SCANNING..." : gpus.length === 0 ? "NO GPUs" : "➸ FIT CHECK"}
-          </button>
-        </div>
-        {/* VRAM readings — cyan, double size */}
-        <span className="text-[12px] font-mono text-telemetry-cyan">
-          {fitStatus.vramGb} / {availableVramGb.toFixed(0)} GB
-          {committedVramMib > 0 && ` (${(committedVramMib / 1024).toFixed(0)}GB committed)`}
-        </span>
-        {/* Progress bar — double height */}
-        <div className="vram-bar-track">
-          <motion.div
-            className={`vram-bar-fill ${barClass}`}
-            initial={{ width: "0%" }}
-            animate={{ width: `${pct}%` }}
-            transition={{ duration: 1, ease: "easeOut" }}
-          />
-        </div>
-        {cachedProfile && (
-          <div className="flex gap-3 text-[9px] font-mono text-stealth-muted">
-            <span>A(8K): {(cachedProfile.anchor_a_mib / 1024).toFixed(1)}GB</span>
-            <span>B(128K/f16): {(cachedProfile.anchor_b_mib / 1024).toFixed(1)}GB</span>
-            <span>C(128K/q4_0): {(cachedProfile.anchor_c_mib / 1024).toFixed(1)}GB</span>
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  // ── Render ────────────────
+  // ── Empty state ──────────────────────────────────────────────────────────
   if (!model) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-stealth-muted font-mono">
@@ -546,108 +338,117 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     );
   }
 
-  return (
-    <div className="flex flex-col h-full overflow-hidden">
-      {/* Model identity header */}
-      <div className="px-4 py-3 border-b section-divider relative flex-shrink-0">
-        <div className="flex items-center gap-2 mb-1">
-          {model.vision && (
-            <span className="text-[9px] font-mono text-telemetry-cyan px-1.5 py-0.5 border border-telemetry-cyan/30 bg-telemetry-cyan/5" title="Vision capable">V</span>
-          )}
-          <motion.span
-            key={model.name}
-            initial={{ opacity: 0, y: -4 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="text-xs font-mono text-white truncate glitch-text"
-          >
-            {model.name}
-          </motion.span>
-        </div>
-        <div className="flex items-center gap-2 text-[9px] font-mono text-stealth-muted">
-          <span>{model.author}</span>
-          <span>·</span>
-          <span className="text-nv-green">{model.quant}</span>
-          <span>·</span>
-          <span>{model.size_str}</span>
-        </div>
-      </div>
+  const displayVramGb = displayVramMib / 1024;
 
+  return (
+    <div className="flex flex-col h-full overflow-hidden" data-config-panel>
       {/* Provider selector */}
       {externalProviders && externalProviders.length > 0 && (
         <div className="px-4 py-3 border-b section-divider relative flex-shrink-0">
           <label className="text-[9px] font-mono text-neon-magenta tracking-widest uppercase block mb-2 glitch-text">
-            ◆ ENGINE PROVIDER
+            ENGINE PROVIDER
           </label>
           <div className="flex gap-1.5 flex-wrap">
             {externalProviders.filter(p => p.enabled).map((p) => (
               <button
                 key={p.id}
-                onClick={() => { setSelectedProvider(p.id); try { localStorage.setItem("BlackOps-last-provider", p.id); } catch {} }}
+                onClick={() => {
+                  setSelectedProvider(p.id);
+                  try { localStorage.setItem("BlackOps-last-provider", p.id); } catch {}
+                }}
                 className={`px-3 py-1 text-[10px] font-mono tracking-wider rounded-sm ${
                   selectedProvider === p.id
                     ? "provider-pill-active"
                     : "provider-pill"
                 }`}
               >
-                {p.display_name || p.id}
+                {p.display_name || p.id}<span className="ml-1 opacity-40 text-[8px]">({(p.param_definitions || []).length})</span>
               </button>
             ))}
           </div>
         </div>
       )}
 
-      {/* VRAM forecast */}
+      {/* VRAM Section */}
       <div className="px-4 py-3 border-b section-divider relative flex-shrink-0">
-        <label className="text-[9px] font-mono text-telemetry-cyan tracking-widest uppercase block mb-2 glitch-text">
-          ◆ VRAM FORECAST
-        </label>
-        {renderVramBar()}
+        <VramBadge
+          result={vramCalc.vramDisplay || null}
+          gpus={gpus}
+          gpuDistribution={vramCalc.gpuDistribution}
+          ramEstimate={vramCalc.ramEstimate}
+          availableVramGb={displayVramGb}
+          committedVramMib={committedVramMib}
+          onFitCheck={vramCalc.triggerFitCheck}
+          isScanning={vramCalc.isScanning}
+          autoOffload={vramCalc.autoOffload}
+          shouldShowRam={needsRamOffload}
+          modelName={model.name}
+          modelSizeStr={model.size_str}
+        />
       </div>
 
-      {/* Params — scrollable middle section */}
+      {/* ── Dynamic Multi-GPU Elevation ─────────────── */}
+      {shouldElevateMultiGpu && multiGpuParams.length > 0 && (
+        <div className={`px-4 py-3 border-b section-divider relative flex-shrink-0 ${config.Split?.toUpperCase() === "NONE" ? "opacity-50" : needsRamOffload ? "bg-telemetry-red/5 border-telemetry-red/30" : "bg-telemetry-cyan/5 border-telemetry-cyan/30"}`}>
+          <label className={`text-[9px] font-mono tracking-widest uppercase block mb-2 glitch-text ${needsRamOffload ? "text-telemetry-red" : "text-telemetry-cyan"}`}>
+            ⚡ MULTI-GPU REQUIRED — Model exceeds single GPU VRAM
+          </label>
+          <div className="space-y-2.5">
+            {multiGpuParams.map(def => renderParamRow(def))}
+          </div>
+        </div>
+      )}
+
+      {/* Parameters — scrollable middle section */}
       <div className="px-4 py-3 border-b section-divider relative flex-1 overflow-y-auto cyber-scrollbar">
         <label className="text-[9px] font-mono text-electric-blue tracking-widest uppercase block mb-3 glitch-text">
-          ◆ PARAMETERS
+          PARAMETERS
         </label>
+
         {mergedParamDefs.length === 0 ? (
           <div className="text-stealth-muted text-[10px] font-mono opacity-50">NO PARAMS DEFINED</div>
         ) : (
-          <div className="space-y-2.5">
-            {mergedParamDefs.filter(d => !d.hidden).map((def) => {
-              const baseValues = (def.values || []).filter(v => !(def.hiddenValues || []).some(hv => String(hv) === String(v)));
-              const isAdminParam = adminParamDefs.some(d => d.key === def.key);
-              const currentValue = config[def.key] ?? config[def.config_key || def.key];
+          <div className="space-y-3">
+            {PARAM_GROUPS.map(group => {
+              const groupParams = groupedParams[group.id];
+              if (!groupParams || groupParams.length === 0) return null;
+
+              // Skip Multi-GPU inline when elevated above
+              if (group.elevatable && shouldElevateMultiGpu) return null;
+
+              const isCollapsed = collapsedGroups.has(group.id);
 
               return (
-                <div key={def.key} className="flex items-center gap-2">
-                  <span className="text-[9px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider truncate" title={def.label}>
-                    {def.label}
-                  </span>
-                  {!isAdminParam && (
-                    <span className="text-[7px] font-mono text-yellow-400 bg-yellow-400/15 px-1 py-0 rounded-sm flex-shrink-0">CUSTOM</span>
+                <div key={group.id}>
+                  {/* Group header */}
+                  {group.alwaysOpen ? (
+                    <div className="text-[8px] font-mono text-stealth-muted/60 tracking-widest uppercase mb-2 pb-1 border-b border-stealth-border/30">
+                      {group.label}
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => toggleGroup(group.id)}
+                      className="flex items-center gap-1.5 text-[8px] font-mono tracking-widest uppercase mb-2 pb-1 border-b border-stealth-border/30 w-full text-stealth-muted hover:text-white transition-colors"
+                    >
+                      <span className="text-[7px]">{isCollapsed ? '▶' : '▼'}</span>
+                      {group.label}
+                      <span className="opacity-40">({groupParams.length})</span>
+                    </button>
                   )}
-                  <div className="flex gap-1 flex-wrap flex-1 min-w-0">
-                    {baseValues.filter((v: any) => !(v?._hidden)).map((val) => (
-                      <button
-                        key={`${def.key}-${val}`}
-                        onClick={() => handleParamChange(def.key, val)}
-                        className={`px-2 py-0.5 text-[9px] font-mono rounded-sm ${
-                          currentValue === val || config[def.config_key || def.key] === val
-                            ? "value-chip-active"
-                            : "value-chip"
-                        }`}
-                      >
-                        {String(val)}
-                      </button>
-                    ))}
-                  </div>
+
+                  {/* Param rows */}
+                  {!isCollapsed && (
+                    <div className="space-y-2.5">
+                      {groupParams.map(def => renderParamRow(def))}
+                    </div>
+                  )}
                 </div>
               );
             })}
           </div>
         )}
 
-        {/* Test flags — below params in scroll */}
+        {/* Test flags */}
         {isAdminUnlocked && (
           <div className="px-1 py-3 border-t section-divider relative mt-3">
             <div className="flex items-center justify-between mb-1.5">
@@ -678,17 +479,18 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           </div>
         )}
 
-        {/* Launch button — below params in scroll */}
+        {/* Launch button */}
         <div className="px-1 py-4">
           <motion.button
             onClick={handleAddToStack}
-            disabled={!model}
+            disabled={!model || vramCalc.vramDisplay?.status === 'critical'}
             whileHover={{ scale: 1.01 }}
             whileTap={{ scale: 0.98 }}
-            className="w-full ignite-btn px-4 py-3 text-xs font-mono tracking-widest rounded-sm disabled:opacity-40 disabled:cursor-not-allowed"
+            className={`w-full ignite-btn px-4 py-3 text-xs font-mono tracking-widest rounded-sm disabled:opacity-40 disabled:cursor-not-allowed ${isBlazing ? "blazing" : ""}`}
           >
-            ✦ IGNITE ENGINE
+            {isBlazing ? "🔥 LAUNCHED" : "✦ IGNITE ENGINE"}
           </motion.button>
+          <p className="text-[8px] font-mono text-stealth-muted/40 text-center mt-1.5">Ctrl+Enter to launch</p>
         </div>
       </div>
     </div>

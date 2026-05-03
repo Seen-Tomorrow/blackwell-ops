@@ -72,7 +72,7 @@ function SystemSummary({ totalVram, usedVram, avgTemp, totalPower }: {
       <div className="flex items-center justify-center py-2 border-b border-stealth-border pb-3 mb-3">
         <div className="text-center">
           <p className="text-[9px] font-mono text-stealth-muted tracking-wider">TOTAL VRAM</p>
-          <p className="text-2xl font-mono mt-0.5 text-white">{(totalVram / 1024).toFixed(0)} GB</p>
+          <p className="text-2xl font-mono mt-0.5 text-nv-green">{(totalVram / 1024).toFixed(0)} GB</p>
         </div>
       </div>
       {/* Other stats */}
@@ -143,9 +143,9 @@ function GpuCard({ gpu }: { gpu: GpuInfo }) {
       <div className="px-3 py-2.5">
         <div className="flex items-center justify-between mb-1">
           <span className="text-[9px] font-mono text-stealth-muted tracking-wider">VRAM</span>
-          <span className="text-[9px] font-mono text-white/80">
-            {gpu.memory_used} / {gpu.memory_total} MB ({vramPercent.toFixed(0)}%)
-          </span>
+          <p className="text-[9px] font-mono text-white/80">
+            {(gpu.memory_used / 1024).toFixed(1)} / {(gpu.memory_total_manufactured || gpu.memory_total) / 1024} GB ({vramPercent.toFixed(0)}%)
+          </p>
         </div>
         <div className="w-full h-1.5 bg-stealth-black rounded-sm overflow-hidden">
           <div

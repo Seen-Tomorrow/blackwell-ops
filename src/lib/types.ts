@@ -8,6 +8,59 @@ export interface ModelEntry {
   mmproj?: string;
   backend_type?: string;
   mmproj_size_mib?: number;
+  sourcePathLabel?: string;
+  metadata?: ModelMetadata;
+  hfMeta?: HfMetadata;
+}
+
+export interface ModelPathEntry {
+  path: string;
+  label: string;
+  isDefault: boolean;
+}
+
+export interface PathDiskUsage {
+  path: string;
+  totalGgufBytes: number;
+  fileCount: number;
+}
+
+export interface HfMetadata {
+  hfModelId: string;
+  author: string;
+  repoName: string;
+  tags?: string[];
+  downloads?: number;
+  likesCount?: number;
+  quantType: string;
+  fileSizeBytes: number;
+  lastModified?: string;
+  lfsOid?: string;     // LFS content hash for incremental scan
+}
+
+export interface ModelMetadata {
+  architecture: string;
+  modelTypeLabel: string;
+  n_layer: number;
+  n_ctx_train: number;
+  n_embd: number;
+  n_head: number;
+  n_head_kv: number;
+  n_expert: number;
+  n_expert_used: number;
+  rope_freq_base: number;
+  rope_dim: number;
+  file_type_str: string;
+  bpw: number;
+  tensor_counts: Record<string, number>;
+  total_params_str: string;
+  vocab_size: number;
+  generalName: string;
+  ropeScalingType: string;
+  tokenizerModel: string;
+  file_size_bytes: number;
+  scan_timestamp: number;
+  file_created?: number;
 }
 
 export interface EngineConfig {
@@ -138,6 +191,12 @@ export interface CpuInfo {
   core_usages: number[]; // per-core usage percentage (0-100)
 }
 
+export interface SystemInfo {
+  total_memory_mib: number;              // Real OS-reported RAM in MiB (used for calculations)
+  available_memory_mib: number;          // Available (free + cache) in MiB
+  total_memory_manufactured_mib: number; // Rounded manufactured capacity for display (e.g., 256 GB = 262144 MiB)
+}
+
 export interface StackEntry {
   idx: number;
   alias: string;
@@ -249,4 +308,67 @@ export interface IntelItem {
   author: string;
   body_preview: string;
   timestamp: string;
+}
+
+// ── Hugging Face Hub Types ───────────────────────────────────────
+
+export interface GgufFile {
+  type: string;        // quant tag like "Q4_K_M"
+  size_bytes: number;
+  url: string;         // direct download URL
+  lfsOid?: string;     // LFS content hash for incremental scan
+}
+
+export interface HfModel {
+  id: string;          // e.g. "bartowski/Llama-3.1-8B-IQ1_MS"
+  author: string;
+  tags: string[];
+  downloads: number;
+  likes_count: number;
+  last_modified: string;
+  gguf_files: GgufFile[];
+}
+
+export interface HfSearchFilters {
+  query: string;
+  vram_limit_gb: number;  // 0 = no filter
+  limit: number;
+  sort: string;           // "downloads" | "likes" | "lastModified"
+}
+
+export interface HfSearchResponse {
+  models: HfModel[];
+  hasMore: boolean;
+}
+
+export interface HfModelInfo {
+  id: string;
+  author: string;
+  description: string;
+  tags: string[];
+  downloads: number;
+  likes_count: number;
+  gguf_files: GgufFile[];
+}
+
+// ── Download Manager Types ───────────────────────────────────────
+
+export type DownloadStatus = 'queued' | 'downloading' | 'paused' | 'completed' | 'failed' | 'scanning';
+
+export interface DownloadTask {
+  id: string;
+  hfModelId: string;
+  fileName: string;
+  downloadUrl: string;
+  totalBytes: number;
+  downloadedBytes: number;
+  status: DownloadStatus;
+  destPath: string;
+  speedBps: number;
+  pauseOffset: number;
+  error?: string;
+  etaSeconds: number;
+  hfAuthor?: string;
+  quantType?: string;
+  lfsOid?: string;     // LFS content hash for incremental scan
 }

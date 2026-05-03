@@ -13,8 +13,9 @@
  * - Per-model runtime overrides → localStorage BlackOps-admin-catalog-override:{providerId}
  */
 
-import { useState, useCallback, useEffect, useMemo, useRef } from "react";
-import type { ParamDef, ProviderConfig, ProviderTemplate, TemplateParam } from "../lib/types";
+import React, { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import type { ParamDef, ProviderConfig, ProviderTemplate, TemplateParam, ModelPathEntry, PathDiskUsage } from "../lib/types";
 import ValueBubbles from "./ValueBubbles";
 import ProvidersConfig from "./ProvidersConfig";
 
@@ -41,12 +42,10 @@ interface ConfirmDialogProps {
   onCancel: () => void;
 }
 
-type ConfigSubTab = "providers" | "params";
+type ConfigSubTab = "providers" | "params" | "paths";
 
 interface ConfigPageProps {
   providers?: ProviderConfig[];
-  onProvidersChange?: (providers: ProviderConfig[]) => void;
-  modelBase?: string;
 }
 
 /** Parse a value as int, float, or string. */
@@ -57,37 +56,35 @@ function parseValue(v: string): string | number {
   return t;
 }
 
-export default function ConfigPage({ providers: externalProviders, onProvidersChange, modelBase }: ConfigPageProps) {
+export default function ConfigPage({ providers: externalProviders }: ConfigPageProps) {
   const [subTab, setSubTab] = useState<ConfigSubTab>("providers");
   const [selectedProviderId, setSelectedProviderId] = useState<string>("ggml-stable");
   const [allProviders, setAllProviders] = useState<ProviderConfig[]>(externalProviders || []);
-  // Admin lock state: "locked" | "unlocked" | "permanently"
-  const [adminLockState, setAdminLockStateRaw] = useState<string>("locked");
+  // Admin lock state — read from global (managed by Layout.tsx header)
+  const [adminLockState, setAdminLockState] = useState<string>(() => {
+    try { return localStorage.getItem("BlackOps-admin-lock") || "locked"; } catch { return "locked"; }
+  });
 
-  const isAdminLocked = adminLockState === "locked";
-  const isPermanentlyUnlocked = adminLockState === "permanently";
-
-  // Load persisted lock state from localStorage on mount
+  // Listen for admin lock changes from the global header toggle
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem("BlackOps-admin-lock");
-      if (stored === "unlocked" || stored === "permanently") {
-        setAdminLockStateRaw(stored);
-      }
-    } catch {}
+    const handler = () => {
+      try { setAdminLockState(localStorage.getItem("BlackOps-admin-lock") || "locked"); } catch {}
+    };
+    window.addEventListener("admin-lock-changed", handler);
+    return () => window.removeEventListener("admin-lock-changed", handler);
   }, []);
 
-  // Cycle through lock states: locked → unlocked → permanently → locked
-  const cycleAdminLock = () => {
-    let next: string;
-    if (adminLockState === "locked") next = "unlocked";
-    else if (adminLockState === "unlocked") next = "permanently";
-    else next = "locked";
+  const isAdminLocked = adminLockState === "locked";
 
-    setAdminLockStateRaw(next);
-    localStorage.setItem("BlackOps-admin-lock", next);
-    window.dispatchEvent(new Event("admin-lock-changed"));
-  };
+  // ── Toggle admin lock (same cycle as POWER USER button) ───────────────
+  const handleEditorToggle = useCallback(() => {
+    setAdminLockState(prev => {
+      const next = prev === "locked" ? "unlocked" : prev === "unlocked" ? "permanently" : "locked";
+      try { localStorage.setItem("BlackOps-admin-lock", next); } catch {}
+      window.dispatchEvent(new Event("admin-lock-changed"));
+      return next;
+    });
+  }, []);
 
   // ── Sync with parent's provider updates ───────────────────────────
   useEffect(() => {
@@ -98,12 +95,9 @@ export default function ConfigPage({ providers: externalProviders, onProvidersCh
 
   // ── Refresh providers from Rust after any save ─────────────────────
   useEffect(() => {
-    import("@tauri-apps/api/core").then(async ({ invoke }) => {
-      try {
-        const data = await invoke<ProviderConfig[]>("list_providers");
-        setAllProviders(data);
-      } catch {}
-    });
+    invoke<ProviderConfig[]>("list_providers")
+      .then(data => setAllProviders(data))
+      .catch(() => {});
   }, [selectedProviderId]);
 
   // ── UI state ───────────────────────────────────────────────────────
@@ -116,6 +110,7 @@ export default function ConfigPage({ providers: externalProviders, onProvidersCh
   // Template update modal state
   const [templateDiff, setTemplateDiff] = useState<TemplateDiffResult | null>(null);
   const [selectedNewParams, setSelectedNewParams] = useState<Set<string>>(new Set());
+  const [selectedOrphanedParams, setSelectedOrphanedParams] = useState<Set<string>>(new Set());
   const [showUpdateModal, setShowUpdateModal] = useState(false);
 
   // ── Inline sub-params editor state ───────────────────────────────
@@ -155,12 +150,9 @@ export default function ConfigPage({ providers: externalProviders, onProvidersCh
   const [templateParams, setTemplateParams] = useState<TemplateParam[]>([]);
   useEffect(() => {
     if (!selectedProviderId) return;
-    import("@tauri-apps/api/core").then(async ({ invoke }) => {
-      try {
-        const template: ProviderTemplate = await invoke("get_template", { providerId: selectedProviderId });
-        setTemplateParams(template.params || []);
-      } catch {}
-    });
+    invoke<ProviderTemplate>("get_template", { providerId: selectedProviderId })
+      .then(template => setTemplateParams(template.params || []))
+      .catch(() => {});
   }, [selectedProviderId]);
 
   // ── Merge base defs with runtime template data (sub_params, ptype) ───────────
@@ -192,7 +184,6 @@ export default function ConfigPage({ providers: externalProviders, onProvidersCh
   // ── Persist provider to Rust ───────────────────────────────────────
   const persistProviderToConfig = useCallback(async (provider: ProviderConfig) => {
     try {
-      const { invoke } = await import("@tauri-apps/api/core");
       await invoke("save_provider", { provider });
     } catch (err) { console.error("[CONFIG] save_provider FAILED:", err); }
   }, []);
@@ -209,8 +200,6 @@ export default function ConfigPage({ providers: externalProviders, onProvidersCh
     setShowResetConfirm(false);
 
     try {
-      const { invoke } = await import("@tauri-apps/api/core");
-      
       // Get fresh factory defaults from genesis template for this provider
       const template = await invoke<ProviderTemplate>("get_template", { providerId: selectedProviderId });
       const resetDefs: ParamDef[] = (template.params || []).map((p, i) => ({
@@ -230,10 +219,10 @@ export default function ConfigPage({ providers: externalProviders, onProvidersCh
         defaultValue: (p as any).default as string | number,
         factoryDefault: (p as any).default as string | number,
       }));
-      
+
       const updatedProvider = { ...currentProvider, param_definitions: resetDefs };
       await invoke("save_provider", { provider: updatedProvider });
-      
+
       // Refresh from backend
       const allProviders = await invoke<ProviderConfig[]>("list_providers");
       setAllProviders(allProviders);
@@ -242,7 +231,7 @@ export default function ConfigPage({ providers: externalProviders, onProvidersCh
     // Clear localStorage overrides for this provider
     setUserOverrides({});
     try { localStorage.removeItem(OVERRIDES_KEY_PREFIX + selectedProviderId); } catch {}
-    
+
     window.dispatchEvent(new CustomEvent("param-config-changed"));
     showSaved("RESET TO DEFAULTS");
   }, [currentProvider, isAdminLocked, selectedProviderId]);
@@ -250,15 +239,15 @@ export default function ConfigPage({ providers: externalProviders, onProvidersCh
   // ── Check template update (TEMPLATE UPDATE) ─────────────────
   const handleCheckUpdate = useCallback(async () => {
     if (adminLockState === "locked") return;
-    
+
     try {
-      const { invoke } = await import("@tauri-apps/api/core");
-      const diff: { new_params: DiffParam[]; orphaned_params: DiffParam[] } = 
+      const diff: { new_params: DiffParam[]; orphaned_params: DiffParam[] } =
         await invoke("check_template_update", { providerId: selectedProviderId });
-      
+
       setTemplateDiff(diff);
-      // Pre-select all new params (user can un-check unwanted ones)
+      // Pre-select all new params for add, all orphaned for keep
       setSelectedNewParams(new Set(diff.new_params.map(p => p.key)));
+      setSelectedOrphanedParams(new Set(diff.orphaned_params.map(p => p.key)));
       setShowUpdateModal(true);
     } catch (err) {
       console.error("[CONFIG] check_template_update failed:", err);
@@ -268,7 +257,6 @@ export default function ConfigPage({ providers: externalProviders, onProvidersCh
   // ── Validate provider_meta.json schema ───────────────────────────
   const handleValidate = useCallback(async () => {
     try {
-      const { invoke } = await import("@tauri-apps/api/core");
       const errors: string[] = await invoke("validate_provider_meta");
       if (errors.length === 0) {
         alert(`provider_meta.json is valid — no schema issues found.`);
@@ -283,10 +271,8 @@ export default function ConfigPage({ providers: externalProviders, onProvidersCh
   // ── Apply template update with user-selected params ───────────────
   const handleApplyTemplateUpdate = useCallback(async () => {
     if (!templateDiff || !currentProvider) return;
-    
+
     try {
-      const { invoke } = await import("@tauri-apps/api/core");
-      
       // Build the param_def to add (only selected new ones)
       const template = await invoke<ProviderTemplate>("get_template", { providerId: selectedProviderId });
       const paramsToAdd: ParamDef[] = [];
@@ -313,7 +299,7 @@ export default function ConfigPage({ providers: externalProviders, onProvidersCh
       }
 
       const orphanedToRemove = templateDiff.orphaned_params
-        .filter(p => !selectedNewParams.has(p.key))
+        .filter(p => !selectedOrphanedParams.has(p.key))
         .map(p => p.key);
 
       if (paramsToAdd.length > 0 || orphanedToRemove.length > 0) {
@@ -322,7 +308,7 @@ export default function ConfigPage({ providers: externalProviders, onProvidersCh
           addParams: paramsToAdd,
           removeKeys: orphanedToRemove,
         });
-        
+
         // Refresh from backend
         const allProviders = await invoke<ProviderConfig[]>("list_providers");
         setAllProviders(allProviders);
@@ -331,8 +317,10 @@ export default function ConfigPage({ providers: externalProviders, onProvidersCh
 
     setShowUpdateModal(false);
     setTemplateDiff(null);
+    setSelectedNewParams(new Set());
+    setSelectedOrphanedParams(new Set());
     showSaved("TEMPLATE UPDATED");
-  }, [templateDiff, currentProvider, selectedProviderId, selectedNewParams]);
+  }, [templateDiff, currentProvider, selectedProviderId, selectedNewParams, selectedOrphanedParams]);
 
   // ── Admin: add new param definition ───────────────────────────────
   const addParamDefinition = useCallback(async (key: string, values: (string | number)[]) => {
@@ -435,12 +423,46 @@ export default function ConfigPage({ providers: externalProviders, onProvidersCh
     showSaved("SAVED");
   }, [currentProvider, isAdminLocked, buildCompleteDefs, persistProviderToConfig, selectedProviderId]);
 
-  // ── Admin: add value to param (user-added values) ───────────────
+  // ── Admin: add value to param (writes to BOTH values and userAddedValues) ───
   const addValueToParam = useCallback(async (key: string, value: string | number) => {
     if (!currentProvider || adminLockState === "locked") return;
-    
+
     const completeDefs = buildCompleteDefs(currentProvider);
-    const updatedDefs = completeDefs.map(d => d.key === key ? { ...d, userAddedValues: [...(d.userAddedValues || []), value] } : d);
+    const updatedDefs = completeDefs.map(d => {
+      if (d.key !== key) return d;
+      const vals = [...(d.values || [])];
+      const userAdded = [...(d.userAddedValues || [])];
+      if (!vals.some(v => String(v) === String(value))) {
+        vals.push(value);
+      }
+      if (!userAdded.some(v => String(v) === String(value))) {
+        userAdded.push(value);
+      }
+      return { ...d, values: vals, userAddedValues: userAdded.length > 0 ? userAdded : undefined };
+    });
+    const updatedProvider = { ...currentProvider, param_definitions: updatedDefs };
+
+    setAllProviders(prev => prev.map(p => p.id !== selectedProviderId ? p : updatedProvider));
+    window.dispatchEvent(new CustomEvent("param-config-changed"));
+    await persistProviderToConfig(updatedProvider);
+    showSaved("SAVED");
+  }, [currentProvider, isAdminLocked, buildCompleteDefs, persistProviderToConfig, selectedProviderId]);
+
+  // ── Admin: remove value from param ───────────────────────────────
+  const removeValueFromParam = useCallback(async (key: string, value: string | number) => {
+    if (!currentProvider || adminLockState === "locked") return;
+
+    const completeDefs = buildCompleteDefs(currentProvider);
+    const updatedDefs = completeDefs.map(d => {
+      if (d.key !== key) return d;
+      const vals = (d.values || []).filter(v => String(v) !== String(value));
+      const userAdded = (d.userAddedValues || []).filter(v => String(v) !== String(value));
+      let newDefault = d.defaultValue;
+      if (String(d.defaultValue) === String(value)) {
+        newDefault = vals.length > 0 ? vals[0] : undefined;
+      }
+      return { ...d, values: vals, userAddedValues: userAdded.length > 0 ? userAdded : undefined, defaultValue: newDefault };
+    });
     const updatedProvider = { ...currentProvider, param_definitions: updatedDefs };
 
     setAllProviders(prev => prev.map(p => p.id !== selectedProviderId ? p : updatedProvider));
@@ -485,7 +507,9 @@ export default function ConfigPage({ providers: externalProviders, onProvidersCh
       if (d.key !== paramKey) return d;
       const vals = [...(d.values || [])];
       if (!vals.includes(valueName)) { vals.push(valueName); }
-      return { ...d, values: vals };
+      const ua = [...(d.userAddedValues || [])];
+      if (!ua.some(v => String(v) === String(valueName))) { ua.push(valueName); }
+      return { ...d, values: vals, userAddedValues: ua.length > 0 ? ua : undefined };
     });
     
     // If args empty and sub_params is now gone for this value, remove from values too
@@ -514,12 +538,18 @@ export default function ConfigPage({ providers: externalProviders, onProvidersCh
       const {[valueName]: _, ...rest} = existingSubParams;
       return { ...d, sub_params: Object.keys(rest).length > 0 ? rest : undefined };
     });
-    // Also remove from values array
+    // Also remove from values array and userAddedValues
     updatedDefs = updatedDefs.map(d => {
       if (d.key !== paramKey) return d;
       const sp = (d as any).sub_params || {};
       if (!sp[valueName]) {
-        return { ...d, values: (d.values || []).filter(v => String(v) !== valueName) };
+        return {
+          ...d,
+          values: (d.values || []).filter(v => String(v) !== valueName),
+          userAddedValues: ((d.userAddedValues || []) as (string | number)[]).filter(v => String(v) !== valueName).length > 0
+            ? (d.userAddedValues || []).filter(v => String(v) !== valueName)
+            : undefined,
+        };
       }
       return d;
     });
@@ -533,7 +563,6 @@ export default function ConfigPage({ providers: externalProviders, onProvidersCh
   const handleRestoreParam = useCallback(async (key: string) => {
     if (!currentProvider || adminLockState === "locked") return;
     try {
-      const { invoke } = await import("@tauri-apps/api/core");
       const freshDef: ParamDef = await invoke("reset_param_to_template", {
         providerId: selectedProviderId, paramKey: key
       });
@@ -556,7 +585,7 @@ export default function ConfigPage({ providers: externalProviders, onProvidersCh
       flag: (def as any).flag ?? "",
       mapId: (def as any).map_id ?? "",
       pattern: (def as any).pattern ?? "",
-      values: [...(def.values || [])],
+      values: (() => { const merged = [...(def.values || [])]; const ua = def.userAddedValues || []; for (const v of ua) { if (!merged.some(x => String(x) === String(v))) merged.push(v); } return merged; })(),
       defaultValue: def.defaultValue ?? "",
       subParams: Object.fromEntries(
         Object.entries((def as any).sub_params || {}).map(([k, v]) => [k, (v as string[]).join(" ")])
@@ -575,12 +604,22 @@ export default function ConfigPage({ providers: externalProviders, onProvidersCh
         const args = v.trim().split(/\s+/).filter(Boolean);
         if (args.length > 0) subParams[k] = args;
       }
-      // Add any new values that have sub-params but aren't in values yet
-      let vals = [...(d.values || [])];
+      // Use form.values as source of truth — it contains merged template + user-added values
+      let vals = [...paramMetaForm.values];
+      // Add any sub_params keys not yet in the value list
       for (const k of Object.keys(paramMetaForm.subParams)) {
         const n = Number.isFinite(Number(k)) ? Number(k) : k;
-        if (!vals.includes(n as string | number)) vals.push(n as string | number);
+        if (!vals.some(x => String(x) === String(n))) vals.push(n as string | number);
       }
+      // Determine userAddedValues: anything in form.values that wasn't in original d.values
+      const origTemplateSet = new Set((d.values || []).map(v => String(v)));
+      const newUserAdded = paramMetaForm.values.filter(v => !origTemplateSet.has(String(v)));
+      // Also keep previously tracked user-added values still present
+      const existingUserAdded = (d.userAddedValues || []).filter(v => vals.some(x => String(x) === String(v)));
+      const mergedUserAdded = [...new Set([...existingUserAdded, ...newUserAdded].map(v => String(v)))].map(s => {
+        // Preserve original type: try number first
+        return Number.isFinite(Number(s)) ? Number(s) : s;
+      });
       return {
         ...d,
         ptype: paramMetaForm.ptype !== "arg_select" && paramMetaForm.ptype !== "logic_only" ? undefined : (paramMetaForm.ptype === d.ptype ? d.ptype : paramMetaForm.ptype),
@@ -590,6 +629,7 @@ export default function ConfigPage({ providers: externalProviders, onProvidersCh
         values: vals,
         defaultValue: paramMetaForm.defaultValue !== "" ? paramMetaForm.defaultValue : undefined,
         sub_params: Object.keys(subParams).length > 0 ? subParams : undefined,
+        userAddedValues: mergedUserAdded.length > 0 ? mergedUserAdded : undefined,
       };
     });
     const updatedProvider = { ...currentProvider, param_definitions: updatedDefs };
@@ -643,8 +683,6 @@ export default function ConfigPage({ providers: externalProviders, onProvidersCh
     return () => window.removeEventListener("mouseup", h);
   }, [dragging, paramDefs, swapItems]);
 
-  const handleAdminToggle = cycleAdminLock;
-
   const enabledProviders = useMemo(() => allProviders.filter(p => p.enabled), [allProviders]);
 
   // ── Render ───────────────────────────────────────────────────────
@@ -654,17 +692,36 @@ export default function ConfigPage({ providers: externalProviders, onProvidersCh
       <div className="px-4 py-2 border-b border-stealth-border flex items-center gap-1">
         <button onClick={() => setSubTab("providers")} className={`px-3 py-1 text-[10px] font-mono tracking-wider transition-colors ${subTab === "providers" ? "text-nv-green border-b border-nv-green/60" : "text-stealth-muted hover:text-white"}`}>PROVIDERS</button>
         <button onClick={() => setSubTab("params")} className={`px-3 py-1 text-[10px] font-mono tracking-wider transition-colors ${subTab === "params" ? "text-nv-green border-b border-nv-green/60" : "text-stealth-muted hover:text-white"}`}>PARAMETERS</button>
+        <button onClick={() => setSubTab("paths")} className={`px-3 py-1 text-[10px] font-mono tracking-wider transition-colors ${subTab === "paths" ? "text-nv-green border-b border-nv-green/60" : "text-stealth-muted hover:text-white"}`}>PATHS</button>
       </div>
 
       {subTab === "providers" ? (
-        <ProvidersConfig providers={allProviders} onProvidersChange={setAllProviders} modelBase={modelBase} />
+        <div className="flex-1 flex flex-col overflow-hidden min-h-0">
+          <ProvidersConfig providers={allProviders} onProvidersChange={setAllProviders} />
+        </div>
+      ) : subTab === "paths" ? (
+        <ModelPathsPanel />
       ) : (
-        <div className="h-full flex flex-col overflow-hidden">
+        <div className="flex-1 flex flex-col overflow-hidden min-h-0">
           {/* Toolbar */}
           <div className="px-4 py-3 border-b border-stealth-border flex items-center justify-between flex-wrap gap-2 relative">
             <div>
-              <h2 className="text-xs font-mono text-nv-green tracking-wider">PARAMETER CONFIGURATION</h2>
-              <p className="text-[9px] font-mono text-stealth-muted mt-0.5">Green = factory default, Yellow border = admin changed.</p>
+              <div className="flex items-center gap-2">
+                <h2 className="text-xs font-mono text-nv-green tracking-wider">PARAMETER CONFIGURATION</h2>
+                <span className="text-[10px] text-stealth-border/60">|</span>
+                <button onClick={handleEditorToggle}
+                  className={`text-[9px] font-mono transition-colors hover:text-yellow-400 ${
+                    adminLockState === "permanently"
+                      ? "text-yellow-400"
+                      : adminLockState === "unlocked" ? "text-yellow-400" : "text-stealth-muted"
+                  }`}
+                  title="Click to toggle editor lock state">
+                  {adminLockState === "permanently" ? "\u{1F511} EDITOR — PERMANENTLY UNLOCKED"
+                    : adminLockState === "unlocked" ? "\u{1F513} EDITOR — UNLOCKED"
+                    : "\u{1F512} EDITOR — LOCKED"}
+                </button>
+              </div>
+              <div className="h-4"></div>
 
               {enabledProviders.length > 1 && (
                 <div className="flex items-center gap-2 mt-2">
@@ -677,40 +734,36 @@ export default function ConfigPage({ providers: externalProviders, onProvidersCh
                   ))}
                 </div>
               )}
-
-              <div className="flex items-center gap-2 mt-1">
-                <span className="text-[9px] font-mono text-stealth-muted uppercase tracking-wider">Admin:</span>
-                <button onClick={handleAdminToggle}
-                  className={`text-[10px] transition-colors ${
-                    adminLockState === "permanently"
-                      ? "text-red-400 animate-pulse"
-                      : adminLockState === "unlocked" ? "text-yellow-400" : "text-stealth-muted hover:text-white"
-                  }`}>
-                  {adminLockState === "permanently" ? "\u{1F5A4} UNLOCKED PARMANNENTLY"
-                    : adminLockState === "unlocked" ? "\u{1F513} UNLOCKED"
-                    : "\u{1F512} LOCKED"}
-                </button>
-              </div>
             </div>
 
-            {/* Admin action buttons */}
-            <div className="flex gap-2">
-              {adminLockState !== "locked" && (
-                <>
-                  <button onClick={() => setShowResetConfirm(true)}
-                    className="px-2 py-1 text-[9px] font-mono border border-yellow-400/40 text-yellow-400 hover:bg-yellow-500/20 transition-colors">
-                    RESET TO DEFAULTS
-                  </button>
-                  <button onClick={handleCheckUpdate}
-                    className="px-2 py-1 text-[9px] font-mono border border-telemetry-cyan/40 text-telemetry-cyan hover:bg-telemetry-cyan/20 transition-colors">
-                    TEMPLATE UPDATE
-                  </button>
-                  <button onClick={handleValidate}
-                    className="px-2 py-1 text-[9px] font-mono border border-orange-400/40 text-orange-400 hover:bg-orange-500/20 transition-colors">
-                    VALIDATE
-                  </button>
-                </>
-              )}
+            {/* Right side: action buttons (UNLOCKED) and legend (LOCKED) — both always rendered, opacity toggled */}
+            <div className="ml-auto flex gap-2 items-center">
+              {/* Action buttons — visible when unlocked */}
+              <div className={`flex gap-2 transition-opacity ${adminLockState !== "locked" ? "opacity-100" : "opacity-0 pointer-events-none"}`}>
+                <button onClick={() => setShowResetConfirm(true)}
+                  className="px-2 py-1 text-[9px] font-mono border border-yellow-400/40 text-yellow-400 hover:bg-yellow-500/20 transition-colors">
+                  RESET TO DEFAULTS
+                </button>
+                <button onClick={handleCheckUpdate}
+                  className="px-2 py-1 text-[9px] font-mono border border-telemetry-cyan/40 text-telemetry-cyan hover:bg-telemetry-cyan/20 transition-colors">
+                  TEMPLATE UPDATE
+                </button>
+                <button onClick={handleValidate}
+                  className="px-2 py-1 text-[9px] font-mono border border-orange-400/40 text-orange-400 hover:bg-orange-500/20 transition-colors">
+                  VALIDATE
+                </button>
+              </div>
+              {/* Legend — visible when locked */}
+              <div className={`border border-stealth-border/50 rounded-sm p-2 transition-opacity ${adminLockState === "locked" ? "opacity-100" : "opacity-0 pointer-events-none"}`}>
+                <div className="grid grid-cols-[36px_1fr] gap-1 items-center" style={{ gridTemplateColumns: "36px 1fr" }}>
+                  <span className="inline-flex items-center justify-center px-2 py-0.5 text-[11px] font-mono rounded-sm bg-nv-green/30 border-double border-2 border-nv-green/70 text-nv-green">val</span>
+                  <span className="text-[8px] font-mono text-stealth-muted">Factory default value</span>
+                  <span className="inline-flex items-center justify-center px-2 py-0.5 text-[11px] font-mono rounded-sm bg-nv-green/30 border-double border-2 border-yellow-400/80 text-yellow-300">val</span>
+                  <span className="text-[8px] font-mono text-stealth-muted">USER's new default</span>
+                  <span className="inline-flex items-center justify-center px-2 py-0.5 text-[11px] font-mono rounded-sm bg-nv-green/10 border border-nv-green/30 text-yellow-300">val</span>
+                  <span className="text-[8px] font-mono text-stealth-muted">USER's added values</span>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -740,119 +793,147 @@ export default function ConfigPage({ providers: externalProviders, onProvidersCh
           </div>
 
           {/* Param rows */}
-          <div className="flex-1 overflow-y-auto p-4">
+          <div className="flex-1 overflow-y-auto p-4 min-h-0">
             {paramDefs.length === 0 ? (
               <div className="flex items-center justify-center h-full text-stealth-muted text-xs font-mono">LOADING PARAMETERS...</div>
             ) : (
-              <div className="space-y-1.5">
-                {paramDefs.map((def, idx) => {
-                  const defKey = def.config_key || def.key;
+              (() => {
+                // Group params by ui_group — same order as EngineConfigPanel
+                const groupOrder = ["Core", "Performance", "Multi-GPU", "Feature Flags"];
+                const groups: Record<string, ParamDef[]> = {};
+                for (const def of paramDefs) {
+                  const g = def.ui_group || "Feature Flags";
+                  if (!groups[g]) groups[g] = [];
+                  groups[g].push(def);
+                }
 
-                  // Effective value: user override > current default
-                  const factoryDefault = (def as any).factoryDefault;
-                  const effectiveDefault = def.defaultValue !== undefined ? String(def.defaultValue) : undefined;
-                  const currentOverride = userOverrides[defKey];
-                  const currentValue = currentOverride !== undefined ? String(currentOverride) : (effectiveDefault ?? "");
-
-                  return (
-                    <div key={`row-${idx}`} data-row-idx={idx}
-                      className={`flex items-center gap-2 p-2 rounded transition-all duration-150 ${
-                        (dragging && def.key === dragKeyRef.current)
-                          ? "border-yellow-400/60 bg-yellow-400/10 opacity-70"
-                          : def.hidden
-                            ? "opacity-30 grayscale"
-                            : "border border-stealth-border hover:border-stealth-muted"
-                      }`}>
-
-                      {/* Drag handle — admin only */}
-                      {adminLockState !== "locked" && (
-                        <button onMouseDown={(e) => handleDragStart(e, idx)}
-                          className="text-[8px] text-stealth-muted select-none px-1 cursor-grab active:cursor-grabbing hover:text-nv-green transition-colors"
-                          title="Click and drag to reorder">&#x2630;</button>
-                      )}
-
-                      {/* Hidden toggle — admin only */}
-                      {adminLockState !== "locked" && (
-                        <button onClick={() => toggleRowHidden(def.key)}
-                          className={`text-[10px] select-none transition-colors ${def.hidden ? "text-yellow-400/35" : "text-nv-green/25 hover:text-nv-green"}`}
-                          title={def.hidden ? "Show parameter in catalog" : "Hide from catalog"}>
-                          {def.hidden ? "\u2713" : "\u25EF"}
-                        </button>
-                      )}
-
-                      <span className="w-32 text-[13px] font-mono px-1 py-0.5 truncate" title={def.key}>{def.key}</span>
-
-                      {/* Value bubbles */}
-                      <ValueBubbles
-                        paramKey={def.key}
-                        isAdmin={adminLockState !== "locked"}
-                        currentValue={currentValue}
-                        onOverrideChange={(val) => setOverride(defKey, val)}
-                        addValue={adminLockState !== "locked" ? (v: string | number) => addValueToParam(def.key, v) : undefined}
-                        toggleHiddenValue={adminLockState !== "locked" ? (_k: string, v: string | number) => toggleHiddenValue(def.key, v) : undefined}
-                        hiddenValues={(def as any).hiddenValues || []}
-                        availableValues={def.values || []}
-                        userAddedValues={(def as any).userAddedValues || []}
-                        defaultValue={effectiveDefault}
-                        factoryDefault={factoryDefault !== undefined ? String(factoryDefault) : undefined}
-                        onChangeDefault={adminLockState !== "locked"
-                          ? (v: string | number) => changeDefaultValue(def.key, v)
-                          : undefined}
-                        onEditValue={adminLockState !== "locked" ? (val: string | number) => openSubParamsEditor(def.key, String(val)) : undefined}
-                        ptype={(def as any).ptype}
-                        subParams={(def as any).sub_params || undefined}
+                return (
+                  <div className="space-y-3">
+                    {/* Add new param — admin only */}
+                    {adminLockState !== "locked" && (
+                      <AddParamSection
+                        onAdd={addParamDefinition}
+                        existingKeys={paramDefsBase.map(d => d.key)}
                       />
+                    )}
+                    {groupOrder.concat(groupOrder.length === 0 ? Object.keys(groups) : []).filter((g, i, a) => a.indexOf(g) === i && groups[g]).map(groupName => {
+                      const groupParams = groups[groupName];
+                      if (!groupParams || groupParams.length === 0) return null;
+                      return (
+                        <div key={groupName}>
+                          <div className="text-[8px] font-mono text-stealth-muted/60 tracking-widest uppercase mb-1.5 pb-1 border-b border-stealth-border/30">
+                            {groupName}
+                          </div>
+                          <div className="space-y-1.5">
+                            {groupParams.map((def, idx) => {
+                              const defKey = def.config_key || def.key;
 
-                      {/* Edit param metadata + Restore to genesis — admin only */}
-                      {adminLockState !== "locked" && (
-                        <div className="flex items-center gap-0.5 ml-auto">
-                          <button onClick={() => openParamMetaEditor(def)}
-                            className="leading-none text-[10px] font-mono text-nv-green/40 hover:text-yellow-400 transition-colors"
-                            title="Edit param metadata">E</button>
-                          <button onClick={() => handleRestoreParam(def.key)}
-                            className="leading-none text-[10px] font-mono text-blue-500/50 hover:text-blue-400 transition-colors"
-                            title="Restore this param from genesis template">R</button>
+                              // Effective value: user override > current default
+                              const factoryDefault = (def as any).factoryDefault;
+                              const effectiveDefault = def.defaultValue !== undefined ? String(def.defaultValue) : undefined;
+                              const currentOverride = userOverrides[defKey];
+                              const currentValue = currentOverride !== undefined ? String(currentOverride) : (effectiveDefault ?? "");
+
+                                return (
+                                   <React.Fragment key={`row-${idx}`}>
+                                   <div data-row-idx={idx}
+                                    className={`flex items-center gap-2 p-2 rounded transition-all duration-150 ${
+                                      (dragging && def.key === dragKeyRef.current)
+                                        ? "border-yellow-400/60 bg-yellow-400/10 opacity-70"
+                                        : def.hidden
+                                          ? "opacity-30 grayscale"
+                                          : "border border-stealth-border hover:border-stealth-muted"
+                                    }`}>
+
+                                   {/* Drag handle — admin only */}
+                                   {adminLockState !== "locked" && (
+                                     <button onMouseDown={(e) => handleDragStart(e, idx)}
+                                       className="text-[8px] text-stealth-muted select-none px-1 cursor-grab active:cursor-grabbing hover:text-nv-green transition-colors"
+                                       title="Click and drag to reorder">&#x2630;</button>
+                                   )}
+
+                                   {/* Hidden toggle — admin only */}
+                                   {adminLockState !== "locked" && (
+                                     <button onClick={() => toggleRowHidden(def.key)}
+                                       className={`text-[10px] select-none transition-colors ${def.hidden ? "text-yellow-400/35" : "text-nv-green/25 hover:text-nv-green"}`}
+                                       title={def.hidden ? "Show parameter in catalog" : "Hide from catalog"}>
+                                       {def.hidden ? "\u2713" : "\u25EF"}
+                                     </button>
+                                   )}
+
+                                   {/* Edit param metadata + Restore to genesis — admin only */}
+                                   {adminLockState !== "locked" && (
+                                     <div className="flex items-center gap-1 mr-2">
+                                       <button onClick={() => openParamMetaEditor(def)}
+                                         className="leading-none text-[15px] font-mono text-nv-green/40 hover:text-yellow-400 transition-colors"
+                                         title="Edit param metadata">E</button>
+                                       <button onClick={() => handleRestoreParam(def.key)}
+                                         className="leading-none text-[15px] font-mono text-blue-500/50 hover:text-blue-400 transition-colors"
+                                         title="Restore this parameter row to DEFAULT">R</button>
+                                     </div>
+                                   )}
+
+                                   <span className="w-32 text-[13px] font-mono px-1 py-0.5 truncate" title={def.key}>{def.key}</span>
+
+                                   {/* Value bubbles */}
+                                   <ValueBubbles
+                                     paramKey={def.key}
+                                     isAdmin={adminLockState !== "locked"}
+                                     currentValue={currentValue}
+                                     onOverrideChange={(val) => setOverride(defKey, val)}
+                                     addValue={adminLockState !== "locked" ? (v: string | number) => addValueToParam(def.key, v) : undefined}
+                                     removeValue={adminLockState !== "locked" ? (v: string | number) => removeValueFromParam(def.key, v) : undefined}
+                                     toggleHiddenValue={adminLockState !== "locked" ? (_k: string, v: string | number) => toggleHiddenValue(def.key, v) : undefined}
+                                     hiddenValues={(def as any).hiddenValues || []}
+                                     availableValues={def.values || []}
+                                     userAddedValues={(def as any).userAddedValues || []}
+                                     defaultValue={effectiveDefault}
+                                     factoryDefault={factoryDefault !== undefined ? String(factoryDefault) : undefined}
+                                     onChangeDefault={adminLockState !== "locked"
+                                       ? (v: string | number) => changeDefaultValue(def.key, v)
+                                       : undefined}
+                                     onEditValue={adminLockState !== "locked" ? (val: string | number) => openSubParamsEditor(def.key, String(val)) : undefined}
+                                     ptype={(def as any).ptype}
+                                     subParams={(def as any).sub_params || undefined}
+                                   />
+                                 </div>
+
+                                  {/* Inline editors below the row being edited */}
+                                  {editingParamKey === def.key && (
+                                    <ParamMetaEditor
+                                      editingKey={editingParamKey}
+                                      form={paramMetaForm!}
+                                      onFieldChange={(field, val) => setParamMetaForm(prev => prev ? ({ ...prev, [field]: val }) : null)}
+                                      onSave={saveParamMetaEdit}
+                                      onCancel={() => { setEditingParamKey(null); setParamMetaForm(null); }}
+                                    />
+                                  )}
+
+                                  {editingValue && editingValue.paramKey === def.key && (
+                                    <SubParamsEditor
+                                      editingValue={editingValue}
+                                      subArgsText={subArgsText}
+                                      onTextChange={(k, v) => setSubArgsText(prev => ({ ...prev, [k]: v }))}
+                                      onSave={saveSubParamsEdit}
+                                      onDelete={deleteSubParamsEntry}
+                                      onCancel={() => setEditingValue(null)}
+                                    />
+                                   )}
+                                  </React.Fragment>
+                                  );
+                             })}
+                          </div>
                         </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* Add new param — admin only */}
-            {adminLockState !== "locked" && (
-              <AddParamSection
-                onAdd={addParamDefinition}
-                existingKeys={paramDefsBase.map(d => d.key)}
-              />
-            )}
-
-            {/* Editor panels — inside flex-1 but outside map */}
-            {editingParamKey && (
-              <ParamMetaEditor
-                editingKey={editingParamKey}
-                form={paramMetaForm!}
-                onFieldChange={(field, val) => setParamMetaForm(prev => prev ? ({ ...prev, [field]: val }) : null)}
-                onSave={saveParamMetaEdit}
-                onCancel={() => { setEditingParamKey(null); setParamMetaForm(null); }}
-              />
-            )}
-
-            {editingValue && (
-              <SubParamsEditor
-                editingValue={editingValue}
-                subArgsText={subArgsText}
-                onTextChange={(k, v) => setSubArgsText(prev => ({ ...prev, [k]: v }))}
-                onSave={saveSubParamsEdit}
-                onDelete={deleteSubParamsEntry}
-                onCancel={() => setEditingValue(null)}
-              />
-            )}
-          </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()
+             )}
+            </div>
 
           {/* Status bar footer */}
-          <div className="px-4 py-3 border-t border-stealth-border flex items-center justify-between">
+          <div className="flex-shrink-0 px-4 py-3 border-t border-stealth-border flex items-center justify-between">
             <span className="text-[9px] font-mono text-stealth-muted">{paramDefs.length} parameter{paramDefs.length !== 1 ? "s" : ""}{hiddenCount > 0 ? ` (${hiddenCount} hidden)` : ""}</span>
             {currentProvider && (<span className="text-[9px] font-mono text-telemetry-cyan">{currentProvider.display_name}</span>)}
           </div>
@@ -864,74 +945,23 @@ export default function ConfigPage({ providers: externalProviders, onProvidersCh
         <TemplateUpdateModal
           diff={templateDiff}
           selectedNewParams={selectedNewParams}
+          selectedOrphanedParams={selectedOrphanedParams}
           providerId={selectedProviderId}
-          onToggle={(key) => setSelectedNewParams(prev => {
+          onToggleNew={(key) => setSelectedNewParams(prev => {
             const next = new Set(prev);
             if (next.has(key)) next.delete(key); else next.add(key);
             return next;
           })}
-          onCancel={() => { setShowUpdateModal(false); setTemplateDiff(null); }}
+          onToggleOrphaned={(key) => setSelectedOrphanedParams(prev => {
+            const next = new Set(prev);
+            if (next.has(key)) next.delete(key); else next.add(key);
+            return next;
+          })}
+          onCancel={() => { setShowUpdateModal(false); setTemplateDiff(null); setSelectedNewParams(new Set()); setSelectedOrphanedParams(new Set()); }}
           onApply={handleApplyTemplateUpdate}
         />
       )}
     </div>
-  );
-}
-
-function OverwriteTemplateButton({ providerId }: { providerId: string }) {
-  const [step, setStep] = useState<"idle"|"pin"|"confirm"|"done">("idle");
-  const [pinInput, setPinInput] = useState("");
-  const [error, setError] = useState("");
-  const PIN = "770909";
-
-  if (step === "idle") {
-    return (
-      <button onClick={() => setStep("pin")}
-        className="px-4 py-1 text-[9px] font-mono border border-red-400/40 bg-red-400/10 text-red-300 hover:bg-red-400/20 transition-colors">
-        OVERWRITE TEMPLATE
-      </button>
-    );
-  }
-  if (step === "pin") {
-    return (
-      <div className="flex items-center gap-1">
-        <input type="password" value={pinInput}
-          onChange={(e) => { setPinInput(e.target.value); setError(""); }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              if (pinInput === PIN) { setStep("confirm"); setError(""); }
-              else { setError("Invalid PIN"); setPinInput(""); }
-            } else if (e.key === "Escape") {
-              setStep("idle"); setPinInput("");
-            }
-          }}
-          placeholder="PIN"
-          className="w-16 bg-transparent border border-stealth-border/50 text-[9px] font-mono text-white px-1 py-0.5 focus:outline-none" />
-        {error && <span className="text-[8px] font-mono text-red-400">{error}</span>}
-      </div>
-    );
-  }
-  if (step === "confirm") {
-    return (
-      <button onClick={async () => {
-        try {
-          const { invoke } = await import("@tauri-apps/api/core");
-          await invoke("overwrite_template", { providerId, pin: parseInt(PIN, 10) });
-          setStep("done");
-          setTimeout(() => setStep("idle"), 1500);
-        } catch (err) {
-          console.error("[CONFIG] overwrite_template failed:", err);
-          alert("Failed to overwrite template. See console for details.");
-          setStep("idle");
-        }
-      }}
-        className="px-4 py-1 text-[9px] font-mono border border-red-400/60 bg-red-400/20 text-red-300 hover:bg-red-400/30 transition-colors animate-pulse">
-        CONFIRM OVERWRITE
-      </button>
-    );
-  }
-  return (
-    <span className="text-[9px] font-mono text-nv-green px-2 py-1">✓ TEMPLATE SAVED</span>
   );
 }
 
@@ -1014,14 +1044,13 @@ function ParamMetaEditor({
           <span className="text-[8px] font-mono text-stealth-muted">ptype</span>
           <select value={form.ptype}
             onChange={(e) => onFieldChange("ptype", e.target.value)}
-            className="bg-transparent border border-stealth-border/50 text-[10px] font-mono text-white px-1 py-0.5 focus:outline-none">
+            className="bg-[#1a1a2e] border border-stealth-border/50 text-[10px] font-mono text-white px-1 py-0.5 focus:outline-none rounded">
             <option value="arg_select">arg_select</option>
             <option value="logic_only">logic_only</option>
             <option value="switch_onoff">switch_onoff</option>
             <option value="switch_inverted">switch_inverted</option>
-            <option value="mapper">mapper</option>
-            <option value="path_scanner">path_scanner</option>
-          </select>
+             <option value="mapper">mapper</option>
+           </select>
         </div>
 
         {form.ptype !== "logic_only" && (
@@ -1083,31 +1112,38 @@ function ParamMetaEditor({
           className="text-[8px] font-mono text-nv-green/60 hover:text-nv-green transition-colors ml-1">+VAL</button>
       </div>
 
-      {/* sub_params section */}
-      <div className="border-t border-stealth-border/30 pt-2">
-        <span className="text-[8px] font-mono text-stealth-muted mr-2">sub-params:</span>
-        {form.values.map(v => {
-          const k = String(v);
-          return (
-            <div key={k} className="flex items-center gap-1 mb-1">
-              <button onClick={() => setSelSubKey(k)}
-                className={`text-[9px] font-mono px-1 py-0.5 border rounded-sm ${selSubKey === k ? "border-yellow-400/60 text-yellow-400" : "border-stealth-border/40 text-white"}`}>
-                {k}
-              </button>
-              <input type="text"
-                value={form.subParams[k] || ""}
-                onChange={(e) => {
-                  const sp = {...form.subParams};
-                  if (e.target.value.trim()) sp[k] = e.target.value;
-                  else delete sp[k];
-                  onFieldChange("subParams", sp);
-                }}
-                placeholder="(no args)"
-                className="flex-1 bg-transparent border-b border-stealth-border/30 text-[9px] font-mono text-white focus:outline-none px-1" />
-            </div>
-          );
-        })}
-      </div>
+      {/* sub_params section — only for logic_only or when values have actual sub-params */}
+      {(() => {
+        const hasSubParams = Object.keys(form.subParams).some(k => form.subParams[k]?.trim());
+        const showSection = form.ptype === "logic_only" || hasSubParams;
+        if (!showSection) return null;
+        return (
+          <div className="border-t border-stealth-border/30 pt-2">
+            <span className="text-[8px] font-mono text-stealth-muted mr-2">sub-params:</span>
+            {form.values.map(v => {
+              const k = String(v);
+              return (
+                <div key={k} className="flex items-center gap-1 mb-1">
+                  <button onClick={() => setSelSubKey(k)}
+                    className={`text-[9px] font-mono px-1 py-0.5 border rounded-sm ${selSubKey === k ? "border-yellow-400/60 text-yellow-400" : "border-stealth-border/40 text-white"}`}>
+                    {k}
+                  </button>
+                  <input type="text"
+                    value={form.subParams[k] || ""}
+                    onChange={(e) => {
+                      const sp = {...form.subParams};
+                      if (e.target.value.trim()) sp[k] = e.target.value;
+                      else delete sp[k];
+                      onFieldChange("subParams", sp);
+                    }}
+                    placeholder="(no args)"
+                    className="flex-1 bg-transparent border-b border-stealth-border/30 text-[9px] font-mono text-white focus:outline-none px-1" />
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
 
       <button onClick={onSave}
         className="mt-3 px-3 py-1 text-[9px] font-mono border border-nv-green/60 bg-nv-green/20 text-nv-green hover:bg-nv-green/30 transition-colors">APPLY</button>
@@ -1120,14 +1156,18 @@ function ParamMetaEditor({
 function TemplateUpdateModal({
   diff,
   selectedNewParams,
-  onToggle,
+  selectedOrphanedParams,
+  onToggleNew,
+  onToggleOrphaned,
   onCancel,
   onApply,
   providerId,
 }: {
   diff: { new_params: DiffParam[]; orphaned_params: DiffParam[] };
   selectedNewParams: Set<string>;
-  onToggle: (key: string) => void;
+  selectedOrphanedParams: Set<string>;
+  onToggleNew: (key: string) => void;
+  onToggleOrphaned: (key: string) => void;
   onCancel: () => void;
   onApply: () => void;
   providerId: string;
@@ -1147,7 +1187,7 @@ function TemplateUpdateModal({
               <div key={p.key} className="flex items-center gap-2 py-1">
                 <input type="checkbox"
                   checked={selectedNewParams.has(p.key)}
-                  onChange={() => onToggle(p.key)}
+                  onChange={() => onToggleNew(p.key)}
                   className="accent-telemetry-cyan"
                 />
                 <span className="text-[10px] font-mono text-white">{p.label}</span>
@@ -1159,17 +1199,17 @@ function TemplateUpdateModal({
 
         {diff.orphaned_params.length > 0 && (
           <>
-            <h3 className={`text-[10px] font-mono mt-4 mb-2 ${selectedNewParams.size === diff.new_params.length ? "text-yellow-400" : "text-stealth-muted"}`}>
+            <h3 className="text-[10px] font-mono mt-4 mb-2 text-yellow-400">
               ORPHANED PARAMS — UNCHECK TO REMOVE
             </h3>
             {diff.orphaned_params.map(p => (
               <div key={p.key} className="flex items-center gap-2 py-1">
                 <input type="checkbox"
-                  checked={selectedNewParams.has(p.key)}
-                  onChange={() => onToggle(p.key)}
+                  checked={selectedOrphanedParams.has(p.key)}
+                  onChange={() => onToggleOrphaned(p.key)}
                   className="accent-yellow-400"
                 />
-                <span className={`text-[10px] font-mono ${selectedNewParams.has(p.key) ? "text-white" : "line-through text-stealth-muted"}`}>
+                <span className={`text-[10px] font-mono ${selectedOrphanedParams.has(p.key) ? "text-white" : "line-through text-stealth-muted"}`}>
                   {p.label}
                 </span>
               </div>
@@ -1186,7 +1226,6 @@ function TemplateUpdateModal({
             className="px-4 py-1 text-[9px] font-mono border border-stealth-border/40 text-stealth-muted hover:text-white transition-colors">CANCEL</button>
           <button onClick={onApply}
             className="px-4 py-1 text-[9px] font-mono border border-telemetry-cyan/60 bg-telemetry-cyan/20 text-telemetry-cyan hover:bg-telemetry-cyan/30 transition-colors">APPLY UPDATE</button>
-          <OverwriteTemplateButton providerId={providerId} />
         </div>
       </div>
     </div>
@@ -1251,6 +1290,149 @@ function AddParamSection({ onAdd, existingKeys }: {
         <button onClick={addParam}
           disabled={!newKey.trim() || newValuesList.length === 0}
           className="px-2 py-0.5 text-[9px] font-mono border border-yellow-400/60 text-yellow-400 hover:bg-yellow-500/20 transition-colors disabled:opacity-30">ADD</button>
+      </div>
+    </div>
+  );
+}
+
+// ── Model Paths Panel ────────────────────────────────────────────────
+
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(1024));
+  return `${(bytes / Math.pow(1024, i)).toFixed(i > 1 ? 1 : 0)} ${units[i]}`;
+}
+
+function ModelPathsPanel() {
+  const [paths, setPaths] = useState<ModelPathEntry[]>([]);
+  const [diskUsage, setDiskUsage] = useState<PathDiskUsage[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const loadPaths = useCallback(async () => {
+    try {
+      const [p, d] = await Promise.all([
+        invoke<ModelPathEntry[]>("list_model_paths"),
+        invoke<PathDiskUsage[]>("get_disk_usage"),
+      ]);
+      setPaths(p);
+      setDiskUsage(d);
+    } catch (e) {
+      console.error("Failed to load model paths:", e);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadPaths(); }, [loadPaths]);
+
+  const handleAddPath = useCallback(async () => {
+    try {
+      const selected: string | null = await invoke("open_folder_dialog", { title: "Select Model Folder" });
+      if (selected) {
+        await invoke("add_model_path", { path: selected, label: null });
+        loadPaths();
+      }
+    } catch (e) {
+      console.error("Failed to add model path:", e);
+    }
+  }, [loadPaths]);
+
+  const handleRemovePath = useCallback(async (path: string) => {
+    try {
+      await invoke("remove_model_path", { path });
+      loadPaths();
+    } catch (e) {
+      console.error("Failed to remove model path:", e);
+    }
+  }, [loadPaths]);
+
+  const handleSetDefault = useCallback(async (path: string) => {
+    try {
+      await invoke("set_default_model_path", { path });
+      loadPaths();
+    } catch (e) {
+      console.error("Failed to set default model path:", e);
+    }
+  }, [loadPaths]);
+
+  const getUsage = useCallback((path: string): PathDiskUsage | undefined => {
+    return diskUsage.find(d => d.path === path);
+  }, [diskUsage]);
+
+  if (loading) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <span className="text-[10px] font-mono text-stealth-muted animate-pulse">LOADING PATHS...</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex-1 flex flex-col overflow-hidden min-h-0">
+      {/* Header */}
+      <div className="px-4 py-3 border-b border-stealth-border flex items-center justify-between">
+        <h2 className="text-xs font-mono text-nv-green tracking-wider">MODEL PATHS</h2>
+        <button onClick={handleAddPath}
+          className="px-3 py-1 text-[9px] font-mono border border-nv-green/60 text-nv-green hover:bg-nv-green/15 transition-colors">
+          + ADD FOLDER
+        </button>
+      </div>
+
+      {/* Path list */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-2">
+        {paths.length === 0 && (
+          <div className="text-center py-8 text-[10px] font-mono text-stealth-muted">
+            NO PATHS CONFIGURED — ADD A FOLDER TO GET STARTED
+          </div>
+        )}
+
+        {paths.map((entry) => {
+          const usage = getUsage(entry.path);
+          return (
+            <div key={entry.path}
+              className={`border rounded-sm p-3 transition-colors ${entry.isDefault ? "border-nv-green/40 bg-nv-green/5" : "border-stealth-border bg-stealth-surface/50"}`}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    {entry.isDefault && (
+                      <span className="text-[8px] font-mono text-nv-green bg-nv-green/15 px-1.5 py-0.5 rounded-sm">DEFAULT</span>
+                    )}
+                    <span className="text-[10px] font-mono text-white truncate">{entry.label || entry.path}</span>
+                  </div>
+                  <div className="text-[9px] font-mono text-stealth-muted truncate">{entry.path}</div>
+                  {usage && (
+                    <div className="flex items-center gap-3 mt-1.5">
+                      <span className="text-[8px] font-mono text-stealth-muted/70">
+                        {usage.fileCount} models · {formatBytes(usage.totalGgufBytes)}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {!entry.isDefault && (
+                    <button onClick={() => handleSetDefault(entry.path)}
+                      title="Set as default download target"
+                      className="px-2 py-0.5 text-[8px] font-mono border border-yellow-400/30 text-yellow-400/70 hover:bg-yellow-400/10 transition-colors">
+                      SET DEFAULT
+                    </button>
+                  )}
+                  <button onClick={() => handleRemovePath(entry.path)}
+                    title="Remove this path"
+                    className="px-2 py-0.5 text-[8px] font-mono border border-red-400/30 text-red-400/70 hover:bg-red-400/10 transition-colors">
+                    REMOVE
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Footer hint */}
+      <div className="px-4 py-2 border-t border-stealth-border text-[8px] font-mono text-stealth-muted/50">
+        DOWNLOADS GO TO DEFAULT PATH · CATALOG MERGES ALL PATHS
       </div>
     </div>
   );

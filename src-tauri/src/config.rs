@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use crate::types::ProviderConfig;
+use crate::types::{ModelPathEntry, PathDiskUsage, ProviderConfig};
 
 // ── Provider Metadata (persisted to disk) ───────────────────────────
 
@@ -38,6 +38,8 @@ fn default_providers() -> Vec<ProviderConfig> { Vec::new() }
 pub struct AppConfig {
     pub llama_path: PathBuf,
     pub model_base: PathBuf,
+    #[serde(default)]
+    pub model_paths: Vec<ModelPathEntry>,
     pub prefs_file: PathBuf,
     pub base_port: u16,
     /// Number of engine slots = physical GPUs detected. Set at startup.
@@ -50,9 +52,33 @@ pub struct AppConfig {
 
 impl Default for AppConfig {
     fn default() -> Self {
+        let app_dir = dirs::config_dir().map(|d| d.join("blackwell-ops").join("models"));
+        let default_path = app_dir.as_ref().map(|p| p.to_string_lossy().to_string());
+
+        let mut model_paths: Vec<ModelPathEntry> = Vec::new();
+
+        if let Some(ref p) = default_path {
+            model_paths.push(ModelPathEntry {
+                path: p.clone(),
+                label: "Default".to_string(),
+                is_default: true,
+            });
+        }
+
+        // Pre-add .lmstudio path if it exists on disk
+        let lmstudio_path = r"C:\Users\GHOST-TOWER\.lmstudio\models";
+        if std::path::Path::new(lmstudio_path).exists() {
+            model_paths.push(ModelPathEntry {
+                path: lmstudio_path.to_string(),
+                label: ".lmstudio/models".to_string(),
+                is_default: false,
+            });
+        }
+
         Self {
             llama_path: PathBuf::from(r"C:\reactor_foundry\engines\ggml-stable\llama.cpp\build\bin\Release\llama-server.exe"),
-            model_base: PathBuf::from(r"C:\Users\GHOST-TOWER\.lmstudio\models"),
+            model_base: default_path.map(PathBuf::from).unwrap_or_default(),
+            model_paths,
             prefs_file: PathBuf::new(),
             base_port: 9090,
             gpu_slots: 2,
@@ -398,91 +424,33 @@ fn genesis_providers() -> Vec<crate::types::ProviderConfig> {
 ///
 /// Priority: disk param_definitions > fresh template defaults.
 /// If provider_meta.json has no param_definitions for a built-in, use the template.
-fn build_config_with_providers(gpu_slots: usize) -> AppConfig {
-    let metas = load_provider_meta();
-
-    // Fallback to legacy format if provider_meta.json is empty
-    let disk_metas = if metas.is_empty() {
-        load_legacy_provider_meta()
-    } else {
-        metas
-    };
-
-    // Map of disk metadata by ID for quick lookup
-    let meta_map: std::collections::HashMap<_, _> = disk_metas.iter()
-        .map(|m| (m.id.clone(), m))
-        .collect();
-    let metas_clone = disk_metas.clone();
-
-    let mut providers = Vec::new();
-
-    // Start with fresh Genesis providers
-    for provider in genesis_providers() {
-        let mut p = provider;
-        if let Some(meta) = meta_map.get(&p.id) {
-            // Apply metadata overrides from disk (binary_path, display_name, etc.)
-            if !meta.binary_path.is_empty() { p.binary_path = meta.binary_path.clone(); }
-            if !meta.display_name.is_empty() { p.display_name = meta.display_name.clone(); }
-            if !meta.git_url.is_empty() { p.git_url = meta.git_url.clone(); }
-            if !meta.branch.is_empty() { p.branch = meta.branch.clone(); }
-            if !meta.build_profile.is_empty() { p.build_profile = meta.build_profile.clone(); }
-
-            // If disk has param_definitions, use those (preserves admin edits)
-            // Otherwise keep fresh template defaults
-            if !meta.param_definitions.is_empty() {
-                p.param_definitions = meta.param_definitions.clone();
-            }
-            // Merge build_info_per_env from disk
-            if !meta.build_info_per_env.is_empty() {
-                p.build_info_per_env = meta.build_info_per_env.clone();
-            }
-        }
-        providers.push(p);
-    }
-
-    // Add extra providers from disk that aren't built-in (user-created custom providers)
-    for meta in metas_clone {
-        if !providers.iter().any(|p| p.id == meta.id) {
-            // Use disk param_definitions or load from template based on ID auto-detection
-            let param_defs = if !meta.param_definitions.is_empty() {
-                meta.param_definitions.clone()
-            } else {
-                params_for_provider(&meta.id)
-            };
-
-            providers.push(crate::types::ProviderConfig {
-                id: meta.id.clone(),
-                display_name: meta.display_name.clone(),
-                binary_path: meta.binary_path.clone(),
-                enabled: meta.enabled,
-                params: serde_json::json!({}),
-                param_definitions: param_defs,
-                _original_id: None,
-                git_url: meta.git_url.clone(),
-                branch: meta.branch.clone(),
-                build_profile: meta.build_profile.clone(),
-                template_type: crate::templates::ProviderTemplate::template_type_for_id(&meta.id),
-                build_info_per_env: meta.build_info_per_env,
-            });
-        }
-    }
-
-    AppConfig {
-        llama_path: PathBuf::from(r"C:\reactor_foundry\engines\ggml-stable\llama.cpp\build\bin\Release\llama-server.exe"),
-        model_base: PathBuf::from(r"C:\Users\GHOST-TOWER\.lmstudio\models"),
-        prefs_file: PathBuf::new(),
-        base_port: 9090,
-        gpu_slots,
-        providers,
-    }
-}
-
 // ── Config Loading ───────────────────────────────────────────────────
 
 #[tauri::command]
 pub fn load_config() -> AppConfig {
-    // Detect GPU count for engine slot allocation
+    // Try loading saved config from disk first (model_paths + other settings)
+    if let Some(saved) = load_saved_config() {
+        // Detect GPU count for engine slot allocation
         let mut gpu_slots = 2;
+        if let Ok(output) = std::process::Command::new("nvidia-smi")
+            .args(&["--query-gpu=index", "--format=csv,noheader"])
+            .output()
+        {
+            let count = String::from_utf8_lossy(&output.stdout)
+                .lines().filter(|l| !l.trim().is_empty()).count();
+            if count > 0 {
+                gpu_slots = count;
+                log::info!("Detected {} GPU(s)", gpu_slots);
+            }
+        }
+        // DEV/TESTING: force minimum 8 slots regardless of GPU count
+        gpu_slots = std::cmp::max(gpu_slots, 8);
+
+        return build_config_with_providers_full(gpu_slots, saved);
+    }
+
+    // No saved config — detect GPUs and build fresh
+    let mut gpu_slots = 2;
     if let Ok(output) = std::process::Command::new("nvidia-smi")
         .args(&["--query-gpu=index", "--format=csv,noheader"])
         .output()
@@ -497,7 +465,8 @@ pub fn load_config() -> AppConfig {
     // DEV/TESTING: force minimum 8 slots regardless of GPU count
     gpu_slots = std::cmp::max(gpu_slots, 8);
 
-    build_config_with_providers(gpu_slots)
+    let fresh = build_fresh_config(gpu_slots);
+    build_config_with_providers_full(gpu_slots, fresh)
 }
 
 // ── Template Update Detection ───────────────────────────────────────
@@ -621,144 +590,6 @@ pub fn reset_param_to_template(provider_id: String, param_key: String) -> Result
     Ok(param_def_from_template(tp, order))
 }
 
-/// Overwrite the genesis_template.json with current provider definitions.
-/// Backs up existing file first. Updates ALL providers sharing this template_type.
-#[tauri::command]
-pub fn overwrite_template(provider_id: String, _pin: u32) -> Result<(), String> {
-    
-    let bundle = crate::templates::TemplateBundle::default();
-    let template_key = match provider_id.as_str() {
-        "ik-extreme" => "ik-extreme",
-        _ => "ggml-stable",
-    };
-    
-    let metas = load_provider_meta();
-    
-    let siblings: Vec<&ProviderMeta> = metas.iter()
-        .filter(|m| {
-            match m.id.as_str() {
-                "ik-extreme" => template_key == "ik-extreme",
-                _ => template_key == "ggml-stable",  // matches ggml-stable and ggml-dev
-            }
-        })
-        .collect();
-    
-    if siblings.is_empty() {
-        return Err("No providers found for this template type".to_string());
-    }
-    
-    log::info!("[overwrite_template] Overwriting {} template with {} provider(s)", template_key, siblings.len());
-    
-    // Build new bundle by copying existing + replacing the target template
-    let mut new_bundle_json: serde_json::Value = serde_json::to_value(&bundle)
-        .map_err(|e| format!("Serialization error: {}", e))?;
-    
-    if let Some(existing_tpl) = bundle.templates.get(template_key) {
-        // Build params array from first sibling's param_definitions
-        let mut new_params: Vec<serde_json::Value> = Vec::new();
-        
-        for p in &siblings[0].param_definitions {
-            let mut param_json = serde_json::json!({
-                "key": p.key,
-                "label": p.label,
-                "ptype": p.ptype,
-            });
-            
-            if !p.config_key.is_empty() {
-                param_json.as_object_mut().unwrap().insert("config_key".to_string(), serde_json::json!(p.config_key));
-            }
-            
-            if let Some(ref flag) = p.flag {
-                if !flag.is_empty() {
-                    param_json.as_object_mut().unwrap().insert("flag".to_string(), serde_json::json!(flag));
-                }
-            }
-            
-            if let Some(ref mid) = p.map_id {
-                if !mid.is_empty() {
-                    param_json.as_object_mut().unwrap().insert("map_id".to_string(), serde_json::json!(mid));
-                }
-            }
-            
-            if !p.pattern.is_empty() {
-                param_json.as_object_mut().unwrap().insert("pattern".to_string(), serde_json::json!(&p.pattern));
-            }
-            
-            param_json.as_object_mut().unwrap().insert("values".to_string(), serde_json::json!(&p.values));
-            
-            // default_value is serde_json::Value — serialize if not Null
-            if !p.default_value.is_null() {
-                param_json.as_object_mut().unwrap().insert("default".to_string(), p.default_value.clone());
-            }
-            
-            if !p.ui_group.is_empty() {
-                param_json.as_object_mut().unwrap().insert("ui_group".to_string(), serde_json::json!(&p.ui_group));
-            }
-            
-            if !p.note.is_empty() {
-                param_json.as_object_mut().unwrap().insert("note".to_string(), serde_json::json!(&p.note));
-            }
-            
-            // Use sub_params from disk (user edits take precedence over embedded template)
-            if let Some(ref sp) = p.sub_params {
-                if !sp.is_empty() {
-                    let sp_json: serde_json::Value = serde_json::to_value(sp).unwrap_or_default();
-                    param_json.as_object_mut().unwrap().insert("sub_params".to_string(), sp_json);
-                }
-            }
-            
-            new_params.push(param_json);
-        }
-        
-        // Build replacement provider template
-        let new_tpl_json = serde_json::json!({
-            "binary_name": &existing_tpl.binary_name,
-            "description": &existing_tpl.description,
-            "params": new_params,
-        });
-        
-        if let Some(obj) = new_bundle_json.as_object_mut() {
-            obj.insert(template_key.to_string(), new_tpl_json);
-        }
-    }
-    
-    // Find template path — check exe dir first, then config dir
-    let template_path = std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(|pa| pa.join("blackwell-ops").join("genesis_template.json")));
-    
-    let template_path = if let Some(ref tp) = template_path {
-        if tp.exists() { tp.clone() } else {
-            dirs::config_dir()
-                .map(|d| d.join("blackwell-ops").join("genesis_template.json"))
-                .unwrap_or_else(|| PathBuf::from("config/genesis_template.json"))
-        }
-    } else if let Some(app_dir) = dirs::config_dir() {
-        app_dir.join("blackwell-ops").join("genesis_template.json")
-    } else {
-        return Err("Cannot find genesis_template.json location".to_string());
-    };
-    
-    // Backup existing file
-    let bak_path = template_path.with_extension("json.bak");
-    if template_path.exists() {
-        std::fs::copy(&template_path, &bak_path)
-            .map_err(|e| format!("Backup failed: {}", e))?;
-        log::info!("[overwrite_template] Backed up to {:?}", bak_path);
-    }
-    
-    // Write new content
-    let file = std::fs::File::create(&template_path)
-        .map_err(|e| format!("Cannot create template file: {}", e))?;
-    serde_json::to_writer_pretty(file, &new_bundle_json)
-        .map_err(|e| format!("Write error: {}", e))?;
-    
-    log::info!("[overwrite_template] Wrote {} bytes to {:?}", 
-        std::fs::metadata(&template_path).map(|m| m.len()).unwrap_or(0), template_path);
-    
-    Ok(())
-}
-
 pub fn validate_model_path(path: &str) -> Result<(), String> {
     let p = PathBuf::from(path);
     if !p.exists() {
@@ -780,4 +611,227 @@ pub fn validate_provider_binary(path: &str) -> Result<(), String> {
         ));
     }
     Ok(())
+}
+
+// ── Model Paths Management ────────────────────────────────────────────
+
+/// Get all configured model paths. Returns default if none configured.
+pub fn get_model_paths(config: &AppConfig) -> Vec<ModelPathEntry> {
+    if config.model_paths.is_empty() {
+        vec![ModelPathEntry {
+            path: config.model_base.to_string_lossy().to_string(),
+            label: "Default".to_string(),
+            is_default: true,
+        }]
+    } else {
+        config.model_paths.clone()
+    }
+}
+
+/// Add a model path. If no default exists yet, this becomes the default.
+pub fn add_model_path(config: &mut AppConfig, path: String, label: Option<String>) {
+    if config.model_paths.iter().any(|p| p.path == path) {
+        return;
+    }
+    let computed_label = label.unwrap_or_else(|| {
+        std::path::Path::new(&path)
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or(path.clone())
+    });
+    let is_default = config.model_paths.is_empty();
+    config.model_paths.push(ModelPathEntry { path, label: computed_label, is_default });
+}
+
+/// Remove a model path. If it was the default, make another one default.
+pub fn remove_model_path(config: &mut AppConfig, path: &str) {
+    let removed = config.model_paths.iter().position(|p| p.path == path);
+    config.model_paths.retain(|p| p.path != path);
+    if let Some(_idx) = removed {
+        if !config.model_paths.is_empty() && config.model_paths[0].is_default == false {
+            config.model_paths[0].is_default = true;
+        }
+    }
+}
+
+/// Set which path is the default download target.
+pub fn set_default_model_path(config: &mut AppConfig, path: &str) {
+    for p in &mut config.model_paths {
+        p.is_default = p.path == path;
+    }
+}
+
+/// Calculate disk usage for all model paths — scan for .gguf files.
+pub fn calculate_disk_usage(paths: &[ModelPathEntry]) -> Vec<PathDiskUsage> {
+    let mut result = Vec::new();
+    for entry in paths {
+        let mut total_bytes = 0u64;
+        let mut file_count = 0usize;
+
+        if let Ok(read_dir) = std::fs::read_dir(&entry.path) {
+            for entry_item in read_dir.flatten() {
+                let path = entry_item.path();
+                if path.extension().and_then(|e| e.to_str()) == Some("gguf") {
+                    if let Ok(meta) = std::fs::metadata(&path) {
+                        total_bytes += meta.len();
+                        file_count += 1;
+                    }
+                }
+            }
+        }
+
+        result.push(PathDiskUsage {
+            path: entry.path.clone(),
+            total_gguf_bytes: total_bytes,
+            file_count,
+        });
+    }
+    result
+}
+
+/// Get the default download destination path.
+pub fn get_default_download_path(config: &AppConfig) -> String {
+    config.model_paths
+        .iter()
+        .find(|p| p.is_default)
+        .map(|p| p.path.clone())
+        .unwrap_or_else(|| config.model_base.to_string_lossy().to_string())
+}
+
+/// Save AppConfig to %APPDATA%/blackwell-ops/app_config.json on disk.
+pub fn save_config(config: &AppConfig) -> Result<(), String> {
+    if let Some(app_dir) = dirs::config_dir() {
+        let blackwell_dir = app_dir.join("blackwell-ops");
+        std::fs::create_dir_all(&blackwell_dir).map_err(|e| format!("Failed to create config dir: {}", e))?;
+
+        let config_path = blackwell_dir.join("app_config.json");
+        let json = serde_json::to_string_pretty(config)
+            .map_err(|e| format!("Failed to serialize app config: {}", e))?;
+
+        std::fs::write(&config_path, json).map_err(|e| format!("Failed to write app config: {}", e))?;
+        log::debug!("Saved app_config.json to {}", config_path.display());
+    } else {
+        return Err("Could not determine config directory".to_string());
+    }
+    Ok(())
+}
+
+/// Build AppConfig with GPU detection and genesis providers.
+fn build_fresh_config(gpu_slots: usize) -> AppConfig {
+    let app_dir = dirs::config_dir().map(|d| d.join("blackwell-ops").join("models"));
+    let default_path = app_dir.as_ref().map(|p| p.to_string_lossy().to_string());
+
+    let mut model_paths: Vec<ModelPathEntry> = Vec::new();
+
+    if let Some(ref p) = default_path {
+        model_paths.push(ModelPathEntry {
+            path: p.clone(),
+            label: "Default".to_string(),
+            is_default: true,
+        });
+    }
+
+    // Pre-add .lmstudio path if it exists on disk
+    let lmstudio_path = r"C:\Users\GHOST-TOWER\.lmstudio\models";
+    if std::path::Path::new(lmstudio_path).exists() {
+        model_paths.push(ModelPathEntry {
+            path: lmstudio_path.to_string(),
+            label: ".lmstudio/models".to_string(),
+            is_default: false,
+        });
+    }
+
+    AppConfig {
+        llama_path: PathBuf::from(r"C:\reactor_foundry\engines\ggml-stable\llama.cpp\build\bin\Release\llama-server.exe"),
+        model_base: default_path.map(PathBuf::from).unwrap_or_default(),
+        model_paths,
+        prefs_file: PathBuf::new(),
+        base_port: 9090,
+        gpu_slots,
+        providers: Vec::new(),
+    }
+}
+
+/// Load AppConfig from %APPDATA%/blackwell-ops/app_config.json if it exists.
+fn load_saved_config() -> Option<AppConfig> {
+    if let Some(app_dir) = dirs::config_dir() {
+        let config_path = app_dir.join("blackwell-ops").join("app_config.json");
+        if config_path.exists() {
+            if let Ok(content) = std::fs::read_to_string(&config_path) {
+                if let Ok(config) = serde_json::from_str::<AppConfig>(&content) {
+                    log::info!("Loaded app_config.json from {}", config_path.display());
+                    return Some(config);
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Build AppConfig with:
+/// - Built-in Genesis providers (fresh param_definitions from embedded template)
+/// - Any extra providers from disk metadata
+fn build_config_with_providers_full(gpu_slots: usize, mut config: AppConfig) -> AppConfig {
+    let metas = load_provider_meta();
+
+    let disk_metas = if metas.is_empty() {
+        load_legacy_provider_meta()
+    } else {
+        metas
+    };
+
+    let meta_map: std::collections::HashMap<_, _> = disk_metas.iter()
+        .map(|m| (m.id.clone(), m))
+        .collect();
+    let metas_clone = disk_metas.clone();
+
+    let mut providers = Vec::new();
+
+    for provider in genesis_providers() {
+        let mut p = provider;
+        if let Some(meta) = meta_map.get(&p.id) {
+            if !meta.binary_path.is_empty() { p.binary_path = meta.binary_path.clone(); }
+            if !meta.display_name.is_empty() { p.display_name = meta.display_name.clone(); }
+            if !meta.git_url.is_empty() { p.git_url = meta.git_url.clone(); }
+            if !meta.branch.is_empty() { p.branch = meta.branch.clone(); }
+            if !meta.build_profile.is_empty() { p.build_profile = meta.build_profile.clone(); }
+
+            if !meta.param_definitions.is_empty() {
+                p.param_definitions = meta.param_definitions.clone();
+            }
+            if !meta.build_info_per_env.is_empty() {
+                p.build_info_per_env = meta.build_info_per_env.clone();
+            }
+        }
+        providers.push(p);
+    }
+
+    for meta in metas_clone {
+        if !providers.iter().any(|p| p.id == meta.id) {
+            let param_defs = if !meta.param_definitions.is_empty() {
+                meta.param_definitions.clone()
+            } else {
+                params_for_provider(&meta.id)
+            };
+
+            providers.push(crate::types::ProviderConfig {
+                id: meta.id.clone(),
+                display_name: meta.display_name.clone(),
+                binary_path: meta.binary_path.clone(),
+                enabled: meta.enabled,
+                params: serde_json::json!({}),
+                param_definitions: param_defs,
+                _original_id: None,
+                git_url: meta.git_url.clone(),
+                branch: meta.branch.clone(),
+                build_profile: meta.build_profile.clone(),
+                template_type: crate::templates::ProviderTemplate::template_type_for_id(&meta.id),
+                build_info_per_env: meta.build_info_per_env,
+            });
+        }
+    }
+
+    config.providers = providers;
+    config.gpu_slots = gpu_slots;
+    config
 }

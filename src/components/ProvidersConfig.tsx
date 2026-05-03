@@ -6,7 +6,6 @@ import FoundryModal from "./FoundryModal";
 interface ProvidersConfigProps {
   providers: ProviderConfig[];
   onProvidersChange: (providers: ProviderConfig[]) => void;
-  modelBase?: string;
 }
 
 interface FormState {
@@ -35,7 +34,7 @@ interface ProviderScanState {
   error?: string;
 }
 
-export default function ProvidersConfig({ providers: initialProviders, onProvidersChange, modelBase }: ProvidersConfigProps) {
+export default function ProvidersConfig({ providers: initialProviders, onProvidersChange }: ProvidersConfigProps) {
   const [providers, setProviders] = useState<ProviderConfig[]>(initialProviders);
   const [form, setForm] = useState<FormState>({
     id: "",
@@ -54,6 +53,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
     if (lower.includes("ik")) return "ik-llama";
     return "ggml-llama";
   }, []);
+  const [showAddForm, setShowAddForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -137,6 +137,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
 
       setForm({ id: "", display_name: "", binary_path: "", enabled: true, params: {}, git_url: "", branch: "", build_profile: "", template_type: "ggml-llama" });
       setEditingId(null);
+      setShowAddForm(false);
     } catch (err) {
       console.error("Failed to save provider:", err);
       setError(typeof err === "string" ? err : JSON.stringify(err));
@@ -167,11 +168,13 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
       template_type: p.template_type || "ggml-llama",
     });
     setEditingId(p.id);
+    setShowAddForm(true);
   }, []);
 
   const handleCancel = useCallback(() => {
     setForm({ id: "", display_name: "", binary_path: "", enabled: true, params: {}, git_url: "", branch: "", build_profile: "", template_type: "ggml-llama" });
     setEditingId(null);
+    setShowAddForm(false);
     setError(null);
   }, []);
 
@@ -252,12 +255,10 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
       const batch = (provider?.params as any)?.batch || 2048;
       const ubatch = (provider?.params as any)?.ubatch || (provider?.params as any)?.ubatch_size || 512;
 
-      // Use modelBase from prop, fallback to hardcoded default
-      const resolvedModelBase = modelBase || "C:\\Users\\GHOST-TOWER\\.lmstudio\\models";
-
+      // Backend resolves empty string to first configured path automatically
       const result = await invoke<FitScanComplete>("fit_scan_library", {
         providerId,
-        modelBase: resolvedModelBase,
+        modelBase: "",
         parallelCount: Math.max(currentParallel, 1),
         batch,
         ubatch,
@@ -289,7 +290,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
         },
       }));
     }
-  }, [modelBase]);
+  }, []);
 
   // Stop a running scan — signals cancellation on backend and resets UI state
   const handleStopScan = useCallback(async (providerId: string) => {
@@ -493,13 +494,16 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
-      {/* Header */}
-      <div className="px-4 py-3 border-b border-stealth-border">
-        <h2 className="text-xs font-mono text-nv-green tracking-wider">BACKEND PROVIDERS</h2>
-        <p className="text-[9px] font-mono text-stealth-muted mt-0.5">
-          Manage inference backend providers. Each provider has its own binary path and is selected via model's backend_type field.
-          Parameter defaults and definitions are managed in the CONFIG tab using the template system.
-        </p>
+      {/* Toolbar header — matches ConfigPage layout */}
+      <div className="px-4 py-3 border-b border-stealth-border flex items-center justify-between flex-wrap gap-2 relative">
+        <div>
+          <div className="flex items-center gap-2">
+            <h2 className="text-xs font-mono text-nv-green tracking-wider">BACKEND PROVIDERS</h2>
+            <span className="text-[10px] text-stealth-border/60">|</span>
+            <span className="text-[9px] font-mono text-stealth-muted">{providers.length} REGISTERED</span>
+          </div>
+          <div className="h-4"></div>
+        </div>
       </div>
 
       {/* Error display */}
@@ -510,10 +514,91 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
       )}
 
       {/* Provider list */}
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="flex-1 overflow-y-auto p-4 min-h-0">
+        {/* Add new provider button */}
+        <button onClick={() => { setEditingId(null); setShowAddForm(!showAddForm); }}
+          className={`flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wider transition-colors ${showAddForm && !editingId ? "text-yellow-400" : "text-yellow-400/60 hover:text-yellow-400"}`}>
+          <span className="text-[8px]">{showAddForm && !editingId ? "\u25BC" : "\u25B6"}</span>
+          ADD NEW PROVIDER
+        </button>
+
+        {showAddForm && !editingId && (
+          <div className="space-y-2 mt-1 mb-3 px-4">
+            {/* ID field */}
+            <div className="flex items-center gap-2">
+              <label className="text-[10px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider">Type ID</label>
+              <input type="text" placeholder="e.g. stable, nightly, my-ik-fork" value={form.id}
+                onChange={(e) => setForm((prev) => ({ ...prev, id: e.target.value, template_type: detectTemplateType(e.target.value) }))}
+                className="flex-1 bg-transparent border-b border-yellow-400/60 text-[11px] font-mono text-white placeholder:text-yellow-400/30 focus:border-yellow-400 focus:outline-none px-1 py-0.5" />
+            </div>
+            {/* Template Type selector */}
+            <div className="flex items-center gap-2">
+              <label className="text-[10px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider">Template</label>
+              <select value={form.template_type} onChange={(e) => setForm((prev) => ({ ...prev, template_type: e.target.value }))}
+                className="flex-1 bg-transparent border-b border-yellow-400/60 text-[11px] font-mono text-white focus:border-yellow-400 focus:outline-none px-1 py-0.5 appearance-none">
+                <option value="ggml-llama">GGML-Llama (19 params)</option>
+                <option value="ik-llama">IK-Llama (7 params)</option>
+                <option value="">Custom (manual)</option>
+              </select>
+            </div>
+            {/* Display name */}
+            <div className="flex items-center gap-2">
+              <label className="text-[10px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider">Name</label>
+              <input type="text" placeholder="e.g. llama.cpp Stable" value={form.display_name}
+                onChange={(e) => setForm((prev) => ({ ...prev, display_name: e.target.value }))}
+                className="flex-1 bg-transparent border-b border-yellow-400/60 text-[11px] font-mono text-white placeholder:text-yellow-400/30 focus:border-yellow-400 focus:outline-none px-1 py-0.5" />
+            </div>
+            {/* Binary path */}
+            <div className="flex items-center gap-2">
+              <label className="text-[10px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider">Binary Path</label>
+              <input type="text" placeholder="C:\path\to\llama-server.exe" value={form.binary_path}
+                onChange={(e) => setForm((prev) => ({ ...prev, binary_path: e.target.value }))}
+                className="flex-1 bg-transparent border-b border-yellow-400/60 text-[11px] font-mono text-white placeholder:text-yellow-400/30 focus:border-yellow-400 focus:outline-none px-1 py-0.5" />
+              <button onClick={handleBrowse} className="px-2 py-0.5 text-[9px] font-mono border border-stealth-border text-stealth-muted hover:text-nv-green transition-colors flex-shrink-0">BROWSE</button>
+            </div>
+            {/* Enabled toggle */}
+            <div className="flex items-center gap-2">
+              <label className="text-[10px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider">Active</label>
+              <button onClick={() => setForm((prev) => ({ ...prev, enabled: !prev.enabled }))}
+                className={`w-8 h-4 rounded-full transition-colors relative ${form.enabled ? "bg-nv-green/60" : "bg-stealth-border"}`}>
+                <span className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-transform ${form.enabled ? "left-4.5 translate-x-0.5" : "left-0.5"}`} />
+              </button>
+            </div>
+            {/* Reactor Foundry fields */}
+            <div className="pt-2 border-t border-stealth-border/50">
+              <h4 className="text-[9px] font-mono text-cyan-400 uppercase tracking-wider mb-1.5">Reactor Foundry Build Config</h4>
+              <div className="flex items-start gap-2 mb-2">
+                <label className="text-[9px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider mt-1">Git URL</label>
+                <input type="text" placeholder="https://github.com/ggml-org/llama.cpp" value={form.git_url}
+                  onChange={(e) => setForm((prev) => ({ ...prev, git_url: e.target.value }))}
+                  className="flex-1 bg-transparent border-b border-cyan-400/60 text-[11px] font-mono text-white placeholder:text-cyan-400/30 focus:border-cyan-400 focus:outline-none px-1 py-0.5" />
+              </div>
+              <div className="flex items-center gap-2 mb-2">
+                <label className="text-[9px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider">Branch</label>
+                <input type="text" placeholder="master, dev, main" value={form.branch}
+                  onChange={(e) => setForm((prev) => ({ ...prev, branch: e.target.value }))}
+                  className="flex-1 bg-transparent border-b border-cyan-400/60 text-[11px] font-mono text-white placeholder:text-cyan-400/30 focus:border-cyan-400 focus:outline-none px-1 py-0.5" />
+              </div>
+              <div className="flex items-start gap-2">
+                <label className="text-[9px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider mt-1">CMake Flags</label>
+                <textarea rows={3} placeholder={form.template_type === "ik-llama" ? "[IK-LLAMA defaults applied]\n-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=\"120a\" ..." : "[GGML defaults applied]\n-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=\"120a\" -DGGML_AVX512=ON ..."}
+                  value={form.build_profile} onChange={(e) => setForm((prev) => ({ ...prev, build_profile: e.target.value }))}
+                  className="flex-1 bg-transparent border border-cyan-400/30 text-white placeholder:text-cyan-400/30 focus:border-cyan-400 focus:outline-none px-2 py-1 font-mono text-[9px] resize-y" />
+              </div>
+            </div>
+            {/* Action buttons */}
+            <div className="flex gap-2 pt-1">
+              <button onClick={handleSave} disabled={loading || !form.id.trim() || !form.display_name.trim() || !form.binary_path.trim()}
+                className="px-3 py-1 text-[10px] font-mono border border-nv-green/60 text-nv-green hover:bg-nv-green/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+                {loading ? "SAVING..." : "REGISTER"}
+              </button>
+            </div>
+          </div>
+        )}
+
         {providers.length === 0 ? (
           <div className="flex items-center justify-center h-full text-stealth-muted text-xs font-mono">
-            NO PROVIDERS REGISTERED — ADD ONE BELOW
+            NO PROVIDERS REGISTERED — ADD ONE ABOVE
           </div>
         ) : (
           <div className="space-y-2 mb-6">
@@ -528,7 +613,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
                       : "border-stealth-border/30 opacity-40"
                 }`}>
                 {/* ── Foundry Block (wider, more breathing room) ─────────── */}
-                <div className="flex flex-col items-center gap-2.5 flex-shrink-0 relative overflow-hidden rounded-sm" style={{
+                <div className="flex flex-col items-center gap-2.5 px-4 py-3 flex-shrink-0 relative overflow-hidden rounded-sm" style={{
                   minWidth: "160px",
                   background: "linear-gradient(180deg, rgba(234,179,8,0.06) 0%, rgba(234,179,8,0.02) 40%, transparent 100%)",
                   border: "1px solid rgba(234,179,8,0.15)",
@@ -632,10 +717,10 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
 
                   {/* Actions group */}
                   <div className="flex items-center gap-2.5 flex-shrink-0">
-                    <button onClick={() => handleEdit(p)}
-                      className="px-2 py-0.5 text-[9px] font-mono border border-stealth-border text-stealth-muted hover:text-nv-green transition-colors">
-                      EDIT
-                    </button>
+                      <button onClick={() => handleEdit(p)}
+                       className="px-2 py-0.5 text-[9px] font-mono border border-yellow-400/40 text-yellow-400 hover:bg-yellow-500/20 transition-colors">
+                       EDIT
+                     </button>
                     <button onClick={() => handleDelete(p.id)}
                       className="px-2 py-0.5 text-[9px] font-mono border border-red-500/30 text-red-400 hover:bg-red-500/20 transition-colors">
                       REMOVE
@@ -675,172 +760,85 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
               <div className="w-full">
                 {renderScanProgress(p.id)}
               </div>
+
+              {/* Inline edit form — appears directly below the edited provider */}
+              {editingId === p.id && (
+                <div className="mt-2 border border-yellow-400/40 bg-[#1a1a2e] rounded p-3 space-y-2">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[10px] font-mono text-yellow-400">{p.id} — EDIT PROVIDER</span>
+                    <button onClick={handleCancel} className="text-stealth-muted hover:text-white transition-colors leading-none">✕</button>
+                  </div>
+                  {/* ID field */}
+                  <div className="flex items-center gap-2">
+                    <label className="text-[10px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider">Type ID</label>
+                    <input type="text" value={form.id} onChange={(e) => setForm((prev) => ({ ...prev, id: e.target.value }))}
+                      className="flex-1 bg-transparent border-b border-yellow-400/60 text-[11px] font-mono text-white focus:border-yellow-400 focus:outline-none px-1 py-0.5" />
+                  </div>
+                  {/* Template Type selector */}
+                  <div className="flex items-center gap-2">
+                    <label className="text-[10px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider">Template</label>
+                    <select value={form.template_type} onChange={(e) => setForm((prev) => ({ ...prev, template_type: e.target.value }))}
+                      className="flex-1 bg-transparent border-b border-yellow-400/60 text-[11px] font-mono text-white focus:border-yellow-400 focus:outline-none px-1 py-0.5">
+                      <option value="ggml-llama" style={{fontSize: '11px'}}>GGML-Llama (19 params)</option>
+                      <option value="ik-llama" style={{fontSize: '11px'}}>IK-Llama (7 params)</option>
+                      <option value="" style={{fontSize: '11px'}}>Custom (manual)</option>
+                    </select>
+                  </div>
+                  {/* Display name */}
+                  <div className="flex items-center gap-2">
+                    <label className="text-[10px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider">Name</label>
+                    <input type="text" value={form.display_name} onChange={(e) => setForm((prev) => ({ ...prev, display_name: e.target.value }))}
+                      className="flex-1 bg-transparent border-b border-yellow-400/60 text-[11px] font-mono text-white focus:border-yellow-400 focus:outline-none px-1 py-0.5" />
+                  </div>
+                  {/* Binary path */}
+                  <div className="flex items-center gap-2">
+                    <label className="text-[10px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider">Binary Path</label>
+                    <input type="text" value={form.binary_path} onChange={(e) => setForm((prev) => ({ ...prev, binary_path: e.target.value }))}
+                      className="flex-1 bg-transparent border-b border-yellow-400/60 text-[11px] font-mono text-white focus:border-yellow-400 focus:outline-none px-1 py-0.5" />
+                    <button onClick={handleBrowse} className="px-2 py-0.5 text-[9px] font-mono border border-stealth-border text-stealth-muted hover:text-nv-green transition-colors flex-shrink-0">BROWSE</button>
+                  </div>
+                  {/* Enabled toggle */}
+                  <div className="flex items-center gap-2">
+                    <label className="text-[10px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider">Active</label>
+                    <button onClick={() => setForm((prev) => ({ ...prev, enabled: !prev.enabled }))}
+                      className={`w-8 h-4 rounded-full transition-colors relative ${form.enabled ? "bg-nv-green/60" : "bg-stealth-border"}`}>
+                      <span className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-transform ${form.enabled ? "left-4.5 translate-x-0.5" : "left-0.5"}`} />
+                    </button>
+                  </div>
+                  {/* Reactor Foundry fields */}
+                  <div className="pt-2 border-t border-stealth-border/50">
+                    <h4 className="text-[9px] font-mono text-cyan-400 uppercase tracking-wider mb-1.5">Reactor Foundry Build Config</h4>
+                    <div className="flex items-start gap-2 mb-2">
+                      <label className="text-[9px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider mt-1">Git URL</label>
+                      <input type="text" value={form.git_url} onChange={(e) => setForm((prev) => ({ ...prev, git_url: e.target.value }))}
+                        className="flex-1 bg-transparent border-b border-cyan-400/60 text-[11px] font-mono text-white focus:border-cyan-400 focus:outline-none px-1 py-0.5" />
+                    </div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <label className="text-[9px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider">Branch</label>
+                      <input type="text" value={form.branch} onChange={(e) => setForm((prev) => ({ ...prev, branch: e.target.value }))}
+                        className="flex-1 bg-transparent border-b border-cyan-400/60 text-[11px] font-mono text-white focus:border-cyan-400 focus:outline-none px-1 py-0.5" />
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <label className="text-[9px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider mt-1">CMake Flags</label>
+                      <textarea rows={3} value={form.build_profile} onChange={(e) => setForm((prev) => ({ ...prev, build_profile: e.target.value }))}
+                        className="flex-1 bg-transparent border border-cyan-400/30 text-white focus:border-cyan-400 focus:outline-none px-2 py-1 font-mono text-[9px] resize-y" />
+                    </div>
+                  </div>
+                  {/* Action buttons */}
+                  <div className="flex gap-2 pt-1">
+                    <button onClick={handleSave} disabled={loading || !form.id.trim() || !form.display_name.trim() || !form.binary_path.trim()}
+                      className="px-3 py-1 text-[10px] font-mono border border-nv-green/60 text-nv-green hover:bg-nv-green/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+                      {loading ? "SAVING..." : "UPDATE"}
+                    </button>
+                    <button onClick={handleCancel} className="px-3 py-1 text-[10px] font-mono border border-stealth-border text-stealth-muted hover:text-white transition-colors">CANCEL</button>
+                  </div>
+                </div>
+              )}
               </Fragment>
             ))}
           </div>
         )}
 
-        {/* Add/Edit form */}
-        <div className="pt-3 border-t border-stealth-border">
-          <h3 className="text-[10px] font-mono text-yellow-400 uppercase tracking-wider mb-2">
-            {editingId ? "EDIT PROVIDER" : "ADD NEW PROVIDER"}
-          </h3>
-
-          <div className="space-y-2">
-            {/* ID field */}
-            <div className="flex items-center gap-2">
-              <label className="text-[10px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider">
-                Type ID
-              </label>
-              <input type="text" placeholder="e.g. stable, nightly, my-ik-fork" value={form.id}
-                onChange={(e) => setForm((prev) => ({ ...prev, id: e.target.value, template_type: detectTemplateType(e.target.value) }))}
-                className="flex-1 bg-transparent border-b border-yellow-400/60 text-white placeholder:text-yellow-400/30 focus:border-yellow-400 focus:outline-none px-1 py-0.5" />
-            </div>
-
-            {/* Template Type selector */}
-            <div className="flex items-center gap-2">
-              <label className="text-[10px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider">
-                Template
-              </label>
-              <select value={form.template_type} onChange={(e) => setForm((prev) => ({ ...prev, template_type: e.target.value }))}
-                className="flex-1 bg-transparent border-b border-yellow-400/60 text-white focus:border-yellow-400 focus:outline-none px-1 py-0.5">
-                <option value="ggml-llama">GGML-Llama (19 params)</option>
-                <option value="ik-llama">IK-Llama (7 params)</option>
-                <option value="">Custom (manual)</option>
-              </select>
-            </div>
-
-            {/* Display name */}
-            <div className="flex items-center gap-2">
-              <label className="text-[10px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider">
-                Name
-              </label>
-              <input type="text" placeholder="e.g. llama.cpp Stable" value={form.display_name}
-                onChange={(e) => setForm((prev) => ({ ...prev, display_name: e.target.value }))}
-                className="flex-1 bg-transparent border-b border-yellow-400/60 text-white placeholder:text-yellow-400/30 focus:border-yellow-400 focus:outline-none px-1 py-0.5" />
-            </div>
-
-            {/* Binary path */}
-            <div className="flex items-center gap-2">
-              <label className="text-[10px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider">
-                Binary Path
-              </label>
-              <input type="text" placeholder="C:\path\to\llama-server.exe" value={form.binary_path}
-                onChange={(e) => setForm((prev) => ({ ...prev, binary_path: e.target.value }))}
-                className="flex-1 bg-transparent border-b border-yellow-400/60 text-white placeholder:text-yellow-400/30 focus:border-yellow-400 focus:outline-none px-1 py-0.5" />
-              <button onClick={handleBrowse}
-                className="px-2 py-0.5 text-[9px] font-mono border border-stealth-border text-stealth-muted hover:text-nv-green transition-colors flex-shrink-0">
-                BROWSE
-              </button>
-            </div>
-
-            {/* Enabled toggle */}
-            <div className="flex items-center gap-2">
-              <label className="text-[10px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider">
-                Active
-              </label>
-              <button onClick={() => setForm((prev) => ({ ...prev, enabled: !prev.enabled }))}
-                className={`w-8 h-4 rounded-full transition-colors relative ${
-                  form.enabled ? "bg-nv-green/60" : "bg-stealth-border"
-                }`}>
-                <span className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-transform ${
-                  form.enabled ? "left-4.5 translate-x-0.5" : "left-0.5"
-                }`} />
-              </button>
-            </div>
-
-            {/* Reactor Foundry fields */}
-            <div className="pt-2 border-t border-stealth-border/50">
-              <h4 className="text-[9px] font-mono text-cyan-400 uppercase tracking-wider mb-1.5">
-                Reactor Foundry Build Config
-              </h4>
-
-              {/* Git URL */}
-              <div className="flex items-start gap-2 mb-2">
-                <label className="text-[9px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider mt-1">
-                  Git URL
-                </label>
-                <input type="text" placeholder="https://github.com/ggml-org/llama.cpp" value={form.git_url}
-                  onChange={(e) => setForm((prev) => ({ ...prev, git_url: e.target.value }))}
-                  className="flex-1 bg-transparent border-b border-cyan-400/60 text-white placeholder:text-cyan-400/30 focus:border-cyan-400 focus:outline-none px-1 py-0.5" />
-              </div>
-
-              {/* Branch */}
-              <div className="flex items-center gap-2 mb-2">
-                <label className="text-[9px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider">
-                  Branch
-                </label>
-                <input type="text" placeholder="master, dev, main" value={form.branch}
-                  onChange={(e) => setForm((prev) => ({ ...prev, branch: e.target.value }))}
-                  className="flex-1 bg-transparent border-b border-cyan-400/60 text-white placeholder:text-cyan-400/30 focus:border-cyan-400 focus:outline-none px-1 py-0.5" />
-              </div>
-
-              {/* Build Profile (CMake flags) */}
-              <div className="flex items-start gap-2">
-                <label className="text-[9px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider mt-1">
-                  CMake Flags
-                </label>
-                <textarea rows={3} 
-                  placeholder={
-                    form.template_type === "ik-llama"
-                      ? "[IK-LLAMA defaults applied]\n-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=\"120a\" ..."
-                      : "[GGML defaults applied]\n-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=\"120a\" -DGGML_AVX512=ON ..."
-                  }
-                  value={form.build_profile}
-                  onChange={(e) => setForm((prev) => ({ ...prev, build_profile: e.target.value }))}
-                  className="flex-1 bg-transparent border border-cyan-400/30 text-white placeholder:text-cyan-400/30 focus:border-cyan-400 focus:outline-none px-2 py-1 font-mono text-[9px] resize-y" />
-              </div>
-              {form.build_profile.trim() === "" && (
-                <p className="text-[7px] font-mono text-stealth-muted/50 pl-[104px]">
-                  Built-in defaults applied automatically — enter custom flags to override
-                </p>
-              )}
-
-              {/* Last Build — read only, derived from buildInfoPerEnv of the provider being edited */}
-              {editingId && (
-                <LastBuildDisplay provider={(providers.find(pr => pr.id === editingId) || { buildInfoPerEnv: {} }) as ProviderConfig} />
-              )}
-            </div>
-
-            {/* Legacy params section — kept for backward compatibility */}
-            {Object.keys(form.params).length > 0 && (
-              <div className="pt-2 border-t border-stealth-border/50">
-                <h4 className="text-[9px] font-mono text-telemetry-cyan uppercase tracking-wider mb-1.5">
-                  Legacy Default Params
-                </h4>
-                <p className="text-[8px] font-mono text-stealth-muted mb-2">
-                  These are kept for backward compatibility. Use the CONFIG tab to manage parameter defaults and definitions per provider.
-                </p>
-                {Object.entries(form.params).map(([key, value]) => (
-                  <div key={key} className="flex items-center gap-2">
-                    <span className="text-[9px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase">{key}</span>
-                    <input type="text" value={value}
-                      onChange={(e) => updateParamValue(key, e.target.value)}
-                      className="flex-1 bg-transparent border-b border-telemetry-cyan/30 text-white text-[9px] font-mono focus:border-telemetry-cyan focus:outline-none px-1 py-0.5" />
-                    <button onClick={() => removeParam(key)}
-                      className="text-red-400/60 hover:text-red-400 text-[9px] transition-colors flex-shrink-0">
-                      ×
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Action buttons */}
-            <div className="flex gap-2 pt-1">
-              <button onClick={handleSave} disabled={loading || !form.id.trim() || !form.display_name.trim() || !form.binary_path.trim()}
-                className="px-3 py-1 text-[10px] font-mono border border-nv-green/60 text-nv-green hover:bg-nv-green/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
-                {loading ? "SAVING..." : editingId ? "UPDATE" : "REGISTER"}
-              </button>
-              {editingId && (
-                <button onClick={handleCancel}
-                  className="px-3 py-1 text-[10px] font-mono border border-stealth-border text-stealth-muted hover:text-white transition-colors">
-                  CANCEL
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
       </div>
 
       {/* Footer */}

@@ -33,6 +33,37 @@ pub struct CpuInfo {
     pub core_usages: Vec<f32>, // per-core usage percentages from PerfMon
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SystemInfo {
+    pub total_memory_mib: u64,              // Real OS-reported usable RAM in MiB (used for calculations)
+    pub available_memory_mib: u64,          // Available (free + cache) in MiB
+    pub total_memory_manufactured_mib: u64, // Physically installed RAM from hardware (e.g., 256 GB = 262144 MiB)
+}
+
+/// Get physically installed RAM from WMI (sum of all memory module capacities).
+#[cfg(windows)]
+fn get_physical_ram_bytes() -> Result<u64, String> {
+    let output = std::process::Command::new("powershell")
+        .args(&[
+            "-NoProfile", "-NonInteractive", "-Command",
+            "(Get-CimInstance Win32_PhysicalMemory | Measure-Object Capacity -Sum).Sum",
+        ])
+        .output()
+        .map_err(|e| format!("PowerShell WMI query failed: {}", e))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let bytes: u64 = stdout.trim().parse().map_err(|_| {
+        format!("Failed to parse physical RAM from PowerShell output: {}", stdout)
+    })?;
+    Ok(bytes)
+}
+
+/// Fallback: use sysinfo total memory as manufactured (same value).
+#[cfg(not(windows))]
+fn get_physical_ram_bytes() -> Result<u64, String> {
+    Err("Not on Windows".into())
+}
+
 /// Scan GPUs using nvidia-smi — returns real metrics from NVIDIA drivers
 #[tauri::command]
 pub async fn scan_gpus() -> Result<Vec<GpuInfo>, String> {
@@ -230,3 +261,18 @@ fn memory_total_from_name(name: &str) -> u64 {
 
 // Hot spot temperature is queried directly from nvidia-smi as the primary GPU health metric.
 // Any sensor returning 255 (NVIDIA sentinel for "redacted/unavailable") is filtered out.
+
+/// Scan system memory info — total and available RAM in MiB.
+#[tauri::command]
+pub async fn scan_system_info() -> Result<SystemInfo, String> {
+    let mut sys = System::new_all();
+    sys.refresh_memory();
+
+    let total = sys.total_memory() / (1024 * 1024);   // bytes → MiB, usable by OS
+    let phys_bytes = get_physical_ram_bytes().unwrap_or_else(|_| sys.total_memory());
+    Ok(SystemInfo {
+        total_memory_mib: total,
+        available_memory_mib: sys.available_memory() / (1024 * 1024),
+        total_memory_manufactured_mib: phys_bytes / (1024 * 1024), // bytes → MiB
+    })
+}

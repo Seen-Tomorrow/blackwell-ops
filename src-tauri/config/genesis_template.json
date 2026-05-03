@@ -68,7 +68,7 @@
         "ptype": "logic_only",
         "values": ["on", "off"],
         "default": "on",
-        "ui_group": "Performance",
+        "ui_group": "Feature Flags",
         "note": "When off and Parallel > 1, each sequence gets its own KV cache (VRAM multiplied by np)."
       },
       {
@@ -105,7 +105,7 @@
         "ptype": "arg_select",
         "values": ["GPU-0", "GPU-1"],
         "default": "GPU-0",
-        "ui_group": "Multi-GPU",
+        "ui_group": "Core",
         "note": "Select which GPU to use for inference."
       },
       {
@@ -165,7 +165,7 @@
         "ptype": "arg_select",
         "values": ["on", "off"],
         "default": "on",
-        "ui_group": "Feature Flags",
+        "ui_group": "Performance",
         "note": "Enable Flash Attention 2."
       },
       {
@@ -292,7 +292,7 @@
         "ptype": "logic_only",
         "values": ["on", "off"],
         "default": "on",
-        "ui_group": "Performance",
+        "ui_group": "Feature Flags",
         "note": "When off and Parallel > 1, each sequence gets its own KV cache (VRAM multiplied by np)."
       },
       {
@@ -329,7 +329,7 @@
         "ptype": "arg_select",
         "values": ["GPU-0", "GPU-1"],
         "default": "GPU-0",
-        "ui_group": "Multi-GPU",
+        "ui_group": "Core",
         "note": "Select which GPU to use for inference."
       },
       {
@@ -389,7 +389,7 @@
         "ptype": "arg_select",
         "values": ["on", "off"],
         "default": "on",
-        "ui_group": "Feature Flags",
+        "ui_group": "Performance",
         "note": "Enable Flash Attention 2."
       },
       {
@@ -486,7 +486,7 @@
         "ptype": "arg_select",
         "values": ["GPU-0", "GPU-1"],
         "default": "GPU-0",
-        "ui_group": "Multi-GPU",
+        "ui_group": "Core",
         "note": "Select which GPU to use for inference."
       },
       {

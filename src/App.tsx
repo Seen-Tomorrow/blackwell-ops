@@ -10,10 +10,12 @@ import ConfigPage from "./components/ConfigPage";
 import MobileSentinelPage from "./components/MobileSentinelPage";
 import ReactorCore from "./components/ReactorCore";
 import Reactor11 from "./components/Reactor11";
+import ModelHub from "./components/ModelHub";
 import { StatusProvider } from "./context/StatusBarContext";
-import type { GpuInfo, ModelEntry, StackEntry, LogBatch, LogEntry, SystemEvent, ProviderConfig, CpuInfo, EnginePerfEvent } from "./lib/types";
+import { ToastProvider } from "./components/Toast";
+import type { GpuInfo, ModelEntry, StackEntry, LogBatch, LogEntry, SystemEvent, ProviderConfig, CpuInfo, SystemInfo, EnginePerfEvent } from "./lib/types";
 
-export type Tab = "catalog" | "stack" | "reactor" | "reactor11" | "telemetry" | "logs" | "config" | "sentinel";
+export type Tab = "catalog" | "modelhub" | "stack" | "reactor" | "reactor11" | "telemetry" | "logs" | "config" | "sentinel";
 
 function isMobileDevice(): boolean {
   try {
@@ -35,11 +37,12 @@ function App() {
   const [logs, setLogs] = useState<Map<number, LogEntry[]>>(new Map());
   const [systemEvents, setSystemEvents] = useState<Map<number, Array<{ text: string; timestamp: string }>>>(new Map());
   const [enginePerfEvents, setEnginePerfEvents] = useState<Map<number, EnginePerfEvent>>(new Map());
-  const [modelBase] = useState(
-    "C:\\Users\\GHOST-TOWER\\.lmstudio\\models"
-  );
+
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [providers, setProviders] = useState<ProviderConfig[]>([]);
+  const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
+  const [scanningPath, setScanningPath] = useState<string | null>(null);
+  const [batchScanState, setBatchScanState] = useState<{active: boolean; scanned: number; failed: number; total: number}>({ active: false, scanned: 0, failed: 0, total: 0 });
   const [totalParams, setTotalParams] = useState(0);
   const [hiddenCount, setHiddenCount] = useState(0);
   const [lowPower, setLowPower] = useState(() => {
@@ -113,9 +116,20 @@ function App() {
     return () => window.removeEventListener("param-config-changed", handler);
   }, []);
 
+  // Reload models when a download completes
+  useEffect(() => {
+    const handler = () => {
+      invoke<ModelEntry[]>("list_models")
+        .then(data => setModels(data as ModelEntry[]))
+        .catch(() => {});
+    };
+    window.addEventListener("download-completed", handler);
+    return () => window.removeEventListener("download-completed", handler);
+  }, []);
+
   // Load models on mount
   useEffect(() => {
-    invoke<ModelEntry[]>("list_models", { modelBase })
+    invoke<ModelEntry[]>("list_models")
       .then((data) => {
         setModels(data);
         setCatalogError(null);
@@ -125,7 +139,7 @@ function App() {
         console.error("Failed to load models:", msg);
         setCatalogError(msg);
       });
-  }, [modelBase]);
+  }, []);
 
   // Load providers on mount
   useEffect(() => {
@@ -134,17 +148,24 @@ function App() {
       .catch(console.error);
   }, []);
 
+  // Load system info once (static, not polled)
+  useEffect(() => {
+    invoke<SystemInfo>("scan_system_info")
+      .then((data) => setSystemInfo(data))
+      .catch(console.error);
+  }, []);
+
   const reloadModels = useCallback(async () => {
     try {
       setCatalogError(null);
-      const data = await invoke<ModelEntry[]>("list_models", { modelBase });
+      const data = await invoke<ModelEntry[]>("list_models");
       setModels(data);
     } catch (err) {
       const msg = typeof err === "string" ? err : JSON.stringify(err);
       console.error("Failed to reload models:", msg);
       setCatalogError(msg);
     }
-  }, [modelBase]);
+  }, []);
 
   // Consolidated telemetry polling — GPU + CPU with configurable intervals
   useEffect(() => {
@@ -315,6 +336,29 @@ function App() {
     return cleanup;
   }, []);
 
+  // GGUF scan progress listeners — persist across tab switches
+  useEffect(() => {
+    let unsubProgress: (() => void) | null = null;
+    let unsubComplete: (() => void) | null = null;
+
+    listen("gguf-scan-progress", (e: any) => {
+      const p = e.payload as { scanned: number; failed: number };
+      setBatchScanState(s => ({ ...s, scanned: p.scanned, failed: p.failed }));
+    }).then(u => { unsubProgress = u; });
+
+    listen("gguf-scan-complete", (e: any) => {
+      const p = e.payload as { scanned: number; failed: number };
+      setBatchScanState(s => ({ ...s, active: false, scanned: p.scanned, failed: p.failed }));
+      // Reload models after scan completes
+      invoke("list_models").then(data => setModels(data as ModelEntry[])).catch(() => {});
+    }).then(u => { unsubComplete = u; });
+
+    return () => {
+      unsubProgress?.();
+      unsubComplete?.();
+    };
+  }, []);
+
   // Poll stack status periodically (2s interval)
   useEffect(() => {
     const poll = async () => {
@@ -332,7 +376,7 @@ function App() {
   const handleLaunchEngine = useCallback(
     async (config: any) => {
       try {
-        await invoke("launch_engine", { config, modelBase });
+        await invoke("launch_engine", { config });
         if (activeTab === "stack") {
           const data = await invoke<StackEntry[]>("get_stack_status");
           setStack(data);
@@ -341,7 +385,7 @@ function App() {
         console.error("Launch failed:", err);
       }
     },
-    [modelBase, activeTab]
+    [activeTab]
   );
 
   const handleStopEngine = useCallback(async (alias: string) => {
@@ -390,15 +434,15 @@ function App() {
     }, 0);
   }, [stack]);
 
-  const osOverheadMib = gpus.length * 256; // FIT_OVERHEAD_PER_GPU constant
-
   return (
-    <StatusProvider value={{ totalParams, hiddenCount, onShowAll: handleShowAll }}>
-      <Layout activeTab={activeTab} onTabChange={setActiveTab}>
+    <ToastProvider>
+      <StatusProvider value={{ totalParams, hiddenCount, onShowAll: handleShowAll }}>
+        <Layout activeTab={activeTab} onTabChange={setActiveTab}>
         {activeTab === "catalog" && (
-          <ModelCatalog models={models} gpus={gpus} onLaunch={handleLaunchEngine} error={catalogError} onReload={reloadModels} providers={providers} committedVramMib={committedVramMib} osOverheadMib={osOverheadMib} isAdminUnlocked={isAdminUnlocked} />
-        )}
-        {activeTab === "config" && <ConfigPage providers={providers} modelBase={modelBase} />}
+              <ModelCatalog models={models} gpus={gpus} onLaunch={handleLaunchEngine} error={catalogError} onReload={reloadModels} providers={providers} committedVramMib={committedVramMib} isAdminUnlocked={isAdminUnlocked} systemInfo={systemInfo} scanningPath={scanningPath} setScanningPath={setScanningPath} batchScanState={batchScanState} setBatchScanState={setBatchScanState} />
+           )}
+        {activeTab === "modelhub" && <ModelHub />}
+        {activeTab === "config" && <ConfigPage providers={providers} />}
         {activeTab === "stack" && (
           <StackView stack={stack} logs={logs} systemEvents={systemEvents} enginePerfEvents={enginePerfEvents} onStop={handleStopEngine} onStopAll={handleStopAll} />
         )}
@@ -445,6 +489,7 @@ function App() {
         {activeTab === "sentinel" && <MobileSentinelPage gpus={gpus} stack={stack} />}
       </Layout>
     </StatusProvider>
+    </ToastProvider>
   );
 }
 

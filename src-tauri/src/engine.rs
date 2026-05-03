@@ -16,6 +16,8 @@ use crate::vram::{self, VramCalcConfig, VramFitResult};
 use crate::fit_scanner;
 use crate::telemetry;
 use crate::engine_perf;
+use crate::model_catalog;
+use crate::engine_utils;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StackEntryOut {
@@ -58,333 +60,27 @@ pub struct AppContext {
     pub fit_scan_cancel: Arc<TokioMutex<Arc<AtomicBool>>>,
 }
 
-// ── Model Catalog (ported from tower_models.py) ─────────────────────
+// ── Model Catalog (multi-path merge via model_catalog module) ───────
 
 #[tauri::command]
-pub async fn list_models(model_base: Option<String>) -> Result<Vec<ModelEntry>, String> {
-    let base = model_base.unwrap_or_else(|| {
-        r"C:\Users\GHOST-TOWER\.lmstudio\models".to_string()
-    });
+pub async fn list_models(
+    config: tauri::State<'_, Arc<std::sync::Mutex<AppConfig>>>,
+) -> Result<Vec<ModelEntry>, String> {
+    let cfg = config.lock().map_err(|e| e.to_string())?;
+    let paths = crate::config::get_model_paths(&cfg);
 
-    get_model_catalog(&PathBuf::from(&base)).map_err(|e| e.to_string())
-}
-
-fn get_model_catalog(base_path: &PathBuf) -> Result<Vec<ModelEntry>, String> {
-    let mut temp_catalog: std::collections::HashMap<String, crate::types::ModelEntryInternal> = std::collections::HashMap::new();
-
-    if !base_path.exists() {
+    if paths.is_empty() {
         return Ok(Vec::new());
     }
 
-    for author_entry in std::fs::read_dir(base_path).map_err(|e| e.to_string())? {
-        let author_entry = author_entry.map_err(|e| e.to_string())?;
-        let author_path = author_entry.path();
-        if !author_path.is_dir() {
-            continue;
-        }
-
-        let author = author_path
-            .file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or("unknown")
-            .to_string();
-
-        for model_dir_entry in std::fs::read_dir(&author_path).map_err(|e| e.to_string())? {
-            let model_dir_entry = model_dir_entry.map_err(|e| e.to_string())?;
-            let model_path = model_dir_entry.path();
-            if !model_path.is_dir() {
-                continue;
-            }
-
-            let model_dir_name = model_path
-                .file_name()
-                .and_then(|s| s.to_str())
-                .unwrap_or("unknown")
-                .to_string();
-
-            // Find mmproj file in this folder
-            let mut mmproj_file: Option<String> = None;
-            let mut mmproj_size: u64 = 0;
-            if let Ok(files) = std::fs::read_dir(&model_path) {
-                for f_entry in files.flatten() {
-                    let fname = f_entry.file_name();
-                    let fname_str = fname.to_string_lossy().to_lowercase();
-                    if fname_str.contains("mmproj") {
-                        mmproj_file = Some(fname.to_string_lossy().to_string());
-                        if let Ok(meta) = std::fs::metadata(f_entry.path()) {
-                            mmproj_size = meta.len();
-                        }
-                    }
-                }
-            }
-
-            for f_entry in std::fs::read_dir(&model_path).map_err(|e| e.to_string())? {
-                let f_entry = f_entry.map_err(|e| e.to_string())?;
-                let fname = f_entry.file_name();
-                let fname_str = fname.to_string_lossy().to_string();
-
-                if !fname_str.to_lowercase().ends_with(".gguf")
-                    || fname_str.to_lowercase().contains("mmproj")
-                {
-                    continue;
-                }
-
-                // Strip shard pattern: -00001-of-00002
-                let base_name = strip_shard_pattern(&fname_str);
-                let file_path = f_entry.path();
-
-                let full_id = format!("{author}/{model_dir_name}/{base_name}");
-
-                if let Some(existing) = temp_catalog.get_mut(&full_id) {
-                    // Sharded model — accumulate sizes
-                    if let Ok(meta) = std::fs::metadata(&file_path) {
-                        existing.model_bytes += meta.len();
-                        existing.total_bytes += meta.len();
-                        existing.shards += 1;
-                    }
-                } else {
-                    let file_size = std::fs::metadata(&file_path)
-                        .map(|m| m.len())
-                        .unwrap_or(0);
-
-                    let quant = extract_quant(&base_name);
-                    let size_str = calc_size_str_from_bytes(file_size + mmproj_size);
-
-                    // Store full absolute path to the GGUF file for downstream validation
-                    let abs_path = file_path.to_string_lossy().to_string();
-
-                    temp_catalog.insert(full_id, crate::types::ModelEntryInternal {
-                        path: abs_path.clone(),
-                        author: author.clone(),
-                        name: model_dir_name.replace("-GGUF", "").replace("-gguf", ""),
-                        quant,
-                        size_str,
-                        vision: mmproj_file.is_some(),
-                        mmproj: mmproj_file.clone(),
-                        model_bytes: file_size,
-                        total_bytes: file_size + mmproj_size,
-                        shards: 1,
-                    });
-                }
-            }
-        }
+    let (entries, _conflicts) = model_catalog::merge_catalogs(&paths)?;
+    // Note: conflicts are returned but not surfaced to frontend yet.
+    // Future: could emit a tauri event for dedup modal.
+    if !_conflicts.is_empty() {
+        log::warn!("[list_models] Found {} cross-path duplicates (keeping largest)", _conflicts.len());
     }
 
-    // Deduplicate: keep only the largest entry per unique key (author/name/quant).
-    let mut deduped: std::collections::HashMap<String, crate::types::ModelEntryInternal> = std::collections::HashMap::new();
-    for internal in temp_catalog.into_values() {
-        let key = format!("{}|{}|{}", internal.author, internal.name, internal.quant);
-        let total_bytes = internal.total_bytes;
-        if let Some(existing) = deduped.get_mut(&key) {
-            if total_bytes > existing.total_bytes {
-                *existing = internal;
-            }
-        } else {
-            deduped.insert(key, internal);
-        }
-    }
-
-    let final_catalog: Vec<ModelEntry> = deduped.into_values()
-        .map(|internal| {
-            let size_str = calc_size_str_from_bytes(internal.total_bytes);
-            ModelEntry {
-                path: internal.path,
-                author: internal.author,
-                name: internal.name,
-                quant: internal.quant,
-                size_str,
-                vision: internal.vision,
-                mmproj: internal.mmproj,
-                backend_type: String::new(), // Will be set by frontend or default to "ggml-stable"
-            }
-        })
-        .collect();
-    
-    Ok(final_catalog)
-}
-
-pub fn strip_shard_pattern(filename: &str) -> String {
-    if !filename.ends_with(".gguf") {
-        return filename.to_string();
-    }
-
-    let without_ext = &filename[..filename.len() - 5];
-
-    if let Some(of_pos) = find_case_insensitive_rfind(without_ext, "-of-") {
-        let after_of = &without_ext[of_pos + 4..];
-        if !after_of.is_empty() && after_of.chars().all(|c| c.is_ascii_digit()) {
-            let before_of = &without_ext[..of_pos];
-            if let Some(shard_pos) = before_of.rfind('-') {
-                let shard_num = &before_of[shard_pos + 1..];
-                if shard_num.chars().all(|c| c.is_ascii_digit()) && shard_num.len() >= 3 {
-                    return format!("{}.gguf", &before_of[..shard_pos]);
-                }
-            }
-            return format!("{}.gguf", before_of);
-        }
-    }
-
-    if let Some(part_pos) = find_case_insensitive_rfind(without_ext, "-part-") {
-        let after_part = &without_ext[part_pos + 6..];
-        if !after_part.is_empty() && after_part.chars().all(|c| c.is_ascii_digit()) {
-            return format!("{}.gguf", &without_ext[..part_pos]);
-        }
-    }
-
-    let parts: Vec<&str> = without_ext.rsplitn(2, '-').collect();
-    if parts.len() >= 2 {
-        let suffix = parts[0];
-        if suffix.chars().all(|c| c.is_ascii_digit()) && suffix.len() >= 3 {
-            return format!("{}.gguf", &without_ext[..without_ext.len() - suffix.len() - 1]);
-        }
-    }
-
-    filename.to_string()
-}
-
-/// Find the last occurrence of `pattern` in `s`, case-insensitive.
-fn find_case_insensitive_rfind(s: &str, pattern: &str) -> Option<usize> {
-    let s_lower = s.to_lowercase();
-    let p_lower = pattern.to_lowercase();
-    if pattern.is_empty() || pattern.len() > s_lower.len() {
-        return None;
-    }
-    for i in (0..=s_lower.len() - pattern.len()).rev() {
-        if &s_lower[i..i + pattern.len()] == p_lower {
-            return Some(i);
-        }
-    }
-    None
-}
-
-fn extract_quant(filename: &str) -> String {
-    if !filename.ends_with(".gguf") {
-        return fallback_quant(filename);
-    }
-
-    let without_ext = &filename[..filename.len() - 5];
-    let lower = filename.to_lowercase();
-
-    if lower.contains("bf16") {
-        return "BF16".to_string();
-    }
-    if lower.contains("f16") && !lower.contains("q8_0") && !lower.contains("q4_") {
-        let parts: Vec<&str> = filename.split('.').collect();
-        for part in parts.iter().rev() {
-            if part.to_lowercase() == "f16" || part.to_lowercase() == "bf16" {
-                return part.to_string();
-            }
-        }
-    }
-
-    if lower.contains("mxfp4") {
-        return "MXFP4".to_string();
-    }
-
-    let chars: Vec<char> = without_ext.chars().collect();
-    for i in (1..chars.len()).rev() {
-        if chars[i] == 'B' || chars[i] == 'b' {
-            if i > 0 && chars[i - 1].is_ascii_digit() {
-                if i + 1 < chars.len() && (chars[i + 1] == '-' || chars[i + 1] == '.') {
-                    let suffix = &without_ext[i + 2..];
-                    if !suffix.is_empty() {
-                        let known_quants = [
-                            "Q8_0", "Q8_K", "Q6_K", 
-                            "Q5_0", "Q5_1", "Q5_K_M", "Q5_K_S",
-                            "Q4_0", "Q4_1", "Q4_K_M", "Q4_K_S",
-                            "Q3_K_M", "Q3_K_S", "Q2_K",
-                            "IQ4_NL", "IQ3_S", "IQ3_M", "IQ3_XS", "IQ3_XXS",
-                            "IQ2_S", "IQ2_XS", "IQ2_MS", "IQ2_L",
-                            "IQ1_S", "IQ1_NL",
-                            "FP8_E4M3", "FP8_E5M2",
-                        ];
-
-                        let suffix_lower = suffix.to_lowercase();
-                        for pattern in &known_quants {
-                            if suffix_lower.contains(&pattern.to_lowercase()) {
-                                return pattern.to_string();
-                            }
-                        }
-
-                        return fallback_quant(filename);
-                    }
-                }
-            }
-        }
-    }
-
-    fallback_quant(filename)
-}
-
-fn fallback_quant(filename: &str) -> String {
-    let lower = filename.to_lowercase();
-
-    if lower.contains("bf16") {
-        return "BF16".to_string();
-    }
-    if lower.contains("f16") && !lower.contains("q8_0") && !lower.contains("q4_") {
-        let parts: Vec<&str> = filename.split('.').collect();
-        for part in parts.iter().rev() {
-            if part.to_lowercase() == "f16" || part.to_lowercase() == "bf16" {
-                return part.to_string();
-            }
-        }
-    }
-
-    if lower.contains("mxfp4") {
-        return "MXFP4".to_string();
-    }
-
-    let without_ext = filename.trim_end_matches(".gguf");
-    
-    let segments: Vec<&str> = without_ext.split(|c: char| c == '-' || c == '.').collect();
-    
-    let known_quants = [
-        "Q8_0", "Q8_K", "Q6_K", 
-        "Q5_0", "Q5_1", "Q5_K_M", "Q5_K_S",
-        "Q4_0", "Q4_1", "Q4_K_M", "Q4_K_S",
-        "Q3_K_M", "Q3_K_S", "Q2_K",
-        "IQ4_NL", "IQ3_S", "IQ3_M", "IQ3_XS", "IQ3_XXS",
-        "IQ2_S", "IQ2_XS", "IQ2_MS", "IQ2_L",
-        "IQ1_S", "IQ1_NL",
-        "FP8_E4M3", "FP8_E5M2",
-    ];
-
-    let mut best_match: Option<&str> = None;
-    let mut best_len = 0;
-    
-    for seg in &segments {
-        if seg.is_empty() || seg.len() < 3 { continue; }
-        let seg_lower = seg.to_lowercase();
-        
-        for pattern in &known_quants {
-            if seg_lower.contains(&pattern.to_lowercase()) {
-                if seg.len() > best_len {
-                    best_match = Some(pattern);
-                    best_len = seg.len();
-                }
-                break;
-            }
-        }
-    }
-
-    if let Some(m) = best_match {
-        return m.to_string();
-    }
-
-    if let Some(last_seg) = segments.last() {
-        if !last_seg.is_empty() && last_seg.len() >= 3 {
-            if lower.contains("q") || lower.contains("iq") {
-                return last_seg.to_string();
-            }
-        }
-    }
-
-    "GGUF".to_string()
-}
-
-fn calc_size_str_from_bytes(total_bytes: u64) -> String {
-    format!("{:.1}GB", total_bytes as f64 / (1024.0_f64.powi(3)))
+    Ok(entries)
 }
 
 // ── Engine Management Commands ──────────────────────────────────────
@@ -409,7 +105,7 @@ pub async fn launch_engine(
     };
 
     // Resolve binary path from config — check providers list first, then fallback to llama_path
-    let binary_path = find_provider_binary(&cfg, &backend_type);
+    let binary_path = engine_utils::find_provider_binary(&cfg, &backend_type);
 
     // Load template for this provider and apply data-driven defaults
     let template = crate::templates::ProviderTemplate::load_by_id(&backend_type)
@@ -609,21 +305,7 @@ pub async fn launch_engine(
     })
 }
 
-fn find_provider_binary(cfg: &AppConfig, provider_id: &str) -> PathBuf {
-    // Check registered providers first
-    for p in &cfg.providers {
-        if p.id == provider_id && !p.binary_path.is_empty() {
-            return PathBuf::from(&p.binary_path);
-        }
-    }
 
-    // Ultimate fallback — use the first registered provider's binary or default path
-    if let Some(first) = cfg.providers.first() {
-        PathBuf::from(&first.binary_path)
-    } else {
-        cfg.llama_path.clone()
-    }
-}
 
 #[tauri::command]
 pub async fn stop_engine(alias: String, app: tauri::State<'_, AppContext>) -> Result<String, String> {
@@ -779,7 +461,7 @@ pub async fn hot_swap_engine(
     };
 
     // Resolve binary path from config
-    let binary_path = find_provider_binary(&cfg, &backend_type);
+    let binary_path = engine_utils::find_provider_binary(&cfg, &backend_type);
 
     // Load template for this provider and apply data-driven defaults
     let template = crate::templates::ProviderTemplate::load_by_id(&backend_type)
@@ -994,98 +676,6 @@ pub async fn check_vram_fit(
     Ok(fit_result)
 }
 
-// ── Provider Management Commands ────────────────────────────────────
-
-/// Lists all registered backend providers with their binary paths.
-#[tauri::command]
-pub async fn list_providers(app: tauri::State<'_, AppContext>) -> Result<Vec<crate::types::ProviderConfig>, String> {
-    // Providers already have correct state from overlay merge at startup.
-    // Return as-is — admin deletions, modifications, and custom params are preserved.
-    let providers = {
-        let cfg = app.config.lock().map_err(|e| e.to_string())?;
-        cfg.providers.clone()
-    };
-
-    let mut result = providers;
-
-    Ok(result)
-}
-
-/// Adds or updates a backend provider in the config.
-#[tauri::command]
-pub async fn save_provider(provider: crate::types::ProviderConfig, app: tauri::State<'_, AppContext>) -> Result<(), String> {
-    log::debug!("[SAVE_PROVIDER] ENTER id='{}' param_count={}", provider.id, provider.param_definitions.len());
-    let mut cfg = app.config.lock().map_err(|e| e.to_string())?;
-
-    // TODO: Re-enable binary validation once Foundry build flow is stable
-    // if !provider.binary_path.is_empty() {
-    //     crate::config::validate_provider_binary(&provider.binary_path)?;
-    // }
-
-    // If editing and the ID changed, remove the old entry first.
-    if let Some(original_id) = &provider._original_id {
-        if original_id != &provider.id {
-            cfg.providers.retain(|p| p.id != *original_id);
-        }
-    }
-
-    // Determine template_type: use provided value or auto-detect from ID (case-insensitive)
-    let mut save_provider = provider.clone();
-    if save_provider.template_type.is_empty() {
-        let lower_id = save_provider.id.to_lowercase();
-        if lower_id.contains("ik") {
-            save_provider.template_type = "ik-llama".to_string();
-        } else {
-            save_provider.template_type = "ggml-llama".to_string();
-        }
-    }
-
-    // New provider with empty param_definitions — populate from correct template by type
-    if save_provider.param_definitions.is_empty() {
-        let tmpl_key = if save_provider.template_type == "ik-llama" || save_provider.id == "ik-extreme" { "ik-extreme" } else { "ggml-stable" };
-        save_provider.param_definitions = crate::config::params_for_provider(tmpl_key);
-    }
-    // Existing provider: preserve admin state as-is (deletions, modifications, custom params).
-    // New genesis params will be added on next startup via overlay merge.
-
-    // Check if provider with this (new) ID already exists — update in place or push new.
-    if let Some(existing) = cfg.providers.iter_mut().find(|p| p.id == save_provider.id) {
-        *existing = save_provider.clone();
-    } else {
-        cfg.providers.push(save_provider);
-    }
-
-    drop(cfg);
-
-    // Persist param_definitions directly to provider_meta.json (no delta computation needed).
-    // On next startup, load_config reads these back — Genesis is only the fallback.
-    let cfg_for_meta = app.config.lock().map_err(|e| e.to_string())?;
-    crate::config::persist_provider_meta(&cfg_for_meta.providers)?;
-
-    Ok(())
-}
-
-/// Removes a backend provider by ID.
-#[tauri::command]
-pub async fn remove_provider(id: String, app: tauri::State<'_, AppContext>) -> Result<(), String> {
-    let mut cfg = app.config.lock().map_err(|e| e.to_string())?;
-
-    let before = cfg.providers.len();
-    cfg.providers.retain(|p| p.id != id);
-
-    if cfg.providers.len() == before {
-        return Err(format!("Provider '{}' not found", id));
-    }
-
-    drop(cfg);
-
-    // Persist provider metadata to disk
-    let cfg_for_meta = app.config.lock().map_err(|e| e.to_string())?;
-    crate::config::persist_provider_meta(&cfg_for_meta.providers)?;
-
-    Ok(())
-}
-
 // ── Helpers ─────────────────────────────────────────────────────────
 
 /// Returns the template for a given provider ID.
@@ -1118,7 +708,7 @@ pub async fn preview_launch_command(
         guard.clone()
     };
 
-    let binary_path = find_provider_binary(&cfg, &backend_type);
+    let binary_path = engine_utils::find_provider_binary(&cfg, &backend_type);
     let template = crate::templates::ProviderTemplate::load_by_id(&backend_type)
         .unwrap_or_else(crate::templates::ProviderTemplate::load);
 
@@ -1162,6 +752,22 @@ pub async fn open_file_dialog(title: Option<String>, _filter: Option<String>) ->
     Ok(result.map(|p| p.to_string_lossy().to_string()))
 }
 
+/// Opens a native folder picker dialog and returns the selected path.
+#[tauri::command]
+pub async fn open_folder_dialog(title: Option<String>) -> Result<Option<String>, String> {
+    let title = title.unwrap_or_else(|| "Select Model Folder".to_string());
+
+    let result = tokio::task::spawn_blocking(move || {
+        rfd::FileDialog::new()
+            .set_title(&title)
+            .pick_folder()
+    })
+    .await
+    .map_err(|e| format!("Folder dialog panicked: {}", e))?;
+
+    Ok(result.map(|p| p.to_string_lossy().to_string()))
+}
+
 fn detect_mmproj(model_path: &str) -> (u64, bool) {
     let p = PathBuf::from(model_path);
     if let Some(dir) = p.parent() {
@@ -1199,10 +805,12 @@ pub async fn fit_scan_model(
     };
 
     let backend_type = provider_id.unwrap_or_else(|| "ggml-stable".to_string());
-    let binary_path = find_provider_binary(&cfg, &backend_type);
+    let binary_path = engine_utils::find_provider_binary(&cfg, &backend_type);
 
+    // Try provider-specific fit binary first, then fallback (for IK providers using GGML's binary)
     let fit_binary = fit_scanner::find_fit_binary(binary_path.to_str().unwrap_or(""))
-        .ok_or_else(|| "llama-fit-params.exe not found in provider directory".to_string())?;
+        .or_else(|| fit_scanner::find_fallback_fit_binary())
+        .ok_or_else(|| "llama-fit-params.exe not found — ensure provider is built".to_string())?;
 
     // Load template and build EngineConfig from provider defaults (same as engine launch)
     let template = crate::templates::ProviderTemplate::load_by_id(&backend_type)
@@ -1222,7 +830,7 @@ pub async fn fit_scan_model(
         batch: 2048,
         ubatch: 512,
         parallel: 1,
-        offload: "ALL".to_string(),
+        offload: String::new(), // Let llama-fit-params auto-calculate what fits (no forced --n-gpu-layers)
         offload_mode: "REGULAR".to_string(),
         split_mode,
         vision: "AUTO".to_string(),
@@ -1286,9 +894,19 @@ pub async fn fit_scan_library(
         guard.clone()
     };
 
-    let binary_path = find_provider_binary(&cfg, &provider_id);
+    // Resolve model_base: use provided value, or fall back to first configured path
+    let resolved_model_base = if !model_base.is_empty() {
+        model_base
+    } else {
+        crate::config::get_default_download_path(&cfg)
+    };
+
+    let binary_path = engine_utils::find_provider_binary(&cfg, &provider_id);
+    
+    // Try provider-specific fit binary first, then fallback (for IK providers using GGML's binary)
     let fit_binary = fit_scanner::find_fit_binary(binary_path.to_str().unwrap_or(""))
-        .ok_or_else(|| "llama-fit-params.exe not found in provider directory".to_string())?;
+        .or_else(|| fit_scanner::find_fallback_fit_binary())
+        .ok_or_else(|| "llama-fit-params.exe not found — ensure provider is built".to_string())?;
 
     // Load template and build base EngineConfig from provider defaults (same as engine launch)
     let template = crate::templates::ProviderTemplate::load_by_id(&provider_id)
@@ -1308,7 +926,7 @@ pub async fn fit_scan_library(
         batch: 2048,
         ubatch: 512,
         parallel: 1,
-        offload: "ALL".to_string(),
+        offload: String::new(), // Let llama-fit-params auto-calculate (no forced --n-gpu-layers)
         offload_mode: "REGULAR".to_string(),
         split_mode: "NONE".to_string(),
         vision: "AUTO".to_string(),
@@ -1354,7 +972,7 @@ pub async fn fit_scan_library(
 
     // Run library scan — template-driven, same logic as engine launch
     let result = fit_scanner::scan_library(
-        &fit_binary, &model_base, parallel_count.max(1), total_gpu_mib,
+        &fit_binary, &resolved_model_base, parallel_count.max(1), total_gpu_mib,
         provider_id.clone(), template, base_config, Some(progress_tx), cancel_flag,
     ).await;
 
@@ -1474,3 +1092,219 @@ pub async fn set_build_info_for_env(
     }
     crate::config::persist_provider_meta(&cfg.providers).map_err(|e| e.to_string())
 }
+
+// ── GGUF Metadata Scanner Commands ────────────────────────────────────────
+
+/// Scan a single model's GGUF metadata, cache it, and return the enriched ModelEntry.
+#[tauri::command]
+pub async fn scan_model_metadata_cmd(
+    model_path: String,
+    provider_id: Option<String>,
+    app: tauri::State<'_, AppContext>,
+) -> Result<crate::types::ModelEntry, String> {
+    let pid = provider_id.unwrap_or_else(|| "ggml-stable".to_string());
+    let bin_str = {
+        let cfg = app.config.lock().map_err(|e| e.to_string())?;
+        let binary_path = engine_utils::find_provider_binary(&cfg, &pid);
+        if !binary_path.exists() {
+            return Err(format!("Provider binary not found: {}", binary_path.display()));
+        }
+        binary_path.to_string_lossy().to_string()
+    };
+
+    // Run scan on a background thread — closure captures only Strings (Send types)
+    let metadata_result: Result<crate::types::ModelMetadata, String> = tokio::task::spawn_blocking({
+        let mp = model_path.clone();
+        move || crate::gguf_scan::scan_model_metadata(&mp, &bin_str)
+    })
+    .await
+    .map_err(|e| format!("Scan task failed: {}", e))?;
+
+    let metadata = metadata_result?;
+
+    log::info!("[scan_model_metadata_cmd] Scanned path='{}', arch={}", model_path, metadata.architecture);
+    // Save to cache (clone metadata for both cache and return value)
+    let cached_meta = metadata.clone();
+    crate::model_cache::set_cached(&model_path, cached_meta)
+        .map_err(|e| format!("Cache save failed: {}", e))?;
+
+    // Return enriched ModelEntry — build minimal entry with metadata attached
+    let file_size = std::fs::metadata(&model_path)
+        .ok()
+        .map(|m| m.len())
+        .unwrap_or(0);
+
+    let hf_meta_for_entry = crate::model_cache::get_hf_metadata(&model_path);
+    Ok(crate::types::ModelEntry {
+        path: model_path,
+        author: "unknown".to_string(),
+        name: "scanning".to_string(),
+        quant: metadata.file_type_str.clone(),
+        size_str: model_catalog::calc_size_str_from_bytes(file_size),
+        vision: false,
+        mmproj: None,
+        backend_type: pid,
+        source_path_label: String::new(),
+        metadata: Some(metadata),
+        hf_meta: hf_meta_for_entry,
+    })
+}
+
+/// Batch scan all models in the library with concurrency limit. Emits progress events to frontend.
+#[tauri::command]
+pub async fn scan_all_models_cmd(
+    _model_base: Option<String>,
+    provider_id: Option<String>,
+    app: tauri::State<'_, AppContext>,
+) -> Result<usize, String> {
+    let (bin_str, all_paths, total) = {
+        let cfg = app.config.lock().map_err(|e| e.to_string())?;
+        let pid = provider_id.unwrap_or_else(|| "ggml-stable".to_string());
+        let binary_path = engine_utils::find_provider_binary(&cfg, &pid);
+        if !binary_path.exists() {
+            return Err(format!("Provider binary not found: {}", binary_path.display()));
+        }
+        // Use all configured paths instead of single model_base
+        let paths = crate::config::get_model_paths(&cfg);
+        let (catalog, _) = model_catalog::merge_catalogs(&paths)?;
+        let total = catalog.len();
+        let all_paths: Vec<String> = catalog.iter().map(|e| e.path.clone()).collect();
+        if total == 0 {
+            return Ok(0);
+        }
+        (binary_path.to_string_lossy().to_string(), all_paths, total)
+    };
+
+    // Clone log_hub for event emission (LogHub is Clone)
+    let log_hub = app.log_hub.clone();
+
+    // Reset cancellation flag at start of batch scan
+    crate::gguf_scan::reset_cancel();
+
+    tokio::spawn({
+        let log_hub_start = log_hub.clone();
+        async move {
+            log_hub_start.emit("gguf-scan-start", &serde_json::json!({ "total": total }));
+        }
+    });
+
+    // Run scans sequentially in batches — each spawn_blocking captures only Send types
+    let mut scanned: usize = 0;
+    let mut failed: usize = 0;
+    const CONCURRENCY: usize = 2;
+    type ScanHandle = tokio::task::JoinHandle<Result<crate::types::ModelMetadata, String>>;
+    let mut handles: Vec<(usize, String, ScanHandle)> = Vec::new();
+
+    for (i, path) in all_paths.iter().enumerate() {
+        // Check cancellation between models
+        if crate::gguf_scan::is_cancelled() {
+            log::info!("GGUF scan cancelled after {} models", scanned);
+            break;
+        }
+
+        // Incremental skip: check if cached metadata is still valid
+        let cached = crate::model_cache::get_cached(path);
+        if cached.is_some() {
+            log::debug!("[batch_scan] SKIP (cache HIT): {}", path);
+            scanned += 1;
+            continue;
+        }
+
+        let scan_path = path.clone();
+        let bin = bin_str.clone();
+
+        log::debug!("[batch_scan] Scanning: {}", scan_path);
+        let handle = tokio::task::spawn_blocking(move || {
+            crate::gguf_scan::scan_model_metadata(&scan_path, &bin)
+        });
+
+        handles.push((i, path.clone(), handle));
+
+        // When we hit concurrency limit, await one before spawning next
+        if handles.len() >= CONCURRENCY {
+            let (_, p, h) = handles.remove(0);
+            match h.await {
+                Ok(Ok(metadata)) => {
+                    if let Err(e) = crate::model_cache::set_cached(&p, metadata.clone()) {
+                        log::warn!("Failed to cache {}: {}", p, e);
+                    }
+                    scanned += 1;
+                }
+                Ok(Err(e)) => {
+                    log::warn!("Scan failed for {}: {}", p, e);
+                    failed += 1;
+                }
+                Err(e) => {
+                    log::warn!("Task failed for {}: {}", p, e);
+                    failed += 1;
+                }
+            }
+
+            let lh = log_hub.clone();
+            tokio::spawn(async move {
+                lh.emit("gguf-scan-progress", &serde_json::json!({
+                    "scanned": scanned,
+                    "failed": failed,
+                    "total": total,
+                    "current_model": p,
+                }));
+            });
+        }
+    }
+
+    // Await remaining handles (let in-flight scans finish)
+    for (_, p, h) in handles {
+        match h.await {
+            Ok(Ok(metadata)) => {
+                if let Err(e) = crate::model_cache::set_cached(&p, metadata.clone()) {
+                    log::warn!("Failed to cache {}: {}", p, e);
+                }
+                scanned += 1;
+            }
+            Ok(Err(e)) => {
+                log::warn!("Scan failed for {}: {}", p, e);
+                failed += 1;
+            }
+            Err(e) => {
+                log::warn!("Task failed for {}: {}", p, e);
+                failed += 1;
+            }
+        }
+
+        let lh = log_hub.clone();
+        tokio::spawn(async move {
+            lh.emit("gguf-scan-progress", &serde_json::json!({
+                "scanned": scanned,
+                "failed": failed,
+                "total": total,
+                "current_model": p,
+            }));
+        });
+    }
+
+    // Emit complete event
+    let lh = log_hub.clone();
+    tokio::spawn(async move {
+        lh.emit("gguf-scan-complete", &serde_json::json!({
+            "scanned": scanned,
+            "failed": failed,
+            "total": total,
+        }));
+    });
+
+    Ok(scanned)
+}
+
+/// Cancel an in-progress GGUF batch scan. Sets the global cancel flag;
+/// the scan loop checks it between models and will stop spawning new scans.
+#[tauri::command]
+pub fn cancel_gguf_scan_cmd() {
+    crate::gguf_scan::GGUF_SCAN_CANCEL.store(true, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// Clear the entire model metadata cache.
+#[tauri::command]
+pub async fn clear_model_cache_cmd() -> Result<(), String> {
+    crate::model_cache::clear_cache()
+}
+

@@ -41,7 +41,6 @@ export default {
       animation: {
         "pulse-slow": "pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite",
         "glow-green": "glowGreen 2s ease-in-out infinite alternate",
-        "scan-line": "scanLine 8s linear infinite",
         "coolant-ripple": "coolantRipple 1.5s ease-in-out infinite",
         "rod-insert": "rodInsert 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards",
         "heat-haze": "heatHaze 0.3s ease-in-out infinite alternate",
@@ -60,10 +59,6 @@ export default {
         glowGreen: {
           "0%": { boxShadow: "0 0 5px rgba(118, 185, 0, 0.3)" },
           "100%": { boxShadow: "0 0 20px rgba(118, 185, 0, 0.6)" },
-        },
-        scanLine: {
-          "0%": { transform: "translateY(-100%)" },
-          "100%": { transform: "translateY(100vh)" },
         },
         coolantRipple: {
           "0%, 100%": { transform: "translateX(0) scaleY(1)", opacity: "0.7" },

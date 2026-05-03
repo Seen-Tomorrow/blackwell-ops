@@ -125,53 +125,114 @@ impl VramProfile {
         let b = self.anchor_b_mib;
 
         if a.is_nan() || b.is_nan() || a <= 0.0 || b <= 0.0 {
-            return a;
+            return a.max(b);
         }
 
         const ANCHOR_A_CTX: usize = 8192;
         const ANCHOR_B_CTX: usize = 131072;
         let ctx_a = ANCHOR_A_CTX as f64;
         let ctx_b = ANCHOR_B_CTX as f64;
+        
+        // Calculate slope (VRAM growth per token) from anchor points
         let slope_f16 = (b - a) / (ctx_b - ctx_a);
-
+        
+        // Clamp context size to valid range for interpolation
         let clamped_ctx = ctx.max(ANCHOR_A_CTX).min(ANCHOR_B_CTX) as f64;
+        
+        // Estimate base VRAM at requested context with f16 KV cache
         let vram_at_f16 = a + slope_f16 * (clamped_ctx - ctx_a);
-
-        let kv_ratio = if self.anchor_c_mib > 0.0 && !self.anchor_c_mib.is_nan() {
+        
+        // Calculate KV overhead from CTX growth: how much extra for larger contexts
+        let kv_overhead_f16 = vram_at_f16 - a;  // Extra VRAM beyond model weights
+        
+        // Get quantization ratio: anchor C / anchor B (128K q4_0 vs 128K f16)
+        let kv_ratio = if self.anchor_c_mib > 0.0 && !self.anchor_c_mib.is_nan() && b > 0.0 {
             self.anchor_c_mib / b
         } else {
+            // Fallback ratios when anchor C is missing
             match kv_quant.to_lowercase().as_str() {
+                "f16" | "bf16" => return vram_at_f16,
                 "q8_0" => 1.0,
                 "q5_0" | "q5_1" | "q5_k" => 0.75,
-                "q4_0" | "q4_1" | "q4_k" => 0.5,
-                "q3_k" => 0.375,
-                "q2_k" => 0.25,
-                _ => 0.5,
+                "q4_0" | "q4_1" | "q4_k" | "iq4_nl" => 0.625, // ~62.5% for Q4_K
+                "q3_k" => 0.5,
+                "q2_k" => 0.375,
+                _ => 0.625, // Default to Q4 ratio
             }
         };
 
-        if kv_quant.to_lowercase() == "f16" {
-            vram_at_f16
-        } else {
-            let base_vram = a;
-            let kv_overhead_f16 = vram_at_f16 - base_vram;
-            base_vram + (kv_overhead_f16 * kv_ratio)
-        }
+        // Final VRAM = base weights + quantized KV overhead
+        a + (kv_overhead_f16 * kv_ratio)
     }
 }
 
 // ── Binary Discovery ────────────────────────────────────────────────
 
 /// Find llama-fit-params.exe next to the provider's server binary.
+/// Falls back to searching common provider directories if not found in current one.
 pub fn find_fit_binary(provider_binary_path: &str) -> Option<String> {
     let base = PathBuf::from(provider_binary_path);
-    let parent_dir = base.parent()?;
-    let fit_path = parent_dir.join("llama-fit-params.exe");
-    if fit_path.exists() {
-        Some(fit_path.to_string_lossy().to_string())
-    } else {
-        None
+    
+    // First try: same directory as server binary
+    if let Some(parent_dir) = base.parent() {
+        let fit_path = parent_dir.join("llama-fit-params.exe");
+        if fit_path.exists() {
+            return Some(fit_path.to_string_lossy().to_string());
+        }
+        
+        // Second try (IK fallback): search sibling directories for GGML llama-fit-params.exe
+        // IK providers don't bundle this binary, so we reuse GGML's version
+        if let Ok(entries) = std::fs::read_dir(parent_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    let name_lower = path.file_name()
+                        .map(|n| n.to_string_lossy().to_lowercase())
+                        .unwrap_or_default();
+                    
+                    // Look for directories that might contain llama-fit-params.exe
+                    if name_lower.contains("ggml") || name_lower.contains("llama") 
+                       || !name_lower.is_empty() {
+                        let candidate = path.join("llama-fit-params.exe");
+                        if candidate.exists() {
+                            return Some(candidate.to_string_lossy().to_string());
+                        }
+                    }
+                }
+            }
+        }
     }
+    
+    None
+}
+
+/// Find ANY llama-fit-params.exe in common locations (for system-wide fallback).
+/// Used when provider-specific binary is not available.
+pub fn find_fallback_fit_binary() -> Option<String> {
+    // Search in same directory as current executable
+    if let Ok(current_exe) = std::env::current_exe() {
+        if let Some(exe_dir) = current_exe.parent() {
+            let fit_path = exe_dir.join("llama-fit-params.exe");
+            if fit_path.exists() {
+                return Some(fit_path.to_string_lossy().to_string());
+            }
+            
+            // Search sibling directories
+            if let Ok(entries) = std::fs::read_dir(exe_dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.is_dir() {
+                        let fit_in_subdir = path.join("llama-fit-params.exe");
+                        if fit_in_subdir.exists() {
+                            return Some(fit_in_subdir.to_string_lossy().to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    None
 }
 
 // ── Template-Driven Command Building ────────────────────────
@@ -294,7 +355,9 @@ pub async fn scan_single_anchor(
         .map(String::as_str)
         .unwrap_or("unknown");
 
-    eprintln!("[FIT_CMD] {} {}", fit_binary, args.join(" "));
+    // DEBUG Llama-fit-scanner launch memo - always printed for visibility
+    eprintln!("//DEBUG [FIT_LAUNCH] binary={} model={}", fit_binary, model_path);
+    eprintln!("//DEBUG [FIT_CMD] {} {}", fit_binary, args.join(" "));
 
     let spawn_future = Command::new(fit_binary)
         .args(args)
@@ -315,19 +378,61 @@ pub async fn scan_single_anchor(
     let stderr = String::from_utf8_lossy(&output.stderr);
     let combined_output = format!("{}\n{}", stdout, stderr);
 
-    // Always dump raw output for debugging parse issues
-    eprintln!("[FIT_RAW] exit={:?}\nSTDOUT:\n{}\nSTDERR:\n{}", output.status.code(), stdout, stderr);
+    // DEBUG Llama-fit-scanner result - always printed for visibility
+    eprintln!("//DEBUG [FIT_RAW] exit={} model={}\nSTDOUT:\n{}\nSTDERR:\n{}", 
+        output.status.code().map(|c| c.to_string()).unwrap_or_else(|| "signal".to_string()),
+        model_path, stdout, stderr);
 
     if let Some(vram_mib) = parse_fit_output(&combined_output) {
-        eprintln!("[FIT_OK] {} -> {} MiB", model_path, vram_mib);
+        eprintln!("//DEBUG [FIT_OK] {} -> {:.1} MiB", model_path, vram_mib);
         Ok(vram_mib)
     } else {
-        log::warn!("Fit scan parse failed for {}: exit={:?}", model_path, output.status.code());
-        Err(format!(
-            "Could not parse VRAM from fit output. Exit code: {:?}",
-            output.status.code()
-        ))
+        // Even on exit=1 (model doesn't fit), try to extract projected VRAM from memory breakdown
+        if let Some(projected) = parse_projected_vram(&combined_output) {
+            eprintln!("//DEBUG [FIT_PARTIAL] {} -> {:.1} MiB (projected, doesn't fit single GPU)", model_path, projected);
+            Ok(projected)
+        } else {
+            log::warn!("Fit scan parse failed for {}: exit={:?}", model_path, output.status.code());
+            Err(format!(
+                "Could not parse VRAM from fit output. Exit code: {:?}",
+                output.status.code()
+            ))
+        }
     }
+}
+
+/// Parse projected VRAM from memory breakdown when model doesn't fit single GPU.
+/// Extracts the "model" value from common_memory_breakdown_print lines.
+fn parse_projected_vram(output: &str) -> Option<f64> {
+    for line in output.lines() {
+        let lower = line.to_lowercase();
+        if lower.contains("memory breakdown") && (lower.contains("mib") || lower.contains("mi b")) {
+            // Parse the model column value from breakdown table
+            // Format: | - CUDA0 ... | 97886 = 78968 + (152340 = 131595 +   20336 +     408) + ...
+            if let Some(model_mib) = extract_model_from_breakdown(line) {
+                return Some(model_mib);
+            }
+        }
+    }
+    None
+}
+
+/// Extract model VRAM from memory breakdown line.
+/// Format: (total = model + context + compute) → we want "model" value.
+fn extract_model_from_breakdown(line: &str) -> Option<f64> {
+    // Find the parenthesized section: (152340 = 131595 +   20336 +     408)
+    if let Some(start) = line.find('(') {
+        if let Some(end) = line[start..].find(')') {
+            let inner = &line[start + 1..start + end];
+            // Split by '=' to get total and breakdown: "152340 = 131595 +   20336 +     408"
+            if let Some(eq_pos) = inner.find('=') {
+                let after_eq = &inner[eq_pos + 1..];
+                // First number after '=' is the model weight VRAM
+                return extract_number(after_eq.trim());
+            }
+        }
+    }
+    None
 }
 
 /// Build a VramProfile from anchor results (only if all 3 anchors succeeded).
@@ -385,8 +490,8 @@ pub fn find_gguf_models(base_path: &str) -> Vec<String> {
             .and_then(|s| s.to_str())
             .unwrap_or("");
 
-        // Use shared strip_shard_pattern from engine module
-        let base_name = crate::engine::strip_shard_pattern(filename);
+        // Use shared strip_shard_pattern from model_catalog module
+        let base_name = crate::model_catalog::strip_shard_pattern(filename);
 
         // Use (parent_dir, base_name) as group key to avoid cross-directory collisions
         let parent_key = path_buf.parent()

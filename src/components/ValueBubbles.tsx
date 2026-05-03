@@ -28,6 +28,7 @@ interface ValueBubblesProps {
   ptype?: 'switch' | 'switch_onoff' | 'switch_inverted' | 'arg_select' | 'mapper' | 'path_scanner' | 'logic_only';
   /** Opens editor for this specific value's sub_params (admin only). */
   onEditValue?: (value: string | number) => void;
+  removeValue?: (value: string | number) => void;
   /** Sub-params injected by Rust templates.rs when a specific value is selected (e.g. MOE_OPTIMAL). */
   subParams?: Record<string, string[]>;
 }
@@ -46,6 +47,7 @@ export default function ValueBubbles({
   factoryDefault,
   onChangeDefault,
   onEditValue,
+  removeValue,
   ptype,
   subParams,
 }: ValueBubblesProps) {
@@ -54,13 +56,14 @@ export default function ValueBubbles({
 
   // ── Build unified display list (template values + user-added), deduped ──────────
   const seen = new Set<string>();
+  const userAddedSet = new Set((userAddedValues || []).map(v => String(v)));
   type DisplayItem = { val: string | number; isUserAdded: boolean };
   const allDisplayValues: DisplayItem[] = [];
 
   if (availableValues) {
     for (const v of availableValues) {
       const key = String(v);
-      if (!seen.has(key)) { seen.add(key); allDisplayValues.push({ val: v, isUserAdded: false }); }
+      if (!seen.has(key)) { seen.add(key); allDisplayValues.push({ val: v, isUserAdded: userAddedSet.has(key) }); }
     }
   }
   for (const v of userAddedValues || []) {
@@ -134,7 +137,7 @@ export default function ValueBubbles({
     
     if (isUserAdded) {
       // User-added values: always yellow text + border
-      style = "bg-yellow-400/15 border border-yellow-400/60 text-yellow-300";
+      style = "bg-nv-green/10 border border-nv-green/30 text-yellow-300";
     } else {
       const isDefault = defaultValue !== undefined && String(val) === String(defaultValue);
       const isFactoryDefault = factoryDefault !== undefined &&
@@ -144,7 +147,7 @@ export default function ValueBubbles({
         // This param has a defined default — distinguish factory vs user-set
         if (!isFactoryDefault) {
           // User-set default: yellow border + yellow text (distinct from green factory)
-          style = "bg-yellow-400/25 border-double border-2 border-yellow-400/80 text-yellow-300";
+          style = "bg-nv-green/30 border-double border-2 border-yellow-400/80 text-yellow-300";
         } else {
           // Factory default: green styling only
           style = selected
@@ -212,6 +215,15 @@ export default function ValueBubbles({
               });
             })()}
           </span>
+        )}
+
+        {/* Remove value — admin only, user-added values */}
+        {isAdmin && isUserAdded && removeValue && (
+          <button onClick={(e) => { e.stopPropagation(); removeValue(val); }}
+            className="leading-none text-red-400/60 hover:text-red-400 transition-colors"
+            title="Remove this value">
+            ×
+          </button>
         )}
 
         {/* Hide toggle — admin only */}

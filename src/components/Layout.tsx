@@ -15,10 +15,33 @@ function isMobileDevice(): boolean {
   }
 }
 
+const ADMIN_LOCK_KEY = "BlackOps-admin-lock";
 const ZOOM_KEY = "BlackOps-ui-zoom";
 const MIN_ZOOM = 0.7;
 const MAX_ZOOM = 1.5;
 const ZOOM_STEP = 0.05;
+
+function loadAdminLock(): string {
+  try { return localStorage.getItem(ADMIN_LOCK_KEY) || "locked"; } catch { return "locked"; }
+}
+
+function cycleAdminLockState(current: string): string {
+  if (current === "locked") return "unlocked";
+  if (current === "unlocked") return "permanently";
+  return "locked";
+}
+
+const ADMIN_LABELS: Record<string, string> = {
+  locked: "POWER USER — LOCKED",
+  unlocked: "POWER USER — UNLOCKED",
+  permanently: "POWER USER — PERMANENTLY UNLOCKED",
+};
+
+const ADMIN_COLORS: Record<string, string> = {
+  locked: "text-stealth-muted hover:text-white",
+  unlocked: "text-yellow-400",
+  permanently: "text-yellow-400",
+};
 
 function loadZoom(): number {
   try {
@@ -43,6 +66,7 @@ interface LayoutProps {
 
 const tabs: { id: Tab; label: string; icon: string; hidden?: boolean }[] = [
   { id: "catalog", label: "MODELS", icon: "\u269B" },
+  { id: "modelhub", label: "MODEL HUB", icon: "\uD83DDDC4" },
   { id: "stack", label: "ENGINES", icon: "\uD83D\uDDA4" },
   { id: "reactor", label: "REACTOR", icon: "\u2623", hidden: true },
   { id: "reactor11", label: "Reactor11", icon: "\u269B" },
@@ -53,15 +77,27 @@ const tabs: { id: Tab; label: string; icon: string; hidden?: boolean }[] = [
 ];
 
 export default function Layout({ activeTab, onTabChange, children }: LayoutProps) {
-  const [currentTime, setCurrentTime] = useState(new Date());
+  const [adminLockState, setAdminLockState] = useState(loadAdminLock);
   const [zoom, setZoom] = useState(loadZoom);
-  const { totalParams, hiddenCount, onShowAll } = useStatus();
+  const { totalParams, hiddenCount, onShowAll, flashMessage } = useStatus();
   const [showTooltip, setShowTooltip] = useState(false);
   const [isMobile, setIsMobile] = useState(isMobileDevice);
 
+  // Listen for admin lock changes from other components (ConfigPage)
   useEffect(() => {
-    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
-    return () => clearInterval(timer);
+    const handler = () => setAdminLockState(loadAdminLock());
+    window.addEventListener("admin-lock-changed", handler);
+    return () => window.removeEventListener("admin-lock-changed", handler);
+  }, []);
+
+  // Persist admin lock state to localStorage and broadcast
+  const handleAdminToggle = useCallback(() => {
+    setAdminLockState(prev => {
+      const next = cycleAdminLockState(prev);
+      try { localStorage.setItem(ADMIN_LOCK_KEY, next); } catch {}
+      window.dispatchEvent(new Event("admin-lock-changed"));
+      return next;
+    });
   }, []);
 
   useEffect(() => {
@@ -87,9 +123,6 @@ export default function Layout({ activeTab, onTabChange, children }: LayoutProps
 
   return (
     <div className="flex flex-col h-screen bg-stealth-black grid-bg relative" style={{ zoom }}>
-      {/* Scan line overlay */}
-      <div className="scanline absolute inset-0 pointer-events-none z-50" />
-
       {/* Top bar */}
       <motion.header
         initial={{ y: -40, opacity: 0 }}
@@ -136,11 +169,13 @@ export default function Layout({ activeTab, onTabChange, children }: LayoutProps
           </nav>
         </div>
 
-        {/* Clock + Zoom controls */}
-        <div className="flex flex-col items-center gap-2">
-          <div className="font-mono text-xs text-stealth-muted">
-            {currentTime.toLocaleTimeString("en-US", { hour12: false })}
-          </div>
+        {/* Admin lock + Zoom controls */}
+        <div className="flex flex-col items-end gap-2">
+          <button onClick={handleAdminToggle}
+            className={`text-[9px] font-mono tracking-wider transition-colors ${ADMIN_COLORS[adminLockState] || ADMIN_COLORS.locked}`}
+            title={ADMIN_LABELS[adminLockState] || "LOCKED"}>
+            POWER USER {adminLockState === "locked" ? "\u{1F512}" : adminLockState === "unlocked" ? "\u{1F513}" : "\u{1F511}"}
+          </button>
           <div className="flex items-center gap-1 border border-stealth-border rounded-sm px-1 py-0.5">
             <button onClick={() => adjustZoom(-ZOOM_STEP)} className="px-1 text-[9px] font-mono text-stealth-muted hover:text-nv-green transition-colors leading-none" title="Decrease font size">−</button>
             <span className="text-[8px] font-mono text-stealth-muted/60 w-8 text-center">{Math.round(zoom * 100)}%</span>
@@ -159,7 +194,7 @@ export default function Layout({ activeTab, onTabChange, children }: LayoutProps
           transition={{ duration: 0.25, ease: "easeOut" }}
           className="h-full overflow-y-auto"
         >
-          <div className="pb-6">{children}</div>
+          <div className="max-w-[1280px] mx-auto" style={{paddingBottom: '80px'}}>{children}</div>
         </motion.div>
       </main>
 
@@ -190,7 +225,9 @@ export default function Layout({ activeTab, onTabChange, children }: LayoutProps
               </div>
             </>
           )}
-          <span className="text-nv-green">SYSTEM NOMINAL</span>
+          <span className={`transition-colors ${flashMessage ? "status-flash" : "text-nv-green"}`}>
+            {flashMessage || "SYSTEM NOMINAL"}
+          </span>
         </div>
       </footer>
     </div>

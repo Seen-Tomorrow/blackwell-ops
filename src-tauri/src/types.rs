@@ -43,6 +43,40 @@ pub struct EngineConfig {
 
 fn default_ffi_provider() -> String { "ggml-stable".to_string() }
 
+/// HF API metadata persisted at download time — never changes, survives API outages.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HfMetadata {
+    /// Canonical HF model ID (e.g., "bartowski/Llama-3.1-8B-IQ1_MS")
+    #[serde(rename = "hfModelId")]
+    pub hf_model_id: String,
+    /// Author from HF (e.g., "bartowski")
+    pub author: String,
+    /// Model repo name (derived from ID, e.g., "Llama-3.1-8B-IQ1_MS")
+    #[serde(rename = "repoName")]
+    pub repo_name: String,
+    /// HF tags (e.g., ["gguf", "llama"])
+    #[serde(default)]
+    pub tags: Vec<String>,
+    /// Download count at time of download
+    #[serde(default)]
+    pub downloads: u64,
+    /// Likes count at time of download
+    #[serde(default, rename = "likesCount")]
+    pub likes_count: u64,
+    /// Quant type from HF (e.g., "Q4_K_M") — more reliable than filename parsing
+    #[serde(rename = "quantType")]
+    pub quant_type: String,
+    /// File size in bytes from HF tree endpoint
+    #[serde(rename = "fileSizeBytes")]
+    pub file_size_bytes: u64,
+    /// Last modified date on HF at time of download
+    #[serde(default, rename = "lastModified")]
+    pub last_modified: String,
+    /// LFS content hash from HF tree endpoint — immutable file identity for incremental scan.
+    #[serde(default, rename = "lfsOid")]
+    pub lfs_oid: String,
+}
+
 // ── Model Catalog Entry ────────────────────────────────────────────────
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelEntry {
@@ -57,10 +91,100 @@ pub struct ModelEntry {
     pub mmproj: Option<String>,
     #[serde(default)]
     pub backend_type: String,
+    /// Human-readable label of the configured path this model came from (e.g. ".lmstudio", "D: Archive").
+    #[serde(default, rename = "sourcePathLabel")]
+    pub source_path_label: String,
+    /// Parsed GGUF metadata — populated from cache or on-demand scan.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<ModelMetadata>,
+    /// Persistent HF API metadata — set at download time, never expires.
+    #[serde(default, skip_serializing_if = "Option::is_none", rename = "hfMeta")]
+    pub hf_meta: Option<HfMetadata>,
+}
+
+/// Duplicate model found across multiple configured paths during catalog merge.
+#[derive(Debug, Clone, Serialize)]
+pub struct CatalogDedupConflict {
+    /// Dedup key (author|name|quant).
+    #[serde(rename = "dedupKey")]
+    pub dedup_key: String,
+    /// First occurrence of this model.
+    #[serde(rename = "entryA")]
+    pub entry_a: ModelEntryInternal,
+    /// Second occurrence of this model.
+    #[serde(rename = "entryB")]
+    pub entry_b: ModelEntryInternal,
+}
+
+/// Parsed GGUF model metadata from llama-server header output.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelMetadata {
+    /// Architecture name (e.g., "minimax-m2", "llama", "qwen2")
+    pub architecture: String,
+    /// Model type label from print_info (e.g., "230B.A10B")
+    #[serde(default, rename = "modelTypeLabel")]
+    pub model_type_label: String,
+    /// Number of transformer layers (block_count)
+    pub n_layer: u32,
+    /// Trained context length in tokens
+    #[serde(rename = "n_ctx_train")]
+    pub n_ctx_train: u32,
+    /// Embedding dimension
+    pub n_embd: u32,
+    /// Attention head count
+    pub n_head: u32,
+    /// KV head count (GQA-aware)
+    #[serde(rename = "n_head_kv")]
+    pub n_head_kv: u32,
+    /// Expert count (0 if not MoE)
+    #[serde(default)]
+    pub n_expert: u32,
+    /// Active experts per token (0 if not MoE)
+    #[serde(default, rename = "n_expert_used")]
+    pub n_expert_used: u32,
+    /// Rope frequency base
+    #[serde(default, rename = "rope_freq_base")]
+    pub rope_freq_base: f32,
+    /// Rope dimension count (0 = full head dim)
+    #[serde(default)]
+    pub rope_dim: u32,
+    /// File type string (e.g., "Q4_K - Medium")
+    #[serde(rename = "file_type_str")]
+    pub file_type_str: String,
+    /// Bits-per-weight from file size line
+    #[serde(default)]
+    pub bpw: f32,
+    /// Tensor type counts (e.g., {"f32": 373, "q4_K": 375})
+    #[serde(default, rename = "tensor_counts")]
+    pub tensor_counts: HashMap<String, u32>,
+    /// Total parameter count string from print_info (e.g., "228.69 B")
+    #[serde(default, rename = "total_params_str")]
+    pub total_params_str: String,
+    /// Vocabulary size
+    #[serde(default)]
+    pub vocab_size: u32,
+    /// Human-readable name from GGUF general.name KV
+    #[serde(default, rename = "general_name")]
+    pub general_name: String,
+    /// Rope scaling type: "yarn", "linear", "none"
+    #[serde(default, rename = "rope_scaling_type")]
+    pub rope_scaling_type: String,
+    /// Tokenizer model from tokenizer.ggml.model (e.g., "gpt2", "llama")
+    #[serde(default, rename = "tokenizer_model")]
+    pub tokenizer_model: String,
+    /// Exact file size on disk in bytes
+    #[serde(rename = "file_size_bytes")]
+    pub file_size_bytes: u64,
+    /// Unix timestamp of when this metadata was scanned
+    #[serde(rename = "scan_timestamp")]
+    pub scan_timestamp: u64,
+    /// Windows file creation time (Unix timestamp) — used for "date added" sorting
+    #[serde(default, rename = "file_created")]
+    pub file_created: u64,
 }
 
 /// Internal representation used during catalog scanning (before dedup).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ModelEntryInternal {
     pub path: String,
     pub author: String,
@@ -72,6 +196,8 @@ pub struct ModelEntryInternal {
     pub model_bytes: u64,
     pub total_bytes: u64,
     pub shards: i32,
+    /// Configured path label this entry came from (e.g. ".lmstudio", "Default").
+    pub source_path_label: String,
 }
 
 // ── Stack Entry (for frontend display) ─────────────────────────────────
@@ -211,5 +337,169 @@ impl ParamDef {
         }
         None
     }
+}
+
+// ── Hugging Face Hub Types ───────────────────────────────────────────────
+
+/// Search result from HF API — a model on the hub.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HfModel {
+    pub id: String,               // e.g. "bartowski/Llama-3.1-8B-IQ1_MS"
+    pub author: String,           // e.g. "bartowski"
+    pub tags: Vec<String>,        // includes "gguf", "llama", etc.
+    #[serde(default)]
+    pub downloads: u64,
+    #[serde(default, deserialize_with = "deserialize_likes", serialize_with = "serialize_likes_count")]
+    pub likes_count: u64,
+    #[serde(default, rename = "lastModified")]
+    pub last_modified: String,
+    /// GGUF files extracted from siblings — only .gguf files.
+    #[serde(default)]
+    pub gguf_files: Vec<GgufFile>,
+}
+
+fn deserialize_likes<'de, D>(deserializer: D) -> Result<u64, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let val = serde_json::Value::deserialize(deserializer)?;
+    Ok(val.as_u64().unwrap_or(0))
+}
+
+fn serialize_likes_count<S>(val: &u64, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    serializer.serialize_u64(*val)
+}
+
+/// A single GGUF quantization variant available for download.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GgufFile {
+    /// Display name (e.g. "Llama-3.1-8B-IQ1_Ms.gguf")
+    pub r#type: String,           // HF API calls this "type" — the quant tag like Q4_K_M
+    pub size_bytes: u64,
+    pub url: String,              // direct download URL from hf.co
+    /// LFS content hash (SHA-256) from HF tree endpoint for incremental scan.
+    #[serde(default)]
+    pub lfs_oid: String,
+}
+
+/// Filters for HF model search.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HfSearchFilters {
+    #[serde(default)]
+    pub query: String,
+    /// VRAM tier filter — only show models that fit in this much VRAM (in GB). 0 = no filter.
+    #[serde(default, rename = "vram_gb")]
+    pub vram_limit_gb: u32,
+    #[serde(default)]
+    pub limit: usize,            // default 50
+    /// Sort: "downloads", "likes", "lastModified"
+    #[serde(default)]
+    pub sort: String,
+}
+
+// ── Download Manager Types ───────────────────────────────────────────────
+
+/// Status of a download task.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum DownloadStatus {
+    Queued,
+    Downloading,
+    Paused,
+    Completed,
+    Failed,
+    Scanning,  // Post-download GGUF metadata scan
+}
+
+/// A single download task in the queue.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DownloadTask {
+    pub id: String,              // unique ID (UUID or timestamp-based)
+    #[serde(rename = "hfModelId")]
+    pub hf_model_id: String,     // HF model ID for display
+    pub file_name: String,       // filename being downloaded
+    pub download_url: String,    // direct URL from HF
+    #[serde(rename = "totalBytes")]
+    pub total_bytes: u64,
+    #[serde(rename = "downloadedBytes")]
+    pub downloaded_bytes: u64,
+    pub status: DownloadStatus,
+    /// Where the file will be saved (full path).
+    #[serde(rename = "destPath")]
+    pub dest_path: String,
+    /// Current download speed in bytes/sec.
+    #[serde(default, rename = "speedBps")]
+    pub speed_bps: u64,
+    /// Byte offset for resume support.
+    #[serde(default, rename = "pauseOffset")]
+    pub pause_offset: u64,
+    #[serde(default)]
+    pub error: Option<String>,
+    /// Estimated time remaining in seconds (0 if unknown).
+    #[serde(default, rename = "etaSeconds")]
+    pub eta_seconds: u64,
+    /// HF author (e.g., "bartowski") — used to save HfMetadata on download completion.
+    #[serde(default)]
+    pub hf_author: String,
+    /// Quant type from HF API (e.g., "Q4_K_M") — more reliable than filename parsing.
+    #[serde(default, rename = "quantType")]
+    pub quant_type: String,
+    /// LFS content hash for incremental scan skip on completion.
+    #[serde(default, rename = "lfsOid")]
+    pub lfs_oid: String,
+}
+
+// ── Model Paths Types ────────────────────────────────────────────────────
+
+/// A configured model directory.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelPathEntry {
+    pub path: String,
+    /// Human-readable label (e.g., "Main SSD", "D: Archive")
+    #[serde(default)]
+    pub label: String,
+    /// Whether new downloads default to this path.
+    #[serde(default, rename = "isDefault")]
+    pub is_default: bool,
+}
+
+/// Disk usage info for a model path.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PathDiskUsage {
+    pub path: String,
+    /// Total size of all .gguf files in this path (bytes).
+    #[serde(rename = "totalGgufBytes")]
+    pub total_gguf_bytes: u64,
+    /// Number of GGUF files.
+    #[serde(rename = "fileCount")]
+    pub file_count: usize,
+}
+
+/// Response from search_hf_models IPC command.
+#[derive(Debug, Clone, Serialize)]
+pub struct HfSearchResponse {
+    pub models: Vec<HfModel>,
+    /// Whether there are more results available (for pagination).
+    #[serde(rename = "hasMore")]
+    pub has_more: bool,
+}
+
+/// Response from get_hf_model_info IPC command — full model details.
+#[derive(Debug, Clone, Serialize)]
+pub struct HfModelInfo {
+    pub id: String,
+    pub author: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    #[serde(default)]
+    pub downloads: u64,
+    pub likes_count: u64,
+    /// All GGUF files available for this model.
+    pub gguf_files: Vec<GgufFile>,
 }
 
