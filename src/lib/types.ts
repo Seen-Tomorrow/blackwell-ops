@@ -88,6 +88,11 @@ export interface EngineConfig {
   unified_kv?: boolean;
   backend_type?: string;
   extra_params?: Record<string, any>;
+  // RoPE / Context Extension params (from genesis_template.json)
+  rope_scaling?: string;
+  rope_scale?: number;
+  yarn_orig_ctx?: number;
+  rope_freq_base?: number;
 }
 
 export interface ParamDef {
@@ -120,6 +125,7 @@ export interface ProviderConfig {
   enabled: boolean;
   params?: Record<string, any>;
   param_definitions?: ParamDef[];
+  groupOrder?: string[]; // Custom group order (empty = use template insertion order)
   _original_id?: string;
   git_url?: string;
   branch?: string;
@@ -258,6 +264,8 @@ export interface StyleObject {
   icon: string;
   label: string;
   ramVisible: boolean;
+  /** KV cache may spill to system RAM — honest warning, not certainty */
+  kvSpillCritical?: boolean;
 }
 
 export interface RunningEngine {
@@ -283,6 +291,7 @@ export interface VramManifest {
   vramOverheadGb: number;
   vramTotalGb: number;
   ramWeightsGb: number;
+  ramKvGb: number;
   ramSpillGb: number;
   ramTotalGb: number;
   ramManufacturedGb: number;

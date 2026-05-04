@@ -161,13 +161,22 @@ pub fn merge_catalogs(
             let size_str = calc_size_str_from_bytes(internal.total_bytes);
             let lookup_path = &internal.path;
 
-            // GGUF binary scan cache (24h TTL)
+            // GGUF binary scan cache — mtime-only invalidation
             log::debug!("[catalog] Cache lookup for '{}', path='{}'", internal.name, lookup_path);
-            let cached_meta = crate::model_cache::get_cached(lookup_path);
+            let mut cached_meta = crate::model_cache::get_cached(lookup_path);
             if cached_meta.is_some() {
                 log::info!("[catalog] ✅ Cached metadata loaded for {}", internal.name);
             } else {
                 log::debug!("[catalog] ❌ No cached metadata for {} (path: {})", internal.name, lookup_path);
+            }
+
+            // Override file_size_bytes with accumulated shard total — scanner only reads first shard's size
+            if let Some(ref mut m) = cached_meta {
+                if internal.shards > 1 || m.file_size_bytes != internal.total_bytes {
+                    log::debug!("[catalog] Correcting file_size_bytes for '{}': {} → {} (shards: {})",
+                        internal.name, m.file_size_bytes, internal.total_bytes, internal.shards);
+                    m.file_size_bytes = internal.total_bytes;
+                }
             }
 
             // HF API cache (persistent) — overrides author/name/quant from directory parsing
@@ -377,4 +386,33 @@ fn fallback_quant(filename: &str) -> String {
 /// Format bytes as human-readable string (e.g. "4.2GB").
 pub fn calc_size_str_from_bytes(total_bytes: u64) -> String {
     format!("{:.1}GB", total_bytes as f64 / (1024.0_f64.powi(3)))
+}
+
+/// Get the total size of a model, summing all shards if sharded.
+/// Uses strip_shard_pattern to detect shard siblings in the same directory.
+pub fn get_total_model_size(model_path: &str) -> u64 {
+    let path = std::path::Path::new(model_path);
+    if let Some(parent) = path.parent() {
+        let filename = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
+        let base_name = strip_shard_pattern(filename);
+        // Only sum siblings if the file is actually sharded (base differs from original)
+        if base_name != filename && parent.exists() {
+            let base_without_ext = &base_name[..base_name.len().saturating_sub(5)];
+            let mut total: u64 = 0;
+            if let Ok(entries) = std::fs::read_dir(parent) {
+                for entry in entries.flatten() {
+                    let name = entry.file_name().to_string_lossy().to_string();
+                    let lower = name.to_lowercase();
+                    if !lower.ends_with(".gguf") || lower.contains("mmproj") {
+                        continue;
+                    }
+                    if name.starts_with(base_without_ext) {
+                        total += entry.metadata().ok().map(|m| m.len()).unwrap_or(0);
+                    }
+                }
+            }
+            return total;
+        }
+    }
+    std::fs::metadata(model_path).ok().map(|m| m.len()).unwrap_or(0)
 }

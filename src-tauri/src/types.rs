@@ -37,9 +37,20 @@ pub struct EngineConfig {
     pub provider_type: String,
     #[serde(default)]
     pub n_gpu_layers: i32,
+    // RoPE / Context Extension params (from genesis_template.json)
+    #[serde(default)]
+    pub rope_scaling: String,
+    #[serde(default = "default_rope_scale")]
+    pub rope_scale: f64,
+    #[serde(default)]
+    pub yarn_orig_ctx: u32,
+    #[serde(default)]
+    pub rope_freq_base: f64,
     #[serde(default)]
     pub extra_params: HashMap<String, serde_json::Value>,
 }
+
+fn default_rope_scale() -> f64 { 1.0 }
 
 fn default_ffi_provider() -> String { "ggml-stable".to_string() }
 
@@ -243,6 +254,9 @@ pub struct ProviderConfig {
     pub params: serde_json::Value,
     #[serde(default)]
     pub param_definitions: Vec<ParamDef>,
+    /// Custom group order set by user (overrides template insertion order). Empty = use template order.
+    #[serde(default, rename = "groupOrder")]
+    pub group_order: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub _original_id: Option<String>,
     #[serde(default)]

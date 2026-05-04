@@ -1,4 +1,4 @@
-import { ScenarioInput, ComputedValues, buildManifest } from "./scenarios_factory";
+import { ScenarioInput, ComputedValues, buildManifest, gpuManufacturedMib } from "./scenarios_factory";
 import type { VramManifest } from "../../../lib/types";
 
 /**
@@ -24,6 +24,21 @@ export function tryEvaluate(input: ScenarioInput, computed: ComputedValues): Vra
   const clampedGpuLayers = Math.min(gpuLayers, nLayer);
   const ramLayers = Math.max(0, nLayer - clampedGpuLayers);
 
+  // KV cache spill risk — contiguous block may not fit in fragmented VRAM
+  const ramKvGb = ramLayers * kvPerLayer;
+  const largestGpuMib = Math.max(...input.gpus.map(g => gpuManufacturedMib(g)));
+  const maxPressure = input.gpus.reduce((max, g, i) => {
+    const total = gpuManufacturedMib(g) / 1024;
+    return total > 0 ? Math.max(max, (totalCapacity * (gpuAvailable[i] / multiTotalAvailable)) / total) : max;
+  }, 0);
+
+  // Dynamic threshold by GPU class — smaller cards fragment faster
+  let kvSpillThreshold = 0.85; // default mid-range
+  if (largestGpuMib < 24 * 1024) kvSpillThreshold = 0.82;
+  else if (largestGpuMib > 48 * 1024) kvSpillThreshold = 0.90;
+
+  const kvSpillCritical = ramKvGb > 0 && maxPressure > kvSpillThreshold;
+
   // Distribute load proportionally by available VRAM
   const perGpuLoad = gpuAvailable.map(avail =>
     multiTotalAvailable > 0 ? totalCapacity * (avail / multiTotalAvailable) : totalCapacity / numGpus,
@@ -33,18 +48,21 @@ export function tryEvaluate(input: ScenarioInput, computed: ComputedValues): Vra
     input, computed,
     "TOTAL_SPILL",
     {
-      titleColor: "text-red-600",
-      gpuBarColor: "bg-red-700",
-      borderColor: "border-red-700/30",
-      bgTint: "bg-red-700/5",
-      badgeBg: "bg-red-700/20",
-      icon: "◐",
-      label: "TOTAL SPILL",
+      titleColor: kvSpillCritical ? "text-telemetry-red" : "text-yellow-400",
+      gpuBarColor: kvSpillCritical ? "bg-telemetry-red" : "bg-yellow-500/60",
+      borderColor: kvSpillCritical ? "border-telemetry-red/40" : "border-yellow-500/30",
+      bgTint: kvSpillCritical ? "bg-telemetry-red/10" : "bg-yellow-500/5",
+      badgeBg: kvSpillCritical ? "bg-telemetry-red/20" : "bg-yellow-500/20",
+      icon: kvSpillCritical ? "⚠" : "◐",
+      label: kvSpillCritical ? "KV SPILL RISK" : "TOTAL SPILL",
       ramVisible: true,
+      kvSpillCritical,
     },
     clampedGpuLayers * perLayerGb, clampedGpuLayers * kvPerLayer, overheadGb + visionGb,
-    ramLayers * perLayerGb, spillGb, true,
-    `${ramLayers} layers in RAM across ${numGpus} GPU(s) — expect slower inference`,
+    ramLayers * perLayerGb, ramKvGb, spillGb, true,
+    kvSpillCritical
+      ? `SYSTEM MEMORY CASCADE: ${ramLayers} layers in RAM across ${numGpus} GPU(s) — weights (${(ramLayers * perLayerGb).toFixed(1)} GB) + KV risk (${(ramKvGb).toFixed(1)} GB)`
+      : `${ramLayers} layers in RAM across ${numGpus} GPU(s) — weights on system RAM (PCIe speed)`,
     clampedGpuLayers, ramLayers, perGpuLoad,
   );
 }

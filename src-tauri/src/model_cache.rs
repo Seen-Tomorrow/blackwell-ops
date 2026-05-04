@@ -119,6 +119,12 @@ pub fn get_cached(model_path: &str) -> Option<ModelMetadata> {
         }
     };
 
+    // Invalidate stale entries that lack file_size_bytes (pre-scan refactor cache corruption)
+    if gguf_meta.file_size_bytes == 0 {
+        log::warn!("[Cache] INVALID — file_size_bytes is 0 for {}, forcing re-scan", model_path);
+        return None;
+    }
+
     // Check file mtime matches — only invalidation mechanism (no TTL, GGUF headers are immutable)
     let current_mtime = std::fs::metadata(model_path)
         .ok()

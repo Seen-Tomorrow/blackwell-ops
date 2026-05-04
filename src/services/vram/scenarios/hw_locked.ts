@@ -21,7 +21,7 @@ export function evaluate(input: ScenarioInput, computed: ComputedValues, reason:
       ramVisible: false,
     },
     computed.weightsGb, computed.kvCacheGb, computed.overheadGb + computed.visionGb,
-    0, 0, false, reason,
+    0, 0, 0, false, reason,
     0, input.modelMeta.n_layer, perGpuLoad,
   );
 }

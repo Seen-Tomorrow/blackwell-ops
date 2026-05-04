@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "ggml-stable": {
     "binary_name": "llama-server.exe",
     "description": "Official llama.cpp stable build",
@@ -59,6 +59,50 @@
         "default": 1,
         "ui_group": "Performance",
         "note": "Number of concurrent request sequences."
+      },
+      {
+        "key": "RoPE_Scaling",
+        "label": "RoPE Scaling",
+        "config_key": "rope_scaling",
+        "flag": "--rope-scaling",
+        "ptype": "arg_select",
+        "values": ["none", "linear", "yarn"],
+        "default": "none",
+        "ui_group": "Advanced",
+        "note": "RoPE scaling type for context extension beyond training limit. 'none' = no scaling."
+      },
+      {
+        "key": "RoPE_Scale",
+        "label": "RoPE Scale",
+        "config_key": "rope_scale",
+        "flag": "--rope-scale",
+        "ptype": "arg_select",
+        "values": [1.0, 2.0, 4.0, 8.0, 16.0],
+        "default": 1.0,
+        "ui_group": "Advanced",
+        "note": "Context expansion factor. 1.0 = native training context. Increase to extend beyond n_ctx_train."
+      },
+      {
+        "key": "YARN_Orig_CTX",
+        "label": "YaRN Orig CTX",
+        "config_key": "yarn_orig_ctx",
+        "flag": "--yarn-orig-ctx",
+        "ptype": "arg_select",
+        "values": ["auto", 4096, 8192, 16384, 32768],
+        "default": "auto",
+        "ui_group": "Advanced",
+        "note": "Original training context for YaRN scaling. 'auto' resolves from GGUF metadata n_ctx_train."
+      },
+      {
+        "key": "RoPE_Freq_Base",
+        "label": "RoPE Freq Base",
+        "config_key": "rope_freq_base",
+        "flag": "--rope-freq-base",
+        "ptype": "arg_select",
+        "values": ["auto", 10000, 50000, 100000, 1000000],
+        "default": "auto",
+        "ui_group": "Advanced",
+        "note": "RoPE frequency base. 'auto' resolves from GGUF metadata rope_freq_base."
       },
       {
         "key": "Unified-KV",
@@ -272,6 +316,50 @@
         "default": 1,
         "ui_group": "Performance",
         "note": "Number of concurrent request sequences."
+      },
+      {
+        "key": "RoPE_Scaling",
+        "label": "RoPE Scaling",
+        "config_key": "rope_scaling",
+        "flag": "--rope-scaling",
+        "ptype": "arg_select",
+        "values": ["none", "linear", "yarn"],
+        "default": "none",
+        "ui_group": "Advanced",
+        "note": "RoPE scaling type for context extension beyond training limit. 'none' = no scaling."
+      },
+      {
+        "key": "RoPE_Scale",
+        "label": "RoPE Scale",
+        "config_key": "rope_scale",
+        "flag": "--rope-scale",
+        "ptype": "arg_select",
+        "values": [1.0, 2.0, 4.0, 8.0, 16.0],
+        "default": 1.0,
+        "ui_group": "Advanced",
+        "note": "Context expansion factor. 1.0 = native training context. Increase to extend beyond n_ctx_train."
+      },
+      {
+        "key": "YARN_Orig_CTX",
+        "label": "YaRN Orig CTX",
+        "config_key": "yarn_orig_ctx",
+        "flag": "--yarn-orig-ctx",
+        "ptype": "arg_select",
+        "values": ["auto", 4096, 8192, 16384, 32768],
+        "default": "auto",
+        "ui_group": "Advanced",
+        "note": "Original training context for YaRN scaling. 'auto' resolves from GGUF metadata n_ctx_train."
+      },
+      {
+        "key": "RoPE_Freq_Base",
+        "label": "RoPE Freq Base",
+        "config_key": "rope_freq_base",
+        "flag": "--rope-freq-base",
+        "ptype": "arg_select",
+        "values": ["auto", 10000, 50000, 100000, 1000000],
+        "default": "auto",
+        "ui_group": "Advanced",
+        "note": "RoPE frequency base. 'auto' resolves from GGUF metadata rope_freq_base."
       },
       {
         "key": "Unified-KV",

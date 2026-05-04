@@ -29,7 +29,7 @@ export function tryEvaluate(input: ScenarioInput, computed: ComputedValues): Vra
       ramVisible: false,
     },
     computed.weightsGb, computed.kvCacheGb, computed.overheadGb + computed.visionGb,
-    0, 0, true, "",
+    0, 0, 0, true, "",
     input.modelMeta.n_layer, 0, perGpuLoad,
   );
 }

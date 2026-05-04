@@ -77,12 +77,18 @@ export default function VramBadge({ manifest, gpus, onDeviceSelect }: VramBadgeP
 
             {/* Layer breakdown when RAM offload is active */}
             {manifest.ramLayers > 0 && (
-              <div className="flex items-center gap-2 mt-1">
-                <span className="text-[8px] font-mono text-nv-green">{manifest.gpuLayers} layers on GPU</span>
-                <span className="text-[8px] font-mono text-stealth-muted">/</span>
-                <span className={`text-[8px] font-mono ${s.ramVisible ? "text-yellow-400" : "text-telemetry-red"}`}>
-                  {manifest.ramLayers} in RAM ({(manifest.ramTotalGb).toFixed(1)} GB)
-                </span>
+              <div className="space-y-1 mt-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-[8px] font-mono text-nv-green">{manifest.gpuLayers} layers on GPU</span>
+                  <span className="text-[8px] font-mono text-stealth-muted">/</span>
+                  <span className={`text-[8px] font-mono ${s.ramVisible ? "text-yellow-400" : "text-telemetry-red"}`}>
+                    {manifest.ramLayers} in RAM ({(manifest.ramTotalGb).toFixed(1)} GB)
+                  </span>
+                </div>
+                {/* KV cache spill risk warning */}
+                {s.kvSpillCritical && manifest.ramKvGb > 0 && (
+                  <p className="text-[8px] font-mono text-telemetry-red">⚠ KV cache may also spill to RAM — {(manifest.ramKvGb).toFixed(1)} GB risk, verify with test run</p>
+                )}
               </div>
             )}
           </div>
@@ -94,6 +100,7 @@ export default function VramBadge({ manifest, gpus, onDeviceSelect }: VramBadgeP
             className="flex flex-col items-center border-l border-stealth-border/30 pl-4 min-w-[200px]"
           >
             <div className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm ${s.badgeBg}`}>
+              <span className="text-[9px] font-mono text-stealth-muted opacity-60">{manifest.scenario}</span>
               <span className="text-[10px] font-mono">{manifest.fits ? "✓ FIT" : "✗ NO FIT"}</span>
             </div>
 

@@ -30,6 +30,9 @@ pub struct ProviderMeta {
     /// Loaded from disk on startup; saved when admin edits params via save_provider IPC.
     #[serde(default)]
     pub param_definitions: Vec<crate::types::ParamDef>,
+    /// Custom group order set by user (overrides template insertion order). Empty = use template order.
+    #[serde(default, rename = "groupOrder")]
+    pub group_order: Vec<String>,
     /// Per-environment build info captured from binary --version + file mtime.
     #[serde(default, skip_serializing_if = "HashMap::is_empty", rename = "buildInfoPerEnv")]
     pub build_info_per_env: HashMap<String, crate::types::BuildInfo>,
@@ -277,6 +280,7 @@ pub fn persist_provider_meta(providers: &[crate::types::ProviderConfig]) -> Resu
         } else {
             p.param_definitions.clone()
         },
+        group_order: p.group_order.clone(),
         build_info_per_env: p.build_info_per_env.clone(),
     }).collect();
     save_provider_meta(metas)
@@ -307,6 +311,7 @@ fn load_legacy_provider_meta() -> Vec<ProviderMeta> {
                                     branch: prov.get("branch").and_then(|v| v.as_str()).unwrap_or("").to_string(),
                                     build_profile: prov.get("build_profile").and_then(|v| v.as_str()).unwrap_or("").to_string(),
                                     param_definitions: Vec::new(),
+                                    group_order: Vec::new(),
                                     build_info_per_env: HashMap::new(),
                                 });
                             }
@@ -384,6 +389,7 @@ fn genesis_providers() -> Vec<crate::types::ProviderConfig> {
             enabled: true,
             params: serde_json::json!({}),
             param_definitions: params_for_provider("ggml-stable"),
+            group_order: Vec::new(),
             _original_id: None,
             git_url: "https://github.com/ggml-org/llama.cpp".to_string(),
             branch: "master".to_string(),
@@ -398,6 +404,7 @@ fn genesis_providers() -> Vec<crate::types::ProviderConfig> {
             enabled: true,
             params: serde_json::json!({}),
             param_definitions: params_for_provider("ggml-dev"),
+            group_order: Vec::new(),
             _original_id: None,
             git_url: "https://github.com/ggml-org/llama.cpp".to_string(),
             branch: "dev".to_string(),
@@ -412,6 +419,7 @@ fn genesis_providers() -> Vec<crate::types::ProviderConfig> {
             enabled: true,
             params: serde_json::json!({}),
             param_definitions: params_for_provider("ik-extreme"),
+            group_order: Vec::new(),
             _original_id: None,
             git_url: "https://github.com/ikawrakow/ik_llama.cpp".to_string(),
             branch: "main".to_string(),
@@ -768,63 +776,6 @@ fn load_saved_config() -> Option<AppConfig> {
     None
 }
 
-/// Ensure each provider has a Device param with values matching actual GPU topology.
-/// Called at startup AND after every provider save to keep Device in sync.
-pub fn ensure_device_param(providers: &mut Vec<crate::types::ProviderConfig>, gpu_count: usize) {
-    let mut device_values = Vec::new();
-    for i in 0..gpu_count {
-        device_values.push(serde_json::json!(format!("GPU-{}", i)));
-    }
-    if device_values.is_empty() {
-        return;
-    }
-
-    let default_device = serde_json::json!("GPU-0");
-
-    for provider in providers.iter_mut() {
-        let has_device = provider.param_definitions.iter().any(|p| p.key == "Device");
-        if has_device {
-            // Update existing Device param with correct values from topology
-            for def in provider.param_definitions.iter_mut() {
-                if def.key == "Device" {
-                    def.values = device_values.clone();
-                    // If current default is out of range, reset to GPU-0
-                    if let Some(dv) = def.default_value.as_str() {
-                        if !device_values.iter().any(|v| v.as_str() == Some(dv)) {
-                            def.default_value = default_device.clone();
-                        }
-                    } else {
-                        def.default_value = default_device.clone();
-                    }
-                }
-            }
-        } else {
-            // Inject new Device param at order 0, shift existing orders up
-            for def in provider.param_definitions.iter_mut() {
-                def.order += 1;
-            }
-            provider.param_definitions.insert(0, crate::types::ParamDef {
-                key: "Device".to_string(),
-                label: "Device".to_string(),
-                values: device_values.clone(),
-                order: 0,
-                hidden: false,
-                hidden_values: Vec::new(),
-                config_key: "device".to_string(),
-                flag: None,
-                ptype: "arg_select".to_string(),
-                map_id: Some(String::new()),
-                ui_group: "Core".to_string(),
-                note: "Select which GPU to use for inference.".to_string(),
-                pattern: String::new(),
-                default_value: default_device.clone(),
-                user_added_values: Vec::new(),
-                factory_default: default_device.clone(),
-                sub_params: None,
-            });
-        }
-    }
-}
 
 /// Build AppConfig with:
 /// - Built-in Genesis providers (fresh param_definitions from embedded template)
@@ -879,6 +830,7 @@ fn build_config_with_providers_full(gpu_count: usize, mut config: AppConfig) -> 
                 enabled: meta.enabled,
                 params: serde_json::json!({}),
                 param_definitions: param_defs,
+                group_order: meta.group_order.clone(),
                 _original_id: None,
                 git_url: meta.git_url.clone(),
                 branch: meta.branch.clone(),
@@ -891,9 +843,6 @@ fn build_config_with_providers_full(gpu_count: usize, mut config: AppConfig) -> 
 
     config.providers = providers;
     config.gpu_slots = MAX_ENGINE_SLOTS;
-
-    // Inject/update Device param to match actual GPU topology count
-    ensure_device_param(&mut config.providers, gpu_count);
 
     config
 }

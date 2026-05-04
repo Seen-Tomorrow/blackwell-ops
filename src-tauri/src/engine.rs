@@ -824,6 +824,10 @@ pub async fn fit_scan_model(
         provider_type: backend_type.clone(),
         n_gpu_layers: -1,
         backend_type: backend_type.clone(),
+        rope_scaling: String::new(),
+        rope_scale: 1.0,
+        yarn_orig_ctx: 0,
+        rope_freq_base: 0.0,
         extra_params: std::collections::HashMap::new(),
     };
     config = template.apply_provider_defaults(&config, provider_params);
@@ -915,6 +919,10 @@ pub async fn fit_scan_library(
         provider_type: provider_id.clone(),
         n_gpu_layers: -1,
         backend_type: provider_id.clone(),
+        rope_scaling: String::new(),
+        rope_scale: 1.0,
+        yarn_orig_ctx: 0,
+        rope_freq_base: 0.0,
         extra_params: std::collections::HashMap::new(),
     };
     base_config = template.apply_provider_defaults(&base_config, provider_params);
@@ -1093,7 +1101,14 @@ pub async fn scan_model_metadata_cmd(
     .await
     .map_err(|e| format!("Scan task failed: {}", e))?;
 
-    let metadata = metadata_result?;
+    let mut metadata = metadata_result?;
+
+    // Accumulate shard sizes — scanner only reads first shard's file size
+    let total_file_size = model_catalog::get_total_model_size(&model_path);
+    if total_file_size != metadata.file_size_bytes {
+        log::info!("[scan_model_metadata_cmd] Corrected file_size for '{}': {} → {}", model_path, metadata.file_size_bytes, total_file_size);
+        metadata.file_size_bytes = total_file_size;
+    }
 
     log::info!("[scan_model_metadata_cmd] Scanned path='{}', arch={}", model_path, metadata.architecture);
     // Save to cache (clone metadata for both cache and return value)
@@ -1102,10 +1117,7 @@ pub async fn scan_model_metadata_cmd(
         .map_err(|e| format!("Cache save failed: {}", e))?;
 
     // Return enriched ModelEntry — build minimal entry with metadata attached
-    let file_size = std::fs::metadata(&model_path)
-        .ok()
-        .map(|m| m.len())
-        .unwrap_or(0);
+    let file_size = total_file_size;
 
     let hf_meta_for_entry = crate::model_cache::get_hf_metadata(&model_path);
     Ok(crate::types::ModelEntry {
@@ -1197,7 +1209,12 @@ pub async fn scan_all_models_cmd(
         if handles.len() >= CONCURRENCY {
             let (_, p, h) = handles.remove(0);
             match h.await {
-                Ok(Ok(metadata)) => {
+                Ok(Ok(mut metadata)) => {
+                    let corrected_size = model_catalog::get_total_model_size(&p);
+                    if corrected_size != metadata.file_size_bytes {
+                        log::info!("[batch_scan] Corrected file_size for '{}': {} → {}", p, metadata.file_size_bytes, corrected_size);
+                        metadata.file_size_bytes = corrected_size;
+                    }
                     if let Err(e) = crate::model_cache::set_cached(&p, metadata.clone()) {
                         log::warn!("Failed to cache {}: {}", p, e);
                     }
@@ -1228,7 +1245,12 @@ pub async fn scan_all_models_cmd(
     // Await remaining handles (let in-flight scans finish)
     for (_, p, h) in handles {
         match h.await {
-            Ok(Ok(metadata)) => {
+            Ok(Ok(mut metadata)) => {
+                let corrected_size = model_catalog::get_total_model_size(&p);
+                if corrected_size != metadata.file_size_bytes {
+                    log::info!("[batch_scan] Corrected file_size for '{}': {} → {}", p, metadata.file_size_bytes, corrected_size);
+                    metadata.file_size_bytes = corrected_size;
+                }
                 if let Err(e) = crate::model_cache::set_cached(&p, metadata.clone()) {
                     log::warn!("Failed to cache {}: {}", p, e);
                 }

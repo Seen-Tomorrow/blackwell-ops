@@ -140,6 +140,38 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
 
   // ── Current provider & param definitions ───────────────────────────
   const currentProvider = useMemo(() => allProviders.find(p => p.id === selectedProviderId), [allProviders, selectedProviderId]);
+
+  // ── Custom group order (localStorage A + provider_meta.json B) ───────────────
+  const GROUP_ORDER_KEY = "BlackOps-group-order-";
+  const [customGroupOrder, setCustomGroupOrder] = useState<string[] | null>(null);
+
+  useEffect(() => {
+    // Load from localStorage first (A), fall back to provider config (B)
+    try {
+      const stored = localStorage.getItem(GROUP_ORDER_KEY + selectedProviderId);
+      if (stored) {
+        setCustomGroupOrder(JSON.parse(stored));
+      } else if (currentProvider?.groupOrder && currentProvider.groupOrder.length > 0) {
+        setCustomGroupOrder(currentProvider.groupOrder);
+      } else {
+        setCustomGroupOrder(null); // Use template insertion order
+      }
+    } catch {
+      setCustomGroupOrder(null);
+    }
+  }, [selectedProviderId, currentProvider]);
+
+  const saveGroupOrder = useCallback(async (newOrder: string[]) => {
+    // Persist to localStorage (A)
+    try { localStorage.setItem(GROUP_ORDER_KEY + selectedProviderId, JSON.stringify(newOrder)); } catch {}
+    setCustomGroupOrder(newOrder);
+    // Persist to provider_meta.json via save_provider (B)
+    if (currentProvider) {
+      const updated = { ...currentProvider, groupOrder: newOrder };
+      try { await invoke("save_provider", { provider: updated }); } catch {}
+    }
+  }, [selectedProviderId, currentProvider]);
+
   const buildCompleteDefs = useCallback((provider: ProviderConfig | undefined): ParamDef[] => {
     if (!provider || !provider.param_definitions) return [];
     return [...provider.param_definitions].sort((a, b) => a.order - b.order);
@@ -683,6 +715,66 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
     return () => window.removeEventListener("mouseup", h);
   }, [dragging, paramDefs, swapItems]);
 
+  // ── Group drag state for reorder ───────────────────────────────
+  const groupDragRef = useRef<string | null>(null);
+  const groupHasMovedRef = useRef(false);
+  const groupStartPosRef = useRef({ x: 0, y: 0 });
+  const [draggingGroup, setDraggingGroup] = useState<string | null>(null);
+
+  const handleGroupDragStart = (e: React.MouseEvent, groupName: string) => {
+    e.stopPropagation();
+    groupStartPosRef.current = { x: e.clientX, y: e.clientY };
+    groupHasMovedRef.current = false;
+    groupDragRef.current = groupName;
+    setDraggingGroup(groupName);
+  };
+
+  useEffect(() => {
+    if (!draggingGroup) return;
+    const handleMove = (e: MouseEvent) => {
+      const dx = Math.abs(e.clientX - groupStartPosRef.current.x), dy = Math.abs(e.clientY - groupStartPosRef.current.y);
+      if (!groupHasMovedRef.current && (dx > 3 || dy > 3)) groupHasMovedRef.current = true;
+    };
+    window.addEventListener("mousemove", handleMove);
+    return () => window.removeEventListener("mousemove", handleMove);
+  }, [draggingGroup]);
+
+  useEffect(() => {
+    if (!draggingGroup) return;
+    const h = (e: MouseEvent) => {
+      if (!groupHasMovedRef.current) { setDraggingGroup(null); groupDragRef.current = null; groupHasMovedRef.current = false; return; }
+      let rowEl: Element | null = document.elementFromPoint(e.clientX, e.clientY);
+      while (rowEl && !rowEl.hasAttribute("data-group-idx")) rowEl = rowEl.parentElement;
+      if (!rowEl || !groupDragRef.current) { setDraggingGroup(null); groupDragRef.current = null; groupHasMovedRef.current = false; return; }
+      const targetIdx = parseInt(rowEl.getAttribute("data-group-idx") || "-1", 10);
+      if (targetIdx < 0) { setDraggingGroup(null); groupDragRef.current = null; groupHasMovedRef.current = false; return; }
+
+      // Derive current groups for comparison
+      const seen = new Set<string>();
+      const derivedOrder: string[] = [];
+      for (const def of paramDefs) {
+        const g = def.ui_group || "Feature Flags";
+        if (!seen.has(g)) { seen.add(g); derivedOrder.push(g); }
+      }
+      const currentOrder = (customGroupOrder && customGroupOrder.length > 0)
+        ? [...customGroupOrder.filter(g => seen.has(g)), ...derivedOrder.filter(g => !customGroupOrder!.includes(g))]
+        : derivedOrder;
+
+      const sourceName = groupDragRef.current;
+      const fromIdx = currentOrder.indexOf(sourceName);
+      if (fromIdx < 0 || targetIdx === fromIdx) { setDraggingGroup(null); groupDragRef.current = null; groupHasMovedRef.current = false; return; }
+
+      // Reorder groups and persist
+      const newOrder = [...currentOrder];
+      const [moved] = newOrder.splice(fromIdx, 1);
+      newOrder.splice(targetIdx, 0, moved);
+      saveGroupOrder(newOrder);
+      setDraggingGroup(null); groupDragRef.current = null; groupHasMovedRef.current = false;
+    };
+    window.addEventListener("mouseup", h, { once: true });
+    return () => window.removeEventListener("mouseup", h);
+  }, [draggingGroup, paramDefs, customGroupOrder, saveGroupOrder]);
+
   const enabledProviders = useMemo(() => allProviders.filter(p => p.enabled), [allProviders]);
 
   // ── Render ───────────────────────────────────────────────────────
@@ -798,8 +890,21 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
               <div className="flex items-center justify-center h-full text-stealth-muted text-xs font-mono">LOADING PARAMETERS...</div>
             ) : (
               (() => {
-                // Group params by ui_group — same order as EngineConfigPanel
-                const groupOrder = ["Core", "Performance", "Multi-GPU", "Feature Flags"];
+                // Derive group order: custom (user-set) > template insertion order
+                const seen = new Set<string>();
+                const derivedOrder: string[] = [];
+                for (const def of paramDefs) {
+                  const g = def.ui_group || "Feature Flags";
+                  if (!seen.has(g)) {
+                    seen.add(g);
+                    derivedOrder.push(g);
+                  }
+                }
+                // Use custom order if set, otherwise use template insertion order
+                const groupOrder: string[] = (customGroupOrder && customGroupOrder.length > 0)
+                  ? [...customGroupOrder.filter(g => seen.has(g)), ...derivedOrder.filter(g => !customGroupOrder!.includes(g))]
+                  : derivedOrder;
+
                 const groups: Record<string, ParamDef[]> = {};
                 for (const def of paramDefs) {
                   const g = def.ui_group || "Feature Flags";
@@ -816,16 +921,26 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
                         existingKeys={paramDefsBase.map(d => d.key)}
                       />
                     )}
-                    {groupOrder.concat(groupOrder.length === 0 ? Object.keys(groups) : []).filter((g, i, a) => a.indexOf(g) === i && groups[g]).map(groupName => {
+                    {groupOrder.filter(g => groups[g]).map((groupName, groupIdx) => {
                       const groupParams = groups[groupName];
                       if (!groupParams || groupParams.length === 0) return null;
                       return (
-                        <div key={groupName}>
-                          <div className="text-[8px] font-mono text-stealth-muted/60 tracking-widest uppercase mb-1.5 pb-1 border-b border-stealth-border/30">
-                            {groupName}
+                        <div key={groupName} data-group-idx={groupIdx}>
+                          {/* Group header with drag handle */}
+                          <div className={`flex items-center gap-1 text-[8px] font-mono tracking-widest uppercase mb-1.5 pb-1 border-b border-stealth-border/30 ${draggingGroup === groupName ? "text-yellow-400" : "text-stealth-muted/60"}`}>
+                            {adminLockState !== "locked" && (
+                              <button onMouseDown={(e) => handleGroupDragStart(e, groupName)}
+                                className="select-none px-1 cursor-grab active:cursor-grabbing hover:text-nv-green transition-colors"
+                                title="Click and drag to reorder group">
+                                &#x2630;
+                              </button>
+                            )}
+                            <span>{groupName}</span>
+                            <span className="opacity-40">({groupParams.length})</span>
                           </div>
                           <div className="space-y-1.5">
-                            {groupParams.map((def, idx) => {
+                            {groupParams.map((def) => {
+                              const globalIdx = paramDefs.findIndex(d => d.key === def.key);
                               const defKey = def.config_key || def.key;
 
                               // Effective value: user override > current default
@@ -835,8 +950,8 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
                               const currentValue = currentOverride !== undefined ? String(currentOverride) : (effectiveDefault ?? "");
 
                                 return (
-                                   <React.Fragment key={`row-${idx}`}>
-                                   <div data-row-idx={idx}
+                                   <React.Fragment key={`row-${globalIdx}`}>
+                                   <div data-row-idx={globalIdx}
                                     className={`flex items-center gap-2 p-2 rounded transition-all duration-150 ${
                                       (dragging && def.key === dragKeyRef.current)
                                         ? "border-yellow-400/60 bg-yellow-400/10 opacity-70"
@@ -847,7 +962,7 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
 
                                    {/* Drag handle — admin only */}
                                    {adminLockState !== "locked" && (
-                                     <button onMouseDown={(e) => handleDragStart(e, idx)}
+                                     <button onMouseDown={(e) => handleDragStart(e, globalIdx)}
                                        className="text-[8px] text-stealth-muted select-none px-1 cursor-grab active:cursor-grabbing hover:text-nv-green transition-colors"
                                        title="Click and drag to reorder">&#x2630;</button>
                                    )}

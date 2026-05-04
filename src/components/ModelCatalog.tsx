@@ -52,6 +52,15 @@ export default function ModelCatalog(props: ModelCatalogProps) {
     } catch {}
   }, [models, selectedModel]);
 
+  // Refresh selected model reference when models array updates (e.g. after scan reloads metadata)
+  useEffect(() => {
+    if (!selectedModel || models.length === 0) return;
+    const fresh = models.find(m => m.path === selectedModel.path);
+    if (fresh && fresh !== selectedModel) {
+      setSelectedModel(fresh);
+    }
+  }, [models, selectedModel]);
+
   const handleSelect = useCallback((model: ModelEntry) => {
     setSelectedModel(model);
     try { localStorage.setItem(LAST_MODEL_KEY, model.path); } catch {}

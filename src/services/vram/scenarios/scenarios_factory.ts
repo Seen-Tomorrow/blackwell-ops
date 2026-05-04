@@ -101,23 +101,54 @@ export function computeValues(input: ScenarioInput): ComputedValues {
     ? MOE_ATTENTION_RATIO + MOE_ROUTING_RATIO + MOE_NON_EXPERT_FFN_RATIO
     : 1.0;
 
-  // KV cache from GGUF metadata
+  // ── Soft Cap: effective context length ────────────────────────────────
+  const userCtx = parseCtx(engineConfig.ctx_size);
+  const nCtxTrain = modelMeta.n_ctx_train || 4096;
+  const ropeScale = engineConfig.rope_scale ?? 1.0;
+  const ropeScaling = (engineConfig.rope_scaling || "none").toLowerCase();
+
+  // If RoPE scaling active, trust user's CTX config; otherwise clamp to training limit
+  const effectiveCtx = (ropeScale > 1.0 || ropeScaling !== "none")
+    ? userCtx
+    : Math.min(userCtx, nCtxTrain);
+
+  // KV cache from GGUF metadata — uses effective context
   const headDim = modelMeta.n_head > 0 ? modelMeta.n_embd / modelMeta.n_head : 128;
-  const ctxTokens = parseCtx(engineConfig.ctx_size);
   const kvBytesPerParam = kvBytesForQuant(engineConfig.kv_quant);
   const kvCacheGb = (modelMeta.n_layer > 0 && modelMeta.n_head_kv > 0)
-    ? (2 * modelMeta.n_layer * modelMeta.n_head_kv * headDim * ctxTokens * kvBytesPerParam) / (1024 ** 3)
+    ? (2 * modelMeta.n_layer * modelMeta.n_head_kv * headDim * effectiveCtx * kvBytesPerParam) / (1024 ** 3)
     : 0;
 
-  // CUDA overhead
+  // ── CUDA overhead: Safety Floor + Dynamic Overhead ────────────────────
   const numGpus = gpus.length;
   const weightsOnGpuGb = weightsGb * gpuWeightFraction;
-  const computeBufferGb = weightsOnGpuGb * (numGpus === 1
+  const safetyFloorComputeBuffer = weightsOnGpuGb * (numGpus === 1
     ? COMPUTE_BUFFER_PRIMARY_RATIO
     : COMPUTE_BUFFER_PRIMARY_RATIO + (numGpus - 1) * COMPUTE_BUFFER_SECONDARY_RATIO);
+
+  // Dynamic activation memory — kicks in when batch > 2048 or parallel > 1
+  let dynamicOverhead = 0;
+  if (engineConfig.batch > 2048 || engineConfig.parallel > 1) {
+    dynamicOverhead = (engineConfig.batch * effectiveCtx * modelMeta.n_head * headDim * 2) / (1024 ** 2);
+
+    // Flash attention reduces activation memory by ~15%
+    if (engineConfig.flash_attn) {
+      dynamicOverhead *= 0.85;
+    }
+    // MoE: only active experts compute → lower activation overhead
+    if (isMoe && engineConfig.offload_mode !== "MOE_OPTIMAL") {
+      dynamicOverhead *= 0.8;
+    }
+    // YaRN adds +5% overhead for attention scaling calculations
+    if (ropeScaling === "yarn") {
+      dynamicOverhead *= 1.05;
+    }
+  }
+
+  const finalComputeBuffer = Math.max(safetyFloorComputeBuffer, dynamicOverhead);
   const parallelOverhead = Math.max(0, engineConfig.parallel - 1) * CUDA_PARALLEL_OVERHEAD_PER_REQ_GB;
-  const ctxOverhead = ctxTokens > 65536 ? (ctxTokens - 65536) * CUDA_CTX_OVERHEAD_FACTOR : 0;
-  const overheadGb = CUDA_BASE_OVERHEAD_GB * numGpus + computeBufferGb + RS_BUFFER_PER_GPU_GB * numGpus + parallelOverhead + ctxOverhead;
+  const ctxOverhead = effectiveCtx > 65536 ? (effectiveCtx - 65536) * CUDA_CTX_OVERHEAD_FACTOR : 0;
+  const overheadGb = CUDA_BASE_OVERHEAD_GB * numGpus + finalComputeBuffer + RS_BUFFER_PER_GPU_GB * numGpus + parallelOverhead + ctxOverhead;
 
   // Vision addon
   const visionGb = engineConfig.vision !== "OFF"
@@ -161,6 +192,7 @@ export function buildManifest(
   kvGb: number,
   overheadGb: number,
   ramWeightsGb: number,
+  ramKvGb: number,
   ramSpillGb: number,
   fits: boolean,
   recommendation: string,
@@ -169,7 +201,7 @@ export function buildManifest(
   perGpuLoad: number[],
 ): VramManifest {
   const vramTotal = weightsGb + kvGb + overheadGb;
-  const ramTotal = ramWeightsGb + ramSpillGb;
+  const ramTotal = ramWeightsGb + ramKvGb + ramSpillGb;
 
   const gpuAllocations: GpuAllocation[] = input.gpus.map((g, i) => ({
     gpuIndex: g.index,
@@ -188,6 +220,7 @@ export function buildManifest(
     vramOverheadGb: round2(overheadGb),
     vramTotalGb: round2(vramTotal),
     ramWeightsGb: round2(ramWeightsGb),
+    ramKvGb: round2(ramKvGb),
     ramSpillGb: round2(ramSpillGb),
     ramTotalGb: round2(ramTotal),
     ramManufacturedGb: input.ramManufacturedGb,

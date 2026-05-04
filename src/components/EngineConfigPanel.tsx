@@ -19,12 +19,17 @@ import { useConfigResolver } from "../hooks/useConfigResolver";
 
 const BASE_PORT = 9090;
 
-const PARAM_GROUPS: { id: string; label: string; alwaysOpen: boolean; elevatable?: boolean }[] = [
-  { id: 'Core', label: 'CORE', alwaysOpen: true },
-  { id: 'Performance', label: 'PERFORMANCE', alwaysOpen: true },
-  { id: 'Multi-GPU', label: 'MULTI-GPU', alwaysOpen: false, elevatable: true },
-  { id: 'Feature Flags', label: 'FEATURE FLAGS', alwaysOpen: false },
-];
+// Group metadata derived dynamically from template — no hardcoded group names.
+// Special handling: "Multi-GPU" is elevatable, others default to collapsible.
+interface ParamGroupMeta { id: string; label: string; alwaysOpen: boolean; elevatable?: boolean }
+function deriveParamGroups(groupKeys: string[]): ParamGroupMeta[] {
+  return groupKeys.map(id => ({
+    id,
+    label: id.toUpperCase(),
+    alwaysOpen: id === 'Core' || id === 'Performance', // Core/Performance always open by convention
+    elevatable: id === 'Multi-GPU',
+  }));
+}
 
 interface EngineConfigPanelProps {
   model: ModelEntry | null;
@@ -55,12 +60,12 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   // Blaze animation state — triggers fire effect on launch button
   const [isBlazing, setIsBlazing] = useState(false);
 
-  // Collapsible group state — persisted across sessions
+  // Collapsible group state — persisted across sessions, defaults to collapsed for non-always-open groups
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => {
     try {
       const saved = localStorage.getItem('BlackOps-collapsed-groups');
-      return saved ? new Set(JSON.parse(saved)) : new Set(['Multi-GPU', 'Feature Flags']);
-    } catch { return new Set(['Multi-GPU', 'Feature Flags']); }
+      return saved ? new Set(JSON.parse(saved)) : new Set();
+    } catch { return new Set(); }
   });
 
   const toggleGroup = useCallback((groupId: string) => {
@@ -186,6 +191,16 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     }
     return groups;
   }, [mergedParamDefs]);
+
+  // Ordered group keys: custom provider order > template insertion order
+  const orderedGroupKeys = useMemo(() => {
+    const allGroups = Object.keys(groupedParams);
+    const currentProv = externalProviders?.find(p => p.id === effectiveBackendType);
+    if (currentProv?.groupOrder && currentProv.groupOrder.length > 0) {
+      return [...currentProv.groupOrder.filter(g => allGroups.includes(g)), ...allGroups.filter(g => !currentProv.groupOrder!.includes(g))];
+    }
+    return allGroups;
+  }, [groupedParams, externalProviders, effectiveBackendType]);
 
   // Multi-GPU params for elevation
   const multiGpuParams = useMemo(() => {
@@ -401,7 +416,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           <div className="text-stealth-muted text-[10px] font-mono opacity-50">NO PARAMS DEFINED</div>
         ) : (
           <div className="space-y-3">
-            {PARAM_GROUPS.map(group => {
+            {deriveParamGroups(orderedGroupKeys).map(group => {
               const groupParams = groupedParams[group.id];
               if (!groupParams || groupParams.length === 0) return null;
 
