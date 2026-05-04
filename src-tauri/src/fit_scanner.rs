@@ -20,6 +20,40 @@ use tokio::sync::Mutex as TokioMutex;
 pub const FIT_OVERHEAD_PER_GPU: f64 = 256.0; // MiB static overhead per GPU for CUDA context/P2P
 const SCAN_TIMEOUT_SECS: u64 = 30;
 
+/// Compute CUDA_VISIBLE_DEVICES mask from config + detected GPU count.
+fn compute_gpu_mask(config: &crate::types::EngineConfig, gpu_count: usize) -> String {
+    let split_active = !config.split_mode.is_empty() && config.split_mode.to_uppercase() != "NONE";
+
+    if split_active {
+        (0..gpu_count).map(|i| i.to_string()).collect::<Vec<_>>().join(",")
+    } else {
+        let idx = config.device.strip_prefix("GPU-")
+            .and_then(|s| s.parse::<usize>().ok())
+            .unwrap_or(0);
+        if idx < gpu_count {
+            idx.to_string()
+        } else {
+            "0".to_string()
+        }
+    }
+}
+
+/// Detect physical GPU count via nvidia-smi. Returns 2 as fallback.
+fn detect_gpu_count() -> usize {
+    let mut gpu_count = 2;
+    if let Ok(output) = std::process::Command::new("nvidia-smi")
+        .args(&["--query-gpu=index", "--format=csv,noheader"])
+        .output()
+    {
+        let count = String::from_utf8_lossy(&output.stdout)
+            .lines().filter(|l| !l.trim().is_empty()).count();
+        if count > 0 {
+            gpu_count = count;
+        }
+    }
+    gpu_count
+}
+
 /// Compute a SHA256 hash from the first 8KB of a model file.
 /// Sufficient to detect quantization swaps (GGUF header contains quant info).
 pub fn compute_model_hash(path: &str) -> String {
@@ -578,13 +612,8 @@ pub async fn scan_library(
     ];
 
     // Derive GPU mask from base_config — same logic as launch_engine
-    let gpu_mask = if base_config.device == "GPU-1" {
-        "1".to_string()
-    } else if !base_config.split_mode.is_empty() && base_config.split_mode != "NONE" {
-        "0,1".to_string()
-    } else {
-        "0".to_string()
-    };
+    let gpu_count = detect_gpu_count();
+    let gpu_mask = compute_gpu_mask(&base_config, gpu_count);
 
     let mut handles = vec![];
 

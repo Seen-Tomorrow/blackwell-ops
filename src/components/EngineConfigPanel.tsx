@@ -14,7 +14,7 @@ import { useState, useCallback, useEffect, useMemo } from "react";
 import type { ModelEntry, EngineConfig, GpuInfo, ParamDef, ProviderConfig, ProviderTemplate, StackEntry, SystemInfo } from "../lib/types";
 import { invoke } from "@tauri-apps/api/core";
 import VramBadge from "./VramBadge";
-import { useVramCalculator } from "../hooks/useVramCalculator";
+import { useScenarioEvaluator } from "../hooks/useScenarioEvaluator";
 import { useConfigResolver } from "../hooks/useConfigResolver";
 
 const BASE_PORT = 9090;
@@ -33,11 +33,12 @@ interface EngineConfigPanelProps {
   committedVramMib: number;
   isAdminUnlocked: boolean;
   systemInfo?: SystemInfo | null;
+  stack: StackEntry[];
   onLaunch: (config: EngineConfig) => void;
 }
 
 export default function EngineConfigPanel(props: EngineConfigPanelProps) {
-  const { model, gpus, providers: externalProviders, committedVramMib, isAdminUnlocked, systemInfo, onLaunch } = props;
+  const { model, gpus, providers: externalProviders, committedVramMib, isAdminUnlocked, systemInfo, stack, onLaunch } = props;
 
   // ── State ───────────────────────────────────────────────────────────────
   const [adminParamDefs, setAdminParamDefs] = useState<ParamDef[]>([]);
@@ -112,26 +113,23 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   // Calculation value — real available for fit decisions
   const availableVramMib = Math.max(0, gpus.reduce((sum, g) => sum + g.memory_free, 0) - committedVramMib);
   
-  const vramCalc = useVramCalculator({
+  const vramCalc = useScenarioEvaluator({
     model,
-    config: { ...config, providerId: effectiveBackendType },
+    config: { ...config, backend_type: effectiveBackendType },
     gpus,
-    availableMib: availableVramMib,
+    stack,
     systemInfo,
   });
 
-  // RAM offload needed: auto-offload calculation (accurate) or fallback to raw size check
-  const needsRamOffload = useMemo(() => {
-    if (vramCalc.autoOffload) {
-      return vramCalc.autoOffload.ramLayers > 0;
+  // RAM offload needed: from manifest layer split
+  const needsRamOffload = vramCalc.manifest?.ramLayers > 0 || false;
+
+  // Split/Device mutual exclusion: when Split changes to non-NONE, clear Device
+  useEffect(() => {
+    if (config.Split && config.Split.toString().toUpperCase() !== "NONE" && config.Split.toString().toLowerCase() !== "") {
+      updateParam("Device", "");
     }
-    if (!model || gpus.length === 0) return false;
-    const sizeMatch = model.size_str?.match(/([\d.]+)\s*GB/i);
-    if (!sizeMatch) return false;
-    const modelSizeMib = parseFloat(sizeMatch[1]) * 1024;
-    const totalVramMib = gpus.reduce((sum, g) => sum + (g.memory_total_manufactured || g.memory_total), 0);
-    return modelSizeMib > totalVramMib;
-  }, [model?.path, vramCalc.autoOffload, gpus.length]);
+  }, [config.Split]);
 
   // Extracted param row renderer for reuse (inline + elevated Multi-GPU)
   const renderParamRow = useCallback((def: ParamDef) => {
@@ -295,7 +293,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       ubatch: typeof config.uBatch === 'number' ? config.uBatch : parseInt(String(config.uBatch), 10) || 512,
       parallel: typeof config.Parallel === 'number' ? config.Parallel : parseInt(String(config.Parallel), 10) || 1,
       // Auto-offload: use calculated layers from metadata, fallback to config value
-      offload: vramCalc.autoOffload?.nGpuLayers ?? ((config.Offload || "ALL").toUpperCase() === "ALL" ? "ALL" : String(config.Offload)),
+      offload: vramCalc.manifest?.gpuLayers != null && vramCalc.manifest.ramLayers > 0 ? String(vramCalc.manifest.gpuLayers) : ((config.Offload || "ALL").toUpperCase() === "ALL" ? "ALL" : String(config.Offload)),
       offload_mode: (config["Offload-Mode"] || "REGULAR").toString().toUpperCase(),
       split_mode: (config.Split || "NONE").toString().toLowerCase(),
       vision: config.Vision?.toUpperCase() === "OFF" ? "OFF" : "AUTO",
@@ -370,20 +368,14 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       )}
 
       {/* VRAM Section */}
-      <div className="px-4 py-3 border-b section-divider relative flex-shrink-0">
+      <div className="p-[1px] border-b section-divider relative flex-shrink-0">
         <VramBadge
-          result={vramCalc.vramDisplay || null}
+          manifest={vramCalc.manifest}
           gpus={gpus}
-          gpuDistribution={vramCalc.gpuDistribution}
-          ramEstimate={vramCalc.ramEstimate}
-          availableVramGb={displayVramGb}
-          committedVramMib={committedVramMib}
-          onFitCheck={vramCalc.triggerFitCheck}
-          isScanning={vramCalc.isScanning}
-          autoOffload={vramCalc.autoOffload}
-          shouldShowRam={needsRamOffload}
-          modelName={model.name}
-          modelSizeStr={model.size_str}
+          onDeviceSelect={(gpuIndex) => {
+            updateParam("Device", `GPU-${gpuIndex}`);
+            updateParam("Split", "NONE");
+          }}
         />
       </div>
 
@@ -401,9 +393,9 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
       {/* Parameters — scrollable middle section */}
       <div className="px-4 py-3 border-b section-divider relative flex-1 overflow-y-auto cyber-scrollbar">
-        <label className="text-[9px] font-mono text-electric-blue tracking-widest uppercase block mb-3 glitch-text">
-          PARAMETERS
-        </label>
+          <label className="text-[9px] font-mono text-white tracking-widest uppercase block mb-3 glitch-text">
+            PARAMETERS
+          </label>
 
         {mergedParamDefs.length === 0 ? (
           <div className="text-stealth-muted text-[10px] font-mono opacity-50">NO PARAMS DEFINED</div>
@@ -483,7 +475,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         <div className="px-1 py-4">
           <motion.button
             onClick={handleAddToStack}
-            disabled={!model || vramCalc.vramDisplay?.status === 'critical'}
+            disabled={!model || vramCalc.manifest?.scenario === 'HW_LOCKED'}
             whileHover={{ scale: 1.01 }}
             whileTap={{ scale: 0.98 }}
             className={`w-full ignite-btn px-4 py-3 text-xs font-mono tracking-widest rounded-sm disabled:opacity-40 disabled:cursor-not-allowed ${isBlazing ? "blazing" : ""}`}

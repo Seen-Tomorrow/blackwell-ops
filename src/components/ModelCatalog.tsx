@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
 import { useState, useCallback, useMemo, useEffect, type Dispatch, type SetStateAction } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { ModelEntry, EngineConfig, GpuInfo, ProviderConfig, SystemInfo, ModelMetadata } from "../lib/types";
+import type { ModelEntry, EngineConfig, GpuInfo, ProviderConfig, SystemInfo, ModelMetadata, StackEntry } from "../lib/types";
 import EngineConfigPanel from "./EngineConfigPanel";
 import { useKeyboardNav } from "../hooks/useKeyboardNav";
 
@@ -19,6 +19,7 @@ interface ModelCatalogProps {
   setScanningPath: (p: string | null) => void;
   batchScanState: {active: boolean; scanned: number; failed: number; total: number};
   setBatchScanState: React.Dispatch<React.SetStateAction<{active: boolean; scanned: number; failed: number; total: number}>>;
+  stack: StackEntry[];
 }
 
 const LAST_MODEL_KEY = "BlackOps-last-model";
@@ -29,7 +30,7 @@ type SortField = (keyof ModelEntry) | "date";
 type SortDirection = "asc" | "desc";
 
 export default function ModelCatalog(props: ModelCatalogProps) {
-  const { models, gpus, onLaunch, error, onReload, providers: externalProviders, committedVramMib, isAdminUnlocked, systemInfo, scanningPath, setScanningPath, batchScanState, setBatchScanState } = props;
+  const { models, gpus, onLaunch, error, onReload, providers: externalProviders, committedVramMib, isAdminUnlocked, systemInfo, scanningPath, setScanningPath, batchScanState, setBatchScanState, stack } = props;
   const [search, setSearch] = useState("");
   const [selectedModel, setSelectedModel] = useState<ModelEntry | null>(null);
   const [sortField, setSortField] = useState<SortField>(() => {
@@ -413,6 +414,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
             committedVramMib={committedVramMib}
             isAdminUnlocked={isAdminUnlocked}
             systemInfo={systemInfo}
+            stack={stack}
             onLaunch={onLaunch}
           />
         </div>

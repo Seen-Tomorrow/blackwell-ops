@@ -95,9 +95,9 @@ impl EngineStack {
                 combined_rx: Arc::new(Mutex::new(None)),
                 port: base_port + i as u16,
                 status: SlotStatus::Idle,
-                alias: format!("GPU-{}", i),
+                alias: format!("ENGINE-{}", i),
                 model_path: String::new(),
-                gpu_mask: format!("{}", i),
+                gpu_mask: String::new(), // Empty placeholder — set at launch time from config.Device
                 vram_mib: 0.0,
                 n_ctx: 32768,
                 provider_name: String::new(),

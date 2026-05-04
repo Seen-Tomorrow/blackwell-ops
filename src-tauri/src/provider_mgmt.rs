@@ -65,6 +65,10 @@ pub async fn save_provider(provider: crate::types::ProviderConfig, app: tauri::S
         cfg.providers.push(save_provider);
     }
 
+    // Re-inject Device param to match actual GPU topology (keeps it in sync after reset/save)
+    let gpu_count = crate::config::detect_gpu_count_pub();
+    crate::config::ensure_device_param(&mut cfg.providers, gpu_count);
+
     drop(cfg);
 
     // Persist param_definitions directly to provider_meta.json (no delta computation needed).

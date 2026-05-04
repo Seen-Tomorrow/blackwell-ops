@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use crate::telemetry::GpuInfo;
-use crate::vram::{VramCalcConfig, calculate_vram_with_fallback};
+
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct R11RodHandle {
@@ -171,10 +171,10 @@ impl R11Core {
     }
 
     pub fn predict_fit(&self, model_path: &str, gpus: &[GpuInfo]) -> R11PredictiveFit {
-        // Use the same VRAM calculator as check_vram_fit — reads GGUF metadata + fit cache
+        // Simple file-size-based estimate for reactor UI (not precision-critical)
         let model_bytes = std::fs::metadata(model_path).map(|m| m.len()).unwrap_or(0);
 
-        // Detect mmproj vision projector file (same logic as engine.rs detect_mmproj)
+        // Detect mmproj vision projector file
         let mut mmproj_bytes: u64 = 0;
         if let Some(dir) = std::path::Path::new(model_path).parent() {
             if let Ok(entries) = std::fs::read_dir(dir) {
@@ -188,20 +188,10 @@ impl R11Core {
             }
         }
 
-        // Use reasonable defaults for predictive check (same as ModelCatalog's fit check)
-        let calc_config = VramCalcConfig {
-            model_bytes,
-            mmproj_bytes,
-            vision_enabled: mmproj_bytes > 0,
-            offload_layers: 999, // ALL layers
-            ctx: 32768, // 32K default
-            kv_quant: "f16".to_string(),
-            parallel: 1,
-            batch: 2048,
-        };
-
-        let vram_result = calculate_vram_with_fallback(model_path, &calc_config, "REGULAR");
-        let estimated_vram_mib = (vram_result.total_vram * 1024.0).max(4096.0);
+        // Rough estimate: model size + 30% overhead (weights + KV cache + CUDA context)
+        let estimated_vram_mib = (model_bytes as f64 / (1024.0 * 1024.0)) * 1.3
+            + (mmproj_bytes as f64 / (1024.0 * 1024.0))
+            + 2560.0; // ~2.5 GB CUDA overhead per GPU
 
         let allocation = self.find_allocation(estimated_vram_mib, gpus);
         let fits = allocation.is_some();

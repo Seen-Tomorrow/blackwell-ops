@@ -439,7 +439,7 @@ function App() {
       <StatusProvider value={{ totalParams, hiddenCount, onShowAll: handleShowAll }}>
         <Layout activeTab={activeTab} onTabChange={setActiveTab}>
         {activeTab === "catalog" && (
-              <ModelCatalog models={models} gpus={gpus} onLaunch={handleLaunchEngine} error={catalogError} onReload={reloadModels} providers={providers} committedVramMib={committedVramMib} isAdminUnlocked={isAdminUnlocked} systemInfo={systemInfo} scanningPath={scanningPath} setScanningPath={setScanningPath} batchScanState={batchScanState} setBatchScanState={setBatchScanState} />
+              <ModelCatalog models={models} gpus={gpus} onLaunch={handleLaunchEngine} error={catalogError} onReload={reloadModels} providers={providers} committedVramMib={committedVramMib} isAdminUnlocked={isAdminUnlocked} systemInfo={systemInfo} scanningPath={scanningPath} setScanningPath={setScanningPath} batchScanState={batchScanState} setBatchScanState={setBatchScanState} stack={stack} />
            )}
         {activeTab === "modelhub" && <ModelHub />}
         {activeTab === "config" && <ConfigPage providers={providers} />}

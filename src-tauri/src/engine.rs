@@ -12,12 +12,47 @@ use crate::config::AppConfig;
 use crate::engine_stack::EngineStack;
 use crate::log_hub::LogHub;
 use crate::types::{EngineConfig, ModelEntry};
-use crate::vram::{self, VramCalcConfig, VramFitResult};
+
 use crate::fit_scanner;
 use crate::telemetry;
 use crate::engine_perf;
 use crate::model_catalog;
 use crate::engine_utils;
+
+/// Compute CUDA_VISIBLE_DEVICES mask from config + detected GPU count.
+/// Split mode → all GPUs joined by comma. Single GPU → parsed index from "GPU-N".
+fn compute_gpu_mask(config: &EngineConfig, gpu_count: usize, test_has_split: bool) -> String {
+    let split_active = (!config.split_mode.is_empty() && config.split_mode.to_uppercase() != "NONE") || test_has_split;
+
+    if split_active {
+        (0..gpu_count).map(|i| i.to_string()).collect::<Vec<_>>().join(",")
+    } else {
+        let idx = config.device.strip_prefix("GPU-")
+            .and_then(|s| s.parse::<usize>().ok())
+            .unwrap_or(0);
+        if idx < gpu_count {
+            idx.to_string()
+        } else {
+            "0".to_string() // Fallback if device out of range
+        }
+    }
+}
+
+/// Detect physical GPU count via nvidia-smi. Returns 2 as fallback.
+fn detect_gpu_count() -> usize {
+    let mut gpu_count = 2;
+    if let Ok(output) = std::process::Command::new("nvidia-smi")
+        .args(&["--query-gpu=index", "--format=csv,noheader"])
+        .output()
+    {
+        let count = String::from_utf8_lossy(&output.stdout)
+            .lines().filter(|l| !l.trim().is_empty()).count();
+        if count > 0 {
+            gpu_count = count;
+        }
+    }
+    gpu_count
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StackEntryOut {
@@ -137,13 +172,8 @@ pub async fn launch_engine(
             })
         }).unwrap_or(false);
 
-    let gpu_mask = if config.device == "GPU-1" {
-        "1".to_string()
-    } else if (!config.split_mode.is_empty() && config.split_mode.to_uppercase() != "NONE") || test_has_split {
-        "0,1".to_string()
-    } else {
-        "0".to_string()
-    };
+    let gpu_count = detect_gpu_count();
+    let gpu_mask = compute_gpu_mask(&config, gpu_count, test_has_split);
 
     eprintln!("[GPU_MASK] provider={} split_mode=\"{}\" test_has_split={} -> CUDA_VISIBLE_DEVICES={}", backend_type, config.split_mode, test_has_split, gpu_mask);
 
@@ -486,13 +516,8 @@ pub async fn hot_swap_engine(
             })
         }).unwrap_or(false);
 
-    let gpu_mask = if config.device == "GPU-1" {
-        "1".to_string()
-    } else if (!config.split_mode.is_empty() && config.split_mode.to_uppercase() != "NONE") || test_has_split {
-        "0,1".to_string()
-    } else {
-        "0".to_string()
-    };
+    let gpu_count = detect_gpu_count();
+    let gpu_mask = compute_gpu_mask(&config, gpu_count, test_has_split);
 
     eprintln!("[GPU_MASK][HOTSWAP] provider={} split_mode=\"{}\" test_has_split={} -> CUDA_VISIBLE_DEVICES={}", backend_type, config.split_mode, test_has_split, gpu_mask);
 
@@ -634,48 +659,6 @@ pub async fn hot_swap_engine(
     })
 }
 
-// ── VRAM Fit Check (pre-launch validation) ──────────────────────────
-
-#[tauri::command]
-pub async fn check_vram_fit(
-    config: EngineConfig,
-    gpus: Vec<crate::telemetry::GpuInfo>,
-) -> Result<VramFitResult, String> {
-    // Use template's data-driven ctx_to_int_str — single source of truth for all context size conversions
-    let ctx_size = crate::templates::ProviderTemplate::ctx_to_int_str(&config.ctx_size).parse::<usize>().unwrap_or(32768);
-
-    let model_path_str = if !config.model_path.is_empty() {
-        config.model_path.clone()
-    } else {
-        return Err("Model path is required for VRAM check".to_string());
-    };
-
-    let file_metadata = std::fs::metadata(&model_path_str).map_err(|e| {
-        format!("Cannot access model file '{}': {}", model_path_str, e)
-    })?;
-    let model_bytes = file_metadata.len();
-
-    let (mmproj_bytes, has_mmproj) = detect_mmproj(&model_path_str);
-
-    let vision_enabled = has_mmproj && config.vision != "OFF";
-
-    let vram_config = VramCalcConfig {
-        model_bytes,
-        mmproj_bytes,
-        vision_enabled,
-        offload_layers: 999,
-        ctx: ctx_size,
-        kv_quant: config.kv_quant.clone(),
-        parallel: config.parallel as u32,
-        batch: config.batch as u32,
-    };
-
-    let vram_result = vram::calculate_vram_with_fallback(&model_path_str, &vram_config, "REGULAR");
-    let fit_result = vram::check_vram_fit(&gpus, &vram_result);
-
-    Ok(fit_result)
-}
-
 // ── Helpers ─────────────────────────────────────────────────────────
 
 /// Returns the template for a given provider ID.
@@ -719,13 +702,8 @@ pub async fn preview_launch_command(
 
     let config = template.apply_provider_defaults(&config, provider_params_pv);
 
-    let gpu_mask = if config.device == "GPU-1" {
-        "1".to_string()
-    } else if !config.split_mode.is_empty() && config.split_mode.to_uppercase() != "NONE" {
-        "0,1".to_string()
-    } else {
-        "0".to_string()
-    };
+    let gpu_count = detect_gpu_count();
+    let gpu_mask = compute_gpu_mask(&config, gpu_count, false);
 
     let cmd_args = template.build_command(&config, &gpu_mask, param_defs_pv);
     Ok(format!("{} {}", binary_path.display(), cmd_args.join(" ")))
@@ -851,13 +829,8 @@ pub async fn fit_scan_model(
     config = template.apply_provider_defaults(&config, provider_params);
 
     // Derive GPU mask from config — same logic as launch_engine
-    let gpu_mask = if config.device == "GPU-1" {
-        "1".to_string()
-    } else if !config.split_mode.is_empty() && config.split_mode.to_uppercase() != "NONE" {
-        "0,1".to_string()
-    } else {
-        "0".to_string()
-    };
+    let gpu_count = detect_gpu_count();
+    let gpu_mask = compute_gpu_mask(&config, gpu_count, false);
 
     let args = fit_scanner::build_fit_args_from_template(&template, &config, &model_path, &gpu_mask);
     let vram_mib = fit_scanner::scan_single_anchor(&fit_binary, &args, &gpu_mask).await?;

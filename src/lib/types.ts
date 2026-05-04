@@ -238,6 +238,62 @@ export interface VramFitResult {
   };
 }
 
+/** Scenario Factory types — single source of truth for VRAM evaluation */
+
+export type Scenario =
+  | 'SOLO_CLEAN_FIT'
+  | 'SOLO_BUSY_FIT'
+  | 'SOLO_SPILL'
+  | 'MULTI_PERFECT'
+  | 'MULTI_PRESSURE'
+  | 'TOTAL_SPILL'
+  | 'HW_LOCKED';
+
+export interface StyleObject {
+  titleColor: string;
+  gpuBarColor: string;
+  borderColor: string;
+  bgTint: string;
+  badgeBg: string;
+  icon: string;
+  label: string;
+  ramVisible: boolean;
+}
+
+export interface RunningEngine {
+  slotAlias: string;
+  modelShort: string;
+  vramUsedMib: number;
+}
+
+export interface GpuAllocation {
+  gpuIndex: number;
+  name: string;
+  vramManufacturedGb: number;
+  vramAvailableGb: number;
+  projectedLoadGb: number;
+  runningEngines: RunningEngine[];
+}
+
+export interface VramManifest {
+  scenario: Scenario;
+  style: StyleObject;
+  vramWeightsGb: number;
+  vramKvGb: number;
+  vramOverheadGb: number;
+  vramTotalGb: number;
+  ramWeightsGb: number;
+  ramSpillGb: number;
+  ramTotalGb: number;
+  ramManufacturedGb: number;
+  ramAvailableGb: number;
+  gpuAllocations: GpuAllocation[];
+  fits: boolean;
+  recommendation: string;
+  gpuLayers: number;
+  ramLayers: number;
+}
+
 /** VRAM profile from 3 anchor scans — used for interpolation */
 export interface VramProfile {
   anchor_a_mib: number;   // 8K / f16

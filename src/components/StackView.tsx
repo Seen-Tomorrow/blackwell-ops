@@ -56,7 +56,7 @@ export default function StackView({ stack, logs, systemEvents, enginePerfEvents,
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
             {stack.map((entry, idx) => (
-              <div key={`${entry.alias}-${idx}`} className={`overflow-hidden border border-stealth-border/50 rounded-sm ${entry.status === "IDLE" ? "opacity-40" : ""}`}>
+              <div key={`${entry.alias}-${idx}`} className={`overflow-hidden border border-stealth-border/50 rounded-sm ${entry.status === "IDLE" ? "opacity-75" : ""}`}>
                 <EngineBanner slotIndex={entry.idx} providerName={entry.provider_name} providerType={entry.provider_type} status={entry.status} gpuMask={entry.gpu} buildInfo={entry.build_info} />
                 <EngineCard
                   entry={entry}

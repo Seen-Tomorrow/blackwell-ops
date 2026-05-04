@@ -98,17 +98,6 @@
         }
       },
       {
-        "key": "Device",
-        "label": "Device",
-        "config_key": "device",
-        "flag": null,
-        "ptype": "arg_select",
-        "values": ["GPU-0", "GPU-1"],
-        "default": "GPU-0",
-        "ui_group": "Core",
-        "note": "Select which GPU to use for inference."
-      },
-      {
         "key": "Split",
         "label": "Split",
         "config_key": "split_mode",
@@ -320,17 +309,6 @@
         "sub_params": {
           "moe_optimal": ["-ot", "\\\\.ffn_.*_exps\\.=CPU", "-ctk", "q4_0", "-ctv", "q4_0"]
         }
-      },
-      {
-        "key": "Device",
-        "label": "Device",
-        "config_key": "device",
-        "flag": null,
-        "ptype": "arg_select",
-        "values": ["GPU-0", "GPU-1"],
-        "default": "GPU-0",
-        "ui_group": "Core",
-        "note": "Select which GPU to use for inference."
       },
       {
         "key": "Split",

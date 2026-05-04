@@ -13,6 +13,7 @@ Thumbs.db
 node_modules/
 dist/
 dist-ssr/
+.opencode/
 *.local
 .env
 .env.*

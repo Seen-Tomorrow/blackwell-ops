@@ -4,6 +4,10 @@ use std::path::PathBuf;
 
 use crate::types::{ModelPathEntry, PathDiskUsage, ProviderConfig};
 
+/// Maximum engine slots — decoupled from physical GPU count.
+/// Modern Windows supports up to 16 GPUs; each slot = one provider backend process + model.
+pub const MAX_ENGINE_SLOTS: usize = 16;
+
 // ── Provider Metadata (persisted to disk) ───────────────────────────
 
 /// Lightweight provider metadata — saved to %APPDATA%/blackwell-ops/provider_meta.json.
@@ -81,7 +85,7 @@ impl Default for AppConfig {
             model_paths,
             prefs_file: PathBuf::new(),
             base_port: 9090,
-            gpu_slots: 2,
+            gpu_slots: MAX_ENGINE_SLOTS,
             providers: Vec::new(),
         }
     }
@@ -430,27 +434,22 @@ fn genesis_providers() -> Vec<crate::types::ProviderConfig> {
 pub fn load_config() -> AppConfig {
     // Try loading saved config from disk first (model_paths + other settings)
     if let Some(saved) = load_saved_config() {
-        // Detect GPU count for engine slot allocation
-        let mut gpu_slots = 2;
-        if let Ok(output) = std::process::Command::new("nvidia-smi")
-            .args(&["--query-gpu=index", "--format=csv,noheader"])
-            .output()
-        {
-            let count = String::from_utf8_lossy(&output.stdout)
-                .lines().filter(|l| !l.trim().is_empty()).count();
-            if count > 0 {
-                gpu_slots = count;
-                log::info!("Detected {} GPU(s)", gpu_slots);
-            }
-        }
-        // DEV/TESTING: force minimum 8 slots regardless of GPU count
-        gpu_slots = std::cmp::max(gpu_slots, 8);
+        // Detect GPU count for Device param values only — NOT for slot count
+        let gpu_count = detect_gpu_count();
 
-        return build_config_with_providers_full(gpu_slots, saved);
+        return build_config_with_providers_full(gpu_count, saved);
     }
 
     // No saved config — detect GPUs and build fresh
-    let mut gpu_slots = 2;
+    let gpu_count = detect_gpu_count();
+
+    let fresh = build_fresh_config(MAX_ENGINE_SLOTS);
+    build_config_with_providers_full(gpu_count, fresh)
+}
+
+/// Detect physical GPU count via nvidia-smi. Returns 2 as fallback if detection fails.
+pub fn detect_gpu_count_pub() -> usize {
+    let mut gpu_count = 2; // Fallback for single-GPU or detection failure
     if let Ok(output) = std::process::Command::new("nvidia-smi")
         .args(&["--query-gpu=index", "--format=csv,noheader"])
         .output()
@@ -458,15 +457,16 @@ pub fn load_config() -> AppConfig {
         let count = String::from_utf8_lossy(&output.stdout)
             .lines().filter(|l| !l.trim().is_empty()).count();
         if count > 0 {
-            gpu_slots = count;
-            log::info!("Detected {} GPU(s)", gpu_slots);
+            gpu_count = count;
+            log::info!("Detected {} GPU(s)", gpu_count);
         }
     }
-    // DEV/TESTING: force minimum 8 slots regardless of GPU count
-    gpu_slots = std::cmp::max(gpu_slots, 8);
+    gpu_count
+}
 
-    let fresh = build_fresh_config(gpu_slots);
-    build_config_with_providers_full(gpu_slots, fresh)
+/// Internal alias used at startup.
+fn detect_gpu_count() -> usize {
+    detect_gpu_count_pub()
 }
 
 // ── Template Update Detection ───────────────────────────────────────
@@ -717,7 +717,7 @@ pub fn save_config(config: &AppConfig) -> Result<(), String> {
 }
 
 /// Build AppConfig with GPU detection and genesis providers.
-fn build_fresh_config(gpu_slots: usize) -> AppConfig {
+fn build_fresh_config(_gpu_slots: usize) -> AppConfig {
     let app_dir = dirs::config_dir().map(|d| d.join("blackwell-ops").join("models"));
     let default_path = app_dir.as_ref().map(|p| p.to_string_lossy().to_string());
 
@@ -747,7 +747,7 @@ fn build_fresh_config(gpu_slots: usize) -> AppConfig {
         model_paths,
         prefs_file: PathBuf::new(),
         base_port: 9090,
-        gpu_slots,
+        gpu_slots: MAX_ENGINE_SLOTS,
         providers: Vec::new(),
     }
 }
@@ -768,10 +768,68 @@ fn load_saved_config() -> Option<AppConfig> {
     None
 }
 
+/// Ensure each provider has a Device param with values matching actual GPU topology.
+/// Called at startup AND after every provider save to keep Device in sync.
+pub fn ensure_device_param(providers: &mut Vec<crate::types::ProviderConfig>, gpu_count: usize) {
+    let mut device_values = Vec::new();
+    for i in 0..gpu_count {
+        device_values.push(serde_json::json!(format!("GPU-{}", i)));
+    }
+    if device_values.is_empty() {
+        return;
+    }
+
+    let default_device = serde_json::json!("GPU-0");
+
+    for provider in providers.iter_mut() {
+        let has_device = provider.param_definitions.iter().any(|p| p.key == "Device");
+        if has_device {
+            // Update existing Device param with correct values from topology
+            for def in provider.param_definitions.iter_mut() {
+                if def.key == "Device" {
+                    def.values = device_values.clone();
+                    // If current default is out of range, reset to GPU-0
+                    if let Some(dv) = def.default_value.as_str() {
+                        if !device_values.iter().any(|v| v.as_str() == Some(dv)) {
+                            def.default_value = default_device.clone();
+                        }
+                    } else {
+                        def.default_value = default_device.clone();
+                    }
+                }
+            }
+        } else {
+            // Inject new Device param at order 0, shift existing orders up
+            for def in provider.param_definitions.iter_mut() {
+                def.order += 1;
+            }
+            provider.param_definitions.insert(0, crate::types::ParamDef {
+                key: "Device".to_string(),
+                label: "Device".to_string(),
+                values: device_values.clone(),
+                order: 0,
+                hidden: false,
+                hidden_values: Vec::new(),
+                config_key: "device".to_string(),
+                flag: None,
+                ptype: "arg_select".to_string(),
+                map_id: Some(String::new()),
+                ui_group: "Core".to_string(),
+                note: "Select which GPU to use for inference.".to_string(),
+                pattern: String::new(),
+                default_value: default_device.clone(),
+                user_added_values: Vec::new(),
+                factory_default: default_device.clone(),
+                sub_params: None,
+            });
+        }
+    }
+}
+
 /// Build AppConfig with:
 /// - Built-in Genesis providers (fresh param_definitions from embedded template)
 /// - Any extra providers from disk metadata
-fn build_config_with_providers_full(gpu_slots: usize, mut config: AppConfig) -> AppConfig {
+fn build_config_with_providers_full(gpu_count: usize, mut config: AppConfig) -> AppConfig {
     let metas = load_provider_meta();
 
     let disk_metas = if metas.is_empty() {
@@ -832,6 +890,10 @@ fn build_config_with_providers_full(gpu_slots: usize, mut config: AppConfig) -> 
     }
 
     config.providers = providers;
-    config.gpu_slots = gpu_slots;
+    config.gpu_slots = MAX_ENGINE_SLOTS;
+
+    // Inject/update Device param to match actual GPU topology count
+    ensure_device_param(&mut config.providers, gpu_count);
+
     config
 }

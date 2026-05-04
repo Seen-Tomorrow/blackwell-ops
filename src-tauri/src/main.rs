@@ -6,7 +6,6 @@ mod intel;
 mod config;
 mod engine_stack;
 mod log_hub;
-mod vram;
 mod hf_api;
 mod types;
 
@@ -410,7 +409,6 @@ async fn main() {
             engine::stop_all_engines,
             engine::stop_engines_by_provider,
             engine::get_stack_status,
-            engine::check_vram_fit,
             engine::clean_exit,
             // Provider management commands
             provider_mgmt::list_providers,

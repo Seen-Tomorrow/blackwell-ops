@@ -40,20 +40,11 @@ fn next_rod_id(rods: &[R11RodHandle]) -> String {
 fn estimate_vram(model_path: &str, ctx_size: usize) -> f64 {
     let model_bytes = std::fs::metadata(model_path).map(|m| m.len()).unwrap_or(0);
 
-    // Use the same VRAM calculator as check_vram_fit
-    let calc_config = crate::vram::VramCalcConfig {
-        model_bytes,
-        mmproj_bytes: 0,
-        vision_enabled: false,
-        offload_layers: 999, // ALL layers
-        ctx: ctx_size,
-        kv_quant: "f16".to_string(),
-        parallel: 1,
-        batch: 2048,
-    };
-
-    let vram_result = crate::vram::calculate_vram_with_fallback(model_path, &calc_config, "REGULAR");
-    (vram_result.total_vram * 1024.0).max(4096.0)
+    // Simple file-size-based estimate for reactor UI (not precision-critical)
+    // Model size + 30% overhead (weights + KV cache + CUDA context)
+    let base_mib = model_bytes as f64 / (1024.0 * 1024.0);
+    let kv_estimate = ctx_size as f64 * 0.002; // rough KV per-token estimate in MiB
+    (base_mib * 1.3 + kv_estimate + 2560.0).max(4096.0)
 }
 
 #[tauri::command]
