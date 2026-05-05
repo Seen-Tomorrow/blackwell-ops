@@ -1,4 +1,4 @@
-import { ScenarioInput, ComputedValues, buildManifest, gpuManufacturedMib } from "./scenarios_factory";
+import { ScenarioInput, ComputedValues, buildManifest, gpuManufacturedMib, perLayerWeightGb } from "./scenarios_factory";
 import type { VramManifest } from "../../../lib/types";
 
 /**
@@ -15,7 +15,7 @@ export function tryEvaluate(input: ScenarioInput, computed: ComputedValues): Vra
 
   // Calculate layer split across all GPUs
   const nLayer = input.modelMeta.n_layer;
-  const perLayerGb = weightsGb / nLayer;
+  const perLayerGb = perLayerWeightGb(input, computed);
   const kvPerLayer = kvCacheGb / nLayer;
   const availableForWeightsAndKv = totalCapacity - overheadGb - visionGb;
   const gpuLayers = (perLayerGb + kvPerLayer) > 0

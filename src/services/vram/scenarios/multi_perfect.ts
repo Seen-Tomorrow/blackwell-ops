@@ -1,4 +1,4 @@
-import { ScenarioInput, ComputedValues, buildManifest, gpuManufacturedMib } from "./scenarios_factory";
+import { ScenarioInput, ComputedValues, buildManifest } from "./scenarios_factory";
 import type { VramManifest } from "../../../lib/types";
 
 /**
@@ -18,10 +18,11 @@ export function tryEvaluate(input: ScenarioInput, computed: ComputedValues): Vra
     multiTotalAvailable > 0 ? vramTotalGb * (avail / multiTotalAvailable) : vramTotalGb / numGpus,
   );
 
-  // Guard: no GPU exceeds 85% — if any does, this is MULTI_PRESSURE instead
+  // Guard: no GPU exceeds 85% of AVAILABLE VRAM — compare against free space, not manufactured capacity
+  // A card with only 2GB free on 24GB total shows ~8% pressure vs ~92% real utilization
   const hasPressure = perGpuLoad.some((load, i) => {
-    const total = gpuManufacturedMib(input.gpus[i]) / 1024;
-    return total > 0 && load / total > 0.85;
+    const available = gpuAvailable[i];
+    return available > 0 && load / available > 0.85;
   });
   if (hasPressure) return null;
 
@@ -30,7 +31,7 @@ export function tryEvaluate(input: ScenarioInput, computed: ComputedValues): Vra
     "MULTI_PERFECT",
     {
       titleColor: "text-cyan-400",
-      gpuBarColor: "bg-green",
+      gpuBarColor: "bg-nv-green",
       borderColor: "border-cyan-400/30",
       bgTint: "bg-cyan-400/5",
       badgeBg: "bg-cyan-400/20",

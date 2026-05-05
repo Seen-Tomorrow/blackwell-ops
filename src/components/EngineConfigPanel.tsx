@@ -101,9 +101,30 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     return selectedProvider || (model.backend_type || "ggml-stable");
   }, [model, selectedProvider]);
 
+  // Dynamic Device param — generated from GPU topology, always first in Core
+  const deviceParamDef: ParamDef | null = useMemo(() => {
+    if (gpus.length === 0) return null;
+    const alreadyExists = adminParamDefs.some(d => d.key === "Device");
+    if (alreadyExists) return null;
+    return {
+      key: "Device",
+      label: "Device",
+      config_key: "device",
+      flag: null,
+      ptype: "arg_select" as const,
+      values: gpus.map((_, i) => `GPU-${i}`),
+      order: -1,
+      hidden: false,
+      defaultValue: "GPU-0",
+      ui_group: "Core",
+      note: "Select which GPU to use for inference.",
+    };
+  }, [gpus.length, adminParamDefs]);
+
   const mergedParamDefs = useMemo(() => {
-    return [...adminParamDefs].sort((a, b) => a.order - b.order);
-  }, [adminParamDefs]);
+    const defs = deviceParamDef ? [deviceParamDef, ...adminParamDefs] : [...adminParamDefs];
+    return defs.sort((a, b) => a.order - b.order);
+  }, [adminParamDefs, deviceParamDef]);
 
   // ── Hooks ────────────────────────────────────────────────────────────────
   const { config, updateParam } = useConfigResolver({
@@ -145,10 +166,12 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     const isAdminParam = adminParamDefs.some(d => d.key === def.key);
     const currentValue = config[def.key] ?? config[def.config_key || def.key];
 
+    const isDevice = def.key === "Device";
+
     return (
       <div key={def.key} data-param-row className="flex items-center gap-2">
         <span
-          className="text-[9px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider truncate"
+          className={`font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider truncate ${isDevice ? 'text-[11px]' : 'text-[9px]'}`}
           title={def.label}
         >
           {def.label}
@@ -166,7 +189,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
               key={`${def.key}-${val}`}
               tabIndex={0}
               onClick={() => updateParam(def.key, val)}
-              className={`px-2 py-0.5 text-[9px] font-mono rounded-sm focus:outline-none ${
+              className={`px-2 py-0.5 font-mono rounded-sm focus:outline-none ${isDevice ? 'text-[11px] px-3 py-1' : 'text-[9px]'} ${
                 currentValue === val || config[def.config_key || def.key] === val
                   ? "value-chip-active"
                   : "value-chip"
@@ -387,6 +410,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         <VramBadge
           manifest={vramCalc.manifest}
           gpus={gpus}
+          selectedGpuIdx={config.Device ? parseInt(config.Device.replace("GPU-", ""), 10) : undefined}
           onDeviceSelect={(gpuIndex) => {
             updateParam("Device", `GPU-${gpuIndex}`);
             updateParam("Split", "NONE");

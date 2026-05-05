@@ -50,6 +50,8 @@ export interface ModelMetadata {
   n_expert_used: number;
   rope_freq_base: number;
   rope_dim: number;
+  feed_forward_length?: number;
+  expert_feed_forward_length?: number;
   file_type_str: string;
   bpw: number;
   tensor_counts: Record<string, number>;

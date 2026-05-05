@@ -54,6 +54,13 @@ html, body, #root {
   color: #000;
 }
 
+/* Selected GPU card — grey checkered border, uniform across all scenarios */
+.gpu-selected {
+  border: 2px solid transparent;
+  outline: 2px dashed rgba(148, 163, 184, 0.5);
+  box-shadow: 0 0 10px rgba(148, 163, 184, 0.15), inset 0 0 6px rgba(148, 163, 184, 0.06);
+}
+
 /* ── Utility Classes ───────────────────────────────────────────── */
 .font-mono {
   font-family: 'JetBrains Mono', 'Roboto Mono', monospace;

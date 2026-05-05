@@ -98,6 +98,8 @@ pub fn scan_model_metadata(model_path: &str, binary_path: &str) -> Result<ModelM
         n_expert_used: 0,
         rope_freq_base: 0.0,
         rope_dim: 0,
+        feed_forward_length: 0,
+        expert_feed_forward_length: 0,
         file_type_str: String::new(),
         bpw: 0.0,
         tensor_counts: HashMap::new(),
@@ -203,6 +205,12 @@ fn parse_kv_line(line: &str, m: &mut ModelMetadata) {
         _ if key.ends_with(".rope.dimension_count") => {
             parse_u32(&value_str, &mut m.rope_dim);
         }
+        _ if key.ends_with(".feed_forward_length") && !key.contains("expert") => {
+            parse_u32(&value_str, &mut m.feed_forward_length);
+        }
+        _ if key.ends_with(".expert_feed_forward_length") => {
+            parse_u32(&value_str, &mut m.expert_feed_forward_length);
+        }
         _ if key.ends_with(".rope.scaling.type") => {
             m.rope_scaling_type = value_str.clone();
         }
@@ -265,6 +273,8 @@ fn parse_print_info(line: &str, m: &mut ModelMetadata) {
         }
         "n_expert" => parse_u32(&value_str, &mut m.n_expert),
         "n_expert_used" => parse_u32(&value_str, &mut m.n_expert_used),
+        "ffn_hidden" | "feed_forward_length" => parse_u32(&value_str, &mut m.feed_forward_length),
+        "expert_ffn_hidden" | "expert_feed_forward_length" => parse_u32(&value_str, &mut m.expert_feed_forward_length),
         "file type" => m.file_type_str = value_str.clone(),
         "model params" => m.total_params_str = value_str.clone(),
         "n_vocab" => parse_u32(&value_str, &mut m.vocab_size),

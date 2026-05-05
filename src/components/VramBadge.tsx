@@ -5,6 +5,7 @@ import GpuTopology from "./GpuTopology";
 interface VramBadgeProps {
   manifest: VramManifest | null;
   gpus: GpuInfo[];
+  selectedGpuIdx?: number;
   onDeviceSelect?: (gpuIndex: number) => void;
 }
 
@@ -18,7 +19,7 @@ const ACTION_TEXTS: Record<string, string> = {
   HW_LOCKED: "",
 };
 
-export default function VramBadge({ manifest, gpus, onDeviceSelect }: VramBadgeProps) {
+export default function VramBadge({ manifest, gpus, selectedGpuIdx, onDeviceSelect }: VramBadgeProps) {
   if (!manifest) return null;
 
   const s = manifest.style;
@@ -107,7 +108,7 @@ export default function VramBadge({ manifest, gpus, onDeviceSelect }: VramBadgeP
             <div className="space-y-1 mt-2">
               {headroomMib > 0 ? (
                 <>
-                  <p className="text-[11px] font-mono text-telemetry-green">
+                  <p className="text-[11px] font-mono text-nv-green">
                     {(headroomMib / 1024).toFixed(1)} GB Headroom
                   </p>
                   <p className="text-[8px] font-mono text-stealth-muted opacity-60">Zero RAM Spill</p>
@@ -136,6 +137,7 @@ export default function VramBadge({ manifest, gpus, onDeviceSelect }: VramBadgeP
             ramVisible={s.ramVisible}
             ramTotalGb={manifest.ramTotalGb}
             ramManufacturedGb={manifest.ramManufacturedGb}
+            selectedGpuIdx={selectedGpuIdx}
             onDeviceSelect={onDeviceSelect}
           />
         )}

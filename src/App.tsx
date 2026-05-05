@@ -262,9 +262,17 @@ function App() {
     const cleanup = () => { if (unsub) unsub(); };
     listen("engine-system", (e: any) => {
       const payload = e.payload as SystemEvent;
-      unstable_batchedUpdates(() => {
-        try {
-          if (payload && payload.slot !== undefined && payload.text) {
+      try {
+        if (payload && payload.slot !== undefined && payload.text) {
+          // Strip ANSI codes before checking prefix — ConPTY may inject them anywhere
+          const cleanText = payload.text.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "").replace(/\[[0-9;]+[A-Za-z]/g, "");
+          if (cleanText.includes("LAUNCH_ERROR:")) {
+            const reason = cleanText.split("LAUNCH_ERROR:").slice(1).join(":").trim();
+            window.dispatchEvent(new CustomEvent("blackops-launch-error", {
+              detail: { message: reason }
+            }));
+          }
+          unstable_batchedUpdates(() => {
             setSystemEvents((prev) => {
               const next = new Map(prev);
               const existing = next.get(payload.slot) || [];
@@ -272,9 +280,9 @@ function App() {
               next.set(payload.slot, updated);
               return next;
             });
-          }
-        } catch {}
-      });
+          });
+        }
+      } catch {}
     }).then((u) => { unsub = u; });
 
     return cleanup;

@@ -38,6 +38,38 @@ fn compute_gpu_mask(config: &EngineConfig, gpu_count: usize, test_has_split: boo
     }
 }
 
+/// Extract a human-readable crash reason from buffered ConPTY output.
+fn extract_crash_reason(lines: &[String], exit_code: u32) -> String {
+    // Look for known error patterns in buffered output (search backwards — last errors are most relevant)
+    for line in lines.iter().rev() {
+        let lower = line.to_lowercase();
+        if lower.contains("unknown option") || lower.contains("invalid value") || lower.contains("error:") {
+            return strip_ansi(line).chars().take(120).collect();
+        }
+    }
+    format!("process exited unexpectedly (code={})", exit_code)
+}
+
+/// Strip ANSI escape sequences from ConPTY output (both ESC-prefixed and bare bracket sequences).
+fn strip_ansi(s: &str) -> String {
+    // Remove full ESC sequences: \x1b[...m, \x1b[...H, etc.
+    let mut result = s.replace('\x1b', "");
+    // Remove any remaining bare ANSI bracket codes like [6;1H or [0m
+    while let Some(start) = result.find('[') {
+        let rest = &result[start + 1..];
+        if let Some(end) = rest.find(|c: char| c.is_ascii_alphabetic()) {
+            // Check if chars between [ and letter are digits/semicolons (ANSI pattern)
+            let params = &rest[..end];
+            if params.chars().all(|c| c.is_ascii_digit() || c == ';') && !params.is_empty() {
+                result = format!("{}{}", &result[..start], &rest[end..]);
+                continue;
+            }
+        }
+        break;
+    }
+    result.trim().to_string()
+}
+
 /// Detect physical GPU count via nvidia-smi. Returns 2 as fallback.
 fn detect_gpu_count() -> usize {
     let mut gpu_count = 2;
@@ -262,6 +294,7 @@ pub async fn launch_engine(
 
     // Spawn background health checker with panic protection
     let stack_arc = app.stack.clone();
+    let alias_for_crash = config.alias.clone();
     let hp_port = slot_port;
     tokio::spawn(async move {
         let mut attempts = 0u32;
@@ -284,13 +317,23 @@ pub async fn launch_engine(
             let mut s = stack_arc.lock().await;
             let mut crashed = false;
 
+            // Check if process crashed — drain buffer first to avoid double mutable borrow
+            let buffered_lines = s.drain_error_buffer(slot_idx);
+
             if let Some(slot) = s.get_slot_mut(slot_idx) {
                 if let Some(ref mut conpty_proc) = slot.conpty_proc {
                     if !conpty_proc.is_alive() {
                         let exit_code = conpty_proc.wait(None).unwrap_or(u32::MAX);
                         log::error!("slot={} ConPTY process exited while Loading — crashed (exit code: {})", slot_idx, exit_code);
-                        slot.status = SlotStatus::Error(format!("process exited unexpectedly (code={})", exit_code));
+
+                        let crash_reason = extract_crash_reason(&buffered_lines, exit_code);
+                        slot.status = SlotStatus::Error(crash_reason.clone());
                         crashed = true;
+
+                        // Emit system event for frontend toast
+                        if let Some(ref hub) = s.log_hub() {
+                            hub.emit_system_event(slot_idx, &alias_for_crash, &format!("LAUNCH_ERROR:{}", crash_reason)).await;
+                        }
                     }
                 }
             }

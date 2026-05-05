@@ -159,6 +159,12 @@ pub struct ModelMetadata {
     /// Rope dimension count (0 = full head dim)
     #[serde(default)]
     pub rope_dim: u32,
+    /// FFN intermediate dimension (feed_forward_length) — 0 if not captured
+    #[serde(default, rename = "feed_forward_length")]
+    pub feed_forward_length: u32,
+    /// MoE expert FFN intermediate dimension — 0 if not MoE or not captured
+    #[serde(default, rename = "expert_feed_forward_length")]
+    pub expert_feed_forward_length: u32,
     /// File type string (e.g., "Q4_K - Medium")
     #[serde(rename = "file_type_str")]
     pub file_type_str: String,

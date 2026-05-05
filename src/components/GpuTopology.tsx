@@ -7,12 +7,13 @@ interface GpuTopologyProps {
   ramVisible: boolean;
   ramTotalGb: number;
   ramManufacturedGb: number;
+  selectedGpuIdx?: number;
   onDeviceSelect?: (gpuIndex: number) => void;
 }
 
 const HATCH_PATTERN = `repeating-linear-gradient(45deg, transparent, transparent 2px, rgba(0,0,0,0.35) 2px, rgba(0,0,0,0.35) 4px)`;
 
-export default function GpuTopology({ gpuAllocations, gpuBarColor, ramVisible, ramTotalGb, ramManufacturedGb, onDeviceSelect }: GpuTopologyProps) {
+export default function GpuTopology({ gpuAllocations, gpuBarColor, ramVisible, ramTotalGb, ramManufacturedGb, selectedGpuIdx, onDeviceSelect }: GpuTopologyProps) {
   return (
     <div className="space-y-2">
       {/* GPU Grid — 2 per row */}
@@ -31,8 +32,9 @@ export default function GpuTopology({ gpuAllocations, gpuBarColor, ramVisible, r
           const osPct = totalMib > 0 ? (osOtherMib / totalMib) * 100 : 0;
 
           // Color hex for inline styles — derive from tailwind class name
-          const barColorHex = gpuBarColor.includes('green') ? '#76B900' :
+          const barColorHex = gpuBarColor.includes('nv-green') || gpuBarColor.includes('green') ? '#76B900' :
                               gpuBarColor.includes('yellow') ? '#FBBF24' :
+                              gpuBarColor.includes('telemetry-red') ? '#ff3333' :
                               gpuBarColor.includes('red-5') ? '#EF4444' :
                               gpuBarColor.includes('red-6') || gpuBarColor.includes('red-7') ? '#B91C1C' :
                               gpuBarColor.includes('orange') ? '#FB923C' :
@@ -40,19 +42,25 @@ export default function GpuTopology({ gpuAllocations, gpuBarColor, ramVisible, r
                               gpuBarColor.includes('gray') ? '#4B5563' :
                               '#76B900';
 
+          const isSelected = selectedGpuIdx === alloc.gpuIndex;
+
           return (
             <motion.div
               key={alloc.gpuIndex}
               initial={{ opacity: 0, y: 4 }}
               animate={{ opacity: 1, y: 0 }}
               onClick={() => onDeviceSelect?.(alloc.gpuIndex)}
-              className={`border rounded-sm p-2 bg-depth-black/30 ${
-                onDeviceSelect ? "cursor-pointer hover:border-stealth-muted/50 transition-colors" : ""
-              } border-stealth-border/30`}
+              className={`rounded-sm p-2 bg-depth-black/30 transition-all ${
+                isSelected
+                  ? "gpu-selected"
+                  : onDeviceSelect
+                    ? "cursor-pointer border border-stealth-border/30 hover:border-stealth-muted/50"
+                    : "border border-stealth-border/30"
+              }`}
             >
               {/* GPU header */}
               <div className="flex justify-between items-center mb-1.5">
-                <span className="text-[9px] font-mono text-stealth-muted truncate flex-1 mr-2" title={alloc.name}>
+                <span className={`text-[9px] font-mono truncate flex-1 mr-2 ${isSelected ? 'text-white' : 'text-stealth-muted'}`} title={alloc.name}>
                   {alloc.name}
                 </span>
                 <span style={{ color: barColorHex }} className="text-[7px] font-mono flex-shrink-0">

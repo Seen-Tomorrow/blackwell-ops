@@ -71,6 +71,51 @@ export function gpuHasRunningEngines(gpuIdx: number, slots: RunningSlotInfo[]): 
   return slots.some(s => s.gpuMask.split(",").some(p => p.trim() === String(gpuIdx)));
 }
 
+/** Compute per-layer weight in GB from architecture dimensions.
+ *  Replaces uniform `weightsGb / nLayer` which is wrong for MoE models
+ *  where expert FFN weights dominate layer size. */
+export function perLayerWeightGb(input: ScenarioInput, computed: ComputedValues): number {
+  const m = input.modelMeta;
+  const nLayer = m.n_layer;
+  if (nLayer === 0 || m.n_embd === 0) return computed.weightsGb / Math.max(nLayer, 1);
+
+  const headDim = m.n_head > 0 ? m.n_embd / m.n_head : 128;
+  const nHeadKv = m.n_head_kv > 0 ? m.n_head_kv : m.n_head;
+  const isMoe = m.n_expert > 0;
+
+  // Per-layer param count from architecture
+  let perLayerParams: number;
+
+  if (isMoe) {
+    // Attention: Q + K + V + output_proj
+    const attnParams = m.n_embd * m.n_embd
+      + 2 * m.n_embd * (nHeadKv * headDim)
+      + m.n_embd * m.n_embd;
+    // All experts loaded into VRAM (llama.cpp loads all, not just active)
+    const expertFfnLen = m.expert_feed_forward_length || (m.feed_forward_length || m.n_embd * 4);
+    const moeParams = m.n_expert * 3 * m.n_embd * expertFfnLen;
+    // Router weight
+    const routerParams = m.n_embd * m.n_expert;
+    perLayerParams = attnParams + moeParams + routerParams;
+  } else {
+    // Dense: attention + FFN (gate + up + down)
+    const ffnLen = m.feed_forward_length || (m.n_embd * 4);
+    const attnParams = m.n_embd * m.n_embd
+      + 2 * m.n_embd * (nHeadKv * headDim)
+      + m.n_embd * m.n_embd;
+    const ffnParams = 3 * m.n_embd * ffnLen;
+    perLayerParams = attnParams + ffnParams;
+  }
+
+  // Convert to GB using bpw from file metadata
+  if (m.bpw > 0) {
+    return (perLayerParams * m.bpw / 8) / (1024 ** 3);
+  }
+
+  // Fallback: uniform division
+  return computed.weightsGb / nLayer;
+}
+
 function round2(v: number): number {
   return Math.round(v * 100) / 100;
 }
@@ -129,7 +174,10 @@ export function computeValues(input: ScenarioInput): ComputedValues {
   // Dynamic activation memory — kicks in when batch > 2048 or parallel > 1
   let dynamicOverhead = 0;
   if (engineConfig.batch > 2048 || engineConfig.parallel > 1) {
-    dynamicOverhead = (engineConfig.batch * effectiveCtx * modelMeta.n_head * headDim * 2) / (1024 ** 2);
+    // Use n_head_kv for GQA models to avoid overestimating activation memory
+    // e.g., Llama-3 70B has n_head=80 but n_head_kv=8, which is the actual active heads per token
+    const effectiveHeads = modelMeta.n_head_kv > 0 ? modelMeta.n_head_kv : modelMeta.n_head;
+    dynamicOverhead = (engineConfig.batch * effectiveCtx * effectiveHeads * headDim * 2) / (1024 ** 2);
 
     // Flash attention reduces activation memory by ~15%
     if (engineConfig.flash_attn) {

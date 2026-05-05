@@ -544,17 +544,7 @@
         "ui_group": "Multi-GPU",
         "note": "Split-Mode F16 (1) uses 16-bit for inter-GPU data exchange. Faster on dual RTX 6000s."
       },
-      {
-        "key": "Device",
-        "label": "Device",
-        "config_key": "device",
-        "flag": null,
-        "ptype": "arg_select",
-        "values": ["GPU-0", "GPU-1"],
-        "default": "GPU-0",
-        "ui_group": "Core",
-        "note": "Select which GPU to use for inference."
-      },
+
       {
         "key": "Split",
         "label": "Split",

@@ -1,4 +1,4 @@
-import { ScenarioInput, ComputedValues, buildManifest, gpuManufacturedMib } from "./scenarios_factory";
+import { ScenarioInput, ComputedValues, buildManifest, gpuManufacturedMib, perLayerWeightGb } from "./scenarios_factory";
 import type { VramManifest } from "../../../lib/types";
 
 /**
@@ -16,7 +16,7 @@ export function tryEvaluate(input: ScenarioInput, computed: ComputedValues): Vra
 
   // Calculate layer split
   const nLayer = input.modelMeta.n_layer;
-  const perLayerGb = weightsGb / nLayer;
+  const perLayerGb = perLayerWeightGb(input, computed);
   const kvPerLayer = kvCacheGb / nLayer;
   const availableForWeightsAndKv = gpuCapacity - overheadGb - visionGb;
   const gpuLayers = (perLayerGb + kvPerLayer) > 0
@@ -59,7 +59,7 @@ export function tryEvaluate(input: ScenarioInput, computed: ComputedValues): Vra
     ramLayers * perLayerGb, ramKvGb, 0, true,
     kvSpillCritical
       ? `SYSTEM MEMORY CASCADE: ${ramLayers} layers in RAM — weights (${(ramLayers * perLayerGb).toFixed(1)} GB) + KV risk (${(ramKvGb).toFixed(1)} GB)`
-      : `${ramLayers} layers in RAM — weights on system RAM (PCIe speed)`,
+      : `${ramLayers} layers in RAM — weights on system RAM (PCIe speed limit speed)`,
     clampedGpuLayers, ramLayers, perGpuLoad,
   );
 }

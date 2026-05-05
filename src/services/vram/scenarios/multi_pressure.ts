@@ -1,4 +1,4 @@
-import { ScenarioInput, ComputedValues, buildManifest, gpuManufacturedMib } from "./scenarios_factory";
+import { ScenarioInput, ComputedValues, buildManifest } from "./scenarios_factory";
 import type { VramManifest } from "../../../lib/types";
 
 /**
@@ -18,10 +18,10 @@ export function tryEvaluate(input: ScenarioInput, computed: ComputedValues): Vra
     multiTotalAvailable > 0 ? vramTotalGb * (avail / multiTotalAvailable) : vramTotalGb / numGpus,
   );
 
-  // Guard: at least one GPU must exceed 85% — otherwise this is MULTI_PERFECT
+  // Guard: at least one GPU must exceed 85% of AVAILABLE VRAM — otherwise this is MULTI_PERFECT
   const hasPressure = perGpuLoad.some((load, i) => {
-    const total = gpuManufacturedMib(input.gpus[i]) / 1024;
-    return total > 0 && load / total > 0.85;
+    const available = gpuAvailable[i];
+    return available > 0 && load / available > 0.85;
   });
   if (!hasPressure) return null;
 

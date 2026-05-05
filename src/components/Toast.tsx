@@ -33,7 +33,9 @@ export function ToastProvider({ children }: ToastProviderProps) {
     const handleLaunchError = (e: Event) => {
       const detail = (e as CustomEvent).detail as { message: string };
       if (detail?.message) {
-        addToast(detail.message, "error", 4000);
+        // Strip any remaining ANSI codes that slipped through
+        const clean = detail.message.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "").replace(/\[[0-9;]+[A-Za-z]/g, "").trim();
+        addToast(clean || detail.message, "error", 6000);
       }
     };
 

@@ -10,6 +10,35 @@ use std::path::PathBuf;
 
 use crate::types::EngineConfig;
 
+/// Resolve "auto" values from GGUF metadata cache. Returns Some(resolved) or None to skip flag.
+fn resolve_auto_value(config_key: &str, model_path: &str) -> Option<String> {
+    match config_key {
+        "yarn_orig_ctx" => {
+            let cache = crate::model_cache::load_cache();
+            if let Some(entry) = cache.get(model_path) {
+                if let Some(gguf) = &entry.gguf_meta {
+                    if gguf.n_ctx_train > 0 {
+                        return Some(gguf.n_ctx_train.to_string());
+                    }
+                }
+            }
+            None // Skip flag — llama.cpp uses its own default
+        }
+        "rope_freq_base" => {
+            let cache = crate::model_cache::load_cache();
+            if let Some(entry) = cache.get(model_path) {
+                if let Some(gguf) = &entry.gguf_meta {
+                    if gguf.rope_freq_base > 0.0 {
+                        return Some(format!("{}", gguf.rope_freq_base as u32));
+                    }
+                }
+            }
+            None // Skip flag — llama.cpp defaults to 10000
+        }
+        _ => None,
+    }
+}
+
 // ── Template Types ──────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -258,13 +287,36 @@ impl ProviderTemplate {
             let owned_str = value.as_str().map(String::from).unwrap_or(value.to_string());
             let value_str = owned_str.as_str();
 
+            // Resolve "auto" from GGUF metadata cache — llama.cpp needs numbers, not "auto"
+            if value_str == "auto" {
+                if let Some(resolved) = resolve_auto_value(&param.config_key, &config.model_path) {
+                    log::debug!("[build_cmd] resolved auto for '{}': '{}' -> '{}'", param.key, value_str, resolved);
+                    // Re-inject with resolved value by treating it as a new owned string
+                    let _ = args.last_mut(); // no-op to keep borrow checker happy
+                    // We'll handle this below by using the resolved value instead of value_str
+                } else {
+                    // Cannot resolve — skip this flag entirely (llama.cpp has sensible defaults)
+                    log::debug!("[build_cmd] cannot resolve auto for '{}', skipping flag", param.key);
+                    Self::inject_sub_params(&mut args, param, value_str, param_defs);
+                    continue;
+                }
+            }
+
+            // Use resolved value if available, otherwise original
+            let final_value = if value_str == "auto" {
+                resolve_auto_value(&param.config_key, &config.model_path).unwrap_or(owned_str.clone())
+            } else {
+                owned_str.clone()
+            };
+            let final_value_str = final_value.as_str();
+
             match param.ptype.as_str() {
-                "arg_select" => Self::inject_arg_select(&mut args, param, value_str),
-                "mapper" => Self::inject_mapper(&mut args, param, value_str),
-                "switch_onoff" => Self::inject_switch_onoff(&mut args, param, value_str),
-                "switch_inverted" => Self::inject_switch_inverted(&mut args, param, value_str),
+                "arg_select" => Self::inject_arg_select(&mut args, param, final_value_str),
+                "mapper" => Self::inject_mapper(&mut args, param, final_value_str),
+                "switch_onoff" => Self::inject_switch_onoff(&mut args, param, final_value_str),
+                "switch_inverted" => Self::inject_switch_inverted(&mut args, param, final_value_str),
                 "path_scanner" => {
-                    if let Some(path) = Self::scan_path(config, param, value_str) {
+                    if let Some(path) = Self::scan_path(config, param, final_value_str) {
                         args.extend([param.flag.clone().unwrap_or_default(), path]);
                     }
                 },
@@ -272,7 +324,7 @@ impl ProviderTemplate {
             }
 
             // Inject sub_params for ALL ptypes — checks disk state first, then template defaults
-            Self::inject_sub_params(&mut args, param, value_str, param_defs);
+            Self::inject_sub_params(&mut args, param, final_value_str, param_defs);
         }
 
         // Set CUDA_VISIBLE_DEVICES via environment (not a CLI arg)

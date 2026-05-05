@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{mpsc, Mutex as TokioMutex};
 use crate::types::{EngineConfig, StackEntry};
 use crate::log_hub::LogHub;
 
@@ -58,7 +58,9 @@ impl std::fmt::Display for SlotStatus {
 pub struct EngineSlot {
     pub conpty_proc: Option<conpty::Process>,
     /// Combined stdout+stderr lines from ConPTY (merged stream)
-    pub combined_rx: Arc<Mutex<Option<mpsc::Receiver<String>>>>,
+    pub combined_rx: Arc<TokioMutex<Option<mpsc::Receiver<String>>>>,
+    /// Buffered output lines for crash diagnostics (last 50 lines) — std Mutex since only accessed synchronously
+    pub error_buffer: Arc<std::sync::Mutex<Vec<String>>>,
     pub port: u16,
     pub status: SlotStatus,
     pub alias: String,
@@ -92,7 +94,8 @@ impl EngineStack {
         for i in 0..slot_count {
             slots.push(Some(EngineSlot {
                 conpty_proc: None,
-                combined_rx: Arc::new(Mutex::new(None)),
+                combined_rx: Arc::new(TokioMutex::new(None)),
+                error_buffer: Arc::new(std::sync::Mutex::new(Vec::new())),
                 port: base_port + i as u16,
                 status: SlotStatus::Idle,
                 alias: format!("ENGINE-{}", i),
@@ -202,18 +205,25 @@ impl EngineStack {
         }
 
         let (tx, rx) = mpsc::channel::<String>(256);
-        
+
+        // Clone error buffer for the reader thread
+        let error_buf = slot.error_buffer.clone();
+
         tokio::task::spawn_blocking(move || {
             use std::io::{BufRead, BufReader};
-            
+
             conpty_output.blocking(true);
             let mut reader = BufReader::new(&mut conpty_output);
-            
+
             for line_result in reader.lines() {
                 match line_result {
                     Ok(line) => {
                         if !line.is_empty() {
-                            let _ = tx.blocking_send(line);
+                            let _ = tx.blocking_send(line.clone());
+                            // Also buffer last 50 lines for crash diagnostics
+                            let mut buf = error_buf.lock().unwrap();
+                            buf.push(line);
+                            if buf.len() > 50 { buf.remove(0); }
                         }
                     }
                     Err(e) => {
@@ -222,7 +232,7 @@ impl EngineStack {
                     }
                 }
             }
-            
+
             eprintln!("[CONPTY] slot={} output stream closed", slot_idx);
         });
 
@@ -257,6 +267,20 @@ impl EngineStack {
             return slot.combined_rx.lock().await.take();
         }
         None
+    }
+
+    /// Drain the error buffer for crash diagnostics.
+    pub fn drain_error_buffer(&mut self, idx: usize) -> Vec<String> {
+        if let Some(slot) = self.slots[idx].as_mut() {
+            slot.error_buffer.lock().unwrap().drain(..).collect()
+        } else {
+            Vec::new()
+        }
+    }
+
+    /// Get log hub reference for emitting events.
+    pub fn log_hub(&self) -> Option<&LogHub> {
+        self.log_hub.as_ref()
     }
 
     async fn kill_process_by_port(port: u16) -> Result<(), String> {
