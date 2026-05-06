@@ -20,14 +20,12 @@ import { useConfigResolver } from "../hooks/useConfigResolver";
 const BASE_PORT = 9090;
 
 // Group metadata derived dynamically from template — no hardcoded group names.
-// Special handling: "Multi-GPU" is elevatable, others default to collapsible.
-interface ParamGroupMeta { id: string; label: string; alwaysOpen: boolean; elevatable?: boolean }
+interface ParamGroupMeta { id: string; label: string; alwaysOpen: boolean }
 function deriveParamGroups(groupKeys: string[]): ParamGroupMeta[] {
   return groupKeys.map(id => ({
     id,
     label: id.toUpperCase(),
     alwaysOpen: id === 'Core' || id === 'Performance', // Core/Performance always open by convention
-    elevatable: id === 'Multi-GPU',
   }));
 }
 
@@ -77,16 +75,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     });
   }, []);
 
-  // Multi-GPU elevation: model exceeds single GPU VRAM (needs split to run)
-  const shouldElevateMultiGpu = useMemo(() => {
-    if (!model || gpus.length < 2) return false;
-    const sizeMatch = model.size_str?.match(/([\d.]+)\s*GB/i);
-    if (!sizeMatch) return false;
-    const modelSizeMib = parseFloat(sizeMatch[1]) * 1024;
-    const singleGpuVram = gpus[0].memory_total_manufactured || gpus[0].memory_total;
-    return modelSizeMib > singleGpuVram;
-  }, [model?.path, model?.size_str, gpus.length]);
-
   // Persist test flags
   useEffect(() => {
     try { localStorage.setItem("BlackOps-testFlags", testFlags); } catch {}
@@ -101,7 +89,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     return selectedProvider || (model.backend_type || "ggml-stable");
   }, [model, selectedProvider]);
 
-  // Dynamic Device param — generated from GPU topology, always first in Core
+  // Dynamic Device param — generated from GPU topology, docked to hardware block
   const deviceParamDef: ParamDef | null = useMemo(() => {
     if (gpus.length === 0) return null;
     const alreadyExists = adminParamDefs.some(d => d.key === "Device");
@@ -116,6 +104,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       order: -1,
       hidden: false,
       defaultValue: "GPU-0",
+      dock: "hardware",
       ui_group: "Core",
       note: "Select which GPU to use for inference.",
     };
@@ -125,6 +114,17 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     const defs = deviceParamDef ? [deviceParamDef, ...adminParamDefs] : [...adminParamDefs];
     return defs.sort((a, b) => a.order - b.order);
   }, [adminParamDefs, deviceParamDef]);
+
+  // Docked params: extracted from merged defs by dock key
+  const dockedParams = useMemo(() => {
+    const docks: Record<string, ParamDef[]> = {};
+    for (const def of mergedParamDefs) {
+      if (!def.dock || def.hidden) continue;
+      if (!docks[def.dock]) docks[def.dock] = [];
+      docks[def.dock].push(def);
+    }
+    return docks;
+  }, [mergedParamDefs]);
 
   // ── Hooks ────────────────────────────────────────────────────────────────
   const { config, updateParam } = useConfigResolver({
@@ -147,23 +147,13 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     systemInfo,
   });
 
-  // RAM offload needed: from manifest layer split
-  const needsRamOffload = vramCalc.manifest?.ramLayers > 0 || false;
 
-  // Split/Device mutual exclusion: when Split changes to non-NONE, clear Device
-  useEffect(() => {
-    if (config.Split && config.Split.toString().toUpperCase() !== "NONE" && config.Split.toString().toLowerCase() !== "") {
-      updateParam("Device", "");
-    }
-  }, [config.Split]);
-
-  // Extracted param row renderer for reuse (inline + elevated Multi-GPU)
+  // Extracted param row renderer for reuse
   const renderParamRow = useCallback((def: ParamDef) => {
     // Merge values + userAddedValues (user-added params from ConfigPage admin edit)
     const seenVals = new Set((def.values || []).map(v => String(v)));
     const allValues = [...(def.values || []), ...(def.userAddedValues || []).filter(v => !seenVals.has(String(v)))];
     const baseValues = allValues.filter(v => !(def.hiddenValues || []).some(hv => String(hv) === String(v)));
-    const isAdminParam = adminParamDefs.some(d => d.key === def.key);
     const currentValue = config[def.key] ?? config[def.config_key || def.key];
 
     const isDevice = def.key === "Device";
@@ -176,12 +166,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         >
           {def.label}
         </span>
-
-        {!isAdminParam && (
-          <span className="text-[7px] font-mono text-yellow-400 bg-yellow-400/15 px-1 py-0 rounded-sm flex-shrink-0">
-            CUSTOM
-          </span>
-        )}
 
         <div className="flex gap-1 flex-wrap flex-1 min-w-0">
           {baseValues.filter((v: any) => !(v?._hidden)).map((val) => (
@@ -203,11 +187,11 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     );
   }, [adminParamDefs, config, updateParam]);
 
-  // Grouped params
+  // Grouped params — skip docked (rendered separately)
   const groupedParams = useMemo(() => {
     const groups: Record<string, ParamDef[]> = {};
     for (const def of mergedParamDefs) {
-      if (def.hidden) continue;
+      if (def.hidden || def.dock) continue;
       const groupId = def.ui_group || 'Feature Flags';
       if (!groups[groupId]) groups[groupId] = [];
       groups[groupId].push(def);
@@ -224,11 +208,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     }
     return allGroups;
   }, [groupedParams, externalProviders, effectiveBackendType]);
-
-  // Multi-GPU params for elevation
-  const multiGpuParams = useMemo(() => {
-    return mergedParamDefs.filter(d => d.ui_group === 'Multi-GPU' && !d.hidden);
-  }, [mergedParamDefs]);
 
   // ── Load param definitions when model/provider changes ───────────────────
   useEffect(() => {
@@ -260,6 +239,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             note: p.note,
             pattern: p.pattern,
             sub_params: p.sub_params,
+            dock: p.dock || undefined,
           }));
            setAdminParamDefs(tDefs);
          })
@@ -332,15 +312,15 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       parallel: typeof config.Parallel === 'number' ? config.Parallel : parseInt(String(config.Parallel), 10) || 1,
       // Auto-offload: use calculated layers from metadata, fallback to config value
       offload: vramCalc.manifest?.gpuLayers != null && vramCalc.manifest.ramLayers > 0 ? String(vramCalc.manifest.gpuLayers) : ((config.Offload || "ALL").toUpperCase() === "ALL" ? "ALL" : String(config.Offload)),
-      offload_mode: (config["Offload-Mode"] || "REGULAR").toString().toUpperCase(),
+      offload_mode: (config["Offload_Mode"] || "REGULAR").toString().toUpperCase(),
       split_mode: (config.Split || "NONE").toString().toLowerCase(),
       vision: config.Vision?.toUpperCase() === "OFF" ? "OFF" : "AUTO",
       flash_attn: config["Flash-Attn"]?.toString().toLowerCase() !== "off",
       jinja: config.Jinja?.toString().toUpperCase() !== "OFF",
-      cont_batching: config["Cont-Batch"]?.toString().toUpperCase() !== "OFF",
+      cont_batching: config["Cont-Batching"]?.toString().toUpperCase() !== "OFF",
       metrics: config.Metrics?.toString().toUpperCase() === "ON",
       reasoning: config.Reasoning?.toString().toUpperCase() === "ON",
-      mmap: config.MMap?.toString().toUpperCase() !== "OFF",
+      mmap: config.MMAP?.toString().toUpperCase() !== "OFF",
       verbose: false,
       log_timestamps: true,
       backend_type: effectiveBackendType,
@@ -406,26 +386,22 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       )}
 
       {/* VRAM Section */}
-      <div className="p-[1px] border-b section-divider relative flex-shrink-0">
+      <div className="px-4 py-3 border-b section-divider relative flex-shrink-0">
         <VramBadge
           manifest={vramCalc.manifest}
           gpus={gpus}
           selectedGpuIdx={config.Device ? parseInt(config.Device.replace("GPU-", ""), 10) : undefined}
           onDeviceSelect={(gpuIndex) => {
             updateParam("Device", `GPU-${gpuIndex}`);
-            updateParam("Split", "NONE");
           }}
         />
       </div>
 
-      {/* ── Dynamic Multi-GPU Elevation ─────────────── */}
-      {shouldElevateMultiGpu && multiGpuParams.length > 0 && (
-        <div className={`px-4 py-3 border-b section-divider relative flex-shrink-0 ${config.Split?.toUpperCase() === "NONE" ? "opacity-50" : needsRamOffload ? "bg-telemetry-red/5 border-telemetry-red/30" : "bg-telemetry-cyan/5 border-telemetry-cyan/30"}`}>
-          <label className={`text-[9px] font-mono tracking-widest uppercase block mb-2 glitch-text ${needsRamOffload ? "text-telemetry-red" : "text-telemetry-cyan"}`}>
-            ⚡ MULTI-GPU REQUIRED — Model exceeds single GPU VRAM
-          </label>
-          <div className="space-y-2.5">
-            {multiGpuParams.map(def => renderParamRow(def))}
+      {/* ── Docked Hardware Block ─────────────── */}
+      {dockedParams["hardware"] && dockedParams["hardware"].length > 0 && (
+        <div className="hw-section-green border-b section-divider relative flex-shrink-0">
+          <div className="px-4 py-3 space-y-2.5">
+            {dockedParams["hardware"].map(def => renderParamRow(def))}
           </div>
         </div>
       )}
@@ -444,8 +420,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
               const groupParams = groupedParams[group.id];
               if (!groupParams || groupParams.length === 0) return null;
 
-              // Skip Multi-GPU inline when elevated above
-              if (group.elevatable && shouldElevateMultiGpu) return null;
+
 
               const isCollapsed = collapsedGroups.has(group.id);
 

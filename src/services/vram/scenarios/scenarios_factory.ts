@@ -108,12 +108,24 @@ export function perLayerWeightGb(input: ScenarioInput, computed: ComputedValues)
   }
 
   // Convert to GB using bpw from file metadata
+  let perLayerGb = 0;
   if (m.bpw > 0) {
-    return (perLayerParams * m.bpw / 8) / (1024 ** 3);
+    perLayerGb = (perLayerParams * m.bpw / 8) / (1024 ** 3);
+  } else {
+    perLayerGb = computed.weightsGb / nLayer;
   }
 
-  // Fallback: uniform division
-  return computed.weightsGb / nLayer;
+  // Sanity clamp: architecture-derived per-layer should not exceed file-size-based uniform by >2x.
+  // If it does, metadata is likely wrong (e.g., missing expert_feed_forward_length) and we fall back.
+  const uniformPerLayer = computed.weightsGb / nLayer;
+  if (perLayerGb > uniformPerLayer * 2) {
+    console.warn(
+      `[VRAM] perLayerWeightGb sanity clamp: arch=${perLayerGb.toFixed(2)}GB > uniform=${uniformPerLayer.toFixed(2)}GB × 2. Falling back to uniform.`
+    );
+    return uniformPerLayer;
+  }
+
+  return perLayerGb;
 }
 
 function round2(v: number): number {

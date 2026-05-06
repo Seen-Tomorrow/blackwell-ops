@@ -16,6 +16,8 @@ export function tryEvaluate(input: ScenarioInput, computed: ComputedValues): Vra
   const perGpuLoad = Array(numGpus).fill(0);
   perGpuLoad[targetGpuIdx] = vramTotalGb;
 
+  const nLayer = input.modelMeta.n_layer;
+
   return buildManifest(
     input, computed,
     "SOLO_CLEAN_FIT",
@@ -28,9 +30,14 @@ export function tryEvaluate(input: ScenarioInput, computed: ComputedValues): Vra
       icon: "◉",
       label: "CLEAN FIT",
       ramVisible: false,
+      uiTemplate: {
+        gpuLayerText: `→ ${nLayer} layers on GPU — all weights in VRAM`,
+        ramLayerText: `→ 0 layers offloaded to RAM`,
+        showRamBar: true,
+      },
     },
     computed.weightsGb, computed.kvCacheGb, computed.overheadGb + computed.visionGb,
     0, 0, 0, true, "",
-    input.modelMeta.n_layer, 0, perGpuLoad,
+    nLayer, 0, perGpuLoad,
   );
 }

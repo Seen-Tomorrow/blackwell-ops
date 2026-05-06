@@ -69,7 +69,7 @@ export default function GpuTopology({ gpuAllocations, gpuBarColor, ramVisible, r
               </div>
 
               {/* Projected VRAM fill bar — thick, solid */}
-              <div className="relative h-4 bg-depth-black/50 rounded-sm overflow-hidden border border-stealth-border/30">
+              <div className="relative h-3 bg-depth-black/50 rounded-sm overflow-hidden border border-stealth-border/30">
                 <motion.div
                   style={{ width: `${Math.min(projectedPct, 100)}%` }}
                   initial={{ width: 0 }}
@@ -82,7 +82,7 @@ export default function GpuTopology({ gpuAllocations, gpuBarColor, ramVisible, r
               {/* Projected VRAM numbers */}
               <div className="flex justify-between mt-1">
                 <span style={{ color: barColorHex }} className="text-[8px] font-mono">
-                  {alloc.projectedLoadGb.toFixed(1)} GB projected
+                  {alloc.projectedLoadGb.toFixed(1)} GB projected VRAM usage
                 </span>
                 <span className="text-[8px] font-mono text-stealth-muted/50">
                   /{alloc.vramManufacturedGb.toFixed(0)} GB
@@ -113,7 +113,7 @@ export default function GpuTopology({ gpuAllocations, gpuBarColor, ramVisible, r
                     style={{
                       width: `${osPct}%`,
                       left: `${runningPct}%`,
-                      backgroundColor: '#4a4a5a',
+                      backgroundColor: '#585858',
                       backgroundImage: HATCH_PATTERN,
                     }}
                     initial={{ width: 0 }}
@@ -132,10 +132,10 @@ export default function GpuTopology({ gpuAllocations, gpuBarColor, ramVisible, r
               {/* Actual usage breakdown */}
               <div className="flex justify-between mt-1">
                 <span style={{ color: barColorHex }} className="text-[7px] font-mono">
-                  {(totalRunningMib / 1024).toFixed(1)} GB app
+                  {(totalRunningMib / 1024).toFixed(1)} GB running engines
                 </span>
                 <span className="text-[7px] font-mono text-stealth-muted">
-                  {(osOtherMib / 1024).toFixed(1)} GB other
+                  {(osOtherMib / 1024).toFixed(1)} GB external 
                 </span>
               </div>
             </motion.div>

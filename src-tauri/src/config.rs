@@ -363,6 +363,7 @@ fn param_def_from_template(tp: &crate::templates::TemplateParam, order: i32) -> 
         user_added_values: Vec::new(),
         factory_default: tp.default.clone(),  // Never changes — set once from template
         sub_params,
+        dock: tp.dock.clone(),
     }
 }
 
@@ -435,7 +436,30 @@ fn genesis_providers() -> Vec<crate::types::ProviderConfig> {
 /// - Any extra providers from disk metadata
 ///
 /// Priority: disk param_definitions > fresh template defaults.
-/// If provider_meta.json has no param_definitions for a built-in, use the template.
+/// Merge missing `dock` values from genesis template into stored param definitions.
+/// Ensures new template fields propagate to already-saved provider configs.
+fn merge_template_dock(provider_id: &str, param_defs: &mut Vec<crate::types::ParamDef>) {
+    let bundle = crate::templates::TemplateBundle::default();
+    let template_key = match provider_id {
+        "ik-extreme" => "ik-extreme",
+        _ => "ggml-stable", // ggml-stable and ggml-dev share same param structure
+    };
+    let Some(template) = bundle.templates.get(template_key) else { return; };
+
+    // Build lookup of template params by key
+    let tmpl_map: std::collections::HashMap<_, _> = template.params.iter()
+        .map(|p| (p.key.as_str(), p))
+        .collect();
+
+    for pd in param_defs.iter_mut() {
+        if pd.dock.is_empty() {
+            if let Some(tmpl) = tmpl_map.get(pd.key.as_str()) {
+                pd.dock = tmpl.dock.clone();
+            }
+        }
+    }
+}
+
 // ── Config Loading ───────────────────────────────────────────────────
 
 #[tauri::command]
@@ -806,7 +830,9 @@ fn build_config_with_providers_full(gpu_count: usize, mut config: AppConfig) -> 
             if !meta.build_profile.is_empty() { p.build_profile = meta.build_profile.clone(); }
 
             if !meta.param_definitions.is_empty() {
-                p.param_definitions = meta.param_definitions.clone();
+                let mut defs = meta.param_definitions.clone();
+                merge_template_dock(&p.id, &mut defs);
+                p.param_definitions = defs;
             }
             if !meta.build_info_per_env.is_empty() {
                 p.build_info_per_env = meta.build_info_per_env.clone();

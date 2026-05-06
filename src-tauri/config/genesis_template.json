@@ -124,6 +124,7 @@
         "map_id": "OFFLOAD_MAP",
         "values": ["all", "10", "15", "20", "25", "30", "35", "40", "45", "50"],
         "default": "all",
+        "dock": "hardware",
         "ui_group": "Multi-GPU",
         "note": "Number of layers to offload. 'ALL' maps to 999."
       },
@@ -135,6 +136,7 @@
         "ptype": "logic_only",
         "values": ["regular", "moe_optimal"],
         "default": "regular",
+        "dock": "hardware",
         "ui_group": "Multi-GPU",
         "note": "moe_optimal adds expert eviction filter and forces KV quant to q4_0.",
         "sub_params": {
@@ -149,6 +151,7 @@
         "ptype": "arg_select",
         "values": ["none", "layer", "row"],
         "default": "none",
+        "dock": "hardware",
         "ui_group": "Multi-GPU",
         "note": "How to split model across multiple GPUs."
       },
@@ -381,6 +384,7 @@
         "map_id": "OFFLOAD_MAP",
         "values": ["all", "10", "15", "20", "25", "30", "35", "40", "45", "50"],
         "default": "all",
+        "dock": "hardware",
         "ui_group": "Multi-GPU",
         "note": "Number of layers to offload. 'ALL' maps to 999."
       },
@@ -392,6 +396,7 @@
         "ptype": "logic_only",
         "values": ["regular", "moe_optimal"],
         "default": "regular",
+        "dock": "hardware",
         "ui_group": "Multi-GPU",
         "note": "MOE_OPTIMAL adds expert eviction filter and forces KV quant to q4_0.",
         "sub_params": {
@@ -406,6 +411,7 @@
         "ptype": "arg_select",
         "values": ["none", "layer", "row"],
         "default": "none",
+        "dock": "hardware",
         "ui_group": "Multi-GPU",
         "note": "How to split model across multiple GPUs."
       },
@@ -541,6 +547,7 @@
         "ptype": "arg_select",
         "values": ["1", "0"],
         "default": "1",
+        "dock": "hardware",
         "ui_group": "Multi-GPU",
         "note": "Split-Mode F16 (1) uses 16-bit for inter-GPU data exchange. Faster on dual RTX 6000s."
       },
@@ -553,6 +560,7 @@
         "ptype": "arg_select",
         "values": ["none", "layer", "row"],
         "default": "none",
+        "dock": "hardware",
         "ui_group": "Multi-GPU",
         "note": "How to split model across multiple GPUs."
       },

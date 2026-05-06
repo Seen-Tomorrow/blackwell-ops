@@ -25,6 +25,8 @@ export function tryEvaluate(input: ScenarioInput, computed: ComputedValues): Vra
   });
   if (!hasPressure) return null;
 
+  const nLayer = input.modelMeta.n_layer;
+
   return buildManifest(
     input, computed,
     "MULTI_PRESSURE",
@@ -37,9 +39,14 @@ export function tryEvaluate(input: ScenarioInput, computed: ComputedValues): Vra
       icon: "◆",
       label: "MULTI PRESSURE",
       ramVisible: false,
+      uiTemplate: {
+        gpuLayerText: `→ ${nLayer} layers across ${numGpus} GPU(s) — tight fit`,
+        ramLayerText: `→ 0 layers offloaded to RAM`,
+        showRamBar: true,
+      },
     },
     computed.weightsGb, computed.kvCacheGb, computed.overheadGb + computed.visionGb,
     0, 0, 0, true, "",
-    input.modelMeta.n_layer, 0, perGpuLoad,
+    nLayer, 0, perGpuLoad,
   );
 }

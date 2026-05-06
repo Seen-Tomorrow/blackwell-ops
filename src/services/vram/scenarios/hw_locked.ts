@@ -7,6 +7,8 @@ import type { VramManifest } from "../../../lib/types";
 export function evaluate(input: ScenarioInput, computed: ComputedValues, reason: string): VramManifest {
   const perGpuLoad = Array(computed.numGpus).fill(0);
 
+  const nLayer = input.modelMeta.n_layer;
+
   return buildManifest(
     input, computed,
     "HW_LOCKED",
@@ -19,9 +21,15 @@ export function evaluate(input: ScenarioInput, computed: ComputedValues, reason:
       icon: "!",
       label: "HW LOCKED",
       ramVisible: false,
+      uiTemplate: {
+        gpuLayerText: `→ 0 layers on GPU — insufficient VRAM`,
+        ramLayerText: `→ ${nLayer} layers in RAM — ${(computed.weightsGb).toFixed(1)} GB offload (cannot launch)`,
+        showRamBar: true,
+        offloadWarningText: null,
+      },
     },
     computed.weightsGb, computed.kvCacheGb, computed.overheadGb + computed.visionGb,
     0, 0, 0, false, reason,
-    0, input.modelMeta.n_layer, perGpuLoad,
+    0, nLayer, perGpuLoad,
   );
 }

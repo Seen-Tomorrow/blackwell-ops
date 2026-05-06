@@ -91,6 +91,9 @@ pub struct TemplateParam {
     /// Key is the user-facing value ("ON", "MOE_OPTIMAL"), value is a flat array of extra args.
     #[serde(default)]
     pub sub_params: Option<serde_json::Value>,
+    /// Dock key — when set, param renders in a docked block above PARAMETERS instead of its ui_group.
+    #[serde(default)]
+    pub dock: String,
 }
 
 fn default_ptype() -> String {

@@ -112,6 +112,8 @@ export interface ParamDef {
   ptype?: 'switch' | 'switch_onoff' | 'switch_inverted' | 'arg_select' | 'mapper' | 'path_scanner' | 'logic_only';
   map_id?: string;
   ui_group?: string;
+  /** When set, param renders in a docked block above PARAMETERS instead of its ui_group. Params sharing the same value group together. */
+  dock?: string;
   note?: string;
   pattern?: string;
   sub_params?: Record<string, string[]>;
@@ -149,6 +151,7 @@ export interface TemplateParam extends Omit<ParamDef, 'values'> {
   flag: string | null;
   ptype: 'switch' | 'switch_onoff' | 'switch_inverted' | 'arg_select' | 'mapper' | 'path_scanner' | 'logic_only';
   sub_params?: Record<string, string[]>;
+  dock?: string;
 }
 
 /** Build metadata extracted from a compiled binary via --version + file mtime. */
@@ -257,6 +260,23 @@ export type Scenario =
   | 'TOTAL_SPILL'
   | 'HW_LOCKED';
 
+/** Scenario-driven UI template — controls what VramBadge renders.
+ *  Each scenario defines its own inline. VramBadge is a dumb skeleton that reads these values.
+ *  GOLDEN RULE: If you want to change text, visibility, or color of an element in the forecast block,
+ *  edit the scenario's uiTemplate — NOT VramBadge.tsx. */
+export interface UiTemplate {
+  /** GPU layer info line text (e.g. "→ 37 layers goes to GPU VRAM ~ 48.6 GB (32%)") */
+  gpuLayerText: string;
+  /** RAM layer info line text (e.g. "→ 23 layers in RAM — 111 GB offload (44%)") */
+  ramLayerText: string;
+  /** Whether to show the RAM bar + layer text at all */
+  showRamBar?: boolean;
+  /** Offload warning text (e.g. "RAM offload active — expect slower inference"). Omit or null to hide. */
+  offloadWarningText?: string | null;
+  /** KV spill risk warning text. Omit or null to hide. */
+  kvSpillRiskText?: string | null;
+}
+
 export interface StyleObject {
   titleColor: string;
   gpuBarColor: string;
@@ -268,6 +288,8 @@ export interface StyleObject {
   ramVisible: boolean;
   /** KV cache may spill to system RAM — honest warning, not certainty */
   kvSpillCritical?: boolean;
+  /** Scenario-driven UI config — REQUIRED. Controls all text and visibility in VramBadge. */
+  uiTemplate: UiTemplate;
 }
 
 export interface RunningEngine {

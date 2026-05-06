@@ -340,6 +340,9 @@ pub struct ParamDef {
     /// Per-value extra CLI args (e.g. {"ultra": ["-sas", "1", "-gr", "1"]}).
     #[serde(default, skip_serializing_if = "Option::is_none", rename = "sub_params")]
     pub sub_params: Option<HashMap<String, Vec<String>>>,
+    /// Dock key — when set, param renders in a docked block above PARAMETERS.
+    #[serde(default)]
+    pub dock: String,
 }
 
 impl ParamDef {

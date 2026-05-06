@@ -41,6 +41,9 @@ export function tryEvaluate(input: ScenarioInput, computed: ComputedValues): Vra
   const perGpuLoad = Array(numGpus).fill(0);
   perGpuLoad[targetGpuIdx] = gpuCapacity;
 
+  const gpuLayerPct = vramTotalGb > 0 ? (clampedGpuLayers * perLayerGb / vramTotalGb * 100) : 0;
+  const ramOffloadPct = vramTotalGb > 0 ? (ramLayers * perLayerGb / vramTotalGb * 100) : 0;
+
   return buildManifest(
     input, computed,
     "SOLO_SPILL",
@@ -54,12 +57,17 @@ export function tryEvaluate(input: ScenarioInput, computed: ComputedValues): Vra
       label: kvSpillCritical ? "KV SPILL RISK" : "SOLO SPILL",
       ramVisible: true,
       kvSpillCritical,
+      uiTemplate: {
+        gpuLayerText: `→ ${clampedGpuLayers} layers on GPU ~ ${(clampedGpuLayers * perLayerGb).toFixed(1)} GB (${gpuLayerPct.toFixed(0)}%)`,
+        ramLayerText: `→ ${ramLayers} layers in RAM — ${(ramLayers * perLayerGb).toFixed(1)} GB offload (${ramOffloadPct.toFixed(0)}%)`,
+        showRamBar: true,
+        offloadWarningText: "RAM offload active — expect slower inference",
+        kvSpillRiskText: ramKvGb > 0 ? `⚠ KV cache may also spill to RAM — ${ramKvGb.toFixed(1)} GB risk, verify with test run` : null,
+      },
     },
-    clampedGpuLayers * perLayerGb, clampedGpuLayers * kvPerLayer, overheadGb + visionGb,
+    clampedGpuLayers * perLayerGb, clampedGpuLayers * kvPerLayer, overheadGb + computed.visionGb,
     ramLayers * perLayerGb, ramKvGb, 0, true,
-    kvSpillCritical
-      ? `SYSTEM MEMORY CASCADE: ${ramLayers} layers in RAM — weights (${(ramLayers * perLayerGb).toFixed(1)} GB) + KV risk (${(ramKvGb).toFixed(1)} GB)`
-      : `${ramLayers} layers in RAM — weights on system RAM (PCIe speed limit speed)`,
+    "",
     clampedGpuLayers, ramLayers, perGpuLoad,
   );
 }
