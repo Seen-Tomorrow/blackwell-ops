@@ -214,6 +214,50 @@ pub fn get_hf_metadata(model_path: &str) -> Option<HfMetadata> {
     entry.hf_meta.clone()
 }
 
+/// Get cached GGUF metadata using a pre-loaded cache (avoids redundant disk reads).
+pub fn get_cached_with_cache(cache: &HashMap<String, CachedEntry>, model_path: &str) -> Option<ModelMetadata> {
+    let entry_key = match resolve_cache_key(cache, model_path) {
+        Some(k) => k.clone(),
+        None => return None,
+    };
+
+    let entry = cache.get(&entry_key).unwrap();
+    let gguf_meta = match &entry.gguf_meta {
+        Some(m) => m,
+        None => return None,
+    };
+
+    if gguf_meta.file_size_bytes == 0 {
+        log::warn!("[Cache] INVALID — file_size_bytes is 0 for {}, forcing re-scan", model_path);
+        return None;
+    }
+
+    let current_mtime = std::fs::metadata(model_path)
+        .ok()
+        .and_then(|m| m.modified().ok())
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_millis() as u64);
+
+    if let Some(mtime) = current_mtime {
+        if mtime != entry.file_mtime_ms {
+            log::debug!("[Cache] MISS — file changed (mtime {} vs cached {})", mtime, entry.file_mtime_ms);
+            return None;
+        }
+    }
+
+    Some(gguf_meta.clone())
+}
+
+/// Get HF metadata using a pre-loaded cache.
+pub fn get_hf_metadata_with_cache(cache: &HashMap<String, CachedEntry>, model_path: &str) -> Option<HfMetadata> {
+    let entry_key = match resolve_cache_key(cache, model_path) {
+        Some(k) => k.clone(),
+        None => return None,
+    };
+
+    cache.get(&entry_key).unwrap().hf_meta.clone()
+}
+
 /// Remove a model from the cache.
 pub fn remove_cached(model_path: &str) -> Result<(), String> {
     let mut cache = load_cache();

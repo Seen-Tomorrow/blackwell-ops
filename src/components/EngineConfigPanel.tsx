@@ -147,9 +147,16 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     systemInfo,
   });
 
+  // Compute which GPUs are involved from manifest — for multi-GPU highlighting
+  const selectedGpuIndices = useMemo(() => {
+    if (!vramCalc.manifest) return [];
+    return vramCalc.manifest.gpuAllocations
+      .filter(a => a.projectedLoadGb > 0.1) // Only highlight GPUs with actual load
+      .map(a => a.gpuIndex);
+  }, [vramCalc.manifest]);
 
   // Extracted param row renderer for reuse
-  const renderParamRow = useCallback((def: ParamDef) => {
+  const renderParamRow = useCallback((def: ParamDef, isLocked?: boolean) => {
     // Merge values + userAddedValues (user-added params from ConfigPage admin edit)
     const seenVals = new Set((def.values || []).map(v => String(v)));
     const allValues = [...(def.values || []), ...(def.userAddedValues || []).filter(v => !seenVals.has(String(v)))];
@@ -159,7 +166,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     const isDevice = def.key === "Device";
 
     return (
-      <div key={def.key} data-param-row className="flex items-center gap-2">
+      <div key={def.key} data-param-row className={`flex items-center gap-2 ${isLocked ? 'opacity-50' : ''}`}>
         <span
           className={`font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider truncate ${isDevice ? 'text-[11px]' : 'text-[9px]'}`}
           title={def.label}
@@ -171,8 +178,10 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           {baseValues.filter((v: any) => !(v?._hidden)).map((val) => (
             <button
               key={`${def.key}-${val}`}
-              tabIndex={0}
-              onClick={() => updateParam(def.key, val)}
+              tabIndex={isLocked ? -1 : 0}
+              onClick={() => {
+                if (!isLocked) updateParam(def.key, val);
+              }}
               className={`px-2 py-0.5 font-mono rounded-sm focus:outline-none ${isDevice ? 'text-[11px] px-3 py-1' : 'text-[9px]'} ${
                 currentValue === val || config[def.config_key || def.key] === val
                   ? "value-chip-active"
@@ -390,18 +399,138 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         <VramBadge
           manifest={vramCalc.manifest}
           gpus={gpus}
-          selectedGpuIdx={config.Device ? parseInt(config.Device.replace("GPU-", ""), 10) : undefined}
+          selectedGpuIndices={selectedGpuIndices.length > 0 ? selectedGpuIndices : undefined}
           onDeviceSelect={(gpuIndex) => {
+            // Clicking a GPU resets Split to none (single-GPU mode)
             updateParam("Device", `GPU-${gpuIndex}`);
+            if (config.Split && config.Split.toUpperCase() !== "NONE") {
+              updateParam("Split", "none");
+            }
           }}
+          isValidating={vramCalc.isValidating}
+          onValidate={vramCalc.validate}
         />
       </div>
 
       {/* ── Docked Hardware Block ─────────────── */}
       {dockedParams["hardware"] && dockedParams["hardware"].length > 0 && (
         <div className="hw-section-green border-b section-divider relative flex-shrink-0">
-          <div className="px-4 py-3 space-y-2.5">
-            {dockedParams["hardware"].map(def => renderParamRow(def))}
+          <div className="px-4 py-3">
+            <div className="flex gap-4">
+              {/* Left: param rows (~2/3) */}
+              <div className="space-y-2.5 flex-1 min-w-0">
+                {dockedParams["hardware"].map(def => renderParamRow(def))}
+              </div>
+
+              {/* Right: debug info panel (~1/3) */}
+              {vramCalc.manifest && (
+                <div className="w-40 flex-shrink-0 flex flex-col gap-1.5 border-l border-black/20 pl-3">
+                  <span className="text-[7px] font-mono text-black/40 tracking-widest uppercase">Diagnostics</span>
+
+                  {/* Scenario */}
+                  <div className="flex items-center justify-between">
+                    <span className="text-[8px] font-mono text-black/60">Scenario</span>
+                    <span className={`text-[8px] font-mono px-1.5 py-0.5 rounded-sm ${vramCalc.manifest.style.badgeBg}`} style={{ color: 'rgba(0,0,0,0.7)' }}>
+                      {vramCalc.manifest.scenario}
+                    </span>
+                  </div>
+
+                  {/* Fit status */}
+                  <div className="flex items-center justify-between">
+                    <span className="text-[8px] font-mono text-black/60">Fit</span>
+                    <span className={`text-[8px] font-mono ${vramCalc.manifest.fits ? 'text-green-700' : 'text-red-700'}`}>
+                      {vramCalc.manifest.fits ? "✓ FIT" : "✗ NO"}
+                    </span>
+                  </div>
+
+                  {/* Formula total */}
+                  <div className="flex items-center justify-between">
+                    <span className="text-[8px] font-mono text-black/60">Formula</span>
+                    <span className="text-[8px] font-mono text-black/70">{vramCalc.manifest.formulaVramTotalGb.toFixed(1)} GB</span>
+                  </div>
+
+                  {/* Validated total */}
+                  {vramCalc.manifest.validatedVramMib != null && (
+                    <>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[8px] font-mono text-black/60">Validated</span>
+                        <span className="text-[8px] font-mono" style={{ color: '#B45309' }}>
+                          {(vramCalc.manifest.validatedVramMib / 1024).toFixed(1)} GB
+                        </span>
+                      </div>
+
+                      {/* Scale factor */}
+                      <div className="flex items-center justify-between">
+                        <span className="text-[8px] font-mono text-black/60">Scale</span>
+                        <span className="text-[8px] font-mono text-black/70">
+                          {(vramCalc.manifest.validatedVramMib / 1024 / vramCalc.manifest.vramTotalGb).toFixed(2)}x
+                        </span>
+                      </div>
+
+                      {/* Per-GPU breakdown */}
+                      {vramCalc.manifest.validatedGpuBreakdownMib && (
+                        <div className="mt-1 space-y-0.5">
+                          <span className="text-[7px] font-mono text-black/40 tracking-wider">GPU Breakdown</span>
+                          {vramCalc.manifest.validatedGpuBreakdownMib.map((mib, i) => (
+                            <div key={i} className="flex items-center justify-between">
+                              <span className="text-[7px] font-mono text-black/50">GPU{i}</span>
+                              <span className="text-[7px] font-mono text-black/70">{(mib / 1024).toFixed(2)} GB</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Host RAM */}
+                      {vramCalc.manifest.validatedHostMib != null && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-[8px] font-mono text-black/60">Host</span>
+                          <span className="text-[8px] font-mono" style={{ color: '#1D4ED8' }}>
+                            {(vramCalc.manifest.validatedHostMib / 1024).toFixed(2)} GB
+                          </span>
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {/* Component breakdown */}
+                  <div className="mt-1 pt-1 border-t border-black/15 space-y-0.5">
+                    <span className="text-[7px] font-mono text-black/40 tracking-wider">Components</span>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[7px] font-mono text-black/50">Weights</span>
+                      <span className="text-[7px] font-mono text-black/70">{vramCalc.manifest.vramWeightsGb.toFixed(1)} GB</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[7px] font-mono text-black/50">KV Cache</span>
+                      <span className="text-[7px] font-mono text-black/70">{vramCalc.manifest.vramKvGb.toFixed(1)} GB</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[7px] font-mono text-black/50">Overhead</span>
+                      <span className="text-[7px] font-mono text-black/70">{vramCalc.manifest.vramOverheadGb.toFixed(1)} GB</span>
+                    </div>
+                  </div>
+
+                  {/* Layers */}
+                  <div className="mt-1 pt-1 border-t border-black/15 space-y-0.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[7px] font-mono text-black/50">GPU layers</span>
+                      <span className="text-[7px] font-mono text-black/70">{vramCalc.manifest.gpuLayers}</span>
+                    </div>
+                    {vramCalc.manifest.ramLayers > 0 && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-[7px] font-mono text-black/50">RAM layers</span>
+                        <span className="text-[7px] font-mono" style={{ color: '#1D4ED8' }}>{vramCalc.manifest.ramLayers}</span>
+                      </div>
+                    )}
+                    {model?.metadata && model.metadata.n_layer > 0 && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-[7px] font-mono text-black/50">Per layer</span>
+                        <span className="text-[7px] font-mono text-black/70">{(vramCalc.manifest.vramWeightsGb / model.metadata.n_layer).toFixed(3)} GB</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

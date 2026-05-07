@@ -1,4 +1,4 @@
-import { ScenarioInput, ComputedValues, buildManifest } from "./scenarios_factory";
+import { ScenarioInput, ComputedValues, buildManifest, gpuManufacturedMib } from "./scenarios_factory";
 import type { VramManifest } from "../../../lib/types";
 
 /**
@@ -8,20 +8,26 @@ export function tryEvaluate(input: ScenarioInput, computed: ComputedValues): Vra
   const { vramTotalGb, singleMaxAvailable, multiTotalAvailable, splitActive, gpuAvailable, numGpus } = computed;
 
   // Guard: must be multi-GPU scenario (split active OR doesn't fit on one GPU)
-  if (!(numGpus > 1 && (splitActive || vramTotalGb > singleMaxAvailable * 0.95))) return null;
+  const targetGpuMib = gpuManufacturedMib(input.gpus[computed.targetGpuIdx]);
+  const headroomGb = Math.max(1.0, (targetGpuMib / 1024) * 0.02);
+  if (!(numGpus > 1 && (splitActive || vramTotalGb > singleMaxAvailable - headroomGb))) return null;
 
-  // Must fit across all GPUs within fill target
-  if (vramTotalGb > multiTotalAvailable * 0.95) return null;
+  // Must fit across all GPUs within fill target (per-GPU headroom summed)
+  const totalHeadroomGb = input.gpus.reduce((sum, g) => {
+    const mfgGb = gpuManufacturedMib(g) / 1024;
+    return sum + Math.max(1.0, mfgGb * 0.02);
+  }, 0);
+  if (vramTotalGb > multiTotalAvailable - totalHeadroomGb) return null;
 
   // Distribute load proportionally by available VRAM
   const perGpuLoad = gpuAvailable.map(avail =>
     multiTotalAvailable > 0 ? vramTotalGb * (avail / multiTotalAvailable) : vramTotalGb / numGpus,
   );
 
-  // Guard: at least one GPU must exceed 85% of AVAILABLE VRAM — otherwise this is MULTI_PERFECT
+  // Guard: at least one GPU must exceed 90% of AVAILABLE VRAM — otherwise this is MULTI_PERFECT
   const hasPressure = perGpuLoad.some((load, i) => {
     const available = gpuAvailable[i];
-    return available > 0 && load / available > 0.85;
+    return available > 0 && load / available > 0.9;
   });
   if (!hasPressure) return null;
 

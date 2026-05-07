@@ -325,13 +325,14 @@ export interface VramManifest {
   recommendation: string;
   gpuLayers: number;
   ramLayers: number;
-}
-
-/** VRAM profile from 3 anchor scans — used for interpolation */
-export interface VramProfile {
-  anchor_a_mib: number;   // 8K / f16
-  anchor_b_mib: number;   // 128K / f16
-  anchor_c_mib: number;   // 128K / q4_k
+  /** Original formula total before validation (preserved for comparison) */
+  formulaVramTotalGb: number;
+  /** FIT-validated total VRAM in MiB (replaces formula when set) */
+  validatedVramMib?: number;
+  /** Per-GPU breakdown from FIT scan (MiB per GPU) */
+  validatedGpuBreakdownMib?: number[];
+  /** Host RAM usage from FIT scan */
+  validatedHostMib?: number;
 }
 
 /** Single fit scan result for one model at one context/KV setting */
@@ -341,6 +342,10 @@ export interface FitScanResult {
   ctx: number;
   kv_quant: string;
   fits: boolean;
+  /** Per-GPU self MiB breakdown from memory table */
+  gpu_breakdown_mib?: number[];
+  /** Host RAM usage from memory table */
+  host_mib?: number;
 }
 
 /** Progress update during library scanning */
@@ -358,15 +363,25 @@ export interface FitScanComplete {
   total_models: number;
   completed: number;
   failed: number;
-  results: Record<string, FitAnchorResults>;
+  results: Record<string, FitScanFull>;
 }
 
-/** Anchor scan results for one model */
-export interface FitAnchorResults {
+/** Single measured data point from comprehensive scan */
+export interface FitDataPoint {
+  label: string;
+  ctx: number;
+  kv_quant: string;
+  batch: number;
+  parallel: number;
+  split_mode: string;
+  vram_mib: number;
+}
+
+/** Full comprehensive scan result for one model — all measured data points */
+export interface FitScanFull {
   model_path: string;
-  anchor_a_mib?: number; // 8K / f16
-  anchor_b_mib?: number; // 128K / f16
-  anchor_c_mib?: number; // 128K / q4_k
+  points: FitDataPoint[];
+  error?: string;
 }
 
 export interface LogEntry {

@@ -2,12 +2,10 @@
 //!
 //! Reuses the same template-driven command building as engine launch (templates::build_command).
 //! Only difference: binary swapped to llama-fit-params.exe, --fit off appended, -m/--port replaced.
-//! 3 anchor points per model + linear interpolation for arbitrary ctx/KV estimation.
+//! 21-scan comprehensive strategy per model to measure all parameter axes.
 
 use serde::{Deserialize, Serialize};
-use sha2::{Sha256, Digest};
 use std::collections::HashMap;
-use std::io::Read;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc as StdArc;
@@ -54,22 +52,6 @@ fn detect_gpu_count() -> usize {
     gpu_count
 }
 
-/// Compute a SHA256 hash from the first 8KB of a model file.
-/// Sufficient to detect quantization swaps (GGUF header contains quant info).
-pub fn compute_model_hash(path: &str) -> String {
-    let mut file = match std::fs::File::open(path) {
-        Ok(f) => f,
-        Err(_) => return path.to_string(), // fallback to path if unreadable
-    };
-    let mut hasher = Sha256::new();
-    let mut buffer = [0u8; 8192];
-    match file.read(&mut buffer) {
-        Ok(n) if n > 0 => hasher.update(&buffer[..n]),
-        _ => {}
-    }
-    format!("{:x}", hasher.finalize())
-}
-
 /// Get the mmproj file size in MiB for a model. Scans parent directory for *mmproj* files.
 pub fn get_mmproj_size_mib(model_path: &str) -> f64 {
     let model_dir = PathBuf::from(model_path);
@@ -106,15 +88,40 @@ pub struct FitScanResult {
     pub kv_quant: String,
     /// Whether the model fits within total GPU VRAM.
     pub fits: bool,
+    /// Per-GPU self MiB breakdown from memory table (when multi-GPU scan).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gpu_breakdown_mib: Option<Vec<f64>>,
+    /// Host RAM usage from memory table.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub host_mib: Option<f64>,
 }
 
-#[derive(Debug, Clone, Serialize)]
-pub struct FitAnchorResults {
+/// Single measured data point from a comprehensive scan.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FitDataPoint {
+    /// Human-readable label identifying the test category.
+    pub label: String,
+    /// Context size in tokens.
+    pub ctx: usize,
+    /// KV quantization level.
+    pub kv_quant: String,
+    /// Batch size.
+    pub batch: u32,
+    /// Parallel sequences.
+    pub parallel: u32,
+    /// Split mode ("none", "layer", "row").
+    pub split_mode: String,
+    /// Measured VRAM in MiB.
+    pub vram_mib: f64,
+}
+
+/// Full comprehensive scan result for one model — all measured data points.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FitScanFull {
     pub model_path: String,
-    pub anchor_a_mib: Option<f64>, // 8K / f16
-    pub anchor_b_mib: Option<f64>, // 128K / f16
-    pub anchor_c_mib: Option<f64>, // 128K / q4_k
-    /// Error message if any anchor failed.
+    /// All measured data points (~21 per model).
+    pub points: Vec<FitDataPoint>,
+    /// Error message if any scan failed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }
@@ -138,66 +145,8 @@ pub struct FitScanComplete {
     pub total_models: usize,
     pub completed: usize,
     pub failed: usize,
-    /// Per-model results keyed by model path.
-    pub results: HashMap<String, FitAnchorResults>,
-}
-
-// ── Interpolation Engine ────────────────────────────────────────────
-
-/// Represents a 3-anchor VRAM profile for a single model.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct VramProfile {
-    pub anchor_a_mib: f64,   // 8K / f16
-    pub anchor_b_mib: f64,   // 128K / f16
-    pub anchor_c_mib: f64,   // 128K / q4_k
-}
-
-impl VramProfile {
-    /// Calculate VRAM in MiB for any context/KV combination using interpolation.
-    pub fn estimate_vram_mib(&self, ctx: usize, kv_quant: &str) -> f64 {
-        let a = self.anchor_a_mib;
-        let b = self.anchor_b_mib;
-
-        if a.is_nan() || b.is_nan() || a <= 0.0 || b <= 0.0 {
-            return a.max(b);
-        }
-
-        const ANCHOR_A_CTX: usize = 8192;
-        const ANCHOR_B_CTX: usize = 131072;
-        let ctx_a = ANCHOR_A_CTX as f64;
-        let ctx_b = ANCHOR_B_CTX as f64;
-        
-        // Calculate slope (VRAM growth per token) from anchor points
-        let slope_f16 = (b - a) / (ctx_b - ctx_a);
-        
-        // Clamp context size to valid range for interpolation
-        let clamped_ctx = ctx.max(ANCHOR_A_CTX).min(ANCHOR_B_CTX) as f64;
-        
-        // Estimate base VRAM at requested context with f16 KV cache
-        let vram_at_f16 = a + slope_f16 * (clamped_ctx - ctx_a);
-        
-        // Calculate KV overhead from CTX growth: how much extra for larger contexts
-        let kv_overhead_f16 = vram_at_f16 - a;  // Extra VRAM beyond model weights
-        
-        // Get quantization ratio: anchor C / anchor B (128K q4_0 vs 128K f16)
-        let kv_ratio = if self.anchor_c_mib > 0.0 && !self.anchor_c_mib.is_nan() && b > 0.0 {
-            self.anchor_c_mib / b
-        } else {
-            // Fallback ratios when anchor C is missing
-            match kv_quant.to_lowercase().as_str() {
-                "f16" | "bf16" => return vram_at_f16,
-                "q8_0" => 1.0,
-                "q5_0" | "q5_1" | "q5_k" => 0.75,
-                "q4_0" | "q4_1" | "q4_k" | "iq4_nl" => 0.625, // ~62.5% for Q4_K
-                "q3_k" => 0.5,
-                "q2_k" => 0.375,
-                _ => 0.625, // Default to Q4 ratio
-            }
-        };
-
-        // Final VRAM = base weights + quantized KV overhead
-        a + (kv_overhead_f16 * kv_ratio)
-    }
+    /// Per-model full scan results keyed by model path.
+    pub results: HashMap<String, FitScanFull>,
 }
 
 // ── Binary Discovery ────────────────────────────────────────────────
@@ -291,18 +240,35 @@ pub fn build_fit_args_from_template(
     while let Some(arg) = iter.next() {
         match arg.as_str() {
             // Flags with values — skip both flag and value
-            "-m" | "--mmproj" | "--port" | "--reasoning" => { iter.next(); }
+            "-m" | "--mmproj" | "--port" | "--reasoning" | "--rope-scaling" | "--rope-scale" | "--yarn-orig-ctx" | "--rope-freq-base" => { iter.next(); }
             // Boolean flags (no value) — drop entirely
-            "--jinja" | "--cont-batching" | "--metrics" | "--verbose" | "--no-mmap" => {}
+            "--jinja" | "--cont-batching" | "--metrics" | "--verbose" | "--no-mmap" | "--log-timestamps" => {}
             _ => args.push(arg),
         }
     }
 
+    // Mirror -ctk to -ctv: vision KV cache quant must match text KV quant for accurate estimation.
+    let mut final_args = Vec::with_capacity(args.len() + 2);
+    let mut iter2 = args.into_iter();
+    while let Some(arg) = iter2.next() {
+        if arg == "-ctk" {
+            final_args.push("-ctk".into());
+            if let Some(ctk_val) = iter2.next() {
+                final_args.push(ctk_val.clone());
+                // Mirror to -ctv
+                final_args.push("-ctv".into());
+                final_args.push(ctk_val);
+            }
+        } else {
+            final_args.push(arg);
+        }
+    }
+
     // Prepend actual model path and --fit off
-    let mut result = Vec::with_capacity(args.len() + 4);
+    let mut result = Vec::with_capacity(final_args.len() + 4);
     result.extend(["-m".into(), model_path.into()]);
     result.extend(["--fit".into(), "off".into()]);
-    result.extend(args);
+    result.extend(final_args);
 
     result
 }
@@ -377,12 +343,20 @@ fn extract_number(s: &str) -> Option<f64> {
     None
 }
 
+/// Raw result from a single FIT scan — total + optional per-GPU breakdown.
+#[derive(Debug, Clone)]
+pub struct FitScanRaw {
+    pub vram_mib: f64,
+    pub gpu_breakdown_mib: Option<Vec<f64>>,
+    pub host_mib: Option<f64>,
+}
+
 /// Scan a single model at one anchor point with pre-built CLI args.
 pub async fn scan_single_anchor(
     fit_binary: &str,
     args: &[String],
     cuda_visible_devices: &str,
-) -> Result<f64, String> {
+) -> Result<FitScanRaw, String> {
     let model_path = args.iter()
         .position(|a| a == "-m")
         .and_then(|i| args.get(i + 1))
@@ -413,26 +387,29 @@ pub async fn scan_single_anchor(
     let combined_output = format!("{}\n{}", stdout, stderr);
 
     // DEBUG Llama-fit-scanner result - always printed for visibility
-    eprintln!("//DEBUG [FIT_RAW] exit={} model={}\nSTDOUT:\n{}\nSTDERR:\n{}", 
+    eprintln!("//DEBUG [FIT_RAW] exit={} model={}\nSTDOUT:\n{}\nSTDERR:\n{}",
         output.status.code().map(|c| c.to_string()).unwrap_or_else(|| "signal".to_string()),
         model_path, stdout, stderr);
 
-    if let Some(vram_mib) = parse_fit_output(&combined_output) {
-        eprintln!("//DEBUG [FIT_OK] {} -> {:.1} MiB", model_path, vram_mib);
-        Ok(vram_mib)
+    let vram_mib = if let Some(v) = parse_fit_output(&combined_output) {
+        v
+    } else if let Some(projected) = parse_projected_vram(&combined_output) {
+        eprintln!("//DEBUG [FIT_PARTIAL] {} -> {:.1} MiB (projected, doesn't fit single GPU)", model_path, projected);
+        projected
     } else {
-        // Even on exit=1 (model doesn't fit), try to extract projected VRAM from memory breakdown
-        if let Some(projected) = parse_projected_vram(&combined_output) {
-            eprintln!("//DEBUG [FIT_PARTIAL] {} -> {:.1} MiB (projected, doesn't fit single GPU)", model_path, projected);
-            Ok(projected)
-        } else {
-            log::warn!("Fit scan parse failed for {}: exit={:?}", model_path, output.status.code());
-            Err(format!(
-                "Could not parse VRAM from fit output. Exit code: {:?}",
-                output.status.code()
-            ))
-        }
-    }
+        log::warn!("Fit scan parse failed for {}: exit={:?}", model_path, output.status.code());
+        return Err(format!(
+            "Could not parse VRAM from fit output. Exit code: {:?}",
+            output.status.code()
+        ));
+    };
+
+    let (gpu_breakdown_mib, host_mib) = parse_fit_breakdown(&combined_output);
+
+    eprintln!("//DEBUG [FIT_OK] {} -> {:.1} MiB | GPUs={:?} Host={:?}",
+        model_path, vram_mib, gpu_breakdown_mib, host_mib);
+
+    Ok(FitScanRaw { vram_mib, gpu_breakdown_mib, host_mib })
 }
 
 /// Parse projected VRAM from memory breakdown when model doesn't fit single GPU.
@@ -469,21 +446,54 @@ fn extract_model_from_breakdown(line: &str) -> Option<f64> {
     None
 }
 
-/// Build a VramProfile from anchor results (only if all 3 anchors succeeded).
-pub fn build_profile(results: &FitAnchorResults) -> Option<VramProfile> {
-    match (results.anchor_a_mib, results.anchor_b_mib, results.anchor_c_mib) {
-        (Some(a), Some(b), Some(c)) => Some(VramProfile { anchor_a_mib: a, anchor_b_mib: b, anchor_c_mib: c }),
-        _ => None,
+/// Parse per-GPU self MiB and host RAM from memory breakdown table.
+/// Returns (gpu_breakdown, host_mib).
+fn parse_fit_breakdown(output: &str) -> (Option<Vec<f64>>, Option<f64>) {
+    let mut gpu_values: Vec<f64> = Vec::new();
+    let mut host_val: Option<f64> = None;
+
+    for line in output.lines() {
+        let lower = line.to_lowercase();
+        if !lower.contains("memory breakdown") {
+            continue;
+        }
+
+        // CUDA device line: | - CUDA0 ... | TOTAL = FREE + ( SELF = MODEL + CTX + COMPUTE ) + UNACCOUNTED |
+        if lower.contains("cuda") {
+            if let Some(start) = line.find('(') {
+                if let Some(end) = line[start..].find(')') {
+                    let inner = &line[start + 1..start + end];
+                    // First number in parens is the self total (e.g., "605" from "605 = 440 + 24 + 141")
+                    if let Some(val) = extract_number(inner.trim()) {
+                        gpu_values.push(val);
+                    }
+                }
+            }
+        }
+        // Host line: | - Host | TOTAL = ...
+        else if lower.contains("host") {
+            // Find the number after "Host" pipe separator
+            if let Some(pipe_pos) = line.rfind('|') {
+                let after_pipe = &line[pipe_pos + 1..].trim();
+                if !after_pipe.is_empty() {
+                    host_val = extract_number(after_pipe);
+                } else if let Some(first_pipe) = line.find("Host") {
+                    // Try extracting from between pipes: | - Host | 470 = ...
+                    let rest = &line[first_pipe..];
+                    if let Some(second_pipe) = rest[4..].find('|') {
+                        let between = rest[4 + second_pipe + 1..].trim();
+                        host_val = extract_number(between);
+                    }
+                }
+            }
+        }
     }
+
+    let gpu_breakdown = if gpu_values.is_empty() { None } else { Some(gpu_values) };
+    (gpu_breakdown, host_val)
 }
 
 // ── Library Scanner ─────────────────────────────────────────────────
-
-/// Check if a filename is an mmproj file.
-fn is_mmproj_file(filename: &str) -> bool {
-    let lower = filename.to_lowercase();
-    lower.contains("mmproj")
-}
 
 /// Extract model name from full path (last component without .gguf).
 pub fn extract_model_name(path: &str) -> String {
@@ -495,88 +505,30 @@ pub fn extract_model_name(path: &str) -> String {
         .to_string()
 }
 
-/// Find all .gguf model files under a base directory, deduplicating shards and filtering mmproj.
-pub fn find_gguf_models(base_path: &str) -> Vec<String> {
-    let base = PathBuf::from(base_path);
-    if !base.exists() || !base.is_dir() {
-        return vec![];
-    }
-
-    // Collect all .gguf files first
-    let mut all_files: Vec<(String, u64)> = vec![]; // (canonical_name, file_size)
-    collect_gguf_files(&base, &mut all_files);
-
-    if all_files.is_empty() {
-        return vec![];
-    }
-
-    // Deduplicate shards: keep only the first shard (-00001-of-XXXXX) per unique base name.
-    // llama-fit-params requires loading from the first split; it will read all shards automatically.
-    let mut deduped: HashMap<(String, String), (String, u64)> = HashMap::new();
-
-    // Sort by path so shard 0 (-00001) comes before -00002, etc.
-    let mut sorted_files = all_files;
-    sorted_files.sort_by(|a, b| a.0.cmp(&b.0));
-
-    for (path, size) in sorted_files {
-        let path_buf = PathBuf::from(&path);
-        let filename = path_buf.file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or("");
-
-        // Use shared strip_shard_pattern from model_catalog module
-        let base_name = crate::model_catalog::strip_shard_pattern(filename);
-
-        // Use (parent_dir, base_name) as group key to avoid cross-directory collisions
-        let parent_key = path_buf.parent()
-            .map(|p| p.to_string_lossy().to_string())
-            .unwrap_or_default();
-        let group_key = (parent_key, base_name);
-
-        // Only insert if not already present — first shard wins due to sort order
-        deduped.entry(group_key).or_insert_with(|| (path, size));
-    }
-
-    // Sort by path for deterministic output
-    let mut result: Vec<String> = deduped.into_values().map(|(p, _)| p).collect();
-    result.sort();
-    result
-}
-
-fn collect_gguf_files(dir: &PathBuf, out: &mut Vec<(String, u64)>) {
-    if let Ok(entries) = std::fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_file() {
-                if let Some(ext) = path.extension() {
-                    if ext.eq_ignore_ascii_case("gguf") {
-                        let filename = path.file_name()
-                            .and_then(|s| s.to_str())
-                            .unwrap_or("");
-
-                        // Skip mmproj files — they are vision projectors, not models
-                        if is_mmproj_file(filename) {
-                            continue;
-                        }
-
-                        let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
-                        out.push((path.to_string_lossy().to_string(), size));
-                    }
-                }
-            } else if path.is_dir() {
-                collect_gguf_files(&path, out);
-            }
+/// Find all models using the shared model_catalog logic (multi-path, shard dedup, mmproj filter).
+fn find_all_models(paths: &[String]) -> Vec<String> {
+    let path_entries: Vec<crate::types::ModelPathEntry> = paths.iter().enumerate().map(|(i, p)| {
+        crate::types::ModelPathEntry {
+            path: p.clone(),
+            label: if i == 0 && !p.is_empty() { "Default".into() } else { format!("Path {}", i + 1) },
+            is_default: i == 0,
         }
-    } else {
-        log::warn!("Failed to read directory: {}", dir.display());
+    }).collect();
+
+    match crate::model_catalog::merge_catalogs(&path_entries) {
+        Ok((entries, _conflicts)) => entries.into_iter().map(|e| e.path).collect(),
+        Err(e) => {
+            log::warn!("Failed to scan model paths: {}", e);
+            Vec::new()
+        }
     }
 }
 
 /// Scan an entire library of models with parallel execution.
-/// Uses template-driven command building (same as engine launch).
+/// Comprehensive 21-scan strategy per model to measure all parameter axes.
 pub async fn scan_library(
     fit_binary: &str,
-    model_base: &str,
+    model_paths: &[String],
     max_parallel: u32,
     _gpus_total_mib: f64,
     provider_id: String,
@@ -585,7 +537,8 @@ pub async fn scan_library(
     progress_tx: Option<broadcast::Sender<FitScanProgress>>,
     cancelled: StdArc<AtomicBool>,
 ) -> FitScanComplete {
-    let models = find_gguf_models(model_base);
+    // Use shared model_catalog logic for multi-path scanning, shard dedup, mmproj filter
+    let models = find_all_models(model_paths);
     let total = models.len();
 
     if total == 0 {
@@ -598,22 +551,52 @@ pub async fn scan_library(
         };
     }
 
+    // Comprehensive scan plan — 21 deduplicated data points per model.
+    // Base config: batch=512, parallel=1, split_mode="none", flash_attn=true (from base_config).
+    // Each tuple: (label, ctx_label, kv_quant, batch, parallel, split_mode)
+    const SCAN_PLAN: &[(&str, &str, &str, u32, u32, &str)] = &[
+        // 1. Base weights + small KV
+        ("base", "8K", "q4_0", 512, 1, "none"),
+        // 2-4. Quant anchors at 128K (f16, q8_0, q4_0) — captures non-linearity curve
+        ("quant_f16", "128K", "f16", 512, 1, "none"),
+        ("quant_q8", "128K", "q8_0", 512, 1, "none"),
+        ("quant_q4", "128K", "q4_0", 512, 1, "none"),
+        // 5-10. CTX sweep at q4_0 (6 sizes, 8K and 128K already covered)
+        ("ctx_16k", "16K", "q4_0", 512, 1, "none"),
+        ("ctx_32k", "32K", "q4_0", 512, 1, "none"),
+        ("ctx_64k", "64K", "q4_0", 512, 1, "none"),
+        ("ctx_256k", "256K", "q4_0", 512, 1, "none"),
+        ("ctx_512k", "512K", "q4_0", 512, 1, "none"),
+        ("ctx_1m", "1M", "q4_0", 512, 1, "none"),
+        // 11-16. Batch sweep at 128K/q4 (6 sizes, 512 already covered)
+        ("batch_128", "128K", "q4_0", 128, 1, "none"),
+        ("batch_256", "128K", "q4_0", 256, 1, "none"),
+        ("batch_1024", "128K", "q4_0", 1024, 1, "none"),
+        ("batch_2048", "128K", "q4_0", 2048, 1, "none"),
+        ("batch_4096", "128K", "q4_0", 4096, 1, "none"),
+        ("batch_8192", "128K", "q4_0", 8192, 1, "none"),
+        // 17-19. Parallel sweep at 128K/q4/b512 (3 values, parallel=1 already covered)
+        ("parallel_2", "128K", "q4_0", 512, 2, "none"),
+        ("parallel_4", "128K", "q4_0", 512, 4, "none"),
+        ("parallel_8", "128K", "q4_0", 512, 8, "none"),
+        // 20-21. Split tax at base config (layer + row)
+        ("split_layer", "128K", "q4_0", 512, 1, "layer"),
+        ("split_row", "128K", "q4_0", 512, 1, "row"),
+    ];
+
+    // Load existing full scan data for incremental update
+    let existing_data = load_full_scan_export().unwrap_or_default();
+
+    // GPU count for per-point mask computation
+    let gpu_count = detect_gpu_count();
+
     let semaphore = StdArc::new(Semaphore::new(max_parallel as usize));
-    let mut results_map: HashMap<String, FitAnchorResults> = HashMap::with_capacity(total);
     let completed_count = StdArc::new(TokioMutex::new(0usize));
     let failed_count = StdArc::new(TokioMutex::new(0usize));
 
-    // Anchor definitions: (ctx_size_label, kv_quant) — template maps ctx label via CTX_TO_INT
-    // Note: llama-fit-params -ctk only accepts: f32, f16, bf16, q8_0, q4_0, q4_1, iq4_nl, q5_0, q5_1
-    const ANCHORS: &[(&str, &str)] = &[
-        ("8K", "f16"),      // A: small ctx / f16 KV
-        ("128K", "f16"),    // B: large ctx / f16 KV
-        ("128K", "q4_0"),   // C: large ctx / q4_0 KV (quantized, binary-compatible)
-    ];
-
-    // Derive GPU mask from base_config — same logic as launch_engine
-    let gpu_count = detect_gpu_count();
-    let gpu_mask = compute_gpu_mask(&base_config, gpu_count);
+    // Full scan data for JSON export + IPC result
+    let full_results_map: StdArc<TokioMutex<HashMap<String, FitScanFull>>> =
+        StdArc::new(TokioMutex::new(HashMap::with_capacity(total)));
 
     let mut handles = vec![];
 
@@ -622,153 +605,183 @@ pub async fn scan_library(
             break;
         }
 
+        // Extract existing data before spawning — owned copies to avoid borrow issues
+        let existing_full: Option<FitScanFull> = existing_data.get(&model_path).cloned();
+        let existing_labels: Vec<String> = existing_full.as_ref().map(|e| {
+            e.points.iter().map(|p| p.label.clone()).collect()
+        }).unwrap_or_default();
+        let needs_scan = existing_labels.len() < SCAN_PLAN.len();
+
+        // If model already has all points, copy without rescanning
+        if !needs_scan {
+            if let Some(existing) = existing_full {
+                tokio::spawn({
+                    let full_map = full_results_map.clone();
+                    async move {
+                        let mut map = full_map.lock().await;
+                        map.insert(model_path.clone(), existing);
+                    }
+                });
+                continue;
+            }
+        }
+
+        // Which labels still need scanning?
+        let missing_labels: Vec<String> = if needs_scan {
+            SCAN_PLAN.iter().map(|p| p.0.to_string()).collect()
+        } else {
+            let existing_set: std::collections::HashSet<&str> =
+                existing_labels.iter().map(|s| s.as_str()).collect();
+            SCAN_PLAN.iter()
+                .filter(|p| !existing_set.contains(p.0))
+                .map(|p| p.0.to_string())
+                .collect()
+        };
+
+        // Existing points to carry forward for incremental scan
+        let existing_points: Vec<FitDataPoint> = existing_full.map(|e| e.points).unwrap_or_default();
+
         let sem = semaphore.clone();
         let fit_bin = fit_binary.to_string();
         let tmpl = template.clone();
         let cfg = base_config.clone();
-        let gpu_mask_str = gpu_mask.clone();
         let comp_count = completed_count.clone();
-        let _fail_count = failed_count.clone();
         let cancel = cancelled.clone();
         let prog_tx = progress_tx.clone();
+        let full_map = full_results_map.clone();
 
         let handle = tokio::spawn(async move {
             if cancel.load(Ordering::Relaxed) {
-                return None as Option<(String, FitAnchorResults)>;
+                return None as Option<(String, FitScanFull)>;
             }
 
             let _permit = match sem.acquire().await {
                 Ok(p) => p,
-                Err(_) => return None as Option<(String, FitAnchorResults)>,
+                Err(_) => return None as Option<(String, FitScanFull)>,
             };
 
             if cancel.load(Ordering::Relaxed) {
-                return None as Option<(String, FitAnchorResults)>;
+                return None as Option<(String, FitScanFull)>;
             }
 
             let model_name = extract_model_name(&model_path);
 
-            // Build args for anchor A (for progress display)
-            let mut cfg_a = cfg.clone();
-            cfg_a.ctx_size = ANCHORS[0].0.to_string();
-            cfg_a.kv_quant = ANCHORS[0].1.to_string();
-            let args_a = build_fit_args_from_template(&tmpl, &cfg_a, &model_path, &gpu_mask_str);
-            let args_str = args_a.join(" ");
-
-            // Emit scanning progress
-            if let Some(tx) = &prog_tx {
-                let _ = tx.send(FitScanProgress {
-                    model_path: model_path.clone(),
-                    model_name: model_name.clone(),
-                    status: "scanning".to_string(),
-                    args: Some(args_str),
-                    vram_mib: None,
-                });
-            }
-
-            // Scan 3 anchors with progress between each
-            let mut anchor_results = FitAnchorResults {
-                model_path: model_path.clone(),
-                anchor_a_mib: None,
-                anchor_b_mib: None,
-                anchor_c_mib: None,
-                error: None,
+            // Start with existing points for incremental scan
+            let mut points: Vec<FitDataPoint> = if needs_scan {
+                Vec::with_capacity(SCAN_PLAN.len())
+            } else {
+                existing_points.clone()
             };
-
             let mut failures = Vec::new();
 
-            // Anchor A
-            match scan_single_anchor(&fit_bin, &args_a, &gpu_mask_str).await {
-                Ok(vram) => {
-                    anchor_results.anchor_a_mib = Some(vram);
-                    if let Some(tx) = &prog_tx {
-                        let _ = tx.send(FitScanProgress {
-                            model_path: model_path.clone(),
-                            model_name: model_name.clone(),
-                            status: "complete".to_string(),
-                            args: None,
-                            vram_mib: Some(vram),
+            for (label, ctx_label, kv_q, batch_val, parallel_val, split_val) in SCAN_PLAN {
+                if cancel.load(Ordering::Relaxed) {
+                    break;
+                }
+
+                // Skip already-scanned labels for incremental update
+                if !missing_labels.iter().any(|l| l.as_str() == *label) {
+                    continue;
+                }
+
+                // Compute GPU mask per-scan-point: split mode needs all GPUs visible
+                let scan_cfg_split = (*split_val).to_string();
+                let point_gpu_mask = if scan_cfg_split != "none" && !scan_cfg_split.is_empty() {
+                    (0..gpu_count).map(|i| i.to_string()).collect::<Vec<_>>().join(",")
+                } else {
+                    compute_gpu_mask(&cfg, gpu_count)
+                };
+
+                // Build config for this scan point
+                let mut scan_cfg = cfg.clone();
+                scan_cfg.ctx_size = (*ctx_label).to_string();
+                scan_cfg.kv_quant = (*kv_q).to_string();
+                scan_cfg.batch = *batch_val as i64;
+                scan_cfg.ubatch = *batch_val as i64; // ubatch mirrors batch for fit scan
+                scan_cfg.parallel = *parallel_val as i64;
+                scan_cfg.split_mode = scan_cfg_split.clone();
+
+                let args = build_fit_args_from_template(&tmpl, &scan_cfg, &model_path, &point_gpu_mask);
+
+                // Emit progress before scan
+                if let Some(tx) = &prog_tx {
+                    let _ = tx.send(FitScanProgress {
+                        model_path: model_path.clone(),
+                        model_name: model_name.clone(),
+                        status: "scanning".to_string(),
+                        args: Some(args.join(" ")),
+                        vram_mib: None,
+                    });
+                }
+
+                match scan_single_anchor(&fit_bin, &args, &point_gpu_mask).await {
+                    Ok(raw) => {
+                        // Parse ctx to int for data point
+                        let ctx_int = crate::templates::ProviderTemplate::ctx_to_int_str(ctx_label)
+                            .parse::<usize>()
+                            .unwrap_or(8192);
+
+                        points.push(FitDataPoint {
+                            label: (*label).to_string(),
+                            ctx: ctx_int,
+                            kv_quant: (*kv_q).to_string(),
+                            batch: *batch_val,
+                            parallel: *parallel_val,
+                            split_mode: scan_cfg_split.clone(),
+                            vram_mib: raw.vram_mib,
                         });
-                    }
-                },
-                Err(e) => {
-                    failures.push(format!("A:{}", e));
-                    log::warn!("Anchor A failed for {}: {}", model_path, e);
-                },
+
+                        // Emit progress after scan
+                        if let Some(tx) = &prog_tx {
+                            let _ = tx.send(FitScanProgress {
+                                model_path: model_path.clone(),
+                                model_name: model_name.clone(),
+                                status: "complete".to_string(),
+                                args: None,
+                                vram_mib: Some(raw.vram_mib),
+                            });
+                        }
+                    },
+                    Err(e) => {
+                        failures.push(format!("{}:{}", label, e));
+                        log::warn!("Scan {} failed for {}: {}", label, model_path, e);
+                    },
+                }
             }
 
-            // Anchor B
-            let mut cfg_b = cfg.clone();
-            cfg_b.ctx_size = ANCHORS[1].0.to_string();
-            cfg_b.kv_quant = ANCHORS[1].1.to_string();
-            let args_b = build_fit_args_from_template(&tmpl, &cfg_b, &model_path, &gpu_mask_str);
-
-            match scan_single_anchor(&fit_bin, &args_b, &gpu_mask_str).await {
-                Ok(vram) => {
-                    anchor_results.anchor_b_mib = Some(vram);
-                    if let Some(tx) = &prog_tx {
-                        let _ = tx.send(FitScanProgress {
-                            model_path: model_path.clone(),
-                            model_name: model_name.clone(),
-                            status: "complete".to_string(),
-                            args: None,
-                            vram_mib: Some(vram),
-                        });
-                    }
-                },
-                Err(e) => {
-                    failures.push(format!("B:{}", e));
-                    log::warn!("Anchor B failed for {}: {}", model_path, e);
-                },
-            }
-
-            // Anchor C
-            let mut cfg_c = cfg.clone();
-            cfg_c.ctx_size = ANCHORS[2].0.to_string();
-            cfg_c.kv_quant = ANCHORS[2].1.to_string();
-            let args_c = build_fit_args_from_template(&tmpl, &cfg_c, &model_path, &gpu_mask_str);
-
-            match scan_single_anchor(&fit_bin, &args_c, &gpu_mask_str).await {
-                Ok(vram) => {
-                    anchor_results.anchor_c_mib = Some(vram);
-                    if let Some(tx) = &prog_tx {
-                        let _ = tx.send(FitScanProgress {
-                            model_path: model_path.clone(),
-                            model_name,
-                            status: "complete".to_string(),
-                            args: None,
-                            vram_mib: Some(vram),
-                        });
-                    }
-                },
-                Err(e) => {
-                    failures.push(format!("C:{}", e));
-                    log::warn!("Anchor C failed for {}: {}", model_path, e);
-                },
+            // Save full scan data to shared map + persist incrementally to disk
+            let result = FitScanFull {
+                model_path: model_path.clone(),
+                points,
+                error: if failures.is_empty() { None } else { Some(failures.join(" | ")) },
             };
 
-            // Store error message if any anchor failed
-            if !failures.is_empty() {
-                anchor_results.error = Some(failures.join(" | "));
+            {
+                let mut map = full_map.lock().await;
+                map.insert(model_path.clone(), result.clone());
+                // Incremental save so data persists mid-scan (not just at the end)
+                save_full_scan_export(&map);
             }
 
-            // Update completed count (model was processed, even if anchors failed)
+            // Update completed count
             {
                 let mut c = comp_count.lock().await;
                 *c += 1;
             }
 
-            Some((model_path.clone(), anchor_results))
+            Some((model_path.clone(), result))
         });
 
         handles.push(handle);
     }
 
-    // Collect results
+    // Collect results — merge with existing data for models that were skipped
+    let mut final_results: HashMap<String, FitScanFull> = full_results_map.lock().await.clone();
+
     for handle in handles {
         match handle.await {
-            Ok(Some((path, anchors))) => {
-                results_map.insert(path, anchors);
+            Ok(Some((path, scan_full))) => {
+                final_results.insert(path, scan_full);
             }
             Ok(None) => {} // Semaphore was closed or cancelled
             Err(e) => {
@@ -779,189 +792,61 @@ pub async fn scan_library(
         }
     }
 
-    let completed = *completed_count.lock().await;
+    let completed = final_results.len();
     let failed = *failed_count.lock().await;
 
-    // Persist all results to cache
-    save_library_results_to_cache(&results_map);
+    // Save comprehensive scan data to JSON for analysis + future incremental scans
+    save_full_scan_export(&final_results);
 
     FitScanComplete {
         provider_id,
         total_models: total,
         completed,
         failed,
-        results: results_map,
+        results: final_results,
     }
 }
 
-// ── Cache Management ────────────────────────────────────────────────
-
-/// Load fit cache from disk.
-pub fn load_fit_cache() -> Option<HashMap<String, FitCacheData>> {
-    let cache_path = cache_path();
-    if !cache_path.exists() {
-        return None;
-    }
-    let content = std::fs::read_to_string(&cache_path).ok()?;
-    serde_json::from_str(&content).ok()
-}
-
-/// Save fit cache to disk.
-pub fn save_fit_cache(cache: &HashMap<String, FitCacheData>) {
+// ── Full Scan Export ────────────────────────────────────────────────
+fn full_scan_export_path() -> PathBuf {
     if let Some(app_dir) = dirs::config_dir() {
-        let cache_path = app_dir.join("blackwell-ops").join("fit_cache.json");
-        if let Some(dir) = cache_path.parent() {
-            let _ = std::fs::create_dir_all(dir);
-        }
-        if let Ok(json) = serde_json::to_string_pretty(cache) {
-            let _ = std::fs::write(&cache_path, json);
-        }
-    }
-}
-
-/// Clear the fit cache entirely.
-pub fn clear_fit_cache() -> bool {
-    if let Some(app_dir) = dirs::config_dir() {
-        let cache_path = app_dir.join("blackwell-ops").join("fit_cache.json");
-        return std::fs::remove_file(&cache_path).is_ok();
-    }
-    false
-}
-
-fn cache_path() -> PathBuf {
-    if let Some(app_dir) = dirs::config_dir() {
-        app_dir.join("blackwell-ops").join("fit_cache.json")
+        app_dir.join("blackwell-ops").join("fit_scan_full.json")
     } else {
-        // Fallback: use current user's local app data directory
         std::env::var("LOCALAPPDATA")
             .ok()
-            .map(|d| PathBuf::from(d).join("blackwell-ops").join("fit_cache.json"))
-            .unwrap_or_else(|| PathBuf::from("fit_cache.json"))
+            .map(|d| PathBuf::from(d).join("blackwell-ops").join("fit_scan_full.json"))
+            .unwrap_or_else(|| PathBuf::from("fit_scan_full.json"))
     }
 }
 
-/// Cache data stored per model — holds the VramProfile and metadata.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FitCacheData {
-    pub profile: VramProfile,
-    #[serde(default)]
-    pub created_at: u64,
-    /// SHA256 hash of first 8KB of model file — detects quantization swaps.
-    #[serde(default)]
-    pub model_hash: String,
-}
-
-impl FitCacheData {
-    pub fn new(profile: VramProfile) -> Self {
-        Self {
-            profile,
-            created_at: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_secs())
-                .unwrap_or(0),
-            model_hash: String::new(),
-        }
-    }
-
-    pub fn with_hash(profile: VramProfile, model_path: &str) -> Self {
-        let hash = compute_model_hash(model_path);
-        Self {
-            profile,
-            created_at: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_secs())
-                .unwrap_or(0),
-            model_hash: hash,
-        }
+/// Clear the full scan export so next scan runs fresh (no incremental skip).
+pub fn clear_full_scan_export() {
+    let path = full_scan_export_path();
+    if path.exists() {
+        let _ = std::fs::remove_file(&path);
     }
 }
 
-/// Look up a model's VRAM profile from cache by hash (primary) or path (fallback for old entries).
-pub fn get_cached_profile(cache: &HashMap<String, FitCacheData>, model_path: &str) -> Option<VramProfile> {
-    let hash = compute_model_hash(model_path);
-    // Try hash key first (new format)
-    if let Some(data) = cache.get(&hash) {
-        if data.model_hash == hash {
-            return Some(data.profile.clone());
-        }
+/// Save comprehensive scan data to JSON for offline analysis.
+fn save_full_scan_export(full_data: &HashMap<String, FitScanFull>) {
+    if full_data.is_empty() {
+        return;
     }
-    // Fallback: path key (old format, backward compat)
-    cache.get(model_path).map(|d| d.profile.clone())
-}
-
-/// Save anchor scan results to the permanent cache with hash-based key.
-pub fn save_anchor_results_to_cache(
-    cache: &mut HashMap<String, FitCacheData>,
-    model_path: &str,
-    results: &FitAnchorResults,
-) {
-    if let Some(profile) = build_profile(results) {
-        // Remove old path-keyed entry if it exists
-        cache.remove(model_path);
-        let hash = compute_model_hash(model_path);
-        cache.insert(hash, FitCacheData::with_hash(profile, model_path));
+    let path = full_scan_export_path();
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    if let Ok(json) = serde_json::to_string_pretty(full_data) {
+        let _ = std::fs::write(&path, json);
     }
 }
 
-/// Save a single scan result to the permanent cache.
-/// Smart logic: complements existing partial profiles rather than overwriting them.
-/// If we have 2/3 anchors and add the 3rd, it promotes to a full VramProfile.
-pub fn save_single_scan_to_cache(model_path: &str, ctx: usize, kv_quant: &str, vram_mib: f64) {
-    let mut cache = load_fit_cache().unwrap_or_default();
-
-    // Determine which anchor this scan matches
-    const ANCHOR_A_CTX: usize = 8192;
-    const ANCHOR_B_CTX: usize = 131072;
-    let is_anchor_a = (ctx == ANCHOR_A_CTX) && kv_quant.to_lowercase() == "f16";
-    let is_anchor_b = (ctx == ANCHOR_B_CTX) && kv_quant.to_lowercase() == "f16";
-    let is_anchor_c = (ctx == ANCHOR_B_CTX) && kv_quant.to_lowercase() == "q4_0";
-
-    if !is_anchor_a && !is_anchor_b && !is_anchor_c {
-        return; // Not a recognized anchor point — skip caching
+/// Load comprehensive scan data from JSON export.
+pub fn load_full_scan_export() -> Option<HashMap<String, FitScanFull>> {
+    let path = full_scan_export_path();
+    if !path.exists() {
+        return None;
     }
-
-    // Look up existing by hash or path (backward compat)
-    let hash = compute_model_hash(model_path);
-    let existing = cache.get(&hash).or_else(|| cache.get(model_path)).map(|d| d.profile.clone());
-
-    let (mut anchor_a, mut anchor_b, mut anchor_c) = match existing {
-        Some(p) => (p.anchor_a_mib, p.anchor_b_mib, p.anchor_c_mib),
-        None => (0.0, 0.0, 0.0),
-    };
-
-    // Slot the new value into the correct anchor
-    if is_anchor_a { anchor_a = vram_mib; }
-    if is_anchor_b { anchor_b = vram_mib; }
-    if is_anchor_c { anchor_c = vram_mib; }
-
-    // Only save if we have a complete profile (all 3 anchors non-zero)
-    if anchor_a > 0.0 && anchor_b > 0.0 && anchor_c > 0.0 {
-        // Remove old path-keyed entry
-        cache.remove(model_path);
-        cache.insert(hash, FitCacheData::with_hash(VramProfile {
-            anchor_a_mib: anchor_a,
-            anchor_b_mib: anchor_b,
-            anchor_c_mib: anchor_c,
-        }, model_path));
-        save_fit_cache(&cache);
-    }
-}
-
-/// Persist all library scan results to the permanent cache.
-fn save_library_results_to_cache(results_map: &HashMap<String, FitAnchorResults>) {
-    let mut cache = load_fit_cache().unwrap_or_default();
-    for (model_path, anchor_results) in results_map {
-        save_anchor_results_to_cache(&mut cache, model_path, anchor_results);
-    }
-    save_fit_cache(&cache);
-}
-
-/// Estimate VRAM for a model at given context/KV using cached profile.
-pub fn estimate_from_cache(
-    cache: &HashMap<String, FitCacheData>,
-    model_path: &str,
-    ctx: usize,
-    kv_quant: &str,
-) -> Option<f64> {
-    get_cached_profile(cache, model_path).map(|p| p.estimate_vram_mib(ctx, kv_quant))
+    let content = std::fs::read_to_string(&path).ok()?;
+    serde_json::from_str(&content).ok()
 }

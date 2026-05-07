@@ -7,13 +7,13 @@ interface GpuTopologyProps {
   ramVisible: boolean;
   ramTotalGb: number;
   ramManufacturedGb: number;
-  selectedGpuIdx?: number;
+  selectedGpuIndices?: number[];
   onDeviceSelect?: (gpuIndex: number) => void;
 }
 
 const HATCH_PATTERN = `repeating-linear-gradient(45deg, transparent, transparent 2px, rgba(0,0,0,0.35) 2px, rgba(0,0,0,0.35) 4px)`;
 
-export default function GpuTopology({ gpuAllocations, gpuBarColor, ramVisible, ramTotalGb, ramManufacturedGb, selectedGpuIdx, onDeviceSelect }: GpuTopologyProps) {
+export default function GpuTopology({ gpuAllocations, gpuBarColor, ramVisible, ramTotalGb, ramManufacturedGb, selectedGpuIndices, onDeviceSelect }: GpuTopologyProps) {
   return (
     <div className="space-y-2">
       {/* GPU Grid — 2 per row */}
@@ -21,15 +21,19 @@ export default function GpuTopology({ gpuAllocations, gpuBarColor, ramVisible, r
         {gpuAllocations.map((alloc) => {
           const totalMib = alloc.vramManufacturedGb * 1024;
           const usedMib = (alloc.vramManufacturedGb - alloc.vramAvailableGb) * 1024;
+
+          // Projected load percentage
           const projectedPct = totalMib > 0 ? (alloc.projectedLoadGb * 1024 / totalMib) * 100 : 0;
 
-          // Running engines segments from manifest
+          // Running engines + external breakdown
           const totalRunningMib = alloc.runningEngines.reduce((sum, e) => sum + e.vramUsedMib, 0);
           const osOtherMib = Math.max(0, usedMib - totalRunningMib);
-
-          // Percentages for the actual usage bar
           const runningPct = totalMib > 0 ? (totalRunningMib / totalMib) * 100 : 0;
           const osPct = totalMib > 0 ? (osOtherMib / totalMib) * 100 : 0;
+
+          // Total utilization: projected + existing used (cap at 100% for display)
+          const totalUsedMib = alloc.projectedLoadGb * 1024 + usedMib;
+          const totalUsedPct = Math.min(totalMib > 0 ? (totalUsedMib / totalMib) * 100 : 0, 100);
 
           // Color hex for inline styles — derive from tailwind class name
           const barColorHex = gpuBarColor.includes('nv-green') || gpuBarColor.includes('green') ? '#76B900' :
@@ -42,7 +46,17 @@ export default function GpuTopology({ gpuAllocations, gpuBarColor, ramVisible, r
                               gpuBarColor.includes('gray') ? '#4B5563' :
                               '#76B900';
 
-          const isSelected = selectedGpuIdx === alloc.gpuIndex;
+          // Percentage label color — based on total utilization (existing + projected)
+          const pctColor = totalUsedPct > 95 ? '#ff3333' : totalUsedPct > 85 ? '#FB923C' : barColorHex;
+
+          // Existing usage alone can be high even with no projection — color the hatched fill accordingly
+          const existingOnlyPct = totalMib > 0 ? (usedMib / totalMib) * 100 : 0;
+          const existingBarColor = existingOnlyPct > 95 ? '#ff3333' : existingOnlyPct > 85 ? '#FB923C' : barColorHex;
+
+          const isSelected = selectedGpuIndices?.includes(alloc.gpuIndex) ?? false;
+
+          // Tooltip text
+          const tooltipText = `Running engines: ${(totalRunningMib / 1024).toFixed(1)} GB | External apps: ${(osOtherMib / 1024).toFixed(1)} GB`;
 
           return (
             <motion.div
@@ -63,81 +77,93 @@ export default function GpuTopology({ gpuAllocations, gpuBarColor, ramVisible, r
                 <span className={`text-[9px] font-mono truncate flex-1 mr-2 ${isSelected ? 'text-white' : 'text-stealth-muted'}`} title={alloc.name}>
                   {alloc.name}
                 </span>
-                <span style={{ color: barColorHex }} className="text-[7px] font-mono flex-shrink-0">
-                  {projectedPct.toFixed(0)}%
+                <span style={{ color: pctColor }} className="text-[7px] font-mono flex-shrink-0">
+                  {totalUsedPct.toFixed(0)}%
                 </span>
               </div>
 
-              {/* Projected VRAM fill bar — thick, solid */}
-              <div className="relative h-3 bg-depth-black/50 rounded-sm overflow-hidden border border-stealth-border/30">
+              {/* Unified VRAM bar — projected from left, existing from right */}
+              <div
+                style={{ backgroundColor: 'rgb(20,20,20)' }}
+                className="relative h-3 rounded-sm overflow-hidden border border-stealth-border/30"
+              >
+                {/* Projected load — fills left → right in scenario color (capped at 100%) */}
                 <motion.div
                   style={{ width: `${Math.min(projectedPct, 100)}%` }}
                   initial={{ width: 0 }}
                   animate={{ width: `${Math.min(projectedPct, 100)}%` }}
                   transition={{ duration: 0.4, ease: "easeOut" }}
-                  className={`h-full rounded-sm ${gpuBarColor}`}
+                  className={`h-full absolute top-0 left-0 ${gpuBarColor}`}
                 />
+
+                {/* External/OS — fills from far right edge, grey hatched (capped) */}
+                {osOtherMib > 0 && (
+                  <motion.div
+                    style={{
+                      width: `${Math.min(osPct, 100)}%`,
+                      backgroundColor: '#585858',
+                      backgroundImage: HATCH_PATTERN,
+                    }}
+                    initial={{ width: 0 }}
+                    animate={{ width: `${Math.min(osPct, 100)}%` }}
+                    transition={{ duration: 0.4, ease: "easeOut" }}
+                    className="h-full absolute top-0 right-0"
+                  />
+                )}
+
+                {/* Running engines — fills from right after external, colored by utilization (capped) */}
+                {totalRunningMib > 0 && (
+                  <motion.div
+                    style={{
+                      width: `${Math.min(runningPct, 100)}%`,
+                      right: `${osPct}%`,
+                      backgroundColor: existingBarColor,
+                      backgroundImage: HATCH_PATTERN,
+                    }}
+                    initial={{ width: 0 }}
+                    animate={{ width: `${Math.min(runningPct, 100)}%` }}
+                    transition={{ duration: 0.4, ease: "easeOut" }}
+                    className="h-full absolute top-0"
+                  />
+                )}
+
+                {/* Tooltip overlay — covers entire bar */}
+                <div className="absolute inset-0 cursor-help" title={tooltipText} />
               </div>
 
-              {/* Projected VRAM numbers */}
+              {/* Numbers below bar */}
               <div className="flex justify-between mt-1">
                 <span style={{ color: barColorHex }} className="text-[8px] font-mono">
-                  {alloc.projectedLoadGb.toFixed(1)} GB projected VRAM usage
+                  {alloc.projectedLoadGb.toFixed(1)} GB projected
                 </span>
                 <span className="text-[8px] font-mono text-stealth-muted/50">
                   /{alloc.vramManufacturedGb.toFixed(0)} GB
                 </span>
               </div>
 
-              {/* Actual usage bar — thin, hatched segments (always rendered) */}
-              <div className="relative mt-1.5 h-2 bg-depth-black/50 rounded-sm overflow-hidden border border-stealth-border/30">
-                {/* Running engines segment (hatched) */}
-                {totalRunningMib > 0 && (
-                  <motion.div
-                    style={{
-                      width: `${runningPct}%`,
-                      backgroundColor: barColorHex,
-                      backgroundImage: HATCH_PATTERN,
-                    }}
-                    initial={{ width: 0 }}
-                    animate={{ width: `${runningPct}%` }}
-                    transition={{ duration: 0.4, ease: "easeOut" }}
-                    className="h-full rounded-l-sm absolute top-0 left-0 cursor-help"
-                    title={alloc.runningEngines.map(e => `${e.slotAlias} | ${e.modelShort}: ${(e.vramUsedMib / 1024).toFixed(1)} GB`).join('\n')}
-                  />
-                )}
-
-                {/* OS other segment (grey hatched) */}
-                {osOtherMib > 0 && (
-                  <motion.div
-                    style={{
-                      width: `${osPct}%`,
-                      left: `${runningPct}%`,
-                      backgroundColor: '#585858',
-                      backgroundImage: HATCH_PATTERN,
-                    }}
-                    initial={{ width: 0 }}
-                    animate={{ width: `${osPct}%` }}
-                    transition={{ duration: 0.4, ease: "easeOut" }}
-                    className="h-full absolute top-0"
-                  />
-                )}
-
-                {/* Total used label */}
-                <span className="absolute right-0 top-0 text-[6px] font-mono translate-x-full ml-1 text-stealth-muted">
-                  {(usedMib / 1024).toFixed(1)} GB used
-                </span>
-              </div>
-
-              {/* Actual usage breakdown */}
-              <div className="flex justify-between mt-1">
-                <span style={{ color: barColorHex }} className="text-[7px] font-mono">
-                  {(totalRunningMib / 1024).toFixed(1)} GB running engines
-                </span>
-                <span className="text-[7px] font-mono text-stealth-muted">
-                  {(osOtherMib / 1024).toFixed(1)} GB external 
-                </span>
-              </div>
+              {/* Engine table — per GPU, only when engines are running */}
+              {alloc.runningEngines.length > 0 && (
+                <div className="mt-2 border border-stealth-border/30 rounded-sm overflow-hidden">
+                  {alloc.runningEngines.map(engine => (
+                    <div
+                      key={engine.slotAlias}
+                      className="flex items-center gap-2 px-2 py-1 hover:bg-white/5 transition-colors w-full border-b border-stealth-border/20 last:border-b-0"
+                    >
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          window.dispatchEvent(new CustomEvent('blackops-navigate-stack'));
+                        }}
+                        className="text-[7px] font-mono text-nv-green flex-shrink-0 hover:text-white transition-colors cursor-pointer"
+                      >
+                        {engine.slotAlias}
+                      </button>
+                      <span className="text-[7px] font-mono text-stealth-muted flex-1 truncate" title={engine.modelShort}>{engine.modelShort}</span>
+                      <span className="text-[7px] font-mono text-white/70 flex-shrink-0">{(engine.vramUsedMib / 1024).toFixed(1)} GB</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </motion.div>
           );
         })}
@@ -165,8 +191,8 @@ export default function GpuTopology({ gpuAllocations, gpuBarColor, ramVisible, r
             )}
           </div>
 
-          {/* RAM fill bar — thick, electric-blue */}
-          <div className="relative h-4 bg-depth-black/50 rounded-sm overflow-hidden border border-stealth-border/30">
+          {/* RAM fill bar */}
+          <div style={{ backgroundColor: 'rgb(20,20,20)' }} className="relative h-4 rounded-sm overflow-hidden border border-stealth-border/30">
             <motion.div
               style={{ width: `${ramManufacturedGb > 0 ? Math.min((ramTotalGb / ramManufacturedGb) * 100, 100) : 0}%` }}
               initial={{ width: 0 }}

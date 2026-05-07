@@ -34,14 +34,6 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::{Mutex, RwLock};
 
-static TELEMETRY_ACTIVE: AtomicBool = AtomicBool::new(true);
-
-#[tauri::command]
-async fn set_telemetry_active(active: bool) {
-    TELEMETRY_ACTIVE.store(active, Ordering::Relaxed);
-    log::info!("Telemetry active: {}", active);
-}
-
 // ── HF Search Commands ────────────────────────────────────────────────
 
 #[tauri::command]
@@ -346,46 +338,8 @@ async fn main() {
             let mobile_bridge = MobileBridge::new(3814);
             app.manage(mobile_bridge.clone());
 
-
-
-            // GPU telemetry on dedicated background thread — 2s interval, non-blocking
-            // Deep State deduplication: only emit when hardware values actually change
-            let tel_handle = app.handle().clone();
-            tokio::spawn(async move {
-                use tokio::sync::Mutex as TokioMutex;
-                let prev_gpu: TokioMutex<Option<String>> = TokioMutex::new(None);
-
-                loop {
-                    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
-
-                    if !TELEMETRY_ACTIVE.load(Ordering::Relaxed) {
-                        continue;
-                    }
-
-                    let gpus = match telemetry::scan_gpus().await {
-                        Ok(g) => g,
-                        Err(e) => {
-                            log::debug!("GPU telemetry scan failed: {}", e);
-                            continue;
-                        }
-                    };
-
-                    let current_json = serde_json::to_string(&gpus).unwrap_or_default();
-                    let mut prev = prev_gpu.lock().await;
-                    if prev.as_ref() == Some(&current_json) {
-                        // Deep State: nothing changed, skip IPC entirely
-                        continue;
-                    }
-                    *prev = Some(current_json.clone());
-                    drop(prev);
-
-                    log::debug!("GPU telemetry scan: {} GPUs (CHANGED)", gpus.len());
-                    let _ = tel_handle.emit("telemetry-update", &serde_json::json!({
-                        "type": "telemetry",
-                        "gpus": gpus,
-                    }));
-                }
-            });
+            // GPU telemetry is frontend-driven only (App.tsx polling at 250ms).
+            // Backend loop removed — it emitted "telemetry-update" to zero listeners.
 
             Ok(())
         })
@@ -431,14 +385,10 @@ async fn main() {
             config::apply_template_update,
             config::save_provider_meta,
             config::reset_param_to_template,
-            set_telemetry_active,
             // FIT Scanner commands
             engine::fit_scan_model,
             engine::fit_scan_library,
             engine::fit_stop_scan,
-            engine::fit_get_cached_profile,
-            engine::fit_estimate_vram,
-            engine::fit_clear_cache,
             // GGUF Metadata Scanner commands
             engine::scan_model_metadata_cmd,
             engine::scan_all_models_cmd,

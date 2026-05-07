@@ -7,17 +7,24 @@ use crate::log_hub::LogHub;
 
 use std::os::windows::process::CommandExt;
 
-/// Estimate committed VRAM for a launched engine from cached profile or file size.
+/// Estimate committed VRAM for a launched engine from full scan data or file size fallback.
 fn fit_scanner_estimate_vram(config: &EngineConfig) -> f64 {
-    if let Some(cache) = crate::fit_scanner::load_fit_cache() {
-        if let Some(p) = crate::fit_scanner::get_cached_profile(&cache, &config.model_path) {
+    // Try to find matching scan point from full scan export
+    if let Some(scan_data) = crate::fit_scanner::load_full_scan_export() {
+        if let Some(full) = scan_data.get(&config.model_path) {
             let ctx_tokens = match config.ctx_size.as_str() {
                 "4K" => 4096, "8K" => 8192, "16K" => 16384, "32K" => 32768,
                 "64K" => 65536, "128K" => 131072, "256K" => 262144, _ => 32768,
             };
-            return p.estimate_vram_mib(ctx_tokens, &config.kv_quant);
+            // Find closest matching point by ctx + kv_quant
+            if let Some(pt) = full.points.iter().find(|p| {
+                p.ctx == ctx_tokens && p.kv_quant.to_lowercase() == config.kv_quant.to_lowercase()
+            }) {
+                return pt.vram_mib;
+            }
         }
     }
+    // Fallback: file size as rough estimate
     if let Ok(meta) = std::fs::metadata(&config.model_path) {
         meta.len() as f64 / (1024.0 * 1024.0)
     } else {

@@ -818,6 +818,10 @@ pub async fn fit_scan_model(
     kv_quant: String,
     device: String,
     split_mode: String,
+    batch: u32,
+    ubatch: u32,
+    parallel: u32,
+    flash_attn: bool,
     app: tauri::State<'_, AppContext>,
 ) -> Result<fit_scanner::FitScanResult, String> {
     let cfg = {
@@ -848,14 +852,14 @@ pub async fn fit_scan_model(
         device,
         kv_quant,
         ctx_size,
-        batch: 2048,
-        ubatch: 512,
-        parallel: 1,
+        batch: batch as i64,
+        ubatch: ubatch as i64,
+        parallel: parallel as i64,
         offload: String::new(), // Let llama-fit-params auto-calculate what fits (no forced --n-gpu-layers)
         offload_mode: "REGULAR".to_string(),
         split_mode,
         vision: "AUTO".to_string(),
-        flash_attn: true,
+        flash_attn,
         jinja: false,
         cont_batching: false,
         metrics: false,
@@ -880,12 +884,10 @@ pub async fn fit_scan_model(
     let gpu_mask = compute_gpu_mask(&config, gpu_count, false);
 
     let args = fit_scanner::build_fit_args_from_template(&template, &config, &model_path, &gpu_mask);
-    let vram_mib = fit_scanner::scan_single_anchor(&fit_binary, &args, &gpu_mask).await?;
+    let raw = fit_scanner::scan_single_anchor(&fit_binary, &args, &gpu_mask).await?;
+    let vram_mib = raw.vram_mib;
 
-    // Save single scan result to cache (smart: complements existing profile)
     let ctx_int = crate::templates::ProviderTemplate::ctx_to_int_str(&config.ctx_size).parse::<usize>().unwrap_or(32768);
-    fit_scanner::save_single_scan_to_cache(&model_path, ctx_int, &config.kv_quant, vram_mib);
-
     let gpus = telemetry::scan_gpus().await.unwrap_or_default();
     let total_gpu_mib: f64 = gpus.iter().map(|g| g.memory_total as f64).sum();
 
@@ -895,6 +897,8 @@ pub async fn fit_scan_model(
         ctx: ctx_int,
         kv_quant: config.kv_quant.clone(),
         fits: vram_mib <= total_gpu_mib,
+        gpu_breakdown_mib: raw.gpu_breakdown_mib,
+        host_mib: raw.host_mib,
     })
 }
 
@@ -904,9 +908,10 @@ pub async fn fit_scan_library(
     provider_id: String,
     model_base: String,
     parallel_count: u32,
-    _batch: u32,
-    _ubatch: u32,
-    _flash_attn: bool,
+    batch: u32,
+    ubatch: u32,
+    flash_attn: bool,
+    force_rescan: Option<bool>,
     app: tauri::State<'_, AppContext>,
 ) -> Result<fit_scanner::FitScanComplete, String> {
     let cfg = {
@@ -914,11 +919,11 @@ pub async fn fit_scan_library(
         guard.clone()
     };
 
-    // Resolve model_base: use provided value, or fall back to first configured path
-    let resolved_model_base = if !model_base.is_empty() {
-        model_base
+    // Use provided path or ALL configured model paths from config
+    let all_paths = if !model_base.is_empty() {
+        vec![model_base]
     } else {
-        crate::config::get_default_download_path(&cfg)
+        cfg.model_paths.iter().map(|p| p.path.clone()).collect::<Vec<_>>()
     };
 
     let binary_path = engine_utils::find_provider_binary(&cfg, &provider_id);
@@ -943,14 +948,14 @@ pub async fn fit_scan_library(
         device: "GPU-0".to_string(),
         kv_quant: "q4_0".to_string(),
         ctx_size: "32K".to_string(),
-        batch: 2048,
-        ubatch: 512,
+        batch: batch as i64,
+        ubatch: ubatch as i64,
         parallel: 1,
         offload: String::new(), // Let llama-fit-params auto-calculate (no forced --n-gpu-layers)
         offload_mode: "REGULAR".to_string(),
         split_mode: "NONE".to_string(),
         vision: "AUTO".to_string(),
-        flash_attn: true,
+        flash_attn,
         jinja: false,
         cont_batching: false,
         metrics: false,
@@ -994,9 +999,14 @@ pub async fn fit_scan_library(
         *guard = cancel_flag.clone();
     }
 
-    // Run library scan — template-driven, same logic as engine launch
+    // Force rescan: delete stale cache so nothing is skipped
+    if force_rescan.unwrap_or(false) {
+        let _ = fit_scanner::clear_full_scan_export();
+    }
+
+    // Run library scan — scans all configured paths, deduplicates across them
     let result = fit_scanner::scan_library(
-        &fit_binary, &resolved_model_base, parallel_count.max(1), total_gpu_mib,
+        &fit_binary, &all_paths, parallel_count.max(1), total_gpu_mib,
         provider_id.clone(), template, base_config, Some(progress_tx), cancel_flag,
     ).await;
 
@@ -1009,30 +1019,6 @@ pub async fn fit_stop_scan(app: tauri::State<'_, AppContext>) -> Result<(), Stri
     let guard = app.fit_scan_cancel.lock().await;
     guard.store(true, Ordering::Relaxed);
     Ok(())
-}
-
-/// Get cached VRAM profile for a model. Returns None if not in cache.
-#[tauri::command]
-pub fn fit_get_cached_profile(model_path: String) -> Result<Option<fit_scanner::VramProfile>, String> {
-    let cache = fit_scanner::load_fit_cache().unwrap_or_default();
-    Ok(fit_scanner::get_cached_profile(&cache, &model_path))
-}
-
-/// Estimate VRAM for a model at given context/KV using cached anchor data.
-#[tauri::command]
-pub fn fit_estimate_vram(
-    model_path: String,
-    ctx: usize,
-    kv_quant: String,
-) -> Result<Option<f64>, String> {
-    let cache = fit_scanner::load_fit_cache().unwrap_or_default();
-    Ok(fit_scanner::estimate_from_cache(&cache, &model_path, ctx, &kv_quant))
-}
-
-/// Clear the entire FIT cache.
-#[tauri::command]
-pub fn fit_clear_cache() -> Result<bool, String> {
-    Ok(fit_scanner::clear_fit_cache())
 }
 
 /// Get mmproj file size in MiB for a model path.

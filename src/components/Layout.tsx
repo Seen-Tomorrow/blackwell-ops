@@ -85,9 +85,12 @@ export default function Layout({ activeTab, onTabChange, children }: LayoutProps
 
   // Listen for admin lock changes from other components (ConfigPage)
   useEffect(() => {
-    const handler = () => setAdminLockState(loadAdminLock());
+    let stale = false;
+    const handler = () => requestAnimationFrame(() => {
+      if (!stale) setAdminLockState(loadAdminLock());
+    });
     window.addEventListener("admin-lock-changed", handler);
-    return () => window.removeEventListener("admin-lock-changed", handler);
+    return () => { stale = true; window.removeEventListener("admin-lock-changed", handler); };
   }, []);
 
   // Persist admin lock state to localStorage and broadcast

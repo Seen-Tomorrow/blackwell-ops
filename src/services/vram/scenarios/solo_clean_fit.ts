@@ -1,4 +1,4 @@
-import { ScenarioInput, ComputedValues, buildManifest, gpuHasRunningEngines } from "./scenarios_factory";
+import { ScenarioInput, ComputedValues, buildManifest, gpuHasRunningEngines, gpuManufacturedMib } from "./scenarios_factory";
 import type { VramManifest } from "../../../lib/types";
 
 /**
@@ -8,7 +8,10 @@ export function tryEvaluate(input: ScenarioInput, computed: ComputedValues): Vra
   const { vramTotalGb, singleMaxAvailable, targetGpuIdx, splitActive, numGpus } = computed;
 
   // Guard: must fit within fill target on best GPU, no running engines, split not active
-  if (vramTotalGb > singleMaxAvailable * 0.95) return null;
+  // Per-GPU headroom: min 1 GB or 2% of card capacity — whichever is larger
+  const targetGpuMib = gpuManufacturedMib(input.gpus[targetGpuIdx]);
+  const headroomGb = Math.max(1.0, (targetGpuMib / 1024) * 0.02);
+  if (vramTotalGb > singleMaxAvailable - headroomGb) return null;
   if (splitActive) return null;
   if (gpuHasRunningEngines(targetGpuIdx, input.runningSlots)) return null;
 

@@ -8,7 +8,12 @@ export function tryEvaluate(input: ScenarioInput, computed: ComputedValues): Vra
   const { vramTotalGb, multiTotalAvailable, overheadGb, visionGb, weightsGb, kvCacheGb, gpuAvailable, numGpus } = computed;
 
   // Guard: spill must be positive and fit in available RAM
-  const totalCapacity = multiTotalAvailable * 0.95;
+  // Per-GPU headroom: min 1 GB or 2% of card — summed across all GPUs
+  const totalHeadroomGb = input.gpus.reduce((sum, g) => {
+    const mfgGb = gpuManufacturedMib(g) / 1024;
+    return sum + Math.max(1.0, mfgGb * 0.02);
+  }, 0);
+  const totalCapacity = multiTotalAvailable - totalHeadroomGb;
   const spillGb = vramTotalGb - totalCapacity;
   if (spillGb <= 0) return null;
   if (spillGb > input.ramAvailableGb) return null;

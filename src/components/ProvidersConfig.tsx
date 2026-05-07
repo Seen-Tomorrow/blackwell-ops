@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef, Fragment } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { ProviderConfig, ParamDef, FitScanComplete, FitScanProgress, BuildInfo } from "../lib/types";
+import type { ProviderConfig, ParamDef, FitScanComplete, FitScanProgress, FitScanFull, BuildInfo } from "../lib/types";
 import FoundryModal from "./FoundryModal";
 
 interface ProvidersConfigProps {
@@ -245,6 +245,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
         totalModels: 0,
         completed: 0,
         failed: 0,
+        results: undefined, // Clear old in-memory points so progress starts fresh
       },
     }));
 
@@ -263,6 +264,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
         batch,
         ubatch,
         flashAttn: true,
+        forceRescan: true, // Always clear stale cache before scanning
       });
 
       setScanStates((prev) => ({
@@ -309,8 +311,12 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
     }));
   }, []);
 
-  // Listen for real-time progress events from backend
+  // Listen for real-time progress events from backend — tracks model count + point counts during scan
+  const listenerGuardRef = useRef(false);
   useEffect(() => {
+    if (listenerGuardRef.current) return; // Prevent HMR stacking duplicate listeners
+    listenerGuardRef.current = true;
+
     let unsub: (() => void) | null = null;
     const init = async () => {
       const { listen } = await import("@tauri-apps/api/event");
@@ -320,30 +326,27 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
           if (!evt || !evt.model_path) return;
 
           setScanStates((prev) => {
-            // Only update if at least one provider is actively scanning
             const hasActiveScan = Object.values(prev).some(s => s.status === "scanning");
             if (!hasActiveScan) return prev;
 
-            // Find the scanning provider and record this model's progress
             for (const [pid, ps] of Object.entries(prev)) {
               if (ps.status !== "scanning") continue;
 
               const existingResults = ps.results?.results ?? {};
-              const prevEntry = existingResults[evt.model_path];
-              
-              // Accumulate progress events into anchor slots: 1st=A, 2nd=B, 3rd=C
-              let count = 0;
-              if (prevEntry) {
-                count = [!!prevEntry.anchor_a_mib, !!prevEntry.anchor_b_mib, !!prevEntry.anchor_c_mib].filter(Boolean).length;
+              const prevEntry: FitScanFull | undefined = existingResults[evt.model_path];
+
+              // Track point count — only increment on "complete" status events, cap at 21
+              let pointCount = prevEntry ? (prevEntry.points.length || 0) : 0;
+              if (evt.status === "complete" && pointCount < 21) {
+                pointCount++;
               }
-              
-              const accumulated = { ...prevEntry };
-              if (count === 0) accumulated.anchor_a_mib = evt.vram_mib ?? prevEntry?.anchor_a_mib;
-              else if (count === 1) accumulated.anchor_b_mib = evt.vram_mib ?? prevEntry?.anchor_b_mib;
-              else if (count === 2) accumulated.anchor_c_mib = evt.vram_mib ?? prevEntry?.anchor_c_mib;
-              
-              const updatedResults = { ...existingResults, [evt.model_path]: accumulated };
-              
+
+              // Create new entry object to ensure React detects state change
+              const entry: FitScanFull = prevEntry
+                ? { ...prevEntry, points: new Array(pointCount) }
+                : { model_path: evt.model_path, points: [], error: undefined };
+
+              const updatedResults = { ...existingResults, [evt.model_path]: entry };
               return {
                 ...prev,
                 [pid]: {
@@ -422,49 +425,36 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
         {state.results && Object.keys(state.results.results).length > 0 && (
           <div className="max-h-48 overflow-y-auto pr-1">
             {/* Column headers */}
-            <div className="grid grid-cols-[20px_minmax(0,_1fr)_72px_72px_72px_minmax(0,_1fr)] items-center gap-1 text-[7px] font-mono py-0.5 text-stealth-muted/60 uppercase tracking-wider border-b border-stealth-border/30 mb-0.5">
+            <div className="grid grid-cols-[20px_minmax(0,_1fr)_64px_64px_56px] items-center gap-1 text-[7px] font-mono py-0.5 text-stealth-muted/60 uppercase tracking-wider border-b border-stealth-border/30 mb-0.5">
               <span></span><span>Model</span>
-              <span>A(8K)</span>
-              <span>B(128K)</span>
-              <span>C(q4_0)</span>
-              <span></span>
+              <span>Base(8K)</span>
+              <span>128K/q4</span>
+              <span>Points</span>
             </div>
             {Object.entries(state.results.results).map(([path, entry]) => {
                let modelName = path.split("\\").pop()?.replace(".gguf", "") || path;
-               // Strip shard suffix (-XXXXX-of-YYYYY) for clean display
                modelName = modelName.replace(/-\d{3,}-of-\d{3,}$/i, "");
-              const data = entry as any;
-              
-               // Check anchor availability — progress events accumulate into slots, final results have all 3
-               const a = data.anchor_a_mib;
-               const b = data.anchor_b_mib;
-               const c = data.anchor_c_mib;
-               const hasFullProfile = a && b && c;
-               const anchorCount = [a, b, c].filter(Boolean).length;
-               
-               return (
-                 <div key={path} className="grid grid-cols-[20px_minmax(0,_1fr)_72px_72px_72px_minmax(0,_1fr)] items-center gap-1 text-[8px] font-mono py-0.5">
-                  <span className={`${hasFullProfile ? "text-nv-green" : anchorCount > 0 ? "text-telemetry-cyan" : data.error ? "text-red-400" : "text-yellow-400"}`}>
-                    {hasFullProfile ? "\u2713" : anchorCount > 0 ? "\u25CF" : data.error ? "\u2716" : "!"}
+              const full: FitScanFull = entry as any;
+              const pts = full.points ?? [];
+              const nPts = pts.length;
+
+               // Find base (8K/q4_0) and 128K/q4_0 points — filter undefined slots from progress tracking
+               const realPts = pts.filter(Boolean);
+               const basePt = realPts.find(p => p.label === "base");
+               const q4Pt = realPts.find(p => p.label === "quant_q4");
+              const isComplete = nPts >= 21;
+
+              return (
+                <div key={path} className="grid grid-cols-[20px_minmax(0,_1fr)_64px_64px_56px] items-center gap-1 text-[8px] font-mono py-0.5">
+                  <span className={`${isComplete ? "text-nv-green" : nPts > 0 ? "text-telemetry-cyan" : full.error ? "text-red-400" : "text-yellow-400"}`}>
+                    {isComplete ? "\u2713" : nPts > 0 ? "\u25CF" : full.error ? "\u2716" : "!"}
                   </span>
                   <span className="text-stealth-muted truncate" title={path}>
                     {modelName}
                   </span>
-                  {/* A column */}
-                  {a ? <span className="text-telemetry-cyan">A:{(a / 1024).toFixed(1)}G</span> : (anchorCount > 0 || data.error) ? <span></span> : null}
-                  {/* B column */}
-                  {b ? <span className="text-telemetry-cyan">B:{(b / 1024).toFixed(1)}G</span> : (anchorCount > 0 || data.error) ? <span></span> : null}
-                  {/* C column */}
-                  {c ? <span className="text-telemetry-cyan">C:{(c / 1024).toFixed(1)}G</span> : (anchorCount > 0 || data.error) ? <span></span> : null}
-                  {/* Error only when no anchors at all */}
-                  {data.error && anchorCount === 0 && (
-                    <>
-                      <span className="text-red-400/60 truncate" title={data.error}>err</span>
-                      <span></span><span></span>
-                    </>
-                  )}
-                  {/* Reserved 1/3 for future info */}
-                  <span></span>
+                  {basePt ? <span className="text-telemetry-cyan">{(basePt.vram_mib / 1024).toFixed(1)}G</span> : <span></span>}
+                  {q4Pt ? <span className="text-telemetry-cyan">{(q4Pt.vram_mib / 1024).toFixed(1)}G</span> : <span></span>}
+                  <span className={`${isComplete ? "text-nv-green" : "text-stealth-muted"}`}>{nPts}/21</span>
                 </div>
               );
             })}
@@ -728,7 +718,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
 
                     {/* SCAN LIBRARY + parallel */}
                     <div className="flex items-center gap-1.5 ml-2 pl-2 border-l border-stealth-border/30">
-                      {[1, 2, 4].map(n => (
+                      {[4, 8, 16].map(n => (
                         <button
                           key={n}
                           onClick={() => {

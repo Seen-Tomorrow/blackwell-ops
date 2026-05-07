@@ -64,11 +64,16 @@ function App() {
       } catch {}
     };
     window.addEventListener("storage", handler);
-    // Also listen for custom event for same-tab updates
-    window.addEventListener("admin-lock-changed", handler);
+    // Also listen for custom event for same-tab updates — defer to avoid setState during render
+    const adminHandler = () => requestAnimationFrame(handler);
+    window.addEventListener("admin-lock-changed", adminHandler);
+    // Navigate to ENGINES tab from GPU topo engine table clicks
+    const navHandler = () => setActiveTab("stack");
+    window.addEventListener("blackops-navigate-stack", navHandler);
     return () => {
       window.removeEventListener("storage", handler);
-      window.removeEventListener("admin-lock-changed", handler);
+      window.removeEventListener("admin-lock-changed", adminHandler);
+      window.removeEventListener("blackops-navigate-stack", navHandler);
     };
   }, []);
 
@@ -169,7 +174,7 @@ function App() {
 
   // Consolidated telemetry polling — GPU + CPU with configurable intervals
   useEffect(() => {
-    const gpuInterval = lowPower ? 2000 : 100;
+    const gpuInterval = lowPower ? 2000 : 250;
     const cpuInterval = lowPower ? 5000 : 500;
 
     let gpuTimer: ReturnType<typeof setInterval> | null = null;
@@ -187,7 +192,6 @@ function App() {
 
     const startPolling = async () => {
       paused = false;
-      try { await invoke("set_telemetry_active", { active: true }); } catch {}
       pollGpu();
       pollCpu();
       gpuTimer = setInterval(pollGpu, gpuInterval);
@@ -196,7 +200,6 @@ function App() {
 
     const stopPolling = async () => {
       paused = true;
-      try { await invoke("set_telemetry_active", { active: false }); } catch {}
       if (gpuTimer) clearInterval(gpuTimer);
       if (cpuTimer) clearInterval(cpuTimer);
       gpuTimer = null;
@@ -220,15 +223,6 @@ function App() {
       if (cpuTimer) clearInterval(cpuTimer);
     };
   }, [lowPower]);
-
-  // Notify backend when telemetry tab is shown/hidden (internal tab switching)
-  useEffect(() => {
-    const updateBackend = async () => {
-      const active = activeTab === "telemetry" && document.visibilityState === "visible";
-      try { await invoke("set_telemetry_active", { active }); } catch {}
-    };
-    updateBackend();
-  }, [activeTab]);
 
   // Listen for batched log events (throttled at 100ms from Rust LogHub)
   useEffect(() => {

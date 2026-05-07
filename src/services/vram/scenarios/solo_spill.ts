@@ -8,7 +8,10 @@ export function tryEvaluate(input: ScenarioInput, computed: ComputedValues): Vra
   const { vramTotalGb, singleMaxAvailable, overheadGb, visionGb, weightsGb, kvCacheGb, targetGpuIdx, splitActive, numGpus } = computed;
 
   // Guard: spill must be positive and fit in available RAM, split not active
-  const gpuCapacity = singleMaxAvailable * 0.95;
+  // Per-GPU headroom: min 1 GB or 2% of card capacity — whichever is larger
+  const mfgMib = gpuManufacturedMib(input.gpus[targetGpuIdx]);
+  const headroomGb = Math.max(1.0, (mfgMib / 1024) * 0.02);
+  const gpuCapacity = singleMaxAvailable - headroomGb;
   const spillGb = vramTotalGb - gpuCapacity;
   if (spillGb <= 0) return null;
   if (spillGb > input.ramAvailableGb) return null;
@@ -28,13 +31,12 @@ export function tryEvaluate(input: ScenarioInput, computed: ComputedValues): Vra
   // KV cache spill risk — llama.cpp allocates KV as contiguous block in VRAM
   // If GPU is tight after weights + overhead, KV may also spill to RAM (catastrophic slowdown)
   const ramKvGb = ramLayers * kvPerLayer;
-  const targetGpuMib = gpuManufacturedMib(input.gpus[targetGpuIdx]);
-  const gpuVramPressure = targetGpuMib > 0 ? gpuCapacity / (targetGpuMib / 1024) : 0;
+  const gpuVramPressure = mfgMib > 0 ? gpuCapacity / (mfgMib / 1024) : 0;
 
   // Dynamic threshold by GPU class — smaller cards fragment faster
   let kvSpillThreshold = 0.85; // default mid-range
-  if (targetGpuMib < 24 * 1024) kvSpillThreshold = 0.82;
-  else if (targetGpuMib > 48 * 1024) kvSpillThreshold = 0.90;
+  if (mfgMib < 24 * 1024) kvSpillThreshold = 0.82;
+  else if (mfgMib > 48 * 1024) kvSpillThreshold = 0.90;
 
   const kvSpillCritical = ramKvGb > 0 && gpuVramPressure > kvSpillThreshold;
 

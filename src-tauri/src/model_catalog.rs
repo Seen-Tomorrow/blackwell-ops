@@ -156,14 +156,19 @@ pub fn merge_catalogs(
     }
 
     // Convert to final ModelEntry with cached metadata + HF overrides
+    // Load cache ONCE — get_cached/get_hf_metadata each call load_cache() which reads+parses the entire JSON file.
+    // With 60 models that was 120 disk I/O ops. Now it's 1.
+    let model_cache = crate::model_cache::load_cache();
+    log::info!("[catalog] Loaded model cache: {} entries", model_cache.len());
+
     let final_catalog: Vec<ModelEntry> = deduped.into_values()
         .map(|internal| {
             let size_str = calc_size_str_from_bytes(internal.total_bytes);
             let lookup_path = &internal.path;
 
-            // GGUF binary scan cache — mtime-only invalidation
+            // GGUF binary scan cache — uses pre-loaded cache, no redundant disk reads
             log::debug!("[catalog] Cache lookup for '{}', path='{}'", internal.name, lookup_path);
-            let mut cached_meta = crate::model_cache::get_cached(lookup_path);
+            let mut cached_meta = crate::model_cache::get_cached_with_cache(&model_cache, lookup_path);
             if cached_meta.is_some() {
                 log::info!("[catalog] ✅ Cached metadata loaded for {}", internal.name);
             } else {
@@ -179,8 +184,8 @@ pub fn merge_catalogs(
                 }
             }
 
-            // HF API cache (persistent) — overrides author/name/quant from directory parsing
-            let hf_meta = crate::model_cache::get_hf_metadata(lookup_path);
+            // HF API cache (persistent) — uses pre-loaded cache, no redundant disk reads
+            let hf_meta = crate::model_cache::get_hf_metadata_with_cache(&model_cache, lookup_path);
             let (author, name, quant) = if let Some(ref hf) = hf_meta {
                 (hf.author.clone(), hf.repo_name.clone(), hf.quant_type.clone())
             } else {
