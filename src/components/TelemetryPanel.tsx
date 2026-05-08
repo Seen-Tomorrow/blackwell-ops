@@ -1,14 +1,15 @@
-import type { GpuInfo, CpuInfo } from "../lib/types";
+import type { GpuInfo, CpuInfo, SystemInfo } from "../lib/types";
 import IntelWidget from "./IntelWidget";
 
 interface TelemetryPanelProps {
   gpus: GpuInfo[];
   cpu: CpuInfo | null;
+  systemInfo?: SystemInfo | null;
   lowPower?: boolean;
   onToggleLowPower?: () => void;
 }
 
-export default function TelemetryPanel({ gpus, cpu, lowPower = false, onToggleLowPower }: TelemetryPanelProps) {
+export default function TelemetryPanel({ gpus, cpu, systemInfo, lowPower = false, onToggleLowPower }: TelemetryPanelProps) {
 
   // System summary calculations
   const totalVram = gpus.reduce((sum, g) => sum + (g.memory_total_manufactured || g.memory_total), 0);
@@ -37,6 +38,7 @@ export default function TelemetryPanel({ gpus, cpu, lowPower = false, onToggleLo
           usedVram={usedVram}
           avgTemp={avgTemp}
           totalPower={totalPower}
+          ramManufacturedMib={systemInfo?.total_memory_manufactured_mib || 0}
         />
       </div>
 
@@ -60,20 +62,30 @@ export default function TelemetryPanel({ gpus, cpu, lowPower = false, onToggleLo
   );
 }
 
-function SystemSummary({ totalVram, usedVram, avgTemp, totalPower }: {
+function SystemSummary({ totalVram, usedVram, avgTemp, totalPower, ramManufacturedMib }: {
   totalVram: number;
   usedVram: number;
   avgTemp: number;
   totalPower: number;
+  ramManufacturedMib: number;
 }) {
   return (
     <div className="bg-stealth-panel border border-stealth-border rounded-sm p-4">
-      {/* Total VRAM — large and centered */}
-      <div className="flex items-center justify-center py-2 border-b border-stealth-border pb-3 mb-3">
+      {/* Total VRAM + RAM — large and centered */}
+      <div className="flex items-center justify-center py-2 border-b border-stealth-border pb-3 mb-3 gap-8">
         <div className="text-center">
           <p className="text-[9px] font-mono text-stealth-muted tracking-wider">TOTAL VRAM</p>
           <p className="text-2xl font-mono mt-0.5 text-nv-green">{(totalVram / 1024).toFixed(0)} GB</p>
         </div>
+        {ramManufacturedMib > 0 && (
+          <>
+            <div className="w-px h-8 bg-stealth-border" />
+            <div className="text-center">
+              <p className="text-[9px] font-mono text-stealth-muted tracking-wider">TOTAL RAM</p>
+              <p className="text-2xl font-mono mt-0.5 text-electric-blue">{(ramManufacturedMib / 1024).toFixed(0)} GB</p>
+            </div>
+          </>
+        )}
       </div>
       {/* Other stats */}
       <div className="grid grid-cols-3 gap-4">

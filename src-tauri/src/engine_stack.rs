@@ -1,3 +1,4 @@
+use std::process::Stdio;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{mpsc, Mutex as TokioMutex};
@@ -298,6 +299,9 @@ impl EngineStack {
 
         let output = tokio::process::Command::new("powershell")
             .args(&["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", &ps_script])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .creation_flags(0x08000000) // CREATE_NO_WINDOW
             .output()
             .await
             .map_err(|e| format!("Failed to kill process on port {}: {}", port, e))?;

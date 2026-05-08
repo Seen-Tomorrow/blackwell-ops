@@ -161,3 +161,48 @@ Params declare where they render via `dock` property on `ParamDef`. Params with 
 - `src/lib/types.ts` — `ParamDef.dock?: string`
 - `src-tauri/config/genesis_template.json` — param definitions with optional `dock`
 - `src/components/EngineConfigPanel.tsx` — filters, renders docked block, skips from normal groups
+
+## Gotchas & Known Issues
+
+### Release Build: Process Spawns Must Use `Stdio::null()` (CRITICAL)
+
+**Problem:** In release builds, any `std::process::Command` or `tokio::process::Command` that calls `.output()` **without** redirecting stdout/stderr will spawn a visible CMD window on Windows. This is because there's no parent console to inherit — Windows creates one per orphaned process.
+
+**Impact:** The GPU telemetry poller runs `nvidia-smi` every 250ms → hundreds of CMD windows flash open, causing UI freeze and resource exhaustion. Running as admin makes it worse (hundreds of persistent windows).
+
+**Fix applied to all affected spawns:**
+```rust
+use std::os::windows::process::CommandExt; // required for creation_flags
+
+Command::new("...")
+    .stdout(Stdio::null())   // suppress stdout window creation
+    .stderr(Stdio::null())   // suppress stderr window creation
+    .creation_flags(0x08000000) // CREATE_NO_WINDOW — CRITICAL, Stdio::null() alone is NOT enough on Windows
+    .output()
+```
+
+**Why both are needed:** `Stdio::null()` redirects the streams but Windows still allocates a console window for the process. `CREATE_NO_WINDOW` (0x08000000) tells the OS not to create one at all. Both must be present together.
+
+**Note:** This app is Windows-only, so `CommandExt` imports and `creation_flags` calls are unconditional (no `#[cfg(windows)]`). The `#[cfg(windows)]` attribute cannot be placed on a single method call in a builder chain — Rust doesn't support that syntax.
+
+**Files that have this fix:**
+- `src-tauri/src/telemetry.rs` — `nvidia-smi` polling + PowerShell WMI RAM query
+- `src-tauri/src/engine.rs` — port cleanup PowerShell (2 calls)
+- `src-tauri/src/config.rs` — GPU count detection
+- `src-tauri/src/fit_scanner.rs` — GPU count detection
+- `src-tauri/src/engine_stack.rs` — port cleanup PowerShell
+
+**What's NOT affected:** Conpty engine logs (`engine_stack.rs` spawn with conpty crate) use a completely different mechanism (pseudo-console). Reactor Foundry build commands (`reactor_foundry.rs`) intentionally pipe stdout/stderr for progress streaming. Git clone/pull in foundry reads stderr for error messages — those are fine since they're one-shot, not polled.
+
+**Rule:** Any new `Command::new(...).output()` call that runs frequently or in release must use `.stdout(Stdio::null()).stderr(Stdio::null())` unless you actually need the output captured. If you need the output, use `.stdout(Stdio::piped()).stderr(Stdio::piped())` instead — both prevent window creation.
+
+### Dev vs Release Telemetry Interval
+- Dev: 250ms GPU poll (fast feedback during config tuning)
+- Release: Same interval, but invisible due to `Stdio::null()` fix above
+- Low-power mode: 2000ms GPU / 5000ms CPU (toggle in UI)
+
+### React Hooks Violation on HMR
+`EngineConfigPanel.tsx` may throw "Rendered more hooks than during the previous render" during Vite HMR transitions. This is a transient hot-reload artifact — does a clean reload (`npm run tauri`) to recover. Do NOT reorder hooks to fix this; it's a Vite state desync, not actual conditional hook usage.
+
+### EngineConfigPanel Config Spread Churn
+`EngineConfigPanel.tsx:165` spreads `{ ...config, backend_type }` every render, creating a new object reference. This caused `useCallback` deps in `useScenarioEvaluator.ts` to churn constantly with telemetry polling. **Fix:** Hook uses refs (`configRef`, `gpusRef`, etc.) and reads from them inside callbacks instead of closing over state vars. Dep arrays are stripped to stable values only.

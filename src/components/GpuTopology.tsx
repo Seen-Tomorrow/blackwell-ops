@@ -11,7 +11,7 @@ interface GpuTopologyProps {
   onDeviceSelect?: (gpuIndex: number) => void;
 }
 
-const HATCH_PATTERN = `repeating-linear-gradient(45deg, transparent, transparent 2px, rgba(0,0,0,0.35) 2px, rgba(0,0,0,0.35) 4px)`;
+const HATCH_PATTERN = `repeating-linear-gradient(-45deg, transparent, transparent 2px, rgba(0,0,0,0.35) 2px, rgba(0,0,0,0.35) 4px)`;
 
 export default function GpuTopology({ gpuAllocations, gpuBarColor, ramVisible, ramTotalGb, ramManufacturedGb, selectedGpuIndices, onDeviceSelect }: GpuTopologyProps) {
   return (
@@ -147,7 +147,7 @@ export default function GpuTopology({ gpuAllocations, gpuBarColor, ramVisible, r
                   {alloc.runningEngines.map(engine => (
                     <div
                       key={engine.slotAlias}
-                      className="flex items-center gap-2 px-2 py-1 hover:bg-white/5 transition-colors w-full border-b border-stealth-border/20 last:border-b-0"
+                      className="flex items-center gap-2 px-2 py-1 hover:bg-white/5 transition-colors w-full border-b border-stealth-border/20 last:border-b-0 cursor-default select-none"
                     >
                       <button
                         onClick={(e) => {

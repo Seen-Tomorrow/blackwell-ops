@@ -456,7 +456,7 @@ function App() {
         )}
         {activeTab === "telemetry" && (
           <div className="h-full flex flex-col p-4 gap-3">
-            <TelemetryPanel gpus={gpus} cpu={cpu} lowPower={lowPower} onToggleLowPower={toggleLowPower} />
+            <TelemetryPanel gpus={gpus} cpu={cpu} systemInfo={systemInfo} lowPower={lowPower} onToggleLowPower={toggleLowPower} />
           </div>
         )}
         {activeTab === "logs" && (

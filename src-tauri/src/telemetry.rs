@@ -1,4 +1,6 @@
 use serde::{Deserialize, Serialize};
+use std::os::windows::process::CommandExt;
+use std::process::Stdio;
 use std::sync::Mutex;
 use sysinfo::System;
 
@@ -48,6 +50,9 @@ fn get_physical_ram_bytes() -> Result<u64, String> {
             "-NoProfile", "-NonInteractive", "-Command",
             "(Get-CimInstance Win32_PhysicalMemory | Measure-Object Capacity -Sum).Sum",
         ])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .creation_flags(0x08000000) // CREATE_NO_WINDOW
         .output()
         .map_err(|e| format!("PowerShell WMI query failed: {}", e))?;
 
@@ -55,6 +60,9 @@ fn get_physical_ram_bytes() -> Result<u64, String> {
     let bytes: u64 = stdout.trim().parse().map_err(|_| {
         format!("Failed to parse physical RAM from PowerShell output: {}", stdout)
     })?;
+    if bytes < 4 * 1024 * 1024 * 1024 {
+        return Err(format!("Physical RAM value too low ({}), likely empty WMI result", bytes));
+    }
     Ok(bytes)
 }
 
@@ -72,6 +80,9 @@ pub async fn scan_gpus() -> Result<Vec<GpuInfo>, String> {
             "--query-gpu=index,name,memory.total,memory.used,memory.free,temperature.gpu,temperature.memory,power.draw,power.limit,utilization.gpu,utilization.memory",
             "--format=csv,noheader,nounits",
         ])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .creation_flags(0x08000000) // CREATE_NO_WINDOW
         .output()
         .await
         .map_err(|e| format!("nvidia-smi execution failed: {}", e))?;
@@ -269,7 +280,13 @@ pub async fn scan_system_info() -> Result<SystemInfo, String> {
     sys.refresh_memory();
 
     let total = sys.total_memory() / (1024 * 1024);   // bytes → MiB, usable by OS
-    let phys_bytes = get_physical_ram_bytes().unwrap_or_else(|_| sys.total_memory());
+    let phys_bytes = match get_physical_ram_bytes() {
+        Ok(v) => v,
+        Err(e) => {
+            log::warn!("WMI physical RAM query failed: {}. Falling back to sysinfo.", e);
+            sys.total_memory()
+        }
+    };
     Ok(SystemInfo {
         total_memory_mib: total,
         available_memory_mib: sys.available_memory() / (1024 * 1024),

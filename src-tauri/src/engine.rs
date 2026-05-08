@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
+use std::os::windows::process::CommandExt;
 use std::path::PathBuf;
+use std::process::Stdio;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -75,6 +77,9 @@ fn detect_gpu_count() -> usize {
     let mut gpu_count = 2;
     if let Ok(output) = std::process::Command::new("nvidia-smi")
         .args(&["--query-gpu=index", "--format=csv,noheader"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .creation_flags(0x08000000) // CREATE_NO_WINDOW
         .output()
     {
         let count = String::from_utf8_lossy(&output.stdout)
@@ -239,6 +244,9 @@ pub async fn launch_engine(
     );
     let _ = tokio::process::Command::new("powershell")
         .args(&["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", &ps_script])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .creation_flags(0x08000000) // CREATE_NO_WINDOW
         .output()
         .await;
 
@@ -586,9 +594,12 @@ pub async fn hot_swap_engine(
     );
     let _ = tokio::process::Command::new("powershell")
         .args(&["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", &ps_script])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .creation_flags(0x08000000) // CREATE_NO_WINDOW
         .output()
         .await;
-    
+
     tokio::time::sleep(Duration::from_millis(300)).await;
 
     let mut stack = app.stack.lock().await;

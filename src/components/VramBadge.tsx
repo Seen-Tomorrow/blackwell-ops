@@ -26,10 +26,10 @@ export default function VramBadge({ manifest, gpus, selectedGpuIndices, onDevice
   const totalVramMib = gpus.reduce((sum, g) => {
     return sum + (g.memory_total_manufactured || g.memory_total);
   }, 0);
-  const totalVramGb = (totalVramMib / 1024).toFixed(0);
+  const totalVramGb = totalVramMib / 1024;
 
   // Total available: manufactured VRAM + manufactured RAM
-  const totalAvailableGb = parseFloat(totalVramGb) + manifest.ramManufacturedGb;
+  const totalAvailableGb = totalVramGb + manifest.ramManufacturedGb;
 
   // Usage percentage for main VRAM bar
   const vramUsagePct = totalVramMib > 0 ? Math.min((displayTotalGb * 1024 / totalVramMib) * 100, 100) : 0;
@@ -46,73 +46,83 @@ export default function VramBadge({ manifest, gpus, selectedGpuIndices, onDevice
 
   return (
     <div className="px-3 py-2.5 relative">
-      {/* ── Header row: everything inline on one baseline ─── */}
+      {/* ── Header row ─── */}
       <div className="flex items-baseline gap-1 mb-2">
-        <span className={`text-xl font-mono ${s.titleColor}`}>MEMORY FORECAST</span>
-        <span className="text-[9px] font-mono text-stealth-muted">/</span>
-        <span className="text-[10px] font-mono text-stealth-muted">You need //</span>
+        <span className={`text-xl font-mono ${s.titleColor}`}>FORECAST : model</span>
 
-        {/* Forecast number — inline, with validate button floating above */}
-        <div className="relative inline-block">
+        {/* Bordered block — button floats above, expands when certified */}
+        <div className={`relative inline-flex flex-col rounded-sm border px-2 py-1 transition-all ${
+          isCertified
+            ? "border-amber-400/50"
+            : "border-stealth-muted/30"
+        }`}>
+          {/* Button — floating below the box */}
           {onValidate && (
-            <button
-              onClick={onValidate}
-              disabled={isValidating}
-              className={`absolute -top-5 left-1/2 -translate-x-1/2 px-2 py-0.5 text-[7px] font-mono tracking-widest rounded-sm border whitespace-nowrap transition-all z-10 ${
-                isValidating
-                  ? "border-yellow-400/40 text-yellow-400 cursor-wait animate-pulse"
-                  : isCertified
-                    ? "border-amber-400/50 text-amber-400 hover:bg-amber-400/10"
-                    : "border-cyan-400/40 text-cyan-400 hover:bg-cyan-400/10"
-              }`}
-            >
-              {isValidating ? "⟳ SCANNING" : isCertified ? "↻ REVALIDATE" : "⚡ VALIDATE"}
-            </button>
+            <div className="absolute -bottom-5 left-1/2 -translate-x-1/2">
+              <button
+                onClick={onValidate}
+                disabled={isValidating}
+                className={`px-2 py-0.5 text-[7px] font-mono tracking-widest rounded-sm border whitespace-nowrap transition-all ${
+                  isValidating
+                    ? "border-yellow-400/40 text-yellow-400 cursor-wait animate-pulse"
+                    : isCertified
+                      ? "border-amber-400/50 text-amber-400 hover:bg-amber-400/10"
+                      : "border-stealth-muted text-stealth-muted hover:text-white hover:border-stealth-muted"
+                }`}
+              >
+                {isValidating ? "⟳ SCANNING" : isCertified ? "↻ MEASURED" : "⚡ VALIDATE"}
+              </button>
+            </div>
           )}
 
-          <span className={`text-xl font-mono transition-all ${
-            isCertified
-              ? "bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-500 bg-clip-text text-transparent drop-shadow-[0_0_8px_rgba(251,191,36,0.4)]"
-              : s.titleColor
-          }`}>
-            {neededText} GB
-          </span>
+          {/* Main line: needs // X GB // [CERTIFIED] — same height before and after validation */}
+          <div className="flex items-baseline gap-1">
+            <span className={`text-xl font-mono ${s.titleColor}`}>needs</span>
+            <span className="text-[9px] font-mono text-stealth-muted">//</span>
+            <span className={`text-xl font-mono transition-all ${
+              isCertified
+                ? "bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-500 bg-clip-text text-transparent drop-shadow-[0_0_8px_rgba(251,191,36,0.4)]"
+                : s.titleColor
+            }`}>
+              {neededText} GB
+            </span>
+            <span className="text-[9px] font-mono text-stealth-muted">//</span>
 
-          {/* CERTIFIED badge — below number, absolute, slight overlap into bar area */}
-          <AnimatePresence>
-            {isCertified && (
-              <motion.div
-                initial={{ opacity: 0, y: -4 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -4 }}
-                transition={{ duration: 0.25 }}
-                className="absolute -bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1"
-              >
-                <svg width="15" height="15" viewBox="0 0 10 10" fill="none">
-                  <circle cx="5" cy="5" r="4.5" stroke="#FBBF24" strokeWidth="1"/>
-                  <path d="M3 5L4.5 6.5L7 3.5" stroke="#FBBF24" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-                <span className="text-[9px] font-mono tracking-widest text-amber-400">CERTIFIED</span>
-              </motion.div>
-            )}
-          </AnimatePresence>
+            {/* CERTIFIED badge — inline after // */}
+            <AnimatePresence>
+              {isCertified && (
+                <motion.div
+                  initial={{ opacity: 0, x: -4 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -4 }}
+                  transition={{ duration: 0.25 }}
+                  className="flex items-center gap-1"
+                >
+                  <svg width="15" height="15" viewBox="0 0 10 10" fill="none">
+                    <circle cx="5" cy="5" r="4.5" stroke="#FBBF24" strokeWidth="1"/>
+                    <path d="M3 5L4.5 6.5L7 3.5" stroke="#FBBF24" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                  <span className="text-[9px] font-mono tracking-widest text-amber-400">CERTIFIED</span>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
         </div>
 
-        <span className="text-[9px] font-mono text-stealth-muted">// for this model, from //</span>
-        <span className="text-xl font-mono text-stealth-muted/40">{totalAvailableGb.toFixed(1)} GB </span>
-        
-        <span className="text-[9px] font-mono text-stealth-muted">// available</span>
+        <span className="text-[9px] font-mono text-stealth-muted">of</span>
+        <span className="text-xl font-mono text-stealth-muted">{totalAvailableGb.toFixed(1)} GB</span>
+        <span className="text-[9px] font-mono text-stealth-muted">TOTAL MEMORY</span>
       </div>
 
       {/* ── Top-right: scenario badge only, absolute corner ─── */}
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 0.75, scale: 1 }}
-        className="absolute top-2 right-3"
+        className="absolute top-0 right-0"
       >
         {/* Scenario badge */}
-        <div className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm ${s.badgeBg}`}>
-          <span className="text-[8px] font-mono text-stealth-muted opacity-60">{manifest.scenario}</span>
+        <div className={`inline-flex items-top gap-1.5 px-2 py-0.5 rounded-sm ${s.badgeBg}`}>
+          <span className="absolute -top-3 -left-10 text-[9px] font-mono text-stealth-muted">{manifest.scenario}</span>
           <span className="text-[9px] font-mono">{manifest.fits ? "✓ FIT" : "✗ NO FIT"}</span>
         </div>
       </motion.div>
@@ -128,12 +138,8 @@ export default function VramBadge({ manifest, gpus, selectedGpuIndices, onDevice
             className={`h-full rounded-sm ${s.gpuBarColor}`}
           />
         </div>
-        <span className={`text-[10px] font-mono ${s.titleColor}`}>| {totalVramGb} GB</span>
-        {vramHeadroomMib > 0 ? (
-          <span className="text-[9px] font-mono text-nv-green">{(vramHeadroomMib / 1024).toFixed(1)} GB stays Free</span>
-        ) : manifest.ramLayers > 0 ? null : (
-          <span className="text-[9px] font-mono text-telemetry-red">{(Math.abs(vramHeadroomMib) / 1024).toFixed(1)} GB Over</span>
-        )}
+        <span className={`text-[12px] font-mono ${s.titleColor}`}>| {totalVramGb.toFixed(0)} GB</span>
+        
       </div>
 
       {/* GPU layer info — text from scenario */}
@@ -154,12 +160,8 @@ export default function VramBadge({ manifest, gpus, selectedGpuIndices, onDevice
                 className="h-full rounded-sm bg-electric-blue"
               />
             </div>
-            <span className="text-[10px] font-mono text-electric-blue">| {ramMfgGb} GB</span>
-            {ramHeadroomMib > 0 ? (
-              <span className="text-[9px] font-mono text-nv-green">{(ramHeadroomMib / 1024).toFixed(1)} GB stays Free</span>
-            ) : (
-              <span className="text-[9px] font-mono text-telemetry-red">{(Math.abs(ramHeadroomMib) / 1024).toFixed(1)} GB Over</span>
-            )}
+            <span className="text-[12px] font-mono text-electric-blue">| {ramMfgGb} GB</span>
+            
           </div>
 
           {/* RAM layer info — text from scenario */}

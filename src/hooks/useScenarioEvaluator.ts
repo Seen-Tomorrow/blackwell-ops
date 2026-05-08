@@ -28,6 +28,7 @@ export function useScenarioEvaluator({ model, config, gpus, stack, systemInfo }:
   const lastTopologyRef = useRef<string>("");
   const lastModelPathRef = useRef("");
   const lastConfigKeyRef = useRef<string>("");
+  const lastStackKeyRef = useRef<string>("");
 
   // Unstable refs: these objects change every render/poll but shouldn't churn deps.
   // Read from refs inside the callback to get latest values without re-creating the callback.
@@ -43,6 +44,15 @@ export function useScenarioEvaluator({ model, config, gpus, stack, systemInfo }:
   // Config fingerprint — only keys that affect scenario evaluation.
   // Changes here trigger re-eval (HW buttons, param chips). Telemetry noise doesn't touch these.
   const configKey = `${config.Device || ""}|${config.Split || ""}|${config["Offload_Mode"] || ""}|${config.CTX || ""}|${config["KV-Quant"] || ""}|${config.Batch ?? ""}|${config.uBatch ?? ""}|${config.Parallel ?? ""}|${config["Flash-Attn"] || ""}|${config.Offload || ""}`;
+
+  // Stack fingerprint — changes when running engines start/stop or their VRAM shifts.
+  const stackKey = stack
+    .filter(s => s.status === "RUNNING" || s.status === "LOADING")
+    .map(s => `${s.alias}-${s.vram_mib || 0}`)
+    .join("|");
+
+  // System info loaded flag — triggers re-eval when it arrives (was null before).
+  const sysInfoLoaded = systemInfo != null;
 
   const runEvaluation = useCallback(() => {
     const curGpus = gpusRef.current;
@@ -91,9 +101,10 @@ export function useScenarioEvaluator({ model, config, gpus, stack, systemInfo }:
     const runningSlots: RunningSlotInfo[] = curStack
       .filter(s => s.status === "RUNNING" || s.status === "LOADING")
       .map(s => {
-        const short = s.model_path
-          ? s.model_path.split("/").pop()?.slice(0, 30) || s.model_name.slice(0, 30)
-          : s.model_name.slice(0, 30);
+        const short = (s.model_name && s.model_name !== s.model_path)
+          ? s.model_name.slice(0, 30)
+          : s.model_path?.split(/[\/\\]/).pop()?.slice(0, 30)
+            || s.model_name.slice(0, 30);
         return {
           alias: s.alias,
           modelShort: short,
@@ -143,6 +154,7 @@ export function useScenarioEvaluator({ model, config, gpus, stack, systemInfo }:
       lastTopologyRef.current = "";
       lastModelPathRef.current = "";
       lastConfigKeyRef.current = "";
+      lastStackKeyRef.current = "";
       return;
     }
 
@@ -152,24 +164,27 @@ export function useScenarioEvaluator({ model, config, gpus, stack, systemInfo }:
       isMountedRef.current = true;
     }
 
-    // Skip re-eval only when model, topology, AND config are all stable.
+    // Skip re-eval only when model, topology, config, AND stack are all stable.
     const modelChanged = model.path !== lastModelPathRef.current || isFirstMount;
     const topologyChanged = gpuTopologyKey !== lastTopologyRef.current || isFirstMount;
     const configChanged = configKey !== lastConfigKeyRef.current || isFirstMount;
+    const stackChanged = stackKey !== lastStackKeyRef.current || isFirstMount;
+    const sysInfoChanged = sysInfoLoaded && !isFirstMount;
 
     // Only log when something actually changed (not Strict Mode double-mount noise)
-    if (modelChanged || topologyChanged || configChanged) {
-      console.debug(`[ScenarioEvaluator] model: ${modelChanged} topo: ${topologyChanged} config: ${configChanged}`);
+    if (modelChanged || topologyChanged || configChanged || stackChanged || sysInfoChanged) {
+      console.debug(`[ScenarioEvaluator] model: ${modelChanged} topo: ${topologyChanged} config: ${configChanged} stack: ${stackChanged} sysInfo: ${sysInfoChanged}`);
     }
-    if (!modelChanged && !topologyChanged && !configChanged) return;
+    if (!modelChanged && !topologyChanged && !configChanged && !stackChanged && !sysInfoChanged) return;
     lastModelPathRef.current = model.path;
     lastTopologyRef.current = gpuTopologyKey;
     lastConfigKeyRef.current = configKey;
+    lastStackKeyRef.current = stackKey;
 
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(runEvaluation, 150);
     return () => { if (timerRef.current) clearTimeout(timerRef.current); };
-  }, [model, gpuTopologyKey, gpus.length, configKey, runEvaluation]);
+  }, [model, gpuTopologyKey, gpus.length, configKey, stackKey, sysInfoLoaded, runEvaluation]);
 
   // FIT validation — runs llama-fit-params with current config, applies measured total to manifest
   const validate = useCallback(async () => {

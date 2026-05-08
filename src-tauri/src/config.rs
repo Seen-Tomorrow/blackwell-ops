@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::os::windows::process::CommandExt;
 use std::path::PathBuf;
+use std::process::Stdio;
 
 use crate::types::{ModelPathEntry, PathDiskUsage, ProviderConfig};
 
@@ -484,6 +486,9 @@ pub fn detect_gpu_count_pub() -> usize {
     let mut gpu_count = 2; // Fallback for single-GPU or detection failure
     if let Ok(output) = std::process::Command::new("nvidia-smi")
         .args(&["--query-gpu=index", "--format=csv,noheader"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .creation_flags(0x08000000) // CREATE_NO_WINDOW
         .output()
     {
         let count = String::from_utf8_lossy(&output.stdout)
