@@ -99,6 +99,21 @@ pub struct FitScanResult {
     /// Host RAM usage from memory table.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub host_mib: Option<f64>,
+    /// Per-GPU component breakdown (model/ctx/compute) from memory table.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gpu_components_mib: Option<Vec<GpuComponentMib>>,
+}
+
+/// Per-GPU component breakdown parsed from llama's memory table.
+/// Format per GPU line: (SELF = MODEL + CTX + COMPUTE)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GpuComponentMib {
+    /// Model weights VRAM in MiB.
+    pub model_mib: f64,
+    /// KV cache VRAM in MiB.
+    pub ctx_mib: f64,
+    /// Compute/buffer overhead VRAM in MiB.
+    pub compute_mib: f64,
 }
 
 /// Single measured data point from a comprehensive scan.
@@ -354,6 +369,8 @@ pub struct FitScanRaw {
     pub vram_mib: f64,
     pub gpu_breakdown_mib: Option<Vec<f64>>,
     pub host_mib: Option<f64>,
+    /// Per-GPU component breakdown (model/ctx/compute).
+    pub gpu_components_mib: Option<Vec<GpuComponentMib>>,
 }
 
 /// Scan a single model at one anchor point with pre-built CLI args.
@@ -410,11 +427,22 @@ pub async fn scan_single_anchor(
     };
 
     let (gpu_breakdown_mib, host_mib) = parse_fit_breakdown(&combined_output);
+    let gpu_components_mib = parse_gpu_components(&combined_output);
 
     eprintln!("//DEBUG [FIT_OK] {} -> {:.1} MiB | GPUs={:?} Host={:?}",
         model_path, vram_mib, gpu_breakdown_mib, host_mib);
+    
+    // Debug GPU components
+    if let Some(ref comps) = gpu_components_mib {
+        for (i, c) in comps.iter().enumerate() {
+            eprintln!("//DEBUG [GPU_COMP] GPU{}: model={:.0} ctx={:.0} compute={:.0}", 
+                i, c.model_mib, c.ctx_mib, c.compute_mib);
+        }
+    } else {
+        eprintln!("//DEBUG [GPU_COMP] No components parsed from output");
+    }
 
-    Ok(FitScanRaw { vram_mib, gpu_breakdown_mib, host_mib })
+    Ok(FitScanRaw { vram_mib, gpu_breakdown_mib, host_mib, gpu_components_mib })
 }
 
 /// Parse projected VRAM from memory breakdown when model doesn't fit single GPU.
@@ -496,6 +524,60 @@ fn parse_fit_breakdown(output: &str) -> (Option<Vec<f64>>, Option<f64>) {
 
     let gpu_breakdown = if gpu_values.is_empty() { None } else { Some(gpu_values) };
     (gpu_breakdown, host_val)
+}
+
+/// Parse per-GPU component breakdown from memory breakdown table.
+/// Returns Vec<GpuComponentMib> with model/ctx/compute for each GPU.
+fn parse_gpu_components(output: &str) -> Option<Vec<GpuComponentMib>> {
+    let mut components: Vec<GpuComponentMib> = Vec::new();
+
+    // Parse each CUDA line: | - CUDA0 (RTX PRO...) | TOTAL = FREE + ( SELF = MODEL + CTX + COMPUTE ) |
+    for line in output.lines() {
+        let lower = line.to_lowercase();
+        
+        // Skip unless it's a CUDA device line with memory breakdown table format
+        if !lower.contains("cuda") || !line.contains('|') {
+            continue;
+        }
+
+        // Find the LAST opening paren on this line (the component breakdown is near the end)
+        // The "(RTX PRO...)" appears first, we want the numeric one like "(52794 = 50838 + 1152 + 804)"
+        if let Some(last_open) = line.rfind('(') {
+            if let Some(end_paren) = line[last_open..].find(')') {
+                let inner = &line[last_open + 1..last_open + end_paren];
+                
+                // Must look like "52794 = 50838 + 1152 + 804" (number = number + number + number)
+                if !inner.contains('=') || inner.matches('+').count() < 2 {
+                    continue;
+                }
+                
+                let parts: Vec<&str> = inner.split('+').map(|s| s.trim()).collect();
+                if parts.len() >= 3 {
+                    // First part has format "52794 = 50838", extract the last number
+                    let first_part = parts[0];
+                    if let Some(eq_pos) = first_part.find('=') {
+                        let model_str = &first_part[eq_pos + 1..].trim();
+                        
+                        if let (Some(model_mib), Some(ctx_mib), Some(compute_mib)) = (
+                            extract_number(model_str),
+                            extract_number(parts[1]),
+                            extract_number(parts[2])
+                        ) {
+                            components.push(GpuComponentMib {
+                                model_mib,
+                                ctx_mib,
+                                compute_mib,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    eprintln!("//DEBUG [GPU_COMPONENTS] parsed {} GPU components", components.len());
+
+    if components.is_empty() { None } else { Some(components) }
 }
 
 // ── Library Scanner ─────────────────────────────────────────────────

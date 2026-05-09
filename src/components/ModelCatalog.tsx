@@ -3,6 +3,7 @@ import { useState, useCallback, useMemo, useEffect, type Dispatch, type SetState
 import { invoke } from "@tauri-apps/api/core";
 import type { ModelEntry, EngineConfig, GpuInfo, ProviderConfig, SystemInfo, ModelMetadata, StackEntry } from "../lib/types";
 import EngineConfigPanel from "./EngineConfigPanel";
+
 import { useKeyboardNav } from "../hooks/useKeyboardNav";
 
 interface ModelCatalogProps {
@@ -74,6 +75,28 @@ export default function ModelCatalog(props: ModelCatalogProps) {
       setSortDirection("asc");
     }
   }, [sortField]);
+
+  // Compute which models are currently running from stack
+  const runningModelPaths = useMemo(() => {
+    return new Set(
+      stack
+        .filter(s => s.status === "RUNNING" || s.status === "LOADING")
+        .map(s => s.model_path)
+    );
+  }, [stack]);
+
+  // Get most recent engine alias and port per model path
+  const activeEngineByModel = useMemo(() => {
+    const map = new Map<string, { alias: string; port?: number }>();
+    stack
+      .filter(s => s.status === "RUNNING" || s.status === "LOADING")
+      .forEach(s => {
+        if (!map.has(s.model_path!)) {
+          map.set(s.model_path!, { alias: s.alias!, port: s.port });
+        }
+      });
+    return map;
+  }, [stack]);
 
   const handleScanModel = useCallback(async (model: ModelEntry) => {
     if (scanningPath) return;
@@ -197,6 +220,8 @@ export default function ModelCatalog(props: ModelCatalogProps) {
 
     const fitStatus = getFitStatus(modelSizeMib);
     const isScanning = scanningPath === model.path;
+    const isRunning = runningModelPaths.has(model.path);
+    const engineInfo = activeEngineByModel.get(model.path);
 
     // Build params label: "27B dense" or "MOE 262B total 17 active"
     // Prefer modelTypeLabel (GGUF general.size_label, author-set) over calculated total_params_str
@@ -231,8 +256,51 @@ export default function ModelCatalog(props: ModelCatalogProps) {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: Math.min(idx * 0.02, 0.4), duration: 0.3 }}
         onClick={() => handleSelect(model)}
-        className={`cyber-card cursor-pointer rounded-sm p-3 ${isSelected ? "cyber-card-selected" : ""} ${isHighlighted && !isSelected ? "model-highlight-ring" : ""}`}
+        className={`relative cursor-pointer rounded-sm p-3 ${
+          isSelected 
+            ? "bg-white/10 border border-nv-green" 
+            : isRunning
+              ? "bg-black/40 border-2 border-amber-400 hover:bg-black/60"
+              : "cyber-card hover:bg-black/40"
+        }`}
       >
+        {/* Gold badge — top right corner when model is running */}
+        {isRunning && (
+          <motion.div
+            initial={{ scale: 0, rotate: -180 }}
+            animate={{ scale: 1, rotate: 0 }}
+            className="absolute -top-2 -right-2 z-10"
+          >
+            <svg width="36" height="36" viewBox="0 0 36 36">
+              {/* Gold circle with black border */}
+              <circle cx="18" cy="18" r="17" fill="#FBBF24" stroke="#000" strokeWidth="2"/>
+              
+              {/* "RUNNING" text curved along top arc */}
+              <text
+                x="18"
+                y="12"
+                textAnchor="middle"
+                fill="#000"
+                fontSize="4"
+                fontWeight="bold"
+                fontFamily="monospace"
+              >
+                RUNNING
+              </text>
+              
+              {/* Checkmark in center */}
+              <path 
+                d="M12 18L15.5 21.5L23 14" 
+                stroke="#000" 
+                strokeWidth="2.5" 
+                strokeLinecap="round" 
+                strokeLinejoin="round"
+                fill="none"
+              />
+            </svg>
+          </motion.div>
+        )}
+
         {/* Author + source path — top-left, tight above model name */}
         <div className="flex items-center gap-1.5 mb-1">
           <span className="text-[8px] font-mono text-stealth-muted truncate">{model.author}</span>
@@ -414,18 +482,23 @@ export default function ModelCatalog(props: ModelCatalogProps) {
           </div>
         </div>
 
-        {/* Right panel — config */}
-        <div className="flex-1 cyber-panel overflow-hidden">
-          <EngineConfigPanel
-            model={selectedModel}
-            gpus={gpus}
-            providers={externalProviders}
-            committedVramMib={committedVramMib}
-            isAdminUnlocked={isAdminUnlocked}
-            systemInfo={systemInfo}
-            stack={stack}
-            onLaunch={onLaunch}
-          />
+        {/* Right panel — config + diagnostics */}
+        <div className="flex-1 cyber-panel overflow-hidden flex flex-col">
+          <div className="flex-shrink-0">
+            <EngineConfigPanel
+              model={selectedModel}
+              gpus={gpus}
+              providers={externalProviders}
+              committedVramMib={committedVramMib}
+              isAdminUnlocked={isAdminUnlocked}
+              systemInfo={systemInfo}
+              stack={stack}
+              onLaunch={onLaunch}
+              isModelRunning={selectedModel ? runningModelPaths.has(selectedModel.path) : false}
+              activeEngineAlias={selectedModel ? activeEngineByModel.get(selectedModel.path)?.alias : undefined}
+              activeEnginePort={selectedModel ? activeEngineByModel.get(selectedModel.path)?.port : undefined}
+            />
+          </div>
         </div>
       </div>
     </div>

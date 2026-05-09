@@ -23,13 +23,13 @@ export function evaluate(input: ScenarioInput, computed: ComputedValues, reason:
       ramVisible: false,
       uiTemplate: {
         gpuLayerText: `→ 0 layers on GPU — insufficient VRAM`,
-        ramLayerText: `→ ${nLayer} layers in RAM — ${(computed.weightsGb).toFixed(1)} GB offload (cannot launch)`,
+        ramLayerText: `→ ${nLayer} layers in RAM — ${computed.ramWeightsGb > 0 ? `${computed.ramWeightsGb.toFixed(1)} GB expert FFN + ` : ''}${computed.weightsOnGpuGb.toFixed(1)} GB weights (cannot launch)`,
         showRamBar: true,
         offloadWarningText: null,
       },
     },
-    computed.weightsGb, computed.kvCacheGb, computed.overheadGb + computed.visionGb,
-    0, 0, 0, false, reason,
+    computed.weightsOnGpuGb, computed.kvCacheGb, computed.overheadGb + computed.visionGb,
+    computed.ramWeightsGb, 0, 0, false, reason,
     0, nLayer, perGpuLoad,
   );
 }

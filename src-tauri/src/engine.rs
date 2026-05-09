@@ -833,6 +833,7 @@ pub async fn fit_scan_model(
     ubatch: u32,
     parallel: u32,
     flash_attn: bool,
+    offload_mode: String,
     app: tauri::State<'_, AppContext>,
 ) -> Result<fit_scanner::FitScanResult, String> {
     let cfg = {
@@ -867,7 +868,7 @@ pub async fn fit_scan_model(
         ubatch: ubatch as i64,
         parallel: parallel as i64,
         offload: String::new(), // Let llama-fit-params auto-calculate what fits (no forced --n-gpu-layers)
-        offload_mode: "REGULAR".to_string(),
+        offload_mode,
         split_mode,
         vision: "AUTO".to_string(),
         flash_attn,
@@ -910,6 +911,7 @@ pub async fn fit_scan_model(
         fits: vram_mib <= total_gpu_mib,
         gpu_breakdown_mib: raw.gpu_breakdown_mib,
         host_mib: raw.host_mib,
+        gpu_components_mib: raw.gpu_components_mib,
     })
 }
 

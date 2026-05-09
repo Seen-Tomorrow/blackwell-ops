@@ -125,7 +125,7 @@ export default function Layout({ activeTab, onTabChange, children }: LayoutProps
   const isConfigTab = activeTab === "config";
 
   return (
-    <div className="flex flex-col h-screen bg-stealth-black grid-bg relative" style={{ zoom }}>
+    <div className="flex flex-col h-screen bg-stealth-black grid-bg relative overflow-y-auto" style={{ zoom }}>
       {/* Top bar */}
       <motion.header
         initial={{ y: -40, opacity: 0 }}

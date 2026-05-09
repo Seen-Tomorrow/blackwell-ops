@@ -7,10 +7,12 @@ import type { VramManifest } from "../../../lib/types";
 export function tryEvaluate(input: ScenarioInput, computed: ComputedValues): VramManifest | null {
   const { vramTotalGb, singleMaxAvailable, multiTotalAvailable, splitActive, gpuAvailable, numGpus } = computed;
 
-  // Guard: must be multi-GPU scenario (split active OR doesn't fit on one GPU)
+  // Guard: multi-GPU only if split mode is active. If user explicitly set Split="none",
+  // fall through to spill scenarios (single GPU + RAM offload) even if model doesn't fit.
   const targetGpuMib = gpuManufacturedMib(input.gpus[computed.targetGpuIdx]);
   const headroomGb = Math.max(1.0, (targetGpuMib / 1024) * 0.02);
-  if (!(numGpus > 1 && (splitActive || vramTotalGb > singleMaxAvailable - headroomGb))) return null;
+  if (!splitActive) return null; // User chose single GPU — respect it
+  if (!(numGpus > 1 && vramTotalGb > singleMaxAvailable - headroomGb)) return null;
 
   // Must fit across all GPUs within fill target (per-GPU headroom summed)
   const totalHeadroomGb = input.gpus.reduce((sum, g) => {
@@ -44,15 +46,19 @@ export function tryEvaluate(input: ScenarioInput, computed: ComputedValues): Vra
       badgeBg: "bg-orange-400/20",
       icon: "◆",
       label: "MULTI PRESSURE",
-      ramVisible: false,
+      ramVisible: computed.ramWeightsGb > 0,
       uiTemplate: {
-        gpuLayerText: `→ ${nLayer} layers across ${numGpus} GPU(s) — tight fit`,
-        ramLayerText: `→ 0 layers offloaded to RAM`,
+        gpuLayerText: computed.ramWeightsGb > 0
+          ? `→ ${nLayer} layers across ${numGpus} GPU(s) — ${(computed.weightsOnGpuGb).toFixed(1)} GB weights + ${(computed.ramWeightsGb).toFixed(1)} GB expert FFN in RAM`
+          : `→ ${nLayer} layers across ${numGpus} GPU(s) — tight fit`,
+        ramLayerText: computed.ramWeightsGb > 0
+          ? `→ Expert FFN offloaded to RAM (${computed.ramWeightsGb.toFixed(1)} GB)`
+          : `→ 0 layers offloaded to RAM`,
         showRamBar: true,
       },
     },
-    computed.weightsGb, computed.kvCacheGb, computed.overheadGb + computed.visionGb,
-    0, 0, 0, true, "",
+    computed.weightsOnGpuGb, computed.kvCacheGb, computed.overheadGb + computed.visionGb,
+    computed.ramWeightsGb, 0, 0, true, "",
     nLayer, 0, perGpuLoad,
   );
 }

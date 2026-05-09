@@ -84,9 +84,9 @@ export function useScenarioEvaluator({ model, config, gpus, stack, systemInfo }:
       batch: typeof curConfig.Batch === 'number' ? curConfig.Batch : parseInt(String(curConfig.Batch), 10) || 2048,
       ubatch: typeof curConfig.uBatch === 'number' ? curConfig.uBatch : parseInt(String(curConfig.uBatch), 10) || 512,
       parallel: typeof curConfig.Parallel === 'number' ? curConfig.Parallel : parseInt(String(curConfig.Parallel), 10) || 1,
-      offload: String(curConfig.Offload || "ALL"),
-      offload_mode: (curConfig["Offload_Mode"] || "REGULAR").toString().toUpperCase(),
-      split_mode: (curConfig.Split || "NONE").toString().toLowerCase(),
+      offload: String(curConfig.Offload || "all"),
+      offload_mode: curConfig["Offload_Mode"] || "regular",
+      split_mode: curConfig.Split || "none",
       vision: curConfig.Vision?.toUpperCase() === "OFF" ? "OFF" : "AUTO",
       flash_attn: curConfig["Flash-Attn"]?.toString().toLowerCase() !== "off",
       jinja: curConfig.Jinja?.toString().toUpperCase() !== "OFF",
@@ -186,7 +186,7 @@ export function useScenarioEvaluator({ model, config, gpus, stack, systemInfo }:
     return () => { if (timerRef.current) clearTimeout(timerRef.current); };
   }, [model, gpuTopologyKey, gpus.length, configKey, stackKey, sysInfoLoaded, runEvaluation]);
 
-  // FIT validation — runs llama-fit-params with current config, applies measured total to manifest
+  // FIT validation — runs llama-fit-params with current config, re-evaluates scenario with measured total
   const validate = useCallback(async () => {
     if (!model) return;
     setIsValidating(true);
@@ -202,18 +202,87 @@ export function useScenarioEvaluator({ model, config, gpus, stack, systemInfo }:
         ubatch: typeof curConfig.uBatch === 'number' ? curConfig.uBatch : parseInt(String(curConfig.uBatch), 10) || 512,
         parallel: typeof curConfig.Parallel === 'number' ? curConfig.Parallel : parseInt(String(curConfig.Parallel), 10) || 1,
         flashAttn: curConfig["Flash-Attn"]?.toString().toLowerCase() !== "off",
+        offloadMode: (curConfig["Offload_Mode"] || "regular").toString(),
       });
 
-      // Apply validated total to current manifest
-      setManifest(prev => {
-        if (!prev) return prev;
-        return applyFitValidation(
-          prev,
-          result.vram_mib,
-          result.gpu_breakdown_mib,
-          result.host_mib,
-        );
-      });
+      // Re-run full scenario evaluation with measured VRAM total
+      const engineConfig: EngineConfig = {
+        alias: "",
+        model_path: model.path,
+        port: 0,
+        device: curConfig.Device || "GPU-0",
+        kv_quant: curConfig["KV-Quant"] || "f16",
+        ctx_size: curConfig.CTX || "32K",
+        batch: typeof curConfig.Batch === 'number' ? curConfig.Batch : parseInt(String(curConfig.Batch), 10) || 2048,
+        ubatch: typeof curConfig.uBatch === 'number' ? curConfig.uBatch : parseInt(String(curConfig.uBatch), 10) || 512,
+        parallel: typeof curConfig.Parallel === 'number' ? curConfig.Parallel : parseInt(String(curConfig.Parallel), 10) || 1,
+        offload: String(curConfig.Offload || "all"),
+        offload_mode: curConfig["Offload_Mode"] || "regular",
+        split_mode: curConfig.Split || "none",
+        vision: curConfig.Vision?.toUpperCase() === "OFF" ? "OFF" : "AUTO",
+        flash_attn: curConfig["Flash-Attn"]?.toString().toLowerCase() !== "off",
+        jinja: curConfig.Jinja?.toString().toUpperCase() !== "OFF",
+        cont_batching: curConfig["Cont-Batching"]?.toString().toUpperCase() !== "OFF",
+        metrics: curConfig.Metrics?.toString().toUpperCase() === "ON",
+        reasoning: curConfig.Reasoning?.toString().toUpperCase() === "ON",
+        mmap: curConfig.MMAP?.toString().toUpperCase() !== "OFF",
+        verbose: false,
+        log_timestamps: true,
+      };
+
+      const runningSlots: RunningSlotInfo[] = stackRef.current
+        .filter(s => s.status === "RUNNING" || s.status === "LOADING")
+        .map(s => {
+          const short = (s.model_name && s.model_name !== s.model_path)
+            ? s.model_name.slice(0, 30)
+            : s.model_path?.split(/[\/\\]/).pop()?.slice(0, 30) || s.model_name.slice(0, 30);
+          return { alias: s.alias, modelShort: short, vramMib: s.vram_mib || 0, gpuMask: s.gpu };
+        });
+
+      const sysInfo = systemInfoRef.current || { total_memory_mib: 0, available_memory_mib: 0, total_memory_manufactured_mib: 0 };
+
+      const input: ScenarioInput = {
+        modelMeta: model.metadata!,
+        engineConfig,
+        gpus: gpusRef.current,
+        runningSlots,
+        ramAvailableGb: sysInfo.available_memory_mib / 1024,
+        ramManufacturedGb: sysInfo.total_memory_manufactured_mib / 1024,
+        mmprojSizeMib: model.mmproj_size_mib,
+      };
+
+      // Evaluate with measured VRAM total — this will pick the correct scenario based on reality
+      const newManifest = evaluate(input, result.vram_mib);
+      
+      // Also store validation metadata for display (CERTIFIED badge, scale factor, etc.)
+      const validatedManifest: VramManifest = {
+        ...newManifest,
+        validatedVramMib: result.vram_mib,
+        validatedGpuBreakdownMib: result.gpu_breakdown_mib,
+        validatedHostMib: result.host_mib,
+        validatedComponentsMib: result.gpu_components_mib ?? null,
+      };
+      
+      setManifest(validatedManifest);
+      
+      // Save to localStorage for VramDiagnostics panel (isolated, no shared state)
+      try {
+        const offloadMode = (curConfig["Offload_Mode"] || "regular").toString();
+        const storageKey = `BlackOps-vram-validate:${model.path}:${offloadMode}`;
+        const data = {
+          validatedVramMib: result.vram_mib,
+          validatedComponentsMib: result.gpu_components_mib,
+          formulaVramTotalGb: newManifest.formulaVramTotalGb,
+          vramWeightsGb: newManifest.vramWeightsGb,
+          vramKvGb: newManifest.vramKvGb,
+          vramOverheadGb: newManifest.vramOverheadGb,
+        };
+        console.log("[FitValidate] Saving to localStorage:", storageKey, data);
+        localStorage.setItem(storageKey, JSON.stringify(data));
+        window.dispatchEvent(new CustomEvent("vram-validated", { detail: model.path }));
+      } catch (e) {
+        console.warn("[FitValidate] localStorage save failed:", e);
+      }
     } catch (e) {
       console.error("[FitValidate]", e);
     } finally {

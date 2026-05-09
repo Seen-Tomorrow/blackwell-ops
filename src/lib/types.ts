@@ -252,13 +252,34 @@ export interface VramFitResult {
 /** Scenario Factory types — single source of truth for VRAM evaluation */
 
 export type Scenario =
-  | 'SOLO_CLEAN_FIT'
-  | 'SOLO_BUSY_FIT'
+  | 'SOLO_FIT'
+  | 'SOLO_PRESSURE'
   | 'SOLO_SPILL'
-  | 'MULTI_PERFECT'
+  | 'MULTI_FIT'
   | 'MULTI_PRESSURE'
-  | 'TOTAL_SPILL'
+  | 'MULTI_SPILL'
   | 'HW_LOCKED';
+
+/** MOE_OPTIMAL suggestion — computed internally, not exposed as scenario */
+export interface MoeSuggestion {
+  /** Whether MOE_OPTIMAL would fit (on GPU or with less RAM offload) */
+  wouldFit: boolean;
+  
+  /** VRAM savings compared to current scenario (in GB) */
+  vramSavedGb?: number;
+  
+  /** true if MOE_OPTIMAL eliminates RAM layer spill entirely */
+  avoidsSpill?: boolean;
+  
+  /** Speed impact estimate (<10%, minimal, etc.) */
+  speedImpact: string;
+  
+  /** Whether to highlight/animate the badge (true when conditions are met) */
+  shouldHighlight?: boolean;
+  
+  /** Full tooltip text for user-facing display */
+  suggestionText: string;
+}
 
 /** Scenario-driven UI template — controls what VramBadge renders.
  *  Each scenario defines its own inline. VramBadge is a dumb skeleton that reads these values.
@@ -333,6 +354,24 @@ export interface VramManifest {
   validatedGpuBreakdownMib?: number[];
   /** Host RAM usage from FIT scan */
   validatedHostMib?: number;
+    /** Per-GPU component breakdown from FIT scan (snake_case to match Rust serialization) */
+  validatedComponentsMib?: {
+    model_mib: number;
+    ctx_mib: number;
+    compute_mib: number;
+  }[];
+  /** Optional MOE_OPTIMAL alternative suggestion (computed but not shown as scenario) */
+  moeSuggestion?: MoeSuggestion | null;
+}
+
+/** Per-GPU component breakdown parsed from llama's memory table. */
+export interface GpuComponentMib {
+  /** Model weights VRAM in MiB (snake_case to match Rust serialization) */
+  model_mib: number;
+  /** KV cache VRAM in MiB (llama "ctx", snake_case to match Rust) */
+  ctx_mib: number;
+  /** Compute/buffer overhead VRAM in MiB */
+  compute_mib: number;
 }
 
 /** Single fit scan result for one model at one context/KV setting */
@@ -346,6 +385,8 @@ export interface FitScanResult {
   gpu_breakdown_mib?: number[];
   /** Host RAM usage from memory table */
   host_mib?: number;
+  /** Per-GPU component breakdown (model/ctx/compute per GPU) */
+  gpu_components_mib?: GpuComponentMib[];
 }
 
 /** Progress update during library scanning */

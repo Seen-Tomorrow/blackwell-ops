@@ -1,25 +1,38 @@
 import { motion, AnimatePresence } from "framer-motion";
-import type { GpuInfo, VramManifest } from "../lib/types";
+import type { GpuInfo, VramManifest, ModelMetadata } from "../lib/types";
 import GpuTopology from "./GpuTopology";
+import VramBadgeOverlay from "./VramBadgeOverlay";
+import MoeBadge from "./MoeBadge";
 
 interface VramBadgeProps {
   manifest: VramManifest | null;
   gpus: GpuInfo[];
+  modelMeta?: ModelMetadata; // Model metadata to check if MoE
   selectedGpuIndices?: number[];
   onDeviceSelect?: (gpuIndex: number) => void;
   isValidating?: boolean;
   onValidate?: () => void;
+  isModelRunning?: boolean;
+  activeEngineAlias?: string;
+  activeEnginePort?: number;
+  offloadMode?: string; // Current Offload_Mode config value (e.g., "moe_optimal")
+  onMoeSuggestionClick?: () => void; // Callback to auto-switch to MOE_OPTIMAL
 }
 
 /** Pure skeleton renderer — reads all text, visibility, and colors from scenario's uiTemplate.
  *  GOLDEN RULE: Never add conditional logic or hardcoded text here. */
-export default function VramBadge({ manifest, gpus, selectedGpuIndices, onDeviceSelect, isValidating, onValidate }: VramBadgeProps) {
+export default function VramBadge({ 
+  manifest, gpus, modelMeta, selectedGpuIndices, onDeviceSelect, isValidating, onValidate,
+  isModelRunning, activeEngineAlias, activeEnginePort, offloadMode, onMoeSuggestionClick
+}: VramBadgeProps) {
   if (!manifest) return null;
 
   const s = manifest.style;
   const t = s.uiTemplate;
   const isCertified = manifest.validatedVramMib != null;
-  const displayTotalGb = isCertified ? (manifest.validatedVramMib / 1024) : manifest.vramTotalGb;
+  // Total memory need: VRAM portion + RAM portion (expert FFN offload, layer spill, etc.)
+  const totalNeedGb = manifest.vramTotalGb + manifest.ramTotalGb;
+  const displayTotalGb = isCertified ? (manifest.validatedVramMib / 1024) : totalNeedGb;
   const neededText = displayTotalGb.toFixed(1);
 
   // Total manufactured VRAM capacity across all GPUs
@@ -46,9 +59,17 @@ export default function VramBadge({ manifest, gpus, selectedGpuIndices, onDevice
 
   return (
     <div className="px-3 py-2.5 relative">
+      {/* Overlay when model is running — covers entire forecast container */}
+      {isModelRunning && (
+        <VramBadgeOverlay 
+          engineAlias={activeEngineAlias} 
+          enginePort={activeEnginePort}
+        />
+      )}
+
       {/* ── Header row ─── */}
       <div className="flex items-baseline gap-1 mb-2">
-        <span className={`text-xl font-mono ${s.titleColor}`}>FORECAST : model</span>
+        <span className={`text-xl font-mono ${s.titleColor}`}>FORECAST: model</span>
 
         {/* Bordered block — button floats above, expands when certified */}
         <div className={`relative inline-flex flex-col rounded-sm border px-2 py-1 transition-all ${
@@ -70,7 +91,7 @@ export default function VramBadge({ manifest, gpus, selectedGpuIndices, onDevice
                       : "border-stealth-muted text-stealth-muted hover:text-white hover:border-stealth-muted"
                 }`}
               >
-                {isValidating ? "⟳ SCANNING" : isCertified ? "↻ MEASURED" : "⚡ VALIDATE"}
+                {isValidating ? "⟳ SCANNING" : isCertified ? "↻ MEASURED" : "⚡ ESTMATED"}
               </button>
             </div>
           )}
@@ -112,6 +133,8 @@ export default function VramBadge({ manifest, gpus, selectedGpuIndices, onDevice
         <span className="text-[9px] font-mono text-stealth-muted">of</span>
         <span className="text-xl font-mono text-stealth-muted">{totalAvailableGb.toFixed(1)} GB</span>
         <span className="text-[9px] font-mono text-stealth-muted">TOTAL MEMORY</span>
+        
+        {/* MOE Suggestion Badge — always visible for MoE models, positioned next to capacity numbers */}
       </div>
 
       {/* ── Top-right: scenario badge only, absolute corner ─── */}
@@ -127,49 +150,67 @@ export default function VramBadge({ manifest, gpus, selectedGpuIndices, onDevice
         </div>
       </motion.div>
 
-      {/* ── VRAM bar — always visible, 75% width ─── */}
-      <div className="flex items-center gap-2 mt-6">
-        <div style={{ backgroundColor: 'rgb(20,20,20)' }} className="relative h-4 w-[75%] rounded-sm overflow-hidden border border-stealth-border/30">
-          <motion.div
-            style={{ width: `${vramUsagePct}%` }}
-            initial={{ width: 0 }}
-            animate={{ width: `${vramUsagePct}%` }}
-            transition={{ duration: 0.4, ease: "easeOut" }}
-            className={`h-full rounded-sm ${s.gpuBarColor}`}
-          />
-        </div>
-        <span className={`text-[12px] font-mono ${s.titleColor}`}>| {totalVramGb.toFixed(0)} GB</span>
-        
-      </div>
-
-      {/* GPU layer info — text from scenario */}
-      <p className={`text-[9px] font-mono ${s.titleColor} mt-1`}>
-        {t.gpuLayerText}
-      </p>
-
-      {/* ── RAM bar — controlled by showRamBar (default true) ─── */}
-      {(t.showRamBar !== false) && (
-        <>
-          <div className="flex items-center gap-2 mt-3">
-            <div style={{ backgroundColor: 'rgb(20,20,20)' }} className="relative h-4 w-[75%] rounded-sm overflow-hidden border border-stealth-border/30">
-              <motion.div
-                style={{ width: `${ramUsagePct}%` }}
-                initial={{ width: 0 }}
-                animate={{ width: `${ramUsagePct}%` }}
-                transition={{ duration: 0.4, ease: "easeOut" }}
-                className="h-full rounded-sm bg-electric-blue"
-              />
-            </div>
-            <span className="text-[12px] font-mono text-electric-blue">| {ramMfgGb} GB</span>
-            
+      {/* ── VRAM + RAM bars with MOE badge ─── */}
+      <div className="relative mt-6">
+        {/* Bars take 75% width, leaving empty space on right for MOE badge */}
+        {/* VRAM bar row */}
+        <div className="flex items-center gap-2">
+          <div style={{ backgroundColor: 'rgb(20,20,20)' }} className="relative h-4 w-[70%] rounded-sm overflow-hidden border border-stealth-border/30">
+            <motion.div
+              style={{ width: `${vramUsagePct}%` }}
+              initial={{ width: 0 }}
+              animate={{ width: `${vramUsagePct}%` }}
+              transition={{ duration: 0.4, ease: "easeOut" }}
+              className={`h-full rounded-sm ${s.gpuBarColor}`}
+            />
           </div>
+          <span className={`text-[12px] font-mono ${s.titleColor}`}>| {totalVramGb.toFixed(0)} GB</span>
+        </div>
 
-          {/* RAM layer info — text from scenario */}
-          <p className="text-[9px] font-mono text-electric-blue mt-1">
-            {t.ramLayerText}
-          </p>
-        </>
-      )}
+        {/* GPU layer info — text from scenario */}
+        <p className={`text-[9px] font-mono ${s.titleColor} mt-1`}>
+          {t.gpuLayerText}
+        </p>
+
+   {/* MOE Badge - absolutely positioned in empty 25% space on right, aligned to full bars height */}
+        {modelMeta?.n_expert > 0 && (
+          <div className="absolute right-0 top-[-10px] h-full flex items-center z-10">
+            <MoeBadge 
+              offloadMode={offloadMode}
+              shouldHighlight={manifest.moeSuggestion?.shouldHighlight}
+              onMoeSuggestionClick={onMoeSuggestionClick}
+              suggestionText={manifest.moeSuggestion?.suggestionText}
+            />
+          </div>
+        )}
+
+        {/* RAM bar row */}
+        {(t.showRamBar !== false) && (
+          <>
+            <div className="flex items-center gap-2 mt-3">
+              <div style={{ backgroundColor: 'rgb(20,20,20)' }} className="relative h-4 w-[70%] rounded-sm overflow-hidden border border-stealth-border/30">
+                <motion.div
+                  style={{ width: `${ramUsagePct}%` }}
+                  initial={{ width: 0 }}
+                  animate={{ width: `${ramUsagePct}%` }}
+                  transition={{ duration: 0.4, ease: "easeOut" }}
+                  className={`h-full rounded-sm ${
+                    offloadMode === "moe_optimal" ? "bg-orange-hatched" : "bg-electric-blue"
+                  }`}
+                />
+              </div>
+              <span className="text-[12px] font-mono text-electric-blue">| {ramMfgGb} GB</span>
+            </div>
+
+            {/* RAM layer info — text from scenario */}
+            <p className="text-[9px] font-mono text-electric-blue mt-1">
+              {t.ramLayerText}
+            </p>
+          </>
+        )}
+
+     
+      </div>
 
       {/* Offload warning — controlled by scenario's offloadWarningText */}
       {t.offloadWarningText && (

@@ -14,6 +14,7 @@ import { useState, useCallback, useEffect, useMemo } from "react";
 import type { ModelEntry, EngineConfig, GpuInfo, ParamDef, ProviderConfig, ProviderTemplate, StackEntry, SystemInfo } from "../lib/types";
 import { invoke } from "@tauri-apps/api/core";
 import VramBadge from "./VramBadge";
+import VramDiagnostics from "./VramDiagnostics";
 import { useScenarioEvaluator } from "../hooks/useScenarioEvaluator";
 import { useConfigResolver } from "../hooks/useConfigResolver";
 
@@ -38,10 +39,13 @@ interface EngineConfigPanelProps {
   systemInfo?: SystemInfo | null;
   stack: StackEntry[];
   onLaunch: (config: EngineConfig) => void;
+  isModelRunning?: boolean;
+  activeEngineAlias?: string;
+  activeEnginePort?: number;
 }
 
 export default function EngineConfigPanel(props: EngineConfigPanelProps) {
-  const { model, gpus, providers: externalProviders, committedVramMib, isAdminUnlocked, systemInfo, stack, onLaunch } = props;
+  const { model, gpus, providers: externalProviders, committedVramMib, isAdminUnlocked, systemInfo, stack, onLaunch, isModelRunning, activeEngineAlias, activeEnginePort } = props;
 
   // ── State ───────────────────────────────────────────────────────────────
   const [adminParamDefs, setAdminParamDefs] = useState<ParamDef[]>([]);
@@ -163,18 +167,28 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     const baseValues = allValues.filter(v => !(def.hiddenValues || []).some(hv => String(hv) === String(v)));
     const currentValue = config[def.key] ?? config[def.config_key || def.key];
 
+    // Check if MOE suggestion is active for this param (Offload_Mode)
+    const moeSuggestionActive = vramCalc.manifest?.moeSuggestion?.wouldFit && 
+                                 def.key === "Offload_Mode" &&
+                                 currentValue !== "MOE_OPTIMAL";
+
     const isDevice = def.key === "Device";
 
     return (
       <div key={def.key} data-param-row className={`flex items-center gap-2 ${isLocked ? 'opacity-50' : ''}`}>
         <span
-          className={`font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider truncate ${isDevice ? 'text-[11px]' : 'text-[9px]'}`}
+          className={`font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider truncate ${isDevice ? 'text-[11px]' : 'text-[9px]'} ${
+            moeSuggestionActive ? 'text-orange-400 animate-pulse' : ''
+          }`}
           title={def.label}
         >
           {def.label}
+          {moeSuggestionActive && <span className="ml-1">💡</span>}
         </span>
 
-        <div className="flex gap-1 flex-wrap flex-1 min-w-0">
+        <div className={`flex gap-1 flex-wrap flex-1 min-w-0 ${
+          moeSuggestionActive ? 'ring-2 ring-orange-400/30 rounded-sm -mx-1 px-1' : ''
+        }`}>
           {baseValues.filter((v: any) => !(v?._hidden)).map((val) => (
             <button
               key={`${def.key}-${val}`}
@@ -183,10 +197,12 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                 if (!isLocked) updateParam(def.key, val);
               }}
               className={`px-2 py-0.5 font-mono rounded-sm focus:outline-none ${isDevice ? 'text-[11px] px-3 py-1' : 'text-[9px]'} ${
-                currentValue === val || config[def.config_key || def.key] === val
+                (currentValue === val || config[def.config_key || def.key] === val) ||
+                (typeof currentValue === 'string' && typeof val === 'string' && 
+                 currentValue.toLowerCase() === String(val).toLowerCase())
                   ? "value-chip-active"
                   : "value-chip"
-              }`}
+              } ${moeSuggestionActive && String(val) === "MOE_OPTIMAL" ? 'ring-2 ring-orange-400 shadow-[0_0_8px_rgba(251,149,0,0.4)]' : ''}`}
             >
               {String(val)}
             </button>
@@ -194,7 +210,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         </div>
       </div>
     );
-  }, [adminParamDefs, config, updateParam]);
+  }, [adminParamDefs, config, updateParam, vramCalc.manifest]);
 
   // Grouped params — skip docked (rendered separately)
   const groupedParams = useMemo(() => {
@@ -320,9 +336,9 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       ubatch: typeof config.uBatch === 'number' ? config.uBatch : parseInt(String(config.uBatch), 10) || 512,
       parallel: typeof config.Parallel === 'number' ? config.Parallel : parseInt(String(config.Parallel), 10) || 1,
       // Auto-offload: use calculated layers from metadata, fallback to config value
-      offload: vramCalc.manifest?.gpuLayers != null && vramCalc.manifest.ramLayers > 0 ? String(vramCalc.manifest.gpuLayers) : ((config.Offload || "ALL").toUpperCase() === "ALL" ? "ALL" : String(config.Offload)),
-      offload_mode: (config["Offload_Mode"] || "REGULAR").toString().toUpperCase(),
-      split_mode: (config.Split || "NONE").toString().toLowerCase(),
+      offload: vramCalc.manifest?.gpuLayers != null && vramCalc.manifest.ramLayers > 0 ? String(vramCalc.manifest.gpuLayers) : (config.Offload === "all" || !config.Offload ? "ALL" : String(config.Offload)),
+      offload_mode: config["Offload_Mode"] || "regular",
+      split_mode: config.Split || "none",
       vision: config.Vision?.toUpperCase() === "OFF" ? "OFF" : "AUTO",
       flash_attn: config["Flash-Attn"]?.toString().toLowerCase() !== "off",
       jinja: config.Jinja?.toString().toUpperCase() !== "OFF",
@@ -409,6 +425,15 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           }}
           isValidating={vramCalc.isValidating}
           onValidate={vramCalc.validate}
+          isModelRunning={isModelRunning}
+          activeEngineAlias={activeEngineAlias}
+          activeEnginePort={activeEnginePort}
+          offloadMode={config["Offload_Mode"]}
+          onMoeSuggestionClick={() => {
+            // Auto-switch to MOE_OPTIMAL when user clicks the suggestion badge
+            updateParam("Offload_Mode", "moe_optimal");
+          }}
+          modelMeta={model?.metadata}
         />
       </div>
 
@@ -417,122 +442,18 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         <div className="hw-section-green border-b section-divider relative flex-shrink-0">
           <div className="px-4 py-3">
             <div className="flex gap-4">
-              {/* Left: param rows (~2/3) */}
+              {/* Left: param rows (~full width now) */}
               <div className="space-y-2.5 flex-1 min-w-0">
                 {dockedParams["hardware"].map(def => renderParamRow(def))}
               </div>
-
-              {/* Right: debug info panel (~1/3) */}
-              {vramCalc.manifest && (
-                <div className="w-40 flex-shrink-0 flex flex-col gap-1.5 border-l border-black/20 pl-3">
-                  <span className="text-[7px] font-mono text-black/40 tracking-widest uppercase">Diagnostics</span>
-
-                  {/* Scenario */}
-                  <div className="flex items-center justify-between">
-                    <span className="text-[8px] font-mono text-black/60">Scenario</span>
-                    <span className={`text-[8px] font-mono px-1.5 py-0.5 rounded-sm ${vramCalc.manifest.style.badgeBg}`} style={{ color: 'rgba(0,0,0,0.7)' }}>
-                      {vramCalc.manifest.scenario}
-                    </span>
-                  </div>
-
-                  {/* Fit status */}
-                  <div className="flex items-center justify-between">
-                    <span className="text-[8px] font-mono text-black/60">Fit</span>
-                    <span className={`text-[8px] font-mono ${vramCalc.manifest.fits ? 'text-green-700' : 'text-red-700'}`}>
-                      {vramCalc.manifest.fits ? "✓ FIT" : "✗ NO"}
-                    </span>
-                  </div>
-
-                  {/* Formula total */}
-                  <div className="flex items-center justify-between">
-                    <span className="text-[8px] font-mono text-black/60">Formula</span>
-                    <span className="text-[8px] font-mono text-black/70">{vramCalc.manifest.formulaVramTotalGb.toFixed(1)} GB</span>
-                  </div>
-
-                  {/* Validated total */}
-                  {vramCalc.manifest.validatedVramMib != null && (
-                    <>
-                      <div className="flex items-center justify-between">
-                        <span className="text-[8px] font-mono text-black/60">Validated</span>
-                        <span className="text-[8px] font-mono" style={{ color: '#B45309' }}>
-                          {(vramCalc.manifest.validatedVramMib / 1024).toFixed(1)} GB
-                        </span>
-                      </div>
-
-                      {/* Scale factor */}
-                      <div className="flex items-center justify-between">
-                        <span className="text-[8px] font-mono text-black/60">Scale</span>
-                        <span className="text-[8px] font-mono text-black/70">
-                          {(vramCalc.manifest.validatedVramMib / 1024 / vramCalc.manifest.vramTotalGb).toFixed(2)}x
-                        </span>
-                      </div>
-
-                      {/* Per-GPU breakdown */}
-                      {vramCalc.manifest.validatedGpuBreakdownMib && (
-                        <div className="mt-1 space-y-0.5">
-                          <span className="text-[7px] font-mono text-black/40 tracking-wider">GPU Breakdown</span>
-                          {vramCalc.manifest.validatedGpuBreakdownMib.map((mib, i) => (
-                            <div key={i} className="flex items-center justify-between">
-                              <span className="text-[7px] font-mono text-black/50">GPU{i}</span>
-                              <span className="text-[7px] font-mono text-black/70">{(mib / 1024).toFixed(2)} GB</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {/* Host RAM */}
-                      {vramCalc.manifest.validatedHostMib != null && (
-                        <div className="flex items-center justify-between">
-                          <span className="text-[8px] font-mono text-black/60">Host</span>
-                          <span className="text-[8px] font-mono" style={{ color: '#1D4ED8' }}>
-                            {(vramCalc.manifest.validatedHostMib / 1024).toFixed(2)} GB
-                          </span>
-                        </div>
-                      )}
-                    </>
-                  )}
-
-                  {/* Component breakdown */}
-                  <div className="mt-1 pt-1 border-t border-black/15 space-y-0.5">
-                    <span className="text-[7px] font-mono text-black/40 tracking-wider">Components</span>
-                    <div className="flex items-center justify-between">
-                      <span className="text-[7px] font-mono text-black/50">Weights</span>
-                      <span className="text-[7px] font-mono text-black/70">{vramCalc.manifest.vramWeightsGb.toFixed(1)} GB</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-[7px] font-mono text-black/50">KV Cache</span>
-                      <span className="text-[7px] font-mono text-black/70">{vramCalc.manifest.vramKvGb.toFixed(1)} GB</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-[7px] font-mono text-black/50">Overhead</span>
-                      <span className="text-[7px] font-mono text-black/70">{vramCalc.manifest.vramOverheadGb.toFixed(1)} GB</span>
-                    </div>
-                  </div>
-
-                  {/* Layers */}
-                  <div className="mt-1 pt-1 border-t border-black/15 space-y-0.5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[7px] font-mono text-black/50">GPU layers</span>
-                      <span className="text-[7px] font-mono text-black/70">{vramCalc.manifest.gpuLayers}</span>
-                    </div>
-                    {vramCalc.manifest.ramLayers > 0 && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-[7px] font-mono text-black/50">RAM layers</span>
-                        <span className="text-[7px] font-mono" style={{ color: '#1D4ED8' }}>{vramCalc.manifest.ramLayers}</span>
-                      </div>
-                    )}
-                    {model?.metadata && model.metadata.n_layer > 0 && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-[7px] font-mono text-black/50">Per layer</span>
-                        <span className="text-[7px] font-mono text-black/70">{(vramCalc.manifest.vramWeightsGb / model.metadata.n_layer).toFixed(3)} GB</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         </div>
+      )}
+
+      {/* Memory Forecast Diagnostics — admin only, between HW block and PARAMETERS */}
+      {isAdminUnlocked && (
+        <VramDiagnostics modelPath={model?.path ?? null} />
       )}
 
       {/* Parameters — scrollable middle section */}

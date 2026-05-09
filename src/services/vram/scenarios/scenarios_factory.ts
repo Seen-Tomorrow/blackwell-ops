@@ -1,4 +1,4 @@
-import type { GpuInfo, ModelMetadata, EngineConfig, Scenario, StyleObject, RunningEngine, GpuAllocation, VramManifest } from "../../../lib/types";
+import type { GpuInfo, ModelMetadata, EngineConfig, Scenario, StyleObject, RunningEngine, GpuAllocation, VramManifest, MoeSuggestion } from "../../../lib/types";
 
 // ── Constants (derived from real launch data) ────────────────────────────────
 
@@ -86,7 +86,7 @@ export function gpuHasRunningEngines(gpuIdx: number, slots: RunningSlotInfo[]): 
   return slots.some(s => s.gpuMask.split(",").some(p => p.trim() === String(gpuIdx)));
 }
 
-/** Compute per-layer weight in GB from architecture dimensions.
+/** Compute per-layer weight in GB from architecture dimensions (full layer).
  *  Replaces uniform `weightsGb / nLayer` which is wrong for MoE models
  *  where expert FFN weights dominate layer size. */
 const warnedClamps = new Set<string>();
@@ -150,6 +150,13 @@ export function perLayerWeightGb(input: ScenarioInput, computed: ComputedValues)
   return perLayerGb;
 }
 
+/** GPU-bound per-layer weight — applies gpuWeightFraction for MOE_OPTIMAL.
+ *  In MOE_OPTIMAL mode only attention+router weights go to VRAM (~25% of layer).
+ *  Use this for spill scenario layer counting (how many layers fit on GPU). */
+export function gpuPerLayerWeightGb(input: ScenarioInput, computed: ComputedValues): number {
+  return perLayerWeightGb(input, computed) * computed.gpuWeightFraction;
+}
+
 function round2(v: number): number {
   return Math.round(v * 100) / 100;
 }
@@ -168,16 +175,22 @@ export interface ComputedValues {
   targetGpuIdx: number;
   splitActive: boolean;
   numGpus: number;
+  /** Fraction of weights that actually go to GPU VRAM (1.0 for dense/regular, ~0.25 for MoE+MOE_OPTIMAL) */
+  gpuWeightFraction: number;
+  /** Portion of model weights bound to GPU VRAM */
+  weightsOnGpuGb: number;
+  /** Portion of model weights offloaded to RAM (MoE expert FFN in MOE_OPTIMAL mode) */
+  ramWeightsGb: number;
 }
 
-export function computeValues(input: ScenarioInput): ComputedValues {
+export function computeValues(input: ScenarioInput, validatedVramMib?: number): ComputedValues {
   const { modelMeta, engineConfig, gpus } = input;
   const weightsGb = modelMeta.file_size_bytes / (1024 ** 3);
   const isMoe = modelMeta.n_expert > 0;
 
   // GPU-bound weight fraction — MOE_OPTIMAL always applies reduced fraction when selected.
   // Only attention + router weights go to GPU; expert FFN stays in RAM until dispatch.
-  const gpuWeightFraction = (isMoe && engineConfig.offload_mode === "MOE_OPTIMAL")
+  const gpuWeightFraction = (isMoe && engineConfig.offload_mode === "moe_optimal")
     ? MOE_ATTENTION_RATIO + MOE_ROUTING_RATIO + MOE_NON_EXPERT_FFN_RATIO
     : 1.0;
 
@@ -230,8 +243,11 @@ export function computeValues(input: ScenarioInput): ComputedValues {
     if (engineConfig.flash_attn) {
       activationOverhead *= 0.85;
     }
-    // MoE: only active experts compute → lower activation overhead
-    if (isMoe && engineConfig.offload_mode !== "MOE_OPTIMAL") {
+    // MoE: only active experts compute → lower activation overhead in both modes.
+    // In REGULAR mode all expert weights are on GPU but only n_expert_used activate per token.
+    // In MOE_OPTIMAL mode expert FFN is streamed from RAM — same selective dispatch applies,
+    // so the 20% reduction holds for both paths.
+    if (isMoe) {
       activationOverhead *= 0.8;
     }
     // YaRN adds +5% overhead for attention scaling calculations
@@ -257,7 +273,10 @@ export function computeValues(input: ScenarioInput): ComputedValues {
     ? (input.mmprojSizeMib || 0) / 1024 + VISION_WORKSPACE_GB
     : 0;
 
-  const vramTotalGb = weightsOnGpuGb + kvCacheGb + overheadGb + visionGb;
+  // Use measured VRAM total if provided (from FIT validation), otherwise use formula
+  const vramTotalGb = validatedVramMib 
+    ? validatedVramMib / 1024  // Convert MiB to GB
+    : weightsOnGpuGb + kvCacheGb + overheadGb + visionGb;
 
   // GPU availability
   const gpuAvailable = gpus.map(g => {
@@ -276,10 +295,13 @@ export function computeValues(input: ScenarioInput): ComputedValues {
   // Split mode active?
   const splitActive = engineConfig.split_mode.length > 0 && engineConfig.split_mode.toUpperCase() !== "NONE";
 
+  const ramWeightsGb = weightsGb - weightsOnGpuGb;
+
   return {
     weightsGb, kvCacheGb, overheadGb, visionGb, vramTotalGb,
     gpuAvailable, singleMaxAvailable, multiTotalAvailable,
     targetGpuIdx, splitActive, numGpus,
+    gpuWeightFraction, weightsOnGpuGb, ramWeightsGb,
   };
 }
 
@@ -338,35 +360,116 @@ export function buildManifest(
 
 // ── Orchestrator (strict sequential dispatch) ───────────────────────────────
 
-import { tryEvaluate as soloCleanFit } from "./solo_clean_fit";
-import { tryEvaluate as soloBusyFit } from "./solo_busy_fit";
-import { tryEvaluate as multiPerfect } from "./multi_perfect";
+import { tryEvaluate as soloFit } from "./solo_fit";
+import { tryEvaluate as soloPressure } from "./solo_pressure";
+import { tryEvaluate as multiFit } from "./multi_fit";
 import { tryEvaluate as multiPressure } from "./multi_pressure";
 import { tryEvaluate as soloSpill } from "./solo_spill";
-import { tryEvaluate as totalSpill } from "./total_spill";
+import { tryEvaluate as multiSpill } from "./multi_spill";
 import { evaluate as hwLocked } from "./hw_locked";
 
-export function evaluate(input: ScenarioInput): VramManifest {
-  const computed = computeValues(input);
+/** Compute MOE_OPTIMAL suggestion internally (not exposed as actual scenario) */
+function computeMoeAlternative(
+  input: ScenarioInput, 
+  computed: ComputedValues,
+  currentManifest: VramManifest
+): MoeSuggestion | null {
+  const { modelMeta } = input;
+  
+  // Only suggest for MoE models
+  if (modelMeta.n_expert === 0) return null;
+  
+  // Don't suggest if already in MOE_OPTIMAL mode
+  if (input.engineConfig.offload_mode === "moe_optimal") return null;
+  
+  // Simulate MOE_OPTIMAL computation with reduced GPU weight fraction
+  const currentGpuFraction = computed.gpuWeightFraction;
+  
+  // Apply MOE_OPTIMAL reduction (~25% to GPU, ~75% to RAM)
+  if (currentGpuFraction === 1.0) {
+    const moeGpuFraction = 
+      MOE_ATTENTION_RATIO + MOE_ROUTING_RATIO + MOE_NON_EXPERT_FFN_RATIO; // ~0.25
+    const moeWeightsOnGpuGb = computed.weightsGb * moeGpuFraction;
+    
+    // Check if MOE_OPTIMAL would be better than current scenario
+    const currentIsSpill = 
+      currentManifest.scenario === 'SOLO_SPILL' || 
+      currentManifest.scenario === 'MULTI_SPILL';
+    
+    const moeVramTotal = moeWeightsOnGpuGb + computed.kvCacheGb + computed.overheadGb + computed.visionGb;
+    const currentVramTotal = currentManifest.vramTotalGb;
+    
+    // MOE_OPTIMAL is beneficial if:
+    // - Current scenario is spill AND MOE would fit on GPU, OR
+    // - Current scenario is MULTI_FIT/MULTI_PRESSURE and MOE reduces GPU utilization below 85%, OR
+    // - MOE saves any meaningful VRAM (>2 GB) even if both fit
+    const vramSaved = currentVramTotal - moeVramTotal;
+    const wouldFitOnGpu = moeVramTotal <= computed.singleMaxAvailable;
+    
+    // Check GPU utilization reduction for multi-GPU scenarios
+    const isMultiScenario = 
+      currentManifest.scenario === 'MULTI_FIT' || 
+      currentManifest.scenario === 'MULTI_PRESSURE';
+    
+    const totalGpuCapacityGb = computed.multiTotalAvailable;
+    const moeUtilizationRatio = totalGpuCapacityGb > 0 ? moeVramTotal / totalGpuCapacityGb : 1.0;
+    const wouldReduceUtilBelow85Pct = isMultiScenario && moeUtilizationRatio < 0.85;
+    
+    // Determine if suggestion should be highlighted (animated border)
+    // Only highlight for spill scenarios, ignore VRAM savings
+    const shouldHighlight = currentIsSpill;
+    
+    return {
+      wouldFit: wouldFitOnGpu || vramSaved > 0,
+      vramSavedGb: vramSaved > 0 ? vramSaved : undefined,
+      avoidsSpill: currentIsSpill && wouldFitOnGpu,
+      speedImpact: "<10%",
+      shouldHighlight, // New field to control animation
+      suggestionText: wouldFitOnGpu 
+        ? `Use MOE_OPTIMAL to save ~${vramSaved.toFixed(1)} GB VRAM with minimal speed impact`
+        : `MOE_OPTIMAL reduces VRAM usage by ~${vramSaved.toFixed(1)} GB`,
+    };
+  }
+  
+  return null;
+}
+
+// Extend VramManifest type locally for MOE suggestion
+interface VramManifestWithMoe extends VramManifest {
+  moeSuggestion?: MoeSuggestion | null;
+}
+
+export function evaluate(input: ScenarioInput, validatedVramMib?: number): VramManifest {
+  const computed = computeValues(input, validatedVramMib);
 
   // Zero GPUs → immediate HW_LOCKED
   if (computed.numGpus === 0) {
     return hwLocked(input, computed, "No GPUs detected");
   }
 
-  // Strict sequential dispatch — first match wins, null moves to next instantly
+  // Evaluation order: single-GPU fits (comfortable → pressure) → spill (RAM offload) → multi-GPU distribution
   const result =
-    soloCleanFit(input, computed) ||
-    soloBusyFit(input, computed) ||
-    multiPerfect(input, computed) ||
-    multiPressure(input, computed) ||
+    soloFit(input, computed) ||
+    soloPressure(input, computed) ||
     soloSpill(input, computed) ||
-    totalSpill(input, computed);
+    multiSpill(input, computed) ||
+    multiFit(input, computed) ||
+    multiPressure(input, computed);
 
-  if (result) return result;
+  let manifest: VramManifest | null = result;
 
-  // Fallback — always returns a manifest
-  return hwLocked(input, computed, `Model requires ${computed.vramTotalGb.toFixed(1)} GB VRAM + RAM, system has ${(computed.multiTotalAvailable + input.ramAvailableGb).toFixed(1)} GB combined`);
+  // Fallback if no scenario matched
+  if (!manifest) {
+    manifest = hwLocked(input, computed, `Model requires ${computed.vramTotalGb.toFixed(1)} GB VRAM + RAM, system has ${(computed.multiTotalAvailable + input.ramAvailableGb).toFixed(1)} GB combined`);
+  }
+
+  // Compute MOE suggestion and attach to manifest
+  const moeSuggestion = computeMoeAlternative(input, computed, manifest);
+  
+  // Always sync moeSuggestion (remove when not applicable)
+  (manifest as VramManifestWithMoe).moeSuggestion = moeSuggestion;
+
+  return manifest;
 }
 
 /** Apply FIT-validated total to a formula-based manifest.

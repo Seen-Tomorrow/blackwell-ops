@@ -1,4 +1,4 @@
-import { ScenarioInput, ComputedValues, buildManifest, gpuManufacturedMib, perLayerWeightGb } from "./scenarios_factory";
+import { ScenarioInput, ComputedValues, buildManifest, gpuManufacturedMib, perLayerWeightGb, gpuPerLayerWeightGb } from "./scenarios_factory";
 import type { VramManifest } from "../../../lib/types";
 
 /**
@@ -20,10 +20,11 @@ export function tryEvaluate(input: ScenarioInput, computed: ComputedValues): Vra
   // Calculate layer split
   const nLayer = input.modelMeta.n_layer;
   const perLayerGb = perLayerWeightGb(input, computed);
+  const gpuPerLayerGb = gpuPerLayerWeightGb(input, computed);
   const kvPerLayer = kvCacheGb / nLayer;
   const availableForWeightsAndKv = gpuCapacity - overheadGb - visionGb;
-  const gpuLayers = (perLayerGb + kvPerLayer) > 0
-    ? Math.floor(availableForWeightsAndKv / (perLayerGb + kvPerLayer))
+  const gpuLayers = (gpuPerLayerGb + kvPerLayer) > 0
+    ? Math.floor(availableForWeightsAndKv / (gpuPerLayerGb + kvPerLayer))
     : nLayer;
   const clampedGpuLayers = Math.min(gpuLayers, nLayer);
   const ramLayers = Math.max(0, nLayer - clampedGpuLayers);
@@ -50,11 +51,11 @@ export function tryEvaluate(input: ScenarioInput, computed: ComputedValues): Vra
     input, computed,
     "SOLO_SPILL",
     {
-      titleColor: kvSpillCritical ? "text-telemetry-red" : "text-yellow-400",
-      gpuBarColor: kvSpillCritical ? "bg-telemetry-red" : "bg-yellow-500/60",
-      borderColor: kvSpillCritical ? "border-telemetry-red/40" : "border-yellow-500/30",
-      bgTint: kvSpillCritical ? "bg-telemetry-red/10" : "bg-yellow-500/5",
-      badgeBg: kvSpillCritical ? "bg-telemetry-red/20" : "bg-yellow-500/20",
+      titleColor: kvSpillCritical ? "text-telemetry-red" : "text-red-400",
+      gpuBarColor: kvSpillCritical ? "bg-telemetry-red" : "bg-red-400/60",
+      borderColor: kvSpillCritical ? "border-telemetry-red/40" : "border-red-400/30",
+      bgTint: kvSpillCritical ? "bg-telemetry-red/10" : "bg-red-400/5",
+      badgeBg: kvSpillCritical ? "bg-telemetry-red/20" : "bg-red-400/20",
       icon: kvSpillCritical ? "⚠" : "◐",
       label: kvSpillCritical ? "KV SPILL RISK" : "SOLO SPILL",
       ramVisible: true,
@@ -67,7 +68,7 @@ export function tryEvaluate(input: ScenarioInput, computed: ComputedValues): Vra
         kvSpillRiskText: ramKvGb > 0 ? `⚠ KV cache may also spill to RAM — ${ramKvGb.toFixed(1)} GB risk, verify with test run` : null,
       },
     },
-    clampedGpuLayers * perLayerGb, clampedGpuLayers * kvPerLayer, overheadGb + computed.visionGb,
+    clampedGpuLayers * gpuPerLayerGb, clampedGpuLayers * kvPerLayer, overheadGb + computed.visionGb,
     ramLayers * perLayerGb, ramKvGb, 0, true,
     "",
     clampedGpuLayers, ramLayers, perGpuLoad,

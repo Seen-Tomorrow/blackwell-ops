@@ -50,15 +50,15 @@
         "note": "Micro-batch size for inference."
       },
       {
-        "key": "Parallel",
-        "label": "Parallel",
-        "config_key": "parallel",
-        "flag": "--parallel",
-        "ptype": "arg_select",
-        "values": [1, 2, 4, 8],
-        "default": 1,
+        "key": "Unified-KV",
+        "label": "Unified-KV",
+        "config_key": "unified_kv",
+        "flag": null,
+        "ptype": "logic_only",
+        "values": ["on", "off"],
+        "default": "on",
         "ui_group": "Performance",
-        "note": "Number of concurrent request sequences."
+        "note": "When off and Parallel > 1, each sequence gets its own KV cache (VRAM multiplied by np)."
       },
       {
         "key": "RoPE_Scaling",
@@ -104,17 +104,7 @@
         "ui_group": "Advanced",
         "note": "RoPE frequency base. 'auto' resolves from GGUF metadata rope_freq_base."
       },
-      {
-        "key": "Unified-KV",
-        "label": "Unified-KV",
-        "config_key": "unified_kv",
-        "flag": null,
-        "ptype": "logic_only",
-        "values": ["on", "off"],
-        "default": "on",
-        "ui_group": "Feature Flags",
-        "note": "When off and Parallel > 1, each sequence gets its own KV cache (VRAM multiplied by np)."
-      },
+
       {
         "key": "Offload",
         "label": "Offload",
@@ -372,7 +362,7 @@
         "ptype": "logic_only",
         "values": ["on", "off"],
         "default": "on",
-        "ui_group": "Feature Flags",
+        "ui_group": "Performance",
         "note": "When off and Parallel > 1, each sequence gets its own KV cache (VRAM multiplied by np)."
       },
       {
