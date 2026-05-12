@@ -1,14 +1,12 @@
 //! FIT Scanner Engine — hardware-probe VRAM estimation using llama-fit-params.exe.
 //!
-//! Reuses the same template-driven command building as engine launch (templates::build_command).
-//! Only difference: binary swapped to llama-fit-params.exe, --fit off appended, -m/--port replaced.
-//! 21-scan comprehensive strategy per model to measure all parameter axes.
+//! Self-contained scan plan with hardcoded GGML-compatible CLI commands.
+//! No template system involvement — directly builds args for llama-fit-params.exe.
 
+use crate::telemetry::detect_gpu_count;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::os::windows::process::CommandExt;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
-use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc as StdArc;
 use tokio::process::Command;
@@ -20,42 +18,53 @@ use tokio::sync::Mutex as TokioMutex;
 pub const FIT_OVERHEAD_PER_GPU: f64 = 256.0; // MiB static overhead per GPU for CUDA context/P2P
 const SCAN_TIMEOUT_SECS: u64 = 30;
 
-/// Compute CUDA_VISIBLE_DEVICES mask from config + detected GPU count.
-fn compute_gpu_mask(config: &crate::types::EngineConfig, gpu_count: usize) -> String {
-    let split_active = !config.split_mode.is_empty() && config.split_mode.to_uppercase() != "NONE";
+/// The complete scan plan — essential data points per model.
+/// All points run with flash attention ON (required for non-f16 KV quant on modern architectures).
+/// Tuple: (label, ctx_tokens, kv_quant, batch, parallel, split_mode)
+const SCAN_PLAN: &[(&str, usize, &str, u32, u32, &str)] = &[
+    // === BASELINE — weights + KV + CUDA overhead isolation ===
+    ("base_no_batch", 8192, "q4_0", 1, 1, "none"),
+    ("base", 8192, "q4_0", 512, 1, "none"),
 
-    if split_active {
-        (0..gpu_count).map(|i| i.to_string()).collect::<Vec<_>>().join(",")
-    } else {
-        let idx = config.device.strip_prefix("GPU-")
-            .and_then(|s| s.parse::<usize>().ok())
-            .unwrap_or(0);
-        if idx < gpu_count {
-            idx.to_string()
-        } else {
-            "0".to_string()
-        }
-    }
-}
+    // === KV QUANT CURVE — how VRAM changes with KV quantization ===
+    ("quant_f16", 131072, "f16", 512, 1, "none"),
+    ("quant_q8", 131072, "q8_0", 512, 1, "none"),
+    ("quant_q4", 131072, "q4_0", 512, 1, "none"),
 
-/// Detect physical GPU count via nvidia-smi. Returns 2 as fallback.
-fn detect_gpu_count() -> usize {
-    let mut gpu_count = 2;
-    if let Ok(output) = std::process::Command::new("nvidia-smi")
-        .args(&["--query-gpu=index", "--format=csv,noheader"])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .creation_flags(0x08000000) // CREATE_NO_WINDOW
-        .output()
-    {
-        let count = String::from_utf8_lossy(&output.stdout)
-            .lines().filter(|l| !l.trim().is_empty()).count();
-        if count > 0 {
-            gpu_count = count;
-        }
-    }
-    gpu_count
-}
+    // === CONTEXT SWEEP — KV growth rate across all sizes ===
+    ("ctx_4k", 4096, "q4_0", 512, 1, "none"),
+    ("ctx_8k", 8192, "q4_0", 512, 1, "none"),
+    ("ctx_16k", 16384, "q4_0", 512, 1, "none"),
+    ("ctx_32k", 32768, "q4_0", 512, 1, "none"),
+    ("ctx_64k", 65536, "q4_0", 512, 1, "none"),
+    ("ctx_128k", 131072, "q4_0", 512, 1, "none"),
+    ("ctx_256k", 262144, "q4_0", 512, 1, "none"),
+    ("ctx_512k", 524288, "q4_0", 512, 1, "none"),
+    ("ctx_1m", 1048576, "q4_0", 512, 1, "none"),
+
+    // === BATCH SWEEP — activation memory curve ===
+    ("batch_128", 131072, "q4_0", 128, 1, "none"),
+    ("batch_256", 131072, "q4_0", 256, 1, "none"),
+    ("batch_1k", 131072, "q4_0", 1024, 1, "none"),
+    ("batch_2k", 131072, "q4_0", 2048, 1, "none"),
+    ("batch_4k", 131072, "q4_0", 4096, 1, "none"),
+    ("batch_8k", 131072, "q4_0", 8192, 1, "none"),
+
+    // === PARALLEL SWEEP — per-sequence overhead ===
+    ("parallel_2", 131072, "q4_0", 512, 2, "none"),
+    ("parallel_4", 131072, "q4_0", 512, 4, "none"),
+    ("parallel_8", 131072, "q4_0", 512, 8, "none"),
+
+    // === SPLIT TAX — multi-GPU communication overhead at various contexts ===
+    ("split_layer_64k", 65536, "q4_0", 512, 1, "layer"),
+    ("split_row_64k", 65536, "q4_0", 512, 1, "row"),
+    ("split_layer_256k", 262144, "q4_0", 512, 1, "layer"),
+    ("split_row_256k", 262144, "q4_0", 512, 1, "row"),
+
+    // === EDGE CASES — large batch + large context combos ===
+    ("heavy_256k_b2k", 262144, "q4_0", 2048, 1, "none"),
+    ("heavy_1m_b1k", 1048576, "q4_0", 1024, 1, "none"),
+];
 
 /// Get the mmproj file size in MiB for a model. Scans parent directory for *mmproj* files.
 pub fn get_mmproj_size_mib(model_path: &str) -> f64 {
@@ -139,7 +148,7 @@ pub struct FitDataPoint {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FitScanFull {
     pub model_path: String,
-    /// All measured data points (~21 per model).
+    /// All measured data points.
     pub points: Vec<FitDataPoint>,
     /// Error message if any scan failed.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -147,7 +156,7 @@ pub struct FitScanFull {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct FitScanProgress {
+ pub struct FitScanProgress {
     pub model_path: String,
     pub model_name: String,
     pub status: String, // "scanning", "complete", "error"
@@ -157,6 +166,9 @@ pub struct FitScanProgress {
     /// VRAM result in MiB if complete.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub vram_mib: Option<f64>,
+    /// Scan point label (e.g., "base", "ctx_128k") — set on "complete" events.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -165,6 +177,8 @@ pub struct FitScanComplete {
     pub total_models: usize,
     pub completed: usize,
     pub failed: usize,
+    /// Number of scan points per model (derived from SCAN_PLAN.len()).
+    pub scan_points_total: usize,
     /// Per-model full scan results keyed by model path.
     pub results: HashMap<String, FitScanFull>,
 }
@@ -238,60 +252,54 @@ pub fn find_fallback_fit_binary() -> Option<String> {
     None
 }
 
-// ── Template-Driven Command Building ────────────────────────
+// ── Command Builder ────────────────────────────────────────────────
 
-/// Build CLI args for a single fit scan using the provider's template.
-/// Same logic as engine launch: template.build_command() -> strip -m/--port -> prepend model + --fit off.
-pub fn build_fit_args_from_template(
-    template: &crate::templates::ProviderTemplate,
-    config: &crate::types::EngineConfig,
+/// Build CLI args for llama-fit-params.exe directly — no template system involvement.
+pub fn build_fit_command(
     model_path: &str,
-    gpu_mask: &str,
+    ctx_tokens: usize,
+    kv_quant: &str,
+    batch: u32,
+    ubatch: u32,
+    parallel: u32,
+    split_mode: &str,
 ) -> Vec<String> {
-    // Temporarily clear model_path to suppress [LAUNCH_CMD] during fit-scan arg building.
-    let mut cfg = config.clone();
-    cfg.model_path = String::new();
+    let mut args = vec![
+        "-m".into(),
+        model_path.into(),
+        "--fit".into(),
+        "off".into(),
+        // Force all layers onto GPU — prevents llama-fit-params from auto-calculating ngl
+        // and offloading layers. We need the TRUE total VRAM requirement per scan point,
+        // not a "fitted" result after internal layer reduction.
+        "--n-gpu-layers".into(), "999".into(),
+        // KV quant (always mirror -ctk to -ctv for accurate estimation)
+        "-ctk".into(), kv_quant.to_lowercase().into(),
+        "-ctv".into(), kv_quant.to_lowercase().into(),
+        // Context size
+        "--ctx-size".into(), ctx_tokens.to_string(),
+        // Batch sizes
+        "--batch-size".into(), batch.to_string(),
+        "--ubatch-size".into(), ubatch.to_string(),
+    ];
 
-    let raw_args = template.build_command(&cfg, gpu_mask, None);
-
-    // Strip flags irrelevant to VRAM estimation: server-only features llama-fit-params doesn't accept.
-    let mut args = Vec::with_capacity(raw_args.len());
-    let mut iter = raw_args.into_iter();
-    while let Some(arg) = iter.next() {
-        match arg.as_str() {
-            // Flags with values — skip both flag and value
-            "-m" | "--mmproj" | "--port" | "--reasoning" | "--rope-scaling" | "--rope-scale" | "--yarn-orig-ctx" | "--rope-freq-base" => { iter.next(); }
-            // Boolean flags (no value) — drop entirely
-            "--jinja" | "--cont-batching" | "--metrics" | "--verbose" | "--no-mmap" | "--log-timestamps" => {}
-            _ => args.push(arg),
-        }
+    // Parallel (only if > 1)
+    if parallel > 1 {
+        args.extend(["--parallel".into(), parallel.to_string()]);
     }
 
-    // Mirror -ctk to -ctv: vision KV cache quant must match text KV quant for accurate estimation.
-    let mut final_args = Vec::with_capacity(args.len() + 2);
-    let mut iter2 = args.into_iter();
-    while let Some(arg) = iter2.next() {
-        if arg == "-ctk" {
-            final_args.push("-ctk".into());
-            if let Some(ctk_val) = iter2.next() {
-                final_args.push(ctk_val.clone());
-                // Mirror to -ctv
-                final_args.push("-ctv".into());
-                final_args.push(ctk_val);
-            }
-        } else {
-            final_args.push(arg);
-        }
+    // Split mode (only if not "none")
+    if !split_mode.is_empty() && split_mode.to_lowercase() != "none" {
+        args.extend(["--split-mode".into(), split_mode.to_lowercase().into()]);
     }
 
-    // Prepend actual model path and --fit off
-    let mut result = Vec::with_capacity(final_args.len() + 4);
-    result.extend(["-m".into(), model_path.into()]);
-    result.extend(["--fit".into(), "off".into()]);
-    result.extend(final_args);
+    // Flash attention — always ON (required for non-f16 KV quant on modern architectures)
+    args.extend(["--flash-attn".into(), "on".into()]);
 
-    result
+    args
 }
+
+// ── Output Parsing ────────────────────────────────────────────────
 
 /// Parse MiB from llama-fit-params.exe output.
 fn parse_fit_output(output: &str) -> Option<f64> {
@@ -481,13 +489,26 @@ fn extract_model_from_breakdown(line: &str) -> Option<f64> {
 
 /// Parse per-GPU self MiB and host RAM from memory breakdown table.
 /// Returns (gpu_breakdown, host_mib).
+///
+/// llama-fit-params prints multiple memory tables during its iterative fitting algorithm.
+/// We only want the LAST table — it represents the final fitted configuration.
 fn parse_fit_breakdown(output: &str) -> (Option<Vec<f64>>, Option<f64>) {
-    let mut gpu_values: Vec<f64> = Vec::new();
-    let mut host_val: Option<f64> = None;
+    let mut last_gpu_values: Vec<f64> = Vec::new();
+    let mut last_host_val: Option<f64> = None;
 
     for line in output.lines() {
         let lower = line.to_lowercase();
         if !lower.contains("memory breakdown") {
+            continue;
+        }
+
+        // A new memory breakdown table starts with the header line.
+        // The header contains "memory breakdown" and "[mib]" but no "cuda" or "host".
+        // Detect it by checking for the pipe-delimited header format: | memory breakdown [MiB] ... |
+        if lower.contains("[mib]") || (lower.contains("total") && lower.contains("free") && lower.contains("self")) {
+            // New table header — reset accumulators for this table
+            last_gpu_values.clear();
+            last_host_val = None;
             continue;
         }
 
@@ -498,7 +519,7 @@ fn parse_fit_breakdown(output: &str) -> (Option<Vec<f64>>, Option<f64>) {
                     let inner = &line[start + 1..start + end];
                     // First number in parens is the self total (e.g., "605" from "605 = 440 + 24 + 141")
                     if let Some(val) = extract_number(inner.trim()) {
-                        gpu_values.push(val);
+                        last_gpu_values.push(val);
                     }
                 }
             }
@@ -509,32 +530,40 @@ fn parse_fit_breakdown(output: &str) -> (Option<Vec<f64>>, Option<f64>) {
             if let Some(pipe_pos) = line.rfind('|') {
                 let after_pipe = &line[pipe_pos + 1..].trim();
                 if !after_pipe.is_empty() {
-                    host_val = extract_number(after_pipe);
+                    last_host_val = extract_number(after_pipe);
                 } else if let Some(first_pipe) = line.find("Host") {
                     // Try extracting from between pipes: | - Host | 470 = ...
                     let rest = &line[first_pipe..];
                     if let Some(second_pipe) = rest[4..].find('|') {
                         let between = rest[4 + second_pipe + 1..].trim();
-                        host_val = extract_number(between);
+                        last_host_val = extract_number(between);
                     }
                 }
             }
         }
     }
 
-    let gpu_breakdown = if gpu_values.is_empty() { None } else { Some(gpu_values) };
-    (gpu_breakdown, host_val)
+    let gpu_breakdown = if last_gpu_values.is_empty() { None } else { Some(last_gpu_values) };
+    (gpu_breakdown, last_host_val)
 }
 
 /// Parse per-GPU component breakdown from memory breakdown table.
 /// Returns Vec<GpuComponentMib> with model/ctx/compute for each GPU.
+///
+/// llama-fit-params prints multiple memory tables during its iterative fitting algorithm.
+/// We only want the LAST table — it represents the final fitted configuration.
 fn parse_gpu_components(output: &str) -> Option<Vec<GpuComponentMib>> {
-    let mut components: Vec<GpuComponentMib> = Vec::new();
+    let mut last_components: Vec<GpuComponentMib> = Vec::new();
 
-    // Parse each CUDA line: | - CUDA0 (RTX PRO...) | TOTAL = FREE + ( SELF = MODEL + CTX + COMPUTE ) |
     for line in output.lines() {
         let lower = line.to_lowercase();
-        
+
+        // Detect new memory breakdown table header — reset accumulators
+        if lower.contains("memory breakdown") && (lower.contains("[mib]") || (lower.contains("total") && lower.contains("free") && lower.contains("self"))) {
+            last_components.clear();
+            continue;
+        }
+
         // Skip unless it's a CUDA device line with memory breakdown table format
         if !lower.contains("cuda") || !line.contains('|') {
             continue;
@@ -545,25 +574,25 @@ fn parse_gpu_components(output: &str) -> Option<Vec<GpuComponentMib>> {
         if let Some(last_open) = line.rfind('(') {
             if let Some(end_paren) = line[last_open..].find(')') {
                 let inner = &line[last_open + 1..last_open + end_paren];
-                
+
                 // Must look like "52794 = 50838 + 1152 + 804" (number = number + number + number)
                 if !inner.contains('=') || inner.matches('+').count() < 2 {
                     continue;
                 }
-                
+
                 let parts: Vec<&str> = inner.split('+').map(|s| s.trim()).collect();
                 if parts.len() >= 3 {
                     // First part has format "52794 = 50838", extract the last number
                     let first_part = parts[0];
                     if let Some(eq_pos) = first_part.find('=') {
                         let model_str = &first_part[eq_pos + 1..].trim();
-                        
+
                         if let (Some(model_mib), Some(ctx_mib), Some(compute_mib)) = (
                             extract_number(model_str),
                             extract_number(parts[1]),
                             extract_number(parts[2])
                         ) {
-                            components.push(GpuComponentMib {
+                            last_components.push(GpuComponentMib {
                                 model_mib,
                                 ctx_mib,
                                 compute_mib,
@@ -575,9 +604,9 @@ fn parse_gpu_components(output: &str) -> Option<Vec<GpuComponentMib>> {
         }
     }
 
-    eprintln!("//DEBUG [GPU_COMPONENTS] parsed {} GPU components", components.len());
+    eprintln!("//DEBUG [GPU_COMPONENTS] parsed {} GPU components", last_components.len());
 
-    if components.is_empty() { None } else { Some(components) }
+    if last_components.is_empty() { None } else { Some(last_components) }
 }
 
 // ── Library Scanner ─────────────────────────────────────────────────
@@ -612,15 +641,12 @@ fn find_all_models(paths: &[String]) -> Vec<String> {
 }
 
 /// Scan an entire library of models with parallel execution.
-/// Comprehensive 21-scan strategy per model to measure all parameter axes.
 pub async fn scan_library(
     fit_binary: &str,
     model_paths: &[String],
     max_parallel: u32,
     _gpus_total_mib: f64,
     provider_id: String,
-    template: crate::templates::ProviderTemplate,
-    base_config: crate::types::EngineConfig,
     progress_tx: Option<broadcast::Sender<FitScanProgress>>,
     cancelled: StdArc<AtomicBool>,
 ) -> FitScanComplete {
@@ -634,42 +660,10 @@ pub async fn scan_library(
             total_models: 0,
             completed: 0,
             failed: 0,
+            scan_points_total: SCAN_PLAN.len(),
             results: HashMap::new(),
         };
     }
-
-    // Comprehensive scan plan — 21 deduplicated data points per model.
-    // Base config: batch=512, parallel=1, split_mode="none", flash_attn=true (from base_config).
-    // Each tuple: (label, ctx_label, kv_quant, batch, parallel, split_mode)
-    const SCAN_PLAN: &[(&str, &str, &str, u32, u32, &str)] = &[
-        // 1. Base weights + small KV
-        ("base", "8K", "q4_0", 512, 1, "none"),
-        // 2-4. Quant anchors at 128K (f16, q8_0, q4_0) — captures non-linearity curve
-        ("quant_f16", "128K", "f16", 512, 1, "none"),
-        ("quant_q8", "128K", "q8_0", 512, 1, "none"),
-        ("quant_q4", "128K", "q4_0", 512, 1, "none"),
-        // 5-10. CTX sweep at q4_0 (6 sizes, 8K and 128K already covered)
-        ("ctx_16k", "16K", "q4_0", 512, 1, "none"),
-        ("ctx_32k", "32K", "q4_0", 512, 1, "none"),
-        ("ctx_64k", "64K", "q4_0", 512, 1, "none"),
-        ("ctx_256k", "256K", "q4_0", 512, 1, "none"),
-        ("ctx_512k", "512K", "q4_0", 512, 1, "none"),
-        ("ctx_1m", "1M", "q4_0", 512, 1, "none"),
-        // 11-16. Batch sweep at 128K/q4 (6 sizes, 512 already covered)
-        ("batch_128", "128K", "q4_0", 128, 1, "none"),
-        ("batch_256", "128K", "q4_0", 256, 1, "none"),
-        ("batch_1024", "128K", "q4_0", 1024, 1, "none"),
-        ("batch_2048", "128K", "q4_0", 2048, 1, "none"),
-        ("batch_4096", "128K", "q4_0", 4096, 1, "none"),
-        ("batch_8192", "128K", "q4_0", 8192, 1, "none"),
-        // 17-19. Parallel sweep at 128K/q4/b512 (3 values, parallel=1 already covered)
-        ("parallel_2", "128K", "q4_0", 512, 2, "none"),
-        ("parallel_4", "128K", "q4_0", 512, 4, "none"),
-        ("parallel_8", "128K", "q4_0", 512, 8, "none"),
-        // 20-21. Split tax at base config (layer + row)
-        ("split_layer", "128K", "q4_0", 512, 1, "layer"),
-        ("split_row", "128K", "q4_0", 512, 1, "row"),
-    ];
 
     // Load existing full scan data for incremental update
     let existing_data = load_full_scan_export().unwrap_or_default();
@@ -694,13 +688,29 @@ pub async fn scan_library(
 
         // Extract existing data before spawning — owned copies to avoid borrow issues
         let existing_full: Option<FitScanFull> = existing_data.get(&model_path).cloned();
-        let existing_labels: Vec<String> = existing_full.as_ref().map(|e| {
+        
+        // Build a HashSet of existing labels for this model
+        let existing_labels: HashSet<String> = existing_full.as_ref().map(|e| {
             e.points.iter().map(|p| p.label.clone()).collect()
         }).unwrap_or_default();
-        let needs_scan = existing_labels.len() < SCAN_PLAN.len();
 
-        // If model already has all points, copy without rescanning
-        if !needs_scan {
+        // Build the set of SCAN_PLAN labels
+        let plan_labels: HashSet<&str> = SCAN_PLAN.iter().map(|p| p.0).collect();
+
+        // If ALL labels are present, skip the model entirely (copy existing data)
+        let missing_labels: Vec<String> = if existing_labels.len() >= SCAN_PLAN.len() 
+            && plan_labels.is_subset(&existing_labels.iter().map(|s| s.as_str()).collect()) {
+            Vec::new()
+        } else {
+            // Only scan points whose label is NOT in the existing set
+            SCAN_PLAN.iter()
+                .filter(|p| !existing_labels.contains(p.0))
+                .map(|p| p.0.to_string())
+                .collect()
+        };
+
+        if missing_labels.is_empty() {
+            // All points already scanned — copy without rescanning
             if let Some(existing) = existing_full {
                 tokio::spawn({
                     let full_map = full_results_map.clone();
@@ -713,25 +723,11 @@ pub async fn scan_library(
             }
         }
 
-        // Which labels still need scanning?
-        let missing_labels: Vec<String> = if needs_scan {
-            SCAN_PLAN.iter().map(|p| p.0.to_string()).collect()
-        } else {
-            let existing_set: std::collections::HashSet<&str> =
-                existing_labels.iter().map(|s| s.as_str()).collect();
-            SCAN_PLAN.iter()
-                .filter(|p| !existing_set.contains(p.0))
-                .map(|p| p.0.to_string())
-                .collect()
-        };
-
         // Existing points to carry forward for incremental scan
         let existing_points: Vec<FitDataPoint> = existing_full.map(|e| e.points).unwrap_or_default();
 
         let sem = semaphore.clone();
         let fit_bin = fit_binary.to_string();
-        let tmpl = template.clone();
-        let cfg = base_config.clone();
         let comp_count = completed_count.clone();
         let cancel = cancelled.clone();
         let prog_tx = progress_tx.clone();
@@ -754,14 +750,14 @@ pub async fn scan_library(
             let model_name = extract_model_name(&model_path);
 
             // Start with existing points for incremental scan
-            let mut points: Vec<FitDataPoint> = if needs_scan {
+            let mut points: Vec<FitDataPoint> = if missing_labels.is_empty() {
                 Vec::with_capacity(SCAN_PLAN.len())
             } else {
                 existing_points.clone()
             };
             let mut failures = Vec::new();
 
-            for (label, ctx_label, kv_q, batch_val, parallel_val, split_val) in SCAN_PLAN {
+            for (label, ctx_tokens, kv_q, batch_val, parallel_val, split_val) in SCAN_PLAN {
                 if cancel.load(Ordering::Relaxed) {
                     break;
                 }
@@ -772,23 +768,17 @@ pub async fn scan_library(
                 }
 
                 // Compute GPU mask per-scan-point: split mode needs all GPUs visible
-                let scan_cfg_split = (*split_val).to_string();
-                let point_gpu_mask = if scan_cfg_split != "none" && !scan_cfg_split.is_empty() {
+                let point_gpu_mask = if *split_val != "none" && !split_val.is_empty() {
                     (0..gpu_count).map(|i| i.to_string()).collect::<Vec<_>>().join(",")
                 } else {
-                    compute_gpu_mask(&cfg, gpu_count)
+                    // Single GPU — use GPU-0 for scan points
+                    "0".to_string()
                 };
 
-                // Build config for this scan point
-                let mut scan_cfg = cfg.clone();
-                scan_cfg.ctx_size = (*ctx_label).to_string();
-                scan_cfg.kv_quant = (*kv_q).to_string();
-                scan_cfg.batch = *batch_val as i64;
-                scan_cfg.ubatch = *batch_val as i64; // ubatch mirrors batch for fit scan
-                scan_cfg.parallel = *parallel_val as i64;
-                scan_cfg.split_mode = scan_cfg_split.clone();
-
-                let args = build_fit_args_from_template(&tmpl, &scan_cfg, &model_path, &point_gpu_mask);
+                // Build CLI args directly from scan plan parameters
+                let args = build_fit_command(
+                    &model_path, *ctx_tokens, kv_q, *batch_val, *batch_val, *parallel_val, split_val,
+                );
 
                 // Emit progress before scan
                 if let Some(tx) = &prog_tx {
@@ -798,23 +788,19 @@ pub async fn scan_library(
                         status: "scanning".to_string(),
                         args: Some(args.join(" ")),
                         vram_mib: None,
+                        label: Some((*label).to_string()),
                     });
                 }
 
                 match scan_single_anchor(&fit_bin, &args, &point_gpu_mask).await {
                     Ok(raw) => {
-                        // Parse ctx to int for data point
-                        let ctx_int = crate::templates::ProviderTemplate::ctx_to_int_str(ctx_label)
-                            .parse::<usize>()
-                            .unwrap_or(8192);
-
                         points.push(FitDataPoint {
                             label: (*label).to_string(),
-                            ctx: ctx_int,
+                            ctx: *ctx_tokens,
                             kv_quant: (*kv_q).to_string(),
                             batch: *batch_val,
                             parallel: *parallel_val,
-                            split_mode: scan_cfg_split.clone(),
+                            split_mode: (*split_val).to_string(),
                             vram_mib: raw.vram_mib,
                         });
 
@@ -826,6 +812,7 @@ pub async fn scan_library(
                                 status: "complete".to_string(),
                                 args: None,
                                 vram_mib: Some(raw.vram_mib),
+                                label: Some((*label).to_string()),
                             });
                         }
                     },
@@ -890,6 +877,7 @@ pub async fn scan_library(
         total_models: total,
         completed,
         failed,
+        scan_points_total: SCAN_PLAN.len(),
         results: final_results,
     }
 }
@@ -936,4 +924,11 @@ pub fn load_full_scan_export() -> Option<HashMap<String, FitScanFull>> {
     }
     let content = std::fs::read_to_string(&path).ok()?;
     serde_json::from_str(&content).ok()
+}
+
+/// Get raw FIT scan points for a model — used by diagnostics to show split mode measurements.
+#[tauri::command]
+pub fn get_fit_scan_points(model_path: String) -> Option<Vec<FitDataPoint>> {
+    let data = load_full_scan_export()?;
+    data.get(&model_path).map(|f| f.points.clone())
 }

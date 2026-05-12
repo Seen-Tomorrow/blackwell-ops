@@ -396,6 +396,7 @@ export interface FitScanProgress {
   status: 'scanning' | 'complete' | 'error';
   args?: string;
   vram_mib?: number;
+  label?: string;
 }
 
 /** Complete result from a library scan */
@@ -404,6 +405,7 @@ export interface FitScanComplete {
   total_models: number;
   completed: number;
   failed: number;
+  scan_points_total?: number;
   results: Record<string, FitScanFull>;
 }
 
@@ -516,4 +518,12 @@ export interface DownloadTask {
   hfAuthor?: string;
   quantType?: string;
   lfsOid?: string;     // LFS content hash for incremental scan
+}
+
+// SANITY-BOX — isolated type, remove with the feature
+export interface SanityEntry {
+  source: 'rust' | 'js';
+  level: 'error' | 'warn';
+  text: string;
+  timestamp: string;
 }

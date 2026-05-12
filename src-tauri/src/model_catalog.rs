@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use crate::types::{CatalogDedupConflict, ModelEntry, ModelEntryInternal, ModelPathEntry};
 
 /// Scan a single directory path for .gguf model files.
-fn scan_path(base_path: &Path) -> Result<Vec<ModelEntryInternal>, String> {
+pub fn scan_path(base_path: &Path) -> Result<Vec<ModelEntryInternal>, String> {
     if !base_path.exists() {
         return Ok(Vec::new());
     }
@@ -103,6 +103,7 @@ fn scan_path(base_path: &Path) -> Result<Vec<ModelEntryInternal>, String> {
                         size_str,
                         vision: mmproj_file.is_some(),
                         mmproj: mmproj_file.clone(),
+                        mmproj_size_mib: if mmproj_size > 0 { mmproj_size as f64 / (1024.0 * 1024.0) } else { 0.0 },
                         model_bytes: file_size,
                         total_bytes: file_size + mmproj_size,
                         shards: 1,
@@ -200,6 +201,7 @@ pub fn merge_catalogs(
                 size_str,
                 vision: internal.vision,
                 mmproj: internal.mmproj,
+                mmproj_size_mib: if internal.mmproj_size_mib > 0.0 { Some(internal.mmproj_size_mib) } else { None },
                 backend_type: String::new(),
                 source_path_label: internal.source_path_label,
                 metadata: cached_meta,

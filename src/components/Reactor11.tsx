@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { GpuInfo, ModelEntry } from "../lib/types";
 import type { R11Status, R11RodHandle, R11PredictiveFit } from "../lib/reactor11";
@@ -28,6 +28,13 @@ export default function Reactor11({ gpus, models }: Props) {
   const [mockLevelEnabled, setMockLevelEnabled] = useState(false);
   const [mockLevel, setMockLevel] = useState(50);
 
+  // Mouse-based drag state (ConfigPage pattern)
+  const [isDragging, setIsDragging] = useState(false);
+  const hasMovedRef = useRef(false);
+  const startPosRef = useRef({ x: 0, y: 0 });
+  const pendingModelRef = useRef<ModelEntry | null>(null);
+  const insertModelRef = useRef<(model: ModelEntry) => Promise<void>>();
+
   // Compute thermal criticality
   const isCritical = useMemo(() => {
     if (gpus.length === 0) return false;
@@ -49,17 +56,6 @@ export default function Reactor11({ gpus, models }: Props) {
   const totalVramUsed = rods.reduce((sum, r) => sum + (r.vram_mib || 0), 0);
   const maxTotalVram = gpus.length > 0 ? gpus.reduce((sum, g) => sum + g.memory_total, 0) : 196608;
 
-  // Auto-retract sidebar on drag start
-  const handleDragStart = useCallback((model: ModelEntry) => {
-    setDraggedModel(model);
-    setSidebarCollapsed(true);
-  }, []);
-
-  const handleDragEnd = useCallback(() => {
-    setDraggedModel(null);
-    setPredictiveFit(null);
-  }, []);
-
   const insertModel = useCallback(async (model: ModelEntry) => {
     try {
       const config = {
@@ -67,15 +63,15 @@ export default function Reactor11({ gpus, models }: Props) {
         model_path: model.path,
         port: 0,
         device: "GPU-0",
-        kv_quant: model.quant.toLowerCase().includes("q4") ? "Q4_K" : "F16",
+        kv_quant: model.quant.toLowerCase().includes("q4") ? "q4_0" : "f16",
         ctx_size: "32K",
         batch: 2048,
         ubatch: 512,
         parallel: 1,
-        offload: "ALL",
-        offload_mode: "REGULAR",
+        offload: "all",
+        offload_mode: "regular",
         split_mode: "",
-        vision: model.vision ? "AUTO" : "OFF",
+        vision: model.vision ? "auto" : "off",
         flash_attn: true,
         jinja: false,
         cont_batching: true,
@@ -92,13 +88,71 @@ export default function Reactor11({ gpus, models }: Props) {
     }
   }, [gpus]);
 
-  const handleDrop = useCallback(async (e: React.DragEvent) => {
+  // Keep ref in sync for use inside mouse event listeners
+  insertModelRef.current = insertModel;
+
+  // Mouse-down on a model card — record position and pending model
+  const handleDragStart = useCallback((model: ModelEntry, e: React.MouseEvent) => {
+    console.log("[R11] handleDragStart called for", model.name);
     e.preventDefault();
-    if (!draggedModel) return;
-    await insertModel(draggedModel);
-    setDraggedModel(null);
-    setPredictiveFit(null);
-  }, [draggedModel, insertModel]);
+    startPosRef.current = { x: e.clientX, y: e.clientY };
+    hasMovedRef.current = false;
+    pendingModelRef.current = model;
+    setIsDragging(true);
+  }, []);
+
+  // Global mousemove — detect movement past dead zone to activate drag
+  useEffect(() => {
+    if (!isDragging) return;
+
+    const handleMove = (e: MouseEvent) => {
+      const dx = Math.abs(e.clientX - startPosRef.current.x);
+      const dy = Math.abs(e.clientY - startPosRef.current.y);
+      if (!hasMovedRef.current && (dx > 3 || dy > 3)) {
+        hasMovedRef.current = true;
+        console.log("[R11] mousemove: drag activated, model =", pendingModelRef.current?.name);
+        // Activate drag — set the model so ghost liquid preview appears
+        if (pendingModelRef.current) {
+          setDraggedModel(pendingModelRef.current);
+        }
+      }
+    };
+
+    window.addEventListener("mousemove", handleMove);
+    return () => window.removeEventListener("mousemove", handleMove);
+  }, [isDragging]);
+
+  // Global mouseup — finalize drag or cancel
+  useEffect(() => {
+    if (!isDragging) return;
+
+    const handleUp = (e: MouseEvent) => {
+      console.log("[R11] mouseup fired, hasMoved =", hasMovedRef.current);
+      setIsDragging(false);
+
+      if (!hasMovedRef.current) {
+        pendingModelRef.current = null;
+        hasMovedRef.current = false;
+        return;
+      }
+
+      // Check if dropped on the core area (not over sidebar)
+      const el = document.elementFromPoint(e.clientX, e.clientY);
+      console.log("[R11] elementFromPoint =", el?.tagName, el?.className);
+      if (el && pendingModelRef.current && insertModelRef.current) {
+        console.log("[R11] inserting model:", pendingModelRef.current.name);
+        insertModelRef.current(pendingModelRef.current);
+      }
+
+      setDraggedModel(null);
+      setPredictiveFit(null);
+      pendingModelRef.current = null;
+      hasMovedRef.current = false;
+    };
+
+    window.addEventListener("mouseup", handleUp, { once: true });
+    return () => window.removeEventListener("mouseup", handleUp);
+  }, [isDragging]);
 
   const handleRemoveRod = useCallback(async (rodId: string) => {
     try {
@@ -133,7 +187,7 @@ export default function Reactor11({ gpus, models }: Props) {
     return () => clearInterval(interval);
   }, []);
 
-  // Predictive fit on hover
+  // Predictive fit on drag
   useEffect(() => {
     if (draggedModel) {
       invoke<R11PredictiveFit>("r11_predict_fit", { modelPath: draggedModel.path, gpus })
@@ -157,7 +211,6 @@ export default function Reactor11({ gpus, models }: Props) {
         models={models}
         onInsertModel={insertModel}
         onDragStart={handleDragStart}
-        onDragEnd={handleDragEnd}
         collapsed={sidebarCollapsed}
         onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
         gpus={gpus}
@@ -340,13 +393,9 @@ export default function Reactor11({ gpus, models }: Props) {
         </div>
       </div>
 
-      {/* Drop overlay when dragging */}
+      {/* Dragging overlay — captures cursor visually */}
       {draggedModel && (
-        <div
-          className="absolute inset-0 z-40 cursor-none"
-          onDragOver={(e) => e.preventDefault()}
-          onDrop={handleDrop}
-        />
+        <div className="absolute inset-0 z-40 pointer-events-none" />
       )}
     </div>
   );

@@ -2,18 +2,21 @@ import type { GpuInfo, ModelMetadata, EngineConfig, Scenario, StyleObject, Runni
 
 // ── Constants (derived from real launch data) ────────────────────────────────
 
-export const CUDA_BASE_OVERHEAD_GB = 2.5;
-export const COMPUTE_BUFFER_PRIMARY_RATIO = 0.20;
-export const COMPUTE_BUFFER_SECONDARY_RATIO = 0.15;
-export const RS_BUFFER_PER_GPU_GB = 0.3;
-export const VISION_WORKSPACE_GB = 0.5;
-export const GPU_FILL_TARGET = 0.95;
-export const MOE_ATTENTION_RATIO = 0.18;
-export const MOE_ROUTING_RATIO = 0.04;
-export const MOE_NON_EXPERT_FFN_RATIO = 0.03;
+export const RS_BUFFER_PER_GPU_GB = 0.1; // Reduced from 0.3 to match actual llama.cpp memory usage
 export const CUDA_PARALLEL_OVERHEAD_PER_REQ_GB = 0.5;
-export const CUDA_BATCH_OVERHEAD_FACTOR = 1.5 / 4096;
 export const CUDA_CTX_OVERHEAD_FACTOR = 0.5 / 131072;
+
+// ── FIT scan data types ─────────────────────────────────────────────────────
+
+export interface FitPoint {
+  label: string;
+  ctx: number;
+  kv_quant: string;
+  batch: number;
+  parallel: number;
+  split_mode: string;
+  vram_mib: number;
+}
 
 // ── Scenario-specific types (not shared with components) ────────────────────
 
@@ -32,6 +35,7 @@ export interface ScenarioInput {
   ramAvailableGb: number;
   ramManufacturedGb: number;
   mmprojSizeMib?: number;
+  fitPoints?: FitPoint[];
 }
 
 // ── Pure Helpers (no scenario logic) ────────────────────────────────────────
@@ -89,8 +93,6 @@ export function gpuHasRunningEngines(gpuIdx: number, slots: RunningSlotInfo[]): 
 /** Compute per-layer weight in GB from architecture dimensions (full layer).
  *  Replaces uniform `weightsGb / nLayer` which is wrong for MoE models
  *  where expert FFN weights dominate layer size. */
-const warnedClamps = new Set<string>();
-
 export function perLayerWeightGb(input: ScenarioInput, computed: ComputedValues): number {
   const m = input.modelMeta;
   const nLayer = m.n_layer;
@@ -108,11 +110,35 @@ export function perLayerWeightGb(input: ScenarioInput, computed: ComputedValues)
     const attnParams = m.n_embd * m.n_embd
       + 2 * m.n_embd * (nHeadKv * headDim)
       + m.n_embd * m.n_embd;
-    // All experts loaded into VRAM (llama.cpp loads all, not just active)
-    const expertFfnLen = m.expert_feed_forward_length || (m.feed_forward_length || m.n_embd * 4);
-    const moeParams = m.n_expert * 3 * m.n_embd * expertFfnLen;
     // Router weight
     const routerParams = m.n_embd * m.n_expert;
+
+    // Expert FFN length — prefer GGUF metadata, derive from file size if missing.
+    let expertFfnLen: number | null = m.expert_feed_forward_length || null;
+    if (expertFfnLen === null && m.bpw > 0) {
+      // Derive: totalParams = file_size * 8 / bpw
+      const totalParams = (m.file_size_bytes * 8) / m.bpw;
+      // Non-expert params per layer: attention + router + norms (~2*n_embd per norm, 4 norms/layer)
+      const normParamsPerLayer = 4 * m.n_embd;
+      const nonExpertPerLayer = attnParams + routerParams + normParamsPerLayer;
+      // Token embedding (shared, not per-layer)
+      const tokenEmbedding = m.vocab_size * m.n_embd;
+      // Final LM head — often shares weights with token embedding in llama.cpp models.
+      // If shared: 0 extra params. If not shared: vocab_size * n_embd more.
+      // Conservative: assume shared (most GGUF models do).
+      const totalNonExpert = nonExpertPerLayer * nLayer + tokenEmbedding;
+      // Remaining params are all in expert FFN: n_layer * n_expert * 3 * n_embd * expertFfnLen
+      const expertTotalParams = totalParams - totalNonExpert;
+      if (expertTotalParams > 0 && m.n_expert > 0) {
+        expertFfnLen = Math.round(expertTotalParams / (nLayer * m.n_expert * 3 * m.n_embd));
+      }
+    }
+    // Last resort fallback
+    if (expertFfnLen === null || expertFfnLen <= 0) {
+      expertFfnLen = m.feed_forward_length || Math.round(m.n_embd * 4);
+    }
+
+    const moeParams = m.n_expert * 3 * m.n_embd * expertFfnLen;
     perLayerParams = attnParams + moeParams + routerParams;
   } else {
     // Dense: attention + FFN (gate + up + down)
@@ -125,29 +151,22 @@ export function perLayerWeightGb(input: ScenarioInput, computed: ComputedValues)
   }
 
   // Convert to GB using bpw from file metadata
-  let perLayerGb = 0;
   if (m.bpw > 0) {
-    perLayerGb = (perLayerParams * m.bpw / 8) / (1024 ** 3);
-  } else {
-    perLayerGb = computed.weightsGb / nLayer;
+    return (perLayerParams * m.bpw / 8) / (1024 ** 3);
   }
+  return computed.weightsGb / nLayer;
+}
 
-  // Sanity clamp: architecture-derived per-layer should not exceed file-size-based uniform by >2x.
-  // If it does, metadata is likely wrong (e.g., missing expert_feed_forward_length) and we fall back.
-  const uniformPerLayer = computed.weightsGb / nLayer;
-  if (perLayerGb > uniformPerLayer * 2) {
-    // Only warn once per unique model signature to avoid console spam
-    const key = `${input.modelMeta.n_layer}-${computed.weightsGb.toFixed(1)}`;
-    if (!warnedClamps.has(key)) {
-      console.warn(
-        `[VRAM] perLayerWeightGb sanity clamp: arch=${perLayerGb.toFixed(2)}GB > uniform=${uniformPerLayer.toFixed(2)}GB × 2. Falling back to uniform.`
-      );
-      warnedClamps.add(key);
-    }
-    return uniformPerLayer;
-  }
+/** Compute the fraction of MOE model weights that stay on GPU in MOE_OPTIMAL mode.
+ *  Non-expert weights (attention, norms, router) always stay on GPU.
+ *  Expert FFN weights are streamed from RAM — only n_expert_used activate per token. */
+function computeMoeGpuWeightFraction(meta: ModelMetadata): number {
+  if (meta.n_expert === 0 || meta.n_expert_used === 0) return 0.25;
 
-  return perLayerGb;
+  const expertDensity = meta.n_expert_used / meta.n_expert;
+  const nonExpertFraction = 1.0 - (1.0 - expertDensity) * 0.75;
+
+  return Math.max(0.1, Math.min(1.0, nonExpertFraction));
 }
 
 /** GPU-bound per-layer weight — applies gpuWeightFraction for MOE_OPTIMAL.
@@ -159,6 +178,106 @@ export function gpuPerLayerWeightGb(input: ScenarioInput, computed: ComputedValu
 
 function round2(v: number): number {
   return Math.round(v * 100) / 100;
+}
+
+// ── FIT interpolation helpers ───────────────────────────────────────────────
+
+export function findFitPoint(points: FitPoint[], label: string): FitPoint | undefined {
+  return points.find(p => p.label === label);
+}
+
+export function getBaseVramMib(points: FitPoint[]): number | null {
+  const noBatch = findFitPoint(points, "base_no_batch");
+  if (noBatch) return noBatch.vram_mib;
+  const base = findFitPoint(points, "base");
+  return base ? base.vram_mib : null;
+}
+
+export function estimateOverheadMib(points: FitPoint[], weightsGb: number, userCtx: number): number | null {
+  const noBatch = findFitPoint(points, "base_no_batch");
+  if (!noBatch) return null;
+  const kvBytesPerToken = kvBytesForQuant(noBatch.kv_quant);
+  const headDim = 128; // approximate, actual depends on model arch
+  const estimatedKVAtCtx = (2 * noBatch.ctx * kvBytesPerToken * headDim) / (1024 * 1024);
+  return noBatch.vram_mib - (weightsGb * 1024) - estimatedKVAtCtx;
+}
+
+export function estimateActivationPerBatchToken(points: FitPoint[]): number | null {
+  const base = findFitPoint(points, "base");
+  const noBatch = findFitPoint(points, "base_no_batch");
+  if (!base || !noBatch) return null;
+  return (base.vram_mib - noBatch.vram_mib) / 512;
+}
+
+export function estimateKvGrowthPerToken(points: FitPoint[]): number | null {
+  const ctxPoints = points.filter(p => p.label.startsWith("ctx_") && p.batch <= 8);
+  if (ctxPoints.length < 2) return null;
+  ctxPoints.sort((a, b) => a.ctx - b.ctx);
+  const lower = ctxPoints[0];
+  const higher = ctxPoints[ctxPoints.length - 1];
+  if (higher.ctx === lower.ctx) return null;
+  return (higher.vram_mib - lower.vram_mib) / (higher.ctx - lower.ctx);
+}
+
+export function estimateSplitTaxMiB(points: FitPoint[], splitMode: string): number | null {
+  const splitLabel = `split_${splitMode}`;
+  const splitPt = findFitPoint(points, splitLabel);
+  if (!splitPt) return null;
+  const baseNoBatch = findFitPoint(points, "base_no_batch");
+  const base = baseNoBatch || findFitPoint(points, "base");
+  if (!base) return null;
+  return splitPt.vram_mib - base.vram_mib;
+}
+
+export function extrapolateVramFromPoints(
+  points: FitPoint[],
+  userCtx: number,
+  _userKvQuant: string,
+  userBatch: number,
+  userParallel: number,
+  splitMode: string,
+  weightsGb: number
+): number | null {
+  const baseNoBatch = findFitPoint(points, "base_no_batch");
+  const base = baseNoBatch || findFitPoint(points, "base");
+  if (!base) return null;
+
+  let totalMib = base.vram_mib;
+
+  // KV growth extrapolation for context difference
+  const kvGrowthPerToken = estimateKvGrowthPerToken(points);
+  if (kvGrowthPerToken !== null && userCtx !== base.ctx) {
+    totalMib += kvGrowthPerToken * (userCtx - base.ctx);
+  }
+
+  // Activation delta for batch difference
+  const actPerToken = estimateActivationPerBatchToken(points);
+  if (actPerToken !== null && userBatch !== base.batch) {
+    totalMib += actPerToken * (userBatch - base.batch);
+  }
+
+  // Split tax
+  if (splitMode.length > 0 && splitMode.toUpperCase() !== "NONE") {
+    const splitTax = estimateSplitTaxMiB(points, splitMode.toLowerCase());
+    if (splitTax !== null) {
+      totalMib += splitTax;
+    }
+  }
+
+  // Parallel overhead
+  if (userParallel > 1) {
+    const parallel2 = findFitPoint(points, "parallel_2");
+    if (parallel2) {
+      const perParallelOverhead = parallel2.vram_mib - base.vram_mib;
+      totalMib += perParallelOverhead * (userParallel - 1);
+    }
+  }
+
+  return Math.max(0, totalMib);
+}
+
+export function estimateDefaultOverheadGb(weightsGb: number): number {
+  return 0.3 + 0.1 + weightsGb * 0.02;
 }
 
 // ── Pre-compute shared values for all scenarios ─────────────────────────────
@@ -191,7 +310,7 @@ export function computeValues(input: ScenarioInput, validatedVramMib?: number): 
   // GPU-bound weight fraction — MOE_OPTIMAL always applies reduced fraction when selected.
   // Only attention + router weights go to GPU; expert FFN stays in RAM until dispatch.
   const gpuWeightFraction = (isMoe && engineConfig.offload_mode === "moe_optimal")
-    ? MOE_ATTENTION_RATIO + MOE_ROUTING_RATIO + MOE_NON_EXPERT_FFN_RATIO
+    ? computeMoeGpuWeightFraction(modelMeta)
     : 1.0;
 
   // ── Soft Cap: effective context length ────────────────────────────────
@@ -210,75 +329,54 @@ export function computeValues(input: ScenarioInput, validatedVramMib?: number): 
     ? (2 * modelMeta.n_layer * modelMeta.n_head_kv * headDim * effectiveCtx * kvBytesPerParam) / (1024 ** 3)
     : 0;
 
-  // ── CUDA overhead: Safety Floor + Dynamic Overhead ────────────────────
-  const numGpus = gpus.length;
+  // ── CUDA overhead ─────────────────────────────────────────────────────
+  const numGpusTotal = gpus.length;
+
+  // Split mode active?
+  const splitActive = engineConfig.split_mode.length > 0 && engineConfig.split_mode.toUpperCase() !== "NONE";
+
+  // GPUs actually used by this model — single GPU when no split, all when splitting
+  const deviceStr = engineConfig.device || "GPU-0";
+  const numGpusUsed = splitActive ? numGpusTotal : (deviceStr.includes("/") ? deviceStr.split("/").length : 1);
+
   const weightsOnGpuGb = weightsGb * gpuWeightFraction;
 
-  // Base overhead scales with model size — small models don't need 2.5 GB per GPU.
-  // Derived from FIT measurements: <4B ~0.8GB, 4-13B ~1.5GB, 13-70B ~2.5GB, >70B ~3.5GB
-  const baseOverheadPerGpu = weightsGb < 4 ? 0.8 :
-                              weightsGb < 13 ? 1.5 :
-                              weightsGb < 70 ? 2.5 : 3.5;
+  // Vision addon — mmproj file size only
+  const visionGb = engineConfig.vision !== "OFF" ? (input.mmprojSizeMib || 0) / 1024 : 0;
 
-  // Compute buffer scales with weight size but caps at reasonable levels
-  const computeBufferRatio = numGpus === 1
-    ? COMPUTE_BUFFER_PRIMARY_RATIO
-    : COMPUTE_BUFFER_PRIMARY_RATIO + (numGpus - 1) * COMPUTE_BUFFER_SECONDARY_RATIO;
-  const safetyFloorComputeBuffer = Math.min(weightsOnGpuGb * computeBufferRatio, weightsOnGpuGb * 0.3);
+  let overheadGb: number;
 
-  // Dynamic overhead has two components:
-  // 1) Activation memory (ubatch-based peak activations during forward pass)
-  // 2) Batch workspace buffer (CUDA staging buffers that scale with total batch size)
-  let activationOverhead = 0;
-  let batchWorkspaceGb = 0;
+  if (input.fitPoints && input.fitPoints.length > 0) {
+    // ── FIT-based estimation ────────────────────────────────────────────
+    const splitMode = splitActive ? engineConfig.split_mode.toLowerCase() : "";
+    const extrapolatedMib = extrapolateVramFromPoints(
+      input.fitPoints, userCtx, engineConfig.kv_quant, engineConfig.batch, engineConfig.parallel, splitMode, weightsGb
+    );
 
-  if (engineConfig.batch > 2048 || engineConfig.parallel > 1) {
-    const effectiveHeads = modelMeta.n_head_kv > 0 ? modelMeta.n_head_kv : modelMeta.n_head;
-    // Peak activation memory: one layer's activations at a time, processed in ubatch chunks.
-    // Cap effective ubatch to avoid blowup on huge batch configs.
-    const effectiveUbatch = Math.min(engineConfig.ubatch, 2048);
-    activationOverhead = (effectiveUbatch * modelMeta.n_embd * effectiveHeads * headDim * 2) / (1024 ** 3);
-
-    // Flash attention reduces activation memory by ~15%
-    if (engineConfig.flash_attn) {
-      activationOverhead *= 0.85;
+    if (extrapolatedMib !== null) {
+      // Derive overhead from measured FIT data: residual after subtracting known components.
+      // Use max of FIT-derived and formula-derived to avoid underestimation when extrapolation
+      // was measured at different config (e.g., q4_0/8K base vs user's f16/1M ctx).
+      const fitOverheadGb = Math.max(0, extrapolatedMib / 1024 - weightsOnGpuGb - kvCacheGb - visionGb);
+      const formulaOverheadGb = computeDefaultOverhead(engineConfig, modelMeta, weightsGb, numGpusUsed, effectiveCtx, isMoe);
+      overheadGb = Math.max(fitOverheadGb, formulaOverheadGb);
+    } else {
+      overheadGb = computeDefaultOverhead(engineConfig, modelMeta, weightsGb, numGpusUsed, effectiveCtx, isMoe);
     }
-    // MoE: only active experts compute → lower activation overhead in both modes.
-    // In REGULAR mode all expert weights are on GPU but only n_expert_used activate per token.
-    // In MOE_OPTIMAL mode expert FFN is streamed from RAM — same selective dispatch applies,
-    // so the 20% reduction holds for both paths.
-    if (isMoe) {
-      activationOverhead *= 0.8;
-    }
-    // YaRN adds +5% overhead for attention scaling calculations
-    if (ropeScaling === "yarn") {
-      activationOverhead *= 1.05;
-    }
-
-    // Batch workspace: CUDA staging buffers scale with total batch size, not ubatch.
-    // Factor ~1.5 GB per 4096 tokens — derived from real launch measurements. Cap at 2 GB.
-    batchWorkspaceGb = Math.min(engineConfig.batch * CUDA_BATCH_OVERHEAD_FACTOR, 2.0);
+  } else {
+    // ── Default formula (no FIT data) ───────────────────────────────────
+    overheadGb = computeDefaultOverhead(engineConfig, modelMeta, weightsGb, numGpusUsed, effectiveCtx, isMoe);
   }
 
-  const finalComputeBuffer = safetyFloorComputeBuffer + Math.max(activationOverhead, batchWorkspaceGb);
-  const parallelOverhead = Math.max(0, engineConfig.parallel - 1) * CUDA_PARALLEL_OVERHEAD_PER_REQ_GB;
-  // Context overhead scales past 64K but caps at 2 GB to prevent blowup on 1M ctx.
-  const ctxOverhead = effectiveCtx > 65536
-    ? Math.min((effectiveCtx - 65536) * CUDA_CTX_OVERHEAD_FACTOR, 2.0)
-    : 0;
-  const overheadGb = baseOverheadPerGpu * numGpus + finalComputeBuffer + RS_BUFFER_PER_GPU_GB * numGpus + parallelOverhead + ctxOverhead;
+  // vramTotalGb is ALWAYS the sum of components — guarantees guards and display are consistent.
+  let vramTotalGb: number;
+  if (validatedVramMib) {
+    vramTotalGb = validatedVramMib / 1024;
+  } else {
+    vramTotalGb = weightsOnGpuGb + kvCacheGb + overheadGb + visionGb;
+  }
 
-  // Vision addon
-  const visionGb = engineConfig.vision !== "OFF"
-    ? (input.mmprojSizeMib || 0) / 1024 + VISION_WORKSPACE_GB
-    : 0;
-
-  // Use measured VRAM total if provided (from FIT validation), otherwise use formula
-  const vramTotalGb = validatedVramMib 
-    ? validatedVramMib / 1024  // Convert MiB to GB
-    : weightsOnGpuGb + kvCacheGb + overheadGb + visionGb;
-
-  // GPU availability
+  // GPU availability — always uses all system GPUs for free memory tracking
   const gpuAvailable = gpus.map(g => {
     const manufactured = gpuManufacturedMib(g) / 1024;
     const used = g.memory_used / 1024;
@@ -289,20 +387,60 @@ export function computeValues(input: ScenarioInput, validatedVramMib?: number): 
   const multiTotalAvailable = gpuAvailable.reduce((a, b) => a + b, 0);
 
   // Target GPU from config
-  const deviceStr = engineConfig.device || "GPU-0";
   const targetGpuIdx = parseInt(deviceStr.replace("GPU-", "").split("/")[0], 10) || 0;
-
-  // Split mode active?
-  const splitActive = engineConfig.split_mode.length > 0 && engineConfig.split_mode.toUpperCase() !== "NONE";
 
   const ramWeightsGb = weightsGb - weightsOnGpuGb;
 
   return {
     weightsGb, kvCacheGb, overheadGb, visionGb, vramTotalGb,
     gpuAvailable, singleMaxAvailable, multiTotalAvailable,
-    targetGpuIdx, splitActive, numGpus,
+    targetGpuIdx, splitActive, numGpus: numGpusUsed,
     gpuWeightFraction, weightsOnGpuGb, ramWeightsGb,
   };
+}
+
+/** Compute overhead using the default formula (no FIT data available). */
+function computeDefaultOverhead(
+  engineConfig: EngineConfig,
+  modelMeta: ModelMetadata,
+  weightsGb: number,
+  numGpusUsed: number,
+  effectiveCtx: number,
+  isMoe: boolean
+): number {
+  const baseOverheadPerGpu = estimateDefaultOverheadGb(weightsGb);
+
+  // Activation memory: single universal constant, no arch tiers
+  const effectiveParallel = engineConfig.unified_kv ? 1 : engineConfig.parallel;
+  // Two components: peak activation from ubatch (processed simultaneously),
+  // CUDA workspace buffer from total batch size. Both scale independently.
+  let activationOverheadGb = (engineConfig.ubatch * effectiveParallel / 1024) * 1.5 * (modelMeta.n_embd / 4096);
+  const batchWorkspaceGb = Math.min((engineConfig.batch * effectiveParallel / 1024) * 0.375, 2.0);
+
+  // Flash attention reduces activation memory by ~15%
+  if (engineConfig.flash_attn) {
+    activationOverheadGb *= 0.85;
+  }
+
+  // MoE: only active experts compute → lower activation overhead
+  if (isMoe) {
+    activationOverheadGb *= 0.8;
+  }
+
+  const ropeScaling = (engineConfig.rope_scaling || "none").toLowerCase();
+  if (ropeScaling === "yarn") {
+    activationOverheadGb *= 1.05;
+  }
+
+  // Parallel overhead — kept even with unified_kv (per-sequence buffer still exists)
+  const parallelOverhead = Math.max(0, engineConfig.parallel - 1) * CUDA_PARALLEL_OVERHEAD_PER_REQ_GB;
+
+  // Context overhead scales past 64K but caps at 2 GB to prevent blowup on 1M ctx.
+  const ctxOverhead = effectiveCtx > 65536
+    ? Math.min((effectiveCtx - 65536) * CUDA_CTX_OVERHEAD_FACTOR, 2.0)
+    : 0;
+
+  return baseOverheadPerGpu * numGpusUsed + activationOverheadGb + batchWorkspaceGb + RS_BUFFER_PER_GPU_GB * numGpusUsed + parallelOverhead + ctxOverhead;
 }
 
 // ── Build Manifest (pure formatter) ────────────────────────────────────────
@@ -387,8 +525,7 @@ function computeMoeAlternative(
   
   // Apply MOE_OPTIMAL reduction (~25% to GPU, ~75% to RAM)
   if (currentGpuFraction === 1.0) {
-    const moeGpuFraction = 
-      MOE_ATTENTION_RATIO + MOE_ROUTING_RATIO + MOE_NON_EXPERT_FFN_RATIO; // ~0.25
+    const moeGpuFraction = computeMoeGpuWeightFraction(modelMeta);
     const moeWeightsOnGpuGb = computed.weightsGb * moeGpuFraction;
     
     // Check if MOE_OPTIMAL would be better than current scenario

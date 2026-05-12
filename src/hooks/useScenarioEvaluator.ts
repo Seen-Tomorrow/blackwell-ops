@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { ModelEntry, EngineConfig, GpuInfo, StackEntry, SystemInfo, VramManifest, FitScanResult } from "../lib/types";
-import { evaluate, applyFitValidation, type ScenarioInput, type RunningSlotInfo } from "../services/vram/scenarios/scenarios_factory";
+import { evaluate, applyFitValidation, type ScenarioInput, type RunningSlotInfo, type FitPoint } from "../services/vram/scenarios/scenarios_factory";
 
 interface UseScenarioEvaluatorProps {
   model: ModelEntry | null;
@@ -29,6 +29,10 @@ export function useScenarioEvaluator({ model, config, gpus, stack, systemInfo }:
   const lastModelPathRef = useRef("");
   const lastConfigKeyRef = useRef<string>("");
   const lastStackKeyRef = useRef<string>("");
+  const fitPointsRef = useRef<FitPoint[] | null>(null);
+  const lastFitModelPathRef = useRef("");
+  const lastScenarioDebugModelRef = useRef("");
+  const lastScenarioDebugNameRef = useRef("");
 
   // Unstable refs: these objects change every render/poll but shouldn't churn deps.
   // Read from refs inside the callback to get latest values without re-creating the callback.
@@ -43,7 +47,7 @@ export function useScenarioEvaluator({ model, config, gpus, stack, systemInfo }:
 
   // Config fingerprint — only keys that affect scenario evaluation.
   // Changes here trigger re-eval (HW buttons, param chips). Telemetry noise doesn't touch these.
-  const configKey = `${config.Device || ""}|${config.Split || ""}|${config["Offload_Mode"] || ""}|${config.CTX || ""}|${config["KV-Quant"] || ""}|${config.Batch ?? ""}|${config.uBatch ?? ""}|${config.Parallel ?? ""}|${config["Flash-Attn"] || ""}|${config.Offload || ""}`;
+  const configKey = `${config.Device || ""}|${config.Split || ""}|${config["Offload_Mode"] || ""}|${config.CTX || ""}|${config["KV-Quant"] || ""}|${config.Batch ?? ""}|${config.uBatch ?? ""}|${config.Parallel ?? ""}|${config["Flash-Attn"] || ""}|${config.Offload || ""}|${config.Vision || ""}|${config["Unified-KV"] || ""}|${config["RoPE_Scaling"] || ""}|${config["RoPE_Scale"] ?? ""}`;
 
   // Stack fingerprint — changes when running engines start/stop or their VRAM shifts.
   const stackKey = stack
@@ -89,6 +93,9 @@ export function useScenarioEvaluator({ model, config, gpus, stack, systemInfo }:
       split_mode: curConfig.Split || "none",
       vision: curConfig.Vision?.toUpperCase() === "OFF" ? "OFF" : "AUTO",
       flash_attn: curConfig["Flash-Attn"]?.toString().toLowerCase() !== "off",
+      unified_kv: curConfig["Unified-KV"]?.toString().toLowerCase() !== "off",
+      rope_scaling: curConfig["RoPE_Scaling"] || undefined,
+      rope_scale: typeof curConfig["RoPE_Scale"] === 'number' ? curConfig["RoPE_Scale"] : parseFloat(String(curConfig["RoPE_Scale"])) || undefined,
       jinja: curConfig.Jinja?.toString().toUpperCase() !== "OFF",
       cont_batching: curConfig["Cont-Batching"]?.toString().toUpperCase() !== "OFF",
       metrics: curConfig.Metrics?.toString().toUpperCase() === "ON",
@@ -127,11 +134,62 @@ export function useScenarioEvaluator({ model, config, gpus, stack, systemInfo }:
       ramAvailableGb: sysInfo.available_memory_mib / 1024,
       ramManufacturedGb: sysInfo.total_memory_manufactured_mib / 1024,
       mmprojSizeMib: model.mmproj_size_mib,
+      fitPoints: fitPointsRef.current || undefined,
     };
 
     try {
       const result = evaluate(input);
       setManifest(result);
+
+      // Scenario debug emission (deduped by model path + scenario name)
+      if (model.path !== lastScenarioDebugModelRef.current || result.scenario !== lastScenarioDebugNameRef.current) {
+        const modelName = model.path.split(/[\/\\]/).pop() || model.path;
+        console.warn(`[SCENARIO] Model: ${modelName} | Meta: ${model.metadata ? 'YES' : 'NO'} | Arch: ${model.metadata?.architecture || '?'} | Layers: ${model.metadata?.n_layer ?? '?'} | Params: ${model.metadata?.total_params_str || '?'} | Size: ${(model.metadata?.file_size_bytes / (1024**3)).toFixed(1)}G`);
+
+        const fps = fitPointsRef.current;
+        if (fps && fps.length > 0) {
+          const labels = fps.map(fp => fp.label.toLowerCase());
+          const hasBase = labels.some(l => l.includes('base'));
+          const hasQuant = labels.some(l => l.includes('quant') || l.includes('q4') || l.includes('q8') || l.includes('f16'));
+          const hasCtxSweep = labels.filter(l => l.includes('ctx')).length >= 2;
+          const missingLabels: string[] = [];
+          if (!hasBase) missingLabels.push('base');
+          if (!hasQuant) missingLabels.push('quant variants');
+          if (!hasCtxSweep) missingLabels.push('ctx sweep');
+          console.warn(`[SCENARIO] FIT: ${fps.length}pts loaded${missingLabels.length > 0 ? ' | MISSING: ' + missingLabels.join(', ') : ''}`);
+        } else {
+          console.warn('[SCENARIO] FIT: NO SCAN DATA');
+        }
+
+        const totalNeedGb = result.vramTotalGb;
+        console.warn(`[SCENARIO] Scenario: ${result.scenario} | W:${result.vramWeightsGb.toFixed(1)}G KV:${result.vramKvGb.toFixed(1)}G OH:${result.vramOverheadGb.toFixed(1)}G Total:${totalNeedGb.toFixed(1)}G`);
+
+        const allocText = result.gpuAllocations.map(a => {
+          const pct = ((a.projectedLoadGb / a.vramManufacturedGb) * 100).toFixed(0);
+          return `GPU-${a.gpuIndex}=${a.projectedLoadGb.toFixed(1)}G(${pct}%)`;
+        }).join(', ');
+        console.warn(`[SCENARIO] GPU: ${allocText} | Layers: ${result.gpuLayers} GPU / ${result.ramLayers} RAM`);
+
+        if (result.validatedVramMib) {
+          const validatedGb = result.validatedVramMib / 1024;
+          const formulaTotalGb = result.formulaVramTotalGb || totalNeedGb;
+          const delta = ((validatedGb - formulaTotalGb) / formulaTotalGb * 100);
+          console.warn(`[SCENARIO] Validated: ${validatedGb.toFixed(1)}G (${delta > 0 ? '+' : ''}${delta.toFixed(1)}% from formula)`);
+        } else {
+          console.warn('[SCENARIO] Validated: NO (formula only)');
+        }
+
+        if (result.validatedComponentsMib && result.validatedComponentsMib.length > 0) {
+          const compText = result.validatedComponentsMib.map((c, i) => `GPU${i}:W=${c.model_mib} KV=${c.ctx_mib} C=${c.compute_mib}`).join(' | ');
+          console.warn(`[SCENARIO] Components: ${compText}`);
+        }
+
+        const fa = result.style.uiTemplate ? 'on' : 'off';
+        console.warn(`[SCENARIO] Config: CTX=${engineConfig.ctx_size} KVQ=${engineConfig.kv_quant} Batch=${engineConfig.batch} Par=${engineConfig.parallel} Split=${engineConfig.split_mode} FA=${fa} Offload=${engineConfig.offload_mode}`);
+
+        lastScenarioDebugModelRef.current = model.path;
+        lastScenarioDebugNameRef.current = result.scenario;
+      }
     } catch (e) {
       console.error("[ScenarioEvaluator]", e);
       setManifest(null);
@@ -148,6 +206,23 @@ export function useScenarioEvaluator({ model, config, gpus, stack, systemInfo }:
     };
   }, []);
 
+  // Fetch FIT scan points when model path changes, cache per model
+  useEffect(() => {
+    if (!model) {
+      fitPointsRef.current = null;
+      lastFitModelPathRef.current = "";
+      return;
+    }
+    if (model.path === lastFitModelPathRef.current) return;
+    lastFitModelPathRef.current = model.path;
+
+    invoke("get_fit_scan_points", { modelPath: model.path }).then((result: any) => {
+      fitPointsRef.current = result ?? null;
+    }).catch(() => {
+      fitPointsRef.current = null;
+    });
+  }, [model?.path]);
+
   useEffect(() => {
     if (!model || gpus.length === 0) {
       setManifest(null);
@@ -155,6 +230,7 @@ export function useScenarioEvaluator({ model, config, gpus, stack, systemInfo }:
       lastModelPathRef.current = "";
       lastConfigKeyRef.current = "";
       lastStackKeyRef.current = "";
+      fitPointsRef.current = null;
       return;
     }
 
@@ -171,10 +247,6 @@ export function useScenarioEvaluator({ model, config, gpus, stack, systemInfo }:
     const stackChanged = stackKey !== lastStackKeyRef.current || isFirstMount;
     const sysInfoChanged = sysInfoLoaded && !isFirstMount;
 
-    // Only log when something actually changed (not Strict Mode double-mount noise)
-    if (modelChanged || topologyChanged || configChanged || stackChanged || sysInfoChanged) {
-      console.debug(`[ScenarioEvaluator] model: ${modelChanged} topo: ${topologyChanged} config: ${configChanged} stack: ${stackChanged} sysInfo: ${sysInfoChanged}`);
-    }
     if (!modelChanged && !topologyChanged && !configChanged && !stackChanged && !sysInfoChanged) return;
     lastModelPathRef.current = model.path;
     lastTopologyRef.current = gpuTopologyKey;
@@ -194,6 +266,7 @@ export function useScenarioEvaluator({ model, config, gpus, stack, systemInfo }:
       const curConfig = configRef.current;
       const result: FitScanResult = await invoke("fit_scan_model", {
         modelPath: model.path,
+        providerId: curConfig.backend_type || null,
         ctxSize: curConfig.CTX || "32K",
         kvQuant: curConfig["KV-Quant"] || "f16",
         device: curConfig.Device || "GPU-0",
@@ -249,6 +322,7 @@ export function useScenarioEvaluator({ model, config, gpus, stack, systemInfo }:
         ramAvailableGb: sysInfo.available_memory_mib / 1024,
         ramManufacturedGb: sysInfo.total_memory_manufactured_mib / 1024,
         mmprojSizeMib: model.mmproj_size_mib,
+        fitPoints: fitPointsRef.current || undefined,
       };
 
       // Evaluate with measured VRAM total — this will pick the correct scenario based on reality
@@ -264,24 +338,43 @@ export function useScenarioEvaluator({ model, config, gpus, stack, systemInfo }:
       };
       
       setManifest(validatedManifest);
-      
-      // Save to localStorage for VramDiagnostics panel (isolated, no shared state)
-      try {
-        const offloadMode = (curConfig["Offload_Mode"] || "regular").toString();
-        const storageKey = `BlackOps-vram-validate:${model.path}:${offloadMode}`;
-        const data = {
-          validatedVramMib: result.vram_mib,
-          validatedComponentsMib: result.gpu_components_mib,
-          formulaVramTotalGb: newManifest.formulaVramTotalGb,
-          vramWeightsGb: newManifest.vramWeightsGb,
-          vramKvGb: newManifest.vramKvGb,
-          vramOverheadGb: newManifest.vramOverheadGb,
-        };
-        console.log("[FitValidate] Saving to localStorage:", storageKey, data);
-        localStorage.setItem(storageKey, JSON.stringify(data));
-        window.dispatchEvent(new CustomEvent("vram-validated", { detail: model.path }));
-      } catch (e) {
-        console.warn("[FitValidate] localStorage save failed:", e);
+
+      // Validation debug emission — emit when scenario changed or validation newly applied
+      if (model.path !== lastScenarioDebugModelRef.current || newManifest.scenario !== lastScenarioDebugNameRef.current || result.vram_mib !== validatedManifest.validatedVramMib) {
+        const modelName = model.path.split(/[\/\\]/).pop() || model.path;
+        console.warn(`[SCENARIO] Model: ${modelName} | Meta: YES | Arch: ${model.metadata?.architecture || '?'} | Layers: ${model.metadata?.n_layer ?? '?'} | Params: ${model.metadata?.total_params_str || '?'} | Size: ${(model.metadata?.file_size_bytes / (1024**3)).toFixed(1)}G`);
+
+        const fps = fitPointsRef.current;
+        if (fps && fps.length > 0) {
+          console.warn(`[SCENARIO] FIT: ${fps.length}pts loaded | VALIDATED: ${(result.vram_mib / 1024).toFixed(1)}G`);
+        } else {
+          console.warn('[SCENARIO] FIT: NO SCAN DATA');
+        }
+
+        const totalNeedGb = validatedManifest.vramTotalGb;
+        console.warn(`[SCENARIO] Scenario: ${newManifest.scenario} | W:${validatedManifest.vramWeightsGb.toFixed(1)}G KV:${validatedManifest.vramKvGb.toFixed(1)}G OH:${validatedManifest.vramOverheadGb.toFixed(1)}G Total:${totalNeedGb.toFixed(1)}G`);
+
+        const allocText = validatedManifest.gpuAllocations.map(a => {
+          const pct = ((a.projectedLoadGb / a.vramManufacturedGb) * 100).toFixed(0);
+          return `GPU-${a.gpuIndex}=${a.projectedLoadGb.toFixed(1)}G(${pct}%)`;
+        }).join(', ');
+        console.warn(`[SCENARIO] GPU: ${allocText} | Layers: ${validatedManifest.gpuLayers} GPU / ${validatedManifest.ramLayers} RAM`);
+
+        const validatedGb = result.vram_mib / 1024;
+        const formulaTotalGb = validatedManifest.formulaVramTotalGb || totalNeedGb;
+        const delta = ((validatedGb - formulaTotalGb) / formulaTotalGb * 100);
+        console.warn(`[SCENARIO] Validated: ${validatedGb.toFixed(1)}G (${delta > 0 ? '+' : ''}${delta.toFixed(1)}% from formula)`);
+
+        if (result.gpu_components_mib && result.gpu_components_mib.length > 0) {
+          const compText = result.gpu_components_mib.map((c, i) => `GPU${i}:W=${c.model_mib} KV=${c.ctx_mib} C=${c.compute_mib}`).join(' | ');
+          console.warn(`[SCENARIO] Components: ${compText}`);
+        }
+
+        const fa = newManifest.style.uiTemplate ? 'on' : 'off';
+        console.warn(`[SCENARIO] Config: CTX=${engineConfig.ctx_size} KVQ=${engineConfig.kv_quant} Batch=${engineConfig.batch} Par=${engineConfig.parallel} Split=${engineConfig.split_mode} FA=${fa} Offload=${engineConfig.offload_mode}`);
+
+        lastScenarioDebugModelRef.current = model.path;
+        lastScenarioDebugNameRef.current = newManifest.scenario;
       }
     } catch (e) {
       console.error("[FitValidate]", e);

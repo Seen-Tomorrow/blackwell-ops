@@ -5,13 +5,14 @@ interface UseInferenceLauncherOptions {
   paramDefs: ParamDef[];
   currentConfig: Record<string, any>;
   backendType?: string;
-  testFlagsRaw?: string; // Raw CLI flags — bypasses all user params when set
+  testFlagsRaw?: string; // Raw CLI flags — bypasses all user params when set (replace mode) or prepends to config (add mode)
+  testFlagsMode?: "add" | "replace"; // "replace": bypass all params, "add": prepend to config command
 }
 
 const OVERRIDES_KEY_PREFIX = "BlackOps-admin-catalog-override:";
 
 export function useInferenceLauncher(options: UseInferenceLauncherOptions) {
-  const { paramDefs, currentConfig, backendType = "ggml-stable", testFlagsRaw } = options;
+  const { paramDefs, currentConfig, backendType = "ggml-stable", testFlagsRaw, testFlagsMode = "replace" } = options;
 
   // Build sub_params CLI args for a given param value
   const buildSubParamsArgs = useCallback((def: ParamDef, selectedValue: string | number): string[] => {
@@ -78,8 +79,8 @@ export function useInferenceLauncher(options: UseInferenceLauncherOptions) {
 
   // Build the complete EngineConfig for launch — merges template + admin params
   const buildInferenceConfig = useCallback((baseConfig: Omit<EngineConfig, 'extra_params'>): EngineConfig => {
-    // ── TEST MODE: bypass all user params, use raw flags only ───────────────────────
-    if (testFlagsRaw && testFlagsRaw.trim()) {
+    // ── TEST MODE (REPLACE): bypass all user params, use raw flags only ───────────────
+    if (testFlagsRaw && testFlagsRaw.trim() && testFlagsMode === "replace") {
       const testArgs: string[] = testFlagsRaw.trim().split(/\s+/).filter(Boolean);
       return { ...baseConfig, extra_params: { __test_args: testArgs } };
     }
@@ -127,8 +128,14 @@ export function useInferenceLauncher(options: UseInferenceLauncherOptions) {
       extraParams["__sub_args"] = subParamArgs;
     }
 
+    // ── TEST MODE (ADD): prepend raw flags to config command ───────────────
+    if (testFlagsRaw && testFlagsRaw.trim()) {
+      const testArgs: string[] = testFlagsRaw.trim().split(/\s+/).filter(Boolean);
+      extraParams["__test_args_add"] = testArgs; // Prepend these args before template params in Rust
+    }
+
     return { ...baseConfig, extra_params: Object.keys(extraParams).length > 0 ? extraParams : undefined };
-  }, [testFlagsRaw, paramDefs, currentConfig, buildSubParamsArgs]);
+  }, [testFlagsRaw, testFlagsMode, paramDefs, currentConfig, buildSubParamsArgs]);
 
   // Get the effective value for a param (from localStorage overrides + currentConfig)
   const getEffectiveValue = useCallback((def: ParamDef): string | number | undefined => {

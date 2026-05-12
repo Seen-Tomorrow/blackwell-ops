@@ -1,7 +1,14 @@
 import { useState, useCallback, useEffect, useRef, Fragment } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { ProviderConfig, ParamDef, FitScanComplete, FitScanProgress, FitScanFull, BuildInfo } from "../lib/types";
+import type { ProviderConfig, ParamDef, FitScanComplete, FitScanProgress, FitScanFull, FitDataPoint, BuildInfo } from "../lib/types";
 import FoundryModal from "./FoundryModal";
+
+function formatElapsed(startTime: number): string {
+  const secs = Math.floor((Date.now() - startTime) / 1000);
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
 
 interface ProvidersConfigProps {
   providers: ProviderConfig[];
@@ -32,6 +39,7 @@ interface ProviderScanState {
   failed: number;
   results?: FitScanComplete;
   error?: string;
+  scanStartTime?: number; // epoch ms when scan started
 }
 
 export default function ProvidersConfig({ providers: initialProviders, onProvidersChange }: ProvidersConfigProps) {
@@ -237,17 +245,21 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
   const handleScanLibrary = useCallback(async (providerId: string) => {
     const currentParallel = parallelRef.current[providerId] ?? 2;
 
-    setScanStates((prev) => ({
-      ...prev,
-      [providerId]: {
-        status: "scanning",
-        parallel: currentParallel,
-        totalModels: 0,
-        completed: 0,
-        failed: 0,
-        results: undefined, // Clear old in-memory points so progress starts fresh
-      },
-    }));
+    setScanStates((prev) => {
+      const oldState = prev[providerId];
+      return {
+        ...prev,
+        [providerId]: {
+          status: "scanning",
+          parallel: currentParallel,
+          totalModels: 0,
+          completed: 0,
+          failed: 0,
+          results: oldState?.results ? { ...oldState.results, results: {} } : undefined, // Preserve scan_points_total for live progress display
+          scanStartTime: Date.now(),
+        },
+      };
+    });
 
     try {
       // Get provider config to find batch/ubatch defaults
@@ -263,8 +275,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
         parallelCount: Math.max(currentParallel, 1),
         batch,
         ubatch,
-        flashAttn: true,
-        forceRescan: true, // Always clear stale cache before scanning
+        forceRescan: false, // Incremental — only scans missing points per model
       });
 
       setScanStates((prev) => ({
@@ -278,6 +289,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
           results: result,
         },
       }));
+
     } catch (err) {
       console.error(`Scan library failed for ${providerId}:`, err);
       setScanStates((prev) => ({
@@ -332,19 +344,29 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
             for (const [pid, ps] of Object.entries(prev)) {
               if (ps.status !== "scanning") continue;
 
-              const existingResults = ps.results?.results ?? {};
-              const prevEntry: FitScanFull | undefined = existingResults[evt.model_path];
+               const existingResults = ps.results?.results ?? {};
+               const prevEntry: FitScanFull | undefined = existingResults[evt.model_path];
 
-              // Track point count — only increment on "complete" status events, cap at 21
-              let pointCount = prevEntry ? (prevEntry.points.length || 0) : 0;
-              if (evt.status === "complete" && pointCount < 21) {
-                pointCount++;
-              }
+                // On "complete" events with label + vram_mib, store the actual point data so VRAM columns update live during scan
+                let newPoints = prevEntry ? (prevEntry.points as any[]).filter(Boolean) : [];
+                 if (evt.status === "complete" && evt.vram_mib != null && evt.label) {
+                   const pt: FitDataPoint = {
+                     label: evt.label, ctx: 0, kv_quant: "", batch: 0, parallel: 0, split_mode: "",
+                     vram_mib: evt.vram_mib,
+                   };
+                  // Replace existing point with same label if present (from old cache), otherwise append
+                  const existingIdx = newPoints.findIndex((p: FitDataPoint) => p.label === evt.label);
+                  if (existingIdx >= 0) {
+                    newPoints[existingIdx] = pt;
+                   } else if (newPoints.length < (ps.results?.scan_points_total ?? 999)) {
+                    newPoints.push(pt);
+                  }
+                }
 
-              // Create new entry object to ensure React detects state change
-              const entry: FitScanFull = prevEntry
-                ? { ...prevEntry, points: new Array(pointCount) }
-                : { model_path: evt.model_path, points: [], error: undefined };
+               // Create new entry — during scan this has live point data, after completion it gets replaced by full result
+               const entry: FitScanFull = prevEntry
+                 ? { ...prevEntry, points: newPoints }
+                 : { model_path: evt.model_path, points: newPoints, error: undefined };
 
               const updatedResults = { ...existingResults, [evt.model_path]: entry };
               return {
@@ -411,7 +433,10 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
               />
             </div>
             <p className="text-[8px] font-mono text-stealth-muted mt-0.5">
-              {state.status === "scanning" ? `${Object.keys(state.results?.results ?? {}).length} models...` : `${state.completed} / ${state.totalModels}`}{state.failed > 0 && state.status !== "scanning" ? ` (${state.failed} failed)` : ""}
+              {state.status === "scanning"
+                ? `${Object.keys(state.results?.results ?? {}).length} models...`
+                : `${state.completed} / ${state.totalModels}`}{state.failed > 0 && state.status !== "scanning" ? ` (${state.failed} failed)` : ""}
+              {state.scanStartTime && state.status === "complete" ? ` — done in ${formatElapsed(state.scanStartTime)}` : ""}
             </p>
           </div>
         )}
@@ -438,11 +463,11 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
               const pts = full.points ?? [];
               const nPts = pts.length;
 
-               // Find base (8K/q4_0) and 128K/q4_0 points — filter undefined slots from progress tracking
-               const realPts = pts.filter(Boolean);
-               const basePt = realPts.find(p => p.label === "base");
-               const q4Pt = realPts.find(p => p.label === "quant_q4");
-              const isComplete = nPts >= 21;
+               // Only show VRAM columns when we have labeled data (post-completion or mid-scan with real labels)
+               const basePt = pts.find((p: FitDataPoint) => p?.label === "base");
+               const q4Pt = pts.find((p: FitDataPoint) => p?.label === "quant_q4");
+                const pointsTotal = state.results!.scan_points_total ?? 999;
+                const isComplete = nPts >= pointsTotal;
 
               return (
                 <div key={path} className="grid grid-cols-[20px_minmax(0,_1fr)_64px_64px_56px] items-center gap-1 text-[8px] font-mono py-0.5">
@@ -452,9 +477,9 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
                   <span className="text-stealth-muted truncate" title={path}>
                     {modelName}
                   </span>
-                  {basePt ? <span className="text-telemetry-cyan">{(basePt.vram_mib / 1024).toFixed(1)}G</span> : <span></span>}
-                  {q4Pt ? <span className="text-telemetry-cyan">{(q4Pt.vram_mib / 1024).toFixed(1)}G</span> : <span></span>}
-                  <span className={`${isComplete ? "text-nv-green" : "text-stealth-muted"}`}>{nPts}/21</span>
+                  {basePt && basePt.vram_mib > 0 ? <span className="text-telemetry-cyan">{(basePt.vram_mib / 1024).toFixed(1)}G</span> : <span></span>}
+                  {q4Pt && q4Pt.vram_mib > 0 ? <span className="text-telemetry-cyan">{(q4Pt.vram_mib / 1024).toFixed(1)}G</span> : <span></span>}
+                    <span className={`${isComplete ? "text-nv-green" : "text-stealth-muted"}`}>{nPts}/{pointsTotal}</span>
                 </div>
               );
             })}
@@ -526,8 +551,8 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
               <label className="text-[10px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider">Template</label>
               <select value={form.template_type} onChange={(e) => setForm((prev) => ({ ...prev, template_type: e.target.value }))}
                 className="flex-1 bg-transparent border-b border-yellow-400/60 text-[11px] font-mono text-white focus:border-yellow-400 focus:outline-none px-1 py-0.5 appearance-none">
-                <option value="ggml-llama">GGML-Llama (19 params)</option>
-                <option value="ik-llama">IK-Llama (7 params)</option>
+                <option value="ggml-llama">GGML-Llama (22 params)</option>
+                <option value="ik-llama">IK-Llama (8 params)</option>
                 <option value="">Custom (manual)</option>
               </select>
             </div>
@@ -769,8 +794,8 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
                     <label className="text-[10px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider">Template</label>
                     <select value={form.template_type} onChange={(e) => setForm((prev) => ({ ...prev, template_type: e.target.value }))}
                       className="flex-1 bg-transparent border-b border-yellow-400/60 text-[11px] font-mono text-white focus:border-yellow-400 focus:outline-none px-1 py-0.5">
-                      <option value="ggml-llama" style={{fontSize: '11px'}}>GGML-Llama (19 params)</option>
-                      <option value="ik-llama" style={{fontSize: '11px'}}>IK-Llama (7 params)</option>
+                      <option value="ggml-llama" style={{fontSize: '11px'}}>GGML-Llama (22 params)</option>
+                      <option value="ik-llama" style={{fontSize: '11px'}}>IK-Llama (8 params)</option>
                       <option value="" style={{fontSize: '11px'}}>Custom (manual)</option>
                     </select>
                   </div>

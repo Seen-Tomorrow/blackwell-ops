@@ -1,8 +1,11 @@
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { useState, useCallback, useMemo, useEffect, type Dispatch, type SetStateAction } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { ModelEntry, EngineConfig, GpuInfo, ProviderConfig, SystemInfo, ModelMetadata, StackEntry } from "../lib/types";
+// SANITY-BOX — added SanityEntry import + SanityBadge/SanityPanel components
+import type { SanityEntry } from "../lib/types";
 import EngineConfigPanel from "./EngineConfigPanel";
+import { SanityBadge, SanityPanel } from "./SanityBox";
 
 import { useKeyboardNav } from "../hooks/useKeyboardNav";
 
@@ -21,6 +24,8 @@ interface ModelCatalogProps {
   batchScanState: {active: boolean; scanned: number; failed: number; total: number};
   setBatchScanState: React.Dispatch<React.SetStateAction<{active: boolean; scanned: number; failed: number; total: number}>>;
   stack: StackEntry[];
+  // SANITY-BOX — sanity log entries from App.tsx
+  sanityLog?: SanityEntry[];
 }
 
 const LAST_MODEL_KEY = "BlackOps-last-model";
@@ -31,7 +36,7 @@ type SortField = (keyof ModelEntry) | "date";
 type SortDirection = "asc" | "desc";
 
 export default function ModelCatalog(props: ModelCatalogProps) {
-  const { models, gpus, onLaunch, error, onReload, providers: externalProviders, committedVramMib, isAdminUnlocked, systemInfo, scanningPath, setScanningPath, batchScanState, setBatchScanState, stack } = props;
+  const { models, gpus, onLaunch, error, onReload, providers: externalProviders, committedVramMib, isAdminUnlocked, systemInfo, scanningPath, setScanningPath, batchScanState, setBatchScanState, stack, sanityLog } = props;
   const [search, setSearch] = useState("");
   const [selectedModel, setSelectedModel] = useState<ModelEntry | null>(null);
   const [sortField, setSortField] = useState<SortField>(() => {
@@ -40,6 +45,22 @@ export default function ModelCatalog(props: ModelCatalogProps) {
   const [sortDirection, setSortDirection] = useState<SortDirection>(() => {
     try { return (localStorage.getItem(SORT_DIR_KEY) as SortDirection) || "asc"; } catch { return "asc"; }
   });
+
+  // SANITY-BOX — state for expanded panel + tab selection (persisted)
+  const [sanityExpanded, setSanityExpanded] = useState(() => {
+    try { return localStorage.getItem("BlackOps-sanity-expanded") === "true"; } catch { return false; }
+  });
+  const [sanityTab, setSanityTab] = useState<"all" | "js" | "rust" | "scenario">(() => {
+    try { return (localStorage.getItem("BlackOps-sanity-tab") as "all" | "js" | "rust") || "all"; } catch { return "all"; }
+  });
+
+  // SANITY-BOX — persist state changes
+  useEffect(() => {
+    try { localStorage.setItem("BlackOps-sanity-expanded", String(sanityExpanded)); } catch {}
+  }, [sanityExpanded]);
+  useEffect(() => {
+    try { localStorage.setItem("BlackOps-sanity-tab", sanityTab); } catch {}
+  }, [sanityTab]);
 
   // Restore last selected model from localStorage once models are loaded
   useEffect(() => {
@@ -410,6 +431,14 @@ export default function ModelCatalog(props: ModelCatalogProps) {
           SCAN ALL
         </button>
       )}
+      {/* SANITY-BOX — REFRESH moved from top bar to here */}
+      <button
+        onClick={onReload}
+        className="px-2 py-0.5 text-[8px] font-mono border border-stealth-border text-stealth-muted hover:text-nv-green hover:border-nv-green/60 transition-colors rounded-sm"
+        title="Refresh model list"
+      >
+        ➸ REFRESH
+      </button>
     </div>
   );
 
@@ -425,17 +454,14 @@ export default function ModelCatalog(props: ModelCatalogProps) {
         <div className="flex items-center gap-3">
           <h2 className="text-xs font-mono text-nv-green tracking-widest glitch-text">✦ MODEL CATALOG</h2>
           <span className="text-[9px] font-mono text-stealth-muted">{filtered.length} / {models.length}</span>
-          <span className={`text-[8px] font-mono px-1.5 py-0.5 rounded-sm border transition-colors ${zone === "config" ? "border-telemetry-cyan/40 text-telemetry-cyan bg-telemetry-cyan/10" : "border-stealth-border/30 text-stealth-muted/40"}`}>
-            {zone === "config" ? "CONFIG [Ctrl+Enter]" : "SEARCH"}
-          </span>
+          {zone === "config" && (
+            <span className="text-[8px] font-mono px-1.5 py-0.5 rounded-sm border border-telemetry-cyan/40 text-telemetry-cyan bg-telemetry-cyan/10">
+              CONFIG [Ctrl+Enter]
+            </span>
+          )}
         </div>
-        <button
-          onClick={onReload}
-          className="px-2 py-0.5 text-[8px] font-mono border border-stealth-border text-stealth-muted hover:text-nv-green hover:border-nv-green/60 transition-colors rounded-sm"
-          title="Refresh model list"
-        >
-          ➸ REFRESH
-        </button>
+        {/* SANITY-BOX — inline badge in header right side */}
+        <SanityBadge entries={sanityLog || []} isAdminUnlocked={isAdminUnlocked} expanded={sanityExpanded} onToggle={() => setSanityExpanded(v => !v)} />
       </motion.div>
 
       {/* Error banner */}
@@ -462,6 +488,11 @@ export default function ModelCatalog(props: ModelCatalogProps) {
           className="w-full bg-depth-black/50 border border-stealth-border text-white text-xs font-mono px-3 py-1.5 focus:outline-none focus:border-nv-green/60 placeholder:text-stealth-muted rounded-sm"
         />
       </div>
+
+      {/* SANITY-BOX — expanded panel, full-width below search bar */}
+      <AnimatePresence>
+        <SanityPanel entries={sanityLog || []} isAdminUnlocked={isAdminUnlocked} expanded={sanityExpanded} tab={sanityTab} onTabChange={setSanityTab} />
+      </AnimatePresence>
 
       {/* Split panels */}
       <div className="flex flex-1 overflow-hidden">

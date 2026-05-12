@@ -100,6 +100,9 @@ pub struct ModelEntry {
     pub vision: bool,
     #[serde(default)]
     pub mmproj: Option<String>,
+    /// MMProj file size in MiB (for vision model VRAM calculation)
+    #[serde(default, skip_serializing_if = "Option::is_none", rename = "mmproj_size_mib")]
+    pub mmproj_size_mib: Option<f64>,
     #[serde(default)]
     pub backend_type: String,
     /// Human-readable label of the configured path this model came from (e.g. ".lmstudio", "D: Archive").
@@ -210,6 +213,8 @@ pub struct ModelEntryInternal {
     pub size_str: String,
     pub vision: bool,
     pub mmproj: Option<String>,
+    /// MMProj file size in MiB (for vision model VRAM calculation)
+    pub mmproj_size_mib: f64,
     pub model_bytes: u64,
     pub total_bytes: u64,
     pub shards: i32,
@@ -272,9 +277,9 @@ pub struct ProviderConfig {
     #[serde(default)]
     pub build_profile: String,
     /// Template type determines which genesis_template.json params to use.
-    /// "ggml-llama" = ggml-stable/ggml-dev (19 shared params),
-    /// "ik-llama" = ik-extreme (7 IK-specific params),
-    /// "" = custom (user adds all params manually).
+    /// "ggml-llama" = ggml-stable (22 params, master for GGML family),
+    /// "ik-llama" = ik-extreme (8 IK-specific params),
+    /// "" = custom (user adds all params manually, no template).
     #[serde(default)]
     pub template_type: String,
     /// Per-environment build info (vanguard/stable/fresh) — captured from binary --version + file mtime.

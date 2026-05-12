@@ -68,8 +68,7 @@ const tabs: { id: Tab; label: string; icon: string; hidden?: boolean }[] = [
   { id: "catalog", label: "MODELS", icon: "\u269B" },
   { id: "modelhub", label: "MODEL HUB", icon: "\uD83DDDC4" },
   { id: "stack", label: "ENGINES", icon: "\uD83D\uDDA4" },
-  { id: "reactor", label: "REACTOR", icon: "\u2623", hidden: true },
-  { id: "reactor11", label: "Reactor11", icon: "\u269B" },
+{ id: "reactor11", label: "Reactor11", icon: "\u269B" },
   { id: "telemetry", label: "TELEMETRY", icon: "\uD83D\uDCCA" },
   { id: "logs", label: "LOGS", icon: "\uD83D\uDCCD" },
   { id: "config", label: "CONFIG", icon: "\u2699" },
@@ -206,6 +205,7 @@ export default function Layout({ activeTab, onTabChange, children }: LayoutProps
         <div className="flex items-center gap-4">
           <span>PLATFORM: WINDOWS</span>
           <span>TOKIO: ACTIVE</span>
+          <span>BUILD: {__APP_VERSION__}</span>
         </div>
         <div className="flex items-center gap-4 relative">
           {isConfigTab && (

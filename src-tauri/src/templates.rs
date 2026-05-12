@@ -129,7 +129,7 @@ impl ProviderTemplate {
             .unwrap_or_else(|| panic!("Missing ggml-stable template in embedded genesis"))
     }
 
-    /// Return all known provider IDs from the Genesis template (ggml-stable, ggml-dev, ik-extreme).
+    /// Return all known provider IDs from the Genesis template (ggml-stable, ik-extreme).
     pub fn known_ids() -> Vec<String> {
         let bundle: TemplateBundle = serde_json::from_str(RECOVERY_DEFAULT)
             .expect("Embedded genesis_template.json must be valid");
@@ -147,10 +147,11 @@ impl ProviderTemplate {
     }
 
     /// Resolve a provider ID to the genesis_template.json template key.
+    /// Deprecated: use config::template_key_for_type() instead, which resolves through template_type.
     pub fn template_key_for_id(id: &str) -> String {
         match id {
             "ik-extreme" => "ik-extreme".to_string(),
-            _ => "ggml-stable".to_string(), // ggml-dev shares same params as ggml-stable
+            _ => "ggml-stable".to_string(),
         }
     }
 
@@ -246,7 +247,7 @@ impl ProviderTemplate {
         args.extend(["-m".into(), config.model_path.clone()]);
         args.extend(["--port".into(), config.port.to_string()]);
 
-        // ── TEST MODE: bypass all params, use only raw test flags from extra_params["__test_args"] ───────────
+        // ── TEST MODE (REPLACE): bypass all params, use only raw test flags ───────────
         if let Some(test_args) = config.extra_params.get("__test_args") {
             if let Some(args_arr) = test_args.as_array() {
                 for arg in args_arr {
@@ -328,6 +329,17 @@ impl ProviderTemplate {
 
             // Inject sub_params for ALL ptypes — checks disk state first, then template defaults
             Self::inject_sub_params(&mut args, param, final_value_str, param_defs);
+        }
+
+        // ── TEST MODE (ADD): append raw test flags after all template params ───────────
+        if let Some(test_args_add) = config.extra_params.get("__test_args_add") {
+            if let Some(args_arr) = test_args_add.as_array() {
+                for arg in args_arr {
+                    if let Some(s) = arg.as_str() {
+                        args.push(s.to_string());
+                    }
+                }
+            }
         }
 
         // Set CUDA_VISIBLE_DEVICES via environment (not a CLI arg)

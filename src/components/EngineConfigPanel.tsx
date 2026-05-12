@@ -59,6 +59,11 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     try { return localStorage.getItem("BlackOps-testFlagsOn") === "1"; } catch { return false; }
   });
 
+  // Test flags mode: "add" (prepend to config) or "replace" (bypass all params)
+  const [testFlagsMode, setTestFlagsMode] = useState<"add" | "replace">(() => {
+    try { return localStorage.getItem("BlackOps-testFlagsMode") === "add" ? "add" : "replace"; } catch { return "replace"; }
+  });
+
   // Blaze animation state — triggers fire effect on launch button
   const [isBlazing, setIsBlazing] = useState(false);
 
@@ -86,6 +91,11 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   useEffect(() => {
     try { localStorage.setItem("BlackOps-testFlagsOn", testFlagsEnabled ? "1" : "0"); } catch {}
   }, [testFlagsEnabled]);
+
+  // Persist test flags mode
+  useEffect(() => {
+    try { localStorage.setItem("BlackOps-testFlagsMode", testFlagsMode); } catch {}
+  }, [testFlagsMode]);
 
   // ── Derived state ───────────────────────────────────────────────────────────
   const effectiveBackendType = useMemo(() => {
@@ -167,28 +177,18 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     const baseValues = allValues.filter(v => !(def.hiddenValues || []).some(hv => String(hv) === String(v)));
     const currentValue = config[def.key] ?? config[def.config_key || def.key];
 
-    // Check if MOE suggestion is active for this param (Offload_Mode)
-    const moeSuggestionActive = vramCalc.manifest?.moeSuggestion?.wouldFit && 
-                                 def.key === "Offload_Mode" &&
-                                 currentValue !== "MOE_OPTIMAL";
-
     const isDevice = def.key === "Device";
 
     return (
       <div key={def.key} data-param-row className={`flex items-center gap-2 ${isLocked ? 'opacity-50' : ''}`}>
         <span
-          className={`font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider truncate ${isDevice ? 'text-[11px]' : 'text-[9px]'} ${
-            moeSuggestionActive ? 'text-orange-400 animate-pulse' : ''
-          }`}
+          className={`font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider truncate ${isDevice ? 'text-[11px]' : 'text-[9px]'}`}
           title={def.label}
         >
           {def.label}
-          {moeSuggestionActive && <span className="ml-1">💡</span>}
         </span>
 
-        <div className={`flex gap-1 flex-wrap flex-1 min-w-0 ${
-          moeSuggestionActive ? 'ring-2 ring-orange-400/30 rounded-sm -mx-1 px-1' : ''
-        }`}>
+        <div className="flex gap-1 flex-wrap flex-1 min-w-0">
           {baseValues.filter((v: any) => !(v?._hidden)).map((val) => (
             <button
               key={`${def.key}-${val}`}
@@ -202,7 +202,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                  currentValue.toLowerCase() === String(val).toLowerCase())
                   ? "value-chip-active"
                   : "value-chip"
-              } ${moeSuggestionActive && String(val) === "MOE_OPTIMAL" ? 'ring-2 ring-orange-400 shadow-[0_0_8px_rgba(251,149,0,0.4)]' : ''}`}
+              }`}
             >
               {String(val)}
             </button>
@@ -351,6 +351,14 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       backend_type: effectiveBackendType,
     };
 
+    // Inject test flags into extra_params if enabled
+    if (testFlagsEnabled && testFlags.trim()) {
+      const testArgs = testFlags.trim().split(/\s+/).filter(Boolean);
+      fullConfig.extra_params = testFlagsMode === "replace"
+        ? { __test_args: testArgs } // REPLACE: bypass all params, use only raw flags
+        : { __test_args_add: testArgs }; // ADD: append to end of config command (overrides template)
+    }
+
     // Trigger blaze animation
     setIsBlazing(true);
     setTimeout(() => setIsBlazing(false), 800);
@@ -453,7 +461,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
       {/* Memory Forecast Diagnostics — admin only, between HW block and PARAMETERS */}
       {isAdminUnlocked && (
-        <VramDiagnostics modelPath={model?.path ?? null} />
+        <VramDiagnostics modelPath={model?.path ?? null} manifest={vramCalc.manifest} />
       )}
 
       {/* Parameters — scrollable middle section */}
@@ -506,19 +514,37 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
         {/* Test flags */}
         {isAdminUnlocked && (
-          <div className="px-1 py-3 border-t section-divider relative mt-3">
+          <div className="px-1 py-3 border-t section-divider relative mt-3 bg-yellow-500">
             <div className="flex items-center justify-between mb-1.5">
-              <label className="text-[9px] font-mono text-yellow-400 uppercase tracking-wider glitch-text">TEST FLAGS</label>
-              <button
-                onClick={() => setTestFlagsEnabled(v => !v)}
-                className={`px-2 py-0.5 text-[8px] font-mono border rounded-sm transition-all duration-150 ${
-                  testFlagsEnabled
-                    ? "bg-telemetry-red/20 text-telemetry-red border-telemetry-red/60"
-                    : "text-stealth-muted border-stealth-border hover:text-white hover:border-stealth-muted"
-                }`}
-              >
-                {testFlagsEnabled ? "☐ ON" : "■ OFF"}
-              </button>
+              <label className="text-[9px] font-mono text-black uppercase tracking-wider glitch-text">CUSTOM FLAGS</label>
+              <div className="flex gap-1.5">
+                {/* ADD/REPLACE mode toggle */}
+                <button
+                  onClick={() => setTestFlagsMode(m => m === "add" ? "replace" : "add")}
+                  className={`relative flex items-center justify-center px-4 py-0.5 text-[8px] font-mono border rounded-full transition-all duration-150 ${
+                    testFlagsEnabled
+                      ? (testFlagsMode === "add"
+                        ? "bg-green-600 text-white border-green-600"
+                        : "bg-red-600 text-white border-red-600")
+                      : "bg-transparent text-black/40 border-black/30 disabled:opacity-30 disabled:cursor-not-allowed"
+                  }`}
+                  disabled={!testFlagsEnabled}
+                >
+                  {testFlagsMode === "add" ? "//APPEND to above user config" : "//REPLACE user config with this"}
+                </button>
+                {/* ON/OFF toggle */}
+                <button
+                  onClick={() => setTestFlagsEnabled(v => !v)}
+                  className={`relative flex items-center justify-center w-12 px-4 py-0.5 text-[8px] font-mono border rounded-full transition-all duration-150 ${
+                    testFlagsEnabled
+                      ? "bg-black text-white border-black"
+                      : "bg-transparent text-black/40 border-black/30 hover:text-black hover:border-black"
+                  }`}
+                >
+                  <span className={`absolute block w-2 h-2 rounded-full transition-all duration-150 ${testFlagsEnabled ? "bg-white left-1" : "bg-black right-1"}`}></span>
+                  {testFlagsEnabled ? "ON" : "OFF"}
+                </button>
+              </div>
             </div>
             <input
               type="text"
@@ -526,11 +552,11 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
               onChange={(e) => setTestFlags(e.target.value)}
               placeholder="-sm layer -smf32 1 ..."
               disabled={!testFlagsEnabled}
-              className={`w-full bg-transparent border text-[9px] font-mono px-2 py-1.5 focus:outline-none transition-colors placeholder:text-stealth-muted/50 rounded-sm ${
-                testFlagsEnabled
-                  ? "border-telemetry-red/40 text-white"
-                  : "border-stealth-border disabled:opacity-30 disabled:cursor-not-allowed"
-              }`}
+              className={`w-full bg-black border text-[9px] font-mono px-2 py-1.5 focus:outline-none transition-colors placeholder:text-stealth-muted/50 rounded-sm ${
+                 testFlagsEnabled
+                   ? "border-telemetry-red/40 text-white"
+                   : "border-stealth-border disabled:opacity-30 disabled:cursor-not-allowed"
+               }`}
             />
           </div>
         )}

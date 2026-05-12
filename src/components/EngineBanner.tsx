@@ -11,7 +11,6 @@ interface EngineBannerProps {
 
 const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
   "ggml-stable": "GGML Stable",
-  "ggml-dev": "GGML Dev",
   "ik-extreme": "IK Extreme",
 };
 

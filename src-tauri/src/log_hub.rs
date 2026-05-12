@@ -211,4 +211,22 @@ impl LogHub {
             log::warn!("Failed to emit engine-system event: {}", e);
         }
     }
+
+    // SANITY-BOX — emit a Rust-side log entry to the frontend sanity box
+    pub fn emit_sanity_log(&self, level: &str, text: &str) {
+        #[derive(Serialize)]
+        struct SanityPayload {
+            source: &'static str,
+            level: String,
+            text: String,
+            timestamp: String,
+        }
+        let payload = SanityPayload {
+            source: "rust",
+            level: level.to_string(),
+            text: text.to_string(),
+            timestamp: chrono::Local::now().format("%H:%M:%S%.3f").to_string(),
+        };
+        let _ = self.app_handle.emit("sanity-log", &payload);
+    }
 }

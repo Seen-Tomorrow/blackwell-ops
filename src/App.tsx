@@ -2,20 +2,21 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { unstable_batchedUpdates } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+
 import Layout from "./components/Layout";
 import StackView from "./components/StackView";
 import ModelCatalog from "./components/ModelCatalog";
 import TelemetryPanel from "./components/TelemetryPanel";
 import ConfigPage from "./components/ConfigPage";
 import MobileSentinelPage from "./components/MobileSentinelPage";
-import ReactorCore from "./components/ReactorCore";
 import Reactor11 from "./components/Reactor11";
 import ModelHub from "./components/ModelHub";
 import { StatusProvider } from "./context/StatusBarContext";
 import { ToastProvider } from "./components/Toast";
-import type { GpuInfo, ModelEntry, StackEntry, LogBatch, LogEntry, SystemEvent, ProviderConfig, CpuInfo, SystemInfo, EnginePerfEvent } from "./lib/types";
+// SANITY-BOX — SanityEntry added to import
+import type { GpuInfo, ModelEntry, StackEntry, LogBatch, LogEntry, SystemEvent, ProviderConfig, CpuInfo, SystemInfo, EnginePerfEvent, SanityEntry } from "./lib/types";
 
-export type Tab = "catalog" | "modelhub" | "stack" | "reactor" | "reactor11" | "telemetry" | "logs" | "config" | "sentinel";
+export type Tab = "catalog" | "modelhub" | "stack" | "reactor11" | "telemetry" | "logs" | "config" | "sentinel";
 
 function isMobileDevice(): boolean {
   try {
@@ -55,6 +56,9 @@ function App() {
     } catch { return false; }
   });
 
+  // SANITY-BOX — captured console + Rust log entries
+  const [sanityLog, setSanityLog] = useState<SanityEntry[]>([]);
+
   // Keep in sync with ConfigPage's cycleAdminLock
   useEffect(() => {
     const handler = () => {
@@ -75,6 +79,50 @@ function App() {
       window.removeEventListener("admin-lock-changed", adminHandler);
       window.removeEventListener("blackops-navigate-stack", navHandler);
     };
+  }, []);
+
+  // SANITY-BOX — capture console.error / console.warn into state
+  useEffect(() => {
+    const origError = console.error;
+    const origWarn = console.warn;
+
+    const pushEntry = (level: 'error' | 'warn', args: unknown[]) => {
+      const text = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
+      setSanityLog(prev => [...prev, {
+        source: 'js' as const,
+        level,
+        text,
+        timestamp: new Date().toISOString().substring(11, 20).replace('T', ''),
+      }].slice(-500));
+    };
+
+    console.error = ((...args: unknown[]) => { pushEntry('error', args); origError.apply(console, args); }) as any;
+    console.warn = ((...args: unknown[]) => {
+      const text = args.map(a => String(a)).join(' ');
+      pushEntry('warn', args);
+      // Suppress [SCENARIO] logs from browser console — they're visible in SANITY box already
+      if (!text.startsWith('[SCENARIO]')) {
+        origWarn.apply(console, args);
+      }
+    }) as any;
+
+    return () => {
+      console.error = origError;
+      console.warn = origWarn;
+    };
+  }, []);
+
+  // SANITY-BOX — listen for Rust-side sanity log events
+  useEffect(() => {
+    let unsub: (() => void) | null = null;
+    const cleanup = () => { if (unsub) unsub(); };
+    listen("sanity-log", (e: any) => {
+      const p = e.payload as SanityEntry;
+      if (p && p.text) {
+        setSanityLog(prev => [...prev, p].slice(-500));
+      }
+    }).then((u) => { unsub = u; });
+    return cleanup;
   }, []);
 
   const toggleLowPower = useCallback(() => {
@@ -159,6 +207,8 @@ function App() {
       .then((data) => setSystemInfo(data))
       .catch(console.error);
   }, []);
+
+
 
   const reloadModels = useCallback(async () => {
     try {
@@ -441,15 +491,12 @@ function App() {
       <StatusProvider value={{ totalParams, hiddenCount, onShowAll: handleShowAll }}>
         <Layout activeTab={activeTab} onTabChange={setActiveTab}>
         {activeTab === "catalog" && (
-              <ModelCatalog models={models} gpus={gpus} onLaunch={handleLaunchEngine} error={catalogError} onReload={reloadModels} providers={providers} committedVramMib={committedVramMib} isAdminUnlocked={isAdminUnlocked} systemInfo={systemInfo} scanningPath={scanningPath} setScanningPath={setScanningPath} batchScanState={batchScanState} setBatchScanState={setBatchScanState} stack={stack} />
+              <ModelCatalog models={models} gpus={gpus} onLaunch={handleLaunchEngine} error={catalogError} onReload={reloadModels} providers={providers} committedVramMib={committedVramMib} isAdminUnlocked={isAdminUnlocked} systemInfo={systemInfo} scanningPath={scanningPath} setScanningPath={setScanningPath} batchScanState={batchScanState} setBatchScanState={setBatchScanState} stack={stack} /* SANITY-BOX */ sanityLog={sanityLog} />
            )}
         {activeTab === "modelhub" && <ModelHub />}
         {activeTab === "config" && <ConfigPage providers={providers} />}
         {activeTab === "stack" && (
           <StackView stack={stack} logs={logs} systemEvents={systemEvents} enginePerfEvents={enginePerfEvents} onStop={handleStopEngine} onStopAll={handleStopAll} />
-        )}
-        {activeTab === "reactor" && (
-          <ReactorCore gpus={gpus} models={models} />
         )}
         {activeTab === "reactor11" && (
           <Reactor11 gpus={gpus} models={models} />

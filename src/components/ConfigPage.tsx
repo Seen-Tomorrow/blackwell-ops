@@ -232,8 +232,8 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
     setShowResetConfirm(false);
 
     try {
-      // Get fresh factory defaults from genesis template for this provider
-      const template = await invoke<ProviderTemplate>("get_template", { providerId: selectedProviderId });
+      // Get fresh factory defaults resolved through the provider's template_type
+      const template = await invoke<ProviderTemplate>("get_template_for_provider", { providerId: selectedProviderId });
       const resetDefs: ParamDef[] = (template.params || []).map((p, i) => ({
         key: p.key,
         label: p.label,
@@ -248,6 +248,7 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
         note: p.note,
         pattern: p.pattern,
         sub_params: (p as any).sub_params,
+        dock: (p as any).dock || undefined,
         defaultValue: (p as any).default as string | number,
         factoryDefault: (p as any).default as string | number,
       }));

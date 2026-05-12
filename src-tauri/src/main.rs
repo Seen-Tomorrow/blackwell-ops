@@ -23,7 +23,6 @@ mod engine_utils;
 mod provider_mgmt;
 
 pub mod features;
-mod reactor_bridge;
 mod reactor_foundry;
 
 // Reactor11 — isolated next-gen reactor interface (in features/reactor11/) // handled by pub mod features;
@@ -374,6 +373,7 @@ async fn main() {
             engine::open_folder_dialog,
             // Template loading
             engine::get_template,
+            engine::get_template_for_provider,
             engine::preview_launch_command,
             intel::fetch_github_intel,
             telemetry::scan_gpus,
@@ -389,6 +389,7 @@ async fn main() {
             engine::fit_scan_model,
             engine::fit_scan_library,
             engine::fit_stop_scan,
+            fit_scanner::get_fit_scan_points,
             // GGUF Metadata Scanner commands
             engine::scan_model_metadata_cmd,
             engine::scan_all_models_cmd,
@@ -403,14 +404,7 @@ async fn main() {
             mobile_bridge::cmd_mobile_bridge_status,
             mobile_bridge::cmd_mobile_bridge_push_telemetry,
             mobile_bridge::cmd_mobile_bridge_send_heartbeat,
-            // Reactor commands (legacy)
-            reactor_bridge::reactor_get_status,
-            reactor_bridge::reactor_insert_rod,
-            reactor_bridge::reactor_remove_rod,
-            reactor_bridge::reactor_swap_rod,
-            reactor_bridge::reactor_get_rod_by_id,
-            reactor_bridge::reactor_toggle_tier,
-            reactor_bridge::reactor_update_rod,
+
             // Reactor11 commands (isolated next-gen)
             features::reactor11::bridge::r11_get_status,
             features::reactor11::bridge::r11_insert_rod,

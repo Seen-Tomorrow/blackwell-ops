@@ -80,9 +80,9 @@ pub async fn scan_gpus() -> Result<Vec<GpuInfo>, String> {
             "--query-gpu=index,name,memory.total,memory.used,memory.free,temperature.gpu,temperature.memory,power.draw,power.limit,utilization.gpu,utilization.memory",
             "--format=csv,noheader,nounits",
         ])
-        .stdout(Stdio::null())
+        .stdout(Stdio::piped())   // MUST be piped — null() discards output, returns empty GPU list
         .stderr(Stdio::null())
-        .creation_flags(0x08000000) // CREATE_NO_WINDOW
+        .creation_flags(0x08000000) // CREATE_NO_WINDOW — prevents CMD window flash in release builds
         .output()
         .await
         .map_err(|e| format!("nvidia-smi execution failed: {}", e))?;
@@ -292,4 +292,31 @@ pub async fn scan_system_info() -> Result<SystemInfo, String> {
         available_memory_mib: sys.available_memory() / (1024 * 1024),
         total_memory_manufactured_mib: phys_bytes / (1024 * 1024), // bytes → MiB
     })
+}
+
+/// Detect physical GPU count via nvidia-smi. Shared across engine, fit_scanner, config.
+/// Returns 1 as fallback if detection fails (safer than guessing wrong).
+///
+/// NOTE: MUST use Stdio::piped() — Stdio::null() discards output and always returns fallback.
+/// The null() → piped() change was needed because fd53291 accidentally broke GPU detection by
+/// adding Stdio::null() to suppress CMD windows in release builds. CREATE_NO_WINDOW flag handles
+/// that; stdout must still be captured for the actual data.
+pub fn detect_gpu_count() -> usize {
+    let fallback = 1; // Safe default — single GPU rather than guessing wrong
+    if let Ok(output) = std::process::Command::new("nvidia-smi")
+        .args(&["--query-gpu=index", "--format=csv,noheader"])
+        .stdout(Stdio::piped())   // MUST be piped — null() discards output, always returns fallback
+        .stderr(Stdio::null())
+        .creation_flags(0x08000000) // CREATE_NO_WINDOW — prevents CMD window flash in release builds
+        .output()
+    {
+        let count = String::from_utf8_lossy(&output.stdout)
+            .lines().filter(|l| !l.trim().is_empty()).count();
+        if count > 0 {
+            log::info!("[telemetry] Detected {} GPU(s)", count);
+            return count;
+        }
+    }
+    log::warn!("[telemetry] nvidia-smi detection failed, falling back to {} GPU — GPU masking may be incorrect", fallback);
+    fallback
 }

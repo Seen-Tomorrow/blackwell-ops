@@ -54,8 +54,10 @@ pub async fn save_provider(provider: crate::types::ProviderConfig, app: tauri::S
 
     // New provider with empty param_definitions — populate from correct template by type
     if save_provider.param_definitions.is_empty() {
-        let tmpl_key = if save_provider.template_type == "ik-llama" || save_provider.id == "ik-extreme" { "ik-extreme" } else { "ggml-stable" };
-        save_provider.param_definitions = crate::config::params_for_provider(tmpl_key);
+        if let Some(tmpl_key) = crate::config::template_key_for_type(&save_provider.template_type) {
+            save_provider.param_definitions = crate::config::params_for_provider(tmpl_key);
+        }
+        // custom/empty template_type: stays empty, user builds manually
     }
 
     // Check if provider with this (new) ID already exists — update in place or push new.

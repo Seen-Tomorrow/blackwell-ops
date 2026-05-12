@@ -7,15 +7,14 @@ import { invoke } from "@tauri-apps/api/core";
 interface Props {
   models: ModelEntry[];
   onInsertModel: (model: ModelEntry) => Promise<void>;
-  onDragStart: (model: ModelEntry) => void;
-  onDragEnd: () => void;
+  onDragStart: (model: ModelEntry, e: React.MouseEvent) => void;
   collapsed: boolean;
   onToggleCollapse: () => void;
   gpus: any[];
   dragging: boolean;
 }
 
-export default function R11_Sidebar({ models, onInsertModel, onDragStart, onDragEnd, collapsed, onToggleCollapse, gpus, dragging }: Props) {
+export default function R11_Sidebar({ models, onInsertModel, onDragStart, collapsed, onToggleCollapse, gpus, dragging }: Props) {
   const [predictiveFit, setPredictiveFit] = useState<R11PredictiveFit | null>(null);
   const [hoveredModel, setHoveredModel] = useState<string | null>(null);
 
@@ -112,8 +111,7 @@ export default function R11_Sidebar({ models, onInsertModel, onDragStart, onDrag
                 key={m.path}
                 model={m}
                 onInsert={() => onInsertModel(m)}
-                onDragStart={() => onDragStart(m)}
-                onDragEnd={onDragEnd}
+                onDragStart={(e) => onDragStart(m, e)}
                 onHoverIn={() => setHoveredModel(m.path)}
                 onHoverOut={() => setHoveredModel(null)}
                 dragging={dragging}
@@ -143,51 +141,19 @@ function ModelCard({
   model,
   onInsert,
   onDragStart,
-  onDragEnd,
   onHoverIn,
   onHoverOut,
   dragging,
 }: {
   model: ModelEntry;
   onInsert: () => Promise<void>;
-  onDragStart: () => void;
-  onDragEnd: () => void;
+  onDragStart: (e: React.MouseEvent) => void;
   onHoverIn: () => void;
   onHoverOut: () => void;
   dragging: boolean;
 }) {
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-
-    const handleDragStart = (e: DragEvent) => {
-      e.dataTransfer!.setData("text/plain", model.path);
-      e.dataTransfer!.effectAllowed = "move";
-      onDragStart();
-    };
-
-    const handleDragEnd = () => onDragEnd();
-
-    el.addEventListener("dragstart", handleDragStart);
-    el.addEventListener("dragend", handleDragEnd);
-    return () => {
-      el.removeEventListener("dragstart", handleDragStart);
-      el.removeEventListener("dragend", handleDragEnd);
-    };
-  }, [model.path, onDragStart, onDragEnd]);
-
   return (
     <motion.div
-      ref={ref}
-      draggable
-      onDragStart={(e: any) => {
-        e.dataTransfer.setData("text/plain", model.path);
-        e.dataTransfer.effectAllowed = "move";
-        onDragStart();
-      }}
-      onDragEnd={onDragEnd}
       onMouseEnter={onHoverIn}
       onMouseLeave={onHoverOut}
       animate={{
@@ -195,8 +161,10 @@ function ModelCard({
         scale: dragging ? 0.98 : 1,
       }}
       transition={{ type: "spring", stiffness: 300, damping: 20 }}
-      className="border border-stealth-border/50 rounded-sm p-3 cursor-grab hover:border-nv-green/40 bg-stealth-panel/30 transition-all group relative"
+      className="border border-stealth-border/50 rounded-sm p-3 cursor-grab hover:border-nv-green/40 bg-stealth-panel/30 transition-all group relative select-none"
     >
+      {/* Drag capture layer — plain div so framer-motion doesn't intercept mousedown */}
+      <div onMouseDown={(e) => { console.log("[R11-Sidebar] mousedown fired on model card"); onDragStart(e); }} className="absolute inset-0 z-[1] cursor-grab active:cursor-grabbing" />
       <p className="text-[10px] font-mono text-stealth-muted truncate leading-relaxed">{model.name}</p>
 
       <div className="flex justify-between items-center mt-1.5">

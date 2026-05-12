@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use std::os::windows::process::CommandExt;
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::Arc;
@@ -73,23 +72,7 @@ fn strip_ansi(s: &str) -> String {
 }
 
 /// Detect physical GPU count via nvidia-smi. Returns 2 as fallback.
-fn detect_gpu_count() -> usize {
-    let mut gpu_count = 2;
-    if let Ok(output) = std::process::Command::new("nvidia-smi")
-        .args(&["--query-gpu=index", "--format=csv,noheader"])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .creation_flags(0x08000000) // CREATE_NO_WINDOW
-        .output()
-    {
-        let count = String::from_utf8_lossy(&output.stdout)
-            .lines().filter(|l| !l.trim().is_empty()).count();
-        if count > 0 {
-            gpu_count = count;
-        }
-    }
-    gpu_count
-}
+use crate::telemetry::detect_gpu_count;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StackEntryOut {
@@ -212,7 +195,10 @@ pub async fn launch_engine(
     let gpu_count = detect_gpu_count();
     let gpu_mask = compute_gpu_mask(&config, gpu_count, test_has_split);
 
-    eprintln!("[GPU_MASK] provider={} split_mode=\"{}\" test_has_split={} -> CUDA_VISIBLE_DEVICES={}", backend_type, config.split_mode, test_has_split, gpu_mask);
+    let gpu_mask_msg = format!("[GPU_MASK] provider={} split_mode=\"{}\" test_has_split={} -> CUDA_VISIBLE_DEVICES={}", backend_type, config.split_mode, test_has_split, gpu_mask);
+    eprintln!("{}", gpu_mask_msg);
+    // SANITY-BOX — route GPU mask info to sanity box
+    app.log_hub.emit_sanity_log("warn", &gpu_mask_msg);
 
     // Validate the resolved binary path exists
     crate::config::validate_provider_binary(binary_path.to_str().unwrap_or(""))?;
@@ -264,6 +250,8 @@ pub async fn launch_engine(
     eprintln!("\n========== [LAUNCH_CMD] slot={} ==========", slot_idx);
     eprintln!("{}", launch_cmd);
     eprintln!("==========================================\n");
+    // SANITY-BOX — route launch command to sanity box
+    app.log_hub.emit_sanity_log("warn", &format!("[LAUNCH_CMD] slot={}: {}", slot_idx, launch_cmd));
     
     // Write launch command to temp file as fallback for debugging
     if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(r"C:\tmp\blackwell-launch.log") {
@@ -297,7 +285,10 @@ pub async fn launch_engine(
             ).await;
         });
     } else {
-        eprintln!("[LAUNCH] slot={} ConPTY output was None — process may have already exited", slot_idx);
+        let conpty_warn = format!("[LAUNCH] slot={} ConPTY output was None — process may have already exited", slot_idx);
+        eprintln!("{}", conpty_warn);
+        // SANITY-BOX — route ConPTY warning to sanity box
+        app.log_hub.emit_sanity_log("warn", &conpty_warn);
     }
 
     // Spawn background health checker with panic protection
@@ -341,6 +332,8 @@ pub async fn launch_engine(
                         // Emit system event for frontend toast
                         if let Some(ref hub) = s.log_hub() {
                             hub.emit_system_event(slot_idx, &alias_for_crash, &format!("LAUNCH_ERROR:{}", crash_reason)).await;
+                            // SANITY-BOX — route engine crash to sanity box
+                            hub.emit_sanity_log("error", &format!("[ENGINE] slot={} crashed: {}", slot_idx, crash_reason));
                         }
                     }
                 }
@@ -648,6 +641,8 @@ pub async fn hot_swap_engine(
     // Spawn background health checker (same as launch_engine)
     let slot_arc = app.stack.clone();
     let hp_port = load_config.port;
+    // SANITY-BOX — clone log_hub for crash reporting inside the spawn
+    let hs_sanity_hub = app.log_hub.clone();
     tokio::spawn(async move {
         let mut attempts = 0u32;
         loop {
@@ -671,7 +666,10 @@ pub async fn hot_swap_engine(
                 if let Some(ref mut conpty_proc) = slot.conpty_proc {
                     if !conpty_proc.is_alive() {
                         let exit_code = conpty_proc.wait(None).unwrap_or(u32::MAX);
-                        log::error!("slot={} hot-swap crashed (exit code: {})", slot_idx, exit_code);
+                        let hs_crash_msg = format!("[ENGINE] slot={} hot-swap crashed (exit code: {})", slot_idx, exit_code);
+                        log::error!("{}", hs_crash_msg);
+                        // SANITY-BOX — route hot-swap crash to sanity box
+                        hs_sanity_hub.emit_sanity_log("error", &hs_crash_msg);
                         slot.status = SlotStatus::Error(format!("process exited unexpectedly (code={})", exit_code));
                         break;
                     }
@@ -719,14 +717,30 @@ pub async fn hot_swap_engine(
 #[tauri::command]
 pub fn get_template(provider_id: Option<String>) -> Result<crate::templates::ProviderTemplate, String> {
     let id = provider_id.unwrap_or_else(|| "ggml-stable".to_string());
-    
+
     // Try loading by specific ID first
     if let Some(template) = crate::templates::ProviderTemplate::load_by_id(&id) {
         return Ok(template);
     }
-    
+
     // Fallback: load default template (ggml-stable)
     Ok(crate::templates::ProviderTemplate::load())
+}
+
+/// Returns the genesis template resolved through the provider's template_type.
+/// Used by RESET TO DEFAULTS to get the correct family master template.
+#[tauri::command]
+pub fn get_template_for_provider(provider_id: String) -> Result<crate::templates::ProviderTemplate, String> {
+    let metas = crate::config::load_provider_meta();
+    let meta = metas.iter().find(|m| m.id == provider_id);
+    let template_type = crate::config::resolve_template_type(&provider_id, meta.map(|m| &m.template_type));
+
+    let bundle = crate::templates::TemplateBundle::default();
+    let Some(template_key) = crate::config::template_key_for_type(&template_type) else {
+        return Err(format!("No genesis template for type '{}' — cannot reset", template_type));
+    };
+
+    Ok(bundle.templates.get(template_key).cloned().ok_or("Unknown provider")?)
 }
 
 /// Preview the full launch command for a given config without actually launching.
@@ -824,16 +838,16 @@ fn detect_mmproj(model_path: &str) -> (u64, bool) {
 #[tauri::command]
 pub async fn fit_scan_model(
     model_path: String,
-    provider_id: Option<String>,
+    _provider_id: Option<String>,
     ctx_size: String,
     kv_quant: String,
     device: String,
     split_mode: String,
     batch: u32,
-    ubatch: u32,
+    _ubatch: u32,
     parallel: u32,
-    flash_attn: bool,
-    offload_mode: String,
+    _flash_attn: bool,
+    _offload_mode: String,
     app: tauri::State<'_, AppContext>,
 ) -> Result<fit_scanner::FitScanResult, String> {
     let cfg = {
@@ -841,7 +855,7 @@ pub async fn fit_scan_model(
         guard.clone()
     };
 
-    let backend_type = provider_id.unwrap_or_else(|| "ggml-stable".to_string());
+    let backend_type = _provider_id.unwrap_or_else(|| "ggml-stable".to_string());
     let binary_path = engine_utils::find_provider_binary(&cfg, &backend_type);
 
     // Try provider-specific fit binary first, then fallback (for IK providers using GGML's binary)
@@ -849,57 +863,38 @@ pub async fn fit_scan_model(
         .or_else(|| fit_scanner::find_fallback_fit_binary())
         .ok_or_else(|| "llama-fit-params.exe not found — ensure provider is built".to_string())?;
 
-    // Load template and build EngineConfig from provider defaults (same as engine launch)
-    let template = crate::templates::ProviderTemplate::load_by_id(&backend_type)
-        .unwrap_or_else(crate::templates::ProviderTemplate::load);
+    // Parse context size to integer tokens
+    let ctx_int = crate::templates::ProviderTemplate::ctx_to_int_str(&ctx_size)
+        .parse::<usize>().unwrap_or(8192);
 
-    let provider_params = cfg.providers.iter()
-        .find(|p| p.id == backend_type)
-        .map(|p| &p.params);
-
-    let mut config = crate::types::EngineConfig {
-        alias: String::new(),
-        model_path: model_path.clone(),
-        port: 0, // not used for fit scan
-        device,
-        kv_quant,
-        ctx_size,
-        batch: batch as i64,
-        ubatch: ubatch as i64,
-        parallel: parallel as i64,
-        offload: String::new(), // Let llama-fit-params auto-calculate what fits (no forced --n-gpu-layers)
-        offload_mode,
-        split_mode,
-        vision: "AUTO".to_string(),
-        flash_attn,
-        jinja: false,
-        cont_batching: false,
-        metrics: false,
-        reasoning: false,
-        mmap: true,
-        verbose: false,
-        log_timestamps: true,
-        unified_kv: true,
-        provider_type: backend_type.clone(),
-        n_gpu_layers: -1,
-        backend_type: backend_type.clone(),
-        rope_scaling: String::new(),
-        rope_scale: 1.0,
-        yarn_orig_ctx: 0,
-        rope_freq_base: 0.0,
-        extra_params: std::collections::HashMap::new(),
-    };
-    config = template.apply_provider_defaults(&config, provider_params);
-
-    // Derive GPU mask from config — same logic as launch_engine
+    // Derive GPU mask from device + split_mode — same logic as launch_engine
     let gpu_count = detect_gpu_count();
-    let gpu_mask = compute_gpu_mask(&config, gpu_count, false);
+    let gpu_mask = if !split_mode.is_empty() && split_mode.to_uppercase() != "NONE" {
+        (0..gpu_count).map(|i| i.to_string()).collect::<Vec<_>>().join(",")
+    } else {
+        let idx = device.strip_prefix("GPU-")
+            .and_then(|s| s.parse::<usize>().ok())
+            .unwrap_or(0);
+        if idx < gpu_count { idx.to_string() } else { "0".to_string() }
+    };
 
-    let args = fit_scanner::build_fit_args_from_template(&template, &config, &model_path, &gpu_mask);
-    let raw = fit_scanner::scan_single_anchor(&fit_binary, &args, &gpu_mask).await?;
+    // Build CLI args directly — no template involvement
+    let args = fit_scanner::build_fit_command(
+        &model_path, ctx_int, &kv_quant, batch, _ubatch, parallel, &split_mode,
+    );
+    // SANITY-BOX — route FIT scan result to sanity box
+    let fit_result = fit_scanner::scan_single_anchor(&fit_binary, &args, &gpu_mask).await;
+    match &fit_result {
+        Ok(raw) => {
+            app.log_hub.emit_sanity_log("warn", &format!("[FIT] {} -> {:.1} MiB", model_path, raw.vram_mib));
+        }
+        Err(e) => {
+            app.log_hub.emit_sanity_log("error", &format!("[FIT] {} failed: {}", model_path, e));
+        }
+    }
+    let raw = fit_result?;
     let vram_mib = raw.vram_mib;
 
-    let ctx_int = crate::templates::ProviderTemplate::ctx_to_int_str(&config.ctx_size).parse::<usize>().unwrap_or(32768);
     let gpus = telemetry::scan_gpus().await.unwrap_or_default();
     let total_gpu_mib: f64 = gpus.iter().map(|g| g.memory_total as f64).sum();
 
@@ -907,7 +902,7 @@ pub async fn fit_scan_model(
         model_path,
         vram_mib,
         ctx: ctx_int,
-        kv_quant: config.kv_quant.clone(),
+        kv_quant,
         fits: vram_mib <= total_gpu_mib,
         gpu_breakdown_mib: raw.gpu_breakdown_mib,
         host_mib: raw.host_mib,
@@ -921,9 +916,8 @@ pub async fn fit_scan_library(
     provider_id: String,
     model_base: String,
     parallel_count: u32,
-    batch: u32,
-    ubatch: u32,
-    flash_attn: bool,
+    _batch: u32,
+    _ubatch: u32,
     force_rescan: Option<bool>,
     app: tauri::State<'_, AppContext>,
 ) -> Result<fit_scanner::FitScanComplete, String> {
@@ -945,48 +939,6 @@ pub async fn fit_scan_library(
     let fit_binary = fit_scanner::find_fit_binary(binary_path.to_str().unwrap_or(""))
         .or_else(|| fit_scanner::find_fallback_fit_binary())
         .ok_or_else(|| "llama-fit-params.exe not found — ensure provider is built".to_string())?;
-
-    // Load template and build base EngineConfig from provider defaults (same as engine launch)
-    let template = crate::templates::ProviderTemplate::load_by_id(&provider_id)
-        .unwrap_or_else(crate::templates::ProviderTemplate::load);
-
-    let provider_params = cfg.providers.iter()
-        .find(|p| p.id == provider_id)
-        .map(|p| &p.params);
-
-    let mut base_config = crate::types::EngineConfig {
-        alias: String::new(),
-        model_path: String::new(), // set per-model in scan loop
-        port: 0, // not used for fit scan
-        device: "GPU-0".to_string(),
-        kv_quant: "q4_0".to_string(),
-        ctx_size: "32K".to_string(),
-        batch: batch as i64,
-        ubatch: ubatch as i64,
-        parallel: 1,
-        offload: String::new(), // Let llama-fit-params auto-calculate (no forced --n-gpu-layers)
-        offload_mode: "REGULAR".to_string(),
-        split_mode: "NONE".to_string(),
-        vision: "AUTO".to_string(),
-        flash_attn,
-        jinja: false,
-        cont_batching: false,
-        metrics: false,
-        reasoning: false,
-        mmap: true,
-        verbose: false,
-        log_timestamps: true,
-        unified_kv: true,
-        provider_type: provider_id.clone(),
-        n_gpu_layers: -1,
-        backend_type: provider_id.clone(),
-        rope_scaling: String::new(),
-        rope_scale: 1.0,
-        yarn_orig_ctx: 0,
-        rope_freq_base: 0.0,
-        extra_params: std::collections::HashMap::new(),
-    };
-    base_config = template.apply_provider_defaults(&base_config, provider_params);
 
     // Get total GPU VRAM for fit checking
     let gpus = telemetry::scan_gpus().await.unwrap_or_default();
@@ -1020,7 +972,7 @@ pub async fn fit_scan_library(
     // Run library scan — scans all configured paths, deduplicates across them
     let result = fit_scanner::scan_library(
         &fit_binary, &all_paths, parallel_count.max(1), total_gpu_mib,
-        provider_id.clone(), template, base_config, Some(progress_tx), cancel_flag,
+        provider_id.clone(), Some(progress_tx), cancel_flag,
     ).await;
 
     Ok(result)
@@ -1170,6 +1122,7 @@ pub async fn scan_model_metadata_cmd(
         size_str: model_catalog::calc_size_str_from_bytes(file_size),
         vision: false,
         mmproj: None,
+        mmproj_size_mib: None,
         backend_type: pid,
         source_path_label: String::new(),
         metadata: Some(metadata),
@@ -1263,11 +1216,17 @@ pub async fn scan_all_models_cmd(
                     scanned += 1;
                 }
                 Ok(Err(e)) => {
-                    log::warn!("Scan failed for {}: {}", p, e);
+                    let msg = format!("[SCAN] {} failed: {}", p, e);
+                    log::warn!("{}", msg);
+                    // SANITY-BOX — route scan failure to sanity box
+                    log_hub.emit_sanity_log("error", &msg);
                     failed += 1;
                 }
                 Err(e) => {
-                    log::warn!("Task failed for {}: {}", p, e);
+                    let msg = format!("[SCAN] {} task panicked: {}", p, e);
+                    log::warn!("{}", msg);
+                    // SANITY-BOX — route scan failure to sanity box
+                    log_hub.emit_sanity_log("error", &msg);
                     failed += 1;
                 }
             }

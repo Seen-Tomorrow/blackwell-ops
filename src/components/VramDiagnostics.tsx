@@ -1,37 +1,20 @@
 import { useState, useCallback, useEffect } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import type { VramManifest } from "../lib/types";
 
 interface VramDiagnosticsProps {
   modelPath: string | null;
+  manifest: VramManifest | null;
 }
 
-interface StoredValidationData {
-  validatedVramMib: number;
-  validatedComponentsMib?: {
-    model_mib: number;
-    ctx_mib: number;
-    compute_mib: number;
-  }[];
-  formulaVramTotalGb: number;
-  vramWeightsGb: number;
-  vramKvGb: number;
-  vramOverheadGb: number;
+interface FitScanPoint {
+  label: string;
+  vram_mib: number;
 }
 
-type ModeKey = "regular" | "moe_optimal";
-
-function loadModeData(modelPath: string, mode: ModeKey): StoredValidationData | null {
-  try {
-    const key = `BlackOps-vram-validate:${modelPath}:${mode}`;
-    const stored = localStorage.getItem(key);
-    return stored ? JSON.parse(stored) : null;
-  } catch {
-    return null;
-  }
-}
-
-function calcTotals(data: StoredValidationData | null) {
-  if (!data?.validatedComponentsMib?.length) return { model: 0, kv: 0, compute: 0 };
-  return data.validatedComponentsMib.reduce(
+function calcTotals(components?: { model_mib: number; ctx_mib: number; compute_mib: number }[]) {
+  if (!components?.length) return { model: 0, kv: 0, compute: 0 };
+  return components.reduce(
     (s, c) => ({
       model: s.model + (c.model_mib || 0),
       kv: s.kv + (c.ctx_mib || 0),
@@ -48,13 +31,13 @@ function hasDelta(formula: number, real: number): boolean {
 
 const cellBase = "text-[8px] font-mono text-center whitespace-nowrap";
 const headerBase = "text-[7px] font-mono text-black/40 tracking-wider text-center whitespace-nowrap";
-const fmt = (v: number) => v.toFixed(1);
+const fmt = (v: number) => v.toFixed(2);
 
-export default function VramDiagnostics({ modelPath }: VramDiagnosticsProps) {
+export default function VramDiagnostics({ modelPath, manifest }: VramDiagnosticsProps) {
   const [collapsed, setCollapsed] = useState(false);
-  const [regular, setRegular] = useState<StoredValidationData | null>(null);
-  const [moeOptimal, setMoeOptimal] = useState<StoredValidationData | null>(null);
-  const [updateKey, setUpdateKey] = useState(0);
+  const [splitPoints, setSplitPoints] = useState<Record<string, number>>({});
+  const [basePointMib, setBasePointMib] = useState<number | null>(null);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     try {
@@ -62,26 +45,37 @@ export default function VramDiagnostics({ modelPath }: VramDiagnosticsProps) {
     } catch {}
   }, []);
 
-  useEffect(() => {
-    if (!modelPath) {
-      setRegular(null);
-      setMoeOptimal(null);
-      return;
+  // Load FIT scan points for split mode data — independent of manifest
+  const loadFitScanPoints = useCallback(async (path: string) => {
+    setLoading(true);
+    try {
+      const points: FitScanPoint[] | null = await invoke("get_fit_scan_points", { modelPath: path });
+      if (!points?.length) return;
+
+      const baseMib = points.find(p => p.label === "base")?.vram_mib ?? null;
+      setBasePointMib(baseMib);
+
+      const splitData: Record<string, number> = {};
+      for (const label of ["split_layer", "split_row", "split_tensor"]) {
+        const pt = points.find(p => p.label === label && p.vram_mib > 100);
+        if (pt) {
+          splitData[label.replace("split_", "")] = pt.vram_mib;
+        }
+      }
+      setSplitPoints(splitData);
+    } catch {} finally {
+      setLoading(false);
     }
-    setRegular(loadModeData(modelPath, "regular"));
-    setMoeOptimal(loadModeData(modelPath, "moe_optimal"));
-  }, [modelPath, updateKey]);
+  }, []);
 
   useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
-      if (!modelPath || (detail && detail !== modelPath)) return;
-      setRegular(loadModeData(modelPath, "regular"));
-      setMoeOptimal(loadModeData(modelPath, "moe_optimal"));
-    };
-    window.addEventListener("vram-validated", handler);
-    return () => window.removeEventListener("vram-validated", handler);
-  }, [modelPath]);
+    if (!modelPath) {
+      setSplitPoints({});
+      setBasePointMib(null);
+      return;
+    }
+    loadFitScanPoints(modelPath);
+  }, [modelPath, loadFitScanPoints]);
 
   const toggleCollapsed = useCallback(() => {
     setCollapsed(prev => {
@@ -91,18 +85,15 @@ export default function VramDiagnostics({ modelPath }: VramDiagnosticsProps) {
     });
   }, []);
 
-  const hasAnyData = regular || moeOptimal;
-  const maxGpus = Math.max(
-    regular?.validatedComponentsMib?.length ?? 0,
-    moeOptimal?.validatedComponentsMib?.length ?? 0
-  );
+  // Data from manifest directly — no localStorage
+  const hasValidation = manifest?.validatedVramMib != null && manifest.validatedVramMib > 0;
+  const maxGpus = manifest?.validatedComponentsMib?.length ?? 0;
 
-  const regTotals = calcTotals(regular);
-  const moeTotals = calcTotals(moeOptimal);
+  const totals = calcTotals(manifest?.validatedComponentsMib);
 
-  // Helper: cell value for a mode's GPU component
-  const gpuCell = (data: StoredValidationData | null, idx: number, field: "model_mib" | "ctx_mib" | "compute_mib") => {
-    const c = data?.validatedComponentsMib?.[idx];
+  // Helper: cell value for a GPU component
+  const gpuCell = (idx: number, field: "model_mib" | "ctx_mib" | "compute_mib") => {
+    const c = manifest?.validatedComponentsMib?.[idx];
     return c ? fmt(c[field] / 1024) : "\u2014";
   };
 
@@ -129,6 +120,22 @@ export default function VramDiagnostics({ modelPath }: VramDiagnosticsProps) {
     <td key={i} className={`${cellBase} text-black/30`}>—</td>
   ));
 
+  // Split mode cell — shows total GB + delta from baseline (returns content only, wrapped in <td> by caller)
+  const splitCellContent = (mode: "layer" | "row" | "tensor") => {
+    const val = splitPoints[mode];
+    if (!val) return "\u2014";
+    const gb = val / 1024;
+    const delta = basePointMib ? ((val - basePointMib) / 1024) : null;
+    const deltaColor = delta && delta > 0 ? "#B45309" : "rgba(0,0,0,0.5)";
+    return (
+      <span>
+        {fmt(gb)}{delta !== null ? <span style={{ color: deltaColor }}> ({delta > 0 ? "+" : ""}{fmt(delta)})</span> : ""}
+      </span>
+    );
+  };
+
+  const hasAnyData = hasValidation || Object.keys(splitPoints).length > 0;
+
   return (
     <div className="w-full bg-neutral-200 text-black">
       <button
@@ -144,138 +151,123 @@ export default function VramDiagnostics({ modelPath }: VramDiagnosticsProps) {
           {!modelPath ? (
             <div className="text-[8px] font-mono text-black/50 italic">Select a model first</div>
           ) : !hasAnyData ? (
-            <div className="text-[8px] font-mono text-black/50 italic">Run ESTIMATED to compare formula vs reality</div>
+            <div className="text-[8px] font-mono text-black/50 italic">Run ESTIMATE to compare formula vs reality</div>
           ) : (
-            <table className="w-full border-collapse" cellPadding={2} cellSpacing={0}>
-              {/* ── Header rows ── */}
-              <thead>
-                <tr>
-                  <th rowSpan={2} className={`${headerBase} text-left pr-3`}>Component</th>
-                  <th colSpan={(maxGpus + 2)} className={`${headerBase} border-b border-black/15 pb-0.5`}>Regular</th>
-                  <th colSpan={(maxGpus + 2)} className={`${headerBase} text-orange-700 border-b border-black/15 pb-0.5 pl-3`}>MOE_optimal</th>
-                </tr>
-                <tr>
-                  {/* Regular sub-headers */}
-                  <th className={`${headerBase} pr-2`}>Estimate</th>
-                  <th className={`${headerBase} pl-1 pb-0.5`}>Real</th>
-                  {Array.from({ length: maxGpus }).map((_, i) => (
-                    <th key={`r-${i}`} className={headerBase}>GPU{i}</th>
-                  ))}
-                  {/* MOE sub-headers */}
-                  <th className={`${headerBase} pr-2 pl-3`}>Estimate</th>
-                  <th className={`${headerBase} pl-1 pb-0.5`}>Real</th>
-                  {Array.from({ length: maxGpus }).map((_, i) => (
-                    <th key={`m-${i}`} className={headerBase}>GPU{i}</th>
-                  ))}
-                </tr>
-              </thead>
+            <div className="space-y-1">
+              {/* ── Refresh button for split data ── */}
+              {modelPath && Object.keys(splitPoints).length > 0 ? (
+                <div className="flex items-center justify-end px-2 py-1">
+                  <button onClick={() => loadFitScanPoints(modelPath)} disabled={loading} className="text-[8px] font-mono text-black/40 hover:text-black/70 transition-colors disabled:opacity-30" title="Refresh split mode measurements">
+                    {loading ? "⟳" : "↻"} Refresh split data
+                  </button>
+                </div>
+              ) : null}
 
-              {/* ── Data rows ── */}
-              <tbody>
-                {/* Weights */}
-                <tr>
-                  <td className={`${cellBase} text-left font-semibold text-black/70 pr-3`}>Weights</td>
-                  {regular ? frPair(regular.vramWeightsGb, regTotals.model / 1024) : emptyPair}
-                  {Array.from({ length: maxGpus }).map((_, i) => (
-                    <td key={i} className={cellBase}>{gpuCell(regular, i, "model_mib")}</td>
-                  ))}
-                  {moeOptimal ? frPair(moeOptimal.vramWeightsGb, moeTotals.model / 1024) : emptyPair}
-                  {Array.from({ length: maxGpus }).map((_, i) => (
-                    <td key={i} className={cellBase}>{gpuCell(moeOptimal, i, "model_mib")}</td>
-                  ))}
-                </tr>
+              <table className="w-full border-collapse" cellPadding={2} cellSpacing={0}>
+                {/* ── Header rows ── */}
+                <thead>
+                  <tr>
+                    <th rowSpan={2} className={`${headerBase} text-left pr-3`}>Component</th>
+                    <th colSpan={(maxGpus + 2)} className={`${headerBase} border-b border-black/15 pb-0.5`}>Regular</th>
+                    <th colSpan={3} className={`${headerBase} text-purple-700 border-b border-black/15 pb-0.5 pl-3`}>Split Modes</th>
+                  </tr>
+                  <tr>
+                    {/* Regular sub-headers */}
+                    <th className={`${headerBase} pr-2`}>Estimate</th>
+                    <th className={`${headerBase} pl-1 pb-0.5`}>Real</th>
+                    {Array.from({ length: maxGpus }).map((_, i) => (
+                      <th key={`r-${i}`} className={headerBase}>GPU{i}</th>
+                    ))}
+                    {/* Split mode sub-headers */}
+                    <th className={`${headerBase} pr-2 pl-3`}>Layer</th>
+                    <th className={`${headerBase} pl-1 pb-0.5`}>Row</th>
+                    <th className={headerBase}>Tensor</th>
+                  </tr>
+                </thead>
 
-                {/* KV Cache */}
-                <tr>
-                  <td className={`${cellBase} text-left font-semibold text-black/70 pr-3`}>KV Cache</td>
-                  {regular ? frPair(regular.vramKvGb, regTotals.kv / 1024) : emptyPair}
-                  {Array.from({ length: maxGpus }).map((_, i) => (
-                    <td key={i} className={cellBase}>{gpuCell(regular, i, "ctx_mib")}</td>
-                  ))}
-                  {moeOptimal ? frPair(moeOptimal.vramKvGb, moeTotals.kv / 1024) : emptyPair}
-                  {Array.from({ length: maxGpus }).map((_, i) => (
-                    <td key={i} className={cellBase}>{gpuCell(moeOptimal, i, "ctx_mib")}</td>
-                  ))}
-                </tr>
+                {/* ── Data rows ── */}
+                <tbody>
+                  {/* Weights */}
+                  <tr>
+                    <td className={`${cellBase} text-left font-semibold text-black/70 pr-3`}>Weights</td>
+                    {hasValidation ? frPair(manifest!.vramWeightsGb, totals.model / 1024) : emptyPair}
+                    {Array.from({ length: maxGpus }).map((_, i) => (
+                      <td key={i} className={cellBase}>{gpuCell(i, "model_mib")}</td>
+                    ))}
+                    <td className={`${cellBase} text-black/20`}>—</td>
+                    <td className={cellBase}>—</td>
+                    <td className={cellBase}>—</td>
+                  </tr>
 
-                {/* Overhead */}
-                <tr>
-                  <td className={`${cellBase} text-left font-semibold text-black/70 pr-3`}>Overhead</td>
-                  {regular ? frPair(regular.vramOverheadGb, regTotals.compute / 1024) : emptyPair}
-                  {Array.from({ length: maxGpus }).map((_, i) => (
-                    <td key={i} className={cellBase}>{gpuCell(regular, i, "compute_mib")}</td>
-                  ))}
-                  {moeOptimal ? frPair(moeOptimal.vramOverheadGb, moeTotals.compute / 1024) : emptyPair}
-                  {Array.from({ length: maxGpus }).map((_, i) => (
-                    <td key={i} className={cellBase}>{gpuCell(moeOptimal, i, "compute_mib")}</td>
-                  ))}
-                </tr>
+                  {/* KV Cache */}
+                  <tr>
+                    <td className={`${cellBase} text-left font-semibold text-black/70 pr-3`}>KV Cache</td>
+                    {hasValidation ? frPair(manifest!.vramKvGb, totals.kv / 1024) : emptyPair}
+                    {Array.from({ length: maxGpus }).map((_, i) => (
+                      <td key={i} className={cellBase}>{gpuCell(i, "ctx_mib")}</td>
+                    ))}
+                    <td className={`${cellBase} text-black/20`}>—</td>
+                    <td className={cellBase}>—</td>
+                    <td className={cellBase}>—</td>
+                  </tr>
 
-                {/* ── Total row ── */}
-                <tr className="border-t border-black/20">
-                  <td className={`${cellBase} text-left font-bold text-black/60 pr-3 pt-1`}>Total</td>
-                  {regular ? (
-                    <>
-                      <td className={`${cellBase} text-black/70 pr-3 pt-1`}>{fmt(regular.formulaVramTotalGb)}</td>
-                      <td className={`${cellBase} pl-1 pt-1`} style={{ color: "#B45309" }}>{fmt(regular.validatedVramMib / 1024)}</td>
-                    </>
-                  ) : emptyPair}
-                  {Array.from({ length: maxGpus }).map((_, i) => {
-                    const c = regular?.validatedComponentsMib?.[i];
-                    return (
-                      <td key={i} className={`${cellBase} text-black/60 pt-1`}>
-                        {c ? fmt((c.model_mib + c.ctx_mib + c.compute_mib) / 1024) : "—"}
-                      </td>
-                    );
-                  })}
-                  {moeOptimal ? (
-                    <>
-                      <td className={`${cellBase} text-black/70 pr-3 pl-3 pt-1`}>{fmt(moeOptimal.formulaVramTotalGb)}</td>
-                      <td className={`${cellBase} pl-1 pt-1`} style={{ color: "#B45309" }}>{fmt(moeOptimal.validatedVramMib / 1024)}</td>
-                    </>
-                  ) : emptyPair}
-                  {Array.from({ length: maxGpus }).map((_, i) => {
-                    const c = moeOptimal?.validatedComponentsMib?.[i];
-                    return (
-                      <td key={i} className={`${cellBase} text-black/60 pt-1`}>
-                        {c ? fmt((c.model_mib + c.ctx_mib + c.compute_mib) / 1024) : "—"}
-                      </td>
-                    );
-                  })}
-                </tr>
+                  {/* Overhead */}
+                  <tr>
+                    <td className={`${cellBase} text-left font-semibold text-black/70 pr-3`}>Overhead</td>
+                    {hasValidation ? frPair(manifest!.vramOverheadGb, totals.compute / 1024) : emptyPair}
+                    {Array.from({ length: maxGpus }).map((_, i) => (
+                      <td key={i} className={cellBase}>{gpuCell(i, "compute_mib")}</td>
+                    ))}
+                    <td className={`${cellBase} text-black/20`}>—</td>
+                    <td className={cellBase}>—</td>
+                    <td className={cellBase}>—</td>
+                  </tr>
 
-                {/* ── Scale Factor row ── */}
-                <tr>
-                  <td className={`${cellBase} text-left text-black/50 pr-3`}>Scale</td>
-                  {regular ? (
-                    <>
-                      <td colSpan={2} className={`${cellBase} pt-1`} style={{ color: "#B45309" }}>
-                        {(regular.validatedVramMib / 1024 / regular.formulaVramTotalGb).toFixed(3)}x
-                      </td>
-                    </>
-                  ) : (
-                    <>
-                      <td className={cellBase}>—</td>
-                      <td className={cellBase}>—</td>
-                    </>
-                  )}
-                  {emptyGpus}
-                  {moeOptimal ? (
-                    <>
-                      <td colSpan={2} className={`${cellBase} pt-1 pl-3`} style={{ color: "#B45309" }}>
-                        {(moeOptimal.validatedVramMib / 1024 / moeOptimal.formulaVramTotalGb).toFixed(3)}x
-                      </td>
-                    </>
-                  ) : (
-                    <>
-                      <td className={cellBase}>—</td>
-                      <td className={cellBase}>—</td>
-                    </>
-                  )}
-                  {emptyGpus}
-                </tr>
-              </tbody>
-            </table>
+                  {/* ── Total row ── */}
+                  <tr className="border-t border-black/20">
+                    <td className={`${cellBase} text-left font-bold text-black/60 pr-3 pt-1`}>Total</td>
+                    {hasValidation ? (
+                      <>
+                        <td className={`${cellBase} text-black/70 pr-3 pt-1`}>{fmt(manifest!.formulaVramTotalGb)}</td>
+                        <td className={`${cellBase} pl-1 pt-1`} style={{ color: "#B45309" }}>{fmt(manifest!.validatedVramMib! / 1024)}</td>
+                      </>
+                    ) : emptyPair}
+                    {Array.from({ length: maxGpus }).map((_, i) => {
+                      const c = manifest?.validatedComponentsMib?.[i];
+                      return (
+                        <td key={i} className={`${cellBase} text-black/60 pt-1`}>
+                          {c ? fmt((c.model_mib + c.ctx_mib + c.compute_mib) / 1024) : "—"}
+                        </td>
+                      );
+                    })}
+                    <td className={`${cellBase} pl-3 pt-1`}>{splitCellContent("layer")}</td>
+                    <td className={cellBase}>{splitCellContent("row")}</td>
+                    <td className={cellBase}>{splitCellContent("tensor")}</td>
+                  </tr>
+
+                  {/* ── Scale Factor row ── */}
+                  <tr>
+                    <td className={`${cellBase} text-left text-black/50 pr-3`}>Scale</td>
+                    {hasValidation ? (
+                      <>
+                        <td colSpan={2} className={`${cellBase} pt-1`} style={{ color: "#B45309" }}>
+                          {(manifest!.validatedVramMib! / 1024 / manifest!.formulaVramTotalGb).toFixed(3)}x
+                        </td>
+                      </>
+                    ) : (
+                      <>
+                        <td className={cellBase}>—</td>
+                        <td className={cellBase}>—</td>
+                      </>
+                    )}
+                    {emptyGpus}
+                    <td className={`${cellBase} pt-1 pl-3 text-black/20`}>—</td>
+                    <td className={cellBase}>—</td>
+                    <td className={cellBase}>—</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
       )}

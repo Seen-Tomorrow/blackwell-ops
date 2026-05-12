@@ -26,6 +26,7 @@ const normalizeValue = (value: any): any => {
   // Skip normalization if mixed case (e.g., "Off") or has digit+uppercase pattern (e.g., "32K")
   if (hasLower && hasUpper) return value;
   if (/^\d+[KMGT]$/i.test(value)) return value; // e.g., "8K", "16M"
+  if (/^GPU-\d+$/i.test(value)) return value;    // e.g., "GPU-0", "GPU-1" — preserve case for scenario parser
   
   return value.toLowerCase();
 };

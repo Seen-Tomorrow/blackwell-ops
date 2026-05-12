@@ -1,8 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::os::windows::process::CommandExt;
 use std::path::PathBuf;
-use std::process::Stdio;
 
 use crate::types::{ModelPathEntry, PathDiskUsage, ProviderConfig};
 
@@ -28,6 +26,9 @@ pub struct ProviderMeta {
     pub branch: String,
     #[serde(default)]
     pub build_profile: String,
+    /// Template type family (ggml-llama, ik-llama, "" = custom). Determines which genesis template to resolve against.
+    #[serde(default)]
+    pub template_type: String,
     /// Full param_definitions for this provider.
     /// Loaded from disk on startup; saved when admin edits params via save_provider IPC.
     #[serde(default)]
@@ -74,11 +75,12 @@ impl Default for AppConfig {
             });
         }
 
-        // Pre-add .lmstudio path if it exists on disk
-        let lmstudio_path = r"C:\Users\GHOST-TOWER\.lmstudio\models";
-        if std::path::Path::new(lmstudio_path).exists() {
+        // Pre-add .lmstudio path if it exists on disk (%USERPROFILE%\.lmstudio\models)
+        if let Some(lm_path) = dirs::home_dir().map(|h| h.join(".lmstudio").join("models")).and_then(|p| {
+            if p.exists() { Some(p) } else { None }
+        }) {
             model_paths.push(ModelPathEntry {
-                path: lmstudio_path.to_string(),
+                path: lm_path.to_string_lossy().to_string(),
                 label: ".lmstudio/models".to_string(),
                 is_default: false,
             });
@@ -283,6 +285,7 @@ pub fn persist_provider_meta(providers: &[crate::types::ProviderConfig]) -> Resu
             p.param_definitions.clone()
         },
         group_order: p.group_order.clone(),
+        template_type: p.template_type.clone(),
         build_info_per_env: p.build_info_per_env.clone(),
     }).collect();
     save_provider_meta(metas)
@@ -314,6 +317,7 @@ fn load_legacy_provider_meta() -> Vec<ProviderMeta> {
                                     build_profile: prov.get("build_profile").and_then(|v| v.as_str()).unwrap_or("").to_string(),
                                     param_definitions: Vec::new(),
                                     group_order: Vec::new(),
+                                    template_type: crate::templates::ProviderTemplate::template_type_for_id(id),
                                     build_info_per_env: HashMap::new(),
                                 });
                             }
@@ -382,7 +386,7 @@ pub fn params_for_provider(id: &str) -> Vec<crate::types::ParamDef> {
     Vec::new()
 }
 
-/// Build the 3 built-in providers with fresh param_definitions from embedded templates.
+/// Build the built-in providers with fresh param_definitions from embedded templates.
 fn genesis_providers() -> Vec<crate::types::ProviderConfig> {
     vec![
         crate::types::ProviderConfig {
@@ -396,21 +400,6 @@ fn genesis_providers() -> Vec<crate::types::ProviderConfig> {
             _original_id: None,
             git_url: "https://github.com/ggml-org/llama.cpp".to_string(),
             branch: "master".to_string(),
-            build_profile: String::new(),
-            template_type: "ggml-llama".into(),
-            build_info_per_env: std::collections::HashMap::new(),
-        },
-        crate::types::ProviderConfig {
-            id: "ggml-dev".to_string(),
-            display_name: "GGML Nightly/Dev".to_string(),
-            binary_path: r"C:\reactor_foundry\engines\ggml-dev\llama.cpp\build\bin\Release\llama-server.exe".to_string(),
-            enabled: true,
-            params: serde_json::json!({}),
-            param_definitions: params_for_provider("ggml-dev"),
-            group_order: Vec::new(),
-            _original_id: None,
-            git_url: "https://github.com/ggml-org/llama.cpp".to_string(),
-            branch: "dev".to_string(),
             build_profile: String::new(),
             template_type: "ggml-llama".into(),
             build_info_per_env: std::collections::HashMap::new(),
@@ -437,15 +426,30 @@ fn genesis_providers() -> Vec<crate::types::ProviderConfig> {
 /// - Built-in Genesis providers (fresh param_definitions from embedded template)
 /// - Any extra providers from disk metadata
 ///
+/// Resolve a template_type to its genesis_template.json key.
+/// Returns None for custom/empty types — no template to resolve against.
+pub fn template_key_for_type(template_type: &str) -> Option<&'static str> {
+    match template_type {
+        "ik-llama" => Some("ik-extreme"),
+        "ggml-llama" => Some("ggml-stable"),
+        _ => None,  // custom/empty = no template
+    }
+}
+
+/// Resolve effective template type: use disk value if set, otherwise auto-detect from provider ID.
+pub fn resolve_template_type(provider_id: &str, disk_type: Option<&String>) -> String {
+    match disk_type.and_then(|t| if t.is_empty() { None } else { Some(t.clone()) }) {
+        Some(t) => t,
+        None => crate::templates::ProviderTemplate::template_type_for_id(provider_id),
+    }
+}
+
 /// Priority: disk param_definitions > fresh template defaults.
 /// Merge missing `dock` values from genesis template into stored param definitions.
 /// Ensures new template fields propagate to already-saved provider configs.
-fn merge_template_dock(provider_id: &str, param_defs: &mut Vec<crate::types::ParamDef>) {
+fn merge_template_dock(template_type: &str, param_defs: &mut Vec<crate::types::ParamDef>) {
     let bundle = crate::templates::TemplateBundle::default();
-    let template_key = match provider_id {
-        "ik-extreme" => "ik-extreme",
-        _ => "ggml-stable", // ggml-stable and ggml-dev share same param structure
-    };
+    let Some(template_key) = template_key_for_type(template_type) else { return; };
     let Some(template) = bundle.templates.get(template_key) else { return; };
 
     // Build lookup of template params by key
@@ -469,42 +473,18 @@ pub fn load_config() -> AppConfig {
     // Try loading saved config from disk first (model_paths + other settings)
     if let Some(saved) = load_saved_config() {
         // Detect GPU count for Device param values only — NOT for slot count
-        let gpu_count = detect_gpu_count();
+        let gpu_count = crate::telemetry::detect_gpu_count();
 
         return build_config_with_providers_full(gpu_count, saved);
     }
 
     // No saved config — detect GPUs and build fresh
-    let gpu_count = detect_gpu_count();
+    let gpu_count = crate::telemetry::detect_gpu_count();
 
     let fresh = build_fresh_config(MAX_ENGINE_SLOTS);
     build_config_with_providers_full(gpu_count, fresh)
 }
 
-/// Detect physical GPU count via nvidia-smi. Returns 2 as fallback if detection fails.
-pub fn detect_gpu_count_pub() -> usize {
-    let mut gpu_count = 2; // Fallback for single-GPU or detection failure
-    if let Ok(output) = std::process::Command::new("nvidia-smi")
-        .args(&["--query-gpu=index", "--format=csv,noheader"])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .creation_flags(0x08000000) // CREATE_NO_WINDOW
-        .output()
-    {
-        let count = String::from_utf8_lossy(&output.stdout)
-            .lines().filter(|l| !l.trim().is_empty()).count();
-        if count > 0 {
-            gpu_count = count;
-            log::info!("Detected {} GPU(s)", gpu_count);
-        }
-    }
-    gpu_count
-}
-
-/// Internal alias used at startup.
-fn detect_gpu_count() -> usize {
-    detect_gpu_count_pub()
-}
 
 // ── Template Update Detection ───────────────────────────────────────
 
@@ -522,18 +502,19 @@ pub struct TemplateDiff {
 /// Returns what's new, what changed, and what's orphaned.
 #[tauri::command]
 pub fn check_template_update(provider_id: String) -> Result<TemplateDiff, String> {
-    let bundle = crate::templates::TemplateBundle::default();
-    // Resolve to the correct template key (ggml-dev uses ggml-stable params)
-    let template_key = match provider_id.as_str() {
-        "ik-extreme" => "ik-extreme",
-        _ => "ggml-stable",  // ggml-stable and ggml-dev share same param structure
-    };
-
-    let fresh_template = bundle.templates.get(template_key).ok_or("Unknown provider")?;
-
     // Load current state from disk (what was saved via save_provider)
     let metas = load_provider_meta();
     let meta = metas.iter().find(|m| m.id == provider_id);
+
+    // Resolve template key through the provider's template_type (auto-detect from ID if empty)
+    let template_type = resolve_template_type(&provider_id, meta.map(|m| &m.template_type));
+    let bundle = crate::templates::TemplateBundle::default();
+    let Some(template_key) = template_key_for_type(&template_type) else {
+        log::info!("[check_template_update] {}: no template for type '{}', returning empty diff", provider_id, template_type);
+        return Ok(TemplateDiff { new_params: Vec::new(), orphaned_params: Vec::new() });
+    };
+
+    let fresh_template = bundle.templates.get(template_key).ok_or("Unknown provider")?;
     
     // Build map of current params by key
     let current_params: std::collections::HashMap<String, &crate::types::ParamDef> = meta
@@ -611,13 +592,16 @@ pub fn apply_template_update(
 /// Used by the "R" (Restore) button in ConfigPage.
 #[tauri::command]
 pub fn reset_param_to_template(provider_id: String, param_key: String) -> Result<crate::types::ParamDef, String> {
+    // Load provider from disk to get template_type (auto-detect from ID if empty)
+    let metas = load_provider_meta();
+    let meta = metas.iter().find(|m| m.id == provider_id);
+    let template_type = resolve_template_type(&provider_id, meta.map(|m| &m.template_type));
+
     let bundle = crate::templates::TemplateBundle::default();
-    // Resolve template key from provider ID
-    let template_key = match provider_id.as_str() {
-        "ik-extreme" => "ik-extreme",
-        _ => "ggml-stable",  // ggml-stable and ggml-dev share same param structure
+    let Some(template_key) = template_key_for_type(&template_type) else {
+        return Err(format!("No genesis template for type '{}' — cannot restore param", template_type));
     };
-    
+
     let template = bundle.templates.get(template_key).ok_or("Unknown provider")?;
     let order = template.params.iter()
         .position(|p| p.key == param_key)
@@ -698,29 +682,17 @@ pub fn set_default_model_path(config: &mut AppConfig, path: &str) {
     }
 }
 
-/// Calculate disk usage for all model paths — scan for .gguf files.
+/// Calculate disk usage for all model paths — uses catalog scan for accurate shard/mmproj handling.
 pub fn calculate_disk_usage(paths: &[ModelPathEntry]) -> Vec<PathDiskUsage> {
     let mut result = Vec::new();
     for entry in paths {
-        let mut total_bytes = 0u64;
-        let mut file_count = 0usize;
-
-        if let Ok(read_dir) = std::fs::read_dir(&entry.path) {
-            for entry_item in read_dir.flatten() {
-                let path = entry_item.path();
-                if path.extension().and_then(|e| e.to_str()) == Some("gguf") {
-                    if let Ok(meta) = std::fs::metadata(&path) {
-                        total_bytes += meta.len();
-                        file_count += 1;
-                    }
-                }
-            }
-        }
-
+        let entries = crate::model_catalog::scan_path(&std::path::PathBuf::from(&entry.path))
+            .unwrap_or_default();
+        let total_bytes: u64 = entries.iter().map(|e| e.total_bytes).sum();
         result.push(PathDiskUsage {
             path: entry.path.clone(),
             total_gguf_bytes: total_bytes,
-            file_count,
+            file_count: entries.len(),
         });
     }
     result
@@ -768,11 +740,12 @@ fn build_fresh_config(_gpu_slots: usize) -> AppConfig {
         });
     }
 
-    // Pre-add .lmstudio path if it exists on disk
-    let lmstudio_path = r"C:\Users\GHOST-TOWER\.lmstudio\models";
-    if std::path::Path::new(lmstudio_path).exists() {
+    // Pre-add .lmstudio path if it exists on disk (%USERPROFILE%\.lmstudio\models)
+    if let Some(lm_path) = dirs::home_dir().map(|h| h.join(".lmstudio").join("models")).and_then(|p| {
+        if p.exists() { Some(p) } else { None }
+    }) {
         model_paths.push(ModelPathEntry {
-            path: lmstudio_path.to_string(),
+            path: lm_path.to_string_lossy().to_string(),
             label: ".lmstudio/models".to_string(),
             is_default: false,
         });
@@ -836,7 +809,7 @@ fn build_config_with_providers_full(gpu_count: usize, mut config: AppConfig) -> 
 
             if !meta.param_definitions.is_empty() {
                 let mut defs = meta.param_definitions.clone();
-                merge_template_dock(&p.id, &mut defs);
+                merge_template_dock(&p.template_type, &mut defs);
                 p.param_definitions = defs;
             }
             if !meta.build_info_per_env.is_empty() {
@@ -848,10 +821,14 @@ fn build_config_with_providers_full(gpu_count: usize, mut config: AppConfig) -> 
 
     for meta in metas_clone {
         if !providers.iter().any(|p| p.id == meta.id) {
+            let resolved_type = resolve_template_type(&meta.id, Some(&meta.template_type));
+            let tmpl_key = template_key_for_type(&resolved_type);
             let param_defs = if !meta.param_definitions.is_empty() {
                 meta.param_definitions.clone()
+            } else if let Some(key) = tmpl_key {
+                params_for_provider(key)
             } else {
-                params_for_provider(&meta.id)
+                Vec::new()  // custom type, no template
             };
 
             providers.push(crate::types::ProviderConfig {
@@ -866,7 +843,7 @@ fn build_config_with_providers_full(gpu_count: usize, mut config: AppConfig) -> 
                 git_url: meta.git_url.clone(),
                 branch: meta.branch.clone(),
                 build_profile: meta.build_profile.clone(),
-                template_type: crate::templates::ProviderTemplate::template_type_for_id(&meta.id),
+                template_type: resolved_type,
                 build_info_per_env: meta.build_info_per_env,
             });
         }
