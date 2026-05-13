@@ -1,7 +1,6 @@
-import { useState, useCallback, useEffect, useRef, Fragment } from "react";
+import React, { useState, useCallback, useEffect, useRef, Fragment } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { ProviderConfig, ParamDef, FitScanComplete, FitScanProgress, FitScanFull, FitDataPoint, BuildInfo } from "../lib/types";
-import FoundryModal from "./FoundryModal";
+import type { ProviderConfig, ParamDef, FitScanComplete, FitScanProgress, FitScanFull, FitDataPoint } from "../lib/types";
 
 function formatElapsed(startTime: number): string {
   const secs = Math.floor((Date.now() - startTime) / 1000);
@@ -13,6 +12,7 @@ function formatElapsed(startTime: number): string {
 interface ProvidersConfigProps {
   providers: ProviderConfig[];
   onProvidersChange: (providers: ProviderConfig[]) => void;
+  onNavigateToFoundry?: () => void;
 }
 
 interface FormState {
@@ -42,7 +42,7 @@ interface ProviderScanState {
   scanStartTime?: number; // epoch ms when scan started
 }
 
-export default function ProvidersConfig({ providers: initialProviders, onProvidersChange }: ProvidersConfigProps) {
+export default function ProvidersConfig({ providers: initialProviders, onProvidersChange, onNavigateToFoundry }: ProvidersConfigProps) {
   const [providers, setProviders] = useState<ProviderConfig[]>(initialProviders);
   const [form, setForm] = useState<FormState>({
     id: "",
@@ -63,6 +63,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
   }, []);
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -75,9 +76,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
 
   // Ref to always have the latest parallel setting available during async operations
   const parallelRef = useRef<Record<string, number>>({});
-
-  // Reactor Foundry modal state
-  const [foundryModal, setFoundryModal] = useState<{ provider: ProviderConfig; environment: "vanguard" | "stable" | "fresh" } | null>(null);
+  // FIT scan state per provider
 
   const loadProviders = useCallback(async () => {
     try {
@@ -114,9 +113,9 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
       return;
     }
 
-    // binary_path is optional for Foundry providers (git_url + branch set)
-    if (!form.binary_path.trim() && !(form.git_url.trim() && form.branch.trim())) {
-      setError("Binary path is required, or set Git URL and Branch for a Foundry provider.");
+    // binary_path is required (Foundry config managed in FOUNDRY tab)
+    if (!form.binary_path.trim()) {
+      setError("Binary path is required.");
       return;
     }
 
@@ -198,6 +197,15 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
       setError(typeof err === "string" ? err : JSON.stringify(err));
     }
   }, [loadProviders, editingId, handleCancel]);
+
+  const handleReorder = useCallback(async (id: string, direction: number) => {
+    try {
+      await invoke("reorder_provider", { providerId: id, direction });
+      await loadProviders();
+    } catch (err) {
+      console.error("Failed to reorder provider:", err);
+    }
+  }, [loadProviders]);
 
   const handleToggleEnabled = useCallback(async (id: string) => {
     try {
@@ -563,44 +571,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
                 onChange={(e) => setForm((prev) => ({ ...prev, display_name: e.target.value }))}
                 className="flex-1 bg-transparent border-b border-yellow-400/60 text-[11px] font-mono text-white placeholder:text-yellow-400/30 focus:border-yellow-400 focus:outline-none px-1 py-0.5" />
             </div>
-            {/* Binary path */}
-            <div className="flex items-center gap-2">
-              <label className="text-[10px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider">Binary Path</label>
-              <input type="text" placeholder="C:\path\to\llama-server.exe" value={form.binary_path}
-                onChange={(e) => setForm((prev) => ({ ...prev, binary_path: e.target.value }))}
-                className="flex-1 bg-transparent border-b border-yellow-400/60 text-[11px] font-mono text-white placeholder:text-yellow-400/30 focus:border-yellow-400 focus:outline-none px-1 py-0.5" />
-              <button onClick={handleBrowse} className="px-2 py-0.5 text-[9px] font-mono border border-stealth-border text-stealth-muted hover:text-nv-green transition-colors flex-shrink-0">BROWSE</button>
-            </div>
-            {/* Enabled toggle */}
-            <div className="flex items-center gap-2">
-              <label className="text-[10px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider">Active</label>
-              <button onClick={() => setForm((prev) => ({ ...prev, enabled: !prev.enabled }))}
-                className={`w-8 h-4 rounded-full transition-colors relative ${form.enabled ? "bg-nv-green/60" : "bg-stealth-border"}`}>
-                <span className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-transform ${form.enabled ? "left-4.5 translate-x-0.5" : "left-0.5"}`} />
-              </button>
-            </div>
-            {/* Reactor Foundry fields */}
-            <div className="pt-2 border-t border-stealth-border/50">
-              <h4 className="text-[9px] font-mono text-cyan-400 uppercase tracking-wider mb-1.5">Reactor Foundry Build Config</h4>
-              <div className="flex items-start gap-2 mb-2">
-                <label className="text-[9px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider mt-1">Git URL</label>
-                <input type="text" placeholder="https://github.com/ggml-org/llama.cpp" value={form.git_url}
-                  onChange={(e) => setForm((prev) => ({ ...prev, git_url: e.target.value }))}
-                  className="flex-1 bg-transparent border-b border-cyan-400/60 text-[11px] font-mono text-white placeholder:text-cyan-400/30 focus:border-cyan-400 focus:outline-none px-1 py-0.5" />
-              </div>
-              <div className="flex items-center gap-2 mb-2">
-                <label className="text-[9px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider">Branch</label>
-                <input type="text" placeholder="master, dev, main" value={form.branch}
-                  onChange={(e) => setForm((prev) => ({ ...prev, branch: e.target.value }))}
-                  className="flex-1 bg-transparent border-b border-cyan-400/60 text-[11px] font-mono text-white placeholder:text-cyan-400/30 focus:border-cyan-400 focus:outline-none px-1 py-0.5" />
-              </div>
-              <div className="flex items-start gap-2">
-                <label className="text-[9px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider mt-1">CMake Flags</label>
-                <textarea rows={3} placeholder={form.template_type === "ik-llama" ? "[IK-LLAMA defaults applied]\n-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=\"120a\" ..." : "[GGML defaults applied]\n-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=\"120a\" -DGGML_AVX512=ON ..."}
-                  value={form.build_profile} onChange={(e) => setForm((prev) => ({ ...prev, build_profile: e.target.value }))}
-                  className="flex-1 bg-transparent border border-cyan-400/30 text-white placeholder:text-cyan-400/30 focus:border-cyan-400 focus:outline-none px-2 py-1 font-mono text-[9px] resize-y" />
-              </div>
-            </div>
+            <ProviderFormFields form={form} setForm={setForm} handleBrowse={handleBrowse} />
             {/* Action buttons */}
             <div className="flex gap-2 pt-1">
               <button onClick={handleSave} disabled={loading || !form.id.trim() || !form.display_name.trim() || !form.binary_path.trim()}
@@ -616,96 +587,60 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
             NO PROVIDERS REGISTERED — ADD ONE ABOVE
           </div>
         ) : (
-          <div className="space-y-2 mb-6">
-            {providers.map((p) => (
+          <div className="mb-6">
+            {/* Sort bar — matches ModelCatalog style */}
+            <div className="flex items-center gap-1 px-3 py-2 border-b border-stealth-border/50">
+              <span className="text-[8px] font-mono text-stealth-muted uppercase tracking-wider w-6">#</span>
+              <div className="w-7" />
+              <span className="text-[8px] font-mono text-stealth-muted uppercase tracking-wider flex-1">Provider</span>
+              {selectedProviderId && (() => {
+                const si = providers.findIndex(p => p.id === selectedProviderId);
+                return (
+                  <div className="flex items-center gap-2.5 flex-shrink-0">
+                    <button onClick={() => handleReorder(selectedProviderId, -1)} disabled={si <= 0}
+                      className="text-[9px] font-mono text-stealth-muted hover:text-nv-green transition-colors disabled:opacity-20 disabled:cursor-not-allowed" title="Move up">
+                      ▲
+                    </button>
+                    <button onClick={() => handleReorder(selectedProviderId, 1)} disabled={si >= providers.length - 1}
+                      className="text-[9px] font-mono text-stealth-muted hover:text-nv-green transition-colors disabled:opacity-20 disabled:cursor-not-allowed" title="Move down">
+                      ▼
+                    </button>
+                    <span className="text-[8px] font-mono text-stealth-muted uppercase tracking-wider">Actions</span>
+                  </div>
+                );
+              })()}
+              {!selectedProviderId && (
+                <span className="text-[8px] font-mono text-stealth-muted uppercase tracking-wider">Actions</span>
+              )}
+            </div>
+
+            {providers.map((p, idx) => {
+              const isSelected = selectedProviderId === p.id;
+              return (
               <Fragment key={p.id}>
               <div
-                className={`flex gap-4 p-4 rounded border transition-all ${
+                onClick={() => setSelectedProviderId(isSelected ? null : p.id)}
+                className={`flex gap-4 p-4 rounded border transition-all cursor-pointer ${
                   editingId === p.id
                     ? "border-yellow-400/60 bg-yellow-400/5"
-                    : p.enabled
-                      ? "border-stealth-border hover:border-stealth-muted"
-                      : "border-stealth-border/30 opacity-40"
+                    : isSelected
+                      ? "border-nv-green/60 bg-nv-green/5"
+                      : p.enabled
+                        ? "border-stealth-border hover:border-stealth-muted"
+                        : "border-stealth-border/30 opacity-40"
                 }`}>
-                {/* ── Foundry Block (wider, more breathing room) ─────────── */}
-                <div className="flex flex-col items-center gap-2.5 px-4 py-3 flex-shrink-0 relative overflow-hidden rounded-sm" style={{
-                  minWidth: "160px",
-                  background: "linear-gradient(180deg, rgba(234,179,8,0.06) 0%, rgba(234,179,8,0.02) 40%, transparent 100%)",
-                  border: "1px solid rgba(234,179,8,0.15)",
-                }}>
-                  {/* Haze/smoke overlay */}
-                  <div className="absolute inset-0 pointer-events-none" style={{
-                    background: "radial-gradient(ellipse at 50% 0%, rgba(251,191,36,0.08) 0%, transparent 70%)",
-                  }} />
-
-                  {/* FOUNDRY banner */}
-                  <div className="relative z-10 flex items-center justify-center px-3 py-1 rounded-sm" style={{
-                    background: "linear-gradient(90deg, rgba(234,179,8,0.2), rgba(249,115,22,0.15))",
-                    border: "1px solid rgba(234,179,8,0.25)",
-                    boxShadow: "0 0 8px rgba(234,179,8,0.1), inset 0 1px 0 rgba(251,191,36,0.1)",
-                  }}>
-                    <span className="text-[7px] font-mono tracking-[0.2em] text-yellow-400/80">FOUNDRY</span>
-                  </div>
-
-                  {/* Build buttons + scan */}
-                  <div className="relative z-10 flex flex-col items-center gap-1.5">
-                    <div className="flex gap-1.5">
-                      <button onClick={() => setFoundryModal({ provider: p, environment: "vanguard" })}
-                        disabled={!p.git_url || !p.branch}
-                        className={`px-2.5 py-1 text-[8px] font-mono border transition-colors ${
-                          !p.git_url || !p.branch
-                            ? "border-stealth-border/30 text-stealth-muted/30 cursor-not-allowed"
-                            : "border-cyan-400/60 text-cyan-400 hover:bg-cyan-400/20"
-                        }`}>
-                        VANGUARD
-                      </button>
-                      <button onClick={() => setFoundryModal({ provider: p, environment: "fresh" })}
-                        disabled={!p.git_url || !p.branch}
-                        className={`px-2.5 py-1 text-[8px] font-mono border transition-colors ${
-                          !p.git_url || !p.branch
-                            ? "border-stealth-border/30 text-stealth-muted/30 cursor-not-allowed"
-                            : "border-amber-400/60 text-amber-400 hover:bg-amber-400/20"
-                        }`}>
-                        FRESH
-                      </button>
-                      <button onClick={() => setFoundryModal({ provider: p, environment: "stable" })}
-                        disabled={!p.git_url || !p.branch}
-                        className={`px-2.5 py-1 text-[8px] font-mono border transition-colors ${
-                          !p.git_url || !p.branch
-                            ? "border-stealth-border/30 text-stealth-muted/30 cursor-not-allowed"
-                            : "border-nv-green/60 text-nv-green hover:bg-nv-green/20"
-                        }`}>
-                        STABLE
-                      </button>
-                    </div>
-
-                  {/* Build info scan buttons + display */}
-                  <BuildInfoDisplay provider={p} onScan={async (env) => {
-                    if (!p.binary_path) return;
-                    try {
-                      const info = await invoke<BuildInfo>("get_binary_build_info", { binaryPath: p.binary_path });
-                      setProviders(prev => prev.map(pr =>
-                        pr.id === p.id
-                          ? { ...pr, buildInfoPerEnv: { ...(pr.buildInfoPerEnv || {}), [env]: info } }
-                          : pr
-                      ));
-                      await invoke("set_build_info_for_env", {
-                        providerId: p.id,
-                        envLabel: env,
-                        buildInfo: info,
-                      });
-                    } catch (err) {
-                      console.error(`Build info scan failed for ${p.id}/${env}:`, err);
-                    }
-                  }} />
-                  </div>
+                {/* ── Position number ─────────── */}
+                <div className="flex items-center flex-shrink-0" style={{ minWidth: "16px" }}>
+                  <span className={`text-[9px] font-mono ${isSelected ? "text-nv-green" : "text-stealth-muted"}`}>{idx + 1}</span>
                 </div>
+
+                {/* ── Foundry badge (removed — button in actions instead) ─────────── */}
 
                 {/* ── Table columns ─────────────────────────────────────── */}
                 <div className="flex items-center gap-6 flex-1 min-w-0">
                   {/* ID + name column */}
                   <div className="flex items-center gap-2.5 flex-shrink-0">
-                    <button onClick={() => handleToggleEnabled(p.id)}
+                    <button onClick={(e) => { e.stopPropagation(); handleToggleEnabled(p.id); }}
                       className={`text-[10px] select-none transition-colors ${
                         p.enabled ? "text-nv-green hover:text-nv-green/80" : "text-stealth-muted/30"
                       }`}
@@ -715,7 +650,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
                     <span className="text-[10px] font-mono text-yellow-400">
                       {p.id}
                     </span>
-                    <span className="text-[10px] font-mono text-white truncate max-w-[180px]" title={p.display_name}>
+                    <span className={`text-[10px] font-mono truncate max-w-[180px] ${isSelected ? "text-nv-green" : "text-white"}`} title={p.display_name}>
                       {p.display_name}
                     </span>
                   </div>
@@ -732,11 +667,17 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
 
                   {/* Actions group */}
                   <div className="flex items-center gap-2.5 flex-shrink-0">
-                      <button onClick={() => handleEdit(p)}
+                    {p.git_url && onNavigateToFoundry && (
+                      <button onClick={(e) => { e.stopPropagation(); onNavigateToFoundry(); }}
+                        className="px-2 py-0.5 text-[9px] font-mono bg-orange-500 text-black hover:bg-orange-400 transition-colors flex-shrink-0">
+                        FOUNDRY
+                      </button>
+                    )}
+                      <button onClick={(e) => { e.stopPropagation(); handleEdit(p); }}
                        className="px-2 py-0.5 text-[9px] font-mono border border-yellow-400/40 text-yellow-400 hover:bg-yellow-500/20 transition-colors">
                        EDIT
                      </button>
-                    <button onClick={() => handleDelete(p.id)}
+                    <button onClick={(e) => { e.stopPropagation(); handleDelete(p.id); }}
                       className="px-2 py-0.5 text-[9px] font-mono border border-red-500/30 text-red-400 hover:bg-red-500/20 transition-colors">
                       REMOVE
                     </button>
@@ -746,7 +687,8 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
                       {[4, 8, 16].map(n => (
                         <button
                           key={n}
-                          onClick={() => {
+                          onClick={(e) => {
+                            e.stopPropagation();
                             setScanStates(prev => ({ ...prev, [p.id]: { status: "idle" as const, parallel: n, totalModels: 0, completed: 0, failed: 0 } }));
                             parallelRef.current[p.id] = n;
                           }}
@@ -760,7 +702,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
                         </button>
                       ))}
                       <button
-                        onClick={() => handleScanLibrary(p.id)}
+                        onClick={(e) => { e.stopPropagation(); handleScanLibrary(p.id); }}
                         disabled={scanStates[p.id]?.status === "scanning"}
                         className="px-2 py-0.5 text-[9px] font-mono border border-telemetry-cyan/60 text-telemetry-cyan hover:bg-telemetry-cyan/10 transition-colors"
                       >
@@ -805,40 +747,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
                     <input type="text" value={form.display_name} onChange={(e) => setForm((prev) => ({ ...prev, display_name: e.target.value }))}
                       className="flex-1 bg-transparent border-b border-yellow-400/60 text-[11px] font-mono text-white focus:border-yellow-400 focus:outline-none px-1 py-0.5" />
                   </div>
-                  {/* Binary path */}
-                  <div className="flex items-center gap-2">
-                    <label className="text-[10px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider">Binary Path</label>
-                    <input type="text" value={form.binary_path} onChange={(e) => setForm((prev) => ({ ...prev, binary_path: e.target.value }))}
-                      className="flex-1 bg-transparent border-b border-yellow-400/60 text-[11px] font-mono text-white focus:border-yellow-400 focus:outline-none px-1 py-0.5" />
-                    <button onClick={handleBrowse} className="px-2 py-0.5 text-[9px] font-mono border border-stealth-border text-stealth-muted hover:text-nv-green transition-colors flex-shrink-0">BROWSE</button>
-                  </div>
-                  {/* Enabled toggle */}
-                  <div className="flex items-center gap-2">
-                    <label className="text-[10px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider">Active</label>
-                    <button onClick={() => setForm((prev) => ({ ...prev, enabled: !prev.enabled }))}
-                      className={`w-8 h-4 rounded-full transition-colors relative ${form.enabled ? "bg-nv-green/60" : "bg-stealth-border"}`}>
-                      <span className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-transform ${form.enabled ? "left-4.5 translate-x-0.5" : "left-0.5"}`} />
-                    </button>
-                  </div>
-                  {/* Reactor Foundry fields */}
-                  <div className="pt-2 border-t border-stealth-border/50">
-                    <h4 className="text-[9px] font-mono text-cyan-400 uppercase tracking-wider mb-1.5">Reactor Foundry Build Config</h4>
-                    <div className="flex items-start gap-2 mb-2">
-                      <label className="text-[9px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider mt-1">Git URL</label>
-                      <input type="text" value={form.git_url} onChange={(e) => setForm((prev) => ({ ...prev, git_url: e.target.value }))}
-                        className="flex-1 bg-transparent border-b border-cyan-400/60 text-[11px] font-mono text-white focus:border-cyan-400 focus:outline-none px-1 py-0.5" />
-                    </div>
-                    <div className="flex items-center gap-2 mb-2">
-                      <label className="text-[9px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider">Branch</label>
-                      <input type="text" value={form.branch} onChange={(e) => setForm((prev) => ({ ...prev, branch: e.target.value }))}
-                        className="flex-1 bg-transparent border-b border-cyan-400/60 text-[11px] font-mono text-white focus:border-cyan-400 focus:outline-none px-1 py-0.5" />
-                    </div>
-                    <div className="flex items-start gap-2">
-                      <label className="text-[9px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider mt-1">CMake Flags</label>
-                      <textarea rows={3} value={form.build_profile} onChange={(e) => setForm((prev) => ({ ...prev, build_profile: e.target.value }))}
-                        className="flex-1 bg-transparent border border-cyan-400/30 text-white focus:border-cyan-400 focus:outline-none px-2 py-1 font-mono text-[9px] resize-y" />
-                    </div>
-                  </div>
+                  <ProviderFormFields form={form} setForm={setForm} handleBrowse={handleBrowse} />
                   {/* Action buttons */}
                   <div className="flex gap-2 pt-1">
                     <button onClick={handleSave} disabled={loading || !form.id.trim() || !form.display_name.trim() || !form.binary_path.trim()}
@@ -850,7 +759,8 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
                 </div>
               )}
               </Fragment>
-            ))}
+              );
+            })}
           </div>
         )}
 
@@ -863,98 +773,60 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
         </span>
       </div>
 
-      {/* Reactor Foundry Build Modal */}
-      {foundryModal && (
-        <FoundryModal
-          provider={foundryModal.provider}
-          environment={foundryModal.environment}
-          onClose={() => setFoundryModal(null)}
-        />
-      )}
     </div>
   );
 }
 
-interface BuildInfoDisplayProps {
-  provider: ProviderConfig;
-  onScan: (env: "vanguard" | "stable" | "fresh") => Promise<void>;
+// Shared form fields for both add and edit forms
+interface ProviderFormFieldsProps {
+  form: FormState;
+  setForm: React.Dispatch<React.SetStateAction<FormState>>;
+  handleBrowse: () => void;
 }
 
-function BuildInfoDisplay({ provider, onScan }: BuildInfoDisplayProps) {
-  const envs: Array<"vanguard" | "stable" | "fresh"> = ["vanguard", "fresh", "stable"];
-  const envColors: Record<string, string> = {
-    vanguard: "text-cyan-400/60",
-    fresh: "text-amber-400/60",
-    stable: "text-nv-green/60",
-  };
-
+function ProviderFormFields({ form, setForm, handleBrowse }: ProviderFormFieldsProps) {
   return (
-    <div className="flex flex-col items-center gap-1">
-      {/* SCAN buttons — one per environment */}
-      <div className="flex gap-1.5">
-        {envs.map(env => (
-          <button
-            key={env}
-            onClick={() => onScan(env)}
-            disabled={!provider.binary_path}
-            className={`px-1 py-0 text-[7px] font-mono border transition-colors ${
-              !provider.binary_path
-                ? "border-stealth-border/20 text-stealth-muted/30 cursor-not-allowed"
-                : "border-stealth-border/40 text-stealth-muted/50 hover:text-white hover:border-stealth-muted/60"
-            }`}
-          >
-            SCAN
-          </button>
-        ))}
+    <>
+      {/* Binary path */}
+      <div className="flex items-center gap-2">
+        <label className="text-[10px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider">Binary Path</label>
+        <input type="text" value={form.binary_path} onChange={(e) => setForm((prev) => ({ ...prev, binary_path: e.target.value }))}
+          className="flex-1 bg-transparent border-b border-yellow-400/60 text-[11px] font-mono text-white focus:border-yellow-400 focus:outline-none px-1 py-0.5" />
+        <button onClick={handleBrowse} className="px-2 py-0.5 text-[9px] font-mono border border-stealth-border text-stealth-muted hover:text-nv-green transition-colors flex-shrink-0">BROWSE</button>
       </div>
-
-      {/* Build info display with tooltip */}
-      {provider.buildInfoPerEnv && Object.entries(provider.buildInfoPerEnv).map(([env, info]) => (
-        <div key={env} className="relative group">
-          <span className={`text-[7px] font-mono ${envColors[env] || "text-stealth-muted/50"}`}>
-            {env.toUpperCase()}: v{info.version}{info.cudaVersion ? ` @ CUDA ${info.cudaVersion}` : ""} · {info.buildDate}
-          </span>
-          {/* Tooltip on hover */}
-          <div className="hidden group-hover:block absolute top-full left-1/2 -translate-x-1/2 z-50 mt-1 px-2 py-1.5 border rounded-sm bg-stealth-panel whitespace-nowrap" style={{
-            borderColor: env === "vanguard" ? "#22d3ee40" : env === "fresh" ? "#f59e0b40" : "#4ade8040",
-          }}>
-            <div className="text-[8px] font-mono text-white">{info.version}</div>
-            {info.cudaVersion && <div className="text-[7px] font-mono text-telemetry-amber mt-0.5">CUDA {info.cudaVersion}</div>}
-            <div className="text-[7px] font-mono text-stealth-muted mt-0.5">Built: {info.buildDate}</div>
-          </div>
-        </div>
-      ))}
-    </div>
+      {/* Enabled toggle */}
+      <div className="flex items-center gap-2">
+        <label className="text-[10px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider">Active</label>
+        <button onClick={() => setForm((prev) => ({ ...prev, enabled: !prev.enabled }))}
+          className={`w-8 h-4 rounded-full transition-colors relative ${form.enabled ? "bg-nv-green/60" : "bg-stealth-border"}`}>
+          <span className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-transform ${form.enabled ? "left-4.5 translate-x-0.5" : "left-0.5"}`} />
+        </button>
+      </div>
+      {/* Git URL */}
+      <div className="flex items-center gap-2">
+        <label className="text-[10px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider">Git URL</label>
+        <input type="text" placeholder="https://github.com/ggml-org/llama.cpp" value={form.git_url}
+          onChange={(e) => setForm((prev) => ({ ...prev, git_url: e.target.value }))}
+          className="flex-1 bg-transparent border-b border-yellow-400/60 text-[11px] font-mono text-white placeholder:text-yellow-400/30 focus:border-yellow-400 focus:outline-none px-1 py-0.5" />
+      </div>
+      {/* Branch */}
+      <div className="flex items-center gap-2">
+        <label className="text-[10px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider">Branch</label>
+        <input type="text" placeholder="master, main, dev" value={form.branch}
+          onChange={(e) => setForm((prev) => ({ ...prev, branch: e.target.value }))}
+          className="flex-1 bg-transparent border-b border-yellow-400/60 text-[11px] font-mono text-white placeholder:text-yellow-400/30 focus:border-yellow-400 focus:outline-none px-1 py-0.5" />
+      </div>
+      {/* Build Profile (CMake flags) */}
+      <div className="flex items-start gap-2">
+        <label className="text-[10px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider mt-1">Build Profile</label>
+        <textarea rows={3} placeholder="-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=&quot;120a&quot;"
+          value={form.build_profile} onChange={(e) => setForm((prev) => ({ ...prev, build_profile: e.target.value }))}
+          className="flex-1 bg-transparent border border-yellow-400/30 text-white placeholder:text-yellow-400/30 focus:border-yellow-400 focus:outline-none px-2 py-1 font-mono text-[9px] resize-y" />
+      </div>
+    </>
   );
 }
 
-interface LastBuildDisplayProps {
-  provider: ProviderConfig;
-}
+// NOTE: Foundry build UI moved to top-level FOUNDRY tab (FoundryPage.tsx)
 
-function LastBuildDisplay({ provider }: LastBuildDisplayProps) {
-  const entries = Object.entries(provider.buildInfoPerEnv || {});
-  if (entries.length === 0) return null;
-
-  // Find the most recent build by date
-  const latest = entries.sort((a, b) => b[1].buildDate.localeCompare(a[1].buildDate))[0];
-  const [env, info] = latest!;
-
-  const envColors: Record<string, string> = {
-    vanguard: "text-cyan-400/70",
-    fresh: "text-amber-400/70",
-    stable: "text-nv-green/70",
-  };
-
-  return (
-    <div className="flex items-start gap-2 pt-1">
-      <label className="text-[9px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider mt-1">
-        Last Build
-      </label>
-      <span className={`text-[8px] font-mono ${envColors[env] || 'text-stealth-muted/50'}`}>
-        build {info.version}{info.cudaVersion ? ` @ CUDA ${info.cudaVersion}` : ""} at {info.buildDate}
-      </span>
-    </div>
-  );
-}
 

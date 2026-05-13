@@ -18,6 +18,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { ParamDef, ProviderConfig, ProviderTemplate, TemplateParam, ModelPathEntry, PathDiskUsage } from "../lib/types";
 import ValueBubbles from "./ValueBubbles";
 import ProvidersConfig from "./ProvidersConfig";
+import FoundryPage from "./FoundryPage";
 
 const OVERRIDES_KEY_PREFIX = "BlackOps-admin-catalog-override:";
 
@@ -42,7 +43,7 @@ interface ConfirmDialogProps {
   onCancel: () => void;
 }
 
-type ConfigSubTab = "providers" | "params" | "paths";
+type ConfigSubTab = "providers" | "params" | "paths" | "foundry";
 
 interface ConfigPageProps {
   providers?: ProviderConfig[];
@@ -786,14 +787,17 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
         <button onClick={() => setSubTab("providers")} className={`px-3 py-1 text-[10px] font-mono tracking-wider transition-colors ${subTab === "providers" ? "text-nv-green border-b border-nv-green/60" : "text-stealth-muted hover:text-white"}`}>PROVIDERS</button>
         <button onClick={() => setSubTab("params")} className={`px-3 py-1 text-[10px] font-mono tracking-wider transition-colors ${subTab === "params" ? "text-nv-green border-b border-nv-green/60" : "text-stealth-muted hover:text-white"}`}>PARAMETERS</button>
         <button onClick={() => setSubTab("paths")} className={`px-3 py-1 text-[10px] font-mono tracking-wider transition-colors ${subTab === "paths" ? "text-nv-green border-b border-nv-green/60" : "text-stealth-muted hover:text-white"}`}>PATHS</button>
+        <button onClick={() => setSubTab("foundry")} className={`px-3 py-1 text-[10px] font-mono tracking-wider transition-colors ${subTab === "foundry" ? "text-nv-green border-b border-nv-green/60" : "text-stealth-muted hover:text-white"}`}>FOUNDRY</button>
       </div>
 
       {subTab === "providers" ? (
         <div className="flex-1 flex flex-col overflow-hidden min-h-0">
-          <ProvidersConfig providers={allProviders} onProvidersChange={setAllProviders} />
+          <ProvidersConfig providers={allProviders} onProvidersChange={setAllProviders} onNavigateToFoundry={() => setSubTab("foundry")} />
         </div>
       ) : subTab === "paths" ? (
         <ModelPathsPanel />
+      ) : subTab === "foundry" ? (
+        <FoundryPage providers={allProviders} onProvidersChange={setAllProviders} />
       ) : (
         <div className="flex-1 flex flex-col overflow-hidden min-h-0">
           {/* Toolbar */}

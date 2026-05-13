@@ -135,6 +135,7 @@ export interface ProviderConfig {
   branch?: string;
   build_profile?: string;
   template_type?: string; // "ggml-llama" | "ik-llama" | "" (custom)
+  display_order?: number;
   buildInfoPerEnv?: Record<string, BuildInfo>;
 }
 

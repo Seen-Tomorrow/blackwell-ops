@@ -385,6 +385,7 @@ async fn main() {
             config::apply_template_update,
             config::save_provider_meta,
             config::reset_param_to_template,
+            config::reorder_provider,
             // FIT Scanner commands
             engine::fit_scan_model,
             engine::fit_scan_library,

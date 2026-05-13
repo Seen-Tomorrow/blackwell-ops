@@ -39,6 +39,9 @@ pub struct ProviderMeta {
     /// Per-environment build info captured from binary --version + file mtime.
     #[serde(default, skip_serializing_if = "HashMap::is_empty", rename = "buildInfoPerEnv")]
     pub build_info_per_env: HashMap<String, crate::types::BuildInfo>,
+    /// Display order in provider list (0 = first). Auto-assigned on save if not set.
+    #[serde(default)]
+    pub display_order: i32,
 }
 
 fn default_true() -> bool { true }
@@ -286,6 +289,7 @@ pub fn persist_provider_meta(providers: &[crate::types::ProviderConfig]) -> Resu
         },
         group_order: p.group_order.clone(),
         template_type: p.template_type.clone(),
+        display_order: p.display_order,
         build_info_per_env: p.build_info_per_env.clone(),
     }).collect();
     save_provider_meta(metas)
@@ -318,6 +322,7 @@ fn load_legacy_provider_meta() -> Vec<ProviderMeta> {
                                     param_definitions: Vec::new(),
                                     group_order: Vec::new(),
                                     template_type: crate::templates::ProviderTemplate::template_type_for_id(id),
+                                    display_order: 0,
                                     build_info_per_env: HashMap::new(),
                                 });
                             }
@@ -403,6 +408,7 @@ fn genesis_providers() -> Vec<crate::types::ProviderConfig> {
             build_profile: String::new(),
             template_type: "ggml-llama".into(),
             build_info_per_env: std::collections::HashMap::new(),
+            display_order: 0,
         },
         crate::types::ProviderConfig {
             id: "ik-extreme".to_string(),
@@ -418,6 +424,7 @@ fn genesis_providers() -> Vec<crate::types::ProviderConfig> {
             build_profile: String::new(),
             template_type: "ik-llama".into(),
             build_info_per_env: std::collections::HashMap::new(),
+            display_order: 1,
         },
     ]
 }
@@ -585,6 +592,20 @@ pub fn apply_template_update(
     save_provider_meta(metas)?;
     log::info!("[apply_template_update] {}: added {}, removed {}", provider_id, add_count, remove_count);
 
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn reorder_provider(provider_id: String, direction: i32, app: tauri::State<'_, crate::engine::AppContext>) -> Result<(), String> {
+    let mut cfg = app.config.lock().map_err(|e| e.to_string())?;
+    let idx = cfg.providers.iter().position(|p| p.id == provider_id).ok_or("Provider not found")?;
+    let new_idx = (idx as i32 + direction) as usize;
+    if new_idx >= cfg.providers.len() { return Ok(()); }
+    cfg.providers.swap(idx, new_idx);
+    for (i, p) in cfg.providers.iter_mut().enumerate() { p.display_order = i as i32; }
+    let mut metas = load_provider_meta();
+    for m in &mut metas { if let Some(p) = cfg.providers.iter().find(|p| p.id == m.id) { m.display_order = p.display_order; } }
+    save_provider_meta(metas)?;
     Ok(())
 }
 
@@ -845,8 +866,16 @@ fn build_config_with_providers_full(gpu_count: usize, mut config: AppConfig) -> 
                 build_profile: meta.build_profile.clone(),
                 template_type: resolved_type,
                 build_info_per_env: meta.build_info_per_env,
+                display_order: meta.display_order,
             });
         }
+    }
+
+    // Sort by existing order then ID for stability, then re-assign unique sequential orders.
+    // This handles collisions (e.g. two providers both at 0) and missing values.
+    providers.sort_by(|a, b| a.display_order.cmp(&b.display_order).then_with(|| a.id.cmp(&b.id)));
+    for (i, p) in providers.iter_mut().enumerate() {
+        p.display_order = i as i32;
     }
 
     config.providers = providers;

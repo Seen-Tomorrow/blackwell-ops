@@ -709,8 +709,6 @@ pub async fn foundry_build(
             cuda_version,
         };
 
-        let env_label = env.label().to_lowercase(); // "vanguard", "stable", or "fresh"
-
         let cfg = app.config.lock().map_err(|e| e.to_string())?;
         let mut cfg_mut = cfg.clone();
         if let Some(provider) = cfg_mut.providers.iter_mut().find(|p| p.id == provider_id) {
@@ -718,7 +716,8 @@ pub async fn foundry_build(
             if provider.build_info_per_env.is_empty() {
                 provider.build_info_per_env = std::collections::HashMap::new();
             }
-            provider.build_info_per_env.insert(env_label, build_info);
+            // Store under "current" — last build wins, no env-specific tracking needed yet
+            provider.build_info_per_env.insert("current".to_string(), build_info);
         }
         drop(cfg);
         crate::config::persist_provider_meta(&cfg_mut.providers).ok();

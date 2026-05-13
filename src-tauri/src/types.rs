@@ -285,6 +285,9 @@ pub struct ProviderConfig {
     /// Per-environment build info (vanguard/stable/fresh) — captured from binary --version + file mtime.
     #[serde(default, skip_serializing_if = "HashMap::is_empty", rename = "buildInfoPerEnv")]
     pub build_info_per_env: HashMap<String, BuildInfo>,
+    /// Display order in provider list (0 = first). Auto-assigned on save if not set.
+    #[serde(default)]
+    pub display_order: i32,
 }
 
 fn default_true() -> bool { true }
