@@ -22,10 +22,10 @@ const DEFAULT_BASE_PORT = 9090;
 
 type EnvProfile = "vanguard" | "fresh" | "stable";
 
-const ENV_META: Record<EnvProfile, { label: string; color: string }> = {
-  vanguard: { label: "VANGUARD", color: "cyan" },
-  fresh:    { label: "FRESH",    color: "amber" },
-  stable:   { label: "STABLE",   color: "nv-green" },
+const ENV_META: Record<EnvProfile, { label: string; color: string; cuda: string; vs: string }> = {
+  vanguard: { label: "VANGUARD", color: "cyan",    cuda: "13.2", vs: "VS Build Tools 2026 (v18)" },
+  fresh:    { label: "FRESH",    color: "amber",   cuda: "13.1", vs: "VS Build Tools 2022" },
+  stable:   { label: "STABLE",   color: "nv-green", cuda: "12.8", vs: "VS Build Tools 2022" },
 };
 
 const PROFILE_COLORS: Record<string, string> = {
@@ -491,7 +491,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       {/* Provider selector */}
       {externalProviders && externalProviders.length > 0 && (
         <div className="px-4 py-3 border-b section-divider relative flex-shrink-0">
-          <label className="text-[9px] font-mono text-neon-magenta tracking-widest uppercase block mb-2 glitch-text">
+          <label className="text-[9px] font-mono tracking-widest uppercase block mb-2 glitch-text" style={{ color: '#4ade80' }}>
             ENGINE PROVIDER
           </label>
           <div className="flex gap-1.5 flex-wrap">
@@ -554,13 +554,17 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           : [];
 
         return (
-          <div className="runtime-section-green border-b section-divider relative flex-shrink-0">
-            <div className="px-4 py-3 pr-6">
+          <div className="mono-panel border-b section-divider relative flex-shrink-0">
+            {/* Section header — outside the green bg, on dark */}
+            <div className="relative z-[2] px-4 pt-3 pb-1" style={{ background: '#0c120a' }}>
+
+            </div>
+            <div className="relative z-[2] px-4 py-3 pr-6">
               <div className="flex gap-4">
                 {/* Left: Multi-GPU params */}
                 {leftParams.length > 0 && (
                   <div className="space-y-2.5 flex-1 min-w-0">
-                    <label className="text-[8px] font-mono tracking-widest uppercase block mb-2" style={{ color: '#1a1a1a', opacity: 0.6 }}>
+                    <label className="text-[8px] font-mono tracking-widest uppercase block mb-2">
                       MULTI-GPU
                     </label>
                     {leftParams.map(def => renderParamRow(def))}
@@ -568,11 +572,11 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                 )}
 
                 {/* Subtle vertical separator */}
-                <div className="w-px flex-shrink-0 bg-black/15" />
+                <div className="w-px flex-shrink-0 bg-green-400/10" />
 
                 {/* Right: Runtime Config */}
                 <div className="w-[40%] min-w-[200px] flex-shrink-0">
-                  <label className="text-[8px] font-mono tracking-widest uppercase block mb-2" style={{ color: '#1a1a1a', opacity: 0.6 }}>
+                  <label className="text-[8px] font-mono tracking-widest uppercase block mb-2">
                     RUNTIME CONFIG
                   </label>
 
@@ -585,21 +589,22 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
                   {/* Engine Alias input */}
                   <div className="flex items-center gap-2 mb-2.5">
-                    <span className="font-mono text-[9px] w-24 flex-shrink-0 uppercase tracking-wider truncate" style={{ color: '#1a1a1a', opacity: 0.7 }}>
+                    <span className="font-mono text-[9px] w-24 flex-shrink-0 uppercase tracking-wider truncate mono-label">
                       Alias
                     </span>
                     <input
                       type="text"
                       value={aliasInput}
                       onChange={(e) => setAliasInput(e.target.value)}
-                      className="flex-1 min-w-0 bg-black/25 border border-black/30 text-[9px] font-mono px-2 py-0.5 rounded-sm focus:outline-none focus:border-black/60 text-white placeholder:text-white/30"
+                      className="flex-1 min-w-0 bg-green-400/5 border border-green-400/20 text-[9px] font-mono px-2 py-0.5 rounded-sm focus:outline-none focus:border-green-400/40 placeholder:text-green-400/30"
+                      style={{ color: '#4ade80' }}
                       placeholder="auto..."
                     />
                   </div>
 
                   {/* Binary Profile badges */}
                   <div className="flex items-center gap-2">
-                    <span className="font-mono text-[9px] w-24 flex-shrink-0 uppercase tracking-wider truncate" style={{ color: '#1a1a1a', opacity: 0.7 }}>
+                    <span className="font-mono text-[9px] w-24 flex-shrink-0 uppercase tracking-wider truncate mono-label">
                       Profile
                     </span>
                     <div className="flex gap-1">
@@ -607,7 +612,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                         const meta = ENV_META[profile];
                         const hasBuild = builtProfiles.includes(profile);
                         const isSelected = selectedBinaryProfile === profile;
-                        const colorHex = PROFILE_COLORS[meta.color] || "#00e5ff";
                         return (
                           <button
                             key={profile}
@@ -615,19 +619,12 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                             disabled={!hasBuild}
                             className={`px-2 py-0.5 text-[8px] font-mono rounded-sm border transition-all ${
                               isSelected
-                                ? "text-white"
+                                ? "mono-badge-active"
                                 : hasBuild
-                                  ? "bg-black/15 border-black/30 text-black/70 hover:bg-black/25 hover:text-black"
-                                  : "opacity-25 cursor-not-allowed bg-black/5 border-black/10 text-black/30"
+                                  ? "mono-badge-inactive hover:border-green-400/50 hover:text-[#66ff66]"
+                                  : "opacity-25 cursor-not-allowed mono-badge-disabled"
                             }`}
-                            style={isSelected
-                              ? {
-                                background: `linear-gradient(135deg, ${colorHex}, ${colorHex}cc)`,
-                                borderColor: colorHex,
-                                boxShadow: `0 2px 4px rgba(0,0,0,0.3)`,
-                              }
-                              : {}}
-                            title={`${meta.label}${hasBuild ? '' : ' — not yet built'}`}
+                            title={`${meta.label} — CUDA ${meta.cuda}, ${meta.vs}${hasBuild ? '' : ' (not yet built)'}`}
                           >
                             {meta.label}
                           </button>
@@ -648,11 +645,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         <VramDiagnostics modelPath={model?.path ?? null} manifest={vramCalc.manifest} />
       )}
 
-      {/* Parameters — scrollable middle section */}
-      <div className="px-4 py-3 border-b section-divider relative flex-1 overflow-y-auto cyber-scrollbar">
-          <label className="text-[9px] font-mono text-white tracking-widest uppercase block mb-3 glitch-text">
-            PARAMETERS
-          </label>
+      {/* Parameters — scrollable middle section (e-ink panel) */}
+      <div className="px-4 py-3 border-b relative flex-1 overflow-y-auto cyber-scrollbar eink-panel">
 
         {mergedParamDefs.length === 0 ? (
           <div className="text-stealth-muted text-[10px] font-mono opacity-50">NO PARAMS DEFINED</div>
@@ -754,7 +748,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             whileTap={{ scale: 0.98 }}
             className={`w-full ignite-btn px-4 py-3 text-xs font-mono tracking-widest rounded-sm disabled:opacity-40 disabled:cursor-not-allowed ${isBlazing ? "blazing" : ""}`}
           >
-            {isBlazing ? "🔥 LAUNCHED" : "✦ IGNITE ENGINE"}
+            {isBlazing ? "🔥 LAUNCHED" : "✦ LAUNCH ENGINE ✦"}
           </motion.button>
           <p className="text-[8px] font-mono text-stealth-muted/40 text-center mt-1.5">Ctrl+Enter to launch</p>
         </div>

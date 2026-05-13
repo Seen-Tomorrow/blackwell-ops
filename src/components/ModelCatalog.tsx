@@ -186,6 +186,15 @@ export default function ModelCatalog(props: ModelCatalogProps) {
       return sortDirection === "asc" ? comparison : -comparison;
     });
 
+    // Pin running models to the top, preserving their relative order
+    const pinned: ModelEntry[] = [];
+    const rest: ModelEntry[] = [];
+    for (const m of sorted) {
+      if (runningModelPaths.has(m.path)) pinned.push(m);
+      else rest.push(m);
+    }
+    sorted = [...pinned, ...rest];
+
     if (!search.trim()) return sorted;
     const words = search.toLowerCase().trim().split(/\s+/);
     return sorted.filter((m) => {
@@ -193,7 +202,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
       const combined = `${m.name} ${m.author} ${m.quant}`.toLowerCase();
       return words.every(word => combined.includes(word));
     });
-  }, [models, sortField, sortDirection, search]);
+  }, [models, sortField, sortDirection, search, runningModelPaths]);
 
   // ── VRAM fit status per model ────────────────
   type FitStatus = { label: string; colorClass: string };

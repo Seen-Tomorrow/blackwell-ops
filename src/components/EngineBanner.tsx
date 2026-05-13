@@ -44,16 +44,7 @@ export default function EngineBanner({ slotIndex, providerName, providerType, st
     >
       {/* Background gradient layers */}
       <div className="absolute inset-0 bg-gradient-to-r from-nv-green/5 via-transparent to-telemetry-amber/5" />
-      
-      {/* Scanline pattern */}
-      <svg className="absolute inset-0 w-full h-full opacity-[0.03]" aria-hidden="true">
-        <defs>
-          <pattern id={`scanlines-${slotIndex}`} width="4" height="4" patternUnits="userSpaceOnUse">
-            <line x1="0" y1="0" x2="4" y2="0" stroke="#76B900" strokeWidth="0.5" />
-          </pattern>
-        </defs>
-        <rect width="100%" height="100%" fill={`url(#scanlines-${slotIndex})`} />
-      </svg>
+
 
       {/* Animated corner accents */}
       <div className="absolute top-0 left-0 w-6 h-6">
