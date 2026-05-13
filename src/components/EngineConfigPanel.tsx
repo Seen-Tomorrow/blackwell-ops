@@ -10,7 +10,7 @@
  */
 
 import { motion } from "framer-motion";
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import type { ModelEntry, EngineConfig, GpuInfo, ParamDef, ProviderConfig, ProviderTemplate, StackEntry, SystemInfo } from "../lib/types";
 import { invoke } from "@tauri-apps/api/core";
 import VramBadge from "./VramBadge";
@@ -18,7 +18,21 @@ import VramDiagnostics from "./VramDiagnostics";
 import { useScenarioEvaluator } from "../hooks/useScenarioEvaluator";
 import { useConfigResolver } from "../hooks/useConfigResolver";
 
-const BASE_PORT = 9090;
+const DEFAULT_BASE_PORT = 9090;
+
+type EnvProfile = "vanguard" | "fresh" | "stable";
+
+const ENV_META: Record<EnvProfile, { label: string; color: string }> = {
+  vanguard: { label: "VANGUARD", color: "cyan" },
+  fresh:    { label: "FRESH",    color: "amber" },
+  stable:   { label: "STABLE",   color: "nv-green" },
+};
+
+const PROFILE_COLORS: Record<string, string> = {
+  cyan:     "#00e5ff",
+  amber:    "#FFB800",
+  "nv-green": "#76B900",
+};
 
 // Group metadata derived dynamically from template — no hardcoded group names.
 interface ParamGroupMeta { id: string; label: string; alwaysOpen: boolean }
@@ -64,6 +78,15 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     try { return localStorage.getItem("BlackOps-testFlagsMode") === "add" ? "add" : "replace"; } catch { return "replace"; }
   });
 
+  // Engine alias — per-model persistent, auto-populated if empty
+  const [aliasInput, setAliasInput] = useState<string>("");
+  const aliasInitializedRef = useRef<{ modelPath: string; done: boolean }>({ modelPath: "", done: false });
+
+  // Binary profile selection — persisted per-provider, defaults to vanguard
+  const [selectedBinaryProfile, setSelectedBinaryProfile] = useState<EnvProfile>(() => {
+    try { return (localStorage.getItem("BlackOps-binary-profile") as EnvProfile) || "vanguard"; } catch { return "vanguard"; }
+  });
+
   // Blaze animation state — triggers fire effect on launch button
   const [isBlazing, setIsBlazing] = useState(false);
 
@@ -97,13 +120,62 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     try { localStorage.setItem("BlackOps-testFlagsMode", testFlagsMode); } catch {}
   }, [testFlagsMode]);
 
+  // Persist binary profile selection
+  useEffect(() => {
+    try { localStorage.setItem("BlackOps-binary-profile", selectedBinaryProfile); } catch {}
+  }, [selectedBinaryProfile]);
+
+  // Auto-populate alias when model changes — per-model persistence
+  useEffect(() => {
+    if (!model) return;
+    const key = `BlackOps-engine-alias:${model.path}`;
+    const initKey = aliasInitializedRef.current.modelPath;
+    
+    // Only initialize once per model path to avoid overwriting user input on HMR
+    if (initKey !== model.path) {
+      try {
+        const saved = localStorage.getItem(key);
+        if (saved) {
+          setAliasInput(saved);
+        } else {
+          // Auto-generate suggestion
+          invoke<StackEntry[]>("get_stack_status").then(stack => {
+            const usedNames = new Set<number>();
+            for (const s of stack) {
+              const match = s.alias?.match(/^ENGINE_(\d+)$/);
+              if (match) usedNames.add(parseInt(match[1], 10));
+            }
+            for (let i = 1; i <= 64; i++) {
+              if (!usedNames.has(i)) return `ENGINE_${i}`;
+            }
+            return "ENGINE_1";
+          }).then(autoName => {
+            setAliasInput(autoName);
+            aliasInitializedRef.current = { modelPath: model.path, done: true };
+          }).catch(() => {
+            setAliasInput("ENGINE_1");
+            aliasInitializedRef.current = { modelPath: model.path, done: true };
+          });
+        }
+      } catch {
+        aliasInitializedRef.current = { modelPath: model.path, done: true };
+      }
+    }
+  }, [model?.path]);
+
+  // Save alias to localStorage when it changes (after initial load)
+  useEffect(() => {
+    if (!model || !aliasInitializedRef.current.done) return;
+    try { localStorage.setItem(`BlackOps-engine-alias:${model.path}`, aliasInput); } catch {}
+  }, [aliasInput, model?.path]);
+
   // ── Derived state ───────────────────────────────────────────────────────────
   const effectiveBackendType = useMemo(() => {
     if (!model) return selectedProvider || "ggml-stable";
     return selectedProvider || (model.backend_type || "ggml-stable");
   }, [model, selectedProvider]);
 
-  // Dynamic Device param — generated from GPU topology, docked to hardware block
+  // Dynamic Device param — generated from GPU topology, docked to runtime block
   const deviceParamDef: ParamDef | null = useMemo(() => {
     if (gpus.length === 0) return null;
     const alreadyExists = adminParamDefs.some(d => d.key === "Device");
@@ -118,7 +190,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       order: -1,
       hidden: false,
       defaultValue: "GPU-0",
-      dock: "hardware",
+      dock: "runtime",
       ui_group: "Core",
       note: "Select which GPU to use for inference.",
     };
@@ -177,12 +249,10 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     const baseValues = allValues.filter(v => !(def.hiddenValues || []).some(hv => String(hv) === String(v)));
     const currentValue = config[def.key] ?? config[def.config_key || def.key];
 
-    const isDevice = def.key === "Device";
-
     return (
       <div key={def.key} data-param-row className={`flex items-center gap-2 ${isLocked ? 'opacity-50' : ''}`}>
         <span
-          className={`font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider truncate ${isDevice ? 'text-[11px]' : 'text-[9px]'}`}
+          className="font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider truncate text-[9px]"
           title={def.label}
         >
           {def.label}
@@ -196,7 +266,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
               onClick={() => {
                 if (!isLocked) updateParam(def.key, val);
               }}
-              className={`px-2 py-0.5 font-mono rounded-sm focus:outline-none ${isDevice ? 'text-[11px] px-3 py-1' : 'text-[9px]'} ${
+              className={`px-2 py-0.5 text-[9px] font-mono rounded-sm focus:outline-none ${
                 (currentValue === val || config[def.config_key || def.key] === val) ||
                 (typeof currentValue === 'string' && typeof val === 'string' && 
                  currentValue.toLowerCase() === String(val).toLowerCase())
@@ -284,21 +354,29 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   }, [model, config, effectiveBackendType]);
 
   // ── Port / name helpers ────────────────────────────────────────────────────
+  const getBasePort = useCallback((): number => {
+    const bp = config.Base_Port ?? config.base_port;
+    if (typeof bp === 'number') return bp;
+    const parsed = parseInt(String(bp), 10);
+    return isNaN(parsed) ? DEFAULT_BASE_PORT : parsed;
+  }, [config.Base_Port, config.base_port]);
+
   const getNextPort = useCallback(async (): Promise<number> => {
+    const basePort = getBasePort();
     try {
       const stack = await invoke<StackEntry[]>("get_stack_status");
       for (let i = 0; i < 4; i++) {
-        const expectedPort = BASE_PORT + i;
+        const expectedPort = basePort + i;
         const inUse = stack.some(s => s.port === expectedPort && s.status !== "IDLE");
         if (!inUse) return expectedPort;
       }
     } catch {}
-    let maxPort = BASE_PORT - 1;
+    let maxPort = basePort - 1;
     for (let i = 0; i < 4; i++) {
-      maxPort = Math.max(maxPort, BASE_PORT + i);
+      maxPort = Math.max(maxPort, basePort + i);
     }
     return maxPort + 1;
-  }, []);
+  }, [getBasePort]);
 
   const getNextEngineName = useCallback(async (): Promise<string> => {
     try {
@@ -322,11 +400,29 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     if (!model) return;
 
     const port = await getNextPort();
-    const engineName = await getNextEngineName();
+    
+    // Resolve final alias: user input if non-empty, otherwise auto-generate
+    let finalAlias = aliasInput.trim();
+    if (!finalAlias) {
+      finalAlias = await getNextEngineName();
+    }
+    
+    // Check for collision with active (non-IDLE) engines — append suffix if needed
+    try {
+      const stackStatus = await invoke<StackEntry[]>("get_stack_status");
+      const collisions = stackStatus.filter(s => s.alias === finalAlias && s.status !== "IDLE");
+      if (collisions.length > 0) {
+        let suffix = 2;
+        while (stackStatus.some(s => s.alias === `${finalAlias}_${suffix}` && s.status !== "IDLE")) {
+          suffix++;
+        }
+        finalAlias = `${finalAlias}_${suffix}`;
+      }
+    } catch {}
 
     // Build typed EngineConfig for Rust's launch_engine command
     const fullConfig: EngineConfig = {
-      alias: engineName,
+      alias: finalAlias,
       model_path: model.path,
       port,
       device: config.Device || "GPU-0",
@@ -349,6 +445,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       verbose: false,
       log_timestamps: true,
       backend_type: effectiveBackendType,
+      binary_profile: selectedBinaryProfile,
     };
 
     // Inject test flags into extra_params if enabled
@@ -364,7 +461,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     setTimeout(() => setIsBlazing(false), 800);
 
     // Dispatch success event for toast + status bar
-    window.dispatchEvent(new CustomEvent("blackops-launch-success", { detail: { alias: engineName, port } }));
+    window.dispatchEvent(new CustomEvent("blackops-launch-success", { detail: { alias: finalAlias, port } }));
 
     onLaunch(fullConfig);
   };
@@ -445,19 +542,106 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         />
       </div>
 
-      {/* ── Docked Hardware Block ─────────────── */}
-      {dockedParams["hardware"] && dockedParams["hardware"].length > 0 && (
-        <div className="hw-section-green border-b section-divider relative flex-shrink-0">
-          <div className="px-4 py-3">
-            <div className="flex gap-4">
-              {/* Left: param rows (~full width now) */}
-              <div className="space-y-2.5 flex-1 min-w-0">
-                {dockedParams["hardware"].map(def => renderParamRow(def))}
+      {/* ── Runtime Docked Block (2-column) ─────────────── */}
+      {dockedParams["runtime"] && dockedParams["runtime"].length > 0 && (() => {
+        const runtimeDocked = dockedParams["runtime"];
+        const leftParams = runtimeDocked.filter(d => d.ui_group !== "Runtime Config");
+        const rightParams = runtimeDocked.filter(d => d.ui_group === "Runtime Config");
+        const currentProvider = externalProviders?.find(p => p.id === effectiveBackendType);
+        const availableProfiles: EnvProfile[] = Object.keys(ENV_META) as EnvProfile[];
+        const builtProfiles = currentProvider?.buildInfoPerEnv
+          ? (Object.keys(currentProvider.buildInfoPerEnv) as EnvProfile[]).filter(k => ENV_META[k])
+          : [];
+
+        return (
+          <div className="runtime-section-green border-b section-divider relative flex-shrink-0">
+            <div className="px-4 py-3 pr-6">
+              <div className="flex gap-4">
+                {/* Left: Multi-GPU params */}
+                {leftParams.length > 0 && (
+                  <div className="space-y-2.5 flex-1 min-w-0">
+                    <label className="text-[8px] font-mono tracking-widest uppercase block mb-2" style={{ color: '#1a1a1a', opacity: 0.6 }}>
+                      MULTI-GPU
+                    </label>
+                    {leftParams.map(def => renderParamRow(def))}
+                  </div>
+                )}
+
+                {/* Subtle vertical separator */}
+                <div className="w-px flex-shrink-0 bg-black/15" />
+
+                {/* Right: Runtime Config */}
+                <div className="w-[40%] min-w-[200px] flex-shrink-0">
+                  <label className="text-[8px] font-mono tracking-widest uppercase block mb-2" style={{ color: '#1a1a1a', opacity: 0.6 }}>
+                    RUNTIME CONFIG
+                  </label>
+
+                  {/* Base_Port chips from genesis */}
+                  {rightParams.length > 0 && (
+                    <div className="space-y-2.5 mb-3">
+                      {rightParams.map(def => renderParamRow(def))}
+                    </div>
+                  )}
+
+                  {/* Engine Alias input */}
+                  <div className="flex items-center gap-2 mb-2.5">
+                    <span className="font-mono text-[9px] w-24 flex-shrink-0 uppercase tracking-wider truncate" style={{ color: '#1a1a1a', opacity: 0.7 }}>
+                      Alias
+                    </span>
+                    <input
+                      type="text"
+                      value={aliasInput}
+                      onChange={(e) => setAliasInput(e.target.value)}
+                      className="flex-1 min-w-0 bg-black/25 border border-black/30 text-[9px] font-mono px-2 py-0.5 rounded-sm focus:outline-none focus:border-black/60 text-white placeholder:text-white/30"
+                      placeholder="auto..."
+                    />
+                  </div>
+
+                  {/* Binary Profile badges */}
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-[9px] w-24 flex-shrink-0 uppercase tracking-wider truncate" style={{ color: '#1a1a1a', opacity: 0.7 }}>
+                      Profile
+                    </span>
+                    <div className="flex gap-1">
+                      {availableProfiles.map(profile => {
+                        const meta = ENV_META[profile];
+                        const hasBuild = builtProfiles.includes(profile);
+                        const isSelected = selectedBinaryProfile === profile;
+                        const colorHex = PROFILE_COLORS[meta.color] || "#00e5ff";
+                        return (
+                          <button
+                            key={profile}
+                            onClick={() => setSelectedBinaryProfile(profile)}
+                            disabled={!hasBuild}
+                            className={`px-2 py-0.5 text-[8px] font-mono rounded-sm border transition-all ${
+                              isSelected
+                                ? "text-white"
+                                : hasBuild
+                                  ? "bg-black/15 border-black/30 text-black/70 hover:bg-black/25 hover:text-black"
+                                  : "opacity-25 cursor-not-allowed bg-black/5 border-black/10 text-black/30"
+                            }`}
+                            style={isSelected
+                              ? {
+                                background: `linear-gradient(135deg, ${colorHex}, ${colorHex}cc)`,
+                                borderColor: colorHex,
+                                boxShadow: `0 2px 4px rgba(0,0,0,0.3)`,
+                              }
+                              : {}}
+                            title={`${meta.label}${hasBuild ? '' : ' — not yet built'}`}
+                          >
+                            {meta.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Memory Forecast Diagnostics — admin only, between HW block and PARAMETERS */}
       {isAdminUnlocked && (

@@ -125,11 +125,11 @@
         "map_id": "OFFLOAD_MAP",
         "values": ["all", "10", "15", "20", "25", "30", "35", "40", "45", "50"],
         "default": "all",
-        "dock": "hardware",
+        "dock": "runtime",
         "ui_group": "Multi-GPU",
         "note": "Number of layers to offload. 'ALL' maps to 999."
-      },
-      {
+       },
+       {
         "key": "Offload_Mode",
         "label": "Offload_Mode",
         "config_key": "offload_mode",
@@ -137,7 +137,7 @@
         "ptype": "logic_only",
         "values": ["regular", "moe_optimal"],
         "default": "regular",
-        "dock": "hardware",
+        "dock": "runtime",
         "ui_group": "Multi-GPU",
         "note": "moe_optimal adds expert eviction filter and forces KV quant to q4_0.",
         "sub_params": {
@@ -152,11 +152,23 @@
         "ptype": "arg_select",
         "values": ["none", "layer", "row"],
         "default": "none",
-        "dock": "hardware",
+        "dock": "runtime",
         "ui_group": "Multi-GPU",
         "note": "How to split model across multiple GPUs."
-      },
-      {
+       },
+       {
+        "key": "Base_Port",
+        "label": "Base Port",
+        "config_key": "base_port",
+        "flag": null,
+        "ptype": "logic_only",
+        "values": [8080, 8888, 9090],
+        "default": 8080,
+        "dock": "runtime",
+        "ui_group": "Runtime Config",
+        "note": "Starting port for engine instances. Auto-increments per slot."
+       },
+       {
         "key": "Vision",
         "label": "Vision",
         "config_key": "vision",
@@ -288,7 +300,7 @@
         "ptype": "arg_select",
         "values": ["1", "0"],
         "default": "1",
-        "dock": "hardware",
+        "dock": "runtime",
         "ui_group": "Multi-GPU",
         "note": "Split-Mode F16 (1) uses 16-bit for inter-GPU data exchange. Faster on dual RTX 6000s."
       },
@@ -301,11 +313,23 @@
         "ptype": "arg_select",
         "values": ["none", "layer", "row"],
         "default": "none",
-        "dock": "hardware",
+        "dock": "runtime",
         "ui_group": "Multi-GPU",
         "note": "How to split model across multiple GPUs."
-      },
-      {
+       },
+       {
+        "key": "Base_Port",
+        "label": "Base Port",
+        "config_key": "base_port",
+        "flag": null,
+        "ptype": "logic_only",
+        "values": [8080, 8888, 9090],
+        "default": 8080,
+        "dock": "runtime",
+        "ui_group": "Runtime Config",
+        "note": "Starting port for engine instances. Auto-increments per slot."
+       },
+       {
         "key": "RAM-Cache",
         "label": "RAM-Cache",
         "config_key": "cache_ram",

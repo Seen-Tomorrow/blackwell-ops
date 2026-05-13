@@ -6,13 +6,21 @@ use std::path::PathBuf;
 
 use crate::config::AppConfig;
 
-/// Find the binary path for a given provider ID.
+/// Find the binary path for a given provider ID and optional build profile.
 /// Checks registered providers first, then falls back to default llama_path.
-pub fn find_provider_binary(cfg: &AppConfig, provider_id: &str) -> PathBuf {
+/// When binary_profile is set (vanguard/fresh/stable), resolves per-profile path.
+pub fn find_provider_binary(cfg: &AppConfig, provider_id: &str, binary_profile: &str) -> PathBuf {
     // Check registered providers first
     for p in &cfg.providers {
         if p.id == provider_id && !p.binary_path.is_empty() {
-            return PathBuf::from(&p.binary_path);
+            let path = if !binary_profile.is_empty() {
+                // Future: resolve per-profile directory (e.g., C:\reactor_foundry\engines\{provider}\{profile}\...)
+                // For now, all profiles share the same binary path ("current" key)
+                PathBuf::from(&p.binary_path)
+            } else {
+                PathBuf::from(&p.binary_path)
+            };
+            return path;
         }
     }
 

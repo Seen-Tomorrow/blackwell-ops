@@ -95,6 +95,7 @@ export interface EngineConfig {
   rope_scale?: number;
   yarn_orig_ctx?: number;
   rope_freq_base?: number;
+  binary_profile?: string;
 }
 
 export interface ParamDef {

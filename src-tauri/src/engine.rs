@@ -160,7 +160,7 @@ pub async fn launch_engine(
     };
 
     // Resolve binary path from config — check providers list first, then fallback to llama_path
-    let binary_path = engine_utils::find_provider_binary(&cfg, &backend_type);
+    let binary_path = engine_utils::find_provider_binary(&cfg, &backend_type, &config.binary_profile);
 
     // Load template for this provider and apply data-driven defaults
     let template = crate::templates::ProviderTemplate::load_by_id(&backend_type)
@@ -535,7 +535,7 @@ pub async fn hot_swap_engine(
     };
 
     // Resolve binary path from config
-    let binary_path = engine_utils::find_provider_binary(&cfg, &backend_type);
+    let binary_path = engine_utils::find_provider_binary(&cfg, &backend_type, &config.binary_profile);
 
     // Load template for this provider and apply data-driven defaults
     let template = crate::templates::ProviderTemplate::load_by_id(&backend_type)
@@ -759,7 +759,7 @@ pub async fn preview_launch_command(
         guard.clone()
     };
 
-    let binary_path = engine_utils::find_provider_binary(&cfg, &backend_type);
+    let binary_path = engine_utils::find_provider_binary(&cfg, &backend_type, &config.binary_profile);
     let template = crate::templates::ProviderTemplate::load_by_id(&backend_type)
         .unwrap_or_else(crate::templates::ProviderTemplate::load);
 
@@ -856,7 +856,7 @@ pub async fn fit_scan_model(
     };
 
     let backend_type = _provider_id.unwrap_or_else(|| "ggml-stable".to_string());
-    let binary_path = engine_utils::find_provider_binary(&cfg, &backend_type);
+    let binary_path = engine_utils::find_provider_binary(&cfg, &backend_type, "");
 
     // Try provider-specific fit binary first, then fallback (for IK providers using GGML's binary)
     let fit_binary = fit_scanner::find_fit_binary(binary_path.to_str().unwrap_or(""))
@@ -933,9 +933,7 @@ pub async fn fit_scan_library(
         cfg.model_paths.iter().map(|p| p.path.clone()).collect::<Vec<_>>()
     };
 
-    let binary_path = engine_utils::find_provider_binary(&cfg, &provider_id);
-    
-    // Try provider-specific fit binary first, then fallback (for IK providers using GGML's binary)
+    let binary_path = engine_utils::find_provider_binary(&cfg, &provider_id, "");
     let fit_binary = fit_scanner::find_fit_binary(binary_path.to_str().unwrap_or(""))
         .or_else(|| fit_scanner::find_fallback_fit_binary())
         .ok_or_else(|| "llama-fit-params.exe not found — ensure provider is built".to_string())?;
@@ -1080,7 +1078,7 @@ pub async fn scan_model_metadata_cmd(
     let pid = provider_id.unwrap_or_else(|| "ggml-stable".to_string());
     let bin_str = {
         let cfg = app.config.lock().map_err(|e| e.to_string())?;
-        let binary_path = engine_utils::find_provider_binary(&cfg, &pid);
+        let binary_path = engine_utils::find_provider_binary(&cfg, &pid, "");
         if !binary_path.exists() {
             return Err(format!("Provider binary not found: {}", binary_path.display()));
         }
@@ -1140,7 +1138,7 @@ pub async fn scan_all_models_cmd(
     let (bin_str, all_paths, total) = {
         let cfg = app.config.lock().map_err(|e| e.to_string())?;
         let pid = provider_id.unwrap_or_else(|| "ggml-stable".to_string());
-        let binary_path = engine_utils::find_provider_binary(&cfg, &pid);
+        let binary_path = engine_utils::find_provider_binary(&cfg, &pid, "");
         if !binary_path.exists() {
             return Err(format!("Provider binary not found: {}", binary_path.display()));
         }

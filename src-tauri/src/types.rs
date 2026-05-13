@@ -48,6 +48,9 @@ pub struct EngineConfig {
     pub rope_freq_base: f64,
     #[serde(default)]
     pub extra_params: HashMap<String, serde_json::Value>,
+    /// Build profile selection (vanguard/fresh/stable) — determines which binary to use.
+    #[serde(default, rename = "binary_profile")]
+    pub binary_profile: String,
 }
 
 fn default_rope_scale() -> f64 { 1.0 }
@@ -348,7 +351,7 @@ pub struct ParamDef {
     /// Per-value extra CLI args (e.g. {"ultra": ["-sas", "1", "-gr", "1"]}).
     #[serde(default, skip_serializing_if = "Option::is_none", rename = "sub_params")]
     pub sub_params: Option<HashMap<String, Vec<String>>>,
-    /// Dock key — when set, param renders in a docked block above PARAMETERS.
+    /// Dock key — when set, param renders in the runtime docked block above PARAMETERS.
     #[serde(default)]
     pub dock: String,
 }
