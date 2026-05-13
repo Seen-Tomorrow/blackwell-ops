@@ -164,7 +164,7 @@ function ModelCard({
       className="border border-stealth-border/50 rounded-sm p-3 cursor-grab hover:border-nv-green/40 bg-stealth-panel/30 transition-all group relative select-none"
     >
       {/* Drag capture layer — plain div so framer-motion doesn't intercept mousedown */}
-      <div onMouseDown={(e) => { console.log("[R11-Sidebar] mousedown fired on model card"); onDragStart(e); }} className="absolute inset-0 z-[1] cursor-grab active:cursor-grabbing" />
+      <div onMouseDown={onDragStart} className="absolute inset-0 z-[1] cursor-grab active:cursor-grabbing" />
       <p className="text-[10px] font-mono text-stealth-muted truncate leading-relaxed">{model.name}</p>
 
       <div className="flex justify-between items-center mt-1.5">

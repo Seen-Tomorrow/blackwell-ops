@@ -130,13 +130,10 @@ export default function MobileSentinelPage({ gpus, stack, onTelemetryUpdate }: {
 
     setBridgeStatus("connecting");
     addLog(`Connecting to ${wsUrl}...`);
-    console.log("[Sentinel] Connecting WebSocket to:", wsUrl);
-
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
     ws.onopen = () => {
-      console.log("[Sentinel] WebSocket OPEN");
       setBridgeStatus("connected");
       addLog("Sentinel bridge connected");
       if (reconnectTimerRef.current) {
@@ -182,7 +179,6 @@ export default function MobileSentinelPage({ gpus, stack, onTelemetryUpdate }: {
     };
 
     ws.onclose = () => {
-      console.log("[Sentinel] WebSocket CLOSE");
       setBridgeStatus("disconnected");
       addLog("Sentinel bridge disconnected");
       wsRef.current = null;

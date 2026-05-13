@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { RadarRings, MatrixRain, OscilloscopeWave } from "./CrtAnimations";
+import { sanitizeAlias } from "../lib/types";
 
 interface VramBadgeOverlayProps {
   engineAlias?: string;
@@ -81,7 +82,7 @@ export default function VramBadgeOverlay({ engineAlias, enginePort }: VramBadgeO
               style={{ fontSize: 'clamp(3rem, 10vh, 5rem)' }}
               className="font-mono font-bold text-black drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] tracking-wider"
             >
-              {engineAlias || "ENGINE"}
+              {engineAlias ? sanitizeAlias(engineAlias).toUpperCase() : "ENGINE"}
             </span>
             <span
               style={{ fontSize: 'clamp(2rem, 7vh, 3.5rem)' }}

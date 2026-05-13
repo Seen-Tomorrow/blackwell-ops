@@ -2,6 +2,7 @@ import { motion } from "framer-motion";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import type { Tab } from "../App";
 import { useStatus } from "../context/StatusBarContext";
+import { KEYS } from "../lib/storage";
 
 function isMobileDevice(): boolean {
   try {
@@ -15,14 +16,12 @@ function isMobileDevice(): boolean {
   }
 }
 
-const ADMIN_LOCK_KEY = "BlackOps-admin-lock";
-const ZOOM_KEY = "BlackOps-ui-zoom";
 const MIN_ZOOM = 0.7;
 const MAX_ZOOM = 1.5;
 const ZOOM_STEP = 0.05;
 
 function loadAdminLock(): string {
-  try { return localStorage.getItem(ADMIN_LOCK_KEY) || "locked"; } catch { return "locked"; }
+  try { return localStorage.getItem(KEYS.adminLock) || "locked"; } catch { return "locked"; }
 }
 
 function cycleAdminLockState(current: string): string {
@@ -45,7 +44,7 @@ const ADMIN_COLORS: Record<string, string> = {
 
 function loadZoom(): number {
   try {
-    const stored = localStorage.getItem(ZOOM_KEY);
+    const stored = localStorage.getItem(KEYS.uiZoom);
     if (stored) {
       const val = parseFloat(stored);
       if (!isNaN(val) && val >= MIN_ZOOM && val <= MAX_ZOOM) return val;
@@ -55,7 +54,7 @@ function loadZoom(): number {
 }
 
 function saveZoom(zoom: number): void {
-  try { localStorage.setItem(ZOOM_KEY, String(zoom)); } catch {}
+  try { localStorage.setItem(KEYS.uiZoom, String(zoom)); } catch {}
 }
 
 interface LayoutProps {
@@ -96,7 +95,7 @@ export default function Layout({ activeTab, onTabChange, children }: LayoutProps
   const handleAdminToggle = useCallback(() => {
     setAdminLockState(prev => {
       const next = cycleAdminLockState(prev);
-      try { localStorage.setItem(ADMIN_LOCK_KEY, next); } catch {}
+      try { localStorage.setItem(KEYS.adminLock, next); } catch {}
       window.dispatchEvent(new Event("admin-lock-changed"));
       return next;
     });

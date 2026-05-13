@@ -1,20 +1,18 @@
 import { useCallback } from "react";
 import type { ParamDef, EngineConfig } from "../lib/types";
+import { overridesKey } from "../lib/storage";
 
 interface UseInferenceLauncherOptions {
   paramDefs: ParamDef[];
   currentConfig: Record<string, any>;
   backendType?: string;
-  testFlagsRaw?: string; // Raw CLI flags — bypasses all user params when set (replace mode) or prepends to config (add mode)
-  testFlagsMode?: "add" | "replace"; // "replace": bypass all params, "add": prepend to config command
+  testFlagsRaw?: string;
+  testFlagsMode?: "add" | "replace";
 }
-
-const OVERRIDES_KEY_PREFIX = "BlackOps-admin-catalog-override:";
 
 export function useInferenceLauncher(options: UseInferenceLauncherOptions) {
   const { paramDefs, currentConfig, backendType = "ggml-stable", testFlagsRaw, testFlagsMode = "replace" } = options;
 
-  // Build sub_params CLI args for a given param value
   const buildSubParamsArgs = useCallback((def: ParamDef, selectedValue: string | number): string[] => {
     if (!def.sub_params) return [];
     const valueKey = String(selectedValue);
@@ -23,7 +21,6 @@ export function useInferenceLauncher(options: UseInferenceLauncherOptions) {
     return args;
   }, []);
 
-  // Generic type casting based on template ptype metadata — no hardcoded field names
   const castValueByTemplate = useCallback((value: string | number, def: ParamDef): any => {
     const ptype = def.ptype || "arg_select";
 
@@ -77,7 +74,6 @@ export function useInferenceLauncher(options: UseInferenceLauncherOptions) {
     return value;
   }, []);
 
-  // Build the complete EngineConfig for launch — merges template + admin params
   const buildInferenceConfig = useCallback((baseConfig: Omit<EngineConfig, 'extra_params'>): EngineConfig => {
     // ── TEST MODE (REPLACE): bypass all user params, use raw flags only ───────────────
     if (testFlagsRaw && testFlagsRaw.trim() && testFlagsMode === "replace") {
@@ -91,9 +87,9 @@ export function useInferenceLauncher(options: UseInferenceLauncherOptions) {
     // Read user overrides fresh from localStorage — user's selection always wins
     let effectiveConfig: Record<string, any>;
     try {
-      const stored = localStorage.getItem(OVERRIDES_KEY_PREFIX + backendType);
-      effectiveConfig = { ...currentConfig };
-      if (stored) Object.assign(effectiveConfig, JSON.parse(stored));
+      const stored = localStorage.getItem(overridesKey(backendType));
+       effectiveConfig = { ...currentConfig };
+       if (stored) Object.assign(effectiveConfig, JSON.parse(stored));
     } catch {
       effectiveConfig = currentConfig;
     }
@@ -137,18 +133,16 @@ export function useInferenceLauncher(options: UseInferenceLauncherOptions) {
     return { ...baseConfig, extra_params: Object.keys(extraParams).length > 0 ? extraParams : undefined };
   }, [testFlagsRaw, testFlagsMode, paramDefs, currentConfig, buildSubParamsArgs]);
 
-  // Get the effective value for a param (from localStorage overrides + currentConfig)
   const getEffectiveValue = useCallback((def: ParamDef): string | number | undefined => {
     let vals: Record<string, any> = { ...currentConfig };
     try {
-      const stored = localStorage.getItem(OVERRIDES_KEY_PREFIX + backendType);
-      if (stored) Object.assign(vals, JSON.parse(stored));
+      const stored = localStorage.getItem(overridesKey(backendType));
+       if (stored) Object.assign(vals, JSON.parse(stored));
     } catch {}
     // PRIMARY: key, FALLBACK: config_key — matches buildInferenceConfig
     return vals[def.key] ?? vals[def.config_key || def.key];
   }, [currentConfig, backendType]);
 
-  // Check if param is managed by admin (exists in template)
   const isManagedByAdmin = useCallback((key: string): boolean => {
     return paramDefs.some(d => d.key === key);
   }, [paramDefs]);

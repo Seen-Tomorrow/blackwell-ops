@@ -37,7 +37,6 @@ pub struct EngineConfig {
     pub provider_type: String,
     #[serde(default)]
     pub n_gpu_layers: i32,
-    // RoPE / Context Extension params (from genesis_template.json)
     #[serde(default)]
     pub rope_scaling: String,
     #[serde(default = "default_rope_scale")]
@@ -48,7 +47,6 @@ pub struct EngineConfig {
     pub rope_freq_base: f64,
     #[serde(default)]
     pub extra_params: HashMap<String, serde_json::Value>,
-    /// Build profile selection (vanguard/fresh/stable) — determines which binary to use.
     #[serde(default, rename = "binary_profile")]
     pub binary_profile: String,
 }
@@ -86,7 +84,7 @@ pub struct HfMetadata {
     /// Last modified date on HF at time of download
     #[serde(default, rename = "lastModified")]
     pub last_modified: String,
-    /// LFS content hash from HF tree endpoint — immutable file identity for incremental scan.
+    /// LFS OID
     #[serde(default, rename = "lfsOid")]
     pub lfs_oid: String,
 }
@@ -103,18 +101,14 @@ pub struct ModelEntry {
     pub vision: bool,
     #[serde(default)]
     pub mmproj: Option<String>,
-    /// MMProj file size in MiB (for vision model VRAM calculation)
     #[serde(default, skip_serializing_if = "Option::is_none", rename = "mmproj_size_mib")]
     pub mmproj_size_mib: Option<f64>,
     #[serde(default)]
     pub backend_type: String,
-    /// Human-readable label of the configured path this model came from (e.g. ".lmstudio", "D: Archive").
     #[serde(default, rename = "sourcePathLabel")]
     pub source_path_label: String,
-    /// Parsed GGUF metadata — populated from cache or on-demand scan.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub metadata: Option<ModelMetadata>,
-    /// Persistent HF API metadata — set at download time, never expires.
     #[serde(default, skip_serializing_if = "Option::is_none", rename = "hfMeta")]
     pub hf_meta: Option<HfMetadata>,
 }
@@ -310,9 +304,6 @@ pub struct BuildInfo {
 
 // ── Parameter Definition (template-driven) ─────────────────────────────
 /// A single parameter definition for a provider.
-///
-/// SINGLE SOURCE OF TRUTH: Every param carries both its factory default (from genesis_template.json)
-/// and its current runtime value. No cross-referencing templates at render time.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ParamDef {
     pub key: String,
@@ -337,21 +328,14 @@ pub struct ParamDef {
     pub note: String,
     #[serde(default)]
     pub pattern: String,
-    /// Current default value (what the UI shows as selected by default).
-    /// Set from factory_default on first load; changed via admin edits.
     #[serde(default, rename = "defaultValue")]
     pub default_value: serde_json::Value,
-    /// Values added by the user at runtime — rendered with yellow styling.
     #[serde(default, rename = "userAddedValues")]
     pub user_added_values: Vec<serde_json::Value>,
-    /// Factory (genesis) default — set once on template load, NEVER changed by admin edits.
-    /// Used to detect if current default was changed from factory. Reset via CHECK TEMPLATE UPDATE.
     #[serde(default, rename = "factoryDefault")]
     pub factory_default: serde_json::Value,
-    /// Per-value extra CLI args (e.g. {"ultra": ["-sas", "1", "-gr", "1"]}).
     #[serde(default, skip_serializing_if = "Option::is_none", rename = "sub_params")]
     pub sub_params: Option<HashMap<String, Vec<String>>>,
-    /// Dock key — when set, param renders in the runtime docked block above PARAMETERS.
     #[serde(default)]
     pub dock: String,
 }

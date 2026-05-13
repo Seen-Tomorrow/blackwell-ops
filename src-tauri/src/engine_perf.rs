@@ -1,10 +1,10 @@
-//! Engine Performance Pulse — reads llama-server output via ConPTY mpsc channel.
+//! Engine Performance Pulse — reads llama-server output via ConPTY broadcast channel.
 //! Combined stdout+stderr stream from pseudo-console (line-buffered at source).
 
 use regex::Regex;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use tokio::sync::{Mutex as TokioMutex, mpsc};
+use tokio::sync::{Mutex as TokioMutex, broadcast};
 
 use crate::log_hub::{LogHub, LogEntry, LogBatch};
 
@@ -230,7 +230,7 @@ pub async fn start_perf_reader_from_channel(
     log_hub: LogHub,
     slot_idx: usize,
     alias: String,
-    mut rx: mpsc::Receiver<String>,
+    mut rx: broadcast::Receiver<String>,
     ctx_size: usize,
 ) {
     // Initialize global state if needed
@@ -248,7 +248,12 @@ pub async fn start_perf_reader_from_channel(
     let mut last_emit = tokio::time::Instant::now();
     let batch_interval = tokio::time::Duration::from_millis(100);
 
-    while let Some(line) = rx.recv().await {
+    loop {
+        let line = match rx.recv().await {
+            Ok(l) => l,
+            Err(broadcast::error::RecvError::Lagged(_)) => continue,
+            Err(broadcast::error::RecvError::Closed) => break,
+        };
         if !line.is_empty() {
             // Replace ESC byte (0x1B) with safe placeholder for JSON transport.
             let safe_text = line.replace('\x1b', "%%ESC%%");

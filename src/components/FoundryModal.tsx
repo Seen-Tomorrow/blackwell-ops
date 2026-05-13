@@ -117,10 +117,7 @@ export default function FoundryModal({ provider, environment, onClose }: Foundry
     }
   };
 
-  const showToast = (type: string, text: string) => {
-    // Simple toast — could be enhanced with a global toast system
-    console.log(`[Foundry ${type}] ${text}`);
-  };
+  const showToast = (_type: string, _text: string) => {};
 
   const handleConfirmBuild = async () => {
     try {

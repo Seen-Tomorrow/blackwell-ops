@@ -8,26 +8,17 @@ interface UseKeyboardNavOptions {
   onLaunch?: () => void;
 }
 
-/**
- * Global keyboard navigation for model catalog.
- * - Arrow keys navigate filtered model list (works from search box)
- * - Enter selects highlighted model → transitions to config zone
- * - Ctrl+Enter in config zone launches engine
- * - / refocuses search input
- * - Space types normally in search (no interception)
- */
+// Arrow/Enter navigation for model list and config zone.
 export function useKeyboardNav({ modelCount, onSelectModel, onLaunch }: UseKeyboardNavOptions) {
   const [highlightIndex, setHighlightIndex] = useState(0);
   const [zone, setZone] = useState<KeyboardZone>("search");
 
-  // Reset highlight when filtered list changes significantly
   useEffect(() => {
     if (highlightIndex >= modelCount) {
       setHighlightIndex(Math.max(0, modelCount - 1));
     }
   }, [modelCount, highlightIndex]);
 
-  // Arrow key navigation — only active in search zone (model list)
   const handleArrowKeys = useCallback((e: KeyboardEvent) => {
     if (zone === "config") return; // Config zone handles its own arrows
     if (e.key === "ArrowDown") {
@@ -44,17 +35,14 @@ export function useKeyboardNav({ modelCount, onSelectModel, onLaunch }: UseKeybo
     return () => window.removeEventListener("keydown", handleArrowKeys);
   }, [handleArrowKeys]);
 
-  // Enter: select model (from search) or launch (Ctrl+Enter from config)
   const handleEnter = useCallback((e: KeyboardEvent) => {
     if (e.ctrlKey && e.key === "Enter" && onLaunch) {
       e.preventDefault();
       onLaunch();
       return;
     }
-    // Plain Enter selects highlighted model — works from search box too (command palette style)
     if (e.key === "Enter" && !e.ctrlKey && !e.shiftKey) {
       e.preventDefault();
-      // Blur search input so focus shifts to config zone
       const activeEl = document.activeElement;
       if (activeEl instanceof HTMLInputElement) activeEl.blur();
       onSelectModel(highlightIndex);
@@ -67,7 +55,6 @@ export function useKeyboardNav({ modelCount, onSelectModel, onLaunch }: UseKeybo
     return () => window.removeEventListener("keydown", handleEnter, true);
   }, [handleEnter]);
 
-  // / refocuses search
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === "/") {
@@ -81,7 +68,6 @@ export function useKeyboardNav({ modelCount, onSelectModel, onLaunch }: UseKeybo
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
-  // Escape resets to search zone
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape" && zone === "config") {
@@ -92,13 +78,11 @@ export function useKeyboardNav({ modelCount, onSelectModel, onLaunch }: UseKeybo
     return () => window.removeEventListener("keydown", handler);
   }, [zone]);
 
-  // Scroll highlighted model into view
   useEffect(() => {
     const el = document.querySelector(`[data-highlight="${highlightIndex}"]`);
     el?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }, [highlightIndex]);
 
-  // Config zone navigation — arrow keys move between param rows and chips
   useEffect(() => {
     if (zone !== "config") return;
 
@@ -155,7 +139,6 @@ export function useKeyboardNav({ modelCount, onSelectModel, onLaunch }: UseKeybo
     return () => window.removeEventListener("keydown", handler);
   }, [zone]);
 
-  // Focus first chip when entering config zone
   useEffect(() => {
     if (zone !== "config") return;
     setTimeout(() => {

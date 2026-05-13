@@ -10,7 +10,6 @@ use std::path::PathBuf;
 
 use crate::types::EngineConfig;
 
-/// Resolve "auto" values from GGUF metadata cache. Returns Some(resolved) or None to skip flag.
 fn resolve_auto_value(config_key: &str, model_path: &str) -> Option<String> {
     match config_key {
         "yarn_orig_ctx" => {
@@ -22,7 +21,7 @@ fn resolve_auto_value(config_key: &str, model_path: &str) -> Option<String> {
                     }
                 }
             }
-            None // Skip flag — llama.cpp uses its own default
+            None
         }
         "rope_freq_base" => {
             let cache = crate::model_cache::load_cache();
@@ -33,7 +32,7 @@ fn resolve_auto_value(config_key: &str, model_path: &str) -> Option<String> {
                     }
                 }
             }
-            None // Skip flag — llama.cpp defaults to 10000
+            None
         }
         _ => None,
     }
@@ -53,20 +52,12 @@ pub struct ProviderTemplate {
 pub struct TemplateParam {
     pub key: String,
     pub label: String,
-    /// Maps to EngineConfig field name (e.g., "kv_quant", "ctx_size").
-    /// If the field doesn't exist on EngineConfig, falls back to extra_params HashMap.
     #[serde(default)]
     pub config_key: String,
     /// CLI flag string. null for logic_only params.
     #[serde(default)]
     pub flag: Option<String>,
-    /// Parameter type determines how it's translated to CLI args.
-    /// "arg_select" = flag + value always
-    /// "mapper" = transform value then add flag + transformed value
-    /// "switch_onoff" = only add flag when ON (value is "on")
-    /// "switch_inverted" = add --no-<flag> when OFF (inverted logic)
-    /// "path_scanner" = scan filesystem for matching file path
-    /// "logic_only" = no CLI flag, only sub_params injection
+    /// CLI parameter type (arg_select, mapper, switch_onoff, etc.).
     #[serde(default = "default_ptype")]
     pub ptype: String,
     /// Named transformer ID (e.g., "CTX_TO_INT", "OFFLOAD_MAP").
@@ -119,7 +110,6 @@ impl Default for TemplateBundle {
 }
 
 impl ProviderTemplate {
-    /// Load the ggml-stable template - always uses embedded defaults, no disk I/O.
     pub fn load() -> Self {
         let bundle: TemplateBundle = serde_json::from_str(RECOVERY_DEFAULT)
             .expect("Embedded genesis_template.json must be valid");
@@ -129,15 +119,12 @@ impl ProviderTemplate {
             .unwrap_or_else(|| panic!("Missing ggml-stable template in embedded genesis"))
     }
 
-    /// Return all known provider IDs from the Genesis template (ggml-stable, ik-extreme).
     pub fn known_ids() -> Vec<String> {
         let bundle: TemplateBundle = serde_json::from_str(RECOVERY_DEFAULT)
             .expect("Embedded genesis_template.json must be valid");
         bundle.templates.keys().cloned().collect()
     }
 
-    /// Resolve a provider ID to its template type.
-    /// "ik-llama" for any ID containing "ik", "ggml-llama" otherwise.
     pub fn template_type_for_id(id: &str) -> String {
         if id.to_lowercase().contains("ik") {
             "ik-llama".to_string()
@@ -146,8 +133,7 @@ impl ProviderTemplate {
         }
     }
 
-    /// Resolve a provider ID to the genesis_template.json template key.
-    /// Deprecated: use config::template_key_for_type() instead, which resolves through template_type.
+    #[deprecated(note = "use config::template_key_for_type() instead")]
     pub fn template_key_for_id(id: &str) -> String {
         match id {
             "ik-extreme" => "ik-extreme".to_string(),
@@ -156,10 +142,6 @@ impl ProviderTemplate {
     }
 
     /// Get a specific provider template by ID from the embedded genesis_template.json.
-    ///
-    /// User customizations (sub_params, default values) live in param_definitions on disk,
-    /// loaded via AppConfig. This function always returns clean genesis defaults — the
-    /// ConfigPage merges user state at render time before display.
     pub fn load_by_id(id: &str) -> Option<Self> {
         Self::load();
         let bundle: TemplateBundle = serde_json::from_str(RECOVERY_DEFAULT).ok()?;
@@ -167,12 +149,6 @@ impl ProviderTemplate {
     }
 
     /// Extract the selected value for a param from EngineConfig + param_definitions.
-    ///
-    /// Priority order (per AGENTS.md: no delta/overlay, param_definitions is single source):
-    /// 1. Typed field on EngineConfig
-    /// 2. extra_params HashMap (catalog-level runtime overrides)
-    /// 3. param_definitions[].default_value — user-selected value from disk (THE SOURCE OF TRUTH)
-    /// 4. Template default as final fallback
     pub fn get_value(
         &self,
         config: &EngineConfig,
@@ -231,10 +207,6 @@ impl ProviderTemplate {
     }
 
     /// Build the full CLI command from template + user config.
-    ///
-    /// param_definitions is passed in so get_value() can check user-selected values (default_value)
-    /// before falling back to template defaults. This is the single source of truth per AGENTS.md:
-    /// no delta/overlay, param_definitions IS the selected-value store.
     pub fn build_command(
         &self,
         config: &EngineConfig,
@@ -246,6 +218,12 @@ impl ProviderTemplate {
         // Always add model path and port (these are not in the template)
         args.extend(["-m".into(), config.model_path.clone()]);
         args.extend(["--port".into(), config.port.to_string()]);
+
+        // Add alias for llama-server API identification — sanitize spaces/commas
+        let cli_alias = config.alias.replace(' ', "-").replace(',', "-");
+        if !cli_alias.is_empty() {
+            args.extend(["--alias".into(), cli_alias]);
+        }
 
         // ── TEST MODE (REPLACE): bypass all params, use only raw test flags ───────────
         if let Some(test_args) = config.extra_params.get("__test_args") {
@@ -342,9 +320,6 @@ impl ProviderTemplate {
             }
         }
 
-        // Set CUDA_VISIBLE_DEVICES via environment (not a CLI arg)
-        // This is handled in the launch function, not here.
-
         if !config.model_path.is_empty() {
             let full_cmd = format!("{} {}", self.binary_name, args.join(" "));
             eprintln!("[LAUNCH_CMD] {}", full_cmd);
@@ -360,8 +335,6 @@ impl ProviderTemplate {
         args
     }
 
-    /// Normalize a CLI argument value to lowercase for llama-server compatibility.
-    /// Exceptions: CTX_TO_INT and OFFLOAD_MAP mappers handle their own formatting.
     fn sanitize_arg_value(value: &str, map_id: Option<&str>) -> String {
         if matches!(map_id, Some("CTX_TO_INT") | Some("OFFLOAD_MAP")) {
             value.to_string()
@@ -370,7 +343,6 @@ impl ProviderTemplate {
         }
     }
 
-    /// Inject: always add flag + value.
     fn inject_arg_select(args: &mut Vec<String>, param: &TemplateParam, value: &str) {
         if let Some(flag) = &param.flag {
             let sanitized = Self::sanitize_arg_value(value, param.map_id.as_deref());
@@ -378,7 +350,6 @@ impl ProviderTemplate {
         }
     }
 
-    /// Inject: transform value via map_id, then add flag + transformed value.
     fn inject_mapper(args: &mut Vec<String>, param: &TemplateParam, value: &str) {
         let transformed = Self::apply_mapper(param.map_id.as_deref(), value);
         if let Some(flag) = &param.flag {
@@ -387,7 +358,6 @@ impl ProviderTemplate {
         }
     }
 
-    /// Inject: only add flag when value matches "on" (case-insensitive).
     fn inject_switch_onoff(args: &mut Vec<String>, param: &TemplateParam, value: &str) {
         if value.to_lowercase() == "on" {
             if let Some(flag) = &param.flag {
@@ -396,14 +366,12 @@ impl ProviderTemplate {
         }
     }
 
-    /// Inject (inverted): add --no-mmap when value is off (case-insensitive).
     fn inject_switch_inverted(args: &mut Vec<String>, _param: &TemplateParam, value: &str) {
         if value.to_lowercase() == "off" {
             args.push("--no-mmap".to_string());
         }
     }
 
-    /// Scan model directory for files matching the pattern.
     fn scan_path(config: &EngineConfig, param: &TemplateParam, value: &str) -> Option<String> {
         let val_lower = value.to_lowercase();
         if !matches!(val_lower.as_str(), "auto" | "on") {
@@ -449,10 +417,6 @@ impl ProviderTemplate {
     }
 
     /// Inject extra CLI args from sub_params mapping.
-    ///
-    /// Checks two sources (per AGENTS.md: disk state takes precedence over template):
-    /// 1. param_definitions[].sub_params (user edits, saved to provider_meta.json)
-    /// 2. Embedded template's sub_params (genesis defaults)
     fn inject_sub_params(
         args: &mut Vec<String>,
         param: &TemplateParam,
@@ -482,7 +446,6 @@ impl ProviderTemplate {
         }
     }
 
-    /// Inject args from a HashMap<String, Vec<String>> (disk format).
     fn inject_from_array(
         args: &mut Vec<String>,
         _value: &str,
@@ -495,7 +458,6 @@ impl ProviderTemplate {
         }
     }
 
-    /// Inject args from a serde_json::Value (embedded template format).
     fn inject_from_json_value(args: &mut Vec<String>, value: &str, json: &serde_json::Value) {
         if let Some(extra_arr) = json.get(value) {
             if let Some(arr) = extra_arr.as_array() {
@@ -506,7 +468,6 @@ impl ProviderTemplate {
         }
     }
 
-    /// Apply a named value transformation.
     fn apply_mapper(map_id: Option<&str>, value: &str) -> String {
         match map_id {
             Some("CTX_TO_INT") => Self::ctx_to_int_str(value),
@@ -515,7 +476,6 @@ impl ProviderTemplate {
         }
     }
 
-    /// Transform context size strings to integer token counts.
     pub fn ctx_to_int_str(ctx: &str) -> String {
         match ctx {
             "4K" => "4096".to_string(),
@@ -531,7 +491,6 @@ impl ProviderTemplate {
         }
     }
 
-    /// Transform offload values: "ALL" → 999, otherwise pass through.
     fn offload_map(offload: &str) -> String {
         if offload.to_uppercase() == "ALL" || offload == "999" {
             "999".to_string()
@@ -540,7 +499,6 @@ impl ProviderTemplate {
         }
     }
 
-    /// Get the default value for a param key.
     pub fn get_default(&self, config_key: &str) -> serde_json::Value {
         self.params.iter()
             .find(|p| p.config_key == config_key || p.key == config_key)
@@ -548,25 +506,19 @@ impl ProviderTemplate {
             .unwrap_or_else(|| serde_json::Value::String(String::new()))
     }
 
-    /// Check if a user value matches the template default (for green/yellow UI coloring).
     pub fn is_default(&self, config_key: &str, user_value: &serde_json::Value) -> bool {
         let default = self.get_default(config_key);
         // Normalize for comparison: convert both to strings
         format!("{}", default) == format!("{}", user_value)
     }
 
-    /// Reset a value to its template default.
     pub fn reset_to_default(&self, config_key: &str) -> serde_json::Value {
         self.get_default(config_key)
     }
 
     // ── Data-Driven Provider Defaults ───────────────────────────────────
 
-    /// Resolve provider-level defaults from a provider's params JSON into an EngineConfig.
-    ///
-    /// NOTE: This only handles TYPED FIELDS (ctx_size, kv_quant, batch, etc.).
-    /// Logic-only params (ik_perf, offload_mode, unified_kv) have no typed field —
-    /// their selected values are read from param_definitions in build_command via get_value().
+    /// Resolve provider-level defaults from params JSON into an EngineConfig.
     pub fn apply_provider_defaults(
         &self,
         config: &EngineConfig,

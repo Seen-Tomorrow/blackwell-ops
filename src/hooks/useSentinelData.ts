@@ -67,7 +67,6 @@ export function useSentinelData() {
   const tauriReadyRef = useRef(false);
   const mountedRef = useRef(true);
 
-  // Detect Tauri on mount — if available, switch to real IPC polling
   useEffect(() => {
     mountedRef.current = true;
     checkTauri().then((available) => {
@@ -113,7 +112,6 @@ export function useSentinelData() {
     };
   }, []);
 
-  // WebSocket update — call this from MobileSentinelPage when WS telemetry arrives
   const applyTelemetryUpdate = useCallback((data: {
     tps?: number;
     gpu_temps?: number[];

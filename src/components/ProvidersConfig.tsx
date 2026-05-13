@@ -67,7 +67,6 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Param editing state for the form (legacy — kept for backward compat)
   const [newParamKey, setNewParamKey] = useState("");
   const [newParamValue, setNewParamValue] = useState("");
 
@@ -90,7 +89,6 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
     }
   }, [onProvidersChange]);
 
-  // Load once on mount — fixed: useEffect instead of useState
   useEffect(() => { loadProviders(); }, [loadProviders]);
 
   const handleBrowse = useCallback(async () => {
@@ -103,7 +101,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
         setForm((prev) => ({ ...prev, binary_path: result }));
       }
     } catch (err) {
-      console.log("File dialog failed:", err);
+      console.error("File dialog failed:", err);
     }
   }, []);
 
@@ -249,7 +247,6 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
     }));
   };
 
-  // Start library scan for a provider — uses parallelRef to always get latest setting
   const handleScanLibrary = useCallback(async (providerId: string) => {
     const currentParallel = parallelRef.current[providerId] ?? 2;
 
@@ -314,7 +311,6 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
     }
   }, []);
 
-  // Stop a running scan — signals cancellation on backend and resets UI state
   const handleStopScan = useCallback(async (providerId: string) => {
     try {
       await invoke("fit_stop_scan");
@@ -331,7 +327,6 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
     }));
   }, []);
 
-  // Listen for real-time progress events from backend — tracks model count + point counts during scan
   const listenerGuardRef = useRef(false);
   useEffect(() => {
     if (listenerGuardRef.current) return; // Prevent HMR stacking duplicate listeners
@@ -634,8 +629,6 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
                   <span className={`text-[9px] font-mono ${isSelected ? "text-nv-green" : "text-stealth-muted"}`}>{idx + 1}</span>
                 </div>
 
-                {/* ── Foundry badge (removed — button in actions instead) ─────────── */}
-
                 {/* ── Table columns ─────────────────────────────────────── */}
                 <div className="flex items-center gap-6 flex-1 min-w-0">
                   {/* ID + name column */}
@@ -827,6 +820,5 @@ function ProviderFormFields({ form, setForm, handleBrowse }: ProviderFormFieldsP
   );
 }
 
-// NOTE: Foundry build UI moved to top-level FOUNDRY tab (FoundryPage.tsx)
 
 

@@ -522,10 +522,9 @@ export interface DownloadTask {
   lfsOid?: string;     // LFS content hash for incremental scan
 }
 
-// SANITY-BOX — isolated type, remove with the feature
-export interface SanityEntry {
-  source: 'rust' | 'js';
-  level: 'error' | 'warn';
-  text: string;
-  timestamp: string;
+/** Sanitize alias for CLI/API use — replaces spaces and commas with hyphens. */
+export function sanitizeAlias(alias: string): string {
+    return alias.replace(/[\s,]/g, "-");
 }
+
+

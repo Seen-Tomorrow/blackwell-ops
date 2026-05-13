@@ -1,20 +1,10 @@
-/**
- * Config Resolver Hook — Consolidates config state management
- *
- * Handles:
- * - Loading defaults from param definitions
- * - Merging user overrides from localStorage  
- * - Syncing on provider/template changes
- */
+// Merges param defaults with localStorage overrides.
 
 import { useState, useCallback, useEffect } from "react";
 import type { ParamDef } from "../lib/types";
+import { overridesKey } from "../lib/storage";
 
-const OVERRIDES_KEY_PREFIX = "BlackOps-admin-catalog-override:";
-
-// Normalize string values for storage - preserve mixed case values like CTX ("8K", "32K").
-// Only normalize strings that are purely lowercase or purely uppercase (like "on"/"ON").
-// Skip normalization for values with mixed patterns (digits + suffix like "8K", "16M").
+// Preserve mixed-case values like "8K", "GPU-0"; lowercase pure-alpha strings.
 const normalizeValue = (value: any): any => {
   if (typeof value !== 'string') return value;
   
@@ -44,7 +34,6 @@ export function useConfigResolver({
 }: UseConfigResolverOptions) {
   const [config, setConfig] = useState<Record<string, any>>({});
 
-  // Load config from defaults + localStorage overrides
   const loadConfig = useCallback(() => {
     if (!paramDefs.length) return;
 
@@ -59,7 +48,7 @@ export function useConfigResolver({
 
     // Step 2: Merge user overrides from localStorage
     try {
-      const stored = localStorage.getItem(OVERRIDES_KEY_PREFIX + backendType);
+      const stored = localStorage.getItem(overridesKey(backendType));
       if (stored) {
         Object.assign(resolved, JSON.parse(stored));
       }
@@ -73,36 +62,32 @@ export function useConfigResolver({
     setConfig(normalized);
   }, [paramDefs, backendType]);
 
-  // Reload when model or provider changes
   useEffect(() => {
     loadConfig();
   }, [model, paramDefs.length, backendType]);
 
-  // Sync when ConfigPage updates params via custom event
   useEffect(() => {
     const handler = () => loadConfig();
     window.addEventListener("param-config-changed", handler);
     return () => window.removeEventListener("param-config-changed", handler);
   }, [model, paramDefs.length]);
 
-  // Update single param value + persist to localStorage
   const updateParam = useCallback((key: string, value: any) => {
     const normalizedValue = normalizeValue(value);
     setConfig(prev => ({ ...prev, [key]: normalizedValue }));
 
     try {
-      const overridesKey = OVERRIDES_KEY_PREFIX + backendType;
-      const stored = localStorage.getItem(overridesKey);
+      const storageKey = overridesKey(backendType);
+      const stored = localStorage.getItem(storageKey);
       const overrides: Record<string, any> = stored ? JSON.parse(stored) : {};
       overrides[key] = normalizedValue;
-      localStorage.setItem(overridesKey, JSON.stringify(overrides));
+      localStorage.setItem(storageKey, JSON.stringify(overrides));
     } catch {}
   }, [backendType]);
 
-  // Clear all overrides for this provider
   const clearOverrides = useCallback(() => {
     try {
-      localStorage.removeItem(OVERRIDES_KEY_PREFIX + backendType);
+      localStorage.removeItem(overridesKey(backendType));
     } catch {}
     loadConfig();
   }, [backendType, loadConfig]);

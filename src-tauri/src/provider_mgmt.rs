@@ -4,7 +4,6 @@
 
 use crate::engine::AppContext;
 
-/// Lists all registered backend providers with their binary paths.
 #[tauri::command]
 pub async fn list_providers(app: tauri::State<'_, AppContext>) -> Result<Vec<crate::types::ProviderConfig>, String> {
     let providers = {
@@ -15,20 +14,17 @@ pub async fn list_providers(app: tauri::State<'_, AppContext>) -> Result<Vec<cra
     Ok(providers)
 }
 
-/// Adds or updates a backend provider in the config.
 #[tauri::command]
 pub async fn save_provider(provider: crate::types::ProviderConfig, app: tauri::State<'_, AppContext>) -> Result<(), String> {
     log::debug!("[SAVE_PROVIDER] ENTER id='{}' param_count={}", provider.id, provider.param_definitions.len());
     let mut cfg = app.config.lock().map_err(|e| e.to_string())?;
 
-    // If editing and the ID changed, remove the old entry first.
     if let Some(original_id) = &provider._original_id {
         if original_id != &provider.id {
             cfg.providers.retain(|p| p.id != *original_id);
         }
     }
 
-    // Determine template_type: use provided value or auto-detect from ID (case-insensitive)
     let mut save_provider = provider.clone();
     if save_provider.template_type.is_empty() {
         let lower_id = save_provider.id.to_lowercase();
@@ -39,7 +35,6 @@ pub async fn save_provider(provider: crate::types::ProviderConfig, app: tauri::S
         }
     }
 
-    // Merge user_added_values into values so build_command() picks them up
     for def in &mut save_provider.param_definitions {
         let existing_keys: std::collections::HashSet<String> = def.values.iter()
             .map(|v| serde_json::to_string(v).unwrap_or_default())
@@ -52,15 +47,12 @@ pub async fn save_provider(provider: crate::types::ProviderConfig, app: tauri::S
         }
     }
 
-    // New provider with empty param_definitions — populate from correct template by type
     if save_provider.param_definitions.is_empty() {
         if let Some(tmpl_key) = crate::config::template_key_for_type(&save_provider.template_type) {
             save_provider.param_definitions = crate::config::params_for_provider(tmpl_key);
         }
-        // custom/empty template_type: stays empty, user builds manually
     }
 
-    // Check if provider with this (new) ID already exists — update in place or push new.
     if let Some(existing) = cfg.providers.iter_mut().find(|p| p.id == save_provider.id) {
         *existing = save_provider.clone();
     } else {
@@ -69,14 +61,12 @@ pub async fn save_provider(provider: crate::types::ProviderConfig, app: tauri::S
 
     drop(cfg);
 
-    // Persist param_definitions directly to provider_meta.json (no delta computation needed).
     let cfg_for_meta = app.config.lock().map_err(|e| e.to_string())?;
     crate::config::persist_provider_meta(&cfg_for_meta.providers)?;
 
     Ok(())
 }
 
-/// Removes a backend provider by ID.
 #[tauri::command]
 pub async fn remove_provider(id: String, app: tauri::State<'_, AppContext>) -> Result<(), String> {
     let mut cfg = app.config.lock().map_err(|e| e.to_string())?;

@@ -25,12 +25,9 @@ mod provider_mgmt;
 pub mod features;
 mod reactor_foundry;
 
-// Reactor11 — isolated next-gen reactor interface (in features/reactor11/) // handled by pub mod features;
-
-
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::AtomicBool;
 use tokio::sync::{Mutex, RwLock};
 
 // ── HF Search Commands ────────────────────────────────────────────────
@@ -273,12 +270,10 @@ async fn main() {
 
     let app_config = config::load_config();
 
-    // Validate llama-server path on startup — show warning if missing
     if !app_config.llama_path.exists() {
         log::warn!("llama-server.exe not found at: {}. Models may fail to launch.", app_config.llama_path.display());
     }
 
-    // Wipe WebView2 cache on every dev launch — prevents stale JS bundle from persisting
     #[cfg(debug_assertions)]
     {
         if let Some(data_dir) = dirs::data_local_dir() {
@@ -309,14 +304,12 @@ async fn main() {
             let log_hub = LogHub::new(app.handle().clone());
             let config_arc = Arc::new(std::sync::Mutex::new(app_config.clone()));
 
-            // Attach a separate LogHub instance to EngineStack for system event emission
             let stack_init = stack.clone();
             let app_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 stack_init.lock().await.set_log_hub(LogHub::new(app_handle));
             });
 
-            // Build app context — providers come from disk via list_providers
             let ctx = AppContext {
                 stack,
                 log_hub,
@@ -326,19 +319,15 @@ async fn main() {
 
             app.manage(ctx);
 
-            // Manage config Arc<Mutex<AppConfig>> directly for commands that need it
             app.manage(config_arc);
 
             // ── Download Manager ──
             let download_mgr = Arc::new(tokio::sync::RwLock::new(DownloadManager::new()));
             app.manage(download_mgr);
 
-            // ── Mobile Sentinel Bridge (always active, started on-demand via UI) ──
+            // -- Mobile Bridge
             let mobile_bridge = MobileBridge::new(3814);
             app.manage(mobile_bridge.clone());
-
-            // GPU telemetry is frontend-driven only (App.tsx polling at 250ms).
-            // Backend loop removed — it emitted "telemetry-update" to zero listeners.
 
             Ok(())
         })
@@ -357,7 +346,6 @@ async fn main() {
         .invoke_handler(tauri::generate_handler![
             engine::list_models,
             engine::launch_engine,
-            engine::hot_swap_engine,
             engine::stop_engine,
             engine::stop_all_engines,
             engine::stop_engines_by_provider,

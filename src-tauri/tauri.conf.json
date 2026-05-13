@@ -14,11 +14,11 @@
         "title": "Blackwell Ops",
         "width": 1400,
         "height": 900,
-        "minWidth": 1200,
-        "minHeight": 700,
+        "minWidth": 1280,
+        "minHeight": 768,
         "resizable": true,
         "transparent": true,
-        "decorations": false
+        "decorations": true
       }
     ],
     "security": {
@@ -29,4 +29,5 @@
     "active": true,
     "targets": ["nsis"]
   }
+
 }

@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { VramManifest } from "../lib/types";
+import { KEYS } from "../lib/storage";
 
 interface VramDiagnosticsProps {
   modelPath: string | null;
@@ -41,7 +42,7 @@ export default function VramDiagnostics({ modelPath, manifest }: VramDiagnostics
 
   useEffect(() => {
     try {
-      if (localStorage.getItem("BlackOps-vram-diag-collapsed") === "true") setCollapsed(true);
+      if (localStorage.getItem(KEYS.vramDiagCollapsed) === "true") setCollapsed(true);
     } catch {}
   }, []);
 
@@ -80,7 +81,7 @@ export default function VramDiagnostics({ modelPath, manifest }: VramDiagnostics
   const toggleCollapsed = useCallback(() => {
     setCollapsed(prev => {
       const next = !prev;
-      try { localStorage.setItem("BlackOps-vram-diag-collapsed", String(next)); } catch {}
+      try { localStorage.setItem(KEYS.vramDiagCollapsed, String(next)); } catch {}
       return next;
     });
   }, []);

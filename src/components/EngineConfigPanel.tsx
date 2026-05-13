@@ -1,17 +1,9 @@
-/**
- * Engine Config Panel — Model-specific parameter configuration and launch control
- *
- * Responsibilities:
- * - Display model identity (name, author, quant, size)
- * - Provider selection pills
- * - VRAM estimation with dirty math + tiered scan system
- * - Parameter value selection chips
- * - Launch button to add engine to stack
- */
+// Model-specific parameter configuration and launch control.
 
 import { motion } from "framer-motion";
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import type { ModelEntry, EngineConfig, GpuInfo, ParamDef, ProviderConfig, ProviderTemplate, StackEntry, SystemInfo } from "../lib/types";
+import { KEYS, engineAliasKey } from "../lib/storage";
 import { invoke } from "@tauri-apps/api/core";
 import VramBadge from "./VramBadge";
 import VramDiagnostics from "./VramDiagnostics";
@@ -65,27 +57,29 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
   const [adminParamDefs, setAdminParamDefs] = useState<ParamDef[]>([]);
   const [selectedProvider, setSelectedProvider] = useState<string | null>(() => {
-    try { return localStorage.getItem("BlackOps-last-provider") || null; } catch { return null; }
+    try { return localStorage.getItem(KEYS.lastProvider) || null; } catch { return null; }
   });
   const [testFlags, setTestFlags] = useState(() => {
-    try { return localStorage.getItem("BlackOps-testFlags") || ""; } catch { return ""; }
+    try { return localStorage.getItem(KEYS.testFlags) || ""; } catch { return ""; }
   });
   const [testFlagsEnabled, setTestFlagsEnabled] = useState(() => {
-    try { return localStorage.getItem("BlackOps-testFlagsOn") === "1"; } catch { return false; }
+    try { return localStorage.getItem(KEYS.testFlagsOn) === "1"; } catch { return false; }
   });
 
   // Test flags mode: "add" (prepend to config) or "replace" (bypass all params)
   const [testFlagsMode, setTestFlagsMode] = useState<"add" | "replace">(() => {
-    try { return localStorage.getItem("BlackOps-testFlagsMode") === "add" ? "add" : "replace"; } catch { return "replace"; }
+    try { return localStorage.getItem(KEYS.testFlagsMode) === "add" ? "add" : "replace"; } catch { return "replace"; }
   });
 
   // Engine alias — per-model persistent, auto-populated if empty
   const [aliasInput, setAliasInput] = useState<string>("");
+  const [aliasIsUserSet, setAliasIsUserSet] = useState(false);
   const aliasInitializedRef = useRef<{ modelPath: string; done: boolean }>({ modelPath: "", done: false });
+  const aliasUserEditedRef = useRef(false);
 
   // Binary profile selection — persisted per-provider, defaults to vanguard
   const [selectedBinaryProfile, setSelectedBinaryProfile] = useState<EnvProfile>(() => {
-    try { return (localStorage.getItem("BlackOps-binary-profile") as EnvProfile) || "vanguard"; } catch { return "vanguard"; }
+    try { return (localStorage.getItem(KEYS.binaryProfile) as EnvProfile) || "vanguard"; } catch { return "vanguard"; }
   });
 
   // Blaze animation state — triggers fire effect on launch button
@@ -94,7 +88,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   // Collapsible group state — persisted across sessions, defaults to collapsed for non-always-open groups
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => {
     try {
-      const saved = localStorage.getItem('BlackOps-collapsed-groups');
+      const saved = localStorage.getItem(KEYS.collapsedGroups);
       return saved ? new Set(JSON.parse(saved)) : new Set();
     } catch { return new Set(); }
   });
@@ -103,43 +97,45 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     setCollapsedGroups(prev => {
       const next = new Set(prev);
       if (next.has(groupId)) next.delete(groupId); else next.add(groupId);
-      try { localStorage.setItem('BlackOps-collapsed-groups', JSON.stringify([...next])); } catch {}
+      try { localStorage.setItem(KEYS.collapsedGroups, JSON.stringify([...next])); } catch {}
       return next;
     });
   }, []);
 
   // Persist test flags
   useEffect(() => {
-    try { localStorage.setItem("BlackOps-testFlags", testFlags); } catch {}
+    try { localStorage.setItem(KEYS.testFlags, testFlags); } catch {}
   }, [testFlags]);
   useEffect(() => {
-    try { localStorage.setItem("BlackOps-testFlagsOn", testFlagsEnabled ? "1" : "0"); } catch {}
+    try { localStorage.setItem(KEYS.testFlagsOn, testFlagsEnabled ? "1" : "0"); } catch {}
   }, [testFlagsEnabled]);
 
   // Persist test flags mode
   useEffect(() => {
-    try { localStorage.setItem("BlackOps-testFlagsMode", testFlagsMode); } catch {}
+    try { localStorage.setItem(KEYS.testFlagsMode, testFlagsMode); } catch {}
   }, [testFlagsMode]);
 
   // Persist binary profile selection
   useEffect(() => {
-    try { localStorage.setItem("BlackOps-binary-profile", selectedBinaryProfile); } catch {}
+    try { localStorage.setItem(KEYS.binaryProfile, selectedBinaryProfile); } catch {}
   }, [selectedBinaryProfile]);
 
   // Auto-populate alias when model changes — per-model persistence
   useEffect(() => {
     if (!model) return;
-    const key = `BlackOps-engine-alias:${model.path}`;
+    const key = engineAliasKey(model.path);
     const initKey = aliasInitializedRef.current.modelPath;
-    
+
     // Only initialize once per model path to avoid overwriting user input on HMR
     if (initKey !== model.path) {
       try {
         const saved = localStorage.getItem(key);
         if (saved) {
           setAliasInput(saved);
+          aliasUserEditedRef.current = true;
+          setAliasIsUserSet(true);
         } else {
-          // Auto-generate suggestion
+          // Auto-generate suggestion — not persisted
           invoke<StackEntry[]>("get_stack_status").then(stack => {
             const usedNames = new Set<number>();
             for (const s of stack) {
@@ -152,22 +148,44 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             return "ENGINE_1";
           }).then(autoName => {
             setAliasInput(autoName);
+            aliasUserEditedRef.current = false;
+            setAliasIsUserSet(false);
             aliasInitializedRef.current = { modelPath: model.path, done: true };
           }).catch(() => {
             setAliasInput("ENGINE_1");
+            aliasUserEditedRef.current = false;
+            setAliasIsUserSet(false);
             aliasInitializedRef.current = { modelPath: model.path, done: true };
           });
         }
       } catch {
+        aliasUserEditedRef.current = false;
+        setAliasIsUserSet(false);
         aliasInitializedRef.current = { modelPath: model.path, done: true };
       }
     }
   }, [model?.path]);
 
-  // Save alias to localStorage when it changes (after initial load)
+  // Save alias to localStorage only when user has actively edited it (not on every keystroke)
+  const saveAliasForModel = useCallback((modelPath: string, aliasValue: string) => {
+    try {
+      if (aliasValue.trim()) {
+        localStorage.setItem(engineAliasKey(modelPath), aliasValue.trim());
+      } else {
+        localStorage.removeItem(engineAliasKey(modelPath));
+      }
+    } catch {}
+  }, []);
+
+  // Clear persisted alias when user clears the input field
   useEffect(() => {
     if (!model || !aliasInitializedRef.current.done) return;
-    try { localStorage.setItem(`BlackOps-engine-alias:${model.path}`, aliasInput); } catch {}
+    try {
+      if (aliasUserEditedRef.current && !aliasInput.trim()) {
+        localStorage.removeItem(engineAliasKey(model.path));
+        setAliasIsUserSet(false);
+      }
+    } catch {}
   }, [aliasInput, model?.path]);
 
   // ── Derived state ───────────────────────────────────────────────────────────
@@ -464,7 +482,14 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     // Dispatch success event for toast + status bar
     window.dispatchEvent(new CustomEvent("blackops-launch-success", { detail: { alias: finalAlias, port } }));
 
-    onLaunch(fullConfig);
+    try {
+      onLaunch(fullConfig);
+      // Only persist if user actively edited the alias — skip auto-generated ENGINE_N names
+      const wasUserEdited = aliasUserEditedRef.current;
+      if (wasUserEdited) {
+        saveAliasForModel(model.path, finalAlias);
+      }
+    } catch {}
   };
 
   // ── Empty state ──────────────────────────────────────────────────────────
@@ -501,7 +526,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                 key={p.id}
                 onClick={() => {
                   setSelectedProvider(p.id);
-                  try { localStorage.setItem("BlackOps-last-provider", p.id); } catch {}
+                  try { localStorage.setItem(KEYS.lastProvider, p.id); } catch {}
                 }}
                 className={`px-3 py-1 text-[10px] font-mono tracking-wider rounded-sm ${
                   selectedProvider === p.id
@@ -591,15 +616,28 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
                   {/* Engine Alias input */}
                   <div className="flex items-center gap-2 mb-2.5">
-                    <span className="font-mono text-[9px] w-24 flex-shrink-0 uppercase tracking-wider truncate mono-label">
-                      Alias
+                    <span className="font-mono text-[9px] w-auto flex-shrink-0 uppercase tracking-wider truncate mono-label">
+                      Alias{aliasIsUserSet ? <span className="mono-user-set"> - user set</span> : ''}
                     </span>
                     <input
                       type="text"
                       value={aliasInput}
-                      onChange={(e) => setAliasInput(e.target.value)}
-                      className="flex-1 min-w-0 bg-green-400/5 border border-green-400/20 text-[9px] font-mono px-2 py-0.5 rounded-sm focus:outline-none focus:border-green-400/40 placeholder:text-green-400/30"
-                      style={{ color: '#4ade80' }}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val.trim()) {
+                          aliasUserEditedRef.current = true;
+                          setAliasIsUserSet(true);
+                        } else {
+                          aliasUserEditedRef.current = false;
+                          setAliasIsUserSet(false);
+                        }
+                        setAliasInput(val);
+                      }}
+                      className={`flex-1 min-w-0 border text-[9px] font-mono px-2 py-0.5 rounded-sm focus:outline-none transition-colors ${
+                        aliasUserEditedRef.current
+                          ? "bg-black border-white/30 focus:border-white/50 mono-user-input"
+                          : "bg-green-400/5 border-green-400/20 focus:border-green-400/40"
+                      }`}
                       placeholder="auto..."
                     />
                   </div>

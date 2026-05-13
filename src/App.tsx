@@ -13,8 +13,8 @@ import Reactor11 from "./components/Reactor11";
 import ModelHub from "./components/ModelHub";
 import { StatusProvider } from "./context/StatusBarContext";
 import { ToastProvider } from "./components/Toast";
-// SANITY-BOX — SanityEntry added to import
-import type { GpuInfo, ModelEntry, StackEntry, LogBatch, LogEntry, SystemEvent, ProviderConfig, CpuInfo, SystemInfo, EnginePerfEvent, SanityEntry } from "./lib/types";
+import { KEYS, STORAGE_PREFIX } from "./lib/storage";
+import type { GpuInfo, ModelEntry, StackEntry, LogBatch, LogEntry, SystemEvent, ProviderConfig, CpuInfo, SystemInfo, EnginePerfEvent } from "./lib/types";
 
 export type Tab = "catalog" | "modelhub" | "stack" | "reactor11" | "telemetry" | "logs" | "config" | "sentinel";
 
@@ -47,28 +47,23 @@ function App() {
   const [totalParams, setTotalParams] = useState(0);
   const [hiddenCount, setHiddenCount] = useState(0);
   const [lowPower, setLowPower] = useState(() => {
-    try { return localStorage.getItem("BlackOps-low-power") === "true"; } catch { return false; }
+    try { return localStorage.getItem(KEYS.lowPower) === "true"; } catch { return false; }
   });
   const [isAdminUnlocked, setIsAdminUnlockedRaw] = useState(() => {
     try {
-      const s = localStorage.getItem("BlackOps-admin-lock");
+      const s = localStorage.getItem(KEYS.adminLock);
       return s === "unlocked" || s === "permanently";
     } catch { return false; }
   });
 
-  // SANITY-BOX — captured console + Rust log entries
-  const [sanityLog, setSanityLog] = useState<SanityEntry[]>([]);
-
-  // Keep in sync with ConfigPage's cycleAdminLock
   useEffect(() => {
     const handler = () => {
       try {
-        const s = localStorage.getItem("BlackOps-admin-lock");
+        const s = localStorage.getItem(KEYS.adminLock);
         setIsAdminUnlockedRaw(s === "unlocked" || s === "permanently");
       } catch {}
     };
     window.addEventListener("storage", handler);
-    // Also listen for custom event for same-tab updates — defer to avoid setState during render
     const adminHandler = () => requestAnimationFrame(handler);
     window.addEventListener("admin-lock-changed", adminHandler);
     // Navigate to ENGINES tab from GPU topo engine table clicks
@@ -81,63 +76,18 @@ function App() {
     };
   }, []);
 
-  // SANITY-BOX — capture console.error / console.warn into state
-  useEffect(() => {
-    const origError = console.error;
-    const origWarn = console.warn;
-
-    const pushEntry = (level: 'error' | 'warn', args: unknown[]) => {
-      const text = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
-      setSanityLog(prev => [...prev, {
-        source: 'js' as const,
-        level,
-        text,
-        timestamp: new Date().toISOString().substring(11, 20).replace('T', ''),
-      }].slice(-500));
-    };
-
-    console.error = ((...args: unknown[]) => { pushEntry('error', args); origError.apply(console, args); }) as any;
-    console.warn = ((...args: unknown[]) => {
-      const text = args.map(a => String(a)).join(' ');
-      pushEntry('warn', args);
-      // Suppress [SCENARIO] logs from browser console — they're visible in SANITY box already
-      if (!text.startsWith('[SCENARIO]')) {
-        origWarn.apply(console, args);
-      }
-    }) as any;
-
-    return () => {
-      console.error = origError;
-      console.warn = origWarn;
-    };
-  }, []);
-
-  // SANITY-BOX — listen for Rust-side sanity log events
-  useEffect(() => {
-    let unsub: (() => void) | null = null;
-    const cleanup = () => { if (unsub) unsub(); };
-    listen("sanity-log", (e: any) => {
-      const p = e.payload as SanityEntry;
-      if (p && p.text) {
-        setSanityLog(prev => [...prev, p].slice(-500));
-      }
-    }).then((u) => { unsub = u; });
-    return cleanup;
-  }, []);
-
   const toggleLowPower = useCallback(() => {
     setLowPower((prev) => {
       const next = !prev;
-      try { localStorage.setItem("BlackOps-low-power", String(next)); } catch {}
+      try { localStorage.setItem(KEYS.lowPower, String(next)); } catch {}
       return next;
     });
   }, []);
 
-  // Show all hidden values — clears ALL BlackOps-* keys from localStorage
   const handleShowAll = useCallback(() => {
     try {
       for (const key of Object.keys(localStorage)) {
-        if (key.startsWith("BlackOps-")) {
+        if (key.startsWith(STORAGE_PREFIX)) {
           localStorage.removeItem(key);
         }
       }
@@ -145,7 +95,6 @@ function App() {
     } catch {}
   }, []);
 
-  // Listen for param config changes from ConfigPage to update status bar counts and re-fetch providers
   useEffect(() => {
     let pending = false;
     const handler = (e: Event) => {
@@ -169,7 +118,6 @@ function App() {
     return () => window.removeEventListener("param-config-changed", handler);
   }, []);
 
-  // Reload models when a download completes
   useEffect(() => {
     const handler = () => {
       invoke<ModelEntry[]>("list_models")
@@ -180,7 +128,6 @@ function App() {
     return () => window.removeEventListener("download-completed", handler);
   }, []);
 
-  // Load models on mount
   useEffect(() => {
     invoke<ModelEntry[]>("list_models")
       .then((data) => {
@@ -194,14 +141,12 @@ function App() {
       });
   }, []);
 
-  // Load providers on mount
   useEffect(() => {
     invoke<ProviderConfig[]>("list_providers")
       .then((data) => setProviders(data))
       .catch(console.error);
   }, []);
 
-  // Load system info once (static, not polled)
   useEffect(() => {
     invoke<SystemInfo>("scan_system_info")
       .then((data) => setSystemInfo(data))
@@ -274,11 +219,9 @@ function App() {
     };
   }, [lowPower]);
 
-  // Listen for batched log events (throttled at 100ms from Rust LogHub)
   useEffect(() => {
     let unsub: (() => void) | null = null;
     const cleanup = () => { if (unsub) unsub(); };
-    console.log("[APP] engine-log-batch listener registered");
     listen("engine-log-batch", (e: any) => {
       const payload = e.payload;
       if (payload && payload.slot !== undefined && payload.entries?.length > 0) {
@@ -300,7 +243,6 @@ function App() {
     return cleanup;
   }, []);
 
-  // Listen for system events (launch debug, errors) from Rust LogHub
   useEffect(() => {
     let unsub: (() => void) | null = null;
     const cleanup = () => { if (unsub) unsub(); };
@@ -332,7 +274,6 @@ function App() {
     return cleanup;
   }, []);
 
-  // Listen for slot-cleared events — clear only the stopped slot's logs (no race condition)
   useEffect(() => {
     let unsub: (() => void) | null = null;
     const cleanup = () => { if (unsub) unsub(); };
@@ -364,14 +305,11 @@ function App() {
     return cleanup;
   }, []);
 
-  // Listen for Engine Performance Pulse events (TPS, TTFT, FuelTank KV cache %)
   useEffect(() => {
     let unsub: (() => void) | null = null;
     const cleanup = () => { if (unsub) unsub(); };
-    console.log("[APP] engine-perf listener registered");
     listen("engine-perf", (e: any) => {
       const payload = e.payload as EnginePerfEvent;
-      console.log("[APP] received engine-perf event:", payload?.slot, "tps:", payload?.tps);
       unstable_batchedUpdates(() => {
         try {
           if (payload && payload.slot !== undefined) {
@@ -388,7 +326,6 @@ function App() {
     return cleanup;
   }, []);
 
-  // GGUF scan progress listeners — persist across tab switches
   useEffect(() => {
     let unsubProgress: (() => void) | null = null;
     let unsubComplete: (() => void) | null = null;
@@ -411,7 +348,6 @@ function App() {
     };
   }, []);
 
-  // Poll stack status periodically (2s interval)
   useEffect(() => {
     const poll = async () => {
       try {
@@ -467,7 +403,6 @@ function App() {
     }
   }, []);
 
-  // Logs are already flat — just add alias for display (cap at 500 per slot for performance)
   const flatLogs = useMemo(() => {
     const result: Map<number, Array<{ text: string; timestamp: string; alias: string }>> = new Map();
     for (const [slot, entries] of logs.entries()) {
@@ -476,7 +411,6 @@ function App() {
     return result;
   }, [logs]);
 
-  // Committed VRAM from running engines + OS overhead per GPU
   const committedVramMib = useMemo(() => {
     return stack.reduce((sum, s) => {
       if (s.status === "RUNNING" && s.vram_mib) {
@@ -491,7 +425,7 @@ function App() {
       <StatusProvider value={{ totalParams, hiddenCount, onShowAll: handleShowAll }}>
         <Layout activeTab={activeTab} onTabChange={setActiveTab}>
         {activeTab === "catalog" && (
-              <ModelCatalog models={models} gpus={gpus} onLaunch={handleLaunchEngine} error={catalogError} onReload={reloadModels} providers={providers} committedVramMib={committedVramMib} isAdminUnlocked={isAdminUnlocked} systemInfo={systemInfo} scanningPath={scanningPath} setScanningPath={setScanningPath} batchScanState={batchScanState} setBatchScanState={setBatchScanState} stack={stack} /* SANITY-BOX */ sanityLog={sanityLog} />
+              <ModelCatalog models={models} gpus={gpus} onLaunch={handleLaunchEngine} error={catalogError} onReload={reloadModels} providers={providers} committedVramMib={committedVramMib} isAdminUnlocked={isAdminUnlocked} systemInfo={systemInfo} scanningPath={scanningPath} setScanningPath={setScanningPath} batchScanState={batchScanState} setBatchScanState={setBatchScanState} stack={stack} />
            )}
         {activeTab === "modelhub" && <ModelHub />}
         {activeTab === "config" && <ConfigPage providers={providers} />}

@@ -1,12 +1,8 @@
 use std::process::Stdio;
 use std::sync::Arc;
-use std::time::Duration;
-use tokio::sync::{mpsc, Mutex as TokioMutex};
+use tokio::sync::broadcast;
 use crate::types::{EngineConfig, StackEntry};
 use crate::log_hub::LogHub;
-
-
-use std::os::windows::process::CommandExt;
 
 /// Estimate committed VRAM for a launched engine from full scan data or file size fallback.
 fn fit_scanner_estimate_vram(config: &EngineConfig) -> f64 {
@@ -65,8 +61,8 @@ impl std::fmt::Display for SlotStatus {
 #[derive(Debug)]
 pub struct EngineSlot {
     pub conpty_proc: Option<conpty::Process>,
-    /// Combined stdout+stderr lines from ConPTY (merged stream)
-    pub combined_rx: Arc<TokioMutex<Option<mpsc::Receiver<String>>>>,
+    /// Broadcast sender for ConPTY output — consumed by perf reader + readiness watcher
+    pub output_tx: Option<broadcast::Sender<String>>,
     /// Buffered output lines for crash diagnostics (last 50 lines) — std Mutex since only accessed synchronously
     pub error_buffer: Arc<std::sync::Mutex<Vec<String>>>,
     pub port: u16,
@@ -102,7 +98,7 @@ impl EngineStack {
         for i in 0..slot_count {
             slots.push(Some(EngineSlot {
                 conpty_proc: None,
-                combined_rx: Arc::new(TokioMutex::new(None)),
+                output_tx: None,
                 error_buffer: Arc::new(std::sync::Mutex::new(Vec::new())),
                 port: base_port + i as u16,
                 status: SlotStatus::Idle,
@@ -212,22 +208,23 @@ impl EngineStack {
             eprintln!("[CONPTY] slot={} early output ({} lines): {:?}", slot_idx, early_lines.len(), early_lines.join(" | "));
         }
 
-        let (tx, rx) = mpsc::channel::<String>(256);
+        let (tx, _rx) = broadcast::channel::<String>(256);
 
-        // Clone error buffer for the reader thread
+        // Clone error buffer and tx for the reader thread
         let error_buf = slot.error_buffer.clone();
+        let reader_tx = tx.clone();
 
         tokio::task::spawn_blocking(move || {
             use std::io::{BufRead, BufReader};
 
             conpty_output.blocking(true);
-            let mut reader = BufReader::new(&mut conpty_output);
+            let reader = BufReader::new(&mut conpty_output);
 
             for line_result in reader.lines() {
                 match line_result {
                     Ok(line) => {
                         if !line.is_empty() {
-                            let _ = tx.blocking_send(line.clone());
+                            let _ = reader_tx.send(line.clone());
                             // Also buffer last 50 lines for crash diagnostics
                             let mut buf = error_buf.lock().unwrap();
                             buf.push(line);
@@ -254,7 +251,7 @@ impl EngineStack {
         }
 
         slot.conpty_proc = Some(conpty_proc);
-        *slot.combined_rx.lock().await = Some(rx);
+        slot.output_tx = Some(tx);
         slot.port = config.port;
         slot.alias = config.alias.clone();
         slot.model_path = config.model_path.clone();
@@ -269,10 +266,12 @@ impl EngineStack {
         Ok(())
     }
 
-    /// Takes ownership of the combined output receiver for the perf reader.
-    pub async fn take_combined_output(&mut self, idx: usize) -> Option<mpsc::Receiver<String>> {
+    /// Subscribe to the ConPTY output broadcast channel for a slot.
+    pub fn subscribe_output(&mut self, idx: usize) -> Option<broadcast::Receiver<String>> {
         if let Some(slot) = self.slots[idx].as_mut() {
-            return slot.combined_rx.lock().await.take();
+            if let Some(ref tx) = slot.output_tx {
+                return Some(tx.subscribe());
+            }
         }
         None
     }
@@ -341,124 +340,6 @@ impl EngineStack {
         }
     }
 
-    pub async fn hot_swap_with_args(
-        &mut self,
-        slot_idx: usize,
-        config: &EngineConfig,
-
-        binary_path: &std::path::PathBuf,
-        gpu_mask: String,
-        cmd_args: Vec<String>,
-        provider_display_name: String,
-        backend_type: String,
-    ) -> Result<(), String> {
-        let slot = self.slots[slot_idx].as_mut().ok_or("Slot not found")?;
-
-        if let Some(ref mut proc) = slot.conpty_proc {
-            let _ = proc.exit(1);
-            tokio::time::sleep(Duration::from_millis(500)).await;
-        }
-
-        slot.status = SlotStatus::Idle;
-        slot.conpty_proc = None;
-        *slot.combined_rx.lock().await = None;
-
-        // Use gpu_mask passed from caller (engine.rs hot_swap), which accounts for typed split_mode + __test_args.
-
-        validate_binary_path(binary_path).await?;
-
-        let mut std_cmd = std::process::Command::new(binary_path);
-        
-        // Inherit parent environment — ConPTY does NOT auto-inherit
-        for (k, v) in std::env::vars() {
-            std_cmd.env(&k, &v);
-        }
-        
-        std_cmd
-            .args(&cmd_args)
-            .env("CUDA_VISIBLE_DEVICES", &gpu_mask)
-            .creation_flags(0x08000000); // CREATE_NO_WINDOW
-
-        let mut conpty_proc = conpty::Process::spawn(std_cmd)
-            .map_err(|e| format!("Failed to spawn {} via ConPTY: {}", binary_path.display(), e))?;
-
-        std::thread::sleep(std::time::Duration::from_millis(100));
-        
-        eprintln!("[CONPTY] slot={} hot-swap spawned (pid={}), alive={}", slot_idx, conpty_proc.pid(), conpty_proc.is_alive());
-
-        let mut conpty_output = conpty_proc.output()
-            .map_err(|e| format!("Failed to get ConPTY output: {}", e))?;
-
-        // Capture early output for crash diagnostics
-        let early_lines: Vec<String> = {
-            use std::io::{BufRead, BufReader};
-            conpty_output.blocking(false);
-            let mut reader = BufReader::new(&mut conpty_output);
-            std::iter::from_fn(|| {
-                let mut line = String::new();
-                match reader.read_line(&mut line) {
-                    Ok(0) => None,
-                    Ok(_) if line.trim().is_empty() => None,
-                    Ok(_) => Some(line.trim().to_string()),
-                    Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => None,
-                    Err(e) => {
-                        eprintln!("[CONPTY] slot={} early read error: {}", slot_idx, e);
-                        None
-                    }
-                }
-            }).take(20).collect()
-        };
-        
-        if !early_lines.is_empty() {
-            eprintln!("[CONPTY] slot={} hot-swap early output ({} lines): {:?}", slot_idx, early_lines.len(), early_lines.join(" | "));
-        }
-
-        let (tx, rx) = mpsc::channel::<String>(256);
-        
-        tokio::task::spawn_blocking(move || {
-            use std::io::{BufRead, BufReader};
-            
-            conpty_output.blocking(true);
-            let mut reader = BufReader::new(&mut conpty_output);
-            
-            for line_result in reader.lines() {
-                match line_result {
-                    Ok(line) => {
-                        if !line.is_empty() {
-                            let _ = tx.blocking_send(line);
-                        }
-                    }
-                    Err(e) => {
-                        eprintln!("[CONPTY] slot={} read error: {}", slot_idx, e);
-                        break;
-                    }
-                }
-            }
-            
-            eprintln!("[CONPTY] slot={} output stream closed", slot_idx);
-        });
-
-        if !conpty_proc.is_alive() {
-            let exit_code = conpty_proc.wait(None).unwrap_or(u32::MAX);
-            eprintln!("[CONPTY] slot={} hot-swap CRASHED immediately! Exit code: {}", slot_idx, exit_code);
-        }
-
-        slot.conpty_proc = Some(conpty_proc);
-        *slot.combined_rx.lock().await = Some(rx);
-        slot.port = config.port;
-        slot.alias = config.alias.clone();
-        slot.model_path = config.model_path.clone();
-        slot.gpu_mask = gpu_mask;
-        slot.vram_mib = fit_scanner_estimate_vram(&config);
-        slot.n_ctx = crate::templates::ProviderTemplate::ctx_to_int_str(&config.ctx_size)
-            .parse::<usize>().unwrap_or(32768);
-        slot.provider_name = provider_display_name;
-        slot.backend_type = backend_type.clone();
-        slot.status = SlotStatus::Loading;
-
-        Ok(())
-    }
-
     pub async fn stop_slot(&mut self, slot_idx: usize) -> Result<(), String> {
         let slot = self.slots[slot_idx].as_mut().ok_or("Slot not found")?;
 
@@ -474,7 +355,7 @@ impl EngineStack {
 
         slot.status = SlotStatus::Idle;
         slot.conpty_proc = None;
-        *slot.combined_rx.lock().await = None;
+        slot.output_tx = None;
         slot.vram_mib = 0.0;
         Ok(())
     }
@@ -565,7 +446,7 @@ impl EngineStack {
                 let _ = Self::kill_process_by_port(port).await;
                 slot.status = SlotStatus::Idle;
                 slot.conpty_proc = None;
-                *slot.combined_rx.lock().await = None;
+                slot.output_tx = None;
                 slot.vram_mib = 0.0;
             }
             stopped.push(idx);

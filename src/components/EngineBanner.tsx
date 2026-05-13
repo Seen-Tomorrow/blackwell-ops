@@ -1,7 +1,9 @@
 import { motion } from "framer-motion";
+import { sanitizeAlias } from "../lib/types";
 
 interface EngineBannerProps {
   slotIndex: number;
+  alias?: string;
   providerName?: string;
   providerType?: string;
   status?: string;
@@ -29,7 +31,7 @@ function resolveProviderName(providerName?: string, providerType?: string): stri
   return undefined;
 }
 
-export default function EngineBanner({ slotIndex, providerName, providerType, status, gpuMask, buildInfo }: EngineBannerProps) {
+export default function EngineBanner({ slotIndex, alias, providerName, providerType, status, gpuMask, buildInfo }: EngineBannerProps) {
   const isIdle = status === "IDLE";
   const displayName = resolveProviderName(providerName, providerType);
   const hasProvider = !!displayName && displayName.trim().length > 0;
@@ -77,7 +79,7 @@ export default function EngineBanner({ slotIndex, providerName, providerType, st
         <div className="flex items-center gap-3">
           {/* Hexagonal slot badge */}
           <div className="relative">
-            <svg width="28" height="28" viewBox="0 0 28 28" fill="none" className={badgeColor.stroke}>
+            <svg width="34" height="34" viewBox="0 0 28 28" fill="none" className={badgeColor.stroke}>
               <path
                 d="M14 2 L24 8 L24 20 L14 26 L4 20 L4 8 Z"
                 stroke="currentColor"
@@ -90,7 +92,7 @@ export default function EngineBanner({ slotIndex, providerName, providerType, st
                 textAnchor="middle"
                 dominantBaseline="central"
                 className={badgeColor.fill}
-                fontSize="9"
+                fontSize="13"
                 fontFamily="monospace"
                 fontWeight="bold"
                 animate={status === "LOADING" ? { opacity: [0.4, 1, 0.4] } : {}}
@@ -107,8 +109,8 @@ export default function EngineBanner({ slotIndex, providerName, providerType, st
               Engine Slot {gpuMask ? `| GPU:${gpuMask}` : ""}
             </span>
             <span className="text-xs font-mono text-white/90 tracking-wider">
-              #{String(slotIndex + 1).padStart(2, "0")}
-            </span>
+               #{alias ? sanitizeAlias(alias).toUpperCase() : String(slotIndex + 1).padStart(2, "0")}
+             </span>
           </div>
         </div>
 

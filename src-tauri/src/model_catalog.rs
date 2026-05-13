@@ -10,7 +10,6 @@ use std::path::{Path, PathBuf};
 
 use crate::types::{CatalogDedupConflict, ModelEntry, ModelEntryInternal, ModelPathEntry};
 
-/// Scan a single directory path for .gguf model files.
 pub fn scan_path(base_path: &Path) -> Result<Vec<ModelEntryInternal>, String> {
     if !base_path.exists() {
         return Ok(Vec::new());
@@ -44,7 +43,6 @@ pub fn scan_path(base_path: &Path) -> Result<Vec<ModelEntryInternal>, String> {
                 .unwrap_or("unknown")
                 .to_string();
 
-            // Find mmproj file in this folder
             let mut mmproj_file: Option<String> = None;
             let mut mmproj_size: u64 = 0;
             if let Ok(files) = std::fs::read_dir(&model_path) {
@@ -71,7 +69,6 @@ pub fn scan_path(base_path: &Path) -> Result<Vec<ModelEntryInternal>, String> {
                     continue;
                 }
 
-                // Strip shard pattern: -00001-of-00002
                 let base_name = strip_shard_pattern(&fname_str);
                 let file_path = f_entry.path();
 
@@ -92,7 +89,6 @@ pub fn scan_path(base_path: &Path) -> Result<Vec<ModelEntryInternal>, String> {
                     let quant = extract_quant(&base_name);
                     let size_str = calc_size_str_from_bytes(file_size + mmproj_size);
 
-                    // Store full absolute path to the GGUF file for downstream validation
                     let abs_path = file_path.to_string_lossy().to_string();
 
                     temp_catalog.insert(full_id, ModelEntryInternal {
@@ -117,8 +113,6 @@ pub fn scan_path(base_path: &Path) -> Result<Vec<ModelEntryInternal>, String> {
     Ok(temp_catalog.into_values().collect())
 }
 
-/// Merge catalogs from multiple configured paths with cross-path deduplication.
-/// Returns (final_entries, conflicts) where conflicts are duplicates found across paths.
 pub fn merge_catalogs(
     paths: &[ModelPathEntry],
 ) -> Result<(Vec<ModelEntry>, Vec<CatalogDedupConflict>), String> {
@@ -156,9 +150,6 @@ pub fn merge_catalogs(
         }
     }
 
-    // Convert to final ModelEntry with cached metadata + HF overrides
-    // Load cache ONCE — get_cached/get_hf_metadata each call load_cache() which reads+parses the entire JSON file.
-    // With 60 models that was 120 disk I/O ops. Now it's 1.
     let model_cache = crate::model_cache::load_cache();
     log::info!("[catalog] Loaded model cache: {} entries", model_cache.len());
 
@@ -167,7 +158,6 @@ pub fn merge_catalogs(
             let size_str = calc_size_str_from_bytes(internal.total_bytes);
             let lookup_path = &internal.path;
 
-            // GGUF binary scan cache — uses pre-loaded cache, no redundant disk reads
             log::debug!("[catalog] Cache lookup for '{}', path='{}'", internal.name, lookup_path);
             let mut cached_meta = crate::model_cache::get_cached_with_cache(&model_cache, lookup_path);
             if cached_meta.is_some() {
@@ -185,7 +175,6 @@ pub fn merge_catalogs(
                 }
             }
 
-            // HF API cache (persistent) — uses pre-loaded cache, no redundant disk reads
             let hf_meta = crate::model_cache::get_hf_metadata_with_cache(&model_cache, lookup_path);
             let (author, name, quant) = if let Some(ref hf) = hf_meta {
                 (hf.author.clone(), hf.repo_name.clone(), hf.quant_type.clone())
@@ -213,7 +202,6 @@ pub fn merge_catalogs(
     Ok((final_catalog, conflicts))
 }
 
-/// Strip shard pattern from filename: "model-00001-of-00002.gguf" → "model.gguf".
 pub fn strip_shard_pattern(filename: &str) -> String {
     if !filename.ends_with(".gguf") {
         return filename.to_string();
@@ -253,7 +241,6 @@ pub fn strip_shard_pattern(filename: &str) -> String {
     filename.to_string()
 }
 
-/// Find the last occurrence of `pattern` in `s`, case-insensitive.
 fn find_case_insensitive_rfind(s: &str, pattern: &str) -> Option<usize> {
     let s_lower = s.to_lowercase();
     let p_lower = pattern.to_lowercase();
@@ -280,7 +267,6 @@ const KNOWN_QUANTS: &[&str] = &[
     "FP8_E4M3", "FP8_E5M2",
 ];
 
-/// Check for early-format quant indicators (BF16, F16, MXFP4).
 fn check_early_formats(filename: &str) -> Option<String> {
     let lower = filename.to_lowercase();
     if lower.contains("bf16") {
@@ -300,7 +286,6 @@ fn check_early_formats(filename: &str) -> Option<String> {
     None
 }
 
-/// Match a known quant pattern in a string. Returns the canonical name or None.
 fn match_known_quant_in(s: &str) -> Option<String> {
     let s_lower = s.to_lowercase();
     for pattern in KNOWN_QUANTS {
@@ -311,7 +296,6 @@ fn match_known_quant_in(s: &str) -> Option<String> {
     None
 }
 
-/// Find best known quant match across segments of a filename.
 fn find_best_segment_match(filename: &str) -> Option<String> {
     let without_ext = filename.trim_end_matches(".gguf");
     let segments: Vec<&str> = without_ext.split(|c: char| c == '-' || c == '.').collect();
@@ -390,13 +374,10 @@ fn fallback_quant(filename: &str) -> String {
     "GGUF".to_string()
 }
 
-/// Format bytes as human-readable string (e.g. "4.2GB").
 pub fn calc_size_str_from_bytes(total_bytes: u64) -> String {
     format!("{:.1}GB", total_bytes as f64 / (1024.0_f64.powi(3)))
 }
 
-/// Get the total size of a model, summing all shards if sharded.
-/// Uses strip_shard_pattern to detect shard siblings in the same directory.
 pub fn get_total_model_size(model_path: &str) -> u64 {
     let path = std::path::Path::new(model_path);
     if let Some(parent) = path.parent() {

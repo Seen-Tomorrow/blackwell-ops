@@ -1,17 +1,4 @@
-/**
- * ConfigPage — Provider & Parameter Configuration
- *
- * ARCHITECTURE (single source of truth):
- * - Each ParamDef carries both `defaultValue` (current) and `factoryDefault` (never changes).
- *   No cross-referencing templates at render time.
- * - Genesis template is only read:
- *   a) At startup — populates factory_default on fresh param_definitions
- *   b) By TEMPLATE UPDATE — shows diff vs current state
- *
- * Storage:
- * - Provider metadata (binary_path, git_url…) + full param_definitions → %APPDATA%/blackwell-ops/provider_meta.json
- * - Per-model runtime overrides → localStorage BlackOps-admin-catalog-override:{providerId}
- */
+// Provider and parameter configuration.
 
 import React, { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
@@ -19,8 +6,7 @@ import type { ParamDef, ProviderConfig, ProviderTemplate, TemplateParam, ModelPa
 import ValueBubbles from "./ValueBubbles";
 import ProvidersConfig from "./ProvidersConfig";
 import FoundryPage from "./FoundryPage";
-
-const OVERRIDES_KEY_PREFIX = "BlackOps-admin-catalog-override:";
+import { KEYS, overridesKey, groupOrderKey } from "../lib/storage";
 
 // ── Types for template update diff (from Rust check_template_update IPC) ─────────
 interface DiffParam {
@@ -63,13 +49,13 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
   const [allProviders, setAllProviders] = useState<ProviderConfig[]>(externalProviders || []);
   // Admin lock state — read from global (managed by Layout.tsx header)
   const [adminLockState, setAdminLockState] = useState<string>(() => {
-    try { return localStorage.getItem("BlackOps-admin-lock") || "locked"; } catch { return "locked"; }
+    try { return localStorage.getItem(KEYS.adminLock) || "locked"; } catch { return "locked"; }
   });
 
   // Listen for admin lock changes from the global header toggle
   useEffect(() => {
     const handler = () => {
-      try { setAdminLockState(localStorage.getItem("BlackOps-admin-lock") || "locked"); } catch {}
+      try { setAdminLockState(localStorage.getItem(KEYS.adminLock) || "locked"); } catch {}
     };
     window.addEventListener("admin-lock-changed", handler);
     return () => window.removeEventListener("admin-lock-changed", handler);
@@ -81,7 +67,7 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
   const handleEditorToggle = useCallback(() => {
     setAdminLockState(prev => {
       const next = prev === "locked" ? "unlocked" : prev === "unlocked" ? "permanently" : "locked";
-      try { localStorage.setItem("BlackOps-admin-lock", next); } catch {}
+      try { localStorage.setItem(KEYS.adminLock, next); } catch {}
       window.dispatchEvent(new Event("admin-lock-changed"));
       return next;
     });
@@ -133,7 +119,7 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
 
   useEffect(() => {
     try {
-      const stored = localStorage.getItem(OVERRIDES_KEY_PREFIX + selectedProviderId);
+      const stored = localStorage.getItem(overridesKey(selectedProviderId));
       if (stored) setUserOverrides(JSON.parse(stored));
       else setUserOverrides({});
     } catch { setUserOverrides({}); }
@@ -143,13 +129,12 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
   const currentProvider = useMemo(() => allProviders.find(p => p.id === selectedProviderId), [allProviders, selectedProviderId]);
 
   // ── Custom group order (localStorage A + provider_meta.json B) ───────────────
-  const GROUP_ORDER_KEY = "BlackOps-group-order-";
   const [customGroupOrder, setCustomGroupOrder] = useState<string[] | null>(null);
 
   useEffect(() => {
     // Load from localStorage first (A), fall back to provider config (B)
     try {
-      const stored = localStorage.getItem(GROUP_ORDER_KEY + selectedProviderId);
+      const stored = localStorage.getItem(groupOrderKey(selectedProviderId));
       if (stored) {
         setCustomGroupOrder(JSON.parse(stored));
       } else if (currentProvider?.groupOrder && currentProvider.groupOrder.length > 0) {
@@ -164,7 +149,7 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
 
   const saveGroupOrder = useCallback(async (newOrder: string[]) => {
     // Persist to localStorage (A)
-    try { localStorage.setItem(GROUP_ORDER_KEY + selectedProviderId, JSON.stringify(newOrder)); } catch {}
+    try { localStorage.setItem(groupOrderKey(selectedProviderId), JSON.stringify(newOrder)); } catch {}
     setCustomGroupOrder(newOrder);
     // Persist to provider_meta.json via save_provider (B)
     if (currentProvider) {
@@ -223,7 +208,7 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
 
   // ── User override (selecting a value for this model + provider) ───
   const setOverride = useCallback((defKey: string, value: string | number) => {
-    try { localStorage.setItem(OVERRIDES_KEY_PREFIX + selectedProviderId, JSON.stringify({ [defKey]: value })); } catch {}
+    try { localStorage.setItem(overridesKey(selectedProviderId), JSON.stringify({ [defKey]: value })); } catch {}
     window.dispatchEvent(new CustomEvent("param-config-changed"));
   }, [selectedProviderId]);
 
@@ -264,7 +249,7 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
 
     // Clear localStorage overrides for this provider
     setUserOverrides({});
-    try { localStorage.removeItem(OVERRIDES_KEY_PREFIX + selectedProviderId); } catch {}
+    try { localStorage.removeItem(overridesKey(selectedProviderId)); } catch {}
 
     window.dispatchEvent(new CustomEvent("param-config-changed"));
     showSaved("RESET TO DEFAULTS");
@@ -383,7 +368,7 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
     setUserOverrides(prev => {
       const n = { ...prev };
       delete n[key];
-      try { localStorage.setItem(OVERRIDES_KEY_PREFIX + selectedProviderId, JSON.stringify(n)); } catch {}
+      try { localStorage.setItem(overridesKey(selectedProviderId), JSON.stringify(n)); } catch {}
       return n;
     });
     window.dispatchEvent(new CustomEvent("param-config-changed"));

@@ -4,15 +4,10 @@ use std::path::PathBuf;
 
 use crate::types::{ModelPathEntry, PathDiskUsage, ProviderConfig};
 
-/// Maximum engine slots — decoupled from physical GPU count.
-/// Modern Windows supports up to 16 GPUs; each slot = one provider backend process + model.
 pub const MAX_ENGINE_SLOTS: usize = 16;
 
 // ── Provider Metadata (persisted to disk) ───────────────────────────
 
-/// Lightweight provider metadata — saved to %APPDATA%/blackwell-ops/provider_meta.json.
-/// Contains: id, display_name, binary_path, enabled, git_url, branch, build_profile
-/// and the full param_definitions so admin edits persist across restarts.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProviderMeta {
     pub id: String,
@@ -26,11 +21,8 @@ pub struct ProviderMeta {
     pub branch: String,
     #[serde(default)]
     pub build_profile: String,
-    /// Template type family (ggml-llama, ik-llama, "" = custom). Determines which genesis template to resolve against.
     #[serde(default)]
     pub template_type: String,
-    /// Full param_definitions for this provider.
-    /// Loaded from disk on startup; saved when admin edits params via save_provider IPC.
     #[serde(default)]
     pub param_definitions: Vec<crate::types::ParamDef>,
     /// Custom group order set by user (overrides template insertion order). Empty = use template order.
@@ -55,10 +47,8 @@ pub struct AppConfig {
     pub model_paths: Vec<ModelPathEntry>,
     pub prefs_file: PathBuf,
     pub base_port: u16,
-    /// Number of engine slots = physical GPUs detected. Set at startup.
     #[serde(default)]
     pub gpu_slots: usize,
-    /// All registered providers with their current param_definitions (overlay-merged).
     #[serde(default = "default_providers")]
     pub providers: Vec<ProviderConfig>,
 }
@@ -78,7 +68,6 @@ impl Default for AppConfig {
             });
         }
 
-        // Pre-add .lmstudio path if it exists on disk (%USERPROFILE%\.lmstudio\models)
         if let Some(lm_path) = dirs::home_dir().map(|h| h.join(".lmstudio").join("models")).and_then(|p| {
             if p.exists() { Some(p) } else { None }
         }) {
@@ -105,7 +94,6 @@ const PROVIDER_META_FILE: &str = "provider_meta.json";
 
 // ── Provider Metadata Persistence ───────────────────────────────────
 
-/// Load provider metadata from %APPDATA%/blackwell-ops/provider_meta.json on disk.
 pub fn load_provider_meta() -> Vec<ProviderMeta> {
     if let Some(app_dir) = dirs::config_dir() {
         let config_path = app_dir.join("blackwell-ops").join(PROVIDER_META_FILE);
@@ -125,7 +113,6 @@ fn json_val_eq(a: &serde_json::Value, b: &serde_json::Value) -> bool {
     serde_json::to_string(a).ok() == serde_json::to_string(b).ok()
 }
 
-/// Validate a single ParamDef against the expected schema.
 fn validate_param_def(def: &crate::types::ParamDef) -> Vec<String> {
     let mut errors = Vec::new();
 
@@ -201,7 +188,6 @@ fn validate_param_def(def: &crate::types::ParamDef) -> Vec<String> {
     errors
 }
 
-/// Validate all providers before saving. Returns Vec of error strings (empty = valid).
 fn check_provider_meta(metas: &[ProviderMeta]) -> Vec<String> {
     let mut all_errors: Vec<String> = Vec::new();
 
@@ -234,7 +220,6 @@ fn check_provider_meta(metas: &[ProviderMeta]) -> Vec<String> {
     all_errors
 }
 
-/// Save provider metadata to %APPDATA%/blackwell-ops/provider_meta.json on disk.
 #[tauri::command]
 pub fn save_provider_meta(metas: Vec<ProviderMeta>) -> Result<(), String> {
     // Block-save validation — force user to correct manually
@@ -259,8 +244,6 @@ pub fn save_provider_meta(metas: Vec<ProviderMeta>) -> Result<(), String> {
     Ok(())
 }
 
-/// Check existing provider_meta.json for schema errors without modifying it.
-/// Used by ConfigPage "Validate" button to report issues before user edits.
 #[tauri::command]
 pub fn validate_provider_meta() -> Result<Vec<String>, String> {
     let metas = load_provider_meta();
@@ -271,8 +254,6 @@ pub fn validate_provider_meta() -> Result<Vec<String>, String> {
     Ok(errors)
 }
 
-/// Convert Vec<ProviderConfig> → Vec<ProviderMeta> and persist to disk.
-/// param_definitions are saved as-is — no delta computation.
 pub fn persist_provider_meta(providers: &[crate::types::ProviderConfig]) -> Result<(), String> {
     let metas: Vec<ProviderMeta> = providers.iter().map(|p| ProviderMeta {
         id: p.id.clone(),
@@ -297,7 +278,6 @@ pub fn persist_provider_meta(providers: &[crate::types::ProviderConfig]) -> Resu
 
 // ── Legacy Migration ─────────────────────────────────────────────────
 
-/// Fallback: load from deprecated admin_template.json format (one-time migration, pre-param_definitions).
 fn load_legacy_provider_meta() -> Vec<ProviderMeta> {
     if let Some(app_dir) = dirs::config_dir() {
         let config_path = app_dir.join("blackwell-ops").join("admin_template.json");
@@ -341,7 +321,6 @@ fn load_legacy_provider_meta() -> Vec<ProviderMeta> {
 
 // ── Genesis Providers (factory defaults from embedded template) ─────
 
-/// Helper: build a single ParamDef from a TemplateParam, setting factory_default.
 fn param_def_from_template(tp: &crate::templates::TemplateParam, order: i32) -> crate::types::ParamDef {
     // Convert sub_params from serde_json::Value to HashMap<String, Vec<String>>
     let sub_params = tp.sub_params.as_ref().and_then(|sp| {
@@ -378,8 +357,6 @@ fn param_def_from_template(tp: &crate::templates::TemplateParam, order: i32) -> 
     }
 }
 
-/// Build param_definitions for a provider ID from the embedded genesis_template.json.
-/// Each param gets factory_default set to its template's default value.
 pub fn params_for_provider(id: &str) -> Vec<crate::types::ParamDef> {
     let bundle = crate::templates::TemplateBundle::default();
     if let Some(template) = bundle.templates.get(id) {
@@ -391,7 +368,6 @@ pub fn params_for_provider(id: &str) -> Vec<crate::types::ParamDef> {
     Vec::new()
 }
 
-/// Build the built-in providers with fresh param_definitions from embedded templates.
 fn genesis_providers() -> Vec<crate::types::ProviderConfig> {
     vec![
         crate::types::ProviderConfig {
@@ -429,12 +405,6 @@ fn genesis_providers() -> Vec<crate::types::ProviderConfig> {
     ]
 }
 
-/// Build AppConfig with:
-/// - Built-in Genesis providers (fresh param_definitions from embedded template)
-/// - Any extra providers from disk metadata
-///
-/// Resolve a template_type to its genesis_template.json key.
-/// Returns None for custom/empty types — no template to resolve against.
 pub fn template_key_for_type(template_type: &str) -> Option<&'static str> {
     match template_type {
         "ik-llama" => Some("ik-extreme"),
@@ -451,9 +421,6 @@ pub fn resolve_template_type(provider_id: &str, disk_type: Option<&String>) -> S
     }
 }
 
-/// Priority: disk param_definitions > fresh template defaults.
-/// Merge missing `dock` values from genesis template into stored param definitions.
-/// Ensures new template fields propagate to already-saved provider configs.
 fn merge_template_dock(template_type: &str, param_defs: &mut Vec<crate::types::ParamDef>) {
     let bundle = crate::templates::TemplateBundle::default();
     let Some(template_key) = template_key_for_type(template_type) else { return; };
@@ -495,8 +462,6 @@ pub fn load_config() -> AppConfig {
 
 // ── Template Update Detection ───────────────────────────────────────
 
-/// Result of comparing current param_definitions against fresh genesis template.
-/// Used by CHECK TEMPLATE UPDATE to show what changed.
 #[derive(Debug, Clone, Serialize)]
 pub struct TemplateDiff {
     /// New params added to the Genesis template (not in current config).
@@ -505,8 +470,6 @@ pub struct TemplateDiff {
     pub orphaned_params: Vec<crate::types::ParamDef>,
 }
 
-/// Compare fresh genesis_template.json against current param_definitions for a provider.
-/// Returns what's new, what changed, and what's orphaned.
 #[tauri::command]
 pub fn check_template_update(provider_id: String) -> Result<TemplateDiff, String> {
     // Load current state from disk (what was saved via save_provider)
@@ -552,9 +515,6 @@ pub fn check_template_update(provider_id: String) -> Result<TemplateDiff, String
     Ok(TemplateDiff { new_params, orphaned_params })
 }
 
-/// Apply a template update to a provider:
-/// - Merge in the approved new params
-/// - Remove or keep orphaned params based on user choice
 #[tauri::command]
 pub fn apply_template_update(
     provider_id: String,
@@ -609,8 +569,6 @@ pub async fn reorder_provider(provider_id: String, direction: i32, app: tauri::S
     Ok(())
 }
 
-/// Restore a single param definition to its genesis template state.
-/// Used by the "R" (Restore) button in ConfigPage.
 #[tauri::command]
 pub fn reset_param_to_template(provider_id: String, param_key: String) -> Result<crate::types::ParamDef, String> {
     // Load provider from disk to get template_type (auto-detect from ID if empty)
@@ -643,7 +601,6 @@ pub fn validate_model_path(path: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Validates that a provider binary exists.
 pub fn validate_provider_binary(path: &str) -> Result<(), String> {
     let p = PathBuf::from(path);
     if !p.exists() {
@@ -657,7 +614,6 @@ pub fn validate_provider_binary(path: &str) -> Result<(), String> {
 
 // ── Model Paths Management ────────────────────────────────────────────
 
-/// Get all configured model paths. Returns default if none configured.
 pub fn get_model_paths(config: &AppConfig) -> Vec<ModelPathEntry> {
     if config.model_paths.is_empty() {
         vec![ModelPathEntry {
@@ -670,7 +626,6 @@ pub fn get_model_paths(config: &AppConfig) -> Vec<ModelPathEntry> {
     }
 }
 
-/// Add a model path. If no default exists yet, this becomes the default.
 pub fn add_model_path(config: &mut AppConfig, path: String, label: Option<String>) {
     if config.model_paths.iter().any(|p| p.path == path) {
         return;
@@ -685,7 +640,6 @@ pub fn add_model_path(config: &mut AppConfig, path: String, label: Option<String
     config.model_paths.push(ModelPathEntry { path, label: computed_label, is_default });
 }
 
-/// Remove a model path. If it was the default, make another one default.
 pub fn remove_model_path(config: &mut AppConfig, path: &str) {
     let removed = config.model_paths.iter().position(|p| p.path == path);
     config.model_paths.retain(|p| p.path != path);
@@ -696,14 +650,12 @@ pub fn remove_model_path(config: &mut AppConfig, path: &str) {
     }
 }
 
-/// Set which path is the default download target.
 pub fn set_default_model_path(config: &mut AppConfig, path: &str) {
     for p in &mut config.model_paths {
         p.is_default = p.path == path;
     }
 }
 
-/// Calculate disk usage for all model paths — uses catalog scan for accurate shard/mmproj handling.
 pub fn calculate_disk_usage(paths: &[ModelPathEntry]) -> Vec<PathDiskUsage> {
     let mut result = Vec::new();
     for entry in paths {
@@ -719,7 +671,6 @@ pub fn calculate_disk_usage(paths: &[ModelPathEntry]) -> Vec<PathDiskUsage> {
     result
 }
 
-/// Get the default download destination path.
 pub fn get_default_download_path(config: &AppConfig) -> String {
     config.model_paths
         .iter()
@@ -728,7 +679,6 @@ pub fn get_default_download_path(config: &AppConfig) -> String {
         .unwrap_or_else(|| config.model_base.to_string_lossy().to_string())
 }
 
-/// Save AppConfig to %APPDATA%/blackwell-ops/app_config.json on disk.
 pub fn save_config(config: &AppConfig) -> Result<(), String> {
     if let Some(app_dir) = dirs::config_dir() {
         let blackwell_dir = app_dir.join("blackwell-ops");
@@ -746,7 +696,6 @@ pub fn save_config(config: &AppConfig) -> Result<(), String> {
     Ok(())
 }
 
-/// Build AppConfig with GPU detection and genesis providers.
 fn build_fresh_config(_gpu_slots: usize) -> AppConfig {
     let app_dir = dirs::config_dir().map(|d| d.join("blackwell-ops").join("models"));
     let default_path = app_dir.as_ref().map(|p| p.to_string_lossy().to_string());
@@ -761,7 +710,6 @@ fn build_fresh_config(_gpu_slots: usize) -> AppConfig {
         });
     }
 
-    // Pre-add .lmstudio path if it exists on disk (%USERPROFILE%\.lmstudio\models)
     if let Some(lm_path) = dirs::home_dir().map(|h| h.join(".lmstudio").join("models")).and_then(|p| {
         if p.exists() { Some(p) } else { None }
     }) {
@@ -783,7 +731,6 @@ fn build_fresh_config(_gpu_slots: usize) -> AppConfig {
     }
 }
 
-/// Load AppConfig from %APPDATA%/blackwell-ops/app_config.json if it exists.
 fn load_saved_config() -> Option<AppConfig> {
     if let Some(app_dir) = dirs::config_dir() {
         let config_path = app_dir.join("blackwell-ops").join("app_config.json");
@@ -800,9 +747,6 @@ fn load_saved_config() -> Option<AppConfig> {
 }
 
 
-/// Build AppConfig with:
-/// - Built-in Genesis providers (fresh param_definitions from embedded template)
-/// - Any extra providers from disk metadata
 fn build_config_with_providers_full(gpu_count: usize, mut config: AppConfig) -> AppConfig {
     let metas = load_provider_meta();
 

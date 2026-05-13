@@ -56,7 +56,6 @@ impl BuildEnv {
         }
     }
 
-    /// CUDA toolkit versions to EXCLUDE from PATH when building with this environment.
     pub fn excluded_cuda_versions(&self) -> &'static [&'static str] {
         match self {
             BuildEnv::Vanguard => &["v12.8", "v13.1"],  // exclude older, use v13.2 only
@@ -65,7 +64,6 @@ impl BuildEnv {
         }
     }
 
-    /// Scrub system PATH: remove all CUDA toolkit paths for other versions, prepend selected env's bin/libnvvp.
     pub fn scrub_path(&self) -> String {
         let current_path = std::env::var("PATH").unwrap_or_default();
         let base = self.cuda_path(); // e.g. C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.2
@@ -76,26 +74,21 @@ impl BuildEnv {
             let is_cuda_toolkit = entry_lower.contains("nvidia gpu computing toolkit\\cuda\\");
             
             if !is_cuda_toolkit {
-                // Keep non-CUDA paths (System32, Windows, Program Files, etc.)
                 filtered.push(entry.to_string());
             } else {
                 // Extract version suffix (v12.8, v13.1, v13.2, etc.) from path
                 let parts: Vec<&str> = entry_lower.split('\\').collect();
                 if let Some(last) = parts.last() {
                     let excluded = self.excluded_cuda_versions();
-                    // If this CUDA version is NOT in the exclusion list, keep it as fallback
                     if !excluded.contains(&last) {
                         filtered.push(entry.to_string());
                     }
-                    // Otherwise drop it — we only want our selected version
                 } else {
-                    // No version suffix found, keep it as fallback
                     filtered.push(entry.to_string());
                 }
             }
         }
 
-        // Prepend our CUDA bin and libnvvp paths (highest priority)
         let mut scrubbed = format!(r"{};\{}\;", 
             format!("{}\\bin", base),
             format!("{}\\libnvvp", base)
@@ -106,8 +99,6 @@ impl BuildEnv {
     }
 }
 
-/// Default CMake flags per template_type — used when build_profile is empty on disk.
-/// These are the canonical compile-time settings for each provider type.
 const DEFAULT_CMAKE_FLAGS: &[(&str, &str)] = &[
     ("ggml-llama", concat!(
         "-DLLAMA_CURL=OFF ",
@@ -178,7 +169,6 @@ struct BuildState {
 
 // ── Core Build Service ───────────────────────────────────────────────
 
-/// Run the full build pipeline for a provider.
 #[tauri::command]
 pub async fn foundry_build(
     provider_id: String,
@@ -195,10 +185,8 @@ pub async fn foundry_build(
 
     let app_handle = &_app_handle;
 
-    // Acquire mutex — prevents concurrent builds
     let _lock = BUILD_LOCK.lock().await;
 
-    // Check if a build is already in progress
     {
         let current = CURRENT_BUILD.lock().await;
         if current.is_some() {
@@ -206,7 +194,6 @@ pub async fn foundry_build(
         }
     }
 
-    // Set active build state
     *CURRENT_BUILD.lock().await = Some(BuildState {
         provider_id: provider_id.clone(),
         environment: env,
@@ -214,7 +201,6 @@ pub async fn foundry_build(
 
     emit_build_event(app_handle, &provider_id, env, BuildStep::Initializing, None);
 
-    // Stop any running engines for this provider before file operations
     let _stopped_count = {
         let backend_type: String = {
             let cfg = app.config.lock().map_err(|e| e.to_string())?;
@@ -236,10 +222,8 @@ pub async fn foundry_build(
     let work_dir = PathBuf::from(format!(r"C:\reactor_foundry\engines\{}", provider_id));
     let src_dir = work_dir.join("llama.cpp");
     let bin_release = src_dir.join("build").join("bin").join("Release");
-    // Backup outside /build so it survives rmdir cleanup on failure
     let bin_bak = work_dir.join("Release_bak");
 
-    // Ensure work directory exists
     if let Err(e) = tokio::fs::create_dir_all(&work_dir).await {
         rollback_build(app_handle, &provider_id, env, &src_dir, &bin_release, &bin_bak).await;
         return Err(format!("Failed to create work directory: {}", e));
@@ -267,8 +251,6 @@ pub async fn foundry_build(
     if !is_existing {
         emit_build_event(app_handle, &provider_id, env, BuildStep::GitClone, Some("Cloning repository...".into()));
         
-        // Remove placeholder files from genesis_template.json so git clone can create the directory fresh.
-        // Only do this for new installs (no .git yet) — never touch existing repos.
         if src_dir.exists() {
             let _ = tokio::fs::remove_dir_all(&src_dir).await;
         }
@@ -329,7 +311,6 @@ pub async fn foundry_build(
             return Err(format!("Failed to backup existing binaries (file locked by running engine?): {}. Is an engine for '{}' still running?", e, provider_id));
         }
         
-        // Verify backup exists after rename
         if !bin_bak.exists() {
             rollback_build(app_handle, &provider_id, env, &src_dir, &bin_release, &bin_bak).await;
             return Err("Backup verification failed — Release_bak not found after rename.".into());
@@ -346,7 +327,6 @@ pub async fn foundry_build(
             .find(|p| p.id == provider_id);
         let build_profile = p.map(|p| p.build_profile.clone()).unwrap_or_default();
         
-        // Use user-provided flags if set; otherwise fall back to defaults for this template_type.
         let extra = if !build_profile.trim().is_empty() {
             build_profile.trim().to_string()
         } else {
@@ -356,7 +336,6 @@ pub async fn foundry_build(
         (env.vs_devcmd(), env.cuda_path(), extra)
     };
 
-    // Detect CPU core count for parallel build (-j N)
     let num_cpus = std::thread::available_parallelism()
         .map(|p| p.get().min(64).max(2))
         .unwrap_or(8);
@@ -369,14 +348,12 @@ pub async fn foundry_build(
     
     emit_build_event(app_handle, &provider_id, env, BuildStep::CMakeConfigure, Some("[STAGE 1/3] CMAKE CONFIGURE — Reviewing flags below. Click PROCEED to start compilation.".into()));
 
-    // Auto-inject absolute CUDA compiler and toolkit root paths (bulletproof — overrides any system defaults)
     let forced_cuda_flags = format!(
         "-DCMAKE_CUDA_COMPILER=\"{}\" -DCUDAToolkit_ROOT=\"{}\"",
         env.nvcc_path().replace('\\', "/"),
         cuda_path.replace('\\', "/")
     );
 
-    // Write configure-only batch file — all cmake flags on one line (avoids ^ continuation issues)
     let joined_extra = if cmake_extra.is_empty() {
         String::new()
     } else {
@@ -388,7 +365,6 @@ pub async fn foundry_build(
         format!("cmake .. {} {}", forced_cuda_flags, joined_extra)
     };
 
-    // Log the full cmake command for user visibility in build log
     emit_build_event(app_handle, &provider_id, env, BuildStep::CMakeConfigure, Some(format!(
         "cmake .. {}{}", forced_cuda_flags, if !joined_extra.is_empty() { format!(" {}", joined_extra) } else { String::new() }
     )));
@@ -408,7 +384,6 @@ pub async fn foundry_build(
         return Err(format!("Failed to write build script: {}", e));
     }
 
-    // Spawn cmake configure and stream stdout/stderr line by line, capturing stderr for error reporting
     let scrubbed_path = env.scrub_path();
     let mut cmd = tokio::process::Command::new("cmd");
     cmd.args(&["/c", cfg_batch_path.to_string_lossy().as_ref()])
@@ -422,17 +397,14 @@ pub async fn foundry_build(
     let stdout = child.stdout.take().ok_or("Failed to capture stdout")?;
     let stderr = child.stderr.take().ok_or("Failed to capture stderr")?;
 
-    // Shared Vec for collecting stderr lines (safe across tasks via Arc<Mutex>)
     use std::sync::{Arc, Mutex};
     let stderr_capture: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
     let stderr_capture_clone = stderr_capture.clone();
 
-    // Clone values before moving into async block (borrowed ref doesn't live long enough)
     let app_handle_cfg = app_handle.clone();
     let provider_id_cfg = provider_id.clone();
     let env_cfg = env;
 
-    // Stream both streams concurrently
     let stream_handle = tauri::async_runtime::spawn(async move {
         use tokio::io::{AsyncBufReadExt, BufReader};
         
@@ -454,10 +426,8 @@ pub async fn foundry_build(
         }
     });
 
-    // Wait for cmake configure to finish
     let cfg_status = child.wait().await.map_err(|e| format!("CMake configure failed: {}", e))?;
     
-    // Wait for streaming to complete
     stream_handle.await.ok();
     
     let _ = tokio::fs::remove_file(&cfg_batch_path).await;
@@ -471,7 +441,6 @@ pub async fn foundry_build(
         if bin_bak.exists() {
             let _ = tokio::fs::rename(&bin_bak, &bin_release).await;
         }
-        // Nuke /build folder so next attempt starts fresh (no stale CMakeCache.txt or mixed-toolchain artifacts)
         let build_dir = src_dir.join("build");
         if build_dir.exists() {
             let _ = tokio::fs::remove_dir_all(&build_dir).await;
@@ -488,7 +457,6 @@ pub async fn foundry_build(
         if cmake_extra.is_empty() { "Default" } else { "Custom" }
     )));
 
-    // Reset confirmation flag and wait for user to click PROCEED
     BUILD_CONFIRMED.store(false, Ordering::SeqCst);
     
     let timeout_dur = std::time::Duration::from_secs(600); // 10 min to review
@@ -544,7 +512,6 @@ pub async fn foundry_build(
     let stderr_capture2: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
     let stderr_capture_clone2 = stderr_capture2.clone();
 
-    // Clone values before moving into async block
     let app_handle_bld = app_handle.clone();
     let provider_id_bld = provider_id.clone();
     let env_bld = env;
@@ -586,7 +553,6 @@ pub async fn foundry_build(
         if bin_bak.exists() {
             let _ = tokio::fs::rename(&bin_bak, &bin_release).await;
         }
-        // Nuke /build folder so next attempt starts fresh
         let build_dir = src_dir.join("build");
         if build_dir.exists() {
             let _ = tokio::fs::remove_dir_all(&build_dir).await;
@@ -630,7 +596,6 @@ pub async fn foundry_build(
         }
     }
 
-    // If binaries found in a different dir, update provider binary path to point there
     if let Some(found_dir) = &found_bin_dir {
         if *found_dir != bin_release {
             log::info!("Binaries found at {:?}, updating provider path", found_dir);
@@ -668,7 +633,6 @@ pub async fn foundry_build(
 
     emit_build_event(app_handle, &provider_id, env, BuildStep::Complete, Some("Build successful. Capturing version info...".into()));
 
-    // Run nvcc --version to get exact CUDA toolkit version used for this build
     let cuda_version = {
         let nvcc_path = env.nvcc_path();
         if std::path::PathBuf::from(nvcc_path).exists() {
@@ -679,7 +643,6 @@ pub async fn foundry_build(
             {
                 Ok(output) => {
                     let raw = String::from_utf8_lossy(&output.stdout);
-                    // "Cuda compilation tools, release 13.2, V13.2.51" or similar
                     if let Some(caps) = regex::Regex::new(r"V(\d+\.\d+\.\d+)")
                         .ok()
                         .and_then(|re| re.captures(&raw))
@@ -696,7 +659,6 @@ pub async fn foundry_build(
         }
     };
 
-    // Capture build info from the new binary (--version output + file mtime)
     let bin_path = found_bin_dir
         .as_ref()
         .map(|d| d.join("llama-server.exe").to_string_lossy().to_string())
@@ -712,11 +674,9 @@ pub async fn foundry_build(
         let cfg = app.config.lock().map_err(|e| e.to_string())?;
         let mut cfg_mut = cfg.clone();
         if let Some(provider) = cfg_mut.providers.iter_mut().find(|p| p.id == provider_id) {
-            // Initialize map if empty
             if provider.build_info_per_env.is_empty() {
                 provider.build_info_per_env = std::collections::HashMap::new();
             }
-            // Store under "current" — last build wins, no env-specific tracking needed yet
             provider.build_info_per_env.insert("current".to_string(), build_info);
         }
         drop(cfg);
@@ -732,12 +692,10 @@ pub async fn foundry_build(
         }
 
         drop(cfg);
-        // Persist updated binary path to provider meta (params always come from Genesis on load)
         let cfg_for_meta = app.config.lock().map_err(|e| e.to_string())?;
         let _ = crate::config::persist_provider_meta(&cfg_for_meta.providers);
     }
 
-    // Purge Release_bak to free disk space
     if bin_bak.exists() {
         let _ = tokio::fs::remove_dir_all(&bin_bak).await;
     }
@@ -748,7 +706,6 @@ pub async fn foundry_build(
     Ok(())
 }
 
-/// Cancel the currently running build.
 #[tauri::command]
 pub async fn foundry_cancel(
     _app: tauri::State<'_, crate::engine::AppContext>,
@@ -764,7 +721,6 @@ pub async fn foundry_cancel(
     }
 }
 
-/// Get the current build status.
 #[tauri::command]
 pub async fn foundry_status() -> Result<Option<BuildProgress>, String> {
     let current = CURRENT_BUILD.lock().await;
@@ -776,7 +732,6 @@ pub async fn foundry_status() -> Result<Option<BuildProgress>, String> {
     }))
 }
 
-/// User confirmed the build via UI — sets atomic flag to unblock waiting build task.
 #[tauri::command]
 pub async fn foundry_confirm_build() -> Result<(), String> {
     BUILD_CONFIRMED.store(true, Ordering::SeqCst);

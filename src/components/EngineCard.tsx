@@ -25,7 +25,6 @@ interface EngineTelemetryData {
   prompt_progress: number; // 0.0-1.0 scale during prompt processing
 }
 
-// Memoized stat block — only re-renders when its own props change
 function StatBlock({ label, value, highlight }: {
   label: string;
   value: string;

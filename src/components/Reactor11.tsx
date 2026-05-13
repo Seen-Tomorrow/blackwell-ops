@@ -93,7 +93,6 @@ export default function Reactor11({ gpus, models }: Props) {
 
   // Mouse-down on a model card — record position and pending model
   const handleDragStart = useCallback((model: ModelEntry, e: React.MouseEvent) => {
-    console.log("[R11] handleDragStart called for", model.name);
     e.preventDefault();
     startPosRef.current = { x: e.clientX, y: e.clientY };
     hasMovedRef.current = false;
@@ -110,7 +109,6 @@ export default function Reactor11({ gpus, models }: Props) {
       const dy = Math.abs(e.clientY - startPosRef.current.y);
       if (!hasMovedRef.current && (dx > 3 || dy > 3)) {
         hasMovedRef.current = true;
-        console.log("[R11] mousemove: drag activated, model =", pendingModelRef.current?.name);
         // Activate drag — set the model so ghost liquid preview appears
         if (pendingModelRef.current) {
           setDraggedModel(pendingModelRef.current);
@@ -127,7 +125,6 @@ export default function Reactor11({ gpus, models }: Props) {
     if (!isDragging) return;
 
     const handleUp = (e: MouseEvent) => {
-      console.log("[R11] mouseup fired, hasMoved =", hasMovedRef.current);
       setIsDragging(false);
 
       if (!hasMovedRef.current) {
@@ -138,9 +135,7 @@ export default function Reactor11({ gpus, models }: Props) {
 
       // Check if dropped on the core area (not over sidebar)
       const el = document.elementFromPoint(e.clientX, e.clientY);
-      console.log("[R11] elementFromPoint =", el?.tagName, el?.className);
       if (el && pendingModelRef.current && insertModelRef.current) {
-        console.log("[R11] inserting model:", pendingModelRef.current.name);
         insertModelRef.current(pendingModelRef.current);
       }
 
