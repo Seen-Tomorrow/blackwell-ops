@@ -41,8 +41,8 @@ export default function VramBadgeOverlay({ engineAlias, enginePort }: VramBadgeO
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="absolute z-50 bg-nv-green overflow-hidden flex items-center justify-center"
-      style={{ top: '-14px', right: '-16px', bottom: '-10px', left: '-16px' }}
+      className="absolute z-50 bg-nv-green overflow-hidden flex items-center justify-center rounded-xl"
+      style={{ top: '6px', right: '6px', bottom: '6px', left: '6px' }}
     >
       {/* Background animation (static phase only) */}
       {phase === 'static' && <CurrentAnimation />}

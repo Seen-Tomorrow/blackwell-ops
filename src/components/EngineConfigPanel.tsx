@@ -62,6 +62,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   const { model, gpus, providers: externalProviders, committedVramMib, isAdminUnlocked, systemInfo, stack, onLaunch, isModelRunning, activeEngineAlias, activeEnginePort } = props;
 
   // ── State ───────────────────────────────────────────────────────────────
+
   const [adminParamDefs, setAdminParamDefs] = useState<ParamDef[]>([]);
   const [selectedProvider, setSelectedProvider] = useState<string | null>(() => {
     try { return localStorage.getItem("BlackOps-last-provider") || null; } catch { return null; }
@@ -516,7 +517,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       )}
 
       {/* VRAM Section */}
-      <div className="vram-section px-4 py-3 border-b section-divider relative flex-shrink-0">
+      <div className="vram-section border-b section-divider relative flex-shrink-0">
         <VramBadge
           manifest={vramCalc.manifest}
           gpus={gpus}
@@ -540,6 +541,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           }}
           modelMeta={model?.metadata}
         />
+
       </div>
 
       {/* ── Runtime Docked Block (2-column) ─────────────── */}

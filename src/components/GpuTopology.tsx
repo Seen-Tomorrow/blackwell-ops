@@ -64,12 +64,12 @@ export default function GpuTopology({ gpuAllocations, gpuBarColor, ramVisible, r
               initial={{ opacity: 0, y: 4 }}
               animate={{ opacity: 1, y: 0 }}
               onClick={() => onDeviceSelect?.(alloc.gpuIndex)}
-              className={`rounded-sm p-2 bg-depth-black/30 transition-all ${
+              className={`rounded-sm p-2 bg-depth-black/30 transition-all gpu-card ${
                 isSelected
                   ? "gpu-selected"
                   : onDeviceSelect
-                    ? "cursor-pointer border border-stealth-border/30 hover:border-stealth-muted/50"
-                    : "border border-stealth-border/30"
+                    ? "cursor-pointer hover:border-stealth-muted/50"
+                    : ""
               }`}
             >
               {/* GPU header */}
