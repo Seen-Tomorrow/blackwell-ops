@@ -516,7 +516,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       )}
 
       {/* VRAM Section */}
-      <div className="px-4 py-3 border-b section-divider relative flex-shrink-0">
+      <div className="vram-section px-4 py-3 border-b section-divider relative flex-shrink-0">
         <VramBadge
           manifest={vramCalc.manifest}
           gpus={gpus}

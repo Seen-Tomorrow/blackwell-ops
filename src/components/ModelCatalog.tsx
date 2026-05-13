@@ -287,8 +287,8 @@ export default function ModelCatalog(props: ModelCatalogProps) {
         transition={{ delay: Math.min(idx * 0.02, 0.4), duration: 0.3 }}
         onClick={() => handleSelect(model)}
         className={`relative cursor-pointer rounded-sm p-3 ${
-          isSelected 
-            ? "bg-white/10 border border-nv-green" 
+          isSelected
+            ? "brushed-steel-card border"
             : isRunning
               ? "bg-black/40 border-2 border-amber-400 hover:bg-black/60"
               : "cyber-card hover:bg-black/40"
