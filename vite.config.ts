@@ -1,24 +1,39 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-import { execSync } from "child_process";
+import { readFileSync, writeFileSync } from "fs";
+import { fileURLToPath } from "url";
+import { dirname, resolve } from "path";
 
 const host = process.env.TAURI_DEV_HOST || "0.0.0.0";
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// Build-time version: tauri.conf.json version + git short hash
-let appVersion = "0.1.0";
-try {
-  const gitHash = execSync("git rev-parse --short HEAD", { encoding: "utf-8" }).trim();
-  appVersion = `0.1.0-${gitHash}`;
-} catch { /* fallback */ }
+// ── Build mode ────────────────────────────────────────────────────────
+const isDev = process.env.NODE_ENV === "development";
+const buildMode = isDev ? "dev" : "release";
+
+// ── Auto-incrementing build counter (shared, every build) ─────────────
+let buildNumber = 0;
+{
+  const counterFile = resolve(__dirname, ".build_counter.json");
+  try {
+    const raw = JSON.parse(readFileSync(counterFile, "utf-8"));
+    buildNumber = (raw.count || 0) + 1;
+    writeFileSync(counterFile, JSON.stringify({ count: buildNumber }));
+  } catch {}
+}
+
+// ── Version string ────────────────────────────────────────────────────
+const modeLabel = isDev ? "DEV" : "REL";
+const appVersion = `${modeLabel} ${buildNumber}`;
 
 // https://tauri.app/start
 export default defineConfig(async () => ({
   plugins: [react()],
   define: {
     __APP_VERSION__: JSON.stringify(appVersion),
+    __BUILD_MODE__: JSON.stringify(buildMode),
   },
 
-  // Vite options tailored for Tauri development and only applied in `tauri dev`/`tauri serve`
   server: {
     host,
     port: 1420,

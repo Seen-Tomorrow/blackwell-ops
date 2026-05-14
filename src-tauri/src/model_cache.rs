@@ -279,14 +279,19 @@ pub fn cache_size() -> usize {
     load_cache().len()
 }
 
-/// Get path to model_cache.json in %APPDATA%/blackwell-ops/.
+/// Get path to model_cache.json in %APPDATA%/blackwell-ops/ (or blackwell-ops-dev for dev builds).
 fn cache_path() -> PathBuf {
+    let name = if cfg!(debug_assertions) {
+        "blackwell-ops-dev"
+    } else {
+        "blackwell-ops"
+    };
     if let Some(app_dir) = dirs::config_dir() {
-        app_dir.join("blackwell-ops").join(CACHE_FILE)
+        app_dir.join(name).join(CACHE_FILE)
     } else {
         std::env::var("LOCALAPPDATA")
             .ok()
-            .map(|p| PathBuf::from(p).join("blackwell-ops").join(CACHE_FILE))
+            .map(|p| PathBuf::from(p).join(name).join(CACHE_FILE))
             .unwrap_or_else(|| PathBuf::from("./model_cache.json"))
     }
 }

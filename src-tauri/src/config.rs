@@ -6,6 +6,17 @@ use crate::types::{ModelPathEntry, PathDiskUsage, ProviderConfig};
 
 pub const MAX_ENGINE_SLOTS: usize = 16;
 
+/// Returns the app config directory path.
+/// Dev builds use "blackwell-ops-dev" to isolate from release configs.
+fn blackwell_config_dir() -> std::path::PathBuf {
+    let name = if cfg!(debug_assertions) {
+        "blackwell-ops-dev"
+    } else {
+        "blackwell-ops"
+    };
+    dirs::config_dir().unwrap().join(name)
+}
+
 // ── Provider Metadata (persisted to disk) ───────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -58,7 +69,7 @@ pub struct AppConfig {
 
 impl Default for AppConfig {
     fn default() -> Self {
-        let app_dir = dirs::config_dir().map(|d| d.join("blackwell-ops").join("models"));
+        let app_dir = Some(blackwell_config_dir().join("models"));
         let default_path = app_dir.as_ref().map(|p| p.to_string_lossy().to_string());
 
         let mut model_paths: Vec<ModelPathEntry> = Vec::new();
@@ -98,14 +109,12 @@ const PROVIDER_META_FILE: &str = "provider_meta.json";
 // ── Provider Metadata Persistence ───────────────────────────────────
 
 pub fn load_provider_meta() -> Vec<ProviderMeta> {
-    if let Some(app_dir) = dirs::config_dir() {
-        let config_path = app_dir.join("blackwell-ops").join(PROVIDER_META_FILE);
-        if config_path.exists() {
-            if let Ok(content) = std::fs::read_to_string(&config_path) {
-                if let Ok(metas) = serde_json::from_str::<Vec<ProviderMeta>>(&content) {
-                    log::info!("Loaded {} provider(s) from {}", metas.len(), config_path.display());
-                    return metas;
-                }
+    let config_path = blackwell_config_dir().join(PROVIDER_META_FILE);
+    if config_path.exists() {
+        if let Ok(content) = std::fs::read_to_string(&config_path) {
+            if let Ok(metas) = serde_json::from_str::<Vec<ProviderMeta>>(&content) {
+                log::info!("Loaded {} provider(s) from {}", metas.len(), config_path.display());
+                return metas;
             }
         }
     }
@@ -231,19 +240,15 @@ pub fn save_provider_meta(metas: Vec<ProviderMeta>) -> Result<(), String> {
         return Err(format!("provider_meta.json has {} issue(s):\n{}", errors.len(), errors.join("\n")));
     }
 
-    if let Some(app_dir) = dirs::config_dir() {
-        let blackwell_dir = app_dir.join("blackwell-ops");
-        std::fs::create_dir_all(&blackwell_dir).map_err(|e| format!("Failed to create config dir: {}", e))?;
+    let blackwell_dir = blackwell_config_dir();
+    std::fs::create_dir_all(&blackwell_dir).map_err(|e| format!("Failed to create config dir: {}", e))?;
 
-        let config_path = blackwell_dir.join(PROVIDER_META_FILE);
-        let json = serde_json::to_string_pretty(&metas)
-            .map_err(|e| format!("Failed to serialize provider meta: {}", e))?;
+    let config_path = blackwell_dir.join(PROVIDER_META_FILE);
+    let json = serde_json::to_string_pretty(&metas)
+        .map_err(|e| format!("Failed to serialize provider meta: {}", e))?;
 
-        std::fs::write(&config_path, json).map_err(|e| format!("Failed to write provider meta: {}", e))?;
-        log::debug!("Saved {} provider(s) to {}", metas.len(), config_path.display());
-    } else {
-        return Err("Could not determine config directory".to_string());
-    }
+    std::fs::write(&config_path, json).map_err(|e| format!("Failed to write provider meta: {}", e))?;
+    log::debug!("Saved {} provider(s) to {}", metas.len(), config_path.display());
     Ok(())
 }
 
@@ -283,39 +288,37 @@ pub fn persist_provider_meta(providers: &[crate::types::ProviderConfig]) -> Resu
 // ── Legacy Migration ─────────────────────────────────────────────────
 
 fn load_legacy_provider_meta() -> Vec<ProviderMeta> {
-    if let Some(app_dir) = dirs::config_dir() {
-        let config_path = app_dir.join("blackwell-ops").join("admin_template.json");
-        if config_path.exists() {
-            if let Ok(content) = std::fs::read_to_string(&config_path) {
-                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&content) {
-                    if let Some(providers) = parsed.get("providers").and_then(|p| p.as_array()) {
-                        let mut metas = Vec::new();
-                        for prov in providers {
-                            if let (Some(id), Some(display_name)) = (
-                                prov.get("id").and_then(|v| v.as_str()),
-                                prov.get("display_name").and_then(|v| v.as_str()),
-                            ) {
-                                metas.push(ProviderMeta {
-                                    id: id.to_string(),
-                                    display_name: display_name.to_string(),
-                                    binary_path: prov.get("binary_path").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                                    enabled: prov.get("enabled").and_then(|v| v.as_bool()).unwrap_or(true),
-                                    git_url: prov.get("git_url").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                                    branch: prov.get("branch").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                                    build_profile: prov.get("build_profile").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                                    param_definitions: Vec::new(),
-                                    group_order: Vec::new(),
-                                    template_type: crate::templates::ProviderTemplate::template_type_for_id(id),
-                                    display_order: 0,
-                                    build_info_per_env: HashMap::new(),
-                                    last_pr_per_env: HashMap::new(),
-                                });
-                            }
+    let config_path = blackwell_config_dir().join("admin_template.json");
+    if config_path.exists() {
+        if let Ok(content) = std::fs::read_to_string(&config_path) {
+            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&content) {
+                if let Some(providers) = parsed.get("providers").and_then(|p| p.as_array()) {
+                    let mut metas = Vec::new();
+                    for prov in providers {
+                        if let (Some(id), Some(display_name)) = (
+                            prov.get("id").and_then(|v| v.as_str()),
+                            prov.get("display_name").and_then(|v| v.as_str()),
+                        ) {
+                            metas.push(ProviderMeta {
+                                id: id.to_string(),
+                                display_name: display_name.to_string(),
+                                binary_path: prov.get("binary_path").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                                enabled: prov.get("enabled").and_then(|v| v.as_bool()).unwrap_or(true),
+                                git_url: prov.get("git_url").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                                branch: prov.get("branch").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                                build_profile: prov.get("build_profile").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                                param_definitions: Vec::new(),
+                                group_order: Vec::new(),
+                                template_type: crate::templates::ProviderTemplate::template_type_for_id(id),
+                                display_order: 0,
+                                build_info_per_env: HashMap::new(),
+                                last_pr_per_env: HashMap::new(),
+                            });
                         }
-                        if !metas.is_empty() {
-                            log::info!("Migrated {} provider(s) from legacy admin_template.json", metas.len());
-                            return metas;
-                        }
+                    }
+                    if !metas.is_empty() {
+                        log::info!("Migrated {} provider(s) from legacy admin_template.json", metas.len());
+                        return metas;
                     }
                 }
             }
@@ -687,24 +690,20 @@ pub fn get_default_download_path(config: &AppConfig) -> String {
 }
 
 pub fn save_config(config: &AppConfig) -> Result<(), String> {
-    if let Some(app_dir) = dirs::config_dir() {
-        let blackwell_dir = app_dir.join("blackwell-ops");
-        std::fs::create_dir_all(&blackwell_dir).map_err(|e| format!("Failed to create config dir: {}", e))?;
+    let blackwell_dir = blackwell_config_dir();
+    std::fs::create_dir_all(&blackwell_dir).map_err(|e| format!("Failed to create config dir: {}", e))?;
 
-        let config_path = blackwell_dir.join("app_config.json");
-        let json = serde_json::to_string_pretty(config)
-            .map_err(|e| format!("Failed to serialize app config: {}", e))?;
+    let config_path = blackwell_dir.join("app_config.json");
+    let json = serde_json::to_string_pretty(config)
+        .map_err(|e| format!("Failed to serialize app config: {}", e))?;
 
-        std::fs::write(&config_path, json).map_err(|e| format!("Failed to write app config: {}", e))?;
-        log::debug!("Saved app_config.json to {}", config_path.display());
-    } else {
-        return Err("Could not determine config directory".to_string());
-    }
+    std::fs::write(&config_path, json).map_err(|e| format!("Failed to write app config: {}", e))?;
+    log::debug!("Saved app_config.json to {}", config_path.display());
     Ok(())
 }
 
 fn build_fresh_config(_gpu_slots: usize) -> AppConfig {
-    let app_dir = dirs::config_dir().map(|d| d.join("blackwell-ops").join("models"));
+    let app_dir = Some(blackwell_config_dir().join("models"));
     let default_path = app_dir.as_ref().map(|p| p.to_string_lossy().to_string());
 
     let mut model_paths: Vec<ModelPathEntry> = Vec::new();
@@ -739,14 +738,12 @@ fn build_fresh_config(_gpu_slots: usize) -> AppConfig {
 }
 
 fn load_saved_config() -> Option<AppConfig> {
-    if let Some(app_dir) = dirs::config_dir() {
-        let config_path = app_dir.join("blackwell-ops").join("app_config.json");
-        if config_path.exists() {
-            if let Ok(content) = std::fs::read_to_string(&config_path) {
-                if let Ok(config) = serde_json::from_str::<AppConfig>(&content) {
-                    log::info!("Loaded app_config.json from {}", config_path.display());
-                    return Some(config);
-                }
+    let config_path = blackwell_config_dir().join("app_config.json");
+    if config_path.exists() {
+        if let Ok(content) = std::fs::read_to_string(&config_path) {
+            if let Ok(config) = serde_json::from_str::<AppConfig>(&content) {
+                log::info!("Loaded app_config.json from {}", config_path.display());
+                return Some(config);
             }
         }
     }

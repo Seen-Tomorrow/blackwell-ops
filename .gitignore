@@ -43,6 +43,9 @@ llama-server.exe
 *.bin
 models/
 
+# --- Build Counter (local, auto-incrementing) ---
+.build_counter.json
+
 # --- OpenCode Specific ---
 .local/
 opencode.db*

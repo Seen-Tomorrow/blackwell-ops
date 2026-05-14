@@ -1,7 +1,7 @@
 import { motion, AnimatePresence } from "framer-motion";
 import type { GpuInfo, VramManifest, ModelMetadata } from "../lib/types";
 import GpuTopology from "./GpuTopology";
-import VramBadgeOverlay from "./VramBadgeOverlay";
+import FusionVramBadgeOverlay from "./FusionVramBadgeOverlay";
 import MoeBadge from "./MoeBadge";
 
 interface VramBadgeProps {
@@ -61,7 +61,7 @@ export default function VramBadge({
     <div className="px-3 py-2.5 relative">
       {/* Overlay when model is running — covers entire forecast container */}
       {isModelRunning && (
-        <VramBadgeOverlay 
+        <FusionVramBadgeOverlay 
           engineAlias={activeEngineAlias} 
           enginePort={activeEnginePort}
         />

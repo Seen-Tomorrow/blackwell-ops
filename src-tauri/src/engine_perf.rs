@@ -269,18 +269,24 @@ pub async fn start_perf_reader_from_channel(
                     Err(broadcast::error::RecvError::Closed) => break,
                 };
                 if !line.is_empty() {
-                    // Replace ESC byte (0x1B) with safe placeholder for JSON transport.
-                    let safe_text = line.replace('\x1b', "%%ESC%%");
-                    // Emit to log display batch
-                    let entry = LogEntry {
-                        slot: slot_idx,
-                        alias: alias.clone(),
-                        text: safe_text,
-                        timestamp: chrono::Local::now().format("%H:%M:%S%.3f").to_string(),
-                    };
-                    batch_buffer.push(entry);
+                    // Suppress FUSION poll noise from frontend log display
+                    let is_poll_noise = (line.contains("done request") && line.contains("/slots"))
+                        || line.contains("update_slots: all slots are idle");
 
-                    // Parse for perf metrics
+                    if !is_poll_noise {
+                        // Replace ESC byte (0x1B) with safe placeholder for JSON transport.
+                        let safe_text = line.replace('\x1b', "%%ESC%%");
+                        // Emit to log display batch
+                        let entry = LogEntry {
+                            slot: slot_idx,
+                            alias: alias.clone(),
+                            text: safe_text,
+                            timestamp: chrono::Local::now().format("%H:%M:%S%.3f").to_string(),
+                        };
+                        batch_buffer.push(entry);
+                    }
+
+                    // Parse for perf metrics — always process, even noise lines
                     let hub = log_hub.clone();
                     process_perf_line(slot_idx, &alias, &line, ctx_size, hub).await;
                 }

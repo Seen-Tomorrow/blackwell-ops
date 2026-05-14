@@ -1,6 +1,6 @@
 /** Centralized localStorage key strings — single source of truth */
 
-export const STORAGE_PREFIX = "BlackOps-" as const;
+export const STORAGE_PREFIX = `BlackOps-${__BUILD_MODE__}-` as const;
 
 // Static keys
 export const KEYS = {

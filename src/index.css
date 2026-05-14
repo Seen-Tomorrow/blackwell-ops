@@ -811,4 +811,68 @@ select option {
   }
 }
 
+/* ── Fusion e-ink overlay — inset recessed e-paper display ─── */
+/* Reversed bevel of .vram-section: outer shadows become inner, highlights flip top↔bottom */
+.fusion-eink-bg {
+  border-radius: 12px;
+  background-color: #f5f0e8;
+  /* Subtle grain texture on the e-ink surface — same technique as vram-section but lighter */
+  background-image:
+    repeating-linear-gradient(to right, rgba(0,0,0,0) 0px, rgba(0,0,0,.012) 0.5px, transparent 1px),
+    repeating-linear-gradient(to right, rgba(255,255,255,0) 0px, rgba(255,255,255,.03) 0.7px, transparent 1.4px),
+    repeating-linear-gradient(to right, rgba(0,0,0,0) 0px, rgba(0,0,0,.018) 0.3px, transparent 0.8px);
+  /* Inset bevel — reversed from .vram-section's raised look */
+  box-shadow:
+    inset rgba(0,0,0,.6) 0 0 0 3px,            /* thick dark inner border (recessed edge) */
+    inset rgba(255,255,255,.7) 0 -3px 8px 4px,  /* top inner highlight → shadow on bottom inside */
+    inset rgba(255,255,255,.4) 0 -1px 0 6px,    /* hard inner line top edge (light catches rim) */
+    inset rgba(0,0,0,.35) 0 3px 8px 4px,        /* bottom inner shadow → light from top inside */
+    inset rgba(0,0,0,.15) 0 1px 0 6px,          /* hard inner line bottom edge */
+    rgba(0,0,0,.2) 0 2px 4px 2px;               /* subtle outer drop to separate from parent */
+}
+
+/* Dark text on the light e-ink surface */
+.fusion-eink-bg .text-stealth-muted,
+.fusion-eink-bg .text-stealth-muted\/30,
+.fusion-eink-bg .text-stealth-muted\/40,
+.fusion-eink-bg .text-stealth-muted\/50,
+.fusion-eink-bg .text-stealth-muted\/60 {
+  color: #3a3a3a !important;
+}
+
+/* NV green stays vibrant on e-ink */
+.fusion-eink-bg .text-nv-green {
+  color: #4d7a00 !important;
+}
+
+/* Telemetry cyan stays readable */
+.fusion-eink-bg .text-telemetry-cyan,
+.fusion-eink-bg .text-telemetry-cyan\/70 {
+  color: #0088aa !important;
+}
+
+/* Orange/amber phases remain visible */
+.fusion-eink-bg .text-orange-400,
+.fusion-eink-bg .text-telemetry-amber,
+.fusion-eink-bg .text-telemetry-amber\/80 {
+  color: #b87a00 !important;
+}
+
+/* Darken bars and borders for contrast on light bg */
+.fusion-eink-bg .bg-stealth-dark {
+  background-color: #d4cfc5 !important;
+}
+
+.fusion-eink-bg .border-stealth-border,
+.fusion-eink-bg .border-stealth-border\/30,
+.fusion-eink-bg .border-stealth-border\/50 {
+  border-color: rgba(60, 60, 60, 0.25) !important;
+}
+
+/* CTX bar inline text — dark with e-ink shadow for readability on colored fill */
+.ctx-bar-text {
+  color: #1a1a1a;
+  text-shadow: 0 0 3px rgba(245, 240, 232, 0.9), 0 0 6px rgba(245, 240, 232, 0.5);
+}
+
 

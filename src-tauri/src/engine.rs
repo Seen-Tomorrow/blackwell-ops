@@ -228,6 +228,19 @@ pub async fn launch_engine(
                 ).await;
             });
         }
+
+        // Spawn FUSION monitor — /slots polling + log fusion for real-time metrics
+        if let Some(fusion_rx) = stack.subscribe_output(slot_idx) {
+            let fusion_log_hub = app.log_hub.clone();
+            let fusion_alias = config.alias.clone();
+            let fusion_port = slot_port;
+
+            tokio::spawn(async move {
+                crate::fusion::start_fusion_task(
+                    fusion_log_hub, fusion_alias, fusion_port, ctx_size_int, config.parallel, config.unified_kv, fusion_rx,
+                ).await;
+            });
+        }
     } else {
         let conpty_warn = format!("[LAUNCH] slot={} ConPTY output unavailable — process may have already exited", slot_idx);
         eprintln!("{}", conpty_warn);
@@ -257,15 +270,24 @@ pub async fn launch_engine(
 
 #[tauri::command]
 pub async fn stop_engine(alias: String, app: tauri::State<'_, AppContext>) -> Result<String, String> {
-    let slot_idx = {
+    let (slot_idx, port) = {
         let mut stack = app.stack.lock().await;
         let slot_count = stack.slots.len();
         let idx = (0..slot_count).find(|&i| {
             stack.get_slot(i).map_or(false, |s| s.alias == alias)
         }).ok_or(format!("Engine '{}' not found", alias))?;
-        stack.stop_slot(idx).await?;
-        idx
-    }; // Lock released before emitting
+        let port = stack.get_slot(idx).map(|s| s.port).unwrap_or(0);
+        (idx, port)
+    };
+
+    // Cancel fusion monitor BEFORE stopping the slot — prevents race with channel close
+    crate::fusion::stop_fusion_task(port).await;
+
+    {
+        let mut stack = app.stack.lock().await;
+        stack.stop_slot(slot_idx).await?;
+    }
+
     app.log_hub.emit("slot-cleared", &serde_json::json!({ "slot": slot_idx }));
 
     Ok(format!("Engine {} stopped", alias))
@@ -275,54 +297,86 @@ pub async fn stop_engine_by_alias(
     alias: String,
     stack: Arc<Mutex<EngineStack>>,
 ) -> Result<usize, String> {
-    let mut s = stack.lock().await;
-    let slot_count = s.slots.len();
-    let idx = (0..slot_count)
-        .find(|&i| s.get_slot(i).map_or(false, |sl| sl.alias == alias))
-        .ok_or_else(|| format!("Engine '{}' not found", alias))?;
-    s.stop_slot(idx).await?;
+    let (idx, port) = {
+        let mut s = stack.lock().await;
+        let slot_count = s.slots.len();
+        let idx = (0..slot_count)
+            .find(|&i| s.get_slot(i).map_or(false, |sl| sl.alias == alias))
+            .ok_or_else(|| format!("Engine '{}' not found", alias))?;
+        let port = s.get_slot(idx).map(|s| s.port).unwrap_or(0);
+        (idx, port)
+    };
+    // Cancel fusion before stopping slot
+    crate::fusion::stop_fusion_task(port).await;
+    {
+        let mut s = stack.lock().await;
+        s.stop_slot(idx).await?;
+    }
     Ok(idx)
 }
 
 #[tauri::command]
 pub async fn stop_all_engines(app: tauri::State<'_, AppContext>) -> Result<String, String> {
-    let stopped_slots = {
+    let stopped_ports = {
         let mut stack = app.stack.lock().await;
         let slot_count = stack.slots.len();
-        let count = (0..slot_count).filter(|&i| {
-            stack.get_slot(i).map_or(false, |s| !matches!(s.status, SlotStatus::Idle))
-        }).count();
+
+        let mut ports_to_stop = Vec::new();
+        for i in 0..slot_count {
+            if !stack.get_slot(i).map_or(true, |s| matches!(s.status, SlotStatus::Idle)) {
+                let port = stack.get_slot(i).map(|s| s.port).unwrap_or(0);
+                ports_to_stop.push(port);
+            }
+        }
+
+        // Cancel all fusion monitors BEFORE stopping slots
+        for port in &ports_to_stop {
+            crate::fusion::stop_fusion_task(*port).await;
+        }
 
         let mut stopped = Vec::new();
         for i in 0..slot_count {
-            if count > 0 && !stack.get_slot(i).map_or(true, |s| matches!(s.status, SlotStatus::Idle)) {
+            if !stack.get_slot(i).map_or(true, |s| matches!(s.status, SlotStatus::Idle)) {
                 let _ = stack.stop_slot(i).await;
                 stopped.push(i);
             }
         }
-        stopped
-    }; // Lock released before emitting events
+        ports_to_stop
+    }; // Lock released
 
-    for i in &stopped_slots {
-        app.log_hub.emit("slot-cleared", &serde_json::json!({ "slot": *i }));
+    for _ in &stopped_ports {
+        app.log_hub.emit("slot-cleared", &serde_json::json!({ "slot": 0 }));
     }
 
-    Ok(format!("All {} engines stopped", stopped_slots.len()))
+    Ok(format!("All {} engines stopped", stopped_ports.len()))
 }
 
 /// Stops all running engines for a specific provider (by backend_type).
 #[tauri::command]
 pub async fn stop_engines_by_provider(provider_id: String, app: tauri::State<'_, AppContext>) -> Result<String, String> {
-    let stopped_slots = {
+    let stopped_info = {
         let mut stack = app.stack.lock().await;
-        stack.stop_slots_by_provider(&provider_id).await
+        let mut ports = Vec::new();
+        for i in 0..stack.slots.len() {
+            if let Some(slot) = &stack.get_slot(i) {
+                if slot.backend_type == provider_id && !matches!(slot.status, SlotStatus::Idle) {
+                    ports.push(slot.port);
+                }
+            }
+        }
+        // Cancel fusion monitors BEFORE stopping slots
+        for port in &ports {
+            crate::fusion::stop_fusion_task(*port).await;
+        }
+        let stopped = stack.stop_slots_by_provider(&provider_id).await;
+        (stopped, ports)
     };
 
-    for slot_idx in &stopped_slots {
+    for slot_idx in &stopped_info.0 {
         app.log_hub.emit("slot-cleared", &serde_json::json!({ "slot": slot_idx }));
     }
 
-    Ok(format!("Stopped {} engine(s) for '{}'", stopped_slots.len(), provider_id))
+    Ok(format!("Stopped {} engine(s) for '{}'", stopped_info.0.len(), provider_id))
 }
 
 #[tauri::command]

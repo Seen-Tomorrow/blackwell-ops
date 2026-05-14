@@ -20,6 +20,10 @@ const MIN_ZOOM = 0.7;
 const MAX_ZOOM = 1.5;
 const ZOOM_STEP = 0.05;
 
+const isDev = __BUILD_MODE__ === "dev";
+const DEV_FOOTER_BG = "rgba(139, 0, 0, 0.92)";
+const DEV_FOOTER_BORDER = "border-[#FF4444]/50";
+
 function loadAdminLock(): string {
   try { return localStorage.getItem(KEYS.adminLock) || "locked"; } catch { return "locked"; }
 }
@@ -195,12 +199,13 @@ export default function Layout({ activeTab, onTabChange, children }: LayoutProps
           transition={{ duration: 0.25, ease: "easeOut" }}
           className="h-full overflow-y-auto"
         >
-          <div className="max-w-[1280px] mx-auto" style={{paddingBottom: '80px'}}>{children}</div>
+          <div className="max-w-[1280px] mx-auto">{children}<div style={{ height: `${zoom * 80}px` }} /></div>
         </motion.div>
       </main>
 
       {/* Bottom status bar — fixed so it's always visible regardless of zoom */}
-      <footer className="fixed bottom-0 left-0 right-0 flex items-center justify-between px-6 py-1.5 border-t border-stealth-border bg-stealth-dark/80 backdrop-blur-sm text-[10px] font-mono text-white/40 z-20">
+      <footer className={`fixed bottom-0 left-0 right-0 flex items-center justify-between px-6 py-1.5 border-t backdrop-blur-sm text-[10px] font-mono text-white/40 z-20 ${isDev ? DEV_FOOTER_BORDER : "border-stealth-border bg-stealth-dark/80"}`}
+        style={isDev ? { background: DEV_FOOTER_BG } : undefined}>
         <div className="flex items-center gap-4">
           <span>PLATFORM: WINDOWS</span>
           <span>TOKIO: ACTIVE</span>

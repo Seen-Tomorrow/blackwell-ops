@@ -379,9 +379,7 @@ function App() {
   const handleStopEngine = useCallback(async (alias: string) => {
     try {
       await invoke("stop_engine", { alias });
-      // Clear AFTER backend returns — processes are dead, no late arrivals possible
-      setLogs(new Map());
-      setSystemEvents(new Map());
+      // Keep logs + system events so shutdown messages stay visible
       setEnginePerfEvents(new Map());
       const data = await invoke<StackEntry[]>("get_stack_status");
       setStack(data);
@@ -393,9 +391,7 @@ function App() {
   const handleStopAll = useCallback(async () => {
     try {
       await invoke("stop_all_engines");
-      // Clear AFTER backend returns — processes are dead, no late arrivals possible
-      setLogs(new Map());
-      setSystemEvents(new Map());
+      // Keep logs + system events so shutdown messages stay visible
       setEnginePerfEvents(new Map());
       setStack([]);
     } catch (err) {
@@ -441,9 +437,9 @@ function App() {
           </div>
         )}
         {activeTab === "logs" && (
-          <div className="h-full flex flex-col p-4">
-            <h2 className="text-xs font-mono text-nv-green tracking-wider mb-3">ENGINE LOGS</h2>
-            <div className="flex-1 overflow-y-auto bg-stealth-panel border border-stealth-border rounded-sm p-3">
+          <div className="h-full flex flex-col overflow-hidden p-4">
+            <h2 className="text-xs font-mono text-nv-green tracking-wider mb-3 flex-shrink-0">ENGINE LOGS</h2>
+            <div className="flex-1 overflow-y-auto bg-stealth-panel border border-stealth-border rounded-sm p-3 min-h-0">
               {flatLogs.size === 0 ? (
                 <p className="text-[10px] font-mono text-stealth-muted/50 italic">NO LOGS YET — LAUNCH AN ENGINE TO SEE OUTPUT</p>
               ) : (

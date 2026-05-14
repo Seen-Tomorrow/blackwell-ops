@@ -241,6 +241,56 @@ export interface EnginePerfEvent {
   prompt_progress?: number | null;
 }
 
+/** FUSION real-time engine monitoring data — emitted from Rust /slots poller + log fusion. */
+export interface FusionUpdate {
+  alias: string;
+  port: number;
+  /** Engine lifecycle state */
+  engine_state: 'LOADING' | 'READY' | 'BUSY' | 'IDLE' | 'ERROR';
+  /** Instantaneous TPS from n_decoded delta — TG-phase only */
+  tps: number;
+  /** Prefill TPS captured during PP phase (0.0 when not in prefill) */
+  prefillTps: number;
+  /** Prefill progress 0.0-1.0 from "prompt processing progress" logs */
+  prefillProgress: number;
+  /** Inference phase: "PP" (prompt processing), "TG" (token generation), "" (idle) */
+  phase: string;
+  /** Cumulative context tokens used (n_decoded across all slots) */
+  ctx_used: number;
+  /** Context window size per slot (n_ctx) */
+  ctx_total: number;
+  /** Context fill percentage 0-100 (aggregate) */
+  ctx_fill_pct: number;
+  /** Tokens generated in current request */
+  // Per-request gen tokens — use slotCtx[].request_tokens sum instead (matches webUI)
+  // request_tokens_gen is kept for backward compat but deprecated
+  request_tokens_gen: number;
+  /** Prompt tokens in current request (from logs) */
+  request_tokens_prompt: number;
+  /** Wall-clock ms since current request started */
+  request_elapsed_ms: number;
+  /** Time to first token from logs (ms) */
+  request_ttft_ms?: number | null;
+  /** Tokens remaining (-1 = unlimited) */
+  n_remain: number;
+  /** Max tokens limit from params */
+  max_tokens: number;
+  /** Generation progress percentage 0-100 */
+  gen_progress_pct: number;
+  /** Number of slots this engine has */
+  slot_count: number;
+  /** How many slots are currently is_processing */
+  active_slots: number;
+  /** Per-slot CTX usage for individual bars */
+  slotCtx: Array<{ id: number; n_decoded: number; request_tokens: number; total_tokens: number; is_processing: boolean }>;
+  /** Number of parallel slots configured (--parallel) */
+  parallel: number;
+  /** Whether KV cache is shared across slots (--unified-kv) */
+  unified_kv: boolean;
+  /** TPS history for sparkline (last 50 samples) */
+  tpsHistory: number[];
+}
+
 export interface VramFitResult {
   total_vram_gb: number;
   fits: boolean;

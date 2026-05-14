@@ -315,19 +315,55 @@ impl EngineStack {
         Ok(())
     }
 
+    /// Graceful engine shutdown: Ctrl+C via ConPTY → wait → force kill fallback.
+    fn graceful_shutdown_process(proc: &mut conpty::Process, slot_idx: usize) -> bool {
+        let pid = proc.pid();
+        eprintln!("[STOP] slot={} pid={} sending Ctrl+C...", slot_idx, pid);
+
+        // Phase 1: Send Ctrl+C (0x03) through ConPTY input → CTRL_C_EVENT in llama.cpp
+        if let Ok(mut inp) = proc.input() {
+            use std::io::Write;
+            let _ = inp.write_all(&[0x03]);
+
+            // Wait up to 3 seconds for graceful exit
+            match proc.wait(Some(3000)) {
+                Ok(code) => {
+                    eprintln!("[STOP] slot={} GRACEFUL exit (code={})", slot_idx, code);
+                    return true;
+                }
+                Err(_) => {} // Timeout → fall through to force kill
+            }
+        }
+
+        // Phase 2: Force kill — TerminateProcess
+        eprintln!("[STOP] slot={} graceful timeout, TerminateProcess...", slot_idx);
+        let _ = proc.exit(1);
+
+        match proc.wait(Some(2000)) {
+            Ok(_) => {
+                eprintln!("[STOP] slot={} FORCE KILLED (TerminateProcess)", slot_idx);
+            }
+            Err(_) => {
+                eprintln!("[STOP] slot={} STILL ALIVE after TerminateProcess", slot_idx);
+            }
+        }
+
+        false // Not graceful
+    }
+
     pub async fn kill_all(&mut self) {
         let mut ports: Vec<u16> = Vec::new();
-        
-        for slot_opt in self.slots.iter_mut() {
+
+        for (i, slot_opt) in self.slots.iter_mut().enumerate() {
             if let Some(slot) = slot_opt {
                 match &slot.status {
                     SlotStatus::Running | SlotStatus::Loading => {
-                        log::info!("Clean exit: killing process on port {} (alias: {})", slot.port, slot.alias);
-                        
+                        eprintln!("[STOP] app exit: shutting down slot={} port={} alias={}", i, slot.port, slot.alias);
+
                         if let Some(ref mut proc) = slot.conpty_proc {
-                            let _ = proc.exit(1);
+                            Self::graceful_shutdown_process(proc, i);
                         }
-                        
+
                         ports.push(slot.port);
                     }
                     _ => {}
@@ -335,23 +371,45 @@ impl EngineStack {
             }
         }
 
-        for port in ports {
-            let _ = Self::kill_process_by_port(port).await;
+        for port in &ports {
+            let _ = Self::kill_process_by_port(*port).await;
+        }
+
+        // Clear all slots after shutdown
+        for slot_opt in self.slots.iter_mut() {
+            if let Some(slot) = slot_opt {
+                slot.status = SlotStatus::Idle;
+                slot.conpty_proc = None;
+                slot.output_tx = None;
+                slot.vram_mib = 0.0;
+            }
         }
     }
 
     pub async fn stop_slot(&mut self, slot_idx: usize) -> Result<(), String> {
         let slot = self.slots[slot_idx].as_mut().ok_or("Slot not found")?;
-
         let port = slot.port;
+        let alias = slot.alias.clone();
 
         if let Some(ref mut proc) = slot.conpty_proc {
-            eprintln!("[CONPTY] slot={} terminating (pid={})", slot_idx, proc.pid());
-            let _ = proc.exit(1);
-        }
+            let graceful = Self::graceful_shutdown_process(proc, slot_idx);
 
-        // taskkill /F is instant — no need to wait for process death
-        let _ = Self::kill_process_by_port(port).await;
+            // Report to frontend log panel + stderr
+            let msg = if !graceful {
+                format!("[STOP] FORCE KILLED")
+            } else {
+                format!("[STOP] GRACEFUL exit")
+            };
+            eprintln!("[STOP] slot={} alias={} shutdown: {}", slot_idx, alias, msg);
+
+            // Emit to frontend so it appears in the engine log panel before logs are cleared
+            if let Some(hub) = self.log_hub.as_ref() {
+                hub.emit_system_event(slot_idx, &alias, &msg).await;
+            }
+
+            // taskkill /F on port as last resort for orphaned listeners
+            let _ = Self::kill_process_by_port(port).await;
+        }
 
         slot.status = SlotStatus::Idle;
         slot.conpty_proc = None;
@@ -426,7 +484,6 @@ impl EngineStack {
     /// Stops all slots whose backend_type matches the given provider ID and are not idle.
     /// Returns indices of stopped slots.
     pub async fn stop_slots_by_provider(&mut self, backend_type: &str) -> Vec<usize> {
-        // Collect matching slot info first to avoid borrow conflicts
         let mut targets: Vec<(usize, u16)> = Vec::new();
         for i in 0..self.slots.len() {
             if let Some(slot) = &self.slots[i] {
@@ -436,12 +493,11 @@ impl EngineStack {
             }
         }
 
-        // Now stop each target
         let mut stopped = Vec::new();
         for (idx, port) in targets {
             if let Some(slot) = self.slots[idx].as_mut() {
                 if let Some(ref mut proc) = slot.conpty_proc {
-                    let _ = proc.exit(1);
+                    Self::graceful_shutdown_process(proc, idx);
                 }
                 let _ = Self::kill_process_by_port(port).await;
                 slot.status = SlotStatus::Idle;

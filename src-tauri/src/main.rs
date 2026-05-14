@@ -20,6 +20,7 @@ mod model_cache;
 mod download_manager;
 mod model_catalog;
 mod engine_utils;
+mod fusion;
 mod provider_mgmt;
 
 pub mod features;
@@ -59,8 +60,9 @@ async fn get_hf_model_info(
 
 #[tauri::command]
 async fn set_hf_token(token: String) -> Result<(), String> {
+    let name = if cfg!(debug_assertions) { "blackwell-ops-dev" } else { "blackwell-ops" };
     let app_dir = dirs::config_dir().ok_or("Could not find config directory")?;
-    let config_path = app_dir.join("blackwell-ops").join("hf_token.txt");
+    let config_path = app_dir.join(name).join("hf_token.txt");
     std::fs::create_dir_all(config_path.parent().unwrap()).map_err(|e| e.to_string())?;
     std::fs::write(&config_path, token).map_err(|e| e.to_string())?;
     Ok(())
@@ -68,8 +70,9 @@ async fn set_hf_token(token: String) -> Result<(), String> {
 
 #[tauri::command]
 async fn get_hf_token() -> Result<Option<String>, String> {
+    let name = if cfg!(debug_assertions) { "blackwell-ops-dev" } else { "blackwell-ops" };
     if let Some(app_dir) = dirs::config_dir() {
-        let token_path = app_dir.join("blackwell-ops").join("hf_token.txt");
+        let token_path = app_dir.join(name).join("hf_token.txt");
         if token_path.exists() {
             let content = std::fs::read_to_string(&token_path).map_err(|e| e.to_string())?;
             if !content.is_empty() {
@@ -338,6 +341,7 @@ async fn main() {
 
                 let stack_clone = ctx.stack.clone();
                 tauri::async_runtime::spawn(async move {
+                    crate::fusion::stop_all_fusion_tasks().await;
                     let mut stack = stack_clone.lock().await;
                     stack.kill_all().await;
                 });
