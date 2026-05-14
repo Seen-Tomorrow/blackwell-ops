@@ -698,6 +698,54 @@ html, body, #root {
   background: rgba(74, 222, 128, 0.03) !important;
 }
 
+/* Engine card exceptions — preserve non-green colors in eink context */
+
+/* Red: STOP button */
+.eink-panel .text-red-400\/70 {
+  color: rgba(248, 113, 113, 0.7) !important;
+}
+.eink-panel .text-red-400 {
+  color: rgb(248, 113, 113) !important;
+}
+
+/* Yellow/amber: system events, phase bar, TTFT, prefill bench */
+.eink-panel .text-yellow-400\/70 {
+  color: rgba(250, 204, 21, 0.7) !important;
+}
+.eink-panel .text-yellow-400 {
+  color: rgb(250, 204, 21) !important;
+}
+.eink-panel .text-telemetry-amber\/80 {
+  color: rgba(245, 167, 39, 0.8) !important;
+}
+.eink-panel .text-telemetry-amber {
+  color: rgb(245, 167, 39) !important;
+}
+
+/* White: bench ITL/tokens values */
+.eink-panel .text-white {
+  color: rgb(255, 255, 255) !important;
+}
+.eink-panel .text-white\/80 {
+  color: rgba(255, 255, 255, 0.8) !important;
+}
+
+/* Stealth muted: placeholders, secondary labels */
+.eink-panel .text-stealth-muted {
+  color: rgb(100, 100, 116) !important;
+}
+.eink-panel .text-stealth-muted\/50 {
+  color: rgba(100, 100, 116, 0.5) !important;
+}
+.eink-panel .text-stealth-muted\/60 {
+  color: rgba(100, 100, 116, 0.6) !important;
+}
+
+/* Electric blue: RAM bar labels */
+.eink-panel .text-electric-blue {
+  color: rgb(59, 130, 246) !important;
+}
+
 /* ── Select option styling (WebView2 ignores inline styles on <option>) ─── */
 select option {
   background: #1a1a2e !important;

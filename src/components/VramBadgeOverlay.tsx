@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { RadarRings, MatrixRain, OscilloscopeWave } from "./CrtAnimations";
 import { sanitizeAlias } from "../lib/types";
+import { useSlotTps } from "../hooks/useSlotTps";
 
 interface VramBadgeOverlayProps {
   engineAlias?: string;
@@ -29,6 +30,8 @@ export default function VramBadgeOverlay({ engineAlias, enginePort }: VramBadgeO
   const [animIdx, setAnimIdx] = useState(0);
   const currentMode = MODES[animIdx].key;
   const CurrentAnimation = RENDER_MAP[currentMode];
+  const port = enginePort ?? 9090;
+  const { slots } = useSlotTps(port);
 
   useEffect(() => {
     const timer = setTimeout(() => setPhase('static'), 2000);
@@ -90,6 +93,22 @@ export default function VramBadgeOverlay({ engineAlias, enginePort }: VramBadgeO
             >
               PORT {enginePort || "8080"}
             </span>
+
+            {/* Real-time TPS readout */}
+            <div className="flex gap-3 mt-1">
+              {slots.map((s) => (
+                <span
+                  key={s.id}
+                  className={`font-mono text-xs tracking-wider drop-shadow-[0_1px_2px_rgba(0,0,0,0.6)] ${
+                    s.isProcessing ? "text-black font-bold" : "text-black/40"
+                  }`}
+                >
+                  S{s.id}: {s.tps > 0 ? `${s.tps.toFixed(1)} t/s` : "--"}{" "}
+                  | ctx: {s.nDecoded}/{s.nCtx}{" "}
+                  {s.tokensThisRequest > 0 && `(gen: ${s.tokensThisRequest})`}
+                </span>
+              ))}
+            </div>
           </motion.div>
         )}
       </AnimatePresence>

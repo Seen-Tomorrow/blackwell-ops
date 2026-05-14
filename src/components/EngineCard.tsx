@@ -190,7 +190,7 @@ export default memo(function EngineCard({ entry, logs, systemEvents, enginePerfE
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.95 }}
           transition={{ duration: 0.3 }}
-          className={`bg-stealth-panel ${borderClass} rounded-sm overflow-hidden`}
+           className={`eink-panel ${borderClass} rounded-sm overflow-hidden`}
         >
       {/* Card header with phase indicator */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-stealth-border bg-stealth-dark/50">

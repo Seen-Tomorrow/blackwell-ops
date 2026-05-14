@@ -133,6 +133,25 @@ fn resolve_template_type(provider_id: &str) -> &'static str {
     }
 }
 
+/// Extract PR number from various URL formats.
+fn parse_github_pr(url: &str) -> Option<(String, String)> {
+    let u = url.trim();
+    if let Some(idx) = u.find("/pull/") {
+        let before = &u[..idx];
+        let after = &u[idx + 6..];
+        let pr_num = after.split('/').next().unwrap_or(after).trim().to_string();
+        // Extract owner/repo from path like "https://github.com/owner/repo"
+        if let Some(re) = regex::Regex::new(r"(?:https?://)?github\.com/([^/]+)/([^/?#]+)").ok() {
+            if let Some(caps) = re.captures(before) {
+                let owner = caps.get(1).unwrap().as_str().to_string();
+                let repo = caps.get(2).unwrap().as_str().to_string();
+                return Some((format!("{}/{}", owner, repo), pr_num));
+            }
+        }
+    }
+    None
+}
+
 // ── Build State ──────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -141,6 +160,7 @@ pub enum BuildStep {
     Initializing,
     GitClone,
     GitPull,
+    PrCherryPick,
     CMakeConfigure,
     Building,
     Validating,
@@ -163,9 +183,12 @@ static CURRENT_BUILD: std::sync::LazyLock<TokioMutex<Option<BuildState>>> =
     std::sync::LazyLock::new(|| tokio::sync::Mutex::new(None));
 
 struct BuildState {
+    build_id: u64,
     provider_id: String,
     environment: BuildEnv,
 }
+
+static BUILD_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 // ── Core Build Service ───────────────────────────────────────────────
 
@@ -173,6 +196,7 @@ struct BuildState {
 pub async fn foundry_build(
     provider_id: String,
     environment: String,
+    pr_url: Option<String>,
     app: tauri::State<'_, crate::engine::AppContext>,
     _app_handle: tauri::AppHandle,
 ) -> Result<(), String> {
@@ -194,12 +218,15 @@ pub async fn foundry_build(
         }
     }
 
+    let build_id = BUILD_COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+
     *CURRENT_BUILD.lock().await = Some(BuildState {
+        build_id,
         provider_id: provider_id.clone(),
         environment: env,
     });
 
-    emit_build_event(app_handle, &provider_id, env, BuildStep::Initializing, None);
+    emit_build_event(app_handle, &provider_id, env, build_id, BuildStep::Initializing, None);
 
     let _stopped_count = {
         let backend_type: String = {
@@ -213,7 +240,7 @@ pub async fn foundry_build(
         let mut stack = app.stack.lock().await;
         let stopped: Vec<usize> = stack.stop_slots_by_provider(&backend_type).await;
         if !stopped.is_empty() {
-            emit_build_event(app_handle, &provider_id, env, BuildStep::Initializing, 
+            emit_build_event(app_handle, &provider_id, env, build_id, BuildStep::Initializing, 
                 Some(format!("Stopping {} running engine(s) for '{}' before build...", stopped.len(), provider_id)));
         }
         stopped.len()
@@ -225,7 +252,7 @@ pub async fn foundry_build(
     let bin_bak = work_dir.join("Release_bak");
 
     if let Err(e) = tokio::fs::create_dir_all(&work_dir).await {
-        rollback_build(app_handle, &provider_id, env, &src_dir, &bin_release, &bin_bak).await;
+        rollback_build(app_handle, &provider_id, env, build_id, &src_dir, &bin_release, &bin_bak).await;
         return Err(format!("Failed to create work directory: {}", e));
     }
 
@@ -242,14 +269,14 @@ pub async fn foundry_build(
     };
 
     if git_url.is_empty() {
-        rollback_build(app_handle, &provider_id, env, &src_dir, &bin_release, &bin_bak).await;
+        rollback_build(app_handle, &provider_id, env, build_id, &src_dir, &bin_release, &bin_bak).await;
         return Err(format!("Provider '{}' has no git_url configured.", provider_id));
     }
 
     let is_existing = src_dir.join(".git").exists();
 
     if !is_existing {
-        emit_build_event(app_handle, &provider_id, env, BuildStep::GitClone, Some("Cloning repository...".into()));
+        emit_build_event(app_handle, &provider_id, env, build_id, BuildStep::GitClone, Some("Cloning repository...".into()));
         
         if src_dir.exists() {
             let _ = tokio::fs::remove_dir_all(&src_dir).await;
@@ -268,13 +295,13 @@ pub async fn foundry_build(
 
         if !clone_output.status.success() {
             let stderr = String::from_utf8_lossy(&clone_output.stderr).to_string();
-            rollback_build(app_handle, &provider_id, env, &src_dir, &bin_release, &bin_bak).await;
+            rollback_build(app_handle, &provider_id, env, build_id, &src_dir, &bin_release, &bin_bak).await;
             return Err(format!("Git clone failed: {}", stderr));
         }
 
-        emit_build_event(app_handle, &provider_id, env, BuildStep::GitClone, Some("Repository cloned.".into()));
+        emit_build_event(app_handle, &provider_id, env, build_id, BuildStep::GitClone, Some("Repository cloned.".into()));
     } else {
-        emit_build_event(app_handle, &provider_id, env, BuildStep::GitPull, Some("Pulling latest changes...".into()));
+        emit_build_event(app_handle, &provider_id, env, build_id, BuildStep::GitPull, Some("Pulling latest changes...".into()));
         
         let pull_output = tokio::process::Command::new("git")
             .args(["pull", "--recurse-submodules"])
@@ -294,26 +321,118 @@ pub async fn foundry_build(
 
         if !pull_output.status.success() {
             let stderr = String::from_utf8_lossy(&pull_output.stderr).to_string();
-            rollback_build(app_handle, &provider_id, env, &src_dir, &bin_release, &bin_bak).await;
+            rollback_build(app_handle, &provider_id, env, build_id, &src_dir, &bin_release, &bin_bak).await;
             return Err(format!("Git pull failed: {}", stderr));
         }
 
-        emit_build_event(app_handle, &provider_id, env, BuildStep::GitPull, Some("Repository updated.".into()));
+        emit_build_event(app_handle, &provider_id, env, build_id, BuildStep::GitPull, Some("Repository updated.".into()));
+    }
+
+    // ── PR Patch Apply (optional) ────────────────────────────────────
+    if let Some(ref pr_url_str) = pr_url {
+        match parse_github_pr(pr_url_str) {
+            Some((owner_repo, pr_num)) => {
+                emit_build_event(app_handle, &provider_id, env, build_id, BuildStep::PrCherryPick,
+                    Some(format!("[PR] Fetching PR #{} from {}...", pr_num, owner_repo)));
+
+                // Download patch from GitHub's raw diff endpoint
+                let patch_url = format!("https://patch-diff.githubusercontent.com/raw/{}/pull/{}.diff", owner_repo, pr_num);
+                let patch_bytes = reqwest::get(&patch_url)
+                    .await
+                    .map_err(|e| format!("HTTP fetch failed: {}", e))?;
+
+                if !patch_bytes.status().is_success() {
+                    emit_build_event(app_handle, &provider_id, env, build_id, BuildStep::PrCherryPick,
+                        Some(format!("[WARN] PR #{} not found or inaccessible (HTTP {}) — continuing build", pr_num, patch_bytes.status())));
+                } else {
+                    let patch = String::from_utf8_lossy(&patch_bytes.bytes().await.unwrap_or_default()).to_string();
+
+                    if patch.trim().is_empty() {
+                        emit_build_event(app_handle, &provider_id, env, build_id, BuildStep::PrCherryPick,
+                            Some(format!("[PR] #{} already applied — no changes needed", pr_num)));
+                    } else {
+                        // Write patch to temp file and apply with 3-way merge
+                        let patch_path = src_dir.parent().unwrap().join("pr-patch.diff");
+                        if let Ok(()) = tokio::fs::write(&patch_path, &patch).await {
+                            // Try plain apply first, fall back to --3way
+                            let mut apply_output = tokio::process::Command::new("git")
+                                .args(["apply", "--whitespace=nowarn", patch_path.to_str().unwrap()])
+                                .current_dir(&src_dir)
+                                .output()
+                                .await;
+
+                            if apply_output.as_ref().map_or(true, |o| !o.status.success()) {
+                                apply_output = tokio::process::Command::new("git")
+                                    .args(["apply", "--3way", "--whitespace=nowarn", patch_path.to_str().unwrap()])
+                                    .current_dir(&src_dir)
+                                    .output()
+                                    .await;
+                            }
+
+                            // Cleanup temp file
+                            let _ = tokio::fs::remove_file(&patch_path).await;
+
+                            match apply_output {
+                                Ok(ref out) if out.status.success() => {
+                                    emit_build_event(app_handle, &provider_id, env, build_id, BuildStep::PrCherryPick,
+                                        Some(format!("[PR] #{} applied successfully", pr_num)));
+
+                                    let env_key = match env {
+                                        BuildEnv::Vanguard => "vanguard".to_string(),
+                                        BuildEnv::Stable => "stable".to_string(),
+                                        BuildEnv::Fresh => "fresh".to_string(),
+                                    };
+                                    if let Ok(mut cfg) = app.config.lock() {
+                                        if let Some(p) = cfg.providers.iter_mut().find(|p| p.id == provider_id) {
+                                            p.last_pr_per_env.insert(env_key, pr_num.clone());
+                                        }
+                                    }
+                                }
+                                _ => {
+                                    let stderr = {
+                                        let raw = apply_output
+                                            .as_ref()
+                                            .ok()
+                                            .map(|o| String::from_utf8_lossy(&o.stderr).to_string())
+                                            .unwrap_or_default();
+                                        raw.lines().next().map(|l| l.trim().to_string()).unwrap_or_else(|| "unknown error".into())
+                                    };
+                                    let _ = tokio::process::Command::new("git")
+                                        .args(["merge", "--abort"])
+                                        .current_dir(&src_dir)
+                                        .output()
+                                        .await;
+                                    emit_build_event(app_handle, &provider_id, env, build_id, BuildStep::PrCherryPick,
+                                        Some(format!("[WARN] PR #{} apply failed: {} — continuing build", pr_num, stderr)));
+                                }
+                            }
+                        } else {
+                            emit_build_event(app_handle, &provider_id, env, build_id, BuildStep::PrCherryPick,
+                                Some(format!("[WARN] PR #{} could not write patch file — continuing build", pr_num)));
+                        }
+                    }
+                }
+            }
+            None => {
+                emit_build_event(app_handle, &provider_id, env, build_id, BuildStep::PrCherryPick,
+                    Some(format!("[WARN] Invalid PR URL: '{}' — must be a full GitHub PR URL like https://github.com/owner/repo/pull/N", pr_url_str)));
+            }
+        }
     }
 
     // ── Atomic Bin Prep ──────────────────────────────────────────────
     
     if bin_release.exists() {
-        emit_build_event(app_handle, &provider_id, env, BuildStep::Initializing, Some("Backing up existing binaries...".into()));
+        emit_build_event(app_handle, &provider_id, env, build_id, BuildStep::Initializing, Some("Backing up existing binaries...".into()));
         
         if let Err(e) = tokio::fs::rename(&bin_release, &bin_bak).await {
-            rollback_build(app_handle, &provider_id, env, &src_dir, &bin_release, &bin_bak).await;
+            rollback_build(app_handle, &provider_id, env, build_id, &src_dir, &bin_release, &bin_bak).await;
             return Err(format!("Failed to backup existing binaries (file locked by running engine?): {}. Is an engine for '{}' still running?", e, provider_id));
         }
         
         if !bin_bak.exists() {
-            rollback_build(app_handle, &provider_id, env, &src_dir, &bin_release, &bin_bak).await;
-            return Err("Backup verification failed — Release_bak not found after rename.".into());
+            rollback_build(app_handle, &provider_id, env, build_id, &src_dir, &bin_release, &bin_bak).await;
+            return Err("Backup verification failed — Release_bak not found after revert.".into());
         }
     }
 
@@ -340,13 +459,13 @@ pub async fn foundry_build(
         .map(|p| p.get().min(64).max(2))
         .unwrap_or(8);
 
-    emit_build_event(app_handle, &provider_id, env, BuildStep::CMakeConfigure, Some(format!(
+    emit_build_event(app_handle, &provider_id, env, build_id, BuildStep::CMakeConfigure, Some(format!(
         "[STAGE 1/3] CMAKE CONFIGURE — {} cores detected", num_cpus
     )));
 
     // ── PHASE 1: CMake Configure (stream output, wait for user approval) ──
     
-    emit_build_event(app_handle, &provider_id, env, BuildStep::CMakeConfigure, Some("[STAGE 1/3] CMAKE CONFIGURE — Reviewing flags below. Click PROCEED to start compilation.".into()));
+    emit_build_event(app_handle, &provider_id, env, build_id, BuildStep::CMakeConfigure, Some("[STAGE 1/3] CMAKE CONFIGURE — Reviewing flags below. Click PROCEED to start compilation.".into()));
 
     let forced_cuda_flags = format!(
         "-DCMAKE_CUDA_COMPILER=\"{}\" -DCUDAToolkit_ROOT=\"{}\"",
@@ -365,7 +484,7 @@ pub async fn foundry_build(
         format!("cmake .. {} {}", forced_cuda_flags, joined_extra)
     };
 
-    emit_build_event(app_handle, &provider_id, env, BuildStep::CMakeConfigure, Some(format!(
+    emit_build_event(app_handle, &provider_id, env, build_id, BuildStep::CMakeConfigure, Some(format!(
         "cmake .. {}{}", forced_cuda_flags, if !joined_extra.is_empty() { format!(" {}", joined_extra) } else { String::new() }
     )));
 
@@ -404,6 +523,7 @@ pub async fn foundry_build(
     let app_handle_cfg = app_handle.clone();
     let provider_id_cfg = provider_id.clone();
     let env_cfg = env;
+    let build_id_cfg = build_id;
 
     let stream_handle = tauri::async_runtime::spawn(async move {
         use tokio::io::{AsyncBufReadExt, BufReader};
@@ -412,7 +532,7 @@ pub async fn foundry_build(
         let mut stdout_lines = stdout_reader.lines();
         while let Ok(Some(line)) = stdout_lines.next_line().await {
             if !line.trim().is_empty() {
-                emit_build_event(&app_handle_cfg, &provider_id_cfg, env_cfg, BuildStep::CMakeConfigure, Some(line));
+                emit_build_event(&app_handle_cfg, &provider_id_cfg, env_cfg, build_id_cfg, BuildStep::CMakeConfigure, Some(line));
             }
         }
 
@@ -420,7 +540,7 @@ pub async fn foundry_build(
         let mut stderr_lines = stderr_reader.lines();
         while let Ok(Some(line)) = stderr_lines.next_line().await {
             if !line.trim().is_empty() {
-                emit_build_event(&app_handle_cfg, &provider_id_cfg, env_cfg, BuildStep::CMakeConfigure, Some(format!("[ERR] {}", line)));
+                emit_build_event(&app_handle_cfg, &provider_id_cfg, env_cfg, build_id_cfg, BuildStep::CMakeConfigure, Some(format!("[ERR] {}", line)));
                 stderr_capture_clone.lock().unwrap().push(line);
             }
         }
@@ -434,7 +554,7 @@ pub async fn foundry_build(
 
     if !cfg_status.success() {
         let stderr_text: String = stderr_capture.lock().unwrap().join("\n");
-        emit_build_event(app_handle, &provider_id, env, BuildStep::Failed(if stderr_text.is_empty() { "CMake configure failed.".into() } else { format!("CMake configure failed:\n{}", stderr_text) }), None);
+        emit_build_event(app_handle, &provider_id, env, build_id, BuildStep::Failed(if stderr_text.is_empty() { "CMake configure failed.".into() } else { format!("CMake configure failed:\n{}", stderr_text) }), None);
         
         // Clean up partial build artifacts and restore working binaries
         let _ = tokio::fs::remove_dir_all(&bin_release).await;
@@ -452,7 +572,7 @@ pub async fn foundry_build(
 
     // ── Show cmake output summary and wait for user approval to build ──
     
-    emit_build_event(app_handle, &provider_id, env, BuildStep::Initializing, Some(format!(
+    emit_build_event(app_handle, &provider_id, env, build_id, BuildStep::Initializing, Some(format!(
         "═══════════════════════════════════════════════\nCMake configure complete. {} targets detected.\nReview the log above — click PROCEED to start compilation (may take 10+ minutes).\n═══════════════════════════════════════════════",
         if cmake_extra.is_empty() { "Default" } else { "Custom" }
     )));
@@ -463,7 +583,7 @@ pub async fn foundry_build(
     let start = std::time::Instant::now();
     while !BUILD_CONFIRMED.load(Ordering::SeqCst) {
         if start.elapsed() > timeout_dur {
-            emit_build_event(app_handle, &provider_id, env, BuildStep::Failed("Build cancelled: no confirmation within 10 minutes.".into()), None);
+            emit_build_event(app_handle, &provider_id, env, build_id, BuildStep::Failed("Build cancelled: no confirmation within 10 minutes.".into()), None);
             *CURRENT_BUILD.lock().await = None;
             return Err("Build cancelled: user did not confirm.".to_string());
         }
@@ -480,7 +600,7 @@ pub async fn foundry_build(
 
     // ── PHASE 2: CMake Build (after user approval) ──
     
-    emit_build_event(app_handle, &provider_id, env, BuildStep::Building, Some(format!(
+    emit_build_event(app_handle, &provider_id, env, build_id, BuildStep::Building, Some(format!(
         "[BUILD] Starting compilation with {} cores...", num_cpus
     )));
 
@@ -515,6 +635,7 @@ pub async fn foundry_build(
     let app_handle_bld = app_handle.clone();
     let provider_id_bld = provider_id.clone();
     let env_bld = env;
+    let build_id_bld = build_id;
 
     let stream_handle2 = tauri::async_runtime::spawn(async move {
         use tokio::io::{AsyncBufReadExt, BufReader};
@@ -523,7 +644,7 @@ pub async fn foundry_build(
         let mut stdout_lines = stdout_reader.lines();
         while let Ok(Some(line)) = stdout_lines.next_line().await {
             if !line.trim().is_empty() {
-                emit_build_event(&app_handle_bld, &provider_id_bld, env_bld, BuildStep::Building, Some(line));
+                emit_build_event(&app_handle_bld, &provider_id_bld, env_bld, build_id_bld, BuildStep::Building, Some(line));
             }
         }
 
@@ -531,7 +652,7 @@ pub async fn foundry_build(
         let mut stderr_lines = stderr_reader.lines();
         while let Ok(Some(line)) = stderr_lines.next_line().await {
             if !line.trim().is_empty() {
-                emit_build_event(&app_handle_bld, &provider_id_bld, env_bld, BuildStep::Building, Some(format!("[ERR] {}", line)));
+                emit_build_event(&app_handle_bld, &provider_id_bld, env_bld, build_id_bld, BuildStep::Building, Some(format!("[ERR] {}", line)));
                 stderr_capture_clone2.lock().unwrap().push(line);
             }
         }
@@ -546,7 +667,7 @@ pub async fn foundry_build(
         // ── Failure: Rollback ────────────────────────────────────────
         
         let stderr_text: String = stderr_capture2.lock().unwrap().join("\n");
-        emit_build_event(app_handle, &provider_id, env, BuildStep::Failed(if stderr_text.is_empty() { "Build failed.".into() } else { format!("Build failed:\n{}", stderr_text) }), None);
+        emit_build_event(app_handle, &provider_id, env, build_id, BuildStep::Failed(if stderr_text.is_empty() { "Build failed.".into() } else { format!("Build failed:\n{}", stderr_text) }), None);
         
         // Remove partial/broken build output and restore working binaries
         let _ = tokio::fs::remove_dir_all(&bin_release).await;
@@ -564,7 +685,7 @@ pub async fn foundry_build(
 
     // ── Integrity Validation ─────────────────────────────────────────
     
-    emit_build_event(app_handle, &provider_id, env, BuildStep::Validating, Some("[STAGE 3/3] VALIDATE — Checking core binaries...".into()));
+    emit_build_event(app_handle, &provider_id, env, build_id, BuildStep::Validating, Some("[STAGE 3/3] VALIDATE — Checking core binaries...".into()));
 
     let core_binaries = ["llama-server.exe", "llama-cli.exe", "llama-quantize.exe"];
     
@@ -612,7 +733,7 @@ pub async fn foundry_build(
     }
 
     if !all_present {
-        emit_build_event(app_handle, &provider_id, env, BuildStep::Failed(format!("Missing core binaries: {}", missing.join(", "))), None);
+        emit_build_event(app_handle, &provider_id, env, build_id, BuildStep::Failed(format!("Missing core binaries: {}", missing.join(", "))), None);
         
         // Remove incomplete output and restore working binaries
         let _ = tokio::fs::remove_dir_all(&bin_release).await;
@@ -631,7 +752,7 @@ pub async fn foundry_build(
 
     // ── Success: Capture build info (version + CUDA from nvcc), purge backup and update binary path ─────────────────
 
-    emit_build_event(app_handle, &provider_id, env, BuildStep::Complete, Some("Build successful. Capturing version info...".into()));
+    emit_build_event(app_handle, &provider_id, env, build_id, BuildStep::Complete, Some("Build successful. Capturing version info...".into()));
 
     let cuda_version = {
         let nvcc_path = env.nvcc_path();
@@ -700,7 +821,7 @@ pub async fn foundry_build(
         let _ = tokio::fs::remove_dir_all(&bin_bak).await;
     }
 
-    emit_build_event(app_handle, &provider_id, env, BuildStep::Complete, Some("Foundry build complete.".into()));
+    emit_build_event(app_handle, &provider_id, env, build_id, BuildStep::Complete, Some("Foundry build complete.".into()));
     *CURRENT_BUILD.lock().await = None;
 
     Ok(())
@@ -714,7 +835,7 @@ pub async fn foundry_cancel(
     let app_handle = &_app_handle;
     let mut current = CURRENT_BUILD.lock().await;
     if let Some(state) = current.take() {
-        emit_build_event(app_handle, &state.provider_id, state.environment, BuildStep::Failed("Build cancelled by user.".into()), None);
+        emit_build_event(app_handle, &state.provider_id, state.environment, state.build_id, BuildStep::Failed("Build cancelled by user.".into()), None);
         Ok(())
     } else {
         Err("No build in progress to cancel.".to_string())
@@ -744,6 +865,7 @@ fn emit_build_event(
     app_handle: &tauri::AppHandle,
     provider_id: &str,
     env: BuildEnv,
+    build_id: u64,
     step: BuildStep,
     log_line: Option<String>,
 ) {
@@ -752,6 +874,7 @@ fn emit_build_event(
         BuildStep::Initializing => "Initializing",
         BuildStep::GitClone => "GitClone",
         BuildStep::GitPull => "GitPull",
+        BuildStep::PrCherryPick => "PrCherryPick",
         BuildStep::CMakeConfigure => "CMakeConfigure",
         BuildStep::Building => "Building",
         BuildStep::Validating => "Validating",
@@ -760,6 +883,7 @@ fn emit_build_event(
     };
 
     let progress = serde_json::json!({
+        "build_id": build_id,
         "step": step_name,
         "provider_id": provider_id,
         "environment": env.label(),
@@ -797,6 +921,7 @@ async fn rollback_build(
     app_handle: &tauri::AppHandle,
     provider_id: &str,
     env: BuildEnv,
+    build_id: u64,
     _src_dir: &PathBuf,
     bin_release: &PathBuf,
     bin_bak: &PathBuf,
@@ -806,6 +931,6 @@ async fn rollback_build(
         let _ = tokio::fs::rename(bin_bak, bin_release).await;
     }
 
-    emit_build_event(app_handle, provider_id, env, BuildStep::Failed("Build setup failed.".into()), None);
+    emit_build_event(app_handle, provider_id, env, build_id, BuildStep::Failed("Build setup failed.".into()), None);
     *CURRENT_BUILD.lock().await = None;
 }

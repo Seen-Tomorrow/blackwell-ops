@@ -117,6 +117,10 @@ interface BuildProfileRowProps {
   onBuild: () => void;
 }
 
+function getPrNumberForEnv(provider: ProviderConfig, env: string): string | undefined {
+  return provider.lastPrPerEnv?.[env];
+}
+
 function BuildProfileRow({ env, meta, provider, currentInfo, onBuild }: BuildProfileRowProps) {
   const colorMap: Record<string, { border: string; bg: string; text: string; badgeBg: string; badgeBorder: string }> = {
     cyan:     { border: "border-cyan-400/20",      bg: "bg-cyan-400/[0.03]",        text: "text-cyan-400",       badgeBg: "bg-cyan-400/10",         badgeBorder: "border-cyan-400/30" },
@@ -141,6 +145,12 @@ function BuildProfileRow({ env, meta, provider, currentInfo, onBuild }: BuildPro
         <span className="text-[7px] font-mono px-1.5 py-0.5 rounded-sm border border-stealth-border/30 bg-stealth-panel/50 text-stealth-muted">
           {meta.vs}
         </span>
+        {/* Last cherry-picked PR badge */}
+        {getPrNumberForEnv(provider, env) && (
+          <span className="text-[7px] font-mono px-1.5 py-0.5 rounded-sm border border-purple-400/30 bg-purple-400/10 text-purple-400">
+            PR #{getPrNumberForEnv(provider, env)}
+          </span>
+        )}
       </div>
 
       {/* Build info or placeholder */}

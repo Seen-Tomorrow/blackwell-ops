@@ -138,6 +138,7 @@ export interface ProviderConfig {
   template_type?: string; // "ggml-llama" | "ik-llama" | "" (custom)
   display_order?: number;
   buildInfoPerEnv?: Record<string, BuildInfo>;
+  lastPrPerEnv?: Record<string, string>; // env -> PR number (e.g. "stable" -> "21293")
 }
 
 /** Full provider template — loaded from templates.json */

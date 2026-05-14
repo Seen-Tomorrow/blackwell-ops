@@ -136,6 +136,10 @@ struct FuelTankSlot {
     kv_cache_limit_mib: f64,
     /// Real-time prompt processing progress (0.0-1.0) during eval
     prompt_progress: f64,
+    /// Rolling TPS computation from n_tokens deltas
+    last_token_count: usize,
+    last_token_time: Option<std::time::Instant>,
+    rolling_tps_ema: f64,  // Exponential moving average of rolling TPS
 }
 
 impl FuelTankSlot {
@@ -152,6 +156,9 @@ impl FuelTankSlot {
             kv_cache_used_mib: 0.0,
             kv_cache_limit_mib: 8192.0, // Default limit from logs
             prompt_progress: 0.0,
+            last_token_count: 0,
+            last_token_time: None,
+            rolling_tps_ema: 0.0,
         }
     }
 
@@ -248,40 +255,102 @@ pub async fn start_perf_reader_from_channel(
     let mut last_emit = tokio::time::Instant::now();
     let batch_interval = tokio::time::Duration::from_millis(100);
 
+    // Heartbeat timer — emits rolling TPS snapshot every 200ms even during silent periods
+    let heartbeat_interval = tokio::time::Duration::from_millis(200);
+    let mut heartbeat_timer = tokio::time::interval(heartbeat_interval);
+
     loop {
-        let line = match rx.recv().await {
-            Ok(l) => l,
-            Err(broadcast::error::RecvError::Lagged(_)) => continue,
-            Err(broadcast::error::RecvError::Closed) => break,
-        };
-        if !line.is_empty() {
-            // Replace ESC byte (0x1B) with safe placeholder for JSON transport.
-            let safe_text = line.replace('\x1b', "%%ESC%%");
-            // Emit to log display batch
-            let entry = LogEntry {
-                slot: slot_idx,
-                alias: alias.clone(),
-                text: safe_text,
-                timestamp: chrono::Local::now().format("%H:%M:%S%.3f").to_string(),
-            };
-            batch_buffer.push(entry);
+        tokio::select! {
+            // ── ConPTY output line ──────────────────────────────────────
+            result = rx.recv() => {
+                let line = match result {
+                    Ok(l) => l,
+                    Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                    Err(broadcast::error::RecvError::Closed) => break,
+                };
+                if !line.is_empty() {
+                    // Replace ESC byte (0x1B) with safe placeholder for JSON transport.
+                    let safe_text = line.replace('\x1b', "%%ESC%%");
+                    // Emit to log display batch
+                    let entry = LogEntry {
+                        slot: slot_idx,
+                        alias: alias.clone(),
+                        text: safe_text,
+                        timestamp: chrono::Local::now().format("%H:%M:%S%.3f").to_string(),
+                    };
+                    batch_buffer.push(entry);
 
-            // Parse for perf metrics
-            let hub = log_hub.clone();
-            process_perf_line(slot_idx, &alias, &line, ctx_size, hub).await;
-        }
+                    // Parse for perf metrics
+                    let hub = log_hub.clone();
+                    process_perf_line(slot_idx, &alias, &line, ctx_size, hub).await;
+                }
 
-        // Batch emit every 100ms or when buffer is full
-        let should_emit = batch_buffer.len() >= 50 || last_emit.elapsed() >= batch_interval;
-        
-        if should_emit && !batch_buffer.is_empty() {
-            let entries: Vec<LogEntry> = std::mem::take(&mut batch_buffer);
-            let _ = log_hub.emit("engine-log-batch", &LogBatch {
-                slot: slot_idx,
-                alias: alias.clone(),
-                entries,
-            });
-            last_emit = tokio::time::Instant::now();
+                // Batch emit every 100ms or when buffer is full
+                let should_emit = batch_buffer.len() >= 50 || last_emit.elapsed() >= batch_interval;
+
+                if should_emit && !batch_buffer.is_empty() {
+                    let entries: Vec<LogEntry> = std::mem::take(&mut batch_buffer);
+                    let _ = log_hub.emit("engine-log-batch", &LogBatch {
+                        slot: slot_idx,
+                        alias: alias.clone(),
+                        entries,
+                    });
+                    last_emit = tokio::time::Instant::now();
+                }
+            }
+
+            // ── Heartbeat — emit rolling TPS snapshot during silent periods ──
+            _ = heartbeat_timer.tick() => {
+                let state_arc = STATE.lock().unwrap().clone();
+                if let Some(ref arc) = state_arc {
+                    let perf_state = arc.lock().await;
+                    if let Some(slot_state) = perf_state.slots.get(&slot_idx) {
+                        let now = std::time::Instant::now();
+                        // Use EMA value with decay during silent periods
+                        let heartbeat_tps = if slot_state.rolling_tps_ema > 0.0 {
+                            if let Some(last_time) = slot_state.last_token_time {
+                                let elapsed_since_last = now.duration_since(last_time).as_secs_f64();
+                                // Emit for up to 2 seconds after last activity; decay over time
+                                if elapsed_since_last < 2.0 {
+                                    let decay_factor = 1.0 - (elapsed_since_last / 2.0);
+                                    Some(slot_state.rolling_tps_ema * decay_factor)
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        };
+
+                        if let Some(tps) = heartbeat_tps {
+                            let event = EnginePerfEvent {
+                                slot: slot_idx, alias: alias.clone(), tps, ttft_ms: None,
+                                fuel_alpha_pct: slot_state.alpha_interpolated(),
+                                fuel_beta_pct: slot_state.beta_interpolated(),
+                                n_tokens: slot_state.current_tokens,
+                                prompt_tokens: slot_state.prompt_tokens,
+                                kv_cache_pct: slot_state.kv_cache_pct(),
+                                prompt_progress: Some(slot_state.prompt_progress),
+                            };
+                            log_hub.emit("engine-perf", &event);
+                        }
+                    }
+                }
+
+                // Also flush log batch on heartbeat if needed
+                let should_emit = batch_buffer.len() >= 50 || last_emit.elapsed() >= batch_interval;
+                if should_emit && !batch_buffer.is_empty() {
+                    let entries: Vec<LogEntry> = std::mem::take(&mut batch_buffer);
+                    let _ = log_hub.emit("engine-log-batch", &LogBatch {
+                        slot: slot_idx,
+                        alias: alias.clone(),
+                        entries,
+                    });
+                    last_emit = tokio::time::Instant::now();
+                }
+            }
         }
     }
 
@@ -331,8 +400,17 @@ async fn process_perf_line(
 
     // ── Phase detection from log line patterns (replaces broken ttft_ms logic) ──
     if line.contains("prompt processing progress") {
+        if slot_state.phase == "IDLE" {
+            // New request starting — reset rolling TPS state to avoid stale blending
+            slot_state.rolling_tps_ema = 0.0;
+            slot_state.last_token_count = 0;
+            slot_state.last_token_time = None;
+        }
         slot_state.phase = "PROMPT_PROCESSING".to_string();
     } else if line.contains("prompt processing done") {
+        // Transition to generation — reset rolling TPS baseline to current token count
+        slot_state.last_token_count = slot_state.current_tokens;
+        slot_state.last_token_time = Some(std::time::Instant::now());
         slot_state.phase = "GENERATING".to_string();
     }
 
@@ -451,17 +529,50 @@ async fn process_perf_line(
         }
     }
 
-    // ── Direct n_tokens tracking for incremental updates ───────────────
-    let is_processing = line.contains("processing task") || line.contains("prompt processing done");
-    if is_processing {
+    // ── Direct n_tokens tracking for incremental updates with rolling TPS ──
+    // Match any line containing n_tokens (covers "processing task", "slot update_slots", "prompt processing done", etc.)
+    let has_n_tokens = line.contains("n_tokens");
+    if has_n_tokens {
         let n_caps = n_tokens_re().captures(line);
         if let Some(caps) = n_caps {
             if caps.len() >= 2 {
                 if let Some(n_tokens) = caps.get(1).and_then(|m| m.as_str().parse::<usize>().ok()) {
+                    // Only compute rolling TPS during GENERATING phase (per-token output)
+                    // During prompt phase, n_tokens jumps by hundreds — not useful for TPS
+                    let is_generating = slot_state.phase == "GENERATING";
+
+                    if is_generating {
+                        let now = std::time::Instant::now();
+                        let delta_tokens = n_tokens.saturating_sub(slot_state.last_token_count);
+                        let raw_tps = if delta_tokens > 0 && slot_state.last_token_time.is_some() {
+                            let elapsed = now.duration_since(slot_state.last_token_time.unwrap()).as_secs_f64();
+                            if elapsed > 0.01 {
+                                (delta_tokens as f64) / elapsed
+                            } else {
+                                0.0
+                            }
+                        } else {
+                            0.0
+                        };
+
+                        // Smooth with exponential moving average (alpha=0.3)
+                        const EMA_ALPHA: f64 = 0.3;
+                        if raw_tps > 0.0 {
+                            slot_state.rolling_tps_ema = if slot_state.rolling_tps_ema == 0.0 {
+                                raw_tps
+                            } else {
+                                EMA_ALPHA * raw_tps + (1.0 - EMA_ALPHA) * slot_state.rolling_tps_ema
+                            };
+                        }
+
+                        slot_state.last_token_count = n_tokens;
+                        slot_state.last_token_time = Some(now);
+                    }
+
                     slot_state.current_tokens = n_tokens;
 
                     let event = EnginePerfEvent {
-                        slot: slot_idx, alias: alias.to_string(), tps: 0.0, ttft_ms: None,
+                        slot: slot_idx, alias: alias.to_string(), tps: if is_generating { slot_state.rolling_tps_ema } else { 0.0 }, ttft_ms: None,
                         fuel_alpha_pct: slot_state.alpha_interpolated(), fuel_beta_pct: slot_state.beta_interpolated(),
                         n_tokens: slot_state.current_tokens,
                         prompt_tokens: slot_state.prompt_tokens,
@@ -490,6 +601,10 @@ async fn process_perf_line(
         if caps.len() >= 2 {
             if let Some(final_tokens) = caps.get(1).and_then(|m| m.as_str().parse::<usize>().ok()) {
                 slot_state.current_tokens = final_tokens;
+                // Reset rolling TPS so idle doesn't show stale values
+                slot_state.last_token_count = final_tokens;
+                slot_state.last_token_time = None;
+                slot_state.rolling_tps_ema = 0.0;
                 eprintln!("[PERF_PULSE] slot={} request complete: {} total tokens", slot_idx, final_tokens);
             }
         }

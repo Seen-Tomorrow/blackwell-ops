@@ -38,60 +38,33 @@ function getTtftColor(ttft: number): string {
   return "text-orange-400";
 }
 
-// ── Heartbeat SVG Component ────────────────────────────────────────
-function HeartbeatLine({ active }: { active: boolean }) {
-  const [path, setPath] = useState("");
-  const frameRef = useRef(0);
-  const animRef = useRef<number | null>(null);
-  
-  useEffect(() => {
-    if (!active) {
-      setPath("M0,12 L300,12");
-      return;
-    }
-    
-    const amplitude = 6;
-    const animate = () => {
-      frameRef.current += 1;
-      const frame = frameRef.current;
-      const points: string[] = [];
-      
-      for (let i = 0; i <= 300; i += 3) {
-        const t = ((i + frame * 4) % 300) / 300;
-        // Base sinusoidal wave
-        let y = Math.sin(t * Math.PI * 8) * amplitude * 0.5;
-        
-        // Sharp R-wave spike (heartbeat PQRST complex simulation)
-        const cyclePos = (t * 3) % 1;
-        if (cyclePos > 0.4 && cyclePos < 0.46) {
-          y -= Math.sin((cyclePos - 0.4) / 0.06 * Math.PI) * amplitude * 3;
-        } else if (cyclePos > 0.46 && cyclePos < 0.52) {
-          y += Math.sin((cyclePos - 0.46) / 0.06 * Math.PI) * amplitude * 1.5;
-        }
-        
-        // Organic jitter
-        y += (Math.random() - 0.5) * 1;
-        points.push(`${i},${12 - y}`);
-      }
-      
-      setPath(`M${points.join(" L")}`);
-      animRef.current = requestAnimationFrame(animate);
-    };
-    
-    frameRef.current = 0;
-    animRef.current = requestAnimationFrame(animate);
-    
-    return () => {
-      if (animRef.current) cancelAnimationFrame(animRef.current);
-    };
-  }, [active]);
-  
+// ── TPS Pulse SVG Component — flat when idle, spikes on token activity ──
+function TpsPulseLine({ history }: { history: number[] }) {
+  const WIDTH = 300;
+  const HEIGHT = 24;
+  const BASELINE = HEIGHT - 2;
+  const MAX_TPS = 500;
+
+  const points = history.map((tps, i) => {
+    const x = (i / (history.length - 1)) * WIDTH;
+    const clampedTps = Math.min(tps, MAX_TPS);
+    const y = BASELINE - (clampedTps / MAX_TPS) * (HEIGHT - 4);
+    return `${x},${y}`;
+  });
+
+  if (points.length === 0) {
+    points.push(`0,${BASELINE}`, `${WIDTH},${BASELINE}`);
+  }
+
+  const pathD = `M${points.join(" L")}`;
+  const hasActivity = history.some((t) => t > 0);
+
   return (
-    <svg width="100%" height="24" viewBox="0 0 300 24" preserveAspectRatio="none" className="opacity-70">
+    <svg width="100%" height="24" viewBox={`0 0 ${WIDTH} ${HEIGHT}`} preserveAspectRatio="none" className="opacity-70">
       <path
-        d={path}
+        d={pathD}
         fill="none"
-        stroke={active ? "#76B900" : "#333"}
+        stroke={hasActivity ? "#76B900" : "#333"}
         strokeWidth="1.5"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -100,19 +73,32 @@ function HeartbeatLine({ active }: { active: boolean }) {
   );
 }
 
+const MAX_PULSE_HISTORY = 100;
+
 export default function EnginePerformanceTile({ perf, n_ctx = 32768, onNewSession }: EnginePerformanceTileProps) {
   const alphaPct = perf.fuel_alpha_pct ?? 0;
   const betaPct = perf.fuel_beta_pct ?? 0;
-  
+
+  // Rolling TPS history for pulse line visualization
+  const tpsHistoryRef = useRef<number[]>([]);
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    tpsHistoryRef.current.push(perf.tps);
+    if (tpsHistoryRef.current.length > MAX_PULSE_HISTORY) {
+      tpsHistoryRef.current.shift();
+    }
+    setTick((t) => t + 1);
+  }, [perf.tps]);
+
   // Compute fuel tank display values (cap at 100 for display)
   const alphaDisplay = Math.min(100, Math.max(0, alphaPct));
   const betaDisplay = Math.min(100, Math.max(0, betaPct));
 
   return (
     <div className="mt-2 border border-stealth-border rounded-sm bg-black/60 overflow-hidden">
-      {/* Heartbeat animation bar */}
+      {/* TPS pulse line */}
       <div className="flex items-center justify-between px-2 py-1 border-b border-stealth-border bg-stealth-dark/30">
-        <HeartbeatLine active={perf.tps > 0} />
+        <TpsPulseLine history={tpsHistoryRef.current} />
         
         {/* NEW SESSION button for BETA checkpoint */}
         {onNewSession && (

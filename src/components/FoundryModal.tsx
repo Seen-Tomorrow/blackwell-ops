@@ -19,9 +19,15 @@ type ModalPhase = "confirm" | "building" | "complete" | "error";
 
 export default function FoundryModal({ provider, environment, onClose }: FoundryModalProps) {
   const [phase, setPhase] = useState<ModalPhase>("confirm");
+  const phaseRef = useRef(phase);
+  phaseRef.current = phase;
+  const [buildId, setBuildId] = useState<number | null>(null);
+  const buildIdRef = useRef<number | null>(null);
+  buildIdRef.current = buildId;
   const [logLines, setLogLines] = useState<BuildLogEntry[]>([]);
   const [currentStep, setCurrentStep] = useState("");
   const [waitingForConfirm, setWaitingForConfirm] = useState(false);
+  const [prUrl, setPrUrl] = useState("");
   const logRef = useRef<HTMLDivElement>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
 
@@ -42,7 +48,13 @@ export default function FoundryModal({ provider, environment, onClose }: Foundry
         try {
           const payload = e.payload as any;
           if (!payload || !payload.provider_id) return;
-          
+
+          // Capture buildId from first event, then filter by it
+          if (buildIdRef.current === null) {
+            setBuildId(payload.build_id);
+            buildIdRef.current = payload.build_id;
+          } else if (payload.build_id !== buildIdRef.current) return;
+
           const stepLabel = getStepLabel(payload.step);
           setCurrentStep(stepLabel);
 
@@ -61,7 +73,7 @@ export default function FoundryModal({ provider, environment, onClose }: Foundry
             }]);
           }
 
-          // Phase transitions based on step
+          // Phase transitions based on step — stay in "confirm" until cmake preview appears
           switch (payload.step) {
             case "Complete":
               setPhase("complete");
@@ -70,7 +82,7 @@ export default function FoundryModal({ provider, environment, onClose }: Foundry
               setPhase("error");
               break;
             default:
-              if (phase === "confirm") setPhase("building");
+              if (phaseRef.current === "confirm") setPhase("building");
           }
         } catch {}
       });
@@ -94,7 +106,7 @@ export default function FoundryModal({ provider, environment, onClose }: Foundry
       mounted = false;
       if (cleanupRef.current) cleanupRef.current();
     };
-  }, [phase]);
+  }, []);
 
   useEffect(() => {
     // Auto-scroll log to bottom
@@ -107,8 +119,9 @@ export default function FoundryModal({ provider, environment, onClose }: Foundry
     switch (step) {
       case "Initializing": return "INIT";
       case "GitClone": return "CLONE";
-      case "GitPull": return "PULL";
-      case "CMakeConfigure": return "CONFIGURE";
+        case "GitPull": return "PULL";
+        case "PrCherryPick": return "PR-MERGE";
+        case "CMakeConfigure": return "CONFIGURE";
       case "Building": return "BUILD";
       case "Validating": return "VALIDATE";
       case "Complete": return "DONE";
@@ -142,6 +155,7 @@ export default function FoundryModal({ provider, environment, onClose }: Foundry
       await invoke("foundry_build", {
         providerId: provider.id,
         environment,
+        prUrl: prUrl.trim() || null,
       });
     } catch (err) {
       setPhase("error");
@@ -156,8 +170,10 @@ export default function FoundryModal({ provider, environment, onClose }: Foundry
   const handleCancel = async () => {
     try {
       await invoke("foundry_cancel");
-    } catch {}
-    onClose();
+      // Don't close modal — let the "Failed" event transition to error phase
+    } catch (err) {
+      console.error("[Foundry] Cancel failed:", err);
+    }
   };
 
   const handleConfirmProceed = async () => {
@@ -208,6 +224,20 @@ export default function FoundryModal({ provider, environment, onClose }: Foundry
                 <span className={`px-2 py-0.5 text-[9px] font-mono border rounded-sm ${envColors("border")}`}>
                   {environment.toUpperCase()}
                 </span>
+              </div>
+
+              {/* Optional PR cherry-pick input */}
+              <div className="pt-1">
+                <label className="text-[8px] font-mono text-stealth-muted uppercase block mb-1.5">
+                  Apply PR patch (optional)
+                </label>
+                <input
+                  type="text"
+                  placeholder="https://github.com/owner/repo/pull/N"
+                  className="w-full px-2 py-1.5 text-[8px] font-mono bg-black/50 border border-stealth-border rounded-sm text-white placeholder:text-stealth-muted/40 focus:border-purple-400/60 outline-none transition-colors"
+                  value={prUrl}
+                  onChange={(e) => setPrUrl(e.target.value)}
+                />
               </div>
             </div>
 

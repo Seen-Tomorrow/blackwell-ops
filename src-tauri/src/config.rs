@@ -31,6 +31,9 @@ pub struct ProviderMeta {
     /// Per-environment build info captured from binary --version + file mtime.
     #[serde(default, skip_serializing_if = "HashMap::is_empty", rename = "buildInfoPerEnv")]
     pub build_info_per_env: HashMap<String, crate::types::BuildInfo>,
+    /// Last cherry-picked PR number per environment (for badge display)
+    #[serde(default, skip_serializing_if = "HashMap::is_empty", rename = "lastPrPerEnv")]
+    pub last_pr_per_env: HashMap<String, String>,
     /// Display order in provider list (0 = first). Auto-assigned on save if not set.
     #[serde(default)]
     pub display_order: i32,
@@ -272,6 +275,7 @@ pub fn persist_provider_meta(providers: &[crate::types::ProviderConfig]) -> Resu
         template_type: p.template_type.clone(),
         display_order: p.display_order,
         build_info_per_env: p.build_info_per_env.clone(),
+        last_pr_per_env: p.last_pr_per_env.clone(),
     }).collect();
     save_provider_meta(metas)
 }
@@ -304,6 +308,7 @@ fn load_legacy_provider_meta() -> Vec<ProviderMeta> {
                                     template_type: crate::templates::ProviderTemplate::template_type_for_id(id),
                                     display_order: 0,
                                     build_info_per_env: HashMap::new(),
+                                    last_pr_per_env: HashMap::new(),
                                 });
                             }
                         }
@@ -384,6 +389,7 @@ fn genesis_providers() -> Vec<crate::types::ProviderConfig> {
             build_profile: String::new(),
             template_type: "ggml-llama".into(),
             build_info_per_env: std::collections::HashMap::new(),
+            last_pr_per_env: std::collections::HashMap::new(),
             display_order: 0,
         },
         crate::types::ProviderConfig {
@@ -400,6 +406,7 @@ fn genesis_providers() -> Vec<crate::types::ProviderConfig> {
             build_profile: String::new(),
             template_type: "ik-llama".into(),
             build_info_per_env: std::collections::HashMap::new(),
+            last_pr_per_env: std::collections::HashMap::new(),
             display_order: 1,
         },
     ]
@@ -810,6 +817,7 @@ fn build_config_with_providers_full(gpu_count: usize, mut config: AppConfig) -> 
                 build_profile: meta.build_profile.clone(),
                 template_type: resolved_type,
                 build_info_per_env: meta.build_info_per_env,
+                last_pr_per_env: meta.last_pr_per_env,
                 display_order: meta.display_order,
             });
         }
