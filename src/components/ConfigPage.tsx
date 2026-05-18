@@ -6,6 +6,7 @@ import type { ParamDef, ProviderConfig, ProviderTemplate, TemplateParam, ModelPa
 import ValueBubbles from "./ValueBubbles";
 import ProvidersConfig from "./ProvidersConfig";
 import FoundryPage from "./FoundryPage";
+import ParamCreatorModal from "./ParamCreatorModal";
 import { KEYS, overridesKey, groupOrderKey } from "../lib/storage";
 
 // ── Types for template update diff (from Rust check_template_update IPC) ─────────
@@ -99,6 +100,9 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
   const [selectedNewParams, setSelectedNewParams] = useState<Set<string>>(new Set());
   const [selectedOrphanedParams, setSelectedOrphanedParams] = useState<Set<string>>(new Set());
   const [showUpdateModal, setShowUpdateModal] = useState(false);
+
+  // ── Param creator modal state ───────────────────────────────
+  const [showCreatorModal, setShowCreatorModal] = useState(false);
 
   // ── Inline sub-params editor state ───────────────────────────────
   type SubEditorTarget = { paramKey: string; valueName: string } | null;
@@ -341,10 +345,33 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
     showSaved("TEMPLATE UPDATED");
   }, [templateDiff, currentProvider, selectedProviderId, selectedNewParams, selectedOrphanedParams]);
 
-  // ── Admin: add new param definition ───────────────────────────────
+  // ── Admin: add new param definition (from modal) ────────────────────────
+  const handleCreatorSubmit = useCallback(async (def: Omit<ParamDef, "order">) => {
+    if (!currentProvider || !def.values.length) return;
+
+    const completeDefs = buildCompleteDefs(currentProvider);
+    const maxOrder = Math.max(...completeDefs.map(d => d.order), -1);
+    const newDef: ParamDef = { ...def, order: maxOrder + 1 };
+    const updatedDefs = [...completeDefs, newDef];
+
+    // Handle custom group — append to provider.groupOrder if not already there
+    let updatedProvider = { ...currentProvider, param_definitions: updatedDefs };
+    const newGroup = def.ui_group;
+    if (newGroup && currentProvider.groupOrder && !currentProvider.groupOrder.includes(newGroup)) {
+      updatedProvider.groupOrder = [...currentProvider.groupOrder, newGroup];
+    }
+
+    setAllProviders(prev => prev.map(p => p.id !== selectedProviderId ? p : updatedProvider));
+    window.dispatchEvent(new CustomEvent("param-config-changed"));
+    await persistProviderToConfig(updatedProvider);
+    setShowCreatorModal(false);
+    showSaved("SAVED");
+  }, [currentProvider, buildCompleteDefs, persistProviderToConfig, selectedProviderId]);
+
+  // Legacy: simple add (kept for backward compat)
   const addParamDefinition = useCallback(async (key: string, values: (string | number)[]) => {
     if (!currentProvider || !values.length) return;
-    
+
     const completeDefs = buildCompleteDefs(currentProvider);
     const maxOrder = Math.max(...completeDefs.map(d => d.order), -1);
     const newDef: ParamDef = { key, label: key, values, order: maxOrder + 1 };
@@ -906,10 +933,12 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
                   <div className="space-y-3">
                     {/* Add new param — admin only */}
                     {adminLockState !== "locked" && (
-                      <AddParamSection
-                        onAdd={addParamDefinition}
-                        existingKeys={paramDefsBase.map(d => d.key)}
-                      />
+                      <button
+                        onClick={() => setShowCreatorModal(true)}
+                        className="w-full py-2 text-[9px] font-mono border border-dashed border-yellow-400/30 text-yellow-400/60 hover:bg-yellow-400/5 hover:border-yellow-400/60 transition-colors rounded mb-3"
+                      >
+                        + ADD PARAMETER
+                      </button>
                     )}
                     {groupOrder.filter(g => groups[g]).map((groupName, groupIdx) => {
                       const groupParams = groups[groupName];
@@ -1064,6 +1093,22 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
           })}
           onCancel={() => { setShowUpdateModal(false); setTemplateDiff(null); setSelectedNewParams(new Set()); setSelectedOrphanedParams(new Set()); }}
           onApply={handleApplyTemplateUpdate}
+        />
+      )}
+
+      {/* Param Creator Modal */}
+      {showCreatorModal && (
+        <ParamCreatorModal
+          existingKeys={paramDefsBase.map(d => d.key)}
+          existingGroups={(() => {
+            const seen = new Set<string>();
+            for (const def of paramDefs) {
+              if (def.ui_group) seen.add(def.ui_group);
+            }
+            return Array.from(seen);
+          })()}
+          onClose={() => setShowCreatorModal(false)}
+          onSubmit={handleCreatorSubmit}
         />
       )}
     </div>
@@ -1332,69 +1377,6 @@ function TemplateUpdateModal({
           <button onClick={onApply}
             className="px-4 py-1 text-[9px] font-mono border border-telemetry-cyan/60 bg-telemetry-cyan/20 text-telemetry-cyan hover:bg-telemetry-cyan/30 transition-colors">APPLY UPDATE</button>
         </div>
-      </div>
-    </div>
-  );
-}
-
-function AddParamSection({ onAdd, existingKeys }: {
-  onAdd: (key: string, values: (string | number)[]) => void;
-  existingKeys: string[];
-}) {
-  const [newKey, setNewKey] = useState("");
-  const [newValueInput, setNewValueInput] = useState("");
-  const [newValuesList, setNewValuesList] = useState<(string | number)[]>([]);
-
-  const addNewValue = () => {
-    const t = newValueInput.trim();
-    if (!t) return;
-    let p: string | number;
-    if (/^-?\d+$/.test(t)) p = parseInt(t, 10);
-    else if (/^-?\d+\.\d+$/.test(t)) p = parseFloat(t);
-    else p = t;
-    if (newValuesList.some(v => String(v) === String(p))) return;
-    setNewValuesList(prev => [...prev, p]);
-    setNewValueInput("");
-  };
-
-  const removeNewValue = (idx: number) => setNewValuesList(prev => prev.filter((_, i) => i !== idx));
-
-  const addParam = () => {
-    if (!newKey.trim() || newValuesList.length === 0) return;
-    onAdd(newKey.trim(), [...newValuesList]);
-    setNewKey(""); setNewValueInput(""); setNewValuesList([]);
-  };
-
-  return (
-    <div className="mt-4 pt-3 border-t border-stealth-border">
-      <h3 className="text-[10px] font-mono text-yellow-400 uppercase tracking-wider mb-2">ADD PARAMETER</h3>
-
-      {newValuesList.length > 0 && (
-        <div className="flex items-center gap-1.5 flex-wrap mb-2">
-          {newValuesList.map((val, idx) => (
-            <span key={idx} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 border text-[9px] font-mono rounded-sm bg-yellow-400/20 border-yellow-400/40 text-yellow-400">
-              {String(val)}
-              <button onClick={() => removeNewValue(idx)} className="ml-0.5 hover:text-red-400 transition-colors leading-none">×</button>
-            </span>
-          ))}
-        </div>
-      )}
-
-      <div className="flex gap-2 items-center flex-wrap">
-        <input type="text" placeholder="Param key (e.g., CustomFlag)" value={newKey}
-          onChange={(e) => setNewKey(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && addParam()}
-          className="w-40 bg-transparent border-b border-stealth-border/50 text-[10px] font-mono text-white focus:outline-none px-1 py-0.5 placeholder:text-stealth-muted/50" />
-        <input type="text" placeholder="+ add value" value={newValueInput}
-          onChange={(e) => setNewValueInput(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addNewValue(); } }}
-          className="w-32 bg-transparent border-b border-stealth-border/50 text-[10px] font-mono text-white focus:outline-none px-1 py-0.5 placeholder:text-white/40" />
-        <button onClick={addNewValue}
-          disabled={!newValueInput.trim()}
-          className="px-2 py-0.5 text-[9px] font-mono border border-yellow-400/40 text-yellow-400 hover:bg-yellow-500/20 transition-colors disabled:opacity-30">+ VALUE</button>
-        <button onClick={addParam}
-          disabled={!newKey.trim() || newValuesList.length === 0}
-          className="px-2 py-0.5 text-[9px] font-mono border border-yellow-400/60 text-yellow-400 hover:bg-yellow-500/20 transition-colors disabled:opacity-30">ADD</button>
       </div>
     </div>
   );

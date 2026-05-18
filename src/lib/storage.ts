@@ -16,7 +16,9 @@ export const KEYS = {
   sortDir: `${STORAGE_PREFIX}sort-dir`,
   lowPower: `${STORAGE_PREFIX}low-power`,
   uiZoom: `${STORAGE_PREFIX}ui-zoom`,
+  catalogVisibleCount: `${STORAGE_PREFIX}catalog-visible-count`,
   vramDiagCollapsed: `${STORAGE_PREFIX}vram-diag-collapsed`,
+  paramCreatorMode: `${STORAGE_PREFIX}param-creator-mode`,
 } as const;
 
 // Dynamic key builders — return the full localStorage key string

@@ -133,7 +133,7 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
   const isConfigTab = activeTab === "config";
 
   return (
-    <div className="flex flex-col h-screen bg-stealth-black grid-bg relative overflow-y-auto" style={{ zoom }}>
+    <div className="flex flex-col h-screen bg-stealth-black grid-bg relative">
       {/* Top bar */}
       <motion.header
         initial={{ y: -40, opacity: 0 }}
@@ -205,7 +205,9 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
           transition={{ duration: 0.25, ease: "easeOut" }}
           className="h-full overflow-y-auto"
         >
-          <div className="max-w-[1280px] mx-auto">{children}<div style={{ height: `${zoom * 80}px` }} /></div>
+          <div style={{ zoom }} className="min-h-full pb-[50px]">
+            <div className="max-w-[1280px] mx-auto">{children}</div>
+          </div>
         </motion.div>
       </main>
 

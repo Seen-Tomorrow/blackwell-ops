@@ -1,15 +1,15 @@
 import { motion } from "framer-motion";
-import { useState, useCallback, useMemo, useEffect, type Dispatch, type SetStateAction } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import type { ModelEntry, EngineConfig, GpuInfo, ProviderConfig, SystemInfo, ModelMetadata, StackEntry } from "../lib/types";
+import { useRef, useEffect, useMemo, useState } from "react";
+import type { EngineConfig, ProviderConfig, SystemInfo, StackEntry } from "../lib/types";
 import EngineConfigPanel from "./EngineConfigPanel";
-
-import { useKeyboardNav } from "../hooks/useKeyboardNav";
+import ModelCard from "./ModelCard";
+import MiniModelCard from "./MiniModelCard";
+import { useModelCatalog, type SortField } from "../hooks/useModelCatalog";
 import { KEYS } from "../lib/storage";
 import { useTelemetry } from "../context/TelemetryContext";
 
 interface ModelCatalogProps {
-  models: ModelEntry[];
+  models: any[];
   onLaunch: (config: EngineConfig) => void;
   error: string | null;
   onReload: () => void;
@@ -18,365 +18,101 @@ interface ModelCatalogProps {
   isAdminUnlocked: boolean;
   scanningPath: string | null;
   setScanningPath: (p: string | null) => void;
-  batchScanState: {active: boolean; scanned: number; failed: number; total: number};
-  setBatchScanState: React.Dispatch<React.SetStateAction<{active: boolean; scanned: number; failed: number; total: number}>>;
+  batchScanState: { active: boolean; scanned: number; failed: number; total: number };
+  setBatchScanState: React.Dispatch<React.SetStateAction<{ active: boolean; scanned: number; failed: number; total: number }>>;
   stack: StackEntry[];
 }
 
-const LAST_MODEL_KEY = KEYS.lastModel;
-const SORT_FIELD_KEY = KEYS.sortField;
-const SORT_DIR_KEY = KEYS.sortDir;
-
-type SortField = (keyof ModelEntry) | "date";
-type SortDirection = "asc" | "desc";
+const sortLabels: Record<string, string> = {
+  name: 'NAME', author: 'AUTHOR', size_str: 'SIZE', date: 'DATE'
+};
 
 export default function ModelCatalog(props: ModelCatalogProps) {
   const { models, onLaunch, error, onReload, providers: externalProviders, committedVramMib, isAdminUnlocked, scanningPath, setScanningPath, batchScanState, setBatchScanState, stack } = props;
   const { gpus, systemInfo } = useTelemetry();
-  const [search, setSearch] = useState("");
-  const [selectedModel, setSelectedModel] = useState<ModelEntry | null>(null);
-  const [sortField, setSortField] = useState<SortField>(() => {
-    try { return (localStorage.getItem(SORT_FIELD_KEY) as SortField) || "name"; } catch { return "name"; }
-  });
-  const [sortDirection, setSortDirection] = useState<SortDirection>(() => {
-    try { return (localStorage.getItem(SORT_DIR_KEY) as SortDirection) || "asc"; } catch { return "asc"; }
+
+  const catalog = useModelCatalog({
+    models, gpus, stack, scanningPath, setScanningPath, batchScanState, setBatchScanState, onReload,
   });
 
-  // Restore last selected model from localStorage once models are loaded
+  const { search, setSearch, catalogSelectedModel, panelActiveModel, handleSelect, handleSelectByAlias, selectedEngineAlias, sortField, sortDirection, handleSort,
+    pinnedModels, catalogModels, allFiltered, runningModelPaths, runningInstances, activeEngineByModel,
+    getFitStatus, handleScanModel, handleScanAll, handleCancelScan,
+    highlightIndex, zone, visibleCount, setVisibleCount, newlyLaunchedAlias } = catalog;
+
+  // Auto-scroll selected model into view in the catalog scroll container
+  const catalogScrollRef = useRef<HTMLDivElement>(null);
+  const [dynamicMaxHeight, setDynamicMaxHeight] = useState<number | undefined>(undefined);
+
   useEffect(() => {
-    if (models.length === 0 || selectedModel !== null) return;
-    try {
-      const savedPath = localStorage.getItem(LAST_MODEL_KEY);
-      if (savedPath) {
-        const match = models.find(m => m.path === savedPath);
-        if (match) setSelectedModel(match);
+    if (!catalogScrollRef.current || visibleCount === "all") {
+      setDynamicMaxHeight(undefined);
+      return;
+    }
+    const container = catalogScrollRef.current;
+    const gap = 8; // gap-2 = 8px between cards
+    const count = parseInt(visibleCount);
+
+    const measureAndSet = () => {
+      const cards = container.querySelectorAll('[data-model-path]');
+      if (cards.length === 0) return;
+      let totalH = 0;
+      cards.forEach((c: Element) => { totalH += (c as HTMLElement).offsetHeight; });
+      let avgHeight = totalH / cards.length;
+      const computed = avgHeight * count + gap * (count - 1);
+      setDynamicMaxHeight(computed);
+    };
+
+    const observer = new ResizeObserver(measureAndSet);
+    observer.observe(container);
+    requestAnimationFrame(measureAndSet);
+    return () => observer.disconnect();
+  }, [visibleCount, catalogModels.length]);
+
+  useEffect(() => {
+    if (!catalogSelectedModel || !catalogScrollRef.current) return;
+    const container = catalogScrollRef.current;
+    requestAnimationFrame(() => {
+      const el = container.querySelector(`[data-model-path="${catalogSelectedModel.path}"]`);
+      if (el) {
+        el.scrollIntoView({ block: "start", behavior: "smooth" });
       }
-    } catch {}
-  }, [models, selectedModel]);
-
-  // Refresh selected model reference when models array updates (e.g. after scan reloads metadata)
-  useEffect(() => {
-    if (!selectedModel || models.length === 0) return;
-    const fresh = models.find(m => m.path === selectedModel.path);
-    if (fresh && fresh !== selectedModel) {
-      setSelectedModel(fresh);
-    }
-  }, [models, selectedModel]);
-
-  const handleSelect = useCallback((model: ModelEntry) => {
-    setSelectedModel(model);
-    try { localStorage.setItem(LAST_MODEL_KEY, model.path); } catch {}
-  }, []);
-
-  const handleSort = useCallback((field: SortField) => {
-    if (sortField === field) {
-      setSortDirection((d) => (d === "asc" ? "desc" : "asc"));
-    } else {
-      setSortField(field);
-      setSortDirection("asc");
-    }
-  }, [sortField]);
-
-  const runningModelPaths = useMemo(() => {
-    return new Set(
-      stack
-        .filter(s => s.status === "RUNNING" || s.status === "LOADING")
-        .map(s => s.model_path)
-    );
-  }, [stack]);
-
-  const activeEngineByModel = useMemo(() => {
-    const map = new Map<string, { alias: string; port?: number }>();
-    stack
-      .filter(s => s.status === "RUNNING" || s.status === "LOADING")
-      .forEach(s => {
-        if (!map.has(s.model_path!)) {
-          map.set(s.model_path!, { alias: s.alias!, port: s.port });
-        }
-      });
-    return map;
-  }, [stack]);
-
-  const handleScanModel = useCallback(async (model: ModelEntry) => {
-    if (scanningPath) return;
-    setScanningPath(model.path);
-    try {
-      await invoke("scan_model_metadata_cmd", { modelPath: model.path, providerId: null });
-      onReload();
-    } catch (e) {
-      console.error("Scan failed:", e);
-    } finally {
-      setScanningPath(null);
-    }
-  }, [scanningPath, onReload]);
-
-  const handleScanAll = useCallback(async () => {
-    setBatchScanState({ active: true, scanned: 0, failed: 0, total: models.length });
-    try {
-      await invoke("scan_all_models_cmd", { modelBase: null, providerId: null });
-      onReload();
-    } catch (e) {
-      console.error("Batch scan failed:", e);
-    } finally {
-      setBatchScanState(s => ({ ...s, active: false }));
-    }
-  }, [models.length, onReload]);
-
-  const handleCancelScan = useCallback(async () => {
-    try {
-      await invoke("cancel_gguf_scan_cmd");
-    } catch (e) {
-      console.error("Cancel scan failed:", e);
-    }
-  }, []);
-
-  useEffect(() => {
-    try { localStorage.setItem(SORT_FIELD_KEY, sortField); } catch {}
-  }, [sortField]);
-
-  useEffect(() => {
-    try { localStorage.setItem(SORT_DIR_KEY, sortDirection); } catch {}
-  }, [sortDirection]);
-
-  const filtered = useMemo(() => {
-    let sorted = [...models].sort((a, b) => {
-      let comparison = 0;
-      if (sortField === "date") {
-        const aTs = (a.metadata?.file_created ?? 0);
-        const bTs = (b.metadata?.file_created ?? 0);
-        comparison = aTs - bTs;
-      } else {
-        const aVal = a[sortField];
-        const bVal = b[sortField];
-        if (sortField === "size_str") {
-          // Parse numeric GB from size strings like "126.2GB" for proper numeric sort
-          const parseGb = (s: string) => parseFloat(String(s).replace(/[^0-9.]/g, "")) || 0;
-          comparison = parseGb(aVal as string) - parseGb(bVal as string);
-        } else if (typeof aVal === "string" && typeof bVal === "string") {
-          comparison = aVal.localeCompare(bVal);
-        } else if (typeof aVal === "boolean" && typeof bVal === "boolean") {
-          comparison = Number(aVal) - Number(bVal);
-        } else {
-          comparison = 0;
-        }
-      }
-      return sortDirection === "asc" ? comparison : -comparison;
     });
+  }, [catalogSelectedModel?.path]);
 
-    // Pin running models to the top, preserving their relative order
-    const pinned: ModelEntry[] = [];
-    const rest: ModelEntry[] = [];
-    for (const m of sorted) {
-      if (runningModelPaths.has(m.path)) pinned.push(m);
-      else rest.push(m);
-    }
-    sorted = [...pinned, ...rest];
 
-    if (!search.trim()) return sorted;
-    const words = search.toLowerCase().trim().split(/\s+/);
-    return sorted.filter((m) => {
-      // Combine all searchable fields into one string for cross-word matching
-      const combined = `${m.name} ${m.author} ${m.quant}`.toLowerCase();
-      return words.every(word => combined.includes(word));
-    });
-  }, [models, sortField, sortDirection, search, runningModelPaths]);
 
-  // ── VRAM fit status per model ────────────────
-  type FitStatus = { label: string; colorClass: string };
-
-  const getFitStatus = useCallback((modelSizeMib: number): FitStatus => {
-    if (gpus.length === 0) return { label: "—", colorClass: "text-stealth-muted" };
-    const singleGpuVram = gpus[0].memory_total_manufactured || gpus[0].memory_total;
-    const totalVramMib = gpus.reduce((sum, g) => sum + (g.memory_total_manufactured || g.memory_total), 0);
-
-    if (modelSizeMib <= singleGpuVram) {
-      return { label: "FITS", colorClass: "text-nv-green" };
-    } else if (modelSizeMib <= totalVramMib) {
-      return { label: "SPLIT", colorClass: "text-telemetry-cyan" };
-    } else {
-      return { label: "RAM OFFLOAD", colorClass: "text-telemetry-red" };
-    }
-  }, [gpus]);
-
-  // Keyboard navigation — arrow keys navigate list, Enter selects, Ctrl+Enter launches
-  const handleKeyboardSelect = useCallback((index: number) => {
-    if (filtered[index]) handleSelect(filtered[index]);
-  }, [filtered, handleSelect]);
-
-  const handleLaunchFromConfig = useCallback(() => {
-    window.dispatchEvent(new CustomEvent("blackops-launch-engine"));
-  }, []);
-
-  const { highlightIndex, zone } = useKeyboardNav({
-    modelCount: filtered.length,
-    onSelectModel: handleKeyboardSelect,
-    onLaunch: handleLaunchFromConfig,
-  });
-
-  // ── Model card ────────────────
-  const renderModelCard = (model: ModelEntry, idx: number) => {
-    const isSelected = selectedModel?.path === model.path;
-    const isHighlighted = highlightIndex === idx && zone !== "config";
-    const hasMetadata = !!model.metadata;
-    const isNvfp = model.quant.toLowerCase().includes("nvfp");
-
-    // Derive size in MiB from metadata file_size_bytes, or parse size_str fallback
-    const modelSizeMib = hasMetadata && model.metadata.file_size_bytes > 0
-      ? Math.floor(model.metadata.file_size_bytes / (1024 * 1024))
-      : Math.floor(parseFloat(model.size_str) * 1024); // size_str is in GB
-
-    const fitStatus = getFitStatus(modelSizeMib);
-    const isScanning = scanningPath === model.path;
-    const isRunning = runningModelPaths.has(model.path);
-    const engineInfo = activeEngineByModel.get(model.path);
-
-    // Build params label: "27B dense" or "MOE 262B total 17 active"
-    // Prefer modelTypeLabel (GGUF general.size_label, author-set) over calculated total_params_str
-    let paramsLabel = "";
-    if (hasMetadata) {
-      const rawTotal = model.metadata.modelTypeLabel || model.metadata.total_params_str;
-      const numPart = parseFloat(rawTotal.replace(/[^0-9.]/g, ""));
-      // Only keep valid size suffix (B, T, M), strip everything else like "-A17B"
-      const suffixMatch = rawTotal.match(/([TMB])$/i);
-      const suffix = suffixMatch ? suffixMatch[1].toUpperCase() : "B";
-      if (!isNaN(numPart)) {
-        const rounded = Math.round(numPart);
-        if (model.metadata.n_expert_used > 0) {
-          // Try to parse active params from model name pattern like "A17B"
-          const activeMatch = model.name.match(/A(\d+)B/i);
-          const activeBillions = activeMatch ? parseInt(activeMatch[1]) : null;
-          if (activeBillions) {
-            paramsLabel = `MOE ${rounded}${suffix} total ${activeBillions} active`;
-          } else {
-            paramsLabel = `MOE ${rounded}${suffix} total ${model.metadata.n_expert_used} active`;
-          }
-        } else {
-          paramsLabel = `${rounded}${suffix} dense`;
-        }
+  // Build flat list of all running instances for pinned grid
+  const pinnedInstanceList = useRef<{ entry: StackEntry; modelAuthor?: string; sourcePathLabel?: string; modelName: string; quant: string; sizeStr: string }[]>([]).current;
+  const buildPinnedInstances = () => {
+    const result: typeof pinnedInstanceList = [];
+    for (const [path, entries] of runningInstances) {
+      const model = models.find(m => m.path === path);
+      for (const entry of entries) {
+        result.push({
+          entry,
+          modelAuthor: model?.author,
+          sourcePathLabel: model?.sourcePathLabel,
+          modelName: model?.name || entry.model_name || "",
+          quant: model?.quant || "",
+          sizeStr: model?.size_str || "",
+        });
       }
     }
-
-    return (
-      <motion.div
-        key={model.path}
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: Math.min(idx * 0.02, 0.4), duration: 0.3 }}
-        onClick={() => handleSelect(model)}
-        className={`relative cursor-pointer rounded-sm p-3 ${
-          isSelected
-            ? "brushed-steel-card border"
-            : isRunning
-              ? "bg-black/40 border-2 border-amber-400 hover:bg-black/60"
-              : "cyber-card hover:bg-black/40"
-        }`}
-      >
-        {/* Gold badge — top right corner when model is running */}
-        {isRunning && (
-          <motion.div
-            initial={{ scale: 0, rotate: -180 }}
-            animate={{ scale: 1, rotate: 0 }}
-            className="absolute -top-2 -right-2 z-10"
-          >
-            <svg width="36" height="36" viewBox="0 0 36 36">
-              {/* Gold circle with black border */}
-              <circle cx="18" cy="18" r="17" fill="#FBBF24" stroke="#000" strokeWidth="2"/>
-              
-              {/* "RUNNING" text curved along top arc */}
-              <text
-                x="18"
-                y="12"
-                textAnchor="middle"
-                fill="#000"
-                fontSize="4"
-                fontWeight="bold"
-                fontFamily="monospace"
-              >
-                RUNNING
-              </text>
-              
-              {/* Checkmark in center */}
-              <path 
-                d="M12 18L15.5 21.5L23 14" 
-                stroke="#000" 
-                strokeWidth="2.5" 
-                strokeLinecap="round" 
-                strokeLinejoin="round"
-                fill="none"
-              />
-            </svg>
-          </motion.div>
-        )}
-
-        {/* Author + source path — top-left, tight above model name */}
-        <div className="flex items-center gap-1.5 mb-1">
-          <span className="text-[8px] font-mono text-stealth-muted truncate">{model.author}</span>
-          {model.sourcePathLabel && (
-            <span className="text-[7px] font-mono text-stealth-muted/50 bg-stealth-surface px-1 py-0.5 rounded-sm shrink-0" title={model.path}>
-              📁 {model.sourcePathLabel}
-            </span>
-          )}
-        </div>
-
-        {/* Model name (left) + quant/size stack (right) */}
-        <div className="flex items-center justify-between gap-2">
-          <span className={`text-xs font-mo truncate flex-shrink min-w-0 ${isSelected ? "text-nv-green" : "text-white"}`} title={model.name}>
-            {model.name}
-            {model.vision && (
-              <span className="text-[8px] font-mono text-telemetry-cyan ml-1 flex-shrink-0" title="Vision capable">👁</span>
-            )}
-          </span>
-
-          {/* Right-aligned: quant above size, fit status below */}
-          <div className="flex flex-col items-end flex-shrink-0 gap-0.5">
-            <span className={`text-[9px] font-mono px-1 py-0.5 rounded-sm ${isNvfp
-              ? 'bg-nv-green/20 border border-nv-green/40 text-nv-green'
-              : 'border border-telemetry-cyan/30 text-telemetry-cyan'}`}>
-              {model.quant}
-            </span>
-            <div className="flex items-center gap-1.5">
-              <span className="text-[8px] font-mono text-stealth-muted">{model.size_str}</span>
-              <span className={`text-[7px] font-mono tracking-wider ${fitStatus.colorClass}`}>● {fitStatus.label}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Params label below model name (left-aligned) */}
-        {paramsLabel && (
-          <div className="text-[8px] font-mono text-white mt-0.5">{paramsLabel}</div>
-        )}
-
-        {/* Metadata row or scan button */}
-        {hasMetadata ? (
-          <div className="mt-1.5 pt-1.5 border-t border-stealth-border/30 flex justify-end">
-            <span className="text-[7px] font-mono text-stealth-muted" title={model.metadata.architecture}>
-              {model.metadata.architecture} · KV:{model.metadata.n_ctx_train.toLocaleString()} H:{model.metadata.n_head}({model.metadata.n_head_kv})
-            </span>
-          </div>
-        ) : (
-          <div className="mt-1.5 pt-1.5 border-t border-stealth-border/30 flex justify-end">
-            <button
-              onClick={(e) => { e.stopPropagation(); handleScanModel(model); }}
-              disabled={isScanning || scanningPath !== null}
-              className={`text-[7px] font-mono px-1.5 py-0.5 rounded-sm transition-colors ${
-                isScanning 
-                  ? 'text-telemetry-cyan border border-telemetry-cyan/40 bg-telemetry-cyan/10'
-                  : 'text-orange-400 border border-orange-400/30 hover:bg-orange-400/10 disabled:opacity-30'
-              }`}
-            >
-              {isScanning ? '⠋ SCANNING...' : '⚠ SCAN'}
-            </button>
-          </div>
-        )}
-      </motion.div>
-    );
+    return result;
   };
+
+  // Determine effective alias for right panel: ONLY from mini card click (selectedEngineAlias)
+  const effectiveEngineAlias = selectedEngineAlias;
+
+  // Determine effective port for right panel
+  const effectiveEnginePort = useMemo(() => {
+    if (!selectedEngineAlias) return undefined;
+    const entry = stack.find(s => s.alias === selectedEngineAlias);
+    return entry?.port;
+  }, [selectedEngineAlias, stack]);
 
   // ── Sort bar ────────────────
-  const sortLabels: Record<string, string> = {
-    name: 'NAME', author: 'AUTHOR', size_str: 'SIZE', date: 'DATE'
-  };
-
   const renderSortBar = () => (
     <div className="flex items-center gap-1 px-3 py-2 border-b border-stealth-border/50">
       {(["name", "author", "size_str", "date"] as SortField[]).map((field) => (
@@ -422,10 +158,35 @@ export default function ModelCatalog(props: ModelCatalogProps) {
         className="px-2 py-0.5 text-[8px] font-mono border border-stealth-border text-stealth-muted hover:text-nv-green hover:border-nv-green/60 transition-colors rounded-sm"
         title="Refresh model list"
       >
-        ➸ REFRESH
+        ↻
       </button>
+      <div className="flex items-center gap-1 ml-2">
+        {(["4", "6", "8"] as const).map(count => (
+          <button
+            key={count}
+            onClick={() => setVisibleCount(count)}
+            className={`px-1.5 py-0 text-[7px] font-mono rounded-sm transition-colors ${
+              visibleCount === count ? "value-chip-active" : "value-chip"
+            }`}
+          >
+            {count}
+          </button>
+        ))}
+        <button
+          onClick={() => setVisibleCount("all")}
+          className={`px-1.5 py-0 text-[7px] font-mono rounded-sm transition-colors ${
+            visibleCount === "all" ? "value-chip-active" : "value-chip"
+          }`}
+        >
+          ALL
+        </button>
+      </div>
     </div>
   );
+
+
+
+  const totalRunning = runningInstances.size;
 
   return (
     <div className="flex flex-col h-full">
@@ -438,7 +199,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
       >
         <div className="flex items-center gap-3">
           <h2 className="text-xs font-mono text-nv-green tracking-widest glitch-text">✦ MODEL CATALOG</h2>
-          <span className="text-[9px] font-mono text-stealth-muted">{filtered.length} / {models.length}</span>
+          <span className="text-[9px] font-mono text-stealth-muted">{allFiltered.length} / {models.length}</span>
           {zone === "config" && (
             <span className="text-[8px] font-mono px-1.5 py-0.5 rounded-sm border border-telemetry-cyan/40 text-telemetry-cyan bg-telemetry-cyan/10">
               CONFIG [Ctrl+Enter]
@@ -460,42 +221,105 @@ export default function ModelCatalog(props: ModelCatalogProps) {
         </div>
       )}
 
-      {/* Search bar */}
-      <div className="px-4 py-2 border-b border-stealth-border/50">
-        <input
-          type="text"
-          placeholder="▶  SEARCH MODELS..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          autoFocus
-          className="w-full bg-depth-black/50 border border-stealth-border text-white text-xs font-mono px-3 py-1.5 focus:outline-none focus:border-nv-green/60 placeholder:text-stealth-muted rounded-sm"
-        />
-      </div>
-
       {/* Split panels */}
       <div className="flex flex-1 overflow-hidden">
         {/* Left panel — model browser */}
         <div className="w-[420px] min-w-[320px] flex flex-col border-r border-stealth-border/50 cyber-panel">
+
+          {/* Pinned running instances zone (fixed, no scroll) */}
+          {totalRunning > 0 && (() => {
+            const instances = buildPinnedInstances();
+            return (
+              <div className="flex-shrink-0 flex flex-col">
+                {/* Spacer matching right-side provider selector to align mini cards with VramBadge top */}
+                <div className="h-[56px] flex-shrink-0" />
+                <div className="flex-shrink-0 px-3 py-2 border-b section-divider relative bg-black/20">
+                  <label className="text-[9px] font-mono tracking-widest uppercase block mb-1.5 glitch-text" style={{ color: '#FBBF24' }}>
+                    ▶ RUNNING ({instances.length} instances / {totalRunning} models)
+                  </label>
+                </div>
+                <div className="grid grid-cols-2 gap-1 px-3 pb-2">
+                  {instances.map(item => {
+                    // Mini card selection is driven ONLY by alias — catalog clicks must not affect it
+                    const isThisSelected = selectedEngineAlias === item.entry.alias;
+                    return (
+                      <MiniModelCard
+                        key={item.entry.alias!}
+                        entry={item.entry}
+                        modelAuthor={item.modelAuthor}
+                        modelName={item.modelName}
+                        quant={item.quant}
+                        sizeStr={item.sizeStr}
+                        isSelected={isThisSelected}
+                        isNewLaunch={newlyLaunchedAlias === item.entry.alias}
+                        onSelect={handleSelectByAlias}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Search bar */}
+          <div className="px-3 py-2 border-b border-stealth-border/50 flex-shrink-0">
+            <input
+              type="text"
+              placeholder="▶  SEARCH MODELS..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              autoFocus
+              className="w-full bg-depth-black/50 border border-stealth-border text-white text-xs font-mono px-3 py-1.5 focus:outline-none focus:border-nv-green/60 placeholder:text-stealth-muted rounded-sm"
+            />
+          </div>
+
           {renderSortBar()}
 
-          <div id="model-table-container" className="flex-1 overflow-y-auto cyber-scrollbar p-3">
-            {filtered.length === 0 ? (
+          {/* Scrollable catalog zone — all models, height constrained by visibleCount */}
+          {(() => {
+            const style = visibleCount !== 'all' && dynamicMaxHeight ? { height: `${dynamicMaxHeight}px` } : undefined;
+            return (
+              <div ref={catalogScrollRef} id="model-table-container" className={`overflow-y-auto cyber-scrollbar p-3 pb-[60px] ${visibleCount === 'all' ? 'flex-1 min-h-0' : 'flex-shrink-0'}`} style={style}>
+            {allFiltered.length === 0 ? (
               <div className="flex items-center justify-center h-full text-stealth-muted text-xs font-mono opacity-50">
                 NO MODELS FOUND
               </div>
             ) : (
               <div className="grid grid-cols-1 gap-2">
-                {filtered.map((model, idx) => renderModelCard(model, idx))}
+                {catalogModels.map((model, idx) => {
+                    const isSelected = catalogSelectedModel?.path === model.path;
+                    return (
+                      <div key={model.path} data-model-path={model.path}>
+                        <ModelCard
+                          model={model}
+                          idx={idx}
+                          isSelected={isSelected}
+                          isHighlighted={highlightIndex >= pinnedModels.length && highlightIndex - pinnedModels.length === idx && zone !== "config"}
+                          fitStatus={getFitStatus(
+                            model.metadata && model.metadata.file_size_bytes > 0
+                              ? Math.floor(model.metadata.file_size_bytes / (1024 * 1024))
+                              : Math.floor(parseFloat(model.size_str) * 1024)
+                          )}
+                          onSelect={handleSelect}
+                          onScanModel={handleScanModel}
+                          scanningPath={scanningPath}
+                        />
+                      </div>
+                    );
+                  })}
               </div>
             )}
           </div>
+            );
+          })()}
         </div>
+        {/* end left panel */}
 
         {/* Right panel — config + diagnostics */}
         <div className="flex-1 cyber-panel overflow-hidden flex flex-col">
           <div className="flex-shrink-0">
             <EngineConfigPanel
-              model={selectedModel}
+              model={panelActiveModel}
               gpus={gpus}
               providers={externalProviders}
               committedVramMib={committedVramMib}
@@ -503,9 +327,9 @@ export default function ModelCatalog(props: ModelCatalogProps) {
               systemInfo={systemInfo}
               stack={stack}
               onLaunch={onLaunch}
-              isModelRunning={selectedModel ? runningModelPaths.has(selectedModel.path) : false}
-              activeEngineAlias={selectedModel ? activeEngineByModel.get(selectedModel.path)?.alias : undefined}
-              activeEnginePort={selectedModel ? activeEngineByModel.get(selectedModel.path)?.port : undefined}
+              isModelRunning={panelActiveModel ? runningModelPaths.has(panelActiveModel.path) : false}
+              activeEngineAlias={effectiveEngineAlias}
+              activeEnginePort={effectiveEnginePort}
             />
           </div>
         </div>

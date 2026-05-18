@@ -1,8 +1,9 @@
 import { motion, AnimatePresence } from "framer-motion";
 import type { GpuInfo, VramManifest, ModelMetadata } from "../lib/types";
 import GpuTopology from "./GpuTopology";
-import FusionVramBadgeOverlay from "./FusionVramBadgeOverlay";
+import FusionOverlay from "./FusionOverlay";
 import MoeBadge from "./MoeBadge";
+import { useFusionData } from "../hooks/useFusionData";
 
 interface VramBadgeProps {
   manifest: VramManifest | null;
@@ -57,14 +58,27 @@ export default function VramBadge({
   const ramUsagePct = manifest.ramManufacturedGb > 0 ? Math.min((manifest.ramTotalGb / manifest.ramManufacturedGb) * 100, 100) : 0;
   const ramMfgGb = manifest.ramManufacturedGb.toFixed(0);
 
+  // Fusion overlay data (only when a specific engine is selected via mini card)
+  const { getEngine } = useFusionData();
+  const fusion = activeEngineAlias ? getEngine(activeEngineAlias) : null;
+
   return (
     <div className="px-3 py-2.5 relative">
-      {/* Overlay when model is running — covers entire forecast container */}
-      {isModelRunning && (
-        <FusionVramBadgeOverlay 
-          engineAlias={activeEngineAlias} 
-          enginePort={activeEnginePort}
-        />
+      {/* Overlay when a specific engine is selected (mini card click) — covers entire forecast container */}
+      {activeEngineAlias && activeEnginePort && fusion && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="absolute z-50 fusion-eink-bg overflow-hidden flex items-center justify-center rounded-xl border border-stealth-border p-[5px]"
+          style={{ top: '1px', right: '1px', bottom: '1px', left: '1px' }}
+        >
+          <FusionOverlay
+            alias={activeEngineAlias}
+            enginePort={activeEnginePort}
+            fusion={fusion}
+          />
+        </motion.div>
       )}
 
       {/* ── Header row ─── */}

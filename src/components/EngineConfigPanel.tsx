@@ -487,7 +487,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       // Only persist if user actively edited the alias — skip auto-generated ENGINE_N names
       const wasUserEdited = aliasUserEditedRef.current;
       if (wasUserEdited) {
-        saveAliasForModel(model.path, finalAlias);
+        saveAliasForModel(model.path, aliasInput.trim());
       }
     } catch {}
   };
