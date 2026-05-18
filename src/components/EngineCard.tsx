@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { StackEntry, LogEntry, EnginePerfEvent, BenchResult } from "../lib/types";
 import EnginePerformanceTile from "./EnginePerformanceTile";
+import AnsiText from "./AnsiText";
 
 interface EngineCardProps {
   entry: StackEntry;
@@ -384,11 +385,11 @@ export default memo(function EngineCard({ entry, logs, systemEvents, enginePerfE
               const isPhase = log.text.includes("PHASE") || log.text.includes("READY") || log.text.includes("LAUNCHED");
               return (
                 <p key={i} className={`text-[10px] font-mono leading-relaxed ${
-                  isPhase 
-                    ? phaseColor === "text-nv-green" ? "text-nv-green/80" : "text-telemetry-amber/80"
-                    : "text-stealth-muted"
+                    isPhase 
+                        ? phaseColor === "text-nv-green" ? "text-nv-green/80" : "text-telemetry-amber/80"
+                        : "text-stealth-muted"
                 }`}>
-                  {log.text}
+                  <AnsiText text={log.text} />
                 </p>
               );
             })}

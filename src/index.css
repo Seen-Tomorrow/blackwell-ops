@@ -875,4 +875,20 @@ select option {
   text-shadow: 0 0 3px rgba(245, 240, 232, 0.9), 0 0 6px rgba(245, 240, 232, 0.5);
 }
 
+/* ── Dock expanded panel slide-up animation ─── */
+@keyframes dockSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-up {
+  animation: dockSlideUp 0.2s ease-out forwards;
+}
+
 

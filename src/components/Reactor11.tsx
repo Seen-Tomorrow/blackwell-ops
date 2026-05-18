@@ -7,13 +7,14 @@ import R11_CoreGemini from "./R11_CoreGemini";
 import R11_Sidebar from "./R11_Sidebar";
 import R11_Wells from "./R11_Wells";
 import R11_DiagnosticOverlay from "./R11_DiagnosticOverlay";
+import { useTelemetry } from "../context/TelemetryContext";
 
 interface Props {
-  gpus: GpuInfo[];
   models: ModelEntry[];
 }
 
-export default function Reactor11({ gpus, models }: Props) {
+export default function Reactor11({ models }: Props) {
+  const { gpus } = useTelemetry();
   const [rods, setRods] = useState<R11RodHandle[]>([]);
   const [tierEnabled, setTierEnabled] = useState(false);
   const [diagnosticMode, setDiagnosticMode] = useState(false);

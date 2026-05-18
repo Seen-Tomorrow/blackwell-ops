@@ -113,13 +113,11 @@ impl LogHub {
             match lines.next_line().await {
                 Ok(Some(line)) => {
                     if !line.is_empty() {
-                        // Replace ESC byte (0x1B) with safe placeholder for JSON transport.
-                        // Tauri's serde JSON serialization corrupts raw control characters.
-                        let text = line.replace('\x1b', "%%ESC%%");
+                        // Raw ANSI passes through JSON natively as \u001b escape sequences.
                         let entry = LogEntry {
                             slot,
                             alias: alias.clone(),
-                            text,
+                            text: line,
                             timestamp: chrono::Local::now().format("%H:%M:%S%.3f").to_string(),
                         };
                         let _ = tx.send(entry);

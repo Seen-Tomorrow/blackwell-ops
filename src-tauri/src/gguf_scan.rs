@@ -37,6 +37,7 @@ pub fn scan_model_metadata(model_path: &str, binary_path: &str) -> Result<ModelM
 
     let mut child = Command::new(binary_path)
         .args(["-m", model_path, "-ngl", "0", "-t", "1"]) // Single thread — reduce CPU load during scan
+        .args(crate::types::LLAMA_DIAGNOSTIC_FLAGS.iter().map(|s| s.to_string()))
         .env("CUDA_VISIBLE_DEVICES", "") // Hide GPUs — forces pure CPU, zero VRAM usage
         .env("OMP_NUM_THREADS", "1")     // Single thread — reduce CPU load during scan
         .stdout(Stdio::null()) // stdout is empty — all output goes to stderr
@@ -135,17 +136,18 @@ pub fn scan_model_metadata(model_path: &str, binary_path: &str) -> Result<ModelM
 
 /// Parse a single line from llama-server output and update metadata.
 fn parse_line(line: &str, m: &mut ModelMetadata) {
-    // KV lines: "kv N: key type = value"
+    // KV lines: "kv N: key type = value" — uses .contains(), timestamp-safe
     if line.contains("llama_model_loader:") && line.contains(" kv ") {
         parse_kv_line(line, m);
     }
     // print_info lines: "print_info: key                  = value"
-    else if line.starts_with("print_info:") {
-        let rest = &line["print_info:".len()..];
+    // Stable builds prepend timestamps like "0.00.483.965 I", so use .find() instead of .starts_with()
+    else if let Some(pi_pos) = line.find("print_info:") {
+        let rest = &line[pi_pos + "print_info:".len()..];
         parse_print_info(rest.trim(), m);
     }
-    // Tensor type counts: "- type  f32:  373 tensors"
-    else if (line.starts_with("- type ") || line.starts_with("  - type ")) && line.contains("tensors") {
+    // Tensor type counts: "- type  f32:  373 tensors" — timestamp-safe with .contains()
+    else if line.contains("- type ") && line.contains("tensors") {
         parse_tensor_type(line, m);
     }
 }

@@ -9,6 +9,7 @@ path = "src/main.rs"
 
 [features]
 default = []
+reactor11 = []
 
 [dependencies]
 tauri = { version = "2", features = [] }

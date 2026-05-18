@@ -1,7 +1,10 @@
 import { motion } from "framer-motion";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import type { Tab } from "../App";
-import { useStatus } from "../context/StatusBarContext";
+import type { ProviderConfig } from "../lib/types";
+import { useStatus, type Env } from "../context/StatusBarContext";
+import { useDock } from "../context/DockContext";
+import FoundryModal from "./FoundryModal";
 import { KEYS } from "../lib/storage";
 
 function isMobileDevice(): boolean {
@@ -65,23 +68,26 @@ interface LayoutProps {
   activeTab: Tab;
   onTabChange: (tab: Tab) => void;
   children: React.ReactNode;
+  providers?: ProviderConfig[];
 }
 
 const tabs: { id: Tab; label: string; icon: string; hidden?: boolean }[] = [
   { id: "catalog", label: "MODELS", icon: "\u269B" },
   { id: "modelhub", label: "MODEL HUB", icon: "\uD83DDDC4" },
   { id: "stack", label: "ENGINES", icon: "\uD83D\uDDA4" },
-{ id: "reactor11", label: "Reactor11", icon: "\u269B" },
+{ id: "reactor11", label: "Reactor11", icon: "\u269B", hidden: true },
   { id: "telemetry", label: "TELEMETRY", icon: "\uD83D\uDCCA" },
   { id: "logs", label: "LOGS", icon: "\uD83D\uDCCD" },
   { id: "config", label: "CONFIG", icon: "\u2699" },
   { id: "sentinel", label: "SENTINEL", icon: "\u2694" },
 ];
 
-export default function Layout({ activeTab, onTabChange, children }: LayoutProps) {
+export default function Layout({ activeTab, onTabChange, children, providers = [] }: LayoutProps) {
   const [adminLockState, setAdminLockState] = useState(loadAdminLock);
   const [zoom, setZoom] = useState(loadZoom);
-  const { totalParams, hiddenCount, onShowAll, flashMessage } = useStatus();
+  const { totalParams, hiddenCount, onShowAll, flashMessage, openBuildModal, minimizeBuildModal, closeBuildModal, buildProgress, foundryModal, foundryModalVisible } = useStatus();
+  const { slots, toggleSlot } = useDock();
+  // Dock slot click: if modal exists and is visible → minimize; if exists but hidden → restore; if no modal but build running → open fresh
   const [showTooltip, setShowTooltip] = useState(false);
   const [isMobile, setIsMobile] = useState(isMobileDevice);
 
@@ -149,8 +155,8 @@ export default function Layout({ activeTab, onTabChange, children }: LayoutProps
               <h1 className="text-sm font-mono font-bold tracking-widest text-white">
                 BLACKWELL OPS
               </h1>
-              <p className="text-[10px] font-mono text-stealth-muted tracking-wider">
-                SENTINEL v0.1.0
+              <p className="text-[8px] font-mono text-white/25 tracking-wider">
+                BUILD {__APP_VERSION__}
               </p>
             </div>
           </div>
@@ -209,8 +215,48 @@ export default function Layout({ activeTab, onTabChange, children }: LayoutProps
         <div className="flex items-center gap-4">
           <span>PLATFORM: WINDOWS</span>
           <span>TOKIO: ACTIVE</span>
-          <span>BUILD: {__APP_VERSION__}</span>
         </div>
+
+        {/* Dock slots — 8 positions between left and right groups, occupied slots flex-grow to share space */}
+        <div className="flex items-center gap-1 min-w-0" style={{ flex: "1 1 auto", maxWidth: "50%" }}>
+          {slots.map((slot, i) => (
+            <button
+              key={i}
+              onClick={() => {
+                if (!slot.occupied) return;
+                // Slot 0 = build progress — toggle modal visibility (minimize/restore)
+                if (i === 0 && foundryModal) {
+                  if (foundryModalVisible) minimizeBuildModal(); // Visible → minimize to dock
+                  else openBuildModal(foundryModal.providerId, foundryModal.environment); // Hidden → restore
+                } else if (i === 0 && buildProgress) {
+                  openBuildModal(buildProgress.providerId, buildProgress.environment.toLowerCase() as Env);
+                } else {
+                  toggleSlot(i);
+                }
+              }}
+              className={`flex items-center gap-2 px-3 py-0.5 border rounded-sm transition-all ${
+                slot.occupied
+                  ? "border-yellow-400/40 bg-yellow-400/[0.05] cursor-pointer hover:bg-yellow-400/10 min-w-[80px]"
+                  : "border-transparent w-[28px] flex-shrink-0"
+              }`}
+              style={slot.occupied ? { flexGrow: 1 } : undefined}
+            >
+              {slot.occupied ? (
+                <>
+                  <span className="text-[9px]">{slot.config?.icon || "◉"}</span>
+                  <div className="flex items-center gap-1 min-w-0">
+                    <span className="text-[8px] font-mono text-white/40 flex-shrink-0">#{i + 1}</span>
+                    {slot.config?.inlineContent}
+                  </div>
+                </>
+              ) : (
+                <span className="text-[7px] font-mono text-white/10">{i + 1}</span>
+              )}
+            </button>
+          ))}
+        </div>
+
+        {/* Right group */}
         <div className="flex items-center gap-4 relative">
           {isConfigTab && (
             <>
@@ -237,6 +283,19 @@ export default function Layout({ activeTab, onTabChange, children }: LayoutProps
           </span>
         </div>
       </footer>
+
+      {/* Foundry Build Modal — always mounted, CSS visibility controlled by foundryModalVisible */}
+      <FoundryModal
+        provider={(() => {
+          if (!foundryModal) return providers?.[0] || {} as ProviderConfig;
+          const prov = providers?.find(p => p.id === foundryModal.providerId);
+          return prov || providers?.[0] || {} as ProviderConfig;
+        })()}
+        environment={foundryModal?.environment || "vanguard"}
+        onClose={() => {}} // Never called — modal is always mounted, StatusBarContext handles cleanup on Complete/Failed
+        visible={foundryModalVisible}
+        onMinimize={minimizeBuildModal}
+      />
     </div>
   );
 }

@@ -1,7 +1,7 @@
 {
-  "productName": "Blackwell Ops",
+  "productName": "Blackwell Ops DEV",
   "version": "0.7.7",
-  "identifier": "com.blackwell-ops.app",
+  "identifier": "com.blackwell-ops.app.dev",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420"
@@ -11,7 +11,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Blackwell Ops",
+        "title": "Blackwell Ops DEV",
         "width": 1400,
         "height": 900,
         "minWidth": 1280,

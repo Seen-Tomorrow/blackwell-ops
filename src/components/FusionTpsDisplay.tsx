@@ -6,7 +6,7 @@ const HEIGHT = 32;
 const BASELINE = HEIGHT - 3;
 const MAX_TPS = 600;
 
-export default function FusionTpsDisplay({ tps, history }: { tps: number; history: number[] }) {
+export default function FusionTpsDisplay({ tps, smoothedTps, history }: { tps: number; smoothedTps: number; history: number[] }) {
   const histRef = useRef<number[]>([]);
   const [, setTick] = useState(0);
 
@@ -30,18 +30,20 @@ export default function FusionTpsDisplay({ tps, history }: { tps: number; histor
   if (points.length === 0) points.push(`0,${BASELINE}`, `${WIDTH},${BASELINE}`);
   const pathD = `M${points.join(" L")}`;
 
+  const display = smoothedTps > 0 ? smoothedTps : tps;
+
   // Color tiers
   let colorClass: string;
-  if (tps >= 80) colorClass = "text-telemetry-cyan";
-  else if (tps >= 50) colorClass = "text-nv-green";
-  else if (tps > 0) colorClass = "text-orange-400";
+  if (display >= 80) colorClass = "text-telemetry-cyan";
+  else if (display >= 50) colorClass = "text-nv-green";
+  else if (display > 0) colorClass = "text-orange-400";
   else colorClass = "text-stealth-muted/60";
 
   return (
     <div className="flex flex-col items-center gap-1">
       {/* Big TPS number */}
       <span className={`font-mono font-bold tracking-tight ${colorClass}`} style={{ fontSize: 'clamp(1.2rem, 5vh, 2.5rem)' }}>
-        {tps > 0 ? tps.toFixed(0) : "--"}
+        {display > 0 ? display.toFixed(0) : "--"}
       </span>
       <span className="text-[8px] font-mono text-stealth-muted/60 tracking-widest">TOKENS / SEC</span>
 

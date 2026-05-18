@@ -42,6 +42,9 @@ pub struct ProviderMeta {
     /// Per-environment build info captured from binary --version + file mtime.
     #[serde(default, skip_serializing_if = "HashMap::is_empty", rename = "buildInfoPerEnv")]
     pub build_info_per_env: HashMap<String, crate::types::BuildInfo>,
+    /// Per-environment binary paths — each env builds into its own directory (build-vanguard/bin/Release, etc.).
+    #[serde(default, skip_serializing_if = "HashMap::is_empty", rename = "binaryPathPerEnv")]
+    pub binary_path_per_env: HashMap<String, String>,
     /// Last cherry-picked PR number per environment (for badge display)
     #[serde(default, skip_serializing_if = "HashMap::is_empty", rename = "lastPrPerEnv")]
     pub last_pr_per_env: HashMap<String, String>,
@@ -280,6 +283,7 @@ pub fn persist_provider_meta(providers: &[crate::types::ProviderConfig]) -> Resu
         template_type: p.template_type.clone(),
         display_order: p.display_order,
         build_info_per_env: p.build_info_per_env.clone(),
+        binary_path_per_env: p.binary_path_per_env.clone(),
         last_pr_per_env: p.last_pr_per_env.clone(),
     }).collect();
     save_provider_meta(metas)
@@ -312,6 +316,7 @@ fn load_legacy_provider_meta() -> Vec<ProviderMeta> {
                                 template_type: crate::templates::ProviderTemplate::template_type_for_id(id),
                                 display_order: 0,
                                 build_info_per_env: HashMap::new(),
+                                binary_path_per_env: HashMap::new(),
                                 last_pr_per_env: HashMap::new(),
                             });
                         }
@@ -392,6 +397,7 @@ fn genesis_providers() -> Vec<crate::types::ProviderConfig> {
             build_profile: String::new(),
             template_type: "ggml-llama".into(),
             build_info_per_env: std::collections::HashMap::new(),
+            binary_path_per_env: std::collections::HashMap::new(),
             last_pr_per_env: std::collections::HashMap::new(),
             display_order: 0,
         },
@@ -409,6 +415,7 @@ fn genesis_providers() -> Vec<crate::types::ProviderConfig> {
             build_profile: String::new(),
             template_type: "ik-llama".into(),
             build_info_per_env: std::collections::HashMap::new(),
+            binary_path_per_env: std::collections::HashMap::new(),
             last_pr_per_env: std::collections::HashMap::new(),
             display_order: 1,
         },
@@ -814,6 +821,7 @@ fn build_config_with_providers_full(gpu_count: usize, mut config: AppConfig) -> 
                 build_profile: meta.build_profile.clone(),
                 template_type: resolved_type,
                 build_info_per_env: meta.build_info_per_env,
+                binary_path_per_env: meta.binary_path_per_env,
                 last_pr_per_env: meta.last_pr_per_env,
                 display_order: meta.display_order,
             });

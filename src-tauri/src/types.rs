@@ -55,6 +55,10 @@ fn default_rope_scale() -> f64 { 1.0 }
 
 fn default_ffi_provider() -> String { "ggml-stable".to_string() }
 
+/// CLI flags injected into short-lived diagnostic spawns (fit scanner, GGUF scan).
+/// NOT applied to long-running engine servers — those should stay quiet under load.
+pub const LLAMA_DIAGNOSTIC_FLAGS: &[&str] = &["--verbose"];
+
 /// HF API metadata persisted at download time — never changes, survives API outages.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HfMetadata {
@@ -282,6 +286,9 @@ pub struct ProviderConfig {
     /// Per-environment build info (vanguard/stable/fresh) — captured from binary --version + file mtime.
     #[serde(default, skip_serializing_if = "HashMap::is_empty", rename = "buildInfoPerEnv")]
     pub build_info_per_env: HashMap<String, BuildInfo>,
+    /// Per-environment binary paths — each env builds into its own directory (build-vanguard/bin/Release, etc.).
+    #[serde(default, skip_serializing_if = "HashMap::is_empty", rename = "binaryPathPerEnv")]
+    pub binary_path_per_env: HashMap<String, String>,
     /// Last cherry-picked PR number per environment (for badge display)
     #[serde(default, skip_serializing_if = "HashMap::is_empty", rename = "lastPrPerEnv")]
     pub last_pr_per_env: HashMap<String, String>,

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { GpuInfo, StackEntry } from "../lib/types";
+import { useTelemetry } from "../context/TelemetryContext";
 
 // ── Sentinel Protocol Types ────────────────────────────────────────────
 
@@ -67,7 +68,8 @@ interface TelemetryUpdateData {
   engine_status?: string;
 }
 
-export default function MobileSentinelPage({ gpus, stack, onTelemetryUpdate }: { gpus: GpuInfo[]; stack: StackEntry[]; onTelemetryUpdate?: (data: TelemetryUpdateData) => void }) {
+export default function MobileSentinelPage({ stack, onTelemetryUpdate }: { stack: StackEntry[]; onTelemetryUpdate?: (data: TelemetryUpdateData) => void }) {
+  const { gpus } = useTelemetry();
   const [bridgeStatus, setBridgeStatus] = useState<BridgeStatus>("disconnected");
   const [wsUrl, setWsUrl] = useState(WS_URL);
   const [lastTelemetry, setLastTelemetry] = useState<SentinelTelemetryPayload | null>(null);

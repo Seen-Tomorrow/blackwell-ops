@@ -1,6 +1,6 @@
 use std::process::Stdio;
 use std::sync::Arc;
-use tokio::sync::broadcast;
+use tokio::sync::mpsc;
 use crate::types::{EngineConfig, StackEntry};
 use crate::log_hub::LogHub;
 
@@ -61,8 +61,8 @@ impl std::fmt::Display for SlotStatus {
 #[derive(Debug)]
 pub struct EngineSlot {
     pub conpty_proc: Option<conpty::Process>,
-    /// Broadcast sender for ConPTY output — consumed by perf reader + readiness watcher
-    pub output_tx: Option<broadcast::Sender<String>>,
+    /// Sender for ConPTY output — single consumer (unified reader task)
+    pub output_tx: Option<mpsc::UnboundedSender<String>>,
     /// Buffered output lines for crash diagnostics (last 50 lines) — std Mutex since only accessed synchronously
     pub error_buffer: Arc<std::sync::Mutex<Vec<String>>>,
     pub port: u16,
@@ -132,7 +132,9 @@ impl EngineStack {
         None
     }
 
-    /// Spawns llama-server via ConPTY. Returns a Receiver for combined stdout+stderr lines.
+    /// Spawns llama-server via ConPTY. Returns the receiver half of the output channel
+    /// so the caller can spawn the unified reader task. The sender half is stored in the slot
+    /// and will be dropped on stop_slot/kill_all to terminate the reader gracefully.
     pub async fn load_slot_with_args(
         &mut self,
         slot_idx: usize,
@@ -143,7 +145,7 @@ impl EngineStack {
         cmd_args: Vec<String>,
         provider_display_name: String,
         backend_type: String,
-    ) -> Result<(), String> {
+    ) -> Result<mpsc::UnboundedReceiver<String>, String> {
         let slot = self.slots[slot_idx].as_mut().ok_or("Slot not found")?;
 
         if !matches!(slot.status, SlotStatus::Idle) {
@@ -167,7 +169,8 @@ impl EngineStack {
 
         std_cmd
             .args(&cmd_args)
-            .env("CUDA_VISIBLE_DEVICES", &gpu_mask);
+            .env("CUDA_VISIBLE_DEVICES", &gpu_mask)
+            .env("LLAMA_LOG_COLORS", "on");
 
         let mut conpty_proc = match conpty::Process::spawn(std_cmd) {
             Ok(p) => p,
@@ -208,7 +211,7 @@ impl EngineStack {
             eprintln!("[CONPTY] slot={} early output ({} lines): {:?}", slot_idx, early_lines.len(), early_lines.join(" | "));
         }
 
-        let (tx, _rx) = broadcast::channel::<String>(256);
+        let (tx, rx) = mpsc::unbounded_channel::<String>();
 
         // Clone error buffer and tx for the reader thread
         let error_buf = slot.error_buffer.clone();
@@ -223,11 +226,13 @@ impl EngineStack {
             for line_result in reader.lines() {
                 match line_result {
                     Ok(line) => {
-                        if !line.is_empty() {
-                            let _ = reader_tx.send(line.clone());
+                        // Pass raw lines to unified reader — it handles \r splitting and filtering.
+                        let cleaned = line.trim_end_matches('\n').trim();
+                        if !cleaned.is_empty() {
+                            let _ = reader_tx.send(cleaned.to_string());
                             // Also buffer last 50 lines for crash diagnostics
                             let mut buf = error_buf.lock().unwrap();
-                            buf.push(line);
+                            buf.push(cleaned.to_string());
                             if buf.len() > 50 { buf.remove(0); }
                         }
                     }
@@ -263,17 +268,17 @@ impl EngineStack {
         slot.backend_type = backend_type.clone();
         slot.status = SlotStatus::Loading;
 
-        Ok(())
+        Ok(rx)
     }
 
-    /// Subscribe to the ConPTY output broadcast channel for a slot.
-    pub fn subscribe_output(&mut self, idx: usize) -> Option<broadcast::Receiver<String>> {
+    /// Take the ConPTY output sender for a slot. Returns None if no channel exists.
+    /// Used to drop the sender on engine stop (closes the channel, terminates reader task).
+    pub fn take_output_tx(&mut self, idx: usize) -> Option<mpsc::UnboundedSender<String>> {
         if let Some(slot) = self.slots[idx].as_mut() {
-            if let Some(ref tx) = slot.output_tx {
-                return Some(tx.subscribe());
-            }
+            slot.output_tx.take()
+        } else {
+            None
         }
-        None
     }
 
     /// Drain the error buffer for crash diagnostics.

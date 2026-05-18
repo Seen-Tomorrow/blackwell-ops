@@ -1,14 +1,39 @@
-//! Engine Performance Pulse — reads llama-server output via ConPTY broadcast channel.
-//! Combined stdout+stderr stream from pseudo-console (line-buffered at source).
+//! Unified Engine Reader — single-pass ConPTY log consumer.
+//!
+//! Replaces three separate broadcast subscribers (perf_reader, readiness_watcher, fusion_monitor)
+//! with one unified task that processes each line once and distributes results via internal channels:
+//!   - Log entries → frontend "engine-log-batch" events
+//!   - Perf metrics → frontend "engine-perf" events
+//!   - Fusion events → fusion HTTP poller (internal mpsc channel)
+//!
+//! Wrapped in a restart loop — if the task exits (panic, I/O error), it auto-restarts after 1s.
 
 use regex::Regex;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use tokio::sync::{Mutex as TokioMutex, broadcast};
+use tokio::sync::{mpsc, Mutex as TokioMutex};
 
+use crate::engine_stack::{EngineStack, SlotStatus};
 use crate::log_hub::{LogHub, LogEntry, LogBatch};
 
-// ── Compiled Regex Patterns ────────────────────────────────────────
+// ── Fusion Events (internal channel between unified reader → fusion HTTP poller) ──
+
+/// Discrete events extracted from ConPTY log lines for the fusion monitor.
+#[derive(Debug, Clone)]
+pub enum FusionEvent {
+    /// New prompt detected: (prompt_token_count)
+    NewPrompt(usize),
+    /// Prompt processing progress update: 0.0-1.0
+    PromptProgress(f64),
+    /// Prompt eval completed: (ttft_ms, prefill_tps)
+    PromptEvalDone(f64, f64),
+    /// Request ended ("stop processing")
+    StopProcessing,
+    /// Engine ready ("all slots are idle" or "server is listening")
+    EngineReady,
+}
+
+// ── Compiled Regex Patterns (perf + fusion combined) ────────────────
 
 static PROMPT_TIMING_RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
 static EVAL_TIMING_RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
@@ -16,11 +41,41 @@ static N_TOKENS_RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
 static CHECKPOINT_RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
 static RESTORED_RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
 static ALL_IDLE_RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
-static PROMPT_PROGRESS_RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
-static PROMPT_DONE_RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
 static KV_CACHE_STATE_RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
 static TIMING_TOTAL_RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
 static STOP_PROCESSING_RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
+
+// Fusion-specific regex patterns (moved from fusion.rs)
+#[allow(dead_code)]
+static NEW_PROMPT_RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
+#[allow(dead_code)]
+static PROMPT_EVAL_TIME_RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
+#[allow(dead_code)]
+static PROMPT_PROGRESS_RE_FUSION: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
+
+fn new_prompt_re() -> &'static Regex {
+    NEW_PROMPT_RE.get_or_init(|| {
+        Regex::new(r"new prompt.*?task\.n_tokens\s*=\s*(\d+)").unwrap()
+    })
+}
+
+#[allow(dead_code)]
+fn prompt_eval_time_re() -> &'static Regex {
+    PROMPT_EVAL_TIME_RE.get_or_init(|| {
+        Regex::new(
+            r"prompt eval time\s*=\s*(\d+\.\d+)\s+ms\s*/\s*(\d+)\s+tokens.*?(\d+\.\d+)\s+tokens per second",
+        ).unwrap()
+    })
+}
+
+#[allow(dead_code)]
+fn prompt_progress_re_fusion() -> &'static Regex {
+    PROMPT_PROGRESS_RE_FUSION.get_or_init(|| {
+        Regex::new(r"prompt processing progress.*?progress\s*=\s*(\d+\.\d+)").unwrap()
+    })
+}
+
+// ── Perf regex accessors ────────────────────────────────────────────
 
 fn prompt_timing_re() -> &'static Regex {
     PROMPT_TIMING_RE.get_or_init(|| Regex::new(
@@ -54,37 +109,22 @@ fn restored_re() -> &'static Regex {
 
 fn all_idle_re() -> &'static Regex {
     ALL_IDLE_RE.get_or_init(|| Regex::new(
-        r"srv\s+update_slots:\s+all slots are idle"
+        r"(srv\s+update_slots:\s+)?all slots are idle"
     ).unwrap())
 }
 
-fn prompt_progress_re() -> &'static Regex {
-    PROMPT_PROGRESS_RE.get_or_init(|| Regex::new(
-        r"prompt processing progress|prompt processing done"
-    ).unwrap())
-}
-
-fn prompt_done_re() -> &'static Regex {
-    PROMPT_DONE_RE.get_or_init(|| Regex::new(
-        r"prompt processing done"
-    ).unwrap())
-}
-
-/// Parse KV cache state: "- cache state: 8 prompts, 31.857 MiB (limits: 8192.000 MiB, 131072 tokens, 725923 est)"
 fn kv_cache_state_re() -> &'static Regex {
     KV_CACHE_STATE_RE.get_or_init(|| Regex::new(
         r"- cache state:\s*(\d+)\s+prompts,\s*([\d.]+)\s+MiB\s*\(limits:\s*([\d.]+)\s+MiB,\s*(\d+)\s+tokens"
     ).unwrap())
 }
 
-/// Parse total timing: "total time = 1228.60 ms / 370 tokens"
 fn timing_total_re() -> &'static Regex {
     TIMING_TOTAL_RE.get_or_init(|| Regex::new(
         r"total time\s*=\s*(\d+\.\d+)\s+ms\s*/\s*(\d+)\s+tokens"
     ).unwrap())
 }
 
-/// Parse stop processing: "stop processing: n_tokens = 369, truncated = 0"
 fn stop_processing_re() -> &'static Regex {
     STOP_PROCESSING_RE.get_or_init(|| Regex::new(
         r"stop processing:\s*n_tokens\s*=\s*(\d+)"
@@ -125,21 +165,17 @@ struct FuelTankSlot {
     alpha_started: bool,
     beta_started: bool,
     current_tokens: usize,
-    prompt_tokens: usize,  // Tokens from prompt phase only
+    prompt_tokens: usize,
     ctx_size: usize,
     alpha_checkpoint_mib: Option<f64>,
     beta_checkpoint_mib: Option<f64>,
-    /// Current inference phase for frontend display
     pub phase: String,
-    /// KV cache tracking - actual memory usage vs limits
     kv_cache_used_mib: f64,
     kv_cache_limit_mib: f64,
-    /// Real-time prompt processing progress (0.0-1.0) during eval
     prompt_progress: f64,
-    /// Rolling TPS computation from n_tokens deltas
     last_token_count: usize,
     last_token_time: Option<std::time::Instant>,
-    rolling_tps_ema: f64,  // Exponential moving average of rolling TPS
+    rolling_tps_ema: f64,
 }
 
 impl FuelTankSlot {
@@ -154,7 +190,7 @@ impl FuelTankSlot {
             beta_checkpoint_mib: None,
             phase: "IDLE".to_string(),
             kv_cache_used_mib: 0.0,
-            kv_cache_limit_mib: 8192.0, // Default limit from logs
+            kv_cache_limit_mib: 8192.0,
             prompt_progress: 0.0,
             last_token_count: 0,
             last_token_time: None,
@@ -176,19 +212,15 @@ impl FuelTankSlot {
         Some(pct.min(100.0))
     }
 
-    /// KV cache based percentage - more accurate than token count alone
     fn kv_cache_pct(&self) -> Option<f64> {
         if self.kv_cache_limit_mib <= 0.0 { return None; }
         Some((self.kv_cache_used_mib / self.kv_cache_limit_mib) * 100.0)
     }
 
     fn interpolate(&self, mib: Option<f64>) -> Option<f64> {
-        // Use KV cache percentage as primary metric (handles compaction correctly)
         if let Some(kv_pct) = self.kv_cache_pct() {
             return Some(kv_pct.min(100.0));
         }
-        
-        // Fallback to token-based calculation
         match self.token_pct() {
             None => None,
             Some(token_pct) => {
@@ -230,16 +262,47 @@ impl PerfState {
 
 static STATE: Mutex<Option<Arc<TokioMutex<PerfState>>>> = Mutex::new(None);
 
-// ── Background Reader (consumes from ConPTY mpsc channel) ──────────
+// ── Unified Reader (single-pass ConPTY consumer) ───────────────────
 
-/// Start the performance pulse reader for a slot, consuming lines from the ConPTY mpsc channel.
-pub async fn start_perf_reader_from_channel(
-    log_hub: LogHub,
-    slot_idx: usize,
-    alias: String,
-    mut rx: broadcast::Receiver<String>,
-    ctx_size: usize,
+/// Configuration for the unified reader task.
+#[derive(Clone)]
+pub struct UnifiedReaderConfig {
+    pub log_hub: LogHub,
+    pub slot_idx: usize,
+    pub alias: String,
+    pub ctx_size: usize,
+    /// Stack reference for readiness check (marking slot Running)
+    pub stack: Arc<TokioMutex<EngineStack>>,
+    /// Sender for fusion events → consumed by fusion HTTP poller
+    pub fusion_tx: mpsc::UnboundedSender<FusionEvent>,
+}
+
+/// Spawn the unified reader with a restart loop.
+/// If the task exits (panic, I/O error), it auto-restarts after 1 second.
+pub fn spawn_unified_reader(
+    rx: mpsc::UnboundedReceiver<String>,
+    config: UnifiedReaderConfig,
 ) {
+    tokio::spawn(async move {
+        loop {
+            eprintln!("[UNIFIED] slot={} reader starting", config.slot_idx);
+            unified_reader_loop(rx, config.clone()).await;
+            // Channel closed = engine stopped. Don't restart — the sender was dropped on stop_slot/kill_all.
+            eprintln!("[UNIFIED] slot={} reader exited permanently (channel closed)", config.slot_idx);
+            break;
+        }
+    });
+}
+
+/// Main unified reader loop — single-pass processing of each ConPTY line.
+async fn unified_reader_loop(
+    mut rx: mpsc::UnboundedReceiver<String>,
+    config: UnifiedReaderConfig,
+) {
+    let UnifiedReaderConfig {
+        log_hub, slot_idx, alias, ctx_size, stack, fusion_tx
+    } = config;
+
     // Initialize global state if needed
     {
         let mut guard = STATE.lock().unwrap();
@@ -248,7 +311,7 @@ pub async fn start_perf_reader_from_channel(
         }
     }
 
-    eprintln!("[PERF_PULSE] slot={} reader started (ctx_size={})", slot_idx, ctx_size);
+    eprintln!("[UNIFIED] slot={} reader started (ctx_size={})", slot_idx, ctx_size);
 
     // Batch accumulation for log display
     let mut batch_buffer: Vec<LogEntry> = Vec::with_capacity(50);
@@ -259,41 +322,74 @@ pub async fn start_perf_reader_from_channel(
     let heartbeat_interval = tokio::time::Duration::from_millis(200);
     let mut heartbeat_timer = tokio::time::interval(heartbeat_interval);
 
+    // Readiness tracking — one-shot check for "server is listening" / "all slots are idle"
+    let mut engine_ready = false;
+
     loop {
         tokio::select! {
+            biased; // Prefer recv over heartbeat — prevents both branches from firing simultaneously
+
             // ── ConPTY output line ──────────────────────────────────────
             result = rx.recv() => {
                 let line = match result {
-                    Ok(l) => l,
-                    Err(broadcast::error::RecvError::Lagged(_)) => continue,
-                    Err(broadcast::error::RecvError::Closed) => break,
+                    Some(l) => l,
+                    None => break, // Channel closed — engine stopped
                 };
-                if !line.is_empty() {
-                    // Suppress FUSION poll noise from frontend log display
-                    let is_poll_noise = (line.contains("done request") && line.contains("/slots"))
-                        || line.contains("update_slots: all slots are idle");
+
+                // Skip empty lines
+                if line.is_empty() { continue; }
+
+                // ── \r splitting: llama.cpp uses carriage returns for cursor repositioning.
+                // BufReader::lines() only splits on \n, so bare \r merges two logical lines.
+                let parts: Vec<&str> = if line.contains('\r') {
+                    line.split('\r').collect()
+                } else {
+                    vec![&line]
+                };
+
+                for part in parts {
+                    let cleaned = part.trim().to_string();
+                    // Filter out meaningless fragments from \r split
+                    let is_real_line = cleaned.starts_with('0')
+                        || cleaned.contains(" I ") || cleaned.contains(" W ") || cleaned.contains(" E ")
+                        || cleaned.len() > 30;
+                    if !is_real_line { continue; }
+
+                    // ── Readiness check (inline, one-shot) ──────────────
+                    if !engine_ready {
+                        let lower = cleaned.to_lowercase();
+                        if lower.contains("server is listening on") || lower.contains("all slots are idle") {
+                            engine_ready = true;
+                            {
+                                let mut s = stack.lock().await;
+                                if let Some(slot) = s.get_slot_mut(slot_idx) {
+                                    slot.status = SlotStatus::Running;
+                                }
+                            }
+                            eprintln!("[READINESS] slot={} engine ready", slot_idx);
+                        }
+                    }
+
+                    // ── Suppress FUSION poll noise from frontend log display ──
+                    let is_poll_noise = (cleaned.contains("done request") && cleaned.contains("/slots"))
+                        || cleaned.contains("update_slots: all slots are idle");
 
                     if !is_poll_noise {
-                        // Replace ESC byte (0x1B) with safe placeholder for JSON transport.
-                        let safe_text = line.replace('\x1b', "%%ESC%%");
-                        // Emit to log display batch
                         let entry = LogEntry {
                             slot: slot_idx,
                             alias: alias.clone(),
-                            text: safe_text,
+                            text: cleaned.clone(),
                             timestamp: chrono::Local::now().format("%H:%M:%S%.3f").to_string(),
                         };
                         batch_buffer.push(entry);
                     }
 
-                    // Parse for perf metrics — always process, even noise lines
-                    let hub = log_hub.clone();
-                    process_perf_line(slot_idx, &alias, &line, ctx_size, hub).await;
+                    // ── Single-pass line processing ─────────────────────
+                    process_line(&cleaned, slot_idx, &alias, ctx_size, &log_hub, &fusion_tx).await;
                 }
 
                 // Batch emit every 100ms or when buffer is full
                 let should_emit = batch_buffer.len() >= 50 || last_emit.elapsed() >= batch_interval;
-
                 if should_emit && !batch_buffer.is_empty() {
                     let entries: Vec<LogEntry> = std::mem::take(&mut batch_buffer);
                     let _ = log_hub.emit("engine-log-batch", &LogBatch {
@@ -312,11 +408,9 @@ pub async fn start_perf_reader_from_channel(
                     let perf_state = arc.lock().await;
                     if let Some(slot_state) = perf_state.slots.get(&slot_idx) {
                         let now = std::time::Instant::now();
-                        // Use EMA value with decay during silent periods
                         let heartbeat_tps = if slot_state.rolling_tps_ema > 0.0 {
                             if let Some(last_time) = slot_state.last_token_time {
                                 let elapsed_since_last = now.duration_since(last_time).as_secs_f64();
-                                // Emit for up to 2 seconds after last activity; decay over time
                                 if elapsed_since_last < 2.0 {
                                     let decay_factor = 1.0 - (elapsed_since_last / 2.0);
                                     Some(slot_state.rolling_tps_ema * decay_factor)
@@ -344,18 +438,6 @@ pub async fn start_perf_reader_from_channel(
                         }
                     }
                 }
-
-                // Also flush log batch on heartbeat if needed
-                let should_emit = batch_buffer.len() >= 50 || last_emit.elapsed() >= batch_interval;
-                if should_emit && !batch_buffer.is_empty() {
-                    let entries: Vec<LogEntry> = std::mem::take(&mut batch_buffer);
-                    let _ = log_hub.emit("engine-log-batch", &LogBatch {
-                        slot: slot_idx,
-                        alias: alias.clone(),
-                        entries,
-                    });
-                    last_emit = tokio::time::Instant::now();
-                }
             }
         }
     }
@@ -369,19 +451,20 @@ pub async fn start_perf_reader_from_channel(
         });
     }
 
-    eprintln!("[PERF_PULSE] slot={} reader stopped (channel closed)", slot_idx);
+    eprintln!("[UNIFIED] slot={} reader stopped (channel closed)", slot_idx);
 }
 
-/// Process a single log line for performance metrics.
-async fn process_perf_line(
+/// Process a single log line — single-pass perf + fusion parsing.
+async fn process_line(
+    line: &str,
     slot_idx: usize,
     alias: &str,
-    line: &str,
     ctx_size: usize,
-    log_hub: LogHub,
+    log_hub: &LogHub,
+    fusion_tx: &mpsc::UnboundedSender<FusionEvent>,
 ) {
     let state_arc = STATE.lock().unwrap().clone();
-    
+
     let mut perf_state = match state_arc {
         Some(ref arc) => arc.lock().await,
         None => return,
@@ -392,7 +475,7 @@ async fn process_perf_line(
     if !slot_state.alpha_started && all_idle_re().is_match(line) {
         slot_state.alpha_started = true;
         eprintln!("[PERF_PULSE] slot={} ALPHA checkpoint started (engine ready)", slot_idx);
-        
+
         let event = EnginePerfEvent {
             slot: slot_idx, alias: alias.to_string(), tps: 0.0, ttft_ms: None,
             fuel_alpha_pct: slot_state.alpha_interpolated(), fuel_beta_pct: slot_state.beta_interpolated(),
@@ -402,25 +485,64 @@ async fn process_perf_line(
             prompt_progress: Some(slot_state.prompt_progress),
         };
         log_hub.emit("engine-perf", &event);
+
+        // Send fusion event
+        let _ = fusion_tx.send(FusionEvent::EngineReady);
     }
 
-    // ── Phase detection from log line patterns (replaces broken ttft_ms logic) ──
+    // ── Phase detection from log line patterns ────────────────────────
     if line.contains("prompt processing progress") {
         if slot_state.phase == "IDLE" {
-            // New request starting — reset rolling TPS state to avoid stale blending
             slot_state.rolling_tps_ema = 0.0;
             slot_state.last_token_count = 0;
             slot_state.last_token_time = None;
         }
         slot_state.phase = "PROMPT_PROCESSING".to_string();
+
+        // Fusion: prompt progress tracking
+        if let Some(progress_match) = Regex::new(r"progress\s*=\s*(\d+\.\d+)").unwrap().captures(line) {
+            if let Some(progress) = progress_match.get(1).and_then(|m| m.as_str().parse::<f64>().ok()) {
+                slot_state.prompt_progress = progress;
+                eprintln!("[PERF_PULSE] slot={} prompt progress: {:.0}%", slot_idx, progress * 100.0);
+
+                // Send fusion event
+                let _ = fusion_tx.send(FusionEvent::PromptProgress(progress));
+            }
+        }
     } else if line.contains("prompt processing done") {
-        // Transition to generation — reset rolling TPS baseline to current token count
         slot_state.last_token_count = slot_state.current_tokens;
         slot_state.last_token_time = Some(std::time::Instant::now());
         slot_state.phase = "GENERATING".to_string();
     }
 
-    // ── KV Cache State tracking (handles compaction correctly) ───────────
+    // ── Fusion: new prompt detection ──────────────────────────────────
+    if let Some(caps) = new_prompt_re().captures(line) {
+        if let Some(n_tok_match) = caps.get(1) {
+            if let Ok(prompt_tokens) = n_tok_match.as_str().parse::<usize>() {
+                eprintln!("[FUSION] slot={} new request: {} prompt tokens", slot_idx, prompt_tokens);
+                let _ = fusion_tx.send(FusionEvent::NewPrompt(prompt_tokens));
+            }
+        }
+    }
+
+    // ── Fusion: prompt eval time (TTFT) ───────────────────────────────
+    if let Some(caps) = prompt_eval_time_re().captures(line) {
+        if caps.len() >= 4 {
+            let ttft_ms = caps.get(1).and_then(|m| m.as_str().parse::<f64>().ok()).unwrap_or(0.0);
+            let prefill_tps = caps.get(3).and_then(|m| m.as_str().parse::<f64>().ok()).unwrap_or(0.0);
+            if ttft_ms > 0.0 {
+                eprintln!("[FUSION] slot={} TTFT: {:.1}ms, prefill_tps={:.0}", slot_idx, ttft_ms, prefill_tps);
+                let _ = fusion_tx.send(FusionEvent::PromptEvalDone(ttft_ms, prefill_tps));
+            }
+        }
+    }
+
+    // ── Fusion: stop processing ───────────────────────────────────────
+    if stop_processing_re().is_match(line) {
+        let _ = fusion_tx.send(FusionEvent::StopProcessing);
+    }
+
+    // ── KV Cache State tracking ───────────────────────────────────────
     let kv_caps = kv_cache_state_re().captures(line);
     if let Some(caps) = kv_caps {
         if caps.len() >= 4 {
@@ -430,7 +552,7 @@ async fn process_perf_line(
             ) {
                 slot_state.kv_cache_used_mib = used;
                 slot_state.kv_cache_limit_mib = limit;
-                eprintln!("[PERF_PULSE] slot={} KV cache: {:.1} MiB / {:.1} MiB ({:.1}%)", 
+                eprintln!("[PERF_PULSE] slot={} KV cache: {:.1} MiB / {:.1} MiB ({:.1}%)",
                     slot_idx, used, limit, (used/limit)*100.0);
             }
         }
@@ -456,7 +578,6 @@ async fn process_perf_line(
                     let checkpoint_mib: f64 = match cp.get(4).and_then(|m| m.as_str().parse::<f64>().ok()) {
                         Some(v) => v, None => 0.0,
                     };
-
                     if slot_state.alpha_started {
                         slot_state.alpha_checkpoint_mib = Some(checkpoint_mib);
                     }
@@ -497,7 +618,6 @@ async fn process_perf_line(
                     let checkpoint_mib: f64 = match cp.get(4).and_then(|m| m.as_str().parse::<f64>().ok()) {
                         Some(v) => v, None => 0.0,
                     };
-
                     if slot_state.alpha_started {
                         slot_state.alpha_checkpoint_mib = Some(checkpoint_mib);
                     }
@@ -513,7 +633,6 @@ async fn process_perf_line(
                     let checkpoint_mib: f64 = match rest.get(3).and_then(|m| m.as_str().parse::<f64>().ok()) {
                         Some(v) => v, None => 0.0,
                     };
-
                     if slot_state.alpha_started {
                         slot_state.alpha_checkpoint_mib = Some(checkpoint_mib);
                     }
@@ -536,15 +655,12 @@ async fn process_perf_line(
     }
 
     // ── Direct n_tokens tracking for incremental updates with rolling TPS ──
-    // Match any line containing n_tokens (covers "processing task", "slot update_slots", "prompt processing done", etc.)
     let has_n_tokens = line.contains("n_tokens");
     if has_n_tokens {
         let n_caps = n_tokens_re().captures(line);
         if let Some(caps) = n_caps {
             if caps.len() >= 2 {
                 if let Some(n_tokens) = caps.get(1).and_then(|m| m.as_str().parse::<usize>().ok()) {
-                    // Only compute rolling TPS during GENERATING phase (per-token output)
-                    // During prompt phase, n_tokens jumps by hundreds — not useful for TPS
                     let is_generating = slot_state.phase == "GENERATING";
 
                     if is_generating {
@@ -561,7 +677,6 @@ async fn process_perf_line(
                             0.0
                         };
 
-                        // Smooth with exponential moving average (alpha=0.3)
                         const EMA_ALPHA: f64 = 0.3;
                         if raw_tps > 0.0 {
                             slot_state.rolling_tps_ema = if slot_state.rolling_tps_ema == 0.0 {
@@ -591,23 +706,12 @@ async fn process_perf_line(
         }
     }
 
-    // ── Real-time prompt progress tracking (0.0-1.0 scale) ───────────────
-    if line.contains("prompt processing progress") {
-        if let Some(progress_match) = Regex::new(r"progress\s*=\s*(\d+\.\d+)").unwrap().captures(line) {
-            if let Some(progress) = progress_match.get(1).and_then(|m| m.as_str().parse::<f64>().ok()) {
-                slot_state.prompt_progress = progress;
-                eprintln!("[PERF_PULSE] slot={} prompt progress: {:.0}%", slot_idx, progress * 100.0);
-            }
-        }
-    }
-
     // ── Stop processing tracking (per-request totals) ───────────────────
     let stop_caps = stop_processing_re().captures(line);
     if let Some(caps) = stop_caps {
         if caps.len() >= 2 {
             if let Some(final_tokens) = caps.get(1).and_then(|m| m.as_str().parse::<usize>().ok()) {
                 slot_state.current_tokens = final_tokens;
-                // Reset rolling TPS so idle doesn't show stale values
                 slot_state.last_token_count = final_tokens;
                 slot_state.last_token_time = None;
                 slot_state.rolling_tps_ema = 0.0;
@@ -639,14 +743,14 @@ pub async fn cmd_start_beta_fuel_tank(
     };
 
     let mut perf_state = state_arc.lock().await;
-    
+
     let ctx_size = {
         let stack = app.stack.lock().await;
         if stack.get_slot(slot_idx).is_some() { 32768 } else { 32768 }
     };
 
     let slot_state = perf_state.get_or_create(slot_idx, ctx_size);
-    
+
     if slot_state.beta_started {
         slot_state.current_tokens = 0;
         slot_state.beta_checkpoint_mib = None;

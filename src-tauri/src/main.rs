@@ -23,6 +23,7 @@ mod engine_utils;
 mod fusion;
 mod provider_mgmt;
 
+#[cfg(feature = "reactor11")]
 pub mod features;
 mod reactor_foundry;
 
@@ -280,7 +281,8 @@ async fn main() {
     #[cfg(debug_assertions)]
     {
         if let Some(data_dir) = dirs::data_local_dir() {
-            let cache_path = data_dir.join("com.blackwell-ops.sentinel/EBWebView/Default");
+            let ident = if cfg!(debug_assertions) { "com.blackwell-ops.app.dev" } else { "com.blackwell-ops.app" };
+            let cache_path = data_dir.join(format!("{}/EBWebView/Default", ident));
             for subfolder in &["Cache", "Code Cache"] {
                 let target = cache_path.join(subfolder);
                 if target.exists() {
@@ -398,22 +400,16 @@ async fn main() {
             mobile_bridge::cmd_mobile_bridge_push_telemetry,
             mobile_bridge::cmd_mobile_bridge_send_heartbeat,
 
-            // Reactor11 commands (isolated next-gen)
-            features::reactor11::bridge::r11_get_status,
-            features::reactor11::bridge::r11_insert_rod,
-            features::reactor11::bridge::r11_remove_rod,
-            features::reactor11::bridge::r11_swap_rod,
-            features::reactor11::bridge::r11_get_rod_by_id,
-            features::reactor11::bridge::r11_toggle_tier,
-            features::reactor11::bridge::r11_update_rod,
-            features::reactor11::bridge::r11_predict_fit,
-            features::reactor11::bridge::r11_get_rod_count,
-            features::reactor11::bridge::r11_get_running_rod_count,
+            // Reactor11 commands — DISABLED via feature flag (see Cargo.toml)
+            // Reenable by adding `reactor11` to default features in Cargo.toml
             // Reactor Foundry build commands
             reactor_foundry::foundry_build,
             reactor_foundry::foundry_cancel,
             reactor_foundry::foundry_status,
             reactor_foundry::foundry_confirm_build,
+            reactor_foundry::foundry_resume_backup,
+            reactor_foundry::refresh_build_info,
+            reactor_foundry::foundry_restore,
             // Download manager commands
             start_download,
             pause_download,

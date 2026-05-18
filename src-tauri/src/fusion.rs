@@ -1,13 +1,14 @@
-//! FUSION — Real-time engine monitoring via /slots polling + log fusion.
+//! FUSION — Real-time engine monitoring via /slots polling + fusion events.
 //!
-//! One tokio task per running engine. Polls http://localhost:{port}/slots at 200ms,
-//! fuses with ConPTY log output for phase detection and TTFT tracking.
+//! One tokio task per running engine. Polls http://localhost:{port}/slots at 100ms,
+//! receives FusionEvents from the unified reader (prompt progress, TTFT, phase changes).
 //! Emits "fusion-update" Tauri events with structured FusionUpdate data.
 
 use serde::Serialize;
 use std::collections::{HashMap, VecDeque};
-use tokio::sync::broadcast;
+use tokio::sync::mpsc;
 
+use crate::engine_perf::FusionEvent;
 use crate::log_hub::LogHub;
 
 // ── Raw /slots JSON types ────────────────────────────────────────────
@@ -70,6 +71,9 @@ pub struct FusionUpdate {
     // ── Real-time metrics from /slots polling ──
     /// Instantaneous TPS (delta n_decoded / delta time) — TG-phase only
     pub tps: f64,
+    /// Adaptive EMA smoothed TPS — starts raw, flattens over ~20 samples
+    #[serde(rename = "smoothedTps")]
+    pub smoothed_tps: f64,
     /// Prefill TPS captured during PP phase (0.0 when not in prefill)
     #[serde(rename = "prefillTps")]
     pub prefill_tps: f64,
@@ -168,6 +172,10 @@ struct FusionEngineState {
     slots: HashMap<usize, SlotState>,
     /// Rolling TPS history (last 50 samples) — TG-phase only for sparkline
     tps_history: VecDeque<f64>,
+    /// Adaptive EMA smoothed TPS — resets per request
+    smoothed_tps: f64,
+    /// Sample counter for adaptive alpha — resets per request
+    tps_sample_count: u32,
     /// Last captured prefill TPS during PP phase
     prefill_tps: f64,
     /// Current prefill progress (0.0-1.0) from "prompt processing progress" logs
@@ -192,6 +200,8 @@ impl FusionEngineState {
             max_tokens: -1,
             slots: HashMap::new(),
             tps_history: VecDeque::with_capacity(50),
+            smoothed_tps: 0.0,
+            tps_sample_count: 0,
             prefill_tps: 0.0,
             prefill_progress: 0.0,
             prefill_start_time: None,
@@ -203,20 +213,27 @@ impl FusionEngineState {
     }
 }
 
-// ── Compiled regex patterns for log fusion ───────────────────────────
+// ── Compiled regex patterns for log fusion (kept for potential future use) ──
 
+#[allow(dead_code)]
 static NEW_PROMPT_RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+#[allow(dead_code)]
 static PROMPT_EVAL_TIME_RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+#[allow(dead_code)]
 static STOP_PROCESSING_RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+#[allow(dead_code)]
 static ALL_IDLE_RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+#[allow(dead_code)]
 static PROMPT_PROGRESS_RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
 
+#[allow(dead_code)]
 fn new_prompt_re() -> &'static regex::Regex {
     NEW_PROMPT_RE.get_or_init(|| {
         regex::Regex::new(r"new prompt.*?task\.n_tokens\s*=\s*(\d+)").unwrap()
     })
 }
 
+#[allow(dead_code)]
 fn prompt_eval_time_re() -> &'static regex::Regex {
     PROMPT_EVAL_TIME_RE.get_or_init(|| {
         regex::Regex::new(
@@ -226,18 +243,21 @@ fn prompt_eval_time_re() -> &'static regex::Regex {
     })
 }
 
+#[allow(dead_code)]
 fn stop_processing_re() -> &'static regex::Regex {
     STOP_PROCESSING_RE.get_or_init(|| {
         regex::Regex::new(r"stop processing:\s*n_tokens\s*=\s*(\d+)").unwrap()
     })
 }
 
+#[allow(dead_code)]
 fn all_idle_re() -> &'static regex::Regex {
     ALL_IDLE_RE.get_or_init(|| {
         regex::Regex::new(r"all slots are idle").unwrap()
     })
 }
 
+#[allow(dead_code)]
 fn prompt_progress_re() -> &'static regex::Regex {
     PROMPT_PROGRESS_RE.get_or_init(|| {
         regex::Regex::new(r"prompt processing progress.*?progress\s*=\s*(\d+\.\d+)").unwrap()
@@ -252,16 +272,16 @@ static FUSION_TASKS: std::sync::LazyLock<
 
 // ── Public API ───────────────────────────────────────────────────────
 
-/// Start a FUSION monitoring task for an engine.
-/// Call this when the engine's readiness watcher detects "server is listening".
-pub async fn start_fusion_task(
+/// Start the FUSION HTTP poller for an engine.
+/// Consumes FusionEvents from the unified reader and polls /slots via HTTP.
+pub async fn start_fusion_http_poller(
     log_hub: LogHub,
     alias: String,
     port: u16,
     ctx_total: usize,
     parallel: i64,
     unified_kv: bool,
-    log_rx: broadcast::Receiver<String>,
+    mut fusion_rx: mpsc::UnboundedReceiver<FusionEvent>,
 ) {
     let mut tasks = FUSION_TASKS.lock().await;
 
@@ -271,7 +291,7 @@ pub async fn start_fusion_task(
     }
 
     eprintln!(
-        "[FUSION] Starting monitor: alias={} port={} ctx_total={} parallel={} unified_kv={}",
+        "[FUSION] Starting HTTP poller: alias={} port={} ctx_total={} parallel={} unified_kv={}",
         alias, port, ctx_total, parallel, unified_kv
     );
 
@@ -279,7 +299,7 @@ pub async fn start_fusion_task(
     let cancel_spawn = cancel.clone();
 
     let handle = tokio_util::task::AbortOnDropHandle::new(tokio::spawn(async move {
-        fusion_poll_loop(log_hub, alias, port, ctx_total, parallel, unified_kv, log_rx, cancel_spawn).await;
+        fusion_http_poll_loop(log_hub, alias, port, ctx_total, parallel, unified_kv, fusion_rx, cancel_spawn).await;
     }));
 
     tasks.insert(port, (handle, cancel));
@@ -305,14 +325,14 @@ pub async fn stop_all_fusion_tasks() {
 
 // ── Main poll loop ───────────────────────────────────────────────────
 
-async fn fusion_poll_loop(
+async fn fusion_http_poll_loop(
     log_hub: LogHub,
     alias: String,
     port: u16,
     ctx_total: usize,
     parallel: i64,
     unified_kv: bool,
-    mut log_rx: broadcast::Receiver<String>,
+    mut fusion_rx: mpsc::UnboundedReceiver<FusionEvent>,
     cancel: tokio_util::sync::CancellationToken,
 ) {
     let client = reqwest::Client::builder()
@@ -321,7 +341,7 @@ async fn fusion_poll_loop(
         .unwrap_or_default();
 
     let mut state = FusionEngineState::new(alias.clone(), port, ctx_total, parallel, unified_kv);
-    let poll_interval = tokio::time::Duration::from_millis(100);
+    let poll_interval = tokio::time::Duration::from_millis(25);
     let mut interval = tokio::time::interval(poll_interval);
 
     // Emit initial LOADING update immediately so frontend shows launch animation
@@ -331,6 +351,7 @@ async fn fusion_poll_loop(
             port,
             engine_state: "LOADING".to_string(),
             tps: 0.0,
+            smoothed_tps: 0.0,
             phase: String::new(),
             ctx_used: 0,
             ctx_total,
@@ -386,24 +407,90 @@ async fn fusion_poll_loop(
                 }
             }
 
-            // ── Log line from ConPTY broadcast ────────────────────────
-            result = log_rx.recv() => {
-                match result {
-                    Ok(line) => {
-                        let was_pp_progress = process_fusion_log_line(&line, &mut state);
-                        // During PP phase, /slots polls may fail under heavy load.
-                        // Emit update on progress lines so frontend gets real-time data.
-                        if was_pp_progress && state.phase == "PP" {
-                            let update = build_update(&mut state, 0.0, Vec::new());
-                            log_hub.emit("fusion-update", &update);
-                        }
+            // ── Fusion event from unified reader ──────────────────────
+            event = fusion_rx.recv() => {
+                let event = match event {
+                    Some(e) => e,
+                    None => {
+                        eprintln!("[FUSION] port={} fusion channel closed", port);
+                        return; // Unified reader stopped — exit poller
                     }
-                    Err(broadcast::error::RecvError::Lagged(_)) => continue,
-                    Err(broadcast::error::RecvError::Closed) => {
-                        eprintln!("[FUSION] port={} log channel closed", port);
-                        return; // Skip post-loop emit — engine is being stopped
-                    }
+                };
+
+                handle_fusion_event(&event, &mut state);
+
+                // During PP phase, /slots polls may fail under heavy load.
+                // Emit update on progress events so frontend gets real-time data.
+                if matches!(event, FusionEvent::PromptProgress(_)) && state.phase == "PP" {
+                    let update = build_update(&mut state, 0.0, Vec::new());
+                    log_hub.emit("fusion-update", &update);
                 }
+            }
+        }
+    }
+}
+
+/// Handle a FusionEvent from the unified reader — updates fusion state.
+fn handle_fusion_event(event: &FusionEvent, state: &mut FusionEngineState) {
+    match event {
+        FusionEvent::NewPrompt(prompt_tokens) => {
+            state.request_tokens_prompt = *prompt_tokens;
+            state.request_start = Some(std::time::Instant::now());
+            state.prefill_tps = 0.0;
+            state.prefill_progress = 0.0;
+            state.prefill_start_time = None;
+            state.smoothed_tps = 0.0;
+            state.tps_sample_count = 0;
+            state.phase = "PP".to_string();
+        }
+
+        FusionEvent::PromptProgress(progress) => {
+            if state.phase.is_empty() {
+                state.phase = "PP".to_string();
+            }
+            state.prefill_progress = *progress;
+            let now = std::time::Instant::now();
+            if state.prefill_start_time.is_none() {
+                state.prefill_start_time = Some(now);
+            }
+            if let Some(start) = state.prefill_start_time {
+                let elapsed_sec = now.duration_since(start).as_secs_f64();
+                if elapsed_sec > 0.01 && state.request_tokens_prompt > 0 {
+                    state.prefill_tps = (state.request_tokens_prompt as f64 * progress) / elapsed_sec;
+                }
+            }
+        }
+
+        FusionEvent::PromptEvalDone(ttft_ms, prefill_tps) => {
+            state.request_ttft_ms = Some(*ttft_ms);
+            if *prefill_tps > 0.0 {
+                state.prefill_tps = *prefill_tps;
+            } else if state.request_tokens_prompt > 0 && ttft_ms > &0.0 {
+                state.prefill_tps = state.request_tokens_prompt as f64 / (ttft_ms / 1000.0);
+            }
+            if state.prefill_progress < 1.0 {
+                state.prefill_progress = 1.0;
+            }
+            state.phase = "TG".to_string();
+        }
+
+        FusionEvent::StopProcessing => {
+            state.phase = String::new();
+            state.request_start = None;
+            state.request_tokens_prompt = 0;
+            state.request_ttft_ms = None;
+            for s in state.slots.values_mut() {
+                if s.prev_n_decoded > s.session_start_n_decoded {
+                    s.total_tokens_lifetime += s.prev_n_decoded - s.session_start_n_decoded;
+                }
+                s.session_start_n_decoded = s.prev_n_decoded;
+            }
+        }
+
+        FusionEvent::EngineReady => {
+            if state.engine_state == "LOADING" {
+                state.engine_state = "READY".to_string();
+                eprintln!("[FUSION] port={} engine READY", state.port);
             }
         }
     }
@@ -581,11 +668,21 @@ fn build_update(
     _slot_ids: Vec<usize>,
 ) -> FusionUpdate {
     // Update TPS history — only TG-phase samples for clean sparkline
-    if state.phase != "PP" {
+    let mut smoothed = instant_tps;
+    if state.phase != "PP" && instant_tps > 0.0 {
         state.tps_history.push_back(instant_tps);
         if state.tps_history.len() > 50 {
             state.tps_history.pop_front();
         }
+        // Adaptive EMA: alpha decays from ~1.0 (raw) to 0.15 floor over 20 samples
+        state.tps_sample_count += 1;
+        let alpha = (1.0 / state.tps_sample_count as f64).max(0.05);
+        if state.smoothed_tps == 0.0 {
+            smoothed = instant_tps;
+        } else {
+            smoothed = alpha * instant_tps + (1.0 - alpha) * state.smoothed_tps;
+        }
+        state.smoothed_tps = smoothed;
     }
 
     let total_n_decoded: usize = state.slots.values().map(|s| s.prev_n_decoded).sum();
@@ -650,6 +747,7 @@ fn build_update(
         port: state.port,
         engine_state: state.engine_state.clone(),
         tps: if state.phase == "PP" { 0.0 } else { instant_tps },
+        smoothed_tps: if state.phase == "PP" { 0.0 } else { smoothed },
         prefill_tps: state.prefill_tps,
         prefill_progress: state.prefill_progress,
         phase: state.phase.clone(),
@@ -674,6 +772,7 @@ fn build_update(
 
 // ── Log line processing for fusion ───────────────────────────────────
 
+#[allow(dead_code)]
 fn process_fusion_log_line(line: &str, state: &mut FusionEngineState) -> bool {
     let mut emitted_progress = false;
     // "new prompt, n_ctx_slot = X, task.n_tokens = Y" → request start + prompt token count

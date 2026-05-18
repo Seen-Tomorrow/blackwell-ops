@@ -4,8 +4,9 @@ use std::process::Stdio;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
-use tokio::sync::{broadcast, Mutex};
+use tokio::sync::Mutex;
 use tokio::sync::Mutex as TokioMutex;
+use tokio::sync::broadcast; // For fit scanner progress channel (unrelated to ConPTY)
 
 
 use crate::engine_stack::SlotStatus;
@@ -197,54 +198,42 @@ pub async fn launch_engine(
 
     app.log_hub.emit_system_event(slot_idx, &config.alias, "Engine launching...").await;
 
-    stack.load_slot_with_args(slot_idx, &config, &binary_path, gpu_mask.clone(), cmd_args.clone(), provider_display_name.clone(), backend_type.clone()).await?;
-
     let ctx_size_int = crate::templates::ProviderTemplate::ctx_to_int_str(&config.ctx_size)
         .parse::<usize>().unwrap_or(32768);
 
-    // Subscribe to ConPTY output for perf reader + readiness watcher
-    if let Some(perf_rx) = stack.subscribe_output(slot_idx) {
-        eprintln!("[LAUNCH] slot={} ConPTY output subscribed", slot_idx);
+    // Spawn engine and get ConPTY output receiver for unified reader
+    let conpty_rx = match stack.load_slot_with_args(slot_idx, &config, &binary_path, gpu_mask.clone(), cmd_args.clone(), provider_display_name.clone(), backend_type.clone()).await {
+        Ok(rx) => rx,
+        Err(e) => return Err(e),
+    };
 
-        let perf_log_hub = app.log_hub.clone();
-        let perf_alias = config.alias.clone();
-        let perf_slot = slot_idx;
+    eprintln!("[LAUNCH] slot={} ConPTY output channel ready", slot_idx);
+
+    // Create internal fusion event channel (unified reader → fusion HTTP poller)
+    let (fusion_tx, fusion_rx) = tokio::sync::mpsc::unbounded_channel::<engine_perf::FusionEvent>();
+
+    // Spawn unified reader — single-pass ConPTY consumer with restart loop
+    let unified_config = engine_perf::UnifiedReaderConfig {
+        log_hub: app.log_hub.clone(),
+        slot_idx,
+        alias: config.alias.clone(),
+        ctx_size: ctx_size_int,
+        stack: app.stack.clone(),
+        fusion_tx,
+    };
+    engine_perf::spawn_unified_reader(conpty_rx, unified_config);
+
+    // Spawn FUSION HTTP poller — /slots polling + fusion event consumer (no ConPTY dependency)
+    {
+        let fusion_log_hub = app.log_hub.clone();
+        let fusion_alias = config.alias.clone();
+        let fusion_port = slot_port;
 
         tokio::spawn(async move {
-            engine_perf::start_perf_reader_from_channel(
-                perf_log_hub, perf_slot, perf_alias, perf_rx, ctx_size_int
+            crate::fusion::start_fusion_http_poller(
+                fusion_log_hub, fusion_alias, fusion_port, ctx_size_int, config.parallel, config.unified_kv, fusion_rx,
             ).await;
         });
-
-        // Spawn readiness watcher — monitors ConPTY output for "server is listening" signal
-        if let Some(readiness_rx) = stack.subscribe_output(slot_idx) {
-            let stack_arc = app.stack.clone();
-            let alias_for_crash = config.alias.clone();
-            let rs_slot = slot_idx;
-
-            tokio::spawn(async move {
-                engine_utils::poll_engine_readiness(
-                    stack_arc, rs_slot, readiness_rx, &alias_for_crash,
-                ).await;
-            });
-        }
-
-        // Spawn FUSION monitor — /slots polling + log fusion for real-time metrics
-        if let Some(fusion_rx) = stack.subscribe_output(slot_idx) {
-            let fusion_log_hub = app.log_hub.clone();
-            let fusion_alias = config.alias.clone();
-            let fusion_port = slot_port;
-
-            tokio::spawn(async move {
-                crate::fusion::start_fusion_task(
-                    fusion_log_hub, fusion_alias, fusion_port, ctx_size_int, config.parallel, config.unified_kv, fusion_rx,
-                ).await;
-            });
-        }
-    } else {
-        let conpty_warn = format!("[LAUNCH] slot={} ConPTY output unavailable — process may have already exited", slot_idx);
-        eprintln!("{}", conpty_warn);
-        app.log_hub.emit_sanity_log("warn", &conpty_warn);
     }
 
     let model_name = config.model_path.rsplit('/').next().unwrap_or("unknown").to_string();
@@ -711,44 +700,45 @@ pub fn get_mmproj_size_mib(model_path: String) -> f64 {
 pub async fn get_binary_build_info(binary_path: String) -> Result<crate::types::BuildInfo, String> {
     let path = PathBuf::from(&binary_path);
 
-    // Check file exists and get mtime
-    let metadata = tokio::fs::metadata(&path).await
-        .map_err(|e| format!("Binary not found: {}", e))?;
-
-    let mtime = metadata.modified()
-        .map_err(|e| format!("Failed to read mtime: {}", e))?;
-
-    // Convert mtime to local date string using chrono
-    use chrono::{DateTime, Local};
-    let datetime: DateTime<Local> = mtime.into();
-    let build_date = datetime.format("%Y-%m-%d %H:%M").to_string();
+    // Always try to get mtime first — this is the most reliable signal
+    let build_date = tokio::fs::metadata(&path).await
+        .map(|meta| meta.modified().ok())
+        .map_err(|e| format!("Binary not found: {}", e))?
+        .map(|mt| {
+            use chrono::{DateTime, Local};
+            let dt: DateTime<Local> = mt.into();
+            dt.format("%Y-%m-%d %H:%M").to_string()
+        })
+        .unwrap_or_else(|| "unknown".to_string());
 
     // Run binary with --version and capture both stdout and stderr
     // (some binaries write CUDA init info to stdout, version line may be on either stream)
     let output = tokio::process::Command::new(&path)
         .args(["--version"])
         .output()
-        .await
-        .map_err(|e| format!("Failed to run binary: {}", e))?;
+        .await;
 
-    if !output.status.success() {
-        return Err("Binary --version failed".to_string());
-    }
-
-    // Combine stdout + stderr and strip ANSI escape codes before parsing
-    let raw = format!("{}{}", 
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
-    // Strip ANSI escape sequences (\x1b[...m and similar) then remove non-ASCII chars
-    let cleaned: String = regex::Regex::new(r"\x1b\[[0-9;?]*[a-zA-Z]")
-        .map_err(|e| format!("Regex error: {}", e))?
-        .replace_all(&raw, "")
-        .to_string();
-    // Remove any remaining non-ASCII bytes that might interfere with regex
-    let cleaned: String = cleaned.chars()
-        .filter(|c| *c <= '\x7F')
-        .collect();
+    let cleaned = match output {
+        Ok(o) if o.status.success() => {
+            let raw = format!("{}{}", 
+                String::from_utf8_lossy(&o.stdout),
+                String::from_utf8_lossy(&o.stderr)
+            );
+            regex::Regex::new(r"\x1b\[[0-9;?]*[a-zA-Z]")
+                .ok()
+                .map(|re| re.replace_all(&raw, "").to_string())
+                .unwrap_or(raw)
+                .chars().filter(|c| *c <= '\x7F').collect::<String>()
+        }
+        Ok(o) => {
+            log::warn!("Binary --version exited with error for '{}'", path.display());
+            String::new()
+        }
+        Err(e) => {
+            log::warn!("Failed to run binary --version '{}': {}", path.display(), e);
+            String::new()
+        }
+    };
 
     // Parse version string — matches "version: 3 (f535774)" format
     let re = regex::Regex::new(r"version:\s*(\d+)\s*\(([^)]+)\)")
@@ -763,8 +753,16 @@ pub async fn get_binary_build_info(binary_path: String) -> Result<crate::types::
         });
     }
 
-    Err(format!("Could not parse version from binary output (raw: {})", 
-        cleaned.chars().take(200).collect::<String>()))
+    // Version regex didn't match — still return mtime-based date with fallback version
+    if !cleaned.is_empty() {
+        log::warn!("Could not parse version from binary '{}', output: {}", 
+            path.display(), cleaned.chars().take(200).collect::<String>());
+    }
+    Ok(crate::types::BuildInfo { 
+        version: "unknown".to_string(), 
+        build_date,
+        cuda_version: None,
+    })
 }
 
 #[tauri::command]

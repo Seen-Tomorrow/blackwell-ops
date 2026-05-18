@@ -270,6 +270,28 @@
         "default": "on",
         "ui_group": "Feature Flags",
         "note": "Forces line flush per output - critical for real-time log streaming."
+      },
+      {
+        "key": "Spec-Type",
+        "label": "Spec-Type",
+        "config_key": "spec_type",
+        "flag": "--spec-type",
+        "ptype": "arg_select",
+        "values": ["none", "draft-simple", "draft-eagle3", "draft-mtp", "ngram-simple", "ngram-map-k", "ngram-map-k4v", "ngram-mod", "ngram-cache"],
+        "default": "draft-mtp",
+        "ui_group": "SPECULATIVE-DECODING",
+        "note": "Comma-separated speculative decoding types. 'none' disables."
+      },
+      {
+        "key": "Spec-Draft-N-Max",
+        "label": "Spec-Draft N Max",
+        "config_key": "spec_draft_n_max",
+        "flag": "--spec-draft-n-max",
+        "ptype": "arg_select",
+        "values": [1, 2, 3, 4, 5, 6, 8, 10, 16, 20],
+        "default": 6,
+        "ui_group": "SPECULATIVE-DECODING",
+        "note": "Maximum number of draft tokens per speculative decoding step."
       }
     ]
   },

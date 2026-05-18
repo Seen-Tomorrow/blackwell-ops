@@ -6,17 +6,16 @@ import EngineConfigPanel from "./EngineConfigPanel";
 
 import { useKeyboardNav } from "../hooks/useKeyboardNav";
 import { KEYS } from "../lib/storage";
+import { useTelemetry } from "../context/TelemetryContext";
 
 interface ModelCatalogProps {
   models: ModelEntry[];
-  gpus: GpuInfo[];
   onLaunch: (config: EngineConfig) => void;
   error: string | null;
   onReload: () => void;
   providers?: ProviderConfig[];
   committedVramMib: number;
   isAdminUnlocked: boolean;
-  systemInfo?: SystemInfo | null;
   scanningPath: string | null;
   setScanningPath: (p: string | null) => void;
   batchScanState: {active: boolean; scanned: number; failed: number; total: number};
@@ -32,7 +31,8 @@ type SortField = (keyof ModelEntry) | "date";
 type SortDirection = "asc" | "desc";
 
 export default function ModelCatalog(props: ModelCatalogProps) {
-  const { models, gpus, onLaunch, error, onReload, providers: externalProviders, committedVramMib, isAdminUnlocked, systemInfo, scanningPath, setScanningPath, batchScanState, setBatchScanState, stack } = props;
+  const { models, onLaunch, error, onReload, providers: externalProviders, committedVramMib, isAdminUnlocked, scanningPath, setScanningPath, batchScanState, setBatchScanState, stack } = props;
+  const { gpus, systemInfo } = useTelemetry();
   const [search, setSearch] = useState("");
   const [selectedModel, setSelectedModel] = useState<ModelEntry | null>(null);
   const [sortField, setSortField] = useState<SortField>(() => {

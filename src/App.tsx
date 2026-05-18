@@ -11,10 +11,13 @@ import ConfigPage from "./components/ConfigPage";
 import MobileSentinelPage from "./components/MobileSentinelPage";
 import Reactor11 from "./components/Reactor11";
 import ModelHub from "./components/ModelHub";
+import AnsiText from "./components/AnsiText";
 import { StatusProvider } from "./context/StatusBarContext";
+import { DockProvider } from "./context/DockContext";
+import { TelemetryProvider } from "./context/TelemetryContext";
 import { ToastProvider } from "./components/Toast";
 import { KEYS, STORAGE_PREFIX } from "./lib/storage";
-import type { GpuInfo, ModelEntry, StackEntry, LogBatch, LogEntry, SystemEvent, ProviderConfig, CpuInfo, SystemInfo, EnginePerfEvent } from "./lib/types";
+import type { ModelEntry, StackEntry, LogBatch, LogEntry, SystemEvent, ProviderConfig, EnginePerfEvent } from "./lib/types";
 
 export type Tab = "catalog" | "modelhub" | "stack" | "reactor11" | "telemetry" | "logs" | "config" | "sentinel";
 
@@ -32,8 +35,6 @@ function isMobileDevice(): boolean {
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>("catalog");
   const [models, setModels] = useState<ModelEntry[]>([]);
-  const [gpus, setGpus] = useState<GpuInfo[]>([]);
-  const [cpu, setCpu] = useState<CpuInfo | null>(null);
   const [stack, setStack] = useState<StackEntry[]>([]);
   const [logs, setLogs] = useState<Map<number, LogEntry[]>>(new Map());
   const [systemEvents, setSystemEvents] = useState<Map<number, Array<{ text: string; timestamp: string }>>>(new Map());
@@ -41,7 +42,6 @@ function App() {
 
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [providers, setProviders] = useState<ProviderConfig[]>([]);
-  const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
   const [scanningPath, setScanningPath] = useState<string | null>(null);
   const [batchScanState, setBatchScanState] = useState<{active: boolean; scanned: number; failed: number; total: number}>({ active: false, scanned: 0, failed: 0, total: 0 });
   const [totalParams, setTotalParams] = useState(0);
@@ -147,14 +147,6 @@ function App() {
       .catch(console.error);
   }, []);
 
-  useEffect(() => {
-    invoke<SystemInfo>("scan_system_info")
-      .then((data) => setSystemInfo(data))
-      .catch(console.error);
-  }, []);
-
-
-
   const reloadModels = useCallback(async () => {
     try {
       setCatalogError(null);
@@ -166,58 +158,6 @@ function App() {
       setCatalogError(msg);
     }
   }, []);
-
-  // Consolidated telemetry polling — GPU + CPU with configurable intervals
-  useEffect(() => {
-    const gpuInterval = lowPower ? 2000 : 250;
-    const cpuInterval = lowPower ? 5000 : 500;
-
-    let gpuTimer: ReturnType<typeof setInterval> | null = null;
-    let cpuTimer: ReturnType<typeof setInterval> | null = null;
-    let paused = false;
-
-    const pollGpu = async () => {
-      if (paused) return;
-      try { setGpus(await invoke<GpuInfo[]>("scan_gpus")); } catch {}
-    };
-    const pollCpu = async () => {
-      if (paused) return;
-      try { setCpu(await invoke<CpuInfo>("scan_cpu")); } catch {}
-    };
-
-    const startPolling = async () => {
-      paused = false;
-      pollGpu();
-      pollCpu();
-      gpuTimer = setInterval(pollGpu, gpuInterval);
-      cpuTimer = setInterval(pollCpu, cpuInterval);
-    };
-
-    const stopPolling = async () => {
-      paused = true;
-      if (gpuTimer) clearInterval(gpuTimer);
-      if (cpuTimer) clearInterval(cpuTimer);
-      gpuTimer = null;
-      cpuTimer = null;
-    };
-
-    startPolling();
-
-    const handleVisibility = async () => {
-      if (document.visibilityState === "visible") {
-        await startPolling();
-      } else {
-        await stopPolling();
-      }
-    };
-    document.addEventListener("visibilitychange", handleVisibility);
-
-    return () => {
-      document.removeEventListener("visibilitychange", handleVisibility);
-      if (gpuTimer) clearInterval(gpuTimer);
-      if (cpuTimer) clearInterval(cpuTimer);
-    };
-  }, [lowPower]);
 
   useEffect(() => {
     let unsub: (() => void) | null = null;
@@ -418,10 +358,12 @@ function App() {
 
   return (
     <ToastProvider>
-      <StatusProvider value={{ totalParams, hiddenCount, onShowAll: handleShowAll }}>
-        <Layout activeTab={activeTab} onTabChange={setActiveTab}>
+      <DockProvider>
+        <TelemetryProvider lowPower={lowPower}>
+          <StatusProvider value={{ totalParams, hiddenCount, onShowAll: handleShowAll }}>
+            <Layout activeTab={activeTab} onTabChange={setActiveTab} providers={providers}>
         {activeTab === "catalog" && (
-              <ModelCatalog models={models} gpus={gpus} onLaunch={handleLaunchEngine} error={catalogError} onReload={reloadModels} providers={providers} committedVramMib={committedVramMib} isAdminUnlocked={isAdminUnlocked} systemInfo={systemInfo} scanningPath={scanningPath} setScanningPath={setScanningPath} batchScanState={batchScanState} setBatchScanState={setBatchScanState} stack={stack} />
+              <ModelCatalog models={models} onLaunch={handleLaunchEngine} error={catalogError} onReload={reloadModels} providers={providers} committedVramMib={committedVramMib} isAdminUnlocked={isAdminUnlocked} scanningPath={scanningPath} setScanningPath={setScanningPath} batchScanState={batchScanState} setBatchScanState={setBatchScanState} stack={stack} />
            )}
         {activeTab === "modelhub" && <ModelHub />}
         {activeTab === "config" && <ConfigPage providers={providers} />}
@@ -429,11 +371,11 @@ function App() {
           <StackView stack={stack} logs={logs} systemEvents={systemEvents} enginePerfEvents={enginePerfEvents} onStop={handleStopEngine} onStopAll={handleStopAll} />
         )}
         {activeTab === "reactor11" && (
-          <Reactor11 gpus={gpus} models={models} />
+          <Reactor11 models={models} />
         )}
         {activeTab === "telemetry" && (
           <div className="h-full flex flex-col p-4 gap-3">
-            <TelemetryPanel gpus={gpus} cpu={cpu} systemInfo={systemInfo} lowPower={lowPower} onToggleLowPower={toggleLowPower} />
+            <TelemetryPanel lowPower={lowPower} onToggleLowPower={toggleLowPower} />
           </div>
         )}
         {activeTab === "logs" && (
@@ -455,7 +397,7 @@ function App() {
                           <p key={i} className="text-[10px] font-mono text-stealth-muted leading-relaxed">
                             <span className="text-stealth-muted/40">{entry.timestamp}</span>{" "}
                             <span className="text-nv-green/60">[{entry.alias}]</span>{" "}
-                            {entry.text}
+                            <AnsiText text={entry.text} />
                           </p>
                         ))}
                       </div>
@@ -465,9 +407,11 @@ function App() {
             </div>
           </div>
         )}
-        {activeTab === "sentinel" && <MobileSentinelPage gpus={gpus} stack={stack} />}
-      </Layout>
-    </StatusProvider>
+        {activeTab === "sentinel" && <MobileSentinelPage stack={stack} />}
+            </Layout>
+          </StatusProvider>
+        </TelemetryProvider>
+      </DockProvider>
     </ToastProvider>
   );
 }

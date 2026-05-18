@@ -1,21 +1,19 @@
-import type { GpuInfo, CpuInfo, SystemInfo } from "../lib/types";
+import type { GpuInfo, CpuInfo } from "../lib/types";
 import IntelWidget from "./IntelWidget";
+import { useTelemetry } from "../context/TelemetryContext";
 
 interface TelemetryPanelProps {
-  gpus: GpuInfo[];
-  cpu: CpuInfo | null;
-  systemInfo?: SystemInfo | null;
   lowPower?: boolean;
   onToggleLowPower?: () => void;
 }
 
-export default function TelemetryPanel({ gpus, cpu, systemInfo, lowPower = false, onToggleLowPower }: TelemetryPanelProps) {
+export default function TelemetryPanel({ lowPower = false, onToggleLowPower }: TelemetryPanelProps) {
+  const { gpus, cpu, systemInfo } = useTelemetry();
 
   // System summary calculations
   const totalVram = gpus.reduce((sum, g) => sum + (g.memory_total_manufactured || g.memory_total), 0);
   const usedVram = gpus.reduce((sum, g) => sum + g.memory_used, 0);
-  const avgTemp = gpus.length > 0 ? Math.round(gpus.reduce((sum, g) => sum + (g.temperature_hot_spot ?? g.temperature_gpu), 0) / gpus.length) : 0;
-  const totalPower = gpus.reduce((sum, g) => sum + g.power_draw, 0);
+  const totalPower = gpus.reduce((sum, g) => sum + (g.power_draw || 0), 0);
 
   return (
     <div className="h-full overflow-y-auto space-y-3">
@@ -36,11 +34,13 @@ export default function TelemetryPanel({ gpus, cpu, systemInfo, lowPower = false
         <SystemSummary
           totalVram={totalVram}
           usedVram={usedVram}
-          avgTemp={avgTemp}
           totalPower={totalPower}
           ramManufacturedMib={systemInfo?.total_memory_manufactured_mib || 0}
         />
       </div>
+
+      {/* CPU core matrix */}
+      {cpu && <CpuMatrix cpu={cpu} />}
 
       {/* GPU cards side by side */}
       {gpus.length > 0 && (
@@ -51,9 +51,6 @@ export default function TelemetryPanel({ gpus, cpu, systemInfo, lowPower = false
         </div>
       )}
 
-      {/* CPU core matrix */}
-      {cpu && <CpuMatrix cpu={cpu} />}
-
       {/* News feed — expanded, 2 items with full previews */}
       <div className="border border-stealth-border rounded-sm overflow-hidden">
         <IntelWidget compact={false} limit={2} />
@@ -62,10 +59,9 @@ export default function TelemetryPanel({ gpus, cpu, systemInfo, lowPower = false
   );
 }
 
-function SystemSummary({ totalVram, usedVram, avgTemp, totalPower, ramManufacturedMib }: {
+function SystemSummary({ totalVram, usedVram, totalPower, ramManufacturedMib }: {
   totalVram: number;
   usedVram: number;
-  avgTemp: number;
   totalPower: number;
   ramManufacturedMib: number;
 }) {
@@ -87,33 +83,20 @@ function SystemSummary({ totalVram, usedVram, avgTemp, totalPower, ramManufactur
           </>
         )}
       </div>
-      {/* Other stats */}
-      <div className="grid grid-cols-3 gap-4">
-        <SummaryItem label="USED VRAM" value={`${(usedVram / 1024).toFixed(1)} GB`} warning={((usedVram / totalVram) * 100) > 90} />
-        <SummaryItem label="AVG TEMP" value={`${avgTemp}°C`} warning={avgTemp > 80} />
-        <SummaryItem label="POWER DRAW" value={`${totalPower.toFixed(0)}W`} />
+      {/* Used VRAM + Power Draw — same centered style */}
+      <div className="flex items-center justify-center py-2 gap-8">
+        <div className="text-center">
+          <p className="text-[9px] font-mono text-stealth-muted tracking-wider">USED VRAM</p>
+          <p className={`text-sm font-mono mt-0.5 ${((usedVram / totalVram) * 100) > 90 ? "text-telemetry-amber" : "text-white"}`}>
+            {(usedVram / 1024).toFixed(1)} GB
+          </p>
+        </div>
+        <div className="w-px h-6 bg-stealth-border" />
+        <div className="text-center">
+          <p className="text-[9px] font-mono text-stealth-muted tracking-wider">POWER DRAW</p>
+          <p className="text-sm font-mono mt-0.5 text-white">{totalPower.toFixed(0)}W</p>
+        </div>
       </div>
-    </div>
-  );
-}
-
-function SummaryItem({ label, value, warning }: { label: string; value: string; warning?: boolean }) {
-  return (
-    <div>
-      <p className="text-[9px] font-mono text-stealth-muted tracking-wider">{label}</p>
-      <p className={`text-sm font-mono mt-0.5 ${warning ? "text-telemetry-amber" : "text-white"}`}>
-        {value}
-      </p>
-    </div>
-  );
-}
-
-function TempLabel({ label, value, warning }: { label: string; value: number; warning?: boolean }) {
-  const color = warning ? "text-telemetry-red" : value > 85 ? "text-telemetry-amber" : "text-nv-green";
-  return (
-    <div>
-      <p className="text-[7px] font-mono text-stealth-muted/60 tracking-wider">{label}</p>
-      <p className={`text-[10px] font-mono ${color}`}>{value}°C</p>
     </div>
   );
 }
@@ -131,24 +114,12 @@ function GpuCard({ gpu }: { gpu: GpuInfo }) {
           <h3 className="text-[11px] font-mono text-white truncate">{gpu.name}</h3>
           <p className="text-[9px] font-mono text-stealth-muted mt-0.5">GPU-{gpu.index}</p>
         </div>
-        <span className={`text-sm font-mono ${tempColor}`}>
-          {gpu.temperature_gpu}°C
-        </span>
-      </div>
-
-      {/* Temp breakdown: core / hot spot / memory */}
-      <div className="px-3 py-1.5 border-b border-stealth-border flex items-center gap-4 bg-stealth-dark/20">
-        <TempLabel label="CORE" value={gpu.temperature_gpu} />
-        {gpu.temperature_hot_spot !== null && gpu.temperature_hot_spot > 0 ? (
-          <TempLabel label="HS" value={gpu.temperature_hot_spot} warning={gpu.temperature_hot_spot > 85} />
-        ) : (
-          <span className="text-[8px] font-mono text-stealth-muted/40">HS N/A</span>
-        )}
-        {gpu.temperature_memory !== null && gpu.temperature_memory > 0 ? (
-          <TempLabel label="MEM" value={gpu.temperature_memory} />
-        ) : (
-          <span className="text-[8px] font-mono text-stealth-muted/40">MEM N/A</span>
-        )}
+        <div className="text-right">
+          <p className="text-[7px] font-mono text-stealth-muted/60 tracking-wider">CORE</p>
+          <span className={`text-sm font-mono ${tempColor}`}>
+            {gpu.temperature_gpu}°C
+          </span>
+        </div>
       </div>
 
       {/* VRAM bar */}

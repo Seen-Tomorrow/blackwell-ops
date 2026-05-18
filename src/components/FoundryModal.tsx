@@ -2,11 +2,15 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { ProviderConfig } from "../lib/types";
+import { useTelemetry } from "../context/TelemetryContext";
 
 interface FoundryModalProps {
   provider: ProviderConfig;
   environment: "vanguard" | "stable" | "fresh";
-  onClose: () => void;
+  onClose: () => void; // Called on Complete/Failed or cancel during confirm phase
+  onComplete?: (providerId: string) => void;
+  visible: boolean; // true = show overlay, false = hidden but mounted (minimized to dock)
+  onMinimize?: () => void; // Called when MINIMIZE button clicked — hides overlay but keeps modal alive
 }
 
 interface BuildLogEntry {
@@ -15,9 +19,9 @@ interface BuildLogEntry {
   timestamp: string;
 }
 
-type ModalPhase = "confirm" | "building" | "complete" | "error";
+type ModalPhase = "confirm" | "building" | "complete" | "error" | "backup-locked" | "waiting-confirm";
 
-export default function FoundryModal({ provider, environment, onClose }: FoundryModalProps) {
+export default function FoundryModal({ provider, environment, onClose, onComplete, visible, onMinimize }: FoundryModalProps) {
   const [phase, setPhase] = useState<ModalPhase>("confirm");
   const phaseRef = useRef(phase);
   phaseRef.current = phase;
@@ -28,8 +32,13 @@ export default function FoundryModal({ provider, environment, onClose }: Foundry
   const [currentStep, setCurrentStep] = useState("");
   const [waitingForConfirm, setWaitingForConfirm] = useState(false);
   const [prUrl, setPrUrl] = useState("");
+  const [maxCores, setMaxCores] = useState<number | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
+
+  const { cpu } = useTelemetry();
+  const cpuThreads = cpu?.threads ?? 0;
+  const cpuPhysical = cpu?.cores ?? 0;
 
   const envColors = (base: string): string => {
     switch (environment) {
@@ -61,11 +70,6 @@ export default function FoundryModal({ provider, environment, onClose }: Foundry
           if (payload.log_line) {
             const logText = payload.log_line as string;
             
-            // Detect cmake config preview box — show proceed button
-            if (logText.includes("═══════")) {
-              setWaitingForConfirm(true);
-            }
-
             setLogLines(prev => [...prev, {
               step: stepLabel,
               text: logText,
@@ -77,9 +81,18 @@ export default function FoundryModal({ provider, environment, onClose }: Foundry
           switch (payload.step) {
             case "Complete":
               setPhase("complete");
+              if (onComplete) onComplete(provider.id);
               break;
             case "Failed":
               setPhase("error");
+              break;
+            case "BackupLocked":
+              setPhase("backup-locked");
+              break;
+            case "WaitingForConfirm":
+              // CMake done — show PROCEED/ABORT buttons
+              setWaitingForConfirm(true);
+              if (phaseRef.current === "confirm") setPhase("building");
               break;
             default:
               if (phaseRef.current === "confirm") setPhase("building");
@@ -115,6 +128,23 @@ export default function FoundryModal({ provider, environment, onClose }: Foundry
     }
   }, [logLines]);
 
+  // Listen for reset signal from StatusBarContext on Complete/Failed — clears logs and resets phase
+  useEffect(() => {
+    const handler = () => {
+      console.log("[Foundry] ← RESET received: clearing log history, resetting to confirm phase");
+      setPhase("confirm");
+      setLogLines([]);
+      setCurrentStep("");
+      setWaitingForConfirm(false);
+      setBuildId(null);
+      buildIdRef.current = null;
+      setPrUrl("");
+      setMaxCores(null);
+    };
+    window.addEventListener("blackops-foundry-reset", handler);
+    return () => window.removeEventListener("blackops-foundry-reset", handler);
+  }, []);
+
   const getStepLabel = (step: string): string => {
     switch (step) {
       case "Initializing": return "INIT";
@@ -126,7 +156,9 @@ export default function FoundryModal({ provider, environment, onClose }: Foundry
       case "Validating": return "VALIDATE";
       case "Complete": return "DONE";
       case "Failed": return "FAIL";
-      default: return step;
+        case "WaitingForConfirm": return "WAIT-CONFIRM";
+        case "BackupLocked": return "LOCKED";
+        default: return step;
     }
   };
 
@@ -156,6 +188,7 @@ export default function FoundryModal({ provider, environment, onClose }: Foundry
         providerId: provider.id,
         environment,
         prUrl: prUrl.trim() || null,
+        maxCores: maxCores ?? undefined,
       });
     } catch (err) {
       setPhase("error");
@@ -185,19 +218,88 @@ export default function FoundryModal({ provider, environment, onClose }: Foundry
     }
   };
 
+  const handleBackupLockedYes = async () => {
+    // User chose YES — stop engines and resume backup
+    try {
+      await invoke("foundry_resume_backup");
+    } catch (err) {
+      console.error("[Foundry] Resume backup failed:", err);
+    }
+  };
+
+  const handleBackupLockedPause = async () => {
+    // User chose PAUSE — cancel the build, user will sort out engines manually
+    try {
+      await invoke("foundry_cancel");
+    } catch (err) {
+      console.error("[Foundry] Cancel failed:", err);
+    }
+  };
+
+  // ── BackupLocked Phase ─────────────────────────────────────────────
+  if (phase === "backup-locked") {
+    return (
+      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm" style={{ display: visible ? 'flex' : 'none' }}>
+        <div className="w-[50vw] max-w-[520px] border border-yellow-400/40 bg-stealth-panel rounded-sm shadow-2xl">
+          {/* Header */}
+          <div className="flex items-center justify-between px-4 py-3 border-b border-stealth-border">
+            <h3 className="text-xs font-mono text-yellow-400 tracking-wider">⚠ BINARY LOCKED</h3>
+          </div>
+
+          {/* Body */}
+          <div className="px-4 py-5 space-y-4">
+            <p className="text-[10px] font-mono text-stealth-muted uppercase tracking-wider">
+              Engine binary is currently in use
+            </p>
+
+            <div className="border border-yellow-400/20 bg-yellow-400/[0.03] rounded-sm p-3 space-y-2">
+              <p className="text-[10px] font-mono text-white/80">
+                The binary for <span className="text-yellow-400">{provider.display_name}</span> ({environment.toLowerCase()}) is locked by a running engine.
+              </p>
+              <p className="text-[9px] font-mono text-stealth-muted">
+                You can either stop the engines now and proceed, or pause to handle it yourself.
+              </p>
+            </div>
+
+            {/* Log lines showing current state */}
+            {logLines.length > 0 && (
+              <div className="border border-stealth-border/50 bg-black/40 rounded-sm p-2 font-mono text-[8px] max-h-[120px] overflow-y-auto">
+                {logLines.slice(-3).map((entry, i) => (
+                  <div key={i} className="py-0.5 text-white/60">
+                    <span className="text-stealth-muted/40">[{entry.timestamp}]</span>{" "}
+                    <span className="text-stealth-muted/60">{entry.step.padEnd(10)}</span>{" "}
+                    {entry.text}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Footer */}
+          <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-stealth-border">
+            <button onClick={handleBackupLockedPause}
+              className="px-3 py-1 text-[9px] font-mono border border-red-400/60 text-red-400 hover:bg-red-500/20 transition-colors">
+              PAUSE — I'LL STOP THEM MYSELF
+            </button>
+            <button onClick={handleBackupLockedYes}
+              className="px-4 py-1 text-[9px] font-mono border rounded-sm bg-nv-green/20 border-nv-green/60 text-nv-green hover:bg-nv-green/30 transition-all">
+              YES — STOP ENGINES & PROCEED
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // ── Confirmation Phase ─────────────────────────────────────────────
   if (phase === "confirm") {
     return (
-      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm" style={{ display: visible ? 'flex' : 'none' }}>
         <div className="w-[60vw] max-w-[720px] border border-yellow-400/40 bg-stealth-panel rounded-sm shadow-2xl">
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-stealth-border">
             <h3 className="text-xs font-mono text-yellow-400 tracking-wider">REACTOR FOUNDRY</h3>
-            <button onClick={onClose} className="text-stealth-muted hover:text-white transition-colors text-sm leading-none">
-              &times;
-            </button>
           </div>
-
           {/* Body */}
           <div className="px-4 py-5 space-y-4">
             <p className="text-[10px] font-mono text-stealth-muted uppercase tracking-wider">
@@ -239,6 +341,38 @@ export default function FoundryModal({ provider, environment, onClose }: Foundry
                   onChange={(e) => setPrUrl(e.target.value)}
                 />
               </div>
+
+              {/* Build cores selector */}
+              {cpuThreads > 0 && (
+                <div className="pt-1">
+                  <label className="text-[8px] font-mono text-stealth-muted uppercase block mb-1.5">
+                    Max build threads
+                  </label>
+                  <p className="text-[7px] font-mono text-yellow-400/60 mb-2 leading-relaxed">
+                    Your CPU has {cpuThreads} threads ({cpuPhysical} physical). Leaving 2+ free keeps the system responsive while building.
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[4, 6, 8, 10, 12, 14, 16].map((n) => (
+                      <button key={n} onClick={() => setMaxCores(n)}
+                        className={`px-2 py-0.5 text-[9px] font-mono border rounded-sm transition-all ${
+                          maxCores === n
+                            ? "bg-nv-green/30 border-nv-green/60 text-nv-green"
+                            : "border-stealth-border text-stealth-muted hover:text-white hover:border-stealth-border/80"
+                        }`}>
+                        {n}
+                      </button>
+                    ))}
+                    <button onClick={() => setMaxCores(null)}
+                      className={`px-2 py-0.5 text-[9px] font-mono border rounded-sm transition-all ${
+                        maxCores === null
+                          ? "bg-nv-green/30 border-nv-green/60 text-nv-green"
+                          : "border-stealth-border text-stealth-muted hover:text-white hover:border-stealth-border/80"
+                      }`}>
+                      ALL ({cpuThreads})
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Warning */}
@@ -249,9 +383,9 @@ export default function FoundryModal({ provider, environment, onClose }: Foundry
 
           {/* Footer */}
           <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-stealth-border">
-            <button onClick={onClose}
+            <button onClick={() => onMinimize?.()}
               className="px-3 py-1 text-[9px] font-mono border border-stealth-border text-stealth-muted hover:text-white transition-colors">
-              CANCEL
+              MINIMIZE TO STATUS BAR
             </button>
             <button onClick={handleConfirmBuild}
               className={`px-4 py-1 text-[9px] font-mono border rounded-sm transition-all ${envColors("border")}`}>
@@ -268,7 +402,7 @@ export default function FoundryModal({ provider, environment, onClose }: Foundry
   const isError = phase === "error";
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm" style={{ display: visible ? 'flex' : 'none' }}>
       <div className={`w-[75vw] max-w-[960px] h-[75vh] border rounded-sm shadow-2xl flex flex-col ${
         isComplete ? "border-nv-green/40" : isError ? "border-red-400/40" : "border-yellow-400/40"
       }`}>
@@ -284,9 +418,6 @@ export default function FoundryModal({ provider, environment, onClose }: Foundry
               {environment.toUpperCase()}
             </span>
           </div>
-          <button onClick={onClose} className="text-stealth-muted hover:text-white transition-colors text-sm leading-none">
-            &times;
-          </button>
         </div>
 
         {/* Body */}
@@ -371,18 +502,24 @@ export default function FoundryModal({ provider, environment, onClose }: Foundry
               CANCEL BUILD
             </button>
           )}
-          <button onClick={onClose}
-            className={`px-3 py-1 text-[9px] font-mono border transition-colors ${
-              isComplete
-                ? "border-nv-green/60 text-nv-green hover:bg-nv-green/20"
-                : isError
-                  ? "border-red-400/60 text-red-400 hover:bg-red-500/20"
-                  : waitingForConfirm
-                    ? "hidden"
-                    : "border-stealth-border text-stealth-muted hover:text-white"
-            }`}>
-            {isComplete ? "CLOSE" : isError ? "CLOSE" : "MINIMIZE"}
-          </button>
+          {isComplete && (
+            <button onClick={onClose}
+              className="px-3 py-1 text-[9px] font-mono border border-nv-green/60 text-nv-green hover:bg-nv-green/20 transition-colors">
+              CLOSE
+            </button>
+          )}
+          {isError && (
+            <button onClick={onClose}
+              className="px-3 py-1 text-[9px] font-mono border border-red-400/60 text-red-400 hover:bg-red-500/20 transition-colors">
+              CLOSE
+            </button>
+          )}
+          {!isComplete && !isError && (
+            <button onClick={() => onMinimize?.()}
+              className="px-3 py-1 text-[9px] font-mono border border-stealth-border text-stealth-muted hover:text-white transition-colors">
+              MINIMIZE TO STATUS BAR
+            </button>
+          )}
         </div>
       </div>
     </div>

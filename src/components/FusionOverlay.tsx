@@ -221,7 +221,7 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
             {/* Col 3: Generation TPS (big, green) + sparkline */}
             <div className="flex flex-col items-center justify-start py-0.5 gap-1">
               <p className="text-[7px] font-mono text-stealth-muted/40 tracking-wider">GENERATION</p>
-              <FusionTpsDisplay tps={fusion.tps} history={fusion.tpsHistory} />
+              <FusionTpsDisplay tps={fusion.tps} smoothedTps={fusion.smoothedTps} history={fusion.tpsHistory} />
             </div>
 
             {/* Col 4: Reserved for HW telemetry */}

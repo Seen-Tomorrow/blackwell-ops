@@ -138,6 +138,7 @@ export interface ProviderConfig {
   template_type?: string; // "ggml-llama" | "ik-llama" | "" (custom)
   display_order?: number;
   buildInfoPerEnv?: Record<string, BuildInfo>;
+  binaryPathPerEnv?: Record<string, string>; // env -> binary path (e.g. "vanguard" -> ".../build-vanguard/bin/Release/llama-server.exe")
   lastPrPerEnv?: Record<string, string>; // env -> PR number (e.g. "stable" -> "21293")
 }
 
@@ -249,6 +250,8 @@ export interface FusionUpdate {
   engine_state: 'LOADING' | 'READY' | 'BUSY' | 'IDLE' | 'ERROR';
   /** Instantaneous TPS from n_decoded delta — TG-phase only */
   tps: number;
+  /** Adaptive EMA smoothed TPS — starts raw, flattens over ~20 samples per request */
+  smoothedTps: number;
   /** Prefill TPS captured during PP phase (0.0 when not in prefill) */
   prefillTps: number;
   /** Prefill progress 0.0-1.0 from "prompt processing progress" logs */

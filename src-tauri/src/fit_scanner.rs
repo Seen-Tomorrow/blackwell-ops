@@ -6,7 +6,7 @@
 use crate::telemetry::detect_gpu_count;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc as StdArc;
 use tokio::process::Command;
@@ -335,38 +335,65 @@ fn parse_fit_output(output: &str) -> Option<f64> {
     None
 }
 
-/// Extract the first number from a string, stripping ANSI escape codes first.
-fn extract_number(s: &str) -> Option<f64> {
-    // Strip ANSI escape sequences (e.g., \x1b[31;1m) before extracting numbers
-    let stripped: String = s.chars().scan(false, |in_escape, ch| {
-        if *in_escape {
-            if ch == 'm' {
-                *in_escape = false;
-            }
+/// Strip ANSI escape sequences from a string.
+fn strip_ansi(s: &str) -> String {
+    s.chars().scan(false, |in_esc, ch| {
+        if *in_esc {
+            if ch == 'm' { *in_esc = false; }
             None
         } else if ch == '\x1b' || ch == '\u{001B}' {
-            *in_escape = true;
+            *in_esc = true;
             None
         } else {
             Some(ch)
         }
-    }).collect();
+    }).collect()
+}
 
-    let stripped = stripped.trim();
-    // Remove commas used as thousand separators before parsing
-    let cleaned: String = stripped.chars().filter(|c| !(*c == ',')).collect();
-    let mut in_number = false;
-    let mut digits = String::new();
+/// Extract a numeric value from llama-fit-params output.
+/// Mode 1 (keyword anchor): find the number immediately before "MiB"/"MB"/"MI B".
+///   Handles any prefix noise — timestamps, log levels, ANSI codes, future format changes.
+/// Mode 2 (fallback): first valid single-decimal number in the string.
+///   Used by breakdown parsers that pass clean substrings like "459 + 46 + 121".
+fn extract_number(s: &str) -> Option<f64> {
+    // Mode 1: keyword anchor — find number before unit marker
+    let lower = s.to_lowercase();
+    for marker in &["mib", "mb ", "mi b"] {
+        if let Some(pos) = lower.find(marker) {
+            let before = strip_ansi(&s[..pos]).trim_end().to_string();
+            // Collect digits, dots, commas from the end of the prefix (the numeric token)
+            let mut num_chars = String::new();
+            for ch in before.chars().rev() {
+                if ch.is_ascii_digit() || ch == '.' || ch == ',' {
+                    num_chars.push(ch);
+                } else {
+                    break;
+                }
+            }
+            // Reverse back to normal order
+            let reversed: String = num_chars.chars().rev().collect();
+            if !reversed.is_empty() && reversed.matches('.').count() <= 1 {
+                if let Ok(val) = reversed.replace(',', "").parse::<f64>() {
+                    return Some(val);
+                }
+            }
+        }
+    }
+
+    // Mode 2: fallback — first valid number (at most one decimal point, rejects timestamps like "0.00.483.965")
+    let cleaned = strip_ansi(s).trim().to_string();
+    let mut started = false;
+    let mut num_chars = String::new();
     for ch in cleaned.chars() {
         if ch.is_ascii_digit() || ch == '.' {
-            digits.push(ch);
-            in_number = true;
-        } else if in_number {
+            started = true;
+            num_chars.push(ch);
+        } else if started {
             break;
         }
     }
-    if !digits.is_empty() {
-        return digits.parse::<f64>().ok();
+    if started && !num_chars.is_empty() && num_chars.matches('.').count() <= 1 {
+        return num_chars.replace(',', "").parse::<f64>().ok();
     }
     None
 }
@@ -399,6 +426,7 @@ pub async fn scan_single_anchor(
 
     let spawn_future = Command::new(fit_binary)
         .args(args)
+        .args(crate::types::LLAMA_DIAGNOSTIC_FLAGS.iter().map(|s| s.to_string()))
         .env("CUDA_VISIBLE_DEVICES", cuda_visible_devices)
         .output();
 
@@ -640,6 +668,33 @@ fn find_all_models(paths: &[String]) -> Vec<String> {
     }
 }
 
+/// Find existing scan data for a model path, with filename fallback for robustness.
+/// Handles path format differences (case, trailing slash, UNC prefix) between runs.
+fn find_existing_scan(
+    existing_data: &HashMap<String, FitScanFull>,
+    model_path: &str,
+) -> Option<FitScanFull> {
+    // Try exact match first
+    if let Some(e) = existing_data.get(model_path) {
+        return Some(e.clone());
+    }
+    // Fallback: match by filename (handles path format differences between runs)
+    let filename = PathBuf::from(model_path).file_name().and_then(|s| s.to_str()).map(String::from)?;
+    let found = existing_data.values().find(|v| {
+        PathBuf::from(&v.model_path).file_name()
+            .and_then(|s| s.to_str())
+            .map(String::from)
+            .as_ref()
+            == Some(&filename)
+    });
+    if let Some(e) = found {
+        log::debug!("[FIT] Cache miss (exact), filename match: '{}' -> '{}'", model_path, e.model_path);
+        return Some(e.clone());
+    }
+    log::debug!("[FIT] Cache miss (no data): '{}'", model_path);
+    None
+}
+
 /// Scan an entire library of models with parallel execution.
 pub async fn scan_library(
     fit_binary: &str,
@@ -686,8 +741,8 @@ pub async fn scan_library(
             break;
         }
 
-        // Extract existing data before spawning — owned copies to avoid borrow issues
-        let existing_full: Option<FitScanFull> = existing_data.get(&model_path).cloned();
+        // Look up existing scan data with filename fallback for path robustness
+        let existing_full: Option<FitScanFull> = find_existing_scan(&existing_data, &model_path);
         
         // Build a HashSet of existing labels for this model
         let existing_labels: HashSet<String> = existing_full.as_ref().map(|e| {
@@ -710,15 +765,9 @@ pub async fn scan_library(
         };
 
         if missing_labels.is_empty() {
-            // All points already scanned — copy without rescanning
+            // All points already scanned — insert directly (no spawn, avoids race with save)
             if let Some(existing) = existing_full {
-                tokio::spawn({
-                    let full_map = full_results_map.clone();
-                    async move {
-                        let mut map = full_map.lock().await;
-                        map.insert(model_path.clone(), existing);
-                    }
-                });
+                full_results_map.lock().await.insert(model_path.clone(), existing);
                 continue;
             }
         }
