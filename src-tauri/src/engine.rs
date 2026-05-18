@@ -152,18 +152,18 @@ pub async fn launch_engine(
     crate::config::validate_provider_binary(binary_path.to_str().unwrap_or(""))?;
     crate::config::validate_model_path(&config.model_path)?;
 
-    let stack = app.stack.lock().await;
-    let slot_idx = stack.find_idle_slot().ok_or("All 4 slots are occupied")?;
-
-    let slot_port = if config.port == 0 {
-        stack.get_slot(slot_idx).map(|s| s.port).unwrap_or(config.port)
-    } else {
-        config.port
+    let (slot_idx, slot_port) = {
+        let stack = app.stack.lock().await;
+        let idx = stack.find_idle_slot().ok_or("All 4 slots are occupied")?;
+        let port = if config.port == 0 {
+            stack.get_slot(idx).map(|s| s.port).unwrap_or(9090)
+        } else {
+            config.port
+        };
+        (idx, port)
     };
 
     config.port = slot_port;
-
-    drop(stack);
 
     let ps_script = format!(
         r"$pids = netstat -ano | Select-String ':{0} ' | ForEach-Object {{ ($_ -split '\s+')[-1] }}; $pids | Where-Object {{ $_.Length -gt 0 -and $_ -ne '0' }} | ForEach-Object {{ taskkill /F /PID $_ 2>$null }}",
@@ -179,8 +179,6 @@ pub async fn launch_engine(
 
     tokio::time::sleep(Duration::from_millis(300)).await;
 
-    let mut stack = app.stack.lock().await;
-
     let provider_display_name = backend_type.clone();
 
     let cmd_args = template.build_command(&config, &gpu_mask, param_defs_ref);
@@ -190,7 +188,7 @@ pub async fn launch_engine(
     eprintln!("==========================================\n");
     // SANITY-BOX — route launch command to sanity box
     app.log_hub.emit_sanity_log("warn", &format!("[LAUNCH_CMD] slot={}: {}", slot_idx, launch_cmd));
-    
+
     if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(r"C:\tmp\blackwell-launch.log") {
         use std::io::Write;
         let _ = writeln!(f, "\n[{}] slot={} CMD:\n{}\n", chrono::Local::now().format("%H:%M:%S%.3f"), slot_idx, launch_cmd);
@@ -202,9 +200,11 @@ pub async fn launch_engine(
         .parse::<usize>().unwrap_or(32768);
 
     // Spawn engine and get ConPTY output receiver for unified reader
-    let conpty_rx = match stack.load_slot_with_args(slot_idx, &config, &binary_path, gpu_mask.clone(), cmd_args.clone(), provider_display_name.clone(), backend_type.clone()).await {
-        Ok(rx) => rx,
-        Err(e) => return Err(e),
+    let conpty_rx = {
+        match EngineStack::load_slot(slot_idx, &config, &binary_path, gpu_mask.clone(), cmd_args.clone(), provider_display_name.clone(), backend_type.clone(), &app.stack).await {
+            Ok(rx) => rx,
+            Err(e) => return Err(e),
+        }
     };
 
     eprintln!("[LAUNCH] slot={} ConPTY output channel ready", slot_idx);
@@ -260,7 +260,7 @@ pub async fn launch_engine(
 #[tauri::command]
 pub async fn stop_engine(alias: String, app: tauri::State<'_, AppContext>) -> Result<String, String> {
     let (slot_idx, port) = {
-        let mut stack = app.stack.lock().await;
+        let stack = app.stack.lock().await;
         let slot_count = stack.slots.len();
         let idx = (0..slot_count).find(|&i| {
             stack.get_slot(i).map_or(false, |s| s.alias == alias)
@@ -273,7 +273,7 @@ pub async fn stop_engine(alias: String, app: tauri::State<'_, AppContext>) -> Re
     crate::fusion::stop_fusion_task(port).await;
 
     {
-        let mut stack = app.stack.lock().await;
+        let stack = app.stack.lock().await;
         stack.stop_slot(slot_idx).await?;
     }
 
@@ -287,7 +287,7 @@ pub async fn stop_engine_by_alias(
     stack: Arc<Mutex<EngineStack>>,
 ) -> Result<usize, String> {
     let (idx, port) = {
-        let mut s = stack.lock().await;
+        let s = stack.lock().await;
         let slot_count = s.slots.len();
         let idx = (0..slot_count)
             .find(|&i| s.get_slot(i).map_or(false, |sl| sl.alias == alias))
@@ -298,7 +298,7 @@ pub async fn stop_engine_by_alias(
     // Cancel fusion before stopping slot
     crate::fusion::stop_fusion_task(port).await;
     {
-        let mut s = stack.lock().await;
+        let s = stack.lock().await;
         s.stop_slot(idx).await?;
     }
     Ok(idx)
@@ -306,66 +306,70 @@ pub async fn stop_engine_by_alias(
 
 #[tauri::command]
 pub async fn stop_all_engines(app: tauri::State<'_, AppContext>) -> Result<String, String> {
-    let stopped_ports = {
-        let mut stack = app.stack.lock().await;
+    let ports_to_stop = {
+        let stack = app.stack.lock().await;
         let slot_count = stack.slots.len();
 
-        let mut ports_to_stop = Vec::new();
+        let mut ports = Vec::new();
         for i in 0..slot_count {
-            if !stack.get_slot(i).map_or(true, |s| matches!(s.status, SlotStatus::Idle)) {
-                let port = stack.get_slot(i).map(|s| s.port).unwrap_or(0);
-                ports_to_stop.push(port);
+            if let Some(slot) = stack.get_slot(i) {
+                if !matches!(slot.status, SlotStatus::Idle) {
+                    ports.push(slot.port);
+                }
             }
         }
+        ports
+    }; // Stack lock released
 
-        // Cancel all fusion monitors BEFORE stopping slots
-        for port in &ports_to_stop {
-            crate::fusion::stop_fusion_task(*port).await;
-        }
-
-        let mut stopped = Vec::new();
-        for i in 0..slot_count {
-            if !stack.get_slot(i).map_or(true, |s| matches!(s.status, SlotStatus::Idle)) {
-                let _ = stack.stop_slot(i).await;
-                stopped.push(i);
-            }
-        }
-        ports_to_stop
-    }; // Lock released
-
-    for _ in &stopped_ports {
-        app.log_hub.emit("slot-cleared", &serde_json::json!({ "slot": 0 }));
+    // Cancel all fusion monitors in parallel BEFORE stopping slots
+    for port in &ports_to_stop {
+        crate::fusion::stop_fusion_task(*port).await;
     }
 
-    Ok(format!("All {} engines stopped", stopped_ports.len()))
+    // Stop all engines in parallel — returns actual slot indices
+    let stopped_slots = {
+        let stack = app.stack.lock().await;
+        stack.stop_all_parallel().await
+    };
+
+    for idx in &stopped_slots {
+        app.log_hub.emit("slot-cleared", &serde_json::json!({ "slot": idx }));
+    }
+
+    Ok(format!("All {} engines stopped", ports_to_stop.len()))
 }
 
 /// Stops all running engines for a specific provider (by backend_type).
 #[tauri::command]
 pub async fn stop_engines_by_provider(provider_id: String, app: tauri::State<'_, AppContext>) -> Result<String, String> {
-    let stopped_info = {
-        let mut stack = app.stack.lock().await;
-        let mut ports = Vec::new();
+    let ports = {
+        let stack = app.stack.lock().await;
+        let mut p = Vec::new();
         for i in 0..stack.slots.len() {
-            if let Some(slot) = &stack.get_slot(i) {
+            if let Some(slot) = stack.get_slot(i) {
                 if slot.backend_type == provider_id && !matches!(slot.status, SlotStatus::Idle) {
-                    ports.push(slot.port);
+                    p.push(slot.port);
                 }
             }
         }
-        // Cancel fusion monitors BEFORE stopping slots
-        for port in &ports {
-            crate::fusion::stop_fusion_task(*port).await;
-        }
-        let stopped = stack.stop_slots_by_provider(&provider_id).await;
-        (stopped, ports)
+        p
     };
 
-    for slot_idx in &stopped_info.0 {
+    // Cancel fusion monitors BEFORE stopping slots
+    for port in &ports {
+        crate::fusion::stop_fusion_task(*port).await;
+    }
+
+    let stopped = {
+        let stack = app.stack.lock().await;
+        stack.stop_slots_by_provider_parallel(&provider_id).await
+    };
+
+    for slot_idx in &stopped {
         app.log_hub.emit("slot-cleared", &serde_json::json!({ "slot": slot_idx }));
     }
 
-    Ok(format!("Stopped {} engine(s) for '{}'", stopped_info.0.len(), provider_id))
+    Ok(format!("Stopped {} engine(s) for '{}'", stopped.len(), provider_id))
 }
 
 #[tauri::command]
@@ -426,7 +430,7 @@ pub async fn get_stack_status(app: tauri::State<'_, AppContext>) -> Result<Vec<S
 pub async fn clean_exit(app: tauri::State<'_, AppContext>) -> Result<(), String> {
     log::info!("Clean exit requested — killing all orphaned processes");
 
-    let mut stack = app.stack.lock().await;
+    let stack = app.stack.lock().await;
     stack.kill_all().await;
     Ok(())
 }
@@ -730,7 +734,7 @@ pub async fn get_binary_build_info(binary_path: String) -> Result<crate::types::
                 .unwrap_or(raw)
                 .chars().filter(|c| *c <= '\x7F').collect::<String>()
         }
-        Ok(o) => {
+        Ok(_o) => {
             log::warn!("Binary --version exited with error for '{}'", path.display());
             String::new()
         }

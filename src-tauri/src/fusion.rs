@@ -281,7 +281,7 @@ pub async fn start_fusion_http_poller(
     ctx_total: usize,
     parallel: i64,
     unified_kv: bool,
-    mut fusion_rx: mpsc::UnboundedReceiver<FusionEvent>,
+    fusion_rx: mpsc::UnboundedReceiver<FusionEvent>,
 ) {
     let mut tasks = FUSION_TASKS.lock().await;
 
@@ -709,7 +709,7 @@ fn build_update(
     };
 
     // Generation progress from n_remain + max_tokens
-    let n_remain = state.slots.values().filter(|s| s.was_processing).fold(-1i64, |acc, _| {
+    let _n_remain = state.slots.values().filter(|s| s.was_processing).fold(-1i64, |acc, _| {
         // We don't have per-slot n_remain here, use the global tracking
         acc
     });

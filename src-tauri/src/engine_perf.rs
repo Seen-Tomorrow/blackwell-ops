@@ -361,10 +361,10 @@ async fn unified_reader_loop(
                         if lower.contains("server is listening on") || lower.contains("all slots are idle") {
                             engine_ready = true;
                             {
-                                let mut s = stack.lock().await;
-                                if let Some(slot) = s.get_slot_mut(slot_idx) {
+                                let s = stack.lock().await;
+                                if let Some(mut slot) = s.get_slot(slot_idx) {
                                     slot.status = SlotStatus::Running;
-                                }
+                                };
                             }
                             eprintln!("[READINESS] slot={} engine ready", slot_idx);
                         }

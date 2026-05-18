@@ -221,7 +221,7 @@ impl DownloadManager {
         }
 
         // Mark as downloading and get task info
-        let (url, dest_path, start_offset, total_bytes) = {
+        let (url, dest_path, start_offset, _total_bytes) = {
             let mut dm = manager.write().await;
             if let Some(task) = dm.tasks.get_mut(&task_id) {
                 task.status = DownloadStatus::Downloading;
@@ -296,7 +296,7 @@ impl DownloadManager {
         if start_offset > 0 && status_code.is_success() && status_code != reqwest::StatusCode::PARTIAL_CONTENT {
             // Server doesn't support range requests — truncate and restart from beginning
             drop(file);
-            let mut f = match tokio::fs::File::create(&dest_path).await {
+            let _f = match tokio::fs::File::create(&dest_path).await {
                 Ok(f) => f,
                 Err(e) => {
                     mark_failed(&manager, &task_id, format!("Failed to reset file: {}", e)).await;
@@ -358,7 +358,7 @@ impl DownloadManager {
                                     let (t1, b1) = *speed_samples.last().unwrap();
                                     let dt_sec = (t1 - t0) as f64 / 1000.0;
                                     if dt_sec > 0.01 {
-                                        let raw_speed = ((b1 - b0) as f64 / dt_sec);
+                                        let raw_speed = (b1 - b0) as f64 / dt_sec;
                                         last_speed = last_speed * (1.0 - SPEED_SMOOTHING) + raw_speed * SPEED_SMOOTHING;
                                     }
                                 }

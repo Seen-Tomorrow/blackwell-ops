@@ -758,7 +758,7 @@ fn load_saved_config() -> Option<AppConfig> {
 }
 
 
-fn build_config_with_providers_full(gpu_count: usize, mut config: AppConfig) -> AppConfig {
+fn build_config_with_providers_full(_gpu_count: usize, mut config: AppConfig) -> AppConfig {
     let metas = load_provider_meta();
 
     let disk_metas = if metas.is_empty() {

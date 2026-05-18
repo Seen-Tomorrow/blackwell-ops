@@ -32,6 +32,7 @@ sha2 = "0.10"
 libloading = "0.8"
 num_cpus = "1"
 regex = "1.10"
+parking_lot = "0.12"
 
 # ConPTY — forces llama-server line-buffered output (pseudo-console = real TTY)
 [target.'cfg(windows)'.dependencies]

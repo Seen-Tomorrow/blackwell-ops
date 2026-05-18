@@ -335,7 +335,7 @@ pub async fn foundry_build(
                 .unwrap_or_default()
         };
 
-        let mut stack = app.stack.lock().await;
+        let stack = app.stack.lock().await;
         let stopped: Vec<usize> = stack.stop_slots_by_provider(&backend_type).await;
         if !stopped.is_empty() {
             emit_build_event(app_handle, &provider_id, env, build_id, BuildStep::Initializing, 
@@ -566,7 +566,7 @@ pub async fn foundry_build(
 
                     // User clicked YES — stop engines and retry
                     let stopped: Vec<usize> = {
-                        let mut stack = app.stack.lock().await;
+                        let stack = app.stack.lock().await;
                         stack.stop_slots_by_provider(&provider_id).await
                     };
                     if !stopped.is_empty() {
@@ -1246,7 +1246,7 @@ pub async fn foundry_restore(
 
     // Check if any engine is running for this provider — stop it first
     {
-        let mut stack = app.stack.lock().await;
+        let stack = app.stack.lock().await;
         let stopped = stack.stop_slots_by_provider(&provider_id).await;
         if !stopped.is_empty() {
             log::info!("[restore] Stopped {} engine(s) before restore", stopped.len());
