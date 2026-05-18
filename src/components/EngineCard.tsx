@@ -96,7 +96,7 @@ export default memo(function EngineCard({ entry, logs, systemEvents, enginePerfE
     listen("engine-perf", (e: any) => {
       try {
         const data = e.payload as EnginePerfEvent;
-        if (data.alias === entry.alias && data.tps !== undefined) {
+        if (data.slot === entry.idx && data.tps !== undefined) {
           setTelemetry((prevTel) => {
             let newPhase = prevTel.phase;
 
@@ -142,7 +142,7 @@ export default memo(function EngineCard({ entry, logs, systemEvents, enginePerfE
       if (unsub) unsub();
       if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
     };
-  }, [entry.alias, entry.status]);
+  }, [entry.idx, entry.status]);
 
   // Auto-scroll only on mount or when system events change (not every log line)
   useEffect(() => {

@@ -35,10 +35,10 @@ export default function ModelCatalog(props: ModelCatalogProps) {
     models, gpus, stack, scanningPath, setScanningPath, batchScanState, setBatchScanState, onReload,
   });
 
-  const { search, setSearch, catalogSelectedModel, panelActiveModel, handleSelect, handleSelectByAlias, selectedEngineAlias, sortField, sortDirection, handleSort,
+  const { search, setSearch, catalogSelectedModel, panelActiveModel, handleSelect, handleSelectBySlot, selectedSlotIdx, sortField, sortDirection, handleSort,
     pinnedModels, catalogModels, allFiltered, runningModelPaths, runningInstances, activeEngineByModel,
     getFitStatus, handleScanModel, handleScanAll, handleCancelScan,
-    highlightIndex, zone, visibleCount, setVisibleCount, newlyLaunchedAlias } = catalog;
+    highlightIndex, zone, visibleCount, setVisibleCount } = catalog;
 
   // Auto-scroll selected model into view in the catalog scroll container
   const catalogScrollRef = useRef<HTMLDivElement>(null);
@@ -102,15 +102,17 @@ export default function ModelCatalog(props: ModelCatalogProps) {
     return result;
   };
 
-  // Determine effective alias for right panel: ONLY from mini card click (selectedEngineAlias)
-  const effectiveEngineAlias = selectedEngineAlias;
+  // Determine effective engine entry from selected slot index
+  const effectiveEngineEntry = useMemo(() => {
+    if (selectedSlotIdx === null) return undefined;
+    return stack.find(s => s.idx === selectedSlotIdx);
+  }, [selectedSlotIdx, stack]);
+
+  // Effective alias for Fusion overlay — resolved from slot entry
+  const effectiveEngineAlias = effectiveEngineEntry?.alias || undefined;
 
   // Determine effective port for right panel
-  const effectiveEnginePort = useMemo(() => {
-    if (!selectedEngineAlias) return undefined;
-    const entry = stack.find(s => s.alias === selectedEngineAlias);
-    return entry?.port;
-  }, [selectedEngineAlias, stack]);
+  const effectiveEnginePort = effectiveEngineEntry?.port;
 
   // ── Sort bar ────────────────
   const renderSortBar = () => (
@@ -240,8 +242,8 @@ export default function ModelCatalog(props: ModelCatalogProps) {
                 </div>
                 <div className="grid grid-cols-2 gap-1 px-3 pb-2">
                   {instances.map(item => {
-                    // Mini card selection is driven ONLY by alias — catalog clicks must not affect it
-                    const isThisSelected = selectedEngineAlias === item.entry.alias;
+                    // Mini card selection is driven ONLY by slot index — catalog clicks must not affect it
+                    const isThisSelected = selectedSlotIdx === item.entry.idx;
                     return (
                       <MiniModelCard
                         key={item.entry.alias!}
@@ -251,8 +253,8 @@ export default function ModelCatalog(props: ModelCatalogProps) {
                         quant={item.quant}
                         sizeStr={item.sizeStr}
                         isSelected={isThisSelected}
-                        isNewLaunch={newlyLaunchedAlias === item.entry.alias}
-                        onSelect={handleSelectByAlias}
+                        isNewLaunch={false}
+                        onSelect={() => handleSelectBySlot(item.entry.idx)}
                       />
                     );
                   })}
@@ -330,6 +332,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
               isModelRunning={panelActiveModel ? runningModelPaths.has(panelActiveModel.path) : false}
               activeEngineAlias={effectiveEngineAlias}
               activeEnginePort={effectiveEnginePort}
+              selectedSlotIdx={selectedSlotIdx}
             />
           </div>
         </div>

@@ -891,4 +891,150 @@ select option {
   animation: dockSlideUp 0.2s ease-out forwards;
 }
 
+/* ── Nuclear Fusion Button — Speculative Decoding Master Toggle ─── */
+
+@keyframes nuclearPulseOff {
+  0%, 100% { box-shadow: 0 0 6px rgba(255, 30, 30, 0.2), inset 0 0 4px rgba(255, 30, 30, 0.1); }
+  50% { box-shadow: 0 0 14px rgba(255, 30, 30, 0.4), inset 0 0 8px rgba(255, 30, 30, 0.2); }
+}
+
+@keyframes nuclearPulseOn {
+  0%, 100% { box-shadow: 0 0 16px rgba(255, 60, 20, 0.7), inset 0 0 12px rgba(255, 80, 30, 0.4); }
+  50% { box-shadow: 0 0 32px rgba(255, 100, 20, 1), inset 0 0 20px rgba(255, 120, 40, 0.7); }
+}
+
+@keyframes nuclearFlash {
+  0% { opacity: 0; transform: scale(0.96); }
+  30% { opacity: 1; transform: scale(1.02); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes specUnlockStagger {
+  from { opacity: 0; transform: translateY(8px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes warningStripe {
+  0% { background-position: 0 0; }
+  100% { background-position: 28px 0; }
+}
+
+.nuclear-btn-container {
+  position: relative;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.nuclear-btn {
+  width: 100%;
+  max-width: 320px;
+  height: 56px;
+  border-radius: 6px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  font-weight: bold;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.15s ease;
+  border: 2px solid rgba(255, 40, 40, 0.5);
+  background: linear-gradient(180deg, #1a0505 0%, #2a0a0a 50%, #1a0505 100%);
+  color: #ff3333;
+  animation: nuclearPulseOff 2.5s ease-in-out infinite;
+}
+
+.nuclear-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 60, 60, 0.1), transparent);
+  transition: left 0.6s ease;
+}
+
+.nuclear-btn:hover::before {
+  left: 100%;
+}
+
+.nuclear-btn:hover {
+  border-color: rgba(255, 60, 60, 0.8);
+  color: #ff5555;
+}
+
+.nuclear-btn:active {
+  transform: scale(0.97);
+}
+
+/* ACTIVE STATE — nuclear fusion engaged */
+.nuclear-btn.active {
+  border-color: rgba(255, 100, 30, 0.9);
+  background: linear-gradient(180deg, #2a0f00 0%, #3d1500 50%, #2a0f00 100%);
+  color: #ffaa44;
+  animation: nuclearPulseOn 1.2s ease-in-out infinite;
+}
+
+.nuclear-btn.active::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #ff4400, #ffaa00, #ff6600, #ffcc00);
+  animation: nuclearPulseOn 1s ease-in-out infinite;
+}
+
+.nuclear-btn.flash {
+  animation: nuclearFlash 0.4s ease-out forwards, nuclearPulseOn 1.2s ease-in-out infinite;
+}
+
+/* Warning banner for active speculative decoding group */
+.spec-warning-banner {
+  background: repeating-linear-gradient(
+    -45deg,
+    rgba(255, 60, 20, 0.08),
+    rgba(255, 60, 20, 0.08) 4px,
+    transparent 4px,
+    transparent 8px
+  );
+  border: 1px solid rgba(255, 60, 20, 0.3);
+  padding: 6px 10px;
+  margin-bottom: 8px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.15em;
+  color: #ff7744;
+  text-transform: uppercase;
+}
+
+.spec-warning-banner.active {
+  animation: warningStripe 2s linear infinite;
+  background-size: 28px 28px;
+  border-color: rgba(255, 100, 30, 0.6);
+  color: #ffaa44;
+}
+
+/* Params that unlock when speculative decoding is ON */
+.spec-param-unlock {
+  animation: specUnlockStagger 0.3s ease-out forwards;
+}
+
+.spec-param-unlock:nth-child(1) { animation-delay: 0.05s; }
+.spec-param-unlock:nth-child(2) { animation-delay: 0.1s; }
+.spec-param-unlock:nth-child(3) { animation-delay: 0.15s; }
+
+/* Locked state — greyed out */
+.spec-locked {
+  opacity: 0.2;
+  pointer-events: none;
+  filter: grayscale(1);
+}
+
 

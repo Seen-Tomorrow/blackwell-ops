@@ -86,3 +86,42 @@ pub async fn remove_provider(id: String, app: tauri::State<'_, AppContext>) -> R
 
     Ok(())
 }
+
+/// Toggle `hidden` on every param belonging to a given UI group within a provider.
+/// Returns the new hidden state (`true` = all hidden, `false` = all visible).
+#[tauri::command]
+pub async fn toggle_group_hidden(provider_id: String, group_id: String, app: tauri::State<'_, AppContext>) -> Result<bool, String> {
+    let mut cfg = app.config.lock().map_err(|e| e.to_string())?;
+
+    let prov = cfg.providers.iter_mut()
+        .find(|p| p.id == provider_id)
+        .ok_or(format!("Provider '{}' not found", provider_id))?;
+
+    // Determine current state: if any param in the group is visible, we'll hide all. Otherwise unhide all.
+    let mut new_hidden = true;
+    for def in &prov.param_definitions {
+        if def.ui_group == group_id {
+            if !def.hidden {
+                new_hidden = false;
+                break;
+            }
+        }
+    }
+
+    // Flip: if any visible → hide all. If all hidden → unhide all.
+    new_hidden = !new_hidden;
+
+    for def in &mut prov.param_definitions {
+        if def.ui_group == group_id {
+            def.hidden = new_hidden;
+        }
+    }
+
+    drop(cfg);
+
+    // Persist to disk
+    let cfg_for_meta = app.config.lock().map_err(|e| e.to_string())?;
+    crate::config::persist_provider_meta(&cfg_for_meta.providers)?;
+
+    Ok(new_hidden)
+}

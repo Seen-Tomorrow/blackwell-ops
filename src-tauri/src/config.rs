@@ -353,7 +353,7 @@ fn param_def_from_template(tp: &crate::templates::TemplateParam, order: i32) -> 
         label: tp.label.clone(),
         values: tp.values.clone(),
         order,
-        hidden: false,
+        hidden: tp.hidden_default,
         hidden_values: Vec::new(),
         config_key: tp.config_key.clone(),
         flag: tp.flag.clone(),

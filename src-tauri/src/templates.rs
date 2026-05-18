@@ -85,6 +85,9 @@ pub struct TemplateParam {
     /// Dock key — when set, param renders in a docked block above PARAMETERS instead of its ui_group.
     #[serde(default)]
     pub dock: String,
+    /// Hidden by default — param is excluded from catalog UI and launch command until user toggles it on.
+    #[serde(default)]
+    pub hidden_default: bool,
 }
 
 fn default_ptype() -> String {

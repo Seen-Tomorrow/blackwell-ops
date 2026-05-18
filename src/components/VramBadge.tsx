@@ -16,15 +16,16 @@ interface VramBadgeProps {
   isModelRunning?: boolean;
   activeEngineAlias?: string;
   activeEnginePort?: number;
+  selectedSlotIdx?: number | null; // Slot index for Fusion overlay (unique, no collision)
   offloadMode?: string; // Current Offload_Mode config value (e.g., "moe_optimal")
   onMoeSuggestionClick?: () => void; // Callback to auto-switch to MOE_OPTIMAL
 }
 
 /** Pure skeleton renderer — reads all text, visibility, and colors from scenario's uiTemplate.
  *  GOLDEN RULE: Never add conditional logic or hardcoded text here. */
-export default function VramBadge({ 
+export default function VramBadge({
   manifest, gpus, modelMeta, selectedGpuIndices, onDeviceSelect, isValidating, onValidate,
-  isModelRunning, activeEngineAlias, activeEnginePort, offloadMode, onMoeSuggestionClick
+  isModelRunning, activeEngineAlias, activeEnginePort, selectedSlotIdx, offloadMode, onMoeSuggestionClick
 }: VramBadgeProps) {
   if (!manifest) return null;
 
@@ -60,12 +61,13 @@ export default function VramBadge({
 
   // Fusion overlay data (only when a specific engine is selected via mini card)
   const { getEngine } = useFusionData();
-  const fusion = activeEngineAlias ? getEngine(activeEngineAlias) : null;
+  // Resolve fusion data from slot index — unique per engine, no alias collision
+  const fusion = selectedSlotIdx !== null && selectedSlotIdx !== undefined ? getEngine(selectedSlotIdx) : null;
 
   return (
     <div className="px-3 py-2.5 relative">
       {/* Overlay when a specific engine is selected (mini card click) — covers entire forecast container */}
-      {activeEngineAlias && activeEnginePort && fusion && (
+      {selectedSlotIdx !== null && selectedSlotIdx !== undefined && activeEnginePort && fusion && (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}

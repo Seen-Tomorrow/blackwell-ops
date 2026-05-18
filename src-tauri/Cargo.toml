@@ -47,8 +47,7 @@ futures-util = "0.3"
 tauri-build = { version = "2", features = [] }
 
 [profile.release]
-opt-level = "z"
-lto = true
+opt-level = 3
+lto = "fat"
 codegen-units = 1
 panic = "abort"
-strip = true

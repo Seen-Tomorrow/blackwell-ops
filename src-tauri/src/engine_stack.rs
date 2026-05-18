@@ -266,20 +266,6 @@ impl EngineStack {
         Ok(rx)
     }
 
-    /// Legacy instance method — use `load_slot` static instead.
-    pub async fn load_slot_with_args(
-        &self,
-        _slot_idx: usize,
-        _config: &EngineConfig,
-        _binary_path: &std::path::PathBuf,
-        _gpu_mask: String,
-        _cmd_args: Vec<String>,
-        _provider_display_name: String,
-        _backend_type: String,
-    ) -> Result<mpsc::UnboundedReceiver<String>, String> {
-        Err("Use EngineStack::load_slot() instead".to_string())
-    }
-
     pub fn take_output_tx(&self, idx: usize) -> Option<mpsc::UnboundedSender<String>> {
         if let Some(slot_arc) = &self.slots[idx] {
             slot_arc.lock().output_tx.take()
@@ -374,6 +360,13 @@ impl EngineStack {
         }
     }
 
+    /// Emit a stack-changed event to frontend with current status snapshot.
+    pub fn emit_stack_changed(&self) {
+        if let Some(hub) = self.log_hub.as_ref() {
+            hub.emit("stack-changed", &self.get_status());
+        }
+    }
+
     /// Stops a single slot. Locks only the target slot, not the whole stack.
     pub async fn stop_slot(&self, slot_idx: usize) -> Result<(), String> {
         let (port, alias, proc_to_stop) = {
@@ -403,6 +396,7 @@ impl EngineStack {
 
         // Clean up slot state — full metadata reset
         self.clear_slot(slot_idx);
+        self.emit_stack_changed();
         Ok(())
     }
 
@@ -434,11 +428,16 @@ impl EngineStack {
                                 };
                                 eprintln!("[STOP] slot={} alias={} shutdown: {}", i, alias, msg);
 
-                                if let Some(hub) = log_hub_ref {
+                                if let Some(hub) = log_hub_ref.as_ref() {
                                     hub.emit_system_event(i, &alias, &msg).await;
                                 }
 
                                 let _ = EngineStack::kill_process_by_port(port).await;
+                            }
+
+                            // Emit slot-cleared immediately so UI clears logs per-engine as each finishes
+                            if let Some(hub) = log_hub_ref.as_ref() {
+                                hub.emit("slot-cleared", &serde_json::json!({ "slot": i }));
                             }
 
                             (i, port)
@@ -457,13 +456,13 @@ impl EngineStack {
                 stopped.push(i);
             }
         }
+        self.emit_stack_changed();
         stopped
     }
 
     /// Stops all slots whose backend_type matches the given provider ID in parallel.
     pub async fn stop_slots_by_provider_parallel(&self, backend_type: &str) -> Vec<usize> {
         let mut handles = Vec::new();
-        let mut targets = Vec::new();
 
         for (i, slot_opt) in self.slots.iter().enumerate() {
             if let Some(slot_arc) = slot_opt {
@@ -474,7 +473,6 @@ impl EngineStack {
                     let proc_to_stop = slot.conpty_proc.take();
 
                     let log_hub_ref = self.log_hub.as_ref().map(|h| h.clone());
-                    targets.push(i);
 
                     handles.push(tokio::spawn(async move {
                         if let Some(mut proc) = proc_to_stop {
@@ -487,11 +485,16 @@ impl EngineStack {
                             };
                             eprintln!("[STOP] slot={} alias={} shutdown: {}", i, alias, msg);
 
-                            if let Some(hub) = log_hub_ref {
+                            if let Some(hub) = log_hub_ref.as_ref() {
                                 hub.emit_system_event(i, &alias, &msg).await;
                             }
 
                             let _ = EngineStack::kill_process_by_port(port).await;
+                        }
+
+                        // Emit slot-cleared immediately so UI clears logs per-engine as each finishes
+                        if let Some(hub) = log_hub_ref.as_ref() {
+                            hub.emit("slot-cleared", &serde_json::json!({ "slot": i }));
                         }
 
                         i
@@ -508,6 +511,7 @@ impl EngineStack {
                 stopped.push(i);
             }
         }
+        self.emit_stack_changed();
         stopped
     }
 

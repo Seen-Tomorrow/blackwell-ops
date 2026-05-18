@@ -361,6 +361,7 @@ async fn main() {
             provider_mgmt::list_providers,
             provider_mgmt::save_provider,
             provider_mgmt::remove_provider,
+            provider_mgmt::toggle_group_hidden,
             engine::get_binary_build_info,
             engine::set_build_info_for_env,
             engine::open_file_dialog,

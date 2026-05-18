@@ -147,6 +147,20 @@ function App() {
       .catch(console.error);
   }, []);
 
+  // Reload providers when nuclear button toggles group hidden state
+  const reloadProviders = useCallback(async () => {
+    try {
+      const data = await invoke<ProviderConfig[]>("list_providers");
+      setProviders(data);
+    } catch (err) { console.error("Failed to reload providers:", err); }
+  }, []);
+
+  useEffect(() => {
+    const handler = () => reloadProviders();
+    window.addEventListener("blackops-reload-providers", handler);
+    return () => window.removeEventListener("blackops-reload-providers", handler);
+  }, [reloadProviders]);
+
   const reloadModels = useCallback(async () => {
     try {
       setCatalogError(null);
@@ -289,31 +303,37 @@ function App() {
   }, []);
 
   useEffect(() => {
-    const poll = async () => {
-      try {
-        const data = await invoke<StackEntry[]>("get_stack_status");
-        setStack(data);
-      } catch {}
-    };
+    // Push-based stack updates — Rust emits "stack-changed" on every status transition.
+    // No polling needed: launch, readiness (LOADING→RUNNING), and stop all emit instantly.
+    let unsub: (() => void) | null = null;
+    const cleanup = () => { if (unsub) unsub(); };
 
-    poll();
-    const interval = setInterval(poll, 2000);
-    return () => clearInterval(interval);
+    listen("stack-changed", (e: any) => {
+      setStack(e.payload as StackEntry[]);
+    }).then((u) => { unsub = u; });
+
+    // Initial load — fetch current state on mount
+    invoke<StackEntry[]>("get_stack_status")
+      .then(data => setStack(data))
+      .catch(() => {});
+
+    return cleanup;
   }, []);
 
   const handleLaunchEngine = useCallback(
     async (config: any) => {
       try {
-        await invoke("launch_engine", { config });
-        if (activeTab === "stack") {
-          const data = await invoke<StackEntry[]>("get_stack_status");
-          setStack(data);
-        }
+        const result: any = await invoke("launch_engine", { config });
+        // Dispatch event for catalog to pick up the launched slot index + model path.
+        // Stack update comes via push event from Rust — no manual setStack needed.
+        window.dispatchEvent(new CustomEvent("blackops-engine-launched", {
+          detail: { slotIdx: result.idx, modelPath: result.model_path }
+        }));
       } catch (err) {
         console.error("Launch failed:", err);
       }
     },
-    [activeTab]
+    []
   );
 
   const handleStopEngine = useCallback(async (alias: string) => {
@@ -321,8 +341,7 @@ function App() {
       await invoke("stop_engine", { alias });
       // Keep logs + system events so shutdown messages stay visible
       setEnginePerfEvents(new Map());
-      const data = await invoke<StackEntry[]>("get_stack_status");
-      setStack(data);
+      // Stack update comes via push event from Rust — no manual setStack needed.
     } catch (err) {
       console.error("Stop failed:", err);
     }
@@ -333,7 +352,9 @@ function App() {
       await invoke("stop_all_engines");
       // Keep logs + system events so shutdown messages stay visible
       setEnginePerfEvents(new Map());
-      setStack([]);
+      // Signal catalog to clear engine selection
+      window.dispatchEvent(new CustomEvent("blackops-stop-all"));
+      // Stack update comes via push event from Rust — no manual setStack needed.
     } catch (err) {
       console.error("Stop all failed:", err);
     }

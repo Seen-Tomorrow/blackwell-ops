@@ -365,6 +365,7 @@ async fn unified_reader_loop(
                                 if let Some(mut slot) = s.get_slot(slot_idx) {
                                     slot.status = SlotStatus::Running;
                                 };
+                                s.emit_stack_changed();
                             }
                             eprintln!("[READINESS] slot={} engine ready", slot_idx);
                         }

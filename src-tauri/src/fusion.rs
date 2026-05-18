@@ -61,8 +61,11 @@ pub struct SlotCtxInfo {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct FusionUpdate {
-    /// Engine alias for identification
+    /// Engine alias for identification (may not be unique — use slot_idx instead)
     pub alias: String,
+    /// Unique engine slot index (0-based, never duplicated)
+    #[serde(rename = "slotIdx")]
+    pub slot_idx: usize,
     /// Engine port (also used as task key)
     pub port: u16,
     /// Engine lifecycle state
@@ -154,6 +157,7 @@ impl SlotState {
 
 struct FusionEngineState {
     alias: String,
+    slot_idx: usize,
     port: u16,
     ctx_total: usize,
     parallel: i64,
@@ -185,9 +189,10 @@ struct FusionEngineState {
 }
 
 impl FusionEngineState {
-    fn new(alias: String, port: u16, ctx_total: usize, parallel: i64, unified_kv: bool) -> Self {
+    fn new(alias: String, slot_idx: usize, port: u16, ctx_total: usize, parallel: i64, unified_kv: bool) -> Self {
         Self {
             alias,
+            slot_idx,
             port,
             ctx_total,
             parallel,
@@ -277,6 +282,7 @@ static FUSION_TASKS: std::sync::LazyLock<
 pub async fn start_fusion_http_poller(
     log_hub: LogHub,
     alias: String,
+    slot_idx: usize,
     port: u16,
     ctx_total: usize,
     parallel: i64,
@@ -291,15 +297,15 @@ pub async fn start_fusion_http_poller(
     }
 
     eprintln!(
-        "[FUSION] Starting HTTP poller: alias={} port={} ctx_total={} parallel={} unified_kv={}",
-        alias, port, ctx_total, parallel, unified_kv
+        "[FUSION] Starting HTTP poller: alias={} slot={} port={} ctx_total={} parallel={} unified_kv={}",
+        alias, slot_idx, port, ctx_total, parallel, unified_kv
     );
 
     let cancel = tokio_util::sync::CancellationToken::new();
     let cancel_spawn = cancel.clone();
 
     let handle = tokio_util::task::AbortOnDropHandle::new(tokio::spawn(async move {
-        fusion_http_poll_loop(log_hub, alias, port, ctx_total, parallel, unified_kv, fusion_rx, cancel_spawn).await;
+        fusion_http_poll_loop(log_hub, alias, slot_idx, port, ctx_total, parallel, unified_kv, fusion_rx, cancel_spawn).await;
     }));
 
     tasks.insert(port, (handle, cancel));
@@ -328,6 +334,7 @@ pub async fn stop_all_fusion_tasks() {
 async fn fusion_http_poll_loop(
     log_hub: LogHub,
     alias: String,
+    slot_idx: usize,
     port: u16,
     ctx_total: usize,
     parallel: i64,
@@ -340,7 +347,7 @@ async fn fusion_http_poll_loop(
         .build()
         .unwrap_or_default();
 
-    let mut state = FusionEngineState::new(alias.clone(), port, ctx_total, parallel, unified_kv);
+    let mut state = FusionEngineState::new(alias.clone(), slot_idx, port, ctx_total, parallel, unified_kv);
     let poll_interval = tokio::time::Duration::from_millis(25);
     let mut interval = tokio::time::interval(poll_interval);
 
@@ -348,6 +355,7 @@ async fn fusion_http_poll_loop(
     {
         let init_update = FusionUpdate {
             alias: alias.clone(),
+            slot_idx,
             port,
             engine_state: "LOADING".to_string(),
             tps: 0.0,
@@ -744,6 +752,7 @@ fn build_update(
 
     FusionUpdate {
         alias: state.alias.clone(),
+        slot_idx: state.slot_idx,
         port: state.port,
         engine_state: state.engine_state.clone(),
         tps: if state.phase == "PP" { 0.0 } else { instant_tps },

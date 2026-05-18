@@ -48,10 +48,11 @@ interface EngineConfigPanelProps {
   isModelRunning?: boolean;
   activeEngineAlias?: string;
   activeEnginePort?: number;
+  selectedSlotIdx?: number | null; // Slot index for Fusion overlay
 }
 
 export default function EngineConfigPanel(props: EngineConfigPanelProps) {
-  const { model, gpus, providers: externalProviders, committedVramMib, isAdminUnlocked, systemInfo, stack, onLaunch, isModelRunning, activeEngineAlias, activeEnginePort } = props;
+  const { model, gpus, providers: externalProviders, committedVramMib, isAdminUnlocked, systemInfo, stack, onLaunch, isModelRunning, activeEngineAlias, activeEnginePort, selectedSlotIdx } = props;
 
   // ── State ───────────────────────────────────────────────────────────────
 
@@ -85,12 +86,17 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   // Blaze animation state — triggers fire effect on launch button
   const [isBlazing, setIsBlazing] = useState(false);
 
-  // Collapsible group state — persisted across sessions, defaults to collapsed for non-always-open groups
+  // Nuclear flash state — brief visual feedback when toggling speculative decoding
+  const [specFlash, setSpecFlash] = useState(false);
+
+  // Collapsible group state — persisted across sessions, defaults to collapsed for Advanced/Feature Flags
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => {
     try {
       const saved = localStorage.getItem(KEYS.collapsedGroups);
-      return saved ? new Set(JSON.parse(saved)) : new Set();
-    } catch { return new Set(); }
+      if (saved) return new Set(JSON.parse(saved));
+    } catch {}
+    // Default collapsed groups — Advanced and Feature Flags start folded
+    return new Set(["Advanced", "Feature Flags"]);
   });
 
   const toggleGroup = useCallback((groupId: string) => {
@@ -313,15 +319,27 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     return groups;
   }, [mergedParamDefs]);
 
-  // Ordered group keys: custom provider order > template insertion order
+  // All params by group — includes hidden ones (for nuclear button to find Speculative decoding group)
+  const allGroupedParams = useMemo(() => {
+    const groups: Record<string, ParamDef[]> = {};
+    for (const def of mergedParamDefs) {
+      if (def.dock) continue;
+      const groupId = def.ui_group || 'Feature Flags';
+      if (!groups[groupId]) groups[groupId] = [];
+      groups[groupId].push(def);
+    }
+    return groups;
+  }, [mergedParamDefs]);
+
+  // Ordered group keys: custom provider order > template insertion order (include hidden-only groups)
   const orderedGroupKeys = useMemo(() => {
-    const allGroups = Object.keys(groupedParams);
+    const allGroups = [...new Set([...Object.keys(groupedParams), ...Object.keys(allGroupedParams)])];
     const currentProv = externalProviders?.find(p => p.id === effectiveBackendType);
     if (currentProv?.groupOrder && currentProv.groupOrder.length > 0) {
       return [...currentProv.groupOrder.filter(g => allGroups.includes(g)), ...allGroups.filter(g => !currentProv.groupOrder!.includes(g))];
     }
     return allGroups;
-  }, [groupedParams, externalProviders, effectiveBackendType]);
+  }, [groupedParams, allGroupedParams, externalProviders, effectiveBackendType]);
 
   // ── Load param definitions when model/provider changes ───────────────────
   useEffect(() => {
@@ -343,7 +361,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             label: p.label,
             values: p.values as (string | number)[],
             order: i,
-            hidden: false,
+            hidden: (p as any).hidden_default ?? false,
             defaultValue: p.default,
             config_key: p.config_key,
             flag: p.flag ?? undefined,
@@ -559,6 +577,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           isModelRunning={isModelRunning}
           activeEngineAlias={activeEngineAlias}
           activeEnginePort={activeEnginePort}
+          selectedSlotIdx={selectedSlotIdx}
           offloadMode={config["Offload_Mode"]}
           onMoeSuggestionClick={() => {
             // Auto-switch to MOE_OPTIMAL when user clicks the suggestion badge
@@ -694,9 +713,66 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           <div className="space-y-3">
             {deriveParamGroups(orderedGroupKeys).map(group => {
               const groupParams = groupedParams[group.id];
+              // ── Speculative decoding: nuclear button toggles hidden on all group params ──
+              const isSpecGroup = group.id === "Speculative decoding";
+
+              if (isSpecGroup) {
+                // Use allGroupedParams to find params even when they're all hidden
+                const specAllParams = allGroupedParams[group.id] || [];
+                if (specAllParams.length === 0) return null; // No spec params for this provider
+                const allHidden = specAllParams.every(d => d.hidden);
+                const specActive = !allHidden;
+
+                return (
+                  <div key={group.id}>
+                    {/* Nuclear button container */}
+                    <div className="nuclear-btn-container">
+                      <button
+                        onClick={() => {
+                          // Toggle hidden on all params in this group via IPC
+                          invoke<boolean>("toggle_group_hidden", { providerId: effectiveBackendType, groupId: group.id })
+                            .then(() => {
+                              setSpecFlash(true);
+                              setTimeout(() => setSpecFlash(false), 400);
+                              window.dispatchEvent(new CustomEvent("blackops-reload-providers"));
+                            })
+                            .catch(err => console.error("[toggle_group_hidden] failed:", err));
+                        }}
+                        className={`nuclear-btn ${specActive ? 'active' : ''} ${specFlash ? 'flash' : ''}`}
+                      >
+                        {specActive ? "⚡ DRAFT ENGINE — ACTIVE" : "☢ SPECULATIVE DECODING — OFF"}
+                      </button>
+
+                      {/* Warning banner when active */}
+                      {specActive && (
+                        <div className="spec-warning-banner active">
+                          ⚠ Speculative decoding engaged — draft model will pre-generate tokens for verification
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Child params — hidden from UI and launch when OFF, animated unlock when ON */}
+                    {specActive && (
+                      <div className="space-y-2.5 mt-2">
+                        {specAllParams.map(def => (
+                          <div key={def.key} className="spec-param-unlock" style={{ opacity: 0 }}>
+                            {renderParamRow(def)}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Locked state indicator */}
+                    {!specActive && specAllParams.length > 0 && (
+                      <div className="text-[8px] font-mono text-stealth-muted/30 tracking-wider uppercase mt-1 ml-2">
+                        🔒 {specAllParams.length} parameter{specAllParams.length > 1 ? 's' : ''} locked — activate to configure
+                      </div>
+                    )}
+                  </div>
+                );
+              }
+
               if (!groupParams || groupParams.length === 0) return null;
-
-
 
               const isCollapsed = collapsedGroups.has(group.id);
 

@@ -245,6 +245,8 @@ export interface EnginePerfEvent {
 /** FUSION real-time engine monitoring data — emitted from Rust /slots poller + log fusion. */
 export interface FusionUpdate {
   alias: string;
+  /** Unique engine slot index (0-based, never duplicated) */
+  slotIdx: number;
   port: number;
   /** Engine lifecycle state */
   engine_state: 'LOADING' | 'READY' | 'BUSY' | 'IDLE' | 'ERROR';

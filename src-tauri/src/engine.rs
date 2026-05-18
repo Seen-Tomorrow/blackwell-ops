@@ -231,12 +231,18 @@ pub async fn launch_engine(
 
         tokio::spawn(async move {
             crate::fusion::start_fusion_http_poller(
-                fusion_log_hub, fusion_alias, fusion_port, ctx_size_int, config.parallel, config.unified_kv, fusion_rx,
+                fusion_log_hub, fusion_alias, slot_idx, fusion_port, ctx_size_int, config.parallel, config.unified_kv, fusion_rx,
             ).await;
         });
     }
 
     let model_name = config.model_path.rsplit('/').next().unwrap_or("unknown").to_string();
+
+    // Emit stack-changed push event so frontend gets instant update without polling
+    {
+        let stack = app.stack.lock().await;
+        stack.emit_stack_changed();
+    }
 
     Ok(StackEntryOut {
         idx: slot_idx,
@@ -277,32 +283,9 @@ pub async fn stop_engine(alias: String, app: tauri::State<'_, AppContext>) -> Re
         stack.stop_slot(slot_idx).await?;
     }
 
-    app.log_hub.emit("slot-cleared", &serde_json::json!({ "slot": slot_idx }));
-
     Ok(format!("Engine {} stopped", alias))
 }
 
-pub async fn stop_engine_by_alias(
-    alias: String,
-    stack: Arc<Mutex<EngineStack>>,
-) -> Result<usize, String> {
-    let (idx, port) = {
-        let s = stack.lock().await;
-        let slot_count = s.slots.len();
-        let idx = (0..slot_count)
-            .find(|&i| s.get_slot(i).map_or(false, |sl| sl.alias == alias))
-            .ok_or_else(|| format!("Engine '{}' not found", alias))?;
-        let port = s.get_slot(idx).map(|s| s.port).unwrap_or(0);
-        (idx, port)
-    };
-    // Cancel fusion before stopping slot
-    crate::fusion::stop_fusion_task(port).await;
-    {
-        let s = stack.lock().await;
-        s.stop_slot(idx).await?;
-    }
-    Ok(idx)
-}
 
 #[tauri::command]
 pub async fn stop_all_engines(app: tauri::State<'_, AppContext>) -> Result<String, String> {
@@ -326,15 +309,11 @@ pub async fn stop_all_engines(app: tauri::State<'_, AppContext>) -> Result<Strin
         crate::fusion::stop_fusion_task(*port).await;
     }
 
-    // Stop all engines in parallel — returns actual slot indices
-    let stopped_slots = {
+    // Stop all engines in parallel — slot-cleared events emitted inside spawned tasks
+    let _stopped_slots = {
         let stack = app.stack.lock().await;
         stack.stop_all_parallel().await
     };
-
-    for idx in &stopped_slots {
-        app.log_hub.emit("slot-cleared", &serde_json::json!({ "slot": idx }));
-    }
 
     Ok(format!("All {} engines stopped", ports_to_stop.len()))
 }
@@ -364,10 +343,6 @@ pub async fn stop_engines_by_provider(provider_id: String, app: tauri::State<'_,
         let stack = app.stack.lock().await;
         stack.stop_slots_by_provider_parallel(&provider_id).await
     };
-
-    for slot_idx in &stopped {
-        app.log_hub.emit("slot-cleared", &serde_json::json!({ "slot": slot_idx }));
-    }
 
     Ok(format!("Stopped {} engine(s) for '{}'", stopped.len(), provider_id))
 }

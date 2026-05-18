@@ -127,6 +127,7 @@
         "default": "all",
         "dock": "runtime",
         "ui_group": "Multi-GPU",
+        "hidden_default": true,
         "note": "Number of layers to offload. 'ALL' maps to 999."
        },
        {
@@ -279,7 +280,8 @@
         "ptype": "arg_select",
         "values": ["none", "draft-simple", "draft-eagle3", "draft-mtp", "ngram-simple", "ngram-map-k", "ngram-map-k4v", "ngram-mod", "ngram-cache"],
         "default": "draft-mtp",
-        "ui_group": "SPECULATIVE-DECODING",
+        "ui_group": "Speculative decoding",
+        "hidden_default": true,
         "note": "Comma-separated speculative decoding types. 'none' disables."
       },
       {
@@ -290,7 +292,8 @@
         "ptype": "arg_select",
         "values": [1, 2, 3, 4, 5, 6, 8, 10, 16, 20],
         "default": 6,
-        "ui_group": "SPECULATIVE-DECODING",
+        "ui_group": "Speculative decoding",
+        "hidden_default": true,
         "note": "Maximum number of draft tokens per speculative decoding step."
       }
     ]

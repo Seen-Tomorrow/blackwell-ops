@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect, useRef } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { ModelEntry, EngineConfig, GpuInfo, ProviderConfig, SystemInfo, StackEntry } from "../lib/types";
 import { useKeyboardNav } from "./useKeyboardNav";
@@ -29,9 +29,7 @@ export function useModelCatalog({ models, gpus, stack, scanningPath, setScanning
   const [catalogSelectedModel, setCatalogSelectedModel] = useState<ModelEntry | null>(null);
   // Right panel active model — set by catalog OR mini card clicks
   const [panelActiveModel, setPanelActiveModel] = useState<ModelEntry | null>(null);
-  const [selectedEngineAlias, setSelectedEngineAlias] = useState<string | null>(null);
-  // Newly launched alias for pulse animation (cleared after 2s)
-  const [newlyLaunchedAlias, setNewlyLaunchedAlias] = useState<string | null>(null);
+  const [selectedSlotIdx, setSelectedSlotIdx] = useState<number | null>(null);
   const [visibleCount, setVisibleCount] = useState<"4" | "6" | "8" | "all">(() => {
     try { return (localStorage.getItem(KEYS.catalogVisibleCount) as any) || "6"; } catch { return "6"; }
   });
@@ -80,51 +78,50 @@ export function useModelCatalog({ models, gpus, stack, scanningPath, setScanning
   useEffect(() => { try { localStorage.setItem(SORT_DIR_KEY, sortDirection); } catch {} }, [sortDirection]);
   useEffect(() => { try { localStorage.setItem(KEYS.catalogVisibleCount, visibleCount); } catch {} }, [visibleCount]);
 
-  // Auto-select newly launched engine instance — only if nothing is currently selected by user
-  const prevSlotsRef = useRef<Set<number>>(new Set());
-  const initializedRef = useRef(false);
+  // Listen for engine launch event — deterministic auto-select from backend return value
   useEffect(() => {
-    const currentEntries = stack.filter(s => s.status === "RUNNING" || s.status === "LOADING");
-    const currentSlots = new Set(currentEntries.map(s => s.slot_id));
-
-    if (!initializedRef.current) {
-      prevSlotsRef.current = currentSlots;
-      initializedRef.current = true;
-      return;
-    }
-
-    const newSlotId = [...currentSlots].find(id => !prevSlotsRef.current.has(id));
-    if (newSlotId && selectedEngineAlias === null) {
-      const entry = currentEntries.find(s => s.slot_id === newSlotId);
-      if (entry?.alias) {
-        setPanelActiveModel(models.find(m => m.path === entry.model_path) || null);
-        setSelectedEngineAlias(entry.alias);
-        setNewlyLaunchedAlias(entry.alias);
-        setTimeout(() => setNewlyLaunchedAlias(null), 2000);
+    const onLaunch = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { slotIdx: number; modelPath: string };
+      if (detail?.slotIdx !== undefined) {
+        setSelectedSlotIdx(detail.slotIdx);
+        setPanelActiveModel(models.find(m => m.path === detail.modelPath) || null);
       }
-    }
-    prevSlotsRef.current = currentSlots;
-  }, [stack]);
+    };
+    const onStopAll = () => {
+      setSelectedSlotIdx(null);
+    };
+    window.addEventListener("blackops-engine-launched", onLaunch);
+    window.addEventListener("blackops-stop-all", onStopAll);
+    return () => {
+      window.removeEventListener("blackops-engine-launched", onLaunch);
+      window.removeEventListener("blackops-stop-all", onStopAll);
+    };
+  }, [models]);
 
   const handleSelect = useCallback((model: ModelEntry) => {
     setCatalogSelectedModel(model);
     setPanelActiveModel(model);
-    setSelectedEngineAlias(null); // Generic selection — clear engine-specific pairing
+    setSelectedSlotIdx(null); // Generic selection — clear engine-specific pairing
     try { localStorage.setItem(LAST_MODEL_KEY, model.path); } catch {}
   }, []);
 
-  // Select a specific running engine instance by alias (for mini card clicks)
-  const handleSelectByAlias = useCallback((alias: string) => {
-    const entry = stack.find(s => s.alias === alias && (s.status === "RUNNING" || s.status === "LOADING"));
+  // Select a specific running engine instance by slot index (for mini card clicks)
+  const handleSelectBySlot = useCallback((slotIdx: number) => {
+    const entry = stack.find(s => s.idx === slotIdx && (s.status === "RUNNING" || s.status === "LOADING"));
     if (entry?.model_path) {
       const model = models.find(m => m.path === entry.model_path);
       if (model) {
-        setPanelActiveModel(model); // Right panel gets the model data
-        setSelectedEngineAlias(alias); // Fusion overlay pairing
+        setPanelActiveModel(model);
+        setSelectedSlotIdx(slotIdx);
         try { localStorage.setItem(LAST_MODEL_KEY, model.path); } catch {}
       }
     }
   }, [stack, models]);
+
+  // Clear engine selection when all engines are stopped or the selected slot is cleared
+  const clearEngineSelection = useCallback(() => {
+    setSelectedSlotIdx(null);
+  }, []);
 
   const handleSort = useCallback((field: SortField) => {
     if (sortField === field) {
@@ -264,10 +261,9 @@ export function useModelCatalog({ models, gpus, stack, scanningPath, setScanning
 
   return {
     search, setSearch,
-    catalogSelectedModel, setCatalogSelectedModel, handleSelect, handleSelectByAlias,
+    catalogSelectedModel, setCatalogSelectedModel, handleSelect, handleSelectBySlot, clearEngineSelection,
     panelActiveModel, setPanelActiveModel,
-    selectedEngineAlias, setSelectedEngineAlias,
-    newlyLaunchedAlias,
+    selectedSlotIdx, setSelectedSlotIdx,
     visibleCount, setVisibleCount,
     sortField, sortDirection, handleSort,
     pinnedModels, catalogModels, allFiltered,
