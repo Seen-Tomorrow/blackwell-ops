@@ -273,9 +273,9 @@ pub fn build_fit_command(
         // and offloading layers. We need the TRUE total VRAM requirement per scan point,
         // not a "fitted" result after internal layer reduction.
         "--n-gpu-layers".into(), "999".into(),
-        // KV quant (always mirror -ctk to -ctv for accurate estimation)
-        "-ctk".into(), kv_quant.to_lowercase().into(),
-        "-ctv".into(), kv_quant.to_lowercase().into(),
+        // KV quant (both K and V for accurate estimation)
+        "--cache-type-k".into(), kv_quant.to_lowercase().into(),
+        "--cache-type-v".into(), kv_quant.to_lowercase().into(),
         // Context size
         "--ctx-size".into(), ctx_tokens.to_string(),
         // Batch sizes

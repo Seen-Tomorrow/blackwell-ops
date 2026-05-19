@@ -7,7 +7,6 @@ const GENESIS_KEYS = [
   "--batch-size",
   "--ubatch-size",
   "--parallel",
-  "--n-gpu-layers",
   "--split-mode",
   "--mmproj",
   "--reasoning",
@@ -17,11 +16,11 @@ const GENESIS_KEYS = [
   "--cont-batching",
   "--metrics",
   "--flash-attn",
-  "-ctk",
-  "-ctv",
+  "--cache-type-k",
+  "--cache-type-v",
   "-ot",
   "--no-mmap",
-  "mmap",
+  "--no-kv-unified",
 ];
 
 function highlightGenesisKeys(text: string): React.ReactNode[] {

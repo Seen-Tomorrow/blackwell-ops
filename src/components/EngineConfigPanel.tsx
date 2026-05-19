@@ -2,7 +2,7 @@
 
 import { motion } from "framer-motion";
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
-import type { ModelEntry, EngineConfig, GpuInfo, ParamDef, ProviderConfig, ProviderTemplate, StackEntry, SystemInfo } from "../lib/types";
+import type { ModelEntry, EngineConfig, GpuInfo, UserEditedTemplateParam, ProviderConfig, ProviderTemplate, StackEntry, SystemInfo } from "../lib/types";
 import { KEYS, engineAliasKey } from "../lib/storage";
 import { invoke } from "@tauri-apps/api/core";
 import VramBadge from "./VramBadge";
@@ -55,7 +55,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
   // ── State ───────────────────────────────────────────────────────────────
 
-  const [adminParamDefs, setAdminParamDefs] = useState<ParamDef[]>([]);
+  const [userEditedParams, setUserEditedParams] = useState<UserEditedTemplateParam[]>([]);
   const [selectedProvider, setSelectedProvider] = useState<string | null>(() => {
     try { return localStorage.getItem(KEYS.lastProvider) || null; } catch { return null; }
   });
@@ -95,7 +95,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       if (saved) return new Set(JSON.parse(saved));
     } catch {}
     // Default collapsed groups — Advanced and Feature Flags start folded
-    return new Set(["Advanced", "Feature Flags"]);
+    return new Set(["ADVANCED", "FEATURE-FLAGS"]);
   });
 
   const toggleGroup = useCallback((groupId: string) => {
@@ -200,14 +200,13 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   }, [model, selectedProvider]);
 
   // Dynamic Device param — generated from GPU topology, docked to runtime block
-  const deviceParamDef: ParamDef | null = useMemo(() => {
+  const deviceParam: UserEditedTemplateParam | null = useMemo(() => {
     if (gpus.length === 0) return null;
-    const alreadyExists = adminParamDefs.some(d => d.key === "device");
+    const alreadyExists = userEditedParams.some(d => d.key === "device");
     if (alreadyExists) return null;
     return {
       key: "device",
       label: "DEVICE",
-      config_key: "device",
       flag: null,
       ptype: "arg_select" as const,
       values: gpus.map((_, i) => `GPU-${i}`),
@@ -218,28 +217,28 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       ui_group: "MULTI-GPU",
       note: "Select which GPU to use for inference.",
     };
-  }, [gpus.length, adminParamDefs]);
+  }, [gpus.length, userEditedParams]);
 
-  const mergedParamDefs = useMemo(() => {
-    const defs = deviceParamDef ? [deviceParamDef, ...adminParamDefs] : [...adminParamDefs];
+  const allParamsForLaunch = useMemo(() => {
+    const defs = deviceParam ? [deviceParam, ...userEditedParams] : [...userEditedParams];
     return defs.sort((a, b) => a.order - b.order);
-  }, [adminParamDefs, deviceParamDef]);
+  }, [userEditedParams, deviceParam]);
 
   // Docked params: extracted from merged defs by dock key
   const dockedParams = useMemo(() => {
-    const docks: Record<string, ParamDef[]> = {};
-    for (const def of mergedParamDefs) {
+    const docks: Record<string, UserEditedTemplateParam[]> = {};
+    for (const def of allParamsForLaunch) {
       if (!def.dock || def.hidden) continue;
       if (!docks[def.dock]) docks[def.dock] = [];
       docks[def.dock].push(def);
     }
     return docks;
-  }, [mergedParamDefs]);
+  }, [allParamsForLaunch]);
 
   // ── Hooks ────────────────────────────────────────────────────────────────
   const { config, updateParam } = useConfigResolver({
     model,
-    paramDefs: mergedParamDefs,
+    userEditedParams: allParamsForLaunch,
     backendType: effectiveBackendType,
   });
 
@@ -266,12 +265,12 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   }, [vramCalc.manifest]);
 
   // Extracted param row renderer for reuse
-  const renderParamRow = useCallback((def: ParamDef, isLocked?: boolean) => {
+  const renderParamRow = useCallback((def: UserEditedTemplateParam, isLocked?: boolean) => {
     // Merge values + userAddedValues (user-added params from ConfigPage admin edit)
     const seenVals = new Set((def.values || []).map(v => String(v)));
     const allValues = [...(def.values || []), ...(def.userAddedValues || []).filter(v => !seenVals.has(String(v)))];
     const baseValues = allValues.filter(v => !(def.hiddenValues || []).some(hv => String(hv) === String(v)));
-    const currentValue = config[def.key] ?? config[def.config_key || def.key];
+    const currentValue = config[def.key];
 
     return (
       <div key={def.key} data-param-row className={`flex items-center gap-2 ${isLocked ? 'opacity-50' : ''}`}>
@@ -290,10 +289,10 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
               onClick={() => {
                 if (!isLocked) updateParam(def.key, val);
               }}
-              className={`px-2 py-0.5 text-[9px] font-mono rounded-sm focus:outline-none ${
-                (currentValue === val || config[def.config_key || def.key] === val) ||
-                (typeof currentValue === 'string' && typeof val === 'string' && 
-                 currentValue.toLowerCase() === String(val).toLowerCase())
+           className={`px-2 py-0.5 text-[9px] font-mono rounded-sm focus:outline-none ${
+                currentValue === val ||
+                (typeof currentValue === 'string' && typeof val === 'string' &&
+                  currentValue.toLowerCase() === String(val).toLowerCase())
                   ? "value-chip-active"
                   : "value-chip"
               }`}
@@ -304,31 +303,31 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         </div>
       </div>
     );
-  }, [adminParamDefs, config, updateParam, vramCalc.manifest]);
+  }, [userEditedParams, config, updateParam, vramCalc.manifest]);
 
   // Grouped params — skip docked (rendered separately)
   const groupedParams = useMemo(() => {
-    const groups: Record<string, ParamDef[]> = {};
-    for (const def of mergedParamDefs) {
+    const groups: Record<string, UserEditedTemplateParam[]> = {};
+    for (const def of allParamsForLaunch) {
       if (def.hidden || def.dock) continue;
       const groupId = def.ui_group || 'Feature Flags';
       if (!groups[groupId]) groups[groupId] = [];
       groups[groupId].push(def);
     }
     return groups;
-  }, [mergedParamDefs]);
+  }, [allParamsForLaunch]);
 
   // All params by group — includes hidden ones (for nuclear button to find Speculative decoding group)
   const allGroupedParams = useMemo(() => {
-    const groups: Record<string, ParamDef[]> = {};
-    for (const def of mergedParamDefs) {
+    const groups: Record<string, UserEditedTemplateParam[]> = {};
+    for (const def of allParamsForLaunch) {
       if (def.dock) continue;
       const groupId = def.ui_group || 'Feature Flags';
       if (!groups[groupId]) groups[groupId] = [];
       groups[groupId].push(def);
     }
     return groups;
-  }, [mergedParamDefs]);
+  }, [allParamsForLaunch]);
 
   // Ordered group keys: custom provider order > template insertion order (include hidden-only groups)
   const orderedGroupKeys = useMemo(() => {
@@ -343,36 +342,35 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   // ── Load param definitions when model/provider changes ───────────────────
   useEffect(() => {
     if (!model) {
-      setAdminParamDefs([]);
+      setUserEditedParams([]);
       return;
     }
 
     const backendType = effectiveBackendType;
 
     const prov = externalProviders?.find(p => p.id === backendType);
-    if (prov && prov.param_definitions) {
-      setAdminParamDefs(prov.param_definitions || []);
+    if (prov && prov.userEditedTemplateParams) {
+      setUserEditedParams(prov.userEditedTemplateParams || []);
     } else {
       invoke<ProviderTemplate>("get_template", { providerId: backendType })
         .then((template: ProviderTemplate) => {
-          const tDefs: ParamDef[] = (template.params || []).map((p, i) => ({
+          const tDefs: UserEditedTemplateParam[] = (template.params || []).map((p, i) => ({
             key: p.key,
             label: p.label,
             values: p.values as (string | number)[],
             order: i,
             hidden: (p as any).hidden_default ?? false,
             defaultValue: p.default,
-            config_key: p.config_key,
             flag: p.flag ?? undefined,
             ptype: p.ptype,
-            map_id: p.map_id,
+            values_to_cli: (p as any).values_to_cli,
             ui_group: p.ui_group,
             note: p.note,
             pattern: p.pattern,
             sub_params: p.sub_params,
             dock: p.dock || undefined,
           }));
-           setAdminParamDefs(tDefs);
+           setUserEditedParams(tDefs);
          })
          .catch(() => {});
     }
@@ -458,9 +456,9 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
     // Build data-driven EngineConfig: mandatory fields + all user params in extra_params
     const extraParams: Record<string, any> = { ...config };
-    // Override offload with VRAM calculation if partial offload is active
+    // Override n_gpu_layers with VRAM calculation if partial offload is active
     if (vramCalc.manifest?.gpuLayers != null && vramCalc.manifest.ramLayers > 0) {
-      extraParams.offload = String(vramCalc.manifest.gpuLayers);
+      extraParams.__ngl = String(vramCalc.manifest.gpuLayers);
     }
 
     const fullConfig: EngineConfig = {
@@ -539,7 +537,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                     : "provider-pill"
                 }`}
               >
-                {p.display_name || p.id}<span className="ml-1 opacity-40 text-[8px]">({(p.param_definitions || []).length})</span>
+                {p.display_name || p.id}<span className="ml-1 opacity-40 text-[8px]">({(p.userEditedTemplateParams || []).length})</span>
               </button>
             ))}
           </div>
@@ -565,10 +563,10 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           activeEngineAlias={activeEngineAlias}
           activeEnginePort={activeEnginePort}
           selectedSlotIdx={selectedSlotIdx}
-          offloadMode={config["offload-mode"]}
+          offloadMode={config["offload_mode"]}
           onMoeSuggestionClick={() => {
             // Auto-switch to MOE_OPTIMAL when user clicks the suggestion badge
-            updateParam("offload-mode", "moe_optimal");
+            updateParam("offload_mode", "moe_optimal");
           }}
           modelMeta={model?.metadata}
         />
@@ -689,7 +687,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       {/* Parameters — scrollable middle section (e-ink panel) */}
       <div className="px-4 py-3 border-b relative flex-1 overflow-y-auto cyber-scrollbar eink-panel">
 
-        {mergedParamDefs.length === 0 ? (
+        {allParamsForLaunch.length === 0 ? (
           <div className="text-stealth-muted text-[10px] font-mono opacity-50">NO PARAMS DEFINED</div>
         ) : (
           <div className="space-y-3">

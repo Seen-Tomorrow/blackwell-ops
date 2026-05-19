@@ -2,7 +2,7 @@
 
 import React, { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { ParamDef, ProviderConfig, ProviderTemplate, TemplateParam, ModelPathEntry, PathDiskUsage } from "../lib/types";
+import type { UserEditedTemplateParam, ProviderConfig, ProviderTemplate, GenesisTemplateParam, ModelPathEntry, PathDiskUsage } from "../lib/types";
 import ValueBubbles from "./ValueBubbles";
 import ProvidersConfig from "./ProvidersConfig";
 import FoundryPage from "./FoundryPage";
@@ -111,7 +111,7 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
 
   // ── Full param metadata editor state ─────────────────────────────
   type ParamMetaForm = {
-    ptype: string; flag: string; mapId: string; pattern: string;
+    ptype: string; flag: string; pattern: string;
     values: (string | number)[]; defaultValue: string | number;
     subParams: Record<string, string>;
   };
@@ -162,26 +162,26 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
     }
   }, [selectedProviderId, currentProvider]);
 
-  const buildCompleteDefs = useCallback((provider: ProviderConfig | undefined): ParamDef[] => {
-    if (!provider || !provider.param_definitions) return [];
-    return [...provider.param_definitions].sort((a, b) => a.order - b.order);
+  const buildUserSavedParams = useCallback((provider: ProviderConfig | undefined): UserEditedTemplateParam[] => {
+    if (!provider || !provider.userEditedTemplateParams) return [];
+    return [...provider.userEditedTemplateParams].sort((a, b) => a.order - b.order);
   }, []);
-  const paramDefsBase = useMemo(() => buildCompleteDefs(currentProvider), [currentProvider, buildCompleteDefs]);
+  const userSavedParams = useMemo(() => buildUserSavedParams(currentProvider), [currentProvider, buildUserSavedParams]);
 
   // ── Load raw template (for sub_params / ptype at runtime — no reset needed) ───
-  const [templateParams, setTemplateParams] = useState<TemplateParam[]>([]);
+  const [genesisTemplateParams, setGenesisTemplateParams] = useState<GenesisTemplateParam[]>([]);
   useEffect(() => {
     if (!selectedProviderId) return;
     invoke<ProviderTemplate>("get_template", { providerId: selectedProviderId })
-      .then(template => setTemplateParams(template.params || []))
+      .then(template => setGenesisTemplateParams(template.params || []))
       .catch(() => {});
   }, [selectedProviderId]);
 
   // ── Merge base defs with runtime template data (sub_params, ptype) ───────────
-  const paramDefs = useMemo(() => {
-    if (!paramDefsBase.length || !templateParams.length) return paramDefsBase;
-    const templateMap = new Map(templateParams.map(p => [p.key, p]));
-    return paramDefsBase.map(def => {
+  const userSavedParamsWithGenesisDefaults = useMemo(() => {
+    if (!userSavedParams.length || !genesisTemplateParams.length) return userSavedParams;
+    const templateMap = new Map(genesisTemplateParams.map(p => [p.key, p]));
+    return userSavedParams.map(def => {
       const tpl = templateMap.get(def.key);
       if (!tpl) return def;
       // Merge sub_params: disk state (user edits) takes precedence, template fills in new values
@@ -194,14 +194,14 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
         ptype: tpl.ptype || def.ptype,
       };
     });
-  }, [paramDefsBase, templateParams]);
+  }, [userSavedParams, genesisTemplateParams]);
 
   // ── Hidden count for status bar ───────────────────────────────────
-  const hiddenCount = useMemo(() => paramDefs.filter(d => d.hidden).length, [paramDefs]);
+  const hiddenCount = useMemo(() => userSavedParamsWithGenesisDefaults.filter(d => d.hidden).length, [userSavedParamsWithGenesisDefaults]);
   useEffect(() => {
-    if (paramDefs.length === 0) return;
-    window.dispatchEvent(new CustomEvent("param-config-changed", { detail: { totalParams: paramDefs.length, hiddenCount } }));
-  }, [paramDefs, hiddenCount]);
+    if (userSavedParamsWithGenesisDefaults.length === 0) return;
+    window.dispatchEvent(new CustomEvent("param-config-changed", { detail: { totalParams: userSavedParamsWithGenesisDefaults.length, hiddenCount } }));
+  }, [userSavedParamsWithGenesisDefaults, hiddenCount]);
 
   // ── Persist provider to Rust ───────────────────────────────────────
   const persistProviderToConfig = useCallback(async (provider: ProviderConfig) => {
@@ -224,16 +224,14 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
     try {
       // Get fresh factory defaults resolved through the provider's template_type
       const template = await invoke<ProviderTemplate>("get_template_for_provider", { providerId: selectedProviderId });
-      const resetDefs: ParamDef[] = (template.params || []).map((p, i) => ({
+      const resetFromGenesisParams: UserEditedTemplateParam[] = (template.params || []).map((p, i) => ({
         key: p.key,
         label: p.label,
         values: p.values as (string | number)[],
         order: i,
         hidden: (p as any).hidden_default ?? false,
-        config_key: p.config_key,
         flag: p.flag ?? undefined,
         ptype: p.ptype,
-        map_id: p.map_id,
         ui_group: p.ui_group,
         note: p.note,
         pattern: p.pattern,
@@ -243,7 +241,7 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
         factoryDefault: (p as any).default as string | number,
       }));
 
-      const updatedProvider = { ...currentProvider, param_definitions: resetDefs };
+      const updatedProvider = { ...currentProvider, userEditedTemplateParams: resetFromGenesisParams };
       await invoke("save_provider", { provider: updatedProvider });
 
       // Refresh from backend
@@ -298,19 +296,17 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
     try {
       // Build the param_def to add (only selected new ones)
       const template = await invoke<ProviderTemplate>("get_template", { providerId: selectedProviderId });
-      const paramsToAdd: ParamDef[] = [];
+      const templateNewParamsToAdd: UserEditedTemplateParam[] = [];
       for (const p of template.params) {
         if (selectedNewParams.has(p.key)) {
-          paramsToAdd.push({
+          templateNewParamsToAdd.push({
             key: p.key,
             label: p.label,
             values: p.values as (string | number)[],
-            order: currentProvider.param_definitions.length + paramsToAdd.length,
+            order: currentProvider.userEditedTemplateParams.length + templateNewParamsToAdd.length,
         hidden: (p as any).hidden_default ?? false,
-            config_key: p.config_key,
             flag: p.flag ?? undefined,
             ptype: p.ptype,
-            map_id: p.map_id,
             ui_group: p.ui_group,
             note: p.note,
             pattern: p.pattern,
@@ -325,10 +321,10 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
         .filter(p => !selectedOrphanedParams.has(p.key))
         .map(p => p.key);
 
-      if (paramsToAdd.length > 0 || orphanedToRemove.length > 0) {
+      if (templateNewParamsToAdd.length > 0 || orphanedToRemove.length > 0) {
         await invoke("apply_template_update", {
           providerId: selectedProviderId,
-          addParams: paramsToAdd,
+          addParams: templateNewParamsToAdd,
           removeKeys: orphanedToRemove,
         });
 
@@ -346,16 +342,16 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
   }, [templateDiff, currentProvider, selectedProviderId, selectedNewParams, selectedOrphanedParams]);
 
   // ── Admin: add new param definition (from modal) ────────────────────────
-  const handleCreatorSubmit = useCallback(async (def: Omit<ParamDef, "order">) => {
+  const handleCreatorSubmit = useCallback(async (def: Omit<UserEditedTemplateParam, "order">) => {
     if (!currentProvider || !def.values.length) return;
 
-    const completeDefs = buildCompleteDefs(currentProvider);
-    const maxOrder = Math.max(...completeDefs.map(d => d.order), -1);
-    const newDef: ParamDef = { ...def, order: maxOrder + 1 };
-    const updatedDefs = [...completeDefs, newDef];
+    const currentUserParams = buildUserSavedParams(currentProvider);
+    const maxOrder = Math.max(...currentUserParams.map(d => d.order), -1);
+    const newUserParam: UserEditedTemplateParam = { ...def, order: maxOrder + 1 };
+    const updatedUserParams = [...currentUserParams, newUserParam];
 
     // Handle custom group — append to provider.groupOrder if not already there
-    let updatedProvider = { ...currentProvider, param_definitions: updatedDefs };
+    let updatedProvider = { ...currentProvider, userEditedTemplateParams: updatedUserParams };
     const newGroup = def.ui_group;
     if (newGroup && currentProvider.groupOrder && !currentProvider.groupOrder.includes(newGroup)) {
       updatedProvider.groupOrder = [...currentProvider.groupOrder, newGroup];
@@ -366,30 +362,30 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
     await persistProviderToConfig(updatedProvider);
     setShowCreatorModal(false);
     showSaved("SAVED");
-  }, [currentProvider, buildCompleteDefs, persistProviderToConfig, selectedProviderId]);
+  }, [currentProvider, buildUserSavedParams, persistProviderToConfig, selectedProviderId]);
 
   // Legacy: simple add (kept for backward compat)
   const addParamDefinition = useCallback(async (key: string, values: (string | number)[]) => {
     if (!currentProvider || !values.length) return;
 
-    const completeDefs = buildCompleteDefs(currentProvider);
-    const maxOrder = Math.max(...completeDefs.map(d => d.order), -1);
-    const newDef: ParamDef = { key, label: key, values, order: maxOrder + 1 };
-    const updatedProvider = { ...currentProvider, param_definitions: [...completeDefs, newDef] };
+    const currentUserParams = buildUserSavedParams(currentProvider);
+    const maxOrder = Math.max(...currentUserParams.map(d => d.order), -1);
+    const newUserParam: UserEditedTemplateParam = { key, label: key, values, order: maxOrder + 1 };
+    const updatedProvider = { ...currentProvider, userEditedTemplateParams: [...currentUserParams, newUserParam] };
 
     setAllProviders(prev => prev.map(p => p.id !== selectedProviderId ? p : updatedProvider));
     window.dispatchEvent(new CustomEvent("param-config-changed"));
     await persistProviderToConfig(updatedProvider);
     showSaved("SAVED");
-  }, [currentProvider, buildCompleteDefs, persistProviderToConfig, selectedProviderId]);
+  }, [currentProvider, buildUserSavedParams, persistProviderToConfig, selectedProviderId]);
 
   // ── Admin: remove param definition ───────────────────────────────
   const removeParamDefinition = useCallback(async (key: string) => {
     if (!currentProvider || adminLockState === "locked") return;
     
-    const completeDefs = buildCompleteDefs(currentProvider);
-    const updatedDefs = completeDefs.filter(d => d.key !== key);
-    const updatedProvider = { ...currentProvider, param_definitions: updatedDefs };
+    const currentUserParams = buildUserSavedParams(currentProvider);
+    const updatedUserParams = currentUserParams.filter(d => d.key !== key);
+    const updatedProvider = { ...currentProvider, userEditedTemplateParams: updatedUserParams };
 
     setAllProviders(prev => prev.map(p => p.id !== selectedProviderId ? p : updatedProvider));
     setUserOverrides(prev => {
@@ -401,28 +397,28 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
     window.dispatchEvent(new CustomEvent("param-config-changed"));
     await persistProviderToConfig(updatedProvider);
     showSaved("SAVED");
-  }, [currentProvider, isAdminLocked, buildCompleteDefs, persistProviderToConfig, selectedProviderId]);
+  }, [currentProvider, isAdminLocked, buildUserSavedParams, persistProviderToConfig, selectedProviderId]);
 
   // ── Admin: toggle hidden row (catalog visibility) ───────────────
   const toggleRowHidden = useCallback(async (key: string) => {
     if (!currentProvider || adminLockState === "locked") return;
     
-    const completeDefs = buildCompleteDefs(currentProvider);
-    const updatedDefs = completeDefs.map(d => d.key === key ? { ...d, hidden: !d.hidden } : d);
-    const updatedProvider = { ...currentProvider, param_definitions: updatedDefs };
+    const currentUserParams = buildUserSavedParams(currentProvider);
+    const updatedUserParams = currentUserParams.map(d => d.key === key ? { ...d, hidden: !d.hidden } : d);
+    const updatedProvider = { ...currentProvider, userEditedTemplateParams: updatedUserParams };
 
     setAllProviders(prev => prev.map(p => p.id !== selectedProviderId ? p : updatedProvider));
     await persistProviderToConfig(updatedProvider);
     window.dispatchEvent(new CustomEvent("param-config-changed"));
     showSaved("SAVED");
-  }, [currentProvider, isAdminLocked, buildCompleteDefs, persistProviderToConfig, selectedProviderId]);
+  }, [currentProvider, isAdminLocked, buildUserSavedParams, persistProviderToConfig, selectedProviderId]);
 
   // ── Admin: toggle hidden value (hide from catalog only) ─────────
   const toggleHiddenValue = useCallback(async (key: string, value: string | number) => {
     if (!currentProvider || adminLockState === "locked") return;
     
-    const completeDefs = buildCompleteDefs(currentProvider);
-    const updatedDefs = completeDefs.map(d => {
+    const currentUserParams = buildUserSavedParams(currentProvider);
+    const updatedUserParams = currentUserParams.map(d => {
       if (d.key !== key) return d;
       const hv = d.hiddenValues || [];
       const idx = hv.findIndex(v => String(v) === String(value));
@@ -431,50 +427,50 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
       else { newHv = [...hv, value]; }
       return { ...d, hiddenValues: newHv.length > 0 ? newHv : undefined };
     });
-    const updatedProvider = { ...currentProvider, param_definitions: updatedDefs };
+    const updatedProvider = { ...currentProvider, userEditedTemplateParams: updatedUserParams };
 
     setAllProviders(prev => prev.map(p => p.id !== selectedProviderId ? p : updatedProvider));
     await persistProviderToConfig(updatedProvider);
     window.dispatchEvent(new CustomEvent("param-config-changed"));
     showSaved("SAVED");
-  }, [currentProvider, isAdminLocked, buildCompleteDefs, persistProviderToConfig, selectedProviderId]);
+  }, [currentProvider, isAdminLocked, buildUserSavedParams, persistProviderToConfig, selectedProviderId]);
 
   // ── Admin: change default value for a param ─────────────────────
   const changeDefaultValue = useCallback(async (key: string, value: string | number) => {
     if (!currentProvider || adminLockState === "locked") return;
     
-    const completeDefs = buildCompleteDefs(currentProvider);
-    const updatedDefs = completeDefs.map(d => d.key === key ? { ...d, defaultValue: value } : d);
-    const updatedProvider = { ...currentProvider, param_definitions: updatedDefs };
+    const currentUserParams = buildUserSavedParams(currentProvider);
+    const updatedUserParams = currentUserParams.map(d => d.key === key ? { ...d, defaultValue: value } : d);
+    const updatedProvider = { ...currentProvider, userEditedTemplateParams: updatedUserParams };
 
     setAllProviders(prev => prev.map(p => p.id !== selectedProviderId ? p : updatedProvider));
     await persistProviderToConfig(updatedProvider);
     window.dispatchEvent(new CustomEvent("param-config-changed"));
     showSaved("DEFAULT CHANGED");
-  }, [currentProvider, isAdminLocked, buildCompleteDefs, persistProviderToConfig, selectedProviderId]);
+  }, [currentProvider, isAdminLocked, buildUserSavedParams, persistProviderToConfig, selectedProviderId]);
 
   // ── Admin: drag reorder ─────────────────────────────────────────
   const swapItems = useCallback(async (fromIdx: number, toIdx: number) => {
     if (fromIdx === toIdx || fromIdx < 0 || !currentProvider || adminLockState === "locked") return;
     
-    const completeDefs = buildCompleteDefs(currentProvider);
-    const d = [...completeDefs];
+    const currentUserParams = buildUserSavedParams(currentProvider);
+    const d = [...currentUserParams];
     const [m] = d.splice(fromIdx, 1);
     d.splice(toIdx, 0, m);
-    const updatedProvider = { ...currentProvider, param_definitions: d.map((x, i) => ({ ...x, order: i })) };
+    const updatedProvider = { ...currentProvider, userEditedTemplateParams: d.map((x, i) => ({ ...x, order: i })) };
 
     setAllProviders(prev => prev.map(p => p.id !== selectedProviderId ? p : updatedProvider));
     window.dispatchEvent(new CustomEvent("param-config-changed"));
     await persistProviderToConfig(updatedProvider);
     showSaved("SAVED");
-  }, [currentProvider, isAdminLocked, buildCompleteDefs, persistProviderToConfig, selectedProviderId]);
+  }, [currentProvider, isAdminLocked, buildUserSavedParams, persistProviderToConfig, selectedProviderId]);
 
   // ── Admin: add value to param (writes to BOTH values and userAddedValues) ───
   const addValueToParam = useCallback(async (key: string, value: string | number) => {
     if (!currentProvider || adminLockState === "locked") return;
 
-    const completeDefs = buildCompleteDefs(currentProvider);
-    const updatedDefs = completeDefs.map(d => {
+    const currentUserParams = buildUserSavedParams(currentProvider);
+    const updatedUserParams = currentUserParams.map(d => {
       if (d.key !== key) return d;
       const vals = [...(d.values || [])];
       const userAdded = [...(d.userAddedValues || [])];
@@ -486,20 +482,20 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
       }
       return { ...d, values: vals, userAddedValues: userAdded.length > 0 ? userAdded : undefined };
     });
-    const updatedProvider = { ...currentProvider, param_definitions: updatedDefs };
+    const updatedProvider = { ...currentProvider, userEditedTemplateParams: updatedUserParams };
 
     setAllProviders(prev => prev.map(p => p.id !== selectedProviderId ? p : updatedProvider));
     window.dispatchEvent(new CustomEvent("param-config-changed"));
     await persistProviderToConfig(updatedProvider);
     showSaved("SAVED");
-  }, [currentProvider, isAdminLocked, buildCompleteDefs, persistProviderToConfig, selectedProviderId]);
+  }, [currentProvider, isAdminLocked, buildUserSavedParams, persistProviderToConfig, selectedProviderId]);
 
   // ── Admin: remove value from param ───────────────────────────────
   const removeValueFromParam = useCallback(async (key: string, value: string | number) => {
     if (!currentProvider || adminLockState === "locked") return;
 
-    const completeDefs = buildCompleteDefs(currentProvider);
-    const updatedDefs = completeDefs.map(d => {
+    const currentUserParams = buildUserSavedParams(currentProvider);
+    const updatedUserParams = currentUserParams.map(d => {
       if (d.key !== key) return d;
       const vals = (d.values || []).filter(v => String(v) !== String(value));
       const userAdded = (d.userAddedValues || []).filter(v => String(v) !== String(value));
@@ -509,22 +505,22 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
       }
       return { ...d, values: vals, userAddedValues: userAdded.length > 0 ? userAdded : undefined, defaultValue: newDefault };
     });
-    const updatedProvider = { ...currentProvider, param_definitions: updatedDefs };
+    const updatedProvider = { ...currentProvider, userEditedTemplateParams: updatedUserParams };
 
     setAllProviders(prev => prev.map(p => p.id !== selectedProviderId ? p : updatedProvider));
     window.dispatchEvent(new CustomEvent("param-config-changed"));
     await persistProviderToConfig(updatedProvider);
     showSaved("SAVED");
-  }, [currentProvider, isAdminLocked, buildCompleteDefs, persistProviderToConfig, selectedProviderId]);
+  }, [currentProvider, isAdminLocked, buildUserSavedParams, persistProviderToConfig, selectedProviderId]);
 
   // ── Admin: open sub-params editor for a value ───────────────────
   const openSubParamsEditor = useCallback((paramKey: string, valueName: string) => {
     if (!currentProvider || adminLockState === "locked") return;
     setEditingValue({ paramKey, valueName });
-    const def = paramDefs.find(d => d.key === paramKey);
+    const def = userSavedParamsWithGenesisDefaults.find(d => d.key === paramKey);
     const existingArgs = (def as any)?.sub_params?.[valueName]?.join(" ") ?? "";
     setSubArgsText(prev => ({ ...prev, [paramKey + "::" + valueName]: existingArgs }));
-  }, [paramDefs, currentProvider, isAdminLocked]);
+  }, [userSavedParamsWithGenesisDefaults, currentProvider, isAdminLocked]);
 
   // ── Admin: save sub-params edit for a value ─────────────────────
   const saveSubParamsEdit = useCallback(async () => {
@@ -535,8 +531,8 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
     // Parse space-separated args
     const args: string[] = rawText.trim().split(/\s+/).filter(Boolean);
     
-    const completeDefs = buildCompleteDefs(currentProvider);
-    let updatedDefs = completeDefs.map(d => {
+    const currentUserParams = buildUserSavedParams(currentProvider);
+    let updatedUserParams = currentUserParams.map(d => {
       if (d.key !== paramKey) return d;
       const existingSubParams = (d as any).sub_params || {};
       if (args.length > 0) {
@@ -549,7 +545,7 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
     });
     
     // If value not in values array yet, add it
-    updatedDefs = updatedDefs.map(d => {
+    updatedUserParams = updatedUserParams.map(d => {
       if (d.key !== paramKey) return d;
       const vals = [...(d.values || [])];
       if (!vals.includes(valueName)) { vals.push(valueName); }
@@ -559,7 +555,7 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
     });
     
     // If args empty and sub_params is now gone for this value, remove from values too
-    updatedDefs = updatedDefs.map(d => {
+    updatedUserParams = updatedUserParams.map(d => {
       if (d.key !== paramKey) return d;
       const sp = (d as any).sub_params || {};
       if (!sp[valueName]) {
@@ -568,24 +564,24 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
       return d;
     });
 
-    const updatedProvider = { ...currentProvider, param_definitions: updatedDefs };
+    const updatedProvider = { ...currentProvider, userEditedTemplateParams: updatedUserParams };
     setAllProviders(prev => prev.map(p => p.id !== selectedProviderId ? p : updatedProvider));
     await persistProviderToConfig(updatedProvider);
     showSaved("SAVED");
-  }, [editingValue, subArgsText, currentProvider, buildCompleteDefs, persistProviderToConfig, selectedProviderId]);
+  }, [editingValue, subArgsText, currentProvider, buildUserSavedParams, persistProviderToConfig, selectedProviderId]);
 
   // ── Admin: delete a value's sub-params entry and remove from values ─
   const deleteSubParamsEntry = useCallback(async (paramKey: string, valueName: string) => {
     if (!currentProvider || adminLockState === "locked") return;
-    const completeDefs = buildCompleteDefs(currentProvider);
-    let updatedDefs = completeDefs.map(d => {
+    const currentUserParams = buildUserSavedParams(currentProvider);
+    let updatedUserParams = currentUserParams.map(d => {
       if (d.key !== paramKey) return d;
       const existingSubParams = (d as any).sub_params || {};
       const {[valueName]: _, ...rest} = existingSubParams;
       return { ...d, sub_params: Object.keys(rest).length > 0 ? rest : undefined };
     });
     // Also remove from values array and userAddedValues
-    updatedDefs = updatedDefs.map(d => {
+    updatedUserParams = updatedUserParams.map(d => {
       if (d.key !== paramKey) return d;
       const sp = (d as any).sub_params || {};
       if (!sp[valueName]) {
@@ -599,37 +595,36 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
       }
       return d;
     });
-    const updatedProvider = { ...currentProvider, param_definitions: updatedDefs };
+    const updatedProvider = { ...currentProvider, userEditedTemplateParams: updatedUserParams };
     setAllProviders(prev => prev.map(p => p.id !== selectedProviderId ? p : updatedProvider));
     await persistProviderToConfig(updatedProvider);
     showSaved("SAVED");
-  }, [currentProvider, isAdminLocked, buildCompleteDefs, persistProviderToConfig, selectedProviderId]);
+  }, [currentProvider, isAdminLocked, buildUserSavedParams, persistProviderToConfig, selectedProviderId]);
 
   // ── Admin: restore param to genesis template (full reset) ─────────
   const handleRestoreParam = useCallback(async (key: string) => {
     if (!currentProvider || adminLockState === "locked") return;
     try {
-      const freshDef: ParamDef = await invoke("reset_param_to_template", {
+      const freshFromTemplateParam: UserEditedTemplateParam = await invoke("reset_param_to_template", {
         providerId: selectedProviderId, paramKey: key
       });
-      const completeDefs = buildCompleteDefs(currentProvider);
-      const updatedDefs = completeDefs.map(d => d.key === key ? { ...d, ...freshDef } : d);
-      const updatedProvider = { ...currentProvider, param_definitions: updatedDefs };
+      const currentUserParams = buildUserSavedParams(currentProvider);
+      const updatedUserParams = currentUserParams.map(d => d.key === key ? { ...d, ...freshFromTemplateParam } : d);
+      const updatedProvider = { ...currentProvider, userEditedTemplateParams: updatedUserParams };
       setAllProviders(prev => prev.map(p => p.id !== selectedProviderId ? p : updatedProvider));
       await persistProviderToConfig(updatedProvider);
       showSaved("RESTORED");
     } catch (err) {
       console.error("[CONFIG] reset_param_to_template failed:", err);
     }
-  }, [currentProvider, isAdminLocked, buildCompleteDefs, persistProviderToConfig, selectedProviderId]);
+  }, [currentProvider, isAdminLocked, buildUserSavedParams, persistProviderToConfig, selectedProviderId]);
 
   // ── Admin: open param metadata editor ───────────────────────────
-  const openParamMetaEditor = useCallback((def: ParamDef) => {
+  const openParamMetaEditor = useCallback((def: UserEditedTemplateParam) => {
     setEditingParamKey(def.key);
     setParamMetaForm({
       ptype: (def as any).ptype || "arg_select",
       flag: (def as any).flag ?? "",
-      mapId: (def as any).map_id ?? "",
       pattern: (def as any).pattern ?? "",
       values: (() => { const merged = [...(def.values || [])]; const ua = def.userAddedValues || []; for (const v of ua) { if (!merged.some(x => String(x) === String(v))) merged.push(v); } return merged; })(),
       defaultValue: def.defaultValue ?? "",
@@ -642,8 +637,8 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
   // ── Admin: save param metadata edit ─────────────────────────────
   const saveParamMetaEdit = useCallback(async () => {
     if (!paramMetaForm || !editingParamKey || !currentProvider) return;
-    const completeDefs = buildCompleteDefs(currentProvider);
-    const updatedDefs = completeDefs.map(d => {
+    const currentUserParams = buildUserSavedParams(currentProvider);
+    const updatedUserParams = currentUserParams.map(d => {
       if (d.key !== editingParamKey) return d;
       const subParams: Record<string, string[]> = {};
       for (const [k, v] of Object.entries(paramMetaForm.subParams)) {
@@ -669,8 +664,7 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
       return {
         ...d,
         ptype: paramMetaForm.ptype !== "arg_select" && paramMetaForm.ptype !== "logic_only" ? undefined : (paramMetaForm.ptype === d.ptype ? d.ptype : paramMetaForm.ptype),
-        flag: ["mapper", "path_scanner"].includes(paramMetaForm.ptype) ? undefined : paramMetaForm.flag || null,
-        map_id: paramMetaForm.ptype === "mapper" ? paramMetaForm.mapId : undefined,
+        flag: paramMetaForm.flag || null,
         pattern: paramMetaForm.ptype === "path_scanner" ? paramMetaForm.pattern : undefined,
         values: vals,
         defaultValue: paramMetaForm.defaultValue !== "" ? paramMetaForm.defaultValue : undefined,
@@ -678,13 +672,13 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
         userAddedValues: mergedUserAdded.length > 0 ? mergedUserAdded : undefined,
       };
     });
-    const updatedProvider = { ...currentProvider, param_definitions: updatedDefs };
+    const updatedProvider = { ...currentProvider, userEditedTemplateParams: updatedUserParams };
     setAllProviders(prev => prev.map(p => p.id !== selectedProviderId ? p : updatedProvider));
     await persistProviderToConfig(updatedProvider);
     setEditingParamKey(null);
     setParamMetaForm(null);
     showSaved("SAVED");
-  }, [paramMetaForm, editingParamKey, currentProvider, buildCompleteDefs, persistProviderToConfig, selectedProviderId]);
+  }, [paramMetaForm, editingParamKey, currentProvider, buildUserSavedParams, persistProviderToConfig, selectedProviderId]);
 
   // ── Drag state for reorder ───────────────────────────────────────
   const dragKeyRef = useRef<string | null>(null);
@@ -696,7 +690,7 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
     e.stopPropagation();
     startPosRef.current = { x: e.clientX, y: e.clientY };
     hasMovedRef.current = false;
-    dragKeyRef.current = paramDefs[idx]?.key ?? null;
+    dragKeyRef.current = userSavedParamsWithGenesisDefaults[idx]?.key ?? null;
     setDragging(true);
   };
 
@@ -720,14 +714,14 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
       const targetIdx = parseInt(rowEl.getAttribute("data-row-idx") || "-1", 10);
       if (targetIdx < 0) { setDragging(false); dragKeyRef.current = null; hasMovedRef.current = false; return; }
       const sourceKey = dragKeyRef.current;
-      const fromIdx = paramDefs.findIndex(d => d.key === sourceKey);
+      const fromIdx = userSavedParamsWithGenesisDefaults.findIndex(d => d.key === sourceKey);
       if (fromIdx < 0 || targetIdx === fromIdx) { setDragging(false); dragKeyRef.current = null; hasMovedRef.current = false; return; }
       swapItems(fromIdx, targetIdx);
       setDragging(false); dragKeyRef.current = null; hasMovedRef.current = false;
     };
     window.addEventListener("mouseup", h, { once: true });
     return () => window.removeEventListener("mouseup", h);
-  }, [dragging, paramDefs, swapItems]);
+  }, [dragging, userSavedParamsWithGenesisDefaults, swapItems]);
 
   // ── Group drag state for reorder ───────────────────────────────
   const groupDragRef = useRef<string | null>(null);
@@ -766,7 +760,7 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
       // Derive current groups for comparison
       const seen = new Set<string>();
       const derivedOrder: string[] = [];
-      for (const def of paramDefs) {
+      for (const def of userSavedParamsWithGenesisDefaults) {
         const g = def.ui_group || "Feature Flags";
         if (!seen.has(g)) { seen.add(g); derivedOrder.push(g); }
       }
@@ -787,7 +781,7 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
     };
     window.addEventListener("mouseup", h, { once: true });
     return () => window.removeEventListener("mouseup", h);
-  }, [draggingGroup, paramDefs, customGroupOrder, saveGroupOrder]);
+  }, [draggingGroup, userSavedParamsWithGenesisDefaults, customGroupOrder, saveGroupOrder]);
 
   const enabledProviders = useMemo(() => allProviders.filter(p => p.enabled), [allProviders]);
 
@@ -903,14 +897,14 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
 
           {/* Param rows */}
           <div className="flex-1 overflow-y-auto p-4 min-h-0">
-            {paramDefs.length === 0 ? (
+            {userSavedParamsWithGenesisDefaults.length === 0 ? (
               <div className="flex items-center justify-center h-full text-stealth-muted text-xs font-mono">LOADING PARAMETERS...</div>
             ) : (
               (() => {
                 // Derive group order: custom (user-set) > template insertion order
                 const seen = new Set<string>();
                 const derivedOrder: string[] = [];
-                for (const def of paramDefs) {
+                for (const def of userSavedParamsWithGenesisDefaults) {
                   const g = def.ui_group || "Feature Flags";
                   if (!seen.has(g)) {
                     seen.add(g);
@@ -922,8 +916,8 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
                   ? [...customGroupOrder.filter(g => seen.has(g)), ...derivedOrder.filter(g => !customGroupOrder!.includes(g))]
                   : derivedOrder;
 
-                const groups: Record<string, ParamDef[]> = {};
-                for (const def of paramDefs) {
+                const groups: Record<string, UserEditedTemplateParam[]> = {};
+                for (const def of userSavedParamsWithGenesisDefaults) {
                   const g = def.ui_group || "Feature Flags";
                   if (!groups[g]) groups[g] = [];
                   groups[g].push(def);
@@ -959,8 +953,8 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
                           </div>
                           <div className="space-y-1.5">
                             {groupParams.map((def) => {
-                              const globalIdx = paramDefs.findIndex(d => d.key === def.key);
-                              const defKey = def.config_key || def.key;
+                              const globalIdx = userSavedParamsWithGenesisDefaults.findIndex(d => d.key === def.key);
+                              const defKey = def.key;
 
                               // Effective value: user override > current default
                               const factoryDefault = (def as any).factoryDefault;
@@ -1007,7 +1001,10 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
                                      </div>
                                    )}
 
-                                   <span className="w-32 text-[13px] font-mono px-1 py-0.5 truncate" title={def.key}>{def.key}</span>
+                                   <span className="w-32 flex flex-col gap-0.5 px-1 py-0.5 truncate" title={def.key}>
+                                      <span className="text-[12px] font-mono leading-tight">{def.label}</span>
+                                      <span className="text-[8px] font-mono leading-tight text-stealth-muted">{def.key}</span>
+                                    </span>
 
                                    {/* Value bubbles */}
                                    <ValueBubbles
@@ -1068,7 +1065,7 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
 
           {/* Status bar footer */}
           <div className="flex-shrink-0 px-4 py-3 border-t border-stealth-border flex items-center justify-between">
-            <span className="text-[9px] font-mono text-stealth-muted">{paramDefs.length} parameter{paramDefs.length !== 1 ? "s" : ""}{hiddenCount > 0 ? ` (${hiddenCount} hidden)` : ""}</span>
+            <span className="text-[9px] font-mono text-stealth-muted">{userSavedParamsWithGenesisDefaults.length} parameter{userSavedParamsWithGenesisDefaults.length !== 1 ? "s" : ""}{hiddenCount > 0 ? ` (${hiddenCount} hidden)` : ""}</span>
             {currentProvider && (<span className="text-[9px] font-mono text-telemetry-cyan">{currentProvider.display_name}</span>)}
           </div>
         </div>
@@ -1099,10 +1096,10 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
       {/* Param Creator Modal */}
       {showCreatorModal && (
         <ParamCreatorModal
-          existingKeys={paramDefsBase.map(d => d.key)}
+          existingKeys={userSavedParams.map(d => d.key)}
           existingGroups={(() => {
             const seen = new Set<string>();
-            for (const def of paramDefs) {
+            for (const def of userSavedParamsWithGenesisDefaults) {
               if (def.ui_group) seen.add(def.ui_group);
             }
             return Array.from(seen);
@@ -1213,15 +1210,6 @@ function ParamMetaEditor({
           </div>
         )}
 
-        {form.ptype === "mapper" && (
-          <div className="flex flex-col gap-0.5">
-            <span className="text-[8px] font-mono text-stealth-muted">map_id</span>
-            <input type="text" value={form.mapId}
-              onChange={(e) => onFieldChange("mapId", e.target.value)}
-              placeholder="CTX_TO_INT"
-              className="w-32 bg-transparent border-b border-stealth-border/50 text-[10px] font-mono text-white focus:outline-none px-1 py-0.5" />
-          </div>
-        )}
 
         {form.ptype === "path_scanner" && (
           <div className="flex flex-col gap-0.5">

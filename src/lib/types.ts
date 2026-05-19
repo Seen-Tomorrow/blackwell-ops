@@ -74,7 +74,9 @@ export interface EngineConfig {
   extra_params?: Record<string, any>;
 }
 
-export interface ParamDef {
+/** User's saved copy of a GenesisTemplateParam with runtime state (hidden, hiddenValues, userAddedValues, order, etc.).
+ * Stored in provider_meta.json. Created from GenesisTemplateParam at genesis, then edited by the user in UI. */
+export interface UserEditedTemplateParam {
   key: string;
   label: string;
   values: (string | number)[];
@@ -84,10 +86,10 @@ export interface ParamDef {
   defaultValue?: string | number;
 
   // ── CLI Mapping Fields (schema-driven command generation) ──
-  config_key?: string;
   flag?: string | null;
-  ptype?: 'switch' | 'switch_onoff' | 'switch_inverted' | 'arg_select' | 'mapper' | 'path_scanner' | 'logic_only';
-  map_id?: string;
+  flag_pair?: string[];
+  ptype?: 'switch' | 'switch_onoff' | 'switch_inverted' | 'arg_select' | 'arg_select_double' | 'mapper' | 'path_scanner' | 'logic_only';
+  values_to_cli?: (string | number)[];
   ui_group?: string;
   /** When set, param renders in a docked block above PARAMETERS instead of its ui_group. Params sharing the same value group together. */
   dock?: string;
@@ -105,7 +107,7 @@ export interface ProviderConfig {
   binary_path: string;
   enabled: boolean;
   params?: Record<string, any>;
-  param_definitions?: ParamDef[];
+  userEditedTemplateParams?: UserEditedTemplateParam[];
   groupOrder?: string[]; // Custom group order (empty = use template insertion order)
   _original_id?: string;
   git_url?: string;
@@ -122,14 +124,17 @@ export interface ProviderConfig {
 export interface ProviderTemplate {
   binary_name: string;
   description: string;
-  params: TemplateParam[];
+  params: GenesisTemplateParam[];
 }
 
-export interface TemplateParam extends Omit<ParamDef, 'values'> {
+/** Factory blueprint from genesis_template.json — immutable, embedded in binary. */
+export interface GenesisTemplateParam extends Omit<UserEditedTemplateParam, 'values'> {
   values: (string | number)[];
+  values_to_cli?: (string | number)[];
   default: string | number;
   flag: string | null;
-  ptype: 'switch' | 'switch_onoff' | 'switch_inverted' | 'arg_select' | 'mapper' | 'path_scanner' | 'logic_only';
+  flag_pair?: string[];
+  ptype: 'switch' | 'switch_onoff' | 'switch_inverted' | 'arg_select' | 'arg_select_double' | 'mapper' | 'path_scanner' | 'logic_only';
   sub_params?: Record<string, string[]>;
   dock?: string;
 }

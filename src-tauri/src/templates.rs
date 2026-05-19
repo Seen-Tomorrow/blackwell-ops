@@ -1,7 +1,8 @@
-//! Provider Templates — data-driven CLI command generation.
+//! Genesis Template System — data-driven CLI command generation.
 //!
-//! Templates define what parameters exist, their valid values, and how they map to CLI flags.
-//! The build_command function loops through template params and constructs the full argument list
+//! GenesisTemplateParam = factory blueprint from genesis_template.json (immutable, embedded in binary).
+//! UserEditedTemplateParam = user's saved copy with runtime state (hidden, hiddenValues, etc.).
+//! The build_command function loops through GenesisTemplateParams and constructs the full argument list
 //! without any hardcoded flag logic. Adding a new backend or parameter requires editing genesis_template.json only.
 
 use serde::{Deserialize, Serialize};
@@ -10,8 +11,24 @@ use std::path::PathBuf;
 
 use crate::types::EngineConfig;
 
-fn resolve_auto_value(config_key: &str, model_path: &str) -> Option<String> {
-    match config_key {
+/// Static ctx display→tokens mapping, mirrors genesis_template.json ctx.values_to_cli.
+const CTX_MAP: &[(&str, usize)] = &[
+    ("8k", 8192), ("16k", 16384), ("32k", 32768), ("64k", 65536),
+    ("128k", 131072), ("256k", 262144), ("512k", 524288), ("1mil", 1048576),
+];
+
+pub fn ctx_to_int_tokens(ctx: &str) -> usize {
+    let upper = ctx.to_uppercase();
+    for (display, tokens) in CTX_MAP {
+        if upper == display.to_uppercase() {
+            return *tokens;
+        }
+    }
+    ctx.parse::<usize>().unwrap_or(32768)
+}
+
+fn resolve_auto_value(key: &str, model_path: &str) -> Option<String> {
+    match key {
         "yarn_orig_ctx" => {
             let cache = crate::model_cache::load_cache();
             if let Some(entry) = cache.get(model_path) {
@@ -45,27 +62,28 @@ pub struct ProviderTemplate {
     pub binary_name: String,
     pub description: String,
     #[serde(default)]
-    pub params: Vec<TemplateParam>,
+    pub params: Vec<GenesisTemplateParam>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TemplateParam {
+pub struct GenesisTemplateParam {
     pub key: String,
     pub label: String,
-    #[serde(default)]
-    pub config_key: String,
     /// CLI flag string. null for logic_only params.
     #[serde(default)]
     pub flag: Option<String>,
+    /// Pair of CLI flags for arg_select_double — same value injected to both (e.g. --cache-type-k, --cache-type-v).
+    #[serde(default, rename = "flag_pair")]
+    pub flag_pair: Vec<String>,
     /// CLI parameter type (arg_select, mapper, switch_onoff, etc.).
     #[serde(default = "default_ptype")]
     pub ptype: String,
-    /// Named transformer ID (e.g., "CTX_TO_INT", "OFFLOAD_MAP").
-    #[serde(default)]
-    pub map_id: Option<String>,
-    /// Available choices for this parameter.
+    /// CLI values array — for "mapper" type, same-index into values_to_cli gives the CLI value.
     #[serde(default)]
     pub values: Vec<serde_json::Value>,
+    /// CLI values mapped to their actual CLI argument values (for mapper ptype).
+    #[serde(default, rename = "values_to_cli")]
+    pub values_to_cli: Vec<serde_json::Value>,
     /// Default value shown as green in UI.
     #[serde(default)]
     pub default: serde_json::Value,
@@ -151,34 +169,29 @@ impl ProviderTemplate {
         bundle.templates.get(id).cloned()
     }
 
-    /// Extract the selected value for a param from extra_params (user choice), then fall back to param_defs, then template defaults.
+    /// Extract the selected value for a param from extra_params (user choice), then fall back to user_edited_params (disk overrides), then template defaults.
     /// All key lookups are case-insensitive.
     pub fn get_value(
         &self,
         config: &EngineConfig,
         key: &str,
-        param_defs: Option<&[crate::types::ParamDef]>,
+        user_edited_params: Option<&[crate::types::UserEditedTemplateParam]>,
     ) -> serde_json::Value {
         let key_lower = key.to_lowercase();
 
         // Priority 1: extra_params (user-selected value, case-insensitive lookup)
         if !config.extra_params.is_empty() {
-            // Direct key match first
-            if let Some(v) = config.extra_params.get(key) {
-                return v.clone();
-            }
-            // Case-insensitive match
             if let Some(v) = config.extra_params.iter().find(|(k, _)| k.to_lowercase() == key_lower) {
                 return v.1.clone();
             }
         }
 
-        // Priority 2: param_definitions from disk (user overrides)
-        if let Some(defs) = param_defs {
-            for def in defs {
-                if def.key.to_lowercase() == key_lower || (!def.config_key.is_empty() && def.config_key.to_lowercase() == key_lower) {
-                    if !def.default_value.is_null() {
-                        return def.default_value.clone();
+        // Priority 2: user_edited_params from disk (user overrides)
+        if let Some(edited) = user_edited_params {
+            for ep in edited {
+                if ep.key.to_lowercase() == key_lower {
+                    if !ep.default_value.is_null() {
+                        return ep.default_value.clone();
                     }
                 }
             }
@@ -186,17 +199,18 @@ impl ProviderTemplate {
 
         // Priority 3: embedded template defaults
         self.params.iter()
-            .find(|p| p.key.to_lowercase() == key_lower || p.config_key.to_lowercase() == key_lower)
+            .find(|p| p.key.to_lowercase() == key_lower)
             .map(|p| p.default.clone())
             .unwrap_or_else(|| serde_json::Value::String(String::new()))
     }
 
-    /// Build the full CLI command from template + user config.
+    /// Build the full CLI command from GenesisTemplate + user config.
+    /// Iterates GenesisTemplateParams (factory blueprint) and checks UserEditedTemplateParam (disk state) for hidden/value overrides.
     pub fn build_command(
         &self,
         config: &EngineConfig,
         _gpu_mask: &str,
-        param_defs: Option<&[crate::types::ParamDef]>,
+        user_edited_params: Option<&[crate::types::UserEditedTemplateParam]>,
     ) -> Vec<String> {
         let mut args = Vec::new();
 
@@ -235,22 +249,27 @@ impl ProviderTemplate {
         }
 
         for param in &self.params {
-            // Resolve the active value: use ParamDef's resolve_launch_value() which
-            // auto-selects first visible when default is hidden (so launch can never be "blind").
-            let mut value = self.get_value(config, &param.key, param_defs);
+            // Check hidden state: user's saved hidden flag overrides genesis hidden_default.
+            // When user_edited_params is None (fresh provider), fall back to genesis hidden_default.
+            if let Some(edited) = user_edited_params {
+                if let Some(user_param) = edited.iter().find(|d| d.key == param.key) {
+                    if user_param.hidden { continue; }
+                }
+            } else if param.hidden_default {
+                continue;
+            }
 
-            if let Some(defs) = param_defs {
-                if let Some(def) = defs.iter().find(|d| d.key == param.key || (!d.config_key.is_empty() && d.config_key == param.config_key)) {
-                    // Skip entire param if row is hidden
-                    if def.hidden { continue; }
-                    // If selected value is hidden, switch to first visible (auto-repair)
+            let mut value = self.get_value(config, &param.key, user_edited_params);
+
+            // If selected value is hidden in user edits, switch to first visible (auto-repair)
+            if let Some(edited) = user_edited_params {
+                if let Some(user_param) = edited.iter().find(|d| d.key == param.key) {
                     let current = value.as_str().unwrap_or("");
-                    if def.is_value_hidden(current) {
-                        if let Some(fallback) = def.effective_default() {
-                            log::debug!("[build_cmd] param '{}': default '{}' is hidden — using visible fallback '{}'", def.key, current, fallback);
+                    if user_param.is_value_hidden(current) {
+                        if let Some(fallback) = user_param.effective_default() {
+                            log::debug!("[build_cmd] param '{}': value '{}' is hidden — using visible fallback '{}'", param.key, current, fallback);
                             value = fallback.clone();
                         } else {
-                            // No visible value at all — skip injecting this param
                             continue;
                         }
                     }
@@ -260,14 +279,14 @@ impl ProviderTemplate {
 
             // Resolve "auto" from GGUF metadata cache — llama.cpp needs numbers, not "auto"
             let final_value_str = if value_str == "auto" {
-                match resolve_auto_value(&param.config_key, &config.model_path) {
+                match resolve_auto_value(&param.key, &config.model_path) {
                     Some(resolved) => {
                         log::debug!("[build_cmd] resolved auto for '{}': '{}' -> '{}'", param.key, value_str, resolved);
                         resolved
                     }
                     None => {
                         log::debug!("[build_cmd] cannot resolve auto for '{}', skipping flag", param.key);
-                        Self::inject_sub_params(&mut args, param, &value_str, param_defs);
+                        Self::inject_sub_params(&mut args, param, &value_str, user_edited_params);
                         continue;
                     }
                 }
@@ -277,6 +296,7 @@ impl ProviderTemplate {
 
             match param.ptype.as_str() {
                 "arg_select" => Self::inject_arg_select(&mut args, param, &final_value_str),
+                "arg_select_double" => Self::inject_arg_select_double(&mut args, param, &final_value_str),
                 "mapper" => Self::inject_mapper(&mut args, param, &final_value_str),
                 "switch_onoff" => Self::inject_switch_onoff(&mut args, param, &final_value_str),
                 "switch_inverted" => Self::inject_switch_inverted(&mut args, param, &final_value_str),
@@ -289,7 +309,15 @@ impl ProviderTemplate {
             }
 
             // Inject sub_params for ALL ptypes — checks disk state first, then template defaults
-            Self::inject_sub_params(&mut args, param, &final_value_str, param_defs);
+            Self::inject_sub_params(&mut args, param, &final_value_str, user_edited_params);
+        }
+
+        // Hardcoded n_gpu_layers injection — value computed by VRAM scenario factory.
+        // Not in genesis template because the user cannot meaningfully edit it;
+        // it is derived from GPU topology + model architecture at runtime.
+        if let Some(ngl) = config.extra_params.get("__ngl") {
+            let ngl_str = ngl.as_str().map(String::from).unwrap_or(ngl.to_string());
+            args.extend(["--n-gpu-layers".into(), ngl_str]);
         }
 
         // ── TEST MODE (ADD): append raw test flags after all template params ───────────
@@ -318,27 +346,42 @@ impl ProviderTemplate {
         args
     }
 
-    fn sanitize_arg_value(value: &str, _map_id: Option<&str>) -> String {
-        // Values are already normalized by TS normalizeValue() — pass through unchanged.
+    fn sanitize_arg_value(value: &str) -> String {
         value.to_string()
     }
 
-    fn inject_arg_select(args: &mut Vec<String>, param: &TemplateParam, value: &str) {
+    fn inject_arg_select(args: &mut Vec<String>, param: &GenesisTemplateParam, value: &str) {
         if let Some(flag) = &param.flag {
-            let sanitized = Self::sanitize_arg_value(value, param.map_id.as_deref());
+            let sanitized = Self::sanitize_arg_value(value);
             args.extend([flag.clone(), sanitized]);
         }
     }
 
-    fn inject_mapper(args: &mut Vec<String>, param: &TemplateParam, value: &str) {
-        let transformed = Self::apply_mapper(param.map_id.as_deref(), value);
-        if let Some(flag) = &param.flag {
-            let sanitized = Self::sanitize_arg_value(&transformed, param.map_id.as_deref());
-            args.extend([flag.clone(), sanitized]);
+    fn inject_arg_select_double(args: &mut Vec<String>, param: &GenesisTemplateParam, value: &str) {
+        let sanitized = Self::sanitize_arg_value(value);
+        for flag in &param.flag_pair {
+            args.extend([flag.clone(), sanitized.clone()]);
         }
     }
 
-    fn inject_switch_onoff(args: &mut Vec<String>, param: &TemplateParam, value: &str) {
+    fn inject_mapper(args: &mut Vec<String>, param: &GenesisTemplateParam, value: &str) {
+        // Template-driven mapper: find index of value in param.values,
+        // use same index in param.values_to_cli for the actual CLI value.
+        let cli_val = if let Some(idx) = param.values.iter().position(|v| {
+            v.as_str().unwrap_or("").to_lowercase() == value.to_lowercase()
+        }) {
+            param.values_to_cli.get(idx)
+                .map(|v| v.to_string())
+                .unwrap_or_else(|| value.to_string())
+        } else {
+            value.to_string()
+        };
+        if let Some(flag) = &param.flag {
+            args.extend([flag.clone(), cli_val]);
+        }
+    }
+
+    fn inject_switch_onoff(args: &mut Vec<String>, param: &GenesisTemplateParam, value: &str) {
         if value.to_lowercase() == "on" {
             if let Some(flag) = &param.flag {
                 args.push(flag.clone());
@@ -346,13 +389,17 @@ impl ProviderTemplate {
         }
     }
 
-    fn inject_switch_inverted(args: &mut Vec<String>, _param: &TemplateParam, value: &str) {
+    fn inject_switch_inverted(args: &mut Vec<String>, param: &GenesisTemplateParam, value: &str) {
+        // "off" → emit the flag (e.g., --no-mmap, --no-kv-unified)
+        // "on" → emit nothing (default behavior)
         if value.to_lowercase() == "off" {
-            args.push("--no-mmap".to_string());
+            if let Some(flag) = &param.flag {
+                args.push(flag.clone());
+            }
         }
     }
 
-    fn scan_path(config: &EngineConfig, param: &TemplateParam, value: &str) -> Option<String> {
+    fn scan_path(config: &EngineConfig, param: &GenesisTemplateParam, value: &str) -> Option<String> {
         let val_lower = value.to_lowercase();
         if !matches!(val_lower.as_str(), "auto" | "on") {
             return None;
@@ -399,18 +446,17 @@ impl ProviderTemplate {
     /// Inject extra CLI args from sub_params mapping.
     fn inject_sub_params(
         args: &mut Vec<String>,
-        param: &TemplateParam,
+        param: &GenesisTemplateParam,
         value: &str,
-        param_defs: Option<&[crate::types::ParamDef]>,
+        user_edited_params: Option<&[crate::types::UserEditedTemplateParam]>,
     ) {
-        // Priority: disk state first, then embedded template
-        if let Some(defs) = param_defs {
-            for def in defs {
-                // Match by key OR config_key (same dual-key lookup as get_value)
-                if def.key != param.key && !(!def.config_key.is_empty() && def.config_key == param.config_key) {
+        // Priority: user's disk state first, then embedded GenesisTemplate
+        if let Some(edited) = user_edited_params {
+            for user_param in edited {
+                if user_param.key != param.key {
                     continue;
                 }
-                if let Some(ref sp) = def.sub_params {
+                if let Some(ref sp) = user_param.sub_params {
                     Self::inject_from_array(args, value, sp.get(value).map(|v| v.as_slice()));
                 }
             }
@@ -448,67 +494,29 @@ impl ProviderTemplate {
         }
     }
 
-    fn apply_mapper(map_id: Option<&str>, value: &str) -> String {
-        match map_id {
-            Some("CTX_TO_INT") => Self::ctx_to_int_str(value),
-            Some("OFFLOAD_MAP") => Self::offload_map(value),
-            _ => value.to_string(), // Unknown mapper — pass through unchanged
-        }
-    }
-
-    pub fn ctx_to_int_str(ctx: &str) -> String {
-        let upper = ctx.to_uppercase();
-        match upper.as_str() {
-            "4K" => "4096".to_string(),
-            "8K" => "8192".to_string(),
-            "16K" => "16384".to_string(),
-            "32K" => "32768".to_string(),
-            "64K" => "65536".to_string(),
-            "128K" => "131072".to_string(),
-            "256K" => "262144".to_string(),
-            "512K" => "524288".to_string(),
-            "1M" | "1MIL" => "1048576".to_string(),
-            _ => ctx.parse::<usize>().map(|n| n.to_string()).unwrap_or_else(|_| "32768".to_string()),
-        }
-    }
-
-    fn offload_map(offload: &str) -> String {
-        if offload.to_uppercase() == "ALL" || offload == "999" {
-            "999".to_string()
-        } else {
-            offload.to_string()
-        }
-    }
-
-    pub fn get_default(&self, config_key: &str) -> serde_json::Value {
+    pub fn get_default(&self, key: &str) -> serde_json::Value {
         self.params.iter()
-            .find(|p| p.config_key == config_key || p.key == config_key)
+            .find(|p| p.key == key)
             .map(|p| p.default.clone())
             .unwrap_or_else(|| serde_json::Value::String(String::new()))
     }
 
-    pub fn is_default(&self, config_key: &str, user_value: &serde_json::Value) -> bool {
-        let default = self.get_default(config_key);
-        // Normalize for comparison: convert both to strings
+    pub fn is_default(&self, key: &str, user_value: &serde_json::Value) -> bool {
+        let default = self.get_default(key);
         format!("{}", default) == format!("{}", user_value)
     }
 
-    pub fn reset_to_default(&self, config_key: &str) -> serde_json::Value {
-        self.get_default(config_key)
+    pub fn reset_to_default(&self, key: &str) -> serde_json::Value {
+        self.get_default(key)
     }
 
-    // ── Data-Driven Provider Defaults (removed) ─────────────────────────
-    // Provider defaults are now resolved purely from genesis_template.json
-    // via get_value() -> param_defs -> template defaults priority chain.
-    // No more hardcoded match arms or case-sensitive guards.
-
-    /// Get all config_key values from template params (for VRAM check and other data-driven operations).
+    /// Get all key values from template params (for VRAM check and other data-driven operations).
     pub fn config_keys(&self) -> Vec<&str> {
-        self.params.iter().map(|p| p.config_key.as_str()).collect()
+        self.params.iter().map(|p| p.key.as_str()).collect()
     }
 
-    /// Get a param definition by config_key.
-    pub fn find_param(&self, config_key: &str) -> Option<&TemplateParam> {
-        self.params.iter().find(|p| p.config_key == config_key || p.key == config_key)
+    /// Get a param definition by key.
+    pub fn find_param(&self, key: &str) -> Option<&GenesisTemplateParam> {
+        self.params.iter().find(|p| p.key == key)
     }
 }

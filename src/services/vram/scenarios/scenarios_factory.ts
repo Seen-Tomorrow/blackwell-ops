@@ -42,23 +42,13 @@ export interface ScenarioInput {
 
 export function parseCtx(ctxSize: string): number {
   const map: Record<string, number> = {
-    "4K": 4096, "8K": 8192, "16K": 16384, "32K": 32768,
-    "64K": 65536, "128K": 131072, "256K": 262144,
-    "512K": 524288, "1M": 1048576,
+    "8k": 8192, "16k": 16384, "32k": 32768, "64k": 65536,
+    "128k": 131072, "256k": 262144, "512k": 524288, "1mil": 1048576,
   };
-  const upper = ctxSize.toUpperCase();
-  if (map[upper]) return map[upper];
-  // Handle numeric strings like "131072" or suffixed values not in map
-  const parsed = parseInt(upper.replace(/[^0-9]/g, ""), 10);
-  if (parsed > 0) return parsed;
-  // Try with suffix multiplier as last resort
-  const suffixMatch = upper.match(/^(\d+)([KMG])$/);
-  if (suffixMatch) {
-    const num = parseInt(suffixMatch[1], 10);
-    const mult = { K: 1024, M: 1048576, G: 1073741824 }[suffixMatch[2]];
-    return num * (mult || 1);
-  }
-  return 32768;
+  const lower = ctxSize.toLowerCase();
+  if (map[lower]) return map[lower];
+  const parsed = parseInt(lower, 10);
+  return parsed > 0 ? parsed : 32768;
 }
 
 export function kvBytesForQuant(kvQuant: string): number {
@@ -329,22 +319,22 @@ export function computeValues(input: ScenarioInput, validatedVramMib?: number): 
 
   // GPU-bound weight fraction — MOE_OPTIMAL always applies reduced fraction when selected.
   // Only attention + router weights go to GPU; expert FFN stays in RAM until dispatch.
-  const gpuWeightFraction = (isMoe && cfgStr(engineConfig, "offload-mode", "regular") === "moe_optimal")
+  const gpuWeightFraction = (isMoe && cfgStr(engineConfig, "offload_mode", "regular") === "moe_optimal")
     ? computeMoeGpuWeightFraction(modelMeta)
     : 1.0;
 
   // ── Soft Cap: effective context length ────────────────────────────────
   const userCtx = parseCtx(cfgStr(engineConfig, "ctx", "32k"));
   const nCtxTrain = modelMeta.n_ctx_train || 4096;
-  const ropeScale = cfgNum(engineConfig, "rope-scale", 1.0);
-  const ropeScaling = cfgStr(engineConfig, "rope-scaling", "none").toLowerCase();
+  const ropeScale = cfgNum(engineConfig, "rope_scale", 1.0);
+  const ropeScaling = cfgStr(engineConfig, "rope_scaling", "none").toLowerCase();
 
   // Always use the context length the user selected — no soft cap.
   const effectiveCtx = userCtx;
 
   // KV cache from GGUF metadata — uses effective context
   const headDim = modelMeta.n_head > 0 ? modelMeta.n_embd / modelMeta.n_head : 128;
-  const kvBytesPerParam = kvBytesForQuant(cfgStr(engineConfig, "kv-quant", "f16"));
+  const kvBytesPerParam = kvBytesForQuant(cfgStr(engineConfig, "kv_quant", "f16"));
   const kvCacheGb = (modelMeta.n_layer > 0 && modelMeta.n_head_kv > 0)
     ? (2 * modelMeta.n_layer * modelMeta.n_head_kv * headDim * effectiveCtx * kvBytesPerParam) / (1024 ** 3)
     : 0;
@@ -370,7 +360,7 @@ export function computeValues(input: ScenarioInput, validatedVramMib?: number): 
     // ── FIT-based estimation ────────────────────────────────────────────
     const splitMode = splitActive ? cfgStr(engineConfig, "split", "none").toLowerCase() : "";
     const extrapolatedMib = extrapolateVramFromPoints(
-      input.fitPoints, userCtx, cfgStr(engineConfig, "kv-quant", "f16"), cfgNum(engineConfig, "batch", 2048), cfgNum(engineConfig, "parallel", 1), splitMode, weightsGb
+      input.fitPoints, userCtx, cfgStr(engineConfig, "kv_quant", "f16"), cfgNum(engineConfig, "batch", 2048), cfgNum(engineConfig, "parallel", 1), splitMode, weightsGb
     );
 
     if (extrapolatedMib !== null) {
@@ -431,12 +421,12 @@ function computeDefaultOverhead(
   const baseOverheadPerGpu = estimateDefaultOverheadGb(weightsGb);
 
  // Activation memory: single universal constant, no arch tiers
-  const effectiveParallel = cfgBool(engineConfig, "unified-kv", false) ? 1 : cfgNum(engineConfig, "parallel", 1);
+  const effectiveParallel = cfgBool(engineConfig, "unified_kv", false) ? 1 : cfgNum(engineConfig, "parallel", 1);
   let activationOverheadGb = (cfgNum(engineConfig, "ubatch", 512) * effectiveParallel / 1024) * 1.5 * (modelMeta.n_embd / 4096);
   const batchWorkspaceGb = Math.min((cfgNum(engineConfig, "batch", 2048) * effectiveParallel / 1024) * 0.375, 2.0);
 
   // Flash attention reduces activation memory by ~15%
-  if (cfgBool(engineConfig, "flash-attn", false)) {
+  if (cfgBool(engineConfig, "flash_attn", false)) {
     activationOverheadGb *= 0.85;
   }
 
@@ -445,7 +435,7 @@ function computeDefaultOverhead(
     activationOverheadGb *= 0.8;
   }
 
-  const ropeScaling = cfgStr(engineConfig, "rope-scaling", "none").toLowerCase();
+  const ropeScaling = cfgStr(engineConfig, "rope_scaling", "none").toLowerCase();
   if (ropeScaling === "yarn") {
     activationOverheadGb *= 1.05;
   }
@@ -536,7 +526,7 @@ function computeMoeAlternative(
   if (modelMeta.n_expert === 0) return null;
   
   // Don't suggest if already in MOE_OPTIMAL mode
-  if (cfgStr(input.engineConfig, "offload-mode", "regular") === "moe_optimal") return null;
+  if (cfgStr(input.engineConfig, "offload_mode", "regular") === "moe_optimal") return null;
   
   // Simulate MOE_OPTIMAL computation with reduced GPU weight fraction
   const currentGpuFraction = computed.gpuWeightFraction;

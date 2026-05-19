@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef, Fragment } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { ProviderConfig, ParamDef, FitScanComplete, FitScanProgress, FitScanFull, FitDataPoint } from "../lib/types";
+import type { ProviderConfig, UserEditedTemplateParam, FitScanComplete, FitScanProgress, FitScanFull, FitDataPoint } from "../lib/types";
 
 function formatElapsed(startTime: number): string {
   const secs = Math.floor((Date.now() - startTime) / 1000);
@@ -21,7 +21,7 @@ interface FormState {
   binary_path: string;
   enabled: boolean;
   params: Record<string, string>;
-  param_definitions?: ParamDef[];
+  userEditedTemplateParams?: UserEditedTemplateParam[];
   _original_id?: string;
   git_url: string;
   branch: string;
@@ -129,7 +129,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
         params: Object.fromEntries(
           Object.entries(form.params).filter(([_, v]) => v.trim() !== "")
         ),
-        param_definitions: form.param_definitions || [],
+        userEditedTemplateParams: form.userEditedTemplateParams || [],
         _original_id: form._original_id || undefined,
         git_url: form.git_url || "",
         branch: form.branch || "",
@@ -165,7 +165,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
       binary_path: p.binary_path,
       enabled: p.enabled,
       params: paramPairs,
-      param_definitions: p.param_definitions || [],
+      userEditedTemplateParams: p.userEditedTemplateParams || [],
       _original_id: p.id,
       git_url: p.git_url || "",
       branch: p.branch || "",
@@ -649,9 +649,9 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
                   </div>
 
                   {/* Params badge */}
-                  {p.param_definitions && p.param_definitions.length > 0 && (
+                  {p.userEditedTemplateParams && p.userEditedTemplateParams.length > 0 && (
                     <span className="text-[9px] font-mono text-telemetry-cyan px-2 py-0.5 border border-telemetry-cyan/30 rounded-sm flex-shrink-0">
-                      {p.param_definitions.length} params
+                      {p.userEditedTemplateParams.length} params
                     </span>
                   )}
 

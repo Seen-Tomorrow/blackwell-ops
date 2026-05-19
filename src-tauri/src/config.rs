@@ -34,8 +34,8 @@ pub struct ProviderMeta {
     pub build_profile: String,
     #[serde(default)]
     pub template_type: String,
-    #[serde(default)]
-    pub param_definitions: Vec<crate::types::ParamDef>,
+    #[serde(default, rename = "userEditedTemplateParams")]
+    pub user_edited_template_params: Vec<crate::types::UserEditedTemplateParam>,
     /// Custom group order set by user (overrides template insertion order). Empty = use template order.
     #[serde(default, rename = "groupOrder")]
     pub group_order: Vec<String>,
@@ -128,15 +128,15 @@ fn json_val_eq(a: &serde_json::Value, b: &serde_json::Value) -> bool {
     serde_json::to_string(a).ok() == serde_json::to_string(b).ok()
 }
 
-fn validate_param_def(def: &crate::types::ParamDef) -> Vec<String> {
+fn validate_user_edited_param(ep: &crate::types::UserEditedTemplateParam) -> Vec<String> {
     let mut errors = Vec::new();
 
-    if def.key.is_empty() {
+    if ep.key.is_empty() {
         errors.push("key is empty".to_string());
     }
 
     // values[] must be string or number
-    for (i, v) in def.values.iter().enumerate() {
+    for (i, v) in ep.values.iter().enumerate() {
         match v {
             serde_json::Value::String(_) | serde_json::Value::Number(_) => {}
             _ => errors.push(format!("values[{}] must be string or number, got {:?}", i, v)),
@@ -144,53 +144,56 @@ fn validate_param_def(def: &crate::types::ParamDef) -> Vec<String> {
     }
 
     // No duplicate values
-    for i in 0..def.values.len() {
-        for j in (i + 1)..def.values.len() {
-            if json_val_eq(&def.values[i], &def.values[j]) {
-                errors.push(format!("duplicate value {:?} at indices {} and {}", &def.values[i], i, j));
+    for i in 0..ep.values.len() {
+        for j in (i + 1)..ep.values.len() {
+            if json_val_eq(&ep.values[i], &ep.values[j]) {
+                errors.push(format!("duplicate value {:?} at indices {} and {}", &ep.values[i], i, j));
                 break;
             }
         }
     }
 
     // defaultValue type must match one of values
-    if !def.default_value.is_null() && !def.values.is_empty() {
+    if !ep.default_value.is_null() && !ep.values.is_empty() {
         let mut found = false;
-        for v in &def.values {
-            if json_val_eq(&v, &def.default_value) {
+        for v in &ep.values {
+            if json_val_eq(&v, &ep.default_value) {
                 found = true;
                 break;
             }
         }
         if !found {
-            errors.push(format!("defaultValue ({:?}) type does not match any value in values array", def.default_value));
+            errors.push(format!("defaultValue ({:?}) type does not match any value in values array", ep.default_value));
         }
     }
 
     // Valid ptype
-    static VALID_PTYPES: [&str; 7] = [
-        "arg_select", "mapper", "switch_onoff", "switch_inverted", "path_scanner", "logic_only", "",
+    static VALID_PTYPES: [&str; 8] = [
+        "arg_select", "arg_select_double", "mapper", "switch_onoff", "switch_inverted", "path_scanner", "logic_only", "",
     ];
-    if !VALID_PTYPES.contains(&def.ptype.as_str()) {
-        errors.push(format!("invalid ptype '{}' (valid: {:?})", def.ptype, VALID_PTYPES));
+    if !VALID_PTYPES.contains(&ep.ptype.as_str()) {
+        errors.push(format!("invalid ptype '{}' (valid: {:?})", ep.ptype, VALID_PTYPES));
     }
 
-    // flag required for arg_select/mapper with no config_key
-    let needs_flag = def.ptype == "arg_select" || def.ptype == "mapper";
-    if needs_flag && def.config_key.is_empty() && def.flag.as_deref().map_or(true, |s| s.is_empty()) {
-        errors.push(format!("ptype '{}' requires a non-empty flag (no config_key)", def.ptype));
+    // flag required for arg_select/mapper, flag_pair for arg_select_double
+    let needs_flag = ep.ptype == "arg_select" || ep.ptype == "mapper";
+    if needs_flag && ep.flag.as_deref().map_or(true, |s| s.is_empty()) {
+        errors.push(format!("ptype '{}' requires a non-empty flag", ep.ptype));
+    }
+    if ep.ptype == "arg_select_double" && ep.flag_pair.len() != 2 {
+        errors.push(format!("ptype 'arg_select_double' requires exactly 2 entries in flag_pair"));
     }
 
     // hiddenValues must be subset of values
-    for hv in &def.hidden_values {
-        let found = def.values.iter().any(|v| json_val_eq(v, hv));
+    for hv in &ep.hidden_values {
+        let found = ep.values.iter().any(|v| json_val_eq(v, hv));
         if !found {
             errors.push(format!("hiddenValue {:?} is not in values array", hv));
         }
     }
 
     // sub_params: each value must be string[], no empty strings
-    if let Some(ref sp) = def.sub_params {
+    if let Some(ref sp) = ep.sub_params {
         for (k, args) in sp {
             for (i, arg) in args.iter().enumerate() {
                 if arg.is_empty() {
@@ -215,19 +218,19 @@ fn check_provider_meta(metas: &[ProviderMeta]) -> Vec<String> {
 
         // Duplicate param keys within this provider
         let mut seen_keys: std::collections::HashMap<&str, i32> = std::collections::HashMap::new();
-        for def in &meta.param_definitions {
-            if let Some(&prev_order) = seen_keys.get(def.key.as_str()) {
+        for ep in &meta.user_edited_template_params {
+            if let Some(&prev_order) = seen_keys.get(ep.key.as_str()) {
                 all_errors.push(format!(
                     "provider '{}': duplicate param key '{}' (order {} and {})",
-                    meta.id, def.key, prev_order, def.order
+                    meta.id, ep.key, prev_order, ep.order
                 ));
             } else {
-                seen_keys.insert(&def.key, def.order);
+                seen_keys.insert(&ep.key, ep.order);
             }
 
-            // Validate each ParamDef
-            for e in validate_param_def(def) {
-                all_errors.push(format!("provider '{}' param '{}': {}", meta.id, def.key, e));
+            // Validate each UserEditedTemplateParam
+            for e in validate_user_edited_param(ep) {
+                all_errors.push(format!("provider '{}' param '{}': {}", meta.id, ep.key, e));
             }
         }
     }
@@ -274,10 +277,10 @@ pub fn persist_provider_meta(providers: &[crate::types::ProviderConfig]) -> Resu
         git_url: p.git_url.clone(),
         branch: p.branch.clone(),
         build_profile: p.build_profile.clone(),
-        param_definitions: if p.param_definitions.is_empty() {
+        user_edited_template_params: if p.user_edited_template_params.is_empty() {
             Vec::new()
         } else {
-            p.param_definitions.clone()
+            p.user_edited_template_params.clone()
         },
         group_order: p.group_order.clone(),
         template_type: p.template_type.clone(),
@@ -311,7 +314,7 @@ fn load_legacy_provider_meta() -> Vec<ProviderMeta> {
                                 git_url: prov.get("git_url").and_then(|v| v.as_str()).unwrap_or("").to_string(),
                                 branch: prov.get("branch").and_then(|v| v.as_str()).unwrap_or("").to_string(),
                                 build_profile: prov.get("build_profile").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                                param_definitions: Vec::new(),
+                                user_edited_template_params: Vec::new(),
                                 group_order: Vec::new(),
                                 template_type: crate::templates::ProviderTemplate::template_type_for_id(id),
                                 display_order: 0,
@@ -334,7 +337,7 @@ fn load_legacy_provider_meta() -> Vec<ProviderMeta> {
 
 // ── Genesis Providers (factory defaults from embedded template) ─────
 
-fn param_def_from_template(tp: &crate::templates::TemplateParam, order: i32) -> crate::types::ParamDef {
+fn user_edited_param_from_template(tp: &crate::templates::GenesisTemplateParam, order: i32) -> crate::types::UserEditedTemplateParam {
     // Convert sub_params from serde_json::Value to HashMap<String, Vec<String>>
     let sub_params = tp.sub_params.as_ref().and_then(|sp| {
         sp.as_object().map(|obj| {
@@ -348,34 +351,34 @@ fn param_def_from_template(tp: &crate::templates::TemplateParam, order: i32) -> 
         })
     });
 
-    crate::types::ParamDef {
+    crate::types::UserEditedTemplateParam {
         key: tp.key.clone(),
         label: tp.label.clone(),
         values: tp.values.clone(),
         order,
         hidden: tp.hidden_default,
         hidden_values: Vec::new(),
-        config_key: tp.config_key.clone(),
         flag: tp.flag.clone(),
+        flag_pair: tp.flag_pair.clone(),
         ptype: tp.ptype.clone(),
-        map_id: tp.map_id.clone(),
+        values_to_cli: tp.values_to_cli.clone(),
         ui_group: tp.ui_group.clone(),
         note: tp.note.clone(),
         pattern: tp.pattern.clone(),
-        default_value: tp.default.clone(),   // Current value = factory default on first load
+        default_value: tp.default.clone(),
         user_added_values: Vec::new(),
-        factory_default: tp.default.clone(),  // Never changes — set once from template
+        factory_default: tp.default.clone(),
         sub_params,
         dock: tp.dock.clone(),
     }
 }
 
-pub fn params_for_provider(id: &str) -> Vec<crate::types::ParamDef> {
+pub fn params_for_provider(id: &str) -> Vec<crate::types::UserEditedTemplateParam> {
     let bundle = crate::templates::TemplateBundle::default();
     if let Some(template) = bundle.templates.get(id) {
         return template.params.iter()
             .enumerate()
-            .map(|(i, tp)| param_def_from_template(tp, i as i32))
+            .map(|(i, tp)| user_edited_param_from_template(tp, i as i32))
             .collect();
     }
     Vec::new()
@@ -389,7 +392,7 @@ fn genesis_providers() -> Vec<crate::types::ProviderConfig> {
             binary_path: r"C:\reactor_foundry\engines\ggml-stable\llama.cpp\build\bin\Release\llama-server.exe".to_string(),
             enabled: true,
             params: serde_json::json!({}),
-            param_definitions: params_for_provider("ggml-stable"),
+            user_edited_template_params: params_for_provider("ggml-stable"),
             group_order: Vec::new(),
             _original_id: None,
             git_url: "https://github.com/ggml-org/llama.cpp".to_string(),
@@ -407,7 +410,7 @@ fn genesis_providers() -> Vec<crate::types::ProviderConfig> {
             binary_path: r"C:\reactor_foundry\engines\ik-extreme\llama.cpp\build\bin\Release\llama-server.exe".to_string(),
             enabled: true,
             params: serde_json::json!({}),
-            param_definitions: params_for_provider("ik-extreme"),
+            user_edited_template_params: params_for_provider("ik-extreme"),
             group_order: Vec::new(),
             _original_id: None,
             git_url: "https://github.com/ikawrakow/ik_llama.cpp".to_string(),
@@ -438,7 +441,7 @@ pub fn resolve_template_type(provider_id: &str, disk_type: Option<&String>) -> S
     }
 }
 
-fn merge_template_dock(template_type: &str, param_defs: &mut Vec<crate::types::ParamDef>) {
+fn merge_template_dock(template_type: &str, user_edited_params: &mut Vec<crate::types::UserEditedTemplateParam>) {
     let bundle = crate::templates::TemplateBundle::default();
     let Some(template_key) = template_key_for_type(template_type) else { return; };
     let Some(template) = bundle.templates.get(template_key) else { return; };
@@ -448,7 +451,7 @@ fn merge_template_dock(template_type: &str, param_defs: &mut Vec<crate::types::P
         .map(|p| (p.key.as_str(), p))
         .collect();
 
-    for pd in param_defs.iter_mut() {
+    for pd in user_edited_params.iter_mut() {
         if pd.dock.is_empty() {
             if let Some(tmpl) = tmpl_map.get(pd.key.as_str()) {
                 pd.dock = tmpl.dock.clone();
@@ -482,9 +485,9 @@ pub fn load_config() -> AppConfig {
 #[derive(Debug, Clone, Serialize)]
 pub struct TemplateDiff {
     /// New params added to the Genesis template (not in current config).
-    pub new_params: Vec<crate::types::ParamDef>,
+    pub new_params: Vec<crate::types::UserEditedTemplateParam>,
     /// Params currently configured but removed from the template. User can choose to keep or remove.
-    pub orphaned_params: Vec<crate::types::ParamDef>,
+    pub orphaned_params: Vec<crate::types::UserEditedTemplateParam>,
 }
 
 #[tauri::command]
@@ -504,18 +507,18 @@ pub fn check_template_update(provider_id: String) -> Result<TemplateDiff, String
     let fresh_template = bundle.templates.get(template_key).ok_or("Unknown provider")?;
     
     // Build map of current params by key
-    let current_params: std::collections::HashMap<String, &crate::types::ParamDef> = meta
-        .map(|m| m.param_definitions.iter().map(|p| (p.key.clone(), p)).collect())
+    let current_params: std::collections::HashMap<String, &crate::types::UserEditedTemplateParam> = meta
+        .map(|m| m.user_edited_template_params.iter().map(|p| (p.key.clone(), p)).collect())
         .unwrap_or_default();
 
     // Find new and orphaned params by comparing keys
-    let mut new_params: Vec<crate::types::ParamDef> = Vec::new();
-    let mut orphaned_params: Vec<crate::types::ParamDef> = Vec::new();
+    let mut new_params: Vec<crate::types::UserEditedTemplateParam> = Vec::new();
+    let mut orphaned_params: Vec<crate::types::UserEditedTemplateParam> = Vec::new();
 
     for (i, tp) in fresh_template.params.iter().enumerate() {
         if !current_params.contains_key(&tp.key) {
             // Not in current config — it's new
-            new_params.push(param_def_from_template(tp, i as i32));
+            new_params.push(user_edited_param_from_template(tp, i as i32));
         }
     }
 
@@ -535,7 +538,7 @@ pub fn check_template_update(provider_id: String) -> Result<TemplateDiff, String
 #[tauri::command]
 pub fn apply_template_update(
     provider_id: String,
-    add_params: Vec<crate::types::ParamDef>,
+    add_params: Vec<crate::types::UserEditedTemplateParam>,
     remove_keys: Vec<String>,
 ) -> Result<(), String> {
     let mut metas = load_provider_meta();
@@ -545,24 +548,24 @@ pub fn apply_template_update(
 
     // Remove orphaned params user chose to delete
     for key in &remove_keys {
-        meta.param_definitions.retain(|p| p.key != *key);
+        meta.user_edited_template_params.retain(|p| p.key != *key);
     }
 
     // Merge new params — add only if they don't already exist
     let existing_keys: std::collections::HashSet<String> =
-        meta.param_definitions.iter().map(|p| p.key.clone()).collect();
+        meta.user_edited_template_params.iter().map(|p| p.key.clone()).collect();
     
     let add_count = add_params.len();
     let remove_count = remove_keys.len();
 
     for param in &add_params {
         if !existing_keys.contains(&param.key) {
-            meta.param_definitions.push((*param).clone());
+            meta.user_edited_template_params.push((*param).clone());
         }
     }
 
     // Re-index order to match insertion order
-    for (i, p) in meta.param_definitions.iter_mut().enumerate() {
+    for (i, p) in meta.user_edited_template_params.iter_mut().enumerate() {
         p.order = i as i32;
     }
 
@@ -587,7 +590,7 @@ pub async fn reorder_provider(provider_id: String, direction: i32, app: tauri::S
 }
 
 #[tauri::command]
-pub fn reset_param_to_template(provider_id: String, param_key: String) -> Result<crate::types::ParamDef, String> {
+pub fn reset_param_to_template(provider_id: String, param_key: String) -> Result<crate::types::UserEditedTemplateParam, String> {
     // Load provider from disk to get template_type (auto-detect from ID if empty)
     let metas = load_provider_meta();
     let meta = metas.iter().find(|m| m.id == provider_id);
@@ -604,7 +607,7 @@ pub fn reset_param_to_template(provider_id: String, param_key: String) -> Result
         .ok_or_else(|| format!("Param '{}' not found in template", param_key))? as i32;
     
     let tp = template.params.iter().find(|p| p.key == param_key).unwrap();
-    Ok(param_def_from_template(tp, order))
+    Ok(user_edited_param_from_template(tp, order))
 }
 
 pub fn validate_model_path(path: &str) -> Result<(), String> {
@@ -783,10 +786,10 @@ fn build_config_with_providers_full(_gpu_count: usize, mut config: AppConfig) ->
             if !meta.branch.is_empty() { p.branch = meta.branch.clone(); }
             if !meta.build_profile.is_empty() { p.build_profile = meta.build_profile.clone(); }
 
-            if !meta.param_definitions.is_empty() {
-                let mut defs = meta.param_definitions.clone();
-                merge_template_dock(&p.template_type, &mut defs);
-                p.param_definitions = defs;
+        if !meta.user_edited_template_params.is_empty() {
+                 let mut defs = meta.user_edited_template_params.clone();
+                 merge_template_dock(&p.template_type, &mut defs);
+                 p.user_edited_template_params = defs;
             }
             if !meta.build_info_per_env.is_empty() {
                 p.build_info_per_env = meta.build_info_per_env.clone();
@@ -799,8 +802,8 @@ fn build_config_with_providers_full(_gpu_count: usize, mut config: AppConfig) ->
         if !providers.iter().any(|p| p.id == meta.id) {
             let resolved_type = resolve_template_type(&meta.id, Some(&meta.template_type));
             let tmpl_key = template_key_for_type(&resolved_type);
-            let param_defs = if !meta.param_definitions.is_empty() {
-                meta.param_definitions.clone()
+        let user_edited_params = if !meta.user_edited_template_params.is_empty() {
+                 meta.user_edited_template_params.clone()
             } else if let Some(key) = tmpl_key {
                 params_for_provider(key)
             } else {
@@ -812,8 +815,8 @@ fn build_config_with_providers_full(_gpu_count: usize, mut config: AppConfig) ->
                 display_name: meta.display_name.clone(),
                 binary_path: meta.binary_path.clone(),
                 enabled: meta.enabled,
-                params: serde_json::json!({}),
-                param_definitions: param_defs,
+          params: serde_json::json!({}),
+                 user_edited_template_params: user_edited_params,
                 group_order: meta.group_order.clone(),
                 _original_id: None,
                 git_url: meta.git_url.clone(),

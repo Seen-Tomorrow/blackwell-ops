@@ -16,7 +16,7 @@ pub async fn list_providers(app: tauri::State<'_, AppContext>) -> Result<Vec<cra
 
 #[tauri::command]
 pub async fn save_provider(provider: crate::types::ProviderConfig, app: tauri::State<'_, AppContext>) -> Result<(), String> {
-    log::debug!("[SAVE_PROVIDER] ENTER id='{}' param_count={}", provider.id, provider.param_definitions.len());
+    log::debug!("[SAVE_PROVIDER] ENTER id='{}' param_count={}", provider.id, provider.user_edited_template_params.len());
     let mut cfg = app.config.lock().map_err(|e| e.to_string())?;
 
     if let Some(original_id) = &provider._original_id {
@@ -35,21 +35,21 @@ pub async fn save_provider(provider: crate::types::ProviderConfig, app: tauri::S
         }
     }
 
-    for def in &mut save_provider.param_definitions {
-        let existing_keys: std::collections::HashSet<String> = def.values.iter()
+    for ep in &mut save_provider.user_edited_template_params {
+        let existing_keys: std::collections::HashSet<String> = ep.values.iter()
             .map(|v| serde_json::to_string(v).unwrap_or_default())
             .collect();
-        for uv in def.user_added_values.clone().iter() {
+        for uv in ep.user_added_values.clone().iter() {
             let uv_str = serde_json::to_string(uv).unwrap_or_default();
             if !existing_keys.contains(&uv_str) {
-                def.values.push(uv.clone());
+                ep.values.push(uv.clone());
             }
         }
     }
 
-    if save_provider.param_definitions.is_empty() {
+    if save_provider.user_edited_template_params.is_empty() {
         if let Some(tmpl_key) = crate::config::template_key_for_type(&save_provider.template_type) {
-            save_provider.param_definitions = crate::config::params_for_provider(tmpl_key);
+            save_provider.user_edited_template_params = crate::config::params_for_provider(tmpl_key);
         }
     }
 
@@ -99,9 +99,9 @@ pub async fn toggle_group_hidden(provider_id: String, group_id: String, app: tau
 
     // Determine current state: if any param in the group is visible, we'll hide all. Otherwise unhide all.
     let mut new_hidden = true;
-    for def in &prov.param_definitions {
-        if def.ui_group == group_id {
-            if !def.hidden {
+    for ep in &prov.user_edited_template_params {
+        if ep.ui_group == group_id {
+            if !ep.hidden {
                 new_hidden = false;
                 break;
             }
@@ -111,9 +111,9 @@ pub async fn toggle_group_hidden(provider_id: String, group_id: String, app: tau
     // Flip: if any visible → hide all. If all hidden → unhide all.
     new_hidden = !new_hidden;
 
-    for def in &mut prov.param_definitions {
-        if def.ui_group == group_id {
-            def.hidden = new_hidden;
+    for ep in &mut prov.user_edited_template_params {
+        if ep.ui_group == group_id {
+            ep.hidden = new_hidden;
         }
     }
 

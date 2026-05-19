@@ -1,7 +1,7 @@
 // Merges param defaults with localStorage overrides.
 
 import { useState, useCallback, useEffect } from "react";
-import type { ParamDef } from "../lib/types";
+import type { UserEditedTemplateParam } from "../lib/types";
 import { overridesKey } from "../lib/storage";
 
 // Preserve mixed-case values like "8K", "GPU-0"; lowercase pure-alpha strings.
@@ -23,24 +23,24 @@ const normalizeValue = (value: any): any => {
 
 interface UseConfigResolverOptions {
   model: unknown; // ModelEntry | null - only used to trigger reload
-  paramDefs: ParamDef[];
+  userEditedParams: UserEditedTemplateParam[];
   backendType: string;
 }
 
 export function useConfigResolver({
   model,
-  paramDefs,
+  userEditedParams,
   backendType,
 }: UseConfigResolverOptions) {
   const [config, setConfig] = useState<Record<string, any>>({});
 
   const loadConfig = useCallback(() => {
-    if (!paramDefs.length) return;
+    if (!userEditedParams.length) return;
 
     const resolved: Record<string, any> = {};
 
     // Step 1: Set defaults from param definitions
-    for (const p of paramDefs) {
+    for (const p of userEditedParams) {
       if (p.values?.length > 0 && !p.hidden) {
         resolved[p.key] = p.defaultValue ?? p.values[0];
       }
@@ -60,17 +60,17 @@ export function useConfigResolver({
     );
 
     setConfig(normalized);
-  }, [paramDefs, backendType]);
+  }, [userEditedParams, backendType]);
 
   useEffect(() => {
     loadConfig();
-  }, [model, paramDefs.length, backendType]);
+  }, [model, userEditedParams.length, backendType]);
 
   useEffect(() => {
     const handler = () => loadConfig();
     window.addEventListener("param-config-changed", handler);
     return () => window.removeEventListener("param-config-changed", handler);
-  }, [model, paramDefs.length]);
+  }, [model, userEditedParams.length]);
 
   const updateParam = useCallback((key: string, value: any) => {
     const normalizedValue = normalizeValue(value);

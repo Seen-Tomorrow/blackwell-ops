@@ -128,8 +128,8 @@ pub async fn launch_engine(
     let provider_opt2 = cfg.providers.iter().find(|p| p.id == backend_type);
     let _provider_params = provider_opt2.map(|p| &p.params);
 
-    let param_defs_ref: Option<&[crate::types::ParamDef]> =
-        provider_opt2.map(|p| p.param_definitions.as_slice());
+    let user_edited_params_ref: Option<&[crate::types::UserEditedTemplateParam]> =
+         provider_opt2.map(|p| p.user_edited_template_params.as_slice());
 
     let mut config = config;
     let test_has_split = config.extra_params.get("__test_args")
@@ -183,7 +183,7 @@ pub async fn launch_engine(
 
     let provider_display_name = backend_type.clone();
 
-    let cmd_args = template.build_command(&config, &gpu_mask, param_defs_ref);
+    let cmd_args = template.build_command(&config, &gpu_mask, user_edited_params_ref);
     let launch_cmd = format!("{} {}", binary_path.display(), cmd_args.join(" "));
     eprintln!("\n========== [LAUNCH_CMD] slot={} ==========", slot_idx);
     eprintln!("{}", launch_cmd);
@@ -198,8 +198,7 @@ pub async fn launch_engine(
 
     app.log_hub.emit_system_event(slot_idx, &config.alias, "Engine launching...").await;
 
-    let ctx_size_int = crate::templates::ProviderTemplate::ctx_to_int_str(&config.get_param_str("ctx").unwrap_or_else(|| "32k".to_string()))
-        .parse::<usize>().unwrap_or(32768);
+    let ctx_size_int = crate::templates::ctx_to_int_tokens(&config.get_param_str("ctx").unwrap_or_else(|| "32k".to_string()));
 
     // Spawn engine and get ConPTY output receiver for unified reader
     let conpty_rx = {
@@ -458,13 +457,13 @@ pub async fn preview_launch_command(
         .unwrap_or_else(crate::templates::ProviderTemplate::load);
 
     let provider_opt_prev = cfg.providers.iter().find(|p| p.id == backend_type);
-    let param_defs_pv: Option<&[crate::types::ParamDef]> =
-        provider_opt_prev.map(|p| p.param_definitions.as_slice());
+  let user_edited_params_pv: Option<&[crate::types::UserEditedTemplateParam]> =
+         provider_opt_prev.map(|p| p.user_edited_template_params.as_slice());
 
     let gpu_count = detect_gpu_count();
     let gpu_mask = compute_gpu_mask(&config, gpu_count, false);
 
-    let cmd_args = template.build_command(&config, &gpu_mask, param_defs_pv);
+    let cmd_args = template.build_command(&config, &gpu_mask, user_edited_params_pv);
     Ok(format!("{} {}", binary_path.display(), cmd_args.join(" ")))
 }
 
@@ -548,8 +547,7 @@ pub async fn fit_scan_model(
         .ok_or_else(|| "llama-fit-params.exe not found — ensure provider is built".to_string())?;
 
     // Parse context size to integer tokens
-    let ctx_int = crate::templates::ProviderTemplate::ctx_to_int_str(&ctx_size)
-        .parse::<usize>().unwrap_or(8192);
+    let ctx_int = crate::templates::ctx_to_int_tokens(&ctx_size);
 
     // Derive GPU mask from device + split_mode — same logic as launch_engine
     let gpu_count = detect_gpu_count();

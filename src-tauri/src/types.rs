@@ -27,7 +27,7 @@ impl EngineConfig {
 
     /// Extract unified_kv from extra_params, default false.
     pub fn get_unified_kv(&self) -> bool {
-        self.get_param_str("unified-kv")
+        self.get_param_str("unified_kv")
             .map(|v| v.to_lowercase() != "off" && v.to_lowercase() != "false")
             .unwrap_or(false)
     }
@@ -253,8 +253,8 @@ pub struct ProviderConfig {
     pub enabled: bool,
     #[serde(default)]
     pub params: serde_json::Value,
-    #[serde(default)]
-    pub param_definitions: Vec<ParamDef>,
+    #[serde(default, rename = "userEditedTemplateParams")]
+    pub user_edited_template_params: Vec<UserEditedTemplateParam>,
     /// Custom group order set by user (overrides template insertion order). Empty = use template order.
     #[serde(default, rename = "groupOrder")]
     pub group_order: Vec<String>,
@@ -301,10 +301,11 @@ pub struct BuildInfo {
     pub cuda_version: Option<String>,
 }
 
-// ── Parameter Definition (template-driven) ─────────────────────────────
-/// A single parameter definition for a provider.
+// ── User-edited Template Param (persisted to disk) ────────────────────
+/// User's saved copy of a GenesisTemplateParam with runtime state (hidden, hiddenValues, userAddedValues, order, etc.).
+/// Stored in provider_meta.json. Created from GenesisTemplateParam at genesis, then edited by the user in UI.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ParamDef {
+pub struct UserEditedTemplateParam {
     pub key: String,
     pub label: String,
     #[serde(rename = "values")]
@@ -315,12 +316,13 @@ pub struct ParamDef {
     /// Values hidden from the catalog UI (persisted, but still usable).
     #[serde(default, rename = "hiddenValues")]
     pub hidden_values: Vec<serde_json::Value>,
-    pub config_key: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub flag: Option<String>,
+    #[serde(default, rename = "flag_pair")]
+    pub flag_pair: Vec<String>,
     pub ptype: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub map_id: Option<String>,
+    #[serde(default, rename = "values_to_cli")]
+    pub values_to_cli: Vec<serde_json::Value>,
     #[serde(default)]
     pub ui_group: String,
     #[serde(default)]
@@ -339,7 +341,7 @@ pub struct ParamDef {
     pub dock: String,
 }
 
-impl ParamDef {
+impl UserEditedTemplateParam {
     /// Returns true if this value is hidden from the catalog UI.
     pub fn is_value_hidden(&self, value: &str) -> bool {
         self.hidden_values.iter().any(|v| v.as_str() == Some(value))

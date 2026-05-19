@@ -47,7 +47,7 @@ export function useScenarioEvaluator({ model, config, gpus, stack, systemInfo }:
 
   // Config fingerprint — only keys that affect scenario evaluation.
   // Changes here trigger re-eval (HW buttons, param chips). Telemetry noise doesn't touch these.
-  const configKey = `${config.device || ""}|${config.split || ""}|${config["offload-mode"] || ""}|${config.ctx || ""}|${config["kv-quant"] || ""}|${config.batch ?? ""}|${config.ubatch ?? ""}|${config.parallel ?? ""}|${config["flash-attn"] || ""}|${config.offload || ""}|${config.vision || ""}|${config["unified-kv"] || ""}|${config["rope-scaling"] || ""}|${config["rope-scale"] ?? ""}`;
+  const configKey = `${config.device || ""}|${config.split || ""}|${config["offload_mode"] || ""}|${config.ctx || ""}|${config["kv_quant"] || ""}|${config.batch ?? ""}|${config.ubatch ?? ""}|${config.parallel ?? ""}|${config["flash_attn"] || ""}|${config.vision || ""}|${config["unified_kv"] || ""}|${config["rope_scaling"] || ""}|${config["rope_scale"] ?? ""}`;
 
   // Stack fingerprint — changes when running engines start/stop or their VRAM shifts.
   const stackKey = stack
@@ -167,7 +167,7 @@ export function useScenarioEvaluator({ model, config, gpus, stack, systemInfo }:
 
         const fa = result.style.uiTemplate ? 'on' : 'off';
         const ep = engineConfig.extra_params || {};
-        console.warn(`[SCENARIO] Config: CTX=${ep.ctx} KVQ=${ep["kv-quant"]} Batch=${ep.batch} Par=${ep.parallel} Split=${ep.split} FA=${fa} Offload=${ep["offload-mode"]}`);
+        console.warn(`[SCENARIO] Config: CTX=${ep.ctx} KVQ=${ep["kv_quant"]} Batch=${ep.batch} Par=${ep.parallel} Split=${ep.split} FA=${fa} Offload=${ep["offload_mode"]}`);
 
         lastScenarioDebugModelRef.current = model.path;
         lastScenarioDebugNameRef.current = result.scenario;
@@ -250,14 +250,14 @@ export function useScenarioEvaluator({ model, config, gpus, stack, systemInfo }:
         modelPath: model.path,
         providerId: curConfig.backend_type || null,
         ctxSize: curConfig.ctx || "32k",
-        kvQuant: curConfig["kv-quant"] || "f16",
+        kvQuant: curConfig["kv_quant"] || "f16",
         device: curConfig.device || "GPU-0",
         splitMode: (curConfig.split || "none").toString().toLowerCase(),
         batch: typeof curConfig.batch === 'number' ? curConfig.batch : parseInt(String(curConfig.batch), 10) || 2048,
         ubatch: typeof curConfig.ubatch === 'number' ? curConfig.ubatch : parseInt(String(curConfig.ubatch), 10) || 512,
         parallel: typeof curConfig.parallel === 'number' ? curConfig.parallel : parseInt(String(curConfig.parallel), 10) || 1,
-        flashAttn: curConfig["flash-attn"]?.toString().toLowerCase() !== "off",
-        offloadMode: (curConfig["offload-mode"] || "regular").toString(),
+        flashAttn: curConfig["flash_attn"]?.toString().toLowerCase() !== "off",
+        offloadMode: (curConfig["offload_mode"] || "regular").toString(),
       });
 
       // Re-run full scenario evaluation with measured VRAM total
@@ -338,7 +338,7 @@ export function useScenarioEvaluator({ model, config, gpus, stack, systemInfo }:
 
         const fa = newManifest.style.uiTemplate ? 'on' : 'off';
         const ep = engineConfig.extra_params || {};
-        console.warn(`[SCENARIO] Config: CTX=${ep.ctx} KVQ=${ep["kv-quant"]} Batch=${ep.batch} Par=${ep.parallel} Split=${ep.split} FA=${fa} Offload=${ep["offload-mode"]}`);
+        console.warn(`[SCENARIO] Config: CTX=${ep.ctx} KVQ=${ep["kv_quant"]} Batch=${ep.batch} Par=${ep.parallel} Split=${ep.split} FA=${fa} Offload=${ep["offload_mode"]}`);
 
         lastScenarioDebugModelRef.current = model.path;
         lastScenarioDebugNameRef.current = newManifest.scenario;

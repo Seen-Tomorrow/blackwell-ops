@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import type { ParamDef } from "../lib/types";
+import type { UserEditedTemplateParam } from "../lib/types";
 import { KEYS } from "../lib/storage";
 
 interface CreatorForm {
@@ -44,7 +44,7 @@ export default function ParamCreatorModal({
   existingKeys: string[];
   existingGroups: string[];
   onClose: () => void;
-  onSubmit: (def: Omit<ParamDef, "order">) => void;
+  onSubmit: (def: Omit<UserEditedTemplateParam, "order">) => void;
 }) {
   const [mode, setMode] = useState<"simple" | "advanced">(() => {
     try { return (localStorage.getItem(KEYS.paramCreatorMode) as "simple" | "advanced") || "simple"; } catch { return "simple"; }
@@ -117,7 +117,7 @@ export default function ParamCreatorModal({
     });
   };
 
-  // ── Submit validation + build ParamDef ──────────────
+  // ── Submit validation + build UserEditedTemplateParam ──────────────
   const handleSubmit = () => {
     if (!form.key.trim()) { setError("Parameter key is required"); return; }
     if (existingKeys.includes(form.key.trim())) { setError(`Parameter '${form.key}' already exists`); return; }
@@ -135,7 +135,7 @@ export default function ParamCreatorModal({
         ) as Record<string, string[]>
       : undefined;
 
-    const def: Omit<ParamDef, "order"> = {
+    const def: Omit<UserEditedTemplateParam, "order"> = {
       key: form.key.trim(),
       label: form.label || form.key.trim(),
       values: form.values,
@@ -146,13 +146,10 @@ export default function ParamCreatorModal({
 
     // Only include advanced fields if mode is advanced or they have values
     if (mode === "advanced" || form.ptype !== "arg_select") {
-      def.ptype = form.ptype as ParamDef["ptype"];
+      def.ptype = form.ptype as UserEditedTemplateParam["ptype"];
     }
     if (form.flag && form.ptype !== "logic_only") {
       def.flag = form.flag;
-    }
-    if (form.mapId) {
-      def.map_id = form.mapId;
     }
     if (subParams) {
       def.sub_params = subParams;
@@ -324,18 +321,6 @@ export default function ParamCreatorModal({
                     </div>
                   )}
 
-                  {form.ptype === "mapper" && (
-                    <div className="flex flex-col gap-0.5">
-                      <span className="text-[8px] font-mono text-stealth-muted">map_id</span>
-                      <input
-                        type="text"
-                        value={form.mapId}
-                        onChange={e => updateField("mapId", e.target.value)}
-                        placeholder="CTX_TO_INT"
-                        className="w-32 bg-transparent border-b border-stealth-border/50 text-[10px] font-mono text-white focus:outline-none px-1 py-0.5"
-                      />
-                    </div>
-                  )}
                 </div>
 
                 {/* Sub-params per value */}
