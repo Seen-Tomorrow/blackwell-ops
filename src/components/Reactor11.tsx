@@ -34,7 +34,7 @@ export default function Reactor11({ models }: Props) {
   const hasMovedRef = useRef(false);
   const startPosRef = useRef({ x: 0, y: 0 });
   const pendingModelRef = useRef<ModelEntry | null>(null);
-  const insertModelRef = useRef<(model: ModelEntry) => Promise<void>>();
+  const insertModelRef = useRef<(model: ModelEntry) => Promise<void>>(undefined);
 
   // Compute thermal criticality
   const isCritical = useMemo(() => {

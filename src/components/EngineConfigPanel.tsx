@@ -6,7 +6,6 @@ import type { ModelEntry, EngineConfig, GpuInfo, ParamDef, ProviderConfig, Provi
 import { KEYS, engineAliasKey } from "../lib/storage";
 import { invoke } from "@tauri-apps/api/core";
 import VramBadge from "./VramBadge";
-import VramDiagnostics from "./VramDiagnostics";
 import { useScenarioEvaluator } from "../hooks/useScenarioEvaluator";
 import { useConfigResolver } from "../hooks/useConfigResolver";
 
@@ -698,11 +697,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           </div>
         );
       })()}
-
-      {/* Memory Forecast Diagnostics — admin only, between HW block and PARAMETERS */}
-      {isAdminUnlocked && (
-        <VramDiagnostics modelPath={model?.path ?? null} manifest={vramCalc.manifest} />
-      )}
 
       {/* Parameters — scrollable middle section (e-ink panel) */}
       <div className="px-4 py-3 border-b relative flex-1 overflow-y-auto cyber-scrollbar eink-panel">

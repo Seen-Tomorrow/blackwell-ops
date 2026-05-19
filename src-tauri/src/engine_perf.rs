@@ -44,10 +44,13 @@ static ALL_IDLE_RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
 static KV_CACHE_STATE_RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
 static TIMING_TOTAL_RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
 static STOP_PROCESSING_RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
+static PRINT_TIMING_RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
+static INIT_SAMPLER_RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
 
 // Fusion-specific regex patterns (moved from fusion.rs)
 #[allow(dead_code)]
 static NEW_PROMPT_RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
+static NEW_PROMPT_SRV_RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
 #[allow(dead_code)]
 static PROMPT_EVAL_TIME_RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
 #[allow(dead_code)]
@@ -59,11 +62,20 @@ fn new_prompt_re() -> &'static Regex {
     })
 }
 
+// Fallback for new llama.cpp format: "srv update: - prompt 000002261B4A2840: 687 tokens"
+fn new_prompt_srv_re() -> &'static Regex {
+    NEW_PROMPT_SRV_RE.get_or_init(|| {
+        Regex::new(r"(?:srv\s+update:\s+-\s+prompt\s+[\da-fA-F]+:\s+(\d+)\s+tokens)").unwrap()
+    })
+}
+
 #[allow(dead_code)]
 fn prompt_eval_time_re() -> &'static Regex {
     PROMPT_EVAL_TIME_RE.get_or_init(|| {
+        // Old format: "... 194.46 tokens per second"
+        // New format: "... 194.46" (bare number at EOL, no suffix)
         Regex::new(
-            r"prompt eval time\s*=\s*(\d+\.\d+)\s+ms\s*/\s*(\d+)\s+tokens.*?(\d+\.\d+)\s+tokens per second",
+            r"prompt eval time\s*=\s*(\d+\.\d+)\s+ms\s*/\s*(\d+)\s+tokens(?:.*?(\d+\.\d+)(?:\s+tokens per second|$))",
         ).unwrap()
     })
 }
@@ -79,13 +91,13 @@ fn prompt_progress_re_fusion() -> &'static Regex {
 
 fn prompt_timing_re() -> &'static Regex {
     PROMPT_TIMING_RE.get_or_init(|| Regex::new(
-        r"prompt eval time\s*=\s*(\d+\.\d+)\s+ms\s*/\s*(\d+)\s+tokens.*?(\d+\.\d+)\s+tokens per second"
+        r"prompt eval time\s*=\s*(\d+\.\d+)\s+ms\s*/\s*(\d+)\s+tokens(?:.*?(\d+\.\d+)(?:\s+tokens per second|$))"
     ).unwrap())
 }
 
 fn eval_timing_re() -> &'static Regex {
     EVAL_TIMING_RE.get_or_init(|| Regex::new(
-        r"eval time\s*=\s*(\d+\.\d+)\s+ms\s*/\s*(\d+)\s+tokens.*?(\d+\.\d+)\s+tokens per second"
+        r"eval time\s*=\s*(\d+\.\d+)\s+ms\s*/\s*(\d+)\s+tokens(?:.*?(\d+\.\d+)(?:\s+tokens per second|$))"
     ).unwrap())
 }
 
@@ -128,6 +140,18 @@ fn timing_total_re() -> &'static Regex {
 fn stop_processing_re() -> &'static Regex {
     STOP_PROCESSING_RE.get_or_init(|| Regex::new(
         r"stop processing:\s*n_tokens\s*=\s*(\d+)"
+    ).unwrap())
+}
+
+fn print_timing_re() -> &'static Regex {
+    PRINT_TIMING_RE.get_or_init(|| Regex::new(
+        r"n_decoded\s*=\s*(\d+).*?tg\s*=\s*([\d.]+)\s*t/s"
+    ).unwrap())
+}
+
+fn init_sampler_re() -> &'static Regex {
+    INIT_SAMPLER_RE.get_or_init(|| Regex::new(
+        r"init sampler.*?total\s*=\s*(\d+)"
     ).unwrap())
 }
 
@@ -325,6 +349,9 @@ async fn unified_reader_loop(
     // Readiness tracking — one-shot check for "server is listening" / "all slots are idle"
     let mut engine_ready = false;
 
+    // Dedup — llama.cpp at -lv 4 sends identical lines to stdout+stderr via ConPTY merge
+    let mut last_line: String = String::new();
+
     loop {
         tokio::select! {
             biased; // Prefer recv over heartbeat — prevents both branches from firing simultaneously
@@ -354,6 +381,10 @@ async fn unified_reader_loop(
                         || cleaned.contains(" I ") || cleaned.contains(" W ") || cleaned.contains(" E ")
                         || cleaned.len() > 30;
                     if !is_real_line { continue; }
+
+                    // ── Dedup: skip exact duplicate of previous line ──────
+                    if cleaned == last_line { continue; }
+                    last_line = cleaned.clone();
 
                     // ── Readiness check (inline, one-shot) ──────────────
                     if !engine_ready {
@@ -516,7 +547,7 @@ async fn process_line(
         slot_state.phase = "GENERATING".to_string();
     }
 
-    // ── Fusion: new prompt detection ──────────────────────────────────
+    // ── Fusion: new prompt detection (old format) ──────────────────────
     if let Some(caps) = new_prompt_re().captures(line) {
         if let Some(n_tok_match) = caps.get(1) {
             if let Ok(prompt_tokens) = n_tok_match.as_str().parse::<usize>() {
@@ -524,17 +555,24 @@ async fn process_line(
                 let _ = fusion_tx.send(FusionEvent::NewPrompt(prompt_tokens));
             }
         }
+    } else if let Some(caps) = new_prompt_srv_re().captures(line) {
+        // Fallback for new llama.cpp format: "srv update: - prompt ADDR: N tokens"
+        if let Some(n_tok_match) = caps.get(1) {
+            if let Ok(prompt_tokens) = n_tok_match.as_str().parse::<usize>() {
+                eprintln!("[FUSION] slot={} new request (srv): {} prompt tokens", slot_idx, prompt_tokens);
+                let _ = fusion_tx.send(FusionEvent::NewPrompt(prompt_tokens));
+            }
+        }
     }
 
     // ── Fusion: prompt eval time (TTFT) ───────────────────────────────
     if let Some(caps) = prompt_eval_time_re().captures(line) {
-        if caps.len() >= 4 {
-            let ttft_ms = caps.get(1).and_then(|m| m.as_str().parse::<f64>().ok()).unwrap_or(0.0);
-            let prefill_tps = caps.get(3).and_then(|m| m.as_str().parse::<f64>().ok()).unwrap_or(0.0);
-            if ttft_ms > 0.0 {
-                eprintln!("[FUSION] slot={} TTFT: {:.1}ms, prefill_tps={:.0}", slot_idx, ttft_ms, prefill_tps);
-                let _ = fusion_tx.send(FusionEvent::PromptEvalDone(ttft_ms, prefill_tps));
-            }
+        // Group 1 = ttft_ms, Group 2 = prompt tokens, Group 3 = prefill TPS (optional in new format)
+        let ttft_ms = caps.get(1).and_then(|m| m.as_str().parse::<f64>().ok()).unwrap_or(0.0);
+        let prefill_tps = caps.get(3).and_then(|m| m.as_str().parse::<f64>().ok()).unwrap_or(0.0);
+        if ttft_ms > 0.0 {
+            eprintln!("[FUSION] slot={} TTFT: {:.1}ms, prefill_tps={:.0}", slot_idx, ttft_ms, prefill_tps);
+            let _ = fusion_tx.send(FusionEvent::PromptEvalDone(ttft_ms, prefill_tps));
         }
     }
 
@@ -562,7 +600,8 @@ async fn process_line(
     // ── Prompt timing extraction ───────────────────────────────────────
     let prompt_caps = prompt_timing_re().captures(line);
     if let Some(caps) = prompt_caps {
-        if caps.len() >= 4 {
+        // caps.len() >= 2: at minimum we have ttft_ms (g1) and prompt_tokens (g2); prefill_tps (g3) is optional
+        if caps.len() >= 2 {
             let prompt_tokens: usize = match caps.get(2).and_then(|m| m.as_str().parse::<usize>().ok()) {
                 Some(n) => n, None => 0,
             };
@@ -603,7 +642,8 @@ async fn process_line(
     // ── Eval timing extraction (decode phase — real TPS) ───────────────
     let eval_caps = eval_timing_re().captures(line);
     if let Some(caps) = eval_caps {
-        if caps.len() >= 4 {
+        // caps.len() >= 2: at minimum eval_time_ms (g1) and eval_tokens (g2); decode_tps (g3) is optional
+        if caps.len() >= 2 {
             let eval_tokens: usize = match caps.get(2).and_then(|m| m.as_str().parse::<usize>().ok()) {
                 Some(n) => n, None => 0,
             };
@@ -652,6 +692,53 @@ async fn process_line(
                 prompt_progress: Some(slot_state.prompt_progress),
             };
             log_hub.emit("engine-perf", &event);
+        }
+    }
+
+    // ── print_timing: tg = X t/s (new llama.cpp decode TPS during generation) ──
+    let pt_caps = print_timing_re().captures(line);
+    if let Some(caps) = pt_caps {
+        if caps.len() >= 3 {
+            let n_decoded: usize = match caps.get(1).and_then(|m| m.as_str().parse::<usize>().ok()) {
+                Some(n) => n, None => 0,
+            };
+            let tg_tps: f64 = match caps.get(2).and_then(|m| m.as_str().parse::<f64>().ok()) {
+                Some(v) => v, None => 0.0,
+            };
+            if tg_tps > 0.0 {
+                slot_state.rolling_tps_ema = tg_tps;
+                slot_state.current_tokens = n_decoded;
+                slot_state.last_token_count = n_decoded;
+                slot_state.last_token_time = Some(std::time::Instant::now());
+
+                let event = EnginePerfEvent {
+                    slot: slot_idx, alias: alias.to_string(), tps: tg_tps, ttft_ms: None,
+                    fuel_alpha_pct: slot_state.alpha_interpolated(), fuel_beta_pct: slot_state.beta_interpolated(),
+                    n_tokens: slot_state.current_tokens,
+                    prompt_tokens: slot_state.prompt_tokens,
+                    kv_cache_pct: slot_state.kv_cache_pct(),
+                    prompt_progress: Some(slot_state.prompt_progress),
+                };
+                log_hub.emit("engine-perf", &event);
+            }
+        }
+    }
+
+    // ── Phase transition: init_sampler means prefill is done, generation starting ──
+    let is_sampler = line.contains("init_sampler");
+    if is_sampler {
+        if let Some(sampler_caps) = init_sampler_re().captures(line) {
+            if sampler_caps.len() >= 2 {
+                if let Some(_total) = sampler_caps.get(1).and_then(|m| m.as_str().parse::<usize>().ok()) {
+                    slot_state.phase = "GENERATING".to_string();
+                    slot_state.last_token_count = 0;
+                    slot_state.last_token_time = Some(std::time::Instant::now());
+                }
+            }
+        } else {
+            // Still transition phase even if we can't parse token count
+            slot_state.phase = "GENERATING".to_string();
+            slot_state.last_token_time = Some(std::time::Instant::now());
         }
     }
 

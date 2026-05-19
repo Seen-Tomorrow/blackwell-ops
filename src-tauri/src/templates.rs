@@ -228,6 +228,11 @@ impl ProviderTemplate {
             args.extend(["--alias".into(), cli_alias]);
         }
 
+        // Force TRACE-level logging (-lv 4) — required for log-based prefill metrics
+        // (prompt processing progress, prompt eval time TPS) which are at LOG_LEVEL_TRACE
+        // since llama.cpp PR #17630 (Dec 2025) and PR #23021 (May 2026)
+        args.extend(["-lv".into(), "4".to_string()]);
+
         // ── TEST MODE (REPLACE): bypass all params, use only raw test flags ───────────
         if let Some(test_args) = config.extra_params.get("__test_args") {
             if let Some(args_arr) = test_args.as_array() {
