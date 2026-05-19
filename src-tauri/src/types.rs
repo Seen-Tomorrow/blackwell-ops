@@ -287,6 +287,7 @@ pub struct ProviderConfig {
 }
 
 fn default_true() -> bool { true }
+fn default_ptype() -> String { "arg_select".to_string() }
 
 /// Build metadata extracted from a compiled binary via --version flag + file mtime.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -320,6 +321,7 @@ pub struct UserEditedTemplateParam {
     pub flag: Option<String>,
     #[serde(default, rename = "flag_pair")]
     pub flag_pair: Vec<String>,
+    #[serde(default = "default_ptype")]
     pub ptype: String,
     #[serde(default, rename = "values_to_cli")]
     pub values_to_cli: Vec<serde_json::Value>,

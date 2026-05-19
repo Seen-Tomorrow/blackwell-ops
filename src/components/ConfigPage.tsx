@@ -7,7 +7,7 @@ import ValueBubbles from "./ValueBubbles";
 import ProvidersConfig from "./ProvidersConfig";
 import FoundryPage from "./FoundryPage";
 import ParamCreatorModal from "./ParamCreatorModal";
-import { KEYS, overridesKey, groupOrderKey } from "../lib/storage";
+import { KEYS, overridesKey, groupOrderKey, normalizeUiGroup } from "../lib/storage";
 
 // ── Types for template update diff (from Rust check_template_update IPC) ─────────
 interface DiffParam {
@@ -140,9 +140,9 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
     try {
       const stored = localStorage.getItem(groupOrderKey(selectedProviderId));
       if (stored) {
-        setCustomGroupOrder(JSON.parse(stored));
+        setCustomGroupOrder(JSON.parse(stored).map((g: string) => normalizeUiGroup(g)));
       } else if (currentProvider?.groupOrder && currentProvider.groupOrder.length > 0) {
-        setCustomGroupOrder(currentProvider.groupOrder);
+        setCustomGroupOrder(currentProvider.groupOrder.map(normalizeUiGroup));
       } else {
         setCustomGroupOrder(null); // Use template insertion order
       }
@@ -153,7 +153,7 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
 
   const saveGroupOrder = useCallback(async (newOrder: string[]) => {
     // Persist to localStorage (A)
-    try { localStorage.setItem(groupOrderKey(selectedProviderId), JSON.stringify(newOrder)); } catch {}
+    try { localStorage.setItem(groupOrderKey(selectedProviderId), JSON.stringify(newOrder.map(normalizeUiGroup))); } catch {}
     setCustomGroupOrder(newOrder);
     // Persist to provider_meta.json via save_provider (B)
     if (currentProvider) {
@@ -352,8 +352,8 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
 
     // Handle custom group — append to provider.groupOrder if not already there
     let updatedProvider = { ...currentProvider, userEditedTemplateParams: updatedUserParams };
-    const newGroup = def.ui_group;
-    if (newGroup && currentProvider.groupOrder && !currentProvider.groupOrder.includes(newGroup)) {
+    const newGroup = def.ui_group ? normalizeUiGroup(def.ui_group) : undefined;
+    if (newGroup && currentProvider.groupOrder && !currentProvider.groupOrder.some(g => normalizeUiGroup(g) === newGroup)) {
       updatedProvider.groupOrder = [...currentProvider.groupOrder, newGroup];
     }
 

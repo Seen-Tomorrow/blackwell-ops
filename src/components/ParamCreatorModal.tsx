@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import type { UserEditedTemplateParam } from "../lib/types";
-import { KEYS } from "../lib/storage";
+import { KEYS, normalizeUiGroup } from "../lib/storage";
 
 interface CreatorForm {
   key: string;
@@ -123,7 +123,8 @@ export default function ParamCreatorModal({
     if (existingKeys.includes(form.key.trim())) { setError(`Parameter '${form.key}' already exists`); return; }
     if (form.values.length === 0) { setError("At least one value is required"); return; }
 
-    const group = form.uiGroup === "__custom__" ? form.customGroup : form.uiGroup;
+    const rawGroup = form.uiGroup === "__custom__" ? form.customGroup : form.uiGroup;
+    const group = rawGroup ? normalizeUiGroup(rawGroup) : "";
     if (!group && form.uiGroup !== "__custom__") { /* no group = Feature Flags default */ }
 
     // Build sub_params from form.subParams (text → string[])
@@ -144,10 +145,8 @@ export default function ParamCreatorModal({
       ui_group: group || undefined,
     };
 
-    // Only include advanced fields if mode is advanced or they have values
-    if (mode === "advanced" || form.ptype !== "arg_select") {
-      def.ptype = form.ptype as UserEditedTemplateParam["ptype"];
-    }
+    // Always set ptype — defaults to "arg_select" in simple mode
+    def.ptype = form.ptype as UserEditedTemplateParam["ptype"];
     if (form.flag && form.ptype !== "logic_only") {
       def.flag = form.flag;
     }
@@ -163,7 +162,7 @@ export default function ParamCreatorModal({
   return (
     <div className="fixed inset-0 bg-black/70 z-[100] flex items-center justify-center" onClick={onClose}>
       <div
-        className="bg-[#1a1a2e] border border-yellow-400/40 rounded-lg w-full max-w-xl mx-4 max-h-[85vh] overflow-y-auto"
+        className="bg-stealth-panel border border-yellow-400/40 rounded-lg w-full max-w-xl mx-4 max-h-[85vh] overflow-y-auto"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}

@@ -36,6 +36,7 @@ pub async fn save_provider(provider: crate::types::ProviderConfig, app: tauri::S
     }
 
     for ep in &mut save_provider.user_edited_template_params {
+        ep.ui_group = crate::config::normalize_ui_group(&ep.ui_group);
         let existing_keys: std::collections::HashSet<String> = ep.values.iter()
             .map(|v| serde_json::to_string(v).unwrap_or_default())
             .collect();
@@ -46,6 +47,8 @@ pub async fn save_provider(provider: crate::types::ProviderConfig, app: tauri::S
             }
         }
     }
+
+    save_provider.group_order = save_provider.group_order.iter().map(|g| crate::config::normalize_ui_group(g)).collect();
 
     if save_provider.user_edited_template_params.is_empty() {
         if let Some(tmpl_key) = crate::config::template_key_for_type(&save_provider.template_type) {

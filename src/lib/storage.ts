@@ -32,3 +32,8 @@ export function overridesKey(providerId: string): string {
 export function groupOrderKey(providerId: string): string {
   return `${STORAGE_PREFIX}group-order-${providerId}`;
 }
+
+/** Normalize a UI group name to uppercase-hyphen format (e.g. "Speculative Decoding" → "SPECULATIVE-DECODING") */
+export function normalizeUiGroup(raw: string): string {
+  return raw.trim().toUpperCase().replace(/[^A-Z0-9\-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+}

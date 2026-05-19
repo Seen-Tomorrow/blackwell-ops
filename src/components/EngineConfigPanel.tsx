@@ -694,7 +694,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             {deriveParamGroups(orderedGroupKeys).map(group => {
               const groupParams = groupedParams[group.id];
               // ── Speculative decoding: nuclear button toggles hidden on all group params ──
-              const isSpecGroup = group.id === "Speculative decoding";
+              const isSpecGroup = group.id === "SPECULATIVE-DECODING";
 
               if (isSpecGroup) {
                 // Use allGroupedParams to find params even when they're all hidden

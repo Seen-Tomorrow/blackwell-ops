@@ -17,6 +17,19 @@ fn blackwell_config_dir() -> std::path::PathBuf {
     dirs::config_dir().unwrap().join(name)
 }
 
+/// Normalize a UI group name to uppercase-hyphen format (e.g. "Speculative Decoding" → "SPECULATIVE-DECODING")
+pub fn normalize_ui_group(raw: &str) -> String {
+    raw.trim()
+        .to_uppercase()
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || c == '-' { c } else { '-' })
+        .collect::<String>()
+        .split('-')
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<&str>>()
+        .join("-")
+}
+
 // ── Provider Metadata (persisted to disk) ───────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -362,7 +375,7 @@ fn user_edited_param_from_template(tp: &crate::templates::GenesisTemplateParam, 
         flag_pair: tp.flag_pair.clone(),
         ptype: tp.ptype.clone(),
         values_to_cli: tp.values_to_cli.clone(),
-        ui_group: tp.ui_group.clone(),
+        ui_group: normalize_ui_group(&tp.ui_group),
         note: tp.note.clone(),
         pattern: tp.pattern.clone(),
         default_value: tp.default.clone(),
