@@ -8,12 +8,13 @@ use crate::log_hub::LogHub;
 fn fit_scanner_estimate_vram(config: &EngineConfig) -> f64 {
     if let Some(scan_data) = crate::fit_scanner::load_full_scan_export() {
         if let Some(full) = scan_data.get(&config.model_path) {
-            let ctx_tokens = match config.ctx_size.as_str() {
+            let ctx_str = config.get_param_str("ctx").unwrap_or_else(|| "32k".to_string());
+            let ctx_tokens = match ctx_str.to_uppercase().as_str() {
                 "4K" => 4096, "8K" => 8192, "16K" => 16384, "32K" => 32768,
-                "64K" => 65536, "128K" => 131072, "256K" => 262144, _ => 32768,
+                "64K" => 65536, "128K" => 131072, "256K" => 262144, "512K" => 524288, "1M" | "1MIL" => 1048576, _ => 32768,
             };
             if let Some(pt) = full.points.iter().find(|p| {
-                p.ctx == ctx_tokens && p.kv_quant.to_lowercase() == config.kv_quant.to_lowercase()
+                p.ctx == ctx_tokens && p.kv_quant.to_lowercase() == config.get_param_str("kv-quant").unwrap_or_else(|| "f16".to_string()).to_lowercase()
             }) {
                 return pt.vram_mib;
             }
@@ -256,7 +257,7 @@ impl EngineStack {
             slot.model_path = config.model_path.clone();
             slot.gpu_mask = gpu_mask;
             slot.vram_mib = fit_scanner_estimate_vram(&config);
-            slot.n_ctx = crate::templates::ProviderTemplate::ctx_to_int_str(&config.ctx_size)
+            slot.n_ctx = crate::templates::ProviderTemplate::ctx_to_int_str(&config.get_param_str("ctx").unwrap_or_else(|| "32k".to_string()))
                 .parse::<usize>().unwrap_or(32768);
             slot.provider_name = provider_display_name;
             slot.backend_type = backend_type;

@@ -47,7 +47,7 @@ export function useScenarioEvaluator({ model, config, gpus, stack, systemInfo }:
 
   // Config fingerprint — only keys that affect scenario evaluation.
   // Changes here trigger re-eval (HW buttons, param chips). Telemetry noise doesn't touch these.
-  const configKey = `${config.Device || ""}|${config.Split || ""}|${config["Offload_Mode"] || ""}|${config.CTX || ""}|${config["KV-Quant"] || ""}|${config.Batch ?? ""}|${config.uBatch ?? ""}|${config.Parallel ?? ""}|${config["Flash-Attn"] || ""}|${config.Offload || ""}|${config.Vision || ""}|${config["Unified-KV"] || ""}|${config["RoPE_Scaling"] || ""}|${config["RoPE_Scale"] ?? ""}`;
+  const configKey = `${config.device || ""}|${config.split || ""}|${config["offload-mode"] || ""}|${config.ctx || ""}|${config["kv-quant"] || ""}|${config.batch ?? ""}|${config.ubatch ?? ""}|${config.parallel ?? ""}|${config["flash-attn"] || ""}|${config.offload || ""}|${config.vision || ""}|${config["unified-kv"] || ""}|${config["rope-scaling"] || ""}|${config["rope-scale"] ?? ""}`;
 
   // Stack fingerprint — changes when running engines start/stop or their VRAM shifts.
   const stackKey = stack
@@ -82,27 +82,8 @@ export function useScenarioEvaluator({ model, config, gpus, stack, systemInfo }:
       alias: "",
       model_path: model.path,
       port: 0,
-      device: curConfig.Device || "GPU-0",
-      kv_quant: curConfig["KV-Quant"] || "f16",
-      ctx_size: curConfig.CTX || "32K",
-      batch: typeof curConfig.Batch === 'number' ? curConfig.Batch : parseInt(String(curConfig.Batch), 10) || 2048,
-      ubatch: typeof curConfig.uBatch === 'number' ? curConfig.uBatch : parseInt(String(curConfig.uBatch), 10) || 512,
-      parallel: typeof curConfig.Parallel === 'number' ? curConfig.Parallel : parseInt(String(curConfig.Parallel), 10) || 1,
-      offload: String(curConfig.Offload || "all"),
-      offload_mode: curConfig["Offload_Mode"] || "regular",
-      split_mode: curConfig.Split || "none",
-      vision: curConfig.Vision?.toUpperCase() === "OFF" ? "OFF" : "AUTO",
-      flash_attn: curConfig["Flash-Attn"]?.toString().toLowerCase() !== "off",
-      unified_kv: curConfig["Unified-KV"]?.toString().toLowerCase() !== "off",
-      rope_scaling: curConfig["RoPE_Scaling"] || undefined,
-      rope_scale: typeof curConfig["RoPE_Scale"] === 'number' ? curConfig["RoPE_Scale"] : parseFloat(String(curConfig["RoPE_Scale"])) || undefined,
-      jinja: curConfig.Jinja?.toString().toUpperCase() !== "OFF",
-      cont_batching: curConfig["Cont-Batching"]?.toString().toUpperCase() !== "OFF",
-      metrics: curConfig.Metrics?.toString().toUpperCase() === "ON",
-      reasoning: curConfig.Reasoning?.toString().toUpperCase() === "ON",
-      mmap: curConfig.MMAP?.toString().toUpperCase() !== "OFF",
-      verbose: false,
-      log_timestamps: true,
+      backend_type: curConfig.backend_type,
+      extra_params: { ...curConfig },
     };
 
     const runningSlots: RunningSlotInfo[] = curStack
@@ -185,7 +166,8 @@ export function useScenarioEvaluator({ model, config, gpus, stack, systemInfo }:
         }
 
         const fa = result.style.uiTemplate ? 'on' : 'off';
-        console.warn(`[SCENARIO] Config: CTX=${engineConfig.ctx_size} KVQ=${engineConfig.kv_quant} Batch=${engineConfig.batch} Par=${engineConfig.parallel} Split=${engineConfig.split_mode} FA=${fa} Offload=${engineConfig.offload_mode}`);
+        const ep = engineConfig.extra_params || {};
+        console.warn(`[SCENARIO] Config: CTX=${ep.ctx} KVQ=${ep["kv-quant"]} Batch=${ep.batch} Par=${ep.parallel} Split=${ep.split} FA=${fa} Offload=${ep["offload-mode"]}`);
 
         lastScenarioDebugModelRef.current = model.path;
         lastScenarioDebugNameRef.current = result.scenario;
@@ -267,15 +249,15 @@ export function useScenarioEvaluator({ model, config, gpus, stack, systemInfo }:
       const result: FitScanResult = await invoke("fit_scan_model", {
         modelPath: model.path,
         providerId: curConfig.backend_type || null,
-        ctxSize: curConfig.CTX || "32K",
-        kvQuant: curConfig["KV-Quant"] || "f16",
-        device: curConfig.Device || "GPU-0",
-        splitMode: (curConfig.Split || "NONE").toString().toLowerCase(),
-        batch: typeof curConfig.Batch === 'number' ? curConfig.Batch : parseInt(String(curConfig.Batch), 10) || 2048,
-        ubatch: typeof curConfig.uBatch === 'number' ? curConfig.uBatch : parseInt(String(curConfig.uBatch), 10) || 512,
-        parallel: typeof curConfig.Parallel === 'number' ? curConfig.Parallel : parseInt(String(curConfig.Parallel), 10) || 1,
-        flashAttn: curConfig["Flash-Attn"]?.toString().toLowerCase() !== "off",
-        offloadMode: (curConfig["Offload_Mode"] || "regular").toString(),
+        ctxSize: curConfig.ctx || "32k",
+        kvQuant: curConfig["kv-quant"] || "f16",
+        device: curConfig.device || "GPU-0",
+        splitMode: (curConfig.split || "none").toString().toLowerCase(),
+        batch: typeof curConfig.batch === 'number' ? curConfig.batch : parseInt(String(curConfig.batch), 10) || 2048,
+        ubatch: typeof curConfig.ubatch === 'number' ? curConfig.ubatch : parseInt(String(curConfig.ubatch), 10) || 512,
+        parallel: typeof curConfig.parallel === 'number' ? curConfig.parallel : parseInt(String(curConfig.parallel), 10) || 1,
+        flashAttn: curConfig["flash-attn"]?.toString().toLowerCase() !== "off",
+        offloadMode: (curConfig["offload-mode"] || "regular").toString(),
       });
 
       // Re-run full scenario evaluation with measured VRAM total
@@ -283,24 +265,8 @@ export function useScenarioEvaluator({ model, config, gpus, stack, systemInfo }:
         alias: "",
         model_path: model.path,
         port: 0,
-        device: curConfig.Device || "GPU-0",
-        kv_quant: curConfig["KV-Quant"] || "f16",
-        ctx_size: curConfig.CTX || "32K",
-        batch: typeof curConfig.Batch === 'number' ? curConfig.Batch : parseInt(String(curConfig.Batch), 10) || 2048,
-        ubatch: typeof curConfig.uBatch === 'number' ? curConfig.uBatch : parseInt(String(curConfig.uBatch), 10) || 512,
-        parallel: typeof curConfig.Parallel === 'number' ? curConfig.Parallel : parseInt(String(curConfig.Parallel), 10) || 1,
-        offload: String(curConfig.Offload || "all"),
-        offload_mode: curConfig["Offload_Mode"] || "regular",
-        split_mode: curConfig.Split || "none",
-        vision: curConfig.Vision?.toUpperCase() === "OFF" ? "OFF" : "AUTO",
-        flash_attn: curConfig["Flash-Attn"]?.toString().toLowerCase() !== "off",
-        jinja: curConfig.Jinja?.toString().toUpperCase() !== "OFF",
-        cont_batching: curConfig["Cont-Batching"]?.toString().toUpperCase() !== "OFF",
-        metrics: curConfig.Metrics?.toString().toUpperCase() === "ON",
-        reasoning: curConfig.Reasoning?.toString().toUpperCase() === "ON",
-        mmap: curConfig.MMAP?.toString().toUpperCase() !== "OFF",
-        verbose: false,
-        log_timestamps: true,
+        backend_type: curConfig.backend_type,
+        extra_params: { ...curConfig },
       };
 
       const runningSlots: RunningSlotInfo[] = stackRef.current
@@ -371,7 +337,8 @@ export function useScenarioEvaluator({ model, config, gpus, stack, systemInfo }:
         }
 
         const fa = newManifest.style.uiTemplate ? 'on' : 'off';
-        console.warn(`[SCENARIO] Config: CTX=${engineConfig.ctx_size} KVQ=${engineConfig.kv_quant} Batch=${engineConfig.batch} Par=${engineConfig.parallel} Split=${engineConfig.split_mode} FA=${fa} Offload=${engineConfig.offload_mode}`);
+        const ep = engineConfig.extra_params || {};
+        console.warn(`[SCENARIO] Config: CTX=${ep.ctx} KVQ=${ep["kv-quant"]} Batch=${ep.batch} Par=${ep.parallel} Split=${ep.split} FA=${fa} Offload=${ep["offload-mode"]}`);
 
         lastScenarioDebugModelRef.current = model.path;
         lastScenarioDebugNameRef.current = newManifest.scenario;

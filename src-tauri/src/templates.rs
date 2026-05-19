@@ -151,27 +151,32 @@ impl ProviderTemplate {
         bundle.templates.get(id).cloned()
     }
 
-    /// Extract the selected value for a param from EngineConfig + param_definitions.
+    /// Extract the selected value for a param from extra_params (user choice), then fall back to param_defs, then template defaults.
+    /// All key lookups are case-insensitive.
     pub fn get_value(
         &self,
         config: &EngineConfig,
         key: &str,
         param_defs: Option<&[crate::types::ParamDef]>,
     ) -> serde_json::Value {
-        let typed_val = Self::typed_field_to_string(config, key);
-        if !typed_val.is_empty() {
-            return serde_json::Value::String(typed_val);
-        }
+        let key_lower = key.to_lowercase();
 
+        // Priority 1: extra_params (user-selected value, case-insensitive lookup)
         if !config.extra_params.is_empty() {
+            // Direct key match first
             if let Some(v) = config.extra_params.get(key) {
                 return v.clone();
             }
+            // Case-insensitive match
+            if let Some(v) = config.extra_params.iter().find(|(k, _)| k.to_lowercase() == key_lower) {
+                return v.1.clone();
+            }
         }
 
+        // Priority 2: param_definitions from disk (user overrides)
         if let Some(defs) = param_defs {
             for def in defs {
-                if def.key == key || (!def.config_key.is_empty() && def.config_key == key) {
+                if def.key.to_lowercase() == key_lower || (!def.config_key.is_empty() && def.config_key.to_lowercase() == key_lower) {
                     if !def.default_value.is_null() {
                         return def.default_value.clone();
                     }
@@ -179,34 +184,11 @@ impl ProviderTemplate {
             }
         }
 
+        // Priority 3: embedded template defaults
         self.params.iter()
-            .find(|p| p.key == key || p.config_key == key)
+            .find(|p| p.key.to_lowercase() == key_lower || p.config_key.to_lowercase() == key_lower)
             .map(|p| p.default.clone())
             .unwrap_or_else(|| serde_json::Value::String(String::new()))
-    }
-
-    /// Convert EngineConfig typed field to string representation matching template values.
-    fn typed_field_to_string(config: &EngineConfig, config_key: &str) -> String {
-        match config_key {
-            "kv_quant" => config.kv_quant.clone(),
-            "ctx_size" => config.ctx_size.clone(),
-            "batch" => config.batch.to_string(),
-            "ubatch" | "ubatch_size" => config.ubatch.to_string(),
-            "parallel" => config.parallel.to_string(),
-            "offload" => config.offload.clone(),
-            "offload_mode" | "offload-mode" => config.offload_mode.clone(),
-            "split_mode" | "split" => config.split_mode.clone(),
-            "device" => config.device.clone(),
-            "vision" => config.vision.clone(),
-            "mmap" => if !config.mmap { "off".into() } else { "on".into() }, // Inverted!
-            "flash_attn" | "flash-attn" => if config.flash_attn { "on".into() } else { "off".into() },
-            "jinja" => if config.jinja { "on".into() } else { "off".into() },
-            "cont_batching" | "cont-batching" => if config.cont_batching { "on".into() } else { "off".into() },
-            "metrics" => if config.metrics { "on".into() } else { "off".into() },
-            "verbose" => if config.verbose { "on".into() } else { "off".into() },
-            "log_timestamps" | "log-timestamps" => if config.log_timestamps { "on".into() } else { "off".into() },
-            _ => String::new(),
-        }
     }
 
     /// Build the full CLI command from template + user config.
@@ -255,7 +237,7 @@ impl ProviderTemplate {
         for param in &self.params {
             // Resolve the active value: use ParamDef's resolve_launch_value() which
             // auto-selects first visible when default is hidden (so launch can never be "blind").
-            let mut value = self.get_value(config, &param.config_key, param_defs);
+            let mut value = self.get_value(config, &param.key, param_defs);
 
             if let Some(defs) = param_defs {
                 if let Some(def) = defs.iter().find(|d| d.key == param.key || (!d.config_key.is_empty() && d.config_key == param.config_key)) {
@@ -274,39 +256,32 @@ impl ProviderTemplate {
                     }
                 }
             }
-            let owned_str = value.as_str().map(String::from).unwrap_or(value.to_string());
-            let value_str = owned_str.as_str();
+            let value_str = value.as_str().map(String::from).unwrap_or(value.to_string());
 
             // Resolve "auto" from GGUF metadata cache — llama.cpp needs numbers, not "auto"
-            if value_str == "auto" {
-                if let Some(resolved) = resolve_auto_value(&param.config_key, &config.model_path) {
-                    log::debug!("[build_cmd] resolved auto for '{}': '{}' -> '{}'", param.key, value_str, resolved);
-                    // Re-inject with resolved value by treating it as a new owned string
-                    let _ = args.last_mut(); // no-op to keep borrow checker happy
-                    // We'll handle this below by using the resolved value instead of value_str
-                } else {
-                    // Cannot resolve — skip this flag entirely (llama.cpp has sensible defaults)
-                    log::debug!("[build_cmd] cannot resolve auto for '{}', skipping flag", param.key);
-                    Self::inject_sub_params(&mut args, param, value_str, param_defs);
-                    continue;
+            let final_value_str = if value_str == "auto" {
+                match resolve_auto_value(&param.config_key, &config.model_path) {
+                    Some(resolved) => {
+                        log::debug!("[build_cmd] resolved auto for '{}': '{}' -> '{}'", param.key, value_str, resolved);
+                        resolved
+                    }
+                    None => {
+                        log::debug!("[build_cmd] cannot resolve auto for '{}', skipping flag", param.key);
+                        Self::inject_sub_params(&mut args, param, &value_str, param_defs);
+                        continue;
+                    }
                 }
-            }
-
-            // Use resolved value if available, otherwise original
-            let final_value = if value_str == "auto" {
-                resolve_auto_value(&param.config_key, &config.model_path).unwrap_or(owned_str.clone())
             } else {
-                owned_str.clone()
+                value_str
             };
-            let final_value_str = final_value.as_str();
 
             match param.ptype.as_str() {
-                "arg_select" => Self::inject_arg_select(&mut args, param, final_value_str),
-                "mapper" => Self::inject_mapper(&mut args, param, final_value_str),
-                "switch_onoff" => Self::inject_switch_onoff(&mut args, param, final_value_str),
-                "switch_inverted" => Self::inject_switch_inverted(&mut args, param, final_value_str),
+                "arg_select" => Self::inject_arg_select(&mut args, param, &final_value_str),
+                "mapper" => Self::inject_mapper(&mut args, param, &final_value_str),
+                "switch_onoff" => Self::inject_switch_onoff(&mut args, param, &final_value_str),
+                "switch_inverted" => Self::inject_switch_inverted(&mut args, param, &final_value_str),
                 "path_scanner" => {
-                    if let Some(path) = Self::scan_path(config, param, final_value_str) {
+                    if let Some(path) = Self::scan_path(config, param, &final_value_str) {
                         args.extend([param.flag.clone().unwrap_or_default(), path]);
                     }
                 },
@@ -314,7 +289,7 @@ impl ProviderTemplate {
             }
 
             // Inject sub_params for ALL ptypes — checks disk state first, then template defaults
-            Self::inject_sub_params(&mut args, param, final_value_str, param_defs);
+            Self::inject_sub_params(&mut args, param, &final_value_str, param_defs);
         }
 
         // ── TEST MODE (ADD): append raw test flags after all template params ───────────
@@ -343,12 +318,9 @@ impl ProviderTemplate {
         args
     }
 
-    fn sanitize_arg_value(value: &str, map_id: Option<&str>) -> String {
-        if matches!(map_id, Some("CTX_TO_INT") | Some("OFFLOAD_MAP")) {
-            value.to_string()
-        } else {
-            value.to_lowercase()
-        }
+    fn sanitize_arg_value(value: &str, _map_id: Option<&str>) -> String {
+        // Values are already normalized by TS normalizeValue() — pass through unchanged.
+        value.to_string()
     }
 
     fn inject_arg_select(args: &mut Vec<String>, param: &TemplateParam, value: &str) {
@@ -485,7 +457,8 @@ impl ProviderTemplate {
     }
 
     pub fn ctx_to_int_str(ctx: &str) -> String {
-        match ctx {
+        let upper = ctx.to_uppercase();
+        match upper.as_str() {
             "4K" => "4096".to_string(),
             "8K" => "8192".to_string(),
             "16K" => "16384".to_string(),
@@ -494,7 +467,7 @@ impl ProviderTemplate {
             "128K" => "131072".to_string(),
             "256K" => "262144".to_string(),
             "512K" => "524288".to_string(),
-            "1M" => "1048576".to_string(),
+            "1M" | "1MIL" => "1048576".to_string(),
             _ => ctx.parse::<usize>().map(|n| n.to_string()).unwrap_or_else(|_| "32768".to_string()),
         }
     }
@@ -524,117 +497,10 @@ impl ProviderTemplate {
         self.get_default(config_key)
     }
 
-    // ── Data-Driven Provider Defaults ───────────────────────────────────
-
-    /// Resolve provider-level defaults from params JSON into an EngineConfig.
-    pub fn apply_provider_defaults(
-        &self,
-        config: &EngineConfig,
-        provider_params: Option<&serde_json::Value>,
-    ) -> EngineConfig {
-        let mut result = config.clone();
-
-        // Only handle typed fields. Non-typed params (logic_only) are NOT copied to
-        // extra_params — that was the bug causing --__sub_args BWadmin. Their values live in
-        // param_definitions[].default_value and are read by get_value() during build_command.
-        if let Some(params) = provider_params {
-            if let Some(obj) = params.as_object() {
-                for (key, value) in obj {
-                    match key.as_str() {
-                        "batch" => {
-                            if result.batch == 0 {
-                                result.batch = value.as_i64().unwrap_or(2048);
-                            }
-                        }
-                        "ubatch" | "ubatch_size" => {
-                            if result.ubatch == 0 {
-                                result.ubatch = value.as_i64().unwrap_or(512);
-                            }
-                        }
-                        "parallel" => {
-                            if result.parallel == 0 {
-                                result.parallel = value.as_i64().unwrap_or(1);
-                            }
-                        }
-                        "ctx_size" | "ctx" => {
-                            if result.ctx_size.is_empty() || result.ctx_size == "32K" {
-                                result.ctx_size = value.as_str().unwrap_or("32K").to_string();
-                            }
-                        }
-                        "kv_quant" | "kv-quant" => {
-                            if result.kv_quant.is_empty() || result.kv_quant == "f16" {
-                                result.kv_quant = value.as_str().unwrap_or("f16").to_string();
-                            }
-                        }
-                        "offload" => {
-                            if result.offload.is_empty() {
-                                result.offload = value.as_str().unwrap_or("ALL").to_string();
-                            }
-                        }
-                        "offload_mode" | "offload-mode" => {
-                            if result.offload_mode.is_empty() || result.offload_mode == "REGULAR" {
-                                result.offload_mode = value.as_str().unwrap_or("REGULAR").to_string();
-                            }
-                        }
-                        "split_mode" | "split" => {
-                            if result.split_mode.is_empty() {
-                                result.split_mode = value.as_str().unwrap_or("NONE").to_string();
-                            }
-                        }
-                        "vision" => {
-                            if result.vision.is_empty() || result.vision == "AUTO" {
-                                result.vision = value.as_str().unwrap_or("AUTO").to_string();
-                            }
-                        }
-                        "flash_attn" | "flash-attn" => {
-                            if !result.flash_attn {
-                                result.flash_attn = value.as_bool().unwrap_or(false);
-                            }
-                        }
-                        "jinja" => {
-                            if !result.jinja {
-                                result.jinja = value.as_bool().unwrap_or(false);
-                            }
-                        }
-                        "cont_batching" | "cont-batching" => {
-                            if !result.cont_batching {
-                                result.cont_batching = value.as_bool().unwrap_or(false);
-                            }
-                        }
-                        "metrics" => {
-                            if !result.metrics {
-                                result.metrics = value.as_bool().unwrap_or(false);
-                            }
-                        }
-                        "verbose" => {
-                            if result.verbose {
-                                result.verbose = value.as_bool().unwrap_or(true);
-                            }
-                        }
-                        "reasoning" => {
-                            if !result.reasoning {
-                                result.reasoning = value.as_bool().unwrap_or(false);
-                            }
-                        }
-                        "mmap" => {
-                            // mmap=true means "use mmap", provider default of false means --no-mmap
-                            if result.mmap {
-                                result.mmap = value.as_bool().unwrap_or(true);
-                            }
-                        }
-                        "log_timestamps" | "log-timestamps" => {
-                            if result.log_timestamps {
-                                result.log_timestamps = value.as_bool().unwrap_or(true);
-                            }
-                        }
-                        _ => {} // Unknown param key, skip silently
-                    }
-                }
-            }
-        }
-
-        result
-    }
+    // ── Data-Driven Provider Defaults (removed) ─────────────────────────
+    // Provider defaults are now resolved purely from genesis_template.json
+    // via get_value() -> param_defs -> template defaults priority chain.
+    // No more hardcoded match arms or case-sensitive guards.
 
     /// Get all config_key values from template params (for VRAM check and other data-driven operations).
     pub fn config_keys(&self) -> Vec<&str> {

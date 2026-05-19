@@ -90,6 +90,26 @@ export function gpuHasRunningEngines(gpuIdx: number, slots: RunningSlotInfo[]): 
   return slots.some(s => s.gpuMask.split(",").some(p => p.trim() === String(gpuIdx)));
 }
 
+/** Accessors for flattened EngineConfig — read from extra_params with defaults. */
+function ep(cfg: EngineConfig): Record<string, any> { return cfg.extra_params || {}; }
+
+function cfgStr(cfg: EngineConfig, key: string, fallback: string): string {
+  const v = ep(cfg)[key];
+  return v != null ? String(v) : fallback;
+}
+function cfgNum(cfg: EngineConfig, key: string, fallback: number): number {
+  const v = ep(cfg)[key];
+  if (typeof v === 'number') return v;
+  const p = parseInt(String(v), 10);
+  return isNaN(p) ? fallback : p;
+}
+function cfgBool(cfg: EngineConfig, key: string, fallback: boolean): boolean {
+  const v = ep(cfg)[key];
+  if (typeof v === 'boolean') return v;
+  if (typeof v === 'string') return v.toLowerCase() !== 'off' && v.toLowerCase() !== 'false';
+  return fallback;
+}
+
 /** Compute per-layer weight in GB from architecture dimensions (full layer).
  *  Replaces uniform `weightsGb / nLayer` which is wrong for MoE models
  *  where expert FFN weights dominate layer size. */
@@ -309,22 +329,22 @@ export function computeValues(input: ScenarioInput, validatedVramMib?: number): 
 
   // GPU-bound weight fraction — MOE_OPTIMAL always applies reduced fraction when selected.
   // Only attention + router weights go to GPU; expert FFN stays in RAM until dispatch.
-  const gpuWeightFraction = (isMoe && engineConfig.offload_mode === "moe_optimal")
+  const gpuWeightFraction = (isMoe && cfgStr(engineConfig, "offload-mode", "regular") === "moe_optimal")
     ? computeMoeGpuWeightFraction(modelMeta)
     : 1.0;
 
   // ── Soft Cap: effective context length ────────────────────────────────
-  const userCtx = parseCtx(engineConfig.ctx_size);
+  const userCtx = parseCtx(cfgStr(engineConfig, "ctx", "32k"));
   const nCtxTrain = modelMeta.n_ctx_train || 4096;
-  const ropeScale = engineConfig.rope_scale ?? 1.0;
-  const ropeScaling = (engineConfig.rope_scaling || "none").toLowerCase();
+  const ropeScale = cfgNum(engineConfig, "rope-scale", 1.0);
+  const ropeScaling = cfgStr(engineConfig, "rope-scaling", "none").toLowerCase();
 
   // Always use the context length the user selected — no soft cap.
   const effectiveCtx = userCtx;
 
   // KV cache from GGUF metadata — uses effective context
   const headDim = modelMeta.n_head > 0 ? modelMeta.n_embd / modelMeta.n_head : 128;
-  const kvBytesPerParam = kvBytesForQuant(engineConfig.kv_quant);
+  const kvBytesPerParam = kvBytesForQuant(cfgStr(engineConfig, "kv-quant", "f16"));
   const kvCacheGb = (modelMeta.n_layer > 0 && modelMeta.n_head_kv > 0)
     ? (2 * modelMeta.n_layer * modelMeta.n_head_kv * headDim * effectiveCtx * kvBytesPerParam) / (1024 ** 3)
     : 0;
@@ -333,24 +353,24 @@ export function computeValues(input: ScenarioInput, validatedVramMib?: number): 
   const numGpusTotal = gpus.length;
 
   // Split mode active?
-  const splitActive = engineConfig.split_mode.length > 0 && engineConfig.split_mode.toUpperCase() !== "NONE";
+  const splitActive = cfgStr(engineConfig, "split", "none").length > 0 && cfgStr(engineConfig, "split", "none").toUpperCase() !== "NONE";
 
   // GPUs actually used by this model — single GPU when no split, all when splitting
-  const deviceStr = engineConfig.device || "GPU-0";
+  const deviceStr = cfgStr(engineConfig, "device", "GPU-0");
   const numGpusUsed = splitActive ? numGpusTotal : (deviceStr.includes("/") ? deviceStr.split("/").length : 1);
 
   const weightsOnGpuGb = weightsGb * gpuWeightFraction;
 
   // Vision addon — mmproj file size only
-  const visionGb = engineConfig.vision !== "OFF" ? (input.mmprojSizeMib || 0) / 1024 : 0;
+  const visionGb = cfgStr(engineConfig, "vision", "auto").toUpperCase() !== "OFF" ? (input.mmprojSizeMib || 0) / 1024 : 0;
 
   let overheadGb: number;
 
   if (input.fitPoints && input.fitPoints.length > 0) {
     // ── FIT-based estimation ────────────────────────────────────────────
-    const splitMode = splitActive ? engineConfig.split_mode.toLowerCase() : "";
+    const splitMode = splitActive ? cfgStr(engineConfig, "split", "none").toLowerCase() : "";
     const extrapolatedMib = extrapolateVramFromPoints(
-      input.fitPoints, userCtx, engineConfig.kv_quant, engineConfig.batch, engineConfig.parallel, splitMode, weightsGb
+      input.fitPoints, userCtx, cfgStr(engineConfig, "kv-quant", "f16"), cfgNum(engineConfig, "batch", 2048), cfgNum(engineConfig, "parallel", 1), splitMode, weightsGb
     );
 
     if (extrapolatedMib !== null) {
@@ -410,15 +430,13 @@ function computeDefaultOverhead(
 ): number {
   const baseOverheadPerGpu = estimateDefaultOverheadGb(weightsGb);
 
-  // Activation memory: single universal constant, no arch tiers
-  const effectiveParallel = engineConfig.unified_kv ? 1 : engineConfig.parallel;
-  // Two components: peak activation from ubatch (processed simultaneously),
-  // CUDA workspace buffer from total batch size. Both scale independently.
-  let activationOverheadGb = (engineConfig.ubatch * effectiveParallel / 1024) * 1.5 * (modelMeta.n_embd / 4096);
-  const batchWorkspaceGb = Math.min((engineConfig.batch * effectiveParallel / 1024) * 0.375, 2.0);
+ // Activation memory: single universal constant, no arch tiers
+  const effectiveParallel = cfgBool(engineConfig, "unified-kv", false) ? 1 : cfgNum(engineConfig, "parallel", 1);
+  let activationOverheadGb = (cfgNum(engineConfig, "ubatch", 512) * effectiveParallel / 1024) * 1.5 * (modelMeta.n_embd / 4096);
+  const batchWorkspaceGb = Math.min((cfgNum(engineConfig, "batch", 2048) * effectiveParallel / 1024) * 0.375, 2.0);
 
   // Flash attention reduces activation memory by ~15%
-  if (engineConfig.flash_attn) {
+  if (cfgBool(engineConfig, "flash-attn", false)) {
     activationOverheadGb *= 0.85;
   }
 
@@ -427,13 +445,13 @@ function computeDefaultOverhead(
     activationOverheadGb *= 0.8;
   }
 
-  const ropeScaling = (engineConfig.rope_scaling || "none").toLowerCase();
+  const ropeScaling = cfgStr(engineConfig, "rope-scaling", "none").toLowerCase();
   if (ropeScaling === "yarn") {
     activationOverheadGb *= 1.05;
   }
 
   // Parallel overhead — kept even with unified_kv (per-sequence buffer still exists)
-  const parallelOverhead = Math.max(0, engineConfig.parallel - 1) * CUDA_PARALLEL_OVERHEAD_PER_REQ_GB;
+  const parallelOverhead = Math.max(0, cfgNum(engineConfig, "parallel", 1) - 1) * CUDA_PARALLEL_OVERHEAD_PER_REQ_GB;
 
   // Context overhead scales past 64K but caps at 2 GB to prevent blowup on 1M ctx.
   const ctxOverhead = effectiveCtx > 65536
@@ -518,7 +536,7 @@ function computeMoeAlternative(
   if (modelMeta.n_expert === 0) return null;
   
   // Don't suggest if already in MOE_OPTIMAL mode
-  if (input.engineConfig.offload_mode === "moe_optimal") return null;
+  if (cfgStr(input.engineConfig, "offload-mode", "regular") === "moe_optimal") return null;
   
   // Simulate MOE_OPTIMAL computation with reduced GPU weight fraction
   const currentGpuFraction = computed.gpuWeightFraction;
@@ -656,8 +674,4 @@ export function applyFitValidation(
     validatedGpuBreakdownMib: gpuBreakdown,
     validatedHostMib: hostMib,
   };
-
-  function round2(v: number): number {
-    return Math.round(v * 100) / 100;
-  }
 }

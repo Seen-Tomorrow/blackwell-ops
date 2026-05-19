@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { unstable_batchedUpdates } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -39,6 +39,11 @@ function App() {
   const [logs, setLogs] = useState<Map<number, LogEntry[]>>(new Map());
   const [systemEvents, setSystemEvents] = useState<Map<number, Array<{ text: string; timestamp: string }>>>(new Map());
   const [enginePerfEvents, setEnginePerfEvents] = useState<Map<number, EnginePerfEvent>>(new Map());
+
+  const [activeLogSlot, setActiveLogSlot] = useState<number | "all">("all");
+  const logsScrollRef = useRef<HTMLDivElement>(null);
+  const autoScrollRef = useRef(true);
+  const prevLogSlotsRef = useRef<Set<number>>(new Set());
 
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [providers, setProviders] = useState<ProviderConfig[]>([]);
@@ -187,6 +192,10 @@ function App() {
               const existing = next.get(batch.slot) || [];
               const updated = [...existing, ...batch.entries].slice(-5000);
               next.set(batch.slot, updated);
+              // Auto-select new slot on first batch
+              if (!prev.has(batch.slot)) {
+                setActiveLogSlot(batch.slot);
+              }
               return next;
             });
           } catch {}
@@ -251,6 +260,8 @@ function App() {
               next.delete(payload.slot);
               return next;
             });
+            // Reset active tab if cleared slot was selected
+            setActiveLogSlot((prev) => (prev === payload.slot ? "all" : prev));
           }
         } catch {}
       });
@@ -360,6 +371,33 @@ function App() {
     }
   }, []);
 
+  // Auto-scroll logs to bottom on new entries
+  const prevLogCountRef = useRef(0);
+  useEffect(() => {
+    if (activeTab !== "logs" || !logsScrollRef.current) return;
+    const totalLines = Array.from(logs.values()).reduce((s, e) => s + e.length, 0);
+    if (totalLines > prevLogCountRef.current && autoScrollRef.current) {
+      logsScrollRef.current.scrollTo({ top: logsScrollRef.current.scrollHeight });
+    }
+    prevLogCountRef.current = totalLines;
+  }, [logs, activeTab]);
+
+  // Track manual scroll to toggle auto-scroll
+  const handleLogsScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    const el = e.currentTarget;
+    const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    autoScrollRef.current = distFromBottom < 80;
+  }, []);
+
+  // Clear logs for selected slot
+  const handleClearSlotLogs = useCallback((slot: number) => {
+    setLogs((prev) => {
+      const next = new Map(prev);
+      next.set(slot, []);
+      return next;
+    });
+  }, []);
+
   const flatLogs = useMemo(() => {
     const result: Map<number, Array<{ text: string; timestamp: string; alias: string }>> = new Map();
     for (const [slot, entries] of logs.entries()) {
@@ -400,30 +438,92 @@ function App() {
           </div>
         )}
         {activeTab === "logs" && (
-          <div className="h-full flex flex-col overflow-hidden p-4">
-            <h2 className="text-xs font-mono text-nv-green tracking-wider mb-3 flex-shrink-0">ENGINE LOGS</h2>
-            <div className="flex-1 overflow-y-auto bg-stealth-panel border border-stealth-border rounded-sm p-3 min-h-0">
-              {flatLogs.size === 0 ? (
+          <div className="h-full flex flex-col p-4 gap-0">
+            <h2 className="text-xs font-mono text-nv-green tracking-wider mb-2 flex-shrink-0">ENGINE LOGS</h2>
+            <div className="sticky top-0 z-10 bg-[#0a0f08] flex items-end gap-1 mb-2 flex-shrink-0 pb-2 pl-2 overflow-x-auto">
+              <div className="flex flex-col items-start gap-0.5">
+                <div className="w-full h-[22px]" />
+                <button
+                  onClick={() => setActiveLogSlot("all")}
+                  className={`px-2 py-0.5 text-[9px] font-mono rounded-sm value-chip whitespace-nowrap focus:outline-none ${activeLogSlot === "all" ? "value-chip-active" : ""}`}
+                >
+                  ALL
+                </button>
+              </div>
+              {Array.from(logs.entries())
+                .sort(([a], [b]) => a - b)
+                .map(([slot, entries]) => {
+                  const stackEntry = stack.find((s) => s.idx === slot);
+                  const label = stackEntry?.alias || `SLOT ${slot}`;
+                  const status = stackEntry?.status;
+                  const isRunning = status === "RUNNING" || status === "LOADING";
+                  return (
+                    <div key={slot} className="flex flex-col items-start gap-0.5">
+                      <button
+                        onClick={() => handleClearSlotLogs(slot)}
+                        className="px-2 py-0.5 text-[8px] font-mono rounded-sm border border-red-400/30 text-red-400/60 hover:border-red-400/60 hover:text-red-400 transition-all focus:outline-none whitespace-nowrap"
+                      >
+                        CLEAR
+                      </button>
+                      <button
+                        onClick={() => setActiveLogSlot(slot)}
+                        className={`px-2 py-0.5 text-[9px] font-mono rounded-sm value-chip whitespace-nowrap focus:outline-none ${activeLogSlot === slot ? "value-chip-active" : ""}`}
+                      >
+                        <span className={`inline-block w-1 h-1 rounded-full mr-1 ${isRunning ? "bg-emerald-400" : "bg-stealth-muted/40"}`} />
+                        {label} <span className="opacity-50">({entries.length})</span>
+                      </button>
+                    </div>
+                  );
+                })}
+            </div>
+            <div className="flex items-center justify-end mb-1 flex-shrink-0">
+              <button
+                onClick={() => setLogs(new Map())}
+                className="px-2 py-0.5 text-[9px] font-mono text-stealth-muted hover:text-red-400 transition-colors disabled:opacity-20"
+                disabled={logs.size === 0}
+              >
+                CLEAR ALL
+              </button>
+            </div>
+            <div
+              ref={logsScrollRef}
+              className="flex-1 overflow-y-auto bg-stealth-panel border border-stealth-border rounded-sm p-3 min-h-0"
+              onScroll={handleLogsScroll}
+            >
+              {logs.size === 0 ? (
                 <p className="text-[10px] font-mono text-stealth-muted/50 italic">NO LOGS YET — LAUNCH AN ENGINE TO SEE OUTPUT</p>
               ) : (
-                Array.from(flatLogs.entries())
-                  .sort(([a], [b]) => a - b)
-                  .map(([slot, entries]) => (
-                    <div key={slot} className="mb-4">
-                      <h3 className="text-[10px] font-mono text-nv-green/80 mb-1 border-b border-stealth-border pb-1">
-                        SLOT {slot} ({entries.length} lines)
-                      </h3>
-                      <div className="space-y-0.5">
-                        {entries.map((entry, i) => (
-                          <p key={i} className="text-[10px] font-mono text-stealth-muted leading-relaxed">
-                            <span className="text-stealth-muted/40">{entry.timestamp}</span>{" "}
-                            <span className="text-nv-green/60">[{entry.alias}]</span>{" "}
-                            <AnsiText text={entry.text} />
-                          </p>
-                        ))}
-                      </div>
-                    </div>
-                  ))
+                (() => {
+                  const slotKeys = activeLogSlot === "all"
+                    ? Array.from(logs.keys()).sort((a, b) => a - b)
+                    : logs.has(activeLogSlot) ? [activeLogSlot] : [];
+                  if (slotKeys.length === 0) return <p className="text-[10px] font-mono text-stealth-muted/50 italic">NO LOGS FOR SELECTED SLOT</p>;
+                  return slotKeys.flatMap((slot, si) => {
+                    const entries = flatLogs.get(slot) || [];
+                    const stackEntry = stack.find((s) => s.idx === slot);
+                    const alias = stackEntry?.alias || entries[0]?.alias || `SLOT ${slot}`;
+                    return (
+                      <>
+                        {activeLogSlot === "all" && (
+                          <div key={`h-${slot}`} className="mb-2 mt-2 first:mt-0">
+                            <div className="text-[10px] font-mono text-nv-green/80 border-b border-stealth-border pb-1">
+                              {alias} <span className="text-stealth-muted/40">({entries.length} lines)</span>
+                            </div>
+                          </div>
+                        )}
+                        <div key={`e-${slot}`} className="space-y-0.5">
+                          {entries.map((entry, i) => (
+                            <p key={i} className="text-[10px] font-mono text-stealth-muted leading-relaxed whitespace-nowrap overflow-x-auto">
+                              <span className="text-stealth-muted/40">{entry.timestamp}</span>{" "}
+                              {activeLogSlot === "all" && <span className="text-nv-green/60">[{entry.alias}] </span>}
+                              <AnsiText text={entry.text} />
+                            </p>
+                          ))}
+                        </div>
+                      </>
+                    );
+                  });
+                })()
               )}
             </div>
           </div>

@@ -202,11 +202,11 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   // Dynamic Device param — generated from GPU topology, docked to runtime block
   const deviceParamDef: ParamDef | null = useMemo(() => {
     if (gpus.length === 0) return null;
-    const alreadyExists = adminParamDefs.some(d => d.key === "Device");
+    const alreadyExists = adminParamDefs.some(d => d.key === "device");
     if (alreadyExists) return null;
     return {
-      key: "Device",
-      label: "Device",
+      key: "device",
+      label: "DEVICE",
       config_key: "device",
       flag: null,
       ptype: "arg_select" as const,
@@ -215,7 +215,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       hidden: false,
       defaultValue: "GPU-0",
       dock: "runtime",
-      ui_group: "Core",
+      ui_group: "MULTI-GPU",
       note: "Select which GPU to use for inference.",
     };
   }, [gpus.length, adminParamDefs]);
@@ -391,11 +391,11 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
   // ── Port / name helpers ────────────────────────────────────────────────────
   const getBasePort = useCallback((): number => {
-    const bp = config.Base_Port ?? config.base_port;
+    const bp = config["base-port"] ?? config.base_port;
     if (typeof bp === 'number') return bp;
     const parsed = parseInt(String(bp), 10);
     return isNaN(parsed) ? DEFAULT_BASE_PORT : parsed;
-  }, [config.Base_Port, config.base_port]);
+  }, [config["base-port"], config.base_port]);
 
   const getNextPort = useCallback(async (): Promise<number> => {
     const basePort = getBasePort();
@@ -456,32 +456,20 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       }
     } catch {}
 
-    // Build typed EngineConfig for Rust's launch_engine command
+    // Build data-driven EngineConfig: mandatory fields + all user params in extra_params
+    const extraParams: Record<string, any> = { ...config };
+    // Override offload with VRAM calculation if partial offload is active
+    if (vramCalc.manifest?.gpuLayers != null && vramCalc.manifest.ramLayers > 0) {
+      extraParams.offload = String(vramCalc.manifest.gpuLayers);
+    }
+
     const fullConfig: EngineConfig = {
       alias: finalAlias,
       model_path: model.path,
       port,
-      device: config.Device || "GPU-0",
-      kv_quant: config["KV-Quant"] || "f16",
-      ctx_size: config.CTX || "32K",
-      batch: typeof config.Batch === 'number' ? config.Batch : parseInt(String(config.Batch), 10) || 2048,
-      ubatch: typeof config.uBatch === 'number' ? config.uBatch : parseInt(String(config.uBatch), 10) || 512,
-      parallel: typeof config.Parallel === 'number' ? config.Parallel : parseInt(String(config.Parallel), 10) || 1,
-      // Auto-offload: use calculated layers from metadata, fallback to config value
-      offload: vramCalc.manifest?.gpuLayers != null && vramCalc.manifest.ramLayers > 0 ? String(vramCalc.manifest.gpuLayers) : (config.Offload === "all" || !config.Offload ? "ALL" : String(config.Offload)),
-      offload_mode: config["Offload_Mode"] || "regular",
-      split_mode: config.Split || "none",
-      vision: config.Vision?.toUpperCase() === "OFF" ? "OFF" : "AUTO",
-      flash_attn: config["Flash-Attn"]?.toString().toLowerCase() !== "off",
-      jinja: config.Jinja?.toString().toUpperCase() !== "OFF",
-      cont_batching: config["Cont-Batching"]?.toString().toUpperCase() !== "OFF",
-      metrics: config.Metrics?.toString().toUpperCase() === "ON",
-      reasoning: config.Reasoning?.toString().toUpperCase() === "ON",
-      mmap: config.MMAP?.toString().toUpperCase() !== "OFF",
-      verbose: false,
-      log_timestamps: true,
       backend_type: effectiveBackendType,
       binary_profile: selectedBinaryProfile,
+      extra_params: extraParams,
     };
 
     // Inject test flags into extra_params if enabled
@@ -565,10 +553,10 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           gpus={gpus}
           selectedGpuIndices={selectedGpuIndices.length > 0 ? selectedGpuIndices : undefined}
           onDeviceSelect={(gpuIndex) => {
-            // Clicking a GPU resets Split to none (single-GPU mode)
-            updateParam("Device", `GPU-${gpuIndex}`);
-            if (config.Split && config.Split.toUpperCase() !== "NONE") {
-              updateParam("Split", "none");
+            // Clicking a GPU resets split to none (single-GPU mode)
+            updateParam("device", `GPU-${gpuIndex}`);
+            if (config.split && config.split.toUpperCase() !== "NONE") {
+              updateParam("split", "none");
             }
           }}
           isValidating={vramCalc.isValidating}
@@ -577,10 +565,10 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           activeEngineAlias={activeEngineAlias}
           activeEnginePort={activeEnginePort}
           selectedSlotIdx={selectedSlotIdx}
-          offloadMode={config["Offload_Mode"]}
+          offloadMode={config["offload-mode"]}
           onMoeSuggestionClick={() => {
             // Auto-switch to MOE_OPTIMAL when user clicks the suggestion badge
-            updateParam("Offload_Mode", "moe_optimal");
+            updateParam("offload-mode", "moe_optimal");
           }}
           modelMeta={model?.metadata}
         />

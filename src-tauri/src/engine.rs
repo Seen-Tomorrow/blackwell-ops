@@ -25,12 +25,14 @@ use crate::engine_utils;
 /// Compute CUDA_VISIBLE_DEVICES mask from config + detected GPU count.
 /// Split mode → all GPUs joined by comma. Single GPU → parsed index from "GPU-N".
 fn compute_gpu_mask(config: &EngineConfig, gpu_count: usize, test_has_split: bool) -> String {
-    let split_active = (!config.split_mode.is_empty() && config.split_mode.to_uppercase() != "NONE") || test_has_split;
+    let split_mode = config.get_param_str("split").unwrap_or_default();
+    let split_active = (!split_mode.is_empty() && split_mode.to_uppercase() != "NONE") || test_has_split;
 
     if split_active {
         (0..gpu_count).map(|i| i.to_string()).collect::<Vec<_>>().join(",")
     } else {
-        let idx = config.device.strip_prefix("GPU-")
+        let device = config.get_param_str("device").unwrap_or_else(|| "GPU-0".to_string());
+        let idx = device.strip_prefix("GPU-")
             .and_then(|s| s.parse::<usize>().ok())
             .unwrap_or(0);
         if idx < gpu_count {
@@ -124,12 +126,12 @@ pub async fn launch_engine(
         .unwrap_or_else(crate::templates::ProviderTemplate::load);
 
     let provider_opt2 = cfg.providers.iter().find(|p| p.id == backend_type);
-    let provider_params = provider_opt2.map(|p| &p.params);
+    let _provider_params = provider_opt2.map(|p| &p.params);
 
     let param_defs_ref: Option<&[crate::types::ParamDef]> =
         provider_opt2.map(|p| p.param_definitions.as_slice());
 
-    let mut config = template.apply_provider_defaults(&config, provider_params);
+    let mut config = config;
     let test_has_split = config.extra_params.get("__test_args")
         .and_then(|v| v.as_array())
         .map(|arr| {
@@ -144,7 +146,7 @@ pub async fn launch_engine(
     let gpu_count = detect_gpu_count();
     let gpu_mask = compute_gpu_mask(&config, gpu_count, test_has_split);
 
-    let gpu_mask_msg = format!("[GPU_MASK] provider={} split_mode=\"{}\" test_has_split={} -> CUDA_VISIBLE_DEVICES={}", backend_type, config.split_mode, test_has_split, gpu_mask);
+    let gpu_mask_msg = format!("[GPU_MASK] provider={} split_mode=\"{}\" test_has_split={} -> CUDA_VISIBLE_DEVICES={}", backend_type, config.get_param_str("split").unwrap_or_default(), test_has_split, gpu_mask);
     eprintln!("{}", gpu_mask_msg);
     // SANITY-BOX — route GPU mask info to sanity box
     app.log_hub.emit_sanity_log("warn", &gpu_mask_msg);
@@ -196,7 +198,7 @@ pub async fn launch_engine(
 
     app.log_hub.emit_system_event(slot_idx, &config.alias, "Engine launching...").await;
 
-    let ctx_size_int = crate::templates::ProviderTemplate::ctx_to_int_str(&config.ctx_size)
+    let ctx_size_int = crate::templates::ProviderTemplate::ctx_to_int_str(&config.get_param_str("ctx").unwrap_or_else(|| "32k".to_string()))
         .parse::<usize>().unwrap_or(32768);
 
     // Spawn engine and get ConPTY output receiver for unified reader
@@ -228,10 +230,12 @@ pub async fn launch_engine(
         let fusion_log_hub = app.log_hub.clone();
         let fusion_alias = config.alias.clone();
         let fusion_port = slot_port;
+        let fusion_parallel = config.get_parallel();
+        let fusion_unified_kv = config.get_unified_kv();
 
         tokio::spawn(async move {
             crate::fusion::start_fusion_http_poller(
-                fusion_log_hub, fusion_alias, slot_idx, fusion_port, ctx_size_int, config.parallel, config.unified_kv, fusion_rx,
+                fusion_log_hub, fusion_alias, slot_idx, fusion_port, ctx_size_int, fusion_parallel, fusion_unified_kv, fusion_rx,
             ).await;
         });
     }
@@ -454,11 +458,8 @@ pub async fn preview_launch_command(
         .unwrap_or_else(crate::templates::ProviderTemplate::load);
 
     let provider_opt_prev = cfg.providers.iter().find(|p| p.id == backend_type);
-    let provider_params_pv = provider_opt_prev.map(|p| &p.params);
     let param_defs_pv: Option<&[crate::types::ParamDef]> =
         provider_opt_prev.map(|p| p.param_definitions.as_slice());
-
-    let config = template.apply_provider_defaults(&config, provider_params_pv);
 
     let gpu_count = detect_gpu_count();
     let gpu_mask = compute_gpu_mask(&config, gpu_count, false);

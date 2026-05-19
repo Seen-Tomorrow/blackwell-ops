@@ -66,7 +66,7 @@ pub async fn r11_insert_rod(
     let model_path = &config.model_path;
 
     // Estimate VRAM
-    let ctx_int = crate::templates::ProviderTemplate::ctx_to_int_str(&config.ctx_size)
+    let ctx_int = crate::templates::ProviderTemplate::ctx_to_int_str(&config.get_param_str("ctx").unwrap_or_else(|| "32k".to_string()))
         .parse::<usize>()
         .unwrap_or(32768);
     let vram_estimate = estimate_vram(model_path, ctx_int);
@@ -108,18 +108,17 @@ pub async fn r11_insert_rod(
     // Derive device string from allocation for llama.cpp --device flag
     match &allocation {
         crate::features::reactor11::core::R11GpuAllocation::Dedicated(idx) => {
-            launch_config.device = format!("GPU-{}", idx);
+            launch_config.extra_params.insert("device".to_string(), serde_json::json!(format!("GPU-{}", idx)));
         }
         crate::features::reactor11::core::R11GpuAllocation::Split([a, b]) => {
-            // For split: set device to non-GPU-1 value, and split_mode triggers gpu_mask="0,1"
-            launch_config.device = format!("GPU-{}/{}", a, b);
+            launch_config.extra_params.insert("device".to_string(), serde_json::json!(format!("GPU-{}/{}", a, b)));
         }
     }
 
     // For split allocations: set layer splitting mode + parallel count
     if allocation.is_split() {
-        launch_config.split_mode = "layer".to_string();
-        launch_config.parallel = 2;
+        launch_config.extra_params.insert("split".to_string(), serde_json::json!("layer"));
+        launch_config.extra_params.insert("parallel".to_string(), serde_json::json!(2));
     }
 
     let rod_id = next_rod_id(&{
@@ -138,7 +137,7 @@ pub async fn r11_insert_rod(
         vram_mib: vram_estimate,
         ctx_size: ctx_int,
         slot_idx: None,
-        quant: launch_config.kv_quant.clone(),
+        quant: launch_config.get_param_str("kv-quant").unwrap_or_else(|| "f16".to_string()),
         gpu_mask: allocation.gpu_mask(),
     };
 
@@ -238,7 +237,7 @@ pub async fn r11_swap_rod(
             vram_mib,
             ctx_size,
             slot_idx,
-            quant: new_config.kv_quant.clone(),
+            quant: new_config.get_param_str("kv-quant").unwrap_or_else(|| "f16".to_string()),
             gpu_mask: allocation_clone.gpu_mask(),
         });
     }

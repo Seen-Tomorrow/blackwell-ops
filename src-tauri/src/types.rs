@@ -9,51 +9,40 @@ pub struct EngineConfig {
     pub alias: String,
     pub model_path: String,
     pub port: u16,
-    pub device: String,
-    pub kv_quant: String,
-    pub ctx_size: String,
-    pub batch: i64,
-    pub ubatch: i64,
-    pub parallel: i64,
-    pub offload: String,
-    pub offload_mode: String,
-    pub split_mode: String,
-    pub vision: String,
-    pub flash_attn: bool,
-    pub jinja: bool,
-    pub cont_batching: bool,
-    pub metrics: bool,
-    pub reasoning: bool,
-    pub mmap: bool,
-    #[serde(default)]
-    pub unified_kv: bool,
-    #[serde(default)]
-    pub verbose: bool,
-    #[serde(default)]
-    pub log_timestamps: bool,
     #[serde(default)]
     pub backend_type: String,
-    #[serde(default = "default_ffi_provider")]
-    pub provider_type: String,
-    #[serde(default)]
-    pub n_gpu_layers: i32,
-    #[serde(default)]
-    pub rope_scaling: String,
-    #[serde(default = "default_rope_scale")]
-    pub rope_scale: f64,
-    #[serde(default)]
-    pub yarn_orig_ctx: u32,
-    #[serde(default)]
-    pub rope_freq_base: f64,
-    #[serde(default)]
-    pub extra_params: HashMap<String, serde_json::Value>,
     #[serde(default, rename = "binary_profile")]
     pub binary_profile: String,
+    #[serde(default)]
+    pub extra_params: HashMap<String, serde_json::Value>,
 }
 
-fn default_rope_scale() -> f64 { 1.0 }
+impl EngineConfig {
+    /// Extract parallel from extra_params, default 1.
+    pub fn get_parallel(&self) -> i64 {
+        self.get_param_str("parallel")
+            .and_then(|v| v.parse::<i64>().ok())
+            .unwrap_or(1)
+    }
 
-fn default_ffi_provider() -> String { "ggml-stable".to_string() }
+    /// Extract unified_kv from extra_params, default false.
+    pub fn get_unified_kv(&self) -> bool {
+        self.get_param_str("unified-kv")
+            .map(|v| v.to_lowercase() != "off" && v.to_lowercase() != "false")
+            .unwrap_or(false)
+    }
+
+    /// Get a string value from extra_params by key (case-insensitive).
+    pub fn get_param_str(&self, key: &str) -> Option<String> {
+        let key_lower = key.to_lowercase();
+        for (k, v) in &self.extra_params {
+            if k.to_lowercase() == key_lower {
+                return Some(v.as_str().map(|s| s.to_string()).unwrap_or(v.to_string()));
+            }
+        }
+        None
+    }
+}
 
 /// CLI flags injected into short-lived diagnostic spawns (fit scanner, GGUF scan).
 /// NOT applied to long-running engine servers — those should stay quiet under load.

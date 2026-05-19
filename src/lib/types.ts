@@ -69,33 +69,9 @@ export interface EngineConfig {
   alias: string;
   model_path: string;
   port: number;
-  device: string;
-  kv_quant: string;
-  ctx_size: string;
-  batch: number;
-  ubatch: number;
-  parallel: number;
-  offload: string;
-  offload_mode: string;
-  split_mode: string;
-  vision: string;
-  flash_attn: boolean;
-  jinja: boolean;
-  cont_batching: boolean;
-  metrics: boolean;
-  reasoning: boolean;
-  mmap: boolean;
-  verbose?: boolean;
-  log_timestamps?: boolean;
-  unified_kv?: boolean;
   backend_type?: string;
-  extra_params?: Record<string, any>;
-  // RoPE / Context Extension params (from genesis_template.json)
-  rope_scaling?: string;
-  rope_scale?: number;
-  yarn_orig_ctx?: number;
-  rope_freq_base?: number;
   binary_profile?: string;
+  extra_params?: Record<string, any>;
 }
 
 export interface ParamDef {
