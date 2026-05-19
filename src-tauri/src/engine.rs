@@ -271,17 +271,17 @@ pub async fn stop_engine(alias: String, app: tauri::State<'_, AppContext>) -> Re
         let idx = (0..slot_count).find(|&i| {
             stack.get_slot(i).map_or(false, |s| s.alias == alias)
         }).ok_or(format!("Engine '{}' not found", alias))?;
-        let port = stack.get_slot(idx).map(|s| s.port).unwrap_or(0);
+        let s = stack.get_slot(idx).unwrap();
+        let port = s.port;
+        drop(s);
         (idx, port)
     };
 
     // Cancel fusion monitor BEFORE stopping the slot — prevents race with channel close
     crate::fusion::stop_fusion_task(port).await;
 
-    {
-        let stack = app.stack.lock().await;
-        stack.stop_slot(slot_idx).await?;
-    }
+    // stop_slot is self-locking — does NOT require caller to hold stack lock
+    EngineStack::stop_slot(slot_idx, &app.stack).await?;
 
     Ok(format!("Engine {} stopped", alias))
 }
@@ -309,13 +309,10 @@ pub async fn stop_all_engines(app: tauri::State<'_, AppContext>) -> Result<Strin
         crate::fusion::stop_fusion_task(*port).await;
     }
 
-    // Stop all engines in parallel — slot-cleared events emitted inside spawned tasks
-    let _stopped_slots = {
-        let stack = app.stack.lock().await;
-        stack.stop_all_parallel().await
-    };
+    // stop_all_parallel is self-locking — does NOT require caller to hold stack lock
+    let stopped = EngineStack::stop_all_parallel(&app.stack).await;
 
-    Ok(format!("All {} engines stopped", ports_to_stop.len()))
+    Ok(format!("All {} engines stopped", stopped.len()))
 }
 
 /// Stops all running engines for a specific provider (by backend_type).
@@ -339,10 +336,8 @@ pub async fn stop_engines_by_provider(provider_id: String, app: tauri::State<'_,
         crate::fusion::stop_fusion_task(*port).await;
     }
 
-    let stopped = {
-        let stack = app.stack.lock().await;
-        stack.stop_slots_by_provider_parallel(&provider_id).await
-    };
+    // stop_slots_by_provider_parallel is self-locking — no stack lock needed
+    let stopped = EngineStack::stop_slots_by_provider_parallel(&provider_id, &app.stack).await;
 
     Ok(format!("Stopped {} engine(s) for '{}'", stopped.len(), provider_id))
 }
@@ -405,8 +400,8 @@ pub async fn get_stack_status(app: tauri::State<'_, AppContext>) -> Result<Vec<S
 pub async fn clean_exit(app: tauri::State<'_, AppContext>) -> Result<(), String> {
     log::info!("Clean exit requested — killing all orphaned processes");
 
-    let stack = app.stack.lock().await;
-    stack.kill_all().await;
+    // kill_all is self-locking — no stack lock needed
+    EngineStack::kill_all(&app.stack).await;
     Ok(())
 }
 

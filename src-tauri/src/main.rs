@@ -344,8 +344,7 @@ async fn main() {
                 let stack_clone = ctx.stack.clone();
                 tauri::async_runtime::spawn(async move {
                     crate::fusion::stop_all_fusion_tasks().await;
-                    let stack = stack_clone.lock().await;
-                    stack.kill_all().await;
+                    EngineStack::kill_all(&stack_clone).await;
                 });
             }
         })

@@ -367,186 +367,261 @@ impl EngineStack {
         }
     }
 
-    /// Stops a single slot. Locks only the target slot, not the whole stack.
-    pub async fn stop_slot(&self, slot_idx: usize) -> Result<(), String> {
+    /// Stops a single slot. Static self-locking — caller must NOT hold the tokio stack lock.
+    pub async fn stop_slot(
+        slot_idx: usize,
+        stack_ref: &Arc<tokio::sync::Mutex<EngineStack>>,
+    ) -> Result<(), String> {
+        // Extract process handle under per-slot lock only — no tokio lock needed
         let (port, alias, proc_to_stop) = {
-            let mut slot = self.slots[slot_idx].as_ref().ok_or("Slot not found")?.lock();
+            let stack = stack_ref.lock().await;
+            let mut slot = stack.slots[slot_idx].as_ref().ok_or("Slot not found")?.lock();
             let port = slot.port;
             let alias = slot.alias.clone();
             let proc_to_stop = slot.conpty_proc.take();
             (port, alias, proc_to_stop)
-        };
+        }; // tokio stack lock dropped
 
         if let Some(mut proc) = proc_to_stop {
-            let graceful = Self::graceful_shutdown_process(&mut proc, slot_idx);
+            // Blocking shutdown runs in spawn_blocking so it doesn't block the tokio worker
+            let graceful = tokio::task::spawn_blocking({
+                let si = slot_idx;
+                move || EngineStack::graceful_shutdown_process(&mut proc, si)
+            }).await.unwrap_or(false);
 
             let msg = if !graceful {
-                format!("[STOP] FORCE KILLED")
+                "[STOP] FORCE KILLED".to_string()
             } else {
-                format!("[STOP] GRACEFUL exit")
+                "[STOP] GRACEFUL exit".to_string()
             };
             eprintln!("[STOP] slot={} alias={} shutdown: {}", slot_idx, alias, msg);
 
-            if let Some(hub) = self.log_hub.as_ref() {
+            // Emit shutdown event and kill orphaned port listener
+            let hub_opt = {
+                let stack = stack_ref.lock().await;
+                stack.log_hub.as_ref().map(|h| h.clone())
+            };
+            if let Some(hub) = hub_opt {
                 hub.emit_system_event(slot_idx, &alias, &msg).await;
             }
-
             let _ = Self::kill_process_by_port(port).await;
         }
 
         // Clean up slot state — full metadata reset
-        self.clear_slot(slot_idx);
-        self.emit_stack_changed();
+        {
+            let stack = stack_ref.lock().await;
+            stack.clear_slot(slot_idx);
+            stack.emit_stack_changed();
+        }
         Ok(())
     }
 
-    /// Stops all running slots in parallel. Returns indices of stopped slots for event emission.
-    pub async fn stop_all_parallel(&self) -> Vec<usize> {
-        let mut handles = Vec::new();
-
-        for (i, slot_opt) in self.slots.iter().enumerate() {
-            if let Some(slot_arc) = slot_opt {
-                let mut slot = slot_arc.lock();
-                match &slot.status {
-                    SlotStatus::Running | SlotStatus::Loading => {
-                        eprintln!("[STOP] shutting down slot={} port={} alias={}", i, slot.port, slot.alias);
-
-                        let port = slot.port;
-                        let alias = slot.alias.clone();
-                        let proc_to_stop = slot.conpty_proc.take();
-
-                        let log_hub_ref = self.log_hub.as_ref().map(|h| h.clone());
-
-                        handles.push(tokio::spawn(async move {
-                            if let Some(mut proc) = proc_to_stop {
-                                let graceful = EngineStack::graceful_shutdown_process(&mut proc, i);
-
-                                let msg = if !graceful {
-                                    format!("[STOP] FORCE KILLED")
-                                } else {
-                                    format!("[STOP] GRACEFUL exit")
-                                };
-                                eprintln!("[STOP] slot={} alias={} shutdown: {}", i, alias, msg);
-
-                                if let Some(hub) = log_hub_ref.as_ref() {
-                                    hub.emit_system_event(i, &alias, &msg).await;
-                                }
-
-                                let _ = EngineStack::kill_process_by_port(port).await;
-                            }
-
-                            // Emit slot-cleared immediately so UI clears logs per-engine as each finishes
-                            if let Some(hub) = log_hub_ref.as_ref() {
-                                hub.emit("slot-cleared", &serde_json::json!({ "slot": i }));
-                            }
-
-                            (i, port)
-                        }));
+    /// Stops all running slots in parallel. Static self-locking — caller must NOT hold the tokio stack lock.
+    pub async fn stop_all_parallel(
+        stack_ref: &Arc<tokio::sync::Mutex<EngineStack>>,
+    ) -> Vec<usize> {
+        // Phase 1: Collect target slot data under a brief lock
+        let mut targets: Vec<(usize, u16, String, Option<conpty::Process>)> = Vec::new();
+        let log_hub_ref = {
+            let stack = stack_ref.lock().await;
+            for (i, slot_opt) in stack.slots.iter().enumerate() {
+                if let Some(slot_arc) = slot_opt {
+                    let mut slot = slot_arc.lock();
+                    match &slot.status {
+                        SlotStatus::Running | SlotStatus::Loading => {
+                            eprintln!("[STOP] shutting down slot={} port={} alias={}", i, slot.port, slot.alias);
+                            let port = slot.port;
+                            let alias = slot.alias.clone();
+                            let proc_to_stop = slot.conpty_proc.take();
+                            targets.push((i, port, alias, proc_to_stop));
+                        }
+                        _ => {}
                     }
-                    _ => {}
                 }
             }
+            stack.log_hub.as_ref().map(|h| h.clone())
+        }; // tokio stack lock dropped
+
+        // Phase 2: Run all shutdowns in parallel outside any lock
+        let mut handles = Vec::new();
+        for (i, port, alias, proc_to_stop) in targets {
+            let hub_clone = log_hub_ref.clone();
+            handles.push(tokio::spawn(async move {
+                if let Some(proc) = proc_to_stop {
+                    // Blocking shutdown in spawn_blocking
+                    let graceful = tokio::task::spawn_blocking(move || {
+                        let mut p = proc;
+                        EngineStack::graceful_shutdown_process(&mut p, i)
+                    }).await.unwrap_or(false);
+
+                    let msg = if !graceful {
+                        "[STOP] FORCE KILLED".to_string()
+                    } else {
+                        "[STOP] GRACEFUL exit".to_string()
+                    };
+                    eprintln!("[STOP] slot={} alias={} shutdown: {}", i, alias, msg);
+
+                    if let Some(hub) = hub_clone.as_ref() {
+                        hub.emit_system_event(i, &alias, &msg).await;
+                    }
+                    let _ = EngineStack::kill_process_by_port(port).await;
+                }
+
+                // Emit slot-cleared so frontend clears per-slot logs
+                if let Some(hub) = hub_clone.as_ref() {
+                    hub.emit("slot-cleared", &serde_json::json!({ "slot": i }));
+                }
+
+                i
+            }));
         }
 
-        // Await all parallel shutdowns and collect stopped indices
+        // Phase 3: Await all, clear slots, emit stack-changed
         let mut stopped = Vec::new();
         for handle in handles {
-            if let Ok((i, _port)) = handle.await {
-                Self::clear_slot(self, i);
+            if let Ok(i) = handle.await {
+                {
+                    let stack = stack_ref.lock().await;
+                    stack.clear_slot(i);
+                }
                 stopped.push(i);
             }
         }
-        self.emit_stack_changed();
+        {
+            let stack = stack_ref.lock().await;
+            stack.emit_stack_changed();
+        }
         stopped
     }
 
     /// Stops all slots whose backend_type matches the given provider ID in parallel.
-    pub async fn stop_slots_by_provider_parallel(&self, backend_type: &str) -> Vec<usize> {
-        let mut handles = Vec::new();
-
-        for (i, slot_opt) in self.slots.iter().enumerate() {
-            if let Some(slot_arc) = slot_opt {
-                let mut slot = slot_arc.lock();
-                if slot.backend_type == backend_type && !matches!(slot.status, SlotStatus::Idle) {
-                    let port = slot.port;
-                    let alias = slot.alias.clone();
-                    let proc_to_stop = slot.conpty_proc.take();
-
-                    let log_hub_ref = self.log_hub.as_ref().map(|h| h.clone());
-
-                    handles.push(tokio::spawn(async move {
-                        if let Some(mut proc) = proc_to_stop {
-                            let graceful = EngineStack::graceful_shutdown_process(&mut proc, i);
-
-                            let msg = if !graceful {
-                                format!("[STOP] FORCE KILLED")
-                            } else {
-                                format!("[STOP] GRACEFUL exit")
-                            };
-                            eprintln!("[STOP] slot={} alias={} shutdown: {}", i, alias, msg);
-
-                            if let Some(hub) = log_hub_ref.as_ref() {
-                                hub.emit_system_event(i, &alias, &msg).await;
-                            }
-
-                            let _ = EngineStack::kill_process_by_port(port).await;
-                        }
-
-                        // Emit slot-cleared immediately so UI clears logs per-engine as each finishes
-                        if let Some(hub) = log_hub_ref.as_ref() {
-                            hub.emit("slot-cleared", &serde_json::json!({ "slot": i }));
-                        }
-
-                        i
-                    }));
+    /// Static self-locking — caller must NOT hold the tokio stack lock.
+    pub async fn stop_slots_by_provider_parallel(
+        backend_type: &str,
+        stack_ref: &Arc<tokio::sync::Mutex<EngineStack>>,
+    ) -> Vec<usize> {
+        // Phase 1: Collect targets under brief lock
+        let mut targets: Vec<(usize, u16, String, Option<conpty::Process>)> = Vec::new();
+        let log_hub_ref = {
+            let stack = stack_ref.lock().await;
+            for (i, slot_opt) in stack.slots.iter().enumerate() {
+                if let Some(slot_arc) = slot_opt {
+                    let mut slot = slot_arc.lock();
+                    if slot.backend_type == backend_type && !matches!(slot.status, SlotStatus::Idle) {
+                        eprintln!("[STOP] provider stop slot={} port={} alias={}", i, slot.port, slot.alias);
+                        let port = slot.port;
+                        let alias = slot.alias.clone();
+                        let proc_to_stop = slot.conpty_proc.take();
+                        targets.push((i, port, alias, proc_to_stop));
+                    }
                 }
             }
+            stack.log_hub.as_ref().map(|h| h.clone())
+        }; // tokio stack lock dropped
+
+        // Phase 2: Parallel shutdown outside any lock
+        let mut handles = Vec::new();
+        for (i, port, alias, proc_to_stop) in targets {
+            let hub_clone = log_hub_ref.clone();
+            handles.push(tokio::spawn(async move {
+                if let Some(proc) = proc_to_stop {
+                    let graceful = tokio::task::spawn_blocking(move || {
+                        let mut p = proc;
+                        EngineStack::graceful_shutdown_process(&mut p, i)
+                    }).await.unwrap_or(false);
+
+                    let msg = if !graceful {
+                        "[STOP] FORCE KILLED".to_string()
+                    } else {
+                        "[STOP] GRACEFUL exit".to_string()
+                    };
+                    eprintln!("[STOP] slot={} alias={} shutdown: {}", i, alias, msg);
+
+                    if let Some(hub) = hub_clone.as_ref() {
+                        hub.emit_system_event(i, &alias, &msg).await;
+                    }
+                    let _ = EngineStack::kill_process_by_port(port).await;
+                }
+
+                if let Some(hub) = hub_clone.as_ref() {
+                    hub.emit("slot-cleared", &serde_json::json!({ "slot": i }));
+                }
+
+                i
+            }));
         }
 
-        // Await all parallel shutdowns and collect results
+        // Phase 3: Await, clear slots, emit
         let mut stopped = Vec::new();
         for handle in handles {
             if let Ok(i) = handle.await {
-                Self::clear_slot(self, i);
+                {
+                    let stack = stack_ref.lock().await;
+                    stack.clear_slot(i);
+                }
                 stopped.push(i);
             }
         }
-        self.emit_stack_changed();
+        {
+            let stack = stack_ref.lock().await;
+            stack.emit_stack_changed();
+        }
         stopped
     }
 
-    /// Emergency kill all — used during app exit. Runs in parallel for speed.
-    pub async fn kill_all(&self) {
-        let mut handles = Vec::new();
-
-        for (i, slot_opt) in self.slots.iter().enumerate() {
-            if let Some(slot_arc) = slot_opt {
-                let mut slot = slot_arc.lock();
-                match &slot.status {
-                    SlotStatus::Running | SlotStatus::Loading => {
-                        eprintln!("[STOP] app exit: shutting down slot={} port={} alias={}", i, slot.port, slot.alias);
-
-                        let port = slot.port;
-                        let proc_to_stop = slot.conpty_proc.take();
-
-                        handles.push(tokio::spawn(async move {
-                            if let Some(mut proc) = proc_to_stop {
-                                EngineStack::graceful_shutdown_process(&mut proc, i);
-                            }
-                            (i, port)
-                        }));
+    /// Stops all slots whose backend_type matches the given provider ID.
+    pub async fn stop_slots_by_provider(
+        backend_type: &str,
+        stack_ref: &Arc<tokio::sync::Mutex<EngineStack>>,
+    ) -> Vec<usize> {
+        Self::stop_slots_by_provider_parallel(backend_type, stack_ref).await
+    }
+   /// Emergency kill all — used during app exit. Runs in parallel for speed.
+    /// Static self-locking — caller must NOT hold the tokio stack lock.
+    pub async fn kill_all(stack_ref: &Arc<tokio::sync::Mutex<EngineStack>>) {
+        // Phase 1: Collect targets under brief lock
+        let mut targets: Vec<(usize, u16, Option<conpty::Process>)> = Vec::new();
+        {
+            let stack = stack_ref.lock().await;
+            for (i, slot_opt) in stack.slots.iter().enumerate() {
+                if let Some(slot_arc) = slot_opt {
+                    let mut slot = slot_arc.lock();
+                    match &slot.status {
+                        SlotStatus::Running | SlotStatus::Loading => {
+                            eprintln!("[STOP] app exit: shutting down slot={} port={} alias={}", i, slot.port, slot.alias);
+                            let port = slot.port;
+                            let proc_to_stop = slot.conpty_proc.take();
+                            targets.push((i, port, proc_to_stop));
+                        }
+                        _ => {}
                     }
-                    _ => {}
                 }
             }
+        } // tokio stack lock dropped
+
+        // Phase 2: Parallel blocking shutdown in spawn_blocking
+        let mut handles = Vec::new();
+        for (i, port, proc_to_stop) in targets {
+            handles.push(tokio::spawn(async move {
+                if let Some(proc) = proc_to_stop {
+                    tokio::task::spawn_blocking(move || {
+                        let mut p = proc;
+                        EngineStack::graceful_shutdown_process(&mut p, i)
+                    }).await.unwrap_or(false);
+                }
+                (i, port)
+            }));
         }
 
-        // Await all parallel shutdowns + port cleanup
+        // Phase 3: Await, clear slots, kill orphaned ports
         let mut ports = Vec::new();
         for handle in handles {
             if let Ok((i, port)) = handle.await {
                 ports.push(port);
-                Self::clear_slot(self, i);
+                {
+                    let stack = stack_ref.lock().await;
+                    stack.clear_slot(i);
+                }
             }
         }
 
@@ -554,10 +629,13 @@ impl EngineStack {
             let _ = Self::kill_process_by_port(*port).await;
         }
 
-        // Final cleanup of all slots — ensure everything is reset
-        for (i, _) in self.slots.iter().enumerate() {
-            Self::clear_slot(self, i);
-        }
+        // Final cleanup — ensure every slot is reset
+        {
+            let stack = stack_ref.lock().await;
+            for (i, _) in stack.slots.iter().enumerate() {
+                stack.clear_slot(i);
+            }
+       }
     }
 
     pub fn get_status(&self) -> Vec<StackEntry> {
@@ -612,16 +690,10 @@ impl EngineStack {
                 }
             }
         }
-
         entries
     }
 
     pub fn get_slot(&self, idx: usize) -> Option<parking_lot::MutexGuard<'_, EngineSlot>> {
         self.slots[idx].as_ref().map(|arc| arc.lock())
-    }
-
-    /// Stops all slots whose backend_type matches the given provider ID (sequential, legacy).
-    pub async fn stop_slots_by_provider(&self, backend_type: &str) -> Vec<usize> {
-        self.stop_slots_by_provider_parallel(backend_type).await
     }
 }

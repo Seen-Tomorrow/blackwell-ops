@@ -11,6 +11,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::Mutex as TokioMutex;
 use tauri::Emitter;
+use crate::engine_stack::EngineStack;
 
 static BUILD_CONFIRMED: AtomicBool = AtomicBool::new(false);
 
@@ -335,8 +336,7 @@ pub async fn foundry_build(
                 .unwrap_or_default()
         };
 
-        let stack = app.stack.lock().await;
-        let stopped: Vec<usize> = stack.stop_slots_by_provider(&backend_type).await;
+        let stopped: Vec<usize> = EngineStack::stop_slots_by_provider_parallel(&backend_type, &app.stack).await;
         if !stopped.is_empty() {
             emit_build_event(app_handle, &provider_id, env, build_id, BuildStep::Initializing, 
                 Some(format!("Stopping {} running engine(s) for '{}' before build...", stopped.len(), provider_id)));
@@ -565,10 +565,7 @@ pub async fn foundry_build(
                     }
 
                     // User clicked YES — stop engines and retry
-                    let stopped: Vec<usize> = {
-                        let stack = app.stack.lock().await;
-                        stack.stop_slots_by_provider(&provider_id).await
-                    };
+                    let stopped: Vec<usize> = EngineStack::stop_slots_by_provider_parallel(&provider_id, &app.stack).await;
                     if !stopped.is_empty() {
                         emit_build_event(app_handle, &provider_id, env, build_id, BuildStep::Initializing,
                             Some(format!("Stopped {} engine(s) for '{}'. Retrying backup...", stopped.len(), provider_display_name)));
@@ -1246,8 +1243,7 @@ pub async fn foundry_restore(
 
     // Check if any engine is running for this provider — stop it first
     {
-        let stack = app.stack.lock().await;
-        let stopped = stack.stop_slots_by_provider(&provider_id).await;
+        let stopped = EngineStack::stop_slots_by_provider_parallel(&provider_id, &app.stack).await;
         if !stopped.is_empty() {
             log::info!("[restore] Stopped {} engine(s) before restore", stopped.len());
         }
