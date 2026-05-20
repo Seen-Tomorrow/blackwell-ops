@@ -351,6 +351,51 @@ async fn fusion_http_poll_loop(
     let poll_interval = tokio::time::Duration::from_millis(25);
     let mut interval = tokio::time::interval(poll_interval);
 
+    /// Build a terminal (engine-stopped) FusionUpdate with zeroed metrics.
+    fn build_terminal_update(state: &FusionEngineState, slot_idx: usize, port: u16) -> FusionUpdate {
+        let total_n_decoded: usize = state.slots.values().map(|s| s.prev_n_decoded).sum();
+        let slot_count = state.slots.len();
+        let slot_ctx: Vec<SlotCtxInfo> = state.slots.iter()
+            .map(|(id, s)| {
+                SlotCtxInfo {
+                    id: *id,
+                    n_decoded: s.prev_n_decoded,
+                    request_tokens: 0,
+                    total_tokens: s.total_tokens_lifetime + s.prev_n_decoded.saturating_sub(s.session_start_n_decoded),
+                    is_processing: false,
+                }
+            })
+            .collect();
+
+        FusionUpdate {
+            alias: state.alias.clone(),
+            slot_idx,
+            port,
+            engine_state: "IDLE".to_string(),
+            tps: 0.0,
+            smoothed_tps: 0.0,
+            phase: String::new(),
+            ctx_used: total_n_decoded,
+            ctx_total: state.ctx_total,
+            ctx_fill_pct: if state.ctx_total > 0 { (total_n_decoded as f64 / state.ctx_total as f64) * 100.0 } else { 0.0 },
+            request_tokens_gen: 0,
+            request_tokens_prompt: 0,
+            request_elapsed_ms: 0,
+            request_ttft_ms: None,
+            n_remain: -1,
+            max_tokens: -1,
+            gen_progress_pct: 0.0,
+            slot_count,
+            active_slots: 0,
+            slot_ctx,
+            parallel: state.parallel,
+            unified_kv: state.unified_kv,
+            tps_history: state.tps_history.iter().copied().collect(),
+            prefill_tps: 0.0,
+            prefill_progress: 0.0,
+        }
+    }
+
     // Emit initial LOADING update immediately so frontend shows launch animation
     {
         let init_update = FusionUpdate {
@@ -388,9 +433,11 @@ async fn fusion_http_poll_loop(
 
     loop {
         tokio::select! {
-            // ── Cancellation — graceful exit, skip post-loop emit ─────
+            // ── Cancellation — emit terminal update so frontend clears stale overlay ──
             _ = cancel.cancelled() => {
-                eprintln!("[FUSION] port={} cancelled gracefully", port);
+                eprintln!("[FUSION] port={} cancelled, emitting terminal update", port);
+                let term = build_terminal_update(&state, slot_idx, port);
+                log_hub.emit("fusion-update", &term);
                 return;
             }
 
@@ -420,7 +467,9 @@ async fn fusion_http_poll_loop(
                 let event = match event {
                     Some(e) => e,
                     None => {
-                        eprintln!("[FUSION] port={} fusion channel closed", port);
+                        eprintln!("[FUSION] port={} fusion channel closed, emitting terminal update", port);
+                        let term = build_terminal_update(&state, slot_idx, port);
+                        log_hub.emit("fusion-update", &term);
                         return; // Unified reader stopped — exit poller
                     }
                 };

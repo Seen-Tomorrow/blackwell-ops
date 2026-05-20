@@ -817,22 +817,22 @@ select option {
   }
 }
 
-/* ── Fusion e-ink overlay — inset recessed e-paper display ─── */
-/* Reversed bevel of .vram-section: outer shadows become inner, highlights flip top↔bottom */
+/* ── Fusion LCD overlay — classic greenish LCD backlight ─── */
 .fusion-eink-bg {
-  border-radius: 12px;
-  background-color: #f5f0e8;
-  /* Subtle grain texture on the e-ink surface — same technique as vram-section but lighter */
+  border-radius: 6px;
+  background-color: #c8d4b8;
+  /* Pixel grid — very subtle dot matrix */
   background-image:
-    repeating-linear-gradient(to right, rgba(0,0,0,0) 0px, rgba(0,0,0,.012) 0.5px, transparent 1px),
-    repeating-linear-gradient(to right, rgba(255,255,255,0) 0px, rgba(255,255,255,.03) 0.7px, transparent 1.4px),
-    repeating-linear-gradient(to right, rgba(0,0,0,0) 0px, rgba(0,0,0,.018) 0.3px, transparent 0.8px);
-  /* Inset bevel — reversed from .vram-section's raised look */
+    radial-gradient(circle, rgba(0,0,0,.03) 1px, transparent 1px),
+    /* Slight vertical banding — like real LCD refresh */
+    repeating-linear-gradient(to bottom, transparent 0px, transparent 2px, rgba(0,0,0,.01) 2px, rgba(0,0,0,.01) 4px);
+  background-size: 2px 2px, 100% 4px;
   box-shadow:
-    inset rgba(255,255,255,.7) 0 -3px 8px 4px,  /* top inner highlight → shadow on bottom inside */
-    inset rgba(255,255,255,.4) 0 -1px 0 6px,    /* hard inner line top edge (light catches rim) */
-    inset rgba(0,0,0,.35) 0 3px 8px 4px,        /* bottom inner shadow → light from top inside */
-    inset rgba(0,0,0,.15) 0 1px 0 6px;          /* hard inner line bottom edge */
+    /* LCD inner bevel — screen pressed into bezel */
+    inset 0 2px 6px rgba(0,0,0,.25),
+    inset 0 -1px 3px rgba(0,0,0,.15),
+    /* Subtle top glare — like ambient light on glossy screen */
+    inset 0 1px 40px rgba(255,255,255,.3);
 }
 
 /* Dark text on the light e-ink surface */

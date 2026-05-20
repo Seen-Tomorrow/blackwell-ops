@@ -10,17 +10,30 @@ export function useFusionData() {
     const tauriListen = (window as any).__TAURI__?.event?.listen;
     if (!tauriListen) return;
 
-    const unlisten = tauriListen("fusion-update", (event: any) => {
+    let unlistenFusion: (() => void) | null = null;
+    let unlistenCleared: (() => void) | null = null;
+
+    tauriListen("fusion-update", (event: any) => {
       const payload: FusionUpdate = event.payload;
       const map = mapRef.current;
       // Key by slotIdx — unique per engine, no alias collision possible
       map.set(payload.slotIdx, payload);
-
       setEngines(new Map(map));
-    });
+    }).then((u: any) => { unlistenFusion = u; });
+
+    // Remove fusion entry when slot is cleared — prevents stale overlay
+    tauriListen("slot-cleared", (event: any) => {
+      const payload = event.payload as { slot: number };
+      if (payload && payload.slot !== undefined) {
+        const map = mapRef.current;
+        map.delete(payload.slot);
+        setEngines(new Map(map));
+      }
+    }).then((u: any) => { unlistenCleared = u; });
 
     return () => {
-      unlisten.then((u: any) => u()).catch(() => {});
+      unlistenFusion?.();
+      unlistenCleared?.();
     };
   }, []);
 

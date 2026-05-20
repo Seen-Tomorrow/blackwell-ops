@@ -403,6 +403,9 @@ pub async fn get_stack_status(app: tauri::State<'_, AppContext>) -> Result<Vec<S
 pub async fn clean_exit(app: tauri::State<'_, AppContext>) -> Result<(), String> {
     log::info!("Clean exit requested — killing all orphaned processes");
 
+    // Stop fusion monitors first to prevent orphaned HTTP polling
+    crate::fusion::stop_all_fusion_tasks().await;
+
     // kill_all is self-locking — no stack lock needed
     EngineStack::kill_all(&app.stack).await;
     Ok(())

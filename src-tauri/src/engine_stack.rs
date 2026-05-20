@@ -310,34 +310,159 @@ impl EngineStack {
 
     fn graceful_shutdown_process(proc: &mut conpty::Process, slot_idx: usize) -> bool {
         let pid = proc.pid();
-        eprintln!("[STOP] slot={} pid={} sending Ctrl+C...", slot_idx, pid);
 
-        if let Ok(mut inp) = proc.input() {
-            use std::io::Write;
-            let _ = inp.write_all(&[0x03]);
+        // ── WriteConsoleInputW on ConPTY input handle ──
+        // GenerateConsoleCtrlEvent does NOT work with ConPTY — pseudo-consoles don't
+        // participate in Windows console process groups. The ONLY way to send Ctrl+C
+        // is WriteConsoleInputW with KEY_EVENT_RECORDs, exactly what Windows Terminal does.
+        // Sequence: LControl DOWN → 'c' press (with Ctrl held) → LControl UP
 
-            match proc.wait(Some(3000)) {
-                Ok(code) => {
-                    eprintln!("[STOP] slot={} GRACEFUL exit (code={})", slot_idx, code);
-                    return true;
+        const KEY_EVENT: u16 = 1;
+        const VK_LCONTROL: u16 = 0xA2;
+        const CTRL_PRESSED: u32 = 0x04;
+
+        #[repr(C)]
+        struct KeyEventRecord {
+            _eventType: u16,
+            _key_down: bool,
+            _w_repeat_count: u16,
+            _w_virtual_key_code: u16,
+            _w_virtual_scan_code: u16,
+            _u_char: [u8; 4],
+            _dw_control_key_state: u32,
+        }
+
+        #[repr(C)]
+        struct InputRecord {
+            _type: u16,
+            _event: KeyEventRecord,
+        }
+
+        extern "system" {
+            fn WriteConsoleInputW(
+                hConsoleInput: std::os::windows::io::RawHandle,
+                lpBuffer: *const InputRecord,
+                nLength: u32,
+                lpNumberOfEventsWritten: *mut u32,
+            ) -> i32;
+        }
+
+        let t0 = std::time::Instant::now();
+        eprintln!("[STOP] slot={} pid={} sending Ctrl+C via WriteConsoleInputW...", slot_idx, pid);
+
+        match proc.input() {
+            Ok(inp) => {
+                // conpty::PipeWriter wraps HANDLE but doesn't expose it publicly.
+                // Convert to std::fs::File (via From impl), extract raw handle, then
+                // immediately convert back with into_raw_handle to prevent double-close.
+                let pipe_file = std::fs::File::from(inp);
+                let handle = unsafe {
+                    use std::os::windows::io::{AsRawHandle, IntoRawHandle};
+                    let h = AsRawHandle::as_raw_handle(&pipe_file);
+                    std::mem::forget(pipe_file); // don't close — conpty Process owns the original
+                    h
+                };
+
+                let events: [InputRecord; 3] = [
+                    // LControl DOWN
+                    InputRecord {
+                        _type: KEY_EVENT,
+                        _event: KeyEventRecord {
+                            _eventType: KEY_EVENT,
+                            _key_down: true,
+                            _w_repeat_count: 1,
+                            _w_virtual_key_code: VK_LCONTROL,
+                            _w_virtual_scan_code: 0x1D,
+                            _u_char: [0; 4],
+                            _dw_control_key_state: CTRL_PRESSED,
+                        },
+                    },
+                    // 'c' press (Ctrl held)
+                    InputRecord {
+                        _type: KEY_EVENT,
+                        _event: KeyEventRecord {
+                            _eventType: KEY_EVENT,
+                            _key_down: true,
+                            _w_repeat_count: 1,
+                            _w_virtual_key_code: 0x43,
+                            _w_virtual_scan_code: 0x2E,
+                            _u_char: [b'c', b'C', 0, 0],
+                            _dw_control_key_state: CTRL_PRESSED,
+                        },
+                    },
+                    // LControl UP
+                    InputRecord {
+                        _type: KEY_EVENT,
+                        _event: KeyEventRecord {
+                            _eventType: KEY_EVENT,
+                            _key_down: false,
+                            _w_repeat_count: 1,
+                            _w_virtual_key_code: VK_LCONTROL,
+                            _w_virtual_scan_code: 0x1D,
+                            _u_char: [0; 4],
+                            _dw_control_key_state: 0,
+                        },
+                    },
+                ];
+
+                let mut written: u32 = 0;
+                let res = unsafe {
+                    WriteConsoleInputW(handle, events.as_ptr(), 3, &mut written)
+                };
+
+                if res == 0 || written != 3 {
+                    eprintln!(
+                        "[STOP] slot={} WriteConsoleInputW failed (res={}, written={}, lasterr={})",
+                        slot_idx,
+                        res,
+                        written,
+                        std::io::Error::last_os_error()
+                    );
+                } else {
+                    eprintln!("[STOP] slot={} Ctrl+C injected successfully ({} events written)", slot_idx, written);
                 }
-                Err(_) => {}
+
+                // Wait up to 3s for process to exit
+                let graceful = match proc.wait(Some(3000)) {
+                    Ok(code) => {
+                        let elapsed = t0.elapsed();
+                        eprintln!(
+                            "[STOP] slot={} exit code={} elapsed={:.1}ms",
+                            slot_idx,
+                            code,
+                            elapsed.as_secs_f64() * 1000.0
+                        );
+                        elapsed.as_secs_f64() < 1.5
+                    }
+                    Err(_) => false,
+                };
+
+                if !graceful {
+                    eprintln!("[STOP] slot={} graceful timeout, TerminateProcess...", slot_idx);
+                    let _ = proc.exit(1);
+
+                    match proc.wait(Some(2000)) {
+                        Ok(_) => {
+                            eprintln!("[STOP] slot={} FORCE KILLED (TerminateProcess)", slot_idx);
+                        }
+                        Err(_) => {
+                            eprintln!(
+                                "[STOP] slot={} STILL ALIVE after TerminateProcess",
+                                slot_idx
+                            );
+                        }
+                    }
+                }
+
+                graceful
+            }
+            Err(e) => {
+                eprintln!("[STOP] slot={} proc.input() failed: {}", slot_idx, e);
+                let _ = proc.exit(1);
+                let _ = proc.wait(Some(2000));
+                false
             }
         }
-
-        eprintln!("[STOP] slot={} graceful timeout, TerminateProcess...", slot_idx);
-        let _ = proc.exit(1);
-
-        match proc.wait(Some(2000)) {
-            Ok(_) => {
-                eprintln!("[STOP] slot={} FORCE KILLED (TerminateProcess)", slot_idx);
-            }
-            Err(_) => {
-                eprintln!("[STOP] slot={} STILL ALIVE after TerminateProcess", slot_idx);
-            }
-        }
-
-        false
     }
 
     /// Reset a slot to factory defaults — clears all engine metadata so the status poll returns clean idle entries.
