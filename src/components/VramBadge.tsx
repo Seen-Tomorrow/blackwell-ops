@@ -85,7 +85,7 @@ export default function VramBadge({
 
       {/* ── Header row ─── */}
       <div className="flex items-baseline gap-1 mb-2">
-        <span className={`text-xl font-mono ${s.titleColor} drop-shadow-[0_1px_1px_rgba(0,0,0,0.5)]`}>FORECAST: model</span>
+        <span className={`text-xl font-mono ${s.titleColor}`}>FORECAST: model</span>
 
         {/* Bordered block — button floats above, expands when certified */}
         <div className={`relative inline-flex flex-col rounded-sm border px-2 py-1 transition-all ${
@@ -114,12 +114,12 @@ export default function VramBadge({
 
           {/* Main line: needs // X GB // [CERTIFIED] — same height before and after validation */}
           <div className="flex items-baseline gap-1">
-            <span className={`text-xl font-mono ${s.titleColor} drop-shadow-[0_1px_1px_rgba(0,0,0,0.5)]`}>needs</span>
+            <span className={`text-xl font-mono ${s.titleColor}`}>needs</span>
             <span className="text-[9px] font-mono text-stealth-muted">//</span>
             <span className={`text-xl font-mono transition-all ${
               isCertified
                 ? "bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-500 bg-clip-text text-transparent drop-shadow-[0_0_8px_rgba(251,191,36,0.4)]"
-               : `${s.titleColor} drop-shadow-[0_1px_1px_rgba(0,0,0,0.5)]`
+               : `${s.titleColor}`
              }`}>
                {neededText} GB
             </span>
@@ -180,11 +180,11 @@ export default function VramBadge({
               className={`h-full rounded-sm ${s.gpuBarColor}`}
             />
           </div>
-          <span className={`text-[12px] font-mono ${s.titleColor} drop-shadow-[0_1px_1px_rgba(0,0,0,0.5)]`}>| {totalVramGb.toFixed(0)} GB</span>
+          <span className={`text-[12px] font-mono ${s.titleColor}`}>| {totalVramGb.toFixed(0)} GB</span>
         </div>
 
         {/* GPU layer info — text from scenario */}
-        <p className={`text-[9px] font-mono ${s.titleColor} mt-1 drop-shadow-[0_1px_1px_rgba(0,0,0,0.5)]`}>
+        <p className={`text-[9px] font-mono ${s.titleColor} mt-1`}>
           {t.gpuLayerText}
         </p>
 
@@ -215,11 +215,11 @@ export default function VramBadge({
                   }`}
                 />
               </div>
-              <span className="text-[12px] font-mono text-blue-700 drop-shadow-[0_1px_1px_rgba(0,0,0,0.5)]">| {ramMfgGb} GB</span>
+              <span className="text-[12px] font-mono text-blue-700">| {ramMfgGb} GB</span>
             </div>
 
             {/* RAM layer info — text from scenario */}
-            <p className="text-[9px] font-mono text-blue-700 mt-1 drop-shadow-[0_1px_1px_rgba(0,0,0,0.5)]">
+            <p className="text-[9px] font-mono text-blue-700 mt-1">
               {t.ramLayerText}
             </p>
           </>
@@ -230,14 +230,14 @@ export default function VramBadge({
 
       {/* Offload warning — controlled by scenario's offloadWarningText */}
       {t.offloadWarningText && (
-         <p className="text-[8px] font-mono text-blue-700 mt-1 drop-shadow-[0_1px_1px_rgba(0,0,0,0.5)]">
+         <p className="text-[8px] font-mono text-blue-700 mt-1">
             {t.offloadWarningText}
         </p>
       )}
 
       {/* KV spill risk — controlled by scenario's kvSpillRiskText */}
       {t.kvSpillRiskText && (
-         <p className="text-[8px] font-mono text-telemetry-red mt-1 drop-shadow-[0_1px_1px_rgba(0,0,0,0.5)]">{t.kvSpillRiskText}</p>
+         <p className="text-[8px] font-mono text-telemetry-red mt-1">{t.kvSpillRiskText}</p>
       )}
 
       {/* ── GPU topology below — always rendered ─── */}

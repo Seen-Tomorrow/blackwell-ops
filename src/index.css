@@ -582,14 +582,59 @@ html, body, #root {
 .vram-section {
   border-radius: 16px;
   padding: 6px; /* space for outer border/shadow ring */
-  background-image:
-
-    linear-gradient(180deg, #d3d3d3 0%, #a7a7a7 52%, #a0a1a1 42%, #6e716e 100%);
+  background-color: #f5f0e8;
+  background-image: none;
   box-shadow:
-    inset rgba(0,0,0,.8) 0 0 0 4px,        /* thick dark border */
-    inset rgba(0,0,0,.5) 0 -2px 6px 4px,   /* soft inner shadow bottom */
-    inset rgba(0,0,0,.3) 0 -1px 0 7px,     /* hard inner line bottom */
-    inset rgba(255,255,255,.6) 0 2px 2px 7px; /* highlight top edge */
+    inset rgba(255,255,255,.7) 0 -3px 8px 4px,  /* top inner highlight */
+    inset rgba(255,255,255,.4) 0 -1px 0 6px,    /* hard inner line top edge */
+    inset rgba(0,0,0,.35) 0 3px 8px 4px,        /* bottom inner shadow */
+    inset rgba(0,0,0,.15) 0 1px 0 6px;          /* hard inner line bottom edge */
+}
+
+/* Dark text on e-ink vram-section */
+.vram-section .text-stealth-muted,
+.vram-section .text-stealth-muted\/30,
+.vram-section .text-stealth-muted\/40,
+.vram-section .text-stealth-muted\/50,
+.vram-section .text-stealth-muted\/60 {
+  color: #3a3a3a !important;
+}
+
+.vram-section .text-nv-green {
+  color: #4d7a00 !important;
+}
+
+.vram-section .text-cyan-400 {
+  color: #0088aa !important;
+}
+
+.vram-section .text-electric-blue,
+.vram-section .text-blue-700 {
+  color: #005599 !important;
+}
+
+.vram-section .text-orange-400,
+.vram-section .text-telemetry-amber {
+  color: #b87a00 !important;
+}
+
+.vram-section .text-red-400,
+.vram-section .text-telemetry-red {
+  color: #aa3333 !important;
+}
+
+.vram-section .text-yellow-400 {
+  color: #997a00 !important;
+}
+
+.vram-section .bg-stealth-dark {
+  background-color: #d4cfc5 !important;
+}
+
+.vram-section .border-stealth-border,
+.vram-section .border-stealth-border\/30,
+.vram-section .border-stealth-border\/50 {
+  border-color: rgba(60, 60, 60, 0.25) !important;
 }
 
 
