@@ -518,7 +518,7 @@ html, body, #root {
 }
 
 /* User-set alias input text — white instead of green */
-.mono-user-input {
+.mono-panel .mono-user-input {
   color: #ffffff !important;
 }
 
@@ -578,74 +578,36 @@ html, body, #root {
 }
 
 /* ── VRAM forecast section — brushed steel (subtle grain) ─── */
-/* Technique: CodePen "Metal" by Manuel Malhoso — 3 grain layers + vertical shading + metal frame */
+
 .vram-section {
-  border-radius: 12px;
+  border-radius: 16px;
   padding: 6px; /* space for outer border/shadow ring */
   background-image:
-    repeating-linear-gradient(to right, rgba(255,255,255,0) 0px, rgba(255,255,255,.04) 0.5px, transparent 1px),
-    repeating-linear-gradient(to right, rgba(0,0,0,0) 0px, rgba(0,0,0,.015) 0.7px, transparent 1.4px),
-    repeating-linear-gradient(to right, rgba(255,255,255,0) 0px, rgba(255,255,255,.06) 0.3px, transparent 0.8px),
-    linear-gradient(180deg, #7a7d7a 0%, #959895 47%, #7a7d7a 53%, #6e716e 100%);
+
+    linear-gradient(180deg, #d3d3d3 0%, #a7a7a7 52%, #a0a1a1 42%, #6e716e 100%);
   box-shadow:
     inset rgba(0,0,0,.8) 0 0 0 4px,        /* thick dark border */
     inset rgba(0,0,0,.5) 0 -2px 6px 4px,   /* soft inner shadow bottom */
     inset rgba(0,0,0,.3) 0 -1px 0 7px,     /* hard inner line bottom */
-    inset rgba(255,255,255,.6) 0 2px 2px 7px, /* highlight top edge */
-    rgba(0,0,0,.3) 0 -4px 8px 4px,         /* outer drop shadow bottom */
-    rgba(255,255,255,.15) 0 4px 8px 4px;   /* outer highlight top */
+    inset rgba(255,255,255,.6) 0 2px 2px 7px; /* highlight top edge */
 }
+
+
 
 /* Brushed steel card — selected model in catalog */
 .brushed-steel-card {
   background-image:
-    repeating-linear-gradient(to right, rgba(255,255,255,0) 0px, rgba(255,255,255,.04) 0.5px, transparent 1px),
-    repeating-linear-gradient(to right, rgba(0,0,0,0) 0px, rgba(0,0,0,.015) 0.7px, transparent 1.4px),
-    repeating-linear-gradient(to right, rgba(255,255,255,0) 0px, rgba(255,255,255,.06) 0.3px, transparent 0.8px),
+    
     linear-gradient(180deg, #7a7d7a 0%, #959895 47%, #7a7d7a 53%, #6e716e 100%);
+  background-size: 1000% 300%;
   border-color: rgba(118, 185, 0, 0.4);
 }
 
-/* Brushed metal variations */
-.vram-section.brushed-subtle {
+/* Brushed steel — narrow variant for model cards (vertical grain, stretched pattern) */
+.brushed-steel-card-narrow {
   background-image:
-    repeating-linear-gradient(to right, rgba(255,255,255,0) 0px, rgba(255,255,255,.04) 0.5px, transparent 1px),
-    repeating-linear-gradient(to right, rgba(0,0,0,0) 0px, rgba(0,0,0,.015) 0.7px, transparent 1.4px),
-    repeating-linear-gradient(to right, rgba(255,255,255,0) 0px, rgba(255,255,255,.06) 0.3px, transparent 0.8px),
     linear-gradient(180deg, #7a7d7a 0%, #959895 47%, #7a7d7a 53%, #6e716e 100%);
-}
-
-.vram-section.brushed-bronze {
-  background-image:
-    repeating-linear-gradient(to right, rgba(255,220,180,0) 0px, rgba(255,220,180,.1) 0.5px, transparent 1px),
-    repeating-linear-gradient(to right, rgba(0,0,0,0) 0px, rgba(0,0,0,.03) 0.7px, transparent 1.4px),
-    repeating-linear-gradient(to right, rgba(255,220,180,0) 0px, rgba(255,220,180,.15) 0.3px, transparent 0.8px),
-    linear-gradient(180deg, #7d6a48 0%, #967c58 47%, #7d6a48 53%, #6e5c3e 100%);
-}
-
-.vram-section.brushed-silver {
-  background-image:
-    repeating-linear-gradient(to right, rgba(255,255,255,0) 0px, rgba(255,255,255,.12) 0.5px, transparent 1px),
-    repeating-linear-gradient(to right, rgba(0,0,0,0) 0px, rgba(0,0,0,.03) 0.7px, transparent 1.4px),
-    repeating-linear-gradient(to right, rgba(255,255,255,0) 0px, rgba(255,255,255,.18) 0.3px, transparent 0.8px),
-    linear-gradient(180deg, #7a7e86 0%, #959aa4 47%, #7a7e86 53%, #6e727a 100%);
-}
-
-.vram-section.brushed-copper {
-  background-image:
-    repeating-linear-gradient(to right, rgba(255,180,140,0) 0px, rgba(255,180,140,.1) 0.5px, transparent 1px),
-    repeating-linear-gradient(to right, rgba(0,0,0,0) 0px, rgba(0,0,0,.03) 0.7px, transparent 1.4px),
-    repeating-linear-gradient(to right, rgba(255,180,140,0) 0px, rgba(255,180,140,.15) 0.3px, transparent 0.8px),
-    linear-gradient(180deg, #7d5a48 0%, #966c58 47%, #7d5a48 53%, #6e4c3e 100%);
-}
-
-/* Brushed steel card — selected model in catalog */
-.brushed-steel-card {
-  background-image:
-    repeating-linear-gradient(to right, rgba(255,255,255,0) 0px, rgba(255,255,255,.1) 0.5px, transparent 1px),
-    repeating-linear-gradient(to right, rgba(0,0,0,0) 0px, rgba(0,0,0,.03) 0.7px, transparent 1.4px),
-    repeating-linear-gradient(to right, rgba(255,255,255,0) 0px, rgba(255,255,255,.15) 0.3px, transparent 0.8px),
-    linear-gradient(180deg, #7a7d7a 0%, #959895 47%, #7a7d7a 53%, #6e716e 100%);
+  background-size: 1000% 300%;
   border-color: rgba(118, 185, 0, 0.4);
 }
 
@@ -684,9 +646,8 @@ html, body, #root {
 }
 
 /* Param labels on e-ink */
-.eink-panel [data-param-row] > span:first-child {
+.eink-panel [data-param-row] > span:first-of-type {
   color: #4ade80 !important;
-  opacity: 0.45;
 }
 
 /* Scrollbar on e-ink */
@@ -823,12 +784,10 @@ select option {
     repeating-linear-gradient(to right, rgba(0,0,0,0) 0px, rgba(0,0,0,.018) 0.3px, transparent 0.8px);
   /* Inset bevel — reversed from .vram-section's raised look */
   box-shadow:
-    inset rgba(0,0,0,.6) 0 0 0 3px,            /* thick dark inner border (recessed edge) */
     inset rgba(255,255,255,.7) 0 -3px 8px 4px,  /* top inner highlight → shadow on bottom inside */
     inset rgba(255,255,255,.4) 0 -1px 0 6px,    /* hard inner line top edge (light catches rim) */
     inset rgba(0,0,0,.35) 0 3px 8px 4px,        /* bottom inner shadow → light from top inside */
-    inset rgba(0,0,0,.15) 0 1px 0 6px,          /* hard inner line bottom edge */
-    rgba(0,0,0,.2) 0 2px 4px 2px;               /* subtle outer drop to separate from parent */
+    inset rgba(0,0,0,.15) 0 1px 0 6px;          /* hard inner line bottom edge */
 }
 
 /* Dark text on the light e-ink surface */
@@ -921,51 +880,42 @@ select option {
 
 .nuclear-btn-container {
   position: relative;
-  padding: 16px;
+  padding: 8px;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 8px;
+  align-items: flex-start;
+  gap: 4px;
 }
 
 .nuclear-btn {
   width: 100%;
-  max-width: 320px;
-  height: 56px;
-  border-radius: 6px;
+  max-width: 160px;
+  height: 28px;
+  border-radius: 4px;
   font-family: 'JetBrains Mono', monospace;
-  font-size: 13px;
+  font-size: 7px;
   font-weight: bold;
-  letter-spacing: 0.2em;
+  letter-spacing: 0.15em;
   text-transform: uppercase;
   cursor: pointer;
   position: relative;
   overflow: hidden;
   transition: all 0.15s ease;
-  border: 2px solid rgba(255, 40, 40, 0.5);
-  background: linear-gradient(180deg, #1a0505 0%, #2a0a0a 50%, #1a0505 100%);
-  color: #ff3333;
-  animation: nuclearPulseOff 2.5s ease-in-out infinite;
+  border: 1px solid #eab308 !important;
+  background:
+    repeating-linear-gradient(-45deg, #eab308 0px, #eab308 2px, #111 2px, #111 6px) !important;
+  color: #eab308 !important;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.9);
 }
 
-.nuclear-btn::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: -100%;
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(255, 60, 60, 0.1), transparent);
-  transition: left 0.6s ease;
-}
-
-.nuclear-btn:hover::before {
-  left: 100%;
+.nuclear-btn-text {
+  background: #111;
+  padding: 3px 8px;
 }
 
 .nuclear-btn:hover {
-  border-color: rgba(255, 60, 60, 0.8);
-  color: #ff5555;
+  border-color: #facc15;
+  color: #facc15;
 }
 
 .nuclear-btn:active {
@@ -974,10 +924,10 @@ select option {
 
 /* ACTIVE STATE — nuclear fusion engaged */
 .nuclear-btn.active {
-  border-color: rgba(255, 100, 30, 0.9);
-  background: linear-gradient(180deg, #2a0f00 0%, #3d1500 50%, #2a0f00 100%);
-  color: #ffaa44;
-  animation: nuclearPulseOn 1.2s ease-in-out infinite;
+  border-color: #eab308;
+  background:
+    repeating-linear-gradient(45deg, #111 0px, #111 3px, #eab308 3px, #eab308 4px);
+  color: #fff;
 }
 
 .nuclear-btn.active::after {
@@ -987,12 +937,11 @@ select option {
   left: 0;
   right: 0;
   height: 3px;
-  background: linear-gradient(90deg, #ff4400, #ffaa00, #ff6600, #ffcc00);
-  animation: nuclearPulseOn 1s ease-in-out infinite;
+  background: #eab308;
 }
 
 .nuclear-btn.flash {
-  animation: nuclearFlash 0.4s ease-out forwards, nuclearPulseOn 1.2s ease-in-out infinite;
+  animation: nuclearFlash 0.4s ease-out forwards;
 }
 
 /* Warning banner for active speculative decoding group */

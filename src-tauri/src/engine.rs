@@ -425,7 +425,7 @@ pub fn get_template(provider_id: Option<String>) -> Result<crate::templates::Pro
 
 #[tauri::command]
 pub fn get_template_for_provider(provider_id: String) -> Result<crate::templates::ProviderTemplate, String> {
-    let metas = crate::config::load_provider_meta();
+    let metas = crate::config::load_user_providers_meta();
     let meta = metas.iter().find(|m| m.id == provider_id);
     let template_type = crate::config::resolve_template_type(&provider_id, meta.map(|m| &m.template_type));
 
@@ -749,7 +749,7 @@ pub async fn set_build_info_for_env(
     if let Some(provider) = cfg.providers.iter_mut().find(|p| p.id == provider_id) {
         provider.build_info_per_env.insert(env_label, build_info);
     }
-    crate::config::persist_provider_meta(&cfg.providers).map_err(|e| e.to_string())
+    crate::config::persist_user_providers_meta(&cfg.providers).map_err(|e| e.to_string())
 }
 
 // ── GGUF Metadata Scanner Commands ────────────────────────────────────────

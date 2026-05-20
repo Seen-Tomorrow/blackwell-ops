@@ -72,8 +72,8 @@ export default function VramBadge({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="absolute z-50 fusion-eink-bg overflow-hidden flex items-center justify-center rounded-xl border border-stealth-border p-[5px]"
-          style={{ top: '1px', right: '1px', bottom: '1px', left: '1px' }}
+          className="absolute z-50 fusion-eink-bg overflow-hidden flex items-center justify-center rounded-xl border border-stealth-border p-[6px]"
+          style={{ top: '0px', right: '0px', bottom: '0px', left: '0px' }}
         >
           <FusionOverlay
             alias={activeEngineAlias}
@@ -85,7 +85,7 @@ export default function VramBadge({
 
       {/* ── Header row ─── */}
       <div className="flex items-baseline gap-1 mb-2">
-        <span className={`text-xl font-mono ${s.titleColor}`}>FORECAST: model</span>
+        <span className={`text-xl font-mono ${s.titleColor} drop-shadow-[0_1px_1px_rgba(0,0,0,0.5)]`}>FORECAST: model</span>
 
         {/* Bordered block — button floats above, expands when certified */}
         <div className={`relative inline-flex flex-col rounded-sm border px-2 py-1 transition-all ${
@@ -107,21 +107,21 @@ export default function VramBadge({
                       : "border-stealth-muted text-stealth-muted hover:text-white hover:border-stealth-muted"
                 }`}
               >
-                {isValidating ? "⟳ SCANNING" : isCertified ? "↻ MEASURED" : "⚡ ESTMATED"}
+                {isValidating ? "⟳ SCANNING" : isCertified ? "↻ MEASURED" : "⚡ ESTIMATED"}
               </button>
             </div>
           )}
 
           {/* Main line: needs // X GB // [CERTIFIED] — same height before and after validation */}
           <div className="flex items-baseline gap-1">
-            <span className={`text-xl font-mono ${s.titleColor}`}>needs</span>
+            <span className={`text-xl font-mono ${s.titleColor} drop-shadow-[0_1px_1px_rgba(0,0,0,0.5)]`}>needs</span>
             <span className="text-[9px] font-mono text-stealth-muted">//</span>
             <span className={`text-xl font-mono transition-all ${
               isCertified
                 ? "bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-500 bg-clip-text text-transparent drop-shadow-[0_0_8px_rgba(251,191,36,0.4)]"
-                : s.titleColor
-            }`}>
-              {neededText} GB
+               : `${s.titleColor} drop-shadow-[0_1px_1px_rgba(0,0,0,0.5)]`
+             }`}>
+               {neededText} GB
             </span>
             <span className="text-[9px] font-mono text-stealth-muted">//</span>
 
@@ -157,11 +157,11 @@ export default function VramBadge({
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 0.75, scale: 1 }}
-        className="absolute top-0 right-0"
+        className="absolute top-0 right-2"
       >
         {/* Scenario badge */}
-        <div className={`inline-flex items-top gap-1.5 px-2 py-0.5 rounded-sm ${s.badgeBg}`}>
-          <span className="absolute -top-3 -left-10 text-[9px] font-mono text-stealth-muted">{manifest.scenario}</span>
+        <div className={`inline-flex flex-col items-end gap-0.5 px-2 py-0.5 rounded-sm ${s.badgeBg}`}>
+          <span className="text-[7px] font-mono text-stealth-muted">{manifest.scenario}</span>
           <span className="text-[9px] font-mono">{manifest.fits ? "✓ FIT" : "✗ NO FIT"}</span>
         </div>
       </motion.div>
@@ -180,11 +180,11 @@ export default function VramBadge({
               className={`h-full rounded-sm ${s.gpuBarColor}`}
             />
           </div>
-          <span className={`text-[12px] font-mono ${s.titleColor}`}>| {totalVramGb.toFixed(0)} GB</span>
+          <span className={`text-[12px] font-mono ${s.titleColor} drop-shadow-[0_1px_1px_rgba(0,0,0,0.5)]`}>| {totalVramGb.toFixed(0)} GB</span>
         </div>
 
         {/* GPU layer info — text from scenario */}
-        <p className={`text-[9px] font-mono ${s.titleColor} mt-1`}>
+        <p className={`text-[9px] font-mono ${s.titleColor} mt-1 drop-shadow-[0_1px_1px_rgba(0,0,0,0.5)]`}>
           {t.gpuLayerText}
         </p>
 
@@ -211,15 +211,15 @@ export default function VramBadge({
                   animate={{ width: `${ramUsagePct}%` }}
                   transition={{ duration: 0.4, ease: "easeOut" }}
                   className={`h-full rounded-sm ${
-                    offloadMode === "moe_optimal" ? "bg-orange-hatched" : "bg-electric-blue"
+                    offloadMode === "moe_optimal" ? "bg-orange-hatched" : "bg-blue-700"
                   }`}
                 />
               </div>
-              <span className="text-[12px] font-mono text-electric-blue">| {ramMfgGb} GB</span>
+              <span className="text-[12px] font-mono text-blue-700 drop-shadow-[0_1px_1px_rgba(0,0,0,0.5)]">| {ramMfgGb} GB</span>
             </div>
 
             {/* RAM layer info — text from scenario */}
-            <p className="text-[9px] font-mono text-electric-blue mt-1">
+            <p className="text-[9px] font-mono text-blue-700 mt-1 drop-shadow-[0_1px_1px_rgba(0,0,0,0.5)]">
               {t.ramLayerText}
             </p>
           </>
@@ -230,14 +230,14 @@ export default function VramBadge({
 
       {/* Offload warning — controlled by scenario's offloadWarningText */}
       {t.offloadWarningText && (
-        <p className="text-[8px] font-mono text-electric-blue mt-1">
-          {t.offloadWarningText}
+         <p className="text-[8px] font-mono text-blue-700 mt-1 drop-shadow-[0_1px_1px_rgba(0,0,0,0.5)]">
+            {t.offloadWarningText}
         </p>
       )}
 
       {/* KV spill risk — controlled by scenario's kvSpillRiskText */}
       {t.kvSpillRiskText && (
-        <p className="text-[8px] font-mono text-telemetry-red mt-1">{t.kvSpillRiskText}</p>
+         <p className="text-[8px] font-mono text-telemetry-red mt-1 drop-shadow-[0_1px_1px_rgba(0,0,0,0.5)]">{t.kvSpillRiskText}</p>
       )}
 
       {/* ── GPU topology below — always rendered ─── */}

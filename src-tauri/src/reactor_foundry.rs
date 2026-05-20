@@ -984,7 +984,7 @@ pub async fn foundry_build(
                 }
             }
             drop(cfg);
-            crate::config::persist_provider_meta(&cfg_mut.providers).ok();
+            crate::config::persist_user_providers_meta(&cfg_mut.providers).ok();
         }
     }
 
@@ -1063,7 +1063,7 @@ pub async fn foundry_build(
                 provider.binary_path_per_env.insert(env_label.to_string(), final_bin_path);
             }
             drop(cfg);
-            crate::config::persist_provider_meta(&app.config.lock().map_err(|e| e.to_string())?.providers).ok();
+            crate::config::persist_user_providers_meta(&app.config.lock().map_err(|e| e.to_string())?.providers).ok();
         }
         Err(e) => {
             log::warn!("[foundry] Failed to capture build info for provider '{}': {}", provider_id, e);
@@ -1077,7 +1077,7 @@ pub async fn foundry_build(
             provider.binary_path = bin_release.join("llama-server.exe").to_string_lossy().to_string();
         }
         drop(cfg);
-        crate::config::persist_provider_meta(&app.config.lock().map_err(|e| e.to_string())?.providers).ok();
+        crate::config::persist_user_providers_meta(&app.config.lock().map_err(|e| e.to_string())?.providers).ok();
     }
 
     // NOTE: bin_bak is NOT deleted — kept for user restore via ↻ RESTORE button
@@ -1177,7 +1177,7 @@ pub async fn refresh_build_info(
                                 p.binary_path = new_bin.join("llama-server.exe").to_string_lossy().to_string();
                             }
                             drop(cfg);
-                            crate::config::persist_provider_meta(&app.config.lock().map_err(|e| e.to_string())?.providers).ok();
+                            crate::config::persist_user_providers_meta(&app.config.lock().map_err(|e| e.to_string())?.providers).ok();
                         }
                     } else {
                         log::warn!("[migration] Failed to rename build/ for '{}'", provider_id);
@@ -1219,7 +1219,7 @@ pub async fn refresh_build_info(
             }
         }
         drop(cfg);
-        crate::config::persist_provider_meta(&app.config.lock().map_err(|e| e.to_string())?.providers).ok();
+        crate::config::persist_user_providers_meta(&app.config.lock().map_err(|e| e.to_string())?.providers).ok();
     }
 
     // Return ALL providers with fresh config data so frontend can update its state (no dropped providers)
@@ -1281,7 +1281,7 @@ pub async fn foundry_restore(
                 provider.build_info_per_env.insert(env_label.to_string(), info);
             }
             drop(cfg);
-            crate::config::persist_provider_meta(&app.config.lock().map_err(|e| e.to_string())?.providers).ok();
+            crate::config::persist_user_providers_meta(&app.config.lock().map_err(|e| e.to_string())?.providers).ok();
         }
     }
 

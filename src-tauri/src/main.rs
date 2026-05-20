@@ -22,6 +22,7 @@ mod model_catalog;
 mod engine_utils;
 mod fusion;
 mod provider_mgmt;
+mod llama_catalog;
 
 #[cfg(feature = "reactor11")]
 pub mod features;
@@ -374,10 +375,10 @@ async fn main() {
             telemetry::scan_cpu,
             telemetry::scan_system_info,
             config::load_config,
-            config::validate_provider_meta,
+            config::validate_user_providers_meta,
             config::check_template_update,
             config::apply_template_update,
-            config::save_provider_meta,
+            config::save_user_providers_meta,
             config::reset_param_to_template,
             config::reorder_provider,
             // FIT Scanner commands
@@ -429,6 +430,8 @@ async fn main() {
             set_default_model_path,
             get_disk_usage,
             get_default_download_path,
+            // Llama catalog (live --help parser)
+            llama_catalog::get_llama_catalog,
 
         ])
         .run(tauri::generate_context!())

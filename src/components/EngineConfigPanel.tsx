@@ -264,6 +264,15 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       .map(a => a.gpuIndex);
   }, [vramCalc.manifest]);
 
+  // ── Genesis template keys (for yellow accent on non-genesis params) ──
+  const [genesisKeys, setGenesisKeys] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    if (!effectiveBackendType) return;
+    invoke<ProviderTemplate>("get_template", { providerId: effectiveBackendType })
+      .then(template => setGenesisKeys(new Set((template.params || []).map(p => p.key))))
+      .catch(() => setGenesisKeys(new Set()));
+  }, [effectiveBackendType]);
+
   // Extracted param row renderer for reuse
   const renderParamRow = useCallback((def: UserEditedTemplateParam, isLocked?: boolean) => {
     // Merge values + userAddedValues (user-added params from ConfigPage admin edit)
@@ -272,10 +281,15 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     const baseValues = allValues.filter(v => !(def.hiddenValues || []).some(hv => String(hv) === String(v)));
     const currentValue = config[def.key];
 
+    // Yellow accent: non-genesis params (not in genesis template, not system-injected via dock)
+    const isUserAdded = genesisKeys.size > 0 && !genesisKeys.has(def.key) && !def.dock;
+
     return (
-      <div key={def.key} data-param-row className={`flex items-center gap-2 ${isLocked ? 'opacity-50' : ''}`}>
+      <div key={def.key} data-param-row className={`flex items-center ${isLocked ? 'opacity-50' : ''}`}>
+        {isUserAdded && <div className="w-0.5 h-4 flex-shrink-0 bg-yellow-400/40 mr-1.5" />}
+        {!isUserAdded && <div className="w-0.5 h-4 flex-shrink-0 mr-1.5" />}
         <span
-          className="font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider truncate text-[9px]"
+          className={`font-mono w-24 flex-shrink-0 uppercase tracking-wider truncate text-[9px] ${isUserAdded ? 'text-yellow-400/80' : 'text-stealth-muted'}`}
           title={def.label}
         >
           {def.label}
@@ -516,7 +530,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   const displayVramGb = displayVramMib / 1024;
 
   return (
-    <div className="flex flex-col h-full overflow-hidden" data-config-panel>
+    <div className="flex flex-col h-full overflow-hidden" data-config-panel style={{ background: '#0c120a' }}>
       {/* Provider selector */}
       {externalProviders && externalProviders.length > 0 && (
         <div className="px-4 py-3 border-b section-divider relative flex-shrink-0">
@@ -543,6 +557,109 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           </div>
         </div>
       )}
+
+      {/* ── Mandatory Config Block (2-column) ─────────────── */}
+      {dockedParams["runtime"] && dockedParams["runtime"].length > 0 && (() => {
+        const runtimeDocked = dockedParams["runtime"];
+        const leftParams = runtimeDocked.filter(d => d.ui_group !== "RUNTIME-CONFIG");
+        const rightParams = runtimeDocked.filter(d => d.ui_group === "RUNTIME-CONFIG");
+        const currentProvider = externalProviders?.find(p => p.id === effectiveBackendType);
+        const availableProfiles: EnvProfile[] = Object.keys(ENV_META) as EnvProfile[];
+        const builtProfiles = currentProvider?.buildInfoPerEnv
+          ? (Object.keys(currentProvider.buildInfoPerEnv) as EnvProfile[]).filter(k => ENV_META[k])
+          : [];
+
+        return (
+          <div className="mono-panel border-b section-divider relative flex-shrink-0">
+            {/* Section header — outside the green bg, on dark */}
+            <div className="relative z-[2] px-4 pt-3 pb-1" style={{ background: '#0c120a' }}>
+
+            </div>
+            <div className="relative z-[2] px-4 py-3 pr-6">
+              <div className="flex gap-4">
+                {/* Left: Multi-GPU params */}
+                {leftParams.length > 0 && (
+                  <div className="space-y-2.5 flex-1 min-w-0">
+                    <label className="text-[8px] font-mono tracking-widest uppercase block mb-2 mono-label">
+                      MULTI-GPU
+                    </label>
+                    {leftParams.map(def => renderParamRow(def))}
+                  </div>
+                )}
+
+                {/* Subtle vertical separator */}
+                <div className="w-px flex-shrink-0 bg-green-400/10" />
+
+               {/* Right: Runtime Config */}
+                <div className="flex-1 min-w-0 space-y-2.5">
+                  <label className="text-[8px] font-mono tracking-widest uppercase block mb-2 mono-label">
+                    RUNTIME-CONFIG
+                  </label>
+
+                  {rightParams.map(def => renderParamRow(def))}
+
+                  <div className="flex items-center">
+                    <div className="w-0.5 h-4 flex-shrink-0 mr-1.5" />
+                    <span className="font-mono w-24 flex-shrink-0 uppercase tracking-wider truncate text-[9px] text-stealth-muted">
+                      Alias{aliasIsUserSet ? <span className="mono-user-set"> - user set</span> : ''}
+                    </span>
+                    <input
+                      type="text"
+                      value={aliasInput}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val.trim()) {
+                          aliasUserEditedRef.current = true;
+                          setAliasIsUserSet(true);
+                        } else {
+                          aliasUserEditedRef.current = false;
+                          setAliasIsUserSet(false);
+                        }
+                        setAliasInput(val);
+                      }}
+                      className={`flex-1 min-w-0 border text-[9px] font-mono px-2 py-0.5 rounded-sm focus:outline-none transition-colors ${
+                        aliasUserEditedRef.current
+                          ? "bg-black border-white/30 focus:border-white/50 mono-user-input"
+                          : "bg-green-400/5 border-green-400/20 focus:border-green-400/40"
+                      }`}
+                      placeholder="auto..."
+                    />
+                  </div>
+
+                  <div className="flex items-center">
+                    <div className="w-0.5 h-4 flex-shrink-0 mr-1.5" />
+                    <span className="font-mono w-24 flex-shrink-0 uppercase tracking-wider truncate text-[9px] text-stealth-muted">
+                      Profile
+                    </span>
+                    {availableProfiles.map(profile => {
+                      const meta = ENV_META[profile];
+                      const hasBuild = builtProfiles.includes(profile);
+                      const isSelected = selectedBinaryProfile === profile;
+                      return (
+                        <button
+                          key={profile}
+                          onClick={() => setSelectedBinaryProfile(profile)}
+                          disabled={!hasBuild}
+                          className={`px-2 py-0.5 text-[9px] font-mono rounded-sm ${
+                            isSelected
+                              ? "value-chip-active"
+                              : hasBuild
+                                ? "value-chip"
+                                : "opacity-25 cursor-not-allowed value-chip"
+                          }`}
+                          title={`${meta.label} — CUDA ${meta.cuda}, ${meta.vs}${hasBuild ? '' : ' (not yet built)'}`}
+                        >
+                          {meta.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* VRAM Section */}
       <div className="vram-section border-b section-divider relative flex-shrink-0">
@@ -573,218 +690,113 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
       </div>
 
-      {/* ── Runtime Docked Block (2-column) ─────────────── */}
-      {dockedParams["runtime"] && dockedParams["runtime"].length > 0 && (() => {
-        const runtimeDocked = dockedParams["runtime"];
-        const leftParams = runtimeDocked.filter(d => d.ui_group !== "Runtime Config");
-        const rightParams = runtimeDocked.filter(d => d.ui_group === "Runtime Config");
-        const currentProvider = externalProviders?.find(p => p.id === effectiveBackendType);
-        const availableProfiles: EnvProfile[] = Object.keys(ENV_META) as EnvProfile[];
-        const builtProfiles = currentProvider?.buildInfoPerEnv
-          ? (Object.keys(currentProvider.buildInfoPerEnv) as EnvProfile[]).filter(k => ENV_META[k])
-          : [];
-
-        return (
-          <div className="mono-panel border-b section-divider relative flex-shrink-0">
-            {/* Section header — outside the green bg, on dark */}
-            <div className="relative z-[2] px-4 pt-3 pb-1" style={{ background: '#0c120a' }}>
-
-            </div>
-            <div className="relative z-[2] px-4 py-3 pr-6">
-              <div className="flex gap-4">
-                {/* Left: Multi-GPU params */}
-                {leftParams.length > 0 && (
-                  <div className="space-y-2.5 flex-1 min-w-0">
-                    <label className="text-[8px] font-mono tracking-widest uppercase block mb-2">
-                      MULTI-GPU
-                    </label>
-                    {leftParams.map(def => renderParamRow(def))}
-                  </div>
-                )}
-
-                {/* Subtle vertical separator */}
-                <div className="w-px flex-shrink-0 bg-green-400/10" />
-
-                {/* Right: Runtime Config */}
-                <div className="w-[40%] min-w-[200px] flex-shrink-0">
-                  <label className="text-[8px] font-mono tracking-widest uppercase block mb-2">
-                    RUNTIME CONFIG
-                  </label>
-
-                  {/* Base_Port chips from genesis */}
-                  {rightParams.length > 0 && (
-                    <div className="space-y-2.5 mb-3">
-                      {rightParams.map(def => renderParamRow(def))}
-                    </div>
-                  )}
-
-                  {/* Engine Alias input */}
-                  <div className="flex items-center gap-2 mb-2.5">
-                    <span className="font-mono text-[9px] w-auto flex-shrink-0 uppercase tracking-wider truncate mono-label">
-                      Alias{aliasIsUserSet ? <span className="mono-user-set"> - user set</span> : ''}
-                    </span>
-                    <input
-                      type="text"
-                      value={aliasInput}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        if (val.trim()) {
-                          aliasUserEditedRef.current = true;
-                          setAliasIsUserSet(true);
-                        } else {
-                          aliasUserEditedRef.current = false;
-                          setAliasIsUserSet(false);
-                        }
-                        setAliasInput(val);
-                      }}
-                      className={`flex-1 min-w-0 border text-[9px] font-mono px-2 py-0.5 rounded-sm focus:outline-none transition-colors ${
-                        aliasUserEditedRef.current
-                          ? "bg-black border-white/30 focus:border-white/50 mono-user-input"
-                          : "bg-green-400/5 border-green-400/20 focus:border-green-400/40"
-                      }`}
-                      placeholder="auto..."
-                    />
-                  </div>
-
-                  {/* Binary Profile badges */}
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-[9px] w-24 flex-shrink-0 uppercase tracking-wider truncate mono-label">
-                      Profile
-                    </span>
-                    <div className="flex gap-1">
-                      {availableProfiles.map(profile => {
-                        const meta = ENV_META[profile];
-                        const hasBuild = builtProfiles.includes(profile);
-                        const isSelected = selectedBinaryProfile === profile;
-                        return (
-                          <button
-                            key={profile}
-                            onClick={() => setSelectedBinaryProfile(profile)}
-                            disabled={!hasBuild}
-                            className={`px-2 py-0.5 text-[8px] font-mono rounded-sm border transition-all ${
-                              isSelected
-                                ? "mono-badge-active"
-                                : hasBuild
-                                  ? "mono-badge-inactive hover:border-green-400/50 hover:text-[#66ff66]"
-                                  : "opacity-25 cursor-not-allowed mono-badge-disabled"
-                            }`}
-                            title={`${meta.label} — CUDA ${meta.cuda}, ${meta.vs}${hasBuild ? '' : ' (not yet built)'}`}
-                          >
-                            {meta.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                </div>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
-
       {/* Parameters — scrollable middle section (e-ink panel) */}
       <div className="px-4 py-3 border-b relative flex-1 overflow-y-auto cyber-scrollbar eink-panel">
 
         {allParamsForLaunch.length === 0 ? (
           <div className="text-stealth-muted text-[10px] font-mono opacity-50">NO PARAMS DEFINED</div>
-        ) : (
-          <div className="space-y-3">
-            {deriveParamGroups(orderedGroupKeys).map(group => {
-              const groupParams = groupedParams[group.id];
-              // ── Speculative decoding: nuclear button toggles hidden on all group params ──
-              const isSpecGroup = group.id === "SPECULATIVE-DECODING";
+        ) : (() => {
+          const allGroups = deriveParamGroups(orderedGroupKeys);
+          const mid = Math.ceil(allGroups.length / 2);
+          const leftCol = allGroups.slice(0, mid);
+          const rightCol = allGroups.slice(mid);
 
-              if (isSpecGroup) {
-                // Use allGroupedParams to find params even when they're all hidden
-                const specAllParams = allGroupedParams[group.id] || [];
-                if (specAllParams.length === 0) return null; // No spec params for this provider
-                const allHidden = specAllParams.every(d => d.hidden);
-                const specActive = !allHidden;
+          const renderGroup = (group: ReturnType<typeof deriveParamGroups>[number]) => {
+            const groupParams = groupedParams[group.id];
+            const isSpecGroup = group.id === "SPECULATIVE-DECODING";
 
-                return (
-                  <div key={group.id}>
-                    {/* Nuclear button container */}
-                    <div className="nuclear-btn-container">
-                      <button
-                        onClick={() => {
-                          // Toggle hidden on all params in this group via IPC
-                          invoke<boolean>("toggle_group_hidden", { providerId: effectiveBackendType, groupId: group.id })
-                            .then(() => {
-                              setSpecFlash(true);
-                              setTimeout(() => setSpecFlash(false), 400);
-                              window.dispatchEvent(new CustomEvent("blackops-reload-providers"));
-                            })
-                            .catch(err => console.error("[toggle_group_hidden] failed:", err));
-                        }}
-                        className={`nuclear-btn ${specActive ? 'active' : ''} ${specFlash ? 'flash' : ''}`}
-                      >
-                        {specActive ? "⚡ DRAFT ENGINE — ACTIVE" : "☢ SPECULATIVE DECODING — OFF"}
-                      </button>
-
-                      {/* Warning banner when active */}
-                      {specActive && (
-                        <div className="spec-warning-banner active">
-                          ⚠ Speculative decoding engaged — draft model will pre-generate tokens for verification
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Child params — hidden from UI and launch when OFF, animated unlock when ON */}
-                    {specActive && (
-                      <div className="space-y-2.5 mt-2">
-                        {specAllParams.map(def => (
-                          <div key={def.key} className="spec-param-unlock" style={{ opacity: 0 }}>
-                            {renderParamRow(def)}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Locked state indicator */}
-                    {!specActive && specAllParams.length > 0 && (
-                      <div className="text-[8px] font-mono text-stealth-muted/30 tracking-wider uppercase mt-1 ml-2">
-                        🔒 {specAllParams.length} parameter{specAllParams.length > 1 ? 's' : ''} locked — activate to configure
-                      </div>
-                    )}
-                  </div>
-                );
-              }
-
-              if (!groupParams || groupParams.length === 0) return null;
-
-              const isCollapsed = collapsedGroups.has(group.id);
+            if (isSpecGroup) {
+              const specAllParams = allGroupedParams[group.id] || [];
+              if (specAllParams.length === 0) return null;
+              const allHidden = specAllParams.every(d => d.hidden);
+              const specActive = !allHidden;
 
               return (
                 <div key={group.id}>
-                  {/* Group header */}
-                  {group.alwaysOpen ? (
-                    <div className="text-[8px] font-mono text-stealth-muted/60 tracking-widest uppercase mb-2 pb-1 border-b border-stealth-border/30">
-                      {group.label}
-                    </div>
-                  ) : (
+                  <div className="nuclear-btn-container">
                     <button
-                      onClick={() => toggleGroup(group.id)}
-                      className="flex items-center gap-1.5 text-[8px] font-mono tracking-widest uppercase mb-2 pb-1 border-b border-stealth-border/30 w-full text-stealth-muted hover:text-white transition-colors"
+                      onClick={() => {
+                        invoke<boolean>("toggle_group_hidden", { providerId: effectiveBackendType, groupId: group.id })
+                          .then(() => {
+                            setSpecFlash(true);
+                            setTimeout(() => setSpecFlash(false), 400);
+                            window.dispatchEvent(new CustomEvent("blackops-reload-providers"));
+                          })
+                          .catch(err => console.error("[toggle_group_hidden] failed:", err));
+                      }}
+                      className={`nuclear-btn ${specActive ? 'active' : ''} ${specFlash ? 'flash' : ''}`}
                     >
-                      <span className="text-[7px]">{isCollapsed ? '▶' : '▼'}</span>
-                      {group.label}
-                      <span className="opacity-40">({groupParams.length})</span>
+                      <span className="nuclear-btn-text">{specActive ? "MTP — DRAFT — ACTIVE" : "SPECULATIVE DECODING — OFF"}</span>
                     </button>
+
+                    {specActive && (
+                      <div className="spec-warning-banner active">
+                        ⚠Speculative engaged — You need // MTP model for this to work.
+                      </div>
+                    )}
+                  </div>
+
+                  {specActive && (
+                    <div className="space-y-2.5 mt-2">
+                      {specAllParams.map(def => (
+                        <div key={def.key} className="spec-param-unlock" style={{ opacity: 0 }}>
+                          {renderParamRow(def)}
+                        </div>
+                      ))}
+                    </div>
                   )}
 
-                  {/* Param rows */}
-                  {!isCollapsed && (
-                    <div className="space-y-2.5">
-                      {groupParams.map(def => renderParamRow(def))}
+                  {!specActive && specAllParams.length > 0 && (
+                    <div className="text-[8px] font-mono text-stealth-muted/30 tracking-wider uppercase mt-1 ml-2">
+                      🔒 {specAllParams.length} parameter{specAllParams.length > 1 ? 's' : ''} locked — activate to configure
                     </div>
                   )}
                 </div>
               );
-            })}
-          </div>
-        )}
+            }
+
+            if (!groupParams || groupParams.length === 0) return null;
+
+            const isCollapsed = collapsedGroups.has(group.id);
+
+            return (
+              <div key={group.id}>
+                {group.alwaysOpen ? (
+                  <div className="text-[8px] font-mono text-[#4ade80] opacity-45 tracking-widest uppercase mb-2 pb-1 border-b border-stealth-border/30">
+                    {group.label}
+                  </div>
+                ) : (
+                  <button
+                     onClick={() => toggleGroup(group.id)}
+                     className="flex items-center gap-1.5 text-[8px] font-mono tracking-widest uppercase mb-2 pb-1 border-b border-stealth-border/30 w-full text-[#4ade80] opacity-45 hover:text-white hover:opacity-100 transition-colors"
+                   >
+                    <span className="text-[7px]">{isCollapsed ? '▶' : '▼'}</span>
+                    {group.label}
+                    <span className="opacity-40">({groupParams.length})</span>
+                  </button>
+                )}
+
+                {!isCollapsed && (
+                  <div className="space-y-2.5">
+                    {groupParams.map(def => renderParamRow(def))}
+                  </div>
+                )}
+              </div>
+            );
+          };
+
+          return (
+            <div className="flex gap-4">
+              <div className="flex-1 min-w-0 space-y-3">
+                {leftCol.map(renderGroup)}
+              </div>
+              <div className="w-px flex-shrink-0 bg-green-400/10" />
+              <div className="w-[40%] min-w-[200px] flex-shrink-0 space-y-3">
+                {rightCol.map(renderGroup)}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Test flags */}
         {isAdminUnlocked && (

@@ -18,7 +18,7 @@ export default function MoeBadge({
 
   return (
     <div 
-      className={`relative inline-flex flex-row items-center rounded-sm cursor-pointer ${className} ${
+      className={`relative inline-flex flex-row items-center rounded-sm cursor-pointer px-[2px] ${className} ${
         isGold
           ? "bg-gold-metallic shadow-[0_0_15px_rgba(251,191,36,0.5)]"
           : shouldHighlight

@@ -120,12 +120,12 @@ impl Default for AppConfig {
     }
 }
 
-const PROVIDER_META_FILE: &str = "provider_meta.json";
+const USER_PROVIDERS_CONFIG_FILE: &str = "user_providers_config.json";
 
 // ── Provider Metadata Persistence ───────────────────────────────────
 
-pub fn load_provider_meta() -> Vec<ProviderMeta> {
-    let config_path = blackwell_config_dir().join(PROVIDER_META_FILE);
+pub fn load_user_providers_meta() -> Vec<ProviderMeta> {
+    let config_path = blackwell_config_dir().join(USER_PROVIDERS_CONFIG_FILE);
     if config_path.exists() {
         if let Ok(content) = std::fs::read_to_string(&config_path) {
             if let Ok(metas) = serde_json::from_str::<Vec<ProviderMeta>>(&content) {
@@ -219,7 +219,7 @@ fn validate_user_edited_param(ep: &crate::types::UserEditedTemplateParam) -> Vec
     errors
 }
 
-fn check_provider_meta(metas: &[ProviderMeta]) -> Vec<String> {
+fn check_user_providers_meta(metas: &[ProviderMeta]) -> Vec<String> {
     let mut all_errors: Vec<String> = Vec::new();
 
     // Duplicate provider IDs
@@ -252,17 +252,17 @@ fn check_provider_meta(metas: &[ProviderMeta]) -> Vec<String> {
 }
 
 #[tauri::command]
-pub fn save_provider_meta(metas: Vec<ProviderMeta>) -> Result<(), String> {
+pub fn save_user_providers_meta(metas: Vec<ProviderMeta>) -> Result<(), String> {
     // Block-save validation — force user to correct manually
-    let errors = check_provider_meta(&metas);
+    let errors = check_user_providers_meta(&metas);
     if !errors.is_empty() {
-        return Err(format!("provider_meta.json has {} issue(s):\n{}", errors.len(), errors.join("\n")));
+        return Err(format!("user_providers_config.json has {} issue(s):\n{}", errors.len(), errors.join("\n")));
     }
 
     let blackwell_dir = blackwell_config_dir();
     std::fs::create_dir_all(&blackwell_dir).map_err(|e| format!("Failed to create config dir: {}", e))?;
 
-    let config_path = blackwell_dir.join(PROVIDER_META_FILE);
+    let config_path = blackwell_dir.join(USER_PROVIDERS_CONFIG_FILE);
     let json = serde_json::to_string_pretty(&metas)
         .map_err(|e| format!("Failed to serialize provider meta: {}", e))?;
 
@@ -272,16 +272,16 @@ pub fn save_provider_meta(metas: Vec<ProviderMeta>) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn validate_provider_meta() -> Result<Vec<String>, String> {
-    let metas = load_provider_meta();
+pub fn validate_user_providers_meta() -> Result<Vec<String>, String> {
+    let metas = load_user_providers_meta();
     if metas.is_empty() {
         return Ok(Vec::new());
     }
-    let errors = check_provider_meta(&metas);
+    let errors = check_user_providers_meta(&metas);
     Ok(errors)
 }
 
-pub fn persist_provider_meta(providers: &[crate::types::ProviderConfig]) -> Result<(), String> {
+pub fn persist_user_providers_meta(providers: &[crate::types::ProviderConfig]) -> Result<(), String> {
     let metas: Vec<ProviderMeta> = providers.iter().map(|p| ProviderMeta {
         id: p.id.clone(),
         display_name: if p.display_name.is_empty() { "Untitled".to_string() } else { p.display_name.clone() },
@@ -302,12 +302,12 @@ pub fn persist_provider_meta(providers: &[crate::types::ProviderConfig]) -> Resu
         binary_path_per_env: p.binary_path_per_env.clone(),
         last_pr_per_env: p.last_pr_per_env.clone(),
     }).collect();
-    save_provider_meta(metas)
+    save_user_providers_meta(metas)
 }
 
 // ── Legacy Migration ─────────────────────────────────────────────────
 
-fn load_legacy_provider_meta() -> Vec<ProviderMeta> {
+fn load_legacy_user_providers_meta() -> Vec<ProviderMeta> {
     let config_path = blackwell_config_dir().join("admin_template.json");
     if config_path.exists() {
         if let Ok(content) = std::fs::read_to_string(&config_path) {
@@ -506,7 +506,7 @@ pub struct TemplateDiff {
 #[tauri::command]
 pub fn check_template_update(provider_id: String) -> Result<TemplateDiff, String> {
     // Load current state from disk (what was saved via save_provider)
-    let metas = load_provider_meta();
+    let metas = load_user_providers_meta();
     let meta = metas.iter().find(|m| m.id == provider_id);
 
     // Resolve template key through the provider's template_type (auto-detect from ID if empty)
@@ -554,7 +554,7 @@ pub fn apply_template_update(
     add_params: Vec<crate::types::UserEditedTemplateParam>,
     remove_keys: Vec<String>,
 ) -> Result<(), String> {
-    let mut metas = load_provider_meta();
+    let mut metas = load_user_providers_meta();
     
     // Find the provider meta (or create if missing)
     let meta = metas.iter_mut().find(|m| m.id == provider_id).ok_or("Provider not found")?;
@@ -582,7 +582,7 @@ pub fn apply_template_update(
         p.order = i as i32;
     }
 
-    save_provider_meta(metas)?;
+    save_user_providers_meta(metas)?;
     log::info!("[apply_template_update] {}: added {}, removed {}", provider_id, add_count, remove_count);
 
     Ok(())
@@ -596,16 +596,16 @@ pub async fn reorder_provider(provider_id: String, direction: i32, app: tauri::S
     if new_idx >= cfg.providers.len() { return Ok(()); }
     cfg.providers.swap(idx, new_idx);
     for (i, p) in cfg.providers.iter_mut().enumerate() { p.display_order = i as i32; }
-    let mut metas = load_provider_meta();
+    let mut metas = load_user_providers_meta();
     for m in &mut metas { if let Some(p) = cfg.providers.iter().find(|p| p.id == m.id) { m.display_order = p.display_order; } }
-    save_provider_meta(metas)?;
+    save_user_providers_meta(metas)?;
     Ok(())
 }
 
 #[tauri::command]
 pub fn reset_param_to_template(provider_id: String, param_key: String) -> Result<crate::types::UserEditedTemplateParam, String> {
     // Load provider from disk to get template_type (auto-detect from ID if empty)
-    let metas = load_provider_meta();
+    let metas = load_user_providers_meta();
     let meta = metas.iter().find(|m| m.id == provider_id);
     let template_type = resolve_template_type(&provider_id, meta.map(|m| &m.template_type));
 
@@ -775,10 +775,10 @@ fn load_saved_config() -> Option<AppConfig> {
 
 
 fn build_config_with_providers_full(_gpu_count: usize, mut config: AppConfig) -> AppConfig {
-    let metas = load_provider_meta();
+    let metas = load_user_providers_meta();
 
     let disk_metas = if metas.is_empty() {
-        load_legacy_provider_meta()
+        load_legacy_user_providers_meta()
     } else {
         metas
     };

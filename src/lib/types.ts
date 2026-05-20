@@ -75,7 +75,7 @@ export interface EngineConfig {
 }
 
 /** User's saved copy of a GenesisTemplateParam with runtime state (hidden, hiddenValues, userAddedValues, order, etc.).
- * Stored in provider_meta.json. Created from GenesisTemplateParam at genesis, then edited by the user in UI. */
+ * Stored in user_providers_config.json. Created from GenesisTemplateParam at genesis, then edited by the user in UI. */
 export interface UserEditedTemplateParam {
   key: string;
   label: string;

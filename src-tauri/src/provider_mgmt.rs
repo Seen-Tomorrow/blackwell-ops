@@ -48,6 +48,21 @@ pub async fn save_provider(provider: crate::types::ProviderConfig, app: tauri::S
         }
     }
 
+    // Merge flag_pair from genesis template for params missing it (schema migration)
+    if let Some(tmpl_key) = crate::config::template_key_for_type(&save_provider.template_type) {
+        let genesis_params = crate::config::params_for_provider(tmpl_key);
+        let genesis_map: std::collections::HashMap<&str, &crate::types::UserEditedTemplateParam> = genesis_params.iter()
+            .map(|p| (p.key.as_str(), p))
+            .collect();
+        for ep in &mut save_provider.user_edited_template_params {
+            if ep.flag_pair.is_empty() {
+                if let Some(genesis) = genesis_map.get(ep.key.as_str()) {
+                    ep.flag_pair = genesis.flag_pair.clone();
+                }
+            }
+        }
+    }
+
     save_provider.group_order = save_provider.group_order.iter().map(|g| crate::config::normalize_ui_group(g)).collect();
 
     if save_provider.user_edited_template_params.is_empty() {
@@ -65,7 +80,7 @@ pub async fn save_provider(provider: crate::types::ProviderConfig, app: tauri::S
     drop(cfg);
 
     let cfg_for_meta = app.config.lock().map_err(|e| e.to_string())?;
-    crate::config::persist_provider_meta(&cfg_for_meta.providers)?;
+    crate::config::persist_user_providers_meta(&cfg_for_meta.providers)?;
 
     Ok(())
 }
@@ -85,7 +100,7 @@ pub async fn remove_provider(id: String, app: tauri::State<'_, AppContext>) -> R
 
     // Persist provider metadata to disk
     let cfg_for_meta = app.config.lock().map_err(|e| e.to_string())?;
-    crate::config::persist_provider_meta(&cfg_for_meta.providers)?;
+    crate::config::persist_user_providers_meta(&cfg_for_meta.providers)?;
 
     Ok(())
 }
@@ -124,7 +139,7 @@ pub async fn toggle_group_hidden(provider_id: String, group_id: String, app: tau
 
     // Persist to disk
     let cfg_for_meta = app.config.lock().map_err(|e| e.to_string())?;
-    crate::config::persist_provider_meta(&cfg_for_meta.providers)?;
+    crate::config::persist_user_providers_meta(&cfg_for_meta.providers)?;
 
     Ok(new_hidden)
 }
