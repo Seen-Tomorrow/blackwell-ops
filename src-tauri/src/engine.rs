@@ -200,37 +200,28 @@ pub async fn launch_engine(
 
     let ctx_size_int = crate::templates::ctx_to_int_tokens(&config.get_param_str("ctx").unwrap_or_else(|| "32k".to_string()));
 
-    // Spawn engine and get raw pipe (stderr only) — LogHub owns reading.
-    let stderr = {
-        match EngineStack::load_slot(slot_idx, &config, &binary_path, gpu_mask.clone(), cmd_args.clone(), provider_display_name.clone(), backend_type.clone(), &app.stack).await {
-            Ok(pipe) => pipe,
-            Err(e) => return Err(e),
-        }
-    };
-
-    eprintln!("[LAUNCH] slot={} output channel ready", slot_idx);
-
-    // LogHub reads pipe, processes lines, returns fan-out channel for subscribers
-    let stack_for_ready = app.stack.clone();
-    let slot_for_ready = slot_idx;
-    let _line_rx = app.log_hub.spawn_slot_reader(
-        slot_idx,
-        config.alias.clone(),
-        stderr,
-        move || {
-            // Mark slot as Running and emit stack-changed event
-            let s_clone = stack_for_ready.clone();
-            let si = slot_for_ready;
-            tokio::spawn(async move {
-                let s = s_clone.lock().await;
-                if let Some(mut slot) = s.get_slot(si) {
-                    use crate::engine_stack::SlotStatus;
-                    slot.status = SlotStatus::Running;
-                }
-                s.emit_stack_changed();
-            });
-        },
-    );
+    // Spawn engine — LogHub starts reading stderr immediately inside load_slot.
+    {
+        let stack_for_ready = app.stack.clone();
+        let slot_for_ready = slot_idx;
+        EngineStack::load_slot(
+            slot_idx, &config, &binary_path, gpu_mask.clone(), cmd_args.clone(),
+            provider_display_name.clone(), backend_type.clone(), &app.stack,
+            app.log_hub.clone(),
+            move || {
+                let s_clone = stack_for_ready.clone();
+                let si = slot_for_ready;
+                tokio::spawn(async move {
+                    let s = s_clone.lock().await;
+                    if let Some(mut slot) = s.get_slot(si) {
+                        use crate::engine_stack::SlotStatus;
+                        slot.status = SlotStatus::Running;
+                    }
+                    s.emit_stack_changed();
+                });
+            },
+        ).await?;
+    }
 
     // Spawn FUSION brain — /slots + /metrics polling, state machine, emits "fusion-update"
     {

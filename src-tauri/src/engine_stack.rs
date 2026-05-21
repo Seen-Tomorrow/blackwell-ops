@@ -126,7 +126,9 @@ impl EngineStack {
         provider_display_name: String,
         backend_type: String,
         stack_ref: &Arc<tokio::sync::Mutex<EngineStack>>,
-    ) -> Result<std::process::ChildStderr, String> {
+        log_hub: LogHub,
+        on_ready: impl Fn() + Send + Sync + 'static,
+    ) -> Result<(), String> {
         // Validate binary BEFORE acquiring any lock (avoids holding tokio MutexGuard across await)
         validate_binary_path(binary_path).await?;
 
@@ -175,8 +177,14 @@ impl EngineStack {
         let pid = child.id();
         eprintln!("[ENGINE] slot={} spawned (pid={})", slot_idx, pid);
 
-        // Extract stderr pipe — LogHub will own reading and processing.
+        // Extract stderr pipe and start reader immediately — no gap for early output to be lost.
         let stderr = child.stderr.take().unwrap();
+        let _line_rx = log_hub.spawn_slot_reader(
+            slot_idx,
+            config.alias.clone(),
+            stderr,
+            on_ready,
+        );
 
         // Quick alive check — give process 100ms to initialize
         std::thread::sleep(std::time::Duration::from_millis(100));
@@ -201,7 +209,7 @@ impl EngineStack {
             slot.status = SlotStatus::Loading;
         }
 
-        Ok(stderr)
+        Ok(())
     }
 
     async fn kill_process_by_port(port: u16) -> Result<(), String> {

@@ -370,7 +370,7 @@ export default memo(function SlotLogPanel({ entry, logs, systemEvents, enginePer
       )}
 
       {/* Live log stream from LogHub (stdout streaming, batched at 100ms) */}
-      <div ref={logRef} className="px-3 py-2 border-t border-stealth-border bg-black/40 h-[90px] overflow-y-auto">
+      <div ref={logRef} className="px-3 py-2 border-t border-stealth-border bg-black/40 h-[90px] overflow-y-auto overflow-x-hidden">
         {visibleLogs.length === 0 && systemEvents.length === 0 ? (
           <p className="text-[10px] font-mono text-stealth-muted/50 italic">
             {entry.status === "LOADING" 
