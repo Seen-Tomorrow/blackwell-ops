@@ -8,7 +8,7 @@ use serde::Serialize;
 use std::collections::{HashMap, VecDeque};
 use tokio::sync::mpsc;
 
-use crate::engine_perf::FusionEvent;
+use crate::perf_monitor::FusionEvent;
 use crate::log_hub::LogHub;
 
 // ── Raw /slots JSON types ────────────────────────────────────────────
@@ -348,7 +348,7 @@ async fn fusion_http_poll_loop(
         .unwrap_or_default();
 
     let mut state = FusionEngineState::new(alias.clone(), slot_idx, port, ctx_total, parallel, unified_kv);
-    let poll_interval = tokio::time::Duration::from_millis(25);
+    let poll_interval = tokio::time::Duration::from_millis(100);
     let mut interval = tokio::time::interval(poll_interval);
 
     /// Build a terminal (engine-stopped) FusionUpdate with zeroed metrics.
@@ -656,8 +656,6 @@ async fn poll_slots(
 
     // Second pass: apply state changes (no overlapping borrows)
     let mut total_tps: f64 = 0.0;
-    let mut total_n_decoded: usize = 0;
-    let mut active_count: usize = 0;
     let mut any_processing = false;
 
     for d in &deltas {
@@ -675,6 +673,9 @@ async fn poll_slots(
 
         if d.new_session {
             state.request_start = Some(now);
+            // Reset TPS smoothing for new request
+            state.tps_sample_count = 0;
+            state.smoothed_tps = 0.0;
             // Only set phase from /slots when logs haven't already determined it
             if state.phase.is_empty() {
                 state.phase = "TG".to_string();
@@ -696,7 +697,6 @@ async fn poll_slots(
 
         if d.is_proc {
             any_processing = true;
-            active_count += 1;
             // Phase is driven by log lines ("prompt processing progress" → PP, "prompt eval time"/"prompt processing done" → TG)
             // /slots poll only captures TPS split — doesn't override phase from logs
         }
@@ -704,7 +704,6 @@ async fn poll_slots(
         if state.phase != "PP" {
             total_tps += d.tps;
         }
-        total_n_decoded += d.n_decoded;
     }
 
     // Update engine state

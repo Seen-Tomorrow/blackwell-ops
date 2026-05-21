@@ -216,65 +216,54 @@ export interface EnginePerfEvent {
   tps: number;
   ttft_ms?: number | null;
   fuel_alpha_pct?: number | null;
-  fuel_beta_pct?: number | null;
   n_tokens?: number;
   prompt_tokens?: number;
   kv_cache_pct?: number | null;
   prompt_progress?: number | null;
 }
 
-/** FUSION real-time engine monitoring data — emitted from Rust /slots poller + log fusion. */
+/** FUSION real-time engine monitoring data — emitted from Rust /slots + /metrics fusion brain. */
 export interface FusionUpdate {
   alias: string;
   /** Unique engine slot index (0-based, never duplicated) */
   slotIdx: number;
   port: number;
-  /** Engine lifecycle state */
-  engine_state: 'LOADING' | 'READY' | 'BUSY' | 'IDLE' | 'ERROR';
-  /** Instantaneous TPS from n_decoded delta — TG-phase only */
-  tps: number;
-  /** Adaptive EMA smoothed TPS — starts raw, flattens over ~20 samples per request */
-  smoothedTps: number;
-  /** Prefill TPS captured during PP phase (0.0 when not in prefill) */
-  prefillTps: number;
-  /** Prefill progress 0.0-1.0 from "prompt processing progress" logs */
-  prefillProgress: number;
-  /** Inference phase: "PP" (prompt processing), "TG" (token generation), "" (idle) */
-  phase: string;
-  /** Cumulative context tokens used (n_decoded across all slots) */
-  ctx_used: number;
-  /** Context window size per slot (n_ctx) */
-  ctx_total: number;
-  /** Context fill percentage 0-100 (aggregate) */
-  ctx_fill_pct: number;
-  /** Tokens generated in current request */
-  // Per-request gen tokens — use slotCtx[].request_tokens sum instead (matches webUI)
-  // request_tokens_gen is kept for backward compat but deprecated
-  request_tokens_gen: number;
-  /** Prompt tokens in current request (from logs) */
-  request_tokens_prompt: number;
-  /** Wall-clock ms since current request started */
-  request_elapsed_ms: number;
-  /** Time to first token from logs (ms) */
-  request_ttft_ms?: number | null;
-  /** Tokens remaining (-1 = unlimited) */
-  n_remain: number;
-  /** Max tokens limit from params */
-  max_tokens: number;
-  /** Generation progress percentage 0-100 */
-  gen_progress_pct: number;
-  /** Number of slots this engine has */
-  slot_count: number;
-  /** How many slots are currently is_processing */
-  active_slots: number;
-  /** Per-slot CTX usage for individual bars */
-  slotCtx: Array<{ id: number; n_decoded: number; request_tokens: number; total_tokens: number; is_processing: boolean }>;
-  /** Number of parallel slots configured (--parallel) */
+
+  // Lifecycle (3 states)
+  engine_state: 'LOADING' | 'READY' | 'ACTIVE';
+
+  // Phase — fused from both sources
+  phase: 'IDLE' | 'PP' | 'TG';
+
+  // Prefill metrics (primary source = /metrics)
+  prefillTpsMetrics: number;   // from /metrics prompt_tokens delta
+  prefillTpsSlots: number;     // from /slots (0.0 during PP — not available)
+
+  // Generation metrics (both sources side by side for Phase 1 testing)
+  genTpsMetrics: number;       // from /metrics predicted_tokens_seconds gauge
+  genTpsSlots: number;         // from /slots n_decoded delta
+
+  genTokensPerRequestMetrics: number;  // from /metrics tokens_predicted_total delta
+  genTokensPerRequestSlots: number;    // from /slots n_decoded current value
+
+  // Combined session total (both sources agree)
+  genTokensPerSession: number;
+
+  // Context usage (primary source = /slots only)
+  ctxUsedCurrentRequest: number;   // n_decoded in current request
+  ctxUsedSession: number;          // cumulative across requests this session
+  ctxFillPct: number;              // (ctx_used_session / ctx_total) * 100
+
+  // Request timing
+  requestElapsedMs: number;
+  ttftMs?: number | null;          // from /metrics prompt_seconds delta
+
+  // Per-slot CTX bars (from /slots only)
+  slotCtx: Array<{ id: number; n_decoded: number; is_processing: boolean }>;
+
+  // Engine config flags
   parallel: number;
-  /** Whether KV cache is shared across slots (--unified-kv) */
   unified_kv: boolean;
-  /** TPS history for sparkline (last 50 samples) */
-  tpsHistory: number[];
 }
 
 export interface VramFitResult {
@@ -470,7 +459,6 @@ export interface LogEntry {
   slot: number;
   alias: string;
   text: string;
-  timestamp: string;
 }
 
 export interface LogBatch {

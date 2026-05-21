@@ -17,7 +17,7 @@ import { DockProvider } from "./context/DockContext";
 import { TelemetryProvider } from "./context/TelemetryContext";
 import { ToastProvider } from "./components/Toast";
 import { KEYS, STORAGE_PREFIX } from "./lib/storage";
-import type { ModelEntry, StackEntry, LogBatch, LogEntry, SystemEvent, ProviderConfig, EnginePerfEvent } from "./lib/types";
+import type { ModelEntry, StackEntry, LogBatch, LogEntry, SystemEvent, ProviderConfig, EnginePerfEvent, FusionUpdate } from "./lib/types";
 
 export type Tab = "catalog" | "modelhub" | "stack" | "reactor11" | "telemetry" | "logs" | "config" | "sentinel";
 
@@ -39,6 +39,7 @@ function App() {
   const [logs, setLogs] = useState<Map<number, LogEntry[]>>(new Map());
   const [systemEvents, setSystemEvents] = useState<Map<number, Array<{ text: string; timestamp: string }>>>(new Map());
   const [enginePerfEvents, setEnginePerfEvents] = useState<Map<number, EnginePerfEvent>>(new Map());
+  const [fusionUpdates, setFusionUpdates] = useState<Map<number, FusionUpdate>>(new Map());
 
   const [activeLogSlot, setActiveLogSlot] = useState<number | "all">("all");
   const logsScrollRef = useRef<HTMLDivElement>(null);
@@ -291,6 +292,26 @@ function App() {
     return cleanup;
   }, []);
 
+  // Fusion real-time /slots poller data — source of truth for TG TPS
+  useEffect(() => {
+    let unsub: (() => void) | null = null;
+    const cleanup = () => { if (unsub) unsub(); };
+    listen("fusion-update", (e: any) => {
+      const payload = e.payload as FusionUpdate;
+      try {
+        if (payload && payload.slotIdx !== undefined) {
+          setFusionUpdates((prev) => {
+            const next = new Map(prev);
+            next.set(payload.slotIdx, payload);
+            return next;
+          });
+        }
+      } catch {}
+    }).then((u) => { unsub = u; });
+
+    return cleanup;
+  }, []);
+
   useEffect(() => {
     let unsubProgress: (() => void) | null = null;
     let unsubComplete: (() => void) | null = null;
@@ -399,9 +420,9 @@ function App() {
   }, []);
 
   const flatLogs = useMemo(() => {
-    const result: Map<number, Array<{ text: string; timestamp: string; alias: string }>> = new Map();
+    const result: Map<number, Array<{ text: string; alias: string }>> = new Map();
     for (const [slot, entries] of logs.entries()) {
-      result.set(slot, entries.slice(-500).map((e) => ({ text: e.text, timestamp: e.timestamp, alias: e.alias })));
+      result.set(slot, entries.slice(-500).map((e) => ({ text: e.text, alias: e.alias })));
     }
     return result;
   }, [logs]);
@@ -427,7 +448,7 @@ function App() {
         {activeTab === "modelhub" && <ModelHub />}
         {activeTab === "config" && <ConfigPage providers={providers} />}
         {activeTab === "stack" && (
-          <StackView stack={stack} logs={logs} systemEvents={systemEvents} enginePerfEvents={enginePerfEvents} onStop={handleStopEngine} onStopAll={handleStopAll} />
+          <StackView stack={stack} logs={logs} systemEvents={systemEvents} enginePerfEvents={enginePerfEvents} fusionUpdates={fusionUpdates} onStop={handleStopEngine} onStopAll={handleStopAll} />
         )}
         {activeTab === "reactor11" && (
           <Reactor11 models={models} />
@@ -514,7 +535,6 @@ function App() {
                         <div key={`e-${slot}`} className="space-y-0.5">
                           {entries.map((entry, i) => (
                             <p key={i} className="text-[10px] font-mono text-stealth-muted leading-relaxed whitespace-nowrap overflow-x-auto">
-                              <span className="text-stealth-muted/40">{entry.timestamp}</span>{" "}
                               {activeLogSlot === "all" && <span className="text-nv-green/60">[{entry.alias}] </span>}
                               <AnsiText text={entry.text} />
                             </p>

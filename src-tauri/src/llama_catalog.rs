@@ -152,7 +152,6 @@ fn parse_flag_line(lines: &[&str], idx: &mut usize) -> Option<LlamaCatalogEntry>
     }
 
     // Build description: everything after the flags (and arg token if present)
-    let main_parts: Vec<&str> = line.splitn(2, |c: char| c == ',' || c == '-').collect();
     let desc = extract_description(&lines, idx, &flags, arg_token.as_deref());
 
     // Collect continuation lines for env var

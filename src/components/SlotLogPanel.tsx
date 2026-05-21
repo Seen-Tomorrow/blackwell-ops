@@ -2,15 +2,16 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect, useRef, memo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import type { StackEntry, LogEntry, EnginePerfEvent, BenchResult } from "../lib/types";
+import type { StackEntry, LogEntry, EnginePerfEvent, FusionUpdate, BenchResult } from "../lib/types";
 import EnginePerformanceTile from "./EnginePerformanceTile";
 import AnsiText from "./AnsiText";
 
-interface EngineCardProps {
+interface SlotLogPanelProps {
   entry: StackEntry;
   logs: LogEntry[];
   systemEvents: Array<{ text: string; timestamp: string }>;
   enginePerfEvent?: EnginePerfEvent;
+  fusionUpdate?: FusionUpdate | null;
   n_ctx?: number;
   onStop: (alias: string) => void;
 }
@@ -40,9 +41,9 @@ function StatBlock({ label, value, highlight }: {
     </div>
   );
 }
+// Memoized SlotLogPanel — only re-renders when entry, logs, or onStop change
 
-// Memoized EngineCard — only re-renders when entry, logs, or onStop change
-export default memo(function EngineCard({ entry, logs, systemEvents, enginePerfEvent, n_ctx = 32768, onStop }: EngineCardProps) {
+export default memo(function SlotLogPanel({ entry, logs, systemEvents, enginePerfEvent, fusionUpdate, n_ctx = 32768, onStop }: SlotLogPanelProps) {
   const [telemetry, setTelemetry] = useState<EngineTelemetryData>({
     phase: "IDLE",
     instantaneous_tps: 0,
@@ -165,21 +166,27 @@ export default memo(function EngineCard({ entry, logs, systemEvents, enginePerfE
     IDLE: "",
   }[entry.status] || "";
 
+  // Phase: fusion /slots is authoritative for BUSY/READY, logs provide PROMPT_PROCESSING detail
+  const fusionPhase = fusionUpdate?.engine_state === "ACTIVE" ? "GENERATING"
+    : fusionUpdate?.engine_state === "READY" ? "IDLE" : null;
+  const displayPhase = fusionPhase ?? telemetry.phase;
+
   // Phase-specific styling (memoized via useMemo)
-  const phaseColor = telemetry.phase === "PROMPT_PROCESSING" 
-    ? "text-telemetry-amber" 
-    : telemetry.phase === "GENERATING" 
-      ? "text-nv-green" 
+  const phaseColor = displayPhase === "PROMPT_PROCESSING"
+    ? "text-telemetry-amber"
+    : displayPhase === "GENERATING"
+      ? "text-nv-green"
       : "text-stealth-muted";
 
-  const phaseBg = telemetry.phase === "PROMPT_PROCESSING"
+  const phaseBg = displayPhase === "PROMPT_PROCESSING"
     ? "bg-telemetry-amber/10 border-telemetry-amber/30"
-    : telemetry.phase === "GENERATING"
+    : displayPhase === "GENERATING"
       ? "bg-nv-green/10 border-nv-green/30"
       : "bg-stealth-panel border-stealth-border";
 
-  // TPS value for display — no animation overhead
-  const tps = telemetry.instantaneous_tps > 0 ? telemetry.instantaneous_tps : telemetry.avg_tps_5;
+  // TPS value for display — fusion /slots data is real-time, log-based is fallback
+  const fusionTps = (fusionUpdate?.engine_state === "ACTIVE" && fusionUpdate?.genTpsSlots > 0) ? fusionUpdate.genTpsSlots : null;
+  const tps = fusionTps ?? (telemetry.instantaneous_tps > 0 ? telemetry.instantaneous_tps : telemetry.avg_tps_5);
 
   // Logs are already flat — cap visible lines to prevent DOM bloat
   const MAX_VISIBLE_LOGS = 100;
@@ -213,9 +220,9 @@ export default memo(function EngineCard({ entry, logs, systemEvents, enginePerfE
 
       {/* Phase indicator bar */}
       <AnimatePresence mode="wait">
-        {entry.status === "RUNNING" && telemetry.phase !== "IDLE" && (
+        {entry.status === "RUNNING" && displayPhase !== "IDLE" && (
           <motion.div
-            key={telemetry.phase}
+            key={displayPhase}
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
@@ -223,14 +230,14 @@ export default memo(function EngineCard({ entry, logs, systemEvents, enginePerfE
           >
             <div className={`px-3 py-1 border-b ${phaseBg} flex items-center justify-between`}>
               <span className="text-[9px] font-mono tracking-wider">
-                {telemetry.phase === "PROMPT_PROCESSING" && "\u{25C7}"}
-                {telemetry.phase === "GENERATING" && "\u{25CF}"}
+                {displayPhase === "PROMPT_PROCESSING" && "\u{25C7}"}
+                {displayPhase === "GENERATING" && "\u{25CF}"}
                 {" "}
-                {telemetry.phase === "PROMPT_PROCESSING" ? "PROMPT PROCESSING" : "TOKEN GENERATION"}
+                {displayPhase === "PROMPT_PROCESSING" ? "PROMPT PROCESSING" : "TOKEN GENERATION"}
               </span>
               <div className="flex items-center gap-3">
                 {/* Real-time progress bar during prompt processing */}
-                {telemetry.phase === "PROMPT_PROCESSING" && telemetry.prompt_progress > 0 && (
+                {(telemetry.phase === "PROMPT_PROCESSING" || fusionUpdate?.phase === "PP") && telemetry.prompt_progress > 0 && (
                   <>
                     <div className="w-16 h-1.5 bg-stealth-dark border border-stealth-border rounded-sm overflow-hidden">
                       <div
@@ -284,8 +291,8 @@ export default memo(function EngineCard({ entry, logs, systemEvents, enginePerfE
           )}
         </div>
 
-        {/* Tokens generated */}
-        <StatBlock label="TOKENS" value={telemetry.total_tokens_generated.toString()} />
+        {/* Tokens generated — fusion /slots is real-time, log-based is fallback */}
+        <StatBlock label="TOKENS" value={(fusionUpdate?.genTokensPerRequestSlots ?? fusionUpdate?.genTokensPerSession ?? telemetry.total_tokens_generated).toString()} />
       </div>
 
       {/* Benchmark results — inline panel */}
@@ -352,16 +359,14 @@ export default memo(function EngineCard({ entry, logs, systemEvents, enginePerfE
             PROMPT: {telemetry.prompt_tokens_evaluated} tok
           </span>
           <span className="text-[9px] font-mono text-stealth-muted">
-            AVG 5: {telemetry.avg_tps_5.toFixed(1)} TPS
+            GEN: {fusionUpdate?.genTokensPerRequestSlots ?? telemetry.total_tokens_generated ?? 0} tok
           </span>
         </div>
       )}
 
       {/* Engine Performance Pulse tile — shows TPS, TTFT, FuelTank for all running engines */}
       {entry.status === "RUNNING" && enginePerfEvent && (
-        <EnginePerformanceTile perf={enginePerfEvent} n_ctx={n_ctx} onNewSession={() => {
-          invoke("start_beta_fuel_tank", { slot_idx: entry.idx }).catch(console.error);
-        }} />
+        <EnginePerformanceTile perf={enginePerfEvent} n_ctx={n_ctx} />
       )}
 
       {/* Live log stream from LogHub (stdout streaming, batched at 100ms) */}
@@ -377,7 +382,7 @@ export default memo(function EngineCard({ entry, logs, systemEvents, enginePerfE
         ) : (
           <>
             {systemEvents.map((evt, i) => (
-              <p key={`sys-${i}`} className="text-[10px] font-mono leading-relaxed text-yellow-400/70">
+                <p key={`sys-${i}`} className="text-[10px] font-mono leading-relaxed text-yellow-400/70">
                 {evt.text}
               </p>
             ))}

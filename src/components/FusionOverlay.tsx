@@ -2,9 +2,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { FusionUpdate } from "../lib/types";
-import FusionTpsDisplay from "./FusionTpsDisplay";
 import FusionPhaseBadge from "./FusionPhaseBadge";
-import FusionSlotCtxBar from "./FusionSlotCtxBar";
 
 interface FusionOverlayProps {
   alias?: string;
@@ -18,8 +16,8 @@ function formatMs(ms: number): string {
 }
 
 interface LastRequestStats {
-  promptTokens: number;
-  genTokens: number;
+  genTokensSlots: number;
+  genTokensMetrics: number;
   ttftMs: string | null;
   elapsedMs: string;
 }
@@ -31,7 +29,7 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
   // Frozen stats shown after request ends (2s delay before clearing)
   const [frozenStats, setFrozenStats] = useState<LastRequestStats | null>(null);
   const fadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const liveSnapshot = useRef<LastRequestStats>({ promptTokens: 0, genTokens: 0, ttftMs: null, elapsedMs: "0ms" });
+  const liveSnapshot = useRef<LastRequestStats>({ genTokensSlots: 0, genTokensMetrics: 0, ttftMs: null, elapsedMs: "0ms" });
   const wasActiveRef = useRef(false);
 
   const handleStopEngine = useCallback(async () => {
@@ -53,17 +51,15 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
     return () => clearFadeTimer();
   }, [clearFadeTimer]);
 
-  const isActive = fusion && fusion.active_slots > 0;
-
-  // Per-request token count from slot request_tokens delta (matches llama.cpp webUI)
-  const totalGenTokens = fusion ? fusion.slotCtx.reduce((sum, s) => sum + s.request_tokens, 0) : 0;
+  // Active when phase is PP or TG (not IDLE)
+  const isActive = fusion && fusion.phase !== "IDLE";
 
   if (fusion && isActive) {
     liveSnapshot.current = {
-      promptTokens: fusion.request_tokens_prompt,
-      genTokens: totalGenTokens,
-      ttftMs: fusion.request_ttft_ms != null ? formatMs(fusion.request_ttft_ms) : null,
-      elapsedMs: formatMs(fusion.request_elapsed_ms),
+      genTokensSlots: fusion.genTokensPerRequestSlots,
+      genTokensMetrics: fusion.genTokensPerRequestMetrics,
+      ttftMs: fusion.ttftMs != null ? formatMs(fusion.ttftMs) : null,
+      elapsedMs: formatMs(fusion.requestElapsedMs),
     };
   }
 
@@ -77,7 +73,7 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
     } else if (wasActiveRef.current && !isActive) {
       wasActiveRef.current = false;
       const snap = { ...liveSnapshot.current };
-      if (snap.genTokens > 0 || snap.promptTokens > 0) {
+      if (snap.genTokensSlots > 0 || snap.genTokensMetrics > 0) {
         setFrozenStats(snap);
         clearFadeTimer();
         fadeTimerRef.current = setTimeout(() => {
@@ -90,10 +86,10 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
 
   const showLive = fusion && isActive;
   const statsToDisplay = showLive ? {
-    promptTokens: fusion.request_tokens_prompt,
-    genTokens: totalGenTokens,
-    ttftMs: fusion.request_ttft_ms != null ? formatMs(fusion.request_ttft_ms) : null,
-    elapsedMs: formatMs(fusion.request_elapsed_ms),
+    genTokensSlots: fusion.genTokensPerRequestSlots,
+    genTokensMetrics: fusion.genTokensPerRequestMetrics,
+    ttftMs: fusion.ttftMs != null ? formatMs(fusion.ttftMs) : null,
+    elapsedMs: formatMs(fusion.requestElapsedMs),
   } as LastRequestStats : (frozenStats ?? liveSnapshot.current);
 
   if (!fusion) {
@@ -132,7 +128,7 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
           <span className="text-[8px] font-mono text-stealth-muted/40">{displayAlias} : {displayPort}</span>
         </motion.div>
       ) : (
-        /* ── Full FUSION dashboard — 3-col grid ─────────────────── */
+        /* ── Full FUSION dashboard — dual-source display for Phase 1 testing ─── */
         <motion.div
           key="dashboard"
           initial={{ opacity: 0 }}
@@ -159,28 +155,24 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
             </div>
           </div>
 
-          {/* ── Middle section: per-req | PREFILL TPS | GEN TPS | reserved ─── */}
+          {/* ── Middle section: per-req | PREFILL | GEN TPS (dual source) ─── */}
           <div className="grid grid-cols-4 gap-1 flex-1 min-h-0">
             {/* Col 1: Per-request stats (always visible) */}
             <div className="flex flex-col justify-start py-0.5">
-              {statsToDisplay && (statsToDisplay.genTokens > 0 || statsToDisplay.promptTokens > 0) ? (
+              {statsToDisplay && (statsToDisplay.genTokensSlots > 0 || statsToDisplay.genTokensMetrics > 0) ? (
                 <>
-                  {statsToDisplay.promptTokens > 0 && (
-                    <div>
-                      <p className="text-[7px] font-mono text-stealth-muted/40 tracking-wider">PROMPT</p>
-                      <p className={`text-[10px] font-mono mt-0.5 ${showLive ? "text-nv-green" : "text-stealth-muted/60"}`}>
-                        {statsToDisplay.promptTokens}
-                      </p>
-                    </div>
-                  )}
-                  {statsToDisplay.genTokens > 0 && (
-                    <div className="mt-1">
-                      <p className="text-[7px] font-mono text-stealth-muted/40 tracking-wider">GENERATED</p>
-                      <p className={`text-[10px] font-mono mt-0.5 ${showLive ? "text-nv-green" : "text-stealth-muted/60"}`}>
-                        {statsToDisplay.genTokens}
-                      </p>
-                    </div>
-                  )}
+                  <div>
+                    <p className="text-[6px] font-mono text-stealth-muted/40 tracking-wider">GEN [slots]</p>
+                    <p className={`text-[10px] font-mono mt-0.5 ${showLive ? "text-nv-green" : "text-stealth-muted/60"}`}>
+                      {statsToDisplay.genTokensSlots}
+                    </p>
+                  </div>
+                  <div className="mt-0.5">
+                    <p className="text-[6px] font-mono text-stealth-muted/40 tracking-wider">GEN [metrics]</p>
+                    <p className={`text-[10px] font-mono mt-0.5 ${showLive ? "text-nv-green" : "text-stealth-muted/60"}`}>
+                      {statsToDisplay.genTokensMetrics}
+                    </p>
+                  </div>
                   {statsToDisplay.ttftMs && (
                     <div className="mt-1">
                       <p className="text-[7px] font-mono text-stealth-muted/40 tracking-wider">TTFT</p>
@@ -201,32 +193,61 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
               )}
             </div>
 
-            {/* Col 2: Prefill TPS (grey) */}
-            <div className="flex flex-col items-center justify-start py-0.5 gap-1">
+            {/* Col 2: Prefill TPS — dual source */}
+            <div className="flex flex-col items-center justify-start py-0.5 gap-0.5">
               <p className="text-[7px] font-mono text-stealth-muted/40 tracking-wider">PREFILL</p>
               {fusion.phase === "PP" && (
                 <div className="w-full h-1 rounded-full bg-black/10 overflow-hidden">
-                  <div
-                    className="h-full rounded-full transition-all duration-150"
-                    style={{ width: `${Math.round(fusion.prefillProgress * 100)}%`, backgroundColor: '#b87a00' }}
+                  <motion.div
+                    className="h-full rounded-full"
+                    style={{ backgroundColor: '#b87a00' }}
+                    animate={{ width: ["20%", "60%", "20%"] }}
+                    transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
                   />
                 </div>
               )}
-              <span className="font-mono font-bold tracking-tight text-stealth-muted/50" style={{ fontSize: 'clamp(1.2rem, 5vh, 2.5rem)' }}>
-                {fusion.prefillTps > 0 ? fusion.prefillTps.toFixed(0) : "--"}
+              <span className="font-mono font-bold tracking-tight text-stealth-muted/50" style={{ fontSize: 'clamp(1rem, 4vh, 2rem)' }}>
+                {fusion.prefillTpsMetrics > 0 ? fusion.prefillTpsMetrics.toFixed(0) : "--"}
               </span>
+              <span className="text-[6px] font-mono text-stealth-muted/30 tracking-widest">[metrics]</span>
               <span className="text-[7px] font-mono text-stealth-muted/40 tracking-widest">TOKENS / SEC</span>
             </div>
 
-            {/* Col 3: Generation TPS (big, green) + sparkline */}
-            <div className="flex flex-col items-center justify-start py-0.5 gap-1">
+            {/* Col 3: Generation TPS — dual source side by side */}
+            <div className="flex flex-col items-center justify-start py-0.5 gap-0.5">
               <p className="text-[7px] font-mono text-stealth-muted/40 tracking-wider">GENERATION</p>
-              <FusionTpsDisplay tps={fusion.tps} smoothedTps={fusion.smoothedTps} history={fusion.tpsHistory} />
+
+              {/* [slots] TPS */}
+              <span className="font-mono font-bold tracking-tight" style={{ fontSize: 'clamp(1.2rem, 5vh, 2.5rem)', color: fusion.genTpsSlots > 0 ? '#22c55e' : 'rgba(148,163,184,0.5)' }}>
+                {fusion.genTpsSlots > 0 ? fusion.genTpsSlots.toFixed(0) : "--"}
+              </span>
+              <span className="text-[6px] font-mono text-stealth-muted/30 tracking-widest">[slots]</span>
+
+              {/* [metrics] TPS */}
+              <span className="font-mono font-bold tracking-tight" style={{ fontSize: 'clamp(1.2rem, 5vh, 2.5rem)', color: fusion.genTpsMetrics > 0 ? '#22c55e' : 'rgba(148,163,184,0.5)' }}>
+                {fusion.genTpsMetrics > 0 ? fusion.genTpsMetrics.toFixed(0) : "--"}
+              </span>
+              <span className="text-[6px] font-mono text-stealth-muted/30 tracking-widest">[metrics]</span>
             </div>
 
-            {/* Col 4: Reserved for HW telemetry */}
-            <div className="flex items-center justify-center">
-              <span className="text-[8px] font-mono text-stealth-muted/20 tracking-widest italic">HW TELEMETRY</span>
+            {/* Col 4: Session totals */}
+            <div className="flex flex-col items-center justify-start py-0.5 gap-1">
+              <p className="text-[7px] font-mono text-stealth-muted/40 tracking-wider">SESSION</p>
+              <span className="font-mono text-xs text-stealth-muted/60" style={{ fontSize: 'clamp(0.8rem, 3vh, 1.5rem)' }}>
+                {fusion.genTokensPerSession}
+              </span>
+              <span className="text-[7px] font-mono text-stealth-muted/40 tracking-widest">TOKENS</span>
+
+              <div className="mt-1 w-full px-1">
+                <p className="text-[6px] font-mono text-stealth-muted/30 tracking-wider">CTX FILL</p>
+                <div className="w-full h-1 rounded-full bg-black/10 overflow-hidden mt-0.5">
+                  <div
+                    className="h-full rounded-full transition-all duration-200"
+                    style={{ width: `${Math.min(fusion.ctxFillPct, 100)}%`, backgroundColor: fusion.ctxFillPct > 80 ? '#ef4444' : '#6366f1' }}
+                  />
+                </div>
+                <span className="text-[6px] font-mono text-stealth-muted/40">{fusion.ctxFillPct.toFixed(1)}%</span>
+              </div>
             </div>
           </div>
 
@@ -234,16 +255,24 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
           <div className="w-full h-px bg-black/15" />
 
           {/* ── Bottom: Per-slot CTX bars (full width) ───────── */}
-          <div className="flex flex-col gap-1.5">
+          <div className="flex flex-col gap-1">
             {fusion.slotCtx.length > 0 ? (
               fusion.slotCtx.map((slot) => (
-                <FusionSlotCtxBar
-                  key={slot.id}
-                  slotId={slot.id}
-                  totalTokens={slot.total_tokens}
-                  ctxTotal={fusion.ctx_total}
-                  isProcessing={slot.is_processing}
-                />
+                <div key={slot.id} className="flex items-center gap-1">
+                  <span className="text-[6px] font-mono text-stealth-muted/40 w-6">S{slot.id}</span>
+                  <div className="flex-1 h-1.5 rounded-full bg-black/10 overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all duration-200"
+                      style={{
+                        width: `${Math.min((slot.n_decoded / Math.max(fusion.ctxUsedSession, 1)) * 100, 100)}%`,
+                        backgroundColor: slot.is_processing ? '#22c55e' : 'rgba(99,102,241,0.4)',
+                      }}
+                    />
+                  </div>
+                  <span className="text-[6px] font-mono text-stealth-muted/40 w-8 text-right">
+                    {slot.n_decoded}
+                  </span>
+                </div>
               ))
             ) : (
               <span className="text-[7px] font-mono text-stealth-muted/30 italic">NO SLOT DATA</span>
@@ -256,7 +285,7 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
                   {fusion.unified_kv ? "UNIFIED KV" : `MULTI-SLOT ×${fusion.parallel}`}
                 </span>
                 <span className="text-[6px] font-mono text-stealth-muted/30">
-                  ACTIVE {fusion.active_slots}/{fusion.slot_count}
+                  PHASE: {fusion.phase}
                 </span>
               </div>
             )}

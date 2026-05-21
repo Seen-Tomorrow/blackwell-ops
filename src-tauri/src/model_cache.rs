@@ -258,13 +258,6 @@ pub fn get_hf_metadata_with_cache(cache: &HashMap<String, CachedEntry>, model_pa
     cache.get(&entry_key).unwrap().hf_meta.clone()
 }
 
-/// Remove a model from the cache.
-pub fn remove_cached(model_path: &str) -> Result<(), String> {
-    let mut cache = load_cache();
-    cache.remove(model_path);
-    save_cache(&cache)
-}
-
 /// Clear the entire cache.
 pub fn clear_cache() -> Result<(), String> {
     let path = cache_path();
@@ -272,11 +265,6 @@ pub fn clear_cache() -> Result<(), String> {
         std::fs::remove_file(&path).map_err(|e| e.to_string())?;
     }
     Ok(())
-}
-
-/// Get the number of cached entries.
-pub fn cache_size() -> usize {
-    load_cache().len()
 }
 
 /// Get path to model_cache.json in %APPDATA%/blackwell-ops/ (or blackwell-ops-dev for dev builds).

@@ -1,24 +1,19 @@
-//! Unified Engine Reader — single-pass ConPTY log consumer.
+//! Performance Monitor — subscribes to LogHub's fan-out channel.
 //!
-//! Replaces three separate broadcast subscribers (perf_reader, readiness_watcher, fusion_monitor)
-//! with one unified task that processes each line once and distributes results via internal channels:
-//!   - Log entries → frontend "engine-log-batch" events
-//!   - Perf metrics → frontend "engine-perf" events
-//!   - Fusion events → fusion HTTP poller (internal mpsc channel)
-//!
-//! Wrapped in a restart loop — if the task exits (panic, I/O error), it auto-restarts after 1s.
+//! Parses engine log lines for performance metrics (TPS, TTFT, KV cache %, phase detection)
+//! and emits "engine-perf" events to frontend. Also forwards FusionEvents to the HTTP poller.
+//! Does NOT handle batching, dedup, or line processing — those are LogHub's responsibility.
 
 use regex::Regex;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tokio::sync::{mpsc, Mutex as TokioMutex};
 
-use crate::engine_stack::{EngineStack, SlotStatus};
-use crate::log_hub::{LogHub, LogEntry, LogBatch};
+use crate::log_hub::LogHub;
 
 // ── Fusion Events (internal channel between unified reader → fusion HTTP poller) ──
 
-/// Discrete events extracted from ConPTY log lines for the fusion monitor.
+/// Discrete events extracted from engine log lines for the fusion monitor.
 #[derive(Debug, Clone)]
 pub enum FusionEvent {
     /// New prompt detected: (prompt_token_count)
@@ -42,7 +37,6 @@ static CHECKPOINT_RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
 static RESTORED_RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
 static ALL_IDLE_RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
 static KV_CACHE_STATE_RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
-static TIMING_TOTAL_RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
 static STOP_PROCESSING_RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
 static PRINT_TIMING_RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
 static INIT_SAMPLER_RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
@@ -131,12 +125,6 @@ fn kv_cache_state_re() -> &'static Regex {
     ).unwrap())
 }
 
-fn timing_total_re() -> &'static Regex {
-    TIMING_TOTAL_RE.get_or_init(|| Regex::new(
-        r"total time\s*=\s*(\d+\.\d+)\s+ms\s*/\s*(\d+)\s+tokens"
-    ).unwrap())
-}
-
 fn stop_processing_re() -> &'static Regex {
     STOP_PROCESSING_RE.get_or_init(|| Regex::new(
         r"stop processing:\s*n_tokens\s*=\s*(\d+)"
@@ -166,8 +154,6 @@ pub struct EnginePerfEvent {
     pub ttft_ms: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fuel_alpha_pct: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub fuel_beta_pct: Option<f64>,
     /// Total tokens processed (prompt + eval) — for display in engine card
     #[serde(default)]
     pub n_tokens: usize,
@@ -187,12 +173,10 @@ pub struct EnginePerfEvent {
 #[derive(Debug, Clone)]
 struct FuelTankSlot {
     alpha_started: bool,
-    beta_started: bool,
     current_tokens: usize,
     prompt_tokens: usize,
     ctx_size: usize,
     alpha_checkpoint_mib: Option<f64>,
-    beta_checkpoint_mib: Option<f64>,
     pub phase: String,
     kv_cache_used_mib: f64,
     kv_cache_limit_mib: f64,
@@ -206,12 +190,10 @@ impl FuelTankSlot {
     fn new(ctx_size: usize) -> Self {
         Self {
             alpha_started: false,
-            beta_started: false,
             current_tokens: 0,
             prompt_tokens: 0,
             ctx_size,
             alpha_checkpoint_mib: None,
-            beta_checkpoint_mib: None,
             phase: "IDLE".to_string(),
             kv_cache_used_mib: 0.0,
             kv_cache_limit_mib: 8192.0,
@@ -261,11 +243,6 @@ impl FuelTankSlot {
         if !self.alpha_started { return None; }
         self.interpolate(self.alpha_checkpoint_mib)
     }
-
-    fn beta_interpolated(&self) -> Option<f64> {
-        if !self.beta_started { return None; }
-        self.interpolate(self.beta_checkpoint_mib)
-    }
 }
 
 // ── Global State (per-slot FuelTank tracking) ──────────────────────
@@ -286,204 +263,93 @@ impl PerfState {
 
 static STATE: Mutex<Option<Arc<TokioMutex<PerfState>>>> = Mutex::new(None);
 
-// ── Unified Reader (single-pass ConPTY consumer) ───────────────────
+// ── Perf Monitor (subscribes to LogHub fan-out channel) ─────────────
 
-/// Configuration for the unified reader task.
-#[derive(Clone)]
-pub struct UnifiedReaderConfig {
-    pub log_hub: LogHub,
-    pub slot_idx: usize,
-    pub alias: String,
-    pub ctx_size: usize,
-    /// Stack reference for readiness check (marking slot Running)
-    pub stack: Arc<TokioMutex<EngineStack>>,
-    /// Sender for fusion events → consumed by fusion HTTP poller
-    pub fusion_tx: mpsc::UnboundedSender<FusionEvent>,
-}
-
-/// Spawn the unified reader with a restart loop.
-/// If the task exits (panic, I/O error), it auto-restarts after 1 second.
-pub fn spawn_unified_reader(
-    rx: mpsc::UnboundedReceiver<String>,
-    config: UnifiedReaderConfig,
+/// Spawn the performance monitor task.
+/// Subscribes to processed log lines from LogHub's fan-out channel,
+/// parses for TPS/TTFT/KV cache metrics, and emits "engine-perf" events.
+pub fn spawn_perf_monitor(
+    slot_idx: usize,
+    alias: String,
+    ctx_size: usize,
+    log_hub: LogHub,
+    mut line_rx: mpsc::UnboundedReceiver<String>,
+    fusion_tx: mpsc::UnboundedSender<FusionEvent>,
 ) {
     tokio::spawn(async move {
-        loop {
-            eprintln!("[UNIFIED] slot={} reader starting", config.slot_idx);
-            unified_reader_loop(rx, config.clone()).await;
-            // Channel closed = engine stopped. Don't restart — the sender was dropped on stop_slot/kill_all.
-            eprintln!("[UNIFIED] slot={} reader exited permanently (channel closed)", config.slot_idx);
-            break;
-        }
-    });
-}
-
-/// Main unified reader loop — single-pass processing of each ConPTY line.
-async fn unified_reader_loop(
-    mut rx: mpsc::UnboundedReceiver<String>,
-    config: UnifiedReaderConfig,
-) {
-    let UnifiedReaderConfig {
-        log_hub, slot_idx, alias, ctx_size, stack, fusion_tx
-    } = config;
-
-    // Initialize global state if needed
-    {
-        let mut guard = STATE.lock().unwrap();
-        if guard.is_none() {
-            *guard = Some(Arc::new(TokioMutex::new(PerfState::new())));
-        }
-    }
-
-    eprintln!("[UNIFIED] slot={} reader started (ctx_size={})", slot_idx, ctx_size);
-
-    // Batch accumulation for log display
-    let mut batch_buffer: Vec<LogEntry> = Vec::with_capacity(50);
-    let mut last_emit = tokio::time::Instant::now();
-    let batch_interval = tokio::time::Duration::from_millis(100);
-
-    // Heartbeat timer — emits rolling TPS snapshot every 200ms even during silent periods
-    let heartbeat_interval = tokio::time::Duration::from_millis(200);
-    let mut heartbeat_timer = tokio::time::interval(heartbeat_interval);
-
-    // Readiness tracking — one-shot check for "server is listening" / "all slots are idle"
-    let mut engine_ready = false;
-
-    // Dedup — llama.cpp at -lv 4 sends identical lines to stdout+stderr via ConPTY merge
-    let mut last_line: String = String::new();
-
-    loop {
-        tokio::select! {
-            biased; // Prefer recv over heartbeat — prevents both branches from firing simultaneously
-
-            // ── ConPTY output line ──────────────────────────────────────
-            result = rx.recv() => {
-                let line = match result {
-                    Some(l) => l,
-                    None => break, // Channel closed — engine stopped
-                };
-
-                // Skip empty lines
-                if line.is_empty() { continue; }
-
-                // ── \r splitting: llama.cpp uses carriage returns for cursor repositioning.
-                // BufReader::lines() only splits on \n, so bare \r merges two logical lines.
-                let parts: Vec<&str> = if line.contains('\r') {
-                    line.split('\r').collect()
-                } else {
-                    vec![&line]
-                };
-
-                for part in parts {
-                    let cleaned = part.trim().to_string();
-                    // Filter out meaningless fragments from \r split
-                    let is_real_line = cleaned.starts_with('0')
-                        || cleaned.contains(" I ") || cleaned.contains(" W ") || cleaned.contains(" E ")
-                        || cleaned.len() > 30;
-                    if !is_real_line { continue; }
-
-                    // ── Dedup: skip exact duplicate of previous line ──────
-                    if cleaned == last_line { continue; }
-                    last_line = cleaned.clone();
-
-                    // ── Readiness check (inline, one-shot) ──────────────
-                    if !engine_ready {
-                        let lower = cleaned.to_lowercase();
-                        if lower.contains("server is listening on") || lower.contains("all slots are idle") {
-                            engine_ready = true;
-                            {
-                                let s = stack.lock().await;
-                                if let Some(mut slot) = s.get_slot(slot_idx) {
-                                    slot.status = SlotStatus::Running;
-                                };
-                                s.emit_stack_changed();
-                            }
-                            eprintln!("[READINESS] slot={} engine ready", slot_idx);
-                        }
-                    }
-
-                    // ── Suppress FUSION poll noise from frontend log display ──
-                    let is_poll_noise = (cleaned.contains("done request") && cleaned.contains("/slots"))
-                        || cleaned.contains("update_slots: all slots are idle");
-
-                    if !is_poll_noise {
-                        let entry = LogEntry {
-                            slot: slot_idx,
-                            alias: alias.clone(),
-                            text: cleaned.clone(),
-                            timestamp: chrono::Local::now().format("%H:%M:%S%.3f").to_string(),
-                        };
-                        batch_buffer.push(entry);
-                    }
-
-                    // ── Single-pass line processing ─────────────────────
-                    process_line(&cleaned, slot_idx, &alias, ctx_size, &log_hub, &fusion_tx).await;
-                }
-
-                // Batch emit every 100ms or when buffer is full
-                let should_emit = batch_buffer.len() >= 50 || last_emit.elapsed() >= batch_interval;
-                if should_emit && !batch_buffer.is_empty() {
-                    let entries: Vec<LogEntry> = std::mem::take(&mut batch_buffer);
-                    let _ = log_hub.emit("engine-log-batch", &LogBatch {
-                        slot: slot_idx,
-                        alias: alias.clone(),
-                        entries,
-                    });
-                    last_emit = tokio::time::Instant::now();
-                }
+        // Initialize global state if needed
+        {
+            let mut guard = STATE.lock().unwrap();
+            if guard.is_none() {
+                *guard = Some(Arc::new(TokioMutex::new(PerfState::new())));
             }
+        }
 
-            // ── Heartbeat — emit rolling TPS snapshot during silent periods ──
-            _ = heartbeat_timer.tick() => {
-                let state_arc = STATE.lock().unwrap().clone();
-                if let Some(ref arc) = state_arc {
-                    let perf_state = arc.lock().await;
-                    if let Some(slot_state) = perf_state.slots.get(&slot_idx) {
-                        let now = std::time::Instant::now();
-                        let heartbeat_tps = if slot_state.rolling_tps_ema > 0.0 {
-                            if let Some(last_time) = slot_state.last_token_time {
-                                let elapsed_since_last = now.duration_since(last_time).as_secs_f64();
-                                if elapsed_since_last < 2.0 {
-                                    let decay_factor = 1.0 - (elapsed_since_last / 2.0);
-                                    Some(slot_state.rolling_tps_ema * decay_factor)
+        eprintln!("[PERF] slot={} monitor started (ctx_size={})", slot_idx, ctx_size);
+
+        // Heartbeat timer — emits rolling TPS snapshot every 200ms even during silent periods
+        let heartbeat_interval = tokio::time::Duration::from_millis(200);
+        let mut heartbeat_timer = tokio::time::interval(heartbeat_interval);
+
+        loop {
+            tokio::select! {
+                biased; // Prefer recv over heartbeat
+
+                // ── Processed line from LogHub fan-out ────────────────────
+                result = line_rx.recv() => {
+                    let line = match result {
+                        Some(l) => l,
+                        None => break, // Channel closed — engine stopped
+                    };
+
+                    if line.is_empty() { continue; }
+
+                    // Single-pass perf + fusion parsing
+                    process_line(&line, slot_idx, &alias, ctx_size, &log_hub, &fusion_tx).await;
+                }
+
+                // ── Heartbeat — emit rolling TPS snapshot during silent periods ──
+                _ = heartbeat_timer.tick() => {
+                    let state_arc = STATE.lock().unwrap().clone();
+                    if let Some(ref arc) = state_arc {
+                        let perf_state = arc.lock().await;
+                        if let Some(slot_state) = perf_state.slots.get(&slot_idx) {
+                            let now = std::time::Instant::now();
+                            let heartbeat_tps = if slot_state.rolling_tps_ema > 0.0 {
+                                if let Some(last_time) = slot_state.last_token_time {
+                                    let elapsed_since_last = now.duration_since(last_time).as_secs_f64();
+                                    if elapsed_since_last < 2.0 {
+                                        let decay_factor = 1.0 - (elapsed_since_last / 2.0);
+                                        Some(slot_state.rolling_tps_ema * decay_factor)
+                                    } else {
+                                        None
+                                    }
                                 } else {
                                     None
                                 }
                             } else {
                                 None
-                            }
-                        } else {
-                            None
-                        };
-
-                        if let Some(tps) = heartbeat_tps {
-                            let event = EnginePerfEvent {
-                                slot: slot_idx, alias: alias.clone(), tps, ttft_ms: None,
-                                fuel_alpha_pct: slot_state.alpha_interpolated(),
-                                fuel_beta_pct: slot_state.beta_interpolated(),
-                                n_tokens: slot_state.current_tokens,
-                                prompt_tokens: slot_state.prompt_tokens,
-                                kv_cache_pct: slot_state.kv_cache_pct(),
-                                prompt_progress: Some(slot_state.prompt_progress),
                             };
-                            log_hub.emit("engine-perf", &event);
+
+                            if let Some(tps) = heartbeat_tps {
+                                let event = EnginePerfEvent {
+                                    slot: slot_idx, alias: alias.clone(), tps, ttft_ms: None,
+                                    fuel_alpha_pct: slot_state.alpha_interpolated(),
+                                    n_tokens: slot_state.current_tokens,
+                                    prompt_tokens: slot_state.prompt_tokens,
+                                    kv_cache_pct: slot_state.kv_cache_pct(),
+                                    prompt_progress: Some(slot_state.prompt_progress),
+                                };
+                                log_hub.emit("engine-perf", &event);
+                            }
                         }
                     }
                 }
             }
         }
-    }
 
-    // Flush remaining batch on channel close
-    if !batch_buffer.is_empty() {
-        let _ = log_hub.emit("engine-log-batch", &LogBatch {
-            slot: slot_idx,
-            alias: alias.clone(),
-            entries: std::mem::take(&mut batch_buffer),
-        });
-    }
-
-    eprintln!("[UNIFIED] slot={} reader stopped (channel closed)", slot_idx);
+        eprintln!("[PERF] slot={} monitor stopped (channel closed)", slot_idx);
+    });
 }
 
 /// Process a single log line — single-pass perf + fusion parsing.
@@ -510,7 +376,7 @@ async fn process_line(
 
         let event = EnginePerfEvent {
             slot: slot_idx, alias: alias.to_string(), tps: 0.0, ttft_ms: None,
-            fuel_alpha_pct: slot_state.alpha_interpolated(), fuel_beta_pct: slot_state.beta_interpolated(),
+            fuel_alpha_pct: slot_state.alpha_interpolated(),
             n_tokens: slot_state.current_tokens,
             prompt_tokens: slot_state.prompt_tokens,
             kv_cache_pct: slot_state.kv_cache_pct(),
@@ -551,6 +417,8 @@ async fn process_line(
     if let Some(caps) = new_prompt_re().captures(line) {
         if let Some(n_tok_match) = caps.get(1) {
             if let Ok(prompt_tokens) = n_tok_match.as_str().parse::<usize>() {
+                // Reset counters for new request boundary
+                slot_state.prompt_tokens = 0;
                 eprintln!("[FUSION] slot={} new request: {} prompt tokens", slot_idx, prompt_tokens);
                 let _ = fusion_tx.send(FusionEvent::NewPrompt(prompt_tokens));
             }
@@ -621,15 +489,12 @@ async fn process_line(
                     if slot_state.alpha_started {
                         slot_state.alpha_checkpoint_mib = Some(checkpoint_mib);
                     }
-                    if slot_state.beta_started {
-                        slot_state.beta_checkpoint_mib = Some(checkpoint_mib);
-                    }
                 }
             }
 
             let event = EnginePerfEvent {
                 slot: slot_idx, alias: alias.to_string(), tps: prompt_tps, ttft_ms: None,
-                fuel_alpha_pct: slot_state.alpha_interpolated(), fuel_beta_pct: slot_state.beta_interpolated(),
+                fuel_alpha_pct: slot_state.alpha_interpolated(),
                 n_tokens: slot_state.current_tokens,
                 prompt_tokens: slot_state.prompt_tokens,
                 kv_cache_pct: slot_state.kv_cache_pct(),
@@ -662,9 +527,6 @@ async fn process_line(
                     if slot_state.alpha_started {
                         slot_state.alpha_checkpoint_mib = Some(checkpoint_mib);
                     }
-                    if slot_state.beta_started {
-                        slot_state.beta_checkpoint_mib = Some(checkpoint_mib);
-                    }
                 }
             }
 
@@ -677,15 +539,12 @@ async fn process_line(
                     if slot_state.alpha_started {
                         slot_state.alpha_checkpoint_mib = Some(checkpoint_mib);
                     }
-                    if slot_state.beta_started {
-                        slot_state.beta_checkpoint_mib = Some(checkpoint_mib);
-                    }
                 }
             }
 
             let event = EnginePerfEvent {
                 slot: slot_idx, alias: alias.to_string(), tps: decode_tps, ttft_ms: None,
-                fuel_alpha_pct: slot_state.alpha_interpolated(), fuel_beta_pct: slot_state.beta_interpolated(),
+                fuel_alpha_pct: slot_state.alpha_interpolated(),
                 n_tokens: slot_state.current_tokens,
                 prompt_tokens: slot_state.prompt_tokens,
                 kv_cache_pct: slot_state.kv_cache_pct(),
@@ -713,7 +572,7 @@ async fn process_line(
 
                 let event = EnginePerfEvent {
                     slot: slot_idx, alias: alias.to_string(), tps: tg_tps, ttft_ms: None,
-                    fuel_alpha_pct: slot_state.alpha_interpolated(), fuel_beta_pct: slot_state.beta_interpolated(),
+                    fuel_alpha_pct: slot_state.alpha_interpolated(),
                     n_tokens: slot_state.current_tokens,
                     prompt_tokens: slot_state.prompt_tokens,
                     kv_cache_pct: slot_state.kv_cache_pct(),
@@ -743,7 +602,9 @@ async fn process_line(
     }
 
     // ── Direct n_tokens tracking for incremental updates with rolling TPS ──
-    let has_n_tokens = line.contains("n_tokens");
+    // Skip lines that are "stop processing" — handled by dedicated handler below
+    let is_stop_processing = stop_processing_re().is_match(line);
+    let has_n_tokens = line.contains("n_tokens") && !is_stop_processing;
     if has_n_tokens {
         let n_caps = n_tokens_re().captures(line);
         if let Some(caps) = n_caps {
@@ -782,7 +643,7 @@ async fn process_line(
 
                     let event = EnginePerfEvent {
                         slot: slot_idx, alias: alias.to_string(), tps: if is_generating { slot_state.rolling_tps_ema } else { 0.0 }, ttft_ms: None,
-                        fuel_alpha_pct: slot_state.alpha_interpolated(), fuel_beta_pct: slot_state.beta_interpolated(),
+                        fuel_alpha_pct: slot_state.alpha_interpolated(),
                         n_tokens: slot_state.current_tokens,
                         prompt_tokens: slot_state.prompt_tokens,
                         kv_cache_pct: slot_state.kv_cache_pct(),
@@ -800,6 +661,7 @@ async fn process_line(
         if caps.len() >= 2 {
             if let Some(final_tokens) = caps.get(1).and_then(|m| m.as_str().parse::<usize>().ok()) {
                 slot_state.current_tokens = final_tokens;
+                slot_state.prompt_tokens = 0;
                 slot_state.last_token_count = final_tokens;
                 slot_state.last_token_time = None;
                 slot_state.rolling_tps_ema = 0.0;
@@ -809,68 +671,4 @@ async fn process_line(
     }
 
     drop(perf_state);
-}
-
-// ── Tauri Command: Start BETA Checkpoint Manually ──────────────────
-
-#[tauri::command]
-pub async fn cmd_start_beta_fuel_tank(
-    slot_idx: usize,
-    app: tauri::State<'_, crate::engine::AppContext>,
-) -> Result<String, String> {
-    let alias = {
-        let stack = app.stack.lock().await;
-        stack.get_slot(slot_idx).map(|s| s.alias.clone()).unwrap_or_else(|| "unknown".to_string())
-    };
-
-    let state_arc: Arc<TokioMutex<PerfState>> = {
-        let guard = STATE.lock().map_err(|e| e.to_string())?;
-        guard.as_ref()
-            .ok_or("Performance reader not initialized")?
-            .clone()
-    };
-
-    let mut perf_state = state_arc.lock().await;
-
-    let ctx_size = {
-        let stack = app.stack.lock().await;
-        if stack.get_slot(slot_idx).is_some() { 32768 } else { 32768 }
-    };
-
-    let slot_state = perf_state.get_or_create(slot_idx, ctx_size);
-
-    if slot_state.beta_started {
-        slot_state.current_tokens = 0;
-        slot_state.beta_checkpoint_mib = None;
-        eprintln!("[PERF_PULSE] slot={} BETA checkpoint reset (manual)", slot_idx);
-    } else {
-        slot_state.beta_started = true;
-        slot_state.current_tokens = 0;
-        eprintln!("[PERF_PULSE] slot={} BETA checkpoint started (manual)", slot_idx);
-    }
-
-    let (alpha_pct, current_tokens, prompt_tok) = {
-        let alpha_p = perf_state.get_or_create(slot_idx, ctx_size).alpha_interpolated();
-        let s = perf_state.slots.get(&slot_idx);
-        let tokens = s.map(|sl| sl.current_tokens).unwrap_or(0);
-        let ptok = s.map(|sl| sl.prompt_tokens).unwrap_or(0);
-        drop(perf_state);
-        (alpha_p, tokens, ptok)
-    };
-
-    let log_hub_clone = app.log_hub.clone();
-    tokio::spawn(async move {
-        let event = EnginePerfEvent {
-            slot: slot_idx, alias: alias.clone(), tps: 0.0, ttft_ms: None,
-            fuel_alpha_pct: alpha_pct,
-            fuel_beta_pct: Some(0.0),
-            n_tokens: current_tokens,
-            prompt_tokens: prompt_tok,
-            kv_cache_pct: None,
-            prompt_progress: None,
-        };
-        log_hub_clone.emit("engine-perf", &event);
-    });
-
-    Ok(format!("BETA checkpoint started for slot {}", slot_idx))
 }

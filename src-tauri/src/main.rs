@@ -13,14 +13,16 @@ mod templates;
 mod nvml_probe;
 mod fit_scanner;
 mod mobile_bridge;
-mod engine_perf;
+mod perf_monitor;
 mod burst_bench;
 mod gguf_scan;
 mod model_cache;
 mod download_manager;
 mod model_catalog;
 mod engine_utils;
-mod fusion;
+mod fusion_brain;
+mod fusion_poller;
+mod fusion_logparser;
 mod provider_mgmt;
 mod llama_catalog;
 
@@ -344,7 +346,7 @@ async fn main() {
 
                 let stack_clone = ctx.stack.clone();
                 tauri::async_runtime::spawn(async move {
-                    crate::fusion::stop_all_fusion_tasks().await;
+                    fusion_brain::stop_all_brains().await;
                     EngineStack::kill_all(&stack_clone).await;
                 });
             }
@@ -391,8 +393,6 @@ async fn main() {
             engine::scan_all_models_cmd,
             engine::cancel_gguf_scan_cmd,
             engine::clear_model_cache_cmd,
-            // Engine Performance Pulse commands
-            engine_perf::cmd_start_beta_fuel_tank,
             burst_bench::cmd_burst_bench,
             // Mobile Sentinel Bridge commands (always active)
             mobile_bridge::cmd_mobile_bridge_start,

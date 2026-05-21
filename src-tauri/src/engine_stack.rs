@@ -1,6 +1,5 @@
 use std::process::Stdio;
 use std::sync::Arc;
-use tokio::sync::mpsc;
 use crate::types::{EngineConfig, StackEntry};
 use crate::log_hub::LogHub;
 
@@ -39,7 +38,6 @@ pub enum SlotStatus {
     Idle,
     Loading,
     Running,
-    Error(String),
 }
 
 impl std::fmt::Display for SlotStatus {
@@ -48,16 +46,13 @@ impl std::fmt::Display for SlotStatus {
             SlotStatus::Idle => write!(f, "IDLE"),
             SlotStatus::Loading => write!(f, "LOADING"),
             SlotStatus::Running => write!(f, "RUNNING"),
-            SlotStatus::Error(msg) => write!(f, "ERROR({})", msg),
         }
     }
 }
 
 #[derive(Debug)]
 pub struct EngineSlot {
-    pub conpty_proc: Option<conpty::Process>,
-    pub output_tx: Option<mpsc::UnboundedSender<String>>,
-    pub error_buffer: Arc<std::sync::Mutex<Vec<String>>>,
+    pub child_proc: Option<std::process::Child>,
     pub port: u16,
     pub status: SlotStatus,
     pub alias: String,
@@ -87,9 +82,7 @@ impl EngineStack {
 
         for i in 0..slot_count {
             slots.push(Some(Arc::new(parking_lot::Mutex::new(EngineSlot {
-                conpty_proc: None,
-                output_tx: None,
-                error_buffer: Arc::new(std::sync::Mutex::new(Vec::new())),
+                child_proc: None,
                 port: base_port + i as u16,
                 status: SlotStatus::Idle,
                 alias: format!("ENGINE-{}", i),
@@ -133,7 +126,7 @@ impl EngineStack {
         provider_display_name: String,
         backend_type: String,
         stack_ref: &Arc<tokio::sync::Mutex<EngineStack>>,
-    ) -> Result<mpsc::UnboundedReceiver<String>, String> {
+    ) -> Result<std::process::ChildStderr, String> {
         // Validate binary BEFORE acquiring any lock (avoids holding tokio MutexGuard across await)
         validate_binary_path(binary_path).await?;
 
@@ -151,104 +144,52 @@ impl EngineStack {
             arc
         };
 
-        let mut std_cmd = std::process::Command::new(binary_path);
+        let mut cmd = std::process::Command::new(binary_path);
+
+        // Set CWD to model directory so bare filenames (mmproj, etc.) resolve correctly
+        if let Some(model_dir) = std::path::Path::new(&config.model_path).parent() {
+            cmd.current_dir(model_dir);
+        }
 
         for (k, v) in std::env::vars() {
-            std_cmd.env(&k, &v);
+            cmd.env(&k, &v);
         }
 
-        eprintln!("[CONPTY] slot={} binary: {}", slot_idx, binary_path.display());
-        eprintln!("[CONPTY] slot={} args: {:?}", slot_idx, cmd_args.iter().take(5).collect::<Vec<_>>());
+        eprintln!("[ENGINE] slot={} binary: {}", slot_idx, binary_path.display());
+        eprintln!("[ENGINE] slot={} args: {:?}", slot_idx, cmd_args.iter().take(5).collect::<Vec<_>>());
 
-        std_cmd
+        use std::os::windows::process::CommandExt;
+        const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
+        cmd.creation_flags(CREATE_NEW_PROCESS_GROUP) // process isolation for signal handling
             .args(&cmd_args)
             .env("CUDA_VISIBLE_DEVICES", &gpu_mask)
-            .env("LLAMA_LOG_COLORS", "on");
+            .env("LLAMA_LOG_COLORS", "on")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::piped());
 
-        let mut conpty_proc = match conpty::Process::spawn(std_cmd) {
-            Ok(p) => p,
-            Err(e) => return Err(format!("Failed to spawn {} via ConPTY: {}", binary_path.display(), e)),
+        let mut child = match cmd.spawn() {
+            Ok(c) => c,
+            Err(e) => return Err(format!("Failed to spawn {}: {}", binary_path.display(), e)),
         };
 
+        let pid = child.id();
+        eprintln!("[ENGINE] slot={} spawned (pid={})", slot_idx, pid);
+
+        // Extract stderr pipe — LogHub will own reading and processing.
+        let stderr = child.stderr.take().unwrap();
+
+        // Quick alive check — give process 100ms to initialize
         std::thread::sleep(std::time::Duration::from_millis(100));
-
-        eprintln!("[CONPTY] slot={} spawned (pid={}), alive={}", slot_idx, conpty_proc.pid(), conpty_proc.is_alive());
-
-        let mut conpty_output = match conpty_proc.output() {
-            Ok(r) => r,
-            Err(e) => return Err(format!("Failed to get ConPTY output: {}", e)),
-        };
-
-        let early_lines: Vec<String> = {
-            use std::io::{BufRead, BufReader};
-            conpty_output.blocking(false);
-            let mut reader = BufReader::new(&mut conpty_output);
-            std::iter::from_fn(|| {
-                let mut line = String::new();
-                match reader.read_line(&mut line) {
-                    Ok(0) => None,
-                    Ok(_) if line.trim().is_empty() => None,
-                    Ok(_) => Some(line.trim().to_string()),
-                    Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => None,
-                    Err(e) => {
-                        eprintln!("[CONPTY] slot={} early read error: {}", slot_idx, e);
-                        None
-                    }
-                }
-            }).take(20).collect()
-        };
-
-        if !early_lines.is_empty() {
-            eprintln!("[CONPTY] slot={} early output ({} lines): {:?}", slot_idx, early_lines.len(), early_lines.join(" | "));
-        }
-
-        let (tx, rx) = mpsc::unbounded_channel::<String>();
-
-        let error_buf = {
-            let slot = slot_arc.lock();
-            slot.error_buffer.clone()
-        };
-        let reader_tx = tx.clone();
-
-        tokio::task::spawn_blocking(move || {
-            use std::io::{BufRead, BufReader};
-
-            conpty_output.blocking(true);
-            let reader = BufReader::new(&mut conpty_output);
-
-            for line_result in reader.lines() {
-                match line_result {
-                    Ok(line) => {
-                        let cleaned = line.trim_end_matches('\n').trim();
-                        if !cleaned.is_empty() {
-                            let _ = reader_tx.send(cleaned.to_string());
-                            let mut buf = error_buf.lock().unwrap();
-                            buf.push(cleaned.to_string());
-                            if buf.len() > 50 { buf.remove(0); }
-                        }
-                    }
-                    Err(e) => {
-                        eprintln!("[CONPTY] slot={} read error: {}", slot_idx, e);
-                        break;
-                    }
-                }
+        if let Ok(status) = child.try_wait() {
+            if let Some(code) = status {
+                eprintln!("[ENGINE] slot={} CRASHED immediately after spawn! Exit code: {}", slot_idx, code.code().unwrap_or(-1));
             }
-
-            eprintln!("[CONPTY] slot={} output stream closed", slot_idx);
-        });
-
-        eprintln!("[CONPTY] slot={} post-output check: alive={}", slot_idx, conpty_proc.is_alive());
-
-        if !conpty_proc.is_alive() {
-            let exit_code = conpty_proc.wait(None).unwrap_or(u32::MAX);
-            eprintln!("[CONPTY] slot={} CRASHED immediately after spawn! Exit code: {}", slot_idx, exit_code);
         }
 
         // Update slot state under per-slot lock only (no tokio guard held)
         {
             let mut slot = slot_arc.lock();
-            slot.conpty_proc = Some(conpty_proc);
-            slot.output_tx = Some(tx);
+            slot.child_proc = Some(child);
             slot.port = config.port;
             slot.alias = config.alias.clone();
             slot.model_path = config.model_path.clone();
@@ -260,27 +201,7 @@ impl EngineStack {
             slot.status = SlotStatus::Loading;
         }
 
-        Ok(rx)
-    }
-
-    pub fn take_output_tx(&self, idx: usize) -> Option<mpsc::UnboundedSender<String>> {
-        if let Some(slot_arc) = &self.slots[idx] {
-            slot_arc.lock().output_tx.take()
-        } else {
-            None
-        }
-    }
-
-    pub fn drain_error_buffer(&self, idx: usize) -> Vec<String> {
-        if let Some(slot_arc) = &self.slots[idx] {
-            slot_arc.lock().error_buffer.lock().unwrap().drain(..).collect()
-        } else {
-            Vec::new()
-        }
-    }
-
-    pub fn log_hub(&self) -> Option<&LogHub> {
-        self.log_hub.as_ref()
+        Ok(stderr)
     }
 
     async fn kill_process_by_port(port: u16) -> Result<(), String> {
@@ -308,161 +229,31 @@ impl EngineStack {
         Ok(())
     }
 
-    fn graceful_shutdown_process(proc: &mut conpty::Process, slot_idx: usize) -> bool {
-        let pid = proc.pid();
+    fn graceful_shutdown_process(
+        child: &mut std::process::Child,
+        slot_idx: usize,
+    ) -> bool {
+        let pid = child.id();
 
-        // ── WriteConsoleInputW on ConPTY input handle ──
-        // GenerateConsoleCtrlEvent does NOT work with ConPTY — pseudo-consoles don't
-        // participate in Windows console process groups. The ONLY way to send Ctrl+C
-        // is WriteConsoleInputW with KEY_EVENT_RECORDs, exactly what Windows Terminal does.
-        // Sequence: LControl DOWN → 'c' press (with Ctrl held) → LControl UP
+        // With piped I/O (no console), Ctrl+C and stdin EOF are both unreliable.
+        // TerminateProcess is the only reliable path — it completes in ~0.2s.
+        eprintln!("[STOP] slot={} pid={} TerminateProcess...", slot_idx, pid);
+        let _ = child.kill();
 
-        const KEY_EVENT: u16 = 1;
-        const VK_LCONTROL: u16 = 0xA2;
-        const CTRL_PRESSED: u32 = 0x04;
-
-        #[repr(C)]
-        struct KeyEventRecord {
-            _eventType: u16,
-            _key_down: bool,
-            _w_repeat_count: u16,
-            _w_virtual_key_code: u16,
-            _w_virtual_scan_code: u16,
-            _u_char: [u8; 4],
-            _dw_control_key_state: u32,
-        }
-
-        #[repr(C)]
-        struct InputRecord {
-            _type: u16,
-            _event: KeyEventRecord,
-        }
-
-        extern "system" {
-            fn WriteConsoleInputW(
-                hConsoleInput: std::os::windows::io::RawHandle,
-                lpBuffer: *const InputRecord,
-                nLength: u32,
-                lpNumberOfEventsWritten: *mut u32,
-            ) -> i32;
-        }
-
-        let t0 = std::time::Instant::now();
-        eprintln!("[STOP] slot={} pid={} sending Ctrl+C via WriteConsoleInputW...", slot_idx, pid);
-
-        match proc.input() {
-            Ok(inp) => {
-                // conpty::PipeWriter wraps HANDLE but doesn't expose it publicly.
-                // Convert to std::fs::File (via From impl), extract raw handle, then
-                // immediately convert back with into_raw_handle to prevent double-close.
-                let pipe_file = std::fs::File::from(inp);
-                let handle = unsafe {
-                    use std::os::windows::io::{AsRawHandle, IntoRawHandle};
-                    let h = AsRawHandle::as_raw_handle(&pipe_file);
-                    std::mem::forget(pipe_file); // don't close — conpty Process owns the original
-                    h
-                };
-
-                let events: [InputRecord; 3] = [
-                    // LControl DOWN
-                    InputRecord {
-                        _type: KEY_EVENT,
-                        _event: KeyEventRecord {
-                            _eventType: KEY_EVENT,
-                            _key_down: true,
-                            _w_repeat_count: 1,
-                            _w_virtual_key_code: VK_LCONTROL,
-                            _w_virtual_scan_code: 0x1D,
-                            _u_char: [0; 4],
-                            _dw_control_key_state: CTRL_PRESSED,
-                        },
-                    },
-                    // 'c' press (Ctrl held)
-                    InputRecord {
-                        _type: KEY_EVENT,
-                        _event: KeyEventRecord {
-                            _eventType: KEY_EVENT,
-                            _key_down: true,
-                            _w_repeat_count: 1,
-                            _w_virtual_key_code: 0x43,
-                            _w_virtual_scan_code: 0x2E,
-                            _u_char: [b'c', b'C', 0, 0],
-                            _dw_control_key_state: CTRL_PRESSED,
-                        },
-                    },
-                    // LControl UP
-                    InputRecord {
-                        _type: KEY_EVENT,
-                        _event: KeyEventRecord {
-                            _eventType: KEY_EVENT,
-                            _key_down: false,
-                            _w_repeat_count: 1,
-                            _w_virtual_key_code: VK_LCONTROL,
-                            _w_virtual_scan_code: 0x1D,
-                            _u_char: [0; 4],
-                            _dw_control_key_state: 0,
-                        },
-                    },
-                ];
-
-                let mut written: u32 = 0;
-                let res = unsafe {
-                    WriteConsoleInputW(handle, events.as_ptr(), 3, &mut written)
-                };
-
-                if res == 0 || written != 3 {
-                    eprintln!(
-                        "[STOP] slot={} WriteConsoleInputW failed (res={}, written={}, lasterr={})",
-                        slot_idx,
-                        res,
-                        written,
-                        std::io::Error::last_os_error()
-                    );
-                } else {
-                    eprintln!("[STOP] slot={} Ctrl+C injected successfully ({} events written)", slot_idx, written);
+        for attempt in 0..40 {
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            match child.try_wait() {
+                Ok(Some(_)) => {
+                    eprintln!("[STOP] slot={} KILLED after {:.1}s", slot_idx, (attempt + 1) as f64 * 0.05);
+                    return true;
                 }
-
-                // Wait up to 3s for process to exit
-                let graceful = match proc.wait(Some(3000)) {
-                    Ok(code) => {
-                        let elapsed = t0.elapsed();
-                        eprintln!(
-                            "[STOP] slot={} exit code={} elapsed={:.1}ms",
-                            slot_idx,
-                            code,
-                            elapsed.as_secs_f64() * 1000.0
-                        );
-                        elapsed.as_secs_f64() < 1.5
-                    }
-                    Err(_) => false,
-                };
-
-                if !graceful {
-                    eprintln!("[STOP] slot={} graceful timeout, TerminateProcess...", slot_idx);
-                    let _ = proc.exit(1);
-
-                    match proc.wait(Some(2000)) {
-                        Ok(_) => {
-                            eprintln!("[STOP] slot={} FORCE KILLED (TerminateProcess)", slot_idx);
-                        }
-                        Err(_) => {
-                            eprintln!(
-                                "[STOP] slot={} STILL ALIVE after TerminateProcess",
-                                slot_idx
-                            );
-                        }
-                    }
-                }
-
-                graceful
-            }
-            Err(e) => {
-                eprintln!("[STOP] slot={} proc.input() failed: {}", slot_idx, e);
-                let _ = proc.exit(1);
-                let _ = proc.wait(Some(2000));
-                false
+                Ok(None) => {}
+                Err(_) => break,
             }
         }
+
+        eprintln!("[STOP] slot={} STILL ALIVE after kill — orphaned", slot_idx);
+        false
     }
 
     /// Reset a slot to factory defaults — clears all engine metadata so the status poll returns clean idle entries.
@@ -470,8 +261,7 @@ impl EngineStack {
         if let Some(slot_arc) = &self.slots[idx] {
             let mut slot = slot_arc.lock();
             slot.status = SlotStatus::Idle;
-            slot.conpty_proc = None;
-            slot.output_tx = None;
+            slot.child_proc = None;
             slot.alias = format!("ENGINE-{}", idx);
             slot.model_path.clear();
             slot.gpu_mask.clear();
@@ -500,7 +290,7 @@ impl EngineStack {
             let mut slot = stack.slots[slot_idx].as_ref().ok_or("Slot not found")?.lock();
             let port = slot.port;
             let alias = slot.alias.clone();
-            let proc_to_stop = slot.conpty_proc.take();
+            let proc_to_stop = slot.child_proc.take();
             (port, alias, proc_to_stop)
         }; // tokio stack lock dropped
 
@@ -512,9 +302,9 @@ impl EngineStack {
             }).await.unwrap_or(false);
 
             let msg = if !graceful {
-                "[STOP] FORCE KILLED".to_string()
+                "[STOP] ORPHANED (still alive after kill)".to_string()
             } else {
-                "[STOP] GRACEFUL exit".to_string()
+                "[STOP] KILLED".to_string()
             };
             eprintln!("[STOP] slot={} alias={} shutdown: {}", slot_idx, alias, msg);
 
@@ -543,7 +333,7 @@ impl EngineStack {
         stack_ref: &Arc<tokio::sync::Mutex<EngineStack>>,
     ) -> Vec<usize> {
         // Phase 1: Collect target slot data under a brief lock
-        let mut targets: Vec<(usize, u16, String, Option<conpty::Process>)> = Vec::new();
+        let mut targets: Vec<(usize, u16, String, Option<std::process::Child>)> = Vec::new();
         let log_hub_ref = {
             let stack = stack_ref.lock().await;
             for (i, slot_opt) in stack.slots.iter().enumerate() {
@@ -554,7 +344,7 @@ impl EngineStack {
                             eprintln!("[STOP] shutting down slot={} port={} alias={}", i, slot.port, slot.alias);
                             let port = slot.port;
                             let alias = slot.alias.clone();
-                            let proc_to_stop = slot.conpty_proc.take();
+                            let proc_to_stop = slot.child_proc.take();
                             targets.push((i, port, alias, proc_to_stop));
                         }
                         _ => {}
@@ -577,9 +367,9 @@ impl EngineStack {
                     }).await.unwrap_or(false);
 
                     let msg = if !graceful {
-                        "[STOP] FORCE KILLED".to_string()
+                        "[STOP] ORPHANED (still alive after kill)".to_string()
                     } else {
-                        "[STOP] GRACEFUL exit".to_string()
+                        "[STOP] KILLED".to_string()
                     };
                     eprintln!("[STOP] slot={} alias={} shutdown: {}", i, alias, msg);
 
@@ -623,7 +413,7 @@ impl EngineStack {
         stack_ref: &Arc<tokio::sync::Mutex<EngineStack>>,
     ) -> Vec<usize> {
         // Phase 1: Collect targets under brief lock
-        let mut targets: Vec<(usize, u16, String, Option<conpty::Process>)> = Vec::new();
+        let mut targets: Vec<(usize, u16, String, Option<std::process::Child>)> = Vec::new();
         let log_hub_ref = {
             let stack = stack_ref.lock().await;
             for (i, slot_opt) in stack.slots.iter().enumerate() {
@@ -633,7 +423,7 @@ impl EngineStack {
                         eprintln!("[STOP] provider stop slot={} port={} alias={}", i, slot.port, slot.alias);
                         let port = slot.port;
                         let alias = slot.alias.clone();
-                        let proc_to_stop = slot.conpty_proc.take();
+                        let proc_to_stop = slot.child_proc.take();
                         targets.push((i, port, alias, proc_to_stop));
                     }
                 }
@@ -653,9 +443,9 @@ impl EngineStack {
                     }).await.unwrap_or(false);
 
                     let msg = if !graceful {
-                        "[STOP] FORCE KILLED".to_string()
+                        "[STOP] ORPHANED (still alive after kill)".to_string()
                     } else {
-                        "[STOP] GRACEFUL exit".to_string()
+                        "[STOP] KILLED".to_string()
                     };
                     eprintln!("[STOP] slot={} alias={} shutdown: {}", i, alias, msg);
 
@@ -691,18 +481,11 @@ impl EngineStack {
         stopped
     }
 
-    /// Stops all slots whose backend_type matches the given provider ID.
-    pub async fn stop_slots_by_provider(
-        backend_type: &str,
-        stack_ref: &Arc<tokio::sync::Mutex<EngineStack>>,
-    ) -> Vec<usize> {
-        Self::stop_slots_by_provider_parallel(backend_type, stack_ref).await
-    }
-   /// Emergency kill all — used during app exit. Runs in parallel for speed.
+    /// Emergency kill all — used during app exit. Runs in parallel for speed.
     /// Static self-locking — caller must NOT hold the tokio stack lock.
     pub async fn kill_all(stack_ref: &Arc<tokio::sync::Mutex<EngineStack>>) {
         // Phase 1: Collect targets under brief lock
-        let mut targets: Vec<(usize, u16, Option<conpty::Process>)> = Vec::new();
+        let mut targets: Vec<(usize, u16, Option<std::process::Child>)> = Vec::new();
         {
             let stack = stack_ref.lock().await;
             for (i, slot_opt) in stack.slots.iter().enumerate() {
@@ -712,7 +495,7 @@ impl EngineStack {
                         SlotStatus::Running | SlotStatus::Loading => {
                             eprintln!("[STOP] app exit: shutting down slot={} port={} alias={}", i, slot.port, slot.alias);
                             let port = slot.port;
-                            let proc_to_stop = slot.conpty_proc.take();
+                            let proc_to_stop = slot.child_proc.take();
                             targets.push((i, port, proc_to_stop));
                         }
                         _ => {}

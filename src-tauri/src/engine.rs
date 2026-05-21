@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use tokio::sync::Mutex;
 use tokio::sync::Mutex as TokioMutex;
-use tokio::sync::broadcast; // For fit scanner progress channel (unrelated to ConPTY)
+use tokio::sync::broadcast; // For fit scanner progress channel
 
 
 use crate::engine_stack::SlotStatus;
@@ -18,7 +18,7 @@ use crate::types::{EngineConfig, ModelEntry};
 use crate::fit_scanner;
 use crate::telemetry;
 use crate::telemetry::detect_gpu_count;
-use crate::engine_perf;
+use crate::fusion_brain;
 use crate::model_catalog;
 use crate::engine_utils;
 
@@ -200,31 +200,39 @@ pub async fn launch_engine(
 
     let ctx_size_int = crate::templates::ctx_to_int_tokens(&config.get_param_str("ctx").unwrap_or_else(|| "32k".to_string()));
 
-    // Spawn engine and get ConPTY output receiver for unified reader
-    let conpty_rx = {
+    // Spawn engine and get raw pipe (stderr only) — LogHub owns reading.
+    let stderr = {
         match EngineStack::load_slot(slot_idx, &config, &binary_path, gpu_mask.clone(), cmd_args.clone(), provider_display_name.clone(), backend_type.clone(), &app.stack).await {
-            Ok(rx) => rx,
+            Ok(pipe) => pipe,
             Err(e) => return Err(e),
         }
     };
 
-    eprintln!("[LAUNCH] slot={} ConPTY output channel ready", slot_idx);
+    eprintln!("[LAUNCH] slot={} output channel ready", slot_idx);
 
-    // Create internal fusion event channel (unified reader → fusion HTTP poller)
-    let (fusion_tx, fusion_rx) = tokio::sync::mpsc::unbounded_channel::<engine_perf::FusionEvent>();
-
-    // Spawn unified reader — single-pass ConPTY consumer with restart loop
-    let unified_config = engine_perf::UnifiedReaderConfig {
-        log_hub: app.log_hub.clone(),
+    // LogHub reads pipe, processes lines, returns fan-out channel for subscribers
+    let stack_for_ready = app.stack.clone();
+    let slot_for_ready = slot_idx;
+    let _line_rx = app.log_hub.spawn_slot_reader(
         slot_idx,
-        alias: config.alias.clone(),
-        ctx_size: ctx_size_int,
-        stack: app.stack.clone(),
-        fusion_tx,
-    };
-    engine_perf::spawn_unified_reader(conpty_rx, unified_config);
+        config.alias.clone(),
+        stderr,
+        move || {
+            // Mark slot as Running and emit stack-changed event
+            let s_clone = stack_for_ready.clone();
+            let si = slot_for_ready;
+            tokio::spawn(async move {
+                let s = s_clone.lock().await;
+                if let Some(mut slot) = s.get_slot(si) {
+                    use crate::engine_stack::SlotStatus;
+                    slot.status = SlotStatus::Running;
+                }
+                s.emit_stack_changed();
+            });
+        },
+    );
 
-    // Spawn FUSION HTTP poller — /slots polling + fusion event consumer (no ConPTY dependency)
+    // Spawn FUSION brain — /slots + /metrics polling, state machine, emits "fusion-update"
     {
         let fusion_log_hub = app.log_hub.clone();
         let fusion_alias = config.alias.clone();
@@ -233,8 +241,16 @@ pub async fn launch_engine(
         let fusion_unified_kv = config.get_unified_kv();
 
         tokio::spawn(async move {
-            crate::fusion::start_fusion_http_poller(
-                fusion_log_hub, fusion_alias, slot_idx, fusion_port, ctx_size_int, fusion_parallel, fusion_unified_kv, fusion_rx,
+            fusion_brain::start_brain(
+                fusion_log_hub,
+                fusion_brain::FusionConfig {
+                    alias: fusion_alias,
+                    slot_idx,
+                    port: fusion_port,
+                    ctx_total: ctx_size_int,
+                    parallel: fusion_parallel,
+                    unified_kv: fusion_unified_kv,
+                },
             ).await;
         });
     }
@@ -268,20 +284,16 @@ pub async fn launch_engine(
 
 #[tauri::command]
 pub async fn stop_engine(alias: String, app: tauri::State<'_, AppContext>) -> Result<String, String> {
-    let (slot_idx, port) = {
+    let slot_idx = {
         let stack = app.stack.lock().await;
         let slot_count = stack.slots.len();
-        let idx = (0..slot_count).find(|&i| {
+        (0..slot_count).find(|&i| {
             stack.get_slot(i).map_or(false, |s| s.alias == alias)
-        }).ok_or(format!("Engine '{}' not found", alias))?;
-        let s = stack.get_slot(idx).unwrap();
-        let port = s.port;
-        drop(s);
-        (idx, port)
+        }).ok_or(format!("Engine '{}' not found", alias))?
     };
 
-    // Cancel fusion monitor BEFORE stopping the slot — prevents race with channel close
-    crate::fusion::stop_fusion_task(port).await;
+    // Cancel fusion brain BEFORE stopping the slot — prevents race with channel close
+    fusion_brain::stop_brain(slot_idx).await;
 
     // stop_slot is self-locking — does NOT require caller to hold stack lock
     EngineStack::stop_slot(slot_idx, &app.stack).await?;
@@ -292,24 +304,20 @@ pub async fn stop_engine(alias: String, app: tauri::State<'_, AppContext>) -> Re
 
 #[tauri::command]
 pub async fn stop_all_engines(app: tauri::State<'_, AppContext>) -> Result<String, String> {
-    let ports_to_stop = {
+    let slots_to_stop: Vec<usize> = {
         let stack = app.stack.lock().await;
         let slot_count = stack.slots.len();
 
-        let mut ports = Vec::new();
-        for i in 0..slot_count {
-            if let Some(slot) = stack.get_slot(i) {
-                if !matches!(slot.status, SlotStatus::Idle) {
-                    ports.push(slot.port);
-                }
-            }
-        }
-        ports
+        (0..slot_count)
+            .filter(|&i| {
+                stack.get_slot(i).map_or(false, |s| !matches!(s.status, SlotStatus::Idle))
+            })
+            .collect()
     }; // Stack lock released
 
-    // Cancel all fusion monitors in parallel BEFORE stopping slots
-    for port in &ports_to_stop {
-        crate::fusion::stop_fusion_task(*port).await;
+    // Cancel all fusion brains in parallel BEFORE stopping slots
+    for idx in &slots_to_stop {
+        fusion_brain::stop_brain(*idx).await;
     }
 
     // stop_all_parallel is self-locking — does NOT require caller to hold stack lock
@@ -321,22 +329,20 @@ pub async fn stop_all_engines(app: tauri::State<'_, AppContext>) -> Result<Strin
 /// Stops all running engines for a specific provider (by backend_type).
 #[tauri::command]
 pub async fn stop_engines_by_provider(provider_id: String, app: tauri::State<'_, AppContext>) -> Result<String, String> {
-    let ports = {
+    let slots_to_stop: Vec<usize> = {
         let stack = app.stack.lock().await;
-        let mut p = Vec::new();
-        for i in 0..stack.slots.len() {
-            if let Some(slot) = stack.get_slot(i) {
-                if slot.backend_type == provider_id && !matches!(slot.status, SlotStatus::Idle) {
-                    p.push(slot.port);
-                }
-            }
-        }
-        p
+        (0..stack.slots.len())
+            .filter(|&i| {
+                stack.get_slot(i).map_or(false, |s| {
+                    s.backend_type == provider_id && !matches!(s.status, SlotStatus::Idle)
+                })
+            })
+            .collect()
     };
 
-    // Cancel fusion monitors BEFORE stopping slots
-    for port in &ports {
-        crate::fusion::stop_fusion_task(*port).await;
+    // Cancel fusion brains BEFORE stopping slots
+    for idx in &slots_to_stop {
+        fusion_brain::stop_brain(*idx).await;
     }
 
     // stop_slots_by_provider_parallel is self-locking — no stack lock needed
@@ -403,8 +409,8 @@ pub async fn get_stack_status(app: tauri::State<'_, AppContext>) -> Result<Vec<S
 pub async fn clean_exit(app: tauri::State<'_, AppContext>) -> Result<(), String> {
     log::info!("Clean exit requested — killing all orphaned processes");
 
-    // Stop fusion monitors first to prevent orphaned HTTP polling
-    crate::fusion::stop_all_fusion_tasks().await;
+    // Stop fusion brains first to prevent orphaned HTTP polling
+    fusion_brain::stop_all_brains().await;
 
     // kill_all is self-locking — no stack lock needed
     EngineStack::kill_all(&app.stack).await;
@@ -499,24 +505,6 @@ pub async fn open_folder_dialog(title: Option<String>) -> Result<Option<String>,
     .map_err(|e| format!("Folder dialog panicked: {}", e))?;
 
     Ok(result.map(|p| p.to_string_lossy().to_string()))
-}
-
-fn detect_mmproj(model_path: &str) -> (u64, bool) {
-    let p = PathBuf::from(model_path);
-    if let Some(dir) = p.parent() {
-        if let Ok(entries) = std::fs::read_dir(dir) {
-            for entry in entries.flatten() {
-                let fname = entry.file_name();
-                let fname_str = fname.to_string_lossy().to_lowercase();
-                if fname_str.contains("mmproj") && !fname_str.ends_with(".gguf") {
-                    if let Ok(meta) = std::fs::metadata(entry.path()) {
-                        return (meta.len(), true);
-                    }
-                }
-            }
-        }
-    }
-    (0, false)
 }
 
 // ── FIT Scanner Commands ────────────────────────────────────────────
@@ -665,11 +653,6 @@ pub async fn fit_stop_scan(app: tauri::State<'_, AppContext>) -> Result<(), Stri
     let guard = app.fit_scan_cancel.lock().await;
     guard.store(true, Ordering::Relaxed);
     Ok(())
-}
-
-#[tauri::command]
-pub fn get_mmproj_size_mib(model_path: String) -> f64 {
-    fit_scanner::get_mmproj_size_mib(&model_path)
 }
 
 #[tauri::command]

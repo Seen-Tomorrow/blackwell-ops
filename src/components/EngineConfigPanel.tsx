@@ -489,7 +489,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       const testArgs = testFlags.trim().split(/\s+/).filter(Boolean);
       fullConfig.extra_params = testFlagsMode === "replace"
         ? { __test_args: testArgs } // REPLACE: bypass all params, use only raw flags
-        : { __test_args_add: testArgs }; // ADD: append to end of config command (overrides template)
+        : { ...fullConfig.extra_params, __test_args_add: testArgs }; // ADD: merge with user config, append test flags
     }
 
     // Trigger blaze animation
@@ -721,6 +721,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                             setSpecFlash(true);
                             setTimeout(() => setSpecFlash(false), 400);
                             window.dispatchEvent(new CustomEvent("blackops-reload-providers"));
+                            // Trigger config reload so newly unhidden params get defaults in state
+                            window.dispatchEvent(new CustomEvent("param-config-changed"));
                           })
                           .catch(err => console.error("[toggle_group_hidden] failed:", err));
                       }}

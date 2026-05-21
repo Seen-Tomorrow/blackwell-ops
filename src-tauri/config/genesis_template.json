@@ -41,7 +41,7 @@
         "flag": "--ubatch-size",
         "ptype": "arg_select",
         "values": [128, 256, 512, 1024, 2048, 4096, 8192],
-        "default": 1024,
+        "default": 512,
         "ui_group": "PERFORMANCE",
         "note": "Micro-batch size for inference."
       },
@@ -135,7 +135,7 @@
         "label": "BASE-PORT",
         "flag": null,
         "ptype": "logic_only",
-        "values": [8080, 8888, 9090],
+        "values": [8080, 8180, 8888, 9090],
         "default": 8080,
         "dock": "runtime",
         "ui_group": "RUNTIME-CONFIG",
@@ -207,41 +207,12 @@
         "note": "Enable continuous batching."
       },
       {
-        "key": "metrics",
-        "label": "METRICS",
-        "flag": "--metrics",
-        "ptype": "switch_onoff",
-        "values": ["on"],
-        "default": "on",
-        "ui_group": "FEATURE-FLAGS",
-        "note": "Enable Prometheus-style metrics endpoint."
-      },
-      {
-        "key": "verbose",
-        "label": "VERBOSE",
-        "flag": "--verbose",
-        "ptype": "switch_onoff",
-        "values": ["on", "off"],
-        "default": "off",
-        "ui_group": "FEATURE-FLAGS"
-      },
-      {
-        "key": "log_timestamps",
-        "label": "LOG-TIMESTAMPS",
-        "flag": "--log-timestamps",
-        "ptype": "switch_onoff",
-        "values": ["on", "off"],
-        "default": "on",
-        "ui_group": "FEATURE-FLAGS",
-        "note": "Forces line flush per output - critical for real-time log streaming."
-      },
-      {
         "key": "spec_type",
         "label": "SPEC-TYPE",
         "flag": "--spec-type",
         "ptype": "arg_select",
         "values": ["none", "draft-simple", "draft-eagle3", "draft-mtp", "ngram-simple", "ngram-map-k", "ngram-map-k4v", "ngram-mod", "ngram-cache"],
-        "default": "none",
+        "default": "draft-mtp",
         "ui_group": "SPECULATIVE-DECODING",
         "hidden_default": true,
         "note": "Comma-separated speculative decoding types. 'none' disables."
@@ -252,7 +223,7 @@
         "flag": "--spec-draft-n-max",
         "ptype": "arg_select",
         "values": [1, 2, 3, 4, 5, 6, 8, 10, 16, 20],
-        "default": 6,
+        "default": 3,
         "ui_group": "SPECULATIVE-DECODING",
         "hidden_default": true,
         "note": "Maximum number of draft tokens per speculative decoding step."

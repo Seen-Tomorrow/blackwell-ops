@@ -216,6 +216,16 @@ impl ProviderTemplate {
 
         // Always add model path and port (these are not in the template)
         args.extend(["-m".into(), config.model_path.clone()]);
+
+        // Companion mmproj file — inject right after -m for clean CMD readability
+        let vision_val = self.get_value(config, "vision", user_edited_params);
+        let vstr = vision_val.as_str().unwrap_or("").to_lowercase();
+        if matches!(vstr.as_str(), "auto" | "on") {
+            if let Some(mmproj_name) = Self::scan_mmproj(&config.model_path) {
+                args.extend(["--mmproj".into(), mmproj_name]);
+            }
+        }
+
         args.extend(["--port".into(), config.port.to_string()]);
 
         // Add alias for llama-server API identification — sanitize spaces/commas
@@ -228,6 +238,9 @@ impl ProviderTemplate {
         // (prompt processing progress, prompt eval time TPS) which are at LOG_LEVEL_TRACE
         // since llama.cpp PR #17630 (Dec 2025) and PR #23021 (May 2026)
         args.extend(["-lv".into(), "4".to_string()]);
+
+        // Always enable Prometheus-style /metrics endpoint for fusion monitoring
+        args.push("--metrics".into());
 
         // ── TEST MODE (REPLACE): bypass all params, use only raw test flags ───────────
         if let Some(test_args) = config.extra_params.get("__test_args") {
@@ -278,7 +291,8 @@ impl ProviderTemplate {
             let value_str = value.as_str().map(String::from).unwrap_or(value.to_string());
 
             // Resolve "auto" from GGUF metadata cache — llama.cpp needs numbers, not "auto"
-            let final_value_str = if value_str == "auto" {
+            // path_scanner handles "auto" itself via scan_path(), so skip GGUF resolution for it
+            let final_value_str = if value_str == "auto" && param.ptype != "path_scanner" {
                 match resolve_auto_value(&param.key, &config.model_path) {
                     Some(resolved) => {
                         log::debug!("[build_cmd] resolved auto for '{}': '{}' -> '{}'", param.key, value_str, resolved);
@@ -301,8 +315,11 @@ impl ProviderTemplate {
                 "switch_onoff" => Self::inject_switch_onoff(&mut args, param, &final_value_str),
                 "switch_inverted" => Self::inject_switch_inverted(&mut args, param, &final_value_str),
                 "path_scanner" => {
-                    if let Some(path) = Self::scan_path(config, param, &final_value_str) {
-                        args.extend([param.flag.clone().unwrap_or_default(), path]);
+                    // vision/mmproj handled above right after -m — skip here
+                    if param.key != "vision" {
+                        if let Some(path) = Self::scan_path(config, param, &final_value_str) {
+                            args.extend([param.flag.clone().unwrap_or_default(), path]);
+                        }
                     }
                 },
                 _ => {}
@@ -371,7 +388,7 @@ impl ProviderTemplate {
             v.as_str().unwrap_or("").to_lowercase() == value.to_lowercase()
         }) {
             param.values_to_cli.get(idx)
-                .map(|v| v.to_string())
+                .and_then(|v| v.as_str().map(String::from))
                 .unwrap_or_else(|| value.to_string())
         } else {
             value.to_string()
@@ -399,6 +416,23 @@ impl ProviderTemplate {
         }
     }
 
+    /// Scan model directory for mmproj companion file. Returns bare filename only.
+    fn scan_mmproj(model_path: &str) -> Option<String> {
+        let model_dir = PathBuf::from(model_path);
+        let parent = model_dir.parent()?;
+
+        let entries = std::fs::read_dir(parent).ok()?;
+        for entry in entries.flatten() {
+            let fname = entry.file_name();
+            let fname_lower = fname.to_string_lossy().to_lowercase();
+            if Self::matches_pattern(&fname_lower, "*mmproj*") {
+                return Some(fname.to_string_lossy().to_string());
+            }
+        }
+
+        None
+    }
+
     fn scan_path(config: &EngineConfig, param: &GenesisTemplateParam, value: &str) -> Option<String> {
         let val_lower = value.to_lowercase();
         if !matches!(val_lower.as_str(), "auto" | "on") {
@@ -416,7 +450,7 @@ impl ProviderTemplate {
 
             // Check if filename matches pattern (simple glob matching)
             if Self::matches_pattern(&fname_lower, pattern) {
-                return Some(entry.path().to_string_lossy().to_string());
+                return Some(fname.to_string_lossy().to_string());
             }
         }
 
@@ -450,24 +484,26 @@ impl ProviderTemplate {
         value: &str,
         user_edited_params: Option<&[crate::types::UserEditedTemplateParam]>,
     ) {
-        // Priority: user's disk state first, then embedded GenesisTemplate
+        // Disk state (user edits) takes precedence — if found, skip embedded template.
+        let mut disk_found = false;
         if let Some(edited) = user_edited_params {
             for user_param in edited {
                 if user_param.key != param.key {
                     continue;
                 }
+                disk_found = true;
                 if let Some(ref sp) = user_param.sub_params {
                     Self::inject_from_array(args, value, sp.get(value).map(|v| v.as_slice()));
                 }
             }
         }
 
-        // Fall back to embedded template's sub_params
-        if let Some(sub) = &param.sub_params {
-            if !sub.is_null() {
-                Self::inject_from_json_value(args, value, sub);
-            } else {
-                // Template param has no sub_params at all — nothing to inject
+        // Only use embedded template sub_params when no disk state exists for this key.
+        if !disk_found {
+            if let Some(sub) = &param.sub_params {
+                if !sub.is_null() {
+                    Self::inject_from_json_value(args, value, sub);
+                }
             }
         }
     }

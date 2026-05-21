@@ -4,7 +4,6 @@ import type { EnginePerfEvent } from "../lib/types";
 interface EnginePerformanceTileProps {
   perf: EnginePerfEvent;
   n_ctx?: number;
-  onNewSession?: () => void;
 }
 
 // FuelTank color coding: green (<70%), orange (70-90%), red (>90%)
@@ -75,9 +74,8 @@ function TpsPulseLine({ history }: { history: number[] }) {
 
 const MAX_PULSE_HISTORY = 100;
 
-export default function EnginePerformanceTile({ perf, n_ctx = 32768, onNewSession }: EnginePerformanceTileProps) {
+export default function EnginePerformanceTile({ perf, n_ctx = 32768 }: EnginePerformanceTileProps) {
   const alphaPct = perf.fuel_alpha_pct ?? 0;
-  const betaPct = perf.fuel_beta_pct ?? 0;
 
   // Rolling TPS history for pulse line visualization
   const tpsHistoryRef = useRef<number[]>([]);
@@ -92,23 +90,12 @@ export default function EnginePerformanceTile({ perf, n_ctx = 32768, onNewSessio
 
   // Compute fuel tank display values (cap at 100 for display)
   const alphaDisplay = Math.min(100, Math.max(0, alphaPct));
-  const betaDisplay = Math.min(100, Math.max(0, betaPct));
 
   return (
     <div className="mt-2 border border-stealth-border rounded-sm bg-black/60 overflow-hidden">
       {/* TPS pulse line */}
       <div className="flex items-center justify-between px-2 py-1 border-b border-stealth-border bg-stealth-dark/30">
         <TpsPulseLine history={tpsHistoryRef.current} />
-        
-        {/* NEW SESSION button for BETA checkpoint */}
-        {onNewSession && (
-          <button
-            onClick={onNewSession}
-            className="px-2 py-0.5 text-[8px] font-mono bg-telemetry-cyan/20 text-telemetry-cyan border border-telemetry-cyan/40 hover:bg-telemetry-cyan/30 transition-all duration-200 shrink-0"
-          >
-            NEW SESSION
-          </button>
-        )}
       </div>
 
       {/* TPS + TTFT row */}
@@ -153,23 +140,6 @@ export default function EnginePerformanceTile({ perf, n_ctx = 32768, onNewSessio
             {alphaPct > 0 ? `${alphaDisplay.toFixed(0)}%` : "--"}
           </span>
         </div>
-
-        {/* Divider */}
-        <div className="w-px h-8 bg-stealth-border" />
-
-        {/* Fuel Tank BETA */}
-        <div className="flex flex-col items-center gap-0.5">
-          <span className="text-[7px] font-mono text-telemetry-amber tracking-wider">BETA</span>
-          <div className="w-14 h-2.5 bg-stealth-dark border border-stealth-border rounded-sm overflow-hidden relative">
-            <div
-              className={`h-full ${getFuelBarColor(betaDisplay)} transition-all duration-300`}
-              style={{ width: `${betaDisplay}%` }}
-            />
-          </div>
-          <span className="text-[7px] font-mono text-stealth-muted/60">
-            {betaPct > 0 ? `${betaDisplay.toFixed(0)}%` : "--"}
-          </span>
-        </div>
       </div>
 
       {/* Footer row — context info */}
@@ -178,7 +148,7 @@ export default function EnginePerformanceTile({ perf, n_ctx = 32768, onNewSessio
           CONTEXT: {n_ctx.toLocaleString()} tok
         </span>
         <span className="text-[7px] font-mono text-stealth-muted/40">
-          DUAL-METHOD KV TRACKING
+          KV CACHE TRACKING
         </span>
       </div>
     </div>
