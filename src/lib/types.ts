@@ -253,6 +253,7 @@ export interface FusionUpdate {
   ctxUsedCurrentRequest: number;   // n_decoded in current request
   ctxUsedSession: number;          // cumulative across requests this session
   ctxFillPct: number;              // (ctx_used_session / ctx_total) * 100
+  ctxTotal: number;                // engine context window size in tokens
 
   // Request timing
   requestElapsedMs: number;

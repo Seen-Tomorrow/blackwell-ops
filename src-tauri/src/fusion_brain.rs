@@ -116,6 +116,8 @@ pub struct FusionUpdate {
     pub ctx_used_session: usize,
     #[serde(rename = "ctxFillPct")]
     pub ctx_fill_pct: f64,
+    #[serde(rename = "ctxTotal")]
+    pub ctx_total: usize,
 
     // ── Request timing ─────────────────────────────────────────────
     #[serde(rename = "requestElapsedMs")]
@@ -529,6 +531,7 @@ impl FusionBrain {
             ctx_used_current_request: total_n_decoded,
             ctx_used_session: ctx_used_session,
             ctx_fill_pct,
+            ctx_total: self.ctx_total,
             request_elapsed_ms,
             ttft_ms: self.ttft_ms,
             slot_ctx,
@@ -569,6 +572,7 @@ impl FusionBrain {
             } else {
                 0.0
             },
+            ctx_total: self.ctx_total,
             request_elapsed_ms: 0,
             ttft_ms: None,
             slot_ctx,
