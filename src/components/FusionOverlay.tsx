@@ -167,10 +167,10 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
                 {fusion.phase === "PP" && (
                   <div className="w-full h-0.5 rounded-full bg-black/20 overflow-hidden my-0.5">
                     <motion.div
-                      className="h-full rounded-full"
-                      style={{ backgroundColor: '#b87a00' }}
-                      animate={{ width: ["20%", "60%", "20%"] }}
-                      transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
+                      className="h-full rounded-full absolute left-0"
+                      style={{ backgroundColor: '#b87a00', width: '40%' }}
+                      animate={{ x: ['-100%', '350%'] }}
+                      transition={{ duration: 1.2, repeat: Infinity, ease: "easeInOut" }}
                     />
                   </div>
                 )}

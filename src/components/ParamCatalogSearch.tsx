@@ -61,7 +61,7 @@ export default function ParamCatalogSearch({
       onClick={onClose}
     >
       <div
-        className="bg-[#1a1a2e] border border-stealth-border rounded-lg w-full max-w-2xl mx-4 max-h-[75vh] flex flex-col"
+        className="bg-neutral-900 border border-stealth-border rounded-lg w-full max-w-2xl mx-4 max-h-[75vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -122,19 +122,25 @@ export default function ParamCatalogSearch({
               return (
                 <div
                   key={entry.key}
-                  className={`flex items-center gap-3 px-3 py-2 rounded-sm border transition-colors ${
+                  className={`flex items-start gap-3 px-3 py-2 rounded-sm border transition-colors ${
                     existing
                       ? "border-stealth-border/20 bg-stealth-surface/20 opacity-40"
                       : "border-stealth-border/40 hover:border-stealth-muted/60 hover:bg-stealth-surface/30"
                   }`}
                 >
-                  {/* Flag */}
-                  <div className="w-36 flex-shrink-0">
-                    <span className="text-[10px] font-mono text-white">{entry.flag}</span>
-                    {entry.short && (
-                      <span className="text-[8px] font-mono text-stealth-muted ml-1">{entry.short}</span>
-                    )}
-                  </div>
+                  {/* Action */}
+                  {existing ? (
+                    <span className="self-center flex-shrink-0 text-[7px] font-mono text-nv-green/60 bg-nv-green/10 px-2 py-0.5 rounded-sm border border-nv-green/30">
+                      ACTIVE
+                    </span>
+                  ) : (
+                    <button
+                      onClick={() => handleAdd(entry)}
+                      className="self-center flex-shrink-0 px-2 py-0.5 text-[8px] font-mono border border-yellow-400/40 text-yellow-400 hover:bg-yellow-400/15 transition-colors rounded-sm"
+                    >
+                      ADD
+                    </button>
+                  )}
 
                   {/* Key + label */}
                   <div className="w-32 flex-shrink-0 flex flex-col">
@@ -142,20 +148,13 @@ export default function ParamCatalogSearch({
                     <span className="text-[8px] font-mono text-stealth-muted">{entry.key}</span>
                   </div>
 
-                  {/* ptype badge */}
-                  <span
-                    className={`flex-shrink-0 text-[7px] font-mono px-1.5 py-0.5 rounded-sm border ${
-                      entry.ptype === "switch_onoff"
-                        ? "border-teal-400/40 text-teal-400 bg-teal-400/5"
-                        : entry.ptype === "switch_inverted"
-                        ? "border-amber-400/40 text-amber-400 bg-amber-400/5"
-                        : entry.ptype === "arg_select"
-                        ? "border-cyan-400/40 text-cyan-400 bg-cyan-400/5"
-                        : "border-stealth-border/40 text-stealth-muted"
-                    }`}
-                  >
-                    {entry.ptype}
-                  </span>
+                  {/* Flag */}
+                  <div className="w-36 flex-shrink-0 flex flex-col">
+                    <span className="text-[10px] font-mono text-white">{entry.flag}</span>
+                    {entry.short && (
+                      <span className="text-[8px] font-mono text-stealth-muted">{entry.short}</span>
+                    )}
+                  </div>
 
                   {/* Default value */}
                   {entry.default_value !== undefined && entry.default_value !== null && (
@@ -165,23 +164,10 @@ export default function ParamCatalogSearch({
                   )}
 
                   {/* Description */}
-                  <span className="flex-1 text-[8px] font-mono text-stealth-muted/70 truncate">
+                  <span className="flex-1 min-w-0 text-[8px] font-mono text-stealth-muted/70 whitespace-normal leading-tight break-all">
                     {entry.description}
                   </span>
 
-                  {/* Action */}
-                  {existing ? (
-                    <span className="flex-shrink-0 text-[7px] font-mono text-nv-green/60 bg-nv-green/10 px-2 py-0.5 rounded-sm border border-nv-green/30">
-                      ACTIVE
-                    </span>
-                  ) : (
-                    <button
-                      onClick={() => handleAdd(entry)}
-                      className="flex-shrink-0 px-2 py-0.5 text-[8px] font-mono border border-yellow-400/40 text-yellow-400 hover:bg-yellow-400/15 transition-colors rounded-sm"
-                    >
-                      ADD
-                    </button>
-                  )}
                 </div>
               );
             })}

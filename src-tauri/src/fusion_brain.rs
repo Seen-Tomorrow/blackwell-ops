@@ -392,7 +392,7 @@ impl FusionBrain {
         for d in &decisions {
             if d.new_request {
                 if let Some(s) = self.slot_states.get_mut(&d.id) {
-                    s.request_start_n_decoded = 0;
+                    s.request_start_n_decoded = d.n_decoded;
                 }
                 self.phase = InferencePhase::Pp;
                 self.request_start = Some(now);
@@ -431,15 +431,19 @@ impl FusionBrain {
             }
         }
 
-        // Phase override from /slots: n_decoded > 50 means TG, not PP
+        // Phase fallback from /slots: per-request n_decoded delta > 50 means TG, not PP
         for slot in slots {
             if slot.is_processing && !slot.next_token.is_empty() {
                 let n_decoded = slot.next_token[0].n_decoded;
-                if n_decoded > 50 && self.phase == InferencePhase::Pp {
-                    self.phase = InferencePhase::Tg;
+                if let Some(s) = self.slot_states.get(&slot.id) {
+                    let delta = n_decoded.saturating_sub(s.request_start_n_decoded);
+                    if delta > 50 && self.phase == InferencePhase::Pp {
+                        self.phase = InferencePhase::Tg;
+                    }
                 }
             }
         }
+
     }
 
     // ── Build FusionUpdate from current state + fresh poll data ─────
