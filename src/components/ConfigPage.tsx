@@ -1003,12 +1003,12 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
                    {/* Add new param — admin only */}
                       {adminLockState !== "locked" && (
                         <div className="flex gap-2 mb-3">
-                          <button
-                            onClick={() => setShowCatalogSearch(true)}
-                            className="flex-1 py-2 text-[9px] font-mono border border-dashed border-nv-green/40 text-nv-green/70 hover:bg-nv-green/5 hover:border-nv-green/60 transition-colors rounded"
-                          >
-                            + CATALOG SEARCH
-                          </button>
+                           <button
+                             onClick={() => setShowCatalogSearch(true)}
+                             className="flex-1 py-3 text-xl font-mono bg-nv-green/15 border border-nv-green/40 text-nv-green hover:bg-nv-green/25 transition-colors rounded tracking-wider"
+                           >
+                            + ADD NEW FROM CATALOG
+                           </button>
                           <button
                             onClick={() => setShowCreatorModal(true)}
                             className="px-3 py-2 text-[9px] font-mono border border-dashed border-yellow-400/30 text-yellow-400/60 hover:bg-yellow-400/5 hover:border-yellow-400/60 transition-colors rounded"
