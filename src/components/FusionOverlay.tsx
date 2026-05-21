@@ -141,152 +141,129 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
           exit={{ opacity: 0 }}
           className="flex flex-col gap-1 w-full h-full px-1 py-0.5"
         >
-          {/* ── Header row ─────────────────────────────── */}
-          <div className="grid grid-cols-3 items-center">
+          {/* ═══ HEADER ═══════════════════════════════════════ */}
+          <div className="flex items-center justify-between">
             <span className="text-[16px] font-mono text-stealth-muted/60 tracking-wider truncate" title={displayAlias}>
               {displayAlias.toUpperCase()}
             </span>
-            <div className="flex justify-center">
-              <FusionPhaseBadge phase={fusion.phase} />
-            </div>
-            <div className="flex flex-col items-end gap-0.5">
+            <FusionPhaseBadge phase={fusion.phase} />
+            <div className="flex items-center gap-2">
               <span className="text-[14px] font-mono text-stealth-muted/40">:{displayPort}</span>
               <button
                 onClick={handleStopEngine}
-                className="text-[7px] font-bold tracking-wider px-1 py-px rounded bg-red-600/80 hover:bg-red-500 active:bg-red-700 text-white cursor-pointer select-none"
+                className="text-[7px] font-bold tracking-wider px-1.5 py-0.5 rounded bg-red-600/80 hover:bg-red-500 active:bg-red-700 text-white cursor-pointer select-none"
               >
                 STOP
               </button>
             </div>
           </div>
 
-          {/* ── Main metrics area: Prefill + bordered Generation box ─── */}
-          <div className="flex gap-2 flex-1 min-h-0">
-            {/* Col 1: Idle animation or Prefill TPS (narrow, ~30% width) */}
-            <div className="flex flex-col items-center justify-start py-0.5 gap-0.5 w-[30%] flex-shrink-0 overflow-hidden">
-              {fusion.phase === "IDLE" ? (
-                /* ── Idle neural network animation ─── */
-                <svg viewBox="0 0 120 160" className="w-full h-auto opacity-40" aria-hidden>
-                  {[
-                    [30,25],[70,20],[95,35],
-                    [20,60],[60,55],[100,65],
-                    [35,95],[75,90],[95,100],
-                    [25,130],[65,125],[100,135]
-                  ].map((p, i) => (
-                    <circle key={`n${i}`} cx={p[0]} cy={p[1]} r="2.5" fill="#22c55e">
-                      <animate attributeName="r" values="2;4.5;2" dur={`${1.2 + (i % 4) * 0.3}s`} repeatCount="indefinite" />
-                      <animate attributeName="opacity" values="0.3;1;0.3" dur={`${1.2 + (i % 4) * 0.3}s`} repeatCount="indefinite" />
-                    </circle>
-                  ))}
-                  {[
-                    [30,25,70,20],[70,20,95,35],
-                    [20,60,60,55],[60,55,100,65],
-                    [35,95,75,90],[75,90,95,100],
-                    [25,130,65,125],[65,125,100,135],
-                    [30,25,20,60],[70,20,60,55],[95,35,100,65],
-                    [20,60,35,95],[60,55,75,90],[100,65,95,100],
-                    [35,95,25,130],[75,90,65,125],[95,100,100,135]
-                  ].map((l, i) => (
-                    <line key={`l${i}`} x1={l[0]} y1={l[1]} x2={l[2]} y2={l[3]} stroke="#22c55e" strokeWidth="0.4">
-                      <animate attributeName="stroke-opacity" values="0.1;0.5;0.1" dur={`${1.8 + (i % 3) * 0.4}s`} repeatCount="indefinite" />
-                    </line>
-                  ))}
-                </svg>
-              ) : (
-                /* ── Active: Prefill TPS ─── */
-                <>
-                  <p className="text-[7px] font-mono text-stealth-muted/40 tracking-wider">PREFILL</p>
-                  {fusion.phase === "PP" && (
-                    <div className="w-full h-1 rounded-full bg-black/10 overflow-hidden">
-                      <motion.div
-                        className="h-full rounded-full"
-                        style={{ backgroundColor: '#b87a00' }}
-                        animate={{ width: ["20%", "60%", "20%"] }}
-                        transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
-                      />
-                    </div>
-                  )}
-                  <span className="font-mono font-bold tracking-tight text-stealth-muted/50" style={{ fontSize: 'clamp(1rem, 4vh, 2rem)' }}>
-                    {fusion.prefillTpsMetrics > 0 ? fusion.prefillTpsMetrics.toFixed(0) : "--"}
-                  </span>
-                  <span className="text-[6px] font-mono text-stealth-muted/30 tracking-widest">[metrics]</span>
-                  <span className="text-[7px] font-mono text-stealth-muted/40 tracking-widest">TOKENS / SEC</span>
-                </>
-              )}
-            </div>
-
-            {/* Col 2: Bordered Generation box (~70% width) */}
-            <div className="border border-stone-500/30 rounded-sm p-2 flex flex-col justify-between min-h-[80px] flex-1 overflow-hidden">
-              {/* Active: Generation TPS + request stats + session ─── */}
-              <div className="flex flex-col h-full justify-between">
-                {/* Top row: big TPS left, stats right — contained */}
-                <div className="flex items-start justify-between">
-                  {/* Big TPS number — left aligned, grows to fill space */}
-                  <div className="flex flex-col items-start min-w-0 flex-shrink">
-                    <p className="text-[7px] font-mono text-stealth-muted/40 tracking-wider">GENERATION</p>
-                    <span className="font-mono font-bold tracking-tight" style={{ fontSize: 'clamp(1.5rem, 6vh, 3rem)', color: fusion.genTpsSlots > 0 ? '#22c55e' : 'rgba(148,163,184,0.5)' }}>
-                      {fusion.genTpsSlots > 0 ? fusion.genTpsSlots.toFixed(0) : "--"}
-                    </span>
-                    <span className="text-[6px] font-mono text-stealth-muted/30 tracking-widest">[slots]</span>
+          {/* ═══ SPEED METRICS ROW — centered PP + TG pair, radar scanline below ═══ */}
+          <div className="flex items-center justify-center gap-2 flex-1 min-h-0 relative">
+            {fusion.phase !== "IDLE" && (
+              /* ── PREFILL card (left) — hidden during idle ─── */
+              <div className="flex flex-col items-center justify-center px-3 py-2 rounded-sm border border-stone-500/20 bg-black/10 flex-shrink-0 min-h-[72px]" style={{ width: '24%' }}>
+                <p className="text-[6px] font-mono text-stealth-muted/40 tracking-wider">PREFILL</p>
+                {fusion.phase === "PP" && (
+                  <div className="w-full h-0.5 rounded-full bg-black/20 overflow-hidden my-0.5">
+                    <motion.div
+                      className="h-full rounded-full"
+                      style={{ backgroundColor: '#b87a00' }}
+                      animate={{ width: ["20%", "60%", "20%"] }}
+                      transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
+                    />
                   </div>
+                )}
+                <span className="font-mono font-bold tracking-tight text-stealth-muted/50 leading-none" style={{ fontSize: 'clamp(1.25rem, 4vh, 2rem)' }}>
+                  {fusion.prefillTpsMetrics > 0 ? fusion.prefillTpsMetrics.toFixed(0) : "--"}
+                </span>
+                <span className="text-[6px] font-mono text-stealth-muted/30 tracking-wider">tok/s</span>
+              </div>
+            )}
 
-                  {/* Request stats — right side, fixed width */}
-                  {statsToDisplay && statsToDisplay.genTokensSlots > 0 ? (
-                    <div className="flex flex-col gap-1.5 items-end text-right flex-shrink-0 ml-3">
-                      <div>
-                        <p className="text-[6px] font-mono text-stealth-muted/40 tracking-wider">GEN</p>
-                        <p className={`text-[9px] font-mono mt-0.5 ${showLive ? "text-nv-green" : "text-stealth-muted/60"}`}>
-                          {statsToDisplay.genTokensSlots}
-                        </p>
-                      </div>
-                      {statsToDisplay.ttftMs && (
-                        <div>
-                          <p className="text-[6px] font-mono text-stealth-muted/40 tracking-wider">TTFT</p>
-                          <p className={`text-[9px] font-mono mt-0.5 ${showLive ? "text-telemetry-amber" : "text-stealth-muted/60"}`}>
-                            {statsToDisplay.ttftMs}
-                          </p>
-                        </div>
-                      )}
-                      <div>
-                        <p className="text-[6px] font-mono text-stealth-muted/40 tracking-wider">ELAPSED</p>
-                        <p className={`text-[9px] font-mono mt-0.5 ${showLive ? "text-nv-green" : "text-stealth-muted/60"}`}>
-                          {statsToDisplay.elapsedMs}
-                        </p>
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-
-                {/* Bottom: Session tokens centered */}
-                <div className="flex flex-col items-center mt-2">
-                  <p className="text-[7px] font-mono text-stealth-muted/40 tracking-wider">SESSION</p>
-                  <span className="font-mono text-xs text-stealth-muted/60" style={{ fontSize: 'clamp(1rem, 3.5vh, 2rem)' }}>
-                    {fusion.genTokensPerSession}
-                  </span>
-                  <span className="text-[7px] font-mono text-stealth-muted/40 tracking-widest">TOKENS</span>
-                </div>
+            {/* ── GENERATION card (right) — always visible, no box ─── */}
+            <div className="flex flex-col items-center justify-center px-3 py-2 flex-shrink-0 min-h-[72px]" style={{ width: '24%' }}>
+              <p className="text-[6px] font-mono text-stealth-muted/40 tracking-wider">GENERATION</p>
+              <div className="flex items-baseline gap-1.5">
+                <span
+                  className="font-mono font-bold tracking-tight leading-none"
+                  style={{ fontSize: 'clamp(1.25rem, 4vh, 2rem)', color: fusion.genTpsSlots > 0 ? '#22c55e' : 'rgba(148,163,184,0.4)' }}
+                >
+                  {fusion.genTpsSlots > 0 ? fusion.genTpsSlots.toFixed(0) : "--"}
+                </span>
+                <span className="text-[6px] font-mono text-stealth-muted/40 tracking-wider">tok/s</span>
               </div>
             </div>
+
+            {/* ── Radar scanline — sweeps across the gap below cards ─── */}
+            <motion.div
+              className="absolute bottom-0 left-[15%] h-px bg-gradient-to-r from-transparent via-nv-green/40 to-transparent"
+              style={{ width: '70%' }}
+              animate={{ opacity: [0.2, 0.8, 0.2], x: ['-30%', '30%', '-30%'] }}
+              transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut" }}
+            />
           </div>
 
-          {/* ── Session cumulative fill bar (full width) ─── */}
-          <div className="flex items-center gap-2 px-1 py-0.5">
-            <span className="text-[6px] font-mono text-stealth-muted/40 w-16 flex-shrink-0">SESSION FILL</span>
-            <div className="flex-1 h-2 rounded-full bg-black/10 overflow-hidden relative">
-              <div
-                className="h-full rounded-full transition-all duration-300"
-                style={{ width: `${sessionPct}%`, backgroundColor: sessionPct > 80 ? '#ef4444' : '#6366f1' }}
-              />
+          {/* ═══ PER-REQUEST METRICS (grouped together) ══════ */}
+          {statsToDisplay && statsToDisplay.genTokensSlots > 0 && (
+            <div className="flex items-center gap-3 px-2 py-1 rounded-sm border border-stone-500/15 bg-black/5">
+              {/* GEN tokens */}
+              <div className="flex flex-col items-center flex-1">
+                <span className="text-[6px] font-mono text-stealth-muted/40 tracking-wider">GEN</span>
+                <span className={`text-[10px] font-mono font-bold ${showLive ? "text-nv-green" : "text-stealth-muted/50"}`}>
+                  {statsToDisplay.genTokensSlots}
+                </span>
+              </div>
+              {/* TTFT */}
+              {statsToDisplay.ttftMs && (
+                <>
+                  <div className="w-px h-4 bg-stone-500/20" />
+                  <div className="flex flex-col items-center flex-1">
+                    <span className="text-[6px] font-mono text-stealth-muted/40 tracking-wider">TTFT</span>
+                    <span className={`text-[10px] font-mono font-bold ${showLive ? "text-telemetry-amber" : "text-stealth-muted/50"}`}>
+                      {statsToDisplay.ttftMs}
+                    </span>
+                  </div>
+                </>
+              )}
+              {/* ELAPSED */}
+              <>
+                <div className="w-px h-4 bg-stone-500/20" />
+                <div className="flex flex-col items-center flex-1">
+                  <span className="text-[6px] font-mono text-stealth-muted/40 tracking-wider">ELAPSED</span>
+                  <span className={`text-[10px] font-mono font-bold ${showLive ? "text-nv-green" : "text-stealth-muted/50"}`}>
+                    {statsToDisplay.elapsedMs}
+                  </span>
+                </div>
+              </>
             </div>
-            <span className="text-[7px] font-mono text-stealth-muted/40 whitespace-nowrap flex-shrink-0">
-              {formatK(fusion.genTokensPerSession)} / {formatK(ctxTotal)}
-            </span>
+          )}
+
+          {/* ═══ SESSION + CONTEXT FILL ══════════════════════ */}
+          <div className="flex flex-col gap-1">
+            {/* Session tokens row */}
+            <div className="flex items-center justify-between px-1">
+              <span className="text-[7px] font-mono text-stealth-muted/40 tracking-wider">SESSION</span>
+              <span className="font-mono text-xs text-stealth-muted/60">{fusion.genTokensPerSession} tokens</span>
+            </div>
+            {/* Context fill bar */}
+            <div className="flex items-center gap-2 px-1">
+              <div className="flex-1 h-1.5 rounded-full bg-black/15 overflow-hidden relative">
+                <div
+                  className="h-full rounded-full transition-all duration-300"
+                  style={{ width: `${sessionPct}%`, backgroundColor: sessionPct > 80 ? '#ef4444' : '#6366f1' }}
+                />
+              </div>
+              <span className="text-[7px] font-mono text-stealth-muted/40 whitespace-nowrap flex-shrink-0">
+                {formatK(fusion.genTokensPerSession)} / {formatK(ctxTotal)}
+              </span>
+            </div>
           </div>
 
-          {/* ── Divider ──────────────────────────────────────── */}
+          {/* ═══ DIVIDER ═════════════════════════════════════ */}
           <div className="w-full h-px bg-black/15" />
 
-          {/* ── Slot bars (only active slots) ─── */}
+          {/* ═══ SLOT BARS (only active slots) ══════════════ */}
           <div className="flex flex-col gap-0.5">
             {visibleSlots.map((slot) => {
               const slotPct = ctxTotal > 0 ? Math.min((slot.n_decoded / ctxTotal) * 100, 100) : 0;
@@ -295,7 +272,7 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
                   <span className={`text-[7px] font-mono w-8 text-right flex-shrink-0 ${slot.n_decoded > 0 ? 'text-stealth-muted/50' : 'text-stealth-muted/20'}`}>
                     {formatK(slot.n_decoded)}
                   </span>
-                  <div className="flex-1 h-2 rounded-full bg-black/10 overflow-hidden">
+                  <div className="flex-1 h-1.5 rounded-full bg-black/10 overflow-hidden">
                     <div
                       className="h-full rounded-full transition-all duration-200"
                       style={{
