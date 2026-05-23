@@ -10,6 +10,7 @@
 use crate::types::ModelMetadata;
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader};
+use std::os::windows::process::CommandExt;
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -42,6 +43,7 @@ pub fn scan_model_metadata(model_path: &str, binary_path: &str) -> Result<ModelM
         .env("OMP_NUM_THREADS", "1")     // Single thread — reduce CPU load during scan
         .stdout(Stdio::null()) // stdout is empty — all output goes to stderr
         .stderr(Stdio::piped())
+        .creation_flags(0x08000000) // CREATE_NO_WINDOW — prevents CMD flash in release builds
         .spawn()
         .map_err(|e| format!("Failed to spawn {}: {}", binary_path, e))?;
 

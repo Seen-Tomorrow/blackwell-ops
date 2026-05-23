@@ -31,12 +31,34 @@ export function TelemetryProvider({ children, lowPower }: { children: React.Reac
   }, []);
 
   // Consolidated telemetry polling — GPU + CPU with configurable intervals
+  // Identity guard: skip setState when readings haven't changed numerically.
+  // Prevents reference churn from forcing re-renders of the entire tree every 250ms.
   const pollGpu = useCallback(async () => {
-    try { await invoke<GpuInfo[]>("scan_gpus").then(setGpus); } catch {}
+    try {
+      const data = await invoke<GpuInfo[]>("scan_gpus");
+      setGpus(prev => {
+        if (prev.length !== data.length) return data;
+        for (let i = 0; i < prev.length; i++) {
+          if (prev[i].memory_used !== data[i].memory_used ||
+              prev[i].temperature_gpu !== data[i].temperature_gpu ||
+              prev[i].utilization_gpu !== data[i].utilization_gpu) {
+            return data;
+          }
+        }
+        return prev; // Identical reading — retain reference, skip re-render
+      });
+    } catch {}
   }, []);
 
   const pollCpu = useCallback(async () => {
-    try { await invoke<CpuInfo>("scan_cpu").then(setCpu); } catch {}
+    try {
+      const data = await invoke<CpuInfo>("scan_cpu");
+      setCpu(prev => {
+        if (!prev) return data;
+        if (prev.avg_usage_percent !== data.avg_usage_percent) return data;
+        return prev; // Identical reading — retain reference, skip re-render
+      });
+    } catch {}
   }, []);
 
   useEffect(() => {

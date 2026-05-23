@@ -161,8 +161,9 @@ impl EngineStack {
         eprintln!("[ENGINE] slot={} args: {:?}", slot_idx, cmd_args.iter().take(5).collect::<Vec<_>>());
 
         use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
         const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
-        cmd.creation_flags(CREATE_NEW_PROCESS_GROUP) // process isolation for signal handling
+        cmd.creation_flags(CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP) // no CMD window + process isolation for signal handling
             .args(&cmd_args)
             .env("CUDA_VISIBLE_DEVICES", &gpu_mask)
             .env("LLAMA_LOG_COLORS", "on")

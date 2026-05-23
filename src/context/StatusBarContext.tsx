@@ -49,9 +49,13 @@ export const StatusProvider: React.FC<{ value: any; children?: React.ReactNode }
   const DOCK_SLOT_BUILD = 0;
 
   const openBuildModal = useCallback((providerId: string, environment: Env) => {
+    // Reset stale state from previous build before opening new one
+    setBuildProgress(null);
+    clearSlot(DOCK_SLOT_BUILD);
+    window.dispatchEvent(new Event("blackops-foundry-reset"));
     setFoundryModal({ providerId, environment });
     setFoundryModalVisible(true);
-  }, []);
+  }, [clearSlot, DOCK_SLOT_BUILD]);
 
   // Minimize: hide overlay but keep foundryModal alive (preserves logs/phase in mounted component)
   const minimizeBuildModal = useCallback(() => {
@@ -62,7 +66,11 @@ export const StatusProvider: React.FC<{ value: any; children?: React.ReactNode }
   const closeBuildModal = useCallback(() => {
     setFoundryModal(null);
     setFoundryModalVisible(false);
-  }, []);
+    setBuildProgress(null);
+    clearSlot(DOCK_SLOT_BUILD);
+    // Clear FoundryModal internal state (logLines, DOM nodes) to free memory
+    window.dispatchEvent(new Event("blackops-foundry-reset"));
+  }, [clearSlot, DOCK_SLOT_BUILD]);
 
   // Auto-clear flash after 4 seconds
   useEffect(() => {
@@ -100,11 +108,15 @@ export const StatusProvider: React.FC<{ value: any; children?: React.ReactNode }
         const stepLabel = getStepShort(data.step);
 
         if (data.step === "Complete" || data.step === "Failed") {
-          console.log(`[StatusBar] → Build ${data.step} for ${data.provider_id}/${data.environment}: clearing progress, closing modal, emitting reset`);
-          setBuildProgress(null);
-          closeBuildModal(); // Clear modal state on terminal event
-          window.dispatchEvent(new Event("blackops-foundry-reset")); // Reset modal internals, clear logs
-          // Notify FoundryPage to refresh build info after completion
+          console.log(`[StatusBar] → Build ${data.step} for ${data.provider_id}/${data.environment}`);
+          // Keep buildProgress and dock slot showing result until user manually closes
+          setBuildProgress({
+            providerId: data.provider_id,
+            environment: data.environment,
+            step: data.step,
+            logLine: data.log_line,
+            buildId: data.build_id,
+          });
           if (data.step === "Complete") {
             window.dispatchEvent(new CustomEvent("blackops-foundry-complete", { detail: data.provider_id }));
           }

@@ -25,14 +25,6 @@ interface TemplateDiffResult {
   orphaned_params: DiffParam[];
 }
 
-interface ConfirmDialogProps {
-  open: boolean;
-  title: string;
-  message: string;
-  onConfirm: () => void;
-  onCancel: () => void;
-}
-
 type ConfigSubTab = "providers" | "params" | "paths" | "foundry";
 
 interface ConfigPageProps {
@@ -216,8 +208,14 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
     }
     return Array.from(seen);
   }, [userSavedParamsWithGenesisDefaults, genesisTemplateParams]);
+  // Fingerprint guard: only dispatch when params content actually changed, not on reference rotation.
+  // Breaks the telemetry poll -> re-render -> dispatch -> refetch providers amplification loop.
+  const lastDispatchRef = useRef<string>("");
   useEffect(() => {
     if (userSavedParamsWithGenesisDefaults.length === 0) return;
+    const fingerprint = `${userSavedParamsWithGenesisDefaults.length}-${hiddenCount}`;
+    if (fingerprint === lastDispatchRef.current) return;
+    lastDispatchRef.current = fingerprint;
     window.dispatchEvent(new CustomEvent("param-config-changed", { detail: { totalParams: userSavedParamsWithGenesisDefaults.length, hiddenCount } }));
   }, [userSavedParamsWithGenesisDefaults, hiddenCount]);
 

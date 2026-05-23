@@ -19,7 +19,7 @@ interface BuildLogEntry {
   timestamp: string;
 }
 
-type ModalPhase = "confirm" | "building" | "complete" | "error" | "backup-locked" | "waiting-confirm";
+type ModalPhase = "confirm" | "building" | "complete" | "error" | "backup-locked";
 
 export default function FoundryModal({ provider, environment, onClose, onComplete, visible, onMinimize }: FoundryModalProps) {
   const [phase, setPhase] = useState<ModalPhase>("confirm");
@@ -33,6 +33,9 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
   const [waitingForConfirm, setWaitingForConfirm] = useState(false);
   const [prUrl, setPrUrl] = useState("");
   const [maxCores, setMaxCores] = useState<number | null>(null);
+  const [backupRetryCount, setBackupRetryCount] = useState(0);
+  const [showEngineWarning, setShowEngineWarning] = useState(false);
+  const [engineListText, setEngineListText] = useState("");
   const logRef = useRef<HTMLDivElement>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
 
@@ -67,9 +70,24 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
           const stepLabel = getStepLabel(payload.step);
           setCurrentStep(stepLabel);
 
-          if (payload.log_line) {
+          if (payload.log_lines) {
+            const batch = payload.log_lines as string[];
+            const ts = new Date().toLocaleTimeString();
+            setLogLines(prev => {
+              const next = [...prev, ...batch.map(text => ({
+                step: stepLabel,
+                text,
+                timestamp: ts,
+              }))];
+              // Cap at 150 lines during Building phase (~3 pages) — trim from front
+              if (stepLabel === "BUILD" && next.length > 150) {
+                return next.slice(next.length - 150);
+              }
+              return next;
+            });
+          } else if (payload.log_line) {
             const logText = payload.log_line as string;
-            
+
             setLogLines(prev => [...prev, {
               step: stepLabel,
               text: logText,
@@ -88,6 +106,7 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
               break;
             case "BackupLocked":
               setPhase("backup-locked");
+              setBackupRetryCount(prev => prev + 1);
               break;
             case "WaitingForConfirm":
               // CMake done — show PROCEED/ABORT buttons
@@ -140,6 +159,9 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
       buildIdRef.current = null;
       setPrUrl("");
       setMaxCores(null);
+      setBackupRetryCount(0);
+      setShowEngineWarning(false);
+      setEngineListText("");
     };
     window.addEventListener("blackops-foundry-reset", handler);
     return () => window.removeEventListener("blackops-foundry-reset", handler);
@@ -162,7 +184,14 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
     }
   };
 
-  const showToast = (_type: string, _text: string) => {};
+  const showToast = (type: string, text: string) => {
+    try {
+      const toastFn = (window as any).__blackopsToasts?.addToast;
+      if (toastFn) {
+        toastFn(text, type === "error" ? "error" : "success", 5000);
+      }
+    } catch {}
+  };
 
   const handleConfirmBuild = async () => {
     try {
@@ -173,15 +202,12 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
       );
 
       if (matchingEngines.length > 0) {
-        const engineList = matchingEngines.map(e => 
+        // Show blocking warning — require explicit confirmation before proceeding
+        setEngineListText(matchingEngines.map(e => 
           `${e.alias} (${e.provider_name || e.provider_type}) on GPU ${e.gpu}`
-        ).join("\n");
-
-        setLogLines([{
-          step: "WARNING",
-          text: `The following running engines will be stopped before build:\n${engineList}\n\nProceed?`,
-          timestamp: new Date().toLocaleTimeString(),
-        }]);
+        ).join("\n"));
+        setShowEngineWarning(true);
+        return;
       }
 
       await invoke("foundry_build", {
@@ -198,6 +224,31 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
         timestamp: new Date().toLocaleTimeString(),
       }]);
     }
+  };
+
+  const handleEngineWarningProceed = async () => {
+    setShowEngineWarning(false);
+    setEngineListText("");
+    try {
+      await invoke("foundry_build", {
+        providerId: provider.id,
+        environment,
+        prUrl: prUrl.trim() || null,
+        maxCores: maxCores ?? undefined,
+      });
+    } catch (err) {
+      setPhase("error");
+      setLogLines(prev => [...prev, {
+        step: "ERROR",
+        text: typeof err === "string" ? err : JSON.stringify(err),
+        timestamp: new Date().toLocaleTimeString(),
+      }]);
+    }
+  };
+
+  const handleEngineWarningCancel = () => {
+    setShowEngineWarning(false);
+    setEngineListText("");
   };
 
   const handleCancel = async () => {
@@ -254,10 +305,15 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
 
             <div className="border border-yellow-400/20 bg-yellow-400/[0.03] rounded-sm p-3 space-y-2">
               <p className="text-[10px] font-mono text-white/80">
-                The binary for <span className="text-yellow-400">{provider.display_name}</span> ({environment.toLowerCase()}) is locked by a running engine.
+                The binary for <span className="text-yellow-400">{provider.display_name}</span> ({environment.toLowerCase()}) is locked by a running process.
               </p>
+              {backupRetryCount > 1 && (
+                <p className="text-[9px] font-mono text-red-400">
+                  Still locked after {backupRetryCount - 1} attempt(s). Are you sure you don't have the engine binary running externally somewhere? Check Task Manager for lingering processes.
+                </p>
+              )}
               <p className="text-[9px] font-mono text-stealth-muted">
-                You can either stop the engines now and proceed, or pause to handle it yourself.
+                You can stop engines now, retry after checking manually, or cancel to handle it yourself.
               </p>
             </div>
 
@@ -279,8 +335,14 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
           <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-stealth-border">
             <button onClick={handleBackupLockedPause}
               className="px-3 py-1 text-[9px] font-mono border border-red-400/60 text-red-400 hover:bg-red-500/20 transition-colors">
-              PAUSE — I'LL STOP THEM MYSELF
+              CANCEL BUILD
             </button>
+            {backupRetryCount > 1 && (
+              <button onClick={handleBackupLockedYes}
+                className="px-3 py-1 text-[9px] font-mono border border-yellow-400/60 text-yellow-400 hover:bg-yellow-500/20 transition-colors">
+                RETRY — I CHECKED EXTERNAL PROCESSES
+              </button>
+            )}
             <button onClick={handleBackupLockedYes}
               className="px-4 py-1 text-[9px] font-mono border rounded-sm bg-nv-green/20 border-nv-green/60 text-nv-green hover:bg-nv-green/30 transition-all">
               YES — STOP ENGINES & PROCEED
@@ -375,22 +437,54 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
               )}
             </div>
 
+            {/* Engine warning overlay */}
+            {showEngineWarning && (
+              <div className="border border-red-400/30 bg-red-400/[0.05] rounded-sm p-3 space-y-2">
+                <p className="text-[10px] font-mono text-red-400 font-bold">⚠ RUNNING ENGINES DETECTED</p>
+                <pre className="text-[8px] font-mono text-white/70 whitespace-pre-wrap">{engineListText}</pre>
+                <p className="text-[9px] font-mono text-stealth-muted">
+                  These engines will be stopped before the build starts. Click STOP ENGINES & PROCEED to continue, or CANCEL to handle manually.
+                </p>
+              </div>
+            )}
+
             {/* Warning */}
-            <p className="text-[8px] font-mono text-yellow-400/70">
-              This will compile llama.cpp from source. The build may take several minutes. Inference engines must be stopped before building.
-            </p>
+            {!showEngineWarning && (
+              <p className="text-[8px] font-mono text-yellow-400/70">
+                This will compile llama.cpp from source. The build may take several minutes. Inference engines must be stopped before building.
+              </p>
+            )}
           </div>
 
           {/* Footer */}
           <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-stealth-border">
-            <button onClick={() => onMinimize?.()}
-              className="px-3 py-1 text-[9px] font-mono border border-stealth-border text-stealth-muted hover:text-white transition-colors">
-              MINIMIZE TO STATUS BAR
-            </button>
-            <button onClick={handleConfirmBuild}
-              className={`px-4 py-1 text-[9px] font-mono border rounded-sm transition-all ${envColors("border")}`}>
-              YES — BUILD
-            </button>
+            {showEngineWarning ? (
+              <>
+                <button onClick={handleEngineWarningCancel}
+                  className="px-3 py-1 text-[9px] font-mono border border-red-400/60 text-red-400 hover:bg-red-500/20 transition-colors">
+                  CANCEL — HANDLE MANUALLY
+                </button>
+                <button onClick={handleEngineWarningProceed}
+                  className="px-4 py-1 text-[9px] font-mono border rounded-sm bg-red-400/20 border-red-400/60 text-red-400 hover:bg-red-500/30 transition-all">
+                  STOP ENGINES & PROCEED
+                </button>
+              </>
+            ) : (
+              <>
+                <button onClick={onClose}
+                  className="px-3 py-1 text-[9px] font-mono border border-red-400/60 text-red-400 hover:bg-red-500/20 transition-colors">
+                  CLOSE
+                </button>
+                <button onClick={() => onMinimize?.()}
+                  className="px-3 py-1 text-[9px] font-mono border border-stealth-border text-stealth-muted hover:text-white transition-colors">
+                  MINIMIZE TO STATUS BAR
+                </button>
+                <button onClick={handleConfirmBuild}
+                  className={`px-4 py-1 text-[9px] font-mono border rounded-sm transition-all ${envColors("border")}`}>
+                  YES — BUILD
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -432,6 +526,13 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
             <div className="flex items-center gap-2">
               <span className="text-[8px] font-mono text-stealth-muted uppercase tracking-wider">Step:</span>
               <span className="text-[9px] font-mono text-telemetry-cyan animate-pulse">{currentStep || "INITIALIZING..."}</span>
+            </div>
+          )}
+
+          {/* WAIT-CONFIRM banner */}
+          {waitingForConfirm && (
+            <div className="border border-yellow-400/30 bg-yellow-400/[0.05] rounded-sm px-3 py-2 text-center">
+              <span className="text-[9px] font-mono text-yellow-400 animate-pulse">⏸ PAUSED — REVIEW CMAKE OUTPUT ABOVE, THEN CLICK PROCEED TO START COMPILATION</span>
             </div>
           )}
 

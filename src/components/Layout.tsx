@@ -294,7 +294,7 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
           return prov || providers?.[0] || {} as ProviderConfig;
         })()}
         environment={foundryModal?.environment || "vanguard"}
-        onClose={() => {}} // Never called — modal is always mounted, StatusBarContext handles cleanup on Complete/Failed
+        onClose={closeBuildModal}
         visible={foundryModalVisible}
         onMinimize={minimizeBuildModal}
       />

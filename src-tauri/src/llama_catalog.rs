@@ -5,6 +5,7 @@
 //! No caching — always fresh on every open.
 
 use serde::Serialize;
+use std::os::windows::process::CommandExt;
 use std::process::Command;
 use std::sync::Arc;
 
@@ -733,6 +734,7 @@ pub async fn get_llama_catalog(
     // Run binary --help
     let output = Command::new(&binary_path)
         .arg("--help")
+        .creation_flags(0x08000000) // CREATE_NO_WINDOW — prevents CMD flash in release builds
         .output()
         .map_err(|e| format!("Failed to run {}: {}", binary_path.display(), e))?;
 

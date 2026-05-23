@@ -428,6 +428,7 @@ pub async fn scan_single_anchor(
         .args(args)
         .args(crate::types::LLAMA_DIAGNOSTIC_FLAGS.iter().map(|s| s.to_string()))
         .env("CUDA_VISIBLE_DEVICES", cuda_visible_devices)
+        .creation_flags(0x08000000) // CREATE_NO_WINDOW — prevents CMD flash in release builds
         .output();
 
     let timeout_result = tokio::time::timeout(

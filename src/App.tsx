@@ -114,7 +114,10 @@ function App() {
         pending = true;
         requestAnimationFrame(() => {
           invoke<ProviderConfig[]>("list_providers")
-            .then((data) => setProviders(data))
+            .then((data) => setProviders(prev => {
+              if (prev.length === data.length && prev.every((p, i) => p.id === data[i].id)) return prev;
+              return data;
+            }))
             .catch(() => {});
           pending = false;
         });

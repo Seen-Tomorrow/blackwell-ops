@@ -16,9 +16,10 @@ interface ToastProviderProps {
 export function ToastProvider({ children }: ToastProviderProps) {
   const [toasts, setToasts] = useState<ToastData[]>([]);
 
-  const addToast = useCallback((message: string, type: "success" | "error", duration = 3000) => {
+  const addToast = useCallback((message: string, type: "success" | "error", duration?: number) => {
+    const defaultDuration = type === "error" ? 8000 : 5000;
     const id = ++toastIdCounter;
-    setToasts(prev => [...prev, { id, message, type, duration }]);
+    setToasts(prev => [...prev, { id, message, type, duration: duration || defaultDuration }]);
   }, []);
 
   // Listen for launch events from EngineConfigPanel

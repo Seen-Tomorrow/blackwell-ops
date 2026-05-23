@@ -665,6 +665,7 @@ pub async fn get_binary_build_info(binary_path: String) -> Result<crate::types::
     // (some binaries write CUDA init info to stdout, version line may be on either stream)
     let output = tokio::process::Command::new(&path)
         .args(["--version"])
+        .creation_flags(0x08000000) // CREATE_NO_WINDOW — prevents CMD flash in release builds
         .output()
         .await;
 

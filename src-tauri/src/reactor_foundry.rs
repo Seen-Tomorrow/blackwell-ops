@@ -7,6 +7,7 @@
 //! - Atomic bin directory swap with rollback protocol
 
 use serde::{Deserialize, Serialize};
+use std::os::windows::process::CommandExt;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::Mutex as TokioMutex;
@@ -187,6 +188,7 @@ fn kill_all_children() {
     for pid in pids {
         let _ = std::process::Command::new("taskkill")
             .args(&["/T", "/F", "/PID", &pid.to_string()])
+            .creation_flags(0x08000000) // CREATE_NO_WINDOW
             .status();
     }
 }
@@ -390,6 +392,7 @@ pub async fn foundry_build(
             .arg(branch)
             .arg(&src_dir)
             .current_dir(work_dir.parent().unwrap())
+            .creation_flags(0x08000000) // CREATE_NO_WINDOW
             .output()
             .await
             .map_err(|e| format!("Git clone failed: {}", e))?;
@@ -407,6 +410,7 @@ pub async fn foundry_build(
         let pull_output = tokio::process::Command::new("git")
             .args(["pull", "--recurse-submodules"])
             .current_dir(&src_dir)
+            .creation_flags(0x08000000) // CREATE_NO_WINDOW
             .output()
             .await
             .map_err(|e| format!("Git pull failed: {}", e))?;
@@ -416,6 +420,7 @@ pub async fn foundry_build(
             let _ = tokio::process::Command::new("git")
                 .args(["submodule", "update", "--init", "--recursive"])
                 .current_dir(&src_dir)
+                .creation_flags(0x08000000) // CREATE_NO_WINDOW
                 .output()
                 .await;
         }
@@ -459,6 +464,7 @@ pub async fn foundry_build(
                             let mut apply_output = tokio::process::Command::new("git")
                                 .args(["apply", "--whitespace=nowarn", patch_path.to_str().unwrap()])
                                 .current_dir(&src_dir)
+                                .creation_flags(0x08000000) // CREATE_NO_WINDOW
                                 .output()
                                 .await;
 
@@ -466,6 +472,7 @@ pub async fn foundry_build(
                                 apply_output = tokio::process::Command::new("git")
                                     .args(["apply", "--3way", "--whitespace=nowarn", patch_path.to_str().unwrap()])
                                     .current_dir(&src_dir)
+                                    .creation_flags(0x08000000) // CREATE_NO_WINDOW
                                     .output()
                                     .await;
                             }
@@ -534,22 +541,33 @@ pub async fn foundry_build(
     if bin_release.exists() {
         emit_build_event(app_handle, &provider_id, env, build_id, BuildStep::Initializing, Some("Backing up existing binaries...".into()));
 
-        // Try backup rename — if locked, show modal and wait for user action
+        // Remove any stale backup from previous failed build — rename will fail with error 145 (dir not empty) otherwise
+        if bin_bak.exists() {
+            emit_build_event(app_handle, &provider_id, env, build_id, BuildStep::Initializing, Some("Removing stale backup from previous build...".into()));
+            let _ = tokio::fs::remove_dir_all(&bin_bak).await;
+        }
+
+        // Try backup rename — if locked, show modal and wait for user action (up to 3 retries)
         let mut backup_retries: u32 = 0;
         loop {
             match tokio::fs::rename(&bin_release, &bin_bak).await {
                 Ok(()) => break,
-                Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied && backup_retries < 1 => {
+                Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied && backup_retries < 3 => {
                     // Binary locked — emit BackupLocked step and wait for user action
                     BACKUP_RESOLVED.store(false, Ordering::SeqCst);
                     emit_build_event(app_handle, &provider_id, env, build_id,
                         BuildStep::BackupLocked(provider_display_name.clone()), None);
 
-                    // Wait for user to click YES (stop engines + retry) or PAUSE (cancel)
+                    // Wait for user to click YES (stop engines + retry), RETRY (manual check), or PAUSE (cancel)
                     let timeout = std::time::Duration::from_secs(600); // 10 min
                     let start = std::time::Instant::now();
                     while !BACKUP_RESOLVED.load(Ordering::SeqCst) {
                         if start.elapsed() > timeout {
+                            // Emit aggressive toast so user sees it even when minimized
+                            let _ = app_handle.emit("foundry-toast", &serde_json::json!({
+                                "type": "error",
+                                "text": format!("Build cancelled: binary for '{}' was locked and no action taken within 10 minutes. Check Task Manager for lingering processes.", provider_display_name),
+                            }));
                             emit_build_event(app_handle, &provider_id, env, build_id,
                                 BuildStep::Failed("Build cancelled: no action on locked binary within 10 minutes.".into()), None);
                             *CURRENT_BUILD.lock().await = None;
@@ -570,13 +588,18 @@ pub async fn foundry_build(
                         emit_build_event(app_handle, &provider_id, env, build_id, BuildStep::Initializing,
                             Some(format!("Stopped {} engine(s) for '{}'. Retrying backup...", stopped.len(), provider_display_name)));
                     }
-                    tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+                    tokio::time::sleep(tokio::time::Duration::from_millis(1500)).await;
                     backup_retries += 1;
                     continue; // retry rename
                 }
                 Err(e) => {
                     rollback_build(app_handle, &provider_id, env, build_id, &src_dir, &bin_release, &bin_bak).await;
-                    return Err(format!("Failed to backup existing binaries: {}. Is an engine for '{}' still running?", e, provider_display_name));
+                    return Err(format!(
+                        "Failed to backup existing binaries: {}. Is an engine for '{}' still running? \n\n\
+                         Make sure you don't have the binary open in another program (cmd, explorer, etc.). \n\
+                         Check Task Manager for lingering processes and try again.",
+                        e, provider_display_name
+                    ));
                 }
             }
         }
@@ -684,6 +707,7 @@ pub async fn foundry_build(
     cmd.args(&["/c", cfg_batch_path.to_string_lossy().as_ref()])
         .current_dir(&src_dir)
         .env("PATH", &scrubbed_path)
+        .creation_flags(0x08000000) // CREATE_NO_WINDOW — prevents CMD flash in release builds
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
 
@@ -706,14 +730,36 @@ pub async fn foundry_build(
     let env_cfg = env;
     let build_id_cfg = build_id;
 
+    let log_buffer: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+    let log_buffer_flush = log_buffer.clone();
+    let stderr_capture_clone2 = stderr_capture_clone.clone();
+
+    // 250ms batch flush — prevents UI choppiness during fast compile output
+    let flush_done: Arc<std::sync::atomic::AtomicBool> = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let flush_done_inner = flush_done.clone();
+    let app_handle_flush = app_handle_cfg.clone();
+    let provider_id_flush = provider_id_cfg.clone();
+
+    let _flush_handle = tauri::async_runtime::spawn(async move {
+        let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(250));
+        loop {
+            if flush_done_inner.load(Ordering::SeqCst) { break };
+            interval.tick().await;
+            let batch = log_buffer_flush.lock().unwrap().drain(..).collect::<Vec<String>>();
+            if !batch.is_empty() {
+                emit_build_batch(&app_handle_flush, &provider_id_flush, env_cfg, build_id_cfg, BuildStep::CMakeConfigure, batch);
+            }
+        }
+    });
+
     let stream_handle = tauri::async_runtime::spawn(async move {
         use tokio::io::{AsyncBufReadExt, BufReader};
-        
+
         let stdout_reader = BufReader::new(stdout);
         let mut stdout_lines = stdout_reader.lines();
         while let Ok(Some(line)) = stdout_lines.next_line().await {
             if !line.trim().is_empty() {
-                emit_build_event(&app_handle_cfg, &provider_id_cfg, env_cfg, build_id_cfg, BuildStep::CMakeConfigure, Some(line));
+                log_buffer.lock().unwrap().push(line);
             }
         }
 
@@ -721,9 +767,14 @@ pub async fn foundry_build(
         let mut stderr_lines = stderr_reader.lines();
         while let Ok(Some(line)) = stderr_lines.next_line().await {
             if !line.trim().is_empty() {
-                emit_build_event(&app_handle_cfg, &provider_id_cfg, env_cfg, build_id_cfg, BuildStep::CMakeConfigure, Some(format!("[ERR] {}", line)));
-                stderr_capture_clone.lock().unwrap().push(line);
+                log_buffer.lock().unwrap().push(format!("[ERR] {}", line));
+                stderr_capture_clone2.lock().unwrap().push(line);
             }
+        }
+        // Flush remaining lines on stream end
+        let batch = log_buffer.lock().unwrap().drain(..).collect::<Vec<String>>();
+        if !batch.is_empty() {
+            emit_build_batch(&app_handle_cfg, &provider_id_cfg, env_cfg, build_id_cfg, BuildStep::CMakeConfigure, batch);
         }
     });
 
@@ -733,6 +784,7 @@ pub async fn foundry_build(
         None => {
             // Cancelled during cmake configure — kill process, clean up, return
             let _ = child.kill().await;
+            flush_done.store(true, Ordering::SeqCst);
             stream_handle.await.ok();
             clear_pids();
             let _ = tokio::fs::remove_file(&cfg_batch_path).await;
@@ -740,8 +792,9 @@ pub async fn foundry_build(
         }
     };
 
+    flush_done.store(true, Ordering::SeqCst);
     stream_handle.await.ok();
-    
+
     if cfg_status.is_none() {
         // Process exited abnormally but wasn't cancelled — treat as failure
         clear_pids();
@@ -807,6 +860,12 @@ pub async fn foundry_build(
         "[BUILD] Starting compilation with {} cores...", num_cpus
     )));
 
+    // Emit "Foundry Active" toast when actual compilation begins (not at cmake config)
+    let _ = app_handle.emit("foundry-toast", &serde_json::json!({
+        "type": "info",
+        "text": format!("Foundry Active: Compiling {} Kernels...", env.label()),
+    }));
+
     let cuda_path_forced = env.cuda_path();
     let nvcc_bin = format!("{}\\bin", cuda_path_forced);
     let versioned_var = env.cuda_versioned_var_name();
@@ -838,6 +897,7 @@ pub async fn foundry_build(
     cmd2.args(&["/c", build_batch_path.to_string_lossy().as_ref()])
         .current_dir(&src_dir)
         .env("PATH", &scrubbed_path)
+        .creation_flags(0x08000000) // CREATE_NO_WINDOW — prevents CMD flash in release builds
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
 
@@ -859,14 +919,36 @@ pub async fn foundry_build(
     let env_bld = env;
     let build_id_bld = build_id;
 
+    let log_buffer_bld: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+    let log_buffer_flush_bld = log_buffer_bld.clone();
+    let stderr_capture_clone3 = stderr_capture_clone2.clone();
+
+    // 250ms batch flush — prevents UI choppiness during fast compile output
+    let flush_done_bld: Arc<std::sync::atomic::AtomicBool> = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let flush_done_inner_bld = flush_done_bld.clone();
+    let app_handle_flush2 = app_handle_bld.clone();
+    let provider_id_flush2 = provider_id_bld.clone();
+
+    let _flush_handle2 = tauri::async_runtime::spawn(async move {
+        let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(250));
+        loop {
+            if flush_done_inner_bld.load(Ordering::SeqCst) { break };
+            interval.tick().await;
+            let batch = log_buffer_flush_bld.lock().unwrap().drain(..).collect::<Vec<String>>();
+            if !batch.is_empty() {
+                emit_build_batch(&app_handle_flush2, &provider_id_flush2, env_bld, build_id_bld, BuildStep::Building, batch);
+            }
+        }
+    });
+
     let stream_handle2 = tauri::async_runtime::spawn(async move {
         use tokio::io::{AsyncBufReadExt, BufReader};
-        
+
         let stdout_reader = BufReader::new(stdout2);
         let mut stdout_lines = stdout_reader.lines();
         while let Ok(Some(line)) = stdout_lines.next_line().await {
             if !line.trim().is_empty() {
-                emit_build_event(&app_handle_bld, &provider_id_bld, env_bld, build_id_bld, BuildStep::Building, Some(line));
+                log_buffer_bld.lock().unwrap().push(line);
             }
         }
 
@@ -874,9 +956,14 @@ pub async fn foundry_build(
         let mut stderr_lines = stderr_reader.lines();
         while let Ok(Some(line)) = stderr_lines.next_line().await {
             if !line.trim().is_empty() {
-                emit_build_event(&app_handle_bld, &provider_id_bld, env_bld, build_id_bld, BuildStep::Building, Some(format!("[ERR] {}", line)));
-                stderr_capture_clone2.lock().unwrap().push(line);
+                log_buffer_bld.lock().unwrap().push(format!("[ERR] {}", line));
+                stderr_capture_clone3.lock().unwrap().push(line);
             }
+        }
+        // Flush remaining lines on stream end
+        let batch = log_buffer_bld.lock().unwrap().drain(..).collect::<Vec<String>>();
+        if !batch.is_empty() {
+            emit_build_batch(&app_handle_bld, &provider_id_bld, env_bld, build_id_bld, BuildStep::Building, batch);
         }
     });
 
@@ -886,6 +973,7 @@ pub async fn foundry_build(
         None => {
             // Cancelled during build — kill process, clean up, return
             let _ = child2.kill().await;
+            flush_done_bld.store(true, Ordering::SeqCst);
             stream_handle2.await.ok();
             clear_pids();
             let _ = tokio::fs::remove_file(&build_batch_path).await;
@@ -898,8 +986,9 @@ pub async fn foundry_build(
         }
     };
 
+    flush_done_bld.store(true, Ordering::SeqCst);
     stream_handle2.await.ok();
-    
+
     if build_status.is_none() {
         clear_pids();
         let _ = tokio::fs::remove_file(&build_batch_path).await;
@@ -1327,12 +1416,7 @@ fn emit_build_event(
     }
 
     match step {
-        BuildStep::Initializing => {
-            let _ = app_handle.emit("foundry-toast", &serde_json::json!({
-                "type": "info",
-                "text": format!("Foundry Active: Compiling {} Kernels...", env.label()),
-            }));
-        }
+        BuildStep::Initializing => {} // Toast emitted once at build start, not per event
         BuildStep::Complete => {
             let _ = app_handle.emit("foundry-toast", &serde_json::json!({
                 "type": "success",
@@ -1352,6 +1436,43 @@ fn emit_build_event(
             }));
         }
         _ => {}
+    }
+}
+
+// Batch emit — sends multiple log lines as a single event to reduce IPC overhead
+fn emit_build_batch(
+    app_handle: &tauri::AppHandle,
+    provider_id: &str,
+    env: BuildEnv,
+    build_id: u64,
+    step: BuildStep,
+    lines: Vec<String>,
+) {
+    let step_name = match &step {
+        BuildStep::Idle => "Idle",
+        BuildStep::Initializing => "Initializing",
+        BuildStep::GitClone => "GitClone",
+        BuildStep::GitPull => "GitPull",
+        BuildStep::PrCherryPick => "PrCherryPick",
+        BuildStep::CMakeConfigure => "CMakeConfigure",
+        BuildStep::WaitingForConfirm => "WaitingForConfirm",
+        BuildStep::Building => "Building",
+        BuildStep::Validating => "Validating",
+        BuildStep::Complete => "Complete",
+        BuildStep::Failed(_) => "Failed",
+        BuildStep::BackupLocked(_) => "BackupLocked",
+    };
+
+    let progress = serde_json::json!({
+        "build_id": build_id,
+        "step": step_name,
+        "provider_id": provider_id,
+        "environment": env.label(),
+        "log_lines": lines,
+    });
+
+    if let Err(e) = app_handle.emit("foundry-build-progress", &progress) {
+        log::debug!("Failed to emit foundry-build-progress batch: {}", e);
     }
 }
 

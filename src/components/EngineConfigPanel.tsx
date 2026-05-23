@@ -713,30 +713,63 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
               return (
                 <div key={group.id}>
-                  <div className="nuclear-btn-container">
-                    <button
-                      onClick={() => {
-                        invoke<boolean>("toggle_group_hidden", { providerId: effectiveBackendType, groupId: group.id })
-                          .then(() => {
-                            setSpecFlash(true);
-                            setTimeout(() => setSpecFlash(false), 400);
-                            window.dispatchEvent(new CustomEvent("blackops-reload-providers"));
-                            // Trigger config reload so newly unhidden params get defaults in state
-                            window.dispatchEvent(new CustomEvent("param-config-changed"));
-                          })
-                          .catch(err => console.error("[toggle_group_hidden] failed:", err));
-                      }}
-                      className={`nuclear-btn ${specActive ? 'active' : ''} ${specFlash ? 'flash' : ''}`}
-                    >
-                      <span className="nuclear-btn-text">{specActive ? "MTP — DRAFT — ACTIVE" : "SPECULATIVE DECODING — OFF"}</span>
-                    </button>
-
-                    {specActive && (
-                      <div className="spec-warning-banner active">
-                        ⚠Speculative engaged — You need // MTP model for this to work.
-                      </div>
-                    )}
+                  <div className={`nuclear-btn-container ${specFlash ? 'flash' : ''}`}>
+                    <span className="font-mono text-stealth-muted/30">{specActive ? "SPECULATIVE DECODING" : "SPECULATIVE DECODING"}</span>
+                    <label className="toggle-switch">
+                      <input
+                        type="checkbox"
+                        className="toggle-input"
+                        checked={specActive}
+                        onChange={() => {
+                          invoke<boolean>("toggle_group_hidden", { providerId: effectiveBackendType, groupId: group.id })
+                            .then(() => {
+                              setSpecFlash(true);
+                              setTimeout(() => setSpecFlash(false), 400);
+                              window.dispatchEvent(new CustomEvent("blackops-reload-providers"));
+                              window.dispatchEvent(new CustomEvent("param-config-changed"));
+                            })
+                            .catch(err => console.error("[toggle_group_hidden] failed:", err));
+                        }}
+                      />
+                      <span className="toggle-track">
+                        <span className="toggle-rust"></span>
+                        <span className="toggle-glow"></span>
+                        <span className="toggle-thumb">
+                          <span className="thumb-inner"></span>
+                          <span className="thumb-shine"></span>
+                        </span>
+                        <span className="toggle-icons">
+                          <svg
+                            className="icon-off"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                          >
+                            <circle cx="12" cy="12" r="5"></circle>
+                            <path
+                              d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"
+                            ></path>
+                          </svg>
+                          <svg className="icon-on" viewBox="0 0 24 24" fill="currentColor">
+                            <path
+                              d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313-12.454z"
+                            ></path>
+                          </svg>
+                        </span>
+                      </span>
+                      <span className="toggle-label">
+                        <span className="label-off">OFF</span>
+                        <span className="label-on">ON</span>
+                      </span>
+                    </label>
                   </div>
+
+                  {specActive && (
+                    <div className="rounded-sm px-3 py-2 text-[8px] font-mono tracking-wide uppercase flex items-center gap-1">
+                      Speculative engaged — You need MTP model for this to work.
+                    </div>
+                  )}
 
                   {specActive && (
                     <div className="space-y-2.5 mt-2">
@@ -750,7 +783,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
                   {!specActive && specAllParams.length > 0 && (
                     <div className="text-[8px] font-mono text-stealth-muted/30 tracking-wider uppercase mt-1 ml-2">
-                      🔒 {specAllParams.length} parameter{specAllParams.length > 1 ? 's' : ''} locked — activate to configure
+                       {specAllParams.length} parameter{specAllParams.length > 1 ? 's' : ''} 🔒locked — activate to configure
                     </div>
                   )}
                 </div>
@@ -802,50 +835,92 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
         {/* Test flags */}
         {isAdminUnlocked && (
-          <div className="px-1 py-3 border-t section-divider relative mt-3 bg-yellow-500">
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="text-[9px] font-mono text-black uppercase tracking-wider glitch-text">CUSTOM FLAGS</label>
-              <div className="flex gap-1.5">
-                {/* ADD/REPLACE mode toggle */}
-                <button
-                  onClick={() => setTestFlagsMode(m => m === "add" ? "replace" : "add")}
-                  className={`relative flex items-center justify-center px-4 py-0.5 text-[8px] font-mono border rounded-full transition-all duration-150 ${
-                    testFlagsEnabled
-                      ? (testFlagsMode === "add"
-                        ? "bg-green-600 text-white border-green-600"
-                        : "bg-red-600 text-white border-red-600")
-                      : "bg-transparent text-black/40 border-black/30 disabled:opacity-30 disabled:cursor-not-allowed"
-                  }`}
-                  disabled={!testFlagsEnabled}
-                >
-                  {testFlagsMode === "add" ? "//APPEND to above user config" : "//REPLACE user config with this"}
-                </button>
-                {/* ON/OFF toggle */}
-                <button
-                  onClick={() => setTestFlagsEnabled(v => !v)}
-                  className={`relative flex items-center justify-center w-12 px-4 py-0.5 text-[8px] font-mono border rounded-full transition-all duration-150 ${
-                    testFlagsEnabled
-                      ? "bg-black text-white border-black"
-                      : "bg-transparent text-black/40 border-black/30 hover:text-black hover:border-black"
-                  }`}
-                >
-                  <span className={`absolute block w-2 h-2 rounded-full transition-all duration-150 ${testFlagsEnabled ? "bg-white left-1" : "bg-black right-1"}`}></span>
-                  {testFlagsEnabled ? "ON" : "OFF"}
-                </button>
+          <div className="relative mt-3 border rounded-sm overflow-hidden transition-all duration-200" style={{ borderColor: testFlagsEnabled ? 'rgba(250, 204, 21, 0.6)' : 'rgba(250, 204, 21, 0.2)' }}>
+            {/* Top accent bar */}
+            <div className="h-[1px] w-full bg-gradient-to-r from-transparent via-yellow-500/60 to-transparent" />
+            <div className="px-3 py-2.5 space-y-2 transition-all duration-200" style={{ background: testFlagsEnabled ? 'rgba(250, 204, 21, 0.2)' : 'rgba(250, 204, 21, 0.04)' }}>
+              {/* Header row */}
+              <div className="flex items-center justify-between">
+                <label className="text-[9px] font-mono uppercase tracking-wider transition-all duration-200" style={{ color: testFlagsEnabled ? 'rgba(250, 204, 21, 1)' : 'rgba(250, 204, 21, 0.8)' }}>
+                  CUSTOM FLAGS
+                </label>
+                <div className="flex items-center gap-2">
+                  {/* Mode toggle */}
+                  <button
+                    onClick={() => { if (testFlagsEnabled) setTestFlagsMode(m => m === "add" ? "replace" : "add"); }}
+                    className={`px-2 py-0.5 text-[7px] font-mono border rounded-sm transition-all duration-150 ${
+                      testFlagsEnabled
+                        ? testFlagsMode === "add"
+                          ? "border-green-500/30 text-green-400"
+                          : "border-red-500/30 text-red-400"
+                        : "border-stealth-border/30 text-stealth-muted/30 cursor-not-allowed"
+                    }`}
+                    style={testFlagsEnabled ? {
+                      background: testFlagsMode === "add" ? 'rgba(74, 222, 128, 0.06)' : 'rgba(248, 113, 113, 0.06)',
+                    } : {}}
+                    disabled={!testFlagsEnabled}
+                  >
+                    {testFlagsMode === "add" ? "+ APPEND" : "= REPLACE"}
+                  </button>
+
+                  {/* ON/OFF toggle */}
+                  <label className="toggle-switch">
+                    <input
+                      type="checkbox"
+                      className="toggle-input"
+                      checked={testFlagsEnabled}
+                      onChange={() => setTestFlagsEnabled(v => !v)}
+                    />
+                    <span className="toggle-track">
+                      <span className="toggle-rust"></span>
+                      <span className="toggle-glow"></span>
+                      <span className="toggle-thumb">
+                        <span className="thumb-inner"></span>
+                        <span className="thumb-shine"></span>
+                      </span>
+                      <span className="toggle-icons">
+                        <svg
+                          className="icon-off"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                        >
+                          <circle cx="12" cy="12" r="5"></circle>
+                          <path
+                            d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"
+                          ></path>
+                        </svg>
+                        <svg className="icon-on" viewBox="0 0 24 24" fill="currentColor">
+                          <path
+                            d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313-12.454z"
+                          ></path>
+                        </svg>
+                      </span>
+                    </span>
+                    <span className="toggle-label">
+                      <span className="label-off">OFF</span>
+                      <span className="label-on">ON</span>
+                    </span>
+                  </label>
+                </div>
               </div>
+
+              {/* Input */}
+              <input
+                type="text"
+                value={testFlags}
+                onChange={(e) => setTestFlags(e.target.value)}
+                placeholder="-sm layer -smf32 1 ..."
+                disabled={!testFlagsEnabled}
+                className={`w-full border text-[9px] font-mono px-2.5 py-1.5 focus:outline-none transition-all duration-150 rounded-sm ${
+                   testFlagsEnabled
+                     ? "border-yellow-500/30 focus:border-yellow-500/50 placeholder:text-stealth-muted/40"
+                     : "border-stealth-border/20 text-stealth-muted/30 cursor-not-allowed"
+                }`}
+                style={{ background: 'rgba(0, 0, 0, 0.3)' }}
+              />
             </div>
-            <input
-              type="text"
-              value={testFlags}
-              onChange={(e) => setTestFlags(e.target.value)}
-              placeholder="-sm layer -smf32 1 ..."
-              disabled={!testFlagsEnabled}
-              className={`w-full bg-black border text-[9px] font-mono px-2 py-1.5 focus:outline-none transition-colors placeholder:text-stealth-muted/50 rounded-sm ${
-                 testFlagsEnabled
-                   ? "border-telemetry-red/40 text-white"
-                   : "border-stealth-border disabled:opacity-30 disabled:cursor-not-allowed"
-               }`}
-            />
           </div>
         )}
 
