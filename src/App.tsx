@@ -283,6 +283,9 @@ function App() {
         try {
           if (payload && payload.slot !== undefined) {
             setEnginePerfEvents((prev) => {
+              const existing = prev.get(payload.slot);
+              // Skip update if TPS and TTFT haven't changed meaningfully — prevents 5x/sec re-render churn during idle generation.
+              if (existing && Math.abs(existing.tps - payload.tps) < 1 && Math.abs((existing.ttft_ms ?? 0) - (payload.ttft_ms ?? 0)) < 5) return prev;
               const next = new Map(prev);
               next.set(payload.slot, payload);
               return next;
@@ -422,10 +425,22 @@ function App() {
     });
   }, []);
 
+  const flatLogsRef = useRef<Map<number, Array<{ text: string; alias: string }>>>(new Map());
+  const logsLengthsRef = useRef<Record<number, number>>({});
+
   const flatLogs = useMemo(() => {
-    const result: Map<number, Array<{ text: string; alias: string }>> = new Map();
+    const result = new Map();
     for (const [slot, entries] of logs.entries()) {
-      result.set(slot, entries.slice(-500).map((e) => ({ text: e.text, alias: e.alias })));
+      const len = entries.length;
+      // Only recompute slice+map when entry count changed by 10+ — avoids expensive allocation on every log append.
+      if (logsLengthsRef.current[slot] !== undefined && Math.abs(len - logsLengthsRef.current[slot]) < 10) {
+        result.set(slot, flatLogsRef.current.get(slot) || []);
+      } else {
+        const sliced = entries.slice(-500).map((e) => ({ text: e.text, alias: e.alias }));
+        result.set(slot, sliced);
+        flatLogsRef.current.set(slot, sliced);
+      }
+      logsLengthsRef.current[slot] = len;
     }
     return result;
   }, [logs]);

@@ -31,21 +31,20 @@ export function TelemetryProvider({ children, lowPower }: { children: React.Reac
   }, []);
 
   // Consolidated telemetry polling — GPU + CPU with configurable intervals
-  // Identity guard: skip setState when readings haven't changed numerically.
+  // Identity guard: skip setState when readings haven't changed meaningfully.
   // Prevents reference churn from forcing re-renders of the entire tree every 250ms.
+  // Uses tolerance thresholds for noisy fields (temp ±1°C, util ±3%) so minor fluctuations don't trigger full-tree re-renders.
   const pollGpu = useCallback(async () => {
     try {
       const data = await invoke<GpuInfo[]>("scan_gpus");
       setGpus(prev => {
         if (prev.length !== data.length) return data;
         for (let i = 0; i < prev.length; i++) {
-          if (prev[i].memory_used !== data[i].memory_used ||
-              prev[i].temperature_gpu !== data[i].temperature_gpu ||
-              prev[i].utilization_gpu !== data[i].utilization_gpu) {
-            return data;
-          }
+          if (prev[i].memory_used !== data[i].memory_used) return data;
+          if (Math.abs(prev[i].temperature_gpu - data[i].temperature_gpu) > 1) return data; // ±1°C tolerance
+          if (Math.abs(prev[i].utilization_gpu - data[i].utilization_gpu) > 3) return data; // ±3% tolerance
         }
-        return prev; // Identical reading — retain reference, skip re-render
+        return prev; // No meaningful change — retain reference, skip re-render
       });
     } catch {}
   }, []);
@@ -55,8 +54,8 @@ export function TelemetryProvider({ children, lowPower }: { children: React.Reac
       const data = await invoke<CpuInfo>("scan_cpu");
       setCpu(prev => {
         if (!prev) return data;
-        if (prev.avg_usage_percent !== data.avg_usage_percent) return data;
-        return prev; // Identical reading — retain reference, skip re-render
+        if (Math.abs(prev.avg_usage_percent - data.avg_usage_percent) > 2) return data; // ±2% tolerance
+        return prev; // No meaningful change — retain reference, skip re-render
       });
     } catch {}
   }, []);
