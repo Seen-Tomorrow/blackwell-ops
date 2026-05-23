@@ -6,6 +6,7 @@ import type { ModelEntry, EngineConfig, GpuInfo, UserEditedTemplateParam, Provid
 import { KEYS, engineAliasKey } from "../lib/storage";
 import { invoke } from "@tauri-apps/api/core";
 import VramBadge from "./VramBadge";
+import RunningEnginesPanel from "./RunningEnginesPanel";
 import { useScenarioEvaluator } from "../hooks/useScenarioEvaluator";
 import { useConfigResolver } from "../hooks/useConfigResolver";
 
@@ -48,10 +49,12 @@ interface EngineConfigPanelProps {
   activeEngineAlias?: string;
   activeEnginePort?: number;
   selectedSlotIdx?: number | null; // Slot index for Fusion overlay
+  models?: ModelEntry[]; // Full model list for running engines panel
+  onSelectEngine?: (slotIdx: number) => void; // Callback to select a running engine
 }
 
 export default function EngineConfigPanel(props: EngineConfigPanelProps) {
-  const { model, gpus, providers: externalProviders, committedVramMib, isAdminUnlocked, systemInfo, stack, onLaunch, isModelRunning, activeEngineAlias, activeEnginePort, selectedSlotIdx } = props;
+  const { model, gpus, providers: externalProviders, committedVramMib, isAdminUnlocked, systemInfo, stack, onLaunch, isModelRunning, activeEngineAlias, activeEnginePort, selectedSlotIdx, models, onSelectEngine } = props;
 
   // ── State ───────────────────────────────────────────────────────────────
 
@@ -689,6 +692,18 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         />
 
       </div>
+
+      {/* Running Engines — eink panel below VRAM, outside Fusion overlay coverage */}
+      {onSelectEngine && models && (
+        <div className="flex-shrink-0">
+          <RunningEnginesPanel
+            stack={stack}
+            models={models}
+            selectedSlotIdx={selectedSlotIdx ?? null}
+            onSelectEngine={onSelectEngine}
+          />
+        </div>
+      )}
 
       {/* Parameters — scrollable middle section (e-ink panel) */}
       <div className="px-4 py-3 border-b relative flex-1 overflow-y-auto cyber-scrollbar eink-panel">

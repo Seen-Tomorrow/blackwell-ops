@@ -266,6 +266,23 @@ use tauri::Emitter;
 
 #[tokio::main]
 async fn main() {
+    // Enable full backtrace on panic
+    std::env::set_var("RUST_BACKTRACE", "1");
+    // Custom panic handler — writes backtrace to file for debugging crashes
+    std::panic::set_hook(Box::new(|info| {
+        let msg = format!(
+            "[PANIC] {}\n{:?}",
+            info.location().map(|l| l.to_string()).unwrap_or_else(|| "unknown location".to_string()),
+            info
+        );
+        eprintln!("{}", msg);
+        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(r"C:\tmp\blackwell-panic.log") {
+            use std::io::Write;
+            let _ = writeln!(f, "{}\n", msg);
+            let _ = f.flush();
+        }
+    }));
+
     #[cfg(debug_assertions)]
     {
         let mut builder = env_logger::Builder::from_default_env();

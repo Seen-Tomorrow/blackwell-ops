@@ -19,7 +19,7 @@ export default function MiniModelCard({ entry, modelAuthor, modelName, quant, si
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.95 }}
-      animate={{ opacity: 1, scale: 1, borderColor: isNewLaunch ? ["#FBBF24", "#FF00FF", "#00FFFF", "#FF00FF", "#FBBF24"] : undefined }}
+      animate={{ opacity: 1, scale: 1, borderColor: isNewLaunch ? ["#76B900", "#00FFFF", "#76B900"] : undefined }}
       transition={{ duration: 0.2, borderColor: { duration: 2, repeat: 0 } }}
       onClick={() => onSelect(entry.alias!)}
       className={`cursor-pointer rounded-sm p-1.5 border ${
@@ -27,7 +27,7 @@ export default function MiniModelCard({ entry, modelAuthor, modelName, quant, si
           ?           "brushed-steel-card"
           : isNewLaunch
             ? "bg-black/40 hover:bg-black/60"
-            : "bg-black/40 border-amber-400 hover:bg-black/60"
+            : "bg-black/40 border-nv-green/40 hover:bg-black/60"
       }`}
     >
       {/* Top row: author (left), alias (right) */}
@@ -35,7 +35,7 @@ export default function MiniModelCard({ entry, modelAuthor, modelName, quant, si
         {modelAuthor && (
           <span className="text-[7px] font-mono text-stealth-muted truncate">{modelAuthor}</span>
         )}
-        <span className="text-[6px] font-mono text-amber-400 shrink-0">{entry.alias}</span>
+        <span className="text-[6px] font-mono text-nv-green/80 shrink-0">{entry.alias}</span>
       </div>
 
       {/* Name (left) + quant badge (right) */}

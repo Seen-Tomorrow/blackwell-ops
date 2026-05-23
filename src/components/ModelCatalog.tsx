@@ -3,7 +3,7 @@ import { useRef, useEffect, useMemo, useState } from "react";
 import type { EngineConfig, ProviderConfig, SystemInfo, StackEntry } from "../lib/types";
 import EngineConfigPanel from "./EngineConfigPanel";
 import ModelCard from "./ModelCard";
-import MiniModelCard from "./MiniModelCard";
+
 import { useModelCatalog, type SortField } from "../hooks/useModelCatalog";
 import { KEYS } from "../lib/storage";
 import { useTelemetry } from "../context/TelemetryContext";
@@ -82,25 +82,6 @@ export default function ModelCatalog(props: ModelCatalogProps) {
 
 
 
-  // Build flat list of all running instances for pinned grid
-  const pinnedInstanceList = useRef<{ entry: StackEntry; modelAuthor?: string; sourcePathLabel?: string; modelName: string; quant: string; sizeStr: string }[]>([]).current;
-  const buildPinnedInstances = () => {
-    const result: typeof pinnedInstanceList = [];
-    for (const [path, entries] of runningInstances) {
-      const model = models.find(m => m.path === path);
-      for (const entry of entries) {
-        result.push({
-          entry,
-          modelAuthor: model?.author,
-          sourcePathLabel: model?.sourcePathLabel,
-          modelName: model?.name || entry.model_name || "",
-          quant: model?.quant || "",
-          sizeStr: model?.size_str || "",
-        });
-      }
-    }
-    return result;
-  };
 
   // Determine effective engine entry from selected slot index
   const effectiveEngineEntry = useMemo(() => {
@@ -228,40 +209,10 @@ export default function ModelCatalog(props: ModelCatalogProps) {
         {/* Left panel — model browser */}
         <div className="w-[420px] min-w-[320px] flex flex-col border-r border-stealth-border/50 cyber-panel">
 
-          {/* Pinned running instances zone (fixed, no scroll) */}
-          {totalRunning > 0 && (() => {
-            const instances = buildPinnedInstances();
-            return (
-              <div className="flex-shrink-0 flex flex-col">
-                {/* Spacer matching right-side provider selector to align mini cards with VramBadge top */}
-                <div className="h-[56px] flex-shrink-0" />
-                <div className="flex-shrink-0 px-3 py-2 border-b section-divider relative bg-black/20">
-                  <label className="text-[9px] font-mono tracking-widest uppercase block mb-1.5 glitch-text" style={{ color: '#FBBF24' }}>
-                    ▶ RUNNING ({instances.length} instances / {totalRunning} models)
-                  </label>
-                </div>
-                <div className="grid grid-cols-2 gap-1 px-3 pb-2">
-                  {instances.map(item => {
-                    // Mini card selection is driven ONLY by slot index — catalog clicks must not affect it
-                    const isThisSelected = selectedSlotIdx === item.entry.idx;
-                    return (
-                      <MiniModelCard
-                        key={item.entry.alias!}
-                        entry={item.entry}
-                        modelAuthor={item.modelAuthor}
-                        modelName={item.modelName}
-                        quant={item.quant}
-                        sizeStr={item.sizeStr}
-                        isSelected={isThisSelected}
-                        isNewLaunch={false}
-                        onSelect={() => handleSelectBySlot(item.entry.idx)}
-                      />
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })()}
+          {/* Placeholder — running engines now rendered in EngineConfigPanel (eink) */}
+          {totalRunning > 0 && (
+            <div className="flex-shrink-0" />
+          )}
 
           {/* Search bar */}
           <div className="px-3 py-2 border-b border-stealth-border/50 flex-shrink-0">
@@ -333,6 +284,8 @@ export default function ModelCatalog(props: ModelCatalogProps) {
               activeEngineAlias={effectiveEngineAlias}
               activeEnginePort={effectiveEnginePort}
               selectedSlotIdx={selectedSlotIdx}
+              models={models}
+              onSelectEngine={handleSelectBySlot}
             />
           </div>
         </div>

@@ -141,30 +141,7 @@ export default function GpuTopology({ gpuAllocations, gpuBarColor, ramVisible, r
                 </span>
               </div>
 
-              {/* Engine table — per GPU, only when engines are running */}
-              {alloc.runningEngines.length > 0 && (
-                <div className="mt-2 border border-stealth-border/30 rounded-sm overflow-hidden">
-                  {alloc.runningEngines.map(engine => (
-                    <div
-                      key={engine.slotAlias}
-                      className="flex items-center gap-2 px-2 py-1 hover:bg-white/5 transition-colors w-full border-b border-stealth-border/20 last:border-b-0 cursor-default select-none"
-                    >
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          window.dispatchEvent(new CustomEvent('blackops-navigate-stack'));
-                        }}
-                        className="text-[7px] font-mono text-nv-green flex-shrink-0 hover:text-white transition-colors cursor-pointer"
-                      >
-                        {engine.slotAlias}
-                      </button>
-                      <span className="text-[7px] font-mono text-stealth-muted flex-1 truncate" title={engine.modelShort}>{engine.modelShort}</span>
-                      <span className="text-[7px] font-mono text-white/70 flex-shrink-0">{(engine.vramUsedMib / 1024).toFixed(1)} GB</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </motion.div>
+             </motion.div>
           );
         })}
       </div>

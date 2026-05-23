@@ -27,7 +27,7 @@ export function ToastProvider({ children }: ToastProviderProps) {
     const handleLaunchSuccess = (e: Event) => {
       const detail = (e as CustomEvent).detail as { alias: string; port: number };
       if (detail?.alias && detail.port) {
-        addToast(`${detail.alias} ignited @ :${detail.port}`, "success");
+        addToast(`${detail.alias} started @ :${detail.port}`, "success");
       }
     };
 

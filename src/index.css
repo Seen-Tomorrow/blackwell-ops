@@ -639,6 +639,38 @@ html, body, #root {
 
 
 
+/* ── Running engines panel — grey bg, compact row cards (below VRAM) ─── */
+.running-engines-header-row {
+  background: #1a1d1a;
+}
+
+.running-engine-card {
+  background: #222522;
+  border-color: rgba(120, 120, 120, 0.25);
+  transition: all 0.15s ease;
+}
+
+.running-engine-card:hover {
+  background: #2a2e2a;
+  border-color: rgba(120, 120, 120, 0.4);
+}
+
+.running-engine-card-selected {
+  background: #2a3020;
+  border-color: rgba(118, 185, 0, 0.5);
+  box-shadow: 0 0 8px rgba(118, 185, 0, 0.12);
+}
+
+/* Pulsing status dot */
+.status-pulse {
+  animation: status-pulse-anim 2s ease-in-out infinite;
+}
+
+@keyframes status-pulse-anim {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(118, 185, 0, 0.4); }
+  50% { opacity: 0.6; box-shadow: 0 0 0 3px rgba(118, 185, 0, 0); }
+}
+
 /* Brushed steel card — selected model in catalog */
 .brushed-steel-card {
   background-image:

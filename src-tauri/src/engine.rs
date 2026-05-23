@@ -149,41 +149,56 @@ pub async fn launch_engine(
     let gpu_mask_msg = format!("[GPU_MASK] provider={} split_mode=\"{}\" test_has_split={} -> CUDA_VISIBLE_DEVICES={}", backend_type, config.get_param_str("split").unwrap_or_default(), test_has_split, gpu_mask);
     eprintln!("{}", gpu_mask_msg);
     // SANITY-BOX — route GPU mask info to sanity box
-    app.log_hub.emit_sanity_log("warn", &gpu_mask_msg);
+   app.log_hub.emit_sanity_log("warn", &gpu_mask_msg);
 
+    eprintln!("[LAUNCH_DIAG] step1: validate binary");
     crate::config::validate_provider_binary(binary_path.to_str().unwrap_or(""))?;
+    eprintln!("[LAUNCH_DIAG] step2: validate model");
     crate::config::validate_model_path(&config.model_path)?;
 
+    eprintln!("[LAUNCH_DIAG] step3: waiting for stack lock...");
     let (slot_idx, slot_port) = {
-        let stack = app.stack.lock().await;
-        let idx = stack.find_idle_slot().ok_or("All 4 slots are occupied")?;
-        let port = if config.port == 0 {
-            stack.get_slot(idx).map(|s| s.port).unwrap_or(9090)
-        } else {
-            config.port
+        let stack = match tokio::time::timeout(Duration::from_secs(5), app.stack.lock()).await {
+            Ok(guard) => guard,
+            Err(_) => {
+                eprintln!("[LAUNCH_DIAG] step3 FAIL: stack lock timeout — possible deadlock");
+                return Err("Stack lock timeout — possible deadlock. Another task may be holding the lock.".to_string());
+            }
         };
+        eprintln!("[LAUNCH_DIAG] step4: stack lock acquired, finding idle slot...");
+        let idx = stack.find_idle_slot().ok_or("All engine slots are occupied")?;
+        eprintln!("[LAUNCH_DIAG] step5: idle slot found: idx={} config.port={}", idx, config.port);
+        let port = stack.get_slot(idx).map(|s| s.port).unwrap_or(9090 + idx as u16);
         (idx, port)
     };
 
     config.port = slot_port;
+    eprintln!("[LAUNCH_DIAG] step6: killing existing process on port {}", slot_port);
 
     let ps_script = format!(
         r"$pids = netstat -ano | Select-String ':{0} ' | ForEach-Object {{ ($_ -split '\s+')[-1] }}; $pids | Where-Object {{ $_.Length -gt 0 -and $_ -ne '0' }} | ForEach-Object {{ taskkill /F /PID $_ 2>$null }}",
         slot_port
     );
-    let _ = tokio::process::Command::new("powershell")
+    eprintln!("[LAUNCH_DIAG] step6a: spawning powershell taskkill");
+    let kill_result = tokio::process::Command::new("powershell")
         .args(&["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", &ps_script])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .creation_flags(0x08000000) // CREATE_NO_WINDOW
         .output()
         .await;
+    eprintln!("[LAUNCH_DIAG] step6b: taskkill returned: {:?}", kill_result.as_ref().map(|o| o.status.success()));
 
+    eprintln!("[LAUNCH_DIAG] step7: sleeping 300ms for port release");
     tokio::time::sleep(Duration::from_millis(300)).await;
+    eprintln!("[LAUNCH_DIAG] step7b: woke from sleep, continuing");
 
     let provider_display_name = backend_type.clone();
+    eprintln!("[LAUNCH_DIAG] step8a: provider_display_name = {}", provider_display_name);
 
+    eprintln!("[LAUNCH_DIAG] step8: building command args");
     let cmd_args = template.build_command(&config, &gpu_mask, user_edited_params_ref);
+    eprintln!("[LAUNCH_DIAG] step8c: cmd_args built, len={}", cmd_args.len());
     let launch_cmd = format!("{} {}", binary_path.display(), cmd_args.join(" "));
     eprintln!("\n========== [LAUNCH_CMD] slot={} ==========", slot_idx);
     eprintln!("{}", launch_cmd);
@@ -194,33 +209,66 @@ pub async fn launch_engine(
     if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(r"C:\tmp\blackwell-launch.log") {
         use std::io::Write;
         let _ = writeln!(f, "\n[{}] slot={} CMD:\n{}\n", chrono::Local::now().format("%H:%M:%S%.3f"), slot_idx, launch_cmd);
+        let _ = f.flush();
     }
 
     app.log_hub.emit_system_event(slot_idx, &config.alias, "Engine launching...").await;
 
     let ctx_size_int = crate::templates::ctx_to_int_tokens(&config.get_param_str("ctx").unwrap_or_else(|| "32k".to_string()));
 
-    // Spawn engine — LogHub starts reading stderr immediately inside load_slot.
-    {
-        let stack_for_ready = app.stack.clone();
-        let slot_for_ready = slot_idx;
-        EngineStack::load_slot(
-            slot_idx, &config, &binary_path, gpu_mask.clone(), cmd_args.clone(),
-            provider_display_name.clone(), backend_type.clone(), &app.stack,
-            app.log_hub.clone(),
-            move || {
-                let s_clone = stack_for_ready.clone();
-                let si = slot_for_ready;
-                tokio::spawn(async move {
+    // Helper to build the on_ready closure
+    fn make_on_ready(
+        stack: Arc<tokio::sync::Mutex<EngineStack>>,
+        slot_idx: usize,
+    ) -> impl Fn() + Send + Sync + 'static {
+        move || {
+            let s_clone = stack.clone();
+            let si = slot_idx;
+            tokio::spawn(async move {
+                // Update slot status under lock, then drop lock BEFORE emitting
+                {
                     let s = s_clone.lock().await;
                     if let Some(mut slot) = s.get_slot(si) {
                         use crate::engine_stack::SlotStatus;
                         slot.status = SlotStatus::Running;
-                    }
+                    }; // drop parking_lot MutexGuard before dropping tokio guard
+                } // tokio Mutex dropped here — no hold during emit
+                // Re-acquire for emit_stack_changed (get_status + emit)
+                {
+                    let s = s_clone.lock().await;
                     s.emit_stack_changed();
-                });
-            },
-        ).await?;
+                }
+            });
+        }
+    }
+
+    // Spawn engine with auto-retry (once) on immediate crash
+    let stack_for_ready = app.stack.clone();
+    let slot_for_ready = slot_idx;
+    let mut last_err = None;
+    for attempt in 0..2 {
+        let result = EngineStack::load_slot(
+            slot_idx, &config, &binary_path, gpu_mask.clone(), cmd_args.clone(),
+            provider_display_name.clone(), backend_type.clone(), &app.stack,
+            app.log_hub.clone(),
+            make_on_ready(stack_for_ready.clone(), slot_for_ready),
+        ).await;
+
+        match result {
+            Ok(()) => break,
+            Err(e) => {
+                last_err = Some(e);
+                if attempt == 0 {
+                    eprintln!("[LAUNCH] slot={} first attempt failed: {} — retrying in 1s...", slot_idx, last_err.as_ref().unwrap());
+                    app.log_hub.emit_system_event(slot_idx, &config.alias, &format!("[RETRY] Launch failed: {} — retrying...", last_err.as_ref().unwrap())).await;
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                }
+            }
+        }
+    }
+
+    if let Some(e) = last_err {
+        return Err(e);
     }
 
     // Spawn FUSION brain — /slots + /metrics polling, state machine, emits "fusion-update"

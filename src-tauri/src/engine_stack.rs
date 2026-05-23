@@ -53,6 +53,8 @@ impl std::fmt::Display for SlotStatus {
 #[derive(Debug)]
 pub struct EngineSlot {
     pub child_proc: Option<std::process::Child>,
+    /// PID stored separately so the reaper can monitor without stealing the child handle.
+    pub pid: Option<u32>,
     pub port: u16,
     pub status: SlotStatus,
     pub alias: String,
@@ -83,6 +85,7 @@ impl EngineStack {
         for i in 0..slot_count {
             slots.push(Some(Arc::new(parking_lot::Mutex::new(EngineSlot {
                 child_proc: None,
+                pid: None,
                 port: base_port + i as u16,
                 status: SlotStatus::Idle,
                 alias: format!("ENGINE-{}", i),
@@ -163,7 +166,7 @@ impl EngineStack {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x08000000;
         const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
-        cmd.creation_flags(CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP) // no CMD window + process isolation for signal handling
+        cmd.creation_flags(CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP)
             .args(&cmd_args)
             .env("CUDA_VISIBLE_DEVICES", &gpu_mask)
             .env("LLAMA_LOG_COLORS", "on")
@@ -178,7 +181,7 @@ impl EngineStack {
         let pid = child.id();
         eprintln!("[ENGINE] slot={} spawned (pid={})", slot_idx, pid);
 
-        // Extract stderr pipe and start reader immediately — no gap for early output to be lost.
+        // Extract stderr pipe and start reader immediately
         let stderr = child.stderr.take().unwrap();
         let _line_rx = log_hub.spawn_slot_reader(
             slot_idx,
@@ -187,18 +190,27 @@ impl EngineStack {
             on_ready,
         );
 
-        // Quick alive check — give process 100ms to initialize
-        std::thread::sleep(std::time::Duration::from_millis(100));
+        // Quick alive check — give process 500ms to initialize
+        std::thread::sleep(std::time::Duration::from_millis(500));
         if let Ok(status) = child.try_wait() {
             if let Some(code) = status {
-                eprintln!("[ENGINE] slot={} CRASHED immediately after spawn! Exit code: {}", slot_idx, code.code().unwrap_or(-1));
+                let exit_code = code.code().unwrap_or(-1);
+                eprintln!("[ENGINE] slot={} CRASHED immediately after spawn! Exit code: {}", slot_idx, exit_code);
+                {
+                    let mut slot = slot_arc.lock();
+                    slot.status = SlotStatus::Idle;
+                    slot.child_proc = None;
+                    slot.pid = None;
+                }
+                return Err(format!("Engine crashed immediately with exit code {}", exit_code));
             }
         }
 
-        // Update slot state under per-slot lock only (no tokio guard held)
+        // Update slot state under per-slot lock only
         {
             let mut slot = slot_arc.lock();
             slot.child_proc = Some(child);
+            slot.pid = Some(pid);
             slot.port = config.port;
             slot.alias = config.alias.clone();
             slot.model_path = config.model_path.clone();
@@ -210,7 +222,101 @@ impl EngineStack {
             slot.status = SlotStatus::Loading;
         }
 
+        // Spawn a background reaper to monitor the child process
+        Self::spawn_reaper(slot_idx, slot_arc.clone(), stack_ref.clone(), log_hub.clone());
+
         Ok(())
+    }
+
+    /// Check if a Windows process is still alive by PID using OpenProcess + GetExitCodeProcess.
+    fn is_process_alive(pid: u32) -> bool {
+        use windows_sys::Win32::System::Threading::{
+            OpenProcess, GetExitCodeProcess, PROCESS_QUERY_INFORMATION,
+        };
+        use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
+
+        // SAFETY: PROCESS_QUERY_INFORMATION is all we need for GetExitCodeProcess.
+        // DO NOT add PROCESS_VM_READ — it causes OpenProcess to be denied on child processes,
+        // making the reaper think the process is dead and kill it via kill_process_by_port.
+        let handle = unsafe {
+            OpenProcess(PROCESS_QUERY_INFORMATION, 0, pid)
+        };
+
+        if handle == INVALID_HANDLE_VALUE {
+            return false;
+        }
+
+        let mut exit_code: u32 = 0;
+        let success = unsafe { GetExitCodeProcess(handle, &mut exit_code) } != 0;
+
+        unsafe { CloseHandle(handle); }
+
+        if !success {
+            return true; // Can't determine, assume alive
+        }
+
+        const STILL_ACTIVE: u32 = 259;
+        exit_code == STILL_ACTIVE
+    }
+
+    /// Background reaper: monitors a PID and cleans up the slot if the process dies unexpectedly.
+    fn spawn_reaper(
+        slot_idx: usize,
+        slot_arc: Arc<parking_lot::Mutex<EngineSlot>>,
+        stack_ref: Arc<tokio::sync::Mutex<EngineStack>>,
+        log_hub: LogHub,
+    ) {
+        let pid = {
+            let slot = slot_arc.lock();
+            slot.pid
+        };
+
+        let pid = match pid {
+            Some(p) => p,
+            None => {
+                eprintln!("[REAPER] slot={} no PID to monitor", slot_idx);
+                return;
+            }
+        };
+
+        let (port, alias) = {
+            let slot = slot_arc.lock();
+            (slot.port, slot.alias.clone())
+        };
+
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+                let alive = Self::is_process_alive(pid);
+
+                if !alive {
+                    eprintln!("[REAPER] slot={} alias={} died unexpectedly! (pid={})", slot_idx, alias, pid);
+
+                    // Stop the fusion brain for this slot
+                    crate::fusion_brain::stop_brain(slot_idx).await;
+
+                    // Emit system event
+                    let msg = format!("[REAPER] Engine died unexpectedly (pid {})", pid);
+                    log_hub.emit_system_event(slot_idx, &alias, &msg).await;
+
+                    // Kill any orphaned process on the port
+                    let _ = Self::kill_process_by_port(port).await;
+
+                    // Clear the slot
+                    {
+                        let stack = stack_ref.lock().await;
+                        stack.clear_slot(slot_idx);
+                        stack.emit_stack_changed();
+                    }
+
+                    // Emit slot-cleared for frontend log cleanup
+                    log_hub.emit("slot-cleared", &serde_json::json!({ "slot": slot_idx }));
+
+                    break;
+                }
+            }
+        });
     }
 
     async fn kill_process_by_port(port: u16) -> Result<(), String> {
@@ -244,8 +350,6 @@ impl EngineStack {
     ) -> bool {
         let pid = child.id();
 
-        // With piped I/O (no console), Ctrl+C and stdin EOF are both unreliable.
-        // TerminateProcess is the only reliable path — it completes in ~0.2s.
         eprintln!("[STOP] slot={} pid={} TerminateProcess...", slot_idx, pid);
         let _ = child.kill();
 
@@ -265,12 +369,13 @@ impl EngineStack {
         false
     }
 
-    /// Reset a slot to factory defaults — clears all engine metadata so the status poll returns clean idle entries.
+    /// Reset a slot to factory defaults.
     fn clear_slot(&self, idx: usize) {
         if let Some(slot_arc) = &self.slots[idx] {
             let mut slot = slot_arc.lock();
             slot.status = SlotStatus::Idle;
             slot.child_proc = None;
+            slot.pid = None;
             slot.alias = format!("ENGINE-{}", idx);
             slot.model_path.clear();
             slot.gpu_mask.clear();
@@ -284,7 +389,8 @@ impl EngineStack {
     /// Emit a stack-changed event to frontend with current status snapshot.
     pub fn emit_stack_changed(&self) {
         if let Some(hub) = self.log_hub.as_ref() {
-            hub.emit("stack-changed", &self.get_status());
+            let status = self.get_status();
+            hub.emit("stack-changed", &status);
         }
     }
 
@@ -293,7 +399,7 @@ impl EngineStack {
         slot_idx: usize,
         stack_ref: &Arc<tokio::sync::Mutex<EngineStack>>,
     ) -> Result<(), String> {
-        // Extract process handle under per-slot lock only — no tokio lock needed
+        // Extract process handle under per-slot lock only
         let (port, alias, proc_to_stop) = {
             let stack = stack_ref.lock().await;
             let mut slot = stack.slots[slot_idx].as_ref().ok_or("Slot not found")?.lock();
@@ -301,10 +407,9 @@ impl EngineStack {
             let alias = slot.alias.clone();
             let proc_to_stop = slot.child_proc.take();
             (port, alias, proc_to_stop)
-        }; // tokio stack lock dropped
+        };
 
         if let Some(mut proc) = proc_to_stop {
-            // Blocking shutdown runs in spawn_blocking so it doesn't block the tokio worker
             let graceful = tokio::task::spawn_blocking({
                 let si = slot_idx;
                 move || EngineStack::graceful_shutdown_process(&mut proc, si)
@@ -317,7 +422,6 @@ impl EngineStack {
             };
             eprintln!("[STOP] slot={} alias={} shutdown: {}", slot_idx, alias, msg);
 
-            // Emit shutdown event and kill orphaned port listener
             let hub_opt = {
                 let stack = stack_ref.lock().await;
                 stack.log_hub.as_ref().map(|h| h.clone())
@@ -328,7 +432,7 @@ impl EngineStack {
             let _ = Self::kill_process_by_port(port).await;
         }
 
-        // Clean up slot state — full metadata reset
+        // Clean up slot state
         {
             let stack = stack_ref.lock().await;
             stack.clear_slot(slot_idx);
@@ -337,11 +441,11 @@ impl EngineStack {
         Ok(())
     }
 
-    /// Stops all running slots in parallel. Static self-locking — caller must NOT hold the tokio stack lock.
+    /// Stops all running slots in parallel. Static self-locking.
     pub async fn stop_all_parallel(
         stack_ref: &Arc<tokio::sync::Mutex<EngineStack>>,
     ) -> Vec<usize> {
-        // Phase 1: Collect target slot data under a brief lock
+        // Phase 1: Collect targets under a brief lock
         let mut targets: Vec<(usize, u16, String, Option<std::process::Child>)> = Vec::new();
         let log_hub_ref = {
             let stack = stack_ref.lock().await;
@@ -361,18 +465,16 @@ impl EngineStack {
                 }
             }
             stack.log_hub.as_ref().map(|h| h.clone())
-        }; // tokio stack lock dropped
+        };
 
         // Phase 2: Run all shutdowns in parallel outside any lock
         let mut handles = Vec::new();
         for (i, port, alias, proc_to_stop) in targets {
             let hub_clone = log_hub_ref.clone();
             handles.push(tokio::spawn(async move {
-                if let Some(proc) = proc_to_stop {
-                    // Blocking shutdown in spawn_blocking
+                if let Some(mut proc) = proc_to_stop {
                     let graceful = tokio::task::spawn_blocking(move || {
-                        let mut p = proc;
-                        EngineStack::graceful_shutdown_process(&mut p, i)
+                        EngineStack::graceful_shutdown_process(&mut proc, i)
                     }).await.unwrap_or(false);
 
                     let msg = if !graceful {
@@ -388,7 +490,6 @@ impl EngineStack {
                     let _ = EngineStack::kill_process_by_port(port).await;
                 }
 
-                // Emit slot-cleared so frontend clears per-slot logs
                 if let Some(hub) = hub_clone.as_ref() {
                     hub.emit("slot-cleared", &serde_json::json!({ "slot": i }));
                 }
@@ -416,7 +517,6 @@ impl EngineStack {
     }
 
     /// Stops all slots whose backend_type matches the given provider ID in parallel.
-    /// Static self-locking — caller must NOT hold the tokio stack lock.
     pub async fn stop_slots_by_provider_parallel(
         backend_type: &str,
         stack_ref: &Arc<tokio::sync::Mutex<EngineStack>>,
@@ -438,17 +538,16 @@ impl EngineStack {
                 }
             }
             stack.log_hub.as_ref().map(|h| h.clone())
-        }; // tokio stack lock dropped
+        };
 
-        // Phase 2: Parallel shutdown outside any lock
+        // Phase 2: Parallel shutdown
         let mut handles = Vec::new();
         for (i, port, alias, proc_to_stop) in targets {
             let hub_clone = log_hub_ref.clone();
             handles.push(tokio::spawn(async move {
-                if let Some(proc) = proc_to_stop {
+                if let Some(mut proc) = proc_to_stop {
                     let graceful = tokio::task::spawn_blocking(move || {
-                        let mut p = proc;
-                        EngineStack::graceful_shutdown_process(&mut p, i)
+                        EngineStack::graceful_shutdown_process(&mut proc, i)
                     }).await.unwrap_or(false);
 
                     let msg = if !graceful {
@@ -491,7 +590,6 @@ impl EngineStack {
     }
 
     /// Emergency kill all — used during app exit. Runs in parallel for speed.
-    /// Static self-locking — caller must NOT hold the tokio stack lock.
     pub async fn kill_all(stack_ref: &Arc<tokio::sync::Mutex<EngineStack>>) {
         // Phase 1: Collect targets under brief lock
         let mut targets: Vec<(usize, u16, Option<std::process::Child>)> = Vec::new();
@@ -511,16 +609,15 @@ impl EngineStack {
                     }
                 }
             }
-        } // tokio stack lock dropped
+        }
 
-        // Phase 2: Parallel blocking shutdown in spawn_blocking
+        // Phase 2: Parallel blocking shutdown
         let mut handles = Vec::new();
         for (i, port, proc_to_stop) in targets {
             handles.push(tokio::spawn(async move {
-                if let Some(proc) = proc_to_stop {
+                if let Some(mut proc) = proc_to_stop {
                     tokio::task::spawn_blocking(move || {
-                        let mut p = proc;
-                        EngineStack::graceful_shutdown_process(&mut p, i)
+                        EngineStack::graceful_shutdown_process(&mut proc, i)
                     }).await.unwrap_or(false);
                 }
                 (i, port)
@@ -549,7 +646,7 @@ impl EngineStack {
             for (i, _) in stack.slots.iter().enumerate() {
                 stack.clear_slot(i);
             }
-       }
+        }
     }
 
     pub fn get_status(&self) -> Vec<StackEntry> {
