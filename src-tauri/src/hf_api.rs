@@ -54,8 +54,6 @@ struct HfApiModelInfo {
     downloads: u64,
     #[serde(default)]
     likes: u64,
-    #[serde(default)]
-    siblings: Option<Vec<HfSibling>>,
 }
 
 /// Extract GGUF files from a list of HF API siblings.

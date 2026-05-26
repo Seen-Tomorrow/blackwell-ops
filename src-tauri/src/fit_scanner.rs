@@ -66,29 +66,6 @@ const SCAN_PLAN: &[(&str, usize, &str, u32, u32, &str)] = &[
     ("heavy_1m_b1k", 1048576, "q4_0", 1024, 1, "none"),
 ];
 
-/// Get the mmproj file size in MiB for a model. Scans parent directory for *mmproj* files.
-pub fn get_mmproj_size_mib(model_path: &str) -> f64 {
-    let model_dir = PathBuf::from(model_path);
-    let parent = match model_dir.parent() {
-        Some(p) => p,
-        None => return 0.0,
-    };
-    let entries = match std::fs::read_dir(parent) {
-        Ok(e) => e,
-        Err(_) => return 0.0,
-    };
-    for entry in entries.flatten() {
-        let fname = entry.file_name();
-        let fname_lower = fname.to_string_lossy().to_lowercase();
-        if fname_lower.contains("mmproj") {
-            if let Ok(meta) = std::fs::metadata(entry.path()) {
-                return meta.len() as f64 / (1024.0 * 1024.0);
-            }
-        }
-    }
-    0.0
-}
-
 // ── Result Types ────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

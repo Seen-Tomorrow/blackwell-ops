@@ -3,6 +3,8 @@
 //! STATUS: Written but NOT wired into any pipeline.
 //! To enable: wire parse_line() output into FusionBrain in fusion_brain.rs.
 
+#![allow(dead_code)]
+
 use std::sync::OnceLock;
 
 // ── Compiled Regex Patterns (all static, zero runtime compilation) ───

@@ -243,18 +243,6 @@ export interface StackEntry {
   build_info?: BuildInfo;
 }
 
-export interface EnginePerfEvent {
-  slot: number;
-  alias: string;
-  tps: number;
-  ttft_ms?: number | null;
-  fuel_alpha_pct?: number | null;
-  n_tokens?: number;
-  prompt_tokens?: number;
-  kv_cache_pct?: number | null;
-  prompt_progress?: number | null;
-}
-
 /** FUSION real-time engine monitoring data — emitted from Rust /slots + /metrics fusion brain. */
 export interface FusionUpdate {
   alias: string;
@@ -267,6 +255,10 @@ export interface FusionUpdate {
 
   // Phase — fused from both sources
   phase: 'IDLE' | 'PP' | 'TG';
+
+  // Prompt processing metrics (from /metrics)
+  promptProgress?: number;
+  promptTokensPerRequest?: number;
 
   // Prefill metrics (primary source = /metrics)
   prefillTpsMetrics: number;   // from /metrics prompt_tokens delta

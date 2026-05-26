@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use tauri::{Emitter, Manager};
 
 /// Bundled providers that ship with bundled binaries.
+#[allow(dead_code)]
 const BUNDLED_PROVIDERS: &[&str] = &[crate::config::DEFAULT_PROVIDER_ID, "ik"];
 
 #[derive(Debug, Clone, Serialize)]

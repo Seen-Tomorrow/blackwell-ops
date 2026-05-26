@@ -6,7 +6,6 @@
 #[derive(serde::Deserialize)]
 pub struct SlotData {
     pub id: usize,
-    pub n_ctx: usize,
     #[serde(default)]
     pub is_processing: bool,
     #[serde(default)]
@@ -39,7 +38,6 @@ pub struct MetricsSnapshot {
     pub prompt_tokens_total: usize,
     pub prompt_seconds_total: f64,
     pub predicted_tokens_total: usize,
-    pub predicted_seconds_total: f64,
     pub predicted_tps_gauge: f64,
     pub prompt_tps_gauge: f64,
     pub requests_processing: usize,
@@ -63,7 +61,6 @@ fn parse_prometheus_text(text: &str) -> Result<MetricsSnapshot, String> {
     let mut prompt_tokens_total: Option<usize> = None;
     let mut prompt_seconds_total: Option<f64> = None;
     let mut predicted_tokens_total: Option<usize> = None;
-    let mut predicted_seconds_total: Option<f64> = None;
     let mut predicted_tps_gauge: Option<f64> = None;
     let mut prompt_tps_gauge: Option<f64> = None;
     let mut requests_processing: Option<usize> = None;
@@ -88,9 +85,6 @@ fn parse_prometheus_text(text: &str) -> Result<MetricsSnapshot, String> {
                 "llamacpp:tokens_predicted_total" => {
                     predicted_tokens_total = parse_usize(val_str);
                 }
-                "llamacpp:tokens_predicted_seconds_total" => {
-                    predicted_seconds_total = parse_f64(val_str);
-                }
                 "llamacpp:predicted_tokens_seconds" => {
                     predicted_tps_gauge = parse_f64(val_str);
                 }
@@ -109,7 +103,6 @@ fn parse_prometheus_text(text: &str) -> Result<MetricsSnapshot, String> {
         prompt_tokens_total: prompt_tokens_total.unwrap_or(0),
         prompt_seconds_total: prompt_seconds_total.unwrap_or(0.0),
         predicted_tokens_total: predicted_tokens_total.unwrap_or(0),
-        predicted_seconds_total: predicted_seconds_total.unwrap_or(0.0),
         predicted_tps_gauge: predicted_tps_gauge.unwrap_or(0.0),
         prompt_tps_gauge: prompt_tps_gauge.unwrap_or(0.0),
         requests_processing: requests_processing.unwrap_or(0),

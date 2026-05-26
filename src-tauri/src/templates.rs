@@ -482,29 +482,4 @@ impl ProviderTemplate {
         filename.contains(&pat_lower)
     }
 
-    pub fn get_default(&self, key: &str) -> serde_json::Value {
-        self.params.iter()
-            .find(|p| p.key == key)
-            .map(|p| p.default.clone())
-            .unwrap_or_else(|| serde_json::Value::String(String::new()))
-    }
-
-    pub fn is_default(&self, key: &str, user_value: &serde_json::Value) -> bool {
-        let default = self.get_default(key);
-        format!("{}", default) == format!("{}", user_value)
-    }
-
-    pub fn reset_to_default(&self, key: &str) -> serde_json::Value {
-        self.get_default(key)
-    }
-
-    /// Get all key values from template params (for VRAM check and other data-driven operations).
-    pub fn config_keys(&self) -> Vec<&str> {
-        self.params.iter().map(|p| p.key.as_str()).collect()
-    }
-
-    /// Get a param definition by key.
-    pub fn find_param(&self, key: &str) -> Option<&ProviderDefaultParam> {
-        self.params.iter().find(|p| p.key == key)
-    }
 }

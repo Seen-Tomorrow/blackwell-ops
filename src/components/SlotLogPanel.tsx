@@ -1,30 +1,16 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect, useRef, memo } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
-import type { StackEntry, LogEntry, EnginePerfEvent, FusionUpdate, BenchResult } from "../lib/types";
-import EnginePerformanceTile from "./EnginePerformanceTile";
+import type { StackEntry, LogEntry, FusionUpdate, BenchResult } from "../lib/types";
 import AnsiText from "./AnsiText";
 
 interface SlotLogPanelProps {
   entry: StackEntry;
   logs: LogEntry[];
   systemEvents: Array<{ text: string; timestamp: string }>;
-  enginePerfEvent?: EnginePerfEvent;
   fusionUpdate?: FusionUpdate | null;
   n_ctx?: number;
   onStop: (alias: string) => void;
-}
-
-// Telemetry state for this engine
-interface EngineTelemetryData {
-  phase: string;
-  ttft_ms?: number | null;
-  instantaneous_tps: number;
-  avg_tps_5: number;
-  total_tokens_generated: number;
-  prompt_tokens_evaluated: number;
-  prompt_progress: number; // 0.0-1.0 scale during prompt processing
 }
 
 function StatBlock({ label, value, highlight }: {
@@ -43,16 +29,7 @@ function StatBlock({ label, value, highlight }: {
 }
 // Memoized SlotLogPanel — only re-renders when entry, logs, or onStop change
 
-export default memo(function SlotLogPanel({ entry, logs, systemEvents, enginePerfEvent, fusionUpdate, n_ctx = 32768, onStop }: SlotLogPanelProps) {
-  const [telemetry, setTelemetry] = useState<EngineTelemetryData>({
-    phase: "IDLE",
-    instantaneous_tps: 0,
-    avg_tps_5: 0,
-    total_tokens_generated: 0,
-    prompt_tokens_evaluated: 0,
-    prompt_progress: 0,
-  });
-  const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+export default memo(function SlotLogPanel({ entry, logs, systemEvents, fusionUpdate, n_ctx = 32768, onStop }: SlotLogPanelProps) {
   const logRef = useRef<HTMLDivElement>(null);
 
   // Benchmark state
@@ -90,61 +67,6 @@ export default memo(function SlotLogPanel({ entry, logs, systemEvents, enginePer
     }
   };
 
-  // Listen for engine-specific telemetry events from Rust backend
-  useEffect(() => {
-    let unsub: (() => void) | null = null;
-    
-    listen("engine-perf", (e: any) => {
-      try {
-        const data = e.payload as EnginePerfEvent;
-        if (data.slot === entry.idx && data.tps !== undefined) {
-          setTelemetry((prevTel) => {
-            let newPhase = prevTel.phase;
-
-            // Phase detection based on TPS activity and progress tracking
-            if (entry.status === "RUNNING") {
-              if (data.prompt_progress !== null && data.prompt_progress !== undefined && data.prompt_progress > 0 && data.prompt_progress < 1) {
-                newPhase = "PROMPT_PROCESSING";
-              } else if (data.tps > 0) {
-                newPhase = "GENERATING";
-              } else {
-                newPhase = prevTel.phase;
-              }
-            } else {
-              newPhase = "IDLE";
-            }
-
-            return {
-              ...prevTel,
-              phase: newPhase,
-              ttft_ms: data.ttft_ms ?? prevTel.ttft_ms,
-              instantaneous_tps: data.tps || 0,
-              avg_tps_5: data.tps > 0 ? (prevTel.avg_tps_5 === 0 ? data.tps : (prevTel.avg_tps_5 + data.tps) / 2) : prevTel.avg_tps_5,
-              total_tokens_generated: data.n_tokens ?? prevTel.total_tokens_generated,
-              prompt_tokens_evaluated: data.prompt_tokens ?? prevTel.prompt_tokens_evaluated,
-              prompt_progress: data.prompt_progress ?? 0,
-            };
-          });
-
-          // Reset idle timer on any perf event
-          if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
-          idleTimerRef.current = setTimeout(() => {
-            setTelemetry(prev => {
-              if (prev.phase !== "IDLE") return { ...prev, phase: "IDLE", prompt_progress: 0 };
-              return prev;
-            });
-            idleTimerRef.current = null;
-          }, 2500);
-        }
-      } catch {}
-    }).then((u) => { unsub = u; });
-
-    return () => {
-      if (unsub) unsub();
-      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
-    };
-  }, [entry.idx, entry.status]);
-
   // Auto-scroll only on mount or when system events change (not every log line)
   useEffect(() => {
     if (logRef.current && systemEvents.length > 0) {
@@ -167,26 +89,24 @@ export default memo(function SlotLogPanel({ entry, logs, systemEvents, enginePer
   }[entry.status] || "";
 
   // Phase: fusion /slots is authoritative for BUSY/READY, logs provide PROMPT_PROCESSING detail
-  const fusionPhase = fusionUpdate?.engine_state === "ACTIVE" ? "GENERATING"
-    : fusionUpdate?.engine_state === "READY" ? "IDLE" : null;
-  const displayPhase = fusionPhase ?? telemetry.phase;
+  const displayPhase = fusionUpdate?.engine_state === "ACTIVE" ? "GENERATING"
+    : fusionUpdate?.engine_state === "READY" ? "IDLE" : (fusionUpdate?.phase ?? "IDLE");
 
-  // Phase-specific styling (memoized via useMemo)
-  const phaseColor = displayPhase === "PROMPT_PROCESSING"
+  // Phase-specific styling
+  const phaseColor = displayPhase === "PP"
     ? "text-telemetry-amber"
     : displayPhase === "GENERATING"
       ? "text-nv-green"
       : "text-stealth-muted";
 
-  const phaseBg = displayPhase === "PROMPT_PROCESSING"
+  const phaseBg = displayPhase === "PP"
     ? "bg-telemetry-amber/10 border-telemetry-amber/30"
     : displayPhase === "GENERATING"
       ? "bg-nv-green/10 border-nv-green/30"
       : "bg-stealth-panel border-stealth-border";
 
-  // TPS value for display — fusion /slots data is real-time, log-based is fallback
-  const fusionTps = (fusionUpdate?.engine_state === "ACTIVE" && fusionUpdate?.genTpsSlots > 0) ? fusionUpdate.genTpsSlots : null;
-  const tps = fusionTps ?? (telemetry.instantaneous_tps > 0 ? telemetry.instantaneous_tps : telemetry.avg_tps_5);
+  // TPS value for display — fusion /slots data is the source of truth
+  const tps = (fusionUpdate?.engine_state === "ACTIVE" && fusionUpdate?.genTpsSlots > 0) ? fusionUpdate.genTpsSlots : 0;
 
   // Logs are already flat — cap visible lines to prevent DOM bloat
   const MAX_VISIBLE_LOGS = 100;
@@ -230,29 +150,29 @@ export default memo(function SlotLogPanel({ entry, logs, systemEvents, enginePer
           >
             <div className={`px-3 py-1 border-b ${phaseBg} flex items-center justify-between`}>
               <span className="text-[9px] font-mono tracking-wider">
-                {displayPhase === "PROMPT_PROCESSING" && "\u{25C7}"}
+                {displayPhase === "PP" && "\u{25C7}"}
                 {displayPhase === "GENERATING" && "\u{25CF}"}
                 {" "}
-                {displayPhase === "PROMPT_PROCESSING" ? "PROMPT PROCESSING" : "TOKEN GENERATION"}
+                {displayPhase === "PP" ? "PROMPT PROCESSING" : "TOKEN GENERATION"}
               </span>
               <div className="flex items-center gap-3">
                 {/* Real-time progress bar during prompt processing */}
-                {(telemetry.phase === "PROMPT_PROCESSING" || fusionUpdate?.phase === "PP") && telemetry.prompt_progress > 0 && (
+                {fusionUpdate?.phase === "PP" && fusionUpdate.promptProgress != null && fusionUpdate.promptProgress > 0 && (
                   <>
                     <div className="w-16 h-1.5 bg-stealth-dark border border-stealth-border rounded-sm overflow-hidden">
                       <div
                         className="h-full bg-telemetry-amber transition-all duration-100"
-                        style={{ width: `${telemetry.prompt_progress * 100}%` }}
+                        style={{ width: `${fusionUpdate.promptProgress * 100}%` }}
                       />
                     </div>
                     <span className="text-[8px] font-mono text-telemetry-amber">
-                      {(telemetry.prompt_progress * 100).toFixed(0)}%
+                      {(fusionUpdate.promptProgress * 100).toFixed(0)}%
                     </span>
                   </>
                 )}
-                {telemetry.ttft_ms !== undefined && telemetry.ttft_ms !== null && (
+                {fusionUpdate?.ttftMs != null && fusionUpdate.ttftMs > 0 && (
                   <span className="text-[9px] font-mono text-telemetry-amber">
-                    TTFT: {telemetry.ttft_ms.toFixed(0)}ms
+                    TTFT: {fusionUpdate.ttftMs.toFixed(0)}ms
                   </span>
                 )}
               </div>
@@ -291,8 +211,8 @@ export default memo(function SlotLogPanel({ entry, logs, systemEvents, enginePer
           )}
         </div>
 
-        {/* Tokens generated — fusion /slots is real-time, log-based is fallback */}
-        <StatBlock label="TOKENS" value={(fusionUpdate?.genTokensPerRequestSlots ?? fusionUpdate?.genTokensPerSession ?? telemetry.total_tokens_generated).toString()} />
+        {/* Tokens generated — fusion /slots is real-time source of truth */}
+        <StatBlock label="TOKENS" value={(fusionUpdate?.genTokensPerRequestSlots ?? fusionUpdate?.genTokensPerSession ?? 0).toString()} />
       </div>
 
       {/* Benchmark results — inline panel */}
@@ -353,20 +273,15 @@ export default memo(function SlotLogPanel({ entry, logs, systemEvents, enginePer
       </AnimatePresence>
 
       {/* Secondary stats row */}
-      {entry.status === "RUNNING" && (
+      {entry.status === "RUNNING" && fusionUpdate && (
         <div className="px-3 py-1 border-t border-stealth-border grid grid-cols-2 gap-2">
           <span className="text-[9px] font-mono text-stealth-muted">
-            PROMPT: {telemetry.prompt_tokens_evaluated} tok
+            PROMPT: {fusionUpdate.promptTokensPerRequest ?? 0} tok
           </span>
           <span className="text-[9px] font-mono text-stealth-muted">
-            GEN: {fusionUpdate?.genTokensPerRequestSlots ?? telemetry.total_tokens_generated ?? 0} tok
+            GEN: {fusionUpdate.genTokensPerRequestSlots ?? 0} tok
           </span>
         </div>
-      )}
-
-      {/* Engine Performance Pulse tile — shows TPS, TTFT, FuelTank for all running engines */}
-      {entry.status === "RUNNING" && enginePerfEvent && (
-        <EnginePerformanceTile perf={enginePerfEvent} n_ctx={n_ctx} />
       )}
 
       {/* Live log stream from LogHub (stdout streaming, batched at 100ms) */}
@@ -375,7 +290,7 @@ export default memo(function SlotLogPanel({ entry, logs, systemEvents, enginePer
           <p className="text-[10px] font-mono text-stealth-muted/50 italic">
             {entry.status === "LOADING" 
               ? "WAITING FOR READY..." 
-              : entry.status === "RUNNING" && telemetry.phase === "IDLE"
+              : entry.status === "RUNNING" && displayPhase === "IDLE"
                 ? "AWAITING INFERENCE..."
                 : "NO LOGS"}
           </p>

@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
 import SlotLogPanel from "./SlotLogPanel";
 import EngineBanner from "./EngineBanner";
-import type { StackEntry, LogEntry, SystemEvent, EnginePerfEvent, FusionUpdate } from "../lib/types";
+import type { StackEntry, LogEntry, SystemEvent, FusionUpdate } from "../lib/types";
 
 const EMPTY_LOGS: LogEntry[] = [];
 const EMPTY_EVENTS: Array<{ text: string; timestamp: string }> = [];
@@ -10,13 +10,12 @@ interface StackViewProps {
   stack: StackEntry[];
   logs: Map<number, LogEntry[]>;
   systemEvents: Map<number, Array<{ text: string; timestamp: string }>>;
-  enginePerfEvents: Map<number, EnginePerfEvent>;
   fusionUpdates: Map<number, FusionUpdate>;
   onStop: (alias: string) => void;
   onStopAll: () => void;
 }
 
-export default function StackView({ stack, logs, systemEvents, enginePerfEvents, fusionUpdates, onStop, onStopAll }: StackViewProps) {
+export default function StackView({ stack, logs, systemEvents, fusionUpdates, onStop, onStopAll }: StackViewProps) {
   const onlineCount = stack.filter((e) => e.status === "RUNNING").length;
   const loadingCount = stack.filter((e) => e.status === "LOADING").length;
 
@@ -63,7 +62,6 @@ export default function StackView({ stack, logs, systemEvents, enginePerfEvents,
                   entry={entry}
                   logs={logs.get(entry.idx) ?? EMPTY_LOGS}
                   systemEvents={systemEvents.get(entry.idx) ?? EMPTY_EVENTS}
-                  enginePerfEvent={enginePerfEvents.get(entry.idx)}
                   fusionUpdate={fusionUpdates.get(entry.idx)}
                   n_ctx={entry.n_ctx || 32768}
                   onStop={onStop}

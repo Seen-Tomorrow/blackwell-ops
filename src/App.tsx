@@ -17,7 +17,7 @@ import { DockProvider } from "./context/DockContext";
 import { TelemetryProvider } from "./context/TelemetryContext";
 import { ToastProvider } from "./components/Toast";
 import { KEYS, STORAGE_PREFIX } from "./lib/storage";
-import type { ModelEntry, StackEntry, LogBatch, LogEntry, SystemEvent, ProviderConfig, EnginePerfEvent, FusionUpdate, AppUpdateInfo } from "./lib/types";
+import type { ModelEntry, StackEntry, LogBatch, LogEntry, SystemEvent, ProviderConfig, FusionUpdate, AppUpdateInfo } from "./lib/types";
 
 export type Tab = "catalog" | "modelhub" | "stack" | "reactor11" | "telemetry" | "logs" | "config" | "sentinel";
 
@@ -38,7 +38,6 @@ function App() {
   const [stack, setStack] = useState<StackEntry[]>([]);
   const [logs, setLogs] = useState<Map<number, LogEntry[]>>(new Map());
   const [systemEvents, setSystemEvents] = useState<Map<number, Array<{ text: string; timestamp: string }>>>(new Map());
-  const [enginePerfEvents, setEnginePerfEvents] = useState<Map<number, EnginePerfEvent>>(new Map());
   const [fusionUpdates, setFusionUpdates] = useState<Map<number, FusionUpdate>>(new Map());
 
   const [activeLogSlot, setActiveLogSlot] = useState<number | "all">("all");
@@ -296,37 +295,8 @@ function App() {
               next.delete(payload.slot);
               return next;
             });
-            setEnginePerfEvents((prev) => {
-              const next = new Map(prev);
-              next.delete(payload.slot);
-              return next;
-            });
             // Reset active tab if cleared slot was selected
             setActiveLogSlot((prev) => (prev === payload.slot ? "all" : prev));
-          }
-        } catch {}
-      });
-    }).then((u) => { unsub = u; });
-
-    return cleanup;
-  }, []);
-
-  useEffect(() => {
-    let unsub: (() => void) | null = null;
-    const cleanup = () => { if (unsub) unsub(); };
-    listen("engine-perf", (e: any) => {
-      const payload = e.payload as EnginePerfEvent;
-      unstable_batchedUpdates(() => {
-        try {
-          if (payload && payload.slot !== undefined) {
-            setEnginePerfEvents((prev) => {
-              const existing = prev.get(payload.slot);
-              // Skip update if TPS and TTFT haven't changed meaningfully — prevents 5x/sec re-render churn during idle generation.
-              if (existing && Math.abs(existing.tps - payload.tps) < 1 && Math.abs((existing.ttft_ms ?? 0) - (payload.ttft_ms ?? 0)) < 5) return prev;
-              const next = new Map(prev);
-              next.set(payload.slot, payload);
-              return next;
-            });
           }
         } catch {}
       });
@@ -415,7 +385,6 @@ function App() {
     try {
       await invoke("stop_engine", { alias });
       // Keep logs + system events so shutdown messages stay visible
-      setEnginePerfEvents(new Map());
       // Stack update comes via push event from Rust — no manual setStack needed.
     } catch (err) {
       console.error("Stop failed:", err);
@@ -426,7 +395,6 @@ function App() {
     try {
       await invoke("stop_all_engines");
       // Keep logs + system events so shutdown messages stay visible
-      setEnginePerfEvents(new Map());
       // Signal catalog to clear engine selection
       window.dispatchEvent(new CustomEvent("blackops-stop-all"));
       // Stack update comes via push event from Rust — no manual setStack needed.
@@ -503,7 +471,7 @@ function App() {
         {activeTab === "modelhub" && <ModelHub />}
         {activeTab === "config" && <ConfigPage providers={providers} />}
         {activeTab === "stack" && (
-          <StackView stack={stack} logs={logs} systemEvents={systemEvents} enginePerfEvents={enginePerfEvents} fusionUpdates={fusionUpdates} onStop={handleStopEngine} onStopAll={handleStopAll} />
+          <StackView stack={stack} logs={logs} systemEvents={systemEvents} fusionUpdates={fusionUpdates} onStop={handleStopEngine} onStopAll={handleStopAll} />
         )}
         {activeTab === "reactor11" && (
           <Reactor11 models={models} />

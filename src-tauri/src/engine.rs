@@ -68,8 +68,6 @@ pub struct StackEntryOut {
     pub build_info: Option<crate::types::BuildInfo>,
 }
 
-fn default_ctx_size() -> usize { 32768 }
-
 pub struct AppContext {
     pub stack: Arc<Mutex<EngineStack>>,
     pub log_hub: LogHub,
@@ -205,7 +203,8 @@ pub async fn launch_engine(
     // SANITY-BOX — route launch command to sanity box
     app.log_hub.emit_sanity_log("warn", &format!("[LAUNCH_CMD] slot={}: {}", slot_idx, launch_cmd));
 
-    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(r"C:\tmp\blackwell-launch.log") {
+    let log_path = std::env::temp_dir().join("blackwell-launch.log");
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&log_path) {
         use std::io::Write;
         let _ = writeln!(f, "\n[{}] slot={} CMD:\n{}\n", chrono::Local::now().format("%H:%M:%S%.3f"), slot_idx, launch_cmd);
         let _ = f.flush();

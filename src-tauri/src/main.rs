@@ -13,7 +13,6 @@ mod templates;
 mod nvml_probe;
 mod fit_scanner;
 mod mobile_bridge;
-mod perf_monitor;
 mod burst_bench;
 mod gguf_scan;
 mod model_cache;
