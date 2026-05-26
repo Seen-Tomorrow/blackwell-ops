@@ -46,6 +46,9 @@ models/
 # --- Build Counter (local, auto-incrementing) ---
 .build_counter.json
 
+# --- Tauri Updater Signing Key (NEVER commit!) ---
+src-tauri/updater_private.key
+
 # --- OpenCode Specific ---
 .local/
 opencode.db*

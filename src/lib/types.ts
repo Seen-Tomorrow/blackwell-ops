@@ -117,6 +117,7 @@ export interface ProviderConfig {
   display_order?: number;
   buildInfoPerEnv?: Record<string, BuildInfo>;
   binaryPathPerEnv?: Record<string, string>; // env -> binary path (e.g. "vanguard" -> ".../build-vanguard/bin/Release/llama-server.exe")
+  downloadedVersionPerEnv?: Record<string, string>; // env -> GitHub release tag that was installed via update (e.g. "v0.7.8")
   lastPrPerEnv?: Record<string, string>; // env -> PR number (e.g. "stable" -> "21293")
 }
 
@@ -144,6 +145,35 @@ export interface BuildInfo {
   version: string;
   buildDate: string;
   cudaVersion?: string;
+}
+
+/** Binary update info from check_binary_updates IPC command. */
+export interface BinaryUpdateInfo {
+  profile: string;
+  profileLabel: string;
+  installedVersion: string | null;
+  latestVersion: string;
+  available: boolean;
+}
+
+/** App update info from check_app_update IPC command. */
+export interface AppUpdateInfo {
+  available: boolean;
+  version: string;
+  currentVersion: string;
+  releaseNotes: string | null;
+}
+
+/** Provider binary updates grouped by provider. */
+export interface ProviderBinaryUpdates {
+  providerId: string;
+  updates: BinaryUpdateInfo[];
+}
+
+/** Combined startup update status from get_startup_updates IPC command. */
+export interface StartupUpdateStatus {
+  appUpdate: AppUpdateInfo;
+  binaryUpdates: ProviderBinaryUpdates[];
 }
 
 /** Burst benchmark result from cmd_burst_bench IPC command. */

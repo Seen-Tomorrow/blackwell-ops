@@ -22,6 +22,16 @@ let buildNumber = 0;
   } catch {}
 }
 
+// ── Tauri app version from tauri.conf.json ────────────────────────────
+let tauriVersion = "0.0.0";
+{
+  try {
+    const confPath = resolve(__dirname, "src-tauri", isDev ? "tauri.conf.dev.json" : "tauri.conf.json");
+    const conf = JSON.parse(readFileSync(confPath, "utf-8"));
+    tauriVersion = conf.version || "0.0.0";
+  } catch {}
+}
+
 // ── Version string ────────────────────────────────────────────────────
 const modeLabel = isDev ? "DEV" : "REL";
 const appVersion = `${modeLabel} ${buildNumber}`;
@@ -30,6 +40,7 @@ const appVersion = `${modeLabel} ${buildNumber}`;
 export default defineConfig(async () => ({
   plugins: [react()],
   define: {
+    __TAURI_VERSION__: JSON.stringify(tauriVersion),
     __APP_VERSION__: JSON.stringify(appVersion),
     __BUILD_MODE__: JSON.stringify(buildMode),
   },

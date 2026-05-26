@@ -253,10 +253,8 @@ impl ProviderTemplate {
                 // Log and return immediately — no template params processed
                 let full_cmd = format!("{} {}", self.binary_name, args.join(" "));
                 eprintln!("[LAUNCH_CMD][TEST] {}", full_cmd);
-                if let Ok(log_dir) = std::env::var("APPDATA") {
-                    let log_path = PathBuf::from(&log_dir).join("..").join("Local").join("Temp").join("blackwell-launch.log");
-                    let _ = std::fs::write(&log_path, &full_cmd);
-                }
+                let log_path = std::env::temp_dir().join("blackwell-launch.log");
+                let _ = std::fs::write(&log_path, &full_cmd);
                 return args;
             }
         }
@@ -352,11 +350,9 @@ impl ProviderTemplate {
             let full_cmd = format!("{} {}", self.binary_name, args.join(" "));
             eprintln!("[LAUNCH_CMD] {}", full_cmd);
 
-            if let Ok(log_dir) = std::env::var("APPDATA") {
-                let log_path = PathBuf::from(&log_dir).join("..").join("Local").join("Temp").join("blackwell-launch.log");
-                if let Err(e) = std::fs::write(&log_path, &full_cmd) {
-                    eprintln!("[LAUNCH_CMD] Failed to write log: {}", e);
-                }
+            let log_path = std::env::temp_dir().join("blackwell-launch.log");
+            if let Err(e) = std::fs::write(&log_path, &full_cmd) {
+                eprintln!("[LAUNCH_CMD] Failed to write log: {}", e);
             }
         }
 

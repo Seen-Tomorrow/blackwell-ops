@@ -28,9 +28,15 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
+    "resources": ["binaries"],
     "icon": [
       "icons/icon-release.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "active": false
+    }
   }
 
 }

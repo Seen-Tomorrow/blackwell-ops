@@ -346,7 +346,7 @@ pub async fn foundry_build(
         stopped.len()
     };
 
-    let work_dir = PathBuf::from(format!(r"C:\reactor_foundry\engines\{}", provider_id));
+    let work_dir = crate::config::foundry_dir(&provider_id);
     let src_dir = work_dir.join("llama.cpp");
     // Per-env build directory — each env (vanguard/stable/fresh) builds into its own isolated dir
     let build_dir = src_dir.join(format!("build-{}", env.env_label()));
@@ -1150,6 +1150,8 @@ pub async fn foundry_build(
                 provider.build_info_per_env.insert("current".to_string(), build_info);
                 let final_bin_path = bin_path.clone();
                 provider.binary_path_per_env.insert(env_label.to_string(), final_bin_path);
+                // Clear download version tracking — this is a custom Foundry build now
+                provider.downloaded_version_per_env.remove(env_label);
             }
             drop(cfg);
             crate::config::persist_user_providers_meta(&app.config.lock().map_err(|e| e.to_string())?.providers).ok();
@@ -1245,7 +1247,7 @@ pub async fn refresh_build_info(
     // Migration: if per-env paths are empty but old binary exists, copy to vanguard
     let prov = {
         if prov.binary_path_per_env.is_empty() && !prov.binary_path.is_empty() {
-            let work_dir = PathBuf::from(format!(r"C:\reactor_foundry\engines\{}", provider_id));
+            let work_dir = crate::config::foundry_dir(&provider_id);
             let src_dir = work_dir.join("llama.cpp");
             let old_build_dir = src_dir.join("build");
             if old_build_dir.exists() {
@@ -1302,8 +1304,8 @@ pub async fn refresh_build_info(
             for (env_label, info) in &updated_info {
                 p.build_info_per_env.insert(env_label.clone(), info.clone());
             }
-            // Also set "current" to the last refreshed env's build info
-            if let Some(latest) = updated_info.last() {
+            // Set "current" to the most recently built env (by build date), not last in loop order
+            if let Some(latest) = updated_info.iter().max_by_key(|(_, info)| info.build_date.as_str()) {
                 p.build_info_per_env.insert("current".to_string(), latest.1.clone());
             }
         }
@@ -1339,7 +1341,7 @@ pub async fn foundry_restore(
         tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
     }
 
-    let work_dir = PathBuf::from(format!(r"C:\reactor_foundry\engines\{}", provider_id));
+    let work_dir = crate::config::foundry_dir(&provider_id);
     let src_dir = work_dir.join("llama.cpp");
     let build_dir = src_dir.join(format!("build-{}", env_label));
     let bin_release = build_dir.join("bin").join("Release");

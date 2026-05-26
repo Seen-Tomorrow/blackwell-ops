@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { ProviderConfig } from "../lib/types";
+import { listen } from "@tauri-apps/api/event";
+import type { ProviderConfig, BinaryUpdateInfo } from "../lib/types";
 import { useStatus } from "../context/StatusBarContext";
 
 type Env = "vanguard" | "stable" | "fresh";
@@ -16,20 +17,24 @@ const ENV_META: Record<Env, { label: string; cuda: string; vs: string; color: st
   stable:   { label: "STABLE",   cuda: "12.8", vs: "VS Build Tools 2022",        color: "nv-green" },
 };
 
+type UpdateStatus = "idle" | "checking" | "downloading" | "extracting" | "complete" | "error";
+
 // Parse cmake flags string into individual flag lines for tooltip display
 function parseCmakeFlags(flags: string): string[] {
   if (!flags.trim()) return [];
-  // Split by whitespace, filter out empty strings and standalone quotes
   const parts = flags.split(/\s+/).filter(p => p && !/^["']+$/.test(p));
-  // Clean up: remove trailing spaces from each flag
   return parts.map(f => f.trim()).filter(Boolean);
 }
 
 export default function FoundryPage({ providers, onProvidersChange }: FoundryPageProps) {
   const { openBuildModal, buildProgress } = useStatus();
   const [restoreConfirm, setRestoreConfirm] = useState<{ providerId: string; env: Env } | null>(null);
-  // Authoritative backend build state — queried on mount + visibility change to prevent duplicate builds
   const [activeBuild, setActiveBuild] = useState<{ providerId: string; environment: string } | null>(null);
+
+  // Binary update state per provider/profile
+  const [binaryUpdates, setBinaryUpdates] = useState<Record<string, Record<string, BinaryUpdateInfo>>>({});
+  const [updateStatuses, setUpdateStatuses] = useState<Record<string, UpdateStatus>>({});
+  const [updateErrors, setUpdateErrors] = useState<Record<string, string>>({});
 
   // Query backend for active build status on mount and tab visibility changes
   useEffect(() => {
@@ -49,7 +54,6 @@ export default function FoundryPage({ providers, onProvidersChange }: FoundryPag
     return () => document.removeEventListener("visibilitychange", handleVisibility);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Merge event-based progress with backend state for most reliable guard
   const effectiveBuildProgress = activeBuild || buildProgress;
 
   // Refresh build info after successful build completes (triggered by StatusBarContext)
@@ -81,8 +85,92 @@ export default function FoundryPage({ providers, onProvidersChange }: FoundryPag
         console.error("[Foundry] Failed to refresh build info for", p.id, err);
       }
     });
+
+    // Check binary updates for all foundry-capable providers
+    // First try to use cached startup check results (avoids duplicate API calls)
+    let cachedUpdates: Record<string, BinaryUpdateInfo[]> | null = null;
+    try {
+      const raw = localStorage.getItem("blackwell_startup_updates");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        // Use cache only if less than 5 minutes old
+        if (parsed.timestamp && Date.now() - parsed.timestamp < 300_000 && parsed.binaryUpdates) {
+          cachedUpdates = {};
+          parsed.binaryUpdates.forEach((bu: any) => {
+            cachedUpdates[bu.providerId] = bu.updates;
+          });
+        }
+      }
+    } catch {}
+
+    foundryProviders.forEach(async (p) => {
+      try {
+        let updates: BinaryUpdateInfo[];
+        if (cachedUpdates && cachedUpdates[p.id]) {
+          // Use cached data from startup check
+          updates = cachedUpdates[p.id];
+        } else {
+          // Fetch fresh — no cache or stale
+          updates = await invoke<BinaryUpdateInfo[]>("check_binary_updates", { providerId: p.id });
+        }
+        if (!cancelled && updates.length > 0) {
+          // Fill in installed versions from downloadedVersionPerEnv (GitHub release tag, not internal version)
+          const withInstalled = updates.map(u => ({
+            ...u,
+            installedVersion: (p.downloadedVersionPerEnv?.[u.profile] || null),
+            available: u.available && !(p.downloadedVersionPerEnv?.[u.profile] === `v${u.latestVersion}`),
+          }));
+          setBinaryUpdates(prev => {
+            const next = { ...prev };
+            next[p.id] = {};
+            withInstalled.forEach(u => { next[p.id]![u.profile] = u; });
+            return next;
+          });
+        }
+      } catch (err) {
+        console.error("[Foundry] Failed to check binary updates for", p.id, err);
+      }
+    });
+
     return () => { cancelled = true; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Listen for binary update events
+  useEffect(() => {
+    let unsubStart: (() => void) | null = null;
+    let unsubProgress: (() => void) | null = null;
+    let unsubComplete: (() => void) | null = null;
+    let unsubError: (() => void) | null = null;
+
+    listen("binary-update:download-start", (e: any) => {
+      const p = e.payload as { provider_id: string; profile: string };
+      const key = `${p.provider_id}:${p.profile}`;
+      setUpdateStatuses(prev => ({ ...prev, [key]: "downloading" }));
+    }).then(u => { unsubStart = u; });
+
+    listen("binary-update:download-progress", (e: any) => {
+      const p = e.payload as { provider_id: string; profile: string; status: string };
+      const key = `${p.provider_id}:${p.profile}`;
+      setUpdateStatuses(prev => ({ ...prev, [key]: p.status === "extracting" ? "extracting" : "downloading" }));
+    }).then(u => { unsubProgress = u; });
+
+    listen("binary-update:download-complete", (e: any) => {
+      const p = e.payload as { provider_id: string; profile: string };
+      const key = `${p.provider_id}:${p.profile}`;
+      setUpdateStatuses(prev => ({ ...prev, [key]: "complete" }));
+      // Refresh build info after update completes
+      invoke<ProviderConfig[]>("refresh_build_info", { providerId: p.provider_id })
+        .then(updated => { if (updated.length > 0) onProvidersChange(updated); })
+        .catch(() => {});
+    }).then(u => { unsubComplete = u; });
+
+    return () => {
+      unsubStart?.();
+      unsubProgress?.();
+      unsubComplete?.();
+      unsubError?.();
+    };
+  }, [onProvidersChange]);
 
   const handleRestore = async () => {
     if (!restoreConfirm) return;
@@ -91,14 +179,42 @@ export default function FoundryPage({ providers, onProvidersChange }: FoundryPag
         providerId: restoreConfirm.providerId,
         environment: restoreConfirm.env,
       });
-      // Refresh build info after restore
-      await invoke("refresh_build_info", { providerId: restoreConfirm.providerId });
+      await invoke<ProviderConfig[]>("refresh_build_info", { providerId: restoreConfirm.providerId })
+        .then(updated => { if (updated.length > 0) onProvidersChange(updated); })
+        .catch(() => {});
     } catch (err) {
       console.error("[Foundry] Restore failed:", err);
     } finally {
       setRestoreConfirm(null);
     }
   };
+
+  const handleBinaryUpdate = useCallback(async (providerId: string, profile: Env) => {
+    const key = `${providerId}:${profile}`;
+    setUpdateStatuses(prev => ({ ...prev, [key]: "checking" }));
+    setUpdateErrors(prev => { const next = { ...prev }; delete next[key]; return next; });
+
+    try {
+      await invoke("download_binary_update", { providerId, profile });
+    } catch (err) {
+      const msg = typeof err === "string" ? err : String(err);
+      setUpdateStatuses(prev => ({ ...prev, [key]: "error" }));
+      setUpdateErrors(prev => ({ ...prev, [key]: msg }));
+      console.error("[Foundry] Binary update failed:", err);
+    }
+  }, []);
+
+  const handleRevert = useCallback(async (providerId: string, profile: Env) => {
+    try {
+      await invoke("revert_binary_to_bundled", { providerId, profile });
+      // Refresh to pick up reverted paths
+      invoke<ProviderConfig[]>("refresh_build_info", { providerId: providerId })
+        .then(updated => { if (updated.length > 0) onProvidersChange(updated); })
+        .catch(() => {});
+    } catch (err) {
+      console.error("[Foundry] Revert failed:", err);
+    }
+  }, [onProvidersChange]);
 
   const foundryProviders = providers.filter(p => p.git_url && p.branch);
 
@@ -109,6 +225,13 @@ export default function FoundryPage({ providers, onProvidersChange }: FoundryPag
         <span style={{ fontSize: '16px' }}>⚒</span>
         <h2 className="text-[11px] font-mono text-nv-green tracking-wider">REACTOR FOUNDRY</h2>
         <span className="text-[9px] font-mono text-stealth-muted ml-2">{foundryProviders.length} provider{foundryProviders.length !== 1 ? "s" : ""} with build config</span>
+      </div>
+
+      {/* Legend */}
+      <div className="px-4 py-2 border-b border-stealth-border/50 flex items-center gap-3">
+        <span className="text-[8px] font-mono text-stealth-muted tracking-wider">LEGEND:</span>
+        <span className="flex items-center gap-1"><span className="inline-block w-1.5 h-1.5 rounded-full bg-yellow-400" /> PRE-BUILT (GitHub)</span>
+        <span className="flex items-center gap-1"><span className="inline-block w-1.5 h-1.5 rounded-full bg-nv-green" /> CUSTOM BUILD (Foundry)</span>
       </div>
 
       {/* Content */}
@@ -126,6 +249,11 @@ export default function FoundryPage({ providers, onProvidersChange }: FoundryPag
             onBuild={(env) => openBuildModal(p.id, env)}
             onRestoreConfirm={(env) => setRestoreConfirm({ providerId: p.id, env })}
             buildProgress={effectiveBuildProgress}
+            binaryUpdates={binaryUpdates[p.id] || {}}
+            updateStatuses={updateStatuses}
+            updateErrors={updateErrors}
+            onUpdateBinary={handleBinaryUpdate}
+            onRevert={handleRevert}
           />
         ))}
       </div>
@@ -150,16 +278,21 @@ export default function FoundryPage({ providers, onProvidersChange }: FoundryPag
   );
 }
 
-// ── Sub-components ───────────────────────────────────────────────
+// ── Sub-components ───────────────────────────────────────
 
 interface FoundryProviderCardProps {
   provider: ProviderConfig;
   onBuild: (env: Env) => void;
   onRestoreConfirm: (env: Env) => void;
   buildProgress?: { providerId: string; environment: string } | null;
+  binaryUpdates: Record<string, BinaryUpdateInfo>;
+  updateStatuses: Record<string, UpdateStatus>;
+  updateErrors: Record<string, string>;
+  onUpdateBinary: (providerId: string, profile: Env) => void;
+  onRevert: (providerId: string, profile: Env) => void;
 }
 
-function FoundryProviderCard({ provider, onBuild, onRestoreConfirm, buildProgress: bp }: FoundryProviderCardProps) {
+function FoundryProviderCard({ provider, onBuild, onRestoreConfirm, buildProgress: bp, binaryUpdates, updateStatuses, updateErrors, onUpdateBinary, onRevert }: FoundryProviderCardProps) {
   const latestEnv = (() => {
     let latestDate = "";
     let latestKey: Env | null = null;
@@ -173,7 +306,6 @@ function FoundryProviderCard({ provider, onBuild, onRestoreConfirm, buildProgres
     return latestKey;
   })();
 
-  // Determine cmake flags display
   const cmakeFlags = provider.build_profile?.trim() || "";
   const isCustomFlags = cmakeFlags.length > 0;
   const flagLines = parseCmakeFlags(cmakeFlags);
@@ -198,7 +330,6 @@ function FoundryProviderCard({ provider, onBuild, onRestoreConfirm, buildProgres
           >
             {isCustomFlags ? "CUSTOM FLAGS" : "DEFAULT"}
           </span>
-          {/* Tooltip with individual flags — floats below badge, above everything */}
           <div className="absolute top-full right-0 mt-1 w-[320px] bg-[#0a0a1a] border border-stealth-border rounded-sm p-2 pointer-events-none z-[9999] opacity-0 group-hover:opacity-100 transition-opacity shadow-2xl">
             {flagLines.length > 0 ? (
               <div className="space-y-0.5">
@@ -227,11 +358,16 @@ function FoundryProviderCard({ provider, onBuild, onRestoreConfirm, buildProgres
               env={env}
               meta={meta}
               provider={provider}
-isLatestBuild={latestEnv === env}
-               hasBackup={!!hasBackup}
-               isBuilding={bp?.providerId === provider.id && bp?.environment.toLowerCase() === env}
-               onBuild={() => onBuild(env)}
-               onRestoreConfirm={() => onRestoreConfirm(env)}
+              isLatestBuild={latestEnv === env}
+              hasBackup={!!hasBackup}
+              isBuilding={bp?.providerId === provider.id && bp?.environment.toLowerCase() === env}
+              onBuild={() => onBuild(env)}
+              onRestoreConfirm={() => onRestoreConfirm(env)}
+              binaryUpdate={binaryUpdates[env]}
+              updateStatus={updateStatuses[`${provider.id}:${env}`] || "idle"}
+              updateError={updateErrors[`${provider.id}:${env}`]}
+              onUpdateBinary={() => onUpdateBinary(provider.id, env)}
+              onRevert={() => onRevert(provider.id, env)}
             />
           );
         })}
@@ -249,13 +385,25 @@ interface BuildProfileRowProps {
   isBuilding?: boolean;
   onBuild: () => void;
   onRestoreConfirm: () => void;
+  binaryUpdate?: BinaryUpdateInfo;
+  updateStatus: UpdateStatus;
+  updateError?: string;
+  onUpdateBinary: () => void;
+  onRevert: () => void;
 }
 
 function getPrNumberForEnv(provider: ProviderConfig, env: string): string | undefined {
   return provider.lastPrPerEnv?.[env];
 }
 
-function BuildProfileRow({ env, meta, provider, isLatestBuild, hasBackup, isBuilding, onBuild, onRestoreConfirm }: BuildProfileRowProps) {
+/** Check if a binary path came from a download (under updates/ dir) vs a Foundry build. */
+function isDownloadedBinary(path: string): boolean {
+  // Both dev and release paths contain "blackwell-ops" + "updates" in the path
+  const normalized = path.toLowerCase();
+  return normalized.includes("updates\\") || normalized.includes("updates/");
+}
+
+function BuildProfileRow({ env, meta, provider, isLatestBuild, hasBackup, isBuilding, onBuild, onRestoreConfirm, binaryUpdate, updateStatus, updateError, onUpdateBinary, onRevert }: BuildProfileRowProps) {
   const buildInfo = provider.buildInfoPerEnv?.[env];
   const colorMap: Record<string, { border: string; bg: string; text: string; badgeBg: string; badgeBorder: string }> = {
     cyan:     { border: "border-cyan-400/20",      bg: "bg-cyan-400/[0.03]",        text: "text-cyan-400",       badgeBg: "bg-cyan-400/10",         badgeBorder: "border-cyan-400/30" },
@@ -264,6 +412,19 @@ function BuildProfileRow({ env, meta, provider, isLatestBuild, hasBackup, isBuil
   };
 
   const c = colorMap[meta.color] || colorMap.cyan;
+  const binaryPath = provider.binaryPathPerEnv?.[env];
+  const isDownloaded = !!binaryPath && isDownloadedBinary(binaryPath);
+
+  // Determine update state for display
+  const hasUpdateInfo = !!binaryUpdate;
+  // Use downloaded version (GitHub release tag) for comparison — build info is internal llama.cpp version
+  const installedVersion = provider.downloadedVersionPerEnv?.[env] || null;
+  const latestVersion = binaryUpdate?.latestVersion || null;
+  const isLatest = installedVersion === `v${latestVersion}` && installedVersion !== null;
+
+  // Custom build detection: has a per-env path but no download version tag → Foundry-built
+  const isCustomBuild = !!binaryPath && !installedVersion && !isDownloaded;
+  const needsDownload = !installedVersion && hasUpdateInfo;
 
   return (
     <div className={`flex items-center gap-3 px-3 py-2 rounded border ${c.border} ${c.bg}`}>
@@ -280,7 +441,6 @@ function BuildProfileRow({ env, meta, provider, isLatestBuild, hasBackup, isBuil
         <span className="text-[7px] font-mono px-1.5 py-0.5 rounded-sm border border-stealth-border/30 bg-stealth-panel/50 text-white/70">
           {meta.vs}
         </span>
-        {/* Last cherry-picked PR badge */}
         {getPrNumberForEnv(provider, env) && (
           <span className="text-[7px] font-mono px-1.5 py-0.5 rounded-sm border border-purple-400/30 bg-purple-400/10 text-purple-400">
             PR #{getPrNumberForEnv(provider, env)}
@@ -288,7 +448,7 @@ function BuildProfileRow({ env, meta, provider, isLatestBuild, hasBackup, isBuil
         )}
       </div>
 
-      {/* Build info or placeholder */}
+      {/* Build info / version or placeholder */}
       <div className="flex-1 min-w-0 flex items-center gap-2">
         {buildInfo ? (
           <>
@@ -304,10 +464,77 @@ function BuildProfileRow({ env, meta, provider, isLatestBuild, hasBackup, isBuil
         ) : (
           <span className="text-[8px] font-mono text-white/25">not yet built</span>
         )}
+
+        {/* Binary update status */}
+        {hasUpdateInfo && !isBuilding && (
+          <div className="flex-shrink-0 flex items-center gap-1.5">
+            {updateStatus === "idle" && isCustomBuild && (
+              <span className="text-[7px] font-mono tracking-wider text-purple-400 border border-purple-400/30 bg-purple-400/10 px-1.5 py-0.5 rounded-sm">CUSTOM BUILD</span>
+            )}
+            {updateStatus === "idle" && isLatest && (
+              <span className="text-[7px] font-mono text-[#4ade80]">✓ Latest</span>
+            )}
+            {updateStatus === "idle" && binaryUpdate?.available && installedVersion && !isCustomBuild && (
+              <>
+                <span className="text-[7px] font-mono text-yellow-400/60">→ v{latestVersion}</span>
+                <button
+                  onClick={onUpdateBinary}
+                  className="px-2 py-0.5 text-[7px] font-mono border border-yellow-400/30 bg-yellow-400/10 text-yellow-400 hover:bg-yellow-400/20 transition-colors"
+                >
+                  UPDATE
+                </button>
+              </>
+            )}
+            {updateStatus === "idle" && needsDownload && !isCustomBuild && (
+              <button
+                onClick={onUpdateBinary}
+                className="px-2 py-0.5 text-[7px] font-mono border border-yellow-400/30 bg-yellow-400/10 text-yellow-400 hover:bg-yellow-400/20 transition-colors"
+              >
+                DOWNLOAD v{latestVersion}
+              </button>
+            )}
+            {updateStatus === "checking" && (
+              <span className="text-[7px] font-mono text-stealth-muted">Checking...</span>
+            )}
+            {updateStatus === "downloading" && (
+              <span className="text-[7px] font-mono text-yellow-400/80 animate-pulse">Downloading...</span>
+            )}
+            {updateStatus === "extracting" && (
+              <span className="text-[7px] font-mono text-yellow-400/80 animate-pulse">Extracting...</span>
+            )}
+            {updateStatus === "complete" && (
+              <span className="text-[7px] font-mono text-[#4ade80]">Updated ✓</span>
+            )}
+            {updateStatus === "error" && (
+              <>
+                <span className="text-[7px] font-mono text-red-400 truncate max-w-[120px]" title={updateError}>
+                  Error: {updateError?.split("\n")[0]}
+                </span>
+                <button
+                  onClick={onUpdateBinary}
+                  className="px-1.5 py-0.5 text-[7px] font-mono border border-red-400/30 text-red-400 hover:bg-red-400/10 transition-colors"
+                >
+                  RETRY
+                </button>
+              </>
+            )}
+          </div>
+        )}
       </div>
 
+      {/* Revert button — appears if binary came from download */}
+      {isDownloaded && (
+        <button
+          onClick={onRevert}
+          className="flex-shrink-0 px-2 py-1 text-[7px] font-mono border border-blue-400/30 text-blue-400 hover:bg-blue-400/10 transition-colors"
+          title="Revert to bundled binary"
+        >
+          ↻ REVERT
+        </button>
+      )}
+
       {/* Restore button — appears if backup exists */}
-      {hasBackup && buildInfo && (
+      {hasBackup && buildInfo && !isDownloaded && (
         <button
           onClick={onRestoreConfirm}
           className="flex-shrink-0 px-2 py-1 text-[7px] font-mono border border-yellow-400/30 text-yellow-400 hover:bg-yellow-400/10 transition-colors"

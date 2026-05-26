@@ -17,7 +17,7 @@ import { DockProvider } from "./context/DockContext";
 import { TelemetryProvider } from "./context/TelemetryContext";
 import { ToastProvider } from "./components/Toast";
 import { KEYS, STORAGE_PREFIX } from "./lib/storage";
-import type { ModelEntry, StackEntry, LogBatch, LogEntry, SystemEvent, ProviderConfig, EnginePerfEvent, FusionUpdate } from "./lib/types";
+import type { ModelEntry, StackEntry, LogBatch, LogEntry, SystemEvent, ProviderConfig, EnginePerfEvent, FusionUpdate, AppUpdateInfo } from "./lib/types";
 
 export type Tab = "catalog" | "modelhub" | "stack" | "reactor11" | "telemetry" | "logs" | "config" | "sentinel";
 
@@ -154,6 +154,43 @@ function App() {
     invoke<ProviderConfig[]>("list_providers")
       .then((data) => setProviders(data))
       .catch(console.error);
+  }, []);
+
+  // ── Startup update check (app + binary updates) ──────────────────────
+  const [appUpdate, setAppUpdate] = useState<AppUpdateInfo | null>(null);
+  const [hasBinaryUpdates, setHasBinaryUpdates] = useState(false);
+
+  useEffect(() => {
+    invoke<any>("get_startup_updates")
+      .then((data) => {
+        if (data.appUpdate?.available) {
+          setAppUpdate({
+            available: true,
+            version: data.appUpdate.version,
+            currentVersion: data.appUpdate.current_version || "",
+            releaseNotes: data.appUpdate.release_notes || null,
+          });
+        }
+        if (data.binaryUpdates && data.binaryUpdates.length > 0) {
+          setHasBinaryUpdates(true);
+        }
+        // Always cache results for FoundryPage to reuse (avoids duplicate API calls, even when empty)
+        try {
+          localStorage.setItem("blackwell_startup_updates", JSON.stringify({
+            timestamp: Date.now(),
+            binaryUpdates: data.binaryUpdates || [],
+          }));
+        } catch {}
+      })
+      .catch(() => {}); // Silently ignore — don't block startup
+  }, []);
+
+  const handleInstallAppUpdate = useCallback(async () => {
+    try {
+      await invoke("install_app_update");
+    } catch (err) {
+      console.error("App update install failed:", err);
+    }
   }, []);
 
   // Reload providers when nuclear button toggles group hidden state
@@ -459,7 +496,7 @@ function App() {
       <DockProvider>
         <TelemetryProvider lowPower={lowPower}>
           <StatusProvider value={{ totalParams, hiddenCount, onShowAll: handleShowAll }}>
-            <Layout activeTab={activeTab} onTabChange={setActiveTab} providers={providers}>
+            <Layout activeTab={activeTab} onTabChange={(tab) => { setActiveTab(tab); if (tab === "config") setHasBinaryUpdates(false); }} providers={providers} appUpdate={appUpdate} hasBinaryUpdates={hasBinaryUpdates} onInstallAppUpdate={handleInstallAppUpdate}>
         {activeTab === "catalog" && (
               <ModelCatalog models={models} onLaunch={handleLaunchEngine} error={catalogError} onReload={reloadModels} providers={providers} committedVramMib={committedVramMib} isAdminUnlocked={isAdminUnlocked} scanningPath={scanningPath} setScanningPath={setScanningPath} batchScanState={batchScanState} setBatchScanState={setBatchScanState} stack={stack} />
            )}

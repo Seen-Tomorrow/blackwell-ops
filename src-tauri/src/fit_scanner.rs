@@ -934,15 +934,7 @@ pub async fn scan_library(
 
 // ── Full Scan Export ────────────────────────────────────────────────
 fn full_scan_export_path() -> PathBuf {
-    let name = if cfg!(debug_assertions) { "blackwell-ops-dev" } else { "blackwell-ops" };
-    if let Some(app_dir) = dirs::config_dir() {
-        app_dir.join(name).join("fit_scan_full.json")
-    } else {
-        std::env::var("LOCALAPPDATA")
-            .ok()
-            .map(|d| PathBuf::from(d).join(name).join("fit_scan_full.json"))
-            .unwrap_or_else(|| PathBuf::from("fit_scan_full.json"))
-    }
+    crate::config::cache_dir().join("fit_scan_full.json")
 }
 
 /// Clear the full scan export so next scan runs fresh (no incremental skip).

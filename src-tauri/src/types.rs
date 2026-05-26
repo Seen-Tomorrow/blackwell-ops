@@ -278,6 +278,10 @@ pub struct ProviderConfig {
     /// Per-environment binary paths — each env builds into its own directory (build-vanguard/bin/Release, etc.).
     #[serde(default, skip_serializing_if = "HashMap::is_empty", rename = "binaryPathPerEnv")]
     pub binary_path_per_env: HashMap<String, String>,
+    /// Per-environment downloaded release version — tracks which GitHub release tag was installed via update.
+    /// Used for comparing against latest release (build_info_per_env stores internal llama.cpp version, not semver).
+    #[serde(default, skip_serializing_if = "HashMap::is_empty", rename = "downloadedVersionPerEnv")]
+    pub downloaded_version_per_env: HashMap<String, String>,
     /// Last cherry-picked PR number per environment (for badge display)
     #[serde(default, skip_serializing_if = "HashMap::is_empty", rename = "lastPrPerEnv")]
     pub last_pr_per_env: HashMap<String, String>,

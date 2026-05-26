@@ -25,6 +25,7 @@ mod fusion_poller;
 mod fusion_logparser;
 mod provider_mgmt;
 mod llama_catalog;
+mod binary_update;
 
 #[cfg(feature = "reactor11")]
 pub mod features;
@@ -63,31 +64,23 @@ async fn get_hf_model_info(
 }
 
 #[tauri::command]
-async fn set_hf_token(token: String) -> Result<(), String> {
-    let name = if cfg!(debug_assertions) { "blackwell-ops-dev" } else { "blackwell-ops" };
-    let app_dir = dirs::config_dir().ok_or("Could not find config directory")?;
-    let config_path = app_dir.join(name).join("hf_token.txt");
-    std::fs::create_dir_all(config_path.parent().unwrap()).map_err(|e| e.to_string())?;
-    std::fs::write(&config_path, token).map_err(|e| e.to_string())?;
+async fn set_hf_token(token: String, app_config: tauri::State<'_, Arc<std::sync::Mutex<config::AppConfig>>>) -> Result<(), String> {
+    let mut cfg = app_config.lock().unwrap();
+    cfg.hf_token = token;
+    config::save_config(&cfg).map_err(|e| e.to_string())?;
     Ok(())
 }
 
 #[tauri::command]
-async fn get_hf_token() -> Result<Option<String>, String> {
-    let name = if cfg!(debug_assertions) { "blackwell-ops-dev" } else { "blackwell-ops" };
-    if let Some(app_dir) = dirs::config_dir() {
-        let token_path = app_dir.join(name).join("hf_token.txt");
-        if token_path.exists() {
-            let content = std::fs::read_to_string(&token_path).map_err(|e| e.to_string())?;
-            if !content.is_empty() {
-                let masked = if content.len() > 10 {
-                    format!("{}***", &content[..6])
-                } else {
-                    "***".to_string()
-                };
-                return Ok(Some(masked));
-            }
-        }
+async fn get_hf_token(app_config: tauri::State<'_, Arc<std::sync::Mutex<config::AppConfig>>>) -> Result<Option<String>, String> {
+    let cfg = app_config.lock().unwrap();
+    if !cfg.hf_token.is_empty() {
+        let masked = if cfg.hf_token.len() > 10 {
+            format!("{}***", &cfg.hf_token[..6])
+        } else {
+            "***".to_string()
+        };
+        return Ok(Some(masked));
     }
     Ok(None)
 }
@@ -276,7 +269,7 @@ async fn main() {
             info
         );
         eprintln!("{}", msg);
-        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(r"C:\tmp\blackwell-panic.log") {
+        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(std::env::temp_dir().join("blackwell-panic.log")) {
             use std::io::Write;
             let _ = writeln!(f, "{}\n", msg);
             let _ = f.flush();
@@ -292,13 +285,8 @@ async fn main() {
     #[cfg(not(debug_assertions))]
     env_logger::init();
 
-    let app_config = config::load_config();
 
-    if !app_config.llama_path.exists() {
-        log::warn!("llama-server.exe not found at: {}. Models may fail to launch.", app_config.llama_path.display());
-    }
-
-    #[cfg(debug_assertions)]
+#[cfg(debug_assertions)]
     {
         if let Some(data_dir) = dirs::data_local_dir() {
             let ident = if cfg!(debug_assertions) { "com.blackwell-ops.app.dev" } else { "com.blackwell-ops.app" };
@@ -314,7 +302,8 @@ async fn main() {
     }
 
     let mut builder = tauri::Builder::default()
-        .plugin(tauri_plugin_shell::init());
+        .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_updater::Builder::new().build());
 
     #[cfg(debug_assertions)]
     {
@@ -323,6 +312,13 @@ async fn main() {
 
     builder
         .setup(move |app| {
+            // Load config with bundled path resolution (needs app handle)
+            let app_config = config::load_config_with_app(app.handle());
+
+            if !app_config.llama_path.exists() {
+                log::warn!("llama-server.exe not found at: {}. Models may fail to launch.", app_config.llama_path.display());
+            }
+
             let slot_count = std::cmp::max(1, app_config.gpu_slots);
             let stack = Arc::new(Mutex::new(EngineStack::new(app_config.base_port, slot_count)));
             log::info!("Initializing EngineStack with {} slots for {} GPU(s)", slot_count, slot_count);
@@ -449,6 +445,14 @@ async fn main() {
             get_default_download_path,
             // Llama catalog (live --help parser)
             llama_catalog::get_llama_catalog,
+            // Binary update commands
+            binary_update::check_binary_updates,
+            binary_update::download_binary_update,
+            binary_update::get_profile_labels,
+            binary_update::check_app_update,
+            binary_update::install_app_update,
+            binary_update::get_startup_updates,
+            binary_update::revert_binary_to_bundled,
 
         ])
         .run(tauri::generate_context!())

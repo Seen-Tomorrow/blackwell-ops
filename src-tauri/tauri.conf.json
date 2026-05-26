@@ -28,9 +28,17 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
+    "resources": ["binaries"],
     "icon": [
       "icons/icon-release.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "active": true,
+      "dialog": false,
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDk4NTg0OEM1M0Y1NDFGMjUKUldRbEgxUS94VWhZbVBhYnlDUzc1bmxyd3RPTitwQ1dtcEpxZlFzb3ZqOWQ4eVdDQW9TL3F1UkwK"
+    }
   }
 
 }

@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import type { Tab } from "../App";
-import type { ProviderConfig } from "../lib/types";
+import type { ProviderConfig, AppUpdateInfo } from "../lib/types";
 import { useStatus, type Env } from "../context/StatusBarContext";
 import { useDock } from "../context/DockContext";
 import FoundryModal from "./FoundryModal";
@@ -69,6 +69,9 @@ interface LayoutProps {
   onTabChange: (tab: Tab) => void;
   children: React.ReactNode;
   providers?: ProviderConfig[];
+  appUpdate?: AppUpdateInfo | null;
+  hasBinaryUpdates?: boolean;
+  onInstallAppUpdate?: () => void;
 }
 
 const tabs: { id: Tab; label: string; icon: string; hidden?: boolean }[] = [
@@ -82,7 +85,7 @@ const tabs: { id: Tab; label: string; icon: string; hidden?: boolean }[] = [
   { id: "sentinel", label: "SENTINEL", icon: "\u2694" },
 ];
 
-export default function Layout({ activeTab, onTabChange, children, providers = [] }: LayoutProps) {
+export default function Layout({ activeTab, onTabChange, children, providers = [], appUpdate, hasBinaryUpdates, onInstallAppUpdate }: LayoutProps) {
   const [adminLockState, setAdminLockState] = useState(loadAdminLock);
   const [zoom, setZoom] = useState(loadZoom);
   const { totalParams, hiddenCount, onShowAll, flashMessage, openBuildModal, minimizeBuildModal, closeBuildModal, buildProgress, foundryModal, foundryModalVisible } = useStatus();
@@ -156,7 +159,7 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
                 BLACKWELL OPS
               </h1>
               <p className="text-[8px] font-mono text-white/25 tracking-wider">
-                BUILD {__APP_VERSION__}
+                v{__TAURI_VERSION__} · BUILD {__APP_VERSION__}
               </p>
             </div>
           </div>
@@ -164,24 +167,48 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
           {/* Nav tabs */}
           <nav className="flex items-center gap-1 ml-8">
             {visibleTabs.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => onTabChange(tab.id)}
-                className={`px-4 py-1.5 text-xs font-mono tracking-wider transition-all duration-200 ${
-                  activeTab === tab.id
-                    ? "bg-nv-green/20 text-nv-green border border-nv-green/40"
-                    : "text-stealth-muted hover:text-white hover:bg-white/5 border border-transparent"
-                }`}
-              >
-                {/* <span className="mr-1.5">{tab.icon}</span> */}
-                {tab.label}
-              </button>
+              <div key={tab.id} className="relative inline-block">
+                <button
+                  onClick={() => onTabChange(tab.id)}
+                  className={`px-4 py-1.5 text-xs font-mono tracking-wider transition-all duration-200 ${
+                    activeTab === tab.id
+                      ? "bg-nv-green/20 text-nv-green border border-nv-green/40"
+                      : "text-stealth-muted hover:text-white hover:bg-white/5 border border-transparent"
+                  }`}
+                >
+                  {/* <span className="mr-1.5">{tab.icon}</span> */}
+                  {tab.label}
+                </button>
+                {/* Binary update badge on CONFIG tab */}
+                {tab.id === "config" && hasBinaryUpdates && (
+                  <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-yellow-400 rounded-full animate-pulse" title="Runtime binary updates available" />
+                )}
+              </div>
             ))}
           </nav>
         </div>
 
         {/* Admin lock + Zoom controls */}
         <div className="flex flex-col items-end gap-2">
+          {/* App update indicator */}
+          {appUpdate?.available && (
+            <div className="relative inline-block group">
+              <button
+                onClick={onInstallAppUpdate}
+                className="text-[9px] font-mono tracking-wider text-yellow-400 hover:text-yellow-300 transition-colors cursor-pointer"
+                title={`New APP version available: ${appUpdate.version}`}
+              >
+                NEW APP VERSION AVAILABLE
+              </button>
+              {/* Release notes tooltip on hover */}
+              {appUpdate.releaseNotes && (
+                <div className="absolute top-full right-0 mt-1 w-[360px] bg-[#0a0a1a] border border-yellow-400/40 rounded-sm p-3 pointer-events-none z-[9999] opacity-0 group-hover:opacity-100 transition-opacity shadow-2xl">
+                  <div className="text-[8px] font-mono text-yellow-400 mb-1 tracking-wider">RELEASE NOTES</div>
+                  <pre className="text-[8px] font-mono text-white/70 whitespace-pre-wrap leading-relaxed max-h-[200px] overflow-y-auto">{appUpdate.releaseNotes}</pre>
+                </div>
+              )}
+            </div>
+          )}
           <button onClick={handleAdminToggle}
             className={`text-[9px] font-mono tracking-wider transition-colors ${ADMIN_COLORS[adminLockState] || ADMIN_COLORS.locked}`}
             title={ADMIN_LABELS[adminLockState] || "LOCKED"}>

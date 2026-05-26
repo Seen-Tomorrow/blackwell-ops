@@ -4,10 +4,10 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --port 1420",
+    "server": "vite --port 1420",
+    "dev": "tauri dev --config src-tauri/tauri.conf.dev.json",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri dev --config src-tauri/tauri.conf.dev.json",
     "release": "npm run build && tauri build"
   },
   "dependencies": {
