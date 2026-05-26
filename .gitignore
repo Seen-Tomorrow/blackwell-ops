@@ -33,6 +33,7 @@ src-tauri/binaries/*
 # Ignore the actual server executable if you download it externally
 # but keep your integration logic.
 *.exe
+*.dll
 *.pdb
 *.d
 llama-server.exe

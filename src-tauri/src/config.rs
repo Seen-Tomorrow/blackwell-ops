@@ -1,3 +1,4 @@
+use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -7,82 +8,140 @@ use crate::types::{ModelPathEntry, PathDiskUsage, ProviderConfig};
 
 pub const MAX_ENGINE_SLOTS: usize = 16;
 
-/// Base data directory: %LOCALAPPDATA%/blackwell-ops-dev/ (dev) or blackwell-ops/ (release).
-fn blackwell_data_dir() -> std::path::PathBuf {
-    let name = if cfg!(debug_assertions) { "blackwell-ops-dev" } else { "blackwell-ops" };
-    dirs::data_local_dir().unwrap().join(name)
+/// Default provider ID — bundled with the app, always present.
+pub const DEFAULT_PROVIDER_ID: &str = "ggml-master";
+
+/// App root directory — parent of the running executable (portable).
+/// DEV: target/debug/ or target/release/ during development.
+/// REL: wherever the user installed/unzipped the app.
+pub fn app_root_dir() -> std::path::PathBuf {
+    std::env::current_exe()
+        .map(|p| p.parent().unwrap().to_path_buf())
+        .unwrap_or_else(|_| std::env::current_dir().unwrap())
 }
 
-/// Config directory: %LOCALAPPDATA%/blackwell-ops-dev/config/ — app_config.json, user_providers_config.json.
+/// User data directory: config/ — same in DEV and REL.
+fn data_dir() -> std::path::PathBuf {
+    app_root_dir().join("config")
+}
+
+/// Config directory: same as data_dir() — contains app_config.json and per-provider user configs.
 fn config_dir() -> std::path::PathBuf {
-    blackwell_data_dir().join("config")
+    data_dir()
 }
 
-/// Cache directory: %LOCALAPPDATA%/blackwell-ops-dev/cache/ — model_cache.json, fit_scan_full.json.
+/// Cache directory: inside data dir.
 pub fn cache_dir() -> std::path::PathBuf {
-    blackwell_data_dir().join("cache")
+    data_dir().join("cache")
 }
 
-/// Foundry build directory for a given provider.
-/// e.g. %LOCALAPPDATA%/blackwell-ops-dev/foundry/engines/ggml-stable
+/// Foundry build directory for a given provider — SHARED between DEV and REL.
+/// e.g. {app_root}/foundry/engines/ggml-master
 pub fn foundry_dir(provider_id: &str) -> std::path::PathBuf {
-    blackwell_data_dir()
+    app_root_dir()
         .join("foundry")
         .join("engines")
         .join(provider_id)
 }
 
-/// Base data directory (public for binary_update.rs).
-pub fn blackwell_local_data_dir() -> std::path::PathBuf {
-    blackwell_data_dir()
+/// Resolve a path that may be relative to app_root or absolute.
+/// Relative paths like "runtime/ggml-master/stable/llama-server.exe" are resolved against app_root.
+/// Absolute paths (containing drive letter) are returned as-is.
+pub fn resolve_path(path_str: &str) -> PathBuf {
+    if path_str.is_empty() {
+        return PathBuf::new();
+    }
+
+    let p = PathBuf::from(path_str);
+    // Check if it looks like an absolute Windows path (contains drive letter + colon)
+    let is_absolute = path_str.len() >= 2 && path_str.as_bytes()[1] == b':';
+    if is_absolute {
+        p
+    } else {
+        app_root_dir().join(&p)
+    }
 }
 
-/// Resolve bundled binary path for a provider/profile combo using Tauri resources.
-/// Returns None if the resource doesn't exist (e.g., dev build without binaries).
-fn resolve_bundled_binary(app_handle: &tauri::AppHandle, provider_id: &str, profile: &str) -> Option<PathBuf> {
-    let resource_path = format!("binaries/{}/{}", provider_id, profile);
-    app_handle.path().resolve(&resource_path, BaseDirectory::Resource).ok()
-        .and_then(|dir| {
-            // The resource is a directory — look for llama-server.exe inside it
-            let exe = dir.join("llama-server.exe");
-            if exe.exists() { Some(exe) } else { None }
-        })
+/// Convert an absolute path to a relative path from app_root (if possible).
+pub fn to_relative_path(abs: &PathBuf) -> String {
+    let root = app_root_dir();
+    if let Ok(rel) = abs.strip_prefix(&root) {
+        rel.to_string_lossy().to_string()
+    } else {
+        abs.to_string_lossy().to_string()
+    }
 }
 
-/// Patch bundled binary paths into config for genesis providers that have no user override.
-/// Called during setup after config is loaded and we have the app handle.
-pub fn patch_bundled_paths(app_handle: &tauri::AppHandle, config: &mut AppConfig) {
-    // Default profile for bundled binaries — "stable" (VS2022 + CUDA 12.8)
-    const DEFAULT_PROFILE: &str = "stable";
+/// Ensure the portable directory structure exists. Copy bundled binaries from resources on first run (REL only).
+pub fn ensure_portable_structure(app_handle: &tauri::AppHandle) {
+    let root = app_root_dir();
+    let data = data_dir();
 
-    for provider in &mut config.providers {
-        if provider.binary_path.is_empty() && !provider.id.contains("custom") {
-            // Try to resolve bundled binary from resources
-            if let Some(bundled_path) = resolve_bundled_binary(app_handle, &provider.id, DEFAULT_PROFILE) {
-                provider.binary_path = bundled_path.to_string_lossy().to_string();
-                log::info!("[patch] {} binary_path -> bundled {}", provider.id, bundled_path.display());
-            }
-        }
+    // Create directories
+    let _ = std::fs::create_dir_all(&data);
+    let _ = std::fs::create_dir_all(cache_dir().parent().unwrap_or(&data));
+    let foundry_base = app_root_dir().join("foundry");
+    let _ = std::fs::create_dir_all(&foundry_base);
 
-        // Also set per-env paths for bundled profiles if not already overridden by user
-        for profile in &["vanguard", "stable", "fresh"] {
-            let key = profile.to_string();
-            if !provider.binary_path_per_env.contains_key(&key) {
-                if let Some(bundled_path) = resolve_bundled_binary(app_handle, &provider.id, profile) {
-                    provider.binary_path_per_env.insert(key.clone(), bundled_path.to_string_lossy().to_string());
-                    log::info!("[patch] {} per-env[{}] -> bundled {}", provider.id, profile, bundled_path.display());
-                }
-            }
+    // Copy bundled binaries from Tauri resources (REL only)
+    if !cfg!(debug_assertions) {
+        let dest_binaries = root.join("runtime");
+        if !dest_binaries.exists() || dest_binaries.read_dir().map(|d| d.count() == 0).unwrap_or(true) {
+            log::info!("[setup] Copying bundled binaries from resources to {}", dest_binaries.display());
+            let _ = copy_resources_to_binaries(app_handle, &dest_binaries);
         }
     }
 
-    // Set llama_path fallback if empty
-    if config.llama_path.as_os_str().is_empty() {
-        if let Some(bundled) = resolve_bundled_binary(app_handle, "ggml-stable", DEFAULT_PROFILE) {
-            config.llama_path = bundled;
-            log::info!("[patch] llama_path -> bundled {}", config.llama_path.display());
+    log::info!("[setup] Portable structure ready at {}", root.display());
+}
+
+/// Copy bundled binaries from Tauri resources to app_root/runtime/.
+fn copy_resources_to_binaries(app_handle: &tauri::AppHandle, dest: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+    let resource_path = match app_handle.path().resolve("runtime", BaseDirectory::Resource) {
+        Ok(p) => p,
+        Err(e) => {
+            log::warn!("[setup] Could not resolve runtime resource: {}", e);
+            return Ok(());
+        }
+    };
+
+    if !resource_path.exists() {
+        log::warn!("[setup] No bundled binaries found in resources");
+        return Ok(());
+    }
+
+    std::fs::create_dir_all(dest)?;
+
+    for entry in std::fs::read_dir(&resource_path)? {
+        let entry = entry?;
+        let src = entry.path();
+        let dst = dest.join(entry.file_name());
+
+        if entry.file_type()?.is_dir() {
+            copy_directory_tree(&src, &dst)?;
+        } else {
+            std::fs::copy(&src, &dst)?;
         }
     }
+
+    Ok(())
+}
+
+/// Recursively copy a directory tree.
+fn copy_directory_tree(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(dst)?;
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+
+        if entry.file_type()?.is_dir() {
+            copy_directory_tree(&src_path, &dst_path)?;
+        } else {
+            std::fs::copy(&src_path, &dst_path)?;
+        }
+    }
+    Ok(())
 }
 
 /// Normalize a UI group name to uppercase-hyphen format (e.g. "Speculative Decoding" → "SPECULATIVE-DECODING")
@@ -137,13 +196,34 @@ pub struct ProviderMeta {
     pub display_order: i32,
 }
 
+impl ProviderMeta {
+    /// Convert a runtime ProviderConfig into persistence format (ProviderMeta).
+    pub fn from_config(p: &ProviderConfig) -> Self {
+        ProviderMeta {
+            id: p.id.clone(),
+            display_name: p.display_name.clone(),
+            binary_path: to_relative_path(&PathBuf::from(&p.binary_path)),
+            enabled: p.enabled,
+            git_url: p.git_url.clone(),
+            branch: p.branch.clone(),
+            build_profile: p.build_profile.clone(),
+            user_edited_template_params: if p.user_edited_template_params.is_empty() { Vec::new() } else { p.user_edited_template_params.clone() },
+            group_order: p.group_order.clone(),
+            template_type: p.template_type.clone(),
+            build_info_per_env: p.build_info_per_env.clone(),
+            binary_path_per_env: p.binary_path_per_env.iter().map(|(k, v)| (k.clone(), to_relative_path(&PathBuf::from(v)))).collect(),
+            downloaded_version_per_env: p.downloaded_version_per_env.clone(),
+            last_pr_per_env: p.last_pr_per_env.clone(),
+            display_order: p.display_order,
+        }
+    }
+}
+
 fn default_true() -> bool { true }
 fn default_providers() -> Vec<ProviderConfig> { Vec::new() }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
-    pub llama_path: PathBuf,
-    pub model_base: PathBuf,
     #[serde(default)]
     pub model_paths: Vec<ModelPathEntry>,
     pub prefs_file: PathBuf,
@@ -159,22 +239,16 @@ pub struct AppConfig {
 
 impl Default for AppConfig {
     fn default() -> Self {
-        let app_dir = Some(config_dir().join("models"));
-        let default_path = app_dir.as_ref().map(|p| p.to_string_lossy().to_string());
+        let app_dir = config_dir().join("models");
 
         let mut model_paths: Vec<ModelPathEntry> = Vec::new();
-
-        if let Some(ref p) = default_path {
-            model_paths.push(ModelPathEntry {
-                path: p.clone(),
-                label: "Default".to_string(),
-                is_default: true,
-            });
-        }
+        model_paths.push(ModelPathEntry {
+            path: app_dir.to_string_lossy().to_string(),
+            label: "Default".to_string(),
+            is_default: true,
+        });
 
         Self {
-            llama_path: PathBuf::new(),  // Resolved at runtime from bundled resource or Foundry build
-            model_base: default_path.map(PathBuf::from).unwrap_or_default(),
             model_paths,
             prefs_file: PathBuf::new(),
             base_port: 9090,
@@ -185,21 +259,93 @@ impl Default for AppConfig {
     }
 }
 
-const USER_PROVIDERS_CONFIG_FILE: &str = "user_providers_config.json";
+// ── Per-Provider User Config Persistence ────────────────────────────
 
-// ── Provider Metadata Persistence ───────────────────────────────────
+/// Get the user config file path for a provider.
+pub fn provider_user_config_path(provider_id: &str) -> PathBuf {
+    config_dir().join(format!("{}-user-config.json", provider_id))
+}
 
+/// Load all per-provider user configs from disk.
 pub fn load_user_providers_meta() -> Vec<ProviderMeta> {
-    let config_path = config_dir().join(USER_PROVIDERS_CONFIG_FILE);
-    if config_path.exists() {
-        if let Ok(content) = std::fs::read_to_string(&config_path) {
-            if let Ok(metas) = serde_json::from_str::<Vec<ProviderMeta>>(&content) {
-                log::info!("Loaded {} provider(s) from {}", metas.len(), config_path.display());
-                return metas;
+    let mut metas = Vec::new();
+    let cd = config_dir();
+
+    if !cd.exists() {
+        return metas;
+    }
+
+    for entry in std::fs::read_dir(&cd).into_iter().flatten() {
+        let entry = match entry { Ok(e) => e, Err(_) => continue };
+        let path = entry.path();
+
+        // Match *-user-config.json files
+        let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        if !file_name.ends_with("-user-config.json") {
+            continue;
+        }
+
+        if let Ok(content) = std::fs::read_to_string(&path) {
+            // Try loading as single ProviderMeta first, then fallback to array
+            if let Ok(meta) = serde_json::from_str::<ProviderMeta>(&content) {
+                metas.push(meta);
+            } else if let Ok(arr) = serde_json::from_str::<Vec<ProviderMeta>>(&content) {
+                // Legacy format: array in single file — migrate to individual files
+                for m in arr {
+                    let individual_path = provider_user_config_path(&m.id);
+                    if !individual_path.exists() {
+                        if let Ok(json) = serde_json::to_string_pretty(&m) {
+                            let _ = std::fs::write(&individual_path, json);
+                        }
+                    }
+                    metas.push(m);
+                }
+            } else {
+                log::warn!("[config] Failed to parse {}: skipping (check for corrupt JSON)", path.display());
             }
+        } else {
+            log::warn!("[config] Failed to read {}", path.display());
         }
     }
-    Vec::new()
+
+    log::info!("[config] Loaded {} per-provider user config(s)", metas.len());
+    metas
+}
+
+/// Save a single provider's user config to its own file.
+pub fn save_provider_user_config(meta: &ProviderMeta) -> Result<(), String> {
+    std::fs::create_dir_all(config_dir()).map_err(|e| format!("Failed to create config dir: {}", e))?;
+
+    let path = provider_user_config_path(&meta.id);
+    let json = serde_json::to_string_pretty(meta).map_err(|e| format!("Serialization failed: {}", e))?;
+    std::fs::write(&path, &json).map_err(|e| format!("Failed to write {}: {}", path.display(), e))?;
+
+    log::info!("[config] Saved user config for {} -> {}", meta.id, path.display());
+    Ok(())
+}
+
+/// Reset a provider by deleting its user config file. Next load will use defaults.
+pub fn reset_provider_to_defaults(provider_id: &str) -> Result<(), String> {
+    let path = provider_user_config_path(provider_id);
+    if path.exists() {
+        std::fs::remove_file(&path).map_err(|e| format!("Failed to remove {}: {}", path.display(), e))?;
+        log::info!("[config] Reset {} — removed user config", provider_id);
+    } else {
+        log::info!("[config] {} already at defaults (no user config)", provider_id);
+    }
+    Ok(())
+}
+
+/// Persist all providers as individual per-provider config files.
+pub fn persist_user_providers_meta(providers: &[ProviderConfig]) -> Result<(), String> {
+    for p in providers {
+        if p.id.contains("custom") {
+            continue;
+        }
+        let meta = ProviderMeta::from_config(p);
+        save_provider_user_config(&meta)?;
+    }
+    Ok(())
 }
 
 fn json_val_eq(a: &serde_json::Value, b: &serde_json::Value) -> bool {
@@ -321,18 +467,16 @@ pub fn save_user_providers_meta(metas: Vec<ProviderMeta>) -> Result<(), String> 
     // Block-save validation — force user to correct manually
     let errors = check_user_providers_meta(&metas);
     if !errors.is_empty() {
-        return Err(format!("user_providers_config.json has {} issue(s):\n{}", errors.len(), errors.join("\n")));
+        return Err(format!("Provider config has {} issue(s):\n{}", errors.len(), errors.join("\n")));
     }
 
     let config_directory = config_dir();
     std::fs::create_dir_all(&config_directory).map_err(|e| format!("Failed to create config dir: {}", e))?;
 
-    let config_path = config_directory.join(USER_PROVIDERS_CONFIG_FILE);
-    let json = serde_json::to_string_pretty(&metas)
-        .map_err(|e| format!("Failed to serialize provider meta: {}", e))?;
-
-    std::fs::write(&config_path, json).map_err(|e| format!("Failed to write provider meta: {}", e))?;
-    log::debug!("Saved {} provider(s) to {}", metas.len(), config_path.display());
+    for meta in &metas {
+        save_provider_user_config(meta)?;
+    }
+    log::debug!("Saved {} provider(s)", metas.len());
     Ok(())
 }
 
@@ -346,35 +490,10 @@ pub fn validate_user_providers_meta() -> Result<Vec<String>, String> {
     Ok(errors)
 }
 
-pub fn persist_user_providers_meta(providers: &[crate::types::ProviderConfig]) -> Result<(), String> {
-    let metas: Vec<ProviderMeta> = providers.iter().map(|p| ProviderMeta {
-        id: p.id.clone(),
-        display_name: if p.display_name.is_empty() { "Untitled".to_string() } else { p.display_name.clone() },
-        binary_path: p.binary_path.clone(),
-        enabled: p.enabled,
-        git_url: p.git_url.clone(),
-        branch: p.branch.clone(),
-        build_profile: p.build_profile.clone(),
-        user_edited_template_params: if p.user_edited_template_params.is_empty() {
-            Vec::new()
-        } else {
-            p.user_edited_template_params.clone()
-        },
-        group_order: p.group_order.clone(),
-        template_type: p.template_type.clone(),
-        display_order: p.display_order,
-        build_info_per_env: p.build_info_per_env.clone(),
-        binary_path_per_env: p.binary_path_per_env.clone(),
-        downloaded_version_per_env: p.downloaded_version_per_env.clone(),
-        last_pr_per_env: p.last_pr_per_env.clone(),
-    }).collect();
-    save_user_providers_meta(metas)
-}
+// ── Provider Defaults Loading (disk-based, replaces disk defaults) ─
 
-// ── Genesis Providers (factory defaults from embedded template) ─────
-
-fn user_edited_param_from_template(tp: &crate::templates::GenesisTemplateParam, order: i32) -> crate::types::UserEditedTemplateParam {
-    // Convert sub_params from serde_json::Value to HashMap<String, Vec<String>>
+/// Convert a ProviderDefaultParam from disk defaults into a UserEditedTemplateParam.
+fn user_edited_param_from_template(tp: &crate::templates::ProviderDefaultParam, order: i32) -> crate::types::UserEditedTemplateParam {
     let sub_params = tp.sub_params.as_ref().and_then(|sp| {
         sp.as_object().map(|obj| {
             obj.iter()
@@ -409,65 +528,118 @@ fn user_edited_param_from_template(tp: &crate::templates::GenesisTemplateParam, 
     }
 }
 
-pub fn params_for_provider(id: &str) -> Vec<crate::types::UserEditedTemplateParam> {
-    let bundle = crate::templates::TemplateBundle::default();
-    if let Some(template) = bundle.templates.get(id) {
-        return template.params.iter()
+/// Load params for a provider from its disk-based default config.
+pub fn params_for_provider(provider_id: &str) -> Vec<crate::types::UserEditedTemplateParam> {
+    if let Some(template) = crate::templates::load_provider_defaults(provider_id) {
+        template.params.iter()
             .enumerate()
             .map(|(i, tp)| user_edited_param_from_template(tp, i as i32))
-            .collect();
+            .collect()
+    } else {
+        log::warn!("[config] No default config found for provider '{}', returning empty params", provider_id);
+        Vec::new()
     }
-    Vec::new()
 }
 
-fn genesis_providers() -> Vec<crate::types::ProviderConfig> {
-    vec![
-        crate::types::ProviderConfig {
-            id: "ggml-stable".to_string(),
-            display_name: "GGML Stable".to_string(),
-            binary_path: String::new(),  // Resolved at runtime from bundled resource or Foundry build
-            enabled: true,
-            params: serde_json::json!({}),
-            user_edited_template_params: params_for_provider("ggml-stable"),
-            group_order: Vec::new(),
-            _original_id: None,
-            git_url: "https://github.com/ggml-org/llama.cpp".to_string(),
-            branch: "master".to_string(),
-            build_profile: String::new(),
-            template_type: "ggml-llama".into(),
-            build_info_per_env: std::collections::HashMap::new(),
-            binary_path_per_env: std::collections::HashMap::new(),
-            downloaded_version_per_env: std::collections::HashMap::new(),
-            last_pr_per_env: std::collections::HashMap::new(),
-            display_order: 0,
-        },
-        crate::types::ProviderConfig {
-            id: "ik-extreme".to_string(),
-            display_name: "IK-Extreme (Flagship)".to_string(),
-            binary_path: String::new(),  // Resolved at runtime from bundled resource or Foundry build
-            enabled: true,
-            params: serde_json::json!({}),
-            user_edited_template_params: params_for_provider("ik-extreme"),
-            group_order: Vec::new(),
-            _original_id: None,
-            git_url: "https://github.com/ikawrakow/ik_llama.cpp".to_string(),
-            branch: "main".to_string(),
-            build_profile: String::new(),
-            template_type: "ik-llama".into(),
-            build_info_per_env: std::collections::HashMap::new(),
-            binary_path_per_env: std::collections::HashMap::new(),
-            downloaded_version_per_env: std::collections::HashMap::new(),
-            last_pr_per_env: std::collections::HashMap::new(),
-            display_order: 1,
-        },
-    ]
+/// Discover providers from disk: scan runtime/ directory for default configs.
+fn discover_providers() -> Vec<crate::types::ProviderConfig> {
+    let mut providers = Vec::new();
+    let app_root = app_root_dir();
+    let binaries_dir = app_root.join("runtime");
+
+    if !binaries_dir.exists() {
+        log::warn!("[config] Runtime directory not found at {}", binaries_dir.display());
+        return providers;
+    }
+
+    #[derive(serde::Deserialize)]
+    struct ProviderIdentity {
+        id: String,
+        display_name: String,
+        git_url: String,
+        branch: String,
+        template_type: String,
+        #[serde(default)]
+        build_profile: String,
+    }
+
+    for entry in std::fs::read_dir(&binaries_dir).into_iter().flatten().filter_map(|e| e.ok()) {
+        if !entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false) {
+            continue;
+        }
+
+        let pid = entry.file_name().to_string_lossy().to_string();
+        let config_path = entry.path().join("config").join(format!("{}-default-config.json", pid));
+
+        if !config_path.exists() {
+            continue;
+        }
+
+        if let Ok(content) = std::fs::read_to_string(&config_path) {
+            if let Ok(identity) = serde_json::from_str::<ProviderIdentity>(&content) {
+                // Populate binary paths + build info from disk — check which profiles exist
+                let mut per_env: HashMap<String, String> = HashMap::new();
+                let mut build_info_per_env: HashMap<String, crate::types::BuildInfo> = HashMap::new();
+                let mut main_binary = String::new();
+                for profile in &["vanguard", "stable", "fresh"] {
+                    let exe_path = entry.path().join(profile).join("llama-server.exe");
+                    if exe_path.exists() {
+                        per_env.insert(profile.to_string(), format!("runtime/{}/{}/llama-server.exe", pid, profile));
+                        // Populate build_info from file metadata so UI shows profile as available
+                        if let Ok(m) = std::fs::metadata(&exe_path) {
+                            let date_str = m.modified().ok()
+                                .map(|mt| DateTime::<Local>::from(mt).format("%Y-%m-%d %H:%M").to_string())
+                                .unwrap_or_else(|| "unknown".to_string());
+                            build_info_per_env.insert(profile.to_string(), crate::types::BuildInfo {
+                                version: "disk-scanned".to_string(),
+                                build_date: date_str,
+                                cuda_version: None,
+                            });
+                        }
+                        if main_binary.is_empty() {
+                            main_binary = format!("runtime/{}/vanguard/llama-server.exe", pid);
+                        }
+                    }
+                }
+
+                providers.push(crate::types::ProviderConfig {
+                    id: identity.id.clone(),
+                    display_name: identity.display_name,
+                    binary_path: main_binary,
+                    enabled: true,
+                    params: serde_json::json!({}),
+                    user_edited_template_params: params_for_provider(&identity.id),
+                    group_order: Vec::new(),
+                    _original_id: None,
+                    git_url: identity.git_url,
+                    branch: identity.branch,
+                    build_profile: identity.build_profile.clone(),
+                    template_type: identity.template_type,
+                    build_info_per_env,
+                    binary_path_per_env: per_env,
+                    downloaded_version_per_env: std::collections::HashMap::new(),
+                    last_pr_per_env: std::collections::HashMap::new(),
+                    display_order: providers.len() as i32,
+                });
+            }
+        }
+    }
+
+    providers.sort_by(|a, b| a.display_order.cmp(&b.display_order).then_with(|| a.id.cmp(&b.id)));
+    for (i, p) in providers.iter_mut().enumerate() {
+        p.display_order = i as i32;
+    }
+
+    log::info!("[config] Discovered {} provider(s) from disk", providers.len());
+    providers
 }
 
-pub fn template_key_for_type(template_type: &str) -> Option<&'static str> {
+/// Map template_type to provider ID for loading defaults.
+pub fn template_key_for_type(template_type: &str) -> Option<String> {
     match template_type {
-        "ik-llama" => Some("ik-extreme"),
-        "ggml-llama" => Some("ggml-stable"),
-        _ => None,  // custom/empty = no template
+        "ik-llama" => Some("ik".to_string()),
+        "ggml-llama" => Some(DEFAULT_PROVIDER_ID.to_string()),
+        _ => None,
     }
 }
 
@@ -479,12 +651,11 @@ pub fn resolve_template_type(provider_id: &str, disk_type: Option<&String>) -> S
     }
 }
 
+/// Backfill dock fields from provider defaults into user-edited params.
 fn merge_template_dock(template_type: &str, user_edited_params: &mut Vec<crate::types::UserEditedTemplateParam>) {
-    let bundle = crate::templates::TemplateBundle::default();
     let Some(template_key) = template_key_for_type(template_type) else { return; };
-    let Some(template) = bundle.templates.get(template_key) else { return; };
+    let Some(template) = crate::templates::load_provider_defaults(&template_key) else { return; };
 
-    // Build lookup of template params by key
     let tmpl_map: std::collections::HashMap<_, _> = template.params.iter()
         .map(|p| (p.key.as_str(), p))
         .collect();
@@ -501,19 +672,15 @@ fn merge_template_dock(template_type: &str, user_edited_params: &mut Vec<crate::
 // ── Config Loading ───────────────────────────────────────────────────
 
 /// Internal: Load config with bundled path resolution (called from setup).
-pub fn load_config_with_app(app_handle: &tauri::AppHandle) -> AppConfig {
-    let mut config = if let Some(saved) = load_saved_config() {
+pub fn load_config_with_app(_app_handle: &tauri::AppHandle) -> AppConfig {
+    if let Some(saved) = load_saved_config() {
         let gpu_count = crate::telemetry::detect_gpu_count();
         build_config_with_providers_full(gpu_count, saved)
     } else {
         let gpu_count = crate::telemetry::detect_gpu_count();
         let fresh = build_fresh_config(MAX_ENGINE_SLOTS);
         build_config_with_providers_full(gpu_count, fresh)
-    };
-
-    // Patch bundled binary paths (release builds with resources)
-    patch_bundled_paths(app_handle, &mut config);
-    config
+    }
 }
 
 /// Tauri command: Load config from disk (no app handle needed for frontend queries).
@@ -534,7 +701,7 @@ pub fn load_config() -> AppConfig {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct TemplateDiff {
-    /// New params added to the Genesis template (not in current config).
+    /// New params added to the provider defaults (not in current config).
     pub new_params: Vec<crate::types::UserEditedTemplateParam>,
     /// Params currently configured but removed from the template. User can choose to keep or remove.
     pub orphaned_params: Vec<crate::types::UserEditedTemplateParam>,
@@ -548,13 +715,12 @@ pub fn check_template_update(provider_id: String) -> Result<TemplateDiff, String
 
     // Resolve template key through the provider's template_type (auto-detect from ID if empty)
     let template_type = resolve_template_type(&provider_id, meta.map(|m| &m.template_type));
-    let bundle = crate::templates::TemplateBundle::default();
     let Some(template_key) = template_key_for_type(&template_type) else {
         log::info!("[check_template_update] {}: no template for type '{}', returning empty diff", provider_id, template_type);
         return Ok(TemplateDiff { new_params: Vec::new(), orphaned_params: Vec::new() });
     };
 
-    let fresh_template = bundle.templates.get(template_key).ok_or("Unknown provider")?;
+    let fresh_template = crate::templates::load_provider_defaults(&template_key).ok_or("Unknown provider")?;
     
     // Build map of current params by key
     let current_params: std::collections::HashMap<String, &crate::types::UserEditedTemplateParam> = meta
@@ -646,12 +812,11 @@ pub fn reset_param_to_template(provider_id: String, param_key: String) -> Result
     let meta = metas.iter().find(|m| m.id == provider_id);
     let template_type = resolve_template_type(&provider_id, meta.map(|m| &m.template_type));
 
-    let bundle = crate::templates::TemplateBundle::default();
     let Some(template_key) = template_key_for_type(&template_type) else {
-        return Err(format!("No genesis template for type '{}' — cannot restore param", template_type));
+        return Err(format!("No provider default config for type '{}' — cannot restore param", template_type));
     };
 
-    let template = bundle.templates.get(template_key).ok_or("Unknown provider")?;
+    let template = crate::templates::load_provider_defaults(&template_key).ok_or("Unknown provider")?;
     let order = template.params.iter()
         .position(|p| p.key == param_key)
         .ok_or_else(|| format!("Param '{}' not found in template", param_key))? as i32;
@@ -672,7 +837,7 @@ pub fn validate_model_path(path: &str) -> Result<(), String> {
 }
 
 pub fn validate_provider_binary(path: &str) -> Result<(), String> {
-    let p = PathBuf::from(path);
+    let p = resolve_path(path);
     if !p.exists() {
         return Err(format!(
             "Provider binary not found at: {}\nVerify the path.",
@@ -687,7 +852,7 @@ pub fn validate_provider_binary(path: &str) -> Result<(), String> {
 pub fn get_model_paths(config: &AppConfig) -> Vec<ModelPathEntry> {
     if config.model_paths.is_empty() {
         vec![ModelPathEntry {
-            path: config.model_base.to_string_lossy().to_string(),
+            path: config_dir().join("models").to_string_lossy().to_string(),
             label: "Default".to_string(),
             is_default: true,
         }]
@@ -746,7 +911,7 @@ pub fn get_default_download_path(config: &AppConfig) -> String {
         .iter()
         .find(|p| p.is_default)
         .map(|p| p.path.clone())
-        .unwrap_or_else(|| config.model_base.to_string_lossy().to_string())
+        .unwrap_or_else(|| config_dir().join("models").to_string_lossy().to_string())
 }
 
 pub fn save_config(config: &AppConfig) -> Result<(), String> {
@@ -763,18 +928,13 @@ pub fn save_config(config: &AppConfig) -> Result<(), String> {
 }
 
 fn build_fresh_config(_gpu_slots: usize) -> AppConfig {
-    let app_dir = Some(config_dir().join("models"));
-    let default_path = app_dir.as_ref().map(|p| p.to_string_lossy().to_string());
-
     let mut model_paths: Vec<ModelPathEntry> = Vec::new();
 
-    if let Some(ref p) = default_path {
-        model_paths.push(ModelPathEntry {
-            path: p.clone(),
-            label: "Default".to_string(),
-            is_default: true,
-        });
-    }
+    model_paths.push(ModelPathEntry {
+        path: config_dir().join("models").to_string_lossy().to_string(),
+        label: "Default".to_string(),
+        is_default: true,
+    });
 
     if let Some(lm_path) = dirs::home_dir().map(|h| h.join(".lmstudio").join("models")).and_then(|p| {
         if p.exists() { Some(p) } else { None }
@@ -787,8 +947,6 @@ fn build_fresh_config(_gpu_slots: usize) -> AppConfig {
     }
 
     AppConfig {
-        llama_path: PathBuf::new(),  // Resolved at runtime from bundled resource or Foundry build
-        model_base: default_path.map(PathBuf::from).unwrap_or_default(),
         model_paths,
         prefs_file: PathBuf::new(),
         base_port: 9090,
@@ -822,7 +980,8 @@ fn build_config_with_providers_full(_gpu_count: usize, mut config: AppConfig) ->
 
     let mut providers = Vec::new();
 
-    for provider in genesis_providers() {
+    // Disk-based provider discovery replaces disk-based discovery
+    for provider in discover_providers() {
         let mut p = provider;
         if let Some(meta) = meta_map.get(&p.id) {
             if !meta.binary_path.is_empty() { p.binary_path = meta.binary_path.clone(); }
@@ -832,9 +991,9 @@ fn build_config_with_providers_full(_gpu_count: usize, mut config: AppConfig) ->
             if !meta.build_profile.is_empty() { p.build_profile = meta.build_profile.clone(); }
 
         if !meta.user_edited_template_params.is_empty() {
-                 let mut defs = meta.user_edited_template_params.clone();
-                 merge_template_dock(&p.template_type, &mut defs);
-                 p.user_edited_template_params = defs;
+                  let mut defs = meta.user_edited_template_params.clone();
+                  merge_template_dock(&p.template_type, &mut defs);
+                  p.user_edited_template_params = defs;
             }
             if !meta.build_info_per_env.is_empty() {
                 p.build_info_per_env = meta.build_info_per_env.clone();
@@ -845,17 +1004,30 @@ fn build_config_with_providers_full(_gpu_count: usize, mut config: AppConfig) ->
             if !meta.downloaded_version_per_env.is_empty() {
                 p.downloaded_version_per_env = meta.downloaded_version_per_env.clone();
             }
+            if !meta.group_order.is_empty() {
+                p.group_order = meta.group_order.clone();
+            }
+            if !meta.last_pr_per_env.is_empty() {
+                p.last_pr_per_env = meta.last_pr_per_env.clone();
+            }
+            // Always override — user's explicit choice survives restart
+            p.enabled = meta.enabled;
+            p.display_order = meta.display_order;
+            if !meta.template_type.is_empty() {
+                p.template_type = meta.template_type.clone();
+            }
         }
         providers.push(p);
     }
 
+    // Custom/user-created providers not found in runtime/ defaults
     for meta in metas_clone {
         if !providers.iter().any(|p| p.id == meta.id) {
             let resolved_type = resolve_template_type(&meta.id, Some(&meta.template_type));
             let tmpl_key = template_key_for_type(&resolved_type);
         let user_edited_params = if !meta.user_edited_template_params.is_empty() {
-                 meta.user_edited_template_params.clone()
-            } else if let Some(key) = tmpl_key {
+                  meta.user_edited_template_params.clone()
+            } else if let Some(ref key) = tmpl_key {
                 params_for_provider(key)
             } else {
                 Vec::new()  // custom type, no template
@@ -867,7 +1039,7 @@ fn build_config_with_providers_full(_gpu_count: usize, mut config: AppConfig) ->
                 binary_path: meta.binary_path.clone(),
                 enabled: meta.enabled,
           params: serde_json::json!({}),
-                 user_edited_template_params: user_edited_params,
+                  user_edited_template_params: user_edited_params,
                 group_order: meta.group_order.clone(),
                 _original_id: None,
                 git_url: meta.git_url.clone(),
@@ -883,8 +1055,6 @@ fn build_config_with_providers_full(_gpu_count: usize, mut config: AppConfig) ->
         }
     }
 
-    // Sort by existing order then ID for stability, then re-assign unique sequential orders.
-    // This handles collisions (e.g. two providers both at 0) and missing values.
     providers.sort_by(|a, b| a.display_order.cmp(&b.display_order).then_with(|| a.id.cmp(&b.id)));
     for (i, p) in providers.iter_mut().enumerate() {
         p.display_order = i as i32;

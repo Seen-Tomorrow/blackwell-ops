@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { ProviderConfig, BinaryUpdateInfo } from "../lib/types";
+import { DEFAULT_PROVIDER_ID } from "../lib/types";
 import { useStatus } from "../context/StatusBarContext";
 
 type Env = "vanguard" | "stable" | "fresh";
@@ -318,6 +319,9 @@ function FoundryProviderCard({ provider, onBuild, onRestoreConfirm, buildProgres
         <span className="text-[10px] font-mono text-white truncate max-w-[200px]" title={provider.display_name}>
           {provider.display_name}
         </span>
+        {provider.id === DEFAULT_PROVIDER_ID && (
+          <span className="text-[7px] font-mono tracking-wider text-nv-green/60 px-1.5 py-0 border border-nv-green/20 rounded-sm flex-shrink-0">DEFAULT</span>
+        )}
         <div className="flex-1" />
         {/* CMake flags badge */}
         <div className="relative inline-block group">

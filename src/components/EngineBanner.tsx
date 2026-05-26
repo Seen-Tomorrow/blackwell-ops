@@ -11,11 +11,6 @@ interface EngineBannerProps {
   buildInfo?: { version: string; buildDate: string; cudaVersion?: string };
 }
 
-const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
-  "ggml-stable": "GGML Stable",
-  "ik-extreme": "IK Extreme",
-};
-
 function getBadgeColor(status?: string) {
   switch (status) {
     case "RUNNING": return { stroke: "text-nv-green/60", fill: "fill-nv-green/80" };
@@ -25,15 +20,14 @@ function getBadgeColor(status?: string) {
   }
 }
 
-function resolveProviderName(providerName?: string, providerType?: string): string | undefined {
+function resolveProviderName(providerName?: string): string | undefined {
   if (providerName && providerName.trim().length > 0) return providerName;
-  if (providerType) return PROVIDER_DISPLAY_NAMES[providerType];
   return undefined;
 }
 
-export default function EngineBanner({ slotIndex, alias, providerName, providerType, status, gpuMask, buildInfo }: EngineBannerProps) {
+export default function EngineBanner({ slotIndex, alias, providerName, providerType: _providerType, status, gpuMask, buildInfo }: EngineBannerProps) {
   const isIdle = status === "IDLE";
-  const displayName = resolveProviderName(providerName, providerType);
+  const displayName = resolveProviderName(providerName);
   const hasProvider = !!displayName && displayName.trim().length > 0;
   const badgeColor = getBadgeColor(status);
 

@@ -48,16 +48,16 @@ pub async fn save_provider(provider: crate::types::ProviderConfig, app: tauri::S
         }
     }
 
-    // Merge flag_pair from genesis template for params missing it (schema migration)
+    // Merge flag_pair from provider defaults for params missing it (schema migration)
     if let Some(tmpl_key) = crate::config::template_key_for_type(&save_provider.template_type) {
-        let genesis_params = crate::config::params_for_provider(tmpl_key);
-        let genesis_map: std::collections::HashMap<&str, &crate::types::UserEditedTemplateParam> = genesis_params.iter()
+        let default_params = crate::config::params_for_provider(&tmpl_key);
+        let defaults_map: std::collections::HashMap<&str, &crate::types::UserEditedTemplateParam> = default_params.iter()
             .map(|p| (p.key.as_str(), p))
             .collect();
         for ep in &mut save_provider.user_edited_template_params {
             if ep.flag_pair.is_empty() {
-                if let Some(genesis) = genesis_map.get(ep.key.as_str()) {
-                    ep.flag_pair = genesis.flag_pair.clone();
+                if let Some(def) = defaults_map.get(ep.key.as_str()) {
+                    ep.flag_pair = def.flag_pair.clone();
                 }
             }
         }
@@ -66,21 +66,37 @@ pub async fn save_provider(provider: crate::types::ProviderConfig, app: tauri::S
     save_provider.group_order = save_provider.group_order.iter().map(|g| crate::config::normalize_ui_group(g)).collect();
 
     if save_provider.user_edited_template_params.is_empty() {
-        if let Some(tmpl_key) = crate::config::template_key_for_type(&save_provider.template_type) {
-            save_provider.user_edited_template_params = crate::config::params_for_provider(tmpl_key);
+        let user_config_path = crate::config::provider_user_config_path(&save_provider.id);
+        if !user_config_path.exists() {
+            // New provider — populate defaults (correct behavior)
+            if let Some(tmpl_key) = crate::config::template_key_for_type(&save_provider.template_type) {
+                save_provider.user_edited_template_params = crate::config::params_for_provider(&tmpl_key);
+            }
+        } else {
+            // Existing provider sent empty params — likely a frontend bug. Restore from disk instead of wiping.
+            log::warn!("[save_provider] {} sent 0 params but config exists — preserving existing", save_provider.id);
+            if let Some(meta) = crate::config::load_user_providers_meta().iter().find(|m| m.id == save_provider.id) {
+                save_provider.user_edited_template_params = meta.user_edited_template_params.clone();
+            }
         }
     }
 
-    if let Some(existing) = cfg.providers.iter_mut().find(|p| p.id == save_provider.id) {
-        *existing = save_provider.clone();
+    let provider_id = save_provider.id.clone();
+
+    if let Some(existing) = cfg.providers.iter_mut().find(|p| p.id == provider_id) {
+        *existing = save_provider;
     } else {
         cfg.providers.push(save_provider);
     }
 
+    // Persist only this provider's config (targeted write, not all providers)
+    let updated = cfg.providers.iter().find(|p| p.id == provider_id).cloned();
     drop(cfg);
 
-    let cfg_for_meta = app.config.lock().map_err(|e| e.to_string())?;
-    crate::config::persist_user_providers_meta(&cfg_for_meta.providers)?;
+    if let Some(provider) = updated {
+        let meta = crate::config::ProviderMeta::from_config(&provider);
+        crate::config::save_provider_user_config(&meta)?;
+    }
 
     Ok(())
 }
@@ -96,11 +112,9 @@ pub async fn remove_provider(id: String, app: tauri::State<'_, AppContext>) -> R
         return Err(format!("Provider '{}' not found", id));
     }
 
+    // Remove provider's user config file (targeted deletion)
     drop(cfg);
-
-    // Persist provider metadata to disk
-    let cfg_for_meta = app.config.lock().map_err(|e| e.to_string())?;
-    crate::config::persist_user_providers_meta(&cfg_for_meta.providers)?;
+    crate::config::reset_provider_to_defaults(&id)?;
 
     Ok(())
 }
@@ -135,11 +149,14 @@ pub async fn toggle_group_hidden(provider_id: String, group_id: String, app: tau
         }
     }
 
+    // Persist only this provider's config (targeted write)
+    let updated_provider = cfg.providers.iter().find(|p| p.id == provider_id).cloned();
     drop(cfg);
 
-    // Persist to disk
-    let cfg_for_meta = app.config.lock().map_err(|e| e.to_string())?;
-    crate::config::persist_user_providers_meta(&cfg_for_meta.providers)?;
+    if let Some(provider) = updated_provider {
+        let meta = crate::config::ProviderMeta::from_config(&provider);
+        crate::config::save_provider_user_config(&meta)?;
+    }
 
     Ok(new_hidden)
 }

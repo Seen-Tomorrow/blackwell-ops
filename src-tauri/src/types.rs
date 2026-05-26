@@ -240,8 +240,8 @@ pub struct StackEntry {
     pub build_info: Option<BuildInfo>,
 }
 
-fn default_provider_type() -> String { "ggml-stable".to_string() }
-fn default_ctx_size() -> usize { 32768 }
+pub fn default_provider_type() -> String { crate::config::DEFAULT_PROVIDER_ID.to_string() }
+pub fn default_ctx_size() -> usize { 32768 }
 
 // ── Provider Configuration ─────────────────────────────────────────────
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -266,9 +266,9 @@ pub struct ProviderConfig {
     pub branch: String,
     #[serde(default)]
     pub build_profile: String,
-    /// Template type determines which genesis_template.json params to use.
-    /// "ggml-llama" = ggml-stable (22 params, master for GGML family),
-    /// "ik-llama" = ik-extreme (8 IK-specific params),
+    /// Template type determines which provider default config to load.
+    /// "ggml-llama" = ggml-master (21 params, master for GGML family),
+    /// "ik-llama" = ik (9 IK-specific params),
     /// "" = custom (user adds all params manually, no template).
     #[serde(default)]
     pub template_type: String,
@@ -307,8 +307,8 @@ pub struct BuildInfo {
 }
 
 // ── User-edited Template Param (persisted to disk) ────────────────────
-/// User's saved copy of a GenesisTemplateParam with runtime state (hidden, hiddenValues, userAddedValues, order, etc.).
-/// Stored in user_providers_config.json. Created from GenesisTemplateParam at genesis, then edited by the user in UI.
+/// User's saved copy of a ProviderDefaultParam with runtime state (hidden, hiddenValues, userAddedValues, order, etc.).
+/// Stored per-provider as {id}-user-config.json. Created from provider defaults at first run, then edited by the user in UI.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserEditedTemplateParam {
     pub key: String,

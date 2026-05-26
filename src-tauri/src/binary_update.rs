@@ -1,12 +1,11 @@
 //! Binary update module — fetch, download, and activate provider binary updates from GitHub releases.
 
 use serde::Serialize;
-use std::collections::HashMap;
 use std::path::PathBuf;
 use tauri::{Emitter, Manager};
 
-/// Genesis providers that ship with bundled binaries.
-const GENESIS_PROVIDERS: &[&str] = &["ggml-stable", "ik-extreme"];
+/// Bundled providers that ship with bundled binaries.
+const BUNDLED_PROVIDERS: &[&str] = &[crate::config::DEFAULT_PROVIDER_ID, "ik"];
 
 #[derive(Debug, Clone, Serialize)]
 pub struct AppUpdateInfo {
@@ -187,11 +186,24 @@ pub async fn download_binary_update(
         message: format!("Downloaded {} MB", total_size / 1_048_576),
     });
 
-    // Create extraction directory under local data dir
-    let update_dir = crate::config::blackwell_local_data_dir()
-        .join("updates")
+    // Extract directly into runtime/{id}/{profile}/ (portable, replaces bundled binary)
+    let update_dir = crate::config::app_root_dir()
+        .join("runtime")
         .join(&provider_id)
         .join(&profile);
+
+    // Check if the target binary is currently in use by a running engine
+    let current_binary = update_dir.join("llama-server.exe");
+    if current_binary.exists() {
+        log::warn!("[binary-update] Target binary exists at {} — ensure no engine is using it before overwriting", current_binary.display());
+        // Emit event to frontend asking user for confirmation
+        let _ = app_handle.emit("binary-update:confirm-overwrite", &BinaryUpdateEvent {
+            provider_id: provider_id.clone(),
+            profile: profile.clone(),
+            status: "confirm".to_string(),
+            message: format!("{} is currently installed. Stop any running engine before updating?", profile),
+        });
+    }
 
     std::fs::create_dir_all(&update_dir).map_err(|e| format!("Failed to create update dir: {}", e))?;
 
@@ -262,20 +274,15 @@ pub async fn download_binary_update(
     let mut cfg = cfg_state.lock().map_err(|e| format!("Failed to lock config: {}", e))?;
 
     if let Some(provider) = cfg.providers.iter_mut().find(|p| p.id == provider_id) {
-        // Set per-env path — this takes priority over bundled binary_path
-        provider.binary_path_per_env.insert(profile.clone(), server_exe.to_string_lossy().to_string());
+        // Set per-env path as relative (portable)
+        let rel = crate::config::to_relative_path(&server_exe);
+        provider.binary_path_per_env.insert(profile.clone(), rel);
 
         // Track which GitHub release tag was downloaded (for version comparison)
-        if provider.downloaded_version_per_env.is_empty() {
-            provider.downloaded_version_per_env = HashMap::new();
-        }
         let latest_tag_for_log = latest_tag.clone();
         provider.downloaded_version_per_env.insert(profile.clone(), latest_tag);
 
         // Also update build info for this env
-        if provider.build_info_per_env.is_empty() {
-            provider.build_info_per_env = HashMap::new();
-        }
         provider.build_info_per_env.insert(profile.clone(), build_info);
 
         log::info!("[binary-update] Updated {} [{}]: {} (release: {})", provider_id, profile, server_exe.display(), latest_tag_for_log);
@@ -456,13 +463,13 @@ pub async fn install_app_update(app_handle: tauri::AppHandle) -> Result<(), Stri
     Ok(())
 }
 
-/// Combined startup check — app update + binary updates for all genesis providers.
+/// Combined startup check — app update + binary updates for all Bundled providers.
 #[tauri::command]
 pub async fn get_startup_updates(app_handle: tauri::AppHandle) -> Result<StartupUpdateStatus, String> {
     // Run all checks in parallel (app + each provider's binary updates)
     let app_update_future = check_app_update(app_handle.clone());
-    let ggml_future = check_binary_updates("ggml-stable".to_string());
-    let ik_future = check_binary_updates("ik-extreme".to_string());
+    let ggml_future = check_binary_updates(crate::config::DEFAULT_PROVIDER_ID.to_string());
+    let ik_future = check_binary_updates("ik".to_string());
 
     let (app_result, ggml_result, ik_result) = tokio::join!(app_update_future, ggml_future, ik_future);
 
@@ -483,7 +490,7 @@ pub async fn get_startup_updates(app_handle: tauri::AppHandle) -> Result<Startup
     // Process binary updates results
     let mut binary_updates = Vec::new();
 
-    for (provider_id, result) in [("ggml-stable", ggml_result), ("ik-extreme", ik_result)] {
+    for (provider_id, result) in [(crate::config::DEFAULT_PROVIDER_ID, ggml_result), ("ik", ik_result)] {
         match result {
             Ok(updates) => {
                 if !updates.is_empty() {

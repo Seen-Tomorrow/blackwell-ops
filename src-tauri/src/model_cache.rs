@@ -1,4 +1,4 @@
-//! Model metadata cache — persists scanned GGUF headers and HF API data to %APPDATA%/blackwell-ops/model_cache.json.
+//! Model metadata cache — persists scanned GGUF headers and HF API data to {exe_parent}/config(-dev)/cache/model_cache.json.
 //! GGUF entries are valid if file mtime matches and scan is < 24 hours old.
 //! HF entries are persistent — set once at download time, never expire.
 
@@ -267,7 +267,7 @@ pub fn clear_cache() -> Result<(), String> {
     Ok(())
 }
 
-/// Get path to model_cache.json in %LOCALAPPDATA%/blackwell-ops-dev/cache/.
+/// Get path to model_cache.json — portable: {exe_parent}/config(-dev)/cache/model_cache.json.
 fn cache_path() -> PathBuf {
     crate::config::cache_dir().join(CACHE_FILE)
 }

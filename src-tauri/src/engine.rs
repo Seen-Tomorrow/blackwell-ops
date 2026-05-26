@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -53,13 +52,13 @@ pub struct StackEntryOut {
     pub status: String,
     #[serde(default)]
     pub slot_id: u32,
-    #[serde(default = "default_provider_type")]
+    #[serde(default = "crate::types::default_provider_type")]
     pub provider_type: String,
     #[serde(default)]
     pub model_path: String,
     #[serde(default)]
     pub vram_mib: f64,
-    #[serde(default = "default_ctx_size")]
+    #[serde(default = "crate::types::default_ctx_size")]
     pub n_ctx: usize,
     /// Provider display name (e.g. "GGML Stable")
     #[serde(default)]
@@ -69,7 +68,6 @@ pub struct StackEntryOut {
     pub build_info: Option<crate::types::BuildInfo>,
 }
 
-fn default_provider_type() -> String { "ggml-stable".to_string() }
 fn default_ctx_size() -> usize { 32768 }
 
 pub struct AppContext {
@@ -110,7 +108,7 @@ pub async fn launch_engine(
     app: tauri::State<'_, AppContext>,
 ) -> Result<StackEntryOut, String> {
     let backend_type = if config.backend_type.is_empty() {
-        "ggml-stable".to_string()
+        crate::config::DEFAULT_PROVIDER_ID.to_string()
     } else {
         config.backend_type.clone()
     };
@@ -123,13 +121,14 @@ pub async fn launch_engine(
     let binary_path = engine_utils::find_provider_binary(&cfg, &backend_type, &config.binary_profile);
 
     let template = crate::templates::ProviderTemplate::load_by_id(&backend_type)
-        .unwrap_or_else(crate::templates::ProviderTemplate::load);
+        .unwrap_or_else(|| crate::templates::ProviderTemplate::load(crate::config::DEFAULT_PROVIDER_ID));
 
     let provider_opt2 = cfg.providers.iter().find(|p| p.id == backend_type);
-    let _provider_params = provider_opt2.map(|p| &p.params);
 
-    let user_edited_params_ref: Option<&[crate::types::UserEditedTemplateParam]> =
-         provider_opt2.map(|p| p.user_edited_template_params.as_slice());
+    // User params are the single source of truth for CLI generation
+    let user_params: Vec<crate::types::UserEditedTemplateParam> = provider_opt2
+        .map(|p| p.user_edited_template_params.clone())
+        .unwrap_or_default();
 
     let mut config = config;
     let test_has_split = config.extra_params.get("__test_args")
@@ -197,7 +196,7 @@ pub async fn launch_engine(
     eprintln!("[LAUNCH_DIAG] step8a: provider_display_name = {}", provider_display_name);
 
     eprintln!("[LAUNCH_DIAG] step8: building command args");
-    let cmd_args = template.build_command(&config, &gpu_mask, user_edited_params_ref);
+    let cmd_args = template.build_command(&config, &gpu_mask, &user_params);
     eprintln!("[LAUNCH_DIAG] step8c: cmd_args built, len={}", cmd_args.len());
     let launch_cmd = format!("{} {}", binary_path.display(), cmd_args.join(" "));
     eprintln!("\n========== [LAUNCH_CMD] slot={} ==========", slot_idx);
@@ -460,15 +459,15 @@ pub async fn clean_exit(app: tauri::State<'_, AppContext>) -> Result<(), String>
 
 #[tauri::command]
 pub fn get_template(provider_id: Option<String>) -> Result<crate::templates::ProviderTemplate, String> {
-    let id = provider_id.unwrap_or_else(|| "ggml-stable".to_string());
+    let id = provider_id.unwrap_or_else(|| crate::config::DEFAULT_PROVIDER_ID.to_string());
 
     // Try loading by specific ID first
     if let Some(template) = crate::templates::ProviderTemplate::load_by_id(&id) {
         return Ok(template);
     }
 
-    // Fallback: load default template (ggml-stable)
-    Ok(crate::templates::ProviderTemplate::load())
+    // Fallback: load default template (ggml-master)
+    Ok(crate::templates::ProviderTemplate::load(crate::config::DEFAULT_PROVIDER_ID))
 }
 
 #[tauri::command]
@@ -477,12 +476,11 @@ pub fn get_template_for_provider(provider_id: String) -> Result<crate::templates
     let meta = metas.iter().find(|m| m.id == provider_id);
     let template_type = crate::config::resolve_template_type(&provider_id, meta.map(|m| &m.template_type));
 
-    let bundle = crate::templates::TemplateBundle::default();
     let Some(template_key) = crate::config::template_key_for_type(&template_type) else {
-        return Err(format!("No genesis template for type '{}' — cannot reset", template_type));
+        return Err(format!("No provider default config for type '{}' — cannot reset", template_type));
     };
 
-    Ok(bundle.templates.get(template_key).cloned().ok_or("Unknown provider")?)
+    Ok(crate::templates::load_provider_defaults(&template_key).ok_or("Unknown provider")?)
 }
 
 #[tauri::command]
@@ -492,7 +490,7 @@ pub async fn preview_launch_command(
     app: tauri::State<'_, AppContext>,
 ) -> Result<String, String> {
     let backend_type = provider_id.unwrap_or_else(|| {
-        if config.backend_type.is_empty() { "ggml-stable".to_string() } else { config.backend_type.clone() }
+        if config.backend_type.is_empty() { crate::config::DEFAULT_PROVIDER_ID.to_string() } else { config.backend_type.clone() }
     });
 
     let cfg = {
@@ -502,16 +500,17 @@ pub async fn preview_launch_command(
 
     let binary_path = engine_utils::find_provider_binary(&cfg, &backend_type, &config.binary_profile);
     let template = crate::templates::ProviderTemplate::load_by_id(&backend_type)
-        .unwrap_or_else(crate::templates::ProviderTemplate::load);
+        .unwrap_or_else(|| crate::templates::ProviderTemplate::load(crate::config::DEFAULT_PROVIDER_ID));
 
     let provider_opt_prev = cfg.providers.iter().find(|p| p.id == backend_type);
-  let user_edited_params_pv: Option<&[crate::types::UserEditedTemplateParam]> =
-         provider_opt_prev.map(|p| p.user_edited_template_params.as_slice());
+    let user_params: Vec<crate::types::UserEditedTemplateParam> = provider_opt_prev
+        .map(|p| p.user_edited_template_params.clone())
+        .unwrap_or_default();
 
     let gpu_count = detect_gpu_count();
     let gpu_mask = compute_gpu_mask(&config, gpu_count, false);
 
-    let cmd_args = template.build_command(&config, &gpu_mask, user_edited_params_pv);
+    let cmd_args = template.build_command(&config, &gpu_mask, &user_params);
     Ok(format!("{} {}", binary_path.display(), cmd_args.join(" ")))
 }
 
@@ -568,12 +567,10 @@ pub async fn fit_scan_model(
         guard.clone()
     };
 
-    let backend_type = _provider_id.unwrap_or_else(|| "ggml-stable".to_string());
+    let backend_type = _provider_id.unwrap_or_else(|| crate::config::DEFAULT_PROVIDER_ID.to_string());
     let binary_path = engine_utils::find_provider_binary(&cfg, &backend_type, "");
 
-    // Try provider-specific fit binary first, then fallback (for IK providers using GGML's binary)
     let fit_binary = fit_scanner::find_fit_binary(binary_path.to_str().unwrap_or(""))
-        .or_else(|| fit_scanner::find_fallback_fit_binary())
         .ok_or_else(|| "llama-fit-params.exe not found — ensure provider is built".to_string())?;
 
     // Parse context size to integer tokens
@@ -646,7 +643,6 @@ pub async fn fit_scan_library(
 
     let binary_path = engine_utils::find_provider_binary(&cfg, &provider_id, "");
     let fit_binary = fit_scanner::find_fit_binary(binary_path.to_str().unwrap_or(""))
-        .or_else(|| fit_scanner::find_fallback_fit_binary())
         .ok_or_else(|| "llama-fit-params.exe not found — ensure provider is built".to_string())?;
 
     // Get total GPU VRAM for fit checking
@@ -696,7 +692,7 @@ pub async fn fit_stop_scan(app: tauri::State<'_, AppContext>) -> Result<(), Stri
 
 #[tauri::command]
 pub async fn get_binary_build_info(binary_path: String) -> Result<crate::types::BuildInfo, String> {
-    let path = PathBuf::from(&binary_path);
+    let path = crate::config::resolve_path(&binary_path);
 
     // Always try to get mtime first — this is the most reliable signal
     let build_date = tokio::fs::metadata(&path).await
@@ -786,7 +782,7 @@ pub async fn scan_model_metadata_cmd(
     provider_id: Option<String>,
     app: tauri::State<'_, AppContext>,
 ) -> Result<crate::types::ModelEntry, String> {
-    let pid = provider_id.unwrap_or_else(|| "ggml-stable".to_string());
+    let pid = provider_id.unwrap_or_else(|| crate::config::DEFAULT_PROVIDER_ID.to_string());
     let bin_str = {
         let cfg = app.config.lock().map_err(|e| e.to_string())?;
         let binary_path = engine_utils::find_provider_binary(&cfg, &pid, "");
@@ -847,7 +843,7 @@ pub async fn scan_all_models_cmd(
 ) -> Result<usize, String> {
     let (bin_str, all_paths, total) = {
         let cfg = app.config.lock().map_err(|e| e.to_string())?;
-        let pid = provider_id.unwrap_or_else(|| "ggml-stable".to_string());
+        let pid = provider_id.unwrap_or_else(|| crate::config::DEFAULT_PROVIDER_ID.to_string());
         let binary_path = engine_utils::find_provider_binary(&cfg, &pid, "");
         if !binary_path.exists() {
             return Err(format!("Provider binary not found: {}", binary_path.display()));

@@ -3,6 +3,7 @@
 import React, { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { UserEditedTemplateParam, ProviderConfig, ProviderTemplate, GenesisTemplateParam, ModelPathEntry, PathDiskUsage } from "../lib/types";
+import { DEFAULT_PROVIDER_ID } from "../lib/types";
 import ValueBubbles from "./ValueBubbles";
 import ProvidersConfig from "./ProvidersConfig";
 import FoundryPage from "./FoundryPage";
@@ -41,7 +42,7 @@ function parseValue(v: string): string | number {
 
 export default function ConfigPage({ providers: externalProviders }: ConfigPageProps) {
   const [subTab, setSubTab] = useState<ConfigSubTab>("providers");
-  const [selectedProviderId, setSelectedProviderId] = useState<string>("ggml-stable");
+  const [selectedProviderId, setSelectedProviderId] = useState<string>(DEFAULT_PROVIDER_ID);
   const [allProviders, setAllProviders] = useState<ProviderConfig[]>(externalProviders || []);
   // Admin lock state — read from global (managed by Layout.tsx header)
   const [adminLockState, setAdminLockState] = useState<string>(() => {

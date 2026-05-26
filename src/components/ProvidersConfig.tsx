@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useEffect, useRef, Fragment } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { ProviderConfig, UserEditedTemplateParam, FitScanComplete, FitScanProgress, FitScanFull, FitDataPoint } from "../lib/types";
+import { DEFAULT_PROVIDER_ID } from "../lib/types";
 
 function formatElapsed(startTime: number): string {
   const secs = Math.floor((Date.now() - startTime) / 1000);
@@ -646,6 +647,9 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
                     <span className={`text-[10px] font-mono truncate max-w-[180px] ${isSelected ? "text-nv-green" : "text-white"}`} title={p.display_name}>
                       {p.display_name}
                     </span>
+                    {p.id === DEFAULT_PROVIDER_ID && (
+                      <span className="text-[7px] font-mono tracking-wider text-nv-green/60 px-1.5 py-0 border border-nv-green/20 rounded-sm flex-shrink-0">DEFAULT</span>
+                    )}
                   </div>
 
                   {/* Params badge */}

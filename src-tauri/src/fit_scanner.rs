@@ -186,69 +186,14 @@ pub struct FitScanComplete {
 // ── Binary Discovery ────────────────────────────────────────────────
 
 /// Find llama-fit-params.exe next to the provider's server binary.
-/// Falls back to searching common provider directories if not found in current one.
 pub fn find_fit_binary(provider_binary_path: &str) -> Option<String> {
     let base = PathBuf::from(provider_binary_path);
-    
-    // First try: same directory as server binary
     if let Some(parent_dir) = base.parent() {
         let fit_path = parent_dir.join("llama-fit-params.exe");
         if fit_path.exists() {
             return Some(fit_path.to_string_lossy().to_string());
         }
-        
-        // Second try (IK fallback): search sibling directories for GGML llama-fit-params.exe
-        // IK providers don't bundle this binary, so we reuse GGML's version
-        if let Ok(entries) = std::fs::read_dir(parent_dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.is_dir() {
-                    let name_lower = path.file_name()
-                        .map(|n| n.to_string_lossy().to_lowercase())
-                        .unwrap_or_default();
-                    
-                    // Look for directories that might contain llama-fit-params.exe
-                    if name_lower.contains("ggml") || name_lower.contains("llama") 
-                       || !name_lower.is_empty() {
-                        let candidate = path.join("llama-fit-params.exe");
-                        if candidate.exists() {
-                            return Some(candidate.to_string_lossy().to_string());
-                        }
-                    }
-                }
-            }
-        }
     }
-    
-    None
-}
-
-/// Find ANY llama-fit-params.exe in common locations (for system-wide fallback).
-/// Used when provider-specific binary is not available.
-pub fn find_fallback_fit_binary() -> Option<String> {
-    // Search in same directory as current executable
-    if let Ok(current_exe) = std::env::current_exe() {
-        if let Some(exe_dir) = current_exe.parent() {
-            let fit_path = exe_dir.join("llama-fit-params.exe");
-            if fit_path.exists() {
-                return Some(fit_path.to_string_lossy().to_string());
-            }
-            
-            // Search sibling directories
-            if let Ok(entries) = std::fs::read_dir(exe_dir) {
-                for entry in entries.flatten() {
-                    let path = entry.path();
-                    if path.is_dir() {
-                        let fit_in_subdir = path.join("llama-fit-params.exe");
-                        if fit_in_subdir.exists() {
-                            return Some(fit_in_subdir.to_string_lossy().to_string());
-                        }
-                    }
-                }
-            }
-        }
-    }
-    
     None
 }
 

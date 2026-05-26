@@ -1069,11 +1069,14 @@ pub async fn foundry_build(
             let mut cfg_mut = cfg.clone();
             for p in &mut cfg_mut.providers {
                 if p.id == provider_id {
-                    p.binary_path = found_dir.join("llama-server.exe").to_string_lossy().to_string();
+                    let abs = found_dir.join("llama-server.exe");
+                    p.binary_path = crate::config::to_relative_path(&abs);
                 }
             }
             drop(cfg);
-            crate::config::persist_user_providers_meta(&cfg_mut.providers).ok();
+            if let Err(e) = crate::config::persist_user_providers_meta(&cfg_mut.providers) {
+                log::error!("[foundry] Failed to persist provider config after path correction: {}", e);
+            }
         }
     }
 
@@ -1132,43 +1135,32 @@ pub async fn foundry_build(
             log::info!("[foundry] Captured build info for provider '{}' env '{}': {} built {}",
                 provider_id, env_label, build_info_raw.version, build_info_raw.build_date);
 
-            // Update in-memory config directly through the lock — no cloning
+             // Update in-memory config directly through the lock — no cloning
             let mut cfg = app.config.lock().map_err(|e| e.to_string())?;
             if let Some(provider) = cfg.providers.iter_mut().find(|p| p.id == provider_id) {
-                if provider.build_info_per_env.is_empty() {
-                    provider.build_info_per_env = std::collections::HashMap::new();
-                }
-                if provider.binary_path_per_env.is_empty() {
-                    provider.binary_path_per_env = std::collections::HashMap::new();
-                }
                 let build_info = crate::types::BuildInfo {
                     version: build_info_raw.version,
                     build_date: build_info_raw.build_date,
-                    cuda_version: None,
+                    cuda_version: build_info_raw.cuda_version.clone(),
                 };
                 provider.build_info_per_env.insert(env_label.to_string(), build_info.clone());
                 provider.build_info_per_env.insert("current".to_string(), build_info);
-                let final_bin_path = bin_path.clone();
-                provider.binary_path_per_env.insert(env_label.to_string(), final_bin_path);
+                let rel_path = crate::config::to_relative_path(&std::path::PathBuf::from(&bin_path));
+                provider.binary_path_per_env.insert(env_label.to_string(), rel_path);
                 // Clear download version tracking — this is a custom Foundry build now
                 provider.downloaded_version_per_env.remove(env_label);
+
+                // Update main binary_path (fallback) in same lock
+                let abs = bin_release.join("llama-server.exe");
+                provider.binary_path = crate::config::to_relative_path(&abs);
             }
             drop(cfg);
-            crate::config::persist_user_providers_meta(&app.config.lock().map_err(|e| e.to_string())?.providers).ok();
+            // Single persist after all updates
+            crate::config::persist_user_providers_meta(&app.config.lock().map_err(|e| e.to_string())?.providers).unwrap_or_else(|e| log::error!("[foundry] Failed to persist provider config: {}", e));
         }
         Err(e) => {
             log::warn!("[foundry] Failed to capture build info for provider '{}': {}", provider_id, e);
         }
-    }
-
-    // Update main binary_path (fallback) — single lock + persist cycle
-    {
-        let mut cfg = app.config.lock().map_err(|e| e.to_string())?;
-        if let Some(provider) = cfg.providers.iter_mut().find(|p| p.id == provider_id) {
-            provider.binary_path = bin_release.join("llama-server.exe").to_string_lossy().to_string();
-        }
-        drop(cfg);
-        crate::config::persist_user_providers_meta(&app.config.lock().map_err(|e| e.to_string())?.providers).ok();
     }
 
     // NOTE: bin_bak is NOT deleted — kept for user restore via ↻ RESTORE button
@@ -1263,12 +1255,13 @@ pub async fn refresh_build_info(
                                 if p.binary_path_per_env.is_empty() {
                                     p.binary_path_per_env = std::collections::HashMap::new();
                                 }
-                                p.binary_path_per_env.insert("vanguard".to_string(),
-                                    new_bin.join("llama-server.exe").to_string_lossy().to_string());
-                                p.binary_path = new_bin.join("llama-server.exe").to_string_lossy().to_string();
+                                let abs_exe = new_bin.join("llama-server.exe");
+                                let rel = crate::config::to_relative_path(&abs_exe);
+                                p.binary_path_per_env.insert("vanguard".to_string(), rel.clone());
+                                p.binary_path = rel;
                             }
                             drop(cfg);
-                            crate::config::persist_user_providers_meta(&app.config.lock().map_err(|e| e.to_string())?.providers).ok();
+                            crate::config::persist_user_providers_meta(&app.config.lock().map_err(|e| e.to_string())?.providers).unwrap_or_else(|e| log::error!("[foundry] Failed to persist provider config: {}", e));
                         }
                     } else {
                         log::warn!("[migration] Failed to rename build/ for '{}'", provider_id);
@@ -1282,7 +1275,7 @@ pub async fn refresh_build_info(
             .unwrap_or_else(|| prov)
     };
 
-    // Refresh build info for each env that has a binary — scan binaries and WRITE back to config
+    // Refresh build info for each env that has a binary — scan runtime/ and WRITE back to config
     let mut updated_info: Vec<(String, crate::types::BuildInfo)> = Vec::new();
 
     for env_label in &["vanguard", "stable", "fresh"] {
@@ -1310,7 +1303,7 @@ pub async fn refresh_build_info(
             }
         }
         drop(cfg);
-        crate::config::persist_user_providers_meta(&app.config.lock().map_err(|e| e.to_string())?.providers).ok();
+        crate::config::persist_user_providers_meta(&app.config.lock().map_err(|e| e.to_string())?.providers).unwrap_or_else(|e| log::error!("[foundry] Failed to persist provider config: {}", e));
     }
 
     // Return ALL providers with fresh config data so frontend can update its state (no dropped providers)
@@ -1372,7 +1365,7 @@ pub async fn foundry_restore(
                 provider.build_info_per_env.insert(env_label.to_string(), info);
             }
             drop(cfg);
-            crate::config::persist_user_providers_meta(&app.config.lock().map_err(|e| e.to_string())?.providers).ok();
+            crate::config::persist_user_providers_meta(&app.config.lock().map_err(|e| e.to_string())?.providers).unwrap_or_else(|e| log::error!("[foundry] Failed to persist provider config: {}", e));
         }
     }
 

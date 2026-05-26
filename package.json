@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "server": "vite --port 1420",
+    "predev": "powershell -Command \"if (Test-Path src-tauri/runtime) { New-Item -ItemType Directory -Path target/debug/runtime -Force | Out-Null; Copy-Item -Path 'src-tauri/runtime/*' -Destination target/debug/runtime/ -Recurse -Force }\"",
     "dev": "tauri dev --config src-tauri/tauri.conf.dev.json",
     "build": "tsc && vite build",
     "preview": "vite preview",

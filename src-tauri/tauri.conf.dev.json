@@ -26,9 +26,9 @@
     }
   },
   "bundle": {
-    "active": true,
+    "active": false,
     "targets": ["nsis"],
-    "resources": ["binaries"],
+    "resources": [],
     "icon": [
       "icons/icon-release.ico"
     ]

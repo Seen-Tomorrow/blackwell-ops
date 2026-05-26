@@ -3,6 +3,7 @@
 import { motion } from "framer-motion";
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import type { ModelEntry, EngineConfig, GpuInfo, UserEditedTemplateParam, ProviderConfig, ProviderTemplate, StackEntry, SystemInfo } from "../lib/types";
+import { DEFAULT_PROVIDER_ID } from "../lib/types";
 import { KEYS, engineAliasKey } from "../lib/storage";
 import { invoke } from "@tauri-apps/api/core";
 import VramBadge from "./VramBadge";
@@ -196,10 +197,31 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     } catch {}
   }, [aliasInput, model?.path]);
 
+  // Auto-select default provider when providers load (runs once on mount)
+  const providerInitDone = useRef(false);
+  useEffect(() => {
+    if (providerInitDone.current || !externalProviders?.length) return;
+    providerInitDone.current = true;
+
+    const enabled = externalProviders.filter(p => p.enabled);
+    if (enabled.length === 0) return;
+
+    // Prefer saved localStorage choice, validate it exists, else default to ggml-master or first available
+    let target: string | null = null;
+    try { target = localStorage.getItem(KEYS.lastProvider) || null; } catch {}
+
+    if (!target || !enabled.some(p => p.id === target)) {
+      const def = enabled.find(p => p.id === DEFAULT_PROVIDER_ID);
+      target = def?.id || enabled[0].id;
+    }
+
+    setSelectedProvider(target);
+  }, [externalProviders]);
+
   // ── Derived state ───────────────────────────────────────────────────────────
   const effectiveBackendType = useMemo(() => {
-    if (!model) return selectedProvider || "ggml-stable";
-    return selectedProvider || (model.backend_type || "ggml-stable");
+    if (!model) return selectedProvider || DEFAULT_PROVIDER_ID;
+    return selectedProvider || (model.backend_type || DEFAULT_PROVIDER_ID);
   }, [model, selectedProvider]);
 
   // Dynamic Device param — generated from GPU topology, docked to runtime block
@@ -554,7 +576,9 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                     : "provider-pill"
                 }`}
               >
-                {p.display_name || p.id}<span className="ml-1 opacity-40 text-[8px]">({(p.userEditedTemplateParams || []).length})</span>
+                {p.display_name || p.id}
+                {p.id === DEFAULT_PROVIDER_ID && <span className="ml-1 text-nv-green/60" title="Default provider">[D]</span>}
+                <span className="ml-1 opacity-40 text-[8px]">({(p.userEditedTemplateParams || []).length})</span>
               </button>
             ))}
           </div>
@@ -632,7 +656,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                   <div className="flex items-center">
                     <div className="w-0.5 h-4 flex-shrink-0 mr-1.5" />
                     <span className="font-mono w-24 flex-shrink-0 uppercase tracking-wider truncate text-[9px] text-stealth-muted">
-                      Profile
+                      RUNTIME PROFILE
                     </span>
                     {availableProfiles.map(profile => {
                       const meta = ENV_META[profile];

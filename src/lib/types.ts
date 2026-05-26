@@ -1,3 +1,6 @@
+/// Default provider ID — bundled with the app, always present.
+export const DEFAULT_PROVIDER_ID = "ggml-master";
+
 export interface ModelEntry {
   path: string;
   author: string;

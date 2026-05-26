@@ -1,0 +1,109 @@
+{
+  "id": "ik",
+  "display_name": "IK",
+  "binary_name": "llama-server.exe",
+  "description": "IK-llama (Ikawrakow fork)",
+  "git_url": "https://github.com/ikawrakow/ik_llama.cpp",
+  "branch": "main",
+  "template_type": "ik-llama",
+  "build_profile": "-DGGML_CUDA=ON\n-DCMAKE_CUDA_ARCHITECTURES=\"120\"\n-DGGML_CUDA_PEER_TO_PEER=ON\n-DGGML_CUDA_FA_ALL_QUANTS=ON\n-DGGML_AVX512=ON\n-DGGML_NATIVE=ON\n-DLLAMA_SERVER_SSL=OFF\n-DCMAKE_POLICY_DEFAULT_CMP0194=NEW\n-DCMAKE_CUDA_FLAGS=\"-Xcompiler /wd4056 -Xcompiler /wd4756 --diag-suppress 221\"\n-Wno-dev",
+  "params": [
+    {
+      "key": "ik_perf",
+      "label": "IK-Performance",
+      "flag": null,
+      "ptype": "logic_only",
+      "values": ["ultra", "balanced"],
+      "default": "ultra",
+      "ui_group": "PERFORMANCE",
+      "note": "Ultra enables Hadamard Transforms, Async Scheduling, and Graph Reuse.",
+      "sub_params": {
+        "ultra": ["-sas", "1", "-gr", "1", "-khad", "1", "-vhad", "1", "-mla", "3"],
+        "balanced": ["-sas", "0", "-gr", "1", "-khad", "0", "-vhad", "0", "-mla", "1"]
+      }
+    },
+    {
+      "key": "gpu_sync",
+      "label": "GPU-Sync",
+      "flag": "-smf16",
+      "ptype": "arg_select",
+      "values": ["1", "0"],
+      "default": "1",
+      "dock": "runtime",
+      "ui_group": "MULTI-GPU",
+      "note": "Split-Mode F16 (1) uses 16-bit for inter-GPU data exchange. Faster on dual RTX 6000s."
+    },
+    {
+      "key": "split",
+      "label": "SPLIT",
+      "flag": "--split-mode",
+      "ptype": "arg_select",
+      "values": ["none", "layer", "row"],
+      "default": "none",
+      "dock": "runtime",
+      "ui_group": "MULTI-GPU",
+      "note": "How to split model across multiple GPUs."
+    },
+    {
+      "key": "base_port",
+      "label": "BASE-PORT",
+      "flag": null,
+      "ptype": "logic_only",
+      "values": [8080, 8888, 9090],
+      "default": 8080,
+      "dock": "runtime",
+      "ui_group": "RUNTIME-CONFIG",
+      "note": "Starting port for engine instances. Auto-increments per slot."
+    },
+    {
+      "key": "cache_ram",
+      "label": "RAM-Cache",
+      "flag": "-cram",
+      "ptype": "arg_select",
+      "values": [4096, 8192, 16384, 32768],
+      "default": 8192,
+      "ui_group": "PERFORMANCE",
+      "note": "Dedicated MiB in system RAM for prompt caching. Speeds up repeat system prompts."
+    },
+    {
+      "key": "cache_similarity",
+      "label": "Cache-Sim",
+      "flag": "-crs",
+      "ptype": "arg_select",
+      "values": ["0.50", "0.75", "0.90", "0.95"],
+      "default": "0.90",
+      "ui_group": "PERFORMANCE",
+      "note": "Min similarity to trigger RAM cache. 0.90 is strict/fast."
+    },
+    {
+      "key": "ubatch",
+      "label": "UBATCH",
+      "flag": "-ub",
+      "ptype": "arg_select",
+      "values": [128, 256, 512, 1024],
+      "default": 512,
+      "ui_group": "PERFORMANCE",
+      "note": "Micro-batch size. IK-llama prefers 512 for Blackwell."
+    },
+    {
+      "key": "kv_quant",
+      "label": "KV-QUANT (K+V)",
+      "ptype": "arg_select_double",
+      "flag_pair": ["--cache-type-k", "--cache-type-v"],
+      "values": ["f16", "q8_0", "q4_0"],
+      "default": "f16",
+      "ui_group": "CORE",
+      "note": "KV cache data type for both K and V cache, set together."
+    },
+    {
+      "key": "flash_attn",
+      "label": "FLASH-ATTN",
+      "flag": "-fa",
+      "ptype": "arg_select",
+      "values": ["on", "off"],
+      "default": "on",
+      "ui_group": "PERFORMANCE",
+      "note": "Mandatory for Blackwell SM_120."
+    }
+  ]
+}

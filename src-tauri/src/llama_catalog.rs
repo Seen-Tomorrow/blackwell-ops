@@ -706,18 +706,17 @@ pub async fn get_llama_catalog(
     let provider = cfg.providers.iter().find(|p| p.id == provider_id);
     let binary_path = match provider {
         Some(p) => {
-            // Try per-env paths first (vanguard), then main binary_path
             if let Some(path) = p.binary_path_per_env.get("vanguard") {
-                std::path::PathBuf::from(path)
+                crate::config::resolve_path(path)
             } else if !p.binary_path.is_empty() {
-                std::path::PathBuf::from(&p.binary_path)
+                crate::config::resolve_path(&p.binary_path)
             } else {
                 return Err(format!("Provider '{}' has no binary path configured", provider_id));
             }
         }
         None => {
             if let Some(first) = cfg.providers.first() {
-                std::path::PathBuf::from(&first.binary_path)
+                crate::config::resolve_path(&first.binary_path)
             } else {
                 return Err("No providers configured".to_string());
             }

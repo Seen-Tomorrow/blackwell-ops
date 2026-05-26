@@ -285,22 +285,6 @@ async fn main() {
     #[cfg(not(debug_assertions))]
     env_logger::init();
 
-
-#[cfg(debug_assertions)]
-    {
-        if let Some(data_dir) = dirs::data_local_dir() {
-            let ident = if cfg!(debug_assertions) { "com.blackwell-ops.app.dev" } else { "com.blackwell-ops.app" };
-            let cache_path = data_dir.join(format!("{}/EBWebView/Default", ident));
-            for subfolder in &["Cache", "Code Cache"] {
-                let target = cache_path.join(subfolder);
-                if target.exists() {
-                    log::info!("Clearing WebView2 {} on dev startup", subfolder);
-                    let _ = std::fs::remove_dir_all(&target);
-                }
-            }
-        }
-    }
-
     let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build());
@@ -312,12 +296,11 @@ async fn main() {
 
     builder
         .setup(move |app| {
+            // Ensure portable directory structure exists, copy bundled binaries on first run
+            config::ensure_portable_structure(app.handle());
+
             // Load config with bundled path resolution (needs app handle)
             let app_config = config::load_config_with_app(app.handle());
-
-            if !app_config.llama_path.exists() {
-                log::warn!("llama-server.exe not found at: {}. Models may fail to launch.", app_config.llama_path.display());
-            }
 
             let slot_count = std::cmp::max(1, app_config.gpu_slots);
             let stack = Arc::new(Mutex::new(EngineStack::new(app_config.base_port, slot_count)));
