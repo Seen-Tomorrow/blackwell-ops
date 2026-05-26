@@ -64,7 +64,7 @@ async fn get_hf_model_info(
 
 #[tauri::command]
 async fn set_hf_token(token: String, app_config: tauri::State<'_, Arc<std::sync::Mutex<config::AppConfig>>>) -> Result<(), String> {
-    let mut cfg = app_config.lock().unwrap();
+    let mut cfg = app_config.lock().map_err(|e| e.to_string())?;
     cfg.hf_token = token;
     config::save_config(&cfg).map_err(|e| e.to_string())?;
     Ok(())
@@ -72,7 +72,7 @@ async fn set_hf_token(token: String, app_config: tauri::State<'_, Arc<std::sync:
 
 #[tauri::command]
 async fn get_hf_token(app_config: tauri::State<'_, Arc<std::sync::Mutex<config::AppConfig>>>) -> Result<Option<String>, String> {
-    let cfg = app_config.lock().unwrap();
+    let cfg = app_config.lock().map_err(|e| e.to_string())?;
     if !cfg.hf_token.is_empty() {
         let masked = if cfg.hf_token.len() > 10 {
             format!("{}***", &cfg.hf_token[..6])
@@ -90,7 +90,7 @@ async fn get_hf_token(app_config: tauri::State<'_, Arc<std::sync::Mutex<config::
 async fn list_model_paths(
     config: tauri::State<'_, Arc<std::sync::Mutex<config::AppConfig>>>,
 ) -> Result<Vec<crate::types::ModelPathEntry>, String> {
-    let cfg = config.lock().unwrap();
+    let cfg = config.lock().map_err(|e| e.to_string())?;
     Ok(config::get_model_paths(&cfg))
 }
 
@@ -100,7 +100,7 @@ async fn add_model_path(
     path: String,
     label: Option<String>,
 ) -> Result<(), String> {
-    let mut cfg = config.lock().unwrap();
+    let mut cfg = config.lock().map_err(|e| e.to_string())?;
     config::add_model_path(&mut cfg, path, label);
     config::save_config(&cfg).map_err(|e| e.to_string())?;
     Ok(())
@@ -111,7 +111,7 @@ async fn remove_model_path(
     config: tauri::State<'_, Arc<std::sync::Mutex<config::AppConfig>>>,
     path: String,
 ) -> Result<(), String> {
-    let mut cfg = config.lock().unwrap();
+    let mut cfg = config.lock().map_err(|e| e.to_string())?;
     config::remove_model_path(&mut cfg, &path);
     config::save_config(&cfg).map_err(|e| e.to_string())?;
     Ok(())
@@ -122,7 +122,7 @@ async fn set_default_model_path(
     config: tauri::State<'_, Arc<std::sync::Mutex<config::AppConfig>>>,
     path: String,
 ) -> Result<(), String> {
-    let mut cfg = config.lock().unwrap();
+    let mut cfg = config.lock().map_err(|e| e.to_string())?;
     config::set_default_model_path(&mut cfg, &path);
     config::save_config(&cfg).map_err(|e| e.to_string())?;
     Ok(())
@@ -132,7 +132,7 @@ async fn set_default_model_path(
 async fn get_disk_usage(
     config: tauri::State<'_, Arc<std::sync::Mutex<config::AppConfig>>>,
 ) -> Result<Vec<crate::types::PathDiskUsage>, String> {
-    let cfg = config.lock().unwrap();
+    let cfg = config.lock().map_err(|e| e.to_string())?;
     let paths = config::get_model_paths(&cfg);
     Ok(config::calculate_disk_usage(&paths))
 }
@@ -141,7 +141,7 @@ async fn get_disk_usage(
 async fn get_default_download_path(
     config: tauri::State<'_, Arc<std::sync::Mutex<config::AppConfig>>>,
 ) -> Result<String, String> {
-    let cfg = config.lock().unwrap();
+    let cfg = config.lock().map_err(|e| e.to_string())?;
     Ok(config::get_default_download_path(&cfg))
 }
 

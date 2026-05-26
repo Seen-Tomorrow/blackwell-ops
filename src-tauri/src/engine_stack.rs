@@ -1,4 +1,3 @@
-use std::process::Stdio;
 use std::sync::Arc;
 use crate::types::{EngineConfig, StackEntry};
 use crate::log_hub::LogHub;
@@ -320,28 +319,7 @@ impl EngineStack {
     }
 
     async fn kill_process_by_port(port: u16) -> Result<(), String> {
-        let ps_script = format!(
-            r"$pids = netstat -ano | Select-String ':{0} ' | ForEach-Object {{ ($_ -split '\s+')[-1] }}; $pids | Where-Object {{ $_.Length -gt 0 }} | ForEach-Object {{ taskkill /F /PID $_ }}",
-            port
-        );
-
-        let output = tokio::process::Command::new("powershell")
-            .args(&["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", &ps_script])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .creation_flags(0x08000000)
-            .output()
-            .await
-            .map_err(|e| format!("Failed to kill process on port {}: {}", port, e))?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            if !stderr.contains("could not be found") && !stderr.contains("ERROR") {
-                log::warn!("Kill port {} stderr: {}", port, stderr);
-            }
-        }
-
-        Ok(())
+        crate::engine_utils::kill_process_by_port(port).await
     }
 
     fn graceful_shutdown_process(
@@ -441,99 +419,21 @@ impl EngineStack {
         Ok(())
     }
 
-    /// Stops all running slots in parallel. Static self-locking.
-    pub async fn stop_all_parallel(
+    /// Generic shutdown helper — collects targets under lock, runs parallel shutdown, clears slots.
+    async fn shutdown_slots_generic(
         stack_ref: &Arc<tokio::sync::Mutex<EngineStack>>,
-    ) -> Vec<usize> {
-        // Phase 1: Collect targets under a brief lock
-        let mut targets: Vec<(usize, u16, String, Option<std::process::Child>)> = Vec::new();
-        let log_hub_ref = {
-            let stack = stack_ref.lock().await;
-            for (i, slot_opt) in stack.slots.iter().enumerate() {
-                if let Some(slot_arc) = slot_opt {
-                    let mut slot = slot_arc.lock();
-                    match &slot.status {
-                        SlotStatus::Running | SlotStatus::Loading => {
-                            eprintln!("[STOP] shutting down slot={} port={} alias={}", i, slot.port, slot.alias);
-                            let port = slot.port;
-                            let alias = slot.alias.clone();
-                            let proc_to_stop = slot.child_proc.take();
-                            targets.push((i, port, alias, proc_to_stop));
-                        }
-                        _ => {}
-                    }
-                }
-            }
-            stack.log_hub.as_ref().map(|h| h.clone())
-        };
-
-        // Phase 2: Run all shutdowns in parallel outside any lock
-        let mut handles = Vec::new();
-        for (i, port, alias, proc_to_stop) in targets {
-            let hub_clone = log_hub_ref.clone();
-            handles.push(tokio::spawn(async move {
-                if let Some(mut proc) = proc_to_stop {
-                    let graceful = tokio::task::spawn_blocking(move || {
-                        EngineStack::graceful_shutdown_process(&mut proc, i)
-                    }).await.unwrap_or(false);
-
-                    let msg = if !graceful {
-                        "[STOP] ORPHANED (still alive after kill)".to_string()
-                    } else {
-                        "[STOP] KILLED".to_string()
-                    };
-                    eprintln!("[STOP] slot={} alias={} shutdown: {}", i, alias, msg);
-
-                    if let Some(hub) = hub_clone.as_ref() {
-                        hub.emit_system_event(i, &alias, &msg).await;
-                    }
-                    let _ = EngineStack::kill_process_by_port(port).await;
-                }
-
-                if let Some(hub) = hub_clone.as_ref() {
-                    hub.emit("slot-cleared", &serde_json::json!({ "slot": i }));
-                }
-
-                i
-            }));
-        }
-
-        // Phase 3: Await all, clear slots, emit stack-changed
-        let mut stopped = Vec::new();
-        for handle in handles {
-            if let Ok(i) = handle.await {
-                {
-                    let stack = stack_ref.lock().await;
-                    stack.clear_slot(i);
-                }
-                stopped.push(i);
-            }
-        }
-        {
-            let stack = stack_ref.lock().await;
-            stack.emit_stack_changed();
-        }
-        stopped
-    }
-
-    /// Stops all slots whose backend_type matches the given provider ID in parallel.
-    pub async fn stop_slots_by_provider_parallel(
-        backend_type: &str,
-        stack_ref: &Arc<tokio::sync::Mutex<EngineStack>>,
+        filter: impl Fn(&mut EngineSlot) -> bool,
+        emit_events: bool,
     ) -> Vec<usize> {
         // Phase 1: Collect targets under brief lock
-        let mut targets: Vec<(usize, u16, String, Option<std::process::Child>)> = Vec::new();
+        let mut targets = Vec::new();
         let log_hub_ref = {
             let stack = stack_ref.lock().await;
             for (i, slot_opt) in stack.slots.iter().enumerate() {
                 if let Some(slot_arc) = slot_opt {
                     let mut slot = slot_arc.lock();
-                    if slot.backend_type == backend_type && !matches!(slot.status, SlotStatus::Idle) {
-                        eprintln!("[STOP] provider stop slot={} port={} alias={}", i, slot.port, slot.alias);
-                        let port = slot.port;
-                        let alias = slot.alias.clone();
-                        let proc_to_stop = slot.child_proc.take();
-                        targets.push((i, port, alias, proc_to_stop));
+                    if filter(&mut slot) {
+                        targets.push((i, slot.port, slot.alias.clone(), slot.child_proc.take()));
                     }
                 }
             }
@@ -557,21 +457,25 @@ impl EngineStack {
                     };
                     eprintln!("[STOP] slot={} alias={} shutdown: {}", i, alias, msg);
 
-                    if let Some(hub) = hub_clone.as_ref() {
-                        hub.emit_system_event(i, &alias, &msg).await;
+                    if emit_events {
+                        if let Some(hub) = hub_clone.as_ref() {
+                            hub.emit_system_event(i, &alias, &msg).await;
+                        }
                     }
                     let _ = EngineStack::kill_process_by_port(port).await;
                 }
 
-                if let Some(hub) = hub_clone.as_ref() {
-                    hub.emit("slot-cleared", &serde_json::json!({ "slot": i }));
+                if emit_events {
+                    if let Some(hub) = hub_clone.as_ref() {
+                        hub.emit("slot-cleared", &serde_json::json!({ "slot": i }));
+                    }
                 }
 
                 i
             }));
         }
 
-        // Phase 3: Await, clear slots, emit
+        // Phase 3: Await, clear slots, emit stack-changed
         let mut stopped = Vec::new();
         for handle in handles {
             if let Ok(i) = handle.await {
@@ -589,63 +493,71 @@ impl EngineStack {
         stopped
     }
 
+    /// Stops all running slots in parallel. Static self-locking.
+    pub async fn stop_all_parallel(
+        stack_ref: &Arc<tokio::sync::Mutex<EngineStack>>,
+    ) -> Vec<usize> {
+        Self::shutdown_slots_generic(stack_ref, |slot| matches!(slot.status, SlotStatus::Running | SlotStatus::Loading), true).await
+    }
+
+    /// Stops all slots whose backend_type matches the given provider ID in parallel.
+    pub async fn stop_slots_by_provider_parallel(
+        backend_type: &str,
+        stack_ref: &Arc<tokio::sync::Mutex<EngineStack>>,
+    ) -> Vec<usize> {
+        let bt = backend_type.to_string();
+        Self::shutdown_slots_generic(stack_ref, |slot| slot.backend_type == bt && !matches!(slot.status, SlotStatus::Idle), true).await
+    }
+
     /// Emergency kill all — used during app exit. Runs in parallel for speed.
     pub async fn kill_all(stack_ref: &Arc<tokio::sync::Mutex<EngineStack>>) {
-        // Phase 1: Collect targets under brief lock
-        let mut targets: Vec<(usize, u16, Option<std::process::Child>)> = Vec::new();
-        {
-            let stack = stack_ref.lock().await;
-            for (i, slot_opt) in stack.slots.iter().enumerate() {
-                if let Some(slot_arc) = slot_opt {
-                    let mut slot = slot_arc.lock();
-                    match &slot.status {
-                        SlotStatus::Running | SlotStatus::Loading => {
-                            eprintln!("[STOP] app exit: shutting down slot={} port={} alias={}", i, slot.port, slot.alias);
-                            let port = slot.port;
-                            let proc_to_stop = slot.child_proc.take();
-                            targets.push((i, port, proc_to_stop));
-                        }
-                        _ => {}
-                    }
-                }
-            }
-        }
+        Self::shutdown_slots_generic(stack_ref, |slot| matches!(slot.status, SlotStatus::Running | SlotStatus::Loading), false).await;
+    }
 
-        // Phase 2: Parallel blocking shutdown
-        let mut handles = Vec::new();
-        for (i, port, proc_to_stop) in targets {
-            handles.push(tokio::spawn(async move {
-                if let Some(mut proc) = proc_to_stop {
-                    tokio::task::spawn_blocking(move || {
-                        EngineStack::graceful_shutdown_process(&mut proc, i)
-                    }).await.unwrap_or(false);
-                }
-                (i, port)
-            }));
+    /// Create a StackEntry from an engine slot.
+    fn slot_to_entry(i: usize, slot: &EngineSlot) -> StackEntry {
+        let model_name = if slot.model_path.is_empty() {
+            "none".to_string()
+        } else {
+            std::path::Path::new(&slot.model_path)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("unknown")
+                .to_string()
+        };
+        StackEntry {
+            idx: i,
+            alias: slot.alias.clone(),
+            model_name,
+            port: slot.port,
+            gpu: if slot.gpu_mask.is_empty() { "none".to_string() } else { slot.gpu_mask.clone() },
+            status: slot.status.to_string(),
+            slot_id: i as u32,
+            provider_type: slot.backend_type.clone(),
+            model_path: slot.model_path.clone(),
+            vram_mib: slot.vram_mib,
+            n_ctx: slot.n_ctx,
+            provider_name: slot.provider_name.clone(),
+            build_info: None,
         }
+    }
 
-        // Phase 3: Await, clear slots, kill orphaned ports
-        let mut ports = Vec::new();
-        for handle in handles {
-            if let Ok((i, port)) = handle.await {
-                ports.push(port);
-                {
-                    let stack = stack_ref.lock().await;
-                    stack.clear_slot(i);
-                }
-            }
-        }
-
-        for port in &ports {
-            let _ = Self::kill_process_by_port(*port).await;
-        }
-
-        // Final cleanup — ensure every slot is reset
-        {
-            let stack = stack_ref.lock().await;
-            for (i, _) in stack.slots.iter().enumerate() {
-                stack.clear_slot(i);
-            }
+    /// Create a default StackEntry for an empty slot.
+    fn default_entry(i: usize, base_port: u16) -> StackEntry {
+        StackEntry {
+            idx: i,
+            alias: format!("slot-{}", i),
+            model_name: "none".to_string(),
+            port: base_port + i as u16,
+            gpu: "none".to_string(),
+            status: "IDLE".to_string(),
+            slot_id: i as u32,
+            provider_type: String::new(),
+            model_path: String::new(),
+            vram_mib: 0.0,
+            n_ctx: 32768,
+            provider_name: String::new(),
+            build_info: None,
         }
     }
 
@@ -656,48 +568,10 @@ impl EngineStack {
             match slot_opt {
                 Some(slot_arc) => {
                     let slot = slot_arc.lock();
-                    let model_name = if slot.model_path.is_empty() {
-                        "none".to_string()
-                    } else {
-                        std::path::Path::new(&slot.model_path)
-                            .file_name()
-                            .and_then(|n| n.to_str())
-                            .unwrap_or("unknown")
-                            .to_string()
-                    };
-
-                    entries.push(StackEntry {
-                        idx: i,
-                        alias: slot.alias.clone(),
-                        model_name,
-                        port: slot.port,
-                        gpu: if slot.gpu_mask.is_empty() { "none".to_string() } else { slot.gpu_mask.clone() },
-                        status: slot.status.to_string(),
-                        slot_id: i as u32,
-                        provider_type: slot.backend_type.clone(),
-                        model_path: slot.model_path.clone(),
-                        vram_mib: slot.vram_mib,
-                        n_ctx: slot.n_ctx,
-                        provider_name: slot.provider_name.clone(),
-                        build_info: None,
-                    });
+                    entries.push(Self::slot_to_entry(i, &slot));
                 }
                 None => {
-                    entries.push(StackEntry {
-                        idx: i,
-                        alias: format!("slot-{}", i),
-                        model_name: "none".to_string(),
-                        port: self.base_port + i as u16,
-                        gpu: "none".to_string(),
-                        status: "IDLE".to_string(),
-                        slot_id: i as u32,
-                        provider_type: String::new(),
-                        model_path: String::new(),
-                        vram_mib: 0.0,
-                        n_ctx: 32768,
-                        provider_name: String::new(),
-                        build_info: None,
-                    });
+                    entries.push(Self::default_entry(i, self.base_port));
                 }
             }
         }

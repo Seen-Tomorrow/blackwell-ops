@@ -1,10 +1,8 @@
-use serde::{Deserialize, Serialize};
-use std::process::Stdio;
+use serde::Serialize;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use tokio::sync::Mutex;
-use tokio::sync::Mutex as TokioMutex;
 use tokio::sync::broadcast; // For fit scanner progress channel
 
 
@@ -12,7 +10,8 @@ use crate::engine_stack::SlotStatus;
 use crate::config::AppConfig;
 use crate::engine_stack::EngineStack;
 use crate::log_hub::LogHub;
-use crate::types::{EngineConfig, ModelEntry};
+use crate::types::{EngineConfig, ModelEntry, ModelMetadata};
+use crate::types::StackEntry;
 
 use crate::fit_scanner;
 use crate::telemetry;
@@ -21,59 +20,12 @@ use crate::fusion_brain;
 use crate::model_catalog;
 use crate::engine_utils;
 
-/// Compute CUDA_VISIBLE_DEVICES mask from config + detected GPU count.
-/// Split mode → all GPUs joined by comma. Single GPU → parsed index from "GPU-N".
-fn compute_gpu_mask(config: &EngineConfig, gpu_count: usize, test_has_split: bool) -> String {
-    let split_mode = config.get_param_str("split").unwrap_or_default();
-    let split_active = (!split_mode.is_empty() && split_mode.to_uppercase() != "NONE") || test_has_split;
-
-    if split_active {
-        (0..gpu_count).map(|i| i.to_string()).collect::<Vec<_>>().join(",")
-    } else {
-        let device = config.get_param_str("device").unwrap_or_else(|| "GPU-0".to_string());
-        let idx = device.strip_prefix("GPU-")
-            .and_then(|s| s.parse::<usize>().ok())
-            .unwrap_or(0);
-        if idx < gpu_count {
-            idx.to_string()
-        } else {
-            "0".to_string()
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct StackEntryOut {
-    pub idx: usize,
-    pub alias: String,
-    pub model_name: String,
-    pub port: u16,
-    pub gpu: String,
-    pub status: String,
-    #[serde(default)]
-    pub slot_id: u32,
-    #[serde(default = "crate::types::default_provider_type")]
-    pub provider_type: String,
-    #[serde(default)]
-    pub model_path: String,
-    #[serde(default)]
-    pub vram_mib: f64,
-    #[serde(default = "crate::types::default_ctx_size")]
-    pub n_ctx: usize,
-    /// Provider display name (e.g. "GGML Stable")
-    #[serde(default)]
-    pub provider_name: String,
-    /// Build info for the running engine's provider (CUDA version, build date)
-    #[serde(default)]
-    pub build_info: Option<crate::types::BuildInfo>,
-}
-
 pub struct AppContext {
     pub stack: Arc<Mutex<EngineStack>>,
     pub log_hub: LogHub,
     pub config: Arc<std::sync::Mutex<AppConfig>>,
     /// Cancellation flag for in-progress library scans.
-    pub fit_scan_cancel: Arc<TokioMutex<Arc<AtomicBool>>>,
+    pub fit_scan_cancel: Arc<Mutex<Arc<AtomicBool>>>,
 }
 
 // ── Model Catalog (multi-path merge via model_catalog module) ───────
@@ -104,7 +56,7 @@ pub async fn launch_engine(
     config: EngineConfig,
     _model_base: Option<String>,
     app: tauri::State<'_, AppContext>,
-) -> Result<StackEntryOut, String> {
+) -> Result<StackEntry, String> {
     let backend_type = if config.backend_type.is_empty() {
         crate::config::DEFAULT_PROVIDER_ID.to_string()
     } else {
@@ -141,61 +93,50 @@ pub async fn launch_engine(
         }).unwrap_or(false);
 
     let gpu_count = detect_gpu_count();
-    let gpu_mask = compute_gpu_mask(&config, gpu_count, test_has_split);
+    let gpu_mask = engine_utils::compute_gpu_mask(&config, gpu_count, test_has_split);
 
     let gpu_mask_msg = format!("[GPU_MASK] provider={} split_mode=\"{}\" test_has_split={} -> CUDA_VISIBLE_DEVICES={}", backend_type, config.get_param_str("split").unwrap_or_default(), test_has_split, gpu_mask);
     eprintln!("{}", gpu_mask_msg);
     // SANITY-BOX — route GPU mask info to sanity box
    app.log_hub.emit_sanity_log("warn", &gpu_mask_msg);
 
-    eprintln!("[LAUNCH_DIAG] step1: validate binary");
+    log::debug!("[LAUNCH_DIAG] step1: validate binary");
     crate::config::validate_provider_binary(binary_path.to_str().unwrap_or(""))?;
-    eprintln!("[LAUNCH_DIAG] step2: validate model");
+    log::debug!("[LAUNCH_DIAG] step2: validate model");
     crate::config::validate_model_path(&config.model_path)?;
 
-    eprintln!("[LAUNCH_DIAG] step3: waiting for stack lock...");
+    log::debug!("[LAUNCH_DIAG] step3: waiting for stack lock...");
     let (slot_idx, slot_port) = {
         let stack = match tokio::time::timeout(Duration::from_secs(5), app.stack.lock()).await {
             Ok(guard) => guard,
             Err(_) => {
-                eprintln!("[LAUNCH_DIAG] step3 FAIL: stack lock timeout — possible deadlock");
+                log::error!("[LAUNCH_DIAG] step3 FAIL: stack lock timeout — possible deadlock");
                 return Err("Stack lock timeout — possible deadlock. Another task may be holding the lock.".to_string());
             }
         };
-        eprintln!("[LAUNCH_DIAG] step4: stack lock acquired, finding idle slot...");
+        log::debug!("[LAUNCH_DIAG] step4: stack lock acquired, finding idle slot...");
         let idx = stack.find_idle_slot().ok_or("All engine slots are occupied")?;
-        eprintln!("[LAUNCH_DIAG] step5: idle slot found: idx={} config.port={}", idx, config.port);
+        log::debug!("[LAUNCH_DIAG] step5: idle slot found: idx={} config.port={}", idx, config.port);
         let port = stack.get_slot(idx).map(|s| s.port).unwrap_or(9090 + idx as u16);
         (idx, port)
     };
 
     config.port = slot_port;
-    eprintln!("[LAUNCH_DIAG] step6: killing existing process on port {}", slot_port);
+    log::debug!("[LAUNCH_DIAG] step6: killing existing process on port {}", slot_port);
 
-    let ps_script = format!(
-        r"$pids = netstat -ano | Select-String ':{0} ' | ForEach-Object {{ ($_ -split '\s+')[-1] }}; $pids | Where-Object {{ $_.Length -gt 0 -and $_ -ne '0' }} | ForEach-Object {{ taskkill /F /PID $_ 2>$null }}",
-        slot_port
-    );
-    eprintln!("[LAUNCH_DIAG] step6a: spawning powershell taskkill");
-    let kill_result = tokio::process::Command::new("powershell")
-        .args(&["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", &ps_script])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .creation_flags(0x08000000) // CREATE_NO_WINDOW
-        .output()
-        .await;
-    eprintln!("[LAUNCH_DIAG] step6b: taskkill returned: {:?}", kill_result.as_ref().map(|o| o.status.success()));
+    let kill_result = engine_utils::kill_process_by_port(slot_port).await;
+    log::debug!("[LAUNCH_DIAG] step6b: taskkill returned: {:?}", kill_result.is_ok());
 
-    eprintln!("[LAUNCH_DIAG] step7: sleeping 300ms for port release");
+    log::debug!("[LAUNCH_DIAG] step7: sleeping 300ms for port release");
     tokio::time::sleep(Duration::from_millis(300)).await;
-    eprintln!("[LAUNCH_DIAG] step7b: woke from sleep, continuing");
+    log::debug!("[LAUNCH_DIAG] step7b: woke from sleep, continuing");
 
     let provider_display_name = backend_type.clone();
-    eprintln!("[LAUNCH_DIAG] step8a: provider_display_name = {}", provider_display_name);
+    log::debug!("[LAUNCH_DIAG] step8a: provider_display_name = {}", provider_display_name);
 
-    eprintln!("[LAUNCH_DIAG] step8: building command args");
+    log::debug!("[LAUNCH_DIAG] step8: building command args");
     let cmd_args = template.build_command(&config, &gpu_mask, &user_params);
-    eprintln!("[LAUNCH_DIAG] step8c: cmd_args built, len={}", cmd_args.len());
+    log::debug!("[LAUNCH_DIAG] step8c: cmd_args built, len={}", cmd_args.len());
     let launch_cmd = format!("{} {}", binary_path.display(), cmd_args.join(" "));
     eprintln!("\n========== [LAUNCH_CMD] slot={} ==========", slot_idx);
     eprintln!("{}", launch_cmd);
@@ -292,7 +233,7 @@ pub async fn launch_engine(
         });
     }
 
-    let model_name = config.model_path.rsplit('/').next().unwrap_or("unknown").to_string();
+    let model_name = engine_utils::extract_model_name(&config.model_path);
 
     // Emit stack-changed push event so frontend gets instant update without polling
     {
@@ -300,7 +241,7 @@ pub async fn launch_engine(
         stack.emit_stack_changed();
     }
 
-    Ok(StackEntryOut {
+    Ok(StackEntry {
         idx: slot_idx,
         alias: config.alias.clone(),
         model_name,
@@ -389,7 +330,7 @@ pub async fn stop_engines_by_provider(provider_id: String, app: tauri::State<'_,
 }
 
 #[tauri::command]
-pub async fn get_stack_status(app: tauri::State<'_, AppContext>) -> Result<Vec<StackEntryOut>, String> {
+pub async fn get_stack_status(app: tauri::State<'_, AppContext>) -> Result<Vec<StackEntry>, String> {
     let stack = app.stack.lock().await;
     let engine_entries = stack.get_status();
 
@@ -413,7 +354,7 @@ pub async fn get_stack_status(app: tauri::State<'_, AppContext>) -> Result<Vec<S
         }))
         .collect();
 
-    let entries: Vec<StackEntryOut> = engine_entries.into_iter()
+    let entries: Vec<StackEntry> = engine_entries.into_iter()
         .map(|e| {
             let build_info = if e.status == "RUNNING" && !e.provider_type.is_empty() {
                 build_map.get(&e.provider_type).cloned().cloned()
@@ -421,7 +362,7 @@ pub async fn get_stack_status(app: tauri::State<'_, AppContext>) -> Result<Vec<S
             } else {
                 None
             };
-            StackEntryOut {
+            StackEntry {
                 idx: e.idx,
                 alias: e.alias.clone(),
                 model_name: e.model_name.clone(),
@@ -507,7 +448,7 @@ pub async fn preview_launch_command(
         .unwrap_or_default();
 
     let gpu_count = detect_gpu_count();
-    let gpu_mask = compute_gpu_mask(&config, gpu_count, false);
+    let gpu_mask = engine_utils::compute_gpu_mask(&config, gpu_count, false);
 
     let cmd_args = template.build_command(&config, &gpu_mask, &user_params);
     Ok(format!("{} {}", binary_path.display(), cmd_args.join(" ")))
@@ -577,14 +518,7 @@ pub async fn fit_scan_model(
 
     // Derive GPU mask from device + split_mode — same logic as launch_engine
     let gpu_count = detect_gpu_count();
-    let gpu_mask = if !split_mode.is_empty() && split_mode.to_uppercase() != "NONE" {
-        (0..gpu_count).map(|i| i.to_string()).collect::<Vec<_>>().join(",")
-    } else {
-        let idx = device.strip_prefix("GPU-")
-            .and_then(|s| s.parse::<usize>().ok())
-            .unwrap_or(0);
-        if idx < gpu_count { idx.to_string() } else { "0".to_string() }
-    };
+    let gpu_mask = engine_utils::compute_gpu_mask_from_params(&device, &split_mode, gpu_count, false);
 
     // Build CLI args directly — no template involvement
     let args = fit_scanner::build_fit_command(
@@ -906,33 +840,7 @@ pub async fn scan_all_models_cmd(
         // When we hit concurrency limit, await one before spawning next
         if handles.len() >= CONCURRENCY {
             let (_, p, h) = handles.remove(0);
-            match h.await {
-                Ok(Ok(mut metadata)) => {
-                    let corrected_size = model_catalog::get_total_model_size(&p);
-                    if corrected_size != metadata.file_size_bytes {
-                        log::info!("[batch_scan] Corrected file_size for '{}': {} → {}", p, metadata.file_size_bytes, corrected_size);
-                        metadata.file_size_bytes = corrected_size;
-                    }
-                    if let Err(e) = crate::model_cache::set_cached(&p, metadata.clone()) {
-                        log::warn!("Failed to cache {}: {}", p, e);
-                    }
-                    scanned += 1;
-                }
-                Ok(Err(e)) => {
-                    let msg = format!("[SCAN] {} failed: {}", p, e);
-                    log::warn!("{}", msg);
-                    // SANITY-BOX — route scan failure to sanity box
-                    log_hub.emit_sanity_log("error", &msg);
-                    failed += 1;
-                }
-                Err(e) => {
-                    let msg = format!("[SCAN] {} task panicked: {}", p, e);
-                    log::warn!("{}", msg);
-                    // SANITY-BOX — route scan failure to sanity box
-                    log_hub.emit_sanity_log("error", &msg);
-                    failed += 1;
-                }
-            }
+            handle_scan_result_with_sanity(h.await, &p, &mut scanned, &mut failed, &log_hub);
 
             let lh = log_hub.clone();
             tokio::spawn(async move {
@@ -948,27 +856,7 @@ pub async fn scan_all_models_cmd(
 
     // Await remaining handles (let in-flight scans finish)
     for (_, p, h) in handles {
-        match h.await {
-            Ok(Ok(mut metadata)) => {
-                let corrected_size = model_catalog::get_total_model_size(&p);
-                if corrected_size != metadata.file_size_bytes {
-                    log::info!("[batch_scan] Corrected file_size for '{}': {} → {}", p, metadata.file_size_bytes, corrected_size);
-                    metadata.file_size_bytes = corrected_size;
-                }
-                if let Err(e) = crate::model_cache::set_cached(&p, metadata.clone()) {
-                    log::warn!("Failed to cache {}: {}", p, e);
-                }
-                scanned += 1;
-            }
-            Ok(Err(e)) => {
-                log::warn!("Scan failed for {}: {}", p, e);
-                failed += 1;
-            }
-            Err(e) => {
-                log::warn!("Task failed for {}: {}", p, e);
-                failed += 1;
-            }
-        }
+        handle_scan_result(h.await, &p, &mut scanned, &mut failed);
 
         let lh = log_hub.clone();
         tokio::spawn(async move {
@@ -992,6 +880,71 @@ pub async fn scan_all_models_cmd(
     });
 
     Ok(scanned)
+}
+
+/// Handle a single scan result — correct file size, cache, and update counters.
+fn handle_scan_result(
+    result: Result<Result<ModelMetadata, String>, tokio::task::JoinError>,
+    path: &str,
+    scanned: &mut usize,
+    failed: &mut usize,
+) {
+    match result {
+        Ok(Ok(mut metadata)) => {
+            let corrected_size = model_catalog::get_total_model_size(path);
+            if corrected_size != metadata.file_size_bytes {
+                log::info!("[batch_scan] Corrected file_size for '{}': {} → {}", path, metadata.file_size_bytes, corrected_size);
+                metadata.file_size_bytes = corrected_size;
+            }
+            if let Err(e) = crate::model_cache::set_cached(path, metadata.clone()) {
+                log::warn!("Failed to cache {}: {}", path, e);
+            }
+            *scanned += 1;
+        }
+        Ok(Err(e)) => {
+            log::warn!("Scan failed for {}: {}", path, e);
+            *failed += 1;
+        }
+        Err(e) => {
+            log::warn!("Task failed for {}: {}", path, e);
+            *failed += 1;
+        }
+    }
+}
+
+/// Handle scan result with sanity box emission.
+fn handle_scan_result_with_sanity(
+    result: Result<Result<ModelMetadata, String>, tokio::task::JoinError>,
+    path: &str,
+    scanned: &mut usize,
+    failed: &mut usize,
+    log_hub: &LogHub,
+) {
+    match result {
+        Ok(Ok(mut metadata)) => {
+            let corrected_size = model_catalog::get_total_model_size(path);
+            if corrected_size != metadata.file_size_bytes {
+                log::info!("[batch_scan] Corrected file_size for '{}': {} → {}", path, metadata.file_size_bytes, corrected_size);
+                metadata.file_size_bytes = corrected_size;
+            }
+            if let Err(e) = crate::model_cache::set_cached(path, metadata.clone()) {
+                log::warn!("Failed to cache {}: {}", path, e);
+            }
+            *scanned += 1;
+        }
+        Ok(Err(e)) => {
+            let msg = format!("[SCAN] {} failed: {}", path, e);
+            log::warn!("{}", msg);
+            log_hub.emit_sanity_log("error", &msg);
+            *failed += 1;
+        }
+        Err(e) => {
+            let msg = format!("[SCAN] {} task panicked: {}", path, e);
+            log::warn!("{}", msg);
+            log_hub.emit_sanity_log("error", &msg);
+            *failed += 1;
+        }
+    }
 }
 
 #[tauri::command]

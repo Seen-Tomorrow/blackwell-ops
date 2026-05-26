@@ -259,17 +259,7 @@ fn parse_fit_output(output: &str) -> Option<f64> {
 
 /// Strip ANSI escape sequences from a string.
 fn strip_ansi(s: &str) -> String {
-    s.chars().scan(false, |in_esc, ch| {
-        if *in_esc {
-            if ch == 'm' { *in_esc = false; }
-            None
-        } else if ch == '\x1b' || ch == '\u{001B}' {
-            *in_esc = true;
-            None
-        } else {
-            Some(ch)
-        }
-    }).collect()
+    crate::engine_utils::strip_ansi(s)
 }
 
 /// Extract a numeric value from llama-fit-params output.
@@ -564,12 +554,7 @@ fn parse_gpu_components(output: &str) -> Option<Vec<GpuComponentMib>> {
 
 /// Extract model name from full path (last component without .gguf).
 pub fn extract_model_name(path: &str) -> String {
-    PathBuf::from(path)
-        .file_name()
-        .and_then(|s| s.to_str())
-        .unwrap_or("unknown")
-        .trim_end_matches(".gguf")
-        .to_string()
+    crate::engine_utils::extract_model_name(path)
 }
 
 /// Find all models using the shared model_catalog logic (multi-path, shard dedup, mmproj filter).

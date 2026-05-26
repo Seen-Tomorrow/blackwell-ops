@@ -547,42 +547,10 @@ impl FusionBrain {
     // ── Terminal update (engine stopped) ────────────────────────────
 
     fn build_terminal_update(&self) -> FusionUpdate {
-        let total_n_decoded: usize = self.slot_states.values().map(|s| s.prev_n_decoded).sum();
-        let slot_ctx: Vec<SlotCtxInfo> = self.slot_states.iter()
-            .map(|(id, s)| SlotCtxInfo {
-                id: *id,
-                n_decoded: s.prev_n_decoded,
-                is_processing: false,
-            })
-            .collect();
-
-        FusionUpdate {
-            alias: self.alias.clone(),
-            slot_idx: self.slot_idx,
-            port: self.port,
-            engine_state: EngineState::Ready,
-            phase: InferencePhase::Idle,
-            prefill_tps_metrics: 0.0,
-            prefill_tps_slots: 0.0,
-            gen_tps_metrics: 0.0,
-            gen_tps_slots: 0.0,
-            gen_tokens_per_request_metrics: 0,
-            gen_tokens_per_request_slots: 0,
-            gen_tokens_per_session: self.session_tokens_generated,
-            ctx_used_current_request: 0,
-            ctx_used_session: total_n_decoded,
-            ctx_fill_pct: if self.ctx_total > 0 {
-                (total_n_decoded as f64 / self.ctx_total as f64) * 100.0
-            } else {
-                0.0
-            },
-            ctx_total: self.ctx_total,
-            request_elapsed_ms: 0,
-            ttft_ms: None,
-            slot_ctx,
-            parallel: self.parallel,
-            unified_kv: self.unified_kv,
-        }
+        let mut update = self.build_update(&[], None);
+        update.engine_state = EngineState::Ready;
+        update.phase = InferencePhase::Idle;
+        update
     }
 }
 
