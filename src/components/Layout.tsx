@@ -79,7 +79,7 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
   const [adminLockState, setAdminLockState] = useState(loadAdminLock);
   const [zoom, setZoom] = useState(loadZoom);
   const { totalParams, hiddenCount, onShowAll, flashMessage } = useStatus();
-  const { buildProgress, foundryModal, foundryModalVisible, openBuildModal, minimizeBuildModal, closeBuildModal } = useBuildDock();
+  const { buildProgress, foundryModal, foundryModalVisible, openBuildModal, minimizeBuildModal, restoreBuildModal, closeBuildModal, attachToActiveBuild } = useBuildDock();
   const { slots, toggleSlot } = useDock();
   const resolvedProvider = useMemo(() => {
     if (!foundryModal) return providers?.[0] || {} as ProviderConfig;
@@ -255,8 +255,9 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
                 const widgetType = slot.config?.type || 'generic';
                 if (widgetType === 'build') {
                   if (foundryModal && foundryModalVisible) minimizeBuildModal();
-                  else if (foundryModal) openBuildModal(foundryModal.providerId, foundryModal.environment);
+                  else if (foundryModal) restoreBuildModal();
                   else if (buildProgress) openBuildModal(buildProgress.providerId, buildProgress.environment.toLowerCase() as Env);
+                  else attachToActiveBuild(); // defensive recovery if dock lingered but local state cleared
                 } else {
                   toggleSlot(i);
                 }

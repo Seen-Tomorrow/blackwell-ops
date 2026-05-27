@@ -1,14 +1,15 @@
-import type { Env } from "../hooks/useBuildDock";
+// ── Env Type ─────────────────────────────────────────────────────────
+export type Env = "vanguard" | "stable" | "fresh";
 
 // ── Build Step Labels ────────────────────────────────────────────────
-// Single source of truth for step-to-short-label mapping.
+// Single source of truth for backend step name → short label mapping.
 // Used by StatusBarContext.tsx (dock slot) and FoundryModal.tsx (modal display).
 export const STEP_LABELS: Record<string, string> = {
   Initializing: "INIT",
   GitClone: "CLONE",
   GitPull: "PULL",
   PrCherryPick: "PR-MERGE",
-  CMakeConfigure: "CONFIGURE",
+  Configuring: "CONFIGURE",
   WaitingForConfirm: "WAIT-CONFIRM",
   Building: "BUILD",
   Validating: "VALIDATE",
@@ -19,6 +20,26 @@ export const STEP_LABELS: Record<string, string> = {
 
 export function getStepLabel(step: string): string {
   return STEP_LABELS[step] ?? step;
+}
+
+// ── Phase → Step Label Mapping ───────────────────────────────────────
+// Maps backend phase names to frontend step labels for display.
+export const PHASE_STEP_MAP: Record<string, string> = {
+  init: "INIT",
+  clone: "CLONE",
+  pull: "PULL",
+  merge: "PR-MERGE",
+  configure: "CONFIGURE",
+  confirm: "WAIT-CONFIRM",
+  build: "BUILD",
+  validate: "VALIDATE",
+  done: "DONE",
+  fail: "FAIL",
+  locked: "LOCKED",
+};
+
+export function getStepFromPhase(phase: string): string {
+  return PHASE_STEP_MAP[phase] ?? phase.toUpperCase();
 }
 
 // ── Environment Colors ───────────────────────────────────────────────

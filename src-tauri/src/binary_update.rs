@@ -4,6 +4,10 @@ use serde::Serialize;
 use std::path::PathBuf;
 use tauri::{Emitter, Manager};
 
+/// Feature flag: set to true to enable binary update checks via GitHub API.
+/// Currently disabled because releases are not yet uploaded. Set to true when ready.
+const BINARY_UPDATES_ENABLED: bool = false;
+
 /// Bundled providers that ship with bundled binaries.
 #[allow(dead_code)]
 const BUNDLED_PROVIDERS: &[&str] = &[crate::config::DEFAULT_PROVIDER_ID, "ik"];
@@ -66,6 +70,11 @@ pub struct BinaryUpdateInfo {
 /// Fetch the latest GitHub release and compare against installed versions.
 #[tauri::command]
 pub async fn check_binary_updates(provider_id: String) -> Result<Vec<BinaryUpdateInfo>, String> {
+    if !BINARY_UPDATES_ENABLED {
+        log::warn!("[binary-update] Binary update checks disabled (feature flag off). Skipping for '{}'.", provider_id);
+        return Ok(Vec::new());
+    }
+
     let client = reqwest::Client::new();
     
     // Fetch latest release from GitHub API
@@ -339,6 +348,17 @@ pub fn get_profile_labels() -> Vec<serde_json::Value> {
 /// Check for app update via GitHub releases API.
 #[tauri::command]
 pub async fn check_app_update(app_handle: tauri::AppHandle) -> Result<AppUpdateInfo, String> {
+    if !BINARY_UPDATES_ENABLED {
+        log::warn!("[binary-update] App update checks disabled (feature flag off). Skipping.");
+        let current_version = app_handle.package_info().version.to_string();
+        return Ok(AppUpdateInfo {
+            available: false,
+            version: current_version.clone(),
+            current_version,
+            release_notes: None,
+        });
+    }
+
     let client = reqwest::Client::new();
     let current_version = app_handle.package_info().version.to_string();
 
@@ -467,6 +487,19 @@ pub async fn install_app_update(app_handle: tauri::AppHandle) -> Result<(), Stri
 /// Combined startup check — app update + binary updates for all Bundled providers.
 #[tauri::command]
 pub async fn get_startup_updates(app_handle: tauri::AppHandle) -> Result<StartupUpdateStatus, String> {
+    if !BINARY_UPDATES_ENABLED {
+        log::warn!("[binary-update] All update checks disabled (feature flag off). Returning empty results.");
+        return Ok(StartupUpdateStatus {
+            app_update: AppUpdateInfo {
+                available: false,
+                version: String::new(),
+                current_version: String::new(),
+                release_notes: None,
+            },
+            binary_updates: Vec::new(),
+        });
+    }
+
     // Run all checks in parallel (app + each provider's binary updates)
     let app_update_future = check_app_update(app_handle.clone());
     let ggml_future = check_binary_updates(crate::config::DEFAULT_PROVIDER_ID.to_string());

@@ -8,10 +8,10 @@ import { getStepLabel, getEnvColors } from "../lib/foundry_constants";
 interface FoundryModalProps {
   provider: ProviderConfig;
   environment: "vanguard" | "stable" | "fresh";
-  onClose: () => void; // Called on Complete/Failed or cancel during confirm phase
+  onClose: () => void;
   onComplete?: (providerId: string) => void;
-  visible: boolean; // true = show overlay, false = hidden but mounted (minimized to dock)
-  onMinimize?: () => void; // Called when MINIMIZE button clicked — hides overlay but keeps modal alive
+  visible: boolean;
+  onMinimize?: () => void;
 }
 
 interface BuildLogEntry {
@@ -22,18 +22,30 @@ interface BuildLogEntry {
 
 type ModalPhase = "confirm" | "building" | "complete" | "error" | "backup-locked";
 
+function mapBackendPhase(bp: string): { frontend: ModalPhase | null; special?: string } {
+  switch (bp) {
+    case "Configuring": return { frontend: null };
+    case "WaitingForConfirm": return { frontend: "building", special: "wait-confirm" };
+    case "Building": return { frontend: "building" };
+    case "Validating": return { frontend: "building" };
+    case "Complete": return { frontend: "complete" };
+    case "Failed": return { frontend: "error" };
+    case "BackupLocked": return { frontend: "backup-locked" };
+    default: return { frontend: null };
+  }
+}
+
 export default function FoundryModal({ provider, environment, onClose, onComplete, visible, onMinimize }: FoundryModalProps) {
   const [phase, setPhase] = useState<ModalPhase>("confirm");
   const phaseRef = useRef(phase);
   phaseRef.current = phase;
-  const [buildId, setBuildId] = useState<number | null>(null);
   const buildIdRef = useRef<number | null>(null);
-  buildIdRef.current = buildId;
   const [logLines, setLogLines] = useState<BuildLogEntry[]>([]);
   const [currentStep, setCurrentStep] = useState("");
   const [waitingForConfirm, setWaitingForConfirm] = useState(false);
   const [prUrl, setPrUrl] = useState("");
   const [maxCores, setMaxCores] = useState<number | null>(null);
+  const [cmakeFlags, setCmakeFlags] = useState("");
   const [backupRetryCount, setBackupRetryCount] = useState(0);
   const [showEngineWarning, setShowEngineWarning] = useState(false);
   const [engineListText, setEngineListText] = useState("");
@@ -48,103 +60,7 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
     return getEnvColors(environment)[base as keyof ReturnType<typeof getEnvColors>] || "";
   };
 
-  useEffect(() => {
-    let mounted = true;
-
-    const init = async () => {
-      const unsubProgress = await listen("foundry-build-progress", (e: any) => {
-        if (!mounted) return;
-        try {
-          const payload = e.payload as any;
-          if (!payload || !payload.provider_id) return;
-
-          // Capture buildId from first event, then filter by it
-          if (buildIdRef.current === null) {
-            setBuildId(payload.build_id);
-            buildIdRef.current = payload.build_id;
-          } else if (payload.build_id !== buildIdRef.current) return;
-
-          const stepLabel = getStepLabel(payload.step);
-          setCurrentStep(stepLabel);
-
-          if (payload.log_lines) {
-            const batch = payload.log_lines as string[];
-            const ts = new Date().toLocaleTimeString();
-            setLogLines(prev => {
-              const next = [...prev, ...batch.map(text => ({
-                step: stepLabel,
-                text,
-                timestamp: ts,
-              }))];
-              // Cap at 150 lines during Building phase (~3 pages) — trim from front
-              if (stepLabel === "BUILD" && next.length > 150) {
-                return next.slice(next.length - 150);
-              }
-              return next;
-            });
-          } else if (payload.log_line) {
-            const logText = payload.log_line as string;
-
-            setLogLines(prev => [...prev, {
-              step: stepLabel,
-              text: logText,
-              timestamp: new Date().toLocaleTimeString(),
-            }]);
-          }
-
-          // Phase transitions based on step — stay in "confirm" until cmake preview appears
-          switch (payload.step) {
-            case "Complete":
-              setPhase("complete");
-              if (onComplete) onComplete(provider.id);
-              break;
-            case "Failed":
-              setPhase("error");
-              break;
-            case "BackupLocked":
-              setPhase("backup-locked");
-              setBackupRetryCount(prev => prev + 1);
-              break;
-            case "WaitingForConfirm":
-              // CMake done — show PROCEED/ABORT buttons
-              setWaitingForConfirm(true);
-              if (phaseRef.current === "confirm") setPhase("building");
-              break;
-            default:
-              if (phaseRef.current === "confirm") setPhase("building");
-          }
-        } catch (err) { console.error("[Foundry] Progress event error:", err); }
-      });
-
-      // Listen for toast events
-      const unsubToast = await listen("foundry-toast", (e: any) => {
-        if (!mounted) return;
-        try {
-          const payload = e.payload as any;
-          if (!payload || !payload.text) return;
-          
-          showToast(payload.type, payload.text);
-        } catch (err) { console.error("[Foundry] Progress event error:", err); }
-      });
-
-      cleanupRef.current = () => { unsubProgress(); unsubToast(); };
-    };
-    init();
-
-    return () => {
-      mounted = false;
-      if (cleanupRef.current) cleanupRef.current();
-    };
-  }, []);
-
-  useEffect(() => {
-    // Auto-scroll log to bottom
-    if (logRef.current) {
-      logRef.current.scrollTop = logRef.current.scrollHeight;
-    }
-  }, [logLines]);
-
-  // Reset internal state when provider or environment changes (reopening modal)
+  // Reset state when provider/env changes or modal becomes visible again
   const prevProviderIdRef = useRef(provider.id);
   const prevEnvironmentRef = useRef(environment);
   useEffect(() => {
@@ -155,66 +71,125 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
     setLogLines([]);
     setCurrentStep("");
     setWaitingForConfirm(false);
-    setBuildId(null);
     buildIdRef.current = null;
     setPrUrl("");
     setMaxCores(null);
+    setCmakeFlags("");
     setBackupRetryCount(0);
     setShowEngineWarning(false);
     setEngineListText("");
   }, [provider.id, environment]);
 
-  // Listen for reset signal on Complete/Failed — clears logs and resets phase
+  // Single event listener for foundry-progress
   useEffect(() => {
-    const handler = () => {
-      setPhase("confirm");
-      setLogLines([]);
-      setCurrentStep("");
-      setWaitingForConfirm(false);
-      setBuildId(null);
-      buildIdRef.current = null;
-      setPrUrl("");
-      setMaxCores(null);
-      setBackupRetryCount(0);
-      setShowEngineWarning(false);
-      setEngineListText("");
+    let mounted = true;
+
+    const init = async () => {
+      const unsub = await listen("foundry-progress", (e: any) => {
+        if (!mounted) return;
+        try {
+          const payload = e.payload as any;
+          if (!payload || !payload.provider_id) return;
+
+          // Capture buildId from first event, then filter by it
+          if (buildIdRef.current === null) {
+            buildIdRef.current = payload.build_id;
+          } else if (payload.build_id !== buildIdRef.current) return;
+
+          const stepLabel = getStepLabel(payload.phase);
+          setCurrentStep(stepLabel);
+
+          // Handle log lines - single or batch
+          const ts = new Date().toLocaleTimeString();
+          if (payload.log_lines && payload.log_lines.length > 0) {
+            setLogLines(prev => {
+              const next = [...prev, ...payload.log_lines.map((text: string) => ({
+                step: stepLabel,
+                text,
+                timestamp: ts,
+              }))];
+              if (stepLabel === "BUILD" && next.length > 150) {
+                return next.slice(next.length - 150);
+              }
+              return next;
+            });
+          } else if (payload.log_line) {
+            setLogLines(prev => [...prev, {
+              step: stepLabel,
+              text: payload.log_line as string,
+              timestamp: ts,
+            }]);
+          }
+
+          // Phase transitions based on backend phase name
+          const mapping = mapBackendPhase(payload.phase);
+          if (mapping.frontend) {
+            setPhase(mapping.frontend);
+            if (mapping.frontend === "complete" && onComplete) onComplete(provider.id);
+            if (mapping.frontend === "backup-locked") setBackupRetryCount(prev => prev + 1);
+          }
+          if (mapping.special === "wait-confirm") {
+            setWaitingForConfirm(true);
+            if (phaseRef.current === "confirm") setPhase("building");
+          } else if (!mapping.frontend && phaseRef.current === "confirm" && payload.log_line) {
+            // Configuring phase with log output - transition to building to show logs
+            setPhase("building");
+          }
+        } catch (err) { console.error("[Foundry] Progress event error:", err); }
+      });
+
+      cleanupRef.current = () => unsub();
     };
-    window.addEventListener("blackops-foundry-reset", handler);
-    return () => window.removeEventListener("blackops-foundry-reset", handler);
+    init();
+
+    return () => {
+      mounted = false;
+      if (cleanupRef.current) cleanupRef.current();
+    };
   }, []);
 
-  const showToast = (type: string, text: string) => {
+  // Auto-scroll log to bottom
+  useEffect(() => {
+    if (logRef.current) {
+      logRef.current.scrollTop = logRef.current.scrollHeight;
+    }
+  }, [logLines]);
+
+  const startBuild = useCallback(async () => {
     try {
-      const toastFn = (window as any).__blackopsToasts?.addToast;
-      if (toastFn) {
-        toastFn(text, type === "error" ? "error" : "success", 5000);
-      }
-    } catch (err) { console.error("[Foundry] Reset handler error:", err); }
-  };
+      await invoke("foundry_build", {
+        providerId: provider.id,
+        environment,
+        prUrl: prUrl.trim() || null,
+        maxCores: maxCores ?? undefined,
+        cmakeFlags: cmakeFlags.trim() || null,
+      });
+    } catch (err) {
+      setPhase("error");
+      setLogLines(prev => [...prev, {
+        step: "ERROR",
+        text: typeof err === "string" ? err : JSON.stringify(err),
+        timestamp: new Date().toLocaleTimeString(),
+      }]);
+    }
+  }, [provider.id, environment, prUrl, maxCores, cmakeFlags]);
 
   const handleConfirmBuild = async () => {
     try {
-      // Check for running engines that will be stopped by this build
-      const stackStatus = await invoke<Array<{provider_type: string; status: string; alias: string; provider_name?: string; gpu: string}>>("get_stack_status");
+      const stackStatus = await invoke<Array<{ provider_type: string; status: string; alias: string; provider_name?: string; gpu: string }>>("get_stack_status");
       const matchingEngines = stackStatus.filter(
         e => e.provider_type === provider.id && e.status !== "IDLE"
       );
 
       if (matchingEngines.length > 0) {
-        // Show blocking warning — require explicit confirmation before proceeding
-        setEngineListText(matchingEngines.map(e => 
+        setEngineListText(matchingEngines.map(e =>
           `${e.alias} (${e.provider_name || e.provider_type}) on GPU ${e.gpu}`
         ).join("\n"));
         setShowEngineWarning(true);
         return;
       }
 
-      await invoke("foundry_build", {
-        providerId: provider.id,
-        environment,
-        prUrl: prUrl.trim() || null,
-        maxCores: maxCores ?? undefined,
-      });
+      await startBuild();
     } catch (err) {
       setPhase("error");
       setLogLines(prev => [...prev, {
@@ -228,21 +203,7 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
   const handleEngineWarningProceed = async () => {
     setShowEngineWarning(false);
     setEngineListText("");
-    try {
-      await invoke("foundry_build", {
-        providerId: provider.id,
-        environment,
-        prUrl: prUrl.trim() || null,
-        maxCores: maxCores ?? undefined,
-      });
-    } catch (err) {
-      setPhase("error");
-      setLogLines(prev => [...prev, {
-        step: "ERROR",
-        text: typeof err === "string" ? err : JSON.stringify(err),
-        timestamp: new Date().toLocaleTimeString(),
-      }]);
-    }
+    await startBuild();
   };
 
   const handleEngineWarningCancel = () => {
@@ -251,39 +212,16 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
   };
 
   const handleCancel = async () => {
-    try {
-      await invoke("foundry_cancel");
-      // Don't close modal — let the "Failed" event transition to error phase
-    } catch (err) {
-      console.error("[Foundry] Cancel failed:", err);
-    }
+    try { await invoke("foundry_cancel"); } catch (err) { console.error("[Foundry] Cancel failed:", err); }
   };
 
   const handleConfirmProceed = async () => {
     setWaitingForConfirm(false);
-    try {
-      await invoke("foundry_confirm_build");
-    } catch (err) {
-      console.error("[Foundry] Confirm failed:", err);
-    }
+    try { await invoke("foundry_confirm_build"); } catch (err) { console.error("[Foundry] Confirm failed:", err); }
   };
 
   const handleBackupLockedYes = async () => {
-    // User chose YES — stop engines and resume backup
-    try {
-      await invoke("foundry_resume_backup");
-    } catch (err) {
-      console.error("[Foundry] Resume backup failed:", err);
-    }
-  };
-
-  const handleBackupLockedPause = async () => {
-    // User chose PAUSE — cancel the build, user will sort out engines manually
-    try {
-      await invoke("foundry_cancel");
-    } catch (err) {
-      console.error("[Foundry] Cancel failed:", err);
-    }
+    try { await invoke("foundry_resume_backup"); } catch (err) { console.error("[Foundry] Resume backup failed:", err); }
   };
 
   // ── BackupLocked Phase ─────────────────────────────────────────────
@@ -291,17 +229,13 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
     return (
       <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm" style={{ display: visible ? 'flex' : 'none' }}>
         <div className="w-[50vw] max-w-[520px] border border-yellow-400/40 bg-stealth-panel rounded-sm shadow-2xl">
-          {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-stealth-border">
-            <h3 className="text-xs font-mono text-yellow-400 tracking-wider">⚠ BINARY LOCKED</h3>
+            <h3 className="text-xs font-mono text-yellow-400 tracking-wider">\u26A0 BINARY LOCKED</h3>
           </div>
-
-          {/* Body */}
           <div className="px-4 py-5 space-y-4">
             <p className="text-[10px] font-mono text-stealth-muted uppercase tracking-wider">
               Engine binary is currently in use
             </p>
-
             <div className="border border-yellow-400/20 bg-yellow-400/[0.03] rounded-sm p-3 space-y-2">
               <p className="text-[10px] font-mono text-white/80">
                 The binary for <span className="text-yellow-400">{provider.display_name}</span> ({environment.toLowerCase()}) is locked by a running process.
@@ -315,8 +249,6 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
                 You can stop engines now, retry after checking manually, or cancel to handle it yourself.
               </p>
             </div>
-
-            {/* Log lines showing current state */}
             {logLines.length > 0 && (
               <div className="border border-stealth-border/50 bg-black/40 rounded-sm p-2 font-mono text-[8px] max-h-[120px] overflow-y-auto">
                 {logLines.slice(-3).map((entry, i) => (
@@ -329,10 +261,8 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
               </div>
             )}
           </div>
-
-          {/* Footer */}
           <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-stealth-border">
-            <button onClick={handleBackupLockedPause}
+            <button onClick={handleCancel}
               className="px-3 py-1 text-[9px] font-mono border border-red-400/60 text-red-400 hover:bg-red-500/20 transition-colors">
               CANCEL BUILD
             </button>
@@ -357,11 +287,9 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
     return (
       <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm" style={{ display: visible ? 'flex' : 'none' }}>
         <div className="w-[60vw] max-w-[720px] border border-yellow-400/40 bg-stealth-panel rounded-sm shadow-2xl">
-          {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-stealth-border">
             <h3 className="text-xs font-mono text-yellow-400 tracking-wider">REACTOR FOUNDRY</h3>
           </div>
-          {/* Body */}
           <div className="px-4 py-5 space-y-4">
             <p className="text-[10px] font-mono text-stealth-muted uppercase tracking-wider">
               Ready to build?
@@ -403,6 +331,20 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
                 />
               </div>
 
+              {/* CMake flags editor */}
+              <div className="pt-1">
+                <label className="text-[8px] font-mono text-stealth-muted uppercase block mb-1.5">
+                  CMake flags (optional, power-user)
+                </label>
+                <textarea
+                  placeholder="-DGGML_CUDA=ON -DLLAMA_AVX2=OFF ..."
+                  rows={3}
+                  className="w-full px-2 py-1.5 text-[8px] font-mono bg-black/50 border border-stealth-border rounded-sm text-white placeholder:text-stealth-muted/40 focus:border-purple-400/60 outline-none transition-colors resize-y"
+                  value={cmakeFlags}
+                  onChange={(e) => setCmakeFlags(e.target.value)}
+                />
+              </div>
+
               {/* Build cores selector */}
               {cpuThreads > 0 && (
                 <div className="pt-1">
@@ -439,7 +381,7 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
             {/* Engine warning overlay */}
             {showEngineWarning && (
               <div className="border border-red-400/30 bg-red-400/[0.05] rounded-sm p-3 space-y-2">
-                <p className="text-[10px] font-mono text-red-400 font-bold">⚠ RUNNING ENGINES DETECTED</p>
+                <p className="text-[10px] font-mono text-red-400 font-bold">\u26A0 RUNNING ENGINES DETECTED</p>
                 <pre className="text-[8px] font-mono text-white/70 whitespace-pre-wrap">{engineListText}</pre>
                 <p className="text-[9px] font-mono text-stealth-muted">
                   These engines will be stopped before the build starts. Click STOP ENGINES & PROCEED to continue, or CANCEL to handle manually.
@@ -515,12 +457,10 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
 
         {/* Body */}
         <div className="px-4 py-3 space-y-2 flex flex-col flex-1 min-h-0 overflow-hidden">
-          {/* Provider info */}
           <p className="text-[9px] font-mono text-stealth-muted">
             <span className="text-yellow-400">{provider.id}</span> &mdash; {provider.display_name}
           </p>
 
-          {/* Current step indicator */}
           {!isComplete && !isError && (
             <div className="flex items-center gap-2">
               <span className="text-[8px] font-mono text-stealth-muted uppercase tracking-wider">Step:</span>
@@ -528,10 +468,9 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
             </div>
           )}
 
-          {/* WAIT-CONFIRM banner */}
           {waitingForConfirm && (
             <div className="border border-yellow-400/30 bg-yellow-400/[0.05] rounded-sm px-3 py-2 text-center">
-              <span className="text-[9px] font-mono text-yellow-400 animate-pulse">⏸ PAUSED — REVIEW CMAKE OUTPUT ABOVE, THEN CLICK PROCEED TO START COMPILATION</span>
+              <span className="text-[9px] font-mono text-yellow-400 animate-pulse">\u23F8 PAUSED — REVIEW CMAKE OUTPUT ABOVE, THEN CLICK PROCEED TO START COMPILATION</span>
             </div>
           )}
 
@@ -541,8 +480,8 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
               <span className="text-stealth-muted/50">Initializing build pipeline...</span>
             ) : (
               logLines.map((entry, i) => {
-                const isCmakeBox = entry.text.includes("═══════") || 
-                  entry.text.startsWith("SET ") || 
+                const isCmakeBox = entry.text.includes("\u2550\u2550\u2550\u2550\u2550") ||
+                  entry.text.startsWith("SET ") ||
                   entry.text.startsWith("cmake ");
                 return (
                   <div key={i} className={`py-0.5 ${
@@ -567,14 +506,12 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
             )}
           </div>
 
-          {/* Error details */}
           {isError && logLines.length > 0 && (
             <p className="text-[8px] font-mono text-red-400/70 break-all">
               Last error: {logLines[logLines.length - 1].text}
             </p>
           )}
 
-          {/* Success details */}
           {isComplete && (
             <p className="text-[8px] font-mono text-nv-green/70">
               Provider binary path has been updated to point to the new build output.

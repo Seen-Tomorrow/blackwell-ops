@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { ProviderConfig, BinaryUpdateInfo } from "../lib/types";
 import { DEFAULT_PROVIDER_ID } from "../lib/types";
-import { useBuildDock, type Env } from "../hooks/useBuildDock";
+import { useBuildDock as useFoundry, type Env } from "../hooks/useBuildDock";
 import { getEnvColors, ENV_ORDER, ENV_META, getStepLabel } from "../lib/foundry_constants";
 
 interface FoundryPageProps {
@@ -21,7 +21,7 @@ function parseCmakeFlags(flags: string): string[] {
 }
 
 export default function FoundryPage({ providers, onProvidersChange }: FoundryPageProps) {
-  const { openBuildModal, buildProgress } = useBuildDock();
+  const { openBuildModal, buildProgress, attachToActiveBuild } = useFoundry();
   const [restoreConfirm, setRestoreConfirm] = useState<{ providerId: string; env: Env } | null>(null);
   const [activeBuild, setActiveBuild] = useState<{ providerId: string; environment: string } | null>(null);
 
@@ -50,17 +50,21 @@ export default function FoundryPage({ providers, onProvidersChange }: FoundryPag
 
   const effectiveBuildProgress = activeBuild || buildProgress;
 
-  // Refresh build info after successful build completes (triggered by StatusBarContext)
+  // Lightweight recovery banner for the exact reported failure mode:
+  // backend still has WaitingForConfirm (or other active phase) but local context lost the dock/modal state.
+  const showRecovery = activeBuild && !buildProgress;
+
+  // Refresh build info after successful build completes (via Tauri event)
   useEffect(() => {
-    const handler = async (e: Event) => {
-      const providerId = (e as CustomEvent).detail as string;
-      try {
-        const updated = await invoke<ProviderConfig[]>("refresh_build_info", { providerId });
-        if (updated.length > 0) onProvidersChange(updated);
-      } catch (err) { console.error("[Foundry] Status check error:", err); }
-    };
-    window.addEventListener("blackops-foundry-complete", handler);
-    return () => window.removeEventListener("blackops-foundry-complete", handler);
+    const unsub = listen<{ build_id: number; phase: string; provider_id: string }>("foundry-progress", async (e) => {
+      if (e.payload.phase === "Complete") {
+        try {
+          const updated = await invoke<ProviderConfig[]>("refresh_build_info", { providerId: e.payload.provider_id });
+          if (updated.length > 0) onProvidersChange(updated);
+        } catch (err) { console.error("[Foundry] Status check error:", err); }
+      }
+    });
+    return () => { unsub.then(u => u()); };
   }, [onProvidersChange]);
 
   // Refresh build info on mount — ref guard prevents double-call in StrictMode + cooldown
@@ -235,6 +239,20 @@ export default function FoundryPage({ providers, onProvidersChange }: FoundryPag
         <span className="flex items-center gap-1"><span className="inline-block w-1.5 h-1.5 rounded-full bg-yellow-400" /> PRE-BUILT (GitHub)</span>
         <span className="flex items-center gap-1"><span className="inline-block w-1.5 h-1.5 rounded-full bg-nv-green" /> CUSTOM BUILD (Foundry)</span>
       </div>
+
+      {/* Recovery banner — appears precisely when backend reports active build (e.g. WaitingForConfirm)
+          but the local FoundryProvider lost track (dock vanished after minimize + visibility cycle). */}
+      {showRecovery && (
+        <div className="mx-4 mt-2 p-2 border border-yellow-400/40 bg-yellow-400/[0.04] rounded-sm flex items-center justify-between">
+          <span className="text-[9px] font-mono text-yellow-400">Active build in progress on backend but local progress dock lost. Click to restore controls.</span>
+          <button
+            onClick={() => attachToActiveBuild()}
+            className="px-2 py-0.5 text-[8px] font-mono border border-yellow-400/60 text-yellow-400 hover:bg-yellow-400/10 transition-colors"
+          >
+            RESTORE BUILD CONTROLS
+          </button>
+        </div>
+      )}
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">

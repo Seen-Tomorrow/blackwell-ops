@@ -48,6 +48,13 @@ export default defineConfig(async () => ({
   server: {
     host,
     port: 1420,
+    watch: {
+      ignored: [
+        '**/src-tauri/target/**',
+        '**/foundry/**',
+        '**/llama.cpp/tools/**',
+      ],
+    },
   },
 
   build: {
