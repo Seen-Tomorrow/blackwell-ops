@@ -1,16 +1,26 @@
 import React, { createContext, useContext, useState, useCallback, useMemo } from "react";
 
+// ── Constants (single source of truth) ───────────────────────────────
+export const NUM_SLOTS = 8;
+export const DOCK_SLOT_BUILD = 0;
+
+// ── Widget types ─────────────────────────────────────────────────────
+export type DockWidgetType = 'build' | 'telemetry' | 'engine-status' | 'generic';
+
 export interface DockWidgetConfig {
   title: string;
   icon?: string;
   inlineContent: React.ReactNode;
   expandedContent?: React.ReactNode;
+  widgetId?: string;
+  type?: DockWidgetType;
 }
 
 interface DockSlotState {
   occupied: boolean;
   config?: DockWidgetConfig;
   expanded: boolean;
+  priority?: number; // lower = higher priority (for ordering)
 }
 
 export interface DockCtx {
@@ -31,7 +41,17 @@ const DockContext = createContext<DockCtx>({
   clearSlot: () => {},
 });
 
-const NUM_SLOTS = 8;
+// ── State update helper (eliminates copy-paste immutable patterns) ───
+function updateSlot(
+  slots: DockSlotState[],
+  slotId: number,
+  updater: (slot: DockSlotState) => DockSlotState
+): DockSlotState[] {
+  if (slotId < 0 || slotId >= NUM_SLOTS) return slots;
+  const next = [...slots];
+  next[slotId] = updater(next[slotId]);
+  return next;
+}
 
 function emptySlots(): DockSlotState[] {
   return Array.from({ length: NUM_SLOTS }, () => ({ occupied: false, expanded: false }));
@@ -42,62 +62,46 @@ export const DockProvider: React.FC<{ children?: React.ReactNode }> = ({ childre
 
   const registerWidget = useCallback((slotId: number, config: DockWidgetConfig) => {
     if (slotId < 0 || slotId >= NUM_SLOTS) return;
-    setSlots(prev => {
-      const next = [...prev];
-      next[slotId] = { occupied: true, config, expanded: false };
-      return next;
-    });
+    setSlots(prev =>
+      updateSlot(prev, slotId, s => {
+        // Allow re-registration for the same widgetId (progress updates)
+        if (s.occupied && s.config?.widgetId !== config.widgetId) return s;
+        return { occupied: true, config, expanded: false };
+      })
+    );
   }, []);
 
   const expandSlot = useCallback((slotId: number) => {
     if (slotId < 0 || slotId >= NUM_SLOTS) return;
-    setSlots(prev => {
-      const next = [...prev];
-      // Auto-collapse all other slots
-      for (let i = 0; i < NUM_SLOTS; i++) {
-        if (i === slotId) {
-          next[i] = { ...next[i], expanded: true };
-        } else {
-          next[i] = { ...next[i], expanded: false };
-        }
-      }
-      return next;
-    });
+    setSlots(prev =>
+      prev.map((s, i) => ({ ...s, expanded: i === slotId }))
+    );
   }, []);
 
   const collapseSlot = useCallback((slotId: number) => {
     if (slotId < 0 || slotId >= NUM_SLOTS) return;
-    setSlots(prev => {
-      const next = [...prev];
-      next[slotId] = { ...next[slotId], expanded: false };
-      return next;
-    });
+    setSlots(prev =>
+      updateSlot(prev, slotId, s => ({ ...s, expanded: false }))
+    );
   }, []);
 
   const toggleSlot = useCallback((slotId: number) => {
     if (slotId < 0 || slotId >= NUM_SLOTS) return;
     setSlots(prev => {
-      const target = prev[slotId];
-      if (!target.occupied) return prev;
-      const next = [...prev];
-      for (let i = 0; i < NUM_SLOTS; i++) {
-        if (i === slotId) {
-          next[i] = { ...next[i], expanded: !next[i].expanded };
-        } else {
-          next[i] = { ...next[i], expanded: false };
-        }
-      }
-      return next;
+      if (!prev[slotId].occupied) return prev;
+      return prev.map((s, i) =>
+        i === slotId
+          ? { ...s, expanded: !s.expanded }
+          : { ...s, expanded: false }
+      );
     });
   }, []);
 
   const clearSlot = useCallback((slotId: number) => {
     if (slotId < 0 || slotId >= NUM_SLOTS) return;
-    setSlots(prev => {
-      const next = [...prev];
-      next[slotId] = { occupied: false, expanded: false };
-      return next;
-    });
+    setSlots(prev =>
+      updateSlot(prev, slotId, () => ({ occupied: false, expanded: false }))
+    );
   }, []);
 
   const ctxValue = useMemo(() => ({
@@ -126,8 +130,18 @@ function DockExpandedPanel() {
   const widget = slots[expandedIdx].config!;
 
   return (
-    <div className="fixed bottom-[32px] left-0 right-0 z-[90] flex justify-center px-6 pointer-events-none">
-      <div className="w-full max-w-[1100px] h-[75vh] bg-stealth-panel border border-stealth-border rounded-sm shadow-2xl flex flex-col overflow-hidden pointer-events-auto animate-slide-up">
+    <div
+      className="fixed left-0 right-0 z-[90] flex justify-center px-6 pointer-events-none"
+      style={{
+        bottom: 'var(--dock-panel-bottom, 32px)',
+      }}
+    >
+      <div
+        className="w-full max-w-[1100px] bg-stealth-panel border border-stealth-border rounded-sm shadow-2xl flex flex-col overflow-hidden pointer-events-auto animate-slide-up"
+        style={{
+          height: 'var(--dock-panel-height, 75vh)',
+        }}
+      >
         {/* Header bar */}
         <div className="flex items-center justify-between px-4 py-2 border-b border-stealth-border flex-shrink-0">
           <div className="flex items-center gap-2">

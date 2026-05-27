@@ -12,6 +12,10 @@
   --color-nv-dim: #4d7a00;
   --color-telemetry-amber: #FFB800;
   --color-telemetry-cyan: #00e5ff;
+
+  /* Dock panel dimensions (single source of truth) */
+  --dock-panel-bottom: 32px;
+  --dock-panel-height: 75vh;
 }
 
 * {

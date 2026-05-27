@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { ProviderConfig } from "../lib/types";
 import { useTelemetry } from "../context/TelemetryContext";
+import { getStepLabel, getEnvColors } from "../lib/foundry_constants";
 
 interface FoundryModalProps {
   provider: ProviderConfig;
@@ -44,11 +45,7 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
   const cpuPhysical = cpu?.cores ?? 0;
 
   const envColors = (base: string): string => {
-    switch (environment) {
-      case "vanguard": return base === "border" ? "border-cyan-400/60 text-cyan-400 bg-cyan-400/10 hover:bg-cyan-400/25" : base === "text" ? "text-cyan-400" : "bg-cyan-400/10 border-cyan-400/60";
-      case "fresh": return base === "border" ? "border-amber-400/60 text-amber-400 bg-amber-400/10 hover:bg-amber-400/25" : base === "text" ? "text-amber-400" : "bg-amber-400/10 border-amber-400/60";
-      default: return base === "border" ? "border-nv-green/60 text-nv-green bg-nv-green/10 hover:bg-nv-green/25" : base === "text" ? "text-nv-green" : "bg-nv-green/10 border-nv-green/60";
-    }
+    return getEnvColors(environment)[base as keyof ReturnType<typeof getEnvColors>] || "";
   };
 
   useEffect(() => {
@@ -116,7 +113,7 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
             default:
               if (phaseRef.current === "confirm") setPhase("building");
           }
-        } catch {}
+        } catch (err) { console.error("[Foundry] Progress event error:", err); }
       });
 
       // Listen for toast events
@@ -127,7 +124,7 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
           if (!payload || !payload.text) return;
           
           showToast(payload.type, payload.text);
-        } catch {}
+        } catch (err) { console.error("[Foundry] Progress event error:", err); }
       });
 
       cleanupRef.current = () => { unsubProgress(); unsubToast(); };
@@ -147,10 +144,29 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
     }
   }, [logLines]);
 
-  // Listen for reset signal from StatusBarContext on Complete/Failed — clears logs and resets phase
+  // Reset internal state when provider or environment changes (reopening modal)
+  const prevProviderIdRef = useRef(provider.id);
+  const prevEnvironmentRef = useRef(environment);
+  useEffect(() => {
+    if (prevProviderIdRef.current === provider.id && prevEnvironmentRef.current === environment) return;
+    prevProviderIdRef.current = provider.id;
+    prevEnvironmentRef.current = environment;
+    setPhase("confirm");
+    setLogLines([]);
+    setCurrentStep("");
+    setWaitingForConfirm(false);
+    setBuildId(null);
+    buildIdRef.current = null;
+    setPrUrl("");
+    setMaxCores(null);
+    setBackupRetryCount(0);
+    setShowEngineWarning(false);
+    setEngineListText("");
+  }, [provider.id, environment]);
+
+  // Listen for reset signal on Complete/Failed — clears logs and resets phase
   useEffect(() => {
     const handler = () => {
-      console.log("[Foundry] ← RESET received: clearing log history, resetting to confirm phase");
       setPhase("confirm");
       setLogLines([]);
       setCurrentStep("");
@@ -167,30 +183,13 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
     return () => window.removeEventListener("blackops-foundry-reset", handler);
   }, []);
 
-  const getStepLabel = (step: string): string => {
-    switch (step) {
-      case "Initializing": return "INIT";
-      case "GitClone": return "CLONE";
-        case "GitPull": return "PULL";
-        case "PrCherryPick": return "PR-MERGE";
-        case "CMakeConfigure": return "CONFIGURE";
-      case "Building": return "BUILD";
-      case "Validating": return "VALIDATE";
-      case "Complete": return "DONE";
-      case "Failed": return "FAIL";
-        case "WaitingForConfirm": return "WAIT-CONFIRM";
-        case "BackupLocked": return "LOCKED";
-        default: return step;
-    }
-  };
-
   const showToast = (type: string, text: string) => {
     try {
       const toastFn = (window as any).__blackopsToasts?.addToast;
       if (toastFn) {
         toastFn(text, type === "error" ? "error" : "success", 5000);
       }
-    } catch {}
+    } catch (err) { console.error("[Foundry] Reset handler error:", err); }
   };
 
   const handleConfirmBuild = async () => {
@@ -497,9 +496,9 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm" style={{ display: visible ? 'flex' : 'none' }}>
-      <div className={`w-[75vw] max-w-[960px] h-[75vh] border rounded-sm shadow-2xl flex flex-col ${
+      <div className={`w-[75vw] max-w-[960px] border rounded-sm shadow-2xl flex flex-col ${
         isComplete ? "border-nv-green/40" : isError ? "border-red-400/40" : "border-yellow-400/40"
-      }`}>
+      }`} style={{ height: 'var(--dock-panel-height, 75vh)' }}>
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-stealth-border">
           <div className="flex items-center gap-2">

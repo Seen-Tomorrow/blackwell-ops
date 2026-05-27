@@ -27,6 +27,7 @@ pub fn find_provider_binary(cfg: &AppConfig, provider_id: &str, binary_profile: 
     if let Some(first) = cfg.providers.first() {
         crate::config::resolve_path(&first.binary_path)
     } else {
+        log::warn!("[find_provider_binary] No providers configured");
         PathBuf::new()
     }
 }

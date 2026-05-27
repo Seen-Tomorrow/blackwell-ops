@@ -27,9 +27,9 @@ pub fn ctx_to_int_tokens(ctx: &str) -> usize {
 }
 
 fn resolve_auto_value(key: &str, model_path: &str) -> Option<String> {
+    let cache = crate::model_cache::load_cache();
     match key {
         "yarn_orig_ctx" => {
-            let cache = crate::model_cache::load_cache();
             if let Some(entry) = cache.get(model_path) {
                 if let Some(gguf) = &entry.gguf_meta {
                     if gguf.n_ctx_train > 0 {
@@ -40,7 +40,6 @@ fn resolve_auto_value(key: &str, model_path: &str) -> Option<String> {
             None
         }
         "rope_freq_base" => {
-            let cache = crate::model_cache::load_cache();
             if let Some(entry) = cache.get(model_path) {
                 if let Some(gguf) = &entry.gguf_meta {
                     if gguf.rope_freq_base > 0.0 {
@@ -75,7 +74,7 @@ pub struct ProviderDefaultParam {
     #[serde(default, rename = "flag_pair")]
     pub flag_pair: Vec<String>,
     /// CLI parameter type (arg_select, mapper, switch_onoff, etc.).
-    #[serde(default = "default_ptype")]
+    #[serde(default = "crate::types::default_ptype")]
     pub ptype: String,
     /// CLI values array — for "mapper" type, same-index into values_to_cli gives the CLI value.
     #[serde(default)]
@@ -105,10 +104,6 @@ pub struct ProviderDefaultParam {
     /// Hidden by default — param is excluded from catalog UI and launch command until user toggles it on.
     #[serde(default)]
     pub hidden_default: bool,
-}
-
-fn default_ptype() -> String {
-    "arg_select".to_string()
 }
 
 // ── Provider Default Config Loading (disk-based) ────────────────────
@@ -168,9 +163,9 @@ pub fn load_provider_defaults(provider_id: &str) -> Option<ProviderTemplate> {
 }
 
 impl ProviderTemplate {
-    pub fn load(provider_id: &str) -> Self {
+    pub fn load(provider_id: &str) -> Result<Self, String> {
         load_provider_defaults(provider_id)
-            .unwrap_or_else(|| panic!("Provider defaults not found for '{}'. Check runtime/{}/config/{}-default-config.json exists.", provider_id, provider_id, provider_id))
+            .ok_or_else(|| format!("Provider defaults not found for '{}'. Check runtime/{}/config/{}-default-config.json exists.", provider_id, provider_id, provider_id))
     }
 
     pub fn template_type_for_id(id: &str) -> String {

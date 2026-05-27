@@ -4,6 +4,12 @@
 
 use crate::engine::AppContext;
 
+/// Persist a single provider's config to disk.
+fn persist_single_provider(provider: &crate::types::ProviderConfig) -> Result<(), String> {
+    let meta = crate::config::ProviderMeta::from_config(provider);
+    crate::config::save_provider_user_config(&meta)
+}
+
 #[tauri::command]
 pub async fn list_providers(app: tauri::State<'_, AppContext>) -> Result<Vec<crate::types::ProviderConfig>, String> {
     let providers = {
@@ -27,12 +33,7 @@ pub async fn save_provider(provider: crate::types::ProviderConfig, app: tauri::S
 
     let mut save_provider = provider.clone();
     if save_provider.template_type.is_empty() {
-        let lower_id = save_provider.id.to_lowercase();
-        if lower_id.contains("ik") {
-            save_provider.template_type = "ik-llama".to_string();
-        } else {
-            save_provider.template_type = "ggml-llama".to_string();
-        }
+        save_provider.template_type = crate::templates::ProviderTemplate::template_type_for_id(&save_provider.id);
     }
 
     for ep in &mut save_provider.user_edited_template_params {
@@ -42,7 +43,7 @@ pub async fn save_provider(provider: crate::types::ProviderConfig, app: tauri::S
             .collect();
         for uv in ep.user_added_values.clone().iter() {
             let uv_str = serde_json::to_string(uv).unwrap_or_default();
-            if !existing_keys.contains(&uv_str) {
+            if !existing_keys.contains(&uv_str) && !uv_str.is_empty() {
                 ep.values.push(uv.clone());
             }
         }
@@ -93,9 +94,8 @@ pub async fn save_provider(provider: crate::types::ProviderConfig, app: tauri::S
     let updated = cfg.providers.iter().find(|p| p.id == provider_id).cloned();
     drop(cfg);
 
-    if let Some(provider) = updated {
-        let meta = crate::config::ProviderMeta::from_config(&provider);
-        crate::config::save_provider_user_config(&meta)?;
+    if let Some(provider) = &updated {
+        persist_single_provider(provider)?;
     }
 
     Ok(())
@@ -153,9 +153,8 @@ pub async fn toggle_group_hidden(provider_id: String, group_id: String, app: tau
     let updated_provider = cfg.providers.iter().find(|p| p.id == provider_id).cloned();
     drop(cfg);
 
-    if let Some(provider) = updated_provider {
-        let meta = crate::config::ProviderMeta::from_config(&provider);
-        crate::config::save_provider_user_config(&meta)?;
+    if let Some(provider) = &updated_provider {
+        persist_single_provider(provider)?;
     }
 
     Ok(new_hidden)

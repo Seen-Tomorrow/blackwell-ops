@@ -3,20 +3,13 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { ProviderConfig, BinaryUpdateInfo } from "../lib/types";
 import { DEFAULT_PROVIDER_ID } from "../lib/types";
-import { useStatus } from "../context/StatusBarContext";
-
-type Env = "vanguard" | "stable" | "fresh";
+import { useBuildDock, type Env } from "../hooks/useBuildDock";
+import { getEnvColors, ENV_ORDER, ENV_META, getStepLabel } from "../lib/foundry_constants";
 
 interface FoundryPageProps {
   providers: ProviderConfig[];
   onProvidersChange: (providers: ProviderConfig[]) => void;
 }
-
-const ENV_META: Record<Env, { label: string; cuda: string; vs: string; color: string }> = {
-  vanguard: { label: "VANGUARD", cuda: "13.2", vs: "VS Build Tools 2026 (v18)", color: "cyan" },
-  fresh:    { label: "FRESH",    cuda: "13.1", vs: "VS Build Tools 2022",        color: "amber" },
-  stable:   { label: "STABLE",   cuda: "12.8", vs: "VS Build Tools 2022",        color: "nv-green" },
-};
 
 type UpdateStatus = "idle" | "checking" | "downloading" | "extracting" | "complete" | "error";
 
@@ -28,7 +21,7 @@ function parseCmakeFlags(flags: string): string[] {
 }
 
 export default function FoundryPage({ providers, onProvidersChange }: FoundryPageProps) {
-  const { openBuildModal, buildProgress } = useStatus();
+  const { openBuildModal, buildProgress } = useBuildDock();
   const [restoreConfirm, setRestoreConfirm] = useState<{ providerId: string; env: Env } | null>(null);
   const [activeBuild, setActiveBuild] = useState<{ providerId: string; environment: string } | null>(null);
 
@@ -43,7 +36,7 @@ export default function FoundryPage({ providers, onProvidersChange }: FoundryPag
       try {
         const status = await invoke<any>("foundry_status");
         setActiveBuild(status ? { providerId: status.provider_id, environment: status.environment } : null);
-      } catch {}
+      } catch (err) { console.error("[Foundry] Status check error:", err); }
     };
 
     checkStatus();
@@ -64,17 +57,27 @@ export default function FoundryPage({ providers, onProvidersChange }: FoundryPag
       try {
         const updated = await invoke<ProviderConfig[]>("refresh_build_info", { providerId });
         if (updated.length > 0) onProvidersChange(updated);
-      } catch {}
+      } catch (err) { console.error("[Foundry] Status check error:", err); }
     };
     window.addEventListener("blackops-foundry-complete", handler);
     return () => window.removeEventListener("blackops-foundry-complete", handler);
   }, [onProvidersChange]);
 
-  // Refresh build info on mount — ref guard prevents double-call in StrictMode
+  // Refresh build info on mount — ref guard prevents double-call in StrictMode + cooldown
   const hasRefreshed = useRef(false);
   useEffect(() => {
     if (hasRefreshed.current) return;
     hasRefreshed.current = true;
+
+    const lastRefreshKey = `foundry_last_refresh_${providers.map(p => p.id).join(",")}`;
+    const lastRefresh = parseInt(localStorage.getItem(lastRefreshKey) || "0", 10);
+    const now = Date.now();
+    if (now - lastRefresh < 5000) {
+      // Skip refresh if done within last 5 seconds
+      hasRefreshed.current = false; // Allow re-check on next mount
+      return;
+    }
+    localStorage.setItem(lastRefreshKey, String(now));
 
     const foundryProviders = providers.filter(p => p.git_url && p.branch);
     let cancelled = false;
@@ -87,8 +90,6 @@ export default function FoundryPage({ providers, onProvidersChange }: FoundryPag
       }
     });
 
-    // Check binary updates for all foundry-capable providers
-    // First try to use cached startup check results (avoids duplicate API calls)
     let cachedUpdates: Record<string, BinaryUpdateInfo[]> | null = null;
     try {
       const raw = localStorage.getItem("blackwell_startup_updates");
@@ -102,7 +103,7 @@ export default function FoundryPage({ providers, onProvidersChange }: FoundryPag
           });
         }
       }
-    } catch {}
+    } catch (err) { console.error("[Foundry] Build info refresh error:", err); }
 
     foundryProviders.forEach(async (p) => {
       try {
@@ -162,7 +163,7 @@ export default function FoundryPage({ providers, onProvidersChange }: FoundryPag
       // Refresh build info after update completes
       invoke<ProviderConfig[]>("refresh_build_info", { providerId: p.provider_id })
         .then(updated => { if (updated.length > 0) onProvidersChange(updated); })
-        .catch(() => {});
+        .catch((err) => console.error("[Foundry] Binary update event error:", err));
     }).then(u => { unsubComplete = u; });
 
     return () => {
@@ -182,7 +183,7 @@ export default function FoundryPage({ providers, onProvidersChange }: FoundryPag
       });
       await invoke<ProviderConfig[]>("refresh_build_info", { providerId: restoreConfirm.providerId })
         .then(updated => { if (updated.length > 0) onProvidersChange(updated); })
-        .catch(() => {});
+        .catch((err) => console.error("[Foundry] Binary update event error:", err));
     } catch (err) {
       console.error("[Foundry] Restore failed:", err);
     } finally {
@@ -211,7 +212,7 @@ export default function FoundryPage({ providers, onProvidersChange }: FoundryPag
       // Refresh to pick up reverted paths
       invoke<ProviderConfig[]>("refresh_build_info", { providerId: providerId })
         .then(updated => { if (updated.length > 0) onProvidersChange(updated); })
-        .catch(() => {});
+        .catch((err) => console.error("[Foundry] Binary update event error:", err));
     } catch (err) {
       console.error("[Foundry] Revert failed:", err);
     }
@@ -297,7 +298,7 @@ function FoundryProviderCard({ provider, onBuild, onRestoreConfirm, buildProgres
   const latestEnv = (() => {
     let latestDate = "";
     let latestKey: Env | null = null;
-    for (const env of ["vanguard", "fresh", "stable"] as Env[]) {
+    for (const env of ENV_ORDER) {
       const info = provider.buildInfoPerEnv?.[env];
       if (info && info.buildDate > latestDate) {
         latestDate = info.buildDate;
@@ -353,7 +354,7 @@ function FoundryProviderCard({ provider, onBuild, onRestoreConfirm, buildProgres
 
       {/* Build profiles — vertical stack */}
       <div className="p-3 space-y-2">
-        {(["vanguard", "fresh", "stable"] as Env[]).map(env => {
+        {ENV_ORDER.map(env => {
           const meta = ENV_META[env];
           const hasBackup = provider.binaryPathPerEnv?.[env] || provider.buildInfoPerEnv?.[env];
           return (
@@ -382,7 +383,7 @@ function FoundryProviderCard({ provider, onBuild, onRestoreConfirm, buildProgres
 
 interface BuildProfileRowProps {
   env: Env;
-  meta: { label: string; cuda: string; vs: string; color: string };
+  meta: { label: string; cuda: string; vs: string; color: Env };
   provider: ProviderConfig;
   isLatestBuild: boolean;
   hasBackup: boolean;
@@ -400,22 +401,14 @@ function getPrNumberForEnv(provider: ProviderConfig, env: string): string | unde
   return provider.lastPrPerEnv?.[env];
 }
 
-/** Check if a binary path came from a download (under updates/ dir) vs a Foundry build. */
 function isDownloadedBinary(path: string): boolean {
-  // Both dev and release paths contain "blackwell-ops" + "updates" in the path
   const normalized = path.toLowerCase();
   return normalized.includes("updates\\") || normalized.includes("updates/");
 }
 
 function BuildProfileRow({ env, meta, provider, isLatestBuild, hasBackup, isBuilding, onBuild, onRestoreConfirm, binaryUpdate, updateStatus, updateError, onUpdateBinary, onRevert }: BuildProfileRowProps) {
   const buildInfo = provider.buildInfoPerEnv?.[env];
-  const colorMap: Record<string, { border: string; bg: string; text: string; badgeBg: string; badgeBorder: string }> = {
-    cyan:     { border: "border-cyan-400/20",      bg: "bg-cyan-400/[0.03]",        text: "text-cyan-400",       badgeBg: "bg-cyan-400/10",         badgeBorder: "border-cyan-400/30" },
-    amber:    { border: "border-amber-400/20",      bg: "bg-amber-400/[0.03]",       text: "text-amber-400",      badgeBg: "bg-amber-400/10",        badgeBorder: "border-amber-400/30" },
-    "nv-green": { border: "border-[#4ade80]/20",     bg: "bg-[#4ade80]/[0.03]",      text: "text-[#4ade80]",        badgeBg: "bg-[#4ade80]/10",        badgeBorder: "border-[#4ade80]/30" },
-  };
-
-  const c = colorMap[meta.color] || colorMap.cyan;
+  const c = getEnvColors(meta.color);
   const binaryPath = provider.binaryPathPerEnv?.[env];
   const isDownloaded = !!binaryPath && isDownloadedBinary(binaryPath);
 

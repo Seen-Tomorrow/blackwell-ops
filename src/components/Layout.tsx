@@ -2,22 +2,12 @@ import { motion } from "framer-motion";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import type { Tab } from "../App";
 import type { ProviderConfig, AppUpdateInfo } from "../lib/types";
-import { useStatus, type Env } from "../context/StatusBarContext";
+import { useStatus } from "../context/StatusBarContext";
 import { useDock } from "../context/DockContext";
+import { useBuildDock, type Env } from "../hooks/useBuildDock";
 import FoundryModal from "./FoundryModal";
 import { KEYS } from "../lib/storage";
-
-function isMobileDevice(): boolean {
-  try {
-    if (typeof window === "undefined") return false;
-    const width = window.innerWidth;
-    if (width <= 768) return true;
-    const ua = navigator.userAgent.toLowerCase();
-    return /android|iphone|ipad|ipod|mobi/i.test(ua);
-  } catch {
-    return false;
-  }
-}
+import { isMobileDevice } from "../lib/utils";
 
 const MIN_ZOOM = 0.7;
 const MAX_ZOOM = 1.5;
@@ -88,8 +78,17 @@ const tabs: { id: Tab; label: string; icon: string; hidden?: boolean }[] = [
 export default function Layout({ activeTab, onTabChange, children, providers = [], appUpdate, hasBinaryUpdates, onInstallAppUpdate }: LayoutProps) {
   const [adminLockState, setAdminLockState] = useState(loadAdminLock);
   const [zoom, setZoom] = useState(loadZoom);
-  const { totalParams, hiddenCount, onShowAll, flashMessage, openBuildModal, minimizeBuildModal, closeBuildModal, buildProgress, foundryModal, foundryModalVisible } = useStatus();
+  const { totalParams, hiddenCount, onShowAll, flashMessage } = useStatus();
+  const { buildProgress, foundryModal, foundryModalVisible, openBuildModal, minimizeBuildModal, closeBuildModal } = useBuildDock();
   const { slots, toggleSlot } = useDock();
+  const resolvedProvider = useMemo(() => {
+    if (!foundryModal) return providers?.[0] || {} as ProviderConfig;
+    const prov = providers?.find(p => p.id === foundryModal.providerId);
+    return prov || providers?.[0] || {} as ProviderConfig;
+  }, [foundryModal, providers]);
+
+  const resolvedEnvironment = foundryModal?.environment || "vanguard";
+
   // Dock slot click: if modal exists and is visible → minimize; if exists but hidden → restore; if no modal but build running → open fresh
   const [showTooltip, setShowTooltip] = useState(false);
   const [isMobile, setIsMobile] = useState(isMobileDevice);
@@ -253,12 +252,11 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
               key={i}
               onClick={() => {
                 if (!slot.occupied) return;
-                // Slot 0 = build progress — toggle modal visibility (minimize/restore)
-                if (i === 0 && foundryModal) {
-                  if (foundryModalVisible) minimizeBuildModal(); // Visible → minimize to dock
-                  else openBuildModal(foundryModal.providerId, foundryModal.environment); // Hidden → restore
-                } else if (i === 0 && buildProgress) {
-                  openBuildModal(buildProgress.providerId, buildProgress.environment.toLowerCase() as Env);
+                const widgetType = slot.config?.type || 'generic';
+                if (widgetType === 'build') {
+                  if (foundryModal && foundryModalVisible) minimizeBuildModal();
+                  else if (foundryModal) openBuildModal(foundryModal.providerId, foundryModal.environment);
+                  else if (buildProgress) openBuildModal(buildProgress.providerId, buildProgress.environment.toLowerCase() as Env);
                 } else {
                   toggleSlot(i);
                 }
@@ -315,12 +313,8 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
 
       {/* Foundry Build Modal — always mounted, CSS visibility controlled by foundryModalVisible */}
       <FoundryModal
-        provider={(() => {
-          if (!foundryModal) return providers?.[0] || {} as ProviderConfig;
-          const prov = providers?.find(p => p.id === foundryModal.providerId);
-          return prov || providers?.[0] || {} as ProviderConfig;
-        })()}
-        environment={foundryModal?.environment || "vanguard"}
+        provider={resolvedProvider}
+        environment={resolvedEnvironment}
         onClose={closeBuildModal}
         visible={foundryModalVisible}
         onMinimize={minimizeBuildModal}

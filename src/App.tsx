@@ -16,21 +16,11 @@ import { StatusProvider } from "./context/StatusBarContext";
 import { DockProvider } from "./context/DockContext";
 import { TelemetryProvider } from "./context/TelemetryContext";
 import { ToastProvider } from "./components/Toast";
+import { BuildDockProvider } from "./hooks/useBuildDock";
 import { KEYS, STORAGE_PREFIX } from "./lib/storage";
 import type { ModelEntry, StackEntry, LogBatch, LogEntry, SystemEvent, ProviderConfig, FusionUpdate, AppUpdateInfo } from "./lib/types";
 
 export type Tab = "catalog" | "modelhub" | "stack" | "reactor11" | "telemetry" | "logs" | "config" | "sentinel";
-
-function isMobileDevice(): boolean {
-  try {
-    const width = window.innerWidth;
-    if (width <= 768) return true;
-    const ua = navigator.userAgent.toLowerCase();
-    return /android|iphone|ipad|ipod|mobi/i.test(ua);
-  } catch {
-    return false;
-  }
-}
 
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>("catalog");
@@ -462,8 +452,9 @@ function App() {
   return (
     <ToastProvider>
       <DockProvider>
-        <TelemetryProvider lowPower={lowPower}>
-          <StatusProvider value={{ totalParams, hiddenCount, onShowAll: handleShowAll }}>
+        <BuildDockProvider>
+          <TelemetryProvider lowPower={lowPower}>
+            <StatusProvider value={{ totalParams, hiddenCount, onShowAll: handleShowAll }}>
             <Layout activeTab={activeTab} onTabChange={(tab) => { setActiveTab(tab); if (tab === "config") setHasBinaryUpdates(false); }} providers={providers} appUpdate={appUpdate} hasBinaryUpdates={hasBinaryUpdates} onInstallAppUpdate={handleInstallAppUpdate}>
         {activeTab === "catalog" && (
               <ModelCatalog models={models} onLaunch={handleLaunchEngine} error={catalogError} onReload={reloadModels} providers={providers} committedVramMib={committedVramMib} isAdminUnlocked={isAdminUnlocked} scanningPath={scanningPath} setScanningPath={setScanningPath} batchScanState={batchScanState} setBatchScanState={setBatchScanState} stack={stack} />
@@ -575,7 +566,8 @@ function App() {
             </Layout>
           </StatusProvider>
         </TelemetryProvider>
-      </DockProvider>
+      </BuildDockProvider>
+    </DockProvider>
     </ToastProvider>
   );
 }

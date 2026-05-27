@@ -71,7 +71,8 @@ pub async fn launch_engine(
     let binary_path = engine_utils::find_provider_binary(&cfg, &backend_type, &config.binary_profile);
 
     let template = crate::templates::ProviderTemplate::load_by_id(&backend_type)
-        .unwrap_or_else(|| crate::templates::ProviderTemplate::load(crate::config::DEFAULT_PROVIDER_ID));
+        .or_else(|| crate::templates::ProviderTemplate::load(crate::config::DEFAULT_PROVIDER_ID).ok())
+        .ok_or(format!("No provider template available for '{}'", backend_type))?;
 
     let provider_opt2 = cfg.providers.iter().find(|p| p.id == backend_type);
 
@@ -100,43 +101,30 @@ pub async fn launch_engine(
     // SANITY-BOX — route GPU mask info to sanity box
    app.log_hub.emit_sanity_log("warn", &gpu_mask_msg);
 
-    log::debug!("[LAUNCH_DIAG] step1: validate binary");
     crate::config::validate_provider_binary(binary_path.to_str().unwrap_or(""))?;
-    log::debug!("[LAUNCH_DIAG] step2: validate model");
     crate::config::validate_model_path(&config.model_path)?;
 
-    log::debug!("[LAUNCH_DIAG] step3: waiting for stack lock...");
     let (slot_idx, slot_port) = {
         let stack = match tokio::time::timeout(Duration::from_secs(5), app.stack.lock()).await {
             Ok(guard) => guard,
             Err(_) => {
-                log::error!("[LAUNCH_DIAG] step3 FAIL: stack lock timeout — possible deadlock");
+                log::error!("[launch_engine] stack lock timeout — possible deadlock");
                 return Err("Stack lock timeout — possible deadlock. Another task may be holding the lock.".to_string());
             }
         };
-        log::debug!("[LAUNCH_DIAG] step4: stack lock acquired, finding idle slot...");
         let idx = stack.find_idle_slot().ok_or("All engine slots are occupied")?;
-        log::debug!("[LAUNCH_DIAG] step5: idle slot found: idx={} config.port={}", idx, config.port);
         let port = stack.get_slot(idx).map(|s| s.port).unwrap_or(9090 + idx as u16);
         (idx, port)
     };
 
     config.port = slot_port;
-    log::debug!("[LAUNCH_DIAG] step6: killing existing process on port {}", slot_port);
 
     let kill_result = engine_utils::kill_process_by_port(slot_port).await;
-    log::debug!("[LAUNCH_DIAG] step6b: taskkill returned: {:?}", kill_result.is_ok());
-
-    log::debug!("[LAUNCH_DIAG] step7: sleeping 300ms for port release");
     tokio::time::sleep(Duration::from_millis(300)).await;
-    log::debug!("[LAUNCH_DIAG] step7b: woke from sleep, continuing");
 
     let provider_display_name = backend_type.clone();
-    log::debug!("[LAUNCH_DIAG] step8a: provider_display_name = {}", provider_display_name);
 
-    log::debug!("[LAUNCH_DIAG] step8: building command args");
     let cmd_args = template.build_command(&config, &gpu_mask, &user_params);
-    log::debug!("[LAUNCH_DIAG] step8c: cmd_args built, len={}", cmd_args.len());
     let launch_cmd = format!("{} {}", binary_path.display(), cmd_args.join(" "));
     eprintln!("\n========== [LAUNCH_CMD] slot={} ==========", slot_idx);
     eprintln!("{}", launch_cmd);
@@ -407,7 +395,7 @@ pub fn get_template(provider_id: Option<String>) -> Result<crate::templates::Pro
     }
 
     // Fallback: load default template (ggml-master)
-    Ok(crate::templates::ProviderTemplate::load(crate::config::DEFAULT_PROVIDER_ID))
+    crate::templates::ProviderTemplate::load(crate::config::DEFAULT_PROVIDER_ID)
 }
 
 #[tauri::command]
@@ -440,7 +428,8 @@ pub async fn preview_launch_command(
 
     let binary_path = engine_utils::find_provider_binary(&cfg, &backend_type, &config.binary_profile);
     let template = crate::templates::ProviderTemplate::load_by_id(&backend_type)
-        .unwrap_or_else(|| crate::templates::ProviderTemplate::load(crate::config::DEFAULT_PROVIDER_ID));
+        .or_else(|| crate::templates::ProviderTemplate::load(crate::config::DEFAULT_PROVIDER_ID).ok())
+        .ok_or(format!("No provider template available for '{}'", backend_type))?;
 
     let provider_opt_prev = cfg.providers.iter().find(|p| p.id == backend_type);
     let user_params: Vec<crate::types::UserEditedTemplateParam> = provider_opt_prev

@@ -21,18 +21,13 @@ pub fn app_root_dir() -> std::path::PathBuf {
 }
 
 /// User data directory: config/ — same in DEV and REL.
-fn data_dir() -> std::path::PathBuf {
-    app_root_dir().join("config")
-}
-
-/// Config directory: same as data_dir() — contains app_config.json and per-provider user configs.
 fn config_dir() -> std::path::PathBuf {
-    data_dir()
+    app_root_dir().join("config")
 }
 
 /// Cache directory: inside data dir.
 pub fn cache_dir() -> std::path::PathBuf {
-    data_dir().join("cache")
+    config_dir().join("cache")
 }
 
 /// Foundry build directory for a given provider — SHARED between DEV and REL.
@@ -75,7 +70,7 @@ pub fn to_relative_path(abs: &PathBuf) -> String {
 /// Ensure the portable directory structure exists. Copy bundled binaries from resources on first run (REL only).
 pub fn ensure_portable_structure(app_handle: &tauri::AppHandle) {
     let root = app_root_dir();
-    let data = data_dir();
+    let data = config_dir();
 
     // Create directories
     let _ = std::fs::create_dir_all(&data);
@@ -164,7 +159,7 @@ pub struct ProviderMeta {
     pub id: String,
     pub display_name: String,
     pub binary_path: String,
-    #[serde(default = "default_true")]
+    #[serde(default = "crate::types::default_true")]
     pub enabled: bool,
     #[serde(default)]
     pub git_url: String,
@@ -207,7 +202,7 @@ impl ProviderMeta {
             git_url: p.git_url.clone(),
             branch: p.branch.clone(),
             build_profile: p.build_profile.clone(),
-            user_edited_template_params: if p.user_edited_template_params.is_empty() { Vec::new() } else { p.user_edited_template_params.clone() },
+            user_edited_template_params: p.user_edited_template_params.clone(),
             group_order: p.group_order.clone(),
             template_type: p.template_type.clone(),
             build_info_per_env: p.build_info_per_env.clone(),
@@ -219,7 +214,6 @@ impl ProviderMeta {
     }
 }
 
-fn default_true() -> bool { true }
 fn default_providers() -> Vec<ProviderConfig> { Vec::new() }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -339,7 +333,7 @@ pub fn reset_provider_to_defaults(provider_id: &str) -> Result<(), String> {
 /// Persist all providers as individual per-provider config files.
 pub fn persist_user_providers_meta(providers: &[ProviderConfig]) -> Result<(), String> {
     for p in providers {
-        if p.id.contains("custom") {
+        if p.template_type.is_empty() {
             continue;
         }
         let meta = ProviderMeta::from_config(p);
@@ -795,7 +789,7 @@ pub fn apply_template_update(
 pub async fn reorder_provider(provider_id: String, direction: i32, app: tauri::State<'_, crate::engine::AppContext>) -> Result<(), String> {
     let mut cfg = app.config.lock().map_err(|e| e.to_string())?;
     let idx = cfg.providers.iter().position(|p| p.id == provider_id).ok_or("Provider not found")?;
-    let new_idx = (idx as i32 + direction) as usize;
+    let new_idx = (idx as i32).saturating_add(direction) as usize;
     if new_idx >= cfg.providers.len() { return Ok(()); }
     cfg.providers.swap(idx, new_idx);
     for (i, p) in cfg.providers.iter_mut().enumerate() { p.display_order = i as i32; }

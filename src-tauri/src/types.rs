@@ -290,8 +290,8 @@ pub struct ProviderConfig {
     pub display_order: i32,
 }
 
-fn default_true() -> bool { true }
-fn default_ptype() -> String { "arg_select".to_string() }
+pub fn default_true() -> bool { true }
+pub fn default_ptype() -> String { "arg_select".to_string() }
 
 /// Build metadata extracted from a compiled binary via --version flag + file mtime.
 #[derive(Debug, Clone, Serialize, Deserialize)]
