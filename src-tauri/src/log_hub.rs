@@ -3,6 +3,44 @@ use tokio::sync::mpsc;
 use tauri::AppHandle;
 use tauri::Emitter;
 
+/// Categories for the Universal Output Receiver (UOR).
+/// These are static tabs in the power-user output console.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
+pub enum OutputCategory {
+    /// Foundry / custom engine builds (cmake + compilation)
+    Builds,
+    /// Engine start/stop, full command lines executed
+    Engines,
+    /// Fit scanner output
+    FitScanner,
+    /// Library / model scanning output
+    LibraryScan,
+    /// General / catch-all debug and miscellaneous output
+    General,
+}
+
+impl OutputCategory {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            OutputCategory::Builds => "builds",
+            OutputCategory::Engines => "engines",
+            OutputCategory::FitScanner => "fit-scanner",
+            OutputCategory::LibraryScan => "library-scan",
+            OutputCategory::General => "general",
+        }
+    }
+
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            OutputCategory::Builds => "Builds",
+            OutputCategory::Engines => "Engines",
+            OutputCategory::FitScanner => "Fit Scanner",
+            OutputCategory::LibraryScan => "Library Scan",
+            OutputCategory::General => "General",
+        }
+    }
+}
+
 /// A single log line emitted to the frontend.
 #[derive(Debug, Clone, Serialize)]
 pub struct LogEntry {

@@ -1,10 +1,30 @@
 // ── Env Type ─────────────────────────────────────────────────────────
 export type Env = "vanguard" | "stable" | "fresh";
 
+// ── Build Phases (single source of truth) ────────────────────────────
+// These match the phases emitted by the Rust backend (reactor_foundry.rs)
+export type BuildPhase =
+  | "Initializing"
+  | "GitClone"
+  | "GitPull"
+  | "PrCherryPick"
+  | "Configuring"
+  | "WaitingForConfirm"
+  | "Building"
+  | "Validating"
+  | "Complete"
+  | "Failed"
+  | "BackupLocked";
+
+export const ALL_BUILD_PHASES: readonly BuildPhase[] = [
+  "Initializing", "GitClone", "GitPull", "PrCherryPick", "Configuring",
+  "WaitingForConfirm", "Building", "Validating", "Complete", "Failed", "BackupLocked",
+] as const;
+
 // ── Build Step Labels ────────────────────────────────────────────────
 // Single source of truth for backend step name → short label mapping.
 // Used by StatusBarContext.tsx (dock slot) and FoundryModal.tsx (modal display).
-export const STEP_LABELS: Record<string, string> = {
+export const STEP_LABELS: Record<BuildPhase, string> = {
   Initializing: "INIT",
   GitClone: "CLONE",
   GitPull: "PULL",
@@ -19,7 +39,7 @@ export const STEP_LABELS: Record<string, string> = {
 };
 
 export function getStepLabel(step: string): string {
-  return STEP_LABELS[step] ?? step;
+  return STEP_LABELS[step as BuildPhase] ?? step;
 }
 
 // ── Phase → Step Label Mapping ───────────────────────────────────────

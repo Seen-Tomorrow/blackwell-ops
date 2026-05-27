@@ -1,8 +1,20 @@
-import { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef, useReducer } from "react";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { useDock, DOCK_SLOT_BUILD } from "../context/DockContext";
-import { getStepLabel } from "../lib/foundry_constants";
+import { getStepLabel, type BuildPhase } from "../lib/foundry_constants";
+
+/**
+ * Professional, robust Foundry build state management.
+ *
+ * Core model:
+ * - A BuildSession represents the authoritative view of an in-flight (or recently completed) build.
+ * - Events from the backend are treated as deltas.
+ * - `foundry_status` is treated as source-of-truth for reconciliation (on mount, visibility restore, explicit attach).
+ * - UI concerns (modal visibility intent, dock widget) are derived from the session + explicit user intent.
+ *
+ * This eliminates the previous accumulation of refs and fragile cross-effect races.
+ */
 
 export interface BuildProgressState {
   providerId: string;
@@ -14,10 +26,21 @@ export interface BuildProgressState {
 
 export type Env = "vanguard" | "stable" | "fresh";
 
+// Internal clean session model (preferred)
+interface BuildSession {
+  id: number;
+  providerId: string;
+  environment: Env;
+  phase: BuildPhase;
+  logLine?: string;
+}
+
 export interface FoundryCtx {
+  // Legacy shape kept for backward compatibility with FoundryPage + existing consumers
   buildProgress: BuildProgressState | null;
   foundryModal: { providerId: string; environment: Env } | null;
   foundryModalVisible: boolean;
+
   openBuildModal: (providerId: string, environment: Env) => void;
   minimizeBuildModal: () => void;
   restoreBuildModal: () => void;
@@ -54,232 +77,265 @@ interface BuildProgressEvent {
   log_lines?: string[];
 }
 
+// ── Internal Reducer (the heart of the robust design) ─────────────────
+
+type FoundryAction =
+  | { type: 'OPEN'; providerId: string; environment: Env }
+  | { type: 'MINIMIZE' }
+  | { type: 'RESTORE' }
+  | { type: 'CLOSE' }
+  | { type: 'PROGRESS'; event: BuildProgressEvent }
+  | { type: 'RECONCILE'; session: BuildSession | null }
+  | { type: 'CANCELLED' };
+
+interface FoundryInternalState {
+  session: BuildSession | null;
+  userWantsModalVisible: boolean;
+  closed: boolean; // user explicitly closed/cancelled this session
+}
+
+function foundryReducer(state: FoundryInternalState, action: FoundryAction): FoundryInternalState {
+  switch (action.type) {
+    case 'OPEN': {
+      // Starting a fresh build session. We create an optimistic local session immediately.
+      // Real data will arrive via progress events or reconciliation.
+      return {
+        session: {
+          id: -1, // placeholder until first real event
+          providerId: action.providerId,
+          environment: action.environment,
+          phase: 'Configuring',
+        },
+        userWantsModalVisible: true,
+        closed: false,
+      };
+    }
+    case 'MINIMIZE':
+      return { ...state, userWantsModalVisible: false };
+    case 'RESTORE':
+      return { ...state, userWantsModalVisible: true };
+    case 'CLOSE':
+      return { session: null, userWantsModalVisible: false, closed: true };
+    case 'PROGRESS': {
+      const e = action.event;
+      if (!e.provider_id) return state;
+
+      const phase = (e.phase as BuildPhase) || "Configuring";
+
+      const newSession: BuildSession = {
+        id: e.build_id ?? state.session?.id ?? -1,
+        providerId: e.provider_id,
+        environment: e.environment as Env,
+        phase,
+        logLine: e.log_lines?.[e.log_lines.length - 1] ?? e.log_line,
+      };
+
+      // If we are closed, ignore progress for old sessions
+      if (state.closed && state.session && newSession.id < (state.session.id ?? 0)) {
+        return state;
+      }
+
+      return {
+        ...state,
+        session: newSession,
+        closed: false,
+      };
+    }
+    case 'RECONCILE': {
+      if (!action.session) {
+        // Backend says nothing is running
+        if (state.session && !state.closed) {
+          // We had something locally — backend disagrees. Clear unless user is in middle of starting one.
+          return { session: null, userWantsModalVisible: false, closed: false };
+        }
+        return state;
+      }
+
+      // Merge authoritative session from backend
+      return {
+        ...state,
+        session: action.session,
+        closed: false,
+        // If we were minimized and backend is in a paused state, we keep user's previous visibility preference.
+        // For WaitingForConfirm we lean towards making it visible on recovery (user can minimize again).
+        userWantsModalVisible: state.userWantsModalVisible || action.session.phase === 'WaitingForConfirm',
+      };
+    }
+    case 'CANCELLED':
+      return { session: null, userWantsModalVisible: false, closed: true };
+    default:
+      return state;
+  }
+}
+
+const initialInternalState: FoundryInternalState = {
+  session: null,
+  userWantsModalVisible: false,
+  closed: false,
+};
+
 export const FoundryProvider: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
-  const [buildProgress, setBuildProgress] = useState<BuildProgressState | null>(null);
-  const [foundryModal, setFoundryModal] = useState<{ providerId: string; environment: Env } | null>(null);
-  const [foundryModalVisible, setFoundryModalVisible] = useState(false);
+  const [internal, dispatch] = useReducer(foundryReducer, initialInternalState);
+  const [legacyProgress, setLegacyProgress] = useState<BuildProgressState | null>(null);
+
   const { registerWidget, clearSlot } = useDock();
 
+  // Only a few refs remain — for build id sequencing and listener cleanup
   const lastBuildIdRef = useRef<number | null>(null);
-  const closedRef = useRef(false);
   const unlistenRef = useRef<UnlistenFn | null>(null);
-  const hasRehydratedRef = useRef(false);
-  const rehydratingRef = useRef(false);
-  // Guards against rehydrateFromStatus (which is async and can be triggered by the
-  // !buildProgress dock sync effect) from destroying a freshly opened build modal.
-  // openBuildModal intentionally does setBuildProgress(null) + set modal visible;
-  // at that exact moment foundry_status() will still return null (no backend build yet).
-  const openingBuildRef = useRef(false);
+  const hasReconciledRef = useRef(false);
 
   const mapPhase = useCallback((phase: string) => PHASE_MAP[phase] ?? phase.toLowerCase(), []);
 
-  const updateDock = useCallback((state: BuildProgressState) => {
+  // ── Derived values (the clean public surface) ───────────────────────
+  const session = internal.session;
+  const foundryModal = session
+    ? { providerId: session.providerId, environment: session.environment }
+    : null;
+
+  const foundryModalVisible = !!session && internal.userWantsModalVisible;
+
+  const buildProgress: BuildProgressState | null = legacyProgress ?? (session
+    ? {
+        providerId: session.providerId,
+        environment: session.environment,
+        step: mapPhase(session.phase),
+        logLine: session.logLine,
+        buildId: session.id > 0 ? session.id : undefined,
+      }
+    : null);
+
+  // ── Single source of dock registration ─────────────────────────────
+  const updateDock = useCallback((progress: BuildProgressState) => {
     registerWidget(DOCK_SLOT_BUILD, {
-      title: `${state.providerId} ${state.environment}`,
+      title: `${progress.providerId} ${progress.environment}`,
       icon: "⚒",
       type: "build",
       inlineContent: (
-        <span className="text-[9px] font-mono text-yellow-400 truncate max-w-[180px]" title={state.logLine || ""}>
-          {getStepLabel(state.step)}...
+        <span className="text-[9px] font-mono text-yellow-400 truncate max-w-[180px]" title={progress.logLine || ""}>
+          {getStepLabel(progress.step)}...
         </span>
       ),
     });
   }, [registerWidget]);
 
-  const rehydrateFromStatus = useCallback(async () => {
-    if (openingBuildRef.current) {
-      // We are in the middle of an explicit openBuildModal call (new build session).
-      // A concurrent rehydrate (from the dock sync effect after setBuildProgress(null),
-      // or from a visibility event, etc.) must not nuke the modal we are trying to show.
-      openingBuildRef.current = false;
-      rehydratingRef.current = false;
-      return;
-    }
-    if (rehydratingRef.current) return;
-    rehydratingRef.current = true;
+  // One clean reconciliation function
+  const reconcileWithBackend = useCallback(async (reason: string) => {
     try {
       const status = await invoke<any>("foundry_status");
-      if (!status) {
-        // No active build on backend.
-        // IMPORTANT: if we currently have a foundryModal set, we are intentionally
-        // showing the build UI (either a fresh open or an existing one). Do not
-        // destroy the user's action just because foundry_status is currently null.
-        if (foundryModal) {
-          rehydratingRef.current = false;
-          return;
-        }
-        // Safe to clear stale recovery state only when no explicit modal intent exists.
-        if (buildProgress) {
-          setBuildProgress(null);
-        }
-        clearSlot(DOCK_SLOT_BUILD);
-        setFoundryModal(null);
-        setFoundryModalVisible(false);
-        return;
-      }
-
-      const frontendStep = mapPhase(status.phase || "configuring");
-      const progress: BuildProgressState = {
-        providerId: status.provider_id,
-        environment: status.environment,
-        step: frontendStep,
-        logLine: status.log_line || undefined,
-        buildId: undefined,
-      };
-
-      const modalState = { providerId: status.provider_id, environment: status.environment as Env };
-
-      // Seed local state from backend truth
-      setFoundryModal(prev => {
-        if (prev && prev.providerId === modalState.providerId && prev.environment === modalState.environment) return prev;
-        lastBuildIdRef.current = null;
-        return modalState;
-      });
-
-      setBuildProgress(progress);
-
-      // For WaitingForConfirm (paused builds) we want the dock present and the user able to restore.
-      // Default to visible on recovery so the PAUSED banner + PROCEED is reachable;
-      // caller can minimize again if desired. This prevents the "dock vanished, page says building, no way back" state.
-      if (frontendStep === "waiting-confirm") {
-        setFoundryModalVisible(true);
-      } else if (!foundryModalVisible) {
-        // For other active non-paused phases, keep previous visibility preference (usually minimized is fine)
-        // but ensure dock is populated.
-      }
-
-      if (frontendStep !== "complete" && frontendStep !== "error") {
-        updateDock(progress);
+      if (status) {
+        const reconciledSession: BuildSession = {
+          id: status.build_id ?? -1,
+          providerId: status.provider_id,
+          environment: status.environment as Env,
+          phase: (status.phase as BuildPhase) || "Configuring",
+          logLine: status.log_line,
+        };
+        dispatch({ type: 'RECONCILE', session: reconciledSession });
+      } else {
+        dispatch({ type: 'RECONCILE', session: null });
       }
     } catch (err) {
-      console.error("[Foundry] Rehydrate from status failed:", err);
-    } finally {
-      rehydratingRef.current = false;
+      console.error(`[Foundry] Reconciliation failed (${reason}):`, err);
     }
-  }, [mapPhase, updateDock, clearSlot, buildProgress, foundryModalVisible, foundryModal]);
+  }, []);
 
-  const attachToActiveBuild = useCallback(() => {
-    // Fire-and-forget recovery entrypoint for UI (page, dock click, etc.)
-    void rehydrateFromStatus();
-  }, [rehydrateFromStatus]);
-
+  // ── Public API (stable contract) ───────────────────────────────────
   const openBuildModal = useCallback((providerId: string, environment: Env) => {
-    closedRef.current = false;
-    openingBuildRef.current = true; // tell any concurrent rehydrate "do not touch our new modal"
+    dispatch({ type: 'OPEN', providerId, environment });
+    // Optimistically clear any stale dock widget
     clearSlot(DOCK_SLOT_BUILD);
-    setBuildProgress(null);
-    setFoundryModal(prev => {
-      if (prev && prev.providerId === providerId && prev.environment === environment) return prev;
-      lastBuildIdRef.current = null;
-      return { providerId, environment };
-    });
-    setFoundryModalVisible(true);
-
-    // Allow future recovery rehydrates once this explicit open has taken effect.
-    // Use microtask so it happens after the current render/effect batch.
-    queueMicrotask(() => {
-      openingBuildRef.current = false;
-    });
   }, [clearSlot]);
 
   const minimizeBuildModal = useCallback(() => {
-    setFoundryModalVisible(false);
+    dispatch({ type: 'MINIMIZE' });
   }, []);
 
   const restoreBuildModal = useCallback(() => {
-    setFoundryModalVisible(true);
-    // Ensure we reconcile with backend in case local state was lost (e.g. after minimize + visibility cycle)
-    void rehydrateFromStatus();
-  }, [rehydrateFromStatus]);
+    dispatch({ type: 'RESTORE' });
+    // Reconcile on explicit restore so user sees latest truth
+    void reconcileWithBackend('restore');
+  }, [reconcileWithBackend]);
 
   const closeBuildModal = useCallback(async () => {
-    closedRef.current = true;
-    openingBuildRef.current = false; // defensive
-    try { await invoke("foundry_cancel"); } catch { /* not running */ }
-    setFoundryModal(null);
-    setFoundryModalVisible(false);
-    setBuildProgress(null);
-    lastBuildIdRef.current = null;
+    try { await invoke("foundry_cancel"); } catch { /* best effort */ }
+    dispatch({ type: 'CLOSE' });
     clearSlot(DOCK_SLOT_BUILD);
+    setLegacyProgress(null);
+    lastBuildIdRef.current = null;
   }, [clearSlot]);
 
+  const attachToActiveBuild = useCallback(() => {
+    void reconcileWithBackend('attach');
+  }, [reconcileWithBackend]);
+
+  // ── Event listener (progress deltas) ───────────────────────────────
   useEffect(() => {
-    listen<BuildProgressEvent>("foundry-progress", (e) => {
-      if (closedRef.current) return;
+    const unsubPromise = listen<BuildProgressEvent>("foundry-progress", (e) => {
+      const payload = e.payload;
+      if (!payload?.provider_id) return;
 
-      const data = e.payload;
-
-      if (data.build_id !== undefined && data.build_id != null) {
+      // Build id sequencing guard (same as before, but simpler)
+      if (payload.build_id != null) {
         if (lastBuildIdRef.current === null) {
-          lastBuildIdRef.current = data.build_id;
-          openingBuildRef.current = false; // real events flowing — suppress window no longer needed
-        } else if (data.build_id < lastBuildIdRef.current) return;
-        else if (data.build_id > lastBuildIdRef.current) {
-          lastBuildIdRef.current = data.build_id;
-          openingBuildRef.current = false;
+          lastBuildIdRef.current = payload.build_id;
+        } else if (payload.build_id < lastBuildIdRef.current) {
+          return;
+        } else {
+          lastBuildIdRef.current = payload.build_id;
         }
       }
 
-      const frontendStep = mapPhase(data.phase);
-      let logLine = data.log_line;
-      if (data.log_lines && data.log_lines.length > 0) {
-        logLine = data.log_lines[data.log_lines.length - 1];
-      }
+      dispatch({ type: 'PROGRESS', event: payload });
 
-      const progress: BuildProgressState = {
-        providerId: data.provider_id,
-        environment: data.environment,
-        step: frontendStep,
+      // Keep legacy shape in sync for consumers that still read buildProgress directly
+      const step = mapPhase(payload.phase);
+      const logLine = payload.log_lines?.[payload.log_lines.length - 1] ?? payload.log_line;
+      setLegacyProgress({
+        providerId: payload.provider_id,
+        environment: payload.environment,
+        step,
         logLine,
-        buildId: data.build_id ?? undefined,
-      };
+        buildId: payload.build_id ?? undefined,
+      });
 
-      setBuildProgress(progress);
-
-      if (frontendStep === "complete" || frontendStep === "error") {
+      // Terminal states clean up
+      if (step === "complete" || step === "error") {
         lastBuildIdRef.current = null;
-      } else {
-        updateDock(progress);
       }
-    }).then(unlisten => { unlistenRef.current = unlisten; });
+    });
 
+    unsubPromise.then((unsub) => { unlistenRef.current = unsub; });
     return () => { unlistenRef.current?.(); };
-  }, [mapPhase, updateDock]);
+  }, [mapPhase]);
 
+  // ── Single effect that keeps the dock in sync from derived state ───
   useEffect(() => {
-    if (buildProgress && buildProgress.step !== "complete" && buildProgress.step !== "error") {
+    if (buildProgress && !['complete', 'error'].includes(buildProgress.step)) {
       updateDock(buildProgress);
-    } else if (!buildProgress) {
-      // Recovery path only. Never trigger rehydrate (which may clear state) while we
-      // have an explicit foundryModal — that means the user or openBuildModal wants
-      // the build confirmation/progress UI to be visible right now.
-      // The openingBuildRef + the `if (foundryModal)` guard inside rehydrate provide
-      // additional protection against the async !status clear path.
-      if (!foundryModal) {
-        void rehydrateFromStatus();
-      }
+    } else if (!session) {
+      clearSlot(DOCK_SLOT_BUILD);
     }
-  }, [buildProgress, updateDock, clearSlot, rehydrateFromStatus, foundryModal]);
+  }, [buildProgress, session, updateDock, clearSlot]);
 
-  // Rehydrate from backend status on mount and on window visibility restore.
-  // This is the key fix for "dock vanished while WaitingForConfirm" after minimize + OS window cycles.
+  // ── Mount + Visibility reconciliation (the robust recovery path) ───
   useEffect(() => {
-    // Initial mount hydration (guarded like the refresh guard in FoundryPage)
-    if (!hasRehydratedRef.current) {
-      hasRehydratedRef.current = true;
-      void rehydrateFromStatus();
+    if (!hasReconciledRef.current) {
+      hasReconciledRef.current = true;
+      void reconcileWithBackend('mount');
     }
 
-    const handleVisibility = () => {
+    const onVisibility = () => {
       if (document.visibilityState === "visible") {
-        void rehydrateFromStatus();
+        void reconcileWithBackend('visibility');
       }
     };
-    document.addEventListener("visibilitychange", handleVisibility);
-    return () => document.removeEventListener("visibilitychange", handleVisibility);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, [reconcileWithBackend]);
 
-  const ctxValue = useMemo(() => ({
+  // ── Public context value ───────────────────────────────────────────
+  const ctxValue = useMemo<FoundryCtx>(() => ({
     buildProgress,
     foundryModal,
     foundryModalVisible,
@@ -288,7 +344,16 @@ export const FoundryProvider: React.FC<{ children?: React.ReactNode }> = ({ chil
     restoreBuildModal,
     closeBuildModal,
     attachToActiveBuild,
-  }), [buildProgress, foundryModal, foundryModalVisible, openBuildModal, minimizeBuildModal, restoreBuildModal, closeBuildModal, attachToActiveBuild]);
+  }), [
+    buildProgress,
+    foundryModal,
+    foundryModalVisible,
+    openBuildModal,
+    minimizeBuildModal,
+    restoreBuildModal,
+    closeBuildModal,
+    attachToActiveBuild,
+  ]);
 
   return (
     <FoundryContext.Provider value={ctxValue}>

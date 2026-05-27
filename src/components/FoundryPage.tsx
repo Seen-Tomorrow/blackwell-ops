@@ -23,36 +23,16 @@ function parseCmakeFlags(flags: string): string[] {
 export default function FoundryPage({ providers, onProvidersChange }: FoundryPageProps) {
   const { openBuildModal, buildProgress, attachToActiveBuild } = useFoundry();
   const [restoreConfirm, setRestoreConfirm] = useState<{ providerId: string; env: Env } | null>(null);
-  const [activeBuild, setActiveBuild] = useState<{ providerId: string; environment: string } | null>(null);
 
   // Binary update state per provider/profile
   const [binaryUpdates, setBinaryUpdates] = useState<Record<string, Record<string, BinaryUpdateInfo>>>({});
   const [updateStatuses, setUpdateStatuses] = useState<Record<string, UpdateStatus>>({});
   const [updateErrors, setUpdateErrors] = useState<Record<string, string>>({});
 
-  // Query backend for active build status on mount and tab visibility changes
-  useEffect(() => {
-    const checkStatus = async () => {
-      try {
-        const status = await invoke<any>("foundry_status");
-        setActiveBuild(status ? { providerId: status.provider_id, environment: status.environment } : null);
-      } catch (err) { console.error("[Foundry] Status check error:", err); }
-    };
-
-    checkStatus();
-
-    const handleVisibility = () => {
-      if (document.visibilityState === "visible") checkStatus();
-    };
-    document.addEventListener("visibilitychange", handleVisibility);
-    return () => document.removeEventListener("visibilitychange", handleVisibility);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const effectiveBuildProgress = activeBuild || buildProgress;
-
-  // Lightweight recovery banner for the exact reported failure mode:
-  // backend still has WaitingForConfirm (or other active phase) but local context lost the dock/modal state.
-  const showRecovery = activeBuild && !buildProgress;
+  // The provider now performs strong reconciliation on mount + visibilitychange.
+  // We can rely primarily on the context's buildProgress for "is a build active".
+  // The provider (after the 2026 reducer refactor) is now the authoritative source for active builds.
+  // We keep `attachToActiveBuild` available for edge cases, but the auto-recovery banner is rarely needed.
 
   // Refresh build info after successful build completes (via Tauri event)
   useEffect(() => {
@@ -240,16 +220,16 @@ export default function FoundryPage({ providers, onProvidersChange }: FoundryPag
         <span className="flex items-center gap-1"><span className="inline-block w-1.5 h-1.5 rounded-full bg-nv-green" /> CUSTOM BUILD (Foundry)</span>
       </div>
 
-      {/* Recovery banner — appears precisely when backend reports active build (e.g. WaitingForConfirm)
-          but the local FoundryProvider lost track (dock vanished after minimize + visibility cycle). */}
-      {showRecovery && (
-        <div className="mx-4 mt-2 p-2 border border-yellow-400/40 bg-yellow-400/[0.04] rounded-sm flex items-center justify-between">
-          <span className="text-[9px] font-mono text-yellow-400">Active build in progress on backend but local progress dock lost. Click to restore controls.</span>
+      {/* Recovery affordance — only shown in rare desync cases.
+          The provider now reconciles aggressively on visibility, so this is mostly defensive. */}
+      {!buildProgress && (
+        <div className="mx-4 mt-2 p-2 border border-yellow-400/30 bg-yellow-400/[0.03] rounded-sm flex items-center justify-between text-[9px] font-mono">
+          <span className="text-yellow-400/80">No active build session in UI. If a build is running on the backend:</span>
           <button
             onClick={() => attachToActiveBuild()}
-            className="px-2 py-0.5 text-[8px] font-mono border border-yellow-400/60 text-yellow-400 hover:bg-yellow-400/10 transition-colors"
+            className="px-2 py-0.5 text-[8px] font-mono border border-yellow-400/60 text-yellow-400 hover:bg-yellow-400/10"
           >
-            RESTORE BUILD CONTROLS
+            ATTACH TO ACTIVE BUILD
           </button>
         </div>
       )}
@@ -268,7 +248,7 @@ export default function FoundryPage({ providers, onProvidersChange }: FoundryPag
             provider={p}
             onBuild={(env) => openBuildModal(p.id, env)}
             onRestoreConfirm={(env) => setRestoreConfirm({ providerId: p.id, env })}
-            buildProgress={effectiveBuildProgress}
+            buildProgress={buildProgress}
             binaryUpdates={binaryUpdates[p.id] || {}}
             updateStatuses={updateStatuses}
             updateErrors={updateErrors}
