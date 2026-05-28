@@ -94,7 +94,8 @@ export default function FoundryBuildProgress({
             {logLines.length === 0 ? (
               <span className="text-stealth-muted/50">Initializing build pipeline...</span>
             ) : (
-              logLines.map((entry, i) => {
+              // Cap at ~200 lines for memory safety (see FOUNDRY_DIRECTORY_STRUCTURE_MAP §7 and implementation plan)
+              logLines.slice(-200).map((entry, i) => {
                 const isCmakeBox = entry.text.includes("═════") ||
                   entry.text.startsWith("SET ") ||
                   entry.text.startsWith("cmake ");
@@ -161,10 +162,15 @@ export default function FoundryBuildProgress({
             </button>
           )}
           {isError && (
-            <button onClick={onClose}
-              className="px-3 py-1 text-[9px] font-mono border border-red-400/60 text-red-400 hover:bg-red-500/20 transition-colors">
-              CLOSE
-            </button>
+            <div className="flex flex-col items-end gap-0.5">
+              <button onClick={onClose}
+                className="px-3 py-1 text-[9px] font-mono border border-red-400/60 text-red-400 hover:bg-red-500/20 transition-colors">
+                HIDE WINDOW
+              </button>
+              <span className="text-[7px] font-mono text-red-400/50 text-right leading-none">
+                Only hides — failed attempt remains.<br />Start a new build to reset.
+              </span>
+            </div>
           )}
           {!isComplete && !isError && (
             <button onClick={onMinimize}

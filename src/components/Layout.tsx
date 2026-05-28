@@ -1,10 +1,12 @@
 import { motion } from "framer-motion";
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import type { Tab } from "../App";
 import type { ProviderConfig, AppUpdateInfo } from "../lib/types";
 import { useStatus } from "../context/StatusBarContext";
 import { useDock } from "../context/DockContext";
-import { useBuildDock, type Env } from "../hooks/useBuildDock";
+import { useFoundry, type Env } from "../hooks/useBuildDock";
+import BlackwellOutputConsole from "./BlackwellOutputConsole";
 import FoundryModal from "./FoundryModal";
 import { KEYS } from "../lib/storage";
 import { isMobileDevice } from "../lib/utils";
@@ -79,7 +81,7 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
   const [adminLockState, setAdminLockState] = useState(loadAdminLock);
   const [zoom, setZoom] = useState(loadZoom);
   const { totalParams, hiddenCount, onShowAll, flashMessage } = useStatus();
-  const { buildProgress, foundryModal, foundryModalVisible, openBuildModal, minimizeBuildModal, restoreBuildModal, closeBuildModal, attachToActiveBuild } = useBuildDock();
+  const { buildProgress, foundryModal, foundryModalVisible, openBuildModal, minimizeBuildModal, restoreBuildModal, closeBuildModal, attachToActiveBuild, buildAttempt } = useFoundry();
   const { slots, toggleSlot } = useDock();
   const resolvedProvider = useMemo(() => {
     if (!foundryModal) return providers?.[0] || {} as ProviderConfig;
@@ -92,6 +94,8 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
   // Dock slot click: if modal exists and is visible → minimize; if exists but hidden → restore; if no modal but build running → open fresh
   const [showTooltip, setShowTooltip] = useState(false);
   const [isMobile, setIsMobile] = useState(isMobileDevice);
+  const [isOutputConsoleExpanded, setIsOutputConsoleExpanded] = useState(false);
+  const [lastConsoleLine, setLastConsoleLine] = useState<string>("Ready for engine & build telemetry");
 
   // Listen for admin lock changes from other components (ConfigPage)
   useEffect(() => {
@@ -119,6 +123,38 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
     window.addEventListener("resize", check);
     return () => window.removeEventListener("resize", check);
   }, []);
+
+  // Live last line for the collapsed output bar (power user only)
+  useEffect(() => {
+    if (adminLockState === "locked") return;
+
+    const fetchLastLine = async () => {
+      try {
+        // Prefer engines (most active), fallback to foundry
+        const enginesData = await invoke<any[]>("get_blackwell_output_console_buffer_for_category", {
+          category: "engines",
+          limit: 1,
+        });
+        if (enginesData && enginesData.length > 0) {
+          setLastConsoleLine(enginesData[0].content);
+          return;
+        }
+        const foundryData = await invoke<any[]>("get_blackwell_output_console_buffer_for_category", {
+          category: "foundry",
+          limit: 1,
+        });
+        if (foundryData && foundryData.length > 0) {
+          setLastConsoleLine(foundryData[0].content);
+        }
+      } catch (e) {
+        // silent
+      }
+    };
+
+    fetchLastLine();
+    const interval = setInterval(fetchLastLine, 4000); // every 4s
+    return () => clearInterval(interval);
+  }, [adminLockState]);
 
   const visibleTabs = useMemo(() => {
     return tabs.filter(t => !t.hidden);
@@ -245,43 +281,43 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
           <span>TOKIO: ACTIVE</span>
         </div>
 
-        {/* Dock slots — 8 positions between left and right groups, occupied slots flex-grow to share space */}
-        <div className="flex items-center gap-1 min-w-0" style={{ flex: "1 1 auto", maxWidth: "50%" }}>
-          {slots.map((slot, i) => (
-            <button
-              key={i}
-              onClick={() => {
-                if (!slot.occupied) return;
-                const widgetType = slot.config?.type || 'generic';
-                if (widgetType === 'build') {
-                  if (foundryModal && foundryModalVisible) minimizeBuildModal();
-                  else if (foundryModal) restoreBuildModal();
-                  else if (buildProgress) openBuildModal(buildProgress.providerId, buildProgress.environment.toLowerCase() as Env);
-                  else attachToActiveBuild(); // defensive recovery if dock lingered but local state cleared
-                } else {
-                  toggleSlot(i);
-                }
-              }}
-              className={`flex items-center gap-2 px-3 py-0.5 border rounded-sm transition-all ${
-                slot.occupied
-                  ? "border-yellow-400/40 bg-yellow-400/[0.05] cursor-pointer hover:bg-yellow-400/10 min-w-[80px]"
-                  : "border-transparent w-[28px] flex-shrink-0"
-              }`}
-              style={slot.occupied ? { flexGrow: 1 } : undefined}
-            >
-              {slot.occupied ? (
-                <>
-                  <span className="text-[9px]">{slot.config?.icon || "◉"}</span>
-                  <div className="flex items-center gap-1 min-w-0">
-                    <span className="text-[8px] font-mono text-white/40 flex-shrink-0">#{i + 1}</span>
+        {/* Status bar middle — Blackwell Output Console (most space) + Build dock (smaller dedicated area) */}
+        <div className="flex items-center gap-2 min-w-0" style={{ flex: "1 1 auto", maxWidth: "65%" }}>
+          {/* Blackwell Output Console - Docked (1 line always visible) */}
+          <div
+            onClick={() => setIsOutputConsoleExpanded(true)}
+            className="flex-1 min-w-0 flex items-center gap-2 px-3 py-0.5 border border-cyan-400/30 bg-black/30 rounded-sm cursor-pointer hover:border-cyan-400/60 hover:bg-black/50 transition-all group font-mono"
+            title="Click to expand Output Console (3 lines)"
+          >
+            <span className="text-[9px] text-cyan-400 tracking-wider flex-shrink-0">OUTPUT</span>
+            <div className="flex-1 min-w-0 text-[8px] text-cyan-300/80 truncate">
+              {lastConsoleLine}
+            </div>
+          </div>
+
+          {/* Dedicated small area for Build dock (only Foundry uses this for now) */}
+          <div className="flex items-center gap-1 flex-shrink-0">
+            {slots.map((slot, i) => (
+              slot.occupied && slot.config?.type === 'build' ? (
+                <button
+                  key={i}
+                  onClick={() => {
+                    if (foundryModal && foundryModalVisible) minimizeBuildModal();
+                    else if (foundryModal) restoreBuildModal();
+                    else if (buildProgress) openBuildModal(buildProgress.providerId, buildProgress.environment.toLowerCase() as Env);
+                    else attachToActiveBuild();
+                  }}
+                  className="flex items-center gap-2 px-2.5 py-0.5 border border-yellow-400/40 bg-yellow-400/[0.04] rounded-sm text-[9px] hover:bg-yellow-400/10 transition-all min-w-[110px]"
+                  title="Build Progress"
+                >
+                  <span>{slot.config?.icon || "⚒"}</span>
+                  <div className="flex-1 min-w-0 text-left">
                     {slot.config?.inlineContent}
                   </div>
-                </>
-              ) : (
-                <span className="text-[7px] font-mono text-white/10">{i + 1}</span>
-              )}
-            </button>
-          ))}
+                </button>
+              ) : null
+            ))}
+          </div>
         </div>
 
         {/* Right group */}
@@ -312,13 +348,23 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
         </div>
       </footer>
 
-      {/* Foundry Build Modal — always mounted, CSS visibility controlled by foundryModalVisible */}
+      {/* Foundry Build Modal — always mounted, CSS visibility controlled by foundryModalVisible.
+          We key it on provider + buildAttempt so that clicking "Build" again for the same provider
+          after a cancel or error forces a complete remount + fresh internal state. */}
       <FoundryModal
+        key={`${resolvedProvider.id}-${resolvedEnvironment}-${buildAttempt}`}
         provider={resolvedProvider}
         environment={resolvedEnvironment}
         onClose={closeBuildModal}
         visible={foundryModalVisible}
         onMinimize={minimizeBuildModal}
+      />
+
+      {/* Blackwell Output Console — power user feature */}
+      <BlackwellOutputConsole 
+        isPowerUser={adminLockState !== "locked"} 
+        isOpen={isOutputConsoleExpanded}
+        onClose={() => setIsOutputConsoleExpanded(false)}
       />
     </div>
   );

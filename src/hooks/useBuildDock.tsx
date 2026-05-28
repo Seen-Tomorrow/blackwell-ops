@@ -46,6 +46,9 @@ export interface FoundryCtx {
   restoreBuildModal: () => void;
   closeBuildModal: () => void;
   attachToActiveBuild: () => void;
+
+  /** Increments every time the user explicitly clicks to start a new build (used to force-reset modal internal state) */
+  buildAttempt: number;
 }
 
 const FoundryContext = createContext<FoundryCtx>({
@@ -57,6 +60,7 @@ const FoundryContext = createContext<FoundryCtx>({
   restoreBuildModal: () => {},
   closeBuildModal: () => {},
   attachToActiveBuild: () => {},
+  buildAttempt: 0,
 });
 
 const PHASE_MAP: Record<string, string> = {
@@ -92,6 +96,7 @@ interface FoundryInternalState {
   session: BuildSession | null;
   userWantsModalVisible: boolean;
   closed: boolean; // user explicitly closed/cancelled this session
+  buildAttempt: number; // increments every time user explicitly starts a new build attempt (even for same provider)
 }
 
 function foundryReducer(state: FoundryInternalState, action: FoundryAction): FoundryInternalState {
@@ -108,6 +113,7 @@ function foundryReducer(state: FoundryInternalState, action: FoundryAction): Fou
         },
         userWantsModalVisible: true,
         closed: false,
+        buildAttempt: state.buildAttempt + 1, // force fresh modal state even for same provider
       };
     }
     case 'MINIMIZE':
@@ -115,7 +121,7 @@ function foundryReducer(state: FoundryInternalState, action: FoundryAction): Fou
     case 'RESTORE':
       return { ...state, userWantsModalVisible: true };
     case 'CLOSE':
-      return { session: null, userWantsModalVisible: false, closed: true };
+      return { session: null, userWantsModalVisible: false, closed: true, buildAttempt: state.buildAttempt };
     case 'PROGRESS': {
       const e = action.event;
       if (!e.provider_id) return state;
@@ -143,10 +149,27 @@ function foundryReducer(state: FoundryInternalState, action: FoundryAction): Fou
     }
     case 'RECONCILE': {
       if (!action.session) {
-        // Backend says nothing is running
+        // Backend says nothing is running right now.
+
+        // Important: If our local session has already reached a terminal state (Complete/Error),
+        // we should keep it. The user may still want to review the result via the dock.
+        // Only clear if the local session was still "in progress".
         if (state.session && !state.closed) {
-          // We had something locally — backend disagrees. Clear unless user is in middle of starting one.
-          return { session: null, userWantsModalVisible: false, closed: false };
+          // Use case-insensitive check because session.phase holds raw BuildPhase ("Complete")
+          // while some other places use the mapped lowercase step.
+          const phaseLower = state.session.phase.toLowerCase();
+          const isTerminal = phaseLower === 'complete' || phaseLower === 'error' || phaseLower === 'failed';
+
+          if (isTerminal) {
+            // Keep the finished session so clicking the dock widget can still show the review screen.
+            return {
+              ...state,
+              userWantsModalVisible: true,
+            };
+          }
+
+          // We thought a build was still active, but backend says no → clear it.
+          return { session: null, userWantsModalVisible: false, closed: false, buildAttempt: state.buildAttempt };
         }
         return state;
       }
@@ -162,7 +185,7 @@ function foundryReducer(state: FoundryInternalState, action: FoundryAction): Fou
       };
     }
     case 'CANCELLED':
-      return { session: null, userWantsModalVisible: false, closed: true };
+      return { session: null, userWantsModalVisible: false, closed: true, buildAttempt: state.buildAttempt };
     default:
       return state;
   }
@@ -172,6 +195,7 @@ const initialInternalState: FoundryInternalState = {
   session: null,
   userWantsModalVisible: false,
   closed: false,
+  buildAttempt: 0,
 };
 
 export const FoundryProvider: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
@@ -184,6 +208,7 @@ export const FoundryProvider: React.FC<{ children?: React.ReactNode }> = ({ chil
   const lastBuildIdRef = useRef<number | null>(null);
   const unlistenRef = useRef<UnlistenFn | null>(null);
   const hasReconciledRef = useRef(false);
+  const clearedForBuildIdRef = useRef<number | null>(null); // prevent repeated clearSlot in effects/listeners
 
   const mapPhase = useCallback((phase: string) => PHASE_MAP[phase] ?? phase.toLowerCase(), []);
 
@@ -234,6 +259,13 @@ export const FoundryProvider: React.FC<{ children?: React.ReactNode }> = ({ chil
         dispatch({ type: 'RECONCILE', session: reconciledSession });
       } else {
         dispatch({ type: 'RECONCILE', session: null });
+        // Backend has no active build — make sure any stale "building" UI state is gone (common after minimize + finish)
+        setLegacyProgress(null);
+        // Guarded clear to avoid loops
+        if (clearedForBuildIdRef.current !== -1) {
+          clearedForBuildIdRef.current = -1;
+          clearSlot(DOCK_SLOT_BUILD);
+        }
       }
     } catch (err) {
       console.error(`[Foundry] Reconciliation failed (${reason}):`, err);
@@ -242,8 +274,21 @@ export const FoundryProvider: React.FC<{ children?: React.ReactNode }> = ({ chil
 
   // ── Public API (stable contract) ───────────────────────────────────
   const openBuildModal = useCallback((providerId: string, environment: Env) => {
+    clearedForBuildIdRef.current = null; // allow fresh dock registration for the new build
+
+    // If there's already a session for this provider, clear it so the next build is a true fresh start.
+    // This is especially useful after configure failures so the user isn't trapped re-opening the old error.
+    //
+    // NOTE FOR DOCK BEHAVIOR:
+    // This only affects explicit clicks on "Build" buttons. The good minimize/restore flow
+    // (clicking a completed build's dock widget to review the result) goes through restoreBuildModal
+    // and is deliberately protected elsewhere — it will NOT be broken by this.
+    const current = latestSessionRef.current;
+    if (current && current.providerId === providerId) {
+      dispatch({ type: 'CLOSE' });
+    }
+
     dispatch({ type: 'OPEN', providerId, environment });
-    // Optimistically clear any stale dock widget
     clearSlot(DOCK_SLOT_BUILD);
   }, [clearSlot]);
 
@@ -251,10 +296,25 @@ export const FoundryProvider: React.FC<{ children?: React.ReactNode }> = ({ chil
     dispatch({ type: 'MINIMIZE' });
   }, []);
 
+  // Ref to the latest session so we can make decisions in callbacks without stale closures
+  const latestSessionRef = useRef<BuildSession | null>(null);
+  latestSessionRef.current = session;
+
   const restoreBuildModal = useCallback(() => {
     dispatch({ type: 'RESTORE' });
-    // Reconcile on explicit restore so user sees latest truth
-    void reconcileWithBackend('restore');
+
+    // If we already have a terminal (finished) session locally, don't blindly reconcile
+    // and risk it being nuked by "backend has no active build".
+    // This is the main cause of the blink+vanish when clicking the dock widget
+    // after a build finished while minimized.
+    const current = latestSessionRef.current;
+    const isAlreadyTerminal = current && ['complete', 'error', 'Complete', 'Failed'].some(p =>
+      current.phase.toLowerCase() === p.toLowerCase()
+    );
+
+    if (!isAlreadyTerminal) {
+      void reconcileWithBackend('restore');
+    }
   }, [reconcileWithBackend]);
 
   const closeBuildModal = useCallback(async () => {
@@ -299,9 +359,13 @@ export const FoundryProvider: React.FC<{ children?: React.ReactNode }> = ({ chil
         buildId: payload.build_id ?? undefined,
       });
 
-      // Terminal states clean up
+      // Terminal states: keep the session + dock widget alive so the user can click back to review the result/log.
+      // We only fully clear when the user explicitly closes the modal.
+      // This fixes the "click minimized widget after build finishes → it vanishes" problem.
       if (step === "complete" || step === "error") {
         lastBuildIdRef.current = null;
+        // Do NOT null legacyProgress or clear the dock slot here.
+        // Let the session stay in Complete/Error phase so clicking the dock widget can restore the review screen.
       }
     });
 
@@ -309,14 +373,22 @@ export const FoundryProvider: React.FC<{ children?: React.ReactNode }> = ({ chil
     return () => { unlistenRef.current?.(); };
   }, [mapPhase]);
 
-  // ── Single effect that keeps the dock in sync from derived state ───
+  // ── Dock registration — only when the active build identity or high-level step actually changes.
+  // We intentionally do NOT re-register on every log line (that was causing the updateDepth storm).
+  const dockKey = session
+    ? `${session.id}:${session.phase}`
+    : null;
+
   useEffect(() => {
-    if (buildProgress && !['complete', 'error'].includes(buildProgress.step)) {
+    if (buildProgress) {
+      // Always keep (or update) a dock widget while there is a session.
+      // This includes after the build finishes, so the user can click back from the dock
+      // to review the result instead of the widget vanishing.
       updateDock(buildProgress);
-    } else if (!session) {
+    } else {
       clearSlot(DOCK_SLOT_BUILD);
     }
-  }, [buildProgress, session, updateDock, clearSlot]);
+  }, [dockKey, session, updateDock, clearSlot]);
 
   // ── Mount + Visibility reconciliation (the robust recovery path) ───
   useEffect(() => {
@@ -344,6 +416,7 @@ export const FoundryProvider: React.FC<{ children?: React.ReactNode }> = ({ chil
     restoreBuildModal,
     closeBuildModal,
     attachToActiveBuild,
+    buildAttempt: internal.buildAttempt,
   }), [
     buildProgress,
     foundryModal,
@@ -353,6 +426,7 @@ export const FoundryProvider: React.FC<{ children?: React.ReactNode }> = ({ chil
     restoreBuildModal,
     closeBuildModal,
     attachToActiveBuild,
+    internal.buildAttempt,
   ]);
 
   return (
@@ -366,10 +440,5 @@ export function useFoundry(): FoundryCtx {
   return useContext(FoundryContext);
 }
 
-/** @deprecated Use {@link useFoundry} instead. */
-export function useBuildDock(): FoundryCtx {
-  return useFoundry();
-}
-
-/** @deprecated Use {@link FoundryProvider} instead. */
-export const BuildDockProvider = FoundryProvider;
+// Note: Deprecated aliases (useBuildDock / BuildDockProvider) have been fully removed.
+// Only modern exports (FoundryProvider + useFoundry) remain in this file.

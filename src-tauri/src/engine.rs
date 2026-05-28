@@ -10,6 +10,7 @@ use crate::engine_stack::SlotStatus;
 use crate::config::AppConfig;
 use crate::engine_stack::EngineStack;
 use crate::log_hub::LogHub;
+use crate::output_console::BlackwellOutputConsoleManager;
 use crate::types::{EngineConfig, ModelEntry, ModelMetadata};
 use crate::types::StackEntry;
 
@@ -26,6 +27,10 @@ pub struct AppContext {
     pub config: Arc<std::sync::Mutex<AppConfig>>,
     /// Cancellation flag for in-progress library scans.
     pub fit_scan_cancel: Arc<Mutex<Arc<AtomicBool>>>,
+
+    /// Central manager for the Blackwell Output Console (power-user tabbed output system).
+    /// This is the single source of truth for all text streams shown in the Blackwell Output Console.
+    pub blackwell_output_console_manager: BlackwellOutputConsoleManager,
 }
 
 // ── Model Catalog (multi-path merge via model_catalog module) ───────
@@ -126,6 +131,14 @@ pub async fn launch_engine(
 
     let cmd_args = template.build_command(&config, &gpu_mask, &user_params);
     let launch_cmd = format!("{} {}", binary_path.display(), cmd_args.join(" "));
+
+    // Emit full launch command to Blackwell Output Console (ENGINES category)
+    app.blackwell_output_console_manager.emit_line_to_category(
+        crate::output_console::BlackwellOutputConsoleCategory::Engines,
+        format!("[LAUNCH_CMD] slot={}: {}", slot_idx, launch_cmd),
+        crate::output_console::BlackwellOutputConsoleLineStyle::Command,
+    );
+
     eprintln!("\n========== [LAUNCH_CMD] slot={} ==========", slot_idx);
     eprintln!("{}", launch_cmd);
     eprintln!("==========================================\n");
@@ -140,6 +153,19 @@ pub async fn launch_engine(
     }
 
     app.log_hub.emit_system_event(slot_idx, &config.alias, "Engine launching...").await;
+
+    // Route launch status to Blackwell Output Console
+    app.blackwell_output_console_manager.emit_line_to_category(
+        crate::output_console::BlackwellOutputConsoleCategory::Engines,
+        format!("[{}] Engine launching...", config.alias),
+        crate::output_console::BlackwellOutputConsoleLineStyle::Highlight,
+    );
+
+    app.blackwell_output_console_manager.emit_line_to_category(
+        crate::output_console::BlackwellOutputConsoleCategory::Engines,
+        format!("[{}] Loading model...", config.alias),
+        crate::output_console::BlackwellOutputConsoleLineStyle::Normal,
+    );
 
     let ctx_size_int = crate::templates::ctx_to_int_tokens(&config.get_param_str("ctx").unwrap_or_else(|| "32k".to_string()));
 

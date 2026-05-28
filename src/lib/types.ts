@@ -119,7 +119,7 @@ export interface ProviderConfig {
   template_type?: string; // "ggml-llama" | "ik-llama" | "" (custom)
   display_order?: number;
   buildInfoPerEnv?: Record<string, BuildInfo>;
-  binaryPathPerEnv?: Record<string, string>; // env -> binary path (e.g. "vanguard" -> ".../build-vanguard/bin/Release/llama-server.exe")
+  binaryPathPerEnv?: Record<string, string>; // env -> sacred artifact path (e.g. "vanguard" -> "foundry/artifacts/<id>/vanguard/Release/llama-server.exe")
   downloadedVersionPerEnv?: Record<string, string>; // env -> GitHub release tag that was installed via update (e.g. "v0.7.8")
   lastPrPerEnv?: Record<string, string>; // env -> PR number (e.g. "stable" -> "21293")
 }

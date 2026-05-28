@@ -29,11 +29,13 @@ mod binary_update;
 #[cfg(feature = "reactor11")]
 pub mod features;
 mod reactor_foundry;
+mod output_console;
 
 
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use tokio::sync::{Mutex, RwLock};
+use crate::output_console::BlackwellOutputConsoleManager;
 
 // ── HF Search Commands ────────────────────────────────────────────────
 
@@ -125,6 +127,83 @@ async fn set_default_model_path(
     let mut cfg = config.lock().map_err(|e| e.to_string())?;
     config::set_default_model_path(&mut cfg, &path);
     config::save_config(&cfg).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+// ── Blackwell Output Console Commands ─────────────────────────────────
+
+#[tauri::command]
+async fn get_blackwell_output_console_categories() -> Vec<String> {
+    use crate::output_console::BlackwellOutputConsoleCategory;
+    vec![
+        BlackwellOutputConsoleCategory::Engines.identifier().to_string(),
+        BlackwellOutputConsoleCategory::Utils.identifier().to_string(),
+        BlackwellOutputConsoleCategory::Foundry.identifier().to_string(),
+        BlackwellOutputConsoleCategory::Error.identifier().to_string(),
+        BlackwellOutputConsoleCategory::General.identifier().to_string(),
+    ]
+}
+
+#[tauri::command]
+async fn get_blackwell_output_console_buffer_for_category(
+    category: String,
+    limit: Option<usize>,
+    app: tauri::State<'_, AppContext>,
+) -> Result<Vec<crate::output_console::BlackwellOutputConsoleTextLine>, String> {
+    use crate::output_console::BlackwellOutputConsoleCategory;
+
+    let cat = match category.as_str() {
+        "engines" => BlackwellOutputConsoleCategory::Engines,
+        "utils" => BlackwellOutputConsoleCategory::Utils,
+        "foundry" => BlackwellOutputConsoleCategory::Foundry,
+        "error" => BlackwellOutputConsoleCategory::Error,
+        "general" => BlackwellOutputConsoleCategory::General,
+        _ => return Err("Unknown category".to_string()),
+    };
+
+    let lines = app.blackwell_output_console_manager
+        .get_recent_lines_for_category(cat, limit.unwrap_or(500));
+
+    Ok(lines)
+}
+
+#[tauri::command]
+async fn clear_blackwell_output_console_category(
+    category: String,
+    app: tauri::State<'_, AppContext>,
+) -> Result<(), String> {
+    use crate::output_console::BlackwellOutputConsoleCategory;
+
+    let cat = match category.as_str() {
+        "engines" => BlackwellOutputConsoleCategory::Engines,
+        "utils" => BlackwellOutputConsoleCategory::Utils,
+        "foundry" => BlackwellOutputConsoleCategory::Foundry,
+        "error" => BlackwellOutputConsoleCategory::Error,
+        "general" => BlackwellOutputConsoleCategory::General,
+        _ => return Err("Unknown category".to_string()),
+    };
+
+    app.blackwell_output_console_manager.clear_category_buffer(cat);
+    Ok(())
+}
+
+#[tauri::command]
+async fn clear_all_blackwell_output_console_buffers(
+    app: tauri::State<'_, AppContext>,
+) -> Result<(), String> {
+    app.blackwell_output_console_manager.clear_all_buffers();
+    Ok(())
+}
+
+// ── End Blackwell Output Console Commands ─────────────────────────────
+
+#[tauri::command]
+async fn open_blackwell_output_window(app: tauri::AppHandle) -> Result<(), String> {
+    // This will eventually create a real separate Tauri window for the Output Console.
+    // For now this is a placeholder that the frontend can call.
+    // Full implementation will use WebviewWindowBuilder with a dedicated label.
+    println!("[Blackwell] Request to open output console as separate window received.");
+    // TODO: Create real WebviewWindow here when frontend routing for it is ready.
     Ok(())
 }
 
@@ -318,6 +397,7 @@ async fn main() {
                 log_hub,
                 config: config_arc.clone(),
                 fit_scan_cancel: Arc::new(Mutex::new(Arc::new(AtomicBool::new(false)))),
+                blackwell_output_console_manager: BlackwellOutputConsoleManager::new(2000),
             };
 
             app.manage(ctx);
@@ -406,6 +486,13 @@ async fn main() {
             reactor_foundry::foundry_resume_backup,
             reactor_foundry::refresh_build_info,
             reactor_foundry::foundry_restore,
+
+            // Blackwell Output Console commands (power-user output system)
+            get_blackwell_output_console_categories,
+            get_blackwell_output_console_buffer_for_category,
+            clear_blackwell_output_console_category,
+            clear_all_blackwell_output_console_buffers,
+            open_blackwell_output_window,
             // Download manager commands
             start_download,
             pause_download,

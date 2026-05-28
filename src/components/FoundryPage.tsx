@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { ProviderConfig, BinaryUpdateInfo } from "../lib/types";
 import { DEFAULT_PROVIDER_ID } from "../lib/types";
-import { useBuildDock as useFoundry, type Env } from "../hooks/useBuildDock";
+import { useFoundry, type Env } from "../hooks/useBuildDock";
 import { getEnvColors, ENV_ORDER, ENV_META, getStepLabel } from "../lib/foundry_constants";
 
 interface FoundryPageProps {
@@ -220,16 +220,16 @@ export default function FoundryPage({ providers, onProvidersChange }: FoundryPag
         <span className="flex items-center gap-1"><span className="inline-block w-1.5 h-1.5 rounded-full bg-nv-green" /> CUSTOM BUILD (Foundry)</span>
       </div>
 
-      {/* Recovery affordance — only shown in rare desync cases.
-          The provider now reconciles aggressively on visibility, so this is mostly defensive. */}
+      {/* Recovery affordance — only shown when the UI has no session but we suspect a build might still be relevant on the backend.
+          We deliberately hide it after a build has cleanly reached Complete/Error (user should close the modal to dismiss). */}
       {!buildProgress && (
         <div className="mx-4 mt-2 p-2 border border-yellow-400/30 bg-yellow-400/[0.03] rounded-sm flex items-center justify-between text-[9px] font-mono">
-          <span className="text-yellow-400/80">No active build session in UI. If a build is running on the backend:</span>
+          <span className="text-yellow-400/80">UI lost track of the build (common after minimize/close). If something is still running on the backend:</span>
           <button
             onClick={() => attachToActiveBuild()}
             className="px-2 py-0.5 text-[8px] font-mono border border-yellow-400/60 text-yellow-400 hover:bg-yellow-400/10"
           >
-            ATTACH TO ACTIVE BUILD
+            SYNC WITH BACKEND
           </button>
         </div>
       )}

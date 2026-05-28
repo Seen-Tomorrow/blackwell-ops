@@ -275,7 +275,7 @@ pub struct ProviderConfig {
     /// Per-environment build info (vanguard/stable/fresh) — captured from binary --version + file mtime.
     #[serde(default, skip_serializing_if = "HashMap::is_empty", rename = "buildInfoPerEnv")]
     pub build_info_per_env: HashMap<String, BuildInfo>,
-    /// Per-environment binary paths — each env builds into its own directory (build-vanguard/bin/Release, etc.).
+    /// Per-environment binary paths — each env's sacred final binary lives under foundry/artifacts/<id>/<env>/Release/ (post-2026-04 redesign).
     #[serde(default, skip_serializing_if = "HashMap::is_empty", rename = "binaryPathPerEnv")]
     pub binary_path_per_env: HashMap<String, String>,
     /// Per-environment downloaded release version — tracks which GitHub release tag was installed via update.

@@ -95,9 +95,12 @@ export default function FoundryConfirmForm({
 
             {/* CMake flags */}
             <div className="pt-1">
-              <label className="text-[8px] font-mono text-stealth-muted uppercase block mb-1.5">
-                CMake flags (optional, power-user)
+              <label className="text-[8px] font-mono text-stealth-muted uppercase block mb-1">
+                CMake flags (optional)
               </label>
+              <p className="text-[7px] font-mono text-yellow-400/70 mb-1.5 leading-tight">
+                These flags <span className="font-bold text-yellow-400">REPLACE</span> the provider defaults for this build.
+              </p>
               <textarea
                 placeholder="-DGGML_CUDA=ON -DLLAMA_AVX2=OFF ..."
                 rows={3}
@@ -146,15 +149,23 @@ export default function FoundryConfirmForm({
               <p className="text-[10px] font-mono text-red-400 font-bold">⚠ RUNNING ENGINES DETECTED</p>
               <pre className="text-[8px] font-mono text-white/70 whitespace-pre-wrap">{engineListText}</pre>
               <p className="text-[9px] font-mono text-stealth-muted">
-                These engines will be stopped before the build starts. Click STOP ENGINES & PROCEED to continue, or CANCEL to handle manually.
+                BUILD will automatically stop these engines. Click <span className="font-bold">STOP ENGINES &amp; PROCEED</span> or CANCEL to handle manually first.
               </p>
             </div>
           )}
 
           {!showEngineWarning && (
-            <p className="text-[8px] font-mono text-yellow-400/70">
-              This will compile llama.cpp from source. The build may take several minutes. Inference engines must be stopped before building.
-            </p>
+            <div className="border border-yellow-400/40 bg-yellow-400/[0.06] rounded-sm p-3">
+              <p className="text-[10px] font-mono text-yellow-400 font-bold mb-1">
+                ⚠ BUILD WILL STOP RUNNING ENGINES
+              </p>
+              <p className="text-[9px] font-mono text-white/80">
+                Clicking <span className="font-bold">YES — BUILD</span> will <span className="text-yellow-400 font-bold">automatically stop</span> any inference engines currently running for this provider.
+              </p>
+              <p className="text-[8px] font-mono text-stealth-muted mt-1">
+                If you prefer to stop them yourself first, click MINIMIZE or CLOSE now and stop the engines from the main page.
+              </p>
+            </div>
           )}
         </div>
 

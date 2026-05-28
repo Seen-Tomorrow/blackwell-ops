@@ -133,18 +133,49 @@ This directly solves the 1.7 GB webview problem while still giving power users e
 - Optional live tailing improvements
 - Possibly allow users to open the console automatically on certain events when in power user mode
 
-## 7. Open Questions / Decisions Needed
+## 7. Decisions Locked (from user feedback)
 
-- Exact list of initial categories?
-- Default buffer size per category (e.g. 2000 lines)?
-- Should the console be a bottom panel, a modal, or a separate floating window?
-- Do we want simple ANSI color support from the beginning, or start with plain text + basic styling?
-- Naming: "Output Console", "Log Console", "Command Output", "Universal Output Receiver"?
+These decisions have been confirmed:
+
+- **Initial Output Categories**:
+  - ENGINES
+  - UTILS
+  - FOUNDRY
+  - ERROR
+  - (GENERAL as a possible catch-all if needed later)
+  - Long-term option: Move the list of categories into app configuration so they can be extended without code changes.
+
+- **Default Buffer Size**:
+  - Approximately 2000 lines per category is acceptable as a starting default.
+
+- **UI Placement & Interaction Model**:
+  - Bottom panel style.
+  - Expandable and collapsible.
+  - Should support detaching (floating window).
+  - When collapsed/docked near the status bar: show a distinct bar that displays only the last line. Expanding reveals the full tabbed console.
+
+- **Color / Styling Support**:
+  - Colors are desired for highlighting important information.
+  - Raw ANSI escape codes should be avoided (considered too messy).
+  - Preference: Controlled, semantic styling (our own color tokens or a small set of styles) rather than passing through arbitrary ANSI.
+
+- **Feature Naming**:
+  - "Universal Output Receiver" was considered too sci-fi / Flux-capacitor-like.
+  - We still need to choose a better, more grounded name (suggestions: Output Console, Activity Output, System Output, Command Output, Output Hub, etc.).
 
 ---
 
-This document can serve as the single source of truth while we implement the system.
+## 8. Open Questions Remaining
 
-Next step: Once you confirm the direction above, we can start with the Rust `OutputBus` skeleton + the basic frontend component, and simultaneously plan the migration of Foundry build logging into this system.
+- Final name for the overall feature / component.
+- Exact set of semantic styles/colors we want to support early (e.g. command, output, warning, error, success, highlight, etc.).
+- Detailed behavior of the collapsed "last line" status bar (height, styling, click-to-expand behavior, etc.).
+- Whether any form of persistence (across app restarts) is desired for any category (probably not initially).
 
-Ready when you are.
+---
+
+This document now reflects the current agreed direction.
+
+Next step: Once you're happy, we can move to a more detailed **Implementation Plan** (with concrete phases, file creation list, Rust module structure, and migration steps for the current Foundry logging).
+
+Let me know if anything above needs adjustment.

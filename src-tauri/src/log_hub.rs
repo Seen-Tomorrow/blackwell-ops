@@ -2,6 +2,10 @@ use serde::Serialize;
 use tokio::sync::mpsc;
 use tauri::AppHandle;
 use tauri::Emitter;
+use tauri::Manager;
+
+use crate::output_console::BlackwellOutputConsoleCategory;
+use crate::output_console::BlackwellOutputConsoleLineStyle;
 
 /// Categories for the Universal Output Receiver (UOR).
 /// These are static tabs in the power-user output console.
@@ -184,6 +188,15 @@ impl LogHub {
                             engine_ready = true;
                             on_ready();
                             eprintln!("[READINESS] slot={} engine ready", slot_idx);
+
+                            // Route ready status to Blackwell Output Console (ENGINES category)
+                            if let Some(ctx) = app_handle.try_state::<crate::engine::AppContext>() {
+                                ctx.blackwell_output_console_manager.emit_line_to_category(
+                                    crate::output_console::BlackwellOutputConsoleCategory::Engines,
+                                    format!("[{}] Engine ready (server is listening)", alias),
+                                    crate::output_console::BlackwellOutputConsoleLineStyle::Success,
+                                );
+                            }
                         }
                     }
 

@@ -12,6 +12,9 @@ interface FoundryModalProps {
   onComplete?: (providerId: string) => void;
   visible: boolean;
   onMinimize?: () => void;
+  // When this key changes (even for the same provider), React will remount the component,
+  // guaranteeing all local useState is reset. This is used by the parent to force a fresh
+  // start when the user clicks "Build" again after a previous cancel or failure.
 }
 
 interface BuildLogEntry {
@@ -20,6 +23,22 @@ interface BuildLogEntry {
   timestamp: string;
 }
 
+/**
+ * The build flow has TWO distinct consent points where the user must explicitly approve:
+ *
+ * 1. Initial Build Confirmation (this modal in "confirm" phase)
+ *    - User sets PR, custom flags, thread count, etc.
+ *    - Clicks "YES — BUILD" → this starts the real `foundry_build` (engine stop + configure).
+ *    - Component: FoundryConfirmForm
+ *
+ * 2. Compilation Confirmation (WaitingForConfirm phase, rendered inside FoundryBuildProgress)
+ *    - After successful CMake configure, the backend pauses and asks for final approval.
+ *    - User sees the configure log and must click "PROCEED WITH BUILD" or "REJECT — ABORT".
+ *    - This is the last chance before the long/expensive MSBuild compilation starts.
+ *
+ * These two points used to have overlapping/confusing "confirm" names. We are trying to keep
+ * the distinction clear in code and UI.
+ */
 type ModalPhase = "confirm" | "building" | "complete" | "error" | "backup-locked";
 
 function mapBackendPhase(bp: string): { frontend: ModalPhase | null; special?: string } {
@@ -39,6 +58,10 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
   const [phase, setPhase] = useState<ModalPhase>("confirm");
   const phaseRef = useRef(phase);
   phaseRef.current = phase;
+
+  // Transient state for immediate feedback when user clicks the final BUILD button.
+  // We show this *before* the heavy engine-stop work starts in the backend (which can take 5-15s).
+  const [stoppingEngines, setStoppingEngines] = useState(false);
 
   const buildIdRef = useRef<number | null>(null);
   const [logLines, setLogLines] = useState<BuildLogEntry[]>([]);
@@ -68,6 +91,7 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
     setLogLines([]);
     setCurrentStep("");
     setWaitingForConfirm(false);
+    setStoppingEngines(false);
     buildIdRef.current = null;
     setPrUrl("");
     setMaxCores(null);
@@ -107,9 +131,21 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
           }
 
           const mapping = mapBackendPhase(payload.phase);
+
+          // As soon as *any* progress event arrives from this build, the heavy "stopping engines" phase is over.
+          // We no longer need the big overlay — dismiss it early so the user sees real configure/compile output promptly.
+          if (payload.build_id != null && buildIdRef.current === payload.build_id) {
+            setStoppingEngines(false);
+          }
+
           if (mapping.frontend) {
             setPhase(mapping.frontend);
-            if (mapping.frontend === "complete" && onComplete) onComplete(provider.id);
+            if (mapping.frontend === "complete" || mapping.frontend === "error") {
+              // Do NOT auto-clear the log here.
+              // User wants to review the full build log on the success/error screen.
+              // The log will be cleared when they explicitly close the modal (or start a new build for a different provider).
+              if (mapping.frontend === "complete" && onComplete) onComplete(provider.id);
+            }
             if (mapping.frontend === "backup-locked") setBackupRetryCount(p => p + 1);
           }
           if (mapping.special === "wait-confirm") {
@@ -135,6 +171,18 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
 
   // ── Confirm flow handlers ───────────────────────────────────────────
   const startBuild = useCallback(async () => {
+    // Give the user *immediate* visible feedback that we are now stopping engines.
+    // This is the moment the long delay used to be completely silent.
+    setStoppingEngines(true);
+    setPhase("building");
+    setCurrentStep("STOPPING ENGINES");
+
+    // Hard safety timeout: never let the "STOPPING ENGINES" overlay stay visible more than ~7 seconds.
+    // If the backend is slow to emit the first progress, we still want the user to see the real configure output.
+    const overlayTimeout = setTimeout(() => {
+      setStoppingEngines(false);
+    }, 7000);
+
     try {
       await invoke("foundry_build", {
         providerId: provider.id,
@@ -144,12 +192,16 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
         cmakeFlags: cmakeFlags.trim() || null,
       });
     } catch (err) {
+      clearTimeout(overlayTimeout);
+      setStoppingEngines(false);
       setPhase("error");
       setLogLines(prev => [...prev, {
         step: "ERROR",
         text: typeof err === "string" ? err : JSON.stringify(err),
         timestamp: new Date().toLocaleTimeString(),
       }]);
+    } finally {
+      clearTimeout(overlayTimeout);
     }
   }, [provider.id, environment, prUrl, maxCores, cmakeFlags]);
 
@@ -183,7 +235,15 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
 
   const handleCancel = useCallback(async () => {
     try { await invoke("foundry_cancel"); } catch {}
-  }, []);
+    setStoppingEngines(false);
+    setLogLines([]);
+    setCurrentStep("");
+
+    // Important: actually close the modal through the dock state machine.
+    // Without this, cancelling from WaitingForConfirm or error states leaves
+    // the dock thinking there's still an active (stuck) build session.
+    onClose();
+  }, [onClose]);
 
   const handleConfirmProceed = useCallback(async () => {
     setWaitingForConfirm(false);
@@ -197,7 +257,31 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
   const isComplete = phase === "complete";
   const isError = phase === "error";
 
-  if (!visible) return null;
+  // Drain logLines only on true terminal states (complete/error).
+  // We no longer auto-drain just because the modal is minimized/hidden.
+  // This preserves log history across minimize/restore during configure and build phases.
+  // Memory is controlled by:
+  //   - BUILD-phase cap inside the listener (150 lines)
+  //   - Visual slice(-200) in the renderer
+  //   - Full history available in the Blackwell Output Console
+  const hasDrainedRef = useRef(false);
+
+  useEffect(() => {
+    const shouldDrain = isComplete || isError;
+    if (shouldDrain && !hasDrainedRef.current && logLines.length > 0) {
+      hasDrainedRef.current = true;
+      setLogLines([]);
+      setCurrentStep("");
+    }
+    // Reset guard when a brand new build session starts
+    if (phase === "confirm") {
+      hasDrainedRef.current = false;
+    }
+  }, [isComplete, isError, phase, logLines.length]);
+
+  if (!visible) {
+    return null;
+  }
 
   // Backup Locked state (rare, keep inline for now)
   if (phase === "backup-locked") {
@@ -242,7 +326,29 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
     );
   }
 
-  // Build / Complete / Error Phase
+  // Special immediate feedback screen while we are stopping engines (before any real progress events arrive).
+  if (stoppingEngines && !isComplete && !isError) {
+    return (
+      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm">
+        <div className="w-[min(92vw,620px)] border border-yellow-400/40 bg-stealth-panel rounded-sm p-8 text-center space-y-4">
+          <div className="text-yellow-400 text-2xl font-mono tracking-[4px]">STOPPING ENGINES</div>
+          <div className="text-[11px] font-mono text-white/80">
+            BUILD needs exclusive access.<br />
+            Automatically stopping any running inference engines for <span className="text-yellow-400 font-bold">{provider.display_name}</span>...
+          </div>
+          <div className="text-[9px] font-mono text-stealth-muted pt-2">This can take 5–15 seconds. The build will start automatically after engines are stopped.</div>
+          <button
+            onClick={handleCancel}
+            className="mt-4 px-4 py-1 text-[9px] font-mono border border-red-400/60 text-red-400 hover:bg-red-500/20"
+          >
+            CANCEL BUILD
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Build / Complete / Error Phase (normal progress UI)
   return (
     <FoundryBuildProgress
       provider={provider}

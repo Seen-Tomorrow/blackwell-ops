@@ -16,7 +16,7 @@ import { StatusProvider } from "./context/StatusBarContext";
 import { DockProvider } from "./context/DockContext";
 import { TelemetryProvider } from "./context/TelemetryContext";
 import { ToastProvider } from "./components/Toast";
-import { BuildDockProvider } from "./hooks/useBuildDock";
+import { FoundryProvider } from "./hooks/useBuildDock";
 import { KEYS, STORAGE_PREFIX } from "./lib/storage";
 import type { ModelEntry, StackEntry, LogBatch, LogEntry, SystemEvent, ProviderConfig, FusionUpdate, AppUpdateInfo } from "./lib/types";
 
@@ -452,7 +452,7 @@ function App() {
   return (
     <ToastProvider>
       <DockProvider>
-        <BuildDockProvider>
+        <FoundryProvider>
           <TelemetryProvider lowPower={lowPower}>
             <StatusProvider value={{ totalParams, hiddenCount, onShowAll: handleShowAll }}>
             <Layout activeTab={activeTab} onTabChange={(tab) => { setActiveTab(tab); if (tab === "config") setHasBinaryUpdates(false); }} providers={providers} appUpdate={appUpdate} hasBinaryUpdates={hasBinaryUpdates} onInstallAppUpdate={handleInstallAppUpdate}>
@@ -566,7 +566,7 @@ function App() {
             </Layout>
           </StatusProvider>
         </TelemetryProvider>
-      </BuildDockProvider>
+      </FoundryProvider>
     </DockProvider>
     </ToastProvider>
   );

@@ -39,6 +39,23 @@ pub fn foundry_dir(provider_id: &str) -> std::path::PathBuf {
         .join(provider_id)
 }
 
+/// Foundry artifacts directory (sacred final Release binaries).
+/// Layout: foundry/artifacts/<provider_id>/<env_label>/Release/llama-server.exe
+pub fn foundry_artifacts_dir() -> std::path::PathBuf {
+    app_root_dir().join("foundry").join("artifacts")
+}
+
+/// Per-provider disposable work directory for the current (or last) build attempt.
+/// Everything under here may be deleted at the end of any build (success/failure/cancel).
+pub fn foundry_work_dir(provider_id: &str) -> std::path::PathBuf {
+    foundry_dir(provider_id).join("work")
+}
+
+/// Sacred Release directory for one provider + environment profile.
+pub fn foundry_artifact_release_dir(provider_id: &str, env_label: &str) -> std::path::PathBuf {
+    foundry_artifacts_dir().join(provider_id).join(env_label).join("Release")
+}
+
 /// Resolve a path that may be relative to app_root or absolute.
 /// Relative paths like "runtime/ggml-master/stable/llama-server.exe" are resolved against app_root.
 /// Absolute paths (containing drive letter) are returned as-is.
@@ -77,6 +94,7 @@ pub fn ensure_portable_structure(app_handle: &tauri::AppHandle) {
     let _ = std::fs::create_dir_all(cache_dir().parent().unwrap_or(&data));
     let foundry_base = app_root_dir().join("foundry");
     let _ = std::fs::create_dir_all(&foundry_base);
+    let _ = std::fs::create_dir_all(foundry_artifacts_dir());
 
     // Copy bundled binaries from Tauri resources (REL only)
     if !cfg!(debug_assertions) {
@@ -177,7 +195,7 @@ pub struct ProviderMeta {
     /// Per-environment build info captured from binary --version + file mtime.
     #[serde(default, skip_serializing_if = "HashMap::is_empty", rename = "buildInfoPerEnv")]
     pub build_info_per_env: HashMap<String, crate::types::BuildInfo>,
-    /// Per-environment binary paths — each env builds into its own directory (build-vanguard/bin/Release, etc.).
+    /// Per-environment binary paths — each env's final sacred binary lives under foundry/artifacts/<id>/<env>/Release/llama-server.exe.
     #[serde(default, skip_serializing_if = "HashMap::is_empty", rename = "binaryPathPerEnv")]
     pub binary_path_per_env: HashMap<String, String>,
     /// Per-environment downloaded release version — tracks which GitHub release tag was installed via update.
