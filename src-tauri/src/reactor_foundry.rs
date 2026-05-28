@@ -691,7 +691,8 @@ pub async fn foundry_build(
     let work_root   = crate::config::foundry_work_dir(&provider_id);
     let build_dir   = work_root.join(format!("build-{}", env.env_label()));
     let bin_release = build_dir.join("bin").join("Release");
-    // Transitional dummy so the many legacy rollback_build(...) call sites (which will be cleaned in a follow-up pass) still compile.
+    // Dummy value kept only for compilation of a few remaining rollback call sites.
+    // Can be removed once those sites are updated.
     // In the fully simplified world these calls will take far fewer arguments.
     let bin_bak: std::path::PathBuf = std::path::PathBuf::new();
     // NOTE: bin_bak / rename dance removed entirely from normal build flow. Sacred artifacts are never touched during a build attempt.
@@ -887,7 +888,7 @@ pub async fn foundry_build(
     }
 
     // ── Provider display name (used in messages) ─────────────────────
-    // The old "Atomic Bin Prep + BackupLocked rename dance" has been removed.
+    // The old pre-redesign "Atomic Bin Prep + BackupLocked rename dance" has been removed.
     // In the new model we build into a completely separate disposable work/ tree.
     // Sacred artifacts/<id>/<env>/Release is only written (by copy) on successful validation.
     // Therefore no pre-build backup/rename of a live binary is required.
@@ -1395,8 +1396,8 @@ pub async fn foundry_build(
     app.blackwell_output_console_manager
         .end_foundry_build_session(build_id);
 
-    // On a *clean successful build*, let the tracked child (cmake --build) + its entire msbuild/cl/conhost tree
-    // terminate naturally. This matches the pre-refactor behavior the user reports worked reliably.
+    // On a clean successful build, let the tracked child (cmake --build) + its subtree terminate naturally.
+    // This restores the reliable behavior that existed before the directory redesign work.
     // We only do aggressive killing on explicit cancel and hard failure paths.
     //
     // Give the process tree a tiny moment to unwind before we nuke the (still disposable) work/ dir.
@@ -1516,7 +1517,7 @@ pub async fn refresh_build_info(
             if old_build_dir.exists() {
                 let new_build_dir = src_dir.join("build-vanguard");
                 if !new_build_dir.exists() && old_build_dir.join("bin").exists() {
-                    log::info!("[migration] Migrating '{}' from build/ to build-vanguard/", provider_id);
+                    log::info!("[migration] One-time historical migration of ancient 'build/' directory for '{}'", provider_id);
                     let _ = tokio::fs::create_dir_all(&new_build_dir).await;
                     if tokio::fs::rename(&old_build_dir, &new_build_dir).await.is_ok() {
                         let new_bin = new_build_dir.join("bin").join("Release");
@@ -1652,7 +1653,8 @@ pub async fn foundry_restore(
         return Ok(());
     }
 
-    // --- Legacy fallback (old bin-*-bak) for users who upgraded ---
+    // --- Very old legacy fallback (pre-artifacts era) ---
+    // Most users will never hit this path anymore.
     let work_dir = crate::config::foundry_dir(&provider_id);
     let src_dir = foundry_src_dir(&provider_id);
     let build_dir = src_dir.join(format!("build-{}", env_label));
@@ -1661,9 +1663,9 @@ pub async fn foundry_restore(
 
     if !bin_bak.exists() {
         return Err(format!(
-            "No previous build backup found for '{}' ({}).\n\
-             In the current layout we keep one previous artifact automatically (Release.prev).\n\
-             If you never overwrote this profile, there is nothing to restore.",
+            "No previous build found for '{}' ({}).\n\
+             The current system keeps one previous artifact automatically as Release.prev.\n\
+             Rebuild the profile to create a new backup.",
             provider_id, env_label
         ));
     }
@@ -1674,7 +1676,7 @@ pub async fn foundry_restore(
     }
     tokio::fs::rename(&bin_bak, &bin_release)
         .await
-        .map_err(|e| format!("Failed to restore legacy backup: {}", e))?;
+        .map_err(|e| format!("Failed to restore ancient legacy backup: {}", e))?;
 
     let bin_path = bin_release.join("llama-server.exe");
     if bin_path.exists() {

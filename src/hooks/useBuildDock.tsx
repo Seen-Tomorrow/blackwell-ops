@@ -36,7 +36,7 @@ interface BuildSession {
 }
 
 export interface FoundryCtx {
-  // Legacy shape kept for backward compatibility with FoundryPage + existing consumers
+  // Shape kept for backward compatibility with FoundryPage + existing consumers
   buildProgress: BuildProgressState | null;
   foundryModal: { providerId: string; environment: Env } | null;
   foundryModalVisible: boolean;
@@ -348,7 +348,7 @@ export const FoundryProvider: React.FC<{ children?: React.ReactNode }> = ({ chil
 
       dispatch({ type: 'PROGRESS', event: payload });
 
-      // Keep legacy shape in sync for consumers that still read buildProgress directly
+      // Keep shape in sync for consumers that still read buildProgress directly
       const step = mapPhase(payload.phase);
       const logLine = payload.log_lines?.[payload.log_lines.length - 1] ?? payload.log_line;
       setLegacyProgress({
