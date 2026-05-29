@@ -66,7 +66,7 @@ export default function ModelCard({ model, idx, isSelected, isHighlighted, fitSt
 
       {/* Model name + quant/size */}
       <div className="flex items-center justify-between gap-2">
-        <span className={`text-xs font-mono truncate flex-shrink min-w-0 ${isSelected ? "text-nv-green" : "text-white"}`} title={model.name}>
+        <span className="text-xs font-mono truncate flex-shrink min-w-0" style={isSelected ? { color: '#b87a00' } : undefined} title={model.name}>
           {model.name}
           {model.vision && (
             <span className="text-[8px] font-mono text-telemetry-cyan ml-1 flex-shrink-0">👁</span>

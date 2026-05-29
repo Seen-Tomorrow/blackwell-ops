@@ -802,11 +802,33 @@ html, body, #root {
 
 /* Brushed steel card — selected model in catalog */
 .brushed-steel-card {
-  background-image:
-    
-    linear-gradient(180deg, #7a7d7a 0%, #959895 47%, #7a7d7a 53%, #6e716e 100%);
-  background-size: 1000% 300%;
-  border-color: rgba(118, 185, 0, 0.4);
+  background: #0c120a;
+  border-color: rgba(184, 122, 0, 0.5) !important;
+  box-shadow: 0 0 8px rgba(184, 122, 0, 0.1), inset 0 0 6px rgba(184, 122, 0, 0.04);
+}
+
+.brushed-steel-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  background: #b87a00;
+  border-radius: 1px;
+}
+
+/* Selected model card text — keep readable on dark bg */
+.brushed-steel-card .text-white {
+  color: #e0e0e0 !important;
+}
+
+.brushed-steel-card .text-stealth-muted {
+  color: #9a9488 !important;
+}
+
+.brushed-steel-card .border-stealth-border\/30 {
+  border-color: rgba(154, 148, 136, 0.2) !important;
 }
 
 /* Brushed steel — narrow variant for model cards (vertical grain, stretched pattern) */
