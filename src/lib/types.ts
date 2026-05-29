@@ -122,6 +122,22 @@ export interface ProviderConfig {
   binaryPathPerEnv?: Record<string, string>; // env -> sacred artifact path (e.g. "vanguard" -> "foundry/artifacts/<id>/vanguard/Release/llama-server.exe")
   downloadedVersionPerEnv?: Record<string, string>; // env -> GitHub release tag that was installed via update (e.g. "v0.7.8")
   lastPrPerEnv?: Record<string, string>; // env -> PR number (e.g. "stable" -> "21293")
+  factory_provided?: boolean; // true = bundled in runtime/ or downloaded from GitHub releases
+}
+
+/** Provider origin classification — derived from existing fields, not stored */
+export type ProviderOrigin = 'foundry' | 'downloaded' | 'bundled';
+
+/**
+ * Derive provider origin for a given environment.
+ * - foundry: binary_path_per_env[env] starts with "foundry/artifacts/"
+ * - downloaded: downloaded_version_per_env[env] is non-empty
+ * - bundled: path points to runtime/<id>/<env>/, no build/download info
+ */
+export function getProviderOrigin(provider: ProviderConfig, env: string): ProviderOrigin {
+  if (provider.binaryPathPerEnv?.[env]?.startsWith('foundry/artifacts/')) return 'foundry';
+  if (provider.downloadedVersionPerEnv?.[env]) return 'downloaded';
+  return 'bundled';
 }
 
 /** Full provider template — loaded from templates.json */

@@ -28,6 +28,7 @@ interface FormState {
   branch: string;
   build_profile: string;
   template_type: string;
+  factory_provided?: boolean; // true = bundled in runtime/ or downloaded from GitHub releases
 }
 
 type ScanStatus = "idle" | "scanning" | "complete" | "error";
@@ -141,7 +142,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
       await invoke("save_provider", { provider });
       await loadProviders();
 
-      setForm({ id: "", display_name: "", binary_path: "", enabled: true, params: {}, git_url: "", branch: "", build_profile: "", template_type: "ggml-llama" });
+ setForm({ id: "", display_name: "", binary_path: "", enabled: true, params: {}, git_url: "", branch: "", build_profile: "", template_type: "ggml-llama", factory_provided: false });
       setEditingId(null);
       setShowAddForm(false);
     } catch (err) {
@@ -172,13 +173,14 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
       branch: p.branch || "",
       build_profile: p.build_profile || "",
       template_type: p.template_type || "ggml-llama",
+      factory_provided: p.factory_provided,
     });
     setEditingId(p.id);
     setShowAddForm(true);
   }, []);
 
   const handleCancel = useCallback(() => {
-    setForm({ id: "", display_name: "", binary_path: "", enabled: true, params: {}, git_url: "", branch: "", build_profile: "", template_type: "ggml-llama" });
+    setForm({ id: "", display_name: "", binary_path: "", enabled: true, params: {}, git_url: "", branch: "", build_profile: "", template_type: "ggml-llama", factory_provided: false });
     setEditingId(null);
     setShowAddForm(false);
     setError(null);
@@ -567,7 +569,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
                 onChange={(e) => setForm((prev) => ({ ...prev, display_name: e.target.value }))}
                 className="flex-1 bg-transparent border-b border-yellow-400/60 text-[11px] font-mono text-white placeholder:text-yellow-400/30 focus:border-yellow-400 focus:outline-none px-1 py-0.5" />
             </div>
-            <ProviderFormFields form={form} setForm={setForm} handleBrowse={handleBrowse} />
+            <ProviderFormFields form={form} setForm={setForm} handleBrowse={handleBrowse} isFactoryProvided={false} />
             {/* Action buttons */}
             <div className="flex gap-2 pt-1">
               <button onClick={handleSave} disabled={loading || !form.id.trim() || !form.display_name.trim() || !form.binary_path.trim()}
@@ -674,10 +676,12 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
                        className="px-2 py-0.5 text-[9px] font-mono border border-yellow-400/40 text-yellow-400 hover:bg-yellow-500/20 transition-colors">
                        EDIT
                      </button>
-                    <button onClick={(e) => { e.stopPropagation(); handleDelete(p.id); }}
-                      className="px-2 py-0.5 text-[9px] font-mono border border-red-500/30 text-red-400 hover:bg-red-500/20 transition-colors">
-                      REMOVE
-                    </button>
+                    {!p.factory_provided && (
+                      <button onClick={(e) => { e.stopPropagation(); handleDelete(p.id); }}
+                        className="px-2 py-0.5 text-[9px] font-mono border border-red-500/30 text-red-400 hover:bg-red-500/20 transition-colors">
+                        REMOVE
+                      </button>
+                    )}
 
                     {/* SCAN LIBRARY + parallel */}
                     <div className="flex items-center gap-1.5 ml-2 pl-2 border-l border-stealth-border/30">
@@ -744,15 +748,15 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
                     <input type="text" value={form.display_name} onChange={(e) => setForm((prev) => ({ ...prev, display_name: e.target.value }))}
                       className="flex-1 bg-transparent border-b border-yellow-400/60 text-[11px] font-mono text-white focus:border-yellow-400 focus:outline-none px-1 py-0.5" />
                   </div>
-                  <ProviderFormFields form={form} setForm={setForm} handleBrowse={handleBrowse} />
-                  {/* Action buttons */}
-                  <div className="flex gap-2 pt-1">
-                    <button onClick={handleSave} disabled={loading || !form.id.trim() || !form.display_name.trim() || !form.binary_path.trim()}
-                      className="px-3 py-1 text-[10px] font-mono border border-nv-green/60 text-nv-green hover:bg-nv-green/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
-                      {loading ? "SAVING..." : "UPDATE"}
-                    </button>
-                    <button onClick={handleCancel} className="px-3 py-1 text-[10px] font-mono border border-stealth-border text-stealth-muted hover:text-white transition-colors">CANCEL</button>
-                  </div>
+                  <ProviderFormFields form={form} setForm={setForm} handleBrowse={handleBrowse} isFactoryProvided={form.factory_provided} />
+                    {/* Action buttons */}
+                    <div className="flex gap-2 pt-1">
+                      <button onClick={handleSave} disabled={loading || !form.id.trim() || !form.display_name.trim() || !form.binary_path.trim()}
+                        className="px-3 py-1 text-[10px] font-mono border border-nv-green/60 text-nv-green hover:bg-nv-green/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+                        {loading ? "SAVING..." : "UPDATE"}
+                      </button>
+                      <button onClick={handleCancel} className="px-3 py-1 text-[10px] font-mono border border-stealth-border text-stealth-muted hover:text-white transition-colors">CANCEL</button>
+                    </div>
                 </div>
               )}
               </Fragment>
@@ -779,17 +783,28 @@ interface ProviderFormFieldsProps {
   form: FormState;
   setForm: React.Dispatch<React.SetStateAction<FormState>>;
   handleBrowse: () => void;
+  isFactoryProvided?: boolean; // true = bundled in runtime/ or downloaded from GitHub releases
 }
 
-function ProviderFormFields({ form, setForm, handleBrowse }: ProviderFormFieldsProps) {
+function ProviderFormFields({ form, setForm, handleBrowse, isFactoryProvided }: ProviderFormFieldsProps) {
   return (
     <>
       {/* Binary path */}
       <div className="flex items-center gap-2">
         <label className="text-[10px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider">Binary Path</label>
-        <input type="text" value={form.binary_path} onChange={(e) => setForm((prev) => ({ ...prev, binary_path: e.target.value }))}
-          className="flex-1 bg-transparent border-b border-yellow-400/60 text-[11px] font-mono text-white focus:border-yellow-400 focus:outline-none px-1 py-0.5" />
-        <button onClick={handleBrowse} className="px-2 py-0.5 text-[9px] font-mono border border-stealth-border text-stealth-muted hover:text-nv-green transition-colors flex-shrink-0">BROWSE</button>
+        {isFactoryProvided ? (
+          <>
+            <input type="text" value={form.binary_path} disabled
+              className="flex-1 bg-transparent border-b border-yellow-400/30 text-[11px] font-mono text-stealth-muted focus:outline-none px-1 py-0.5 cursor-not-allowed" />
+            <span className="text-[8px] font-mono text-nv-green/60 flex-shrink-0">MANAGED</span>
+          </>
+        ) : (
+          <>
+            <input type="text" value={form.binary_path} onChange={(e) => setForm((prev) => ({ ...prev, binary_path: e.target.value }))}
+              className="flex-1 bg-transparent border-b border-yellow-400/60 text-[11px] font-mono text-white focus:border-yellow-400 focus:outline-none px-1 py-0.5" />
+            <button onClick={handleBrowse} className="px-2 py-0.5 text-[9px] font-mono border border-stealth-border text-stealth-muted hover:text-nv-green transition-colors flex-shrink-0">BROWSE</button>
+          </>
+        )}
       </div>
       {/* Enabled toggle */}
       <div className="flex items-center gap-2">

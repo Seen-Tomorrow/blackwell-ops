@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { ProviderConfig, BinaryUpdateInfo } from "../lib/types";
-import { DEFAULT_PROVIDER_ID } from "../lib/types";
+import { DEFAULT_PROVIDER_ID, getProviderOrigin } from "../lib/types";
 import { useFoundry, type Env } from "../hooks/useBuildDock";
 import { getEnvColors, ENV_ORDER, ENV_META, getStepLabel } from "../lib/foundry_constants";
 
@@ -321,6 +321,9 @@ function FoundryProviderCard({ provider, onBuild, onRestoreConfirm, buildProgres
         {provider.id === DEFAULT_PROVIDER_ID && (
           <span className="text-[7px] font-mono tracking-wider text-nv-green/60 px-1.5 py-0 border border-nv-green/20 rounded-sm flex-shrink-0">DEFAULT</span>
         )}
+        {provider.factory_provided && (
+          <span className="text-[7px] font-mono tracking-wider text-yellow-400/60 px-1.5 py-0 border border-yellow-400/20 rounded-sm flex-shrink-0">FACTORY</span>
+        )}
         <div className="flex-1" />
         {/* CMake flags badge */}
         <div className="relative inline-block group">
@@ -423,9 +426,15 @@ function BuildProfileRow({ env, meta, provider, isLatestBuild, hasBackup, isBuil
 
   return (
     <div className={`flex items-center gap-3 px-3 py-2 rounded border ${c.border} ${c.bg}`}>
-      {/* Env label */}
-      <div className="flex-shrink-0 w-24">
+      {/* Env label + origin badge */}
+      <div className="flex-shrink-0 w-24 flex items-center gap-1.5">
         <span className={`text-xl font-mono tracking-wider ${c.text}`}>{meta.label}</span>
+        {(() => {
+          const origin = getProviderOrigin(provider, env);
+          if (origin === 'foundry') return <span className="text-[6px] font-mono px-1 py-0.5 rounded-sm border border-purple-400/30 bg-purple-400/10 text-purple-400">FOUNDRY</span>;
+          if (origin === 'downloaded') return <span className="text-[6px] font-mono px-1 py-0.5 rounded-sm border border-yellow-400/30 bg-yellow-400/10 text-yellow-400">DOWNLOADED</span>;
+          return null;
+        })()}
       </div>
 
       {/* Toolchain badges */}

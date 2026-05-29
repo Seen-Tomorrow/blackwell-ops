@@ -92,6 +92,10 @@ sacred_binary_path     = foundry/artifacts/<provider>/<env>/Release  ← permane
 3. First provider's binary_path  → last resort fallback
 ```
 
+binary_path_per_env — per-environment sacred paths (vanguard/stable/fresh)
+binary_path — convenience fallback / display value in UI for custom providers
+They're not redundant, they're just both present. The resolution function has a clear priority rule.
+
 ### How Each Scenario Sets Paths
 
 **Bundled binaries (from resources):**
@@ -193,7 +197,7 @@ absolute: C:\Users\GHOST-TOWER\INFRA\blackwell-ops\src-tauri\target\debug\foundr
 ## 10. Mirror DEV to REL Workflow
 
 ### Purpose
-Mirror foundry-built artifacts from DEV build directory into `runtime/` so they are bundled in the NSIS release installer.
+Mirror fresh foundry-built artifacts from DEV build directory into `runtime/` so they are bundled in the NSIS release installer.
 
 ### Script: `scripts/mirror-artifacts.ps1`
 - **Source:** `src-tauri/target/debug/foundry/artifacts/<provider>/<env>/Release/`
@@ -221,7 +225,7 @@ npm run release  # triggers prerelease hook → mirror-artifacts.ps1 → tauri b
 - `.prev` backup directories
 
 ### NSIS compression
-Set to `"off"` in `tauri.conf.json` under `plugins.nsis.compression`. Binaries don't compress well; skipping 7zip speeds up builds significantly on multi-core machines.
+Set to `"off"` in `tauri.conf.json` under `plugins.nsis.compression`. 
 
 ### Developer workflow
 1. Build providers via foundry (artifacts land in `foundry/artifacts/`)

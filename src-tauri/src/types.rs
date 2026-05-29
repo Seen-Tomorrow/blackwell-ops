@@ -288,6 +288,10 @@ pub struct ProviderConfig {
     /// Display order in provider list (0 = first). Auto-assigned on save if not set.
     #[serde(default)]
     pub display_order: i32,
+    /// True when the provider was discovered from runtime/ directory (bundled or downloaded).
+    /// Factory-provided providers cannot be removed, only disabled. Binary path is managed by foundry/download.
+    #[serde(default)]
+    pub factory_provided: bool,
 }
 
 pub fn default_true() -> bool { true }

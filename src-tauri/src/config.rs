@@ -207,6 +207,9 @@ pub struct ProviderMeta {
     /// Display order in provider list (0 = first). Auto-assigned on save if not set.
     #[serde(default)]
     pub display_order: i32,
+    /// True when the provider was discovered from runtime/ directory (bundled or downloaded).
+    #[serde(default)]
+    pub factory_provided: bool,
 }
 
 impl ProviderMeta {
@@ -228,6 +231,7 @@ impl ProviderMeta {
             downloaded_version_per_env: p.downloaded_version_per_env.clone(),
             last_pr_per_env: p.last_pr_per_env.clone(),
             display_order: p.display_order,
+            factory_provided: p.factory_provided,
         }
     }
 }
@@ -632,6 +636,7 @@ fn discover_providers() -> Vec<crate::types::ProviderConfig> {
                     downloaded_version_per_env: std::collections::HashMap::new(),
                     last_pr_per_env: std::collections::HashMap::new(),
                     display_order: providers.len() as i32,
+                    factory_provided: true,
                 });
             }
         }
@@ -1063,6 +1068,7 @@ fn build_config_with_providers_full(_gpu_count: usize, mut config: AppConfig) ->
                 downloaded_version_per_env: meta.downloaded_version_per_env,
                 last_pr_per_env: meta.last_pr_per_env,
                 display_order: meta.display_order,
+                factory_provided: false,
             });
         }
     }
