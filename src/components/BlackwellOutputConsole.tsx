@@ -11,6 +11,7 @@ interface BlackwellOutputConsoleProps {
   isPowerUser: boolean;
   onClose?: () => void;
   isOpen?: boolean;
+  compact?: boolean;
 }
 
 const CATEGORIES = ["engines", "utils", "foundry", "error", "general"] as const;
@@ -27,7 +28,8 @@ const CATEGORY_LABELS: Record<Category, string> = {
 export default function BlackwellOutputConsole({ 
   isPowerUser, 
   onClose, 
-  isOpen = false 
+  isOpen = false,
+  compact = false
 }: BlackwellOutputConsoleProps) {
   const [activeCategory, setActiveCategory] = useState<Category>("foundry");
   const [lines, setLines] = useState<OutputLine[]>([]);
@@ -129,13 +131,15 @@ export default function BlackwellOutputConsole({
 
   if (!isPowerUser || !isOpen) return null;
 
+  const displayLines = compact ? lines.slice(-3) : lines;
+
   const content = (
     <div 
       className={`flex flex-col border border-cyan-400/50 bg-[#0a0f1a] text-[10px] font-mono shadow-2xl overflow-hidden ${isDetached ? "fixed z-[110] rounded" : "w-full"}`}
       style={{
         ...(isDetached 
-          ? { left: `${position.x}px`, top: `${position.y}px`, width: "780px", height: "460px" } 
-          : { height: "44vh", minHeight: "280px" }),
+          ? { left: `${position.x}px`, top: `${position.y}px`, width: "780px", height: compact ? "150px" : "460px" } 
+          : { height: compact ? "150px" : "44vh", minHeight: compact ? "120px" : "280px" }),
         ...(isDetached ? { userSelect: 'none', WebkitUserSelect: 'none' as any } : {})
       }}
       onMouseDown={(e) => {
@@ -148,12 +152,12 @@ export default function BlackwellOutputConsole({
     >
       {/* Pro Tech Header */}
       <div 
-        className="flex items-center justify-between px-4 py-1.5 bg-[#0c1322] border-b border-cyan-400/30 text-cyan-400 tracking-[1.5px] text-[9px] cursor-grab active:cursor-grabbing"
+        className={`flex items-center justify-between px-4 py-1 bg-[#0c1322] border-b border-cyan-400/30 text-cyan-400 tracking-[1.5px] text-[9px] cursor-grab active:cursor-grabbing ${compact ? "py-0.5" : ""}`}
         onMouseDown={startDrag}
       >
         <div className="flex items-center gap-2">
-          <span className="font-bold">BLACKWELL OUTPUT CONSOLE</span>
-          <span className="px-1.5 py-px text-[7px] border border-cyan-400/40 text-cyan-300">v0.9</span>
+          <span className={`font-bold ${compact ? "text-[8px]" : ""}`}>BLACKWELL OUTPUT CONSOLE</span>
+          {!compact && <span className="px-1.5 py-px text-[7px] border border-cyan-400/40 text-cyan-300">v0.9</span>}
         </div>
 
         <div className="flex items-center gap-1.5 text-white/70">
@@ -189,11 +193,11 @@ export default function BlackwellOutputConsole({
       <div className="flex-1 overflow-auto p-2 bg-black/70 text-[9.5px] leading-[1.35] custom-scrollbar">
         {isLoading && <div className="text-cyan-400/50 pl-1">SYNCING TELEMETRY...</div>}
         
-        {!isLoading && lines.length === 0 && (
+        {!isLoading && displayLines.length === 0 && (
           <div className="pl-1 text-white/25 italic">NO DATA IN CHANNEL</div>
         )}
 
-        {lines.map((line, i) => {
+        {displayLines.map((line, i) => {
           let cls = "text-white/75";
           if (line.style === "Error") cls = "text-red-400";
           else if (line.style === "Warning") cls = "text-amber-400";
@@ -210,8 +214,8 @@ export default function BlackwellOutputConsole({
         })}
       </div>
 
-      <div className="h-5 px-3 flex items-center justify-between text-[7px] border-t border-white/10 bg-[#0c1322] text-white/40">
-        <span>{lines.length} LINES • {activeCategory.toUpperCase()}</span>
+      <div className={`px-3 flex items-center justify-between text-[7px] border-t border-white/10 bg-[#0c1322] text-white/40 ${compact ? "h-4" : "h-5"}`}>
+        <span>{displayLines.length} LINES • {activeCategory.toUpperCase()}</span>
         <span className="cursor-pointer hover:text-cyan-400 active:text-white" onClick={() => fetchBuffer(activeCategory)}>REFRESH</span>
       </div>
     </div>

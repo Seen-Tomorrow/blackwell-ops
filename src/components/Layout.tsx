@@ -365,6 +365,7 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
         isPowerUser={adminLockState !== "locked"} 
         isOpen={isOutputConsoleExpanded}
         onClose={() => setIsOutputConsoleExpanded(false)}
+        compact={true}
       />
     </div>
   );

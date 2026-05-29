@@ -9,6 +9,7 @@
     "dev": "tauri dev --config src-tauri/tauri.conf.dev.json",
     "build": "tsc && vite build",
     "preview": "vite preview",
+    "prerelease": "powershell -ExecutionPolicy Bypass -File scripts/mirror-artifacts.ps1",
     "release": "npm run build && tauri build"
   },
   "dependencies": {

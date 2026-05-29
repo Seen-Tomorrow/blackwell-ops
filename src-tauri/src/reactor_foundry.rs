@@ -680,17 +680,22 @@ pub async fn foundry_build(
         stopped.len()
     };
 
-    // === NEW DIRECTORY MODEL (see FOUNDRY_DIRECTORY_STRUCTURE_MAP.md §5) ===
+    // === DIRECTORY MODEL (see FOUNDRY_DIRECTORY_STRUCTURE_MAP.md §5) ===
+    //
     // engine_root = foundry/engines/<provider_id>
-    //   src_dir   = engine_root/llama.cpp          (kept for git reuse — never touched by cleanup)
-    //   work_root = engine_root/work               (DISPOSABLE — nuked on every exit)
+    //   src_dir     = engine_root/llama.cpp          (kept for git reuse — never touched by cleanup)
+    //   work_root   = engine_root/work               (DISPOSABLE — nuked on every exit)
     //     build_dir = work_root/build-{env}        (ephemeral CMake tree for this attempt)
-    //   artifacts live at foundry/artifacts/<provider>/<env>/Release (SACRED)
-    let engine_root = crate::config::foundry_dir(&provider_id);
-    let src_dir     = engine_root.join("llama.cpp");
-    let work_root   = crate::config::foundry_work_dir(&provider_id);
-    let build_dir   = work_root.join(format!("build-{}", env.env_label()));
-    let bin_release = build_dir.join("bin").join("Release");
+    //
+    // cmake_build_output_dir = build_dir/bin/Release  ← where cmake puts binaries during build
+    // sacred_binary_path     = foundry/artifacts/<provider>/<env>/Release  ← permanent, never nuked
+    //
+    // Flow: cmake builds into work/build-{env}/bin/Release → validated → copied to sacred artifacts
+    let engine_root            = crate::config::foundry_dir(&provider_id);
+    let src_dir                = engine_root.join("llama.cpp");
+    let work_root              = crate::config::foundry_work_dir(&provider_id);
+    let build_dir              = work_root.join(format!("build-{}", env.env_label()));
+    let cmake_build_output_dir = build_dir.join("bin").join("Release");
     // Dummy value kept only for compilation of a few remaining rollback call sites.
     // Can be removed once those sites are updated.
     // In the fully simplified world these calls will take far fewer arguments.
@@ -701,7 +706,7 @@ pub async fn foundry_build(
     let _ = tokio::fs::remove_dir_all(&work_root).await;
     if let Err(e) = tokio::fs::create_dir_all(&work_root).await {
         // Minimal rollback (will be simplified later)
-        rollback_build(app_handle, &provider_id, env, build_id, &src_dir, &bin_release, &PathBuf::new()).execute().await;
+        rollback_build(app_handle, &provider_id, env, build_id, &src_dir, &cmake_build_output_dir, &PathBuf::new()).execute().await;
         return Err(format!("Failed to create work directory: {}", e));
     }
     let _ = tokio::fs::create_dir_all(&build_dir).await;
@@ -719,7 +724,7 @@ pub async fn foundry_build(
     };
 
     if git_url.is_empty() {
-            rollback_build(app_handle, &provider_id, env, build_id, &src_dir, &bin_release, &bin_bak).execute().await;
+            rollback_build(app_handle, &provider_id, env, build_id, &src_dir, &cmake_build_output_dir, &bin_bak).execute().await;
             return Err(format!("Provider '{}' has no git_url configured.", provider_id));
     }
 
@@ -744,7 +749,7 @@ pub async fn foundry_build(
 
         if !clone_output.status.success() {
             let stderr = String::from_utf8_lossy(&clone_output.stderr).to_string();
-            rollback_build(app_handle, &provider_id, env, build_id, &src_dir, &bin_release, &bin_bak).execute().await;
+            rollback_build(app_handle, &provider_id, env, build_id, &src_dir, &cmake_build_output_dir, &bin_bak).execute().await;
             return Err(format!("Git clone failed: {}", stderr));
         }
 
@@ -769,7 +774,7 @@ pub async fn foundry_build(
 
         if !pull_output.status.success() {
             let stderr = String::from_utf8_lossy(&pull_output.stderr).to_string();
-            rollback_build(app_handle, &provider_id, env, build_id, &src_dir, &bin_release, &bin_bak).execute().await;
+            rollback_build(app_handle, &provider_id, env, build_id, &src_dir, &cmake_build_output_dir, &bin_bak).execute().await;
             return Err(format!("Git pull failed: {}", stderr));
         }
 
@@ -1085,7 +1090,7 @@ pub async fn foundry_build(
 
     if !cfg_status.success() {
         let stderr_text: String = stderr_capture.lock().unwrap().join("\n");
-        rollback_build(app_handle, &provider_id, env, build_id, &src_dir, &bin_release, &bin_bak)
+        rollback_build(app_handle, &provider_id, env, build_id, &src_dir, &cmake_build_output_dir, &bin_bak)
             .with_message(if stderr_text.is_empty() { "CMake configure failed.".into() } else { format!("CMake configure failed:\n{}", stderr_text) })
             .execute().await;
 
@@ -1223,7 +1228,7 @@ pub async fn foundry_build(
     if build_status.is_none() {
         clear_pids();
         let _ = tokio::fs::remove_file(&build_batch_path).await;
-        do_rollback(&bin_release, &bin_bak).await; // will become no-op after rollback simplification
+        do_rollback(&cmake_build_output_dir, &bin_bak).await; // will become no-op after rollback simplification
         // work/ (incl. build_dir) nuked on exit
         return Err("Build cancelled by user.".to_string());
     }
@@ -1232,7 +1237,7 @@ pub async fn foundry_build(
 
     if !build_status.unwrap().success() {
         let stderr_text: String = stderr_text.join("\n");
-        rollback_build(app_handle, &provider_id, env, build_id, &src_dir, &bin_release, &bin_bak)
+        rollback_build(app_handle, &provider_id, env, build_id, &src_dir, &cmake_build_output_dir, &bin_bak)
             .with_message(if stderr_text.is_empty() { "Build failed.".into() } else { format!("Build failed:\n{}", stderr_text) })
             .execute().await;
 
@@ -1265,23 +1270,22 @@ pub async fn foundry_build(
     let core_binaries = ["llama-server.exe", "llama-cli.exe", "llama-quantize.exe"];
 
     let candidate_dirs: Vec<PathBuf> = vec![
-        bin_release.clone(),
-        build_dir.join("bin").join("Release"),
+        cmake_build_output_dir.clone(),
         src_dir.join("bin").join("Release"),
         src_dir.join("build").join("Release"),
     ];
 
     let mut all_present = true;
     let mut missing: Vec<String> = vec![];
-    let mut found_bin_dir: Option<PathBuf> = None;
+    let mut validated_binary_dir: Option<PathBuf> = None;
 
     for bin in &core_binaries {
         let mut found = false;
         for dir in &candidate_dirs {
             if dir.join(bin).exists() {
                 found = true;
-                if found_bin_dir.is_none() {
-                    found_bin_dir = Some(dir.clone());
+                if validated_binary_dir.is_none() {
+                    validated_binary_dir = Some(dir.clone());
                 }
                 break;
             }
@@ -1292,8 +1296,8 @@ pub async fn foundry_build(
         }
     }
 
-    if let Some(found_dir) = &found_bin_dir {
-        if *found_dir != bin_release {
+    if let Some(found_dir) = &validated_binary_dir {
+        if *found_dir != cmake_build_output_dir {
             log::info!("Binaries found at {:?}, updating provider path", found_dir);
             let cfg = app.config.lock().map_err(|e| e.to_string())?;
             let mut cfg_mut = cfg.clone();
@@ -1311,7 +1315,7 @@ pub async fn foundry_build(
     }
 
     if !all_present {
-        rollback_build(app_handle, &provider_id, env, build_id, &src_dir, &bin_release, &bin_bak)
+        rollback_build(app_handle, &provider_id, env, build_id, &src_dir, &cmake_build_output_dir, &bin_bak)
             .with_message(format!("Missing core binaries: {}", missing.join(", ")))
             .execute().await;
 
@@ -1335,7 +1339,7 @@ pub async fn foundry_build(
 
     // Publish sacred artifacts (copy from disposable work tree into artifacts/<id>/<env>/Release)
     // This is the ONLY place the sacred tree is written during a normal build.
-    let published_bin_path = match publish_artifacts_to_sacred(&provider_id, env, &build_dir, &src_dir).await {
+    let sacred_binary_path = match publish_artifacts_to_sacred(&provider_id, env, &build_dir, &src_dir).await {
         Ok(p) => p,
         Err(e) => {
             // Still nuke work/ on the way out (via later finalize), but report the publish failure
@@ -1343,12 +1347,7 @@ pub async fn foundry_build(
         }
     };
 
-    let bin_path = found_bin_dir
-        .as_ref()
-        .map(|d| d.join("llama-server.exe").to_string_lossy().to_string())
-        .unwrap_or_else(|| published_bin_path.clone());
-
-    match crate::engine::get_binary_build_info(bin_path.clone()).await {
+    match crate::engine::get_binary_build_info(sacred_binary_path.clone()).await {
         Ok(build_info_raw) => {
             let env_label = env.env_label();
             log::info!("[foundry] Captured build info for provider '{}' env '{}': {} built {}",
@@ -1363,12 +1362,14 @@ pub async fn foundry_build(
                 };
                 provider.build_info_per_env.insert(env_label.to_string(), build_info.clone());
                 provider.build_info_per_env.insert("current".to_string(), build_info);
-                let rel_path = crate::config::to_relative_path(&std::path::PathBuf::from(&bin_path));
+
+                // per-env path → sacred artifacts (permanent, never nuked)
+                let rel_path = crate::config::to_relative_path(&std::path::PathBuf::from(&sacred_binary_path));
                 provider.binary_path_per_env.insert(env_label.to_string(), rel_path);
                 provider.downloaded_version_per_env.remove(env_label);
 
-                // Main binary_path now points at the sacred artifacts location
-                provider.binary_path = crate::config::to_relative_path(&std::path::PathBuf::from(&published_bin_path));
+                // main binary_path → sacred artifacts
+                provider.binary_path = crate::config::to_relative_path(&std::path::PathBuf::from(&sacred_binary_path));
             }
             drop(cfg);
             if let Err(e) = persist_providers_atomic(&*app) {
@@ -1658,7 +1659,7 @@ pub async fn foundry_restore(
     let work_dir = crate::config::foundry_dir(&provider_id);
     let src_dir = foundry_src_dir(&provider_id);
     let build_dir = src_dir.join(format!("build-{}", env_label));
-    let bin_release = build_dir.join("bin").join("Release");
+    let cmake_build_output_dir = build_dir.join("bin").join("Release");
     let bin_bak = work_dir.join(format!("bin-{}-bak", env_label));
 
     if !bin_bak.exists() {
@@ -1670,17 +1671,17 @@ pub async fn foundry_restore(
         ));
     }
 
-    if bin_release.exists() {
-        tokio::fs::remove_dir_all(&bin_release).await
+    if cmake_build_output_dir.exists() {
+        tokio::fs::remove_dir_all(&cmake_build_output_dir).await
             .map_err(|e| format!("Failed to remove current binaries: {}", e))?;
     }
-    tokio::fs::rename(&bin_bak, &bin_release)
+    tokio::fs::rename(&bin_bak, &cmake_build_output_dir)
         .await
         .map_err(|e| format!("Failed to restore ancient legacy backup: {}", e))?;
 
-    let bin_path = bin_release.join("llama-server.exe");
-    if bin_path.exists() {
-        if let Ok(info) = crate::engine::get_binary_build_info(bin_path.to_string_lossy().to_string()).await {
+    let restored_bin = cmake_build_output_dir.join("llama-server.exe");
+    if restored_bin.exists() {
+        if let Ok(info) = crate::engine::get_binary_build_info(restored_bin.to_string_lossy().to_string()).await {
             let mut cfg = app.config.lock().map_err(|e| e.to_string())?;
             if let Some(provider) = cfg.providers.iter_mut().find(|p| p.id == provider_id) {
                 if provider.build_info_per_env.is_empty() {
@@ -1737,7 +1738,7 @@ struct RollbackBuilder<'a> {
     env: BuildEnv,
     build_id: u64,
     src_dir: &'a PathBuf,
-    bin_release: &'a PathBuf,
+    cmake_build_output_dir: &'a PathBuf,
     bin_bak: &'a PathBuf,
     message: Option<String>,
 }
@@ -1749,7 +1750,7 @@ impl<'a> RollbackBuilder<'a> {
     }
 
     async fn execute(self) {
-        let Self { app_handle, provider_id, env, build_id, src_dir: _, bin_release: _, bin_bak: _, message } = self;
+        let Self { app_handle, provider_id, env, build_id, src_dir: _, cmake_build_output_dir: _, bin_bak: _, message } = self;
 
         // Directory rollback dance removed — sacred artifacts are never touched on failure paths.
         // The disposable work/ tree is nuked by the exit discipline in every terminal path.
@@ -1775,7 +1776,7 @@ fn rollback_build<'a>(
     env: BuildEnv,
     build_id: u64,
     src_dir: &'a PathBuf,
-    bin_release: &'a PathBuf,
+    cmake_build_output_dir: &'a PathBuf,
     bin_bak: &'a PathBuf,
 ) -> RollbackBuilder<'a> {
     RollbackBuilder {
@@ -1784,7 +1785,7 @@ fn rollback_build<'a>(
         env,
         build_id,
         src_dir,
-        bin_release,
+        cmake_build_output_dir,
         bin_bak,
         message: None,
     }
@@ -1792,7 +1793,7 @@ fn rollback_build<'a>(
 
 /// Perform rollback without emitting an event — use when caller needs custom error message.
 /// In the new directory model this is a no-op (no bin_bak dance; work/ is nuked on exit).
-async fn do_rollback(_bin_release: &PathBuf, _bin_bak: &PathBuf) {
+async fn do_rollback(_cmake_build_output_dir: &PathBuf, _bin_bak: &PathBuf) {
     // Sacred artifacts untouched on failure. Disposable work tree cleaned by caller exit paths.
 }
 
