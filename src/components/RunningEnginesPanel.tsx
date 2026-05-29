@@ -32,7 +32,7 @@ export default function RunningEnginesPanel({ stack, models, selectedSlotIdx, on
     <div className="border-t border-stealth-border/50">
       <div className="px-3 py-2.5 running-engines-header-row">
         <h3 className="text-xl font-mono tracking-widest uppercase block text-center text-white/60">
-          ▶ RUNNING ENGINES
+          ▼ RUNNING ENGINES
         </h3>
       </div>
       <div className="px-3 pb-2 grid grid-cols-2 gap-1">

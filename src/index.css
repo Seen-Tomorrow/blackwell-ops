@@ -641,6 +641,28 @@ html, body, #root {
   border-color: rgba(60, 60, 60, 0.25) !important;
 }
 
+/* GPU topology cards on e-ink — warm taupe label look */
+.vram-section .gpu-card {
+  background-color: #e8e2d6 !important;
+  border-color: rgba(60, 60, 60, 0.15) !important;
+}
+
+/* Selected GPU on e-ink — NV green dashed border + glow */
+.vram-section .gpu-selected {
+  border: 2px dashed rgba(77, 122, 0, 0.7) !important;
+  box-shadow: 0 0 8px rgba(77, 122, 0, 0.2), inset 0 0 4px rgba(77, 122, 0, 0.08) !important;
+}
+
+/* Selected GPU name text — dark on e-ink (white is invisible on cream bg) */
+.vram-section .gpu-selected .text-white {
+  color: #1a1a1a !important;
+}
+
+/* VRAM/RAM bar tracks — soften dark bg for e-ink surface */
+.vram-section .relative.overflow-hidden.border-stealth-border\/30 {
+  background-color: #d4cec2 !important;
+}
+
 
 
 /* ── Running engines panel — grey bg, compact row cards (below VRAM) ─── */
@@ -664,6 +686,67 @@ html, body, #root {
   border-color: rgba(118, 185, 0, 0.5);
   box-shadow: 0 0 8px rgba(118, 185, 0, 0.12);
 }
+
+/* ── Running engines — industrial orange strip (dark panel context) ─── */
+[data-config-panel] .running-engines-header-row {
+  background: transparent;
+  padding-top: 0;
+  padding-bottom: 2px;
+}
+
+[data-config-panel] .running-engines-header-row h3 {
+  background: #b87a00;
+  padding: 6px 12px;
+}
+
+[data-config-panel] .running-engines-header-row * {
+  color: #1a1a1a !important;
+}
+
+/* Cards — warm dark grey, orange-tinted borders */
+[data-config-panel] .running-engine-card {
+  background: rgba(40, 36, 28, 0.95) !important;
+  border-color: rgba(184, 122, 0, 0.2) !important;
+  border-radius: 6px !important;
+}
+
+[data-config-panel] .running-engine-card:hover {
+  background: rgba(55, 48, 35, 0.95) !important;
+  border-color: rgba(184, 122, 0, 0.4) !important;
+}
+
+[data-config-panel] .running-engine-card-selected {
+  background: rgba(60, 48, 25, 0.95) !important;
+  border-color: rgba(184, 122, 0, 0.6) !important;
+  box-shadow: 0 0 8px rgba(184, 122, 0, 0.15) !important;
+}
+
+/* Status dot — orange pulse */
+[data-config-panel] .status-pulse {
+  background-color: #b87a00 !important;
+  animation: status-pulse-anim-eink 2s ease-in-out infinite !important;
+}
+
+@keyframes status-pulse-anim-eink {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(184, 122, 0, 0.4); }
+  50% { opacity: 0.6; box-shadow: 0 0 0 3px rgba(184, 122, 0, 0); }
+}
+
+/* Text inside running engine cards */
+[data-config-panel] .running-engine-card .text-white\/70,
+[data-config-panel] .running-engine-card .text-white {
+  color: #e8e2d6 !important;
+}
+
+[data-config-panel] .running-engine-card .text-stealth-muted {
+  color: #9a9488 !important;
+}
+
+[data-config-panel] .running-engine-card .text-stealth-muted\/50 {
+  color: rgba(154, 148, 136, 0.5) !important;
+}
+
+
 
 /* Pulsing status dot */
 .status-pulse {
