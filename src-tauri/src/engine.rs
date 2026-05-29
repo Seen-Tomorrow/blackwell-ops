@@ -73,7 +73,7 @@ pub async fn launch_engine(
         guard.clone()
     };
 
-    let binary_path = engine_utils::find_provider_binary(&cfg, &backend_type, &config.binary_profile);
+    let binary_path = engine_utils::find_provider_binary(&cfg, &backend_type, &config.binary_profile)?;
 
     let template = crate::templates::ProviderTemplate::load_by_id(&backend_type)
         .or_else(|| crate::templates::ProviderTemplate::load(crate::config::DEFAULT_PROVIDER_ID).ok())
@@ -452,7 +452,7 @@ pub async fn preview_launch_command(
         guard.clone()
     };
 
-    let binary_path = engine_utils::find_provider_binary(&cfg, &backend_type, &config.binary_profile);
+    let binary_path = engine_utils::find_provider_binary(&cfg, &backend_type, &config.binary_profile)?;
     let template = crate::templates::ProviderTemplate::load_by_id(&backend_type)
         .or_else(|| crate::templates::ProviderTemplate::load(crate::config::DEFAULT_PROVIDER_ID).ok())
         .ok_or(format!("No provider template available for '{}'", backend_type))?;
@@ -523,7 +523,7 @@ pub async fn fit_scan_model(
     };
 
     let backend_type = _provider_id.unwrap_or_else(|| crate::config::DEFAULT_PROVIDER_ID.to_string());
-    let binary_path = engine_utils::find_provider_binary(&cfg, &backend_type, "");
+    let binary_path = engine_utils::find_provider_binary(&cfg, &backend_type, "")?;
 
     let fit_binary = fit_scanner::find_fit_binary(binary_path.to_str().unwrap_or(""))
         .ok_or_else(|| "llama-fit-params.exe not found — ensure provider is built".to_string())?;
@@ -589,7 +589,7 @@ pub async fn fit_scan_library(
         cfg.model_paths.iter().map(|p| p.path.clone()).collect::<Vec<_>>()
     };
 
-    let binary_path = engine_utils::find_provider_binary(&cfg, &provider_id, "");
+    let binary_path = engine_utils::find_provider_binary(&cfg, &provider_id, "")?;
     let fit_binary = fit_scanner::find_fit_binary(binary_path.to_str().unwrap_or(""))
         .ok_or_else(|| "llama-fit-params.exe not found — ensure provider is built".to_string())?;
 
@@ -733,11 +733,7 @@ pub async fn scan_model_metadata_cmd(
     let pid = provider_id.unwrap_or_else(|| crate::config::DEFAULT_PROVIDER_ID.to_string());
     let bin_str = {
         let cfg = app.config.lock().map_err(|e| e.to_string())?;
-        let binary_path = engine_utils::find_provider_binary(&cfg, &pid, "");
-        if !binary_path.exists() {
-            return Err(format!("Provider binary not found: {}", binary_path.display()));
-        }
-        binary_path.to_string_lossy().to_string()
+        engine_utils::find_provider_binary(&cfg, &pid, "")?.to_string_lossy().to_string()
     };
 
     // Run scan on a background thread — closure captures only Strings (Send types)
@@ -792,10 +788,7 @@ pub async fn scan_all_models_cmd(
     let (bin_str, all_paths, total) = {
         let cfg = app.config.lock().map_err(|e| e.to_string())?;
         let pid = provider_id.unwrap_or_else(|| crate::config::DEFAULT_PROVIDER_ID.to_string());
-        let binary_path = engine_utils::find_provider_binary(&cfg, &pid, "");
-        if !binary_path.exists() {
-            return Err(format!("Provider binary not found: {}", binary_path.display()));
-        }
+        let binary_path = engine_utils::find_provider_binary(&cfg, &pid, "")?;
         // Use all configured paths instead of single model_base
         let paths = crate::config::get_model_paths(&cfg);
         let (catalog, _) = model_catalog::merge_catalogs(&paths)?;

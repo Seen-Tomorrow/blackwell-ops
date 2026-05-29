@@ -702,33 +702,8 @@ pub async fn get_llama_catalog(
 ) -> Result<Vec<LlamaCatalogEntry>, String> {
     let cfg = config.lock().map_err(|e| e.to_string())?;
 
-    // Resolve binary path for this provider
-    let provider = cfg.providers.iter().find(|p| p.id == provider_id);
-    let binary_path = match provider {
-        Some(p) => {
-            if let Some(path) = p.binary_path_per_env.get("vanguard") {
-                crate::config::resolve_path(path)
-            } else if !p.binary_path.is_empty() {
-                crate::config::resolve_path(&p.binary_path)
-            } else {
-                return Err(format!("Provider '{}' has no binary path configured", provider_id));
-            }
-        }
-        None => {
-            if let Some(first) = cfg.providers.first() {
-                crate::config::resolve_path(&first.binary_path)
-            } else {
-                return Err("No providers configured".to_string());
-            }
-        }
-    };
-
-    if !binary_path.exists() {
-        return Err(format!(
-            "Binary not found at: {}",
-            binary_path.display()
-        ));
-    }
+    // Resolve binary path — uses shared self-healing resolver
+    let binary_path = crate::engine_utils::find_provider_binary(&cfg, &provider_id, "")?;
 
     // Run binary --help
     let output = Command::new(&binary_path)

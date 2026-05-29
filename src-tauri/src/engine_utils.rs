@@ -8,28 +8,51 @@ use std::process::Stdio;
 use crate::config::AppConfig;
 use crate::types::EngineConfig;
 
-/// Resolve binary path for a provider ID. Handles both relative and absolute paths.
-pub fn find_provider_binary(cfg: &AppConfig, provider_id: &str, binary_profile: &str) -> PathBuf {
+/// Resolve binary path for a provider ID. Self-healing: if a stored path doesn't exist on disk,
+/// it falls through to the next candidate and logs a warning about the stale entry.
+pub fn find_provider_binary(cfg: &AppConfig, provider_id: &str, binary_profile: &str) -> Result<PathBuf, String> {
+    let profile_to_try = if binary_profile.is_empty() { "vanguard" } else { binary_profile };
+
     for p in &cfg.providers {
         if p.id == provider_id {
-            // Per-env path first (vanguard/stable/fresh). Empty profile defaults to vanguard.
-            let profile_to_try = if binary_profile.is_empty() { "vanguard" } else { binary_profile };
-            if let Some(path) = p.binary_path_per_env.get(profile_to_try) {
-                return crate::config::resolve_path(path);
+            // Per-env path first — skip stale entries that no longer exist on disk.
+            if let Some(path_str) = p.binary_path_per_env.get(profile_to_try) {
+                let resolved = crate::config::resolve_path(path_str);
+                if resolved.exists() {
+                    return Ok(resolved);
+                }
+                log::warn!(
+                    "[find_provider_binary] Stale per-env path for '{}' [{}]: {} — falling back",
+                    provider_id, profile_to_try, resolved.display()
+                );
             }
             // Fallback to main binary_path
             if !p.binary_path.is_empty() {
-                return crate::config::resolve_path(&p.binary_path);
+                let resolved = crate::config::resolve_path(&p.binary_path);
+                if resolved.exists() {
+                    return Ok(resolved);
+                }
+                log::warn!(
+                    "[find_provider_binary] Stale binary_path for '{}': {} — trying fallback",
+                    provider_id, resolved.display()
+                );
             }
         }
     }
 
+    // Last resort: first provider's binary_path
     if let Some(first) = cfg.providers.first() {
-        crate::config::resolve_path(&first.binary_path)
-    } else {
-        log::warn!("[find_provider_binary] No providers configured");
-        PathBuf::new()
+        let resolved = crate::config::resolve_path(&first.binary_path);
+        if resolved.exists() {
+            return Ok(resolved);
+        }
+        log::warn!(
+            "[find_provider_binary] Fallback provider '{}' binary missing: {}",
+            first.id, resolved.display()
+        );
     }
+
+    Err(format!("No valid binary found for provider '{}'", provider_id))
 }
 
 /// Compute CUDA_VISIBLE_DEVICES mask from config + detected GPU count.

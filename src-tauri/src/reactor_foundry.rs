@@ -696,17 +696,13 @@ pub async fn foundry_build(
     let work_root              = crate::config::foundry_work_dir(&provider_id);
     let build_dir              = work_root.join(format!("build-{}", env.env_label()));
     let cmake_build_output_dir = build_dir.join("bin").join("Release");
-    // Dummy value kept only for compilation of a few remaining rollback call sites.
-    // Can be removed once those sites are updated.
-    // In the fully simplified world these calls will take far fewer arguments.
-    let bin_bak: std::path::PathBuf = std::path::PathBuf::new();
     // NOTE: bin_bak / rename dance removed entirely from normal build flow. Sacred artifacts are never touched during a build attempt.
 
     // Defensive nuke of any leftover work/ from a previous crashed build (safe — disposable by policy)
     let _ = tokio::fs::remove_dir_all(&work_root).await;
     if let Err(e) = tokio::fs::create_dir_all(&work_root).await {
         // Minimal rollback (will be simplified later)
-        rollback_build(app_handle, &provider_id, env, build_id, &src_dir, &cmake_build_output_dir, &PathBuf::new()).execute().await;
+       rollback_build(app_handle, &provider_id, env, build_id, &src_dir, &cmake_build_output_dir).execute().await;
         return Err(format!("Failed to create work directory: {}", e));
     }
     let _ = tokio::fs::create_dir_all(&build_dir).await;
@@ -724,7 +720,7 @@ pub async fn foundry_build(
     };
 
     if git_url.is_empty() {
-            rollback_build(app_handle, &provider_id, env, build_id, &src_dir, &cmake_build_output_dir, &bin_bak).execute().await;
+            rollback_build(app_handle, &provider_id, env, build_id, &src_dir, &cmake_build_output_dir).execute().await;
             return Err(format!("Provider '{}' has no git_url configured.", provider_id));
     }
 
@@ -749,7 +745,7 @@ pub async fn foundry_build(
 
         if !clone_output.status.success() {
             let stderr = String::from_utf8_lossy(&clone_output.stderr).to_string();
-            rollback_build(app_handle, &provider_id, env, build_id, &src_dir, &cmake_build_output_dir, &bin_bak).execute().await;
+            rollback_build(app_handle, &provider_id, env, build_id, &src_dir, &cmake_build_output_dir).execute().await;
             return Err(format!("Git clone failed: {}", stderr));
         }
 
@@ -774,7 +770,7 @@ pub async fn foundry_build(
 
         if !pull_output.status.success() {
             let stderr = String::from_utf8_lossy(&pull_output.stderr).to_string();
-            rollback_build(app_handle, &provider_id, env, build_id, &src_dir, &cmake_build_output_dir, &bin_bak).execute().await;
+            rollback_build(app_handle, &provider_id, env, build_id, &src_dir, &cmake_build_output_dir).execute().await;
             return Err(format!("Git pull failed: {}", stderr));
         }
 
@@ -1090,7 +1086,7 @@ pub async fn foundry_build(
 
     if !cfg_status.success() {
         let stderr_text: String = stderr_capture.lock().unwrap().join("\n");
-        rollback_build(app_handle, &provider_id, env, build_id, &src_dir, &cmake_build_output_dir, &bin_bak)
+        rollback_build(app_handle, &provider_id, env, build_id, &src_dir, &cmake_build_output_dir)
             .with_message(if stderr_text.is_empty() { "CMake configure failed.".into() } else { format!("CMake configure failed:\n{}", stderr_text) })
             .execute().await;
 
@@ -1228,7 +1224,7 @@ pub async fn foundry_build(
     if build_status.is_none() {
         clear_pids();
         let _ = tokio::fs::remove_file(&build_batch_path).await;
-        do_rollback(&cmake_build_output_dir, &bin_bak).await; // will become no-op after rollback simplification
+        do_rollback(&cmake_build_output_dir).await;
         // work/ (incl. build_dir) nuked on exit
         return Err("Build cancelled by user.".to_string());
     }
@@ -1237,7 +1233,7 @@ pub async fn foundry_build(
 
     if !build_status.unwrap().success() {
         let stderr_text: String = stderr_text.join("\n");
-        rollback_build(app_handle, &provider_id, env, build_id, &src_dir, &cmake_build_output_dir, &bin_bak)
+        rollback_build(app_handle, &provider_id, env, build_id, &src_dir, &cmake_build_output_dir)
             .with_message(if stderr_text.is_empty() { "Build failed.".into() } else { format!("Build failed:\n{}", stderr_text) })
             .execute().await;
 
@@ -1304,7 +1300,10 @@ pub async fn foundry_build(
             for p in &mut cfg_mut.providers {
                 if p.id == provider_id {
                     let abs = found_dir.join("llama-server.exe");
-                    p.binary_path = crate::config::to_relative_path(&abs);
+                    let rel = crate::config::to_relative_path(&abs);
+                    // Set BOTH fields together to keep them in sync
+                    p.binary_path = rel.clone();
+                    p.binary_path_per_env.insert(env.env_label().to_string(), rel);
                 }
             }
             drop(cfg);
@@ -1315,7 +1314,7 @@ pub async fn foundry_build(
     }
 
     if !all_present {
-        rollback_build(app_handle, &provider_id, env, build_id, &src_dir, &cmake_build_output_dir, &bin_bak)
+        rollback_build(app_handle, &provider_id, env, build_id, &src_dir, &cmake_build_output_dir)
             .with_message(format!("Missing core binaries: {}", missing.join(", ")))
             .execute().await;
 
@@ -1523,19 +1522,25 @@ pub async fn refresh_build_info(
                     if tokio::fs::rename(&old_build_dir, &new_build_dir).await.is_ok() {
                         let new_bin = new_build_dir.join("bin").join("Release");
                         if new_bin.exists() {
-                            let mut cfg = app.config.lock().map_err(|e| e.to_string())?;
-                            if let Some(p) = cfg.providers.iter_mut().find(|p| p.id == provider_id) {
-                                if p.binary_path_per_env.is_empty() {
-                                    p.binary_path_per_env = std::collections::HashMap::new();
+                            // Publish binaries to sacred artifacts BEFORE setting paths.
+                            // Never point config at disposable work/ directories.
+                            let sacred_exe = crate::config::foundry_artifacts_dir()
+                                .join(&provider_id).join("vanguard").join("Release").join("llama-server.exe");
+                            let sacred_dir: PathBuf = sacred_exe.parent().unwrap().to_path_buf();
+                            let _ = tokio::fs::create_dir_all(&sacred_dir).await;
+                            if copy_dir_contents(&new_bin, &sacred_dir).await.is_ok() && sacred_exe.exists() {
+                                let mut cfg = app.config.lock().map_err(|e| e.to_string())?;
+                                if let Some(p) = cfg.providers.iter_mut().find(|p| p.id == provider_id) {
+                                    let rel = crate::config::to_relative_path(&sacred_exe);
+                                    p.binary_path_per_env.insert("vanguard".to_string(), rel.clone());
+                                    p.binary_path = rel;
                                 }
-                                let abs_exe = new_bin.join("llama-server.exe");
-                                let rel = crate::config::to_relative_path(&abs_exe);
-                                p.binary_path_per_env.insert("vanguard".to_string(), rel.clone());
-                                p.binary_path = rel;
-                            }
-                            drop(cfg);
-                            if let Err(e) = persist_providers_atomic(&*app) {
-                                log::error!("[foundry] Failed to persist provider config: {}", e);
+                                drop(cfg);
+                                if let Err(e) = persist_providers_atomic(&*app) {
+                                    log::error!("[foundry] Failed to persist provider config: {}", e);
+                                }
+                            } else {
+                                log::warn!("[migration] Failed to copy binaries to sacred artifacts for '{}'", provider_id);
                             }
                         }
                     } else {
@@ -1615,54 +1620,13 @@ pub async fn foundry_restore(
         tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
     }
 
-    // --- New artifacts-based previous backup (preferred) ---
+    // --- Artifacts-based restore (Release.prev → Release) ---
     let artifacts_prev = crate::config::foundry_artifact_release_dir(&provider_id, env_label)
         .parent()
         .unwrap()
         .join("Release.prev");
 
-    if artifacts_prev.exists() {
-        let sacred_release = crate::config::foundry_artifact_release_dir(&provider_id, env_label);
-
-        // Stop engines first (already done above)
-        if sacred_release.exists() {
-            let _ = tokio::fs::remove_dir_all(&sacred_release).await;
-        }
-        // Move .prev -> current Release
-        tokio::fs::rename(&artifacts_prev, &sacred_release)
-            .await
-            .map_err(|e| format!("Failed to restore previous artifact: {}", e))?;
-
-        // Update provider paths to point at the restored sacred location
-        let restored_exe = sacred_release.join("llama-server.exe");
-        if restored_exe.exists() {
-            if let Ok(info) = crate::engine::get_binary_build_info(restored_exe.to_string_lossy().to_string()).await {
-                let mut cfg = app.config.lock().map_err(|e| e.to_string())?;
-                if let Some(p) = cfg.providers.iter_mut().find(|p| p.id == provider_id) {
-                    let rel = crate::config::to_relative_path(&restored_exe);
-                    p.binary_path_per_env.insert(env_label.to_string(), rel.clone());
-                    p.binary_path = rel;
-                    p.build_info_per_env.insert(env_label.to_string(), info.clone());
-                    p.build_info_per_env.insert("current".to_string(), info);
-                }
-                drop(cfg);
-                let _ = persist_providers_atomic(&*app);
-            }
-        }
-
-        log::info!("[restore] Restored previous artifact for {} {}", provider_id, env_label);
-        return Ok(());
-    }
-
-    // --- Very old legacy fallback (pre-artifacts era) ---
-    // Most users will never hit this path anymore.
-    let work_dir = crate::config::foundry_dir(&provider_id);
-    let src_dir = foundry_src_dir(&provider_id);
-    let build_dir = src_dir.join(format!("build-{}", env_label));
-    let cmake_build_output_dir = build_dir.join("bin").join("Release");
-    let bin_bak = work_dir.join(format!("bin-{}-bak", env_label));
-
-    if !bin_bak.exists() {
+    if !artifacts_prev.exists() {
         return Err(format!(
             "No previous build found for '{}' ({}).\n\
              The current system keeps one previous artifact automatically as Release.prev.\n\
@@ -1671,32 +1635,58 @@ pub async fn foundry_restore(
         ));
     }
 
-    if cmake_build_output_dir.exists() {
-        tokio::fs::remove_dir_all(&cmake_build_output_dir).await
-            .map_err(|e| format!("Failed to remove current binaries: {}", e))?;
+    let sacred_release = crate::config::foundry_artifact_release_dir(&provider_id, env_label);
+
+    // Remove current Release dir if it exists
+    if sacred_release.exists() {
+        tokio::fs::remove_dir_all(&sacred_release).await
+            .map_err(|e| format!("Failed to remove current Release: {}", e))?;
     }
-    tokio::fs::rename(&bin_bak, &cmake_build_output_dir)
+
+    // Move .prev -> current Release
+    tokio::fs::rename(&artifacts_prev, &sacred_release)
         .await
-        .map_err(|e| format!("Failed to restore ancient legacy backup: {}", e))?;
+        .map_err(|e| format!("Failed to restore previous artifact: {}", e))?;
 
-    let restored_bin = cmake_build_output_dir.join("llama-server.exe");
-    if restored_bin.exists() {
-        if let Ok(info) = crate::engine::get_binary_build_info(restored_bin.to_string_lossy().to_string()).await {
-            let mut cfg = app.config.lock().map_err(|e| e.to_string())?;
-            if let Some(provider) = cfg.providers.iter_mut().find(|p| p.id == provider_id) {
-                if provider.build_info_per_env.is_empty() {
-                    provider.build_info_per_env = std::collections::HashMap::new();
-                }
-                provider.build_info_per_env.insert(env_label.to_string(), info);
-            }
-            drop(cfg);
-            if let Err(e) = persist_providers_atomic(&*app) {
-                log::error!("[foundry] Failed to persist provider config: {}", e);
-            }
-        }
+    // Verify restored exe exists — fail hard if missing
+    let restored_exe = sacred_release.join("llama-server.exe");
+    if !restored_exe.exists() {
+        return Err(format!(
+            "Restored artifact missing llama-server.exe at {}",
+            restored_exe.display()
+        ));
     }
 
-    log::info!("[restore] Restored '{}' from {} backup", provider_id, env_label);
+    // Extract build info — fail hard if extraction fails
+    let info = crate::engine::get_binary_build_info(restored_exe.to_string_lossy().to_string()).await
+        .map_err(|e| format!("Failed to extract build info from restored binary: {}", e))?;
+
+    // Update config (both fields together)
+    {
+        let mut cfg = app.config.lock().map_err(|e| e.to_string())?;
+        if let Some(p) = cfg.providers.iter_mut().find(|p| p.id == provider_id) {
+            let rel = crate::config::to_relative_path(&restored_exe);
+            p.binary_path_per_env.insert(env_label.to_string(), rel.clone());
+            p.binary_path = rel;
+            p.build_info_per_env.insert(env_label.to_string(), info.clone());
+            p.build_info_per_env.insert("current".to_string(), info);
+        }
+        drop(cfg);
+    }
+
+    // Persist with error logging (not silent discard)
+    if let Err(e) = persist_providers_atomic(&*app) {
+        log::error!("[restore] Failed to persist provider config: {}", e);
+    }
+
+    // Emit Blackwell Output Console event for restore completion
+    app.blackwell_output_console_manager.emit_line_to_category(
+        crate::output_console::BlackwellOutputConsoleCategory::Foundry,
+        format!("=== Restored previous artifact for {} ({}) ===", provider_id, env_label),
+        crate::output_console::BlackwellOutputConsoleLineStyle::Success,
+    );
+
+    log::info!("[restore] Restored previous artifact for {} {}", provider_id, env_label);
     Ok(())
 }
 
@@ -1739,7 +1729,6 @@ struct RollbackBuilder<'a> {
     build_id: u64,
     src_dir: &'a PathBuf,
     cmake_build_output_dir: &'a PathBuf,
-    bin_bak: &'a PathBuf,
     message: Option<String>,
 }
 
@@ -1750,7 +1739,7 @@ impl<'a> RollbackBuilder<'a> {
     }
 
     async fn execute(self) {
-        let Self { app_handle, provider_id, env, build_id, src_dir: _, cmake_build_output_dir: _, bin_bak: _, message } = self;
+        let Self { app_handle, provider_id, env, build_id, src_dir: _, cmake_build_output_dir: _, message } = self;
 
         // Directory rollback dance removed — sacred artifacts are never touched on failure paths.
         // The disposable work/ tree is nuked by the exit discipline in every terminal path.
@@ -1777,7 +1766,6 @@ fn rollback_build<'a>(
     build_id: u64,
     src_dir: &'a PathBuf,
     cmake_build_output_dir: &'a PathBuf,
-    bin_bak: &'a PathBuf,
 ) -> RollbackBuilder<'a> {
     RollbackBuilder {
         app_handle,
@@ -1786,14 +1774,13 @@ fn rollback_build<'a>(
         build_id,
         src_dir,
         cmake_build_output_dir,
-        bin_bak,
         message: None,
     }
 }
 
 /// Perform rollback without emitting an event — use when caller needs custom error message.
-/// In the new directory model this is a no-op (no bin_bak dance; work/ is nuked on exit).
-async fn do_rollback(_cmake_build_output_dir: &PathBuf, _bin_bak: &PathBuf) {
+    /// In the new directory model this is a no-op (work/ is nuked on exit).
+    async fn do_rollback(_cmake_build_output_dir: &PathBuf) {
     // Sacred artifacts untouched on failure. Disposable work tree cleaned by caller exit paths.
 }
 
