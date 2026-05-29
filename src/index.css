@@ -546,6 +546,31 @@ html, body, #root {
   box-shadow: 0 0 4px rgba(74, 222, 128, 0.3) !important;
 }
 
+/* Runtime profile — industrial orange, pronounced */
+.mono-panel .runtime-profile-label {
+  color: #b87a00 !important;
+  opacity: 1 !important;
+}
+
+.mono-panel .runtime-profile-chip {
+  background: rgba(184, 122, 0, 0.06) !important;
+  border: 1px solid rgba(184, 122, 0, 0.35) !important;
+  color: #b87a00 !important;
+}
+
+.mono-panel .runtime-profile-chip:hover {
+  background: rgba(184, 122, 0, 0.12) !important;
+  border-color: rgba(184, 122, 0, 0.6) !important;
+  color: #d4950a !important;
+}
+
+.mono-panel .runtime-profile-chip-active {
+  background: #b87a00 !important;
+  border-color: #b87a00 !important;
+  color: #1a1a1a !important;
+  box-shadow: 0 0 6px rgba(184, 122, 0, 0.3) !important;
+}
+
 /* Param labels on mono */
 .mono-panel [data-param-row] > span:first-child {
   color: #4ade80 !important;
@@ -717,7 +742,7 @@ html, body, #root {
 
 [data-config-panel] .running-engine-card-selected {
   background: rgba(60, 48, 25, 0.95) !important;
-  border-color: rgba(184, 122, 0, 0.6) !important;
+  border-color: #b87a00 !important;
   box-shadow: 0 0 8px rgba(184, 122, 0, 0.15) !important;
 }
 
@@ -744,6 +769,23 @@ html, body, #root {
 
 [data-config-panel] .running-engine-card .text-stealth-muted\/50 {
   color: rgba(154, 148, 136, 0.5) !important;
+}
+
+/* GPU + quant badges inside engine cards — solid black */
+[data-config-panel] .running-engine-card .bg-telemetry-cyan\/10,
+[data-config-panel] .running-engine-card .bg-nv-green\/20 {
+  background: #000 !important;
+}
+
+[data-config-panel] .running-engine-card .border-telemetry-cyan\/20,
+[data-config-panel] .running-engine-card .border-telemetry-cyan\/30,
+[data-config-panel] .running-engine-card .border-nv-green\/40 {
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+[data-config-panel] .running-engine-card .text-telemetry-cyan,
+[data-config-panel] .running-engine-card .text-nv-green {
+  color: #e8e2d6 !important;
 }
 
 

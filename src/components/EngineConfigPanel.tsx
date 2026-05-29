@@ -655,7 +655,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
                   <div className="flex items-center">
                     <div className="w-0.5 h-4 flex-shrink-0 mr-1.5" />
-                    <span className="font-mono w-24 flex-shrink-0 uppercase tracking-wider truncate text-[9px] text-stealth-muted">
+                    <span className="font-mono w-24 flex-shrink-0 uppercase tracking-wider truncate text-[9px] text-stealth-muted runtime-profile-label">
                       RUNTIME PROFILE
                     </span>
                     {availableProfiles.map(profile => {
@@ -667,12 +667,12 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                           key={profile}
                           onClick={() => setSelectedBinaryProfile(profile)}
                           disabled={!hasBuild}
-                          className={`px-2 py-0.5 text-[9px] font-mono rounded-sm ${
+                          className={`px-2 py-0.5 text-[9px] font-mono rounded-sm runtime-profile-chip ${
                             isSelected
-                              ? "value-chip-active"
+                              ? "runtime-profile-chip-active"
                               : hasBuild
-                                ? "value-chip"
-                                : "opacity-25 cursor-not-allowed value-chip"
+                                ? ""
+                                : "opacity-25 cursor-not-allowed"
                           }`}
                           title={`${meta.label} — CUDA ${meta.cuda}, ${meta.vs}${hasBuild ? '' : ' (not yet built)'}`}
                         >
