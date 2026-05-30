@@ -242,8 +242,6 @@ fn default_providers() -> Vec<ProviderConfig> { Vec::new() }
 pub struct AppConfig {
     #[serde(default)]
     pub model_paths: Vec<ModelPathEntry>,
-    pub prefs_file: PathBuf,
-    pub base_port: u16,
     #[serde(default)]
     pub gpu_slots: usize,
     /// HuggingFace API token — stored in app_config.json. Empty string if not set.
@@ -266,8 +264,6 @@ impl Default for AppConfig {
 
         Self {
             model_paths,
-            prefs_file: PathBuf::new(),
-            base_port: 9090,
             gpu_slots: MAX_ENGINE_SLOTS,
             hf_token: String::new(),
             providers: Vec::new(),
@@ -965,8 +961,6 @@ fn build_fresh_config(_gpu_slots: usize) -> AppConfig {
 
     AppConfig {
         model_paths,
-        prefs_file: PathBuf::new(),
-        base_port: 9090,
         gpu_slots: MAX_ENGINE_SLOTS,
         hf_token: String::new(),
         providers: Vec::new(),

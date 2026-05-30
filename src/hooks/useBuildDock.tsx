@@ -36,7 +36,7 @@ interface BuildSession {
 }
 
 export interface FoundryCtx {
-  // Shape kept for backward compatibility with FoundryPage + existing consumers
+  // Shape kept for backward compatibility with ProvidersConfig expanded section + existing consumers
   buildProgress: BuildProgressState | null;
   foundryModal: { providerId: string; environment: Env } | null;
   foundryModalVisible: boolean;

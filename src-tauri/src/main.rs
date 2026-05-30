@@ -381,7 +381,7 @@ async fn main() {
             let app_config = config::load_config_with_app(app.handle());
 
             let slot_count = std::cmp::max(1, app_config.gpu_slots);
-            let stack = Arc::new(Mutex::new(EngineStack::new(app_config.base_port, slot_count)));
+            let stack = Arc::new(Mutex::new(EngineStack::new(slot_count)));
             log::info!("Initializing EngineStack with {} slots for {} GPU(s)", slot_count, slot_count);
             let log_hub = LogHub::new(app.handle().clone());
             let config_arc = Arc::new(std::sync::Mutex::new(app_config.clone()));

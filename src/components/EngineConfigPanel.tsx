@@ -11,7 +11,7 @@ import RunningEnginesPanel from "./RunningEnginesPanel";
 import { useScenarioEvaluator } from "../hooks/useScenarioEvaluator";
 import { useConfigResolver } from "../hooks/useConfigResolver";
 
-const DEFAULT_BASE_PORT = 9090;
+
 
 type EnvProfile = "vanguard" | "fresh" | "stable";
 
@@ -45,7 +45,7 @@ interface EngineConfigPanelProps {
   isAdminUnlocked: boolean;
   systemInfo?: SystemInfo | null;
   stack: StackEntry[];
-  onLaunch: (config: EngineConfig) => void;
+  onLaunch: (config: EngineConfig) => Promise<any>;
   isModelRunning?: boolean;
   activeEngineAlias?: string;
   activeEnginePort?: number;
@@ -426,31 +426,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     return () => window.removeEventListener("blackops-launch-engine", handler);
   }, [model, config, effectiveBackendType]);
 
-  // ── Port / name helpers ────────────────────────────────────────────────────
-  const getBasePort = useCallback((): number => {
-    const bp = config["base-port"] ?? config.base_port;
-    if (typeof bp === 'number') return bp;
-    const parsed = parseInt(String(bp), 10);
-    return isNaN(parsed) ? DEFAULT_BASE_PORT : parsed;
-  }, [config["base-port"], config.base_port]);
-
-  const getNextPort = useCallback(async (): Promise<number> => {
-    const basePort = getBasePort();
-    try {
-      const stack = await invoke<StackEntry[]>("get_stack_status");
-      for (let i = 0; i < 4; i++) {
-        const expectedPort = basePort + i;
-        const inUse = stack.some(s => s.port === expectedPort && s.status !== "IDLE");
-        if (!inUse) return expectedPort;
-      }
-    } catch {}
-    let maxPort = basePort - 1;
-    for (let i = 0; i < 4; i++) {
-      maxPort = Math.max(maxPort, basePort + i);
-    }
-    return maxPort + 1;
-  }, [getBasePort]);
-
+  // ── Name helpers ───────────────────────────────────────────────────────────
   const getNextEngineName = useCallback(async (): Promise<string> => {
     try {
       const stack = await invoke<StackEntry[]>("get_stack_status");
@@ -472,8 +448,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   const handleAddToStack = async () => {
     if (!model) return;
 
-    const port = await getNextPort();
-    
     // Resolve final alias: user input if non-empty, otherwise auto-generate
     let finalAlias = aliasInput.trim();
     if (!finalAlias) {
@@ -503,7 +477,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     const fullConfig: EngineConfig = {
       alias: finalAlias,
       model_path: model.path,
-      port,
+      port: 0, // Backend computes the actual port from base_port + collision avoidance
       backend_type: effectiveBackendType,
       binary_profile: selectedBinaryProfile,
       extra_params: extraParams,
@@ -521,17 +495,21 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     setIsBlazing(true);
     setTimeout(() => setIsBlazing(false), 800);
 
-    // Dispatch success event for toast + status bar
-    window.dispatchEvent(new CustomEvent("blackops-launch-success", { detail: { alias: finalAlias, port } }));
-
     try {
-      onLaunch(fullConfig);
+      const result = await onLaunch(fullConfig) as any;
+      // Dispatch success event for toast + status bar with the real port from backend
+      if (result?.port) {
+        window.dispatchEvent(new CustomEvent("blackops-launch-success", { detail: { alias: finalAlias, port: result.port } }));
+      }
       // Only persist if user actively edited the alias — skip auto-generated ENGINE_N names
       const wasUserEdited = aliasUserEditedRef.current;
       if (wasUserEdited) {
         saveAliasForModel(model.path, aliasInput.trim());
       }
-    } catch {}
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      window.dispatchEvent(new CustomEvent("blackops-launch-error", { detail: { message: msg } }));
+    }
   };
 
   // ── Empty state ──────────────────────────────────────────────────────────

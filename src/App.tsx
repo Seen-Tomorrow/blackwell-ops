@@ -163,7 +163,7 @@ function App() {
         if (data.binaryUpdates && data.binaryUpdates.length > 0) {
           setHasBinaryUpdates(true);
         }
-        // Always cache results for FoundryPage to reuse (avoids duplicate API calls, even when empty)
+        // Cache binary updates for ProvidersConfig expanded section (avoids duplicate API calls)
         try {
           localStorage.setItem("blackwell_startup_updates", JSON.stringify({
             timestamp: Date.now(),
@@ -364,8 +364,10 @@ function App() {
         window.dispatchEvent(new CustomEvent("blackops-engine-launched", {
           detail: { slotIdx: result.idx, modelPath: result.model_path }
         }));
+        return result;
       } catch (err) {
         console.error("Launch failed:", err);
+        throw err;
       }
     },
     []

@@ -1,4 +1,5 @@
 use serde::Serialize;
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -13,6 +14,9 @@ use crate::log_hub::LogHub;
 use crate::output_console::BlackwellOutputConsoleManager;
 use crate::types::{EngineConfig, ModelEntry, ModelMetadata};
 use crate::types::StackEntry;
+
+const DEFAULT_BASE_PORT: u16 = 8080;
+const PRIVILEGED_PORT_THRESHOLD: u16 = 1024;
 
 use crate::fit_scanner;
 use crate::telemetry;
@@ -109,7 +113,7 @@ pub async fn launch_engine(
     crate::config::validate_provider_binary(binary_path.to_str().unwrap_or(""))?;
     crate::config::validate_model_path(&config.model_path)?;
 
-    let (slot_idx, slot_port) = {
+    let slot_idx = {
         let stack = match tokio::time::timeout(Duration::from_secs(5), app.stack.lock()).await {
             Ok(guard) => guard,
             Err(_) => {
@@ -117,9 +121,28 @@ pub async fn launch_engine(
                 return Err("Stack lock timeout — possible deadlock. Another task may be holding the lock.".to_string());
             }
         };
-        let idx = stack.find_idle_slot().ok_or("All engine slots are occupied")?;
-        let port = stack.get_slot(idx).map(|s| s.port).unwrap_or(9090 + idx as u16);
-        (idx, port)
+        stack.find_idle_slot().ok_or("All engine slots are occupied")?
+    };
+
+    // Compute port dynamically from provider's base_port with global collision avoidance
+    let provider_base_port = config.get_param_str("base_port")
+        .and_then(|v| v.parse::<u16>().ok())
+        .unwrap_or(DEFAULT_BASE_PORT);
+
+    // Validate base_port is in safe range (avoid privileged ports below PRIVILEGED_PORT_THRESHOLD)
+    if provider_base_port <= PRIVILEGED_PORT_THRESHOLD {
+        return Err(format!("base_port {} is too low — must be > {}", provider_base_port, PRIVILEGED_PORT_THRESHOLD));
+    }
+
+    let mut slot_port = {
+        let stack = app.stack.lock().await;
+        let used_ports: HashSet<u16> = stack.slots.iter()
+            .filter_map(|s| s.as_ref().map(|arc| arc.lock().port))
+            .filter(|&p| p != 0)
+            .collect();
+        (provider_base_port..)
+            .find(|p| !used_ports.contains(p) && *p > PRIVILEGED_PORT_THRESHOLD)
+            .unwrap_or(provider_base_port)
     };
 
     config.port = slot_port;
@@ -146,10 +169,15 @@ pub async fn launch_engine(
     app.log_hub.emit_sanity_log("warn", &format!("[LAUNCH_CMD] slot={}: {}", slot_idx, launch_cmd));
 
     let log_path = std::env::temp_dir().join("blackwell-launch.log");
-    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&log_path) {
-        use std::io::Write;
-        let _ = writeln!(f, "\n[{}] slot={} CMD:\n{}\n", chrono::Local::now().format("%H:%M:%S%.3f"), slot_idx, launch_cmd);
-        let _ = f.flush();
+    match std::fs::OpenOptions::new().create(true).append(true).open(&log_path) {
+        Ok(mut f) => {
+            use std::io::Write;
+            if let Err(e) = writeln!(f, "\n[{}] slot={} CMD:\n{}\n", chrono::Local::now().format("%H:%M:%S%.3f"), slot_idx, launch_cmd) {
+                log::warn!("Failed to write launch log: {}", e);
+            }
+            if let Err(e) = f.flush() { log::warn!("Failed to flush launch log: {}", e); }
+        },
+        Err(e) => log::warn!("Failed to open launch log at {}: {}", log_path.display(), e),
     }
 
     app.log_hub.emit_system_event(slot_idx, &config.alias, "Engine launching...").await;
@@ -890,7 +918,7 @@ pub async fn scan_all_models_cmd(
     Ok(scanned)
 }
 
-/// Handle a single scan result — correct file size, cache, and update counters.
+/// Handle scan result — correct file size, cache, update counters.
 fn handle_scan_result(
     result: Result<Result<ModelMetadata, String>, tokio::task::JoinError>,
     path: &str,
@@ -910,11 +938,11 @@ fn handle_scan_result(
             *scanned += 1;
         }
         Ok(Err(e)) => {
-            log::warn!("Scan failed for {}: {}", path, e);
+            log::warn!("[SCAN] {} failed: {}", path, e);
             *failed += 1;
         }
         Err(e) => {
-            log::warn!("Task failed for {}: {}", path, e);
+            log::warn!("[SCAN] {} task panicked: {}", path, e);
             *failed += 1;
         }
     }

@@ -2,7 +2,7 @@
 
 ## Architecture
 
-- **EngineStack**: 16 slots, base port 9090. Each slot is `Arc<parking_lot::Mutex<EngineSlot>>` inside a `tokio::sync::Mutex<EngineStack>`.
+- **EngineStack**: 16 slots, no fixed ports. Each slot is `Arc<parking_lot::Mutex<EngineSlot>>` inside a `tokio::sync::Mutex<EngineStack>`.
 - **EngineSlot** fields: `child_proc: Option<Child>`, `pid: Option<u32>`, `port`, `status` (Idle/Loading/Running), `alias`, `model_path`, `gpu_mask`, `vram_mib`, `n_ctx`, `provider_name`, `backend_type`.
 - The `child_proc` handle is the **single source of truth** for the running process. Only one path should own it at a time.
 - The `pid` field exists solely so the reaper can monitor the process without touching `child_proc`.
@@ -12,7 +12,7 @@
 1. `launch_engine` (engine.rs) — Tauri command entry point.
 2. Validates binary and model path.
 3. Acquires `stack.lock()` with 5s timeout (deadlock detection), finds idle slot.
-4. **Port override**: `slot_port = 9090 + slot_idx`. The frontend's `config.port` is ignored for idle slots to prevent port conflicts.
+4. **Port assignment**: Reads provider's `base_port` from `config.extra_params["base_port"]` (default 8080). Scans all running slots for used ports, assigns first available port starting from provider's base_port with global collision avoidance across all providers.
 5. `taskkill` any existing process on that port, sleep 300ms for port release.
 6. Builds command args from provider template, writes to `C:\tmp\blackwell-launch.log`.
 7. Calls `EngineStack::load_slot` with auto-retry (once, 1s delay, emits `[RETRY]` alert on first failure).
@@ -82,12 +82,12 @@ Powershell one-liner: `netstat -ano | Select-String ':PORT' | taskkill /F /PID`.
 2. **No shared state**: No `Arc<Mutex<Child>>`. The `Child` handle lives directly in the slot and is `.take()`en by the stop path.
 3. **Self-locking stop functions**: All stop functions acquire and release the tokio stack lock internally. Callers never hold it.
 4. **Fusion brain stopped first**: All stop commands cancel the fusion brain before stopping the slot, preventing race conditions with channel close.
-5. **Port safety**: `9090 + idx` is always used for idle slots, regardless of frontend `config.port`.
+5. **Port safety**: Port is computed dynamically from provider's `base_port` at launch time. Idle slots have port=0.
 
 ## Pitfalls
 
 - **`PROCESS_VM_READ` in `OpenProcess`**: Causes access denied on child processes → reaper thinks process is dead → `kill_process_by_port` kills the actual running engine. Use `PROCESS_QUERY_INFORMATION` only.
-- **Port conflicts**: Frontend sends `config.port` which may not match slot index. Always override with `9090 + idx` for idle slots.
+- **Port conflicts**: All ports are resolved at launch time from provider's `base_port`. Global collision avoidance ensures no two engines share a port.
 - **`on_ready` lock splitting**: Holding the tokio Mutex while Tauri's `emit()` blocks on a saturated event channel will deadlock. Split into two lock acquisitions.
 - **Reaper after stop**: After stop kills the process, the reaper will detect it 2s later and call `clear_slot` again. This is harmless — the slot is already idle and `child_proc` is already `None`.
 

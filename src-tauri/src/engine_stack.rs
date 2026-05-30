@@ -2,6 +2,8 @@ use std::sync::Arc;
 use crate::types::{EngineConfig, StackEntry};
 use crate::log_hub::LogHub;
 
+pub const DEFAULT_N_CTX: usize = 32768;
+
 /// Estimate committed VRAM for a launched engine from full scan data or file size fallback.
 fn fit_scanner_estimate_vram(config: &EngineConfig) -> f64 {
     if let Some(scan_data) = crate::fit_scanner::load_full_scan_export() {
@@ -67,37 +69,36 @@ pub struct EngineSlot {
 
 pub struct EngineStack {
     pub(crate) slots: Vec<Option<Arc<parking_lot::Mutex<EngineSlot>>>>,
-    base_port: u16,
     log_hub: Option<LogHub>,
 }
 
 impl Default for EngineStack {
     fn default() -> Self {
-        Self::new(9090, 4)
+        Self::new(4)
     }
 }
 
 impl EngineStack {
-    pub fn new(base_port: u16, slot_count: usize) -> Self {
+    pub fn new(slot_count: usize) -> Self {
         let mut slots = Vec::with_capacity(slot_count);
 
         for i in 0..slot_count {
             slots.push(Some(Arc::new(parking_lot::Mutex::new(EngineSlot {
                 child_proc: None,
                 pid: None,
-                port: base_port + i as u16,
+                port: 0,
                 status: SlotStatus::Idle,
                 alias: format!("ENGINE-{}", i),
                 model_path: String::new(),
                 gpu_mask: String::new(),
                 vram_mib: 0.0,
-                n_ctx: 32768,
+                n_ctx: DEFAULT_N_CTX,
                 provider_name: String::new(),
                 backend_type: String::new(),
             }))));
         }
 
-        Self { slots, base_port, log_hub: None }
+        Self { slots, log_hub: None }
     }
 
     pub fn set_log_hub(&mut self, hub: LogHub) {
@@ -355,10 +356,11 @@ impl EngineStack {
             slot.child_proc = None;
             slot.pid = None;
             slot.alias = format!("ENGINE-{}", idx);
+            slot.port = 0;
             slot.model_path.clear();
             slot.gpu_mask.clear();
             slot.vram_mib = 0.0;
-            slot.n_ctx = 32768;
+            slot.n_ctx = DEFAULT_N_CTX;
             slot.provider_name.clear();
             slot.backend_type.clear();
         }
@@ -543,19 +545,19 @@ impl EngineStack {
     }
 
     /// Create a default StackEntry for an empty slot.
-    fn default_entry(i: usize, base_port: u16) -> StackEntry {
+    fn default_entry(i: usize) -> StackEntry {
         StackEntry {
             idx: i,
             alias: format!("slot-{}", i),
             model_name: "none".to_string(),
-            port: base_port + i as u16,
+            port: 0,
             gpu: "none".to_string(),
             status: "IDLE".to_string(),
             slot_id: i as u32,
             provider_type: String::new(),
             model_path: String::new(),
             vram_mib: 0.0,
-            n_ctx: 32768,
+            n_ctx: DEFAULT_N_CTX,
             provider_name: String::new(),
             build_info: None,
         }
@@ -571,7 +573,7 @@ impl EngineStack {
                     entries.push(Self::slot_to_entry(i, &slot));
                 }
                 None => {
-                    entries.push(Self::default_entry(i, self.base_port));
+                    entries.push(Self::default_entry(i));
                 }
             }
         }

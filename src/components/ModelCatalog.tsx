@@ -10,7 +10,7 @@ import { useTelemetry } from "../context/TelemetryContext";
 
 interface ModelCatalogProps {
   models: any[];
-  onLaunch: (config: EngineConfig) => void;
+  onLaunch: (config: EngineConfig) => Promise<any>;
   error: string | null;
   onReload: () => void;
   providers?: ProviderConfig[];
@@ -169,8 +169,6 @@ export default function ModelCatalog(props: ModelCatalogProps) {
 
 
 
-  const totalRunning = runningInstances.size;
-
   return (
     <div className="flex flex-col h-full">
       {/* Top bar */}
@@ -208,11 +206,6 @@ export default function ModelCatalog(props: ModelCatalogProps) {
       <div className="flex flex-1 overflow-hidden">
         {/* Left panel — model browser */}
         <div className="w-[420px] min-w-[320px] flex flex-col border-r border-stealth-border/50 cyber-panel">
-
-          {/* Placeholder — running engines now rendered in EngineConfigPanel (eink) */}
-          {totalRunning > 0 && (
-            <div className="flex-shrink-0" />
-          )}
 
           {/* Search bar */}
           <div className="px-3 py-2 border-b border-stealth-border/50 flex-shrink-0">

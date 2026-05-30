@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, useEffect } from "react";
+import { createContext, useContext, useState, useCallback, useEffect, useMemo } from "react";
 
 export interface StatusBarCtx {
   totalParams: number;
@@ -27,22 +27,38 @@ export const StatusProvider: React.FC<{ value: any; children?: React.ReactNode }
 
   // Listen for launch events to show in status bar
   useEffect(() => {
-    const handler = (e: Event) => {
+    const handleSuccess = (e: Event) => {
       const detail = (e as CustomEvent).detail as { alias: string; port: number };
       if (detail?.alias && detail.port) {
         setFlashMessage(`${detail.alias} ignited @ :${detail.port}`);
       }
     };
-    window.addEventListener("blackops-launch-success", handler);
-    return () => window.removeEventListener("blackops-launch-success", handler);
+
+    const handleError = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { message: string };
+      if (detail?.message) {
+        setFlashMessage(detail.message);
+      }
+    };
+
+    window.addEventListener("blackops-launch-success", handleSuccess);
+    window.addEventListener("blackops-launch-error", handleError);
+
+    return () => {
+      window.removeEventListener("blackops-launch-success", handleSuccess);
+      window.removeEventListener("blackops-launch-error", handleError);
+    };
   }, []);
 
   const triggerFlash = useCallback((message: string) => {
     setFlashMessage(message);
   }, []);
 
-  // Merge flash state into provided value
-  const mergedValue = { ...value, flashMessage, triggerFlash };
+  // Merge flash state into provided value — memoized to prevent unnecessary re-renders of consumers
+  const mergedValue = useMemo(
+    () => ({ ...value, flashMessage, triggerFlash }),
+    [value, flashMessage, triggerFlash]
+  );
 
   return <StatusContext.Provider value={mergedValue}>{children}</StatusContext.Provider>;
 };

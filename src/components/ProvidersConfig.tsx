@@ -1,7 +1,11 @@
 import React, { useState, useCallback, useEffect, useRef, Fragment } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { ProviderConfig, UserEditedTemplateParam, FitScanComplete, FitScanProgress, FitScanFull, FitDataPoint } from "../lib/types";
+import { listen } from "@tauri-apps/api/event";
+import type { ProviderConfig, UserEditedTemplateParam, FitScanComplete, FitScanProgress, FitScanFull, FitDataPoint, BinaryUpdateInfo } from "../lib/types";
 import { DEFAULT_PROVIDER_ID } from "../lib/types";
+import { useFoundry, type Env } from "../hooks/useBuildDock";
+import { ENV_ORDER, ENV_META } from "../lib/foundry_constants";
+import { BuildProfileRow, RestoreConfirmModal, parseCmakeFlags, UpdateStatus } from "./FoundryComponents";
 
 function formatElapsed(startTime: number): string {
   const secs = Math.floor((Date.now() - startTime) / 1000);
@@ -13,7 +17,6 @@ function formatElapsed(startTime: number): string {
 interface ProvidersConfigProps {
   providers: ProviderConfig[];
   onProvidersChange: (providers: ProviderConfig[]) => void;
-  onNavigateToFoundry?: () => void;
 }
 
 interface FormState {
@@ -28,7 +31,7 @@ interface FormState {
   branch: string;
   build_profile: string;
   template_type: string;
-  factory_provided?: boolean; // true = bundled in runtime/ or downloaded from GitHub releases
+  factory_provided?: boolean;
 }
 
 type ScanStatus = "idle" | "scanning" | "complete" | "error";
@@ -41,10 +44,10 @@ interface ProviderScanState {
   failed: number;
   results?: FitScanComplete;
   error?: string;
-  scanStartTime?: number; // epoch ms when scan started
+  scanStartTime?: number;
 }
 
-export default function ProvidersConfig({ providers: initialProviders, onProvidersChange, onNavigateToFoundry }: ProvidersConfigProps) {
+export default function ProvidersConfig({ providers: initialProviders, onProvidersChange }: ProvidersConfigProps) {
   const [providers, setProviders] = useState<ProviderConfig[]>(initialProviders);
   const [form, setForm] = useState<FormState>({
     id: "",
@@ -58,6 +61,9 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
     template_type: "ggml-llama",
   });
 
+  const { openBuildModal, buildProgress } = useFoundry();
+  const [restoreConfirm, setRestoreConfirm] = useState<{ providerId: string; env: Env } | null>(null);
+
   const detectTemplateType = useCallback((id: string) => {
     const lower = id.toLowerCase();
     if (lower.includes("ik")) return "ik-llama";
@@ -65,7 +71,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
   }, []);
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null);
+  const [expandedProviderId, setExpandedProviderId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -77,7 +83,11 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
 
   // Ref to always have the latest parallel setting available during async operations
   const parallelRef = useRef<Record<string, number>>({});
-  // FIT scan state per provider
+
+  // Binary update state per provider/profile
+  const [binaryUpdates, setBinaryUpdates] = useState<Record<string, Record<string, BinaryUpdateInfo>>>({});
+  const [updateStatuses, setUpdateStatuses] = useState<Record<string, UpdateStatus>>({});
+  const [updateErrors, setUpdateErrors] = useState<Record<string, string>>({});
 
   const loadProviders = useCallback(async () => {
     try {
@@ -113,7 +123,6 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
       return;
     }
 
-    // binary_path is required (Foundry config managed in FOUNDRY tab)
     if (!form.binary_path.trim()) {
       setError("Binary path is required.");
       return;
@@ -142,7 +151,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
       await invoke("save_provider", { provider });
       await loadProviders();
 
- setForm({ id: "", display_name: "", binary_path: "", enabled: true, params: {}, git_url: "", branch: "", build_profile: "", template_type: "ggml-llama", factory_provided: false });
+  setForm({ id: "", display_name: "", binary_path: "", enabled: true, params: {}, git_url: "", branch: "", build_profile: "", template_type: "ggml-llama", factory_provided: false });
       setEditingId(null);
       setShowAddForm(false);
     } catch (err) {
@@ -250,6 +259,8 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
     }));
   };
 
+  // ── FIT Scan handlers ────────────────────────────────────────
+
   const handleScanLibrary = useCallback(async (providerId: string) => {
     const currentParallel = parallelRef.current[providerId] ?? 2;
 
@@ -263,27 +274,25 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
           totalModels: 0,
           completed: 0,
           failed: 0,
-          results: oldState?.results ? { ...oldState.results, results: {} } : undefined, // Preserve scan_points_total for live progress display
+          results: oldState?.results ? { ...oldState.results, results: {} } : undefined,
           scanStartTime: Date.now(),
         },
       };
     });
 
     try {
-      // Get provider config to find batch/ubatch defaults
       const allProviders = await invoke<ProviderConfig[]>("list_providers");
       const provider = allProviders.find(p => p.id === providerId);
       const batch = (provider?.params as any)?.batch || 2048;
       const ubatch = (provider?.params as any)?.ubatch || (provider?.params as any)?.ubatch_size || 512;
 
-      // Backend resolves empty string to first configured path automatically
       const result = await invoke<FitScanComplete>("fit_scan_library", {
         providerId,
         modelBase: "",
         parallelCount: Math.max(currentParallel, 1),
         batch,
         ubatch,
-        forceRescan: false, // Incremental — only scans missing points per model
+        forceRescan: false,
       });
 
       setScanStates((prev) => ({
@@ -330,14 +339,15 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
     }));
   }, []);
 
+  // ── FIT scan event listener ───────────────────────────────────
+
   const listenerGuardRef = useRef(false);
   useEffect(() => {
-    if (listenerGuardRef.current) return; // Prevent HMR stacking duplicate listeners
+    if (listenerGuardRef.current) return;
     listenerGuardRef.current = true;
 
     let unsub: (() => void) | null = null;
     const init = async () => {
-      const { listen } = await import("@tauri-apps/api/event");
       unsub = await listen<FitScanProgress>("fit-scan-progress", (e) => {
         try {
           const evt: FitScanProgress = e.payload;
@@ -353,26 +363,23 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
                const existingResults = ps.results?.results ?? {};
                const prevEntry: FitScanFull | undefined = existingResults[evt.model_path];
 
-                // On "complete" events with label + vram_mib, store the actual point data so VRAM columns update live during scan
                 let newPoints = prevEntry ? (prevEntry.points as any[]).filter(Boolean) : [];
                  if (evt.status === "complete" && evt.vram_mib != null && evt.label) {
                    const pt: FitDataPoint = {
                      label: evt.label, ctx: 0, kv_quant: "", batch: 0, parallel: 0, split_mode: "",
                      vram_mib: evt.vram_mib,
                    };
-                  // Replace existing point with same label if present (from old cache), otherwise append
-                  const existingIdx = newPoints.findIndex((p: FitDataPoint) => p.label === evt.label);
-                  if (existingIdx >= 0) {
-                    newPoints[existingIdx] = pt;
-                   } else if (newPoints.length < (ps.results?.scan_points_total ?? 999)) {
-                    newPoints.push(pt);
-                  }
-                }
+                   const existingIdx = newPoints.findIndex((p: FitDataPoint) => p.label === evt.label);
+                   if (existingIdx >= 0) {
+                     newPoints[existingIdx] = pt;
+                    } else if (newPoints.length < (ps.results?.scan_points_total ?? 999)) {
+                     newPoints.push(pt);
+                   }
+                 }
 
-               // Create new entry — during scan this has live point data, after completion it gets replaced by full result
                const entry: FitScanFull = prevEntry
-                 ? { ...prevEntry, points: newPoints }
-                 : { model_path: evt.model_path, points: newPoints, error: undefined };
+                  ? { ...prevEntry, points: newPoints }
+                  : { model_path: evt.model_path, points: newPoints, error: undefined };
 
               const updatedResults = { ...existingResults, [evt.model_path]: entry };
               return {
@@ -393,11 +400,175 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
     return () => { if (unsub) unsub(); };
   }, []);
 
-  // Render scan progress/results for a provider
+  // ── Foundry build info refresh on mount ───────────────────────
+
+  const hasRefreshed = useRef(false);
+  useEffect(() => {
+    if (hasRefreshed.current) return;
+    hasRefreshed.current = true;
+
+    const lastRefreshKey = `foundry_last_refresh_${providers.map(p => p.id).join(",")}`;
+    const lastRefresh = parseInt(localStorage.getItem(lastRefreshKey) || "0", 10);
+    const now = Date.now();
+    if (now - lastRefresh < 5000) {
+      hasRefreshed.current = false;
+      return;
+    }
+    localStorage.setItem(lastRefreshKey, String(now));
+
+    const foundryProviders = providers.filter(p => p.git_url && p.branch);
+    let cancelled = false;
+    foundryProviders.forEach(async (p) => {
+      try {
+        const updated = await invoke<ProviderConfig[]>("refresh_build_info", { providerId: p.id });
+        if (!cancelled && updated.length > 0) onProvidersChange(updated);
+      } catch (err) {
+        console.error("[Foundry] Failed to refresh build info for", p.id, err);
+      }
+    });
+
+    let cachedUpdates: Record<string, BinaryUpdateInfo[]> | null = null;
+    try {
+      const raw = localStorage.getItem("blackwell_startup_updates");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed.timestamp && Date.now() - parsed.timestamp < 300_000 && parsed.binaryUpdates) {
+          cachedUpdates = {};
+          parsed.binaryUpdates.forEach((bu: any) => {
+            cachedUpdates[bu.providerId] = bu.updates;
+          });
+        }
+      }
+    } catch (err) { console.error("[Foundry] Build info refresh error:", err); }
+
+    foundryProviders.forEach(async (p) => {
+      try {
+        let updates: BinaryUpdateInfo[];
+        if (cachedUpdates && cachedUpdates[p.id]) {
+          updates = cachedUpdates[p.id];
+        } else {
+          updates = await invoke<BinaryUpdateInfo[]>("check_binary_updates", { providerId: p.id });
+        }
+        if (!cancelled && updates.length > 0) {
+          const withInstalled = updates.map(u => ({
+            ...u,
+            installedVersion: (p.downloadedVersionPerEnv?.[u.profile] || null),
+            available: u.available && !(p.downloadedVersionPerEnv?.[u.profile] === `v${u.latestVersion}`),
+          }));
+          setBinaryUpdates(prev => {
+            const next = { ...prev };
+            next[p.id] = {};
+            withInstalled.forEach(u => { next[p.id]![u.profile] = u; });
+            return next;
+          });
+        }
+      } catch (err) {
+        console.error("[Foundry] Failed to check binary updates for", p.id, err);
+      }
+    });
+
+    return () => { cancelled = true; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Foundry build complete event listener ─────────────────────
+
+  useEffect(() => {
+    const unsub = listen<{ build_id: number; phase: string; provider_id: string }>("foundry-progress", async (e) => {
+      if (e.payload.phase === "Complete") {
+        try {
+          const updated = await invoke<ProviderConfig[]>("refresh_build_info", { providerId: e.payload.provider_id });
+          if (updated.length > 0) onProvidersChange(updated);
+        } catch (err) { console.error("[Foundry] Status check error:", err); }
+      }
+    });
+    return () => { unsub.then(u => u()); };
+  }, [onProvidersChange]);
+
+  // ── Binary update event listeners ─────────────────────────────
+
+  useEffect(() => {
+    let unsubStart: (() => void) | null = null;
+    let unsubProgress: (() => void) | null = null;
+    let unsubComplete: (() => void) | null = null;
+
+    listen("binary-update:download-start", (e: any) => {
+      const p = e.payload as { provider_id: string; profile: string };
+      const key = `${p.provider_id}:${p.profile}`;
+      setUpdateStatuses(prev => ({ ...prev, [key]: "downloading" }));
+    }).then(u => { unsubStart = u; });
+
+    listen("binary-update:download-progress", (e: any) => {
+      const p = e.payload as { provider_id: string; profile: string; status: string };
+      const key = `${p.provider_id}:${p.profile}`;
+      setUpdateStatuses(prev => ({ ...prev, [key]: p.status === "extracting" ? "extracting" : "downloading" }));
+    }).then(u => { unsubProgress = u; });
+
+    listen("binary-update:download-complete", (e: any) => {
+      const p = e.payload as { provider_id: string; profile: string };
+      const key = `${p.provider_id}:${p.profile}`;
+      setUpdateStatuses(prev => ({ ...prev, [key]: "complete" }));
+      invoke<ProviderConfig[]>("refresh_build_info", { providerId: p.provider_id })
+        .then(updated => { if (updated.length > 0) onProvidersChange(updated); })
+        .catch((err) => console.error("[Foundry] Binary update event error:", err));
+    }).then(u => { unsubComplete = u; });
+
+    return () => {
+      unsubStart?.();
+      unsubProgress?.();
+      unsubComplete?.();
+    };
+  }, [onProvidersChange]);
+
+  // ── Foundry handlers ──────────────────────────────────────────
+
+  const handleBinaryUpdate = useCallback(async (providerId: string, profile: Env) => {
+    const key = `${providerId}:${profile}`;
+    setUpdateStatuses(prev => ({ ...prev, [key]: "checking" }));
+    setUpdateErrors(prev => { const next = { ...prev }; delete next[key]; return next; });
+
+    try {
+      await invoke("download_binary_update", { providerId, profile });
+    } catch (err) {
+      const msg = typeof err === "string" ? err : String(err);
+      setUpdateStatuses(prev => ({ ...prev, [key]: "error" }));
+      setUpdateErrors(prev => ({ ...prev, [key]: msg }));
+      console.error("[Foundry] Binary update failed:", err);
+    }
+  }, []);
+
+  const handleRevert = useCallback(async (providerId: string, profile: Env) => {
+    try {
+      await invoke("revert_binary_to_bundled", { providerId, profile });
+      invoke<ProviderConfig[]>("refresh_build_info", { providerId })
+        .then(updated => { if (updated.length > 0) onProvidersChange(updated); })
+        .catch((err) => console.error("[Foundry] Binary update event error:", err));
+    } catch (err) {
+      console.error("[Foundry] Revert failed:", err);
+    }
+  }, [onProvidersChange]);
+
+  const handleRestore = async () => {
+    if (!restoreConfirm) return;
+    try {
+      await invoke("foundry_restore", {
+        providerId: restoreConfirm.providerId,
+        environment: restoreConfirm.env,
+      });
+      await invoke<ProviderConfig[]>("refresh_build_info", { providerId: restoreConfirm.providerId })
+        .then(updated => { if (updated.length > 0) onProvidersChange(updated); })
+        .catch((err) => console.error("[Foundry] Binary update event error:", err));
+    } catch (err) {
+      console.error("[Foundry] Restore failed:", err);
+    } finally {
+      setRestoreConfirm(null);
+    }
+  };
+
+  // ── Scan progress render ──────────────────────────────────────
+
   const renderScanProgress = (providerId: string) => {
     const state = scanStates[providerId];
 
-    // Idle state — nothing below card; parallel selector lives in the card row itself
     if (!state || state.status === "idle") {
       return null;
     }
@@ -452,10 +623,9 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
           <p className="text-[8px] font-mono text-red-400 mb-1.5 break-all">{state.error}</p>
         )}
 
-        {/* Results — show during scanning (progress) and after complete/error */}
+        {/* Results table */}
         {state.results && Object.keys(state.results.results).length > 0 && (
           <div className="max-h-48 overflow-y-auto pr-1">
-            {/* Column headers */}
             <div className="grid grid-cols-[20px_minmax(0,_1fr)_64px_64px_56px] items-center gap-1 text-[7px] font-mono py-0.5 text-stealth-muted/60 uppercase tracking-wider border-b border-stealth-border/30 mb-0.5">
               <span></span><span>Model</span>
               <span>Base(8K)</span>
@@ -469,11 +639,10 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
               const pts = full.points ?? [];
               const nPts = pts.length;
 
-               // Only show VRAM columns when we have labeled data (post-completion or mid-scan with real labels)
                const basePt = pts.find((p: FitDataPoint) => p?.label === "base");
                const q4Pt = pts.find((p: FitDataPoint) => p?.label === "quant_q4");
-                const pointsTotal = state.results!.scan_points_total ?? 999;
-                const isComplete = nPts >= pointsTotal;
+               const pointsTotal = state.results!.scan_points_total ?? 999;
+               const isComplete = nPts >= pointsTotal;
 
               return (
                 <div key={path} className="grid grid-cols-[20px_minmax(0,_1fr)_64px_64px_56px] items-center gap-1 text-[8px] font-mono py-0.5">
@@ -513,9 +682,11 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
     );
   };
 
+  // ── Render ────────────────────────────────────────────────────
+
   return (
     <div className="h-full flex flex-col overflow-hidden">
-      {/* Toolbar header — matches ConfigPage layout */}
+      {/* Toolbar header */}
       <div className="px-4 py-3 border-b border-stealth-border flex items-center justify-between flex-wrap gap-2 relative">
         <div>
           <div className="flex items-center gap-2">
@@ -586,42 +757,24 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
           </div>
         ) : (
           <div className="mb-6">
-            {/* Sort bar — matches ModelCatalog style */}
+            {/* Sort bar */}
             <div className="flex items-center gap-1 px-3 py-2 border-b border-stealth-border/50">
               <span className="text-[8px] font-mono text-stealth-muted uppercase tracking-wider w-6">#</span>
-              <div className="w-7" />
+              <span className="text-[7px] font-mono text-stealth-muted uppercase tracking-wider w-12">Order</span>
               <span className="text-[8px] font-mono text-stealth-muted uppercase tracking-wider flex-1">Provider</span>
-              {selectedProviderId && (() => {
-                const si = providers.findIndex(p => p.id === selectedProviderId);
-                return (
-                  <div className="flex items-center gap-2.5 flex-shrink-0">
-                    <button onClick={() => handleReorder(selectedProviderId, -1)} disabled={si <= 0}
-                      className="text-[9px] font-mono text-stealth-muted hover:text-nv-green transition-colors disabled:opacity-20 disabled:cursor-not-allowed" title="Move up">
-                      ▲
-                    </button>
-                    <button onClick={() => handleReorder(selectedProviderId, 1)} disabled={si >= providers.length - 1}
-                      className="text-[9px] font-mono text-stealth-muted hover:text-nv-green transition-colors disabled:opacity-20 disabled:cursor-not-allowed" title="Move down">
-                      ▼
-                    </button>
-                    <span className="text-[8px] font-mono text-stealth-muted uppercase tracking-wider">Actions</span>
-                  </div>
-                );
-              })()}
-              {!selectedProviderId && (
-                <span className="text-[8px] font-mono text-stealth-muted uppercase tracking-wider">Actions</span>
-              )}
+              <span className="text-[8px] font-mono text-stealth-muted uppercase tracking-wider">Actions</span>
             </div>
 
             {providers.map((p, idx) => {
-              const isSelected = selectedProviderId === p.id;
+              const isExpanded = expandedProviderId === p.id;
               return (
               <Fragment key={p.id}>
               <div
-                onClick={() => setSelectedProviderId(isSelected ? null : p.id)}
+                onClick={() => setExpandedProviderId(isExpanded ? null : p.id)}
                 className={`flex gap-4 p-4 rounded border transition-all cursor-pointer ${
                   editingId === p.id
                     ? "border-yellow-400/60 bg-yellow-400/5"
-                    : isSelected
+                    : isExpanded
                       ? "border-nv-green/60 bg-nv-green/5"
                       : p.enabled
                         ? "border-stealth-border hover:border-stealth-muted"
@@ -629,10 +782,22 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
                 }`}>
                 {/* ── Position number ─────────── */}
                 <div className="flex items-center flex-shrink-0" style={{ minWidth: "16px" }}>
-                  <span className={`text-[9px] font-mono ${isSelected ? "text-nv-green" : "text-stealth-muted"}`}>{idx + 1}</span>
+                  <span className={`text-[9px] font-mono ${isExpanded ? "text-nv-green" : "text-stealth-muted"}`}>{idx + 1}</span>
                 </div>
 
-                {/* ── Table columns ─────────────────────────────────────── */}
+                {/* ── Reorder arrows (always visible) ─────────── */}
+                <div className="flex items-center gap-0.5 flex-shrink-0">
+                  <button onClick={(e) => { e.stopPropagation(); handleReorder(p.id, -1); }} disabled={idx <= 0}
+                    className="text-[9px] font-mono text-stealth-muted hover:text-nv-green transition-colors disabled:opacity-20 disabled:cursor-not-allowed leading-none" title="Move up">
+                    ▲
+                  </button>
+                  <button onClick={(e) => { e.stopPropagation(); handleReorder(p.id, 1); }} disabled={idx >= providers.length - 1}
+                    className="text-[9px] font-mono text-stealth-muted hover:text-nv-green transition-colors disabled:opacity-20 disabled:cursor-not-allowed leading-none" title="Move down">
+                    ▼
+                  </button>
+                </div>
+
+                {/* ── Table columns ─────────── */}
                 <div className="flex items-center gap-6 flex-1 min-w-0">
                   {/* ID + name column */}
                   <div className="flex items-center gap-2.5 flex-shrink-0">
@@ -646,7 +811,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
                     <span className="text-[10px] font-mono text-yellow-400">
                       {p.id}
                     </span>
-                    <span className={`text-[10px] font-mono truncate max-w-[180px] ${isSelected ? "text-nv-green" : "text-white"}`} title={p.display_name}>
+                    <span className={`text-[10px] font-mono truncate max-w-[180px] ${isExpanded ? "text-nv-green" : "text-white"}`} title={p.display_name}>
                       {p.display_name}
                     </span>
                     {p.id === DEFAULT_PROVIDER_ID && (
@@ -666,12 +831,6 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
 
                   {/* Actions group */}
                   <div className="flex items-center gap-2.5 flex-shrink-0">
-                    {p.git_url && onNavigateToFoundry && (
-                      <button onClick={(e) => { e.stopPropagation(); onNavigateToFoundry(); }}
-                        className="px-2 py-0.5 text-[9px] font-mono bg-orange-500 text-black hover:bg-orange-400 transition-colors flex-shrink-0">
-                        FOUNDRY
-                      </button>
-                    )}
                       <button onClick={(e) => { e.stopPropagation(); handleEdit(p); }}
                        className="px-2 py-0.5 text-[9px] font-mono border border-yellow-400/40 text-yellow-400 hover:bg-yellow-500/20 transition-colors">
                        EDIT
@@ -710,55 +869,144 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
                         {scanStates[p.id]?.status === "scanning" ? "\u25CF SCANNING..." : "SCAN LIBRARY"}
                       </button>
                     </div>
+
+                    {/* Expand chevron */}
+                    <span className={`text-[8px] transition-transform ${isExpanded ? "rotate-90" : ""}`}>▶</span>
                   </div>
                 </div>
               </div>
 
-              {/* Scan progress / parallel selector — full-width below provider card */}
-              <div className="w-full">
-                {renderScanProgress(p.id)}
-              </div>
+              {/* ── Expanded section ─────────── */}
+              {isExpanded && (
+                <div className="ml-8 mr-2 mb-3 space-y-3">
+                  {/* Foundry build environments — only show for providers with git config */}
+                  {p.git_url && p.branch && (() => {
+                    const latestEnv = (() => {
+                      let latestDate = "";
+                      let latestKey: Env | null = null;
+                      for (const env of ENV_ORDER) {
+                        const info = p.buildInfoPerEnv?.[env];
+                        if (info && info.buildDate > latestDate) {
+                          latestDate = info.buildDate;
+                          latestKey = env;
+                        }
+                      }
+                      return latestKey;
+                    })();
 
-              {/* Inline edit form — appears directly below the edited provider */}
-              {editingId === p.id && (
-                <div className="mt-2 border border-yellow-400/40 bg-[#1a1a2e] rounded p-3 space-y-2">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-[10px] font-mono text-yellow-400">{p.id} — EDIT PROVIDER</span>
-                    <button onClick={handleCancel} className="text-stealth-muted hover:text-white transition-colors leading-none">✕</button>
-                  </div>
-                  {/* ID field */}
-                  <div className="flex items-center gap-2">
-                    <label className="text-[10px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider">Type ID</label>
-                    <input type="text" value={form.id} onChange={(e) => setForm((prev) => ({ ...prev, id: e.target.value }))}
-                      className="flex-1 bg-transparent border-b border-yellow-400/60 text-[11px] font-mono text-white focus:border-yellow-400 focus:outline-none px-1 py-0.5" />
-                  </div>
-                  {/* Template Type selector */}
-                  <div className="flex items-center gap-2">
-                    <label className="text-[10px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider">Template</label>
-                    <select value={form.template_type} onChange={(e) => setForm((prev) => ({ ...prev, template_type: e.target.value }))}
-                      className="flex-1 bg-transparent border-b border-yellow-400/60 text-[11px] font-mono text-white focus:border-yellow-400 focus:outline-none px-1 py-0.5">
-                      <option value="ggml-llama" style={{fontSize: '11px'}}>GGML-Llama (22 params)</option>
-                      <option value="ik-llama" style={{fontSize: '11px'}}>IK-Llama (8 params)</option>
-                      <option value="" style={{fontSize: '11px'}}>Custom (manual)</option>
-                    </select>
-                  </div>
-                  {/* Display name */}
-                  <div className="flex items-center gap-2">
-                    <label className="text-[10px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider">Name</label>
-                    <input type="text" value={form.display_name} onChange={(e) => setForm((prev) => ({ ...prev, display_name: e.target.value }))}
-                      className="flex-1 bg-transparent border-b border-yellow-400/60 text-[11px] font-mono text-white focus:border-yellow-400 focus:outline-none px-1 py-0.5" />
-                  </div>
-                  <ProviderFormFields form={form} setForm={setForm} handleBrowse={handleBrowse} isFactoryProvided={form.factory_provided} />
-                    {/* Action buttons */}
-                    <div className="flex gap-2 pt-1">
-                      <button onClick={handleSave} disabled={loading || !form.id.trim() || !form.display_name.trim() || !form.binary_path.trim()}
-                        className="px-3 py-1 text-[10px] font-mono border border-nv-green/60 text-nv-green hover:bg-nv-green/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
-                        {loading ? "SAVING..." : "UPDATE"}
-                      </button>
-                      <button onClick={handleCancel} className="px-3 py-1 text-[10px] font-mono border border-stealth-border text-stealth-muted hover:text-white transition-colors">CANCEL</button>
+                    const cmakeFlags = p.build_profile?.trim() || "";
+                    const isCustomFlags = cmakeFlags.length > 0;
+                    const flagLines = parseCmakeFlags(cmakeFlags);
+
+                    return (
+                      <div className="border border-stealth-border/50 rounded-sm overflow-hidden">
+                        {/* Foundry header */}
+                        <div className="flex items-center gap-3 px-3 py-2 bg-[#0a0a1a] border-b border-stealth-border/30">
+                          <span style={{ fontSize: '12px' }}>⚒</span>
+                          <span className="text-[9px] font-mono text-nv-green tracking-wider">FOUNDRY BUILDS</span>
+                          {/* CMake flags badge */}
+                          <div className="relative inline-block group">
+                            <span
+                              className={`text-[7px] font-mono px-1.5 py-0.5 rounded-sm border cursor-help ${
+                                isCustomFlags
+                                  ? "border-purple-400/30 bg-purple-400/10 text-purple-400"
+                                  : "border-stealth-border/30 bg-stealth-panel/50 text-white/40"
+                              }`}
+                            >
+                              {isCustomFlags ? "CUSTOM FLAGS" : "DEFAULT"}
+                            </span>
+                            <div className="absolute top-full left-0 mt-1 w-[320px] bg-[#0a0a1a] border border-stealth-border rounded-sm p-2 pointer-events-none z-[9999] opacity-0 group-hover:opacity-100 transition-opacity shadow-2xl">
+                              {flagLines.length > 0 ? (
+                                <div className="space-y-0.5">
+                                  {flagLines.map((f, i) => (
+                                    <div key={i} className="text-[7px] font-mono text-white/60 whitespace-pre-wrap break-all">{f}</div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div className="text-[7px] font-mono text-stealth-muted">Using default cmake flags for {p.template_type || "ggml-llama"}</div>
+                              )}
+                            </div>
+                          </div>
+                          <span className="text-[8px] font-mono text-stealth-muted truncate max-w-[240px]" title={p.git_url}>
+                            {p.git_url.replace(/.*\/\/|\.git$/g, "")} :{p.branch}
+                          </span>
+                        </div>
+
+                        {/* Build profiles — vertical stack */}
+                        <div className="p-3 space-y-2">
+                          {ENV_ORDER.map(env => {
+                            const meta = ENV_META[env];
+                            const hasBackup = p.binaryPathPerEnv?.[env] || p.buildInfoPerEnv?.[env];
+                            return (
+                              <BuildProfileRow
+                                key={env}
+                                env={env}
+                                meta={meta}
+                                provider={p}
+                                isLatestBuild={latestEnv === env}
+                                hasBackup={!!hasBackup}
+                                isBuilding={buildProgress?.providerId === p.id && buildProgress?.environment.toLowerCase() === env}
+                                onBuild={() => openBuildModal(p.id, env)}
+                                onRestoreConfirm={() => setRestoreConfirm({ providerId: p.id, env })}
+                                binaryUpdate={(binaryUpdates[p.id] || {})[env]}
+                                updateStatus={updateStatuses[`${p.id}:${env}`] || "idle"}
+                                updateError={updateErrors[`${p.id}:${env}`]}
+                                onUpdateBinary={() => handleBinaryUpdate(p.id, env)}
+                                onRevert={() => handleRevert(p.id, env)}
+                              />
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Scan progress/results */}
+                  {renderScanProgress(p.id)}
+
+                  {/* Inline edit form — appears directly below the expanded provider */}
+                  {editingId === p.id && (
+                    <div className="border border-yellow-400/40 bg-[#1a1a2e] rounded p-3 space-y-2">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-[10px] font-mono text-yellow-400">{p.id} — EDIT PROVIDER</span>
+                        <button onClick={handleCancel} className="text-stealth-muted hover:text-white transition-colors leading-none">✕</button>
+                      </div>
+                      {/* ID field */}
+                      <div className="flex items-center gap-2">
+                        <label className="text-[10px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider">Type ID</label>
+                        <input type="text" value={form.id} onChange={(e) => setForm((prev) => ({ ...prev, id: e.target.value }))}
+                          className="flex-1 bg-transparent border-b border-yellow-400/60 text-[11px] font-mono text-white focus:border-yellow-400 focus:outline-none px-1 py-0.5" />
+                      </div>
+                      {/* Template Type selector */}
+                      <div className="flex items-center gap-2">
+                        <label className="text-[10px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider">Template</label>
+                        <select value={form.template_type} onChange={(e) => setForm((prev) => ({ ...prev, template_type: e.target.value }))}
+                          className="flex-1 bg-transparent border-b border-yellow-400/60 text-[11px] font-mono text-white focus:border-yellow-400 focus:outline-none px-1 py-0.5">
+                          <option value="ggml-llama" style={{fontSize: '11px'}}>GGML-Llama (22 params)</option>
+                          <option value="ik-llama" style={{fontSize: '11px'}}>IK-Llama (8 params)</option>
+                          <option value="" style={{fontSize: '11px'}}>Custom (manual)</option>
+                        </select>
+                      </div>
+                      {/* Display name */}
+                      <div className="flex items-center gap-2">
+                        <label className="text-[10px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider">Name</label>
+                        <input type="text" value={form.display_name} onChange={(e) => setForm((prev) => ({ ...prev, display_name: e.target.value }))}
+                          className="flex-1 bg-transparent border-b border-yellow-400/60 text-[11px] font-mono text-white focus:border-yellow-400 focus:outline-none px-1 py-0.5" />
+                      </div>
+                      <ProviderFormFields form={form} setForm={setForm} handleBrowse={handleBrowse} isFactoryProvided={form.factory_provided} />
+                        {/* Action buttons */}
+                        <div className="flex gap-2 pt-1">
+                          <button onClick={handleSave} disabled={loading || !form.id.trim() || !form.display_name.trim() || !form.binary_path.trim()}
+                            className="px-3 py-1 text-[10px] font-mono border border-nv-green/60 text-nv-green hover:bg-nv-green/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+                            {loading ? "SAVING..." : "UPDATE"}
+                          </button>
+                          <button onClick={handleCancel} className="px-3 py-1 text-[10px] font-mono border border-stealth-border text-stealth-muted hover:text-white transition-colors">CANCEL</button>
+                        </div>
                     </div>
+                  )}
                 </div>
               )}
+
               </Fragment>
               );
             })}
@@ -774,6 +1022,15 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
         </span>
       </div>
 
+      {/* Restore Confirmation Modal */}
+      {restoreConfirm && (
+        <RestoreConfirmModal
+          providerId={restoreConfirm.providerId}
+          env={restoreConfirm.env}
+          onConfirm={handleRestore}
+          onCancel={() => setRestoreConfirm(null)}
+        />
+      )}
     </div>
   );
 }
@@ -783,7 +1040,7 @@ interface ProviderFormFieldsProps {
   form: FormState;
   setForm: React.Dispatch<React.SetStateAction<FormState>>;
   handleBrowse: () => void;
-  isFactoryProvided?: boolean; // true = bundled in runtime/ or downloaded from GitHub releases
+  isFactoryProvided?: boolean;
 }
 
 function ProviderFormFields({ form, setForm, handleBrowse, isFactoryProvided }: ProviderFormFieldsProps) {
@@ -838,6 +1095,3 @@ function ProviderFormFields({ form, setForm, handleBrowse, isFactoryProvided }: 
     </>
   );
 }
-
-
-
