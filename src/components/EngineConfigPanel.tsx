@@ -8,6 +8,7 @@ import { KEYS, engineAliasKey } from "../lib/storage";
 import { invoke } from "@tauri-apps/api/core";
 import VramBadge from "./VramBadge";
 import RunningEnginesPanel from "./RunningEnginesPanel";
+import SliderParam from "./SliderParam";
 import { useScenarioEvaluator } from "../hooks/useScenarioEvaluator";
 import { useConfigResolver } from "../hooks/useConfigResolver";
 
@@ -309,6 +310,29 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     // Yellow accent: non-genesis params (not in genesis template, not system-injected via dock)
     const isUserAdded = genesisKeys.size > 0 && !genesisKeys.has(def.key) && !def.dock;
 
+    // ── Slider ptype — render range input instead of value chips ───────────
+    if (def.ptype === 'slider') {
+      return (
+        <div key={def.key} data-param-row className={`flex items-center ${isLocked ? 'opacity-50' : ''}`}>
+          {isUserAdded && <div className="w-0.5 h-4 flex-shrink-0 bg-yellow-400/40 mr-1.5" />}
+          {!isUserAdded && <div className="w-0.5 h-4 flex-shrink-0 mr-1.5" />}
+          <span
+            className={`font-mono w-24 flex-shrink-0 uppercase tracking-wider truncate text-[9px] ${isUserAdded ? 'text-yellow-400/80' : 'text-stealth-muted'}`}
+            title={def.label}
+          >
+            {def.label}
+          </span>
+          <SliderParam
+            paramKey={def.key}
+            currentValue={currentValue}
+            onChange={(v) => updateParam(def.key, v)}
+            step={def.step ?? 1024}
+            values={baseValues}
+          />
+        </div>
+      );
+    }
+
     return (
       <div key={def.key} data-param-row className={`flex items-center ${isLocked ? 'opacity-50' : ''}`}>
         {isUserAdded && <div className="w-0.5 h-4 flex-shrink-0 bg-yellow-400/40 mr-1.5" />}
@@ -402,7 +426,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             defaultValue: p.default,
             flag: p.flag ?? undefined,
             ptype: p.ptype,
-            values_to_cli: (p as any).values_to_cli,
+            step: (p as any).step,
             ui_group: p.ui_group,
             note: p.note,
             pattern: p.pattern,

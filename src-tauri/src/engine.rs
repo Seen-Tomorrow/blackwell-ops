@@ -195,7 +195,9 @@ pub async fn launch_engine(
         crate::output_console::BlackwellOutputConsoleLineStyle::Normal,
     );
 
-    let ctx_size_int = crate::templates::ctx_to_int_tokens(&config.get_param_str("ctx").unwrap_or_else(|| "32k".to_string()));
+    let ctx_size_int = config.get_param_str("ctx")
+        .and_then(|v| v.parse::<usize>().ok())
+        .unwrap_or(32768);
 
     // Helper to build the on_ready closure
     fn make_on_ready(
@@ -557,7 +559,7 @@ pub async fn fit_scan_model(
         .ok_or_else(|| "llama-fit-params.exe not found — ensure provider is built".to_string())?;
 
     // Parse context size to integer tokens
-    let ctx_int = crate::templates::ctx_to_int_tokens(&ctx_size);
+    let ctx_int = ctx_size.parse::<usize>().unwrap_or(32768);
 
     // Derive GPU mask from device + split_mode — same logic as launch_engine
     let gpu_count = detect_gpu_count();

@@ -405,14 +405,14 @@ fn validate_user_edited_param(ep: &crate::types::UserEditedTemplateParam) -> Vec
 
     // Valid ptype
     static VALID_PTYPES: [&str; 8] = [
-        "arg_select", "arg_select_double", "mapper", "switch_onoff", "switch_inverted", "path_scanner", "logic_only", "",
+        "arg_select", "arg_select_double", "slider", "switch_onoff", "switch_inverted", "path_scanner", "logic_only", "",
     ];
     if !VALID_PTYPES.contains(&ep.ptype.as_str()) {
         errors.push(format!("invalid ptype '{}' (valid: {:?})", ep.ptype, VALID_PTYPES));
     }
 
-    // flag required for arg_select/mapper, flag_pair for arg_select_double
-    let needs_flag = ep.ptype == "arg_select" || ep.ptype == "mapper";
+    // flag required for arg_select/slider, flag_pair for arg_select_double
+    let needs_flag = ep.ptype == "arg_select" || ep.ptype == "slider";
     if needs_flag && ep.flag.as_deref().map_or(true, |s| s.is_empty()) {
         errors.push(format!("ptype '{}' requires a non-empty flag", ep.ptype));
     }
@@ -528,7 +528,7 @@ fn user_edited_param_from_template(tp: &crate::templates::ProviderDefaultParam, 
         flag: tp.flag.clone(),
         flag_pair: tp.flag_pair.clone(),
         ptype: tp.ptype.clone(),
-        values_to_cli: tp.values_to_cli.clone(),
+        step: tp.step,
         ui_group: normalize_ui_group(&tp.ui_group),
         note: tp.note.clone(),
         pattern: tp.pattern.clone(),
@@ -665,23 +665,6 @@ pub fn resolve_template_type(provider_id: &str, disk_type: Option<&String>) -> S
 }
 
 /// Backfill dock fields from provider defaults into user-edited params.
-fn merge_template_dock(template_type: &str, user_edited_params: &mut Vec<crate::types::UserEditedTemplateParam>) {
-    let Some(template_key) = template_key_for_type(template_type) else { return; };
-    let Some(template) = crate::templates::load_provider_defaults(&template_key) else { return; };
-
-    let tmpl_map: std::collections::HashMap<_, _> = template.params.iter()
-        .map(|p| (p.key.as_str(), p))
-        .collect();
-
-    for pd in user_edited_params.iter_mut() {
-        if pd.dock.is_empty() {
-            if let Some(tmpl) = tmpl_map.get(pd.key.as_str()) {
-                pd.dock = tmpl.dock.clone();
-            }
-        }
-    }
-}
-
 // ── Config Loading ───────────────────────────────────────────────────
 
 /// Internal: Load config with bundled path resolution (called from setup).
@@ -981,6 +964,121 @@ fn load_saved_config() -> Option<AppConfig> {
 }
 
 
+/// Schema evolution merge: backfill missing structural fields from fresh template defaults into saved user params.
+///
+/// This ensures that when new fields are added to provider config JSON (e.g., `min`, `max`, `step` for slider),
+/// existing user configs automatically get those fields populated on next app load — without losing any
+/// user edits (default_value, hidden, hidden_values, etc.).
+pub fn merge_template_into_user_params(
+    template_type: &str,
+    user_edited: &[crate::types::UserEditedTemplateParam],
+) -> Vec<crate::types::UserEditedTemplateParam> {
+    let Some(template_key) = template_key_for_type(template_type) else {
+        return user_edited.to_vec();
+    };
+    let Some(template) = crate::templates::load_provider_defaults(&template_key) else {
+        return user_edited.to_vec();
+    };
+
+    // Build lookup map from fresh template by key
+    let tmpl_map: std::collections::HashMap<_, _> = template.params.iter()
+        .map(|p| (p.key.as_str(), p))
+        .collect();
+
+    let mut merged = Vec::with_capacity(user_edited.len());
+
+    for user_param in user_edited {
+        let mut m = user_param.clone();
+        if let Some(tmpl) = tmpl_map.get(user_param.key.as_str()) {
+            // Backfill structural fields ONLY if missing/empty in user config
+            if m.values.is_empty() && !tmpl.values.is_empty() {
+                m.values = tmpl.values.clone();
+            }
+            if m.flag.is_none() || m.flag.as_deref().map_or(false, |s| s.is_empty()) {
+                m.flag = tmpl.flag.clone();
+            }
+            if m.flag_pair.is_empty() && !tmpl.flag_pair.is_empty() {
+                m.flag_pair = tmpl.flag_pair.clone();
+            }
+            // Backfill ptype only if it's still the default "arg_select" and template has a different type
+            if m.ptype == "arg_select" && tmpl.ptype != "arg_select" {
+                m.ptype = tmpl.ptype.clone();
+            }
+            if m.ui_group.is_empty() {
+                m.ui_group = normalize_ui_group(&tmpl.ui_group);
+            }
+            if m.note.is_empty() {
+                m.note = tmpl.note.clone();
+            }
+            if m.pattern.is_empty() {
+                m.pattern = tmpl.pattern.clone();
+            }
+            // Backfill step (slider)
+            if m.step.is_none() && tmpl.step.is_some() {
+                m.step = tmpl.step;
+            }
+            // Backfill sub_params
+            if m.sub_params.is_none() {
+                m.sub_params = tmpl.sub_params.as_ref().and_then(|sp| {
+                    sp.as_object().map(|obj| {
+                        obj.iter()
+                            .filter_map(|(k, v)| {
+                                v.as_array().and_then(|arr| {
+                                    Some((k.clone(), arr.iter().filter_map(|el| el.as_str().map(String::from)).collect()))
+                                })
+                            })
+                            .collect::<std::collections::HashMap<_, _>>()
+                    })
+                });
+            }
+            if m.dock.is_empty() && !tmpl.dock.is_empty() {
+                m.dock = tmpl.dock.clone();
+            }
+        }
+        merged.push(m);
+    }
+
+    // Append new params from template that don't exist in user config
+    for (i, tmpl) in template.params.iter().enumerate() {
+        if !merged.iter().any(|p| p.key == tmpl.key) {
+            let mut param = crate::types::UserEditedTemplateParam {
+                key: tmpl.key.clone(),
+                label: tmpl.label.clone(),
+                values: tmpl.values.clone(),
+                order: (user_edited.len() + i as usize) as i32,
+                hidden: tmpl.hidden_default,
+                hidden_values: Vec::new(),
+                flag: tmpl.flag.clone(),
+                flag_pair: tmpl.flag_pair.clone(),
+                ptype: tmpl.ptype.clone(),
+                step: tmpl.step,
+                ui_group: normalize_ui_group(&tmpl.ui_group),
+                note: tmpl.note.clone(),
+                pattern: tmpl.pattern.clone(),
+                default_value: tmpl.default.clone(),
+                user_added_values: Vec::new(),
+                factory_default: tmpl.default.clone(),
+                sub_params: tmpl.sub_params.as_ref().and_then(|sp| {
+                    sp.as_object().map(|obj| {
+                        obj.iter()
+                            .filter_map(|(k, v)| {
+                                v.as_array().and_then(|arr| {
+                                    Some((k.clone(), arr.iter().filter_map(|el| el.as_str().map(String::from)).collect()))
+                                })
+                            })
+                            .collect::<std::collections::HashMap<_, _>>()
+                    })
+                }),
+                dock: tmpl.dock.clone(),
+            };
+            merged.push(param);
+        }
+    }
+
+    merged
+}
+
+
 fn build_config_with_providers_full(_gpu_count: usize, mut config: AppConfig) -> AppConfig {
     let metas = load_user_providers_meta();
 
@@ -1002,8 +1100,7 @@ fn build_config_with_providers_full(_gpu_count: usize, mut config: AppConfig) ->
             if !meta.build_profile.is_empty() { p.build_profile = meta.build_profile.clone(); }
 
         if !meta.user_edited_template_params.is_empty() {
-                  let mut defs = meta.user_edited_template_params.clone();
-                  merge_template_dock(&p.template_type, &mut defs);
+                  let mut defs = merge_template_into_user_params(&p.template_type, &meta.user_edited_template_params);
                   p.user_edited_template_params = defs;
             }
             if !meta.build_info_per_env.is_empty() {
@@ -1037,7 +1134,7 @@ fn build_config_with_providers_full(_gpu_count: usize, mut config: AppConfig) ->
             let resolved_type = resolve_template_type(&meta.id, Some(&meta.template_type));
             let tmpl_key = template_key_for_type(&resolved_type);
         let user_edited_params = if !meta.user_edited_template_params.is_empty() {
-                  meta.user_edited_template_params.clone()
+                  merge_template_into_user_params(&resolved_type, &meta.user_edited_template_params)
             } else if let Some(ref key) = tmpl_key {
                 params_for_provider(key)
             } else {

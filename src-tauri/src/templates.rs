@@ -10,22 +10,6 @@ use std::path::PathBuf;
 
 use crate::types::EngineConfig;
 
-/// Static ctx display→tokens mapping, mirrors provider default config ctx.values_to_cli.
-const CTX_MAP: &[(&str, usize)] = &[
-    ("8k", 8192), ("16k", 16384), ("32k", 32768), ("64k", 65536),
-    ("128k", 131072), ("256k", 262144), ("512k", 524288), ("1mil", 1048576),
-];
-
-pub fn ctx_to_int_tokens(ctx: &str) -> usize {
-    let upper = ctx.to_uppercase();
-    for (display, tokens) in CTX_MAP {
-        if upper == display.to_uppercase() {
-            return *tokens;
-        }
-    }
-    ctx.parse::<usize>().unwrap_or(32768)
-}
-
 fn resolve_auto_value(key: &str, model_path: &str) -> Option<String> {
     let cache = crate::model_cache::load_cache();
     match key {
@@ -73,15 +57,15 @@ pub struct ProviderDefaultParam {
     /// Pair of CLI flags for arg_select_double — same value injected to both (e.g. --cache-type-k, --cache-type-v).
     #[serde(default, rename = "flag_pair")]
     pub flag_pair: Vec<String>,
-    /// CLI parameter type (arg_select, mapper, switch_onoff, etc.).
+    /// CLI parameter type (arg_select, slider, switch_onoff, etc.).
     #[serde(default = "crate::types::default_ptype")]
     pub ptype: String,
-    /// CLI values array — for "mapper" type, same-index into values_to_cli gives the CLI value.
+    /// CLI values array — for "arg_select" type, user selects from this list.
     #[serde(default)]
     pub values: Vec<serde_json::Value>,
-    /// CLI values mapped to their actual CLI argument values (for mapper ptype).
-    #[serde(default, rename = "values_to_cli")]
-    pub values_to_cli: Vec<serde_json::Value>,
+    /// Slider step increment (for ptype="slider"). Range is derived from values[0]..values[last].
+    #[serde(default)]
+    pub step: Option<f64>,
     /// Default value shown as green in UI.
     #[serde(default)]
     pub default: serde_json::Value,
@@ -320,7 +304,7 @@ impl ProviderTemplate {
             match param.ptype.as_str() {
                 "arg_select" => Self::inject_arg_select_user(&mut args, param, &final_value_str),
                 "arg_select_double" => Self::inject_arg_select_double_user(&mut args, param, &final_value_str),
-                "mapper" => Self::inject_mapper_user(&mut args, param, &final_value_str),
+                "slider" => Self::inject_slider_user(&mut args, param, &final_value_str),
                 "switch_onoff" => Self::inject_switch_onoff_user(&mut args, param, &final_value_str),
                 "switch_inverted" => Self::inject_switch_inverted_user(&mut args, param, &final_value_str),
                 "path_scanner" => {
@@ -382,18 +366,10 @@ impl ProviderTemplate {
         }
     }
 
-    fn inject_mapper_user(args: &mut Vec<String>, param: &crate::types::UserEditedTemplateParam, value: &str) {
-        let cli_val = if let Some(idx) = param.values.iter().position(|v| {
-            v.as_str().unwrap_or("").to_lowercase() == value.to_lowercase()
-        }) {
-            param.values_to_cli.get(idx)
-                .and_then(|v| v.as_str().map(String::from))
-                .unwrap_or_else(|| value.to_string())
-        } else {
-            value.to_string()
-        };
+    /// Slider values are already numeric — pass directly to CLI (same as arg_select).
+    fn inject_slider_user(args: &mut Vec<String>, param: &crate::types::UserEditedTemplateParam, value: &str) {
         if let Some(flag) = &param.flag {
-            args.extend([flag.clone(), cli_val]);
+            args.extend([flag.clone(), value.to_string()]);
         }
     }
 

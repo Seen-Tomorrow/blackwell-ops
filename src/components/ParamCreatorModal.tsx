@@ -300,10 +300,10 @@ export default function ParamCreatorModal({
                       className="bg-[#1a1a2e] border border-stealth-border/50 text-[10px] font-mono text-white px-1 py-0.5 focus:outline-none rounded"
                     >
                       <option value="arg_select">arg_select</option>
+                      <option value="slider">slider</option>
                       <option value="logic_only">logic_only</option>
                       <option value="switch_onoff">switch_onoff</option>
                       <option value="switch_inverted">switch_inverted</option>
-                      <option value="mapper">mapper</option>
                     </select>
                   </div>
 

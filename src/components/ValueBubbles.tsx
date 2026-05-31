@@ -25,7 +25,7 @@ interface ValueBubblesProps {
   /** Factory default from genesis_template.json — never changes. Used to distinguish factory vs admin-set defaults. */
   factoryDefault?: string | number;
   onChangeDefault?: (value: string | number) => void;  // admin marks this value as the new default
-  ptype?: 'switch' | 'switch_onoff' | 'switch_inverted' | 'arg_select' | 'mapper' | 'path_scanner' | 'logic_only';
+  ptype?: 'switch' | 'switch_onoff' | 'switch_inverted' | 'arg_select' | 'slider' | 'path_scanner' | 'logic_only';
   /** Opens editor for this specific value's sub_params (admin only). */
   onEditValue?: (value: string | number) => void;
   removeValue?: (value: string | number) => void;

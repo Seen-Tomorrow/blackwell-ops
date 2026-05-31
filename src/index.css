@@ -522,6 +522,9 @@ html, body, #root {
 }
 
 /* User-set alias input text — white instead of green */
+.mono-user-input {
+  color: #ffffff !important;
+}
 .mono-panel .mono-user-input {
   color: #ffffff !important;
 }
@@ -1161,6 +1164,60 @@ select option {
   opacity: 0.2;
   pointer-events: none;
   filter: grayscale(1);
+}
+
+/* ── Slider Param (slider-param class) — hollow green, chip color #4ade80 ── */
+
+.slider-param::-webkit-slider-runnable-track {
+  height: 6px;
+  background: #0a0a0f !important;
+  border: 1px solid rgba(74, 222, 128, 0.3);
+  border-radius: 2px;
+}
+
+.slider-param::-moz-range-track {
+  height: 6px;
+  background: #0a0a0f !important;
+  border: 1px solid rgba(74, 222, 128, 0.3);
+  border-radius: 2px;
+}
+
+.slider-param::-moz-range-progress {
+  background: transparent !important;
+}
+
+.slider-param::-webkit-slider-thumb {
+  appearance: none;
+  width: 15px;
+  height: 15px;
+  border-radius: 2px;
+  background: #4ade80 !important;
+  box-shadow: 0 0 6px rgba(74, 222, 128, 0.3);
+  margin-top: -3px; /* center thumb on track */
+}
+
+.slider-param::-moz-range-thumb {
+  width: 15px;
+  height: 15px;
+  border-radius: 2px;
+  background: #4ade80 !important;
+  box-shadow: 0 0 6px rgba(74, 222, 128, 0.3);
+  border: none;
+}
+
+/* Preset snap dots */
+.slider-snap-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: rgba(74, 222, 128, 0.2);
+  transition: all 0.15s ease;
+}
+.slider-snap-dot-active {
+  width: 7px !important;
+  height: 7px !important;
+  background: #4ade80 !important;
+  box-shadow: 0 0 6px rgba(74, 222, 128, 0.5);
 }
 
 

@@ -26,11 +26,9 @@ export function catalogEntryToParam(
   existingParams: UserEditedTemplateParam[],
   maxOrder: number,
 ): Omit<UserEditedTemplateParam, "order"> {
-  // Use presets as values if available, else values, else [default_value]
+  // Use values from catalog entry
   let values: (string | number)[] = [];
-  if (entry.presets && entry.presets.length > 0) {
-    values = entry.presets.filter((v): v is string | number => typeof v === "string" || typeof v === "number");
-  } else if (entry.values && entry.values.length > 0) {
+  if (entry.values && entry.values.length > 0) {
     values = entry.values.filter((v): v is string | number => typeof v === "string" || typeof v === "number");
   }
 

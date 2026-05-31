@@ -40,14 +40,19 @@ export interface ScenarioInput {
 
 // ── Pure Helpers (no scenario logic) ────────────────────────────────────────
 
-export function parseCtx(ctxSize: string): number {
-  const map: Record<string, number> = {
-    "8k": 8192, "16k": 16384, "32k": 32768, "64k": 65536,
-    "128k": 131072, "256k": 262144, "512k": 524288, "1mil": 1048576,
-  };
-  const lower = ctxSize.toLowerCase();
-  if (map[lower]) return map[lower];
-  const parsed = parseInt(lower, 10);
+export function parseCtx(ctxSize: string | number): number {
+  if (typeof ctxSize === 'number') return ctxSize;
+  const str = String(ctxSize).trim().toLowerCase();
+  // Handle legacy "k" suffix format
+  if (str.endsWith('k')) {
+    const num = parseInt(str.slice(0, -1), 10);
+    return num > 0 ? num * 1024 : 32768;
+  }
+  if (str.endsWith('m')) {
+    const num = parseInt(str.slice(0, -1), 10);
+    return num > 0 ? num * 1024 * 1024 : 32768;
+  }
+  const parsed = parseInt(str, 10);
   return parsed > 0 ? parsed : 32768;
 }
 

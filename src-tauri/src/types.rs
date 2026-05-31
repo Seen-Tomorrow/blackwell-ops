@@ -331,8 +331,9 @@ pub struct UserEditedTemplateParam {
     pub flag_pair: Vec<String>,
     #[serde(default = "default_ptype")]
     pub ptype: String,
-    #[serde(default, rename = "values_to_cli")]
-    pub values_to_cli: Vec<serde_json::Value>,
+    /// Slider step increment (for ptype="slider"). Range is derived from values[0]..values[last].
+    #[serde(default)]
+    pub step: Option<f64>,
     #[serde(default)]
     pub ui_group: String,
     #[serde(default)]

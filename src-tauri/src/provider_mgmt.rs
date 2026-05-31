@@ -62,6 +62,10 @@ pub async fn save_provider(provider: crate::types::ProviderConfig, app: tauri::S
                 }
             }
         }
+
+        // Full schema evolution merge — backfill all structural fields from template
+        save_provider.user_edited_template_params =
+            crate::config::merge_template_into_user_params(&save_provider.template_type, &save_provider.user_edited_template_params);
     }
 
     save_provider.group_order = save_provider.group_order.iter().map(|g| crate::config::normalize_ui_group(g)).collect();

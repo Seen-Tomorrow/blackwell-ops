@@ -156,7 +156,7 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
     // Persist to user_providers_config.json via save_provider (B)
     if (currentProvider) {
       const updated = { ...currentProvider, groupOrder: newOrder };
-      try { await invoke("save_provider", { provider: updated }); } catch {}
+      try { await invoke("save_provider", { provider: updated }); window.dispatchEvent(new Event("blackops-reload-providers")); } catch {}
     }
   }, [selectedProviderId, currentProvider]);
 
@@ -223,6 +223,7 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
   const persistProviderToConfig = useCallback(async (provider: ProviderConfig) => {
     try {
       await invoke("save_provider", { provider });
+      window.dispatchEvent(new Event("blackops-reload-providers"));
     } catch (err) { console.error("[CONFIG] save_provider FAILED:", err); }
   }, []);
 
@@ -263,6 +264,7 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
       // Refresh from backend
       const allProviders = await invoke<ProviderConfig[]>("list_providers");
       setAllProviders(allProviders);
+      window.dispatchEvent(new Event("blackops-reload-providers"));
     } catch (err) { console.error("[CONFIG] Reset failed:", err); }
 
     // Clear localStorage overrides for this provider
@@ -1292,10 +1294,10 @@ function ParamMetaEditor({
             className="bg-[#1a1a2e] border border-stealth-border/50 text-[10px] font-mono text-white px-1 py-0.5 focus:outline-none rounded">
             <option value="arg_select">arg_select</option>
             <option value="arg_select_double">arg_select_double</option>
+            <option value="slider">slider</option>
             <option value="logic_only">logic_only</option>
             <option value="switch_onoff">switch_onoff</option>
             <option value="switch_inverted">switch_inverted</option>
-             <option value="mapper">mapper</option>
              <option value="path_scanner">path_scanner</option>
            </select>
         </div>
