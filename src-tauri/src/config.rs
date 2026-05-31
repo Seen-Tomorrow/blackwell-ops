@@ -210,6 +210,9 @@ pub struct ProviderMeta {
     /// True when the provider was discovered from runtime/ directory (bundled or downloaded).
     #[serde(default)]
     pub factory_provided: bool,
+    /// Template version from default config — synced to user meta on merge.
+    #[serde(default = "crate::types::default_template_version", rename = "templateVersion")]
+    pub template_version: u32,
 }
 
 impl ProviderMeta {
@@ -232,6 +235,7 @@ impl ProviderMeta {
             last_pr_per_env: p.last_pr_per_env.clone(),
             display_order: p.display_order,
             factory_provided: p.factory_provided,
+            template_version: p.template_version,
         }
     }
 }
@@ -492,16 +496,6 @@ pub fn save_user_providers_meta(metas: Vec<ProviderMeta>) -> Result<(), String> 
     Ok(())
 }
 
-#[tauri::command]
-pub fn validate_user_providers_meta() -> Result<Vec<String>, String> {
-    let metas = load_user_providers_meta();
-    if metas.is_empty() {
-        return Ok(Vec::new());
-    }
-    let errors = check_user_providers_meta(&metas);
-    Ok(errors)
-}
-
 // ── Provider Defaults Loading (disk-based, replaces disk defaults) ─
 
 /// Convert a ProviderDefaultParam from disk defaults into a UserEditedTemplateParam.
@@ -573,7 +567,12 @@ fn discover_providers() -> Vec<crate::types::ProviderConfig> {
         template_type: String,
         #[serde(default)]
         build_profile: String,
+        /// Template version — bumped in default config JSON when template changes.
+        #[serde(default = "default_tv", rename = "templateVersion")]
+        template_version: u32,
     }
+
+    fn default_tv() -> u32 { 1 }
 
     for entry in std::fs::read_dir(&binaries_dir).into_iter().flatten().filter_map(|e| e.ok()) {
         if !entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false) {
@@ -633,6 +632,8 @@ fn discover_providers() -> Vec<crate::types::ProviderConfig> {
                     last_pr_per_env: std::collections::HashMap::new(),
                     display_order: providers.len() as i32,
                     factory_provided: true,
+                    template_version: identity.template_version,
+                    needs_template_attention: false,
                 });
             }
         }
@@ -692,100 +693,6 @@ pub fn load_config() -> AppConfig {
     build_config_with_providers_full(gpu_count, fresh)
 }
 
-
-// ── Template Update Detection ───────────────────────────────────────
-
-#[derive(Debug, Clone, Serialize)]
-pub struct TemplateDiff {
-    /// New params added to the provider defaults (not in current config).
-    pub new_params: Vec<crate::types::UserEditedTemplateParam>,
-    /// Params currently configured but removed from the template. User can choose to keep or remove.
-    pub orphaned_params: Vec<crate::types::UserEditedTemplateParam>,
-}
-
-#[tauri::command]
-pub fn check_template_update(provider_id: String) -> Result<TemplateDiff, String> {
-    // Load current state from disk (what was saved via save_provider)
-    let metas = load_user_providers_meta();
-    let meta = metas.iter().find(|m| m.id == provider_id);
-
-    // Resolve template key through the provider's template_type (auto-detect from ID if empty)
-    let template_type = resolve_template_type(&provider_id, meta.map(|m| &m.template_type));
-    let Some(template_key) = template_key_for_type(&template_type) else {
-        log::info!("[check_template_update] {}: no template for type '{}', returning empty diff", provider_id, template_type);
-        return Ok(TemplateDiff { new_params: Vec::new(), orphaned_params: Vec::new() });
-    };
-
-    let fresh_template = crate::templates::load_provider_defaults(&template_key).ok_or("Unknown provider")?;
-    
-    // Build map of current params by key
-    let current_params: std::collections::HashMap<String, &crate::types::UserEditedTemplateParam> = meta
-        .map(|m| m.user_edited_template_params.iter().map(|p| (p.key.clone(), p)).collect())
-        .unwrap_or_default();
-
-    // Find new and orphaned params by comparing keys
-    let mut new_params: Vec<crate::types::UserEditedTemplateParam> = Vec::new();
-    let mut orphaned_params: Vec<crate::types::UserEditedTemplateParam> = Vec::new();
-
-    for (i, tp) in fresh_template.params.iter().enumerate() {
-        if !current_params.contains_key(&tp.key) {
-            // Not in current config — it's new
-            new_params.push(user_edited_param_from_template(tp, i as i32));
-        }
-    }
-
-    for (key, param) in &current_params {
-        let exists_in_template = fresh_template.params.iter().any(|tp| tp.key == *key);
-        if !exists_in_template {
-            // In config but not in template — orphaned
-            orphaned_params.push((*param).clone());
-        }
-    }
-
-    log::info!("[check_template_update] {}: {} new, {} orphaned", provider_id, new_params.len(), orphaned_params.len());
-
-    Ok(TemplateDiff { new_params, orphaned_params })
-}
-
-#[tauri::command]
-pub fn apply_template_update(
-    provider_id: String,
-    add_params: Vec<crate::types::UserEditedTemplateParam>,
-    remove_keys: Vec<String>,
-) -> Result<(), String> {
-    let mut metas = load_user_providers_meta();
-    
-    // Find the provider meta (or create if missing)
-    let meta = metas.iter_mut().find(|m| m.id == provider_id).ok_or("Provider not found")?;
-
-    // Remove orphaned params user chose to delete
-    for key in &remove_keys {
-        meta.user_edited_template_params.retain(|p| p.key != *key);
-    }
-
-    // Merge new params — add only if they don't already exist
-    let existing_keys: std::collections::HashSet<String> =
-        meta.user_edited_template_params.iter().map(|p| p.key.clone()).collect();
-    
-    let add_count = add_params.len();
-    let remove_count = remove_keys.len();
-
-    for param in &add_params {
-        if !existing_keys.contains(&param.key) {
-            meta.user_edited_template_params.push((*param).clone());
-        }
-    }
-
-    // Re-index order to match insertion order
-    for (i, p) in meta.user_edited_template_params.iter_mut().enumerate() {
-        p.order = i as i32;
-    }
-
-    save_user_providers_meta(metas)?;
-    log::info!("[apply_template_update] {}: added {}, removed {}", provider_id, add_count, remove_count);
-
-    Ok(())
-}
 
 #[tauri::command]
 pub async fn reorder_provider(provider_id: String, direction: i32, app: tauri::State<'_, crate::engine::AppContext>) -> Result<(), String> {
@@ -964,11 +871,10 @@ fn load_saved_config() -> Option<AppConfig> {
 }
 
 
-/// Schema evolution merge: backfill missing structural fields from fresh template defaults into saved user params.
+/// Schema evolution merge: sync structural fields from fresh template, retain user UI preferences.
 ///
-/// This ensures that when new fields are added to provider config JSON (e.g., `min`, `max`, `step` for slider),
-/// existing user configs automatically get those fields populated on next app load — without losing any
-/// user edits (default_value, hidden, hidden_values, etc.).
+/// Aggressive sync philosophy — factory template is source of truth for everything structural.
+/// Only purely cosmetic/organizational choices are preserved: hidden, order, userAddedValues, hidden_values.
 pub fn merge_template_into_user_params(
     template_type: &str,
     user_edited: &[crate::types::UserEditedTemplateParam],
@@ -985,25 +891,51 @@ pub fn merge_template_into_user_params(
         .map(|p| (p.key.as_str(), p))
         .collect();
 
+    // Collect all string representations of template values for membership checks.
+    fn vals_to_strings(vals: &[serde_json::Value]) -> Vec<String> {
+        vals.iter().map(|v| v.to_string()).collect()
+    }
+
     let mut merged = Vec::with_capacity(user_edited.len());
 
     for user_param in user_edited {
         let mut m = user_param.clone();
         if let Some(tmpl) = tmpl_map.get(user_param.key.as_str()) {
-            // Backfill structural fields ONLY if missing/empty in user config
-            if m.values.is_empty() && !tmpl.values.is_empty() {
-                m.values = tmpl.values.clone();
+            // ── Values: keep existing + userAddedValues, append new template values not already present ──
+            {
+                let current_set: std::collections::HashSet<String> = vals_to_strings(&m.values).into_iter().collect();
+                for tv in &tmpl.values {
+                    if !current_set.contains(&tv.to_string()) {
+                        m.values.push(tv.clone());
+                    }
+                }
             }
+
+            // ── factoryDefault: always sync from fresh template — keeps bubble styling correct ──
+            m.factory_default = tmpl.default.clone();
+
+            // ── defaultValue: if current value still in merged array → keep. If orphaned → force reset to new factory default ──
+            let user_default_str = m.default_value.to_string();
+            if !m.values.iter().any(|v| v.to_string() == user_default_str) {
+                log::warn!("[config] Param '{}' default '{:?}' no longer in values — resetting to factory default {:?}",
+                    m.key, m.default_value, tmpl.default);
+                m.default_value = tmpl.default.clone();
+            }
+
+            // ── Structural fields: sync from template (source of truth) ──
+            m.label = tmpl.label.clone();
             if m.flag.is_none() || m.flag.as_deref().map_or(false, |s| s.is_empty()) {
                 m.flag = tmpl.flag.clone();
             }
             if m.flag_pair.is_empty() && !tmpl.flag_pair.is_empty() {
                 m.flag_pair = tmpl.flag_pair.clone();
             }
-            // Backfill ptype only if it's still the default "arg_select" and template has a different type
+
+            // ptype: only backfill if still default "arg_select" and template differs
             if m.ptype == "arg_select" && tmpl.ptype != "arg_select" {
                 m.ptype = tmpl.ptype.clone();
             }
+
             if m.ui_group.is_empty() {
                 m.ui_group = normalize_ui_group(&tmpl.ui_group);
             }
@@ -1013,11 +945,13 @@ pub fn merge_template_into_user_params(
             if m.pattern.is_empty() {
                 m.pattern = tmpl.pattern.clone();
             }
+
             // Backfill step (slider)
             if m.step.is_none() && tmpl.step.is_some() {
                 m.step = tmpl.step;
             }
-            // Backfill sub_params
+
+            // Backfill sub_params if none
             if m.sub_params.is_none() {
                 m.sub_params = tmpl.sub_params.as_ref().and_then(|sp| {
                     sp.as_object().map(|obj| {
@@ -1031,6 +965,7 @@ pub fn merge_template_into_user_params(
                     })
                 });
             }
+
             if m.dock.is_empty() && !tmpl.dock.is_empty() {
                 m.dock = tmpl.dock.clone();
             }
@@ -1041,7 +976,7 @@ pub fn merge_template_into_user_params(
     // Append new params from template that don't exist in user config
     for (i, tmpl) in template.params.iter().enumerate() {
         if !merged.iter().any(|p| p.key == tmpl.key) {
-            let mut param = crate::types::UserEditedTemplateParam {
+            let param = crate::types::UserEditedTemplateParam {
                 key: tmpl.key.clone(),
                 label: tmpl.label.clone(),
                 values: tmpl.values.clone(),
@@ -1103,6 +1038,14 @@ fn build_config_with_providers_full(_gpu_count: usize, mut config: AppConfig) ->
                   let mut defs = merge_template_into_user_params(&p.template_type, &meta.user_edited_template_params);
                   p.user_edited_template_params = defs;
             }
+
+            // Template version mismatch → set attention flag for UI banner.
+            // Keep factory template_version on `p` so next save syncs the user meta to new version.
+            if meta.template_version != p.template_version {
+                log::info!("[config] Provider '{}' template version changed: user={}, factory={}",
+                    p.id, meta.template_version, p.template_version);
+                p.needs_template_attention = true;
+            }
             if !meta.build_info_per_env.is_empty() {
                 p.build_info_per_env = meta.build_info_per_env.clone();
             }
@@ -1141,6 +1084,14 @@ fn build_config_with_providers_full(_gpu_count: usize, mut config: AppConfig) ->
                 Vec::new()  // custom type, no template
             };
 
+            // Compare versions against fresh template if one exists
+            let (factory_tv, tv_changed) = if let Some(ref key) = tmpl_key {
+                let factory_v = crate::templates::get_template_version_for_provider(key);
+                (factory_v, factory_v != meta.template_version)
+            } else {
+                (meta.template_version, false)
+            };
+
             providers.push(crate::types::ProviderConfig {
                 id: meta.id.clone(),
                 display_name: meta.display_name.clone(),
@@ -1160,6 +1111,8 @@ fn build_config_with_providers_full(_gpu_count: usize, mut config: AppConfig) ->
                 last_pr_per_env: meta.last_pr_per_env,
                 display_order: meta.display_order,
                 factory_provided: false,
+                template_version: if tv_changed { factory_tv } else { meta.template_version },
+                needs_template_attention: tv_changed,
             });
         }
     }
@@ -1173,4 +1126,18 @@ fn build_config_with_providers_full(_gpu_count: usize, mut config: AppConfig) ->
     config.gpu_slots = MAX_ENGINE_SLOTS;
 
     config
+}
+
+/// Delete provider's user config file so it regenerates from fresh factory template on next load.
+/// Called by frontend RESET TO DEFAULTS button — instant recovery to 1:1 with factory state.
+#[tauri::command]
+pub fn reset_provider_user_config(provider_id: String) -> Result<(), String> {
+    let path = provider_user_config_path(&provider_id);
+    if path.exists() {
+        std::fs::remove_file(&path).map_err(|e| format!("Failed to delete {}: {}", path.display(), e))?;
+        log::info!("[config] Deleted user config for '{}' — will regenerate from factory on next load", provider_id);
+    } else {
+        log::warn!("[config] No user config found at {} for '{}'", path.display(), provider_id);
+    }
+    Ok(())
 }

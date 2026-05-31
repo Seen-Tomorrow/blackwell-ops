@@ -12,19 +12,6 @@ import { KEYS, overridesKey, groupOrderKey, normalizeUiGroup } from "../lib/stor
 import type { RawCatalogEntry } from "../lib/catalog";
 import { catalogEntryToParam } from "../lib/catalog";
 
-// ── Types for template update diff (from Rust check_template_update IPC) ─────────
-interface DiffParam {
-  key: string;
-  label: string;
-  defaultValue: string | number;
-  values: (string | number)[];
-}
-
-interface TemplateDiffResult {
-  new_params: DiffParam[];
-  orphaned_params: DiffParam[];
-}
-
 type ConfigSubTab = "providers" | "params" | "paths";
 
 interface ConfigPageProps {
@@ -89,12 +76,6 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
 
   // Reset confirm dialog
   const [showResetConfirm, setShowResetConfirm] = useState(false);
-
-  // Template update modal state
-  const [templateDiff, setTemplateDiff] = useState<TemplateDiffResult | null>(null);
-  const [selectedNewParams, setSelectedNewParams] = useState<Set<string>>(new Set());
-  const [selectedOrphanedParams, setSelectedOrphanedParams] = useState<Set<string>>(new Set());
-  const [showUpdateModal, setShowUpdateModal] = useState(false);
 
   // ── Param creator modal state ───────────────────────────────
   const [showCreatorModal, setShowCreatorModal] = useState(false);
@@ -229,135 +210,43 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
 
   // ── User override (selecting a value for this model + provider) ───
   const setOverride = useCallback((defKey: string, value: string | number) => {
-    try { localStorage.setItem(overridesKey(selectedProviderId), JSON.stringify({ [defKey]: value })); } catch {}
+    try {
+      const stored = localStorage.getItem(overridesKey(selectedProviderId));
+      const existing = stored ? JSON.parse(stored) : {};
+      localStorage.setItem(overridesKey(selectedProviderId), JSON.stringify({ ...existing, [defKey]: value }));
+    } catch {}
+    setUserOverrides(prev => ({ ...prev, [defKey]: value }));
     window.dispatchEvent(new CustomEvent("param-config-changed"));
   }, [selectedProviderId]);
 
-  // ── Reset to factory defaults (RESET TO DEFAULTS) ─────────────────
+  const clearOverride = useCallback((defKey: string) => {
+    try {
+      const stored = localStorage.getItem(overridesKey(selectedProviderId));
+      if (stored) {
+        const existing: Record<string, any> = JSON.parse(stored);
+        delete existing[defKey];
+        localStorage.setItem(overridesKey(selectedProviderId), JSON.stringify(existing));
+      }
+    } catch {}
+    setUserOverrides(prev => { const n = { ...prev }; delete n[defKey]; return n; });
+    window.dispatchEvent(new CustomEvent("param-config-changed"));
+  }, [selectedProviderId]);
+
+  // ── Reset to factory defaults (RESET TO DEFAULTS) — instant, deletes user config file ───
   const confirmReset = useCallback(async () => {
     if (!currentProvider || adminLockState === "locked") return;
     setShowResetConfirm(false);
 
     try {
-      // Get fresh factory defaults resolved through the provider's template_type
-      const template = await invoke<ProviderTemplate>("get_template_for_provider", { providerId: selectedProviderId });
-      const resetFromGenesisParams: UserEditedTemplateParam[] = (template.params || []).map((p, i) => ({
-        key: p.key,
-        label: p.label,
-        values: p.values as (string | number)[],
-        order: i,
-        hidden: (p as any).hidden_default ?? false,
-        flag: p.flag ?? undefined,
-        ptype: p.ptype,
-        ui_group: p.ui_group,
-        note: p.note,
-        pattern: p.pattern,
-        sub_params: (p as any).sub_params,
-        dock: (p as any).dock || undefined,
-        defaultValue: (p as any).default as string | number,
-        factoryDefault: (p as any).default as string | number,
-      }));
-
-      const updatedProvider = { ...currentProvider, userEditedTemplateParams: resetFromGenesisParams };
-      await invoke("save_provider", { provider: updatedProvider });
-
-      // Refresh from backend
-      const allProviders = await invoke<ProviderConfig[]>("list_providers");
-      setAllProviders(allProviders);
+      await invoke("reset_provider_user_config", { providerId: selectedProviderId });
       window.dispatchEvent(new Event("blackops-reload-providers"));
     } catch (err) { console.error("[CONFIG] Reset failed:", err); }
 
-    // Clear localStorage overrides for this provider
     setUserOverrides({});
     try { localStorage.removeItem(overridesKey(selectedProviderId)); } catch {}
-
     window.dispatchEvent(new CustomEvent("param-config-changed"));
     showSaved("RESET TO DEFAULTS");
   }, [currentProvider, isAdminLocked, selectedProviderId]);
-
-  // ── Check template update (TEMPLATE UPDATE) ─────────────────
-  const handleCheckUpdate = useCallback(async () => {
-    if (adminLockState === "locked") return;
-
-    try {
-      const diff: { new_params: DiffParam[]; orphaned_params: DiffParam[] } =
-        await invoke("check_template_update", { providerId: selectedProviderId });
-
-      setTemplateDiff(diff);
-      // Pre-select all new params for add, all orphaned for keep
-      setSelectedNewParams(new Set(diff.new_params.map(p => p.key)));
-      setSelectedOrphanedParams(new Set(diff.orphaned_params.map(p => p.key)));
-      setShowUpdateModal(true);
-    } catch (err) {
-      console.error("[CONFIG] check_template_update failed:", err);
-    }
-  }, [selectedProviderId]);
-
-  // ── Validate user_providers_config.json schema ───────────────────────
-  const handleValidate = useCallback(async () => {
-    try {
-      const errors: string[] = await invoke("validate_user_providers_meta");
-      if (errors.length === 0) {
-        alert(`user_providers_config.json is valid — no schema issues found.`);
-      } else {
-        alert(`user_providers_config.json has ${errors.length} issue(s):\n${errors.join("\n")}`);
-      }
-    } catch (err) {
-      console.error("[CONFIG] validate_user_providers_meta failed:", err);
-    }
-  }, []);
-
-  // ── Apply template update with user-selected params ───────────────
-  const handleApplyTemplateUpdate = useCallback(async () => {
-    if (!templateDiff || !currentProvider) return;
-
-    try {
-      // Build the param_def to add (only selected new ones)
-      const template = await invoke<ProviderTemplate>("get_template", { providerId: selectedProviderId });
-      const templateNewParamsToAdd: UserEditedTemplateParam[] = [];
-      for (const p of template.params) {
-        if (selectedNewParams.has(p.key)) {
-          templateNewParamsToAdd.push({
-            key: p.key,
-            label: p.label,
-            values: p.values as (string | number)[],
-            order: currentProvider.userEditedTemplateParams.length + templateNewParamsToAdd.length,
-        hidden: (p as any).hidden_default ?? false,
-            flag: p.flag ?? undefined,
-            ptype: p.ptype,
-            ui_group: p.ui_group,
-            note: p.note,
-            pattern: p.pattern,
-            sub_params: (p as any).sub_params,
-            defaultValue: (p as any).default as string | number,
-            factoryDefault: (p as any).default as string | number,
-          });
-        }
-      }
-
-      const orphanedToRemove = templateDiff.orphaned_params
-        .filter(p => !selectedOrphanedParams.has(p.key))
-        .map(p => p.key);
-
-      if (templateNewParamsToAdd.length > 0 || orphanedToRemove.length > 0) {
-        await invoke("apply_template_update", {
-          providerId: selectedProviderId,
-          addParams: templateNewParamsToAdd,
-          removeKeys: orphanedToRemove,
-        });
-
-        // Refresh from backend
-        const allProviders = await invoke<ProviderConfig[]>("list_providers");
-        setAllProviders(allProviders);
-      }
-    } catch (err) { console.error("[CONFIG] apply_template_update failed:", err); }
-
-    setShowUpdateModal(false);
-    setTemplateDiff(null);
-    setSelectedNewParams(new Set());
-    setSelectedOrphanedParams(new Set());
-    showSaved("TEMPLATE UPDATED");
-  }, [templateDiff, currentProvider, selectedProviderId, selectedNewParams, selectedOrphanedParams]);
 
   // ── Admin: add new param definition (from modal) ────────────────────────
   const handleCreatorSubmit = useCallback(async (def: Omit<UserEditedTemplateParam, "order">) => {
@@ -919,14 +808,6 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
                   className="px-2 py-1 text-[9px] font-mono border border-yellow-400/40 text-yellow-400 hover:bg-yellow-500/20 transition-colors">
                   RESET TO DEFAULTS
                 </button>
-                <button onClick={handleCheckUpdate}
-                  className="px-2 py-1 text-[9px] font-mono border border-telemetry-cyan/40 text-telemetry-cyan hover:bg-telemetry-cyan/20 transition-colors">
-                  TEMPLATE UPDATE
-                </button>
-                <button onClick={handleValidate}
-                  className="px-2 py-1 text-[9px] font-mono border border-orange-400/40 text-orange-400 hover:bg-orange-500/20 transition-colors">
-                  VALIDATE
-                </button>
               </div>
               {/* Legend — visible when locked */}
               <div className={`border border-stealth-border/50 rounded-sm p-2 transition-opacity ${adminLockState === "locked" ? "opacity-100" : "opacity-0 pointer-events-none"}`}>
@@ -966,6 +847,19 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
               <div className="absolute top-0 right-0 px-3 py-1 bg-nv-green/30 border border-nv-green/60 text-nv-green text-[9px] font-mono rounded-sm animate-pulse">{savedFlash}</div>
             )}
           </div>
+
+          {/* Template update banner — shows when factory template version changed */}
+          {currentProvider?.needsTemplateAttention && (
+            <div className="mx-4 mt-3 px-3 py-2 border border-yellow-400/40 bg-yellow-400/10 rounded-sm flex items-start justify-between gap-3">
+              <span className="text-[9px] font-mono text-yellow-300 leading-tight">
+                ⚠ Factory template updated. Your saved settings are preserved, but if engines fail to launch after an update, try RESET TO DEFAULTS.
+              </span>
+              {adminLockState !== "locked" && (
+                <button onClick={() => setShowResetConfirm(true)}
+                  className="shrink-0 px-2 py-0.5 text-[8px] font-mono border border-yellow-400/60 text-yellow-400 hover:bg-yellow-500/20 transition-colors rounded-sm">RESET NOW</button>
+              )}
+            </div>
+          )}
 
           {/* Param rows */}
           <div className="flex-1 overflow-y-auto p-4 min-h-0">
@@ -1104,7 +998,8 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
                                      paramKey={def.key}
                                      isAdmin={adminLockState !== "locked"}
                                      currentValue={currentValue}
-                                     onOverrideChange={(val) => setOverride(defKey, val)}
+                                      onOverrideChange={(val) => setOverride(defKey, val)}
+                                      onClearOverride={() => clearOverride(def.key)}
                                      addValue={adminLockState !== "locked" ? (v: string | number) => addValueToParam(def.key, v) : undefined}
                                      removeValue={adminLockState !== "locked" ? (v: string | number) => removeValueFromParam(def.key, v) : undefined}
                                      toggleHiddenValue={adminLockState !== "locked" ? (_k: string, v: string | number) => toggleHiddenValue(def.key, v) : undefined}
@@ -1163,28 +1058,6 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
             {currentProvider && (<span className="text-[9px] font-mono text-telemetry-cyan">{currentProvider.display_name}</span>)}
           </div>
         </div>
-      )}
-
-      {/* Template Update Modal */}
-      {showUpdateModal && templateDiff && (
-        <TemplateUpdateModal
-          diff={templateDiff}
-          selectedNewParams={selectedNewParams}
-          selectedOrphanedParams={selectedOrphanedParams}
-          providerId={selectedProviderId}
-          onToggleNew={(key) => setSelectedNewParams(prev => {
-            const next = new Set(prev);
-            if (next.has(key)) next.delete(key); else next.add(key);
-            return next;
-          })}
-          onToggleOrphaned={(key) => setSelectedOrphanedParams(prev => {
-            const next = new Set(prev);
-            if (next.has(key)) next.delete(key); else next.add(key);
-            return next;
-          })}
-          onCancel={() => { setShowUpdateModal(false); setTemplateDiff(null); setSelectedNewParams(new Set()); setSelectedOrphanedParams(new Set()); }}
-          onApply={handleApplyTemplateUpdate}
-        />
       )}
 
       {/* Param Catalog Search Modal */}
@@ -1398,87 +1271,6 @@ function ParamMetaEditor({
 
       <button onClick={onSave}
         className="mt-3 px-3 py-1 text-[9px] font-mono border border-nv-green/60 bg-nv-green/20 text-nv-green hover:bg-nv-green/30 transition-colors">APPLY</button>
-    </div>
-  );
-}
-
-// ── Sub-components ─────────────────────────────────────────────────
-
-function TemplateUpdateModal({
-  diff,
-  selectedNewParams,
-  selectedOrphanedParams,
-  onToggleNew,
-  onToggleOrphaned,
-  onCancel,
-  onApply,
-  providerId,
-}: {
-  diff: { new_params: DiffParam[]; orphaned_params: DiffParam[] };
-  selectedNewParams: Set<string>;
-  selectedOrphanedParams: Set<string>;
-  onToggleNew: (key: string) => void;
-  onToggleOrphaned: (key: string) => void;
-  onCancel: () => void;
-  onApply: () => void;
-  providerId: string;
-}) {
-  return (
-    <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center" onClick={onCancel}>
-      <div className="bg-[#1a1a2e] border border-telemetry-cyan/40 rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-        <h2 className="text-xs font-mono text-telemetry-cyan mb-1">TEMPLATE UPDATE</h2>
-        <p className="text-[9px] font-mono text-stealth-muted mb-4">
-          Genesis template has changed. Select new params to add or orphaned params to keep.
-        </p>
-
-        {diff.new_params.length > 0 && (
-          <>
-            <h3 className="text-[10px] font-mono text-nv-green mb-2">NEW IN TEMPLATE — CHECK TO ADD</h3>
-            {diff.new_params.map(p => (
-              <div key={p.key} className="flex items-center gap-2 py-1">
-                <input type="checkbox"
-                  checked={selectedNewParams.has(p.key)}
-                  onChange={() => onToggleNew(p.key)}
-                  className="accent-telemetry-cyan"
-                />
-                <span className="text-[10px] font-mono text-white">{p.label}</span>
-                <span className="text-[9px] font-mono text-stealth-muted">({String(p.defaultValue)})</span>
-              </div>
-            ))}
-          </>
-        )}
-
-        {diff.orphaned_params.length > 0 && (
-          <>
-            <h3 className="text-[10px] font-mono mt-4 mb-2 text-yellow-400">
-              ORPHANED PARAMS — UNCHECK TO REMOVE
-            </h3>
-            {diff.orphaned_params.map(p => (
-              <div key={p.key} className="flex items-center gap-2 py-1">
-                <input type="checkbox"
-                  checked={selectedOrphanedParams.has(p.key)}
-                  onChange={() => onToggleOrphaned(p.key)}
-                  className="accent-yellow-400"
-                />
-                <span className={`text-[10px] font-mono ${selectedOrphanedParams.has(p.key) ? "text-white" : "line-through text-stealth-muted"}`}>
-                  {p.label}
-                </span>
-              </div>
-            ))}
-          </>
-        )}
-
-        {diff.new_params.length === 0 && diff.orphaned_params.length === 0 && (
-          <p className="text-[10px] font-mono text-nv-green">No changes detected — template is up to date.</p>
-        )}
-
-        <div className="flex gap-2 justify-end mt-6">
-          <button onClick={onCancel}
-            className="px-4 py-1 text-[9px] font-mono border border-stealth-border/40 text-stealth-muted hover:text-white transition-colors">CANCEL</button>
-          <button onClick={onApply}
-            className="px-4 py-1 text-[9px] font-mono border border-telemetry-cyan/60 bg-telemetry-cyan/20 text-telemetry-cyan hover:bg-telemetry-cyan/30 transition-colors">APPLY UPDATE</button>
-        </div>
-      </div>
     </div>
   );
 }

@@ -26,6 +26,8 @@ interface ValueBubblesProps {
   factoryDefault?: string | number;
   onChangeDefault?: (value: string | number) => void;  // admin marks this value as the new default
   ptype?: 'switch' | 'switch_onoff' | 'switch_inverted' | 'arg_select' | 'slider' | 'path_scanner' | 'logic_only';
+  /** Called when user clicks × on override bubble to clear it. */
+  onClearOverride?: () => void;
   /** Opens editor for this specific value's sub_params (admin only). */
   onEditValue?: (value: string | number) => void;
   removeValue?: (value: string | number) => void;
@@ -49,6 +51,7 @@ export default function ValueBubbles({
   onEditValue,
   removeValue,
   ptype,
+  onClearOverride,
   subParams,
 }: ValueBubblesProps) {
   const [inputValue, setInputValue] = useState("");
@@ -258,12 +261,12 @@ export default function ValueBubbles({
       <div className="flex items-center gap-1.5 flex-wrap">
         {allDisplayValues.map((item, idx) => renderBubble(item, idx))}
 
-        {/* Override selector — show current override when not in any list */}
-        {onOverrideChange && currentValue &&
+        {/* Override selector — show current override when not in any list (skip for slider — custom values are normal) */}
+        {onOverrideChange && currentValue && ptype !== 'slider' &&
          !allDisplayValues.some(d => String(d.val) === String(currentValue)) && (
           <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 border text-[9px] font-mono rounded-sm bg-yellow-400/25 border-yellow-400/60 text-yellow-300">
             {String(currentValue)}
-            <button onClick={() => onOverrideChange(String(currentValue))}
+            <button onClick={() => onClearOverride?.()}
               className="ml-0.5 leading-none text-red-400/40 hover:text-red-400 transition-colors"
               title="Remove override">×</button>
           </span>

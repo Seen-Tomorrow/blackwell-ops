@@ -92,6 +92,19 @@ pub struct ProviderDefaultParam {
 
 // ── Provider Default Config Loading (disk-based) ────────────────────
 
+/// Read templateVersion from provider's default config JSON. Returns 1 if field missing/unparseable.
+pub fn get_template_version_for_provider(provider_id: &str) -> u32 {
+    let app_root = crate::config::app_root_dir();
+    let config_path = app_root.join("runtime").join(provider_id).join("config")
+        .join(format!("{}-default-config.json", provider_id));
+
+    if !config_path.exists() { return 1; }
+    let content = match std::fs::read_to_string(&config_path) { Ok(c) => c, Err(_) => return 1 };
+    #[derive(Deserialize)]
+    struct TvOnly { #[serde(default, rename = "templateVersion")] tv: u32 }
+    serde_json::from_str::<TvOnly>(&content).ok().map(|o| o.tv).unwrap_or(1)
+}
+
 /// Load provider default config from disk: runtime/{id}/config/{id}-default-config.json
 pub fn load_provider_defaults(provider_id: &str) -> Option<ProviderTemplate> {
     let app_root = crate::config::app_root_dir();

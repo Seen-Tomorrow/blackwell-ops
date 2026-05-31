@@ -136,18 +136,89 @@ They're not redundant, they're just both present. The resolution function has a 
 
 ---
 
-## 7. Provider Config Files
+## 7. Provider Config System — Three-Layer Model + Template Merge
 
-**Location:** `config/<provider>-user-config.json`
+### Layers
 
-### Fields
-- `binary_path`: Main binary path (sacred artifacts or manual)
-- `binaryPathPerEnv`: Per-environment paths (vanguard/stable/fresh)
+| Layer | File/Location | Persistence | Managed By |
+|---|---|---|---|
+| **Factory defaults** | `runtime/<provider>/config/<id>-default-config.json` | Bundled in release, read-only at runtime | Admin (you) — edit JSON before shipping |
+| **User config** | `config/<id>-user-config.json` | On disk, editable copy of factory + user preferences | User — UI toggles hidden, reorders params, adds custom values |
+| **localStorage overrides** | Browser localStorage (`blackops-override-{providerId}`) | Per-session only, disposable | Frontend — tracks which value is "currently selected" in ConfigPage UI |
 
-### Loading Flow
-1. Load from disk via `load_user_providers_meta()`
-2. Apply user overrides from config file
-3. `find_provider_binary()` resolves the correct path
+### Factory defaults JSON structure
+
+Each provider has a default config JSON at `runtime/<id>/config/<id>-default-config.json` containing:
+- Top-level identity fields: `id`, `display_name`, `git_url`, `branch`, `template_type`, `build_profile`
+- **`templateVersion`** — integer bumped whenever you change the template. Triggers a banner in ConfigPage when it differs from user's saved version. Increment this number before each release that modifies params.
+- `params[]` array of `ProviderDefaultParam`:
+
+```jsonc
+{
+  "key": "kv_quant",
+  "label": "KV-QUANT (K+V)",
+  "ptype": "arg_select",              // arg_select | slider | switch_onoff | switch_inverted | path_scanner | logic_only | arg_select_double
+  "flag": "--cache-type-k",           // null for logic_only
+  "values": ["q4_0", "q8_0", "f16"],
+  "default": "q4_0",                 // current factory default value
+  "step": null,                      // slider step increment (only for ptype="slider")
+  "ui_group": "CORE",
+  "note": "KV cache data type...",
+  "pattern": "",                     // file scan pattern for path_scanner
+  "sub_params": {},                  // extra CLI flags per selected value
+  "dock": "",                        // dock key for grouped rendering above PARAMETERS
+  "hidden_default": false            // excluded from catalog by default if true
+}
+```
+
+**template_type mapping:** `"ggml-llama"` → `runtime/ggml-master/`, `"ik-llama"` → `runtime/ik/`, empty string → custom (no template).
+
+### Merge: `merge_template_into_user_params` (`config.rs`)
+
+Runs on every app load when loading providers. Takes fresh factory template + saved user config and produces merged result. **Merge philosophy:** aggressively sync structural fields from factory, preserve purely cosmetic user choices.
+
+| Field | Behavior | Rationale |
+|---|---|---|
+| **values** | Keep existing user values + userAddedValues, **append any new values from template** not already present. Never remove. | User's custom additions survive; new factory options get added automatically |
+| **defaultValue** | If current default exists in merged values array → keep. If orphaned (not in array) → force reset to new factory default | Prevents stale defaults crashing binary at runtime |
+| **factoryDefault** | Always sync from fresh template's `default` | Keeps green/yellow bubble styling correct after updates |
+| **label, key** | Sync from template | Admin can rename params without requiring full user reset |
+| **ptype** | Only backfill if still default `"arg_select"`. If admin deliberately changed it → don't overwrite. | Ptype change is deliberate |
+| **flag, step, dock, pattern, sub_params** | Backfill only if empty/missing in user config | Fill on first run, preserve after set |
+| **note, ui_group** | Backfill only if empty | Admin may customize these |
+| **hidden** | Never touch ✅ | User UI preference |
+| **order** | Kept for existing params. New params appended at end. ✅ | User UI preference |
+| **userAddedValues** | Never touch ✅ | Pure user addition via ValueBubbles "+ add" input |
+| **hidden_values** | Never touch ✅ | Pure user choice |
+
+Orphaned params (in user config but removed from template) are kept alive — no silent deletion. Admin can remove them via UI or hit RESET TO DEFAULTS.
+
+### Template version tracking
+
+1. Admin bumps `templateVersion` number in default config JSON before release
+2. On app load, `build_config_with_providers_full` compares factory's `template_version` against user meta's saved `template_version`
+3. If mismatch: sets `needs_template_attention = true` on the loaded provider
+4. Frontend (ConfigPage.tsx) shows a yellow warning banner with RESET NOW button when flag is true
+5. After next save, the factory version syncs to disk → banner disappears automatically
+
+**`needs_template_attention` has `#[serde(skip_serializing)]`** — it's computed at load time and never persisted.
+
+### Factory Reset: `reset_provider_user_config`
+
+Rust command that deletes `{id}-user-config.json` entirely. Frontend calls via IPC then dispatches `"blackops-reload-providers"` for instant refresh. On reload, provider regenerates 1:1 from factory defaults — guaranteed correct state. This is the user's escape hatch when config drift causes issues.
+
+### Override system (localStorage)
+
+ConfigPage stores "which value is currently picked" in localStorage (`blackops-override-{providerId}`). The `setOverride` function merges into existing overrides so multiple params can have simultaneous selections. Each param row passes its override handler and a clear handler to ValueBubbles:
+- Clicking a bubble calls `setOverride(key, value)` — stores selection for that param
+- Clicking × on an orphaned override chip calls `clearOverride(key)` — deletes just that key from localStorage
+
+Slider ptype suppresses the "override chip" display entirely because any numeric value between min/max is expected behavior.
+
+### Removed features (no longer exist)
+
+**TEMPLATE UPDATE button / modal** — removed. Merge happens silently on every load. No manual sync needed.
+**VALIDATE button / handler** — removed. Validation runs inline during save_provider as a block-guard. The old `check_template_update` / `apply_template_update` Rust commands are deleted.
 
 ---
 

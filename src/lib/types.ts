@@ -123,6 +123,8 @@ export interface ProviderConfig {
   downloadedVersionPerEnv?: Record<string, string>; // env -> GitHub release tag that was installed via update (e.g. "v0.7.8")
   lastPrPerEnv?: Record<string, string>; // env -> PR number (e.g. "stable" -> "21293")
   factory_provided?: boolean; // true = bundled in runtime/ or downloaded from GitHub releases
+  templateVersion?: number; // bumped in default config JSON when template changes, used for update notification
+  needsTemplateAttention?: boolean; // set by merge when user config version differs from factory — shows banner in ConfigPage
 }
 
 /** Provider origin classification — derived from existing fields, not stored */

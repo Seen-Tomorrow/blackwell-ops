@@ -292,7 +292,16 @@ pub struct ProviderConfig {
     /// Factory-provided providers cannot be removed, only disabled. Binary path is managed by foundry/download.
     #[serde(default)]
     pub factory_provided: bool,
+    /// Template version number — bumped in default config JSON when template changes. Used for UI notification.
+    #[serde(default = "default_template_version", rename = "templateVersion")]
+    pub template_version: u32,
+    /// True when the provider's loaded user config has a different template_version than the fresh factory template.
+    /// Shows banner in ConfigPage advising admin to RESET TO DEFAULTS if issues occur after update.
+    #[serde(default, skip_serializing, rename = "needsTemplateAttention")]
+    pub needs_template_attention: bool,
 }
+
+pub fn default_template_version() -> u32 { 1 }
 
 pub fn default_true() -> bool { true }
 pub fn default_ptype() -> String { "arg_select".to_string() }
