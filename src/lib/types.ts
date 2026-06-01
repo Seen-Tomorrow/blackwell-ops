@@ -203,25 +203,17 @@ export type bench_PromptMode = "unique" | "repetitive";
 export interface bench_TGBenchResult {
   prompt_tokens: number;
   gen_tokens: number;
-  prompt_tps_min: number;
-  prompt_tps_avg: number;
-  prompt_tps_max: number;
-  gen_tps_min: number;
-  gen_tps_avg: number;
-  gen_tps_max: number;
-  itl_ms_avg: number;
-  runs_count: number;
+  prompt_tps: number;
+  gen_tps: number;
+  itl_ms: number;
   success: boolean;
   error?: string;
 }
 
 /** PP (prefill) burst benchmark result from cmd_bench_pp_burst IPC command. */
 export interface bench_PPBurstResult {
-  bench_prefill_tps_min: number;
-  bench_prefill_tps_avg: number;
-  bench_prefill_tps_max: number;
+  bench_prefill_tps: number;
   bench_prompt_tokens_actual: number;
-  bench_runs_count: number;
   success: boolean;
   error?: string;
 }

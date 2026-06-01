@@ -18,17 +18,17 @@ export default function FusionPhaseBadge({ phase }: { phase: string }) {
                 animate={{ scale: [0.8, 1.3, 0.8], borderColor: ['rgba(0,0,0,0.15)', '#76B900', 'rgba(0,0,0,0.15)'] }}
                 transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
               />
-              AWAITING REQUESTS
+              AWAITING REQUEST
             </span>
           )}
           {phase === "PP" && (
             <span className="inline-block px-2 py-0.5 text-[9px] font-mono font-bold tracking-widest bg-orange-400/20 text-orange-400 border border-orange-400/40 rounded-sm">
-              PP PROMPT
+              PROMPT PROCESSING
             </span>
           )}
           {phase === "TG" && (
             <span className="inline-block px-2 py-0.5 text-[9px] font-mono font-bold tracking-widest bg-nv-green/20 text-nv-green border border-nv-green/40 rounded-sm">
-              TG GENERATE
+              GENERATION
             </span>
           )}
         </motion.div>

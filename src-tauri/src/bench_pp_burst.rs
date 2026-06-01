@@ -1,4 +1,4 @@
-//! PP (prefill) burst benchmark — measures prefill throughput at large context lengths.
+//! PP (prefill) burst benchmark — single measured run after warmup for clean prefill TPS measurement.
 //!
 //! Generates a synthetic prompt targeting ~N tokens, POSTs to /completion with n_predict=0,
 //! and returns prefill TPS from engine-reported timings.
@@ -60,11 +60,9 @@ const REPETITIVE_PATTERN: &str = "the cat sat on the mat and then walked away be
 
 #[derive(Debug, Serialize)]
 pub struct BenchPPResult {
-    pub bench_prefill_tps_min: f64,
-    pub bench_prefill_tps_avg: f64,
-    pub bench_prefill_tps_max: f64,
+    /// Prefill throughput (tokens/sec) — single measured run
+    pub bench_prefill_tps: f64,
     pub bench_prompt_tokens_actual: usize,
-    pub bench_runs_count: usize,
     pub success: bool,
     pub error: Option<String>,
 }
@@ -78,8 +76,8 @@ pub async fn cmd_bench_pp_burst(
     let url = format!("http://127.0.0.1:{}/completion", port);
     let client = reqwest::Client::new();
 
-    const WARMUP_RUNS: usize = 1;
-    const MEASURED_RUNS: usize = 3;
+    const WARMUP_RUNS: usize = 2;
+    const MEASURED_RUNS: usize = 1;
     const TOTAL_RUNS: usize = WARMUP_RUNS + MEASURED_RUNS;
 
     // Build synthetic prompt targeting ~target_tokens tokens.
@@ -97,7 +95,7 @@ pub async fn cmd_bench_pp_burst(
         prompt_tokens: usize,
     }
 
-    let mut measured_runs: Vec<RunStats> = Vec::with_capacity(MEASURED_RUNS);
+    let mut measured_run: Option<RunStats> = None;
 
     for run in 0..TOTAL_RUNS {
         // Release all slot KV caches before each run to prevent prompt caching from skewing results.
@@ -145,7 +143,7 @@ pub async fn cmd_bench_pp_burst(
                         run + 1, bench_prompt_mode, target_tokens, p_tokens, prefill_tps);
 
                     if run >= WARMUP_RUNS {
-                        measured_runs.push(RunStats {
+                        measured_run = Some(RunStats {
                             prefill_tps,
                             prompt_tokens: p_tokens,
                         });
@@ -155,36 +153,24 @@ pub async fn cmd_bench_pp_burst(
             }
     }
 
-    if measured_runs.is_empty() {
-        return Ok(BenchPPResult {
-            bench_prefill_tps_min: 0.0,
-            bench_prefill_tps_avg: 0.0,
-            bench_prefill_tps_max: 0.0,
-            bench_prompt_tokens_actual: 0,
-            bench_runs_count: 0,
-            success: false,
-            error: Some("No successful measured runs".to_string()),
-        });
-    }
+    let run = match measured_run {
+        Some(r) => r,
+        None => {
+            return Ok(BenchPPResult {
+                bench_prefill_tps: 0.0,
+                bench_prompt_tokens_actual: 0,
+                success: false,
+                error: Some("No successful measured runs".to_string()),
+            });
+        }
+    };
 
-    let prefill_tps_values: Vec<f64> = measured_runs.iter().map(|r| r.prefill_tps).collect();
-
-    let avg_fn = |vals: &[f64]| vals.iter().sum::<f64>() / vals.len() as f64;
-    let min_fn = |vals: &[f64]| vals.iter().cloned().fold(f64::MAX, f64::min);
-    let max_fn = |vals: &[f64]| vals.iter().cloned().fold(0.0_f64, f64::max);
-
-    let last = measured_runs.last().unwrap();
-
-    log::info!("[BENCH_PP] RESULT | mode={} | target={} actual={} tok | prefill: {:.1}+/-{:.1} TPS",
-        bench_prompt_mode, target_tokens, last.prompt_tokens,
-        avg_fn(&prefill_tps_values), max_fn(&prefill_tps_values) - min_fn(&prefill_tps_values));
+    log::info!("[BENCH_PP] RESULT | mode={} | target={} actual={} tok | prefill: {:.1} TPS",
+        bench_prompt_mode, target_tokens, run.prompt_tokens, run.prefill_tps);
 
     Ok(BenchPPResult {
-        bench_prefill_tps_min: min_fn(&prefill_tps_values),
-        bench_prefill_tps_avg: avg_fn(&prefill_tps_values),
-        bench_prefill_tps_max: max_fn(&prefill_tps_values),
-        bench_prompt_tokens_actual: last.prompt_tokens,
-        bench_runs_count: measured_runs.len(),
+        bench_prefill_tps: run.prefill_tps,
+        bench_prompt_tokens_actual: run.prompt_tokens,
         success: true,
         error: None,
     })

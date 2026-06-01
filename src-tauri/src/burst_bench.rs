@@ -1,6 +1,6 @@
-//! TG (generation) burst benchmark — multi-run POST to llama-server for realistic TPS measurement.
+//! TG (generation) burst benchmark — single measured run after warmup for clean TPS measurement.
 //!
-//! Strategy: 1 warmup run (discarded) + N measured runs → min/avg/max stats.
+//! Strategy: 2 warmup runs (discarded) + 1 measured run → single result values.
 //! Uses engine-reported timings (prompt_ms, predicted_ms) not HTTP round-trip time.
 
 use serde::Serialize;
@@ -15,18 +15,12 @@ const BENCH_PROMPT_REPETITIVE: &str = "the cat sat on the mat and then walked aw
 pub struct BenchResult {
     pub prompt_tokens: usize,
     pub gen_tokens: usize,
-    /// Prefill throughput stats (tokens/sec)
-    pub prompt_tps_min: f64,
-    pub prompt_tps_avg: f64,
-    pub prompt_tps_max: f64,
-    /// Generation throughput stats (tokens/sec)
-    pub gen_tps_min: f64,
-    pub gen_tps_avg: f64,
-    pub gen_tps_max: f64,
-    /// Average inter-token latency across all measured runs
-    pub itl_ms_avg: f64,
-    /// Number of measured runs (excludes warmup)
-    pub runs_count: usize,
+    /// Prefill throughput (tokens/sec) — single measured run
+    pub prompt_tps: f64,
+    /// Generation throughput (tokens/sec) — single measured run
+    pub gen_tps: f64,
+    /// Inter-token latency (ms)
+    pub itl_ms: f64,
     pub success: bool,
     pub error: Option<String>,
 }
@@ -40,8 +34,8 @@ pub async fn cmd_burst_bench(
     let url = format!("http://127.0.0.1:{}/completion", port);
     let client = reqwest::Client::new();
 
-    const WARMUP_RUNS: usize = 1;
-    const MEASURED_RUNS: usize = 3;
+    const WARMUP_RUNS: usize = 2;
+    const MEASURED_RUNS: usize = 1;
     const TOTAL_RUNS: usize = WARMUP_RUNS + MEASURED_RUNS;
 
     struct RunStats {
@@ -51,7 +45,7 @@ pub async fn cmd_burst_bench(
         gen_tokens: usize,
     }
 
-    let mut measured_runs: Vec<RunStats> = Vec::with_capacity(MEASURED_RUNS);
+    let mut measured_run: Option<RunStats> = None;
 
     for run in 0..TOTAL_RUNS {
         // Release all slot KV caches before each run to prevent prompt caching from skewing results.
@@ -106,7 +100,7 @@ pub async fn cmd_burst_bench(
                         run + 1, bench_prompt_mode, prompt_tps, gen_tps, p_tokens, g_tokens);
 
                     if run >= WARMUP_RUNS {
-                        measured_runs.push(RunStats {
+                        measured_run = Some(RunStats {
                             prompt_tps,
                             gen_tps,
                             prompt_tokens: p_tokens,
@@ -118,46 +112,29 @@ pub async fn cmd_burst_bench(
             }
     }
 
-    if measured_runs.is_empty() {
-        return Ok(BenchResult {
-            prompt_tokens: 0, gen_tokens: 0,
-            prompt_tps_min: 0.0, prompt_tps_avg: 0.0, prompt_tps_max: 0.0,
-            gen_tps_min: 0.0, gen_tps_avg: 0.0, gen_tps_max: 0.0,
-            itl_ms_avg: 0.0, runs_count: 0, success: false,
-            error: Some("No successful measured runs".to_string()),
-        });
-    }
+    let run = match measured_run {
+        Some(r) => r,
+        None => {
+            return Ok(BenchResult {
+                prompt_tokens: 0, gen_tokens: 0,
+                prompt_tps: 0.0, gen_tps: 0.0, itl_ms: 0.0,
+                success: false,
+                error: Some("No successful measured runs".to_string()),
+            });
+        }
+    };
 
-    // Aggregate stats across measured runs
-    let prompt_tps_values: Vec<f64> = measured_runs.iter().map(|r| r.prompt_tps).collect();
-    let gen_tps_values: Vec<f64> = measured_runs.iter().map(|r| r.gen_tps).collect();
+    let itl_ms = if run.gen_tps > 0.0 { 1000.0 / run.gen_tps } else { 0.0 };
 
-    let avg_fn = |vals: &[f64]| vals.iter().sum::<f64>() / vals.len() as f64;
-    let min_fn = |vals: &[f64]| vals.iter().cloned().fold(f64::MAX, f64::min);
-    let max_fn = |vals: &[f64]| vals.iter().cloned().fold(0.0_f64, f64::max);
-
-    let gen_tps_avg = avg_fn(&gen_tps_values);
-    let itl_ms_avg = if gen_tps_avg > 0.0 { 1000.0 / gen_tps_avg } else { 0.0 };
-
-    // Use last run's token counts (most representative)
-    let last = measured_runs.last().unwrap();
-
-    log::info!("[BENCH_TG] RESULT | mode={} | prefill: {:.1}+/-{:.1} TPS | gen: {:.1}+/-{:.1} TPS | ITL: {:.2}ms",
-        bench_prompt_mode,
-        avg_fn(&prompt_tps_values), max_fn(&prompt_tps_values) - min_fn(&prompt_tps_values),
-        gen_tps_avg, max_fn(&gen_tps_values) - min_fn(&gen_tps_values), itl_ms_avg);
+    log::info!("[BENCH_TG] RESULT | mode={} | prefill: {:.1} TPS | gen: {:.1} TPS | ITL: {:.2}ms",
+        bench_prompt_mode, run.prompt_tps, run.gen_tps, itl_ms);
 
     Ok(BenchResult {
-        prompt_tokens: last.prompt_tokens,
-        gen_tokens: last.gen_tokens,
-        prompt_tps_min: min_fn(&prompt_tps_values),
-        prompt_tps_avg: avg_fn(&prompt_tps_values),
-        prompt_tps_max: max_fn(&prompt_tps_values),
-        gen_tps_min: min_fn(&gen_tps_values),
-        gen_tps_avg,
-        gen_tps_max: max_fn(&gen_tps_values),
-        itl_ms_avg,
-        runs_count: measured_runs.len(),
+        prompt_tokens: run.prompt_tokens,
+        gen_tokens: run.gen_tokens,
+        prompt_tps: run.prompt_tps,
+        gen_tps: run.gen_tps,
+        itl_ms,
         success: true,
         error: None,
     })
