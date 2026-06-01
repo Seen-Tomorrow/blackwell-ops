@@ -1,4 +1,4 @@
-//! Burst benchmark — multi-run POST to llama-server for realistic TPS measurement.
+//! TG (generation) burst benchmark — multi-run POST to llama-server for realistic TPS measurement.
 //!
 //! Strategy: 1 warmup run (discarded) + N measured runs → min/avg/max stats.
 //! Uses engine-reported timings (prompt_ms, predicted_ms) not HTTP round-trip time.
@@ -6,7 +6,10 @@
 use serde::Serialize;
 
 /// ~500 token prompt to properly warm Blackwell kernels for realistic prefill measurement.
-const BENCH_PROMPT: &str = "The architecture of modern large language models represents a fundamental shift in how we approach artificial intelligence and natural language processing. These systems are built on the transformer architecture, which relies entirely on self-attention mechanisms to process input sequences. The key innovation is that each position can attend to all positions in the previous layer, allowing the model to capture long-range dependencies that were previously difficult for recurrent architectures. Training these models requires massive computational resources, often involving thousands of GPU hours across distributed clusters. The scaling laws discovered by Kaplan and subsequent researchers show that model performance improves predictably with compute budget, dataset size, and parameter count. This has led to an arms race in model sizes, from GPT-3's 175 billion parameters to models exceeding one trillion parameters. Inference optimization is equally critical, as serving these models at scale requires techniques like quantization, speculative decoding, and efficient attention implementations. The KV cache alone can consume significant memory during long-context generation, making memory management a first-class concern in production deployments. Techniques such as PagedAttention have revolutionized how we handle the KV cache by eliminating memory fragmentation through virtual memory-like paging. Flash Attention further optimizes the computation by reordering operations to minimize HBM access, achieving both speedup and memory reduction. As models grow larger, tensor parallelism across multiple GPUs becomes essential for both training and inference workloads.";
+const BENCH_PROMPT_UNIQUE: &str = "The architecture of modern large language models represents a fundamental shift in how we approach artificial intelligence and natural language processing. These systems are built on the transformer architecture, which relies entirely on self-attention mechanisms to process input sequences. The key innovation is that each position can attend to all positions in the previous layer, allowing the model to capture long-range dependencies that were previously difficult for recurrent architectures. Training these models requires massive computational resources, often involving thousands of GPU hours across distributed clusters. The scaling laws discovered by Kaplan and subsequent researchers show that model performance improves predictably with compute budget, dataset size, and parameter count. This has led to an arms race in model sizes, from GPT-3's 175 billion parameters to models exceeding one trillion parameters. Inference optimization is equally critical, as serving these models at scale requires techniques like quantization, speculative decoding, and efficient attention implementations. The KV cache alone can consume significant memory during long-context generation, making memory management a first-class concern in production deployments. Techniques such as PagedAttention have revolutionized how we handle the KV cache by eliminating memory fragmentation through virtual memory-like paging. Flash Attention further optimizes the computation by reordering operations to minimize HBM access, achieving both speedup and memory reduction. As models grow larger, tensor parallelism across multiple GPUs becomes essential for both training and inference workloads.";
+
+/// Repetitive prompt pattern — predictable output ideal for testing speculative decoding acceleration.
+const BENCH_PROMPT_REPETITIVE: &str = "the cat sat on the mat and then walked away because it was tired so the dog ran after the cat but the cat jumped over the fence and the dog could not follow because the fence was too high so the dog went back to the house where the cat had been sitting on the mat and the dog lay down next to the mat because it was also tired from running after the cat that had jumped over the fence which was too high for the dog to climb so they both rested on the mat until the sun went down behind the old oak tree in the backyard where the children used to play before they grew up and moved away to different cities far from the house with the tall fence";
 
 #[derive(Debug, Serialize)]
 pub struct BenchResult {
@@ -29,7 +32,11 @@ pub struct BenchResult {
 }
 
 #[tauri::command]
-pub async fn cmd_burst_bench(port: u16, n_predict: usize) -> Result<BenchResult, String> {
+pub async fn cmd_burst_bench(
+    port: u16,
+    n_predict: usize,
+    bench_prompt_mode: String,
+) -> Result<BenchResult, String> {
     let url = format!("http://127.0.0.1:{}/completion", port);
     let client = reqwest::Client::new();
 
@@ -47,8 +54,25 @@ pub async fn cmd_burst_bench(port: u16, n_predict: usize) -> Result<BenchResult,
     let mut measured_runs: Vec<RunStats> = Vec::with_capacity(MEASURED_RUNS);
 
     for run in 0..TOTAL_RUNS {
+        // Release all slot KV caches before each run to prevent prompt caching from skewing results.
+        if let Ok(slots_resp) = client.get(&format!("http://127.0.0.1:{}/slots", port)).send().await {
+            if let Ok(slots) = slots_resp.json::<Vec<serde_json::Value>>().await {
+                for slot in &slots {
+                    let idx = slot["id"].as_u64().unwrap_or(0);
+                    let _ = client.post(&format!("http://127.0.0.1:{}/slots/{}/release", port, idx)).send().await;
+                }
+                log::debug!("[BENCH_TG] released {} slots for run {}", slots.len(), run + 1);
+            }
+        }
+
+        let bench_prompt_text = if bench_prompt_mode == "repetitive" {
+            BENCH_PROMPT_REPETITIVE
+        } else {
+            BENCH_PROMPT_UNIQUE
+        };
+
         let body = serde_json::json!({
-            "prompt": BENCH_PROMPT,
+            "prompt": bench_prompt_text,
             "n_predict": n_predict,
             "temperature": 0.0,
             "stream": false,
@@ -78,8 +102,8 @@ pub async fn cmd_burst_bench(port: u16, n_predict: usize) -> Result<BenchResult,
                     let prompt_tps = if p_ms > 0.0 { (p_tokens as f64 / p_ms) * 1000.0 } else { 0.0 };
                     let gen_tps = if g_ms > 0.0 { (g_tokens as f64 / g_ms) * 1000.0 } else { 0.0 };
 
-                    log::info!("[BENCH] run {} | prefill: {:.1} TPS | gen: {:.1} TPS | p_tok={} g_tok={}",
-                        run + 1, prompt_tps, gen_tps, p_tokens, g_tokens);
+                    log::info!("[BENCH_TG] run {} | mode={} | prefill: {:.1} TPS | gen: {:.1} TPS | p_tok={} g_tok={}",
+                        run + 1, bench_prompt_mode, prompt_tps, gen_tps, p_tokens, g_tokens);
 
                     if run >= WARMUP_RUNS {
                         measured_runs.push(RunStats {
@@ -118,7 +142,8 @@ pub async fn cmd_burst_bench(port: u16, n_predict: usize) -> Result<BenchResult,
     // Use last run's token counts (most representative)
     let last = measured_runs.last().unwrap();
 
-    log::info!("[BENCH] RESULT | prefill: {:.1}±{:.1} TPS | gen: {:.1}±{:.1} TPS | ITL: {:.2}ms",
+    log::info!("[BENCH_TG] RESULT | mode={} | prefill: {:.1}+/-{:.1} TPS | gen: {:.1}+/-{:.1} TPS | ITL: {:.2}ms",
+        bench_prompt_mode,
         avg_fn(&prompt_tps_values), max_fn(&prompt_tps_values) - min_fn(&prompt_tps_values),
         gen_tps_avg, max_fn(&gen_tps_values) - min_fn(&gen_tps_values), itl_ms_avg);
 

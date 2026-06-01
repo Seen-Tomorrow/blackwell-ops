@@ -183,7 +183,7 @@ impl EngineStack {
 
         // Extract stderr pipe and start reader immediately
         let stderr = child.stderr.take().unwrap();
-        let _line_rx = log_hub.spawn_slot_reader(
+        log_hub.spawn_slot_reader(
             slot_idx,
             config.alias.clone(),
             stderr,

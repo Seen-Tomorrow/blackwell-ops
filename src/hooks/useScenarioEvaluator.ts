@@ -249,7 +249,7 @@ export function useScenarioEvaluator({ model, config, gpus, stack, systemInfo }:
       const result: FitScanResult = await invoke("fit_scan_model", {
         modelPath: model.path,
         providerId: curConfig.backend_type || null,
-        ctxSize: curConfig.ctx || "32k",
+        ctxSize: typeof curConfig.ctx === 'number' ? curConfig.ctx : 32768,
         kvQuant: curConfig["kv_quant"] || "f16",
         device: curConfig.device || "GPU-0",
         splitMode: (curConfig.split || "none").toString().toLowerCase(),

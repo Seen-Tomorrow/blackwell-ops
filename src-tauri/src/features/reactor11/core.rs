@@ -174,19 +174,12 @@ impl R11Core {
         // Simple file-size-based estimate for reactor UI (not precision-critical)
         let model_bytes = std::fs::metadata(model_path).map(|m| m.len()).unwrap_or(0);
 
-        // Detect mmproj vision projector file
-        let mut mmproj_bytes: u64 = 0;
-        if let Some(dir) = std::path::Path::new(model_path).parent() {
-            if let Ok(entries) = std::fs::read_dir(dir) {
-                for entry in entries.flatten() {
-                    let fname = entry.file_name();
-                    let fname_str = fname.to_string_lossy().to_lowercase();
-                    if fname_str.contains("mmproj") && !fname_str.ends_with(".gguf") {
-                        if let Ok(meta) = std::fs::metadata(entry.path()) { mmproj_bytes = meta.len() as u64; break; }
-                    }
-                }
-            }
-        }
+        // Detect mmproj vision projector file (largest by filesize = highest precision)
+        let mmproj_bytes: u64 = if let Some(dir) = std::path::Path::new(model_path).parent() {
+            crate::model_catalog::find_largest_mmproj(dir).map(|(_, sz)| sz).unwrap_or(0)
+        } else {
+            0
+        };
 
         // Rough estimate: model size + 30% overhead (weights + KV cache + CUDA context)
         let estimated_vram_mib = (model_bytes as f64 / (1024.0 * 1024.0)) * 1.3

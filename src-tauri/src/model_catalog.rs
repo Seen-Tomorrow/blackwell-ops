@@ -10,6 +10,33 @@ use std::path::{Path, PathBuf};
 
 use crate::types::{CatalogDedupConflict, ModelEntry, ModelEntryInternal, ModelPathEntry};
 
+/// Scan a directory for mmproj companion files. Returns the one with largest filesize.
+/// Filesize is the proxy for precision (F32 > F16 in bytes).
+/// Returns `(original_filename, size_bytes)` or `None` if no match found.
+pub fn find_largest_mmproj(directory: &Path) -> Option<(String, u64)> {
+    let entries = std::fs::read_dir(directory).ok()?;
+    let mut best: Option<(String, u64)> = None;
+
+    for entry in entries.flatten() {
+        let fname = entry.file_name();
+        let fname_lower = fname.to_string_lossy().to_lowercase();
+        if fname_lower.contains("mmproj") {
+            if let Ok(meta) = std::fs::metadata(entry.path()) {
+                let size = meta.len();
+                match &best {
+                    None => best = Some((fname.to_string_lossy().to_string(), size)),
+                    Some((_, best_size)) if size > *best_size => {
+                        best = Some((fname.to_string_lossy().to_string(), size));
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    best
+}
+
 pub fn scan_path(base_path: &Path) -> Result<Vec<ModelEntryInternal>, String> {
     if !base_path.exists() {
         return Ok(Vec::new());
@@ -43,20 +70,9 @@ pub fn scan_path(base_path: &Path) -> Result<Vec<ModelEntryInternal>, String> {
                 .unwrap_or("unknown")
                 .to_string();
 
-            let mut mmproj_file: Option<String> = None;
-            let mut mmproj_size: u64 = 0;
-            if let Ok(files) = std::fs::read_dir(&model_path) {
-                for f_entry in files.flatten() {
-                    let fname = f_entry.file_name();
-                    let fname_str = fname.to_string_lossy().to_lowercase();
-                    if fname_str.contains("mmproj") {
-                        mmproj_file = Some(fname.to_string_lossy().to_string());
-                        if let Ok(meta) = std::fs::metadata(f_entry.path()) {
-                            mmproj_size = meta.len();
-                        }
-                    }
-                }
-            }
+            let (mmproj_file, mmproj_size) = find_largest_mmproj(&model_path)
+                .map(|(name, sz)| (Some(name), sz))
+                .unwrap_or((None, 0));
 
             for f_entry in std::fs::read_dir(&model_path).map_err(|e| e.to_string())? {
                 let f_entry = f_entry.map_err(|e| e.to_string())?;

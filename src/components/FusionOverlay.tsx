@@ -3,6 +3,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { FusionUpdate } from "../lib/types";
 import FusionPhaseBadge from "./FusionPhaseBadge";
+import BenchWidget from "./BenchWidget";
 
 interface FusionOverlayProps {
   alias?: string;
@@ -147,14 +148,19 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
               {displayAlias.toUpperCase()}
             </span>
             <FusionPhaseBadge phase={fusion.phase} />
-            <div className="flex items-center gap-2">
-              <span className="text-[14px] font-mono text-stealth-muted/40">:{displayPort}</span>
-              <button
-                onClick={handleStopEngine}
-                className="text-[7px] font-bold tracking-wider px-1.5 py-0.5 rounded bg-red-600/80 hover:bg-red-500 active:bg-red-700 text-white cursor-pointer select-none"
-              >
-                STOP
-              </button>
+            <div className="flex flex-col items-end gap-1">
+              <div className="flex items-center gap-2">
+                <span className="text-[14px] font-mono text-stealth-muted/40">:{displayPort}</span>
+                <button
+                  onClick={handleStopEngine}
+                  className="text-[7px] font-bold tracking-wider px-1.5 py-0.5 rounded bg-red-600/80 hover:bg-red-500 active:bg-red-700 text-white cursor-pointer select-none"
+                >
+                  STOP
+                </button>
+              </div>
+              {fusion.engine_state === "READY" && (
+                <BenchWidget port={displayPort} variant="compact" />
+              )}
             </div>
           </div>
 
@@ -178,6 +184,26 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
                   {fusion.prefillTpsMetrics > 0 ? fusion.prefillTpsMetrics.toFixed(0) : "--"}
                 </span>
                 <span className="text-[6px] font-mono text-stealth-muted/30 tracking-wider">tok/s</span>
+                {/* LP_ prefill comparison (red) */}
+                {fusion.LP_prefillTps != null && fusion.LP_prefillTps > 0 && (
+                  <div className="flex flex-col items-center mt-0.5">
+                    <span className="font-mono font-bold tracking-tight leading-none text-red-400" style={{ fontSize: 'clamp(0.75rem, 2vh, 1rem)' }}>
+                      LP {fusion.LP_prefillTps.toFixed(0)}
+                    </span>
+                    <div className="flex items-center gap-1 mt-0.5 w-full">
+                      <span className="text-[5px] font-mono text-red-400/60 tracking-wider">PROGRESS</span>
+                      <div className="flex-1 h-0.5 rounded-full bg-black/20 overflow-hidden">
+                        <div
+                          className="h-full rounded-full transition-all duration-100"
+                          style={{ width: `${(fusion.LP_prefillProgress ?? 0) * 100}%`, backgroundColor: '#ef4444' }}
+                        />
+                      </div>
+                      <span className="text-[5px] font-mono text-red-400/60">
+                        {((fusion.LP_prefillProgress ?? 0) * 100).toFixed(0)}%
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -193,6 +219,12 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
                 </span>
                 <span className="text-[6px] font-mono text-stealth-muted/40 tracking-wider">tok/s</span>
               </div>
+              {/* LP_ gen TPS comparison (red) */}
+              {fusion.LP_genTps != null && fusion.LP_genTps > 0 && (
+                <span className="font-mono font-bold tracking-tight leading-none text-red-400 mt-0.5" style={{ fontSize: 'clamp(0.75rem, 2vh, 1rem)' }}>
+                  LP {fusion.LP_genTps.toFixed(0)}
+                </span>
+              )}
             </div>
 
             {/* ── Radar scanline — sweeps across the gap below cards ─── */}
@@ -288,15 +320,41 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
               );
             })}
 
-            {/* Unified/multi mode indicator */}
+            {/* Unified/multi mode + phase indicators */}
             <div className="flex items-center justify-between mt-0.5">
               <span className={`text-[6px] font-mono tracking-wider ${fusion.unified_kv ? "text-nv-green/70" : "text-stealth-muted/40"}`}>
                 {fusion.unified_kv ? "UNIFIED KV" : `MULTI-SLOT ×${fusion.parallel}`}
               </span>
-              <span className="text-[6px] font-mono text-stealth-muted/30">
-                PHASE: {fusion.phase}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-[6px] font-mono text-stealth-muted/30">
+                  PHASE: {fusion.phase}
+                </span>
+                {fusion.LP_phase && fusion.LP_phase !== "IDLE" && (
+                  <span className="text-[6px] font-mono text-red-400">
+                    LP: {fusion.LP_phase}
+                  </span>
+                )}
+              </div>
             </div>
+
+            {/* LP_ prompt tokens (from print_timing PP line) */}
+            {fusion.LP_promptTokens != null && fusion.LP_promptTokens > 0 && (
+              <div className="flex items-center justify-between mt-0.5">
+                <span className="text-[6px] font-mono text-red-400/80 tracking-wider">LP PROMPT</span>
+                <span className="text-[6px] font-mono text-red-400">{fusion.LP_promptTokens} tok</span>
+              </div>
+            )}
+
+            {/* LP_ reset source indicator — belt (green) vs suspenders (amber) */}
+            {fusion.LP_resetSource && (
+              <div className="flex items-center justify-between mt-0.5">
+                <span className={`text-[6px] font-mono tracking-wider ${
+                  fusion.LP_resetSource === 'prompt' ? 'text-nv-green/80' : 'text-telemetry-amber/80'
+                }`}>
+                  {fusion.LP_resetSource === 'prompt' ? "⬡ BELT (NewPrompt)" : "⬡ SUSPENDERS (regression)"}
+                </span>
+              </div>
+            )}
           </div>
         </motion.div>
       )}

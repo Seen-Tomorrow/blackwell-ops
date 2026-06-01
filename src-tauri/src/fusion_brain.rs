@@ -132,6 +132,26 @@ pub struct FusionUpdate {
     // ── Engine config ──────────────────────────────────────────────
     pub parallel: i64,
     pub unified_kv: bool,
+
+    // ── Log-parsed values (stderr print_timing lines — red in UI for comparison) ──
+    #[serde(rename = "LP_prefillProgress")]
+    pub lp_prefill_progress: f64,       // exact 0→1 from "prompt processing, progress = X.XX"
+
+    #[serde(rename = "LP_prefillTps")]
+    pub lp_prefill_tps: f64,            // instantaneous tokens/s during PP (engine's own calc)
+
+    #[serde(rename = "LP_promptTokens")]
+    pub lp_prompt_tokens: usize,        // n_tokens processed so far in current PP request
+
+    #[serde(rename = "LP_genTps")]
+    pub lp_gen_tps: f64,               // tg = X t/s from generation print_timing line
+
+    #[serde(rename = "LP_phase")]
+    pub lp_phase: InferencePhase,       // phase derived purely from log events (PP→TG via sampler_init)
+
+    /// Reset source for frontend visual feedback — "prompt" if NewPrompt caught it, "regression" if fallback.
+    #[serde(rename = "LP_resetSource", skip_serializing_if = "Option::is_none")]
+    pub lp_reset_source: Option<&'static str>,  // Some("prompt") or Some("regression")
 }
 
 // ── Brain internal state ─────────────────────────────────────────────
@@ -153,6 +173,17 @@ pub struct FusionBrain {
     session_tokens_generated: usize,
     prev_metrics: Option<MetricsSnapshot>,
     prev_metrics_time: Option<Instant>,
+
+    // ── Log-parsed tracking fields ────────────────────────────────
+    lp_prefill_progress: f64,       // exact 0→1 from print_timing PP line
+    lp_prefill_tps: f64,            // instantaneous tokens/s during PP (from log)
+    lp_prompt_tokens: usize,        // n_tokens processed so far in current request (PP)
+    lp_gen_tps: f64,               // tg = X t/s from generation print_timing line
+    lp_phase: InferencePhase,       // phase derived purely from log events
+
+    /// One-shot reset signal emitted to frontend for visual feedback.
+    lp_reset_prompt: bool,    // true after NewPrompt caught the start (belt)
+    lp_reset_regression: bool,  // true after regression detected (suspenders)
 }
 
 impl FusionBrain {
@@ -174,6 +205,15 @@ impl FusionBrain {
             session_tokens_generated: 0,
             prev_metrics: None,
             prev_metrics_time: None,
+
+            // Log-parsed fields — initialized to zero/Idle
+            lp_prefill_progress: 0.0,
+            lp_prefill_tps: 0.0,
+            lp_prompt_tokens: 0,
+            lp_gen_tps: 0.0,
+            lp_phase: InferencePhase::Idle,
+            lp_reset_prompt: false,
+            lp_reset_regression: false,
         }
     }
 
@@ -207,6 +247,10 @@ impl FusionBrain {
     ) {
         let mut brain = Self::new(&config);
 
+        // Channel for parsed log events from stderr → this brain task (bounded to backpressure on slow consumer)
+        let (event_tx, mut event_rx) = tokio::sync::mpsc::channel::<crate::fusion_logparser::LogEvent>(256);
+        register_log_receiver(config.slot_idx, event_tx);
+
         // Emit initial LOADING update so frontend shows launch animation
         let init = brain.build_update(&[], None);
         log_hub.emit("fusion-update", &init);
@@ -228,6 +272,13 @@ impl FusionBrain {
                     let term = brain.build_terminal_update();
                     log_hub.emit("fusion-update", &term);
                     return;
+                }
+
+                // ── Log-parsed event (stderr print_timing lines) ─────
+                Some(log_event) = event_rx.recv() => {
+                    brain.process_log_event(&log_event);
+                    let update = brain.build_update(&[], None);
+                    log_hub.emit("fusion-update", &update);
                 }
 
                 _ = interval.tick() => {
@@ -261,6 +312,72 @@ impl FusionBrain {
                 }
             }
         }
+    }
+
+    // ── Log-parsed event handlers (stderr print_timing lines) ───────
+
+    fn process_log_event(&mut self, event: &crate::fusion_logparser::LogEvent) {
+        match event {
+            crate::fusion_logparser::LogEvent::PrintTimingPP { .. } => self.handle_print_timing_pp(event),
+            crate::fusion_logparser::LogEvent::PrintTimingGen { .. } => self.handle_print_timing_gen(event),
+            crate::fusion_logparser::LogEvent::SamplerInit { .. } => self.handle_sampler_init(),
+            crate::fusion_logparser::LogEvent::StopProcessing { .. } => self.handle_stop_processing(),
+            // NewPrompt — belt: reset all LP state at exact request start (fires before any PP work)
+            crate::fusion_logparser::LogEvent::NewPrompt { .. } => self.handle_new_prompt(),
+        }
+    }
+
+    fn handle_new_prompt(&mut self) {
+        // Belt: definitive request start — reset LP state to zero so progress bar starts at 0%
+        eprintln!("[LP] NewPrompt detected, resetting LP state");
+        self.lp_phase = InferencePhase::Idle;
+        self.lp_prefill_progress = 0.0;
+        self.lp_prefill_tps = 0.0;
+        self.lp_prompt_tokens = 0;
+        self.lp_gen_tps = 0.0;
+        self.lp_reset_prompt = true; // Belt caught the start
+        self.lp_reset_regression = false;
+    }
+
+    fn handle_print_timing_pp(&mut self, e: &crate::fusion_logparser::LogEvent) {
+        if let crate::fusion_logparser::LogEvent::PrintTimingPP { n_tokens, progress, pp_tps, .. } = e {
+            // Suspenders: regression detection — if new progress < previous (missed start), reset first
+            if *progress > 0.0 && *progress < self.lp_prefill_progress && self.lp_prefill_progress > 0.1 {
+                eprintln!("[LP] Regression detected ({:.2} → {:.2}), resetting LP state", self.lp_prefill_progress, progress);
+                self.lp_prefill_progress = 0.0;
+                self.lp_prefill_tps = 0.0;
+                self.lp_prompt_tokens = 0;
+                self.lp_reset_regression = true; // Suspenders caught the regression
+                self.lp_reset_prompt = false;
+            }
+
+            self.lp_phase = InferencePhase::Pp;
+            self.lp_prefill_progress = *progress;
+            self.lp_prefill_tps = *pp_tps;
+            self.lp_prompt_tokens = *n_tokens;
+        }
+    }
+
+    fn handle_print_timing_gen(&mut self, e: &crate::fusion_logparser::LogEvent) {
+        if let crate::fusion_logparser::LogEvent::PrintTimingGen { gen_tps, .. } = e {
+            self.lp_phase = InferencePhase::Tg;
+            self.lp_gen_tps = *gen_tps;
+        }
+    }
+
+    fn handle_sampler_init(&mut self) {
+        // DEFINITIVE PP→TG boundary signal from engine
+        self.lp_phase = InferencePhase::Tg;
+    }
+
+    fn handle_stop_processing(&mut self) {
+        self.lp_phase = InferencePhase::Idle;
+        self.lp_prefill_progress = 0.0;
+        self.lp_prefill_tps = 0.0;
+        self.lp_prompt_tokens = 0;
+        // NOTE: lp_gen_tps intentionally NOT reset — keep "last known" TG speed visible after request ends
+        self.lp_reset_prompt = false;
+        self.lp_reset_regression = false;
     }
 
     // ── /metrics processing — phase detection + prefill TPS ─────────
@@ -541,6 +658,20 @@ impl FusionBrain {
             slot_ctx,
             parallel: self.parallel,
             unified_kv: self.unified_kv,
+
+            // ── Log-parsed values (from stderr print_timing lines) ──
+            lp_prefill_progress: self.lp_prefill_progress,
+            lp_prefill_tps: self.lp_prefill_tps,
+            lp_prompt_tokens: self.lp_prompt_tokens,
+            lp_gen_tps: self.lp_gen_tps,
+            lp_phase: self.lp_phase,
+            lp_reset_source: if self.lp_reset_prompt {
+                Some("prompt")
+            } else if self.lp_reset_regression {
+                Some("regression")
+            } else {
+                None
+            },
         }
     }
 
@@ -550,6 +681,12 @@ impl FusionBrain {
         let mut update = self.build_update(&[], None);
         update.engine_state = EngineState::Ready;
         update.phase = InferencePhase::Idle;
+        update.lp_phase = InferencePhase::Idle;
+        update.lp_prefill_progress = 0.0;
+        update.lp_prefill_tps = 0.0;
+        update.lp_prompt_tokens = 0;
+        update.lp_gen_tps = 0.0;
+        // Note: lp_reset_source stays as computed by build_update above (shows last reset source)
         update
     }
 }
@@ -562,12 +699,37 @@ static BRAIN_REGISTRY: std::sync::LazyLock<
     TokioMutex<HashMap<usize, (tokio_util::task::AbortOnDropHandle<()>, tokio_util::sync::CancellationToken)>>,
 > = std::sync::LazyLock::new(|| TokioMutex::new(HashMap::new()));
 
+/// Registry of log event senders — keyed by slot_idx.
+/// Uses parking_lot Mutex so .lock() is safe inside both blocking & async contexts.
+static LOG_EVENT_SENDERS: std::sync::LazyLock<
+    parking_lot::Mutex<HashMap<usize, tokio::sync::mpsc::Sender<crate::fusion_logparser::LogEvent>>>,
+> = std::sync::LazyLock::new(|| parking_lot::Mutex::new(HashMap::new()));
+
+/// Register this brain's log event receiver channel. Called from run() before polling starts.
+pub fn register_log_receiver(slot_idx: usize, tx: tokio::sync::mpsc::Sender<crate::fusion_logparser::LogEvent>) {
+    let mut registry = LOG_EVENT_SENDERS.lock();
+    registry.insert(slot_idx, tx);
+}
+
+/// Route a parsed log event to the brain for the given slot (fire-and-forget, drops on full).
+pub fn route_log_event(slot_idx: usize, event: crate::fusion_logparser::LogEvent) {
+    let registry = LOG_EVENT_SENDERS.lock();
+    if let Some(tx) = registry.get(&slot_idx) {
+        let _ = tx.try_send(event); // bounded channel — drops on full (backpressure)
+    }
+}
+
 /// Start a fusion brain for an engine. Keyed by slot_idx.
 pub async fn start_brain(log_hub: LogHub, config: FusionConfig) {
     let mut registry = BRAIN_REGISTRY.lock().await;
 
     if let Some((_, cancel)) = registry.remove(&config.slot_idx) {
         cancel.cancel();
+    }
+    // Clear old log event sender so events between cancel and new register don't route to dead channel
+    {
+        let mut event_senders = LOG_EVENT_SENDERS.lock();
+        event_senders.remove(&config.slot_idx);
     }
 
     let idx = config.slot_idx;
@@ -582,6 +744,11 @@ pub async fn stop_brain(slot_idx: usize) {
         eprintln!("[FUSION] Stopping brain: slot={}", slot_idx);
         cancel.cancel();
     }
+    // Also clean up log event sender channel for this slot
+    {
+        let mut event_senders = LOG_EVENT_SENDERS.lock();
+        event_senders.remove(&slot_idx);
+    }
 }
 
 /// Stop all fusion brains. Call on app shutdown.
@@ -590,5 +757,10 @@ pub async fn stop_all_brains() {
     for (slot_idx, (_, cancel)) in registry.drain() {
         eprintln!("[FUSION] Stopping brain: slot={}", slot_idx);
         cancel.cancel();
+    }
+    // Drain all log event channels too
+    {
+        let mut event_senders = LOG_EVENT_SENDERS.lock();
+        event_senders.clear();
     }
 }

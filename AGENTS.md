@@ -2,6 +2,64 @@
 
 This document tracks critical fixes, architectural decisions, and operational notes for the Blackwell-Ops codebase. It serves as a reference for future development sessions.
 
+---
+
+## 2. React StrictMode Duplicate Event Listeners (Fixed)
+
+**File:** `src/App.tsx`
+
+**Problem:**
+React StrictMode in dev mode causes `useEffect` to mount → unmount → remount. Tauri's `listen()` returns a **Promise**, so the local `unsub` variable is still `null` when cleanup runs on the first unmount — meaning listener #1 never gets removed and listener #2 registers alongside it. Result: every event fires twice, causing duplicate log lines in the UI.
+
+**Why previous attempts failed:**
+Using a local `let unsub = null;` inside `useEffect` means cleanup captures `null` because `.then()` hasn't resolved yet. The first listener leaks permanently.
+
+**Fix:**
+Declared 7 `useRef<(() => void) | null>` refs at component body level (not inside effects). Each effect stores its unsubscribe function in the ref via `.then()`, and cleanup calls `ref.current?.()`. A `cancelled` flag guards against stale handler invocations after unmount.
+
+```tsx
+// Component body — refs survive StrictMode mount/unmount/remount cycle
+const unsubEngineLogBatch = useRef<(() => void) | null>(null);
+
+// Inside useEffect
+useEffect(() => {
+  let cancelled = false;
+  listen("engine-log-batch", (e: any) => {
+    if (cancelled) return; // guard against stale calls
+    // ... handler
+  }).then((u) => { if (!cancelled) unsubEngineLogBatch.current = u; });
+
+  return () => { cancelled = true; unsubEngineLogBatch.current?.(); };
+}, []);
+```
+
+**Affected listeners:** `engine-log-batch`, `engine-system`, `slot-cleared`, `fusion-update`, `gguf-scan-progress`, `gguf-scan-complete`, `stack-changed`.
+
+---
+
+## 2b. Log Pipeline Cleanup (Done)
+
+**File:** `src-tauri/src/log_hub.rs`
+
+**What was removed:**
+- **`OutputCategory` enum** (~35 lines) — dead code, never imported externally. `BlackwellOutputConsoleCategory` from `output_console.rs` is the real type used everywhere.
+- **Fanout channel** (`fanout_tx`/`fanout_rx`) — created for a planned `PerfMonitor` feature that was never built. Every stderr line did an unnecessary String clone + channel send into an unused receiver. Removed entirely; `spawn_slot_reader` now returns `()` instead of the dead `mpsc::UnboundedReceiver<String>`.
+- **Noise suppression** (`is_poll_noise`) — filtered `"done request"` and `"update_slots: all slots are idle"` from batch buffer. Removed per user preference — no filtering, full pipeline transparency.
+- **`emit_sanity_log` method + 6 call sites** — emitted `"sanity-log"` event with zero frontend listeners. Replaced with `emit_console_line(category, text, style)` helper that routes to Blackwell Output Console (General/Error tabs).
+
+**What was added:**
+- `LogHub::emit_console_line()` — convenience wrapper around `blackwell_output_console_manager.emit_line_to_category()`. Usage: `log_hub.emit_console_line(BlackwellOutputConsoleCategory::General, &msg, BlackwellOutputConsoleLineStyle::Warning)`.
+
+**Pipeline after cleanup (lean):**
+```
+stderr pipe → spawn_blocking BufReader → mpsc channel → process_lines async loop
+                                      ↓
+                              readiness check / batch_buffer push / fusion parse / emit
+```
+
+**Batching:** Still disabled (`BATCH_INTERVAL_MS = 1`, `MAX_BATCH_SIZE = 1`) until LP performance metrics are finalized.
+
+---
 
 ## 3. Binary Update Feature Flag
 

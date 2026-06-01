@@ -237,7 +237,9 @@ impl ProviderTemplate {
             let vval = Self::resolve_param_value(config, vp);
             let vstr = vval.as_str().unwrap_or("").to_lowercase();
             if matches!(vstr.as_str(), "auto" | "on") {
-                if let Some(mmproj_name) = Self::scan_mmproj(&config.model_path) {
+                if let Some((mmproj_name, _)) = crate::model_catalog::find_largest_mmproj(
+                    std::path::Path::new(&config.model_path).parent().unwrap_or(std::path::Path::new(""))
+                ) {
                     args.extend(["--mmproj".into(), mmproj_name]);
                 }
             }
@@ -429,27 +431,10 @@ impl ProviderTemplate {
         }
     }
 
-    /// Scan model directory for mmproj companion file. Returns bare filename only.
-    fn scan_mmproj(model_path: &str) -> Option<String> {
-        let model_dir = PathBuf::from(model_path);
-        let parent = model_dir.parent()?;
-
-        let entries = std::fs::read_dir(parent).ok()?;
-        for entry in entries.flatten() {
-            let fname = entry.file_name();
-            let fname_lower = fname.to_string_lossy().to_lowercase();
-            if Self::matches_pattern(&fname_lower, "*mmproj*") {
-                return Some(fname.to_string_lossy().to_string());
-            }
-        }
-
-        None
-    }
-
     fn matches_pattern(filename: &str, pattern: &str) -> bool {
         let pat_lower = pattern.to_lowercase();
 
-        // Handle *mmproj* style patterns
+        // Handle glob-style wildcard patterns (e.g., "*.gguf", "*mmproj*")
         if pat_lower.contains('*') {
             let parts: Vec<&str> = pat_lower.split('*').collect();
             if parts.len() == 2 && parts[0].is_empty() && parts[1].is_empty() {

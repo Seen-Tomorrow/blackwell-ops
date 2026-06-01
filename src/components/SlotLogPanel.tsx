@@ -1,8 +1,8 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect, useRef, memo } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import type { StackEntry, LogEntry, FusionUpdate, BenchResult } from "../lib/types";
+import type { StackEntry, LogEntry, FusionUpdate } from "../lib/types";
 import AnsiText from "./AnsiText";
+import BenchWidget from "./BenchWidget";
 
 interface SlotLogPanelProps {
   entry: StackEntry;
@@ -31,41 +31,7 @@ function StatBlock({ label, value, highlight }: {
 
 export default memo(function SlotLogPanel({ entry, logs, systemEvents, fusionUpdate, n_ctx = 32768, onStop }: SlotLogPanelProps) {
   const logRef = useRef<HTMLDivElement>(null);
-
-  // Benchmark state
-  const [benchRunning, setBenchRunning] = useState(false);
-  const [benchResult, setBenchResult] = useState<BenchResult | null>(null);
-  const [benchExpanded, setBenchExpanded] = useState(false);
-  const benchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (benchResult && !benchRunning) {
-      // Keep benchmark results visible until user manually closes — no auto-close timer
-    }
-    return () => { if (benchTimerRef.current) clearTimeout(benchTimerRef.current); };
-  }, [benchResult, benchRunning]);
-
-  const runBench = async () => {
-    if (benchRunning || entry.status !== "RUNNING") return;
-    setBenchRunning(true);
-    setBenchResult(null);
-    setBenchExpanded(true);
-    try {
-      const res: BenchResult = await invoke("cmd_burst_bench", { port: entry.port, nPredict: 256 });
-      setBenchResult(res);
-    } catch (e) {
-      const errMsg = typeof e === "string" ? e : String(e);
-      setBenchResult({
-        prompt_tokens: 0, gen_tokens: 0,
-        prompt_tps_min: 0, prompt_tps_avg: 0, prompt_tps_max: 0,
-        gen_tps_min: 0, gen_tps_avg: 0, gen_tps_max: 0,
-        itl_ms_avg: 0, runs_count: 0, success: false, error: errMsg,
-      });
-    } finally {
-      setBenchRunning(false);
-    }
-  };
 
   // Auto-scroll only on mount or when system events change (not every log line)
   useEffect(() => {
@@ -156,20 +122,28 @@ export default memo(function SlotLogPanel({ entry, logs, systemEvents, fusionUpd
                 {displayPhase === "PP" ? "PROMPT PROCESSING" : "TOKEN GENERATION"}
               </span>
               <div className="flex items-center gap-3">
-                {/* Real-time progress bar during prompt processing */}
-                {fusionUpdate?.phase === "PP" && fusionUpdate.promptProgress != null && fusionUpdate.promptProgress > 0 && (
+                {/* LP_ prefill progress comparison (red) — from print_timing PP line */}
+                {fusionUpdate?.LP_prefillProgress != null && fusionUpdate.LP_prefillProgress > 0 && displayPhase === "PP" && (
                   <>
-                    <div className="w-16 h-1.5 bg-stealth-dark border border-stealth-border rounded-sm overflow-hidden">
+                    <div className="w-16 h-1.5 bg-stealth-dark border border-red-500/30 rounded-sm overflow-hidden">
                       <div
-                        className="h-full bg-telemetry-amber transition-all duration-100"
-                        style={{ width: `${fusionUpdate.promptProgress * 100}%` }}
+                        className="h-full bg-red-400 transition-all duration-100"
+                        style={{ width: `${fusionUpdate.LP_prefillProgress * 100}%` }}
                       />
                     </div>
-                    <span className="text-[8px] font-mono text-telemetry-amber">
-                      {(fusionUpdate.promptProgress * 100).toFixed(0)}%
+                    <span className="text-[8px] font-mono text-red-400">
+                      LP {(fusionUpdate.LP_prefillProgress * 100).toFixed(0)}%
                     </span>
                   </>
                 )}
+
+                {/* LP_ phase indicator */}
+                {fusionUpdate?.LP_phase && fusionUpdate.LP_phase !== "IDLE" && (
+                  <span className="text-[8px] font-mono text-red-400/70">
+                    LP:{fusionUpdate.LP_phase}
+                  </span>
+                )}
+
                 {fusionUpdate?.ttftMs != null && fusionUpdate.ttftMs > 0 && (
                   <span className="text-[9px] font-mono text-telemetry-amber">
                     TTFT: {fusionUpdate.ttftMs.toFixed(0)}ms
@@ -182,22 +156,9 @@ export default memo(function SlotLogPanel({ entry, logs, systemEvents, fusionUpd
       </AnimatePresence>
 
       {/* Engine stats */}
-      <div className="px-3 py-2 grid grid-cols-5 gap-2">
+      <div className="px-3 py-2 grid grid-cols-4 gap-2">
         <StatBlock label="PORT" value={`:${entry.port}`} />
         <StatBlock label="STATUS" value={entry.status} highlight={entry.status === "RUNNING"} />
-        
-        {/* Benchmark button */}
-        {entry.status === "RUNNING" && (
-          <div className="col-span-1 flex items-center">
-            <button
-              onClick={runBench}
-              disabled={benchRunning}
-              className="px-2 py-0.5 text-[9px] font-mono bg-nv-green/10 text-nv-green border border-nv-green/30 hover:bg-nv-green/20 transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed"
-            >
-              {benchRunning ? "RUNNING..." : "BENCH"}
-            </button>
-          </div>
-        )}
 
         {/* TPS display */}
         <div className="col-span-1 flex flex-col items-center justify-center">
@@ -209,77 +170,65 @@ export default memo(function SlotLogPanel({ entry, logs, systemEvents, fusionUpd
           ) : (
             <span className="text-lg font-mono text-stealth-muted">--</span>
           )}
+          {/* LP_ TPS comparison (red) */}
+          {(fusionUpdate?.LP_prefillTps != null && fusionUpdate.LP_prefillTps > 0 && displayPhase === "PP") && (
+            <span className="text-[10px] font-mono text-red-400 font-bold">
+              LP {fusionUpdate.LP_prefillTps.toFixed(0)}
+            </span>
+          )}
+          {(fusionUpdate?.LP_genTps != null && fusionUpdate.LP_genTps > 0) && (
+            <span className="text-[10px] font-mono text-red-400 font-bold">
+              LP {fusionUpdate.LP_genTps.toFixed(0)}
+            </span>
+          )}
         </div>
 
         {/* Tokens generated — fusion /slots is real-time source of truth */}
         <StatBlock label="TOKENS" value={(fusionUpdate?.genTokensPerRequestSlots ?? fusionUpdate?.genTokensPerSession ?? 0).toString()} />
       </div>
 
-      {/* Benchmark results — inline panel */}
-      <AnimatePresence>
-        {(benchRunning || benchResult) && benchExpanded && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.15 }}
-            className="border-t border-b border-nv-green/30 bg-nv-green/5 overflow-hidden"
-          >
-            <div className="flex items-center justify-between px-3 py-1">
-              <span className="text-[9px] font-mono text-yellow-400 tracking-wider">BENCHMARK</span>
-              <button
-                onClick={() => { setBenchExpanded(false); if (!benchRunning) setBenchResult(null); }}
-                className="text-[8px] font-mono text-stealth-muted hover:text-white transition-colors"
-              >
-                CLOSE
-              </button>
-            </div>
-            <div className="px-3 pb-2">
-              {benchRunning ? (
-                <div className="flex items-center gap-2">
-                  <span className="inline-block w-1.5 h-1.5 bg-yellow-400 rounded-full animate-pulse" />
-                  <span className="text-[9px] font-mono text-stealth-muted">RUNNING (warmup + 3 measured)...</span>
-                </div>
-              ) : benchResult ? (
-                benchResult.success ? (
-                  <div className="grid grid-cols-4 gap-x-5 gap-y-2">
-                    <div>
-                      <p className="text-[8px] font-mono text-stealth-muted uppercase tracking-wider">PREFILL</p>
-                      <p className="text-xs font-mono text-telemetry-amber">{benchResult.prompt_tps_avg.toFixed(1)} TPS</p>
-                      <p className="text-[8px] font-mono text-stealth-muted/60">min {benchResult.prompt_tps_min.toFixed(1)} / max {benchResult.prompt_tps_max.toFixed(1)}</p>
-                    </div>
-                    <div>
-                      <p className="text-[8px] font-mono text-stealth-muted uppercase tracking-wider">GENERATION</p>
-                      <p className="text-xs font-mono text-nv-green">{benchResult.gen_tps_avg.toFixed(1)} TPS</p>
-                      <p className="text-[8px] font-mono text-stealth-muted/60">min {benchResult.gen_tps_min.toFixed(1)} / max {benchResult.gen_tps_max.toFixed(1)}</p>
-                    </div>
-                    <div>
-                      <p className="text-[8px] font-mono text-stealth-muted uppercase tracking-wider">ITL</p>
-                      <p className="text-xs font-mono text-white">{benchResult.itl_ms_avg.toFixed(2)} ms</p>
-                    </div>
-                    <div>
-                      <p className="text-[8px] font-mono text-stealth-muted uppercase tracking-wider">TOKENS</p>
-                      <p className="text-xs font-mono text-white">{benchResult.prompt_tokens}P / {benchResult.gen_tokens}G</p>
-                      <p className="text-[8px] font-mono text-stealth-muted/60">{benchResult.runs_count} runs averaged</p>
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-[9px] font-mono text-red-400">FAILED: {benchResult.error || "unknown"}</p>
-                )
-              ) : null}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Benchmark controls — right-aligned bordered box */}
+      {entry.status === "RUNNING" && (
+        <div className="px-3 py-1 flex justify-end">
+          <BenchWidget port={entry.port} variant="expanded" />
+        </div>
+      )}
 
       {/* Secondary stats row */}
       {entry.status === "RUNNING" && fusionUpdate && (
         <div className="px-3 py-1 border-t border-stealth-border grid grid-cols-2 gap-2">
           <span className="text-[9px] font-mono text-stealth-muted">
-            PROMPT: {fusionUpdate.promptTokensPerRequest ?? 0} tok
+            GEN: {fusionUpdate.genTokensPerRequestSlots ?? 0} tok
           </span>
           <span className="text-[9px] font-mono text-stealth-muted">
-            GEN: {fusionUpdate.genTokensPerRequestSlots ?? 0} tok
+            SESSION: {fusionUpdate.genTokensPerSession ?? 0} tok
+          </span>
+        </div>
+      )}
+
+      {/* LP_ log-parsed metrics row (red) */}
+      {entry.status === "RUNNING" && fusionUpdate && (fusionUpdate.LP_promptTokens != null || fusionUpdate.LP_prefillTps != null) && (
+        <div className="px-3 py-1 border-t border-stealth-border/50 grid grid-cols-2 gap-2">
+          {fusionUpdate.LP_promptTokens != null && fusionUpdate.LP_promptTokens > 0 && (
+            <span className="text-[9px] font-mono text-red-400">
+              LP PROMPT: {fusionUpdate.LP_promptTokens} tok
+            </span>
+          )}
+          {fusionUpdate.LP_prefillTps != null && fusionUpdate.LP_prefillTps > 0 && (
+            <span className="text-[9px] font-mono text-red-400">
+              LP PP: {fusionUpdate.LP_prefillTps.toFixed(0)} t/s
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* LP_ reset source indicator — belt (green) vs suspenders (amber) */}
+      {entry.status === "RUNNING" && fusionUpdate?.LP_resetSource && (
+        <div className="px-3 py-0.5 border-t border-stealth-border/30">
+          <span className={`text-[8px] font-mono tracking-wider ${
+            fusionUpdate.LP_resetSource === 'prompt' ? 'text-nv-green/70' : 'text-telemetry-amber/70'
+          }`}>
+            LP RESET: {fusionUpdate.LP_resetSource === 'prompt' ? "BELT (NewPrompt)" : "SUSPENDERS (regression)"}
           </span>
         </div>
       )}

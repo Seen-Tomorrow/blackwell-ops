@@ -35,6 +35,16 @@ function App() {
   const autoScrollRef = useRef(true);
   const prevLogSlotsRef = useRef<Set<number>>(new Set());
 
+  // Unsubscribe refs for Tauri event listeners — survive StrictMode mount/unmount/remount cycle.
+  // Each ref holds the unsubscribe function from listen().then() so cleanup can call it reliably.
+  const unsubEngineLogBatch = useRef<(() => void) | null>(null);
+  const unsubEngineSystem = useRef<(() => void) | null>(null);
+  const unsubSlotCleared = useRef<(() => void) | null>(null);
+  const unsubFusionUpdate = useRef<(() => void) | null>(null);
+  const unsubGgufProgress = useRef<(() => void) | null>(null);
+  const unsubGgufComplete = useRef<(() => void) | null>(null);
+  const unsubStackChanged = useRef<(() => void) | null>(null);
+
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [providers, setProviders] = useState<ProviderConfig[]>([]);
   const [scanningPath, setScanningPath] = useState<string | null>(null);
@@ -209,9 +219,9 @@ function App() {
   }, []);
 
   useEffect(() => {
-    let unsub: (() => void) | null = null;
-    const cleanup = () => { if (unsub) unsub(); };
+    let cancelled = false;
     listen("engine-log-batch", (e: any) => {
+      if (cancelled) return;
       const payload = e.payload;
       if (payload && payload.slot !== undefined && payload.entries?.length > 0) {
         unstable_batchedUpdates(() => {
@@ -222,7 +232,6 @@ function App() {
               const existing = next.get(batch.slot) || [];
               const updated = [...existing, ...batch.entries].slice(-5000);
               next.set(batch.slot, updated);
-              // Auto-select new slot on first batch
               if (!prev.has(batch.slot)) {
                 setActiveLogSlot(batch.slot);
               }
@@ -231,19 +240,18 @@ function App() {
           } catch {}
         });
       }
-    }).then((u) => { unsub = u; });
+    }).then((u) => { if (!cancelled) unsubEngineLogBatch.current = u; });
 
-    return cleanup;
+    return () => { cancelled = true; unsubEngineLogBatch.current?.(); };
   }, []);
 
   useEffect(() => {
-    let unsub: (() => void) | null = null;
-    const cleanup = () => { if (unsub) unsub(); };
+    let cancelled = false;
     listen("engine-system", (e: any) => {
+      if (cancelled) return;
       const payload = e.payload as SystemEvent;
       try {
         if (payload && payload.slot !== undefined && payload.text) {
-          // Strip ANSI codes before checking prefix — ConPTY may inject them anywhere
           const cleanText = payload.text.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "").replace(/\[[0-9;]+[A-Za-z]/g, "");
           if (cleanText.includes("LAUNCH_ERROR:")) {
             const reason = cleanText.split("LAUNCH_ERROR:").slice(1).join(":").trim();
@@ -262,15 +270,15 @@ function App() {
           });
         }
       } catch {}
-    }).then((u) => { unsub = u; });
+    }).then((u) => { if (!cancelled) unsubEngineSystem.current = u; });
 
-    return cleanup;
+    return () => { cancelled = true; unsubEngineSystem.current?.(); };
   }, []);
 
   useEffect(() => {
-    let unsub: (() => void) | null = null;
-    const cleanup = () => { if (unsub) unsub(); };
+    let cancelled = false;
     listen("slot-cleared", (e: any) => {
+      if (cancelled) return;
       const payload = e.payload as { slot: number };
       unstable_batchedUpdates(() => {
         try {
@@ -285,21 +293,20 @@ function App() {
               next.delete(payload.slot);
               return next;
             });
-            // Reset active tab if cleared slot was selected
             setActiveLogSlot((prev) => (prev === payload.slot ? "all" : prev));
           }
         } catch {}
       });
-    }).then((u) => { unsub = u; });
+    }).then((u) => { if (!cancelled) unsubSlotCleared.current = u; });
 
-    return cleanup;
+    return () => { cancelled = true; unsubSlotCleared.current?.(); };
   }, []);
 
   // Fusion real-time /slots poller data — source of truth for TG TPS
   useEffect(() => {
-    let unsub: (() => void) | null = null;
-    const cleanup = () => { if (unsub) unsub(); };
+    let cancelled = false;
     listen("fusion-update", (e: any) => {
+      if (cancelled) return;
       const payload = e.payload as FusionUpdate;
       try {
         if (payload && payload.slotIdx !== undefined) {
@@ -310,49 +317,44 @@ function App() {
           });
         }
       } catch {}
-    }).then((u) => { unsub = u; });
+    }).then((u) => { if (!cancelled) unsubFusionUpdate.current = u; });
 
-    return cleanup;
+    return () => { cancelled = true; unsubFusionUpdate.current?.(); };
   }, []);
 
   useEffect(() => {
-    let unsubProgress: (() => void) | null = null;
-    let unsubComplete: (() => void) | null = null;
+    let cancelled = false;
 
     listen("gguf-scan-progress", (e: any) => {
+      if (cancelled) return;
       const p = e.payload as { scanned: number; failed: number };
       setBatchScanState(s => ({ ...s, scanned: p.scanned, failed: p.failed }));
-    }).then(u => { unsubProgress = u; });
+    }).then((u) => { if (!cancelled) unsubGgufProgress.current = u; });
 
     listen("gguf-scan-complete", (e: any) => {
+      if (cancelled) return;
       const p = e.payload as { scanned: number; failed: number };
       setBatchScanState(s => ({ ...s, active: false, scanned: p.scanned, failed: p.failed }));
-      // Reload models after scan completes
       invoke("list_models").then(data => setModels(data as ModelEntry[])).catch(() => {});
-    }).then(u => { unsubComplete = u; });
+    }).then((u) => { if (!cancelled) unsubGgufComplete.current = u; });
 
-    return () => {
-      unsubProgress?.();
-      unsubComplete?.();
-    };
+    return () => { cancelled = true; unsubGgufProgress.current?.(); unsubGgufComplete.current?.(); };
   }, []);
 
   useEffect(() => {
     // Push-based stack updates — Rust emits "stack-changed" on every status transition.
-    // No polling needed: launch, readiness (LOADING→RUNNING), and stop all emit instantly.
-    let unsub: (() => void) | null = null;
-    const cleanup = () => { if (unsub) unsub(); };
+    let cancelled = false;
 
     listen("stack-changed", (e: any) => {
+      if (cancelled) return;
       setStack(e.payload as StackEntry[]);
-    }).then((u) => { unsub = u; });
+    }).then((u) => { if (!cancelled) unsubStackChanged.current = u; });
 
-    // Initial load — fetch current state on mount
     invoke<StackEntry[]>("get_stack_status")
       .then(data => setStack(data))
       .catch(() => {});
 
-    return cleanup;
+    return () => { cancelled = true; unsubStackChanged.current?.(); };
   }, []);
 
   const handleLaunchEngine = useCallback(
@@ -430,7 +432,7 @@ function App() {
     for (const [slot, entries] of logs.entries()) {
       const len = entries.length;
       // Only recompute slice+map when entry count changed by 10+ — avoids expensive allocation on every log append.
-      if (logsLengthsRef.current[slot] !== undefined && Math.abs(len - logsLengthsRef.current[slot]) < 10) {
+      if (logsLengthsRef.current[slot] !== undefined && Math.abs(len - logsLengthsRef.current[slot]) < 1) {
         result.set(slot, flatLogsRef.current.get(slot) || []);
       } else {
         const sliced = entries.slice(-500).map((e) => ({ text: e.text, alias: e.alias }));
@@ -524,7 +526,7 @@ function App() {
             </div>
             <div
               ref={logsScrollRef}
-              className="flex-1 overflow-y-auto bg-stealth-panel border border-stealth-border rounded-sm p-3 min-h-0"
+              className="flex-1 overflow-x-hidden overflow-y-auto bg-stealth-panel border border-stealth-border rounded-sm p-3 min-h-0"
               onScroll={handleLogsScroll}
             >
               {logs.size === 0 ? (
@@ -550,7 +552,7 @@ function App() {
                         )}
                         <div key={`e-${slot}`} className="space-y-0.5">
                           {entries.map((entry, i) => (
-                            <p key={i} className="text-[10px] font-mono text-stealth-muted leading-relaxed whitespace-nowrap overflow-x-auto">
+                            <p key={i} className="text-[10px] font-mono text-stealth-muted leading-relaxed break-all">
                               {activeLogSlot === "all" && <span className="text-nv-green/60">[{entry.alias}] </span>}
                               <AnsiText text={entry.text} />
                             </p>

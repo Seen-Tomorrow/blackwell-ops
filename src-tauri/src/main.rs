@@ -14,6 +14,7 @@ mod nvml_probe;
 mod fit_scanner;
 mod mobile_bridge;
 mod burst_bench;
+mod bench_pp_burst;
 mod gguf_scan;
 mod model_cache;
 mod download_manager;
@@ -467,6 +468,7 @@ async fn main() {
             engine::cancel_gguf_scan_cmd,
             engine::clear_model_cache_cmd,
             burst_bench::cmd_burst_bench,
+            bench_pp_burst::cmd_bench_pp_burst,
             // Mobile Sentinel Bridge commands (always active)
             mobile_bridge::cmd_mobile_bridge_start,
             mobile_bridge::cmd_mobile_bridge_stop,

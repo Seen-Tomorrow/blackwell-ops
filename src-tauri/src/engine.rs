@@ -11,7 +11,7 @@ use crate::engine_stack::SlotStatus;
 use crate::config::AppConfig;
 use crate::engine_stack::EngineStack;
 use crate::log_hub::LogHub;
-use crate::output_console::BlackwellOutputConsoleManager;
+use crate::output_console::{BlackwellOutputConsoleCategory, BlackwellOutputConsoleLineStyle, BlackwellOutputConsoleManager};
 use crate::types::{EngineConfig, ModelEntry, ModelMetadata};
 use crate::types::StackEntry;
 
@@ -107,8 +107,7 @@ pub async fn launch_engine(
 
     let gpu_mask_msg = format!("[GPU_MASK] provider={} split_mode=\"{}\" test_has_split={} -> CUDA_VISIBLE_DEVICES={}", backend_type, config.get_param_str("split").unwrap_or_default(), test_has_split, gpu_mask);
     eprintln!("{}", gpu_mask_msg);
-    // SANITY-BOX — route GPU mask info to sanity box
-   app.log_hub.emit_sanity_log("warn", &gpu_mask_msg);
+    app.log_hub.emit_console_line(BlackwellOutputConsoleCategory::General, &gpu_mask_msg, BlackwellOutputConsoleLineStyle::Warning);
 
     crate::config::validate_provider_binary(binary_path.to_str().unwrap_or(""))?;
     crate::config::validate_model_path(&config.model_path)?;
@@ -165,8 +164,6 @@ pub async fn launch_engine(
     eprintln!("\n========== [LAUNCH_CMD] slot={} ==========", slot_idx);
     eprintln!("{}", launch_cmd);
     eprintln!("==========================================\n");
-    // SANITY-BOX — route launch command to sanity box
-    app.log_hub.emit_sanity_log("warn", &format!("[LAUNCH_CMD] slot={}: {}", slot_idx, launch_cmd));
 
     let log_path = std::env::temp_dir().join("blackwell-launch.log");
     match std::fs::OpenOptions::new().create(true).append(true).open(&log_path) {
@@ -536,7 +533,7 @@ pub async fn open_folder_dialog(title: Option<String>) -> Result<Option<String>,
 pub async fn fit_scan_model(
     model_path: String,
     _provider_id: Option<String>,
-    ctx_size: String,
+    ctx_size: serde_json::Value,
     kv_quant: String,
     device: String,
     split_mode: String,
@@ -558,8 +555,11 @@ pub async fn fit_scan_model(
     let fit_binary = fit_scanner::find_fit_binary(binary_path.to_str().unwrap_or(""))
         .ok_or_else(|| "llama-fit-params.exe not found — ensure provider is built".to_string())?;
 
-    // Parse context size to integer tokens
-    let ctx_int = ctx_size.parse::<usize>().unwrap_or(32768);
+    // Resolve ctx — slider sends raw number, legacy string ("32k") still handled
+    let ctx_int: usize = match &ctx_size {
+        serde_json::Value::Number(n) => n.as_u64().map(|v| v as usize).unwrap_or(32768),
+        _ => ctx_size.to_string().parse::<usize>().unwrap_or(32768), // fallback for old "32k" format — will fail parse, default kicks in
+    };
 
     // Derive GPU mask from device + split_mode — same logic as launch_engine
     let gpu_count = detect_gpu_count();
@@ -569,14 +569,13 @@ pub async fn fit_scan_model(
     let args = fit_scanner::build_fit_command(
         &model_path, ctx_int, &kv_quant, batch, _ubatch, parallel, &split_mode,
     );
-    // SANITY-BOX — route FIT scan result to sanity box
     let fit_result = fit_scanner::scan_single_anchor(&fit_binary, &args, &gpu_mask).await;
     match &fit_result {
         Ok(raw) => {
-            app.log_hub.emit_sanity_log("warn", &format!("[FIT] {} -> {:.1} MiB", model_path, raw.vram_mib));
+            app.log_hub.emit_console_line(BlackwellOutputConsoleCategory::General, &format!("[FIT] {} -> {:.1} MiB", model_path, raw.vram_mib), BlackwellOutputConsoleLineStyle::Normal);
         }
         Err(e) => {
-            app.log_hub.emit_sanity_log("error", &format!("[FIT] {} failed: {}", model_path, e));
+            app.log_hub.emit_console_line(BlackwellOutputConsoleCategory::Error, &format!("[FIT] {} failed: {}", model_path, e), BlackwellOutputConsoleLineStyle::Error);
         }
     }
     let raw = fit_result?;
@@ -973,13 +972,13 @@ fn handle_scan_result_with_sanity(
         Ok(Err(e)) => {
             let msg = format!("[SCAN] {} failed: {}", path, e);
             log::warn!("{}", msg);
-            log_hub.emit_sanity_log("error", &msg);
+            log_hub.emit_console_line(BlackwellOutputConsoleCategory::Error, &msg, BlackwellOutputConsoleLineStyle::Error);
             *failed += 1;
         }
         Err(e) => {
             let msg = format!("[SCAN] {} task panicked: {}", path, e);
             log::warn!("{}", msg);
-            log_hub.emit_sanity_log("error", &msg);
+            log_hub.emit_console_line(BlackwellOutputConsoleCategory::Error, &msg, BlackwellOutputConsoleLineStyle::Error);
             *failed += 1;
         }
     }

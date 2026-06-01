@@ -196,8 +196,11 @@ export interface StartupUpdateStatus {
   binaryUpdates: ProviderBinaryUpdates[];
 }
 
-/** Burst benchmark result from cmd_burst_bench IPC command. */
-export interface BenchResult {
+/** Prompt mode for benchmark generation — unique vocabulary or repetitive pattern. */
+export type bench_PromptMode = "unique" | "repetitive";
+
+/** TG (generation) burst benchmark result from cmd_burst_bench IPC command. */
+export interface bench_TGBenchResult {
   prompt_tokens: number;
   gen_tokens: number;
   prompt_tps_min: number;
@@ -208,6 +211,17 @@ export interface BenchResult {
   gen_tps_max: number;
   itl_ms_avg: number;
   runs_count: number;
+  success: boolean;
+  error?: string;
+}
+
+/** PP (prefill) burst benchmark result from cmd_bench_pp_burst IPC command. */
+export interface bench_PPBurstResult {
+  bench_prefill_tps_min: number;
+  bench_prefill_tps_avg: number;
+  bench_prefill_tps_max: number;
+  bench_prompt_tokens_actual: number;
+  bench_runs_count: number;
   success: boolean;
   error?: string;
 }
@@ -273,10 +287,6 @@ export interface FusionUpdate {
   // Phase — fused from both sources
   phase: 'IDLE' | 'PP' | 'TG';
 
-  // Prompt processing metrics (from /metrics)
-  promptProgress?: number;
-  promptTokensPerRequest?: number;
-
   // Prefill metrics (primary source = /metrics)
   prefillTpsMetrics: number;   // from /metrics prompt_tokens delta
   prefillTpsSlots: number;     // from /slots (0.0 during PP — not available)
@@ -307,6 +317,25 @@ export interface FusionUpdate {
   // Engine config flags
   parallel: number;
   unified_kv: boolean;
+
+  // ── Log-parsed values (stderr print_timing lines — red in UI for comparison) ──
+  /** Exact prefill progress 0→1 from "prompt processing, progress = X.XX" */
+  LP_prefillProgress?: number;
+
+  /** Instantaneous PP tokens/s during prompt processing (engine's own calculation from log) */
+  LP_prefillTps?: number;
+
+  /** n_tokens processed so far in current PP request (from print_timing line) */
+  LP_promptTokens?: number;
+
+  /** tg = X t/s from generation print_timing line (may be delayed vs /slots real-time) */
+  LP_genTps?: number;
+
+  /** Phase derived purely from log events (PP→TG via sampler_init, IDLE via stop_processing) */
+  LP_phase?: 'IDLE' | 'PP' | 'TG';
+
+  /** Reset source indicator — "prompt" if NewPrompt caught request start (belt), "regression" if fallback detected (suspenders). Flashes for visual feedback then clears on next PP line. */
+  LP_resetSource?: "prompt" | "regression";
 }
 
 export interface VramFitResult {
