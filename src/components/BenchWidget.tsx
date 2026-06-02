@@ -208,19 +208,19 @@ export default function BenchWidget({ port, variant = "compact" }: BenchWidgetPr
                 <div className="grid grid-cols-4 gap-x-2 gap-y-0.5 px-1 py-0.5">
                   <div>
                     <p className="text-[6px] font-mono text-stealth-muted uppercase tracking-wider">PREFILL</p>
-                    <p className="text-[9px] font-mono text-telemetry-amber">{ps.tgResult.prompt_tps.toFixed(1)} TPS</p>
+                    <p className="text-xl font-mono text-telemetry-amber">{ps.tgResult.prompt_tps.toFixed(1)}</p>
                   </div>
                   <div>
                     <p className="text-[6px] font-mono text-stealth-muted uppercase tracking-wider">GENERATION</p>
-                    <p className="text-[9px] font-mono text-nv-green">{ps.tgResult.gen_tps.toFixed(1)} TPS</p>
+                    <p className="text-xl font-mono text-nv-green">{ps.tgResult.gen_tps.toFixed(1)}</p>
                   </div>
                   <div>
                     <p className="text-[6px] font-mono text-stealth-muted uppercase tracking-wider">ITL</p>
-                    <p className="text-[9px] font-mono text-white">{ps.tgResult.itl_ms.toFixed(2)} ms</p>
+                    <p className="text-sm font-mono text-black">{ps.tgResult.itl_ms.toFixed(2)} ms</p>
                   </div>
                   <div>
-                    <p className="text-[6px] font-mono text-stealth-muted uppercase tracking-wider">TOKENS</p>
-                    <p className="text-[9px] font-mono text-white">{ps.tgResult.prompt_tokens}P / {ps.tgResult.gen_tokens}G</p>
+                    <p className="text-[6px] font-mono text-stealth-muted uppercase tracking-wider">REQUEST LENGTH</p>
+                    <p className="text-sm font-mono text-black">{ps.tgResult.gen_tokens} Generated</p>
                   </div>
                 </div>
               ) : (

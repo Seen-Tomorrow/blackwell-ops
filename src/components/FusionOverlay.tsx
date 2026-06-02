@@ -145,8 +145,8 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
         >
           {/* ═══ HEADER — alias + phase indicator + controls ═══════ */}
           <div className="flex items-center justify-between flex-shrink-0 mb-1">
-            <span className="text-[14px] font-mono text-stealth-muted/50 tracking-wider truncate" title={displayAlias}>
-              {displayAlias.toUpperCase()}
+            <span className="text-[9px] font-mono text-stealth-muted/40 tracking-widest">
+              CONTEXT SLOTS
             </span>
             {/* Phase indicator — alternating between values, fixed position */}
             <div className="flex items-center gap-2">
@@ -167,6 +167,9 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
               )}
             </div>
             <div className="flex items-center gap-2">
+              <span className="text-[14px] font-mono text-stealth-muted/50 tracking-wider truncate" title={displayAlias}>
+                {displayAlias.toUpperCase()}
+              </span>
               <span className="text-[12px] font-mono text-stealth-muted/30">:{displayPort}</span>
               <button
                 onClick={handleStopEngine}
@@ -181,7 +184,7 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
           <div className="flex gap-2 flex-1 min-h-0" style={{ alignItems: 'stretch' }}>
 
             {/* ── LEFT: Slot CTX bars (side-by-side, full height) ─── */}
-            <div className="flex-shrink-0" style={{ width: (fusion.unified_kv || fusion.parallel === 1) ? '8%' : '15%', minWidth: (fusion.unified_kv || fusion.parallel === 1) ? 48 : 90 }}>
+            <div className="flex-shrink-0" style={{ width: (fusion.unified_kv || fusion.parallel === 1) ? '12%' : '18%', minWidth: (fusion.unified_kv || fusion.parallel === 1) ? 64 : 110 }}>
               <SlotCtxBars
                 slotCtx={fusion.slotCtx}
                 ctxTotal={ctxTotal}
@@ -288,14 +291,7 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
             </div>
           </div>
 
-          {/* ═══ FOOTER — mode indicator only (LP:TG and BELT removed) ═══ */}
-          <div className="flex items-center justify-between mt-1 flex-shrink-0">
-            <span className={`text-[6px] font-mono tracking-wider ${fusion.unified_kv ? "text-nv-green/70" : "text-stealth-muted/30"}`}>
-              {fusion.unified_kv ? "KV-UNIFIED active" : `×${fusion.parallel} KV slots active`}
-            </span>
-          </div>
-
-          {/* ═══ BENCH WIDGET — compact, below footer ══════════════ */}
+          {/* ═══ BENCH WIDGET — compact ══════════════ */}
           <div className="flex-shrink-0 mt-1">
             {fusion.engine_state !== "LOADING" && (
               <BenchWidget port={displayPort} variant="compact" />
