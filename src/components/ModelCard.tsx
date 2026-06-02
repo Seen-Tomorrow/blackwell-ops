@@ -18,8 +18,9 @@ export default function ModelCard({ model, idx, isSelected, isHighlighted, fitSt
   const isNvfp = model.quant.toLowerCase().includes("nvfp");
   const isScanning = scanningPath === model.path;
 
-  // Build params label
-  let paramsLabel = "";
+  // Build params label + architecture badge
+  let paramsNum = "";
+  let archBadge = "";
   if (hasMetadata) {
     const rawTotal = model.metadata.modelTypeLabel || model.metadata.total_params_str;
     const numPart = parseFloat(rawTotal.replace(/[^0-9.]/g, ""));
@@ -27,16 +28,11 @@ export default function ModelCard({ model, idx, isSelected, isHighlighted, fitSt
     const suffix = suffixMatch ? suffixMatch[1].toUpperCase() : "B";
     if (!isNaN(numPart)) {
       const rounded = Math.round(numPart);
+      paramsNum = `${rounded}${suffix}`;
       if (model.metadata.n_expert_used > 0) {
-        const activeMatch = model.name.match(/A(\d+)B/i);
-        const activeBillions = activeMatch ? parseInt(activeMatch[1]) : null;
-        if (activeBillions) {
-          paramsLabel = `MOE ${rounded}${suffix} total ${activeBillions} active`;
-        } else {
-          paramsLabel = `MOE ${rounded}${suffix} total ${model.metadata.n_expert_used} active`;
-        }
+        archBadge = "MOE";
       } else {
-        paramsLabel = `${rounded}${suffix} dense`;
+        archBadge = "DENSE";
       }
     }
   }
@@ -81,15 +77,29 @@ export default function ModelCard({ model, idx, isSelected, isHighlighted, fitSt
           </span>
           <div className="flex items-center gap-1.5">
             <span className="text-[8px] font-mono text-stealth-muted">{model.size_str}</span>
-            <span className={`text-[7px] font-mono tracking-wider ${fitStatus.colorClass}`}>● {fitStatus.label}</span>
+            <span className="text-[7px] font-mono text-white/60">
+              {model.metadata?.file_created ? new Date(model.metadata.file_created * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' }) : '--'}
+            </span>
           </div>
         </div>
       </div>
 
-      {/* Params label */}
-      {paramsLabel && (
-        <div className="text-[8px] font-mono text-white mt-0.5">{paramsLabel}</div>
-      )}
+       {/* Params + arch badges row */}
+       {(paramsNum || (model.metadata?.nextn_predict_layers ?? 0 > 0)) && (
+         <div className="flex items-center gap-1.5 mt-0.5">
+           {paramsNum && (
+             <>
+               <span className="text-[8px] font-mono text-white">{paramsNum}</span>
+               {archBadge && (
+                 <span className="text-[7px] font-mono bg-black text-white/70 px-1 py-0.5 rounded-sm">{archBadge}</span>
+               )}
+             </>
+           )}
+            {(model.metadata?.nextn_predict_layers ?? 0) > 0 && (
+              <span className="text-[7px] font-mono bg-black text-white/70 px-1 py-0.5 rounded-sm">MTP</span>
+            )}
+         </div>
+       )}
 
       {/* Metadata row or scan button */}
       {hasMetadata ? (

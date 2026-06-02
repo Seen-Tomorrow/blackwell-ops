@@ -187,10 +187,10 @@ export default memo(function SlotLogPanel({ entry, logs, systemEvents, fusionUpd
         <StatBlock label="TOKENS" value={(fusionUpdate?.genTokensPerRequestSlots ?? fusionUpdate?.genTokensPerSession ?? 0).toString()} />
       </div>
 
-      {/* Benchmark controls — right-aligned bordered box */}
+      {/* Benchmark controls — full width */}
       {entry.status === "RUNNING" && (
-        <div className="px-3 py-1 flex justify-end">
-          <BenchWidget port={entry.port} variant="expanded" />
+        <div className="px-3 py-1">
+          <BenchWidget port={entry.port} />
         </div>
       )}
 

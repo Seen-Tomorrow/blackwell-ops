@@ -816,9 +816,9 @@ html, body, #root {
   left: 0;
   top: 4px;
   bottom: 4px;
-  width: 2px;
+  width: 4px;
   background: #b87a00;
-  border-radius: 1px;
+  border-radius: 2px;
 }
 
 /* Selected model card text — keep readable on dark bg */

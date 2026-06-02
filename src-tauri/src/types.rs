@@ -46,7 +46,7 @@ impl EngineConfig {
 
 /// CLI flags injected into short-lived diagnostic spawns (fit scanner, GGUF scan).
 /// NOT applied to long-running engine servers — those should stay quiet under load.
-pub const LLAMA_DIAGNOSTIC_FLAGS: &[&str] = &["--verbose"];
+pub const LLAMA_DIAGNOSTIC_FLAGS: &[&str] = &["-lv", "4"];
 
 /// HF API metadata persisted at download time — never changes, survives API outages.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -191,6 +191,9 @@ pub struct ModelMetadata {
     /// Windows file creation time (Unix timestamp) — used for "date added" sorting
     #[serde(default, rename = "file_created")]
     pub file_created: u64,
+    /// Number of nextn prediction layers (>0 means MTP model)
+    #[serde(default, rename = "nextn_predict_layers")]
+    pub nextn_predict_layers: u32,
 }
 
 /// Internal representation used during catalog scanning (before dedup).

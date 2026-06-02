@@ -206,11 +206,7 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
 
                 {/* Big TG number — the hero metric */}
                 <div className="flex items-baseline gap-1">
-                  <motion.span
-                    key={fusion.genTpsSlots}
-                    initial={{ opacity: 0.7, scale: 0.98 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ duration: 0.2 }}
+                  <span
                     className="font-mono font-bold tracking-tight leading-none"
                     style={{
                       fontSize: 'clamp(2rem, 6vh, 3.5rem)',
@@ -218,7 +214,7 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
                     }}
                   >
                     {fusion.genTpsSlots > 0 ? fusion.genTpsSlots.toFixed(1) : "--"}
-                  </motion.span>
+                  </span>
                   <span className="text-[7px] font-mono text-stealth-muted/30 tracking-wider">tok/s</span>
                 </div>
 
@@ -249,11 +245,7 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
 
                 {/* PP TPS number — primary value from log parser, fallback to /metrics */}
                 <div className="flex items-baseline gap-1">
-                  <motion.span
-                    key={ppTpsValue}
-                    initial={{ opacity: 0.7, scale: 0.98 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ duration: 0.2 }}
+                  <span
                     className="font-mono font-bold tracking-tight leading-none"
                     style={{
                       fontSize: 'clamp(1.5rem, 4vh, 2.5rem)',
@@ -261,7 +253,7 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
                     }}
                   >
                     {ppTpsValue}
-                  </motion.span>
+                  </span>
                   <span className="text-[7px] font-mono text-stealth-muted/30 tracking-wider">tok/s</span>
                 </div>
 
@@ -294,7 +286,7 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
           {/* ═══ BENCH WIDGET — compact ══════════════ */}
           <div className="flex-shrink-0 mt-1">
             {fusion.engine_state !== "LOADING" && (
-              <BenchWidget port={displayPort} variant="compact" />
+              <BenchWidget port={displayPort} />
             )}
           </div>
         </motion.div>

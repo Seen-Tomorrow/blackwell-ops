@@ -51,9 +51,9 @@ export default function SlotCtxBars({ slotCtx, ctxTotal, parallel, unifiedKv }: 
       {/* Vertical UNIFIED indicator — only when unified KV mode */}
       {unifiedKv && (
         <div className="flex flex-col items-center justify-center bg-black rounded-sm mr-0.5 flex-shrink-0" style={{ width: 16 }}>
-          {['U','N','I','F','I','E','D'].map((c, i) => <span key={`a${i}`} className="text-[7px] font-mono text-nv-green leading-tight">{c}</span>)}
+          {['U','N','I','F','I','E','D'].map((c, i) => <span key={`a${i}`} className="text-[7px] font-mono text-white/70 leading-tight">{c}</span>)}
           <span className="h-1" />
-          {['K','V'].map((c, i) => <span key={`b${i}`} className="text-[7px] font-mono text-nv-green leading-tight">{c}</span>)}
+          {['K','V'].map((c, i) => <span key={`b${i}`} className="text-[7px] font-mono text-white/70 leading-tight">{c}</span>)}
         </div>
       )}
 

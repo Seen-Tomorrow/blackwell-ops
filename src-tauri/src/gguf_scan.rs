@@ -123,6 +123,7 @@ pub fn scan_model_metadata(model_path: &str, binary_path: &str) -> Result<ModelM
             .ok()
             .map(|t| t.duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs())
             .unwrap_or(0),
+        nextn_predict_layers: 0,
     };
 
     for line in lines {
@@ -217,6 +218,9 @@ fn parse_kv_line(line: &str, m: &mut ModelMetadata) {
         }
         _ if key.ends_with(".rope.scaling.type") => {
             m.rope_scaling_type = value_str.clone();
+        }
+        _ if key.ends_with(".nextn_predict_layers") => {
+            parse_u32(&value_str, &mut m.nextn_predict_layers);
         }
         "tokenizer.ggml.model" => {
             m.tokenizer_model = value_str.clone();

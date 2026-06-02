@@ -18,7 +18,7 @@ import { TelemetryProvider } from "./context/TelemetryContext";
 import { ToastProvider } from "./components/Toast";
 import { FoundryProvider } from "./hooks/useBuildDock";
 import { KEYS, STORAGE_PREFIX } from "./lib/storage";
-import type { ModelEntry, StackEntry, LogBatch, LogEntry, SystemEvent, ProviderConfig, FusionUpdate, AppUpdateInfo } from "./lib/types";
+import type { ModelEntry, StackEntry, LogBatch, LogEntry, SystemEvent, ProviderConfig, AppUpdateInfo } from "./lib/types";
 
 export type Tab = "catalog" | "modelhub" | "stack" | "reactor11" | "telemetry" | "logs" | "config" | "sentinel";
 
@@ -28,7 +28,7 @@ function App() {
   const [stack, setStack] = useState<StackEntry[]>([]);
   const [logs, setLogs] = useState<Map<number, LogEntry[]>>(new Map());
   const [systemEvents, setSystemEvents] = useState<Map<number, Array<{ text: string; timestamp: string }>>>(new Map());
-  const [fusionUpdates, setFusionUpdates] = useState<Map<number, FusionUpdate>>(new Map());
+  // fusionUpdates removed — managed by useFusionData hook (single listener)
 
   const [activeLogSlot, setActiveLogSlot] = useState<number | "all">("all");
   const logsScrollRef = useRef<HTMLDivElement>(null);
@@ -40,7 +40,8 @@ function App() {
   const unsubEngineLogBatch = useRef<(() => void) | null>(null);
   const unsubEngineSystem = useRef<(() => void) | null>(null);
   const unsubSlotCleared = useRef<(() => void) | null>(null);
-  const unsubFusionUpdate = useRef<(() => void) | null>(null);
+
+  // unsubFusionUpdate removed — listener moved to useFusionData hook
   const unsubGgufProgress = useRef<(() => void) | null>(null);
   const unsubGgufComplete = useRef<(() => void) | null>(null);
   const unsubStackChanged = useRef<(() => void) | null>(null);
@@ -302,25 +303,7 @@ function App() {
     return () => { cancelled = true; unsubSlotCleared.current?.(); };
   }, []);
 
-  // Fusion real-time /slots poller data — source of truth for TG TPS
-  useEffect(() => {
-    let cancelled = false;
-    listen("fusion-update", (e: any) => {
-      if (cancelled) return;
-      const payload = e.payload as FusionUpdate;
-      try {
-        if (payload && payload.slotIdx !== undefined) {
-          setFusionUpdates((prev) => {
-            const next = new Map(prev);
-            next.set(payload.slotIdx, payload);
-            return next;
-          });
-        }
-      } catch {}
-    }).then((u) => { if (!cancelled) unsubFusionUpdate.current = u; });
-
-    return () => { cancelled = true; unsubFusionUpdate.current?.(); };
-  }, []);
+  // Fusion data is now managed by useFusionData hook in StackView/VramBadge — single listener, no duplication.
 
   useEffect(() => {
     let cancelled = false;
@@ -466,7 +449,7 @@ function App() {
         {activeTab === "modelhub" && <ModelHub />}
         {activeTab === "config" && <ConfigPage providers={providers} />}
         {activeTab === "stack" && (
-          <StackView stack={stack} logs={logs} systemEvents={systemEvents} fusionUpdates={fusionUpdates} onStop={handleStopEngine} onStopAll={handleStopAll} />
+          <StackView stack={stack} logs={logs} systemEvents={systemEvents} onStop={handleStopEngine} onStopAll={handleStopAll} />
         )}
         {activeTab === "reactor11" && (
           <Reactor11 models={models} />

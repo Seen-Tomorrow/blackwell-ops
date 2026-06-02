@@ -66,6 +66,7 @@ export interface ModelMetadata {
   file_size_bytes: number;
   scan_timestamp: number;
   file_created?: number;
+  nextn_predict_layers?: number;
 }
 
 export interface EngineConfig {

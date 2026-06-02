@@ -4,7 +4,6 @@ import type { bench_TGBenchResult, bench_PPBurstResult, bench_PromptMode } from 
 
 interface BenchWidgetProps {
   port: number;
-  variant?: "compact" | "expanded";
 }
 
 const TG_PREDICT_OPTIONS = [256, 512, 1024, 4096];
@@ -42,19 +41,16 @@ function defaultBenchState(): BenchPortState {
 // Per-port bench state — survives engine switches without remounting
 const portStates = new Map<number, BenchPortState>();
 
-export default function BenchWidget({ port, variant = "compact" }: BenchWidgetProps) {
-  // Get or create state for this port
+export default function BenchWidget({ port }: BenchWidgetProps) {
   let ps = portStates.get(port);
   if (!ps) {
     ps = defaultBenchState();
     portStates.set(port, ps);
   }
 
-  // Force re-render when bench state changes
   const [, setTick] = useState(0);
   const tick = () => setTick(t => t + 1);
 
-  // ── TG Bench handler ────────────────────────────
   const runBenchTg = async () => {
     if (ps.tgRunning || !port) return;
     ps.tgRunning = true;
@@ -81,7 +77,6 @@ export default function BenchWidget({ port, variant = "compact" }: BenchWidgetPr
     }
   };
 
-  // ── PP Burst handler ────────────────────────────
   const runBenchPp = async () => {
     if (ps.ppRunning || !port) return;
     ps.ppRunning = true;
@@ -107,7 +102,6 @@ export default function BenchWidget({ port, variant = "compact" }: BenchWidgetPr
     }
   };
 
-  // ── Prompt mode toggle ──────────────────────────
   const cyclePromptMode = () => {
     ps.promptMode = ps.promptMode === "unique" ? "repetitive" : "unique";
     tick();
@@ -116,7 +110,6 @@ export default function BenchWidget({ port, variant = "compact" }: BenchWidgetPr
   const isAnyRunning = ps.tgRunning || ps.ppRunning;
   const hasResults = (ps.tgResult && !ps.tgRunning) || (ps.ppResult && !ps.ppRunning);
 
-  // ── Shared button classes ───────────────────────
   const chipBtnClass = (active: boolean, disabled: boolean) =>
     `value-chip ${active ? "value-chip-active" : ""} whitespace-nowrap focus:outline-none cursor-pointer select-none disabled:opacity-30`;
 
@@ -132,10 +125,8 @@ export default function BenchWidget({ port, variant = "compact" }: BenchWidgetPr
     tick();
   };
 
-  // ── Compact variant (FusionOverlay) ─────────────
-  if (variant === "compact") {
-    return (
-      <div className="rounded-sm p-1.5 flex flex-col gap-1" style={{ boxShadow: 'inset 0 2px 8px rgba(0,0,0,0.6)' }}>
+  return (
+      <div className="w-full rounded-sm p-1.5 flex flex-col gap-1" style={{ boxShadow: 'inset 0 2px 8px rgba(0,0,0,0.6)', height: 60 }}>
         {!isAnyRunning && !ps.showResults && (
           <>
             <div className="flex items-center justify-end gap-1">
@@ -184,7 +175,7 @@ export default function BenchWidget({ port, variant = "compact" }: BenchWidgetPr
               <button
                 onClick={cyclePromptMode}
                 disabled={isAnyRunning}
-                className={`px-1 py-0 text-[6px] font-mono rounded-sm ${chipBtnClass(false, isAnyRunning)}`}
+                className="px-1 py-0.5 text-[6px] font-mono bg-black text-white/70 rounded-sm focus:outline-none cursor-pointer select-none disabled:opacity-30"
               >
                 {ps.promptMode === "unique" ? "Unique ▸" : "◂ Repetitive"}
               </button>
@@ -193,7 +184,7 @@ export default function BenchWidget({ port, variant = "compact" }: BenchWidgetPr
         )}
 
         {ps.showResults && (
-          <div className="pt-1 pb-1 px-1 min-h-[48px]">
+          <div className="pt-1 pb-1 px-1 flex-1">
             {isAnyRunning && (
               <div className="flex items-center gap-1.5 px-1 py-0.5">
                 <span className="inline-block w-1 h-1 bg-yellow-400 rounded-full animate-pulse" />
@@ -259,132 +250,4 @@ export default function BenchWidget({ port, variant = "compact" }: BenchWidgetPr
         )}
       </div>
     );
-  }
-
-  // ── Expanded variant (SlotLogPanel) ─────────────
-  return (
-    <div className="rounded-sm p-2 flex flex-col gap-1.5" style={{ boxShadow: 'inset 0 2px 8px rgba(0,0,0,0.6)' }}>
-      {!isAnyRunning && !ps.showResults && (
-        <>
-          <div className="flex items-center justify-end gap-1">
-            <span className="text-[8px] font-mono text-stealth-muted/40 tracking-wider flex-shrink-0 mr-1">TG</span>
-            {TG_PREDICT_OPTIONS.map((tok) => (
-              <button
-                key={tok}
-                onClick={() => { ps.nPredict = tok; tick(); }}
-                disabled={isAnyRunning}
-                className={`px-2 py-0.5 text-[8px] font-mono rounded-sm ${chipBtnClass(ps.nPredict === tok, isAnyRunning)}`}
-              >
-                {tok}
-              </button>
-            ))}
-            <button
-              onClick={runBenchTg}
-              disabled={isAnyRunning}
-              className={`${runBtnClass(isAnyRunning)} ml-1`}
-            >
-              RUN
-            </button>
-          </div>
-
-          <div className="flex items-center justify-end gap-1">
-            <span className="text-[8px] font-mono text-stealth-muted/40 tracking-wider flex-shrink-0 mr-1">PP</span>
-            {PP_TOKEN_OPTIONS.map((tok) => (
-              <button
-                key={tok}
-                onClick={() => { ps.ppTargetTokens = tok; tick(); }}
-                disabled={isAnyRunning}
-                className={`px-2 py-0.5 text-[8px] font-mono rounded-sm ${chipBtnClass(ps.ppTargetTokens === tok, isAnyRunning)}`}
-              >
-                {formatBenchK(tok)}
-              </button>
-            ))}
-            <button
-              onClick={runBenchPp}
-              disabled={isAnyRunning}
-              className={`${runBtnClass(isAnyRunning)} ml-1`}
-            >
-              RUN
-            </button>
-          </div>
-
-          <div className="flex items-center justify-end gap-1">
-            <button
-              onClick={cyclePromptMode}
-              disabled={isAnyRunning}
-              className={`px-2 py-0.5 text-[8px] font-mono rounded-sm ${chipBtnClass(false, isAnyRunning)}`}
-            >
-              {ps.promptMode === "unique" ? "Unique ▸" : "◂ Repetitive"}
-            </button>
-          </div>
-        </>
-      )}
-
-      {ps.showResults && (
-        <div className="pt-1 pb-1 px-1 min-h-[64px]">
-          {isAnyRunning && (
-            <div className="flex items-center gap-2 px-2 py-1">
-              <span className="inline-block w-1.5 h-1.5 bg-yellow-400 rounded-full animate-pulse" />
-              <span className="text-[9px] font-mono text-stealth-muted">
-                {ps.tgRunning ? `TG (${ps.nPredict} tok)...` : ps.ppRunning ? `PP (${formatBenchK(ps.ppTargetTokens)} tok)...` : ""}
-              </span>
-            </div>
-          )}
-
-          {ps.tgResult && !ps.tgRunning && (
-            ps.tgResult.success ? (
-              <div className="grid grid-cols-4 gap-x-5 gap-y-2 px-2 py-1">
-                <div>
-                  <p className="text-[8px] font-mono text-stealth-muted uppercase tracking-wider">PREFILL</p>
-                  <p className="text-xs font-mono text-telemetry-amber">{ps.tgResult.prompt_tps.toFixed(1)} TPS</p>
-                </div>
-                <div>
-                  <p className="text-[8px] font-mono text-stealth-muted uppercase tracking-wider">GENERATION</p>
-                  <p className="text-xs font-mono text-nv-green">{ps.tgResult.gen_tps.toFixed(1)} TPS</p>
-                </div>
-                <div>
-                  <p className="text-[8px] font-mono text-stealth-muted uppercase tracking-wider">ITL</p>
-                  <p className="text-xs font-mono text-white">{ps.tgResult.itl_ms.toFixed(2)} ms</p>
-                </div>
-                <div>
-                  <p className="text-[8px] font-mono text-stealth-muted uppercase tracking-wider">TOKENS</p>
-                  <p className="text-xs font-mono text-white">{ps.tgResult.prompt_tokens}P / {ps.tgResult.gen_tokens}G</p>
-                </div>
-              </div>
-            ) : (
-              <p className="text-[9px] font-mono text-red-400 px-2 py-1">TG FAILED: {ps.tgResult.error || "unknown"}</p>
-            )
-          )}
-
-          {ps.ppResult && !ps.ppRunning && (
-            ps.ppResult.success ? (
-              <div className="grid grid-cols-2 gap-x-5 gap-y-2 px-2 py-1">
-                <div>
-                  <p className="text-[8px] font-mono text-stealth-muted uppercase tracking-wider">PREFILL</p>
-                  <p className="text-xs font-mono text-telemetry-amber">{ps.ppResult.bench_prefill_tps.toFixed(1)} TPS</p>
-                </div>
-                <div>
-                  <p className="text-[8px] font-mono text-stealth-muted uppercase tracking-wider">TOKENS</p>
-                  <p className="text-xs font-mono text-white">{formatBenchK(ps.ppResult.bench_prompt_tokens_actual)}</p>
-                </div>
-              </div>
-            ) : (
-              <p className="text-[9px] font-mono text-red-400 px-2 py-1">PP FAILED: {ps.ppResult.error || "unknown"}</p>
-            )
-          )}
-
-          {!isAnyRunning && hasResults && (
-            <div className="flex justify-end mt-0.5">
-              <button
-                onClick={closeResults}
-                className="text-[7px] font-mono bg-black text-white/60 hover:text-white transition-colors px-2 py-0.5 rounded-sm"
-              >
-                CLOSE THE RESULTS
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
 }
