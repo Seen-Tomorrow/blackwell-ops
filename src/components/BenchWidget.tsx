@@ -97,7 +97,7 @@ export default function BenchWidget({ port, variant = "compact" }: BenchWidgetPr
   // ── Compact variant (FusionOverlay) ─────────────
   if (variant === "compact") {
     return (
-      <div className="border border-green-500/20 bg-black/15 rounded-sm p-1.5 flex flex-col gap-1">
+      <div className="rounded-sm p-1.5 flex flex-col gap-1" style={{ boxShadow: 'inset 0 2px 8px rgba(0,0,0,0.6)' }}>
         {/* Controls — visible when not running and results are hidden */}
         {!isAnyRunning && !bench_showResults && (
           <>
@@ -160,7 +160,7 @@ export default function BenchWidget({ port, variant = "compact" }: BenchWidgetPr
 
         {/* ── Results panel — fixed height, always visible when showResults ═══ */}
         {bench_showResults && (
-          <div className="border-t border-green-500/20 bg-black/30 pt-1 min-h-[48px]">
+          <div className="pt-1 pb-1 px-1 min-h-[48px]">
             {/* Running indicator */}
             {isAnyRunning && (
               <div className="flex items-center gap-1.5 px-1 py-0.5">
@@ -217,18 +217,20 @@ export default function BenchWidget({ port, variant = "compact" }: BenchWidgetPr
 
             {/* Close button — reveal controls again */}
             {!isAnyRunning && hasResults && (
-              <button
-                onClick={() => {
-                  setBenchShowResults(false);
-                  if (!isAnyRunning) {
-                    setBenchTgResult(null);
-                    setBenchPpResult(null);
-                  }
-                }}
-                className="text-[6px] font-mono text-stealth-muted hover:text-white transition-colors px-1 py-0.5"
-              >
-                CLOSE
-              </button>
+              <div className="flex justify-end mt-0.5">
+                <button
+                  onClick={() => {
+                    setBenchShowResults(false);
+                    if (!isAnyRunning) {
+                      setBenchTgResult(null);
+                      setBenchPpResult(null);
+                    }
+                  }}
+                  className="text-[6px] font-mono bg-black text-white/60 hover:text-white transition-colors px-1.5 py-0.5 rounded-sm"
+                >
+                  CLOSE THE RESULTS
+                </button>
+              </div>
             )}
           </div>
         )}
@@ -238,7 +240,7 @@ export default function BenchWidget({ port, variant = "compact" }: BenchWidgetPr
 
   // ── Expanded variant (SlotLogPanel) ─────────────
   return (
-    <div className="border border-green-500/20 bg-black/20 rounded-sm p-2 flex flex-col gap-1.5">
+    <div className="rounded-sm p-2 flex flex-col gap-1.5" style={{ boxShadow: 'inset 0 2px 8px rgba(0,0,0,0.6)' }}>
       {/* Controls — visible when not running and results are hidden */}
       {!isAnyRunning && !bench_showResults && (
         <>
@@ -301,7 +303,7 @@ export default function BenchWidget({ port, variant = "compact" }: BenchWidgetPr
 
       {/* ── Results panel — fixed height, always visible when showResults ═══ */}
       {bench_showResults && (
-        <div className="border-t border-green-500/20 bg-black/30 pt-1 min-h-[64px]">
+        <div className="pt-1 pb-1 px-1 min-h-[64px]">
           {/* Running indicator */}
           {isAnyRunning && (
             <div className="flex items-center gap-2 px-2 py-1">
@@ -358,18 +360,20 @@ export default function BenchWidget({ port, variant = "compact" }: BenchWidgetPr
 
           {/* Close button — reveal controls again */}
           {!isAnyRunning && hasResults && (
-            <button
-              onClick={() => {
-                setBenchShowResults(false);
-                if (!isAnyRunning) {
-                  setBenchTgResult(null);
-                  setBenchPpResult(null);
-                }
-              }}
-              className="text-[8px] font-mono text-stealth-muted hover:text-white transition-colors px-2 py-0.5"
-            >
-              CLOSE
-            </button>
+            <div className="flex justify-end mt-0.5">
+              <button
+                onClick={() => {
+                  setBenchShowResults(false);
+                  if (!isAnyRunning) {
+                    setBenchTgResult(null);
+                    setBenchPpResult(null);
+                  }
+                }}
+                className="text-[7px] font-mono bg-black text-white/60 hover:text-white transition-colors px-2 py-0.5 rounded-sm"
+              >
+                CLOSE THE RESULTS
+              </button>
+            </div>
           )}
         </div>
       )}

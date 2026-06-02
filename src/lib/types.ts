@@ -304,7 +304,7 @@ export interface FusionUpdate {
   ttftMs?: number | null;          // from /metrics prompt_seconds delta
 
   // Per-slot CTX bars (from /slots only)
-  slotCtx: Array<{ id: number; n_decoded: number; is_processing: boolean }>;
+  slotCtx: Array<{ id: number; n_decoded: number; sessionNDecoded: number; totalTokensLifetime: number; is_processing: boolean }>;
 
   // Engine config flags
   parallel: number;

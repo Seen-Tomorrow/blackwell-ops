@@ -46,6 +46,7 @@ pub enum EngineState {
 
 struct SlotTrackState {
     prev_n_decoded: usize,
+    session_n_decoded: usize,
     prev_timestamp: Instant,
     request_start_n_decoded: usize,
     was_processing: bool,
@@ -56,6 +57,7 @@ impl SlotTrackState {
     fn new() -> Self {
         Self {
             prev_n_decoded: 0,
+            session_n_decoded: 0,
             prev_timestamp: Instant::now(),
             request_start_n_decoded: 0,
             was_processing: false,
@@ -70,6 +72,10 @@ impl SlotTrackState {
 pub struct SlotCtxInfo {
     pub id: usize,
     pub n_decoded: usize,
+    #[serde(rename = "sessionNDecoded")]
+    pub session_n_decoded: usize,
+    #[serde(rename = "totalTokensLifetime")]
+    pub total_tokens_lifetime: usize,
     pub is_processing: bool,
 }
 
@@ -422,29 +428,32 @@ impl FusionBrain {
             self.phase = InferencePhase::Pp;
             self.request_start = Some(now);
             self.engine_state = EngineState::Active;
+            self.ttft_ms = None;
         } else if request_ended {
             self.phase = InferencePhase::Idle;
             self.request_start = None;
             self.prompt_tokens = 0;
+            self.ttft_ms = None;
         }
 
         // Prefill TPS from prompt_tokens_total delta
         if pt_delta > 0 && dt_sec > 0.01 {
             self.prefill_tps = pt_delta as f64 / dt_sec;
 
-            let ps_d = ps_delta;
-            if ps_d > 0.0 && pt_delta > 0 {
-                self.ttft_ms = Some((ps_d / pt_delta as f64) * 1000.0);
-            }
-
             if pt_delta > self.prompt_tokens {
                 self.prompt_tokens = pt_delta;
             }
         }
 
-        // PP→TG transition detection from /metrics — capture TG start snapshot
+        // PP→TG transition detection from /metrics — capture TTFT + TG start snapshot
         if self.phase == InferencePhase::Pp && tt_delta > 0 {
             self.phase = InferencePhase::Tg;
+            // Capture TTFT: time from request start to first generated token
+            if self.ttft_ms.is_none() {
+                if let Some(start) = self.request_start {
+                    self.ttft_ms = Some(start.elapsed().as_millis() as f64);
+                }
+            }
             if self.tg_start_time.is_none() {
                 self.tg_start_time = Some(now);
                 // tg_start_n_decoded will be set on next /slots poll (total_n_decoded at that point)
@@ -530,6 +539,7 @@ impl FusionBrain {
                 // Reset TG TPS tracking for new request
                 self.tg_start_time = None;
                 self.tg_start_n_decoded = 0;
+                self.ttft_ms = None;
             }
 
             if d.ended_session {
@@ -543,11 +553,22 @@ impl FusionBrain {
                 // Reset TG TPS tracking for ended session
                 self.tg_start_time = None;
                 self.tg_start_n_decoded = 0;
+                self.ttft_ms = None;
             }
 
-            // Update slot state
+            // Update slot state — accumulate session_n_decoded (smooth real-time fill)
             if let Some(s) = self.slot_states.get_mut(&d.id) {
-                s.prev_n_decoded = d.n_decoded;
+                let prev = s.prev_n_decoded;
+                let new_val = d.n_decoded;
+                // Only add delta when n_decoded increases — don't subtract on request reset
+                if new_val > prev {
+                    s.session_n_decoded += new_val - prev;
+                }
+                // Snap-correct at request end: trust total_tokens_lifetime as ground truth
+                if d.ended_session && s.total_tokens_lifetime > s.session_n_decoded {
+                    s.session_n_decoded = s.total_tokens_lifetime;
+                }
+                s.prev_n_decoded = new_val;
                 s.prev_timestamp = now;
                 s.was_processing = d.is_proc;
             }
@@ -575,6 +596,12 @@ impl FusionBrain {
                     let delta = n_decoded.saturating_sub(s.request_start_n_decoded);
                     if delta > 50 && self.phase == InferencePhase::Pp {
                         self.phase = InferencePhase::Tg;
+                        // Capture TTFT: time from request start to first generated token
+                        if self.ttft_ms.is_none() {
+                            if let Some(start) = self.request_start {
+                                self.ttft_ms = Some(start.elapsed().as_millis() as f64);
+                            }
+                        }
                         // Capture TG start snapshot for cumulative TPS calculation
                         if self.tg_start_time.is_none() {
                             let mut total_at_transition: usize = 0;
@@ -676,6 +703,8 @@ impl FusionBrain {
             .map(|(id, s)| SlotCtxInfo {
                 id: *id,
                 n_decoded: s.prev_n_decoded,
+                session_n_decoded: s.session_n_decoded,
+                total_tokens_lifetime: s.total_tokens_lifetime,
                 is_processing: s.was_processing,
             })
             .collect();
