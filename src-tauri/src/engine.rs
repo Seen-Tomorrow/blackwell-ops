@@ -23,7 +23,33 @@ use crate::telemetry;
 use crate::telemetry::detect_gpu_count;
 use crate::fusion_brain;
 use crate::model_catalog;
+use crate::model_cache;
 use crate::engine_utils;
+
+/// Auto-hide SPECULATIVE-DECODING params if the model doesn't support MTP.
+/// Cache-only lookup — models always have cached metadata from library/single scan.
+fn guard_speculative_decoding(
+    user_params: Vec<crate::types::UserEditedTemplateParam>,
+    model_path: &str,
+) -> Vec<crate::types::UserEditedTemplateParam> {
+    let has_mtp = if let Some(meta) = model_cache::get_cached(model_path) {
+        meta.nextn_predict_layers > 0
+    } else {
+        false // No cache — default to non-MTP, safe fallback
+    };
+
+    if has_mtp {
+        return user_params;
+    }
+
+    let mut filtered = user_params;
+    for p in &mut filtered {
+        if p.ui_group == "SPECULATIVE-DECODING" && !p.hidden {
+            p.hidden = true;
+        }
+    }
+    filtered
+}
 
 pub struct AppContext {
     pub stack: Arc<Mutex<EngineStack>>,
@@ -151,7 +177,10 @@ pub async fn launch_engine(
 
     let provider_display_name = backend_type.clone();
 
-    let cmd_args = template.build_command(&config, &gpu_mask, &user_params);
+    // Guard: auto-hide SPECULATIVE-DECODING params for non-MTP models — prevents CLI crash
+    let final_user_params = guard_speculative_decoding(user_params, &config.model_path);
+
+    let cmd_args = template.build_command(&config, &gpu_mask, &final_user_params);
     let launch_cmd = format!("{} {}", binary_path.display(), cmd_args.join(" "));
 
     // Emit full launch command to Blackwell Output Console (ENGINES category)
@@ -492,7 +521,10 @@ pub async fn preview_launch_command(
     let gpu_count = detect_gpu_count();
     let gpu_mask = engine_utils::compute_gpu_mask(&config, gpu_count, false);
 
-    let cmd_args = template.build_command(&config, &gpu_mask, &user_params);
+    // Guard: auto-hide SPECULATIVE-DECODING params for non-MTP models — prevents CLI crash
+    let final_user_params = guard_speculative_decoding(user_params, &config.model_path);
+
+    let cmd_args = template.build_command(&config, &gpu_mask, &final_user_params);
     Ok(format!("{} {}", binary_path.display(), cmd_args.join(" ")))
 }
 

@@ -87,20 +87,20 @@ export default function SliderParam({
                 const pct = ((pNum - min) / (max - min)) * 100;
                 const isActive = safeValue === pNum;
                 return (
-                  <div
-                    key={`${paramKey}-tick-${pNum}`}
-                    className="absolute top-0 pointer-events-auto cursor-pointer"
-                    style={{ left: `${pct}%`, transform: 'translateX(-50%)', height: '24px' }}
-                  >
-                     <button
-                       onClick={() => { onChange(pNum); setInputStr(String(pNum)); setUserEdited(false); }}
-                       onMouseEnter={() => setHoveredPresetIdx(idx)}
-                       className={`absolute block w-[2px] transition-all ${
-                         isActive ? "bg-[#4ade80]" : "bg-white/40 hover:bg-[#4ade80]/70"
-                       }`}
-                       style={{ height: 'calc(100% - 3px)', top: '8px' }}
-                      title={formatTokenLabel(pNum)}
-                    />
+                    <div
+                      key={`${paramKey}-tick-${pNum}`}
+                      className="absolute top-0 pointer-events-auto cursor-pointer"
+                      style={{ left: `${pct}%`, transform: 'translateX(-50%)', width: '12px', height: '24px' }}
+                    >
+                       <button
+                        onClick={() => { onChange(pNum); setInputStr(String(pNum)); setUserEdited(false); }}
+                        onMouseEnter={() => setHoveredPresetIdx(idx)}
+                        className={`absolute left-1/2 -translate-x-1/2 block w-[4px] transition-all ${
+                          isActive ? "bg-[#4ade80]" : "bg-white/40 hover:bg-[#4ade80]/70"
+                        }`}
+                        style={{ height: 'calc(100% - 3px)', top: '8px' }}
+                       title={formatTokenLabel(pNum)}
+                      />
                     {hoveredPresetIdx === idx && (
                        <span className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-full mt-1 text-[7px] font-mono text-[#4ade80] whitespace-nowrap pointer-events-none">
                         {formatTokenLabel(pNum)}

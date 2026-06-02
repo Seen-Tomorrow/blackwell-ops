@@ -16,8 +16,8 @@ const MAX_ZOOM = 1.5;
 const ZOOM_STEP = 0.05;
 
 const isDev = __BUILD_MODE__ === "dev";
-const DEV_FOOTER_BG = "rgba(139, 0, 0, 0.92)";
-const DEV_FOOTER_BORDER = "border-[#FF4444]/50";
+const CONSOLE_ACTIVE_FOOTER_BG = "#0a0a0a";
+
 
 function loadAdminLock(): string {
   try { return localStorage.getItem(KEYS.adminLock) || "locked"; } catch { return "locked"; }
@@ -274,8 +274,8 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
       </main>
 
       {/* Bottom status bar — fixed so it's always visible regardless of zoom */}
-      <footer className={`fixed bottom-0 left-0 right-0 flex items-center justify-between px-6 py-1.5 border-t backdrop-blur-sm text-[10px] font-mono text-white/40 z-20 ${isDev ? DEV_FOOTER_BORDER : "border-stealth-border bg-stealth-dark/80"}`}
-        style={isDev ? { background: DEV_FOOTER_BG } : undefined}>
+      <footer className={`fixed bottom-0 left-0 right-0 flex items-center justify-between px-6 py-1.5 text-[10px] font-mono z-20 ${isOutputConsoleExpanded ? "text-white/40" : "border-t-2 border-[#b87a00] bg-[#0a0a0a] text-white/40"}`}
+        style={isOutputConsoleExpanded ? { background: CONSOLE_ACTIVE_FOOTER_BG } : undefined}>
         <div className="flex items-center gap-4">
           <span>PLATFORM: WINDOWS</span>
           <span>TOKIO: ACTIVE</span>
@@ -285,12 +285,13 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
         <div className="flex items-center gap-2 min-w-0" style={{ flex: "1 1 auto", maxWidth: "65%" }}>
           {/* Blackwell Output Console - Docked (1 line always visible) */}
           <div
-            onClick={() => setIsOutputConsoleExpanded(true)}
-            className="flex-1 min-w-0 flex items-center gap-2 px-3 py-0.5 border border-cyan-400/30 bg-black/30 rounded-sm cursor-pointer hover:border-cyan-400/60 hover:bg-black/50 transition-all group font-mono"
-            title="Click to expand Output Console (3 lines)"
+            onClick={() => setIsOutputConsoleExpanded(!isOutputConsoleExpanded)}
+            className={`min-w-0 flex items-center gap-2 px-3 py-0.5 cursor-pointer transition-all group font-mono bg-[#b87a00]/5 hover:bg-[#b87a00]/10 rounded-sm`}
+            style={{ flex: "0.75 1 auto" }}
+            title={isOutputConsoleExpanded ? "Click to close" : "Click to expand"}
           >
-            <span className="text-[9px] text-cyan-400 tracking-wider flex-shrink-0">OUTPUT</span>
-            <div className="flex-1 min-w-0 text-[8px] text-cyan-300/80 truncate">
+            <span className="text-[9px] tracking-wider flex-shrink-0 text-[#b87a00]">OUTPUT</span>
+            <div className="flex-1 min-w-0 text-[8px] truncate text-[#b87a00]/90">
               {lastConsoleLine}
             </div>
           </div>

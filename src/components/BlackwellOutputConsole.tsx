@@ -31,7 +31,7 @@ export default function BlackwellOutputConsole({
   isOpen = false,
   compact = false
 }: BlackwellOutputConsoleProps) {
-  const [activeCategory, setActiveCategory] = useState<Category>("foundry");
+  const [activeCategory, setActiveCategory] = useState<Category>("engines");
   const [lines, setLines] = useState<OutputLine[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isDetached, setIsDetached] = useState(false);
@@ -135,7 +135,7 @@ export default function BlackwellOutputConsole({
 
   const content = (
     <div 
-      className={`flex flex-col border border-cyan-400/50 bg-[#0a0f1a] text-[10px] font-mono shadow-2xl overflow-hidden ${isDetached ? "fixed z-[110] rounded" : "w-full"}`}
+      className={`flex flex-col border border-black bg-[#0a0f1a] text-[10px] font-mono ${isDetached ? "fixed z-[110] rounded overflow-hidden shadow-2xl shadow-black/80" : "w-full shadow-[0_-12px_32px_rgba(0,0,0,0.6)]"}`}
       style={{
         ...(isDetached 
           ? { left: `${position.x}px`, top: `${position.y}px`, width: "780px", height: compact ? "150px" : "460px" } 
@@ -152,12 +152,12 @@ export default function BlackwellOutputConsole({
     >
       {/* Pro Tech Header */}
       <div 
-        className={`flex items-center justify-between px-4 py-1 bg-[#0c1322] border-b border-cyan-400/30 text-cyan-400 tracking-[1.5px] text-[9px] cursor-grab active:cursor-grabbing ${compact ? "py-0.5" : ""}`}
+        className={`flex items-center justify-between px-4 py-1 bg-[#b87a00] border-b border-black text-black tracking-[1.5px] text-[9px] cursor-grab active:cursor-grabbing ${compact ? "py-0.5" : ""}`}
         onMouseDown={startDrag}
       >
         <div className="flex items-center gap-2">
           <span className={`font-bold ${compact ? "text-[8px]" : ""}`}>BLACKWELL OUTPUT CONSOLE</span>
-          {!compact && <span className="px-1.5 py-px text-[7px] border border-cyan-400/40 text-cyan-300">v0.9</span>}
+          {!compact && <span className="px-1.5 py-px text-[7px] border border-black/40 text-black">v0.9</span>}
         </div>
 
         <div className="flex items-center gap-1.5 text-white/70">
@@ -165,27 +165,31 @@ export default function BlackwellOutputConsole({
             <button 
               key={cat}
               onClick={() => setActiveCategory(cat)}
-              className={`px-2 py-0.5 rounded-sm border text-[8px] transition-all ${activeCategory === cat 
-                ? "border-cyan-400 bg-cyan-400/10 text-cyan-300" 
-                : "border-white/10 hover:border-white/30 hover:text-white"}`}
+              className={`px-2 py-0.5 rounded-sm border text-[8px] transition-all ${cat === 'error'
+                ? activeCategory === cat 
+                  ? "bg-black border-red-500 text-red-400" 
+                  : "text-red-700 border-black/20 hover:text-red-500 hover:border-red-800"
+                : activeCategory === cat
+                  ? "bg-black border-black text-[#b87a00]" 
+                  : "border-black/20 hover:border-black/50 hover:text-black"}`}
             >
               {CATEGORY_LABELS[cat]}
             </button>
           ))}
 
-          <div className="w-px h-3 bg-white/20 mx-1" />
+          <div className="w-px h-3 bg-black/20 mx-1" />
 
-          <button onClick={() => clearCategory(activeCategory)} className="px-1 hover:text-red-400" title="Clear tab">C</button>
-          <button onClick={() => saveCategory(activeCategory)} className="px-1 hover:text-emerald-400" title="Save tab">S</button>
-          <button onClick={clearAll} className="px-1 hover:text-red-400" title="Clear all">ALL</button>
+          <button onClick={() => clearCategory(activeCategory)} className="px-1 hover:text-red-400 text-black" title="Clear tab">C</button>
+          <button onClick={() => saveCategory(activeCategory)} className="px-1 hover:text-emerald-400 text-black" title="Save tab">S</button>
+          <button onClick={clearAll} className="px-1 hover:text-red-400 text-black" title="Clear all">ALL</button>
 
           {isDetached ? (
-            <button onClick={() => setIsDetached(false)} className="px-2 py-0.5 text-[8px] border border-white/20 hover:border-white rounded">DOCK</button>
+            <button onClick={() => setIsDetached(false)} className="px-2 py-0.5 text-[8px] border border-black/30 hover:border-black rounded">DOCK</button>
           ) : (
-            <button onClick={() => setIsDetached(true)} className="px-2 py-0.5 text-[8px] border border-white/20 hover:border-cyan-400 rounded">DETACH</button>
+            <button onClick={() => setIsDetached(true)} className="px-2 py-0.5 text-[8px] border border-black/30 hover:border-black rounded">DETACH</button>
           )}
 
-          <button onClick={onClose} className="px-2 py-0.5 hover:text-red-400 text-[10px] ml-1">✕</button>
+          <button onClick={onClose} className="px-2 py-0.5 hover:text-red-400 text-black text-[10px] ml-1">✕</button>
         </div>
       </div>
 

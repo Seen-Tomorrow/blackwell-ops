@@ -748,10 +748,11 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
             if (isSpecGroup) {
               const specAllParams = allGroupedParams[group.id] || [];
-              if (specAllParams.length === 0) return null;
-              const allHidden = specAllParams.every(d => d.hidden);
-              const specActive = !allHidden;
-              const isMtpModel = (model?.metadata?.nextn_predict_layers ?? 0) > 0;
+               if (specAllParams.length === 0) return null;
+               const isMtpModel = (model?.metadata?.nextn_predict_layers ?? 0) > 0;
+               // Force OFF visually for non-MTP models — params may be unhidden from previous MTP session
+               const allHidden = specAllParams.every(d => d.hidden);
+               const specActive = isMtpModel ? !allHidden : false;
 
               return (
                 <div key={group.id}>
