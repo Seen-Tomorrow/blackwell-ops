@@ -174,6 +174,10 @@ pub struct FusionBrain {
     prev_metrics: Option<MetricsSnapshot>,
     prev_metrics_time: Option<Instant>,
 
+    // ── Cumulative TG TPS tracking (accurate from first token) ───────
+    tg_start_time: Option<Instant>,
+    tg_start_n_decoded: usize,
+
     // ── Log-parsed tracking fields ────────────────────────────────
     lp_prefill_progress: f64,       // exact 0→1 from print_timing PP line
     lp_prefill_tps: f64,            // instantaneous tokens/s during PP (from log)
@@ -205,6 +209,10 @@ impl FusionBrain {
             session_tokens_generated: 0,
             prev_metrics: None,
             prev_metrics_time: None,
+
+            // Cumulative TG TPS tracking
+            tg_start_time: None,
+            tg_start_n_decoded: 0,
 
             // Log-parsed fields — initialized to zero/Idle
             lp_prefill_progress: 0.0,
@@ -434,9 +442,14 @@ impl FusionBrain {
             }
         }
 
-        // PP→TG transition detection
+        // PP→TG transition detection from /metrics — capture TG start snapshot
         if self.phase == InferencePhase::Pp && tt_delta > 0 {
             self.phase = InferencePhase::Tg;
+            if self.tg_start_time.is_none() {
+                self.tg_start_time = Some(now);
+                // tg_start_n_decoded will be set on next /slots poll (total_n_decoded at that point)
+                self.tg_start_n_decoded = 0;
+            }
         }
 
         // Store current snapshot for next delta computation
@@ -514,6 +527,9 @@ impl FusionBrain {
                 self.phase = InferencePhase::Pp;
                 self.request_start = Some(now);
                 self.engine_state = EngineState::Active;
+                // Reset TG TPS tracking for new request
+                self.tg_start_time = None;
+                self.tg_start_n_decoded = 0;
             }
 
             if d.ended_session {
@@ -524,6 +540,9 @@ impl FusionBrain {
                 self.phase = InferencePhase::Idle;
                 self.request_start = None;
                 self.prompt_tokens = 0;
+                // Reset TG TPS tracking for ended session
+                self.tg_start_time = None;
+                self.tg_start_n_decoded = 0;
             }
 
             // Update slot state
@@ -556,9 +575,32 @@ impl FusionBrain {
                     let delta = n_decoded.saturating_sub(s.request_start_n_decoded);
                     if delta > 50 && self.phase == InferencePhase::Pp {
                         self.phase = InferencePhase::Tg;
+                        // Capture TG start snapshot for cumulative TPS calculation
+                        if self.tg_start_time.is_none() {
+                            let mut total_at_transition: usize = 0;
+                            for sl in slots {
+                                if !sl.next_token.is_empty() {
+                                    total_at_transition += sl.next_token[0].n_decoded;
+                                }
+                            }
+                            self.tg_start_n_decoded = total_at_transition;
+                            self.tg_start_time = Some(now);
+                        }
                     }
                 }
             }
+        }
+
+        // Also handle PP→TG transition from /metrics (line 446-448) — capture snapshot there too
+        if self.phase == InferencePhase::Tg && self.tg_start_time.is_none() {
+            let mut total_at_transition: usize = 0;
+            for slot in slots {
+                if !slot.next_token.is_empty() {
+                    total_at_transition += slot.next_token[0].n_decoded;
+                }
+            }
+            self.tg_start_n_decoded = total_at_transition;
+            self.tg_start_time = Some(now);
         }
 
     }
@@ -578,13 +620,16 @@ impl FusionBrain {
             }
         }
 
-        // Gen TPS from /slots: cumulative tokens / elapsed time since request start
-        let gen_tps_slots = if self.phase == InferencePhase::Tg && total_n_decoded > 0 {
-            let elapsed_ms = self.request_start
-                .map(|start| start.elapsed().as_millis() as u64)
-                .unwrap_or(0);
-            if elapsed_ms > 100 {
-                (total_n_decoded as f64) / (elapsed_ms as f64 / 1000.0)
+        // Gen TPS from /slots: cumulative average since TG started (accurate immediately, no ramp-up)
+        let gen_tps_slots = if self.phase == InferencePhase::Tg {
+            if let Some(start) = self.tg_start_time {
+                let elapsed_ms = start.elapsed().as_millis() as u64;
+                if elapsed_ms > 100 {
+                    let tokens_generated = total_n_decoded.saturating_sub(self.tg_start_n_decoded);
+                    (tokens_generated as f64) / (elapsed_ms as f64 / 1000.0)
+                } else {
+                    0.0
+                }
             } else {
                 0.0
             }

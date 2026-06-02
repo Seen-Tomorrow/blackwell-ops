@@ -28,35 +28,14 @@ export default function BenchWidget({ port, variant = "compact" }: BenchWidgetPr
   const [bench_ppTargetTokens, setBenchPpTargetTokens] = useState(8192);
 
   // ── UI state ────────────────────────────────────
-  const bench_tgTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const bench_ppTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const clearBenchTgTimer = useCallback(() => {
-    if (bench_tgTimerRef.current) {
-      clearTimeout(bench_tgTimerRef.current);
-      bench_tgTimerRef.current = null;
-    }
-  }, []);
-
-  const clearBenchPpTimer = useCallback(() => {
-    if (bench_ppTimerRef.current) {
-      clearTimeout(bench_ppTimerRef.current);
-      bench_ppTimerRef.current = null;
-    }
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      clearBenchTgTimer();
-      clearBenchPpTimer();
-    };
-  }, [clearBenchTgTimer, clearBenchPpTimer]);
+  const [bench_showResults, setBenchShowResults] = useState(false);
 
   // ── TG Bench handler ────────────────────────────
   const runBenchTg = async () => {
     if (bench_tgRunning || !port) return;
     setBenchTgRunning(true);
     setBenchTgResult(null);
+    setBenchShowResults(true);
     try {
       const res: bench_TGBenchResult = await invoke("cmd_burst_bench", {
         port,
@@ -81,6 +60,7 @@ export default function BenchWidget({ port, variant = "compact" }: BenchWidgetPr
     if (bench_ppRunning || !port) return;
     setBenchPpRunning(true);
     setBenchPpResult(null);
+    setBenchShowResults(true);
     try {
       const res: bench_PPBurstResult = await invoke("cmd_bench_pp_burst", {
         port,
@@ -118,69 +98,76 @@ export default function BenchWidget({ port, variant = "compact" }: BenchWidgetPr
   if (variant === "compact") {
     return (
       <div className="border border-green-500/20 bg-black/15 rounded-sm p-1.5 flex flex-col gap-1">
-        {/* TG Bench row — tokens + RUN inline */}
-        <div className="flex items-center justify-end gap-1">
-          <span className="text-[6px] font-mono text-stealth-muted/40 tracking-wider flex-shrink-0 mr-0.5">TG</span>
-          {TG_PREDICT_OPTIONS.map((tok) => (
-            <button
-              key={tok}
-              onClick={() => setBenchNpredict(tok)}
-              disabled={isAnyRunning}
-              className={`px-1 py-0 text-[6px] font-mono rounded-sm ${chipBtnClass(bench_nPredict === tok, isAnyRunning)}`}
-            >
-              {tok}
-            </button>
-          ))}
-          <button
-            onClick={runBenchTg}
-            disabled={isAnyRunning}
-            className={`${runBtnClass(isAnyRunning)} ml-0.5`}
-          >
-            {bench_tgRunning ? "..." : "RUN"}
-          </button>
-        </div>
+        {/* Controls — visible when not running and results are hidden */}
+        {!isAnyRunning && !bench_showResults && (
+          <>
+            {/* TG Bench row — tokens + RUN inline */}
+            <div className="flex items-center justify-end gap-1">
+              <span className="text-[6px] font-mono text-stealth-muted/40 tracking-wider flex-shrink-0 mr-0.5">TG</span>
+              {TG_PREDICT_OPTIONS.map((tok) => (
+                <button
+                  key={tok}
+                  onClick={() => setBenchNpredict(tok)}
+                  disabled={isAnyRunning}
+                  className={`px-1 py-0 text-[6px] font-mono rounded-sm ${chipBtnClass(bench_nPredict === tok, isAnyRunning)}`}
+                >
+                  {tok}
+                </button>
+              ))}
+              <button
+                onClick={runBenchTg}
+                disabled={isAnyRunning}
+                className={`${runBtnClass(isAnyRunning)} ml-0.5`}
+              >
+                RUN
+              </button>
+            </div>
 
-        {/* PP Burst row — tokens + RUN inline */}
-        <div className="flex items-center justify-end gap-1">
-          <span className="text-[6px] font-mono text-stealth-muted/40 tracking-wider flex-shrink-0 mr-0.5">PP</span>
-          {PP_TOKEN_OPTIONS.map((tok) => (
-            <button
-              key={tok}
-              onClick={() => setBenchPpTargetTokens(tok)}
-              disabled={isAnyRunning}
-              className={`px-1 py-0 text-[6px] font-mono rounded-sm ${chipBtnClass(bench_ppTargetTokens === tok, isAnyRunning)}`}
-            >
-              {formatBenchK(tok)}
-            </button>
-          ))}
-          <button
-            onClick={runBenchPp}
-            disabled={isAnyRunning}
-            className={`${runBtnClass(isAnyRunning)} ml-0.5`}
-          >
-            {bench_ppRunning ? "..." : "RUN"}
-          </button>
-        </div>
+            {/* PP Burst row — tokens + RUN inline */}
+            <div className="flex items-center justify-end gap-1">
+              <span className="text-[6px] font-mono text-stealth-muted/40 tracking-wider flex-shrink-0 mr-0.5">PP</span>
+              {PP_TOKEN_OPTIONS.map((tok) => (
+                <button
+                  key={tok}
+                  onClick={() => setBenchPpTargetTokens(tok)}
+                  disabled={isAnyRunning}
+                  className={`px-1 py-0 text-[6px] font-mono rounded-sm ${chipBtnClass(bench_ppTargetTokens === tok, isAnyRunning)}`}
+                >
+                  {formatBenchK(tok)}
+                </button>
+              ))}
+              <button
+                onClick={runBenchPp}
+                disabled={isAnyRunning}
+                className={`${runBtnClass(isAnyRunning)} ml-0.5`}
+              >
+                RUN
+              </button>
+            </div>
 
-        {/* Mode toggle row */}
-        <div className="flex items-center justify-end gap-1">
-          <button
-            onClick={cyclePromptMode}
-            disabled={isAnyRunning}
-            className={`px-1 py-0 text-[6px] font-mono rounded-sm ${chipBtnClass(false, isAnyRunning)}`}
-          >
-            {bench_promptMode === "unique" ? "Unique ▸" : "◂ Repetitive"}
-          </button>
-        </div>
+            {/* Mode toggle row */}
+            <div className="flex items-center justify-end gap-1">
+              <button
+                onClick={cyclePromptMode}
+                disabled={isAnyRunning}
+                className={`px-1 py-0 text-[6px] font-mono rounded-sm ${chipBtnClass(false, isAnyRunning)}`}
+              >
+                {bench_promptMode === "unique" ? "Unique ▸" : "◂ Repetitive"}
+              </button>
+            </div>
+          </>
+        )}
 
-        {/* ── Results panel — fixed height, no expand/collapse ─── */}
-        {(isAnyRunning || hasResults) && (
+        {/* ── Results panel — fixed height, always visible when showResults ═══ */}
+        {bench_showResults && (
           <div className="border-t border-green-500/20 bg-black/30 pt-1 min-h-[48px]">
-            {/* TG Running indicator */}
-            {bench_tgRunning && (
+            {/* Running indicator */}
+            {isAnyRunning && (
               <div className="flex items-center gap-1.5 px-1 py-0.5">
                 <span className="inline-block w-1 h-1 bg-yellow-400 rounded-full animate-pulse" />
-                <span className="text-[7px] font-mono text-stealth-muted">TG ({bench_nPredict} tok)...</span>
+                <span className="text-[7px] font-mono text-stealth-muted">
+                  {bench_tgRunning ? `TG (${bench_nPredict} tok)...` : bench_ppRunning ? `PP (${formatBenchK(bench_ppTargetTokens)} tok)...` : ""}
+                </span>
               </div>
             )}
 
@@ -210,14 +197,6 @@ export default function BenchWidget({ port, variant = "compact" }: BenchWidgetPr
               )
             )}
 
-            {/* PP Running indicator */}
-            {bench_ppRunning && (
-              <div className="flex items-center gap-1.5 px-1 py-0.5">
-                <span className="inline-block w-1 h-1 bg-yellow-400 rounded-full animate-pulse" />
-                <span className="text-[7px] font-mono text-stealth-muted">PP ({formatBenchK(bench_ppTargetTokens)} tok)...</span>
-              </div>
-            )}
-
             {/* PP Results */}
             {bench_ppResult && !bench_ppRunning && (
               bench_ppResult.success ? (
@@ -235,6 +214,22 @@ export default function BenchWidget({ port, variant = "compact" }: BenchWidgetPr
                 <p className="text-[7px] font-mono text-red-400 px-1 py-0.5">PP FAILED: {bench_ppResult.error || "unknown"}</p>
               )
             )}
+
+            {/* Close button — reveal controls again */}
+            {!isAnyRunning && hasResults && (
+              <button
+                onClick={() => {
+                  setBenchShowResults(false);
+                  if (!isAnyRunning) {
+                    setBenchTgResult(null);
+                    setBenchPpResult(null);
+                  }
+                }}
+                className="text-[6px] font-mono text-stealth-muted hover:text-white transition-colors px-1 py-0.5"
+              >
+                CLOSE
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -244,69 +239,76 @@ export default function BenchWidget({ port, variant = "compact" }: BenchWidgetPr
   // ── Expanded variant (SlotLogPanel) ─────────────
   return (
     <div className="border border-green-500/20 bg-black/20 rounded-sm p-2 flex flex-col gap-1.5">
-      {/* TG Bench row — tokens + RUN inline */}
-      <div className="flex items-center justify-end gap-1">
-        <span className="text-[8px] font-mono text-stealth-muted/40 tracking-wider flex-shrink-0 mr-1">TG</span>
-        {TG_PREDICT_OPTIONS.map((tok) => (
-          <button
-            key={tok}
-            onClick={() => setBenchNpredict(tok)}
-            disabled={isAnyRunning}
-            className={`px-2 py-0.5 text-[8px] font-mono rounded-sm ${chipBtnClass(bench_nPredict === tok, isAnyRunning)}`}
-          >
-            {tok}
-          </button>
-        ))}
-        <button
-          onClick={runBenchTg}
-          disabled={isAnyRunning}
-          className={`${runBtnClass(isAnyRunning)} ml-1`}
-        >
-          {bench_tgRunning ? "..." : "RUN"}
-        </button>
-      </div>
+      {/* Controls — visible when not running and results are hidden */}
+      {!isAnyRunning && !bench_showResults && (
+        <>
+          {/* TG Bench row — tokens + RUN inline */}
+          <div className="flex items-center justify-end gap-1">
+            <span className="text-[8px] font-mono text-stealth-muted/40 tracking-wider flex-shrink-0 mr-1">TG</span>
+            {TG_PREDICT_OPTIONS.map((tok) => (
+              <button
+                key={tok}
+                onClick={() => setBenchNpredict(tok)}
+                disabled={isAnyRunning}
+                className={`px-2 py-0.5 text-[8px] font-mono rounded-sm ${chipBtnClass(bench_nPredict === tok, isAnyRunning)}`}
+              >
+                {tok}
+              </button>
+            ))}
+            <button
+              onClick={runBenchTg}
+              disabled={isAnyRunning}
+              className={`${runBtnClass(isAnyRunning)} ml-1`}
+            >
+              RUN
+            </button>
+          </div>
 
-      {/* PP Burst row — tokens + RUN inline */}
-      <div className="flex items-center justify-end gap-1">
-        <span className="text-[8px] font-mono text-stealth-muted/40 tracking-wider flex-shrink-0 mr-1">PP</span>
-        {PP_TOKEN_OPTIONS.map((tok) => (
-          <button
-            key={tok}
-            onClick={() => setBenchPpTargetTokens(tok)}
-            disabled={isAnyRunning}
-            className={`px-2 py-0.5 text-[8px] font-mono rounded-sm ${chipBtnClass(bench_ppTargetTokens === tok, isAnyRunning)}`}
-          >
-            {formatBenchK(tok)}
-          </button>
-        ))}
-        <button
-          onClick={runBenchPp}
-          disabled={isAnyRunning}
-          className={`${runBtnClass(isAnyRunning)} ml-1`}
-        >
-          {bench_ppRunning ? "..." : "RUN"}
-        </button>
-      </div>
+          {/* PP Burst row — tokens + RUN inline */}
+          <div className="flex items-center justify-end gap-1">
+            <span className="text-[8px] font-mono text-stealth-muted/40 tracking-wider flex-shrink-0 mr-1">PP</span>
+            {PP_TOKEN_OPTIONS.map((tok) => (
+              <button
+                key={tok}
+                onClick={() => setBenchPpTargetTokens(tok)}
+                disabled={isAnyRunning}
+                className={`px-2 py-0.5 text-[8px] font-mono rounded-sm ${chipBtnClass(bench_ppTargetTokens === tok, isAnyRunning)}`}
+              >
+                {formatBenchK(tok)}
+              </button>
+            ))}
+            <button
+              onClick={runBenchPp}
+              disabled={isAnyRunning}
+              className={`${runBtnClass(isAnyRunning)} ml-1`}
+            >
+              RUN
+            </button>
+          </div>
 
-      {/* Mode toggle row */}
-      <div className="flex items-center justify-end gap-1">
-        <button
-          onClick={cyclePromptMode}
-          disabled={isAnyRunning}
-          className={`px-2 py-0.5 text-[8px] font-mono rounded-sm ${chipBtnClass(false, isAnyRunning)}`}
-        >
-          {bench_promptMode === "unique" ? "Unique ▸" : "◂ Repetitive"}
-        </button>
-      </div>
+          {/* Mode toggle row */}
+          <div className="flex items-center justify-end gap-1">
+            <button
+              onClick={cyclePromptMode}
+              disabled={isAnyRunning}
+              className={`px-2 py-0.5 text-[8px] font-mono rounded-sm ${chipBtnClass(false, isAnyRunning)}`}
+            >
+              {bench_promptMode === "unique" ? "Unique ▸" : "◂ Repetitive"}
+            </button>
+          </div>
+        </>
+      )}
 
-      {/* ── Results panel — fixed height, no expand/collapse ─── */}
-      {(isAnyRunning || hasResults) && (
+      {/* ── Results panel — fixed height, always visible when showResults ═══ */}
+      {bench_showResults && (
         <div className="border-t border-green-500/20 bg-black/30 pt-1 min-h-[64px]">
-          {/* TG Running indicator */}
-          {bench_tgRunning && (
+          {/* Running indicator */}
+          {isAnyRunning && (
             <div className="flex items-center gap-2 px-2 py-1">
               <span className="inline-block w-1.5 h-1.5 bg-yellow-400 rounded-full animate-pulse" />
-              <span className="text-[9px] font-mono text-stealth-muted">TG ({bench_nPredict} tok)...</span>
+              <span className="text-[9px] font-mono text-stealth-muted">
+                {bench_tgRunning ? `TG (${bench_nPredict} tok)...` : bench_ppRunning ? `PP (${formatBenchK(bench_ppTargetTokens)} tok)...` : ""}
+              </span>
             </div>
           )}
 
@@ -336,14 +338,6 @@ export default function BenchWidget({ port, variant = "compact" }: BenchWidgetPr
             )
           )}
 
-          {/* PP Running indicator */}
-          {bench_ppRunning && (
-            <div className="flex items-center gap-2 px-2 py-1">
-              <span className="inline-block w-1.5 h-1.5 bg-yellow-400 rounded-full animate-pulse" />
-              <span className="text-[9px] font-mono text-stealth-muted">PP ({formatBenchK(bench_ppTargetTokens)} tok)...</span>
-            </div>
-          )}
-
           {/* PP Results */}
           {bench_ppResult && !bench_ppRunning && (
             bench_ppResult.success ? (
@@ -360,6 +354,22 @@ export default function BenchWidget({ port, variant = "compact" }: BenchWidgetPr
             ) : (
               <p className="text-[9px] font-mono text-red-400 px-2 py-1">PP FAILED: {bench_ppResult.error || "unknown"}</p>
             )
+          )}
+
+          {/* Close button — reveal controls again */}
+          {!isAnyRunning && hasResults && (
+            <button
+              onClick={() => {
+                setBenchShowResults(false);
+                if (!isAnyRunning) {
+                  setBenchTgResult(null);
+                  setBenchPpResult(null);
+                }
+              }}
+              className="text-[8px] font-mono text-stealth-muted hover:text-white transition-colors px-2 py-0.5"
+            >
+              CLOSE
+            </button>
           )}
         </div>
       )}

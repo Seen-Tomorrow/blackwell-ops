@@ -31,9 +31,8 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
   const displayAlias = alias ?? "ENGINE";
   const displayPort = enginePort ?? 9090;
 
-  // Frozen stats shown after request ends (2s delay before clearing)
+  // Frozen stats shown after request ends — persist until next run starts
   const [frozenStats, setFrozenStats] = useState<LastRequestStats | null>(null);
-  const fadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const liveSnapshot = useRef<LastRequestStats>({ genTokensSlots: 0, ttftMs: null, elapsedMs: "0ms" });
   const wasActiveRef = useRef(false);
 
@@ -44,17 +43,6 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
       console.error("[FUSION] stop_engine failed:", e);
     }
   }, [displayAlias]);
-
-  const clearFadeTimer = useCallback(() => {
-    if (fadeTimerRef.current) {
-      clearTimeout(fadeTimerRef.current);
-      fadeTimerRef.current = null;
-    }
-  }, []);
-
-  useEffect(() => {
-    return () => clearFadeTimer();
-  }, [clearFadeTimer]);
 
   const isActive = fusion && fusion.phase !== "IDLE";
 
@@ -72,20 +60,14 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
     if (isActive) {
       wasActiveRef.current = true;
       setFrozenStats(null);
-      clearFadeTimer();
     } else if (wasActiveRef.current && !isActive) {
       wasActiveRef.current = false;
       const snap = { ...liveSnapshot.current };
       if (snap.genTokensSlots > 0) {
         setFrozenStats(snap);
-        clearFadeTimer();
-        fadeTimerRef.current = setTimeout(() => {
-          setFrozenStats(null);
-          fadeTimerRef.current = null;
-        }, 2000);
       }
     }
-  }, [fusion, isActive, clearFadeTimer]);
+  }, [fusion, isActive]);
 
   const showLive = fusion && isActive;
   const statsToDisplay = showLive ? {
@@ -107,8 +89,20 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
   const ctxTotal = fusion.ctxTotal || 0;
   const sessionPct = ctxTotal > 0 ? Math.min((fusion.genTokensPerSession / ctxTotal) * 100, 100) : 0;
 
-  // Slot bars: S0 always shown + any other slot with n_decoded > 0
-  const visibleSlots = fusion.slotCtx.filter(s => s.id === 0 || s.n_decoded > 0);
+  // Context bars logic:
+  // - unified_kv ON or parallel=1 → show 1 cumulative bar
+  // - unified_kv OFF and parallel>1 → show per-slot bars
+  const isUnifiedContext = fusion.unified_kv || fusion.parallel <= 1;
+  const visibleSlots = isUnifiedContext
+    ? [{ id: 0, n_decoded: fusion.genTokensPerSession, is_processing: false }]
+    : fusion.slotCtx.filter(s => s.n_decoded > 0);
+
+  // PP TPS value — prefer log parser when available, fallback to /metrics
+  const ppTpsValue = fusion.LP_prefillTps != null && fusion.LP_prefillTps > 0
+    ? fusion.LP_prefillTps.toFixed(0)
+    : fusion.prefillTpsMetrics > 0
+      ? fusion.prefillTpsMetrics.toFixed(0)
+      : "--";
 
   return (
     <AnimatePresence mode="wait">
@@ -204,29 +198,23 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
                 <span className="text-[7px] font-mono text-stealth-muted/30 tracking-wider">tok/s</span>
               </div>
 
-              {/* Per-request micro-stats — compact row under TG */}
-              {statsToDisplay && statsToDisplay.genTokensSlots > 0 && (
-                <div className="flex items-center gap-2 mt-1.5">
-                  <span className={`text-[8px] font-mono ${showLive ? "text-nv-green/70" : "text-stealth-muted/35"}`}>
-                    {statsToDisplay.genTokensSlots} tok
-                  </span>
-                  {statsToDisplay.ttftMs && (
-                    <>
-                      <span className="text-[6px] text-stealth-muted/15">│</span>
-                      <span className={`text-[8px] font-mono ${showLive ? "text-telemetry-amber/70" : "text-stealth-muted/35"}`}>
-                        TTFT {statsToDisplay.ttftMs}
-                      </span>
-                    </>
-                  )}
-                  <span className="text-[6px] text-stealth-muted/15">│</span>
-                  <span className={`text-[8px] font-mono ${showLive ? "text-nv-green/70" : "text-stealth-muted/35"}`}>
-                    {statsToDisplay.elapsedMs}
-                  </span>
-                </div>
-              )}
+              {/* Per-request micro-stats — always visible, no layout shifts */}
+              <div className="flex items-center gap-2 mt-1.5">
+                <span className={`text-[8px] font-mono ${showLive ? "text-nv-green/70" : "text-stealth-muted/35"}`}>
+                  {statsToDisplay.genTokensSlots > 0 ? statsToDisplay.genTokensSlots + " tok" : "--"}
+                </span>
+                <span className="text-[6px] text-stealth-muted/15">│</span>
+                <span className={`text-[8px] font-mono ${showLive ? "text-telemetry-amber/70" : "text-stealth-muted/35"}`}>
+                  TTFT {statsToDisplay.ttftMs ?? "--"}
+                </span>
+                <span className="text-[6px] text-stealth-muted/15">│</span>
+                <span className={`text-[8px] font-mono ${showLive ? "text-nv-green/70" : "text-stealth-muted/35"}`}>
+                  {statsToDisplay.elapsedMs}
+                </span>
+              </div>
             </div>
 
-            {/* ── RIGHT: PREFILL (secondary) ─── */}
+            {/* ── RIGHT: PREFILL (secondary) — use LP_prefillTps as primary, fallback to /metrics ─── */}
             <div className={`flex flex-col items-center justify-start px-2 py-1.5 rounded-sm border transition-colors ${
               fusion.phase === "PP"
                 ? "border-telemetry-amber/30 bg-black/8"
@@ -235,35 +223,23 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
               {/* Phase label */}
               <span className="text-[7px] font-mono text-stealth-muted/40 tracking-wider mb-0.5">PREFILL</span>
 
-              {/* PP TPS number */}
+              {/* PP TPS number — primary value from log parser, fallback to /metrics */}
               <div className="flex items-baseline gap-1">
                 <motion.span
-                  key={fusion.prefillTpsMetrics}
+                  key={ppTpsValue}
                   initial={{ opacity: 0.7, scale: 0.98 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ duration: 0.2 }}
                   className="font-mono font-bold tracking-tight leading-none"
                   style={{
                     fontSize: 'clamp(1.5rem, 4vh, 2.5rem)',
-                    color: fusion.prefillTpsMetrics > 0 ? '#d97706' : 'rgba(148,163,184,0.25)'
+                    color: ppTpsValue !== "--" ? '#d97706' : 'rgba(148,163,184,0.25)'
                   }}
                 >
-                  {fusion.prefillTpsMetrics > 0 ? fusion.prefillTpsMetrics.toFixed(0) : "--"}
+                  {ppTpsValue}
                 </motion.span>
                 <span className="text-[7px] font-mono text-stealth-muted/30 tracking-wider">tok/s</span>
               </div>
-
-              {/* LP_ prefill TPS — red, half size */}
-              {fusion.LP_prefillTps != null && fusion.LP_prefillTps > 0 && (
-                <motion.span
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  className="font-mono font-bold text-red-400 leading-none mt-0.5"
-                  style={{ fontSize: 'clamp(0.6rem, 1.5vh, 0.85rem)' }}
-                >
-                  LP {fusion.LP_prefillTps.toFixed(0)}
-                </motion.span>
-              )}
 
               {/* PP progress bar — only during active prefill */}
               {fusion.phase === "PP" && fusion.LP_prefillProgress != null && (
@@ -282,86 +258,54 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
                 </div>
               )}
 
-              {/* LP prompt tokens */}
-              {fusion.LP_promptTokens != null && fusion.LP_promptTokens > 0 && (
-                <span className="text-[7px] font-mono text-red-400/60 mt-0.5">
-                  {formatK(fusion.LP_promptTokens)} tok
-                </span>
-              )}
+              {/* LP prompt tokens — always visible */}
+              <span className="text-[7px] font-mono text-red-400/60 mt-0.5">
+                {fusion.LP_promptTokens != null && fusion.LP_promptTokens > 0 ? formatK(fusion.LP_promptTokens) + " tok" : "--"}
+              </span>
             </div>
           </div>
 
-          {/* ═══ SESSION CONTEXT FILL — cumulative, prominent ═══════ */}
-          <div className="flex items-center gap-2 px-1 mt-1.5 flex-shrink-0">
-            <span className="text-[7px] font-mono text-stealth-muted/30 tracking-wider w-16 flex-shrink-0">CONTEXT</span>
-            <div className="flex-1 h-1.5 rounded-full bg-black/20 overflow-hidden relative">
-              <motion.div
-                className="h-full rounded-full"
-                style={{
-                  width: `${sessionPct}%`,
-                  backgroundColor: sessionPct > 85 ? '#ef4444' : sessionPct > 60 ? '#d97706' : '#6366f1'
-                }}
-                animate={{ width: `${sessionPct}%` }}
-                transition={{ duration: 0.3 }}
-              />
-            </div>
-            <span className="text-[7px] font-mono text-stealth-muted/40 whitespace-nowrap flex-shrink-0">
-              {formatK(fusion.genTokensPerSession)} / {formatK(ctxTotal)}
-            </span>
-          </div>
-
-          {/* ═══ SLOT BARS — compact, only active slots ═════════════ */}
-          <div className="flex flex-col gap-px mt-1 flex-shrink-0">
+          {/* ═══ CONTEXT FILL — unified or per-slot, always visible ═══ */}
+          <div className="flex flex-col gap-px mt-1.5 flex-shrink-0">
             {visibleSlots.map((slot) => {
               const slotPct = ctxTotal > 0 ? Math.min((slot.n_decoded / ctxTotal) * 100, 100) : 0;
               return (
                 <div key={slot.id} className="flex items-center gap-2">
-                  <span className={`text-[6px] font-mono w-7 text-right flex-shrink-0 ${slot.n_decoded > 0 ? 'text-stealth-muted/35' : 'text-stealth-muted/15'}`}>
-                    S{slot.id + 1}
+                  <span className={`text-[6px] font-mono w-7 text-right flex-shrink-0 ${isUnifiedContext ? 'text-stealth-muted/35' : 'text-stealth-muted/35'}`}>
+                    {isUnifiedContext ? "CTX" : `S${slot.id + 1}`}
                   </span>
-                  <div className="flex-1 h-1 rounded-full bg-black/8 overflow-hidden">
+                  <div className="flex-1 h-1.5 rounded-full bg-black/20 overflow-hidden">
                     <motion.div
                       className="h-full rounded-full"
                       style={{
                         width: `${slotPct}%`,
-                        backgroundColor: slot.is_processing ? '#22c55e' : 'rgba(99,102,241,0.3)',
+                        backgroundColor: slotPct > 85 ? '#ef4444' : slotPct > 60 ? '#d97706' : isUnifiedContext ? '#6366f1' : (slot.is_processing ? '#22c55e' : 'rgba(99,102,241,0.3)'),
                       }}
                       animate={{ width: `${slotPct}%` }}
-                      transition={{ duration: 0.2 }}
+                      transition={{ duration: 0.3 }}
                     />
                   </div>
+                  <span className="text-[6px] font-mono text-stealth-muted/40 whitespace-nowrap flex-shrink-0">
+                    {formatK(slot.n_decoded)} / {formatK(ctxTotal)}
+                  </span>
                 </div>
               );
             })}
           </div>
 
-          {/* ═══ FOOTER — mode + phase indicators ══════════════════ */}
+          {/* ═══ FOOTER — mode indicator only (LP:TG and BELT removed) ═══ */}
           <div className="flex items-center justify-between mt-1 flex-shrink-0">
             <span className={`text-[6px] font-mono tracking-wider ${fusion.unified_kv ? "text-nv-green/70" : "text-stealth-muted/30"}`}>
               {fusion.unified_kv ? "UNIFIED KV" : `×${fusion.parallel}`}
             </span>
-            <div className="flex items-center gap-2">
-              {fusion.LP_phase && fusion.LP_phase !== "IDLE" && (
-                <span className="text-[6px] font-mono text-red-400/70">
-                  LP:{fusion.LP_phase}
-                </span>
-              )}
-              {fusion.LP_resetSource && (
-                <span className={`text-[6px] font-mono tracking-wider ${
-                  fusion.LP_resetSource === 'prompt' ? 'text-nv-green/70' : 'text-telemetry-amber/70'
-                }`}>
-                  {fusion.LP_resetSource === 'prompt' ? "BELT" : "SUSPENDERS"}
-                </span>
-              )}
-            </div>
           </div>
 
           {/* ═══ BENCH WIDGET — compact, below footer ══════════════ */}
-          {fusion.engine_state === "READY" && (
-            <div className="flex-shrink-0 mt-1">
+          <div className="flex-shrink-0 mt-1">
+            {fusion.engine_state !== "LOADING" && (
               <BenchWidget port={displayPort} variant="compact" />
-            </div>
-          )}
+            )}
+          </div>
         </motion.div>
       )}
     </AnimatePresence>
