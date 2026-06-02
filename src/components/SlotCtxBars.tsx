@@ -15,21 +15,19 @@ function formatTokenCount(n: number): string {
 
 export default function SlotCtxBars({ slotCtx, ctxTotal, parallel, unifiedKv }: SlotCtxBarsProps) {
   const maxSlots = 4;
-  const slotCapacity = unifiedKv ? ctxTotal : Math.floor(ctxTotal / (parallel > 0 ? parallel : 1));
+  const effectiveParallel = unifiedKv ? 1 : (parallel > 0 ? parallel : 1);
+  const slotCapacity = Math.floor(ctxTotal / effectiveParallel);
+  const isSingleSlot = effectiveParallel === 1;
 
   // Build unified total when KV-unified mode is active
   const unifiedSessionTotal = unifiedKv
     ? slotCtx.reduce((sum, s) => sum + s.sessionNDecoded, 0)
-    : 0;
-  const unifiedLifetimeTotal = unifiedKv
-    ? slotCtx.reduce((sum, s) => sum + s.totalTokensLifetime, 0)
     : 0;
 
   // Build slot entries — always render maxSlots positions
   const slots: Array<{
     index: number;
     sessionNDecoded: number;
-    totalTokensLifetime: number;
     isProcessing: boolean;
     pct: number;
   }> = Array.from({ length: maxSlots }, (_, i) => {
@@ -39,7 +37,6 @@ export default function SlotCtxBars({ slotCtx, ctxTotal, parallel, unifiedKv }: 
       return {
         index: i,
         sessionNDecoded: unifiedSessionTotal,
-        totalTokensLifetime: unifiedLifetimeTotal,
         isProcessing: slot?.is_processing ?? false,
         pct,
       };
@@ -49,7 +46,6 @@ export default function SlotCtxBars({ slotCtx, ctxTotal, parallel, unifiedKv }: 
       return {
         index: i,
         sessionNDecoded: slot.sessionNDecoded,
-        totalTokensLifetime: slot.totalTokensLifetime,
         isProcessing: slot.is_processing,
         pct,
       };
@@ -57,24 +53,33 @@ export default function SlotCtxBars({ slotCtx, ctxTotal, parallel, unifiedKv }: 
     return {
       index: i,
       sessionNDecoded: 0,
-      totalTokensLifetime: 0,
       isProcessing: false,
       pct: 0,
     };
   });
 
-  // In unified mode, only show S1 with wider bar
-  const visibleSlots = unifiedKv ? slots.slice(0, 1) : slots;
+  // Single slot mode (unified KV or parallel=1) — show only S1 with wide bar
+  const visibleSlots = isSingleSlot ? slots.slice(0, 1) : slots;
 
   return (
     <div className="flex flex-col w-full h-full">
+      {/* Capacity badges row — above bars */}
+      <div className="flex gap-0.5 flex-shrink-0 mb-0.5">
+        {visibleSlots.map((slot) => (
+          <div key={slot.index} className="w-full text-center">
+            <span className="text-[6px] font-mono bg-black text-white/60 px-1 py-0.5 rounded-sm">
+              {formatTokenCount(slotCapacity)}
+            </span>
+          </div>
+        ))}
+      </div>
+
       {/* Bars row — full available height */}
       <div className="flex gap-0.5" style={{ flex: '1 1 auto', minHeight: 24 }}>
         {visibleSlots.map((slot) => (
-          <div key={slot.index} className="relative" style={{ flex: '1 1 0' }}>
+          <div key={slot.index} className="relative" style={{ flex: isSingleSlot ? '3 3 0' : '1 1 0' }}>
             {/* Bar track */}
             <div className="w-full h-full rounded-sm bg-white/5 overflow-hidden relative">
-              {/* Fill — grows from bottom */}
               {slot.pct > 0 && (
                 <motion.div
                   className="absolute bottom-0 left-0 right-0 rounded-sm"
@@ -95,17 +100,13 @@ export default function SlotCtxBars({ slotCtx, ctxTotal, parallel, unifiedKv }: 
       <div className="flex gap-0.5 mt-1">
         {visibleSlots.map((slot) => (
           <div key={slot.index} className="w-full flex flex-col items-center">
-            {/* Slot label */}
-            <span className={`text-[6px] font-mono ${slot.sessionNDecoded > 0 ? 'text-stealth-muted/40' : 'text-stealth-muted/15'}`}>
+            {/* Slot label — black bg badge */}
+            <span className="text-[7px] font-mono bg-black text-white/60 px-1 py-0.5 rounded-sm">
               S{slot.index + 1}
             </span>
-            {/* Percentage */}
-            <span className={`text-[6px] font-mono ${slot.pct > 0 ? 'text-white/50' : 'text-stealth-muted/15'}`}>
+            {/* Percentage — bigger, black text */}
+            <span className={`text-[9px] font-mono font-bold ${slot.pct > 0 ? 'text-black' : 'text-stealth-muted/15'}`}>
               {slot.pct > 0 ? `${Math.round(slot.pct)}%` : ''}
-            </span>
-            {/* Lifetime total — red for comparison */}
-            <span className="text-[6px] font-mono text-red-400/50">
-              {slot.totalTokensLifetime > 0 ? formatTokenCount(slot.totalTokensLifetime) : ''}
             </span>
           </div>
         ))}

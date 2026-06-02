@@ -667,8 +667,16 @@ impl FusionBrain {
         // Gen TPS from /metrics gauge
         let gen_tps_metrics = metrics.map(|m| m.predicted_tps_gauge).unwrap_or(0.0);
 
-        // Gen tokens per request from both sources
-        let gen_tokens_request_slots = total_n_decoded;
+        // Per-request tokens: sum of (n_decoded - request_start_n_decoded) across slots
+        let mut gen_tokens_request_slots: usize = 0;
+        for slot in slots {
+            if !slot.next_token.is_empty() {
+                let n_decoded = slot.next_token[0].n_decoded;
+                if let Some(s) = self.slot_states.get(&slot.id) {
+                    gen_tokens_request_slots += n_decoded.saturating_sub(s.request_start_n_decoded);
+                }
+            }
+        }
 
         let gen_tokens_request_metrics = if let Some(m) = metrics {
             if let Some(ref prev) = self.prev_metrics {

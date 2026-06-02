@@ -67,7 +67,7 @@ export default function VramBadge({
   return (
     <div className="px-3 py-2.5 relative">
       {/* Overlay when a specific engine is selected (mini card click) — covers entire forecast container */}
-      {selectedSlotIdx !== null && selectedSlotIdx !== undefined && activeEnginePort && fusion && (
+      {selectedSlotIdx !== null && selectedSlotIdx !== undefined && activeEnginePort && (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}

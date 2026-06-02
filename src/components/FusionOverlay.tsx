@@ -32,10 +32,25 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
   const displayAlias = alias ?? "ENGINE";
   const displayPort = enginePort ?? 9090;
 
-  // Frozen stats shown after request ends — persist until next run starts
-  const [frozenStats, setFrozenStats] = useState<LastRequestStats | null>(null);
-  const liveSnapshot = useRef<LastRequestStats>({ genTokensSlots: 0, ttftMs: null, elapsedMs: "0ms" });
-  const wasActiveRef = useRef(false);
+  // Per-engine state stored in a Map keyed by slotIdx — no remounting needed on switch
+  interface EngineStateData {
+    frozenStats: LastRequestStats | null;
+    liveSnapshot: LastRequestStats;
+    wasActive: boolean;
+  }
+  const engineStates = useRef<Map<number, EngineStateData>>(new Map());
+
+  // Get or create state for current engine
+  const currentSlotIdx = fusion?.slotIdx ?? -1;
+  let engState = engineStates.current.get(currentSlotIdx);
+  if (!engState) {
+    engState = { frozenStats: null, liveSnapshot: { genTokensSlots: 0, ttftMs: null, elapsedMs: "0ms" }, wasActive: false };
+    engineStates.current.set(currentSlotIdx, engState);
+  }
+
+  // Force re-render when frozen stats change for this engine
+  const [renderTick, setRenderTick] = useState(0);
+  const frozenStats = engState.frozenStats;
 
   const handleStopEngine = useCallback(async () => {
     try {
@@ -48,7 +63,7 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
   const isActive = fusion && fusion.phase !== "IDLE";
 
   if (fusion && isActive) {
-    liveSnapshot.current = {
+    engState.liveSnapshot = {
       genTokensSlots: fusion.genTokensPerRequestSlots,
       ttftMs: fusion.ttftMs != null ? formatMs(fusion.ttftMs) : null,
       elapsedMs: formatMs(fusion.requestElapsedMs),
@@ -56,18 +71,19 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
   }
 
   useEffect(() => {
-    if (!fusion) return;
+    if (!fusion || !engState) return;
 
     if (isActive) {
-      wasActiveRef.current = true;
-      setFrozenStats(null);
-    } else if (wasActiveRef.current && !isActive) {
-      wasActiveRef.current = false;
-      const snap = { ...liveSnapshot.current };
+      engState.wasActive = true;
+      engState.frozenStats = null;
+    } else if (engState.wasActive && !isActive) {
+      engState.wasActive = false;
+      const snap = { ...engState.liveSnapshot };
       if (snap.genTokensSlots > 0) {
-        setFrozenStats(snap);
+        engState.frozenStats = snap;
       }
     }
+    setRenderTick(t => t + 1); // trigger re-render for frozen stats change
   }, [fusion, isActive]);
 
   const showLive = fusion && isActive;
@@ -75,7 +91,7 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
     genTokensSlots: fusion.genTokensPerRequestSlots,
     ttftMs: fusion.ttftMs != null ? formatMs(fusion.ttftMs) : null,
     elapsedMs: formatMs(fusion.requestElapsedMs),
-  } as LastRequestStats : (frozenStats ?? liveSnapshot.current);
+  } as LastRequestStats : (frozenStats ?? engState.liveSnapshot);
 
   if (!fusion) {
     return (
@@ -165,7 +181,7 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
           <div className="flex gap-2 flex-1 min-h-0" style={{ alignItems: 'stretch' }}>
 
             {/* ── LEFT: Slot CTX bars (side-by-side, full height) ─── */}
-            <div className="flex-shrink-0" style={{ width: fusion.unified_kv ? '8%' : '15%', minWidth: fusion.unified_kv ? 48 : 90 }}>
+            <div className="flex-shrink-0" style={{ width: (fusion.unified_kv || fusion.parallel === 1) ? '8%' : '15%', minWidth: (fusion.unified_kv || fusion.parallel === 1) ? 48 : 90 }}>
               <SlotCtxBars
                 slotCtx={fusion.slotCtx}
                 ctxTotal={ctxTotal}
