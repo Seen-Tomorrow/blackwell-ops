@@ -751,16 +751,18 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
               if (specAllParams.length === 0) return null;
               const allHidden = specAllParams.every(d => d.hidden);
               const specActive = !allHidden;
+              const isMtpModel = (model?.metadata?.nextn_predict_layers ?? 0) > 0;
 
               return (
                 <div key={group.id}>
                   <div className={`nuclear-btn-container ${specFlash ? 'flash' : ''}`}>
-                    <span className="font-mono text-stealth-muted/30">{specActive ? "SPECULATIVE DECODING" : "SPECULATIVE DECODING"}</span>
-                    <label className="toggle-switch">
+                    <span className="font-mono text-stealth-muted/30">SPECULATIVE DECODING</span>
+                    <label className={`toggle-switch ${!isMtpModel ? 'opacity-40 pointer-events-none' : ''}`}>
                       <input
                         type="checkbox"
                         className="toggle-input"
                         checked={specActive}
+                        disabled={!isMtpModel}
                         onChange={() => {
                           invoke<boolean>("toggle_group_hidden", { providerId: effectiveBackendType, groupId: group.id })
                             .then(() => {
@@ -794,7 +796,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                           </svg>
                           <svg className="icon-on" viewBox="0 0 24 24" fill="currentColor">
                             <path
-                              d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313-12.454z"
+                              d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313-12.454.z"
                             ></path>
                           </svg>
                         </span>
@@ -806,13 +808,13 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                     </label>
                   </div>
 
-                  {specActive && (
-                    <div className="rounded-sm px-3 py-2 text-[8px] font-mono tracking-wide uppercase flex items-center gap-1">
-                      Speculative engaged — You need MTP model for this to work.
+                  {isMtpModel && specActive && (
+                    <div className="rounded-sm px-3 py-2 text-[8px] font-mono tracking-wide uppercase flex items-center gap-1 text-nv-green">
+                      Speculative mode active
                     </div>
                   )}
 
-                  {specActive && (
+                  {isMtpModel && specActive && (
                     <div className="space-y-2.5 mt-2">
                       {specAllParams.map(def => (
                         <div key={def.key} className="spec-param-unlock" style={{ opacity: 0 }}>
@@ -822,7 +824,13 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                     </div>
                   )}
 
-                  {!specActive && specAllParams.length > 0 && (
+                  {!isMtpModel && (
+                    <div className="text-[8px] font-mono text-stealth-muted/30 tracking-wider uppercase mt-1 ml-2">
+                      Requires an MTP model for speculative decoding
+                    </div>
+                  )}
+
+                  {isMtpModel && !specActive && specAllParams.length > 0 && (
                     <div className="text-[8px] font-mono text-stealth-muted/30 tracking-wider uppercase mt-1 ml-2">
                        {specAllParams.length} parameter{specAllParams.length > 1 ? 's' : ''} 🔒locked — activate to configure
                     </div>

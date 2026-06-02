@@ -17,7 +17,7 @@ function formatTokenLabel(n: number): string {
   if (n >= 1_048_576) return `${(n / 1_048_576).toFixed(n % 1_048_576 === 0 ? 0 : 1)}M`;
   if (n >= 1024) {
     const k = n / 1024;
-    return `${k}${Number.isInteger(k) ? '' : 'K'}`;
+    return `${k}K`;
   }
   return String(n);
 }
@@ -92,16 +92,17 @@ export default function SliderParam({
                     className="absolute top-0 pointer-events-auto cursor-pointer"
                     style={{ left: `${pct}%`, transform: 'translateX(-50%)', height: '24px' }}
                   >
-                    <button
-                      onClick={() => { onChange(pNum); setInputStr(String(pNum)); setUserEdited(false); }}
-                      onMouseEnter={() => setHoveredPresetIdx(idx)}
-                      className={`block w-[2px] h-full transition-all ${
-                        isActive ? "bg-[#4ade80]" : "bg-white/40 hover:bg-[#4ade80]/70"
-                      }`}
+                     <button
+                       onClick={() => { onChange(pNum); setInputStr(String(pNum)); setUserEdited(false); }}
+                       onMouseEnter={() => setHoveredPresetIdx(idx)}
+                       className={`absolute block w-[2px] transition-all ${
+                         isActive ? "bg-[#4ade80]" : "bg-white/40 hover:bg-[#4ade80]/70"
+                       }`}
+                       style={{ height: 'calc(100% - 3px)', top: '8px' }}
                       title={formatTokenLabel(pNum)}
                     />
                     {hoveredPresetIdx === idx && (
-                      <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 text-[7px] font-mono text-[#4ade80] whitespace-nowrap pointer-events-none">
+                       <span className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-full mt-1 text-[7px] font-mono text-[#4ade80] whitespace-nowrap pointer-events-none">
                         {formatTokenLabel(pNum)}
                       </span>
                     )}
@@ -123,7 +124,7 @@ export default function SliderParam({
             step={step}
             value={safeValue}
             onChange={handleSliderChange}
-            className="slider-param absolute left-0 right-0 top-1/2 -translate-y-1/2 w-full h-[6px] cursor-pointer rounded-sm appearance-none z-[3] [&::-webkit-slider-runnable-track]:bg-transparent [&::-webkit-slider-runnable-track]:border-none [&::-moz-range-track]:bg-transparent [&::-moz-range-track]:border-none [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-[15px] [&::-webkit-slider-thumb]:h-[15px] [&::-webkit-slider-thumb]:rounded-[2px] [&::-webkit-slider-thumb]:bg-[#4ade80] [&::-moz-range-thumb]:w-[15px] [&::-moz-range-thumb]:h-[15px] [&::-moz-range-thumb]:rounded-[2px] [&::-moz-range-thumb]:bg-[#4ade80]"
+            className="slider-param absolute left-0 right-0 top-1/2 -translate-y-1/2 w-full h-[6px] cursor-pointer rounded-sm appearance-none z-[3] [&::-webkit-slider-runnable-track]:bg-transparent [&::-webkit-slider-runnable-track]:border-none [&::-moz-range-track]:bg-transparent [&::-moz-range-track]:border-none [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-[15px] [&::-webkit-slider-thumb]:h-[15px] [&::-webkit-slider-thumb]:rounded-[2px] [&::-webkit-slider-thumb]:bg-[#4ade80] [&::-webkit-slider-thumb]:-mt-[3px] [&::-moz-range-thumb]:w-[15px] [&::-moz-range-thumb]:h-[15px] [&::-moz-range-thumb]:rounded-[2px] [&::-moz-range-thumb]:bg-[#4ade80]"
           />
         </div>
 
@@ -133,10 +134,10 @@ export default function SliderParam({
           onChange={handleInputChange}
           onBlur={handleInputCommit}
           onKeyDown={handleInputKeyDown}
-          className={`w-16 px-1 py-0.5 text-[9px] font-mono border-b transition-colors flex-shrink-0 ${
+          className={`w-16 px-2 py-0.5 text-[9px] font-mono border rounded-sm focus:outline-none transition-colors flex-shrink-0 ${
             userEdited
-              ? "bg-transparent border-white/30 focus:border-white/50 mono-user-input"
-              : "bg-transparent border-stealth-border/40 text-[#4ade80] focus:outline-none focus:border-[#4ade80]/60"
+              ? "bg-black border-white/30 focus:border-white/50 mono-user-input"
+              : "bg-green-400/5 border-green-400/20 focus:border-green-400/40"
           } text-right`}
         />
       </div>

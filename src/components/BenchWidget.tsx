@@ -237,7 +237,7 @@ export default function BenchWidget({ port }: BenchWidgetProps) {
             )}
 
             {!isAnyRunning && hasResults && (
-              <div className="flex justify-end mt-0.5">
+              <div className="flex justify-end -mt-[8px]">
                 <button
                   onClick={closeResults}
                   className="text-[6px] font-mono bg-black text-white/60 hover:text-white transition-colors px-1.5 py-0.5 rounded-sm"
