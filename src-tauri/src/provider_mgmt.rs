@@ -39,11 +39,11 @@ pub async fn save_provider(provider: crate::types::ProviderConfig, app: tauri::S
     for ep in &mut save_provider.user_edited_template_params {
         ep.ui_group = crate::config::normalize_ui_group(&ep.ui_group);
         let existing_keys: std::collections::HashSet<String> = ep.values.iter()
-            .map(|v| serde_json::to_string(v).unwrap_or_default())
+            .map(|v| crate::config::json_val_key(v))
             .collect();
         for uv in ep.user_added_values.clone().iter() {
-            let uv_str = serde_json::to_string(uv).unwrap_or_default();
-            if !existing_keys.contains(&uv_str) && !uv_str.is_empty() {
+            let uv_key = crate::config::json_val_key(uv);
+            if !existing_keys.contains(&uv_key) && !uv_key.is_empty() {
                 ep.values.push(uv.clone());
             }
         }

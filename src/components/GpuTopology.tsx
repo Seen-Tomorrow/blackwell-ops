@@ -1,4 +1,3 @@
-import { motion } from "framer-motion";
 import type { GpuAllocation } from "../lib/types";
 
 interface GpuTopologyProps {
@@ -59,12 +58,10 @@ export default function GpuTopology({ gpuAllocations, gpuBarColor, ramVisible, r
           const tooltipText = `Running engines: ${(totalRunningMib / 1024).toFixed(1)} GB | External apps: ${(osOtherMib / 1024).toFixed(1)} GB`;
 
           return (
-            <motion.div
+            <div
               key={alloc.gpuIndex}
-              initial={{ opacity: 0, y: 4 }}
-              animate={{ opacity: 1, y: 0 }}
               onClick={() => onDeviceSelect?.(alloc.gpuIndex)}
-              className={`rounded-sm p-2 bg-depth-black/30 transition-all gpu-card ${
+              className={`rounded-sm p-2 bg-depth-black/30 transition-all gpu-card gpu-card-enter ${
                 isSelected
                   ? "gpu-selected"
                   : onDeviceSelect
@@ -88,42 +85,33 @@ export default function GpuTopology({ gpuAllocations, gpuBarColor, ramVisible, r
                 className="relative h-3 rounded-sm overflow-hidden border border-stealth-border/30"
               >
                 {/* Projected load — fills left → right in scenario color (capped at 100%) */}
-                <motion.div
+                <div
                   style={{ width: `${Math.min(projectedPct, 100)}%` }}
-                  initial={{ width: 0 }}
-                  animate={{ width: `${Math.min(projectedPct, 100)}%` }}
-                  transition={{ duration: 0.4, ease: "easeOut" }}
-                  className={`h-full absolute top-0 left-0 ${gpuBarColor}`}
+                  className={`h-full absolute top-0 left-0 gpu-bar-fill ${gpuBarColor}`}
                 />
 
                 {/* External/OS — fills from far right edge, grey hatched (capped) */}
                 {osOtherMib > 0 && (
-                  <motion.div
+                  <div
                     style={{
                       width: `${Math.min(osPct, 100)}%`,
                       backgroundColor: '#585858',
                       backgroundImage: HATCH_PATTERN,
                     }}
-                    initial={{ width: 0 }}
-                    animate={{ width: `${Math.min(osPct, 100)}%` }}
-                    transition={{ duration: 0.4, ease: "easeOut" }}
-                    className="h-full absolute top-0 right-0"
+                    className="h-full absolute top-0 right-0 gpu-bar-fill"
                   />
                 )}
 
                 {/* Running engines — fills from right after external, colored by utilization (capped) */}
                 {totalRunningMib > 0 && (
-                  <motion.div
+                  <div
                     style={{
                       width: `${Math.min(runningPct, 100)}%`,
                       right: `${osPct}%`,
                       backgroundColor: existingBarColor,
                       backgroundImage: HATCH_PATTERN,
                     }}
-                    initial={{ width: 0 }}
-                    animate={{ width: `${Math.min(runningPct, 100)}%` }}
-                    transition={{ duration: 0.4, ease: "easeOut" }}
-                    className="h-full absolute top-0"
+                    className="h-full absolute top-0 gpu-bar-fill"
                   />
                 )}
 
@@ -141,18 +129,14 @@ export default function GpuTopology({ gpuAllocations, gpuBarColor, ramVisible, r
                 </span>
               </div>
 
-             </motion.div>
+              </div>
           );
         })}
       </div>
 
       {/* System RAM bar — shown when ramVisible from template */}
       {ramVisible && (
-        <motion.div
-          initial={{ opacity: 0, height: 0 }}
-          animate={{ opacity: 1, height: "auto" }}
-          className="pt-2 border-t border-stealth-border/20"
-        >
+        <div className="pt-2 border-t border-stealth-border/20 gpu-ram-enter">
           {/* RAM header + spill info */}
           <div className="flex items-center gap-2 mb-1.5">
             <span className="text-[9px] font-mono text-electric-blue">SYSTEM RAM</span>
@@ -170,12 +154,9 @@ export default function GpuTopology({ gpuAllocations, gpuBarColor, ramVisible, r
 
           {/* RAM fill bar */}
           <div style={{ backgroundColor: 'rgb(20,20,20)' }} className="relative h-4 rounded-sm overflow-hidden border border-stealth-border/30">
-            <motion.div
+            <div
               style={{ width: `${ramManufacturedGb > 0 ? Math.min((ramTotalGb / ramManufacturedGb) * 100, 100) : 0}%` }}
-              initial={{ width: 0 }}
-              animate={{ width: `${ramManufacturedGb > 0 ? Math.min((ramTotalGb / ramManufacturedGb) * 100, 100) : 0}%` }}
-              transition={{ duration: 0.4, ease: "easeOut" }}
-              className="h-full rounded-sm bg-electric-blue"
+              className="h-full rounded-sm bg-electric-blue gpu-bar-fill"
             />
           </div>
 
@@ -185,7 +166,7 @@ export default function GpuTopology({ gpuAllocations, gpuBarColor, ramVisible, r
               {ramTotalGb.toFixed(0)} GB will spill to RAM — expect slower inference
             </span>
           </div>
-        </motion.div>
+        </div>
       )}
     </div>
   );

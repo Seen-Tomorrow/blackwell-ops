@@ -1,4 +1,3 @@
-import { motion } from "framer-motion";
 import { useMemo } from "react";
 import type { ModelEntry, StackEntry } from "../lib/types";
 
@@ -41,13 +40,10 @@ export default function RunningEnginesPanel({ stack, models, selectedSlotIdx, on
           const isNvfp = item.quant.toLowerCase().includes("nvfp");
           const gpuLabel = item.entry.gpu.split(',').map(g => `GPU${g.trim()}`).join(', ');
           return (
-            <motion.div
+            <div
               key={item.entry.alias!}
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.2 }}
               onClick={() => onSelectEngine(item.entry.idx)}
-              className={`cursor-pointer rounded-sm px-2.5 py-2 border flex items-center gap-2 running-engine-card ${
+              className={`cursor-pointer rounded-sm px-2.5 py-2 border flex items-center gap-2 running-engine-card engine-panel-enter ${
                 isThisSelected
                   ? "running-engine-card-selected"
                   : ""
@@ -91,7 +87,7 @@ export default function RunningEnginesPanel({ stack, models, selectedSlotIdx, on
               <span className="text-[7px] font-mono text-stealth-muted/50 shrink-0">
                 :{item.entry.port}
               </span>
-            </motion.div>
+            </div>
           );
         })}
       </div>

@@ -1,6 +1,5 @@
 // Model-specific parameter configuration and launch control.
 
-import { motion } from "framer-motion";
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import type { ModelEntry, EngineConfig, GpuInfo, UserEditedTemplateParam, ProviderConfig, ProviderTemplate, StackEntry, SystemInfo } from "../lib/types";
 import { DEFAULT_PROVIDER_ID } from "../lib/types";
@@ -540,16 +539,11 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   if (!model) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-stealth-muted font-mono">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.5 }}
-          className="text-center"
-        >
+        <div className="text-center config-empty-enter">
           <div className="text-3xl mb-3 text-stealth-muted/40">⬡</div>
           <p className="text-xs tracking-widest uppercase">SELECT A MODEL</p>
           <p className="text-[9px] mt-1 opacity-50">Choose from the catalog to configure</p>
-        </motion.div>
+        </div>
       </div>
     );
   }
@@ -976,15 +970,13 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
         {/* Launch button */}
         <div className="px-1 py-2.5">
-          <motion.button
+          <button
             onClick={handleAddToStack}
             disabled={!model || vramCalc.manifest?.scenario === 'HW_LOCKED'}
-            whileHover={{ scale: 1.01 }}
-            whileTap={{ scale: 0.98 }}
-            className={`w-full ignite-btn px-4 py-3 text-xs font-mono tracking-widest rounded-sm disabled:opacity-40 disabled:cursor-not-allowed ${isBlazing ? "blazing" : ""}`}
+            className={`w-full ignite-btn px-4 py-3 text-xs font-mono tracking-widest rounded-sm disabled:opacity-40 disabled:cursor-not-allowed config-launch-btn ${isBlazing ? "blazing" : ""}`}
           >
             {isBlazing ? "🔥 LAUNCHED" : "✦ LAUNCH ENGINE ✦"}
-          </motion.button>
+          </button>
           <p className="text-[8px] font-mono text-stealth-muted/40 text-center mt-1.5">Ctrl+Enter to launch</p>
         </div>
       </div>

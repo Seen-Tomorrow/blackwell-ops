@@ -5,9 +5,10 @@
 //! - Multi-path merging with cross-path deduplication
 //! - Quant extraction, shard stripping, size formatting
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
+use crate::output_console::{BlackwellOutputConsoleCategory, BlackwellOutputConsoleLineStyle};
 use crate::types::{CatalogDedupConflict, ModelEntry, ModelEntryInternal, ModelPathEntry};
 
 /// Scan a directory for mmproj companion files. Returns the one with largest filesize.
@@ -37,93 +38,181 @@ pub fn find_largest_mmproj(directory: &Path) -> Option<(String, u64)> {
     best
 }
 
-pub fn scan_path(base_path: &Path) -> Result<Vec<ModelEntryInternal>, String> {
+/// Directories to skip during recursive scan — build artifacts, caches, IDE folders.
+const SKIP_DIRS: &[&str] = &["node_modules", ".git", "target", "__pycache__", 
+                              ".vscode", ".idea", "dist", "build", "src-tauri", 
+                              ".next", ".nuxt", ".cache"];
+
+/// Recursively collect all .gguf files under a directory, skipping known junk dirs.
+fn collect_gguf_files(dir: &Path, out: &mut Vec<PathBuf>) {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return, // Permission denied or other error — skip silently
+    };
+    
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            let name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
+            if !SKIP_DIRS.contains(&name) {
+                collect_gguf_files(&path, out);
+            }
+        } else if path.extension().map_or(false, |e| e == "gguf") {
+            let fname = path.file_name().unwrap().to_string_lossy();
+            if !fname.to_lowercase().contains("mmproj") {
+                out.push(path);
+            }
+        }
+    }
+}
+
+/// Parse model name from filename by stripping quant suffix. Returns (name, quant) to avoid double extract_quant call.
+fn parse_name_and_quant(filename: &str) -> (String, String) {
+    let without_ext = filename.trim_end_matches(".gguf");
+    let q = extract_quant(filename);
+    if q != "GGUF" {
+        let q_lower = q.to_lowercase();
+        if let Some(pos) = without_ext.to_lowercase().rfind(&q_lower) {
+            return (without_ext[..pos].trim_end_matches('-').trim_end_matches('.').to_string(), q);
+        }
+    }
+    (strip_shard_pattern(without_ext).trim_end_matches('-').to_string(), q)
+}
+
+/// Extract author from HF URL like "https://huggingface.co/bartowski/..." → "bartowski"
+fn parse_author_from_url(url: &str) -> Option<String> {
+    for pattern in ["huggingface.co/", "hf.co/"] {
+        if let Some(pos) = url.find(pattern) {
+            let after = &url[pos + pattern.len()..];
+            if let Some(slash) = after.find('/') {
+                let author = &after[..slash];
+                // Reject only domain fragments (www, /) — allow dots in author names like "some.user"
+                if !author.is_empty() && !author.starts_with("www") && !author.contains('/') {
+                    return Some(author.to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Universal model scanner — recursive walk that handles ANY directory structure.
+/// 
+/// Identity resolution from path (fallback only — GGUF header data overrides later):
+/// - 2+ levels deep: LM Studio pattern → author = dir[0], name = dir[1..]
+/// - 1 level deep: folder as context, parse name from filename
+/// - Flat: all files directly in base_path → parse everything from filename
+pub fn scan_path(
+    base_path: &Path,
+    log_hub: Option<&crate::log_hub::LogHub>,
+) -> Result<Vec<ModelEntryInternal>, String> {
     if !base_path.exists() {
         return Ok(Vec::new());
     }
 
+    let mut gguf_files: Vec<PathBuf> = Vec::new();
+    collect_gguf_files(base_path, &mut gguf_files);
+
+    // LOG: scan start
+    if let Some(lh) = log_hub {
+        lh.emit_console_line(
+            BlackwellOutputConsoleCategory::Models,
+            &format!("[SCAN] Walking '{}': found {} .gguf files", 
+                base_path.display(), gguf_files.len()),
+            BlackwellOutputConsoleLineStyle::Normal);
+    }
+
+    // Group files by parent directory for mmproj detection — HashSet O(n) instead of Vec O(n²)
+    let mut unique_parents: HashSet<PathBuf> = HashSet::new();
+    for file in &gguf_files {
+        if let Some(parent) = file.parent() {
+            unique_parents.insert(parent.to_path_buf());
+        }
+    }
+    let dir_mmprojs: HashMap<PathBuf, (Option<String>, u64)> = unique_parents
+        .into_iter()
+        .filter_map(|dir| find_largest_mmproj(&dir).map(|(name, sz)| (dir, (Some(name), sz))))
+        .collect();
+
     let mut temp_catalog: HashMap<String, ModelEntryInternal> = HashMap::new();
 
-    for author_entry in std::fs::read_dir(base_path).map_err(|e| e.to_string())? {
-        let author_entry = author_entry.map_err(|e| e.to_string())?;
-        let author_path = author_entry.path();
-        if !author_path.is_dir() {
-            continue;
-        }
+    for file_path in gguf_files {
+        let fname = file_path.file_name().unwrap().to_string_lossy().to_string();
+        let base_name = strip_shard_pattern(&fname);
+        let parent = file_path.parent().unwrap();
+        let (mmproj_file, mmproj_size) = dir_mmprojs.get(parent).cloned().unwrap_or((None, 0));
 
-        let author = author_path
-            .file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or("unknown")
-            .to_string();
+        // Identity from directory structure — fallback only (GGUF data overrides in merge_catalogs)
+        let rel = file_path.strip_prefix(base_path).unwrap();
+        let components: Vec<String> = rel.parent()
+            .map(|p| p.components()
+                .map(|c| c.as_os_str().to_string_lossy().to_string())
+                .collect())
+            .unwrap_or_default();
 
-        for model_dir_entry in std::fs::read_dir(&author_path).map_err(|e| e.to_string())? {
-            let model_dir_entry = model_dir_entry.map_err(|e| e.to_string())?;
-            let model_path = model_dir_entry.path();
-            if !model_path.is_dir() {
-                continue;
+        let (author, name, quant) = if components.len() >= 2 {
+            // LM Studio pattern: author/model_dir/file.gguf — directory provides identity
+            let dir_name = components[1..].join("/").replace("-GGUF", "").replace("-gguf", "");
+            let (_name_from_file, q) = parse_name_and_quant(&fname);
+            (components[0].clone(), dir_name, q)
+        } else if components.len() == 1 {
+            let (parsed_name, parsed_q) = parse_name_and_quant(&fname);
+            // If folder has digits, it's likely a model name dir (e.g., "Llama-3.1-8B/")
+            if components[0].chars().any(|c| c.is_ascii_digit()) {
+                ("Unknown".to_string(), 
+                 components[0].clone().replace("-GGUF", "").replace("-gguf", ""),
+                 parsed_q)
+            } else {
+                (components[0].clone(), parsed_name, parsed_q)
             }
+        } else {
+            // Flat — all files directly in base_path → parse everything from filename
+            let (parsed_name, parsed_q) = parse_name_and_quant(&fname);
+            ("Unknown".to_string(), parsed_name, parsed_q)
+        };
 
-            let model_dir_name = model_path
-                .file_name()
-                .and_then(|s| s.to_str())
-                .unwrap_or("unknown")
-                .to_string();
+        let file_size = std::fs::metadata(&file_path).map(|m| m.len()).unwrap_or(0);
+        let size_str = calc_size_str_from_bytes(file_size + mmproj_size);
+        let abs_path = file_path.to_string_lossy().to_string();
 
-            let (mmproj_file, mmproj_size) = find_largest_mmproj(&model_path)
-                .map(|(name, sz)| (Some(name), sz))
-                .unwrap_or((None, 0));
+        // Dedup key: author/name/base_name — handles sharded models across structures
+        let full_id = format!("{}/{}/{}", author, name, base_name);
 
-            for f_entry in std::fs::read_dir(&model_path).map_err(|e| e.to_string())? {
-                let f_entry = f_entry.map_err(|e| e.to_string())?;
-                let fname = f_entry.file_name();
-                let fname_str = fname.to_string_lossy().to_string();
-
-                if !fname_str.to_lowercase().ends_with(".gguf")
-                    || fname_str.to_lowercase().contains("mmproj")
-                {
-                    continue;
-                }
-
-                let base_name = strip_shard_pattern(&fname_str);
-                let file_path = f_entry.path();
-
-                let full_id = format!("{author}/{model_dir_name}/{base_name}");
-
-                if let Some(existing) = temp_catalog.get_mut(&full_id) {
-                    // Sharded model — accumulate sizes
-                    if let Ok(meta) = std::fs::metadata(&file_path) {
-                        existing.model_bytes += meta.len();
-                        existing.total_bytes += meta.len();
-                        existing.shards += 1;
-                    }
-                } else {
-                    let file_size = std::fs::metadata(&file_path)
-                        .map(|m| m.len())
-                        .unwrap_or(0);
-
-                    let quant = extract_quant(&base_name);
-                    let size_str = calc_size_str_from_bytes(file_size + mmproj_size);
-
-                    let abs_path = file_path.to_string_lossy().to_string();
-
-                    temp_catalog.insert(full_id, ModelEntryInternal {
-                        path: abs_path.clone(),
-                        author: author.clone(),
-                        name: model_dir_name.replace("-GGUF", "").replace("-gguf", ""),
-                        quant,
-                        size_str,
-                        vision: mmproj_file.is_some(),
-                        mmproj: mmproj_file.clone(),
-                        mmproj_size_mib: if mmproj_size > 0 { mmproj_size as f64 / (1024.0 * 1024.0) } else { 0.0 },
-                        model_bytes: file_size,
-                        total_bytes: file_size + mmproj_size,
-                        shards: 1,
-                        source_path_label: String::new(), // Will be set by caller
-                    });
-                }
-            }
+        if let Some(existing) = temp_catalog.get_mut(&full_id) {
+            // Sharded model — accumulate sizes
+            existing.model_bytes += file_size;
+            existing.total_bytes += file_size;
+            existing.shards += 1;
+        } else {
+            temp_catalog.insert(full_id, ModelEntryInternal {
+                path: abs_path.clone(),
+                author,
+                name,
+                quant,
+                size_str,
+                vision: mmproj_file.is_some(),
+                mmproj: mmproj_file.clone(),
+                mmproj_size_mib: if mmproj_size > 0 { mmproj_size as f64 / (1024.0 * 1024.0) } else { 0.0 },
+                model_bytes: file_size,
+                total_bytes: file_size + mmproj_size,
+                shards: 1,
+                source_path_label: String::new(), // Will be set by caller
+            });
         }
+    }
+
+    // LOG: scan complete with identity breakdown
+    if let Some(lh) = log_hub {
+        let lm_studio_count = temp_catalog.values()
+            .filter(|e| e.author != "Unknown").count();
+        lh.emit_console_line(
+            BlackwellOutputConsoleCategory::Models,
+            &format!("[SCAN] '{}' → {} unique models ({} with directory author, {} shards total)", 
+                base_path.display(),
+                temp_catalog.len(),
+                lm_studio_count,
+                temp_catalog.values().map(|e| e.shards).sum::<i32>()),
+            BlackwellOutputConsoleLineStyle::Success);
     }
 
     Ok(temp_catalog.into_values().collect())
@@ -131,12 +220,28 @@ pub fn scan_path(base_path: &Path) -> Result<Vec<ModelEntryInternal>, String> {
 
 pub fn merge_catalogs(
     paths: &[ModelPathEntry],
+    log_hub: Option<&crate::log_hub::LogHub>,
 ) -> Result<(Vec<ModelEntry>, Vec<CatalogDedupConflict>), String> {
     let mut all_internal: Vec<ModelEntryInternal> = Vec::new();
 
+    // LOG: merge start
+    if let Some(lh) = log_hub {
+        lh.emit_console_line(
+            BlackwellOutputConsoleCategory::Models,
+            &format!("[MERGE] Combining {} model paths", paths.len()),
+            BlackwellOutputConsoleLineStyle::Normal);
+        for (i, p) in paths.iter().enumerate() {
+            let label = if p.label.is_empty() { "Default" } else { &p.label };
+            lh.emit_console_line(
+                BlackwellOutputConsoleCategory::Models,
+                &format!("  [{}]: '{}' → '{}'", i + 1, label, p.path),
+                BlackwellOutputConsoleLineStyle::Command);
+        }
+    }
+
     // Scan each path and collect entries with source labels
     for path_entry in paths {
-        let entries = scan_path(&PathBuf::from(&path_entry.path))?;
+        let entries = scan_path(&PathBuf::from(&path_entry.path), log_hub)?;
         for mut entry in entries {
             entry.source_path_label = path_entry.label.clone();
             all_internal.push(entry);
@@ -147,6 +252,7 @@ pub fn merge_catalogs(
     let mut deduped: HashMap<String, ModelEntryInternal> = HashMap::new();
     let mut conflicts: Vec<CatalogDedupConflict> = Vec::new();
 
+    let total_internal = all_internal.len();
     for internal in all_internal {
         let key = format!("{}|{}|{}", internal.author, internal.name, internal.quant);
         if let Some(existing) = deduped.get_mut(&key) {
@@ -163,6 +269,26 @@ pub fn merge_catalogs(
             }
         } else {
             deduped.insert(key, internal);
+        }
+    }
+
+    // LOG: dedup results
+    if let Some(lh) = log_hub {
+        lh.emit_console_line(
+            BlackwellOutputConsoleCategory::Models,
+            &format!("[DEDUP] {} total → {} unique ({} conflicts across paths)", 
+                total_internal, deduped.len(), conflicts.len()),
+            if conflicts.is_empty() { 
+                BlackwellOutputConsoleLineStyle::Success 
+            } else { 
+                BlackwellOutputConsoleLineStyle::Warning 
+            });
+        for c in &conflicts {
+            lh.emit_console_line(
+                BlackwellOutputConsoleCategory::Models,
+                &format!("  ⚠ Duplicate: '{}' in '{}' and '{}'", 
+                    c.dedup_key, c.entry_a.source_path_label, c.entry_b.source_path_label),
+                BlackwellOutputConsoleLineStyle::Warning);
         }
     }
 
@@ -192,10 +318,39 @@ pub fn merge_catalogs(
             }
 
             let hf_meta = crate::model_cache::get_hf_metadata_with_cache(&model_cache, lookup_path);
+
+            // Author/name resolution chain — GGUF header data overrides directory heuristics
             let (author, name, quant) = if let Some(ref hf) = hf_meta {
+                // HF download — authoritative source
                 (hf.author.clone(), hf.repo_name.clone(), hf.quant_type.clone())
+            } else if let Some(ref meta) = cached_meta {
+                // GGUF header resolution:
+
+                // Author = who quantized/published ← what users search for ("Unsloth", "bartowski")
+                let resolved_author = if !meta.general_quantized_by.is_empty() {
+                    meta.general_quantized_by.clone()
+                } else if let Some(a) = parse_author_from_url(&meta.general_repo_url) {
+                    a
+                } else if !meta.general_author.is_empty() {
+                    meta.general_author.clone()
+                } else {
+                    internal.author.clone() // Directory-derived fallback
+                };
+
+                // Name: clean canonical name from GGUF header
+                let resolved_name = if !meta.general_basename.is_empty() {
+                    meta.general_basename.clone()
+                } else if !meta.base_models.is_empty() && !meta.base_models[0].name.is_empty() {
+                    meta.base_models[0].name.clone()
+                } else if !meta.general_name.is_empty() {
+                    meta.general_name.clone()
+                } else {
+                    internal.name.clone() // Directory/filename fallback
+                };
+
+                (resolved_author, resolved_name, internal.quant)
             } else {
-                (internal.author, internal.name, internal.quant)
+                (internal.author, internal.name, internal.quant) // Filename heuristics only
             };
 
             ModelEntry {
@@ -214,6 +369,17 @@ pub fn merge_catalogs(
             }
         })
         .collect();
+
+    // LOG: merge complete with metadata stats
+    if let Some(lh) = log_hub {
+        let with_meta = final_catalog.iter().filter(|e| e.metadata.is_some()).count();
+        let with_hf = final_catalog.iter().filter(|e| e.hf_meta.is_some()).count();
+        lh.emit_console_line(
+            BlackwellOutputConsoleCategory::Models,
+            &format!("[MERGE] ✅ {} models cataloged ({} with GGUF metadata, {} with HF data)", 
+                final_catalog.len(), with_meta, with_hf),
+            BlackwellOutputConsoleLineStyle::Success);
+    }
 
     Ok((final_catalog, conflicts))
 }

@@ -1,4 +1,3 @@
-import { motion } from "framer-motion";
 import SlotLogPanel from "./SlotLogPanel";
 import EngineBanner from "./EngineBanner";
 import type { StackEntry, LogEntry, SystemEvent } from "../lib/types";
@@ -41,11 +40,7 @@ export default function StackView({ stack, logs, systemEvents, onStop, onStopAll
 
       <div className="flex-1 overflow-y-auto p-4">
         {stack.length === 0 ? (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="flex flex-col items-center justify-center h-full text-stealth-muted"
-          >
+          <div className="flex flex-col items-center justify-center h-full text-stealth-muted fade-in">
             <svg width="48" height="48" viewBox="0 0 28 28" fill="none" className="mb-4 opacity-30">
               <path d="M14 2L6 8v10l8 6 8-6V8L14 2z" stroke="#76B900" strokeWidth="1.5" fill="none" />
             </svg>
@@ -53,7 +48,7 @@ export default function StackView({ stack, logs, systemEvents, onStop, onStopAll
             <p className="text-[10px] font-mono mt-1 text-stealth-muted/60">
               ADD MODELS FROM THE CATALOG TAB
             </p>
-          </motion.div>
+          </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
             {stack.map((entry, idx) => (

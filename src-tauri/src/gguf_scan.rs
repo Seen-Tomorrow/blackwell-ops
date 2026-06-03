@@ -7,7 +7,7 @@
 //! IMPORTANT: llama.cpp outputs ALL diagnostic text to stderr (not stdout). Reading stdout would
 //! give an empty stream and cause the 15s timeout to fire after tensors have already loaded.
 
-use crate::types::ModelMetadata;
+use crate::types::{BaseModelInfo, ModelMetadata};
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader};
 use std::os::windows::process::CommandExt;
@@ -124,6 +124,16 @@ pub fn scan_model_metadata(model_path: &str, binary_path: &str) -> Result<ModelM
             .map(|t| t.duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs())
             .unwrap_or(0),
         nextn_predict_layers: 0,
+        raw_kvs: HashMap::new(),
+        raw_print_info: HashMap::new(),
+        general_author: String::new(),
+        general_repo_url: String::new(),
+        general_basename: String::new(),
+        general_quantized_by: String::new(),
+        general_license: String::new(),
+        general_tags: Vec::new(),
+        base_models: Vec::new(),
+        chat_template: String::new(),
     };
 
     for line in lines {
@@ -179,6 +189,16 @@ fn parse_kv_line(line: &str, m: &mut ModelMetadata) {
     let key = kt_parts[0];
     let value_str = clean_value(value_raw);
 
+    // ── Skip huge tokenizer arrays (tokens, token_type, merges) — store count only ──
+    let is_tokenizer_array = key == "tokenizer.ggml.tokens" || 
+                              key == "tokenizer.ggml.token_type" || 
+                              key == "tokenizer.ggml.merges";
+
+    // Store raw KV for everything EXCEPT tokenizer arrays (they're megabytes)
+    if !is_tokenizer_array {
+        m.raw_kvs.insert(key.to_string(), value_str.clone());
+    }
+
     match key {
         "general.architecture" => m.architecture = value_str.clone(),
         "general.name" => m.general_name = value_str.clone(),
@@ -226,9 +246,34 @@ fn parse_kv_line(line: &str, m: &mut ModelMetadata) {
             m.tokenizer_model = value_str.clone();
         }
         "tokenizer.ggml.tokens" => {
-            // Extract array size from "arr[str,200064]"
+            // Extract array size from "arr[str,200064]" — don't store raw (too large)
             extract_arr_size(line, &mut m.vocab_size);
         }
+        "tokenizer.chat_template" => {
+            m.chat_template = value_str.clone();
+        }
+
+        // ── New convenience fields from GGUF general.* KVs ──────────────
+        "general.author" => m.general_author = value_str.clone(),
+        "general.basename" => m.general_basename = value_str.clone(),
+        "general.quantized_by" => m.general_quantized_by = value_str.clone(),
+        "general.license" => m.general_license = value_str.clone(),
+        "general.repo_url" => m.general_repo_url = value_str.clone(),
+
+        // Base models: extract index from "general.base_model.0.name" etc.
+        _ if key.starts_with("general.base_model.") && key.ends_with(".name") => {
+            push_base_model_field(key, &value_str, "name", m);
+        }
+        _ if key.contains("base_model") && key.ends_with(".organization") => {
+            push_base_model_field(key, &value_str, "organization", m);
+        }
+        _ if key.contains("base_model") && key.ends_with(".repo_url") => {
+            push_base_model_field(key, &value_str, "repo_url", m);
+        }
+
+        // Tags array: parse ["unsloth", "image-text-to-text"] from value_raw
+        "general.tags" => m.general_tags = parse_json_array(value_raw),
+
         _ => {}
     }
 }
@@ -253,6 +298,9 @@ fn parse_print_info(line: &str, m: &mut ModelMetadata) {
     } else {
         value_raw.trim().to_string()
     };
+
+    // Store raw print_info line for future use
+    m.raw_print_info.insert(key.to_string(), value_str.clone());
 
     // Parse BPW from file size line
     if key == "file size" {
@@ -335,4 +383,35 @@ fn extract_arr_size(line: &str, target: &mut u32) {
             }
         }
     }
+}
+
+/// Push a field value into the base_models vec at the correct index.
+/// Extracts index from key like "general.base_model.0.name" → 0.
+fn push_base_model_field(key: &str, value: &str, field: &str, m: &mut ModelMetadata) {
+    let parts: Vec<&str> = key.split('.').collect();
+    if let Some(idx_str) = parts.iter().find(|s| s.chars().all(char::is_numeric)).copied() {
+        if let Ok(idx) = idx_str.parse::<usize>() {
+            while m.base_models.len() <= idx {
+                m.base_models.push(BaseModelInfo { 
+                    name: String::new(), organization: String::new(), repo_url: String::new() });
+            }
+            match field {
+                "name" => m.base_models[idx].name = value.to_string(),
+                "organization" => m.base_models[idx].organization = value.to_string(),
+                "repo_url" => m.base_models[idx].repo_url = value.to_string(),
+                _ => {}
+            }
+        }
+    }
+}
+
+/// Parse a JSON-like string array: '["unsloth", "image-text-to-text"]' → Vec<String>
+fn parse_json_array(raw: &str) -> Vec<String> {
+    let trimmed = raw.trim();
+    if !trimmed.starts_with('[') || !trimmed.ends_with(']') { return vec![]; }
+    let inner = &trimmed[1..trimmed.len()-1];
+    inner.split(',')
+        .map(|s| s.trim().trim_matches('"').to_string())
+        .filter(|s| !s.is_empty())
+        .collect()
 }

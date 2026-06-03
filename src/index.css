@@ -1231,5 +1231,195 @@ select option {
   50% { transform: scale(1.15); opacity: 1; }
 }
 
+/* ── EngineBanner animations (replaces framer-motion) ─── */
+@keyframes bannerEnter {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes bannerFadeDelayed {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes bannerSlideIn {
+  from { opacity: 0; transform: translateX(10px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes bannerDotPulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+@keyframes bannerLoadPulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+.banner-enter-anim {
+  animation: bannerEnter 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+}
+
+.banner-fade-delayed {
+  animation: bannerFadeDelayed 0.5s ease-out 0.2s both;
+}
+
+.banner-slide-in {
+  animation: bannerSlideIn 0.4s ease-out 0.3s both;
+}
+
+.banner-dot-pulse {
+  animation: bannerDotPulse 2s ease-in-out infinite;
+}
+
+/* ── GpuTopology animations (replaces framer-motion) ─── */
+@keyframes gpuCardEnter {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes gpuBarFill {
+  from { width: 0 !important; }
+}
+
+.gpu-card-enter {
+  animation: gpuCardEnter 0.3s ease-out both;
+}
+
+.gpu-bar-fill {
+  transition: width 0.4s ease-out;
+}
+
+.gpu-ram-enter {
+  animation: fadeIn 0.4s ease-out both;
+}
+
+/* ── Layout animations (replaces framer-motion) ─── */
+@keyframes layoutHeaderEnter {
+  from { opacity: 0; transform: translateY(-40px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes layoutTabEnter {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.layout-header-enter {
+  animation: layoutHeaderEnter 0.5s ease-out both;
+}
+
+.layout-tab-enter {
+  animation: layoutTabEnter 0.25s ease-out both;
+}
+
+/* ── EngineConfigPanel animations (replaces framer-motion) ─── */
+@keyframes configEmptyEnter {
+  from { opacity: 0; transform: scale(0.9); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.config-empty-enter {
+  animation: configEmptyEnter 0.5s ease-out both;
+}
+
+.config-launch-btn {
+  transition: transform 0.15s ease;
+}
+
+.config-launch-btn:hover:not(:disabled) {
+  transform: scale(1.01);
+}
+
+.config-launch-btn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+/* ── ModelCard animations (replaces framer-motion) ─── */
+@keyframes modelCardEnter {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.model-card-enter {
+  animation: modelCardEnter 0.3s ease-out both;
+}
+
+/* ── MiniModelCard animations (replaces framer-motion) ─── */
+@keyframes miniCardEnter {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes miniCardNewPulse {
+  0%, 100% { border-color: #76B900; }
+  50% { border-color: #00FFFF; }
+}
+
+.mini-card-enter {
+  animation: miniCardEnter 0.2s ease-out both;
+}
+
+.mini-card-new-pulse {
+  animation: miniCardNewPulse 2s ease-in-out;
+}
+
+/* ── RunningEnginesPanel animations (replaces framer-motion) ─── */
+@keyframes enginePanelEnter {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.engine-panel-enter {
+  animation: enginePanelEnter 0.2s ease-out both;
+}
+
+/* ── R11_Sidebar animations (replaces framer-motion) ─── */
+.sidebar-width-transition {
+  transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.sidebar-card-transition {
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+/* ── ModelHubSearch animations (replaces framer-motion) ─── */
+@keyframes hubResultEnter {
+  from { opacity: 0; transform: translateX(-12px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes hubFileEnter {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes hubSearchPulse {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 1; }
+}
+
+@keyframes toastEnter {
+  from { opacity: 0; transform: translateY(-20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.hub-result-enter {
+  animation: hubResultEnter 0.2s ease-out both;
+}
+
+.hub-file-enter {
+  animation: hubFileEnter 0.2s ease-out both;
+}
+
+.hub-search-pulse {
+  animation: hubSearchPulse 1.5s ease-in-out infinite;
+}
+
+.toast-enter {
+  animation: toastEnter 0.3s ease-out both;
+}
+
 
 

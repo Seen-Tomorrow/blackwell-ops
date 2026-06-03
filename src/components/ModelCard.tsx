@@ -1,4 +1,3 @@
-import { motion } from "framer-motion";
 import type { ModelEntry } from "../lib/types";
 import type { FitStatus } from "../hooks/useModelCatalog";
 
@@ -38,13 +37,10 @@ export default function ModelCard({ model, idx, isSelected, isHighlighted, fitSt
   }
 
   return (
-    <motion.div
+    <div
       key={model.path}
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: Math.min(idx * 0.02, 0.4), duration: 0.3 }}
       onClick={() => onSelect(model)}
-      className={`relative cursor-pointer rounded-sm p-3 ${
+      className={`relative cursor-pointer rounded-sm p-3 model-card-enter ${
         isSelected
            ? "brushed-steel-card border"
            : "cyber-card hover:bg-black/40"
@@ -123,6 +119,6 @@ export default function ModelCard({ model, idx, isSelected, isHighlighted, fitSt
           </button>
         </div>
       )}
-    </motion.div>
+    </div>
   );
 }

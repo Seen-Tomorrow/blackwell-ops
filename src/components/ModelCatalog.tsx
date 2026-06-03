@@ -1,4 +1,3 @@
-import { motion } from "framer-motion";
 import { useRef, useEffect, useMemo, useState } from "react";
 import type { EngineConfig, ProviderConfig, SystemInfo, StackEntry } from "../lib/types";
 import EngineConfigPanel from "./EngineConfigPanel";
@@ -30,6 +29,7 @@ const sortLabels: Record<string, string> = {
 export default function ModelCatalog(props: ModelCatalogProps) {
   const { models, onLaunch, error, onReload, providers: externalProviders, committedVramMib, isAdminUnlocked, scanningPath, setScanningPath, batchScanState, setBatchScanState, stack } = props;
   const { gpus, systemInfo } = useTelemetry();
+  const [showScanMenu, setShowScanMenu] = useState(false);
 
   const catalog = useModelCatalog({
     models, gpus, stack, scanningPath, setScanningPath, batchScanState, setBatchScanState, onReload,
@@ -39,6 +39,11 @@ export default function ModelCatalog(props: ModelCatalogProps) {
     pinnedModels, catalogModels, allFiltered, runningModelPaths, runningInstances, activeEngineByModel,
     getFitStatus, handleScanModel, handleScanAll, handleCancelScan,
     highlightIndex, zone, visibleCount, setVisibleCount } = catalog;
+
+  const startScan = (concurrency: number) => {
+    setShowScanMenu(false);
+    handleScanAll(concurrency);
+  };
 
   // Auto-scroll selected model into view in the catalog scroll container
   const catalogScrollRef = useRef<HTMLDivElement>(null);
@@ -124,16 +129,35 @@ export default function ModelCatalog(props: ModelCatalogProps) {
           className="px-2 py-0.5 text-[8px] font-mono border border-telemetry-red/40 text-telemetry-red hover:bg-telemetry-red/10 transition-colors rounded-sm"
           title="Stop batch scan"
         >
-          ⏹ STOP SCAN
+          ⏹ STOP
         </button>
+      ) : showScanMenu ? (
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => startScan(4)}
+            disabled={scanningPath !== null}
+            className="px-2 py-0.5 text-[8px] font-mono border border-telemetry-cyan/30 text-telemetry-cyan hover:bg-telemetry-cyan/10 transition-colors rounded-sm disabled:opacity-30"
+            title="Scan all models with 4x parallelism (~2GB RAM)"
+          >
+            SPEED 4×
+          </button>
+          <button
+            onClick={() => startScan(8)}
+            disabled={scanningPath !== null}
+            className="px-2 py-0.5 text-[8px] font-mono border border-telemetry-cyan/30 text-telemetry-cyan hover:bg-telemetry-cyan/10 transition-colors rounded-sm disabled:opacity-30"
+            title="Scan all models with 8x parallelism (~4GB RAM)"
+          >
+            SPEED 8×
+          </button>
+        </div>
       ) : (
         <button
-          onClick={handleScanAll}
+          onClick={() => setShowScanMenu(true)}
           disabled={scanningPath !== null}
           className="px-2 py-0.5 text-[8px] font-mono border border-telemetry-cyan/30 text-telemetry-cyan hover:bg-telemetry-cyan/10 transition-colors rounded-sm disabled:opacity-30"
           title="Scan all models for metadata"
         >
-          SCAN ALL
+          SCAN META ▾
         </button>
       )}
       <button
@@ -172,12 +196,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
   return (
     <div className="flex flex-col h-full">
       {/* Top bar */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.3 }}
-        className="px-4 py-2.5 border-b border-stealth-border/50 flex items-center justify-between"
-      >
+      <div className="px-4 py-2.5 border-b border-stealth-border/50 flex items-center justify-between fade-in">
         <div className="flex items-center gap-3">
           <h2 className="text-xs font-mono text-nv-green tracking-widest glitch-text">✦ MODEL CATALOG</h2>
           <span className="text-[9px] font-mono text-stealth-muted">{allFiltered.length} / {models.length}</span>
@@ -187,7 +206,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
             </span>
           )}
         </div>
-      </motion.div>
+      </div>
 
       {/* Error banner */}
       {error && (

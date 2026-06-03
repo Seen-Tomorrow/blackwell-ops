@@ -120,6 +120,19 @@ pub struct CatalogDedupConflict {
     pub entry_b: ModelEntryInternal,
 }
 
+/// Base model info extracted from GGUF general.base_model.N.* KVs.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BaseModelInfo {
+    /// Model name (e.g., "Qwen3.5 4B")
+    pub name: String,
+    /// Organization that created the base model (e.g., "Qwen")
+    #[serde(rename = "organization")]
+    pub organization: String,
+    /// HF repo URL of the base model
+    #[serde(rename = "repo_url")]
+    pub repo_url: String,
+}
+
 /// Parsed GGUF model metadata from llama-server header output.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelMetadata {
@@ -194,6 +207,40 @@ pub struct ModelMetadata {
     /// Number of nextn prediction layers (>0 means MTP model)
     #[serde(default, rename = "nextn_predict_layers")]
     pub nextn_predict_layers: u32,
+
+    // ── Raw KV dumps (full GGUF header for future use) ────────────────
+    /// All KV pairs from GGUF header — key → stringified value. Skips tokenizer arrays.
+    #[serde(default, rename = "rawKvs")]
+    pub raw_kvs: HashMap<String, String>,
+    /// All print_info lines — key → value string.
+    #[serde(default, rename = "rawPrintInfo")]
+    pub raw_print_info: HashMap<String, String>,
+
+    // ── GGUF general.* convenience fields (extracted from raw) ─────────
+    /// Author from general.author KV (if quantizer set it)
+    #[serde(default)]
+    pub general_author: String,
+    /// HF repo URL from general.repo_url — parse author/repo from this
+    #[serde(default, rename = "general_repo_url")]
+    pub general_repo_url: String,
+    /// Canonical base name from general.basename (e.g., "Qwen3.5-4B")
+    #[serde(default, rename = "general_basename")]
+    pub general_basename: String,
+    /// Who quantized/published — PRIMARY author for UI display ("Unsloth", "bartowski")
+    #[serde(default, rename = "general_quantized_by")]
+    pub general_quantized_by: String,
+    /// License from general.license (e.g., "apache-2.0")
+    #[serde(default)]
+    pub general_license: String,
+    /// Tags array from general.tags (e.g., ["unsloth", "image-text-to-text"])
+    #[serde(default)]
+    pub general_tags: Vec<String>,
+    /// Base model info — captures ALL base models from general.base_model.N.*
+    #[serde(default, rename = "base_models")]
+    pub base_models: Vec<BaseModelInfo>,
+    /// Chat template from tokenizer.chat_template (~1-3KB Jinja2 string)
+    #[serde(default, rename = "chat_template")]
+    pub chat_template: String,
 }
 
 /// Internal representation used during catalog scanning (before dedup).

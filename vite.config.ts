@@ -53,7 +53,6 @@ export default defineConfig(async () => ({
         '**/src-tauri/target/**',
         '**/foundry/**',
         '**/llama.cpp/tools/**',
-        '**/node_modules/framer-motion/**', // prevent runtime CSS injection from triggering HMR cascade
       ],
     },
   },

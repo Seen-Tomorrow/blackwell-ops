@@ -1,4 +1,3 @@
-import { motion } from "framer-motion";
 import type { StackEntry } from "../lib/types";
 
 interface MiniModelCardProps {
@@ -17,17 +16,14 @@ export default function MiniModelCard({ entry, modelAuthor, modelName, quant, si
   const isNvfp = quant.toLowerCase().includes("nvfp");
 
   return (
-    <motion.div
-      initial={{ opacity: 0, scale: 0.95 }}
-      animate={{ opacity: 1, scale: 1, borderColor: isNewLaunch ? ["#76B900", "#00FFFF", "#76B900"] : undefined }}
-      transition={{ duration: 0.2, borderColor: { duration: 2, repeat: 0 } }}
+    <div
       onClick={() => onSelect(entry.alias!)}
-      className={`cursor-pointer rounded-sm p-1.5 border ${
+      className={`cursor-pointer rounded-sm p-1.5 border mini-card-enter ${
         isSelected
-          ?           "brushed-steel-card"
-          : isNewLaunch
-            ? "bg-black/40 hover:bg-black/60"
-            : "bg-black/40 border-nv-green/40 hover:bg-black/60"
+           ? "brushed-steel-card"
+           : isNewLaunch
+             ? "bg-black/40 hover:bg-black/60 mini-card-new-pulse"
+             : "bg-black/40 border-nv-green/40 hover:bg-black/60"
       }`}
     >
       {/* Top row: author (left), alias (right) */}
@@ -54,6 +50,6 @@ export default function MiniModelCard({ entry, modelAuthor, modelName, quant, si
       <div className="flex justify-end mt-0.5">
         <span className="text-[7px] font-mono text-stealth-muted">{sizeStr}</span>
       </div>
-    </motion.div>
+    </div>
   );
 }

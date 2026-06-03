@@ -263,10 +263,10 @@ export function useModelCatalog({ models, gpus, stack, scanningPath, setScanning
     finally { setScanningPath(null); }
   }, [scanningPath, onReload]);
 
-  const handleScanAll = useCallback(async () => {
+  const handleScanAll = useCallback(async (concurrency?: number) => {
     setBatchScanState({ active: true, scanned: 0, failed: 0, total: models.length });
     try {
-      await invoke("scan_all_models_cmd", { modelBase: null, providerId: null });
+      await invoke("scan_all_models_cmd", { modelBase: null, providerId: null, concurrency: concurrency ? concurrency : undefined });
       onReload();
     } catch (e) { console.error("Batch scan failed:", e); }
     finally { setBatchScanState(s => ({ ...s, active: false })); }

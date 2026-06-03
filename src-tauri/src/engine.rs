@@ -76,7 +76,7 @@ pub async fn list_models(
         return Ok(Vec::new());
     }
 
-    let (entries, _conflicts) = model_catalog::merge_catalogs(&paths)?;
+    let (entries, _conflicts) = model_catalog::merge_catalogs(&paths, None)?;
     if !_conflicts.is_empty() {
         log::warn!("[list_models] Found {} cross-path duplicates (keeping largest)", _conflicts.len());
     }
@@ -844,6 +844,7 @@ pub async fn scan_model_metadata_cmd(
 pub async fn scan_all_models_cmd(
     _model_base: Option<String>,
     provider_id: Option<String>,
+    concurrency: Option<usize>,
     app: tauri::State<'_, AppContext>,
 ) -> Result<usize, String> {
     let (bin_str, all_paths, total) = {
@@ -852,7 +853,7 @@ pub async fn scan_all_models_cmd(
         let binary_path = engine_utils::find_provider_binary(&cfg, &pid, "")?;
         // Use all configured paths instead of single model_base
         let paths = crate::config::get_model_paths(&cfg);
-        let (catalog, _) = model_catalog::merge_catalogs(&paths)?;
+        let (catalog, _) = model_catalog::merge_catalogs(&paths, Some(&app.log_hub))?;
         let total = catalog.len();
         let all_paths: Vec<String> = catalog.iter().map(|e| e.path.clone()).collect();
         if total == 0 {
@@ -877,7 +878,7 @@ pub async fn scan_all_models_cmd(
     // Run scans sequentially in batches — each spawn_blocking captures only Send types
     let mut scanned: usize = 0;
     let mut failed: usize = 0;
-    const CONCURRENCY: usize = 2;
+    let concurrency = concurrency.unwrap_or(2); // default 2x, frontend can pass 4 or 8
     type ScanHandle = tokio::task::JoinHandle<Result<crate::types::ModelMetadata, String>>;
     let mut handles: Vec<(usize, String, ScanHandle)> = Vec::new();
 
@@ -907,7 +908,7 @@ pub async fn scan_all_models_cmd(
         handles.push((i, path.clone(), handle));
 
         // When we hit concurrency limit, await one before spawning next
-        if handles.len() >= CONCURRENCY {
+        if handles.len() >= concurrency {
             let (_, p, h) = handles.remove(0);
             handle_scan_result_with_sanity(h.await, &p, &mut scanned, &mut failed, &log_hub);
 

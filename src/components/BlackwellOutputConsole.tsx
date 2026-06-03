@@ -14,7 +14,7 @@ interface BlackwellOutputConsoleProps {
   compact?: boolean;
 }
 
-const CATEGORIES = ["engines", "utils", "foundry", "error", "general"] as const;
+const CATEGORIES = ["engines", "utils", "foundry", "error", "general", "models"] as const;
 type Category = typeof CATEGORIES[number];
 
 const CATEGORY_LABELS: Record<Category, string> = {
@@ -23,6 +23,7 @@ const CATEGORY_LABELS: Record<Category, string> = {
   foundry: "Foundry",
   error: "Error",
   general: "General",
+  models: "Models",
 };
 
 export default function BlackwellOutputConsole({ 

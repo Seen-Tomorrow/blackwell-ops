@@ -567,7 +567,7 @@ fn find_all_models(paths: &[String]) -> Vec<String> {
         }
     }).collect();
 
-    match crate::model_catalog::merge_catalogs(&path_entries) {
+    match crate::model_catalog::merge_catalogs(&path_entries, None) {
         Ok((entries, _conflicts)) => entries.into_iter().map(|e| e.path).collect(),
         Err(e) => {
             log::warn!("Failed to scan model paths: {}", e);

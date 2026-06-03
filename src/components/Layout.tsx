@@ -1,4 +1,3 @@
-import { motion } from "framer-motion";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { Tab } from "../App";
@@ -173,12 +172,7 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
   return (
     <div className="flex flex-col h-screen bg-stealth-black grid-bg relative">
       {/* Top bar */}
-      <motion.header
-        initial={{ y: -40, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ duration: 0.5, ease: "easeOut" }}
-        className="flex items-center justify-between px-6 py-3 border-b border-stealth-border bg-stealth-dark/80 backdrop-blur-sm relative z-10"
-      >
+      <header className="flex items-center justify-between px-6 py-3 border-b border-stealth-border bg-stealth-dark/80 backdrop-blur-sm relative z-10 layout-header-enter">
         <div className="flex items-center gap-4">
           {/* Logo / Brand */}
           <div className="flex items-center gap-2">
@@ -255,22 +249,18 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
             <button onClick={() => adjustZoom(ZOOM_STEP)} className="px-1 text-[9px] font-mono text-stealth-muted hover:text-nv-green transition-colors leading-none" title="Increase font size">+</button>
           </div>
         </div>
-      </motion.header>
+      </header>
 
       {/* Main content area */}
       <main className="flex-1 overflow-hidden relative z-10">
-        <motion.div
+        <div
           key={activeTab}
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -8 }}
-          transition={{ duration: 0.25, ease: "easeOut" }}
-          className="h-full overflow-y-auto"
+          className="h-full overflow-y-auto layout-tab-enter"
         >
           <div style={{ zoom }} className="min-h-full pb-[50px]">
             <div className="max-w-[1280px] mx-auto">{children}</div>
           </div>
-        </motion.div>
+        </div>
       </main>
 
       {/* Bottom status bar — fixed so it's always visible regardless of zoom */}

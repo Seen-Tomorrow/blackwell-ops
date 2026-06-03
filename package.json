@@ -16,7 +16,6 @@
     "@tauri-apps/api": "^2.11.0",
     "@tauri-apps/plugin-shell": "^2",
     "ansi-to-html": "^0.7.2",
-    "framer-motion": "^12.39.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6"
   },

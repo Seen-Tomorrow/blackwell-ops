@@ -1,4 +1,3 @@
-import { motion } from "framer-motion";
 import { sanitizeAlias } from "../lib/types";
 
 interface EngineBannerProps {
@@ -32,12 +31,7 @@ export default function EngineBanner({ slotIndex, alias, providerName, providerT
   const badgeColor = getBadgeColor(status);
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: -8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4, ease: [0.25, 0.46, 0.45, 0.94] }}
-      className="relative overflow-hidden"
-    >
+    <div className="relative overflow-hidden banner-enter-anim">
       {/* Background gradient layers */}
       <div className="absolute inset-0 bg-gradient-to-r from-nv-green/5 via-transparent to-telemetry-amber/5" />
 
@@ -80,7 +74,7 @@ export default function EngineBanner({ slotIndex, alias, providerName, providerT
                 strokeWidth="1"
                 fill="none"
               />
-              <motion.text
+              <text
                 x="14"
                 y="17"
                 textAnchor="middle"
@@ -89,11 +83,10 @@ export default function EngineBanner({ slotIndex, alias, providerName, providerT
                 fontSize="13"
                 fontFamily="monospace"
                 fontWeight="bold"
-                animate={status === "LOADING" ? { opacity: [0.4, 1, 0.4] } : {}}
-                transition={status === "LOADING" ? { duration: 1.5, repeat: Infinity, ease: "easeInOut" } : {}}
+                style={status === "LOADING" ? { animation: 'banner-load-pulse 1.5s ease-in-out infinite' } : undefined}
               >
                 {slotIndex + 1}
-              </motion.text>
+              </text>
             </svg>
           </div>
 
@@ -110,22 +103,13 @@ export default function EngineBanner({ slotIndex, alias, providerName, providerT
 
         {/* Center: Provider name with cyberpunk styling */}
         {!isIdle && hasProvider ? (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.2, duration: 0.5 }}
-            className="flex items-center gap-3"
-          >
+          <div className="flex items-center gap-3 banner-fade-delayed">
             {/* Provider badge */}
             <div className="relative px-3 py-1 rounded-sm whitespace-nowrap">
               <div className="absolute inset-0 bg-nv-green/5 border border-nv-green/20 rounded-sm" />
               <div className="relative flex items-center gap-1.5">
                 {/* Pulsing dot */}
-                <motion.span
-                  animate={{ opacity: [0.4, 1, 0.4] }}
-                  transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-                  className="inline-block w-1 h-1 rounded-full bg-nv-green/80"
-                />
+                <span className="inline-block w-1 h-1 rounded-full bg-nv-green/80 banner-dot-pulse" />
                 <span className="text-[10px] font-mono text-nv-green tracking-wider">
                   {displayName}
                 </span>
@@ -136,29 +120,24 @@ export default function EngineBanner({ slotIndex, alias, providerName, providerT
             <svg width="24" height="8" viewBox="0 0 24 8" fill="none" className="text-stealth-muted/20 shrink-0">
               <path d="M0 4 L24 4" stroke="currentColor" strokeWidth="0.5" />
             </svg>
-          </motion.div>
+          </div>
         ) : null}
 
         {/* Right: ENV block + Status indicator */}
         <div className="flex items-center gap-3">
           {hasProvider && status === "RUNNING" && buildInfo ? (
-            <motion.div
-              initial={{ opacity: 0, x: 10 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.3, duration: 0.4 }}
-              className="flex items-center gap-2 px-2 py-1 rounded-sm border border-stealth-muted/10 bg-stealth-dark/50 whitespace-nowrap"
-            >
+            <div className="flex items-center gap-2 px-2 py-1 rounded-sm border border-stealth-muted/10 bg-stealth-dark/50 whitespace-nowrap banner-slide-in">
               <span className="text-[8px] font-mono text-stealth-muted/60">
                 build {buildInfo.version}
                  {buildInfo.cudaVersion ? ` @ CUDA ${buildInfo.cudaVersion}` : ""}
               </span>
-            </motion.div>
+              </div>
           ) : null}
         </div>
       </div>
 
       {/* Bottom accent line */}
       <div className="absolute bottom-0 left-8 right-8 h-[1px] bg-gradient-to-r from-transparent via-stealth-muted/10 to-transparent" />
-    </motion.div>
+    </div>
   );
 }

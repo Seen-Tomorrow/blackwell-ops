@@ -1,5 +1,4 @@
 import { useState, useCallback, useMemo, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import { invoke } from '@tauri-apps/api/core';
 import type { HfModel, GgufFile, HfSearchResponse, HfModelInfo } from '@/lib/types';
 
@@ -158,18 +157,11 @@ export default function ModelHubSearch() {
   return (
     <div className="flex flex-col h-full">
       {/* ── Toast ── */}
-      <AnimatePresence>
-        {toast && (
-          <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            className="absolute top-4 right-4 z-50 px-3 py-1.5 text-[10px] font-mono tracking-wider bg-nv-green/20 border border-nv-green/40 text-nv-green rounded-sm"
-          >
-            {toast}
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {toast && (
+        <div className="absolute top-4 right-4 z-50 px-3 py-1.5 text-[10px] font-mono tracking-wider bg-nv-green/20 border border-nv-green/40 text-nv-green rounded-sm toast-enter">
+          {toast}
+        </div>
+      )}
 
       {/* ── Search Bar Area ── */}
       <div className="px-4 py-3 border-b border-stealth-border/50">
@@ -259,29 +251,20 @@ export default function ModelHubSearch() {
 
             {loading && (
               <div className="flex items-center justify-center h-full">
-                <motion.span
-                  animate={{ opacity: [0.3, 1, 0.3] }}
-                  transition={{ repeat: Infinity, duration: 1.5 }}
-                  className="text-xs font-mono text-nv-green"
-                >
+                <span className="text-xs font-mono text-nv-green hub-search-pulse">
                   SEARCHING...
-                </motion.span>
+                </span>
               </div>
             )}
 
-            <AnimatePresence mode="popLayout">
-              {filteredResults.map((model, idx) => (
-                <motion.button
-                  key={model.id}
-                  initial={{ opacity: 0, x: -12 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, scale: 0.95 }}
-                  transition={{ delay: Math.min(idx * 0.015, 0.3), duration: 0.2 }}
-                  onClick={() => setSelectedId(model.id)}
-                  className={`w-full text-left border-b border-stealth-border/30 p-3 transition-all hover:bg-depth-black/40 ${
-                    selectedId === model.id ? 'bg-depth-black/60 border-l-2 border-l-nv-green' : ''
-                  }`}
-                >
+            {filteredResults.map((model, idx) => (
+              <button
+                key={model.id}
+                onClick={() => setSelectedId(model.id)}
+                className={`w-full text-left border-b border-stealth-border/30 p-3 transition-all hover:bg-depth-black/40 hub-result-enter ${
+                  selectedId === model.id ? 'bg-depth-black/60 border-l-2 border-l-nv-green' : ''
+                }`}
+              >
                   <div className="flex items-start justify-between gap-2 mb-1.5">
                     <span className="text-[9px] font-mono text-stealth-muted truncate">{model.author}</span>
                     {model.gguf_files && model.gguf_files.length > 0 && (
@@ -311,40 +294,22 @@ export default function ModelHubSearch() {
                       )}
                     </div>
                   )}
-                </motion.button>
-              ))}
-            </AnimatePresence>
+              </button>
+            ))}
           </div>
         </div>
 
         {/* Right: Detail Panel — fetches full info on selection */}
         <div className="flex-1 overflow-y-auto cyber-scrollbar">
-          <AnimatePresence mode="wait">
+          <div className="flex-1 overflow-y-auto cyber-scrollbar">
             {loadingDetail ? (
-              <motion.div
-                key="loading-detail"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="flex items-center justify-center h-full"
-              >
-                <motion.span
-                  animate={{ opacity: [0.3, 1, 0.3] }}
-                  transition={{ repeat: Infinity, duration: 1.2 }}
-                  className="text-xs font-mono text-nv-green"
-                >
+              <div key="loading-detail" className="flex items-center justify-center h-full fade-in">
+                <span className="text-xs font-mono text-nv-green hub-search-pulse">
                   LOADING MODEL INFO...
-                </motion.span>
-              </motion.div>
+                </span>
+              </div>
             ) : detailInfo ? (
-              <motion.div
-                key={detailInfo.id}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.2 }}
-                className="p-5"
-              >
+              <div key={detailInfo.id} className="p-5 fade-in">
                 {/* Back button + title */}
                 <div className="flex items-center gap-3 mb-4">
                   <button
@@ -412,12 +377,9 @@ export default function ModelHubSearch() {
                     const fitLabel = getVramFitLabel(file.size_bytes, vramGb);
 
                     return (
-                      <motion.div
+                      <div
                         key={file.type}
-                        initial={{ opacity: 0, y: 8 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: idx * 0.03 }}
-                        className="flex items-center justify-between py-2.5 px-3 mb-1 bg-stealth-dark/40 border border-stealth-border/30 rounded-sm hover:border-nv-green/20 transition-all"
+                        className="flex items-center justify-between py-2.5 px-3 mb-1 bg-stealth-dark/40 border border-stealth-border/30 rounded-sm hover:border-nv-green/20 transition-all hub-file-enter"
                       >
                         <div className="flex items-center gap-3 min-w-0">
                           <span className={`w-2 h-2 rounded-full flex-shrink-0 ${fitColor}`} />
@@ -444,7 +406,7 @@ export default function ModelHubSearch() {
                         >
                           DOWNLOAD
                         </button>
-                      </motion.div>
+                      </div>
                     );
                   })}
 
@@ -454,29 +416,17 @@ export default function ModelHubSearch() {
                     </p>
                   )}
                 </div>
-              </motion.div>
+              </div>
             ) : selectedSearchModel ? (
-              <motion.div
-                key="placeholder-detail"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="flex items-center justify-center h-full text-stealth-muted/30"
-              >
+              <div key="placeholder-detail" className="flex items-center justify-center h-full text-stealth-muted/30 fade-in">
                 <p className="text-[10px] font-mono italic">CLICK A MODEL TO LOAD DETAILS</p>
-              </motion.div>
+              </div>
             ) : (
-              <motion.div
-                key="empty-detail"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="flex items-center justify-center h-full text-stealth-muted/30"
-              >
+              <div key="empty-detail" className="flex items-center justify-center h-full text-stealth-muted/30 fade-in">
                 <p className="text-[10px] font-mono italic">SELECT A MODEL TO VIEW DETAILS</p>
-              </motion.div>
+              </div>
             )}
-          </AnimatePresence>
+          </div>
         </div>
       </div>
     </div>

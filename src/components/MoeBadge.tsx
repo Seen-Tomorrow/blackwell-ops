@@ -1,5 +1,3 @@
-import { motion } from "framer-motion";
-
 interface MoeBadgeProps {
   offloadMode?: string; // "moe_optimal" when active
   shouldHighlight?: boolean; // true when suggestion conditions are met

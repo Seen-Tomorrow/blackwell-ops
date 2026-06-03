@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { motion, AnimatePresence } from "framer-motion";
 import type { ModelEntry } from "../lib/types";
 import type { R11PredictiveFit } from "../lib/reactor11";
 import { invoke } from "@tauri-apps/api/core";
@@ -29,10 +28,9 @@ export default function R11_Sidebar({ models, onInsertModel, onDragStart, collap
   }, [hoveredModel, gpus]);
 
   return (
-    <motion.div
-      animate={{ width: collapsed ? 48 : 280 }}
-      transition={{ type: "spring", stiffness: 300, damping: 30 }}
-      className="relative h-full flex-shrink-0 border-r border-stealth-border bg-stealth-dark/90 backdrop-blur-sm z-10"
+    <div
+      style={{ width: collapsed ? 48 : 280 }}
+      className="relative h-full flex-shrink-0 border-r border-stealth-border bg-stealth-dark/90 backdrop-blur-sm z-10 sidebar-width-transition"
     >
       {/* Collapse toggle bar */}
       <button
@@ -60,14 +58,8 @@ export default function R11_Sidebar({ models, onInsertModel, onDragStart, collap
           </div>
 
           {/* Predictive fit preview — absolute to prevent layout shift */}
-          <AnimatePresence>
             {predictiveFit && (
-              <motion.div
-                initial={{ opacity: 0, y: -4 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -4 }}
-                className="absolute left-3 right-3 top-[92px] p-2 border border-stealth-border/50 rounded-sm bg-stealth-panel/80 backdrop-blur-md z-10"
-              >
+              <div className="absolute left-3 right-3 top-[92px] p-2 border border-stealth-border/50 rounded-sm bg-stealth-panel/80 backdrop-blur-md z-10 fade-in">
                 <p className={`text-[10px] font-mono mb-1 ${predictiveFit.fits ? "text-nv-green" : "text-red-400"}`}>
                   {predictiveFit.fits ? "FIT: YES" : "FIT: NO"}
                 </p>
@@ -90,22 +82,14 @@ export default function R11_Sidebar({ models, onInsertModel, onDragStart, collap
                     </div>
                   </div>
                 ))}
-              </motion.div>
+              </div>
             )}
-          </AnimatePresence>
         </div>
       )}
 
       {/* Model list */}
-      <AnimatePresence>
-        {!collapsed && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="flex-1 overflow-y-auto p-2 space-y-1.5"
-            style={{ maxHeight: "calc(100vh - 180px)" }}
-          >
+      {!collapsed && (
+        <div className="flex-1 overflow-y-auto p-2 space-y-1.5 fade-in" style={{ maxHeight: "calc(100vh - 180px)" }}>
             {models.map((m) => (
               <ModelCard
                 key={m.path}
@@ -123,9 +107,8 @@ export default function R11_Sidebar({ models, onInsertModel, onDragStart, collap
                 NO MODELS FOUND<br />CHECK MODEL BASE PATH
               </p>
             )}
-          </motion.div>
+          </div>
         )}
-      </AnimatePresence>
 
       {/* Collapsed state */}
       {collapsed && (
@@ -133,7 +116,7 @@ export default function R11_Sidebar({ models, onInsertModel, onDragStart, collap
           <span className="text-[12px] text-nv-green/40 rotate-90 tracking-widest font-mono">MODELS</span>
         </div>
       )}
-    </motion.div>
+    </div>
   );
 }
 
@@ -153,17 +136,13 @@ function ModelCard({
   dragging: boolean;
 }) {
   return (
-    <motion.div
+    <div
       onMouseEnter={onHoverIn}
       onMouseLeave={onHoverOut}
-      animate={{
-        opacity: dragging ? 0.4 : 1,
-        scale: dragging ? 0.98 : 1,
-      }}
-      transition={{ type: "spring", stiffness: 300, damping: 20 }}
-      className="border border-stealth-border/50 rounded-sm p-3 cursor-grab hover:border-nv-green/40 bg-stealth-panel/30 transition-all group relative select-none"
+      style={{ opacity: dragging ? 0.4 : 1, transform: dragging ? 'scale(0.98)' : 'scale(1)' }}
+      className="border border-stealth-border/50 rounded-sm p-3 cursor-grab hover:border-nv-green/40 bg-stealth-panel/30 transition-all group relative select-none sidebar-card-transition"
     >
-      {/* Drag capture layer — plain div so framer-motion doesn't intercept mousedown */}
+      {/* Drag capture layer */}
       <div onMouseDown={onDragStart} className="absolute inset-0 z-[1] cursor-grab active:cursor-grabbing" />
       <p className="text-[10px] font-mono text-stealth-muted truncate leading-relaxed">{model.name}</p>
 
@@ -193,6 +172,6 @@ function ModelCard({
 
       {/* Hover glow */}
       <div className="absolute inset-0 rounded-sm bg-nv-green/5 opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity" />
-    </motion.div>
+    </div>
   );
 }

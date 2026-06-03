@@ -365,7 +365,12 @@ pub fn persist_user_providers_meta(providers: &[ProviderConfig]) -> Result<(), S
 }
 
 fn json_val_eq(a: &serde_json::Value, b: &serde_json::Value) -> bool {
-    serde_json::to_string(a).ok() == serde_json::to_string(b).ok()
+    // Compare numbers by numeric equality (1 == 1.0), everything else by canonical string
+    if let (Some(na), Some(nb)) = (a.as_f64(), b.as_f64()) {
+        na == nb
+    } else {
+        serde_json::to_string(a).ok() == serde_json::to_string(b).ok()
+    }
 }
 
 fn validate_user_edited_param(ep: &crate::types::UserEditedTemplateParam) -> Vec<String> {
@@ -797,7 +802,7 @@ pub fn set_default_model_path(config: &mut AppConfig, path: &str) {
 pub fn calculate_disk_usage(paths: &[ModelPathEntry]) -> Vec<PathDiskUsage> {
     let mut result = Vec::new();
     for entry in paths {
-        let entries = crate::model_catalog::scan_path(&std::path::PathBuf::from(&entry.path))
+        let entries = crate::model_catalog::scan_path(&std::path::PathBuf::from(&entry.path), None)
             .unwrap_or_default();
         let total_bytes: u64 = entries.iter().map(|e| e.total_bytes).sum();
         result.push(PathDiskUsage {
@@ -875,6 +880,21 @@ fn load_saved_config() -> Option<AppConfig> {
 ///
 /// Aggressive sync philosophy — factory template is source of truth for everything structural.
 /// Only purely cosmetic/organizational choices are preserved: hidden, order, userAddedValues, hidden_values.
+
+/// Normalize a JSON value to a canonical string for dedup comparison.
+/// Numbers are compared by numeric equality (1 == 1.0), everything else by string.
+pub fn json_val_key(v: &serde_json::Value) -> String {
+    if let Some(n) = v.as_f64() {
+        if n.fract() == 0.0 && n.is_finite() {
+            format!("{}", n as i64)
+        } else {
+            format!("{n}")
+        }
+    } else {
+        v.to_string()
+    }
+}
+
 pub fn merge_template_into_user_params(
     template_type: &str,
     user_edited: &[crate::types::UserEditedTemplateParam],
@@ -903,9 +923,9 @@ pub fn merge_template_into_user_params(
         if let Some(tmpl) = tmpl_map.get(user_param.key.as_str()) {
             // ── Values: keep existing + userAddedValues, append new template values not already present ──
             {
-                let current_set: std::collections::HashSet<String> = vals_to_strings(&m.values).into_iter().collect();
+                let current_set: std::collections::HashSet<String> = m.values.iter().map(|v| json_val_key(v)).collect();
                 for tv in &tmpl.values {
-                    if !current_set.contains(&tv.to_string()) {
+                    if !current_set.contains(&json_val_key(tv)) {
                         m.values.push(tv.clone());
                     }
                 }
@@ -915,8 +935,8 @@ pub fn merge_template_into_user_params(
             m.factory_default = tmpl.default.clone();
 
             // ── defaultValue: if current value still in merged array → keep. If orphaned → force reset to new factory default ──
-            let user_default_str = m.default_value.to_string();
-            if !m.values.iter().any(|v| v.to_string() == user_default_str) {
+            let user_default_key = json_val_key(&m.default_value);
+            if !m.values.iter().any(|v| json_val_key(v) == user_default_key) {
                 log::warn!("[config] Param '{}' default '{:?}' no longer in values — resetting to factory default {:?}",
                     m.key, m.default_value, tmpl.default);
                 m.default_value = tmpl.default.clone();
