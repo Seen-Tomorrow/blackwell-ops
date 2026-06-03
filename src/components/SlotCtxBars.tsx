@@ -1,5 +1,3 @@
-import { motion } from "framer-motion";
-
 interface SlotCtxBarsProps {
   slotCtx: Array<{ id: number; n_decoded: number; sessionNDecoded: number; totalTokensLifetime: number; is_processing: boolean }>;
   ctxTotal: number;
@@ -75,14 +73,13 @@ export default function SlotCtxBars({ slotCtx, ctxTotal, parallel, unifiedKv }: 
                 )}
                 {/* Fill — grows from bottom */}
                 {slot.isActive && slot.pct > 0 && (
-                  <motion.div
+                  <div
                     className="absolute bottom-0 left-0 right-0 rounded-sm"
                     style={{
                       height: `${slot.pct}%`,
                       backgroundColor: slot.isProcessing ? '#22c55e' : 'rgba(99,102,241,0.5)',
+                      transition: 'height 0.3s ease',
                     }}
-                    animate={{ height: `${slot.pct}%` }}
-                    transition={{ duration: 0.3 }}
                   />
                 )}
               </div>

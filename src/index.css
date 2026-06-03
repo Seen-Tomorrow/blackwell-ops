@@ -1220,4 +1220,16 @@ select option {
   box-shadow: 0 0 6px rgba(74, 222, 128, 0.5);
 }
 
+/* ── FusionOverlay animations (replaces framer-motion) ─── */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes pulseScale {
+  0%, 100% { transform: scale(1); opacity: 0.6; }
+  50% { transform: scale(1.15); opacity: 1; }
+}
+
+
 

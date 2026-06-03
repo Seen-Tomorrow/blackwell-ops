@@ -1,4 +1,3 @@
-import { motion, AnimatePresence } from "framer-motion";
 import type { GpuInfo, VramManifest, ModelMetadata } from "../lib/types";
 import GpuTopology from "./GpuTopology";
 import FusionOverlay from "./FusionOverlay";
@@ -68,19 +67,16 @@ export default function VramBadge({
     <div className="px-3 py-2.5 relative">
       {/* Overlay when a specific engine is selected (mini card click) — covers entire forecast container */}
       {selectedSlotIdx !== null && selectedSlotIdx !== undefined && activeEnginePort && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
+        <div
           className="absolute z-50 fusion-eink-bg overflow-hidden flex items-center justify-center rounded-xl border border-stealth-border p-[6px]"
-          style={{ top: '0px', right: '0px', bottom: '0px', left: '0px' }}
+          style={{ top: '0px', right: '0px', bottom: '0px', left: '0px', animation: 'fadeIn 0.2s ease' }}
         >
           <FusionOverlay
             alias={activeEngineAlias}
             enginePort={activeEnginePort}
             fusion={fusion}
           />
-        </motion.div>
+        </div>
       )}
 
       {/* ── Header row ─── */}
@@ -126,13 +122,9 @@ export default function VramBadge({
             <span className="text-[9px] font-mono text-stealth-muted">//</span>
 
             {/* CERTIFIED badge — inline after // */}
-            <AnimatePresence>
               {isCertified && (
-                <motion.div
-                  initial={{ opacity: 0, x: -4 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -4 }}
-                  transition={{ duration: 0.25 }}
+                <div
+                  style={{ animation: 'fadeIn 0.25s ease' }}
                   className="flex items-center gap-1"
                 >
                   <svg width="15" height="15" viewBox="0 0 10 10" fill="none">
@@ -140,9 +132,8 @@ export default function VramBadge({
                     <path d="M3 5L4.5 6.5L7 3.5" stroke="#FBBF24" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round"/>
                   </svg>
                   <span className="text-[9px] font-mono tracking-widest text-amber-400">CERTIFIED</span>
-                </motion.div>
+                </div>
               )}
-            </AnimatePresence>
           </div>
         </div>
 
@@ -154,9 +145,8 @@ export default function VramBadge({
       </div>
 
       {/* ── Top-right: scenario badge only, absolute corner ─── */}
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 0.75, scale: 1 }}
+      <div
+        style={{ animation: 'fadeIn 0.3s ease', opacity: 0.75 }}
         className="absolute top-0 right-2"
       >
         {/* Scenario badge */}
@@ -164,7 +154,7 @@ export default function VramBadge({
           <span className="text-[7px] font-mono text-stealth-muted">{manifest.scenario}</span>
           <span className="text-[9px] font-mono">{manifest.fits ? "✓ FIT" : "✗ NO FIT"}</span>
         </div>
-      </motion.div>
+      </div>
 
       {/* ── VRAM + RAM bars with MOE badge ─── */}
       <div className="relative mt-6">
@@ -172,11 +162,8 @@ export default function VramBadge({
         {/* VRAM bar row */}
         <div className="flex items-center gap-2">
           <div style={{ backgroundColor: 'rgb(20,20,20)' }} className="relative h-4 w-[70%] rounded-sm overflow-hidden border border-stealth-border/30">
-            <motion.div
-              style={{ width: `${vramUsagePct}%` }}
-              initial={{ width: 0 }}
-              animate={{ width: `${vramUsagePct}%` }}
-              transition={{ duration: 0.4, ease: "easeOut" }}
+            <div
+              style={{ width: `${vramUsagePct}%`, transition: 'width 0.4s ease-out' }}
               className={`h-full rounded-sm ${s.gpuBarColor}`}
             />
           </div>
@@ -205,11 +192,8 @@ export default function VramBadge({
           <>
             <div className="flex items-center gap-2 mt-3">
               <div style={{ backgroundColor: 'rgb(20,20,20)' }} className="relative h-4 w-[70%] rounded-sm overflow-hidden border border-stealth-border/30">
-                <motion.div
-                  style={{ width: `${ramUsagePct}%` }}
-                  initial={{ width: 0 }}
-                  animate={{ width: `${ramUsagePct}%` }}
-                  transition={{ duration: 0.4, ease: "easeOut" }}
+                <div
+                  style={{ width: `${ramUsagePct}%`, transition: 'width 0.4s ease-out' }}
                   className={`h-full rounded-sm ${
                     offloadMode === "moe_optimal" ? "bg-orange-hatched" : "bg-blue-700"
                   }`}

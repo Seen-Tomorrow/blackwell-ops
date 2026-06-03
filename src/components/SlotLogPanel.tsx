@@ -1,4 +1,3 @@
-import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect, useRef, memo } from "react";
 import type { StackEntry, LogEntry, FusionUpdate } from "../lib/types";
 import AnsiText from "./AnsiText";
@@ -79,12 +78,9 @@ export default memo(function SlotLogPanel({ entry, logs, systemEvents, fusionUpd
   const visibleLogs = logs.slice(-MAX_VISIBLE_LOGS);
 
     return (
-      <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0, scale: 0.95 }}
-          transition={{ duration: 0.3 }}
-           className={`eink-panel ${borderClass} rounded-sm overflow-hidden`}
+      <div
+          className={`eink-panel ${borderClass} rounded-sm overflow-hidden`}
+          style={{ animation: 'fadeIn 0.3s ease' }}
         >
       {/* Card header with phase indicator */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-stealth-border bg-stealth-dark/50">
@@ -105,16 +101,9 @@ export default memo(function SlotLogPanel({ entry, logs, systemEvents, fusionUpd
       </div>
 
       {/* Phase indicator bar */}
-      <AnimatePresence mode="wait">
-        {entry.status === "RUNNING" && displayPhase !== "IDLE" && (
-          <motion.div
-            key={displayPhase}
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.2 }}
-          >
-            <div className={`px-3 py-1 border-b ${phaseBg} flex items-center justify-between`}>
+      {entry.status === "RUNNING" && displayPhase !== "IDLE" && (
+        <div key={displayPhase} style={{ animation: 'fadeIn 0.2s ease' }}>
+          <div className={`px-3 py-1 border-b ${phaseBg} flex items-center justify-between`}>
               <span className="text-[9px] font-mono tracking-wider">
                 {displayPhase === "PP" && "\u{25C7}"}
                 {displayPhase === "GENERATING" && "\u{25CF}"}
@@ -151,9 +140,8 @@ export default memo(function SlotLogPanel({ entry, logs, systemEvents, fusionUpd
                 )}
               </div>
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+        </div>
+      )}
 
       {/* Engine stats */}
       <div className="px-3 py-2 grid grid-cols-4 gap-2">
@@ -273,6 +261,6 @@ export default memo(function SlotLogPanel({ entry, logs, systemEvents, fusionUpd
           <span className="text-[9px] font-mono text-nv-green/80">{entry.ready_at || "RUNNING"}</span>
         </div>
       )}
-    </motion.div>
+    </div>
   );
 });

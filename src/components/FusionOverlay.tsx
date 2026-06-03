@@ -1,4 +1,3 @@
-import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -127,35 +126,30 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
       : "--";
 
   return (
-    <AnimatePresence mode="wait">
+    <div className="relative w-full h-full overflow-hidden">
       {isLaunching ? (
-        <motion.div
+        <div
           key="launching"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className="flex flex-col items-center justify-center gap-3 w-full h-full"
+          className="flex flex-col items-center justify-center gap-3 w-full h-full absolute inset-0"
+          style={{ animation: 'fadeIn 0.2s ease' }}
         >
-          <motion.div
-            animate={{ scale: [1, 1.15, 1], opacity: [0.6, 1, 0.6] }}
-            transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
+          <div
             className="w-8 h-8 rounded-full border-2 border-nv-green/60 flex items-center justify-center"
+            style={{ animation: 'pulseScale 1.5s ease-in-out infinite' }}
           >
             <div className="w-2 h-2 bg-nv-green rounded-full" />
-          </motion.div>
+          </div>
 
           <span className="text-[10px] font-mono text-nv-green tracking-widest animate-pulse">
             INITIALIZING CORE
           </span>
           <span className="text-[8px] font-mono text-stealth-muted/40">{displayAlias} : {displayPort}</span>
-        </motion.div>
+        </div>
       ) : (
-        <motion.div
+        <div
           key="dashboard"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className="flex flex-col w-full h-full px-2 py-1 gap-0 overflow-hidden"
+          className="flex flex-col w-full h-full px-2 py-1 gap-0 overflow-hidden absolute inset-0"
+          style={{ animation: 'fadeIn 0.2s ease' }}
         >
           {/* ═══ HEADER — alias + phase indicator + controls ═══════ */}
           <div className="flex items-center justify-between flex-shrink-0 mb-1">
@@ -215,21 +209,35 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
                    ? "border-green-500/30 bg-black/8"
                    : "border-stone-500/10 bg-black/4"
                }`} style={{ flex: '1 1 60%' }}>
-                {/* Phase label */}
-                <span className="text-[7px] font-mono text-stealth-muted/40 tracking-wider mb-0.5">GENERATION</span>
+                {/* Phase label row — GENERATION left, ALTERNATE right */}
+                <div className="flex items-center justify-between mb-0.5">
+                  <span className="text-[7px] font-mono text-stealth-muted/40 tracking-wider">GENERATION</span>
+                  <span className="text-[7px] font-mono text-stealth-muted/40 tracking-wider">ALTERNATE</span>
+                </div>
 
-                {/* Big TG number — the hero metric */}
-                <div className="flex items-baseline gap-1">
+                {/* Big TG number + LP alternate value */}
+                <div className="flex items-baseline justify-between w-full">
+                  <div className="flex items-baseline gap-1">
+                    <span
+                      className="font-mono font-bold tracking-tight leading-none"
+                      style={{
+                        fontSize: 'clamp(2rem, 6vh, 3.5rem)',
+                        color: fusion.genTpsSlots > 0 ? '#22c55e' : 'rgba(148,163,184,0.25)'
+                      }}
+                    >
+                      {fusion.genTpsSlots > 0 ? fusion.genTpsSlots.toFixed(1) : "--"}
+                    </span>
+                    <span className="text-[7px] font-mono text-stealth-muted/30 tracking-wider">tok/s</span>
+                  </div>
                   <span
                     className="font-mono font-bold tracking-tight leading-none"
                     style={{
-                      fontSize: 'clamp(2rem, 6vh, 3.5rem)',
-                      color: fusion.genTpsSlots > 0 ? '#22c55e' : 'rgba(148,163,184,0.25)'
+                      fontSize: 'clamp(1rem, 3vh, 1.75rem)',
+                      color: fusion.LP_genTps != null && fusion.LP_genTps > 0 ? '#000' : 'rgba(148,163,184,0.25)'
                     }}
                   >
-                    {fusion.genTpsSlots > 0 ? fusion.genTpsSlots.toFixed(1) : "--"}
+                    {fusion.LP_genTps != null && fusion.LP_genTps > 0 ? fusion.LP_genTps.toFixed(0) : "--"}
                   </span>
-                  <span className="text-[7px] font-mono text-stealth-muted/30 tracking-wider">tok/s</span>
                 </div>
 
                 {/* Per-request micro-stats — always visible, no layout shifts */}
@@ -247,12 +255,12 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
                    </span>
                  </div>
 
-                 {/* Bench warmup overlay — covers TG meter + micro-stats */}
-                 {isBenchWarmup && (
+                 {/* Bench warmup overlay — TEMP DISABLED */}
+                 {/* {isBenchWarmup && (
                    <div className="absolute inset-0 flex items-center justify-center rounded-sm z-10" style={{ backgroundColor: '#3d3d3d' }}>
                      <p className="text-xl font-mono animate-pulse" style={{ color: '#22c55e' }}>WARMING UP</p>
                    </div>
-                 )}
+                 )} */}
                </div>
 
               {/* ── RIGHT: PREFILL (secondary) — use LP_prefillTps as primary, fallback to /metrics ─── */}
@@ -310,8 +318,8 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
               <BenchWidget port={displayPort} />
             )}
           </div>
-        </motion.div>
+        </div>
       )}
-    </AnimatePresence>
+    </div>
   );
 }

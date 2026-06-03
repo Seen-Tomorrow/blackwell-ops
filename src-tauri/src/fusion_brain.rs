@@ -278,7 +278,7 @@ impl FusionBrain {
             .build()
             .unwrap_or_default();
 
-        let poll_interval = tokio::time::Duration::from_millis(200);
+        let poll_interval = tokio::time::Duration::from_millis(100);
         let mut interval = tokio::time::interval(poll_interval);
 
         loop {

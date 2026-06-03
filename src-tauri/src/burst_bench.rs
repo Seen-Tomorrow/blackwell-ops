@@ -36,7 +36,7 @@ pub async fn cmd_burst_bench(
     let url = format!("http://127.0.0.1:{}/completion", port);
     let client = reqwest::Client::new();
 
-    const WARMUP_RUNS: usize = 2;
+    const WARMUP_RUNS: usize = 1;
     const MEASURED_RUNS: usize = 1;
     const TOTAL_RUNS: usize = WARMUP_RUNS + MEASURED_RUNS;
 
@@ -76,7 +76,7 @@ pub async fn cmd_burst_bench(
             BENCH_PROMPT_UNIQUE
         };
 
-        let run_n_predict = if run < WARMUP_RUNS { 512 } else { n_predict };
+        let run_n_predict = if run < WARMUP_RUNS { 1024 } else { n_predict };
 
         let body = serde_json::json!({
             "prompt": bench_prompt_text,
