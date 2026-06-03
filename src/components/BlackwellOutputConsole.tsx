@@ -131,7 +131,7 @@ export default function BlackwellOutputConsole({
 
   if (!isPowerUser || !isOpen) return null;
 
-  const displayLines = compact ? lines.slice(-3) : lines;
+  const displayLines = compact ? lines.slice(-5) : lines;
 
   const content = (
     <div 

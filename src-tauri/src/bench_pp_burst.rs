@@ -4,6 +4,7 @@
 //! and returns prefill TPS from engine-reported timings.
 
 use serde::Serialize;
+use tauri::Emitter;
 
 /// Large vocabulary of diverse English words for unique-mode PP burst (~10K words).
 const UNIQUE_WORDS: &[&str] = &[
@@ -69,6 +70,7 @@ pub struct BenchPPResult {
 
 #[tauri::command]
 pub async fn cmd_bench_pp_burst(
+    app_handle: tauri::AppHandle,
     port: u16,
     target_tokens: usize,
     bench_prompt_mode: String,
@@ -95,19 +97,28 @@ pub async fn cmd_bench_pp_burst(
         prompt_tokens: usize,
     }
 
+    // Release all slot KV caches once before the benchmark loop to prevent prompt caching from skewing results.
+    if let Ok(slots_resp) = client.get(&format!("http://127.0.0.1:{}/slots", port)).send().await {
+        if let Ok(slots) = slots_resp.json::<Vec<serde_json::Value>>().await {
+            for slot in &slots {
+                let idx = slot["id"].as_u64().unwrap_or(0);
+                let _ = client.post(&format!("http://127.0.0.1:{}/slots/{}/release", port, idx)).send().await;
+            }
+            log::debug!("[BENCH_PP] released {} slots before benchmark", slots.len());
+        }
+    }
+
     let mut measured_run: Option<RunStats> = None;
 
     for run in 0..TOTAL_RUNS {
-        // Release all slot KV caches before each run to prevent prompt caching from skewing results.
-        if let Ok(slots_resp) = client.get(&format!("http://127.0.0.1:{}/slots", port)).send().await {
-            if let Ok(slots) = slots_resp.json::<Vec<serde_json::Value>>().await {
-                for slot in &slots {
-                    let idx = slot["id"].as_u64().unwrap_or(0);
-                    let _ = client.post(&format!("http://127.0.0.1:{}/slots/{}/release", port, idx)).send().await;
-                }
-                log::debug!("[BENCH_PP] released {} slots for run {}", slots.len(), run + 1);
-            }
-        }
+        // Signal phase to frontend so UI can show WARMUP vs MEASURED
+        let phase = if run < WARMUP_RUNS { "warmup" } else { "measured" };
+        let _ = app_handle.emit("bench-pp-progress", serde_json::json!({
+            "port": port,
+            "phase": phase,
+            "run": run + 1,
+            "total": TOTAL_RUNS,
+        }));
 
         let body = serde_json::json!({
             "prompt": bench_prompt_text,

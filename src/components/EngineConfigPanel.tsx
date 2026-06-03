@@ -885,10 +885,10 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
         {/* Test flags */}
         {isAdminUnlocked && (
-          <div className="relative mt-3 border rounded-sm overflow-hidden transition-all duration-200" style={{ borderColor: testFlagsEnabled ? 'rgba(250, 204, 21, 0.6)' : 'rgba(250, 204, 21, 0.2)' }}>
+          <div className="relative mt-2 border rounded-sm overflow-hidden transition-all duration-200" style={{ borderColor: testFlagsEnabled ? 'rgba(250, 204, 21, 0.6)' : 'rgba(250, 204, 21, 0.2)' }}>
             {/* Top accent bar */}
             <div className="h-[1px] w-full bg-gradient-to-r from-transparent via-yellow-500/60 to-transparent" />
-            <div className="px-3 py-2.5 space-y-2 transition-all duration-200" style={{ background: testFlagsEnabled ? 'rgba(250, 204, 21, 0.2)' : 'rgba(250, 204, 21, 0.04)' }}>
+            <div className="px-2.5 py-1.5 space-y-1 transition-all duration-200" style={{ background: testFlagsEnabled ? 'rgba(250, 204, 21, 0.2)' : 'rgba(250, 204, 21, 0.04)' }}>
               {/* Header row */}
               <div className="flex items-center justify-between">
                 <label className="text-[9px] font-mono uppercase tracking-wider transition-all duration-200" style={{ color: testFlagsEnabled ? 'rgba(250, 204, 21, 1)' : 'rgba(250, 204, 21, 0.8)' }}>
@@ -963,7 +963,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                 onChange={(e) => setTestFlags(e.target.value)}
                 placeholder="-sm layer -smf32 1 ..."
                 disabled={!testFlagsEnabled}
-                className={`w-full border text-[9px] font-mono px-2.5 py-1.5 focus:outline-none transition-all duration-150 rounded-sm ${
+                className={`w-full border text-[9px] font-mono px-2.5 py-1 focus:outline-none transition-all duration-150 rounded-sm ${
                    testFlagsEnabled
                      ? "border-yellow-500/30 focus:border-yellow-500/50 placeholder:text-stealth-muted/40"
                      : "border-stealth-border/20 text-stealth-muted/30 cursor-not-allowed"
@@ -975,7 +975,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         )}
 
         {/* Launch button */}
-        <div className="px-1 py-4">
+        <div className="px-1 py-2.5">
           <motion.button
             onClick={handleAddToStack}
             disabled={!model || vramCalc.manifest?.scenario === 'HW_LOCKED'}

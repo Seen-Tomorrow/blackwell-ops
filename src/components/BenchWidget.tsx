@@ -1,5 +1,6 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import type { bench_TGBenchResult, bench_PPBurstResult, bench_PromptMode } from "../lib/types";
 
 interface BenchWidgetProps {
@@ -17,10 +18,12 @@ function formatBenchK(n: number): string {
 interface BenchPortState {
   tgRunning: boolean;
   tgResult: bench_TGBenchResult | null;
+  tgPhase: "warmup" | "measured" | null;
   nPredict: number;
   promptMode: bench_PromptMode;
   ppRunning: boolean;
   ppResult: bench_PPBurstResult | null;
+  ppPhase: "warmup" | "measured" | null;
   ppTargetTokens: number;
   showResults: boolean;
 }
@@ -29,10 +32,12 @@ function defaultBenchState(): BenchPortState {
   return {
     tgRunning: false,
     tgResult: null,
+    tgPhase: null,
     nPredict: 256,
     promptMode: "unique",
     ppRunning: false,
     ppResult: null,
+    ppPhase: null,
     ppTargetTokens: 8192,
     showResults: false,
   };
@@ -50,11 +55,36 @@ export default function BenchWidget({ port }: BenchWidgetProps) {
 
   const [, setTick] = useState(0);
   const tick = () => setTick(t => t + 1);
+  const unsubTgProgress = useRef<(() => void) | null>(null);
+  const unsubPpProgress = useRef<(() => void) | null>(null);
+
+  // Listen for TG benchmark phase updates
+  useEffect(() => {
+    let cancelled = false;
+    listen<any>("bench-tg-progress", (e) => {
+      if (cancelled || e.payload.port !== port) return;
+      ps.tgPhase = e.payload.phase as "warmup" | "measured";
+      tick();
+    }).then((u) => { if (!cancelled) unsubTgProgress.current = u; });
+    return () => { cancelled = true; unsubTgProgress.current?.(); };
+  }, [port]);
+
+  // Listen for PP benchmark phase updates
+  useEffect(() => {
+    let cancelled = false;
+    listen<any>("bench-pp-progress", (e) => {
+      if (cancelled || e.payload.port !== port) return;
+      ps.ppPhase = e.payload.phase as "warmup" | "measured";
+      tick();
+    }).then((u) => { if (!cancelled) unsubPpProgress.current = u; });
+    return () => { cancelled = true; unsubPpProgress.current?.(); };
+  }, [port]);
 
   const runBenchTg = async () => {
     if (ps.tgRunning || !port) return;
     ps.tgRunning = true;
     ps.tgResult = null;
+    ps.tgPhase = "warmup";
     ps.showResults = true;
     tick();
     try {
@@ -73,6 +103,7 @@ export default function BenchWidget({ port }: BenchWidgetProps) {
       };
     } finally {
       ps.tgRunning = false;
+      ps.tgPhase = null;
       tick();
     }
   };
@@ -81,6 +112,7 @@ export default function BenchWidget({ port }: BenchWidgetProps) {
     if (ps.ppRunning || !port) return;
     ps.ppRunning = true;
     ps.ppResult = null;
+    ps.ppPhase = "warmup";
     ps.showResults = true;
     tick();
     try {
@@ -98,6 +130,7 @@ export default function BenchWidget({ port }: BenchWidgetProps) {
       };
     } finally {
       ps.ppRunning = false;
+      ps.ppPhase = null;
       tick();
     }
   };
@@ -184,17 +217,17 @@ export default function BenchWidget({ port }: BenchWidgetProps) {
         )}
 
         {ps.showResults && (
-          <div className="pt-1 pb-1 px-1 flex-1">
-            {isAnyRunning && (
-              <div className="flex items-center gap-1.5 px-1 py-0.5">
-                <span className="inline-block w-1 h-1 bg-yellow-400 rounded-full animate-pulse" />
-                <span className="text-[7px] font-mono text-stealth-muted">
-                  {ps.tgRunning ? `TG (${ps.nPredict} tok)...` : ps.ppRunning ? `PP (${formatBenchK(ps.ppTargetTokens)} tok)...` : ""}
-                </span>
-              </div>
-            )}
+           <div className="pt-1 pb-1 px-1 flex-1">
+             {isAnyRunning && (
+               <div className="flex items-center gap-1.5 px-1 py-0.5">
+                 <span className="inline-block w-1 h-1 bg-yellow-400 rounded-full animate-pulse" />
+                 <span className="text-[7px] font-mono text-stealth-muted">
+                   {ps.tgRunning ? (ps.tgPhase === "warmup" ? `TG WARMUP (512 tok)` : `TG (${ps.nPredict} tok)...`) : ps.ppRunning ? (ps.ppPhase === "warmup" ? `PP WARMUP` : `PP (${formatBenchK(ps.ppTargetTokens)} tok)...`) : ""}
+                 </span>
+               </div>
+             )}
 
-            {ps.tgResult && !ps.tgRunning && (
+             {ps.tgResult && !ps.tgRunning && (
               ps.tgResult.success ? (
                 <div className="grid grid-cols-4 gap-x-2 gap-y-0.5 px-1 py-0.5">
                   <div>

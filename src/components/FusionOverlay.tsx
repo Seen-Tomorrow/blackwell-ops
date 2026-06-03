@@ -1,6 +1,7 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import type { FusionUpdate } from "../lib/types";
 import BenchWidget from "./BenchWidget";
 import SlotCtxBars from "./SlotCtxBars";
@@ -92,6 +93,19 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
     ttftMs: fusion.ttftMs != null ? formatMs(fusion.ttftMs) : null,
     elapsedMs: formatMs(fusion.requestElapsedMs),
   } as LastRequestStats : (frozenStats ?? engState.liveSnapshot);
+
+  // Track bench warmup phase from Tauri event — covers TG meter during benchmark warmup
+  const [isBenchWarmup, setIsBenchWarmup] = useState(false);
+  const unsubBenchProgress = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    listen<any>("bench-tg-progress", (e) => {
+      if (cancelled || e.payload.port !== displayPort) return;
+      setIsBenchWarmup(e.payload.phase === "warmup");
+    }).then((u) => { if (!cancelled) unsubBenchProgress.current = u; });
+    return () => { cancelled = true; unsubBenchProgress.current?.(); };
+  }, [displayPort]);
 
   if (!fusion) {
     return (
@@ -196,11 +210,11 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
             {/* ── RIGHT: TG hero + PREFILL side by side ─── */}
             <div className="flex gap-3 flex-1 min-h-0">
               {/* ── LEFT: TG TPS HERO (dominant) ─── */}
-              <div className={`flex flex-col items-center justify-start px-2 py-1.5 rounded-sm border transition-colors ${
-                fusion.phase === "TG"
-                  ? "border-green-500/30 bg-black/8"
-                  : "border-stone-500/10 bg-black/4"
-              }`} style={{ flex: '1 1 60%' }}>
+               <div className={`flex flex-col items-center justify-start px-2 py-1.5 rounded-sm border transition-colors relative ${
+                 fusion.phase === "TG"
+                   ? "border-green-500/30 bg-black/8"
+                   : "border-stone-500/10 bg-black/4"
+               }`} style={{ flex: '1 1 60%' }}>
                 {/* Phase label */}
                 <span className="text-[7px] font-mono text-stealth-muted/40 tracking-wider mb-0.5">GENERATION</span>
 
@@ -219,20 +233,27 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
                 </div>
 
                 {/* Per-request micro-stats — always visible, no layout shifts */}
-                <div className="flex items-center gap-2 mt-1.5">
-                  <span className={`text-[8px] font-mono ${showLive ? "text-black" : "text-stealth-muted/35"}`}>
-                    {statsToDisplay.genTokensSlots > 0 ? statsToDisplay.genTokensSlots + " tok" : "--"}
-                  </span>
-                  <span className={`text-[6px] ${showLive ? "text-black" : "text-stealth-muted/15"}`}>│</span>
-                  <span className={`text-[8px] font-mono ${showLive ? "text-black" : "text-stealth-muted/35"}`}>
-                    TTFT {statsToDisplay.ttftMs ?? "--"}
-                  </span>
-                  <span className={`text-[6px] ${showLive ? "text-black" : "text-stealth-muted/15"}`}>│</span>
-                  <span className={`text-[8px] font-mono ${showLive ? "text-black" : "text-stealth-muted/35"}`}>
-                    {statsToDisplay.elapsedMs}
-                  </span>
-                </div>
-              </div>
+                 <div className="flex items-center gap-2 mt-1.5">
+                   <span className={`text-[8px] font-mono ${showLive ? "text-black" : "text-stealth-muted/35"}`}>
+                     {statsToDisplay.genTokensSlots > 0 ? statsToDisplay.genTokensSlots + " tok" : "--"}
+                   </span>
+                   <span className={`text-[6px] ${showLive ? "text-black" : "text-stealth-muted/15"}`}>│</span>
+                   <span className={`text-[8px] font-mono ${showLive ? "text-black" : "text-stealth-muted/35"}`}>
+                     TTFT {statsToDisplay.ttftMs ?? "--"}
+                   </span>
+                   <span className={`text-[6px] ${showLive ? "text-black" : "text-stealth-muted/15"}`}>│</span>
+                   <span className={`text-[8px] font-mono ${showLive ? "text-black" : "text-stealth-muted/35"}`}>
+                     {statsToDisplay.elapsedMs}
+                   </span>
+                 </div>
+
+                 {/* Bench warmup overlay — covers TG meter + micro-stats */}
+                 {isBenchWarmup && (
+                   <div className="absolute inset-0 flex items-center justify-center rounded-sm z-10" style={{ backgroundColor: '#3d3d3d' }}>
+                     <p className="text-xl font-mono animate-pulse" style={{ color: '#22c55e' }}>WARMING UP</p>
+                   </div>
+                 )}
+               </div>
 
               {/* ── RIGHT: PREFILL (secondary) — use LP_prefillTps as primary, fallback to /metrics ─── */}
               <div className={`flex flex-col items-center justify-start px-2 py-1.5 rounded-sm border transition-colors ${

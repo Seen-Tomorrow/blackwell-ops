@@ -18,6 +18,7 @@ export const KEYS = {
   uiZoom: `${STORAGE_PREFIX}ui-zoom`,
   catalogVisibleCount: `${STORAGE_PREFIX}catalog-visible-count`,
    paramCreatorMode: `${STORAGE_PREFIX}param-creator-mode`,
+  selectedSlotIdx: `${STORAGE_PREFIX}selected-slot-idx`,
 } as const;
 
 // Dynamic key builders — return the full localStorage key string

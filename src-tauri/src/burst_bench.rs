@@ -4,6 +4,7 @@
 //! Uses engine-reported timings (prompt_ms, predicted_ms) not HTTP round-trip time.
 
 use serde::Serialize;
+use tauri::Emitter;
 
 /// ~500 token prompt to properly warm Blackwell kernels for realistic prefill measurement.
 const BENCH_PROMPT_UNIQUE: &str = "The architecture of modern large language models represents a fundamental shift in how we approach artificial intelligence and natural language processing. These systems are built on the transformer architecture, which relies entirely on self-attention mechanisms to process input sequences. The key innovation is that each position can attend to all positions in the previous layer, allowing the model to capture long-range dependencies that were previously difficult for recurrent architectures. Training these models requires massive computational resources, often involving thousands of GPU hours across distributed clusters. The scaling laws discovered by Kaplan and subsequent researchers show that model performance improves predictably with compute budget, dataset size, and parameter count. This has led to an arms race in model sizes, from GPT-3's 175 billion parameters to models exceeding one trillion parameters. Inference optimization is equally critical, as serving these models at scale requires techniques like quantization, speculative decoding, and efficient attention implementations. The KV cache alone can consume significant memory during long-context generation, making memory management a first-class concern in production deployments. Techniques such as PagedAttention have revolutionized how we handle the KV cache by eliminating memory fragmentation through virtual memory-like paging. Flash Attention further optimizes the computation by reordering operations to minimize HBM access, achieving both speedup and memory reduction. As models grow larger, tensor parallelism across multiple GPUs becomes essential for both training and inference workloads.";
@@ -27,6 +28,7 @@ pub struct BenchResult {
 
 #[tauri::command]
 pub async fn cmd_burst_bench(
+    app_handle: tauri::AppHandle,
     port: u16,
     n_predict: usize,
     bench_prompt_mode: String,
@@ -45,19 +47,28 @@ pub async fn cmd_burst_bench(
         gen_tokens: usize,
     }
 
+    // Release all slot KV caches once before the benchmark loop to prevent prompt caching from skewing results.
+    if let Ok(slots_resp) = client.get(&format!("http://127.0.0.1:{}/slots", port)).send().await {
+        if let Ok(slots) = slots_resp.json::<Vec<serde_json::Value>>().await {
+            for slot in &slots {
+                let idx = slot["id"].as_u64().unwrap_or(0);
+                let _ = client.post(&format!("http://127.0.0.1:{}/slots/{}/release", port, idx)).send().await;
+            }
+            log::debug!("[BENCH_TG] released {} slots before benchmark", slots.len());
+        }
+    }
+
     let mut measured_run: Option<RunStats> = None;
 
     for run in 0..TOTAL_RUNS {
-        // Release all slot KV caches before each run to prevent prompt caching from skewing results.
-        if let Ok(slots_resp) = client.get(&format!("http://127.0.0.1:{}/slots", port)).send().await {
-            if let Ok(slots) = slots_resp.json::<Vec<serde_json::Value>>().await {
-                for slot in &slots {
-                    let idx = slot["id"].as_u64().unwrap_or(0);
-                    let _ = client.post(&format!("http://127.0.0.1:{}/slots/{}/release", port, idx)).send().await;
-                }
-                log::debug!("[BENCH_TG] released {} slots for run {}", slots.len(), run + 1);
-            }
-        }
+        // Signal phase to frontend so UI can show WARMUP vs MEASURED
+        let phase = if run < WARMUP_RUNS { "warmup" } else { "measured" };
+        let _ = app_handle.emit("bench-tg-progress", serde_json::json!({
+            "port": port,
+            "phase": phase,
+            "run": run + 1,
+            "total": TOTAL_RUNS,
+        }));
 
         let bench_prompt_text = if bench_prompt_mode == "repetitive" {
             BENCH_PROMPT_REPETITIVE
@@ -65,9 +76,11 @@ pub async fn cmd_burst_bench(
             BENCH_PROMPT_UNIQUE
         };
 
+        let run_n_predict = if run < WARMUP_RUNS { 512 } else { n_predict };
+
         let body = serde_json::json!({
             "prompt": bench_prompt_text,
-            "n_predict": n_predict,
+            "n_predict": run_n_predict,
             "temperature": 0.0,
             "stream": false,
         });

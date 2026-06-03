@@ -183,6 +183,7 @@ pub struct FusionBrain {
     // ── Cumulative TG TPS tracking (accurate from first token) ───────
     tg_start_time: Option<Instant>,
     tg_start_n_decoded: usize,
+    last_gen_tps_slots: f64,  // "last known" value — persists across phase transitions
 
     // ── Log-parsed tracking fields ────────────────────────────────
     lp_prefill_progress: f64,       // exact 0→1 from print_timing PP line
@@ -219,6 +220,7 @@ impl FusionBrain {
             // Cumulative TG TPS tracking
             tg_start_time: None,
             tg_start_n_decoded: 0,
+            last_gen_tps_slots: 0.0,
 
             // Log-parsed fields — initialized to zero/Idle
             lp_prefill_progress: 0.0,
@@ -390,6 +392,8 @@ impl FusionBrain {
         self.lp_prefill_tps = 0.0;
         self.lp_prompt_tokens = 0;
         // NOTE: lp_gen_tps intentionally NOT reset — keep "last known" TG speed visible after request ends
+        self.tg_start_time = None;
+        self.last_gen_tps_slots = 0.0;
         self.lp_reset_prompt = false;
         self.lp_reset_regression = false;
     }
@@ -434,6 +438,8 @@ impl FusionBrain {
             self.request_start = None;
             self.prompt_tokens = 0;
             self.ttft_ms = None;
+            self.tg_start_time = None;
+            self.last_gen_tps_slots = 0.0;
         }
 
         // Prefill TPS from prompt_tokens_total delta
@@ -630,6 +636,21 @@ impl FusionBrain {
             self.tg_start_time = Some(now);
         }
 
+        // Update last known gen TPS — store for use during phase transitions / brief gaps
+        if let Some(start) = self.tg_start_time {
+            let mut total_n_decoded: usize = 0;
+            for slot in slots {
+                if !slot.next_token.is_empty() {
+                    total_n_decoded += slot.next_token[0].n_decoded;
+                }
+            }
+            let elapsed_ms = start.elapsed().as_millis() as u64;
+            if elapsed_ms > 0 && total_n_decoded > self.tg_start_n_decoded {
+                let tokens_generated = total_n_decoded.saturating_sub(self.tg_start_n_decoded);
+                self.last_gen_tps_slots = (tokens_generated as f64) / (elapsed_ms as f64 / 1000.0);
+            }
+        }
+
     }
 
     // ── Build FusionUpdate from current state + fresh poll data ─────
@@ -651,17 +672,17 @@ impl FusionBrain {
         let gen_tps_slots = if self.phase == InferencePhase::Tg {
             if let Some(start) = self.tg_start_time {
                 let elapsed_ms = start.elapsed().as_millis() as u64;
-                if elapsed_ms > 100 {
+                if elapsed_ms > 0 && total_n_decoded > self.tg_start_n_decoded {
                     let tokens_generated = total_n_decoded.saturating_sub(self.tg_start_n_decoded);
                     (tokens_generated as f64) / (elapsed_ms as f64 / 1000.0)
                 } else {
-                    0.0
+                    self.last_gen_tps_slots  // keep last known value during brief gaps
                 }
             } else {
                 0.0
             }
         } else {
-            0.0
+            self.last_gen_tps_slots  // persist across phase transitions (metrics PP→TG flicker)
         };
 
         // Gen TPS from /metrics gauge

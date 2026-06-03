@@ -295,6 +295,7 @@ function App() {
               return next;
             });
             setActiveLogSlot((prev) => (prev === payload.slot ? "all" : prev));
+            window.dispatchEvent(new CustomEvent("blackops-slot-cleared", { detail: payload }));
           }
         } catch {}
       });

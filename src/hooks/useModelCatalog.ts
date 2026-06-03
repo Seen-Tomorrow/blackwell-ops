@@ -29,7 +29,28 @@ export function useModelCatalog({ models, gpus, stack, scanningPath, setScanning
   const [catalogSelectedModel, setCatalogSelectedModel] = useState<ModelEntry | null>(null);
   // Right panel active model — set by catalog OR mini card clicks
   const [panelActiveModel, setPanelActiveModel] = useState<ModelEntry | null>(null);
-  const [selectedSlotIdx, setSelectedSlotIdx] = useState<number | null>(null);
+  const [selectedSlotIdxState, setSelectedSlotIdxState] = useState<number | null>(() => {
+    try {
+      const saved = localStorage.getItem(KEYS.selectedSlotIdx);
+      return saved ? parseInt(saved) : null;
+    } catch { return null; }
+  });
+
+  // Validate restored slotIdx against current stack — discard if engine no longer running
+  useEffect(() => {
+    if (selectedSlotIdxState === null || stack.length === 0) return;
+    const stillRunning = stack.some(s => s.idx === selectedSlotIdxState && (s.status === "RUNNING" || s.status === "LOADING"));
+    if (!stillRunning) setSelectedSlotIdxState(null);
+  }, [stack, selectedSlotIdxState]);
+
+  // Persist to localStorage on change + listen for slot-cleared to clear stale selection
+  useEffect(() => {
+    try { localStorage.setItem(KEYS.selectedSlotIdx, String(selectedSlotIdxState ?? -1)); } catch {}
+  }, [selectedSlotIdxState]);
+
+  const setSelectedSlotIdx = useCallback((v: number | null) => {
+    setSelectedSlotIdxState(v);
+  }, []);
   const [visibleCount, setVisibleCount] = useState<"4" | "6" | "8" | "all">(() => {
     try { return (localStorage.getItem(KEYS.catalogVisibleCount) as any) || "6"; } catch { return "6"; }
   });
@@ -90,11 +111,22 @@ export function useModelCatalog({ models, gpus, stack, scanningPath, setScanning
     const onStopAll = () => {
       setSelectedSlotIdx(null);
     };
+    const onSlotCleared = (e: Event) => {
+      const payload = (e as CustomEvent).detail as { slot: number };
+      if (payload?.slot !== undefined) {
+        try {
+          const saved = localStorage.getItem(KEYS.selectedSlotIdx);
+          if (saved && parseInt(saved) === payload.slot) setSelectedSlotIdx(null);
+        } catch {}
+      }
+    };
     window.addEventListener("blackops-engine-launched", onLaunch);
     window.addEventListener("blackops-stop-all", onStopAll);
+    window.addEventListener("blackops-slot-cleared", onSlotCleared);
     return () => {
       window.removeEventListener("blackops-engine-launched", onLaunch);
       window.removeEventListener("blackops-stop-all", onStopAll);
+      window.removeEventListener("blackops-slot-cleared", onSlotCleared);
     };
   }, [models]);
 
@@ -263,7 +295,7 @@ export function useModelCatalog({ models, gpus, stack, scanningPath, setScanning
     search, setSearch,
     catalogSelectedModel, setCatalogSelectedModel, handleSelect, handleSelectBySlot, clearEngineSelection,
     panelActiveModel, setPanelActiveModel,
-    selectedSlotIdx, setSelectedSlotIdx,
+    selectedSlotIdx: selectedSlotIdxState, setSelectedSlotIdx,
     visibleCount, setVisibleCount,
     sortField, sortDirection, handleSort,
     pinnedModels, catalogModels, allFiltered,
