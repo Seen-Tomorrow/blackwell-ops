@@ -36,6 +36,9 @@ pub enum BlackwellOutputConsoleCategory {
 
     /// General / miscellaneous output that does not clearly belong to another category.
     General,
+
+    /// Debug output for development and troubleshooting.
+    Debug,
 }
 
 impl BlackwellOutputConsoleCategory {
@@ -47,6 +50,7 @@ impl BlackwellOutputConsoleCategory {
             BlackwellOutputConsoleCategory::Foundry => "foundry",
             BlackwellOutputConsoleCategory::Error => "error",
             BlackwellOutputConsoleCategory::General => "general",
+            BlackwellOutputConsoleCategory::Debug => "debug",
         }
     }
 
@@ -58,6 +62,7 @@ impl BlackwellOutputConsoleCategory {
             BlackwellOutputConsoleCategory::Foundry => "Foundry",
             BlackwellOutputConsoleCategory::Error => "Error",
             BlackwellOutputConsoleCategory::General => "General",
+            BlackwellOutputConsoleCategory::Debug => "Debug",
         }
     }
 }
@@ -210,6 +215,7 @@ impl BlackwellOutputConsoleManager {
             BlackwellOutputConsoleCategory::Foundry,
             BlackwellOutputConsoleCategory::Error,
             BlackwellOutputConsoleCategory::General,
+            BlackwellOutputConsoleCategory::Debug,
         ] {
             category_buffers.insert(
                 category,

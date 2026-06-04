@@ -33,8 +33,6 @@ function App() {
   const [activeLogSlot, setActiveLogSlot] = useState<number | "all">("all");
   const logsScrollRef = useRef<HTMLDivElement>(null);
   const autoScrollRef = useRef(true);
-  const prevLogSlotsRef = useRef<Set<number>>(new Set());
-
   // Unsubscribe refs for Tauri event listeners — survive StrictMode mount/unmount/remount cycle.
   // Each ref holds the unsubscribe function from listen().then() so cleanup can call it reliably.
   const unsubEngineLogBatch = useRef<(() => void) | null>(null);
@@ -269,6 +267,12 @@ function App() {
               return next;
             });
           });
+          // Route to Blackwell Output Console (ENGINES category)
+          void invoke("emit_to_blackwell_console", {
+            category: "engines",
+            content: payload.text,
+            style: "Normal",
+          });
         }
       } catch {}
     }).then((u) => { if (!cancelled) unsubEngineSystem.current = u; });
@@ -296,6 +300,12 @@ function App() {
             });
             setActiveLogSlot((prev) => (prev === payload.slot ? "all" : prev));
             window.dispatchEvent(new CustomEvent("blackops-slot-cleared", { detail: payload }));
+            // Route to Blackwell Output Console (ENGINES category)
+            void invoke("emit_to_blackwell_console", {
+              category: "engines",
+              content: `[SLOT-CLEARED] Slot ${payload.slot}`,
+              style: "Warning",
+            });
           }
         } catch {}
       });
@@ -313,6 +323,12 @@ function App() {
       if (cancelled) return;
       const p = e.payload as { scanned: number; failed: number };
       setBatchScanState(s => ({ ...s, scanned: p.scanned, failed: p.failed }));
+      // Route to Blackwell Output Console (UTILS category)
+      void invoke("emit_to_blackwell_console", {
+        category: "utils",
+        content: `[GGUF-SCAN] Progress: ${p.scanned} scanned, ${p.failed} failed`,
+        style: "Normal",
+      });
     }).then((u) => { if (!cancelled) unsubGgufProgress.current = u; });
 
     listen("gguf-scan-complete", (e: any) => {
@@ -320,6 +336,12 @@ function App() {
       const p = e.payload as { scanned: number; failed: number };
       setBatchScanState(s => ({ ...s, active: false, scanned: p.scanned, failed: p.failed }));
       invoke("list_models").then(data => setModels(data as ModelEntry[])).catch(() => {});
+      // Route to Blackwell Output Console (UTILS category)
+      void invoke("emit_to_blackwell_console", {
+        category: "utils",
+        content: `[GGUF-SCAN] Complete: ${p.scanned} scanned, ${p.failed} failed`,
+        style: "Success",
+      });
     }).then((u) => { if (!cancelled) unsubGgufComplete.current = u; });
 
     return () => { cancelled = true; unsubGgufProgress.current?.(); unsubGgufComplete.current?.(); };

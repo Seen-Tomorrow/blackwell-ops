@@ -26,7 +26,6 @@ export default function MiniModelCard({ entry, modelAuthor, modelName, quant, si
              : "bg-black/40 border-nv-green/40 hover:bg-black/60"
       }`}
     >
-      {/* Top row: author (left), alias (right) */}
       <div className="flex items-center justify-between gap-1 mb-0.5">
         {modelAuthor && (
           <span className="text-[7px] font-mono text-stealth-muted truncate">{modelAuthor}</span>
@@ -34,7 +33,6 @@ export default function MiniModelCard({ entry, modelAuthor, modelName, quant, si
         <span className="text-[6px] font-mono text-nv-green/80 shrink-0">{entry.alias}</span>
       </div>
 
-      {/* Name (left) + quant badge (right) */}
       <div className="flex items-center justify-between gap-1">
         <span className={`text-[9px] font-mono truncate flex-shrink min-w-0 ${isSelected ? "text-nv-green" : "text-white"}`} title={modelName}>
           {modelName}
@@ -46,7 +44,6 @@ export default function MiniModelCard({ entry, modelAuthor, modelName, quant, si
         </span>
       </div>
 
-      {/* Size (bottom right) */}
       <div className="flex justify-end mt-0.5">
         <span className="text-[7px] font-mono text-stealth-muted">{sizeStr}</span>
       </div>

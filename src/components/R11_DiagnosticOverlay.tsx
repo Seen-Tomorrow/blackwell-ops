@@ -118,7 +118,7 @@ function RodDiagnosticLabel({ rod, offset }: { rod: R11RodHandle; offset: number
   // Determine text anchor based on position
   const isRight = Math.cos(angle) > 0.1;
   const isLeft = Math.cos(angle) < -0.1;
-  const textAnchor = isRight ? "start" : isLeft ? "end" : "middle";
+  const textAnchor: "start" | "middle" | "end" = isRight ? "start" : isLeft ? "end" : "middle";
   const xOffset = isRight ? 8 : isLeft ? -8 : 0;
 
   return (
@@ -151,7 +151,7 @@ function RodDiagnosticLabel({ rod, offset }: { rod: R11RodHandle; offset: number
       <text
         x={x + xOffset}
         y={y + 18}
-        textAnchor={textAnchor as any}
+        textAnchor={textAnchor}
         fill="#4a4a5a"
         fontSize="6"
         fontFamily="'JetBrains Mono', monospace"

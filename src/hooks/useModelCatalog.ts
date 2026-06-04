@@ -52,7 +52,7 @@ export function useModelCatalog({ models, gpus, stack, scanningPath, setScanning
     setSelectedSlotIdxState(v);
   }, []);
   const [visibleCount, setVisibleCount] = useState<"4" | "6" | "8" | "all">(() => {
-    try { return (localStorage.getItem(KEYS.catalogVisibleCount) as any) || "6"; } catch { return "6"; }
+    try { return (localStorage.getItem(KEYS.catalogVisibleCount) as "4" | "6" | "8" | "all") || "6"; } catch { return "6"; }
   });
   const [sortField, setSortField] = useState<SortField>(() => {
     try { return (localStorage.getItem(SORT_FIELD_KEY) as SortField) || "name"; } catch { return "name"; }

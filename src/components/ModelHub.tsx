@@ -12,7 +12,7 @@ export default function ModelHub() {
     const poll = async () => {
       try {
         const tasks = await invoke<DownloadTask[]>('get_download_tasks');
-        setDownloads(tasks as any);
+        setDownloads(tasks);
 
         // Detect newly-completed downloads and trigger catalog refresh
         for (const t of tasks) {

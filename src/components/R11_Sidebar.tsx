@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect } from "react";
 import type { ModelEntry } from "../lib/types";
 import type { R11PredictiveFit } from "../lib/reactor11";
 import { invoke } from "@tauri-apps/api/core";
@@ -32,7 +32,6 @@ export default function R11_Sidebar({ models, onInsertModel, onDragStart, collap
       style={{ width: collapsed ? 48 : 280 }}
       className="relative h-full flex-shrink-0 border-r border-stealth-border bg-stealth-dark/90 backdrop-blur-sm z-10 sidebar-width-transition"
     >
-      {/* Collapse toggle bar */}
       <button
         onClick={onToggleCollapse}
         className={`absolute top-4 -right-3 w-6 h-8 bg-stealth-panel border border-stealth-border rounded-r-sm flex items-center justify-center hover:border-nv-green/40 transition-colors z-20 ${collapsed ? "top-1/2 -translate-y-1/2" : ""}`}
@@ -42,23 +41,20 @@ export default function R11_Sidebar({ models, onInsertModel, onDragStart, collap
         </span>
       </button>
 
-       {/* Sidebar header */}
-      {!collapsed && (
+       {!collapsed && (
         <div className="p-3 border-b border-stealth-border relative">
           <div className="flex items-center justify-between mb-2">
             <h3 className="text-[12px] font-mono text-nv-green/70 tracking-widest">MODEL RACK</h3>
             <span className="text-[10px] font-mono text-stealth-muted/40">{models.length} MODELS</span>
           </div>
 
-          {/* Drag hint */}
           <div className="border border-dashed border-nv-green/20 rounded-sm p-2 bg-nv-green/[0.03]">
             <p className="text-[9px] font-mono text-stealth-muted/50 text-center leading-relaxed">
               DRAG MODEL TO CORE<br />TO INSERT ROD
             </p>
           </div>
 
-          {/* Predictive fit preview — absolute to prevent layout shift */}
-            {predictiveFit && (
+          {predictiveFit && (
               <div className="absolute left-3 right-3 top-[92px] p-2 border border-stealth-border/50 rounded-sm bg-stealth-panel/80 backdrop-blur-md z-10 fade-in">
                 <p className={`text-[10px] font-mono mb-1 ${predictiveFit.fits ? "text-nv-green" : "text-red-400"}`}>
                   {predictiveFit.fits ? "FIT: YES" : "FIT: NO"}
@@ -67,7 +63,6 @@ export default function R11_Sidebar({ models, onInsertModel, onDragStart, collap
                   ~{(predictiveFit.estimated_vram_mib / 1024).toFixed(1)}GB VRAM
                 </p>
 
-                {/* GPU detail bars */}
                 {predictiveFit.gpu_details.slice(0, 2).map((gpu) => (
                   <div key={gpu.index} className="mt-1">
                     <div className="flex justify-between text-[8px] font-mono text-stealth-muted/40 mb-0.5">
@@ -87,7 +82,6 @@ export default function R11_Sidebar({ models, onInsertModel, onDragStart, collap
         </div>
       )}
 
-      {/* Model list */}
       {!collapsed && (
         <div className="flex-1 overflow-y-auto p-2 space-y-1.5 fade-in" style={{ maxHeight: "calc(100vh - 180px)" }}>
             {models.map((m) => (
@@ -110,7 +104,6 @@ export default function R11_Sidebar({ models, onInsertModel, onDragStart, collap
           </div>
         )}
 
-      {/* Collapsed state */}
       {collapsed && (
         <div className="flex flex-col items-center pt-8 gap-3">
           <span className="text-[12px] text-nv-green/40 rotate-90 tracking-widest font-mono">MODELS</span>
@@ -142,7 +135,6 @@ function ModelCard({
       style={{ opacity: dragging ? 0.4 : 1, transform: dragging ? 'scale(0.98)' : 'scale(1)' }}
       className="border border-stealth-border/50 rounded-sm p-3 cursor-grab hover:border-nv-green/40 bg-stealth-panel/30 transition-all group relative select-none sidebar-card-transition"
     >
-      {/* Drag capture layer */}
       <div onMouseDown={onDragStart} className="absolute inset-0 z-[1] cursor-grab active:cursor-grabbing" />
       <p className="text-[10px] font-mono text-stealth-muted truncate leading-relaxed">{model.name}</p>
 
@@ -151,7 +143,6 @@ function ModelCard({
         <span className="text-[9px] font-mono text-stealth-muted/40">{model.size_str}</span>
       </div>
 
-      {/* Vision indicator */}
       {model.vision && (
         <div className="mt-1 flex items-center gap-1">
           <span className="w-1.5 h-1.5 rounded-full bg-telemetry-cyan/60" />
@@ -159,7 +150,6 @@ function ModelCard({
         </div>
       )}
 
-      {/* Insert button */}
       <button
         onClick={(e) => { e.stopPropagation(); onInsert(); }}
         className="absolute top-1.5 right-1.5 w-4 h-4 flex items-center justify-center rounded-sm border border-nv-green/30 text-nv-green/60 hover:bg-nv-green/20 hover:border-nv-green/60 transition-colors opacity-0 group-hover:opacity-100"
@@ -170,7 +160,6 @@ function ModelCard({
         </svg>
       </button>
 
-      {/* Hover glow */}
       <div className="absolute inset-0 rounded-sm bg-nv-green/5 opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity" />
     </div>
   );

@@ -75,9 +75,6 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [newParamKey, setNewParamKey] = useState("");
-  const [newParamValue, setNewParamValue] = useState("");
-
   // Per-provider scan states
   const [scanStates, setScanStates] = useState<Record<string, ProviderScanState>>({});
 
@@ -234,31 +231,6 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
     }
   }, [providers, onProvidersChange]);
 
-  const addParam = () => {
-    if (!newParamKey.trim() || !newParamValue.trim()) return;
-    setForm((prev) => ({
-      ...prev,
-      params: { ...prev.params, [newParamKey.trim()]: newParamValue.trim() },
-    }));
-    setNewParamKey("");
-    setNewParamValue("");
-  };
-
-  const removeParam = (key: string) => {
-    setForm((prev) => {
-      const next = { ...prev.params };
-      delete next[key];
-      return { ...prev, params: next };
-    });
-  };
-
-  const updateParamValue = (key: string, value: string) => {
-    setForm((prev) => ({
-      ...prev,
-      params: { ...prev.params, [key]: value },
-    }));
-  };
-
   // ── FIT Scan handlers ────────────────────────────────────────
 
   const handleScanLibrary = useCallback(async (providerId: string) => {
@@ -283,8 +255,8 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
     try {
       const allProviders = await invoke<ProviderConfig[]>("list_providers");
       const provider = allProviders.find(p => p.id === providerId);
-      const batch = (provider?.params as any)?.batch || 2048;
-      const ubatch = (provider?.params as any)?.ubatch || (provider?.params as any)?.ubatch_size || 512;
+      const batch = provider?.params?.batch || 2048;
+      const ubatch = provider?.params?.ubatch || provider?.params?.ubatch_size || 512;
 
       const result = await invoke<FitScanComplete>("fit_scan_library", {
         providerId,
@@ -353,6 +325,13 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
           const evt: FitScanProgress = e.payload;
           if (!evt || !evt.model_path) return;
 
+          // Route to Blackwell Output Console (UTILS category)
+          void invoke("emit_to_blackwell_console", {
+            category: "utils",
+            content: `[FIT-SCAN] ${evt.model_path} | ${evt.status} | ${evt.label || ''} | ${evt.vram_mib != null ? evt.vram_mib + ' MiB' : ''}`,
+            style: evt.status === "complete" ? "Success" : "Normal",
+          });
+
           setScanStates((prev) => {
             const hasActiveScan = Object.values(prev).some(s => s.status === "scanning");
             if (!hasActiveScan) return prev;
@@ -363,7 +342,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
                const existingResults = ps.results?.results ?? {};
                const prevEntry: FitScanFull | undefined = existingResults[evt.model_path];
 
-                let newPoints = prevEntry ? (prevEntry.points as any[]).filter(Boolean) : [];
+                let newPoints = prevEntry ? prevEntry.points.filter(Boolean) : [];
                  if (evt.status === "complete" && evt.vram_mib != null && evt.label) {
                    const pt: FitDataPoint = {
                      label: evt.label, ctx: 0, kv_quant: "", batch: 0, parallel: 0, split_mode: "",
@@ -635,7 +614,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
             {Object.entries(state.results.results).map(([path, entry]) => {
                let modelName = path.split("\\").pop()?.replace(".gguf", "") || path;
                modelName = modelName.replace(/-\d{3,}-of-\d{3,}$/i, "");
-              const full: FitScanFull = entry as any;
+              const full = entry;
               const pts = full.points ?? [];
               const nPts = pts.length;
 

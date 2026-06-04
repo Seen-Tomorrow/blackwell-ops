@@ -268,7 +268,7 @@ impl ProviderTemplate {
                     }
                 }
                 let full_cmd = format!("{} {}", self.binary_name, args.join(" "));
-                eprintln!("[LAUNCH_CMD][TEST] {}", full_cmd);
+                // Launch command test now routed to Blackwell Output Console
                 let log_path = std::env::temp_dir().join("blackwell-launch.log");
                 let _ = std::fs::write(&log_path, &full_cmd);
                 return args;
@@ -356,11 +356,11 @@ impl ProviderTemplate {
 
         if !config.model_path.is_empty() {
             let full_cmd = format!("{} {}", self.binary_name, args.join(" "));
-            eprintln!("[LAUNCH_CMD] {}", full_cmd);
+            // Launch command now routed to Blackwell Output Console
 
             let log_path = std::env::temp_dir().join("blackwell-launch.log");
             if let Err(e) = std::fs::write(&log_path, &full_cmd) {
-                eprintln!("[LAUNCH_CMD] Failed to write log: {}", e);
+                log::warn!("[LAUNCH_CMD] Failed to write log: {}", e);
             }
         }
 

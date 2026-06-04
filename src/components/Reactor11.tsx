@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { GpuInfo, ModelEntry } from "../lib/types";
+import type { ModelEntry } from "../lib/types";
 import type { R11Status, R11RodHandle, R11PredictiveFit } from "../lib/reactor11";
 import R11_Core from "./R11_Core";
 import R11_CoreGemini from "./R11_CoreGemini";

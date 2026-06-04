@@ -132,8 +132,7 @@ pub async fn launch_engine(
     let gpu_mask = engine_utils::compute_gpu_mask(&config, gpu_count, test_has_split);
 
     let gpu_mask_msg = format!("[GPU_MASK] provider={} split_mode=\"{}\" test_has_split={} -> CUDA_VISIBLE_DEVICES={}", backend_type, config.get_param_str("split").unwrap_or_default(), test_has_split, gpu_mask);
-    eprintln!("{}", gpu_mask_msg);
-    app.log_hub.emit_console_line(BlackwellOutputConsoleCategory::General, &gpu_mask_msg, BlackwellOutputConsoleLineStyle::Warning);
+    app.log_hub.emit_console_line(BlackwellOutputConsoleCategory::Debug, &gpu_mask_msg, BlackwellOutputConsoleLineStyle::Warning);
 
     crate::config::validate_provider_binary(binary_path.to_str().unwrap_or(""))?;
     crate::config::validate_model_path(&config.model_path)?;
@@ -183,16 +182,14 @@ pub async fn launch_engine(
     let cmd_args = template.build_command(&config, &gpu_mask, &final_user_params);
     let launch_cmd = format!("{} {}", binary_path.display(), cmd_args.join(" "));
 
-    // Emit full launch command to Blackwell Output Console (ENGINES category)
+    // Emit full launch command to Blackwell Output Console (DEBUG category)
     app.blackwell_output_console_manager.emit_line_to_category(
-        crate::output_console::BlackwellOutputConsoleCategory::Engines,
+        crate::output_console::BlackwellOutputConsoleCategory::Debug,
         format!("[LAUNCH_CMD] slot={}: {}", slot_idx, launch_cmd),
         crate::output_console::BlackwellOutputConsoleLineStyle::Command,
     );
 
-    eprintln!("\n========== [LAUNCH_CMD] slot={} ==========", slot_idx);
-    eprintln!("{}", launch_cmd);
-    eprintln!("==========================================\n");
+    // Launch command logged to Blackwell Output Console instead of eprintln!
 
     let log_path = std::env::temp_dir().join("blackwell-launch.log");
     match std::fs::OpenOptions::new().create(true).append(true).open(&log_path) {
@@ -268,7 +265,7 @@ pub async fn launch_engine(
             Err(e) => {
                 last_err = Some(e);
                 if attempt == 0 {
-                    eprintln!("[LAUNCH] slot={} first attempt failed: {} — retrying in 1s...", slot_idx, last_err.as_ref().unwrap());
+                    // Launch retry now routed to Blackwell Output Console
                     app.log_hub.emit_system_event(slot_idx, &config.alias, &format!("[RETRY] Launch failed: {} — retrying...", last_err.as_ref().unwrap())).await;
                     tokio::time::sleep(Duration::from_secs(1)).await;
                 }
@@ -604,7 +601,7 @@ pub async fn fit_scan_model(
     let fit_result = fit_scanner::scan_single_anchor(&fit_binary, &args, &gpu_mask).await;
     match &fit_result {
         Ok(raw) => {
-            app.log_hub.emit_console_line(BlackwellOutputConsoleCategory::General, &format!("[FIT] {} -> {:.1} MiB", model_path, raw.vram_mib), BlackwellOutputConsoleLineStyle::Normal);
+            app.log_hub.emit_console_line(BlackwellOutputConsoleCategory::Utils, &format!("[FIT] {} -> {:.1} MiB", model_path, raw.vram_mib), BlackwellOutputConsoleLineStyle::Normal);
         }
         Err(e) => {
             app.log_hub.emit_console_line(BlackwellOutputConsoleCategory::Error, &format!("[FIT] {} failed: {}", model_path, e), BlackwellOutputConsoleLineStyle::Error);

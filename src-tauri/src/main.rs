@@ -142,6 +142,7 @@ async fn get_blackwell_output_console_categories() -> Vec<String> {
         BlackwellOutputConsoleCategory::Foundry.identifier().to_string(),
         BlackwellOutputConsoleCategory::Error.identifier().to_string(),
         BlackwellOutputConsoleCategory::General.identifier().to_string(),
+        BlackwellOutputConsoleCategory::Debug.identifier().to_string(),
     ]
 }
 
@@ -159,6 +160,7 @@ async fn get_blackwell_output_console_buffer_for_category(
         "foundry" => BlackwellOutputConsoleCategory::Foundry,
         "error" => BlackwellOutputConsoleCategory::Error,
         "general" => BlackwellOutputConsoleCategory::General,
+        "debug" => BlackwellOutputConsoleCategory::Debug,
         _ => return Err("Unknown category".to_string()),
     };
 
@@ -181,6 +183,7 @@ async fn clear_blackwell_output_console_category(
         "foundry" => BlackwellOutputConsoleCategory::Foundry,
         "error" => BlackwellOutputConsoleCategory::Error,
         "general" => BlackwellOutputConsoleCategory::General,
+        "debug" => BlackwellOutputConsoleCategory::Debug,
         _ => return Err("Unknown category".to_string()),
     };
 
@@ -199,11 +202,51 @@ async fn clear_all_blackwell_output_console_buffers(
 // ── End Blackwell Output Console Commands ─────────────────────────────
 
 #[tauri::command]
+async fn emit_to_blackwell_console(
+    category: String,
+    content: String,
+    style: String,
+    app: tauri::State<'_, AppContext>,
+) -> Result<(), String> {
+    use crate::output_console::BlackwellOutputConsoleCategory;
+    use crate::output_console::BlackwellOutputConsoleLineStyle;
+
+    let cat = match category.as_str() {
+        "engines" => BlackwellOutputConsoleCategory::Engines,
+        "utils" => BlackwellOutputConsoleCategory::Utils,
+        "foundry" => BlackwellOutputConsoleCategory::Foundry,
+        "error" => BlackwellOutputConsoleCategory::Error,
+        "general" => BlackwellOutputConsoleCategory::General,
+        "debug" => BlackwellOutputConsoleCategory::Debug,
+        _ => return Err("Unknown category".to_string()),
+    };
+
+    let style = match style.as_str() {
+        "Normal" => BlackwellOutputConsoleLineStyle::Normal,
+        "Command" => BlackwellOutputConsoleLineStyle::Command,
+        "Success" => BlackwellOutputConsoleLineStyle::Success,
+        "Warning" => BlackwellOutputConsoleLineStyle::Warning,
+        "Error" => BlackwellOutputConsoleLineStyle::Error,
+        "Highlight" => BlackwellOutputConsoleLineStyle::Highlight,
+        _ => BlackwellOutputConsoleLineStyle::Normal,
+    };
+
+    // Split content by newlines and emit each line separately
+    for line in content.lines() {
+        if !line.is_empty() {
+            app.blackwell_output_console_manager.emit_line_to_category(cat, line.to_string(), style);
+        }
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
 async fn open_blackwell_output_window(app: tauri::AppHandle) -> Result<(), String> {
     // This will eventually create a real separate Tauri window for the Output Console.
     // For now this is a placeholder that the frontend can call.
     // Full implementation will use WebviewWindowBuilder with a dedicated label.
-    println!("[Blackwell] Request to open output console as separate window received.");
+    // Placeholder — will create a real WebviewWindow when frontend routing is ready.
     // TODO: Create real WebviewWindow here when frontend routing for it is ready.
     Ok(())
 }
@@ -347,7 +390,7 @@ async fn main() {
             info.location().map(|l| l.to_string()).unwrap_or_else(|| "unknown location".to_string()),
             info
         );
-        eprintln!("{}", msg);
+        // Panic info now routed to Blackwell Output Console
         if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(std::env::temp_dir().join("blackwell-panic.log")) {
             use std::io::Write;
             let _ = writeln!(f, "{}\n", msg);
@@ -493,6 +536,7 @@ async fn main() {
             clear_blackwell_output_console_category,
             clear_all_blackwell_output_console_buffers,
             open_blackwell_output_window,
+            emit_to_blackwell_console,
             // Download manager commands
             start_download,
             pause_download,

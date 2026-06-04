@@ -72,7 +72,7 @@ export default function ModelHubSearch() {
           modelId: selectedId,
           hfToken: token || undefined,
         });
-        if (!cancelled) setDetailInfo(info as any);
+        if (!cancelled) setDetailInfo(info);
       } catch (e) {
         console.error('Failed to load model info:', e);
       } finally {

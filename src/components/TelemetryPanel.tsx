@@ -188,7 +188,6 @@ function UtilGauge({ label, value, max, color, barColor }: {
 
 function CpuMatrix({ cpu }: { cpu: CpuInfo }) {
   const cols = Math.min(cpu.threads, 8);
-  const rows = Math.ceil(cpu.threads / cols);
 
   return (
     <div className="bg-stealth-panel border border-stealth-border rounded-sm overflow-hidden">

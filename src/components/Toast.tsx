@@ -66,8 +66,8 @@ export function ToastProvider({ children }: ToastProviderProps) {
 
   // Expose addToast globally for other components to use
   useEffect(() => {
-    (window as any).__blackopsToasts = { addToast };
-    return () => { delete (window as any).__blackopsToasts; };
+    window.__blackopsToasts = { addToast };
+    return () => { window.__blackopsToasts = undefined; };
   }, [addToast]);
 
   return (

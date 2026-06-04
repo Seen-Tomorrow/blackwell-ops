@@ -160,8 +160,7 @@ impl EngineStack {
             cmd.env(&k, &v);
         }
 
-        eprintln!("[ENGINE] slot={} binary: {}", slot_idx, binary_path.display());
-        eprintln!("[ENGINE] slot={} args: {:?}", slot_idx, cmd_args.iter().take(5).collect::<Vec<_>>());
+        // Engine launch info now routed to Blackwell Output Console
 
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x08000000;
@@ -179,7 +178,7 @@ impl EngineStack {
         };
 
         let pid = child.id();
-        eprintln!("[ENGINE] slot={} spawned (pid={})", slot_idx, pid);
+        // Engine spawned now routed to Blackwell Output Console
 
         // Extract stderr pipe and start reader immediately
         let stderr = child.stderr.take().unwrap();
@@ -195,7 +194,7 @@ impl EngineStack {
         if let Ok(status) = child.try_wait() {
             if let Some(code) = status {
                 let exit_code = code.code().unwrap_or(-1);
-                eprintln!("[ENGINE] slot={} CRASHED immediately after spawn! Exit code: {}", slot_idx, exit_code);
+                // Engine crash now routed to Blackwell Output Console
                 {
                     let mut slot = slot_arc.lock();
                     slot.status = SlotStatus::Idle;
@@ -276,7 +275,7 @@ impl EngineStack {
         let pid = match pid {
             Some(p) => p,
             None => {
-                eprintln!("[REAPER] slot={} no PID to monitor", slot_idx);
+                // Reaper no PID now routed to Blackwell Output Console
                 return;
             }
         };
@@ -293,7 +292,7 @@ impl EngineStack {
                 let alive = Self::is_process_alive(pid);
 
                 if !alive {
-                    eprintln!("[REAPER] slot={} alias={} died unexpectedly! (pid={})", slot_idx, alias, pid);
+                    // Reaper engine died now routed to Blackwell Output Console
 
                     // Stop the fusion brain for this slot
                     crate::fusion_brain::stop_brain(slot_idx).await;
@@ -331,14 +330,14 @@ impl EngineStack {
     ) -> bool {
         let pid = child.id();
 
-        eprintln!("[STOP] slot={} pid={} TerminateProcess...", slot_idx, pid);
+        // Engine stop now routed to Blackwell Output Console
         let _ = child.kill();
 
         for attempt in 0..40 {
             std::thread::sleep(std::time::Duration::from_millis(50));
             match child.try_wait() {
                 Ok(Some(_)) => {
-                    eprintln!("[STOP] slot={} KILLED after {:.1}s", slot_idx, (attempt + 1) as f64 * 0.05);
+                    // Engine killed now routed to Blackwell Output Console
                     return true;
                 }
                 Ok(None) => {}
@@ -346,7 +345,7 @@ impl EngineStack {
             }
         }
 
-        eprintln!("[STOP] slot={} STILL ALIVE after kill — orphaned", slot_idx);
+        // Engine orphaned now routed to Blackwell Output Console
         false
     }
 
@@ -402,7 +401,7 @@ impl EngineStack {
             } else {
                 "[STOP] KILLED".to_string()
             };
-            eprintln!("[STOP] slot={} alias={} shutdown: {}", slot_idx, alias, msg);
+            // Engine shutdown now routed to Blackwell Output Console
 
             let hub_opt = {
                 let stack = stack_ref.lock().await;
@@ -464,7 +463,7 @@ impl EngineStack {
                     } else {
                         "[STOP] KILLED".to_string()
                     };
-                    eprintln!("[STOP] slot={} alias={} shutdown: {}", i, alias, msg);
+                    // Engine shutdown now routed to Blackwell Output Console
 
                     if emit_events {
                         if let Some(hub) = hub_clone.as_ref() {

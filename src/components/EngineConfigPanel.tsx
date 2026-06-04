@@ -75,30 +75,23 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     try { return localStorage.getItem(KEYS.testFlagsMode) === "add" ? "add" : "replace"; } catch { return "replace"; }
   });
 
-  // Engine alias — per-model persistent, auto-populated if empty
   const [aliasInput, setAliasInput] = useState<string>("");
   const [aliasIsUserSet, setAliasIsUserSet] = useState(false);
   const aliasInitializedRef = useRef<{ modelPath: string; done: boolean }>({ modelPath: "", done: false });
   const aliasUserEditedRef = useRef(false);
 
-  // Binary profile selection — persisted per-provider, defaults to vanguard
   const [selectedBinaryProfile, setSelectedBinaryProfile] = useState<EnvProfile>(() => {
     try { return (localStorage.getItem(KEYS.binaryProfile) as EnvProfile) || "vanguard"; } catch { return "vanguard"; }
   });
 
-  // Blaze animation state — triggers fire effect on launch button
   const [isBlazing, setIsBlazing] = useState(false);
-
-  // Nuclear flash state — brief visual feedback when toggling speculative decoding
   const [specFlash, setSpecFlash] = useState(false);
 
-  // Collapsible group state — persisted across sessions, defaults to collapsed for Advanced/Feature Flags
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => {
     try {
       const saved = localStorage.getItem(KEYS.collapsedGroups);
       if (saved) return new Set(JSON.parse(saved));
     } catch {}
-    // Default collapsed groups — Advanced and Feature Flags start folded
     return new Set(["ADVANCED", "FEATURE-FLAGS"]);
   });
 
@@ -270,10 +263,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   // Display value — manufactured capacity, no deductions (what users see)
   const displayVramMib = gpus.reduce((sum, g) => sum + (g.memory_total_manufactured || g.memory_total), 0);
 
-  // Calculation value — real available for fit decisions
-  const availableVramMib = Math.max(0, gpus.reduce((sum, g) => sum + g.memory_free, 0) - committedVramMib);
-  
-  const vramCalc = useScenarioEvaluator({
+ const vramCalc = useScenarioEvaluator({
     model,
     config: { ...config, backend_type: effectiveBackendType },
     gpus,
@@ -289,13 +279,13 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       .map(a => a.gpuIndex);
   }, [vramCalc.manifest]);
 
-  // ── Genesis template keys (for yellow accent on non-genesis params) ──
-  const [genesisKeys, setGenesisKeys] = useState<Set<string>>(new Set());
+  // ── Provider default param keys (for yellow accent on user-added params) ──
+  const [providerDefaultKeys, setProviderDefaultKeys] = useState<Set<string>>(new Set());
   useEffect(() => {
     if (!effectiveBackendType) return;
     invoke<ProviderTemplate>("get_template", { providerId: effectiveBackendType })
-      .then(template => setGenesisKeys(new Set((template.params || []).map(p => p.key))))
-      .catch(() => setGenesisKeys(new Set()));
+      .then(template => setProviderDefaultKeys(new Set((template.params || []).map(p => p.key))))
+      .catch(() => setProviderDefaultKeys(new Set()));
   }, [effectiveBackendType]);
 
   // Extracted param row renderer for reuse
@@ -306,8 +296,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     const baseValues = allValues.filter(v => !(def.hiddenValues || []).some(hv => String(hv) === String(v)));
     const currentValue = config[def.key];
 
-    // Yellow accent: non-genesis params (not in genesis template, not system-injected via dock)
-    const isUserAdded = genesisKeys.size > 0 && !genesisKeys.has(def.key) && !def.dock;
+    // Yellow accent: user-added params (not in provider default params, not system-injected via dock)
+    const isUserAdded = providerDefaultKeys.size > 0 && !providerDefaultKeys.has(def.key) && !def.dock;
 
     // ── Slider ptype — render range input instead of value chips ───────────
     if (def.ptype === 'slider') {
@@ -421,11 +411,11 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             label: p.label,
             values: p.values as (string | number)[],
             order: i,
-            hidden: (p as any).hidden_default ?? false,
+            hidden: p.hidden_default ?? false,
             defaultValue: p.default,
             flag: p.flag ?? undefined,
             ptype: p.ptype,
-            step: (p as any).step,
+            step: p.step,
             ui_group: p.ui_group,
             note: p.note,
             pattern: p.pattern,
@@ -519,7 +509,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     setTimeout(() => setIsBlazing(false), 800);
 
     try {
-      const result = await onLaunch(fullConfig) as any;
+      const result = await onLaunch(fullConfig);
       // Dispatch success event for toast + status bar with the real port from backend
       if (result?.port) {
         window.dispatchEvent(new CustomEvent("blackops-launch-success", { detail: { alias: finalAlias, port: result.port } }));
@@ -547,8 +537,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       </div>
     );
   }
-
-  const displayVramGb = displayVramMib / 1024;
 
   return (
     <div className="flex flex-col h-full overflow-hidden" data-config-panel style={{ background: '#0c120a' }}>

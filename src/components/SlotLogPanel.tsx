@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, memo } from "react";
+import { useEffect, useRef, memo } from "react";
 import type { StackEntry, LogEntry, FusionUpdate } from "../lib/types";
 import AnsiText from "./AnsiText";
 import BenchWidget from "./BenchWidget";
@@ -30,21 +30,12 @@ function StatBlock({ label, value, highlight }: {
 
 export default memo(function SlotLogPanel({ entry, logs, systemEvents, fusionUpdate, n_ctx = 32768, onStop }: SlotLogPanelProps) {
   const logRef = useRef<HTMLDivElement>(null);
-  const cardRef = useRef<HTMLDivElement>(null);
-
   // Auto-scroll only on mount or when system events change (not every log line)
   useEffect(() => {
     if (logRef.current && systemEvents.length > 0) {
       logRef.current.scrollTop = logRef.current.scrollHeight;
     }
   }, [systemEvents]);
-
-  const statusColor = {
-    RUNNING: "status-online",
-    LOADING: "status-loading",
-    ERROR: "status-error",
-    IDLE: "status-offline",
-  }[entry.status] || "status-offline";
 
   const borderClass = {
     RUNNING: "glow-border",

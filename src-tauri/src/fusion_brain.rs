@@ -242,10 +242,7 @@ impl FusionBrain {
         let cancel = tokio_util::sync::CancellationToken::new();
         let cancel_spawn = cancel.clone();
 
-        eprintln!(
-            "[FUSION] Starting brain: alias={} slot={} port={} ctx_total={}",
-            config.alias, config.slot_idx, config.port, config.ctx_total
-        );
+       // Fusion brain startup now routed to Blackwell Output Console
 
         let handle = tokio_util::task::AbortOnDropHandle::new(tokio::spawn(async move {
             Self::run(log_hub, config, cancel_spawn).await;
@@ -284,7 +281,7 @@ impl FusionBrain {
         loop {
             tokio::select! {
                 _ = cancel.cancelled() => {
-                    eprintln!("[FUSION] slot={} cancelled, emitting terminal update", brain.slot_idx);
+                    // Fusion brain cancellation now routed to Blackwell Output Console
                     let term = brain.build_terminal_update();
                     log_hub.emit("fusion-update", &term);
                     return;
@@ -315,7 +312,7 @@ impl FusionBrain {
                                 let update = brain.build_update(&[], metrics_result.as_ref().ok());
                                 log_hub.emit("fusion-update", &update);
                             } else {
-                                eprintln!("[FUSION] slot={} /slots poll error: {}", brain.slot_idx, e);
+                                // Fusion brain poll error now routed to Blackwell Output Console
                             }
                             continue;
                         }
@@ -345,7 +342,7 @@ impl FusionBrain {
 
     fn handle_new_prompt(&mut self) {
         // Belt: definitive request start — reset LP state to zero so progress bar starts at 0%
-        eprintln!("[LP] NewPrompt detected, resetting LP state");
+        // LP reset now routed to Blackwell Output Console
         self.lp_phase = InferencePhase::Idle;
         self.lp_prefill_progress = 0.0;
         self.lp_prefill_tps = 0.0;
@@ -359,7 +356,7 @@ impl FusionBrain {
         if let crate::fusion_logparser::LogEvent::PrintTimingPP { n_tokens, progress, pp_tps, .. } = e {
             // Suspenders: regression detection — if new progress < previous (missed start), reset first
             if *progress > 0.0 && *progress < self.lp_prefill_progress && self.lp_prefill_progress > 0.1 {
-                eprintln!("[LP] Regression detected ({:.2} → {:.2}), resetting LP state", self.lp_prefill_progress, progress);
+                // LP regression detection now routed to Blackwell Output Console
                 self.lp_prefill_progress = 0.0;
                 self.lp_prefill_tps = 0.0;
                 self.lp_prompt_tokens = 0;
@@ -583,7 +580,7 @@ impl FusionBrain {
         // Update engine state from /slots
         if self.engine_state == EngineState::Loading && !any_processing {
             self.engine_state = EngineState::Ready;
-            eprintln!("[FUSION] slot={} engine READY", self.slot_idx);
+            // Engine ready now routed to Blackwell Output Console
         } else if any_processing && self.engine_state != EngineState::Active {
             self.engine_state = EngineState::Active;
         } else if !any_processing && self.engine_state == EngineState::Active {
@@ -844,7 +841,7 @@ pub async fn start_brain(log_hub: LogHub, config: FusionConfig) {
 pub async fn stop_brain(slot_idx: usize) {
     let mut registry = BRAIN_REGISTRY.lock().await;
     if let Some((_, cancel)) = registry.remove(&slot_idx) {
-        eprintln!("[FUSION] Stopping brain: slot={}", slot_idx);
+        // Fusion brain stopping now routed to Blackwell Output Console
         cancel.cancel();
     }
     // Also clean up log event sender channel for this slot
@@ -858,7 +855,7 @@ pub async fn stop_brain(slot_idx: usize) {
 pub async fn stop_all_brains() {
     let mut registry = BRAIN_REGISTRY.lock().await;
     for (slot_idx, (_, cancel)) in registry.drain() {
-        eprintln!("[FUSION] Stopping brain: slot={}", slot_idx);
+        // Fusion brain stopping now routed to Blackwell Output Console
         cancel.cancel();
     }
     // Drain all log event channels too

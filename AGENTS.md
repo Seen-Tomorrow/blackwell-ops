@@ -4,6 +4,62 @@ This document tracks critical fixes, architectural decisions, and operational no
 
 ---
 
+## 1. Banned Coding Patterns
+
+### `as any` — DO NOT USE
+
+**Status:** BANNED as of 2026-06-04.
+
+**Why:** `as any` bypasses TypeScript's type checking, hiding real bugs and making code harder to maintain. It was used extensively in the codebase (32 occurrences) due to missing type definitions and developer shortcuts.
+
+**What to do instead:**
+- Use proper type assertions: `as SomeType` instead of `as any`
+- Add missing properties to type definitions
+- Use `unknown` with type guards when the type is truly unknown
+- Augment `Window` interface for runtime globals (e.g., `__TAURI__`, `__blackopsToasts`)
+- Use union types for string literals: `as "4" | "6" | "8" | "all"` instead of `as any`
+
+**Examples:**
+```typescript
+// BAD
+const value = localStorage.getItem(KEY) as any;
+
+// GOOD
+const value = localStorage.getItem(KEY) as "4" | "6" | "8" | "all";
+
+// BAD
+const payload = event.payload as any;
+
+// GOOD
+interface MyPayload { field: string }
+const payload = event.payload as MyPayload;
+```
+
+**Files affected by cleanup:**
+- ConfigPage.tsx (16 casts removed)
+- EngineConfigPanel.tsx (3 casts removed)
+- ProvidersConfig.tsx (4 casts removed)
+- ModelHubSearch.tsx (1 cast removed)
+- ModelHub.tsx (1 cast removed)
+- BlackwellOutputConsole.tsx (1 cast fixed)
+- useModelCatalog.ts (1 cast fixed)
+- useFusionData.ts (1 cast fixed)
+- FoundryModal.tsx (1 cast fixed)
+- Toast.tsx (2 casts fixed)
+- R11_DiagnosticOverlay.tsx (1 cast fixed)
+
+### Other Anti-Patterns to Avoid
+
+1. **`any` type** — Same as `as any` — avoid entirely. Use `unknown` with type guards.
+2. **`@ts-ignore`** — Suppresses errors without fixing them. Use `@ts-expect-error` with a comment if you must suppress.
+3. **Magic strings** — Use enums or string literal types instead of raw strings.
+4. **`console.log` in production** — Use proper logging framework or remove.
+5. **Hardcoded paths** — Use `config::resolve_path()` for portable path resolution.
+6. **`delete obj[key]`** — Use `const { [key]: _, ...rest } = obj;` for type-safe object manipulation.
+7. **`setTimeout` without cleanup** — Always clear intervals/timeouts in React useEffect cleanup.
+
+---
+
 ## 2. React StrictMode Duplicate Event Listeners (Fixed)
 
 **File:** `src/App.tsx`

@@ -1,6 +1,6 @@
 import SlotLogPanel from "./SlotLogPanel";
 import EngineBanner from "./EngineBanner";
-import type { StackEntry, LogEntry, SystemEvent } from "../lib/types";
+import type { StackEntry, LogEntry } from "../lib/types";
 import { useFusionData } from "../hooks/useFusionData";
 
 const EMPTY_LOGS: LogEntry[] = [];

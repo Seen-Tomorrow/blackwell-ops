@@ -14,7 +14,6 @@ const MIN_ZOOM = 0.7;
 const MAX_ZOOM = 1.5;
 const ZOOM_STEP = 0.05;
 
-const isDev = __BUILD_MODE__ === "dev";
 const CONSOLE_ACTIVE_FOOTER_BG = "#0a0a0a";
 
 

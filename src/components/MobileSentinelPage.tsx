@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { GpuInfo, StackEntry } from "../lib/types";
+import type { StackEntry } from "../lib/types";
 import { useTelemetry } from "../context/TelemetryContext";
 
 // ── Sentinel Protocol Types ────────────────────────────────────────────
@@ -196,7 +196,7 @@ export default function MobileSentinelPage({ stack, onTelemetryUpdate }: { stack
     // Connection timeout — if no open event within 5s, abort.
     setTimeout(() => {
       if (wsRef.current?.readyState === WebSocket.CONNECTING) {
-        console.warn("[Sentinel] WebSocket connection timed out after 5s");
+        // WebSocket connection timeout now routed to Blackwell Output Console
         addLog("Connection timed out — Simplewall may be blocking WS handshake on port 3814");
         wsRef.current?.close();
       }

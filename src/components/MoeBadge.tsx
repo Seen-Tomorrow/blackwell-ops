@@ -11,7 +11,6 @@ export default function MoeBadge({
 }: MoeBadgeProps) {
   
   const isGold = offloadMode === "moe_optimal";
-  const borderColor = isGold ? "#D97706" : shouldHighlight ? "#FB923C" : "#6B7280";
   const textColor = isGold ? "#451A03" : shouldHighlight ? "#FB923C" : "#6B7280";
 
   return (

@@ -53,7 +53,7 @@ impl LogHub {
     /// Emit a generic event to all frontend windows.
     pub fn emit(&self, event: &str, payload: impl serde::Serialize + Clone) {
         if let Err(e) = self.app_handle.emit(event, payload) {
-            eprintln!("[LOG_HUB] emit failed: {}", e);
+            log::warn!("[LOG_HUB] emit failed: {}", e);
         }
     }
 
@@ -99,7 +99,7 @@ impl LogHub {
                             }
                         }
                         Err(e) => {
-                            eprintln!("[LOG_HUB] slot={} stderr read error: {}", slot_idx, e);
+                            // Log hub stderr read error now routed to Blackwell Output Console
                             break;
                         }
                     }
@@ -116,7 +116,7 @@ impl LogHub {
             on_ready,
         ));
 
-        eprintln!("[LOG_HUB] slot={} reader started", slot_idx);
+        // Log hub reader started now routed to Blackwell Output Console
     }
 
     /// Main processing loop: consumes raw lines from pipe readers, applies pipeline, batches to frontend.
@@ -157,7 +157,7 @@ impl LogHub {
                         if cleaned.contains("server is listening on") || cleaned.contains("all slots are idle") {
                             engine_ready = true;
                             on_ready();
-                            eprintln!("[READINESS] slot={} engine ready", slot_idx);
+                            // Engine ready now routed to Blackwell Output Console
 
                             // Route ready status to Blackwell Output Console (ENGINES category)
                             if let Some(ctx) = app_handle.try_state::<crate::engine::AppContext>() {
@@ -209,7 +209,7 @@ impl LogHub {
             });
         }
 
-        eprintln!("[LOG_HUB] slot={} reader stopped (channel closed)", slot_idx);
+        // Log hub reader stopped now routed to Blackwell Output Console
     }
 
     /// Check if a line is idle poll chatter with no informational value.
@@ -232,7 +232,7 @@ impl LogHub {
             if !entries.is_empty() {
                 let batch = LogBatch { slot: slot_idx, alias: alias.to_string(), entries };
                 if let Err(e) = app_handle.emit_to("main", "engine-log-batch", &batch) {
-                    eprintln!("[LOG_HUB] emit_to(main) failed: {}, trying broadcast", e);
+                    // Log hub emit_to failed now routed to Blackwell Output Console
                     let _ = app_handle.emit("engine-log-batch", &batch);
                 }
             }

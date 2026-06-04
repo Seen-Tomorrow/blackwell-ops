@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from "react";
 import type { ProviderConfig } from "../lib/types";
-import { getEnvColors, getStepLabel } from "../lib/foundry_constants";
+import { getEnvColors } from "../lib/foundry_constants";
 
 interface BuildLogEntry {
   step: string;

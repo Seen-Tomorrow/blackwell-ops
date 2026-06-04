@@ -46,7 +46,6 @@ export default function ModelCard({ model, idx, isSelected, isHighlighted, fitSt
            : "cyber-card hover:bg-black/40"
       }`}
     >
-      {/* Author + source path */}
       <div className="flex items-center gap-1.5 mb-1">
         <span className="text-[8px] font-mono text-stealth-muted truncate">{model.author}</span>
         {model.sourcePathLabel && (
@@ -56,7 +55,6 @@ export default function ModelCard({ model, idx, isSelected, isHighlighted, fitSt
         )}
       </div>
 
-      {/* Model name + quant/size */}
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs font-mono truncate flex-shrink min-w-0" style={isSelected ? { color: '#b87a00' } : undefined} title={model.name}>
           {model.name}
@@ -80,7 +78,6 @@ export default function ModelCard({ model, idx, isSelected, isHighlighted, fitSt
         </div>
       </div>
 
-       {/* Params + arch badges row */}
        {(paramsNum || (model.metadata?.nextn_predict_layers ?? 0 > 0)) && (
          <div className="flex items-center gap-1.5 mt-0.5">
            {paramsNum && (
@@ -97,7 +94,7 @@ export default function ModelCard({ model, idx, isSelected, isHighlighted, fitSt
          </div>
        )}
 
-      {/* Metadata row or scan button */}
+      
       {hasMetadata ? (
         <div className="mt-1.5 pt-1.5 border-t border-stealth-border/30 flex justify-end">
           <span className="text-[7px] font-mono text-stealth-muted" title={model.metadata.architecture}>

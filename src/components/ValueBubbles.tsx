@@ -22,10 +22,10 @@ interface ValueBubblesProps {
   userAddedValues?: (string | number)[];
   /** Current default for this param (what the UI shows as selected by default). */
   defaultValue?: string | number;
-  /** Factory default from genesis_template.json — never changes. Used to distinguish factory vs admin-set defaults. */
+  /** Factory default from provider default config — never changes. Used to distinguish factory vs admin-set defaults. */
   factoryDefault?: string | number;
   onChangeDefault?: (value: string | number) => void;  // admin marks this value as the new default
-  ptype?: 'switch' | 'switch_onoff' | 'switch_inverted' | 'arg_select' | 'slider' | 'path_scanner' | 'logic_only';
+  ptype?: 'switch' | 'switch_onoff' | 'switch_inverted' | 'arg_select' | 'arg_select_double' | 'slider' | 'path_scanner' | 'logic_only';
   /** Called when user clicks × on override bubble to clear it. */
   onClearOverride?: () => void;
   /** Opens editor for this specific value's sub_params (admin only). */

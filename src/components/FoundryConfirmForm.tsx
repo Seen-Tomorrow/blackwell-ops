@@ -1,4 +1,3 @@
-import React from "react";
 import type { ProviderConfig } from "../lib/types";
 import { useTelemetry } from "../context/TelemetryContext";
 import { getEnvColors } from "../lib/foundry_constants";

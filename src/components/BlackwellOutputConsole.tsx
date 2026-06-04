@@ -14,7 +14,7 @@ interface BlackwellOutputConsoleProps {
   compact?: boolean;
 }
 
-const CATEGORIES = ["engines", "utils", "foundry", "error", "general"] as const;
+const CATEGORIES = ["engines", "utils", "foundry", "error", "general", "debug"] as const;
 type Category = typeof CATEGORIES[number];
 
 const CATEGORY_LABELS: Record<Category, string> = {
@@ -23,6 +23,7 @@ const CATEGORY_LABELS: Record<Category, string> = {
   foundry: "Foundry",
   error: "Error",
   general: "General",
+  debug: "Debug",
 };
 
 export default function BlackwellOutputConsole({ 
@@ -140,7 +141,7 @@ export default function BlackwellOutputConsole({
         ...(isDetached 
           ? { left: `${position.x}px`, top: `${position.y}px`, width: "780px", height: compact ? "150px" : "460px" } 
           : { height: compact ? "150px" : "44vh", minHeight: compact ? "120px" : "280px" }),
-        ...(isDetached ? { userSelect: 'none', WebkitUserSelect: 'none' as any } : {})
+        ...(isDetached ? { userSelect: 'none', WebkitUserSelect: 'none' } as React.CSSProperties : {})
       }}
       onMouseDown={(e) => {
         if (isDetached) {

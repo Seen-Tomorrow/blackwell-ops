@@ -11,6 +11,77 @@ interface UseScenarioEvaluatorProps {
   systemInfo?: SystemInfo | null;
 }
 
+// Shared debug emission helper to avoid duplicating IPC calls to Blackwell Output Console
+function emitScenarioDebug(
+  modelName: string,
+  modelMeta: any,
+  fps: FitPoint[] | null,
+  scenario: string,
+  vramWeightsGb: number,
+  vramKvGb: number,
+  vramOverheadGb: number,
+  totalNeedGb: number,
+  gpuAllocations: any[],
+  gpuLayers: number,
+  ramLayers: number,
+  validatedVramMib: number | null,
+  formulaVramTotalGb: number | null,
+  validatedComponentsMib: any[] | null,
+  uiTemplate: any,
+  engineConfig: EngineConfig,
+  validatedGb?: number,
+) {
+  const lines: string[] = [];
+  lines.push(`[SCENARIO] Model: ${modelName} | Meta: ${modelMeta ? 'YES' : 'NO'} | Arch: ${modelMeta?.architecture || '?'} | Layers: ${modelMeta?.n_layer ?? '?'} | Params: ${modelMeta?.total_params_str || '?'} | Size: ${(modelMeta?.file_size_bytes / (1024**3)).toFixed(1)}G`);
+
+  if (fps && fps.length > 0) {
+    const labels = fps.map(fp => fp.label.toLowerCase());
+    const hasBase = labels.some(l => l.includes('base'));
+    const hasQuant = labels.some(l => l.includes('quant') || l.includes('q4') || l.includes('q8') || l.includes('f16'));
+    const hasCtxSweep = labels.filter(l => l.includes('ctx')).length >= 2;
+    const missingLabels: string[] = [];
+    if (!hasBase) missingLabels.push('base');
+    if (!hasQuant) missingLabels.push('quant variants');
+    if (!hasCtxSweep) missingLabels.push('ctx sweep');
+    lines.push(`[SCENARIO] FIT: ${fps.length}pts loaded${missingLabels.length > 0 ? ' | MISSING: ' + missingLabels.join(', ') : ''}`);
+  } else {
+    lines.push('[SCENARIO] FIT: NO SCAN DATA');
+  }
+
+  lines.push(`[SCENARIO] Scenario: ${scenario} | W:${vramWeightsGb.toFixed(1)}G KV:${vramKvGb.toFixed(1)}G OH:${vramOverheadGb.toFixed(1)}G Total:${totalNeedGb.toFixed(1)}G`);
+
+  const allocText = gpuAllocations.map((a: any) => {
+    const pct = ((a.projectedLoadGb / a.vramManufacturedGb) * 100).toFixed(0);
+    return `GPU-${a.gpuIndex}=${a.projectedLoadGb.toFixed(1)}G(${pct}%)`;
+  }).join(', ');
+  lines.push(`[SCENARIO] GPU: ${allocText} | Layers: ${gpuLayers} GPU / ${ramLayers} RAM`);
+
+  if (validatedVramMib) {
+    const vGb = validatedVramMib / 1024;
+    const formulaTotalGb = formulaVramTotalGb || totalNeedGb;
+    const delta = ((vGb - formulaTotalGb) / formulaTotalGb * 100);
+    lines.push(`[SCENARIO] Validated: ${vGb.toFixed(1)}G (${delta > 0 ? '+' : ''}${delta.toFixed(1)}% from formula)`);
+  } else {
+    lines.push('[SCENARIO] Validated: NO (formula only)');
+  }
+
+  if (validatedComponentsMib && validatedComponentsMib.length > 0) {
+    const compText = validatedComponentsMib.map((c: any, i: number) => `GPU${i}:W=${c.model_mib} KV=${c.ctx_mib} C=${c.compute_mib}`).join(' | ');
+    lines.push(`[SCENARIO] Components: ${compText}`);
+  }
+
+  const fa = uiTemplate ? 'on' : 'off';
+  const ep = engineConfig.extra_params || {};
+  lines.push(`[SCENARIO] Config: CTX=${ep.ctx} KVQ=${ep["kv_quant"]} Batch=${ep.batch} Par=${ep.parallel} Split=${ep.split} FA=${fa} Offload=${ep["offload_mode"]}`);
+
+  // Emit to Blackwell Output Console via IPC (fire-and-forget)
+  void invoke("emit_to_blackwell_console", {
+    category: "debug",
+    content: lines.join("\n"),
+    style: "Warning",
+  });
+}
+
 export function useScenarioEvaluator({ model, config, gpus, stack, systemInfo }: UseScenarioEvaluatorProps) {
   const [manifest, setManifest] = useState<VramManifest | null>(null);
   const [isEvaluating, setIsEvaluating] = useState(false);
@@ -71,7 +142,11 @@ export function useScenarioEvaluator({ model, config, gpus, stack, systemInfo }:
 
     // Model must have GGUF metadata scanned (from cache)
     if (!model.metadata) {
-      console.warn("[ScenarioEvaluator] No cached GGUF metadata for", model.path.split("/").pop());
+      void invoke("emit_to_blackwell_console", {
+        category: "debug",
+        content: `[ScenarioEvaluator] No cached GGUF metadata for ${model.path.split("/").pop()}`,
+        style: "Warning",
+      });
       setManifest(null);
       return;
     }
@@ -125,50 +200,14 @@ export function useScenarioEvaluator({ model, config, gpus, stack, systemInfo }:
       // Scenario debug emission (deduped by model path + scenario name)
       if (model.path !== lastScenarioDebugModelRef.current || result.scenario !== lastScenarioDebugNameRef.current) {
         const modelName = model.path.split(/[\/\\]/).pop() || model.path;
-        console.warn(`[SCENARIO] Model: ${modelName} | Meta: ${model.metadata ? 'YES' : 'NO'} | Arch: ${model.metadata?.architecture || '?'} | Layers: ${model.metadata?.n_layer ?? '?'} | Params: ${model.metadata?.total_params_str || '?'} | Size: ${(model.metadata?.file_size_bytes / (1024**3)).toFixed(1)}G`);
-
         const fps = fitPointsRef.current;
-        if (fps && fps.length > 0) {
-          const labels = fps.map(fp => fp.label.toLowerCase());
-          const hasBase = labels.some(l => l.includes('base'));
-          const hasQuant = labels.some(l => l.includes('quant') || l.includes('q4') || l.includes('q8') || l.includes('f16'));
-          const hasCtxSweep = labels.filter(l => l.includes('ctx')).length >= 2;
-          const missingLabels: string[] = [];
-          if (!hasBase) missingLabels.push('base');
-          if (!hasQuant) missingLabels.push('quant variants');
-          if (!hasCtxSweep) missingLabels.push('ctx sweep');
-          console.warn(`[SCENARIO] FIT: ${fps.length}pts loaded${missingLabels.length > 0 ? ' | MISSING: ' + missingLabels.join(', ') : ''}`);
-        } else {
-          console.warn('[SCENARIO] FIT: NO SCAN DATA');
-        }
-
-        const totalNeedGb = result.vramTotalGb;
-        console.warn(`[SCENARIO] Scenario: ${result.scenario} | W:${result.vramWeightsGb.toFixed(1)}G KV:${result.vramKvGb.toFixed(1)}G OH:${result.vramOverheadGb.toFixed(1)}G Total:${totalNeedGb.toFixed(1)}G`);
-
-        const allocText = result.gpuAllocations.map(a => {
-          const pct = ((a.projectedLoadGb / a.vramManufacturedGb) * 100).toFixed(0);
-          return `GPU-${a.gpuIndex}=${a.projectedLoadGb.toFixed(1)}G(${pct}%)`;
-        }).join(', ');
-        console.warn(`[SCENARIO] GPU: ${allocText} | Layers: ${result.gpuLayers} GPU / ${result.ramLayers} RAM`);
-
-        if (result.validatedVramMib) {
-          const validatedGb = result.validatedVramMib / 1024;
-          const formulaTotalGb = result.formulaVramTotalGb || totalNeedGb;
-          const delta = ((validatedGb - formulaTotalGb) / formulaTotalGb * 100);
-          console.warn(`[SCENARIO] Validated: ${validatedGb.toFixed(1)}G (${delta > 0 ? '+' : ''}${delta.toFixed(1)}% from formula)`);
-        } else {
-          console.warn('[SCENARIO] Validated: NO (formula only)');
-        }
-
-        if (result.validatedComponentsMib && result.validatedComponentsMib.length > 0) {
-          const compText = result.validatedComponentsMib.map((c, i) => `GPU${i}:W=${c.model_mib} KV=${c.ctx_mib} C=${c.compute_mib}`).join(' | ');
-          console.warn(`[SCENARIO] Components: ${compText}`);
-        }
-
-        const fa = result.style.uiTemplate ? 'on' : 'off';
-        const ep = engineConfig.extra_params || {};
-        console.warn(`[SCENARIO] Config: CTX=${ep.ctx} KVQ=${ep["kv_quant"]} Batch=${ep.batch} Par=${ep.parallel} Split=${ep.split} FA=${fa} Offload=${ep["offload_mode"]}`);
-
+        emitScenarioDebug(
+          modelName, model.metadata, fps, result.scenario,
+          result.vramWeightsGb, result.vramKvGb, result.vramOverheadGb,
+          result.vramTotalGb, result.gpuAllocations, result.gpuLayers, result.ramLayers,
+          result.validatedVramMib, result.formulaVramTotalGb, result.validatedComponentsMib,
+          result.style.uiTemplate, engineConfig,
+        );
         lastScenarioDebugModelRef.current = model.path;
         lastScenarioDebugNameRef.current = result.scenario;
       }
@@ -305,41 +344,17 @@ export function useScenarioEvaluator({ model, config, gpus, stack, systemInfo }:
       
       setManifest(validatedManifest);
 
-      // Validation debug emission — emit when scenario changed or validation newly applied
+     // Validation debug emission — emit when scenario changed or validation newly applied
       if (model.path !== lastScenarioDebugModelRef.current || newManifest.scenario !== lastScenarioDebugNameRef.current || result.vram_mib !== validatedManifest.validatedVramMib) {
         const modelName = model.path.split(/[\/\\]/).pop() || model.path;
-        console.warn(`[SCENARIO] Model: ${modelName} | Meta: YES | Arch: ${model.metadata?.architecture || '?'} | Layers: ${model.metadata?.n_layer ?? '?'} | Params: ${model.metadata?.total_params_str || '?'} | Size: ${(model.metadata?.file_size_bytes / (1024**3)).toFixed(1)}G`);
-
         const fps = fitPointsRef.current;
-        if (fps && fps.length > 0) {
-          console.warn(`[SCENARIO] FIT: ${fps.length}pts loaded | VALIDATED: ${(result.vram_mib / 1024).toFixed(1)}G`);
-        } else {
-          console.warn('[SCENARIO] FIT: NO SCAN DATA');
-        }
-
-        const totalNeedGb = validatedManifest.vramTotalGb;
-        console.warn(`[SCENARIO] Scenario: ${newManifest.scenario} | W:${validatedManifest.vramWeightsGb.toFixed(1)}G KV:${validatedManifest.vramKvGb.toFixed(1)}G OH:${validatedManifest.vramOverheadGb.toFixed(1)}G Total:${totalNeedGb.toFixed(1)}G`);
-
-        const allocText = validatedManifest.gpuAllocations.map(a => {
-          const pct = ((a.projectedLoadGb / a.vramManufacturedGb) * 100).toFixed(0);
-          return `GPU-${a.gpuIndex}=${a.projectedLoadGb.toFixed(1)}G(${pct}%)`;
-        }).join(', ');
-        console.warn(`[SCENARIO] GPU: ${allocText} | Layers: ${validatedManifest.gpuLayers} GPU / ${validatedManifest.ramLayers} RAM`);
-
-        const validatedGb = result.vram_mib / 1024;
-        const formulaTotalGb = validatedManifest.formulaVramTotalGb || totalNeedGb;
-        const delta = ((validatedGb - formulaTotalGb) / formulaTotalGb * 100);
-        console.warn(`[SCENARIO] Validated: ${validatedGb.toFixed(1)}G (${delta > 0 ? '+' : ''}${delta.toFixed(1)}% from formula)`);
-
-        if (result.gpu_components_mib && result.gpu_components_mib.length > 0) {
-          const compText = result.gpu_components_mib.map((c, i) => `GPU${i}:W=${c.model_mib} KV=${c.ctx_mib} C=${c.compute_mib}`).join(' | ');
-          console.warn(`[SCENARIO] Components: ${compText}`);
-        }
-
-        const fa = newManifest.style.uiTemplate ? 'on' : 'off';
-        const ep = engineConfig.extra_params || {};
-        console.warn(`[SCENARIO] Config: CTX=${ep.ctx} KVQ=${ep["kv_quant"]} Batch=${ep.batch} Par=${ep.parallel} Split=${ep.split} FA=${fa} Offload=${ep["offload_mode"]}`);
-
+        emitScenarioDebug(
+          modelName, model.metadata, fps, newManifest.scenario,
+          validatedManifest.vramWeightsGb, validatedManifest.vramKvGb, validatedManifest.vramOverheadGb,
+          validatedManifest.vramTotalGb, validatedManifest.gpuAllocations, validatedManifest.gpuLayers, validatedManifest.ramLayers,
+          validatedManifest.validatedVramMib, validatedManifest.formulaVramTotalGb, validatedManifest.validatedComponentsMib,
+          newManifest.style.uiTemplate, engineConfig, result.vram_mib / 1024,
+        );
         lastScenarioDebugModelRef.current = model.path;
         lastScenarioDebugNameRef.current = newManifest.scenario;
       }

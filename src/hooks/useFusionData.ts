@@ -13,7 +13,7 @@ export function useFusionData() {
 
   useEffect(() => {
     // Check if we're in Tauri environment
-    const tauriListen = (window as any).__TAURI__?.event?.listen;
+    const tauriListen = window.__TAURI__?.event?.listen;
     if (!tauriListen) return;
 
     let cancelled = false;

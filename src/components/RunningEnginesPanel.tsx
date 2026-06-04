@@ -49,25 +49,16 @@ export default function RunningEnginesPanel({ stack, models, selectedSlotIdx, on
                   : ""
               }`}
             >
-              {/* Status dot */}
               <span className="w-1.5 h-1.5 rounded-full bg-nv-green shrink-0 status-pulse" />
-
-              {/* Alias */}
               <span className="text-[9px] font-mono text-white/70 shrink-0 w-18 truncate">
                 {item.entry.alias}
               </span>
-
-              {/* GPU */}
               <span className="text-[8px] font-mono text-telemetry-cyan shrink-0 bg-telemetry-cyan/10 border border-telemetry-cyan/20 px-1 py-0.5 rounded-sm">
                 {gpuLabel}
               </span>
-
-              {/* Model name — fills available space */}
               <span className={`text-[10px] font-mono truncate flex-1 min-w-0 ${isThisSelected ? "text-nv-green" : "text-white"}`} title={item.modelName}>
                 {item.modelName}
               </span>
-
-              {/* Quant badge */}
               {item.quant && (
                 <span className={`text-[7px] font-mono px-1 py-0.5 rounded-sm shrink-0 ${isNvfp
                   ? 'bg-nv-green/20 border border-nv-green/40 text-nv-green'
@@ -75,15 +66,11 @@ export default function RunningEnginesPanel({ stack, models, selectedSlotIdx, on
                   {item.quant}
                 </span>
               )}
-
-              {/* VRAM used */}
               {item.vramUsedGb != null && (
                 <span className="text-[8px] font-mono text-stealth-muted shrink-0">
                   {item.vramUsedGb.toFixed(1)} GB
                 </span>
               )}
-
-              {/* Port */}
               <span className="text-[7px] font-mono text-stealth-muted/50 shrink-0">
                 :{item.entry.port}
               </span>

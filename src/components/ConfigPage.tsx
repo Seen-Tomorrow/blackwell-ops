@@ -2,7 +2,7 @@
 
 import React, { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { UserEditedTemplateParam, ProviderConfig, ProviderTemplate, GenesisTemplateParam, ModelPathEntry, PathDiskUsage } from "../lib/types";
+import type { UserEditedTemplateParam, ProviderConfig, ProviderTemplate, ProviderDefaultParam, ModelPathEntry, PathDiskUsage } from "../lib/types";
 import { DEFAULT_PROVIDER_ID } from "../lib/types";
 import ValueBubbles from "./ValueBubbles";
 import ProvidersConfig from "./ProvidersConfig";
@@ -148,24 +148,24 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
   const userSavedParams = useMemo(() => buildUserSavedParams(currentProvider), [currentProvider, buildUserSavedParams]);
 
   // ── Load raw template (for sub_params / ptype at runtime — no reset needed) ───
-  const [genesisTemplateParams, setGenesisTemplateParams] = useState<GenesisTemplateParam[]>([]);
+  const [providerDefaultParams, setProviderDefaultParams] = useState<ProviderDefaultParam[]>([]);
   useEffect(() => {
     if (!selectedProviderId) return;
     invoke<ProviderTemplate>("get_template", { providerId: selectedProviderId })
-      .then(template => setGenesisTemplateParams(template.params || []))
+      .then(template => setProviderDefaultParams(template.params || []))
       .catch(() => {});
   }, [selectedProviderId]);
 
   // ── Merge base defs with runtime template data (sub_params, ptype) ───────────
-  const userSavedParamsWithGenesisDefaults = useMemo(() => {
-    if (!userSavedParams.length || !genesisTemplateParams.length) return userSavedParams;
-    const templateMap = new Map(genesisTemplateParams.map(p => [p.key, p]));
+  const userSavedParamsWithDefaults = useMemo(() => {
+    if (!userSavedParams.length || !providerDefaultParams.length) return userSavedParams;
+    const templateMap = new Map(providerDefaultParams.map(p => [p.key, p]));
     return userSavedParams.map(def => {
       const tpl = templateMap.get(def.key);
       if (!tpl) return def;
       // Merge sub_params: disk state (user edits) takes precedence, template fills in new values
-      const diskSp = (def as any).sub_params || {};
-      const tplSp = (tpl as any).sub_params || {};
+      const diskSp = def.sub_params || {};
+      const tplSp = tpl.sub_params || {};
       const mergedSubParams = { ...tplSp, ...diskSp };
       return {
         ...def,
@@ -173,32 +173,32 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
         ptype: tpl.ptype || def.ptype,
       };
     });
-  }, [userSavedParams, genesisTemplateParams]);
+  }, [userSavedParams, providerDefaultParams]);
 
   // ── Hidden count for status bar ───────────────────────────────────
-  const hiddenCount = useMemo(() => userSavedParamsWithGenesisDefaults.filter(d => d.hidden).length, [userSavedParamsWithGenesisDefaults]);
+  const hiddenCount = useMemo(() => userSavedParamsWithDefaults.filter(d => d.hidden).length, [userSavedParamsWithDefaults]);
 
-  // ── Existing groups from user-saved + genesis params ───────────────
+  // ── Existing groups from user-saved + provider default params ───────────────
   const existingGroups = useMemo(() => {
     const seen = new Set<string>(["Feature Flags", "USER-ADDED-FROM-CATALOG"]);
-    for (const def of userSavedParamsWithGenesisDefaults) {
+    for (const def of userSavedParamsWithDefaults) {
       if (def.ui_group) seen.add(def.ui_group);
     }
-    for (const gp of genesisTemplateParams) {
+    for (const gp of providerDefaultParams) {
       if (gp.ui_group) seen.add(gp.ui_group);
     }
     return Array.from(seen);
-  }, [userSavedParamsWithGenesisDefaults, genesisTemplateParams]);
+  }, [userSavedParamsWithDefaults, providerDefaultParams]);
   // Fingerprint guard: only dispatch when params content actually changed, not on reference rotation.
   // Breaks the telemetry poll -> re-render -> dispatch -> refetch providers amplification loop.
   const lastDispatchRef = useRef<string>("");
   useEffect(() => {
-    if (userSavedParamsWithGenesisDefaults.length === 0) return;
-    const fingerprint = `${userSavedParamsWithGenesisDefaults.length}-${hiddenCount}`;
+    if (userSavedParamsWithDefaults.length === 0) return;
+    const fingerprint = `${userSavedParamsWithDefaults.length}-${hiddenCount}`;
     if (fingerprint === lastDispatchRef.current) return;
     lastDispatchRef.current = fingerprint;
-    window.dispatchEvent(new CustomEvent("param-config-changed", { detail: { totalParams: userSavedParamsWithGenesisDefaults.length, hiddenCount } }));
-  }, [userSavedParamsWithGenesisDefaults, hiddenCount]);
+    window.dispatchEvent(new CustomEvent("param-config-changed", { detail: { totalParams: userSavedParamsWithDefaults.length, hiddenCount } }));
+  }, [userSavedParamsWithDefaults, hiddenCount]);
 
   // ── Persist provider to Rust ───────────────────────────────────────
   const persistProviderToConfig = useCallback(async (provider: ProviderConfig) => {
@@ -301,41 +301,6 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
     setShowCatalogSearch(false);
     showSaved("ADDED");
   }, [currentProvider, buildUserSavedParams, persistProviderToConfig, selectedProviderId]);
-
-  // Legacy: simple add (kept for backward compat)
-  const addParamDefinition = useCallback(async (key: string, values: (string | number)[]) => {
-    if (!currentProvider || !values.length) return;
-
-    const currentUserParams = buildUserSavedParams(currentProvider);
-    const maxOrder = Math.max(...currentUserParams.map(d => d.order), -1);
-    const newUserParam: UserEditedTemplateParam = { key, label: key, values, order: maxOrder + 1 };
-    const updatedProvider = { ...currentProvider, userEditedTemplateParams: [...currentUserParams, newUserParam] };
-
-    setAllProviders(prev => prev.map(p => p.id !== selectedProviderId ? p : updatedProvider));
-    window.dispatchEvent(new CustomEvent("param-config-changed"));
-    await persistProviderToConfig(updatedProvider);
-    showSaved("SAVED");
-  }, [currentProvider, buildUserSavedParams, persistProviderToConfig, selectedProviderId]);
-
-  // ── Admin: remove param definition ───────────────────────────────
-  const removeParamDefinition = useCallback(async (key: string) => {
-    if (!currentProvider || adminLockState === "locked") return;
-    
-    const currentUserParams = buildUserSavedParams(currentProvider);
-    const updatedUserParams = currentUserParams.filter(d => d.key !== key);
-    const updatedProvider = { ...currentProvider, userEditedTemplateParams: updatedUserParams };
-
-    setAllProviders(prev => prev.map(p => p.id !== selectedProviderId ? p : updatedProvider));
-    setUserOverrides(prev => {
-      const n = { ...prev };
-      delete n[key];
-      try { localStorage.setItem(overridesKey(selectedProviderId), JSON.stringify(n)); } catch {}
-      return n;
-    });
-    window.dispatchEvent(new CustomEvent("param-config-changed"));
-    await persistProviderToConfig(updatedProvider);
-    showSaved("SAVED");
-  }, [currentProvider, isAdminLocked, buildUserSavedParams, persistProviderToConfig, selectedProviderId]);
 
   // ── Admin: toggle hidden row (catalog visibility) ───────────────
   const toggleRowHidden = useCallback(async (key: string) => {
@@ -455,10 +420,10 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
   const openSubParamsEditor = useCallback((paramKey: string, valueName: string) => {
     if (!currentProvider || adminLockState === "locked") return;
     setEditingValue({ paramKey, valueName });
-    const def = userSavedParamsWithGenesisDefaults.find(d => d.key === paramKey);
-    const existingArgs = (def as any)?.sub_params?.[valueName]?.join(" ") ?? "";
+    const def = userSavedParamsWithDefaults.find(d => d.key === paramKey);
+    const existingArgs = def?.sub_params?.[valueName]?.join(" ") ?? "";
     setSubArgsText(prev => ({ ...prev, [paramKey + "::" + valueName]: existingArgs }));
-  }, [userSavedParamsWithGenesisDefaults, currentProvider, isAdminLocked]);
+  }, [userSavedParamsWithDefaults, currentProvider, isAdminLocked]);
 
   // ── Admin: save sub-params edit for a value ─────────────────────
   const saveSubParamsEdit = useCallback(async () => {
@@ -472,7 +437,7 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
     const currentUserParams = buildUserSavedParams(currentProvider);
     let updatedUserParams = currentUserParams.map(d => {
       if (d.key !== paramKey) return d;
-      const existingSubParams = (d as any).sub_params || {};
+      const existingSubParams = d.sub_params || {};
       if (args.length > 0) {
         return { ...d, sub_params: { ...existingSubParams, [valueName]: args } };
       } else {
@@ -495,7 +460,7 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
     // If args empty and sub_params is now gone for this value, remove from values too
     updatedUserParams = updatedUserParams.map(d => {
       if (d.key !== paramKey) return d;
-      const sp = (d as any).sub_params || {};
+      const sp = d.sub_params || {};
       if (!sp[valueName]) {
         return { ...d, values: (d.values || []).filter(v => String(v) !== valueName) };
       }
@@ -514,14 +479,14 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
     const currentUserParams = buildUserSavedParams(currentProvider);
     let updatedUserParams = currentUserParams.map(d => {
       if (d.key !== paramKey) return d;
-      const existingSubParams = (d as any).sub_params || {};
+      const existingSubParams = d.sub_params || {};
       const {[valueName]: _, ...rest} = existingSubParams;
       return { ...d, sub_params: Object.keys(rest).length > 0 ? rest : undefined };
     });
     // Also remove from values array and userAddedValues
     updatedUserParams = updatedUserParams.map(d => {
       if (d.key !== paramKey) return d;
-      const sp = (d as any).sub_params || {};
+      const sp = d.sub_params || {};
       if (!sp[valueName]) {
         return {
           ...d,
@@ -539,7 +504,7 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
     showSaved("SAVED");
   }, [currentProvider, isAdminLocked, buildUserSavedParams, persistProviderToConfig, selectedProviderId]);
 
-  // ── Admin: restore param to genesis template (full reset) ─────────
+  // ── Admin: restore param to provider default (full reset) ─────────
   const handleRestoreParam = useCallback(async (key: string) => {
     if (!currentProvider || adminLockState === "locked") return;
     try {
@@ -576,14 +541,14 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
   const openParamMetaEditor = useCallback((def: UserEditedTemplateParam) => {
     setEditingParamKey(def.key);
     setParamMetaForm({
-      ptype: (def as any).ptype || "arg_select",
-      flag: (def as any).flag ?? "",
-      pattern: (def as any).pattern ?? "",
+      ptype: def.ptype || "arg_select",
+      flag: def.flag ?? "",
+      pattern: def.pattern ?? "",
       uiGroup: def.ui_group || "Feature Flags",
       values: (() => { const merged = [...(def.values || [])]; const ua = def.userAddedValues || []; for (const v of ua) { if (!merged.some(x => String(x) === String(v))) merged.push(v); } return merged; })(),
       defaultValue: def.defaultValue ?? "",
       subParams: Object.fromEntries(
-        Object.entries((def as any).sub_params || {}).map(([k, v]) => [k, (v as string[]).join(" ")])
+        Object.entries(def.sub_params || {}).map(([k, v]) => [k, (v as string[]).join(" ")])
       ),
     });
   }, []);
@@ -654,7 +619,7 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
     e.stopPropagation();
     startPosRef.current = { x: e.clientX, y: e.clientY };
     hasMovedRef.current = false;
-    dragKeyRef.current = userSavedParamsWithGenesisDefaults[idx]?.key ?? null;
+    dragKeyRef.current = userSavedParamsWithDefaults[idx]?.key ?? null;
     setDragging(true);
   };
 
@@ -678,14 +643,14 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
       const targetIdx = parseInt(rowEl.getAttribute("data-row-idx") || "-1", 10);
       if (targetIdx < 0) { setDragging(false); dragKeyRef.current = null; hasMovedRef.current = false; return; }
       const sourceKey = dragKeyRef.current;
-      const fromIdx = userSavedParamsWithGenesisDefaults.findIndex(d => d.key === sourceKey);
+      const fromIdx = userSavedParamsWithDefaults.findIndex(d => d.key === sourceKey);
       if (fromIdx < 0 || targetIdx === fromIdx) { setDragging(false); dragKeyRef.current = null; hasMovedRef.current = false; return; }
       swapItems(fromIdx, targetIdx);
       setDragging(false); dragKeyRef.current = null; hasMovedRef.current = false;
     };
     window.addEventListener("mouseup", h, { once: true });
     return () => window.removeEventListener("mouseup", h);
-  }, [dragging, userSavedParamsWithGenesisDefaults, swapItems]);
+  }, [dragging, userSavedParamsWithDefaults, swapItems]);
 
   // ── Group drag state for reorder ───────────────────────────────
   const groupDragRef = useRef<string | null>(null);
@@ -724,7 +689,7 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
       // Derive current groups for comparison
       const seen = new Set<string>();
       const derivedOrder: string[] = [];
-      for (const def of userSavedParamsWithGenesisDefaults) {
+      for (const def of userSavedParamsWithDefaults) {
         const g = def.ui_group || "Feature Flags";
         if (!seen.has(g)) { seen.add(g); derivedOrder.push(g); }
       }
@@ -745,7 +710,7 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
     };
     window.addEventListener("mouseup", h, { once: true });
     return () => window.removeEventListener("mouseup", h);
-  }, [draggingGroup, userSavedParamsWithGenesisDefaults, customGroupOrder, saveGroupOrder]);
+  }, [draggingGroup, userSavedParamsWithDefaults, customGroupOrder, saveGroupOrder]);
 
   const enabledProviders = useMemo(() => allProviders.filter(p => p.enabled), [allProviders]);
 
@@ -863,14 +828,14 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
 
           {/* Param rows */}
           <div className="flex-1 overflow-y-auto p-4 min-h-0">
-            {userSavedParamsWithGenesisDefaults.length === 0 ? (
+            {userSavedParamsWithDefaults.length === 0 ? (
               <div className="flex items-center justify-center h-full text-stealth-muted text-xs font-mono">LOADING PARAMETERS...</div>
             ) : (
               (() => {
                 // Derive group order: custom (user-set) > template insertion order
                 const seen = new Set<string>();
                 const derivedOrder: string[] = [];
-                for (const def of userSavedParamsWithGenesisDefaults) {
+                for (const def of userSavedParamsWithDefaults) {
                   const g = def.ui_group || "Feature Flags";
                   if (!seen.has(g)) {
                     seen.add(g);
@@ -883,7 +848,7 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
                   : derivedOrder;
 
                 const groups: Record<string, UserEditedTemplateParam[]> = {};
-                for (const def of userSavedParamsWithGenesisDefaults) {
+                for (const def of userSavedParamsWithDefaults) {
                   const g = def.ui_group || "Feature Flags";
                   if (!groups[g]) groups[g] = [];
                   groups[g].push(def);
@@ -927,17 +892,17 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
                           </div>
                           <div className="space-y-1.5">
 {groupParams.map((def) => {
-                               const globalIdx = userSavedParamsWithGenesisDefaults.findIndex(d => d.key === def.key);
+                               const globalIdx = userSavedParamsWithDefaults.findIndex(d => d.key === def.key);
                                const defKey = def.key;
 
                                // Effective value: user override > current default
-                               const factoryDefault = (def as any).factoryDefault;
+                               const factoryDefault = def.factoryDefault;
                                const effectiveDefault = def.defaultValue !== undefined ? String(def.defaultValue) : undefined;
                                const currentOverride = userOverrides[defKey];
                                const currentValue = currentOverride !== undefined ? String(currentOverride) : (effectiveDefault ?? "");
 
-                               // Yellow accent: not in genesis template
-                               const isUserAdded = genesisTemplateParams.length > 0 && !genesisTemplateParams.some(gp => gp.key === def.key);
+                               // Yellow accent: not in provider default params
+                               const isUserAdded = providerDefaultParams.length > 0 && !providerDefaultParams.some(gp => gp.key === def.key);
 
                                  return (
                                     <React.Fragment key={`row-${globalIdx}`}>
@@ -966,7 +931,7 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
                                      </button>
                                    )}
 
-                                   {/* Edit param metadata + Restore to genesis — admin only */}
+                                   {/* Edit param metadata + Restore to provider default — admin only */}
 {adminLockState !== "locked" && (
                                       <div className="flex items-center gap-1 mr-2">
                                         <button onClick={() => openParamMetaEditor(def)}
@@ -1003,17 +968,17 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
                                      addValue={adminLockState !== "locked" ? (v: string | number) => addValueToParam(def.key, v) : undefined}
                                      removeValue={adminLockState !== "locked" ? (v: string | number) => removeValueFromParam(def.key, v) : undefined}
                                      toggleHiddenValue={adminLockState !== "locked" ? (_k: string, v: string | number) => toggleHiddenValue(def.key, v) : undefined}
-                                     hiddenValues={(def as any).hiddenValues || []}
-                                     availableValues={def.values || []}
-                                     userAddedValues={(def as any).userAddedValues || []}
-                                     defaultValue={effectiveDefault}
-                                     factoryDefault={factoryDefault !== undefined ? String(factoryDefault) : undefined}
-                                     onChangeDefault={adminLockState !== "locked"
-                                       ? (v: string | number) => changeDefaultValue(def.key, v)
-                                       : undefined}
-                                     onEditValue={adminLockState !== "locked" ? (val: string | number) => openSubParamsEditor(def.key, String(val)) : undefined}
-                                     ptype={(def as any).ptype}
-                                     subParams={(def as any).sub_params || undefined}
+hiddenValues={def.hiddenValues || []}
+                                      availableValues={def.values || []}
+                                      userAddedValues={def.userAddedValues || []}
+                                      defaultValue={effectiveDefault}
+                                      factoryDefault={factoryDefault !== undefined ? String(factoryDefault) : undefined}
+                                      onChangeDefault={adminLockState !== "locked"
+                                        ? (v: string | number) => changeDefaultValue(def.key, v)
+                                        : undefined}
+                                      onEditValue={adminLockState !== "locked" ? (val: string | number) => openSubParamsEditor(def.key, String(val)) : undefined}
+                                      ptype={def.ptype}
+                                      subParams={def.sub_params || undefined}
                                    />
                                  </div>
 
@@ -1054,7 +1019,7 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
 
           {/* Status bar footer */}
           <div className="flex-shrink-0 px-4 py-3 border-t border-stealth-border flex items-center justify-between">
-            <span className="text-[9px] font-mono text-stealth-muted">{userSavedParamsWithGenesisDefaults.length} parameter{userSavedParamsWithGenesisDefaults.length !== 1 ? "s" : ""}{hiddenCount > 0 ? ` (${hiddenCount} hidden)` : ""}</span>
+            <span className="text-[9px] font-mono text-stealth-muted">{userSavedParamsWithDefaults.length} parameter{userSavedParamsWithDefaults.length !== 1 ? "s" : ""}{hiddenCount > 0 ? ` (${hiddenCount} hidden)` : ""}</span>
             {currentProvider && (<span className="text-[9px] font-mono text-telemetry-cyan">{currentProvider.display_name}</span>)}
           </div>
         </div>

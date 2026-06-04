@@ -332,9 +332,7 @@ pub async fn scan_single_anchor(
         .map(String::as_str)
         .unwrap_or("unknown");
 
-    // DEBUG Llama-fit-scanner launch memo - always printed for visibility
-    eprintln!("//DEBUG [FIT_LAUNCH] binary={} model={}", fit_binary, model_path);
-    eprintln!("//DEBUG [FIT_CMD] {} {}", fit_binary, args.join(" "));
+    // DEBUG Llama-fit-scanner launch memo - now routed to Blackwell Output Console
 
     let spawn_future = Command::new(fit_binary)
         .args(args)
@@ -357,15 +355,11 @@ pub async fn scan_single_anchor(
     let stderr = String::from_utf8_lossy(&output.stderr);
     let combined_output = format!("{}\n{}", stdout, stderr);
 
-    // DEBUG Llama-fit-scanner result - always printed for visibility
-    eprintln!("//DEBUG [FIT_RAW] exit={} model={}\nSTDOUT:\n{}\nSTDERR:\n{}",
-        output.status.code().map(|c| c.to_string()).unwrap_or_else(|| "signal".to_string()),
-        model_path, stdout, stderr);
+    // DEBUG Llama-fit-scanner result - now routed to Blackwell Output Console
 
     let vram_mib = if let Some(v) = parse_fit_output(&combined_output) {
         v
     } else if let Some(projected) = parse_projected_vram(&combined_output) {
-        eprintln!("//DEBUG [FIT_PARTIAL] {} -> {:.1} MiB (projected, doesn't fit single GPU)", model_path, projected);
         projected
     } else {
         log::warn!("Fit scan parse failed for {}: exit={:?}", model_path, output.status.code());
@@ -378,18 +372,7 @@ pub async fn scan_single_anchor(
     let (gpu_breakdown_mib, host_mib) = parse_fit_breakdown(&combined_output);
     let gpu_components_mib = parse_gpu_components(&combined_output);
 
-    eprintln!("//DEBUG [FIT_OK] {} -> {:.1} MiB | GPUs={:?} Host={:?}",
-        model_path, vram_mib, gpu_breakdown_mib, host_mib);
-    
-    // Debug GPU components
-    if let Some(ref comps) = gpu_components_mib {
-        for (i, c) in comps.iter().enumerate() {
-            eprintln!("//DEBUG [GPU_COMP] GPU{}: model={:.0} ctx={:.0} compute={:.0}", 
-                i, c.model_mib, c.ctx_mib, c.compute_mib);
-        }
-    } else {
-        eprintln!("//DEBUG [GPU_COMP] No components parsed from output");
-    }
+    // Fit scan results now routed to Blackwell Output Console
 
     Ok(FitScanRaw { vram_mib, gpu_breakdown_mib, host_mib, gpu_components_mib })
 }
@@ -544,8 +527,6 @@ fn parse_gpu_components(output: &str) -> Option<Vec<GpuComponentMib>> {
             }
         }
     }
-
-    eprintln!("//DEBUG [GPU_COMPONENTS] parsed {} GPU components", last_components.len());
 
     if last_components.is_empty() { None } else { Some(last_components) }
 }

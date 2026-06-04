@@ -78,8 +78,8 @@ export interface EngineConfig {
   extra_params?: Record<string, any>;
 }
 
-/** User's saved copy of a GenesisTemplateParam with runtime state (hidden, hiddenValues, userAddedValues, order, etc.).
- * Stored in user_providers_config.json. Created from GenesisTemplateParam at genesis, then edited by the user in UI. */
+/** User's saved copy of a ProviderDefaultParam with runtime state (hidden, hiddenValues, userAddedValues, order, etc.).
+ * Stored in user_providers_config.json. Created from ProviderDefaultParam at first run, then edited by the user in UI. */
 export interface UserEditedTemplateParam {
   key: string;
   label: string;
@@ -101,7 +101,7 @@ export interface UserEditedTemplateParam {
   pattern?: string;
   sub_params?: Record<string, string[]>;
   userAddedValues?: (string | number)[];
-  /** Factory default from genesis_template.json — set once at load. Never changes via admin edits. */
+  /** Factory default from provider default config — set once at load. Never changes via admin edits. */
   factoryDefault?: string | number;
 }
 
@@ -147,11 +147,11 @@ export function getProviderOrigin(provider: ProviderConfig, env: string): Provid
 export interface ProviderTemplate {
   binary_name: string;
   description: string;
-  params: GenesisTemplateParam[];
+  params: ProviderDefaultParam[];
 }
 
-/** Factory blueprint from genesis_template.json — immutable, embedded in binary. */
-export interface GenesisTemplateParam extends Omit<UserEditedTemplateParam, 'values'> {
+/** Factory blueprint from provider default config — immutable, embedded in binary. */
+export interface ProviderDefaultParam extends Omit<UserEditedTemplateParam, 'values'> {
   values: (string | number)[];
   default: string | number;
   flag: string | null;
@@ -159,6 +159,7 @@ export interface GenesisTemplateParam extends Omit<UserEditedTemplateParam, 'val
   ptype: 'switch' | 'switch_onoff' | 'switch_inverted' | 'arg_select' | 'arg_select_double' | 'slider' | 'path_scanner' | 'logic_only';
   sub_params?: Record<string, string[]>;
   dock?: string;
+  hidden_default?: boolean;
 }
 
 /** Build metadata extracted from a compiled binary via --version + file mtime. */

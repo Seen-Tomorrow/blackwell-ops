@@ -50,14 +50,6 @@ export default function ParamCreatorModal({
     try { return (localStorage.getItem(KEYS.paramCreatorMode) as "simple" | "advanced") || "simple"; } catch { return "simple"; }
   });
 
-  const toggleMode = useCallback(() => {
-    setMode(prev => {
-      const next = prev === "simple" ? "advanced" : "simple";
-      try { localStorage.setItem(KEYS.paramCreatorMode, next); } catch {}
-      return next;
-    });
-  }, []);
-
   const [form, setForm] = useState<CreatorForm>({ ...DEFAULT_FORM });
   const [newValInput, setNewValInput] = useState("");
   const [error, setError] = useState<string | null>(null);

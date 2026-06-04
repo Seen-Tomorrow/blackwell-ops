@@ -1,6 +1,5 @@
 import { useMemo, useEffect, useState, useRef } from "react";
 import type { GpuInfo } from "../lib/types";
-import type { ThermalReading } from "../lib/reactor11";
 
 interface Props {
   gpus: GpuInfo[];

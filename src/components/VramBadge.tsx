@@ -48,10 +48,7 @@ export default function VramBadge({
   // Usage percentage for main VRAM bar
   const vramUsagePct = totalVramMib > 0 ? Math.min((displayTotalGb * 1024 / totalVramMib) * 100, 100) : 0;
 
-  // Headroom: total free VRAM minus projected need (in MiB, can be negative)
-  const vramHeadroomMib = gpus.reduce((sum, g) => sum + g.memory_free, 0) - displayTotalGb * 1024;
-
-  // RAM headroom: available RAM minus projected RAM usage
+ // RAM headroom: available RAM minus projected RAM usage
   const ramHeadroomMib = (manifest.ramAvailableGb - manifest.ramTotalGb) * 1024;
 
   // RAM info for bar fill — OS usage from manufactured capacity

@@ -1,10 +1,9 @@
 import { useRef, useEffect, useMemo, useState } from "react";
-import type { EngineConfig, ProviderConfig, SystemInfo, StackEntry } from "../lib/types";
+import type { EngineConfig, ProviderConfig, StackEntry } from "../lib/types";
 import EngineConfigPanel from "./EngineConfigPanel";
 import ModelCard from "./ModelCard";
 
 import { useModelCatalog, type SortField } from "../hooks/useModelCatalog";
-import { KEYS } from "../lib/storage";
 import { useTelemetry } from "../context/TelemetryContext";
 
 interface ModelCatalogProps {

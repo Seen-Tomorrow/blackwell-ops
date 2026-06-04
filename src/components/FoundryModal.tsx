@@ -106,10 +106,19 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
     let mounted = true;
 
     const init = async () => {
-      const unsub = await listen("foundry-progress", (e: any) => {
+      interface FoundryProgressPayload {
+        build_id: number;
+        phase: string;
+        provider_id: string;
+        environment?: string;
+        log_line?: string;
+        log_lines?: string[];
+      }
+
+      const unsub = await listen<FoundryProgressPayload>("foundry-progress", (e) => {
         if (!mounted) return;
         try {
-          const payload = e.payload as any;
+          const payload = e.payload;
           if (!payload || !payload.provider_id) return;
 
           if (buildIdRef.current === null) {
