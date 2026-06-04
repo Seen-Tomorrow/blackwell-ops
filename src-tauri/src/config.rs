@@ -253,6 +253,9 @@ pub struct AppConfig {
     pub hf_token: String,
     #[serde(default = "default_providers", skip_serializing)]
     pub providers: Vec<ProviderConfig>,
+    /// Where downloads go — derived from the default model path.
+    #[serde(default)]
+    pub default_download_path: Option<String>,
 }
 
 impl Default for AppConfig {
@@ -271,6 +274,7 @@ impl Default for AppConfig {
             gpu_slots: MAX_ENGINE_SLOTS,
             hf_token: String::new(),
             providers: Vec::new(),
+            default_download_path: Some(app_dir.to_string_lossy().to_string()),
         }
     }
 }
@@ -781,14 +785,25 @@ pub fn add_model_path(config: &mut AppConfig, path: String, label: Option<String
     });
     let is_default = config.model_paths.is_empty();
     config.model_paths.push(ModelPathEntry { path, label: computed_label, is_default });
+    // Update the memo if this is the first path (making it default)
+    if is_default {
+        config.default_download_path = Some(config.model_paths.last().unwrap().path.clone());
+    }
 }
 
 pub fn remove_model_path(config: &mut AppConfig, path: &str) {
     let removed = config.model_paths.iter().position(|p| p.path == path);
     config.model_paths.retain(|p| p.path != path);
-    if let Some(_idx) = removed {
-        if !config.model_paths.is_empty() && config.model_paths[0].is_default == false {
-            config.model_paths[0].is_default = true;
+    // Ensure at least one path is default after removal
+    if removed.is_some() {
+        if !config.model_paths.iter().any(|p| p.is_default) {
+            if let Some(first) = config.model_paths.first_mut() {
+                first.is_default = true;
+            }
+        }
+        // Update the memo if the default was removed
+        if let Some(new_default) = config.model_paths.iter().find(|p| p.is_default) {
+            config.default_download_path = Some(new_default.path.clone());
         }
     }
 }
@@ -797,6 +812,8 @@ pub fn set_default_model_path(config: &mut AppConfig, path: &str) {
     for p in &mut config.model_paths {
         p.is_default = p.path == path;
     }
+    // Update the memo: where downloads go
+    config.default_download_path = Some(path.to_string());
 }
 
 pub fn calculate_disk_usage(paths: &[ModelPathEntry]) -> Vec<PathDiskUsage> {
@@ -815,11 +832,13 @@ pub fn calculate_disk_usage(paths: &[ModelPathEntry]) -> Vec<PathDiskUsage> {
 }
 
 pub fn get_default_download_path(config: &AppConfig) -> String {
-    config.model_paths
-        .iter()
-        .find(|p| p.is_default)
-        .map(|p| p.path.clone())
-        .unwrap_or_else(|| config_dir().join("models").to_string_lossy().to_string())
+    config.default_download_path.clone().unwrap_or_else(|| {
+        config.model_paths
+            .iter()
+            .find(|p| p.is_default)
+            .map(|p| p.path.clone())
+            .unwrap_or_else(|| config_dir().join("models").to_string_lossy().to_string())
+    })
 }
 
 pub fn save_config(config: &AppConfig) -> Result<(), String> {
@@ -854,11 +873,13 @@ fn build_fresh_config(_gpu_slots: usize) -> AppConfig {
         });
     }
 
+    let default_download_path = model_paths.iter().find(|p| p.is_default).map(|p| p.path.clone());
     AppConfig {
         model_paths,
         gpu_slots: MAX_ENGINE_SLOTS,
         hf_token: String::new(),
         providers: Vec::new(),
+        default_download_path,
     }
 }
 
@@ -866,13 +887,38 @@ fn load_saved_config() -> Option<AppConfig> {
     let config_path = config_dir().join("app_config.json");
     if config_path.exists() {
         if let Ok(content) = std::fs::read_to_string(&config_path) {
-            if let Ok(config) = serde_json::from_str::<AppConfig>(&content) {
+            if let Ok(mut config) = serde_json::from_str::<AppConfig>(&content) {
+                // Sanitize: ensure at most one default, and set default_download_path
+                sanitize_model_paths(&mut config);
                 log::info!("Loaded app_config.json from {}", config_path.display());
                 return Some(config);
             }
         }
     }
     None
+}
+
+/// Ensure model paths are consistent: at most one default, and default_download_path is set.
+fn sanitize_model_paths(config: &mut AppConfig) {
+    // Ensure at most one default
+    let mut found_default = false;
+    for p in &mut config.model_paths {
+        if p.is_default {
+            if found_default {
+                p.is_default = false;
+            } else {
+                found_default = true;
+            }
+        }
+    }
+    // Ensure at least one default
+    if !found_default && !config.model_paths.is_empty() {
+        config.model_paths[0].is_default = true;
+    }
+    // Update the memo
+    config.default_download_path = config.model_paths.iter()
+        .find(|p| p.is_default)
+        .map(|p| p.path.clone());
 }
 
 

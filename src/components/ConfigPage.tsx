@@ -1377,7 +1377,7 @@ function ModelPathsPanel() {
 
       {/* Footer hint */}
       <div className="px-4 py-2 border-t border-stealth-border text-[8px] font-mono text-stealth-muted/50">
-        DOWNLOADS GO TO DEFAULT PATH · CATALOG MERGES ALL PATHS
+        DOWNLOADS GO TO {paths.find(p => p.isDefault)?.label || "DEFAULT PATH"} · CATALOG MERGES ALL PATHS
       </div>
     </div>
   );

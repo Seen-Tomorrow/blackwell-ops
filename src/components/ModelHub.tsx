@@ -1,7 +1,42 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import ModelHubSearch from './ModelHubSearch';
-import type { DownloadTask } from '@/lib/types';
+import type { DownloadTask, DownloadStatus } from '@/lib/types';
+
+const ACTIVE_STATUSES: DownloadStatus[] = ['downloading', 'queued', 'paused', 'scanning'];
+
+function statusColor(status: DownloadStatus): string {
+  switch (status) {
+    case 'downloading': return 'text-nv-green';
+    case 'paused': return 'text-yellow-400';
+    case 'failed': return 'text-red-400';
+    case 'scanning': return 'text-blue-400';
+    default: return 'text-stealth-muted/40';
+  }
+}
+
+function progressColor(status: DownloadStatus): string {
+  switch (status) {
+    case 'downloading': return 'bg-nv-green';
+    case 'paused': return 'bg-yellow-400';
+    case 'failed': return 'bg-red-400';
+    case 'scanning': return 'bg-blue-400 animate-pulse';
+    default: return 'bg-stealth-muted/20';
+  }
+}
+
+function formatSpeed(bps: number): string {
+  if (bps < 1024 * 1024) return Math.round(bps / 1024).toString();
+  return (bps / (1024 * 1024)).toFixed(1);
+}
+
+function formatETA(seconds: number): string {
+  if (seconds === 0 || seconds > 36000) return '—';
+  if (seconds < 60) return `${seconds}s`;
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}m ${s}s`;
+}
 
 export default function ModelHub() {
   const [subView, setSubView] = useState<'search' | 'library'>('search');
@@ -9,56 +44,56 @@ export default function ModelHub() {
   const completedRefs = useRef(new Set<string>());
 
   useEffect(() => {
+    let cancelled = false;
     const poll = async () => {
       try {
         const tasks = await invoke<DownloadTask[]>('get_download_tasks');
+        if (cancelled) return;
         setDownloads(tasks);
-
-        // Detect newly-completed downloads and trigger catalog refresh
         for (const t of tasks) {
           if (t.status === 'completed' && !completedRefs.current.has(t.id)) {
             completedRefs.current.add(t.id);
             window.dispatchEvent(new CustomEvent('download-completed'));
           }
         }
-      } catch {}
+      } catch {
+        if (!cancelled) {
+          console.error('Failed to poll download tasks');
+        }
+      }
     };
     poll();
     const interval = setInterval(poll, 1000);
-    return () => clearInterval(interval);
+    return () => { cancelled = true; clearInterval(interval); };
   }, []);
 
-  const activeDownloads = downloads.filter(d =>
-    d.status === 'downloading' || d.status === 'queued' || d.status === 'paused' || d.status === 'scanning'
-  );
+  const activeDownloads = useMemo(() => downloads.filter(d => ACTIVE_STATUSES.includes(d.status)), [downloads]);
 
   return (
     <div className="flex flex-col h-full px-6 py-4 gap-3">
-      {/* Sub-navigation */}
       <div className="flex items-center gap-2 border-b border-stealth-border pb-2">
         <button
           onClick={() => setSubView('search')}
-          className={`px-4 py-1.5 text-xs font-mono tracking-wider transition-all ${
+          className={`px-4 py-1.5 text-xs font-mono tracking-wider transition-all rounded-sm ${
             subView === 'search'
-              ? 'bg-nv-green/20 text-nv-green border border-nv-green/40 rounded-sm'
-              : 'text-stealth-muted hover:text-white border border-transparent rounded-sm'
+              ? 'value-chip-active'
+              : 'value-chip'
           }`}
         >
           SEARCH & DOWNLOAD
         </button>
         <button
           onClick={() => setSubView('library')}
-          className={`px-4 py-1.5 text-xs font-mono tracking-wider transition-all ${
+          className={`px-4 py-1.5 text-xs font-mono tracking-wider transition-all rounded-sm ${
             subView === 'library'
-              ? 'bg-nv-green/20 text-nv-green border border-nv-green/40 rounded-sm'
-              : 'text-stealth-muted hover:text-white border border-transparent rounded-sm'
+              ? 'value-chip-active'
+              : 'value-chip'
           }`}
         >
           LIBRARY
         </button>
       </div>
 
-      {/* Content area */}
       <div className="flex-1 overflow-hidden">
         {subView === 'search' && <ModelHubSearch />}
         {subView === 'library' && (
@@ -68,9 +103,8 @@ export default function ModelHub() {
         )}
       </div>
 
-      {/* Download manager floating panel */}
       {activeDownloads.length > 0 && (
-        <div className="border border-stealth-border bg-stealth-panel/90 backdrop-blur-sm rounded-sm p-3 space-y-2">
+        <div className="cyber-panel p-3 space-y-2">
           <div className="text-[10px] font-mono text-nv-green tracking-wider flex items-center gap-2">
             <span>⬇ DOWNLOADS</span>
             <span className="text-stealth-muted/40">{activeDownloads.length} active</span>
@@ -89,11 +123,23 @@ function DownloadProgressRow({ task }: { task: DownloadTask }) {
   const speedStr = formatSpeed(task.speedBps);
   const etaStr = formatETA(task.etaSeconds);
 
+  const handlePause = useCallback(async () => {
+    try { await invoke('pause_download', { taskId: task.id }); } catch { /* silent */ }
+  }, [task.id]);
+
+  const handleResume = useCallback(async () => {
+    try { await invoke('resume_download', { taskId: task.id }); } catch { /* silent */ }
+  }, [task.id]);
+
+  const handleCancel = useCallback(async () => {
+    try { await invoke('cancel_download', { taskId: task.id }); } catch { /* silent */ }
+  }, [task.id]);
+
   return (
-    <div className="space-y-1">
+    <div className="cyber-card p-2.5 space-y-1.5">
       <div className="flex items-center justify-between text-[10px] font-mono">
         <span className="text-white/80 truncate mr-2">{task.hfModelId}</span>
-        <div className="flex items-center gap-3 flex-shrink-0">
+        <div className="flex items-center gap-2 flex-shrink-0">
           {task.status === 'downloading' && (
             <>
               <span className="text-nv-green">{speedStr}/s</span>
@@ -103,45 +149,32 @@ function DownloadProgressRow({ task }: { task: DownloadTask }) {
           <span className={`uppercase ${statusColor(task.status)}`}>{task.status}</span>
         </div>
       </div>
-      <div className="h-1 bg-stealth-dark rounded-full overflow-hidden">
+      <div className="h-1.5 bg-stealth-dark rounded-full overflow-hidden">
         <div
           className={`h-full transition-all duration-300 ${progressColor(task.status)}`}
           style={{ width: `${pct}%` }}
         />
       </div>
+      <div className="flex items-center gap-1.5">
+        {task.status === 'downloading' && (
+          <button onClick={handlePause} className="text-[8px] font-mono px-1.5 py-0.5 rounded-sm border border-yellow-400/30 text-yellow-400 hover:bg-yellow-400/10 transition-all">
+            PAUSE
+          </button>
+        )}
+        {task.status === 'paused' && (
+          <button onClick={handleResume} className="text-[8px] font-mono px-1.5 py-0.5 rounded-sm border border-nv-green/30 text-nv-green hover:bg-nv-green/10 transition-all">
+            RESUME
+          </button>
+        )}
+        {(task.status === 'downloading' || task.status === 'paused' || task.status === 'queued') && (
+          <button onClick={handleCancel} className="text-[8px] font-mono px-1.5 py-0.5 rounded-sm border border-red-400/30 text-red-400 hover:bg-red-400/10 transition-all">
+            CANCEL
+          </button>
+        )}
+        {task.status === 'failed' && task.error && (
+          <span className="text-[8px] font-mono text-red-400/60 truncate">{task.error}</span>
+        )}
+      </div>
     </div>
   );
-}
-
-function formatSpeed(bps: number): string {
-  if (bps < 1024 * 1024) return Math.round(bps / 1024).toString();
-  return (bps / (1024 * 1024)).toFixed(1);
-}
-
-function formatETA(seconds: number): string {
-  if (seconds === 0 || seconds > 36000) return '—';
-  if (seconds < 60) return `${seconds}s`;
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `${m}m ${s}s`;
-}
-
-function statusColor(status: string): string {
-  switch (status) {
-    case 'downloading': return 'text-nv-green';
-    case 'paused': return 'text-yellow-400';
-    case 'failed': return 'text-red-400';
-    case 'scanning': return 'text-blue-400';
-    default: return 'text-stealth-muted/40';
-  }
-}
-
-function progressColor(status: string): string {
-  switch (status) {
-    case 'downloading': return 'bg-nv-green';
-    case 'paused': return 'bg-yellow-400';
-    case 'failed': return 'bg-red-400';
-    case 'scanning': return 'bg-blue-400 animate-pulse';
-    default: return 'bg-stealth-muted/20';
-  }
 }

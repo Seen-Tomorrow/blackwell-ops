@@ -28,7 +28,7 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
-    "resources": ["runtime"],
+    "resources": [],
     "icon": [
       "icons/icon-release.ico"
     ]
