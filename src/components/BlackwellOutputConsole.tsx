@@ -132,7 +132,7 @@ export default function BlackwellOutputConsole({
 
   if (!isPowerUser || !isOpen) return null;
 
-  const displayLines = compact ? lines.slice(-5) : lines;
+  const displayLines = lines;
 
   const content = (
     <div 
@@ -163,16 +163,16 @@ export default function BlackwellOutputConsole({
 
         <div className="flex items-center gap-1.5 text-white/70">
           {CATEGORIES.map(cat => (
-            <button 
+            <button
               key={cat}
               onClick={() => setActiveCategory(cat)}
               className={`px-2 py-0.5 rounded-sm border text-[8px] transition-all ${cat === 'error'
-                ? activeCategory === cat 
-                  ? "bg-black border-red-500 text-red-400" 
+                ? activeCategory === cat
+                  ? "bg-black border-red-500 text-red-400"
                   : "text-red-700 border-black/20 hover:text-red-500 hover:border-red-800"
                 : activeCategory === cat
-                  ? "bg-black border-black text-[#b87a00]" 
-                  : "border-black/20 hover:border-black/50 hover:text-black"}`}
+                  ? "bg-black border-black text-[#b87a00]"
+                  : "border-black/20 text-black hover:text-white hover:border-black/50"}`}
             >
               {CATEGORY_LABELS[cat]}
             </button>
@@ -180,9 +180,9 @@ export default function BlackwellOutputConsole({
 
           <div className="w-px h-3 bg-black/20 mx-1" />
 
-          <button onClick={() => clearCategory(activeCategory)} className="px-1 hover:text-red-400 text-black" title="Clear tab">C</button>
-          <button onClick={() => saveCategory(activeCategory)} className="px-1 hover:text-emerald-400 text-black" title="Save tab">S</button>
-          <button onClick={clearAll} className="px-1 hover:text-red-400 text-black" title="Clear all">ALL</button>
+          <button onClick={() => clearCategory(activeCategory)} className="px-1 bg-black text-[#b87a00] hover:text-red-400 rounded-sm" title="Clear tab">C</button>
+          <button onClick={() => saveCategory(activeCategory)} className="px-1 bg-black text-[#b87a00] hover:text-emerald-400 rounded-sm" title="Save tab">S</button>
+          <button onClick={clearAll} className="px-1 bg-black text-[#b87a00] hover:text-red-400 rounded-sm" title="Clear all">ALL</button>
 
           {isDetached ? (
             <button onClick={() => setIsDetached(false)} className="px-2 py-0.5 text-[8px] border border-black/30 hover:border-black rounded">DOCK</button>
@@ -195,7 +195,7 @@ export default function BlackwellOutputConsole({
       </div>
 
       {/* Output Area - Tech Aesthetic */}
-      <div className="flex-1 overflow-auto p-2 bg-black/70 text-[9.5px] leading-[1.35] custom-scrollbar">
+      <div className="flex-1 overflow-auto p-2 pb-4 bg-black/70 text-[9.5px] leading-[1.35] custom-scrollbar">
         {isLoading && <div className="text-cyan-400/50 pl-1">SYNCING TELEMETRY...</div>}
         
         {!isLoading && displayLines.length === 0 && (
@@ -204,7 +204,8 @@ export default function BlackwellOutputConsole({
 
         {displayLines.map((line, i) => {
           let cls = "text-white/75";
-          if (line.style === "Error") cls = "text-red-400";
+          if (activeCategory === "error") cls = "text-red-400";
+          else if (line.style === "Error") cls = "text-red-400";
           else if (line.style === "Warning") cls = "text-amber-400";
           else if (line.style === "Success") cls = "text-emerald-400";
           else if (line.style === "Command") cls = "text-cyan-300";

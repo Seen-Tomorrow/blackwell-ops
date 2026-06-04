@@ -267,13 +267,7 @@ function App() {
               return next;
             });
           });
-          // Route to Blackwell Output Console (ENGINES category)
-          void invoke("emit_to_blackwell_console", {
-            category: "engines",
-            content: payload.text,
-            style: "Normal",
-          });
-        }
+         }
       } catch {}
     }).then((u) => { if (!cancelled) unsubEngineSystem.current = u; });
 

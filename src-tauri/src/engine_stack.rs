@@ -300,6 +300,11 @@ impl EngineStack {
                     // Emit system event
                     let msg = format!("[REAPER] Engine died unexpectedly (pid {})", pid);
                     log_hub.emit_system_event(slot_idx, &alias, &msg).await;
+                    log_hub.emit_console_line(
+                        crate::output_console::BlackwellOutputConsoleCategory::Error,
+                        &format!("[{}] {}", alias, msg),
+                        crate::output_console::BlackwellOutputConsoleLineStyle::Error,
+                    );
 
                     // Kill any orphaned process on the port
                     let _ = Self::kill_process_by_port(port).await;
@@ -408,7 +413,6 @@ impl EngineStack {
                 stack.log_hub.as_ref().map(|h| h.clone())
             };
             if let Some(hub) = hub_opt {
-                hub.emit_system_event(slot_idx, &alias, &msg).await;
                 hub.emit_console_line(
                     crate::output_console::BlackwellOutputConsoleCategory::Engines,
                     &format!("[STOP] slot={} alias={} {}", slot_idx, alias, msg),
@@ -467,7 +471,6 @@ impl EngineStack {
 
                     if emit_events {
                         if let Some(hub) = hub_clone.as_ref() {
-                            hub.emit_system_event(i, &alias, &msg).await;
                             hub.emit_console_line(
                                 crate::output_console::BlackwellOutputConsoleCategory::Engines,
                                 &format!("[STOP] slot={} alias={} {}", i, alias, msg),

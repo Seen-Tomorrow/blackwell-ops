@@ -203,8 +203,6 @@ pub async fn launch_engine(
         Err(e) => log::warn!("Failed to open launch log at {}: {}", log_path.display(), e),
     }
 
-    app.log_hub.emit_system_event(slot_idx, &config.alias, "Engine launching...").await;
-
     // Route launch status to Blackwell Output Console
     app.blackwell_output_console_manager.emit_line_to_category(
         crate::output_console::BlackwellOutputConsoleCategory::Engines,
@@ -266,7 +264,11 @@ pub async fn launch_engine(
                 last_err = Some(e);
                 if attempt == 0 {
                     // Launch retry now routed to Blackwell Output Console
-                    app.log_hub.emit_system_event(slot_idx, &config.alias, &format!("[RETRY] Launch failed: {} — retrying...", last_err.as_ref().unwrap())).await;
+                    app.blackwell_output_console_manager.emit_line_to_category(
+                        crate::output_console::BlackwellOutputConsoleCategory::Error,
+                        format!("[{}] [RETRY] Launch failed: {} — retrying...", config.alias, last_err.as_ref().unwrap()),
+                        crate::output_console::BlackwellOutputConsoleLineStyle::Warning,
+                    );
                     tokio::time::sleep(Duration::from_secs(1)).await;
                 }
             }
