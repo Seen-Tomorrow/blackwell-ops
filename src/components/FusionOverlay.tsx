@@ -118,11 +118,11 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
   const isLaunching = fusion.engine_state === "LOADING";
   const ctxTotal = fusion.ctxTotal || 0;
 
-  // PP TPS value — prefer log parser when available, fallback to /metrics
-  const ppTpsValue = fusion.LP_prefillTps != null && fusion.LP_prefillTps > 0
-    ? fusion.LP_prefillTps.toFixed(0)
-    : fusion.prefillTpsMetrics > 0
-      ? fusion.prefillTpsMetrics.toFixed(0)
+  // PP TPS value — prefer /metrics gauge (consistent with bench results), fallback to log parser
+  const ppTpsValue = fusion.prefillTpsMetrics > 0
+    ? fusion.prefillTpsMetrics.toFixed(0)
+    : fusion.logPrefillTps != null && fusion.logPrefillTps > 0
+      ? fusion.logPrefillTps.toFixed(0)
       : "--";
 
   return (
@@ -204,41 +204,29 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
             {/* ── RIGHT: TG hero + PREFILL side by side ─── */}
             <div className="flex gap-3 flex-1 min-h-0">
               {/* ── LEFT: TG TPS HERO (dominant) ─── */}
-               <div className={`flex flex-col items-center justify-start px-2 py-1.5 rounded-sm border transition-colors relative ${
+              <div className={`flex flex-col items-center justify-start px-2 py-1.5 rounded-sm border transition-colors relative ${
                  fusion.phase === "TG"
                    ? "border-green-500/30 bg-black/8"
                    : "border-stone-500/10 bg-black/4"
                }`} style={{ flex: '1 1 60%' }}>
-                {/* Phase label row — GENERATION left, ALTERNATE right */}
-                <div className="flex items-center justify-between mb-0.5">
-                  <span className="text-[7px] font-mono text-stealth-muted/40 tracking-wider">GENERATION</span>
-                  <span className="text-[7px] font-mono text-stealth-muted/40 tracking-wider">ALTERNATE</span>
-                </div>
+                 {/* Phase label */}
+                 <div className="flex items-center justify-between mb-0.5">
+                   <span className="text-[7px] font-mono text-stealth-muted/40 tracking-wider">GENERATION</span>
+                 </div>
 
-                {/* Big TG number + LP alternate value */}
-                <div className="flex items-baseline justify-between w-full">
-                  <div className="flex items-baseline gap-1">
-                    <span
-                      className="font-mono font-bold tracking-tight leading-none"
-                      style={{
-                        fontSize: 'clamp(2rem, 6vh, 3.5rem)',
-                        color: fusion.genTpsSlots > 0 ? '#22c55e' : 'rgba(148,163,184,0.25)'
-                      }}
-                    >
-                      {fusion.genTpsSlots > 0 ? fusion.genTpsSlots.toFixed(1) : "--"}
-                    </span>
-                    <span className="text-[7px] font-mono text-stealth-muted/30 tracking-wider">tok/s</span>
-                  </div>
-                  <span
-                    className="font-mono font-bold tracking-tight leading-none"
-                    style={{
-                      fontSize: 'clamp(1rem, 3vh, 1.75rem)',
-                      color: fusion.LP_genTps != null && fusion.LP_genTps > 0 ? '#000' : 'rgba(148,163,184,0.25)'
-                    }}
-                  >
-                    {fusion.LP_genTps != null && fusion.LP_genTps > 0 ? fusion.LP_genTps.toFixed(0) : "--"}
-                  </span>
-                </div>
+                 {/* Big TG number */}
+                 <div className="flex items-baseline gap-1">
+                   <span
+                     className="font-mono font-bold tracking-tight leading-none"
+                     style={{
+                       fontSize: 'clamp(2rem, 6vh, 3.5rem)',
+                       color: fusion.genTps > 0 ? '#22c55e' : 'rgba(148,163,184,0.25)'
+                     }}
+                   >
+                     {fusion.genTps > 0 ? fusion.genTps.toFixed(1) : "--"}
+                   </span>
+                   <span className="text-[7px] font-mono text-stealth-muted/30 tracking-wider">tok/s</span>
+                 </div>
 
                 {/* Per-request micro-stats — always visible, no layout shifts */}
                  <div className="flex items-center gap-2 mt-1.5">
@@ -263,10 +251,10 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
                  )} */}
                </div>
 
-              {/* ── RIGHT: PREFILL (secondary) — use LP_prefillTps as primary, fallback to /metrics ─── */}
+              {/* ── RIGHT: PREFILL (secondary) — use logPrefillTps as primary, fallback to /metrics ─── */}
               <div className={`flex flex-col items-center justify-start px-2 py-1.5 rounded-sm border transition-colors ${
                 fusion.phase === "PP"
-                  ? "border-telemetry-amber/30 bg-black/8"
+                  ? "border-stealth-muted/30 bg-black/8"
                   : "border-stone-500/10 bg-black/4"
               }`} style={{ flex: '1 1 40%' }}>
                 {/* Phase label */}
@@ -277,8 +265,8 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
                   <span
                     className="font-mono font-bold tracking-tight leading-none"
                     style={{
-                      fontSize: 'clamp(1.5rem, 4vh, 2.5rem)',
-                      color: ppTpsValue !== "--" ? '#d97706' : 'rgba(148,163,184,0.25)'
+                      fontSize: 'clamp(2rem, 6vh, 3.5rem)',
+                      color: ppTpsValue !== "--" ? 'rgba(148,163,184,0.7)' : 'rgba(148,163,184,0.25)'
                     }}
                   >
                     {ppTpsValue}
@@ -287,26 +275,26 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
                 </div>
 
                 {/* PP progress bar — only during active prefill, fixed-width to prevent layout shift */}
-                {fusion.phase === "PP" && fusion.LP_prefillProgress != null && (
+                {fusion.logPhase === "PP" && fusion.logPrefillProgress != null && (
                   <div className="flex items-center gap-1 mt-1 w-full">
                     <div className="flex-1 h-1 rounded-full bg-black/20 overflow-hidden relative">
                       <div
                         className="h-full rounded-full absolute left-0 top-0"
                         style={{
-                          width: `${(fusion.LP_prefillProgress ?? 0) * 100}%`,
-                          backgroundColor: '#d97706',
+                          width: `${(fusion.logPrefillProgress ?? 0) * 100}%`,
+                          backgroundColor: 'rgba(148,163,184,0.7)',
                         }}
                       />
                     </div>
-                    <span className="text-[6px] font-mono text-telemetry-amber/70 flex-shrink-0">
-                      {((fusion.LP_prefillProgress ?? 0) * 100).toFixed(0)}%
+                    <span className="text-[12px] font-mono text-black flex-shrink-0">
+                      {((fusion.logPrefillProgress ?? 0) * 100).toFixed(0)}%
                     </span>
                   </div>
                 )}
 
                 {/* LP prompt tokens — always visible */}
-                <span className="text-[7px] font-mono text-red-400/60 mt-0.5">
-                  {fusion.LP_promptTokens != null && fusion.LP_promptTokens > 0 ? formatK(fusion.LP_promptTokens) + " tok" : "--"}
+                <span className="text-[7px] font-mono text-stealth-muted/40 mt-0.5">
+                  {fusion.logPromptTokens != null && fusion.logPromptTokens > 0 ? formatK(fusion.logPromptTokens) + " tok" : "--"}
                 </span>
               </div>
             </div>

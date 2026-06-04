@@ -438,3 +438,38 @@ Set to `"off"` in `tauri.conf.json` under `plugins.nsis.compression`.
 
 **Components currently importing framer-motion:**
 `StackView`, `FusionOverlay`, `SlotLogPanel`, `SlotCtxBars`, `VramBadge`, `FusionPhaseBadge`, `EngineConfigPanel`, `ModelCatalog`, `ModelCard`, `RunningEnginesPanel`, `Layout`, `EngineBanner`, `GpuTopology`, `MiniModelCard`, `MoeBadge`, `R11_Sidebar`, `NeuralNetworkAnimation`, `ModelHubSearch`, `CrtAnimations`
+
+---
+
+## 12. Fusion Metrics Cleanup (2026-06-04)
+
+**Status:** Complete.
+
+### What was removed (dead fields)
+- `prefillTpsSlots` — hardcoded to 0.0, never computed, never displayed
+- `genTpsMetrics` — AB tested, `/slots` superior, never displayed
+- `genTokensPerRequestMetrics` — confusing calculation, never displayed
+- `ctxUsedCurrentRequest` — identical to `ctxUsedSession`
+
+### What was renamed
+- `genTpsSlots` → `genTps` (generation TPS from /slots, no longer needs "Slots" suffix)
+- `LP_prefillProgress` → `logPrefillProgress` (clearer it's from log parser)
+- `LP_prefillTps` → `logPrefillTps`
+- `LP_promptTokens` → `logPromptTokens`
+- `LP_genTps` → `logGenTps`
+- `LP_phase` → `logPhase`
+- `LP_resetSource` → `phaseResetSource`
+
+### What was added
+- `SlotCtxInfo` TypeScript type (matches Rust `SlotCtxInfo` struct)
+
+### Files modified
+- `src-tauri/src/fusion_brain.rs` — removed dead fields, renamed LP_ fields, removed `predicted_tps_gauge` from MetricsSnapshot
+- `src-tauri/src/fusion_poller.rs` — removed `predicted_tps_gauge` from MetricsSnapshot
+- `src/lib/types.ts` — removed dead fields, renamed LP_ fields, added `SlotCtxInfo` type
+- `src/components/FusionOverlay.tsx` — updated to new field names
+- `src/components/SlotLogPanel.tsx` — updated to new field names
+- `src/components/SlotCtxBars.tsx` — added proper type import
+
+### Reference
+See `FUSION-metrics.md` for complete field table.

@@ -125,6 +125,7 @@ pub async fn cmd_bench_pp_burst(
             "n_predict": 0,
             "temperature": 0.0,
             "stream": false,
+            "cache_prompt": false,
         });
 
         match client.post(&url)

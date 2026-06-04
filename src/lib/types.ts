@@ -268,6 +268,15 @@ export interface StackEntry {
   build_info?: BuildInfo;
 }
 
+/** Per-slot context bar info — matches Rust SlotCtxInfo struct */
+export interface SlotCtxInfo {
+  id: number;
+  n_decoded: number;
+  sessionNDecoded: number;
+  totalTokensLifetime: number;
+  is_processing: boolean;
+}
+
 /** FUSION real-time engine monitoring data — emitted from Rust /slots + /metrics fusion brain. */
 export interface FusionUpdate {
   alias: string;
@@ -283,20 +292,16 @@ export interface FusionUpdate {
 
   // Prefill metrics (primary source = /metrics)
   prefillTpsMetrics: number;   // from /metrics prompt_tokens delta
-  prefillTpsSlots: number;     // from /slots (0.0 during PP — not available)
 
-  // Generation metrics (both sources side by side for Phase 1 testing)
-  genTpsMetrics: number;       // from /metrics predicted_tokens_seconds gauge
-  genTpsSlots: number;         // from /slots n_decoded delta
+  // Generation metrics (primary source = /slots)
+  genTps: number;         // from /slots n_decoded delta
 
-  genTokensPerRequestMetrics: number;  // from /metrics tokens_predicted_total delta
   genTokensPerRequestSlots: number;    // from /slots n_decoded current value
 
-  // Combined session total (both sources agree)
+  // Combined session total
   genTokensPerSession: number;
 
   // Context usage (primary source = /slots only)
-  ctxUsedCurrentRequest: number;   // n_decoded in current request
   ctxUsedSession: number;          // cumulative across requests this session
   ctxFillPct: number;              // (ctx_used_session / ctx_total) * 100
   ctxTotal: number;                // engine context window size in tokens
@@ -306,7 +311,7 @@ export interface FusionUpdate {
   ttftMs?: number | null;          // from /metrics prompt_seconds delta
 
   // Per-slot CTX bars (from /slots only)
-  slotCtx: Array<{ id: number; n_decoded: number; sessionNDecoded: number; totalTokensLifetime: number; is_processing: boolean }>;
+  slotCtx: SlotCtxInfo[];
 
   // Engine config flags
   parallel: number;
@@ -314,22 +319,22 @@ export interface FusionUpdate {
 
   // ── Log-parsed values (stderr print_timing lines — red in UI for comparison) ──
   /** Exact prefill progress 0→1 from "prompt processing, progress = X.XX" */
-  LP_prefillProgress?: number;
+  logPrefillProgress?: number;
 
   /** Instantaneous PP tokens/s during prompt processing (engine's own calculation from log) */
-  LP_prefillTps?: number;
+  logPrefillTps?: number;
 
   /** n_tokens processed so far in current PP request (from print_timing line) */
-  LP_promptTokens?: number;
+  logPromptTokens?: number;
 
   /** tg = X t/s from generation print_timing line (may be delayed vs /slots real-time) */
-  LP_genTps?: number;
+  logGenTps?: number;
 
   /** Phase derived purely from log events (PP→TG via sampler_init, IDLE via stop_processing) */
-  LP_phase?: 'IDLE' | 'PP' | 'TG';
+  logPhase?: 'IDLE' | 'PP' | 'TG';
 
   /** Reset source indicator — "prompt" if NewPrompt caught request start (belt), "regression" if fallback detected (suspenders). Flashes for visual feedback then clears on next PP line. */
-  LP_resetSource?: "prompt" | "regression";
+  phaseResetSource?: "prompt" | "regression";
 }
 
 export interface VramFitResult {

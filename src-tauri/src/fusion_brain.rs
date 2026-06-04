@@ -28,7 +28,7 @@ pub struct FusionConfig {
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum InferencePhase {
     Idle,
-    Pp,  // Prompt Processing (prefill)
+    PP,  // Prompt Processing (prefill)
     Tg,  // Token Generation
 }
 
@@ -97,27 +97,19 @@ pub struct FusionUpdate {
     // ── Prefill metrics (primary source = /metrics) ────────────────
     #[serde(rename = "prefillTpsMetrics")]
     pub prefill_tps_metrics: f64,
-    #[serde(rename = "prefillTpsSlots")]
-    pub prefill_tps_slots: f64,
 
-    // ── Generation metrics (both sources side by side) ─────────────
-    #[serde(rename = "genTpsMetrics")]
-    pub gen_tps_metrics: f64,
-    #[serde(rename = "genTpsSlots")]
-    pub gen_tps_slots: f64,
+    // ── Generation metrics (primary source = /slots) ─────────────
+    #[serde(rename = "genTps")]
+    pub gen_tps: f64,
 
-    #[serde(rename = "genTokensPerRequestMetrics")]
-    pub gen_tokens_per_request_metrics: usize,
     #[serde(rename = "genTokensPerRequestSlots")]
     pub gen_tokens_per_request_slots: usize,
 
-    // Combined session total (both sources agree)
+    // Combined session total
     #[serde(rename = "genTokensPerSession")]
     pub gen_tokens_per_session: usize,
 
     // ── Context usage (primary source = /slots only) ───────────────
-    #[serde(rename = "ctxUsedCurrentRequest")]
-    pub ctx_used_current_request: usize,
     #[serde(rename = "ctxUsedSession")]
     pub ctx_used_session: usize,
     #[serde(rename = "ctxFillPct")]
@@ -139,24 +131,24 @@ pub struct FusionUpdate {
     pub parallel: i64,
     pub unified_kv: bool,
 
-    // ── Log-parsed values (stderr print_timing lines — red in UI for comparison) ──
-    #[serde(rename = "LP_prefillProgress")]
+  // ── Log-parsed values (stderr print_timing lines — red in UI for comparison) ──
+    #[serde(rename = "logPrefillProgress")]
     pub lp_prefill_progress: f64,       // exact 0→1 from "prompt processing, progress = X.XX"
 
-    #[serde(rename = "LP_prefillTps")]
+    #[serde(rename = "logPrefillTps")]
     pub lp_prefill_tps: f64,            // instantaneous tokens/s during PP (engine's own calc)
 
-    #[serde(rename = "LP_promptTokens")]
+    #[serde(rename = "logPromptTokens")]
     pub lp_prompt_tokens: usize,        // n_tokens processed so far in current PP request
 
-    #[serde(rename = "LP_genTps")]
+    #[serde(rename = "logGenTps")]
     pub lp_gen_tps: f64,               // tg = X t/s from generation print_timing line
 
-    #[serde(rename = "LP_phase")]
+    #[serde(rename = "logPhase")]
     pub lp_phase: InferencePhase,       // phase derived purely from log events (PP→TG via sampler_init)
 
-    /// Reset source for frontend visual feedback — "prompt" if NewPrompt caught it, "regression" if fallback.
-    #[serde(rename = "LP_resetSource", skip_serializing_if = "Option::is_none")]
+    /// Reset source indicator — "prompt" if NewPrompt caught request start (belt), "regression" if fallback detected (suspenders). Flashes for visual feedback then clears on next PP line.
+    #[serde(rename = "phaseResetSource", skip_serializing_if = "Option::is_none")]
     pub lp_reset_source: Option<&'static str>,  // Some("prompt") or Some("regression")
 }
 
@@ -183,7 +175,7 @@ pub struct FusionBrain {
     // ── Cumulative TG TPS tracking (accurate from first token) ───────
     tg_start_time: Option<Instant>,
     tg_start_n_decoded: usize,
-    last_gen_tps_slots: f64,  // "last known" value — persists across phase transitions
+    last_gen_tps: f64,  // "last known" value — persists across phase transitions
 
     // ── Log-parsed tracking fields ────────────────────────────────
     lp_prefill_progress: f64,       // exact 0→1 from print_timing PP line
@@ -220,7 +212,7 @@ impl FusionBrain {
             // Cumulative TG TPS tracking
             tg_start_time: None,
             tg_start_n_decoded: 0,
-            last_gen_tps_slots: 0.0,
+            last_gen_tps: 0.0,
 
             // Log-parsed fields — initialized to zero/Idle
             lp_prefill_progress: 0.0,
@@ -343,7 +335,7 @@ impl FusionBrain {
     fn handle_new_prompt(&mut self) {
         // Belt: definitive request start — reset LP state to zero so progress bar starts at 0%
         // LP reset now routed to Blackwell Output Console
-        self.lp_phase = InferencePhase::Idle;
+        self.lp_phase = InferencePhase::PP;
         self.lp_prefill_progress = 0.0;
         self.lp_prefill_tps = 0.0;
         self.lp_prompt_tokens = 0;
@@ -364,7 +356,7 @@ impl FusionBrain {
                 self.lp_reset_prompt = false;
             }
 
-            self.lp_phase = InferencePhase::Pp;
+            self.lp_phase = InferencePhase::PP;
             self.lp_prefill_progress = *progress;
             self.lp_prefill_tps = *pp_tps;
             self.lp_prompt_tokens = *n_tokens;
@@ -390,7 +382,7 @@ impl FusionBrain {
         self.lp_prompt_tokens = 0;
         // NOTE: lp_gen_tps intentionally NOT reset — keep "last known" TG speed visible after request ends
         self.tg_start_time = None;
-        self.last_gen_tps_slots = 0.0;
+        self.last_gen_tps = 0.0;
         self.lp_reset_prompt = false;
         self.lp_reset_regression = false;
     }
@@ -426,7 +418,7 @@ impl FusionBrain {
 
         // Now safe to mutate self — prev_metrics borrow is dropped
         if new_request_started {
-            self.phase = InferencePhase::Pp;
+            self.phase = InferencePhase::PP;
             self.request_start = Some(now);
             self.engine_state = EngineState::Active;
             self.ttft_ms = None;
@@ -436,7 +428,7 @@ impl FusionBrain {
             self.prompt_tokens = 0;
             self.ttft_ms = None;
             self.tg_start_time = None;
-            self.last_gen_tps_slots = 0.0;
+       self.last_gen_tps = 0.0;
         }
 
         // Prefill TPS from prompt_tokens_total delta
@@ -449,7 +441,7 @@ impl FusionBrain {
         }
 
         // PP→TG transition detection from /metrics — capture TTFT + TG start snapshot
-        if self.phase == InferencePhase::Pp && tt_delta > 0 {
+        if self.phase == InferencePhase::PP && tt_delta > 0 {
             self.phase = InferencePhase::Tg;
             // Capture TTFT: time from request start to first generated token
             if self.ttft_ms.is_none() {
@@ -536,7 +528,7 @@ impl FusionBrain {
                 if let Some(s) = self.slot_states.get_mut(&d.id) {
                     s.request_start_n_decoded = d.n_decoded;
                 }
-                self.phase = InferencePhase::Pp;
+                self.phase = InferencePhase::PP;
                 self.request_start = Some(now);
                 self.engine_state = EngineState::Active;
                 // Reset TG TPS tracking for new request
@@ -597,7 +589,7 @@ impl FusionBrain {
                 let n_decoded = slot.next_token[0].n_decoded;
                 if let Some(s) = self.slot_states.get(&slot.id) {
                     let delta = n_decoded.saturating_sub(s.request_start_n_decoded);
-                    if delta > 50 && self.phase == InferencePhase::Pp {
+                    if delta > 50 && self.phase == InferencePhase::PP {
                         self.phase = InferencePhase::Tg;
                         // Capture TTFT: time from request start to first generated token
                         if self.ttft_ms.is_none() {
@@ -644,7 +636,7 @@ impl FusionBrain {
             let elapsed_ms = start.elapsed().as_millis() as u64;
             if elapsed_ms > 0 && total_n_decoded > self.tg_start_n_decoded {
                 let tokens_generated = total_n_decoded.saturating_sub(self.tg_start_n_decoded);
-                self.last_gen_tps_slots = (tokens_generated as f64) / (elapsed_ms as f64 / 1000.0);
+                self.last_gen_tps = (tokens_generated as f64) / (elapsed_ms as f64 / 1000.0);
             }
         }
 
@@ -666,24 +658,21 @@ impl FusionBrain {
         }
 
         // Gen TPS from /slots: cumulative average since TG started (accurate immediately, no ramp-up)
-        let gen_tps_slots = if self.phase == InferencePhase::Tg {
+        let gen_tps = if self.phase == InferencePhase::Tg {
             if let Some(start) = self.tg_start_time {
                 let elapsed_ms = start.elapsed().as_millis() as u64;
                 if elapsed_ms > 0 && total_n_decoded > self.tg_start_n_decoded {
                     let tokens_generated = total_n_decoded.saturating_sub(self.tg_start_n_decoded);
                     (tokens_generated as f64) / (elapsed_ms as f64 / 1000.0)
                 } else {
-                    self.last_gen_tps_slots  // keep last known value during brief gaps
+                    self.last_gen_tps  // keep last known value during brief gaps
                 }
             } else {
                 0.0
             }
         } else {
-            self.last_gen_tps_slots  // persist across phase transitions (metrics PP→TG flicker)
+            self.last_gen_tps  // persist across phase transitions (metrics PP→TG flicker)
         };
-
-        // Gen TPS from /metrics gauge
-        let gen_tps_metrics = metrics.map(|m| m.predicted_tps_gauge).unwrap_or(0.0);
 
         // Per-request tokens: sum of (n_decoded - request_start_n_decoded) across slots
         let mut gen_tokens_request_slots: usize = 0;
@@ -695,17 +684,6 @@ impl FusionBrain {
                 }
             }
         }
-
-        let gen_tokens_request_metrics = if let Some(m) = metrics {
-            if let Some(ref prev) = self.prev_metrics {
-                m.predicted_tokens_total.saturating_sub(prev.predicted_tokens_total)
-                    + self.session_tokens_generated
-            } else {
-                m.predicted_tokens_total
-            }
-        } else {
-            0
-        };
 
         // Prefill TPS from /metrics gauge
         let prefill_tps_metrics = metrics.map(|m| m.prompt_tps_gauge).unwrap_or(0.0);
@@ -743,13 +721,9 @@ impl FusionBrain {
             engine_state: self.engine_state.clone(),
             phase: self.phase,
             prefill_tps_metrics,
-            prefill_tps_slots: 0.0,
-            gen_tps_metrics,
-            gen_tps_slots,
-            gen_tokens_per_request_metrics: gen_tokens_request_metrics,
+            gen_tps,
             gen_tokens_per_request_slots: gen_tokens_request_slots,
             gen_tokens_per_session: self.session_tokens_generated,
-            ctx_used_current_request: total_n_decoded,
             ctx_used_session: ctx_used_session,
             ctx_fill_pct,
             ctx_total: self.ctx_total,

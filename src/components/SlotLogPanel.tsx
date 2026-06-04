@@ -62,7 +62,7 @@ export default memo(function SlotLogPanel({ entry, logs, systemEvents, fusionUpd
       : "bg-stealth-panel border-stealth-border";
 
   // TPS value for display — fusion /slots data is the source of truth
-  const tps = (fusionUpdate?.engine_state === "ACTIVE" && fusionUpdate?.genTpsSlots > 0) ? fusionUpdate.genTpsSlots : 0;
+  const tps = (fusionUpdate?.engine_state === "ACTIVE" && fusionUpdate?.genTps > 0) ? fusionUpdate.genTps : 0;
 
   // Logs are already flat — cap visible lines to prevent DOM bloat
   const MAX_VISIBLE_LOGS = 100;
@@ -102,25 +102,25 @@ export default memo(function SlotLogPanel({ entry, logs, systemEvents, fusionUpd
                 {displayPhase === "PP" ? "PROMPT PROCESSING" : "TOKEN GENERATION"}
               </span>
               <div className="flex items-center gap-3">
-                {/* LP_ prefill progress comparison (red) — from print_timing PP line */}
-                {fusionUpdate?.LP_prefillProgress != null && fusionUpdate.LP_prefillProgress > 0 && displayPhase === "PP" && (
+                {/* log_ prefill progress comparison (red) — from print_timing PP line */}
+                {fusionUpdate?.logPrefillProgress != null && fusionUpdate?.logPhase === "PP" && (
                   <>
                     <div className="w-16 h-1.5 bg-stealth-dark border border-red-500/30 rounded-sm overflow-hidden">
                       <div
                         className="h-full bg-red-400 transition-all duration-100"
-                        style={{ width: `${fusionUpdate.LP_prefillProgress * 100}%` }}
+                        style={{ width: `${fusionUpdate.logPrefillProgress * 100}%` }}
                       />
                     </div>
                     <span className="text-[8px] font-mono text-red-400">
-                      LP {(fusionUpdate.LP_prefillProgress * 100).toFixed(0)}%
+                      LP {(fusionUpdate.logPrefillProgress * 100).toFixed(0)}%
                     </span>
                   </>
                 )}
 
-                {/* LP_ phase indicator */}
-                {fusionUpdate?.LP_phase && fusionUpdate.LP_phase !== "IDLE" && (
+                {/* log_ phase indicator */}
+                {fusionUpdate?.logPhase && fusionUpdate.logPhase !== "IDLE" && (
                   <span className="text-[8px] font-mono text-red-400/70">
-                    LP:{fusionUpdate.LP_phase}
+                    LP:{fusionUpdate.logPhase}
                   </span>
                 )}
 
@@ -149,15 +149,15 @@ export default memo(function SlotLogPanel({ entry, logs, systemEvents, fusionUpd
           ) : (
             <span className="text-lg font-mono text-stealth-muted">--</span>
           )}
-          {/* LP_ TPS comparison (red) */}
-          {(fusionUpdate?.LP_prefillTps != null && fusionUpdate.LP_prefillTps > 0 && displayPhase === "PP") && (
+          {/* log_ TPS comparison (red) */}
+          {(fusionUpdate?.logPrefillTps != null && fusionUpdate.logPrefillTps > 0 && displayPhase === "PP") && (
             <span className="text-[10px] font-mono text-red-400 font-bold">
-              LP {fusionUpdate.LP_prefillTps.toFixed(0)}
+              LP {fusionUpdate.logPrefillTps.toFixed(0)}
             </span>
           )}
-          {(fusionUpdate?.LP_genTps != null && fusionUpdate.LP_genTps > 0) && (
+          {(fusionUpdate?.logGenTps != null && fusionUpdate.logGenTps > 0) && (
             <span className="text-[10px] font-mono text-red-400 font-bold">
-              LP {fusionUpdate.LP_genTps.toFixed(0)}
+              LP {fusionUpdate.logGenTps.toFixed(0)}
             </span>
           )}
         </div>
@@ -185,29 +185,29 @@ export default memo(function SlotLogPanel({ entry, logs, systemEvents, fusionUpd
         </div>
       )}
 
-      {/* LP_ log-parsed metrics row (red) */}
-      {entry.status === "RUNNING" && fusionUpdate && (fusionUpdate.LP_promptTokens != null || fusionUpdate.LP_prefillTps != null) && (
+      {/* log_ log-parsed metrics row (red) */}
+      {entry.status === "RUNNING" && fusionUpdate && (fusionUpdate.logPromptTokens != null || fusionUpdate.logPrefillTps != null) && (
         <div className="px-3 py-1 border-t border-stealth-border/50 grid grid-cols-2 gap-2">
-          {fusionUpdate.LP_promptTokens != null && fusionUpdate.LP_promptTokens > 0 && (
+          {fusionUpdate.logPromptTokens != null && fusionUpdate.logPromptTokens > 0 && (
             <span className="text-[9px] font-mono text-red-400">
-              LP PROMPT: {fusionUpdate.LP_promptTokens} tok
+              LP PROMPT: {fusionUpdate.logPromptTokens} tok
             </span>
           )}
-          {fusionUpdate.LP_prefillTps != null && fusionUpdate.LP_prefillTps > 0 && (
+          {fusionUpdate.logPrefillTps != null && fusionUpdate.logPrefillTps > 0 && (
             <span className="text-[9px] font-mono text-red-400">
-              LP PP: {fusionUpdate.LP_prefillTps.toFixed(0)} t/s
+              LP PP: {fusionUpdate.logPrefillTps.toFixed(0)} t/s
             </span>
           )}
         </div>
       )}
 
-      {/* LP_ reset source indicator — belt (green) vs suspenders (amber) */}
-      {entry.status === "RUNNING" && fusionUpdate?.LP_resetSource && (
+      {/* log_ reset source indicator — belt (green) vs suspenders (amber) */}
+      {entry.status === "RUNNING" && fusionUpdate?.phaseResetSource && (
         <div className="px-3 py-0.5 border-t border-stealth-border/30">
           <span className={`text-[8px] font-mono tracking-wider ${
-            fusionUpdate.LP_resetSource === 'prompt' ? 'text-nv-green/70' : 'text-telemetry-amber/70'
+            fusionUpdate.phaseResetSource === 'prompt' ? 'text-nv-green/70' : 'text-telemetry-amber/70'
           }`}>
-            LP RESET: {fusionUpdate.LP_resetSource === 'prompt' ? "BELT (NewPrompt)" : "SUSPENDERS (regression)"}
+            LP RESET: {fusionUpdate.phaseResetSource === 'prompt' ? "BELT (NewPrompt)" : "SUSPENDERS (regression)"}
           </span>
         </div>
       )}

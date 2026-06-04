@@ -1,5 +1,7 @@
+import type { SlotCtxInfo } from "../lib/types";
+
 interface SlotCtxBarsProps {
-  slotCtx: Array<{ id: number; n_decoded: number; sessionNDecoded: number; totalTokensLifetime: number; is_processing: boolean }>;
+  slotCtx: SlotCtxInfo[];
   ctxTotal: number;
   parallel: number;
   unifiedKv: boolean;

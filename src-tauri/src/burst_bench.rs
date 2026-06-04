@@ -83,6 +83,7 @@ pub async fn cmd_burst_bench(
             "n_predict": run_n_predict,
             "temperature": 0.0,
             "stream": false,
+            "cache_prompt": false,
         });
 
         match client.post(&url)
