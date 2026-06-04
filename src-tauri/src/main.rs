@@ -142,7 +142,6 @@ async fn get_blackwell_output_console_categories() -> Vec<String> {
         BlackwellOutputConsoleCategory::Foundry.identifier().to_string(),
         BlackwellOutputConsoleCategory::Error.identifier().to_string(),
         BlackwellOutputConsoleCategory::General.identifier().to_string(),
-        BlackwellOutputConsoleCategory::Models.identifier().to_string(),
     ]
 }
 
@@ -160,7 +159,6 @@ async fn get_blackwell_output_console_buffer_for_category(
         "foundry" => BlackwellOutputConsoleCategory::Foundry,
         "error" => BlackwellOutputConsoleCategory::Error,
         "general" => BlackwellOutputConsoleCategory::General,
-        "models" => BlackwellOutputConsoleCategory::Models,
         _ => return Err("Unknown category".to_string()),
     };
 
@@ -183,7 +181,6 @@ async fn clear_blackwell_output_console_category(
         "foundry" => BlackwellOutputConsoleCategory::Foundry,
         "error" => BlackwellOutputConsoleCategory::Error,
         "general" => BlackwellOutputConsoleCategory::General,
-        "models" => BlackwellOutputConsoleCategory::Models,
         _ => return Err("Unknown category".to_string()),
     };
 

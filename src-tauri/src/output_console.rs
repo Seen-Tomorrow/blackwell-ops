@@ -36,9 +36,6 @@ pub enum BlackwellOutputConsoleCategory {
 
     /// General / miscellaneous output that does not clearly belong to another category.
     General,
-
-    /// Model catalog scanning — directory walk, GGUF header parsing, identity resolution.
-    Models,
 }
 
 impl BlackwellOutputConsoleCategory {
@@ -50,7 +47,6 @@ impl BlackwellOutputConsoleCategory {
             BlackwellOutputConsoleCategory::Foundry => "foundry",
             BlackwellOutputConsoleCategory::Error => "error",
             BlackwellOutputConsoleCategory::General => "general",
-            BlackwellOutputConsoleCategory::Models => "models",
         }
     }
 
@@ -62,7 +58,6 @@ impl BlackwellOutputConsoleCategory {
             BlackwellOutputConsoleCategory::Foundry => "Foundry",
             BlackwellOutputConsoleCategory::Error => "Error",
             BlackwellOutputConsoleCategory::General => "General",
-            BlackwellOutputConsoleCategory::Models => "Models",
         }
     }
 }
@@ -215,7 +210,6 @@ impl BlackwellOutputConsoleManager {
             BlackwellOutputConsoleCategory::Foundry,
             BlackwellOutputConsoleCategory::Error,
             BlackwellOutputConsoleCategory::General,
-            BlackwellOutputConsoleCategory::Models,
         ] {
             category_buffers.insert(
                 category,

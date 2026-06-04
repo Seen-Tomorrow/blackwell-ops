@@ -116,7 +116,7 @@ pub fn scan_path(
     // LOG: scan start
     if let Some(lh) = log_hub {
         lh.emit_console_line(
-            BlackwellOutputConsoleCategory::Models,
+            BlackwellOutputConsoleCategory::Utils,
             &format!("[SCAN] Walking '{}': found {} .gguf files", 
                 base_path.display(), gguf_files.len()),
             BlackwellOutputConsoleLineStyle::Normal);
@@ -206,7 +206,7 @@ pub fn scan_path(
         let lm_studio_count = temp_catalog.values()
             .filter(|e| e.author != "Unknown").count();
         lh.emit_console_line(
-            BlackwellOutputConsoleCategory::Models,
+            BlackwellOutputConsoleCategory::Utils,
             &format!("[SCAN] '{}' → {} unique models ({} with directory author, {} shards total)", 
                 base_path.display(),
                 temp_catalog.len(),
@@ -227,13 +227,13 @@ pub fn merge_catalogs(
     // LOG: merge start
     if let Some(lh) = log_hub {
         lh.emit_console_line(
-            BlackwellOutputConsoleCategory::Models,
+            BlackwellOutputConsoleCategory::Utils,
             &format!("[MERGE] Combining {} model paths", paths.len()),
             BlackwellOutputConsoleLineStyle::Normal);
         for (i, p) in paths.iter().enumerate() {
             let label = if p.label.is_empty() { "Default" } else { &p.label };
             lh.emit_console_line(
-                BlackwellOutputConsoleCategory::Models,
+                BlackwellOutputConsoleCategory::Utils,
                 &format!("  [{}]: '{}' → '{}'", i + 1, label, p.path),
                 BlackwellOutputConsoleLineStyle::Command);
         }
@@ -275,7 +275,7 @@ pub fn merge_catalogs(
     // LOG: dedup results
     if let Some(lh) = log_hub {
         lh.emit_console_line(
-            BlackwellOutputConsoleCategory::Models,
+            BlackwellOutputConsoleCategory::Utils,
             &format!("[DEDUP] {} total → {} unique ({} conflicts across paths)", 
                 total_internal, deduped.len(), conflicts.len()),
             if conflicts.is_empty() { 
@@ -285,7 +285,7 @@ pub fn merge_catalogs(
             });
         for c in &conflicts {
             lh.emit_console_line(
-                BlackwellOutputConsoleCategory::Models,
+                BlackwellOutputConsoleCategory::Utils,
                 &format!("  ⚠ Duplicate: '{}' in '{}' and '{}'", 
                     c.dedup_key, c.entry_a.source_path_label, c.entry_b.source_path_label),
                 BlackwellOutputConsoleLineStyle::Warning);
@@ -375,7 +375,7 @@ pub fn merge_catalogs(
         let with_meta = final_catalog.iter().filter(|e| e.metadata.is_some()).count();
         let with_hf = final_catalog.iter().filter(|e| e.hf_meta.is_some()).count();
         lh.emit_console_line(
-            BlackwellOutputConsoleCategory::Models,
+            BlackwellOutputConsoleCategory::Utils,
             &format!("[MERGE] ✅ {} models cataloged ({} with GGUF metadata, {} with HF data)", 
                 final_catalog.len(), with_meta, with_hf),
             BlackwellOutputConsoleLineStyle::Success);
