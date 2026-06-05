@@ -127,16 +127,20 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
 
   // Primary prefill progress/tokens from /slots poll (reliable); LP log is red comparison fallback
   const prefillTotal = fusion.prefillTokensTotal ?? 0;
-  const isPrefillPhase = fusion.phase === "PP";
-  const primaryPrefillProgress =
-    prefillTotal > 0 ? fusion.prefillProgress : (fusion.logPrefillProgress ?? 0);
-  const primaryPrefillTokens =
-    isPrefillPhase && prefillTotal > 0
-      ? fusion.prefillTokens
-      : fusion.prefillTokens > 0
-        ? fusion.prefillTokens
-        : (fusion.logPromptTokens ?? 0);
-  const showPrefillProgress = isPrefillPhase && prefillTotal > 0;
+  // Belt: ACTIVE without TG = still prefill (fixes /slots lag during bench + WebUI text)
+  const isPrefillPhase =
+    fusion.phase === "PP" ||
+    (fusion.engine_state === "ACTIVE" && fusion.phase !== "TG");
+  const primaryPrefillProgress = Math.max(
+    fusion.prefillProgress ?? 0,
+    fusion.logPrefillProgress ?? 0,
+  );
+  const primaryPrefillTokens = Math.max(
+    fusion.prefillTokens ?? 0,
+    fusion.logPromptTokens ?? 0,
+  );
+  const showPrefillProgress =
+    isPrefillPhase && (prefillTotal > 0 || primaryPrefillProgress > 0);
 
   return (
     <div className="relative w-full h-full overflow-hidden">
@@ -176,7 +180,7 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
                   PROMPT PROCESSING
                 </span>
               )}
-              {fusion.phase === "IDLE" && (
+              {fusion.phase === "IDLE" && fusion.engine_state !== "ACTIVE" && (
                 <span className="text-[9px] font-mono font-bold tracking-widest text-stealth-muted/60">
                   AWAITING REQUEST
                 </span>

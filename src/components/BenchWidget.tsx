@@ -8,7 +8,7 @@ interface BenchWidgetProps {
 }
 
 const TG_PREDICT_OPTIONS = [256, 512, 1024, 4096];
-const PP_TOKEN_OPTIONS = [8192, 16384, 32768, 65536];
+const PP_TOKEN_OPTIONS = [8192, 16384, 32768, 65536, 100000];
 
 function formatBenchK(n: number): string {
   if (n >= 1000) return `${Math.floor(n / 1000)}K`;
