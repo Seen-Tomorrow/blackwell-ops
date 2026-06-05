@@ -10,6 +10,21 @@ use std::time::Instant;
 use crate::log_hub::LogHub;
 use crate::fusion_poller::{self, MetricsSnapshot};
 
+/// Cap hero TPS (avoids million-TPS flash when elapsed≈0 or one poll ingests a huge cached chunk).
+const MAX_DISPLAY_TPS: f64 = 200_000.0;
+/// Session-average needs enough wall time before tokens/elapsed is meaningful.
+const MIN_SESSION_TPS_ELAPSED_MS: u64 = 400;
+/// Ignore first-poll token bursts after reset (KV restore / cache jump).
+const MAX_INSTANT_TOKEN_JUMP: usize = 2048;
+
+fn clamp_display_tps(tps: f64) -> f64 {
+    if !tps.is_finite() || tps <= 0.0 {
+        0.0
+    } else {
+        tps.min(MAX_DISPLAY_TPS)
+    }
+}
+
 // ── Configuration (immutable after construction) ─────────────────────
 
 #[derive(Clone)]
@@ -119,6 +134,14 @@ pub struct FusionUpdate {
     #[serde(rename = "prefillTpsMetrics")]
     pub prefill_tps_metrics: f64,
 
+    /// Request-average prefill TPS (tokens processed / wall elapsed) — matches bench `tokens_evaluated / prompt_ms`.
+    #[serde(rename = "prefillTpsSession")]
+    pub prefill_tps_session: f64,
+
+    /// Per-poll / log-chunk prefill TPS (responsive; use with hero LIVE mode).
+    #[serde(rename = "prefillTpsInstant")]
+    pub prefill_tps_instant: f64,
+
     /// Primary prefill progress 0→1 computed from /slots (n_prompt_tokens_processed / n_prompt_tokens). Bypasses log throttle/miss issues.
     #[serde(rename = "prefillProgress")]
     pub prefill_progress: f64,
@@ -132,6 +155,10 @@ pub struct FusionUpdate {
     // ── Generation metrics (primary source = /slots) ─────────────
     #[serde(rename = "genTps")]
     pub gen_tps: f64,
+
+    /// Per-poll / log-chunk generation TPS (responsive; use with hero LIVE mode).
+    #[serde(rename = "genTpsInstant")]
+    pub gen_tps_instant: f64,
 
     #[serde(rename = "genTokensPerRequestSlots")]
     pub gen_tokens_per_request_slots: usize,
@@ -235,6 +262,16 @@ pub struct FusionBrain {
 
     /// Frozen wall-clock when /slots reports idle (timer must not run after request ends).
     request_elapsed_frozen_ms: u64,
+
+    /// From `prompt eval time = X ms / N tokens` — same formula as bench result panel.
+    prefill_tps_eval: f64,
+
+    /// Per-poll instant TPS (less smoothing than session averages).
+    prefill_tps_instant: f64,
+    gen_tps_instant: f64,
+    prev_instant_poll_at: Option<Instant>,
+    prev_instant_prefill_tokens: usize,
+    prev_instant_gen_decoded: usize,
 }
 
 impl FusionBrain {
@@ -280,6 +317,12 @@ impl FusionBrain {
             last_cached_log_at: None,
             last_cached_log_tokens: 0,
             request_elapsed_frozen_ms: 0,
+            prefill_tps_eval: 0.0,
+            prefill_tps_instant: 0.0,
+            gen_tps_instant: 0.0,
+            prev_instant_poll_at: None,
+            prev_instant_prefill_tokens: 0,
+            prev_instant_gen_decoded: 0,
         }
     }
 
@@ -305,6 +348,54 @@ impl FusionBrain {
         self.lp_prompt_tokens = 0;
         self.last_cached_log_at = None;
         self.last_cached_log_tokens = 0;
+        self.prefill_tps_eval = 0.0;
+        self.prefill_tps_instant = 0.0;
+        self.gen_tps_instant = 0.0;
+        self.prev_instant_poll_at = None;
+        self.prev_instant_prefill_tokens = 0;
+        self.prev_instant_gen_decoded = 0;
+    }
+
+    fn update_instant_tps(&mut self, slots: &[fusion_poller::SlotData], now: Instant) {
+        let tokens = self.prefill_tokens.max(self.lp_prompt_tokens);
+        let mut total_n_decoded: usize = 0;
+        for slot in slots {
+            if !slot.next_token.is_empty() {
+                total_n_decoded += slot.next_token[0].n_decoded;
+            }
+        }
+
+        if let Some(prev) = self.prev_instant_poll_at {
+            let dt = now.duration_since(prev).as_secs_f64();
+            if dt >= 0.05 {
+                if tokens > self.prev_instant_prefill_tokens {
+                    let delta = tokens - self.prev_instant_prefill_tokens;
+                    // First sample after reset often jumps by full cache size in one 100ms poll.
+                    if self.prev_instant_prefill_tokens > 0 || delta <= MAX_INSTANT_TOKEN_JUMP {
+                        let rate = delta as f64 / dt;
+                        self.prefill_tps_instant = clamp_display_tps(rate);
+                    }
+                }
+                if total_n_decoded > self.prev_instant_gen_decoded {
+                    let delta = total_n_decoded - self.prev_instant_gen_decoded;
+                    if self.prev_instant_gen_decoded > 0 || delta <= 64 {
+                        let rate = delta as f64 / dt;
+                        self.gen_tps_instant = clamp_display_tps(rate);
+                    }
+                }
+            }
+        }
+
+        self.prev_instant_poll_at = Some(now);
+        self.prev_instant_prefill_tokens = tokens;
+        self.prev_instant_gen_decoded = total_n_decoded;
+
+        if self.lp_prefill_tps > 0.0 {
+            self.prefill_tps_instant = clamp_display_tps(self.lp_prefill_tps);
+        }
+        if self.lp_gen_tps > 0.0 && self.phase == InferencePhase::Tg {
+            self.gen_tps_instant = clamp_display_tps(self.lp_gen_tps);
+        }
     }
 
     /// True generation: output tokens are being produced for a request with decode budget remaining.
@@ -459,8 +550,8 @@ impl FusionBrain {
             }
             // NewPrompt — belt: reset all LP state at exact request start (fires before any PP work)
             crate::fusion_logparser::LogEvent::NewPrompt { prompt_tokens, .. } => self.handle_new_prompt(*prompt_tokens),
-            crate::fusion_logparser::LogEvent::PromptEvalComplete { tokens, .. } => {
-                self.handle_prompt_eval_complete(*tokens);
+            crate::fusion_logparser::LogEvent::PromptEvalComplete { tokens, eval_ms, .. } => {
+                self.handle_prompt_eval_complete(*tokens, *eval_ms);
             }
         }
     }
@@ -488,12 +579,15 @@ impl FusionBrain {
         self.lp_prompt_tokens = 0;
         self.last_cached_log_at = None;
         self.last_cached_log_tokens = 0;
+        self.prefill_tps_instant = 0.0;
+        self.prev_instant_poll_at = None;
+        self.prev_instant_prefill_tokens = 0;
         if self.request_start.is_none() {
             self.start_request_clock();
         }
     }
 
-    fn handle_prompt_eval_complete(&mut self, tokens: usize) {
+    fn handle_prompt_eval_complete(&mut self, tokens: usize, eval_ms: f64) {
         if tokens == 0 {
             return;
         }
@@ -503,6 +597,9 @@ impl FusionBrain {
         self.lp_prompt_tokens = tokens;
         self.prefill_progress = 1.0;
         self.lp_prefill_progress = 1.0;
+        if eval_ms > 0.0 {
+            self.prefill_tps_eval = clamp_display_tps((tokens as f64 / eval_ms) * 1000.0);
+        }
     }
 
     fn handle_print_timing_pp(&mut self, e: &crate::fusion_logparser::LogEvent) {
@@ -528,6 +625,9 @@ impl FusionBrain {
             if *progress > self.prefill_progress {
                 self.prefill_progress = *progress;
             }
+            if *pp_tps > 0.0 {
+                self.prefill_tps_instant = clamp_display_tps(*pp_tps);
+            }
         }
     }
 
@@ -535,6 +635,9 @@ impl FusionBrain {
         if let crate::fusion_logparser::LogEvent::PrintTimingGen { gen_tps, .. } = e {
             self.lp_phase = InferencePhase::Tg;
             self.lp_gen_tps = *gen_tps;
+            if *gen_tps > 0.0 {
+                self.gen_tps_instant = clamp_display_tps(*gen_tps);
+            }
             // Phase TG is decided in reconcile_phase (requires n_remain > 0), not from log alone.
         }
     }
@@ -876,6 +979,7 @@ impl FusionBrain {
 
         self.update_prefill_from_slots(slots);
         self.reconcile_phase(slots, any_processing);
+        self.update_instant_tps(slots, now);
 
         // Update engine state from /slots
         if self.engine_state == EngineState::Loading && !any_processing {
@@ -1019,17 +1123,32 @@ impl FusionBrain {
 
         let (prefill_progress, prefill_tokens) = self.merged_prefill_display();
 
+        // Same formula as bench panel: total prompt tokens / wall time (not the /metrics smoothed gauge).
+        let mut prefill_tps_session = if request_elapsed_ms >= MIN_SESSION_TPS_ELAPSED_MS && prefill_tokens > 0 {
+            clamp_display_tps((prefill_tokens as f64 / request_elapsed_ms as f64) * 1000.0)
+        } else if self.lp_prefill_tps > 0.0 {
+            clamp_display_tps(self.lp_prefill_tps)
+        } else {
+            0.0
+        };
+        if self.prefill_tps_eval > 0.0 {
+            prefill_tps_session = self.prefill_tps_eval;
+        }
+
         FusionUpdate {
             alias: self.alias.clone(),
             slot_idx: self.slot_idx,
             port: self.port,
             engine_state: self.engine_state.clone(),
             phase: self.phase,
-            prefill_tps_metrics,
+            prefill_tps_metrics: clamp_display_tps(prefill_tps_metrics),
+            prefill_tps_session,
+            prefill_tps_instant: clamp_display_tps(self.prefill_tps_instant),
             prefill_progress,
             prefill_tokens,
             prefill_tokens_total: self.prefill_tokens_total,
-            gen_tps,
+            gen_tps: clamp_display_tps(gen_tps),
+            gen_tps_instant: clamp_display_tps(self.gen_tps_instant),
             gen_tokens_per_request_slots: gen_tokens_request_slots,
             gen_tokens_per_session: self.session_tokens_generated,
             ctx_used_session: ctx_used_session,

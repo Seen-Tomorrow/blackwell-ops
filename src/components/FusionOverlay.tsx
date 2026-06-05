@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import type { FusionUpdate } from "../lib/types";
 import BenchWidget from "./BenchWidget";
 import SlotCtxBars from "./SlotCtxBars";
+import { useFusionHeroTpsMode } from "../hooks/useFusionHeroTpsMode";
 
 interface FusionOverlayProps {
   alias?: string;
@@ -117,13 +118,27 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
 
   const isLaunching = fusion.engine_state === "LOADING";
   const ctxTotal = fusion.ctxTotal || 0;
+  const { mode: heroTpsMode, toggle: toggleHeroTpsMode } = useFusionHeroTpsMode();
 
-  // PP TPS value — prefer /metrics gauge (consistent with bench results), fallback to log parser
-  const ppTpsValue = fusion.prefillTpsMetrics > 0
-    ? fusion.prefillTpsMetrics.toFixed(0)
-    : fusion.logPrefillTps != null && fusion.logPrefillTps > 0
-      ? fusion.logPrefillTps.toFixed(0)
-      : "--";
+  const MAX_HERO_TPS = 200_000;
+  const clampHeroTps = (n: number) => (n > 0 && n <= MAX_HERO_TPS ? n : 0);
+
+  const ppTpsLive = clampHeroTps(Math.max(
+    fusion.prefillTpsInstant ?? 0,
+    fusion.logPrefillTps ?? 0,
+  ));
+  const ppTpsAvg = clampHeroTps(fusion.prefillTpsSession ?? 0);
+  const ppTpsPick = heroTpsMode === "avg" ? ppTpsAvg : ppTpsLive;
+  const ppTpsValue =
+    ppTpsPick > 0
+      ? ppTpsPick.toFixed(0)
+      : fusion.prefillTpsMetrics > 0
+        ? fusion.prefillTpsMetrics.toFixed(0)
+        : "--";
+
+  const tgTpsLive = clampHeroTps(Math.max(fusion.genTpsInstant ?? 0, fusion.logGenTps ?? 0));
+  const tgTpsPick = clampHeroTps(heroTpsMode === "avg" ? fusion.genTps : tgTpsLive);
+  const tgTpsValue = tgTpsPick > 0 ? tgTpsPick.toFixed(1) : "--";
 
   // Primary prefill progress/tokens from /slots poll (reliable); LP log is red comparison fallback
   const prefillTotal = fusion.prefillTokensTotal ?? 0;
@@ -170,9 +185,19 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
         >
           {/* ═══ HEADER — alias + phase indicator + controls ═══════ */}
           <div className="flex items-center justify-between flex-shrink-0 mb-1">
-            <span className="text-[9px] font-mono text-stealth-muted/40 tracking-widest">
-              CONTEXT SLOTS
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-[9px] font-mono text-stealth-muted/40 tracking-widest">
+                CONTEXT SLOTS
+              </span>
+              <button
+                type="button"
+                onClick={toggleHeroTpsMode}
+                title={heroTpsMode === "live" ? "Hero TPS: live (per chunk). Click for session average." : "Hero TPS: session average (bench). Click for live."}
+                className="text-[6px] font-mono tracking-wider px-1 py-0.5 rounded-sm border border-stealth-border/50 text-stealth-muted/70 hover:text-white hover:border-stealth-muted/60 cursor-pointer select-none"
+              >
+                {heroTpsMode === "live" ? "LIVE" : "AVG"}
+              </button>
+            </div>
             {/* Phase indicator — alternating between values, fixed position */}
             <div className="flex items-center gap-2">
               {isPrefillPhase && (
@@ -238,10 +263,10 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
                      className="font-mono font-bold tracking-tight leading-none"
                      style={{
                        fontSize: 'clamp(2rem, 6vh, 3.5rem)',
-                       color: fusion.genTps > 0 ? '#22c55e' : 'rgba(148,163,184,0.25)'
+                       color: tgTpsPick > 0 ? '#22c55e' : 'rgba(148,163,184,0.25)'
                      }}
                    >
-                     {fusion.genTps > 0 ? fusion.genTps.toFixed(1) : "--"}
+                     {tgTpsValue}
                    </span>
                    <span className="text-[7px] font-mono text-stealth-muted/30 tracking-wider">tok/s</span>
                  </div>
@@ -310,14 +335,16 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
                   </div>
                 )}
 
-                {/* Prompt tokens — prefer primary from /slots, fallback LP. Use raw number (e.g. 26000 not 26K) as requested for prefill token display. */}
-                <span className="text-[7px] font-mono text-stealth-muted/40 mt-0.5">
-                  {primaryPrefillTokens > 0
-                    ? prefillTotal > 0
-                      ? `${primaryPrefillTokens.toLocaleString()} / ${prefillTotal.toLocaleString()} tok`
-                      : `${primaryPrefillTokens.toLocaleString()} tok`
-                    : "--"}
-                </span>
+                {/* Prompt fill: processed vs task size (from logs + /slots). Hidden outside PP so TG doesn't show stale "274/274". */}
+                {isPrefillPhase && (
+                  <span className="text-[7px] font-mono text-stealth-muted/40 mt-0.5" title="Prompt tokens processed / estimated task size">
+                    {primaryPrefillTokens > 0
+                      ? prefillTotal > 0 && primaryPrefillTokens < prefillTotal
+                        ? `${primaryPrefillTokens.toLocaleString()} / ${prefillTotal.toLocaleString()} prompt tok`
+                        : `${primaryPrefillTokens.toLocaleString()} prompt tok`
+                      : "--"}
+                  </span>
+                )}
               </div>
             </div>
           </div>

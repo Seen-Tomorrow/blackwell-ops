@@ -114,15 +114,17 @@ pub async fn cmd_bench_pp_burst(
             "effectiveLength": effective_target,  // for accurate UI labels (no hardcodes)
         }));
 
-        // Build synthetic prompt *per run* so warmup can use fixed small length while measured uses user-selected.
-        // Approximation: unique word list (hyphenated ML terms) + template additions cause server tokenizer
-        // to emit more tokens than word count. Old 1.05x often overshot ~1.8x (115k actual vs 64k selected).
-        // Use lower factor so built size tokenizes closer to the *selected* target. (Actual is reported in result.)
-        let words_needed = effective_target.saturating_mul(8) / 20; // ~0.4x adjusted for rarer templates + unique word tokenization (often 2+ tokens per word)
-        let bench_prompt_text = if bench_prompt_mode == "repetitive" {
-            build_repetitive_prompt(words_needed)
+        // Measured run: calibrate via /tokenize so actual ≈ chip target (tokens, not words).
+        // Warmup stays a fast fixed-size prompt.
+        let repetitive = bench_prompt_mode == "repetitive";
+        let bench_prompt_text = if run < WARMUP_RUNS {
+            if repetitive {
+                build_repetitive_prompt(WARMUP_TOKENS)
+            } else {
+                build_unique_prompt(WARMUP_TOKENS)
+            }
         } else {
-            build_unique_prompt(words_needed)
+            build_prompt_for_token_target(&client, port, effective_target, repetitive).await
         };
 
         let body = serde_json::json!({
@@ -232,6 +234,108 @@ fn build_unique_prompt(target_words: usize) -> String {
     }
 
     words.join(" ")
+}
+
+/// How close tokenize count must be to the UI chip target (tokens).
+fn token_target_tolerance(target: usize) -> i64 {
+    (target as i64 / 25).max(256) // ~4% or 256 tok
+}
+
+/// POST /tokenize — returns token count for this server's loaded model.
+async fn count_prompt_tokens(client: &reqwest::Client, port: u16, content: &str) -> Option<usize> {
+    let url = format!("http://127.0.0.1:{}/tokenize", port);
+    let body = serde_json::json!({
+        "content": content,
+        "add_special": false,
+        "parse_special": false,
+    });
+    let resp = client.post(&url).json(&body).send().await.ok()?;
+    if !resp.status().is_success() {
+        return None;
+    }
+    let parsed: serde_json::Value = resp.json().await.ok()?;
+    parsed
+        .get("tokens")
+        .and_then(|t| t.as_array())
+        .map(|a| a.len())
+}
+
+/// Build prompt text so tokenize count is within tolerance of `target_tokens` (2–4 /tokenize probes).
+async fn build_prompt_for_token_target(
+    client: &reqwest::Client,
+    port: u16,
+    target_tokens: usize,
+    repetitive: bool,
+) -> String {
+    if target_tokens == 0 {
+        return String::new();
+    }
+
+    let build = |words: usize| -> String {
+        if repetitive {
+            build_repetitive_prompt(words)
+        } else {
+            build_unique_prompt(words)
+        }
+    };
+
+    // Start ~1 word per token for our synthetic corpora; unique hyphenated terms can be >1 tok/word.
+    let mut words = if repetitive {
+        target_tokens
+    } else {
+        target_tokens.saturating_mul(11) / 10
+    };
+
+    let mut best_text = build(words);
+    let mut best_err = i64::MAX;
+
+    for _ in 0..5 {
+        let text = build(words);
+        let Some(actual) = count_prompt_tokens(client, port, &text).await else {
+            log::debug!("[BENCH_PP] /tokenize unavailable — using word estimate {}", words);
+            return text;
+        };
+
+        let err = (actual as i64 - target_tokens as i64).abs();
+        if err <= token_target_tolerance(target_tokens) {
+            log::info!(
+                "[BENCH_PP] prompt calibrated: target={} actual={} words={}",
+                target_tokens,
+                actual,
+                words
+            );
+            return text;
+        }
+        if err < best_err {
+            best_err = err;
+            best_text = text;
+        }
+        if actual == 0 {
+            break;
+        }
+
+        words = ((words as f64) * (target_tokens as f64 / actual as f64))
+            .round() as usize;
+        words = words.clamp(64, target_tokens.saturating_mul(3));
+    }
+
+    if let Some(actual) = count_prompt_tokens(client, port, &best_text).await {
+        log::info!(
+            "[BENCH_PP] prompt best-effort: target={} tokenize={} err={} words={}",
+            target_tokens,
+            actual,
+            best_err,
+            words
+        );
+    } else {
+        log::info!(
+            "[BENCH_PP] prompt best-effort: target={} err={} words={}",
+            target_tokens,
+            best_err,
+            words
+        );
+    }
+    best_text
 }
 
 /// Build a repetitive prompt by repeating the pattern.

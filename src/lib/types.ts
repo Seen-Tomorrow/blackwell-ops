@@ -298,8 +298,10 @@ export interface FusionUpdate {
   // Phase — fused from both sources
   phase: 'IDLE' | 'PP' | 'TG';
 
-  // Prefill metrics (primary source = /metrics for TPS; /slots polled for progress/tokens — log is secondary "LP" debug)
-  prefillTpsMetrics: number;   // from /metrics prompt_tokens delta
+  // Prefill TPS: prefillTpsSession = request avg (bench-aligned); prefillTpsMetrics = /metrics smoothed gauge
+  prefillTpsSession: number;   // tokens / elapsed — same as bench tokens_evaluated / prompt_ms
+  prefillTpsInstant?: number;  // per-poll / log chunk — hero LIVE mode
+  prefillTpsMetrics: number;   // llamacpp:prompt_tokens_seconds gauge (often lower; legacy fallback)
 
   // Primary prefill progress/tokens from /slots (real-time, catches short+long prompts, no 3s throttle)
   prefillProgress: number;    // 0→1 from n_prompt_tokens_processed / n_prompt_tokens
@@ -307,7 +309,8 @@ export interface FusionUpdate {
   prefillTokensTotal: number; // target prompt size for current request
 
   // Generation metrics (primary source = /slots)
-  genTps: number;         // from /slots n_decoded delta
+  genTps: number;         // session average since TG start (hero AVG mode)
+  genTpsInstant?: number; // per-poll / log chunk — hero LIVE mode
 
   genTokensPerRequestSlots: number;    // from /slots n_decoded current value
 

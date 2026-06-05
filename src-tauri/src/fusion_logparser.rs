@@ -68,7 +68,7 @@ fn re_prompt_eval() -> &'static regex::Regex {
     RE_PROMPT_EVAL.get_or_init(|| {
         // Final PP summary — authoritative processed token count (may differ from task.n_tokens).
         regex::Regex::new(
-            r"slot print_timing:\s+id\s+(\d+)\s*\|\s*task\s*-?\d+\s*\|\s*prompt eval time\s*=\s*[\d.]+\s*ms\s*/\s*(\d+)\s*tokens",
+            r"slot print_timing:\s+id\s+(\d+)\s*\|\s*task\s*-?\d+\s*\|\s*prompt eval time\s*=\s*([\d.]+)\s*ms\s*/\s*(\d+)\s*tokens",
         )
         .unwrap()
     })
@@ -121,10 +121,11 @@ pub enum LogEvent {
         task_id: i64,
         cached_tokens: usize,
     },
-    /// Authoritative token count when prefill completes (`prompt eval time = … / N tokens`).
+    /// Authoritative token count + wall time when prefill completes (`prompt eval time = X ms / N tokens`).
     PromptEvalComplete {
         slot_id: usize,
         tokens: usize,
+        eval_ms: f64,
     },
 }
 
@@ -193,11 +194,16 @@ pub fn parse_line(line: &str) -> Option<LogEvent> {
     }
 
     if let Some(caps) = re_prompt_eval().captures(line) {
-        if let (Ok(slot_id), Ok(tokens)) = (
+        if let (Ok(slot_id), Ok(eval_ms), Ok(tokens)) = (
             caps.get(1)?.as_str().parse::<usize>(),
-            caps.get(2)?.as_str().parse::<usize>(),
+            caps.get(2)?.as_str().parse::<f64>(),
+            caps.get(3)?.as_str().parse::<usize>(),
         ) {
-            return Some(LogEvent::PromptEvalComplete { slot_id, tokens });
+            return Some(LogEvent::PromptEvalComplete {
+                slot_id,
+                tokens,
+                eval_ms,
+            });
         }
     }
 
