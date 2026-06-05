@@ -337,16 +337,9 @@ pub fn merge_catalogs(
                     internal.author.clone() // Directory-derived fallback
                 };
 
-                // Name: clean canonical name from GGUF header
-                let resolved_name = if !meta.general_basename.is_empty() {
-                    meta.general_basename.clone()
-                } else if !meta.base_models.is_empty() && !meta.base_models[0].name.is_empty() {
-                    meta.base_models[0].name.clone()
-                } else if !meta.general_name.is_empty() {
-                    meta.general_name.clone()
-                } else {
-                    internal.name.clone() // Directory/filename fallback
-                };
+                // Name: GGUF header names are unreliable (malformed by quantizers).
+                // Always use directory/filename derivation — proven consistent.
+                let resolved_name = internal.name.clone();
 
                 (resolved_author, resolved_name, internal.quant)
             } else {
@@ -464,6 +457,9 @@ fn check_early_formats(filename: &str) -> Option<String> {
     }
     if lower.contains("mxfp4") {
         return Some("MXFP4".to_string());
+    }
+    if lower.contains("nvfp4") {
+        return Some("NVFP4".to_string());
     }
     None
 }

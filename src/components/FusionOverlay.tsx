@@ -52,6 +52,7 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
   // Force re-render when frozen stats change for this engine
   const [renderTick, setRenderTick] = useState(0);
   const frozenStats = engState.frozenStats;
+  const { mode: heroTpsMode, toggle: toggleHeroTpsMode } = useFusionHeroTpsMode();
 
   const handleStopEngine = useCallback(async () => {
     try {
@@ -118,7 +119,6 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
 
   const isLaunching = fusion.engine_state === "LOADING";
   const ctxTotal = fusion.ctxTotal || 0;
-  const { mode: heroTpsMode, toggle: toggleHeroTpsMode } = useFusionHeroTpsMode();
 
   const MAX_HERO_TPS = 200_000;
   const clampHeroTps = (n: number) => (n > 0 && n <= MAX_HERO_TPS ? n : 0);
@@ -184,22 +184,13 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
           style={{ animation: 'fadeIn 0.2s ease' }}
         >
           {/* ═══ HEADER — alias + phase indicator + controls ═══════ */}
-          <div className="flex items-center justify-between flex-shrink-0 mb-1">
-            <div className="flex items-center gap-2">
+          <div className="flex items-center flex-shrink-0 mb-1 gap-2">
+            <div className="flex items-center flex-1 min-w-0 justify-start">
               <span className="text-[9px] font-mono text-stealth-muted/40 tracking-widest">
                 CONTEXT SLOTS
               </span>
-              <button
-                type="button"
-                onClick={toggleHeroTpsMode}
-                title={heroTpsMode === "live" ? "Hero TPS: live (per chunk). Click for session average." : "Hero TPS: session average (bench). Click for live."}
-                className="text-[6px] font-mono tracking-wider px-1 py-0.5 rounded-sm border border-stealth-border/50 text-stealth-muted/70 hover:text-white hover:border-stealth-muted/60 cursor-pointer select-none"
-              >
-                {heroTpsMode === "live" ? "LIVE" : "AVG"}
-              </button>
             </div>
-            {/* Phase indicator — alternating between values, fixed position */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center justify-center gap-2 flex-shrink-0">
               {isPrefillPhase && (
                 <span className="text-[9px] font-mono font-bold tracking-widest text-orange-400">
                   PROMPT PROCESSING
@@ -216,7 +207,7 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
                 </span>
               )}
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-1 min-w-0 justify-end">
               <span className="text-[14px] font-mono text-stealth-muted/50 tracking-wider truncate" title={displayAlias}>
                 {displayAlias.toUpperCase()}
               </span>
@@ -252,9 +243,16 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
                    ? "border-green-500/30 bg-black/8"
                    : "border-stone-500/10 bg-black/4"
                }`} style={{ flex: '1 1 60%' }}>
-                 {/* Phase label */}
-                 <div className="flex items-center justify-between mb-0.5">
+                 <div className="flex items-center justify-between w-full mb-0.5 gap-1">
                    <span className="text-[7px] font-mono text-stealth-muted/40 tracking-wider">GENERATION</span>
+                   <button
+                     type="button"
+                     onClick={toggleHeroTpsMode}
+                     title={heroTpsMode === "live" ? "Hero TPS: live (per chunk). Click for session average." : "Hero TPS: session average (bench). Click for live."}
+                     className="text-[6px] font-mono tracking-wider px-1 py-0.5 rounded-sm border border-stealth-border/50 text-stealth-muted/70 hover:text-white hover:border-stealth-muted/60 cursor-pointer select-none flex-shrink-0"
+                   >
+                     {heroTpsMode === "live" ? "LIVE" : "AVG"}
+                   </button>
                  </div>
 
                  {/* Big TG number */}
