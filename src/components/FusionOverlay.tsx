@@ -312,7 +312,11 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
 
                 {/* Prompt tokens — prefer primary from /slots, fallback LP. Use raw number (e.g. 26000 not 26K) as requested for prefill token display. */}
                 <span className="text-[7px] font-mono text-stealth-muted/40 mt-0.5">
-                  {primaryPrefillTokens != null && primaryPrefillTokens > 0 ? primaryPrefillTokens.toLocaleString() + " tok" : "--"}
+                  {primaryPrefillTokens > 0
+                    ? prefillTotal > 0
+                      ? `${primaryPrefillTokens.toLocaleString()} / ${prefillTotal.toLocaleString()} tok`
+                      : `${primaryPrefillTokens.toLocaleString()} tok`
+                    : "--"}
                 </span>
               </div>
             </div>

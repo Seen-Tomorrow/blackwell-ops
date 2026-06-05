@@ -16,6 +16,7 @@ static RE_PRINT_TIMING_GEN: OnceLock<regex::Regex> = OnceLock::new();
 
 static RE_STOP_PROCESSING: OnceLock<regex::Regex> = OnceLock::new();
 static RE_CACHED_PROMPT: OnceLock<regex::Regex> = OnceLock::new();
+static RE_PROMPT_EVAL: OnceLock<regex::Regex> = OnceLock::new();
 
 fn re_new_prompt() -> &'static regex::Regex {
     RE_NEW_PROMPT.get_or_init(|| {
@@ -58,6 +59,16 @@ fn re_stop_processing() -> &'static regex::Regex {
     RE_STOP_PROCESSING.get_or_init(|| {
         regex::Regex::new(
             r"slot release:\s+id\s+(\d+)\s*\|\s*task\s*(-?\d+)\s*\|\s*stop processing:\s*n_tokens\s*=\s*(\d+)",
+        )
+        .unwrap()
+    })
+}
+
+fn re_prompt_eval() -> &'static regex::Regex {
+    RE_PROMPT_EVAL.get_or_init(|| {
+        // Final PP summary — authoritative processed token count (may differ from task.n_tokens).
+        regex::Regex::new(
+            r"slot print_timing:\s+id\s+(\d+)\s*\|\s*task\s*-?\d+\s*\|\s*prompt eval time\s*=\s*[\d.]+\s*ms\s*/\s*(\d+)\s*tokens",
         )
         .unwrap()
     })
@@ -109,6 +120,11 @@ pub enum LogEvent {
         slot_id: usize,
         task_id: i64,
         cached_tokens: usize,
+    },
+    /// Authoritative token count when prefill completes (`prompt eval time = … / N tokens`).
+    PromptEvalComplete {
+        slot_id: usize,
+        tokens: usize,
     },
 }
 
@@ -173,6 +189,15 @@ pub fn parse_line(line: &str) -> Option<LogEvent> {
             caps.get(4)?.as_str().parse::<f64>(),
         ) {
             return Some(LogEvent::PrintTimingGen { slot_id, n_decoded, gen_tps });
+        }
+    }
+
+    if let Some(caps) = re_prompt_eval().captures(line) {
+        if let (Ok(slot_id), Ok(tokens)) = (
+            caps.get(1)?.as_str().parse::<usize>(),
+            caps.get(2)?.as_str().parse::<usize>(),
+        ) {
+            return Some(LogEvent::PromptEvalComplete { slot_id, tokens });
         }
     }
 

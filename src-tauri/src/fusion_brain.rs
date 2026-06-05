@@ -232,6 +232,9 @@ pub struct FusionBrain {
     /// Throttle high-frequency `cached n_tokens` log lines (flood can starve the 256-cap event channel).
     last_cached_log_at: Option<Instant>,
     last_cached_log_tokens: usize,
+
+    /// Frozen wall-clock when /slots reports idle (timer must not run after request ends).
+    request_elapsed_frozen_ms: u64,
 }
 
 impl FusionBrain {
@@ -276,7 +279,32 @@ impl FusionBrain {
             prefill_tokens_total: 0,
             last_cached_log_at: None,
             last_cached_log_tokens: 0,
+            request_elapsed_frozen_ms: 0,
         }
+    }
+
+    fn start_request_clock(&mut self) {
+        self.request_start = Some(Instant::now());
+        self.request_elapsed_frozen_ms = 0;
+    }
+
+    fn stop_request_clock(&mut self) {
+        if let Some(start) = self.request_start.take() {
+            self.request_elapsed_frozen_ms = start.elapsed().as_millis() as u64;
+        }
+        self.tg_start_time = None;
+        self.last_gen_tps = 0.0;
+    }
+
+    fn reset_prefill_counters(&mut self) {
+        self.prefill_progress = 0.0;
+        self.prefill_tokens = 0;
+        self.prefill_tokens_total = 0;
+        self.lp_prefill_progress = 0.0;
+        self.lp_prefill_tps = 0.0;
+        self.lp_prompt_tokens = 0;
+        self.last_cached_log_at = None;
+        self.last_cached_log_tokens = 0;
     }
 
     /// True generation: output tokens are being produced for a request with decode budget remaining.
@@ -294,26 +322,33 @@ impl FusionBrain {
     /// Merge log belt + /slots suspenders into the values we emit to the UI.
     fn merged_prefill_display(&self) -> (f64, usize) {
         let total = self.prefill_tokens_total;
-        let mut tokens = self.prefill_tokens.max(self.lp_prompt_tokens);
-        let mut progress = if total > 0 {
-            (tokens as f64 / total as f64).clamp(0.0, 1.0)
+        let mut progress = self
+            .lp_prefill_progress
+            .max(self.prefill_progress)
+            .clamp(0.0, 1.0);
+
+        // Live processed count: log `n_tokens` / cached lines (never stale total from prior bench).
+        let mut tokens = if self.lp_prompt_tokens > 0 {
+            self.lp_prompt_tokens
         } else {
-            0.0
+            self.prefill_tokens
         };
-        if self.lp_prefill_progress > progress {
-            progress = self.lp_prefill_progress;
-            if total > 0 {
-                tokens = tokens.max((progress * total as f64).round() as usize);
+
+        if total > 0 && progress > 0.0 && progress < 0.995 {
+            let cap = ((progress * total as f64) as usize)
+                .saturating_add(768)
+                .min(total);
+            if tokens > cap {
+                tokens = cap.max(self.lp_prompt_tokens);
             }
-        }
-        if self.prefill_progress > progress {
-            progress = self.prefill_progress;
-        }
-        if total > 0 && tokens + 2 >= total {
+        } else if progress >= 0.995 && total > 0 {
             progress = 1.0;
+            tokens = total.max(tokens).min(total);
+        } else if total > 0 && tokens > total {
             tokens = total;
         }
-        (progress.clamp(0.0, 1.0), tokens)
+
+        (progress, tokens)
     }
 
     // ── Public spawn API ────────────────────────────────────────────
@@ -424,6 +459,9 @@ impl FusionBrain {
             }
             // NewPrompt — belt: reset all LP state at exact request start (fires before any PP work)
             crate::fusion_logparser::LogEvent::NewPrompt { prompt_tokens, .. } => self.handle_new_prompt(*prompt_tokens),
+            crate::fusion_logparser::LogEvent::PromptEvalComplete { tokens, .. } => {
+                self.handle_prompt_eval_complete(*tokens);
+            }
         }
     }
 
@@ -441,14 +479,30 @@ impl FusionBrain {
         self.lp_reset_prompt = true; // Belt caught the start
         self.lp_reset_regression = false;
 
-        // Capture target prompt size (task.n_tokens). Never shrink mid-session (LCP/warmup sub-prompts).
+        // task.n_tokens for this prompt (replace — do not max with prior bench; that froze token display).
         if prompt_tokens > 0 {
-            self.prefill_tokens_total = self.prefill_tokens_total.max(prompt_tokens);
+            self.prefill_tokens_total = prompt_tokens;
         }
         self.prefill_progress = 0.0;
         self.prefill_tokens = 0;
+        self.lp_prompt_tokens = 0;
         self.last_cached_log_at = None;
         self.last_cached_log_tokens = 0;
+        if self.request_start.is_none() {
+            self.start_request_clock();
+        }
+    }
+
+    fn handle_prompt_eval_complete(&mut self, tokens: usize) {
+        if tokens == 0 {
+            return;
+        }
+        // Server-reported actual prefill size (often differs from task.n_tokens estimate).
+        self.prefill_tokens_total = tokens;
+        self.prefill_tokens = tokens;
+        self.lp_prompt_tokens = tokens;
+        self.prefill_progress = 1.0;
+        self.lp_prefill_progress = 1.0;
     }
 
     fn handle_print_timing_pp(&mut self, e: &crate::fusion_logparser::LogEvent) {
@@ -523,8 +577,7 @@ impl FusionBrain {
         if self.prefill_tokens_total == 0 && task_total_tokens > 0 {
             self.prefill_tokens_total = task_total_tokens;
         }
-        if self.prefill_tokens_total > 0 && self.prefill_tokens < self.prefill_tokens_total {
-            self.prefill_tokens = self.prefill_tokens_total;
+        if self.prefill_tokens_total > 0 {
             self.prefill_progress = 1.0;
         }
     }
@@ -537,17 +590,10 @@ impl FusionBrain {
         self.lp_prefill_progress = 0.0;
         self.lp_prefill_tps = 0.0;
         self.lp_prompt_tokens = 0;
-        // NOTE: lp_gen_tps intentionally NOT reset — keep "last known" TG speed visible after request ends
-        self.tg_start_time = None;
-        self.last_gen_tps = 0.0;
         self.lp_reset_prompt = false;
         self.lp_reset_regression = false;
-        // Primary prefill reset too
-        self.prefill_progress = 0.0;
-        self.prefill_tokens = 0;
-        self.prefill_tokens_total = 0;
-        self.last_cached_log_at = None;
-        self.last_cached_log_tokens = 0;
+        self.stop_request_clock();
+        self.reset_prefill_counters();
     }
 
     // ── /metrics processing — phase detection + prefill TPS ─────────
@@ -584,7 +630,7 @@ impl FusionBrain {
             self.phase = InferencePhase::PP;
             self.log_request_open = true;
             self.log_prefill_done = false;
-            self.request_start = Some(now);
+            self.start_request_clock();
             self.engine_state = EngineState::Active;
             self.ttft_ms = None;
         } else if request_ended {
@@ -594,14 +640,10 @@ impl FusionBrain {
                 self.log_prefill_done = false;
                 self.engine_state = EngineState::Ready;
                 self.phase = InferencePhase::Idle;
-                self.request_start = None;
+                self.stop_request_clock();
                 self.prompt_tokens = 0;
                 self.ttft_ms = None;
-                self.tg_start_time = None;
-                self.last_gen_tps = 0.0;
-                self.prefill_progress = 0.0;
-                self.prefill_tokens = 0;
-                self.prefill_tokens_total = 0;
+                self.reset_prefill_counters();
             }
         }
 
@@ -655,9 +697,8 @@ impl FusionBrain {
             self.log_request_open = false;
             self.log_prefill_done = false;
             self.phase = InferencePhase::Idle;
-            self.prefill_progress = 0.0;
-            self.prefill_tokens = 0;
-            self.prefill_tokens_total = 0;
+            self.stop_request_clock();
+            self.reset_prefill_counters();
             return;
         }
 
@@ -669,10 +710,6 @@ impl FusionBrain {
 
         if Self::slots_have_active_generation(slots) {
             self.phase = InferencePhase::Tg;
-            if self.prefill_tokens_total > 0 && self.prefill_tokens < self.prefill_tokens_total {
-                self.prefill_tokens = self.prefill_tokens_total;
-                self.prefill_progress = 1.0;
-            }
             return;
         }
 
@@ -768,21 +805,12 @@ impl FusionBrain {
                 self.phase = InferencePhase::PP;
                 self.log_request_open = true;
                 self.log_prefill_done = false;
-                self.request_start = Some(now);
+                self.start_request_clock();
                 self.engine_state = EngineState::Active;
-                // Reset TG TPS tracking for new request
                 self.tg_start_time = None;
                 self.tg_start_n_decoded = 0;
                 self.ttft_ms = None;
-                self.log_request_open = true;
-                self.log_prefill_done = false;
-                self.prefill_progress = 0.0;
-                self.prefill_tokens = 0;
-                self.last_cached_log_at = None;
-                self.last_cached_log_tokens = 0;
-                if d.prompt_tokens_processed > 0 {
-                    self.prefill_tokens = d.prompt_tokens_processed;
-                }
+                self.reset_prefill_counters();
             }
 
             if d.ended_session {
@@ -791,18 +819,15 @@ impl FusionBrain {
                     s.total_tokens_lifetime += d.request_tokens_on_end;
                 }
                 self.session_tokens_generated += d.request_tokens_on_end;
-                // Slots often report idle before "stop processing" log — don't wipe belt state early.
+                // Always stop wall-clock + TG meter when slot goes idle (/slots is ground truth for "request done").
+                self.stop_request_clock();
                 if !self.log_request_open {
                     self.log_prefill_done = false;
                     self.phase = InferencePhase::Idle;
-                    self.request_start = None;
                     self.prompt_tokens = 0;
-                    self.tg_start_time = None;
                     self.tg_start_n_decoded = 0;
                     self.ttft_ms = None;
-                    self.prefill_progress = 0.0;
-                    self.prefill_tokens = 0;
-                    self.prefill_tokens_total = 0;
+                    self.reset_prefill_counters();
                 }
             }
 
@@ -910,21 +935,22 @@ impl FusionBrain {
             }
         }
 
-        // Gen TPS from /slots: cumulative average since TG started (accurate immediately, no ramp-up)
-        let gen_tps = if self.phase == InferencePhase::Tg {
+        let request_live = self.request_start.is_some();
+        // Gen TPS only while a live request is generating (no decay after slot idle).
+        let gen_tps = if self.phase == InferencePhase::Tg && request_live {
             if let Some(start) = self.tg_start_time {
                 let elapsed_ms = start.elapsed().as_millis() as u64;
                 if elapsed_ms > 0 && total_n_decoded > self.tg_start_n_decoded {
                     let tokens_generated = total_n_decoded.saturating_sub(self.tg_start_n_decoded);
                     (tokens_generated as f64) / (elapsed_ms as f64 / 1000.0)
                 } else {
-                    self.last_gen_tps  // keep last known value during brief gaps
+                    self.last_gen_tps
                 }
             } else {
                 0.0
             }
         } else {
-            self.last_gen_tps  // persist across phase transitions (metrics PP→TG flicker)
+            0.0
         };
 
         // Per-request tokens: sum of (n_decoded - request_start_n_decoded) across slots
@@ -955,11 +981,11 @@ impl FusionBrain {
             0.0
         };
 
-        // Request elapsed time
-        let request_elapsed_ms = self
-            .request_start
-            .map(|start| start.elapsed().as_millis() as u64)
-            .unwrap_or(0);
+        let request_elapsed_ms = if let Some(start) = self.request_start {
+            start.elapsed().as_millis() as u64
+        } else {
+            self.request_elapsed_frozen_ms
+        };
 
         // Per-slot CTX info for bars
         let mut slot_ctx: Vec<SlotCtxInfo> = self.slot_states.iter()
