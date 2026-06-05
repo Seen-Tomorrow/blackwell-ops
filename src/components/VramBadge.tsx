@@ -18,13 +18,14 @@ interface VramBadgeProps {
   selectedSlotIdx?: number | null; // Slot index for Fusion overlay (unique, no collision)
   offloadMode?: string; // Current Offload_Mode config value (e.g., "moe_optimal")
   onMoeSuggestionClick?: () => void; // Callback to auto-switch to MOE_OPTIMAL
+  className?: string;
 }
 
 /** Pure skeleton renderer — reads all text, visibility, and colors from scenario's uiTemplate.
  *  GOLDEN RULE: Never add conditional logic or hardcoded text here. */
 export default function VramBadge({
   manifest, gpus, modelMeta, selectedGpuIndices, onDeviceSelect, isValidating, onValidate,
-  isModelRunning, activeEngineAlias, activeEnginePort, selectedSlotIdx, offloadMode, onMoeSuggestionClick
+  isModelRunning, activeEngineAlias, activeEnginePort, selectedSlotIdx, offloadMode, onMoeSuggestionClick, className
 }: VramBadgeProps) {
   if (!manifest) return null;
 
@@ -61,11 +62,11 @@ export default function VramBadge({
   const fusion = selectedSlotIdx !== null && selectedSlotIdx !== undefined ? getEngine(selectedSlotIdx) : null;
 
   return (
-    <div className="px-3 py-2.5 relative">
+    <div className={`px-3 py-2.5 relative ${className || ''}`}>
       {/* Overlay when a specific engine is selected (mini card click) — covers entire forecast container */}
       {selectedSlotIdx !== null && selectedSlotIdx !== undefined && activeEnginePort && (
         <div
-          className="absolute z-50 fusion-eink-bg overflow-hidden flex items-center justify-center rounded-xl border border-stealth-border p-[6px]"
+          className="absolute z-50 phosphor-screen overflow-hidden flex items-center justify-center rounded-xl border border-stealth-border p-[6px]"
           style={{ top: '0px', right: '0px', bottom: '0px', left: '0px', animation: 'fadeIn 0.2s ease', boxShadow: 'inset 0 2px 6px rgba(0,0,0,0.5), inset 0 -2px 6px rgba(0,0,0,0.4)' }}
         >
           <FusionOverlay

@@ -610,10 +610,12 @@ html, body, #root {
 
 /* ── VRAM forecast section — brushed steel (subtle grain) ─── */
 
-.vram-section {
-  border-radius: 16px;
+/* ── Industrial Display Frame — outer gunmetal bezel ─── */
+.industrial-display-frame {
+  position: relative;
+  z-index: 2;
+  border-radius: 16px 16px 8px 8px;
   padding: 18px;
-  /* Gunmetal — dark steel with diagonal brush grain */
   background-color: #1c1e22;
   background-image: repeating-linear-gradient(
     135deg,
@@ -621,104 +623,119 @@ html, body, #root {
     transparent 1px,
     transparent 4px
   );
-  /* Outset 3D — sturdy industrial bezel with pronounced metallic edge */
   border-top: 1.5px solid rgba(200, 210, 220, 0.12);
   border-left: 1.5px solid rgba(200, 210, 220, 0.08);
   border-bottom: 2px solid rgba(0, 0, 0, 0.5);
   border-right: 2px solid rgba(0, 0, 0, 0.4);
   box-shadow:
-    /* Outer drop shadow — frame sits above panel */
-    0 4px 20px rgba(0, 0, 0, 0.8),
-    0 2px 6px rgba(0, 0, 0, 0.6),
-    /* Chrome-like edge highlight — light catches top-left */
+    0 8px 24px rgba(0, 0, 0, 0.8),
+    0 3px 8px rgba(0, 0, 0, 0.6),
     inset 1px 1px 0 rgba(255, 255, 255, 0.06),
-    /* Dark recess on bottom-right */
     inset -1px -2px 0 rgba(0, 0, 0, 0.6),
-    /* Inner bevel — screen recessed into bezel */
     inset 0 4px 12px rgba(0, 0, 0, 0.6),
     inset 0 -4px 12px rgba(0, 0, 0, 0.5),
     inset 4px 0 12px rgba(0, 0, 0, 0.3),
     inset -4px 0 12px rgba(0, 0, 0, 0.3);
 }
 
-/* Inner display area — dot matrix screen behind frame */
-.vram-section > div:first-child {
+/* ── Phosphor screen — VramBadge content, recessed INTO bezel ─── */
+.phosphor-screen-inner {
   border-radius: 10px;
-  background-color: #030801;
-  /* Screen glow — soft phosphor bloom from center */
+  background-color: var(--phosphor-bg, #030801);
   background-image:
-    radial-gradient(ellipse at center, rgba(74,222,128,.04) 0%, transparent 70%);
-  /* Screen inset — recessed into the frame */
+    radial-gradient(ellipse at center, var(--phosphor-glow, rgba(74,222,128,.04)) 0%, transparent 70%);
   box-shadow:
-    inset 0 2px 6px rgba(0, 0, 0, 0.5),
-    inset 0 -2px 6px rgba(0, 0, 0, 0.4);
+    inset 0 2px 8px rgba(0, 0, 0, 0.6),
+    inset 0 -2px 8px rgba(0, 0, 0, 0.5);
 }
 
-/* Dark text on dark vram-section (#040b01 bg) */
-.vram-section .text-stealth-muted,
-.vram-section .text-stealth-muted\/30,
-.vram-section .text-stealth-muted\/40,
-.vram-section .text-stealth-muted\/50,
-.vram-section .text-stealth-muted\/60 {
+/* ── Eject panel — running engines, gunmetal bg, flush below display bevel ─── */
+.industrial-eject-panel {
+  margin: -9px 24px 0;
+  padding: 4px 8px 8px;
+  background-color: #1c1e22;
+  background-image: repeating-linear-gradient(
+    135deg,
+    rgba(255,255,255,.02) 0px,
+    transparent 1px,
+    transparent 4px
+  );
+  border-radius: 4px;
+  border-top: 1px solid rgba(200, 210, 220, 0.06);
+  border-left: 1px solid rgba(200, 210, 220, 0.04);
+  border-right: 1px solid rgba(0, 0, 0, 0.3);
+  border-bottom: 1.5px solid rgba(0, 0, 0, 0.4);
+  position: relative;
+  z-index: 0;
+  box-shadow:
+    0 -1px 4px rgba(0, 0, 0, 0.3);
+}
+
+/* Dark text on dark industrial display frame */
+.industrial-display-area .text-stealth-muted,
+.industrial-display-area .text-stealth-muted\/30,
+.industrial-display-area .text-stealth-muted\/40,
+.industrial-display-area .text-stealth-muted\/50,
+.industrial-display-area .text-stealth-muted\/60 {
   color: #4ade80 !important;
 }
 
-.vram-section .text-nv-green {
+.industrial-display-area .text-nv-green {
   color: #4ade80 !important;
 }
 
-.vram-section .text-cyan-400 {
+.industrial-display-area .text-cyan-400 {
   color: #22d3ee !important;
 }
 
-.vram-section .text-electric-blue,
-.vram-section .text-blue-700 {
+.industrial-display-area .text-electric-blue,
+.industrial-display-area .text-blue-700 {
   color: #3b82f6 !important;
 }
 
-.vram-section .text-orange-400,
-.vram-section .text-telemetry-amber {
+.industrial-display-area .text-orange-400,
+.industrial-display-area .text-telemetry-amber {
   color: #f59e0b !important;
 }
 
-.vram-section .text-red-400,
-.vram-section .text-telemetry-red {
+.industrial-display-area .text-red-400,
+.industrial-display-area .text-telemetry-red {
   color: #f87171 !important;
 }
 
-.vram-section .text-yellow-400 {
+.industrial-display-area .text-yellow-400 {
   color: #facc15 !important;
 }
 
-.vram-section .bg-stealth-dark {
+.industrial-display-area .bg-stealth-dark {
   background-color: rgba(74, 222, 128, 0.06) !important;
 }
 
-.vram-section .border-stealth-border,
-.vram-section .border-stealth-border\/30,
-.vram-section .border-stealth-border\/50 {
+.industrial-display-area .border-stealth-border,
+.industrial-display-area .border-stealth-border\/30,
+.industrial-display-area .border-stealth-border\/50 {
   border-color: rgba(74, 222, 128, 0.08) !important;
 }
 
-/* GPU topology cards on dark vram-section */
-.vram-section .gpu-card {
+/* GPU topology cards on industrial display */
+.industrial-display-area .gpu-card {
   background-color: rgba(74, 222, 128, 0.04) !important;
   border-color: rgba(74, 222, 128, 0.15) !important;
 }
 
-/* Selected GPU on dark vram-section */
-.vram-section .gpu-selected {
+/* Selected GPU on industrial display */
+.industrial-display-area .gpu-selected {
   border: 2px dashed rgba(74, 222, 128, 0.7) !important;
   box-shadow: 0 0 8px rgba(74, 222, 128, 0.2) !important;
 }
 
 /* Selected GPU name text */
-.vram-section .gpu-selected .text-white {
+.industrial-display-area .gpu-selected .text-white {
   color: #4ade80 !important;
 }
 
 /* VRAM/RAM bar tracks on dark bg */
-.vram-section .relative.overflow-hidden.border-stealth-border\/30 {
+.industrial-display-area .relative.overflow-hidden.border-stealth-border\/30 {
   background-color: rgba(74, 222, 128, 0.03) !important;
 }
 
@@ -746,10 +763,10 @@ html, body, #root {
   box-shadow: 0 0 8px rgba(118, 185, 0, 0.12);
 }
 
-/* ── Running engines — industrial orange strip (dark panel context) ─── */
+/* ── Running engines — orange strip inside gunmetal frame ─── */
 [data-config-panel] .running-engines-header-row {
   background: transparent;
-  padding-top: 0;
+  padding-top: 4px;
   padding-bottom: 2px;
 }
 
@@ -767,6 +784,7 @@ html, body, #root {
   background: rgba(40, 36, 28, 0.95) !important;
   border-color: rgba(184, 122, 0, 0.2) !important;
   border-radius: 6px !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4) !important;
 }
 
 [data-config-panel] .running-engine-card:hover {
@@ -1034,16 +1052,13 @@ select option {
   }
 }
 
-/* ── Fusion LCD overlay — classic greenish LCD backlight ─── */
-.fusion-eink-bg {
+/* ── Fusion overlay — phosphor screen glow ─── */
+.phosphor-screen {
   border-radius: 6px;
-  background-color: #c8d4b8;
-  /* Pixel grid — very subtle dot matrix */
+  background-color: var(--phosphor-bg, #08140a);
+  /* Screen glow — soft phosphor bloom from center */
   background-image:
-    radial-gradient(circle, rgba(0,0,0,.03) 1px, transparent 1px),
-    /* Slight vertical banding — like real LCD refresh */
-    repeating-linear-gradient(to bottom, transparent 0px, transparent 2px, rgba(0,0,0,.01) 2px, rgba(0,0,0,.01) 4px);
-  background-size: 2px 2px, 100% 4px;
+    radial-gradient(ellipse at center, var(--phosphor-glow, rgba(74,222,128,.06)) 0%, transparent 70%);
   box-shadow:
     /* LCD inner bevel — screen pressed into bezel */
     inset 0 2px 6px rgba(0,0,0,.25),
@@ -1052,41 +1067,41 @@ select option {
     inset 0 1px 40px rgba(255,255,255,.3);
 }
 
-/* Dark text on the light e-ink surface */
-.fusion-eink-bg .text-stealth-muted,
-.fusion-eink-bg .text-stealth-muted\/30,
-.fusion-eink-bg .text-stealth-muted\/40,
-.fusion-eink-bg .text-stealth-muted\/50,
-.fusion-eink-bg .text-stealth-muted\/60 {
+/* Dark text on phosphor screen */
+.phosphor-screen .text-stealth-muted,
+.phosphor-screen .text-stealth-muted\/30,
+.phosphor-screen .text-stealth-muted\/40,
+.phosphor-screen .text-stealth-muted\/50,
+.phosphor-screen .text-stealth-muted\/60 {
   color: #3a3a3a !important;
 }
 
 /* NV green stays vibrant on e-ink */
-.fusion-eink-bg .text-nv-green {
+.phosphor-screen .text-nv-green {
   color: #4d7a00 !important;
 }
 
 /* Telemetry cyan stays readable */
-.fusion-eink-bg .text-telemetry-cyan,
-.fusion-eink-bg .text-telemetry-cyan\/70 {
+.phosphor-screen .text-telemetry-cyan,
+.phosphor-screen .text-telemetry-cyan\/70 {
   color: #0088aa !important;
 }
 
 /* Orange/amber phases remain visible */
-.fusion-eink-bg .text-orange-400,
-.fusion-eink-bg .text-telemetry-amber,
-.fusion-eink-bg .text-telemetry-amber\/80 {
+.phosphor-screen .text-orange-400,
+.phosphor-screen .text-telemetry-amber,
+.phosphor-screen .text-telemetry-amber\/80 {
   color: #b87a00 !important;
 }
 
-/* Darken bars and borders for contrast on light bg */
-.fusion-eink-bg .bg-stealth-dark {
+/* Bars and borders on phosphor screen */
+.phosphor-screen .bg-stealth-dark {
   background-color: #d4cfc5 !important;
 }
 
-.fusion-eink-bg .border-stealth-border,
-.fusion-eink-bg .border-stealth-border\/30,
-.fusion-eink-bg .border-stealth-border\/50 {
+.phosphor-screen .border-stealth-border,
+.phosphor-screen .border-stealth-border\/30,
+.phosphor-screen .border-stealth-border\/50 {
   border-color: rgba(60, 60, 60, 0.25) !important;
 }
 

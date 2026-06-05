@@ -87,6 +87,26 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   const [isBlazing, setIsBlazing] = useState(false);
   const [specFlash, setSpecFlash] = useState(false);
 
+  // Phosphor screen color theme cycle
+  const PHOSPHOR_THEMES = [
+    { name: 'P3', bg: '#08140a', glow: 'rgba(74, 222, 128, 0.06)' },
+    { name: 'AMBER', bg: '#0a0801', glow: 'rgba(245, 150, 0, 0.06)' },
+    { name: 'CYAN', bg: '#010a0a', glow: 'rgba(0, 229, 255, 0.05)' },
+    { name: 'P1', bg: '#080808', glow: 'rgba(200, 200, 200, 0.05)' },
+    { name: 'ZG1', bg: '#0a0202', glow: 'rgba(220, 40, 40, 0.05)' },
+  ];
+  const [phosphorIdx, setPhosphorIdx] = useState(() => {
+    try { return parseInt(localStorage.getItem('blackops-phosphor-theme') || '0'); } catch { return 0; }
+  });
+  const cyclePhosphorTheme = () => {
+    const next = (phosphorIdx + 1) % PHOSPHOR_THEMES.length;
+    setPhosphorIdx(next);
+    try { localStorage.setItem('blackops-phosphor-theme', String(next)); } catch {}
+    const t = PHOSPHOR_THEMES[next];
+    document.documentElement.style.setProperty('--phosphor-bg', t.bg);
+    document.documentElement.style.setProperty('--phosphor-glow', t.glow);
+  };
+
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => {
     try {
       const saved = localStorage.getItem(KEYS.collapsedGroups);
@@ -102,6 +122,13 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       try { localStorage.setItem(KEYS.collapsedGroups, JSON.stringify([...next])); } catch {}
       return next;
     });
+  }, []);
+
+  // Apply phosphor theme on mount
+  useEffect(() => {
+    const t = PHOSPHOR_THEMES[phosphorIdx];
+    document.documentElement.style.setProperty('--phosphor-bg', t.bg);
+    document.documentElement.style.setProperty('--phosphor-glow', t.glow);
   }, []);
 
   // Persist test flags
@@ -672,46 +699,55 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         );
       })()}
 
-      {/* VRAM Section */}
-      <div className="vram-section border-b section-divider relative flex-shrink-0">
-        <VramBadge
-          manifest={vramCalc.manifest}
-          gpus={gpus}
-          selectedGpuIndices={selectedGpuIndices.length > 0 ? selectedGpuIndices : undefined}
-          onDeviceSelect={(gpuIndex) => {
-            // Clicking a GPU resets split to none (single-GPU mode)
-            updateParam("device", `GPU-${gpuIndex}`);
-            if (config.split && config.split.toUpperCase() !== "NONE") {
-              updateParam("split", "none");
-            }
-          }}
-          isValidating={vramCalc.isValidating}
-          onValidate={vramCalc.validate}
-          isModelRunning={isModelRunning}
-          activeEngineAlias={activeEngineAlias}
-          activeEnginePort={activeEnginePort}
-          selectedSlotIdx={selectedSlotIdx}
-          offloadMode={config["offload_mode"]}
-          onMoeSuggestionClick={() => {
-            // Auto-switch to MOE_OPTIMAL when user clicks the suggestion badge
-            updateParam("offload_mode", "moe_optimal");
-          }}
-          modelMeta={model?.metadata}
-        />
+    {/* VRAM + Running Engines — industrial display unit */}
+      <div className="industrial-display-area flex-shrink-0">
+          <div className="industrial-display-frame relative">
+              {/* Phosphor theme cycle button — top-right of bezel */}
+              <button
+                onClick={cyclePhosphorTheme}
+                className="absolute top-[8px] right-[10px] z-[60] px-1.5 py-0.5 text-[7px] font-mono tracking-wider rounded-sm border border-white/10 bg-black/40 text-white/60 hover:text-white/90 hover:border-white/20 transition-colors"
+                title={`Screen theme: ${PHOSPHOR_THEMES[phosphorIdx].name}`}
+              >
+                ◈ {PHOSPHOR_THEMES[phosphorIdx].name}
+              </button>
+              <div className="phosphor-screen-inner">
+                <VramBadge
+                  manifest={vramCalc.manifest}
+                  gpus={gpus}
+                  selectedGpuIndices={selectedGpuIndices.length > 0 ? selectedGpuIndices : undefined}
+                  onDeviceSelect={(gpuIndex) => {
+                    updateParam("device", `GPU-${gpuIndex}`);
+                    if (config.split && config.split.toUpperCase() !== "NONE") {
+                      updateParam("split", "none");
+                    }
+                  }}
+                  isValidating={vramCalc.isValidating}
+                  onValidate={vramCalc.validate}
+                  isModelRunning={isModelRunning}
+                  activeEngineAlias={activeEngineAlias}
+                  activeEnginePort={activeEnginePort}
+                  selectedSlotIdx={selectedSlotIdx}
+                  offloadMode={config["offload_mode"]}
+                  onMoeSuggestionClick={() => {
+                    updateParam("offload_mode", "moe_optimal");
+                  }}
+                  modelMeta={model?.metadata}
+                />
+              </div>
+          </div>
 
+          {/* Running Engines — eject panel below display */}
+          {onSelectEngine && models && (
+            <div className="industrial-eject-panel relative flex-shrink-0">
+              <RunningEnginesPanel
+                stack={stack}
+                models={models}
+                selectedSlotIdx={selectedSlotIdx ?? null}
+                onSelectEngine={onSelectEngine}
+              />
+            </div>
+          )}
       </div>
-
-      {/* Running Engines — eink panel below VRAM, outside Fusion overlay coverage */}
-      {onSelectEngine && models && (
-        <div className="flex-shrink-0">
-          <RunningEnginesPanel
-            stack={stack}
-            models={models}
-            selectedSlotIdx={selectedSlotIdx ?? null}
-            onSelectEngine={onSelectEngine}
-          />
-        </div>
-      )}
 
       {/* Parameters — scrollable middle section (e-ink panel) */}
       <div className="px-4 py-3 border-b relative flex-1 overflow-y-auto cyber-scrollbar eink-panel">
