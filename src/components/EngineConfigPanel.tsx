@@ -539,7 +539,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   }
 
   return (
-    <div className="flex flex-col h-full overflow-hidden" data-config-panel style={{ background: '#0c120a' }}>
+    <div className="flex flex-col h-full overflow-hidden" data-config-panel style={{ background: '#040b01' }}>
       {/* Provider selector */}
       {externalProviders && externalProviders.length > 0 && (
         <div className="px-4 py-3 border-b section-divider relative flex-shrink-0">
@@ -583,7 +583,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         return (
           <div className="mono-panel border-b section-divider relative flex-shrink-0">
             {/* Section header — outside the green bg, on dark */}
-            <div className="relative z-[2] px-4 pt-3 pb-1" style={{ background: '#0c120a' }}>
+            <div className="relative z-[2] px-4 pt-3 pb-1" style={{ background: '#040b01' }}>
 
             </div>
             <div className="relative z-[2] px-4 py-3 pr-6">

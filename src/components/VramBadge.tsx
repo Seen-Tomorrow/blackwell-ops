@@ -66,7 +66,7 @@ export default function VramBadge({
       {selectedSlotIdx !== null && selectedSlotIdx !== undefined && activeEnginePort && (
         <div
           className="absolute z-50 fusion-eink-bg overflow-hidden flex items-center justify-center rounded-xl border border-stealth-border p-[6px]"
-          style={{ top: '0px', right: '0px', bottom: '0px', left: '0px', animation: 'fadeIn 0.2s ease' }}
+          style={{ top: '0px', right: '0px', bottom: '0px', left: '0px', animation: 'fadeIn 0.2s ease', boxShadow: 'inset 0 2px 6px rgba(0,0,0,0.5), inset 0 -2px 6px rgba(0,0,0,0.4)' }}
         >
           <FusionOverlay
             alias={activeEngineAlias}
