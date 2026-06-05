@@ -15,16 +15,15 @@ function formatTokenCount(n: number): string {
 
 export default function SlotCtxBars({ slotCtx, ctxTotal, parallel, unifiedKv }: SlotCtxBarsProps) {
   const maxSlots = 4;
-  const effectiveParallel = unifiedKv ? 1 : (parallel > 0 ? parallel : 1);
-  const slotCapacity = Math.floor(ctxTotal / effectiveParallel);
-  const isSingleSlot = effectiveParallel === 1;
+  const numBars = Math.max(1, parallel || 1);
+  // For non-unified (partitioned KV): each bar has its own slice capacity.
+  // For unified (shared KV): each bar shows its seq's usage against the *full* shared ctx (individual seqs share the pool).
+  const barCapacity = unifiedKv ? ctxTotal : Math.floor(ctxTotal / numBars);
+  const isSingleSlot = numBars === 1;
 
-  // Build unified total when KV-unified mode is active
-  const unifiedSessionTotal = unifiedKv
-    ? slotCtx.reduce((sum, s) => sum + s.sessionNDecoded, 0)
-    : 0;
-
-  // Build all 4 slot entries — always render all for visual outline
+  // Build all 4 slot entries — always render all for visual outline.
+  // When parallel > 1 we now show the actual number of bars even in unified-KV mode (previously collapsed to 1).
+  // "Move together" in shared mode: multiple bars can be visible; their heights reflect per-sequence usage of the shared pool.
   const slots: Array<{
     index: number;
     sessionNDecoded: number;
@@ -33,15 +32,14 @@ export default function SlotCtxBars({ slotCtx, ctxTotal, parallel, unifiedKv }: 
     isActive: boolean;
   }> = Array.from({ length: maxSlots }, (_, i) => {
     const slot = slotCtx.find(s => s.id === i);
-    const isActive = i < effectiveParallel;
+    const isActive = i < numBars;
 
-    if (unifiedKv && i === 0) {
-      const pct = slotCapacity > 0 ? Math.min((unifiedSessionTotal / slotCapacity) * 100, 100) : 0;
-      return { index: i, sessionNDecoded: unifiedSessionTotal, isProcessing: slot?.is_processing ?? false, pct, isActive };
-    }
     if (slot) {
-      const pct = slotCapacity > 0 ? Math.min((slot.sessionNDecoded / slotCapacity) * 100, 100) : 0;
-      return { index: i, sessionNDecoded: slot.sessionNDecoded, isProcessing: slot.is_processing, pct, isActive };
+      // Prefer live current ctx used (cache + processed during PP, or prompt+decoded) when available.
+      const live = (slot.promptTokensCache || 0) + (slot.promptTokensProcessed || 0) + (slot.n_decoded || 0);
+      const base = live > 0 ? live : slot.sessionNDecoded;
+      const pct = barCapacity > 0 ? Math.min((base / barCapacity) * 100, 100) : 0;
+      return { index: i, sessionNDecoded: base, isProcessing: slot.is_processing, pct, isActive };
     }
     return { index: i, sessionNDecoded: 0, isProcessing: false, pct: 0, isActive };
   });
@@ -69,7 +67,7 @@ export default function SlotCtxBars({ slotCtx, ctxTotal, parallel, unifiedKv }: 
                 {slot.isActive && (
                   <span className="absolute top-0.5 left-0 right-0 text-center z-10">
                     <span className="text-[6px] font-mono bg-black text-white/70 px-1 py-0.5 rounded-sm">
-                      {formatTokenCount(slotCapacity)}
+                      {formatTokenCount(barCapacity)}{unifiedKv ? " shared" : ""}
                     </span>
                   </span>
                 )}

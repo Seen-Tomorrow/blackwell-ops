@@ -125,6 +125,19 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
       ? fusion.logPrefillTps.toFixed(0)
       : "--";
 
+  // Primary prefill progress/tokens from /slots poll (reliable); LP log is red comparison fallback
+  const prefillTotal = fusion.prefillTokensTotal ?? 0;
+  const isPrefillPhase = fusion.phase === "PP";
+  const primaryPrefillProgress =
+    prefillTotal > 0 ? fusion.prefillProgress : (fusion.logPrefillProgress ?? 0);
+  const primaryPrefillTokens =
+    isPrefillPhase && prefillTotal > 0
+      ? fusion.prefillTokens
+      : fusion.prefillTokens > 0
+        ? fusion.prefillTokens
+        : (fusion.logPromptTokens ?? 0);
+  const showPrefillProgress = isPrefillPhase && prefillTotal > 0;
+
   return (
     <div className="relative w-full h-full overflow-hidden">
       {isLaunching ? (
@@ -158,7 +171,7 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
             </span>
             {/* Phase indicator — alternating between values, fixed position */}
             <div className="flex items-center gap-2">
-              {fusion.phase === "PP" && (
+              {isPrefillPhase && (
                 <span className="text-[9px] font-mono font-bold tracking-widest text-orange-400">
                   PROMPT PROCESSING
                 </span>
@@ -192,7 +205,8 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
           <div className="flex gap-2 flex-1 min-h-0" style={{ alignItems: 'stretch' }}>
 
             {/* ── LEFT: Slot CTX bars (side-by-side, full height) ─── */}
-            <div className="flex-shrink-0" style={{ width: (fusion.unified_kv || fusion.parallel === 1) ? '12%' : '18%', minWidth: (fusion.unified_kv || fusion.parallel === 1) ? 64 : 110 }}>
+            {/* Give more room when multiple bars are shown (parallel > 1), whether unified or partitioned. */}
+            <div className="flex-shrink-0" style={{ width: (fusion.parallel <= 1) ? '12%' : '18%', minWidth: (fusion.parallel <= 1) ? 64 : 110 }}>
               <SlotCtxBars
                 slotCtx={fusion.slotCtx}
                 ctxTotal={ctxTotal}
@@ -253,7 +267,7 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
 
               {/* ── RIGHT: PREFILL (secondary) — use logPrefillTps as primary, fallback to /metrics ─── */}
               <div className={`flex flex-col items-center justify-start px-2 py-1.5 rounded-sm border transition-colors ${
-                fusion.phase === "PP"
+                isPrefillPhase
                   ? "border-stealth-muted/30 bg-black/8"
                   : "border-stone-500/10 bg-black/4"
               }`} style={{ flex: '1 1 40%' }}>
@@ -274,27 +288,27 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
                   <span className="text-[7px] font-mono text-stealth-muted/30 tracking-wider">tok/s</span>
                 </div>
 
-                {/* PP progress bar — only during active prefill, fixed-width to prevent layout shift */}
-                {fusion.logPhase === "PP" && fusion.logPrefillProgress != null && (
+                {/* PP progress bar — processed/task.n_tokens from /slots + NewPrompt total */}
+                {showPrefillProgress && (
                   <div className="flex items-center gap-1 mt-1 w-full">
                     <div className="flex-1 h-1 rounded-full bg-black/20 overflow-hidden relative">
                       <div
                         className="h-full rounded-full absolute left-0 top-0"
                         style={{
-                          width: `${(fusion.logPrefillProgress ?? 0) * 100}%`,
+                          width: `${(primaryPrefillProgress ?? 0) * 100}%`,
                           backgroundColor: 'rgba(148,163,184,0.7)',
                         }}
                       />
                     </div>
                     <span className="text-[12px] font-mono text-black flex-shrink-0">
-                      {((fusion.logPrefillProgress ?? 0) * 100).toFixed(0)}%
+                      {(primaryPrefillProgress * 100).toFixed(0)}%
                     </span>
                   </div>
                 )}
 
-                {/* LP prompt tokens — always visible */}
+                {/* Prompt tokens — prefer primary from /slots, fallback LP. Use raw number (e.g. 26000 not 26K) as requested for prefill token display. */}
                 <span className="text-[7px] font-mono text-stealth-muted/40 mt-0.5">
-                  {fusion.logPromptTokens != null && fusion.logPromptTokens > 0 ? formatK(fusion.logPromptTokens) + " tok" : "--"}
+                  {primaryPrefillTokens != null && primaryPrefillTokens > 0 ? primaryPrefillTokens.toLocaleString() + " tok" : "--"}
                 </span>
               </div>
             </div>

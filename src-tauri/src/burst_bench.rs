@@ -1,6 +1,6 @@
 //! TG (generation) burst benchmark — single measured run after warmup for clean TPS measurement.
 //!
-//! Strategy: 2 warmup runs (discarded) + 1 measured run → single result values.
+//! Strategy: 1 warmup run (fixed length=1024) + 1 measured run (user-selected n_predict) → single result values.
 //! Uses engine-reported timings (prompt_ms, predicted_ms) not HTTP round-trip time.
 
 use serde::Serialize;
@@ -10,7 +10,7 @@ use tauri::Emitter;
 const BENCH_PROMPT_UNIQUE: &str = "The architecture of modern large language models represents a fundamental shift in how we approach artificial intelligence and natural language processing. These systems are built on the transformer architecture, which relies entirely on self-attention mechanisms to process input sequences. The key innovation is that each position can attend to all positions in the previous layer, allowing the model to capture long-range dependencies that were previously difficult for recurrent architectures. Training these models requires massive computational resources, often involving thousands of GPU hours across distributed clusters. The scaling laws discovered by Kaplan and subsequent researchers show that model performance improves predictably with compute budget, dataset size, and parameter count. This has led to an arms race in model sizes, from GPT-3's 175 billion parameters to models exceeding one trillion parameters. Inference optimization is equally critical, as serving these models at scale requires techniques like quantization, speculative decoding, and efficient attention implementations. The KV cache alone can consume significant memory during long-context generation, making memory management a first-class concern in production deployments. Techniques such as PagedAttention have revolutionized how we handle the KV cache by eliminating memory fragmentation through virtual memory-like paging. Flash Attention further optimizes the computation by reordering operations to minimize HBM access, achieving both speedup and memory reduction. As models grow larger, tensor parallelism across multiple GPUs becomes essential for both training and inference workloads.";
 
 /// Repetitive prompt pattern — predictable output ideal for testing speculative decoding acceleration.
-const BENCH_PROMPT_REPETITIVE: &str = "the cat sat on the mat and then walked away because it was tired so the dog ran after the cat but the cat jumped over the fence and the dog could not follow because the fence was too high so the dog went back to the house where the cat had been sitting on the mat and the dog lay down next to the mat because it was also tired from running after the cat that had jumped over the fence which was too high for the dog to climb so they both rested on the mat until the sun went down behind the old oak tree in the backyard where the children used to play before they grew up and moved away to different cities far from the house with the tall fence";
+const BENCH_PROMPT_REPETITIVE: &str = "the cat sat on the mat and then walked away because it was tired so the dog ran after the cat but the cat jumped over the fence and the dog could not follow because the fence was too high so the dog went back to the house where the cat had been sitting on the mat and the dog lay down next to the mat because it was also tired from running after the cat that had jumped over the fence which was too high for the dog to climb so they both rested on the mat until the sun went down behind the old oak tree in the backyard where the children used to play before they grew up and moved away to different cities far from the house with the tall fence and ";
 
 #[derive(Debug, Serialize)]
 pub struct BenchResult {
@@ -39,6 +39,7 @@ pub async fn cmd_burst_bench(
     const WARMUP_RUNS: usize = 1;
     const MEASURED_RUNS: usize = 1;
     const TOTAL_RUNS: usize = WARMUP_RUNS + MEASURED_RUNS;
+    const WARMUP_TOKENS: usize = 1024;  // fixed length for warmup phase (gen n_predict); small + fast for "warm" kernels
 
     struct RunStats {
         prompt_tps: f64,
@@ -63,11 +64,13 @@ pub async fn cmd_burst_bench(
     for run in 0..TOTAL_RUNS {
         // Signal phase to frontend so UI can show WARMUP vs MEASURED
         let phase = if run < WARMUP_RUNS { "warmup" } else { "measured" };
+        let effective_length = if run < WARMUP_RUNS { WARMUP_TOKENS } else { n_predict };
         let _ = app_handle.emit("bench-tg-progress", serde_json::json!({
             "port": port,
             "phase": phase,
             "run": run + 1,
             "total": TOTAL_RUNS,
+            "effectiveLength": effective_length,  // for accurate UI labels (no hardcodes)
         }));
 
         let bench_prompt_text = if bench_prompt_mode == "repetitive" {
@@ -76,7 +79,7 @@ pub async fn cmd_burst_bench(
             BENCH_PROMPT_UNIQUE
         };
 
-        let run_n_predict = if run < WARMUP_RUNS { 1024 } else { n_predict };
+        let run_n_predict = effective_length;
 
         let body = serde_json::json!({
             "prompt": bench_prompt_text,
@@ -84,6 +87,7 @@ pub async fn cmd_burst_bench(
             "temperature": 0.0,
             "stream": false,
             "cache_prompt": false,
+            "ignore_eos": true,  // force full n_predict tokens even if model wants to eos early on the unique prompt content
         });
 
         match client.post(&url)
@@ -124,6 +128,23 @@ pub async fn cmd_burst_bench(
                 }
                 Err(e) => return Err(format!("Request failed: {}", e)),
             }
+
+        if run < WARMUP_RUNS {
+            // Re-release all slots *after* warmup (before measured) so the measured run starts with completely cold
+            // prompt/KV cache. This prevents the unique long prompt from being treated as "cached from previous run"
+            // (warmup), which was causing measured to "generate 21 tokens and end" instead of full n_predict.
+            // Repetitive prompts didn't exhibit the same hit. Release ensures clean measured numbers.
+            // (The initial release at top ensures warmup itself is cold.)
+            if let Ok(slots_resp) = client.get(&format!("http://127.0.0.1:{}/slots", port)).send().await {
+                if let Ok(slots) = slots_resp.json::<Vec<serde_json::Value>>().await {
+                    for slot in &slots {
+                        let idx = slot["id"].as_u64().unwrap_or(0);
+                        let _ = client.post(&format!("http://127.0.0.1:{}/slots/{}/release", port, idx)).send().await;
+                    }
+                    log::debug!("[BENCH_TG] released {} slots after warmup for cold measured run", slots.len());
+                }
+            }
+        }
     }
 
     let run = match measured_run {

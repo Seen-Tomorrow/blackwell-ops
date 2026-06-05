@@ -51,6 +51,10 @@ struct SlotTrackState {
     request_start_n_decoded: usize,
     was_processing: bool,
     total_tokens_lifetime: usize,
+    // Current prompt snapshot (for prefill progress + accurate ctx fill including cached history)
+    current_prompt_tokens: usize,
+    current_prompt_processed: usize,
+    current_prompt_cache: usize,
 }
 
 impl SlotTrackState {
@@ -62,6 +66,9 @@ impl SlotTrackState {
             request_start_n_decoded: 0,
             was_processing: false,
             total_tokens_lifetime: 0,
+            current_prompt_tokens: 0,
+            current_prompt_processed: 0,
+            current_prompt_cache: 0,
         }
     }
 }
@@ -77,6 +84,20 @@ pub struct SlotCtxInfo {
     #[serde(rename = "totalTokensLifetime")]
     pub total_tokens_lifetime: usize,
     pub is_processing: bool,
+    // Full context usage for this slot (n_prompt_tokens + n_decoded). Enables accurate "ctx fill" including prefill + cached history.
+    #[serde(rename = "promptTokens")]
+    pub prompt_tokens: usize,
+    #[serde(rename = "promptTokensProcessed")]
+    pub prompt_tokens_processed: usize,
+    #[serde(rename = "promptTokensCache")]
+    pub prompt_tokens_cache: usize,
+    // Additional from full /slots (useful for UI: remaining budget in this request, task id, etc.)
+    #[serde(rename = "nRemain")]
+    pub n_remain: i64,
+    #[serde(rename = "idTask", skip_serializing_if = "Option::is_none")]
+    pub id_task: Option<i64>,
+    #[serde(rename = "speculative")]
+    pub speculative: bool,
 }
 
 // ── FusionUpdate — curated data structure for frontend subscribers ───
@@ -94,9 +115,19 @@ pub struct FusionUpdate {
     // Phase — fused from both sources
     pub phase: InferencePhase,
 
-    // ── Prefill metrics (primary source = /metrics) ────────────────
+    // ── Prefill metrics (primary source = /metrics for TPS; /slots for progress/tokens — log parser is secondary/debug) ────────────────
     #[serde(rename = "prefillTpsMetrics")]
     pub prefill_tps_metrics: f64,
+
+    /// Primary prefill progress 0→1 computed from /slots (n_prompt_tokens_processed / n_prompt_tokens). Bypasses log throttle/miss issues.
+    #[serde(rename = "prefillProgress")]
+    pub prefill_progress: f64,
+    /// n_prompt_tokens_processed from /slots for current request (real-time, no log dependency).
+    #[serde(rename = "prefillTokens")]
+    pub prefill_tokens: usize,
+    /// Target prompt size for current request (from /slots n_prompt_tokens or NewPrompt log).
+    #[serde(rename = "prefillTokensTotal")]
+    pub prefill_tokens_total: usize,
 
     // ── Generation metrics (primary source = /slots) ─────────────
     #[serde(rename = "genTps")]
@@ -187,6 +218,16 @@ pub struct FusionBrain {
     /// One-shot reset signal emitted to frontend for visual feedback.
     lp_reset_prompt: bool,    // true after NewPrompt caught the start (belt)
     lp_reset_regression: bool,  // true after regression detected (suspenders)
+
+    /// Log-driven request boundaries (belt for phase — survives multimodal /slots lag).
+    log_request_open: bool,
+    log_prefill_done: bool,
+
+    // ── Primary prefill from /slots (real-time, reliable) ─────────
+    prefill_progress: f64,
+    prefill_tokens: usize,
+    /// Task prompt size (from NewPrompt log `task.n_tokens`). NOT /slots `n_prompt_tokens` (that is prompt.tokens.size()).
+    prefill_tokens_total: usize,
 }
 
 impl FusionBrain {
@@ -222,6 +263,13 @@ impl FusionBrain {
             lp_phase: InferencePhase::Idle,
             lp_reset_prompt: false,
             lp_reset_regression: false,
+            log_request_open: false,
+            log_prefill_done: false,
+
+            // Primary prefill from /slots
+            prefill_progress: 0.0,
+            prefill_tokens: 0,
+            prefill_tokens_total: 0,
         }
     }
 
@@ -291,12 +339,7 @@ impl FusionBrain {
                     let metrics_fut = fusion_poller::poll_metrics(&client, brain.port);
                     let (slots_result, metrics_result) = tokio::join!(slots_fut, metrics_fut);
 
-                    // Process /metrics first for phase detection
-                    if let Ok(ref metrics) = metrics_result {
-                        brain.process_metrics(metrics);
-                    }
-
-                    // Process /slots for token counts and per-slot data
+                    // Process /slots first so prompt-eval state is current before /metrics PP→TG heuristics
                     let slot_data: Vec<fusion_poller::SlotData> = match slots_result {
                         Ok(slots) => slots,
                         Err(e) => {
@@ -312,6 +355,10 @@ impl FusionBrain {
 
                     brain.process_slots(&slot_data);
 
+                    if let Ok(ref metrics) = metrics_result {
+                        brain.process_metrics(metrics, &slot_data);
+                    }
+
                     let update = brain.build_update(&slot_data, metrics_result.as_ref().ok());
                     log_hub.emit("fusion-update", &update);
                 }
@@ -325,16 +372,24 @@ impl FusionBrain {
         match event {
             crate::fusion_logparser::LogEvent::PrintTimingPP { .. } => self.handle_print_timing_pp(event),
             crate::fusion_logparser::LogEvent::PrintTimingGen { .. } => self.handle_print_timing_gen(event),
-            crate::fusion_logparser::LogEvent::SamplerInit { .. } => self.handle_sampler_init(),
+            crate::fusion_logparser::LogEvent::SamplerInit { total_tokens, .. } => {
+                self.handle_sampler_init(*total_tokens);
+            }
             crate::fusion_logparser::LogEvent::StopProcessing { .. } => self.handle_stop_processing(),
+            crate::fusion_logparser::LogEvent::CachedPromptTokens { cached_tokens, .. } => {
+                self.handle_cached_prompt_tokens(*cached_tokens);
+            }
             // NewPrompt — belt: reset all LP state at exact request start (fires before any PP work)
-            crate::fusion_logparser::LogEvent::NewPrompt { .. } => self.handle_new_prompt(),
+            crate::fusion_logparser::LogEvent::NewPrompt { prompt_tokens, .. } => self.handle_new_prompt(*prompt_tokens),
         }
     }
 
-    fn handle_new_prompt(&mut self) {
+    fn handle_new_prompt(&mut self, prompt_tokens: usize) {
         // Belt: definitive request start — reset LP state to zero so progress bar starts at 0%
         // LP reset now routed to Blackwell Output Console
+        self.log_request_open = true;
+        self.log_prefill_done = false;
+        self.phase = InferencePhase::PP;
         self.lp_phase = InferencePhase::PP;
         self.lp_prefill_progress = 0.0;
         self.lp_prefill_tps = 0.0;
@@ -342,6 +397,13 @@ impl FusionBrain {
         self.lp_gen_tps = 0.0;
         self.lp_reset_prompt = true; // Belt caught the start
         self.lp_reset_regression = false;
+
+        // Capture target prompt size immediately for prefill progress (even before first /slots or log PP lines)
+        if prompt_tokens > 0 {
+            self.prefill_tokens_total = prompt_tokens;
+        }
+        self.prefill_progress = 0.0;
+        self.prefill_tokens = 0;
     }
 
     fn handle_print_timing_pp(&mut self, e: &crate::fusion_logparser::LogEvent) {
@@ -367,15 +429,42 @@ impl FusionBrain {
         if let crate::fusion_logparser::LogEvent::PrintTimingGen { gen_tps, .. } = e {
             self.lp_phase = InferencePhase::Tg;
             self.lp_gen_tps = *gen_tps;
+            self.phase = InferencePhase::Tg;
         }
     }
 
-    fn handle_sampler_init(&mut self) {
-        // DEFINITIVE PP→TG boundary signal from engine
+    fn handle_cached_prompt_tokens(&mut self, cached_tokens: usize) {
+        if !self.log_request_open || self.log_prefill_done {
+            return;
+        }
+        self.phase = InferencePhase::PP;
+        if cached_tokens > self.prefill_tokens {
+            self.prefill_tokens = cached_tokens;
+        }
+        if self.prefill_tokens_total > 0 {
+            let prog =
+                (self.prefill_tokens as f64 / self.prefill_tokens_total as f64).clamp(0.0, 1.0);
+            self.prefill_progress = prog;
+        }
+    }
+
+    fn handle_sampler_init(&mut self, task_total_tokens: usize) {
+        // Prefill finished — stay PP until /slots reports n_decoded > 0 (generation started)
+        self.log_prefill_done = true;
         self.lp_phase = InferencePhase::Tg;
+        if self.prefill_tokens_total == 0 && task_total_tokens > 0 {
+            self.prefill_tokens_total = task_total_tokens;
+        }
+        if self.prefill_tokens_total > 0 && self.prefill_tokens < self.prefill_tokens_total {
+            self.prefill_tokens = self.prefill_tokens_total;
+            self.prefill_progress = 1.0;
+        }
     }
 
     fn handle_stop_processing(&mut self) {
+        self.log_request_open = false;
+        self.log_prefill_done = false;
+        self.phase = InferencePhase::Idle;
         self.lp_phase = InferencePhase::Idle;
         self.lp_prefill_progress = 0.0;
         self.lp_prefill_tps = 0.0;
@@ -385,11 +474,15 @@ impl FusionBrain {
         self.last_gen_tps = 0.0;
         self.lp_reset_prompt = false;
         self.lp_reset_regression = false;
+        // Primary prefill reset too
+        self.prefill_progress = 0.0;
+        self.prefill_tokens = 0;
+        self.prefill_tokens_total = 0;
     }
 
     // ── /metrics processing — phase detection + prefill TPS ─────────
 
-    fn process_metrics(&mut self, metrics: &MetricsSnapshot) {
+    fn process_metrics(&mut self, metrics: &MetricsSnapshot, slots: &[fusion_poller::SlotData]) {
         let now = Instant::now();
 
         // Extract decisions from prev_metrics BEFORE mutating self
@@ -419,16 +512,23 @@ impl FusionBrain {
         // Now safe to mutate self — prev_metrics borrow is dropped
         if new_request_started {
             self.phase = InferencePhase::PP;
+            self.log_request_open = true;
+            self.log_prefill_done = false;
             self.request_start = Some(now);
             self.engine_state = EngineState::Active;
             self.ttft_ms = None;
         } else if request_ended {
+            self.log_request_open = false;
+            self.log_prefill_done = false;
             self.phase = InferencePhase::Idle;
             self.request_start = None;
             self.prompt_tokens = 0;
             self.ttft_ms = None;
             self.tg_start_time = None;
-       self.last_gen_tps = 0.0;
+            self.last_gen_tps = 0.0;
+            self.prefill_progress = 0.0;
+            self.prefill_tokens = 0;
+            self.prefill_tokens_total = 0;
         }
 
         // Prefill TPS from prompt_tokens_total delta
@@ -440,18 +540,16 @@ impl FusionBrain {
             }
         }
 
-        // PP→TG transition detection from /metrics — capture TTFT + TG start snapshot
-        if self.phase == InferencePhase::PP && tt_delta > 0 {
-            self.phase = InferencePhase::Tg;
-            // Capture TTFT: time from request start to first generated token
+        // Phase PP↔TG is decided in process_slots (WebUI rule: TG iff n_decoded > 0 on a busy slot).
+        // Here we only capture TTFT / TG timing when /metrics sees the first predicted token.
+        if tt_delta > 0 {
             if self.ttft_ms.is_none() {
                 if let Some(start) = self.request_start {
                     self.ttft_ms = Some(start.elapsed().as_millis() as f64);
                 }
             }
-            if self.tg_start_time.is_none() {
+            if self.phase == InferencePhase::Tg && self.tg_start_time.is_none() {
                 self.tg_start_time = Some(now);
-                // tg_start_n_decoded will be set on next /slots poll (total_n_decoded at that point)
                 self.tg_start_n_decoded = 0;
             }
         }
@@ -459,6 +557,75 @@ impl FusionBrain {
         // Store current snapshot for next delta computation
         self.prev_metrics = Some(metrics.clone());
         self.prev_metrics_time = Some(now);
+    }
+
+    /// Phase: log boundaries (new prompt → sampler_init) + n_decoded from /slots for TG.
+    fn reconcile_phase(&mut self, slots: &[fusion_poller::SlotData], any_processing: bool) {
+        let metrics_busy = self
+            .prev_metrics
+            .as_ref()
+            .map(|m| m.requests_processing > 0)
+            .unwrap_or(false);
+        let busy = any_processing || metrics_busy || self.log_request_open;
+
+        if !busy {
+            self.log_request_open = false;
+            self.log_prefill_done = false;
+            self.phase = InferencePhase::Idle;
+            self.prefill_progress = 0.0;
+            self.prefill_tokens = 0;
+            self.prefill_tokens_total = 0;
+            return;
+        }
+
+        // Until init_sampler: always PP (multimodal image chunks; /slots n_decoded may lie)
+        if self.log_request_open && !self.log_prefill_done {
+            self.phase = InferencePhase::PP;
+            return;
+        }
+
+        let any_decoded = slots.iter().any(|s| {
+            if !s.is_processing || s.next_token.is_empty() {
+                return false;
+            }
+            s.next_token[0].n_decoded > 0
+        });
+
+        if any_decoded {
+            self.phase = InferencePhase::Tg;
+            if self.prefill_tokens_total > 0 && self.prefill_tokens < self.prefill_tokens_total {
+                self.prefill_tokens = self.prefill_tokens_total;
+                self.prefill_progress = 1.0;
+            }
+            return;
+        }
+
+        // Post-sampler, pre-first-token gap
+        self.phase = InferencePhase::PP;
+    }
+
+    /// Update prefill progress from /slots when log `cached n_tokens` is not yet available.
+    fn update_prefill_from_slots(&mut self, slots: &[fusion_poller::SlotData]) {
+        if self.prefill_tokens_total == 0 || self.log_prefill_done {
+            return;
+        }
+        let total = self.prefill_tokens_total;
+        for slot in slots {
+            if !slot.is_processing {
+                continue;
+            }
+            let from_field = slot.n_prompt_tokens_processed;
+            let prompt_size = slot.n_prompt_tokens;
+            let processed = from_field.max(prompt_size).min(total);
+            if processed > self.prefill_tokens {
+                self.prefill_tokens = processed;
+            }
+        }
+        let mut prog = (self.prefill_tokens as f64 / total as f64).clamp(0.0, 1.0);
+        if self.prefill_tokens + 2 >= total {
+            prog = 1.0;
+        }
+        self.prefill_progress = prog;
     }
 
     // ── /slots processing — token counts, per-slot tracking ─────────
@@ -475,6 +642,10 @@ impl FusionBrain {
             new_request: bool,
             ended_session: bool,
             request_tokens_on_end: usize,
+            // Prompt data for prefill progress + full ctx fill (includes prefill + history + cache reuse)
+            prompt_tokens: usize,
+            prompt_tokens_processed: usize,
+            prompt_tokens_cache: usize,
         }
 
         let mut decisions: Vec<SlotDecision> = Vec::new();
@@ -487,39 +658,28 @@ impl FusionBrain {
                 any_processing = true;
             }
 
-            if has_token_data {
-                let n_decoded = slot.next_token[0].n_decoded;
-                let s = self.slot_states.entry(slot.id).or_insert_with(SlotTrackState::new);
+            let n_decoded = if has_token_data { slot.next_token[0].n_decoded } else { 0 };
+            let s = self.slot_states.entry(slot.id).or_insert_with(SlotTrackState::new);
 
-                let new_request = is_proc && !s.was_processing;
-                let ended_session = !is_proc && s.was_processing;
-                let request_tokens_on_end = if ended_session {
-                    n_decoded.saturating_sub(s.request_start_n_decoded)
-                } else {
-                    0
-                };
-
-                decisions.push(SlotDecision {
-                    id: slot.id,
-                    n_decoded,
-                    is_proc,
-                    new_request,
-                    ended_session,
-                    request_tokens_on_end,
-                });
+            let new_request = is_proc && !s.was_processing;
+            let ended_session = !is_proc && s.was_processing;
+            let request_tokens_on_end = if ended_session {
+                n_decoded.saturating_sub(s.request_start_n_decoded)
             } else {
-                let s = self.slot_states.entry(slot.id).or_insert_with(SlotTrackState::new);
-                let ended_session = !is_proc && s.was_processing;
+                0
+            };
 
-                decisions.push(SlotDecision {
-                    id: slot.id,
-                    n_decoded: 0,
-                    is_proc: false,
-                    new_request: false,
-                    ended_session,
-                    request_tokens_on_end: 0,
-                });
-            }
+            decisions.push(SlotDecision {
+                id: slot.id,
+                n_decoded,
+                is_proc,
+                new_request,
+                ended_session,
+                request_tokens_on_end,
+                prompt_tokens: slot.n_prompt_tokens,
+                prompt_tokens_processed: slot.n_prompt_tokens_processed,
+                prompt_tokens_cache: slot.n_prompt_tokens_cache,
+            });
         }
 
         // Second pass: apply decisions — safe to mutate self now
@@ -535,13 +695,20 @@ impl FusionBrain {
                 self.tg_start_time = None;
                 self.tg_start_n_decoded = 0;
                 self.ttft_ms = None;
+                self.log_request_open = true;
+                self.log_prefill_done = false;
+                self.prefill_progress = 0.0;
+                self.prefill_tokens = 0;
             }
 
             if d.ended_session {
                 if let Some(s) = self.slot_states.get_mut(&d.id) {
+                    // Pure generated tokens for the "gen per session" stats (separate from ctx fill bars)
                     s.total_tokens_lifetime += d.request_tokens_on_end;
                 }
                 self.session_tokens_generated += d.request_tokens_on_end;
+                self.log_request_open = false;
+                self.log_prefill_done = false;
                 self.phase = InferencePhase::Idle;
                 self.request_start = None;
                 self.prompt_tokens = 0;
@@ -549,25 +716,57 @@ impl FusionBrain {
                 self.tg_start_time = None;
                 self.tg_start_n_decoded = 0;
                 self.ttft_ms = None;
+                // Clear primary prefill on end
+                self.prefill_progress = 0.0;
+                self.prefill_tokens = 0;
+                self.prefill_tokens_total = 0;
             }
 
-            // Update slot state — accumulate session_n_decoded (smooth real-time fill)
+            // Update slot state from live /slots data.
             if let Some(s) = self.slot_states.get_mut(&d.id) {
-                let prev = s.prev_n_decoded;
                 let new_val = d.n_decoded;
-                // Only add delta when n_decoded increases — don't subtract on request reset
-                if new_val > prev {
-                    s.session_n_decoded += new_val - prev;
+
+                // Update current prompt snapshot for this slot (for prefill + ctx bars)
+                s.current_prompt_tokens = d.prompt_tokens;
+                s.current_prompt_processed = d.prompt_tokens_processed;
+                s.current_prompt_cache = d.prompt_tokens_cache;
+
+                // Compute authoritative *live* current ctx used for this slot from engine /slots data.
+                // During PP: cache + processed gives the actual filling amount (ramps correctly for long prompts).
+                // This value is the ground truth for "how much of the ctx is in use right now for this sequence".
+                let current_used = if d.prompt_tokens_cache + d.prompt_tokens_processed > 0 {
+                    d.prompt_tokens_cache + d.prompt_tokens_processed + d.n_decoded
+                } else if d.prompt_tokens > 0 {
+                    d.prompt_tokens + d.n_decoded
+                } else if d.prompt_tokens_processed > 0 {
+                    d.prompt_tokens_processed + d.n_decoded
+                } else {
+                    d.n_decoded
+                };
+
+                // Track live current for the bar. This supports:
+                // - growth as chat history / prefill adds tokens over the external session
+                // - *downward correction* when the engine performs context shift / compaction / eviction
+                //   (server reports smaller effective prompt size after internal "kv cache rm", shifts, etc.)
+                // We trust the engine's live numbers every poll rather than only accumulating gens.
+                if current_used > 0 {
+                    s.session_n_decoded = current_used;
                 }
-                // Snap-correct at request end: trust total_tokens_lifetime as ground truth
-                if d.ended_session && s.total_tokens_lifetime > s.session_n_decoded {
-                    s.session_n_decoded = s.total_tokens_lifetime;
+
+                // Update lifetime max (peak observed ctx used for this slot)
+                if current_used > s.total_tokens_lifetime {
+                    s.total_tokens_lifetime = current_used;
                 }
+
                 s.prev_n_decoded = new_val;
                 s.prev_timestamp = now;
                 s.was_processing = d.is_proc;
             }
+
         }
+
+        self.update_prefill_from_slots(slots);
+        self.reconcile_phase(slots, any_processing);
 
         // Update engine state from /slots
         if self.engine_state == EngineState::Loading && !any_processing {
@@ -583,37 +782,7 @@ impl FusionBrain {
             }
         }
 
-        // Phase fallback from /slots: per-request n_decoded delta > 50 means TG, not PP
-        for slot in slots {
-            if slot.is_processing && !slot.next_token.is_empty() {
-                let n_decoded = slot.next_token[0].n_decoded;
-                if let Some(s) = self.slot_states.get(&slot.id) {
-                    let delta = n_decoded.saturating_sub(s.request_start_n_decoded);
-                    if delta > 50 && self.phase == InferencePhase::PP {
-                        self.phase = InferencePhase::Tg;
-                        // Capture TTFT: time from request start to first generated token
-                        if self.ttft_ms.is_none() {
-                            if let Some(start) = self.request_start {
-                                self.ttft_ms = Some(start.elapsed().as_millis() as f64);
-                            }
-                        }
-                        // Capture TG start snapshot for cumulative TPS calculation
-                        if self.tg_start_time.is_none() {
-                            let mut total_at_transition: usize = 0;
-                            for sl in slots {
-                                if !sl.next_token.is_empty() {
-                                    total_at_transition += sl.next_token[0].n_decoded;
-                                }
-                            }
-                            self.tg_start_n_decoded = total_at_transition;
-                            self.tg_start_time = Some(now);
-                        }
-                    }
-                }
-            }
-        }
-
-        // Also handle PP→TG transition from /metrics (line 446-448) — capture snapshot there too
+        // Capture TG start snapshot when we enter generation
         if self.phase == InferencePhase::Tg && self.tg_start_time.is_none() {
             let mut total_at_transition: usize = 0;
             for slot in slots {
@@ -688,8 +857,14 @@ impl FusionBrain {
         // Prefill TPS from /metrics gauge
         let prefill_tps_metrics = metrics.map(|m| m.prompt_tps_gauge).unwrap_or(0.0);
 
-        // Context usage
-        let ctx_used_session = total_n_decoded;
+        // Context usage — sum of live per-slot current used (from /slots prompt+cache+decoded).
+        // This is the actual total KV context currently allocated across sequences (supports compactions that lower individual slots).
+        // For the engine-level fill % we use sum vs the configured ctxTotal (whether partitioned or shared pool).
+        let mut sum_session_ctx: usize = 0;
+        for (_id, s) in &self.slot_states {
+            sum_session_ctx += s.session_n_decoded;
+        }
+        let ctx_used_session = if sum_session_ctx > 0 { sum_session_ctx } else { total_n_decoded };
         let ctx_fill_pct = if self.ctx_total > 0 {
             (ctx_used_session as f64 / self.ctx_total as f64) * 100.0
         } else {
@@ -710,9 +885,27 @@ impl FusionBrain {
                 session_n_decoded: s.session_n_decoded,
                 total_tokens_lifetime: s.total_tokens_lifetime,
                 is_processing: s.was_processing,
+                prompt_tokens: s.current_prompt_tokens,
+                prompt_tokens_processed: s.current_prompt_processed,
+                prompt_tokens_cache: s.current_prompt_cache,
+                n_remain: 0, // populated from fresh slots data below if available
+                id_task: None,
+                speculative: false,
             })
             .collect();
         slot_ctx.sort_by_key(|s| s.id);
+
+        // Overlay fresh per-slot data from this poll (n_remain, id_task, speculative) so UI gets up-to-date values
+        for slot in slots {
+            if let Some(info) = slot_ctx.iter_mut().find(|i| i.id == slot.id) {
+                if !slot.next_token.is_empty() {
+                    let t = &slot.next_token[0];
+                    info.n_remain = t.n_remain;
+                }
+                info.id_task = slot.id_task;
+                info.speculative = slot.speculative;
+            }
+        }
 
         FusionUpdate {
             alias: self.alias.clone(),
@@ -721,6 +914,9 @@ impl FusionBrain {
             engine_state: self.engine_state.clone(),
             phase: self.phase,
             prefill_tps_metrics,
+            prefill_progress: self.prefill_progress,
+            prefill_tokens: self.prefill_tokens,
+            prefill_tokens_total: self.prefill_tokens_total,
             gen_tps,
             gen_tokens_per_request_slots: gen_tokens_request_slots,
             gen_tokens_per_session: self.session_tokens_generated,
@@ -760,6 +956,9 @@ impl FusionBrain {
         update.lp_prefill_tps = 0.0;
         update.lp_prompt_tokens = 0;
         update.lp_gen_tps = 0.0;
+        update.prefill_progress = 0.0;
+        update.prefill_tokens = 0;
+        update.prefill_tokens_total = 0;
         // Note: lp_reset_source stays as computed by build_update above (shows last reset source)
         update
     }

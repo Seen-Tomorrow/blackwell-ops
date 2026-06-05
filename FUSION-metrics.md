@@ -27,6 +27,9 @@
 | `lp_gen_tps` | `logGenTps` | `logGenTps` | stderr log | Generation TPS from log |
 | `lp_phase` | `logPhase` | `logPhase` | stderr log | Phase from log events |
 | `lp_reset_source` | `phaseResetSource` | `phaseResetSource` | Computed | Reset source indicator |
+| `prefill_progress` | `prefillProgress` | `prefillProgress` | `/slots` (primary) | Prefill progress 0→1 from n_prompt_tokens_processed / n_prompt_tokens (real-time, no log throttle) |
+| `prefill_tokens` | `prefillTokens` | `prefillTokens` | `/slots` (primary) | Prompt tokens processed this request (from /slots) |
+| `prefill_tokens_total` | `prefillTokensTotal` | `prefillTokensTotal` | `/slots` + NewPrompt log | Target n_prompt for current request |
 
 ## MetricsSnapshot Fields (from /metrics)
 
@@ -44,18 +47,50 @@
 |---|---|---|---|
 | `id` | `id` | `id` | Slot index |
 | `n_decoded` | `n_decoded` | `n_decoded` | Tokens decoded this request |
-| `session_n_decoded` | `sessionNDecoded` | `sessionNDecoded` | Tokens decoded this session |
+| `session_n_decoded` | `sessionNDecoded` | `sessionNDecoded` | Full ctx used this session (prompt/cache + decoded; grows with chat history) |
 | `total_tokens_lifetime` | `totalTokensLifetime` | `totalTokensLifetime` | Total tokens lifetime |
 | `is_processing` | `is_processing` | `is_processing` | Whether slot is processing |
+| `prompt_tokens` | `promptTokens` | `promptTokens` | n_prompt_tokens (full task prompt / history size) |
+| `prompt_tokens_processed` | `promptTokensProcessed` | `promptTokensProcessed` | n_prompt_tokens_processed (evaled so far this req) |
+| `prompt_tokens_cache` | `promptTokensCache` | `promptTokensCache` | n_prompt_tokens_cache (reused from prior) |
 
 ## Summary
 
-- **Total fields in FusionUpdate:** 23
+- **Total fields in FusionUpdate:** 26 (+3 primary prefill)
 - **Fields from /metrics:** 2 (prefillTpsMetrics, ttftMs)
-- **Fields from /slots:** 8 (genTps, genTokensPerRequestSlots, genTokensPerSession, ctxUsedSession, slotCtx, ctxFillPct, ctxTotal, requestElapsedMs)
-- **Fields from stderr logs:** 6 (logPrefillProgress, logPrefillTps, logPromptTokens, logGenTps, logPhase, phaseResetSource)
+- **Fields from /slots:** 11 (genTps, ..., ctxUsedSession, slotCtx..., + prefillProgress, prefillTokens, prefillTokensTotal, + per-slot prompt* in slotCtx)
+- **Fields from stderr logs:** 6 (log* — kept for red "LP" comparison/debug; NewPrompt also seeds prompt total)
 - **Fields from config:** 3 (alias, slotIdx, port)
-- **Fields computed:** 3 (engine_state, phase, ctxFillPct)
+- **Fields computed:** 4 (engine_state, phase, ctxFillPct, prefill* fallbacks)
+
+## 2026-06 Improvements to Prefill + CTX Tracking
+
+**Problem (pre-edit):**
+- PREFILL progress + "n tok" came only from `print_timing` PP lines in stderr (log parser).
+- `print_timings_pp()` in llama.cpp server **skips entirely if t_prompt_processing < 3000ms** → short requests missed 100%, long prompts start logging after ~20%+ work done.
+- `ctxUsedSession` / `sessionNDecoded` / `totalTokensLifetime` only accumulated `n_decoded` (generated tokens). Prefill tokens + cached history tokens never added → bars only showed "cumulative gens", not real KV fill vs user 128k ctx.
+- For correct "full context fill" bars (user watches bars close on 128k during long chat/coding session) the prefill token counts had to be perfect.
+
+**Solution:**
+- `/slots` JSON (polled @ ~100ms) now primary for prefill:
+  - `n_prompt_tokens` = full target prompt size for this request (history length)
+  - `n_prompt_tokens_processed` + `n_prompt_tokens_cache` → exact `prefillProgress = processed / total`, `prefillTokens`
+  - No 3s throttle, catches short prompts (as long as a poll lands in PP window), live ramp for huge cold prompts.
+- New primary fields: `prefillProgress`, `prefillTokens`, `prefillTokensTotal` (UI prefers these; LP kept red for comparison).
+- CTX fill now uses `cache + processed + n_decoded` (during) / `prompt_tokens + n_decoded` (post) per slot.
+  - `sessionNDecoded` (and bar heights) now grow with net prefill + gens + reused history length.
+  - `current_used = cache + processed + decoded` during PP → bar *ramps live* as prefill happens (great for 128k loads).
+  - At request end, lifetime snaps to full committed size.
+  - `ctxUsedSession` takes high-water of per-slot session ctx used.
+- `SlotCtxInfo` now carries the 3 prompt_* fields for UI or future.
+- Log parser / NewPrompt still used for instant "belt" reset + LP comparison visuals + seeding total on first tick.
+
+**Result:**
+- PREFILL section (TPS + progress bar + tok count) is now driven by HTTP /slots (solid) + /metrics gauge.
+- CTX bars accurately reflect conversation history growth toward the engine's -c / parallel limit.
+- Short requests and early % of long PP now visible; no more "20% lost".
+
+See code: fusion_poller.rs (SlotData enrich), fusion_brain.rs (process_slots + build + state), SlotCtxBars/FusionOverlay (prefer primary).
 
 ## Data Flow
 

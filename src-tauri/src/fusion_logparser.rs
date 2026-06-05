@@ -15,6 +15,7 @@ static RE_PRINT_TIMING_PP: OnceLock<regex::Regex> = OnceLock::new();
 static RE_PRINT_TIMING_GEN: OnceLock<regex::Regex> = OnceLock::new();
 
 static RE_STOP_PROCESSING: OnceLock<regex::Regex> = OnceLock::new();
+static RE_CACHED_PROMPT: OnceLock<regex::Regex> = OnceLock::new();
 
 fn re_new_prompt() -> &'static regex::Regex {
     RE_NEW_PROMPT.get_or_init(|| {
@@ -62,6 +63,16 @@ fn re_stop_processing() -> &'static regex::Regex {
     })
 }
 
+fn re_cached_prompt() -> &'static regex::Regex {
+    RE_CACHED_PROMPT.get_or_init(|| {
+        // Multimodal / chunked prefill: live prompt fill before sampler_init (no print_timing PP <3s)
+        regex::Regex::new(
+            r"slot update_slots:\s+id\s+(\d+)\s*\|\s*task\s*(-?\d+)\s*\|\s*cached n_tokens\s*=\s*(\d+)",
+        )
+        .unwrap()
+    })
+}
+
 // ── Parsed Log Events ───────────────────────────────────────────────
 
 #[derive(Debug, Clone)]
@@ -92,6 +103,12 @@ pub enum LogEvent {
         slot_id: usize,
         task_id: i64,
         n_tokens: usize,
+    },
+    /// Live prompt fill during chunked/multimodal prefill (`cached n_tokens = N` in update_slots logs).
+    CachedPromptTokens {
+        slot_id: usize,
+        task_id: i64,
+        cached_tokens: usize,
     },
 }
 
@@ -156,6 +173,21 @@ pub fn parse_line(line: &str) -> Option<LogEvent> {
             caps.get(4)?.as_str().parse::<f64>(),
         ) {
             return Some(LogEvent::PrintTimingGen { slot_id, n_decoded, gen_tps });
+        }
+    }
+
+    // Cached prompt tokens — multimodal prefill progress (fires many times per request)
+    if let Some(caps) = re_cached_prompt().captures(line) {
+        if let (Ok(slot_id), Ok(task_id), Ok(cached_tokens)) = (
+            caps.get(1)?.as_str().parse::<usize>(),
+            caps.get(2)?.as_str().parse::<i64>(),
+            caps.get(3)?.as_str().parse::<usize>(),
+        ) {
+            return Some(LogEvent::CachedPromptTokens {
+                slot_id,
+                task_id,
+                cached_tokens,
+            });
         }
     }
 

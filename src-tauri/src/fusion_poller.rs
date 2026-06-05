@@ -10,6 +10,22 @@ pub struct SlotData {
     pub is_processing: bool,
     #[serde(default)]
     pub next_token: Vec<TokenInfo>,
+    // NOTE: n_prompt_tokens = prompt.tokens.size() in server (grows during eval), NOT task.n_tokens.
+    // Use NewPrompt log + n_prompt_tokens_processed for prefill progress; do not use this as progress total.
+    #[serde(default)]
+    pub n_prompt_tokens: usize,
+    #[serde(default)]
+    pub n_prompt_tokens_processed: usize,
+    #[serde(default)]
+    pub n_prompt_tokens_cache: usize,
+    #[serde(default)]
+    #[allow(dead_code)]
+    pub n_ctx: usize,
+    // Additional useful fields from full /slots response (not yet heavily used in fusion but valuable for phase, gen progress, compaction awareness, etc.)
+    #[serde(default)]
+    pub id_task: Option<i64>,
+    #[serde(default)]
+    pub speculative: bool,
 }
 
 #[derive(serde::Deserialize)]
@@ -17,6 +33,11 @@ pub struct TokenInfo {
     pub n_decoded: usize,
     #[allow(dead_code)]
     pub has_next_token: bool,
+    // n_remain is very useful: tokens remaining in this generation request (negative often means unlimited / until stop)
+    #[serde(default)]
+    pub n_remain: i64,
+    #[serde(default)]
+    pub has_new_line: bool,
 }
 
 /// Poll /slots endpoint. Returns per-slot snapshots or error.
@@ -40,6 +61,10 @@ pub struct MetricsSnapshot {
     pub predicted_tokens_total: usize,
     pub prompt_tps_gauge: f64,
     pub requests_processing: usize,
+    // Additional potentially useful gauges/counters from full /metrics (llama.cpp server exposes several; we capture what is present for future richer fusion/perf viz)
+    pub predicted_tps_gauge: f64,  // generation t/s gauge (often "llamacpp:predicted_tokens_seconds" or "tokens_predicted_seconds")
+    pub n_decode_total: usize,     // total decode steps (busy indicator)
+    pub n_busy_slots_total: usize, // cumulative busy slot count
 }
 
 /// Poll /metrics endpoint. Returns parsed Prometheus counters or error.
@@ -62,6 +87,9 @@ fn parse_prometheus_text(text: &str) -> Result<MetricsSnapshot, String> {
     let mut predicted_tokens_total: Option<usize> = None;
     let mut prompt_tps_gauge: Option<f64> = None;
     let mut requests_processing: Option<usize> = None;
+    let mut predicted_tps_gauge: Option<f64> = None;
+    let mut n_decode_total: Option<usize> = None;
+    let mut n_busy_slots_total: Option<usize> = None;
 
     for line in text.lines() {
         if line.starts_with('#') || line.is_empty() {
@@ -89,6 +117,16 @@ fn parse_prometheus_text(text: &str) -> Result<MetricsSnapshot, String> {
                 "llamacpp:requests_processing" => {
                     requests_processing = parse_usize(val_str);
                 }
+                // Gen TPS gauge (name varies slightly across versions)
+                "llamacpp:predicted_tokens_seconds" | "llamacpp:tokens_predicted_seconds" => {
+                    predicted_tps_gauge = parse_f64(val_str);
+                }
+                "llamacpp:n_decode_total" => {
+                    n_decode_total = parse_usize(val_str);
+                }
+                "llamacpp:n_busy_slots_total" => {
+                    n_busy_slots_total = parse_usize(val_str);
+                }
                 _ => {}
             }
         }
@@ -100,6 +138,9 @@ fn parse_prometheus_text(text: &str) -> Result<MetricsSnapshot, String> {
         predicted_tokens_total: predicted_tokens_total.unwrap_or(0),
         prompt_tps_gauge: prompt_tps_gauge.unwrap_or(0.0),
         requests_processing: requests_processing.unwrap_or(0),
+        predicted_tps_gauge: predicted_tps_gauge.unwrap_or(0.0),
+        n_decode_total: n_decode_total.unwrap_or(0),
+        n_busy_slots_total: n_busy_slots_total.unwrap_or(0),
     })
 }
 

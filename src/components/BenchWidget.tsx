@@ -19,11 +19,13 @@ interface BenchPortState {
   tgRunning: boolean;
   tgResult: bench_TGBenchResult | null;
   tgPhase: "warmup" | "measured" | null;
+  tgEffectiveLength: number | null;  // from progress event (fixed 1024 in warmup, user nPredict in measured)
   nPredict: number;
   promptMode: bench_PromptMode;
   ppRunning: boolean;
   ppResult: bench_PPBurstResult | null;
   ppPhase: "warmup" | "measured" | null;
+  ppEffectiveLength: number | null;  // from progress event (fixed 1024 in warmup, user target in measured)
   ppTargetTokens: number;
   showResults: boolean;
 }
@@ -33,11 +35,13 @@ function defaultBenchState(): BenchPortState {
     tgRunning: false,
     tgResult: null,
     tgPhase: null,
+    tgEffectiveLength: null,
     nPredict: 256,
     promptMode: "unique",
     ppRunning: false,
     ppResult: null,
     ppPhase: null,
+    ppEffectiveLength: null,
     ppTargetTokens: 8192,
     showResults: false,
   };
@@ -64,6 +68,7 @@ export default function BenchWidget({ port }: BenchWidgetProps) {
     listen<any>("bench-tg-progress", (e) => {
       if (cancelled || e.payload.port !== port) return;
       ps.tgPhase = e.payload.phase as "warmup" | "measured";
+      if (e.payload.effectiveLength != null) ps.tgEffectiveLength = e.payload.effectiveLength;
       tick();
     }).then((u) => { if (!cancelled) unsubTgProgress.current = u; });
     return () => { cancelled = true; unsubTgProgress.current?.(); };
@@ -75,6 +80,7 @@ export default function BenchWidget({ port }: BenchWidgetProps) {
     listen<any>("bench-pp-progress", (e) => {
       if (cancelled || e.payload.port !== port) return;
       ps.ppPhase = e.payload.phase as "warmup" | "measured";
+      if (e.payload.effectiveLength != null) ps.ppEffectiveLength = e.payload.effectiveLength;
       tick();
     }).then((u) => { if (!cancelled) unsubPpProgress.current = u; });
     return () => { cancelled = true; unsubPpProgress.current?.(); };
@@ -85,6 +91,7 @@ export default function BenchWidget({ port }: BenchWidgetProps) {
     ps.tgRunning = true;
     ps.tgResult = null;
     ps.tgPhase = "warmup";
+    ps.tgEffectiveLength = 1024;  // will be overridden by first progress event
     ps.showResults = true;
     tick();
     try {
@@ -113,6 +120,7 @@ export default function BenchWidget({ port }: BenchWidgetProps) {
     ps.ppRunning = true;
     ps.ppResult = null;
     ps.ppPhase = "warmup";
+    ps.ppEffectiveLength = 1024;  // will be overridden by first progress event (fixed for warmup)
     ps.showResults = true;
     tick();
     try {
@@ -222,7 +230,7 @@ export default function BenchWidget({ port }: BenchWidgetProps) {
                <div className="flex items-center gap-1.5 px-1 py-0.5">
                  <span className="inline-block w-1 h-1 bg-yellow-400 rounded-full animate-pulse" />
                  <span className="text-[7px] font-mono text-stealth-muted">
-                   {ps.tgRunning ? (ps.tgPhase === "warmup" ? `TG WARMUP (512 tok)` : `TG (${ps.nPredict} tok)...`) : ps.ppRunning ? (ps.ppPhase === "warmup" ? `PP WARMUP` : `PP (${formatBenchK(ps.ppTargetTokens)} tok)...`) : ""}
+                   {ps.tgRunning ? (ps.tgPhase === "warmup" ? `TG WARMUP (${ps.tgEffectiveLength ?? 1024} tok)` : `TG (${ps.nPredict} tok)...`) : ps.ppRunning ? (ps.ppPhase === "warmup" ? `PP WARMUP (${formatBenchK(ps.ppEffectiveLength ?? 1024)} tok)` : `PP (${formatBenchK(ps.ppTargetTokens)} tok)...`) : ""}
                  </span>
                </div>
              )}
@@ -261,7 +269,8 @@ export default function BenchWidget({ port }: BenchWidgetProps) {
                   </div>
                   <div>
                     <p className="text-[6px] font-mono text-stealth-muted uppercase tracking-wider">TOKENS</p>
-                    <p className="text-[9px] font-mono text-white">{formatBenchK(ps.ppResult.bench_prompt_tokens_actual)}</p>
+                    {/* Raw number (e.g. 8000 not 8K) per request -- "looks more dramatic" for PP bench results */}
+                    <p className="text-[9px] font-mono text-white">{ps.ppResult.bench_prompt_tokens_actual.toLocaleString()}</p>
                   </div>
                 </div>
               ) : (

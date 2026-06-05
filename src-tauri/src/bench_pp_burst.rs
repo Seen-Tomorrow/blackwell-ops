@@ -1,5 +1,6 @@
 //! PP (prefill) burst benchmark — single measured run after warmup for clean prefill TPS measurement.
 //!
+//! 1 warmup run (fixed small length) + 1 measured run (user-selected target length).
 //! Generates a synthetic prompt targeting ~N tokens, POSTs to /completion with n_predict=0,
 //! and returns prefill TPS from engine-reported timings.
 
@@ -78,19 +79,10 @@ pub async fn cmd_bench_pp_burst(
     let url = format!("http://127.0.0.1:{}/completion", port);
     let client = reqwest::Client::new();
 
-    const WARMUP_RUNS: usize = 2;
+    const WARMUP_RUNS: usize = 1;
     const MEASURED_RUNS: usize = 1;
     const TOTAL_RUNS: usize = WARMUP_RUNS + MEASURED_RUNS;
-
-    // Build synthetic prompt targeting ~target_tokens tokens.
-    // Approximation: our unique word list contains hyphenated terms that tokenize as multiple tokens,
-    // and the builder wraps them with articles/connectors. 1.05x is sufficient to reach target.
-    let words_needed = target_tokens.saturating_mul(21) / 20;
-    let bench_prompt_text = if bench_prompt_mode == "repetitive" {
-        build_repetitive_prompt(words_needed)
-    } else {
-        build_unique_prompt(words_needed)
-    };
+    const WARMUP_TOKENS: usize = 1024;  // fixed length for warmup phase (prompt target size); small/fast (warmup may be near-pointless for pure PP but provides 1 phase for UI consistency)
 
     struct RunStats {
         prefill_tps: f64,
@@ -113,12 +105,25 @@ pub async fn cmd_bench_pp_burst(
     for run in 0..TOTAL_RUNS {
         // Signal phase to frontend so UI can show WARMUP vs MEASURED
         let phase = if run < WARMUP_RUNS { "warmup" } else { "measured" };
+        let effective_target = if run < WARMUP_RUNS { WARMUP_TOKENS } else { target_tokens };
         let _ = app_handle.emit("bench-pp-progress", serde_json::json!({
             "port": port,
             "phase": phase,
             "run": run + 1,
             "total": TOTAL_RUNS,
+            "effectiveLength": effective_target,  // for accurate UI labels (no hardcodes)
         }));
+
+        // Build synthetic prompt *per run* so warmup can use fixed small length while measured uses user-selected.
+        // Approximation: unique word list (hyphenated ML terms) + template additions cause server tokenizer
+        // to emit more tokens than word count. Old 1.05x often overshot ~1.8x (115k actual vs 64k selected).
+        // Use lower factor so built size tokenizes closer to the *selected* target. (Actual is reported in result.)
+        let words_needed = effective_target.saturating_mul(8) / 20; // ~0.4x adjusted for rarer templates + unique word tokenization (often 2+ tokens per word)
+        let bench_prompt_text = if bench_prompt_mode == "repetitive" {
+            build_repetitive_prompt(words_needed)
+        } else {
+            build_unique_prompt(words_needed)
+        };
 
         let body = serde_json::json!({
             "prompt": bench_prompt_text,
@@ -152,7 +157,7 @@ pub async fn cmd_bench_pp_burst(
                     let prefill_tps = if p_ms > 0.0 { (p_tokens as f64 / p_ms) * 1000.0 } else { 0.0 };
 
                     log::info!("[BENCH_PP] run {} | mode={} | target={} actual={} tok | prefill: {:.1} TPS",
-                        run + 1, bench_prompt_mode, target_tokens, p_tokens, prefill_tps);
+                        run + 1, bench_prompt_mode, effective_target, p_tokens, prefill_tps);
 
                     if run >= WARMUP_RUNS {
                         measured_run = Some(RunStats {
@@ -163,6 +168,21 @@ pub async fn cmd_bench_pp_burst(
                 }
                 Err(e) => return Err(format!("Request failed: {}", e)),
             }
+
+        if run < WARMUP_RUNS {
+            // Re-release after PP warmup so measured PP starts cold (no KV/prompt cache reuse from the warmup run).
+            // Although PP bench uses n_predict=0 (pure prefill), the release ensures the synthetic prompt for
+            // measured isn't "recognized" from the just-done warmup (even with cache_prompt:false).
+            if let Ok(slots_resp) = client.get(&format!("http://127.0.0.1:{}/slots", port)).send().await {
+                if let Ok(slots) = slots_resp.json::<Vec<serde_json::Value>>().await {
+                    for slot in &slots {
+                        let idx = slot["id"].as_u64().unwrap_or(0);
+                        let _ = client.post(&format!("http://127.0.0.1:{}/slots/{}/release", port, idx)).send().await;
+                    }
+                    log::debug!("[BENCH_PP] released {} slots after warmup for cold measured run", slots.len());
+                }
+            }
+        }
     }
 
     let run = match measured_run {
@@ -196,18 +216,18 @@ fn build_unique_prompt(target_words: usize) -> String {
 
     let mut word_idx = 0;
     while words.len() < target_words {
-        if words.is_empty() || words.len() % 8 == 0 {
+        if words.is_empty() || words.len() % 20 == 0 {
             words.push("the");
         }
         if words.len() < target_words {
             words.push(UNIQUE_WORDS[word_idx % UNIQUE_WORDS.len()]);
             word_idx += 1;
         }
-        if words.len() < target_words && words.len() % 4 == 0 {
-            words.push(template_verbs[(words.len() / 4) % template_verbs.len()]);
+        if words.len() < target_words && words.len() % 10 == 0 {
+            words.push(template_verbs[(words.len() / 10) % template_verbs.len()]);
         }
-        if words.len() < target_words && words.len() % 6 == 0 {
-            words.push(template_connectors[(words.len() / 6) % template_connectors.len()]);
+        if words.len() < target_words && words.len() % 15 == 0 {
+            words.push(template_connectors[(words.len() / 15) % template_connectors.len()]);
         }
     }
 

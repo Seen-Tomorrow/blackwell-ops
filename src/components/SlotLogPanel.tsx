@@ -44,8 +44,10 @@ export default memo(function SlotLogPanel({ entry, logs, systemEvents, fusionUpd
     IDLE: "",
   }[entry.status] || "";
 
-  // Phase: fusion /slots is authoritative for BUSY/READY, logs provide PROMPT_PROCESSING detail
-  const displayPhase = fusionUpdate?.engine_state === "ACTIVE" ? "GENERATING"
+  // Phase: fusion /slots is authoritative for BUSY/READY, logs provide PROMPT_PROCESSING detail.
+  // Prioritize explicit "PP" phase so prefill is not overridden to GENERATING by ACTIVE state.
+  const displayPhase = fusionUpdate?.phase === "PP" ? "PP"
+    : fusionUpdate?.phase === "TG" ? "GENERATING"
     : fusionUpdate?.engine_state === "READY" ? "IDLE" : (fusionUpdate?.phase ?? "IDLE");
 
   // Phase-specific styling

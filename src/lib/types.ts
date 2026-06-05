@@ -275,6 +275,14 @@ export interface SlotCtxInfo {
   sessionNDecoded: number;
   totalTokensLifetime: number;
   is_processing: boolean;
+  // Enriched from /slots for accurate prefill + full ctx fill (prompt + decoded + cache history)
+  promptTokens: number;
+  promptTokensProcessed: number;
+  promptTokensCache: number;
+  // Extra from full /slots response (n_remain especially useful for knowing how much gen is left in current request)
+  nRemain?: number;
+  idTask?: number;
+  speculative?: boolean;
 }
 
 /** FUSION real-time engine monitoring data — emitted from Rust /slots + /metrics fusion brain. */
@@ -290,8 +298,13 @@ export interface FusionUpdate {
   // Phase — fused from both sources
   phase: 'IDLE' | 'PP' | 'TG';
 
-  // Prefill metrics (primary source = /metrics)
+  // Prefill metrics (primary source = /metrics for TPS; /slots polled for progress/tokens — log is secondary "LP" debug)
   prefillTpsMetrics: number;   // from /metrics prompt_tokens delta
+
+  // Primary prefill progress/tokens from /slots (real-time, catches short+long prompts, no 3s throttle)
+  prefillProgress: number;    // 0→1 from n_prompt_tokens_processed / n_prompt_tokens
+  prefillTokens: number;      // processed so far this request
+  prefillTokensTotal: number; // target prompt size for current request
 
   // Generation metrics (primary source = /slots)
   genTps: number;         // from /slots n_decoded delta
