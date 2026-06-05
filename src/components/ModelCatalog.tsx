@@ -223,7 +223,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
       {/* Split panels */}
       <div className="flex flex-1 overflow-hidden">
         {/* Left panel — model browser */}
-        <div className="w-[420px] min-w-[320px] flex flex-col border-r border-stealth-border/50 cyber-panel">
+        <div className="w-[420px] min-w-[320px] flex flex-col border-r border-stealth-border/50 eink-panel-wrapper">
 
           {/* Search bar */}
           <div className="px-3 py-2 border-b border-stealth-border/50 flex-shrink-0">
@@ -243,7 +243,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
           {(() => {
             const style = visibleCount !== 'all' && dynamicMaxHeight ? { height: `${dynamicMaxHeight}px` } : undefined;
             return (
-              <div ref={catalogScrollRef} id="model-table-container" className={`overflow-y-auto cyber-scrollbar p-3 pb-[60px] ${visibleCount === 'all' ? 'flex-1 min-h-0' : 'flex-shrink-0'}`} style={style}>
+              <div ref={catalogScrollRef} id="model-table-container" className={`overflow-y-auto eink-scrollbar p-3 pb-[60px] ${visibleCount === 'all' ? 'flex-1 min-h-0' : 'flex-shrink-0'}`} style={style}>
             {allFiltered.length === 0 ? (
               <div className="flex items-center justify-center h-full text-stealth-muted text-xs font-mono opacity-50">
                 NO MODELS FOUND
@@ -280,7 +280,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
         {/* end left panel */}
 
         {/* Right panel — config + diagnostics */}
-        <div className="flex-1 cyber-panel overflow-hidden flex flex-col">
+        <div className="flex-1 eink-panel-wrapper overflow-hidden flex flex-col">
           <div className="flex-shrink-0">
             <EngineConfigPanel
               model={panelActiveModel}

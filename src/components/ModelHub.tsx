@@ -104,7 +104,7 @@ export default function ModelHub() {
       </div>
 
       {activeDownloads.length > 0 && (
-        <div className="cyber-panel p-3 space-y-2">
+        <div className="eink-panel-wrapper p-3 space-y-2">
           <div className="text-[10px] font-mono text-nv-green tracking-wider flex items-center gap-2">
             <span>⬇ DOWNLOADS</span>
             <span className="text-stealth-muted/40">{activeDownloads.length} active</span>
@@ -136,7 +136,7 @@ function DownloadProgressRow({ task }: { task: DownloadTask }) {
   }, [task.id]);
 
   return (
-    <div className="cyber-card p-2.5 space-y-1.5">
+    <div className="eink-card p-2.5 space-y-1.5">
       <div className="flex items-center justify-between text-[10px] font-mono">
         <span className="text-white/80 truncate mr-2">{task.hfModelId}</span>
         <div className="flex items-center gap-2 flex-shrink-0">

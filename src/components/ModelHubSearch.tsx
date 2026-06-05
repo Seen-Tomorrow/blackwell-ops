@@ -248,7 +248,7 @@ export default function ModelHubSearch() {
             )}
           </div>
 
-          <div className="flex-1 overflow-y-auto cyber-scrollbar">
+          <div className="flex-1 overflow-y-auto eink-scrollbar">
             {!loading && filteredResults.length === 0 && (
               <div className="flex items-center justify-center h-full text-stealth-muted/50">
                 <p className="text-[10px] font-mono italic text-center py-8 px-4">
@@ -270,7 +270,7 @@ export default function ModelHubSearch() {
                 key={model.id}
                 onClick={() => setSelectedId(model.id)}
                 className={`w-full text-left border-b border-stealth-border/30 p-3 transition-all hub-result-enter ${
-                  selectedId === model.id ? 'brushed-steel-card border-l-2 border-l-nv-green' : 'cyber-card hover:bg-depth-black/40'
+                  selectedId === model.id ? 'gunmetal-card border-l-2 border-l-nv-green' : 'eink-card hover:bg-depth-black/40'
                 }`}
               >
                   <div className="flex items-start justify-between gap-2 mb-1.5">
@@ -309,7 +309,7 @@ export default function ModelHubSearch() {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto cyber-scrollbar">
+        <div className="flex-1 overflow-y-auto eink-scrollbar">
           {loadingDetail ? (
             <div key="loading-detail" className="flex items-center justify-center h-full fade-in">
               <span className="text-xs font-mono text-nv-green hub-search-pulse">

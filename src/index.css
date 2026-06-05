@@ -127,16 +127,16 @@ html, body, #root {
   background-size: 40px 40px;
 }
 
-/* ── Cyberpunk Panel Styles ─────────────────────────────── */
+/* ── E-ink Panel Wrapper — shared panel background ─────────────────────────────── */
 
-.cyber-panel {
+.eink-panel-wrapper {
   background: #040b01;
   border: 1px solid wrgba(255, 255, 255, 0.08);
   position: relative;
   overflow: hidden;
 }
 
-.cyber-panel::before {
+.eink-panel-wrapper::before {
   content: '';
   position: absolute;
   top: 0;
@@ -163,16 +163,18 @@ html, body, #root {
 }
 
 /* Model card styles */
-.cyber-card {
-  background: #060606;
-  border: 1px solid rgba(74, 222, 128, 0.08);
+/* ── E-ink Card — model list items ─── */
+.eink-card {
+  background: linear-gradient(135deg, rgba(28,30,34,.6) 0%, rgba(5,10,2,.8) 100%);
+  border: 1px solid rgba(74, 222, 128, 0.06);
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
   overflow: hidden;
 }
 
-.cyber-card:hover {
-  border-color: rgba(74, 222, 128, 0.2);
+.eink-card:hover {
+  background: linear-gradient(135deg, rgba(28,30,34,.8) 0%, rgba(8,15,3,.9) 100%);
+  border-color: rgba(74, 222, 128, 0.15);
   box-shadow: 0 0 12px rgba(74, 222, 128, 0.06), inset 0 0 12px rgba(74, 222, 128, 0.02);
   transform: translateY(-1px);
 }
@@ -446,21 +448,21 @@ html, body, #root {
   background: linear-gradient(90deg, transparent, rgba(74, 222, 128, 0.3), transparent);
 }
 
-/* Scrollbar for panels */
-.cyber-scrollbar::-webkit-scrollbar {
+/* ── E-ink Scrollbar ─── */
+.eink-scrollbar::-webkit-scrollbar {
   width: 4px;
 }
 
-.cyber-scrollbar::-webkit-scrollbar-track {
+.eink-scrollbar::-webkit-scrollbar-track {
   background: rgba(10, 10, 15, 0.5);
 }
 
-.cyber-scrollbar::-webkit-scrollbar-thumb {
+.eink-scrollbar::-webkit-scrollbar-thumb {
   background: rgba(118, 185, 0, 0.3);
   border-radius: 2px;
 }
 
-.cyber-scrollbar::-webkit-scrollbar-thumb:hover {
+.eink-scrollbar::-webkit-scrollbar-thumb:hover {
   background: rgba(118, 185, 0, 0.5);
 }
 
@@ -852,46 +854,61 @@ html, body, #root {
   50% { opacity: 0.6; box-shadow: 0 0 0 3px rgba(118, 185, 0, 0); }
 }
 
-/* Brushed steel card — selected model in catalog */
-.brushed-steel-card {
-  background: #0c120a;
-  border-color: rgba(184, 122, 0, 0.5) !important;
-  box-shadow: 0 0 8px rgba(184, 122, 0, 0.1), inset 0 0 6px rgba(184, 122, 0, 0.04);
+/* ── Gunmetal Card — selected model, mini display bezel ─── */
+.gunmetal-card {
+  background-color: #1c1e22;
+  background-image: repeating-linear-gradient(
+    135deg,
+    rgba(255,255,255,.02) 0px,
+    transparent 1px,
+    transparent 4px
+  );
+  border-top: 1px solid rgba(200, 210, 220, 0.10) !important;
+  border-left: 1px solid rgba(200, 210, 220, 0.06) !important;
+  border-bottom: 1.5px solid rgba(0, 0, 0, 0.5) !important;
+  border-right: 1.5px solid rgba(0, 0, 0, 0.4) !important;
+  border-radius: 6px !important;
+  box-shadow:
+    0 3px 10px rgba(0, 0, 0, 0.6),
+    0 1px 3px rgba(0, 0, 0, 0.4),
+    inset 0 1px 4px rgba(0, 0, 0, 0.3),
+    inset 0 -1px 3px rgba(0, 0, 0, 0.2);
 }
 
-.brushed-steel-card::before {
+.gunmetal-card::before {
   content: '';
   position: absolute;
   left: 0;
-  top: 4px;
-  bottom: 4px;
-  width: 4px;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
   background: #b87a00;
   border-radius: 2px;
+  box-shadow: 0 0 4px rgba(184, 122, 0, 0.3);
 }
 
-/* Selected model card text — keep readable on dark bg */
-.brushed-steel-card .text-white {
+/* Selected model card text — keep readable on gunmetal bg */
+.gunmetal-card .text-white {
   color: #e0e0e0 !important;
 }
 
-.brushed-steel-card .text-stealth-muted {
+.gunmetal-card .text-stealth-muted {
   color: #9a9488 !important;
 }
 
-.brushed-steel-card .border-stealth-border\/30 {
-  border-color: rgba(154, 148, 136, 0.2) !important;
+.gunmetal-card .border-stealth-border\/30 {
+  border-color: rgba(154, 148, 136, 0.25) !important;
 }
 
 /* Brushed steel — narrow variant for model cards (vertical grain, stretched pattern) */
-.brushed-steel-card-narrow {
+.gunmetal-card-narrow {
   background-image:
     linear-gradient(180deg, #7a7d7a 0%, #959895 47%, #7a7d7a 53%, #6e716e 100%);
   background-size: 1000% 300%;
   border-color: rgba(118, 185, 0, 0.4);
 }
 
-/* ── E-ink panel — parameters section, muted phosphor (no texture) ─── */
+/* ── E-ink Panel — parameters section, phosphor green text ─── */
 .eink-panel {
   background: #040b01;
 }

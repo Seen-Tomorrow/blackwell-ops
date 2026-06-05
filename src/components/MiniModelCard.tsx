@@ -20,7 +20,7 @@ export default function MiniModelCard({ entry, modelAuthor, modelName, quant, si
       onClick={() => onSelect(entry.alias!)}
       className={`cursor-pointer rounded-sm p-1.5 border mini-card-enter ${
         isSelected
-           ? "brushed-steel-card"
+           ? "gunmetal-card"
            : isNewLaunch
              ? "bg-black/40 hover:bg-black/60 mini-card-new-pulse"
              : "bg-black/40 border-nv-green/40 hover:bg-black/60"

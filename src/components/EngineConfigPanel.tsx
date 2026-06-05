@@ -750,7 +750,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       </div>
 
       {/* Parameters — scrollable middle section (e-ink panel) */}
-      <div className="px-4 py-3 border-b relative flex-1 overflow-y-auto cyber-scrollbar eink-panel">
+      <div className="px-4 py-3 border-b relative flex-1 overflow-y-auto eink-scrollbar eink-panel">
 
         {allParamsForLaunch.length === 0 ? (
           <div className="text-stealth-muted text-[10px] font-mono opacity-50">NO PARAMS DEFINED</div>

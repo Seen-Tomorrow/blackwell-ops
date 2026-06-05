@@ -51,8 +51,8 @@ export default function ModelCard({ model, idx, isSelected, isHighlighted, fitSt
       onClick={() => onSelect(model)}
       className={`relative cursor-pointer rounded-sm p-2.5 model-card-enter ${
         isSelected
-           ? "brushed-steel-card border"
-           : "cyber-card hover:bg-black/40"
+           ? "gunmetal-card border"
+           : "eink-card hover:bg-black/40"
       }`}
     >
       {/* ── Author + path label ─── */}
