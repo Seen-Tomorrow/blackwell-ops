@@ -72,8 +72,7 @@ export default function ModelCard({ model, idx, isSelected, isHighlighted, fitSt
 
       {/* ── Name + params ─── */}
       <span
-        className="text-[11px] font-mono block truncate"
-        style={isSelected ? { color: '#b87a00' } : undefined}
+        className="text-[11px] font-mono block truncate model-card-name"
         title={model.name}
       >
         {model.name}

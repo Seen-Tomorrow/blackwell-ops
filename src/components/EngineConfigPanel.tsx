@@ -566,11 +566,11 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   }
 
   return (
-    <div className="flex flex-col h-full overflow-hidden" data-config-panel style={{ background: '#040b01' }}>
+    <div className="flex flex-col h-full overflow-hidden" data-config-panel>
       {/* Provider selector */}
       {externalProviders && externalProviders.length > 0 && (
         <div className="px-4 py-3 border-b section-divider relative flex-shrink-0">
-          <label className="text-[9px] font-mono tracking-widest uppercase block mb-2" style={{ color: 'rgba(245, 151, 31, 0.8)' }}>
+          <label className="text-[9px] font-mono tracking-widest uppercase block mb-2 amber-label">
             ENGINE PROVIDER
           </label>
           <div className="flex gap-1.5 flex-wrap">
@@ -609,7 +609,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         return (
           <div className="mono-panel relative flex-shrink-0">
             {/* Section header — outside the green bg, on dark */}
-            <div className="relative z-[2] px-4 pt-3 pb-1" style={{ background: '#040b01' }}>
+            <div className="relative z-[2] px-4 pt-3 pb-1 mono-panel-header">
 
             </div>
             <div className="relative z-[2] px-4 py-3 pr-6">
@@ -902,30 +902,27 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
         {/* Test flags */}
         {isAdminUnlocked && (
-          <div className="relative mt-2 border rounded-sm overflow-hidden transition-all duration-200" style={{ borderColor: testFlagsEnabled ? 'rgba(184, 122, 0, 0.5)' : 'rgba(184, 122, 0, 0.15)' }}>
+          <div className={`relative mt-2 border rounded-sm overflow-hidden transition-all duration-200 custom-flags-block ${testFlagsEnabled ? 'custom-flags-active' : ''}`}>
             {/* Top accent bar */}
             <div className="h-[1px] w-full bg-gradient-to-r from-transparent via-amber-600/40 to-transparent" />
-            <div className="px-2.5 py-1.5 space-y-1 transition-all duration-200" style={{ background: testFlagsEnabled ? 'rgba(184, 122, 0, 0.08)' : 'rgba(184, 122, 0, 0.02)' }}>
+            <div className="px-2.5 py-1.5 space-y-1 transition-all duration-200 custom-flags-body">
               {/* Header row */}
               <div className="flex items-center justify-between">
-                <label className="text-[9px] font-mono uppercase tracking-wider transition-all duration-200" style={{ color: testFlagsEnabled ? 'rgba(184, 122, 0, 0.9)' : 'rgba(184, 122, 0, 0.5)' }}>
+                <label className={`text-[9px] font-mono uppercase tracking-wider transition-all duration-200 custom-flags-label`}>
                   CUSTOM FLAGS
                 </label>
                 <div className="flex items-center gap-2">
                   {/* Mode toggle */}
                   <button
                     onClick={() => { if (testFlagsEnabled) setTestFlagsMode(m => m === "add" ? "replace" : "add"); }}
-                    className={`px-2 py-0.5 text-[7px] font-mono border rounded-sm transition-all duration-150 ${
-                      testFlagsEnabled
-                        ? testFlagsMode === "add"
-                          ? "border-green-500/30 text-green-400"
-                          : "border-red-500/30 text-red-400"
-                        : "border-stealth-border/30 text-stealth-muted/30 cursor-not-allowed"
-                    }`}
-                    style={testFlagsEnabled ? {
-                      background: testFlagsMode === "add" ? 'rgba(74, 222, 128, 0.06)' : 'rgba(248, 113, 113, 0.06)',
-                    } : {}}
-                    disabled={!testFlagsEnabled}
+                  className={`px-2 py-0.5 text-[7px] font-mono border rounded-sm transition-all duration-150 ${
+                       testFlagsEnabled
+                         ? testFlagsMode === "add"
+                           ? "mode-btn-add"
+                           : "mode-btn-replace"
+                         : "mode-btn-disabled"
+                     }`}
+                     disabled={!testFlagsEnabled}
                   >
                     {testFlagsMode === "add" ? "+ APPEND" : "= REPLACE"}
                   </button>
@@ -980,12 +977,11 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                 onChange={(e) => setTestFlags(e.target.value)}
                 placeholder="-sm layer -smf32 1 ..."
                 disabled={!testFlagsEnabled}
-                className={`w-full border text-[9px] font-mono px-2.5 py-1 focus:outline-none transition-all duration-150 rounded-sm ${
-                   testFlagsEnabled
-                     ? "border-amber-600/30 focus:border-amber-600/50 placeholder:text-stealth-muted/40"
-                     : "border-stealth-border/20 text-stealth-muted/30 cursor-not-allowed"
+               className={`w-full border text-[9px] font-mono px-2.5 py-1 focus:outline-none transition-all duration-150 rounded-sm custom-flags-input ${
+                    testFlagsEnabled
+                      ? "border-amber-600/30 focus:border-amber-600/50 placeholder:text-stealth-muted/40"
+                      : "border-stealth-border/20 text-stealth-muted/30 cursor-not-allowed"
                 }`}
-                style={{ background: 'rgba(0, 0, 0, 0.3)' }}
               />
             </div>
           </div>

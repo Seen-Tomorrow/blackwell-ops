@@ -1079,6 +1079,74 @@ html, body, #root {
   color: rgb(59, 130, 246) !important;
 }
 
+/* ── Amber label — ENGINE PROVIDER, RUNTIME PROFILE, etc. ─── */
+.amber-label {
+  color: rgba(245, 151, 31, 0.8);
+}
+
+/* ── Custom Flags block ─── */
+.custom-flags-block {
+  border-color: rgba(184, 122, 0, 0.15);
+}
+
+.custom-flags-block.custom-flags-active {
+  border-color: rgba(184, 122, 0, 0.5);
+}
+
+.custom-flags-body {
+  background: rgba(184, 122, 0, 0.02);
+}
+
+.custom-flags-block.custom-flags-active .custom-flags-body {
+  background: rgba(184, 122, 0, 0.08);
+}
+
+.custom-flags-label {
+  color: rgba(184, 122, 0, 0.5);
+}
+
+.custom-flags-active .custom-flags-label {
+  color: rgba(184, 122, 0, 0.9);
+}
+
+/* Mode toggle buttons inside Custom Flags */
+.mode-btn-add {
+  border-color: rgba(74, 222, 128, 0.3);
+  color: #4ade80;
+  background: rgba(74, 222, 128, 0.06);
+}
+
+.mode-btn-replace {
+  border-color: rgba(248, 113, 113, 0.3);
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.06);
+}
+
+.mode-btn-disabled {
+  border-color: rgba(26, 46, 26, 0.3);
+  color: rgba(100, 100, 116, 0.3);
+  cursor: not-allowed;
+}
+
+.custom-flags-input {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+/* ── Config panel root background ─── */
+[data-config-panel] {
+  background: #040b01;
+}
+
+/* ── Mono panel header spacer background ─── */
+.mono-panel-header {
+  background: #040b01;
+}
+
+/* ── Selected model card name color ─── */
+.gunmetal-card .model-card-name {
+  color: #b87a00;
+}
+
 /* ── Select option styling (WebView2 ignores inline styles on <option>) ─── */
 select option {
   background: #1a1a2e !important;
