@@ -103,6 +103,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
 
   // Determine effective port for right panel
   const effectiveEnginePort = effectiveEngineEntry?.port;
+  const effectiveSupportsFusion = effectiveEngineEntry?.supportsFusion ?? true;
 
   // ── Sort bar ────────────────
   const renderSortBar = () => (
@@ -300,6 +301,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
               activeEngineAlias={effectiveEngineAlias}
               activeEnginePort={effectiveEnginePort}
               selectedSlotIdx={selectedSlotIdx}
+              supportsFusion={effectiveSupportsFusion}
               models={models}
               onSelectEngine={handleSelectBySlot}
             />

@@ -16,6 +16,7 @@ interface VramBadgeProps {
   activeEngineAlias?: string;
   activeEnginePort?: number;
   selectedSlotIdx?: number | null; // Slot index for Fusion overlay (unique, no collision)
+  supportsFusion?: boolean;
   offloadMode?: string; // Current Offload_Mode config value (e.g., "moe_optimal")
   onMoeSuggestionClick?: () => void; // Callback to auto-switch to MOE_OPTIMAL
   className?: string;
@@ -25,7 +26,7 @@ interface VramBadgeProps {
  *  GOLDEN RULE: Never add conditional logic or hardcoded text here. */
 export default function VramBadge({
   manifest, gpus, modelMeta, selectedGpuIndices, onDeviceSelect, isValidating, onValidate,
-  isModelRunning, activeEngineAlias, activeEnginePort, selectedSlotIdx, offloadMode, onMoeSuggestionClick, className
+  isModelRunning, activeEngineAlias, activeEnginePort, selectedSlotIdx, supportsFusion = true, offloadMode, onMoeSuggestionClick, className
 }: VramBadgeProps) {
   if (!manifest) return null;
 
@@ -73,6 +74,7 @@ export default function VramBadge({
             alias={activeEngineAlias}
             enginePort={activeEnginePort}
             fusion={fusion}
+            supportsFusion={supportsFusion}
           />
         </div>
       )}

@@ -494,6 +494,15 @@ html, body, #root {
   color: #4ade80;
 }
 
+/* ENGINE LOGS — per-slot search highlight */
+.log-search-hit {
+  background: rgba(255, 184, 0, 0.35);
+  color: #ffd966;
+  border-radius: 1px;
+  padding: 0 1px;
+  box-shadow: 0 0 6px rgba(255, 184, 0, 0.25);
+}
+
 /* Section divider with glow */
 .section-divider {
   border-color: rgba(26, 46, 26, 0.5);

@@ -4,8 +4,6 @@ use std::process::Stdio;
 use std::sync::Mutex;
 use sysinfo::System;
 
-use crate::nvml_probe;
-
 static CPU_SYSTEM: Mutex<Option<System>> = Mutex::new(None);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -17,8 +15,10 @@ pub struct GpuInfo {
     pub memory_free: u64,      // MB
     pub memory_total_manufactured: u64, // MB — actual card capacity (e.g. 98304 = 96 GB)
     pub temperature_gpu: u32,  // Celsius — core GPU temp
-    pub temperature_hot_spot: Option<u32>, // Celsius — GPU hot spot (primary health metric; 255 = redacted/invalid)
-    pub temperature_memory: Option<u32>, // Celsius — HBM mem temp (may be None)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub temperature_hot_spot: Option<u32>, // Deprecated — NVIDIA redacted on recent drivers
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub temperature_memory: Option<u32>, // Deprecated — NVIDIA redacted on recent drivers
     pub power_draw: f32,       // Watts
     pub power_limit: f32,      // Watts
     pub utilization_gpu: u32,  // Percentage
@@ -77,7 +77,7 @@ fn get_physical_ram_bytes() -> Result<u64, String> {
 pub async fn scan_gpus() -> Result<Vec<GpuInfo>, String> {
     let output = tokio::process::Command::new("nvidia-smi")
         .args(&[
-            "--query-gpu=index,name,memory.total,memory.used,memory.free,temperature.gpu,temperature.memory,power.draw,power.limit,utilization.gpu,utilization.memory",
+            "--query-gpu=index,name,memory.total,memory.used,memory.free,temperature.gpu,power.draw,power.limit,utilization.gpu,utilization.memory",
             "--format=csv,noheader,nounits",
         ])
         .stdout(Stdio::piped())   // MUST be piped — null() discards output, returns empty GPU list
@@ -93,9 +93,6 @@ pub async fn scan_gpus() -> Result<Vec<GpuInfo>, String> {
         return Ok(vec![]);
     }
 
-    // Hot spot queried via NVML (nvidia-smi doesn't support temperature.hot_spot on this driver)
-    let hot_spot_map = nvml_probe::probe_junction_temps_nvml().await;
-
     let mut gpus = Vec::new();
 
     for line in stdout.lines() {
@@ -104,25 +101,19 @@ pub async fn scan_gpus() -> Result<Vec<GpuInfo>, String> {
             continue;
         }
 
-        // Split from the right: last 9 fields are always numeric (mem_total through util_mem)
-        // Everything between index(0) and those 9 fields is the GPU name
+        // Split from the right: last 8 fields are always numeric (mem_total through util_mem)
+        // Everything between index(0) and those 8 fields is the GPU name
         let parts: Vec<&str> = line.split(',').map(|s| s.trim()).collect();
 
-        if parts.len() < 10 {
+        if parts.len() < 9 {
             log::debug!("nvidia-smi line has too few fields ({}): {}", parts.len(), line);
             continue;
         }
 
         let index: u32 = parts[0].parse().unwrap_or(0);
 
-        // We need at least: index + name + 9 numeric fields = 10 minimum
-        if parts.len() < 10 {
-            log::debug!("nvidia-smi line has {} fields (expected >= 10): {}", parts.len(), line);
-            continue;
-        }
-
-        // GPU name is between index and the last 9 numeric fields
-        let num_numeric = 9;
+        // GPU name is between index and the last 8 numeric fields
+        let num_numeric = 8;
         let name_end = parts.len() - num_numeric;
         let gpu_name = if name_end > 1 {
             parts[1..name_end].join(", ")
@@ -130,25 +121,17 @@ pub async fn scan_gpus() -> Result<Vec<GpuInfo>, String> {
             "Unknown GPU".to_string()
         };
 
-        // Last 9 numeric fields: memory.total, mem.used, mem.free, temp.gpu, temp.memory,
+        // Last 8 numeric fields: memory.total, mem.used, mem.free, temp.gpu,
         //   power.draw, power.limit, util.gpu, util.mem
         let base = name_end;
         let memory_total: u64 = parts[base].parse().unwrap_or(0);
         let memory_used: u64 = parts[base + 1].parse().unwrap_or(0);
         let memory_free: u64 = parts[base + 2].parse().unwrap_or(0);
         let temperature_gpu: u32 = parts[base + 3].parse().unwrap_or(0);
-        // Memory temp may be "N/A" on Blackwell (HBM4)
-        let temperature_memory: Option<u32> = parts[base + 4]
-            .trim()
-            .parse()
-            .ok();
-        let power_draw: f32 = parts[base + 5].parse().unwrap_or(0.0);
-        let power_limit: f32 = parts[base + 6].parse().unwrap_or(0.0);
-        let utilization_gpu: u32 = parts[base + 7].parse().unwrap_or(0);
-        let utilization_memory: u32 = parts[base + 8].parse().unwrap_or(0);
-
-        // Hot spot from NVML probe (None if not supported / redacted by NVIDIA)
-        let temperature_hot_spot = hot_spot_map.get(&index).copied();
+        let power_draw: f32 = parts[base + 4].parse().unwrap_or(0.0);
+        let power_limit: f32 = parts[base + 5].parse().unwrap_or(0.0);
+        let utilization_gpu: u32 = parts[base + 6].parse().unwrap_or(0);
+        let utilization_memory: u32 = parts[base + 7].parse().unwrap_or(0);
 
         gpus.push(GpuInfo {
             index,
@@ -158,8 +141,8 @@ pub async fn scan_gpus() -> Result<Vec<GpuInfo>, String> {
             memory_free,
             memory_total_manufactured: manufactured_vram(&gpu_name),
             temperature_gpu,
-            temperature_hot_spot,
-            temperature_memory,
+            temperature_hot_spot: None,
+            temperature_memory: None,
             power_draw,
             power_limit,
             utilization_gpu,
@@ -269,9 +252,6 @@ fn memory_total_from_name(name: &str) -> u64 {
     else if lower.contains("p100") { 16384 }
     else { 0 }
 }
-
-// Hot spot temperature is queried directly from nvidia-smi as the primary GPU health metric.
-// Any sensor returning 255 (NVIDIA sentinel for "redacted/unavailable") is filtered out.
 
 /// Scan system memory info — total and available RAM in MiB.
 #[tauri::command]

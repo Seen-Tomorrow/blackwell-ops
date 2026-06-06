@@ -258,7 +258,8 @@ They're not redundant, they're just both present. The resolution function has a 
 |---|---|---|---|
 | **Factory defaults** | `runtime/<provider>/config/<id>-default-config.json` | Bundled in release, read-only at runtime | Admin (you) — edit JSON before shipping |
 | **User config** | `config/<id>-user-config.json` | On disk, editable copy of factory + user preferences | User — UI toggles hidden, reorders params, adds custom values |
-| **localStorage overrides** | Browser localStorage (`blackops-override-{providerId}`) | Per-session only, disposable | Frontend — tracks which value is "currently selected" in ConfigPage UI |
+| **localStorage overrides** | Browser localStorage (`BlackOps-admin-catalog-override:{providerId}`) | Survives restarts until RESET | Frontend — launch-time chip selections (primarily EngineConfigPanel) |
+| **localStorage group order** | `BlackOps-group-order-{providerId}` | UI cache; also persisted to disk `groupOrder` | Cleared on RESET TO DEFAULTS |
 
 ### Factory defaults JSON structure
 
@@ -287,9 +288,9 @@ Each provider has a default config JSON at `runtime/<id>/config/<id>-default-con
 
 **template_type mapping:** `"ggml-llama"` → `runtime/ggml-master/`, `"ik-llama"` → `runtime/ik/`, empty string → custom (no template).
 
-### Merge: `merge_template_into_user_params` (`config.rs`)
+### Merge: `merge_template_for_provider` (`config.rs`)
 
-Runs on every app load when loading providers. Takes fresh factory template + saved user config and produces merged result. **Merge philosophy:** aggressively sync structural fields from factory, preserve purely cosmetic user choices.
+Runs on every app load and every `save_provider`. Factory providers merge from `runtime/<provider_id>/config/`; custom providers fall back to `template_type` → folder mapping. **Merge philosophy:** aggressively sync structural fields from factory, preserve purely cosmetic user choices.
 
 | Field | Behavior | Rationale |
 |---|---|---|
@@ -298,7 +299,8 @@ Runs on every app load when loading providers. Takes fresh factory template + sa
 | **factoryDefault** | Always sync from fresh template's `default` | Keeps green/yellow bubble styling correct after updates |
 | **label, key** | Sync from template | Admin can rename params without requiring full user reset |
 | **ptype** | Only backfill if still default `"arg_select"`. If admin deliberately changed it → don't overwrite. | Ptype change is deliberate |
-| **flag, step, dock, pattern, sub_params** | Backfill only if empty/missing in user config | Fill on first run, preserve after set |
+| **flag, step, dock, pattern** | Backfill only if empty/missing in user config | Fill on first run, preserve after set |
+| **sub_params** | Per-key merge — template keys backfill only if missing in user config | User keys preserved; new factory keys added |
 | **note, ui_group** | Backfill only if empty | Admin may customize these |
 | **hidden** | Never touch ✅ | User UI preference |
 | **order** | Kept for existing params. New params appended at end. ✅ | User UI preference |
@@ -319,11 +321,11 @@ Orphaned params (in user config but removed from template) are kept alive — no
 
 ### Factory Reset: `reset_provider_user_config`
 
-Rust command that deletes `{id}-user-config.json` entirely. Frontend calls via IPC then dispatches `"blackops-reload-providers"` for instant refresh. On reload, provider regenerates 1:1 from factory defaults — guaranteed correct state. This is the user's escape hatch when config drift causes issues.
+Rust command that deletes `{id}-user-config.json` entirely. Frontend calls via IPC, clears `BlackOps-admin-catalog-override:{id}` and `BlackOps-group-order-{id}` localStorage, then dispatches `"blackops-reload-providers"`. On reload, provider regenerates 1:1 from factory defaults — full wipe, no partial reset. This is the user's escape hatch when config drift causes issues.
 
 ### Override system (localStorage)
 
-ConfigPage stores "which value is currently picked" in localStorage (`blackops-override-{providerId}`). The `setOverride` function merges into existing overrides so multiple params can have simultaneous selections. Each param row passes its override handler and a clear handler to ValueBubbles:
+EngineConfigPanel (via `useConfigResolver`) stores launch-time chip selections in localStorage (`BlackOps-admin-catalog-override:{providerId}`). ConfigPage has matching read/clear handlers. The `setOverride` function merges into existing overrides so multiple params can have simultaneous selections:
 - Clicking a bubble calls `setOverride(key, value)` — stores selection for that param
 - Clicking × on an orphaned override chip calls `clearOverride(key)` — deletes just that key from localStorage
 
@@ -332,7 +334,7 @@ Slider ptype suppresses the "override chip" display entirely because any numeric
 ### Removed features (no longer exist)
 
 **TEMPLATE UPDATE button / modal** — removed. Merge happens silently on every load. No manual sync needed.
-**VALIDATE button / handler** — removed. Validation runs inline during save_provider as a block-guard. The old `check_template_update` / `apply_template_update` Rust commands are deleted.
+**VALIDATE button / handler** — removed. Validation runs as block-save in `save_provider` and `save_user_providers_meta` via `validate_provider_params`. The old `check_template_update` / `apply_template_update` Rust commands are deleted.
 
 ---
 

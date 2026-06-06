@@ -69,7 +69,7 @@ async fn get_hf_model_info(
 async fn set_hf_token(token: String, app_config: tauri::State<'_, Arc<std::sync::Mutex<config::AppConfig>>>) -> Result<(), String> {
     let mut cfg = app_config.lock().map_err(|e| e.to_string())?;
     cfg.hf_token = token;
-    config::save_config(&cfg).map_err(|e| e.to_string())?;
+    config::save_config(&mut cfg).map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -105,7 +105,7 @@ async fn add_model_path(
 ) -> Result<(), String> {
     let mut cfg = config.lock().map_err(|e| e.to_string())?;
     config::add_model_path(&mut cfg, path, label);
-    config::save_config(&cfg).map_err(|e| e.to_string())?;
+    config::save_config(&mut cfg).map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -116,7 +116,7 @@ async fn remove_model_path(
 ) -> Result<(), String> {
     let mut cfg = config.lock().map_err(|e| e.to_string())?;
     config::remove_model_path(&mut cfg, &path);
-    config::save_config(&cfg).map_err(|e| e.to_string())?;
+    config::save_config(&mut cfg).map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -127,7 +127,7 @@ async fn set_default_model_path(
 ) -> Result<(), String> {
     let mut cfg = config.lock().map_err(|e| e.to_string())?;
     config::set_default_model_path(&mut cfg, &path);
-    config::save_config(&cfg).map_err(|e| e.to_string())?;
+    config::save_config(&mut cfg).map_err(|e| e.to_string())?;
     Ok(())
 }
 

@@ -7,20 +7,22 @@ import Layout from "./components/Layout";
 import StackView from "./components/StackView";
 import ModelCatalog from "./components/ModelCatalog";
 import TelemetryPanel from "./components/TelemetryPanel";
+import TelemetryLab from "./components/telemetry-lab/TelemetryLab";
+import IntelPage from "./components/IntelPage";
 import ConfigPage from "./components/ConfigPage";
 import MobileSentinelPage from "./components/MobileSentinelPage";
 import Reactor11 from "./components/Reactor11";
 import ModelHub from "./components/ModelHub";
-import AnsiText from "./components/AnsiText";
+import LogLineText from "./components/LogLineText";
 import { StatusProvider } from "./context/StatusBarContext";
 import { DockProvider } from "./context/DockContext";
 import { TelemetryProvider } from "./context/TelemetryContext";
 import { ToastProvider } from "./components/Toast";
 import { FoundryProvider } from "./hooks/useBuildDock";
-import { KEYS, STORAGE_PREFIX } from "./lib/storage";
+import { KEYS, STORAGE_PREFIX, loadLogSearchBySlot, saveLogSearchBySlot } from "./lib/storage";
 import type { ModelEntry, StackEntry, LogBatch, LogEntry, SystemEvent, ProviderConfig, AppUpdateInfo } from "./lib/types";
 
-export type Tab = "catalog" | "modelhub" | "stack" | "reactor11" | "telemetry" | "logs" | "config" | "sentinel";
+export type Tab = "catalog" | "modelhub" | "stack" | "reactor11" | "telemetry" | "intel" | "logs" | "config" | "sentinel";
 
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>("catalog");
@@ -31,6 +33,8 @@ function App() {
   // fusionUpdates removed — managed by useFusionData hook (single listener)
 
   const [activeLogSlot, setActiveLogSlot] = useState<number | "all">("all");
+  const [logSearchBySlot, setLogSearchBySlot] = useState<Record<number, string>>(() => loadLogSearchBySlot());
+  const [logSearchOpenSlot, setLogSearchOpenSlot] = useState<number | null>(null);
   const logsScrollRef = useRef<HTMLDivElement>(null);
   const autoScrollRef = useRef(true);
   // Unsubscribe refs for Tauri event listeners — survive StrictMode mount/unmount/remount cycle.
@@ -51,12 +55,39 @@ function App() {
   const [scanningPath, setScanningPath] = useState<string | null>(null);
   const [batchScanState, setBatchScanState] = useState<{active: boolean; scanned: number; failed: number; total: number}>({ active: false, scanned: 0, failed: 0, total: 0 });
 
+  const clearSlotLogSearch = useCallback((slot: number) => {
+    setLogSearchBySlot((prev) => {
+      if (!(slot in prev)) return prev;
+      const next = { ...prev };
+      delete next[slot];
+      saveLogSearchBySlot(next);
+      return next;
+    });
+    setLogSearchOpenSlot((prev) => (prev === slot ? null : prev));
+  }, []);
+
+  const setSlotLogSearch = useCallback((slot: number, query: string) => {
+    setLogSearchBySlot((prev) => {
+      const next = { ...prev };
+      if (!query.trim()) {
+        delete next[slot];
+      } else {
+        next[slot] = query;
+      }
+      saveLogSearchBySlot(next);
+      return next;
+    });
+  }, []);
+
   const releaseSlotLogCaches = useCallback((slot?: number) => {
     if (slot === undefined) {
       setLogs(new Map());
       setSystemEvents(new Map());
       flatLogsRef.current.clear();
       logsLengthsRef.current = {};
+      setLogSearchBySlot({});
+      setLogSearchOpenSlot(null);
+      saveLogSearchBySlot({});
       return;
     }
     setLogs((prev) => {
@@ -73,12 +104,10 @@ function App() {
     });
     flatLogsRef.current.delete(slot);
     delete logsLengthsRef.current[slot];
-  }, []);
+    clearSlotLogSearch(slot);
+  }, [clearSlotLogSearch]);
   const [totalParams, setTotalParams] = useState(0);
   const [hiddenCount, setHiddenCount] = useState(0);
-  const [lowPower, setLowPower] = useState(() => {
-    try { return localStorage.getItem(KEYS.lowPower) === "true"; } catch { return false; }
-  });
   const [isAdminUnlocked, setIsAdminUnlockedRaw] = useState(() => {
     try {
       const s = localStorage.getItem(KEYS.adminLock);
@@ -104,14 +133,6 @@ function App() {
       window.removeEventListener("admin-lock-changed", adminHandler);
       window.removeEventListener("blackops-navigate-stack", navHandler);
     };
-  }, []);
-
-  const toggleLowPower = useCallback(() => {
-    setLowPower((prev) => {
-      const next = !prev;
-      try { localStorage.setItem(KEYS.lowPower, String(next)); } catch {}
-      return next;
-    });
   }, []);
 
   const handleShowAll = useCallback(() => {
@@ -436,7 +457,8 @@ function App() {
       next.set(slot, []);
       return next;
     });
-  }, []);
+    clearSlotLogSearch(slot);
+  }, [clearSlotLogSearch]);
 
   const flatLogs = useMemo(() => {
     const result = new Map();
@@ -468,7 +490,7 @@ function App() {
     <ToastProvider>
       <DockProvider>
         <FoundryProvider>
-          <TelemetryProvider lowPower={lowPower}>
+          <TelemetryProvider pollingActive={activeTab === "telemetry"}>
             <StatusProvider value={{ totalParams, hiddenCount, onShowAll: handleShowAll }}>
             <Layout activeTab={activeTab} onTabChange={(tab) => { setActiveTab(tab); if (tab === "config") setHasBinaryUpdates(false); }} providers={providers} appUpdate={appUpdate} hasBinaryUpdates={hasBinaryUpdates} onInstallAppUpdate={handleInstallAppUpdate}>
         {activeTab === "catalog" && (
@@ -483,10 +505,11 @@ function App() {
           <Reactor11 models={models} />
         )}
         {activeTab === "telemetry" && (
-          <div className="h-full flex flex-col p-4 gap-3">
-            <TelemetryPanel lowPower={lowPower} onToggleLowPower={toggleLowPower} />
+          <div className="h-full flex flex-col p-4 gap-3 min-h-0">
+            {isAdminUnlocked ? <TelemetryLab stack={stack} /> : <TelemetryPanel />}
           </div>
         )}
+        {activeTab === "intel" && <IntelPage />}
         {activeTab === "logs" && (
           <div className="h-full flex flex-col p-4 gap-0">
             <h2 className="text-xs font-mono text-nv-green tracking-wider mb-2 flex-shrink-0">ENGINE LOGS</h2>
@@ -508,14 +531,54 @@ function App() {
                   const status = stackEntry?.status;
                   const isRunning = status === "RUNNING" || status === "LOADING";
                   return (
-                    <div key={slot} className="flex flex-col items-start gap-0.5">
+                    <div key={slot} className="flex flex-col items-start gap-0.5 min-w-0">
+                      <div className="flex items-center gap-0.5">
+                        <button
+                          type="button"
+                          title={logSearchBySlot[slot] ? `Search active: "${logSearchBySlot[slot]}"` : "Search logs"}
+                          onClick={() => setLogSearchOpenSlot((prev) => (prev === slot ? null : slot))}
+                          className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm border transition-all focus:outline-none whitespace-nowrap ${
+                            logSearchBySlot[slot]
+                              ? "border-telemetry-amber/60 text-telemetry-amber bg-telemetry-amber/10"
+                              : logSearchOpenSlot === slot
+                                ? "border-telemetry-amber/40 text-telemetry-amber/80"
+                                : "border-stealth-border/40 text-stealth-muted/60 hover:border-telemetry-amber/40 hover:text-telemetry-amber/80"
+                          }`}
+                        >
+                          S
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleClearSlotLogs(slot)}
+                          className="px-2 py-0.5 text-[8px] font-mono rounded-sm border border-red-400/30 text-red-400/60 hover:border-red-400/60 hover:text-red-400 transition-all focus:outline-none whitespace-nowrap"
+                        >
+                          CLEAR
+                        </button>
+                      </div>
+                      {logSearchOpenSlot === slot && (
+                        <div className="flex items-center gap-0.5 w-full max-w-[140px]">
+                          <input
+                            type="text"
+                            value={logSearchBySlot[slot] ?? ""}
+                            onChange={(e) => setSlotLogSearch(slot, e.target.value)}
+                            placeholder="highlight…"
+                            autoFocus
+                            className="flex-1 min-w-0 px-1.5 py-0.5 text-[8px] font-mono bg-black/60 border border-telemetry-amber/30 text-telemetry-amber rounded-sm focus:outline-none focus:border-telemetry-amber/60 placeholder:text-stealth-muted/40"
+                          />
+                          {logSearchBySlot[slot] && (
+                            <button
+                              type="button"
+                              title="Clear search"
+                              onClick={() => clearSlotLogSearch(slot)}
+                              className="px-1 py-0.5 text-[8px] font-mono text-stealth-muted/60 hover:text-telemetry-amber"
+                            >
+                              ×
+                            </button>
+                          )}
+                        </div>
+                      )}
                       <button
-                        onClick={() => handleClearSlotLogs(slot)}
-                        className="px-2 py-0.5 text-[8px] font-mono rounded-sm border border-red-400/30 text-red-400/60 hover:border-red-400/60 hover:text-red-400 transition-all focus:outline-none whitespace-nowrap"
-                      >
-                        CLEAR
-                      </button>
-                      <button
+                        type="button"
                         onClick={() => setActiveLogSlot(slot)}
                         className={`px-2 py-0.5 text-[9px] font-mono rounded-sm value-chip whitespace-nowrap focus:outline-none ${activeLogSlot === slot ? "value-chip-active" : ""}`}
                       >
@@ -562,12 +625,16 @@ function App() {
                           </div>
                         )}
                         <div key={`e-${slot}`} className="space-y-0.5">
-                          {entries.map((entry, i) => (
-                            <p key={i} className="text-[10px] font-mono text-stealth-muted leading-relaxed break-all">
-                              {activeLogSlot === "all" && <span className="text-nv-green/60">[{entry.alias}] </span>}
-                              <AnsiText text={entry.text} />
-                            </p>
-                          ))}
+                          {entries.map((entry, i) => {
+                            const slotQuery = logSearchBySlot[slot] ?? "";
+                            const lineQuery = activeLogSlot === "all" ? slotQuery : (logSearchBySlot[activeLogSlot] ?? "");
+                            return (
+                              <p key={i} className="text-[10px] font-mono text-stealth-muted leading-relaxed break-all">
+                                {activeLogSlot === "all" && <span className="text-nv-green/60">[{entry.alias}] </span>}
+                                <LogLineText text={entry.text} highlightQuery={lineQuery} />
+                              </p>
+                            );
+                          })}
                         </div>
                       </>
                     );

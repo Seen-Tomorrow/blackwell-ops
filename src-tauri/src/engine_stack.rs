@@ -65,6 +65,7 @@ pub struct EngineSlot {
     pub n_ctx: usize,
     pub provider_name: String,
     pub backend_type: String,
+    pub supports_fusion: bool,
 }
 
 pub struct EngineStack {
@@ -95,6 +96,7 @@ impl EngineStack {
                 n_ctx: DEFAULT_N_CTX,
                 provider_name: String::new(),
                 backend_type: String::new(),
+                supports_fusion: true,
             }))));
         }
 
@@ -128,9 +130,10 @@ impl EngineStack {
         cmd_args: Vec<String>,
         provider_display_name: String,
         backend_type: String,
+        supports_fusion: bool,
         stack_ref: &Arc<tokio::sync::Mutex<EngineStack>>,
         log_hub: LogHub,
-        on_ready: impl Fn() + Send + Sync + 'static,
+        on_ready: Arc<dyn Fn() + Send + Sync>,
     ) -> Result<(), String> {
         // Validate binary BEFORE acquiring any lock (avoids holding tokio MutexGuard across await)
         validate_binary_path(binary_path).await?;
@@ -182,11 +185,20 @@ impl EngineStack {
 
         // Extract stderr pipe and start reader immediately
         let stderr = child.stderr.take().unwrap();
+        let on_ready_log = on_ready.clone();
         log_hub.spawn_slot_reader(
             slot_idx,
             config.alias.clone(),
             stderr,
+            move || on_ready_log(),
+        );
+
+        Self::spawn_health_readiness_probe(
+            config.port,
+            config.alias.clone(),
+            log_hub.clone(),
             on_ready,
+            slot_arc.clone(),
         );
 
         // Quick alive check — give process 500ms to initialize
@@ -220,6 +232,7 @@ impl EngineStack {
                 .unwrap_or(32768);
             slot.provider_name = provider_display_name;
             slot.backend_type = backend_type;
+            slot.supports_fusion = supports_fusion;
             slot.status = SlotStatus::Loading;
         }
 
@@ -227,6 +240,68 @@ impl EngineStack {
         Self::spawn_reaper(slot_idx, slot_arc.clone(), stack_ref.clone(), log_hub.clone());
 
         Ok(())
+    }
+
+    /// Poll llama-server `/health` until the model is loaded and slots are available.
+    /// Authoritative readiness signal — works regardless of stderr verbosity or log format.
+    fn spawn_health_readiness_probe(
+        port: u16,
+        alias: String,
+        log_hub: LogHub,
+        on_ready: Arc<dyn Fn() + Send + Sync>,
+        slot_arc: Arc<parking_lot::Mutex<EngineSlot>>,
+    ) {
+        tokio::spawn(async move {
+            let client = match reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(2))
+                .build()
+            {
+                Ok(c) => c,
+                Err(e) => {
+                    log::warn!("[readiness] HTTP client init failed for port {}: {}", port, e);
+                    reqwest::Client::new()
+                }
+            };
+            let url = format!("http://127.0.0.1:{}/health", port);
+
+            for _ in 0..600 {
+                {
+                    let slot = slot_arc.lock();
+                    if !matches!(slot.status, SlotStatus::Loading) {
+                        return;
+                    }
+                }
+
+                if let Ok(resp) = client.get(&url).send().await {
+                    if resp.status().is_success() {
+                        if let Ok(body) = resp.json::<serde_json::Value>().await {
+                            match body["status"].as_str() {
+                                Some("ok") | Some("no slot available") => {
+                                    let status = body["status"].as_str().unwrap_or("?");
+                                    log_hub.emit_console_line(
+                                        crate::output_console::BlackwellOutputConsoleCategory::Debug,
+                                        &format!("[{alias}] readiness=GET /health | port={port} status={status}"),
+                                        crate::output_console::BlackwellOutputConsoleLineStyle::Normal,
+                                    );
+                                    log_hub.emit_console_line(
+                                        crate::output_console::BlackwellOutputConsoleCategory::Engines,
+                                        &format!("[{alias}] Engine ready"),
+                                        crate::output_console::BlackwellOutputConsoleLineStyle::Success,
+                                    );
+                                    on_ready();
+                                    return;
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            }
+
+            log::warn!("[readiness] HTTP health probe timed out for port {}", port);
+        });
     }
 
     /// Check if a Windows process is still alive by PID using OpenProcess + GetExitCodeProcess.
@@ -406,6 +481,7 @@ impl EngineStack {
             slot.n_ctx = DEFAULT_N_CTX;
             slot.provider_name.clear();
             slot.backend_type.clear();
+            slot.supports_fusion = false;
         }
     }
 
@@ -601,6 +677,7 @@ impl EngineStack {
             n_ctx: slot.n_ctx,
             provider_name: slot.provider_name.clone(),
             build_info: None,
+            supports_fusion: slot.supports_fusion,
         }
     }
 
@@ -620,6 +697,7 @@ impl EngineStack {
             n_ctx: DEFAULT_N_CTX,
             provider_name: String::new(),
             build_info: None,
+            supports_fusion: false,
         }
     }
 

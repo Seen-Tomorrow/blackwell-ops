@@ -64,8 +64,21 @@ pub async fn save_provider(provider: crate::types::ProviderConfig, app: tauri::S
         }
 
         // Full schema evolution merge — backfill all structural fields from template
-        save_provider.user_edited_template_params =
-            crate::config::merge_template_into_user_params(&save_provider.template_type, &save_provider.user_edited_template_params);
+        save_provider.user_edited_template_params = crate::config::merge_template_for_provider(
+            &save_provider.id,
+            &save_provider.template_type,
+            save_provider.factory_provided,
+            &save_provider.user_edited_template_params,
+        );
+    }
+
+    save_provider.user_edited_template_params =
+        crate::config::dedupe_user_params_by_key(save_provider.user_edited_template_params);
+
+    let validation_errors =
+        crate::config::validate_provider_params(&save_provider.id, &save_provider.user_edited_template_params);
+    if !validation_errors.is_empty() {
+        return Err(validation_errors.join("\n"));
     }
 
     save_provider.group_order = save_provider.group_order.iter().map(|g| crate::config::normalize_ui_group(g)).collect();
@@ -133,10 +146,12 @@ pub async fn toggle_group_hidden(provider_id: String, group_id: String, app: tau
         .find(|p| p.id == provider_id)
         .ok_or(format!("Provider '{}' not found", provider_id))?;
 
+    let norm_group = crate::config::normalize_ui_group(&group_id);
+
     // Determine current state: if any param in the group is visible, we'll hide all. Otherwise unhide all.
     let mut new_hidden = true;
     for ep in &prov.user_edited_template_params {
-        if ep.ui_group == group_id {
+        if crate::config::normalize_ui_group(&ep.ui_group) == norm_group {
             if !ep.hidden {
                 new_hidden = false;
                 break;
@@ -148,7 +163,7 @@ pub async fn toggle_group_hidden(provider_id: String, group_id: String, app: tau
     new_hidden = !new_hidden;
 
     for ep in &mut prov.user_edited_template_params {
-        if ep.ui_group == group_id {
+        if crate::config::normalize_ui_group(&ep.ui_group) == norm_group {
             ep.hidden = new_hidden;
         }
     }

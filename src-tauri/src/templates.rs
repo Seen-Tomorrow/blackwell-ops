@@ -39,10 +39,60 @@ fn resolve_auto_value(key: &str, model_path: &str) -> Option<String> {
 
 // ── Template Types ──────────────────────────────────────────────────
 
+/// Per-provider launch contract — flags injected before user params.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpawnProfile {
+    #[serde(default = "default_model_flag")]
+    pub model_flag: Vec<String>,
+    #[serde(default = "default_port_flag")]
+    pub port_flag: Vec<String>,
+    #[serde(default = "default_alias_flag")]
+    pub alias_flag: Vec<String>,
+    /// Extra verbosity flags (e.g. ggml: `["-lv","4"]`; IK: `[]`).
+    #[serde(default)]
+    pub verbosity_args: Vec<String>,
+    #[serde(default = "default_true")]
+    pub enable_metrics: bool,
+    #[serde(default = "default_true")]
+    pub supports_fusion: bool,
+    #[serde(default = "default_gpu_env")]
+    pub gpu_env: String,
+    #[serde(default = "default_ngl_flag")]
+    pub ngl_flag: Vec<String>,
+    #[serde(default = "default_mmproj_flag")]
+    pub mmproj_flag: Vec<String>,
+}
+
+fn default_model_flag() -> Vec<String> { vec!["-m".into()] }
+fn default_port_flag() -> Vec<String> { vec!["--port".into()] }
+fn default_alias_flag() -> Vec<String> { vec!["--alias".into()] }
+fn default_gpu_env() -> String { "CUDA_VISIBLE_DEVICES".into() }
+fn default_ngl_flag() -> Vec<String> { vec!["--n-gpu-layers".into()] }
+fn default_mmproj_flag() -> Vec<String> { vec!["--mmproj".into()] }
+fn default_true() -> bool { true }
+
+impl Default for SpawnProfile {
+    fn default() -> Self {
+        Self {
+            model_flag: default_model_flag(),
+            port_flag: default_port_flag(),
+            alias_flag: default_alias_flag(),
+            verbosity_args: vec!["-lv".into(), "4".into()],
+            enable_metrics: true,
+            supports_fusion: true,
+            gpu_env: default_gpu_env(),
+            ngl_flag: default_ngl_flag(),
+            mmproj_flag: default_mmproj_flag(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProviderTemplate {
     pub binary_name: String,
     pub description: String,
+    #[serde(default)]
+    pub spawn_profile: SpawnProfile,
     #[serde(default)]
     pub params: Vec<ProviderDefaultParam>,
 }
@@ -137,6 +187,8 @@ pub fn load_provider_defaults(provider_id: &str) -> Option<ProviderTemplate> {
         branch: String,
         #[allow(dead_code)]
         template_type: String,
+        #[serde(default)]
+        spawn_profile: SpawnProfile,
         params: Vec<ProviderDefaultParam>,
     }
 
@@ -155,6 +207,7 @@ pub fn load_provider_defaults(provider_id: &str) -> Option<ProviderTemplate> {
     Some(ProviderTemplate {
         binary_name: cfg.binary_name,
         description: cfg.description,
+        spawn_profile: cfg.spawn_profile,
         params: cfg.params,
     })
 }
@@ -227,37 +280,46 @@ impl ProviderTemplate {
         user_params: &[crate::types::UserEditedTemplateParam],
     ) -> Vec<String> {
         let mut args = Vec::new();
+        let sp = &self.spawn_profile;
 
-        // Always add model path and port (not in param configs)
-        args.extend(["-m".into(), config.model_path.clone()]);
+        // Model path — provider-owned flag pair from spawn_profile
+        if let Some(flag) = sp.model_flag.first() {
+            args.extend([flag.clone(), config.model_path.clone()]);
+        }
 
-        // Companion mmproj file — inject right after -m for clean CMD readability
+        // Companion mmproj file — inject right after model for clean CMD readability
         let vision_param = user_params.iter().find(|p| p.key == "vision");
         if let Some(vp) = vision_param {
             let vval = Self::resolve_param_value(config, vp);
             let vstr = vval.as_str().unwrap_or("").to_lowercase();
             if matches!(vstr.as_str(), "auto" | "on") {
-                if let Some((mmproj_name, _)) = crate::model_catalog::find_largest_mmproj(
-                    std::path::Path::new(&config.model_path).parent().unwrap_or(std::path::Path::new(""))
-                ) {
-                    args.extend(["--mmproj".into(), mmproj_name]);
+                if let Some(mmproj_flag) = sp.mmproj_flag.first() {
+                    if let Some((mmproj_name, _)) = crate::model_catalog::find_largest_mmproj(
+                        std::path::Path::new(&config.model_path).parent().unwrap_or(std::path::Path::new(""))
+                    ) {
+                        args.extend([mmproj_flag.clone(), mmproj_name]);
+                    }
                 }
             }
         }
 
-        args.extend(["--port".into(), config.port.to_string()]);
-
-        // Add alias for llama-server API identification — sanitize spaces/commas
-        let cli_alias = config.alias.replace(' ', "-").replace(',', "-");
-        if !cli_alias.is_empty() {
-            args.extend(["--alias".into(), cli_alias]);
+        if let Some(flag) = sp.port_flag.first() {
+            args.extend([flag.clone(), config.port.to_string()]);
         }
 
-        // Force TRACE-level logging (-lv 4) — required for log-based prefill metrics
-        args.extend(["-lv".into(), "4".to_string()]);
+        // Alias for server API identification — sanitize spaces/commas
+        let cli_alias = config.alias.replace(' ', "-").replace(',', "-");
+        if !cli_alias.is_empty() {
+            if let Some(flag) = sp.alias_flag.first() {
+                args.extend([flag.clone(), cli_alias]);
+            }
+        }
 
-        // Always enable Prometheus-style /metrics endpoint for fusion monitoring
-        args.push("--metrics".into());
+        args.extend(sp.verbosity_args.clone());
+
+        if sp.enable_metrics {
+            args.push("--metrics".into());
+        }
 
         // ── TEST MODE (REPLACE): bypass all params, use only raw test flags ───────────
         if let Some(test_args) = config.extra_params.get("__test_args") {
@@ -339,8 +401,10 @@ impl ProviderTemplate {
 
         // n_gpu_layers injection — computed by VRAM scenario factory at runtime.
         if let Some(ngl) = config.extra_params.get("__ngl") {
-            let ngl_str = ngl.as_str().map(String::from).unwrap_or(ngl.to_string());
-            args.extend(["--n-gpu-layers".into(), ngl_str]);
+            if let Some(flag) = sp.ngl_flag.first() {
+                let ngl_str = ngl.as_str().map(String::from).unwrap_or(ngl.to_string());
+                args.extend([flag.clone(), ngl_str]);
+            }
         }
 
         // ── TEST MODE (ADD): append raw test flags after all params ────────────────────
@@ -353,6 +417,8 @@ impl ProviderTemplate {
                 }
             }
         }
+
+        normalize_ik_cli_args(&mut args);
 
         if !config.model_path.is_empty() {
             let full_cmd = format!("{} {}", self.binary_name, args.join(" "));
@@ -451,4 +517,106 @@ impl ProviderTemplate {
         filename.contains(&pat_lower)
     }
 
+}
+
+/// IK llama.cpp flags that were previously emitted as `-flag 0|1` but are now boolean-only.
+fn normalize_ik_cli_args(args: &mut Vec<String>) {
+    if !args.iter().any(|a| {
+        matches!(
+            a.as_str(),
+            "-sas" | "-khad" | "-vhad" | "-smf16" | "-smf32" | "-dio"
+        )
+    }) {
+        return;
+    }
+
+    const BOOL_FLAGS: &[&str] = &["-sas", "-gr", "-khad", "-vhad", "-smf16", "-smf32", "-no-gr"];
+
+    let mut out = Vec::with_capacity(args.len());
+    let mut i = 0;
+    while i < args.len() {
+        let arg = args[i].as_str();
+
+        if arg == "-dio" {
+            out.push("--simple-io".into());
+            i += 1;
+            continue;
+        }
+
+        if arg == "--split-mode" && i + 1 < args.len() && args[i + 1] == "row" {
+            out.push(args[i].clone());
+            out.push("graph".into());
+            i += 2;
+            continue;
+        }
+
+        if BOOL_FLAGS.contains(&arg) && i + 1 < args.len() && (args[i + 1] == "0" || args[i + 1] == "1") {
+            let val = args[i + 1].as_str();
+            if arg == "-smf16" {
+                if val == "1" {
+                    out.push("-smf16".into());
+                } else {
+                    out.push("-smf32".into());
+                }
+            } else if val == "1" {
+                out.push(args[i].clone());
+            }
+            i += 2;
+            continue;
+        }
+
+        out.push(args[i].clone());
+        i += 1;
+    }
+
+    *args = out;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_ik_cli_args;
+
+    fn norm(input: &[&str]) -> Vec<String> {
+        let mut args: Vec<String> = input.iter().map(|s| s.to_string()).collect();
+        normalize_ik_cli_args(&mut args);
+        args
+    }
+
+    #[test]
+    fn ik_normalize_strips_legacy_bool_values() {
+        let out = norm(&[
+            "-sas", "1", "-gr", "1", "-khad", "1", "-vhad", "1", "-mla", "3", "-smf16", "1",
+        ]);
+        assert_eq!(
+            out,
+            vec![
+                "-sas", "-gr", "-khad", "-vhad", "-mla", "3", "-smf16",
+            ]
+        );
+    }
+
+    #[test]
+    fn ik_normalize_balanced_profile() {
+        let out = norm(&["-sas", "0", "-gr", "1", "-khad", "0", "-vhad", "0", "-mla", "1"]);
+        assert_eq!(out, vec!["-gr", "-mla", "1"]);
+    }
+
+    #[test]
+    fn ik_normalize_smf16_zero_maps_to_smf32() {
+        let out = norm(&["-smf16", "0"]);
+        assert_eq!(out, vec!["-smf32"]);
+    }
+
+    #[test]
+    fn ik_normalize_dio_maps_to_simple_io() {
+        let out = norm(&["-fa", "on", "-dio"]);
+        assert_eq!(out, vec!["-fa", "on", "--simple-io"]);
+    }
+
+    #[test]
+    fn ik_normalize_skips_non_ik_commands() {
+        let mut args = vec!["--port".into(), "8080".into(), "-gr".into(), "1".into()];
+        normalize_ik_cli_args(&mut args);
+        assert_eq!(args, vec!["--port", "8080", "-gr", "1"]);
+    }
 }

@@ -10,6 +10,7 @@ interface FusionOverlayProps {
   alias?: string;
   enginePort?: number;
   fusion: FusionUpdate | null;
+  supportsFusion?: boolean;
 }
 
 function formatMs(ms: number): string {
@@ -29,7 +30,7 @@ interface LastRequestStats {
   elapsedMs: string;
 }
 
-export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverlayProps) {
+export default function FusionOverlay({ alias, enginePort, fusion, supportsFusion = true }: FusionOverlayProps) {
   const displayAlias = alias ?? "ENGINE";
   const displayPort = enginePort ?? 9090;
 
@@ -129,6 +130,19 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
     if (payload.port !== displayPort) return;
     setIsBenchWarmup(payload.phase === "warmup");
   }, [displayPort]);
+
+  if (!supportsFusion) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-2 w-full h-full px-4 text-center">
+        <span className="text-[16px] font-mono text-stealth-muted/40 tracking-widest">{displayAlias}</span>
+        <span className="text-[9px] font-mono text-stealth-muted/50 tracking-wider">MONITORING N/A</span>
+        <span className="text-[8px] font-mono text-stealth-muted/35 leading-relaxed">
+          Live Fusion telemetry is not enabled for this provider.
+        </span>
+        <span className="text-[8px] font-mono text-stealth-muted/30">PORT {displayPort}</span>
+      </div>
+    );
+  }
 
   if (!fusion) {
     return (

@@ -1,3 +1,21 @@
+//! Provider configuration — three-layer model and template merge.
+//!
+//! ## Layers
+//! 1. **Factory** — `runtime/<id>/config/<id>-default-config.json` (admin, read-only at runtime)
+//! 2. **User disk** — `config/<id>-user-config.json` (hidden, order, defaults, custom params/values)
+//! 3. **localStorage** — `BlackOps-admin-catalog-override:<id>` (launch-time chip selections; frontend only)
+//!
+//! ## Merge (`merge_template_for_provider`)
+//! Runs on every load and `save_provider`. Factory structural fields backfill; user cosmetic choices
+//! (hidden, order, userAddedValues, hidden_values) are never overwritten.
+//!
+//! ## RESET TO DEFAULTS
+//! Deletes user config file + frontend clears overrides and group-order localStorage. Full factory wipe.
+//!
+//! ## Validation
+//! `save_provider` and `save_user_providers_meta` block-save on invalid params (orphan defaults,
+//! missing flags, duplicate keys).
+
 use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -265,7 +283,7 @@ impl Default for AppConfig {
         let mut model_paths: Vec<ModelPathEntry> = Vec::new();
         model_paths.push(ModelPathEntry {
             path: app_dir.to_string_lossy().to_string(),
-            label: "Default".to_string(),
+            label: "App models".to_string(),
             is_default: true,
         });
 
@@ -375,6 +393,26 @@ fn json_val_eq(a: &serde_json::Value, b: &serde_json::Value) -> bool {
     } else {
         serde_json::to_string(a).ok() == serde_json::to_string(b).ok()
     }
+}
+
+/// Validate all params for a single provider. Returns human-readable error lines (empty = ok).
+pub fn validate_provider_params(provider_id: &str, params: &[crate::types::UserEditedTemplateParam]) -> Vec<String> {
+    let mut errors = Vec::new();
+    let mut seen_keys: std::collections::HashMap<&str, i32> = std::collections::HashMap::new();
+    for ep in params {
+        if let Some(&prev_order) = seen_keys.get(ep.key.as_str()) {
+            errors.push(format!(
+                "provider '{}': duplicate param key '{}' (order {} and {})",
+                provider_id, ep.key, prev_order, ep.order
+            ));
+        } else {
+            seen_keys.insert(&ep.key, ep.order);
+        }
+        for e in validate_user_edited_param(ep) {
+            errors.push(format!("provider '{}' param '{}': {}", provider_id, ep.key, e));
+        }
+    }
+    errors
 }
 
 fn validate_user_edited_param(ep: &crate::types::UserEditedTemplateParam) -> Vec<String> {
@@ -761,30 +799,145 @@ pub fn validate_provider_binary(path: &str) -> Result<(), String> {
 
 // ── Model Paths Management ────────────────────────────────────────────
 
+const APP_MODELS_LABEL: &str = "App models";
+
+/// Strip Windows extended-length prefix (`\\?\` / `\\?\UNC\`) for human-readable storage/display.
+fn strip_windows_extended_prefix(path: &str) -> String {
+    if let Some(rest) = path.strip_prefix(r"\\?\UNC\") {
+        format!(r"\\{rest}")
+    } else if let Some(rest) = path.strip_prefix(r"\\?\") {
+        rest.to_string()
+    } else {
+        path.to_string()
+    }
+}
+
+/// Normalize a model path for dedup comparison (case-insensitive on Windows, no trailing slashes).
+fn model_path_key(path: &str) -> String {
+    let trimmed = strip_windows_extended_prefix(path.trim());
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    let pb = std::path::PathBuf::from(&trimmed);
+    let normalized = if pb.exists() {
+        pb.canonicalize().unwrap_or(pb)
+    } else {
+        pb
+    };
+    let s = strip_windows_extended_prefix(&normalized.to_string_lossy())
+        .trim_end_matches(['\\', '/'])
+        .to_string();
+    #[cfg(windows)]
+    {
+        s.to_lowercase()
+    }
+    #[cfg(not(windows))]
+    {
+        s
+    }
+}
+
+/// Resolve to canonical stored path when the directory exists.
+fn resolve_model_path(path: &str) -> String {
+    let trimmed = strip_windows_extended_prefix(path.trim());
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    let pb = std::path::PathBuf::from(&trimmed);
+    let resolved = if pb.exists() {
+        pb.canonicalize()
+            .map(|p| strip_windows_extended_prefix(&p.to_string_lossy()))
+            .unwrap_or(trimmed)
+    } else {
+        trimmed
+    };
+    resolved.trim_end_matches(['\\', '/']).to_string()
+}
+
+fn find_model_path_index(paths: &[ModelPathEntry], path: &str) -> Option<usize> {
+    let key = model_path_key(path);
+    if key.is_empty() {
+        return None;
+    }
+    paths.iter().position(|p| model_path_key(&p.path) == key)
+}
+
+/// Collapse duplicate model paths (same folder, different strings). Returns true if anything changed.
+fn dedupe_model_paths(paths: &mut Vec<ModelPathEntry>) -> bool {
+    let before = paths.clone();
+    let mut seen: HashMap<String, usize> = HashMap::new();
+    let mut deduped: Vec<ModelPathEntry> = Vec::new();
+
+    for entry in paths.drain(..) {
+        let key = model_path_key(&entry.path);
+        if key.is_empty() {
+            continue;
+        }
+        if let Some(&idx) = seen.get(&key) {
+            let existing = &mut deduped[idx];
+            if entry.is_default {
+                existing.is_default = true;
+            }
+            if existing.label.is_empty() && !entry.label.is_empty() {
+                existing.label = entry.label.clone();
+            }
+            let resolved = resolve_model_path(&entry.path);
+            if std::path::Path::new(&resolved).exists() {
+                existing.path = resolved;
+            }
+        } else {
+            let mut normalized = entry;
+            normalized.path = resolve_model_path(&normalized.path);
+            seen.insert(key, deduped.len());
+            deduped.push(normalized);
+        }
+    }
+
+    let changed = deduped.len() != before.len()
+        || deduped.iter().zip(before.iter()).any(|(a, b)| {
+            a.path != b.path || a.is_default != b.is_default || a.label != b.label
+        });
+    *paths = deduped;
+    changed
+}
+
 pub fn get_model_paths(config: &AppConfig) -> Vec<ModelPathEntry> {
     if config.model_paths.is_empty() {
         vec![ModelPathEntry {
             path: config_dir().join("models").to_string_lossy().to_string(),
-            label: "Default".to_string(),
+            label: APP_MODELS_LABEL.to_string(),
             is_default: true,
         }]
     } else {
-        config.model_paths.clone()
+        config
+            .model_paths
+            .iter()
+            .map(|p| ModelPathEntry {
+                path: resolve_model_path(&p.path),
+                label: p.label.clone(),
+                is_default: p.is_default,
+            })
+            .collect()
     }
 }
 
 pub fn add_model_path(config: &mut AppConfig, path: String, label: Option<String>) {
-    if config.model_paths.iter().any(|p| p.path == path) {
+    let resolved = resolve_model_path(&path);
+    if resolved.is_empty() || find_model_path_index(&config.model_paths, &resolved).is_some() {
         return;
     }
     let computed_label = label.unwrap_or_else(|| {
-        std::path::Path::new(&path)
+        std::path::Path::new(&resolved)
             .file_name()
             .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or(path.clone())
+            .unwrap_or_else(|| resolved.clone())
     });
     let is_default = config.model_paths.is_empty();
-    config.model_paths.push(ModelPathEntry { path, label: computed_label, is_default });
+    config.model_paths.push(ModelPathEntry {
+        path: resolved,
+        label: computed_label,
+        is_default,
+    });
     // Update the memo if this is the first path (making it default)
     if is_default {
         config.default_download_path = Some(config.model_paths.last().unwrap().path.clone());
@@ -792,8 +945,10 @@ pub fn add_model_path(config: &mut AppConfig, path: String, label: Option<String
 }
 
 pub fn remove_model_path(config: &mut AppConfig, path: &str) {
-    let removed = config.model_paths.iter().position(|p| p.path == path);
-    config.model_paths.retain(|p| p.path != path);
+    let removed = find_model_path_index(&config.model_paths, path);
+    if let Some(idx) = removed {
+        config.model_paths.remove(idx);
+    }
     // Ensure at least one path is default after removal
     if removed.is_some() {
         if !config.model_paths.iter().any(|p| p.is_default) {
@@ -809,11 +964,14 @@ pub fn remove_model_path(config: &mut AppConfig, path: &str) {
 }
 
 pub fn set_default_model_path(config: &mut AppConfig, path: &str) {
+    let key = model_path_key(path);
     for p in &mut config.model_paths {
-        p.is_default = p.path == path;
+        p.is_default = model_path_key(&p.path) == key;
     }
     // Update the memo: where downloads go
-    config.default_download_path = Some(path.to_string());
+    if let Some(idx) = find_model_path_index(&config.model_paths, path) {
+        config.default_download_path = Some(config.model_paths[idx].path.clone());
+    }
 }
 
 pub fn calculate_disk_usage(paths: &[ModelPathEntry]) -> Vec<PathDiskUsage> {
@@ -841,7 +999,8 @@ pub fn get_default_download_path(config: &AppConfig) -> String {
     })
 }
 
-pub fn save_config(config: &AppConfig) -> Result<(), String> {
+pub fn save_config(config: &mut AppConfig) -> Result<(), String> {
+    sanitize_model_paths(config);
     let config_directory = config_dir();
     std::fs::create_dir_all(&config_directory).map_err(|e| format!("Failed to create config dir: {}", e))?;
 
@@ -859,7 +1018,7 @@ fn build_fresh_config(_gpu_slots: usize) -> AppConfig {
 
     model_paths.push(ModelPathEntry {
         path: config_dir().join("models").to_string_lossy().to_string(),
-        label: "Default".to_string(),
+        label: APP_MODELS_LABEL.to_string(),
         is_default: true,
     });
 
@@ -888,8 +1047,15 @@ fn load_saved_config() -> Option<AppConfig> {
     if config_path.exists() {
         if let Ok(content) = std::fs::read_to_string(&config_path) {
             if let Ok(mut config) = serde_json::from_str::<AppConfig>(&content) {
-                // Sanitize: ensure at most one default, and set default_download_path
-                sanitize_model_paths(&mut config);
+                // Sanitize: dedupe paths, ensure at most one default, sync default_download_path
+                let dirty = sanitize_model_paths(&mut config);
+                if dirty {
+                    if let Err(e) = save_config(&mut config) {
+                        log::warn!("[config] Failed to auto-save deduped model paths: {}", e);
+                    } else {
+                        log::info!("[config] Auto-saved deduped model paths");
+                    }
+                }
                 log::info!("Loaded app_config.json from {}", config_path.display());
                 return Some(config);
             }
@@ -898,27 +1064,53 @@ fn load_saved_config() -> Option<AppConfig> {
     None
 }
 
-/// Ensure model paths are consistent: at most one default, and default_download_path is set.
-fn sanitize_model_paths(config: &mut AppConfig) {
-    // Ensure at most one default
+/// Ensure model paths are consistent: deduped, at most one default, default_download_path synced.
+/// Returns true if the config was modified.
+fn sanitize_model_paths(config: &mut AppConfig) -> bool {
+    let mut changed = dedupe_model_paths(&mut config.model_paths);
+
+    // Ensure at most one default flag
     let mut found_default = false;
     for p in &mut config.model_paths {
         if p.is_default {
             if found_default {
                 p.is_default = false;
+                changed = true;
             } else {
                 found_default = true;
             }
         }
     }
+
+    // Prefer default_download_path memo when it matches an existing entry
+    if let Some(ref memo) = config.default_download_path {
+        if let Some(idx) = find_model_path_index(&config.model_paths, memo) {
+            for (i, p) in config.model_paths.iter_mut().enumerate() {
+                let should_default = i == idx;
+                if p.is_default != should_default {
+                    p.is_default = should_default;
+                    changed = true;
+                }
+            }
+            found_default = true;
+        }
+    }
+
     // Ensure at least one default
     if !found_default && !config.model_paths.is_empty() {
         config.model_paths[0].is_default = true;
+        changed = true;
     }
-    // Update the memo
-    config.default_download_path = config.model_paths.iter()
+
+    let new_memo = config.model_paths.iter()
         .find(|p| p.is_default)
         .map(|p| p.path.clone());
+    if config.default_download_path != new_memo {
+        config.default_download_path = new_memo;
+        changed = true;
+    }
+
+    changed
 }
 
 
@@ -941,26 +1133,92 @@ pub fn json_val_key(v: &serde_json::Value) -> String {
     }
 }
 
+/// Resolve which runtime folder supplies the factory template for merge.
+pub fn resolve_merge_template_key(
+    provider_id: &str,
+    template_type: &str,
+    factory_provided: bool,
+) -> Option<String> {
+    if factory_provided && crate::templates::load_provider_defaults(provider_id).is_some() {
+        return Some(provider_id.to_string());
+    }
+    template_key_for_type(template_type)
+}
+
+/// Drop duplicate/empty param keys — keeps lowest `order` entry per key.
+pub fn dedupe_user_params_by_key(
+    params: Vec<crate::types::UserEditedTemplateParam>,
+) -> Vec<crate::types::UserEditedTemplateParam> {
+    let mut sorted = params;
+    sorted.sort_by_key(|p| p.order);
+    let mut seen = std::collections::HashSet::new();
+    let mut out = Vec::with_capacity(sorted.len());
+    for p in sorted {
+        if p.key.is_empty() {
+            log::warn!("[config] Dropping param with empty key (order={})", p.order);
+            continue;
+        }
+        if seen.insert(p.key.clone()) {
+            out.push(p);
+        } else {
+            log::warn!("[config] Dropping duplicate param key '{}' (order={})", p.key, p.order);
+        }
+    }
+    out.sort_by_key(|p| p.order);
+    out
+}
+
+/// Merge user params against the correct factory template for this provider.
+pub fn merge_template_for_provider(
+    provider_id: &str,
+    template_type: &str,
+    factory_provided: bool,
+    user_edited: &[crate::types::UserEditedTemplateParam],
+) -> Vec<crate::types::UserEditedTemplateParam> {
+    let template_key = resolve_merge_template_key(provider_id, template_type, factory_provided);
+    let merged = merge_template_into_user_params_by_key(template_key.as_deref(), user_edited);
+    dedupe_user_params_by_key(merged)
+}
+
+/// Merge using template_type → folder mapping (custom providers without factory JSON).
 pub fn merge_template_into_user_params(
     template_type: &str,
     user_edited: &[crate::types::UserEditedTemplateParam],
 ) -> Vec<crate::types::UserEditedTemplateParam> {
-    let Some(template_key) = template_key_for_type(template_type) else {
-        return user_edited.to_vec();
-    };
-    let Some(template) = crate::templates::load_provider_defaults(&template_key) else {
-        return user_edited.to_vec();
-    };
+    merge_template_into_user_params_by_key(
+        template_key_for_type(template_type).as_deref(),
+        user_edited,
+    )
+}
 
-    // Build lookup map from fresh template by key
-    let tmpl_map: std::collections::HashMap<_, _> = template.params.iter()
+fn template_sub_params_to_map(
+    sp: &serde_json::Value,
+) -> Option<std::collections::HashMap<String, Vec<String>>> {
+    sp.as_object().map(|obj| {
+        obj.iter()
+            .filter_map(|(k, v)| {
+                v.as_array().and_then(|arr| {
+                    Some((
+                        k.clone(),
+                        arr.iter()
+                            .filter_map(|el| el.as_str().map(String::from))
+                            .collect(),
+                    ))
+                })
+            })
+            .collect()
+    })
+}
+
+fn merge_user_params_with_template(
+    template: &crate::templates::ProviderTemplate,
+    user_edited: &[crate::types::UserEditedTemplateParam],
+) -> Vec<crate::types::UserEditedTemplateParam> {
+    let tmpl_map: std::collections::HashMap<_, _> = template
+        .params
+        .iter()
         .map(|p| (p.key.as_str(), p))
         .collect();
-
-    // Collect all string representations of template values for membership checks.
-    fn vals_to_strings(vals: &[serde_json::Value]) -> Vec<String> {
-        vals.iter().map(|v| v.to_string()).collect()
-    }
 
     let mut merged = Vec::with_capacity(user_edited.len());
 
@@ -1017,19 +1275,15 @@ pub fn merge_template_into_user_params(
                 m.step = tmpl.step;
             }
 
-            // Backfill sub_params if none
-            if m.sub_params.is_none() {
-                m.sub_params = tmpl.sub_params.as_ref().and_then(|sp| {
-                    sp.as_object().map(|obj| {
-                        obj.iter()
-                            .filter_map(|(k, v)| {
-                                v.as_array().and_then(|arr| {
-                                    Some((k.clone(), arr.iter().filter_map(|el| el.as_str().map(String::from)).collect()))
-                                })
-                            })
-                            .collect::<std::collections::HashMap<_, _>>()
-                    })
-                });
+            // Per-key sub_params merge — backfill missing keys from template, preserve user keys
+            if let Some(tmpl_sp) = tmpl.sub_params.as_ref().and_then(template_sub_params_to_map) {
+                let mut merged_sp = m.sub_params.clone().unwrap_or_default();
+                for (k, v) in tmpl_sp {
+                    merged_sp.entry(k).or_insert(v);
+                }
+                if !merged_sp.is_empty() {
+                    m.sub_params = Some(merged_sp);
+                }
             }
 
             if m.dock.is_empty() && !tmpl.dock.is_empty() {
@@ -1079,6 +1333,73 @@ pub fn merge_template_into_user_params(
     merged
 }
 
+/// Scan sacred foundry artifacts on disk (survives missed persist after a build).
+fn scan_foundry_profile_binaries(provider_id: &str) -> HashMap<String, String> {
+    let mut map = HashMap::new();
+    for profile in &["vanguard", "stable", "fresh"] {
+        let exe = foundry_artifact_release_dir(provider_id, profile).join("llama-server.exe");
+        if exe.exists() {
+            map.insert(profile.to_string(), to_relative_path(&exe));
+        }
+    }
+    map
+}
+
+fn build_info_from_exe_mtime(exe: &std::path::Path) -> Option<crate::types::BuildInfo> {
+    let m = std::fs::metadata(exe).ok()?;
+    let build_date = m
+        .modified()
+        .ok()
+        .map(|mt| DateTime::<Local>::from(mt).format("%Y-%m-%d %H:%M").to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+    Some(crate::types::BuildInfo {
+        version: "foundry-artifact".to_string(),
+        build_date,
+        cuda_version: None,
+    })
+}
+
+/// Merge runtime bundle + user meta + foundry disk scan into provider binary maps.
+fn merge_discovered_binaries(p: &mut crate::types::ProviderConfig) {
+    for (env, path) in scan_foundry_profile_binaries(&p.id) {
+        let abs = resolve_path(&path);
+        p.binary_path_per_env.insert(env.clone(), path);
+        if let Some(info) = build_info_from_exe_mtime(&abs) {
+            let adopt = p
+                .build_info_per_env
+                .get(&env)
+                .map(|existing| info.build_date.as_str() > existing.build_date.as_str())
+                .unwrap_or(true);
+            if adopt {
+                p.build_info_per_env.insert(env, info);
+            }
+        }
+    }
+
+    const PROFILES: &[&str] = &["vanguard", "stable", "fresh"];
+    if let Some((_, info)) = p
+        .build_info_per_env
+        .iter()
+        .filter(|(k, _)| PROFILES.contains(&k.as_str()))
+        .max_by_key(|(_, info)| info.build_date.as_str())
+    {
+        p.build_info_per_env.insert("current".to_string(), info.clone());
+    }
+}
+
+fn merge_template_into_user_params_by_key(
+    template_key: Option<&str>,
+    user_edited: &[crate::types::UserEditedTemplateParam],
+) -> Vec<crate::types::UserEditedTemplateParam> {
+    let Some(key) = template_key else {
+        return user_edited.to_vec();
+    };
+    let Some(template) = crate::templates::load_provider_defaults(key) else {
+        return user_edited.to_vec();
+    };
+    merge_user_params_with_template(&template, user_edited)
+}
+
 
 fn build_config_with_providers_full(_gpu_count: usize, mut config: AppConfig) -> AppConfig {
     let metas = load_user_providers_meta();
@@ -1100,13 +1421,23 @@ fn build_config_with_providers_full(_gpu_count: usize, mut config: AppConfig) ->
             if !meta.branch.is_empty() { p.branch = meta.branch.clone(); }
             if !meta.build_profile.is_empty() { p.build_profile = meta.build_profile.clone(); }
 
-        if !meta.user_edited_template_params.is_empty() {
-                  let mut defs = merge_template_into_user_params(&p.template_type, &meta.user_edited_template_params);
-                  p.user_edited_template_params = defs;
+            let effective_template_type = if !meta.template_type.is_empty() {
+                meta.template_type.clone()
+            } else {
+                p.template_type.clone()
+            };
+
+            if !meta.user_edited_template_params.is_empty() {
+                p.user_edited_template_params = merge_template_for_provider(
+                    &p.id,
+                    &effective_template_type,
+                    true,
+                    &meta.user_edited_template_params,
+                );
             }
 
             // Template version mismatch → set attention flag for UI banner.
-            // Keep factory template_version on `p` so next save syncs the user meta to new version.
+            // Merge already applied; banner is advisory — save syncs version or user hits RESET.
             if meta.template_version != p.template_version {
                 log::info!("[config] Provider '{}' template version changed: user={}, factory={}",
                     p.id, meta.template_version, p.template_version);
@@ -1134,6 +1465,7 @@ fn build_config_with_providers_full(_gpu_count: usize, mut config: AppConfig) ->
                 p.template_type = meta.template_type.clone();
             }
         }
+        merge_discovered_binaries(&mut p);
         providers.push(p);
     }
 
@@ -1143,7 +1475,7 @@ fn build_config_with_providers_full(_gpu_count: usize, mut config: AppConfig) ->
             let resolved_type = resolve_template_type(&meta.id, Some(&meta.template_type));
             let tmpl_key = template_key_for_type(&resolved_type);
         let user_edited_params = if !meta.user_edited_template_params.is_empty() {
-                  merge_template_into_user_params(&resolved_type, &meta.user_edited_template_params)
+                merge_template_for_provider(&meta.id, &resolved_type, false, &meta.user_edited_template_params)
             } else if let Some(ref key) = tmpl_key {
                 params_for_provider(key)
             } else {
@@ -1206,4 +1538,253 @@ pub fn reset_provider_user_config(provider_id: String) -> Result<(), String> {
         log::warn!("[config] No user config found at {} for '{}'", path.display(), provider_id);
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod merge_tests {
+    use super::*;
+    use crate::templates::{ProviderDefaultParam, ProviderTemplate};
+
+    fn make_user_param(key: &str, values: &[&str], default: &str, order: i32) -> crate::types::UserEditedTemplateParam {
+        crate::types::UserEditedTemplateParam {
+            key: key.to_string(),
+            label: format!("Label {}", key),
+            values: values.iter().map(|v| serde_json::Value::String(v.to_string())).collect(),
+            order,
+            hidden: true,
+            hidden_values: vec![serde_json::Value::String("hidden_val".to_string())],
+            flag: Some(format!("--{}", key)),
+            flag_pair: Vec::new(),
+            ptype: "arg_select".to_string(),
+            step: None,
+            ui_group: "CORE".to_string(),
+            note: String::new(),
+            pattern: String::new(),
+            default_value: serde_json::Value::String(default.to_string()),
+            user_added_values: vec![serde_json::Value::String("user_custom".to_string())],
+            factory_default: serde_json::Value::String(default.to_string()),
+            sub_params: None,
+            dock: String::new(),
+        }
+    }
+
+    fn make_template(params: Vec<ProviderDefaultParam>) -> ProviderTemplate {
+        ProviderTemplate {
+            binary_name: "llama-server.exe".to_string(),
+            description: "test".to_string(),
+            spawn_profile: Default::default(),
+            params,
+        }
+    }
+
+    #[test]
+    fn merge_appends_new_template_values() {
+        let template = make_template(vec![ProviderDefaultParam {
+            key: "ctx".to_string(),
+            label: "CTX".to_string(),
+            flag: Some("--ctx-size".to_string()),
+            flag_pair: Vec::new(),
+            ptype: "arg_select".to_string(),
+            values: vec![
+                serde_json::Value::String("8192".to_string()),
+                serde_json::Value::String("32768".to_string()),
+            ],
+            step: None,
+            default: serde_json::Value::String("32768".to_string()),
+            ui_group: "CORE".to_string(),
+            note: String::new(),
+            pattern: String::new(),
+            sub_params: None,
+            dock: String::new(),
+            hidden_default: false,
+        }]);
+
+        let user = vec![make_user_param("ctx", &["8192", "user_custom"], "8192", 0)];
+        let merged = merge_user_params_with_template(&template, &user);
+        let ctx = merged.iter().find(|p| p.key == "ctx").unwrap();
+
+        assert!(ctx.values.iter().any(|v| v.as_str() == Some("32768")));
+        assert!(ctx.values.iter().any(|v| v.as_str() == Some("user_custom")));
+        assert!(ctx.hidden);
+        assert_eq!(ctx.user_added_values.len(), 1);
+    }
+
+    #[test]
+    fn merge_resets_orphan_default() {
+        let template = make_template(vec![ProviderDefaultParam {
+            key: "kv_quant".to_string(),
+            label: "KV".to_string(),
+            flag: Some("--cache-type-k".to_string()),
+            flag_pair: Vec::new(),
+            ptype: "arg_select".to_string(),
+            values: vec![serde_json::Value::String("q4_0".to_string())],
+            step: None,
+            default: serde_json::Value::String("q4_0".to_string()),
+            ui_group: "CORE".to_string(),
+            note: String::new(),
+            pattern: String::new(),
+            sub_params: None,
+            dock: String::new(),
+            hidden_default: false,
+        }]);
+
+        let mut user = make_user_param("kv_quant", &["q4_0"], "stale_removed", 0);
+        user.default_value = serde_json::Value::String("stale_removed".to_string());
+        let merged = merge_user_params_with_template(&template, &[user]);
+        let kv = merged.iter().find(|p| p.key == "kv_quant").unwrap();
+
+        assert_eq!(kv.default_value.as_str(), Some("q4_0"));
+    }
+
+    #[test]
+    fn merge_keeps_orphaned_user_param() {
+        let template = make_template(vec![]);
+        let user = vec![make_user_param("orphan_key", &["on"], "on", 0)];
+        let merged = merge_user_params_with_template(&template, &user);
+
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].key, "orphan_key");
+    }
+
+    #[test]
+    fn merge_appends_new_template_param() {
+        let template = make_template(vec![ProviderDefaultParam {
+            key: "new_param".to_string(),
+            label: "New".to_string(),
+            flag: Some("--new".to_string()),
+            flag_pair: Vec::new(),
+            ptype: "arg_select".to_string(),
+            values: vec![serde_json::Value::String("1".to_string())],
+            step: None,
+            default: serde_json::Value::String("1".to_string()),
+            ui_group: "CORE".to_string(),
+            note: String::new(),
+            pattern: String::new(),
+            sub_params: None,
+            dock: String::new(),
+            hidden_default: false,
+        }]);
+
+        let user = vec![make_user_param("existing", &["a"], "a", 0)];
+        let merged = merge_user_params_with_template(&template, &user);
+
+        assert_eq!(merged.len(), 2);
+        assert!(merged.iter().any(|p| p.key == "new_param"));
+        assert!(merged.iter().any(|p| p.key == "existing"));
+    }
+
+    #[test]
+    fn merge_sub_params_per_key() {
+        let template = make_template(vec![ProviderDefaultParam {
+            key: "feat".to_string(),
+            label: "Feat".to_string(),
+            flag: Some("--feat".to_string()),
+            flag_pair: Vec::new(),
+            ptype: "arg_select".to_string(),
+            values: vec![serde_json::Value::String("ON".to_string())],
+            step: None,
+            default: serde_json::Value::String("ON".to_string()),
+            ui_group: "CORE".to_string(),
+            note: String::new(),
+            pattern: String::new(),
+            sub_params: Some(serde_json::json!({
+                "ON": ["--extra-on"],
+                "NEW": ["--extra-new"]
+            })),
+            dock: String::new(),
+            hidden_default: false,
+        }]);
+
+        let mut user = make_user_param("feat", &["ON"], "ON", 0);
+        let mut user_sp = std::collections::HashMap::new();
+        user_sp.insert("ON".to_string(), vec!["--user-on".to_string()]);
+        user.sub_params = Some(user_sp);
+
+        let merged = merge_user_params_with_template(&template, &[user]);
+        let feat = merged.iter().find(|p| p.key == "feat").unwrap();
+        let sp = feat.sub_params.as_ref().unwrap();
+
+        assert_eq!(sp.get("ON").map(|v| v.as_slice()), Some(&["--user-on".to_string()][..]));
+        assert_eq!(sp.get("NEW").map(|v| v.as_slice()), Some(&["--extra-new".to_string()][..]));
+    }
+
+    #[test]
+    fn validate_rejects_orphan_default() {
+        let bad = make_user_param("ctx", &["8192"], "missing", 0);
+        let errors = validate_provider_params("test", &[bad]);
+        assert!(!errors.is_empty());
+        assert!(errors.iter().any(|e| e.contains("defaultValue")));
+    }
+
+    #[test]
+    fn dedupe_keeps_lowest_order_per_key() {
+        let mut a = make_user_param("logit_bias", &["a"], "a", 5);
+        a.label = "first".to_string();
+        let mut b = make_user_param("logit_bias", &["b"], "b", 2);
+        b.label = "second".to_string();
+        let out = dedupe_user_params_by_key(vec![a, b]);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].label, "second");
+    }
+
+    #[test]
+    fn strip_windows_extended_prefix_removes_verbatim_marker() {
+        assert_eq!(
+            super::strip_windows_extended_prefix(r"\\?\C:\AI-MASTER\models"),
+            r"C:\AI-MASTER\models"
+        );
+        assert_eq!(
+            super::strip_windows_extended_prefix(r"\\?\UNC\server\share\models"),
+            r"\\server\share\models"
+        );
+        assert_eq!(
+            super::strip_windows_extended_prefix(r"C:\already\normal"),
+            r"C:\already\normal"
+        );
+    }
+
+    #[test]
+    fn model_path_dedupe_collapses_case_and_trailing_slash() {
+        let mut paths = vec![
+            ModelPathEntry {
+                path: "D:\\AI-MASTER\\models".to_string(),
+                label: "models".to_string(),
+                is_default: false,
+            },
+            ModelPathEntry {
+                path: "d:\\AI-MASTER\\models\\".to_string(),
+                label: "models-dup".to_string(),
+                is_default: true,
+            },
+        ];
+        assert!(super::dedupe_model_paths(&mut paths));
+        assert_eq!(paths.len(), 1);
+        assert!(paths[0].is_default);
+    }
+
+    #[test]
+    fn sanitize_keeps_single_default_and_syncs_memo() {
+        let mut config = AppConfig {
+            model_paths: vec![
+                ModelPathEntry {
+                    path: "C:\\path-a".to_string(),
+                    label: "A".to_string(),
+                    is_default: true,
+                },
+                ModelPathEntry {
+                    path: "C:\\path-b".to_string(),
+                    label: "B".to_string(),
+                    is_default: true,
+                },
+            ],
+            gpu_slots: 4,
+            hf_token: String::new(),
+            providers: Vec::new(),
+            default_download_path: Some("C:\\path-b".to_string()),
+        };
+        assert!(super::sanitize_model_paths(&mut config));
+        assert_eq!(config.model_paths.iter().filter(|p| p.is_default).count(), 1);
+        assert_eq!(config.default_download_path.as_deref(), Some("C:\\path-b"));
+        assert!(config.model_paths.iter().find(|p| p.path == "C:\\path-b").unwrap().is_default);
+    }
 }

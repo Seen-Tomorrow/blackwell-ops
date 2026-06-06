@@ -179,6 +179,7 @@ pub async fn launch_engine(
     // Guard: auto-hide SPECULATIVE-DECODING params for non-MTP models — prevents CLI crash
     let final_user_params = guard_speculative_decoding(user_params, &config.model_path);
 
+    let supports_fusion = template.spawn_profile.supports_fusion;
     let cmd_args = template.build_command(&config, &gpu_mask, &final_user_params);
     let launch_cmd = format!("{} {}", binary_path.display(), cmd_args.join(" "));
 
@@ -220,12 +221,17 @@ pub async fn launch_engine(
         .and_then(|v| v.parse::<usize>().ok())
         .unwrap_or(32768);
 
-    // Helper to build the on_ready closure
+    // Helper to build the on_ready closure (Arc — shared by log reader + HTTP health probe)
     fn make_on_ready(
         stack: Arc<tokio::sync::Mutex<EngineStack>>,
         slot_idx: usize,
-    ) -> impl Fn() + Send + Sync + 'static {
-        move || {
+    ) -> Arc<dyn Fn() + Send + Sync> {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let fired = Arc::new(AtomicBool::new(false));
+        Arc::new(move || {
+            if fired.swap(true, Ordering::AcqRel) {
+                return;
+            }
             let s_clone = stack.clone();
             let si = slot_idx;
             tokio::spawn(async move {
@@ -243,7 +249,7 @@ pub async fn launch_engine(
                     s.emit_stack_changed();
                 }
             });
-        }
+        })
     }
 
     // Spawn engine with auto-retry (once) on immediate crash
@@ -253,7 +259,7 @@ pub async fn launch_engine(
     for attempt in 0..2 {
         let result = EngineStack::load_slot(
             slot_idx, &config, &binary_path, gpu_mask.clone(), cmd_args.clone(),
-            provider_display_name.clone(), backend_type.clone(), &app.stack,
+            provider_display_name.clone(), backend_type.clone(), supports_fusion, &app.stack,
             app.log_hub.clone(),
             make_on_ready(stack_for_ready.clone(), slot_for_ready),
         ).await;
@@ -279,8 +285,8 @@ pub async fn launch_engine(
         return Err(e);
     }
 
-    // Spawn FUSION brain — /slots + /metrics polling, state machine, emits "fusion-update"
-    {
+    // Spawn FUSION brain only for providers that declare supports_fusion in spawn_profile
+    if supports_fusion {
         let fusion_log_hub = app.log_hub.clone();
         let fusion_alias = config.alias.clone();
         let fusion_port = slot_port;
@@ -324,6 +330,7 @@ pub async fn launch_engine(
         n_ctx: ctx_size_int,
         provider_name: provider_display_name,
         build_info: None,
+        supports_fusion,
     })
 }
 
@@ -415,6 +422,7 @@ pub async fn get_stack_status(app: tauri::State<'_, AppContext>) -> Result<Vec<S
                 n_ctx: e.n_ctx,
                 provider_name: e.provider_name.clone(),
                 build_info,
+                supports_fusion: e.supports_fusion,
             }
         })
         .collect();

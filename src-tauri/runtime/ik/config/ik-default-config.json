@@ -6,9 +6,31 @@
   "git_url": "https://github.com/ikawrakow/ik_llama.cpp",
   "branch": "main",
   "template_type": "ik-llama",
-  "templateVersion": 1,
+  "templateVersion": 3,
   "build_profile": "-DGGML_CUDA=ON\n-DCMAKE_CUDA_ARCHITECTURES=\"120\"\n-DGGML_CUDA_PEER_TO_PEER=ON\n-DGGML_CUDA_FA_ALL_QUANTS=ON\n-DGGML_AVX512=ON\n-DGGML_NATIVE=ON\n-DCMAKE_CUDA_FLAGS=\"-Xcompiler /wd4056 -Xcompiler /wd4756 --diag-suppress 221\"\n-Wno-dev",
+  "spawn_profile": {
+    "model_flag": ["-m"],
+    "port_flag": ["--port"],
+    "alias_flag": ["--alias"],
+    "verbosity_args": ["--simple-io", "--verbose"],
+    "enable_metrics": false,
+    "supports_fusion": false,
+    "gpu_env": "CUDA_VISIBLE_DEVICES",
+    "ngl_flag": ["--n-gpu-layers"],
+    "mmproj_flag": ["--mmproj"]
+  },
   "params": [
+    {
+      "key": "device",
+      "label": "DEVICE",
+      "flag": null,
+      "ptype": "logic_only",
+      "values": ["GPU-0", "GPU-1"],
+      "default": "GPU-0",
+      "dock": "runtime",
+      "ui_group": "MULTI-GPU",
+      "note": "Select GPU via CUDA_VISIBLE_DEVICES mask — not emitted as a CLI flag."
+    },
     {
       "key": "ik_perf",
       "label": "IK-Performance",
@@ -19,27 +41,31 @@
       "ui_group": "PERFORMANCE",
       "note": "Ultra enables Hadamard Transforms, Async Scheduling, and Graph Reuse.",
       "sub_params": {
-        "ultra": ["-sas", "1", "-gr", "1", "-khad", "1", "-vhad", "1", "-mla", "3"],
-        "balanced": ["-sas", "0", "-gr", "1", "-khad", "0", "-vhad", "0", "-mla", "1"]
+        "ultra": ["-sas", "-gr", "-khad", "-vhad", "-mla", "3"],
+        "balanced": ["-gr", "-mla", "1"]
       }
     },
     {
       "key": "gpu_sync",
       "label": "GPU-Sync",
-      "flag": "-smf16",
-      "ptype": "arg_select",
+      "flag": null,
+      "ptype": "logic_only",
       "values": ["1", "0"],
       "default": "1",
       "dock": "runtime",
       "ui_group": "MULTI-GPU",
-      "note": "Split-Mode F16 (1) uses 16-bit for inter-GPU data exchange. Faster on dual RTX 6000s."
+      "note": "Split-Mode F16 (1) uses 16-bit for inter-GPU data exchange. Faster on dual RTX 6000s.",
+      "sub_params": {
+        "1": ["-smf16"],
+        "0": ["-smf32"]
+      }
     },
     {
       "key": "split",
       "label": "SPLIT",
       "flag": "--split-mode",
       "ptype": "arg_select",
-      "values": ["none", "layer", "row"],
+      "values": ["none", "layer", "graph"],
       "default": "none",
       "dock": "runtime",
       "ui_group": "MULTI-GPU",

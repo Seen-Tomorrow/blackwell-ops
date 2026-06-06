@@ -156,16 +156,14 @@ impl LogHub {
 
                     // ── Readiness check (one-shot) ──────────────
                     if !engine_ready {
-                        if cleaned.contains("server is listening on") || cleaned.contains("all slots are idle") {
+                        if Self::is_engine_ready_log_line(&cleaned) {
                             engine_ready = true;
+                            Self::emit_readiness_debug(&app_handle, &alias, "stderr log pattern", &cleaned);
                             on_ready();
-                            // Engine ready now routed to Blackwell Output Console
-
-                            // Route ready status to Blackwell Output Console (ENGINES category)
                             if let Some(ctx) = app_handle.try_state::<crate::engine::AppContext>() {
                                 ctx.blackwell_output_console_manager.emit_line_to_category(
                                     BlackwellOutputConsoleCategory::Engines,
-                                    format!("[{}] Engine ready (server is listening)", alias),
+                                    format!("[{}] Engine ready", alias),
                                     BlackwellOutputConsoleLineStyle::Success,
                                 );
                             }
@@ -213,6 +211,26 @@ impl LogHub {
         }
 
         // Log hub reader stopped now routed to Blackwell Output Console
+    }
+
+    fn emit_readiness_debug(app_handle: &AppHandle, alias: &str, source: &str, detail: &str) {
+        if let Some(ctx) = app_handle.try_state::<crate::engine::AppContext>() {
+            let snippet: String = detail.chars().take(120).collect();
+            ctx.blackwell_output_console_manager.emit_line_to_category(
+                BlackwellOutputConsoleCategory::Debug,
+                format!("[{alias}] readiness={source} | {snippet}"),
+                BlackwellOutputConsoleLineStyle::Normal,
+            );
+        }
+    }
+
+    /// Log substrings that indicate the HTTP server is accepting traffic.
+    /// ggml-master may emit "server is listening on …"; IK uses LOG_INFO "HTTP server listening".
+    fn is_engine_ready_log_line(line: &str) -> bool {
+        line.contains("server is listening on")
+            || line.contains("HTTP server listening")
+            || line.contains("HTTP server is listening")
+            || line.contains("all slots are idle")
     }
 
     /// Check if a line is idle poll chatter with no informational value.

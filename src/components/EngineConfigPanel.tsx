@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import type { ModelEntry, EngineConfig, GpuInfo, UserEditedTemplateParam, ProviderConfig, ProviderTemplate, StackEntry, SystemInfo } from "../lib/types";
 import { DEFAULT_PROVIDER_ID } from "../lib/types";
-import { KEYS, engineAliasKey } from "../lib/storage";
+import { KEYS, engineAliasKey, binaryProfileKey } from "../lib/storage";
 import { invoke } from "@tauri-apps/api/core";
 import VramBadge from "./VramBadge";
 import RunningEnginesPanel from "./RunningEnginesPanel";
@@ -20,6 +20,25 @@ const ENV_META: Record<EnvProfile, { label: string; color: string; cuda: string;
   fresh:    { label: "FRESH",    color: "amber",   cuda: "13.1", vs: "VS Build Tools 2022" },
   stable:   { label: "STABLE",   color: "nv-green", cuda: "12.8", vs: "VS Build Tools 2022" },
 };
+
+function pickBestBinaryProfile(provider: ProviderConfig | undefined): EnvProfile {
+  if (!provider) return "vanguard";
+  const profiles: EnvProfile[] = ["vanguard", "fresh", "stable"];
+  const available = profiles.filter(
+    (p) => provider.binaryPathPerEnv?.[p] || provider.buildInfoPerEnv?.[p],
+  );
+  if (available.length === 0) return "vanguard";
+  let best = available[0];
+  let bestDate = provider.buildInfoPerEnv?.[best]?.buildDate ?? "";
+  for (const p of available.slice(1)) {
+    const d = provider.buildInfoPerEnv?.[p]?.buildDate ?? "";
+    if (d > bestDate) {
+      best = p;
+      bestDate = d;
+    }
+  }
+  return best;
+}
 
 const PROFILE_COLORS: Record<string, string> = {
   cyan:     "#00e5ff",
@@ -50,12 +69,13 @@ interface EngineConfigPanelProps {
   activeEngineAlias?: string;
   activeEnginePort?: number;
   selectedSlotIdx?: number | null; // Slot index for Fusion overlay
+  supportsFusion?: boolean;
   models?: ModelEntry[]; // Full model list for running engines panel
   onSelectEngine?: (slotIdx: number) => void; // Callback to select a running engine
 }
 
 export default function EngineConfigPanel(props: EngineConfigPanelProps) {
-  const { model, gpus, providers: externalProviders, committedVramMib, isAdminUnlocked, systemInfo, stack, onLaunch, isModelRunning, activeEngineAlias, activeEnginePort, selectedSlotIdx, models, onSelectEngine } = props;
+  const { model, gpus, providers: externalProviders, committedVramMib, isAdminUnlocked, systemInfo, stack, onLaunch, isModelRunning, activeEngineAlias, activeEnginePort, selectedSlotIdx, supportsFusion = true, models, onSelectEngine } = props;
 
   // ── State ───────────────────────────────────────────────────────────────
 
@@ -80,9 +100,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   const aliasInitializedRef = useRef<{ modelPath: string; done: boolean }>({ modelPath: "", done: false });
   const aliasUserEditedRef = useRef(false);
 
-  const [selectedBinaryProfile, setSelectedBinaryProfile] = useState<EnvProfile>(() => {
-    try { return (localStorage.getItem(KEYS.binaryProfile) as EnvProfile) || "vanguard"; } catch { return "vanguard"; }
-  });
+  const [selectedBinaryProfile, setSelectedBinaryProfile] = useState<EnvProfile>("vanguard");
 
   const [isBlazing, setIsBlazing] = useState(false);
   const [specFlash, setSpecFlash] = useState(false);
@@ -143,11 +161,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   useEffect(() => {
     try { localStorage.setItem(KEYS.testFlagsMode, testFlagsMode); } catch {}
   }, [testFlagsMode]);
-
-  // Persist binary profile selection
-  useEffect(() => {
-    try { localStorage.setItem(KEYS.binaryProfile, selectedBinaryProfile); } catch {}
-  }, [selectedBinaryProfile]);
 
   // Auto-populate alias when model changes — per-model persistence
   useEffect(() => {
@@ -244,6 +257,28 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     return selectedProvider || (model.backend_type || DEFAULT_PROVIDER_ID);
   }, [model, selectedProvider]);
 
+  // Per-provider binary profile — re-resolve when provider or available builds change
+  useEffect(() => {
+    if (!effectiveBackendType) return;
+    const provider = externalProviders?.find((p) => p.id === effectiveBackendType);
+    const built: EnvProfile[] = (["vanguard", "fresh", "stable"] as EnvProfile[]).filter(
+      (env) => provider?.binaryPathPerEnv?.[env] || provider?.buildInfoPerEnv?.[env],
+    );
+    try {
+      const saved = localStorage.getItem(binaryProfileKey(effectiveBackendType)) as EnvProfile | null;
+      if (saved && built.includes(saved)) {
+        setSelectedBinaryProfile(saved);
+        return;
+      }
+    } catch { /* ignore */ }
+    setSelectedBinaryProfile(pickBestBinaryProfile(provider));
+  }, [effectiveBackendType, externalProviders]);
+
+  useEffect(() => {
+    if (!effectiveBackendType) return;
+    try { localStorage.setItem(binaryProfileKey(effectiveBackendType), selectedBinaryProfile); } catch {}
+  }, [selectedBinaryProfile, effectiveBackendType]);
+
   // Dynamic Device param — generated from GPU topology, docked to runtime block
   const deviceParam: UserEditedTemplateParam | null = useMemo(() => {
     if (gpus.length === 0) return null;
@@ -266,8 +301,19 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
   const allParamsForLaunch = useMemo(() => {
     const defs = deviceParam ? [deviceParam, ...userEditedParams] : [...userEditedParams];
-    return defs.sort((a, b) => a.order - b.order);
-  }, [userEditedParams, deviceParam]);
+    const gpuValues = gpus.map((_, i) => `GPU-${i}`);
+    return defs
+      .map((d) => {
+        if (d.key !== "device" || gpus.length === 0) return d;
+        const defaultStr = String(d.defaultValue);
+        return {
+          ...d,
+          values: gpuValues,
+          defaultValue: gpuValues.includes(defaultStr) ? d.defaultValue : "GPU-0",
+        };
+      })
+      .sort((a, b) => a.order - b.order);
+  }, [userEditedParams, deviceParam, gpus]);
 
   // Docked params: extracted from merged defs by dock key
   const dockedParams = useMemo(() => {
@@ -316,7 +362,10 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   }, [effectiveBackendType]);
 
   // Extracted param row renderer for reuse
-  const renderParamRow = useCallback((def: UserEditedTemplateParam, isLocked?: boolean) => {
+  const paramRowKey = (def: UserEditedTemplateParam, idx?: number) =>
+    `${def.key || "param"}-${def.order}-${idx ?? 0}`;
+
+  const renderParamRow = useCallback((def: UserEditedTemplateParam, isLocked?: boolean, rowIdx?: number) => {
     // Merge values + userAddedValues (user-added params from ConfigPage admin edit)
     const seenVals = new Set((def.values || []).map(v => String(v)));
     const allValues = [...(def.values || []), ...(def.userAddedValues || []).filter(v => !seenVals.has(String(v)))];
@@ -329,7 +378,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     // ── Slider ptype — render range input instead of value chips ───────────
     if (def.ptype === 'slider') {
       return (
-        <div key={def.key} data-param-row className={`flex items-center ${isLocked ? 'opacity-50' : ''}`}>
+        <div key={paramRowKey(def, rowIdx)} data-param-row className={`flex items-center ${isLocked ? 'opacity-50' : ''}`}>
           {isUserAdded && <div className="w-0.5 h-4 flex-shrink-0 bg-yellow-400/40 mr-1.5" />}
           {!isUserAdded && <div className="w-0.5 h-4 flex-shrink-0 mr-1.5" />}
           <span
@@ -350,7 +399,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     }
 
     return (
-      <div key={def.key} data-param-row className={`flex items-center ${isLocked ? 'opacity-50' : ''}`}>
+      <div key={paramRowKey(def, rowIdx)} data-param-row className={`flex items-center ${isLocked ? 'opacity-50' : ''}`}>
         {isUserAdded && <div className="w-0.5 h-4 flex-shrink-0 bg-yellow-400/40 mr-1.5" />}
         {!isUserAdded && <div className="w-0.5 h-4 flex-shrink-0 mr-1.5" />}
         <span
@@ -361,9 +410,9 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         </span>
 
         <div className="flex gap-1 flex-wrap flex-1 min-w-0">
-          {baseValues.filter((v: any) => !(v?._hidden)).map((val) => (
+          {baseValues.filter((v: any) => !(v?._hidden)).map((val, valIdx) => (
             <button
-              key={`${def.key}-${val}`}
+              key={`${paramRowKey(def, rowIdx)}-val-${valIdx}-${String(val)}`}
               tabIndex={isLocked ? -1 : 0}
               onClick={() => {
                 if (!isLocked) updateParam(def.key, val);
@@ -602,9 +651,9 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         const rightParams = runtimeDocked.filter(d => d.ui_group === "RUNTIME-CONFIG");
         const currentProvider = externalProviders?.find(p => p.id === effectiveBackendType);
         const availableProfiles: EnvProfile[] = Object.keys(ENV_META) as EnvProfile[];
-        const builtProfiles = currentProvider?.buildInfoPerEnv
-          ? (Object.keys(currentProvider.buildInfoPerEnv) as EnvProfile[]).filter(k => ENV_META[k])
-          : [];
+        const builtProfiles = (Object.keys(ENV_META) as EnvProfile[]).filter(
+          (env) => currentProvider?.binaryPathPerEnv?.[env] || currentProvider?.buildInfoPerEnv?.[env],
+        );
 
         return (
           <div className="mono-panel relative flex-shrink-0">
@@ -620,7 +669,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                     <label className="text-[8px] font-mono tracking-widest uppercase block mb-2 mono-label">
                       MULTI-GPU
                     </label>
-                    {leftParams.map(def => renderParamRow(def))}
+                    {leftParams.map((def, i) => renderParamRow(def, false, i))}
                   </div>
                 )}
 
@@ -633,7 +682,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                     RUNTIME-CONFIG
                   </label>
 
-                  {rightParams.map(def => renderParamRow(def))}
+                  {rightParams.map((def, i) => renderParamRow(def, false, i))}
 
                   <div className="flex items-center">
                     <div className="w-0.5 h-4 flex-shrink-0 mr-1.5" />
@@ -726,6 +775,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                   activeEngineAlias={activeEngineAlias}
                   activeEnginePort={activeEnginePort}
                   selectedSlotIdx={selectedSlotIdx}
+                  supportsFusion={supportsFusion}
                   offloadMode={config["offload_mode"]}
                   onMoeSuggestionClick={() => {
                     updateParam("offload_mode", "moe_optimal");
@@ -814,7 +864,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                           </svg>
                           <svg className="icon-on" viewBox="0 0 24 24" fill="currentColor">
                             <path
-                              d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313-12.454.z"
+                              d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313-12.454z"
                             ></path>
                           </svg>
                         </span>
@@ -834,9 +884,9 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
                   {isMtpModel && specActive && (
                     <div className="space-y-2.5 mt-2">
-                      {specAllParams.map(def => (
-                        <div key={def.key} className="spec-param-unlock" style={{ opacity: 0 }}>
-                          {renderParamRow(def)}
+                      {specAllParams.map((def, i) => (
+                        <div key={paramRowKey(def, i)} className="spec-param-unlock" style={{ opacity: 0 }}>
+                          {renderParamRow(def, false, i)}
                         </div>
                       ))}
                     </div>
@@ -880,7 +930,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
                 {!isCollapsed && (
                   <div className="space-y-2.5">
-                    {groupParams.map(def => renderParamRow(def))}
+                    {groupParams.map((def, i) => renderParamRow(def, false, i))}
                   </div>
                 )}
               </div>

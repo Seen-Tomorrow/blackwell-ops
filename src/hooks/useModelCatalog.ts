@@ -12,6 +12,38 @@ export type SortField = (keyof ModelEntry) | "date";
 export type SortDirection = "asc" | "desc";
 export type FitStatus = { label: string; colorClass: string };
 
+/** Searchable text from model fields + badge labels shown on ModelCard. */
+function modelSearchText(m: ModelEntry): string {
+  const parts = [m.name, m.author, m.quant];
+  const meta = m.metadata;
+  if (!meta) return parts.join(" ").toLowerCase();
+
+  const ft = meta.file_type_str?.trim();
+  if (ft) parts.push(ft);
+
+  const rawTotal = meta.modelTypeLabel || meta.total_params_str;
+  const numPart = parseFloat(rawTotal.replace(/[^0-9.]/g, ""));
+  if (!isNaN(numPart)) {
+    parts.push(meta.n_expert_used > 0 ? "moe" : "dense");
+  }
+
+  if ((meta.nextn_predict_layers ?? 0) > 0) {
+    parts.push("mtp");
+  }
+
+  const quantUpper = ft?.toUpperCase() ?? "";
+  if (quantUpper.includes("NVFP4") || quantUpper.includes("MXFP4")) {
+    parts.push("nvfp4", "mxfp4");
+  }
+
+  return parts.join(" ").toLowerCase();
+}
+
+function modelMatchesSearch(m: ModelEntry, words: string[]): boolean {
+  const combined = modelSearchText(m);
+  return words.every(word => combined.includes(word));
+}
+
 interface UseModelCatalogParams {
   models: ModelEntry[];
   gpus: GpuInfo[];
@@ -215,26 +247,20 @@ export function useModelCatalog({ models, gpus, stack, scanningPath, setScanning
       if (runningModelPaths.has(m.path)) pinned.push(m);
     }
 
+    const searchWords = search.trim()
+      ? search.toLowerCase().trim().split(/\s+/)
+      : null;
+
     // Apply search filter to pinned zone
     let filteredPinned = pinned;
-    if (search.trim()) {
-      const words = search.toLowerCase().trim().split(/\s+/);
-      const matches = (m: ModelEntry) => {
-        const combined = `${m.name} ${m.author} ${m.quant}`.toLowerCase();
-        return words.every(word => combined.includes(word));
-      };
-      filteredPinned = pinned.filter(matches);
+    if (searchWords) {
+      filteredPinned = pinned.filter(m => modelMatchesSearch(m, searchWords));
     }
 
     // Catalog zone: ALL models (including running), with search filter
     let catalogAll = [...sorted];
-    if (search.trim()) {
-      const words = search.toLowerCase().trim().split(/\s+/);
-      const matches = (m: ModelEntry) => {
-        const combined = `${m.name} ${m.author} ${m.quant}`.toLowerCase();
-        return words.every(word => combined.includes(word));
-      };
-      catalogAll = sorted.filter(matches);
+    if (searchWords) {
+      catalogAll = sorted.filter(m => modelMatchesSearch(m, searchWords));
     }
 
     // allFiltered is pinned + catalog for keyboard nav indexing

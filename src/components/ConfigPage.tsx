@@ -243,10 +243,14 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
     } catch (err) { console.error("[CONFIG] Reset failed:", err); }
 
     setUserOverrides({});
-    try { localStorage.removeItem(overridesKey(selectedProviderId)); } catch {}
+    try {
+      localStorage.removeItem(overridesKey(selectedProviderId));
+      localStorage.removeItem(groupOrderKey(selectedProviderId));
+    } catch {}
+    setCustomGroupOrder(null);
     window.dispatchEvent(new CustomEvent("param-config-changed"));
     showSaved("RESET TO DEFAULTS");
-  }, [currentProvider, isAdminLocked, selectedProviderId]);
+  }, [currentProvider, adminLockState, selectedProviderId]);
 
   // ── Admin: add new param definition (from modal) ────────────────────────
   const handleCreatorSubmit = useCallback(async (def: Omit<UserEditedTemplateParam, "order">) => {
@@ -582,9 +586,10 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
       });
       // Determine new ui_group — persist change if different from current
       const newUiGroup = paramMetaForm.uiGroup || "Feature Flags";
+      const nextPtype = (paramMetaForm.ptype === d.ptype ? d.ptype : paramMetaForm.ptype) as UserEditedTemplateParam["ptype"];
       return {
         ...d,
-        ptype: paramMetaForm.ptype !== "arg_select" && paramMetaForm.ptype !== "logic_only" ? undefined : (paramMetaForm.ptype === d.ptype ? d.ptype : paramMetaForm.ptype),
+        ptype: nextPtype,
         flag: paramMetaForm.flag || null,
         pattern: paramMetaForm.ptype === "path_scanner" ? paramMetaForm.pattern : undefined,
         ui_group: newUiGroup !== d.ui_group ? newUiGroup : d.ui_group || undefined,
@@ -817,7 +822,7 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
           {currentProvider?.needsTemplateAttention && (
             <div className="mx-4 mt-3 px-3 py-2 border border-yellow-400/40 bg-yellow-400/10 rounded-sm flex items-start justify-between gap-3">
               <span className="text-[9px] font-mono text-yellow-300 leading-tight">
-                ⚠ Factory template updated. Your saved settings are preserved, but if engines fail to launch after an update, try RESET TO DEFAULTS.
+                ⚠ Factory template updated — new options were merged automatically. Save any change to dismiss, or RESET TO DEFAULTS if engines fail to launch.
               </span>
               {adminLockState !== "locked" && (
                 <button onClick={() => setShowResetConfirm(true)}
@@ -891,8 +896,11 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
                             <span className="opacity-40">({groupParams.length})</span>
                           </div>
                           <div className="space-y-1.5">
-{groupParams.map((def) => {
-                               const globalIdx = userSavedParamsWithDefaults.findIndex(d => d.key === def.key);
+{groupParams.map((def, localIdx) => {
+                               const globalIdx = userSavedParamsWithDefaults.findIndex(
+                                 (d) => d.key === def.key && d.order === def.order,
+                               );
+                               const rowKey = `${def.key || "param"}-${def.order}-${localIdx}`;
                                const defKey = def.key;
 
                                // Effective value: user override > current default
@@ -905,7 +913,7 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
                                const isUserAdded = providerDefaultParams.length > 0 && !providerDefaultParams.some(gp => gp.key === def.key);
 
                                  return (
-                                    <React.Fragment key={`row-${globalIdx}`}>
+                                    <React.Fragment key={rowKey}>
                                     <div data-row-idx={globalIdx}
                                      className={`flex items-center gap-2 p-2 rounded transition-all duration-150 ${
                                        (dragging && def.key === dragKeyRef.current)
@@ -1242,6 +1250,36 @@ function ParamMetaEditor({
 
 // ── Model Paths Panel ────────────────────────────────────────────────
 
+function displayModelPath(path: string): string {
+  if (path.startsWith("\\\\?\\UNC\\")) {
+    return `\\\\${path.slice("\\\\?\\UNC\\".length)}`;
+  }
+  if (path.startsWith("\\\\?\\")) {
+    return path.slice("\\\\?\\".length);
+  }
+  return path;
+}
+
+function normalizeModelPathKey(path: string): string {
+  return displayModelPath(path).replace(/[/\\]+$/, "").toLowerCase();
+}
+
+function dedupeModelPaths(paths: ModelPathEntry[]): ModelPathEntry[] {
+  const out: ModelPathEntry[] = [];
+  for (const entry of paths) {
+    const key = normalizeModelPathKey(entry.path);
+    const idx = out.findIndex((e) => normalizeModelPathKey(e.path) === key);
+    if (idx >= 0) {
+      if (entry.isDefault) {
+        out[idx] = { ...out[idx], isDefault: true };
+      }
+      continue;
+    }
+    out.push(entry);
+  }
+  return out;
+}
+
 function formatBytes(bytes: number): string {
   if (bytes === 0) return "0 B";
   const units = ["B", "KB", "MB", "GB", "TB"];
@@ -1260,7 +1298,7 @@ function ModelPathsPanel() {
         invoke<ModelPathEntry[]>("list_model_paths"),
         invoke<PathDiskUsage[]>("get_disk_usage"),
       ]);
-      setPaths(p);
+      setPaths(dedupeModelPaths(p));
       setDiskUsage(d);
     } catch (e) {
       console.error("Failed to load model paths:", e);
@@ -1345,7 +1383,7 @@ function ModelPathsPanel() {
                     )}
                     <span className="text-[10px] font-mono text-white truncate">{entry.label || entry.path}</span>
                   </div>
-                  <div className="text-[9px] font-mono text-stealth-muted truncate">{entry.path}</div>
+                  <div className="text-[9px] font-mono text-stealth-muted truncate">{displayModelPath(entry.path)}</div>
                   {usage && (
                     <div className="flex items-center gap-3 mt-1.5">
                       <span className="text-[8px] font-mono text-stealth-muted/70">

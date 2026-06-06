@@ -288,6 +288,9 @@ pub struct StackEntry {
     /// Build info for the running engine's provider (CUDA version, build date)
     #[serde(default)]
     pub build_info: Option<BuildInfo>,
+    /// Whether live Fusion monitoring is enabled for this provider.
+    #[serde(default = "default_true", rename = "supportsFusion")]
+    pub supports_fusion: bool,
 }
 
 pub fn default_provider_type() -> String { crate::config::DEFAULT_PROVIDER_ID.to_string() }

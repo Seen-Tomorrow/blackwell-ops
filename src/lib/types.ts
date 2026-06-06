@@ -138,7 +138,8 @@ export type ProviderOrigin = 'foundry' | 'downloaded' | 'bundled';
  * - bundled: path points to runtime/<id>/<env>/, no build/download info
  */
 export function getProviderOrigin(provider: ProviderConfig, env: string): ProviderOrigin {
-  if (provider.binaryPathPerEnv?.[env]?.startsWith('foundry/artifacts/')) return 'foundry';
+  const norm = (provider.binaryPathPerEnv?.[env] ?? '').replace(/\\/g, '/').toLowerCase();
+  if (norm.includes('foundry/artifacts/')) return 'foundry';
   if (provider.downloadedVersionPerEnv?.[env]) return 'downloaded';
   return 'bundled';
 }
@@ -266,6 +267,8 @@ export interface StackEntry {
   n_ctx?: number;
   provider_name?: string;
   build_info?: BuildInfo;
+  /** Live Fusion monitoring enabled for this provider (from spawn_profile). */
+  supportsFusion?: boolean;
 }
 
 /** Per-slot context bar info — matches Rust SlotCtxInfo struct */

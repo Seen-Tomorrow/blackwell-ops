@@ -70,6 +70,7 @@ const tabs: { id: Tab; label: string; icon: string; hidden?: boolean }[] = [
   { id: "stack", label: "ENGINES", icon: "\uD83D\uDDA4" },
 { id: "reactor11", label: "Reactor11", icon: "\u269B", hidden: true },
   { id: "telemetry", label: "TELEMETRY", icon: "\uD83D\uDCCA" },
+  { id: "intel", label: "INTEL", icon: "\uD83D\uDCF0" },
   { id: "logs", label: "LOGS", icon: "\uD83D\uDCCD" },
   { id: "config", label: "CONFIG", icon: "\u2699" },
   { id: "sentinel", label: "SENTINEL", icon: "\u2694" },
