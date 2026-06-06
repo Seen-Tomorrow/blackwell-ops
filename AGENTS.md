@@ -419,27 +419,9 @@ Set to `"off"` in `tauri.conf.json` under `plugins.nsis.compression`.
 
 ---
 
-## 11. Framer-Motion Cleanup (Pending)
+## 11. Framer-Motion Cleanup (Done)
 
-**Status:** Deferred — all current edits must finish first before touching animation layer.
-
-**Problem:**
-18 components import framer-motion (`motion`, `AnimatePresence`). Most use it for simple opacity/scale transitions that could be pure CSS. This creates:
-- Massive dependency graph — any runtime style injection cascades HMR to all 18 components
-- Phantom Vite HMR updates on `index.css` + `SlotCtxBars.tsx` (framer-motion v12 injects CSS at runtime, Vite detects change → full cascade)
-- Each phantom HMR remounts component tree, creating React fiber nodes that may not GC properly
-
-**Immediate mitigation:** Added `'**/node_modules/framer-motion/**'` to `vite.config.ts` watch.ignored — prevents runtime CSS injection from triggering HMR.
-
-**When ready to tackle (post-current-edits):**
-- Audit each component: replace `motion.div` with plain `<div>` + CSS transitions where animation is just opacity/scale/fade
-- Keep framer-motion only for complex animations that actually need it (layout transitions, spring physics, gesture handling)
-- Target: reduce from 18 imports to ~5-6 critical ones
-
-**Components currently importing framer-motion:**
-`StackView`, `FusionOverlay`, `SlotLogPanel`, `SlotCtxBars`, `VramBadge`, `FusionPhaseBadge`, `EngineConfigPanel`, `ModelCatalog`, `ModelCard`, `RunningEnginesPanel`, `Layout`, `EngineBanner`, `GpuTopology`, `MiniModelCard`, `MoeBadge`, `R11_Sidebar`, `NeuralNetworkAnimation`, `ModelHubSearch`, `CrtAnimations`
-
----
+Framer-motion has been fully removed from all components. All animations migrated to pure CSS keyframes and transitions in `index.css`.
 
 
 ### Reference

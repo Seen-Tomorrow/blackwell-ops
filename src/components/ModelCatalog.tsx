@@ -54,23 +54,28 @@ export default function ModelCatalog(props: ModelCatalogProps) {
       return;
     }
     const container = catalogScrollRef.current;
-    const gap = 8; // gap-2 = 8px between cards
     const count = parseInt(visibleCount);
 
     const measureAndSet = () => {
       const cards = container.querySelectorAll('[data-model-path]');
       if (cards.length === 0) return;
-      let totalH = 0;
-      cards.forEach((c: Element) => { totalH += (c as HTMLElement).offsetHeight; });
-      let avgHeight = totalH / cards.length;
-      const computed = avgHeight * count + gap * (count - 1);
-      setDynamicMaxHeight(computed);
+      const totalCards = cards.length;
+      const style = window.getComputedStyle(container);
+      const padTop = parseFloat(style.paddingTop);
+      const padBottom = parseFloat(style.paddingBottom);
+      const contentHeight = container.scrollHeight - padTop - padBottom;
+      const gapsTotal = 8 * (totalCards - 1);
+      const cardsTotalHeight = contentHeight - gapsTotal;
+      const avgCardH = cardsTotalHeight / totalCards;
+      const needed = avgCardH * count + 8 * (count - 1) + padTop + padBottom;
+      // Cap at available parent space (use offsetHeight, not getBoundingClientRect)
+      const parentH = container.parentElement.offsetHeight;
+      const usedAbove = container.offsetTop;
+      const available = parentH - usedAbove;
+      setDynamicMaxHeight(Math.min(needed, available));
     };
 
-    const observer = new ResizeObserver(measureAndSet);
-    observer.observe(container);
-    requestAnimationFrame(measureAndSet);
-    return () => observer.disconnect();
+    requestAnimationFrame(() => setTimeout(measureAndSet, 100));
   }, [visibleCount, catalogModels.length]);
 
   useEffect(() => {
@@ -101,7 +106,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
 
   // ── Sort bar ────────────────
   const renderSortBar = () => (
-    <div className="flex items-center gap-1 px-3 py-2 border-b border-stealth-border/50">
+    <div className="flex items-center gap-1 px-3 py-2">
       {(["name", "author", "size_str", "date"] as SortField[]).map((field) => (
         <button
           key={field}
@@ -197,8 +202,8 @@ export default function ModelCatalog(props: ModelCatalogProps) {
       {/* Top bar */}
       <div className="px-4 py-2.5 border-b border-stealth-border/50 flex items-center justify-between fade-in">
         <div className="flex items-center gap-3">
-          <h2 className="text-xs font-mono text-nv-green tracking-widest glitch-text">✦ MODEL CATALOG</h2>
-          <span className="text-[9px] font-mono text-stealth-muted">{allFiltered.length} / {models.length}</span>
+          <h2 className="text-xs font-mono text-nv-green tracking-widest">✦ MODEL CATALOG</h2>
+          <span className="text-[8px] font-mono opacity-40">({allFiltered.length} / {models.length})</span>
           {zone === "config" && (
             <span className="text-[8px] font-mono px-1.5 py-0.5 rounded-sm border border-telemetry-cyan/40 text-telemetry-cyan bg-telemetry-cyan/10">
               CONFIG [Ctrl+Enter]
@@ -223,10 +228,10 @@ export default function ModelCatalog(props: ModelCatalogProps) {
       {/* Split panels */}
       <div className="flex flex-1 overflow-hidden">
         {/* Left panel — model browser */}
-        <div className="w-[420px] min-w-[320px] flex flex-col border-r border-stealth-border/50 eink-panel-wrapper">
+        <div className="w-[420px] min-w-[320px] flex flex-col eink-panel-wrapper">
 
           {/* Search bar */}
-          <div className="px-3 py-2 border-b border-stealth-border/50 flex-shrink-0">
+          <div className="px-3 py-2 flex-shrink-0">
             <input
               type="text"
               placeholder="▶  SEARCH MODELS..."
@@ -243,7 +248,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
           {(() => {
             const style = visibleCount !== 'all' && dynamicMaxHeight ? { height: `${dynamicMaxHeight}px` } : undefined;
             return (
-              <div ref={catalogScrollRef} id="model-table-container" className={`overflow-y-auto eink-scrollbar p-3 pb-[60px] ${visibleCount === 'all' ? 'flex-1 min-h-0' : 'flex-shrink-0'}`} style={style}>
+              <div ref={catalogScrollRef} id="model-table-container" className={`overflow-y-auto eink-scrollbar pt-3 px-3 pb-5 ${visibleCount === 'all' ? 'flex-1 min-h-0' : 'flex-shrink-0'}`} style={style}>
             {allFiltered.length === 0 ? (
               <div className="flex items-center justify-center h-full text-stealth-muted text-xs font-mono opacity-50">
                 NO MODELS FOUND

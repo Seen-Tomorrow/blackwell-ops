@@ -570,7 +570,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       {/* Provider selector */}
       {externalProviders && externalProviders.length > 0 && (
         <div className="px-4 py-3 border-b section-divider relative flex-shrink-0">
-          <label className="text-[9px] font-mono tracking-widest uppercase block mb-2 glitch-text" style={{ color: '#4ade80' }}>
+          <label className="text-[9px] font-mono tracking-widest uppercase block mb-2" style={{ color: 'rgba(245, 151, 31, 0.8)' }}>
             ENGINE PROVIDER
           </label>
           <div className="flex gap-1.5 flex-wrap">
@@ -588,7 +588,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                 }`}
               >
                 {p.display_name || p.id}
-                {p.id === DEFAULT_PROVIDER_ID && <span className="ml-1 text-nv-green/60" title="Default provider">[D]</span>}
                 <span className="ml-1 opacity-40 text-[8px]">({(p.userEditedTemplateParams || []).length})</span>
               </button>
             ))}
@@ -608,7 +607,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           : [];
 
         return (
-          <div className="mono-panel border-b section-divider relative flex-shrink-0">
+          <div className="mono-panel relative flex-shrink-0">
             {/* Section header — outside the green bg, on dark */}
             <div className="relative z-[2] px-4 pt-3 pb-1" style={{ background: '#040b01' }}>
 
@@ -626,7 +625,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                 )}
 
                 {/* Subtle vertical separator */}
-                <div className="w-px flex-shrink-0 bg-green-400/10" />
+                <div className="w-px flex-shrink-0 bg-white/[0.03]" />
 
                {/* Right: Runtime Config */}
                 <div className="flex-1 min-w-0 space-y-2.5">
@@ -702,13 +701,13 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     {/* VRAM + Running Engines — industrial display unit */}
       <div className="industrial-display-area flex-shrink-0">
           <div className="industrial-display-frame relative">
-              {/* Phosphor theme cycle button — top-right of bezel */}
+              {/* Phosphor theme cycle button — top-center of bezel */}
               <button
                 onClick={cyclePhosphorTheme}
-                className="absolute top-[8px] right-[10px] z-[60] px-1.5 py-0.5 text-[7px] font-mono tracking-wider rounded-sm border border-white/10 bg-black/40 text-white/60 hover:text-white/90 hover:border-white/20 transition-colors"
+                className="absolute top-2 left-1/2 -translate-x-1/2 z-[60] px-0.5 py-0 text-[6px] font-mono tracking-wider text-white/50 hover:text-white/80 transition-colors cursor-pointer"
                 title={`Screen theme: ${PHOSPHOR_THEMES[phosphorIdx].name}`}
               >
-                ◈ {PHOSPHOR_THEMES[phosphorIdx].name}
+                {PHOSPHOR_THEMES[phosphorIdx].name}
               </button>
               <div className="phosphor-screen-inner">
                 <VramBadge
@@ -750,7 +749,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       </div>
 
       {/* Parameters — scrollable middle section (e-ink panel) */}
-      <div className="px-4 py-3 border-b relative flex-1 overflow-y-auto eink-scrollbar eink-panel">
+      <div className="px-4 py-3 relative flex-1 overflow-y-auto eink-scrollbar eink-panel">
 
         {allParamsForLaunch.length === 0 ? (
           <div className="text-stealth-muted text-[10px] font-mono opacity-50">NO PARAMS DEFINED</div>
@@ -893,7 +892,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
               <div className="flex-1 min-w-0 space-y-3">
                 {leftCol.map(renderGroup)}
               </div>
-              <div className="w-px flex-shrink-0 bg-green-400/10" />
+              <div className="w-px flex-shrink-0 bg-white/[0.03]" />
               <div className="w-[40%] min-w-[200px] flex-shrink-0 space-y-3">
                 {rightCol.map(renderGroup)}
               </div>
@@ -903,13 +902,13 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
         {/* Test flags */}
         {isAdminUnlocked && (
-          <div className="relative mt-2 border rounded-sm overflow-hidden transition-all duration-200" style={{ borderColor: testFlagsEnabled ? 'rgba(250, 204, 21, 0.6)' : 'rgba(250, 204, 21, 0.2)' }}>
+          <div className="relative mt-2 border rounded-sm overflow-hidden transition-all duration-200" style={{ borderColor: testFlagsEnabled ? 'rgba(184, 122, 0, 0.5)' : 'rgba(184, 122, 0, 0.15)' }}>
             {/* Top accent bar */}
-            <div className="h-[1px] w-full bg-gradient-to-r from-transparent via-yellow-500/60 to-transparent" />
-            <div className="px-2.5 py-1.5 space-y-1 transition-all duration-200" style={{ background: testFlagsEnabled ? 'rgba(250, 204, 21, 0.2)' : 'rgba(250, 204, 21, 0.04)' }}>
+            <div className="h-[1px] w-full bg-gradient-to-r from-transparent via-amber-600/40 to-transparent" />
+            <div className="px-2.5 py-1.5 space-y-1 transition-all duration-200" style={{ background: testFlagsEnabled ? 'rgba(184, 122, 0, 0.08)' : 'rgba(184, 122, 0, 0.02)' }}>
               {/* Header row */}
               <div className="flex items-center justify-between">
-                <label className="text-[9px] font-mono uppercase tracking-wider transition-all duration-200" style={{ color: testFlagsEnabled ? 'rgba(250, 204, 21, 1)' : 'rgba(250, 204, 21, 0.8)' }}>
+                <label className="text-[9px] font-mono uppercase tracking-wider transition-all duration-200" style={{ color: testFlagsEnabled ? 'rgba(184, 122, 0, 0.9)' : 'rgba(184, 122, 0, 0.5)' }}>
                   CUSTOM FLAGS
                 </label>
                 <div className="flex items-center gap-2">
@@ -983,7 +982,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                 disabled={!testFlagsEnabled}
                 className={`w-full border text-[9px] font-mono px-2.5 py-1 focus:outline-none transition-all duration-150 rounded-sm ${
                    testFlagsEnabled
-                     ? "border-yellow-500/30 focus:border-yellow-500/50 placeholder:text-stealth-muted/40"
+                     ? "border-amber-600/30 focus:border-amber-600/50 placeholder:text-stealth-muted/40"
                      : "border-stealth-border/20 text-stealth-muted/30 cursor-not-allowed"
                 }`}
                 style={{ background: 'rgba(0, 0, 0, 0.3)' }}

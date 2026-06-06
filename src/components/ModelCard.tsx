@@ -52,103 +52,101 @@ export default function ModelCard({ model, idx, isSelected, isHighlighted, fitSt
       className={`relative cursor-pointer rounded-sm p-2.5 model-card-enter ${
         isSelected
            ? "gunmetal-card border"
-           : "eink-card hover:bg-black/40"
+           : "buried-card"
       }`}
     >
-      {/* ── Author + path label ─── */}
-      <div className="flex items-center gap-1.5 mb-1">
+      {/* ── Author + path + GGUF badge ─── */}
+      <div className="flex items-center justify-between gap-1.5 mb-1">
         <span className="text-[8px] font-mono text-stealth-muted truncate">{model.author}</span>
-        {model.sourcePathLabel && (
-          <span className="text-[7px] font-mono text-stealth-muted/50 bg-stealth-surface px-1 py-0.5 rounded-sm shrink-0" title={model.path}>
-            📁 {model.sourcePathLabel}
-          </span>
-        )}
-      </div>
-
-      {/* ── Two-column: left (name + info) | right (badge stack) ─── */}
-      <div className="flex gap-2">
-        {/* Left column — flexible, name is hero */}
-        <div className="min-w-0 flex-1">
-          <span
-            className="text-[11px] font-mono block truncate"
-            style={isSelected ? { color: '#b87a00' } : undefined}
-            title={model.name}
-          >
-            {model.name}
-          </span>
-
-          {/* Params + arch badges */}
-          {(paramsNum || (model.metadata?.nextn_predict_layers ?? 0 > 0)) && (
-            <div className="flex items-center gap-1 mt-0.5">
-              {paramsNum && (
-                <span className="text-[8px] font-mono text-white">{paramsNum}</span>
-              )}
-              {archBadge && (
-                <span className="text-[7px] font-mono bg-black text-white/70 px-1 py-0.5 rounded-sm">{archBadge}</span>
-              )}
-              {(model.metadata?.nextn_predict_layers ?? 0) > 0 && (
-                <span className="text-[7px] font-mono bg-black text-white/70 px-1 py-0.5 rounded-sm">MTP</span>
-              )}
-            </div>
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          {model.sourcePathLabel && (
+            <span className="text-[7px] font-mono text-stealth-muted/50 bg-stealth-surface px-1 py-0.5 rounded-sm" title={model.path}>
+              📁 {model.sourcePathLabel}
+            </span>
           )}
-
-          {/* Footer metadata — size, date, arch detail */}
-          {hasMetadata ? (
-            <div className="mt-1 pt-1 border-t border-stealth-border/30 flex flex-col gap-0.5">
-              <div className="flex items-center gap-1.5">
-                <span className="text-[8px] font-mono text-stealth-muted">{model.size_str}</span>
-                <span className="text-[7px] font-mono text-white/60">
-                  {model.metadata?.file_created
-                    ? new Date(model.metadata.file_created * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })
-                    : '--'}
-                </span>
-              </div>
-              <span className="text-[7px] font-mono text-stealth-muted" title={model.metadata.architecture}>
-                {model.metadata.architecture} · KV:{model.metadata.n_ctx_train.toLocaleString()} H:{model.metadata.n_head}({model.metadata.n_head_kv})
-              </span>
-            </div>
-          ) : (
-            <div className="mt-1 pt-1 border-t border-stealth-border/30 flex items-center justify-between">
-              <div className="flex items-center gap-1.5">
-                <span className="text-[8px] font-mono text-stealth-muted">{model.size_str}</span>
-                <span className="text-[7px] font-mono text-white/60">
-                  {model.metadata?.file_created
-                    ? new Date(model.metadata.file_created * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })
-                    : '--'}
-                </span>
-              </div>
-              <button
-                onClick={(e) => { e.stopPropagation(); onScanModel?.(model); }}
-                disabled={isScanning || scanningPath !== null}
-                className={`text-[7px] font-mono px-1.5 py-0.5 rounded-sm transition-colors ${
-                  isScanning
-                    ? 'text-telemetry-cyan border border-telemetry-cyan/40 bg-telemetry-cyan/10'
-                    : 'text-orange-400 border border-orange-400/30 hover:bg-orange-400/10 disabled:opacity-30'
-                }`}
-              >
-                {isScanning ? '⠋ SCANNING...' : '⚠ SCAN'}
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* Right column — badge stack, fixed width */}
-        <div className="flex flex-col items-end gap-0.5 flex-shrink-0">
           <span className="text-[8px] font-mono px-1 py-0.5 rounded-sm border border-gray-500/20 text-gray-500">
             GGUF
           </span>
-          {hasMultimodal && (
-            <span className="text-[8px] font-mono px-1 py-0.5 rounded-sm border border-amber-400/15 text-amber-400/50">
-              MULTIMODAL
-            </span>
+        </div>
+      </div>
+
+      {/* ── Name + params ─── */}
+      <span
+        className="text-[11px] font-mono block truncate"
+        style={isSelected ? { color: '#b87a00' } : undefined}
+        title={model.name}
+      >
+        {model.name}
+      </span>
+
+      {(paramsNum || (model.metadata?.nextn_predict_layers ?? 0 > 0)) && (
+        <div className="flex items-center gap-1 mt-0.5">
+          {paramsNum && (
+            <span className="text-[8px] font-mono text-white">{paramsNum}</span>
           )}
-          {quantBadge && (
-            <span className={`text-[8px] font-mono px-1 py-0.5 rounded-sm whitespace-nowrap ${quantBadgeClass}`}>
-              {quantBadge}
+          {archBadge && (
+            <span className="text-[7px] font-mono bg-black text-white/70 px-1 py-0.5 rounded-sm">{archBadge}</span>
+          )}
+          {(model.metadata?.nextn_predict_layers ?? 0) > 0 && (
+            <span className="text-[7px] font-mono bg-black text-white/70 px-1 py-0.5 rounded-sm">MTP</span>
+          )}
+          {hasMetadata && (
+            <span className="text-[7px] font-mono text-white/[0.06]" title={model.metadata.architecture}>
+              · {model.metadata.architecture} · KV:{model.metadata.n_ctx_train.toLocaleString()}
             </span>
           )}
         </div>
-      </div>
+      )}
+
+      {/* Footer — size/date (left) | multimodal+quant (right) */}
+      {hasMetadata ? (
+        <div className="mt-1 pt-1 border-t border-stealth-border/30 flex items-center justify-between">
+          <div className="min-w-0 flex flex-col gap-0.5">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[8px] font-mono text-stealth-muted">{model.size_str}</span>
+              <span className="text-[7px] font-mono text-white/60">
+                {model.metadata?.file_created
+                  ? new Date(model.metadata.file_created * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })
+                  : '--'}
+              </span>
+            </div>
+          </div>
+          <div className="flex items-center gap-0.5 flex-shrink-0 ml-2">
+            {hasMultimodal && (
+              <span className="text-[8px] font-mono px-1 py-0.5 rounded-sm border border-amber-400/15 text-amber-400/50">
+                MULTIMODAL
+              </span>
+            )}
+            {quantBadge && (
+              <span className={`text-[8px] font-mono px-1 py-0.5 rounded-sm whitespace-nowrap ${quantBadgeClass}`}>
+                {quantBadge}
+              </span>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="mt-1 pt-1 border-t border-stealth-border/30 flex items-center justify-between">
+          <div className="flex items-center gap-1.5">
+            <span className="text-[8px] font-mono text-stealth-muted">{model.size_str}</span>
+            <span className="text-[7px] font-mono text-white/60">
+              {model.metadata?.file_created
+                ? new Date(model.metadata.file_created * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })
+                : '--'}
+            </span>
+          </div>
+          <button
+            onClick={(e) => { e.stopPropagation(); onScanModel?.(model); }}
+            disabled={isScanning || scanningPath !== null}
+            className={`text-[7px] font-mono px-1.5 py-0.5 rounded-sm transition-colors ${
+              isScanning
+                ? 'text-telemetry-cyan border border-telemetry-cyan/40 bg-telemetry-cyan/10'
+                : 'text-orange-400 border border-orange-400/30 hover:bg-orange-400/10 disabled:opacity-30'
+            }`}
+          >
+            {isScanning ? '⠋ SCANNING...' : '⚠ SCAN'}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

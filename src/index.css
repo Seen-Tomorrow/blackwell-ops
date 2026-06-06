@@ -163,20 +163,84 @@ html, body, #root {
 }
 
 /* Model card styles */
-/* ── E-ink Card — model list items ─── */
-.eink-card {
-  background: linear-gradient(135deg, rgba(28,30,34,.6) 0%, rgba(5,10,2,.8) 100%);
-  border: 1px solid rgba(74, 222, 128, 0.06);
+/* ── Buried Card — recessed slot, pushed into the dark bg ─── */
+.buried-card {
+  background: transparent;
+  border: 2px solid #1c1e22;
+  border-top-color: #222529;
+  border-left-color: #202328;
+  border-radius: 6px;
+  box-shadow:
+    inset 0 1px 3px rgba(0, 0, 0, 0.5),
+    inset 0 0 1px rgba(255, 255, 255, 0.02);
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
   overflow: hidden;
 }
 
+.buried-card:hover {
+  border-color: #23262b;
+  border-top-color: #282c32;
+  border-left-color: #262a30;
+  box-shadow:
+    inset 0 1px 4px rgba(0, 0, 0, 0.6),
+    inset 0 0 1px rgba(74, 222, 128, 0.04);
+  transform: translateY(1px);
+}
+
+/* ── E-ink Card — glass panel over eink surface ─── */
+.eink-card {
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.03) 0%,
+    rgba(255, 255, 255, 0.01) 100%
+  );
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-top-color: rgba(255, 255, 255, 0.10);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 1px 2px rgba(0, 0, 0, 0.3);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.eink-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(74, 222, 128, 0.15) 50%,
+    transparent 100%
+  );
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
 .eink-card:hover {
-  background: linear-gradient(135deg, rgba(28,30,34,.8) 0%, rgba(8,15,3,.9) 100%);
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.05) 0%,
+    rgba(255, 255, 255, 0.02) 100%
+  );
   border-color: rgba(74, 222, 128, 0.15);
-  box-shadow: 0 0 12px rgba(74, 222, 128, 0.06), inset 0 0 12px rgba(74, 222, 128, 0.02);
+  border-top-color: rgba(74, 222, 128, 0.25);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 0 16px rgba(74, 222, 128, 0.05),
+    0 2px 8px rgba(0, 0, 0, 0.4);
   transform: translateY(-1px);
+}
+
+.eink-card:hover::before {
+  opacity: 1;
 }
 
 /* Config chip keyboard focus indicator */
@@ -392,24 +456,23 @@ html, body, #root {
   border-color: rgba(74, 222, 128, 0.7);
 }
 
-/* Provider pill button — muted phosphor style */
+/* Provider pill button — amber style */
 .provider-pill {
-  background: rgba(74, 222, 128, 0.03) !important;
-  border: 1px solid rgba(74, 222, 128, 0.15);
-  color: #4a6a5a;
+  background: rgba(245, 151, 31, 0.04) !important;
+  border: 1px solid rgba(245, 151, 31, 0.15);
+  color: rgba(245, 151, 31, 0.5);
   transition: all 0.3s ease;
 }
 
 .provider-pill:hover {
-  border-color: rgba(74, 222, 128, 0.35);
-  color: #4ade80;
+  border-color: rgba(245, 151, 31, 0.4);
+  color: rgba(245, 151, 31, 0.9);
 }
 
 .provider-pill-active {
-  background: rgba(74, 222, 128, 0.1) !important;
-  border-color: rgba(74, 222, 128, 0.5);
-  color: #4ade80;
-  box-shadow: 0 0 6px rgba(74, 222, 128, 0.15) !important;
+  background: rgba(245, 151, 31, 0.12) !important;
+  border-color: rgba(245, 151, 31, 0.5);
+  color: #f5971f;
 }
 
 /* Value chip */
@@ -426,10 +489,9 @@ html, body, #root {
 }
 
 .value-chip-active {
-  background: rgba(74, 222, 128, 0.1) !important;
+  background: rgba(74, 222, 128, 0.12) !important;
   border-color: rgba(74, 222, 128, 0.5);
   color: #4ade80;
-  box-shadow: 0 0 6px rgba(74, 222, 128, 0.15) !important;
 }
 
 /* Section divider with glow */
@@ -654,7 +716,7 @@ html, body, #root {
 /* ── Eject panel — running engines, gunmetal bg, flush below display bevel ─── */
 .industrial-eject-panel {
   margin: -9px 24px 0;
-  padding: 4px 8px 8px;
+  padding: 4px 8px 0px;
   background-color: #1c1e22;
   background-image: repeating-linear-gradient(
     135deg,
@@ -765,7 +827,7 @@ html, body, #root {
   box-shadow: 0 0 8px rgba(118, 185, 0, 0.12);
 }
 
-/* ── Running engines — orange strip inside gunmetal frame ─── */
+/* ── Running engines — black banner + amber text ─── */
 [data-config-panel] .running-engines-header-row {
   background: transparent;
   padding-top: 4px;
@@ -773,31 +835,44 @@ html, body, #root {
 }
 
 [data-config-panel] .running-engines-header-row h3 {
-  background: #b87a00;
+  background: #000;
   padding: 6px 12px;
+  color: #b87a00 !important;
 }
 
-[data-config-panel] .running-engines-header-row * {
-  color: #1a1a1a !important;
-}
-
-/* Cards — warm dark grey, orange-tinted borders */
+/* Cards — glass over dark */
 [data-config-panel] .running-engine-card {
-  background: rgba(40, 36, 28, 0.95) !important;
-  border-color: rgba(184, 122, 0, 0.2) !important;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.03) 0%,
+    rgba(255, 255, 255, 0.01) 100%
+  ) !important;
+  backdrop-filter: blur(2px) !important;
+  -webkit-backdrop-filter: blur(2px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.06) !important;
+  border-top-color: rgba(255, 255, 255, 0.10) !important;
   border-radius: 6px !important;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 1px 2px rgba(0, 0, 0, 0.3) !important;
 }
 
 [data-config-panel] .running-engine-card:hover {
-  background: rgba(55, 48, 35, 0.95) !important;
-  border-color: rgba(184, 122, 0, 0.4) !important;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.05) 0%,
+    rgba(255, 255, 255, 0.02) 100%
+  ) !important;
+  border-color: rgba(184, 122, 0, 0.2) !important;
 }
 
 [data-config-panel] .running-engine-card-selected {
-  background: rgba(60, 48, 25, 0.95) !important;
-  border-color: #b87a00 !important;
-  box-shadow: 0 0 8px rgba(184, 122, 0, 0.15) !important;
+  background: linear-gradient(
+    135deg,
+    rgba(184, 122, 0, 0.08) 0%,
+    rgba(184, 122, 0, 0.03) 100%
+  ) !important;
+  border-color: rgba(184, 122, 0, 0.35) !important;
 }
 
 /* Status dot — orange pulse */
@@ -1283,7 +1358,7 @@ select option {
   box-shadow: 0 0 6px rgba(74, 222, 128, 0.5);
 }
 
-/* ── FusionOverlay animations (replaces framer-motion) ─── */
+/* ── FusionOverlay animations ─── */
 @keyframes fadeIn {
   from { opacity: 0; }
   to { opacity: 1; }
@@ -1294,7 +1369,7 @@ select option {
   50% { transform: scale(1.15); opacity: 1; }
 }
 
-/* ── EngineBanner animations (replaces framer-motion) ─── */
+/* ── EngineBanner animations ─── */
 @keyframes bannerEnter {
   from { opacity: 0; transform: translateY(-8px); }
   to { opacity: 1; transform: translateY(0); }
@@ -1336,7 +1411,7 @@ select option {
   animation: bannerDotPulse 2s ease-in-out infinite;
 }
 
-/* ── GpuTopology animations (replaces framer-motion) ─── */
+/* ── GpuTopology animations ─── */
 @keyframes gpuCardEnter {
   from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: translateY(0); }
@@ -1358,7 +1433,7 @@ select option {
   animation: fadeIn 0.4s ease-out both;
 }
 
-/* ── Layout animations (replaces framer-motion) ─── */
+/* ── Layout animations ─── */
 @keyframes layoutHeaderEnter {
   from { opacity: 0; transform: translateY(-40px); }
   to { opacity: 1; transform: translateY(0); }
@@ -1377,7 +1452,7 @@ select option {
   animation: layoutTabEnter 0.25s ease-out both;
 }
 
-/* ── EngineConfigPanel animations (replaces framer-motion) ─── */
+/* ── EngineConfigPanel animations ─── */
 @keyframes configEmptyEnter {
   from { opacity: 0; transform: scale(0.9); }
   to { opacity: 1; transform: scale(1); }
@@ -1399,7 +1474,7 @@ select option {
   transform: scale(0.98);
 }
 
-/* ── ModelCard animations (replaces framer-motion) ─── */
+/* ── ModelCard animations ─── */
 @keyframes modelCardEnter {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
@@ -1409,7 +1484,7 @@ select option {
   animation: modelCardEnter 0.3s ease-out both;
 }
 
-/* ── MiniModelCard animations (replaces framer-motion) ─── */
+/* ── MiniModelCard animations ─── */
 @keyframes miniCardEnter {
   from { opacity: 0; transform: scale(0.95); }
   to { opacity: 1; transform: scale(1); }
@@ -1428,7 +1503,7 @@ select option {
   animation: miniCardNewPulse 2s ease-in-out;
 }
 
-/* ── RunningEnginesPanel animations (replaces framer-motion) ─── */
+/* ── RunningEnginesPanel animations ─── */
 @keyframes enginePanelEnter {
   from { opacity: 0; transform: scale(0.95); }
   to { opacity: 1; transform: scale(1); }
@@ -1438,7 +1513,7 @@ select option {
   animation: enginePanelEnter 0.2s ease-out both;
 }
 
-/* ── R11_Sidebar animations (replaces framer-motion) ─── */
+/* ── R11_Sidebar animations ─── */
 .sidebar-width-transition {
   transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -1447,7 +1522,7 @@ select option {
   transition: opacity 0.3s ease, transform 0.3s ease;
 }
 
-/* ── ModelHubSearch animations (replaces framer-motion) ─── */
+/* ── ModelHubSearch animations ─── */
 @keyframes hubResultEnter {
   from { opacity: 0; transform: translateX(-12px); }
   to { opacity: 1; transform: translateX(0); }
