@@ -292,7 +292,16 @@ impl EngineStack {
                 let alive = Self::is_process_alive(pid);
 
                 if !alive {
-                    // Reaper engine died now routed to Blackwell Output Console
+                    // Intentional stop already cleared this slot — skip duplicate cleanup.
+                    let already_stopped = {
+                        let stack = stack_ref.lock().await;
+                        stack
+                            .get_slot(slot_idx)
+                            .map_or(true, |s| matches!(s.status, SlotStatus::Idle))
+                    };
+                    if already_stopped {
+                        break;
+                    }
 
                     // Stop the fusion brain for this slot
                     crate::fusion_brain::stop_brain(slot_idx).await;
@@ -306,7 +315,7 @@ impl EngineStack {
                         crate::output_console::BlackwellOutputConsoleLineStyle::Error,
                     );
 
-                    // Kill any orphaned process on the port
+                    let _ = crate::engine_utils::kill_process_by_pid(pid).await;
                     let _ = Self::kill_process_by_port(port).await;
 
                     // Clear the slot
@@ -329,29 +338,57 @@ impl EngineStack {
         crate::engine_utils::kill_process_by_port(port).await
     }
 
-    fn graceful_shutdown_process(
-        child: &mut std::process::Child,
-        slot_idx: usize,
-    ) -> bool {
-        let pid = child.id();
-
-        // Engine stop now routed to Blackwell Output Console
+    /// Kill child and poll briefly (~250ms max). Matches CTRL+C responsiveness.
+    fn fast_kill_process(child: &mut std::process::Child) -> bool {
         let _ = child.kill();
 
-        for attempt in 0..40 {
-            std::thread::sleep(std::time::Duration::from_millis(50));
+        for _ in 0..10 {
+            std::thread::sleep(std::time::Duration::from_millis(25));
             match child.try_wait() {
-                Ok(Some(_)) => {
-                    // Engine killed now routed to Blackwell Output Console
-                    return true;
-                }
+                Ok(Some(_)) => return true,
                 Ok(None) => {}
                 Err(_) => break,
             }
         }
 
-        // Engine orphaned now routed to Blackwell Output Console
         false
+    }
+
+    /// Background orphan cleanup — only when fast_kill_process failed.
+    async fn finish_process_stop(
+        port: u16,
+        pid: Option<u32>,
+        mut proc: std::process::Child,
+        hub: Option<LogHub>,
+        slot_idx: usize,
+        alias: String,
+        emit_console: bool,
+    ) {
+        let graceful = tokio::task::spawn_blocking(move || Self::fast_kill_process(&mut proc))
+            .await
+            .unwrap_or(false);
+
+        if !graceful {
+            if let Some(p) = pid {
+                let _ = crate::engine_utils::kill_process_by_pid(p).await;
+            }
+            let _ = Self::kill_process_by_port(port).await;
+        }
+
+        if emit_console {
+            if let Some(hub) = hub {
+                let msg = if graceful {
+                    "[STOP] KILLED".to_string()
+                } else {
+                    "[STOP] ORPHANED (still alive after kill)".to_string()
+                };
+                hub.emit_console_line(
+                    crate::output_console::BlackwellOutputConsoleCategory::Engines,
+                    &format!("[STOP] slot={} alias={} {}", slot_idx, alias, msg),
+                    crate::output_console::BlackwellOutputConsoleLineStyle::Warning,
+                );
+            }
+        }
     }
 
     /// Reset a slot to factory defaults.
@@ -385,49 +422,42 @@ impl EngineStack {
         slot_idx: usize,
         stack_ref: &Arc<tokio::sync::Mutex<EngineStack>>,
     ) -> Result<(), String> {
+        crate::fusion_brain::stop_brain(slot_idx).await;
+
         // Extract process handle under per-slot lock only
-        let (port, alias, proc_to_stop) = {
+        let (port, alias, pid, proc_to_stop, hub_opt) = {
             let stack = stack_ref.lock().await;
             let mut slot = stack.slots[slot_idx].as_ref().ok_or("Slot not found")?.lock();
             let port = slot.port;
             let alias = slot.alias.clone();
+            let pid = slot.pid;
             let proc_to_stop = slot.child_proc.take();
-            (port, alias, proc_to_stop)
+            let hub_opt = stack.log_hub.as_ref().map(|h| h.clone());
+            (port, alias, pid, proc_to_stop, hub_opt)
         };
 
-        if let Some(mut proc) = proc_to_stop {
-            let graceful = tokio::task::spawn_blocking({
-                let si = slot_idx;
-                move || EngineStack::graceful_shutdown_process(&mut proc, si)
-            }).await.unwrap_or(false);
-
-            let msg = if !graceful {
-                "[STOP] ORPHANED (still alive after kill)".to_string()
-            } else {
-                "[STOP] KILLED".to_string()
-            };
-            // Engine shutdown now routed to Blackwell Output Console
-
-            let hub_opt = {
-                let stack = stack_ref.lock().await;
-                stack.log_hub.as_ref().map(|h| h.clone())
-            };
-            if let Some(hub) = hub_opt {
-                hub.emit_console_line(
-                    crate::output_console::BlackwellOutputConsoleCategory::Engines,
-                    &format!("[STOP] slot={} alias={} {}", slot_idx, alias, msg),
-                    crate::output_console::BlackwellOutputConsoleLineStyle::Warning,
-                );
-            }
-            let _ = Self::kill_process_by_port(port).await;
-        }
-
-        // Clean up slot state
+        // Immediate UI feedback — don't block on process teardown or port scan
         {
             let stack = stack_ref.lock().await;
             stack.clear_slot(slot_idx);
             stack.emit_stack_changed();
+            if let Some(hub) = hub_opt.as_ref() {
+                hub.emit("slot-cleared", &serde_json::json!({ "slot": slot_idx }));
+            }
         }
+
+        if let Some(proc) = proc_to_stop {
+            tokio::spawn(Self::finish_process_stop(
+                port,
+                pid,
+                proc,
+                hub_opt,
+                slot_idx,
+                alias,
+                true,
+            ));
+        }
+
         Ok(())
     }
 
@@ -436,6 +466,7 @@ impl EngineStack {
         stack_ref: &Arc<tokio::sync::Mutex<EngineStack>>,
         filter: impl Fn(&mut EngineSlot) -> bool,
         emit_events: bool,
+        await_process_kill: bool,
     ) -> Vec<usize> {
         // Phase 1: Collect targets under brief lock
         let mut targets = Vec::new();
@@ -445,67 +476,64 @@ impl EngineStack {
                 if let Some(slot_arc) = slot_opt {
                     let mut slot = slot_arc.lock();
                     if filter(&mut slot) {
-                        targets.push((i, slot.port, slot.alias.clone(), slot.child_proc.take()));
+                        targets.push((
+                            i,
+                            slot.port,
+                            slot.pid,
+                            slot.alias.clone(),
+                            slot.child_proc.take(),
+                        ));
                     }
                 }
             }
             stack.log_hub.as_ref().map(|h| h.clone())
         };
 
-        // Phase 2: Parallel shutdown
-        let mut handles = Vec::new();
-        for (i, port, alias, proc_to_stop) in targets {
-            let hub_clone = log_hub_ref.clone();
-            handles.push(tokio::spawn(async move {
-                if let Some(mut proc) = proc_to_stop {
-                    let graceful = tokio::task::spawn_blocking(move || {
-                        EngineStack::graceful_shutdown_process(&mut proc, i)
-                    }).await.unwrap_or(false);
+        let stopped: Vec<usize> = targets.iter().map(|(i, _, _, _, _)| *i).collect();
 
-                    let msg = if !graceful {
-                        "[STOP] ORPHANED (still alive after kill)".to_string()
-                    } else {
-                        "[STOP] KILLED".to_string()
-                    };
-                    // Engine shutdown now routed to Blackwell Output Console
+        for (i, _, _, _, _) in &targets {
+            crate::fusion_brain::stop_brain(*i).await;
+        }
 
-                    if emit_events {
-                        if let Some(hub) = hub_clone.as_ref() {
-                            hub.emit_console_line(
-                                crate::output_console::BlackwellOutputConsoleCategory::Engines,
-                                &format!("[STOP] slot={} alias={} {}", i, alias, msg),
-                                crate::output_console::BlackwellOutputConsoleLineStyle::Warning,
-                            );
-                        }
-                    }
-                    let _ = EngineStack::kill_process_by_port(port).await;
-                }
-
+        // Immediate UI — clear slots and emit before slow process/port cleanup
+        {
+            let stack = stack_ref.lock().await;
+            for (i, _, _, _, _) in &targets {
+                stack.clear_slot(*i);
                 if emit_events {
-                    if let Some(hub) = hub_clone.as_ref() {
+                    if let Some(hub) = log_hub_ref.as_ref() {
                         hub.emit("slot-cleared", &serde_json::json!({ "slot": i }));
                     }
                 }
-
-                i
-            }));
-        }
-
-        // Phase 3: Await, clear slots, emit stack-changed
-        let mut stopped = Vec::new();
-        for handle in handles {
-            if let Ok(i) = handle.await {
-                {
-                    let stack = stack_ref.lock().await;
-                    stack.clear_slot(i);
-                }
-                stopped.push(i);
             }
-        }
-        {
-            let stack = stack_ref.lock().await;
             stack.emit_stack_changed();
         }
+
+        let mut kill_handles = Vec::new();
+        for (i, port, pid, alias, proc_to_stop) in targets {
+            if let Some(proc) = proc_to_stop {
+                let hub_clone = log_hub_ref.clone();
+                let handle = tokio::spawn(Self::finish_process_stop(
+                    port,
+                    pid,
+                    proc,
+                    hub_clone,
+                    i,
+                    alias,
+                    emit_events,
+                ));
+                if await_process_kill {
+                    kill_handles.push(handle);
+                }
+            }
+        }
+
+        if await_process_kill {
+            for handle in kill_handles {
+                let _ = handle.await;
+            }
+        }
+
         stopped
     }
 
@@ -513,7 +541,13 @@ impl EngineStack {
     pub async fn stop_all_parallel(
         stack_ref: &Arc<tokio::sync::Mutex<EngineStack>>,
     ) -> Vec<usize> {
-        Self::shutdown_slots_generic(stack_ref, |slot| matches!(slot.status, SlotStatus::Running | SlotStatus::Loading), true).await
+        Self::shutdown_slots_generic(
+            stack_ref,
+            |slot| matches!(slot.status, SlotStatus::Running | SlotStatus::Loading),
+            true,
+            false,
+        )
+        .await
     }
 
     /// Stops all slots whose backend_type matches the given provider ID in parallel.
@@ -522,12 +556,24 @@ impl EngineStack {
         stack_ref: &Arc<tokio::sync::Mutex<EngineStack>>,
     ) -> Vec<usize> {
         let bt = backend_type.to_string();
-        Self::shutdown_slots_generic(stack_ref, |slot| slot.backend_type == bt && !matches!(slot.status, SlotStatus::Idle), true).await
+        Self::shutdown_slots_generic(
+            stack_ref,
+            |slot| slot.backend_type == bt && !matches!(slot.status, SlotStatus::Idle),
+            true,
+            false,
+        )
+        .await
     }
 
-    /// Emergency kill all — used during app exit. Runs in parallel for speed.
+    /// Emergency kill all — used during app exit. Awaits process teardown.
     pub async fn kill_all(stack_ref: &Arc<tokio::sync::Mutex<EngineStack>>) {
-        Self::shutdown_slots_generic(stack_ref, |slot| matches!(slot.status, SlotStatus::Running | SlotStatus::Loading), false).await;
+        Self::shutdown_slots_generic(
+            stack_ref,
+            |slot| matches!(slot.status, SlotStatus::Running | SlotStatus::Loading),
+            false,
+            true,
+        )
+        .await;
     }
 
     /// Create a StackEntry from an engine slot.

@@ -1,7 +1,7 @@
-import { useState, useRef, useEffect } from "react";
+import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 import type { bench_TGBenchResult, bench_PPBurstResult, bench_PromptMode } from "../lib/types";
+import { useTauriListen } from "../hooks/useTauriListen";
 
 interface BenchWidgetProps {
   port: number;
@@ -59,32 +59,38 @@ export default function BenchWidget({ port }: BenchWidgetProps) {
 
   const [, setTick] = useState(0);
   const tick = () => setTick(t => t + 1);
-  const unsubTgProgress = useRef<(() => void) | null>(null);
-  const unsubPpProgress = useRef<(() => void) | null>(null);
 
-  // Listen for TG benchmark phase updates
-  useEffect(() => {
-    let cancelled = false;
-    listen<any>("bench-tg-progress", (e) => {
-      if (cancelled || e.payload.port !== port) return;
-      ps.tgPhase = e.payload.phase as "warmup" | "measured";
-      if (e.payload.effectiveLength != null) ps.tgEffectiveLength = e.payload.effectiveLength;
-      tick();
-    }).then((u) => { if (!cancelled) unsubTgProgress.current = u; });
-    return () => { cancelled = true; unsubTgProgress.current?.(); };
-  }, [port]);
+  useTauriListen<{ slot: number }>("slot-cleared", () => {
+    portStates.clear();
+    tick();
+  });
 
-  // Listen for PP benchmark phase updates
-  useEffect(() => {
-    let cancelled = false;
-    listen<any>("bench-pp-progress", (e) => {
-      if (cancelled || e.payload.port !== port) return;
-      ps.ppPhase = e.payload.phase as "warmup" | "measured";
-      if (e.payload.effectiveLength != null) ps.ppEffectiveLength = e.payload.effectiveLength;
+  useTauriListen("engines-all-stopped", () => {
+    portStates.clear();
+    tick();
+  });
+
+  useTauriListen<{ port: number; phase: string; effectiveLength?: number }>(
+    "bench-tg-progress",
+    (payload) => {
+      if (payload.port !== port) return;
+      ps.tgPhase = payload.phase as "warmup" | "measured";
+      if (payload.effectiveLength != null) ps.tgEffectiveLength = payload.effectiveLength;
       tick();
-    }).then((u) => { if (!cancelled) unsubPpProgress.current = u; });
-    return () => { cancelled = true; unsubPpProgress.current?.(); };
-  }, [port]);
+    },
+    [port],
+  );
+
+  useTauriListen<{ port: number; phase: string; effectiveLength?: number }>(
+    "bench-pp-progress",
+    (payload) => {
+      if (payload.port !== port) return;
+      ps.ppPhase = payload.phase as "warmup" | "measured";
+      if (payload.effectiveLength != null) ps.ppEffectiveLength = payload.effectiveLength;
+      tick();
+    },
+    [port],
+  );
 
   const runBenchTg = async () => {
     if (ps.tgRunning || !port) return;

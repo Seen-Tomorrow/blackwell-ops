@@ -38,6 +38,8 @@ function App() {
   const unsubEngineLogBatch = useRef<(() => void) | null>(null);
   const unsubEngineSystem = useRef<(() => void) | null>(null);
   const unsubSlotCleared = useRef<(() => void) | null>(null);
+  const flatLogsRef = useRef<Map<number, Array<{ text: string; alias: string }>>>(new Map());
+  const logsLengthsRef = useRef<Record<number, number>>({});
 
   // unsubFusionUpdate removed — listener moved to useFusionData hook
   const unsubGgufProgress = useRef<(() => void) | null>(null);
@@ -48,6 +50,30 @@ function App() {
   const [providers, setProviders] = useState<ProviderConfig[]>([]);
   const [scanningPath, setScanningPath] = useState<string | null>(null);
   const [batchScanState, setBatchScanState] = useState<{active: boolean; scanned: number; failed: number; total: number}>({ active: false, scanned: 0, failed: 0, total: 0 });
+
+  const releaseSlotLogCaches = useCallback((slot?: number) => {
+    if (slot === undefined) {
+      setLogs(new Map());
+      setSystemEvents(new Map());
+      flatLogsRef.current.clear();
+      logsLengthsRef.current = {};
+      return;
+    }
+    setLogs((prev) => {
+      if (!prev.has(slot)) return prev;
+      const next = new Map(prev);
+      next.delete(slot);
+      return next;
+    });
+    setSystemEvents((prev) => {
+      if (!prev.has(slot)) return prev;
+      const next = new Map(prev);
+      next.delete(slot);
+      return next;
+    });
+    flatLogsRef.current.delete(slot);
+    delete logsLengthsRef.current[slot];
+  }, []);
   const [totalParams, setTotalParams] = useState(0);
   const [hiddenCount, setHiddenCount] = useState(0);
   const [lowPower, setLowPower] = useState(() => {
@@ -282,16 +308,7 @@ function App() {
       unstable_batchedUpdates(() => {
         try {
           if (payload && payload.slot !== undefined) {
-            setLogs((prev) => {
-              const next = new Map(prev);
-              next.delete(payload.slot);
-              return next;
-            });
-            setSystemEvents((prev) => {
-              const next = new Map(prev);
-              next.delete(payload.slot);
-              return next;
-            });
+            releaseSlotLogCaches(payload.slot);
             setActiveLogSlot((prev) => (prev === payload.slot ? "all" : prev));
             window.dispatchEvent(new CustomEvent("blackops-slot-cleared", { detail: payload }));
             // Route to Blackwell Output Console (ENGINES category)
@@ -306,7 +323,7 @@ function App() {
     }).then((u) => { if (!cancelled) unsubSlotCleared.current = u; });
 
     return () => { cancelled = true; unsubSlotCleared.current?.(); };
-  }, []);
+  }, [releaseSlotLogCaches]);
 
   // Fusion data is now managed by useFusionData hook in StackView/VramBadge — single listener, no duplication.
 
@@ -378,8 +395,7 @@ function App() {
   const handleStopEngine = useCallback(async (alias: string) => {
     try {
       await invoke("stop_engine", { alias });
-      // Keep logs + system events so shutdown messages stay visible
-      // Stack update comes via push event from Rust — no manual setStack needed.
+      // slot-cleared from Rust also clears this slot; stack-changed via push event.
     } catch (err) {
       console.error("Stop failed:", err);
     }
@@ -388,14 +404,12 @@ function App() {
   const handleStopAll = useCallback(async () => {
     try {
       await invoke("stop_all_engines");
-      // Keep logs + system events so shutdown messages stay visible
-      // Signal catalog to clear engine selection
+      releaseSlotLogCaches();
       window.dispatchEvent(new CustomEvent("blackops-stop-all"));
-      // Stack update comes via push event from Rust — no manual setStack needed.
     } catch (err) {
       console.error("Stop all failed:", err);
     }
-  }, []);
+  }, [releaseSlotLogCaches]);
 
   // Auto-scroll logs to bottom on new entries
   const prevLogCountRef = useRef(0);
@@ -423,9 +437,6 @@ function App() {
       return next;
     });
   }, []);
-
-  const flatLogsRef = useRef<Map<number, Array<{ text: string; alias: string }>>>(new Map());
-  const logsLengthsRef = useRef<Record<number, number>>({});
 
   const flatLogs = useMemo(() => {
     const result = new Map();

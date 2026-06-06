@@ -324,17 +324,22 @@ Serde renames → camelCase in TypeScript (`types.ts`).
 
 | Event | Payload | When |
 |-------|---------|------|
-| `fusion-update` | `FusionUpdate` | Each log event + each poll tick |
+| `fusion-update` | `FusionUpdate` | On **change** (fingerprint) or `emit_dirty` after log belt; poll 100 ms active / 500 ms idle+ready |
 | `engine-log-batch` | Log lines | Stderr batching |
 | `bench-pp-progress` | phase, `effectiveLength` | PP bench warmup/measured |
 | `bench-tg-progress` | phase | TG bench |
+| `engines-all-stopped` | `{ slots: number[] }` | After `stop_all_engines` — bulk frontend cache purge |
 
 ---
 
 ## 13. Maintenance notes
 
+- **Emit policy (2026-06-05):** `FusionEmitFingerprint` in `fusion_brain.rs` — skip identical `fusion-update` IPC. Log events set `emit_dirty`; emit coalesces on next poll tick (≤100 ms). Idle+ready polls at 500 ms.
+- **Frontend dedupe:** `useFusionData.ts` shallow-compares payloads before `map.set` / `setEngines`.
+- **Listeners:** Prefer `useTauriListen.ts` (generation-guarded) over raw `listen().then()` for StrictMode safety.
 - **Hooks:** `useFusionHeroTpsMode()` must run unconditionally at top of `FusionOverlay` (before `if (!fusion) return`).
-- **StrictMode:** App-level Tauri listeners use ref-based unsubscribe (see `Agents.md` §2).
+- **Lifecycle:** `stop_brain` runs from `engine.rs`, `engine_stack::shutdown_slots_generic`, `stop_slot`, and reaper. Brain `run()` calls `unregister_log_receiver` on cancel.
+- **Log pipeline:** `log_hub.rs` uses bounded stderr channel (4096); fusion `parse_line` runs **after** `is_idle_chatter` filter.
 - **Removing log parser:** Would require replacing `NewPrompt` / `cached n_tokens` / `log_request_open` belt before dropping `fusion_logparser.rs`.
 
 ---
@@ -349,3 +354,4 @@ Serde renames → camelCase in TypeScript (`types.ts`).
 | 2026-06 | Hero LIVE/AVG, session PP TPS, instant caps, frozen request clock |
 | 2026-06 | PP bench `/tokenize` calibration for chip targets |
 | 2026-06 | This document rewritten as full logic spec |
+| 2026-06-05 | Emit-on-change, idle poll slowdown, browser leak fixes, `stop_brain` in all stop paths |

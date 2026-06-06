@@ -339,10 +339,7 @@ pub async fn stop_engine(alias: String, app: tauri::State<'_, AppContext>) -> Re
         }).ok_or(format!("Engine '{}' not found", alias))?
     };
 
-    // Cancel fusion brain BEFORE stopping the slot — prevents race with channel close
-    fusion_brain::stop_brain(slot_idx).await;
-
-    // stop_slot is self-locking — does NOT require caller to hold stack lock
+    // stop_slot cancels fusion brain and clears slot — self-locking, no stack lock needed
     EngineStack::stop_slot(slot_idx, &app.stack).await?;
 
     Ok(format!("Engine {} stopped", alias))
@@ -351,24 +348,14 @@ pub async fn stop_engine(alias: String, app: tauri::State<'_, AppContext>) -> Re
 
 #[tauri::command]
 pub async fn stop_all_engines(app: tauri::State<'_, AppContext>) -> Result<String, String> {
-    let slots_to_stop: Vec<usize> = {
-        let stack = app.stack.lock().await;
-        let slot_count = stack.slots.len();
-
-        (0..slot_count)
-            .filter(|&i| {
-                stack.get_slot(i).map_or(false, |s| !matches!(s.status, SlotStatus::Idle))
-            })
-            .collect()
-    }; // Stack lock released
-
-    // Cancel all fusion brains in parallel BEFORE stopping slots
-    for idx in &slots_to_stop {
-        fusion_brain::stop_brain(*idx).await;
-    }
-
-    // stop_all_parallel is self-locking — does NOT require caller to hold stack lock
     let stopped = EngineStack::stop_all_parallel(&app.stack).await;
+
+    if !stopped.is_empty() {
+        app.log_hub.emit(
+            "engines-all-stopped",
+            &serde_json::json!({ "slots": stopped }),
+        );
+    }
 
     Ok(format!("All {} engines stopped", stopped.len()))
 }
@@ -376,23 +363,6 @@ pub async fn stop_all_engines(app: tauri::State<'_, AppContext>) -> Result<Strin
 /// Stops all running engines for a specific provider (by backend_type).
 #[tauri::command]
 pub async fn stop_engines_by_provider(provider_id: String, app: tauri::State<'_, AppContext>) -> Result<String, String> {
-    let slots_to_stop: Vec<usize> = {
-        let stack = app.stack.lock().await;
-        (0..stack.slots.len())
-            .filter(|&i| {
-                stack.get_slot(i).map_or(false, |s| {
-                    s.backend_type == provider_id && !matches!(s.status, SlotStatus::Idle)
-                })
-            })
-            .collect()
-    };
-
-    // Cancel fusion brains BEFORE stopping slots
-    for idx in &slots_to_stop {
-        fusion_brain::stop_brain(*idx).await;
-    }
-
-    // stop_slots_by_provider_parallel is self-locking — no stack lock needed
     let stopped = EngineStack::stop_slots_by_provider_parallel(&provider_id, &app.stack).await;
 
     Ok(format!("Stopped {} engine(s) for '{}'", stopped.len(), provider_id))

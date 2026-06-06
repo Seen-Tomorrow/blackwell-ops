@@ -34,6 +34,8 @@ pub struct LogBatch {
 
 const BATCH_INTERVAL_MS: u64 = 10;
 const MAX_BATCH_SIZE: usize = 10;
+/// Bounded stderr line queue — drops on flood instead of unbounded RAM growth.
+const STDERR_LINE_CHANNEL_CAP: usize = 4096;
 
 pub struct LogHub {
     app_handle: AppHandle,
@@ -82,8 +84,8 @@ impl LogHub {
     ) {
         let app_handle = self.app_handle.clone();
 
-        // Internal channel: pipe readers → main processing loop
-        let (line_tx, line_rx) = mpsc::unbounded_channel::<String>();
+        // Internal channel: pipe readers → main processing loop (bounded)
+        let (line_tx, line_rx) = mpsc::channel::<String>(STDERR_LINE_CHANNEL_CAP);
 
         // Spawn blocking reader for stderr (llama.cpp sends everything here)
         tokio::task::spawn_blocking({
@@ -95,7 +97,7 @@ impl LogHub {
                     match line_result {
                         Ok(line) => {
                             if !line.is_empty() {
-                                let _ = tx.send(line);
+                                let _ = tx.try_send(line);
                             }
                         }
                         Err(e) => {
@@ -124,7 +126,7 @@ impl LogHub {
         app_handle: AppHandle,
         slot_idx: usize,
         alias: String,
-        mut line_rx: mpsc::UnboundedReceiver<String>,
+        mut line_rx: mpsc::Receiver<String>,
         on_ready: impl Fn() + Send + Sync + 'static,
     ) {
         let mut batch_buffer: Vec<LogEntry> = Vec::with_capacity(MAX_BATCH_SIZE);
@@ -170,13 +172,14 @@ impl LogHub {
                         }
                     }
 
-                    // ── Parse for fusion-relevant log events (stderr → brain) ──────
-                    if let Some(log_event) = crate::fusion_logparser::parse_line(&cleaned) {
-                        crate::fusion_brain::route_log_event(slot_idx, log_event);
+                    // Skip idle poll chatter before fusion parse (regex savings at steady state)
+                    if !Self::is_idle_chatter(&cleaned) {
+                        if let Some(log_event) = crate::fusion_logparser::parse_line(&cleaned) {
+                            crate::fusion_brain::route_log_event(slot_idx, log_event);
+                        }
+                    } else {
+                        continue;
                     }
-
-                    // Skip idle poll chatter — no value during steady state
-                    if Self::is_idle_chatter(&cleaned) { continue; }
 
                     // ── Push to batch buffer for frontend emit ──────
                     batch_buffer.push(LogEntry {

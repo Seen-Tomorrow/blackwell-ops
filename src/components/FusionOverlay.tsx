@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 import type { FusionUpdate } from "../lib/types";
 import BenchWidget from "./BenchWidget";
 import SlotCtxBars from "./SlotCtxBars";
 import { useFusionHeroTpsMode } from "../hooks/useFusionHeroTpsMode";
+import { useTauriListen } from "../hooks/useTauriListen";
 
 interface FusionOverlayProps {
   alias?: string;
@@ -40,72 +40,94 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
     wasActive: boolean;
   }
   const engineStates = useRef<Map<number, EngineStateData>>(new Map());
-
-  // Get or create state for current engine
-  const currentSlotIdx = fusion?.slotIdx ?? -1;
-  let engState = engineStates.current.get(currentSlotIdx);
-  if (!engState) {
-    engState = { frozenStats: null, liveSnapshot: { genTokensSlots: 0, ttftMs: null, elapsedMs: "0ms" }, wasActive: false };
-    engineStates.current.set(currentSlotIdx, engState);
-  }
-
-  // Force re-render when frozen stats change for this engine
-  const [renderTick, setRenderTick] = useState(0);
-  const frozenStats = engState.frozenStats;
+  const [displayFrozen, setDisplayFrozen] = useState<LastRequestStats | null>(null);
+  const [isStopping, setIsStopping] = useState(false);
+  const stoppingRef = useRef(false);
   const { mode: heroTpsMode, toggle: toggleHeroTpsMode } = useFusionHeroTpsMode();
 
+  useTauriListen<{ slot: number }>("slot-cleared", ({ slot }) => {
+    engineStates.current.delete(slot);
+    if (fusion?.slotIdx === slot) {
+      setDisplayFrozen(null);
+      stoppingRef.current = false;
+      setIsStopping(false);
+    }
+  });
+
+  useTauriListen("engines-all-stopped", () => {
+    engineStates.current.clear();
+    setDisplayFrozen(null);
+    stoppingRef.current = false;
+    setIsStopping(false);
+  });
+
   const handleStopEngine = useCallback(async () => {
+    if (stoppingRef.current) return;
+    stoppingRef.current = true;
+    setIsStopping(true);
     try {
       await invoke("stop_engine", { alias: displayAlias });
     } catch (e) {
       console.error("[FUSION] stop_engine failed:", e);
+      stoppingRef.current = false;
+      setIsStopping(false);
     }
   }, [displayAlias]);
 
-  const isActive = fusion && fusion.phase !== "IDLE";
-
-  if (fusion && isActive) {
-    engState.liveSnapshot = {
-      genTokensSlots: fusion.genTokensPerRequestSlots,
-      ttftMs: fusion.ttftMs != null ? formatMs(fusion.ttftMs) : null,
-      elapsedMs: formatMs(fusion.requestElapsedMs),
-    };
-  }
+  const isActive = fusion != null && fusion.phase !== "IDLE";
 
   useEffect(() => {
-    if (!fusion || !engState) return;
+    if (!fusion || fusion.slotIdx < 0) return;
 
-    if (isActive) {
+    let engState = engineStates.current.get(fusion.slotIdx);
+    if (!engState) {
+      engState = {
+        frozenStats: null,
+        liveSnapshot: { genTokensSlots: 0, ttftMs: null, elapsedMs: "0ms" },
+        wasActive: false,
+      };
+      engineStates.current.set(fusion.slotIdx, engState);
+    }
+
+    const active = fusion.phase !== "IDLE";
+    if (active) {
       engState.wasActive = true;
       engState.frozenStats = null;
-    } else if (engState.wasActive && !isActive) {
+      engState.liveSnapshot = {
+        genTokensSlots: fusion.genTokensPerRequestSlots,
+        ttftMs: fusion.ttftMs != null ? formatMs(fusion.ttftMs) : null,
+        elapsedMs: formatMs(fusion.requestElapsedMs),
+      };
+      setDisplayFrozen(null);
+    } else if (engState.wasActive) {
       engState.wasActive = false;
-      const snap = { ...engState.liveSnapshot };
-      if (snap.genTokensSlots > 0) {
-        engState.frozenStats = snap;
+      if (engState.liveSnapshot.genTokensSlots > 0) {
+        engState.frozenStats = { ...engState.liveSnapshot };
+        setDisplayFrozen(engState.frozenStats);
       }
+    } else {
+      setDisplayFrozen(engState.frozenStats);
     }
-    setRenderTick(t => t + 1); // trigger re-render for frozen stats change
-  }, [fusion, isActive]);
+  }, [
+    fusion?.slotIdx,
+    fusion?.phase,
+    fusion?.genTokensPerRequestSlots,
+    fusion?.ttftMs,
+    fusion?.requestElapsedMs,
+  ]);
 
-  const showLive = fusion && isActive;
-  const statsToDisplay = showLive ? {
+  const showLive = fusion != null && isActive;
+  const defaultSnapshot: LastRequestStats = { genTokensSlots: 0, ttftMs: null, elapsedMs: "0ms" };
+  const statsToDisplay = showLive && fusion ? {
     genTokensSlots: fusion.genTokensPerRequestSlots,
     ttftMs: fusion.ttftMs != null ? formatMs(fusion.ttftMs) : null,
     elapsedMs: formatMs(fusion.requestElapsedMs),
-  } as LastRequestStats : (frozenStats ?? engState.liveSnapshot);
+  } as LastRequestStats : (displayFrozen ?? defaultSnapshot);
 
-  // Track bench warmup phase from Tauri event — covers TG meter during benchmark warmup
   const [isBenchWarmup, setIsBenchWarmup] = useState(false);
-  const unsubBenchProgress = useRef<(() => void) | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    listen<any>("bench-tg-progress", (e) => {
-      if (cancelled || e.payload.port !== displayPort) return;
-      setIsBenchWarmup(e.payload.phase === "warmup");
-    }).then((u) => { if (!cancelled) unsubBenchProgress.current = u; });
-    return () => { cancelled = true; unsubBenchProgress.current?.(); };
+  useTauriListen<{ port: number; phase: string }>("bench-tg-progress", (payload) => {
+    if (payload.port !== displayPort) return;
+    setIsBenchWarmup(payload.phase === "warmup");
   }, [displayPort]);
 
   if (!fusion) {
@@ -214,9 +236,14 @@ export default function FusionOverlay({ alias, enginePort, fusion }: FusionOverl
               <span className="text-[12px] font-mono text-stealth-muted/30">:{displayPort}</span>
               <button
                 onClick={handleStopEngine}
-                className="text-[7px] font-bold tracking-wider px-1.5 py-0.5 rounded bg-red-600/80 hover:bg-red-500 active:bg-red-700 text-white cursor-pointer select-none"
+                disabled={isStopping}
+                className={`text-[7px] font-bold tracking-wider px-1.5 py-0.5 rounded text-white select-none ${
+                  isStopping
+                    ? "bg-red-600/50 cursor-wait animate-pulse"
+                    : "bg-red-600/80 hover:bg-red-500 active:bg-red-700 cursor-pointer"
+                }`}
               >
-                STOP
+                {isStopping ? "STOPPING…" : "STOP"}
               </button>
             </div>
           </div>

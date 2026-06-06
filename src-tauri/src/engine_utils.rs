@@ -77,7 +77,29 @@ pub fn compute_gpu_mask_from_params(device: &str, split_mode: &str, gpu_count: u
     }
 }
 
+/// Fast kill by PID — avoids slow netstat scan when we already know the process.
+pub async fn kill_process_by_pid(pid: u32) -> Result<(), String> {
+    let output = tokio::process::Command::new("taskkill")
+        .args(["/F", "/PID", &pid.to_string()])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .creation_flags(0x08000000)
+        .output()
+        .await
+        .map_err(|e| format!("Failed to kill pid {}: {}", pid, e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if !stderr.contains("not found") && !stderr.contains("ERROR") {
+            log::warn!("Kill pid {} stderr: {}", pid, stderr);
+        }
+    }
+
+    Ok(())
+}
+
 /// Kill process listening on a given port via PowerShell taskkill.
+/// Slow — spawns PowerShell + netstat. Use only as last-resort orphan cleanup.
 pub async fn kill_process_by_port(port: u16) -> Result<(), String> {
     let ps_script = format!(
         r"$pids = netstat -ano | Select-String ':{0} ' | ForEach-Object {{ ($_ -split '\s+')[-1] }}; $pids | Where-Object {{ $_.Length -gt 0 }} | ForEach-Object {{ taskkill /F /PID $_ }}",

@@ -4,7 +4,7 @@
 //! One brain instance per engine, keyed by slot_idx.
 
 use serde::Serialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 
 use crate::log_hub::LogHub;
@@ -16,6 +16,10 @@ const MAX_DISPLAY_TPS: f64 = 200_000.0;
 const MIN_SESSION_TPS_ELAPSED_MS: u64 = 400;
 /// Ignore first-poll token bursts after reset (KV restore / cache jump).
 const MAX_INSTANT_TOKEN_JUMP: usize = 2048;
+/// Active request polling cadence.
+const POLL_ACTIVE_MS: u64 = 100;
+/// Idle + ready cadence — cuts browser IPC churn when nothing changes.
+const POLL_IDLE_MS: u64 = 500;
 
 fn clamp_display_tps(tps: f64) -> f64 {
     if !tps.is_finite() || tps <= 0.0 {
@@ -210,6 +214,98 @@ pub struct FusionUpdate {
     pub lp_reset_source: Option<&'static str>,  // Some("prompt") or Some("regression")
 }
 
+/// Quantized snapshot for emit-on-change (avoids ~10 Hz identical fusion-update IPC).
+#[derive(Clone, PartialEq, Eq)]
+struct FusionEmitFingerprint {
+    engine_state_tag: u8,
+    phase_tag: u8,
+    prefill_progress_milli: u32,
+    prefill_tokens: u32,
+    prefill_tokens_total: u32,
+    prefill_tps_session_centi: u32,
+    prefill_tps_instant_centi: u32,
+    prefill_tps_metrics_centi: u32,
+    gen_tps_deci: u32,
+    gen_tps_instant_deci: u32,
+    gen_tokens_request: u32,
+    gen_tokens_session: u32,
+    ctx_used: u32,
+    ctx_fill_centi: u32,
+    request_elapsed_ms: u64,
+    ttft_ms: u64,
+    slot_ctx_hash: u64,
+    log_progress_milli: u32,
+    log_pp_tps_centi: u32,
+    log_prompt_tokens: u32,
+    log_gen_tps_deci: u32,
+    log_phase_tag: u8,
+}
+
+impl FusionEmitFingerprint {
+    fn from_update(u: &FusionUpdate) -> Self {
+        Self {
+            engine_state_tag: engine_state_tag(&u.engine_state),
+            phase_tag: phase_tag(&u.phase),
+            prefill_progress_milli: (u.prefill_progress * 1000.0).round() as u32,
+            prefill_tokens: u.prefill_tokens.min(u32::MAX as usize) as u32,
+            prefill_tokens_total: u.prefill_tokens_total.min(u32::MAX as usize) as u32,
+            prefill_tps_session_centi: (u.prefill_tps_session * 100.0).round() as u32,
+            prefill_tps_instant_centi: (u.prefill_tps_instant * 100.0).round() as u32,
+            prefill_tps_metrics_centi: (u.prefill_tps_metrics * 100.0).round() as u32,
+            gen_tps_deci: (u.gen_tps * 10.0).round() as u32,
+            gen_tps_instant_deci: (u.gen_tps_instant * 10.0).round() as u32,
+            gen_tokens_request: u.gen_tokens_per_request_slots.min(u32::MAX as usize) as u32,
+            gen_tokens_session: u.gen_tokens_per_session.min(u32::MAX as usize) as u32,
+            ctx_used: u.ctx_used_session.min(u32::MAX as usize) as u32,
+            ctx_fill_centi: (u.ctx_fill_pct * 100.0).round() as u32,
+            request_elapsed_ms: u.request_elapsed_ms,
+            ttft_ms: u.ttft_ms.map(|v| v.round() as u64).unwrap_or(0),
+            slot_ctx_hash: hash_slot_ctx(&u.slot_ctx),
+            log_progress_milli: (u.lp_prefill_progress * 1000.0).round() as u32,
+            log_pp_tps_centi: (u.lp_prefill_tps * 100.0).round() as u32,
+            log_prompt_tokens: u.lp_prompt_tokens.min(u32::MAX as usize) as u32,
+            log_gen_tps_deci: (u.lp_gen_tps * 10.0).round() as u32,
+            log_phase_tag: phase_tag(&u.lp_phase),
+        }
+    }
+}
+
+fn engine_state_tag(s: &EngineState) -> u8 {
+    match s {
+        EngineState::Loading => 0,
+        EngineState::Ready => 1,
+        EngineState::Active => 2,
+    }
+}
+
+fn phase_tag(p: &InferencePhase) -> u8 {
+    match p {
+        InferencePhase::Idle => 0,
+        InferencePhase::PP => 1,
+        InferencePhase::Tg => 2,
+    }
+}
+
+fn hash_slot_ctx(ctx: &[SlotCtxInfo]) -> u64 {
+    let mut h: u64 = 0;
+    for s in ctx {
+        h = h
+            .wrapping_mul(31)
+            .wrapping_add(s.id as u64)
+            .wrapping_mul(31)
+            .wrapping_add(s.session_n_decoded as u64)
+            .wrapping_mul(31)
+            .wrapping_add(s.n_decoded as u64)
+            .wrapping_mul(31)
+            .wrapping_add(s.prompt_tokens_processed as u64)
+            .wrapping_mul(31)
+            .wrapping_add(s.prompt_tokens_cache as u64)
+            .wrapping_mul(31)
+            .wrapping_add(s.is_processing as u64);
+    }
+    h
+}
+
 // ── Brain internal state ─────────────────────────────────────────────
 
 pub struct FusionBrain {
@@ -272,6 +368,10 @@ pub struct FusionBrain {
     prev_instant_poll_at: Option<Instant>,
     prev_instant_prefill_tokens: usize,
     prev_instant_gen_decoded: usize,
+
+    /// Skip fusion-update IPC when fingerprint unchanged (log belt sets emit_dirty).
+    last_emit_fp: Option<FusionEmitFingerprint>,
+    emit_dirty: bool,
 }
 
 impl FusionBrain {
@@ -323,7 +423,29 @@ impl FusionBrain {
             prev_instant_poll_at: None,
             prev_instant_prefill_tokens: 0,
             prev_instant_gen_decoded: 0,
+            last_emit_fp: None,
+            emit_dirty: false,
         }
+    }
+
+    fn is_idle_ready(&self) -> bool {
+        self.phase == InferencePhase::Idle && self.engine_state == EngineState::Ready
+    }
+
+    fn force_emit(&mut self, log_hub: &LogHub, update: FusionUpdate) {
+        self.last_emit_fp = Some(FusionEmitFingerprint::from_update(&update));
+        self.emit_dirty = false;
+        log_hub.emit("fusion-update", &update);
+    }
+
+    fn try_emit(&mut self, log_hub: &LogHub, update: FusionUpdate) {
+        let fp = FusionEmitFingerprint::from_update(&update);
+        if !self.emit_dirty && self.last_emit_fp.as_ref() == Some(&fp) {
+            return;
+        }
+        self.last_emit_fp = Some(fp);
+        self.emit_dirty = false;
+        log_hub.emit("fusion-update", &update);
     }
 
     fn start_request_clock(&mut self) {
@@ -475,7 +597,7 @@ impl FusionBrain {
 
         // Emit initial LOADING update so frontend shows launch animation
         let init = brain.build_update(&[], None);
-        log_hub.emit("fusion-update", &init);
+        brain.force_emit(&log_hub, init);
 
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
@@ -484,39 +606,39 @@ impl FusionBrain {
             .build()
             .unwrap_or_default();
 
-        let poll_interval = tokio::time::Duration::from_millis(100);
-        let mut interval = tokio::time::interval(poll_interval);
+        let slot_idx = config.slot_idx;
+        let mut next_poll =
+            tokio::time::Instant::now() + tokio::time::Duration::from_millis(POLL_ACTIVE_MS);
 
         loop {
             tokio::select! {
                 _ = cancel.cancelled() => {
-                    // Fusion brain cancellation now routed to Blackwell Output Console
+                    unregister_log_receiver(slot_idx);
                     let term = brain.build_terminal_update();
-                    log_hub.emit("fusion-update", &term);
+                    brain.force_emit(&log_hub, term);
                     return;
                 }
 
-                // ── Log-parsed event (stderr print_timing lines) ─────
+                // Log events update state; emit coalesces on next poll tick (≤100ms active).
                 Some(log_event) = event_rx.recv() => {
                     brain.process_log_event(&log_event);
-                    let update = brain.build_update(&[], None);
-                    log_hub.emit("fusion-update", &update);
+                    brain.emit_dirty = true;
                 }
 
-                _ = interval.tick() => {
+                _ = tokio::time::sleep_until(next_poll) => {
+                    let poll_ms = if brain.is_idle_ready() { POLL_IDLE_MS } else { POLL_ACTIVE_MS };
+                    next_poll = tokio::time::Instant::now() + tokio::time::Duration::from_millis(poll_ms);
+
                     let slots_fut = fusion_poller::poll_slots(&client, brain.port);
                     let metrics_fut = fusion_poller::poll_metrics(&client, brain.port);
                     let (slots_result, metrics_result) = tokio::join!(slots_fut, metrics_fut);
 
-                    // Process /slots first so prompt-eval state is current before /metrics PP→TG heuristics
                     let slot_data: Vec<fusion_poller::SlotData> = match slots_result {
                         Ok(slots) => slots,
-                        Err(e) => {
+                        Err(_e) => {
                             if brain.engine_state == EngineState::Loading {
                                 let update = brain.build_update(&[], metrics_result.as_ref().ok());
-                                log_hub.emit("fusion-update", &update);
-                            } else {
-                                // Fusion brain poll error now routed to Blackwell Output Console
+                                brain.try_emit(&log_hub, update);
                             }
                             continue;
                         }
@@ -529,7 +651,7 @@ impl FusionBrain {
                     }
 
                     let update = brain.build_update(&slot_data, metrics_result.as_ref().ok());
-                    log_hub.emit("fusion-update", &update);
+                    brain.try_emit(&log_hub, update);
                 }
             }
         }
@@ -981,6 +1103,9 @@ impl FusionBrain {
         self.reconcile_phase(slots, any_processing);
         self.update_instant_tps(slots, now);
 
+        let seen_ids: HashSet<usize> = slots.iter().map(|s| s.id).collect();
+        self.slot_states.retain(|id, _| seen_ids.contains(id));
+
         // Update engine state from /slots
         if self.engine_state == EngineState::Loading && !any_processing {
             self.engine_state = EngineState::Ready;
@@ -1213,6 +1338,11 @@ static LOG_EVENT_SENDERS: std::sync::LazyLock<
 pub fn register_log_receiver(slot_idx: usize, tx: tokio::sync::mpsc::Sender<crate::fusion_logparser::LogEvent>) {
     let mut registry = LOG_EVENT_SENDERS.lock();
     registry.insert(slot_idx, tx);
+}
+
+fn unregister_log_receiver(slot_idx: usize) {
+    let mut registry = LOG_EVENT_SENDERS.lock();
+    registry.remove(&slot_idx);
 }
 
 /// Route a parsed log event to the brain for the given slot (fire-and-forget, drops on full).
