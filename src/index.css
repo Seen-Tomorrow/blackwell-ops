@@ -13,6 +13,72 @@
   --color-telemetry-amber: #FFB800;
   --color-telemetry-cyan: #00e5ff;
 
+  /* App theme tokens — defaults (matrix); overridden by applyAppTheme() */
+  --theme-bg: #000000;
+  --theme-text: #e0e0e0;
+  --theme-text-muted: #4a4a5a;
+  --theme-panel: #111810;
+  --theme-panel-accent: #040b01;
+  --theme-border: #1a2e1a;
+  --theme-border-subtle: rgba(255, 255, 255, 0.08);
+  --theme-accent: #76B900;
+  --theme-accent-bright: #4ade80;
+  --theme-accent-dim: #4a6a5a;
+  --theme-accent-glow: rgba(74, 222, 128, 0.3);
+  --theme-accent-soft: rgba(74, 222, 128, 0.06);
+  --theme-chip-bg: rgba(74, 222, 128, 0.03);
+  --theme-chip-border: rgba(74, 222, 128, 0.15);
+  --theme-chip-text: #4a6a5a;
+  --theme-chip-hover-border: rgba(74, 222, 128, 0.35);
+  --theme-chip-hover-text: #4ade80;
+  --theme-chip-active-bg: rgba(74, 222, 128, 0.12);
+  --theme-chip-active-border: rgba(74, 222, 128, 0.5);
+  --theme-chip-active-text: #4ade80;
+  --theme-chip-solid-bg: #4ade80;
+  --theme-chip-solid-text: #0c120a;
+  --phosphor-bg: #08140a;
+  --phosphor-glow: rgba(74, 222, 128, 0.06);
+  --theme-phosphor-text: #4ade80;
+  --theme-phosphor-text-muted: #3a6a4a;
+  --theme-phosphor-bar-bg: rgba(74, 222, 128, 0.08);
+  --theme-phosphor-border: rgba(74, 222, 128, 0.12);
+  --theme-industrial-bg: #1c1e22;
+  --theme-industrial-text: #4ade80;
+  --theme-industrial-muted: #4ade80;
+  --theme-industrial-bar-track: rgba(74, 222, 128, 0.03);
+  --theme-industrial-gpu-card-bg: rgba(74, 222, 128, 0.04);
+  --theme-industrial-gpu-border: rgba(74, 222, 128, 0.15);
+  --theme-industrial-gpu-selected: rgba(74, 222, 128, 0.7);
+  --theme-card-recessed-border: #1c1e22;
+  --theme-card-selected-bg: #1c1e22;
+  --theme-card-selected-accent: #b87a00;
+  --theme-scrollbar-track: rgba(10, 10, 15, 0.5);
+  --theme-scrollbar-thumb: rgba(118, 185, 0, 0.3);
+  --theme-secondary: #b87a00;
+  --theme-secondary-bright: #f5971f;
+  --theme-selection-bg: #76B900;
+  --theme-selection-text: #000000;
+  --theme-eject-header-bg: #000000;
+  --theme-eject-header-text: #b87a00;
+  --theme-eject-card-bg: rgba(255, 255, 255, 0.03);
+  --theme-eject-card-hover-bg: rgba(255, 255, 255, 0.05);
+  --theme-eject-card-text: #e8e2d6;
+  --theme-eject-card-muted: #9a9488;
+  --theme-eject-badge-bg: #000000;
+  --theme-eject-card-border: rgba(255, 255, 255, 0.06);
+  --theme-eject-card-hover-border: rgba(184, 122, 0, 0.2);
+  --theme-eject-card-selected-bg: rgba(184, 122, 0, 0.08);
+  --theme-eject-card-selected-border: rgba(184, 122, 0, 0.35);
+  --theme-provider-label: rgba(245, 151, 31, 0.8);
+  --theme-provider-pill-bg: rgba(245, 151, 31, 0.04);
+  --theme-provider-pill-border: rgba(245, 151, 31, 0.15);
+  --theme-provider-pill-text: rgba(245, 151, 31, 0.5);
+  --theme-provider-pill-hover-border: rgba(245, 151, 31, 0.4);
+  --theme-provider-pill-hover-text: rgba(245, 151, 31, 0.9);
+  --theme-provider-pill-active-bg: rgba(245, 151, 31, 0.12);
+  --theme-provider-pill-active-border: rgba(245, 151, 31, 0.5);
+  --theme-provider-pill-active-text: #f5971f;
+
   /* Dock panel dimensions (single source of truth) */
   --dock-panel-bottom: 32px;
   --dock-panel-height: 75vh;
@@ -28,8 +94,8 @@ html, body, #root {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background-color: var(--color-stealth-black);
-  color: #e0e0e0;
+  background-color: var(--theme-bg);
+  color: var(--theme-text);
   font-family: 'Inter', system-ui, sans-serif;
 }
 
@@ -54,8 +120,8 @@ html, body, #root {
 
 /* Selection color */
 ::selection {
-  background: var(--color-nv-green);
-  color: #000;
+  background: var(--theme-selection-bg);
+  color: var(--theme-selection-text);
 }
 
 /* Selected GPU card — grey checkered border, uniform across all scenarios */
@@ -71,6 +137,10 @@ html, body, #root {
 /* ── Utility Classes ───────────────────────────────────────────── */
 .font-mono {
   font-family: 'JetBrains Mono', 'Roboto Mono', monospace;
+}
+
+.theme-accent-text {
+  color: var(--theme-accent);
 }
 
 .glow-border {
@@ -130,8 +200,8 @@ html, body, #root {
 /* ── E-ink Panel Wrapper — shared panel background ─────────────────────────────── */
 
 .eink-panel-wrapper {
-  background: #040b01;
-  border: 1px solid wrgba(255, 255, 255, 0.08);
+  background: var(--theme-panel-accent);
+  border: 1px solid var(--theme-border-subtle);
   position: relative;
   overflow: hidden;
 }
@@ -143,7 +213,7 @@ html, body, #root {
   left: 0;
   right: 0;
   height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(74, 222, 128, 0.3), transparent);
+  background: linear-gradient(90deg, transparent, var(--theme-accent-glow), transparent);
 }
 
 /* Neon glow borders */
@@ -166,9 +236,7 @@ html, body, #root {
 /* ── Buried Card — recessed slot, pushed into the dark bg ─── */
 .buried-card {
   background: transparent;
-  border: 2px solid #1c1e22;
-  border-top-color: #222529;
-  border-left-color: #202328;
+  border: 2px solid var(--theme-card-recessed-border);
   border-radius: 6px;
   box-shadow:
     inset 0 1px 3px rgba(0, 0, 0, 0.5),
@@ -179,12 +247,10 @@ html, body, #root {
 }
 
 .buried-card:hover {
-  border-color: #23262b;
-  border-top-color: #282c32;
-  border-left-color: #262a30;
+  border-color: color-mix(in srgb, var(--theme-card-recessed-border) 80%, var(--theme-accent-bright) 20%);
   box-shadow:
     inset 0 1px 4px rgba(0, 0, 0, 0.6),
-    inset 0 0 1px rgba(74, 222, 128, 0.04);
+    inset 0 0 1px var(--theme-accent-soft);
   transform: translateY(1px);
 }
 
@@ -217,7 +283,7 @@ html, body, #root {
   background: linear-gradient(
     90deg,
     transparent 0%,
-    rgba(74, 222, 128, 0.15) 50%,
+    var(--theme-chip-border) 50%,
     transparent 100%
   );
   opacity: 0;
@@ -230,11 +296,11 @@ html, body, #root {
     rgba(255, 255, 255, 0.05) 0%,
     rgba(255, 255, 255, 0.02) 100%
   );
-  border-color: rgba(74, 222, 128, 0.15);
-  border-top-color: rgba(74, 222, 128, 0.25);
+  border-color: var(--theme-chip-border);
+  border-top-color: var(--theme-chip-hover-border);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.06),
-    0 0 16px rgba(74, 222, 128, 0.05),
+    0 0 16px var(--theme-accent-soft),
     0 2px 8px rgba(0, 0, 0, 0.4);
   transform: translateY(-1px);
 }
@@ -456,42 +522,42 @@ html, body, #root {
   border-color: rgba(74, 222, 128, 0.7);
 }
 
-/* Provider pill button — amber style */
+/* Provider pill button — themed amber/secondary */
 .provider-pill {
-  background: rgba(245, 151, 31, 0.04) !important;
-  border: 1px solid rgba(245, 151, 31, 0.15);
-  color: rgba(245, 151, 31, 0.5);
+  background: var(--theme-provider-pill-bg) !important;
+  border: 1px solid var(--theme-provider-pill-border);
+  color: var(--theme-provider-pill-text);
   transition: all 0.3s ease;
 }
 
 .provider-pill:hover {
-  border-color: rgba(245, 151, 31, 0.4);
-  color: rgba(245, 151, 31, 0.9);
+  border-color: var(--theme-provider-pill-hover-border);
+  color: var(--theme-provider-pill-hover-text);
 }
 
 .provider-pill-active {
-  background: rgba(245, 151, 31, 0.12) !important;
-  border-color: rgba(245, 151, 31, 0.5);
-  color: #f5971f;
+  background: var(--theme-provider-pill-active-bg) !important;
+  border-color: var(--theme-provider-pill-active-border);
+  color: var(--theme-provider-pill-active-text);
 }
 
 /* Value chip */
 .value-chip {
-  background: rgba(74, 222, 128, 0.03);
-  border: 1px solid rgba(74, 222, 128, 0.15);
-  color: #4a6a5a;
+  background: var(--theme-chip-bg);
+  border: 1px solid var(--theme-chip-border);
+  color: var(--theme-chip-text);
   transition: all 0.2s ease;
 }
 
 .value-chip:hover {
-  border-color: rgba(74, 222, 128, 0.35);
-  color: #4ade80;
+  border-color: var(--theme-chip-hover-border);
+  color: var(--theme-chip-hover-text);
 }
 
 .value-chip-active {
-  background: rgba(74, 222, 128, 0.12) !important;
-  border-color: rgba(74, 222, 128, 0.5);
-  color: #4ade80;
+  background: var(--theme-chip-active-bg) !important;
+  border-color: var(--theme-chip-active-border);
+  color: var(--theme-chip-active-text);
 }
 
 /* ENGINE LOGS — per-slot search highlight */
@@ -516,7 +582,7 @@ html, body, #root {
   left: 0;
   right: 0;
   height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(74, 222, 128, 0.3), transparent);
+  background: linear-gradient(90deg, transparent, var(--theme-accent-glow), transparent);
 }
 
 /* ── E-ink Scrollbar ─── */
@@ -525,16 +591,16 @@ html, body, #root {
 }
 
 .eink-scrollbar::-webkit-scrollbar-track {
-  background: rgba(10, 10, 15, 0.5);
+  background: var(--theme-scrollbar-track);
 }
 
 .eink-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(118, 185, 0, 0.3);
+  background: var(--theme-scrollbar-thumb);
   border-radius: 2px;
 }
 
 .eink-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: rgba(118, 185, 0, 0.5);
+  background: color-mix(in srgb, var(--theme-scrollbar-thumb) 70%, var(--theme-accent-bright) 30%);
 }
 
 /* ── Runtime docked block — full-width green section ─── */
@@ -574,12 +640,12 @@ html, body, #root {
 
 /* ── Mono panel — runtime config ─── */
 .mono-panel {
-  background: #040b01;
+  background: var(--theme-panel-accent);
   position: relative;
 }
 
 .mono-panel * {
-  color: #4ade80 !important;
+  color: var(--theme-accent-bright) !important;
 }
 
 /* Group labels on mono */
@@ -601,24 +667,24 @@ html, body, #root {
   color: #ffffff !important;
 }
 
-/* Chips on mono — muted green outline, dark fill */
+/* Chips on mono — themed outline, dark fill */
 .mono-panel .value-chip {
-  background: rgba(74, 222, 128, 0.04) !important;
-  border-color: rgba(74, 222, 128, 0.2) !important;
-  color: #4ade80 !important;
+  background: var(--theme-chip-bg) !important;
+  border-color: var(--theme-chip-border) !important;
+  color: var(--theme-chip-hover-text) !important;
 }
 
 .mono-panel .value-chip:hover {
-  background: rgba(74, 222, 128, 0.1) !important;
-  border-color: rgba(74, 222, 128, 0.4) !important;
-  color: #6ee7a0 !important;
+  background: var(--theme-chip-active-bg) !important;
+  border-color: var(--theme-chip-hover-border) !important;
+  color: var(--theme-chip-active-text) !important;
 }
 
 .mono-panel .value-chip-active {
-  background: #4ade80 !important;
-  border-color: #4ade80 !important;
-  color: #0c120a !important;
-  box-shadow: 0 0 4px rgba(74, 222, 128, 0.3) !important;
+  background: var(--theme-chip-solid-bg) !important;
+  border-color: var(--theme-chip-solid-bg) !important;
+  color: var(--theme-chip-solid-text) !important;
+  box-shadow: 0 0 4px var(--theme-accent-glow) !important;
 }
 
 /* Runtime profile — industrial orange, pronounced */
@@ -683,13 +749,18 @@ html, body, #root {
 
 /* ── VRAM forecast section — brushed steel (subtle grain) ─── */
 
+/* ── Industrial display unit — parent surface behind bezel corners + eject sides ─── */
+.industrial-display-area {
+  background: var(--theme-panel-accent);
+}
+
 /* ── Industrial Display Frame — outer gunmetal bezel ─── */
 .industrial-display-frame {
   position: relative;
   z-index: 2;
   border-radius: 16px 16px 8px 8px;
   padding: 18px;
-  background-color: #1c1e22;
+  background-color: var(--theme-industrial-bg);
   background-image: repeating-linear-gradient(
     135deg,
     rgba(255,255,255,.025) 0px,
@@ -726,7 +797,7 @@ html, body, #root {
 .industrial-eject-panel {
   margin: -9px 24px 0;
   padding: 4px 8px 0px;
-  background-color: #1c1e22;
+  background-color: var(--theme-industrial-bg);
   background-image: repeating-linear-gradient(
     135deg,
     rgba(255,255,255,.02) 0px,
@@ -744,17 +815,17 @@ html, body, #root {
     0 -1px 4px rgba(0, 0, 0, 0.3);
 }
 
-/* Dark text on dark industrial display frame */
+/* Themed text on industrial display frame */
 .industrial-display-area .text-stealth-muted,
 .industrial-display-area .text-stealth-muted\/30,
 .industrial-display-area .text-stealth-muted\/40,
 .industrial-display-area .text-stealth-muted\/50,
 .industrial-display-area .text-stealth-muted\/60 {
-  color: #4ade80 !important;
+  color: var(--theme-industrial-muted) !important;
 }
 
 .industrial-display-area .text-nv-green {
-  color: #4ade80 !important;
+  color: var(--theme-industrial-text) !important;
 }
 
 .industrial-display-area .text-cyan-400 {
@@ -781,42 +852,42 @@ html, body, #root {
 }
 
 .industrial-display-area .bg-stealth-dark {
-  background-color: rgba(74, 222, 128, 0.06) !important;
+  background-color: var(--theme-accent-soft) !important;
 }
 
 .industrial-display-area .border-stealth-border,
 .industrial-display-area .border-stealth-border\/30,
 .industrial-display-area .border-stealth-border\/50 {
-  border-color: rgba(74, 222, 128, 0.08) !important;
+  border-color: var(--theme-industrial-gpu-border) !important;
 }
 
 /* GPU topology cards on industrial display */
 .industrial-display-area .gpu-card {
-  background-color: rgba(74, 222, 128, 0.04) !important;
-  border-color: rgba(74, 222, 128, 0.15) !important;
+  background-color: var(--theme-industrial-gpu-card-bg) !important;
+  border-color: var(--theme-industrial-gpu-border) !important;
 }
 
 /* Selected GPU on industrial display */
 .industrial-display-area .gpu-selected {
-  border: 2px dashed rgba(74, 222, 128, 0.7) !important;
-  box-shadow: 0 0 8px rgba(74, 222, 128, 0.2) !important;
+  border: 2px dashed var(--theme-industrial-gpu-selected) !important;
+  box-shadow: 0 0 8px var(--theme-accent-soft) !important;
 }
 
 /* Selected GPU name text */
 .industrial-display-area .gpu-selected .text-white {
-  color: #4ade80 !important;
+  color: var(--theme-industrial-text) !important;
 }
 
-/* VRAM/RAM bar tracks on dark bg */
+/* VRAM/RAM bar tracks on display bg */
 .industrial-display-area .relative.overflow-hidden.border-stealth-border\/30 {
-  background-color: rgba(74, 222, 128, 0.03) !important;
+  background-color: var(--theme-industrial-bar-track) !important;
 }
 
 
 
 /* ── Running engines panel — grey bg, compact row cards (below VRAM) ─── */
 .running-engines-header-row {
-  background: #1a1d1a;
+  background: transparent;
 }
 
 .running-engine-card {
@@ -844,86 +915,73 @@ html, body, #root {
 }
 
 [data-config-panel] .running-engines-header-row h3 {
-  background: #000;
+  background: var(--theme-eject-header-bg);
   padding: 6px 12px;
-  color: #b87a00 !important;
+  color: var(--theme-eject-header-text) !important;
 }
 
-/* Cards — glass over dark */
+/* Cards — themed glass */
 [data-config-panel] .running-engine-card {
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.03) 0%,
-    rgba(255, 255, 255, 0.01) 100%
-  ) !important;
+  background: var(--theme-eject-card-bg) !important;
   backdrop-filter: blur(2px) !important;
   -webkit-backdrop-filter: blur(2px) !important;
-  border: 1px solid rgba(255, 255, 255, 0.06) !important;
-  border-top-color: rgba(255, 255, 255, 0.10) !important;
+  border: 1px solid var(--theme-eject-card-border) !important;
   border-radius: 6px !important;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.04),
-    0 1px 2px rgba(0, 0, 0, 0.3) !important;
+    0 1px 2px rgba(0, 0, 0, 0.15) !important;
 }
 
 [data-config-panel] .running-engine-card:hover {
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.05) 0%,
-    rgba(255, 255, 255, 0.02) 100%
-  ) !important;
-  border-color: rgba(184, 122, 0, 0.2) !important;
+  background: var(--theme-eject-card-hover-bg) !important;
+  border-color: var(--theme-eject-card-hover-border) !important;
 }
 
 [data-config-panel] .running-engine-card-selected {
-  background: linear-gradient(
-    135deg,
-    rgba(184, 122, 0, 0.08) 0%,
-    rgba(184, 122, 0, 0.03) 100%
-  ) !important;
-  border-color: rgba(184, 122, 0, 0.35) !important;
+  background: var(--theme-eject-card-selected-bg) !important;
+  border-color: var(--theme-eject-card-selected-border) !important;
 }
 
-/* Status dot — orange pulse */
+/* Status dot — secondary accent pulse */
 [data-config-panel] .status-pulse {
-  background-color: #b87a00 !important;
+  background-color: var(--theme-secondary) !important;
   animation: status-pulse-anim-eink 2s ease-in-out infinite !important;
 }
 
 @keyframes status-pulse-anim-eink {
-  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(184, 122, 0, 0.4); }
-  50% { opacity: 0.6; box-shadow: 0 0 0 3px rgba(184, 122, 0, 0); }
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 color-mix(in srgb, var(--theme-secondary) 40%, transparent); }
+  50% { opacity: 0.6; box-shadow: 0 0 0 3px transparent; }
 }
 
 /* Text inside running engine cards */
 [data-config-panel] .running-engine-card .text-white\/70,
 [data-config-panel] .running-engine-card .text-white {
-  color: #e8e2d6 !important;
+  color: var(--theme-eject-card-text) !important;
 }
 
 [data-config-panel] .running-engine-card .text-stealth-muted {
-  color: #9a9488 !important;
+  color: var(--theme-eject-card-muted) !important;
 }
 
 [data-config-panel] .running-engine-card .text-stealth-muted\/50 {
-  color: rgba(154, 148, 136, 0.5) !important;
+  color: color-mix(in srgb, var(--theme-eject-card-muted) 50%, transparent) !important;
 }
 
-/* GPU + quant badges inside engine cards — solid black */
+/* GPU + quant badges inside engine cards */
 [data-config-panel] .running-engine-card .bg-telemetry-cyan\/10,
 [data-config-panel] .running-engine-card .bg-nv-green\/20 {
-  background: #000 !important;
+  background: var(--theme-eject-badge-bg) !important;
 }
 
 [data-config-panel] .running-engine-card .border-telemetry-cyan\/20,
 [data-config-panel] .running-engine-card .border-telemetry-cyan\/30,
 [data-config-panel] .running-engine-card .border-nv-green\/40 {
-  border-color: rgba(255, 255, 255, 0.1) !important;
+  border-color: var(--theme-eject-card-border) !important;
 }
 
 [data-config-panel] .running-engine-card .text-telemetry-cyan,
 [data-config-panel] .running-engine-card .text-nv-green {
-  color: #e8e2d6 !important;
+  color: var(--theme-eject-card-text) !important;
 }
 
 
@@ -940,7 +998,7 @@ html, body, #root {
 
 /* ── Gunmetal Card — selected model, mini display bezel ─── */
 .gunmetal-card {
-  background-color: #1c1e22;
+  background-color: var(--theme-card-selected-bg);
   background-image: repeating-linear-gradient(
     135deg,
     rgba(255,255,255,.02) 0px,
@@ -966,9 +1024,9 @@ html, body, #root {
   top: 6px;
   bottom: 6px;
   width: 3px;
-  background: #b87a00;
+  background: var(--theme-card-selected-accent);
   border-radius: 2px;
-  box-shadow: 0 0 4px rgba(184, 122, 0, 0.3);
+  box-shadow: 0 0 4px color-mix(in srgb, var(--theme-card-selected-accent) 50%, transparent);
 }
 
 /* Selected model card text — keep readable on gunmetal bg */
@@ -992,52 +1050,52 @@ html, body, #root {
   border-color: rgba(118, 185, 0, 0.4);
 }
 
-/* ── E-ink Panel — parameters section, phosphor green text ─── */
+/* ── E-ink Panel — parameters section, themed phosphor text ─── */
 .eink-panel {
-  background: #040b01;
+  background: var(--theme-panel-accent);
 }
 
 .eink-panel * {
-  color: #4ade80 !important;
+  color: var(--theme-accent-bright) !important;
 }
 
 /* Group headers on e-ink */
 .eink-panel .border-stealth-border\/30 {
-  border-color: rgba(74, 222, 128, 0.08) !important;
+  border-color: var(--theme-accent-soft) !important;
 }
 
-/* Chips — muted green outline, dark fill */
+/* Chips — themed outline, dark fill */
 .eink-panel .value-chip {
-  background: rgba(74, 222, 128, 0.04) !important;
-  border-color: rgba(74, 222, 128, 0.2) !important;
-  color: #4ade80 !important;
+  background: var(--theme-chip-bg) !important;
+  border-color: var(--theme-chip-border) !important;
+  color: var(--theme-chip-hover-text) !important;
 }
 
 .eink-panel .value-chip:hover {
-  background: rgba(74, 222, 128, 0.1) !important;
-  border-color: rgba(74, 222, 128, 0.4) !important;
-  color: #6ee7a0 !important;
+  background: var(--theme-chip-active-bg) !important;
+  border-color: var(--theme-chip-hover-border) !important;
+  color: var(--theme-chip-active-text) !important;
 }
 
 .eink-panel .value-chip-active {
-  background: #4ade80 !important;
-  border-color: #4ade80 !important;
-  color: #0c120a !important;
-  box-shadow: 0 0 4px rgba(74, 222, 128, 0.3) !important;
+  background: var(--theme-chip-solid-bg) !important;
+  border-color: var(--theme-chip-solid-bg) !important;
+  color: var(--theme-chip-solid-text) !important;
+  box-shadow: 0 0 4px var(--theme-accent-glow) !important;
 }
 
 /* Param labels on e-ink */
 .eink-panel [data-param-row] > span:first-of-type {
-  color: #4ade80 !important;
+  color: var(--theme-accent-bright) !important;
 }
 
 /* Scrollbar on e-ink */
 .eink-panel::-webkit-scrollbar-thumb {
-  background: rgba(74, 222, 128, 0.15) !important;
+  background: var(--theme-scrollbar-thumb) !important;
 }
 
 .eink-panel::-webkit-scrollbar-track {
-  background: rgba(74, 222, 128, 0.03) !important;
+  background: var(--theme-accent-soft) !important;
 }
 
 /* Engine card exceptions — preserve non-green colors in eink context */
@@ -1090,7 +1148,7 @@ html, body, #root {
 
 /* ── Amber label — ENGINE PROVIDER, RUNTIME PROFILE, etc. ─── */
 .amber-label {
-  color: rgba(245, 151, 31, 0.8);
+  color: var(--theme-provider-label);
 }
 
 /* ── Custom Flags block ─── */
@@ -1143,12 +1201,12 @@ html, body, #root {
 
 /* ── Config panel root background ─── */
 [data-config-panel] {
-  background: #040b01;
+  background: var(--theme-panel-accent);
 }
 
 /* ── Mono panel header spacer background ─── */
 .mono-panel-header {
-  background: #040b01;
+  background: var(--theme-panel-accent);
 }
 
 /* ── Selected model card name color ─── */
@@ -1236,18 +1294,17 @@ select option {
     inset 0 1px 40px rgba(255,255,255,.3);
 }
 
-/* Dark text on phosphor screen */
+/* Themed text on phosphor screen (fusion overlay) */
 .phosphor-screen .text-stealth-muted,
 .phosphor-screen .text-stealth-muted\/30,
 .phosphor-screen .text-stealth-muted\/40,
 .phosphor-screen .text-stealth-muted\/50,
 .phosphor-screen .text-stealth-muted\/60 {
-  color: #3a3a3a !important;
+  color: var(--theme-phosphor-text-muted) !important;
 }
 
-/* NV green stays vibrant on e-ink */
 .phosphor-screen .text-nv-green {
-  color: #4d7a00 !important;
+  color: var(--theme-phosphor-text) !important;
 }
 
 /* Telemetry cyan stays readable */
@@ -1265,13 +1322,13 @@ select option {
 
 /* Bars and borders on phosphor screen */
 .phosphor-screen .bg-stealth-dark {
-  background-color: #d4cfc5 !important;
+  background-color: var(--theme-phosphor-bar-bg) !important;
 }
 
 .phosphor-screen .border-stealth-border,
 .phosphor-screen .border-stealth-border\/30,
 .phosphor-screen .border-stealth-border\/50 {
-  border-color: rgba(60, 60, 60, 0.25) !important;
+  border-color: var(--theme-phosphor-border) !important;
 }
 
 /* CTX bar inline text — dark with e-ink shadow for readability on colored fill */

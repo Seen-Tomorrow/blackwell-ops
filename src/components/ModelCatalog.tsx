@@ -5,6 +5,7 @@ import ModelCard from "./ModelCard";
 
 import { useModelCatalog, type SortField } from "../hooks/useModelCatalog";
 import { useTelemetry } from "../context/TelemetryContext";
+import ThemePicker from "./ThemePicker";
 
 interface ModelCatalogProps {
   models: any[];
@@ -203,8 +204,9 @@ export default function ModelCatalog(props: ModelCatalogProps) {
       {/* Top bar */}
       <div className="px-4 py-2.5 border-b border-stealth-border/50 flex items-center justify-between fade-in">
         <div className="flex items-center gap-3">
-          <h2 className="text-xs font-mono text-nv-green tracking-widest">✦ MODEL CATALOG</h2>
+          <h2 className="text-xs font-mono theme-accent-text tracking-widest">✦ MODEL CATALOG</h2>
           <span className="text-[8px] font-mono opacity-40">({allFiltered.length} / {models.length})</span>
+          <ThemePicker variant="full" />
           {zone === "config" && (
             <span className="text-[8px] font-mono px-1.5 py-0.5 rounded-sm border border-telemetry-cyan/40 text-telemetry-cyan bg-telemetry-cyan/10">
               CONFIG [Ctrl+Enter]

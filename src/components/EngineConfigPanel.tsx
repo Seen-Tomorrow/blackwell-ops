@@ -10,6 +10,7 @@ import RunningEnginesPanel from "./RunningEnginesPanel";
 import SliderParam from "./SliderParam";
 import { useScenarioEvaluator } from "../hooks/useScenarioEvaluator";
 import { useConfigResolver } from "../hooks/useConfigResolver";
+import { useTheme } from "../context/ThemeContext";
 
 
 
@@ -105,25 +106,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   const [isBlazing, setIsBlazing] = useState(false);
   const [specFlash, setSpecFlash] = useState(false);
 
-  // Phosphor screen color theme cycle
-  const PHOSPHOR_THEMES = [
-    { name: 'P3', bg: '#08140a', glow: 'rgba(74, 222, 128, 0.06)' },
-    { name: 'AMBER', bg: '#0a0801', glow: 'rgba(245, 150, 0, 0.06)' },
-    { name: 'CYAN', bg: '#010a0a', glow: 'rgba(0, 229, 255, 0.05)' },
-    { name: 'P1', bg: '#080808', glow: 'rgba(200, 200, 200, 0.05)' },
-    { name: 'ZG1', bg: '#0a0202', glow: 'rgba(220, 40, 40, 0.05)' },
-  ];
-  const [phosphorIdx, setPhosphorIdx] = useState(() => {
-    try { return parseInt(localStorage.getItem('blackops-phosphor-theme') || '0'); } catch { return 0; }
-  });
-  const cyclePhosphorTheme = () => {
-    const next = (phosphorIdx + 1) % PHOSPHOR_THEMES.length;
-    setPhosphorIdx(next);
-    try { localStorage.setItem('blackops-phosphor-theme', String(next)); } catch {}
-    const t = PHOSPHOR_THEMES[next];
-    document.documentElement.style.setProperty('--phosphor-bg', t.bg);
-    document.documentElement.style.setProperty('--phosphor-glow', t.glow);
-  };
+  const { theme, cycleTheme } = useTheme();
 
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => {
     try {
@@ -140,13 +123,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       try { localStorage.setItem(KEYS.collapsedGroups, JSON.stringify([...next])); } catch {}
       return next;
     });
-  }, []);
-
-  // Apply phosphor theme on mount
-  useEffect(() => {
-    const t = PHOSPHOR_THEMES[phosphorIdx];
-    document.documentElement.style.setProperty('--phosphor-bg', t.bg);
-    document.documentElement.style.setProperty('--phosphor-glow', t.glow);
   }, []);
 
   // Persist test flags
@@ -750,13 +726,13 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     {/* VRAM + Running Engines — industrial display unit */}
       <div className="industrial-display-area flex-shrink-0">
           <div className="industrial-display-frame relative">
-              {/* Phosphor theme cycle button — top-center of bezel */}
+              {/* App theme cycle — top-center of VRAM bezel */}
               <button
-                onClick={cyclePhosphorTheme}
+                onClick={cycleTheme}
                 className="absolute top-2 left-1/2 -translate-x-1/2 z-[60] px-0.5 py-0 text-[6px] font-mono tracking-wider text-white/50 hover:text-white/80 transition-colors cursor-pointer"
-                title={`Screen theme: ${PHOSPHOR_THEMES[phosphorIdx].name}`}
+                title={`Theme: ${theme.name} — ${theme.description}. Click to cycle.`}
               >
-                {PHOSPHOR_THEMES[phosphorIdx].name}
+                {theme.name}
               </button>
               <div className="phosphor-screen-inner">
                 <VramBadge

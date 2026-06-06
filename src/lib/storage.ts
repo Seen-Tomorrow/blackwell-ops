@@ -18,6 +18,7 @@ export const KEYS = {
   catalogVisibleCount: `${STORAGE_PREFIX}catalog-visible-count`,
    paramCreatorMode: `${STORAGE_PREFIX}param-creator-mode`,
   selectedSlotIdx: `${STORAGE_PREFIX}selected-slot-idx`,
+  appTheme: `${STORAGE_PREFIX}app-theme`,
 } as const;
 
 // Dynamic key builders — return the full localStorage key string

@@ -17,6 +17,7 @@ import LogLineText from "./components/LogLineText";
 import { StatusProvider } from "./context/StatusBarContext";
 import { DockProvider } from "./context/DockContext";
 import { TelemetryProvider } from "./context/TelemetryContext";
+import { ThemeProvider } from "./context/ThemeContext";
 import { ToastProvider } from "./components/Toast";
 import { FoundryProvider } from "./hooks/useBuildDock";
 import { KEYS, STORAGE_PREFIX, loadLogSearchBySlot, saveLogSearchBySlot } from "./lib/storage";
@@ -488,6 +489,7 @@ function App() {
 
   return (
     <ToastProvider>
+      <ThemeProvider>
       <DockProvider>
         <FoundryProvider>
           <TelemetryProvider pollingActive={activeTab === "telemetry"}>
@@ -650,6 +652,7 @@ function App() {
         </TelemetryProvider>
       </FoundryProvider>
     </DockProvider>
+    </ThemeProvider>
     </ToastProvider>
   );
 }

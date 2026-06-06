@@ -66,6 +66,8 @@ export default memo(function SlotLogPanel({ entry, logs, systemEvents, fusionUpd
   // TPS value for display — fusion /slots data is the source of truth
   const tps = (fusionUpdate?.engine_state === "ACTIVE" && fusionUpdate?.genTps > 0) ? fusionUpdate.genTps : 0;
 
+  const phaseBarVisible = entry.status === "RUNNING" && displayPhase !== "IDLE";
+
   // Logs are already flat — cap visible lines to prevent DOM bloat
   const MAX_VISIBLE_LOGS = 100;
   const visibleLogs = logs.slice(-MAX_VISIBLE_LOGS);
@@ -93,56 +95,38 @@ export default memo(function SlotLogPanel({ entry, logs, systemEvents, fusionUpd
         </button>
       </div>
 
-      {/* Phase indicator bar */}
-      {entry.status === "RUNNING" && displayPhase !== "IDLE" && (
-        <div key={displayPhase} style={{ animation: 'fadeIn 0.2s ease' }}>
-          <div className={`px-3 py-1 border-b ${phaseBg} flex items-center justify-between`}>
-              <span className="text-[9px] font-mono tracking-wider">
-                {displayPhase === "PP" && "\u{25C7}"}
-                {displayPhase === "GENERATING" && "\u{25CF}"}
-                {" "}
-                {displayPhase === "PP" ? "PROMPT PROCESSING" : "TOKEN GENERATION"}
+      {/* Phase indicator bar — fixed-height slot so layout never jumps */}
+      {entry.status === "RUNNING" && (
+        <div className="relative h-7 flex-shrink-0">
+          <div
+            className={`absolute inset-0 px-3 flex items-center justify-between border-b transition-opacity duration-200 ${
+              phaseBarVisible ? `${phaseBg} opacity-100` : "opacity-0 pointer-events-none border-transparent"
+            }`}
+          >
+            <span className="text-[9px] font-mono tracking-wider">
+              {displayPhase === "PP" && "\u{25C7}"}
+              {displayPhase === "GENERATING" && "\u{25CF}"}
+              {" "}
+              {displayPhase === "PP" ? "PROMPT PROCESSING" : displayPhase === "GENERATING" ? "TOKEN GENERATION" : "\u00A0"}
+            </span>
+            {fusionUpdate?.ttftMs != null && fusionUpdate.ttftMs > 0 ? (
+              <span className="text-[9px] font-mono text-telemetry-amber">
+                TTFT: {fusionUpdate.ttftMs.toFixed(0)}ms
               </span>
-              <div className="flex items-center gap-3">
-                {/* log_ prefill progress comparison (red) — from print_timing PP line */}
-                {fusionUpdate?.logPrefillProgress != null && fusionUpdate?.logPhase === "PP" && (
-                  <>
-                    <div className="w-16 h-1.5 bg-stealth-dark border border-red-500/30 rounded-sm overflow-hidden">
-                      <div
-                        className="h-full bg-red-400 transition-all duration-100"
-                        style={{ width: `${fusionUpdate.logPrefillProgress * 100}%` }}
-                      />
-                    </div>
-                    <span className="text-[8px] font-mono text-red-400">
-                      LP {(fusionUpdate.logPrefillProgress * 100).toFixed(0)}%
-                    </span>
-                  </>
-                )}
-
-                {/* log_ phase indicator */}
-                {fusionUpdate?.logPhase && fusionUpdate.logPhase !== "IDLE" && (
-                  <span className="text-[8px] font-mono text-red-400/70">
-                    LP:{fusionUpdate.logPhase}
-                  </span>
-                )}
-
-                {fusionUpdate?.ttftMs != null && fusionUpdate.ttftMs > 0 && (
-                  <span className="text-[9px] font-mono text-telemetry-amber">
-                    TTFT: {fusionUpdate.ttftMs.toFixed(0)}ms
-                  </span>
-                )}
-              </div>
-            </div>
+            ) : (
+              <span className="text-[9px] font-mono opacity-0 select-none" aria-hidden="true">{"\u00A0"}</span>
+            )}
+          </div>
         </div>
       )}
 
       {/* Engine stats */}
-      <div className="px-3 py-2 grid grid-cols-4 gap-2">
+      <div className="px-3 py-2 grid grid-cols-3 gap-2">
         <StatBlock label="PORT" value={`:${entry.port}`} />
         <StatBlock label="STATUS" value={entry.status} highlight={entry.status === "RUNNING"} />
 
-        {/* TPS display */}
-        <div className="col-span-1 flex flex-col items-center justify-center">
+        {/* TPS — fusion /slots source of truth */}
+        <div className="flex flex-col items-center justify-center">
           <span className="text-[9px] font-mono text-stealth-muted tracking-wider">TPS</span>
           {tps > 0 ? (
             <span className={`text-lg font-mono font-bold ${phaseColor}`}>
@@ -151,66 +135,13 @@ export default memo(function SlotLogPanel({ entry, logs, systemEvents, fusionUpd
           ) : (
             <span className="text-lg font-mono text-stealth-muted">--</span>
           )}
-          {/* log_ TPS comparison (red) */}
-          {(fusionUpdate?.logPrefillTps != null && fusionUpdate.logPrefillTps > 0 && displayPhase === "PP") && (
-            <span className="text-[10px] font-mono text-red-400 font-bold">
-              LP {fusionUpdate.logPrefillTps.toFixed(0)}
-            </span>
-          )}
-          {(fusionUpdate?.logGenTps != null && fusionUpdate.logGenTps > 0) && (
-            <span className="text-[10px] font-mono text-red-400 font-bold">
-              LP {fusionUpdate.logGenTps.toFixed(0)}
-            </span>
-          )}
         </div>
-
-        {/* Tokens generated — fusion /slots is real-time source of truth */}
-        <StatBlock label="TOKENS" value={(fusionUpdate?.genTokensPerRequestSlots ?? fusionUpdate?.genTokensPerSession ?? 0).toString()} />
       </div>
 
       {/* Benchmark controls — full width */}
       {entry.status === "RUNNING" && (
         <div className="px-3 py-1">
           <BenchWidget port={entry.port} />
-        </div>
-      )}
-
-      {/* Secondary stats row */}
-      {entry.status === "RUNNING" && fusionUpdate && (
-        <div className="px-3 py-1 border-t border-stealth-border grid grid-cols-2 gap-2">
-          <span className="text-[9px] font-mono text-stealth-muted">
-            GEN: {fusionUpdate.genTokensPerRequestSlots ?? 0} tok
-          </span>
-          <span className="text-[9px] font-mono text-stealth-muted">
-            SESSION: {fusionUpdate.genTokensPerSession ?? 0} tok
-          </span>
-        </div>
-      )}
-
-      {/* log_ log-parsed metrics row (red) */}
-      {entry.status === "RUNNING" && fusionUpdate && (fusionUpdate.logPromptTokens != null || fusionUpdate.logPrefillTps != null) && (
-        <div className="px-3 py-1 border-t border-stealth-border/50 grid grid-cols-2 gap-2">
-          {fusionUpdate.logPromptTokens != null && fusionUpdate.logPromptTokens > 0 && (
-            <span className="text-[9px] font-mono text-red-400">
-              LP PROMPT: {fusionUpdate.logPromptTokens} tok
-            </span>
-          )}
-          {fusionUpdate.logPrefillTps != null && fusionUpdate.logPrefillTps > 0 && (
-            <span className="text-[9px] font-mono text-red-400">
-              LP PP: {fusionUpdate.logPrefillTps.toFixed(0)} t/s
-            </span>
-          )}
-        </div>
-      )}
-
-      {/* log_ reset source indicator — belt (green) vs suspenders (amber) */}
-      {entry.status === "RUNNING" && fusionUpdate?.phaseResetSource && (
-        <div className="px-3 py-0.5 border-t border-stealth-border/30">
-          <span className={`text-[8px] font-mono tracking-wider ${
-            fusionUpdate.phaseResetSource === 'prompt' ? 'text-nv-green/70' : 'text-telemetry-amber/70'
-          }`}>
-            LP RESET: {fusionUpdate.phaseResetSource === 'prompt' ? "BELT (NewPrompt)" : "SUSPENDERS (regression)"}
-          </span>
         </div>
       )}
 
