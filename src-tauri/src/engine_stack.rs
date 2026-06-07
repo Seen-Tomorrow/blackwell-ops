@@ -251,7 +251,10 @@ impl EngineStack {
                     stack.clear_slot(slot_idx);
                     stack.emit_stack_changed();
                 }
-                return Err(format!("Engine crashed immediately with exit code {}", exit_code));
+                return Err(format!(
+                    "Engine crashed immediately with exit code {}",
+                    crate::engine_utils::describe_process_exit_code(exit_code)
+                ));
             }
         }
 

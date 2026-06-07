@@ -8,6 +8,7 @@ import StackView from "./components/StackView";
 import ModelCatalog from "./components/ModelCatalog";
 import TelemetryPanel from "./components/TelemetryPanel";
 import TelemetryLab from "./components/telemetry-lab/TelemetryLab";
+import TelemetryViewToggle from "./components/TelemetryViewToggle";
 import IntelPage from "./components/IntelPage";
 import ConfigPage from "./components/ConfigPage";
 import MobileSentinelPage from "./components/MobileSentinelPage";
@@ -28,6 +29,9 @@ import {
   loadLogSearchBySlot,
   saveLogSearchBySlot,
   saveStartupUpdatesCache,
+  loadTelemetryViewMode,
+  saveTelemetryViewMode,
+  type TelemetryViewMode,
 } from "./lib/storage";
 import { dispatchAppEvent, EVENTS } from "./lib/events";
 import type { ModelEntry, StackEntry, LogBatch, LogEntry, SystemEvent, ProviderConfig, AppUpdateInfo } from "./lib/types";
@@ -119,17 +123,27 @@ function App() {
   const [totalParams, setTotalParams] = useState(0);
   const [hiddenCount, setHiddenCount] = useState(0);
   const [isPowerUser, setIsPowerUser] = useState(() => isPowerUserActive(loadPowerUserState()));
+  const [telemetryViewMode, setTelemetryViewModeState] = useState<TelemetryViewMode>(() => loadTelemetryViewMode());
+
+  const setTelemetryViewMode = useCallback((mode: TelemetryViewMode) => {
+    setTelemetryViewModeState(mode);
+    saveTelemetryViewMode(mode);
+    dispatchAppEvent(EVENTS.telemetryViewChanged);
+  }, []);
 
   useEffect(() => {
     const handler = () => setIsPowerUser(isPowerUserActive(loadPowerUserState()));
+    const telemetryHandler = () => setTelemetryViewModeState(loadTelemetryViewMode());
     window.addEventListener("storage", handler);
     const powerUserHandler = () => requestAnimationFrame(handler);
     window.addEventListener(EVENTS.powerUserChanged, powerUserHandler);
+    window.addEventListener(EVENTS.telemetryViewChanged, telemetryHandler);
     const navHandler = () => setActiveTab("stack");
     window.addEventListener(EVENTS.navigateStack, navHandler);
     return () => {
       window.removeEventListener("storage", handler);
       window.removeEventListener(EVENTS.powerUserChanged, powerUserHandler);
+      window.removeEventListener(EVENTS.telemetryViewChanged, telemetryHandler);
       window.removeEventListener(EVENTS.navigateStack, navHandler);
     };
   }, []);
@@ -504,7 +518,10 @@ function App() {
         )}
         {activeTab === "telemetry" && (
           <div className="h-full flex flex-col p-4 gap-3 min-h-0" data-telemetry-page>
-            {isPowerUser ? <TelemetryLab stack={stack} /> : <TelemetryPanel />}
+            <TelemetryViewToggle mode={telemetryViewMode} onChange={setTelemetryViewMode} />
+            <div className="flex-1 min-h-0">
+              {telemetryViewMode === "lab" ? <TelemetryLab stack={stack} /> : <TelemetryPanel />}
+            </div>
           </div>
         )}
         {activeTab === "intel" && <IntelPage />}

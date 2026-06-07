@@ -6,7 +6,7 @@
   "git_url": "https://github.com/ggml-org/llama.cpp",
   "branch": "master",
   "template_type": "ggml-llama",
-  "templateVersion": 2,
+  "templateVersion": 3,
   "build_profile": "-DGGML_CUDA=ON\n-DCMAKE_CUDA_ARCHITECTURES=\"120\"\n-DGGML_CUDA_PEER_TO_PEER=ON\n-DGGML_CUDA_FA_ALL_QUANTS=ON\n-DGGML_AVX512=ON\n-DGGML_NATIVE=ON\n-DCMAKE_CUDA_FLAGS=\"-Xcompiler /wd4056 -Xcompiler /wd4756 --diag-suppress 221\"\n-Wno-dev",
   "spawn_profile": {
     "model_flag": ["-m"],
@@ -15,7 +15,7 @@
     "verbosity_args": ["-lv", "4"],
     "enable_metrics": true,
     "supports_fusion": true,
-    "max_engine_slots": 128,
+    "max_engine_slots": 64,
     "gpu_env": "CUDA_VISIBLE_DEVICES",
     "ngl_flag": ["--n-gpu-layers"],
     "mmproj_flag": ["--mmproj"]

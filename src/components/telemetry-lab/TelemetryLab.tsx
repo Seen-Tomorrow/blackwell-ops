@@ -245,8 +245,7 @@ export default function TelemetryLab({ stack }: TelemetryLabProps) {
           <div>
             <h2 className="text-xs font-mono text-yellow-400 tracking-wider">TELEMETRY LAB</h2>
             <p className="text-[9px] font-mono text-stealth-muted/80 mt-1 max-w-2xl">
-              Power-user idea catalogue — isolated module, zero hooks into catalog/config/fusion pipeline.
-              Regular users still see standard TELEMETRY when admin is locked.
+              Experimental measurement catalogue — toggle LAB on the TELEMETRY tab. Isolated from catalog/config/fusion pipeline; widgets will be trimmed over time.
             </p>
           </div>
           <div className="flex items-center gap-2 text-[8px] font-mono">

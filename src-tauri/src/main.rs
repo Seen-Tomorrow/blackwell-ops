@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod engine;
+mod disk_io_pdh;
 mod telemetry;
 mod intel;
 mod config;
@@ -456,17 +457,20 @@ async fn main() {
             let mobile_bridge = MobileBridge::new(3814);
             app.manage(mobile_bridge.clone());
 
+            telemetry::ensure_disk_io_poller();
+
             Ok(())
         })
         .on_window_event(|window, event| {
-            if let tauri::WindowEvent::CloseRequested { .. } = event {
-                let app_handle = window.app_handle();
-                let ctx = app_handle.state::<AppContext>();
-
-                let stack_clone = ctx.stack.clone();
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                // Block exit until engines are torn down — fire-and-forget left orphans under cargo.exe in dev.
+                api.prevent_close();
+                let app_handle = window.app_handle().clone();
+                let stack_clone = app_handle.state::<AppContext>().stack.clone();
                 tauri::async_runtime::spawn(async move {
                     fusion_brain::stop_all_brains().await;
                     EngineStack::kill_all(&stack_clone).await;
+                    app_handle.exit(0);
                 });
             }
         })

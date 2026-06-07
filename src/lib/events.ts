@@ -14,6 +14,7 @@
  * | BlackOps-stop-all | All engines stopped — clear slot selection |
  * | BlackOps-slot-cleared | Single slot cleared — update selection |
  * | BlackOps-download-completed | Model Hub download finished — refresh catalog |
+ * | BlackOps-telemetry-view-changed | TELEMETRY tab switched standard ↔ lab |
  */
 
 import { STORAGE_PREFIX } from "./storage";
@@ -30,6 +31,7 @@ export const EVENTS = {
   stopAll: `${STORAGE_PREFIX}stop-all`,
   slotCleared: `${STORAGE_PREFIX}slot-cleared`,
   downloadCompleted: `${STORAGE_PREFIX}download-completed`,
+  telemetryViewChanged: `${STORAGE_PREFIX}telemetry-view-changed`,
 } as const;
 
 export type AppEventName = (typeof EVENTS)[keyof typeof EVENTS];

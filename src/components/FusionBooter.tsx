@@ -117,7 +117,7 @@ function DiskIoHero({ mibPerS }: { mibPerS: number }) {
     >
       <span className="text-[7px] font-mono text-stealth-muted/50 tracking-wider mb-0.5">NVMe READ</span>
       <span
-        className="font-mono font-bold tracking-tight leading-none"
+        className="font-mono font-bold tracking-tight leading-none transition-all duration-200 ease-out"
         style={{
           fontSize: "clamp(1.35rem, 4vh, 2.2rem)",
           color: hot ? "#22d3ee" : mibPerS > 8 ? "rgba(34, 211, 238, 0.75)" : "rgba(34, 211, 238, 0.35)",

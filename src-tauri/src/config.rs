@@ -103,10 +103,62 @@ pub fn to_relative_path(abs: &PathBuf) -> String {
     }
 }
 
+/// DEV only: refresh `runtime/<provider>/config/*.json` from `src-tauri/runtime` so spawn_profile edits
+/// (e.g. max_engine_slots) apply without re-running predev or wiping mirrored binaries.
+#[cfg(debug_assertions)]
+fn sync_dev_runtime_factory_configs(app_root: &std::path::Path) {
+    let source = app_root.join("../../runtime");
+    if !source.is_dir() {
+        log::debug!(
+            "[setup] Dev factory config sync skipped — source not found at {}",
+            source.display()
+        );
+        return;
+    }
+
+    let mut copied = 0usize;
+    for entry in std::fs::read_dir(&source).into_iter().flatten().filter_map(|e| e.ok()) {
+        if !entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false) {
+            continue;
+        }
+        let src_config = entry.path().join("config");
+        if !src_config.is_dir() {
+            continue;
+        }
+        let dst_config = app_root.join("runtime").join(entry.file_name()).join("config");
+        if let Err(e) = std::fs::create_dir_all(&dst_config) {
+            log::warn!("[setup] Failed to create {}: {}", dst_config.display(), e);
+            continue;
+        }
+        for cfg_entry in std::fs::read_dir(&src_config).into_iter().flatten().filter_map(|e| e.ok()) {
+            let path = cfg_entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("json") {
+                continue;
+            }
+            let dst = dst_config.join(cfg_entry.file_name());
+            match std::fs::copy(&path, &dst) {
+                Ok(_) => copied += 1,
+                Err(e) => log::warn!("[setup] Failed to copy {}: {}", path.display(), e),
+            }
+        }
+    }
+
+    if copied > 0 {
+        log::info!(
+            "[setup] Dev: synced {} factory config JSON file(s) from {}",
+            copied,
+            source.display()
+        );
+    }
+}
+
 /// Ensure the portable directory structure exists. Copy bundled binaries from resources on first run (REL only).
 pub fn ensure_portable_structure(app_handle: &tauri::AppHandle) {
     let root = app_root_dir();
     let data = config_dir();
+
+    #[cfg(debug_assertions)]
+    sync_dev_runtime_factory_configs(&root);
 
     // Create directories
     let _ = std::fs::create_dir_all(&data);

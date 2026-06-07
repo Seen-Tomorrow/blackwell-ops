@@ -262,6 +262,7 @@ pub fn resolve_engine_slot_count() -> usize {
             ABSOLUTE_MAX_ENGINE_SLOTS
         );
     }
+    log::info!("[engine-slots] Global engine stack capacity = {}", clamped);
     clamped
 }
 

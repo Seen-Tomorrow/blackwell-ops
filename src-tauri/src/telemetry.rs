@@ -1,7 +1,9 @@
 use serde::{Deserialize, Serialize};
 use std::os::windows::process::CommandExt;
 use std::process::Stdio;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
+use std::time::Duration;
 use sysinfo::System;
 
 static CPU_SYSTEM: Mutex<Option<System>> = Mutex::new(None);
@@ -271,116 +273,78 @@ fn clamp_disk_read_mib_per_s(mib: f32) -> f32 {
     }
 }
 
-/// One WMI/CIM pass — formatted perf rates work for direct-io; raw Get-Counter single samples often read 0.
-#[cfg(windows)]
-fn query_disk_io_bytes_per_sec(engine_pid: Option<u32>) -> Result<(f32, f32), String> {
-    let pid = engine_pid.unwrap_or(0);
-    let output = std::process::Command::new("powershell")
-        .args([
-            "-NoProfile",
-            "-NonInteractive",
-            "-Command",
-            &format!(
-                r#"
-function Max-Double($values) {{
-    $m = 0.0
-    foreach ($v in $values) {{
-        if ($null -ne $v) {{
-            $d = [double]$v
-            if ($d -gt $m) {{ $m = $d }}
-        }}
-    }}
-    return $m
-}}
-
-$phys = Get-CimInstance Win32_PerfFormattedData_PerfDisk_PhysicalDisk -ErrorAction SilentlyContinue
-$physTotal = ($phys | Where-Object {{ $_.Name -eq '_Total' }} | Select-Object -First 1).DiskReadBytesPerSec
-$physSum = ($phys | Where-Object {{ $_.Name -ne '_Total' }} | Measure-Object -Property DiskReadBytesPerSec -Sum).Sum
-$physWrite = ($phys | Where-Object {{ $_.Name -eq '_Total' }} | Select-Object -First 1).DiskWriteBytesPerSec
-
-$log = Get-CimInstance Win32_PerfFormattedData_PerfDisk_LogicalDisk -ErrorAction SilentlyContinue
-$logTotal = ($log | Where-Object {{ $_.Name -eq '_Total' }} | Select-Object -First 1).DiskReadBytesPerSec
-
-$procRead = 0.0
-if ({pid} -gt 0) {{
-    $p = Get-CimInstance Win32_PerfFormattedData_PerfProc_Process -Filter "IDProcess={pid}" -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($p) {{
-        $procRead = [Math]::Max([double]$p.IOReadBytesPerSec, [double]$p.IODataBytesPerSec)
-    }}
-}}
-
-$engineSum = 0.0
-$engineProcs = Get-CimInstance Win32_PerfFormattedData_PerfProc_Process -ErrorAction SilentlyContinue |
-    Where-Object {{ $_.Name -like 'llama-server*' }}
-if ($engineProcs) {{
-    $engineSum = ($engineProcs | ForEach-Object {{
-        [Math]::Max([double]$_.IOReadBytesPerSec, [double]$_.IODataBytesPerSec)
-    }} | Measure-Object -Maximum).Maximum
-    if ($null -eq $engineSum) {{ $engineSum = 0.0 }}
-}}
-
-$diskRead = Max-Double @($physTotal, $physSum, $logTotal, $procRead, $engineSum)
-
-# Sample rate counter twice — cold Get-Counter snapshots are often 0 for direct-io
-if ($diskRead -lt 1048576) {{
-    $c1 = (Get-Counter '\PhysicalDisk(_Total)\Disk Read Bytes/sec' -ErrorAction SilentlyContinue).CounterSamples.CookedValue
-    Start-Sleep -Milliseconds 250
-    $c2 = (Get-Counter '\PhysicalDisk(_Total)\Disk Read Bytes/sec' -ErrorAction SilentlyContinue).CounterSamples.CookedValue
-    $diskRead = [Math]::Max($diskRead, [Math]::Max([double]$c1, [double]$c2))
-}}
-
-# mmap / page-cache fallback when disk + process paths stay quiet
-if ($diskRead -lt 1048576) {{
-    $pages = (Get-Counter '\Memory\Pages Input/sec' -ErrorAction SilentlyContinue).CounterSamples.CookedValue
-    $diskRead = [Math]::Max($diskRead, [double]$pages * 4096)
-    if ({pid} -gt 0) {{
-        $p = Get-CimInstance Win32_PerfFormattedData_PerfProc_Process -Filter "IDProcess={pid}" -ErrorAction SilentlyContinue | Select-Object -First 1
-        if ($p) {{
-            $faultBps = [double]$p.PageFaultsPerSec * 4096
-            $diskRead = [Math]::Max($diskRead, $faultBps)
-        }}
-    }}
-}}
-
-Write-Output "$diskRead,$physWrite"
-"#
-            ),
-        ])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .creation_flags(0x08000000)
-        .output()
-        .map_err(|e| format!("disk io counter failed: {}", e))?;
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let mut parts = stdout.trim().split(',');
-    let read: f32 = parts.next().unwrap_or("0").trim().parse().unwrap_or(0.0);
-    let write: f32 = parts.next().unwrap_or("0").trim().parse().unwrap_or(0.0);
-    Ok((read, write))
+#[derive(Clone, Copy)]
+struct DiskIoSample {
+    read_bps: f32,
+    write_bps: f32,
 }
 
-#[cfg(not(windows))]
-fn query_disk_io_bytes_per_sec(_engine_pid: Option<u32>) -> Result<(f32, f32), String> {
-    Ok((0.0, 0.0))
+static DISK_IO_CACHE: Mutex<DiskIoSample> =
+    Mutex::new(DiskIoSample {
+        read_bps: 0.0,
+        write_bps: 0.0,
+    });
+static DISK_IO_POLLER_STARTED: AtomicBool = AtomicBool::new(false);
+
+/// PDH sample interval — matches FusionBooter frontend poll (~350ms) without PowerShell spawn overhead.
+const DISK_IO_POLL_INTERVAL_MS: u64 = 300;
+
+/// Start the single global disk I/O poller (idempotent). Called from app setup and first `scan_disk_io`.
+pub fn ensure_disk_io_poller() {
+    if DISK_IO_POLLER_STARTED.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    if let Err(e) = std::thread::Builder::new()
+        .name("disk-io-pdh".into())
+        .spawn(disk_io_poller_thread)
+    {
+        log::warn!("[telemetry] disk io poller thread failed to start: {}", e);
+    }
 }
 
-#[tauri::command]
-pub async fn scan_disk_io(
-    slot_idx: Option<i32>,
-    app: tauri::State<'_, crate::engine::AppContext>,
-) -> Result<DiskIoInfo, String> {
-    let engine_pid = match slot_idx.and_then(|idx| usize::try_from(idx).ok()) {
-        Some(idx) => {
-            let stack = app.stack.lock().await;
-            stack.get_slot_pid(idx)
+fn disk_io_poller_thread() {
+    #[cfg(windows)]
+    {
+        let mut sampler = match crate::disk_io_pdh::PdhDiskSampler::new() {
+            Ok(s) => s,
+            Err(e) => {
+                log::warn!("[telemetry] PDH disk sampler init failed: {}", e);
+                return;
+            }
+        };
+
+        loop {
+            match sampler.sample() {
+                Ok((read, write)) => {
+                    if let Ok(mut cache) = DISK_IO_CACHE.lock() {
+                        *cache = DiskIoSample {
+                            read_bps: read,
+                            write_bps: write,
+                        };
+                    }
+                }
+                Err(e) => log::debug!("[telemetry] disk io poll failed: {}", e),
+            }
+            std::thread::sleep(Duration::from_millis(DISK_IO_POLL_INTERVAL_MS));
         }
-        None => None,
-    };
+    }
 
-    let (read_bps, write_bps) = query_disk_io_bytes_per_sec(engine_pid)?;
+    #[cfg(not(windows))]
+    loop {
+        std::thread::sleep(Duration::from_millis(DISK_IO_POLL_INTERVAL_MS));
+    }
+}
+
+/// Returns the latest cached system disk read/write rates (MiB/s). `slot_idx` is kept for IPC compat only.
+#[tauri::command]
+pub async fn scan_disk_io(_slot_idx: Option<i32>) -> Result<DiskIoInfo, String> {
+    ensure_disk_io_poller();
+    let sample = DISK_IO_CACHE
+        .lock()
+        .map_err(|e| format!("disk io cache lock poisoned: {}", e))?;
     Ok(DiskIoInfo {
-        read_mib_per_s: clamp_disk_read_mib_per_s(read_bps / (1024.0 * 1024.0)),
-        write_mib_per_s: write_bps / (1024.0 * 1024.0),
+        read_mib_per_s: clamp_disk_read_mib_per_s(sample.read_bps / (1024.0 * 1024.0)),
+        write_mib_per_s: sample.write_bps / (1024.0 * 1024.0),
     })
 }
 

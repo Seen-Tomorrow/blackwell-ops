@@ -26,6 +26,7 @@ import { normalizeDisplayTexture, type DisplayTexture } from "./displayTexture";
  * | BlackOps-fusion-hero-tps | live \| avg | Fusion hero TPS display mode |
  * | BlackOps-display-texture | clean \| crt \| phosphor-dark \| phosphor-light | Display texture cycle |
  * | BlackOps-catalog-split-width | number string (px) | Model catalog / engine config split |
+ * | BlackOps-telemetry-view | standard \| lab | TELEMETRY tab: panel vs lab catalogue |
  * | BlackOps-catalog-override:{providerId} | JSON Record<paramKey, value> | Launch-time param chip overrides |
  * | BlackOps-group-order:{providerId} | JSON string[] | CONFIG param group order |
  * | BlackOps-engine-alias:{modelPath} | string | Per-model launch alias |
@@ -96,7 +97,20 @@ export const KEYS = {
   fusionHeroTpsMode: `${STORAGE_PREFIX}fusion-hero-tps`,
   displayTexture: `${STORAGE_PREFIX}display-texture`,
   catalogSplitWidth: `${STORAGE_PREFIX}catalog-split-width`,
+  telemetryView: `${STORAGE_PREFIX}telemetry-view`,
 } as const;
+
+// ── Telemetry view (standard panel vs lab catalogue) ───────────────────────
+
+export type TelemetryViewMode = "standard" | "lab";
+
+export function loadTelemetryViewMode(): TelemetryViewMode {
+  return readStorage(KEYS.telemetryView) === "lab" ? "lab" : "standard";
+}
+
+export function saveTelemetryViewMode(mode: TelemetryViewMode): void {
+  writeStorage(KEYS.telemetryView, mode);
+}
 
 export const CATALOG_SPLIT_WIDTH_DEFAULT = 420;
 export const CATALOG_SPLIT_WIDTH_MIN = 280;

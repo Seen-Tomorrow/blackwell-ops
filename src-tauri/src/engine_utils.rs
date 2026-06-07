@@ -137,6 +137,21 @@ pub async fn kill_process_by_port(port: u16) -> Result<(), String> {
     Ok(())
 }
 
+/// Human-readable Windows child process exit code (NTSTATUS / Win32).
+pub fn describe_process_exit_code(code: i32) -> String {
+    match code {
+        -1073741819 => format!(
+            "{code} (ACCESS_VIOLATION 0xC0000005 — llama-server crashed in native/CUDA code; often GPU VRAM pressure or driver fault at high engine count)"
+        ),
+        -1073740791 => format!(
+            "{code} (STACK_BUFFER_OVERRUN 0xC0000409 — security cookie failure / stack corruption in native code)"
+        ),
+        -1073741510 => format!("{code} (0xC000013A — process terminated by Ctrl+C/break)"),
+        c if c < 0 => format!("{c} (0x{:08X} NTSTATUS)", c as u32),
+        c => c.to_string(),
+    }
+}
+
 /// Extract model name from full path (last component without .gguf).
 pub fn extract_model_name(path: &str) -> String {
     PathBuf::from(path)
