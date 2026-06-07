@@ -2,9 +2,10 @@ import React, { useState, useCallback, useEffect, useRef, Fragment } from "react
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { ProviderConfig, UserEditedTemplateParam, FitScanComplete, FitScanProgress, FitScanFull, FitDataPoint, BinaryUpdateInfo } from "../lib/types";
-import { DEFAULT_PROVIDER_ID } from "../lib/types";
+import { DEFAULT_PROVIDER_ID, isProfileBuilt } from "../lib/types";
 import { useFoundry, type Env } from "../hooks/useBuildDock";
 import { ENV_ORDER, ENV_META } from "../lib/foundry_constants";
+import { dispatchAppEvent, EVENTS } from "../lib/events";
 import { loadFoundryLastRefresh, loadStartupUpdatesCache, saveFoundryLastRefresh } from "../lib/storage";
 import { BuildProfileRow, RestoreConfirmModal, parseCmakeFlags, UpdateStatus } from "./FoundryComponents";
 
@@ -100,6 +101,19 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
   }, [onProvidersChange]);
 
   useEffect(() => { loadProviders(); }, [loadProviders]);
+
+  // Stay in sync when parent App state reloads (e.g. after Foundry build completes).
+  useEffect(() => {
+    if (initialProviders.length > 0) {
+      setProviders(initialProviders);
+    }
+  }, [initialProviders]);
+
+  useEffect(() => {
+    const handler = () => { void loadProviders(); };
+    window.addEventListener(EVENTS.reloadProviders, handler);
+    return () => window.removeEventListener(EVENTS.reloadProviders, handler);
+  }, [loadProviders]);
 
   const handleBrowse = useCallback(async () => {
     try {
@@ -454,7 +468,11 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
       if (e.payload.phase === "Complete") {
         try {
           const updated = await invoke<ProviderConfig[]>("refresh_build_info", { providerId: e.payload.provider_id });
-          if (updated.length > 0) onProvidersChange(updated);
+          if (updated.length > 0) {
+            setProviders(updated);
+            onProvidersChange(updated);
+          }
+          dispatchAppEvent(EVENTS.reloadProviders);
         } catch (err) { console.error("[Foundry] Status check error:", err); }
       }
     });
@@ -892,7 +910,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
                         <div className="p-3 space-y-2">
                           {ENV_ORDER.map(env => {
                             const meta = ENV_META[env];
-                            const hasBackup = p.binaryPathPerEnv?.[env] || p.buildInfoPerEnv?.[env];
+                            const hasBackup = isProfileBuilt(p, env);
                             return (
                               <BuildProfileRow
                                 key={env}

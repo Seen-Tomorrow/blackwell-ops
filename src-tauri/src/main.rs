@@ -30,6 +30,7 @@ mod binary_update;
 
 #[cfg(feature = "reactor11")]
 pub mod features;
+mod foundry_toolchain;
 mod reactor_foundry;
 mod output_console;
 
@@ -536,6 +537,8 @@ async fn main() {
             reactor_foundry::foundry_resume_backup,
             reactor_foundry::refresh_build_info,
             reactor_foundry::foundry_restore,
+            reactor_foundry::foundry_check_toolchain,
+            reactor_foundry::foundry_get_profiles,
 
             // Blackwell Output Console commands (power-user output system)
             get_blackwell_output_console_categories,

@@ -24,7 +24,7 @@ export interface BuildProgressState {
   buildId?: number;
 }
 
-export type Env = "vanguard" | "stable" | "fresh";
+export type Env = "vanguard" | "frontier" | "stable" | "fresh";
 
 // Internal clean session model (preferred)
 interface BuildSession {

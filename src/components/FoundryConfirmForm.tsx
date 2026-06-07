@@ -1,10 +1,21 @@
+import { useEffect, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import type { ProviderConfig } from "../lib/types";
 import { useTelemetry } from "../context/TelemetryContext";
-import { getEnvColors } from "../lib/foundry_constants";
+import { getEnvColors, ENV_META, type Env } from "../lib/foundry_constants";
+
+interface ProfileCheck {
+  id: string;
+  label: string;
+  cuda: string;
+  vs_label: string;
+  ready: boolean;
+  missing: string[];
+}
 
 interface FoundryConfirmFormProps {
   provider: ProviderConfig;
-  environment: "vanguard" | "stable" | "fresh";
+  environment: Env;
   prUrl: string;
   setPrUrl: (v: string) => void;
   cmakeFlags: string;
@@ -45,6 +56,22 @@ export default function FoundryConfirmForm({
     return getEnvColors(environment)[base as keyof ReturnType<typeof getEnvColors>] || "";
   };
 
+  const [toolchainCheck, setToolchainCheck] = useState<ProfileCheck | null>(null);
+  const envMeta = ENV_META[environment];
+
+  useEffect(() => {
+    let mounted = true;
+    invoke<ProfileCheck[]>("foundry_check_toolchain")
+      .then((checks) => {
+        if (!mounted) return;
+        setToolchainCheck(checks.find((c) => c.id === environment) ?? null);
+      })
+      .catch(() => { if (mounted) setToolchainCheck(null); });
+    return () => { mounted = false; };
+  }, [environment]);
+
+  const toolchainReady = toolchainCheck?.ready ?? false;
+
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm">
       <div className="w-[60vw] max-w-[720px] border border-yellow-400/40 bg-stealth-panel rounded-sm shadow-2xl">
@@ -71,12 +98,27 @@ export default function FoundryConfirmForm({
               </p>
             )}
 
-            <div className="flex items-center gap-2 pt-1">
+            <div className="flex items-center gap-2 pt-1 flex-wrap">
               <span className="text-[8px] font-mono text-stealth-muted uppercase">Environment:</span>
               <span className={`px-2 py-0.5 text-[9px] font-mono border rounded-sm ${envColors("border")}`}>
-                {environment.toUpperCase()}
+                {envMeta.label}
               </span>
+              <span className="value-chip text-[7px] font-mono px-1.5 py-0.5 rounded-sm">CUDA {envMeta.cuda}</span>
+              <span className="value-chip text-[7px] font-mono px-1.5 py-0.5 rounded-sm opacity-80">{envMeta.vs}</span>
             </div>
+
+            {toolchainCheck && (
+              <div className={`pt-1 text-[8px] font-mono ${toolchainReady ? "text-nv-green" : "text-red-400"}`}>
+                {toolchainReady
+                  ? `✓ Portable toolchain ready (${toolchainCheck.vs_label} + CUDA ${toolchainCheck.cuda})`
+                  : `✗ Toolchain incomplete — run scripts/populate-foundry-toolchain.ps1`}
+                {!toolchainReady && toolchainCheck.missing.length > 0 && (
+                  <div className="text-[7px] text-stealth-muted mt-1 truncate" title={toolchainCheck.missing.join("\n")}>
+                    Missing: {toolchainCheck.missing[0]}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* PR input */}
             <div className="pt-1">
@@ -145,24 +187,25 @@ export default function FoundryConfirmForm({
           {/* Engine warning overlay */}
           {showEngineWarning && (
             <div className="border border-red-400/30 bg-red-400/[0.05] rounded-sm p-3 space-y-2">
-              <p className="text-[10px] font-mono text-red-400 font-bold">⚠ RUNNING ENGINES DETECTED</p>
+              <p className="text-[10px] font-mono text-red-400 font-bold">⚠ ENGINES ON THIS PROFILE</p>
               <pre className="text-[8px] font-mono text-white/70 whitespace-pre-wrap">{engineListText}</pre>
               <p className="text-[9px] font-mono text-stealth-muted">
-                BUILD will automatically stop these engines. Click <span className="font-bold">STOP ENGINES &amp; PROCEED</span> or CANCEL to handle manually first.
+                BUILD will stop only these <span className="font-bold">{envMeta.label}</span> engines for <span className="font-bold">{provider.display_name}</span>.
+                Engines on other profiles keep running. Click <span className="font-bold">STOP ENGINES &amp; PROCEED</span> or CANCEL to handle manually first.
               </p>
             </div>
           )}
 
           {!showEngineWarning && (
-            <div className="border border-yellow-400/40 bg-yellow-400/[0.06] rounded-sm p-3">
-              <p className="text-[10px] font-mono text-yellow-400 font-bold mb-1">
-                ⚠ BUILD WILL STOP RUNNING ENGINES
+            <div className="border border-stealth-border/50 bg-black/20 rounded-sm p-3">
+              <p className="text-[10px] font-mono text-nv-green font-bold mb-1">
+                ✓ PROFILE-ISOLATED BUILD
               </p>
               <p className="text-[9px] font-mono text-white/80">
-                Clicking <span className="font-bold">YES — BUILD</span> will <span className="text-yellow-400 font-bold">automatically stop</span> any inference engines currently running for this provider.
+                Builds run in isolated work trees. Only engines using the <span className="font-bold">{envMeta.label}</span> profile for this provider would be stopped — other profiles and providers keep running.
               </p>
               <p className="text-[8px] font-mono text-stealth-muted mt-1">
-                If you prefer to stop them yourself first, click MINIMIZE or CLOSE now and stop the engines from the main page.
+                Minimize to the dock and continue your usual workflow while the build runs.
               </p>
             </div>
           )}
@@ -191,7 +234,8 @@ export default function FoundryConfirmForm({
                 MINIMIZE TO STATUS BAR
               </button>
               <button onClick={onConfirmBuild}
-                className={`px-4 py-1 text-[9px] font-mono border rounded-sm transition-all ${envColors("border")}`}>
+                disabled={toolchainCheck !== null && !toolchainReady}
+                className={`px-4 py-1 text-[9px] font-mono border rounded-sm transition-all ${envColors("border")} disabled:opacity-40 disabled:cursor-not-allowed`}>
                 YES — BUILD
               </button>
             </>

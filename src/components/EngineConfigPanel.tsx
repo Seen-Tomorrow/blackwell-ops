@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import type { ModelEntry, EngineConfig, GpuInfo, UserEditedTemplateParam, ProviderConfig, ProviderTemplate, StackEntry, SystemInfo } from "../lib/types";
-import { DEFAULT_PROVIDER_ID } from "../lib/types";
+import { DEFAULT_PROVIDER_ID, isProfileBuilt, profileEnvLookup } from "../lib/types";
 import {
   KEYS,
   binaryProfileKey,
@@ -14,35 +14,30 @@ import {
   writeStorage,
 } from "../lib/storage";
 import { dispatchAppEvent, EVENTS } from "../lib/events";
+import { ENV_META, ENV_ORDER, type Env } from "../lib/foundry_constants";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import VramBadge from "./VramBadge";
 import RunningEnginesPanel from "./RunningEnginesPanel";
 import SliderParam from "./SliderParam";
 import { useScenarioEvaluator } from "../hooks/useScenarioEvaluator";
 import { useConfigResolver } from "../hooks/useConfigResolver";
 import { useDisplayTexture } from "../hooks/useDisplayTexture";
+import { useFoundry } from "../hooks/useBuildDock";
 
 
 
-type EnvProfile = "vanguard" | "fresh" | "stable";
-
-const ENV_META: Record<EnvProfile, { label: string; cuda: string; vs: string }> = {
-  vanguard: { label: "VANGUARD", cuda: "13.2", vs: "VS Build Tools 2026 (v18)" },
-  fresh:    { label: "FRESH",    cuda: "13.1", vs: "VS Build Tools 2022" },
-  stable:   { label: "STABLE",   cuda: "12.8", vs: "VS Build Tools 2022" },
-};
+type EnvProfile = Env;
 
 function pickBestBinaryProfile(provider: ProviderConfig | undefined): EnvProfile {
-  if (!provider) return "vanguard";
-  const profiles: EnvProfile[] = ["vanguard", "fresh", "stable"];
-  const available = profiles.filter(
-    (p) => provider.binaryPathPerEnv?.[p] || provider.buildInfoPerEnv?.[p],
-  );
-  if (available.length === 0) return "vanguard";
+  if (!provider) return "frontier";
+  const profiles: EnvProfile[] = [...ENV_ORDER];
+  const available = profiles.filter((p) => isProfileBuilt(provider, p));
+  if (available.length === 0) return "frontier";
   let best = available[0];
-  let bestDate = provider.buildInfoPerEnv?.[best]?.buildDate ?? "";
+  let bestDate = profileEnvLookup(provider.buildInfoPerEnv, best)?.buildDate ?? "";
   for (const p of available.slice(1)) {
-    const d = provider.buildInfoPerEnv?.[p]?.buildDate ?? "";
+    const d = profileEnvLookup(provider.buildInfoPerEnv, p)?.buildDate ?? "";
     if (d > bestDate) {
       best = p;
       bestDate = d;
@@ -114,6 +109,27 @@ interface EngineConfigPanelProps {
 
 export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   const { model, gpus, providers: externalProviders, committedVramMib, isPowerUser, systemInfo, stack, onLaunch, isModelRunning, activeEngineAlias, activeEnginePort, selectedSlotIdx, supportsFusion = true, models, onSelectEngine } = props;
+  const { buildProgress } = useFoundry();
+  // Catalog keeps a copy of providers from App — refresh directly so profile chips match Config after Foundry builds.
+  const [resolvedProviders, setResolvedProviders] = useState<ProviderConfig[]>(externalProviders ?? []);
+
+  useEffect(() => {
+    const refreshProviders = () => {
+      invoke<ProviderConfig[]>("list_providers")
+        .then((data) => { if (data.length > 0) setResolvedProviders(data); })
+        .catch(() => {});
+    };
+    refreshProviders();
+    window.addEventListener(EVENTS.reloadProviders, refreshProviders);
+    let unlisten: (() => void) | null = null;
+    listen<{ phase: string }>("foundry-progress", (e) => {
+      if (e.payload.phase === "Complete") refreshProviders();
+    }).then((u) => { unlisten = u; });
+    return () => {
+      window.removeEventListener(EVENTS.reloadProviders, refreshProviders);
+      unlisten?.();
+    };
+  }, []);
 
   // ── State ───────────────────────────────────────────────────────────────
 
@@ -141,7 +157,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   const [launchAck, setLaunchAck] = useState(false);
   const launchAckTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const [selectedBinaryProfile, setSelectedBinaryProfile] = useState<EnvProfile>("vanguard");
+  const [selectedBinaryProfile, setSelectedBinaryProfile] = useState<EnvProfile>("frontier");
 
 
   const [specFlash, setSpecFlash] = useState(false);
@@ -232,10 +248,10 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   // Auto-select default provider when providers load (runs once on mount)
   const providerInitDone = useRef(false);
   useEffect(() => {
-    if (providerInitDone.current || !externalProviders?.length) return;
+    if (providerInitDone.current || !resolvedProviders?.length) return;
     providerInitDone.current = true;
 
-    const enabled = externalProviders.filter(p => p.enabled);
+    const enabled = resolvedProviders.filter(p => p.enabled);
     if (enabled.length === 0) return;
 
     // Prefer saved localStorage choice, validate it exists, else default to ggml-master or first available
@@ -248,7 +264,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     }
 
     setSelectedProvider(target);
-  }, [externalProviders]);
+  }, [resolvedProviders]);
 
   // ── Derived state ───────────────────────────────────────────────────────────
   const effectiveBackendType = useMemo(() => {
@@ -256,13 +272,21 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     return selectedProvider || (model.backend_type || DEFAULT_PROVIDER_ID);
   }, [model, selectedProvider]);
 
+  const isProfileBuilding = useCallback((profile: EnvProfile): boolean => {
+    if (!buildProgress) return false;
+    const step = buildProgress.step;
+    if (step === "complete" || step === "error") return false;
+    return buildProgress.providerId === effectiveBackendType
+      && buildProgress.environment.toLowerCase() === profile;
+  }, [buildProgress, effectiveBackendType]);
+
+  const selectedProfileIsBuilding = isProfileBuilding(selectedBinaryProfile);
+
   // Per-provider binary profile — re-resolve when provider or available builds change
   useEffect(() => {
     if (!effectiveBackendType) return;
-    const provider = externalProviders?.find((p) => p.id === effectiveBackendType);
-    const built: EnvProfile[] = (["vanguard", "fresh", "stable"] as EnvProfile[]).filter(
-      (env) => provider?.binaryPathPerEnv?.[env] || provider?.buildInfoPerEnv?.[env],
-    );
+    const provider = resolvedProviders?.find((p) => p.id === effectiveBackendType);
+    const built: EnvProfile[] = ENV_ORDER.filter((env) => isProfileBuilt(provider, env));
     try {
       const saved = readStorage(binaryProfileKey(effectiveBackendType)) as EnvProfile | null;
       if (saved && built.includes(saved)) {
@@ -271,7 +295,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       }
     } catch { /* ignore */ }
     setSelectedBinaryProfile(pickBestBinaryProfile(provider));
-  }, [effectiveBackendType, externalProviders]);
+  }, [effectiveBackendType, resolvedProviders]);
 
   useEffect(() => {
     if (!effectiveBackendType) return;
@@ -492,12 +516,12 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   // Ordered group keys: custom provider order > template insertion order (include hidden-only groups)
   const orderedGroupKeys = useMemo(() => {
     const allGroups = [...new Set([...Object.keys(groupedParams), ...Object.keys(allGroupedParams)])];
-    const currentProv = externalProviders?.find(p => p.id === effectiveBackendType);
+    const currentProv = resolvedProviders?.find(p => p.id === effectiveBackendType);
     if (currentProv?.groupOrder && currentProv.groupOrder.length > 0) {
       return [...currentProv.groupOrder.filter(g => allGroups.includes(g)), ...allGroups.filter(g => !currentProv.groupOrder!.includes(g))];
     }
     return allGroups;
-  }, [groupedParams, allGroupedParams, externalProviders, effectiveBackendType]);
+  }, [groupedParams, allGroupedParams, resolvedProviders, effectiveBackendType]);
 
   // ── Load param definitions when model/provider changes ───────────────────
   useEffect(() => {
@@ -508,7 +532,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
     const backendType = effectiveBackendType;
 
-    const prov = externalProviders?.find(p => p.id === backendType);
+    const prov = resolvedProviders?.find(p => p.id === backendType);
     if (prov && prov.userEditedTemplateParams) {
       setUserEditedParams(prov.userEditedTemplateParams || []);
     } else {
@@ -535,7 +559,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
          .catch(() => {});
     }
 
-  }, [model, effectiveBackendType, externalProviders]);
+  }, [model, effectiveBackendType, resolvedProviders]);
 
   // Keyboard launch — Ctrl+Enter triggers ignite
   useEffect(() => {
@@ -564,6 +588,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
   const handleAddToStack = () => {
     if (!model) return;
+    if (selectedProfileIsBuilding) return;
     const now = Date.now();
     if (now - lastLaunchAtRef.current < 60) return;
     lastLaunchAtRef.current = now;
@@ -635,13 +660,13 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   return (
     <div className="flex flex-col h-full overflow-hidden" data-config-panel>
       {/* Provider selector */}
-      {externalProviders && externalProviders.length > 0 && (
+      {resolvedProviders && resolvedProviders.length > 0 && (
         <div className="px-4 py-3 border-b section-divider relative flex-shrink-0">
           <label className="text-[9px] font-mono tracking-widest uppercase block mb-2 amber-label">
             ENGINE PROVIDER
           </label>
           <div className="flex gap-1.5 flex-wrap">
-            {externalProviders.filter(p => p.enabled).map((p) => (
+            {resolvedProviders.filter(p => p.enabled).map((p) => (
               <button
                 key={p.id}
                 onClick={() => {
@@ -667,11 +692,9 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         const runtimeDocked = dockedParams["runtime"];
         const leftParams = runtimeDocked.filter(d => d.ui_group !== "RUNTIME-CONFIG");
         const rightParams = runtimeDocked.filter(d => d.ui_group === "RUNTIME-CONFIG");
-        const currentProvider = externalProviders?.find(p => p.id === effectiveBackendType);
-        const availableProfiles: EnvProfile[] = Object.keys(ENV_META) as EnvProfile[];
-        const builtProfiles = (Object.keys(ENV_META) as EnvProfile[]).filter(
-          (env) => currentProvider?.binaryPathPerEnv?.[env] || currentProvider?.buildInfoPerEnv?.[env],
-        );
+        const currentProvider = resolvedProviders?.find(p => p.id === effectiveBackendType);
+        const availableProfiles: EnvProfile[] = [...ENV_ORDER];
+        const builtProfiles = ENV_ORDER.filter((env) => isProfileBuilt(currentProvider, env));
 
         return (
           <div className="mono-panel relative flex-shrink-0">
@@ -730,7 +753,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                     />
                   </div>
 
-                  <div className="flex items-center">
+                  <div className="flex flex-wrap items-center gap-1">
                     <div className="w-0.5 h-4 flex-shrink-0 mr-1.5" />
                     <span className="font-mono w-24 flex-shrink-0 uppercase tracking-wider truncate text-[9px] text-stealth-muted runtime-profile-label">
                       RUNTIME PROFILE
@@ -738,20 +761,25 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                     {availableProfiles.map(profile => {
                       const meta = ENV_META[profile];
                       const hasBuild = builtProfiles.includes(profile);
+                      const building = isProfileBuilding(profile);
                       const isSelected = selectedBinaryProfile === profile;
                       return (
                         <button
                           key={profile}
                           onClick={() => setSelectedBinaryProfile(profile)}
-                          disabled={!hasBuild}
-                          className={`px-2 py-0.5 text-[9px] font-mono rounded-sm runtime-profile-chip ${
-                            isSelected
-                              ? "runtime-profile-chip-active"
-                              : hasBuild
-                                ? ""
-                                : "opacity-25 cursor-not-allowed"
+                          disabled={!hasBuild || building}
+                          className={`flex-shrink-0 px-2 py-0.5 text-[9px] font-mono rounded-sm runtime-profile-chip ${
+                            building
+                              ? "opacity-40 cursor-not-allowed animate-pulse"
+                              : isSelected
+                                ? "runtime-profile-chip-active"
+                                : hasBuild
+                                  ? ""
+                                  : "opacity-25 cursor-not-allowed"
                           }`}
-                          title={`${meta.label} — CUDA ${meta.cuda}, ${meta.vs}${hasBuild ? '' : ' (not yet built)'}`}
+                          title={`${meta.label} — CUDA ${meta.cuda}, ${meta.vs}${
+                            building ? " (build in progress)" : hasBuild ? "" : " (not yet built)"
+                          }`}
                         >
                           {meta.label}
                         </button>
@@ -1066,7 +1094,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         <div className="px-1 py-2.5">
           <button
             onClick={handleAddToStack}
-            disabled={!model || vramCalc.manifest?.scenario === 'HW_LOCKED'}
+            disabled={!model || vramCalc.manifest?.scenario === 'HW_LOCKED' || selectedProfileIsBuilding}
             className={`w-full ignite-btn px-4 py-2.5 text-[10px] font-mono tracking-[0.2em] rounded-sm disabled:opacity-40 disabled:cursor-not-allowed config-launch-btn ${launchAck ? "launch-ack" : ""}`}
           >
             LAUNCH ENGINE

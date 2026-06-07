@@ -131,6 +131,22 @@ export interface ProviderConfig {
 /** Provider origin classification — derived from existing fields, not stored */
 export type ProviderOrigin = 'foundry' | 'downloaded' | 'bundled';
 
+/** Case-insensitive lookup in per-env provider maps (vanguard/VANGUARD, etc.). */
+export function profileEnvLookup<T>(map: Record<string, T> | undefined, env: string): T | undefined {
+  if (!map) return undefined;
+  if (map[env] != null) return map[env];
+  const key = Object.keys(map).find((k) => k.toLowerCase() === env.toLowerCase());
+  return key ? map[key] : undefined;
+}
+
+/** True when a runtime profile has a binary path and/or build metadata on disk. */
+export function isProfileBuilt(provider: ProviderConfig | undefined, env: string): boolean {
+  if (!provider) return false;
+  const path = profileEnvLookup(provider.binaryPathPerEnv, env);
+  const info = profileEnvLookup(provider.buildInfoPerEnv, env);
+  return !!(path?.trim() || info);
+}
+
 /**
  * Derive provider origin for a given environment.
  * - foundry: binary_path_per_env[env] starts with "foundry/artifacts/"
@@ -138,9 +154,9 @@ export type ProviderOrigin = 'foundry' | 'downloaded' | 'bundled';
  * - bundled: path points to runtime/<id>/<env>/, no build/download info
  */
 export function getProviderOrigin(provider: ProviderConfig, env: string): ProviderOrigin {
-  const norm = (provider.binaryPathPerEnv?.[env] ?? '').replace(/\\/g, '/').toLowerCase();
+  const norm = (profileEnvLookup(provider.binaryPathPerEnv, env) ?? '').replace(/\\/g, '/').toLowerCase();
   if (norm.includes('foundry/artifacts/')) return 'foundry';
-  if (provider.downloadedVersionPerEnv?.[env]) return 'downloaded';
+  if (profileEnvLookup(provider.downloadedVersionPerEnv, env)) return 'downloaded';
   return 'bundled';
 }
 
@@ -266,6 +282,8 @@ export interface StackEntry {
   status: string;
   slot_id?: number;
   provider_type?: string;
+  /** Runtime profile env (vanguard/frontier/fresh/stable) the engine was launched with. */
+  binaryProfile?: string;
   ready_at?: string;
   model_path?: string;
   vram_mib?: number;

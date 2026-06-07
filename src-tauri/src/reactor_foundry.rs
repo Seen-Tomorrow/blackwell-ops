@@ -11,11 +11,12 @@
 
 use serde::{Deserialize, Serialize};
 use std::os::windows::process::CommandExt;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::Mutex as TokioMutex;
 use tauri::Emitter;
 use crate::engine_stack::EngineStack;
+use crate::foundry_toolchain;
 use crate::output_console::{
     BlackwellOutputConsoleCategory, BlackwellOutputConsoleLineStyle,
 };
@@ -26,122 +27,6 @@ static BUILD_CANCELLED: AtomicBool = AtomicBool::new(false);
 /// Tracked child process PIDs for cleanup on cancel. Protected by Mutex for cross-thread access.
 static CHILD_PIDS: std::sync::LazyLock<std::sync::Mutex<Vec<u32>>> =
     std::sync::LazyLock::new(|| std::sync::Mutex::new(Vec::new()));
-
-// ── Build Environment Mapping ────────────────────────────────────────
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BuildEnv {
-    Vanguard, // VS 2026/v18 + CUDA 13.2
-    Stable,   // VS 2022 + CUDA 12.8
-    Fresh,    // VS 2022 + CUDA 13.1
-}
-
-impl BuildEnv {
-    pub fn vs_devcmd(&self) -> &'static str {
-        match self {
-            BuildEnv::Vanguard => r"C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\Common7\Tools\VsDevCmd.bat",
-            BuildEnv::Stable => r"C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\Common7\Tools\VsDevCmd.bat",
-            BuildEnv::Fresh => r"C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\Common7\Tools\VsDevCmd.bat",
-        }
-    }
-
-    pub fn cuda_path(&self) -> &'static str {
-        match self {
-            BuildEnv::Vanguard => "C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v13.2",
-            BuildEnv::Stable => "C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v12.8",
-            BuildEnv::Fresh => "C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v13.1",
-        }
-    }
-
-    pub fn nvcc_path(&self) -> &'static str {
-        match self {
-            BuildEnv::Vanguard => r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.2\bin\nvcc.exe",
-            BuildEnv::Stable => r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8\bin\nvcc.exe",
-            BuildEnv::Fresh => r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.1\bin\nvcc.exe",
-        }
-    }
-
-    pub fn label(&self) -> &'static str {
-        match self {
-            BuildEnv::Vanguard => "VANGUARD",
-            BuildEnv::Stable => "STABLE",
-            BuildEnv::Fresh => "FRESH",
-        }
-    }
-
-    pub fn env_label(&self) -> &'static str {
-        match self {
-            BuildEnv::Vanguard => "vanguard",
-            BuildEnv::Stable   => "stable",
-            BuildEnv::Fresh    => "fresh",
-        }
-    }
-
-    pub fn cmake_generator(&self) -> &'static str {
-        match self {
-            BuildEnv::Vanguard => r#"-G "Visual Studio 18 2026" -A x64"#,
-            BuildEnv::Stable   => r#"-G "Visual Studio 17 2022" -A x64"#,
-            BuildEnv::Fresh    => r#"-G "Visual Studio 17 2022" -A x64"#,
-        }
-    }
-
-    pub fn cuda_versioned_var_name(&self) -> &'static str {
-        match self {
-            BuildEnv::Vanguard => "CUDA_PATH_V13_2",
-            BuildEnv::Stable   => "CUDA_PATH_V12_8",
-            BuildEnv::Fresh    => "CUDA_PATH_V13_1",
-        }
-    }
-
-    pub fn cuda_version_short(&self) -> &'static str {
-        match self {
-            BuildEnv::Vanguard => "13.2",
-            BuildEnv::Stable   => "12.8",
-            BuildEnv::Fresh    => "13.1",
-        }
-    }
-
-    pub fn excluded_cuda_versions(&self) -> &'static [&'static str] {
-        match self {
-            BuildEnv::Vanguard => &["v12.8", "v13.1"],
-            BuildEnv::Stable => &["v13.1", "v13.2"],
-            BuildEnv::Fresh => &["v12.8", "v13.2"],
-        }
-    }
-
-    pub fn scrub_path(&self) -> String {
-        let current_path = std::env::var("PATH").unwrap_or_default();
-        let base = self.cuda_path();
-
-        let mut filtered: Vec<String> = Vec::new();
-        for entry in current_path.split(';') {
-            let entry_lower = entry.to_lowercase();
-            let is_cuda_toolkit = entry_lower.contains("nvidia gpu computing toolkit\\cuda\\");
-
-            if !is_cuda_toolkit {
-                filtered.push(entry.to_string());
-            } else {
-                let parts: Vec<&str> = entry_lower.split('\\').collect();
-                if let Some(last) = parts.last() {
-                    let excluded = self.excluded_cuda_versions();
-                    if !excluded.contains(&last) {
-                        filtered.push(entry.to_string());
-                    }
-                } else {
-                    filtered.push(entry.to_string());
-                }
-            }
-        }
-
-        let mut scrubbed = format!(r"{};\{}\;", 
-            format!("{}\\bin", base),
-            format!("{}\\libnvvp", base)
-        );
-
-        scrubbed.push_str(&filtered.join(";"));
-        scrubbed
-    }
-}
 
 const DEFAULT_CMAKE_FLAGS: &[(&str, &str)] = &[
     ("ggml-llama", concat!(
@@ -200,71 +85,6 @@ fn clear_pids() {
     CHILD_PIDS.lock().unwrap().clear();
 }
 
-// ── Toolchain Paths (portable bundle) ────────────────────────────────
-
-#[derive(Debug, Clone)]
-pub struct ToolchainPaths {
-    pub vs2022_devcmd: PathBuf,
-    pub vs2026_devcmd: PathBuf,
-    pub cuda_12_8: PathBuf,
-    pub cuda_13_1: PathBuf,
-    pub cuda_13_2: PathBuf,
-}
-
-impl ToolchainPaths {
-    fn from_build_tools(app_root: &Path) -> Self {
-        let bt = app_root.join("BuildTools");
-        Self {
-            vs2022_devcmd: bt.join("VS2022").join("Common7").join("Tools").join("VsDevCmd.bat"),
-            vs2026_devcmd: bt.join("VS2026").join("Common7").join("Tools").join("VsDevCmd.bat"),
-            cuda_12_8: bt.join("CUDA").join("v12.8"),
-            cuda_13_1: bt.join("CUDA").join("v13.1"),
-            cuda_13_2: bt.join("CUDA").join("v13.2"),
-        }
-    }
-
-    pub fn resolve_vs_devcmd(&self, env: BuildEnv) -> PathBuf {
-        match env {
-            BuildEnv::Vanguard => self.vs2026_devcmd.clone(),
-            BuildEnv::Stable | BuildEnv::Fresh => self.vs2022_devcmd.clone(),
-        }
-    }
-
-    pub fn resolve_cuda_path(&self, env: BuildEnv) -> PathBuf {
-        match env {
-            BuildEnv::Vanguard => self.cuda_13_2.clone(),
-            BuildEnv::Stable => self.cuda_12_8.clone(),
-            BuildEnv::Fresh => self.cuda_13_1.clone(),
-        }
-    }
-
-    pub fn resolve_nvcc_path(&self, env: BuildEnv) -> PathBuf {
-        self.resolve_cuda_path(env).join("bin").join("nvcc.exe")
-    }
-}
-
-/// Check if toolchain bundles are installed in the portable location.
-pub async fn check_toolchain_installed(app_root: &Path) -> Result<bool, String> {
-    let paths = ToolchainPaths::from_build_tools(app_root);
-    Ok(paths.vs2022_devcmd.exists() &&
-       paths.vs2026_devcmd.exists() &&
-       paths.cuda_12_8.join("bin").exists() &&
-       paths.cuda_13_1.join("bin").exists() &&
-       paths.cuda_13_2.join("bin").exists())
-}
-
-/// Download toolchain bundles from GitHub releases.
-pub async fn download_toolchain_bundles(
-    _app_handle: &tauri::AppHandle,
-    app_root: &Path,
-) -> Result<(), String> {
-    let installed = check_toolchain_installed(app_root).await?;
-    if !installed {
-        return Err("Toolchain not found. Please install VS2022/VS2026 and CUDA toolchains.".into());
-    }
-    Ok(())
-}
-
 // ── Foundry Directory Helpers ───────────────────────────────────────
 
 fn foundry_src_dir(provider_id: &str) -> PathBuf {
@@ -304,7 +124,7 @@ impl BuildPhase {
 struct BuildState {
     build_id: u64,
     provider_id: String,
-    environment: BuildEnv,
+    profile_id: String,
     phase: BuildPhase,
 }
 
@@ -334,7 +154,7 @@ fn emit_build_event(
         "build_id": state.build_id,
         "phase": state.phase.step_name(),
         "provider_id": state.provider_id,
-        "environment": state.environment.env_label(),
+        "environment": state.profile_id,
         "log_line": log_line,
     });
 
@@ -352,7 +172,7 @@ fn emit_build_batch(
         "build_id": state.build_id,
         "phase": state.phase.step_name(),
         "provider_id": state.provider_id,
-        "environment": state.environment.env_label(),
+        "environment": state.profile_id,
         "log_lines": lines,
     });
 
@@ -372,21 +192,19 @@ fn build_isolated_batch_script(
     cuda_path_forced: &str,
     nvcc_bin: &str,
     versioned_var: &str,
+    all_cuda_vars: &[String],
     final_command: String,
 ) -> Vec<String> {
-    let mut lines = vec![
-        "@echo off".to_string(),
-        "set \"CUDA_PATH=\"".to_string(),
-        "set \"CUDA_PATH_V12_8=\"".to_string(),
-        "set \"CUDA_PATH_V13_1=\"".to_string(),
-        "set \"CUDA_PATH_V13_2=\"".to_string(),
-        format!("call \"{vs_devcmd}\" -arch=amd64 -host_arch=amd64"),
-        format!("for /f \"usebackq delims=\" %%P in (`powershell -NoProfile -Command \"$p = $env:PATH -split ';' | Where-Object {{ $_.ToLower() -notlike '*nvidia gpu computing toolkit\\cuda*' }}; Write-Output ($p -join ';')\"`) do set \"CLEANPATH=%%P\""),
-        "if defined CLEANPATH set \"PATH=%CLEANPATH%\"".to_string(),
-        format!("set \"CUDA_PATH={cuda_path_forced}\""),
-        format!("set \"{}={cuda_path_forced}\"", versioned_var),
-        format!("set \"PATH={};%PATH%\"", nvcc_bin),
-    ];
+    let mut lines = vec!["@echo off".to_string(), "set \"CUDA_PATH=\"".to_string()];
+    for var in all_cuda_vars {
+        lines.push(format!("set \"{var}=\""));
+    }
+    lines.push(format!("call \"{vs_devcmd}\" -arch=amd64 -host_arch=amd64"));
+    lines.push(format!("for /f \"usebackq delims=\" %%P in (`powershell -NoProfile -Command \"$p = $env:PATH -split ';' | Where-Object {{ $_.ToLower() -notlike '*nvidia gpu computing toolkit\\cuda*' -and $_.ToLower() -notlike '*\\toolchain\\cuda*' }}; Write-Output ($p -join ';')\"`) do set \"CLEANPATH=%%P\""));
+    lines.push("if defined CLEANPATH set \"PATH=%CLEANPATH%\"".to_string());
+    lines.push(format!("set \"CUDA_PATH={cuda_path_forced}\""));
+    lines.push(format!("set \"{versioned_var}={cuda_path_forced}\""));
+    lines.push(format!("set \"PATH={nvcc_bin};%PATH%\""));
     // No rmdir/mkdir/cd of build dirs here — Rust controls the disposable work/ tree.
     lines.push(final_command);
     lines
@@ -571,12 +389,10 @@ pub async fn foundry_build(
     app: tauri::State<'_, crate::engine::AppContext>,
     _app_handle: tauri::AppHandle,
 ) -> Result<(), String> {
-    let env = match environment.to_lowercase().as_str() {
-        "vanguard" => BuildEnv::Vanguard,
-        "stable" => BuildEnv::Stable,
-        "fresh" => BuildEnv::Fresh,
-        _ => return Err(format!("Unknown build environment: {}. Use 'vanguard', 'stable', or 'fresh'.", environment)),
-    };
+    let manifest = foundry_toolchain::load_manifest()?;
+    let profile = foundry_toolchain::validate_profile_ready(&environment)?;
+    let profile_id = profile.env_label().to_string();
+    let all_cuda_vars = foundry_toolchain::all_cuda_path_vars(&manifest);
 
     let app_handle = &_app_handle;
 
@@ -588,7 +404,7 @@ pub async fn foundry_build(
         let mut current = CURRENT_BUILD.lock().await;
         if current.is_some() {
             if let Some(state) = current.take() {
-                log::warn!("[foundry] Force-clearing orphaned build for '{}' env '{}'", state.provider_id, state.environment.env_label());
+                log::warn!("[foundry] Force-clearing orphaned build for '{}' profile '{}'", state.provider_id, state.profile_id);
                 emit_build_event(app_handle, &state,
                     Some("Build cancelled: frontend closed without proper cancel.".into()));
             }
@@ -630,7 +446,7 @@ pub async fn foundry_build(
     let state = BuildState {
         build_id,
         provider_id: provider_id.clone(),
-        environment: env,
+        profile_id: profile_id.clone(),
         phase: BuildPhase::Configuring,
     };
 
@@ -653,28 +469,49 @@ pub async fn foundry_build(
             .unwrap_or_default()
     };
 
-    let running_for_provider: Vec<_> = {
+    let profile_key = profile_id.to_ascii_lowercase();
+    let running_for_profile: Vec<_> = {
         let stack = app.stack.lock().await;
         stack.get_status()
             .into_iter()
-            .filter(|e| e.provider_type == backend_type && e.status != "IDLE")
+            .filter(|e| {
+                let slot_profile = if e.binary_profile.is_empty() {
+                    "vanguard"
+                } else {
+                    e.binary_profile.as_str()
+                };
+                e.provider_type == backend_type
+                    && e.status != "IDLE"
+                    && slot_profile.eq_ignore_ascii_case(&profile_key)
+            })
             .collect()
     };
 
-    let _stopped_count = if running_for_provider.is_empty() {
-        // Fast path — nothing to stop
+    let _stopped_count = if running_for_profile.is_empty() {
+        // Fast path — nothing to stop for this profile
         emit_build_event(app_handle, &{
             let c = CURRENT_BUILD.lock().await;
             c.as_ref().cloned().unwrap()
-        }, Some("No running engines for this provider — proceeding directly to build.".into()));
+        }, Some(format!(
+            "No running engines for '{}' profile '{}' — proceeding directly to build.",
+            provider_id, profile_id
+        )));
         0
     } else {
-        let stopped: Vec<usize> = EngineStack::stop_slots_by_provider_parallel(&backend_type, &app.stack).await;
+        let stopped: Vec<usize> = EngineStack::stop_slots_by_provider_and_profile_parallel(
+            &backend_type,
+            &profile_key,
+            &app.stack,
+        )
+        .await;
         if !stopped.is_empty() {
             let current = CURRENT_BUILD.lock().await;
             if let Some(ref s) = *current {
                 emit_build_event(app_handle, s,
-                    Some(format!("Stopping {} running engine(s) for '{}' before build...", stopped.len(), provider_id)));
+                    Some(format!(
+                        "Stopping {} running engine(s) for '{}' profile '{}' before build...",
+                        stopped.len(), provider_id, profile_id
+                    )));
             }
         }
         stopped.len()
@@ -694,7 +531,7 @@ pub async fn foundry_build(
     let engine_root            = crate::config::foundry_dir(&provider_id);
     let src_dir                = engine_root.join("llama.cpp");
     let work_root              = crate::config::foundry_work_dir(&provider_id);
-    let build_dir              = work_root.join(format!("build-{}", env.env_label()));
+    let build_dir              = work_root.join(format!("build-{}", profile_id));
     let cmake_build_output_dir = build_dir.join("bin").join("Release");
     // NOTE: bin_bak / rename dance removed entirely from normal build flow. Sacred artifacts are never touched during a build attempt.
 
@@ -702,7 +539,7 @@ pub async fn foundry_build(
     let _ = tokio::fs::remove_dir_all(&work_root).await;
     if let Err(e) = tokio::fs::create_dir_all(&work_root).await {
         // Minimal rollback (will be simplified later)
-       rollback_build(app_handle, &provider_id, env, build_id, &src_dir, &cmake_build_output_dir).execute().await;
+       rollback_build(app_handle, &provider_id, &profile_id, build_id, &src_dir, &cmake_build_output_dir).execute().await;
         return Err(format!("Failed to create work directory: {}", e));
     }
     let _ = tokio::fs::create_dir_all(&build_dir).await;
@@ -720,7 +557,7 @@ pub async fn foundry_build(
     };
 
     if git_url.is_empty() {
-            rollback_build(app_handle, &provider_id, env, build_id, &src_dir, &cmake_build_output_dir).execute().await;
+            rollback_build(app_handle, &provider_id, &profile_id, build_id, &src_dir, &cmake_build_output_dir).execute().await;
             return Err(format!("Provider '{}' has no git_url configured.", provider_id));
     }
 
@@ -745,11 +582,11 @@ pub async fn foundry_build(
 
         if !clone_output.status.success() {
             let stderr = String::from_utf8_lossy(&clone_output.stderr).to_string();
-            rollback_build(app_handle, &provider_id, env, build_id, &src_dir, &cmake_build_output_dir).execute().await;
+            rollback_build(app_handle, &provider_id, &profile_id, build_id, &src_dir, &cmake_build_output_dir).execute().await;
             return Err(format!("Git clone failed: {}", stderr));
         }
 
-        emit_config_event(app_handle, &provider_id, env, build_id, Some("Repository cloned.".into()));
+        emit_config_event(app_handle, &provider_id, &profile_id, build_id, Some("Repository cloned.".into()));
     } else {
         let pull_output = tokio::process::Command::new("git")
             .args(["pull", "--recurse-submodules"])
@@ -770,11 +607,11 @@ pub async fn foundry_build(
 
         if !pull_output.status.success() {
             let stderr = String::from_utf8_lossy(&pull_output.stderr).to_string();
-            rollback_build(app_handle, &provider_id, env, build_id, &src_dir, &cmake_build_output_dir).execute().await;
+            rollback_build(app_handle, &provider_id, &profile_id, build_id, &src_dir, &cmake_build_output_dir).execute().await;
             return Err(format!("Git pull failed: {}", stderr));
         }
 
-        emit_config_event(app_handle, &provider_id, env, build_id, Some("Repository updated.".into()));
+        emit_config_event(app_handle, &provider_id, &profile_id, build_id, Some("Repository updated.".into()));
     }
 
     // ── PR Patch Apply (optional) — URL or number format ─────────────
@@ -804,7 +641,7 @@ pub async fn foundry_build(
                     format!("[PR] PR #{} (number only, no repo detected — informational only)", pr_num)
                 };
 
-                emit_config_event(app_handle, &provider_id, env, build_id, Some(log_msg));
+                emit_config_event(app_handle, &provider_id, &profile_id, build_id, Some(log_msg));
 
                 // Only attempt actual patch download if we have a resolved owner/repo
                 if let Some(ref owner_repo) = resolved_owner_repo {
@@ -814,13 +651,13 @@ pub async fn foundry_build(
                         .map_err(|e| format!("HTTP fetch failed: {}", e))?;
 
                     if !patch_bytes.status().is_success() {
-                        emit_config_event(app_handle, &provider_id, env, build_id,
+                        emit_config_event(app_handle, &provider_id, &profile_id, build_id,
                             Some(format!("[WARN] PR #{} not found or inaccessible (HTTP {}) — continuing build", pr_num, patch_bytes.status())));
                     } else {
                         let patch = String::from_utf8_lossy(&patch_bytes.bytes().await.unwrap_or_default()).to_string();
 
                         if patch.trim().is_empty() {
-                            emit_config_event(app_handle, &provider_id, env, build_id,
+                            emit_config_event(app_handle, &provider_id, &profile_id, build_id,
                                 Some(format!("[PR] #{} already applied — no changes needed", pr_num)));
                         } else {
                             let patch_path = src_dir.parent().unwrap().join("pr-patch.diff");
@@ -845,10 +682,10 @@ pub async fn foundry_build(
 
                                 match apply_output {
                                     Ok(ref out) if out.status.success() => {
-                                        emit_config_event(app_handle, &provider_id, env, build_id,
+                                        emit_config_event(app_handle, &provider_id, &profile_id, build_id,
                                             Some(format!("[PR] #{} applied successfully", pr_num)));
 
-                                        let env_key = env.env_label().to_string();
+                                        let env_key = profile_id.clone();
                                         if let Ok(mut cfg) = app.config.lock() {
                                             if let Some(p) = cfg.providers.iter_mut().find(|p| p.id == provider_id) {
                                                 p.last_pr_per_env.insert(env_key, pr_num.clone());
@@ -869,12 +706,12 @@ pub async fn foundry_build(
                                             .current_dir(&src_dir)
                                             .output()
                                             .await;
-                                        emit_config_event(app_handle, &provider_id, env, build_id,
+                                        emit_config_event(app_handle, &provider_id, &profile_id, build_id,
                                             Some(format!("[WARN] PR #{} apply failed: {} — continuing build", pr_num, stderr)));
                                     }
                                 }
                             } else {
-                                emit_config_event(app_handle, &provider_id, env, build_id,
+                                emit_config_event(app_handle, &provider_id, &profile_id, build_id,
                                     Some(format!("[WARN] PR #{} could not write patch file — continuing build", pr_num)));
                             }
                         }
@@ -882,7 +719,7 @@ pub async fn foundry_build(
                 }
             }
             None => {
-                emit_config_event(app_handle, &provider_id, env, build_id,
+                emit_config_event(app_handle, &provider_id, &profile_id, build_id,
                     Some(format!("[WARN] Invalid PR input: '{}' — must be a GitHub PR URL or plain number", pr_input_str)));
             }
         }
@@ -905,7 +742,7 @@ pub async fn foundry_build(
 
     let template_type = resolve_template_type(&provider_id);
 
-    let (vs_devcmd, cuda_path, cmake_extra) = {
+    let cmake_extra = {
         let cfg = app.config.lock().map_err(|e| e.to_string())?;
         let p = cfg.providers.iter()
             .find(|p| p.id == provider_id);
@@ -914,16 +751,17 @@ pub async fn foundry_build(
         // IMPORTANT: User-provided cmake_flags (from the build modal) completely REPLACE both
         // the provider's build_profile AND the built-in defaults. This is by design for power users.
         // See FoundryConfirmForm.tsx for the UI warning.
-        let extra = if let Some(ref flags) = cmake_flags {
+        if let Some(ref flags) = cmake_flags {
             flags.trim().to_string()
         } else if !build_profile.trim().is_empty() {
             build_profile.trim().to_string()
         } else {
             get_default_cmake_flags(template_type).to_string()
-        };
-
-        (env.vs_devcmd(), env.cuda_path(), extra)
+        }
     };
+
+    let vs_devcmd = profile.vs_devcmd.to_string_lossy().to_string();
+    let cuda_path_forced = profile.cuda_root.to_string_lossy().to_string();
 
     let available: usize = std::thread::available_parallelism()
         .map(|p| p.get())
@@ -931,20 +769,27 @@ pub async fn foundry_build(
     let max_cores_usize: Option<usize> = max_cores.map(|n| n as usize);
     let num_cpus = max_cores_usize.unwrap_or(available).min(available).max(2);
 
-    emit_config_event(app_handle, &provider_id, env, build_id, Some(format!(
+    emit_config_event(app_handle, &provider_id, &profile_id, build_id, Some(format!(
         "[STAGE 1/3] CMAKE CONFIGURE — {} cores detected", num_cpus
     )));
 
-    emit_config_event(app_handle, &provider_id, env, build_id, Some("[STAGE 1/3] CMAKE CONFIGURE — Reviewing flags below. Click PROCEED to start compilation.".into()));
+    emit_config_event(app_handle, &provider_id, &profile_id, build_id, Some(format!(
+        "[TOOLCHAIN] {} / CUDA {} / NVCC {}",
+        profile.display_label(),
+        profile.cuda_version_short(),
+        profile.nvcc.display()
+    )));
 
-    let cuda_ver_short = env.cuda_version_short();
+    emit_config_event(app_handle, &provider_id, &profile_id, build_id, Some("[STAGE 1/3] CMAKE CONFIGURE — Reviewing flags below. Click PROCEED to start compilation.".into()));
+
+    let cuda_ver_short = profile.cuda_version_short();
     let toolset_flag = format!("-T \"cuda={}\"", cuda_ver_short);
 
     let forced_cuda_flags = format!(
         "-DCMAKE_CUDA_COMPILER=\"{}\" -DCUDAToolkit_ROOT=\"{}\" \
          -DCMAKE_VS_PLATFORM_TOOLSET_CUDA=\"{}\"",
-        env.nvcc_path().replace('\\', "/"),
-        cuda_path.replace('\\', "/"),
+        profile.nvcc.to_string_lossy().replace('\\', "/"),
+        cuda_path_forced.replace('\\', "/"),
         cuda_ver_short
     );
 
@@ -954,10 +799,10 @@ pub async fn foundry_build(
         cmake_extra.lines().map(|l| l.trim()).filter(|l| !l.is_empty()).collect::<Vec<_>>().join(" ")
     };
 
-    let gen_flag = env.cmake_generator();
-    let cuda_path_forced = env.cuda_path();
-    let nvcc_bin = format!("{}\\bin", cuda_path_forced);
-    let versioned_var = env.cuda_versioned_var_name();
+    let vs_def = foundry_toolchain::vs_def(&manifest, &profile.def.vs)?;
+    let gen_flag = profile.cmake_generator_flag(vs_def);
+    let nvcc_bin = profile.cuda_root.join("bin").to_string_lossy().to_string();
+    let versioned_var = profile.cuda_path_var();
 
     // Absolute out-of-source configure (build tree lives in disposable work/ — never inside source)
     let build_dir_str = build_dir.to_string_lossy().replace('\\', "/");
@@ -968,15 +813,16 @@ pub async fn foundry_build(
         format!(r#"cmake -B "{}" -S "{}" {} {} {} {}"#, build_dir_str, src_dir_str, gen_flag, toolset_flag, forced_cuda_flags, joined_extra)
     };
 
-    emit_config_event(app_handle, &provider_id, env, build_id, Some(format!(
-        "cmake -B work/build-{} -S llama.cpp {} {} {}{}", env.env_label(), gen_flag, toolset_flag, forced_cuda_flags, if !joined_extra.is_empty() { format!(" {}", joined_extra) } else { String::new() }
+    emit_config_event(app_handle, &provider_id, &profile_id, build_id, Some(format!(
+        "cmake -B work/build-{} -S llama.cpp {} {} {}{}", profile_id, gen_flag, toolset_flag, forced_cuda_flags, if !joined_extra.is_empty() { format!(" {}", joined_extra) } else { String::new() }
     )));
 
     let cfg_batch_lines = build_isolated_batch_script(
-        vs_devcmd,
-        cuda_path_forced,
+        &vs_devcmd,
+        &cuda_path_forced,
         &nvcc_bin,
         &versioned_var,
+        &all_cuda_vars,
         cmake_configure_line,
     );
     let cfg_batch_content = cfg_batch_lines.join("\n");
@@ -985,7 +831,7 @@ pub async fn foundry_build(
         return Err(format!("Failed to write build script: {}", e));
     }
 
-    let scrubbed_path = env.scrub_path();
+    let scrubbed_path = profile.scrub_path(&manifest);
     let mut cmd = tokio::process::Command::new("cmd");
     cmd.args(&["/c", cfg_batch_path.to_string_lossy().as_ref()])
         .current_dir(&src_dir)
@@ -1086,7 +932,7 @@ pub async fn foundry_build(
 
     if !cfg_status.success() {
         let stderr_text: String = stderr_capture.lock().unwrap().join("\n");
-        rollback_build(app_handle, &provider_id, env, build_id, &src_dir, &cmake_build_output_dir)
+        rollback_build(app_handle, &provider_id, &profile_id, build_id, &src_dir, &cmake_build_output_dir)
             .with_message(if stderr_text.is_empty() { "CMake configure failed.".into() } else { format!("CMake configure failed:\n{}", stderr_text) })
             .execute().await;
 
@@ -1177,17 +1023,17 @@ pub async fn foundry_build(
         "[BUILD] Starting compilation with {} cores...", num_cpus
     )));
 
-    let cuda_path_forced = env.cuda_path();
-    let nvcc_bin = format!("{}\\bin", cuda_path_forced);
-    let versioned_var = env.cuda_versioned_var_name();
+    let nvcc_bin = profile.cuda_root.join("bin").to_string_lossy().to_string();
+    let versioned_var = profile.cuda_path_var();
 
     // Absolute --build (no cd, no reliance on relative layout)
     let build_dir_str = build_dir.to_string_lossy().replace('\\', "/");
     let build_batch_lines = build_isolated_batch_script(
-        vs_devcmd,
-        cuda_path_forced,
+        &vs_devcmd,
+        &cuda_path_forced,
         &nvcc_bin,
         &versioned_var,
+        &all_cuda_vars,
         format!(r#"cmake --build "{}" --config Release -j {}"#, build_dir_str, num_cpus),
     );
     let build_batch_content = build_batch_lines.join("\n");
@@ -1233,7 +1079,7 @@ pub async fn foundry_build(
 
     if !build_status.unwrap().success() {
         let stderr_text: String = stderr_text.join("\n");
-        rollback_build(app_handle, &provider_id, env, build_id, &src_dir, &cmake_build_output_dir)
+        rollback_build(app_handle, &provider_id, &profile_id, build_id, &src_dir, &cmake_build_output_dir)
             .with_message(if stderr_text.is_empty() { "Build failed.".into() } else { format!("Build failed:\n{}", stderr_text) })
             .execute().await;
 
@@ -1303,7 +1149,7 @@ pub async fn foundry_build(
                     let rel = crate::config::to_relative_path(&abs);
                     // Set BOTH fields together to keep them in sync
                     p.binary_path = rel.clone();
-                    p.binary_path_per_env.insert(env.env_label().to_string(), rel);
+                    p.binary_path_per_env.insert(profile_id.clone(), rel);
                 }
             }
             drop(cfg);
@@ -1314,7 +1160,7 @@ pub async fn foundry_build(
     }
 
     if !all_present {
-        rollback_build(app_handle, &provider_id, env, build_id, &src_dir, &cmake_build_output_dir)
+        rollback_build(app_handle, &provider_id, &profile_id, build_id, &src_dir, &cmake_build_output_dir)
             .with_message(format!("Missing core binaries: {}", missing.join(", ")))
             .execute().await;
 
@@ -1338,7 +1184,7 @@ pub async fn foundry_build(
 
     // Publish sacred artifacts (copy from disposable work tree into artifacts/<id>/<env>/Release)
     // This is the ONLY place the sacred tree is written during a normal build.
-    let sacred_binary_path = match publish_artifacts_to_sacred(&provider_id, env, &build_dir, &src_dir).await {
+    let sacred_binary_path = match publish_artifacts_to_sacred(&provider_id, &profile_id, &build_dir, &src_dir).await {
         Ok(p) => p,
         Err(e) => {
             // Still nuke work/ on the way out (via later finalize), but report the publish failure
@@ -1348,9 +1194,8 @@ pub async fn foundry_build(
 
     match crate::engine::get_binary_build_info(sacred_binary_path.clone()).await {
         Ok(build_info_raw) => {
-            let env_label = env.env_label();
-            log::info!("[foundry] Captured build info for provider '{}' env '{}': {} built {}",
-                provider_id, env_label, build_info_raw.version, build_info_raw.build_date);
+            log::info!("[foundry] Captured build info for provider '{}' profile '{}': {} built {}",
+                provider_id, profile_id, build_info_raw.version, build_info_raw.build_date);
 
             let mut cfg = app.config.lock().map_err(|e| e.to_string())?;
             if let Some(provider) = cfg.providers.iter_mut().find(|p| p.id == provider_id) {
@@ -1359,13 +1204,13 @@ pub async fn foundry_build(
                     build_date: build_info_raw.build_date,
                     cuda_version: build_info_raw.cuda_version.clone(),
                 };
-                provider.build_info_per_env.insert(env_label.to_string(), build_info.clone());
+                provider.build_info_per_env.insert(profile_id.clone(), build_info.clone());
                 provider.build_info_per_env.insert("current".to_string(), build_info);
 
                 // per-env path → sacred artifacts (permanent, never nuked)
                 let rel_path = crate::config::to_relative_path(&std::path::PathBuf::from(&sacred_binary_path));
-                provider.binary_path_per_env.insert(env_label.to_string(), rel_path);
-                provider.downloaded_version_per_env.remove(env_label);
+                provider.binary_path_per_env.insert(profile_id.clone(), rel_path);
+                provider.downloaded_version_per_env.remove(&profile_id);
 
                 // main binary_path → sacred artifacts
                 provider.binary_path = crate::config::to_relative_path(&std::path::PathBuf::from(&sacred_binary_path));
@@ -1455,7 +1300,7 @@ pub async fn foundry_cancel(
             "build_id": state.build_id,
             "phase": "Failed",
             "provider_id": state.provider_id,
-            "environment": state.environment.env_label(),
+            "environment": state.profile_id,
             "log_line": Some("Build cancelled by user."),
         });
         app_handle.emit("foundry-progress", &event).ok();
@@ -1470,7 +1315,7 @@ pub async fn foundry_status() -> Result<Option<BuildProgress>, String> {
     Ok(current.as_ref().map(|state| BuildProgress {
         phase: state.phase.step_name().to_string(),
         provider_id: state.provider_id.clone(),
-        environment: state.environment.env_label().to_string(),
+        environment: state.profile_id.clone(),
         log_line: None,
     }))
 }
@@ -1556,8 +1401,8 @@ pub async fn refresh_build_info(
 
     let mut updated_info: Vec<(String, crate::types::BuildInfo)> = Vec::new();
 
-    for env_label in &["vanguard", "stable", "fresh"] {
-        if let Some(path_str) = prov.binary_path_per_env.get(*env_label) {
+    for env_label in foundry_toolchain::profile_ids_or_default() {
+        if let Some(path_str) = prov.binary_path_per_env.get(&env_label) {
             match crate::engine::get_binary_build_info(path_str.clone()).await {
                 Ok(info) => {
                     log::info!("[refresh] {} env '{}': {} built {}", provider_id, env_label, info.version, info.build_date);
@@ -1605,23 +1450,29 @@ pub async fn foundry_restore(
     environment: String,
     app: tauri::State<'_, crate::engine::AppContext>,
 ) -> Result<(), String> {
-    let env_label = match environment.to_lowercase().as_str() {
-        "vanguard" => "vanguard",
-        "stable" => "stable",
-        "fresh" => "fresh",
-        _ => return Err(format!("Unknown environment: {}", environment)),
-    };
+    let manifest = foundry_toolchain::load_manifest()?;
+    let env_label = foundry_toolchain::find_profile_def(&manifest, &environment)?.id.clone();
 
     {
-        let stopped = EngineStack::stop_slots_by_provider_parallel(&provider_id, &app.stack).await;
+        let stopped = EngineStack::stop_slots_by_provider_and_profile_parallel(
+            &provider_id,
+            &env_label,
+            &app.stack,
+        )
+        .await;
         if !stopped.is_empty() {
-            log::info!("[restore] Stopped {} engine(s) before restore", stopped.len());
+            log::info!(
+                "[restore] Stopped {} engine(s) for '{}' profile '{}' before restore",
+                stopped.len(),
+                provider_id,
+                env_label
+            );
         }
         tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
     }
 
     // --- Artifacts-based restore (Release.prev → Release) ---
-    let artifacts_prev = crate::config::foundry_artifact_release_dir(&provider_id, env_label)
+    let artifacts_prev = crate::config::foundry_artifact_release_dir(&provider_id, &env_label)
         .parent()
         .unwrap()
         .join("Release.prev");
@@ -1635,7 +1486,7 @@ pub async fn foundry_restore(
         ));
     }
 
-    let sacred_release = crate::config::foundry_artifact_release_dir(&provider_id, env_label);
+    let sacred_release = crate::config::foundry_artifact_release_dir(&provider_id, &env_label);
 
     // Remove current Release dir if it exists
     if sacred_release.exists() {
@@ -1704,7 +1555,7 @@ fn persist_providers_atomic(app: &crate::engine::AppContext) -> Result<(), Strin
 fn emit_config_event(
     app_handle: &tauri::AppHandle,
     provider_id: &str,
-    env: BuildEnv,
+    profile_id: &str,
     build_id: u64,
     log_line: Option<String>,
 ) {
@@ -1712,7 +1563,7 @@ fn emit_config_event(
         "build_id": build_id,
         "phase": "Configuring",
         "provider_id": provider_id,
-        "environment": env.env_label(),
+        "environment": profile_id,
         "log_line": log_line,
     });
 
@@ -1725,7 +1576,7 @@ fn emit_config_event(
 struct RollbackBuilder<'a> {
     app_handle: &'a tauri::AppHandle,
     provider_id: &'a str,
-    env: BuildEnv,
+    profile_id: &'a str,
     build_id: u64,
     src_dir: &'a PathBuf,
     cmake_build_output_dir: &'a PathBuf,
@@ -1739,7 +1590,7 @@ impl<'a> RollbackBuilder<'a> {
     }
 
     async fn execute(self) {
-        let Self { app_handle, provider_id, env, build_id, src_dir: _, cmake_build_output_dir: _, message } = self;
+        let Self { app_handle, provider_id, profile_id, build_id, src_dir: _, cmake_build_output_dir: _, message } = self;
 
         // Directory rollback dance removed — sacred artifacts are never touched on failure paths.
         // The disposable work/ tree is nuked by the exit discipline in every terminal path.
@@ -1748,7 +1599,7 @@ impl<'a> RollbackBuilder<'a> {
             "build_id": build_id,
             "phase": "Failed",
             "provider_id": provider_id,
-            "environment": env.env_label(),
+            "environment": profile_id,
             "log_line": Some(msg),
         });
 
@@ -1762,7 +1613,7 @@ impl<'a> RollbackBuilder<'a> {
 fn rollback_build<'a>(
     app_handle: &'a tauri::AppHandle,
     provider_id: &'a str,
-    env: BuildEnv,
+    profile_id: &'a str,
     build_id: u64,
     src_dir: &'a PathBuf,
     cmake_build_output_dir: &'a PathBuf,
@@ -1770,7 +1621,7 @@ fn rollback_build<'a>(
     RollbackBuilder {
         app_handle,
         provider_id,
-        env,
+        profile_id,
         build_id,
         src_dir,
         cmake_build_output_dir,
@@ -1791,7 +1642,7 @@ fn rollback_build<'a>(
 /// Returns the absolute path to the published llama-server.exe on success.
 async fn publish_artifacts_to_sacred(
     provider_id: &str,
-    env: BuildEnv,
+    profile_id: &str,
     build_dir: &PathBuf,   // the temp work/build-xxx
     _src_dir: &PathBuf,    // unused in new model but kept for signature compat during transition
 ) -> Result<String, String> {
@@ -1800,7 +1651,7 @@ async fn publish_artifacts_to_sacred(
         return Err("Build produced no Release directory under bin/".into());
     }
 
-    let sacred = crate::config::foundry_artifact_release_dir(provider_id, env.env_label());
+    let sacred = crate::config::foundry_artifact_release_dir(provider_id, profile_id);
     if let Err(e) = tokio::fs::create_dir_all(&sacred).await {
         return Err(format!("Failed to create sacred artifacts dir: {}", e));
     }
@@ -1828,7 +1679,7 @@ async fn publish_artifacts_to_sacred(
         return Err("Published directory missing llama-server.exe".into());
     }
 
-    log::info!("[foundry] Published sacred artifacts for {} {} -> {}", provider_id, env.env_label(), sacred.display());
+    log::info!("[foundry] Published sacred artifacts for {} {} -> {}", provider_id, profile_id, sacred.display());
     Ok(exe.to_string_lossy().to_string())
 }
 
@@ -1849,4 +1700,15 @@ async fn copy_dir_contents(src_dir: &PathBuf, dst_dir: &PathBuf) -> std::io::Res
         }
     }
     Ok(())
+}
+
+#[tauri::command]
+pub async fn foundry_check_toolchain() -> Result<Vec<foundry_toolchain::ProfileCheck>, String> {
+    foundry_toolchain::check_all_profiles()
+}
+
+#[tauri::command]
+pub async fn foundry_get_profiles() -> Result<Vec<foundry_toolchain::ProfileDef>, String> {
+    let manifest = foundry_toolchain::load_manifest()?;
+    Ok(manifest.profiles)
 }

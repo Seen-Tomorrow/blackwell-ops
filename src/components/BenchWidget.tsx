@@ -5,6 +5,8 @@ import { useTauriListen } from "../hooks/useTauriListen";
 
 interface BenchWidgetProps {
   port: number;
+  /** Tighter layout for engine stack cards — smaller result type + panel height. */
+  compact?: boolean;
 }
 
 const TG_PREDICT_OPTIONS = [256, 512, 1024, 4096];
@@ -50,7 +52,7 @@ function defaultBenchState(): BenchPortState {
 // Per-port bench state — survives engine switches without remounting
 const portStates = new Map<number, BenchPortState>();
 
-export default function BenchWidget({ port }: BenchWidgetProps) {
+export default function BenchWidget({ port, compact = false }: BenchWidgetProps) {
   let ps = portStates.get(port);
   if (!ps) {
     ps = defaultBenchState();
@@ -172,8 +174,14 @@ export default function BenchWidget({ port }: BenchWidgetProps) {
     tick();
   };
 
+  const showResultsState = ps.showResults && (isAnyRunning || !!hasResults);
+  const panelHeight = showResultsState ? (compact ? 66 : 78) : 60;
+
   return (
-      <div className="bench-widget-panel w-full rounded-sm p-1.5 flex flex-col gap-1" style={{ height: 60 }}>
+      <div
+        className={`bench-widget-panel w-full rounded-sm flex flex-col gap-1 overflow-hidden ${compact ? "p-1" : "p-1.5"}`}
+        style={{ height: panelHeight }}
+      >
         {!isAnyRunning && !ps.showResults && (
           <>
             <div className="flex items-center justify-end gap-1">
@@ -222,7 +230,7 @@ export default function BenchWidget({ port }: BenchWidgetProps) {
               <button
                 onClick={cyclePromptMode}
                 disabled={isAnyRunning}
-                className="px-1 py-0.5 text-[6px] font-mono bg-black text-white/70 rounded-sm focus:outline-none cursor-pointer select-none disabled:opacity-30"
+                className="bench-muted-btn px-1 py-0.5 text-[6px] font-mono rounded-sm focus:outline-none cursor-pointer select-none disabled:opacity-30"
               >
                 {ps.promptMode === "unique" ? "Unique ▸" : "◂ Repetitive"}
               </button>
@@ -231,65 +239,66 @@ export default function BenchWidget({ port }: BenchWidgetProps) {
         )}
 
         {ps.showResults && (
-           <div className="pt-1 pb-1 px-1 flex-1">
-             {isAnyRunning && (
-               <div className="flex items-center gap-1.5 px-1 py-0.5">
-                 <span className="inline-block w-1 h-1 bg-yellow-400 rounded-full animate-pulse" />
-                 <span className="text-[7px] font-mono text-stealth-muted">
-                   {ps.tgRunning ? (ps.tgPhase === "warmup" ? `TG WARMUP (${ps.tgEffectiveLength ?? 1024} tok)` : `TG (${ps.nPredict} tok)...`) : ps.ppRunning ? (ps.ppPhase === "warmup" ? `PP WARMUP (${formatBenchK(ps.ppEffectiveLength ?? 1024)} tok)` : `PP (${formatBenchK(ps.ppTargetTokens)} tok)...`) : ""}
-                 </span>
-               </div>
-             )}
+           <div className="px-1 flex flex-col flex-1 min-h-0 overflow-hidden">
+             <div className="flex-1 min-h-0 overflow-hidden">
+               {isAnyRunning && (
+                 <div className="flex items-center gap-1.5 px-1 py-0.5">
+                   <span className="inline-block w-1 h-1 bg-yellow-400 rounded-full animate-pulse" />
+                   <span className="text-[7px] font-mono text-stealth-muted">
+                     {ps.tgRunning ? (ps.tgPhase === "warmup" ? `TG WARMUP (${ps.tgEffectiveLength ?? 1024} tok)` : `TG (${ps.nPredict} tok)...`) : ps.ppRunning ? (ps.ppPhase === "warmup" ? `PP WARMUP (${formatBenchK(ps.ppEffectiveLength ?? 1024)} tok)` : `PP (${formatBenchK(ps.ppTargetTokens)} tok)...`) : ""}
+                   </span>
+                 </div>
+               )}
 
-             {ps.tgResult && !ps.tgRunning && (
-              ps.tgResult.success ? (
-                <div className="grid grid-cols-4 gap-x-2 gap-y-0.5 px-1 py-0.5">
-                  <div>
-                    <p className="text-[6px] font-mono text-stealth-muted uppercase tracking-wider">PROMPT</p>
-                    <p className="text-xl font-mono text-telemetry-amber">{ps.tgResult.prompt_tps.toFixed(1)}</p>
-                    <p className="text-[6px] font-mono text-stealth-muted/50">{ps.tgResult.prompt_tokens} tok</p>
+               {ps.tgResult && !ps.tgRunning && (
+                ps.tgResult.success ? (
+                  <div className={`grid grid-cols-4 gap-x-2 px-1 ${compact ? "gap-y-0 py-0" : "gap-y-0.5 py-0.5"}`}>
+                    <div>
+                      <p className="text-[6px] font-mono text-stealth-muted uppercase tracking-wider">PROMPT</p>
+                      <p className={`font-mono text-telemetry-amber leading-none ${compact ? "text-sm" : "text-xl"}`}>{ps.tgResult.prompt_tps.toFixed(1)}</p>
+                      <p className="text-[6px] font-mono text-stealth-muted/50">{ps.tgResult.prompt_tokens} tok</p>
+                    </div>
+                    <div>
+                      <p className="text-[6px] font-mono text-stealth-muted uppercase tracking-wider">GENERATION</p>
+                      <p className={`font-mono text-nv-green leading-none ${compact ? "text-sm" : "text-xl"}`}>{ps.tgResult.gen_tps.toFixed(1)}</p>
+                    </div>
+                    <div>
+                      <p className="text-[6px] font-mono text-stealth-muted uppercase tracking-wider">ITL</p>
+                      <p className={`font-mono text-black leading-none ${compact ? "text-[10px]" : "text-sm"}`}>{ps.tgResult.itl_ms.toFixed(2)} ms</p>
+                    </div>
+                    <div>
+                      <p className="text-[6px] font-mono text-stealth-muted uppercase tracking-wider">REQUEST LENGTH</p>
+                      <p className={`font-mono text-black leading-none ${compact ? "text-[10px]" : "text-sm"}`}>{ps.tgResult.gen_tokens} Generated</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-[6px] font-mono text-stealth-muted uppercase tracking-wider">GENERATION</p>
-                    <p className="text-xl font-mono text-nv-green">{ps.tgResult.gen_tps.toFixed(1)}</p>
-                  </div>
-                  <div>
-                    <p className="text-[6px] font-mono text-stealth-muted uppercase tracking-wider">ITL</p>
-                    <p className="text-sm font-mono text-black">{ps.tgResult.itl_ms.toFixed(2)} ms</p>
-                  </div>
-                  <div>
-                    <p className="text-[6px] font-mono text-stealth-muted uppercase tracking-wider">REQUEST LENGTH</p>
-                    <p className="text-sm font-mono text-black">{ps.tgResult.gen_tokens} Generated</p>
-                  </div>
-                </div>
-              ) : (
-                <p className="text-[7px] font-mono text-red-400 px-1 py-0.5">TG FAILED: {ps.tgResult.error || "unknown"}</p>
-              )
-            )}
+                ) : (
+                  <p className="text-[7px] font-mono text-red-400 px-1 py-0.5">TG FAILED: {ps.tgResult.error || "unknown"}</p>
+                )
+              )}
 
-            {ps.ppResult && !ps.ppRunning && (
-              ps.ppResult.success ? (
-                <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 px-1 py-0.5">
-                  <div>
-                    <p className="text-[6px] font-mono text-stealth-muted uppercase tracking-wider">PREFILL</p>
-                    <p className="text-[9px] font-mono text-telemetry-amber">{ps.ppResult.bench_prefill_tps.toFixed(1)} TPS</p>
+              {ps.ppResult && !ps.ppRunning && (
+                ps.ppResult.success ? (
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-0 px-1 py-0">
+                    <div>
+                      <p className="text-[6px] font-mono text-stealth-muted uppercase tracking-wider">PREFILL</p>
+                      <p className="text-[9px] font-mono text-telemetry-amber leading-none">{ps.ppResult.bench_prefill_tps.toFixed(1)} TPS</p>
+                    </div>
+                    <div>
+                      <p className="text-[6px] font-mono text-stealth-muted uppercase tracking-wider">TOKENS</p>
+                      <p className="text-[9px] font-mono text-white leading-none">{ps.ppResult.bench_prompt_tokens_actual.toLocaleString()}</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-[6px] font-mono text-stealth-muted uppercase tracking-wider">TOKENS</p>
-                    {/* Raw number (e.g. 8000 not 8K) per request -- "looks more dramatic" for PP bench results */}
-                    <p className="text-[9px] font-mono text-white">{ps.ppResult.bench_prompt_tokens_actual.toLocaleString()}</p>
-                  </div>
-                </div>
-              ) : (
-                <p className="text-[7px] font-mono text-red-400 px-1 py-0.5">PP FAILED: {ps.ppResult.error || "unknown"}</p>
-              )
-            )}
+                ) : (
+                  <p className="text-[7px] font-mono text-red-400 px-1 py-0.5">PP FAILED: {ps.ppResult.error || "unknown"}</p>
+                )
+              )}
+             </div>
 
             {!isAnyRunning && hasResults && (
-              <div className="flex justify-end -mt-[8px]">
+              <div className="flex justify-end flex-shrink-0 pt-0.5">
                 <button
                   onClick={closeResults}
-                  className="text-[6px] font-mono bg-black text-white/60 hover:text-white transition-colors px-1.5 py-0.5 rounded-sm"
+                  className="bench-muted-btn text-[6px] font-mono transition-colors px-1.5 py-0.5 rounded-sm leading-none"
                 >
                   CLOSE THE RESULTS
                 </button>

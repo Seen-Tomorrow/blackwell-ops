@@ -2,12 +2,21 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { ProviderConfig } from "../lib/types";
+
+interface StackEngineStatus {
+  alias: string;
+  provider_type: string;
+  provider_name?: string;
+  status: string;
+  gpu?: string;
+  binaryProfile?: string;
+}
 import FoundryConfirmForm from "./FoundryConfirmForm";
 import FoundryBuildProgress from "./FoundryBuildProgress";
 
 interface FoundryModalProps {
   provider: ProviderConfig;
-  environment: "vanguard" | "stable" | "fresh";
+  environment: "vanguard" | "frontier" | "stable" | "fresh";
   onClose: () => void;
   onComplete?: (providerId: string) => void;
   visible: boolean;
@@ -216,11 +225,16 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
 
   const handleConfirmBuild = useCallback(async () => {
     try {
-      const stackStatus = await invoke<any[]>("get_stack_status");
-      const matching = stackStatus.filter((e: any) => e.provider_type === provider.id && e.status !== "IDLE");
+      const stackStatus = await invoke<StackEngineStatus[]>("get_stack_status");
+      const profileKey = environment.toLowerCase();
+      const matching = stackStatus.filter((e: StackEngineStatus) =>
+        e.provider_type === provider.id
+        && e.status !== "IDLE"
+        && (e.binaryProfile || "vanguard").toLowerCase() === profileKey
+      );
 
       if (matching.length > 0) {
-        setEngineListText(matching.map((e: any) => `${e.alias} (${e.provider_name || e.provider_type}) on GPU ${e.gpu}`).join("\n"));
+        setEngineListText(matching.map((e) => `${e.alias} (${e.provider_name || e.provider_type}) · ${environment.toUpperCase()} on GPU ${e.gpu ?? "?"}`).join("\n"));
         setShowEngineWarning(true);
         return;
       }
@@ -343,7 +357,7 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
           <div className="text-yellow-400 text-2xl font-mono tracking-[4px]">STOPPING ENGINES</div>
           <div className="text-[11px] font-mono text-white/80">
             BUILD needs exclusive access.<br />
-            Automatically stopping any running inference engines for <span className="text-yellow-400 font-bold">{provider.display_name}</span>...
+            Automatically stopping engines using <span className="text-yellow-400 font-bold">{provider.display_name}</span> · <span className="text-yellow-400 font-bold">{environment.toUpperCase()}</span> profile...
           </div>
           <div className="text-[9px] font-mono text-stealth-muted pt-2">This can take 5–15 seconds. The build will start automatically after engines are stopped.</div>
           <button

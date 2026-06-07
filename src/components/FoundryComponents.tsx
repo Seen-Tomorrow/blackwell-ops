@@ -186,7 +186,7 @@ export function RestoreConfirmModal({ providerId, env, onConfirm, onCancel }: {
               This will restore the previous build for <span className="theme-accent-text">{providerId}</span> ({meta.label.toLowerCase()}).
             </p>
             <p className="text-[9px] font-mono config-muted">
-              Any running engines for this provider will be stopped. The current binary will be replaced with the backup.
+              Only engines using the {meta.label} profile for this provider will be stopped. The current binary will be replaced with the backup.
             </p>
           </div>
         </div>

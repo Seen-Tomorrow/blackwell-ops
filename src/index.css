@@ -97,14 +97,14 @@
   --theme-eject-card-selected-bg: rgba(184, 122, 0, 0.08);
   --theme-eject-card-selected-border: rgba(184, 122, 0, 0.35);
   --theme-provider-label: rgba(245, 151, 31, 0.8);
-  --theme-provider-pill-bg: rgba(245, 151, 31, 0.04);
-  --theme-provider-pill-border: rgba(245, 151, 31, 0.15);
-  --theme-provider-pill-text: rgba(245, 151, 31, 0.5);
-  --theme-provider-pill-hover-border: rgba(245, 151, 31, 0.4);
-  --theme-provider-pill-hover-text: rgba(245, 151, 31, 0.9);
-  --theme-provider-pill-active-bg: rgba(245, 151, 31, 0.12);
-  --theme-provider-pill-active-border: rgba(245, 151, 31, 0.5);
-  --theme-provider-pill-active-text: #f5971f;
+  --theme-provider-pill-bg: #1a1206;
+  --theme-provider-pill-border: #b87a00;
+  --theme-provider-pill-text: #b87a00;
+  --theme-provider-pill-hover-border: #f5971f;
+  --theme-provider-pill-hover-text: #f5971f;
+  --theme-provider-pill-active-bg: #f5971f;
+  --theme-provider-pill-active-border: #f5971f;
+  --theme-provider-pill-active-text: #0a0804;
   --theme-header-bg: #000000;
   --theme-header-border: #1a2e1a;
   --theme-header-title: #ffffff;
@@ -200,10 +200,17 @@ html, body, #root {
 .app-header {
   background: var(--theme-header-bg);
   border-bottom: 1px solid var(--theme-header-border);
+  isolation: isolate;
   box-shadow:
     inset 0 1px 0 color-mix(in srgb, var(--theme-header-title) 6%, transparent),
     0 2px 6px color-mix(in srgb, #000000 30%, transparent),
     0 10px 24px color-mix(in srgb, #000000 16%, transparent);
+}
+
+/* Keep chrome shadows above scrolling main content (same z-order issue as output console). */
+.app-main-scroll {
+  position: relative;
+  z-index: 1;
 }
 
 .app-header-title {
@@ -459,25 +466,21 @@ html, body, #root {
 }
 
 /* Model card styles */
-/* ── Buried Card — recessed slot, pushed into the dark bg ─── */
+/* ── Catalog card (unselected) — flat rest state on e-ink panel ─── */
 .buried-card {
-  background: transparent;
-  border: 2px solid var(--theme-card-recessed-border);
+  background: color-mix(in srgb, var(--theme-panel) 55%, transparent);
+  border: 1px solid var(--theme-border-subtle);
   border-radius: 6px;
-  box-shadow:
-    inset 0 1px 3px rgba(0, 0, 0, 0.5),
-    inset 0 0 1px rgba(255, 255, 255, 0.02);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: none;
+  transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
   position: relative;
   overflow: hidden;
 }
 
 .buried-card:hover {
-  border-color: color-mix(in srgb, var(--theme-card-recessed-border) 80%, var(--theme-accent-bright) 20%);
-  box-shadow:
-    inset 0 1px 4px rgba(0, 0, 0, 0.6),
-    inset 0 0 1px var(--theme-accent-soft);
-  transform: translateY(1px);
+  background: color-mix(in srgb, var(--theme-panel-accent) 70%, var(--theme-panel) 30%);
+  border-color: color-mix(in srgb, var(--theme-border) 75%, var(--theme-accent) 25%);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--theme-text) 6%, transparent);
 }
 
 /* ── E-ink Card — glass panel over eink surface ─── */
@@ -726,6 +729,8 @@ html, body, #root {
   background: var(--theme-provider-pill-active-bg) !important;
   border-color: var(--theme-provider-pill-active-border);
   color: var(--theme-provider-pill-active-text);
+  font-weight: 600;
+  box-shadow: 0 0 6px color-mix(in srgb, var(--theme-provider-pill-active-bg) 40%, transparent);
 }
 
 /* Value chip */
@@ -971,6 +976,239 @@ html, body, #root {
   box-shadow: inset 0 1px 4px var(--theme-bench-inset-shadow);
 }
 
+.bench-widget-panel .bench-muted-btn {
+  background: color-mix(in srgb, var(--theme-text) 88%, transparent) !important;
+  color: color-mix(in srgb, var(--theme-bg) 65%, transparent) !important;
+  border: 1px solid var(--theme-border-subtle);
+}
+
+.bench-widget-panel .bench-muted-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--theme-text) 95%, transparent) !important;
+  color: var(--theme-bg) !important;
+}
+
+[data-theme="arctic"] .bench-widget-panel .bench-muted-btn {
+  background: var(--theme-panel-accent) !important;
+  color: var(--theme-text-muted) !important;
+  border-color: var(--theme-border);
+}
+
+[data-theme="arctic"] .bench-widget-panel .bench-muted-btn:hover:not(:disabled) {
+  background: var(--theme-chip-active-bg) !important;
+  color: var(--theme-text) !important;
+  border-color: var(--theme-chip-active-border);
+}
+
+/* ── Blackwell Output Console (expanded / docked) ─── */
+.blackwell-output-console {
+  --boc-amber: #b87a00;
+  --boc-body-bg: rgba(0, 0, 0, 0.7);
+  --boc-shell-bg: #0a0f1a;
+  --boc-footer-bg: #0c1322;
+  --boc-text: rgba(255, 255, 255, 0.75);
+  --boc-text-muted: rgba(255, 255, 255, 0.25);
+  --boc-sync: rgba(34, 211, 238, 0.5);
+  --boc-border: #000000;
+  background: var(--boc-shell-bg);
+  border: 1px solid var(--boc-border);
+  color: var(--boc-text);
+  isolation: isolate;
+}
+
+.blackwell-output-console--docked {
+  box-shadow:
+    0 -4px 12px color-mix(in srgb, #000000 35%, transparent),
+    0 -12px 32px color-mix(in srgb, #000000 45%, transparent);
+}
+
+.blackwell-output-console--detached {
+  box-shadow: 0 16px 40px color-mix(in srgb, #000000 65%, transparent);
+}
+
+.blackwell-output-console--interacting {
+  user-select: none;
+}
+
+.boc-resize-handle {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 16px;
+  height: 16px;
+  cursor: nwse-resize;
+  z-index: 2;
+  touch-action: none;
+}
+
+.boc-resize-handle::before {
+  content: "";
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid rgba(0, 0, 0, 0.35);
+  border-bottom: 2px solid rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+
+[data-theme="arctic"] .boc-resize-handle::before {
+  border-right-color: var(--theme-text-muted);
+  border-bottom-color: var(--theme-text-muted);
+}
+
+.blackwell-output-console__header {
+  background: var(--boc-amber);
+  border-bottom: 1px solid var(--boc-border);
+  color: #000000;
+  flex-shrink: 0;
+}
+
+.boc-version-badge {
+  border: 1px solid rgba(0, 0, 0, 0.4);
+  color: #000000;
+}
+
+.boc-tab--idle {
+  border-color: rgba(0, 0, 0, 0.2);
+  color: #000000;
+}
+
+.boc-tab--idle:hover {
+  border-color: rgba(0, 0, 0, 0.5);
+  color: #ffffff;
+}
+
+.boc-tab--active {
+  background: #000000;
+  border-color: #000000;
+  color: var(--boc-amber);
+}
+
+.boc-tab--error {
+  color: #b91c1c;
+  border-color: rgba(0, 0, 0, 0.2);
+}
+
+.boc-tab--error:hover {
+  color: #ef4444;
+  border-color: #991b1b;
+}
+
+.boc-tab--error-active {
+  background: #000000;
+  border-color: #ef4444;
+  color: #f87171;
+}
+
+.boc-divider {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.boc-action-btn {
+  padding: 0 0.25rem;
+  background: #000000;
+  color: var(--boc-amber);
+  border-radius: 0.125rem;
+  font-size: 8px;
+  font-family: ui-monospace, monospace;
+}
+
+.boc-action-btn--clear:hover {
+  color: #ef4444;
+}
+
+.boc-action-btn--save:hover {
+  color: #34d399;
+}
+
+.boc-utility-btn {
+  border: 1px solid rgba(0, 0, 0, 0.3);
+  border-radius: 0.125rem;
+}
+
+.boc-utility-btn:hover {
+  border-color: #000000;
+}
+
+.boc-close-btn:hover {
+  color: #f87171;
+}
+
+.blackwell-output-console__body {
+  background: var(--boc-body-bg);
+}
+
+.blackwell-output-console__footer {
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--boc-footer-bg);
+  color: rgba(255, 255, 255, 0.4);
+  flex-shrink: 0;
+}
+
+.boc-sync {
+  color: var(--boc-sync);
+}
+
+.boc-empty {
+  color: var(--boc-text-muted);
+}
+
+.boc-line__ts {
+  color: var(--boc-text-muted);
+}
+
+.boc-line--normal { color: var(--boc-text); }
+.boc-line--error { color: #f87171; }
+.boc-line--warning { color: #fbbf24; }
+.boc-line--success { color: #34d399; }
+.boc-line--command { color: #67e8f9; }
+.boc-line--highlight { color: #fde047; font-weight: 600; }
+
+.boc-refresh:hover {
+  color: #67e8f9;
+}
+
+.boc-refresh:active {
+  color: #ffffff;
+}
+
+/* ARCTIC — inverted console body/footer; amber header unchanged */
+[data-theme="arctic"] .blackwell-output-console {
+  --boc-body-bg: var(--theme-panel);
+  --boc-shell-bg: var(--theme-panel);
+  --boc-footer-bg: var(--theme-panel-accent);
+  --boc-text: var(--theme-text);
+  --boc-text-muted: var(--theme-text-muted);
+  --boc-sync: color-mix(in srgb, var(--theme-accent) 70%, var(--theme-text-muted));
+  --boc-border: var(--theme-border);
+}
+
+[data-theme="arctic"] .blackwell-output-console--docked {
+  box-shadow:
+    0 -4px 12px color-mix(in srgb, var(--theme-text) 12%, transparent),
+    0 -12px 28px color-mix(in srgb, var(--theme-text) 18%, transparent);
+}
+
+[data-theme="arctic"] .blackwell-output-console__footer {
+  border-top-color: var(--theme-border-subtle);
+  color: var(--theme-text-muted);
+}
+
+[data-theme="arctic"] .boc-line--error { color: #dc2626; }
+[data-theme="arctic"] .boc-line--warning { color: #b45309; }
+[data-theme="arctic"] .boc-line--success { color: #15803d; }
+[data-theme="arctic"] .boc-line--command { color: #0e7490; }
+[data-theme="arctic"] .boc-line--highlight { color: #a16207; }
+
+[data-theme="arctic"] .boc-refresh:hover {
+  color: var(--theme-accent);
+}
+
+[data-theme="arctic"] .boc-refresh:active {
+  color: var(--theme-text);
+}
+
 /* ── Display texture toggle — outline pill on bezel top ─── */
 .display-texture-toggle {
   font-family: ui-monospace, monospace;
@@ -998,13 +1236,9 @@ html, body, #root {
   outline-offset: 2px;
 }
 
-/* ARCTIC — ENGINE PROVIDER pills match RUNTIME PROFILE amber chips */
+/* ARCTIC — ENGINE PROVIDER pills: solid fills (no translucent wash) */
 [data-theme="arctic"] .provider-pill:hover {
-  background: rgba(184, 122, 0, 0.12) !important;
-}
-
-[data-theme="arctic"] .provider-pill-active {
-  box-shadow: 0 0 6px rgba(184, 122, 0, 0.3);
+  background: #e8dcc0 !important;
 }
 
 [data-theme="arctic"] .display-texture-toggle {
@@ -1432,6 +1666,14 @@ html, body, #root {
   border-color: var(--theme-eject-card-selected-border) !important;
 }
 
+/* Runtime profile tag — tiny amber line under model name */
+[data-config-panel] .running-engine-profile-label {
+  font-size: 6px;
+  line-height: 1;
+  color: #b87a00;
+  opacity: 0.95;
+}
+
 /* Status dot — secondary accent pulse */
 [data-config-panel] .status-pulse {
   background-color: var(--theme-secondary) !important;
@@ -1486,25 +1728,20 @@ html, body, #root {
   50% { opacity: 0.6; box-shadow: 0 0 0 3px rgba(118, 185, 0, 0); }
 }
 
-/* ── Gunmetal Card — selected model, mini display bezel ─── */
+/* ── Gunmetal Card — selected model, subtle lift + accent rail ─── */
 .gunmetal-card {
   background-color: var(--theme-card-selected-bg);
   background-image: repeating-linear-gradient(
     135deg,
-    rgba(255,255,255,.02) 0px,
+    rgba(255, 255, 255, 0.02) 0px,
     transparent 1px,
     transparent 4px
   );
-  border-top: 1px solid rgba(200, 210, 220, 0.10) !important;
-  border-left: 1px solid rgba(200, 210, 220, 0.06) !important;
-  border-bottom: 1.5px solid rgba(0, 0, 0, 0.5) !important;
-  border-right: 1.5px solid rgba(0, 0, 0, 0.4) !important;
+  border: 1px solid color-mix(in srgb, var(--theme-card-selected-accent) 32%, var(--theme-border-subtle)) !important;
   border-radius: 6px !important;
   box-shadow:
-    0 3px 10px rgba(0, 0, 0, 0.6),
-    0 1px 3px rgba(0, 0, 0, 0.4),
-    inset 0 1px 4px rgba(0, 0, 0, 0.3),
-    inset 0 -1px 3px rgba(0, 0, 0, 0.2);
+    0 1px 2px color-mix(in srgb, var(--theme-text) 10%, transparent),
+    0 3px 8px color-mix(in srgb, var(--theme-text) 8%, transparent);
 }
 
 .gunmetal-card::before {
@@ -1516,7 +1753,7 @@ html, body, #root {
   width: 3px;
   background: var(--theme-card-selected-accent);
   border-radius: 2px;
-  box-shadow: 0 0 4px color-mix(in srgb, var(--theme-card-selected-accent) 50%, transparent);
+  box-shadow: 0 0 3px color-mix(in srgb, var(--theme-card-selected-accent) 30%, transparent);
 }
 
 /* Selected model card text — keep readable on gunmetal bg */
@@ -1703,6 +1940,12 @@ html, body, #root {
   background: var(--theme-provider-pill-active-bg) !important;
   border: 1px solid var(--theme-provider-pill-active-border) !important;
   color: var(--theme-provider-pill-active-text) !important;
+}
+
+[data-engine-stack] .eink-panel .engine-stack-profile-pill {
+  background: rgba(184, 122, 0, 0.08) !important;
+  border: 1px solid rgba(184, 122, 0, 0.4) !important;
+  color: #b87a00 !important;
 }
 
 [data-engine-stack] .eink-panel .engine-stack-banner .text-stealth-muted {
@@ -2002,6 +2245,19 @@ html, body, #root {
 /* ── Selected model card name color ─── */
 .gunmetal-card .model-card-name {
   color: #b87a00;
+}
+
+[data-theme="arctic"] .gunmetal-card .text-white {
+  color: var(--theme-text) !important;
+}
+
+[data-theme="arctic"] .gunmetal-card .text-stealth-muted,
+[data-theme="arctic"] .gunmetal-card .text-white\/60 {
+  color: var(--theme-text-muted) !important;
+}
+
+[data-theme="arctic"] .buried-card {
+  background: color-mix(in srgb, var(--theme-panel) 82%, transparent);
 }
 
 /* ── Select option styling (WebView2 ignores inline styles on <option>) ─── */

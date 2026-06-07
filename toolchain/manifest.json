@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "windows_sdk_version": "10.0.26100.0",
+  "vs": {
+    "2022": {
+      "msvc_version": "14.44.35207",
+      "cmake_version": "17.14.35208.0",
+      "devcmd": "vs/2022/devcmd.bat",
+      "label": "VS Build Tools 2022"
+    },
+    "2026": {
+      "msvc_version": "14.51.36231",
+      "cmake_version": "18.0.0.0",
+      "devcmd": "vs/2026/devcmd.bat",
+      "label": "VS Build Tools 2026 (v18)"
+    }
+  },
+  "profiles": [
+    {
+      "id": "frontier",
+      "label": "FRONTIER",
+      "vs": "2026",
+      "cuda": "13.3",
+      "generator": "Visual Studio 18 2026",
+      "arch": "x64",
+      "description": "Experimental — newest CUDA toolkit"
+    },
+    {
+      "id": "vanguard",
+      "label": "VANGUARD",
+      "vs": "2026",
+      "cuda": "13.2",
+      "generator": "Visual Studio 18 2026",
+      "arch": "x64",
+      "description": "Primary cutting-edge profile"
+    },
+    {
+      "id": "fresh",
+      "label": "FRESH",
+      "vs": "2022",
+      "cuda": "13.1",
+      "generator": "Visual Studio 17 2022",
+      "arch": "x64",
+      "description": "Recent stable CUDA on VS2022"
+    },
+    {
+      "id": "stable",
+      "label": "STABLE",
+      "vs": "2022",
+      "cuda": "12.8",
+      "generator": "Visual Studio 17 2022",
+      "arch": "x64",
+      "description": "Long-lived compatibility profile"
+    }
+  ]
+}

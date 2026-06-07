@@ -71,6 +71,7 @@ export default function StackView({ stack, logs, systemEvents, onStop, onStopAll
                   alias={entry.alias}
                   providerName={entry.provider_name}
                   providerType={entry.provider_type}
+                  binaryProfile={entry.binaryProfile}
                   status={entry.status}
                   gpuMask={entry.gpu}
                   buildInfo={entry.build_info}

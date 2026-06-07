@@ -164,7 +164,7 @@ impl LogHub {
                                 ctx.blackwell_output_console_manager.emit_line_to_category(
                                     BlackwellOutputConsoleCategory::Engines,
                                     format!("[{}] Engine ready", alias),
-                                    BlackwellOutputConsoleLineStyle::Success,
+                                    BlackwellOutputConsoleLineStyle::Normal,
                                 );
                             }
                         }

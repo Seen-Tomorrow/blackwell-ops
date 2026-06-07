@@ -230,7 +230,7 @@ pub async fn launch_engine(
     app.blackwell_output_console_manager.emit_line_to_category(
         crate::output_console::BlackwellOutputConsoleCategory::Engines,
         format!("[{}] Engine launching...", config.alias),
-        crate::output_console::BlackwellOutputConsoleLineStyle::Highlight,
+        crate::output_console::BlackwellOutputConsoleLineStyle::Normal,
     );
 
     app.blackwell_output_console_manager.emit_line_to_category(
@@ -354,6 +354,11 @@ pub async fn launch_engine(
         status: "LOADING".to_string(),
         slot_id: slot_idx as u32,
         provider_type: backend_type,
+        binary_profile: if config.binary_profile.is_empty() {
+            "vanguard".to_string()
+        } else {
+            config.binary_profile.clone()
+        },
         model_path: config.model_path.clone(),
         vram_mib: 0.0,
         n_ctx: ctx_size_int,
@@ -470,6 +475,7 @@ pub async fn get_stack_status(app: tauri::State<'_, AppContext>) -> Result<Vec<S
                 status: e.status.clone(),
                 slot_id: e.slot_id,
                 provider_type: e.provider_type.clone(),
+                binary_profile: e.binary_profile.clone(),
                 model_path: e.model_path.clone(),
                 vram_mib: e.vram_mib,
                 n_ctx: e.n_ctx,

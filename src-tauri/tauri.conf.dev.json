@@ -3,6 +3,7 @@
   "version": "0.7.7",
   "identifier": "com.blackwell-ops.app.dev",
   "build": {
+    "beforeDevCommand": "npm run server",
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420"
   },

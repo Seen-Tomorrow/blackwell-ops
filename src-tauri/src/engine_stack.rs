@@ -66,6 +66,8 @@ pub struct EngineSlot {
     pub n_ctx: usize,
     pub provider_name: String,
     pub backend_type: String,
+    /// Runtime profile binary env (vanguard/frontier/fresh/stable) used at launch.
+    pub binary_profile: String,
     pub supports_fusion: bool,
     /// Set when stop/clear runs — background reaper exits without duplicate cleanup.
     pub reaper_cancel: Arc<AtomicBool>,
@@ -93,6 +95,7 @@ impl EngineStack {
                 n_ctx: DEFAULT_N_CTX,
                 provider_name: String::new(),
                 backend_type: String::new(),
+                binary_profile: String::new(),
                 supports_fusion: true,
                 reaper_cancel: Arc::new(AtomicBool::new(false)),
             }))));
@@ -273,6 +276,11 @@ impl EngineStack {
                 .unwrap_or(32768);
             slot.provider_name = provider_display_name;
             slot.backend_type = backend_type;
+            slot.binary_profile = if config.binary_profile.is_empty() {
+                "vanguard".to_string()
+            } else {
+                config.binary_profile.clone()
+            };
             slot.supports_fusion = supports_fusion;
             slot.status = SlotStatus::Loading;
         }
@@ -330,7 +338,7 @@ impl EngineStack {
                                     log_hub.emit_console_line(
                                         crate::output_console::BlackwellOutputConsoleCategory::Engines,
                                         &format!("[{alias}] Engine ready"),
-                                        crate::output_console::BlackwellOutputConsoleLineStyle::Success,
+                                        crate::output_console::BlackwellOutputConsoleLineStyle::Normal,
                                     );
                                     on_ready();
                                     return;
@@ -531,6 +539,7 @@ impl EngineStack {
             slot.n_ctx = DEFAULT_N_CTX;
             slot.provider_name.clear();
             slot.backend_type.clear();
+            slot.binary_profile.clear();
             slot.supports_fusion = false;
             slot.reaper_cancel = Arc::new(AtomicBool::new(false));
         }
@@ -692,6 +701,35 @@ impl EngineStack {
         .await
     }
 
+    fn normalized_slot_profile(raw: &str) -> String {
+        if raw.is_empty() {
+            "vanguard".to_string()
+        } else {
+            raw.to_ascii_lowercase()
+        }
+    }
+
+    /// Stops slots for a provider + runtime profile only (other profiles keep running).
+    pub async fn stop_slots_by_provider_and_profile_parallel(
+        backend_type: &str,
+        binary_profile: &str,
+        stack_ref: &Arc<tokio::sync::Mutex<EngineStack>>,
+    ) -> Vec<usize> {
+        let bt = backend_type.to_string();
+        let bp = Self::normalized_slot_profile(binary_profile);
+        Self::shutdown_slots_generic(
+            stack_ref,
+            |slot| {
+                slot.backend_type == bt
+                    && !matches!(slot.status, SlotStatus::Idle)
+                    && Self::normalized_slot_profile(&slot.binary_profile) == bp
+            },
+            true,
+            false,
+        )
+        .await
+    }
+
     /// Emergency kill all — used during app exit. Awaits process teardown.
     pub async fn kill_all(stack_ref: &Arc<tokio::sync::Mutex<EngineStack>>) {
         Self::shutdown_slots_generic(
@@ -723,6 +761,7 @@ impl EngineStack {
             status: slot.status.to_string(),
             slot_id: i as u32,
             provider_type: slot.backend_type.clone(),
+            binary_profile: slot.binary_profile.clone(),
             model_path: slot.model_path.clone(),
             vram_mib: slot.vram_mib,
             n_ctx: slot.n_ctx,
@@ -743,6 +782,7 @@ impl EngineStack {
             status: "IDLE".to_string(),
             slot_id: i as u32,
             provider_type: String::new(),
+            binary_profile: String::new(),
             model_path: String::new(),
             vram_mib: 0.0,
             n_ctx: DEFAULT_N_CTX,

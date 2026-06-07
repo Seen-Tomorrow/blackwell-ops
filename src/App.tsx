@@ -172,10 +172,7 @@ function App() {
         pending = true;
         requestAnimationFrame(() => {
           invoke<ProviderConfig[]>("list_providers")
-            .then((data) => setProviders(prev => {
-              if (prev.length === data.length && prev.every((p, i) => p.id === data[i].id)) return prev;
-              return data;
-            }))
+            .then((data) => setProviders(data))
             .catch(() => {});
           pending = false;
         });
@@ -261,6 +258,23 @@ function App() {
     const handler = () => reloadProviders();
     window.addEventListener(EVENTS.reloadProviders, handler);
     return () => window.removeEventListener(EVENTS.reloadProviders, handler);
+  }, [reloadProviders]);
+
+  // Refresh catalog provider state after a Foundry build publishes new profile binaries.
+  useEffect(() => {
+    let cancelled = false;
+    let unlisten: (() => void) | null = null;
+    listen<{ phase: string }>("foundry-progress", (e) => {
+      if (e.payload.phase === "Complete") {
+        void reloadProviders();
+      }
+    }).then((u) => {
+      if (!cancelled) unlisten = u;
+    });
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
   }, [reloadProviders]);
 
   const reloadModels = useCallback(async () => {

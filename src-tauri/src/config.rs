@@ -693,8 +693,8 @@ fn discover_providers() -> Vec<crate::types::ProviderConfig> {
                 let mut per_env: HashMap<String, String> = HashMap::new();
                 let mut build_info_per_env: HashMap<String, crate::types::BuildInfo> = HashMap::new();
                 let mut main_binary = String::new();
-                for profile in &["vanguard", "stable", "fresh"] {
-                    let exe_path = entry.path().join(profile).join("llama-server.exe");
+                for profile in crate::foundry_toolchain::profile_ids_or_default() {
+                    let exe_path = entry.path().join(&profile).join("llama-server.exe");
                     if exe_path.exists() {
                         per_env.insert(profile.to_string(), format!("runtime/{}/{}/llama-server.exe", pid, profile));
                         // Populate build_info from file metadata so UI shows profile as available
@@ -1390,8 +1390,8 @@ fn merge_user_params_with_template(
 /// Scan sacred foundry artifacts on disk (survives missed persist after a build).
 fn scan_foundry_profile_binaries(provider_id: &str) -> HashMap<String, String> {
     let mut map = HashMap::new();
-    for profile in &["vanguard", "stable", "fresh"] {
-        let exe = foundry_artifact_release_dir(provider_id, profile).join("llama-server.exe");
+    for profile in crate::foundry_toolchain::profile_ids_or_default() {
+        let exe = foundry_artifact_release_dir(provider_id, &profile).join("llama-server.exe");
         if exe.exists() {
             map.insert(profile.to_string(), to_relative_path(&exe));
         }
@@ -1430,11 +1430,11 @@ fn merge_discovered_binaries(p: &mut crate::types::ProviderConfig) {
         }
     }
 
-    const PROFILES: &[&str] = &["vanguard", "stable", "fresh"];
+    let profiles = crate::foundry_toolchain::profile_ids_or_default();
     if let Some((_, info)) = p
         .build_info_per_env
         .iter()
-        .filter(|(k, _)| PROFILES.contains(&k.as_str()))
+        .filter(|(k, _)| profiles.iter().any(|p| p == k.as_str()))
         .max_by_key(|(_, info)| info.build_date.as_str())
     {
         p.build_info_per_env.insert("current".to_string(), info.clone());

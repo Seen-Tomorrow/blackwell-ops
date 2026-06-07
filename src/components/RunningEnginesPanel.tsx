@@ -1,5 +1,11 @@
 import { useMemo } from "react";
 import type { ModelEntry, StackEntry } from "../lib/types";
+import { ENV_META, type Env } from "../lib/foundry_constants";
+
+function runtimeProfileLabel(binaryProfile?: string): string {
+  const key = (binaryProfile || "vanguard").toLowerCase() as Env;
+  return ENV_META[key]?.label ?? key.toUpperCase();
+}
 
 interface RunningEnginesPanelProps {
   stack: StackEntry[];
@@ -49,14 +55,21 @@ export default function RunningEnginesPanel({ stack, models, selectedSlotIdx, on
                   : ""
               }`}
             >
-              <span className="w-1.5 h-1.5 rounded-full bg-nv-green shrink-0 status-pulse" />
-              <span className="text-[9px] font-mono text-white/70 shrink-0 w-18 truncate">
-                {item.entry.alias}
-              </span>
+              <div className="flex flex-col shrink-0 gap-0.5 max-w-[4.5rem]">
+                <span className="text-[9px] font-mono text-white/70 truncate" title={item.entry.alias}>
+                  {item.entry.alias}
+                </span>
+                <span className="running-engine-profile-label font-mono uppercase tracking-wider truncate">
+                  {runtimeProfileLabel(item.entry.binaryProfile)}
+                </span>
+              </div>
               <span className="text-[8px] font-mono text-telemetry-cyan shrink-0 bg-telemetry-cyan/10 border border-telemetry-cyan/20 px-1 py-0.5 rounded-sm">
                 {gpuLabel}
               </span>
-              <span className={`text-[10px] font-mono truncate flex-1 min-w-0 ${isThisSelected ? "text-nv-green" : "text-white"}`} title={item.modelName}>
+              <span
+                className={`text-[10px] font-mono truncate flex-1 min-w-0 ${isThisSelected ? "text-nv-green" : "text-white"}`}
+                title={item.modelName}
+              >
                 {item.modelName}
               </span>
               {item.quant && (

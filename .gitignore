@@ -44,6 +44,12 @@ llama-server.exe
 *.bin
 models/
 
+# --- Foundry portable toolchain (manifest.json is committed; blobs are local) ---
+toolchain/VC/
+toolchain/Windows Kits/
+toolchain/cuda/
+toolchain/vs/
+
 # --- Build Counter (local, auto-incrementing) ---
 .build_counter.json
 

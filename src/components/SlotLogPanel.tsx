@@ -131,7 +131,7 @@ export default memo(function SlotLogPanel({ entry, logs, systemEvents, fusionUpd
       {/* Benchmark controls — full width */}
       {entry.status === "RUNNING" && (
         <div className="px-3 py-1">
-          <BenchWidget port={entry.port} />
+          <BenchWidget port={entry.port} compact />
         </div>
       )}
 

@@ -1,3 +1,4 @@
+import { ENV_META, type Env } from "../lib/foundry_constants";
 import { sanitizeAlias } from "../lib/types";
 
 interface EngineBannerProps {
@@ -5,9 +6,15 @@ interface EngineBannerProps {
   alias?: string;
   providerName?: string;
   providerType?: string;
+  binaryProfile?: string;
   status?: string;
   gpuMask?: string;
   buildInfo?: { version: string; buildDate: string; cudaVersion?: string };
+}
+
+function runtimeProfileLabel(binaryProfile?: string): string {
+  const key = (binaryProfile || "vanguard").toLowerCase() as Env;
+  return ENV_META[key]?.label ?? key.toUpperCase();
 }
 
 function statusDotClass(status?: string): string {
@@ -24,7 +31,7 @@ function resolveProviderName(providerName?: string): string | undefined {
   return undefined;
 }
 
-export default function EngineBanner({ slotIndex, alias, providerName, providerType: _providerType, status, gpuMask, buildInfo }: EngineBannerProps) {
+export default function EngineBanner({ slotIndex, alias, providerName, providerType: _providerType, binaryProfile, status, gpuMask, buildInfo }: EngineBannerProps) {
   const displayName = resolveProviderName(providerName);
   const hasProvider = !!displayName && displayName.trim().length > 0;
   const aliasLabel = alias ? sanitizeAlias(alias).toUpperCase() : String(slotIndex + 1).padStart(2, "0");
@@ -43,9 +50,17 @@ export default function EngineBanner({ slotIndex, alias, providerName, providerT
       </div>
 
       {hasProvider && status !== "IDLE" && (
-        <span className="provider-pill-active border text-[8px] font-mono px-2 py-0.5 rounded-sm truncate max-w-[140px]" title={displayName}>
-          {displayName}
-        </span>
+        <>
+          <span className="provider-pill-active border text-[8px] font-mono px-2 py-0.5 rounded-sm truncate max-w-[140px]" title={displayName}>
+            {displayName}
+          </span>
+          <span
+            className="engine-stack-profile-pill border text-[8px] font-mono px-2 py-0.5 rounded-sm shrink-0 tracking-wider"
+            title={runtimeProfileLabel(binaryProfile)}
+          >
+            {runtimeProfileLabel(binaryProfile)}
+          </span>
+        </>
       )}
 
       <div className="flex-1 min-w-0" />

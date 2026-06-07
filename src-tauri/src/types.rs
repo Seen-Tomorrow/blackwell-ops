@@ -275,6 +275,9 @@ pub struct StackEntry {
     pub slot_id: u32,
     #[serde(default = "default_provider_type")]
     pub provider_type: String,
+    /// Runtime profile env (vanguard/frontier/fresh/stable) the engine was launched with.
+    #[serde(default, rename = "binaryProfile")]
+    pub binary_profile: String,
     #[serde(default)]
     pub model_path: String,
     #[serde(default)]

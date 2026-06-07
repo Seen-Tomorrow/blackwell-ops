@@ -17,7 +17,7 @@ import {
   savePowerUserState,
   type PowerUserState,
 } from "../lib/storage";
-import { dispatchPowerUserChanged, EVENTS } from "../lib/events";
+import { dispatchAppEvent, dispatchPowerUserChanged, EVENTS } from "../lib/events";
 import { isMobileDevice } from "../lib/utils";
 
 const MIN_ZOOM = 0.7;
@@ -161,7 +161,7 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
   return (
     <div className="app-shell flex flex-col h-screen grid-bg relative">
       {/* Top bar */}
-      <header className="app-header flex items-center justify-between px-6 py-3 backdrop-blur-sm relative z-10 layout-header-enter">
+      <header className="app-header flex items-center justify-between px-6 py-3 backdrop-blur-sm relative z-30 layout-header-enter">
         <div className="flex items-center gap-4">
           {/* Logo / Brand */}
           <div className="flex items-center gap-2">
@@ -242,12 +242,12 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
       </header>
 
       {/* Main content area */}
-      <main className="flex-1 overflow-hidden relative z-10">
+      <main className={`flex-1 overflow-hidden relative z-10 ${isOutputConsoleExpanded ? "main--console-expanded" : ""}`}>
         <div
           key={activeTab}
-          className="h-full overflow-y-auto layout-tab-enter"
+          className="app-main-scroll h-full overflow-y-auto layout-tab-enter"
         >
-          <div style={{ zoom }} className="min-h-full pb-[50px]">
+          <div style={{ zoom }} className={`min-h-full ${isOutputConsoleExpanded ? "pb-[200px]" : "pb-[50px]"}`}>
             <div className="max-w-[1280px] mx-auto">{children}</div>
           </div>
         </div>
@@ -336,6 +336,7 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
         provider={resolvedProvider}
         environment={resolvedEnvironment}
         onClose={closeBuildModal}
+        onComplete={() => dispatchAppEvent(EVENTS.reloadProviders)}
         visible={foundryModalVisible}
         onMinimize={minimizeBuildModal}
       />
