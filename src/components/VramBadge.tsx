@@ -17,6 +17,10 @@ interface VramBadgeProps {
   activeEnginePort?: number;
   selectedSlotIdx?: number | null; // Slot index for Fusion overlay (unique, no collision)
   supportsFusion?: boolean;
+  gpuMask?: string;
+  vramTargetMib?: number;
+  modelLayerTotal?: number;
+  gpuLoadTargetsMib?: Record<number, number>;
   offloadMode?: string; // Current Offload_Mode config value (e.g., "moe_optimal")
   onMoeSuggestionClick?: () => void; // Callback to auto-switch to MOE_OPTIMAL
   className?: string;
@@ -26,7 +30,8 @@ interface VramBadgeProps {
  *  GOLDEN RULE: Never add conditional logic or hardcoded text here. */
 export default function VramBadge({
   manifest, gpus, modelMeta, selectedGpuIndices, onDeviceSelect, isValidating, onValidate,
-  isModelRunning, activeEngineAlias, activeEnginePort, selectedSlotIdx, supportsFusion = true, offloadMode, onMoeSuggestionClick, className
+  isModelRunning, activeEngineAlias, activeEnginePort, selectedSlotIdx, supportsFusion = true,
+  gpuMask = "", vramTargetMib, modelLayerTotal, gpuLoadTargetsMib, offloadMode, onMoeSuggestionClick, className
 }: VramBadgeProps) {
   const { getEngine } = useFusionData();
   const fusion = selectedSlotIdx !== null && selectedSlotIdx !== undefined ? getEngine(selectedSlotIdx) : null;
@@ -73,6 +78,12 @@ export default function VramBadge({
             enginePort={activeEnginePort}
             fusion={fusion}
             supportsFusion={supportsFusion}
+            slotIdx={selectedSlotIdx ?? -1}
+            gpus={gpus}
+            gpuMask={gpuMask}
+            vramTargetMib={vramTargetMib}
+            modelLayerTotal={modelLayerTotal}
+            gpuLoadTargetsMib={gpuLoadTargetsMib}
           />
         </div>
       )}

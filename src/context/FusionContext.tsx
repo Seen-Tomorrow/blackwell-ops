@@ -7,10 +7,15 @@ import {
   useRef,
   useState,
 } from "react";
-import type { FusionUpdate } from "../lib/types";
+import { invoke } from "@tauri-apps/api/core";
+import type { FusionUpdate, StackEntry } from "../lib/types";
 import { useTauriListen } from "../hooks/useTauriListen";
 
 const RENDER_INTERVAL_MS = 100;
+
+function isRunningEntry(s: StackEntry): boolean {
+  return s.status === "RUNNING" || s.status === "LOADING";
+}
 
 /** Shallow compare hero + progress fields — skip map churn when IPC payload unchanged. */
 function fusionPayloadEqual(a: FusionUpdate, b: FusionUpdate): boolean {
@@ -60,11 +65,19 @@ interface FusionContextValue {
 const FusionContext = createContext<FusionContextValue | null>(null);
 
 /** App-wide fusion telemetry — survives tab navigation (single listener + shared map). */
-export function FusionProvider({ children }: { children: React.ReactNode }) {
+export function FusionProvider({
+  children,
+  stack,
+}: {
+  children: React.ReactNode;
+  stack: StackEntry[];
+}) {
   const [engines, setEngines] = useState<Map<number, FusionUpdate>>(new Map());
   const mapRef = useRef<Map<number, FusionUpdate>>(new Map());
   const lastRenderTime = useRef(0);
   const dirtyRef = useRef(false);
+  const stackRef = useRef(stack);
+  stackRef.current = stack;
 
   const flushIfDue = useCallback(() => {
     if (!dirtyRef.current) return;
@@ -73,6 +86,42 @@ export function FusionProvider({ children }: { children: React.ReactNode }) {
     lastRenderTime.current = Date.now();
     setEngines(new Map(mapRef.current));
   }, []);
+
+  const hydrateFromBackend = useCallback(async () => {
+    try {
+      const snapshots = await invoke<FusionUpdate[]>("get_fusion_snapshots");
+      const runningSlots = new Set(
+        stackRef.current.filter(isRunningEntry).map((s) => s.idx),
+      );
+      if (snapshots.length === 0 || runningSlots.size === 0) return;
+
+      let changed = false;
+      for (const snap of snapshots) {
+        if (!runningSlots.has(snap.slotIdx)) continue;
+        mapRef.current.set(snap.slotIdx, snap);
+        changed = true;
+      }
+      if (changed) {
+        dirtyRef.current = true;
+        lastRenderTime.current = 0;
+        flushIfDue();
+      }
+    } catch {
+      // Backend may be older build during dev — live events still work
+    }
+  }, [flushIfDue]);
+
+  useEffect(() => {
+    void hydrateFromBackend();
+  }, [hydrateFromBackend]);
+
+  // Rehydrate when running engines exist but map lost entries (HMR, remount, missed idle emits)
+  useEffect(() => {
+    const missing = stack.some(
+      (s) => isRunningEntry(s) && s.supportsFusion !== false && !mapRef.current.has(s.idx),
+    );
+    if (missing) void hydrateFromBackend();
+  }, [stack, hydrateFromBackend]);
 
   useTauriListen<FusionUpdate>("fusion-update", (payload) => {
     const map = mapRef.current;

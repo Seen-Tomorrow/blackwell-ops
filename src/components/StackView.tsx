@@ -11,7 +11,7 @@ interface StackViewProps {
   stack: StackEntry[];
   logs: Map<number, LogEntry[]>;
   systemEvents: Map<number, Array<{ text: string; timestamp: string }>>;
-  onStop: (alias: string) => void;
+  onStop: (slotIdx: number) => void;
   onStopAll: () => void;
 }
 
@@ -63,7 +63,7 @@ export default function StackView({ stack, logs, systemEvents, onStop, onStopAll
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
             {stack.map((entry, idx) => (
               <div
-                key={`${entry.alias}-${idx}`}
+                key={`slot-${entry.idx}`}
                 className={`engine-stack-card eink-panel rounded-sm overflow-hidden engine-panel-enter ${cardGlowClass(entry.status)} ${entry.status === "IDLE" ? "opacity-75" : ""}`}
               >
                 <EngineBanner

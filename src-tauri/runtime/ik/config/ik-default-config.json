@@ -15,6 +15,7 @@
     "verbosity_args": ["--simple-io", "--verbose"],
     "enable_metrics": false,
     "supports_fusion": false,
+    "max_engine_slots": 32,
     "gpu_env": "CUDA_VISIBLE_DEVICES",
     "ngl_flag": ["--n-gpu-layers"],
     "mmproj_flag": ["--mmproj"]

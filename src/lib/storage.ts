@@ -25,6 +25,7 @@ import { normalizeDisplayTexture, type DisplayTexture } from "./displayTexture";
  * | BlackOps-startup-updates | JSON | Cached startup update check results |
  * | BlackOps-fusion-hero-tps | live \| avg | Fusion hero TPS display mode |
  * | BlackOps-display-texture | clean \| crt \| phosphor-dark \| phosphor-light | Display texture cycle |
+ * | BlackOps-catalog-split-width | number string (px) | Model catalog / engine config split |
  * | BlackOps-catalog-override:{providerId} | JSON Record<paramKey, value> | Launch-time param chip overrides |
  * | BlackOps-group-order:{providerId} | JSON string[] | CONFIG param group order |
  * | BlackOps-engine-alias:{modelPath} | string | Per-model launch alias |
@@ -94,7 +95,12 @@ export const KEYS = {
   startupUpdates: `${STORAGE_PREFIX}startup-updates`,
   fusionHeroTpsMode: `${STORAGE_PREFIX}fusion-hero-tps`,
   displayTexture: `${STORAGE_PREFIX}display-texture`,
+  catalogSplitWidth: `${STORAGE_PREFIX}catalog-split-width`,
 } as const;
+
+export const CATALOG_SPLIT_WIDTH_DEFAULT = 420;
+export const CATALOG_SPLIT_WIDTH_MIN = 280;
+export const CATALOG_SPLIT_WIDTH_MAX = 720;
 
 // ── Dynamic key builders (BlackOps-{namespace}:{id}) ─────────────────────────
 
@@ -251,6 +257,22 @@ export function loadDisplayTexture(): DisplayTexture {
 
 export function saveDisplayTexture(texture: DisplayTexture): void {
   writeStorage(KEYS.displayTexture, texture);
+}
+
+export function loadCatalogSplitWidth(): number {
+  const raw = readStorage(KEYS.catalogSplitWidth);
+  if (!raw) return CATALOG_SPLIT_WIDTH_DEFAULT;
+  const n = Number.parseInt(raw, 10);
+  if (!Number.isFinite(n)) return CATALOG_SPLIT_WIDTH_DEFAULT;
+  return Math.min(CATALOG_SPLIT_WIDTH_MAX, Math.max(CATALOG_SPLIT_WIDTH_MIN, n));
+}
+
+export function saveCatalogSplitWidth(width: number): void {
+  const clamped = Math.min(
+    CATALOG_SPLIT_WIDTH_MAX,
+    Math.max(CATALOG_SPLIT_WIDTH_MIN, Math.round(width)),
+  );
+  writeStorage(KEYS.catalogSplitWidth, String(clamped));
 }
 
 export interface StartupUpdatesCache {

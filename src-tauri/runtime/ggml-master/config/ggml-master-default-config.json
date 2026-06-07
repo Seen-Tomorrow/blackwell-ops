@@ -15,6 +15,7 @@
     "verbosity_args": ["-lv", "4"],
     "enable_metrics": true,
     "supports_fusion": true,
+    "max_engine_slots": 128,
     "gpu_env": "CUDA_VISIBLE_DEVICES",
     "ngl_flag": ["--n-gpu-layers"],
     "mmproj_flag": ["--mmproj"]

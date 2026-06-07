@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use crate::types::{EngineConfig, StackEntry};
 use crate::log_hub::LogHub;
 
@@ -66,17 +67,13 @@ pub struct EngineSlot {
     pub provider_name: String,
     pub backend_type: String,
     pub supports_fusion: bool,
+    /// Set when stop/clear runs — background reaper exits without duplicate cleanup.
+    pub reaper_cancel: Arc<AtomicBool>,
 }
 
 pub struct EngineStack {
     pub(crate) slots: Vec<Option<Arc<parking_lot::Mutex<EngineSlot>>>>,
     log_hub: Option<LogHub>,
-}
-
-impl Default for EngineStack {
-    fn default() -> Self {
-        Self::new(4)
-    }
 }
 
 impl EngineStack {
@@ -97,6 +94,7 @@ impl EngineStack {
                 provider_name: String::new(),
                 backend_type: String::new(),
                 supports_fusion: true,
+                reaper_cancel: Arc::new(AtomicBool::new(false)),
             }))));
         }
 
@@ -121,6 +119,45 @@ impl EngineStack {
         None
     }
 
+    /// True if any non-idle slot already uses this alias.
+    pub fn alias_in_use(&self, alias: &str) -> bool {
+        self.slots.iter().any(|slot_opt| {
+            slot_opt.as_ref().map_or(false, |arc| {
+                let slot = arc.lock();
+                slot.alias == alias && !matches!(slot.status, SlotStatus::Idle)
+            })
+        })
+    }
+
+    /// Reserve a slot before slow launch work — prevents double-booking during port cleanup/spawn.
+    pub fn reserve_slot(&self, idx: usize, alias: &str, port: u16) -> Result<(), String> {
+        let slot_arc = self.slots.get(idx).and_then(|s| s.as_ref()).ok_or("Slot not found")?;
+        let mut slot = slot_arc.lock();
+        if !matches!(slot.status, SlotStatus::Idle) {
+            return Err(format!("Slot {} is not idle (current status: {})", idx, slot.status));
+        }
+        slot.status = SlotStatus::Loading;
+        slot.alias = alias.to_string();
+        slot.port = port;
+        slot.child_proc = None;
+        slot.pid = None;
+        Ok(())
+    }
+
+    /// Release a reserved slot after a failed launch attempt.
+    pub fn release_reserved_slot(&self, idx: usize) {
+        if let Some(slot_arc) = self.slots.get(idx).and_then(|s| s.as_ref()) {
+            let slot = slot_arc.lock();
+            if matches!(slot.status, SlotStatus::Loading)
+                && slot.child_proc.is_none()
+                && slot.pid.is_none()
+            {
+                drop(slot);
+                self.clear_slot(idx);
+            }
+        }
+    }
+
     /// Static entry point — handles its own locking. Callers don't need to hold the stack lock.
     pub async fn load_slot(
         slot_idx: usize,
@@ -141,10 +178,13 @@ impl EngineStack {
         let slot_arc = {
             let stack = stack_ref.lock().await;
             let arc = stack.slots[slot_idx].as_ref().ok_or("Slot not found")?.clone();
-            // Check status under per-slot lock (no await)
+            // Accept idle slots or slots reserved by launch_engine (LOADING, no child yet).
             {
                 let slot = arc.lock();
-                if !matches!(slot.status, SlotStatus::Idle) {
+                let reserved = matches!(slot.status, SlotStatus::Loading)
+                    && slot.child_proc.is_none()
+                    && slot.pid.is_none();
+                if !matches!(slot.status, SlotStatus::Idle) && !reserved {
                     return Err(format!("Slot {} is not idle (current status: {})", slot_idx, slot.status));
                 }
             }
@@ -201,17 +241,15 @@ impl EngineStack {
             slot_arc.clone(),
         );
 
-        // Quick alive check — give process 500ms to initialize
-        std::thread::sleep(std::time::Duration::from_millis(500));
+        // Quick alive check — give process 500ms to initialize (async — do not block tokio worker)
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         if let Ok(status) = child.try_wait() {
             if let Some(code) = status {
                 let exit_code = code.code().unwrap_or(-1);
-                // Engine crash now routed to Blackwell Output Console
                 {
-                    let mut slot = slot_arc.lock();
-                    slot.status = SlotStatus::Idle;
-                    slot.child_proc = None;
-                    slot.pid = None;
+                    let stack = stack_ref.lock().await;
+                    stack.clear_slot(slot_idx);
+                    stack.emit_stack_changed();
                 }
                 return Err(format!("Engine crashed immediately with exit code {}", exit_code));
             }
@@ -236,8 +274,11 @@ impl EngineStack {
             slot.status = SlotStatus::Loading;
         }
 
-        // Spawn a background reaper to monitor the child process
-        Self::spawn_reaper(slot_idx, slot_arc.clone(), stack_ref.clone(), log_hub.clone());
+        let reaper_cancel = {
+            let slot = slot_arc.lock();
+            slot.reaper_cancel.clone()
+        };
+        Self::spawn_reaper(slot_idx, slot_arc.clone(), stack_ref.clone(), log_hub.clone(), reaper_cancel);
 
         Ok(())
     }
@@ -341,6 +382,7 @@ impl EngineStack {
         slot_arc: Arc<parking_lot::Mutex<EngineSlot>>,
         stack_ref: Arc<tokio::sync::Mutex<EngineStack>>,
         log_hub: LogHub,
+        reaper_cancel: Arc<AtomicBool>,
     ) {
         let pid = {
             let slot = slot_arc.lock();
@@ -363,6 +405,10 @@ impl EngineStack {
         tokio::spawn(async move {
             loop {
                 tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+                if reaper_cancel.load(Ordering::Acquire) {
+                    break;
+                }
 
                 let alive = Self::is_process_alive(pid);
 
@@ -470,6 +516,7 @@ impl EngineStack {
     fn clear_slot(&self, idx: usize) {
         if let Some(slot_arc) = &self.slots[idx] {
             let mut slot = slot_arc.lock();
+            slot.reaper_cancel.store(true, Ordering::Release);
             slot.status = SlotStatus::Idle;
             slot.child_proc = None;
             slot.pid = None;
@@ -482,6 +529,7 @@ impl EngineStack {
             slot.provider_name.clear();
             slot.backend_type.clear();
             slot.supports_fusion = false;
+            slot.reaper_cancel = Arc::new(AtomicBool::new(false));
         }
     }
 
@@ -720,5 +768,11 @@ impl EngineStack {
 
     pub fn get_slot(&self, idx: usize) -> Option<parking_lot::MutexGuard<'_, EngineSlot>> {
         self.slots[idx].as_ref().map(|arc| arc.lock())
+    }
+
+    pub fn get_slot_pid(&self, idx: usize) -> Option<u32> {
+        let slot_arc = self.slots.get(idx)?.as_ref()?;
+        let slot = slot_arc.lock();
+        slot.pid
     }
 }

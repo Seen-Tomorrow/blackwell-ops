@@ -98,6 +98,18 @@ pub async fn kill_process_by_pid(pid: u32) -> Result<(), String> {
     Ok(())
 }
 
+/// Fast check — true if something is accepting TCP connections on 127.0.0.1:port.
+pub async fn is_port_in_use(port: u16) -> bool {
+    let addr = format!("127.0.0.1:{}", port);
+    tokio::time::timeout(
+        std::time::Duration::from_millis(150),
+        tokio::net::TcpStream::connect(&addr),
+    )
+    .await
+    .map(|r| r.is_ok())
+    .unwrap_or(false)
+}
+
 /// Kill process listening on a given port via PowerShell taskkill.
 /// Slow — spawns PowerShell + netstat. Use only as last-resort orphan cleanup.
 pub async fn kill_process_by_port(port: u16) -> Result<(), String> {

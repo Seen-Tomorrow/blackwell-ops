@@ -20,6 +20,8 @@ const MAX_INSTANT_TOKEN_JUMP: usize = 2048;
 const POLL_ACTIVE_MS: u64 = 100;
 /// Idle + ready cadence — cuts browser IPC churn when nothing changes.
 const POLL_IDLE_MS: u64 = 500;
+/// Re-emit idle snapshots periodically so frontend can rehydrate after HMR/remount.
+const IDLE_HEARTBEAT_MS: u64 = 5000;
 
 fn clamp_display_tps(tps: f64) -> f64 {
     if !tps.is_finite() || tps <= 0.0 {
@@ -435,6 +437,7 @@ impl FusionBrain {
     fn force_emit(&mut self, log_hub: &LogHub, update: FusionUpdate) {
         self.last_emit_fp = Some(FusionEmitFingerprint::from_update(&update));
         self.emit_dirty = false;
+        cache_fusion_snapshot(&update);
         log_hub.emit("fusion-update", &update);
     }
 
@@ -445,6 +448,7 @@ impl FusionBrain {
         }
         self.last_emit_fp = Some(fp);
         self.emit_dirty = false;
+        cache_fusion_snapshot(&update);
         log_hub.emit("fusion-update", &update);
     }
 
@@ -609,6 +613,7 @@ impl FusionBrain {
         let slot_idx = config.slot_idx;
         let mut next_poll =
             tokio::time::Instant::now() + tokio::time::Duration::from_millis(POLL_ACTIVE_MS);
+        let mut last_idle_heartbeat = std::time::Instant::now();
 
         loop {
             tokio::select! {
@@ -651,7 +656,15 @@ impl FusionBrain {
                     }
 
                     let update = brain.build_update(&slot_data, metrics_result.as_ref().ok());
-                    brain.try_emit(&log_hub, update);
+                    let idle_heartbeat_due = brain.is_idle_ready()
+                        && last_idle_heartbeat.elapsed()
+                            >= std::time::Duration::from_millis(IDLE_HEARTBEAT_MS);
+                    if idle_heartbeat_due {
+                        brain.force_emit(&log_hub, update);
+                        last_idle_heartbeat = std::time::Instant::now();
+                    } else {
+                        brain.try_emit(&log_hub, update);
+                    }
                 }
             }
         }
@@ -1320,6 +1333,28 @@ impl FusionBrain {
     }
 }
 
+// ── Last emitted snapshot cache (frontend rehydrate after HMR / remount) ──
+
+static FUSION_SNAPSHOT_CACHE: std::sync::LazyLock<
+    parking_lot::Mutex<HashMap<usize, FusionUpdate>>,
+> = std::sync::LazyLock::new(|| parking_lot::Mutex::new(HashMap::new()));
+
+fn cache_fusion_snapshot(update: &FusionUpdate) {
+    FUSION_SNAPSHOT_CACHE
+        .lock()
+        .insert(update.slot_idx, update.clone());
+}
+
+fn remove_fusion_snapshot(slot_idx: usize) {
+    FUSION_SNAPSHOT_CACHE.lock().remove(&slot_idx);
+}
+
+/// Return last emitted FusionUpdate per active slot — used to rehydrate frontend listeners.
+#[tauri::command]
+pub fn get_fusion_snapshots() -> Vec<FusionUpdate> {
+    FUSION_SNAPSHOT_CACHE.lock().values().cloned().collect()
+}
+
 // ── Fusion task registry (replaces old global FUSION_TASKS) ─────────
 
 use tokio::sync::Mutex as TokioMutex;
@@ -1383,6 +1418,7 @@ pub async fn stop_brain(slot_idx: usize) {
         let mut event_senders = LOG_EVENT_SENDERS.lock();
         event_senders.remove(&slot_idx);
     }
+    remove_fusion_snapshot(slot_idx);
 }
 
 /// Stop all fusion brains. Call on app shutdown.
@@ -1397,4 +1433,5 @@ pub async fn stop_all_brains() {
         let mut event_senders = LOG_EVENT_SENDERS.lock();
         event_senders.clear();
     }
+    FUSION_SNAPSHOT_CACHE.lock().clear();
 }

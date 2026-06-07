@@ -409,9 +409,9 @@ function App() {
     []
   );
 
-  const handleStopEngine = useCallback(async (alias: string) => {
+  const handleStopEngine = useCallback(async (slotIdx: number) => {
     try {
-      await invoke("stop_engine", { alias });
+      await invoke("stop_engine_slot", { slotIdx });
       // slot-cleared from Rust also clears this slot; stack-changed via push event.
     } catch (err) {
       console.error("Stop failed:", err);
@@ -483,7 +483,7 @@ function App() {
   }, [stack]);
 
   return (
-    <FusionProvider>
+    <FusionProvider stack={stack}>
     <ToastProvider>
       <ThemeProvider>
       <DockProvider>
@@ -609,32 +609,30 @@ function App() {
                     ? Array.from(logs.keys()).sort((a, b) => a - b)
                     : logs.has(activeLogSlot) ? [activeLogSlot] : [];
                   if (slotKeys.length === 0) return <p className="text-[10px] font-mono text-stealth-muted/50 italic">NO LOGS FOR SELECTED SLOT</p>;
-                  return slotKeys.flatMap((slot, si) => {
+                  return slotKeys.map((slot) => {
                     const entries = flatLogs.get(slot) || [];
                     const stackEntry = stack.find((s) => s.idx === slot);
                     const alias = stackEntry?.alias || entries[0]?.alias || `SLOT ${slot}`;
                     return (
-                      <>
+                      <div key={`slot-${slot}`} className="space-y-0.5">
                         {activeLogSlot === "all" && (
-                          <div key={`h-${slot}`} className="mb-2 mt-2 first:mt-0">
+                          <div className="mb-2 mt-2 first:mt-0">
                             <div className="text-[10px] font-mono text-nv-green/80 border-b border-stealth-border pb-1">
                               {alias} <span className="text-stealth-muted/40">({entries.length} lines)</span>
                             </div>
                           </div>
                         )}
-                        <div key={`e-${slot}`} className="space-y-0.5">
-                          {entries.map((entry, i) => {
-                            const slotQuery = logSearchBySlot[slot] ?? "";
-                            const lineQuery = activeLogSlot === "all" ? slotQuery : (logSearchBySlot[activeLogSlot] ?? "");
-                            return (
-                              <p key={i} className="text-[10px] font-mono text-stealth-muted leading-relaxed break-all">
-                                {activeLogSlot === "all" && <span className="text-nv-green/60">[{entry.alias}] </span>}
-                                <LogLineText text={entry.text} highlightQuery={lineQuery} />
-                              </p>
-                            );
-                          })}
-                        </div>
-                      </>
+                        {entries.map((entry, i) => {
+                          const slotQuery = logSearchBySlot[slot] ?? "";
+                          const lineQuery = activeLogSlot === "all" ? slotQuery : (logSearchBySlot[activeLogSlot] ?? "");
+                          return (
+                            <p key={i} className="text-[10px] font-mono text-stealth-muted leading-relaxed break-all">
+                              {activeLogSlot === "all" && <span className="text-nv-green/60">[{entry.alias}] </span>}
+                              <LogLineText text={entry.text} highlightQuery={lineQuery} />
+                            </p>
+                          );
+                        })}
+                      </div>
                     );
                   });
                 })()

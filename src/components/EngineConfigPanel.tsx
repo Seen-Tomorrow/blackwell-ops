@@ -67,6 +67,33 @@ function deriveParamGroups(groupKeys: string[]): ParamGroupMeta[] {
   }));
 }
 
+function collectActiveAliases(stack: StackEntry[]): Set<string> {
+  const used = new Set<string>();
+  for (const s of stack) {
+    if (s.status === "RUNNING" || s.status === "LOADING") {
+      if (s.alias) used.add(s.alias);
+    }
+  }
+  return used;
+}
+
+function nextEngineAlias(stack: StackEntry[]): string {
+  const used = collectActiveAliases(stack);
+  for (let i = 1; i <= 64; i++) {
+    const candidate = `ENGINE_${i}`;
+    if (!used.has(candidate)) return candidate;
+  }
+  return "ENGINE_1";
+}
+
+function resolveUniqueAlias(requested: string, stack: StackEntry[]): string {
+  const used = collectActiveAliases(stack);
+  if (!used.has(requested)) return requested;
+  let suffix = 2;
+  while (used.has(`${requested}_${suffix}`)) suffix++;
+  return `${requested}_${suffix}`;
+}
+
 interface EngineConfigPanelProps {
   model: ModelEntry | null;
   gpus: GpuInfo[];
@@ -110,10 +137,13 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   const [aliasIsUserSet, setAliasIsUserSet] = useState(false);
   const aliasInitializedRef = useRef<{ modelPath: string; done: boolean }>({ modelPath: "", done: false });
   const aliasUserEditedRef = useRef(false);
+  const lastLaunchAtRef = useRef(0);
+  const [launchAck, setLaunchAck] = useState(false);
+  const launchAckTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [selectedBinaryProfile, setSelectedBinaryProfile] = useState<EnvProfile>("vanguard");
 
-  const [isBlazing, setIsBlazing] = useState(false);
+
   const [specFlash, setSpecFlash] = useState(false);
 
   const { texture: displayTexture, label: displayTextureLabel, cycle: cycleDisplayTexture } = useDisplayTexture();
@@ -163,28 +193,11 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           aliasUserEditedRef.current = true;
           setAliasIsUserSet(true);
         } else {
-          // Auto-generate suggestion — not persisted
-          invoke<StackEntry[]>("get_stack_status").then(stack => {
-            const usedNames = new Set<number>();
-            for (const s of stack) {
-              const match = s.alias?.match(/^ENGINE_(\d+)$/);
-              if (match) usedNames.add(parseInt(match[1], 10));
-            }
-            for (let i = 1; i <= 64; i++) {
-              if (!usedNames.has(i)) return `ENGINE_${i}`;
-            }
-            return "ENGINE_1";
-          }).then(autoName => {
-            setAliasInput(autoName);
-            aliasUserEditedRef.current = false;
-            setAliasIsUserSet(false);
-            aliasInitializedRef.current = { modelPath: model.path, done: true };
-          }).catch(() => {
-            setAliasInput("ENGINE_1");
-            aliasUserEditedRef.current = false;
-            setAliasIsUserSet(false);
-            aliasInitializedRef.current = { modelPath: model.path, done: true };
-          });
+          const autoName = nextEngineAlias(stack);
+          setAliasInput(autoName);
+          aliasUserEditedRef.current = false;
+          setAliasIsUserSet(false);
+          aliasInitializedRef.current = { modelPath: model.path, done: true };
         }
       } catch {
         aliasUserEditedRef.current = false;
@@ -192,7 +205,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         aliasInitializedRef.current = { modelPath: model.path, done: true };
       }
     }
-  }, [model?.path]);
+  }, [model?.path, stack]);
 
   // Save alias to localStorage only when user has actively edited it (not on every keystroke)
   const saveAliasForModel = useCallback((modelPath: string, aliasValue: string) => {
@@ -337,6 +350,39 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       .filter(a => a.projectedLoadGb > 0.1) // Only highlight GPUs with actual load
       .map(a => a.gpuIndex);
   }, [vramCalc.manifest]);
+
+  const booterProps = useMemo(() => {
+    const gpuLoadTargetsMib: Record<number, number> = {};
+    for (const alloc of vramCalc.manifest?.gpuAllocations ?? []) {
+      if (alloc.projectedLoadGb > 0.05) {
+        gpuLoadTargetsMib[alloc.gpuIndex] = alloc.projectedLoadGb * 1024;
+      }
+    }
+    if (selectedSlotIdx == null || selectedSlotIdx < 0) {
+      return {
+        gpuMask: "",
+        vramTargetMib: committedVramMib,
+        modelLayerTotal: model?.metadata?.n_layer ?? 0,
+        gpuLoadTargetsMib,
+      };
+    }
+    const entry = stack.find((s) => s.idx === selectedSlotIdx);
+    const maskFromConfig = config.device?.replace(/^GPU-/i, "").replace(/\s+/g, ",");
+    return {
+      gpuMask: entry?.gpu || maskFromConfig || "",
+      vramTargetMib: entry?.vram_mib ?? committedVramMib,
+      modelLayerTotal: model?.metadata?.n_layer ?? vramCalc.manifest?.gpuLayers ?? 0,
+      gpuLoadTargetsMib,
+    };
+  }, [
+    selectedSlotIdx,
+    stack,
+    committedVramMib,
+    model,
+    config.device,
+    vramCalc.manifest?.gpuLayers,
+    vramCalc.manifest?.gpuAllocations,
+  ]);
 
   // ── Provider default param keys (for yellow accent on user-added params) ──
   const [providerDefaultKeys, setProviderDefaultKeys] = useState<Set<string>>(new Set());
@@ -502,45 +548,33 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   }, [model, config, effectiveBackendType]);
 
   // ── Name helpers ───────────────────────────────────────────────────────────
-  const getNextEngineName = useCallback(async (): Promise<string> => {
-    try {
-      const stack = await invoke<StackEntry[]>("get_stack_status");
-      const usedNames = new Set<number>();
-      for (const s of stack) {
-        const match = s.alias?.match(/^ENGINE_(\d+)$/);
-        if (match) {
-          usedNames.add(parseInt(match[1], 10));
-        }
-      }
-      for (let i = 1; i <= 64; i++) {
-        if (!usedNames.has(i)) return `ENGINE_${i}`;
-      }
-    } catch {}
-    return "ENGINE_1";
+  // ── Launch handler ───────────────────────────────────────────────────────
+  const pulseLaunchAck = useCallback(() => {
+    setLaunchAck(true);
+    if (launchAckTimerRef.current) clearTimeout(launchAckTimerRef.current);
+    launchAckTimerRef.current = setTimeout(() => {
+      setLaunchAck(false);
+      launchAckTimerRef.current = null;
+    }, 140);
   }, []);
 
-  // ── Launch handler ───────────────────────────────────────────────────────
-  const handleAddToStack = async () => {
+  useEffect(() => () => {
+    if (launchAckTimerRef.current) clearTimeout(launchAckTimerRef.current);
+  }, []);
+
+  const handleAddToStack = () => {
     if (!model) return;
+    const now = Date.now();
+    if (now - lastLaunchAtRef.current < 60) return;
+    lastLaunchAtRef.current = now;
+    pulseLaunchAck();
 
     // Resolve final alias: user input if non-empty, otherwise auto-generate
     let finalAlias = aliasInput.trim();
     if (!finalAlias) {
-      finalAlias = await getNextEngineName();
+      finalAlias = nextEngineAlias(stack);
     }
-    
-    // Check for collision with active (non-IDLE) engines — append suffix if needed
-    try {
-      const stackStatus = await invoke<StackEntry[]>("get_stack_status");
-      const collisions = stackStatus.filter(s => s.alias === finalAlias && s.status !== "IDLE");
-      if (collisions.length > 0) {
-        let suffix = 2;
-        while (stackStatus.some(s => s.alias === `${finalAlias}_${suffix}` && s.status !== "IDLE")) {
-          suffix++;
-        }
-        finalAlias = `${finalAlias}_${suffix}`;
-      }
-    } catch {}
+    finalAlias = resolveUniqueAlias(finalAlias, stack);
 
     // Build data-driven EngineConfig: mandatory fields + all user params in extra_params
     const extraParams: Record<string, any> = { ...config };
@@ -566,25 +600,23 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         : { ...fullConfig.extra_params, __test_args_add: testArgs }; // ADD: merge with user config, append test flags
     }
 
-    // Trigger blaze animation
-    setIsBlazing(true);
-    setTimeout(() => setIsBlazing(false), 800);
-
-    try {
-      const result = await onLaunch(fullConfig);
-      // Dispatch success event for toast + status bar with the real port from backend
-      if (result?.port) {
-        dispatchAppEvent(EVENTS.launchSuccess, { alias: finalAlias, port: result.port });
-      }
-      // Only persist if user actively edited the alias — skip auto-generated ENGINE_N names
-      const wasUserEdited = aliasUserEditedRef.current;
-      if (wasUserEdited) {
-        saveAliasForModel(model.path, aliasInput.trim());
-      }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      dispatchAppEvent(EVENTS.launchError, { message: msg });
-    }
+    void onLaunch(fullConfig)
+      .then((result) => {
+        const resolvedAlias = result?.alias ?? finalAlias;
+        if (result?.port) {
+          dispatchAppEvent(EVENTS.launchSuccess, { alias: resolvedAlias, port: result.port });
+        }
+        const wasUserEdited = aliasUserEditedRef.current;
+        if (wasUserEdited) {
+          saveAliasForModel(model.path, aliasInput.trim());
+        } else if (resolvedAlias !== aliasInput) {
+          setAliasInput(resolvedAlias);
+        }
+      })
+      .catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        dispatchAppEvent(EVENTS.launchError, { message: msg });
+      });
   };
 
   // ── Empty state ──────────────────────────────────────────────────────────
@@ -734,11 +766,11 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       })()}
 
     {/* VRAM + Running Engines — industrial display unit */}
-      <div className="industrial-display-area flex-shrink-0">
-          <div
-            className="industrial-display-frame relative"
-            data-display-texture={displayTexture}
-          >
+      <div
+        className="industrial-display-area flex-shrink-0"
+        data-display-texture={displayTexture}
+      >
+          <div className="industrial-display-frame relative">
               <button
                 type="button"
                 onClick={cycleDisplayTexture}
@@ -765,6 +797,10 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                   activeEnginePort={activeEnginePort}
                   selectedSlotIdx={selectedSlotIdx}
                   supportsFusion={supportsFusion}
+                  gpuMask={booterProps.gpuMask}
+                  vramTargetMib={booterProps.vramTargetMib}
+                  modelLayerTotal={booterProps.modelLayerTotal}
+                  gpuLoadTargetsMib={booterProps.gpuLoadTargetsMib}
                   offloadMode={config["offload_mode"]}
                   onMoeSuggestionClick={() => {
                     updateParam("offload_mode", "moe_optimal");
@@ -1031,9 +1067,9 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           <button
             onClick={handleAddToStack}
             disabled={!model || vramCalc.manifest?.scenario === 'HW_LOCKED'}
-            className={`w-full ignite-btn px-4 py-3 text-xs font-mono tracking-widest rounded-sm disabled:opacity-40 disabled:cursor-not-allowed config-launch-btn ${isBlazing ? "blazing" : ""}`}
+            className={`w-full ignite-btn px-4 py-2.5 text-[10px] font-mono tracking-[0.2em] rounded-sm disabled:opacity-40 disabled:cursor-not-allowed config-launch-btn ${launchAck ? "launch-ack" : ""}`}
           >
-            {isBlazing ? "🔥 LAUNCHED" : "✦ LAUNCH ENGINE ✦"}
+            LAUNCH ENGINE
           </button>
           <p className="text-[8px] font-mono text-stealth-muted/40 text-center mt-1.5">Ctrl+Enter to launch</p>
         </div>

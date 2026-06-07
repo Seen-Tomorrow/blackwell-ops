@@ -9,7 +9,7 @@ interface SlotLogPanelProps {
   systemEvents: Array<{ text: string; timestamp: string }>;
   fusionUpdate?: FusionUpdate | null;
   n_ctx?: number;
-  onStop: (alias: string) => void;
+  onStop: (slotIdx: number) => void;
 }
 
 function StatBlock({ label, value, highlight }: {
@@ -77,7 +77,7 @@ export default memo(function SlotLogPanel({ entry, logs, systemEvents, fusionUpd
           )}
         </div>
         <button
-          onClick={() => onStop(entry.alias)}
+          onClick={() => onStop(entry.idx)}
           disabled={entry.status === "IDLE" || entry.status === "ERROR"}
           className="text-[10px] font-mono text-red-400/70 hover:text-red-400 transition-colors disabled:opacity-20 disabled:cursor-not-allowed px-2 py-0.5 border border-transparent hover:border-red-500/30"
         >

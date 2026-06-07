@@ -252,6 +252,11 @@ export interface SystemInfo {
   total_memory_manufactured_mib: number; // Rounded manufactured capacity for display (e.g., 256 GB = 262144 MiB)
 }
 
+export interface DiskIoInfo {
+  read_mib_per_s: number;
+  write_mib_per_s: number;
+}
+
 export interface StackEntry {
   idx: number;
   alias: string;

@@ -24,7 +24,8 @@ use tauri::{Manager, path::BaseDirectory};
 
 use crate::types::{ModelPathEntry, PathDiskUsage, ProviderConfig};
 
-pub const MAX_ENGINE_SLOTS: usize = 16;
+/// Hard ceiling for engine stack size — individual providers may declare lower limits in spawn_profile.
+pub const ABSOLUTE_MAX_ENGINE_SLOTS: usize = 128;
 
 /// Default provider ID — bundled with the app, always present.
 pub const DEFAULT_PROVIDER_ID: &str = "ggml-master";
@@ -264,6 +265,7 @@ fn default_providers() -> Vec<ProviderConfig> { Vec::new() }
 pub struct AppConfig {
     #[serde(default)]
     pub model_paths: Vec<ModelPathEntry>,
+    /// Legacy field — engine slot count comes from provider `spawn_profile.max_engine_slots`. Ignored at runtime.
     #[serde(default)]
     pub gpu_slots: usize,
     /// HuggingFace API token — stored in app_config.json. Empty string if not set.
@@ -289,7 +291,7 @@ impl Default for AppConfig {
 
         Self {
             model_paths,
-            gpu_slots: MAX_ENGINE_SLOTS,
+            gpu_slots: 0,
             hf_token: String::new(),
             providers: Vec::new(),
             default_download_path: Some(app_dir.to_string_lossy().to_string()),
@@ -722,7 +724,7 @@ pub fn load_config_with_app(_app_handle: &tauri::AppHandle) -> AppConfig {
         build_config_with_providers_full(gpu_count, saved)
     } else {
         let gpu_count = crate::telemetry::detect_gpu_count();
-        let fresh = build_fresh_config(MAX_ENGINE_SLOTS);
+        let fresh = build_fresh_config();
         build_config_with_providers_full(gpu_count, fresh)
     }
 }
@@ -736,7 +738,7 @@ pub fn load_config() -> AppConfig {
     }
 
     let gpu_count = crate::telemetry::detect_gpu_count();
-    let fresh = build_fresh_config(MAX_ENGINE_SLOTS);
+    let fresh = build_fresh_config();
     build_config_with_providers_full(gpu_count, fresh)
 }
 
@@ -1013,7 +1015,7 @@ pub fn save_config(config: &mut AppConfig) -> Result<(), String> {
     Ok(())
 }
 
-fn build_fresh_config(_gpu_slots: usize) -> AppConfig {
+fn build_fresh_config() -> AppConfig {
     let mut model_paths: Vec<ModelPathEntry> = Vec::new();
 
     model_paths.push(ModelPathEntry {
@@ -1035,7 +1037,7 @@ fn build_fresh_config(_gpu_slots: usize) -> AppConfig {
     let default_download_path = model_paths.iter().find(|p| p.is_default).map(|p| p.path.clone());
     AppConfig {
         model_paths,
-        gpu_slots: MAX_ENGINE_SLOTS,
+        gpu_slots: 0,
         hf_token: String::new(),
         providers: Vec::new(),
         default_download_path,
@@ -1521,7 +1523,6 @@ fn build_config_with_providers_full(_gpu_count: usize, mut config: AppConfig) ->
     }
 
     config.providers = providers;
-    config.gpu_slots = MAX_ENGINE_SLOTS;
 
     config
 }

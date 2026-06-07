@@ -61,6 +61,9 @@ pub struct SpawnProfile {
     pub ngl_flag: Vec<String>,
     #[serde(default = "default_mmproj_flag")]
     pub mmproj_flag: Vec<String>,
+    /// Max concurrent engine slots when this provider is installed (global stack uses the highest value across all providers).
+    #[serde(default = "default_max_engine_slots")]
+    pub max_engine_slots: usize,
 }
 
 fn default_model_flag() -> Vec<String> { vec!["-m".into()] }
@@ -70,6 +73,7 @@ fn default_gpu_env() -> String { "CUDA_VISIBLE_DEVICES".into() }
 fn default_ngl_flag() -> Vec<String> { vec!["--n-gpu-layers".into()] }
 fn default_mmproj_flag() -> Vec<String> { vec!["--mmproj".into()] }
 fn default_true() -> bool { true }
+fn default_max_engine_slots() -> usize { 32 }
 
 impl Default for SpawnProfile {
     fn default() -> Self {
@@ -83,6 +87,7 @@ impl Default for SpawnProfile {
             gpu_env: default_gpu_env(),
             ngl_flag: default_ngl_flag(),
             mmproj_flag: default_mmproj_flag(),
+            max_engine_slots: default_max_engine_slots(),
         }
     }
 }
@@ -210,6 +215,54 @@ pub fn load_provider_defaults(provider_id: &str) -> Option<ProviderTemplate> {
         spawn_profile: cfg.spawn_profile,
         params: cfg.params,
     })
+}
+
+/// Resolve global engine stack capacity from provider factory `spawn_profile.max_engine_slots`.
+/// Uses the maximum across all discovered runtime providers, clamped to [`crate::config::ABSOLUTE_MAX_ENGINE_SLOTS`].
+pub fn resolve_engine_slot_count() -> usize {
+    use crate::config::ABSOLUTE_MAX_ENGINE_SLOTS;
+
+    let app_root = crate::config::app_root_dir();
+    let binaries_dir = app_root.join("runtime");
+    let mut max_slots = 0usize;
+
+    if binaries_dir.exists() {
+        for entry in std::fs::read_dir(&binaries_dir).into_iter().flatten().filter_map(|e| e.ok()) {
+            if !entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false) {
+                continue;
+            }
+            let pid = entry.file_name().to_string_lossy().to_string();
+            if let Some(template) = load_provider_defaults(&pid) {
+                let n = template.spawn_profile.max_engine_slots;
+                if n > max_slots {
+                    log::info!(
+                        "[engine-slots] Provider '{}' spawn_profile.max_engine_slots={}",
+                        pid,
+                        n
+                    );
+                    max_slots = n;
+                }
+            }
+        }
+    }
+
+    if max_slots == 0 {
+        max_slots = default_max_engine_slots();
+        log::warn!(
+            "[engine-slots] No provider spawn_profile found — using default {}",
+            max_slots
+        );
+    }
+
+    let clamped = max_slots.clamp(1, ABSOLUTE_MAX_ENGINE_SLOTS);
+    if clamped != max_slots {
+        log::warn!(
+            "[engine-slots] Requested {} slots — clamped to absolute ceiling {}",
+            max_slots,
+            ABSOLUTE_MAX_ENGINE_SLOTS
+        );
+    }
+    clamped
 }
 
 impl ProviderTemplate {

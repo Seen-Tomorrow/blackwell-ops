@@ -363,6 +363,85 @@ html, body, #root {
   background: linear-gradient(90deg, transparent, var(--theme-accent-glow), transparent);
 }
 
+/* ── Model catalog / engine config split handle ─── */
+.catalog-split-handle {
+  position: relative;
+  flex-shrink: 0;
+  width: 7px;
+  margin: 0 -1px;
+  cursor: col-resize;
+  touch-action: none;
+  z-index: 2;
+  background: transparent;
+  transition: background-color 0.15s ease;
+}
+
+.catalog-split-handle::before {
+  content: '';
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 1px;
+  background: #606060;
+  opacity: 0.45;
+  transition: opacity 0.15s ease, background-color 0.15s ease;
+}
+
+.catalog-split-handle::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 3px;
+  height: 22px;
+  border-radius: 1px;
+  background:
+    radial-gradient(circle, #909090 0.6px, transparent 0.6px) center 3px / 3px 5px repeat-y;
+  opacity: 0.55;
+  transition: opacity 0.15s ease;
+}
+
+.catalog-split-handle:hover,
+.catalog-split-handle.is-dragging {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.catalog-split-handle:hover::before,
+.catalog-split-handle.is-dragging::before {
+  opacity: 0.85;
+  background: #a0a0a0;
+}
+
+.catalog-split-handle:hover::after,
+.catalog-split-handle.is-dragging::after {
+  opacity: 0.9;
+}
+
+[data-theme="arctic"] .catalog-split-handle::before {
+  background: #4a4a4a;
+  opacity: 0.35;
+}
+
+[data-theme="arctic"] .catalog-split-handle::after {
+  background:
+    radial-gradient(circle, #5a5a5a 0.6px, transparent 0.6px) center 3px / 3px 5px repeat-y;
+  opacity: 0.5;
+}
+
+[data-theme="arctic"] .catalog-split-handle:hover,
+[data-theme="arctic"] .catalog-split-handle.is-dragging {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+[data-theme="arctic"] .catalog-split-handle:hover::before,
+[data-theme="arctic"] .catalog-split-handle.is-dragging::before {
+  background: #3a3a3a;
+  opacity: 0.65;
+}
+
 /* Neon glow borders */
 .neon-border-green {
   border-color: rgba(118, 185, 0, 0.4) !important;
@@ -469,42 +548,15 @@ html, body, #root {
   box-shadow: 0 0 12px rgba(0, 229, 255, 0.4);
 }
 
-/* ── Blaze animation for ignite button ─────────────────────────── */
-@keyframes blazeRise {
-  0% { transform: translateY(0) scale(1); opacity: 0.9; }
-  50% { transform: translateY(-20px) scale(1.3); opacity: 0.6; }
-  100% { transform: translateY(-40px) scale(0.8); opacity: 0; }
+/* ── Launch button ack — single subtle pulse, no click block ─── */
+@keyframes launchAckPulse {
+  0% { border-color: rgba(74, 222, 128, 0.35); background-color: rgba(74, 222, 128, 0.06); }
+  40% { border-color: rgba(74, 222, 128, 0.75); background-color: rgba(74, 222, 128, 0.14); }
+  100% { border-color: rgba(74, 222, 128, 0.35); background-color: rgba(74, 222, 128, 0.06); }
 }
 
-@keyframes blazeFlicker {
-  0%, 100% { box-shadow: 0 0 20px rgba(255, 140, 0, 0.6), 0 0 40px rgba(255, 80, 0, 0.3); }
-  25% { box-shadow: 0 0 30px rgba(255, 180, 0, 0.8), 0 0 60px rgba(255, 100, 0, 0.4); }
-  50% { box-shadow: 0 0 25px rgba(255, 120, 0, 0.7), 0 0 50px rgba(255, 60, 0, 0.3); }
-  75% { box-shadow: 0 0 35px rgba(255, 200, 0, 0.9), 0 0 70px rgba(255, 140, 0, 0.5); }
-}
-
-@keyframes blazeParticle {
-  0% { bottom: 0; left: var(--start-x); opacity: 1; transform: scale(var(--scale)); }
-  60% { opacity: 0.7; }
-  100% { bottom: 50px; opacity: 0; transform: translateY(-30px) scale(0.3); }
-}
-
-.ignite-btn.blazing {
-  animation: blazeFlicker 0.15s ease-in-out infinite;
-  border-color: rgba(255, 160, 0, 0.9) !important;
-  background: linear-gradient(135deg, rgba(255, 140, 0, 0.3) 0%, rgba(255, 80, 0, 0.2) 100%) !important;
-  color: #ffcc00 !important;
-}
-
-.ignite-btn.blazing::before {
-  content: '';
-  position: absolute;
-  bottom: -2px;
-  left: 0;
-  right: 0;
-  height: 4px;
-  background: linear-gradient(90deg, #ff6600, #ffcc00, #ff8800, #ffaa00);
-  animation: blazeFlicker 0.1s ease-in-out infinite;
+.ignite-btn.launch-ack {
+  animation: launchAckPulse 0.14s ease-out;
 }
 
 /* ── Toast notification styles ─────────────────────────────────── */
@@ -642,31 +694,19 @@ html, body, #root {
   border: 1px solid rgba(74, 222, 128, 0.35);
   color: #4ade80;
   text-transform: uppercase;
-  letter-spacing: 0.15em;
-  font-weight: bold;
+  font-weight: 600;
   position: relative;
-  overflow: hidden;
-  transition: all 0.3s ease;
+  transition: border-color 0.12s ease, background-color 0.12s ease, color 0.12s ease;
 }
 
-.ignite-btn::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: -100%;
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(74, 222, 128, 0.15), transparent);
-  transition: left 0.5s ease;
+.ignite-btn:hover:not(:disabled) {
+  border-color: rgba(74, 222, 128, 0.55);
+  background: rgba(74, 222, 128, 0.1);
 }
 
-.ignite-btn:hover::before {
-  left: 100%;
-}
-
-.ignite-btn:hover {
-  box-shadow: 0 0 20px rgba(74, 222, 128, 0.2), inset 0 0 20px rgba(74, 222, 128, 0.05);
+.ignite-btn:active:not(:disabled) {
   border-color: rgba(74, 222, 128, 0.7);
+  background: rgba(74, 222, 128, 0.14);
 }
 
 /* Provider pill button — themed amber/secondary */
@@ -958,6 +998,15 @@ html, body, #root {
   outline-offset: 2px;
 }
 
+/* ARCTIC — ENGINE PROVIDER pills match RUNTIME PROFILE amber chips */
+[data-theme="arctic"] .provider-pill:hover {
+  background: rgba(184, 122, 0, 0.12) !important;
+}
+
+[data-theme="arctic"] .provider-pill-active {
+  box-shadow: 0 0 6px rgba(184, 122, 0, 0.3);
+}
+
 [data-theme="arctic"] .display-texture-toggle {
   border-color: #4a4a4a;
   color: #4a4a4a;
@@ -1067,9 +1116,9 @@ html, body, #root {
   animation: display-crt-beam-sweep 2.8s linear infinite;
 }
 
-/* PHOSPHOR (dark + light) — VRAM: recessed phosphor + dot matrix */
-[data-display-texture="phosphor-dark"] .phosphor-screen-inner.phosphor-display-surface,
-[data-display-texture="phosphor-light"] .phosphor-screen-inner.phosphor-display-surface {
+/* PHOSPHOR DARK — VRAM forecast: recessed dark phosphor + dot matrix + bloom */
+[data-display-texture="phosphor-dark"] .phosphor-screen-inner.phosphor-display-surface {
+  background-color: var(--phosphor-bg, #030801);
   box-shadow:
     inset 0 2px 8px var(--theme-phosphor-inset-top),
     inset 0 -2px 8px var(--theme-phosphor-inset-bottom);
@@ -1086,8 +1135,7 @@ html, body, #root {
   background-size: 100% 100%, 2px 2px, 100% 4px;
 }
 
-[data-display-texture="phosphor-dark"] .phosphor-screen-inner.phosphor-display-surface::after,
-[data-display-texture="phosphor-light"] .phosphor-screen-inner.phosphor-display-surface::after {
+[data-display-texture="phosphor-dark"] .phosphor-screen-inner.phosphor-display-surface::after {
   display: block;
   opacity: 1;
   background-image:
@@ -1096,8 +1144,7 @@ html, body, #root {
   animation: display-phosphor-bloom 5s ease-in-out infinite;
 }
 
-[data-display-texture="phosphor-dark"] .phosphor-screen-inner.phosphor-display-surface::before,
-[data-display-texture="phosphor-light"] .phosphor-screen-inner.phosphor-display-surface::before {
+[data-display-texture="phosphor-dark"] .phosphor-screen-inner.phosphor-display-surface::before {
   display: block;
   opacity: 0.55;
   background: linear-gradient(
@@ -1113,13 +1160,8 @@ html, body, #root {
   animation: display-phosphor-glare 7s ease-in-out infinite;
 }
 
-/* PHOSPHOR DARK — fusion overlay uses themed dark phosphor (.phosphor-screen base) */
-[data-display-texture="phosphor-dark"] .phosphor-screen.phosphor-display-surface::after,
-[data-display-texture="phosphor-dark"] .phosphor-screen.phosphor-display-surface::before {
-  display: none;
-}
-
-/* PHOSPHOR LIGHT — fusion e-ink LCD (pixel grid + banding + top glare) */
+/* PHOSPHOR LIGHT — VRAM + fusion: beige e-ink LCD */
+[data-display-texture="phosphor-light"] .phosphor-screen-inner.phosphor-display-surface,
 [data-display-texture="phosphor-light"] .phosphor-screen.phosphor-display-surface {
   background-color: var(--fusion-eink-surface);
   background-image:
@@ -1138,11 +1180,35 @@ html, body, #root {
     inset 0 1px 40px rgba(255, 255, 255, 0.3);
 }
 
+[data-display-texture="phosphor-light"] .phosphor-screen-inner.phosphor-display-surface::after,
+[data-display-texture="phosphor-light"] .phosphor-screen-inner.phosphor-display-surface::before,
 [data-display-texture="phosphor-light"] .phosphor-screen.phosphor-display-surface::after,
 [data-display-texture="phosphor-light"] .phosphor-screen.phosphor-display-surface::before {
   display: none;
 }
 
+/* PHOSPHOR DARK — fusion overlay: themed dark phosphor glow */
+[data-display-texture="phosphor-dark"] .phosphor-screen.phosphor-display-surface {
+  background-color: var(--phosphor-bg, #08140a);
+  background-image:
+    radial-gradient(ellipse at center, var(--phosphor-glow, rgba(74, 222, 128, 0.06)) 0%, transparent 70%);
+  box-shadow:
+    inset 0 2px 6px var(--theme-phosphor-inset-top),
+    inset 0 -1px 3px var(--theme-phosphor-inset-bottom),
+    inset 0 1px 40px color-mix(in srgb, var(--theme-text) 8%, transparent);
+}
+
+[data-display-texture="phosphor-dark"] .phosphor-screen.phosphor-display-surface::after,
+[data-display-texture="phosphor-dark"] .phosphor-screen.phosphor-display-surface::before {
+  display: none;
+}
+
+/* PHOSPHOR LIGHT — e-ink text palette (VRAM forecast + fusion overlay) */
+[data-display-texture="phosphor-light"] .phosphor-screen-inner .text-stealth-muted,
+[data-display-texture="phosphor-light"] .phosphor-screen-inner .text-stealth-muted\/30,
+[data-display-texture="phosphor-light"] .phosphor-screen-inner .text-stealth-muted\/40,
+[data-display-texture="phosphor-light"] .phosphor-screen-inner .text-stealth-muted\/50,
+[data-display-texture="phosphor-light"] .phosphor-screen-inner .text-stealth-muted\/60,
 [data-display-texture="phosphor-light"] .phosphor-screen .text-stealth-muted,
 [data-display-texture="phosphor-light"] .phosphor-screen .text-stealth-muted\/30,
 [data-display-texture="phosphor-light"] .phosphor-screen .text-stealth-muted\/40,
@@ -1151,29 +1217,42 @@ html, body, #root {
   color: var(--fusion-eink-text-muted) !important;
 }
 
+[data-display-texture="phosphor-light"] .phosphor-screen-inner .text-nv-green,
 [data-display-texture="phosphor-light"] .phosphor-screen .text-nv-green {
   color: var(--fusion-eink-text-accent) !important;
 }
 
+[data-display-texture="phosphor-light"] .phosphor-screen-inner .text-electric-blue,
+[data-display-texture="phosphor-light"] .phosphor-screen-inner .text-blue-700,
 [data-display-texture="phosphor-light"] .phosphor-screen .text-telemetry-cyan,
 [data-display-texture="phosphor-light"] .phosphor-screen .text-telemetry-cyan\/70 {
   color: var(--fusion-eink-text-cyan) !important;
 }
 
+[data-display-texture="phosphor-light"] .phosphor-screen-inner .text-orange-400,
+[data-display-texture="phosphor-light"] .phosphor-screen-inner .text-telemetry-amber,
 [data-display-texture="phosphor-light"] .phosphor-screen .text-orange-400,
 [data-display-texture="phosphor-light"] .phosphor-screen .text-telemetry-amber,
 [data-display-texture="phosphor-light"] .phosphor-screen .text-telemetry-amber\/80 {
   color: var(--fusion-eink-text-amber) !important;
 }
 
+[data-display-texture="phosphor-light"] .phosphor-screen-inner .bg-stealth-dark,
 [data-display-texture="phosphor-light"] .phosphor-screen .bg-stealth-dark {
   background-color: var(--fusion-eink-bar-bg) !important;
 }
 
+[data-display-texture="phosphor-light"] .phosphor-screen-inner .border-stealth-border,
+[data-display-texture="phosphor-light"] .phosphor-screen-inner .border-stealth-border\/30,
+[data-display-texture="phosphor-light"] .phosphor-screen-inner .border-stealth-border\/50,
 [data-display-texture="phosphor-light"] .phosphor-screen .border-stealth-border,
 [data-display-texture="phosphor-light"] .phosphor-screen .border-stealth-border\/30,
 [data-display-texture="phosphor-light"] .phosphor-screen .border-stealth-border\/50 {
   border-color: var(--fusion-eink-border) !important;
+}
+
+[data-display-texture="phosphor-light"] .phosphor-screen-inner .relative.overflow-hidden.border-stealth-border\/30 {
+  background-color: var(--fusion-eink-bar-bg) !important;
 }
 
 @keyframes display-crt-roll {
@@ -2278,16 +2357,9 @@ select option {
   animation: configEmptyEnter 0.5s ease-out both;
 }
 
-.config-launch-btn {
-  transition: transform 0.15s ease;
-}
-
-.config-launch-btn:hover:not(:disabled) {
-  transform: scale(1.01);
-}
-
 .config-launch-btn:active:not(:disabled) {
-  transform: scale(0.98);
+  transform: scale(0.995);
+  transition: transform 0.08s ease;
 }
 
 /* ── ModelCard animations ─── */
@@ -2373,6 +2445,15 @@ select option {
 
 .toast-enter {
   animation: toastEnter 0.3s ease-out both;
+}
+
+/* FusionBooter — animated GPU interconnect during model load */
+@keyframes fusion-boot-dash {
+  to { stroke-dashoffset: -20; }
+}
+
+.fusion-boot-link-active {
+  animation: fusion-boot-dash 0.6s linear infinite;
 }
 
 

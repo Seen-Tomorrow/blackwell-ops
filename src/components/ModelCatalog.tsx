@@ -4,6 +4,7 @@ import EngineConfigPanel from "./EngineConfigPanel";
 import ModelCard from "./ModelCard";
 
 import { useModelCatalog, type SortField } from "../hooks/useModelCatalog";
+import { useCatalogSplitResize } from "../hooks/useCatalogSplitResize";
 import { useTelemetry } from "../context/TelemetryContext";
 
 
@@ -34,6 +35,9 @@ export default function ModelCatalog(props: ModelCatalogProps) {
   const catalog = useModelCatalog({
     models, gpus, stack, scanningPath, setScanningPath, batchScanState, setBatchScanState, onReload,
   });
+
+  const { containerRef: splitContainerRef, catalogWidth, isDragging, startDrag, resetWidth } =
+    useCatalogSplitResize();
 
   const { search, setSearch, catalogSelectedModel, panelActiveModel, handleSelect, handleSelectBySlot, selectedSlotIdx, sortField, sortDirection, handleSort,
     pinnedModels, catalogModels, allFiltered, runningModelPaths, runningInstances, activeEngineByModel,
@@ -227,10 +231,13 @@ export default function ModelCatalog(props: ModelCatalogProps) {
         </div>
       )}
 
-      {/* Split panels */}
-      <div className="flex flex-1 overflow-hidden">
+      {/* Split panels — drag handle resets to default on double-click */}
+      <div ref={splitContainerRef} className="flex flex-1 overflow-hidden min-h-0">
         {/* Left panel — model browser */}
-        <div className="w-[420px] min-w-[320px] flex flex-col eink-panel-wrapper">
+        <div
+          className="flex flex-col eink-panel-wrapper flex-shrink-0 min-h-0"
+          style={{ width: catalogWidth }}
+        >
 
           {/* Search bar */}
           <div className="px-3 py-2 flex-shrink-0">
@@ -284,10 +291,23 @@ export default function ModelCatalog(props: ModelCatalogProps) {
             );
           })()}
         </div>
-        {/* end left panel */}
+
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-valuenow={catalogWidth}
+          aria-label="Resize catalog and engine config panels"
+          className={`catalog-split-handle${isDragging ? " is-dragging" : ""}`}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            startDrag();
+          }}
+          onDoubleClick={resetWidth}
+          title="Drag to resize · double-click to reset"
+        />
 
         {/* Right panel — config + diagnostics */}
-        <div className="flex-1 eink-panel-wrapper overflow-hidden flex flex-col">
+        <div className="flex-1 min-w-0 eink-panel-wrapper overflow-hidden flex flex-col">
           <div className="flex-shrink-0">
             <EngineConfigPanel
               model={panelActiveModel}

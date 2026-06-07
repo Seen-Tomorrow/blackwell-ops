@@ -2,7 +2,9 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { FusionUpdate } from "../lib/types";
 import BenchWidget from "./BenchWidget";
+import FusionBooter from "./FusionBooter";
 import SlotCtxBars from "./SlotCtxBars";
+import type { GpuInfo } from "../lib/types";
 import { useFusionHeroTpsMode } from "../hooks/useFusionHeroTpsMode";
 import { useTauriListen } from "../hooks/useTauriListen";
 
@@ -11,6 +13,12 @@ interface FusionOverlayProps {
   enginePort?: number;
   fusion: FusionUpdate | null;
   supportsFusion?: boolean;
+  slotIdx?: number;
+  gpus?: GpuInfo[];
+  gpuMask?: string;
+  vramTargetMib?: number;
+  modelLayerTotal?: number;
+  gpuLoadTargetsMib?: Record<number, number>;
 }
 
 function formatMs(ms: number): string {
@@ -30,7 +38,18 @@ interface LastRequestStats {
   elapsedMs: string;
 }
 
-export default function FusionOverlay({ alias, enginePort, fusion, supportsFusion = true }: FusionOverlayProps) {
+export default function FusionOverlay({
+  alias,
+  enginePort,
+  fusion,
+  supportsFusion = true,
+  slotIdx = -1,
+  gpus = [],
+  gpuMask = "",
+  vramTargetMib,
+  modelLayerTotal,
+  gpuLoadTargetsMib,
+}: FusionOverlayProps) {
   const displayAlias = alias ?? "ENGINE";
   const displayPort = enginePort ?? 9090;
 
@@ -67,13 +86,17 @@ export default function FusionOverlay({ alias, enginePort, fusion, supportsFusio
     stoppingRef.current = true;
     setIsStopping(true);
     try {
-      await invoke("stop_engine", { alias: displayAlias });
+      if (slotIdx >= 0) {
+        await invoke("stop_engine_slot", { slotIdx });
+      } else {
+        await invoke("stop_engine", { alias: displayAlias });
+      }
     } catch (e) {
       console.error("[FUSION] stop_engine failed:", e);
       stoppingRef.current = false;
       setIsStopping(false);
     }
-  }, [displayAlias]);
+  }, [displayAlias, slotIdx]);
 
   const isActive = fusion != null && fusion.phase !== "IDLE";
 
@@ -146,8 +169,14 @@ export default function FusionOverlay({ alias, enginePort, fusion, supportsFusio
 
   if (!fusion) {
     return (
-      <div className="flex flex-col items-center justify-center gap-2 w-full h-full">
+      <div className="flex flex-col items-center justify-center gap-2 w-full h-full px-4 text-center">
         <span className="text-[16px] font-mono text-stealth-muted/40 tracking-widest">{displayAlias}</span>
+        <span className="text-[9px] font-mono text-nv-green/70 tracking-wider animate-pulse">
+          SYNCING FUSION…
+        </span>
+        <span className="text-[8px] font-mono text-stealth-muted/40 leading-relaxed">
+          Telemetry link lost (remount or idle dedup). Restores within a few seconds.
+        </span>
         <span className="text-[8px] font-mono text-stealth-muted/30">PORT {displayPort}</span>
       </div>
     );
@@ -195,22 +224,29 @@ export default function FusionOverlay({ alias, enginePort, fusion, supportsFusio
 
   return (
     <div className="relative w-full h-full overflow-hidden">
-      {isLaunching ? (
+      {isLaunching && slotIdx >= 0 ? (
         <div
           key="launching"
-          className="flex flex-col items-center justify-center gap-3 w-full h-full absolute inset-0"
-          style={{ animation: 'fadeIn 0.2s ease' }}
+          className="absolute inset-0 w-full h-full"
+          style={{ animation: "fadeIn 0.2s ease" }}
         >
-          <div
-            className="w-8 h-8 rounded-full border-2 border-nv-green/60 flex items-center justify-center"
-            style={{ animation: 'pulseScale 1.5s ease-in-out infinite' }}
-          >
-            <div className="w-2 h-2 bg-nv-green rounded-full" />
-          </div>
-
-          <span className="text-[10px] font-mono text-nv-green tracking-widest animate-pulse">
-            INITIALIZING CORE
-          </span>
+          <FusionBooter
+            slotIdx={slotIdx}
+            alias={displayAlias}
+            port={displayPort}
+            gpus={gpus}
+            gpuMask={gpuMask}
+            vramTargetMib={vramTargetMib}
+            modelLayerTotal={modelLayerTotal}
+            gpuLoadTargetsMib={gpuLoadTargetsMib}
+          />
+        </div>
+      ) : isLaunching ? (
+        <div
+          key="launching-fallback"
+          className="flex flex-col items-center justify-center gap-2 w-full h-full absolute inset-0"
+        >
+          <span className="text-[10px] font-mono text-nv-green tracking-widest animate-pulse">FUSION BOOT</span>
           <span className="text-[8px] font-mono text-stealth-muted/40">{displayAlias} : {displayPort}</span>
         </div>
       ) : (

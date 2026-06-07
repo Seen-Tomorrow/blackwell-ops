@@ -424,9 +424,9 @@ async fn main() {
             // Load config with bundled path resolution (needs app handle)
             let app_config = config::load_config_with_app(app.handle());
 
-            let slot_count = std::cmp::max(1, app_config.gpu_slots);
+            let slot_count = crate::templates::resolve_engine_slot_count();
             let stack = Arc::new(Mutex::new(EngineStack::new(slot_count)));
-            log::info!("Initializing EngineStack with {} slots for {} GPU(s)", slot_count, slot_count);
+            log::info!("Initializing EngineStack with {} engine slot(s) (from provider spawn_profile)", slot_count);
             let log_hub = LogHub::new(app.handle().clone());
             let config_arc = Arc::new(std::sync::Mutex::new(app_config.clone()));
 
@@ -474,6 +474,7 @@ async fn main() {
             engine::list_models,
             engine::launch_engine,
             engine::stop_engine,
+            engine::stop_engine_slot,
             engine::stop_all_engines,
             engine::stop_engines_by_provider,
             engine::get_stack_status,
@@ -495,6 +496,7 @@ async fn main() {
             telemetry::scan_gpus,
             telemetry::scan_cpu,
             telemetry::scan_system_info,
+            telemetry::scan_disk_io,
             config::load_config,
             config::reset_provider_user_config,
             config::save_user_providers_meta,
@@ -512,6 +514,7 @@ async fn main() {
             engine::clear_model_cache_cmd,
             burst_bench::cmd_burst_bench,
             bench_pp_burst::cmd_bench_pp_burst,
+            fusion_brain::get_fusion_snapshots,
             // Mobile Sentinel Bridge commands (always active)
             mobile_bridge::cmd_mobile_bridge_start,
             mobile_bridge::cmd_mobile_bridge_stop,

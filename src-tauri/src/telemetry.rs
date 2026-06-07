@@ -253,6 +253,137 @@ fn memory_total_from_name(name: &str) -> u64 {
     else { 0 }
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct DiskIoInfo {
+    pub read_mib_per_s: f32,
+    pub write_mib_per_s: f32,
+}
+
+/// Display cap — perf-counter spikes can report nonsense; Gen5 PHY ~15 GiB/s, headroom to 25.
+const MAX_DISK_READ_GIB_PER_S: f32 = 25.0;
+const MAX_DISK_READ_MIB_PER_S: f32 = MAX_DISK_READ_GIB_PER_S * 1024.0;
+
+fn clamp_disk_read_mib_per_s(mib: f32) -> f32 {
+    if !mib.is_finite() || mib < 0.0 {
+        0.0
+    } else {
+        mib.min(MAX_DISK_READ_MIB_PER_S)
+    }
+}
+
+/// One WMI/CIM pass — formatted perf rates work for direct-io; raw Get-Counter single samples often read 0.
+#[cfg(windows)]
+fn query_disk_io_bytes_per_sec(engine_pid: Option<u32>) -> Result<(f32, f32), String> {
+    let pid = engine_pid.unwrap_or(0);
+    let output = std::process::Command::new("powershell")
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            &format!(
+                r#"
+function Max-Double($values) {{
+    $m = 0.0
+    foreach ($v in $values) {{
+        if ($null -ne $v) {{
+            $d = [double]$v
+            if ($d -gt $m) {{ $m = $d }}
+        }}
+    }}
+    return $m
+}}
+
+$phys = Get-CimInstance Win32_PerfFormattedData_PerfDisk_PhysicalDisk -ErrorAction SilentlyContinue
+$physTotal = ($phys | Where-Object {{ $_.Name -eq '_Total' }} | Select-Object -First 1).DiskReadBytesPerSec
+$physSum = ($phys | Where-Object {{ $_.Name -ne '_Total' }} | Measure-Object -Property DiskReadBytesPerSec -Sum).Sum
+$physWrite = ($phys | Where-Object {{ $_.Name -eq '_Total' }} | Select-Object -First 1).DiskWriteBytesPerSec
+
+$log = Get-CimInstance Win32_PerfFormattedData_PerfDisk_LogicalDisk -ErrorAction SilentlyContinue
+$logTotal = ($log | Where-Object {{ $_.Name -eq '_Total' }} | Select-Object -First 1).DiskReadBytesPerSec
+
+$procRead = 0.0
+if ({pid} -gt 0) {{
+    $p = Get-CimInstance Win32_PerfFormattedData_PerfProc_Process -Filter "IDProcess={pid}" -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($p) {{
+        $procRead = [Math]::Max([double]$p.IOReadBytesPerSec, [double]$p.IODataBytesPerSec)
+    }}
+}}
+
+$engineSum = 0.0
+$engineProcs = Get-CimInstance Win32_PerfFormattedData_PerfProc_Process -ErrorAction SilentlyContinue |
+    Where-Object {{ $_.Name -like 'llama-server*' }}
+if ($engineProcs) {{
+    $engineSum = ($engineProcs | ForEach-Object {{
+        [Math]::Max([double]$_.IOReadBytesPerSec, [double]$_.IODataBytesPerSec)
+    }} | Measure-Object -Maximum).Maximum
+    if ($null -eq $engineSum) {{ $engineSum = 0.0 }}
+}}
+
+$diskRead = Max-Double @($physTotal, $physSum, $logTotal, $procRead, $engineSum)
+
+# Sample rate counter twice — cold Get-Counter snapshots are often 0 for direct-io
+if ($diskRead -lt 1048576) {{
+    $c1 = (Get-Counter '\PhysicalDisk(_Total)\Disk Read Bytes/sec' -ErrorAction SilentlyContinue).CounterSamples.CookedValue
+    Start-Sleep -Milliseconds 250
+    $c2 = (Get-Counter '\PhysicalDisk(_Total)\Disk Read Bytes/sec' -ErrorAction SilentlyContinue).CounterSamples.CookedValue
+    $diskRead = [Math]::Max($diskRead, [Math]::Max([double]$c1, [double]$c2))
+}}
+
+# mmap / page-cache fallback when disk + process paths stay quiet
+if ($diskRead -lt 1048576) {{
+    $pages = (Get-Counter '\Memory\Pages Input/sec' -ErrorAction SilentlyContinue).CounterSamples.CookedValue
+    $diskRead = [Math]::Max($diskRead, [double]$pages * 4096)
+    if ({pid} -gt 0) {{
+        $p = Get-CimInstance Win32_PerfFormattedData_PerfProc_Process -Filter "IDProcess={pid}" -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($p) {{
+            $faultBps = [double]$p.PageFaultsPerSec * 4096
+            $diskRead = [Math]::Max($diskRead, $faultBps)
+        }}
+    }}
+}}
+
+Write-Output "$diskRead,$physWrite"
+"#
+            ),
+        ])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .creation_flags(0x08000000)
+        .output()
+        .map_err(|e| format!("disk io counter failed: {}", e))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut parts = stdout.trim().split(',');
+    let read: f32 = parts.next().unwrap_or("0").trim().parse().unwrap_or(0.0);
+    let write: f32 = parts.next().unwrap_or("0").trim().parse().unwrap_or(0.0);
+    Ok((read, write))
+}
+
+#[cfg(not(windows))]
+fn query_disk_io_bytes_per_sec(_engine_pid: Option<u32>) -> Result<(f32, f32), String> {
+    Ok((0.0, 0.0))
+}
+
+#[tauri::command]
+pub async fn scan_disk_io(
+    slot_idx: Option<i32>,
+    app: tauri::State<'_, crate::engine::AppContext>,
+) -> Result<DiskIoInfo, String> {
+    let engine_pid = match slot_idx.and_then(|idx| usize::try_from(idx).ok()) {
+        Some(idx) => {
+            let stack = app.stack.lock().await;
+            stack.get_slot_pid(idx)
+        }
+        None => None,
+    };
+
+    let (read_bps, write_bps) = query_disk_io_bytes_per_sec(engine_pid)?;
+    Ok(DiskIoInfo {
+        read_mib_per_s: clamp_disk_read_mib_per_s(read_bps / (1024.0 * 1024.0)),
+        write_mib_per_s: write_bps / (1024.0 * 1024.0),
+    })
+}
+
 /// Scan system memory info — total and available RAM in MiB.
 #[tauri::command]
 pub async fn scan_system_info() -> Result<SystemInfo, String> {

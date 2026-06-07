@@ -187,14 +187,14 @@ export default function TelemetryLab({ stack }: TelemetryLabProps) {
   );
 
   const engineByGpu = useMemo(() => {
-    const map = new Map<number, { alias: string; vramMib: number; color: string }[]>();
+    const map = new Map<number, { idx: number; alias: string; vramMib: number; color: string }[]>();
     const colors = ["#76B900", "#00e5ff", "#FFB800", "#ff6b9d", "#a78bfa"];
     runningEngines.forEach((eng, ei) => {
       const indices = parseGpuIndices(eng.gpu);
       const share = indices.length > 0 ? (eng.vram_mib ?? 0) / indices.length : 0;
       indices.forEach((idx) => {
         const list = map.get(idx) ?? [];
-        list.push({ alias: eng.alias, vramMib: share, color: colors[ei % colors.length] });
+        list.push({ idx: eng.idx, alias: eng.alias, vramMib: share, color: colors[ei % colors.length] });
         map.set(idx, list);
       });
     });
@@ -329,7 +329,7 @@ export default function TelemetryLab({ stack }: TelemetryLabProps) {
                       const w = (eng.vramMib / totalMib) * 100;
                       const el = (
                         <div
-                          key={eng.alias}
+                          key={`slot-${eng.idx}`}
                           style={{ width: `${Math.min(w, 100 - cursor)}%`, background: eng.color }}
                           className="h-full opacity-80"
                           title={`${eng.alias} ~${(eng.vramMib / 1024).toFixed(1)} GB`}
@@ -342,7 +342,7 @@ export default function TelemetryLab({ stack }: TelemetryLabProps) {
                   <div className="flex flex-wrap gap-2 mt-2">
                     <span className="text-[8px] font-mono text-stealth-muted/60">OS/other</span>
                     {enginesOnGpu.map((eng) => (
-                      <span key={eng.alias} className="text-[8px] font-mono" style={{ color: eng.color }}>
+                      <span key={`slot-${eng.idx}`} className="text-[8px] font-mono" style={{ color: eng.color }}>
                         {eng.alias}
                       </span>
                     ))}

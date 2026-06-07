@@ -41,7 +41,7 @@ export default function RunningEnginesPanel({ stack, models, selectedSlotIdx, on
           const gpuLabel = item.entry.gpu.split(',').map(g => `GPU${g.trim()}`).join(', ');
           return (
             <div
-              key={item.entry.alias!}
+              key={`slot-${item.entry.idx}`}
               onClick={() => onSelectEngine(item.entry.idx)}
               className={`cursor-pointer rounded-sm px-2.5 py-2 border flex items-center gap-2 running-engine-card engine-panel-enter ${
                 isThisSelected

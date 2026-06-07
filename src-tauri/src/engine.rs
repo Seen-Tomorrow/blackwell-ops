@@ -137,17 +137,6 @@ pub async fn launch_engine(
     crate::config::validate_provider_binary(binary_path.to_str().unwrap_or(""))?;
     crate::config::validate_model_path(&config.model_path)?;
 
-    let slot_idx = {
-        let stack = match tokio::time::timeout(Duration::from_secs(5), app.stack.lock()).await {
-            Ok(guard) => guard,
-            Err(_) => {
-                log::error!("[launch_engine] stack lock timeout — possible deadlock");
-                return Err("Stack lock timeout — possible deadlock. Another task may be holding the lock.".to_string());
-            }
-        };
-        stack.find_idle_slot().ok_or("All engine slots are occupied")?
-    };
-
     // Compute port dynamically from provider's base_port with global collision avoidance
     let provider_base_port = config.get_param_str("base_port")
         .and_then(|v| v.parse::<u16>().ok())
@@ -158,21 +147,54 @@ pub async fn launch_engine(
         return Err(format!("base_port {} is too low — must be > {}", provider_base_port, PRIVILEGED_PORT_THRESHOLD));
     }
 
-    let mut slot_port = {
+    // Resolve unique alias before reserving a slot (backend is authoritative).
+    {
         let stack = app.stack.lock().await;
+        if stack.alias_in_use(&config.alias) {
+            let base = config.alias.clone();
+            let mut suffix = 2u32;
+            loop {
+                let candidate = format!("{}_{}", base, suffix);
+                if !stack.alias_in_use(&candidate) {
+                    config.alias = candidate;
+                    break;
+                }
+                suffix += 1;
+                if suffix > 99 {
+                    return Err(format!("Could not find a free alias for '{}'", base));
+                }
+            }
+        }
+    }
+
+    let (slot_idx, slot_port) = {
+        let stack = match tokio::time::timeout(Duration::from_secs(5), app.stack.lock()).await {
+            Ok(guard) => guard,
+            Err(_) => {
+                log::error!("[launch_engine] stack lock timeout — possible deadlock");
+                return Err("Stack lock timeout — possible deadlock. Another task may be holding the lock.".to_string());
+            }
+        };
+        let slot_idx = stack.find_idle_slot().ok_or("All engine slots are occupied")?;
         let used_ports: HashSet<u16> = stack.slots.iter()
             .filter_map(|s| s.as_ref().map(|arc| arc.lock().port))
             .filter(|&p| p != 0)
             .collect();
-        (provider_base_port..)
+        let slot_port = (provider_base_port..)
             .find(|p| !used_ports.contains(p) && *p > PRIVILEGED_PORT_THRESHOLD)
-            .unwrap_or(provider_base_port)
+            .unwrap_or(provider_base_port);
+        stack.reserve_slot(slot_idx, &config.alias, slot_port)?;
+        stack.emit_stack_changed();
+        (slot_idx, slot_port)
     };
 
     config.port = slot_port;
 
-    let kill_result = engine_utils::kill_process_by_port(slot_port).await;
-    tokio::time::sleep(Duration::from_millis(300)).await;
+    // Only run slow netstat kill when something is actually listening (orphan from prior crash).
+    if engine_utils::is_port_in_use(slot_port).await {
+        let _ = engine_utils::kill_process_by_port(slot_port).await;
+        tokio::time::sleep(Duration::from_millis(150)).await;
+    }
 
     let provider_display_name = backend_type.clone();
 
@@ -265,23 +287,30 @@ pub async fn launch_engine(
         ).await;
 
         match result {
-            Ok(()) => break,
+            Ok(()) => {
+                last_err = None;
+                break;
+            }
             Err(e) => {
                 last_err = Some(e);
                 if attempt == 0 {
-                    // Launch retry now routed to Blackwell Output Console
                     app.blackwell_output_console_manager.emit_line_to_category(
                         crate::output_console::BlackwellOutputConsoleCategory::Error,
                         format!("[{}] [RETRY] Launch failed: {} — retrying...", config.alias, last_err.as_ref().unwrap()),
                         crate::output_console::BlackwellOutputConsoleLineStyle::Warning,
                     );
-                    tokio::time::sleep(Duration::from_secs(1)).await;
+                    tokio::time::sleep(Duration::from_millis(500)).await;
                 }
             }
         }
     }
 
     if let Some(e) = last_err {
+        {
+            let stack = app.stack.lock().await;
+            stack.release_reserved_slot(slot_idx);
+            stack.emit_stack_changed();
+        }
         return Err(e);
     }
 
@@ -337,17 +366,41 @@ pub async fn launch_engine(
 
 
 #[tauri::command]
-pub async fn stop_engine(alias: String, app: tauri::State<'_, AppContext>) -> Result<String, String> {
-    let slot_idx = {
+pub async fn stop_engine_slot(slot_idx: usize, app: tauri::State<'_, AppContext>) -> Result<String, String> {
+    let alias = {
         let stack = app.stack.lock().await;
-        let slot_count = stack.slots.len();
-        (0..slot_count).find(|&i| {
-            stack.get_slot(i).map_or(false, |s| s.alias == alias)
-        }).ok_or(format!("Engine '{}' not found", alias))?
+        let slot = stack.get_slot(slot_idx).ok_or(format!("Slot {} not found", slot_idx))?;
+        if matches!(slot.status, SlotStatus::Idle) {
+            return Err(format!("Slot {} is already idle", slot_idx));
+        }
+        slot.alias.clone()
     };
 
-    // stop_slot cancels fusion brain and clears slot — self-locking, no stack lock needed
     EngineStack::stop_slot(slot_idx, &app.stack).await?;
+    Ok(format!("Engine {} (slot {}) stopped", alias, slot_idx))
+}
+
+#[tauri::command]
+pub async fn stop_engine(alias: String, app: tauri::State<'_, AppContext>) -> Result<String, String> {
+    let slot_indices: Vec<usize> = {
+        let stack = app.stack.lock().await;
+        let slot_count = stack.slots.len();
+        (0..slot_count)
+            .filter(|&i| {
+                stack.get_slot(i).map_or(false, |s| {
+                    s.alias == alias && !matches!(s.status, SlotStatus::Idle)
+                })
+            })
+            .collect()
+    };
+
+    if slot_indices.is_empty() {
+        return Err(format!("Engine '{}' not found", alias));
+    }
+
+    for idx in slot_indices {
+        EngineStack::stop_slot(idx, &app.stack).await?;
+    }
 
     Ok(format!("Engine {} stopped", alias))
 }
