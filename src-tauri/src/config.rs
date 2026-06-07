@@ -3,7 +3,7 @@
 //! ## Layers
 //! 1. **Factory** — `runtime/<id>/config/<id>-default-config.json` (admin, read-only at runtime)
 //! 2. **User disk** — `config/<id>-user-config.json` (hidden, order, defaults, custom params/values)
-//! 3. **localStorage** — `BlackOps-admin-catalog-override:<id>` (launch-time chip selections; frontend only)
+//! 3. **localStorage** — `BlackOps-catalog-override:<id>` (launch-time chip selections; frontend only)
 //!
 //! ## Merge (`merge_template_for_provider`)
 //! Runs on every load and `save_provider`. Factory structural fields backfill; user cosmetic choices

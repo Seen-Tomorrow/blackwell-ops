@@ -5,6 +5,7 @@ import type { ProviderConfig, UserEditedTemplateParam, FitScanComplete, FitScanP
 import { DEFAULT_PROVIDER_ID } from "../lib/types";
 import { useFoundry, type Env } from "../hooks/useBuildDock";
 import { ENV_ORDER, ENV_META } from "../lib/foundry_constants";
+import { loadFoundryLastRefresh, loadStartupUpdatesCache, saveFoundryLastRefresh } from "../lib/storage";
 import { BuildProfileRow, RestoreConfirmModal, parseCmakeFlags, UpdateStatus } from "./FoundryComponents";
 
 function formatElapsed(startTime: number): string {
@@ -386,14 +387,14 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
     if (hasRefreshed.current) return;
     hasRefreshed.current = true;
 
-    const lastRefreshKey = `foundry_last_refresh_${providers.map(p => p.id).join(",")}`;
-    const lastRefresh = parseInt(localStorage.getItem(lastRefreshKey) || "0", 10);
+    const providerSignature = providers.map(p => p.id).join(",");
+    const lastRefresh = loadFoundryLastRefresh(providerSignature);
     const now = Date.now();
     if (now - lastRefresh < 5000) {
       hasRefreshed.current = false;
       return;
     }
-    localStorage.setItem(lastRefreshKey, String(now));
+    saveFoundryLastRefresh(providerSignature, now);
 
     const foundryProviders = providers.filter(p => p.git_url && p.branch);
     let cancelled = false;
@@ -408,15 +409,12 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
 
     let cachedUpdates: Record<string, BinaryUpdateInfo[]> | null = null;
     try {
-      const raw = localStorage.getItem("blackwell_startup_updates");
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (parsed.timestamp && Date.now() - parsed.timestamp < 300_000 && parsed.binaryUpdates) {
-          cachedUpdates = {};
-          parsed.binaryUpdates.forEach((bu: any) => {
-            cachedUpdates[bu.providerId] = bu.updates;
-          });
-        }
+      const parsed = loadStartupUpdatesCache();
+      if (parsed?.timestamp && Date.now() - parsed.timestamp < 300_000 && parsed.binaryUpdates) {
+        cachedUpdates = {};
+        parsed.binaryUpdates.forEach((bu: any) => {
+          cachedUpdates![bu.providerId] = bu.updates;
+        });
       }
     } catch (err) { console.error("[Foundry] Build info refresh error:", err); }
 
@@ -553,14 +551,10 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
     }
 
     return (
-      <div className="mt-2 p-2 border border-stealth-border/50 bg-stealth-panel rounded-sm w-full">
+      <div className="config-scan-panel mt-2 p-2 rounded-sm w-full">
         {/* Header row */}
         <div className="flex items-center justify-between mb-1.5">
-          <span className="text-[9px] font-mono tracking-wider" style={{
-            color: state.status === "scanning" ? "#22d3ee" :
-                   state.status === "complete" ? "#4ade80" :
-                   state.status === "error" ? "#f87171" : "#9ca3af"
-          }}>
+          <span className={`text-[9px] font-mono tracking-wider ${state.status === "error" ? "text-red-400" : "theme-accent-text"}`}>
             {state.status === "scanning" ? "\u25CF SCANNING..." : 
              state.status === "complete" ? "\uD83C\uDF6C COMPLETE" :
              state.status === "error" ? "\u2716 ERROR" : ""}
@@ -569,7 +563,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
             {state.status === "scanning" && (
               <button
                 onClick={() => handleStopScan(providerId)}
-                className="px-2 py-0.5 text-[9px] font-mono border border-red-400/60 text-red-400 hover:bg-red-500/20 transition-colors"
+                className="value-chip text-[9px] font-mono px-2 py-0.5 rounded-sm text-red-400"
               >
                 STOP
               </button>
@@ -582,13 +576,14 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
           <div className="mb-1.5">
             <div className="h-0.5 bg-stealth-border rounded-sm overflow-hidden">
               <div
-                className={`h-full transition-all duration-300 ${
-                  state.status === "error" ? "bg-red-400" : "bg-nv-green"
-                }`}
-                style={{ width: `${state.status === "scanning" && state.results ? (Object.keys(state.results.results).length / Math.max(state.totalModels, 1)) * 100 : (state.completed / Math.max(state.totalModels, 1)) * 100}%` }}
+                className={`h-full transition-all duration-300 ${state.status === "error" ? "bg-red-400" : ""}`}
+                style={{
+                  backgroundColor: state.status === "error" ? undefined : "var(--theme-accent)",
+                  width: `${state.status === "scanning" && state.results ? (Object.keys(state.results.results).length / Math.max(state.totalModels, 1)) * 100 : (state.completed / Math.max(state.totalModels, 1)) * 100}%`,
+                }}
               />
             </div>
-            <p className="text-[8px] font-mono text-stealth-muted mt-0.5">
+            <p className="text-[8px] font-mono config-muted mt-0.5">
               {state.status === "scanning"
                 ? `${Object.keys(state.results?.results ?? {}).length} models...`
                 : `${state.completed} / ${state.totalModels}`}{state.failed > 0 && state.status !== "scanning" ? ` (${state.failed} failed)` : ""}
@@ -605,7 +600,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
         {/* Results table */}
         {state.results && Object.keys(state.results.results).length > 0 && (
           <div className="max-h-48 overflow-y-auto pr-1">
-            <div className="grid grid-cols-[20px_minmax(0,_1fr)_64px_64px_56px] items-center gap-1 text-[7px] font-mono py-0.5 text-stealth-muted/60 uppercase tracking-wider border-b border-stealth-border/30 mb-0.5">
+            <div className="grid grid-cols-[20px_minmax(0,_1fr)_64px_64px_56px] items-center gap-1 text-[7px] font-mono py-0.5 config-muted uppercase tracking-wider border-b border-stealth-border/30 mb-0.5">
               <span></span><span>Model</span>
               <span>Base(8K)</span>
               <span>128K/q4</span>
@@ -625,15 +620,15 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
 
               return (
                 <div key={path} className="grid grid-cols-[20px_minmax(0,_1fr)_64px_64px_56px] items-center gap-1 text-[8px] font-mono py-0.5">
-                  <span className={`${isComplete ? "text-nv-green" : nPts > 0 ? "text-telemetry-cyan" : full.error ? "text-red-400" : "text-yellow-400"}`}>
+                  <span className={`${full.error ? "text-red-400" : isComplete || nPts > 0 ? "theme-accent-text" : "config-muted"}`}>
                     {isComplete ? "\u2713" : nPts > 0 ? "\u25CF" : full.error ? "\u2716" : "!"}
                   </span>
-                  <span className="text-stealth-muted truncate" title={path}>
+                  <span className="config-muted truncate" title={path}>
                     {modelName}
                   </span>
-                  {basePt && basePt.vram_mib > 0 ? <span className="text-telemetry-cyan">{(basePt.vram_mib / 1024).toFixed(1)}G</span> : <span></span>}
-                  {q4Pt && q4Pt.vram_mib > 0 ? <span className="text-telemetry-cyan">{(q4Pt.vram_mib / 1024).toFixed(1)}G</span> : <span></span>}
-                    <span className={`${isComplete ? "text-nv-green" : "text-stealth-muted"}`}>{nPts}/{pointsTotal}</span>
+                  {basePt && basePt.vram_mib > 0 ? <span className="theme-accent-text">{(basePt.vram_mib / 1024).toFixed(1)}G</span> : <span></span>}
+                  {q4Pt && q4Pt.vram_mib > 0 ? <span className="theme-accent-text">{(q4Pt.vram_mib / 1024).toFixed(1)}G</span> : <span></span>}
+                    <span className={isComplete ? "theme-accent-text" : "config-muted"}>{nPts}/{pointsTotal}</span>
                 </div>
               );
             })}
@@ -645,14 +640,14 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
           {state.status !== "scanning" && (
             <button
               onClick={() => handleScanLibrary(providerId)}
-              className="px-2 py-0.5 text-[8px] font-mono border border-nv-green/60 text-nv-green hover:bg-nv-green/20 transition-colors"
+              className="value-chip text-[8px] font-mono px-2 py-0.5 rounded-sm"
             >
               {"RESCAN"}
             </button>
           )}
           <button
             onClick={() => handleStopScan(providerId)}
-            className="px-2 py-0.5 text-[8px] font-mono border border-stealth-border text-stealth-muted hover:text-white transition-colors"
+            className="value-chip text-[8px] font-mono px-2 py-0.5 rounded-sm"
           >
             CLEAR
           </button>
@@ -664,16 +659,12 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
   // ── Render ────────────────────────────────────────────────────
 
   return (
-    <div className="h-full flex flex-col overflow-hidden">
+    <div className="h-full flex flex-col overflow-hidden" data-config-page>
       {/* Toolbar header */}
-      <div className="px-4 py-3 border-b border-stealth-border flex items-center justify-between flex-wrap gap-2 relative">
-        <div>
-          <div className="flex items-center gap-2">
-            <h2 className="text-xs font-mono text-nv-green tracking-wider">BACKEND PROVIDERS</h2>
-            <span className="text-[10px] text-stealth-border/60">|</span>
-            <span className="text-[9px] font-mono text-stealth-muted">{providers.length} REGISTERED</span>
-          </div>
-          <div className="h-4"></div>
+      <div className="px-4 py-2.5 config-section-bar flex items-center justify-between flex-wrap gap-2 relative">
+        <div className="flex items-center gap-3">
+          <h2 className="text-xs font-mono theme-accent-text tracking-widest">BACKEND PROVIDERS</h2>
+          <span className="text-[8px] font-mono config-muted opacity-60">{providers.length} REGISTERED</span>
         </div>
       </div>
 
@@ -685,28 +676,28 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
       )}
 
       {/* Provider list */}
-      <div className="flex-1 overflow-y-auto p-4 min-h-0">
+      <div className="flex-1 overflow-y-auto eink-scrollbar p-4 min-h-0">
         {/* Add new provider button */}
         <button onClick={() => { setEditingId(null); setShowAddForm(!showAddForm); }}
-          className={`flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wider transition-colors ${showAddForm && !editingId ? "text-yellow-400" : "text-yellow-400/60 hover:text-yellow-400"}`}>
+          className={`flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wider transition-colors theme-accent-text ${showAddForm && !editingId ? "opacity-100" : "opacity-60 hover:opacity-100"}`}>
           <span className="text-[8px]">{showAddForm && !editingId ? "\u25BC" : "\u25B6"}</span>
           ADD NEW PROVIDER
         </button>
 
         {showAddForm && !editingId && (
-          <div className="space-y-2 mt-1 mb-3 px-4">
+          <div className="config-form-panel space-y-2 mt-2 mb-3 p-4 rounded-sm">
             {/* ID field */}
             <div className="flex items-center gap-2">
-              <label className="text-[10px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider">Type ID</label>
+              <label className="text-[10px] font-mono config-muted w-24 flex-shrink-0 uppercase tracking-wider">Type ID</label>
               <input type="text" placeholder="e.g. stable, nightly, my-ik-fork" value={form.id}
                 onChange={(e) => setForm((prev) => ({ ...prev, id: e.target.value, template_type: detectTemplateType(e.target.value) }))}
-                className="flex-1 bg-transparent border-b border-yellow-400/60 text-[11px] font-mono text-white placeholder:text-yellow-400/30 focus:border-yellow-400 focus:outline-none px-1 py-0.5" />
+                className="config-input flex-1 text-[11px] font-mono px-1 py-0.5" />
             </div>
             {/* Template Type selector */}
             <div className="flex items-center gap-2">
-              <label className="text-[10px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider">Template</label>
+              <label className="text-[10px] font-mono config-muted w-24 flex-shrink-0 uppercase tracking-wider">Template</label>
               <select value={form.template_type} onChange={(e) => setForm((prev) => ({ ...prev, template_type: e.target.value }))}
-                className="flex-1 bg-transparent border-b border-yellow-400/60 text-[11px] font-mono text-white focus:border-yellow-400 focus:outline-none px-1 py-0.5 appearance-none">
+                className="config-input flex-1 text-[11px] font-mono px-1 py-0.5 appearance-none">
                 <option value="ggml-llama">GGML-Llama (22 params)</option>
                 <option value="ik-llama">IK-Llama (8 params)</option>
                 <option value="">Custom (manual)</option>
@@ -714,16 +705,16 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
             </div>
             {/* Display name */}
             <div className="flex items-center gap-2">
-              <label className="text-[10px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider">Name</label>
+              <label className="text-[10px] font-mono config-muted w-24 flex-shrink-0 uppercase tracking-wider">Name</label>
               <input type="text" placeholder="e.g. llama.cpp Stable" value={form.display_name}
                 onChange={(e) => setForm((prev) => ({ ...prev, display_name: e.target.value }))}
-                className="flex-1 bg-transparent border-b border-yellow-400/60 text-[11px] font-mono text-white placeholder:text-yellow-400/30 focus:border-yellow-400 focus:outline-none px-1 py-0.5" />
+                className="config-input flex-1 text-[11px] font-mono px-1 py-0.5" />
             </div>
             <ProviderFormFields form={form} setForm={setForm} handleBrowse={handleBrowse} isFactoryProvided={false} />
             {/* Action buttons */}
             <div className="flex gap-2 pt-1">
               <button onClick={handleSave} disabled={loading || !form.id.trim() || !form.display_name.trim() || !form.binary_path.trim()}
-                className="px-3 py-1 text-[10px] font-mono border border-nv-green/60 text-nv-green hover:bg-nv-green/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+                className="value-chip-active text-[10px] font-mono px-3 py-1 rounded-sm disabled:opacity-40 disabled:cursor-not-allowed">
                 {loading ? "SAVING..." : "REGISTER"}
               </button>
             </div>
@@ -737,11 +728,11 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
         ) : (
           <div className="mb-6">
             {/* Sort bar */}
-            <div className="flex items-center gap-1 px-3 py-2 border-b border-stealth-border/50">
-              <span className="text-[8px] font-mono text-stealth-muted uppercase tracking-wider w-6">#</span>
-              <span className="text-[7px] font-mono text-stealth-muted uppercase tracking-wider w-12">Order</span>
-              <span className="text-[8px] font-mono text-stealth-muted uppercase tracking-wider flex-1">Provider</span>
-              <span className="text-[8px] font-mono text-stealth-muted uppercase tracking-wider">Actions</span>
+            <div className="flex items-center gap-1 px-3 py-2 config-section-bar">
+              <span className="text-[8px] font-mono config-muted uppercase tracking-wider w-6">#</span>
+              <span className="text-[7px] font-mono config-muted uppercase tracking-wider w-12">Order</span>
+              <span className="text-[8px] font-mono config-muted uppercase tracking-wider flex-1">Provider</span>
+              <span className="text-[8px] font-mono config-muted uppercase tracking-wider">Actions</span>
             </div>
 
             {providers.map((p, idx) => {
@@ -750,28 +741,22 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
               <Fragment key={p.id}>
               <div
                 onClick={() => setExpandedProviderId(isExpanded ? null : p.id)}
-                className={`flex gap-4 p-4 rounded border transition-all cursor-pointer ${
-                  editingId === p.id
-                    ? "border-yellow-400/60 bg-yellow-400/5"
-                    : isExpanded
-                      ? "border-nv-green/60 bg-nv-green/5"
-                      : p.enabled
-                        ? "border-stealth-border hover:border-stealth-muted"
-                        : "border-stealth-border/30 opacity-40"
-                }`}>
+                className={`config-provider-card flex gap-4 p-3 cursor-pointer mb-2 ${
+                  editingId === p.id ? "is-editing" : isExpanded ? "is-expanded" : ""
+                } ${!p.enabled ? "opacity-40" : ""}`}>
                 {/* ── Position number ─────────── */}
                 <div className="flex items-center flex-shrink-0" style={{ minWidth: "16px" }}>
-                  <span className={`text-[9px] font-mono ${isExpanded ? "text-nv-green" : "text-stealth-muted"}`}>{idx + 1}</span>
+                  <span className={`text-[9px] font-mono ${isExpanded ? "theme-accent-text" : "config-muted"}`}>{idx + 1}</span>
                 </div>
 
                 {/* ── Reorder arrows (always visible) ─────────── */}
                 <div className="flex items-center gap-0.5 flex-shrink-0">
                   <button onClick={(e) => { e.stopPropagation(); handleReorder(p.id, -1); }} disabled={idx <= 0}
-                    className="text-[9px] font-mono text-stealth-muted hover:text-nv-green transition-colors disabled:opacity-20 disabled:cursor-not-allowed leading-none" title="Move up">
+                    className="text-[9px] font-mono config-muted hover:theme-accent-text transition-colors disabled:opacity-20 disabled:cursor-not-allowed leading-none" title="Move up">
                     ▲
                   </button>
                   <button onClick={(e) => { e.stopPropagation(); handleReorder(p.id, 1); }} disabled={idx >= providers.length - 1}
-                    className="text-[9px] font-mono text-stealth-muted hover:text-nv-green transition-colors disabled:opacity-20 disabled:cursor-not-allowed leading-none" title="Move down">
+                    className="text-[9px] font-mono config-muted hover:theme-accent-text transition-colors disabled:opacity-20 disabled:cursor-not-allowed leading-none" title="Move down">
                     ▼
                   </button>
                 </div>
@@ -782,25 +767,25 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
                   <div className="flex items-center gap-2.5 flex-shrink-0">
                     <button onClick={(e) => { e.stopPropagation(); handleToggleEnabled(p.id); }}
                       className={`text-[10px] select-none transition-colors ${
-                        p.enabled ? "text-nv-green hover:text-nv-green/80" : "text-stealth-muted/30"
+                        p.enabled ? "theme-accent-text" : "config-muted opacity-40"
                       }`}
                       title={p.enabled ? "Disable provider" : "Enable provider"}>
                       {p.enabled ? "\u25CF" : "\u25EF"}
                     </button>
-                    <span className="text-[10px] font-mono text-yellow-400">
+                    <span className="provider-pill border text-[9px] font-mono px-1.5 py-0.5 rounded-sm shrink-0">
                       {p.id}
                     </span>
-                    <span className={`text-[10px] font-mono truncate max-w-[180px] ${isExpanded ? "text-nv-green" : "text-white"}`} title={p.display_name}>
+                    <span className={`text-[10px] font-mono truncate max-w-[180px] ${isExpanded ? "theme-accent-text" : ""}`} title={p.display_name}>
                       {p.display_name}
                     </span>
                     {p.id === DEFAULT_PROVIDER_ID && (
-                      <span className="text-[7px] font-mono tracking-wider text-nv-green/60 px-1.5 py-0 border border-nv-green/20 rounded-sm flex-shrink-0">DEFAULT</span>
+                      <span className="value-chip text-[7px] font-mono px-1.5 py-0.5 rounded-sm shrink-0">DEFAULT</span>
                     )}
                   </div>
 
                   {/* Params badge */}
                   {p.userEditedTemplateParams && p.userEditedTemplateParams.length > 0 && (
-                    <span className="text-[9px] font-mono text-telemetry-cyan px-2 py-0.5 border border-telemetry-cyan/30 rounded-sm flex-shrink-0">
+                    <span className="value-chip text-[9px] font-mono px-2 py-0.5 rounded-sm shrink-0">
                       {p.userEditedTemplateParams.length} params
                     </span>
                   )}
@@ -811,12 +796,12 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
                   {/* Actions group */}
                   <div className="flex items-center gap-2.5 flex-shrink-0">
                       <button onClick={(e) => { e.stopPropagation(); handleEdit(p); }}
-                       className="px-2 py-0.5 text-[9px] font-mono border border-yellow-400/40 text-yellow-400 hover:bg-yellow-500/20 transition-colors">
+                       className="value-chip text-[9px] font-mono px-2 py-0.5 rounded-sm">
                        EDIT
                      </button>
                     {!p.factory_provided && (
                       <button onClick={(e) => { e.stopPropagation(); handleDelete(p.id); }}
-                        className="px-2 py-0.5 text-[9px] font-mono border border-red-500/30 text-red-400 hover:bg-red-500/20 transition-colors">
+                        className="value-chip text-[9px] font-mono px-2 py-0.5 rounded-sm text-red-400">
                         REMOVE
                       </button>
                     )}
@@ -831,10 +816,8 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
                             setScanStates(prev => ({ ...prev, [p.id]: { status: "idle" as const, parallel: n, totalModels: 0, completed: 0, failed: 0 } }));
                             parallelRef.current[p.id] = n;
                           }}
-                          className={`px-1.5 py-0.5 text-[9px] font-mono border transition-colors ${
-                            (scanStates[p.id]?.parallel ?? 2) === n
-                              ? "bg-nv-green/20 text-nv-green border-nv-green/60"
-                              : "text-stealth-muted border-stealth-border hover:text-white"
+                          className={`px-1.5 py-0.5 text-[9px] font-mono rounded-sm transition-colors ${
+                            (scanStates[p.id]?.parallel ?? 2) === n ? "value-chip-active" : "value-chip"
                           }`}
                         >
                           {n}x
@@ -843,7 +826,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
                       <button
                         onClick={(e) => { e.stopPropagation(); handleScanLibrary(p.id); }}
                         disabled={scanStates[p.id]?.status === "scanning"}
-                        className="px-2 py-0.5 text-[9px] font-mono border border-telemetry-cyan/60 text-telemetry-cyan hover:bg-telemetry-cyan/10 transition-colors"
+                        className="value-chip text-[9px] font-mono px-2 py-0.5 rounded-sm"
                       >
                         {scanStates[p.id]?.status === "scanning" ? "\u25CF SCANNING..." : "SCAN LIBRARY"}
                       </button>
@@ -878,35 +861,29 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
                     const flagLines = parseCmakeFlags(cmakeFlags);
 
                     return (
-                      <div className="border border-stealth-border/50 rounded-sm overflow-hidden">
+                      <div className="foundry-build-panel">
                         {/* Foundry header */}
-                        <div className="flex items-center gap-3 px-3 py-2 bg-[#0a0a1a] border-b border-stealth-border/30">
+                        <div className="foundry-build-header flex items-center gap-3 px-3 py-2">
                           <span style={{ fontSize: '12px' }}>⚒</span>
-                          <span className="text-[9px] font-mono text-nv-green tracking-wider">FOUNDRY BUILDS</span>
+                          <span className="text-[9px] font-mono theme-accent-text tracking-wider">FOUNDRY BUILDS</span>
                           {/* CMake flags badge */}
                           <div className="relative inline-block group">
-                            <span
-                              className={`text-[7px] font-mono px-1.5 py-0.5 rounded-sm border cursor-help ${
-                                isCustomFlags
-                                  ? "border-purple-400/30 bg-purple-400/10 text-purple-400"
-                                  : "border-stealth-border/30 bg-stealth-panel/50 text-white/40"
-                              }`}
-                            >
+                            <span className={`value-chip text-[7px] font-mono px-1.5 py-0.5 rounded-sm cursor-help ${isCustomFlags ? "value-chip-active" : ""}`}>
                               {isCustomFlags ? "CUSTOM FLAGS" : "DEFAULT"}
                             </span>
-                            <div className="absolute top-full left-0 mt-1 w-[320px] bg-[#0a0a1a] border border-stealth-border rounded-sm p-2 pointer-events-none z-[9999] opacity-0 group-hover:opacity-100 transition-opacity shadow-2xl">
+                            <div className="absolute top-full left-0 mt-1 w-[320px] config-form-panel rounded-sm p-2 pointer-events-none z-[9999] opacity-0 group-hover:opacity-100 transition-opacity shadow-2xl">
                               {flagLines.length > 0 ? (
                                 <div className="space-y-0.5">
                                   {flagLines.map((f, i) => (
-                                    <div key={i} className="text-[7px] font-mono text-white/60 whitespace-pre-wrap break-all">{f}</div>
+                                    <div key={i} className="text-[7px] font-mono config-muted whitespace-pre-wrap break-all">{f}</div>
                                   ))}
                                 </div>
                               ) : (
-                                <div className="text-[7px] font-mono text-stealth-muted">Using default cmake flags for {p.template_type || "ggml-llama"}</div>
+                                <div className="text-[7px] font-mono config-muted">Using default cmake flags for {p.template_type || "ggml-llama"}</div>
                               )}
                             </div>
                           </div>
-                          <span className="text-[8px] font-mono text-stealth-muted truncate max-w-[240px]" title={p.git_url}>
+                          <span className="text-[8px] font-mono config-muted truncate max-w-[240px]" title={p.git_url}>
                             {p.git_url.replace(/.*\/\/|\.git$/g, "")} :{p.branch}
                           </span>
                         </div>
@@ -945,22 +922,22 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
 
                   {/* Inline edit form — appears directly below the expanded provider */}
                   {editingId === p.id && (
-                    <div className="border border-yellow-400/40 bg-[#1a1a2e] rounded p-3 space-y-2">
+                    <div className="config-form-panel rounded-sm p-3 space-y-2">
                       <div className="flex items-center justify-between mb-1">
-                        <span className="text-[10px] font-mono text-yellow-400">{p.id} — EDIT PROVIDER</span>
-                        <button onClick={handleCancel} className="text-stealth-muted hover:text-white transition-colors leading-none">✕</button>
+                        <span className="text-[10px] font-mono theme-accent-text">{p.id} — EDIT PROVIDER</span>
+                        <button onClick={handleCancel} className="config-muted hover:theme-accent-text transition-colors leading-none">✕</button>
                       </div>
                       {/* ID field */}
                       <div className="flex items-center gap-2">
-                        <label className="text-[10px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider">Type ID</label>
+                        <label className="text-[10px] font-mono config-muted w-24 flex-shrink-0 uppercase tracking-wider">Type ID</label>
                         <input type="text" value={form.id} onChange={(e) => setForm((prev) => ({ ...prev, id: e.target.value }))}
-                          className="flex-1 bg-transparent border-b border-yellow-400/60 text-[11px] font-mono text-white focus:border-yellow-400 focus:outline-none px-1 py-0.5" />
+                          className="config-input flex-1 text-[11px] font-mono px-1 py-0.5" />
                       </div>
                       {/* Template Type selector */}
                       <div className="flex items-center gap-2">
-                        <label className="text-[10px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider">Template</label>
+                        <label className="text-[10px] font-mono config-muted w-24 flex-shrink-0 uppercase tracking-wider">Template</label>
                         <select value={form.template_type} onChange={(e) => setForm((prev) => ({ ...prev, template_type: e.target.value }))}
-                          className="flex-1 bg-transparent border-b border-yellow-400/60 text-[11px] font-mono text-white focus:border-yellow-400 focus:outline-none px-1 py-0.5">
+                          className="config-input flex-1 text-[11px] font-mono px-1 py-0.5">
                           <option value="ggml-llama" style={{fontSize: '11px'}}>GGML-Llama (22 params)</option>
                           <option value="ik-llama" style={{fontSize: '11px'}}>IK-Llama (8 params)</option>
                           <option value="" style={{fontSize: '11px'}}>Custom (manual)</option>
@@ -968,18 +945,18 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
                       </div>
                       {/* Display name */}
                       <div className="flex items-center gap-2">
-                        <label className="text-[10px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider">Name</label>
+                        <label className="text-[10px] font-mono config-muted w-24 flex-shrink-0 uppercase tracking-wider">Name</label>
                         <input type="text" value={form.display_name} onChange={(e) => setForm((prev) => ({ ...prev, display_name: e.target.value }))}
-                          className="flex-1 bg-transparent border-b border-yellow-400/60 text-[11px] font-mono text-white focus:border-yellow-400 focus:outline-none px-1 py-0.5" />
+                          className="config-input flex-1 text-[11px] font-mono px-1 py-0.5" />
                       </div>
                       <ProviderFormFields form={form} setForm={setForm} handleBrowse={handleBrowse} isFactoryProvided={form.factory_provided} />
                         {/* Action buttons */}
                         <div className="flex gap-2 pt-1">
                           <button onClick={handleSave} disabled={loading || !form.id.trim() || !form.display_name.trim() || !form.binary_path.trim()}
-                            className="px-3 py-1 text-[10px] font-mono border border-nv-green/60 text-nv-green hover:bg-nv-green/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+                            className="value-chip-active text-[10px] font-mono px-3 py-1 rounded-sm disabled:opacity-40 disabled:cursor-not-allowed">
                             {loading ? "SAVING..." : "UPDATE"}
                           </button>
-                          <button onClick={handleCancel} className="px-3 py-1 text-[10px] font-mono border border-stealth-border text-stealth-muted hover:text-white transition-colors">CANCEL</button>
+                          <button onClick={handleCancel} className="value-chip text-[10px] font-mono px-3 py-1 rounded-sm">CANCEL</button>
                         </div>
                     </div>
                   )}
@@ -995,8 +972,8 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
       </div>
 
       {/* Footer */}
-      <div className="px-4 py-3 border-t border-stealth-border flex items-center justify-between">
-        <span className="text-[9px] font-mono text-stealth-muted">
+      <div className="px-4 py-2.5 config-section-bar flex items-center justify-between">
+        <span className="text-[9px] font-mono config-muted">
           {providers.length} provider{providers.length !== 1 ? "s" : ""} registered
         </span>
       </div>
@@ -1027,49 +1004,52 @@ function ProviderFormFields({ form, setForm, handleBrowse, isFactoryProvided }: 
     <>
       {/* Binary path */}
       <div className="flex items-center gap-2">
-        <label className="text-[10px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider">Binary Path</label>
+        <label className="text-[10px] font-mono config-muted w-24 flex-shrink-0 uppercase tracking-wider">Binary Path</label>
         {isFactoryProvided ? (
           <>
             <input type="text" value={form.binary_path} disabled
-              className="flex-1 bg-transparent border-b border-yellow-400/30 text-[11px] font-mono text-stealth-muted focus:outline-none px-1 py-0.5 cursor-not-allowed" />
-            <span className="text-[8px] font-mono text-nv-green/60 flex-shrink-0">MANAGED</span>
+              className="config-input flex-1 text-[11px] font-mono px-1 py-0.5 cursor-not-allowed opacity-60" />
+            <span className="value-chip text-[8px] font-mono px-1.5 py-0.5 rounded-sm shrink-0">MANAGED</span>
           </>
         ) : (
           <>
             <input type="text" value={form.binary_path} onChange={(e) => setForm((prev) => ({ ...prev, binary_path: e.target.value }))}
-              className="flex-1 bg-transparent border-b border-yellow-400/60 text-[11px] font-mono text-white focus:border-yellow-400 focus:outline-none px-1 py-0.5" />
-            <button onClick={handleBrowse} className="px-2 py-0.5 text-[9px] font-mono border border-stealth-border text-stealth-muted hover:text-nv-green transition-colors flex-shrink-0">BROWSE</button>
+              className="config-input flex-1 text-[11px] font-mono px-1 py-0.5" />
+            <button onClick={handleBrowse} className="value-chip text-[9px] font-mono px-2 py-0.5 rounded-sm shrink-0">BROWSE</button>
           </>
         )}
       </div>
       {/* Enabled toggle */}
       <div className="flex items-center gap-2">
-        <label className="text-[10px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider">Active</label>
-        <button onClick={() => setForm((prev) => ({ ...prev, enabled: !prev.enabled }))}
-          className={`w-8 h-4 rounded-full transition-colors relative ${form.enabled ? "bg-nv-green/60" : "bg-stealth-border"}`}>
-          <span className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-transform ${form.enabled ? "left-4.5 translate-x-0.5" : "left-0.5"}`} />
+        <label className="text-[10px] font-mono config-muted w-24 flex-shrink-0 uppercase tracking-wider">Active</label>
+        <button
+          type="button"
+          onClick={() => setForm((prev) => ({ ...prev, enabled: !prev.enabled }))}
+          className={`value-chip text-[8px] font-mono px-2 py-0.5 rounded-sm ${form.enabled ? "value-chip-active" : ""}`}
+        >
+          {form.enabled ? "ON" : "OFF"}
         </button>
       </div>
       {/* Git URL */}
       <div className="flex items-center gap-2">
-        <label className="text-[10px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider">Git URL</label>
+        <label className="text-[10px] font-mono config-muted w-24 flex-shrink-0 uppercase tracking-wider">Git URL</label>
         <input type="text" placeholder="https://github.com/ggml-org/llama.cpp" value={form.git_url}
           onChange={(e) => setForm((prev) => ({ ...prev, git_url: e.target.value }))}
-          className="flex-1 bg-transparent border-b border-yellow-400/60 text-[11px] font-mono text-white placeholder:text-yellow-400/30 focus:border-yellow-400 focus:outline-none px-1 py-0.5" />
+          className="config-input flex-1 text-[11px] font-mono px-1 py-0.5" />
       </div>
       {/* Branch */}
       <div className="flex items-center gap-2">
-        <label className="text-[10px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider">Branch</label>
+        <label className="text-[10px] font-mono config-muted w-24 flex-shrink-0 uppercase tracking-wider">Branch</label>
         <input type="text" placeholder="master, main, dev" value={form.branch}
           onChange={(e) => setForm((prev) => ({ ...prev, branch: e.target.value }))}
-          className="flex-1 bg-transparent border-b border-yellow-400/60 text-[11px] font-mono text-white placeholder:text-yellow-400/30 focus:border-yellow-400 focus:outline-none px-1 py-0.5" />
+          className="config-input flex-1 text-[11px] font-mono px-1 py-0.5" />
       </div>
       {/* Build Profile (CMake flags) */}
       <div className="flex items-start gap-2">
-        <label className="text-[10px] font-mono text-stealth-muted w-24 flex-shrink-0 uppercase tracking-wider mt-1">Build Profile</label>
+        <label className="text-[10px] font-mono config-muted w-24 flex-shrink-0 uppercase tracking-wider mt-1">Build Profile</label>
         <textarea rows={3} placeholder="-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=&quot;120a&quot;"
           value={form.build_profile} onChange={(e) => setForm((prev) => ({ ...prev, build_profile: e.target.value }))}
-          className="flex-1 bg-transparent border border-yellow-400/30 text-white placeholder:text-yellow-400/30 focus:border-yellow-400 focus:outline-none px-2 py-1 font-mono text-[9px] resize-y" />
+          className="config-textarea flex-1 border rounded-sm px-2 py-1 font-mono text-[9px] resize-y" />
       </div>
     </>
   );

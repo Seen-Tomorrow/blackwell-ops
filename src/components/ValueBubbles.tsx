@@ -12,7 +12,7 @@ import React, { useState, useCallback } from "react";
 
 interface ValueBubblesProps {
   paramKey: string;
-  isAdmin?: boolean;            // true = UNLOCKED mode — show controls
+  isPowerUser?: boolean;        // true = power-user unlocked — show editor controls
   currentValue?: string | number; // the value currently selected for this model+provider
   onOverrideChange?: (value: string | number) => void;   // user selects a different value
   addValue?: (value: string | number) => void;            // admin adds new value to param's available list
@@ -37,7 +37,7 @@ interface ValueBubblesProps {
 
 export default function ValueBubbles({
   paramKey,
-  isAdmin = false,
+  isPowerUser = false,
   currentValue = "",
   onOverrideChange,
   addValue,
@@ -124,7 +124,7 @@ export default function ValueBubbles({
         <span key={`hidden-${paramKey}-${idx}`}
           className="inline-flex items-center gap-1 px-2 py-0.5 border text-[11px] font-mono rounded-sm bg-nv-green/8 border-nv-green/30 text-nv-green line-through opacity-40">
           {String(val)}
-          {isAdmin && toggleHiddenValue && (
+          {isPowerUser && toggleHiddenValue && (
             <button onClick={() => toggleHiddenValue(paramKey, val)}
               className="leading-none text-nv-green/50 hover:text-yellow-400 transition-colors"
               title="Show value in catalog">
@@ -178,7 +178,7 @@ export default function ValueBubbles({
         className={`inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-mono rounded-sm transition-all ${style}`}>
 
         {/* Set as default button — admin only (only on non-default values) */}
-        {isAdmin && defaultValue !== undefined && String(val) !== String(defaultValue) && onChangeDefault && (
+        {isPowerUser && defaultValue !== undefined && String(val) !== String(defaultValue) && onChangeDefault && (
           <button onClick={() => onChangeDefault(val)}
             className="leading-none font-bold text-[12px] text-nv-green/60 hover:text-yellow-400 transition-colors"
             title="Set as default value">
@@ -221,7 +221,7 @@ export default function ValueBubbles({
         )}
 
         {/* Remove value — admin only, user-added values */}
-        {isAdmin && isUserAdded && removeValue && (
+        {isPowerUser && isUserAdded && removeValue && (
           <button onClick={(e) => { e.stopPropagation(); removeValue(val); }}
             className="leading-none text-red-400/60 hover:text-red-400 transition-colors"
             title="Remove this value">
@@ -230,7 +230,7 @@ export default function ValueBubbles({
         )}
 
         {/* Hide toggle — admin only */}
-        {isAdmin && (
+        {isPowerUser && (
           <button onClick={() => toggleHiddenValue?.(paramKey, val)}
             className="leading-none text-nv-green/50 hover:text-yellow-400 transition-colors"
             title="Hide this value (persists)">
@@ -239,7 +239,7 @@ export default function ValueBubbles({
         )}
 
         {/* Edit sub-params — admin only, shown when value has sub_params */}
-        {isAdmin && onEditValue && hasSubArgs(String(val)) && (
+        {isPowerUser && onEditValue && hasSubArgs(String(val)) && (
           <button onClick={(e) => {
             e.stopPropagation();
             onEditValue(val);

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import type { UserEditedTemplateParam } from "../lib/types";
-import { KEYS, normalizeUiGroup } from "../lib/storage";
+import { loadParamCreatorMode, normalizeUiGroup, saveParamCreatorMode } from "../lib/storage";
 
 interface CreatorForm {
   key: string;
@@ -46,9 +46,7 @@ export default function ParamCreatorModal({
   onClose: () => void;
   onSubmit: (def: Omit<UserEditedTemplateParam, "order">) => void;
 }) {
-  const [mode, setMode] = useState<"simple" | "advanced">(() => {
-    try { return (localStorage.getItem(KEYS.paramCreatorMode) as "simple" | "advanced") || "simple"; } catch { return "simple"; }
-  });
+  const [mode, setMode] = useState<"simple" | "advanced">(loadParamCreatorMode);
 
   const [form, setForm] = useState<CreatorForm>({ ...DEFAULT_FORM });
   const [newValInput, setNewValInput] = useState("");
@@ -166,13 +164,13 @@ export default function ParamCreatorModal({
         {/* Mode toggle */}
         <div className="px-4 py-2 flex items-center gap-2 border-b border-stealth-border/20">
           <button
-            onClick={() => setMode("simple")}
+            onClick={() => { setMode("simple"); saveParamCreatorMode("simple"); }}
             className={`text-[9px] font-mono px-2 py-0.5 transition-colors ${mode === "simple" ? "bg-yellow-400/20 text-yellow-400 border border-yellow-400/40" : "text-stealth-muted hover:text-white"}`}
           >
             SIMPLE
           </button>
           <button
-            onClick={() => setMode("advanced")}
+            onClick={() => { setMode("advanced"); saveParamCreatorMode("advanced"); }}
             className={`text-[9px] font-mono px-2 py-0.5 transition-colors ${mode === "advanced" ? "bg-yellow-400/20 text-yellow-400 border border-yellow-400/40" : "text-stealth-muted hover:text-white"}`}
           >
             ADVANCED

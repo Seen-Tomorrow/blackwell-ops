@@ -8,7 +8,20 @@ import ValueBubbles from "./ValueBubbles";
 import ProvidersConfig from "./ProvidersConfig";
 import ParamCreatorModal from "./ParamCreatorModal";
 import ParamCatalogSearch from "./ParamCatalogSearch";
-import { KEYS, overridesKey, groupOrderKey, normalizeUiGroup } from "../lib/storage";
+import {
+  cyclePowerUserState,
+  isPowerUserActive,
+  loadPowerUserState,
+  catalogOverrideKey,
+  groupOrderKey,
+  normalizeUiGroup,
+  readJsonStorage,
+  removeStorage,
+  writeJsonStorage,
+  savePowerUserState,
+  type PowerUserState,
+} from "../lib/storage";
+import { dispatchAppEvent, dispatchPowerUserChanged, EVENTS } from "../lib/events";
 import type { RawCatalogEntry } from "../lib/catalog";
 import { catalogEntryToParam } from "../lib/catalog";
 
@@ -30,28 +43,21 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
   const [subTab, setSubTab] = useState<ConfigSubTab>("providers");
   const [selectedProviderId, setSelectedProviderId] = useState<string>(DEFAULT_PROVIDER_ID);
   const [allProviders, setAllProviders] = useState<ProviderConfig[]>(externalProviders || []);
-  // Admin lock state — read from global (managed by Layout.tsx header)
-  const [adminLockState, setAdminLockState] = useState<string>(() => {
-    try { return localStorage.getItem(KEYS.adminLock) || "locked"; } catch { return "locked"; }
-  });
+  // Power-user tri-state — synced with Layout.tsx header toggle
+  const [powerUserState, setPowerUserState] = useState<PowerUserState>(loadPowerUserState);
+  const isPowerUser = isPowerUserActive(powerUserState);
 
-  // Listen for admin lock changes from the global header toggle
   useEffect(() => {
-    const handler = () => {
-      try { setAdminLockState(localStorage.getItem(KEYS.adminLock) || "locked"); } catch {}
-    };
-    window.addEventListener("admin-lock-changed", handler);
-    return () => window.removeEventListener("admin-lock-changed", handler);
+    const handler = () => setPowerUserState(loadPowerUserState());
+    window.addEventListener(EVENTS.powerUserChanged, handler);
+    return () => window.removeEventListener(EVENTS.powerUserChanged, handler);
   }, []);
 
-  const isAdminLocked = adminLockState === "locked";
-
-  // ── Toggle admin lock (same cycle as POWER USER button) ───────────────
   const handleEditorToggle = useCallback(() => {
-    setAdminLockState(prev => {
-      const next = prev === "locked" ? "unlocked" : prev === "unlocked" ? "permanently" : "locked";
-      try { localStorage.setItem(KEYS.adminLock, next); } catch {}
-      window.dispatchEvent(new Event("admin-lock-changed"));
+    setPowerUserState(prev => {
+      const next = cyclePowerUserState(prev);
+      savePowerUserState(next);
+      dispatchPowerUserChanged();
       return next;
     });
   }, []);
@@ -102,8 +108,8 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
 
   useEffect(() => {
     try {
-      const stored = localStorage.getItem(overridesKey(selectedProviderId));
-      if (stored) setUserOverrides(JSON.parse(stored));
+      const stored = readJsonStorage<Record<string, string | number>>(catalogOverrideKey(selectedProviderId));
+      if (stored) setUserOverrides(stored);
       else setUserOverrides({});
     } catch { setUserOverrides({}); }
   }, [selectedProviderId]);
@@ -117,9 +123,9 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
   useEffect(() => {
     // Load from localStorage first (A), fall back to provider config (B)
     try {
-      const stored = localStorage.getItem(groupOrderKey(selectedProviderId));
+      const stored = readJsonStorage<string[]>(groupOrderKey(selectedProviderId));
       if (stored) {
-        setCustomGroupOrder(JSON.parse(stored).map((g: string) => normalizeUiGroup(g)));
+        setCustomGroupOrder(stored.map((g: string) => normalizeUiGroup(g)));
       } else if (currentProvider?.groupOrder && currentProvider.groupOrder.length > 0) {
         setCustomGroupOrder(currentProvider.groupOrder.map(normalizeUiGroup));
       } else {
@@ -132,12 +138,12 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
 
   const saveGroupOrder = useCallback(async (newOrder: string[]) => {
     // Persist to localStorage (A)
-    try { localStorage.setItem(groupOrderKey(selectedProviderId), JSON.stringify(newOrder.map(normalizeUiGroup))); } catch {}
+    writeJsonStorage(groupOrderKey(selectedProviderId), newOrder.map(normalizeUiGroup));
     setCustomGroupOrder(newOrder);
     // Persist to user_providers_config.json via save_provider (B)
     if (currentProvider) {
       const updated = { ...currentProvider, groupOrder: newOrder };
-      try { await invoke("save_provider", { provider: updated }); window.dispatchEvent(new Event("blackops-reload-providers")); } catch {}
+      try { await invoke("save_provider", { provider: updated }); dispatchAppEvent(EVENTS.reloadProviders); } catch {}
     }
   }, [selectedProviderId, currentProvider]);
 
@@ -197,60 +203,56 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
     const fingerprint = `${userSavedParamsWithDefaults.length}-${hiddenCount}`;
     if (fingerprint === lastDispatchRef.current) return;
     lastDispatchRef.current = fingerprint;
-    window.dispatchEvent(new CustomEvent("param-config-changed", { detail: { totalParams: userSavedParamsWithDefaults.length, hiddenCount } }));
+    dispatchAppEvent(EVENTS.paramConfigChanged, { totalParams: userSavedParamsWithDefaults.length, hiddenCount });
   }, [userSavedParamsWithDefaults, hiddenCount]);
 
   // ── Persist provider to Rust ───────────────────────────────────────
   const persistProviderToConfig = useCallback(async (provider: ProviderConfig) => {
     try {
       await invoke("save_provider", { provider });
-      window.dispatchEvent(new Event("blackops-reload-providers"));
+      dispatchAppEvent(EVENTS.reloadProviders);
     } catch (err) { console.error("[CONFIG] save_provider FAILED:", err); }
   }, []);
 
   // ── User override (selecting a value for this model + provider) ───
   const setOverride = useCallback((defKey: string, value: string | number) => {
     try {
-      const stored = localStorage.getItem(overridesKey(selectedProviderId));
-      const existing = stored ? JSON.parse(stored) : {};
-      localStorage.setItem(overridesKey(selectedProviderId), JSON.stringify({ ...existing, [defKey]: value }));
+      const existing = readJsonStorage<Record<string, string | number>>(catalogOverrideKey(selectedProviderId)) ?? {};
+      writeJsonStorage(catalogOverrideKey(selectedProviderId), { ...existing, [defKey]: value });
     } catch {}
     setUserOverrides(prev => ({ ...prev, [defKey]: value }));
-    window.dispatchEvent(new CustomEvent("param-config-changed"));
+    dispatchAppEvent(EVENTS.paramConfigChanged);
   }, [selectedProviderId]);
 
   const clearOverride = useCallback((defKey: string) => {
-    try {
-      const stored = localStorage.getItem(overridesKey(selectedProviderId));
-      if (stored) {
-        const existing: Record<string, any> = JSON.parse(stored);
-        delete existing[defKey];
-        localStorage.setItem(overridesKey(selectedProviderId), JSON.stringify(existing));
-      }
-    } catch {}
+    const existing = readJsonStorage<Record<string, string | number>>(catalogOverrideKey(selectedProviderId));
+    if (existing) {
+      const { [defKey]: _, ...rest } = existing;
+      writeJsonStorage(catalogOverrideKey(selectedProviderId), rest);
+    }
     setUserOverrides(prev => { const n = { ...prev }; delete n[defKey]; return n; });
-    window.dispatchEvent(new CustomEvent("param-config-changed"));
+    dispatchAppEvent(EVENTS.paramConfigChanged);
   }, [selectedProviderId]);
 
   // ── Reset to factory defaults (RESET TO DEFAULTS) — instant, deletes user config file ───
   const confirmReset = useCallback(async () => {
-    if (!currentProvider || adminLockState === "locked") return;
+    if (!currentProvider || !isPowerUser) return;
     setShowResetConfirm(false);
 
     try {
       await invoke("reset_provider_user_config", { providerId: selectedProviderId });
-      window.dispatchEvent(new Event("blackops-reload-providers"));
+      dispatchAppEvent(EVENTS.reloadProviders);
     } catch (err) { console.error("[CONFIG] Reset failed:", err); }
 
     setUserOverrides({});
     try {
-      localStorage.removeItem(overridesKey(selectedProviderId));
-      localStorage.removeItem(groupOrderKey(selectedProviderId));
+      removeStorage(catalogOverrideKey(selectedProviderId));
+      removeStorage(groupOrderKey(selectedProviderId));
     } catch {}
     setCustomGroupOrder(null);
-    window.dispatchEvent(new CustomEvent("param-config-changed"));
+    dispatchAppEvent(EVENTS.paramConfigChanged);
     showSaved("RESET TO DEFAULTS");
-  }, [currentProvider, adminLockState, selectedProviderId]);
+  }, [currentProvider, isPowerUser, selectedProviderId]);
 
   // ── Admin: add new param definition (from modal) ────────────────────────
   const handleCreatorSubmit = useCallback(async (def: Omit<UserEditedTemplateParam, "order">) => {
@@ -269,7 +271,7 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
     }
 
     setAllProviders(prev => prev.map(p => p.id !== selectedProviderId ? p : updatedProvider));
-    window.dispatchEvent(new CustomEvent("param-config-changed"));
+    dispatchAppEvent(EVENTS.paramConfigChanged);
     await persistProviderToConfig(updatedProvider);
     setShowCreatorModal(false);
     showSaved("SAVED");
@@ -300,7 +302,7 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
     }
 
     setAllProviders(prev => prev.map(p => p.id !== selectedProviderId ? p : updatedProvider));
-    window.dispatchEvent(new CustomEvent("param-config-changed"));
+    dispatchAppEvent(EVENTS.paramConfigChanged);
     await persistProviderToConfig(updatedProvider);
     setShowCatalogSearch(false);
     showSaved("ADDED");
@@ -308,7 +310,7 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
 
   // ── Admin: toggle hidden row (catalog visibility) ───────────────
   const toggleRowHidden = useCallback(async (key: string) => {
-    if (!currentProvider || adminLockState === "locked") return;
+    if (!currentProvider || !isPowerUser) return;
     
     const currentUserParams = buildUserSavedParams(currentProvider);
     const updatedUserParams = currentUserParams.map(d => d.key === key ? { ...d, hidden: !d.hidden } : d);
@@ -316,13 +318,13 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
 
     setAllProviders(prev => prev.map(p => p.id !== selectedProviderId ? p : updatedProvider));
     await persistProviderToConfig(updatedProvider);
-    window.dispatchEvent(new CustomEvent("param-config-changed"));
+    dispatchAppEvent(EVENTS.paramConfigChanged);
     showSaved("SAVED");
-  }, [currentProvider, isAdminLocked, buildUserSavedParams, persistProviderToConfig, selectedProviderId]);
+  }, [currentProvider, isPowerUser, buildUserSavedParams, persistProviderToConfig, selectedProviderId]);
 
   // ── Admin: toggle hidden value (hide from catalog only) ─────────
   const toggleHiddenValue = useCallback(async (key: string, value: string | number) => {
-    if (!currentProvider || adminLockState === "locked") return;
+    if (!currentProvider || !isPowerUser) return;
     
     const currentUserParams = buildUserSavedParams(currentProvider);
     const updatedUserParams = currentUserParams.map(d => {
@@ -338,13 +340,13 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
 
     setAllProviders(prev => prev.map(p => p.id !== selectedProviderId ? p : updatedProvider));
     await persistProviderToConfig(updatedProvider);
-    window.dispatchEvent(new CustomEvent("param-config-changed"));
+    dispatchAppEvent(EVENTS.paramConfigChanged);
     showSaved("SAVED");
-  }, [currentProvider, isAdminLocked, buildUserSavedParams, persistProviderToConfig, selectedProviderId]);
+  }, [currentProvider, isPowerUser, buildUserSavedParams, persistProviderToConfig, selectedProviderId]);
 
   // ── Admin: change default value for a param ─────────────────────
   const changeDefaultValue = useCallback(async (key: string, value: string | number) => {
-    if (!currentProvider || adminLockState === "locked") return;
+    if (!currentProvider || !isPowerUser) return;
     
     const currentUserParams = buildUserSavedParams(currentProvider);
     const updatedUserParams = currentUserParams.map(d => d.key === key ? { ...d, defaultValue: value } : d);
@@ -352,13 +354,13 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
 
     setAllProviders(prev => prev.map(p => p.id !== selectedProviderId ? p : updatedProvider));
     await persistProviderToConfig(updatedProvider);
-    window.dispatchEvent(new CustomEvent("param-config-changed"));
+    dispatchAppEvent(EVENTS.paramConfigChanged);
     showSaved("DEFAULT CHANGED");
-  }, [currentProvider, isAdminLocked, buildUserSavedParams, persistProviderToConfig, selectedProviderId]);
+  }, [currentProvider, isPowerUser, buildUserSavedParams, persistProviderToConfig, selectedProviderId]);
 
   // ── Admin: drag reorder ─────────────────────────────────────────
   const swapItems = useCallback(async (fromIdx: number, toIdx: number) => {
-    if (fromIdx === toIdx || fromIdx < 0 || !currentProvider || adminLockState === "locked") return;
+    if (fromIdx === toIdx || fromIdx < 0 || !currentProvider || !isPowerUser) return;
     
     const currentUserParams = buildUserSavedParams(currentProvider);
     const d = [...currentUserParams];
@@ -367,14 +369,14 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
     const updatedProvider = { ...currentProvider, userEditedTemplateParams: d.map((x, i) => ({ ...x, order: i })) };
 
     setAllProviders(prev => prev.map(p => p.id !== selectedProviderId ? p : updatedProvider));
-    window.dispatchEvent(new CustomEvent("param-config-changed"));
+    dispatchAppEvent(EVENTS.paramConfigChanged);
     await persistProviderToConfig(updatedProvider);
     showSaved("SAVED");
-  }, [currentProvider, isAdminLocked, buildUserSavedParams, persistProviderToConfig, selectedProviderId]);
+  }, [currentProvider, isPowerUser, buildUserSavedParams, persistProviderToConfig, selectedProviderId]);
 
   // ── Admin: add value to param (writes to BOTH values and userAddedValues) ───
   const addValueToParam = useCallback(async (key: string, value: string | number) => {
-    if (!currentProvider || adminLockState === "locked") return;
+    if (!currentProvider || !isPowerUser) return;
 
     const currentUserParams = buildUserSavedParams(currentProvider);
     const updatedUserParams = currentUserParams.map(d => {
@@ -392,14 +394,14 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
     const updatedProvider = { ...currentProvider, userEditedTemplateParams: updatedUserParams };
 
     setAllProviders(prev => prev.map(p => p.id !== selectedProviderId ? p : updatedProvider));
-    window.dispatchEvent(new CustomEvent("param-config-changed"));
+    dispatchAppEvent(EVENTS.paramConfigChanged);
     await persistProviderToConfig(updatedProvider);
     showSaved("SAVED");
-  }, [currentProvider, isAdminLocked, buildUserSavedParams, persistProviderToConfig, selectedProviderId]);
+  }, [currentProvider, isPowerUser, buildUserSavedParams, persistProviderToConfig, selectedProviderId]);
 
   // ── Admin: remove value from param ───────────────────────────────
   const removeValueFromParam = useCallback(async (key: string, value: string | number) => {
-    if (!currentProvider || adminLockState === "locked") return;
+    if (!currentProvider || !isPowerUser) return;
 
     const currentUserParams = buildUserSavedParams(currentProvider);
     const updatedUserParams = currentUserParams.map(d => {
@@ -415,19 +417,19 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
     const updatedProvider = { ...currentProvider, userEditedTemplateParams: updatedUserParams };
 
     setAllProviders(prev => prev.map(p => p.id !== selectedProviderId ? p : updatedProvider));
-    window.dispatchEvent(new CustomEvent("param-config-changed"));
+    dispatchAppEvent(EVENTS.paramConfigChanged);
     await persistProviderToConfig(updatedProvider);
     showSaved("SAVED");
-  }, [currentProvider, isAdminLocked, buildUserSavedParams, persistProviderToConfig, selectedProviderId]);
+  }, [currentProvider, isPowerUser, buildUserSavedParams, persistProviderToConfig, selectedProviderId]);
 
   // ── Admin: open sub-params editor for a value ───────────────────
   const openSubParamsEditor = useCallback((paramKey: string, valueName: string) => {
-    if (!currentProvider || adminLockState === "locked") return;
+    if (!currentProvider || !isPowerUser) return;
     setEditingValue({ paramKey, valueName });
     const def = userSavedParamsWithDefaults.find(d => d.key === paramKey);
     const existingArgs = def?.sub_params?.[valueName]?.join(" ") ?? "";
     setSubArgsText(prev => ({ ...prev, [paramKey + "::" + valueName]: existingArgs }));
-  }, [userSavedParamsWithDefaults, currentProvider, isAdminLocked]);
+  }, [userSavedParamsWithDefaults, currentProvider, isPowerUser]);
 
   // ── Admin: save sub-params edit for a value ─────────────────────
   const saveSubParamsEdit = useCallback(async () => {
@@ -479,7 +481,7 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
 
   // ── Admin: delete a value's sub-params entry and remove from values ─
   const deleteSubParamsEntry = useCallback(async (paramKey: string, valueName: string) => {
-    if (!currentProvider || adminLockState === "locked") return;
+    if (!currentProvider || !isPowerUser) return;
     const currentUserParams = buildUserSavedParams(currentProvider);
     let updatedUserParams = currentUserParams.map(d => {
       if (d.key !== paramKey) return d;
@@ -506,11 +508,11 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
     setAllProviders(prev => prev.map(p => p.id !== selectedProviderId ? p : updatedProvider));
     await persistProviderToConfig(updatedProvider);
     showSaved("SAVED");
-  }, [currentProvider, isAdminLocked, buildUserSavedParams, persistProviderToConfig, selectedProviderId]);
+  }, [currentProvider, isPowerUser, buildUserSavedParams, persistProviderToConfig, selectedProviderId]);
 
   // ── Admin: restore param to provider default (full reset) ─────────
   const handleRestoreParam = useCallback(async (key: string) => {
-    if (!currentProvider || adminLockState === "locked") return;
+    if (!currentProvider || !isPowerUser) return;
     try {
       const freshFromTemplateParam: UserEditedTemplateParam = await invoke("reset_param_to_template", {
         providerId: selectedProviderId, paramKey: key
@@ -524,11 +526,11 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
     } catch (err) {
       console.error("[CONFIG] reset_param_to_template failed:", err);
     }
-  }, [currentProvider, isAdminLocked, buildUserSavedParams, persistProviderToConfig, selectedProviderId]);
+  }, [currentProvider, isPowerUser, buildUserSavedParams, persistProviderToConfig, selectedProviderId]);
 
   // ── Admin: remove user-added param entirely ──────────────────────
   const handleRemoveParam = useCallback(async (key: string) => {
-    if (!currentProvider || adminLockState === "locked") return;
+    if (!currentProvider || !isPowerUser) return;
     try {
       const currentUserParams = buildUserSavedParams(currentProvider);
       const updatedUserParams = currentUserParams.filter(d => d.key !== key);
@@ -539,7 +541,7 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
     } catch (err) {
       console.error("[CONFIG] remove param failed:", err);
     }
-  }, [currentProvider, isAdminLocked, buildUserSavedParams, persistProviderToConfig, selectedProviderId]);
+  }, [currentProvider, isPowerUser, buildUserSavedParams, persistProviderToConfig, selectedProviderId]);
 
   // ── Admin: open param metadata editor ───────────────────────────
   const openParamMetaEditor = useCallback((def: UserEditedTemplateParam) => {
@@ -721,12 +723,12 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
 
   // ── Render ───────────────────────────────────────────────────────
   return (
-    <div className="h-full flex flex-col overflow-hidden">
+    <div className="h-full flex flex-col overflow-hidden" data-config-page>
       {/* Tab bar */}
-      <div className="px-4 py-2 border-b border-stealth-border flex items-center gap-1">
-        <button onClick={() => setSubTab("providers")} className={`px-3 py-1 text-[10px] font-mono tracking-wider transition-colors ${subTab === "providers" ? "text-nv-green border-b border-nv-green/60" : "text-stealth-muted hover:text-white"}`}>PROVIDERS</button>
-        <button onClick={() => setSubTab("params")} className={`px-3 py-1 text-[10px] font-mono tracking-wider transition-colors ${subTab === "params" ? "text-nv-green border-b border-nv-green/60" : "text-stealth-muted hover:text-white"}`}>PARAMETERS</button>
-        <button onClick={() => setSubTab("paths")} className={`px-3 py-1 text-[10px] font-mono tracking-wider transition-colors ${subTab === "paths" ? "text-nv-green border-b border-nv-green/60" : "text-stealth-muted hover:text-white"}`}>PATHS</button>
+      <div className="px-4 py-2 config-section-bar flex items-center gap-1">
+        <button onClick={() => setSubTab("providers")} className={`app-nav-tab px-3 py-1 text-[10px] font-mono tracking-wider rounded-sm ${subTab === "providers" ? "app-nav-tab-active" : ""}`}>PROVIDERS</button>
+        <button onClick={() => setSubTab("params")} className={`app-nav-tab px-3 py-1 text-[10px] font-mono tracking-wider rounded-sm ${subTab === "params" ? "app-nav-tab-active" : ""}`}>PARAMETERS</button>
+        <button onClick={() => setSubTab("paths")} className={`app-nav-tab px-3 py-1 text-[10px] font-mono tracking-wider rounded-sm ${subTab === "paths" ? "app-nav-tab-active" : ""}`}>PATHS</button>
        </div>
 
        {subTab === "providers" ? (
@@ -738,20 +740,17 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
        ) : (
         <div className="flex-1 flex flex-col overflow-hidden min-h-0">
           {/* Toolbar */}
-          <div className="px-4 py-3 border-b border-stealth-border flex items-center justify-between flex-wrap gap-2 relative">
+          <div className="px-4 py-2.5 config-section-bar flex items-center justify-between flex-wrap gap-2 relative">
             <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-xs font-mono text-nv-green tracking-wider">PARAMETER CONFIGURATION</h2>
-                <span className="text-[10px] text-stealth-border/60">|</span>
+              <div className="flex items-center gap-3">
+                <h2 className="text-xs font-mono theme-accent-text tracking-widest">PARAMETER CONFIGURATION</h2>
                 <button onClick={handleEditorToggle}
-                  className={`text-[9px] font-mono transition-colors hover:text-yellow-400 ${
-                    adminLockState === "permanently"
-                      ? "text-yellow-400"
-                      : adminLockState === "unlocked" ? "text-yellow-400" : "text-stealth-muted"
+                  className={`value-chip text-[9px] font-mono px-2 py-0.5 rounded-sm transition-colors ${
+                    isPowerUser ? "value-chip-active" : ""
                   }`}
                   title="Click to toggle editor lock state">
-                  {adminLockState === "permanently" ? "\u{1F511} EDITOR — PERMANENTLY UNLOCKED"
-                    : adminLockState === "unlocked" ? "\u{1F513} EDITOR — UNLOCKED"
+                  {powerUserState === "permanently" ? "\u{1F511} EDITOR — PERMANENTLY UNLOCKED"
+                    : powerUserState === "unlocked" ? "\u{1F513} EDITOR — UNLOCKED"
                     : "\u{1F512} EDITOR — LOCKED"}
                 </button>
               </div>
@@ -759,10 +758,10 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
 
               {enabledProviders.length > 1 && (
                 <div className="flex items-center gap-2 mt-2">
-                  <span className="text-[9px] font-mono text-stealth-muted uppercase tracking-wider">Provider:</span>
+                  <span className="text-[9px] font-mono config-muted uppercase tracking-wider">Provider:</span>
                   {enabledProviders.map(p => (
                     <button key={p.id} onClick={() => setSelectedProviderId(p.id)}
-                      className={`px-2 py-0.5 text-[9px] font-mono border transition-all ${selectedProviderId === p.id ? "bg-nv-green/30 text-nv-green border-nv-green/60" : "text-stealth-muted border-stealth-border hover:text-white"}`}>
+                      className={`px-2 py-0.5 text-[9px] font-mono rounded-sm transition-all ${selectedProviderId === p.id ? "provider-pill-active border" : "provider-pill border"}`}>
                       {p.display_name}
                     </button>
                   ))}
@@ -773,21 +772,21 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
             {/* Right side: action buttons (UNLOCKED) and legend (LOCKED) — both always rendered, opacity toggled */}
             <div className="ml-auto flex gap-2 items-center">
               {/* Action buttons — visible when unlocked */}
-              <div className={`flex gap-2 transition-opacity ${adminLockState !== "locked" ? "opacity-100" : "opacity-0 pointer-events-none"}`}>
+              <div className={`flex gap-2 transition-opacity ${isPowerUser ? "opacity-100" : "opacity-0 pointer-events-none"}`}>
                 <button onClick={() => setShowResetConfirm(true)}
-                  className="px-2 py-1 text-[9px] font-mono border border-yellow-400/40 text-yellow-400 hover:bg-yellow-500/20 transition-colors">
+                  className="value-chip text-[9px] font-mono px-2 py-1 rounded-sm">
                   RESET TO DEFAULTS
                 </button>
               </div>
               {/* Legend — visible when locked */}
-              <div className={`border border-stealth-border/50 rounded-sm p-2 transition-opacity ${adminLockState === "locked" ? "opacity-100" : "opacity-0 pointer-events-none"}`}>
+              <div className={`config-form-panel rounded-sm p-2 transition-opacity ${!isPowerUser ? "opacity-100" : "opacity-0 pointer-events-none"}`}>
                 <div className="grid grid-cols-[36px_1fr] gap-1 items-center" style={{ gridTemplateColumns: "36px 1fr" }}>
-                  <span className="inline-flex items-center justify-center px-2 py-0.5 text-[11px] font-mono rounded-sm bg-nv-green/30 border-double border-2 border-nv-green/70 text-nv-green">val</span>
-                  <span className="text-[8px] font-mono text-stealth-muted">Factory default value</span>
-                  <span className="inline-flex items-center justify-center px-2 py-0.5 text-[11px] font-mono rounded-sm bg-nv-green/30 border-double border-2 border-yellow-400/80 text-yellow-300">val</span>
-                  <span className="text-[8px] font-mono text-stealth-muted">USER's new default</span>
-                  <span className="inline-flex items-center justify-center px-2 py-0.5 text-[11px] font-mono rounded-sm bg-nv-green/10 border border-nv-green/30 text-yellow-300">val</span>
-                  <span className="text-[8px] font-mono text-stealth-muted">USER's added values</span>
+                  <span className="value-chip-active inline-flex items-center justify-center px-2 py-0.5 text-[11px] font-mono rounded-sm">val</span>
+                  <span className="text-[8px] font-mono config-muted">Factory default value</span>
+                  <span className="value-chip inline-flex items-center justify-center px-2 py-0.5 text-[11px] font-mono rounded-sm border-2 border-dashed">val</span>
+                  <span className="text-[8px] font-mono config-muted">USER's new default</span>
+                  <span className="value-chip inline-flex items-center justify-center px-2 py-0.5 text-[11px] font-mono rounded-sm opacity-80">val</span>
+                  <span className="text-[8px] font-mono config-muted">USER's added values</span>
                 </div>
               </div>
             </div>
@@ -797,16 +796,16 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
           <div className="relative">
             {showResetConfirm && (
               <div className="absolute inset-0 bg-black/60 z-50" onClick={() => setShowResetConfirm(false)}>
-                <div className="bg-[#1a1a2e] border border-yellow-400/40 rounded-lg p-6 max-w-sm absolute top-[85px] right-4" onClick={e => e.stopPropagation()}>
-                  <h3 className="text-xs font-mono text-yellow-400 mb-3">CONFIRM RESET</h3>
-                  <p className="text-[10px] font-mono text-stealth-muted mb-4">
+                <div className="config-form-panel rounded-sm p-6 max-w-sm absolute top-[85px] right-4 shadow-2xl" onClick={e => e.stopPropagation()}>
+                  <h3 className="text-xs font-mono theme-accent-text mb-3">CONFIRM RESET</h3>
+                  <p className="text-[10px] font-mono config-muted mb-4">
                     This will reset all parameters to template defaults, remove added params and values, restore hidden items. Cannot be undone.
                   </p>
                   <div className="flex gap-2 justify-end">
                     <button onClick={() => setShowResetConfirm(false)}
-                      className="px-3 py-1 text-[9px] font-mono border border-stealth-border/40 text-stealth-muted hover:text-white transition-colors">CANCEL</button>
+                      className="value-chip text-[9px] font-mono px-3 py-1 rounded-sm">CANCEL</button>
                     <button onClick={confirmReset}
-                      className="px-3 py-1 text-[9px] font-mono border border-yellow-400/60 bg-yellow-400/20 text-yellow-400 hover:bg-yellow-500/30 transition-colors">YES, RESET</button>
+                      className="value-chip-active text-[9px] font-mono px-3 py-1 rounded-sm">YES, RESET</button>
                   </div>
                 </div>
               </div>
@@ -814,25 +813,25 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
 
             {/* Saved flash */}
             {savedFlash && (
-              <div className="absolute top-0 right-0 px-3 py-1 bg-nv-green/30 border border-nv-green/60 text-nv-green text-[9px] font-mono rounded-sm animate-pulse">{savedFlash}</div>
+              <div className="absolute top-0 right-0 px-3 py-1 value-chip-active text-[9px] font-mono rounded-sm animate-pulse">{savedFlash}</div>
             )}
           </div>
 
           {/* Template update banner — shows when factory template version changed */}
           {currentProvider?.needsTemplateAttention && (
-            <div className="mx-4 mt-3 px-3 py-2 border border-yellow-400/40 bg-yellow-400/10 rounded-sm flex items-start justify-between gap-3">
-              <span className="text-[9px] font-mono text-yellow-300 leading-tight">
+            <div className="mx-4 mt-3 px-3 py-2 foundry-profile-row rounded-sm flex items-start justify-between gap-3">
+              <span className="text-[9px] font-mono config-muted leading-tight">
                 ⚠ Factory template updated — new options were merged automatically. Save any change to dismiss, or RESET TO DEFAULTS if engines fail to launch.
               </span>
-              {adminLockState !== "locked" && (
+              {isPowerUser && (
                 <button onClick={() => setShowResetConfirm(true)}
-                  className="shrink-0 px-2 py-0.5 text-[8px] font-mono border border-yellow-400/60 text-yellow-400 hover:bg-yellow-500/20 transition-colors rounded-sm">RESET NOW</button>
+                  className="shrink-0 value-chip-active text-[8px] font-mono px-2 py-0.5 rounded-sm">RESET NOW</button>
               )}
             </div>
           )}
 
           {/* Param rows */}
-          <div className="flex-1 overflow-y-auto p-4 min-h-0">
+          <div className="flex-1 overflow-y-auto eink-scrollbar p-4 min-h-0">
             {userSavedParamsWithDefaults.length === 0 ? (
               <div className="flex items-center justify-center h-full text-stealth-muted text-xs font-mono">LOADING PARAMETERS...</div>
             ) : (
@@ -861,23 +860,23 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
 
                 return (
                   <div className="space-y-3">
-                   {/* Add new param — admin only */}
-                      {adminLockState !== "locked" && (
-                        <div className="flex gap-2 mb-3">
-                           <button
-                             onClick={() => setShowCatalogSearch(true)}
-                             className="flex-1 py-3 text-xl font-mono bg-nv-green/15 border border-nv-green/40 text-nv-green hover:bg-nv-green/25 transition-colors rounded tracking-wider"
-                           >
-                            + ADD NEW FROM CATALOG
-                           </button>
+                   {/* Add from catalog — all users; manual entry — power user only */}
+                      <div className="flex gap-2 mb-3">
+                        <button
+                          onClick={() => setShowCatalogSearch(true)}
+                          className="flex-1 py-3 text-xl font-mono bg-nv-green/15 border border-nv-green/40 text-nv-green hover:bg-nv-green/25 transition-colors rounded tracking-wider"
+                        >
+                          + ADD NEW FROM CATALOG
+                        </button>
+                        {isPowerUser && (
                           <button
                             onClick={() => setShowCreatorModal(true)}
                             className="px-3 py-2 text-[9px] font-mono border border-dashed border-yellow-400/30 text-yellow-400/60 hover:bg-yellow-400/5 hover:border-yellow-400/60 transition-colors rounded"
                           >
                             + MANUAL
                           </button>
-                        </div>
-                      )}
+                        )}
+                      </div>
                     {groupOrder.filter(g => groups[g]).map((groupName, groupIdx) => {
                       const groupParams = groups[groupName];
                       if (!groupParams || groupParams.length === 0) return null;
@@ -885,7 +884,7 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
                         <div key={groupName} data-group-idx={groupIdx}>
                           {/* Group header with drag handle */}
                           <div className={`flex items-center gap-1 text-[8px] font-mono tracking-widest uppercase mb-1.5 pb-1 border-b border-stealth-border/30 ${draggingGroup === groupName ? "text-yellow-400" : "text-stealth-muted/60"}`}>
-                            {adminLockState !== "locked" && (
+                            {isPowerUser && (
                               <button onMouseDown={(e) => handleGroupDragStart(e, groupName)}
                                 className="select-none px-1 cursor-grab active:cursor-grabbing hover:text-nv-green transition-colors"
                                 title="Click and drag to reorder group">
@@ -924,14 +923,14 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
                                      }`}>
 
                                    {/* Drag handle — admin only */}
-                                   {adminLockState !== "locked" && (
+                                   {isPowerUser && (
                                      <button onMouseDown={(e) => handleDragStart(e, globalIdx)}
                                        className="text-[8px] text-stealth-muted select-none px-1 cursor-grab active:cursor-grabbing hover:text-nv-green transition-colors"
                                        title="Click and drag to reorder">&#x2630;</button>
                                    )}
 
                                    {/* Hidden toggle — admin only */}
-                                   {adminLockState !== "locked" && (
+                                   {isPowerUser && (
                                      <button onClick={() => toggleRowHidden(def.key)}
                                        className={`text-[10px] select-none transition-colors ${def.hidden ? "text-yellow-400/35" : "text-nv-green/25 hover:text-nv-green"}`}
                                        title={def.hidden ? "Show parameter in catalog" : "Hide from catalog"}>
@@ -940,7 +939,7 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
                                    )}
 
                                    {/* Edit param metadata + Restore to provider default — admin only */}
-{adminLockState !== "locked" && (
+{isPowerUser && (
                                       <div className="flex items-center gap-1 mr-2">
                                         <button onClick={() => openParamMetaEditor(def)}
                                           className="leading-none text-[15px] font-mono text-nv-green/40 hover:text-yellow-400 transition-colors"
@@ -969,22 +968,22 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
                                    {/* Value bubbles */}
                                    <ValueBubbles
                                      paramKey={def.key}
-                                     isAdmin={adminLockState !== "locked"}
+                                     isPowerUser={isPowerUser}
                                      currentValue={currentValue}
                                       onOverrideChange={(val) => setOverride(defKey, val)}
                                       onClearOverride={() => clearOverride(def.key)}
-                                     addValue={adminLockState !== "locked" ? (v: string | number) => addValueToParam(def.key, v) : undefined}
-                                     removeValue={adminLockState !== "locked" ? (v: string | number) => removeValueFromParam(def.key, v) : undefined}
-                                     toggleHiddenValue={adminLockState !== "locked" ? (_k: string, v: string | number) => toggleHiddenValue(def.key, v) : undefined}
+                                     addValue={isPowerUser ? (v: string | number) => addValueToParam(def.key, v) : undefined}
+                                     removeValue={isPowerUser ? (v: string | number) => removeValueFromParam(def.key, v) : undefined}
+                                     toggleHiddenValue={isPowerUser ? (_k: string, v: string | number) => toggleHiddenValue(def.key, v) : undefined}
 hiddenValues={def.hiddenValues || []}
                                       availableValues={def.values || []}
                                       userAddedValues={def.userAddedValues || []}
                                       defaultValue={effectiveDefault}
                                       factoryDefault={factoryDefault !== undefined ? String(factoryDefault) : undefined}
-                                      onChangeDefault={adminLockState !== "locked"
+                                      onChangeDefault={isPowerUser
                                         ? (v: string | number) => changeDefaultValue(def.key, v)
                                         : undefined}
-                                      onEditValue={adminLockState !== "locked" ? (val: string | number) => openSubParamsEditor(def.key, String(val)) : undefined}
+                                      onEditValue={isPowerUser ? (val: string | number) => openSubParamsEditor(def.key, String(val)) : undefined}
                                       ptype={def.ptype}
                                       subParams={def.sub_params || undefined}
                                    />
@@ -1026,9 +1025,9 @@ hiddenValues={def.hiddenValues || []}
             </div>
 
           {/* Status bar footer */}
-          <div className="flex-shrink-0 px-4 py-3 border-t border-stealth-border flex items-center justify-between">
-            <span className="text-[9px] font-mono text-stealth-muted">{userSavedParamsWithDefaults.length} parameter{userSavedParamsWithDefaults.length !== 1 ? "s" : ""}{hiddenCount > 0 ? ` (${hiddenCount} hidden)` : ""}</span>
-            {currentProvider && (<span className="text-[9px] font-mono text-telemetry-cyan">{currentProvider.display_name}</span>)}
+          <div className="flex-shrink-0 px-4 py-2.5 config-section-bar flex items-center justify-between">
+            <span className="text-[9px] font-mono config-muted">{userSavedParamsWithDefaults.length} parameter{userSavedParamsWithDefaults.length !== 1 ? "s" : ""}{hiddenCount > 0 ? ` (${hiddenCount} hidden)` : ""}</span>
+            {currentProvider && (<span className="text-[9px] font-mono theme-accent-text">{currentProvider.display_name}</span>)}
           </div>
         </div>
       )}
@@ -1038,6 +1037,7 @@ hiddenValues={def.hiddenValues || []}
         <ParamCatalogSearch
           providerId={selectedProviderId}
           existingKeys={userSavedParams.map(d => d.key)}
+          isPowerUser={isPowerUser}
           onAdd={handleCatalogAdd}
           onClose={() => setShowCatalogSearch(false)}
         />

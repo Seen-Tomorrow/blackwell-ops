@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { EVENTS } from "../lib/events";
 
 export interface ToastData {
   id: number;
@@ -40,12 +41,12 @@ export function ToastProvider({ children }: ToastProviderProps) {
       }
     };
 
-    window.addEventListener("blackops-launch-success", handleLaunchSuccess);
-    window.addEventListener("blackops-launch-error", handleLaunchError);
+    window.addEventListener(EVENTS.launchSuccess, handleLaunchSuccess);
+    window.addEventListener(EVENTS.launchError, handleLaunchError);
 
     return () => {
-      window.removeEventListener("blackops-launch-success", handleLaunchSuccess);
-      window.removeEventListener("blackops-launch-error", handleLaunchError);
+      window.removeEventListener(EVENTS.launchSuccess, handleLaunchSuccess);
+      window.removeEventListener(EVENTS.launchError, handleLaunchError);
     };
   }, [addToast]);
 

@@ -28,6 +28,9 @@ export default function VramBadge({
   manifest, gpus, modelMeta, selectedGpuIndices, onDeviceSelect, isValidating, onValidate,
   isModelRunning, activeEngineAlias, activeEnginePort, selectedSlotIdx, supportsFusion = true, offloadMode, onMoeSuggestionClick, className
 }: VramBadgeProps) {
+  const { getEngine } = useFusionData();
+  const fusion = selectedSlotIdx !== null && selectedSlotIdx !== undefined ? getEngine(selectedSlotIdx) : null;
+
   if (!manifest) return null;
 
   const s = manifest.style;
@@ -57,18 +60,13 @@ export default function VramBadge({
   const ramUsagePct = manifest.ramManufacturedGb > 0 ? Math.min((manifest.ramTotalGb / manifest.ramManufacturedGb) * 100, 100) : 0;
   const ramMfgGb = manifest.ramManufacturedGb.toFixed(0);
 
-  // Fusion overlay data (only when a specific engine is selected via mini card)
-  const { getEngine } = useFusionData();
-  // Resolve fusion data from slot index — unique per engine, no alias collision
-  const fusion = selectedSlotIdx !== null && selectedSlotIdx !== undefined ? getEngine(selectedSlotIdx) : null;
-
   return (
     <div className={`px-3 py-2.5 relative ${className || ''}`}>
       {/* Overlay when a specific engine is selected (mini card click) — covers entire forecast container */}
       {selectedSlotIdx !== null && selectedSlotIdx !== undefined && activeEnginePort && (
         <div
-          className="absolute z-50 phosphor-screen overflow-hidden flex items-center justify-center rounded-xl border border-stealth-border p-[6px]"
-          style={{ top: '0px', right: '0px', bottom: '0px', left: '0px', animation: 'fadeIn 0.2s ease', boxShadow: 'inset 0 2px 6px rgba(0,0,0,0.5), inset 0 -2px 6px rgba(0,0,0,0.4)' }}
+          className="!absolute inset-0 z-50 phosphor-screen phosphor-display-surface overflow-hidden flex flex-col rounded-xl border border-stealth-border p-[6px]"
+          style={{ animation: 'fadeIn 0.2s ease' }}
         >
           <FusionOverlay
             alias={activeEngineAlias}

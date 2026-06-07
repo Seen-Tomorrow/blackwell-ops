@@ -173,7 +173,7 @@ export default function BenchWidget({ port }: BenchWidgetProps) {
   };
 
   return (
-      <div className="w-full rounded-sm p-1.5 flex flex-col gap-1" style={{ boxShadow: 'inset 0 2px 8px rgba(0,0,0,0.6)', height: 60 }}>
+      <div className="bench-widget-panel w-full rounded-sm p-1.5 flex flex-col gap-1" style={{ height: 60 }}>
         {!isAnyRunning && !ps.showResults && (
           <>
             <div className="flex items-center justify-end gap-1">

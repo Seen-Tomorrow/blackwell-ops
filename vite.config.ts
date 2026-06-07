@@ -39,6 +39,11 @@ const appVersion = `${modeLabel} ${buildNumber}`;
 // https://tauri.app/start
 export default defineConfig(async () => ({
   plugins: [react()],
+  resolve: {
+    alias: {
+      "@": resolve(__dirname, "src"),
+    },
+  },
   define: {
     __TAURI_VERSION__: JSON.stringify(tauriVersion),
     __APP_VERSION__: JSON.stringify(appVersion),

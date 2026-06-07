@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { KEYS } from "../lib/storage";
+import { KEYS, readStorage, writeStorage } from "../lib/storage";
 import {
   APP_THEMES,
   DEFAULT_THEME_ID,
@@ -18,10 +18,8 @@ interface ThemeContextValue {
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 function loadThemeId(): string {
-  try {
-    const saved = localStorage.getItem(KEYS.appTheme);
-    if (saved && APP_THEMES.some(t => t.id === saved)) return saved;
-  } catch {}
+  const saved = readStorage(KEYS.appTheme);
+  if (saved && APP_THEMES.some(t => t.id === saved)) return saved;
   return DEFAULT_THEME_ID;
 }
 
@@ -41,7 +39,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const setThemeId = useCallback((id: string) => {
     const resolved = getThemeById(id);
     setThemeIdState(resolved.id);
-    try { localStorage.setItem(KEYS.appTheme, resolved.id); } catch {}
+    writeStorage(KEYS.appTheme, resolved.id);
   }, []);
 
   const cycleTheme = useCallback(() => {

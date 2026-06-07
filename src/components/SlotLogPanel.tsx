@@ -37,13 +37,6 @@ export default memo(function SlotLogPanel({ entry, logs, systemEvents, fusionUpd
     }
   }, [systemEvents]);
 
-  const borderClass = {
-    RUNNING: "glow-border",
-    LOADING: "glow-border-warning",
-    ERROR: "glow-border-error",
-    IDLE: "",
-  }[entry.status] || "";
-
   // Phase: fusion /slots is authoritative for BUSY/READY, logs provide PROMPT_PROCESSING detail.
   // Prioritize explicit "PP" phase so prefill is not overridden to GENERATING by ACTIVE state.
   const displayPhase = fusionUpdate?.phase === "PP" ? "PP"
@@ -58,10 +51,10 @@ export default memo(function SlotLogPanel({ entry, logs, systemEvents, fusionUpd
       : "text-stealth-muted";
 
   const phaseBg = displayPhase === "PP"
-    ? "bg-telemetry-amber/10 border-telemetry-amber/30"
+    ? "engine-stack-phase-pp"
     : displayPhase === "GENERATING"
-      ? "bg-nv-green/10 border-nv-green/30"
-      : "bg-stealth-panel border-stealth-border";
+      ? "engine-stack-phase-tg"
+      : "engine-stack-phase-idle";
 
   // TPS value for display — fusion /slots data is the source of truth
   const tps = (fusionUpdate?.engine_state === "ACTIVE" && fusionUpdate?.genTps > 0) ? fusionUpdate.genTps : 0;
@@ -73,12 +66,9 @@ export default memo(function SlotLogPanel({ entry, logs, systemEvents, fusionUpd
   const visibleLogs = logs.slice(-MAX_VISIBLE_LOGS);
 
     return (
-      <div
-          className={`eink-panel ${borderClass} rounded-sm overflow-hidden`}
-          style={{ animation: 'fadeIn 0.3s ease' }}
-        >
-      {/* Card header with phase indicator */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-stealth-border bg-stealth-dark/50">
+      <div className="engine-stack-body" style={{ animation: 'fadeIn 0.3s ease' }}>
+      {/* Card header with model name + stop */}
+      <div className="engine-stack-header flex items-center justify-between px-3 py-2 border-b border-stealth-border/30">
         <div className="flex items-center gap-2 min-w-0 flex-1">
           {entry.model_name && entry.model_name !== "none" && (
             <span className="text-[10px] font-mono text-nv-green/60 truncate min-w-0" title={entry.model_name}>
@@ -146,7 +136,7 @@ export default memo(function SlotLogPanel({ entry, logs, systemEvents, fusionUpd
       )}
 
       {/* Live log stream from LogHub (stdout streaming, batched at 100ms) */}
-      <div ref={logRef} className="px-3 py-2 border-t border-stealth-border bg-black/40 h-[90px] overflow-y-auto overflow-x-hidden">
+      <div ref={logRef} className="engine-stack-log px-3 py-2 border-t border-stealth-border/30 h-[90px] overflow-y-auto overflow-x-hidden eink-scrollbar">
         {visibleLogs.length === 0 && systemEvents.length === 0 ? (
           <p className="text-[10px] font-mono text-stealth-muted/50 italic">
             {entry.status === "LOADING" 
@@ -180,9 +170,9 @@ export default memo(function SlotLogPanel({ entry, logs, systemEvents, fusionUpd
 
       {/* Ready timestamp */}
       {entry.status === "RUNNING" && (
-        <div className="px-3 py-1 border-t border-stealth-border flex items-center justify-between">
-          <span className="text-[9px] font-mono text-nv-green/60">SLOT {entry.idx + 1}</span>
-          <span className="text-[9px] font-mono text-nv-green/80">{entry.ready_at || "RUNNING"}</span>
+        <div className="px-3 py-1 border-t border-stealth-border/30 flex items-center justify-between engine-stack-footer">
+          <span className="text-[9px] font-mono text-stealth-muted">SLOT {entry.idx + 1}</span>
+          <span className="text-[9px] font-mono">{entry.ready_at || "RUNNING"}</span>
         </div>
       )}
     </div>

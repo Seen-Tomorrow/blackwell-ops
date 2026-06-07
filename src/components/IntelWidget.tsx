@@ -105,10 +105,10 @@ export default function IntelWidget({ compact = false, limit }: { compact?: bool
   const displayItems = limit ? items.slice(0, limit) : (compact ? items.slice(0, 2) : items);
 
   return (
-    <div className={`bg-stealth-panel border border-nv-green/40 rounded-sm overflow-hidden flex flex-col ${compact ? "max-h-[180px]" : "h-full"}`}>
+    <div className={`theme-surface border-nv-green/40 rounded-sm overflow-hidden flex flex-col ${compact ? "max-h-[180px]" : "h-full"}`}>
       {/* Header */}
       {!compact && (
-        <div className="px-4 py-2.5 border-b border-nv-green/30 flex items-center justify-between bg-nv-green/5">
+        <div className="theme-surface-header px-4 py-2.5 border-b border-nv-green/30 flex items-center justify-between">
           <h3 className="text-xs font-mono text-nv-green tracking-wider flex items-center gap-2">
             <span className="inline-block w-1.5 h-1.5 rounded-full bg-nv-green animate-pulse-slow" />
             BACKEND INTEL
@@ -126,7 +126,7 @@ export default function IntelWidget({ compact = false, limit }: { compact?: bool
       )}
 
       {/* Content */}
-      <div className={`${compact ? "max-h-[140px]" : "h-full"} overflow-y-auto`}>
+      <div className={`theme-surface-inset ${compact ? "max-h-[140px]" : "h-full"} overflow-y-auto border-0 rounded-none`}>
         {status === "offline" ? (
           <p className="text-[10px] font-mono text-stealth-muted/50 italic px-4 py-6 text-center">
             NO INTERNET — INTEL UNAVAILABLE
@@ -142,7 +142,7 @@ export default function IntelWidget({ compact = false, limit }: { compact?: bool
               href={item.url}
               target="_blank"
               rel="noopener noreferrer"
-              className={`block border-b border-stealth-border hover:bg-white/[0.02] transition-colors cursor-pointer group ${compact ? "px-3 py-2" : "px-4 py-3"}`}
+              className={`block border-b border-stealth-border hover:bg-[var(--theme-eject-card-hover-bg)] transition-colors cursor-pointer group ${compact ? "px-3 py-2" : "px-4 py-3"}`}
             >
               {/* Title row */}
               <div className={`flex items-start gap-2 mb-1 ${compact ? "" : ""}`}>
@@ -176,7 +176,7 @@ export default function IntelWidget({ compact = false, limit }: { compact?: bool
 
       {/* Footer */}
       {!compact && (
-        <div className="px-4 py-1.5 border-t border-stealth-border bg-stealth-dark/30 flex items-center justify-between">
+        <div className="theme-surface-header px-4 py-1.5 border-t border-stealth-border flex items-center justify-between">
           <span className="text-[8px] font-mono text-stealth-muted/40">
             ggml-org/llama.cpp · GITHUB
           </span>

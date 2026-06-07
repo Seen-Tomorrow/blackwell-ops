@@ -2,11 +2,8 @@ import { useState, useCallback, useMemo, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { ModelEntry, EngineConfig, GpuInfo, ProviderConfig, SystemInfo, StackEntry } from "../lib/types";
 import { useKeyboardNav } from "./useKeyboardNav";
-import { KEYS } from "../lib/storage";
-
-const LAST_MODEL_KEY = KEYS.lastModel;
-const SORT_FIELD_KEY = KEYS.sortField;
-const SORT_DIR_KEY = KEYS.sortDir;
+import { KEYS, readStorage, writeStorage } from "../lib/storage";
+import { dispatchAppEvent, EVENTS } from "../lib/events";
 
 export type SortField = (keyof ModelEntry) | "date";
 export type SortDirection = "asc" | "desc";
@@ -63,7 +60,7 @@ export function useModelCatalog({ models, gpus, stack, scanningPath, setScanning
   const [panelActiveModel, setPanelActiveModel] = useState<ModelEntry | null>(null);
   const [selectedSlotIdxState, setSelectedSlotIdxState] = useState<number | null>(() => {
     try {
-      const saved = localStorage.getItem(KEYS.selectedSlotIdx);
+      const saved = readStorage(KEYS.selectedSlotIdx);
       return saved ? parseInt(saved) : null;
     } catch { return null; }
   });
@@ -77,27 +74,27 @@ export function useModelCatalog({ models, gpus, stack, scanningPath, setScanning
 
   // Persist to localStorage on change + listen for slot-cleared to clear stale selection
   useEffect(() => {
-    try { localStorage.setItem(KEYS.selectedSlotIdx, String(selectedSlotIdxState ?? -1)); } catch {}
+    writeStorage(KEYS.selectedSlotIdx, String(selectedSlotIdxState ?? -1));
   }, [selectedSlotIdxState]);
 
   const setSelectedSlotIdx = useCallback((v: number | null) => {
     setSelectedSlotIdxState(v);
   }, []);
   const [visibleCount, setVisibleCount] = useState<"4" | "6" | "8" | "all">(() => {
-    try { return (localStorage.getItem(KEYS.catalogVisibleCount) as "4" | "6" | "8" | "all") || "6"; } catch { return "6"; }
+    return (readStorage(KEYS.catalogVisibleCount) as "4" | "6" | "8" | "all") || "6";
   });
   const [sortField, setSortField] = useState<SortField>(() => {
-    try { return (localStorage.getItem(SORT_FIELD_KEY) as SortField) || "name"; } catch { return "name"; }
+    return (readStorage(KEYS.sortField) as SortField) || "name";
   });
   const [sortDirection, setSortDirection] = useState<SortDirection>(() => {
-    try { return (localStorage.getItem(SORT_DIR_KEY) as SortDirection) || "asc"; } catch { return "asc"; }
+    return (readStorage(KEYS.sortDir) as SortDirection) || "asc";
   });
 
   // Restore last selected model from localStorage once models are loaded
   useEffect(() => {
     if (models.length === 0 || catalogSelectedModel !== null) return;
     try {
-      const savedPath = localStorage.getItem(LAST_MODEL_KEY);
+      const savedPath = readStorage(KEYS.lastModel);
       if (savedPath) {
         const match = models.find(m => m.path === savedPath);
         if (match) {
@@ -127,9 +124,9 @@ export function useModelCatalog({ models, gpus, stack, scanningPath, setScanning
   }, [models, panelActiveModel]);
 
   // Persist sort state
-  useEffect(() => { try { localStorage.setItem(SORT_FIELD_KEY, sortField); } catch {} }, [sortField]);
-  useEffect(() => { try { localStorage.setItem(SORT_DIR_KEY, sortDirection); } catch {} }, [sortDirection]);
-  useEffect(() => { try { localStorage.setItem(KEYS.catalogVisibleCount, visibleCount); } catch {} }, [visibleCount]);
+  useEffect(() => { writeStorage(KEYS.sortField, sortField); }, [sortField]);
+  useEffect(() => { writeStorage(KEYS.sortDir, sortDirection); }, [sortDirection]);
+  useEffect(() => { writeStorage(KEYS.catalogVisibleCount, visibleCount); }, [visibleCount]);
 
   // Listen for engine launch event — deterministic auto-select from backend return value
   useEffect(() => {
@@ -147,18 +144,18 @@ export function useModelCatalog({ models, gpus, stack, scanningPath, setScanning
       const payload = (e as CustomEvent).detail as { slot: number };
       if (payload?.slot !== undefined) {
         try {
-          const saved = localStorage.getItem(KEYS.selectedSlotIdx);
+          const saved = readStorage(KEYS.selectedSlotIdx);
           if (saved && parseInt(saved) === payload.slot) setSelectedSlotIdx(null);
         } catch {}
       }
     };
-    window.addEventListener("blackops-engine-launched", onLaunch);
-    window.addEventListener("blackops-stop-all", onStopAll);
-    window.addEventListener("blackops-slot-cleared", onSlotCleared);
+    window.addEventListener(EVENTS.engineLaunched, onLaunch);
+    window.addEventListener(EVENTS.stopAll, onStopAll);
+    window.addEventListener(EVENTS.slotCleared, onSlotCleared);
     return () => {
-      window.removeEventListener("blackops-engine-launched", onLaunch);
-      window.removeEventListener("blackops-stop-all", onStopAll);
-      window.removeEventListener("blackops-slot-cleared", onSlotCleared);
+      window.removeEventListener(EVENTS.engineLaunched, onLaunch);
+      window.removeEventListener(EVENTS.stopAll, onStopAll);
+      window.removeEventListener(EVENTS.slotCleared, onSlotCleared);
     };
   }, [models]);
 
@@ -166,7 +163,7 @@ export function useModelCatalog({ models, gpus, stack, scanningPath, setScanning
     setCatalogSelectedModel(model);
     setPanelActiveModel(model);
     setSelectedSlotIdx(null); // Generic selection — clear engine-specific pairing
-    try { localStorage.setItem(LAST_MODEL_KEY, model.path); } catch {}
+    writeStorage(KEYS.lastModel, model.path);
   }, []);
 
   // Select a specific running engine instance by slot index (for mini card clicks)
@@ -177,7 +174,7 @@ export function useModelCatalog({ models, gpus, stack, scanningPath, setScanning
       if (model) {
         setPanelActiveModel(model);
         setSelectedSlotIdx(slotIdx);
-        try { localStorage.setItem(LAST_MODEL_KEY, model.path); } catch {}
+        writeStorage(KEYS.lastModel, model.path);
       }
     }
   }, [stack, models]);
@@ -308,7 +305,7 @@ export function useModelCatalog({ models, gpus, stack, scanningPath, setScanning
   }, [allFiltered, handleSelect]);
 
   const handleLaunchFromConfig = useCallback(() => {
-    window.dispatchEvent(new CustomEvent("blackops-launch-engine"));
+    dispatchAppEvent(EVENTS.launchEngine);
   }, []);
 
   const { highlightIndex, zone } = useKeyboardNav({

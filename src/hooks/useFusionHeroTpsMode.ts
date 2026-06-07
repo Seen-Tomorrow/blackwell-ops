@@ -1,30 +1,20 @@
 import { useCallback, useState } from "react";
+import {
+  loadFusionHeroTpsMode,
+  saveFusionHeroTpsMode,
+  type FusionHeroTpsMode,
+} from "../lib/storage";
 
-export type FusionHeroTpsMode = "live" | "avg";
-
-const STORAGE_KEY = "blackops-fusion-hero-tps";
-
-function readMode(): FusionHeroTpsMode {
-  try {
-    const v = localStorage.getItem(STORAGE_KEY);
-    return v === "avg" ? "avg" : "live";
-  } catch {
-    return "live";
-  }
-}
+export type { FusionHeroTpsMode };
 
 /** LIVE = per-chunk/poll TPS; AVG = session average (bench-aligned). */
 export function useFusionHeroTpsMode() {
-  const [mode, setMode] = useState<FusionHeroTpsMode>(readMode);
+  const [mode, setMode] = useState<FusionHeroTpsMode>(loadFusionHeroTpsMode);
 
   const toggle = useCallback(() => {
     setMode((prev) => {
       const next: FusionHeroTpsMode = prev === "live" ? "avg" : "live";
-      try {
-        localStorage.setItem(STORAGE_KEY, next);
-      } catch {
-        /* ignore */
-      }
+      saveFusionHeroTpsMode(next);
       return next;
     });
   }, []);

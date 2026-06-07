@@ -7,51 +7,41 @@ import { useDock } from "../context/DockContext";
 import { useFoundry, type Env } from "../hooks/useBuildDock";
 import BlackwellOutputConsole from "./BlackwellOutputConsole";
 import FoundryModal from "./FoundryModal";
-import { KEYS } from "../lib/storage";
+import ThemePicker from "./ThemePicker";
+import {
+  cyclePowerUserState,
+  isPowerUserActive,
+  loadUiZoom,
+  loadPowerUserState,
+  saveUiZoom,
+  savePowerUserState,
+  type PowerUserState,
+} from "../lib/storage";
+import { dispatchPowerUserChanged, EVENTS } from "../lib/events";
 import { isMobileDevice } from "../lib/utils";
 
 const MIN_ZOOM = 0.7;
 const MAX_ZOOM = 1.5;
 const ZOOM_STEP = 0.05;
 
-const CONSOLE_ACTIVE_FOOTER_BG = "#0a0a0a";
-
-
-function loadAdminLock(): string {
-  try { return localStorage.getItem(KEYS.adminLock) || "locked"; } catch { return "locked"; }
-}
-
-function cycleAdminLockState(current: string): string {
-  if (current === "locked") return "unlocked";
-  if (current === "unlocked") return "permanently";
-  return "locked";
-}
-
-const ADMIN_LABELS: Record<string, string> = {
+const POWER_USER_LABELS: Record<PowerUserState, string> = {
   locked: "POWER USER — LOCKED",
   unlocked: "POWER USER — UNLOCKED",
   permanently: "POWER USER — PERMANENTLY UNLOCKED",
 };
 
-const ADMIN_COLORS: Record<string, string> = {
-  locked: "text-stealth-muted hover:text-white",
+const POWER_USER_COLORS: Record<PowerUserState, string> = {
+  locked: "app-chrome-muted",
   unlocked: "text-yellow-400",
   permanently: "text-yellow-400",
 };
 
 function loadZoom(): number {
-  try {
-    const stored = localStorage.getItem(KEYS.uiZoom);
-    if (stored) {
-      const val = parseFloat(stored);
-      if (!isNaN(val) && val >= MIN_ZOOM && val <= MAX_ZOOM) return val;
-    }
-  } catch {}
-  return 1.0;
+  return loadUiZoom(1.0, MIN_ZOOM, MAX_ZOOM);
 }
 
 function saveZoom(zoom: number): void {
-  try { localStorage.setItem(KEYS.uiZoom, String(zoom)); } catch {}
+  saveUiZoom(zoom);
 }
 
 interface LayoutProps {
@@ -77,7 +67,7 @@ const tabs: { id: Tab; label: string; icon: string; hidden?: boolean }[] = [
 ];
 
 export default function Layout({ activeTab, onTabChange, children, providers = [], appUpdate, hasBinaryUpdates, onInstallAppUpdate }: LayoutProps) {
-  const [adminLockState, setAdminLockState] = useState(loadAdminLock);
+  const [powerUserState, setPowerUserState] = useState<PowerUserState>(loadPowerUserState);
   const [zoom, setZoom] = useState(loadZoom);
   const { totalParams, hiddenCount, onShowAll, flashMessage } = useStatus();
   const { buildProgress, foundryModal, foundryModalVisible, openBuildModal, minimizeBuildModal, restoreBuildModal, closeBuildModal, attachToActiveBuild, buildAttempt } = useFoundry();
@@ -96,22 +86,21 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
   const [isOutputConsoleExpanded, setIsOutputConsoleExpanded] = useState(false);
   const [lastConsoleLine, setLastConsoleLine] = useState<string>("Ready for engine & build telemetry");
 
-  // Listen for admin lock changes from other components (ConfigPage)
+  // Listen for power-user changes from other components (ConfigPage)
   useEffect(() => {
     let stale = false;
     const handler = () => requestAnimationFrame(() => {
-      if (!stale) setAdminLockState(loadAdminLock());
+      if (!stale) setPowerUserState(loadPowerUserState());
     });
-    window.addEventListener("admin-lock-changed", handler);
-    return () => { stale = true; window.removeEventListener("admin-lock-changed", handler); };
+    window.addEventListener(EVENTS.powerUserChanged, handler);
+    return () => { stale = true; window.removeEventListener(EVENTS.powerUserChanged, handler); };
   }, []);
 
-  // Persist admin lock state to localStorage and broadcast
-  const handleAdminToggle = useCallback(() => {
-    setAdminLockState(prev => {
-      const next = cycleAdminLockState(prev);
-      try { localStorage.setItem(KEYS.adminLock, next); } catch {}
-      window.dispatchEvent(new Event("admin-lock-changed"));
+  const handlePowerUserToggle = useCallback(() => {
+    setPowerUserState(prev => {
+      const next = cyclePowerUserState(prev);
+      savePowerUserState(next);
+      dispatchPowerUserChanged();
       return next;
     });
   }, []);
@@ -125,7 +114,7 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
 
   // Live last line for the collapsed output bar (power user only)
   useEffect(() => {
-    if (adminLockState === "locked") return;
+    if (!isPowerUserActive(powerUserState)) return;
 
     const fetchLastLine = async () => {
       try {
@@ -153,7 +142,7 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
     fetchLastLine();
     const interval = setInterval(fetchLastLine, 4000); // every 4s
     return () => clearInterval(interval);
-  }, [adminLockState]);
+  }, [powerUserState]);
 
   const visibleTabs = useMemo(() => {
     return tabs.filter(t => !t.hidden);
@@ -170,24 +159,24 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
   const isConfigTab = activeTab === "config";
 
   return (
-    <div className="flex flex-col h-screen bg-stealth-black grid-bg relative">
+    <div className="app-shell flex flex-col h-screen grid-bg relative">
       {/* Top bar */}
-      <header className="flex items-center justify-between px-6 py-3 border-b border-stealth-border bg-stealth-dark/80 backdrop-blur-sm relative z-10 layout-header-enter">
+      <header className="app-header flex items-center justify-between px-6 py-3 backdrop-blur-sm relative z-10 layout-header-enter">
         <div className="flex items-center gap-4">
           {/* Logo / Brand */}
           <div className="flex items-center gap-2">
-            <svg width="28" height="28" viewBox="0 0 28 28" fill="none" className="flex-shrink-0">
+            <svg width="28" height="28" viewBox="0 0 28 28" fill="none" className="flex-shrink-0 app-header-logo">
               {/* Ghost silhouette made of PCB traces */}
-              <path d="M14 2L6 8v10l8 6 8-6V8L14 2z" stroke="#76B900" strokeWidth="1.5" fill="none" />
-              <path d="M14 6v16M10 10h8M10 14h8M10 18h8" stroke="#76B900" strokeWidth="0.75" opacity="0.5" />
-              <circle cx="11" cy="12" r="1.5" fill="#76B900" opacity="0.8" />
-              <circle cx="17" cy="12" r="1.5" fill="#76B900" opacity="0.8" />
+              <path d="M14 2L6 8v10l8 6 8-6V8L14 2z" stroke="currentColor" strokeWidth="1.5" fill="none" />
+              <path d="M14 6v16M10 10h8M10 14h8M10 18h8" stroke="currentColor" strokeWidth="0.75" opacity="0.5" />
+              <circle cx="11" cy="12" r="1.5" fill="currentColor" opacity="0.8" />
+              <circle cx="17" cy="12" r="1.5" fill="currentColor" opacity="0.8" />
             </svg>
             <div>
-              <h1 className="text-sm font-mono font-bold tracking-widest text-white">
+              <h1 className="app-header-title text-sm font-mono font-bold tracking-widest">
                 BLACKWELL OPS
               </h1>
-              <p className="text-[8px] font-mono text-white/25 tracking-wider">
+              <p className="app-header-subtitle text-[8px] font-mono tracking-wider">
                 v{__TAURI_VERSION__} · BUILD {__APP_VERSION__}
               </p>
             </div>
@@ -199,10 +188,8 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
               <div key={tab.id} className="relative inline-block">
                 <button
                   onClick={() => onTabChange(tab.id)}
-                  className={`px-4 py-1.5 text-xs font-mono tracking-wider transition-all duration-200 ${
-                    activeTab === tab.id
-                      ? "bg-nv-green/20 text-nv-green border border-nv-green/40"
-                      : "text-stealth-muted hover:text-white hover:bg-white/5 border border-transparent"
+                  className={`app-nav-tab px-4 py-1.5 text-xs font-mono tracking-wider transition-all duration-200 rounded-sm ${
+                    activeTab === tab.id ? "app-nav-tab-active" : ""
                   }`}
                 >
                   {/* <span className="mr-1.5">{tab.icon}</span> */}
@@ -238,15 +225,18 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
               )}
             </div>
           )}
-          <button onClick={handleAdminToggle}
-            className={`text-[9px] font-mono tracking-wider transition-colors ${ADMIN_COLORS[adminLockState] || ADMIN_COLORS.locked}`}
-            title={ADMIN_LABELS[adminLockState] || "LOCKED"}>
-            POWER USER {adminLockState === "locked" ? "\u{1F512}" : adminLockState === "unlocked" ? "\u{1F513}" : "\u{1F511}"}
+          <button onClick={handlePowerUserToggle}
+            className={`text-[9px] font-mono tracking-wider transition-colors ${POWER_USER_COLORS[powerUserState]}`}
+            title={POWER_USER_LABELS[powerUserState]}>
+            POWER USER {powerUserState === "locked" ? "\u{1F512}" : powerUserState === "unlocked" ? "\u{1F513}" : "\u{1F511}"}
           </button>
-          <div className="flex items-center gap-1 border border-stealth-border rounded-sm px-1 py-0.5">
-            <button onClick={() => adjustZoom(-ZOOM_STEP)} className="px-1 text-[9px] font-mono text-stealth-muted hover:text-nv-green transition-colors leading-none" title="Decrease font size">−</button>
-            <span className="text-[8px] font-mono text-stealth-muted/60 w-8 text-center">{Math.round(zoom * 100)}%</span>
-            <button onClick={() => adjustZoom(ZOOM_STEP)} className="px-1 text-[9px] font-mono text-stealth-muted hover:text-nv-green transition-colors leading-none" title="Increase font size">+</button>
+          <div className="flex items-center gap-2">
+            <ThemePicker variant="header" />
+            <div className="app-chrome-control flex items-center gap-1 rounded-sm px-1 py-0.5">
+            <button onClick={() => adjustZoom(-ZOOM_STEP)} className="app-chrome-control-btn px-1 text-[9px] font-mono transition-colors leading-none" title="Decrease font size">−</button>
+            <span className="app-chrome-control-btn text-[8px] font-mono opacity-60 w-8 text-center">{Math.round(zoom * 100)}%</span>
+            <button onClick={() => adjustZoom(ZOOM_STEP)} className="app-chrome-control-btn px-1 text-[9px] font-mono transition-colors leading-none" title="Increase font size">+</button>
+            </div>
           </div>
         </div>
       </header>
@@ -264,8 +254,7 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
       </main>
 
       {/* Bottom status bar — fixed so it's always visible regardless of zoom */}
-      <footer className={`fixed bottom-0 left-0 right-0 flex items-center justify-between px-6 py-1.5 text-[10px] font-mono z-20 ${isOutputConsoleExpanded ? "text-white/40" : "border-t-2 border-[#b87a00] bg-[#0a0a0a] text-white/40"}`}
-        style={isOutputConsoleExpanded ? { background: CONSOLE_ACTIVE_FOOTER_BG } : undefined}>
+      <footer className={`app-footer fixed bottom-0 left-0 right-0 flex items-center justify-between px-6 py-1.5 text-[10px] font-mono z-20 ${isOutputConsoleExpanded ? "app-footer-expanded" : ""}`}>
         <div className="flex items-center gap-4">
           <span>PLATFORM: WINDOWS</span>
           <span>TOKIO: ACTIVE</span>
@@ -276,12 +265,12 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
           {/* Blackwell Output Console - Docked (1 line always visible) */}
           <div
             onClick={() => setIsOutputConsoleExpanded(!isOutputConsoleExpanded)}
-            className={`min-w-0 flex items-center gap-2 px-3 py-0.5 cursor-pointer transition-all group font-mono bg-[#b87a00]/5 hover:bg-[#b87a00]/10 rounded-sm`}
+            className="app-footer-output min-w-0 flex items-center gap-2 px-3 py-0.5 cursor-pointer transition-all group font-mono rounded-sm"
             style={{ flex: "0.75 1 auto" }}
             title={isOutputConsoleExpanded ? "Click to close" : "Click to expand"}
           >
-            <span className="text-[9px] tracking-wider flex-shrink-0 text-[#b87a00]">OUTPUT</span>
-            <div className="flex-1 min-w-0 text-[8px] truncate text-[#b87a00]/90">
+            <span className="app-footer-output-label text-[9px] tracking-wider flex-shrink-0">OUTPUT</span>
+            <div className="app-footer-output-text flex-1 min-w-0 text-[8px] truncate opacity-90">
               {lastConsoleLine}
             </div>
           </div>
@@ -321,7 +310,7 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
                   onClick={onShowAll}
                   onMouseEnter={() => setShowTooltip(true)}
                   onMouseLeave={() => setShowTooltip(false)}
-                  className={`cursor-pointer hover:text-nv-green transition-colors ${hiddenCount > 0 ? "text-yellow-400" : ""}`}
+                  className={`cursor-pointer app-footer-stat-link transition-colors ${hiddenCount > 0 ? "text-yellow-400" : ""}`}
                 >
                   HIDDEN: {hiddenCount}
                 </span>
@@ -333,7 +322,7 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
               </div>
             </>
           )}
-          <span className={`transition-colors ${flashMessage ? "status-flash" : "text-nv-green"}`}>
+          <span className={`transition-colors ${flashMessage ? "status-flash" : "app-status-nominal"}`}>
             {flashMessage || "SYSTEM NOMINAL"}
           </span>
         </div>
@@ -353,7 +342,7 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
 
       {/* Blackwell Output Console — power user feature */}
       <BlackwellOutputConsole 
-        isPowerUser={adminLockState !== "locked"} 
+        isPowerUser={isPowerUserActive(powerUserState)}
         isOpen={isOutputConsoleExpanded}
         onClose={() => setIsOutputConsoleExpanded(false)}
         compact={true}

@@ -2,7 +2,8 @@
 
 import { useState, useCallback, useEffect } from "react";
 import type { UserEditedTemplateParam } from "../lib/types";
-import { overridesKey } from "../lib/storage";
+import { catalogOverrideKey, readJsonStorage, removeStorage, writeJsonStorage } from "../lib/storage";
+import { EVENTS } from "../lib/events";
 
 // Preserve mixed-case values like "8K", "GPU-0"; lowercase pure-alpha strings.
 const normalizeValue = (value: any): any => {
@@ -47,12 +48,8 @@ export function useConfigResolver({
     }
 
     // Step 2: Merge user overrides from localStorage
-    try {
-      const stored = localStorage.getItem(overridesKey(backendType));
-      if (stored) {
-        Object.assign(resolved, JSON.parse(stored));
-      }
-    } catch {}
+    const stored = readJsonStorage<Record<string, unknown>>(catalogOverrideKey(backendType));
+    if (stored) Object.assign(resolved, stored);
 
     // Step 3: Normalize all string values to lowercase for consistent comparison
     const normalized = Object.fromEntries(
@@ -68,27 +65,22 @@ export function useConfigResolver({
 
   useEffect(() => {
     const handler = () => loadConfig();
-    window.addEventListener("param-config-changed", handler);
-    return () => window.removeEventListener("param-config-changed", handler);
+    window.addEventListener(EVENTS.paramConfigChanged, handler);
+    return () => window.removeEventListener(EVENTS.paramConfigChanged, handler);
   }, [model, userEditedParams.length]);
 
   const updateParam = useCallback((key: string, value: any) => {
     const normalizedValue = normalizeValue(value);
     setConfig(prev => ({ ...prev, [key]: normalizedValue }));
 
-    try {
-      const storageKey = overridesKey(backendType);
-      const stored = localStorage.getItem(storageKey);
-      const overrides: Record<string, any> = stored ? JSON.parse(stored) : {};
-      overrides[key] = normalizedValue;
-      localStorage.setItem(storageKey, JSON.stringify(overrides));
-    } catch {}
+    const storageKey = catalogOverrideKey(backendType);
+    const overrides = readJsonStorage<Record<string, unknown>>(storageKey) ?? {};
+    overrides[key] = normalizedValue;
+    writeJsonStorage(storageKey, overrides);
   }, [backendType]);
 
   const clearOverrides = useCallback(() => {
-    try {
-      localStorage.removeItem(overridesKey(backendType));
-    } catch {}
+    removeStorage(catalogOverrideKey(backendType));
     loadConfig();
   }, [backendType, loadConfig]);
 

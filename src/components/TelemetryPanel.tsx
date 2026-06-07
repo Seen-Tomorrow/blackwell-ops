@@ -42,7 +42,7 @@ function SystemSummary({ totalVram, usedVram, avgTemp, totalPower, ramManufactur
   ramManufacturedMib: number;
 }) {
   return (
-    <div className="bg-stealth-panel border border-stealth-border rounded-sm p-4">
+    <div className="theme-surface rounded-sm p-4">
       <div className="flex items-center justify-center py-2 border-b border-stealth-border pb-3 mb-3 gap-8">
         <div className="text-center">
           <p className="text-[9px] font-mono text-stealth-muted tracking-wider">TOTAL VRAM</p>
@@ -84,8 +84,8 @@ function GpuCard({ gpu }: { gpu: GpuInfo }) {
   const powerPercent = gpu.power_limit > 0 ? (gpu.power_draw / gpu.power_limit) * 100 : 0;
 
   return (
-    <div className="bg-stealth-panel border border-stealth-border rounded-sm overflow-hidden">
-      <div className="px-3 py-2.5 border-b border-stealth-border flex items-center justify-between bg-stealth-dark/50">
+    <div className="theme-surface rounded-sm overflow-hidden">
+      <div className="theme-surface-header px-3 py-2.5 border-b border-stealth-border flex items-center justify-between">
         <div>
           <h3 className="text-[11px] font-mono text-white truncate">{gpu.name}</h3>
           <p className="text-[9px] font-mono text-stealth-muted mt-0.5">GPU-{gpu.index}</p>
@@ -102,7 +102,7 @@ function GpuCard({ gpu }: { gpu: GpuInfo }) {
             {(gpu.memory_used / 1024).toFixed(1)} / {(gpu.memory_total_manufactured || gpu.memory_total) / 1024} GB ({vramPercent.toFixed(0)}%)
           </p>
         </div>
-        <div className="w-full h-1.5 bg-stealth-black rounded-sm overflow-hidden">
+        <div className="w-full h-1.5 theme-bar-track rounded-sm overflow-hidden">
           <div
             style={{ width: `${Math.min(vramPercent, 100)}%` }}
             className={`h-full rounded-sm transition-all duration-75 ${
@@ -117,7 +117,7 @@ function GpuCard({ gpu }: { gpu: GpuInfo }) {
             <span className="text-sm font-mono text-telemetry-amber">{gpu.power_draw.toFixed(1)}W</span> / {gpu.power_limit.toFixed(0)}W ({powerPercent.toFixed(0)}%)
           </span>
         </div>
-        <div className="w-full h-1.5 bg-stealth-black rounded-sm overflow-hidden">
+        <div className="w-full h-1.5 theme-bar-track rounded-sm overflow-hidden">
           <div
             style={{ width: `${Math.min(powerPercent, 100)}%` }}
             className="h-full bg-telemetry-amber rounded-sm transition-all duration-75"
@@ -146,7 +146,7 @@ function UtilGauge({ label, value, max, color, barColor }: {
     <div>
       <span className="text-[8px] font-mono text-stealth-muted tracking-wider">{label}</span>
       <p className={`text-xs font-mono ${color}`}>{value}%</p>
-      <div className="w-full h-1 bg-stealth-black rounded-sm mt-0.5 overflow-hidden">
+      <div className="w-full h-1 theme-bar-track rounded-sm mt-0.5 overflow-hidden">
         <div
           style={{ width: `${percent}%` }}
           className={`h-full ${barColor} rounded-sm transition-all duration-75`}
@@ -160,8 +160,8 @@ function CpuMatrix({ cpu }: { cpu: CpuInfo }) {
   const cols = Math.min(cpu.threads, 8);
 
   return (
-    <div className="bg-stealth-panel border border-stealth-border rounded-sm overflow-hidden">
-      <div className="px-4 py-2.5 border-b border-stealth-border flex items-center justify-between bg-stealth-dark/50">
+    <div className="theme-surface rounded-sm overflow-hidden">
+      <div className="theme-surface-header px-4 py-2.5 border-b border-stealth-border flex items-center justify-between">
         <div>
           <h3 className="text-[11px] font-mono text-white truncate">{cpu.name}</h3>
           <p className="text-[9px] font-mono text-stealth-muted mt-0.5">
@@ -178,7 +178,7 @@ function CpuMatrix({ cpu }: { cpu: CpuInfo }) {
         </div>
       </div>
 
-      <div className="px-4 py-1.5 border-t border-stealth-border bg-stealth-dark/30 flex items-center gap-3">
+      <div className="theme-surface-header px-4 py-1.5 border-t border-stealth-border flex items-center gap-3">
         {[
           { label: "IDLE", color: "bg-white/8" },
           { label: "LOW", color: "bg-white/15" },
@@ -199,7 +199,7 @@ function CoreCell({ index, usage }: { index: number; usage: number }) {
   const color = usage > 80 ? "bg-orange-700" : usage >= 50 ? "bg-white/30" : usage >= 25 ? "bg-white/15" : "bg-white/8";
 
   return (
-    <div className="relative h-6 bg-stealth-black rounded-sm overflow-hidden group cursor-default">
+    <div className="relative h-6 theme-bar-track rounded-sm overflow-hidden group cursor-default">
       <div
         style={{ width: `${Math.min(usage, 100)}%` }}
         className={`h-full ${color} rounded-sm transition-all duration-75`}

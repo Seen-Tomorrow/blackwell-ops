@@ -17,10 +17,19 @@ import LogLineText from "./components/LogLineText";
 import { StatusProvider } from "./context/StatusBarContext";
 import { DockProvider } from "./context/DockContext";
 import { TelemetryProvider } from "./context/TelemetryContext";
+import { FusionProvider } from "./context/FusionContext";
 import { ThemeProvider } from "./context/ThemeContext";
 import { ToastProvider } from "./components/Toast";
 import { FoundryProvider } from "./hooks/useBuildDock";
-import { KEYS, STORAGE_PREFIX, loadLogSearchBySlot, saveLogSearchBySlot } from "./lib/storage";
+import {
+  isPowerUserActive,
+  loadPowerUserState,
+  STORAGE_PREFIX,
+  loadLogSearchBySlot,
+  saveLogSearchBySlot,
+  saveStartupUpdatesCache,
+} from "./lib/storage";
+import { dispatchAppEvent, EVENTS } from "./lib/events";
 import type { ModelEntry, StackEntry, LogBatch, LogEntry, SystemEvent, ProviderConfig, AppUpdateInfo } from "./lib/types";
 
 export type Tab = "catalog" | "modelhub" | "stack" | "reactor11" | "telemetry" | "intel" | "logs" | "config" | "sentinel";
@@ -109,30 +118,19 @@ function App() {
   }, [clearSlotLogSearch]);
   const [totalParams, setTotalParams] = useState(0);
   const [hiddenCount, setHiddenCount] = useState(0);
-  const [isAdminUnlocked, setIsAdminUnlockedRaw] = useState(() => {
-    try {
-      const s = localStorage.getItem(KEYS.adminLock);
-      return s === "unlocked" || s === "permanently";
-    } catch { return false; }
-  });
+  const [isPowerUser, setIsPowerUser] = useState(() => isPowerUserActive(loadPowerUserState()));
 
   useEffect(() => {
-    const handler = () => {
-      try {
-        const s = localStorage.getItem(KEYS.adminLock);
-        setIsAdminUnlockedRaw(s === "unlocked" || s === "permanently");
-      } catch {}
-    };
+    const handler = () => setIsPowerUser(isPowerUserActive(loadPowerUserState()));
     window.addEventListener("storage", handler);
-    const adminHandler = () => requestAnimationFrame(handler);
-    window.addEventListener("admin-lock-changed", adminHandler);
-    // Navigate to ENGINES tab from GPU topo engine table clicks
+    const powerUserHandler = () => requestAnimationFrame(handler);
+    window.addEventListener(EVENTS.powerUserChanged, powerUserHandler);
     const navHandler = () => setActiveTab("stack");
-    window.addEventListener("blackops-navigate-stack", navHandler);
+    window.addEventListener(EVENTS.navigateStack, navHandler);
     return () => {
       window.removeEventListener("storage", handler);
-      window.removeEventListener("admin-lock-changed", adminHandler);
-      window.removeEventListener("blackops-navigate-stack", navHandler);
+      window.removeEventListener(EVENTS.powerUserChanged, powerUserHandler);
+      window.removeEventListener(EVENTS.navigateStack, navHandler);
     };
   }, []);
 
@@ -143,7 +141,7 @@ function App() {
           localStorage.removeItem(key);
         }
       }
-      window.dispatchEvent(new CustomEvent("param-config-changed"));
+      dispatchAppEvent(EVENTS.paramConfigChanged);
     } catch {}
   }, []);
 
@@ -169,8 +167,8 @@ function App() {
         });
       }
     };
-    window.addEventListener("param-config-changed", handler);
-    return () => window.removeEventListener("param-config-changed", handler);
+    window.addEventListener(EVENTS.paramConfigChanged, handler);
+    return () => window.removeEventListener(EVENTS.paramConfigChanged, handler);
   }, []);
 
   useEffect(() => {
@@ -179,8 +177,8 @@ function App() {
         .then(data => setModels(data as ModelEntry[]))
         .catch(() => {});
     };
-    window.addEventListener("download-completed", handler);
-    return () => window.removeEventListener("download-completed", handler);
+    window.addEventListener(EVENTS.downloadCompleted, handler);
+    return () => window.removeEventListener(EVENTS.downloadCompleted, handler);
   }, []);
 
   useEffect(() => {
@@ -221,12 +219,10 @@ function App() {
           setHasBinaryUpdates(true);
         }
         // Cache binary updates for ProvidersConfig expanded section (avoids duplicate API calls)
-        try {
-          localStorage.setItem("blackwell_startup_updates", JSON.stringify({
-            timestamp: Date.now(),
-            binaryUpdates: data.binaryUpdates || [],
-          }));
-        } catch {}
+        saveStartupUpdatesCache({
+          timestamp: Date.now(),
+          binaryUpdates: data.binaryUpdates || [],
+        });
       })
       .catch(() => {}); // Silently ignore — don't block startup
   }, []);
@@ -249,8 +245,8 @@ function App() {
 
   useEffect(() => {
     const handler = () => reloadProviders();
-    window.addEventListener("blackops-reload-providers", handler);
-    return () => window.removeEventListener("blackops-reload-providers", handler);
+    window.addEventListener(EVENTS.reloadProviders, handler);
+    return () => window.removeEventListener(EVENTS.reloadProviders, handler);
   }, [reloadProviders]);
 
   const reloadModels = useCallback(async () => {
@@ -302,9 +298,7 @@ function App() {
           const cleanText = payload.text.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "").replace(/\[[0-9;]+[A-Za-z]/g, "");
           if (cleanText.includes("LAUNCH_ERROR:")) {
             const reason = cleanText.split("LAUNCH_ERROR:").slice(1).join(":").trim();
-            window.dispatchEvent(new CustomEvent("blackops-launch-error", {
-              detail: { message: reason }
-            }));
+            dispatchAppEvent(EVENTS.launchError, { message: reason });
           }
           unstable_batchedUpdates(() => {
             setSystemEvents((prev) => {
@@ -332,7 +326,7 @@ function App() {
           if (payload && payload.slot !== undefined) {
             releaseSlotLogCaches(payload.slot);
             setActiveLogSlot((prev) => (prev === payload.slot ? "all" : prev));
-            window.dispatchEvent(new CustomEvent("blackops-slot-cleared", { detail: payload }));
+            dispatchAppEvent(EVENTS.slotCleared, payload);
             // Route to Blackwell Output Console (ENGINES category)
             void invoke("emit_to_blackwell_console", {
               category: "engines",
@@ -402,9 +396,10 @@ function App() {
         const result: any = await invoke("launch_engine", { config });
         // Dispatch event for catalog to pick up the launched slot index + model path.
         // Stack update comes via push event from Rust — no manual setStack needed.
-        window.dispatchEvent(new CustomEvent("blackops-engine-launched", {
-          detail: { slotIdx: result.idx, modelPath: result.model_path }
-        }));
+        dispatchAppEvent(EVENTS.engineLaunched, {
+          slotIdx: result.idx,
+          modelPath: result.model_path,
+        });
         return result;
       } catch (err) {
         console.error("Launch failed:", err);
@@ -427,7 +422,7 @@ function App() {
     try {
       await invoke("stop_all_engines");
       releaseSlotLogCaches();
-      window.dispatchEvent(new CustomEvent("blackops-stop-all"));
+      dispatchAppEvent(EVENTS.stopAll);
     } catch (err) {
       console.error("Stop all failed:", err);
     }
@@ -488,6 +483,7 @@ function App() {
   }, [stack]);
 
   return (
+    <FusionProvider>
     <ToastProvider>
       <ThemeProvider>
       <DockProvider>
@@ -496,7 +492,7 @@ function App() {
             <StatusProvider value={{ totalParams, hiddenCount, onShowAll: handleShowAll }}>
             <Layout activeTab={activeTab} onTabChange={(tab) => { setActiveTab(tab); if (tab === "config") setHasBinaryUpdates(false); }} providers={providers} appUpdate={appUpdate} hasBinaryUpdates={hasBinaryUpdates} onInstallAppUpdate={handleInstallAppUpdate}>
         {activeTab === "catalog" && (
-              <ModelCatalog models={models} onLaunch={handleLaunchEngine} error={catalogError} onReload={reloadModels} providers={providers} committedVramMib={committedVramMib} isAdminUnlocked={isAdminUnlocked} scanningPath={scanningPath} setScanningPath={setScanningPath} batchScanState={batchScanState} setBatchScanState={setBatchScanState} stack={stack} />
+              <ModelCatalog models={models} onLaunch={handleLaunchEngine} error={catalogError} onReload={reloadModels} providers={providers} committedVramMib={committedVramMib} isPowerUser={isPowerUser} scanningPath={scanningPath} setScanningPath={setScanningPath} batchScanState={batchScanState} setBatchScanState={setBatchScanState} stack={stack} />
            )}
         {activeTab === "modelhub" && <ModelHub />}
         {activeTab === "config" && <ConfigPage providers={providers} />}
@@ -507,15 +503,15 @@ function App() {
           <Reactor11 models={models} />
         )}
         {activeTab === "telemetry" && (
-          <div className="h-full flex flex-col p-4 gap-3 min-h-0">
-            {isAdminUnlocked ? <TelemetryLab stack={stack} /> : <TelemetryPanel />}
+          <div className="h-full flex flex-col p-4 gap-3 min-h-0" data-telemetry-page>
+            {isPowerUser ? <TelemetryLab stack={stack} /> : <TelemetryPanel />}
           </div>
         )}
         {activeTab === "intel" && <IntelPage />}
         {activeTab === "logs" && (
-          <div className="h-full flex flex-col p-4 gap-0">
+          <div className="h-full flex flex-col p-4 gap-0" data-engine-logs>
             <h2 className="text-xs font-mono text-nv-green tracking-wider mb-2 flex-shrink-0">ENGINE LOGS</h2>
-            <div className="sticky top-0 z-10 bg-[#0a0f08] flex items-end gap-1 mb-2 flex-shrink-0 pb-2 pl-2 overflow-x-auto">
+            <div className="theme-logs-header sticky top-0 z-10 flex items-end gap-1 mb-2 flex-shrink-0 pb-2 pl-2 overflow-x-auto">
               <div className="flex flex-col items-start gap-0.5">
                 <div className="w-full h-[22px]" />
                 <button
@@ -565,7 +561,7 @@ function App() {
                             onChange={(e) => setSlotLogSearch(slot, e.target.value)}
                             placeholder="highlight…"
                             autoFocus
-                            className="flex-1 min-w-0 px-1.5 py-0.5 text-[8px] font-mono bg-black/60 border border-telemetry-amber/30 text-telemetry-amber rounded-sm focus:outline-none focus:border-telemetry-amber/60 placeholder:text-stealth-muted/40"
+                            className="theme-input flex-1 min-w-0 px-1.5 py-0.5 text-[8px] font-mono text-telemetry-amber rounded-sm"
                           />
                           {logSearchBySlot[slot] && (
                             <button
@@ -602,7 +598,7 @@ function App() {
             </div>
             <div
               ref={logsScrollRef}
-              className="flex-1 overflow-x-hidden overflow-y-auto bg-stealth-panel border border-stealth-border rounded-sm p-3 min-h-0"
+              className="theme-surface-inset flex-1 overflow-x-hidden overflow-y-auto rounded-sm p-3 min-h-0"
               onScroll={handleLogsScroll}
             >
               {logs.size === 0 ? (
@@ -654,6 +650,7 @@ function App() {
     </DockProvider>
     </ThemeProvider>
     </ToastProvider>
+    </FusionProvider>
   );
 }
 

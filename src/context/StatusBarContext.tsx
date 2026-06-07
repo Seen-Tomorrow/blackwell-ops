@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useCallback, useEffect, useMemo } from "react";
+import { EVENTS } from "../lib/events";
 
 export interface StatusBarCtx {
   totalParams: number;
@@ -41,12 +42,12 @@ export const StatusProvider: React.FC<{ value: any; children?: React.ReactNode }
       }
     };
 
-    window.addEventListener("blackops-launch-success", handleSuccess);
-    window.addEventListener("blackops-launch-error", handleError);
+    window.addEventListener(EVENTS.launchSuccess, handleSuccess);
+    window.addEventListener(EVENTS.launchError, handleError);
 
     return () => {
-      window.removeEventListener("blackops-launch-success", handleSuccess);
-      window.removeEventListener("blackops-launch-error", handleError);
+      window.removeEventListener(EVENTS.launchSuccess, handleSuccess);
+      window.removeEventListener(EVENTS.launchError, handleError);
     };
   }, []);
 

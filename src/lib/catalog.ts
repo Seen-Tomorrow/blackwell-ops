@@ -2,7 +2,7 @@
 
 import type { UserEditedTemplateParam } from "./types";
 
-/** Raw catalog entry from Rust `get_llama_catalog` command. */
+/** Raw catalog entry from Rust `get_llama_catalog` command (`includeAll` when power-user unlocked). */
 export interface RawCatalogEntry {
   flag: string;
   short?: string;

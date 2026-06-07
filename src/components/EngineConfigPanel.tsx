@@ -3,23 +3,33 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import type { ModelEntry, EngineConfig, GpuInfo, UserEditedTemplateParam, ProviderConfig, ProviderTemplate, StackEntry, SystemInfo } from "../lib/types";
 import { DEFAULT_PROVIDER_ID } from "../lib/types";
-import { KEYS, engineAliasKey, binaryProfileKey } from "../lib/storage";
+import {
+  KEYS,
+  binaryProfileKey,
+  engineAliasKey,
+  readJsonStorage,
+  readStorage,
+  removeStorage,
+  writeJsonStorage,
+  writeStorage,
+} from "../lib/storage";
+import { dispatchAppEvent, EVENTS } from "../lib/events";
 import { invoke } from "@tauri-apps/api/core";
 import VramBadge from "./VramBadge";
 import RunningEnginesPanel from "./RunningEnginesPanel";
 import SliderParam from "./SliderParam";
 import { useScenarioEvaluator } from "../hooks/useScenarioEvaluator";
 import { useConfigResolver } from "../hooks/useConfigResolver";
-import { useTheme } from "../context/ThemeContext";
+import { useDisplayTexture } from "../hooks/useDisplayTexture";
 
 
 
 type EnvProfile = "vanguard" | "fresh" | "stable";
 
-const ENV_META: Record<EnvProfile, { label: string; color: string; cuda: string; vs: string }> = {
-  vanguard: { label: "VANGUARD", color: "cyan",    cuda: "13.2", vs: "VS Build Tools 2026 (v18)" },
-  fresh:    { label: "FRESH",    color: "amber",   cuda: "13.1", vs: "VS Build Tools 2022" },
-  stable:   { label: "STABLE",   color: "nv-green", cuda: "12.8", vs: "VS Build Tools 2022" },
+const ENV_META: Record<EnvProfile, { label: string; cuda: string; vs: string }> = {
+  vanguard: { label: "VANGUARD", cuda: "13.2", vs: "VS Build Tools 2026 (v18)" },
+  fresh:    { label: "FRESH",    cuda: "13.1", vs: "VS Build Tools 2022" },
+  stable:   { label: "STABLE",   cuda: "12.8", vs: "VS Build Tools 2022" },
 };
 
 function pickBestBinaryProfile(provider: ProviderConfig | undefined): EnvProfile {
@@ -62,7 +72,7 @@ interface EngineConfigPanelProps {
   gpus: GpuInfo[];
   providers?: ProviderConfig[];
   committedVramMib: number;
-  isAdminUnlocked: boolean;
+  isPowerUser: boolean;
   systemInfo?: SystemInfo | null;
   stack: StackEntry[];
   onLaunch: (config: EngineConfig) => Promise<any>;
@@ -76,24 +86,24 @@ interface EngineConfigPanelProps {
 }
 
 export default function EngineConfigPanel(props: EngineConfigPanelProps) {
-  const { model, gpus, providers: externalProviders, committedVramMib, isAdminUnlocked, systemInfo, stack, onLaunch, isModelRunning, activeEngineAlias, activeEnginePort, selectedSlotIdx, supportsFusion = true, models, onSelectEngine } = props;
+  const { model, gpus, providers: externalProviders, committedVramMib, isPowerUser, systemInfo, stack, onLaunch, isModelRunning, activeEngineAlias, activeEnginePort, selectedSlotIdx, supportsFusion = true, models, onSelectEngine } = props;
 
   // ── State ───────────────────────────────────────────────────────────────
 
   const [userEditedParams, setUserEditedParams] = useState<UserEditedTemplateParam[]>([]);
   const [selectedProvider, setSelectedProvider] = useState<string | null>(() => {
-    try { return localStorage.getItem(KEYS.lastProvider) || null; } catch { return null; }
+    return readStorage(KEYS.lastProvider);
   });
   const [testFlags, setTestFlags] = useState(() => {
-    try { return localStorage.getItem(KEYS.testFlags) || ""; } catch { return ""; }
+    return readStorage(KEYS.testFlags) || "";
   });
   const [testFlagsEnabled, setTestFlagsEnabled] = useState(() => {
-    try { return localStorage.getItem(KEYS.testFlagsOn) === "1"; } catch { return false; }
+    return readStorage(KEYS.testFlagsOn) === "1";
   });
 
   // Test flags mode: "add" (prepend to config) or "replace" (bypass all params)
   const [testFlagsMode, setTestFlagsMode] = useState<"add" | "replace">(() => {
-    try { return localStorage.getItem(KEYS.testFlagsMode) === "add" ? "add" : "replace"; } catch { return "replace"; }
+    return readStorage(KEYS.testFlagsMode) === "add" ? "add" : "replace";
   });
 
   const [aliasInput, setAliasInput] = useState<string>("");
@@ -106,11 +116,11 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   const [isBlazing, setIsBlazing] = useState(false);
   const [specFlash, setSpecFlash] = useState(false);
 
-  const { theme, cycleTheme } = useTheme();
+  const { texture: displayTexture, label: displayTextureLabel, cycle: cycleDisplayTexture } = useDisplayTexture();
 
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => {
     try {
-      const saved = localStorage.getItem(KEYS.collapsedGroups);
+      const saved = readStorage(KEYS.collapsedGroups);
       if (saved) return new Set(JSON.parse(saved));
     } catch {}
     return new Set(["ADVANCED", "FEATURE-FLAGS"]);
@@ -120,22 +130,22 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     setCollapsedGroups(prev => {
       const next = new Set(prev);
       if (next.has(groupId)) next.delete(groupId); else next.add(groupId);
-      try { localStorage.setItem(KEYS.collapsedGroups, JSON.stringify([...next])); } catch {}
+      writeJsonStorage(KEYS.collapsedGroups, [...next]);
       return next;
     });
   }, []);
 
   // Persist test flags
   useEffect(() => {
-    try { localStorage.setItem(KEYS.testFlags, testFlags); } catch {}
+    writeStorage(KEYS.testFlags, testFlags);
   }, [testFlags]);
   useEffect(() => {
-    try { localStorage.setItem(KEYS.testFlagsOn, testFlagsEnabled ? "1" : "0"); } catch {}
+    writeStorage(KEYS.testFlagsOn, testFlagsEnabled ? "1" : "0");
   }, [testFlagsEnabled]);
 
   // Persist test flags mode
   useEffect(() => {
-    try { localStorage.setItem(KEYS.testFlagsMode, testFlagsMode); } catch {}
+    writeStorage(KEYS.testFlagsMode, testFlagsMode);
   }, [testFlagsMode]);
 
   // Auto-populate alias when model changes — per-model persistence
@@ -147,7 +157,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     // Only initialize once per model path to avoid overwriting user input on HMR
     if (initKey !== model.path) {
       try {
-        const saved = localStorage.getItem(key);
+        const saved = readStorage(key);
         if (saved) {
           setAliasInput(saved);
           aliasUserEditedRef.current = true;
@@ -188,9 +198,9 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   const saveAliasForModel = useCallback((modelPath: string, aliasValue: string) => {
     try {
       if (aliasValue.trim()) {
-        localStorage.setItem(engineAliasKey(modelPath), aliasValue.trim());
+        writeStorage(engineAliasKey(modelPath), aliasValue.trim());
       } else {
-        localStorage.removeItem(engineAliasKey(modelPath));
+        removeStorage(engineAliasKey(modelPath));
       }
     } catch {}
   }, []);
@@ -200,7 +210,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     if (!model || !aliasInitializedRef.current.done) return;
     try {
       if (aliasUserEditedRef.current && !aliasInput.trim()) {
-        localStorage.removeItem(engineAliasKey(model.path));
+        removeStorage(engineAliasKey(model.path));
         setAliasIsUserSet(false);
       }
     } catch {}
@@ -217,7 +227,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
     // Prefer saved localStorage choice, validate it exists, else default to ggml-master or first available
     let target: string | null = null;
-    try { target = localStorage.getItem(KEYS.lastProvider) || null; } catch {}
+    target = readStorage(KEYS.lastProvider);
 
     if (!target || !enabled.some(p => p.id === target)) {
       const def = enabled.find(p => p.id === DEFAULT_PROVIDER_ID);
@@ -241,7 +251,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       (env) => provider?.binaryPathPerEnv?.[env] || provider?.buildInfoPerEnv?.[env],
     );
     try {
-      const saved = localStorage.getItem(binaryProfileKey(effectiveBackendType)) as EnvProfile | null;
+      const saved = readStorage(binaryProfileKey(effectiveBackendType)) as EnvProfile | null;
       if (saved && built.includes(saved)) {
         setSelectedBinaryProfile(saved);
         return;
@@ -252,7 +262,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
   useEffect(() => {
     if (!effectiveBackendType) return;
-    try { localStorage.setItem(binaryProfileKey(effectiveBackendType), selectedBinaryProfile); } catch {}
+    writeStorage(binaryProfileKey(effectiveBackendType), selectedBinaryProfile);
   }, [selectedBinaryProfile, effectiveBackendType]);
 
   // Dynamic Device param — generated from GPU topology, docked to runtime block
@@ -487,8 +497,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       if (!(e instanceof CustomEvent)) return;
       handleAddToStack();
     };
-    window.addEventListener("blackops-launch-engine", handler);
-    return () => window.removeEventListener("blackops-launch-engine", handler);
+    window.addEventListener(EVENTS.launchEngine, handler);
+    return () => window.removeEventListener(EVENTS.launchEngine, handler);
   }, [model, config, effectiveBackendType]);
 
   // ── Name helpers ───────────────────────────────────────────────────────────
@@ -564,7 +574,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       const result = await onLaunch(fullConfig);
       // Dispatch success event for toast + status bar with the real port from backend
       if (result?.port) {
-        window.dispatchEvent(new CustomEvent("blackops-launch-success", { detail: { alias: finalAlias, port: result.port } }));
+        dispatchAppEvent(EVENTS.launchSuccess, { alias: finalAlias, port: result.port });
       }
       // Only persist if user actively edited the alias — skip auto-generated ENGINE_N names
       const wasUserEdited = aliasUserEditedRef.current;
@@ -573,7 +583,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      window.dispatchEvent(new CustomEvent("blackops-launch-error", { detail: { message: msg } }));
+      dispatchAppEvent(EVENTS.launchError, { message: msg });
     }
   };
 
@@ -604,7 +614,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                 key={p.id}
                 onClick={() => {
                   setSelectedProvider(p.id);
-                  try { localStorage.setItem(KEYS.lastProvider, p.id); } catch {}
+                  writeStorage(KEYS.lastProvider, p.id);
                 }}
                 className={`px-3 py-1 text-[10px] font-mono tracking-wider rounded-sm ${
                   selectedProvider === p.id
@@ -725,16 +735,19 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
     {/* VRAM + Running Engines — industrial display unit */}
       <div className="industrial-display-area flex-shrink-0">
-          <div className="industrial-display-frame relative">
-              {/* App theme cycle — top-center of VRAM bezel */}
+          <div
+            className="industrial-display-frame relative"
+            data-display-texture={displayTexture}
+          >
               <button
-                onClick={cycleTheme}
-                className="absolute top-2 left-1/2 -translate-x-1/2 z-[60] px-0.5 py-0 text-[6px] font-mono tracking-wider text-white/50 hover:text-white/80 transition-colors cursor-pointer"
-                title={`Theme: ${theme.name} — ${theme.description}. Click to cycle.`}
+                type="button"
+                onClick={cycleDisplayTexture}
+                className="display-texture-toggle absolute top-[3px] left-1/2 -translate-x-1/2 z-[60]"
+                title={`Display texture: ${displayTextureLabel}. Click to cycle CLEAN / CRT / PHOSPHOR DARK / PHOSPHOR LIGHT.`}
               >
-                {theme.name}
+                {displayTextureLabel}
               </button>
-              <div className="phosphor-screen-inner">
+              <div className="phosphor-screen-inner phosphor-display-surface">
                 <VramBadge
                   manifest={vramCalc.manifest}
                   gpus={gpus}
@@ -812,8 +825,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                             .then(() => {
                               setSpecFlash(true);
                               setTimeout(() => setSpecFlash(false), 400);
-                              window.dispatchEvent(new CustomEvent("blackops-reload-providers"));
-                              window.dispatchEvent(new CustomEvent("param-config-changed"));
+                              dispatchAppEvent(EVENTS.reloadProviders);
+                              dispatchAppEvent(EVENTS.paramConfigChanged);
                             })
                             .catch(err => console.error("[toggle_group_hidden] failed:", err));
                         }}
@@ -927,7 +940,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         })()}
 
         {/* Test flags */}
-        {isAdminUnlocked && (
+        {isPowerUser && (
           <div className={`relative mt-2 border rounded-sm overflow-hidden transition-all duration-200 custom-flags-block ${testFlagsEnabled ? 'custom-flags-active' : ''}`}>
             {/* Top accent bar */}
             <div className="h-[1px] w-full bg-gradient-to-r from-transparent via-amber-600/40 to-transparent" />

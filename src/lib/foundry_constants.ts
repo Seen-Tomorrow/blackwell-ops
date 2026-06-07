@@ -62,8 +62,7 @@ export function getStepFromPhase(phase: string): string {
   return PHASE_STEP_MAP[phase] ?? phase.toUpperCase();
 }
 
-// ── Environment Colors ───────────────────────────────────────────────
-// Single source of truth for environment-specific Tailwind classes.
+// ── Environment styling — unified accent (no per-profile color coding) ───
 export interface EnvColorSet {
   border: string;
   text: string;
@@ -72,32 +71,16 @@ export interface EnvColorSet {
   badgeBorder: string;
 }
 
-const ENV_COLORS_MAP: Record<Env, EnvColorSet> = {
-  vanguard: {
-    border: "border-cyan-400/60 text-cyan-400 bg-cyan-400/10 hover:bg-cyan-400/25",
-    text: "text-cyan-400",
-    bg: "bg-cyan-400/10 border-cyan-400/60",
-    badgeBg: "bg-cyan-400/10",
-    badgeBorder: "border-cyan-400/30",
-  },
-  fresh: {
-    border: "border-amber-400/60 text-amber-400 bg-amber-400/10 hover:bg-amber-400/25",
-    text: "text-amber-400",
-    bg: "bg-amber-400/10 border-amber-400/60",
-    badgeBg: "bg-amber-400/10",
-    badgeBorder: "border-amber-400/30",
-  },
-  stable: {
-    border: "border-nv-green/60 text-nv-green bg-nv-green/10 hover:bg-nv-green/25",
-    text: "text-nv-green",
-    bg: "bg-nv-green/10 border-nv-green/60",
-    badgeBg: "bg-nv-green/10",
-    badgeBorder: "border-nv-green/30",
-  },
+const UNIFIED_ENV_COLORS: EnvColorSet = {
+  border: "value-chip",
+  text: "theme-accent-text",
+  bg: "foundry-profile-row",
+  badgeBg: "value-chip",
+  badgeBorder: "value-chip",
 };
 
-export function getEnvColors(env: Env): EnvColorSet {
-  return ENV_COLORS_MAP[env];
+export function getEnvColors(_env: Env): EnvColorSet {
+  return UNIFIED_ENV_COLORS;
 }
 
 // ── Environment Ordering ─────────────────────────────────────────────

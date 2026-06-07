@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import ModelHubSearch from './ModelHubSearch';
 import type { DownloadTask, DownloadStatus } from '@/lib/types';
+import { dispatchAppEvent, EVENTS } from '@/lib/events';
 
 const ACTIVE_STATUSES: DownloadStatus[] = ['downloading', 'queued', 'paused', 'scanning'];
 
@@ -53,7 +54,7 @@ export default function ModelHub() {
         for (const t of tasks) {
           if (t.status === 'completed' && !completedRefs.current.has(t.id)) {
             completedRefs.current.add(t.id);
-            window.dispatchEvent(new CustomEvent('download-completed'));
+            dispatchAppEvent(EVENTS.downloadCompleted);
           }
         }
       } catch {
@@ -70,7 +71,7 @@ export default function ModelHub() {
   const activeDownloads = useMemo(() => downloads.filter(d => ACTIVE_STATUSES.includes(d.status)), [downloads]);
 
   return (
-    <div className="flex flex-col h-full px-6 py-4 gap-3">
+    <div className="flex flex-col h-full px-6 py-4 gap-3" data-model-hub>
       <div className="flex items-center gap-2 border-b border-stealth-border pb-2">
         <button
           onClick={() => setSubView('search')}

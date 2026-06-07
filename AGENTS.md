@@ -421,10 +421,60 @@ Set to `"off"` in `tauri.conf.json` under `plugins.nsis.compression`.
 
 ---
 
-## 11. Framer-Motion Cleanup (Done)
+## 11. localStorage & Event Registry (Required)
+
+**Status:** Mandatory as of 2026-06-07. Do not add inline `localStorage` keys or `window.dispatchEvent` strings.
+
+### localStorage — `src/lib/storage.ts`
+
+All persistence goes through this file. Consumers use `readStorage` / `writeStorage` / `readJsonStorage` / typed helpers — never `localStorage.getItem("...")` with a raw string.
+
+| Kind | Naming | Register as |
+|------|--------|-------------|
+| Static | `BlackOps-{kebab-case}` | Add to `KEYS` object |
+| Dynamic | `BlackOps-{namespace}:{id}` | Add a `*Key(id)` builder (see `catalogOverrideKey`) |
+
+**When adding a new key:**
+1. Register it in `storage.ts` (`KEYS` or builder).
+2. Add a row to the doc table in the file header comment.
+3. Prefer a typed `load*` / `save*` helper if the value has a fixed shape.
+4. If renaming an old key, add a `{ from, to }` entry in `migrateLegacyStorageKeys()`.
+5. If abandoning a key, add it to `STALE_STORAGE_KEYS` (purged on boot).
+
+Boot migration runs in `main.tsx` via `migrateLegacyStorageKeys()` before first paint.
+
+### Window events — `src/lib/events.ts`
+
+All cross-component custom events use the `BlackOps-` prefix via `EVENTS` and `dispatchAppEvent()`. Never dispatch or listen with bare strings (`blackops-*`, `param-config-changed`, etc.).
+
+**When adding a new event:**
+1. Add to `EVENTS` in `events.ts`.
+2. Add a row to the doc table in the file header comment.
+3. Dispatch with `dispatchAppEvent(EVENTS.foo, detail?)`; listen with `EVENTS.foo`.
+4. Tauri backend events (`listen("engine-log-batch", …)`) stay as-is — this rule is for frontend `window` custom events only.
+
+### Quick examples
+
+```typescript
+// BAD
+localStorage.setItem("my-feature-flag", "1");
+window.dispatchEvent(new Event("my-feature-changed"));
+
+// GOOD
+import { KEYS, writeStorage } from "../lib/storage";
+import { dispatchAppEvent, EVENTS } from "../lib/events";
+
+writeStorage(KEYS.myFeatureFlag, "1");
+dispatchAppEvent(EVENTS.myFeatureChanged);
+```
+
+---
+
+## 12. Framer-Motion Cleanup (Done)
 
 Framer-motion has been fully removed from all components. All animations migrated to pure CSS keyframes and transitions in `index.css`.
 
+---
 
 ### Reference
-See `FUSION-metrics.md` for complete field table.
+See `FUSION-metrics.md` for complete field table. Storage/event key tables live in `src/lib/storage.ts` and `src/lib/events.ts` headers.

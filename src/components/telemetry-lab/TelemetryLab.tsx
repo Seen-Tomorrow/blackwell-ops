@@ -42,9 +42,9 @@ function LabSection({
   return (
     <section
       id={id}
-      className="bg-stealth-panel border border-stealth-border rounded-sm overflow-hidden"
+      className="theme-surface rounded-sm overflow-hidden"
     >
-      <header className="px-4 py-2.5 border-b border-stealth-border bg-stealth-dark/40 flex items-start justify-between gap-3">
+      <header className="theme-surface-header px-4 py-2.5 border-b border-stealth-border flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h3 className="text-[11px] font-mono text-white tracking-wider">{title}</h3>
           <p className="text-[9px] font-mono text-stealth-muted/70 mt-0.5 leading-relaxed">{blurb}</p>
@@ -62,7 +62,7 @@ function phaseStyle(phase: string): string {
   if (phase === "PP") return "text-telemetry-cyan border-telemetry-cyan/40 bg-telemetry-cyan/10";
   if (phase === "TG") return "text-nv-green border-nv-green/40 bg-nv-green/10";
   if (phase === "LOADING") return "text-telemetry-amber border-telemetry-amber/40 bg-telemetry-amber/10";
-  return "text-stealth-muted border-stealth-border bg-stealth-dark/30";
+  return "text-stealth-muted border-stealth-border theme-surface-header";
 }
 
 function Oscilloscope({ samples, gpus }: { samples: ReturnType<typeof useTelemetryLabBuffer>["samples"]; gpus: GpuInfo[] }) {
@@ -277,7 +277,7 @@ export default function TelemetryLab({ stack }: TelemetryLabProps) {
         >
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {gpus.map((gpu, gi) => (
-              <div key={gpu.index} className="border border-stealth-border/60 rounded-sm p-3 bg-stealth-dark/20">
+              <div key={gpu.index} className="theme-surface-row rounded-sm p-3">
                 <p className="text-[9px] font-mono text-white mb-2 truncate">GPU-{gpu.index} · {gpu.name}</p>
                 <div className="grid grid-cols-3 gap-2">
                   <div>
@@ -318,12 +318,12 @@ export default function TelemetryLab({ stack }: TelemetryLabProps) {
               const osPct = (osMib / totalMib) * 100;
               let cursor = osPct;
               return (
-                <div key={gpu.index} className="border border-stealth-border/60 rounded-sm p-3">
+                <div key={gpu.index} className="theme-surface-row rounded-sm p-3">
                   <div className="flex justify-between text-[9px] font-mono mb-2">
                     <span className="text-white">GPU-{gpu.index}</span>
                     <span className="text-stealth-muted">{(gpu.memory_used / 1024).toFixed(1)} GB used</span>
                   </div>
-                  <div className="h-3 bg-stealth-black rounded-sm overflow-hidden flex">
+                  <div className="h-3 theme-bar-track rounded-sm overflow-hidden flex">
                     <div style={{ width: `${Math.min(osPct, 100)}%` }} className="h-full bg-white/15" title="OS + other" />
                     {enginesOnGpu.map((eng) => {
                       const w = (eng.vramMib / totalMib) * 100;
@@ -374,7 +374,7 @@ export default function TelemetryLab({ stack }: TelemetryLabProps) {
                 const watts = gpu?.power_draw ?? 0;
                 const eff = watts > 0 ? (tps / watts).toFixed(2) : "—";
                 return (
-                  <div key={eng.idx} className="grid grid-cols-12 gap-2 items-center border border-stealth-border/40 rounded-sm px-3 py-2 bg-stealth-dark/20 text-[9px] font-mono">
+                  <div key={eng.idx} className="theme-surface-row grid grid-cols-12 gap-2 items-center rounded-sm px-3 py-2 text-[9px] font-mono">
                     <span className="col-span-2 text-nv-green truncate">{eng.alias}</span>
                     <span className="col-span-1 text-stealth-muted">GPU{gpuIdx}</span>
                     <span className="col-span-2 text-telemetry-amber">{watts.toFixed(0)}W</span>
@@ -429,12 +429,12 @@ export default function TelemetryLab({ stack }: TelemetryLabProps) {
                 : 0;
               const headroom = Math.max(0, gpu.power_limit - gpu.power_draw);
               return (
-                <div key={gpu.index} className="border border-stealth-border/60 rounded-sm p-3">
+                <div key={gpu.index} className="theme-surface-row rounded-sm p-3">
                   <div className="flex justify-between text-[9px] font-mono mb-2">
                     <span>GPU-{gpu.index}</span>
                     <span className={pct > 95 ? "text-telemetry-amber" : "text-white"}>{pct.toFixed(0)}% of cap</span>
                   </div>
-                  <div className="h-2 bg-stealth-black rounded-sm overflow-hidden">
+                  <div className="h-2 theme-bar-track rounded-sm overflow-hidden">
                     <div
                       className={`h-full ${pct > 95 ? "bg-telemetry-amber" : "bg-nv-green"}`}
                       style={{ width: `${Math.min(pct, 100)}%` }}
@@ -461,7 +461,7 @@ export default function TelemetryLab({ stack }: TelemetryLabProps) {
               {cpu ? (
                 <div className="grid gap-0.5" style={{ gridTemplateColumns: `repeat(${Math.min(cpu.threads, 16)}, 1fr)` }}>
                   {cpu.core_usages.map((u, i) => (
-                    <div key={i} className="h-5 bg-stealth-black rounded-sm overflow-hidden" title={`core ${i}: ${u.toFixed(0)}%`}>
+                    <div key={i} className="h-5 theme-bar-track rounded-sm overflow-hidden" title={`core ${i}: ${u.toFixed(0)}%`}>
                       <div
                         className={`h-full ${u > 80 ? "bg-orange-600" : u > 40 ? "bg-white/25" : "bg-white/10"}`}
                         style={{ width: `${Math.min(u, 100)}%` }}
@@ -480,7 +480,7 @@ export default function TelemetryLab({ stack }: TelemetryLabProps) {
                 {gpus.map((g) => (
                   <div key={g.index} className="flex items-center gap-2">
                     <span className="text-[8px] font-mono text-stealth-muted w-10">G{g.index}</span>
-                    <div className="flex-1 h-4 bg-stealth-black rounded-sm overflow-hidden">
+                    <div className="flex-1 h-4 theme-bar-track rounded-sm overflow-hidden">
                       <div className="h-full bg-telemetry-cyan/80" style={{ width: `${g.utilization_gpu}%` }} />
                     </div>
                     <span className="text-[8px] font-mono text-white w-8">{g.utilization_gpu}%</span>
@@ -518,18 +518,18 @@ export default function TelemetryLab({ stack }: TelemetryLabProps) {
               </div>
               <div>
                 <p className="text-[8px] font-mono text-stealth-muted/60 mb-1">PHYSICAL USE {ramUsedPct.toFixed(0)}%</p>
-                <div className="h-2 bg-stealth-black rounded-sm overflow-hidden">
+                <div className="h-2 theme-bar-track rounded-sm overflow-hidden">
                   <div className="h-full bg-electric-blue/70" style={{ width: `${Math.min(ramUsedPct, 100)}%` }} />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3 opacity-60">
                 <div>
                   <p className="text-[8px] font-mono text-telemetry-amber/80 mb-1">COMMIT CHARGE (demo)</p>
-                  <div className="h-1.5 bg-stealth-black rounded-sm"><div className="h-full bg-telemetry-amber/50 w-[62%]" /></div>
+                  <div className="h-1.5 theme-bar-track rounded-sm"><div className="h-full bg-telemetry-amber/50 w-[62%]" /></div>
                 </div>
                 <div>
                   <p className="text-[8px] font-mono text-telemetry-amber/80 mb-1">PAGE FILE (demo)</p>
-                  <div className="h-1.5 bg-stealth-black rounded-sm"><div className="h-full bg-telemetry-amber/50 w-[18%]" /></div>
+                  <div className="h-1.5 theme-bar-track rounded-sm"><div className="h-full bg-telemetry-amber/50 w-[18%]" /></div>
                 </div>
               </div>
             </div>
@@ -550,7 +550,7 @@ export default function TelemetryLab({ stack }: TelemetryLabProps) {
               <p className="text-[9px] font-mono text-white mb-2">
                 {isLoading ? "MODEL LOAD ACTIVE" : "IDLE — no LOADING engines"}
               </p>
-              <div className="h-2 bg-stealth-black rounded-sm overflow-hidden">
+              <div className="h-2 theme-bar-track rounded-sm overflow-hidden">
                 <div
                   className="h-full bg-nv-green transition-all duration-300"
                   style={{
@@ -578,7 +578,7 @@ export default function TelemetryLab({ stack }: TelemetryLabProps) {
               const fan = Math.round(1800 + gpu.utilization_gpu * 12 + Math.sin(demoTick + gi) * 80);
               const clock = Math.round(1800 + gpu.utilization_gpu * 8 + Math.cos(demoTick * 0.5 + gi) * 120);
               return (
-                <div key={gpu.index} className="border border-stealth-border/40 rounded-sm p-3 text-[9px] font-mono">
+                <div key={gpu.index} className="theme-surface-row rounded-sm p-3 text-[9px] font-mono">
                   <p className="text-white mb-2">GPU-{gpu.index}</p>
                   <p className="text-stealth-muted">FAN <span className="text-telemetry-cyan">{fan}</span> RPM</p>
                   <p className="text-stealth-muted mt-1">SM CLK <span className="text-nv-green">{clock}</span> MHz</p>
@@ -606,7 +606,7 @@ export default function TelemetryLab({ stack }: TelemetryLabProps) {
           {gpus.length < 2 ? (
             <p className="text-[9px] font-mono text-stealth-muted/50">Need 2+ GPUs for topology demo.</p>
           ) : (
-            <div className="relative h-32 border border-stealth-border/40 rounded-sm bg-stealth-black/50">
+            <div className="theme-surface-inset relative h-32 rounded-sm">
               <svg className="absolute inset-0 w-full h-full" viewBox="0 0 400 120">
                 {gpus.slice(0, 4).map((g, i, arr) => {
                   const x = 60 + i * (280 / Math.max(arr.length - 1, 1));
@@ -648,7 +648,7 @@ export default function TelemetryLab({ stack }: TelemetryLabProps) {
         >
           <div className="grid grid-cols-2 gap-3">
             {gpus.map((gpu, gi) => (
-              <div key={gpu.index} className="border border-stealth-border/40 rounded-sm p-3 text-[9px] font-mono">
+              <div key={gpu.index} className="theme-surface-row rounded-sm p-3 text-[9px] font-mono">
                 <p className="text-white">GPU-{gpu.index} · {gpu.temperature_gpu}°C raw</p>
                 <p className="text-stealth-muted mt-1">EWMA {ewmaTemps[gi]?.toFixed(1) ?? "—"}°C</p>
                 <p className="text-stealth-muted mt-1">

@@ -5,7 +5,7 @@ import ModelCard from "./ModelCard";
 
 import { useModelCatalog, type SortField } from "../hooks/useModelCatalog";
 import { useTelemetry } from "../context/TelemetryContext";
-import ThemePicker from "./ThemePicker";
+
 
 interface ModelCatalogProps {
   models: any[];
@@ -14,7 +14,7 @@ interface ModelCatalogProps {
   onReload: () => void;
   providers?: ProviderConfig[];
   committedVramMib: number;
-  isAdminUnlocked: boolean;
+  isPowerUser: boolean;
   scanningPath: string | null;
   setScanningPath: (p: string | null) => void;
   batchScanState: { active: boolean; scanned: number; failed: number; total: number };
@@ -27,7 +27,7 @@ const sortLabels: Record<string, string> = {
 };
 
 export default function ModelCatalog(props: ModelCatalogProps) {
-  const { models, onLaunch, error, onReload, providers: externalProviders, committedVramMib, isAdminUnlocked, scanningPath, setScanningPath, batchScanState, setBatchScanState, stack } = props;
+  const { models, onLaunch, error, onReload, providers: externalProviders, committedVramMib, isPowerUser, scanningPath, setScanningPath, batchScanState, setBatchScanState, stack } = props;
   const { gpus, systemInfo } = useTelemetry();
   const [showScanMenu, setShowScanMenu] = useState(false);
 
@@ -200,13 +200,12 @@ export default function ModelCatalog(props: ModelCatalogProps) {
 
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full" data-model-catalog>
       {/* Top bar */}
       <div className="px-4 py-2.5 border-b border-stealth-border/50 flex items-center justify-between fade-in">
         <div className="flex items-center gap-3">
           <h2 className="text-xs font-mono theme-accent-text tracking-widest">✦ MODEL CATALOG</h2>
           <span className="text-[8px] font-mono opacity-40">({allFiltered.length} / {models.length})</span>
-          <ThemePicker variant="full" />
           {zone === "config" && (
             <span className="text-[8px] font-mono px-1.5 py-0.5 rounded-sm border border-telemetry-cyan/40 text-telemetry-cyan bg-telemetry-cyan/10">
               CONFIG [Ctrl+Enter]
@@ -241,7 +240,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               autoFocus
-              className="w-full bg-depth-black/50 border border-stealth-border text-white text-xs font-mono px-3 py-1.5 focus:outline-none focus:border-nv-green/60 placeholder:text-stealth-muted rounded-sm"
+              className="theme-input w-full text-xs font-mono px-3 py-1.5 rounded-sm"
             />
           </div>
 
@@ -295,7 +294,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
               gpus={gpus}
               providers={externalProviders}
               committedVramMib={committedVramMib}
-              isAdminUnlocked={isAdminUnlocked}
+              isPowerUser={isPowerUser}
               systemInfo={systemInfo}
               stack={stack}
               onLaunch={onLaunch}

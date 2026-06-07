@@ -49,6 +49,33 @@
   --theme-industrial-gpu-card-bg: rgba(74, 222, 128, 0.04);
   --theme-industrial-gpu-border: rgba(74, 222, 128, 0.15);
   --theme-industrial-gpu-selected: rgba(74, 222, 128, 0.7);
+  --theme-bezel-edge-hi: rgba(200, 210, 220, 0.12);
+  --theme-bezel-edge-lo: rgba(0, 0, 0, 0.28);
+  --theme-bezel-grain: rgba(255, 255, 255, 0.025);
+  --theme-bezel-inset-hi: rgba(255, 255, 255, 0.06);
+  --theme-bezel-inset-lo: rgba(0, 0, 0, 0.22);
+  --theme-phosphor-inset-top: rgba(0, 0, 0, 0.35);
+  --theme-phosphor-inset-bottom: rgba(0, 0, 0, 0.12);
+  --theme-bezel-cast-shadow: 0 8px 24px rgba(0, 0, 0, 0.75), 0 3px 8px rgba(0, 0, 0, 0.55);
+  --theme-bench-inset-shadow: rgba(0, 0, 0, 0.22);
+  --theme-display-texture-scan: color-mix(in srgb, var(--theme-bg) 42%, transparent);
+  --theme-display-texture-scan-bright: color-mix(in srgb, var(--theme-phosphor-text) 18%, transparent);
+  --theme-display-texture-vignette: color-mix(in srgb, var(--theme-bg) 38%, transparent);
+  --theme-display-texture-aperture: color-mix(in srgb, var(--theme-phosphor-text) 6%, transparent);
+  --theme-display-texture-beam: color-mix(in srgb, var(--theme-phosphor-text) 28%, transparent);
+  --theme-display-texture-glare: color-mix(in srgb, var(--theme-text) 12%, transparent);
+  --theme-display-dot-matrix: color-mix(in srgb, var(--theme-phosphor-text) 5%, transparent);
+  --theme-display-lcd-band: color-mix(in srgb, var(--theme-bg) 6%, transparent);
+  /* Phosphor LIGHT — e-ink LCD (fusion overlay) */
+  --fusion-eink-surface: #c8d4b8;
+  --fusion-eink-dot: rgba(0, 0, 0, 0.03);
+  --fusion-eink-band: rgba(0, 0, 0, 0.01);
+  --fusion-eink-text-muted: #3a3a3a;
+  --fusion-eink-text-accent: #4d7a00;
+  --fusion-eink-text-cyan: #0088aa;
+  --fusion-eink-text-amber: #b87a00;
+  --fusion-eink-bar-bg: #d4cfc5;
+  --fusion-eink-border: rgba(60, 60, 60, 0.25);
   --theme-card-recessed-border: #1c1e22;
   --theme-card-selected-bg: #1c1e22;
   --theme-card-selected-accent: #b87a00;
@@ -78,6 +105,27 @@
   --theme-provider-pill-active-bg: rgba(245, 151, 31, 0.12);
   --theme-provider-pill-active-border: rgba(245, 151, 31, 0.5);
   --theme-provider-pill-active-text: #f5971f;
+  --theme-header-bg: #000000;
+  --theme-header-border: #1a2e1a;
+  --theme-header-title: #ffffff;
+  --theme-header-subtitle: rgba(255, 255, 255, 0.25);
+  --theme-header-logo: #76B900;
+  --theme-nav-text: #4a4a5a;
+  --theme-nav-hover-text: #e0e0e0;
+  --theme-nav-hover-bg: rgba(255, 255, 255, 0.05);
+  --theme-nav-active-bg: rgba(74, 222, 128, 0.12);
+  --theme-nav-active-border: rgba(74, 222, 128, 0.5);
+  --theme-nav-active-text: #4ade80;
+  --theme-chrome-control-border: #1a2e1a;
+  --theme-chrome-control-text: #4a4a5a;
+  --theme-chrome-control-hover: #4ade80;
+  --theme-footer-bg: #000000;
+  --theme-footer-border: #b87a00;
+  --theme-footer-text: rgba(255, 255, 255, 0.4);
+  --theme-footer-output-bg: rgba(184, 122, 0, 0.05);
+  --theme-footer-output-bg-hover: rgba(184, 122, 0, 0.1);
+  --theme-footer-output-text: #f5971f;
+  --theme-status-nominal: #4ade80;
 
   /* Dock panel dimensions (single source of truth) */
   --dock-panel-bottom: 32px;
@@ -143,9 +191,108 @@ html, body, #root {
   color: var(--theme-accent);
 }
 
+/* ── App chrome — header, nav, footer ─── */
+.app-shell {
+  background-color: var(--theme-bg);
+  color: var(--theme-text);
+}
+
+.app-header {
+  background: var(--theme-header-bg);
+  border-bottom: 1px solid var(--theme-header-border);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--theme-header-title) 6%, transparent),
+    0 2px 6px color-mix(in srgb, #000000 30%, transparent),
+    0 10px 24px color-mix(in srgb, #000000 16%, transparent);
+}
+
+.app-header-title {
+  color: var(--theme-header-title);
+}
+
+.app-header-subtitle {
+  color: var(--theme-header-subtitle);
+}
+
+.app-header-logo {
+  color: var(--theme-header-logo);
+}
+
+.app-nav-tab {
+  color: var(--theme-nav-text);
+  border: 1px solid transparent;
+}
+
+.app-nav-tab:hover {
+  color: var(--theme-nav-hover-text);
+  background: var(--theme-nav-hover-bg);
+}
+
+.app-nav-tab-active {
+  background: var(--theme-nav-active-bg) !important;
+  color: var(--theme-nav-active-text) !important;
+  border-color: var(--theme-nav-active-border) !important;
+}
+
+.app-chrome-control {
+  border: 1px solid var(--theme-chrome-control-border);
+}
+
+.app-chrome-control-btn {
+  color: var(--theme-chrome-control-text);
+}
+
+.app-chrome-control-btn:hover {
+  color: var(--theme-chrome-control-hover);
+}
+
+.app-chrome-muted {
+  color: var(--theme-chrome-control-text);
+}
+
+.app-chrome-muted:hover {
+  color: var(--theme-nav-hover-text);
+}
+
+.app-footer {
+  background: var(--theme-footer-bg);
+  border-top: 2px solid var(--theme-footer-border);
+  color: var(--theme-footer-text);
+}
+
+.app-footer-expanded {
+  background: var(--theme-footer-bg);
+  color: var(--theme-footer-text);
+}
+
+.app-footer-output {
+  background: var(--theme-footer-output-bg);
+}
+
+.app-footer-output:hover {
+  background: var(--theme-footer-output-bg-hover);
+}
+
+.app-footer-output-label,
+.app-footer-output-text {
+  color: var(--theme-footer-output-text);
+}
+
+.app-status-nominal {
+  color: var(--theme-status-nominal);
+}
+
+.app-footer-stat-link {
+  color: var(--theme-status-nominal);
+}
+
+.app-footer-stat-link:hover {
+  color: var(--theme-accent-bright);
+}
+
 .glow-border {
-  border: 1px solid rgba(118, 185, 0, 0.3);
-  box-shadow: 0 0 8px rgba(118, 185, 0, 0.1), inset 0 0 8px rgba(118, 185, 0, 0.05);
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 30%, transparent);
+  box-shadow: 0 0 8px var(--theme-accent-soft), inset 0 0 8px var(--theme-accent-soft);
 }
 
 .glow-border-warning {
@@ -192,8 +339,8 @@ html, body, #root {
 
 /* Grid pattern background */
 .grid-bg {
-  background-image: 
-      linear-gradient(to bottom, rgba(36, 197, 97, 0.025) 1px, transparent 1px);
+  background-image:
+      linear-gradient(to bottom, color-mix(in srgb, var(--theme-accent) 2.5%, transparent) 1px, transparent 1px);
   background-size: 40px 40px;
 }
 
@@ -763,56 +910,320 @@ html, body, #root {
   background-color: var(--theme-industrial-bg);
   background-image: repeating-linear-gradient(
     135deg,
-    rgba(255,255,255,.025) 0px,
+    var(--theme-bezel-grain) 0px,
     transparent 1px,
     transparent 4px
   );
-  border-top: 1.5px solid rgba(200, 210, 220, 0.12);
-  border-left: 1.5px solid rgba(200, 210, 220, 0.08);
-  border-bottom: 2px solid rgba(0, 0, 0, 0.5);
-  border-right: 2px solid rgba(0, 0, 0, 0.4);
+  border-top: 1.5px solid var(--theme-bezel-edge-hi);
+  border-left: 1.5px solid color-mix(in srgb, var(--theme-bezel-edge-hi) 65%, transparent);
+  border-bottom: 1px solid var(--theme-bezel-edge-lo);
+  border-right: 1px solid var(--theme-bezel-edge-lo);
   box-shadow:
-    0 8px 24px rgba(0, 0, 0, 0.8),
-    0 3px 8px rgba(0, 0, 0, 0.6),
-    inset 1px 1px 0 rgba(255, 255, 255, 0.06),
-    inset -1px -2px 0 rgba(0, 0, 0, 0.6),
-    inset 0 4px 12px rgba(0, 0, 0, 0.6),
-    inset 0 -4px 12px rgba(0, 0, 0, 0.5),
-    inset 4px 0 12px rgba(0, 0, 0, 0.3),
-    inset -4px 0 12px rgba(0, 0, 0, 0.3);
+    var(--theme-bezel-cast-shadow),
+    inset 1px 1px 0 var(--theme-bezel-inset-hi),
+    inset -1px -1px 0 var(--theme-bezel-inset-lo),
+    inset 0 2px 10px color-mix(in srgb, var(--theme-bezel-inset-lo) 45%, transparent),
+    inset 0 -1px 4px color-mix(in srgb, var(--theme-bezel-inset-lo) 30%, transparent);
+}
+
+/* Bench controls + results — recessed into engine card, lighter than phosphor screen */
+.bench-widget-panel {
+  box-shadow: inset 0 1px 4px var(--theme-bench-inset-shadow);
+}
+
+/* ── Display texture toggle — outline pill on bezel top ─── */
+.display-texture-toggle {
+  font-family: ui-monospace, monospace;
+  font-size: 6px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  line-height: 1.2;
+  padding: 2px 8px;
+  border: 1px solid #b0b0b0;
+  border-radius: 4px;
+  background: transparent;
+  color: #b0b0b0;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  transition: background-color 0.15s ease;
+}
+
+.display-texture-toggle:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.display-texture-toggle:focus-visible {
+  outline: 1px solid #b0b0b0;
+  outline-offset: 2px;
+}
+
+[data-theme="arctic"] .display-texture-toggle {
+  border-color: #4a4a4a;
+  color: #4a4a4a;
+}
+
+[data-theme="arctic"] .display-texture-toggle:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+[data-theme="arctic"] .display-texture-toggle:focus-visible {
+  outline-color: #4a4a4a;
+}
+
+/* ARCTIC — brushed aluminium bezel face (light themes need explicit metallic gradient) */
+[data-theme="arctic"] .industrial-display-frame,
+[data-theme="arctic"] .industrial-eject-panel {
+  background-image:
+    linear-gradient(175deg, #d6dee6 0%, #b6c2ce 28%, #9aacb8 52%, #b2beca 78%, #c6ced6 100%),
+    repeating-linear-gradient(135deg, var(--theme-bezel-grain) 0px, transparent 1px, transparent 3px);
 }
 
 /* ── Phosphor screen — VramBadge content, recessed INTO bezel ─── */
 .phosphor-screen-inner {
+  position: relative;
   border-radius: 10px;
   background-color: var(--phosphor-bg, #030801);
   background-image:
     radial-gradient(ellipse at center, var(--phosphor-glow, rgba(74,222,128,.04)) 0%, transparent 70%);
   box-shadow:
-    inset 0 2px 8px rgba(0, 0, 0, 0.6),
-    inset 0 -2px 8px rgba(0, 0, 0, 0.5);
+    inset 0 2px 6px var(--theme-phosphor-inset-top),
+    inset 0 -1px 3px var(--theme-phosphor-inset-bottom);
+}
+
+/* Display texture overlays — VRAM forecast + Fusion overlay phosphor surfaces */
+.phosphor-display-surface::before,
+.phosphor-display-surface::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+
+.phosphor-display-surface::before {
+  z-index: 5;
+  display: none;
+}
+
+.phosphor-display-surface::after {
+  z-index: 4;
+}
+
+/* CRT — aperture grille + rolling scan mesh + vignette + sweeping raster beam */
+[data-display-texture="crt"] .phosphor-display-surface::after {
+  display: block;
+  opacity: 1;
+  mix-blend-mode: multiply;
+  background-image:
+    repeating-linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--theme-display-texture-aperture) 80%, #ff4040 20%) 0px,
+      color-mix(in srgb, var(--theme-display-texture-aperture) 80%, #ff4040 20%) 1px,
+      color-mix(in srgb, var(--theme-display-texture-aperture) 80%, #40ff60 20%) 1px,
+      color-mix(in srgb, var(--theme-display-texture-aperture) 80%, #40ff60 20%) 2px,
+      color-mix(in srgb, var(--theme-display-texture-aperture) 80%, #4080ff 20%) 2px,
+      color-mix(in srgb, var(--theme-display-texture-aperture) 80%, #4080ff 20%) 3px,
+      transparent 3px,
+      transparent 3px
+    ),
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0px,
+      transparent 1px,
+      var(--theme-display-texture-scan) 1px,
+      var(--theme-display-texture-scan) 2px
+    ),
+    repeating-linear-gradient(
+      to bottom,
+      var(--theme-display-texture-scan-bright) 0px,
+      var(--theme-display-texture-scan-bright) 1px,
+      transparent 1px,
+      transparent 4px
+    ),
+    radial-gradient(ellipse at center, transparent 42%, var(--theme-display-texture-vignette) 100%);
+  background-size: 3px 100%, 100% 2px, 100% 5px, 100% 100%;
+  animation: display-crt-roll 6s linear infinite;
+}
+
+[data-display-texture="crt"] .phosphor-display-surface::before {
+  display: block;
+  opacity: 0.85;
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    transparent 46%,
+    color-mix(in srgb, var(--theme-display-texture-beam) 25%, transparent) 49%,
+    var(--theme-display-texture-beam) 50%,
+    color-mix(in srgb, var(--theme-display-texture-beam) 25%, transparent) 51%,
+    transparent 54%,
+    transparent 100%
+  );
+  background-size: 100% 14%;
+  background-repeat: no-repeat;
+  mix-blend-mode: soft-light;
+  animation: display-crt-beam-sweep 2.8s linear infinite;
+}
+
+/* PHOSPHOR (dark + light) — VRAM: recessed phosphor + dot matrix */
+[data-display-texture="phosphor-dark"] .phosphor-screen-inner.phosphor-display-surface,
+[data-display-texture="phosphor-light"] .phosphor-screen-inner.phosphor-display-surface {
+  box-shadow:
+    inset 0 2px 8px var(--theme-phosphor-inset-top),
+    inset 0 -2px 8px var(--theme-phosphor-inset-bottom);
+  background-image:
+    radial-gradient(ellipse at center, var(--phosphor-glow) 0%, transparent 70%),
+    radial-gradient(circle, var(--theme-display-dot-matrix) 0.5px, transparent 0.5px),
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0px,
+      transparent 2px,
+      var(--theme-display-lcd-band) 2px,
+      var(--theme-display-lcd-band) 4px
+    );
+  background-size: 100% 100%, 2px 2px, 100% 4px;
+}
+
+[data-display-texture="phosphor-dark"] .phosphor-screen-inner.phosphor-display-surface::after,
+[data-display-texture="phosphor-light"] .phosphor-screen-inner.phosphor-display-surface::after {
+  display: block;
+  opacity: 1;
+  background-image:
+    radial-gradient(ellipse 85% 65% at 50% 42%, var(--phosphor-glow) 0%, transparent 68%),
+    radial-gradient(ellipse at center, transparent 62%, var(--theme-display-texture-vignette) 100%);
+  animation: display-phosphor-bloom 5s ease-in-out infinite;
+}
+
+[data-display-texture="phosphor-dark"] .phosphor-screen-inner.phosphor-display-surface::before,
+[data-display-texture="phosphor-light"] .phosphor-screen-inner.phosphor-display-surface::before {
+  display: block;
+  opacity: 0.55;
+  background: linear-gradient(
+    125deg,
+    transparent 0%,
+    transparent 38%,
+    var(--theme-display-texture-glare) 48%,
+    transparent 58%,
+    transparent 100%
+  );
+  background-size: 220% 220%;
+  mix-blend-mode: soft-light;
+  animation: display-phosphor-glare 7s ease-in-out infinite;
+}
+
+/* PHOSPHOR DARK — fusion overlay uses themed dark phosphor (.phosphor-screen base) */
+[data-display-texture="phosphor-dark"] .phosphor-screen.phosphor-display-surface::after,
+[data-display-texture="phosphor-dark"] .phosphor-screen.phosphor-display-surface::before {
+  display: none;
+}
+
+/* PHOSPHOR LIGHT — fusion e-ink LCD (pixel grid + banding + top glare) */
+[data-display-texture="phosphor-light"] .phosphor-screen.phosphor-display-surface {
+  background-color: var(--fusion-eink-surface);
+  background-image:
+    radial-gradient(circle, var(--fusion-eink-dot) 1px, transparent 1px),
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0px,
+      transparent 2px,
+      var(--fusion-eink-band) 2px,
+      var(--fusion-eink-band) 4px
+    );
+  background-size: 2px 2px, 100% 4px;
+  box-shadow:
+    inset 0 2px 6px rgba(0, 0, 0, 0.25),
+    inset 0 -1px 3px rgba(0, 0, 0, 0.15),
+    inset 0 1px 40px rgba(255, 255, 255, 0.3);
+}
+
+[data-display-texture="phosphor-light"] .phosphor-screen.phosphor-display-surface::after,
+[data-display-texture="phosphor-light"] .phosphor-screen.phosphor-display-surface::before {
+  display: none;
+}
+
+[data-display-texture="phosphor-light"] .phosphor-screen .text-stealth-muted,
+[data-display-texture="phosphor-light"] .phosphor-screen .text-stealth-muted\/30,
+[data-display-texture="phosphor-light"] .phosphor-screen .text-stealth-muted\/40,
+[data-display-texture="phosphor-light"] .phosphor-screen .text-stealth-muted\/50,
+[data-display-texture="phosphor-light"] .phosphor-screen .text-stealth-muted\/60 {
+  color: var(--fusion-eink-text-muted) !important;
+}
+
+[data-display-texture="phosphor-light"] .phosphor-screen .text-nv-green {
+  color: var(--fusion-eink-text-accent) !important;
+}
+
+[data-display-texture="phosphor-light"] .phosphor-screen .text-telemetry-cyan,
+[data-display-texture="phosphor-light"] .phosphor-screen .text-telemetry-cyan\/70 {
+  color: var(--fusion-eink-text-cyan) !important;
+}
+
+[data-display-texture="phosphor-light"] .phosphor-screen .text-orange-400,
+[data-display-texture="phosphor-light"] .phosphor-screen .text-telemetry-amber,
+[data-display-texture="phosphor-light"] .phosphor-screen .text-telemetry-amber\/80 {
+  color: var(--fusion-eink-text-amber) !important;
+}
+
+[data-display-texture="phosphor-light"] .phosphor-screen .bg-stealth-dark {
+  background-color: var(--fusion-eink-bar-bg) !important;
+}
+
+[data-display-texture="phosphor-light"] .phosphor-screen .border-stealth-border,
+[data-display-texture="phosphor-light"] .phosphor-screen .border-stealth-border\/30,
+[data-display-texture="phosphor-light"] .phosphor-screen .border-stealth-border\/50 {
+  border-color: var(--fusion-eink-border) !important;
+}
+
+@keyframes display-crt-roll {
+  from { background-position: 0 0, 0 0, 0 0, 0 0; }
+  to { background-position: 0 0, 0 10px, 0 20px, 0 0; }
+}
+
+@keyframes display-crt-beam-sweep {
+  from { background-position: 0 -20%; }
+  to { background-position: 0 120%; }
+}
+
+@keyframes display-phosphor-bloom {
+  0%, 100% { opacity: 0.5; filter: brightness(0.96); }
+  50% { opacity: 0.95; filter: brightness(1.06); }
+}
+
+@keyframes display-phosphor-glare {
+  0%, 100% { background-position: 0% 30%; opacity: 0.35; }
+  50% { background-position: 100% 70%; opacity: 0.7; }
+}
+
+[data-theme="arctic"][data-display-texture="crt"] .phosphor-display-surface::after {
+  mix-blend-mode: soft-light;
+  opacity: 0.72;
+}
+
+[data-theme="arctic"][data-display-texture="crt"] .phosphor-display-surface::before {
+  mix-blend-mode: overlay;
+  opacity: 0.5;
 }
 
 /* ── Eject panel — running engines, gunmetal bg, flush below display bevel ─── */
 .industrial-eject-panel {
-  margin: -9px 24px 0;
+  margin: -10px 24px 0;
   padding: 4px 8px 0px;
   background-color: var(--theme-industrial-bg);
   background-image: repeating-linear-gradient(
     135deg,
-    rgba(255,255,255,.02) 0px,
+    var(--theme-bezel-grain) 0px,
     transparent 1px,
     transparent 4px
   );
   border-radius: 4px;
-  border-top: 1px solid rgba(200, 210, 220, 0.06);
-  border-left: 1px solid rgba(200, 210, 220, 0.04);
-  border-right: 1px solid rgba(0, 0, 0, 0.3);
-  border-bottom: 1.5px solid rgba(0, 0, 0, 0.4);
+  border-top: 1px solid color-mix(in srgb, var(--theme-bezel-edge-hi) 50%, transparent);
+  border-left: 1px solid color-mix(in srgb, var(--theme-bezel-edge-hi) 35%, transparent);
+  border-right: 1px solid var(--theme-bezel-edge-lo);
+  border-bottom: 1px solid var(--theme-bezel-edge-lo);
   position: relative;
-  z-index: 0;
-  box-shadow:
-    0 -1px 4px rgba(0, 0, 0, 0.3);
+  z-index: 1;
 }
 
 /* Themed text on industrial display frame */
@@ -1146,6 +1557,183 @@ html, body, #root {
   color: rgb(59, 130, 246) !important;
 }
 
+/* ── Engine Stack page — unified with MODELS tab ─── */
+[data-engine-stack] .engine-stack-empty-icon {
+  color: var(--theme-accent);
+}
+
+[data-engine-stack] .engine-stack-card {
+  position: relative;
+  border: 1px solid var(--theme-border-subtle);
+}
+
+[data-engine-stack] .engine-stack-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--theme-accent-glow), transparent);
+  pointer-events: none;
+  z-index: 1;
+}
+
+[data-engine-stack] .engine-stack-banner {
+  background: var(--theme-eject-card-bg);
+}
+
+[data-engine-stack] .engine-stack-banner .text-stealth-muted {
+  color: var(--theme-eject-card-muted) !important;
+}
+
+[data-engine-stack] .engine-stack-log {
+  background: var(--theme-industrial-bar-track);
+}
+
+[data-engine-stack] .engine-stack-footer {
+  background: var(--theme-accent-soft);
+}
+
+[data-engine-stack] .engine-stack-phase-pp {
+  background: color-mix(in srgb, var(--theme-secondary) 10%, transparent) !important;
+  border-color: color-mix(in srgb, var(--theme-secondary) 30%, transparent) !important;
+}
+
+[data-engine-stack] .engine-stack-phase-tg {
+  background: var(--theme-accent-soft) !important;
+  border-color: color-mix(in srgb, var(--theme-accent) 30%, transparent) !important;
+}
+
+[data-engine-stack] .engine-stack-phase-idle {
+  background: var(--theme-panel) !important;
+  border-color: var(--theme-border-subtle) !important;
+}
+
+[data-engine-stack] .status-online {
+  background-color: var(--theme-accent) !important;
+  box-shadow: 0 0 6px var(--theme-accent-glow) !important;
+}
+
+[data-engine-stack] .status-loading {
+  background-color: var(--theme-secondary-bright) !important;
+  box-shadow: 0 0 6px color-mix(in srgb, var(--theme-secondary) 40%, transparent) !important;
+}
+
+[data-engine-stack] .eink-panel .provider-pill-active {
+  background: var(--theme-provider-pill-active-bg) !important;
+  border: 1px solid var(--theme-provider-pill-active-border) !important;
+  color: var(--theme-provider-pill-active-text) !important;
+}
+
+[data-engine-stack] .eink-panel .engine-stack-banner .text-stealth-muted {
+  color: var(--theme-eject-card-muted) !important;
+}
+
+[data-engine-stack] .engine-stack-header {
+  background: var(--theme-panel);
+}
+
+/* ── Shared theme surfaces — reusable across tabs ─── */
+.theme-surface {
+  background: var(--theme-panel);
+  border: 1px solid var(--theme-border-subtle);
+}
+
+.theme-surface-header {
+  background: var(--theme-panel-accent);
+  border-color: var(--theme-border-subtle);
+}
+
+.theme-surface-row {
+  background: var(--theme-eject-card-bg);
+  border: 1px solid var(--theme-eject-card-border);
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.theme-surface-row:hover {
+  border-color: var(--theme-eject-card-hover-border);
+  background: var(--theme-eject-card-hover-bg);
+}
+
+.theme-surface-inset {
+  background: var(--theme-panel-accent);
+  border: 1px solid var(--theme-border-subtle);
+}
+
+.theme-tag {
+  background: var(--theme-panel-accent);
+  border: 1px solid var(--theme-border-subtle);
+  color: var(--theme-text-muted);
+}
+
+.theme-input {
+  background: var(--theme-panel-accent);
+  color: var(--theme-text);
+  border: 1px solid var(--theme-chip-border);
+}
+
+.theme-input:focus {
+  border-color: var(--theme-chip-active-border);
+  outline: none;
+}
+
+.theme-input::placeholder {
+  color: var(--theme-text-muted);
+}
+
+.theme-bar-track {
+  background: var(--theme-industrial-bar-track);
+}
+
+[data-engine-logs] .theme-logs-header {
+  background: var(--theme-panel);
+}
+
+[data-engine-logs] .text-white,
+[data-engine-logs] .text-white\/80,
+[data-engine-logs] .text-white\/90 {
+  color: var(--theme-text) !important;
+}
+
+[data-engine-logs] .text-stealth-muted {
+  color: var(--theme-text-muted) !important;
+}
+
+[data-telemetry-page] .theme-surface .text-white,
+[data-telemetry-page] .theme-surface .text-white\/80 {
+  color: var(--theme-text) !important;
+}
+
+[data-telemetry-page] .theme-surface .text-stealth-muted,
+[data-telemetry-page] .theme-surface .text-stealth-muted\/60,
+[data-telemetry-page] .theme-surface .text-stealth-muted\/70 {
+  color: var(--theme-text-muted) !important;
+}
+
+[data-intel-page] .theme-surface .text-white\/90 {
+  color: var(--theme-text) !important;
+}
+
+[data-intel-page] .theme-surface .text-stealth-muted,
+[data-intel-page] .theme-surface .text-stealth-muted\/50,
+[data-intel-page] .theme-surface .text-stealth-muted\/60 {
+  color: var(--theme-text-muted) !important;
+}
+
+[data-model-hub] .theme-surface .text-white\/90 {
+  color: var(--theme-text) !important;
+}
+
+[data-model-hub] .theme-surface .text-stealth-muted,
+[data-model-hub] .theme-surface .text-stealth-muted\/60 {
+  color: var(--theme-text-muted) !important;
+}
+
+[data-model-catalog] .text-white {
+  color: var(--theme-text) !important;
+}
+
 /* ── Amber label — ENGINE PROVIDER, RUNTIME PROFILE, etc. ─── */
 .amber-label {
   color: var(--theme-provider-label);
@@ -1199,6 +1787,129 @@ html, body, #root {
   background: rgba(0, 0, 0, 0.3);
 }
 
+/* ── CONFIG page — reuse chip/panel tokens, no rainbow profiles ─── */
+[data-config-page] {
+  background: var(--theme-bg);
+  color: var(--theme-text);
+}
+
+[data-config-page] .config-muted,
+[data-config-page] .text-stealth-muted {
+  color: var(--theme-text-muted) !important;
+}
+
+[data-config-page] .text-white,
+[data-config-page] .text-white\/80 {
+  color: var(--theme-text) !important;
+}
+
+[data-config-page] .text-nv-green,
+[data-config-page] .text-nv-green\/60,
+[data-config-page] .text-nv-green\/80 {
+  color: var(--theme-accent-bright) !important;
+}
+
+[data-config-page] .text-telemetry-cyan {
+  color: var(--theme-accent-bright) !important;
+}
+
+[data-config-page] .bg-\[\#0a0a1a\],
+[data-config-page] .bg-\[\#1a1a2e\] {
+  background: var(--theme-panel) !important;
+}
+
+[data-config-page] .config-section-bar {
+  border-bottom: 1px solid var(--theme-border-subtle);
+}
+
+[data-config-page] .config-provider-card {
+  background: var(--theme-eject-card-bg);
+  border: 1px solid var(--theme-eject-card-border);
+  border-radius: 6px;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+[data-config-page] .config-provider-card:hover {
+  border-color: var(--theme-eject-card-hover-border);
+  background: var(--theme-eject-card-hover-bg);
+}
+
+[data-config-page] .config-provider-card.is-expanded {
+  border-color: var(--theme-chip-active-border);
+  background: var(--theme-eject-card-selected-bg);
+}
+
+[data-config-page] .config-provider-card.is-editing {
+  border-color: color-mix(in srgb, var(--theme-secondary) 45%, transparent);
+}
+
+[data-config-page] .foundry-build-panel {
+  background: var(--theme-panel-accent);
+  border: 1px solid var(--theme-border-subtle);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+[data-config-page] .foundry-build-header {
+  background: var(--theme-panel);
+  border-bottom: 1px solid var(--theme-border-subtle);
+}
+
+[data-config-page] .foundry-profile-row {
+  background: var(--theme-eject-card-bg);
+  border: 1px solid var(--theme-eject-card-border);
+}
+
+[data-config-page] .foundry-profile-label {
+  color: var(--theme-accent-bright);
+}
+
+[data-config-page] .config-form-panel {
+  background: var(--theme-panel);
+  border: 1px solid var(--theme-border-subtle);
+}
+
+[data-config-page] .config-input,
+[data-config-page] .config-textarea {
+  background: transparent;
+  color: var(--theme-text);
+  border-color: var(--theme-chip-border);
+}
+
+[data-config-page] .config-input {
+  border-bottom: 1px solid var(--theme-chip-border);
+}
+
+[data-config-page] .config-input:focus,
+[data-config-page] .config-textarea:focus {
+  border-color: var(--theme-chip-active-border);
+  outline: none;
+}
+
+[data-config-page] .config-input::placeholder,
+[data-config-page] .config-textarea::placeholder {
+  color: var(--theme-text-muted);
+}
+
+[data-config-page] .config-scan-panel {
+  background: var(--theme-panel-accent);
+  border: 1px solid var(--theme-border-subtle);
+}
+
+[data-config-page] .value-chip,
+[data-config-page] .value-chip-active {
+  font-family: 'JetBrains Mono', 'Roboto Mono', monospace;
+}
+
+[data-config-page] .param-catalog-modal {
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+[data-config-page] .param-catalog-modal .config-provider-card {
+  padding: 0;
+}
+
 /* ── Config panel root background ─── */
 [data-config-panel] {
   background: var(--theme-panel-accent);
@@ -1216,8 +1927,8 @@ html, body, #root {
 
 /* ── Select option styling (WebView2 ignores inline styles on <option>) ─── */
 select option {
-  background: #1a1a2e !important;
-  color: #ffffff !important;
+  background: var(--theme-panel) !important;
+  color: var(--theme-text) !important;
 }
 
 /* ── MOE Suggestion Animations ─────────────────────────────── */
@@ -1253,45 +1964,16 @@ select option {
   background-blend-mode: overlay;
 }
 
-/* ── CRT overlay — scanlines + vignette for VramBadgeOverlay ─── */
-.crt-overlay {
-  /* Scanline pattern — alternating dark/transparent 1px lines scrolling down */
-  background-image:
-    repeating-linear-gradient(
-      to bottom,
-      rgba(0, 0, 0, 0.12) 0px,
-      rgba(0, 0, 0, 0.12) 1px,
-      transparent 1px,
-      transparent 3px
-    ),
-    /* Vignette — darkened edges */
-    radial-gradient(ellipse at center, transparent 50%, rgba(0, 0, 0, 0.35) 100%);
-  background-size: 100% 4px, 100% 100%;
-  animation: crt-scanlines 60s linear infinite;
-}
-
-@keyframes crt-scanlines {
-  from {
-    background-position: 0 0, 0 0;
-  }
-  to {
-    background-position: 0 -10px, 0 0;
-  }
-}
-
 /* ── Fusion overlay — phosphor screen glow ─── */
 .phosphor-screen {
   border-radius: 6px;
   background-color: var(--phosphor-bg, #08140a);
-  /* Screen glow — soft phosphor bloom from center */
   background-image:
     radial-gradient(ellipse at center, var(--phosphor-glow, rgba(74,222,128,.06)) 0%, transparent 70%);
   box-shadow:
-    /* LCD inner bevel — screen pressed into bezel */
-    inset 0 2px 6px rgba(0,0,0,.25),
-    inset 0 -1px 3px rgba(0,0,0,.15),
-    /* Subtle top glare — like ambient light on glossy screen */
-    inset 0 1px 40px rgba(255,255,255,.3);
+    inset 0 2px 6px var(--theme-phosphor-inset-top),
+    inset 0 -1px 3px var(--theme-phosphor-inset-bottom),
+    inset 0 1px 40px color-mix(in srgb, var(--theme-text) 8%, transparent);
 }
 
 /* Themed text on phosphor screen (fusion overlay) */

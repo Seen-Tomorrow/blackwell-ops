@@ -84,21 +84,42 @@ fn should_skip(flag: &str) -> bool {
     })
 }
 
+/// True when a line is a primary flag definition (column 0), not an indented continuation.
+fn is_primary_flag_line(line: &str) -> bool {
+    line.starts_with('-')
+}
+
+/// Drop duplicate keys and empty keys while preserving first-seen order.
+fn dedupe_catalog_entries(entries: Vec<LlamaCatalogEntry>) -> Vec<LlamaCatalogEntry> {
+    let mut seen = std::collections::HashSet::new();
+    let mut deduped = Vec::with_capacity(entries.len());
+
+    for entry in entries {
+        if entry.key.is_empty() || !seen.insert(entry.key.clone()) {
+            continue;
+        }
+        deduped.push(entry);
+    }
+
+    deduped
+}
+
 /// Parse a `--help` text output into structured catalog entries.
-pub fn parse_help_output(text: &str) -> Vec<LlamaCatalogEntry> {
+/// When `filter_system_params` is true, server/meta/model-loading flags are excluded.
+pub fn parse_help_output(text: &str, filter_system_params: bool) -> Vec<LlamaCatalogEntry> {
     let lines: Vec<&str> = text.lines().collect();
     let mut entries: Vec<LlamaCatalogEntry> = Vec::new();
 
     let mut i = 0;
     while i < lines.len() {
-        let line = lines[i].trim();
+        let raw = lines[i];
 
-        // Flag lines start with `-` or `--`
-        if line.starts_with('-') {
+        // Only parse primary flag lines at column 0. Indented continuation lines often
+        // mention other flags (e.g. "--logit-bias EOS-inf") and must not become entries.
+        if is_primary_flag_line(raw) {
             let entry = parse_flag_line(&lines, &mut i);
             if let Some(e) = entry {
-                // Skip unwanted params
-                if !should_skip(&e.flag) {
+                if !e.key.is_empty() && (!filter_system_params || !should_skip(&e.flag)) {
                     entries.push(e);
                 }
             }
@@ -107,7 +128,7 @@ pub fn parse_help_output(text: &str) -> Vec<LlamaCatalogEntry> {
         i += 1;
     }
 
-    entries
+    dedupe_catalog_entries(entries)
 }
 
 /// Parse a single flag line and its continuation lines.
@@ -695,10 +716,12 @@ fn key_to_label(key: &str) -> String {
 }
 
 /// Tauri command: parse `llama-server --help` for the given provider.
+/// Pass `include_all: true` (power-user mode) to bypass system/server param filtering.
 #[tauri::command]
 pub async fn get_llama_catalog(
     config: tauri::State<'_, Arc<std::sync::Mutex<AppConfig>>>,
     provider_id: String,
+    include_all: Option<bool>,
 ) -> Result<Vec<LlamaCatalogEntry>, String> {
     let cfg = config.lock().map_err(|e| e.to_string())?;
 
@@ -717,7 +740,107 @@ pub async fn get_llama_catalog(
     let stderr = String::from_utf8_lossy(&output.stderr);
     let combined = format!("{}\n{}", stdout, stderr);
 
-    // Parse
-    let entries = parse_help_output(&combined);
+    // Parse — filter server/meta params unless power-user requests full catalog
+    let filter_system_params = !include_all.unwrap_or(false);
+    let entries = parse_help_output(&combined, filter_system_params);
     Ok(entries)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_help_ignores_indented_flag_references() {
+        let text = r#"
+--ignore-eos                            ignore end of stream token and continue generating (implies
+                                        --logit-bias EOS-inf)
+-l,    --logit-bias TOKEN_ID(+/-)BIAS   modifies the likelihood of token appearing in the completion
+--spec-ngram-mod-n-max N                maximum number of ngram tokens (default: 64)
+--draft, --draft-n, --draft-max N       the argument has been removed. use --spec-draft-n-max or
+                                        --spec-ngram-mod-n-max
+--spec-ngram-mod-n-min N                minimum number of ngram tokens (default: 48)
+--draft-min, --draft-n-min N            the argument has been removed. use --spec-draft-n-min or
+                                        --spec-ngram-mod-n-min
+"#;
+
+        let entries = parse_help_output(text, true);
+        let keys: Vec<&str> = entries.iter().map(|e| e.key.as_str()).collect();
+
+        assert_eq!(keys.iter().filter(|&&k| k == "logit_bias").count(), 1);
+        assert_eq!(keys.iter().filter(|&&k| k == "spec_ngram_mod_n_max").count(), 1);
+        assert_eq!(keys.iter().filter(|&&k| k == "spec_ngram_mod_n_min").count(), 1);
+        assert!(!keys.contains(&"ignore_eos") || keys.iter().filter(|&&k| k == "ignore_eos").count() <= 1);
+    }
+
+    #[test]
+    fn parse_help_can_include_system_params_when_unfiltered() {
+        let text = r#"
+-h,    --help, --usage                  print usage and exit
+--host HOST                             ip address to listen on (default: 127.0.0.1)
+--temp, --temperature N                 temperature (default: 0.80)
+"#;
+
+        let filtered = parse_help_output(text, true);
+        let filtered_keys: Vec<&str> = filtered.iter().map(|e| e.key.as_str()).collect();
+        assert!(!filtered_keys.contains(&"help"));
+        assert!(!filtered_keys.contains(&"host"));
+        assert!(filtered_keys.contains(&"temp"));
+
+        let full = parse_help_output(text, false);
+        let full_keys: Vec<&str> = full.iter().map(|e| e.key.as_str()).collect();
+        assert!(full_keys.contains(&"help"));
+        assert!(full_keys.contains(&"host"));
+        assert!(full_keys.contains(&"temp"));
+    }
+
+    #[test]
+    fn dedupe_catalog_entries_drops_empty_and_duplicate_keys() {
+        let entries = vec![
+            LlamaCatalogEntry {
+                flag: "--alpha".into(),
+                short: None,
+                alternates: None,
+                key: "alpha".into(),
+                label: "Alpha".into(),
+                ptype: "slider".into(),
+                default_value: None,
+                values: None,
+                presets: None,
+                description: "first".into(),
+                env_var: None,
+            },
+            LlamaCatalogEntry {
+                flag: "--alpha".into(),
+                short: None,
+                alternates: None,
+                key: "alpha".into(),
+                label: "Alpha".into(),
+                ptype: "slider".into(),
+                default_value: None,
+                values: None,
+                presets: None,
+                description: "duplicate".into(),
+                env_var: None,
+            },
+            LlamaCatalogEntry {
+                flag: "--".into(),
+                short: None,
+                alternates: None,
+                key: "".into(),
+                label: "".into(),
+                ptype: "slider".into(),
+                default_value: None,
+                values: None,
+                presets: None,
+                description: "empty key".into(),
+                env_var: None,
+            },
+        ];
+
+        let deduped = dedupe_catalog_entries(entries);
+        assert_eq!(deduped.len(), 1);
+        assert_eq!(deduped[0].key, "alpha");
+        assert_eq!(deduped[0].description, "first");
+    }
 }

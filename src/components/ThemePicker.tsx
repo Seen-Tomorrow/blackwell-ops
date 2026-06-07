@@ -2,8 +2,8 @@ import { useTheme } from "../context/ThemeContext";
 import { APP_THEMES } from "../themes/app-themes";
 
 interface ThemePickerProps {
-  /** compact = small cycle button; full = labeled chip with dropdown-style list */
-  variant?: "compact" | "full";
+  /** compact = cycle button; full = chip row; header = app chrome nav tabs */
+  variant?: "compact" | "full" | "header";
   className?: string;
 }
 
@@ -15,7 +15,7 @@ export default function ThemePicker({ variant = "compact", className = "" }: The
       <button
         type="button"
         onClick={cycleTheme}
-        className={`px-2 py-0.5 text-[7px] font-mono tracking-wider border border-stealth-border/50 text-stealth-muted hover:text-white hover:border-white/30 transition-colors rounded-sm ${className}`}
+        className={`app-chrome-control-btn px-2 py-0.5 text-[7px] font-mono tracking-wider border border-transparent hover:border-[color:var(--theme-chrome-control-border)] transition-colors rounded-sm ${className}`}
         title={`Theme: ${theme.name} — ${theme.description}. Click to cycle.`}
       >
         ◈ {theme.name}
@@ -23,16 +23,21 @@ export default function ThemePicker({ variant = "compact", className = "" }: The
     );
   }
 
+  const chipClass = (active: boolean) => {
+    if (variant === "header") {
+      return `app-nav-tab px-1.5 py-0.5 text-[7px] font-mono rounded-sm transition-all ${active ? "app-nav-tab-active" : ""}`;
+    }
+    return `px-1.5 py-0 text-[7px] font-mono rounded-sm transition-colors ${active ? "value-chip-active" : "value-chip"}`;
+  };
+
   return (
-    <div className={`flex items-center gap-1 ${className}`}>
+    <div className={`flex items-center gap-0.5 ${className}`} role="group" aria-label="App theme">
       {APP_THEMES.map(t => (
         <button
           key={t.id}
           type="button"
           onClick={() => setThemeId(t.id)}
-          className={`px-1.5 py-0 text-[7px] font-mono rounded-sm transition-colors ${
-            theme.id === t.id ? "value-chip-active" : "value-chip"
-          }`}
+          className={chipClass(theme.id === t.id)}
           title={t.description}
         >
           {t.name}
