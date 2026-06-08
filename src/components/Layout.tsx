@@ -161,7 +161,7 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
   const isConfigTab = activeTab === "config";
 
   return (
-    <div className="app-shell flex flex-col h-screen grid-bg relative">
+    <div className={`app-shell flex flex-col h-screen grid-bg relative ${consoleReservesDockSpace ? "app-shell--console-docked" : ""}`}>
       {/* Top bar */}
       <header className="app-header flex items-center justify-between px-6 py-3 backdrop-blur-sm relative z-30 layout-header-enter">
         <div className="flex items-center gap-4">
@@ -244,7 +244,7 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
       </header>
 
       {/* Main content area */}
-      <main className={`flex-1 min-h-0 overflow-hidden relative z-10 ${consoleReservesDockSpace ? "main--console-expanded" : ""}`}>
+      <main className="flex-1 min-h-0 overflow-hidden relative z-10">
         <div
           key={activeTab}
           className="app-main-scroll h-full min-h-0 overflow-hidden layout-tab-enter"

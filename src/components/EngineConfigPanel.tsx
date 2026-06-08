@@ -1042,7 +1042,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         )}
       </div>
 
-        <div className="config-launch-dock flex-shrink-0 px-4 py-2 flex items-center gap-3">
+        <div className="config-launch-dock flex-shrink-0 px-4 flex items-center gap-3">
           <button
             onClick={handleAddToStack}
             disabled={!model || vramCalc.manifest?.scenario === 'HW_LOCKED' || selectedProfileIsBuilding}

@@ -213,14 +213,16 @@ html, body, #root {
   z-index: 1;
 }
 
-/* Footer + docked console footprint — keep padding and fixed console in sync (no dead band). */
+/* Footer + docked console footprint — single source of truth for fixed chrome. */
 :root {
-  --app-footer-h: 50px;
+  --app-footer-h: 31px;
   --boc-docked-h: 150px;
+  --layout-bottom-inset: var(--app-footer-h);
 }
 
-main.main--console-expanded {
-  padding-bottom: calc(var(--app-footer-h) + var(--boc-docked-h));
+/* Open docked: launch only clears the console panel (footer sits beneath it). */
+.app-shell--console-docked {
+  --layout-bottom-inset: var(--boc-docked-h);
 }
 
 .app-header-title {
@@ -2703,7 +2705,7 @@ select option {
   transition: transform 0.08s ease;
 }
 
-/* Launch dock — pinned to bottom of engine config panel, outside param scroll */
+/* Launch dock — pinned to bottom of engine config panel, clears fixed footer/console */
 [data-config-panel] .config-launch-dock {
   background: var(--theme-panel-accent);
   border-top: 1px solid var(--theme-border-subtle);
@@ -2711,6 +2713,8 @@ select option {
     0 -2px 8px color-mix(in srgb, var(--theme-text) 5%, transparent),
     0 -1px 0 color-mix(in srgb, var(--theme-accent) 8%, transparent);
   z-index: 4;
+  padding-top: 0.5rem;
+  padding-bottom: calc(0.5rem + var(--layout-bottom-inset));
 }
 
 [data-config-panel] .config-params-scroll {
