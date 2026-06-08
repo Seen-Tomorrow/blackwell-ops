@@ -10,6 +10,7 @@ interface OutputLine {
 interface BlackwellOutputConsoleProps {
   isPowerUser: boolean;
   onClose?: () => void;
+  onDetachedChange?: (detached: boolean) => void;
   isOpen?: boolean;
   compact?: boolean;
 }
@@ -44,6 +45,7 @@ const DETACHED_MIN_SIZE = { width: 420, height: 140 };
 export default function BlackwellOutputConsole({
   isPowerUser,
   onClose,
+  onDetachedChange,
   isOpen = false,
   compact = false,
 }: BlackwellOutputConsoleProps) {
@@ -59,6 +61,19 @@ export default function BlackwellOutputConsole({
   const resizeRef = useRef({ startX: 0, startY: 0, startW: 0, startH: 0 });
 
   const pollInterval = useRef<number | null>(null);
+
+  useEffect(() => {
+    onDetachedChange?.(isDetached);
+  }, [isDetached, onDetachedChange]);
+
+  useEffect(() => {
+    if (!isOpen) setIsDetached(false);
+  }, [isOpen]);
+
+  const handleClose = useCallback(() => {
+    setIsDetached(false);
+    onClose?.();
+  }, [onClose]);
 
   const fetchBuffer = useCallback(async (category: Category, keepPrevious = false) => {
     if (!isPowerUser) return;
@@ -202,8 +217,8 @@ export default function BlackwellOutputConsole({
 
   if (!isPowerUser || !isOpen) return null;
 
-  const panelHeight = compact ? "150px" : "44vh";
-  const panelMinHeight = compact ? "120px" : "280px";
+  const panelHeight = compact ? undefined : "44vh";
+  const panelMinHeight = compact ? undefined : "280px";
 
   return (
     <div
@@ -222,11 +237,13 @@ export default function BlackwellOutputConsole({
               userSelect: isDragging || isResizing ? "none" : undefined,
               WebkitUserSelect: isDragging || isResizing ? "none" : undefined,
             } as React.CSSProperties
-          : {
-              bottom: "2rem",
-              height: panelHeight,
-              minHeight: panelMinHeight,
-            }),
+          : compact
+            ? {}
+            : {
+                bottom: "var(--app-footer-h)",
+                height: panelHeight,
+                minHeight: panelMinHeight,
+              }),
       }}
       onDragStart={(e) => e.preventDefault()}
     >
@@ -270,7 +287,7 @@ export default function BlackwellOutputConsole({
             <button onClick={() => setIsDetached(true)} className="boc-utility-btn px-2 py-0.5 text-[8px]">DETACH</button>
           )}
 
-          <button onClick={onClose} className="boc-close-btn px-2 py-0.5 text-[10px] ml-1">✕</button>
+          <button onClick={handleClose} className="boc-close-btn px-2 py-0.5 text-[10px] ml-1">✕</button>
         </div>
       </div>
 

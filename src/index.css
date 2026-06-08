@@ -213,6 +213,16 @@ html, body, #root {
   z-index: 1;
 }
 
+/* Footer + docked console footprint — keep padding and fixed console in sync (no dead band). */
+:root {
+  --app-footer-h: 50px;
+  --boc-docked-h: 150px;
+}
+
+main.main--console-expanded {
+  padding-bottom: calc(var(--app-footer-h) + var(--boc-docked-h));
+}
+
 .app-header-title {
   color: var(--theme-header-title);
 }
@@ -1016,6 +1026,9 @@ html, body, #root {
 }
 
 .blackwell-output-console--docked {
+  bottom: var(--app-footer-h);
+  height: var(--boc-docked-h);
+  min-height: var(--boc-docked-h);
   box-shadow:
     0 -4px 12px color-mix(in srgb, #000000 35%, transparent),
     0 -12px 32px color-mix(in srgb, #000000 45%, transparent);
@@ -1610,6 +1623,14 @@ html, body, #root {
 
 
 /* ── Running engines panel — grey bg, compact row cards (below VRAM) ─── */
+/* 4 grid rows (2 cols) visible before eject panel scrolls */
+.running-engines-scroll {
+  --running-engine-row-h: 2.375rem;
+  max-height: calc(var(--running-engine-row-h) * 4 + 0.25rem * 3);
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
 .running-engines-header-row {
   background: transparent;
 }
@@ -2105,8 +2126,30 @@ html, body, #root {
   cursor: not-allowed;
 }
 
+.mode-btn-off {
+  border-color: rgba(184, 122, 0, 0.25);
+  color: rgba(184, 122, 0, 0.55);
+  background: rgba(184, 122, 0, 0.04);
+  cursor: pointer;
+}
+
+.mode-btn-off:hover {
+  border-color: rgba(184, 122, 0, 0.4);
+  color: rgba(184, 122, 0, 0.75);
+  background: rgba(184, 122, 0, 0.08);
+}
+
 .custom-flags-input {
   background: rgba(0, 0, 0, 0.3);
+  height: 18px;
+  min-height: 18px;
+}
+
+.custom-flags-block .mode-btn-add,
+.custom-flags-block .mode-btn-replace,
+.custom-flags-block .mode-btn-off {
+  line-height: 1.2;
+  min-height: 18px;
 }
 
 /* ── CONFIG page — reuse chip/panel tokens, no rainbow profiles ─── */
@@ -2613,9 +2656,65 @@ select option {
   animation: configEmptyEnter 0.5s ease-out both;
 }
 
+@keyframes launchReadyPulse {
+  0%, 100% {
+    box-shadow:
+      0 0 0 0 rgba(74, 222, 128, 0.06),
+      inset 0 0 0 0 rgba(74, 222, 128, 0);
+  }
+  50% {
+    box-shadow:
+      0 0 16px 1px rgba(74, 222, 128, 0.2),
+      inset 0 1px 0 rgba(74, 222, 128, 0.08);
+  }
+}
+
+.config-launch-btn:not(:disabled):not(.launch-ack) {
+  animation: launchReadyPulse 2.8s ease-in-out infinite;
+  overflow: hidden;
+}
+
+.config-launch-btn:not(:disabled):hover {
+  transform: translateY(-1px);
+  transition: transform 0.15s ease, border-color 0.12s ease, background-color 0.12s ease, color 0.12s ease;
+}
+
+.config-launch-btn:not(:disabled)::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    105deg,
+    transparent 38%,
+    rgba(74, 222, 128, 0.14) 50%,
+    transparent 62%
+  );
+  transform: translateX(-130%);
+  transition: transform 0.55s ease;
+  pointer-events: none;
+}
+
+.config-launch-btn:not(:disabled):hover::after {
+  transform: translateX(130%);
+}
+
 .config-launch-btn:active:not(:disabled) {
-  transform: scale(0.995);
+  transform: scale(0.992) translateY(0);
   transition: transform 0.08s ease;
+}
+
+/* Launch dock — pinned to bottom of engine config panel, outside param scroll */
+[data-config-panel] .config-launch-dock {
+  background: var(--theme-panel-accent);
+  border-top: 1px solid var(--theme-border-subtle);
+  box-shadow:
+    0 -2px 8px color-mix(in srgb, var(--theme-text) 5%, transparent),
+    0 -1px 0 color-mix(in srgb, var(--theme-accent) 8%, transparent);
+  z-index: 4;
+}
+
+[data-config-panel] .config-params-scroll {
+  padding-bottom: 0.5rem;
 }
 
 /* ── ModelCard animations ─── */

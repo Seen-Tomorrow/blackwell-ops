@@ -35,12 +35,13 @@ export default function RunningEnginesPanel({ stack, models, selectedSlotIdx, on
 
   return (
     <div className="border-t border-stealth-border/50">
-      <div className="px-3 py-2.5 running-engines-header-row">
+      <div className="px-3 py-2.5 running-engines-header-row flex-shrink-0">
         <h3 className="text-xl font-mono tracking-widest uppercase block text-center text-white/60">
-          ▼ RUNNING ENGINES
+          ▼ RUNNING ENGINES ({instances.length})
         </h3>
       </div>
-      <div className="px-3 pb-2 grid grid-cols-2 gap-1">
+      <div className="running-engines-scroll px-3 pb-2 eink-scrollbar">
+      <div className="grid grid-cols-2 gap-1">
         {instances.map(item => {
           const isThisSelected = selectedSlotIdx === item.entry.idx;
           const isNvfp = item.quant.toLowerCase().includes("nvfp");
@@ -90,6 +91,7 @@ export default function RunningEnginesPanel({ stack, models, selectedSlotIdx, on
             </div>
           );
         })}
+      </div>
       </div>
     </div>
   );

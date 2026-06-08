@@ -84,6 +84,8 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
   const [showTooltip, setShowTooltip] = useState(false);
   const [isMobile, setIsMobile] = useState(isMobileDevice);
   const [isOutputConsoleExpanded, setIsOutputConsoleExpanded] = useState(false);
+  const [isConsoleDetached, setIsConsoleDetached] = useState(false);
+  const consoleReservesDockSpace = isOutputConsoleExpanded && !isConsoleDetached;
   const [lastConsoleLine, setLastConsoleLine] = useState<string>("Ready for engine & build telemetry");
 
   // Listen for power-user changes from other components (ConfigPage)
@@ -242,13 +244,13 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
       </header>
 
       {/* Main content area */}
-      <main className={`flex-1 overflow-hidden relative z-10 ${isOutputConsoleExpanded ? "main--console-expanded" : ""}`}>
+      <main className={`flex-1 min-h-0 overflow-hidden relative z-10 ${consoleReservesDockSpace ? "main--console-expanded" : ""}`}>
         <div
           key={activeTab}
-          className="app-main-scroll h-full overflow-y-auto layout-tab-enter"
+          className="app-main-scroll h-full min-h-0 overflow-hidden layout-tab-enter"
         >
-          <div style={{ zoom }} className={`min-h-full ${isOutputConsoleExpanded ? "pb-[200px]" : "pb-[50px]"}`}>
-            <div className="max-w-[1280px] mx-auto">{children}</div>
+          <div style={{ zoom }} className="app-main-zoom h-full min-h-0 overflow-hidden box-border">
+            <div className="max-w-[1280px] mx-auto h-full min-h-0">{children}</div>
           </div>
         </div>
       </main>
@@ -345,7 +347,11 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
       <BlackwellOutputConsole 
         isPowerUser={isPowerUserActive(powerUserState)}
         isOpen={isOutputConsoleExpanded}
-        onClose={() => setIsOutputConsoleExpanded(false)}
+        onClose={() => {
+          setIsConsoleDetached(false);
+          setIsOutputConsoleExpanded(false);
+        }}
+        onDetachedChange={setIsConsoleDetached}
         compact={true}
       />
     </div>

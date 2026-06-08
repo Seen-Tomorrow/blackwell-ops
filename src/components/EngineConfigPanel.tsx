@@ -658,14 +658,10 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   }
 
   return (
-    <div className="flex flex-col h-full overflow-hidden" data-config-panel>
-      {/* Provider selector */}
+    <div className="flex flex-col h-full min-h-0 overflow-hidden" data-config-panel>
       {resolvedProviders && resolvedProviders.length > 0 && (
-        <div className="px-4 py-3 border-b section-divider relative flex-shrink-0">
-          <label className="text-[9px] font-mono tracking-widest uppercase block mb-2 amber-label">
-            ENGINE PROVIDER
-          </label>
-          <div className="flex gap-1.5 flex-wrap">
+        <div className="px-4 py-2 border-b section-divider relative flex-shrink-0">
+          <div className="flex gap-1 flex-wrap">
             {resolvedProviders.filter(p => p.enabled).map((p) => (
               <button
                 key={p.id}
@@ -673,14 +669,14 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                   setSelectedProvider(p.id);
                   writeStorage(KEYS.lastProvider, p.id);
                 }}
-                className={`px-3 py-1 text-[10px] font-mono tracking-wider rounded-sm ${
+                className={`flex-shrink-0 px-2 py-0.5 text-[9px] font-mono rounded-sm ${
                   selectedProvider === p.id
                     ? "provider-pill-active"
                     : "provider-pill"
                 }`}
               >
                 {p.display_name || p.id}
-                <span className="ml-1 opacity-40 text-[8px]">({(p.userEditedTemplateParams || []).length})</span>
+                <span className="ml-1 opacity-40 text-[7px]">({(p.userEditedTemplateParams || []).length})</span>
               </button>
             ))}
           </div>
@@ -793,12 +789,12 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         );
       })()}
 
-    {/* VRAM + Running Engines — industrial display unit */}
+    {/* VRAM display fixed; running engines eject panel scrolls independently */}
       <div
-        className="industrial-display-area flex-shrink-0"
+        className="industrial-display-area flex-shrink-0 flex flex-col min-h-0"
         data-display-texture={displayTexture}
       >
-          <div className="industrial-display-frame relative">
+          <div className="industrial-display-frame relative flex-shrink-0">
               <button
                 type="button"
                 onClick={cycleDisplayTexture}
@@ -840,7 +836,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
           {/* Running Engines — eject panel below display */}
           {onSelectEngine && models && (
-            <div className="industrial-eject-panel relative flex-shrink-0">
+            <div className="industrial-eject-panel relative flex-shrink min-h-0">
               <RunningEnginesPanel
                 stack={stack}
                 models={models}
@@ -851,8 +847,9 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           )}
       </div>
 
-      {/* Parameters — scrollable middle section (e-ink panel) */}
-      <div className="px-4 py-3 relative flex-1 overflow-y-auto eink-scrollbar eink-panel">
+      {/* Parameters scroll + launch dock (button always visible at panel bottom) */}
+      <div className="flex flex-col flex-1 min-h-0">
+      <div className="config-params-scroll px-4 py-3 relative flex-1 overflow-y-auto eink-scrollbar eink-panel min-h-0">
 
         {allParamsForLaunch.length === 0 ? (
           <div className="text-stealth-muted text-[10px] font-mono opacity-50">NO PARAMS DEFINED</div>
@@ -1003,103 +1000,59 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           );
         })()}
 
-        {/* Test flags */}
         {isPowerUser && (
-          <div className={`relative mt-2 border rounded-sm overflow-hidden transition-all duration-200 custom-flags-block ${testFlagsEnabled ? 'custom-flags-active' : ''}`}>
-            {/* Top accent bar */}
-            <div className="h-[1px] w-full bg-gradient-to-r from-transparent via-amber-600/40 to-transparent" />
-            <div className="px-2.5 py-1.5 space-y-1 transition-all duration-200 custom-flags-body">
-              {/* Header row */}
-              <div className="flex items-center justify-between">
-                <label className={`text-[9px] font-mono uppercase tracking-wider transition-all duration-200 custom-flags-label`}>
-                  CUSTOM FLAGS
-                </label>
-                <div className="flex items-center gap-2">
-                  {/* Mode toggle */}
+          <div className={`relative mt-1.5 border rounded-sm overflow-hidden custom-flags-block ${testFlagsEnabled ? "custom-flags-active" : ""}`}>
+            <div className="custom-flags-body px-2 py-1 flex items-center gap-1.5 min-h-0">
+              <span className="text-[8px] font-mono uppercase tracking-wider shrink-0 custom-flags-label">
+                CUSTOM FLAGS
+              </span>
+              {testFlagsEnabled && (
+                <input
+                  type="text"
+                  value={testFlags}
+                  onChange={(e) => setTestFlags(e.target.value)}
+                  placeholder="-sm layer -smf32 1 ..."
+                  className="custom-flags-input flex-1 min-w-0 border text-[8px] font-mono px-2 py-0 leading-none focus:outline-none rounded-sm border-amber-600/30 focus:border-amber-600/50 placeholder:text-stealth-muted/40"
+                />
+              )}
+              <div className="flex items-center gap-1 shrink-0 ml-auto">
+                {testFlagsEnabled && (
                   <button
-                    onClick={() => { if (testFlagsEnabled) setTestFlagsMode(m => m === "add" ? "replace" : "add"); }}
-                  className={`px-2 py-0.5 text-[7px] font-mono border rounded-sm transition-all duration-150 ${
-                       testFlagsEnabled
-                         ? testFlagsMode === "add"
-                           ? "mode-btn-add"
-                           : "mode-btn-replace"
-                         : "mode-btn-disabled"
-                     }`}
-                     disabled={!testFlagsEnabled}
+                    type="button"
+                    onClick={() => setTestFlagsMode(m => m === "add" ? "replace" : "add")}
+                    className={`px-1.5 py-0 text-[7px] font-mono border rounded-sm transition-all duration-150 cursor-pointer ${
+                      testFlagsMode === "add" ? "mode-btn-add" : "mode-btn-replace"
+                    }`}
                   >
-                    {testFlagsMode === "add" ? "+ APPEND" : "= REPLACE"}
+                    {testFlagsMode === "add" ? "+ ADD" : "= REP"}
                   </button>
-
-                  {/* ON/OFF toggle */}
-                  <label className="toggle-switch">
-                    <input
-                      type="checkbox"
-                      className="toggle-input"
-                      checked={testFlagsEnabled}
-                      onChange={() => setTestFlagsEnabled(v => !v)}
-                    />
-                    <span className="toggle-track">
-                      <span className="toggle-rust"></span>
-                      <span className="toggle-glow"></span>
-                      <span className="toggle-thumb">
-                        <span className="thumb-inner"></span>
-                        <span className="thumb-shine"></span>
-                      </span>
-                      <span className="toggle-icons">
-                        <svg
-                          className="icon-off"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                        >
-                          <circle cx="12" cy="12" r="5"></circle>
-                          <path
-                            d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"
-                          ></path>
-                        </svg>
-                        <svg className="icon-on" viewBox="0 0 24 24" fill="currentColor">
-                          <path
-                            d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313-12.454z"
-                          ></path>
-                        </svg>
-                      </span>
-                    </span>
-                    <span className="toggle-label">
-                      <span className="label-off">OFF</span>
-                      <span className="label-on">ON</span>
-                    </span>
-                  </label>
-                </div>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setTestFlagsEnabled(v => !v)}
+                  className={`px-1.5 py-0 text-[7px] font-mono border rounded-sm transition-all duration-150 cursor-pointer ${
+                    testFlagsEnabled ? "mode-btn-add" : "mode-btn-off"
+                  }`}
+                >
+                  {testFlagsEnabled ? "ON" : "OFF"}
+                </button>
               </div>
-
-              {/* Input */}
-              <input
-                type="text"
-                value={testFlags}
-                onChange={(e) => setTestFlags(e.target.value)}
-                placeholder="-sm layer -smf32 1 ..."
-                disabled={!testFlagsEnabled}
-               className={`w-full border text-[9px] font-mono px-2.5 py-1 focus:outline-none transition-all duration-150 rounded-sm custom-flags-input ${
-                    testFlagsEnabled
-                      ? "border-amber-600/30 focus:border-amber-600/50 placeholder:text-stealth-muted/40"
-                      : "border-stealth-border/20 text-stealth-muted/30 cursor-not-allowed"
-                }`}
-              />
             </div>
           </div>
         )}
+      </div>
 
-        {/* Launch button */}
-        <div className="px-1 py-2.5">
+        <div className="config-launch-dock flex-shrink-0 px-4 py-2 flex items-center gap-3">
           <button
             onClick={handleAddToStack}
             disabled={!model || vramCalc.manifest?.scenario === 'HW_LOCKED' || selectedProfileIsBuilding}
-            className={`w-full ignite-btn px-4 py-2.5 text-[10px] font-mono tracking-[0.2em] rounded-sm disabled:opacity-40 disabled:cursor-not-allowed config-launch-btn ${launchAck ? "launch-ack" : ""}`}
+            className={`flex-1 min-w-0 ignite-btn px-4 py-2 text-[12px] font-mono tracking-[0.22em] rounded-sm disabled:opacity-40 disabled:cursor-not-allowed config-launch-btn ${launchAck ? "launch-ack" : ""}`}
           >
             LAUNCH ENGINE
           </button>
-          <p className="text-[8px] font-mono text-stealth-muted/40 text-center mt-1.5">Ctrl+Enter to launch</p>
+          <span className="shrink-0 text-[8px] font-mono text-stealth-muted/40 whitespace-nowrap config-launch-hint">
+            Ctrl+Enter
+          </span>
         </div>
       </div>
     </div>

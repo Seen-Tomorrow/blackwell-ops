@@ -204,7 +204,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
 
 
   return (
-    <div className="flex flex-col h-full" data-model-catalog>
+    <div className="flex flex-col h-full min-h-0 overflow-hidden" data-model-catalog>
       {/* Top bar */}
       <div className="px-4 py-2.5 border-b border-stealth-border/50 flex items-center justify-between fade-in">
         <div className="flex items-center gap-3">
@@ -306,27 +306,25 @@ export default function ModelCatalog(props: ModelCatalogProps) {
           title="Drag to resize · double-click to reset"
         />
 
-        {/* Right panel — config + diagnostics */}
-        <div className="flex-1 min-w-0 eink-panel-wrapper overflow-hidden flex flex-col">
-          <div className="flex-shrink-0">
-            <EngineConfigPanel
-              model={panelActiveModel}
-              gpus={gpus}
-              providers={externalProviders}
-              committedVramMib={committedVramMib}
-              isPowerUser={isPowerUser}
-              systemInfo={systemInfo}
-              stack={stack}
-              onLaunch={onLaunch}
-              isModelRunning={panelActiveModel ? runningModelPaths.has(panelActiveModel.path) : false}
-              activeEngineAlias={effectiveEngineAlias}
-              activeEnginePort={effectiveEnginePort}
-              selectedSlotIdx={selectedSlotIdx}
-              supportsFusion={effectiveSupportsFusion}
-              models={models}
-              onSelectEngine={handleSelectBySlot}
-            />
-          </div>
+        {/* Right panel — config + diagnostics (height-bound; internal scroll only) */}
+        <div className="flex-1 min-w-0 min-h-0 eink-panel-wrapper overflow-hidden flex flex-col">
+          <EngineConfigPanel
+            model={panelActiveModel}
+            gpus={gpus}
+            providers={externalProviders}
+            committedVramMib={committedVramMib}
+            isPowerUser={isPowerUser}
+            systemInfo={systemInfo}
+            stack={stack}
+            onLaunch={onLaunch}
+            isModelRunning={panelActiveModel ? runningModelPaths.has(panelActiveModel.path) : false}
+            activeEngineAlias={effectiveEngineAlias}
+            activeEnginePort={effectiveEnginePort}
+            selectedSlotIdx={selectedSlotIdx}
+            supportsFusion={effectiveSupportsFusion}
+            models={models}
+            onSelectEngine={handleSelectBySlot}
+          />
         </div>
       </div>
     </div>
