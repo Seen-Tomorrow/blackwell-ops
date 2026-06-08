@@ -217,12 +217,142 @@ html, body, #root {
 :root {
   --app-footer-h: 31px;
   --boc-docked-h: 150px;
-  --layout-bottom-inset: var(--app-footer-h);
+  --app-shell-width-px: 1280px;
+  --ui-text-scale: 1;
 }
 
-/* Open docked: launch only clears the console panel (footer sits beneath it). */
-.app-shell--console-docked {
-  --layout-bottom-inset: var(--boc-docked-h);
+/* Fluid shell — width resolved in JS; scale via transform (zoom property shrinks canvas in WebView2). */
+.app-main-zoom {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  box-sizing: border-box;
+}
+
+.app-main-frame {
+  width: calc(var(--app-shell-width-px) / var(--ui-text-scale));
+  height: calc(100% / var(--ui-text-scale));
+  min-height: 0;
+  flex-shrink: 0;
+  transform: scale(var(--ui-text-scale));
+  transform-origin: top center;
+}
+
+/* Compact density — tighter engine config rows/chips when text scale is high */
+.app-shell[data-ui-density="compact"] [data-config-panel] .config-params-scroll .space-y-2\.5 > :not([hidden]) ~ :not([hidden]) {
+  margin-top: 0.375rem !important;
+}
+
+.app-shell[data-ui-density="compact"] [data-config-panel] .config-params-scroll .space-y-3 > :not([hidden]) ~ :not([hidden]) {
+  margin-top: 0.5rem !important;
+}
+
+.app-shell[data-ui-density="compact"] [data-config-panel] .config-params-scroll .flex.gap-4 {
+  gap: 0.75rem;
+}
+
+.app-shell[data-ui-density="compact"] [data-config-panel] .value-chip,
+.app-shell[data-ui-density="compact"] [data-config-panel] .value-chip-active,
+.app-shell[data-ui-density="compact"] [data-config-panel] input.value-chip,
+.app-shell[data-ui-density="compact"] [data-config-panel] input.value-chip-active {
+  padding-top: 0;
+  padding-bottom: 0;
+  font-size: 8px;
+}
+
+.app-shell[data-ui-density="compact"] [data-config-panel] [data-param-row] > span:first-child {
+  font-size: 8px;
+}
+
+.app-shell[data-ui-density="compact"] [data-config-panel] .config-params-scroll {
+  padding-top: 0.5rem;
+  padding-bottom: 0.25rem;
+}
+
+.app-shell[data-ui-density="compact"] [data-config-panel] .config-launch-dock {
+  padding-top: 0.375rem;
+}
+
+/* Compact — hide running engines banner only; keep engine cards visible */
+.app-shell[data-ui-density="compact"] [data-config-panel] .running-engines-header-row {
+  display: none;
+}
+
+.app-shell[data-ui-density="compact"] [data-config-panel] .industrial-eject-panel {
+  margin-top: -6px;
+  padding-top: 6px;
+}
+
+.app-shell[data-ui-density="compact"] [data-config-panel] .running-engines-scroll {
+  --running-engine-row-h: 2rem;
+  padding-top: 0.5rem;
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+  padding-bottom: 0.25rem;
+  max-height: calc(var(--running-engine-row-h) * 4 + 0.2rem * 3);
+}
+
+.app-shell[data-ui-density="compact"] [data-config-panel] .running-engine-card {
+  padding: 0.25rem 0.5rem !important;
+  gap: 0.375rem;
+}
+
+/* Compact — mono runtime block (alias, profile, multi-gpu dock) */
+.app-shell[data-ui-density="compact"] [data-config-panel] .mono-panel-header {
+  display: none;
+}
+
+.app-shell[data-ui-density="compact"] [data-config-panel] .mono-panel-body {
+  padding: 0.375rem 0.75rem 0.5rem 1rem !important;
+}
+
+.app-shell[data-ui-density="compact"] [data-config-panel] .mono-panel-body > .flex.gap-4 {
+  gap: 0.5rem;
+}
+
+.app-shell[data-ui-density="compact"] [data-config-panel] .mono-panel .mono-label {
+  font-size: 7px;
+  margin-bottom: 0.25rem !important;
+}
+
+.app-shell[data-ui-density="compact"] [data-config-panel] .mono-panel .space-y-2\.5 > :not([hidden]) ~ :not([hidden]) {
+  margin-top: 0.25rem !important;
+}
+
+/* Compact — speculative decoding header row */
+.app-shell[data-ui-density="compact"] [data-config-panel] .config-spec-decoding {
+  gap: 0.25rem;
+  min-height: 0;
+}
+
+.app-shell[data-ui-density="compact"] [data-config-panel] .config-spec-decoding .toggle-switch {
+  transform: scale(0.78);
+  transform-origin: left center;
+}
+
+.app-shell[data-ui-density="compact"] [data-config-panel] .config-spec-params {
+  margin-top: 0.25rem !important;
+}
+
+.app-shell[data-ui-density="compact"] [data-config-panel] .config-spec-params > :not([hidden]) ~ :not([hidden]) {
+  margin-top: 0.25rem !important;
+}
+
+.app-shell[data-ui-density="compact"] [data-config-panel] .config-spec-decoding ~ div.text-\[8px\] {
+  font-size: 7px !important;
+  margin-top: 0.125rem !important;
+  padding-top: 0.125rem !important;
+  padding-bottom: 0.125rem !important;
+}
+
+/* Open docked: shrink full main frame (catalog + config), not just launch dock */
+.app-shell--console-docked .app-main-frame {
+  padding-bottom: var(--boc-docked-h);
+  box-sizing: border-box;
 }
 
 .app-header-title {
@@ -764,6 +894,13 @@ html, body, #root {
   color: var(--theme-chip-active-text);
 }
 
+[data-config-panel] input.value-chip,
+[data-config-panel] input.value-chip-active {
+  outline: none;
+  min-width: 0;
+  line-height: 1.35;
+}
+
 /* ENGINE LOGS — per-slot search highlight */
 .log-search-hit {
   background: rgba(255, 184, 0, 0.35);
@@ -891,25 +1028,30 @@ html, body, #root {
   box-shadow: 0 0 4px var(--theme-accent-glow) !important;
 }
 
-/* Runtime profile — industrial orange, pronounced */
-.mono-panel .runtime-profile-label {
+.mono-panel input.value-chip-active.mono-user-input {
+  color: #ffffff !important;
+}
+
+/* Runtime profile — amber accent (unified chip sizing, distinct color) */
+.runtime-profile-row .runtime-profile-label,
+.mono-panel .runtime-profile-row .runtime-profile-label {
   color: #b87a00 !important;
   opacity: 1 !important;
 }
 
-.mono-panel .runtime-profile-chip {
+.runtime-profile-row .value-chip {
   background: rgba(184, 122, 0, 0.06) !important;
-  border: 1px solid rgba(184, 122, 0, 0.35) !important;
+  border-color: rgba(184, 122, 0, 0.35) !important;
   color: #b87a00 !important;
 }
 
-.mono-panel .runtime-profile-chip:hover {
+.runtime-profile-row .value-chip:hover {
   background: rgba(184, 122, 0, 0.12) !important;
   border-color: rgba(184, 122, 0, 0.6) !important;
   color: #d4950a !important;
 }
 
-.mono-panel .runtime-profile-chip-active {
+.runtime-profile-row .value-chip-active {
   background: #b87a00 !important;
   border-color: #b87a00 !important;
   color: #1a1a1a !important;
@@ -917,7 +1059,7 @@ html, body, #root {
 }
 
 /* Param labels on mono */
-.mono-panel [data-param-row] > span:first-child {
+.mono-panel [data-param-row] > span:first-child:not(.runtime-profile-label) {
   color: #4ade80 !important;
   opacity: 0.45;
 }
@@ -2714,7 +2856,7 @@ select option {
     0 -1px 0 color-mix(in srgb, var(--theme-accent) 8%, transparent);
   z-index: 4;
   padding-top: 0.5rem;
-  padding-bottom: calc(0.5rem + var(--layout-bottom-inset));
+  padding-bottom: calc(0.5rem + var(--app-footer-h));
 }
 
 [data-config-panel] .config-params-scroll {

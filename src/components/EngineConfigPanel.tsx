@@ -29,6 +29,15 @@ import { useFoundry } from "../hooks/useBuildDock";
 
 type EnvProfile = Env;
 
+const PARAM_LABEL_CLASS =
+  "font-mono w-24 flex-shrink-0 uppercase tracking-wider truncate text-[9px] text-stealth-muted";
+
+function paramChipClass(active: boolean): string {
+  return `px-2 py-0.5 text-[9px] font-mono rounded-sm focus:outline-none ${
+    active ? "value-chip-active" : "value-chip"
+  }`;
+}
+
 function pickBestBinaryProfile(provider: ProviderConfig | undefined): EnvProfile {
   if (!provider) return "frontier";
   const profiles: EnvProfile[] = [...ENV_ORDER];
@@ -459,7 +468,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         {isUserAdded && <div className="w-0.5 h-4 flex-shrink-0 bg-yellow-400/40 mr-1.5" />}
         {!isUserAdded && <div className="w-0.5 h-4 flex-shrink-0 mr-1.5" />}
         <span
-          className={`font-mono w-24 flex-shrink-0 uppercase tracking-wider truncate text-[9px] ${isUserAdded ? 'text-yellow-400/80' : 'text-stealth-muted'}`}
+          className={`${PARAM_LABEL_CLASS} ${isUserAdded ? 'text-yellow-400/80' : ''}`}
           title={def.label}
         >
           {def.label}
@@ -473,13 +482,11 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
               onClick={() => {
                 if (!isLocked) updateParam(def.key, val);
               }}
-           className={`px-2 py-0.5 text-[9px] font-mono rounded-sm focus:outline-none ${
+              className={paramChipClass(
                 currentValue === val ||
                 (typeof currentValue === 'string' && typeof val === 'string' &&
                   currentValue.toLowerCase() === String(val).toLowerCase())
-                  ? "value-chip-active"
-                  : "value-chip"
-              }`}
+              )}
             >
               {String(val)}
             </button>
@@ -698,7 +705,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             <div className="relative z-[2] px-4 pt-3 pb-1 mono-panel-header">
 
             </div>
-            <div className="relative z-[2] px-4 py-3 pr-6">
+            <div className="mono-panel-body relative z-[2] px-4 py-3 pr-6">
               <div className="flex gap-4">
                 {/* Left: Multi-GPU params */}
                 {leftParams.length > 0 && (
@@ -721,9 +728,9 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
                   {rightParams.map((def, i) => renderParamRow(def, false, i))}
 
-                  <div className="flex items-center">
+                  <div data-param-row className="flex items-center">
                     <div className="w-0.5 h-4 flex-shrink-0 mr-1.5" />
-                    <span className="font-mono w-24 flex-shrink-0 uppercase tracking-wider truncate text-[9px] text-stealth-muted">
+                    <span className={PARAM_LABEL_CLASS}>
                       Alias{aliasIsUserSet ? <span className="mono-user-set"> - user set</span> : ''}
                     </span>
                     <input
@@ -740,47 +747,45 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                         }
                         setAliasInput(val);
                       }}
-                      className={`flex-1 min-w-0 border text-[9px] font-mono px-2 py-0.5 rounded-sm focus:outline-none transition-colors ${
+                      className={`flex-1 min-w-0 transition-colors ${
                         aliasUserEditedRef.current
-                          ? "bg-black border-white/30 focus:border-white/50 mono-user-input"
-                          : "bg-green-400/5 border-green-400/20 focus:border-green-400/40"
+                          ? `${paramChipClass(true)} mono-user-input`
+                          : paramChipClass(false)
                       }`}
                       placeholder="auto..."
                     />
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-1">
+                  <div data-param-row className="runtime-profile-row flex items-center">
                     <div className="w-0.5 h-4 flex-shrink-0 mr-1.5" />
-                    <span className="font-mono w-24 flex-shrink-0 uppercase tracking-wider truncate text-[9px] text-stealth-muted runtime-profile-label">
-                      RUNTIME PROFILE
-                    </span>
-                    {availableProfiles.map(profile => {
-                      const meta = ENV_META[profile];
-                      const hasBuild = builtProfiles.includes(profile);
-                      const building = isProfileBuilding(profile);
-                      const isSelected = selectedBinaryProfile === profile;
-                      return (
-                        <button
-                          key={profile}
-                          onClick={() => setSelectedBinaryProfile(profile)}
-                          disabled={!hasBuild || building}
-                          className={`flex-shrink-0 px-2 py-0.5 text-[9px] font-mono rounded-sm runtime-profile-chip ${
-                            building
-                              ? "opacity-40 cursor-not-allowed animate-pulse"
-                              : isSelected
-                                ? "runtime-profile-chip-active"
-                                : hasBuild
-                                  ? ""
-                                  : "opacity-25 cursor-not-allowed"
-                          }`}
-                          title={`${meta.label} — CUDA ${meta.cuda}, ${meta.vs}${
-                            building ? " (build in progress)" : hasBuild ? "" : " (not yet built)"
-                          }`}
-                        >
-                          {meta.label}
-                        </button>
-                      );
-                    })}
+                    <span className={`${PARAM_LABEL_CLASS} runtime-profile-label`}>RUNTIME PROFILE</span>
+                    <div className="flex gap-1 flex-wrap flex-1 min-w-0">
+                      {availableProfiles.map(profile => {
+                        const meta = ENV_META[profile];
+                        const hasBuild = builtProfiles.includes(profile);
+                        const building = isProfileBuilding(profile);
+                        const isSelected = selectedBinaryProfile === profile;
+                        return (
+                          <button
+                            key={profile}
+                            onClick={() => setSelectedBinaryProfile(profile)}
+                            disabled={!hasBuild || building}
+                            className={`flex-shrink-0 ${paramChipClass(isSelected)} ${
+                              building
+                                ? "opacity-40 cursor-not-allowed animate-pulse"
+                                : !hasBuild
+                                  ? "opacity-25 cursor-not-allowed"
+                                  : ""
+                            }`}
+                            title={`${meta.label} — CUDA ${meta.cuda}, ${meta.vs}${
+                              building ? " (build in progress)" : hasBuild ? "" : " (not yet built)"
+                            }`}
+                          >
+                            {meta.label}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -873,8 +878,13 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
               return (
                 <div key={group.id}>
-                  <div className={`nuclear-btn-container ${specFlash ? 'flash' : ''}`}>
-                    <span className="font-mono text-stealth-muted/30">SPECULATIVE DECODING</span>
+                  <div
+                    data-param-row
+                    className={`nuclear-btn-container config-spec-decoding flex items-center ${specFlash ? 'flash' : ''}`}
+                  >
+                    <div className="w-0.5 h-4 flex-shrink-0 mr-1.5" />
+                    <span className={PARAM_LABEL_CLASS}>SPECULATIVE DECODING</span>
+                    <div className="flex flex-1 min-w-0 items-center">
                     <label className={`toggle-switch ${!isMtpModel ? 'opacity-40 pointer-events-none' : ''}`}>
                       <input
                         type="checkbox"
@@ -924,6 +934,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                         <span className="label-on">ON</span>
                       </span>
                     </label>
+                    </div>
                   </div>
 
                   {isMtpModel && specActive && (
@@ -933,7 +944,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                   )}
 
                   {isMtpModel && specActive && (
-                    <div className="space-y-2.5 mt-2">
+                    <div className="config-spec-params space-y-2.5 mt-2">
                       {specAllParams.map((def, i) => (
                         <div key={paramRowKey(def, i)} className="spec-param-unlock" style={{ opacity: 0 }}>
                           {renderParamRow(def, false, i)}

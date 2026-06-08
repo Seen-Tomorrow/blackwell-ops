@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
 
 interface OutputLine {
@@ -8,7 +9,6 @@ interface OutputLine {
 }
 
 interface BlackwellOutputConsoleProps {
-  isPowerUser: boolean;
   onClose?: () => void;
   onDetachedChange?: (detached: boolean) => void;
   isOpen?: boolean;
@@ -43,7 +43,6 @@ const DETACHED_DEFAULT_SIZE = { width: 780, height: 460 };
 const DETACHED_MIN_SIZE = { width: 420, height: 140 };
 
 export default function BlackwellOutputConsole({
-  isPowerUser,
   onClose,
   onDetachedChange,
   isOpen = false,
@@ -76,7 +75,6 @@ export default function BlackwellOutputConsole({
   }, [onClose]);
 
   const fetchBuffer = useCallback(async (category: Category, keepPrevious = false) => {
-    if (!isPowerUser) return;
     if (!keepPrevious) setIsLoading(true);
     try {
       const data = await invoke<OutputLine[]>("get_blackwell_output_console_buffer_for_category", {
@@ -89,10 +87,10 @@ export default function BlackwellOutputConsole({
     } finally {
       setIsLoading(false);
     }
-  }, [isPowerUser]);
+  }, []);
 
   useEffect(() => {
-    if (isOpen && isPowerUser) {
+    if (isOpen) {
       fetchBuffer(activeCategory);
       pollInterval.current = window.setInterval(() => {
         fetchBuffer(activeCategory, true);
@@ -104,7 +102,7 @@ export default function BlackwellOutputConsole({
     return () => {
       if (pollInterval.current) clearInterval(pollInterval.current);
     };
-  }, [isOpen, activeCategory, fetchBuffer, isPowerUser]);
+  }, [isOpen, activeCategory, fetchBuffer]);
 
   const clearCategory = async (cat: Category) => {
     await invoke("clear_blackwell_output_console_category", { category: cat });
@@ -215,17 +213,17 @@ export default function BlackwellOutputConsole({
     return () => window.removeEventListener("resize", onWindowResize);
   }, [isDetached, detachedSize.width, detachedSize.height, clampDetachedSize]);
 
-  if (!isPowerUser || !isOpen) return null;
+  if (!isOpen) return null;
 
   const panelHeight = compact ? undefined : "44vh";
   const panelMinHeight = compact ? undefined : "280px";
 
-  return (
+  const panel = (
     <div
       className={`blackwell-output-console flex flex-col text-[10px] font-mono ${
         isDetached
           ? "blackwell-output-console--detached fixed z-[110] rounded overflow-hidden"
-          : "blackwell-output-console--docked fixed left-0 right-0 z-[25]"
+          : "blackwell-output-console--docked fixed left-0 right-0 z-[40]"
       } ${isDetached && (isDragging || isResizing) ? "blackwell-output-console--interacting" : ""}`}
       style={{
         ...(isDetached
@@ -321,4 +319,6 @@ export default function BlackwellOutputConsole({
       )}
     </div>
   );
+
+  return createPortal(panel, document.body);
 }

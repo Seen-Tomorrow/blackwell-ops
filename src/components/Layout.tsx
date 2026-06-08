@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, type CSSProperties } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { Tab } from "../App";
 import type { ProviderConfig, AppUpdateInfo } from "../lib/types";
@@ -10,14 +10,17 @@ import FoundryModal from "./FoundryModal";
 import ThemePicker from "./ThemePicker";
 import {
   cyclePowerUserState,
-  isPowerUserActive,
+  loadUiDensity,
   loadUiZoom,
   loadPowerUserState,
+  saveUiDensity,
   saveUiZoom,
   savePowerUserState,
   type PowerUserState,
+  type UiDensity,
 } from "../lib/storage";
 import { dispatchAppEvent, dispatchPowerUserChanged, EVENTS } from "../lib/events";
+import { resolveAppShellWidthPx } from "../lib/uiShell";
 import { isMobileDevice } from "../lib/utils";
 
 const MIN_ZOOM = 0.7;
@@ -69,6 +72,10 @@ const tabs: { id: Tab; label: string; icon: string; hidden?: boolean }[] = [
 export default function Layout({ activeTab, onTabChange, children, providers = [], appUpdate, hasBinaryUpdates, onInstallAppUpdate }: LayoutProps) {
   const [powerUserState, setPowerUserState] = useState<PowerUserState>(loadPowerUserState);
   const [zoom, setZoom] = useState(loadZoom);
+  const [uiDensity, setUiDensity] = useState<UiDensity>(loadUiDensity);
+  const [shellWidthPx, setShellWidthPx] = useState(() =>
+    typeof window !== "undefined" ? resolveAppShellWidthPx(window.innerWidth) : 1280,
+  );
   const { totalParams, hiddenCount, onShowAll, flashMessage } = useStatus();
   const { buildProgress, foundryModal, foundryModalVisible, openBuildModal, minimizeBuildModal, restoreBuildModal, closeBuildModal, attachToActiveBuild, buildAttempt } = useFoundry();
   const { slots, toggleSlot } = useDock();
@@ -114,10 +121,15 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
     return () => window.removeEventListener("resize", check);
   }, []);
 
-  // Live last line for the collapsed output bar (power user only)
   useEffect(() => {
-    if (!isPowerUserActive(powerUserState)) return;
+    const onResize = () => setShellWidthPx(resolveAppShellWidthPx(window.innerWidth));
+    onResize();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
 
+  // Live last line for the collapsed output bar
+  useEffect(() => {
     const fetchLastLine = async () => {
       try {
         // Prefer engines (most active), fallback to foundry
@@ -144,7 +156,7 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
     fetchLastLine();
     const interval = setInterval(fetchLastLine, 4000); // every 4s
     return () => clearInterval(interval);
-  }, [powerUserState]);
+  }, []);
 
   const visibleTabs = useMemo(() => {
     return tabs.filter(t => !t.hidden);
@@ -158,10 +170,27 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
     });
   }, []); // setZoom is stable (React guarantee), functional update ensures latest value
 
+  const toggleUiDensity = useCallback(() => {
+    setUiDensity(prev => {
+      const next: UiDensity = prev === "comfortable" ? "compact" : "comfortable";
+      saveUiDensity(next);
+      return next;
+    });
+  }, []);
+
+  const shellStyle = {
+    "--ui-text-scale": String(zoom),
+    "--app-shell-width-px": `${shellWidthPx}px`,
+  } as CSSProperties;
+
   const isConfigTab = activeTab === "config";
 
   return (
-    <div className={`app-shell flex flex-col h-screen grid-bg relative ${consoleReservesDockSpace ? "app-shell--console-docked" : ""}`}>
+    <div
+      className={`app-shell flex flex-col h-screen grid-bg relative ${consoleReservesDockSpace ? "app-shell--console-docked" : ""}`}
+      data-ui-density={uiDensity}
+      style={shellStyle}
+    >
       {/* Top bar */}
       <header className="app-header flex items-center justify-between px-6 py-3 backdrop-blur-sm relative z-30 layout-header-enter">
         <div className="flex items-center gap-4">
@@ -235,9 +264,18 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
           <div className="flex items-center gap-2">
             <ThemePicker variant="header" />
             <div className="app-chrome-control flex items-center gap-1 rounded-sm px-1 py-0.5">
-            <button onClick={() => adjustZoom(-ZOOM_STEP)} className="app-chrome-control-btn px-1 text-[9px] font-mono transition-colors leading-none" title="Decrease font size">−</button>
-            <span className="app-chrome-control-btn text-[8px] font-mono opacity-60 w-8 text-center">{Math.round(zoom * 100)}%</span>
-            <button onClick={() => adjustZoom(ZOOM_STEP)} className="app-chrome-control-btn px-1 text-[9px] font-mono transition-colors leading-none" title="Increase font size">+</button>
+            <button
+              type="button"
+              onClick={toggleUiDensity}
+              className={`app-chrome-control-btn px-1.5 text-[8px] font-mono transition-colors leading-none ${uiDensity === "compact" ? "text-yellow-400/90" : ""}`}
+              title={uiDensity === "compact" ? "Density: Compact (click for Comfortable)" : "Density: Comfortable (click for Compact)"}
+            >
+              {uiDensity === "compact" ? "CMP" : "CMF"}
+            </button>
+            <span className="app-chrome-control-btn text-[8px] font-mono opacity-40">|</span>
+            <button onClick={() => adjustZoom(-ZOOM_STEP)} className="app-chrome-control-btn px-1 text-[9px] font-mono transition-colors leading-none" title="Decrease text scale">−</button>
+            <span className="app-chrome-control-btn text-[8px] font-mono opacity-60 w-8 text-center" title="Text scale">{Math.round(zoom * 100)}%</span>
+            <button onClick={() => adjustZoom(ZOOM_STEP)} className="app-chrome-control-btn px-1 text-[9px] font-mono transition-colors leading-none" title="Increase text scale">+</button>
             </div>
           </div>
         </div>
@@ -249,8 +287,8 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
           key={activeTab}
           className="app-main-scroll h-full min-h-0 overflow-hidden layout-tab-enter"
         >
-          <div style={{ zoom }} className="app-main-zoom h-full min-h-0 overflow-hidden box-border">
-            <div className="max-w-[1280px] mx-auto h-full min-h-0">{children}</div>
+          <div className="app-main-zoom">
+            <div className="app-main-frame">{children}</div>
           </div>
         </div>
       </main>
@@ -343,9 +381,7 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
         onMinimize={minimizeBuildModal}
       />
 
-      {/* Blackwell Output Console — power user feature */}
       <BlackwellOutputConsole 
-        isPowerUser={isPowerUserActive(powerUserState)}
         isOpen={isOutputConsoleExpanded}
         onClose={() => {
           setIsConsoleDetached(false);

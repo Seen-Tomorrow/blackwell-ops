@@ -16,7 +16,8 @@ import { normalizeDisplayTexture, type DisplayTexture } from "./displayTexture";
  * | BlackOps-last-model | string | Last selected model path in catalog |
  * | BlackOps-sort-field | string | Catalog sort column |
  * | BlackOps-sort-dir | asc \| desc | Catalog sort direction |
- * | BlackOps-ui-zoom | number string | App chrome zoom (0.7–1.5) |
+ * | BlackOps-ui-zoom | number string | Main content text scale (0.7–1.5) |
+ * | BlackOps-ui-density | comfortable \| compact | Engine config chip/row density |
  * | BlackOps-catalog-visible-count | 4 \| 6 \| 8 \| all | Models visible per page |
  * | BlackOps-param-creator-mode | simple \| advanced | Param creator UI mode |
  * | BlackOps-selected-slot-idx | number string | Last selected engine slot (-1 = none) |
@@ -88,6 +89,7 @@ export const KEYS = {
   sortField: `${STORAGE_PREFIX}sort-field`,
   sortDir: `${STORAGE_PREFIX}sort-dir`,
   uiZoom: `${STORAGE_PREFIX}ui-zoom`,
+  uiDensity: `${STORAGE_PREFIX}ui-density`,
   catalogVisibleCount: `${STORAGE_PREFIX}catalog-visible-count`,
   paramCreatorMode: `${STORAGE_PREFIX}param-creator-mode`,
   selectedSlotIdx: `${STORAGE_PREFIX}selected-slot-idx`,
@@ -114,7 +116,17 @@ export function saveTelemetryViewMode(mode: TelemetryViewMode): void {
 
 export const CATALOG_SPLIT_WIDTH_DEFAULT = 420;
 export const CATALOG_SPLIT_WIDTH_MIN = 280;
-export const CATALOG_SPLIT_WIDTH_MAX = 720;
+export const CATALOG_SPLIT_WIDTH_MAX = 880;
+
+export type UiDensity = "comfortable" | "compact";
+
+export function loadUiDensity(): UiDensity {
+  return readStorage(KEYS.uiDensity) === "compact" ? "compact" : "comfortable";
+}
+
+export function saveUiDensity(density: UiDensity): void {
+  writeStorage(KEYS.uiDensity, density);
+}
 
 // ── Dynamic key builders (BlackOps-{namespace}:{id}) ─────────────────────────
 
