@@ -22,6 +22,7 @@ import { FusionProvider } from "./context/FusionContext";
 import { ThemeProvider } from "./context/ThemeContext";
 import { ToastProvider } from "./components/Toast";
 import { FoundryProvider } from "./hooks/useBuildDock";
+import { useSetupGuide } from "./hooks/useSetupGuide";
 import {
   isPowerUserActive,
   loadPowerUserState,
@@ -124,6 +125,7 @@ function App() {
   const [hiddenCount, setHiddenCount] = useState(0);
   const [isPowerUser, setIsPowerUser] = useState(() => isPowerUserActive(loadPowerUserState()));
   const [telemetryViewMode, setTelemetryViewModeState] = useState<TelemetryViewMode>(() => loadTelemetryViewMode());
+  const setupGuide = useSetupGuide({ models });
 
   const setTelemetryViewMode = useCallback((mode: TelemetryViewMode) => {
     setTelemetryViewModeState(mode);
@@ -180,16 +182,6 @@ function App() {
     };
     window.addEventListener(EVENTS.paramConfigChanged, handler);
     return () => window.removeEventListener(EVENTS.paramConfigChanged, handler);
-  }, []);
-
-  useEffect(() => {
-    const handler = () => {
-      invoke<ModelEntry[]>("list_models")
-        .then(data => setModels(data as ModelEntry[]))
-        .catch(() => {});
-    };
-    window.addEventListener(EVENTS.downloadCompleted, handler);
-    return () => window.removeEventListener(EVENTS.downloadCompleted, handler);
   }, []);
 
   useEffect(() => {
@@ -287,6 +279,22 @@ function App() {
       console.error("Failed to reload models:", msg);
       setCatalogError(msg);
     }
+  }, []);
+
+  useEffect(() => {
+    const handler = () => { void reloadModels(); };
+    window.addEventListener(EVENTS.downloadCompleted, handler);
+    window.addEventListener(EVENTS.modelPathsChanged, handler);
+    return () => {
+      window.removeEventListener(EVENTS.downloadCompleted, handler);
+      window.removeEventListener(EVENTS.modelPathsChanged, handler);
+    };
+  }, [reloadModels]);
+
+  useEffect(() => {
+    const handler = () => setActiveTab("config");
+    window.addEventListener(EVENTS.navigateConfig, handler);
+    return () => window.removeEventListener(EVENTS.navigateConfig, handler);
   }, []);
 
   useEffect(() => {
@@ -520,10 +528,10 @@ function App() {
             <StatusProvider value={{ totalParams, hiddenCount, onShowAll: handleShowAll }}>
             <Layout activeTab={activeTab} onTabChange={(tab) => { setActiveTab(tab); if (tab === "config") setHasBinaryUpdates(false); }} providers={providers} appUpdate={appUpdate} hasBinaryUpdates={hasBinaryUpdates} onInstallAppUpdate={handleInstallAppUpdate}>
         {activeTab === "catalog" && (
-              <ModelCatalog models={models} onLaunch={handleLaunchEngine} error={catalogError} onReload={reloadModels} providers={providers} committedVramMib={committedVramMib} isPowerUser={isPowerUser} scanningPath={scanningPath} setScanningPath={setScanningPath} batchScanState={batchScanState} setBatchScanState={setBatchScanState} stack={stack} />
+              <ModelCatalog models={models} onLaunch={handleLaunchEngine} error={catalogError} onReload={reloadModels} providers={providers} committedVramMib={committedVramMib} isPowerUser={isPowerUser} scanningPath={scanningPath} setScanningPath={setScanningPath} batchScanState={batchScanState} setBatchScanState={setBatchScanState} stack={stack} setupGuide={setupGuide} />
            )}
         {activeTab === "modelhub" && <ModelHub />}
-        {activeTab === "config" && <ConfigPage providers={providers} />}
+        {activeTab === "config" && <ConfigPage providers={providers} setupGuide={setupGuide} />}
         {activeTab === "stack" && (
           <StackView stack={stack} logs={logs} systemEvents={systemEvents} onStop={handleStopEngine} onStopAll={handleStopAll} />
         )}

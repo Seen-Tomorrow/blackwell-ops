@@ -162,6 +162,7 @@ pub fn ensure_portable_structure(app_handle: &tauri::AppHandle) {
 
     // Create directories
     let _ = std::fs::create_dir_all(&data);
+    let _ = std::fs::create_dir_all(default_models_dir());
     let _ = std::fs::create_dir_all(cache_dir().parent().unwrap_or(&data));
     let foundry_base = app_root_dir().join("foundry");
     let _ = std::fs::create_dir_all(&foundry_base);
@@ -332,21 +333,13 @@ pub struct AppConfig {
 
 impl Default for AppConfig {
     fn default() -> Self {
-        let app_dir = config_dir().join("models");
-
-        let mut model_paths: Vec<ModelPathEntry> = Vec::new();
-        model_paths.push(ModelPathEntry {
-            path: app_dir.to_string_lossy().to_string(),
-            label: "App models".to_string(),
-            is_default: true,
-        });
-
+        let entry = default_model_path_entry();
         Self {
-            model_paths,
+            model_paths: vec![entry.clone()],
             gpu_slots: 0,
             hf_token: String::new(),
             providers: Vec::new(),
-            default_download_path: Some(app_dir.to_string_lossy().to_string()),
+            default_download_path: Some(entry.path),
         }
     }
 }
@@ -777,6 +770,12 @@ pub fn load_config_with_app(_app_handle: &tauri::AppHandle) -> AppConfig {
     } else {
         let gpu_count = crate::telemetry::detect_gpu_count();
         let fresh = build_fresh_config();
+        let mut to_persist = fresh.clone();
+        if let Err(e) = save_config(&mut to_persist) {
+            log::warn!("[config] Failed to persist default app_config.json: {}", e);
+        } else {
+            log::info!("[config] Created default app_config.json with model path '{}'", DEFAULT_MODEL_PATH_REL);
+        }
         build_config_with_providers_full(gpu_count, fresh)
     }
 }
@@ -791,6 +790,10 @@ pub fn load_config() -> AppConfig {
 
     let gpu_count = crate::telemetry::detect_gpu_count();
     let fresh = build_fresh_config();
+    let mut to_persist = fresh.clone();
+    if let Err(e) = save_config(&mut to_persist) {
+        log::warn!("[config] Failed to persist default app_config.json: {}", e);
+    }
     build_config_with_providers_full(gpu_count, fresh)
 }
 
@@ -853,7 +856,149 @@ pub fn validate_provider_binary(path: &str) -> Result<(), String> {
 
 // ── Model Paths Management ────────────────────────────────────────────
 
-const APP_MODELS_LABEL: &str = "App models";
+/// Default model library folder — relative to app root (`<app>/models/`).
+pub const DEFAULT_MODEL_PATH_REL: &str = "models";
+
+const DEFAULT_MODEL_PATH_LABEL: &str = "Models";
+
+const LM_STUDIO_PATH_LABEL: &str = "LM Studio";
+
+/// Portable LM Studio models folder — expanded at runtime via `expand_path_placeholders`.
+pub fn lm_studio_model_path_template() -> &'static str {
+    #[cfg(windows)]
+    {
+        r"%USERPROFILE%\.lmstudio\models"
+    }
+    #[cfg(not(windows))]
+    {
+        "~/.lmstudio/models"
+    }
+}
+
+/// Expand `~`, `%USERPROFILE%`, and other `%VAR%` segments in stored model paths.
+pub fn expand_path_placeholders(path: &str) -> String {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+
+    let mut expanded = trimmed.to_string();
+    if expanded == "~" {
+        if let Some(home) = user_home_dir() {
+            return home.to_string_lossy().to_string();
+        }
+    } else if let Some(rest) = expanded.strip_prefix("~/") {
+        if let Some(home) = user_home_dir() {
+            return home.join(rest).to_string_lossy().to_string();
+        }
+    } else if let Some(rest) = expanded.strip_prefix("~\\") {
+        if let Some(home) = user_home_dir() {
+            return home.join(rest).to_string_lossy().to_string();
+        }
+    }
+
+    loop {
+        let Some(start) = expanded.find('%') else { break };
+        let rest = &expanded[start + 1..];
+        let Some(end) = rest.find('%') else { break };
+        let var_name = &rest[..end];
+        let replacement = std::env::var(var_name).unwrap_or_default();
+        let end_idx = start + 1 + end + 1;
+        expanded = format!("{}{}{}", &expanded[..start], replacement, &expanded[end_idx..]);
+    }
+
+    expanded
+}
+
+fn user_home_dir() -> Option<PathBuf> {
+    #[cfg(windows)]
+    {
+        std::env::var_os("USERPROFILE").map(PathBuf::from)
+    }
+    #[cfg(not(windows))]
+    {
+        std::env::var_os("HOME").map(PathBuf::from)
+    }
+}
+
+/// True when the standard LM Studio models directory exists on this machine.
+pub fn lm_studio_models_available() -> bool {
+    let expanded = expand_path_placeholders(lm_studio_model_path_template());
+    !expanded.is_empty() && std::path::Path::new(&expanded).is_dir()
+}
+
+/// Add the portable LM Studio models path if the folder exists and is not already configured.
+pub fn add_lmstudio_model_path(config: &mut AppConfig) -> Result<bool, String> {
+    let template = lm_studio_model_path_template();
+    if !lm_studio_models_available() {
+        return Err(
+            "LM Studio models folder not found. Install LM Studio or add your model folder manually."
+                .to_string(),
+        );
+    }
+    if find_model_path_index(config.model_paths.as_slice(), template).is_some() {
+        return Ok(false);
+    }
+    let resolved = resolve_stored_model_path(template);
+    if !resolved.is_empty() && find_model_path_index(config.model_paths.as_slice(), &resolved).is_some()
+    {
+        return Ok(false);
+    }
+    config.model_paths.push(ModelPathEntry {
+        path: template.to_string(),
+        label: LM_STUDIO_PATH_LABEL.to_string(),
+        is_default: false,
+    });
+    Ok(true)
+}
+
+fn default_model_path_entry() -> ModelPathEntry {
+    ModelPathEntry {
+        path: DEFAULT_MODEL_PATH_REL.to_string(),
+        label: DEFAULT_MODEL_PATH_LABEL.to_string(),
+        is_default: true,
+    }
+}
+
+/// Absolute path to the default bundled model directory.
+pub fn default_models_dir() -> PathBuf {
+    resolve_path(DEFAULT_MODEL_PATH_REL)
+}
+
+fn is_absolute_model_path(path: &str) -> bool {
+    let trimmed = path.trim();
+    trimmed.starts_with(r"\\")
+        || trimmed.starts_with('/')
+        || (trimmed.len() >= 2 && trimmed.as_bytes()[1] == b':')
+}
+
+/// Resolve a stored model path for catalog scan and display (relative → app root).
+fn resolve_stored_model_path(path: &str) -> String {
+    let expanded = expand_path_placeholders(path);
+    let trimmed = strip_windows_extended_prefix(expanded.trim());
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    let candidate = if is_absolute_model_path(&trimmed) {
+        PathBuf::from(&trimmed)
+    } else {
+        resolve_path(&trimmed)
+    };
+    resolve_model_path(&candidate.to_string_lossy())
+}
+
+fn uses_path_placeholders(path: &str) -> bool {
+    let trimmed = path.trim();
+    trimmed.contains('%') || trimmed.starts_with("~/") || trimmed.starts_with("~\\") || trimmed == "~"
+}
+
+fn normalize_stored_model_path(original: &str, resolved: &str) -> String {
+    if uses_path_placeholders(original) {
+        original.trim().to_string()
+    } else {
+        to_relative_path(&PathBuf::from(resolved))
+    }
+}
 
 /// Strip Windows extended-length prefix (`\\?\` / `\\?\UNC\`) for human-readable storage/display.
 fn strip_windows_extended_prefix(path: &str) -> String {
@@ -868,7 +1013,7 @@ fn strip_windows_extended_prefix(path: &str) -> String {
 
 /// Normalize a model path for dedup comparison (case-insensitive on Windows, no trailing slashes).
 fn model_path_key(path: &str) -> String {
-    let trimmed = strip_windows_extended_prefix(path.trim());
+    let trimmed = strip_windows_extended_prefix(expand_path_placeholders(path).trim());
     if trimmed.is_empty() {
         return String::new();
     }
@@ -935,13 +1080,14 @@ fn dedupe_model_paths(paths: &mut Vec<ModelPathEntry>) -> bool {
             if existing.label.is_empty() && !entry.label.is_empty() {
                 existing.label = entry.label.clone();
             }
-            let resolved = resolve_model_path(&entry.path);
+            let resolved = resolve_stored_model_path(&entry.path);
             if std::path::Path::new(&resolved).exists() {
-                existing.path = resolved;
+                existing.path = normalize_stored_model_path(&entry.path, &resolved);
             }
         } else {
             let mut normalized = entry;
-            normalized.path = resolve_model_path(&normalized.path);
+            let resolved = resolve_stored_model_path(&normalized.path);
+            normalized.path = normalize_stored_model_path(&normalized.path, &resolved);
             seen.insert(key, deduped.len());
             deduped.push(normalized);
         }
@@ -956,30 +1102,23 @@ fn dedupe_model_paths(paths: &mut Vec<ModelPathEntry>) -> bool {
 }
 
 pub fn get_model_paths(config: &AppConfig) -> Vec<ModelPathEntry> {
-    if config.model_paths.is_empty() {
-        vec![ModelPathEntry {
-            path: config_dir().join("models").to_string_lossy().to_string(),
-            label: APP_MODELS_LABEL.to_string(),
-            is_default: true,
-        }]
-    } else {
-        config
-            .model_paths
-            .iter()
-            .map(|p| ModelPathEntry {
-                path: resolve_model_path(&p.path),
-                label: p.label.clone(),
-                is_default: p.is_default,
-            })
-            .collect()
-    }
+    config
+        .model_paths
+        .iter()
+        .map(|p| ModelPathEntry {
+            path: resolve_stored_model_path(&p.path),
+            label: p.label.clone(),
+            is_default: p.is_default,
+        })
+        .collect()
 }
 
 pub fn add_model_path(config: &mut AppConfig, path: String, label: Option<String>) {
-    let resolved = resolve_model_path(&path);
+    let resolved = resolve_stored_model_path(&path);
     if resolved.is_empty() || find_model_path_index(&config.model_paths, &resolved).is_some() {
         return;
     }
+    let stored_path = normalize_stored_model_path(&path, &resolved);
     let computed_label = label.unwrap_or_else(|| {
         std::path::Path::new(&resolved)
             .file_name()
@@ -988,7 +1127,7 @@ pub fn add_model_path(config: &mut AppConfig, path: String, label: Option<String
     });
     let is_default = config.model_paths.is_empty();
     config.model_paths.push(ModelPathEntry {
-        path: resolved,
+        path: stored_path,
         label: computed_label,
         is_default,
     });
@@ -998,23 +1137,28 @@ pub fn add_model_path(config: &mut AppConfig, path: String, label: Option<String
     }
 }
 
-pub fn remove_model_path(config: &mut AppConfig, path: &str) {
+pub fn remove_model_path(config: &mut AppConfig, path: &str) -> Result<(), String> {
+    if config.model_paths.len() <= 1 {
+        return Err(
+            "Cannot remove the last model path. Add another folder first.".to_string(),
+        );
+    }
     let removed = find_model_path_index(&config.model_paths, path);
     if let Some(idx) = removed {
         config.model_paths.remove(idx);
+    } else {
+        return Err(format!("Model path not found: {}", path));
     }
     // Ensure at least one path is default after removal
-    if removed.is_some() {
-        if !config.model_paths.iter().any(|p| p.is_default) {
-            if let Some(first) = config.model_paths.first_mut() {
-                first.is_default = true;
-            }
-        }
-        // Update the memo if the default was removed
-        if let Some(new_default) = config.model_paths.iter().find(|p| p.is_default) {
-            config.default_download_path = Some(new_default.path.clone());
+    if !config.model_paths.iter().any(|p| p.is_default) {
+        if let Some(first) = config.model_paths.first_mut() {
+            first.is_default = true;
         }
     }
+    if let Some(new_default) = config.model_paths.iter().find(|p| p.is_default) {
+        config.default_download_path = Some(new_default.path.clone());
+    }
+    Ok(())
 }
 
 pub fn set_default_model_path(config: &mut AppConfig, path: &str) {
@@ -1044,13 +1188,13 @@ pub fn calculate_disk_usage(paths: &[ModelPathEntry]) -> Vec<PathDiskUsage> {
 }
 
 pub fn get_default_download_path(config: &AppConfig) -> String {
-    config.default_download_path.clone().unwrap_or_else(|| {
-        config.model_paths
-            .iter()
-            .find(|p| p.is_default)
-            .map(|p| p.path.clone())
-            .unwrap_or_else(|| config_dir().join("models").to_string_lossy().to_string())
-    })
+    let stored = config.default_download_path.clone().or_else(|| {
+        config.model_paths.iter().find(|p| p.is_default).map(|p| p.path.clone())
+    });
+    match stored {
+        Some(path) => resolve_stored_model_path(&path),
+        None => default_models_dir().to_string_lossy().to_string(),
+    }
 }
 
 pub fn save_config(config: &mut AppConfig) -> Result<(), String> {
@@ -1068,32 +1212,7 @@ pub fn save_config(config: &mut AppConfig) -> Result<(), String> {
 }
 
 fn build_fresh_config() -> AppConfig {
-    let mut model_paths: Vec<ModelPathEntry> = Vec::new();
-
-    model_paths.push(ModelPathEntry {
-        path: config_dir().join("models").to_string_lossy().to_string(),
-        label: APP_MODELS_LABEL.to_string(),
-        is_default: true,
-    });
-
-    if let Some(lm_path) = dirs::home_dir().map(|h| h.join(".lmstudio").join("models")).and_then(|p| {
-        if p.exists() { Some(p) } else { None }
-    }) {
-        model_paths.push(ModelPathEntry {
-            path: lm_path.to_string_lossy().to_string(),
-            label: ".lmstudio/models".to_string(),
-            is_default: false,
-        });
-    }
-
-    let default_download_path = model_paths.iter().find(|p| p.is_default).map(|p| p.path.clone());
-    AppConfig {
-        model_paths,
-        gpu_slots: 0,
-        hf_token: String::new(),
-        providers: Vec::new(),
-        default_download_path,
-    }
+    AppConfig::default()
 }
 
 fn load_saved_config() -> Option<AppConfig> {
@@ -1581,6 +1700,40 @@ fn build_config_with_providers_full(_gpu_count: usize, mut config: AppConfig) ->
 
 /// Delete provider's user config file so it regenerates from fresh factory template on next load.
 /// Called by frontend RESET TO DEFAULTS button — instant recovery to 1:1 with factory state.
+/// Dev/testing: reset first-run fields (model paths → default `models/`), clear GGUF cache,
+/// re-discover bundled providers, persist, and sync in-memory config (webview reload ≠ Rust restart).
+#[tauri::command]
+pub fn dev_reset_first_run(
+    config: tauri::State<'_, std::sync::Arc<std::sync::Mutex<AppConfig>>>,
+) -> Result<(), String> {
+    crate::model_cache::clear_cache()?;
+
+    let hf_token = {
+        let cfg = config.lock().map_err(|e| e.to_string())?;
+        cfg.hf_token.clone()
+    };
+
+    let mut fresh = build_fresh_config();
+    fresh.hf_token = hf_token;
+
+    let gpu_count = crate::telemetry::detect_gpu_count();
+    let built = build_config_with_providers_full(gpu_count, fresh);
+
+    let provider_count = built.providers.len();
+    let mut to_persist = built.clone();
+    save_config(&mut to_persist)?;
+
+    {
+        let mut cfg = config.lock().map_err(|e| e.to_string())?;
+        *cfg = built;
+    }
+    let _ = std::fs::create_dir_all(default_models_dir());
+    log::info!(
+        "[config] dev_reset_first_run: paths reset, cache cleared, {provider_count} provider(s) rediscovered",
+    );
+    Ok(())
+}
+
 #[tauri::command]
 pub fn reset_provider_user_config(provider_id: String) -> Result<(), String> {
     let path = provider_user_config_path(&provider_id);
@@ -1839,5 +1992,14 @@ mod merge_tests {
         assert_eq!(config.model_paths.iter().filter(|p| p.is_default).count(), 1);
         assert_eq!(config.default_download_path.as_deref(), Some("C:\\path-b"));
         assert!(config.model_paths.iter().find(|p| p.path == "C:\\path-b").unwrap().is_default);
+    }
+
+    #[test]
+    fn expand_path_placeholders_resolves_userprofile_segment() {
+        std::env::set_var("BLACKOPS_TEST_HOME", r"C:\Users\ghost");
+        let input = r"%BLACKOPS_TEST_HOME%\.lmstudio\models";
+        let expanded = super::expand_path_placeholders(input);
+        assert_eq!(expanded, r"C:\Users\ghost\.lmstudio\models");
+        std::env::remove_var("BLACKOPS_TEST_HOME");
     }
 }

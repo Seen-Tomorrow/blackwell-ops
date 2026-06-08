@@ -28,6 +28,7 @@ src-tauri/target/
 src-tauri/gen/
 src-tauri/binaries/*
 !src-tauri/binaries/.gitkeep
+src-tauri/runtime-bundle/
 
 # --- AI / Llama Server Specific ---
 # Ignore the actual server executable if you download it externally

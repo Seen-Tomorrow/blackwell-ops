@@ -327,5 +327,38 @@ impl BlackwellOutputConsoleManager {
         Vec::new()
     }
 
-    // More methods (get_recent_lines, get_lines_in_range, etc.) will be added in subsequent steps.
+    /// Newest line across all category buffers (for the docked one-line preview).
+    pub fn get_latest_line_across_categories(&self) -> Option<BlackwellOutputConsoleLatestLine> {
+        let buffers = self.category_buffers.lock().ok()?;
+        let mut best: Option<(BlackwellOutputConsoleCategory, BlackwellOutputConsoleTextLine)> = None;
+
+        for (category, buffer) in buffers.iter() {
+            let Some(line) = buffer.lines.back().cloned() else {
+                continue;
+            };
+            let replace = match &best {
+                None => true,
+                Some((_, prev)) => line.timestamp > prev.timestamp,
+            };
+            if replace {
+                best = Some((*category, line));
+            }
+        }
+
+        best.map(|(category, line)| BlackwellOutputConsoleLatestLine {
+            timestamp: line.timestamp,
+            content: line.content,
+            style: line.style,
+            category: category.identifier().to_string(),
+        })
+    }
+}
+
+/// Latest line snapshot for the compact output bar (any category).
+#[derive(Debug, Clone, Serialize)]
+pub struct BlackwellOutputConsoleLatestLine {
+    pub timestamp: String,
+    pub content: String,
+    pub style: BlackwellOutputConsoleLineStyle,
+    pub category: String,
 }

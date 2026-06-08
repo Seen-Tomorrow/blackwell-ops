@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 120" fill="none">
+  <!-- Placeholder — replace with sophisticated welcome animation SVG -->
+  <rect width="320" height="120" rx="4" fill="#0a0f0a" stroke="#76B900" stroke-opacity="0.35"/>
+  <text x="160" y="58" text-anchor="middle" fill="#76B900" font-family="monospace" font-size="14" opacity="0.9">BLACKWELL OPS</text>
+  <text x="160" y="78" text-anchor="middle" fill="#76B900" font-family="monospace" font-size="9" opacity="0.45">WELCOME</text>
+</svg>

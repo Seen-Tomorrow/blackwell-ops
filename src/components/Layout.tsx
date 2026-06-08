@@ -5,7 +5,10 @@ import type { ProviderConfig, AppUpdateInfo } from "../lib/types";
 import { useStatus } from "../context/StatusBarContext";
 import { useDock } from "../context/DockContext";
 import { useFoundry, type Env } from "../hooks/useBuildDock";
-import BlackwellOutputConsole from "./BlackwellOutputConsole";
+import BlackwellOutputConsole, {
+  type OutputConsoleCategory,
+  parseOutputConsoleCategory,
+} from "./BlackwellOutputConsole";
 import FoundryModal from "./FoundryModal";
 import ThemePicker from "./ThemePicker";
 import {
@@ -19,7 +22,13 @@ import {
   type PowerUserState,
   type UiDensity,
 } from "../lib/storage";
-import { dispatchAppEvent, dispatchPowerUserChanged, EVENTS } from "../lib/events";
+import {
+  dispatchAppEvent,
+  dispatchPowerUserChanged,
+  dispatchReplaySetupGuide,
+  dispatchReplaySetupGuideOnboardingOnly,
+  EVENTS,
+} from "../lib/events";
 import { resolveAppShellWidthPx } from "../lib/uiShell";
 import { isMobileDevice } from "../lib/utils";
 
@@ -93,7 +102,9 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
   const [isOutputConsoleExpanded, setIsOutputConsoleExpanded] = useState(false);
   const [isConsoleDetached, setIsConsoleDetached] = useState(false);
   const consoleReservesDockSpace = isOutputConsoleExpanded && !isConsoleDetached;
-  const [lastConsoleLine, setLastConsoleLine] = useState<string>("Ready for engine & build telemetry");
+  const [lastConsoleLine, setLastConsoleLine] = useState<string>("Ready for telemetry");
+  const [lastConsoleCategory, setLastConsoleCategory] = useState<OutputConsoleCategory | null>(null);
+  const [consoleOpenCategory, setConsoleOpenCategory] = useState<OutputConsoleCategory | null>(null);
 
   // Listen for power-user changes from other components (ConfigPage)
   useEffect(() => {
@@ -128,33 +139,27 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  // Live last line for the collapsed output bar
+  // Docked one-line preview — newest line from any category (expanded console keeps tab filter).
   useEffect(() => {
     const fetchLastLine = async () => {
       try {
-        // Prefer engines (most active), fallback to foundry
-        const enginesData = await invoke<any[]>("get_blackwell_output_console_buffer_for_category", {
-          category: "engines",
-          limit: 1,
-        });
-        if (enginesData && enginesData.length > 0) {
-          setLastConsoleLine(enginesData[0].content);
-          return;
+        const latest = await invoke<{
+          content: string;
+          category: string;
+        } | null>("get_blackwell_output_console_latest_line");
+        if (latest?.content) {
+          const tag = latest.category ? latest.category.toUpperCase() : "";
+          setLastConsoleLine(tag ? `${tag} · ${latest.content}` : latest.content);
+          const cat = latest.category ? parseOutputConsoleCategory(latest.category) : null;
+          if (cat) setLastConsoleCategory(cat);
         }
-        const foundryData = await invoke<any[]>("get_blackwell_output_console_buffer_for_category", {
-          category: "foundry",
-          limit: 1,
-        });
-        if (foundryData && foundryData.length > 0) {
-          setLastConsoleLine(foundryData[0].content);
-        }
-      } catch (e) {
+      } catch {
         // silent
       }
     };
 
-    fetchLastLine();
-    const interval = setInterval(fetchLastLine, 4000); // every 4s
+    void fetchLastLine();
+    const interval = setInterval(() => { void fetchLastLine(); }, 1000);
     return () => clearInterval(interval);
   }, []);
 
@@ -219,6 +224,7 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
               <div key={tab.id} className="relative inline-block">
                 <button
                   onClick={() => onTabChange(tab.id)}
+                  {...(tab.id === "config" ? { "data-onboarding": "config-tab" } : {})}
                   className={`app-nav-tab px-4 py-1.5 text-xs font-mono tracking-wider transition-all duration-200 rounded-sm ${
                     activeTab === tab.id ? "app-nav-tab-active" : ""
                   }`}
@@ -276,6 +282,25 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
             <button onClick={() => adjustZoom(-ZOOM_STEP)} className="app-chrome-control-btn px-1 text-[9px] font-mono transition-colors leading-none" title="Decrease text scale">−</button>
             <span className="app-chrome-control-btn text-[8px] font-mono opacity-60 w-8 text-center" title="Text scale">{Math.round(zoom * 100)}%</span>
             <button onClick={() => adjustZoom(ZOOM_STEP)} className="app-chrome-control-btn px-1 text-[9px] font-mono transition-colors leading-none" title="Increase text scale">+</button>
+            {__BUILD_MODE__ === "dev" && (
+              <>
+                <span className="app-chrome-control-btn text-[8px] font-mono opacity-40">|</span>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    if (e.shiftKey) {
+                      dispatchReplaySetupGuideOnboardingOnly();
+                      return;
+                    }
+                    void dispatchReplaySetupGuide();
+                  }}
+                  className="app-chrome-control-btn px-1.5 text-[8px] font-mono transition-colors leading-none text-nv-green/70 hover:text-nv-green"
+                  title="Dev: first-run reset (paths → models/ only, clears meta cache, keeps providers/binaries, replays onboarding). Shift+click: onboarding UI only."
+                >
+                  ↺ SETUP
+                </button>
+              </>
+            )}
             </div>
           </div>
         </div>
@@ -304,7 +329,14 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
         <div className="flex items-center gap-2 min-w-0" style={{ flex: "1 1 auto", maxWidth: "65%" }}>
           {/* Blackwell Output Console - Docked (1 line always visible) */}
           <div
-            onClick={() => setIsOutputConsoleExpanded(!isOutputConsoleExpanded)}
+            onClick={() => {
+              if (isOutputConsoleExpanded) {
+                setIsOutputConsoleExpanded(false);
+              } else {
+                setConsoleOpenCategory(lastConsoleCategory);
+                setIsOutputConsoleExpanded(true);
+              }
+            }}
             className="app-footer-output min-w-0 flex items-center gap-2 px-3 py-0.5 cursor-pointer transition-all group font-mono rounded-sm"
             style={{ flex: "0.75 1 auto" }}
             title={isOutputConsoleExpanded ? "Click to close" : "Click to expand"}
@@ -381,8 +413,9 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
         onMinimize={minimizeBuildModal}
       />
 
-      <BlackwellOutputConsole 
+      <BlackwellOutputConsole
         isOpen={isOutputConsoleExpanded}
+        openWithCategory={consoleOpenCategory}
         onClose={() => {
           setIsConsoleDetached(false);
           setIsOutputConsoleExpanded(false);

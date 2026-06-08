@@ -60,13 +60,13 @@ export function BuildProfileRow({ env, meta, provider, isLatestBuild, hasBackup,
 
   return (
     <div className="foundry-profile-row flex items-center gap-2 px-3 py-2 rounded-sm flex-wrap">
-      <div className="flex items-center gap-1.5 shrink-0 w-[88px]">
-        <span className="foundry-profile-label text-[10px] font-mono tracking-wider">{meta.label}</span>
-        {originBadge(getProviderOrigin(provider, env))}
-      </div>
+      <span className="foundry-profile-label text-[10px] font-mono tracking-wider shrink-0 w-[76px]">
+        {meta.label}
+      </span>
 
-      <div className="flex items-center gap-1 shrink-0">
-        <span className="value-chip text-[7px] font-mono px-1.5 py-0.5 rounded-sm">CUDA {meta.cuda}</span>
+      <div className="foundry-profile-badges flex items-center gap-1 shrink-0">
+        {originBadge(getProviderOrigin(provider, env))}
+        <span className="cuda-badge text-[7px] font-mono px-1.5 py-0.5 rounded-sm">CUDA {meta.cuda}</span>
         <span className="value-chip text-[7px] font-mono px-1.5 py-0.5 rounded-sm opacity-80 max-w-[140px] truncate" title={meta.vs}>
           {meta.vs}
         </span>

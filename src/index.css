@@ -1101,6 +1101,50 @@ html, body, #root {
 }
 
 /* ── Industrial Display Frame — outer gunmetal bezel ─── */
+.industrial-display-frame--setup {
+  min-height: 240px;
+}
+
+/* Welcome splash only — square phosphor canvas; does not affect forecast/VramBadge frame */
+.industrial-display-area--welcome {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  min-height: 0;
+  padding: 8px 0;
+}
+
+.industrial-display-frame--welcome {
+  width: min(100%, 560px, calc(100vh - 10rem));
+  aspect-ratio: 1 / 1;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.industrial-display-frame--welcome .phosphor-screen-inner {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.setup-welcome {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.setup-welcome-art {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
 .industrial-display-frame {
   position: relative;
   z-index: 2;
@@ -2373,6 +2417,11 @@ html, body, #root {
   color: var(--theme-accent-bright);
 }
 
+[data-config-page] .foundry-profile-badges {
+  flex-wrap: nowrap;
+  align-items: center;
+}
+
 [data-config-page] .config-form-panel {
   background: var(--theme-panel);
   border: 1px solid var(--theme-border-subtle);
@@ -2955,6 +3004,39 @@ select option {
 
 .fusion-boot-link-active {
   animation: fusion-boot-dash 0.6s linear infinite;
+}
+
+/* CUDA version badges — NVIDIA green in every theme */
+.cuda-badge {
+  display: inline-block;
+  background: rgba(118, 185, 0, 0.22) !important;
+  border: 1px solid rgba(118, 185, 0, 0.55) !important;
+  color: #76b900 !important;
+}
+
+/* First-run onboarding — pulse targets */
+@keyframes onboarding-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(118, 185, 0, 0); }
+  50% { box-shadow: 0 0 0 3px rgba(118, 185, 0, 0.45); }
+}
+
+body[data-onboarding-phase="paths"] [data-onboarding="config-tab"],
+body[data-onboarding-phase="paths"] [data-onboarding="paths-tab"],
+body[data-onboarding-phase="paths"] [data-onboarding="add-folder"] {
+  animation: onboarding-pulse 1.8s ease-in-out infinite;
+}
+
+body[data-onboarding-phase="scan-meta"] [data-onboarding="scan-meta"] {
+  animation: onboarding-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes setup-welcome-fade {
+  from { opacity: 0; transform: scale(0.98); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.setup-welcome-art {
+  animation: setup-welcome-fade 0.6s ease-out both;
 }
 
 

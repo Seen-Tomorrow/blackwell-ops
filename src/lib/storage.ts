@@ -28,6 +28,9 @@ import { normalizeDisplayTexture, type DisplayTexture } from "./displayTexture";
  * | BlackOps-display-texture | clean \| crt \| phosphor-dark \| phosphor-light | Display texture cycle |
  * | BlackOps-catalog-split-width | number string (px) | Model catalog / engine config split |
  * | BlackOps-telemetry-view | standard \| lab | TELEMETRY tab: panel vs lab catalogue |
+ * | BlackOps-setup-guide-dismissed | "1" | User dismissed first-run setup guide |
+ * | BlackOps-setup-welcome-seen | "1" | Welcome animation already played once |
+ * | BlackOps-setup-guide-preview | "1" | Dev: force welcome + guide in VRAM display |
  * | BlackOps-catalog-override:{providerId} | JSON Record<paramKey, value> | Launch-time param chip overrides |
  * | BlackOps-group-order:{providerId} | JSON string[] | CONFIG param group order |
  * | BlackOps-engine-alias:{modelPath} | string | Per-model launch alias |
@@ -100,7 +103,46 @@ export const KEYS = {
   displayTexture: `${STORAGE_PREFIX}display-texture`,
   catalogSplitWidth: `${STORAGE_PREFIX}catalog-split-width`,
   telemetryView: `${STORAGE_PREFIX}telemetry-view`,
+  setupGuideDismissed: `${STORAGE_PREFIX}setup-guide-dismissed`,
+  setupWelcomeSeen: `${STORAGE_PREFIX}setup-welcome-seen`,
+  setupGuidePreview: `${STORAGE_PREFIX}setup-guide-preview`,
 } as const;
+
+export function isSetupGuideDismissed(): boolean {
+  return readStorage(KEYS.setupGuideDismissed) === "1";
+}
+
+export function saveSetupGuideDismissed(): void {
+  writeStorage(KEYS.setupGuideDismissed, "1");
+}
+
+export function isSetupWelcomeSeen(): boolean {
+  return readStorage(KEYS.setupWelcomeSeen) === "1";
+}
+
+export function saveSetupWelcomeSeen(): void {
+  writeStorage(KEYS.setupWelcomeSeen, "1");
+}
+
+/** True when dev preview flag is set — forces setup UI even if catalog is ready. */
+export function isSetupGuidePreview(): boolean {
+  return readStorage(KEYS.setupGuidePreview) === "1";
+}
+
+export function enableSetupGuidePreview(): void {
+  writeStorage(KEYS.setupGuidePreview, "1");
+}
+
+export function disableSetupGuidePreview(): void {
+  removeStorage(KEYS.setupGuidePreview);
+}
+
+/** Clear setup onboarding persistence (safe when keys were never written). */
+export function resetSetupGuideState(): void {
+  removeStorage(KEYS.setupGuideDismissed);
+  removeStorage(KEYS.setupWelcomeSeen);
+  removeStorage(KEYS.setupGuidePreview);
+}
 
 // ── Telemetry view (standard panel vs lab catalogue) ───────────────────────
 

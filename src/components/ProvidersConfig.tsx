@@ -73,7 +73,9 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
   }, []);
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [expandedProviderId, setExpandedProviderId] = useState<string | null>(null);
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [scanLibraryMenuId, setScanLibraryMenuId] = useState<string | null>(null);
+  const didAutoExpandRef = useRef(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -101,6 +103,21 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
   }, [onProvidersChange]);
 
   useEffect(() => { loadProviders(); }, [loadProviders]);
+
+  useEffect(() => {
+    if (didAutoExpandRef.current || providers.length === 0) return;
+    setExpandedIds(new Set(providers.map((p) => p.id)));
+    didAutoExpandRef.current = true;
+  }, [providers]);
+
+  const toggleExpanded = useCallback((id: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
 
   // Stay in sync when parent App state reloads (e.g. after Foundry build completes).
   useEffect(() => {
@@ -197,6 +214,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
       factory_provided: p.factory_provided,
     });
     setEditingId(p.id);
+    setExpandedIds((prev) => new Set(prev).add(p.id));
     setShowAddForm(true);
   }, []);
 
@@ -249,7 +267,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
   // ── FIT Scan handlers ────────────────────────────────────────
 
   const handleScanLibrary = useCallback(async (providerId: string) => {
-    const currentParallel = parallelRef.current[providerId] ?? 2;
+    const currentParallel = parallelRef.current[providerId] ?? 4;
 
     setScanStates((prev) => {
       const oldState = prev[providerId];
@@ -754,11 +772,11 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
             </div>
 
             {providers.map((p, idx) => {
-              const isExpanded = expandedProviderId === p.id;
+              const isExpanded = expandedIds.has(p.id);
               return (
               <Fragment key={p.id}>
               <div
-                onClick={() => setExpandedProviderId(isExpanded ? null : p.id)}
+                onClick={() => toggleExpanded(p.id)}
                 className={`config-provider-card flex gap-4 p-3 cursor-pointer mb-2 ${
                   editingId === p.id ? "is-editing" : isExpanded ? "is-expanded" : ""
                 } ${!p.enabled ? "opacity-40" : ""}`}>
@@ -824,30 +842,42 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
                       </button>
                     )}
 
-                    {/* SCAN LIBRARY + parallel */}
+                    {/* SCAN LIBRARY — click to pick parallelism */}
                     <div className="flex items-center gap-1.5 ml-2 pl-2 border-l border-stealth-border/30">
-                      {[4, 8, 16].map(n => (
+                      {scanStates[p.id]?.status === "scanning" ? (
                         <button
-                          key={n}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setScanStates(prev => ({ ...prev, [p.id]: { status: "idle" as const, parallel: n, totalModels: 0, completed: 0, failed: 0 } }));
-                            parallelRef.current[p.id] = n;
-                          }}
-                          className={`px-1.5 py-0.5 text-[9px] font-mono rounded-sm transition-colors ${
-                            (scanStates[p.id]?.parallel ?? 2) === n ? "value-chip-active" : "value-chip"
-                          }`}
+                          onClick={(e) => { e.stopPropagation(); handleStopScan(p.id); }}
+                          className="value-chip text-[9px] font-mono px-2 py-0.5 rounded-sm text-telemetry-red"
                         >
-                          {n}x
+                          ⏹ STOP
                         </button>
-                      ))}
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleScanLibrary(p.id); }}
-                        disabled={scanStates[p.id]?.status === "scanning"}
-                        className="value-chip text-[9px] font-mono px-2 py-0.5 rounded-sm"
-                      >
-                        {scanStates[p.id]?.status === "scanning" ? "\u25CF SCANNING..." : "SCAN LIBRARY"}
-                      </button>
+                      ) : scanLibraryMenuId === p.id ? (
+                        <div className="flex items-center gap-1">
+                          {[4, 8, 16].map((n) => (
+                            <button
+                              key={n}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                parallelRef.current[p.id] = n;
+                                setScanLibraryMenuId(null);
+                                void handleScanLibrary(p.id);
+                              }}
+                              className="px-1.5 py-0.5 text-[9px] font-mono rounded-sm transition-colors value-chip hover:value-chip-active"
+                              title={`Scan library with ${n}x parallelism`}
+                            >
+                              {n}×
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setScanLibraryMenuId(p.id); }}
+                          data-onboarding="scan-library"
+                          className="value-chip text-[9px] font-mono px-2 py-0.5 rounded-sm"
+                        >
+                          SCAN LIBRARY ▾
+                        </button>
+                      )}
                     </div>
 
                     {/* Expand chevron */}

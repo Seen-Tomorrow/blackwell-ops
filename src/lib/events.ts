@@ -15,9 +15,23 @@
  * | BlackOps-slot-cleared | Single slot cleared — update selection |
  * | BlackOps-download-completed | Model Hub download finished — refresh catalog |
  * | BlackOps-telemetry-view-changed | TELEMETRY tab switched standard ↔ lab |
+ * | BlackOps-model-paths-changed | Model path added/removed/default changed — refresh catalog |
+ * | BlackOps-navigate-config | Switch to CONFIG tab; detail.subTab selects sub-tab |
+ * | BlackOps-setup-guide-changed | Setup guide phase/dismiss state changed |
+ * | BlackOps-reset-setup-guide | Clear onboarding keys and replay welcome/guide in-app |
  */
 
-import { STORAGE_PREFIX } from "./storage";
+export type NavigateConfigDetail = {
+  subTab?: "providers" | "params" | "paths";
+};
+
+import { invoke } from "@tauri-apps/api/core";
+import {
+  disableSetupGuidePreview,
+  enableSetupGuidePreview,
+  resetSetupGuideState,
+  STORAGE_PREFIX,
+} from "./storage";
 
 export const EVENTS = {
   powerUserChanged: `${STORAGE_PREFIX}power-user-changed`,
@@ -32,6 +46,10 @@ export const EVENTS = {
   slotCleared: `${STORAGE_PREFIX}slot-cleared`,
   downloadCompleted: `${STORAGE_PREFIX}download-completed`,
   telemetryViewChanged: `${STORAGE_PREFIX}telemetry-view-changed`,
+  modelPathsChanged: `${STORAGE_PREFIX}model-paths-changed`,
+  navigateConfig: `${STORAGE_PREFIX}navigate-config`,
+  setupGuideChanged: `${STORAGE_PREFIX}setup-guide-changed`,
+  resetSetupGuide: `${STORAGE_PREFIX}reset-setup-guide`,
 } as const;
 
 export type AppEventName = (typeof EVENTS)[keyof typeof EVENTS];
@@ -46,4 +64,27 @@ export function dispatchAppEvent(event: AppEventName, detail?: unknown): void {
 
 export function dispatchPowerUserChanged(): void {
   dispatchAppEvent(EVENTS.powerUserChanged);
+}
+
+/**
+ * Dev — full first-run: onboarding keys + model paths (models/ only) + model cache, then reload.
+ * Bundled providers are re-discovered in memory (no app restart). LM Studio paths are removed;
+ * GGUF files on disk are untouched.
+ */
+export async function dispatchReplaySetupGuide(): Promise<void> {
+  resetSetupGuideState();
+  disableSetupGuidePreview();
+  try {
+    await invoke("dev_reset_first_run");
+  } catch (err) {
+    console.error("[dev_reset_first_run]", err);
+  }
+  window.location.reload();
+}
+
+/** Dev — replay welcome/guide only; keeps model paths and metadata cache. */
+export function dispatchReplaySetupGuideOnboardingOnly(): void {
+  resetSetupGuideState();
+  enableSetupGuidePreview();
+  window.location.reload();
 }

@@ -12,7 +12,7 @@
     "rebuild:frontend": "powershell -ExecutionPolicy Bypass -File scripts/rebuild-frontend.ps1",
     "rebuild:dev": "powershell -ExecutionPolicy Bypass -File scripts/rebuild-dev.ps1",
     "preview": "vite preview",
-    "prerelease": "powershell -ExecutionPolicy Bypass -File scripts/mirror-artifacts.ps1",
+    "prerelease": "powershell -ExecutionPolicy Bypass -File scripts/mirror-artifacts.ps1 && powershell -ExecutionPolicy Bypass -File scripts/prepare-release-runtime.ps1",
     "release": "npm run build && tauri build"
   },
   "dependencies": {

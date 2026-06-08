@@ -4,6 +4,7 @@ import EngineConfigPanel from "./EngineConfigPanel";
 import ModelCard from "./ModelCard";
 
 import { useModelCatalog, type SortField } from "../hooks/useModelCatalog";
+import type { SetupGuideState } from "../hooks/useSetupGuide";
 import { useCatalogSplitResize } from "../hooks/useCatalogSplitResize";
 import { useTelemetry } from "../context/TelemetryContext";
 
@@ -21,6 +22,7 @@ interface ModelCatalogProps {
   batchScanState: { active: boolean; scanned: number; failed: number; total: number };
   setBatchScanState: React.Dispatch<React.SetStateAction<{ active: boolean; scanned: number; failed: number; total: number }>>;
   stack: StackEntry[];
+  setupGuide: SetupGuideState;
 }
 
 const sortLabels: Record<string, string> = {
@@ -28,7 +30,7 @@ const sortLabels: Record<string, string> = {
 };
 
 export default function ModelCatalog(props: ModelCatalogProps) {
-  const { models, onLaunch, error, onReload, providers: externalProviders, committedVramMib, isPowerUser, scanningPath, setScanningPath, batchScanState, setBatchScanState, stack } = props;
+  const { models, onLaunch, error, onReload, providers: externalProviders, committedVramMib, isPowerUser, scanningPath, setScanningPath, batchScanState, setBatchScanState, stack, setupGuide } = props;
   const { gpus, systemInfo } = useTelemetry();
   const [showScanMenu, setShowScanMenu] = useState(false);
 
@@ -164,19 +166,13 @@ export default function ModelCatalog(props: ModelCatalogProps) {
         <button
           onClick={() => setShowScanMenu(true)}
           disabled={scanningPath !== null}
+          data-onboarding="scan-meta"
           className="px-2 py-0.5 text-[8px] font-mono border border-telemetry-cyan/30 text-telemetry-cyan hover:bg-telemetry-cyan/10 transition-colors rounded-sm disabled:opacity-30"
           title="Scan all models for metadata"
         >
           SCAN META ▾
         </button>
       )}
-      <button
-        onClick={onReload}
-        className="px-2 py-0.5 text-[8px] font-mono border border-stealth-border text-stealth-muted hover:text-nv-green hover:border-nv-green/60 transition-colors rounded-sm"
-        title="Refresh model list"
-      >
-        ↻
-      </button>
       <div className="flex items-center gap-1 ml-2">
         {(["4", "6", "8"] as const).map(count => (
           <button
@@ -324,6 +320,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
             supportsFusion={effectiveSupportsFusion}
             models={models}
             onSelectEngine={handleSelectBySlot}
+            setupGuide={setupGuide}
           />
         </div>
       </div>

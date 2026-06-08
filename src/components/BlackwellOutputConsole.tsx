@@ -13,10 +13,21 @@ interface BlackwellOutputConsoleProps {
   onDetachedChange?: (detached: boolean) => void;
   isOpen?: boolean;
   compact?: boolean;
+  /** When the docked bar opens the console, jump to this tab (once per open). */
+  openWithCategory?: OutputConsoleCategory | null;
 }
 
-const CATEGORIES = ["engines", "utils", "foundry", "error", "general", "debug"] as const;
-type Category = typeof CATEGORIES[number];
+export const OUTPUT_CONSOLE_CATEGORIES = ["engines", "utils", "foundry", "error", "general", "debug"] as const;
+export type OutputConsoleCategory = typeof OUTPUT_CONSOLE_CATEGORIES[number];
+
+type Category = OutputConsoleCategory;
+
+export function parseOutputConsoleCategory(value: string): OutputConsoleCategory | null {
+  const lower = value.toLowerCase();
+  return (OUTPUT_CONSOLE_CATEGORIES as readonly string[]).includes(lower)
+    ? (lower as OutputConsoleCategory)
+    : null;
+}
 
 const CATEGORY_LABELS: Record<Category, string> = {
   engines: "Engines",
@@ -47,8 +58,10 @@ export default function BlackwellOutputConsole({
   onDetachedChange,
   isOpen = false,
   compact = false,
+  openWithCategory = null,
 }: BlackwellOutputConsoleProps) {
   const [activeCategory, setActiveCategory] = useState<Category>("engines");
+  const wasOpenRef = useRef(false);
   const [lines, setLines] = useState<OutputLine[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isDetached, setIsDetached] = useState(false);
@@ -68,6 +81,13 @@ export default function BlackwellOutputConsole({
   useEffect(() => {
     if (!isOpen) setIsDetached(false);
   }, [isOpen]);
+
+  useEffect(() => {
+    if (isOpen && !wasOpenRef.current && openWithCategory) {
+      setActiveCategory(openWithCategory);
+    }
+    wasOpenRef.current = isOpen;
+  }, [isOpen, openWithCategory]);
 
   const handleClose = useCallback(() => {
     setIsDetached(false);
@@ -255,7 +275,7 @@ export default function BlackwellOutputConsole({
         </div>
 
         <div className="flex items-center gap-1.5">
-          {CATEGORIES.map(cat => (
+          {OUTPUT_CONSOLE_CATEGORIES.map(cat => (
             <button
               key={cat}
               onClick={() => setActiveCategory(cat)}

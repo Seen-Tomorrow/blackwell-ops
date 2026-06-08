@@ -117,9 +117,26 @@ async fn remove_model_path(
     path: String,
 ) -> Result<(), String> {
     let mut cfg = config.lock().map_err(|e| e.to_string())?;
-    config::remove_model_path(&mut cfg, &path);
+    config::remove_model_path(&mut cfg, &path).map_err(|e| e.to_string())?;
     config::save_config(&mut cfg).map_err(|e| e.to_string())?;
     Ok(())
+}
+
+#[tauri::command]
+fn lmstudio_models_available() -> bool {
+    config::lm_studio_models_available()
+}
+
+#[tauri::command]
+async fn add_lmstudio_model_path(
+    config: tauri::State<'_, Arc<std::sync::Mutex<config::AppConfig>>>,
+) -> Result<bool, String> {
+    let mut cfg = config.lock().map_err(|e| e.to_string())?;
+    let added = config::add_lmstudio_model_path(&mut cfg)?;
+    if added {
+        config::save_config(&mut cfg).map_err(|e| e.to_string())?;
+    }
+    Ok(added)
 }
 
 #[tauri::command]
@@ -170,6 +187,13 @@ async fn get_blackwell_output_console_buffer_for_category(
         .get_recent_lines_for_category(cat, limit.unwrap_or(500));
 
     Ok(lines)
+}
+
+#[tauri::command]
+async fn get_blackwell_output_console_latest_line(
+    app: tauri::State<'_, AppContext>,
+) -> Result<Option<crate::output_console::BlackwellOutputConsoleLatestLine>, String> {
+    Ok(app.blackwell_output_console_manager.get_latest_line_across_categories())
 }
 
 #[tauri::command]
@@ -503,6 +527,7 @@ async fn main() {
             telemetry::scan_system_info,
             telemetry::scan_disk_io,
             config::load_config,
+            config::dev_reset_first_run,
             config::reset_provider_user_config,
             config::save_user_providers_meta,
             config::reset_param_to_template,
@@ -543,6 +568,7 @@ async fn main() {
             // Blackwell Output Console commands (power-user output system)
             get_blackwell_output_console_categories,
             get_blackwell_output_console_buffer_for_category,
+            get_blackwell_output_console_latest_line,
             clear_blackwell_output_console_category,
             clear_all_blackwell_output_console_buffers,
             open_blackwell_output_window,
@@ -562,6 +588,8 @@ async fn main() {
             // Model Path management commands
             list_model_paths,
             add_model_path,
+            add_lmstudio_model_path,
+            lmstudio_models_available,
             remove_model_path,
             set_default_model_path,
             get_disk_usage,

@@ -18,9 +18,12 @@ import { ENV_META, ENV_ORDER, type Env } from "../lib/foundry_constants";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import VramBadge from "./VramBadge";
+import WelcomeAnimation from "./onboarding/WelcomeAnimation";
+import SetupGuideDisplay from "./onboarding/SetupGuideDisplay";
 import RunningEnginesPanel from "./RunningEnginesPanel";
 import SliderParam from "./SliderParam";
 import { useScenarioEvaluator } from "../hooks/useScenarioEvaluator";
+import type { SetupGuideState } from "../hooks/useSetupGuide";
 import { useConfigResolver } from "../hooks/useConfigResolver";
 import { useDisplayTexture } from "../hooks/useDisplayTexture";
 import { useFoundry } from "../hooks/useBuildDock";
@@ -28,6 +31,30 @@ import { useFoundry } from "../hooks/useBuildDock";
 
 
 type EnvProfile = Env;
+
+function onboardingDisplayClasses(setupGuide: SetupGuideState): {
+  area: string;
+  frame: string;
+} {
+  const areaBase = "industrial-display-area flex flex-col min-h-0";
+  const frameBase = "industrial-display-frame relative";
+  if (!setupGuide.active) {
+    return {
+      area: `${areaBase} flex-shrink-0`,
+      frame: `${frameBase} flex-shrink-0`,
+    };
+  }
+  if (setupGuide.showWelcome) {
+    return {
+      area: `${areaBase} industrial-display-area--welcome`,
+      frame: `${frameBase} industrial-display-frame--welcome`,
+    };
+  }
+  return {
+    area: `${areaBase} flex-shrink-0`,
+    frame: `${frameBase} flex-shrink-0 industrial-display-frame--setup`,
+  };
+}
 
 const PARAM_LABEL_CLASS =
   "font-mono w-24 flex-shrink-0 uppercase tracking-wider truncate text-[9px] text-stealth-muted";
@@ -114,10 +141,11 @@ interface EngineConfigPanelProps {
   supportsFusion?: boolean;
   models?: ModelEntry[]; // Full model list for running engines panel
   onSelectEngine?: (slotIdx: number) => void; // Callback to select a running engine
+  setupGuide: SetupGuideState;
 }
 
 export default function EngineConfigPanel(props: EngineConfigPanelProps) {
-  const { model, gpus, providers: externalProviders, committedVramMib, isPowerUser, systemInfo, stack, onLaunch, isModelRunning, activeEngineAlias, activeEnginePort, selectedSlotIdx, supportsFusion = true, models, onSelectEngine } = props;
+  const { model, gpus, providers: externalProviders, committedVramMib, isPowerUser, systemInfo, stack, onLaunch, isModelRunning, activeEngineAlias, activeEnginePort, selectedSlotIdx, supportsFusion = true, models, onSelectEngine, setupGuide } = props;
   const { buildProgress } = useFoundry();
   // Catalog keeps a copy of providers from App — refresh directly so profile chips match Config after Foundry builds.
   const [resolvedProviders, setResolvedProviders] = useState<ProviderConfig[]>(externalProviders ?? []);
@@ -651,14 +679,50 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       });
   };
 
-  // ── Empty state ──────────────────────────────────────────────────────────
-  if (!model) {
+  // ── Empty state (setup guide still uses the VRAM display) ─────────────────
+  if (!model && !setupGuide.active) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-stealth-muted font-mono">
         <div className="text-center config-empty-enter">
           <div className="text-3xl mb-3 text-stealth-muted/40">⬡</div>
           <p className="text-xs tracking-widest uppercase">SELECT A MODEL</p>
           <p className="text-[9px] mt-1 opacity-50">Choose from the catalog to configure</p>
+        </div>
+      </div>
+    );
+  }
+
+  const onboardingDisplay = onboardingDisplayClasses(setupGuide);
+
+  if (!model && setupGuide.active) {
+    return (
+      <div className="flex flex-col h-full min-h-0 overflow-hidden" data-config-panel>
+        <div
+          className={onboardingDisplay.area}
+          data-display-texture={displayTexture}
+        >
+          <div className={onboardingDisplay.frame}>
+            <button
+              type="button"
+              onClick={cycleDisplayTexture}
+              className="display-texture-toggle absolute top-[3px] left-1/2 -translate-x-1/2 z-[60]"
+              title={`Display texture: ${displayTextureLabel}. Click to cycle CLEAN / CRT / PHOSPHOR DARK / PHOSPHOR LIGHT.`}
+            >
+              {displayTextureLabel}
+            </button>
+            <div className="phosphor-screen-inner phosphor-display-surface">
+              {setupGuide.showWelcome ? (
+                <WelcomeAnimation onComplete={setupGuide.completeWelcome} />
+              ) : (
+                <SetupGuideDisplay
+                  phase={setupGuide.phase}
+                  modelsCount={setupGuide.modelsCount}
+                  scannedCount={setupGuide.scannedCount}
+                  onDismiss={setupGuide.dismiss}
+                />
+              )}
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -796,10 +860,10 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
     {/* VRAM display fixed; running engines eject panel scrolls independently */}
       <div
-        className="industrial-display-area flex-shrink-0 flex flex-col min-h-0"
+        className={onboardingDisplay.area}
         data-display-texture={displayTexture}
       >
-          <div className="industrial-display-frame relative flex-shrink-0">
+          <div className={onboardingDisplay.frame}>
               <button
                 type="button"
                 onClick={cycleDisplayTexture}
@@ -809,33 +873,46 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                 {displayTextureLabel}
               </button>
               <div className="phosphor-screen-inner phosphor-display-surface">
-                <VramBadge
-                  manifest={vramCalc.manifest}
-                  gpus={gpus}
-                  selectedGpuIndices={selectedGpuIndices.length > 0 ? selectedGpuIndices : undefined}
-                  onDeviceSelect={(gpuIndex) => {
-                    updateParam("device", `GPU-${gpuIndex}`);
-                    if (config.split && config.split.toUpperCase() !== "NONE") {
-                      updateParam("split", "none");
-                    }
-                  }}
-                  isValidating={vramCalc.isValidating}
-                  onValidate={vramCalc.validate}
-                  isModelRunning={isModelRunning}
-                  activeEngineAlias={activeEngineAlias}
-                  activeEnginePort={activeEnginePort}
-                  selectedSlotIdx={selectedSlotIdx}
-                  supportsFusion={supportsFusion}
-                  gpuMask={booterProps.gpuMask}
-                  vramTargetMib={booterProps.vramTargetMib}
-                  modelLayerTotal={booterProps.modelLayerTotal}
-                  gpuLoadTargetsMib={booterProps.gpuLoadTargetsMib}
-                  offloadMode={config["offload_mode"]}
-                  onMoeSuggestionClick={() => {
-                    updateParam("offload_mode", "moe_optimal");
-                  }}
-                  modelMeta={model?.metadata}
-                />
+                {setupGuide.active ? (
+                  setupGuide.showWelcome ? (
+                    <WelcomeAnimation onComplete={setupGuide.completeWelcome} />
+                  ) : (
+                    <SetupGuideDisplay
+                      phase={setupGuide.phase}
+                      modelsCount={setupGuide.modelsCount}
+                      scannedCount={setupGuide.scannedCount}
+                      onDismiss={setupGuide.dismiss}
+                    />
+                  )
+                ) : (
+                  <VramBadge
+                    manifest={vramCalc.manifest}
+                    gpus={gpus}
+                    selectedGpuIndices={selectedGpuIndices.length > 0 ? selectedGpuIndices : undefined}
+                    onDeviceSelect={(gpuIndex) => {
+                      updateParam("device", `GPU-${gpuIndex}`);
+                      if (config.split && config.split.toUpperCase() !== "NONE") {
+                        updateParam("split", "none");
+                      }
+                    }}
+                    isValidating={vramCalc.isValidating}
+                    onValidate={vramCalc.validate}
+                    isModelRunning={isModelRunning}
+                    activeEngineAlias={activeEngineAlias}
+                    activeEnginePort={activeEnginePort}
+                    selectedSlotIdx={selectedSlotIdx}
+                    supportsFusion={supportsFusion}
+                    gpuMask={booterProps.gpuMask}
+                    vramTargetMib={booterProps.vramTargetMib}
+                    modelLayerTotal={booterProps.modelLayerTotal}
+                    gpuLoadTargetsMib={booterProps.gpuLoadTargetsMib}
+                    offloadMode={config["offload_mode"]}
+                    onMoeSuggestionClick={() => {
+                      updateParam("offload_mode", "moe_optimal");
+                    }}
+                    modelMeta={model?.metadata}
+                  />
+                )}
               </div>
           </div>
 

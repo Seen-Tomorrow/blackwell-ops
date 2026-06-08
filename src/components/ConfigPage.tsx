@@ -21,7 +21,8 @@ import {
   savePowerUserState,
   type PowerUserState,
 } from "../lib/storage";
-import { dispatchAppEvent, dispatchPowerUserChanged, EVENTS } from "../lib/events";
+import { dispatchAppEvent, dispatchPowerUserChanged, EVENTS, type NavigateConfigDetail } from "../lib/events";
+import type { SetupGuideState } from "../hooks/useSetupGuide";
 import type { RawCatalogEntry } from "../lib/catalog";
 import { catalogEntryToParam } from "../lib/catalog";
 
@@ -29,6 +30,7 @@ type ConfigSubTab = "providers" | "params" | "paths";
 
 interface ConfigPageProps {
   providers?: ProviderConfig[];
+  setupGuide: SetupGuideState;
 }
 
 /** Parse a value as int, float, or string. */
@@ -39,7 +41,7 @@ function parseValue(v: string): string | number {
   return t;
 }
 
-export default function ConfigPage({ providers: externalProviders }: ConfigPageProps) {
+export default function ConfigPage({ providers: externalProviders, setupGuide }: ConfigPageProps) {
   const [subTab, setSubTab] = useState<ConfigSubTab>("providers");
   const [selectedProviderId, setSelectedProviderId] = useState<string>(DEFAULT_PROVIDER_ID);
   const [allProviders, setAllProviders] = useState<ProviderConfig[]>(externalProviders || []);
@@ -52,6 +54,21 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
     window.addEventListener(EVENTS.powerUserChanged, handler);
     return () => window.removeEventListener(EVENTS.powerUserChanged, handler);
   }, []);
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<NavigateConfigDetail>).detail;
+      if (detail?.subTab) setSubTab(detail.subTab);
+    };
+    window.addEventListener(EVENTS.navigateConfig, handler);
+    return () => window.removeEventListener(EVENTS.navigateConfig, handler);
+  }, []);
+
+  useEffect(() => {
+    if (setupGuide.active && setupGuide.phase === "paths") {
+      setSubTab("paths");
+    }
+  }, [setupGuide.active, setupGuide.phase]);
 
   const handleEditorToggle = useCallback(() => {
     setPowerUserState(prev => {
@@ -728,7 +745,7 @@ export default function ConfigPage({ providers: externalProviders }: ConfigPageP
       <div className="px-4 py-2 config-section-bar flex items-center gap-1">
         <button onClick={() => setSubTab("providers")} className={`app-nav-tab px-3 py-1 text-[10px] font-mono tracking-wider rounded-sm ${subTab === "providers" ? "app-nav-tab-active" : ""}`}>PROVIDERS</button>
         <button onClick={() => setSubTab("params")} className={`app-nav-tab px-3 py-1 text-[10px] font-mono tracking-wider rounded-sm ${subTab === "params" ? "app-nav-tab-active" : ""}`}>PARAMETERS</button>
-        <button onClick={() => setSubTab("paths")} className={`app-nav-tab px-3 py-1 text-[10px] font-mono tracking-wider rounded-sm ${subTab === "paths" ? "app-nav-tab-active" : ""}`}>PATHS</button>
+        <button onClick={() => setSubTab("paths")} data-onboarding="paths-tab" className={`app-nav-tab px-3 py-1 text-[10px] font-mono tracking-wider rounded-sm ${subTab === "paths" ? "app-nav-tab-active" : ""}`}>PATHS</button>
        </div>
 
        {subTab === "providers" ? (
@@ -1291,6 +1308,7 @@ function ModelPathsPanel() {
   const [paths, setPaths] = useState<ModelPathEntry[]>([]);
   const [diskUsage, setDiskUsage] = useState<PathDiskUsage[]>([]);
   const [loading, setLoading] = useState(true);
+  const [pathError, setPathError] = useState<string | null>(null);
 
   const loadPaths = useCallback(async () => {
     try {
@@ -1311,29 +1329,41 @@ function ModelPathsPanel() {
 
   const handleAddPath = useCallback(async () => {
     try {
+      setPathError(null);
       const selected: string | null = await invoke("open_folder_dialog", { title: "Select Model Folder" });
       if (selected) {
         await invoke("add_model_path", { path: selected, label: null });
         loadPaths();
+        dispatchAppEvent(EVENTS.modelPathsChanged);
       }
     } catch (e) {
       console.error("Failed to add model path:", e);
+      setPathError(typeof e === "string" ? e : "Failed to add model path");
     }
   }, [loadPaths]);
 
   const handleRemovePath = useCallback(async (path: string) => {
+    if (paths.length <= 1) {
+      setPathError("Add another folder before removing the last model path.");
+      return;
+    }
     try {
+      setPathError(null);
       await invoke("remove_model_path", { path });
       loadPaths();
+      dispatchAppEvent(EVENTS.modelPathsChanged);
     } catch (e) {
-      console.error("Failed to remove model path:", e);
+      const msg = typeof e === "string" ? e : "Failed to remove model path";
+      console.error("Failed to remove model path:", msg);
+      setPathError(msg);
     }
-  }, [loadPaths]);
+  }, [loadPaths, paths.length]);
 
   const handleSetDefault = useCallback(async (path: string) => {
     try {
       await invoke("set_default_model_path", { path });
       loadPaths();
+      dispatchAppEvent(EVENTS.modelPathsChanged);
     } catch (e) {
       console.error("Failed to set default model path:", e);
     }
@@ -1356,11 +1386,20 @@ function ModelPathsPanel() {
       {/* Header */}
       <div className="px-4 py-3 border-b border-stealth-border flex items-center justify-between">
         <h2 className="text-xs font-mono text-nv-green tracking-wider">MODEL PATHS</h2>
-        <button onClick={handleAddPath}
-          className="px-3 py-1 text-[9px] font-mono border border-nv-green/60 text-nv-green hover:bg-nv-green/15 transition-colors">
+        <button
+          onClick={handleAddPath}
+          data-onboarding="add-folder"
+          className="px-3 py-1 text-[9px] font-mono border border-nv-green/60 text-nv-green hover:bg-nv-green/15 transition-colors"
+        >
           + ADD FOLDER
         </button>
       </div>
+
+      {pathError && (
+        <div className="px-4 py-2 border-b border-telemetry-red/30 bg-telemetry-red/5 text-[9px] font-mono text-telemetry-red">
+          {pathError}
+        </div>
+      )}
 
       {/* Path list */}
       <div className="flex-1 overflow-y-auto p-4 space-y-2">
@@ -1401,9 +1440,20 @@ function ModelPathsPanel() {
                       SET DEFAULT
                     </button>
                   )}
-                  <button onClick={() => handleRemovePath(entry.path)}
-                    title="Remove this path"
-                    className="px-2 py-0.5 text-[8px] font-mono border border-red-400/30 text-red-400/70 hover:bg-red-400/10 transition-colors">
+                  <button
+                    onClick={() => handleRemovePath(entry.path)}
+                    disabled={paths.length <= 1}
+                    title={
+                      paths.length <= 1
+                        ? "Add another folder before removing the last model path"
+                        : "Remove this path"
+                    }
+                    className={`px-2 py-0.5 text-[8px] font-mono border border-red-400/30 text-red-400/70 transition-colors ${
+                      paths.length <= 1
+                        ? "opacity-30 cursor-not-allowed"
+                        : "hover:bg-red-400/10"
+                    }`}
+                  >
                     REMOVE
                   </button>
                 </div>
@@ -1415,7 +1465,11 @@ function ModelPathsPanel() {
 
       {/* Footer hint */}
       <div className="px-4 py-2 border-t border-stealth-border text-[8px] font-mono text-stealth-muted/50">
-        DOWNLOADS GO TO {paths.find(p => p.isDefault)?.label || "DEFAULT PATH"} · CATALOG MERGES ALL PATHS
+        {paths.length === 0
+          ? "ADD AT LEAST ONE FOLDER — CATALOG STAYS EMPTY UNTIL A PATH IS SET"
+          : paths.length === 1
+            ? `DOWNLOADS GO TO ${paths.find(p => p.isDefault)?.label || "DEFAULT PATH"} · ADD ANOTHER FOLDER TO ENABLE REMOVE`
+            : `DOWNLOADS GO TO ${paths.find(p => p.isDefault)?.label || "DEFAULT PATH"} · CATALOG MERGES ALL PATHS`}
       </div>
     </div>
   );

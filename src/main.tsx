@@ -4,9 +4,33 @@ import { createRoot } from "react-dom/client";
 import "./index.css";
 import "./controls.css";
 import { applyAppTheme, getThemeById } from "./themes/app-themes";
-import { KEYS, migrateLegacyStorageKeys, readStorage } from "./lib/storage";
+import {
+  dispatchReplaySetupGuide,
+  dispatchReplaySetupGuideOnboardingOnly,
+} from "./lib/events";
+import {
+  KEYS,
+  migrateLegacyStorageKeys,
+  readStorage,
+  resetSetupGuideState,
+} from "./lib/storage";
 
 migrateLegacyStorageKeys();
+
+if (__BUILD_MODE__ === "dev") {
+  interface BlackOpsDevTools {
+    /** Replay welcome (3s) + setup guide in the VRAM display, then reload. */
+    previewSetupWelcome: () => void;
+    /** Exit preview mode and clear onboarding keys, then reload. */
+    resetSetupGuide: () => void;
+  }
+  (window as Window & { __blackopsDev?: BlackOpsDevTools }).__blackopsDev = {
+    previewSetupWelcome: () => {
+      dispatchReplaySetupGuideOnboardingOnly();
+    },
+    resetSetupGuide: () => { void dispatchReplaySetupGuide(); },
+  };
+}
 
 // Apply saved theme before first paint to avoid flash
 applyAppTheme(getThemeById(readStorage(KEYS.appTheme) ?? "matrix"));
