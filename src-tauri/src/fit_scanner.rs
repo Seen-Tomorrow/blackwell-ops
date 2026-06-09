@@ -448,59 +448,127 @@ fn extract_model_from_breakdown(line: &str) -> Option<f64> {
 ///
 /// llama-fit-params prints multiple memory tables during its iterative fitting algorithm.
 /// We only want the LAST table — it represents the final fitted configuration.
-fn parse_fit_breakdown(output: &str) -> (Option<Vec<f64>>, Option<f64>) {
-    let mut last_gpu_values: Vec<f64> = Vec::new();
-    let mut last_host_val: Option<f64> = None;
+/// Sum of per-GPU SELF MiB from the last memory breakdown table in engine/fit output.
+pub fn parse_engine_memory_breakdown_mib(output: &str) -> Option<f64> {
+    parse_engine_memory_breakdown(output).0
+}
+
+/// One complete `common_memory_breakdown_print` table from stderr.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MemoryBreakdownTable {
+    pub gpu_self_mib: Vec<f64>,
+    pub host_mib: Option<f64>,
+}
+
+impl MemoryBreakdownTable {
+    pub fn total_gpu_self_mib(&self) -> f64 {
+        self.gpu_self_mib.iter().sum()
+    }
+}
+
+/// True when a breakdown table row ends with the Host line (all GPU rows are present).
+pub fn is_complete_memory_breakdown_table_line(line: &str) -> bool {
+    let lower = line.to_lowercase();
+    lower.contains("common_memory_breakdown_print")
+        && lower.contains("host")
+        && !lower.contains("cuda")
+        && line.contains('|')
+}
+
+/// Every **complete** memory breakdown table in order (--fit on may emit dozens during MoE offload search).
+/// A table is complete only after the Host row — never flush on partial CUDA-only rows.
+pub fn parse_all_memory_breakdown_tables(output: &str) -> Vec<MemoryBreakdownTable> {
+    let mut tables: Vec<MemoryBreakdownTable> = Vec::new();
+    let mut current = MemoryBreakdownTable {
+        gpu_self_mib: Vec::new(),
+        host_mib: None,
+    };
+    let mut in_table = false;
+
+    let flush_current = |tables: &mut Vec<MemoryBreakdownTable>, current: &mut MemoryBreakdownTable| {
+        if !current.gpu_self_mib.is_empty() && current.host_mib.is_some() {
+            tables.push(MemoryBreakdownTable {
+                gpu_self_mib: current.gpu_self_mib.clone(),
+                host_mib: current.host_mib,
+            });
+            current.gpu_self_mib.clear();
+            current.host_mib = None;
+        }
+    };
 
     for line in output.lines() {
         let lower = line.to_lowercase();
-        if !lower.contains("memory breakdown") {
+
+        if is_memory_breakdown_header(line) {
+            // Drop any in-progress probe (CUDA rows seen but Host not yet printed).
+            current.gpu_self_mib.clear();
+            current.host_mib = None;
+            in_table = true;
             continue;
         }
 
-        // A new memory breakdown table starts with the header line.
-        // The header contains "memory breakdown" and "[mib]" but no "cuda" or "host".
-        // Detect it by checking for the pipe-delimited header format: | memory breakdown [MiB] ... |
-        if lower.contains("[mib]") || (lower.contains("total") && lower.contains("free") && lower.contains("self")) {
-            // New table header — reset accumulators for this table
-            last_gpu_values.clear();
-            last_host_val = None;
+        if !in_table || !line.contains('|') {
             continue;
         }
 
-        // CUDA device line: | - CUDA0 ... | TOTAL = FREE + ( SELF = MODEL + CTX + COMPUTE ) + UNACCOUNTED |
         if lower.contains("cuda") {
-            if let Some(start) = line.find('(') {
-                if let Some(end) = line[start..].find(')') {
-                    let inner = &line[start + 1..start + end];
-                    // First number in parens is the self total (e.g., "605" from "605 = 440 + 24 + 141")
-                    if let Some(val) = extract_number(inner.trim()) {
-                        last_gpu_values.push(val);
-                    }
+            if let Some(val) = extract_self_mib_from_cuda_breakdown_line(line) {
+                current.gpu_self_mib.push(val);
+            }
+        } else if lower.contains("host") && !lower.contains("cuda") {
+            if let Some(host_pos) = line.find("Host") {
+                let rest = &line[host_pos..];
+                if let Some(second_pipe) = rest[4..].find('|') {
+                    let between = rest[4 + second_pipe + 1..].trim();
+                    current.host_mib = extract_number(between);
                 }
             }
-        }
-        // Host line: | - Host | TOTAL = ...
-        else if lower.contains("host") {
-            // Find the number after "Host" pipe separator
-            if let Some(pipe_pos) = line.rfind('|') {
-                let after_pipe = &line[pipe_pos + 1..].trim();
-                if !after_pipe.is_empty() {
-                    last_host_val = extract_number(after_pipe);
-                } else if let Some(first_pipe) = line.find("Host") {
-                    // Try extracting from between pipes: | - Host | 470 = ...
-                    let rest = &line[first_pipe..];
-                    if let Some(second_pipe) = rest[4..].find('|') {
-                        let between = rest[4 + second_pipe + 1..].trim();
-                        last_host_val = extract_number(between);
-                    }
-                }
-            }
+            flush_current(&mut tables, &mut current);
+            in_table = false;
         }
     }
 
-    let gpu_breakdown = if last_gpu_values.is_empty() { None } else { Some(last_gpu_values) };
-    (gpu_breakdown, last_host_val)
+    flush_current(&mut tables, &mut current);
+    tables
+}
+
+/// (total_gpu_self_mib, per_gpu_self_mib) from the last memory breakdown table.
+pub fn parse_engine_memory_breakdown(output: &str) -> (Option<f64>, Option<Vec<f64>>) {
+    let tables = parse_all_memory_breakdown_tables(output);
+    tables.last().map(|t| {
+        (
+            Some(t.total_gpu_self_mib()),
+            Some(t.gpu_self_mib.clone()),
+        )
+    }).unwrap_or((None, None))
+}
+
+fn is_memory_breakdown_header(line: &str) -> bool {
+    let lower = line.to_lowercase();
+    lower.contains("memory breakdown")
+        && (lower.contains("[mib]")
+            || (lower.contains("total") && lower.contains("free") && lower.contains("self")))
+}
+
+/// SELF MiB from a CUDA row: `... (2395 = 500 + 1632 + 263) ...`
+fn extract_self_mib_from_cuda_breakdown_line(line: &str) -> Option<f64> {
+    let last_open = line.rfind('(')?;
+    let end_paren = line[last_open..].find(')')?;
+    let inner = &line[last_open + 1..last_open + end_paren];
+    if !inner.contains('=') || inner.matches('+').count() < 2 {
+        return None;
+    }
+    extract_number(inner.trim())
+}
+
+fn parse_fit_breakdown(output: &str) -> (Option<Vec<f64>>, Option<f64>) {
+    let tables = parse_all_memory_breakdown_tables(output);
+    tables.last().map(|t| {
+        (
+            Some(t.gpu_self_mib.clone()),
+            t.host_mib,
+        )
+    }).unwrap_or((None, None))
 }
 
 /// Parse per-GPU component breakdown from memory breakdown table.
@@ -894,4 +962,89 @@ pub fn load_full_scan_export() -> Option<HashMap<String, FitScanFull>> {
 pub fn get_fit_scan_points(model_path: String) -> Option<Vec<FitDataPoint>> {
     let data = load_full_scan_export()?;
     data.get(&model_path).map(|f| f.points.clone())
+}
+
+#[cfg(test)]
+mod memory_breakdown_tests {
+    use super::{parse_all_memory_breakdown_tables, parse_engine_memory_breakdown};
+
+    const FIT_AT_LOAD: &str = r#"0.00.971.498 I common_memory_breakdown_print: | memory breakdown [MiB]                                 | total    free    self   model   context   compute    unaccounted |
+0.00.971.505 I common_memory_breakdown_print: |   - CUDA0 (RTX PRO 6000 Blackwell Workstation Edition) | 97886 = 95357 + (2395 =   500 +    1632 +     263) +         133 |
+0.00.971.506 I common_memory_breakdown_print: |   - Host                                               |                   269 =   137 +       0 +     131                |"#;
+
+    const AT_EXIT: &str = r#"0.04.450.376 I common_memory_breakdown_print: | memory breakdown [MiB]                                 | total    free    self   model   context   compute    unaccounted |
+0.04.450.381 I common_memory_breakdown_print: |   - CUDA0 (RTX PRO 6000 Blackwell Workstation Edition) | 97886 = 92883 + (2395 =   500 +    1632 +     263) +        2607 |
+0.04.450.382 I common_memory_breakdown_print: |   - Host                                               |                   269 =   137 +       0 +     131                |"#;
+
+    #[test]
+    fn parses_fit_time_breakdown_from_real_stderr() {
+        let (total, gpus) = parse_engine_memory_breakdown(FIT_AT_LOAD);
+        assert_eq!(total, Some(2395.0));
+        assert_eq!(gpus, Some(vec![2395.0]));
+    }
+
+    #[test]
+    fn parses_exit_breakdown_from_real_stderr() {
+        let (total, gpus) = parse_engine_memory_breakdown(AT_EXIT);
+        assert_eq!(total, Some(2395.0));
+        assert_eq!(gpus, Some(vec![2395.0]));
+    }
+
+    #[test]
+    fn uses_last_table_when_multiple_present() {
+        let combined = format!("{FIT_AT_LOAD}\n{AT_EXIT}");
+        let (total, _) = parse_engine_memory_breakdown(&combined);
+        assert_eq!(total, Some(2395.0));
+    }
+
+    #[test]
+    fn parses_dual_gpu_moe_initial_probe() {
+        const MOE_FITS: &str = r#"0.01.623.223 I common_memory_breakdown_print: | memory breakdown [MiB] | total free self model context compute unaccounted |
+0.01.623.239 I common_memory_breakdown_print: | - CUDA0 (RTX PRO 6000 Blackwell Workstation Edition) | 97886 = 95257 + (80959 = 77283 + 2003 + 1673) + -78330 |
+0.01.623.240 I common_memory_breakdown_print: | - CUDA1 (RTX PRO 6000 Blackwell Workstation Edition) | 97886 = 95269 + (77365 = 73404 + 2262 + 1697) + -74747 |
+0.01.623.240 I common_memory_breakdown_print: | - Host | 1586 = 545 + 0 + 1041 |"#;
+
+        let tables = parse_all_memory_breakdown_tables(MOE_FITS);
+        assert_eq!(tables.len(), 1);
+        assert_eq!(tables[0].gpu_self_mib, vec![80959.0, 77365.0]);
+        assert_eq!(tables[0].total_gpu_self_mib(), 158324.0);
+        assert_eq!(tables[0].host_mib, Some(1586.0));
+    }
+
+    #[test]
+    fn ignores_partial_table_before_host_row() {
+        const PARTIAL: &str = r#"0.01 I common_memory_breakdown_print: | memory breakdown [MiB] | total free self model context compute unaccounted |
+0.01 I common_memory_breakdown_print: | - CUDA0 (GPU) | 90000 = 10000 + (80959 = 77283 + 2003 + 1673) + 0 |"#;
+        assert!(parse_all_memory_breakdown_tables(PARTIAL).is_empty());
+    }
+
+    #[test]
+    fn parses_moe_fit_final_offload_table() {
+        const FINAL_FIT: &str = r#"0.15.574.254 I common_memory_breakdown_print: | memory breakdown [MiB] | total free self model context compute unaccounted |
+0.15.574.260 I common_memory_breakdown_print: | - CUDA0 (RTX PRO 6000 Blackwell Workstation Edition) | 97886 = 95357 + ( 93183 = 90542 + 131 + 2508) + -90653 |
+0.15.574.260 I common_memory_breakdown_print: | - CUDA1 (RTX PRO 6000 Blackwell Workstation Edition) | 97886 = 95357 + ( 93325 = 92828 + 263 + 233) + -90795 |
+0.15.574.260 I common_memory_breakdown_print: | - Host | 111400 = 111355 + 5 + 40 |"#;
+
+        let tables = parse_all_memory_breakdown_tables(FINAL_FIT);
+        assert_eq!(tables.len(), 1);
+        assert_eq!(tables[0].total_gpu_self_mib(), 186508.0);
+        assert_eq!(tables[0].host_mib, Some(111400.0));
+    }
+
+    #[test]
+    fn parses_multiple_fit_iterations() {
+        const ITER_A: &str = r#"0.01 I common_memory_breakdown_print: | memory breakdown [MiB] | total free self model context compute unaccounted |
+0.01 I common_memory_breakdown_print: |   - CUDA0 (GPU) | 90000 = 10000 + (62000 = 60000 + 1000 + 1000) + 0 |
+0.01 I common_memory_breakdown_print: |   - Host | 50000 = 48000 + 0 + 2000 |"#;
+        const ITER_B: &str = r#"0.02 I common_memory_breakdown_print: | memory breakdown [MiB] | total free self model context compute unaccounted |
+0.02 I common_memory_breakdown_print: |   - CUDA0 (GPU) | 90000 = 20000 + (45000 = 42000 + 2000 + 1000) + 0 |
+0.02 I common_memory_breakdown_print: |   - CUDA1 (GPU) | 90000 = 30000 + (12000 = 10000 + 1000 + 1000) + 0 |
+0.02 I common_memory_breakdown_print: |   - Host | 80000 = 75000 + 0 + 5000 |"#;
+
+        let tables = parse_all_memory_breakdown_tables(&format!("{ITER_A}\n{ITER_B}"));
+        assert_eq!(tables.len(), 2);
+        assert_eq!(tables[0].total_gpu_self_mib(), 62000.0);
+        assert_eq!(tables[1].total_gpu_self_mib(), 57000.0); // 45000 + 12000
+        assert_eq!(tables[1].gpu_self_mib.len(), 2);
+    }
 }

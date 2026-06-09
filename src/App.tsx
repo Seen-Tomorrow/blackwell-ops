@@ -61,6 +61,7 @@ function App() {
   // Each ref holds the unsubscribe function from listen().then() so cleanup can call it reliably.
   const unsubEngineLogBatch = useRef<(() => void) | null>(null);
   const unsubEngineSystem = useRef<(() => void) | null>(null);
+  const unsubEngineLoadFailed = useRef<(() => void) | null>(null);
   const unsubSlotCleared = useRef<(() => void) | null>(null);
   const flatLogsRef = useRef<Map<number, Array<{ text: string; alias: string }>>>(new Map());
   const logsLengthsRef = useRef<Record<number, number>>({});
@@ -335,11 +336,6 @@ function App() {
       const payload = e.payload as SystemEvent;
       try {
         if (payload && payload.slot !== undefined && payload.text) {
-          const cleanText = payload.text.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "").replace(/\[[0-9;]+[A-Za-z]/g, "");
-          if (cleanText.includes("LAUNCH_ERROR:")) {
-            const reason = cleanText.split("LAUNCH_ERROR:").slice(1).join(":").trim();
-            dispatchAppEvent(EVENTS.launchError, { message: reason });
-          }
           unstable_batchedUpdates(() => {
             setSystemEvents((prev) => {
               const next = new Map(prev);
@@ -354,6 +350,29 @@ function App() {
     }).then((u) => { if (!cancelled) unsubEngineSystem.current = u; });
 
     return () => { cancelled = true; unsubEngineSystem.current?.(); };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    listen("engine-load-failed", (e: any) => {
+      if (cancelled) return;
+      const payload = e.payload as { slot?: number; alias?: string; reason?: string };
+      if (payload?.reason) {
+        dispatchAppEvent(EVENTS.launchError, { message: payload.reason });
+      }
+      if (payload?.slot !== undefined) {
+        dispatchAppEvent(EVENTS.slotCleared, { slot: payload.slot });
+      }
+    }).then((u) => {
+      if (!cancelled) {
+        unsubEngineLoadFailed.current = u;
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      unsubEngineLoadFailed.current?.();
+    };
   }, []);
 
   useEffect(() => {

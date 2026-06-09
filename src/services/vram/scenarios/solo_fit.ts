@@ -7,8 +7,8 @@ import type { VramManifest } from "../../../lib/types";
 export function tryEvaluate(input: ScenarioInput, computed: ComputedValues): VramManifest | null {
   const { vramTotalGb, singleMaxAvailable, targetGpuIdx, splitActive, numGpus } = computed;
 
-  // Guard: must fit on one GPU with at least 1GB headroom remaining, split not active
-  const minimumHeadroomGb = 1.0; // Absolute minimum for model to load safely
+  // Guard: must fit on one GPU with percent + absolute headroom, split not active
+  const minimumHeadroomGb = Math.max(1.0, singleMaxAvailable * 0.03);
   if (vramTotalGb > singleMaxAvailable - minimumHeadroomGb) return null;
   if (splitActive) return null;
 

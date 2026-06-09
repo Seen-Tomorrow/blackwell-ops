@@ -16,6 +16,8 @@ export interface LoadParseResult {
   layerTotal?: number;
   gpuIndex?: number;
   tickerLine?: string;
+  loadFailed?: boolean;
+  loadErrorReason?: string;
 }
 
 function sanitizeTicker(line: string): string {
@@ -83,6 +85,26 @@ export function parseLoadLogLine(line: string): LoadParseResult {
 
   if (lower.includes("readiness=") || lower.includes("engine ready")) {
     result.phase = "ready";
+  }
+
+  if (
+    lower.includes("model loading error")
+    || lower.includes("error loading model")
+    || lower.includes("failed to load model")
+    || lower.includes("unable to allocate")
+    || lower.includes("exiting due to")
+    || lower.includes("launch_error:")
+    || (lower.includes("llama_server") && lower.includes("exiting"))
+  ) {
+    result.loadFailed = true;
+    const dueIdx = lower.indexOf("exiting due to");
+    if (dueIdx >= 0) {
+      result.loadErrorReason = clean.slice(dueIdx).slice(0, 160);
+    } else if (lower.includes("launch_error:")) {
+      result.loadErrorReason = clean.split(/launch_error:/i).slice(1).join(":").trim().slice(0, 160);
+    } else {
+      result.loadErrorReason = clean.slice(0, 160);
+    }
   }
 
   const cudaDev =

@@ -728,6 +728,9 @@ fn discover_providers() -> Vec<crate::types::ProviderConfig> {
                     factory_provided: true,
                     template_version: identity.template_version,
                     needs_template_attention: false,
+                    launch_profile: crate::templates::load_provider_defaults(&identity.id)
+                        .map(|t| crate::types::LaunchProfile::from_spawn_profile(&t.spawn_profile))
+                        .unwrap_or_default(),
                 });
             }
         }
@@ -1639,6 +1642,9 @@ fn build_config_with_providers_full(_gpu_count: usize, mut config: AppConfig) ->
             }
         }
         merge_discovered_binaries(&mut p);
+        if let Some(tmpl) = crate::templates::load_provider_defaults(&p.id) {
+            p.launch_profile = crate::types::LaunchProfile::from_spawn_profile(&tmpl.spawn_profile);
+        }
         providers.push(p);
     }
 
@@ -1684,6 +1690,11 @@ fn build_config_with_providers_full(_gpu_count: usize, mut config: AppConfig) ->
                 factory_provided: false,
                 template_version: if tv_changed { factory_tv } else { meta.template_version },
                 needs_template_attention: tv_changed,
+                launch_profile: tmpl_key
+                    .as_ref()
+                    .and_then(|key| crate::templates::load_provider_defaults(key))
+                    .map(|t| crate::types::LaunchProfile::from_spawn_profile(&t.spawn_profile))
+                    .unwrap_or_default(),
             });
         }
     }

@@ -24,6 +24,10 @@ interface VramBadgeProps {
   gpuLoadTargetsMib?: Record<number, number>;
   offloadMode?: string; // Current Offload_Mode config value (e.g., "moe_optimal")
   onMoeSuggestionClick?: () => void; // Callback to auto-switch to MOE_OPTIMAL
+  /** Hide FIT validate button (Auto VRAM launch handles tuning). */
+  hideValidate?: boolean;
+  /** Hide MOE_OPTIMAL badge (not applicable in Auto VRAM mode). */
+  hideMoeBadge?: boolean;
   className?: string;
 }
 
@@ -32,7 +36,7 @@ interface VramBadgeProps {
 export default function VramBadge({
   manifest, gpus, modelMeta, selectedGpuIndices, onDeviceSelect, isValidating, onValidate,
   isModelRunning, activeEngineAlias, activeEnginePort, selectedSlotIdx, supportsFusion = true, engineStatus,
-  gpuMask = "", vramTargetMib, modelLayerTotal, gpuLoadTargetsMib, offloadMode, onMoeSuggestionClick, className
+  gpuMask = "", vramTargetMib, modelLayerTotal, gpuLoadTargetsMib, offloadMode, onMoeSuggestionClick, hideValidate = false, hideMoeBadge = false, className
 }: VramBadgeProps) {
   const { getEngine } = useFusionData();
   const fusion = selectedSlotIdx !== null && selectedSlotIdx !== undefined ? getEngine(selectedSlotIdx) : null;
@@ -41,10 +45,13 @@ export default function VramBadge({
 
   const s = manifest.style;
   const t = s.uiTemplate;
-  const isCertified = manifest.validatedVramMib != null;
+  const isLearned = manifest.learnedFromPreviousRun === true;
+  const isCertified = manifest.validatedVramMib != null && !isLearned;
   // Total memory need: VRAM portion + RAM portion (expert FFN offload, layer spill, etc.)
   const totalNeedGb = manifest.vramTotalGb + manifest.ramTotalGb;
-  const displayTotalGb = isCertified ? (manifest.validatedVramMib / 1024) : totalNeedGb;
+  const displayTotalGb = isCertified
+    ? (manifest.validatedVramMib! / 1024)
+    : totalNeedGb;
   const neededText = displayTotalGb.toFixed(1);
 
   // Total manufactured VRAM capacity across all GPUs
@@ -67,9 +74,10 @@ export default function VramBadge({
   const ramMfgGb = manifest.ramManufacturedGb.toFixed(0);
 
   return (
-    <div className={`px-3 py-2.5 relative ${className || ''}`}>
+    <div className={`vram-badge-forecast px-3 py-2.5 relative min-h-full ${className || ''}`}>
       {/* Overlay when a specific engine is selected (mini card click) — covers entire forecast container */}
-      {selectedSlotIdx !== null && selectedSlotIdx !== undefined && activeEnginePort && (
+      {selectedSlotIdx !== null && selectedSlotIdx !== undefined && activeEnginePort
+        && (engineStatus === "LOADING" || engineStatus === "RUNNING") && (
         <div
           className="!absolute inset-0 z-50 phosphor-screen phosphor-display-surface overflow-hidden flex flex-col rounded-xl border border-stealth-border p-[6px]"
           style={{ animation: 'fadeIn 0.2s ease' }}
@@ -98,11 +106,16 @@ export default function VramBadge({
         <div className={`relative inline-flex flex-col rounded-sm border px-2 py-1 transition-all ${
           isCertified
             ? "border-amber-400/50"
-            : "border-stealth-muted/30"
+            : isLearned
+              ? "border-cyan-400/50"
+              : "border-stealth-muted/30"
         }`}>
           {/* Button — floating below the box */}
           {onValidate && (
-            <div className="absolute -bottom-5 left-1/2 -translate-x-1/2">
+            <div
+              className={`absolute -bottom-5 left-1/2 -translate-x-1/2 ${hideValidate ? "invisible pointer-events-none" : ""}`}
+              aria-hidden={hideValidate}
+            >
               <button
                 onClick={onValidate}
                 disabled={isValidating}
@@ -126,7 +139,9 @@ export default function VramBadge({
             <span className={`text-xl font-mono transition-all ${
               isCertified
                 ? "bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-500 bg-clip-text text-transparent drop-shadow-[0_0_8px_rgba(251,191,36,0.4)]"
-               : `${s.titleColor}`
+                : isLearned
+                  ? "bg-gradient-to-r from-cyan-300 via-sky-400 to-cyan-500 bg-clip-text text-transparent drop-shadow-[0_0_8px_rgba(34,211,238,0.35)]"
+                  : `${s.titleColor}`
              }`}>
                {neededText} GB
             </span>
@@ -143,6 +158,21 @@ export default function VramBadge({
                     <path d="M3 5L4.5 6.5L7 3.5" stroke="#FBBF24" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round"/>
                   </svg>
                   <span className="text-[9px] font-mono tracking-widest text-amber-400">CERTIFIED</span>
+                </div>
+              )}
+              {isLearned && (
+                <div
+                  style={{ animation: 'fadeIn 0.25s ease' }}
+                  className="flex items-center gap-1"
+                  title="VRAM footprint measured on a previous launch with this model + config"
+                >
+                  <svg width="15" height="15" viewBox="0 0 10 10" fill="none">
+                    <path d="M7.5 2.5H5.5V4.5" stroke="#22D3EE" strokeWidth="0.9" strokeLinecap="round" strokeLinejoin="round"/>
+                    <path d="M2.5 5C2.5 3.62 3.62 2.5 5 2.5C6.05 2.5 6.95 3.15 7.35 4" stroke="#22D3EE" strokeWidth="0.9" strokeLinecap="round"/>
+                    <path d="M2.5 7.5H4.5V5.5" stroke="#22D3EE" strokeWidth="0.9" strokeLinecap="round" strokeLinejoin="round"/>
+                    <path d="M7.5 5C7.5 6.38 6.38 7.5 5 7.5C3.95 7.5 3.05 6.85 2.65 6" stroke="#22D3EE" strokeWidth="0.9" strokeLinecap="round"/>
+                  </svg>
+                  <span className="text-[9px] font-mono tracking-widest text-cyan-400">LEARNED</span>
                 </div>
               )}
           </div>
@@ -187,7 +217,7 @@ export default function VramBadge({
         </p>
 
    {/* MOE Badge - absolutely positioned in empty 25% space on right, aligned to full bars height */}
-        {modelMeta?.n_expert > 0 && (
+        {!hideMoeBadge && modelMeta?.n_expert > 0 && (
           <div className="absolute right-0 top-[-10px] h-full flex items-center z-10">
             <MoeBadge 
               offloadMode={offloadMode}

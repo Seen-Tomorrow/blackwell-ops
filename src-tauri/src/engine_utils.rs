@@ -77,6 +77,81 @@ pub fn compute_gpu_mask_from_params(device: &str, split_mode: &str, gpu_count: u
     }
 }
 
+/// Ask llama-server to shut down via CTRL+C on its console (prints memory breakdown on exit).
+#[cfg(windows)]
+pub fn request_console_ctrl_c(pid: u32) -> bool {
+    use windows_sys::Win32::System::Console::{
+        AttachConsole, FreeConsole, GenerateConsoleCtrlEvent, SetConsoleCtrlHandler, CTRL_C_EVENT,
+    };
+    use windows_sys::Win32::System::Threading::{
+        GetExitCodeProcess, OpenProcess, PROCESS_QUERY_INFORMATION,
+    };
+    use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
+
+    unsafe extern "system" fn swallow_ctrl_c(_ctrl_type: u32) -> i32 {
+        1
+    }
+
+    unsafe {
+        let handle = OpenProcess(PROCESS_QUERY_INFORMATION, 0, pid);
+        if handle == INVALID_HANDLE_VALUE {
+            log::debug!("[stop] pid {pid} already exited — skip AttachConsole");
+            return false;
+        }
+        let mut exit_code: u32 = 0;
+        let ok = GetExitCodeProcess(handle, &mut exit_code) != 0;
+        CloseHandle(handle);
+        const STILL_ACTIVE: u32 = 259;
+        if !ok || exit_code != STILL_ACTIVE {
+            log::debug!("[stop] pid {pid} not running (exit={exit_code}) — skip AttachConsole");
+            return false;
+        }
+
+        if AttachConsole(pid) == 0 {
+            log::debug!("[stop] AttachConsole failed for pid {pid} — will force-kill");
+            return false;
+        }
+        let _ = SetConsoleCtrlHandler(Some(swallow_ctrl_c), 1);
+        let sent = GenerateConsoleCtrlEvent(CTRL_C_EVENT, 0) != 0;
+        let _ = SetConsoleCtrlHandler(None, 0);
+        FreeConsole();
+        if !sent {
+            log::warn!("[stop] GenerateConsoleCtrlEvent failed for pid {pid}");
+        }
+        sent
+    }
+}
+
+#[cfg(not(windows))]
+pub fn request_console_ctrl_c(_pid: u32) -> bool {
+    false
+}
+
+/// Graceful stop (CTRL+C) then force-kill. Waits up to ~8s for memory-breakdown stderr.
+pub fn stop_child_gracefully(child: &mut std::process::Child, pid: Option<u32>) -> bool {
+    if let Some(pid) = pid {
+        let _ = request_console_ctrl_c(pid);
+    }
+
+    for _ in 0..80 {
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        match child.try_wait() {
+            Ok(Some(_)) => return true,
+            Ok(None) => {}
+            Err(_) => break,
+        }
+    }
+
+    let _ = child.kill();
+    for _ in 0..20 {
+        std::thread::sleep(std::time::Duration::from_millis(25));
+        if let Ok(Some(_)) = child.try_wait() {
+            return true;
+        }
+    }
+    false
+}
+
 /// Fast kill by PID — avoids slow netstat scan when we already know the process.
 pub async fn kill_process_by_pid(pid: u32) -> Result<(), String> {
     let output = tokio::process::Command::new("taskkill")

@@ -245,7 +245,7 @@ impl BlackwellOutputConsoleManager {
         content: String,
         style: BlackwellOutputConsoleLineStyle,
     ) {
-        let timestamp = chrono::Utc::now().to_rfc3339();
+        let timestamp = chrono::Local::now().to_rfc3339();
 
         let line = BlackwellOutputConsoleTextLine {
             timestamp,

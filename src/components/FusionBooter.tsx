@@ -182,6 +182,20 @@ export default function FusionBooter({
     active: true,
   });
 
+  if (state.loadFailed) {
+    return (
+      <div className="flex flex-col w-full h-full items-center justify-center gap-3 px-4 py-2 text-center">
+        <span className="text-[11px] font-mono text-red-400 tracking-widest">LOAD FAILED</span>
+        <p className="text-[9px] font-mono text-stealth-muted/80 leading-relaxed max-w-[320px]">
+          {state.loadErrorReason}
+        </p>
+        <span className="text-[8px] font-mono text-stealth-muted/45">
+          {alias.toUpperCase()} :{port}
+        </span>
+      </div>
+    );
+  }
+
   const mapGpus = state.liveGpus.length > 0 ? state.liveGpus : gpus;
   const layerLabel =
     state.layerTotal > 0

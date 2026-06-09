@@ -74,6 +74,18 @@ pub struct SpawnProfile {
     /// GGML-style help uses column-0 flags (0). IK-style help indents flags (typically 2–9).
     #[serde(default = "default_help_flag_max_indent")]
     pub help_flag_max_indent: u8,
+    /// Auto VRAM mode for non-power-users — simplified engine config UI.
+    #[serde(default)]
+    pub auto_vram: bool,
+    /// `ik_native` (--fit tensor offload) | `ggml_fit_params` (--fit on + --fit-ctx) | `none`
+    #[serde(default)]
+    pub fit_style: String,
+    /// Param keys shown in Auto VRAM mode.
+    #[serde(default)]
+    pub simple_param_keys: Vec<String>,
+    /// IK `--fit-margin` MiB when using ik_native fit.
+    #[serde(default)]
+    pub fit_margin_mib: u32,
 }
 
 fn default_model_flag() -> Vec<String> { vec!["-m".into()] }
@@ -102,6 +114,10 @@ impl Default for SpawnProfile {
             mmproj_flag: default_mmproj_flag(),
             max_engine_slots: default_max_engine_slots(),
             help_flag_max_indent: default_help_flag_max_indent(),
+            auto_vram: false,
+            fit_style: String::new(),
+            simple_param_keys: Vec::new(),
+            fit_margin_mib: 256,
         }
     }
 }
@@ -384,7 +400,31 @@ impl ProviderTemplate {
         }
 
         args.extend(sp.verbosity_args.clone());
-        args.extend(sp.spawn_flags.clone());
+
+        // Auto VRAM launch — frontend sets extra_params.__auto_vram; power users can disable.
+        let auto_vram_launch = config
+            .extra_params
+            .get("__auto_vram")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
+        if auto_vram_launch {
+            args.extend(sp.spawn_flags.clone());
+            match sp.fit_style.as_str() {
+                "ggml_fit_params" => {
+                    let ctx = resolve_launch_ctx_tokens(config, user_params);
+                    args.extend(["--fit".into(), "on".into()]);
+                    args.extend(["--fit-ctx".into(), ctx.to_string()]);
+                }
+                "ik_native" => {
+                    args.push("--fit".into());
+                    if sp.fit_margin_mib > 0 {
+                        args.extend(["--fit-margin".into(), sp.fit_margin_mib.to_string()]);
+                    }
+                }
+                _ => {}
+            }
+        }
 
         if sp.enable_metrics {
             args.push("--metrics".into());
@@ -412,6 +452,18 @@ impl ProviderTemplate {
 
         for param in &sorted_params {
             if param.hidden { continue; }
+
+            // Auto VRAM: only emit params explicitly present in extra_params (whitelist).
+            // Prevents stale split/batch/etc. from manual sessions leaking into --fit launches.
+            if auto_vram_launch {
+                let key_present = config
+                    .extra_params
+                    .keys()
+                    .any(|k| k.eq_ignore_ascii_case(&param.key));
+                if !key_present {
+                    continue;
+                }
+            }
 
             // Resolve value: extra_params override > saved default_value
             let mut value = Self::resolve_param_value(config, param);
@@ -469,8 +521,9 @@ impl ProviderTemplate {
         }
 
         // n_gpu_layers injection — computed by VRAM scenario factory at runtime.
-        // Skip when --fit is in spawn_flags — IK auto-offloads inside the loader.
-        let fit_handles_offload = sp.spawn_flags.iter().any(|f| f == "--fit");
+        // Skip when Auto VRAM launch handles offload (--fit / --fit on).
+        let fit_handles_offload = auto_vram_launch
+            && matches!(sp.fit_style.as_str(), "ik_native" | "ggml_fit_params");
         if !fit_handles_offload {
             if let Some(ngl) = config.extra_params.get("__ngl") {
                 if let Some(flag) = sp.ngl_flag.first() {
@@ -590,6 +643,43 @@ impl ProviderTemplate {
         filename.contains(&pat_lower)
     }
 
+}
+
+/// Resolve user ctx for `--fit-ctx` from extra_params or saved user params.
+fn resolve_launch_ctx_tokens(
+    config: &EngineConfig,
+    user_params: &[crate::types::UserEditedTemplateParam],
+) -> usize {
+    if let Some(v) = config.extra_params.get("ctx") {
+        if let Some(n) = v.as_u64() {
+            return n as usize;
+        }
+        if let Some(s) = v.as_str() {
+            return parse_ctx_token_str(s);
+        }
+    }
+    for p in user_params {
+        if p.key == "ctx" && !p.default_value.is_null() {
+            if let Some(n) = p.default_value.as_u64() {
+                return n as usize;
+            }
+            if let Some(s) = p.default_value.as_str() {
+                return parse_ctx_token_str(s);
+            }
+        }
+    }
+    32768
+}
+
+fn parse_ctx_token_str(raw: &str) -> usize {
+    let s = raw.trim().to_lowercase();
+    if let Some(num) = s.strip_suffix('k') {
+        return num.parse::<usize>().unwrap_or(32) * 1024;
+    }
+    if let Some(num) = s.strip_suffix('m') {
+        return num.parse::<usize>().unwrap_or(1) * 1024 * 1024;
+    }
+    s.parse::<usize>().unwrap_or(32768)
 }
 
 /// IK llama.cpp flags that were previously emitted as `-flag 0|1` but are now boolean-only.

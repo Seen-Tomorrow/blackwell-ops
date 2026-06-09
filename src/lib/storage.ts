@@ -37,6 +37,8 @@ import { normalizeDisplayTexture, type DisplayTexture } from "./displayTexture";
  * | BlackOps-engine-alias:{modelPath} | string | Per-model launch alias |
  * | BlackOps-binary-profile:{providerId} | vanguard \| frontier \| fresh \| stable | Selected binary env profile |
  * | BlackOps-foundry-last-refresh:{signature} | timestamp string | Foundry git refresh throttle |
+ * | BlackOps-auto-vram:{providerId} | "0" \| "1" | Auto VRAM simplified mode per provider |
+
  *
  * Purged on boot (stale — no longer read by app):
  * | Key | Notes |
@@ -185,6 +187,21 @@ export function groupOrderKey(providerId: string): string {
   return `${STORAGE_PREFIX}group-order:${providerId}`;
 }
 
+export function autoVramKey(providerId: string): string {
+  return `${STORAGE_PREFIX}auto-vram:${providerId}`;
+}
+
+export function loadAutoVramEnabled(providerId: string, factoryDefault: boolean): boolean {
+  const stored = readStorage(autoVramKey(providerId));
+  if (stored === "1") return true;
+  if (stored === "0") return false;
+  return factoryDefault;
+}
+
+export function saveAutoVramEnabled(providerId: string, enabled: boolean): void {
+  writeStorage(autoVramKey(providerId), enabled ? "1" : "0");
+}
+
 export function engineAliasKey(modelPath: string): string {
   return `${STORAGE_PREFIX}engine-alias:${modelPath}`;
 }
@@ -200,6 +217,7 @@ export function foundryLastRefreshKey(providerSignature: string): string {
 /** Keys removed on boot — superseded or abandoned. */
 const STALE_STORAGE_KEYS = [
   "blackops-phosphor-theme",
+  `${STORAGE_PREFIX}ctx-slider-variant`,
 ] as const;
 
 // ── Low-level IO ───────────────────────────────────────────────────────────

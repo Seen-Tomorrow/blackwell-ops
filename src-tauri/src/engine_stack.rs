@@ -5,8 +5,18 @@ use crate::log_hub::LogHub;
 
 pub const DEFAULT_N_CTX: usize = 32768;
 
-/// Estimate committed VRAM for a launched engine from full scan data or file size fallback.
+/// Estimate committed VRAM for a launched engine — learned → FIT scan → file size fallback.
 fn fit_scanner_estimate_vram(config: &EngineConfig) -> f64 {
+    let provider_id = if config.backend_type.is_empty() {
+        crate::config::DEFAULT_PROVIDER_ID.to_string()
+    } else {
+        config.backend_type.clone()
+    };
+    let key = crate::vram_learn::learned_vram_key_from_config(&config.model_path, &provider_id, config);
+    if let Some(entry) = crate::vram_learn::lookup_learned_vram(&key) {
+        return entry.vram_mib;
+    }
+
     if let Some(scan_data) = crate::fit_scanner::load_full_scan_export() {
         if let Some(full) = scan_data.get(&config.model_path) {
             let ctx_str = config.get_param_str("ctx").unwrap_or_else(|| "32768".to_string());
@@ -63,6 +73,7 @@ pub struct EngineSlot {
     pub model_path: String,
     pub gpu_mask: String,
     pub vram_mib: f64,
+    pub gpu_breakdown_mib: Option<Vec<f64>>,
     pub n_ctx: usize,
     pub provider_name: String,
     pub backend_type: String,
@@ -92,6 +103,7 @@ impl EngineStack {
                 model_path: String::new(),
                 gpu_mask: String::new(),
                 vram_mib: 0.0,
+                gpu_breakdown_mib: None,
                 n_ctx: DEFAULT_N_CTX,
                 provider_name: String::new(),
                 backend_type: String::new(),
@@ -228,19 +240,35 @@ impl EngineStack {
 
         // Extract stderr pipe and start reader immediately
         let stderr = child.stderr.take().unwrap();
-        let on_ready_log = on_ready.clone();
+        let learn_snapshot = crate::vram_learn::snapshot_from_config(
+            &config.model_path,
+            &backend_type,
+            config,
+        );
+        let model_ready = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let fire_ready = {
+            let ready_flag = model_ready.clone();
+            let cb = on_ready.clone();
+            std::sync::Arc::new(move || {
+                if !ready_flag.swap(true, std::sync::atomic::Ordering::AcqRel) {
+                    cb();
+                }
+            })
+        };
         log_hub.spawn_slot_reader(
             slot_idx,
             config.alias.clone(),
             stderr,
-            move || on_ready_log(),
+            learn_snapshot,
+            model_ready,
+            fire_ready.clone(),
         );
 
         Self::spawn_health_readiness_probe(
             config.port,
             config.alias.clone(),
             log_hub.clone(),
-            on_ready,
+            fire_ready,
             slot_arc.clone(),
         );
 
@@ -316,7 +344,8 @@ impl EngineStack {
             };
             let url = format!("http://127.0.0.1:{}/health", port);
 
-            for _ in 0..600 {
+            // 1200 × 500ms = 10 min — mmap + --fit on large models can exceed 5 min; we never kill on timeout.
+            for _ in 0..1200 {
                 {
                     let slot = slot_arc.lock();
                     if !matches!(slot.status, SlotStatus::Loading) {
@@ -328,7 +357,7 @@ impl EngineStack {
                     if resp.status().is_success() {
                         if let Ok(body) = resp.json::<serde_json::Value>().await {
                             match body["status"].as_str() {
-                                Some("ok") | Some("no slot available") => {
+                                Some("ok") => {
                                     let status = body["status"].as_str().unwrap_or("?");
                                     log_hub.emit_console_line(
                                         crate::output_console::BlackwellOutputConsoleCategory::Debug,
@@ -352,12 +381,22 @@ impl EngineStack {
                 tokio::time::sleep(std::time::Duration::from_millis(500)).await;
             }
 
-            log::warn!("[readiness] HTTP health probe timed out for port {}", port);
+            log::info!(
+                "[readiness] HTTP health probe stopped polling port {} — load may still be in progress (engine not stopped)",
+                port
+            );
+            log_hub.emit_console_line(
+                crate::output_console::BlackwellOutputConsoleCategory::Engines,
+                &format!(
+                    "[{alias}] Load still in progress after health poll window — engine was not stopped (slow mmap/--fit is normal)"
+                ),
+                crate::output_console::BlackwellOutputConsoleLineStyle::Normal,
+            );
         });
     }
 
     /// Check if a Windows process is still alive by PID using OpenProcess + GetExitCodeProcess.
-    fn is_process_alive(pid: u32) -> bool {
+    pub(crate) fn is_process_alive(pid: u32) -> bool {
         use windows_sys::Win32::System::Threading::{
             OpenProcess, GetExitCodeProcess, PROCESS_QUERY_INFORMATION,
         };
@@ -371,7 +410,8 @@ impl EngineStack {
         };
 
         if handle == INVALID_HANDLE_VALUE {
-            return false;
+            // Transient access denial during heavy GPU load — assume alive to avoid false kills.
+            return true;
         }
 
         let mut exit_code: u32 = 0;
@@ -415,7 +455,7 @@ impl EngineStack {
 
         tokio::spawn(async move {
             loop {
-                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
                 if reaper_cancel.load(Ordering::Acquire) {
                     break;
@@ -424,42 +464,21 @@ impl EngineStack {
                 let alive = Self::is_process_alive(pid);
 
                 if !alive {
-                    // Intentional stop already cleared this slot — skip duplicate cleanup.
-                    let already_stopped = {
+                    let still_loading = {
                         let stack = stack_ref.lock().await;
                         stack
                             .get_slot(slot_idx)
-                            .map_or(true, |s| matches!(s.status, SlotStatus::Idle))
+                            .map_or(false, |s| matches!(s.status, SlotStatus::Loading))
                     };
-                    if already_stopped {
-                        break;
+                    if still_loading {
+                        Self::fail_loading_slot(
+                            slot_idx,
+                            &stack_ref,
+                            log_hub.clone(),
+                            "Engine process exited during model load",
+                        )
+                        .await;
                     }
-
-                    // Stop the fusion brain for this slot
-                    crate::fusion_brain::stop_brain(slot_idx).await;
-
-                    // Emit system event
-                    let msg = format!("[REAPER] Engine died unexpectedly (pid {})", pid);
-                    log_hub.emit_system_event(slot_idx, &alias, &msg).await;
-                    log_hub.emit_console_line(
-                        crate::output_console::BlackwellOutputConsoleCategory::Error,
-                        &format!("[{}] {}", alias, msg),
-                        crate::output_console::BlackwellOutputConsoleLineStyle::Error,
-                    );
-
-                    let _ = crate::engine_utils::kill_process_by_pid(pid).await;
-                    let _ = Self::kill_process_by_port(port).await;
-
-                    // Clear the slot
-                    {
-                        let stack = stack_ref.lock().await;
-                        stack.clear_slot(slot_idx);
-                        stack.emit_stack_changed();
-                    }
-
-                    // Emit slot-cleared for frontend log cleanup
-                    log_hub.emit("slot-cleared", &serde_json::json!({ "slot": slot_idx }));
-
                     break;
                 }
             }
@@ -470,23 +489,7 @@ impl EngineStack {
         crate::engine_utils::kill_process_by_port(port).await
     }
 
-    /// Kill child and poll briefly (~250ms max). Matches CTRL+C responsiveness.
-    fn fast_kill_process(child: &mut std::process::Child) -> bool {
-        let _ = child.kill();
-
-        for _ in 0..10 {
-            std::thread::sleep(std::time::Duration::from_millis(25));
-            match child.try_wait() {
-                Ok(Some(_)) => return true,
-                Ok(None) => {}
-                Err(_) => break,
-            }
-        }
-
-        false
-    }
-
-    /// Background orphan cleanup — only when fast_kill_process failed.
+    /// Background orphan cleanup — only when graceful stop failed.
     async fn finish_process_stop(
         port: u16,
         pid: Option<u32>,
@@ -496,11 +499,13 @@ impl EngineStack {
         alias: String,
         emit_console: bool,
     ) {
-        let graceful = tokio::task::spawn_blocking(move || Self::fast_kill_process(&mut proc))
+        let exited = tokio::task::spawn_blocking(move || {
+            crate::engine_utils::stop_child_gracefully(&mut proc, pid)
+        })
             .await
             .unwrap_or(false);
 
-        if !graceful {
+        if !exited {
             if let Some(p) = pid {
                 let _ = crate::engine_utils::kill_process_by_pid(p).await;
             }
@@ -509,10 +514,10 @@ impl EngineStack {
 
         if emit_console {
             if let Some(hub) = hub {
-                let msg = if graceful {
-                    "[STOP] KILLED".to_string()
+                let msg = if exited {
+                    "[STOP] graceful — VRAM learn pending on stderr".to_string()
                 } else {
-                    "[STOP] ORPHANED (still alive after kill)".to_string()
+                    "[STOP] force-killed (VRAM learn may be skipped)".to_string()
                 };
                 hub.emit_console_line(
                     crate::output_console::BlackwellOutputConsoleCategory::Engines,
@@ -520,6 +525,90 @@ impl EngineStack {
                     crate::output_console::BlackwellOutputConsoleLineStyle::Warning,
                 );
             }
+        }
+    }
+
+    /// Model load failed or engine exited before ready — tear down slot and notify frontend.
+    pub async fn fail_loading_slot(
+        slot_idx: usize,
+        stack_ref: &Arc<tokio::sync::Mutex<EngineStack>>,
+        log_hub: LogHub,
+        reason: &str,
+    ) {
+        let snapshot = {
+            let stack = stack_ref.lock().await;
+            let Some(slot) = stack.get_slot(slot_idx) else {
+                return;
+            };
+            if matches!(slot.status, SlotStatus::Idle) {
+                return;
+            }
+            (slot.alias.clone(), slot.port, slot.pid)
+        };
+
+        let (alias, port, pid) = snapshot;
+
+        crate::fusion_brain::stop_brain(slot_idx).await;
+
+        let user_reason = {
+            let trimmed = reason.trim();
+            if trimmed.is_empty() {
+                "Engine stopped or crashed during model load (no stderr detail)".to_string()
+            } else {
+                trimmed.to_string()
+            }
+        };
+        let launch_err = format!("LAUNCH_ERROR: {}", user_reason);
+        log_hub.emit_system_event(slot_idx, &alias, &launch_err).await;
+        log_hub.emit_console_line(
+            crate::output_console::BlackwellOutputConsoleCategory::Error,
+            &format!("[{}] Model load failed: {}", alias, user_reason),
+            crate::output_console::BlackwellOutputConsoleLineStyle::Error,
+        );
+        log_hub.emit(
+            "engine-load-failed",
+            &serde_json::json!({
+                "slot": slot_idx,
+                "alias": alias,
+                "reason": user_reason,
+            }),
+        );
+
+        let proc_to_stop = {
+            let stack = stack_ref.lock().await;
+            stack
+                .slots
+                .get(slot_idx)
+                .and_then(|s| s.as_ref())
+                .map(|slot_arc| {
+                    let mut slot = slot_arc.lock();
+                    slot.child_proc.take()
+                })
+                .flatten()
+        };
+
+        {
+            let stack = stack_ref.lock().await;
+            stack.clear_slot(slot_idx);
+            stack.emit_stack_changed();
+        }
+        log_hub.emit("slot-cleared", &serde_json::json!({ "slot": slot_idx }));
+
+        if let Some(proc) = proc_to_stop {
+            tokio::spawn(Self::finish_process_stop(
+                port,
+                pid,
+                proc,
+                Some(log_hub),
+                slot_idx,
+                alias,
+                false,
+            ));
+        } else {
+            if let Some(p) = pid {
+                let _ = crate::engine_utils::kill_process_by_pid(p).await;
+            }
+            let _ = Self::kill_process_by_port(port).await;
         }
     }
 
@@ -536,6 +625,7 @@ impl EngineStack {
             slot.model_path.clear();
             slot.gpu_mask.clear();
             slot.vram_mib = 0.0;
+            slot.gpu_breakdown_mib = None;
             slot.n_ctx = DEFAULT_N_CTX;
             slot.provider_name.clear();
             slot.backend_type.clear();
@@ -546,6 +636,27 @@ impl EngineStack {
     }
 
     /// Emit a stack-changed event to frontend with current status snapshot.
+    /// Update measured VRAM after engine prints memory breakdown at load.
+    pub fn update_slot_vram(
+        &self,
+        slot_idx: usize,
+        vram_mib: f64,
+        gpu_breakdown_mib: Option<Vec<f64>>,
+    ) {
+        if let Some(Some(slot_arc)) = self.slots.get(slot_idx) {
+            let mut slot = slot_arc.lock();
+            if matches!(slot.status, SlotStatus::Idle) {
+                return;
+            }
+            if vram_mib > 0.0 {
+                slot.vram_mib = vram_mib;
+            }
+            if let Some(bd) = gpu_breakdown_mib {
+                slot.gpu_breakdown_mib = Some(bd);
+            }
+        }
+    }
+
     pub fn emit_stack_changed(&self) {
         if let Some(hub) = self.log_hub.as_ref() {
             let status = self.get_status();
@@ -764,6 +875,7 @@ impl EngineStack {
             binary_profile: slot.binary_profile.clone(),
             model_path: slot.model_path.clone(),
             vram_mib: slot.vram_mib,
+            gpu_breakdown_mib: slot.gpu_breakdown_mib.clone(),
             n_ctx: slot.n_ctx,
             provider_name: slot.provider_name.clone(),
             build_info: None,
@@ -785,6 +897,7 @@ impl EngineStack {
             binary_profile: String::new(),
             model_path: String::new(),
             vram_mib: 0.0,
+            gpu_breakdown_mib: None,
             n_ctx: DEFAULT_N_CTX,
             provider_name: String::new(),
             build_info: None,

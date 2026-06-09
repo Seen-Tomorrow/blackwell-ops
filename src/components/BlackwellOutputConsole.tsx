@@ -40,6 +40,20 @@ export const OUTPUT_CONSOLE_CATEGORY_LABELS: Record<Category, string> = {
 
 const CATEGORY_LABELS = OUTPUT_CONSOLE_CATEGORY_LABELS;
 
+/** RFC3339 or legacy ISO strings → local HH:MM:SS.mmm for display. */
+export function formatConsoleTimestamp(timestamp: string): string {
+  const parsed = new Date(timestamp);
+  if (!Number.isNaN(parsed.getTime())) {
+    const h = String(parsed.getHours()).padStart(2, "0");
+    const m = String(parsed.getMinutes()).padStart(2, "0");
+    const s = String(parsed.getSeconds()).padStart(2, "0");
+    const ms = String(parsed.getMilliseconds()).padStart(3, "0");
+    return `${h}:${m}:${s}.${ms}`;
+  }
+  if (timestamp.length >= 23) return timestamp.slice(11, 23);
+  return timestamp;
+}
+
 function lineStyleClass(style: string, activeCategory: Category): string {
   if (activeCategory === "error") return "boc-line--error";
   switch (style) {
@@ -137,7 +151,7 @@ export default function BlackwellOutputConsole({
   };
 
   const saveCategory = (cat: Category) => {
-    const content = lines.map(l => `[${l.timestamp}] ${l.content}`).join("\n");
+    const content = lines.map(l => `[${formatConsoleTimestamp(l.timestamp)}] ${l.content}`).join("\n");
     const blob = new Blob([content], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -320,7 +334,7 @@ export default function BlackwellOutputConsole({
 
         {lines.map((line, i) => (
           <div key={i} className={`boc-line py-[1px] whitespace-pre-wrap break-all ${lineStyleClass(line.style, activeCategory)}`}>
-            <span className="boc-line__ts mr-1.5 select-none">[{line.timestamp.slice(11, 23)}]</span>
+            <span className="boc-line__ts mr-1.5 select-none">[{formatConsoleTimestamp(line.timestamp)}]</span>
             {line.content}
           </div>
         ))}

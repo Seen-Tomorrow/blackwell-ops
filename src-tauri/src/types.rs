@@ -282,6 +282,9 @@ pub struct StackEntry {
     pub model_path: String,
     #[serde(default)]
     pub vram_mib: f64,
+    /// Per-GPU SELF MiB from live memory breakdown (CUDA0, CUDA1, …).
+    #[serde(default, rename = "gpu_breakdown_mib")]
+    pub gpu_breakdown_mib: Option<Vec<f64>>,
     /// Context size in tokens (e.g. 32768 for 32K) — used by FuelTank display
     #[serde(default = "default_ctx_size")]
     pub n_ctx: usize,
@@ -300,6 +303,35 @@ pub fn default_provider_type() -> String { crate::config::DEFAULT_PROVIDER_ID.to
 pub fn default_ctx_size() -> usize { 32768 }
 
 // ── Provider Configuration ─────────────────────────────────────────────
+
+/// Factory launch profile synced from `spawn_profile` — drives Auto VRAM UI and --fit wiring.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct LaunchProfile {
+    /// When true, non-power-users see simplified engine config (simple_param_keys only).
+    #[serde(default, rename = "autoVram")]
+    pub auto_vram: bool,
+    /// `ik_native` | `ggml_fit_params` | `none`
+    #[serde(default, rename = "fitStyle")]
+    pub fit_style: String,
+    /// Param keys visible in Auto VRAM mode (e.g. device, ctx, kv_quant).
+    #[serde(default, rename = "simpleParamKeys")]
+    pub simple_param_keys: Vec<String>,
+    /// IK `--fit-margin` MiB safety margin when fit_style is ik_native.
+    #[serde(default, rename = "fitMarginMib")]
+    pub fit_margin_mib: u32,
+}
+
+impl LaunchProfile {
+    pub fn from_spawn_profile(sp: &crate::templates::SpawnProfile) -> Self {
+        Self {
+            auto_vram: sp.auto_vram,
+            fit_style: sp.fit_style.clone(),
+            simple_param_keys: sp.simple_param_keys.clone(),
+            fit_margin_mib: sp.fit_margin_mib,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProviderConfig {
     pub id: String,
@@ -353,8 +385,12 @@ pub struct ProviderConfig {
     pub template_version: u32,
     /// True when the provider's loaded user config has a different template_version than the fresh factory template.
     /// Shows banner in ConfigPage advising admin to RESET TO DEFAULTS if issues occur after update.
-    #[serde(default, skip_serializing, rename = "needsTemplateAttention")]
+    /// Runtime-only flag for ConfigPage banner — serialized to frontend, not read from client saves.
+    #[serde(default, skip_deserializing, rename = "needsTemplateAttention")]
     pub needs_template_attention: bool,
+    /// Factory launch profile — synced from runtime default config on load (not user-persisted).
+    #[serde(default, rename = "launchProfile")]
+    pub launch_profile: LaunchProfile,
 }
 
 pub fn default_template_version() -> u32 { 1 }

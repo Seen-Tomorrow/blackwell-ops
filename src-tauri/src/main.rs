@@ -13,6 +13,7 @@ mod types;
 mod templates;
 mod nvml_probe;
 mod fit_scanner;
+mod vram_learn;
 mod mobile_bridge;
 mod burst_bench;
 mod bench_pp_burst;
@@ -537,6 +538,7 @@ async fn main() {
             engine::fit_scan_library,
             engine::fit_stop_scan,
             fit_scanner::get_fit_scan_points,
+            vram_learn::get_learned_vram,
             // GGUF Metadata Scanner commands
             engine::scan_model_metadata_cmd,
             engine::scan_all_models_cmd,

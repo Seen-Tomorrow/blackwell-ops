@@ -7,9 +7,11 @@ import {
   KEYS,
   binaryProfileKey,
   engineAliasKey,
+  loadAutoVramEnabled,
   readJsonStorage,
   readStorage,
   removeStorage,
+  saveAutoVramEnabled,
   writeJsonStorage,
   writeStorage,
 } from "../lib/storage";
@@ -27,6 +29,8 @@ import type { SetupGuideState } from "../hooks/useSetupGuide";
 import { useConfigResolver } from "../hooks/useConfigResolver";
 import { useDisplayTexture } from "../hooks/useDisplayTexture";
 import { useFoundry } from "../hooks/useBuildDock";
+import { buildAutoVramLaunchParams } from "../lib/autoVramLaunch";
+import { committedSlotsFromStack } from "../services/vram/scenarios/scenarios_factory";
 
 
 
@@ -59,10 +63,19 @@ function onboardingDisplayClasses(setupGuide: SetupGuideState): {
 const PARAM_LABEL_CLASS =
   "font-mono w-24 flex-shrink-0 uppercase tracking-wider truncate text-[9px] text-stealth-muted";
 
+/** Section headers (MEMORY MANAGEMENT, speculative decoding) — wider than param chips. */
+const SECTION_LABEL_CLASS =
+  "config-section-label font-mono flex-shrink-0 uppercase tracking-wider whitespace-nowrap text-[9px] text-stealth-muted";
+
 function paramChipClass(active: boolean): string {
   return `px-2 py-0.5 text-[9px] font-mono rounded-sm focus:outline-none ${
     active ? "value-chip-active" : "value-chip"
   }`;
+}
+
+function isSplitModeActive(split: unknown): boolean {
+  const mode = String(split ?? "none").trim();
+  return mode.length > 0 && mode.toUpperCase() !== "NONE";
 }
 
 function pickBestBinaryProfile(provider: ProviderConfig | undefined): EnvProfile {
@@ -96,6 +109,15 @@ function deriveParamGroups(groupKeys: string[]): ParamGroupMeta[] {
     label: id.toUpperCase(),
     alwaysOpen: id === 'Core' || id === 'Performance', // Core/Performance always open by convention
   }));
+}
+
+const SPEC_DECODING_GROUP = "SPECULATIVE-DECODING";
+const SPEC_DECODING_LAUNCH_KEYS = ["spec_type", "spec_draft_n_max"] as const;
+
+function isSpecDecodingActive(params: UserEditedTemplateParam[]): boolean {
+  return params
+    .filter((p) => p.ui_group === SPEC_DECODING_GROUP)
+    .some((p) => !p.hidden);
 }
 
 function collectActiveAliases(stack: StackEntry[]): Set<string> {
@@ -198,6 +220,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
 
   const [specFlash, setSpecFlash] = useState(false);
+  const [autoVramEnabled, setAutoVramEnabled] = useState(true);
 
   const { texture: displayTexture, label: displayTextureLabel, cycle: cycleDisplayTexture } = useDisplayTexture();
 
@@ -309,6 +332,28 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     return selectedProvider || (model.backend_type || DEFAULT_PROVIDER_ID);
   }, [model, selectedProvider]);
 
+  const currentProvider = useMemo(
+    () => resolvedProviders?.find((p) => p.id === effectiveBackendType),
+    [resolvedProviders, effectiveBackendType],
+  );
+  const launchProfile = currentProvider?.launchProfile;
+  const providerSupportsAutoVram = Boolean(
+    launchProfile?.autoVram || launchProfile?.fitStyle,
+  );
+  const simpleModeActive = providerSupportsAutoVram && autoVramEnabled;
+  const visibleParamKeys = useMemo(() => {
+    if (!simpleModeActive) return null;
+    return new Set(launchProfile?.simpleParamKeys ?? ["device", "ctx"]);
+  }, [simpleModeActive, launchProfile?.simpleParamKeys]);
+
+  useEffect(() => {
+    if (!providerSupportsAutoVram) {
+      setAutoVramEnabled(false);
+      return;
+    }
+    setAutoVramEnabled(loadAutoVramEnabled(effectiveBackendType, launchProfile?.autoVram ?? true));
+  }, [effectiveBackendType, providerSupportsAutoVram, launchProfile?.autoVram]);
+
   const isProfileBuilding = useCallback((profile: EnvProfile): boolean => {
     if (!buildProgress) return false;
     const step = buildProgress.step;
@@ -359,11 +404,14 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     };
   }, [gpus.length, userEditedParams]);
 
-  const allParamsForLaunch = useMemo(() => {
+  const allParamsResolved = useMemo(() => {
     const defs = deviceParam ? [deviceParam, ...userEditedParams] : [...userEditedParams];
     const gpuValues = gpus.map((_, i) => `GPU-${i}`);
     return defs
       .map((d) => {
+        if (d.key === "mmap") {
+          return { ...d, dock: undefined, ui_group: "FEATURE-FLAGS" };
+        }
         if (d.key !== "device" || gpus.length === 0) return d;
         const defaultStr = String(d.defaultValue);
         return {
@@ -374,6 +422,11 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       })
       .sort((a, b) => a.order - b.order);
   }, [userEditedParams, deviceParam, gpus]);
+
+  const allParamsForLaunch = useMemo(() => {
+    if (!visibleParamKeys) return allParamsResolved;
+    return allParamsResolved.filter((d) => visibleParamKeys.has(d.key));
+  }, [allParamsResolved, visibleParamKeys]);
 
   // Docked params: extracted from merged defs by dock key
   const dockedParams = useMemo(() => {
@@ -389,28 +442,53 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   // ── Hooks ────────────────────────────────────────────────────────────────
   const { config, updateParam } = useConfigResolver({
     model,
-    userEditedParams: allParamsForLaunch,
+    userEditedParams: allParamsResolved,
     backendType: effectiveBackendType,
   });
+
+  const runningSlotsForPlan = useMemo(
+    () => committedSlotsFromStack(stack),
+    [stack],
+  );
+
+  const simpleParamKeys = launchProfile?.simpleParamKeys ?? ["device", "ctx"];
+
+  const scenarioConfig = useMemo(() => {
+    if (!simpleModeActive) {
+      return { ...config, backend_type: effectiveBackendType };
+    }
+    const params: Record<string, unknown> = {};
+    for (const key of simpleParamKeys) {
+      if (config[key] !== undefined) params[key] = config[key];
+    }
+    return { ...params, backend_type: effectiveBackendType };
+  }, [simpleModeActive, config, effectiveBackendType, simpleParamKeys]);
 
   // Display value — manufactured capacity, no deductions (what users see)
   const displayVramMib = gpus.reduce((sum, g) => sum + (g.memory_total_manufactured || g.memory_total), 0);
 
  const vramCalc = useScenarioEvaluator({
     model,
-    config: { ...config, backend_type: effectiveBackendType },
+    config: scenarioConfig,
     gpus,
     stack,
     systemInfo,
+    autoVramLaunch: simpleModeActive,
+    fitStyle: launchProfile?.fitStyle ?? "",
   });
 
-  // Compute which GPUs are involved from manifest — for multi-GPU highlighting
+  const splitModeActive = isSplitModeActive(config.split);
+
+  // Manual split → all GPUs; solo → manifest projection; badge click still forces split=none
   const selectedGpuIndices = useMemo(() => {
+    if (!simpleModeActive && splitModeActive && gpus.length > 0) {
+      return gpus.map((g) => g.index);
+    }
     if (!vramCalc.manifest) return [];
     return vramCalc.manifest.gpuAllocations
-      .filter(a => a.projectedLoadGb > 0.1) // Only highlight GPUs with actual load
-      .map(a => a.gpuIndex);
-  }, [vramCalc.manifest]);
+      .filter((a) => a.projectedLoadGb > 0.1)
+      .map((a) => a.gpuIndex);
+  }, [vramCalc.manifest, simpleModeActive, splitModeActive, gpus]);
 
   const booterProps = useMemo(() => {
     const gpuLoadTargetsMib: Record<number, number> = {};
@@ -468,6 +546,53 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     // Yellow accent: user-added params (not in provider default params, not system-injected via dock)
     const isUserAdded = providerDefaultKeys.size > 0 && !providerDefaultKeys.has(def.key) && !def.dock;
 
+    // DEVICE — fixed-height row; split active shows ALL (N) without changing layout below
+    if (def.key === "device") {
+      const splitLocksDevice = isSplitModeActive(config.split) && gpus.length > 0;
+      return (
+        <div
+          key={paramRowKey(def, rowIdx)}
+          data-param-row
+          data-device-row
+          className={`flex items-center min-h-[22px] ${isLocked ? "opacity-50" : ""}`}
+        >
+          {isUserAdded && <div className="w-0.5 h-4 flex-shrink-0 bg-yellow-400/40 mr-1.5" />}
+          {!isUserAdded && <div className="w-0.5 h-4 flex-shrink-0 mr-1.5" />}
+          <span className={`${PARAM_LABEL_CLASS} ${isUserAdded ? "text-yellow-400/80" : ""}`} title={def.label}>
+            {def.label}
+          </span>
+          <div className="flex gap-1 flex-nowrap flex-1 min-w-0 items-center min-h-[18px]">
+            {splitLocksDevice ? (
+              <span
+                className={`${paramChipClass(true)} opacity-90 cursor-default`}
+                title="Split mode uses all detected GPUs. Set SPLIT to none to pick a single GPU."
+              >
+                ALL ({gpus.length})
+              </span>
+            ) : (
+              baseValues.map((val, valIdx) => (
+                <button
+                  key={`${paramRowKey(def, rowIdx)}-val-${valIdx}-${String(val)}`}
+                  tabIndex={isLocked ? -1 : 0}
+                  onClick={() => {
+                    if (isLocked) return;
+                    updateParam(def.key, val);
+                  }}
+                  className={paramChipClass(
+                    currentValue === val ||
+                    (typeof currentValue === "string" && typeof val === "string" &&
+                      currentValue.toLowerCase() === String(val).toLowerCase())
+                  )}
+                >
+                  {String(val)}
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      );
+    }
+
     // ── Slider ptype — render range input instead of value chips ───────────
     if (def.ptype === 'slider') {
       return (
@@ -508,7 +633,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
               key={`${paramRowKey(def, rowIdx)}-val-${valIdx}-${String(val)}`}
               tabIndex={isLocked ? -1 : 0}
               onClick={() => {
-                if (!isLocked) updateParam(def.key, val);
+                if (isLocked) return;
+                updateParam(def.key, val);
               }}
               className={paramChipClass(
                 currentValue === val ||
@@ -522,7 +648,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         </div>
       </div>
     );
-  }, [userEditedParams, config, updateParam, vramCalc.manifest]);
+  }, [config, gpus.length, providerDefaultKeys, updateParam]);
 
   // Grouped params — skip docked (rendered separately)
   const groupedParams = useMemo(() => {
@@ -536,17 +662,27 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     return groups;
   }, [allParamsForLaunch]);
 
-  // All params by group — includes hidden ones (for nuclear button to find Speculative decoding group)
+  // All params by group — includes hidden ones (spec-decoding switch reads from here)
   const allGroupedParams = useMemo(() => {
     const groups: Record<string, UserEditedTemplateParam[]> = {};
-    for (const def of allParamsForLaunch) {
+    const source = simpleModeActive ? allParamsResolved : allParamsForLaunch;
+    for (const def of source) {
       if (def.dock) continue;
-      const groupId = def.ui_group || 'Feature Flags';
+      const groupId = def.ui_group || "Feature Flags";
       if (!groups[groupId]) groups[groupId] = [];
       groups[groupId].push(def);
     }
+    if (simpleModeActive) {
+      for (const def of allParamsResolved) {
+        if (def.dock || def.ui_group !== SPEC_DECODING_GROUP) continue;
+        if (!groups[SPEC_DECODING_GROUP]) groups[SPEC_DECODING_GROUP] = [];
+        if (!groups[SPEC_DECODING_GROUP].some((p) => p.key === def.key)) {
+          groups[SPEC_DECODING_GROUP].push(def);
+        }
+      }
+    }
     return groups;
-  }, [allParamsForLaunch]);
+  }, [allParamsForLaunch, allParamsResolved, simpleModeActive]);
 
   // Ordered group keys: custom provider order > template insertion order (include hidden-only groups)
   const orderedGroupKeys = useMemo(() => {
@@ -596,16 +732,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
   }, [model, effectiveBackendType, resolvedProviders]);
 
-  // Keyboard launch — Ctrl+Enter triggers ignite
-  useEffect(() => {
-    const handler = (e: Event) => {
-      if (!(e instanceof CustomEvent)) return;
-      handleAddToStack();
-    };
-    window.addEventListener(EVENTS.launchEngine, handler);
-    return () => window.removeEventListener(EVENTS.launchEngine, handler);
-  }, [model, config, effectiveBackendType]);
-
   // ── Name helpers ───────────────────────────────────────────────────────────
   // ── Launch handler ───────────────────────────────────────────────────────
   const pulseLaunchAck = useCallback(() => {
@@ -621,7 +747,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     if (launchAckTimerRef.current) clearTimeout(launchAckTimerRef.current);
   }, []);
 
-  const handleAddToStack = () => {
+  const handleAddToStack = useCallback(() => {
     if (!model) return;
     if (selectedProfileIsBuilding) return;
     const now = Date.now();
@@ -636,10 +762,21 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     }
     finalAlias = resolveUniqueAlias(finalAlias, stack);
 
-    // Build data-driven EngineConfig: mandatory fields + all user params in extra_params
-    const extraParams: Record<string, any> = { ...config };
-    // Override n_gpu_layers with VRAM calculation if partial offload is active
-    if (vramCalc.manifest?.gpuLayers != null && vramCalc.manifest.ramLayers > 0) {
+    const autoVramLaunchKeys = simpleModeActive && isSpecDecodingActive(allParamsResolved)
+      ? [...new Set([...simpleParamKeys, ...SPEC_DECODING_LAUNCH_KEYS])]
+      : simpleParamKeys;
+
+    const extraParams: Record<string, unknown> = simpleModeActive && model.metadata
+      ? buildAutoVramLaunchParams({
+          config,
+          simpleKeys: autoVramLaunchKeys,
+          gpus,
+          runningSlots: runningSlotsForPlan,
+          manifest: vramCalc.manifest,
+          weightGb: model.metadata.file_size_bytes / (1024 ** 3),
+        })
+      : { ...config };
+    if (!simpleModeActive && vramCalc.manifest?.gpuLayers != null && vramCalc.manifest.ramLayers > 0) {
       extraParams.__ngl = String(vramCalc.manifest.gpuLayers);
     }
 
@@ -677,7 +814,36 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         const msg = err instanceof Error ? err.message : String(err);
         dispatchAppEvent(EVENTS.launchError, { message: msg });
       });
-  };
+  }, [
+    model,
+    selectedProfileIsBuilding,
+    pulseLaunchAck,
+    aliasInput,
+    stack,
+    simpleModeActive,
+    simpleParamKeys,
+    allParamsResolved,
+    config,
+    gpus,
+    runningSlotsForPlan,
+    vramCalc.manifest,
+    effectiveBackendType,
+    selectedBinaryProfile,
+    testFlagsEnabled,
+    testFlags,
+    testFlagsMode,
+    onLaunch,
+  ]);
+
+  // Keyboard launch — Ctrl+Enter triggers ignite (must track handleAddToStack for fresh manifest)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      if (!(e instanceof CustomEvent)) return;
+      handleAddToStack();
+    };
+    window.addEventListener(EVENTS.launchEngine, handler);
+    return () => window.removeEventListener(EVENTS.launchEngine, handler);
+  }, [handleAddToStack]);
 
   // ── Empty state (setup guide still uses the VRAM display) ─────────────────
   if (!model && !setupGuide.active) {
@@ -872,7 +1038,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
               >
                 {displayTextureLabel}
               </button>
-              <div className="phosphor-screen-inner phosphor-display-surface">
+              <div className="phosphor-screen-inner phosphor-display-surface vram-forecast-display">
                 {setupGuide.active ? (
                   setupGuide.showWelcome ? (
                     <WelcomeAnimation onComplete={setupGuide.completeWelcome} />
@@ -891,7 +1057,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                     selectedGpuIndices={selectedGpuIndices.length > 0 ? selectedGpuIndices : undefined}
                     onDeviceSelect={(gpuIndex) => {
                       updateParam("device", `GPU-${gpuIndex}`);
-                      if (config.split && config.split.toUpperCase() !== "NONE") {
+                      if (isSplitModeActive(config.split)) {
                         updateParam("split", "none");
                       }
                     }}
@@ -915,6 +1081,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                     onMoeSuggestionClick={() => {
                       updateParam("offload_mode", "moe_optimal");
                     }}
+                    hideValidate={simpleModeActive}
+                    hideMoeBadge={simpleModeActive}
                     modelMeta={model?.metadata}
                   />
                 )}
@@ -938,6 +1106,51 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       <div className="flex flex-col flex-1 min-h-0">
       <div className="config-params-scroll px-4 py-3 relative flex-1 overflow-y-auto eink-scrollbar eink-panel min-h-0">
 
+        {providerSupportsAutoVram && (
+          <div data-param-row className="flex items-center mb-3 pb-2 border-b border-white/[0.04]">
+            <div className="w-0.5 h-4 flex-shrink-0 mr-1.5 bg-nv-green/40" />
+            <span className={`${SECTION_LABEL_CLASS} text-nv-green/90`}>MEMORY MANAGEMENT</span>
+            <label className="toggle-switch ml-2">
+              <input
+                type="checkbox"
+                className="toggle-input"
+                checked={autoVramEnabled}
+                onChange={() => {
+                  const next = !autoVramEnabled;
+                  setAutoVramEnabled(next);
+                  saveAutoVramEnabled(effectiveBackendType, next);
+                }}
+              />
+              <span className="toggle-track">
+                <span className="toggle-rust" />
+                <span className="toggle-glow" />
+                <span className="toggle-thumb">
+                  <span className="thumb-inner" />
+                  <span className="thumb-shine" />
+                </span>
+                <span className="toggle-icons">
+                  <svg className="icon-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="12" cy="12" r="5" />
+                    <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
+                  </svg>
+                  <svg className="icon-on" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313-12.454z" />
+                  </svg>
+                </span>
+              </span>
+              <span className="toggle-label">
+                <span className="label-off">USER</span>
+                <span className="label-on">AUTO</span>
+              </span>
+            </label>
+            <span className="text-[8px] font-mono text-stealth-muted/60 ml-2 tracking-wide uppercase">
+              {simpleModeActive
+                ? "Engine tunes VRAM and RAM offload at launch"
+                : "full autonomy"}
+            </span>
+          </div>
+        )}
+
         {allParamsForLaunch.length === 0 ? (
           <div className="text-stealth-muted text-[10px] font-mono opacity-50">NO PARAMS DEFINED</div>
         ) : (() => {
@@ -948,7 +1161,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
           const renderGroup = (group: ReturnType<typeof deriveParamGroups>[number]) => {
             const groupParams = groupedParams[group.id];
-            const isSpecGroup = group.id === "SPECULATIVE-DECODING";
+            const isSpecGroup = group.id === SPEC_DECODING_GROUP;
 
             if (isSpecGroup) {
               const specAllParams = allGroupedParams[group.id] || [];
@@ -965,7 +1178,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                     className={`nuclear-btn-container config-spec-decoding flex items-center ${specFlash ? 'flash' : ''}`}
                   >
                     <div className="w-0.5 h-4 flex-shrink-0 mr-1.5" />
-                    <span className={PARAM_LABEL_CLASS}>SPECULATIVE DECODING</span>
+                    <span className={SECTION_LABEL_CLASS}>SPECULATIVE DECODING</span>
                     <div className="flex flex-1 min-w-0 items-center">
                     <label className={`toggle-switch ${!isMtpModel ? 'opacity-40 pointer-events-none' : ''}`}>
                       <input

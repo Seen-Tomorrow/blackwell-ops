@@ -126,6 +126,16 @@ export interface ProviderConfig {
   factory_provided?: boolean; // true = bundled in runtime/ or downloaded from GitHub releases
   templateVersion?: number; // bumped in default config JSON when template changes, used for update notification
   needsTemplateAttention?: boolean; // set by merge when user config version differs from factory — shows banner in ConfigPage
+  /** Factory launch profile — synced from spawn_profile on load (not user-persisted). */
+  launchProfile?: LaunchProfile;
+}
+
+/** Factory launch profile — drives Auto VRAM UI and --fit wiring at launch. */
+export interface LaunchProfile {
+  autoVram?: boolean;
+  fitStyle?: string;
+  simpleParamKeys?: string[];
+  fitMarginMib?: number;
 }
 
 /** Provider origin classification — derived from existing fields, not stored */
@@ -287,6 +297,8 @@ export interface StackEntry {
   ready_at?: string;
   model_path?: string;
   vram_mib?: number;
+  /** Per-GPU SELF MiB from live memory breakdown (CUDA0, CUDA1, …). */
+  gpu_breakdown_mib?: number[];
   n_ctx?: number;
   provider_name?: string;
   build_info?: BuildInfo;
@@ -393,6 +405,7 @@ export interface VramFitResult {
 /** Scenario Factory types — single source of truth for VRAM evaluation */
 
 export type Scenario =
+  | 'AUTO_FIT'
   | 'SOLO_FIT'
   | 'SOLO_PRESSURE'
   | 'SOLO_SPILL'
@@ -491,6 +504,8 @@ export interface VramManifest {
   formulaVramTotalGb: number;
   /** FIT-validated total VRAM in MiB (replaces formula when set) */
   validatedVramMib?: number;
+  /** Forecast uses VRAM measured on a prior launch (learned-vram.json). */
+  learnedFromPreviousRun?: boolean;
   /** Per-GPU breakdown from FIT scan (MiB per GPU) */
   validatedGpuBreakdownMib?: number[];
   /** Host RAM usage from FIT scan */
@@ -503,6 +518,8 @@ export interface VramManifest {
   }[];
   /** Optional MOE_OPTIMAL alternative suggestion (computed but not shown as scenario) */
   moeSuggestion?: MoeSuggestion | null;
+  /** AUTO_FIT: engine will launch with --split-mode layer across GPUs. */
+  autoLayerSplit?: boolean;
 }
 
 /** Per-GPU component breakdown parsed from llama's memory table. */

@@ -1,7 +1,20 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { ModelEntry, EngineConfig, GpuInfo, StackEntry, SystemInfo, VramManifest, FitScanResult } from "../lib/types";
-import { evaluate, applyFitValidation, type ScenarioInput, type RunningSlotInfo, type FitPoint } from "../services/vram/scenarios/scenarios_factory";
+import { evaluate, applyFitValidation, committedSlotsFromStack, committedStackKey, type ScenarioInput, type FitPoint } from "../services/vram/scenarios/scenarios_factory";
+
+interface LearnedVramFitAttempt {
+  vram_mib: number;
+  host_mib?: number;
+  gpu_breakdown_mib?: number[];
+}
+
+interface LearnedVramEntry {
+  vram_mib: number;
+  measured_at?: string;
+  gpu_breakdown_mib?: number[];
+  fit_attempts?: LearnedVramFitAttempt[];
+}
 
 interface UseScenarioEvaluatorProps {
   model: ModelEntry | null;
@@ -9,6 +22,8 @@ interface UseScenarioEvaluatorProps {
   gpus: GpuInfo[];
   stack: StackEntry[];
   systemInfo?: SystemInfo | null;
+  autoVramLaunch?: boolean;
+  fitStyle?: string;
 }
 
 // Shared debug emission helper to avoid duplicating IPC calls to Blackwell Output Console
@@ -82,7 +97,15 @@ function emitScenarioDebug(
   });
 }
 
-export function useScenarioEvaluator({ model, config, gpus, stack, systemInfo }: UseScenarioEvaluatorProps) {
+export function useScenarioEvaluator({
+  model,
+  config,
+  gpus,
+  stack,
+  systemInfo,
+  autoVramLaunch = false,
+  fitStyle = "",
+}: UseScenarioEvaluatorProps) {
   const [manifest, setManifest] = useState<VramManifest | null>(null);
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [isValidating, setIsValidating] = useState(false);
@@ -101,7 +124,14 @@ export function useScenarioEvaluator({ model, config, gpus, stack, systemInfo }:
   const lastConfigKeyRef = useRef<string>("");
   const lastStackKeyRef = useRef<string>("");
   const fitPointsRef = useRef<FitPoint[] | null>(null);
+  const learnedVramRef = useRef<number | null>(null);
+  const learnedHostRef = useRef<number | null>(null);
+  const learnedGpuBreakdownRef = useRef<number[] | null>(null);
   const lastFitModelPathRef = useRef("");
+  const autoVramLaunchRef = useRef(autoVramLaunch);
+  const fitStyleRef = useRef(fitStyle);
+  autoVramLaunchRef.current = autoVramLaunch;
+  fitStyleRef.current = fitStyle;
   const lastScenarioDebugModelRef = useRef("");
   const lastScenarioDebugNameRef = useRef("");
 
@@ -118,13 +148,10 @@ export function useScenarioEvaluator({ model, config, gpus, stack, systemInfo }:
 
   // Config fingerprint — only keys that affect scenario evaluation.
   // Changes here trigger re-eval (HW buttons, param chips). Telemetry noise doesn't touch these.
-  const configKey = `${config.device || ""}|${config.split || ""}|${config["offload_mode"] || ""}|${config.ctx || ""}|${config["kv_quant"] || ""}|${config.batch ?? ""}|${config.ubatch ?? ""}|${config.parallel ?? ""}|${config["flash_attn"] || ""}|${config.vision || ""}|${config["unified_kv"] || ""}|${config["rope_scaling"] || ""}|${config["rope_scale"] ?? ""}`;
+  const configKey = `${config.device || ""}|${config.split || ""}|${config["offload_mode"] || ""}|${config.ctx || ""}|${config["kv_quant"] || ""}|${config.batch ?? ""}|${config.ubatch ?? ""}|${config.parallel ?? ""}|${config["flash_attn"] || ""}|${config.vision || ""}|${config["unified_kv"] || ""}|${config["rope_scaling"] || ""}|${config["rope_scale"] ?? ""}|${config.ik_perf || ""}|${config.gpu_sync || ""}|${config.cache_ram || ""}|auto=${autoVramLaunch ? "1" : "0"}`;
 
-  // Stack fingerprint — changes when running engines start/stop or their VRAM shifts.
-  const stackKey = stack
-    .filter(s => s.status === "RUNNING" || s.status === "LOADING")
-    .map(s => `${s.alias}-${s.vram_mib || 0}`)
-    .join("|");
+  // Stack fingerprint — changes when committed engines (RUNNING/LOADING) start/stop or VRAM shifts.
+  const stackKey = committedStackKey(stack);
 
   // System info loaded flag — triggers re-eval when it arrives (was null before).
   const sysInfoLoaded = systemInfo != null;
@@ -161,20 +188,7 @@ export function useScenarioEvaluator({ model, config, gpus, stack, systemInfo }:
       extra_params: { ...curConfig },
     };
 
-    const runningSlots: RunningSlotInfo[] = curStack
-      .filter(s => s.status === "RUNNING" || s.status === "LOADING")
-      .map(s => {
-        const short = (s.model_name && s.model_name !== s.model_path)
-          ? s.model_name.slice(0, 30)
-          : s.model_path?.split(/[\/\\]/).pop()?.slice(0, 30)
-            || s.model_name.slice(0, 30);
-        return {
-          alias: s.alias,
-          modelShort: short,
-          vramMib: s.vram_mib || 0,
-          gpuMask: s.gpu,
-        };
-      });
+    const runningSlots = committedSlotsFromStack(curStack);
 
     const sysInfo = curSystemInfo || {
       total_memory_mib: 0,
@@ -191,6 +205,11 @@ export function useScenarioEvaluator({ model, config, gpus, stack, systemInfo }:
       ramManufacturedGb: sysInfo.total_memory_manufactured_mib / 1024,
       mmprojSizeMib: model.mmproj_size_mib,
       fitPoints: fitPointsRef.current || undefined,
+      autoVramLaunch: autoVramLaunchRef.current,
+      fitStyle: fitStyleRef.current,
+      learnedVramMib: learnedVramRef.current ?? undefined,
+      learnedHostMib: learnedHostRef.current ?? undefined,
+      learnedGpuBreakdownMib: learnedGpuBreakdownRef.current ?? undefined,
     };
 
     try {
@@ -226,6 +245,41 @@ export function useScenarioEvaluator({ model, config, gpus, stack, systemInfo }:
       isMountedRef.current = false;
     };
   }, []);
+
+  // Fetch learned VRAM when model/config fingerprint changes
+  useEffect(() => {
+    if (!model) {
+      learnedVramRef.current = null;
+      learnedHostRef.current = null;
+      learnedGpuBreakdownRef.current = null;
+      return;
+    }
+    const curConfig = configRef.current;
+    void invoke<LearnedVramEntry | null>("get_learned_vram", {
+      modelPath: model.path,
+      providerId: curConfig.backend_type || "ggml-master",
+      ctx: String(curConfig.ctx ?? "32768"),
+      kvQuant: String(curConfig["kv_quant"] ?? "f16"),
+      device: String(curConfig.device ?? "GPU-0"),
+      split: String(curConfig.split ?? "none"),
+    })
+      .then((entry) => {
+        const lastAttempt = entry?.fit_attempts?.length
+          ? entry.fit_attempts[entry.fit_attempts.length - 1]
+          : undefined;
+        learnedVramRef.current = entry?.vram_mib ?? null;
+        learnedHostRef.current = lastAttempt?.host_mib ?? null;
+        learnedGpuBreakdownRef.current =
+          entry?.gpu_breakdown_mib ?? lastAttempt?.gpu_breakdown_mib ?? null;
+        if (timerRef.current) clearTimeout(timerRef.current);
+        timerRef.current = setTimeout(runEvaluation, 50);
+      })
+      .catch(() => {
+        learnedVramRef.current = null;
+        learnedHostRef.current = null;
+        learnedGpuBreakdownRef.current = null;
+      });
+  }, [model?.path, configKey, stackKey, runEvaluation]);
 
   // Fetch FIT scan points when model path changes, cache per model
   useEffect(() => {
@@ -308,14 +362,7 @@ export function useScenarioEvaluator({ model, config, gpus, stack, systemInfo }:
         extra_params: { ...curConfig },
       };
 
-      const runningSlots: RunningSlotInfo[] = stackRef.current
-        .filter(s => s.status === "RUNNING" || s.status === "LOADING")
-        .map(s => {
-          const short = (s.model_name && s.model_name !== s.model_path)
-            ? s.model_name.slice(0, 30)
-            : s.model_path?.split(/[\/\\]/).pop()?.slice(0, 30) || s.model_name.slice(0, 30);
-          return { alias: s.alias, modelShort: short, vramMib: s.vram_mib || 0, gpuMask: s.gpu };
-        });
+      const runningSlots = committedSlotsFromStack(stackRef.current);
 
       const sysInfo = systemInfoRef.current || { total_memory_mib: 0, available_memory_mib: 0, total_memory_manufactured_mib: 0 };
 

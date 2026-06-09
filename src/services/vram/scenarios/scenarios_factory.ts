@@ -25,6 +25,52 @@ export interface RunningSlotInfo {
   modelShort: string;
   vramMib: number;
   gpuMask: string;
+  /** Per-GPU SELF MiB from memory breakdown — maps to gpuMask order when present. */
+  gpuBreakdownMib?: number[];
+}
+
+/** Slots that hold or are acquiring VRAM — include LOADING so forecast reserves early. */
+export function isVramCommittedSlot(status: string): boolean {
+  return status === "RUNNING" || status === "LOADING";
+}
+
+function modelShortFromStackEntry(s: { model_name: string; model_path?: string }): string {
+  return (s.model_name && s.model_name !== s.model_path)
+    ? s.model_name.slice(0, 30)
+    : s.model_path?.split(/[\/\\]/).pop()?.slice(0, 30)
+      || s.model_name.slice(0, 30);
+}
+
+/** RUNNING + LOADING stack entries for availability / hatched reserved bars. */
+export function committedSlotsFromStack(
+  stack: Array<{
+    status: string;
+    alias: string;
+    model_name: string;
+    model_path?: string;
+    vram_mib?: number;
+    gpu: string;
+    gpu_breakdown_mib?: number[];
+  }>,
+): RunningSlotInfo[] {
+  return stack
+    .filter((s) => isVramCommittedSlot(s.status))
+    .map((s) => ({
+      alias: s.alias,
+      modelShort: modelShortFromStackEntry(s),
+      vramMib: s.vram_mib || 0,
+      gpuMask: s.gpu,
+      gpuBreakdownMib: s.gpu_breakdown_mib,
+    }));
+}
+
+export function committedStackKey(
+  stack: Array<{ status: string; alias: string; vram_mib?: number; gpu_breakdown_mib?: number[] }>,
+): string {
+  return stack
+    .filter((s) => isVramCommittedSlot(s.status))
+    .map((s) => `${s.alias}-${s.vram_mib || 0}-${(s.gpu_breakdown_mib ?? []).join("+")}`)
+    .join("|");
 }
 
 export interface ScenarioInput {
@@ -36,6 +82,15 @@ export interface ScenarioInput {
   ramManufacturedGb: number;
   mmprojSizeMib?: number;
   fitPoints?: FitPoint[];
+  /** True when launch will use provider --fit / --fit on (Auto VRAM mode). */
+  autoVramLaunch?: boolean;
+  fitStyle?: string;
+  /** Post-launch measured VRAM from learned-vram.json (MiB). */
+  learnedVramMib?: number;
+  /** Host RAM from learned breakdown (MiB) — --fit offload footprint. */
+  learnedHostMib?: number;
+  /** Per-GPU SELF MiB from learned breakdown. */
+  learnedGpuBreakdownMib?: number[];
 }
 
 // ── Pure Helpers (no scenario logic) ────────────────────────────────────────
@@ -75,14 +130,36 @@ export function gpuManufacturedMib(g: GpuInfo): number {
 export function getRunningEnginesOnGpu(gpuIdx: number, slots: RunningSlotInfo[]): RunningEngine[] {
   return slots.filter(s => s.gpuMask.split(",").some(p => p.trim() === String(gpuIdx)))
     .map(s => {
-      // If engine spans multiple GPUs, show its per-GPU share (tensor-split divides evenly)
-      const gpuCount = s.gpuMask.split(",").length;
-      return { slotAlias: s.alias, modelShort: s.modelShort, vramUsedMib: s.vramMib / gpuCount };
+      const maskParts = s.gpuMask.split(",").map((p) => p.trim());
+      const gpuCount = maskParts.length;
+      const idxInMask = maskParts.findIndex((p) => p === String(gpuIdx));
+      const vramUsedMib =
+        s.gpuBreakdownMib && idxInMask >= 0 && idxInMask < s.gpuBreakdownMib.length
+          ? s.gpuBreakdownMib[idxInMask]
+          : s.vramMib / gpuCount;
+      return { slotAlias: s.alias, modelShort: s.modelShort, vramUsedMib };
     });
 }
 
 export function gpuHasRunningEngines(gpuIdx: number, slots: RunningSlotInfo[]): boolean {
   return slots.some(s => s.gpuMask.split(",").some(p => p.trim() === String(gpuIdx)));
+}
+
+/** Per-GPU free VRAM (GB) — single source of truth for scenarios + auto VRAM launch. */
+export function computeGpuAvailableList(
+  gpus: GpuInfo[],
+  runningSlots: RunningSlotInfo[],
+): number[] {
+  return gpus.map((g) => {
+    const manufactured = gpuManufacturedMib(g) / 1024;
+    const nvmlUsed = g.memory_used / 1024;
+    const stackUsed = getRunningEnginesOnGpu(g.index, runningSlots)
+      .reduce((sum, e) => sum + e.vramUsedMib / 1024, 0);
+    // NVML reflects real driver allocation (including orphan llama-server processes).
+    // Stack supplements when NVML lags — LOADING slots reserve learned/estimated MiB immediately.
+    const committed = Math.max(nvmlUsed, stackUsed);
+    return Math.max(0, manufactured - committed);
+  });
 }
 
 /** Accessors for flattened EngineConfig — read from extra_params with defaults. */
@@ -235,13 +312,23 @@ export function estimateKvGrowthPerToken(points: FitPoint[]): number | null {
 }
 
 export function estimateSplitTaxMiB(points: FitPoint[], splitMode: string): number | null {
-  const splitLabel = `split_${splitMode}`;
-  const splitPt = findFitPoint(points, splitLabel);
-  if (!splitPt) return null;
+  const mode = splitMode.toLowerCase();
+  const candidates = [
+    `split_${mode}`,
+    `split_${mode}_64k`,
+    `split_${mode}_256k`,
+    mode === "graph" ? "split_row_64k" : null,
+  ].filter((l): l is string => l != null);
+
   const baseNoBatch = findFitPoint(points, "base_no_batch");
   const base = baseNoBatch || findFitPoint(points, "base");
   if (!base) return null;
-  return splitPt.vram_mib - base.vram_mib;
+
+  for (const label of candidates) {
+    const splitPt = findFitPoint(points, label);
+    if (splitPt) return splitPt.vram_mib - base.vram_mib;
+  }
+  return null;
 }
 
 export function extrapolateVramFromPoints(
@@ -391,12 +478,7 @@ export function computeValues(input: ScenarioInput, validatedVramMib?: number): 
     vramTotalGb = weightsOnGpuGb + kvCacheGb + overheadGb + visionGb;
   }
 
-  // GPU availability — always uses all system GPUs for free memory tracking
-  const gpuAvailable = gpus.map(g => {
-    const manufactured = gpuManufacturedMib(g) / 1024;
-    const used = g.memory_used / 1024;
-    return Math.max(0, manufactured - used);
-  });
+  const gpuAvailable = computeGpuAvailableList(gpus, input.runningSlots);
 
   const singleMaxAvailable = Math.max(...gpuAvailable, 0);
   const multiTotalAvailable = gpuAvailable.reduce((a, b) => a + b, 0);
@@ -482,7 +564,7 @@ export function buildManifest(
     gpuIndex: g.index,
     name: g.name,
     vramManufacturedGb: round2(gpuManufacturedMib(g) / 1024),
-    vramAvailableGb: round2(Math.max(0, gpuManufacturedMib(g) / 1024 - g.memory_used / 1024)),
+    vramAvailableGb: round2(computed.gpuAvailable[i] ?? 0),
     projectedLoadGb: round2(perGpuLoad[i] ?? 0),
     runningEngines: getRunningEnginesOnGpu(g.index, input.runningSlots),
   }));
@@ -511,6 +593,7 @@ export function buildManifest(
 
 // ── Orchestrator (strict sequential dispatch) ───────────────────────────────
 
+import { tryEvaluate as autoFit } from "./auto_fit";
 import { tryEvaluate as soloFit } from "./solo_fit";
 import { tryEvaluate as soloPressure } from "./solo_pressure";
 import { tryEvaluate as multiFit } from "./multi_fit";
@@ -597,8 +680,9 @@ export function evaluate(input: ScenarioInput, validatedVramMib?: number): VramM
     return hwLocked(input, computed, "No GPUs detected");
   }
 
-  // Evaluation order: single-GPU fits (comfortable → pressure) → spill (RAM offload) → multi-GPU distribution
+  // Evaluation order: auto-fit launch → single-GPU fits → spill → multi-GPU distribution
   const result =
+    autoFit(input, computed) ||
     soloFit(input, computed) ||
     soloPressure(input, computed) ||
     soloSpill(input, computed) ||

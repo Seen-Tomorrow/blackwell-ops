@@ -36,6 +36,8 @@ const BATCH_INTERVAL_MS: u64 = 10;
 const MAX_BATCH_SIZE: usize = 10;
 /// Bounded stderr line queue — drops on flood instead of unbounded RAM growth.
 const STDERR_LINE_CHANNEL_CAP: usize = 4096;
+/// MoE --fit can print dozens of memory tables; keep enough stderr for one load.
+const VRAM_LEARN_BUF_CAP: usize = 4096;
 
 pub struct LogHub {
     app_handle: AppHandle,
@@ -80,7 +82,9 @@ impl LogHub {
         slot_idx: usize,
         alias: String,
         stderr: std::process::ChildStderr,
-        on_ready: impl Fn() + Send + Sync + 'static,
+        learn_snapshot: crate::vram_learn::VramLearnSnapshot,
+        model_ready: std::sync::Arc<std::sync::atomic::AtomicBool>,
+        on_ready: std::sync::Arc<dyn Fn() + Send + Sync>,
     ) {
         let app_handle = self.app_handle.clone();
 
@@ -115,6 +119,8 @@ impl LogHub {
             slot_idx,
             alias,
             line_rx,
+            learn_snapshot,
+            model_ready,
             on_ready,
         ));
 
@@ -127,14 +133,30 @@ impl LogHub {
         slot_idx: usize,
         alias: String,
         mut line_rx: mpsc::Receiver<String>,
-        on_ready: impl Fn() + Send + Sync + 'static,
+        learn_snapshot: crate::vram_learn::VramLearnSnapshot,
+        model_ready: std::sync::Arc<std::sync::atomic::AtomicBool>,
+        on_ready: std::sync::Arc<dyn Fn() + Send + Sync>,
     ) {
+        use std::sync::atomic::Ordering;
+
+        let fire_ready = {
+            let ready_flag = model_ready.clone();
+            let cb = on_ready.clone();
+            move || {
+                if !ready_flag.swap(true, Ordering::AcqRel) {
+                    cb();
+                }
+            }
+        };
+
         let mut batch_buffer: Vec<LogEntry> = Vec::with_capacity(MAX_BATCH_SIZE);
         let mut last_emit = tokio::time::Instant::now();
         let batch_interval = tokio::time::Duration::from_millis(BATCH_INTERVAL_MS);
 
-        // Readiness tracking — one-shot check for "server is listening" / "all slots idle"
-        let mut engine_ready = false;
+        let mut load_failed = false;
+        let mut tables_seen: usize = 0;
+        let mut tables_persisted: usize = 0;
+        let mut vram_learn_buf: Vec<String> = Vec::with_capacity(256);
 
         let mut flush_interval = tokio::time::interval(batch_interval);
 
@@ -146,7 +168,47 @@ impl LogHub {
                 result = line_rx.recv() => {
                     let raw_line = match result {
                         Some(l) => l,
-                        None => break, // Channel closed — engine stopped
+                        None => {
+                            if model_ready.load(Ordering::Acquire) {
+                                let prev = tables_persisted;
+                                if let Some((mib, total, gpu_breakdown)) = Self::persist_pending_fit_tables(
+                                    &app_handle,
+                                    &alias,
+                                    &learn_snapshot,
+                                    &vram_learn_buf,
+                                    tables_persisted,
+                                    "exit",
+                                )
+                                .await
+                                {
+                                    tables_persisted = total;
+                                    tables_seen = total;
+                                    let added = total.saturating_sub(prev);
+                                    if added > 0 {
+                                        Self::emit_vram_learn_progress(
+                                            &app_handle,
+                                            &alias,
+                                            mib,
+                                            total,
+                                            added,
+                                            gpu_breakdown.as_deref(),
+                                        );
+                                    }
+                                }
+                            }
+                            if !load_failed {
+                                load_failed = true;
+                                Self::cleanup_slot_if_still_active(
+                                    &app_handle,
+                                    slot_idx,
+                                    &alias,
+                                    model_ready.load(Ordering::Acquire),
+                                    "Engine exited before model finished loading",
+                                )
+                                .await;
+                            }
+                            break;
+                        }
                     };
 
                     if raw_line.is_empty() { continue; }
@@ -154,18 +216,124 @@ impl LogHub {
                     let cleaned = raw_line.trim().to_string();
                     if cleaned.is_empty() { continue; }
 
-                    // ── Readiness check (one-shot) ──────────────
-                    if !engine_ready {
+                    // ── Readiness check (one-shot) — before fatal heuristics ──────────────
+                    if !model_ready.load(Ordering::Acquire) {
                         if Self::is_engine_ready_log_line(&cleaned) {
-                            engine_ready = true;
                             Self::emit_readiness_debug(&app_handle, &alias, "stderr log pattern", &cleaned);
-                            on_ready();
+                            fire_ready();
                             if let Some(ctx) = app_handle.try_state::<crate::engine::AppContext>() {
                                 ctx.blackwell_output_console_manager.emit_line_to_category(
                                     BlackwellOutputConsoleCategory::Engines,
                                     format!("[{}] Engine ready", alias),
                                     BlackwellOutputConsoleLineStyle::Normal,
                                 );
+                            }
+                            if tables_seen > tables_persisted {
+                                let prev = tables_persisted;
+                                if let Some((mib, total, gpu_breakdown)) = Self::persist_pending_fit_tables(
+                                    &app_handle,
+                                    &alias,
+                                    &learn_snapshot,
+                                    &vram_learn_buf,
+                                    tables_persisted,
+                                    "fit",
+                                )
+                                .await
+                                {
+                                    tables_persisted = total;
+                                    let added = total.saturating_sub(prev);
+                                    if added > 0 {
+                                        Self::emit_vram_learn_progress(
+                                            &app_handle,
+                                            &alias,
+                                            mib,
+                                            total,
+                                            added,
+                                            gpu_breakdown.as_deref(),
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if !model_ready.load(Ordering::Acquire) && !load_failed && Self::is_fatal_load_error(&cleaned) {
+                        load_failed = true;
+                        let reason = Self::extract_load_error_reason(&cleaned);
+                        let reason = if reason.trim().is_empty() {
+                            "Model load failed — engine reported a fatal error".to_string()
+                        } else {
+                            reason
+                        };
+                        log::warn!(
+                            "[log_hub] slot={} ({}) fatal stderr: {}",
+                            slot_idx,
+                            alias,
+                            cleaned.chars().take(240).collect::<String>()
+                        );
+                        Self::fail_loading_from_log(&app_handle, slot_idx, &alias, &reason).await;
+                        batch_buffer.push(LogEntry {
+                            slot: slot_idx,
+                            alias: alias.clone(),
+                            text: cleaned.clone(),
+                        });
+                        let _ = Self::flush_batch(
+                            &app_handle,
+                            slot_idx,
+                            &alias,
+                            &mut batch_buffer,
+                            &mut last_emit,
+                            &batch_interval,
+                        );
+                        break;
+                    }
+
+                    // Buffer all breakdown lines; persist only on complete tables (Host row).
+                    let lower = cleaned.to_lowercase();
+                    let is_breakdown_line = lower.contains("common_memory_breakdown_print")
+                        || lower.contains("memory breakdown");
+                    if is_breakdown_line {
+                        vram_learn_buf.push(cleaned.clone());
+                        if vram_learn_buf.len() > VRAM_LEARN_BUF_CAP {
+                            log::warn!(
+                                "[vram_learn] slot={} stderr learn buffer exceeded {} lines — MoE FIT history may truncate",
+                                slot_idx,
+                                VRAM_LEARN_BUF_CAP
+                            );
+                        }
+                    }
+                    if crate::fit_scanner::is_complete_memory_breakdown_table_line(&cleaned) {
+                        let ready = model_ready.load(Ordering::Acquire);
+                        let phase = if ready { "exit" } else { "fit" };
+                        let prev_seen = tables_seen;
+                        if let Some((mib, total, gpu_breakdown)) = Self::try_record_fit_tables(
+                            &app_handle,
+                            slot_idx,
+                            &alias,
+                            &learn_snapshot,
+                            &vram_learn_buf,
+                            prev_seen,
+                            tables_persisted,
+                            phase,
+                            ready,
+                        )
+                        .await
+                        {
+                            tables_seen = total;
+                            if ready {
+                                let prev_persisted = tables_persisted;
+                                tables_persisted = total;
+                                let added = total.saturating_sub(prev_persisted);
+                                if added > 0 {
+                                    Self::emit_vram_learn_progress(
+                                        &app_handle,
+                                        &alias,
+                                        mib,
+                                        total,
+                                        added,
+                                        gpu_breakdown.as_deref(),
+                                    );
+                                }
                             }
                         }
                     }
@@ -213,6 +381,177 @@ impl LogHub {
         // Log hub reader stopped now routed to Blackwell Output Console
     }
 
+    /// Parse stderr buffer, append any new complete breakdown tables.
+    /// Returns (total_gpu_self_mib, table_count, per_gpu_self_mib).
+    async fn persist_pending_fit_tables(
+        app_handle: &AppHandle,
+        alias: &str,
+        learn_snapshot: &crate::vram_learn::VramLearnSnapshot,
+        line_buf: &[String],
+        already_persisted: usize,
+        phase: &str,
+    ) -> Option<(f64, usize, Option<Vec<f64>>)> {
+        let combined = line_buf.join("\n");
+        let tables = crate::fit_scanner::parse_all_memory_breakdown_tables(&combined);
+        if tables.len() <= already_persisted {
+            return None;
+        }
+
+        let table = tables.last()?;
+        let latest_mib = table.total_gpu_self_mib();
+        if latest_mib <= 0.0 {
+            return None;
+        }
+        let gpu_breakdown = Some(table.gpu_self_mib.clone());
+        let total = tables.len();
+        let learn_key = &learn_snapshot.learn_key;
+        match crate::vram_learn::append_fit_breakdown_tables(
+            learn_key,
+            &tables,
+            already_persisted,
+            phase,
+        ) {
+            Ok(Some(_)) => {
+                log::info!(
+                    "[vram_learn] persisted {} table(s) for {} → {:.1} MiB GPU (phase={})",
+                    total.saturating_sub(already_persisted),
+                    alias,
+                    latest_mib,
+                    phase
+                );
+                Some((latest_mib, total, gpu_breakdown))
+            }
+            Ok(None) => None,
+            Err(e) => {
+                log::warn!("[vram_learn] persist failed for {alias}: {e}");
+                None
+            }
+        }
+    }
+
+    async fn try_record_fit_tables(
+        app_handle: &AppHandle,
+        slot_idx: usize,
+        alias: &str,
+        learn_snapshot: &crate::vram_learn::VramLearnSnapshot,
+        line_buf: &[String],
+        already_seen: usize,
+        already_persisted: usize,
+        phase: &str,
+        persist: bool,
+    ) -> Option<(f64, usize, Option<Vec<f64>>)> {
+        let combined = line_buf.join("\n");
+        let tables = crate::fit_scanner::parse_all_memory_breakdown_tables(&combined);
+        if tables.len() <= already_seen {
+            return None;
+        }
+
+        let ctx = app_handle.try_state::<crate::engine::AppContext>()?;
+        let table = tables.last()?;
+        let latest_mib = table.total_gpu_self_mib();
+        if latest_mib <= 0.0 {
+            return None;
+        }
+        let gpu_breakdown = Some(table.gpu_self_mib.clone());
+        let total = tables.len();
+
+        {
+            let stack = ctx.stack.lock().await;
+            stack.update_slot_vram(slot_idx, latest_mib, gpu_breakdown.clone());
+            stack.emit_stack_changed();
+        }
+
+        if persist && tables.len() > already_persisted {
+            let learn_key = &learn_snapshot.learn_key;
+            match crate::vram_learn::append_fit_breakdown_tables(
+                learn_key,
+                &tables,
+                already_persisted,
+                phase,
+            ) {
+                Ok(Some(_)) => {
+                    log::info!(
+                        "[vram_learn] slot={} provider={} model={} → {:.1} MiB GPU total ({} tables, phase={})",
+                        slot_idx,
+                        learn_snapshot.provider_id,
+                        learn_snapshot.model_path,
+                        latest_mib,
+                        total,
+                        phase
+                    );
+                }
+                Ok(None) => {}
+                Err(e) => {
+                    log::warn!("[vram_learn] persist failed for {alias}: {e}");
+                }
+            }
+        } else {
+            log::info!(
+                "[vram_learn] slot={} reserved {:.1} MiB GPU (table {}, phase={}) — persist deferred until ready",
+                slot_idx,
+                latest_mib,
+                total,
+                phase
+            );
+        }
+
+        Some((latest_mib, total, gpu_breakdown))
+    }
+
+    fn format_gpu_self_breakdown(gpus: Option<&[f64]>) -> String {
+        match gpus {
+            Some(list) if list.len() > 1 => list
+                .iter()
+                .enumerate()
+                .map(|(i, v)| format!("GPU{i}:{:.0}", v))
+                .collect::<Vec<_>>()
+                .join(" + "),
+            Some(list) if !list.is_empty() => format!("{:.0}", list[0]),
+            _ => String::new(),
+        }
+    }
+
+    fn emit_vram_learn_progress(
+        app_handle: &AppHandle,
+        alias: &str,
+        mib: f64,
+        total_tables: usize,
+        added: usize,
+        gpu_breakdown: Option<&[f64]>,
+    ) {
+        let per_gpu = Self::format_gpu_self_breakdown(gpu_breakdown);
+        let gpu_detail = if per_gpu.is_empty() {
+            String::new()
+        } else {
+            format!(" ({per_gpu})")
+        };
+
+        if let Some(ctx) = app_handle.try_state::<crate::engine::AppContext>() {
+            let msg = if total_tables <= 1 {
+                format!("[{alias}] Learned VRAM: {mib:.0} MiB{gpu_detail} — saved for next launch forecast")
+            } else if added > 1 {
+                format!(
+                    "[{alias}] Learned VRAM: {mib:.0} MiB{gpu_detail} — {total_tables} FIT tables recorded (+{added} new)"
+                )
+            } else {
+                format!(
+                    "[{alias}] Learned VRAM: {mib:.0} MiB{gpu_detail} — FIT table {total_tables} recorded"
+                )
+            };
+            ctx.blackwell_output_console_manager.emit_line_to_category(
+                BlackwellOutputConsoleCategory::Engines,
+                msg,
+                BlackwellOutputConsoleLineStyle::Normal,
+            );
+        }
+        Self::emit_readiness_debug(
+            app_handle,
+            alias,
+            "learned VRAM",
+            &format!("{mib:.0} MiB{gpu_detail} — {total_tables} table(s)"),
+        );
+    }
+
     fn emit_readiness_debug(app_handle: &AppHandle, alias: &str, source: &str, detail: &str) {
         if let Some(ctx) = app_handle.try_state::<crate::engine::AppContext>() {
             let snippet: String = detail.chars().take(120).collect();
@@ -224,13 +563,146 @@ impl LogHub {
         }
     }
 
-    /// Log substrings that indicate the HTTP server is accepting traffic.
-    /// ggml-master may emit "server is listening on …"; IK uses LOG_INFO "HTTP server listening".
+    /// Model finished loading — NOT merely "HTTP listening" (llama starts HTTP before weights).
     fn is_engine_ready_log_line(line: &str) -> bool {
-        line.contains("server is listening on")
-            || line.contains("HTTP server listening")
-            || line.contains("HTTP server is listening")
-            || line.contains("all slots are idle")
+        let lower = line.to_lowercase();
+        lower.contains("all slots are idle")
+            || lower.contains("model loaded")
+    }
+
+    /// True only for explicit engine-reported failures — not normal CUDA_Host buffer info lines.
+    fn is_fatal_load_error(line: &str) -> bool {
+        let lower = line.to_lowercase();
+
+        if lower.contains("exiting due to") || lower.contains("model loading error") {
+            return true;
+        }
+
+        // Normal load info: `allocated 'CUDA_Host' buffer` — must not match `unable to allocate`.
+        if lower.contains("unable to allocate") && !lower.contains("allocated '") {
+            return true;
+        }
+
+        if lower.contains("failed to load model")
+            || lower.contains("error loading model")
+            || lower.contains("unable to load model")
+        {
+            return true;
+        }
+
+        if lower.contains("out of memory")
+            || lower.contains("cuda error")
+            || lower.contains("cudamalloc failed")
+            || lower.contains("ggml_cuda error")
+        {
+            return true;
+        }
+
+        false
+    }
+
+    fn extract_load_error_reason(line: &str) -> String {
+        let lower = line.to_lowercase();
+        if let Some(idx) = lower.find("exiting due to") {
+            let tail = line[idx..].trim();
+            let reason = tail
+                .strip_prefix("exiting due to")
+                .or_else(|| tail.strip_prefix("Exiting due to"))
+                .unwrap_or(tail)
+                .trim()
+                .trim_start_matches(':')
+                .trim();
+            if !reason.is_empty() {
+                return reason.to_string();
+            }
+        }
+        if lower.contains("model loading error") {
+            return "Model loading error — check VRAM, ctx size, and launch flags".to_string();
+        }
+        let stripped = crate::engine_utils::strip_ansi(line)
+            .chars()
+            .take(200)
+            .collect::<String>()
+            .trim()
+            .to_string();
+        if stripped.is_empty() {
+            "Model load failed — engine stderr had no readable error text".to_string()
+        } else {
+            stripped
+        }
+    }
+
+    async fn cleanup_slot_if_still_active(
+        app_handle: &AppHandle,
+        slot_idx: usize,
+        _alias: &str,
+        model_ready: bool,
+        reason: &str,
+    ) {
+        if model_ready {
+            return;
+        }
+        let Some(ctx) = app_handle.try_state::<crate::engine::AppContext>() else {
+            return;
+        };
+        let still_active = {
+            let stack = ctx.stack.lock().await;
+            stack
+                .get_slot(slot_idx)
+                .map_or(false, |s| !matches!(s.status, crate::engine_stack::SlotStatus::Idle))
+        };
+        if !still_active {
+            return;
+        }
+
+        let pid = {
+            let stack = ctx.stack.lock().await;
+            stack.get_slot(slot_idx).and_then(|s| s.pid)
+        };
+        if let Some(pid) = pid {
+            if crate::engine_stack::EngineStack::is_process_alive(pid) {
+                log::warn!(
+                    "[log_hub] slot={} stderr closed but pid {} still alive — not failing load ({})",
+                    slot_idx,
+                    pid,
+                    reason
+                );
+                return;
+            }
+        }
+
+        crate::engine_stack::EngineStack::fail_loading_slot(
+            slot_idx,
+            &ctx.stack,
+            ctx.log_hub.clone(),
+            reason,
+        )
+        .await;
+    }
+
+    async fn fail_loading_from_log(
+        app_handle: &AppHandle,
+        slot_idx: usize,
+        alias: &str,
+        reason: &str,
+    ) {
+        let Some(ctx) = app_handle.try_state::<crate::engine::AppContext>() else {
+            log::warn!(
+                "[log_hub] load failure for slot {} ({}) — no AppContext: {}",
+                slot_idx,
+                alias,
+                reason
+            );
+            return;
+        };
+        let stack_ref = ctx.stack.clone();
+        crate::engine_stack::EngineStack::fail_loading_slot(
+            slot_idx,
+            &stack_ref,
+            ctx.log_hub.clone(),
+            reason,
+        )
+        .await;
     }
 
     /// Check if a line is idle poll chatter with no informational value.
