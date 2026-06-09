@@ -1,7 +1,9 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, type MutableRefObject } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { ProviderConfig } from "../lib/types";
+import { useFoundry, type FoundryStatusPayload } from "../hooks/useBuildDock";
+import { dispatchAppEvent, EVENTS } from "../lib/events";
 
 interface StackEngineStatus {
   alias: string;
@@ -63,8 +65,62 @@ function mapBackendPhase(bp: string): { frontend: ModalPhase | null; special?: s
   }
 }
 
+function stepToModalPhase(step: string): ModalPhase {
+  if (step === "complete") return "complete";
+  if (step === "error") return "error";
+  if (step === "backup-locked") return "backup-locked";
+  if (step === "configuring" || step === "building" || step === "validating" || step === "waiting-confirm") {
+    return "building";
+  }
+  return "confirm";
+}
+
+const ACTIVE_BACKEND_PHASES = new Set([
+  "Configuring",
+  "WaitingForConfirm",
+  "Building",
+  "Validating",
+  "BackupLocked",
+]);
+
+function applyStatusHydration(
+  status: FoundryStatusPayload,
+  providerId: string,
+  refs: {
+    buildIdRef: MutableRefObject<number | null>;
+    setPhase: (p: ModalPhase) => void;
+    setCurrentStep: (s: string) => void;
+    setWaitingForConfirm: (v: boolean) => void;
+    setStoppingEngines: (v: boolean) => void;
+  },
+): boolean {
+  if (status.provider_id !== providerId) return false;
+
+  refs.buildIdRef.current = status.build_id;
+  refs.setCurrentStep(status.phase);
+  refs.setStoppingEngines(false);
+
+  const mapping = mapBackendPhase(status.phase);
+  if (mapping.frontend) {
+    refs.setPhase(mapping.frontend);
+  } else if (status.phase === "Configuring") {
+    refs.setPhase("building");
+  }
+  if (mapping.special === "wait-confirm" || status.phase === "WaitingForConfirm") {
+    refs.setWaitingForConfirm(true);
+  }
+  return ACTIVE_BACKEND_PHASES.has(status.phase);
+}
+
 export default function FoundryModal({ provider, environment, onClose, onComplete, visible, onMinimize }: FoundryModalProps) {
-  const [phase, setPhase] = useState<ModalPhase>("confirm");
+  const { buildProgress, reattachedFromBackend } = useFoundry();
+
+  const [phase, setPhase] = useState<ModalPhase>(() => {
+    if ((buildProgress?.buildId ?? 0) > 0 && buildProgress?.providerId === provider.id) {
+      return stepToModalPhase(buildProgress.step);
+    }
+    return "confirm";
+  });
   const phaseRef = useRef(phase);
   phaseRef.current = phase;
 
@@ -72,21 +128,24 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
   // We show this *before* the heavy engine-stop work starts in the backend (which can take 5-15s).
   const [stoppingEngines, setStoppingEngines] = useState(false);
 
-  const buildIdRef = useRef<number | null>(null);
+  const buildIdRef = useRef<number | null>(buildProgress?.buildId ?? null);
   const [logLines, setLogLines] = useState<BuildLogEntry[]>([]);
-  const [currentStep, setCurrentStep] = useState("");
-  const [waitingForConfirm, setWaitingForConfirm] = useState(false);
+  const [currentStep, setCurrentStep] = useState(buildProgress?.step ?? "");
+  const [waitingForConfirm, setWaitingForConfirm] = useState(
+    buildProgress?.step === "waiting-confirm",
+  );
 
   // Confirm form state (only relevant before build starts)
   const [prUrl, setPrUrl] = useState("");
   const [maxCores, setMaxCores] = useState<number | null>(null);
-  const [cmakeFlags, setCmakeFlags] = useState("");
+  const [buildProfile, setBuildProfile] = useState(() => provider.build_profile?.trim() ?? "");
   const [backupRetryCount, setBackupRetryCount] = useState(0);
   const [showEngineWarning, setShowEngineWarning] = useState(false);
   const [engineListText, setEngineListText] = useState("");
 
   const logRef = useRef<HTMLDivElement>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
+  const buildInvokeInFlightRef = useRef(false);
 
   // Reset when provider or environment changes
   const prevProviderIdRef = useRef(provider.id);
@@ -104,11 +163,50 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
     buildIdRef.current = null;
     setPrUrl("");
     setMaxCores(null);
-    setCmakeFlags("");
+    setBuildProfile(provider.build_profile?.trim() ?? "");
     setBackupRetryCount(0);
     setShowEngineWarning(false);
     setEngineListText("");
   }, [provider.id, environment]);
+
+  // Rehydrate from backend after HMR/remount (source of truth when UI state was wiped).
+  useEffect(() => {
+    let cancelled = false;
+
+    const hydrate = async () => {
+      try {
+        const status = await invoke<FoundryStatusPayload | null>("foundry_status");
+        if (cancelled || !status) return;
+        applyStatusHydration(status, provider.id, {
+          buildIdRef,
+          setPhase,
+          setCurrentStep,
+          setWaitingForConfirm,
+          setStoppingEngines,
+        });
+      } catch (err) {
+        console.error("[Foundry] Status hydration failed:", err);
+      }
+    };
+
+    void hydrate();
+    return () => { cancelled = true; };
+  }, [provider.id]);
+
+  // Sync when parent context reconciles before/at mount.
+  useEffect(() => {
+    if (!buildProgress?.buildId || buildProgress.providerId !== provider.id) return;
+    buildIdRef.current = buildProgress.buildId;
+    const mapped = stepToModalPhase(buildProgress.step);
+    if (mapped !== "confirm") {
+      setPhase(mapped);
+      setCurrentStep(buildProgress.step);
+      setStoppingEngines(false);
+    }
+    if (buildProgress.step === "waiting-confirm") {
+      setWaitingForConfirm(true);
+    }
+  }, [buildProgress?.buildId, buildProgress?.step, buildProgress?.providerId, provider.id]);
 
   // Single progress listener owned by the orchestrator
   useEffect(() => {
@@ -189,6 +287,39 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
 
   // ── Confirm flow handlers ───────────────────────────────────────────
   const startBuild = useCallback(async () => {
+    if (buildInvokeInFlightRef.current) return;
+
+    // Never start a duplicate while the backend still owns an in-flight build.
+    try {
+      const status = await invoke<FoundryStatusPayload | null>("foundry_status");
+      if (status && applyStatusHydration(status, provider.id, {
+        buildIdRef,
+        setPhase,
+        setCurrentStep,
+        setWaitingForConfirm,
+        setStoppingEngines,
+      })) {
+        return;
+      }
+    } catch (err) {
+      console.error("[Foundry] Pre-build status check failed:", err);
+    }
+
+    buildInvokeInFlightRef.current = true;
+
+    const trimmedProfile = buildProfile.trim();
+    const savedProfile = provider.build_profile?.trim() ?? "";
+    if (trimmedProfile !== savedProfile) {
+      try {
+        await invoke("save_provider", {
+          provider: { ...provider, build_profile: trimmedProfile },
+        });
+        dispatchAppEvent(EVENTS.reloadProviders);
+      } catch (persistErr) {
+        console.error("[Foundry] Failed to persist build profile:", persistErr);
+      }
+    }
+
     // Give the user *immediate* visible feedback that we are now stopping engines.
     // This is the moment the long delay used to be completely silent.
     setStoppingEngines(true);
@@ -207,21 +338,40 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
         environment,
         prUrl: prUrl.trim() || null,
         maxCores: maxCores ?? undefined,
-        cmakeFlags: cmakeFlags.trim() || null,
+        cmakeFlags: trimmedProfile || null,
       });
     } catch (err) {
       clearTimeout(overlayTimeout);
       setStoppingEngines(false);
+
+      // Duplicate invoke (double-click) can reject while the first build is still healthy.
+      try {
+        const status = await invoke<FoundryStatusPayload | null>("foundry_status");
+        if (status && applyStatusHydration(status, provider.id, {
+          buildIdRef,
+          setPhase,
+          setCurrentStep,
+          setWaitingForConfirm,
+          setStoppingEngines,
+        })) {
+          return;
+        }
+      } catch {
+        // fall through to error UI
+      }
+
+      const errText = typeof err === "string" ? err : JSON.stringify(err);
       setPhase("error");
       setLogLines(prev => [...prev, {
         step: "ERROR",
-        text: typeof err === "string" ? err : JSON.stringify(err),
+        text: errText,
         timestamp: new Date().toLocaleTimeString(),
       }]);
     } finally {
       clearTimeout(overlayTimeout);
+      buildInvokeInFlightRef.current = false;
     }
-  }, [provider.id, environment, prUrl, maxCores, cmakeFlags]);
+  }, [provider, environment, prUrl, maxCores, buildProfile]);
 
   const handleConfirmBuild = useCallback(async () => {
     try {
@@ -280,28 +430,6 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
   const isComplete = phase === "complete";
   const isError = phase === "error";
 
-  // Drain logLines only on true terminal states (complete/error).
-  // We no longer auto-drain just because the modal is minimized/hidden.
-  // This preserves log history across minimize/restore during configure and build phases.
-  // Memory is controlled by:
-  //   - BUILD-phase cap inside the listener (150 lines)
-  //   - Visual slice(-200) in the renderer
-  //   - Full history available in the Blackwell Output Console
-  const hasDrainedRef = useRef(false);
-
-  useEffect(() => {
-    const shouldDrain = isComplete || isError;
-    if (shouldDrain && !hasDrainedRef.current && logLines.length > 0) {
-      hasDrainedRef.current = true;
-      setLogLines([]);
-      setCurrentStep("");
-    }
-    // Reset guard when a brand new build session starts
-    if (phase === "confirm") {
-      hasDrainedRef.current = false;
-    }
-  }, [isComplete, isError, phase, logLines.length]);
-
   if (!visible) {
     return null;
   }
@@ -334,8 +462,8 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
         environment={environment}
         prUrl={prUrl}
         setPrUrl={setPrUrl}
-        cmakeFlags={cmakeFlags}
-        setCmakeFlags={setCmakeFlags}
+        buildProfile={buildProfile}
+        setBuildProfile={setBuildProfile}
         maxCores={maxCores}
         setMaxCores={setMaxCores}
         showEngineWarning={showEngineWarning}
@@ -373,19 +501,26 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
 
   // Build / Complete / Error Phase (normal progress UI)
   return (
-    <FoundryBuildProgress
-      provider={provider}
-      environment={environment}
-      logLines={logLines}
-      currentStep={currentStep}
-      waitingForConfirm={waitingForConfirm}
-      isComplete={isComplete}
-      isError={isError}
-      onMinimize={onMinimize || (() => {})}
-      onClose={onClose}
-      onCancel={handleCancel}
-      onConfirmProceed={handleConfirmProceed}
-      logRef={logRef}
-    />
+    <>
+      {reattachedFromBackend && (
+        <div className="fixed top-2 left-1/2 -translate-x-1/2 z-[110] px-3 py-1 text-[9px] font-mono border border-yellow-400/50 bg-yellow-400/10 text-yellow-300 rounded-sm pointer-events-none">
+          Build still running — UI reattached after reload
+        </div>
+      )}
+      <FoundryBuildProgress
+        provider={provider}
+        environment={environment}
+        logLines={logLines}
+        currentStep={currentStep}
+        waitingForConfirm={waitingForConfirm}
+        isComplete={isComplete}
+        isError={isError}
+        onMinimize={onMinimize || (() => {})}
+        onClose={onClose}
+        onCancel={handleCancel}
+        onConfirmProceed={handleConfirmProceed}
+        logRef={logRef}
+      />
+    </>
   );
 }

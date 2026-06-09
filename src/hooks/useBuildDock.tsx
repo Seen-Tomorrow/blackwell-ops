@@ -1,8 +1,7 @@
 import { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef, useReducer } from "react";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
-import { useDock, DOCK_SLOT_BUILD } from "../context/DockContext";
-import { getStepLabel, type BuildPhase } from "../lib/foundry_constants";
+import { type BuildPhase } from "../lib/foundry_constants";
 
 /**
  * Professional, robust Foundry build state management.
@@ -24,6 +23,15 @@ export interface BuildProgressState {
   buildId?: number;
 }
 
+/** Authoritative snapshot from `foundry_status` (Rust `BuildProgress`). */
+export interface FoundryStatusPayload {
+  build_id: number;
+  phase: string;
+  provider_id: string;
+  environment: string;
+  log_line?: string | null;
+}
+
 export type Env = "vanguard" | "frontier" | "stable" | "fresh";
 
 // Internal clean session model (preferred)
@@ -40,6 +48,8 @@ export interface FoundryCtx {
   buildProgress: BuildProgressState | null;
   foundryModal: { providerId: string; environment: Env } | null;
   foundryModalVisible: boolean;
+  /** True after HMR/remount reattached to an in-flight backend build (dev recovery signal). */
+  reattachedFromBackend: boolean;
 
   openBuildModal: (providerId: string, environment: Env) => void;
   minimizeBuildModal: () => void;
@@ -61,7 +71,30 @@ const FoundryContext = createContext<FoundryCtx>({
   closeBuildModal: () => {},
   attachToActiveBuild: () => {},
   buildAttempt: 0,
+  reattachedFromBackend: false,
 });
+
+const IN_PROGRESS_PHASES = new Set([
+  "Configuring",
+  "WaitingForConfirm",
+  "Building",
+  "Validating",
+  "BackupLocked",
+]);
+
+function isInProgressPhase(phase: string): boolean {
+  return IN_PROGRESS_PHASES.has(phase);
+}
+
+function sessionFromStatus(status: FoundryStatusPayload): BuildSession {
+  return {
+    id: status.build_id,
+    providerId: status.provider_id,
+    environment: status.environment as Env,
+    phase: (status.phase as BuildPhase) || "Configuring",
+    logLine: status.log_line ?? undefined,
+  };
+}
 
 const PHASE_MAP: Record<string, string> = {
   Configuring: "configuring",
@@ -89,7 +122,7 @@ type FoundryAction =
   | { type: 'RESTORE' }
   | { type: 'CLOSE' }
   | { type: 'PROGRESS'; event: BuildProgressEvent }
-  | { type: 'RECONCILE'; session: BuildSession | null }
+  | { type: 'RECONCILE'; session: BuildSession | null; reason?: string }
   | { type: 'CANCELLED' };
 
 interface FoundryInternalState {
@@ -97,6 +130,7 @@ interface FoundryInternalState {
   userWantsModalVisible: boolean;
   closed: boolean; // user explicitly closed/cancelled this session
   buildAttempt: number; // increments every time user explicitly starts a new build attempt (even for same provider)
+  reattachedFromBackend: boolean;
 }
 
 function foundryReducer(state: FoundryInternalState, action: FoundryAction): FoundryInternalState {
@@ -114,6 +148,7 @@ function foundryReducer(state: FoundryInternalState, action: FoundryAction): Fou
         userWantsModalVisible: true,
         closed: false,
         buildAttempt: state.buildAttempt + 1, // force fresh modal state even for same provider
+        reattachedFromBackend: false,
       };
     }
     case 'MINIMIZE':
@@ -121,7 +156,7 @@ function foundryReducer(state: FoundryInternalState, action: FoundryAction): Fou
     case 'RESTORE':
       return { ...state, userWantsModalVisible: true };
     case 'CLOSE':
-      return { session: null, userWantsModalVisible: false, closed: true, buildAttempt: state.buildAttempt };
+      return { session: null, userWantsModalVisible: false, closed: true, buildAttempt: state.buildAttempt, reattachedFromBackend: false };
     case 'PROGRESS': {
       const e = action.event;
       if (!e.provider_id) return state;
@@ -145,6 +180,7 @@ function foundryReducer(state: FoundryInternalState, action: FoundryAction): Fou
         ...state,
         session: newSession,
         closed: false,
+        reattachedFromBackend: false,
       };
     }
     case 'RECONCILE': {
@@ -169,23 +205,28 @@ function foundryReducer(state: FoundryInternalState, action: FoundryAction): Fou
           }
 
           // We thought a build was still active, but backend says no → clear it.
-          return { session: null, userWantsModalVisible: false, closed: false, buildAttempt: state.buildAttempt };
+          return { session: null, userWantsModalVisible: false, closed: false, buildAttempt: state.buildAttempt, reattachedFromBackend: false };
         }
-        return state;
+        return { ...state, reattachedFromBackend: false };
       }
+
+      const inProgress = isInProgressPhase(action.session.phase);
+      const isMountRecovery = action.reason === 'mount' || action.reason === 'visibility';
 
       // Merge authoritative session from backend
       return {
         ...state,
         session: action.session,
         closed: false,
-        // If we were minimized and backend is in a paused state, we keep user's previous visibility preference.
-        // For WaitingForConfirm we lean towards making it visible on recovery (user can minimize again).
-        userWantsModalVisible: state.userWantsModalVisible || action.session.phase === 'WaitingForConfirm',
+        reattachedFromBackend: inProgress && isMountRecovery,
+        // HMR/remount: keep modal minimized (status-bar chip) unless user must confirm compilation.
+        userWantsModalVisible: state.userWantsModalVisible
+          || action.session.phase === 'WaitingForConfirm'
+          || (inProgress && !isMountRecovery),
       };
     }
     case 'CANCELLED':
-      return { session: null, userWantsModalVisible: false, closed: true, buildAttempt: state.buildAttempt };
+      return { session: null, userWantsModalVisible: false, closed: true, buildAttempt: state.buildAttempt, reattachedFromBackend: false };
     default:
       return state;
   }
@@ -196,19 +237,17 @@ const initialInternalState: FoundryInternalState = {
   userWantsModalVisible: false,
   closed: false,
   buildAttempt: 0,
+  reattachedFromBackend: false,
 };
 
 export const FoundryProvider: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
   const [internal, dispatch] = useReducer(foundryReducer, initialInternalState);
   const [legacyProgress, setLegacyProgress] = useState<BuildProgressState | null>(null);
 
-  const { registerWidget, clearSlot } = useDock();
-
   // Only a few refs remain — for build id sequencing and listener cleanup
   const lastBuildIdRef = useRef<number | null>(null);
   const unlistenRef = useRef<UnlistenFn | null>(null);
   const hasReconciledRef = useRef(false);
-  const clearedForBuildIdRef = useRef<number | null>(null); // prevent repeated clearSlot in effects/listeners
 
   const mapPhase = useCallback((phase: string) => PHASE_MAP[phase] ?? phase.toLowerCase(), []);
 
@@ -230,67 +269,68 @@ export const FoundryProvider: React.FC<{ children?: React.ReactNode }> = ({ chil
       }
     : null);
 
-  // ── Single source of dock registration ─────────────────────────────
-  const updateDock = useCallback((progress: BuildProgressState) => {
-    registerWidget(DOCK_SLOT_BUILD, {
-      title: `${progress.providerId} ${progress.environment}`,
-      icon: "⚒",
-      type: "build",
-      inlineContent: (
-        <span className="text-[9px] font-mono text-yellow-400 truncate max-w-[180px]" title={progress.logLine || ""}>
-          {getStepLabel(progress.step)}...
-        </span>
-      ),
-    });
-  }, [registerWidget]);
-
   // One clean reconciliation function
   const reconcileWithBackend = useCallback(async (reason: string) => {
     try {
-      const status = await invoke<any>("foundry_status");
+      const status = await invoke<FoundryStatusPayload | null>("foundry_status");
       if (status) {
-        const reconciledSession: BuildSession = {
-          id: status.build_id ?? -1,
+        const reconciledSession = sessionFromStatus(status);
+        if (status.build_id > 0) {
+          lastBuildIdRef.current = status.build_id;
+        }
+        setLegacyProgress({
           providerId: status.provider_id,
-          environment: status.environment as Env,
-          phase: (status.phase as BuildPhase) || "Configuring",
-          logLine: status.log_line,
-        };
-        dispatch({ type: 'RECONCILE', session: reconciledSession });
+          environment: status.environment,
+          step: mapPhase(status.phase),
+          logLine: status.log_line ?? undefined,
+          buildId: status.build_id,
+        });
+        dispatch({ type: 'RECONCILE', session: reconciledSession, reason });
       } else {
-        dispatch({ type: 'RECONCILE', session: null });
+        dispatch({ type: 'RECONCILE', session: null, reason });
         // Backend has no active build — make sure any stale "building" UI state is gone (common after minimize + finish)
         setLegacyProgress(null);
-        // Guarded clear to avoid loops
-        if (clearedForBuildIdRef.current !== -1) {
-          clearedForBuildIdRef.current = -1;
-          clearSlot(DOCK_SLOT_BUILD);
-        }
       }
     } catch (err) {
       console.error(`[Foundry] Reconciliation failed (${reason}):`, err);
     }
-  }, []);
+  }, [mapPhase]);
 
   // ── Public API (stable contract) ───────────────────────────────────
   const openBuildModal = useCallback((providerId: string, environment: Env) => {
-    clearedForBuildIdRef.current = null; // allow fresh dock registration for the new build
+    void (async () => {
+      try {
+        const status = await invoke<FoundryStatusPayload | null>("foundry_status");
+        if (status && isInProgressPhase(status.phase)) {
+          // Reattach to the running backend build — never start a duplicate.
+          const reconciledSession = sessionFromStatus(status);
+          if (status.build_id > 0) {
+            lastBuildIdRef.current = status.build_id;
+          }
+          setLegacyProgress({
+            providerId: status.provider_id,
+            environment: status.environment,
+            step: mapPhase(status.phase),
+            logLine: status.log_line ?? undefined,
+            buildId: status.build_id,
+          });
+          dispatch({ type: 'RECONCILE', session: reconciledSession, reason: 'attach' });
+          dispatch({ type: 'RESTORE' });
+          return;
+        }
+      } catch (err) {
+        console.error("[Foundry] openBuildModal status check failed:", err);
+      }
 
-    // If there's already a session for this provider, clear it so the next build is a true fresh start.
-    // This is especially useful after configure failures so the user isn't trapped re-opening the old error.
-    //
-    // NOTE FOR DOCK BEHAVIOR:
-    // This only affects explicit clicks on "Build" buttons. The good minimize/restore flow
-    // (clicking a completed build's dock widget to review the result) goes through restoreBuildModal
-    // and is deliberately protected elsewhere — it will NOT be broken by this.
-    const current = latestSessionRef.current;
-    if (current && current.providerId === providerId) {
-      dispatch({ type: 'CLOSE' });
-    }
+      // Fresh build: clear any finished session for this provider so confirm form is clean.
+      const current = latestSessionRef.current;
+      if (current && current.providerId === providerId) {
+        dispatch({ type: 'CLOSE' });
+      }
 
-    dispatch({ type: 'OPEN', providerId, environment });
-    clearSlot(DOCK_SLOT_BUILD);
-  }, [clearSlot]);
+      dispatch({ type: 'OPEN', providerId, environment });
+    })();
+  }, [mapPhase]);
 
   const minimizeBuildModal = useCallback(() => {
     dispatch({ type: 'MINIMIZE' });
@@ -320,10 +360,9 @@ export const FoundryProvider: React.FC<{ children?: React.ReactNode }> = ({ chil
   const closeBuildModal = useCallback(async () => {
     try { await invoke("foundry_cancel"); } catch { /* best effort */ }
     dispatch({ type: 'CLOSE' });
-    clearSlot(DOCK_SLOT_BUILD);
     setLegacyProgress(null);
     lastBuildIdRef.current = null;
-  }, [clearSlot]);
+  }, []);
 
   const attachToActiveBuild = useCallback(() => {
     void reconcileWithBackend('attach');
@@ -373,23 +412,6 @@ export const FoundryProvider: React.FC<{ children?: React.ReactNode }> = ({ chil
     return () => { unlistenRef.current?.(); };
   }, [mapPhase]);
 
-  // ── Dock registration — only when the active build identity or high-level step actually changes.
-  // We intentionally do NOT re-register on every log line (that was causing the updateDepth storm).
-  const dockKey = session
-    ? `${session.id}:${session.phase}`
-    : null;
-
-  useEffect(() => {
-    if (buildProgress) {
-      // Always keep (or update) a dock widget while there is a session.
-      // This includes after the build finishes, so the user can click back from the dock
-      // to review the result instead of the widget vanishing.
-      updateDock(buildProgress);
-    } else {
-      clearSlot(DOCK_SLOT_BUILD);
-    }
-  }, [dockKey, session, updateDock, clearSlot]);
-
   // ── Mount + Visibility reconciliation (the robust recovery path) ───
   useEffect(() => {
     if (!hasReconciledRef.current) {
@@ -411,6 +433,7 @@ export const FoundryProvider: React.FC<{ children?: React.ReactNode }> = ({ chil
     buildProgress,
     foundryModal,
     foundryModalVisible,
+    reattachedFromBackend: internal.reattachedFromBackend,
     openBuildModal,
     minimizeBuildModal,
     restoreBuildModal,
@@ -421,6 +444,7 @@ export const FoundryProvider: React.FC<{ children?: React.ReactNode }> = ({ chil
     buildProgress,
     foundryModal,
     foundryModalVisible,
+    internal.reattachedFromBackend,
     openBuildModal,
     minimizeBuildModal,
     restoreBuildModal,

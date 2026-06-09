@@ -902,6 +902,11 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                     activeEnginePort={activeEnginePort}
                     selectedSlotIdx={selectedSlotIdx}
                     supportsFusion={supportsFusion}
+                    engineStatus={
+                      selectedSlotIdx != null && selectedSlotIdx >= 0
+                        ? stack.find((s) => s.idx === selectedSlotIdx)?.status
+                        : undefined
+                    }
                     gpuMask={booterProps.gpuMask}
                     vramTargetMib={booterProps.vramTargetMib}
                     modelLayerTotal={booterProps.modelLayerTotal}

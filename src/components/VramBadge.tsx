@@ -17,6 +17,7 @@ interface VramBadgeProps {
   activeEnginePort?: number;
   selectedSlotIdx?: number | null; // Slot index for Fusion overlay (unique, no collision)
   supportsFusion?: boolean;
+  engineStatus?: string;
   gpuMask?: string;
   vramTargetMib?: number;
   modelLayerTotal?: number;
@@ -30,7 +31,7 @@ interface VramBadgeProps {
  *  GOLDEN RULE: Never add conditional logic or hardcoded text here. */
 export default function VramBadge({
   manifest, gpus, modelMeta, selectedGpuIndices, onDeviceSelect, isValidating, onValidate,
-  isModelRunning, activeEngineAlias, activeEnginePort, selectedSlotIdx, supportsFusion = true,
+  isModelRunning, activeEngineAlias, activeEnginePort, selectedSlotIdx, supportsFusion = true, engineStatus,
   gpuMask = "", vramTargetMib, modelLayerTotal, gpuLoadTargetsMib, offloadMode, onMoeSuggestionClick, className
 }: VramBadgeProps) {
   const { getEngine } = useFusionData();
@@ -78,6 +79,7 @@ export default function VramBadge({
             enginePort={activeEnginePort}
             fusion={fusion}
             supportsFusion={supportsFusion}
+            engineStatus={engineStatus}
             slotIdx={selectedSlotIdx ?? -1}
             gpus={gpus}
             gpuMask={gpuMask}

@@ -84,9 +84,15 @@ fn should_skip(flag: &str) -> bool {
     })
 }
 
-/// True when a line is a primary flag definition (column 0), not an indented continuation.
-fn is_primary_flag_line(line: &str) -> bool {
-    line.starts_with('-')
+/// True when a line is a primary `--help` flag definition, not a wrapped continuation reference.
+/// `max_indent` comes from provider `spawn_profile.help_flag_max_indent` (0 = column-0 only).
+fn is_primary_flag_line(line: &str, max_indent: u8) -> bool {
+    let trimmed = line.trim_start();
+    if !trimmed.starts_with('-') {
+        return false;
+    }
+    let indent = line.len().saturating_sub(trimmed.len());
+    indent <= max_indent as usize
 }
 
 /// Drop duplicate keys and empty keys while preserving first-seen order.
@@ -106,7 +112,12 @@ fn dedupe_catalog_entries(entries: Vec<LlamaCatalogEntry>) -> Vec<LlamaCatalogEn
 
 /// Parse a `--help` text output into structured catalog entries.
 /// When `filter_system_params` is true, server/meta/model-loading flags are excluded.
-pub fn parse_help_output(text: &str, filter_system_params: bool) -> Vec<LlamaCatalogEntry> {
+/// `help_flag_max_indent` controls how far flag lines may be indented (see `SpawnProfile`).
+pub fn parse_help_output(
+    text: &str,
+    filter_system_params: bool,
+    help_flag_max_indent: u8,
+) -> Vec<LlamaCatalogEntry> {
     let lines: Vec<&str> = text.lines().collect();
     let mut entries: Vec<LlamaCatalogEntry> = Vec::new();
 
@@ -116,7 +127,7 @@ pub fn parse_help_output(text: &str, filter_system_params: bool) -> Vec<LlamaCat
 
         // Only parse primary flag lines at column 0. Indented continuation lines often
         // mention other flags (e.g. "--logit-bias EOS-inf") and must not become entries.
-        if is_primary_flag_line(raw) {
+        if is_primary_flag_line(raw, help_flag_max_indent) {
             let entry = parse_flag_line(&lines, &mut i);
             if let Some(e) = entry {
                 if !e.key.is_empty() && (!filter_system_params || !should_skip(&e.flag)) {
@@ -740,9 +751,14 @@ pub async fn get_llama_catalog(
     let stderr = String::from_utf8_lossy(&output.stderr);
     let combined = format!("{}\n{}", stdout, stderr);
 
+    // Indent tolerance from factory spawn_profile (IK indents flags; GGML uses column 0).
+    let help_flag_max_indent = crate::templates::load_provider_defaults(&provider_id)
+        .map(|t| t.spawn_profile.help_flag_max_indent)
+        .unwrap_or(0);
+
     // Parse — filter server/meta params unless power-user requests full catalog
     let filter_system_params = !include_all.unwrap_or(false);
-    let entries = parse_help_output(&combined, filter_system_params);
+    let entries = parse_help_output(&combined, filter_system_params, help_flag_max_indent);
     Ok(entries)
 }
 
@@ -764,7 +780,7 @@ mod tests {
                                         --spec-ngram-mod-n-min
 "#;
 
-        let entries = parse_help_output(text, true);
+        let entries = parse_help_output(text, true, 0);
         let keys: Vec<&str> = entries.iter().map(|e| e.key.as_str()).collect();
 
         assert_eq!(keys.iter().filter(|&&k| k == "logit_bias").count(), 1);
@@ -781,17 +797,41 @@ mod tests {
 --temp, --temperature N                 temperature (default: 0.80)
 "#;
 
-        let filtered = parse_help_output(text, true);
+        let filtered = parse_help_output(text, true, 0);
         let filtered_keys: Vec<&str> = filtered.iter().map(|e| e.key.as_str()).collect();
         assert!(!filtered_keys.contains(&"help"));
         assert!(!filtered_keys.contains(&"host"));
         assert!(filtered_keys.contains(&"temp"));
 
-        let full = parse_help_output(text, false);
+        let full = parse_help_output(text, false, 0);
         let full_keys: Vec<&str> = full.iter().map(|e| e.key.as_str()).collect();
         assert!(full_keys.contains(&"help"));
         assert!(full_keys.contains(&"host"));
         assert!(full_keys.contains(&"temp"));
+    }
+
+    #[test]
+    fn parse_help_accepts_indented_ik_style_flags() {
+        let text = r#"
+general:
+
+  -h,    --help, --usage          print usage and exit
+         --version                show version and build info
+  -t,    --threads N              number of threads to use during generation (default: 16)
+         --temp N                 temperature (default: 0.8)
+  -fa, --flash-attn (auto|on|off|0|1)
+                                  set Flash Attention (default: on)
+"#;
+
+        let none = parse_help_output(text, true, 0);
+        assert!(none.is_empty(), "column-0 parser must ignore IK-indented flags");
+
+        let ik = parse_help_output(text, true, 12);
+        let keys: Vec<&str> = ik.iter().map(|e| e.key.as_str()).collect();
+        assert!(keys.contains(&"threads"));
+        assert!(keys.contains(&"temp"));
+        assert!(keys.contains(&"flash_attn"));
+        assert!(!keys.contains(&"help"));
     }
 
     #[test]

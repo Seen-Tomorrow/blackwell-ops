@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { ProviderConfig } from "../lib/types";
 import { useTelemetry } from "../context/TelemetryContext";
-import { getEnvColors, ENV_META, type Env } from "../lib/foundry_constants";
+import { ENV_META, type Env } from "../lib/foundry_constants";
 
 interface ProfileCheck {
   id: string;
@@ -18,8 +18,8 @@ interface FoundryConfirmFormProps {
   environment: Env;
   prUrl: string;
   setPrUrl: (v: string) => void;
-  cmakeFlags: string;
-  setCmakeFlags: (v: string) => void;
+  buildProfile: string;
+  setBuildProfile: (v: string) => void;
   maxCores: number | null;
   setMaxCores: (v: number | null) => void;
   showEngineWarning: boolean;
@@ -36,8 +36,8 @@ export default function FoundryConfirmForm({
   environment,
   prUrl,
   setPrUrl,
-  cmakeFlags,
-  setCmakeFlags,
+  buildProfile,
+  setBuildProfile,
   maxCores,
   setMaxCores,
   showEngineWarning,
@@ -51,10 +51,6 @@ export default function FoundryConfirmForm({
   const { cpu } = useTelemetry();
   const cpuThreads = cpu?.threads ?? 0;
   const cpuPhysical = cpu?.cores ?? 0;
-
-  const envColors = (base: string): string => {
-    return getEnvColors(environment)[base as keyof ReturnType<typeof getEnvColors>] || "";
-  };
 
   const [toolchainCheck, setToolchainCheck] = useState<ProfileCheck | null>(null);
   const envMeta = ENV_META[environment];
@@ -74,7 +70,7 @@ export default function FoundryConfirmForm({
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm">
-      <div className="w-[60vw] max-w-[720px] border border-yellow-400/40 bg-stealth-panel rounded-sm shadow-2xl">
+      <div className="foundry-confirm-panel border border-yellow-400/40 bg-stealth-panel rounded-sm shadow-2xl">
         <div className="flex items-center justify-between px-4 py-3 border-b border-stealth-border">
           <h3 className="text-xs font-mono text-yellow-400 tracking-wider">REACTOR FOUNDRY</h3>
         </div>
@@ -100,7 +96,7 @@ export default function FoundryConfirmForm({
 
             <div className="flex items-center gap-2 pt-1 flex-wrap">
               <span className="text-[8px] font-mono text-stealth-muted uppercase">Environment:</span>
-              <span className={`px-2 py-0.5 text-[9px] font-mono border rounded-sm ${envColors("border")}`}>
+              <span className="foundry-env-badge px-2 py-0.5 text-[9px] font-mono rounded-sm">
                 {envMeta.label}
               </span>
               <span className="cuda-badge text-[7px] font-mono px-1.5 py-0.5 rounded-sm">CUDA {envMeta.cuda}</span>
@@ -120,40 +116,41 @@ export default function FoundryConfirmForm({
               </div>
             )}
 
-            {/* PR input */}
-            <div className="pt-1">
-              <label className="text-[8px] font-mono text-stealth-muted uppercase block mb-1.5">
+            {/* Build profile — provider CMake flags (first editable block) */}
+            <div className="pt-2">
+              <label className="text-[8px] font-mono text-stealth-muted uppercase block mb-1">
+                Build profile (CMake flags)
+              </label>
+              <p className="text-[7px] font-mono text-stealth-muted/80 mb-1.5 leading-tight">
+                Loaded from provider defaults. Edit here — saved to provider when you start the build, then passed to CMake configure.
+              </p>
+              <textarea
+                placeholder={"-DGGML_CUDA=ON\n-DCMAKE_CUDA_ARCHITECTURES=\"86;89;120\""}
+                rows={5}
+                className="foundry-build-profile-textarea w-full px-2 py-1.5 min-h-[5.5rem]"
+                value={buildProfile}
+                onChange={(e) => setBuildProfile(e.target.value)}
+                spellCheck={false}
+              />
+            </div>
+
+            {/* PR patch — navy accent */}
+            <div className="pt-2">
+              <label className="foundry-pr-label block mb-1.5">
                 Apply PR patch (optional)
               </label>
               <input
                 type="text"
                 placeholder="https://github.com/owner/repo/pull/N"
-                className="w-full px-2 py-1.5 text-[8px] font-mono bg-black/50 border border-stealth-border rounded-sm text-white placeholder:text-stealth-muted/40 focus:border-purple-400/60 outline-none transition-colors"
+                className="foundry-pr-input w-full px-2 py-1.5 outline-none transition-colors"
                 value={prUrl}
                 onChange={(e) => setPrUrl(e.target.value)}
               />
             </div>
 
-            {/* CMake flags */}
-            <div className="pt-1">
-              <label className="text-[8px] font-mono text-stealth-muted uppercase block mb-1">
-                CMake flags (optional)
-              </label>
-              <p className="text-[7px] font-mono text-yellow-400/70 mb-1.5 leading-tight">
-                These flags <span className="font-bold text-yellow-400">REPLACE</span> the provider defaults for this build.
-              </p>
-              <textarea
-                placeholder="-DGGML_CUDA=ON -DLLAMA_AVX2=OFF ..."
-                rows={3}
-                className="w-full px-2 py-1.5 text-[8px] font-mono bg-black/50 border border-stealth-border rounded-sm text-white placeholder:text-stealth-muted/40 focus:border-purple-400/60 outline-none transition-colors resize-y"
-                value={cmakeFlags}
-                onChange={(e) => setCmakeFlags(e.target.value)}
-              />
-            </div>
-
             {/* Build cores */}
             {cpuThreads > 0 && (
-              <div className="pt-1">
+              <div className="pt-2">
                 <label className="text-[8px] font-mono text-stealth-muted uppercase block mb-1.5">
                   Max build threads
                 </label>
@@ -229,13 +226,15 @@ export default function FoundryConfirmForm({
                 className="px-3 py-1 text-[9px] font-mono border border-red-400/60 text-red-400 hover:bg-red-500/20 transition-colors">
                 CLOSE
               </button>
-              <button onClick={onMinimize}
-                className="px-3 py-1 text-[9px] font-mono border border-stealth-border text-stealth-muted hover:text-white transition-colors">
+              <button type="button" onClick={onMinimize} className="foundry-minimize-btn">
                 MINIMIZE TO STATUS BAR
               </button>
-              <button onClick={onConfirmBuild}
+              <button
+                type="button"
+                onClick={onConfirmBuild}
                 disabled={toolchainCheck !== null && !toolchainReady}
-                className={`px-4 py-1 text-[9px] font-mono border rounded-sm transition-all ${envColors("border")} disabled:opacity-40 disabled:cursor-not-allowed`}>
+                className="foundry-confirm-build-btn"
+              >
                 YES — BUILD
               </button>
             </>

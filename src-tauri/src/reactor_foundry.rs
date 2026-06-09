@@ -32,7 +32,7 @@ const DEFAULT_CMAKE_FLAGS: &[(&str, &str)] = &[
     ("ggml-llama", concat!(
         "-DLLAMA_CURL=OFF ",
         "-DGGML_CUDA=ON ",
-        "-DCMAKE_CUDA_ARCHITECTURES=\"120a\" ",
+        "-DCMAKE_CUDA_ARCHITECTURES=\"86;89;120\" ",
         "-DGGML_CUDA_PEER_TO_PEER=ON ",
         "-DGGML_CUDA_FA_ALL_QUANTS=ON ",
         "-DGGML_AVX512=ON ",
@@ -41,7 +41,7 @@ const DEFAULT_CMAKE_FLAGS: &[(&str, &str)] = &[
     ("ik-llama", concat!(
         "-DLLAMA_CURL=OFF ",
         "-DGGML_CUDA=ON ",
-        "-DCMAKE_CUDA_ARCHITECTURES=\"120a\" ",
+        "-DCMAKE_CUDA_ARCHITECTURES=\"86;89;120\" ",
         "-DGGML_CUDA_PEER_TO_PEER=ON "
     )),
 ];
@@ -137,6 +137,7 @@ static CURRENT_BUILD: std::sync::LazyLock<TokioMutex<Option<BuildState>>> =
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BuildProgress {
+    pub build_id: u64,
     pub phase: String,
     pub provider_id: String,
     pub environment: String,
@@ -318,6 +319,29 @@ fn is_cancelled() -> bool {
     BUILD_CANCELLED.load(Ordering::SeqCst)
 }
 
+/// Drop the in-memory build slot and disposable work/ tree for this attempt.
+async fn clear_build_slot_if_matches(
+    build_id: u64,
+    provider_id: &str,
+    app: &crate::engine::AppContext,
+) {
+    let should_clear = {
+        let mut current = CURRENT_BUILD.lock().await;
+        if current.as_ref().map(|s| s.build_id) == Some(build_id) {
+            *current = None;
+            true
+        } else {
+            false
+        }
+    };
+    if should_clear {
+        app.blackwell_output_console_manager
+            .end_foundry_build_session(build_id);
+        let work_root = crate::config::foundry_work_dir(provider_id);
+        let _ = tokio::fs::remove_dir_all(&work_root).await;
+    }
+}
+
 // ── PR Parsing (URL or number) ───────────────────────────────────────
 
 /// Extract owner/repo and PR number from a GitHub PR URL.
@@ -400,18 +424,26 @@ pub async fn foundry_build(
     BUILD_CANCELLED.store(false, Ordering::SeqCst);
     clear_pids();
 
+    let build_id = BUILD_COUNTER.fetch_add(1, Ordering::SeqCst) + 1;
+
+    // Reserve CURRENT_BUILD immediately so concurrent foundry_build invocations cannot race
+    // past the duplicate check and nuke an in-flight work/ tree.
     {
         let mut current = CURRENT_BUILD.lock().await;
         if current.is_some() {
-            if let Some(state) = current.take() {
-                log::warn!("[foundry] Force-clearing orphaned build for '{}' profile '{}'", state.provider_id, state.profile_id);
-                emit_build_event(app_handle, &state,
-                    Some("Build cancelled: frontend closed without proper cancel.".into()));
-            }
+            return Err(format!(
+                "A Foundry build is already in progress for '{}' ({}). Wait for it to finish or cancel it explicitly.",
+                current.as_ref().map(|s| s.provider_id.as_str()).unwrap_or("?"),
+                current.as_ref().map(|s| s.profile_id.as_str()).unwrap_or("?"),
+            ));
         }
+        *current = Some(BuildState {
+            build_id,
+            provider_id: provider_id.clone(),
+            profile_id: profile_id.clone(),
+            phase: BuildPhase::Configuring,
+        });
     }
-
-    let build_id = BUILD_COUNTER.fetch_add(1, Ordering::SeqCst) + 1;
 
     // Start tracking this build in the Blackwell Output Console (power-user output system)
     app.blackwell_output_console_manager
@@ -443,14 +475,10 @@ pub async fn foundry_build(
         BlackwellOutputConsoleLineStyle::Highlight,
     );
 
-    let state = BuildState {
-        build_id,
-        provider_id: provider_id.clone(),
-        profile_id: profile_id.clone(),
-        phase: BuildPhase::Configuring,
+    let state = {
+        let current = CURRENT_BUILD.lock().await;
+        current.as_ref().cloned().expect("build state reserved above")
     };
-
-    *CURRENT_BUILD.lock().await = Some(state.clone());
 
     emit_build_event(app_handle, &state, None);
 
@@ -748,11 +776,16 @@ pub async fn foundry_build(
             .find(|p| p.id == provider_id);
         let build_profile = p.map(|p| p.build_profile.clone()).unwrap_or_default();
 
-        // IMPORTANT: User-provided cmake_flags (from the build modal) completely REPLACE both
-        // the provider's build_profile AND the built-in defaults. This is by design for power users.
-        // See FoundryConfirmForm.tsx for the UI warning.
+        // Foundry confirm modal loads provider build_profile for edit; persisted on build start.
+        // cmake_flags from the invoke carries the edited profile for this configure attempt.
         if let Some(ref flags) = cmake_flags {
-            flags.trim().to_string()
+            if !flags.trim().is_empty() {
+                flags.trim().to_string()
+            } else if !build_profile.trim().is_empty() {
+                build_profile.trim().to_string()
+            } else {
+                get_default_cmake_flags(template_type).to_string()
+            }
         } else if !build_profile.trim().is_empty() {
             build_profile.trim().to_string()
         } else {
@@ -828,6 +861,7 @@ pub async fn foundry_build(
     let cfg_batch_content = cfg_batch_lines.join("\n");
     let cfg_batch_path = work_root.join("_build_cfg.bat");
     if let Err(e) = tokio::fs::write(&cfg_batch_path, &cfg_batch_content).await {
+        clear_build_slot_if_matches(build_id, &provider_id, &*app).await;
         return Err(format!("Failed to write build script: {}", e));
     }
 
@@ -913,6 +947,7 @@ pub async fn foundry_build(
             stream_handle.await.ok();
             clear_pids();
             let _ = tokio::fs::remove_file(&cfg_batch_path).await;
+            clear_build_slot_if_matches(build_id, &provider_id, &*app).await;
             return Err("Build cancelled by user.".to_string());
         }
     };
@@ -923,6 +958,7 @@ pub async fn foundry_build(
     if cfg_status.is_none() {
         clear_pids();
         let _ = tokio::fs::remove_file(&cfg_batch_path).await;
+        clear_build_slot_if_matches(build_id, &provider_id, &*app).await;
         return Err("CMake configure process terminated unexpectedly.".to_string());
     }
 
@@ -950,6 +986,7 @@ pub async fn foundry_build(
     // ── Check cancellation before showing PROCEED prompt ─────────────
     if is_cancelled() {
         clear_pids();
+        clear_build_slot_if_matches(build_id, &provider_id, &*app).await;
         return Err("Build cancelled by user.".to_string());
     }
 
@@ -979,6 +1016,13 @@ pub async fn foundry_build(
             let work_root = crate::config::foundry_work_dir(&provider_id);
             let _ = tokio::fs::remove_dir_all(&work_root).await;
             app.blackwell_output_console_manager.end_foundry_build_session(build_id);
+
+            emit_build_event(app_handle, &BuildState {
+                build_id,
+                provider_id: provider_id.clone(),
+                profile_id: profile_id.clone(),
+                phase: BuildPhase::Failed("Build cancelled.".into()),
+            }, Some("Build cancelled.".into()));
 
             return Err("Build cancelled by user.".to_string());
         }
@@ -1313,6 +1357,7 @@ pub async fn foundry_cancel(
 pub async fn foundry_status() -> Result<Option<BuildProgress>, String> {
     let current = CURRENT_BUILD.lock().await;
     Ok(current.as_ref().map(|state| BuildProgress {
+        build_id: state.build_id,
         phase: state.phase.step_name().to_string(),
         provider_id: state.provider_id.clone(),
         environment: state.profile_id.clone(),

@@ -48,9 +48,15 @@ pub struct SpawnProfile {
     pub port_flag: Vec<String>,
     #[serde(default = "default_alias_flag")]
     pub alias_flag: Vec<String>,
-    /// Extra verbosity flags (e.g. ggml: `["-lv","4"]`; IK: `[]`).
+    /// Extra verbosity flags (e.g. ggml: `["-lv","4"]`; IK: `["--verbose"]`).
     #[serde(default)]
     pub verbosity_args: Vec<String>,
+    /// Value-less flags injected at launch (e.g. IK: `["--fit"]`).
+    #[serde(default)]
+    pub spawn_flags: Vec<String>,
+    /// Borrow `llama-fit-params.exe` from this provider when absent beside our server binary (e.g. IK → `ggml-master`).
+    #[serde(default)]
+    pub fit_binary_provider: String,
     #[serde(default = "default_true")]
     pub enable_metrics: bool,
     #[serde(default = "default_true")]
@@ -64,6 +70,10 @@ pub struct SpawnProfile {
     /// Max concurrent engine slots when this provider is installed (global stack uses the highest value across all providers).
     #[serde(default = "default_max_engine_slots")]
     pub max_engine_slots: usize,
+    /// Max leading whitespace before a `--help` flag line is treated as a catalog entry.
+    /// GGML-style help uses column-0 flags (0). IK-style help indents flags (typically 2–9).
+    #[serde(default = "default_help_flag_max_indent")]
+    pub help_flag_max_indent: u8,
 }
 
 fn default_model_flag() -> Vec<String> { vec!["-m".into()] }
@@ -74,6 +84,7 @@ fn default_ngl_flag() -> Vec<String> { vec!["--n-gpu-layers".into()] }
 fn default_mmproj_flag() -> Vec<String> { vec!["--mmproj".into()] }
 fn default_true() -> bool { true }
 fn default_max_engine_slots() -> usize { 32 }
+fn default_help_flag_max_indent() -> u8 { 0 }
 
 impl Default for SpawnProfile {
     fn default() -> Self {
@@ -82,12 +93,15 @@ impl Default for SpawnProfile {
             port_flag: default_port_flag(),
             alias_flag: default_alias_flag(),
             verbosity_args: vec!["-lv".into(), "4".into()],
+            spawn_flags: Vec::new(),
+            fit_binary_provider: String::new(),
             enable_metrics: true,
             supports_fusion: true,
             gpu_env: default_gpu_env(),
             ngl_flag: default_ngl_flag(),
             mmproj_flag: default_mmproj_flag(),
             max_engine_slots: default_max_engine_slots(),
+            help_flag_max_indent: default_help_flag_max_indent(),
         }
     }
 }
@@ -370,6 +384,7 @@ impl ProviderTemplate {
         }
 
         args.extend(sp.verbosity_args.clone());
+        args.extend(sp.spawn_flags.clone());
 
         if sp.enable_metrics {
             args.push("--metrics".into());
@@ -454,10 +469,14 @@ impl ProviderTemplate {
         }
 
         // n_gpu_layers injection — computed by VRAM scenario factory at runtime.
-        if let Some(ngl) = config.extra_params.get("__ngl") {
-            if let Some(flag) = sp.ngl_flag.first() {
-                let ngl_str = ngl.as_str().map(String::from).unwrap_or(ngl.to_string());
-                args.extend([flag.clone(), ngl_str]);
+        // Skip when --fit is in spawn_flags — IK auto-offloads inside the loader.
+        let fit_handles_offload = sp.spawn_flags.iter().any(|f| f == "--fit");
+        if !fit_handles_offload {
+            if let Some(ngl) = config.extra_params.get("__ngl") {
+                if let Some(flag) = sp.ngl_flag.first() {
+                    let ngl_str = ngl.as_str().map(String::from).unwrap_or(ngl.to_string());
+                    args.extend([flag.clone(), ngl_str]);
+                }
             }
         }
 

@@ -618,10 +618,7 @@ pub async fn fit_scan_model(
     };
 
     let backend_type = _provider_id.unwrap_or_else(|| crate::config::DEFAULT_PROVIDER_ID.to_string());
-    let binary_path = engine_utils::find_provider_binary(&cfg, &backend_type, "")?;
-
-    let fit_binary = fit_scanner::find_fit_binary(binary_path.to_str().unwrap_or(""))
-        .ok_or_else(|| "llama-fit-params.exe not found — ensure provider is built".to_string())?;
+    let fit_binary = fit_scanner::resolve_fit_binary(&cfg, &backend_type, "")?;
 
     // Resolve ctx — slider sends raw number, legacy string ("32k") still handled
     let ctx_int: usize = match &ctx_size {
@@ -686,9 +683,7 @@ pub async fn fit_scan_library(
         cfg.model_paths.iter().map(|p| p.path.clone()).collect::<Vec<_>>()
     };
 
-    let binary_path = engine_utils::find_provider_binary(&cfg, &provider_id, "")?;
-    let fit_binary = fit_scanner::find_fit_binary(binary_path.to_str().unwrap_or(""))
-        .ok_or_else(|| "llama-fit-params.exe not found — ensure provider is built".to_string())?;
+    let fit_binary = fit_scanner::resolve_fit_binary(&cfg, &provider_id, "")?;
 
     // Get total GPU VRAM for fit checking
     let gpus = telemetry::scan_gpus().await.unwrap_or_default();

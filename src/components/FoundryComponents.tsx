@@ -155,8 +155,11 @@ export function BuildProfileRow({ env, meta, provider, isLatestBuild, hasBackup,
       <button
         onClick={onBuild}
         disabled={!provider.git_url || !!isBuilding}
-        className={`value-chip text-[8px] font-mono px-3 py-1 shrink-0 ${isBuilding ? "opacity-50" : ""} disabled:opacity-30 disabled:cursor-not-allowed`}
+        className={`foundry-build-btn value-chip shrink-0 disabled:opacity-30 disabled:cursor-not-allowed ${isBuilding ? "foundry-build-btn--active" : ""}`}
       >
+        {isBuilding && (
+          <span className="foundry-hammer-icon foundry-hammer-icon--shake" aria-hidden="true">⚒</span>
+        )}
         {isBuilding ? "BUILDING..." : "BUILD"}
       </button>
     </div>

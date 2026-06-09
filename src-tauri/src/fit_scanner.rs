@@ -174,6 +174,38 @@ pub fn find_fit_binary(provider_binary_path: &str) -> Option<String> {
     None
 }
 
+/// Resolve `llama-fit-params.exe` for a provider — local dir first, then `spawn_profile.fit_binary_provider`.
+pub fn resolve_fit_binary(
+    cfg: &crate::config::AppConfig,
+    provider_id: &str,
+    binary_profile: &str,
+) -> Result<String, String> {
+    let server_path = crate::engine_utils::find_provider_binary(cfg, provider_id, binary_profile)?;
+    if let Some(fit) = find_fit_binary(server_path.to_str().unwrap_or("")) {
+        return Ok(fit);
+    }
+
+    let borrow_id = crate::templates::load_provider_defaults(provider_id)
+        .map(|t| t.spawn_profile.fit_binary_provider)
+        .unwrap_or_default();
+    let borrow_id = borrow_id.trim();
+    if borrow_id.is_empty() {
+        return Err(format!(
+            "llama-fit-params.exe not found beside {} — set spawn_profile.fit_binary_provider or build the tool",
+            server_path.display()
+        ));
+    }
+
+    let borrow_server = crate::engine_utils::find_provider_binary(cfg, borrow_id, binary_profile)?;
+    find_fit_binary(borrow_server.to_str().unwrap_or("")).ok_or_else(|| {
+        format!(
+            "llama-fit-params.exe not found beside {} (borrowed from provider '{}')",
+            borrow_server.display(),
+            borrow_id
+        )
+    })
+}
+
 // ── Command Builder ────────────────────────────────────────────────
 
 /// Build CLI args for llama-fit-params.exe directly — no template system involvement.

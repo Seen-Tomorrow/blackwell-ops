@@ -13,6 +13,8 @@ interface FusionOverlayProps {
   enginePort?: number;
   fusion: FusionUpdate | null;
   supportsFusion?: boolean;
+  /** Stack status when fusion is off (RUNNING, LOADING, ERROR, …). */
+  engineStatus?: string;
   slotIdx?: number;
   gpus?: GpuInfo[];
   gpuMask?: string;
@@ -43,6 +45,7 @@ export default function FusionOverlay({
   enginePort,
   fusion,
   supportsFusion = true,
+  engineStatus,
   slotIdx = -1,
   gpus = [],
   gpuMask = "",
@@ -155,14 +158,62 @@ export default function FusionOverlay({
   }, [displayPort]);
 
   if (!supportsFusion) {
+    const isLaunching = engineStatus === "LOADING";
+
+    if (isLaunching && slotIdx >= 0) {
+      return (
+        <div className="relative w-full h-full overflow-hidden">
+          <FusionBooter
+            slotIdx={slotIdx}
+            alias={displayAlias}
+            port={displayPort}
+            gpus={gpus}
+            gpuMask={gpuMask}
+            vramTargetMib={vramTargetMib}
+            modelLayerTotal={modelLayerTotal}
+            gpuLoadTargetsMib={gpuLoadTargetsMib}
+          />
+        </div>
+      );
+    }
+
+    const statusLabel = engineStatus === "RUNNING"
+      ? "ENGINE RUNNING"
+      : engineStatus === "ERROR"
+        ? "ENGINE ERROR"
+        : engineStatus === "LOADING"
+          ? "ENGINE LOADING"
+          : "ENGINE ACTIVE";
+
     return (
-      <div className="flex flex-col items-center justify-center gap-2 w-full h-full px-4 text-center">
-        <span className="text-[16px] font-mono text-stealth-muted/40 tracking-widest">{displayAlias}</span>
-        <span className="text-[9px] font-mono text-stealth-muted/50 tracking-wider">MONITORING N/A</span>
-        <span className="text-[8px] font-mono text-stealth-muted/35 leading-relaxed">
-          Live Fusion telemetry is not enabled for this provider.
-        </span>
-        <span className="text-[8px] font-mono text-stealth-muted/30">PORT {displayPort}</span>
+      <div className="relative flex flex-col w-full h-full px-2 py-1 gap-2 overflow-hidden">
+        <div className="flex items-center flex-shrink-0 gap-2">
+          <span className="text-[9px] font-mono text-stealth-muted/50 tracking-widest flex-1 truncate">
+            {statusLabel}
+          </span>
+          <span className="text-[12px] font-mono text-stealth-muted/50 tracking-wider truncate" title={displayAlias}>
+            {displayAlias.toUpperCase()}
+          </span>
+          <span className="text-[10px] font-mono text-stealth-muted/35">:{displayPort}</span>
+          <button
+            type="button"
+            onClick={handleStopEngine}
+            disabled={isStopping}
+            className={`text-[7px] font-bold tracking-wider px-1.5 py-0.5 rounded text-white select-none ${
+              isStopping
+                ? "bg-red-600/50 cursor-wait animate-pulse"
+                : "bg-red-600/80 hover:bg-red-500 active:bg-red-700 cursor-pointer"
+            }`}
+          >
+            {isStopping ? "STOPPING…" : "STOP"}
+          </button>
+        </div>
+        <div className="flex flex-1 flex-col items-center justify-center gap-2 px-4 text-center min-h-0">
+          <span className="text-[9px] font-mono text-stealth-muted/55 tracking-wider">FUSION MONITORING OFF</span>
+          <span className="text-[8px] font-mono text-stealth-muted/40 leading-relaxed max-w-[280px]">
+            Live /slots telemetry is not enabled for this provider. Engine stop is still available here.
+          </span>
+        </div>
       </div>
     );
   }

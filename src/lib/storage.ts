@@ -23,6 +23,7 @@ import { normalizeDisplayTexture, type DisplayTexture } from "./displayTexture";
  * | BlackOps-selected-slot-idx | number string | Last selected engine slot (-1 = none) |
  * | BlackOps-app-theme | string | Active app theme id (matrix, amber, …) |
  * | BlackOps-log-search-by-slot | JSON Record<slot, query> | Per-slot ENGINE LOGS search |
+ * | BlackOps-logs-ansi-enabled | "0" \| "1" | ENGINE LOGS ANSI color rendering |
  * | BlackOps-startup-updates | JSON | Cached startup update check results |
  * | BlackOps-fusion-hero-tps | live \| avg | Fusion hero TPS display mode |
  * | BlackOps-display-texture | clean \| crt \| phosphor-dark \| phosphor-light | Display texture cycle |
@@ -98,6 +99,7 @@ export const KEYS = {
   selectedSlotIdx: `${STORAGE_PREFIX}selected-slot-idx`,
   appTheme: `${STORAGE_PREFIX}app-theme`,
   logSearchBySlot: `${STORAGE_PREFIX}log-search-by-slot`,
+  logsAnsiEnabled: `${STORAGE_PREFIX}logs-ansi-enabled`,
   startupUpdates: `${STORAGE_PREFIX}startup-updates`,
   fusionHeroTpsMode: `${STORAGE_PREFIX}fusion-hero-tps`,
   displayTexture: `${STORAGE_PREFIX}display-texture`,
@@ -412,6 +414,17 @@ export function saveLogSearchBySlot(map: Record<number, string>): void {
   } else {
     writeJsonStorage(KEYS.logSearchBySlot, serializable);
   }
+}
+
+export function loadLogsAnsiEnabled(defaultEnabled = true): boolean {
+  const value = readStorage(KEYS.logsAnsiEnabled);
+  if (value === "0") return false;
+  if (value === "1") return true;
+  return defaultEnabled;
+}
+
+export function saveLogsAnsiEnabled(enabled: boolean): void {
+  writeStorage(KEYS.logsAnsiEnabled, enabled ? "1" : "0");
 }
 
 /** Normalize a UI group name to uppercase-hyphen format (e.g. "Speculative Decoding" → "SPECULATIVE-DECODING") */

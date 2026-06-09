@@ -3,12 +3,13 @@ import { invoke } from "@tauri-apps/api/core";
 import type { Tab } from "../App";
 import type { ProviderConfig, AppUpdateInfo } from "../lib/types";
 import { useStatus } from "../context/StatusBarContext";
-import { useDock } from "../context/DockContext";
 import { useFoundry, type Env } from "../hooks/useBuildDock";
+import { getStepLabel } from "../lib/foundry_constants";
 import BlackwellOutputConsole, {
   type OutputConsoleCategory,
   parseOutputConsoleCategory,
 } from "./BlackwellOutputConsole";
+import OutputConsoleInlineDock from "./OutputConsoleInlineDock";
 import FoundryModal from "./FoundryModal";
 import ThemePicker from "./ThemePicker";
 import {
@@ -87,7 +88,6 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
   );
   const { totalParams, hiddenCount, onShowAll, flashMessage } = useStatus();
   const { buildProgress, foundryModal, foundryModalVisible, openBuildModal, minimizeBuildModal, restoreBuildModal, closeBuildModal, attachToActiveBuild, buildAttempt } = useFoundry();
-  const { slots, toggleSlot } = useDock();
   const resolvedProvider = useMemo(() => {
     if (!foundryModal) return providers?.[0] || {} as ProviderConfig;
     const prov = providers?.find(p => p.id === foundryModal.providerId);
@@ -148,8 +148,7 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
           category: string;
         } | null>("get_blackwell_output_console_latest_line");
         if (latest?.content) {
-          const tag = latest.category ? latest.category.toUpperCase() : "";
-          setLastConsoleLine(tag ? `${tag} · ${latest.content}` : latest.content);
+          setLastConsoleLine(latest.content);
           const cat = latest.category ? parseOutputConsoleCategory(latest.category) : null;
           if (cat) setLastConsoleCategory(cat);
         }
@@ -318,91 +317,80 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
         </div>
       </main>
 
-      {/* Bottom status bar — fixed so it's always visible regardless of zoom */}
-      <footer className={`app-footer fixed bottom-0 left-0 right-0 flex items-center justify-between px-6 py-1.5 text-[10px] font-mono z-20 ${isOutputConsoleExpanded ? "app-footer-expanded" : ""}`}>
-        <div className="flex items-center gap-4">
-          <span>PLATFORM: WINDOWS</span>
-          <span>TOKIO: ACTIVE</span>
-        </div>
-
-        {/* Status bar middle — Blackwell Output Console (most space) + Build dock (smaller dedicated area) */}
-        <div className="flex items-center gap-2 min-w-0" style={{ flex: "1 1 auto", maxWidth: "65%" }}>
-          {/* Blackwell Output Console - Docked (1 line always visible) */}
-          <div
-            onClick={() => {
-              if (isOutputConsoleExpanded) {
-                setIsOutputConsoleExpanded(false);
-              } else {
-                setConsoleOpenCategory(lastConsoleCategory);
-                setIsOutputConsoleExpanded(true);
-              }
-            }}
-            className="app-footer-output min-w-0 flex items-center gap-2 px-3 py-0.5 cursor-pointer transition-all group font-mono rounded-sm"
-            style={{ flex: "0.75 1 auto" }}
-            title={isOutputConsoleExpanded ? "Click to close" : "Click to expand"}
-          >
-            <span className="app-footer-output-label text-[9px] tracking-wider flex-shrink-0">OUTPUT</span>
-            <div className="app-footer-output-text flex-1 min-w-0 text-[8px] truncate opacity-90">
-              {lastConsoleLine}
-            </div>
-          </div>
-
-          {/* Dedicated small area for Build dock (only Foundry uses this for now) */}
-          <div className="flex items-center gap-1 flex-shrink-0">
-            {slots.map((slot, i) => (
-              slot.occupied && slot.config?.type === 'build' ? (
-                <button
-                  key={i}
-                  onClick={() => {
-                    if (foundryModal && foundryModalVisible) minimizeBuildModal();
-                    else if (foundryModal) restoreBuildModal();
-                    else if (buildProgress) openBuildModal(buildProgress.providerId, buildProgress.environment.toLowerCase() as Env);
-                    else attachToActiveBuild();
-                  }}
-                  className="flex items-center gap-2 px-2.5 py-0.5 border border-yellow-400/40 bg-yellow-400/[0.04] rounded-sm text-[9px] hover:bg-yellow-400/10 transition-all min-w-[110px]"
-                  title="Build Progress"
-                >
-                  <span>{slot.config?.icon || "⚒"}</span>
-                  <div className="flex-1 min-w-0 text-left">
-                    {slot.config?.inlineContent}
-                  </div>
-                </button>
-              ) : null
-            ))}
-          </div>
-        </div>
-
-        {/* Right group */}
-        <div className="flex items-center gap-4 relative">
-          {isConfigTab && (
+      {/* Bottom status bar — mini console is fixed chrome (amber header + inset live line) */}
+      <footer className={`app-footer fixed bottom-0 left-0 right-0 z-20 ${isOutputConsoleExpanded ? "app-footer-expanded" : ""}`}>
+        <OutputConsoleInlineDock
+          liveLine={lastConsoleLine}
+          liveCategory={lastConsoleCategory}
+          isExpanded={isOutputConsoleExpanded}
+          onToggle={() => {
+            if (isOutputConsoleExpanded) {
+              setIsOutputConsoleExpanded(false);
+            } else {
+              setConsoleOpenCategory(lastConsoleCategory);
+              setIsOutputConsoleExpanded(true);
+            }
+          }}
+          statusLeft={
             <>
-              <span>TOTAL PARAMS: {totalParams}</span>
-              <div className="relative inline-block">
-                <span
-                  onClick={onShowAll}
-                  onMouseEnter={() => setShowTooltip(true)}
-                  onMouseLeave={() => setShowTooltip(false)}
-                  className={`cursor-pointer app-footer-stat-link transition-colors ${hiddenCount > 0 ? "text-yellow-400" : ""}`}
-                >
-                  HIDDEN: {hiddenCount}
-                </span>
-                {showTooltip && (
-                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-[#1a1a2e] border border-yellow-400/40 text-[9px] font-mono text-yellow-300 whitespace-nowrap rounded-sm pointer-events-none z-[100]">
-                    Click to show all hidden values
-                  </div>
-                )}
-              </div>
+              <span>PLATFORM: WINDOWS</span>
+              <span>TOKIO: ACTIVE</span>
             </>
-          )}
-          <span className={`transition-colors ${flashMessage ? "status-flash" : "app-status-nominal"}`}>
-            {flashMessage || "SYSTEM NOMINAL"}
-          </span>
-        </div>
+          }
+          foundrySlot={
+            buildProgress ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (foundryModal && foundryModalVisible) minimizeBuildModal();
+                  else if (foundryModal) restoreBuildModal();
+                  else if (buildProgress) openBuildModal(buildProgress.providerId, buildProgress.environment.toLowerCase() as Env);
+                  else attachToActiveBuild();
+                }}
+                className={`foundry-status-chip${foundryModal && !foundryModalVisible ? " foundry-status-chip--minimized" : ""}`}
+                title="Build progress — click to restore or minimize"
+              >
+                <span className={`foundry-hammer-icon${foundryModal && !foundryModalVisible ? " foundry-hammer-icon--shake" : ""}`}>⚒</span>
+                <span className="foundry-status-chip__label" title={buildProgress.logLine || ""}>
+                  {getStepLabel(buildProgress.step)}...
+                </span>
+              </button>
+            ) : null
+          }
+          statusRight={
+            <>
+              {isConfigTab && (
+                <>
+                  <span>TOTAL PARAMS: {totalParams}</span>
+                  <div className="relative inline-block">
+                    <span
+                      onClick={onShowAll}
+                      onMouseEnter={() => setShowTooltip(true)}
+                      onMouseLeave={() => setShowTooltip(false)}
+                      className={`cursor-pointer app-footer-stat-link transition-colors ${hiddenCount > 0 ? "text-yellow-400" : ""}`}
+                    >
+                      HIDDEN: {hiddenCount}
+                    </span>
+                    {showTooltip && (
+                      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-[#1a1a2e] border border-yellow-400/40 text-[9px] font-mono text-yellow-300 whitespace-nowrap rounded-sm pointer-events-none z-[100]">
+                        Click to show all hidden values
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+              <span className={`transition-colors ${flashMessage ? "status-flash" : "app-status-nominal"}`}>
+                {flashMessage || "SYSTEM NOMINAL"}
+              </span>
+            </>
+          }
+        />
       </footer>
 
       {/* Foundry Build Modal — always mounted, CSS visibility controlled by foundryModalVisible.
-          We key it on provider + buildAttempt so that clicking "Build" again for the same provider
-          after a cancel or error forces a complete remount + fresh internal state. */}
+          Key uses buildAttempt only (stable for the whole attempt). Do NOT include buildId here —
+          changing key mid-build remounts the modal and wipes configure logs. HMR reattach uses hydration. */}
       <FoundryModal
         key={`${resolvedProvider.id}-${resolvedEnvironment}-${buildAttempt}`}
         provider={resolvedProvider}

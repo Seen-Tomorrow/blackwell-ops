@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from "react";
 import type { ProviderConfig } from "../lib/types";
-import { getEnvColors } from "../lib/foundry_constants";
+
 
 interface BuildLogEntry {
   step: string;
@@ -40,10 +40,6 @@ export default function FoundryBuildProgress({
   const internalLogRef = useRef<HTMLDivElement>(null);
   const effectiveLogRef = logRef || internalLogRef;
 
-  const envColors = (base: string): string => {
-    return getEnvColors(environment)[base as keyof ReturnType<typeof getEnvColors>] || "";
-  };
-
   // Auto-scroll
   useEffect(() => {
     if (effectiveLogRef.current) {
@@ -53,7 +49,7 @@ export default function FoundryBuildProgress({
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm">
-      <div className={`w-[75vw] max-w-[960px] border rounded-sm shadow-2xl flex flex-col ${
+      <div className={`w-[75vw] max-w-[960px] border rounded-sm shadow-2xl flex flex-col bg-stealth-panel ${
         isComplete ? "border-nv-green/40" : isError ? "border-red-400/40" : "border-yellow-400/40"
       }`} style={{ height: 'var(--dock-panel-height, 75vh)' }}>
         {/* Header */}
@@ -64,7 +60,7 @@ export default function FoundryBuildProgress({
             }`}>
               {isComplete ? "✓ BUILD COMPLETE" : isError ? "✖ BUILD FAILED" : "● BUILDING..."}
             </span>
-            <span className={`px-1.5 py-0.5 text-[8px] font-mono border rounded-sm ${envColors("border")}`}>
+            <span className="foundry-env-badge px-1.5 py-0.5 text-[8px] font-mono rounded-sm">
               {environment.toUpperCase()}
             </span>
           </div>
@@ -173,8 +169,7 @@ export default function FoundryBuildProgress({
             </div>
           )}
           {!isComplete && !isError && (
-            <button onClick={onMinimize}
-              className="px-3 py-1 text-[9px] font-mono border border-stealth-border text-stealth-muted hover:text-white transition-colors">
+            <button type="button" onClick={onMinimize} className="foundry-minimize-btn">
               MINIMIZE TO STATUS BAR
             </button>
           )}

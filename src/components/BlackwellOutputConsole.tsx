@@ -29,7 +29,7 @@ export function parseOutputConsoleCategory(value: string): OutputConsoleCategory
     : null;
 }
 
-const CATEGORY_LABELS: Record<Category, string> = {
+export const OUTPUT_CONSOLE_CATEGORY_LABELS: Record<Category, string> = {
   engines: "Engines",
   utils: "Utils",
   foundry: "Foundry",
@@ -37,6 +37,8 @@ const CATEGORY_LABELS: Record<Category, string> = {
   general: "General",
   debug: "Debug",
 };
+
+const CATEGORY_LABELS = OUTPUT_CONSOLE_CATEGORY_LABELS;
 
 function lineStyleClass(style: string, activeCategory: Category): string {
   if (activeCategory === "error") return "boc-line--error";
