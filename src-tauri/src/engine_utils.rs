@@ -2,7 +2,7 @@
 //!
 //! Extracted from engine.rs / engine_stack.rs / fit_scanner.rs for use by multiple modules without circular deps.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
 use crate::config::AppConfig;
@@ -53,6 +53,12 @@ pub fn find_provider_binary(cfg: &AppConfig, provider_id: &str, binary_profile: 
     }
 
     Err(format!("No valid binary found for provider '{}'", provider_id))
+}
+
+/// Quote an executable path for debug/CMD display — safe when install dir contains spaces.
+pub fn format_debug_executable(path: &Path) -> String {
+    let rendered = path.display().to_string();
+    format!("\"{}\"", rendered.replace('"', "\\\""))
 }
 
 /// Compute CUDA_VISIBLE_DEVICES mask from config + detected GPU count.
@@ -127,35 +133,57 @@ pub fn request_console_ctrl_c(_pid: u32) -> bool {
     false
 }
 
-/// Graceful stop (CTRL+C) then force-kill. Waits up to ~8s for memory-breakdown stderr.
-pub fn stop_child_gracefully(child: &mut std::process::Child, pid: Option<u32>) -> bool {
-    if let Some(pid) = pid {
-        let _ = request_console_ctrl_c(pid);
-    }
-
-    for _ in 0..80 {
-        std::thread::sleep(std::time::Duration::from_millis(100));
+/// Reap a child handle after the OS process is already gone (or being killed).
+pub fn reap_child_handle(child: &mut std::process::Child) -> bool {
+    for _ in 0..40 {
         match child.try_wait() {
             Ok(Some(_)) => return true,
-            Ok(None) => {}
+            Ok(None) => std::thread::sleep(std::time::Duration::from_millis(50)),
             Err(_) => break,
         }
     }
-
     let _ = child.kill();
     for _ in 0..20 {
-        std::thread::sleep(std::time::Duration::from_millis(25));
         if let Ok(Some(_)) = child.try_wait() {
             return true;
         }
+        std::thread::sleep(std::time::Duration::from_millis(25));
     }
     false
+}
+
+/// Stop a no-console engine: brief CTRL+C attempt, then taskkill + port cleanup, then reap handle.
+/// Release builds spawn with CREATE_NO_WINDOW — AttachConsole usually fails, so taskkill is the reliable path.
+pub async fn stop_child_fast(
+    mut child: std::process::Child,
+    pid: Option<u32>,
+    port: u16,
+) -> bool {
+    if let Some(p) = pid {
+        if request_console_ctrl_c(p) {
+            for _ in 0..10 {
+                match child.try_wait() {
+                    Ok(Some(_)) => return true,
+                    Ok(None) => {
+                        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                    }
+                    Err(_) => break,
+                }
+            }
+        }
+        let _ = kill_process_by_pid(p).await;
+    }
+    let _ = kill_process_by_port(port).await;
+
+    tokio::task::spawn_blocking(move || reap_child_handle(&mut child))
+        .await
+        .unwrap_or(false)
 }
 
 /// Fast kill by PID — avoids slow netstat scan when we already know the process.
 pub async fn kill_process_by_pid(pid: u32) -> Result<(), String> {
     let output = tokio::process::Command::new("taskkill")
-        .args(["/F", "/PID", &pid.to_string()])
+        .args(["/F", "/T", "/PID", &pid.to_string()])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .creation_flags(0x08000000)

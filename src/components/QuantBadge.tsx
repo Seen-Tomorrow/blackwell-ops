@@ -7,10 +7,19 @@ interface QuantBadgeProps {
   onClick?: () => void;
 }
 
+function displayQuantLabel(type: string): string {
+  const trimmed = type.replace(/\.gguf$/i, '').trim();
+  if (!trimmed) return 'GGUF';
+  // Already a parsed quant from the backend (Q4_K_M, IQ2_XS, …)
+  if (/^(Q\d|IQ\d|FP\d|BF16|F16|MXFP|NVFP)/i.test(trimmed)) {
+    return trimmed.toUpperCase();
+  }
+  const parts = trimmed.split('-');
+  return parts.length > 1 ? parts.slice(-2).join('-') : trimmed;
+}
+
 export default function QuantBadge({ type, sizeBytes, isActive = false, onClick }: QuantBadgeProps) {
-  const base = type.replace('.gguf', '');
-  const parts = base.split('-');
-  const name = parts.length > 1 ? parts.slice(-2).join('-') : base;
+  const name = displayQuantLabel(type);
 
   return (
     <span

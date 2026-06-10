@@ -83,26 +83,28 @@ export default function ModelCatalog(props: ModelCatalogProps) {
 
   // ── Sort bar ────────────────
   const renderSortBar = () => (
-    <div className="flex items-center gap-1 px-3 py-2">
-      {(["name", "author", "size_str", "date"] as SortField[]).map((field) => (
-        <button
-          key={field}
-          onClick={() => handleSort(field)}
-          className={`catalog-sort-btn px-2 py-0.5 text-[8px] font-mono uppercase tracking-wider transition-colors rounded-sm ${
-            sortField === field
-              ? "text-nv-green bg-nv-green/10"
-              : "text-stealth-muted hover:text-white"
-          }`}
-        >
-          {sortLabels[field] || field.replace("_", " ")}
-          <span className="catalog-sort-arrow ml-1" aria-hidden="true">
-            {sortField === field ? (sortDirection === "asc" ? "▲" : "▼") : ""}
-          </span>
-        </button>
-      ))}
-      <div className="flex-1" />
+    <div className="catalog-sort-bar flex items-center gap-2 px-3 py-1.5 min-w-0">
+      <div className="catalog-sort-group flex items-center gap-0.5 min-w-0 flex-1">
+        {(["name", "author", "size_str", "date"] as SortField[]).map((field) => (
+          <button
+            key={field}
+            onClick={() => handleSort(field)}
+            className={`catalog-sort-btn px-1.5 py-0.5 text-[8px] font-mono uppercase tracking-wider transition-colors rounded-sm ${
+              sortField === field
+                ? "text-nv-green bg-nv-green/10"
+                : "text-stealth-muted hover:text-white"
+            }`}
+          >
+            <span>{sortLabels[field] || field.replace("_", " ")}</span>
+            <span className="catalog-sort-arrow" aria-hidden="true">
+              {sortField === field ? (sortDirection === "asc" ? "▲" : "▼") : ""}
+            </span>
+          </button>
+        ))}
+      </div>
+      <div className="catalog-sort-actions flex items-center gap-1 shrink-0">
       {batchScanState.active && (
-        <span className="text-[8px] font-mono text-telemetry-cyan mr-2">
+        <span className="catalog-scan-status text-[8px] font-mono mr-2">
           SCAN: {batchScanState.scanned}/{batchScanState.total}
         </span>
       )}
@@ -119,7 +121,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
           <button
             onClick={() => startScan(4)}
             disabled={scanningPath !== null}
-            className="px-2 py-0.5 text-[8px] font-mono border border-telemetry-cyan/30 text-telemetry-cyan hover:bg-telemetry-cyan/10 transition-colors rounded-sm disabled:opacity-30"
+            className="catalog-scan-btn px-2 py-0.5 text-[8px] font-mono transition-colors rounded-sm disabled:opacity-30"
             title="Scan all models with 4x parallelism (~2GB RAM)"
           >
             SPEED 4×
@@ -127,7 +129,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
           <button
             onClick={() => startScan(8)}
             disabled={scanningPath !== null}
-            className="px-2 py-0.5 text-[8px] font-mono border border-telemetry-cyan/30 text-telemetry-cyan hover:bg-telemetry-cyan/10 transition-colors rounded-sm disabled:opacity-30"
+            className="catalog-scan-btn px-2 py-0.5 text-[8px] font-mono transition-colors rounded-sm disabled:opacity-30"
             title="Scan all models with 8x parallelism (~4GB RAM)"
           >
             SPEED 8×
@@ -138,13 +140,13 @@ export default function ModelCatalog(props: ModelCatalogProps) {
           onClick={() => setShowScanMenu(true)}
           disabled={scanningPath !== null}
           data-onboarding="scan-meta"
-          className="px-2 py-0.5 text-[8px] font-mono border border-telemetry-cyan/30 text-telemetry-cyan hover:bg-telemetry-cyan/10 transition-colors rounded-sm disabled:opacity-30"
+          className="catalog-scan-btn px-2 py-0.5 text-[8px] font-mono transition-colors rounded-sm disabled:opacity-30"
           title="Scan all models for metadata"
         >
           SCAN META ▾
         </button>
       )}
-      <div className="flex items-center gap-1 ml-2">
+      <div className="flex items-center gap-1">
         {(["4", "6", "8"] as const).map(count => (
           <button
             key={count}
@@ -164,6 +166,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
         >
           ALL
         </button>
+      </div>
       </div>
     </div>
   );

@@ -59,9 +59,15 @@ fn collect_gguf_files(dir: &Path, out: &mut Vec<PathBuf>) {
             }
         } else if path.extension().map_or(false, |e| e == "gguf") {
             let fname = path.file_name().unwrap().to_string_lossy();
-            if !fname.to_lowercase().contains("mmproj") {
-                out.push(path);
+            if fname.to_lowercase().contains("mmproj") {
+                continue;
             }
+            // Skip in-progress HF downloads (partial file written alongside final name).
+            let partial_path = PathBuf::from(format!("{}.part", path.display()));
+            if partial_path.exists() {
+                continue;
+            }
+            out.push(path);
         }
     }
 }
@@ -221,6 +227,7 @@ pub fn scan_path(
 pub fn merge_catalogs(
     paths: &[ModelPathEntry],
     log_hub: Option<&crate::log_hub::LogHub>,
+    exclude_paths: Option<&std::collections::HashSet<String>>,
 ) -> Result<(Vec<ModelEntry>, Vec<CatalogDedupConflict>), String> {
     let mut all_internal: Vec<ModelEntryInternal> = Vec::new();
 
@@ -245,6 +252,28 @@ pub fn merge_catalogs(
         for mut entry in entries {
             entry.source_path_label = path_entry.label.clone();
             all_internal.push(entry);
+        }
+    }
+
+    if let Some(exclude) = exclude_paths {
+        if !exclude.is_empty() {
+            let before = all_internal.len();
+            all_internal.retain(|entry| {
+                let resolved = crate::config::resolve_path(&entry.path)
+                    .to_string_lossy()
+                    .to_string();
+                !exclude.contains(&resolved)
+            });
+            if let Some(lh) = log_hub {
+                let skipped = before.saturating_sub(all_internal.len());
+                if skipped > 0 {
+                    lh.emit_console_line(
+                        crate::output_console::BlackwellOutputConsoleCategory::Utils,
+                        &format!("[MERGE] Skipped {skipped} in-progress download(s) from catalog"),
+                        crate::output_console::BlackwellOutputConsoleLineStyle::Normal,
+                    );
+                }
+            }
         }
     }
 

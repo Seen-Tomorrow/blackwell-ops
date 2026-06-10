@@ -54,8 +54,15 @@ export function tryEvaluate(input: ScenarioInput, computed: ComputedValues): Vra
     ? `auto layer-split across ${input.gpus.length} GPU(s) + ${fitHint}`
     : fitHint;
 
+  const headroomThreshold = targetAvail - headroomGb;
+  const totalProjectedGb = gpuProjectionGb + hostOffloadGb;
+  // Host line in memory breakdown includes engine buffers — not always tensor offload.
+  const isRealHostOffload = totalProjectedGb > headroomThreshold + 0.1;
+
   const layerText = learnedGb
-    ? `→ ${gpuProjectionGb.toFixed(1)} GB GPU${hostOffloadGb > 0.5 ? ` + ${hostOffloadGb.toFixed(1)} GB host` : ""} measured — ${splitHint}`
+    ? isRealHostOffload && hostOffloadGb > 0.5
+      ? `→ ${gpuProjectionGb.toFixed(1)} GB GPU + ${hostOffloadGb.toFixed(1)} GB host measured — ${splitHint}`
+      : `→ ${gpuProjectionGb.toFixed(1)} GB GPU measured — ${splitHint}`
     : exceedsGpuPool
       ? `→ ~${gpuProjectionGb.toFixed(1)} GB GPU + ~${hostOffloadGb.toFixed(1)} GB host offload — ${splitHint}`
       : `→ ~${estimateGb.toFixed(1)} GB estimated — ${splitHint}`;
@@ -83,14 +90,20 @@ export function tryEvaluate(input: ScenarioInput, computed: ComputedValues): Vra
       uiTemplate: {
         gpuLayerText: layerText,
         ramLayerText: showHostRam
-          ? learnedHostGb
-            ? `→ ${hostOffloadGb.toFixed(1)} GB on host RAM (measured on prior launch)`
-            : `→ ~${hostOffloadGb.toFixed(1)} GB will spill to host RAM — decided by --fit at load`
+          ? isRealHostOffload
+            ? learnedHostGb
+              ? `→ ${hostOffloadGb.toFixed(1)} GB on host RAM (measured on prior launch)`
+              : `→ ~${hostOffloadGb.toFixed(1)} GB will spill to host RAM — decided by --fit at load`
+            : learnedHostGb
+              ? `→ ${hostOffloadGb.toFixed(1)} GB host buffer (measured on prior launch)`
+              : `→ ~${hostOffloadGb.toFixed(1)} GB host buffer — engine overhead at load`
           : autoSplit
             ? "→ VRAM spread across GPUs — offload decided at load"
             : "→ Layer offload decided by engine at launch",
         showRamBar: showHostRam,
-        offloadWarningText: showHostRam ? "Host RAM offload active — expect slower inference" : undefined,
+        offloadWarningText: isRealHostOffload
+          ? "Host RAM offload active — expect slower inference"
+          : undefined,
       },
     },
     gpuProjectionGb,

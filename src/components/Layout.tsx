@@ -101,7 +101,7 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
   const [isMobile, setIsMobile] = useState(isMobileDevice);
   const [isOutputConsoleExpanded, setIsOutputConsoleExpanded] = useState(false);
   const [isConsoleDetached, setIsConsoleDetached] = useState(false);
-  const consoleReservesDockSpace = isOutputConsoleExpanded && !isConsoleDetached;
+  const consoleDockedOpen = isOutputConsoleExpanded && !isConsoleDetached;
   const [lastConsoleLine, setLastConsoleLine] = useState<string>("Ready for telemetry");
   const [lastConsoleCategory, setLastConsoleCategory] = useState<OutputConsoleCategory | null>(null);
   const [consoleOpenCategory, setConsoleOpenCategory] = useState<OutputConsoleCategory | null>(null);
@@ -193,7 +193,7 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
 
   return (
     <div
-      className={`app-shell flex flex-col h-screen grid-bg relative ${consoleReservesDockSpace ? "app-shell--console-docked" : ""}`}
+      className={`app-shell flex flex-col h-screen grid-bg relative${consoleDockedOpen ? " app-shell--console-docked" : ""}`}
       data-ui-density={uiDensity}
       style={shellStyle}
     >
@@ -311,7 +311,19 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
       <main className="flex-1 min-h-0 overflow-hidden relative z-10">
         <div className="app-main-scroll h-full min-h-0 overflow-hidden">
           <div className="app-main-zoom">
-            <div className="app-main-frame">{children}</div>
+            <div className="app-main-frame">
+              {children}
+              <BlackwellOutputConsole
+                isOpen={isOutputConsoleExpanded}
+                openWithCategory={consoleOpenCategory}
+                onClose={() => {
+                  setIsConsoleDetached(false);
+                  setIsOutputConsoleExpanded(false);
+                }}
+                onDetachedChange={setIsConsoleDetached}
+                compact={true}
+              />
+            </div>
           </div>
         </div>
       </main>
@@ -400,16 +412,6 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
         onMinimize={minimizeBuildModal}
       />
 
-      <BlackwellOutputConsole
-        isOpen={isOutputConsoleExpanded}
-        openWithCategory={consoleOpenCategory}
-        onClose={() => {
-          setIsConsoleDetached(false);
-          setIsOutputConsoleExpanded(false);
-        }}
-        onDetachedChange={setIsConsoleDetached}
-        compact={true}
-      />
     </div>
   );
 }

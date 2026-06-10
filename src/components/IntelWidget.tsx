@@ -1,45 +1,31 @@
-import { useState, useEffect } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import type { IntelItem } from "../lib/types";
+import { type ReactNode } from "react";
+import type { IntelChannel, IntelItem, ProviderConfig } from "../lib/types";
+import {
+  formatIntelTimestamp,
+  INTEL_GENESIS_KEYS,
+  isBuildBehindBreaking,
+  itemMatchesUserConfig,
+  providerBuildSummary,
+  sourceBadgeLabel,
+} from "../lib/intelUtils";
 
-const GENESIS_KEYS = [
-  "--ctx-size",
-  "--batch-size",
-  "--ubatch-size",
-  "--parallel",
-  "--split-mode",
-  "--mmproj",
-  "--reasoning",
-  "--reasoning-budget",
-  "--reasoning-format",
-  "--jinja",
-  "--cont-batching",
-  "--metrics",
-  "--flash-attn",
-  "--cache-type-k",
-  "--cache-type-v",
-  "-ot",
-  "--no-mmap",
-  "--no-kv-unified",
-];
-
-function highlightGenesisKeys(text: string): React.ReactNode[] {
-  const parts: React.ReactNode[] = [];
+function highlightGenesisKeys(text: string): ReactNode[] {
+  const parts: ReactNode[] = [];
   let lastIndex = 0;
   const regex = new RegExp(
-    `(${GENESIS_KEYS.map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`,
-    "gi"
+    `(${INTEL_GENESIS_KEYS.map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`,
+    "gi",
   );
-  let match;
+  let match: RegExpExecArray | null;
 
   while ((match = regex.exec(text)) !== null) {
     if (match.index > lastIndex) {
       parts.push(text.slice(lastIndex, match.index));
     }
     parts.push(
-      <span key={match.index} className="text-telemetry-amber font-bold">
+      <span key={match.index} className="intel-genesis-flag">
         {match[0]}
-      </span>
+      </span>,
     );
     lastIndex = regex.lastIndex;
   }
@@ -51,140 +37,160 @@ function highlightGenesisKeys(text: string): React.ReactNode[] {
   return parts.length > 0 ? parts : [text];
 }
 
-function formatTimestamp(ts: string): string {
-  try {
-    const d = new Date(ts);
-    return d.toLocaleDateString("en-US", { month: "short", day: "numeric" }) +
-      " " +
-      d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
-  } catch {
-    return ts.slice(0, 10);
-  }
+interface IntelWidgetProps {
+  items: IntelItem[];
+  pinnedBreaking?: IntelItem[];
+  channels: IntelChannel[];
+  providers: ProviderConfig[];
+  overridesByProvider: Record<string, Record<string, unknown>>;
+  status: "loading" | "online" | "offline";
+  cacheTtlSeconds?: number;
+  activeChannelId: string;
 }
 
-function sourceBadge(source: string): React.ReactNode {
-  const isPr = source === "pr";
+function channelLabel(channelId: string, channels: IntelChannel[]): string {
+  return channels.find((c) => c.id === channelId)?.tab_label ?? channelId.toUpperCase();
+}
+
+function sourceBadge(item: IntelItem): ReactNode {
+  const label = sourceBadgeLabel(item.source);
+  const tone =
+    item.source === "release"
+      ? "intel-badge--release"
+      : item.source === "open_pr"
+        ? "intel-badge--open"
+        : item.source === "pr"
+          ? "intel-badge--pr"
+          : "intel-badge--disc";
+
   return (
-    <span
-      className={`text-[7px] font-mono px-1.5 py-0 rounded-sm flex-shrink-0 ${
-        isPr
-          ? "text-telemetry-cyan bg-telemetry-cyan/10"
-          : "text-nv-green bg-nv-green/10"
-      }`}
-    >
-      {isPr ? "PR" : "DISC"}
+    <span className={`intel-badge ${tone}`}>
+      {label}
     </span>
   );
 }
 
-export default function IntelWidget({ compact = false, limit }: { compact?: boolean; limit?: number }) {
-  const [items, setItems] = useState<IntelItem[]>([]);
-  const [status, setStatus] = useState<"loading" | "online" | "offline">("loading");
-
-  useEffect(() => {
-    let cancelled = false;
-
-    invoke<IntelItem[]>("fetch_github_intel")
-      .then((data) => {
-        if (!cancelled) {
-          setItems(data);
-          setStatus("online");
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setStatus("offline");
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const displayItems = limit ? items.slice(0, limit) : (compact ? items.slice(0, 2) : items);
+function IntelRow({
+  item,
+  channels,
+  providers,
+  overridesByProvider,
+  showChannel,
+}: {
+  item: IntelItem;
+  channels: IntelChannel[];
+  providers: ProviderConfig[];
+  overridesByProvider: Record<string, Record<string, unknown>>;
+  showChannel: boolean;
+}) {
+  const provider = providers.find((p) => p.id === item.channel);
+  const configMatch = itemMatchesUserConfig(item, overridesByProvider);
+  const behindBuild = isBuildBehindBreaking(item, provider);
 
   return (
-    <div className={`theme-surface border-nv-green/40 rounded-sm overflow-hidden flex flex-col ${compact ? "max-h-[180px]" : "h-full"}`}>
-      {/* Header */}
-      {!compact && (
-        <div className="theme-surface-header px-4 py-2.5 border-b border-nv-green/30 flex items-center justify-between">
-          <h3 className="text-xs font-mono text-nv-green tracking-wider flex items-center gap-2">
-            <span className="inline-block w-1.5 h-1.5 rounded-full bg-nv-green animate-pulse-slow" />
-            BACKEND INTEL
-          </h3>
-          {status === "offline" && (
-            <span className="text-[9px] font-mono text-stealth-muted">OFFLINE</span>
-          )}
-          {status === "loading" && (
-            <span className="text-[9px] font-mono text-stealth-muted animate-pulse">FETCHING...</span>
-          )}
-          {status === "online" && items.length > 0 && (
-            <span className="text-[9px] font-mono text-nv-green/60">{items.length} ITEMS</span>
-          )}
-        </div>
-      )}
+    <a
+      href={item.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={`intel-row ${item.is_breaking ? "intel-row--breaking" : ""}`}
+    >
+      <div className="intel-row__title">
+        {sourceBadge(item)}
+        {showChannel && (
+          <span className="intel-badge intel-badge--channel">{channelLabel(item.channel, channels)}</span>
+        )}
+        {item.is_breaking && <span className="intel-badge intel-badge--warn">BREAKING</span>}
+        {configMatch && <span className="intel-badge intel-badge--config">YOUR CONFIG</span>}
+        {behindBuild && <span className="intel-badge intel-badge--warn">BUILD BEHIND</span>}
+        <span className="intel-row__title-text">{item.title}</span>
+      </div>
 
-      {/* Content */}
-      <div className={`theme-surface-inset ${compact ? "max-h-[140px]" : "h-full"} overflow-y-auto border-0 rounded-none`}>
-        {status === "offline" ? (
-          <p className="text-[10px] font-mono text-stealth-muted/50 italic px-4 py-6 text-center">
-            NO INTERNET — INTEL UNAVAILABLE
-          </p>
-        ) : items.length === 0 && status === "online" ? (
-          <p className="text-[10px] font-mono text-stealth-muted/50 italic px-4 py-6 text-center">
-            NO RECENT UPDATES FROM GITHUB
-          </p>
-        ) : (
-          displayItems.map((item) => (
-            <a
-              key={item.id}
-              href={item.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={`block border-b border-stealth-border hover:bg-[var(--theme-eject-card-hover-bg)] transition-colors cursor-pointer group ${compact ? "px-3 py-2" : "px-4 py-3"}`}
-            >
-              {/* Title row */}
-              <div className={`flex items-start gap-2 mb-1 ${compact ? "" : ""}`}>
-                {sourceBadge(item.source)}
-                <span className="text-[10px] font-mono text-white/90 leading-snug group-hover:text-nv-green transition-colors">
-                  {item.title}
-                </span>
-              </div>
-
-              {/* Meta */}
-              {!compact && (
-                <div className="flex items-center gap-2 ml-[28px] mb-1.5">
-                  <span className="text-[9px] font-mono text-stealth-muted/60">{item.author}</span>
-                  <span className="text-stealth-border/40">|</span>
-                  <span className="text-[9px] font-mono text-stealth-muted/50">
-                    {formatTimestamp(item.timestamp)}
-                  </span>
-                </div>
-              )}
-
-              {/* Body preview */}
-              {!compact && (
-                <p className="text-[10px] font-mono text-stealth-muted leading-relaxed ml-[28px]">
-                  {highlightGenesisKeys(item.body_preview)}
-                </p>
-              )}
-            </a>
-          ))
+      <div className="intel-row__meta">
+        <span>{item.author}</span>
+        <span className="intel-row__sep">|</span>
+        <span>{formatIntelTimestamp(item.timestamp)}</span>
+        {item.labels.length > 0 && (
+          <>
+            <span className="intel-row__sep">|</span>
+            <span className="intel-row__labels">{item.labels.slice(0, 3).join(" · ")}</span>
+          </>
         )}
       </div>
 
-      {/* Footer */}
-      {!compact && (
-        <div className="theme-surface-header px-4 py-1.5 border-t border-stealth-border flex items-center justify-between">
-          <span className="text-[8px] font-mono text-stealth-muted/40">
-            ggml-org/llama.cpp · GITHUB
-          </span>
-          {status === "online" && (
-            <span className="text-[8px] font-mono text-nv-green/30">2h CACHE</span>
-          )}
-        </div>
+      {item.body_preview && (
+        <p className="intel-row__preview">{highlightGenesisKeys(item.body_preview)}</p>
       )}
+    </a>
+  );
+}
+
+export default function IntelWidget({
+  items,
+  pinnedBreaking = [],
+  channels,
+  providers,
+  overridesByProvider,
+  status,
+  cacheTtlSeconds,
+  activeChannelId,
+}: IntelWidgetProps) {
+  const showChannel = activeChannelId === "all";
+  const repoFooter =
+    activeChannelId === "all"
+      ? channels.map((c) => c.repo).join(" · ")
+      : channels.find((c) => c.id === activeChannelId)?.repo ?? "";
+
+  const buildLine = activeChannelId === "all"
+    ? null
+    : providerBuildSummary(providers.find((p) => p.id === activeChannelId));
+
+  return (
+    <div className="intel-panel theme-surface flex flex-col h-full min-h-0 overflow-hidden rounded-sm">
+      <div className="intel-panel__body theme-surface-inset flex-1 min-h-0 overflow-y-auto eink-scrollbar">
+        {status === "offline" ? (
+          <p className="intel-empty">NO INTERNET — INTEL UNAVAILABLE</p>
+        ) : status === "loading" && items.length === 0 ? (
+          <p className="intel-empty intel-empty--pulse">FETCHING BACKEND INTEL...</p>
+        ) : items.length === 0 && pinnedBreaking.length === 0 ? (
+          <p className="intel-empty">NO ITEMS FOR THIS FILTER</p>
+        ) : (
+          <>
+            {pinnedBreaking.length > 0 && (
+              <div className="intel-pinned">
+                <div className="intel-pinned__label">BREAKING CHANGES</div>
+                {pinnedBreaking.map((item) => (
+                  <IntelRow
+                    key={`pin-${item.id}`}
+                    item={item}
+                    channels={channels}
+                    providers={providers}
+                    overridesByProvider={overridesByProvider}
+                    showChannel={showChannel}
+                  />
+                ))}
+              </div>
+            )}
+            {items.map((item) => (
+              <IntelRow
+                key={item.id}
+                item={item}
+                channels={channels}
+                providers={providers}
+                overridesByProvider={overridesByProvider}
+                showChannel={showChannel}
+              />
+            ))}
+          </>
+        )}
+      </div>
+
+      <div className="intel-panel__footer theme-surface-header">
+        <span className="intel-panel__footer-repo">{repoFooter || "GITHUB"}</span>
+        {buildLine && <span className="intel-panel__footer-build">{buildLine}</span>}
+        {status === "online" && cacheTtlSeconds != null && (
+          <span className="intel-panel__footer-cache">{Math.round(cacheTtlSeconds / 3600)}h CACHE</span>
+        )}
+      </div>
     </div>
   );
 }

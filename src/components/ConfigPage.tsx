@@ -1435,9 +1435,9 @@ function ModelPathsPanel() {
                 <div className="flex items-center gap-1.5 shrink-0">
                   {!entry.isDefault && (
                     <button onClick={() => handleSetDefault(entry.path)}
-                      title="Set as default download target"
+                      title="Set as default for download"
                       className="px-2 py-0.5 text-[8px] font-mono border border-yellow-400/30 text-yellow-400/70 hover:bg-yellow-400/10 transition-colors">
-                      SET DEFAULT
+                      SET AS DEFAULT FOR DOWNLOAD
                     </button>
                   )}
                   <button

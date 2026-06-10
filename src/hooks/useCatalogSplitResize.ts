@@ -4,33 +4,52 @@ import {
   CATALOG_SPLIT_WIDTH_MAX,
   CATALOG_SPLIT_WIDTH_MIN,
   loadCatalogSplitWidth,
+  loadModelHubSplitRatio,
+  MODEL_HUB_SPLIT_RATIO_DEFAULT,
+  MODEL_HUB_SPLIT_RATIO_MAX,
+  MODEL_HUB_SPLIT_RATIO_MIN,
   saveCatalogSplitWidth,
+  saveModelHubSplitRatio,
 } from "../lib/storage";
 
 const MAX_WIDTH_RATIO = 0.65;
 
-function clampWidth(width: number, containerWidth: number): number {
-  const max = Math.min(
-    CATALOG_SPLIT_WIDTH_MAX,
-    Math.floor(containerWidth * MAX_WIDTH_RATIO),
-  );
-  const effectiveMax = Math.max(CATALOG_SPLIT_WIDTH_MIN, max);
-  return Math.round(Math.min(effectiveMax, Math.max(CATALOG_SPLIT_WIDTH_MIN, width)));
+export interface PanelSplitResizeConfig {
+  loadWidth: () => number;
+  saveWidth: (width: number) => void;
+  defaultWidth: number;
+  minWidth: number;
+  maxWidth: number;
 }
 
-export function useCatalogSplitResize() {
+function clampWidth(
+  width: number,
+  containerWidth: number,
+  minWidth: number,
+  maxWidth: number,
+): number {
+  const max = Math.min(maxWidth, Math.floor(containerWidth * MAX_WIDTH_RATIO));
+  const effectiveMax = Math.max(minWidth, max);
+  return Math.round(Math.min(effectiveMax, Math.max(minWidth, width)));
+}
+
+export function usePanelSplitResize(config: PanelSplitResizeConfig) {
+  const { loadWidth, saveWidth, defaultWidth, minWidth, maxWidth } = config;
   const containerRef = useRef<HTMLDivElement>(null);
-  const widthRef = useRef(loadCatalogSplitWidth());
-  const [catalogWidth, setCatalogWidth] = useState(widthRef.current);
+  const widthRef = useRef(loadWidth());
+  const [panelWidth, setPanelWidth] = useState(widthRef.current);
   const [isDragging, setIsDragging] = useState(false);
 
   const applyWidth = useCallback((raw: number) => {
     const containerW = containerRef.current?.offsetWidth ?? 0;
-    const next = containerW > 0 ? clampWidth(raw, containerW) : raw;
+    const next =
+      containerW > 0
+        ? clampWidth(raw, containerW, minWidth, maxWidth)
+        : raw;
     widthRef.current = next;
-    setCatalogWidth(next);
+    setPanelWidth(next);
     return next;
-  }, []);
+  }, [minWidth, maxWidth]);
 
   const startDrag = useCallback(() => {
     setIsDragging(true);
@@ -39,9 +58,9 @@ export function useCatalogSplitResize() {
   }, []);
 
   const resetWidth = useCallback(() => {
-    const next = applyWidth(CATALOG_SPLIT_WIDTH_DEFAULT);
-    saveCatalogSplitWidth(next);
-  }, [applyWidth]);
+    const next = applyWidth(defaultWidth);
+    saveWidth(next);
+  }, [applyWidth, defaultWidth, saveWidth]);
 
   useEffect(() => {
     if (!isDragging) return;
@@ -57,7 +76,7 @@ export function useCatalogSplitResize() {
       setIsDragging(false);
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
-      saveCatalogSplitWidth(widthRef.current);
+      saveWidth(widthRef.current);
     };
 
     window.addEventListener("mousemove", onMove);
@@ -66,7 +85,7 @@ export function useCatalogSplitResize() {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
     };
-  }, [isDragging, applyWidth]);
+  }, [isDragging, applyWidth, saveWidth]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -81,7 +100,101 @@ export function useCatalogSplitResize() {
 
   return {
     containerRef,
-    catalogWidth,
+    panelWidth,
+    isDragging,
+    startDrag,
+    resetWidth,
+  };
+}
+
+export function useCatalogSplitResize() {
+  const split = usePanelSplitResize({
+    loadWidth: loadCatalogSplitWidth,
+    saveWidth: saveCatalogSplitWidth,
+    defaultWidth: CATALOG_SPLIT_WIDTH_DEFAULT,
+    minWidth: CATALOG_SPLIT_WIDTH_MIN,
+    maxWidth: CATALOG_SPLIT_WIDTH_MAX,
+  });
+  return { ...split, catalogWidth: split.panelWidth };
+}
+
+function clampModelHubRatio(ratio: number): number {
+  return Math.min(
+    MODEL_HUB_SPLIT_RATIO_MAX,
+    Math.max(MODEL_HUB_SPLIT_RATIO_MIN, ratio),
+  );
+}
+
+/** Model Hub split — ratio-based (default 60% results / 40% quants). */
+export function useModelHubSplitResize() {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const ratioRef = useRef(loadModelHubSplitRatio());
+  const [panelWidth, setPanelWidth] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+
+  const applyRatio = useCallback((rawRatio: number, containerW?: number) => {
+    const width = containerW ?? containerRef.current?.offsetWidth ?? 0;
+    const ratio = clampModelHubRatio(rawRatio);
+    ratioRef.current = ratio;
+    if (width > 0) {
+      const px = Math.round(width * ratio);
+      setPanelWidth(px);
+      return px;
+    }
+    return 0;
+  }, []);
+
+  const startDrag = useCallback(() => {
+    setIsDragging(true);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  }, []);
+
+  const resetWidth = useCallback(() => {
+    applyRatio(MODEL_HUB_SPLIT_RATIO_DEFAULT);
+    saveModelHubSplitRatio(MODEL_HUB_SPLIT_RATIO_DEFAULT);
+  }, [applyRatio]);
+
+  useEffect(() => {
+    if (!isDragging) return;
+
+    const onMove = (e: MouseEvent) => {
+      const container = containerRef.current;
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+      if (rect.width <= 0) return;
+      applyRatio((e.clientX - rect.left) / rect.width);
+    };
+
+    const onUp = () => {
+      setIsDragging(false);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      saveModelHubSplitRatio(ratioRef.current);
+    };
+
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, [isDragging, applyRatio]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || typeof ResizeObserver === "undefined") return;
+
+    const sync = () => applyRatio(ratioRef.current, container.offsetWidth);
+    sync();
+    const observer = new ResizeObserver(sync);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [applyRatio]);
+
+  return {
+    containerRef,
+    panelWidth,
     isDragging,
     startDrag,
     resetWidth,

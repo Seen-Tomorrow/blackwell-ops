@@ -3,7 +3,7 @@
 //! Stored as `Arc<RwLock<DownloadManager>>` in Tauri app state. Workers are spawned
 //! by IPC commands and independently acquire the lock to update progress.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::path::Path;
 
@@ -26,6 +26,11 @@ const SPEED_SMOOTHING: f64 = 0.3;
 
 /// Number of speed samples to keep for calculation.
 const SPEED_SAMPLE_COUNT: usize = 5;
+
+/// In-progress downloads write here; renamed to final `.gguf` only on completion.
+pub fn partial_download_path(dest_path: &str) -> String {
+    format!("{dest_path}.part")
+}
 
 /// Download manager singleton state.
 pub struct DownloadManager {
@@ -90,13 +95,14 @@ impl DownloadManager {
         Ok(task_id)
     }
 
-    /// Pause a running download. Sets status to Paused and saves current position as pause_offset.
+    /// Pause a running download. Worker flushes progress and sets `pause_offset` on exit.
     pub fn pause_task(&mut self, task_id: &str) -> Result<(), String> {
         match self.tasks.get_mut(task_id) {
             Some(task) => match task.status {
                 DownloadStatus::Downloading => {
-                    task.pause_offset = task.downloaded_bytes;
                     task.status = DownloadStatus::Paused;
+                    task.speed_bps = 0;
+                    task.eta_seconds = 0;
                     Ok(())
                 }
                 _ => Err(format!("Task {} is not downloading (status: {:?})", task_id, task.status)),
@@ -110,15 +116,18 @@ impl DownloadManager {
         match self.tasks.get_mut(task_id) {
             Some(task) => {
                 let dest = task.dest_path.clone();
+                let partial = partial_download_path(&dest);
                 task.status = DownloadStatus::Failed;
                 task.error = Some("Cancelled".to_string());
 
-                // Remove partial file from disk
-                if !dest.is_empty() && Path::new(&dest).exists() {
-                    tokio::task::spawn_blocking(move || {
-                        let _ = fs::remove_file(&dest);
-                    });
-                }
+                // Remove partial (and legacy in-progress final path) from disk
+                tokio::task::spawn_blocking(move || {
+                    for path in [partial.as_str(), dest.as_str()] {
+                        if !path.is_empty() && Path::new(path).exists() {
+                            let _ = std::fs::remove_file(path);
+                        }
+                    }
+                });
 
                 Ok(())
             }
@@ -133,12 +142,13 @@ impl DownloadManager {
         self_arc: Arc<RwLock<Self>>,
     ) -> Result<(), String> {
         match self.tasks.get_mut(&task_id) {
-            Some(task) => {
-                if matches!(task.status, DownloadStatus::Paused) {
-                    // Reset pause_offset so the worker knows to use Range header
+            Some(task) => match task.status {
+                DownloadStatus::Paused => {
                     task.pause_offset = task.downloaded_bytes;
                     task.status = DownloadStatus::Queued;
                     task.error = None;
+                    task.speed_bps = 0;
+                    task.eta_seconds = 0;
 
                     let worker_arc = self_arc;
                     tokio::spawn(async move {
@@ -146,10 +156,12 @@ impl DownloadManager {
                     });
 
                     Ok(())
-                } else {
-                    Err(format!("Task {} is not paused (status: {:?})", task_id, task.status))
                 }
-            }
+                DownloadStatus::Queued | DownloadStatus::Downloading => {
+                    Err(format!("Task {} is already active (status: {:?})", task_id, task.status))
+                }
+                _ => Err(format!("Task {} is not paused (status: {:?})", task_id, task.status)),
+            },
             None => Err(format!("Task {} not found", task_id)),
         }
     }
@@ -188,6 +200,24 @@ impl DownloadManager {
             .count()
     }
 
+    /// Resolved final paths for queued/active/paused tasks — hide from model catalog until complete.
+    pub fn in_progress_dest_paths(&self) -> HashSet<String> {
+        self.tasks
+            .values()
+            .filter(|t| {
+                matches!(
+                    t.status,
+                    DownloadStatus::Queued | DownloadStatus::Downloading | DownloadStatus::Paused
+                )
+            })
+            .map(|t| {
+                crate::config::resolve_path(&t.dest_path)
+                    .to_string_lossy()
+                    .to_string()
+            })
+            .collect()
+    }
+
     /// The actual download loop — runs in a spawned tokio task.
     async fn download_worker(task_id: String, manager: Arc<RwLock<Self>>) {
         // HF's /resolve/main/ returns 302 → signed CAS URL. We need Range header preserved through redirect,
@@ -220,25 +250,34 @@ impl DownloadManager {
             }
         }
 
-        // Mark as downloading and get task info
-        let (url, dest_path, start_offset, _total_bytes) = {
+        // Claim the task for this worker — bail if another worker already owns it.
+        let (url, dest_path, partial_path, start_offset, _total_bytes) = {
             let mut dm = manager.write().await;
-            if let Some(task) = dm.tasks.get_mut(&task_id) {
-                task.status = DownloadStatus::Downloading;
-                task.downloaded_bytes = task.pause_offset;
-                (
-                    task.download_url.clone(),
-                    task.dest_path.clone(),
-                    task.pause_offset,
-                    task.total_bytes,
-                )
-            } else {
+            let Some(task) = dm.tasks.get_mut(&task_id) else {
                 return;
+            };
+            match task.status {
+                DownloadStatus::Queued => {
+                    task.status = DownloadStatus::Downloading;
+                    task.downloaded_bytes = task.pause_offset;
+                    (
+                        task.download_url.clone(),
+                        task.dest_path.clone(),
+                        partial_download_path(&task.dest_path),
+                        task.pause_offset,
+                        task.total_bytes,
+                    )
+                }
+                DownloadStatus::Downloading => {
+                    log::warn!("[download] Worker skipped — task {} already downloading", task_id);
+                    return;
+                }
+                _ => return,
             }
         };
 
         // Create parent directories
-        if let Some(parent) = Path::new(&dest_path).parent() {
+        if let Some(parent) = Path::new(&partial_path).parent() {
             if !parent.as_os_str().is_empty() {
                 if let Err(e) = fs::create_dir_all(parent).await {
                     mark_failed(&manager, &task_id, format!("Failed to create directory: {}", e)).await;
@@ -247,11 +286,11 @@ impl DownloadManager {
             }
         }
 
-        // Open file in append mode (for resume support)
+        // Open partial file in append mode (for resume support)
         let mut file = match OpenOptions::new()
             .create(true)
             .append(true)
-            .open(&dest_path)
+            .open(&partial_path)
             .await
         {
             Ok(f) => f,
@@ -296,7 +335,7 @@ impl DownloadManager {
         if start_offset > 0 && status_code.is_success() && status_code != reqwest::StatusCode::PARTIAL_CONTENT {
             // Server doesn't support range requests — truncate and restart from beginning
             drop(file);
-            let _f = match tokio::fs::File::create(&dest_path).await {
+            let _f = match tokio::fs::File::create(&partial_path).await {
                 Ok(f) => f,
                 Err(e) => {
                     mark_failed(&manager, &task_id, format!("Failed to reset file: {}", e)).await;
@@ -308,7 +347,7 @@ impl DownloadManager {
                 .create(true)
                 .write(true)
                 .truncate(true)
-                .open(&dest_path)
+                .open(&partial_path)
                 .await
             {
                 Ok(f) => f,
@@ -335,62 +374,48 @@ impl DownloadManager {
         let mut last_speed: f64 = 0.0;
         let mut batch_bytes: u64 = 0;
         let mut progress_interval = tokio::time::interval(std::time::Duration::from_millis(PROGRESS_INTERVAL_MS));
+        let mut stream_finished = false;
 
         loop {
             tokio::select! {
                 _ = progress_interval.tick() => {
-                    // Periodic progress update + pause check
-                    if batch_bytes > 0 {
-                        let now_ms = Utc::now().timestamp_millis() as u128;
-                        {
-                            let mut dm = manager.write().await;
-                            if let Some(task) = dm.tasks.get_mut(&task_id) {
-                                task.downloaded_bytes += batch_bytes;
-                                batch_bytes = 0;
+                    flush_download_progress(
+                        &manager,
+                        &task_id,
+                        &mut batch_bytes,
+                        &mut speed_samples,
+                        &mut last_speed,
+                    )
+                    .await;
 
-                                speed_samples.push((now_ms, task.downloaded_bytes));
-                                if speed_samples.len() > SPEED_SAMPLE_COUNT {
-                                    speed_samples.remove(0);
-                                }
-
-                                if speed_samples.len() >= 2 {
-                                    let (t0, b0) = speed_samples[0];
-                                    let (t1, b1) = *speed_samples.last().unwrap();
-                                    let dt_sec = (t1 - t0) as f64 / 1000.0;
-                                    if dt_sec > 0.01 {
-                                        let raw_speed = (b1 - b0) as f64 / dt_sec;
-                                        last_speed = last_speed * (1.0 - SPEED_SMOOTHING) + raw_speed * SPEED_SMOOTHING;
-                                    }
-                                }
-
-                                task.speed_bps = last_speed as u64;
-                                let remaining = task.total_bytes.saturating_sub(task.downloaded_bytes);
-                                if task.speed_bps > 0 {
-                                    task.eta_seconds = (remaining as f64 / task.speed_bps as f64) as u64;
-                                } else {
-                                    task.eta_seconds = 0;
-                                }
-                            }
-                        }
-                    }
-
-                    // Check pause/cancel
-                    {
-                        let dm = manager.read().await;
-                        if let Some(task) = dm.tasks.get(&task_id) {
-                            match task.status {
-                                DownloadStatus::Paused => break,
-                                DownloadStatus::Failed => return,
-                                _ => {}
-                            }
-                        }
+                    if should_stop_worker(&manager, &task_id).await {
+                        let _ = file.flush().await;
+                        finalize_paused_worker(&manager, &task_id).await;
+                        return;
                     }
                 }
 
                 chunk_result = stream.next() => {
+                    if should_stop_worker(&manager, &task_id).await {
+                        flush_download_progress(
+                            &manager,
+                            &task_id,
+                            &mut batch_bytes,
+                            &mut speed_samples,
+                            &mut last_speed,
+                        )
+                        .await;
+                        let _ = file.flush().await;
+                        finalize_paused_worker(&manager, &task_id).await;
+                        return;
+                    }
+
                     let chunk = match chunk_result {
                         Some(Ok(c)) => c,
-                        None => break, // Stream finished
+                        None => {
+                            stream_finished = true;
+                            break;
+                        }
                         Some(Err(e)) => {
                             mark_failed(&manager, &task_id, format!("Stream error: {}", e)).await;
                             return;
@@ -406,62 +431,167 @@ impl DownloadManager {
             }
         }
 
-        // Final progress update for any remaining batched bytes
-        if batch_bytes > 0 {
-            let mut dm = manager.write().await;
-            if let Some(task) = dm.tasks.get_mut(&task_id) {
-                task.downloaded_bytes += batch_bytes;
-            }
+        flush_download_progress(
+            &manager,
+            &task_id,
+            &mut batch_bytes,
+            &mut speed_samples,
+            &mut last_speed,
+        )
+        .await;
+
+        if should_stop_worker(&manager, &task_id).await {
+            let _ = file.flush().await;
+            finalize_paused_worker(&manager, &task_id).await;
+            return;
         }
 
-        // Mark as completed
-        {
-            let mut dm = manager.write().await;
-            if let Some(task) = dm.tasks.get_mut(&task_id) {
-                if !matches!(task.status, DownloadStatus::Failed) {
-                    task.status = DownloadStatus::Completed;
-                    task.speed_bps = 0;
-                    task.eta_seconds = 0;
-                    task.pause_offset = 0;
-
-                    // Save HF metadata to unified cache
-                    let dest_path_for_cache = task.dest_path.clone();
-                    let hf_model_id_for_cache = task.hf_model_id.clone();
-                    let hf_author_for_cache = task.hf_author.clone();
-                    let quant_type_for_cache = task.quant_type.clone();
-                    let total_bytes_for_cache = task.total_bytes;
-
-                    // Derive repo name from HF model ID (author/repo → repo)
-                    let repo_name = if let Some(pos) = hf_model_id_for_cache.find('/') {
-                        hf_model_id_for_cache[pos+1..].to_string()
-                    } else {
-                        hf_model_id_for_cache.clone()
-                    };
-
-                    let hf_meta = crate::types::HfMetadata {
-                        hf_model_id: hf_model_id_for_cache,
-                        author: hf_author_for_cache,
-                        repo_name,
-                        tags: Vec::new(),
-                        downloads: 0,
-                        likes_count: 0,
-                        quant_type: quant_type_for_cache,
-                        file_size_bytes: total_bytes_for_cache,
-                        last_modified: String::new(),
-                        lfs_oid: task.lfs_oid.clone(),
-                    };
-
-                    if let Err(e) = crate::model_cache::set_hf_metadata(&dest_path_for_cache, hf_meta) {
-                        log::warn!("[download] Failed to save HF metadata for {}: {}", dest_path_for_cache, e);
-                    } else {
-                        log::info!("[download] HF metadata saved to cache for {}", dest_path_for_cache);
-                    }
-                }
-            }
+        if stream_finished {
+            let _ = file.flush().await;
+            mark_completed_worker(&manager, &task_id, &dest_path).await;
         }
-
-        log::info!("Download complete: {} -> {}", task_id, dest_path);
     }
+}
+
+/// Flush batched bytes and update speed/ETA on the task.
+async fn flush_download_progress(
+    manager: &Arc<RwLock<DownloadManager>>,
+    task_id: &str,
+    batch_bytes: &mut u64,
+    speed_samples: &mut Vec<(u128, u64)>,
+    last_speed: &mut f64,
+) {
+    if *batch_bytes == 0 {
+        return;
+    }
+
+    let now_ms = Utc::now().timestamp_millis() as u128;
+    let mut dm = manager.write().await;
+    let Some(task) = dm.tasks.get_mut(task_id) else {
+        return;
+    };
+
+    task.downloaded_bytes += *batch_bytes;
+    *batch_bytes = 0;
+
+    speed_samples.push((now_ms, task.downloaded_bytes));
+    if speed_samples.len() > SPEED_SAMPLE_COUNT {
+        speed_samples.remove(0);
+    }
+
+    if speed_samples.len() >= 2 {
+        let (t0, b0) = speed_samples[0];
+        let (t1, b1) = *speed_samples.last().unwrap();
+        let dt_sec = (t1 - t0) as f64 / 1000.0;
+        if dt_sec > 0.01 {
+            let raw_speed = (b1 - b0) as f64 / dt_sec;
+            *last_speed = *last_speed * (1.0 - SPEED_SMOOTHING) + raw_speed * SPEED_SMOOTHING;
+        }
+    }
+
+    task.speed_bps = *last_speed as u64;
+    let remaining = task.total_bytes.saturating_sub(task.downloaded_bytes);
+    task.eta_seconds = if task.speed_bps > 0 {
+        (remaining as f64 / task.speed_bps as f64) as u64
+    } else {
+        0
+    };
+}
+
+/// True when the worker should stop without marking the download complete.
+async fn should_stop_worker(manager: &Arc<RwLock<DownloadManager>>, task_id: &str) -> bool {
+    let dm = manager.read().await;
+    matches!(
+        dm.tasks.get(task_id).map(|t| &t.status),
+        Some(DownloadStatus::Paused) | Some(DownloadStatus::Failed)
+    )
+}
+
+/// Persist pause position after the worker stops early.
+async fn finalize_paused_worker(manager: &Arc<RwLock<DownloadManager>>, task_id: &str) {
+    let mut dm = manager.write().await;
+    let Some(task) = dm.tasks.get_mut(task_id) else {
+        return;
+    };
+    if matches!(task.status, DownloadStatus::Paused) {
+        task.pause_offset = task.downloaded_bytes;
+        task.speed_bps = 0;
+        task.eta_seconds = 0;
+    }
+}
+
+/// Mark a finished download complete and save HF metadata to the model cache.
+async fn mark_completed_worker(
+    manager: &Arc<RwLock<DownloadManager>>,
+    task_id: &str,
+    dest_path: &str,
+) {
+    let mut dm = manager.write().await;
+    let Some(task) = dm.tasks.get_mut(task_id) else {
+        return;
+    };
+
+    if !matches!(task.status, DownloadStatus::Downloading) {
+        return;
+    }
+
+    if !download_bytes_complete(task.downloaded_bytes, task.total_bytes) {
+        task.status = DownloadStatus::Failed;
+        task.error = Some(format!(
+            "Download incomplete: {}/{} bytes",
+            task.downloaded_bytes, task.total_bytes
+        ));
+        task.speed_bps = 0;
+        task.eta_seconds = 0;
+        return;
+    }
+
+    let partial_path = partial_download_path(dest_path);
+    if let Err(e) = std::fs::rename(&partial_path, dest_path) {
+        task.status = DownloadStatus::Failed;
+        task.error = Some(format!("Failed to finalize download: {}", e));
+        task.speed_bps = 0;
+        task.eta_seconds = 0;
+        return;
+    }
+
+    task.status = DownloadStatus::Completed;
+    task.speed_bps = 0;
+    task.eta_seconds = 0;
+    task.pause_offset = 0;
+
+    let hf_model_id_for_cache = task.hf_model_id.clone();
+    let hf_author_for_cache = task.hf_author.clone();
+    let quant_type_for_cache = task.quant_type.clone();
+    let total_bytes_for_cache = task.total_bytes;
+    let lfs_oid = task.lfs_oid.clone();
+
+    let repo_name = if let Some(pos) = hf_model_id_for_cache.find('/') {
+        hf_model_id_for_cache[pos + 1..].to_string()
+    } else {
+        hf_model_id_for_cache.clone()
+    };
+
+    let hf_meta = crate::types::HfMetadata {
+        hf_model_id: hf_model_id_for_cache,
+        author: hf_author_for_cache,
+        repo_name,
+        tags: Vec::new(),
+        downloads: 0,
+        likes_count: 0,
+        quant_type: quant_type_for_cache,
+        file_size_bytes: total_bytes_for_cache,
+        last_modified: String::new(),
+        lfs_oid,
+    };
+
+    if let Err(e) = crate::model_cache::set_hf_metadata(dest_path, hf_meta) {
+        log::warn!("[download] Failed to save HF metadata for {}: {}", dest_path, e);
+    } else {
+        log::info!("[download] HF metadata saved to cache for {}", dest_path);
+    }
+
+    log::info!("Download complete: {} -> {}", task_id, dest_path);
 }
 
 /// Mark a task as failed with an error message.
@@ -478,4 +608,149 @@ async fn mark_failed(manager: &Arc<RwLock<DownloadManager>>, task_id: &str, erro
 /// Generate a unique task ID using microsecond timestamp.
 fn generate_task_id() -> String {
     Utc::now().timestamp_micros().to_string()
+}
+
+/// True when the streamed byte count satisfies the declared file size.
+fn download_bytes_complete(downloaded: u64, total: u64) -> bool {
+    total == 0 || downloaded >= total
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn download_bytes_complete_allows_unknown_total() {
+        assert!(download_bytes_complete(1024, 0));
+    }
+
+    #[test]
+    fn partial_download_path_appends_suffix() {
+        assert_eq!(
+            partial_download_path("models/author/repo/model.gguf"),
+            "models/author/repo/model.gguf.part"
+        );
+    }
+
+    #[test]
+    fn download_bytes_complete_requires_full_file_when_total_known() {
+        assert!(!download_bytes_complete(100, 200));
+        assert!(download_bytes_complete(200, 200));
+        assert!(download_bytes_complete(250, 200));
+    }
+
+    #[test]
+    fn pause_task_only_from_downloading() {
+        let mut dm = DownloadManager::new();
+        let task_id = "test-task".to_string();
+        dm.tasks.insert(
+            task_id.clone(),
+            DownloadTask {
+                id: task_id.clone(),
+                hf_model_id: "author/model".to_string(),
+                file_name: "model.gguf".to_string(),
+                download_url: "https://huggingface.co/x".to_string(),
+                total_bytes: 1000,
+                downloaded_bytes: 400,
+                status: DownloadStatus::Downloading,
+                dest_path: "models/model.gguf".to_string(),
+                speed_bps: 0,
+                pause_offset: 0,
+                error: None,
+                eta_seconds: 0,
+                hf_author: "author".to_string(),
+                quant_type: "Q4_K_M".to_string(),
+                lfs_oid: String::new(),
+            },
+        );
+
+        dm.pause_task(&task_id).expect("pause should succeed");
+        let task = dm.tasks.get(&task_id).unwrap();
+        assert_eq!(task.status, DownloadStatus::Paused);
+        assert_eq!(task.downloaded_bytes, 400);
+    }
+
+    #[test]
+    fn in_progress_dest_paths_includes_active_tasks_only() {
+        let mut dm = DownloadManager::new();
+        dm.tasks.insert(
+            "active".to_string(),
+            DownloadTask {
+                id: "active".to_string(),
+                hf_model_id: "a/m".to_string(),
+                file_name: "m.gguf".to_string(),
+                download_url: "https://x".to_string(),
+                total_bytes: 100,
+                downloaded_bytes: 10,
+                status: DownloadStatus::Downloading,
+                dest_path: "models/m.gguf".to_string(),
+                speed_bps: 0,
+                pause_offset: 0,
+                error: None,
+                eta_seconds: 0,
+                hf_author: "a".to_string(),
+                quant_type: "Q4".to_string(),
+                lfs_oid: String::new(),
+            },
+        );
+        dm.tasks.insert(
+            "done".to_string(),
+            DownloadTask {
+                id: "done".to_string(),
+                hf_model_id: "a/m2".to_string(),
+                file_name: "m2.gguf".to_string(),
+                download_url: "https://x".to_string(),
+                total_bytes: 100,
+                downloaded_bytes: 100,
+                status: DownloadStatus::Completed,
+                dest_path: "models/m2.gguf".to_string(),
+                speed_bps: 0,
+                pause_offset: 0,
+                error: None,
+                eta_seconds: 0,
+                hf_author: "a".to_string(),
+                quant_type: "Q4".to_string(),
+                lfs_oid: String::new(),
+            },
+        );
+
+        let paths = dm.in_progress_dest_paths();
+        assert_eq!(paths.len(), 1);
+        assert!(paths.iter().any(|p| p.ends_with("models\\m.gguf") || p.ends_with("models/m.gguf")));
+    }
+
+    #[tokio::test]
+    async fn resume_task_rejects_active_states() {
+        let manager = Arc::new(RwLock::new(DownloadManager::new()));
+        let task_id = "active-task".to_string();
+        {
+            let mut dm = manager.write().await;
+            dm.tasks.insert(
+                task_id.clone(),
+                DownloadTask {
+                    id: task_id.clone(),
+                    hf_model_id: "author/model".to_string(),
+                    file_name: "model.gguf".to_string(),
+                    download_url: "https://huggingface.co/x".to_string(),
+                    total_bytes: 1000,
+                    downloaded_bytes: 400,
+                    status: DownloadStatus::Downloading,
+                    dest_path: "models/model.gguf".to_string(),
+                    speed_bps: 0,
+                    pause_offset: 0,
+                    error: None,
+                    eta_seconds: 0,
+                    hf_author: "author".to_string(),
+                    quant_type: "Q4_K_M".to_string(),
+                    lfs_oid: String::new(),
+                },
+            );
+        }
+
+        let result = {
+            let mut dm = manager.write().await;
+            dm.resume_download(task_id, Arc::clone(&manager)).await
+        };
+        assert!(result.is_err());
+    }
 }

@@ -68,15 +68,27 @@ pub struct AppContext {
 #[tauri::command]
 pub async fn list_models(
     config: tauri::State<'_, Arc<std::sync::Mutex<AppConfig>>>,
+    downloads: tauri::State<'_, Arc<tokio::sync::RwLock<crate::download_manager::DownloadManager>>>,
 ) -> Result<Vec<ModelEntry>, String> {
-    let cfg = config.lock().map_err(|e| e.to_string())?;
-    let paths = crate::config::get_model_paths(&cfg);
+    let paths = {
+        let cfg = config.lock().map_err(|e| e.to_string())?;
+        crate::config::get_model_paths(&cfg)
+    };
 
     if paths.is_empty() {
         return Ok(Vec::new());
     }
 
-    let (entries, _conflicts) = model_catalog::merge_catalogs(&paths, None)?;
+    let exclude_paths = {
+        let dm = downloads.read().await;
+        dm.in_progress_dest_paths()
+    };
+
+    let (entries, _conflicts) = model_catalog::merge_catalogs(
+        &paths,
+        None,
+        Some(&exclude_paths),
+    )?;
     if !_conflicts.is_empty() {
         log::warn!("[list_models] Found {} cross-path duplicates (keeping largest)", _conflicts.len());
     }
@@ -203,7 +215,11 @@ pub async fn launch_engine(
 
     let supports_fusion = template.spawn_profile.supports_fusion;
     let cmd_args = template.build_command(&config, &gpu_mask, &final_user_params);
-    let launch_cmd = format!("{} {}", binary_path.display(), cmd_args.join(" "));
+    let launch_cmd = format!(
+        "{} {}",
+        engine_utils::format_debug_executable(&binary_path),
+        cmd_args.join(" ")
+    );
 
     // Emit full launch command to Blackwell Output Console (DEBUG category)
     app.blackwell_output_console_manager.emit_line_to_category(
@@ -563,7 +579,11 @@ pub async fn preview_launch_command(
     let final_user_params = guard_speculative_decoding(user_params, &config.model_path);
 
     let cmd_args = template.build_command(&config, &gpu_mask, &final_user_params);
-    Ok(format!("{} {}", binary_path.display(), cmd_args.join(" ")))
+    Ok(format!(
+        "{} {}",
+        engine_utils::format_debug_executable(&binary_path),
+        cmd_args.join(" ")
+    ))
 }
 
 // ── File Dialog (rfd native dialog) ───────────────────────────────
@@ -886,7 +906,7 @@ pub async fn scan_all_models_cmd(
         let binary_path = engine_utils::find_provider_binary(&cfg, &pid, "")?;
         // Use all configured paths instead of single model_base
         let paths = crate::config::get_model_paths(&cfg);
-        let (catalog, _) = model_catalog::merge_catalogs(&paths, Some(&app.log_hub))?;
+        let (catalog, _) = model_catalog::merge_catalogs(&paths, Some(&app.log_hub), None)?;
         let total = catalog.len();
         let all_paths: Vec<String> = catalog.iter().map(|e| e.path.clone()).collect();
         if total == 0 {

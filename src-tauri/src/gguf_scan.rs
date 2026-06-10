@@ -41,6 +41,7 @@ pub fn scan_model_metadata(model_path: &str, binary_path: &str) -> Result<ModelM
         .args(crate::types::LLAMA_DIAGNOSTIC_FLAGS.iter().map(|s| s.to_string()))
         .env("CUDA_VISIBLE_DEVICES", "") // Hide GPUs — forces pure CPU, zero VRAM usage
         .env("OMP_NUM_THREADS", "1")     // Single thread — reduce CPU load during scan
+        .stdin(Stdio::null())
         .stdout(Stdio::null()) // stdout is empty — all output goes to stderr
         .stderr(Stdio::piped())
         .creation_flags(0x08000000) // CREATE_NO_WINDOW — prevents CMD flash in release builds

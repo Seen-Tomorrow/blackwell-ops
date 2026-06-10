@@ -1217,25 +1217,51 @@ fn download_dest_roots(config: &AppConfig) -> Vec<PathBuf> {
     roots
 }
 
+/// True when `child` is under `root_canon`, walking up to the nearest existing ancestor.
+/// Handles Windows 8.3 short paths, mixed `/` `\` separators, and not-yet-created author/repo folders.
+fn download_dest_under_root(child: &std::path::Path, root_canon: &std::path::Path) -> bool {
+    let mut probe = child.to_path_buf();
+    loop {
+        if probe.exists() {
+            return match probe.canonicalize() {
+                Ok(probe_canon) => {
+                    probe_canon == root_canon || probe_canon.starts_with(root_canon)
+                }
+                Err(_) => false,
+            };
+        }
+        probe = match probe.parent() {
+            Some(p) if !p.as_os_str().is_empty() => p.to_path_buf(),
+            _ => break,
+        };
+    }
+    false
+}
+
 /// Ensure download destination stays under configured model library roots.
+/// Nested author/repo folders are created at download time — only the library root must exist.
 pub fn validate_download_dest(dest_path: &str, config: &AppConfig) -> Result<(), String> {
     let resolved = resolve_path(dest_path);
-    let dest_parent = resolved
-        .parent()
-        .ok_or_else(|| "Invalid download destination".to_string())?;
-    let parent_canon = dest_parent
-        .canonicalize()
-        .map_err(|e| format!("Download parent directory missing: {e}"))?;
+    if resolved.as_os_str().is_empty() {
+        return Err("Invalid download destination".to_string());
+    }
 
     for root in download_dest_roots(config) {
         let root_resolved = resolve_path(root.to_string_lossy().as_ref());
-        let root_canon = root_resolved
-            .canonicalize()
-            .or_else(|_| {
-                std::fs::create_dir_all(&root_resolved).map_err(|e| e.to_string())?;
-                root_resolved.canonicalize().map_err(|e| e.to_string())
-            })?;
-        if parent_canon.starts_with(&root_canon) {
+        if root_resolved.as_os_str().is_empty() {
+            continue;
+        }
+
+        if !root_resolved.exists() {
+            std::fs::create_dir_all(&root_resolved)
+                .map_err(|e| format!("Failed to create model library root: {e}"))?;
+        }
+
+        let Ok(root_canon) = root_resolved.canonicalize() else {
+            continue;
+        };
+
+        if download_dest_under_root(&resolved, &root_canon) {
             return Ok(());
         }
     }
@@ -2061,6 +2087,66 @@ mod merge_tests {
         assert_eq!(config.model_paths.iter().filter(|p| p.is_default).count(), 1);
         assert_eq!(config.default_download_path.as_deref(), Some("C:\\path-b"));
         assert!(config.model_paths.iter().find(|p| p.path == "C:\\path-b").unwrap().is_default);
+    }
+
+    #[test]
+    fn validate_download_dest_allows_nested_subfolders_under_existing_models_root() {
+        let base = std::env::temp_dir().join(format!("bwops-dl-{}", std::process::id()));
+        let models = base.join("models");
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&models).expect("models root");
+
+        let dest = models
+            .join("JackRong")
+            .join("Some-Model")
+            .join("model-Q4_K_M.gguf");
+        let config = AppConfig {
+            model_paths: vec![ModelPathEntry {
+                path: models.to_string_lossy().to_string(),
+                label: "Models".to_string(),
+                is_default: true,
+            }],
+            gpu_slots: 0,
+            hf_token: String::new(),
+            providers: Vec::new(),
+            default_download_path: Some(models.to_string_lossy().to_string()),
+        };
+
+        super::validate_download_dest(&dest.to_string_lossy(), &config)
+            .expect("nested dest under existing models root should validate");
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn validate_download_dest_allows_forward_slash_dest_under_relative_models_root() {
+        let base = std::env::temp_dir().join(format!("bwops-dl-mix-{}", std::process::id()));
+        let models = base.join("models");
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&models).expect("models root");
+
+        // Simulate Model Hub: absolute default path + forward-slash segments
+        let default_path = models.to_string_lossy();
+        let dest = format!(
+            "{}/JackRong/Some-Model/model-Q4_K_M.gguf",
+            default_path.replace('\\', "/")
+        );
+        let config = AppConfig {
+            model_paths: vec![ModelPathEntry {
+                path: models.to_string_lossy().to_string(),
+                label: "Models".to_string(),
+                is_default: true,
+            }],
+            gpu_slots: 0,
+            hf_token: String::new(),
+            providers: Vec::new(),
+            default_download_path: Some(models.to_string_lossy().to_string()),
+        };
+
+        super::validate_download_dest(&dest, &config)
+            .expect("forward-slash dest under models root should validate");
+
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]

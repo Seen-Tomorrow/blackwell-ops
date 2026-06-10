@@ -3,9 +3,22 @@
 //! Provides async functions to search GGUF models on HF Hub and fetch detailed
 //! model information including available quantization variants.
 
+use std::collections::HashSet;
+
+use crate::model_catalog;
 use crate::types::{GgufFile, HfModel, HfModelInfo, HfSearchFilters, HfSearchResponse};
 use reqwest::Client;
 use serde::Deserialize;
+
+/// Skip mmproj sidecars and multi-part shard files (e.g. `model-00001-of-00004.gguf`).
+fn should_skip_gguf_filename(filename: &str) -> bool {
+    let lower = filename.to_lowercase();
+    if lower.contains("mmproj") {
+        return true;
+    }
+    let without_ext = filename.trim_end_matches(".gguf");
+    without_ext.to_lowercase().contains("-of-")
+}
 
 // ── Internal types for HF API response deserialization ───────────────────
 
@@ -60,17 +73,10 @@ struct HfApiModelInfo {
 fn extract_gguf_files(siblings: &[HfSibling], model_id: &str) -> Vec<GgufFile> {
     let mut ggufs = Vec::new();
     for sib in siblings {
-        if !sib.rfilename.ends_with(".gguf") {
+        if !sib.rfilename.ends_with(".gguf") || should_skip_gguf_filename(&sib.rfilename) {
             continue;
         }
-        // Extract quant type from filename like "Llama-3.1-8B-IQ1_Ms.gguf" → "IQ1_MS"
-        let quant_type = sib
-            .rfilename
-            .trim_end_matches(".gguf")
-            .split('-')
-            .last()
-            .unwrap_or("")
-            .to_string();
+        let quant_type = model_catalog::extract_quant(&sib.rfilename);
 
         // Build download URL from _links.self or construct it
         let url = if let Some(ref link) = sib._links {
@@ -89,6 +95,10 @@ fn extract_gguf_files(siblings: &[HfSibling], model_id: &str) -> Vec<GgufFile> {
         });
     }
     ggufs.sort_by(|a, b| a.size_bytes.cmp(&b.size_bytes));
+
+    // One entry per quant — smallest file wins (search siblings can list duplicates).
+    let mut seen = HashSet::new();
+    ggufs.retain(|g| seen.insert(g.r#type.clone()));
     ggufs
 }
 
@@ -297,13 +307,12 @@ pub async fn get_model_info(model_id: &str, token: Option<&str>) -> Result<HfMod
 
         for entry in &entries {
             if entry.r#type == "file" && entry.path.ends_with(".gguf") {
-                let base = entry.path.strip_suffix(".gguf").unwrap_or(&entry.path);
-                if base.contains("mmproj") || base.contains("-of-") {
+                let filename = entry.path.split('/').last().unwrap_or(&entry.path);
+                if should_skip_gguf_filename(filename) {
                     continue;
                 }
 
-                let filename = base.split('/').last().unwrap_or(base);
-                let quant_type = filename.split('-').last().unwrap_or(filename).to_string();
+                let quant_type = model_catalog::extract_quant(filename);
 
                 gguf_files.push(GgufFile {
                     r#type: quant_type,
@@ -335,6 +344,10 @@ pub async fn get_model_info(model_id: &str, token: Option<&str>) -> Result<HfMod
     }
 
     gguf_files.sort_by(|a, b| a.size_bytes.cmp(&b.size_bytes));
+
+    let mut seen = HashSet::new();
+    gguf_files.retain(|g| seen.insert(g.r#type.clone()));
+
     log::info!(
         "Model {} — found {} GGUF files",
         model_id,

@@ -621,6 +621,13 @@ export interface SystemEvent {
   timestamp: string;
 }
 
+export interface IntelChannel {
+  id: string;
+  display_name: string;
+  tab_label: string;
+  repo: string;
+}
+
 export interface IntelItem {
   id: string;
   title: string;
@@ -629,6 +636,17 @@ export interface IntelItem {
   author: string;
   body_preview: string;
   timestamp: string;
+  channel: string;
+  labels: string[];
+  is_breaking: boolean;
+  is_open: boolean;
+}
+
+export interface IntelFeed {
+  channels: IntelChannel[];
+  items: IntelItem[];
+  fetched_at: string;
+  cache_ttl_seconds: number;
 }
 
 // ── Hugging Face Hub Types ───────────────────────────────────────

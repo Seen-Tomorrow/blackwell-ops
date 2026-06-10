@@ -64,9 +64,9 @@ function onboardingDisplayClasses(setupGuide: SetupGuideState): {
 const PARAM_LABEL_CLASS =
   "font-mono w-24 flex-shrink-0 uppercase tracking-wider truncate text-[9px] text-stealth-muted";
 
-/** Section headers (MEMORY MANAGEMENT, speculative decoding) — wider than param chips. */
+/** Section headers (MEMORY MANAGEMENT, speculative decoding) — narrow column, wraps short. */
 const SECTION_LABEL_CLASS =
-  "config-section-label font-mono flex-shrink-0 uppercase tracking-wider whitespace-nowrap text-[9px] text-stealth-muted";
+  "config-section-label font-mono flex-shrink-0 uppercase tracking-wider text-[9px] text-stealth-muted leading-tight";
 
 function paramChipClass(active: boolean): string {
   return `px-2 py-0.5 text-[9px] font-mono rounded-sm focus:outline-none ${
@@ -555,14 +555,14 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           key={paramRowKey(def, rowIdx)}
           data-param-row
           data-device-row
-          className={`flex items-center min-h-[22px] ${isLocked ? "opacity-50" : ""}`}
+          className={`flex items-start min-h-[22px] ${isLocked ? "opacity-50" : ""}`}
         >
-          {isUserAdded && <div className="w-0.5 h-4 flex-shrink-0 bg-yellow-400/40 mr-1.5" />}
-          {!isUserAdded && <div className="w-0.5 h-4 flex-shrink-0 mr-1.5" />}
-          <span className={`${PARAM_LABEL_CLASS} ${isUserAdded ? "text-yellow-400/80" : ""}`} title={def.label}>
+          {isUserAdded && <div className="w-0.5 h-4 flex-shrink-0 bg-yellow-400/40 mr-1.5 mt-0.5" />}
+          {!isUserAdded && <div className="w-0.5 h-4 flex-shrink-0 mr-1.5 mt-0.5" />}
+          <span className={`${PARAM_LABEL_CLASS} mt-0.5 ${isUserAdded ? "text-yellow-400/80" : ""}`} title={def.label}>
             {def.label}
           </span>
-          <div className="flex gap-1 flex-nowrap flex-1 min-w-0 items-center min-h-[18px]">
+          <div className="config-chip-row flex gap-1 flex-wrap flex-1 min-w-0 items-center min-h-[18px]">
             {splitLocksDevice ? (
               <span
                 className={`${paramChipClass(true)} opacity-90 cursor-default`}
@@ -597,11 +597,11 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     // ── Slider ptype — render range input instead of value chips ───────────
     if (def.ptype === 'slider') {
       return (
-        <div key={paramRowKey(def, rowIdx)} data-param-row className={`flex items-center min-h-[22px] ${isLocked ? 'opacity-50' : ''}`}>
-          {isUserAdded && <div className="w-0.5 h-4 flex-shrink-0 bg-yellow-400/40 mr-1.5" />}
-          {!isUserAdded && <div className="w-0.5 h-4 flex-shrink-0 mr-1.5" />}
+        <div key={paramRowKey(def, rowIdx)} data-param-row className={`flex items-start min-h-[22px] ${isLocked ? 'opacity-50' : ''}`}>
+          {isUserAdded && <div className="w-0.5 h-4 flex-shrink-0 bg-yellow-400/40 mr-1.5 mt-0.5" />}
+          {!isUserAdded && <div className="w-0.5 h-4 flex-shrink-0 mr-1.5 mt-0.5" />}
           <span
-            className={`font-mono w-24 flex-shrink-0 uppercase tracking-wider truncate text-[9px] ${isUserAdded ? 'text-yellow-400/80' : 'text-stealth-muted'}`}
+            className={`font-mono w-24 flex-shrink-0 uppercase tracking-wider truncate text-[9px] mt-0.5 ${isUserAdded ? 'text-yellow-400/80' : 'text-stealth-muted'}`}
             title={def.label}
           >
             {def.label}
@@ -618,17 +618,17 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     }
 
     return (
-      <div key={paramRowKey(def, rowIdx)} data-param-row className={`flex items-center min-h-[22px] ${isLocked ? 'opacity-50' : ''}`}>
-        {isUserAdded && <div className="w-0.5 h-4 flex-shrink-0 bg-yellow-400/40 mr-1.5" />}
-        {!isUserAdded && <div className="w-0.5 h-4 flex-shrink-0 mr-1.5" />}
+      <div key={paramRowKey(def, rowIdx)} data-param-row className={`flex items-start min-h-[22px] ${isLocked ? 'opacity-50' : ''}`}>
+        {isUserAdded && <div className="w-0.5 h-4 flex-shrink-0 bg-yellow-400/40 mr-1.5 mt-0.5" />}
+        {!isUserAdded && <div className="w-0.5 h-4 flex-shrink-0 mr-1.5 mt-0.5" />}
         <span
-          className={`${PARAM_LABEL_CLASS} ${isUserAdded ? 'text-yellow-400/80' : ''}`}
+          className={`${PARAM_LABEL_CLASS} mt-0.5 ${isUserAdded ? 'text-yellow-400/80' : ''}`}
           title={def.label}
         >
           {def.label}
         </span>
 
-        <div className="flex gap-1 flex-nowrap flex-1 min-w-0 items-center min-h-[18px]">
+        <div className="config-chip-row flex gap-1 flex-wrap flex-1 min-w-0 items-center min-h-[18px]">
           {baseValues.filter((v: any) => !(v?._hidden)).map((val, valIdx) => (
             <button
               key={`${paramRowKey(def, rowIdx)}-val-${valIdx}-${String(val)}`}
@@ -933,16 +933,12 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
         return (
           <div className="mono-panel relative flex-shrink-0">
-            {/* Section header — outside the green bg, on dark */}
-            <div className="relative z-[2] px-4 pt-3 pb-1 mono-panel-header">
-
-            </div>
-            <div className="mono-panel-body relative z-[2] px-4 py-3 pr-6">
+            <div className="mono-panel-body relative z-[2] px-4 pt-1.5 pb-2 pr-6">
               <div className="flex gap-4">
                 {/* Left: Multi-GPU params */}
                 {leftParams.length > 0 && (
                   <div className="space-y-2.5 flex-1 min-w-0">
-                    <label className="text-[8px] font-mono tracking-widest uppercase block mb-2 mono-label">
+                    <label className="text-[8px] font-mono tracking-widest uppercase block mb-1 mono-label">
                       MULTI-GPU
                     </label>
                     {leftParams.map((def, i) => renderParamRow(def, false, i))}
@@ -954,7 +950,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
                {/* Right: Runtime Config */}
                 <div className="flex-1 min-w-0 space-y-2.5">
-                  <label className="text-[8px] font-mono tracking-widest uppercase block mb-2 mono-label">
+                  <label className="text-[8px] font-mono tracking-widest uppercase block mb-1 mono-label">
                     RUNTIME-CONFIG
                   </label>
 
@@ -991,7 +987,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                   <div data-param-row className="runtime-profile-row flex items-center">
                     <div className="w-0.5 h-4 flex-shrink-0 mr-1.5" />
                     <span className={`${PARAM_LABEL_CLASS} runtime-profile-label`}>RUNTIME PROFILE</span>
-                    <div className="flex gap-1 flex-nowrap flex-1 min-w-0 items-center min-h-[18px]">
+                    <div className="config-chip-row flex gap-1 flex-wrap flex-1 min-w-0 items-center min-h-[18px]">
                       {availableProfiles.map(profile => {
                         const meta = ENV_META[profile];
                         const hasBuild = builtProfiles.includes(profile);
@@ -1113,7 +1109,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       <div className="config-params-scroll px-4 py-3 relative flex-1 overflow-y-auto eink-scrollbar eink-panel min-h-0">
 
         {providerSupportsAutoVram && (
-          <div data-param-row className="flex items-center mb-3 pb-2 border-b border-white/[0.04]">
+          <div data-param-row className="config-section-row flex items-center mb-3 pb-2 border-b border-white/[0.04]">
             <div className="w-0.5 h-4 flex-shrink-0 mr-1.5 bg-nv-green/40" />
             <span className={`${SECTION_LABEL_CLASS} text-nv-green/90`}>MEMORY MANAGEMENT</span>
             <label className="toggle-switch ml-2">
@@ -1149,7 +1145,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                 <span className="label-on">AUTO</span>
               </span>
             </label>
-            <span className="text-[8px] font-mono text-stealth-muted/60 ml-2 tracking-wide uppercase">
+            <span className="text-[8px] font-mono text-stealth-muted/60 ml-2 tracking-wide uppercase min-w-0 flex-1 leading-snug">
               {simpleModeActive
                 ? "Engine tunes VRAM and RAM offload at launch"
                 : "full autonomy"}
@@ -1181,7 +1177,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                 <div key={group.id}>
                   <div
                     data-param-row
-                    className={`nuclear-btn-container config-spec-decoding flex items-center ${specFlash ? 'flash' : ''}`}
+                    className={`nuclear-btn-container config-spec-decoding config-section-row flex items-center ${specFlash ? 'flash' : ''}`}
                   >
                     <div className="w-0.5 h-4 flex-shrink-0 mr-1.5" />
                     <span className={SECTION_LABEL_CLASS}>SPECULATIVE DECODING</span>
@@ -1300,12 +1296,12 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           };
 
           return (
-            <div className="flex gap-4">
+            <div className="config-params-columns flex gap-4 min-w-0">
               <div className="flex-1 min-w-0 space-y-3">
                 {leftCol.map(renderGroup)}
               </div>
               <div className="w-px flex-shrink-0 bg-white/[0.03]" />
-              <div className="w-[40%] min-w-[200px] flex-shrink-0 space-y-3">
+              <div className="flex-1 min-w-0 space-y-3">
                 {rightCol.map(renderGroup)}
               </div>
             </div>

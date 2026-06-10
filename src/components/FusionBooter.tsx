@@ -34,6 +34,18 @@ function formatDiskThroughput(mibPerS: number): { value: string; unit: string } 
   return { value: mibPerS.toFixed(1), unit: "MiB/s" };
 }
 
+/** MiB/s hero numbers are wider (e.g. 856.3) — scale down so they stay inside the NVMe block. */
+function diskHeroFontSize(value: string, unit: string): string {
+  if (unit === "GiB/s") {
+    return "clamp(1.35rem, 4vh, 2.2rem)";
+  }
+  const len = value.length;
+  if (len >= 6) return "clamp(0.85rem, 2.2vh, 1.15rem)";
+  if (len >= 5) return "clamp(0.95rem, 2.5vh, 1.3rem)";
+  if (len >= 4) return "clamp(1.05rem, 2.8vh, 1.45rem)";
+  return "clamp(1.15rem, 3.2vh, 1.6rem)";
+}
+
 function vramLoadForGpu(loads: GpuVramLoad[], index: number): GpuVramLoad | undefined {
   return loads.find((l) => l.index === index);
 }
@@ -111,22 +123,24 @@ function DiskIoHero({ mibPerS }: { mibPerS: number }) {
 
   return (
     <div
-      className={`flex flex-col items-center justify-center px-2 py-1 rounded-sm border flex-shrink-0 self-stretch min-w-[84px] max-w-[96px] ${
+      className={`fusion-disk-hero flex flex-col items-center justify-center px-1.5 py-1 rounded-sm border flex-shrink-0 self-stretch min-w-[92px] w-[28%] max-w-[108px] overflow-hidden ${
         hot ? "border-telemetry-cyan/40 bg-black/10" : "border-stone-500/10 bg-black/4"
       }`}
     >
-      <span className="text-[7px] font-mono text-stealth-muted/50 tracking-wider mb-0.5">NVMe READ</span>
+      <span className="text-[7px] font-mono text-stealth-muted/50 tracking-wider mb-0.5 px-0.5 text-center leading-tight">
+        NVMe READ
+      </span>
       <span
-        className="font-mono font-bold tracking-tight leading-none transition-all duration-200 ease-out"
+        className="font-mono font-bold tabular-nums tracking-tight leading-none w-full text-center px-0.5 overflow-hidden transition-all duration-200 ease-out"
         style={{
-          fontSize: "clamp(1.35rem, 4vh, 2.2rem)",
+          fontSize: diskHeroFontSize(value, unit),
           color: hot ? "#22d3ee" : mibPerS > 8 ? "rgba(34, 211, 238, 0.75)" : "rgba(34, 211, 238, 0.35)",
         }}
       >
         {value}
       </span>
-      <span className="text-[7px] font-mono text-stealth-muted/40 tracking-wider mt-0.5">{unit}</span>
-      <span className="text-[6px] font-mono text-stealth-muted/35 mt-1 text-center leading-tight">
+      <span className="text-[7px] font-mono text-stealth-muted/40 tracking-wider mt-0.5 px-0.5">{unit}</span>
+      <span className="text-[6px] font-mono text-stealth-muted/35 mt-1 px-0.5 text-center leading-tight truncate max-w-full">
         {gbitPerS >= 1 ? `${gbitPerS.toFixed(1)} Gbit/s` : `${(mibPerS * 8).toFixed(0)} Mbit/s`}
       </span>
     </div>

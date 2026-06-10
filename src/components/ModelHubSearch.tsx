@@ -1,9 +1,16 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { join } from '@tauri-apps/api/path';
+import { open } from '@tauri-apps/plugin-shell';
 import type { HfModel, GgufFile, HfSearchResponse, HfModelInfo } from '@/lib/types';
+import { useModelHubSplitResize } from '../hooks/useCatalogSplitResize';
 import QuantBadge from './QuantBadge';
 import VramFitBadge from './VramFitBadge';
 import ModelStatsRow from './ModelStatsRow';
+
+function hfModelUrl(modelId: string): string {
+  return `https://huggingface.co/${modelId}`;
+}
 
 const VRAM_TIERS = [8, 12, 16, 24, 48, 96];
 const SORT_OPTIONS: { key: 'downloads' | 'likes' | 'lastModified'; label: string; icon: string }[] = [
@@ -41,13 +48,9 @@ function getVramFitLabel(sizeBytes: number, vramGb: number): string {
   return 'OVER';
 }
 
-function extractQuantName(filename: string): string {
-  const base = filename.replace('.gguf', '');
-  const parts = base.split('-');
-  return parts.length > 1 ? parts.slice(-2).join('-') : base;
-}
-
 export default function ModelHubSearch() {
+  const { containerRef: splitContainerRef, panelWidth, isDragging, startDrag, resetWidth } =
+    useModelHubSplitResize();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<HfModel[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -117,6 +120,15 @@ export default function ModelHubSearch() {
     }
   }, [query, vramTier, sortBy, showToast]);
 
+  const handleOpenHfPage = useCallback(async (modelId: string) => {
+    try {
+      await open(hfModelUrl(modelId));
+    } catch (e) {
+      console.error('Failed to open HF page:', e);
+      showToast('FAILED TO OPEN HUGGING FACE PAGE');
+    }
+  }, [showToast]);
+
   const handleDownload = useCallback(async (modelId: string, file: GgufFile) => {
     try {
       const defaultPath = await invoke<string>('get_default_download_path');
@@ -127,7 +139,7 @@ export default function ModelHubSearch() {
       const slashIdx = modelId.indexOf('/');
       const hfAuthor = slashIdx > 0 ? modelId.slice(0, slashIdx) : 'unknown';
       const repoName = slashIdx > 0 ? modelId.slice(slashIdx + 1) : modelId;
-      const destPath = `${defaultPath}/${hfAuthor}/${repoName}/${fileName}`;
+      const destPath = await join(defaultPath, hfAuthor, repoName, fileName);
 
       await invoke('start_download', {
         hfModelId: modelId,
@@ -237,9 +249,12 @@ export default function ModelHubSearch() {
         </div>
       </div>
 
-      <div className="flex flex-1 overflow-hidden">
-        <div className="w-[360px] min-w-[280px] border-r border-stealth-border/50 flex flex-col">
-          <div className="px-3 py-1.5 border-b border-stealth-border/40 flex items-center justify-between">
+      <div ref={splitContainerRef} className="flex flex-1 overflow-hidden min-h-0">
+        <div
+          className="flex flex-col eink-panel-wrapper flex-shrink-0 min-h-0"
+          style={{ width: panelWidth }}
+        >
+          <div className="px-3 py-1.5 border-b border-stealth-border/40 flex items-center justify-between flex-shrink-0">
             <span className="text-[9px] font-mono text-stealth-muted tracking-wider uppercase">
               RESULTS ({filteredResults.length})
             </span>
@@ -248,7 +263,7 @@ export default function ModelHubSearch() {
             )}
           </div>
 
-          <div className="flex-1 overflow-y-auto eink-scrollbar px-3 py-2 space-y-2">
+          <div className="flex-1 overflow-y-auto eink-scrollbar px-3 py-2 space-y-2 min-h-0">
             {!loading && filteredResults.length === 0 && (
               <div className="flex items-center justify-center h-full text-stealth-muted/50">
                 <p className="text-[10px] font-mono italic text-center py-8 px-4">
@@ -270,37 +285,32 @@ export default function ModelHubSearch() {
                 key={model.id}
                 onClick={() => setSelectedId(model.id)}
                 className={`w-full text-left p-3 rounded-sm transition-all hub-result-enter ${
-                  selectedId === model.id ? 'gunmetal-card border-l-2 border-l-nv-green' : 'eink-card theme-surface-row'
+                  selectedId === model.id ? 'gunmetal-card border-l-2 border-l-nv-green' : 'buried-card'
                 }`}
               >
                   <div className="flex items-start justify-between gap-2 mb-1.5">
                     <span className="text-[9px] font-mono text-stealth-muted truncate">{model.author}</span>
                     {model.gguf_files && model.gguf_files.length > 0 && (
-                      <span className="text-[8px] font-mono px-1 py-0.5 rounded-sm flex-shrink-0 border border-telemetry-cyan/20 text-telemetry-cyan/60">
-                        {model.gguf_files.length} quants
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="text-xs font-mono text-white/90 truncate mb-1.5">{model.id}</div>
-
-                  <div className="flex items-center gap-3 text-[10px] font-mono text-stealth-muted">
-                    <span>⬇ {formatNum(model.downloads)}</span>
-                    <span>⭐ {formatNum(model.likes_count)}</span>
-                    {model.gguf_files && model.gguf_files.length > 0 && (
-                      <span className="text-[8px] font-mono px-1 py-0.5 rounded-sm bg-nv-green/10 border border-nv-green/30 text-nv-green/70">
+                      <span className="shrink-0 rounded-sm border border-nv-green/30 bg-nv-green/10 px-1 py-0.5 text-[8px] font-mono text-nv-green/70">
                         GGUF
                       </span>
                     )}
                   </div>
 
+                  <div className="text-xs font-mono model-card-name truncate mb-1.5">{model.id}</div>
+
+                  <div className="flex items-center gap-3 text-[10px] font-mono text-stealth-muted">
+                    <span>⬇ {formatNum(model.downloads)}</span>
+                    <span>⭐ {formatNum(model.likes_count)}</span>
+                  </div>
+
                   {model.gguf_files && model.gguf_files.length > 0 && (
-                    <div className="flex gap-1 mt-1.5 flex-wrap">
-                      {model.gguf_files.slice(0, 4).map((gf, i) => (
+                    <div className="mt-1.5 flex flex-wrap gap-1">
+                      {model.gguf_files.slice(0, 5).map((gf, i) => (
                         <QuantBadge key={i} type={gf.type} />
                       ))}
-                      {model.gguf_files!.length > 4 && (
-                        <span className="text-[8px] font-mono text-stealth-muted/40">+{model.gguf_files!.length - 4}</span>
+                      {model.gguf_files.length > 5 && (
+                        <span className="text-[8px] font-mono text-stealth-muted/40">+{model.gguf_files.length - 5}</span>
                       )}
                     </div>
                   )}
@@ -309,7 +319,21 @@ export default function ModelHubSearch() {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto eink-scrollbar">
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-valuenow={panelWidth}
+          aria-label="Resize search results and quant list panels"
+          className={`catalog-split-handle${isDragging ? ' is-dragging' : ''}`}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            startDrag();
+          }}
+          onDoubleClick={resetWidth}
+          title="Drag to resize · double-click to reset"
+        />
+
+        <div className="flex-1 min-w-0 min-h-0 eink-panel-wrapper overflow-y-auto eink-scrollbar">
           {loadingDetail ? (
             <div key="loading-detail" className="flex items-center justify-center h-full fade-in">
               <span className="text-xs font-mono text-nv-green hub-search-pulse">
@@ -317,58 +341,47 @@ export default function ModelHubSearch() {
               </span>
             </div>
           ) : detailInfo ? (
-            <div key={detailInfo.id} className="p-5 fade-in">
-              <div className="flex items-center gap-3 mb-4">
-                <button
-                  onClick={() => setSelectedId(null)}
-                  className="text-[10px] font-mono text-stealth-muted hover:text-nv-green transition-colors px-2 py-1 border border-stealth-border/40 rounded-sm hover:border-nv-green/30"
-                >
-                  ← BACK
-                </button>
-                <div>
-                  <h2 className="text-sm font-mono text-white tracking-wide">{detailInfo.id}</h2>
-                  <span className="text-[10px] font-mono text-stealth-muted">{detailInfo.author}</span>
+            <div key={detailInfo.id} className="p-4 fade-in">
+              <div className="flex items-start justify-between gap-3 mb-2 pb-2 border-b border-stealth-border/40">
+                <div className="min-w-0">
+                  <h2 className="text-xs font-mono model-card-name tracking-wide truncate">{detailInfo.id}</h2>
+                  <span className="text-[9px] font-mono text-stealth-muted">{detailInfo.author}</span>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => handleOpenHfPage(detailInfo.id)}
+                  className="shrink-0 rounded-sm border border-telemetry-cyan/30 px-2 py-1 text-[8px] font-mono text-telemetry-cyan/80 transition-colors whitespace-nowrap hover:bg-telemetry-cyan/10 hover:text-telemetry-cyan"
+                >
+                  VIEW ON HF ↗
+                </button>
               </div>
 
               <ModelStatsRow
                 downloads={detailInfo.downloads}
                 likes={detailInfo.likes_count}
                 quants={detailInfo.gguf_files?.length || 0}
+                tags={detailInfo.tags}
               />
 
               {detailInfo.description && (
-                <div className="mb-4 pb-3 border-b border-stealth-border/40">
-                  <p className="text-[11px] font-mono text-white/60 leading-relaxed line-clamp-6">
+                <div className="mb-3 pb-2 border-b border-stealth-border/40">
+                  <p className="text-[10px] font-mono text-stealth-muted leading-relaxed line-clamp-4">
                     {detailInfo.description.slice(0, 500)}{detailInfo.description.length > 500 ? '...' : ''}
                   </p>
                 </div>
               )}
 
-              {detailInfo.tags && detailInfo.tags.length > 0 && (
-                <div className="mb-4">
-                  <h3 className="text-[9px] font-mono text-stealth-muted tracking-wider uppercase mb-1.5">TAGS</h3>
-                  <div className="flex flex-wrap gap-1">
-                    {detailInfo.tags.slice(0, 12).map(tag => (
-                      <span key={tag} className="theme-tag px-2 py-0.5 text-[9px] font-mono rounded-sm">
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
               <div>
-                <h3 className="text-[9px] font-mono text-nv-green tracking-wider uppercase mb-3">
-                  QUANTIZATION OPTIONS ({selectedGgufFiles.length})
+                <h3 className="text-[8px] font-mono text-nv-green tracking-wider uppercase mb-2">
+                  QUANTS ({selectedGgufFiles.length})
                 </h3>
 
                 {selectedGgufFiles.map((file) => {
                   const vramGb = vramTier > 0 ? vramTier : 24;
                   return (
                     <div
-                      key={file.type}
-                      className="theme-surface-row flex items-center justify-between py-2.5 px-3 mb-1 rounded-sm hover:border-nv-green/20 transition-all hub-file-enter"
+                      key={`${file.type}-${file.size_bytes}-${file.url}`}
+                      className="theme-surface-row flex items-center justify-between py-2 px-2.5 mb-1 rounded-sm hover:border-nv-green/20 transition-all hub-file-enter"
                     >
                       <div className="flex items-center gap-3 min-w-0">
                         <VramFitBadge sizeBytes={file.size_bytes} vramGb={vramGb} />

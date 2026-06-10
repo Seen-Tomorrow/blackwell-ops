@@ -88,7 +88,7 @@ export interface ScenarioInput {
   fitStyle?: string;
   /** Post-launch measured VRAM from learned-vram.json (MiB). */
   learnedVramMib?: number;
-  /** Host RAM from learned breakdown (MiB) — --fit offload footprint. */
+  /** Host RAM from learned breakdown (MiB) — buffers + any tensor offload. */
   learnedHostMib?: number;
   /** Per-GPU SELF MiB from learned breakdown. */
   learnedGpuBreakdownMib?: number[];

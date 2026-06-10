@@ -28,6 +28,7 @@ import { normalizeDisplayTexture, type DisplayTexture } from "./displayTexture";
  * | BlackOps-fusion-hero-tps | live \| avg | Fusion hero TPS display mode |
  * | BlackOps-display-texture | clean \| glitch \| phosphor-dark \| phosphor-light | Display texture cycle |
  * | BlackOps-catalog-split-width | number string (px) | Model catalog / engine config split |
+ * | BlackOps-model-hub-split-width | number string (0–1) | Model Hub results / quants split ratio |
  * | BlackOps-telemetry-view | standard \| lab | TELEMETRY tab: panel vs lab catalogue |
  * | BlackOps-setup-guide-dismissed | "1" | User dismissed first-run setup guide |
  * | BlackOps-setup-welcome-seen | "1" | Welcome animation already played once |
@@ -106,6 +107,7 @@ export const KEYS = {
   fusionHeroTpsMode: `${STORAGE_PREFIX}fusion-hero-tps`,
   displayTexture: `${STORAGE_PREFIX}display-texture`,
   catalogSplitWidth: `${STORAGE_PREFIX}catalog-split-width`,
+  modelHubSplitWidth: `${STORAGE_PREFIX}model-hub-split-width`,
   telemetryView: `${STORAGE_PREFIX}telemetry-view`,
   setupGuideDismissed: `${STORAGE_PREFIX}setup-guide-dismissed`,
   setupWelcomeSeen: `${STORAGE_PREFIX}setup-welcome-seen`,
@@ -163,6 +165,11 @@ export function saveTelemetryViewMode(mode: TelemetryViewMode): void {
 export const CATALOG_SPLIT_WIDTH_DEFAULT = 420;
 export const CATALOG_SPLIT_WIDTH_MIN = 280;
 export const CATALOG_SPLIT_WIDTH_MAX = 880;
+
+/** Left panel share of Model Hub split (results list). Default 60% results / 40% quants. */
+export const MODEL_HUB_SPLIT_RATIO_DEFAULT = 0.6;
+export const MODEL_HUB_SPLIT_RATIO_MIN = 0.5;
+export const MODEL_HUB_SPLIT_RATIO_MAX = 0.78;
 
 export type UiDensity = "comfortable" | "compact";
 
@@ -361,6 +368,28 @@ export function saveCatalogSplitWidth(width: number): void {
     Math.max(CATALOG_SPLIT_WIDTH_MIN, Math.round(width)),
   );
   writeStorage(KEYS.catalogSplitWidth, String(clamped));
+}
+
+export function loadModelHubSplitRatio(): number {
+  const raw = readStorage(KEYS.modelHubSplitWidth);
+  if (!raw) return MODEL_HUB_SPLIT_RATIO_DEFAULT;
+  const n = Number.parseFloat(raw);
+  if (!Number.isFinite(n) || n > 1) {
+    // Legacy pixel values from older builds — reset to ratio default.
+    return MODEL_HUB_SPLIT_RATIO_DEFAULT;
+  }
+  return Math.min(
+    MODEL_HUB_SPLIT_RATIO_MAX,
+    Math.max(MODEL_HUB_SPLIT_RATIO_MIN, n),
+  );
+}
+
+export function saveModelHubSplitRatio(ratio: number): void {
+  const clamped = Math.min(
+    MODEL_HUB_SPLIT_RATIO_MAX,
+    Math.max(MODEL_HUB_SPLIT_RATIO_MIN, ratio),
+  );
+  writeStorage(KEYS.modelHubSplitWidth, String(Number(clamped.toFixed(4))));
 }
 
 export interface StartupUpdatesCache {

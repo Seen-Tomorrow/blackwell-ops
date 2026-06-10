@@ -1,4 +1,4 @@
-/** Decorative CRT-style glitch layers — only visible under [data-display-texture="glitch"]. */
+/** Glitch FX — CSS stepped layers only (low GPU/RAM). */
 export default function DisplayGlitchOverlay() {
   return (
     <div className="display-glitch-fx" aria-hidden="true">

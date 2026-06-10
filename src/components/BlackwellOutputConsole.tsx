@@ -325,7 +325,7 @@ export default function BlackwellOutputConsole({
         </div>
       </div>
 
-      <div className="blackwell-output-console__body flex-1 overflow-auto p-2 pb-4 text-[9.5px] leading-[1.35] custom-scrollbar min-h-0">
+      <div className={`blackwell-output-console__body flex-1 overflow-auto p-2 text-[9.5px] leading-[1.35] custom-scrollbar min-h-0 ${isDetached ? "pb-4" : "pb-1"}`}>
         {isLoading && <div className="boc-sync pl-1">SYNCING TELEMETRY...</div>}
 
         {!isLoading && lines.length === 0 && (
@@ -340,10 +340,12 @@ export default function BlackwellOutputConsole({
         ))}
       </div>
 
-      <div className={`blackwell-output-console__footer px-3 flex items-center justify-between text-[7px] ${compact ? "h-4" : "h-5"}`}>
-        <span>{lines.length} LINES • {activeCategory.toUpperCase()}</span>
-        <span className="boc-refresh cursor-pointer" onClick={() => fetchBuffer(activeCategory)}>REFRESH</span>
-      </div>
+      {isDetached && (
+        <div className={`blackwell-output-console__footer px-3 flex items-center justify-between text-[7px] ${compact ? "h-4" : "h-5"}`}>
+          <span>{lines.length} LINES • {activeCategory.toUpperCase()}</span>
+          <span className="boc-refresh cursor-pointer" onClick={() => fetchBuffer(activeCategory)}>REFRESH</span>
+        </div>
+      )}
 
       {isDetached && (
         <div
@@ -356,5 +358,10 @@ export default function BlackwellOutputConsole({
     </div>
   );
 
-  return createPortal(panel, document.body);
+  // Docked: inside app-main-frame (layout reserve pushes launch dock above console).
+  // Detached: portal to body for viewport-level drag/resize.
+  if (isDetached) {
+    return createPortal(panel, document.body);
+  }
+  return panel;
 }

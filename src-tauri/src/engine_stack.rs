@@ -215,12 +215,6 @@ impl EngineStack {
             cmd.current_dir(model_dir);
         }
 
-        for (k, v) in std::env::vars() {
-            cmd.env(&k, &v);
-        }
-
-        // Engine launch info now routed to Blackwell Output Console
-
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x08000000;
         const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
@@ -228,6 +222,7 @@ impl EngineStack {
             .args(&cmd_args)
             .env("CUDA_VISIBLE_DEVICES", &gpu_mask)
             .env("LLAMA_LOG_COLORS", "on")
+            .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::piped());
 
@@ -496,24 +491,13 @@ impl EngineStack {
     async fn finish_process_stop(
         port: u16,
         pid: Option<u32>,
-        mut proc: std::process::Child,
+        proc: std::process::Child,
         hub: Option<LogHub>,
         slot_idx: usize,
         alias: String,
         emit_console: bool,
     ) {
-        let exited = tokio::task::spawn_blocking(move || {
-            crate::engine_utils::stop_child_gracefully(&mut proc, pid)
-        })
-            .await
-            .unwrap_or(false);
-
-        if !exited {
-            if let Some(p) = pid {
-                let _ = crate::engine_utils::kill_process_by_pid(p).await;
-            }
-            let _ = Self::kill_process_by_port(port).await;
-        }
+        let exited = crate::engine_utils::stop_child_fast(proc, pid, port).await;
 
         if emit_console {
             if let Some(hub) = hub {
@@ -697,7 +681,7 @@ impl EngineStack {
         }
 
         if let Some(proc) = proc_to_stop {
-            tokio::spawn(Self::finish_process_stop(
+            Self::finish_process_stop(
                 port,
                 pid,
                 proc,
@@ -705,7 +689,8 @@ impl EngineStack {
                 slot_idx,
                 alias,
                 true,
-            ));
+            )
+            .await;
         }
 
         Ok(())

@@ -509,7 +509,9 @@ function App() {
         {activeTab === "catalog" && (
               <ModelCatalog models={models} onLaunch={handleLaunchEngine} error={catalogError} onReload={reloadModels} providers={providers} committedVramMib={committedVramMib} isPowerUser={isPowerUser} scanningPath={scanningPath} setScanningPath={setScanningPath} batchScanState={batchScanState} setBatchScanState={setBatchScanState} stack={stack} setupGuide={setupGuide} />
            )}
-        {activeTab === "modelhub" && <ModelHub />}
+        <div className={`h-full min-h-0 flex flex-col ${activeTab === "modelhub" ? "" : "hidden"}`}>
+          <ModelHub />
+        </div>
         {activeTab === "config" && <ConfigPage providers={providers} setupGuide={setupGuide} />}
         {activeTab === "stack" && (
           <StackView stack={stack} logs={logs} systemEvents={systemEvents} onStop={handleStopEngine} onStopAll={handleStopAll} />
