@@ -46,7 +46,7 @@ export const WELCOME_ASPECT_RATIO = 1;
  * full forecast with 1 GPU ≈ 260–300px inner.
  */
 export const REFERENCE_PHOSPHOR_HEIGHT_SETUP_PX = 184;
-export const REFERENCE_PHOSPHOR_HEIGHT_FORECAST_PX = 280;
+export const REFERENCE_PHOSPHOR_HEIGHT_FORECAST_PX = 258;
 
 /** Aspect ratio (width ÷ height) for intro art at reference shell. */
 export const REFERENCE_ASPECT_SETUP = REFERENCE_PHOSPHOR_WIDTH_PX / REFERENCE_PHOSPHOR_HEIGHT_SETUP_PX;

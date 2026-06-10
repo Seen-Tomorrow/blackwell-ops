@@ -208,21 +208,7 @@
 }
 
 .toggle-input:checked + .toggle-track .toggle-glow {
-  opacity: 1;
-  animation: glowPulse 2.5s ease-in-out infinite;
-}
-
-@keyframes glowPulse {
-  0%,
-  100% {
-    opacity: 0.7;
-    filter: brightness(1);
-  }
-
-  50% {
-    opacity: 1;
-    filter: brightness(1.2);
-  }
+  opacity: 0.85;
 }
 
 .toggle-thumb {
@@ -272,29 +258,9 @@
 .toggle-input:checked + .toggle-track .thumb-inner {
   background: linear-gradient(145deg, #ff9060 0%, #ff7040 100%);
   box-shadow:
-    0 0 7px rgba(255, 144, 96, 0.9),
-    0 0 14px rgba(255, 112, 64, 0.6),
-    0 0 21px rgba(255, 90, 50, 0.3),
+    0 0 7px rgba(255, 144, 96, 0.85),
+    0 0 14px rgba(255, 112, 64, 0.5),
     inset 0 1px 1px rgba(255, 255, 255, 0.4);
-  animation: emberGlow 1.2s ease-in-out infinite;
-}
-
-@keyframes emberGlow {
-  0%,
-  100% {
-    box-shadow:
-      0 0 7px rgba(70, 22, 2, 0.9),
-      0 0 14px rgba(255, 112, 64, 0.6);
-    transform: scale(1);
-  }
-
-  50% {
-    box-shadow:
-      0 0 9px rgba(255, 144, 96, 1),
-      0 0 18px rgba(255, 112, 64, 0.8),
-      0 0 27px rgba(255, 90, 50, 0.4);
-    transform: scale(1);
-  }
 }
 
 .thumb-shine {
@@ -403,24 +369,8 @@
   opacity: 1;
   transform: translateY(0);
   text-shadow:
-    0 0 6px rgba(224, 90, 48, 0.6),
-    0 0 12px rgba(224, 90, 48, 0.3);
-  animation: labelGlow 2s ease-in-out infinite;
-}
-
-@keyframes labelGlow {
-  0%,
-  100% {
-    text-shadow:
-      0 0 6px rgba(224, 90, 48, 0.6),
-      0 0 12px rgba(224, 90, 48, 0.3);
-  }
-
-  50% {
-    text-shadow:
-      0 0 8px rgba(224, 90, 48, 0.8),
-      0 0 16px rgba(224, 90, 48, 0.5);
-  }
+    0 0 6px rgba(224, 90, 48, 0.55),
+    0 0 12px rgba(224, 90, 48, 0.25);
 }
 
 .toggle-input:focus-visible + .toggle-track {

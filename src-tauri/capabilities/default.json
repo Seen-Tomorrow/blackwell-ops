@@ -3,8 +3,6 @@
   "description": "Default capability for the Tauri app",
   "windows": ["main"],
   "permissions": [
-    "core:default",
-    "shell:allow-open",
-    "mcp-bridge:default"
+    "core:default"
   ]
 }

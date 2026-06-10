@@ -1,5 +1,6 @@
 import { StrictMode } from "react";
 import App from "./App";
+import ErrorBoundary from "./components/ErrorBoundary";
 import { createRoot } from "react-dom/client";
 import "./index.css";
 import "./controls.css";
@@ -37,6 +38,8 @@ applyAppTheme(getThemeById(readStorage(KEYS.appTheme) ?? "matrix"));
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <App />
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
   </StrictMode>,
 );

@@ -133,6 +133,10 @@ pub async fn download_binary_update(
     provider_id: String,
     profile: String,
 ) -> Result<(), String> {
+    if !BINARY_UPDATES_ENABLED {
+        return Err("Binary updates are disabled".to_string());
+    }
+
     let client = reqwest::Client::new();
 
     // Fetch latest release to get the asset URL
@@ -404,6 +408,10 @@ pub async fn check_app_update(app_handle: tauri::AppHandle) -> Result<AppUpdateI
 /// Download and install the latest app update.
 #[tauri::command]
 pub async fn install_app_update(app_handle: tauri::AppHandle) -> Result<(), String> {
+    if !BINARY_UPDATES_ENABLED {
+        return Err("App updates are disabled".to_string());
+    }
+
     let client = reqwest::Client::new();
 
     // Fetch latest release to find the Windows installer asset

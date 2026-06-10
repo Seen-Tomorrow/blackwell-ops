@@ -313,7 +313,7 @@ export default function BlackwellOutputConsole({
 
           <button onClick={() => clearCategory(activeCategory)} className="boc-action-btn boc-action-btn--clear" title="Clear tab">C</button>
           <button onClick={() => saveCategory(activeCategory)} className="boc-action-btn boc-action-btn--save" title="Save tab">S</button>
-          <button onClick={() => clearAll} className="boc-action-btn boc-action-btn--clear" title="Clear all">ALL</button>
+          <button onClick={() => void clearAll()} className="boc-action-btn boc-action-btn--clear" title="Clear all">ALL</button>
 
           {isDetached ? (
             <button onClick={() => setIsDetached(false)} className="boc-utility-btn px-2 py-0.5 text-[8px]">DOCK</button>

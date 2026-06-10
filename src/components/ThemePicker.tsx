@@ -25,7 +25,7 @@ export default function ThemePicker({ variant = "compact", className = "" }: The
 
   const chipClass = (active: boolean) => {
     if (variant === "header") {
-      return `app-nav-tab px-1.5 py-0.5 text-[7px] font-mono rounded-sm transition-all ${active ? "app-nav-tab-active" : ""}`;
+      return `app-nav-tab px-1.5 py-0.5 text-[7px] font-mono rounded-sm ${active ? "app-nav-tab-active" : ""}`;
     }
     return `px-1.5 py-0 text-[7px] font-mono rounded-sm transition-colors ${active ? "value-chip-active" : "value-chip"}`;
   };

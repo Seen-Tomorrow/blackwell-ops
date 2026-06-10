@@ -385,6 +385,7 @@ html, body, #root {
 .app-nav-tab {
   color: var(--theme-nav-text);
   border: 1px solid transparent;
+  transition: color 0.2s ease, background-color 0.2s ease, border-color 0.2s ease;
 }
 
 .app-nav-tab:hover {
@@ -910,6 +911,39 @@ html, body, #root {
   box-shadow: 0 0 8px rgba(255, 0, 170, 0.2), inset 0 0 8px rgba(255, 0, 170, 0.05);
 }
 
+/* Model catalog — skip paint for off-screen cards; stable intrinsic height for scroll */
+[data-model-path] {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 4.75rem;
+}
+
+.model-catalog-card {
+  contain: layout style paint;
+}
+
+.catalog-sort-btn {
+  min-width: 3.75rem;
+}
+
+.catalog-sort-arrow {
+  display: inline-block;
+  width: 0.65rem;
+  text-align: center;
+}
+
+/* Visible-count viewport — CSS estimate avoids post-mount measure layout shifts */
+.catalog-scroll--limited[data-visible-count="4"] {
+  max-height: calc(2rem + 4 * 4.75rem + 3 * 0.5rem);
+}
+
+.catalog-scroll--limited[data-visible-count="6"] {
+  max-height: calc(2rem + 6 * 4.75rem + 5 * 0.5rem);
+}
+
+.catalog-scroll--limited[data-visible-count="8"] {
+  max-height: calc(2rem + 8 * 4.75rem + 7 * 0.5rem);
+}
+
 /* Model card styles */
 /* ── Catalog card (unselected) — flat rest state on e-ink panel ─── */
 .buried-card {
@@ -917,9 +951,23 @@ html, body, #root {
   border: 1px solid var(--theme-border-subtle);
   border-radius: 6px;
   box-shadow: none;
-  transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+  transition: background 0.2s ease, border-color 0.2s ease;
   position: relative;
   overflow: hidden;
+}
+
+/* Reserve selection rail slot on every card — gunmetal only changes color */
+.buried-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  border-radius: 2px;
+  background: transparent;
+  box-shadow: none;
+  pointer-events: none;
 }
 
 .buried-card:hover {
@@ -1130,11 +1178,7 @@ html, body, #root {
   box-shadow: 0 0 8px rgba(255, 51, 51, 0.4);
 }
 
-/* Glitch text effect for headers */
-.glitch-text {
-  animation: glitchFlicker 4s linear infinite;
-  position: relative;
-}
+/* glitch-text removed — unused + glitchFlicker keyframes never defined */
 
 /* Ignite button styles */
 .ignite-btn {
@@ -1337,19 +1381,26 @@ html, body, #root {
   box-shadow: 0 0 4px var(--theme-accent-glow) !important;
 }
 
-/* DEVICE row — fixed height; reserved glow so active chip swap does not nudge forecast below */
-.mono-panel [data-device-row] {
+/* Param rows — DEVICE stabilization applied to every row (reserved glow + fixed height) */
+.mono-panel [data-param-row],
+.eink-panel [data-param-row] {
   min-height: 22px;
   flex-shrink: 0;
 }
 
-.mono-panel [data-device-row] .value-chip,
-.mono-panel [data-device-row] .value-chip-active {
+.mono-panel [data-param-row] .value-chip,
+.mono-panel [data-param-row] .value-chip-active,
+.eink-panel [data-param-row] .value-chip,
+.eink-panel [data-param-row] .value-chip-active,
+[data-config-panel] [data-param-row] input.value-chip,
+[data-config-panel] [data-param-row] input.value-chip-active {
   box-shadow: 0 0 4px transparent !important;
-  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease !important;
 }
 
-.mono-panel [data-device-row] .value-chip-active {
+.mono-panel [data-param-row] .value-chip-active,
+.eink-panel [data-param-row] .value-chip-active,
+[data-config-panel] [data-param-row] input.value-chip-active {
   box-shadow: 0 0 4px var(--theme-accent-glow) !important;
 }
 
@@ -1374,6 +1425,10 @@ html, body, #root {
   background: rgba(184, 122, 0, 0.12) !important;
   border-color: rgba(184, 122, 0, 0.6) !important;
   color: #d4950a !important;
+}
+
+.runtime-profile-row .value-chip {
+  box-shadow: 0 0 6px transparent !important;
 }
 
 .runtime-profile-row .value-chip-active {
@@ -1472,14 +1527,97 @@ html, body, #root {
 
 /* Forecast phosphor screen — fixed canvas so Auto VRAM mode does not shrink Fusion overlay */
 .vram-forecast-display {
-  min-height: 272px;
+  height: 250px;
+  min-height: 250px;
+  max-height: 250px;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
+/* Fill the full phosphor inset — body scrolls when scenario content is tall */
 .vram-badge-forecast {
-  flex: 1;
-  min-height: 248px;
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.vram-badge-body {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
+}
+
+.vram-badge-body::-webkit-scrollbar {
+  width: 4px;
+}
+
+.vram-badge-body::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 2px;
+}
+
+/* FORECAST header — fixed canvas (same idea as DEVICE row: chip/glow swaps must not nudge layout) */
+.vram-forecast-header {
+  height: 58px;
+  min-height: 58px;
+  max-height: 58px;
+  flex-shrink: 0;
+}
+
+.vram-forecast-needs-row {
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+/* Tabular digits + fixed slots so 9.1 → 88.4 does not shift "of TOTAL MEMORY" */
+.vram-forecast-gb-value {
+  font-variant-numeric: tabular-nums;
+  display: inline-block;
+  min-width: 4.5ch;
+  text-align: right;
+}
+
+/* Reserve glow slot when plain formula digits ↔ accented measured digits */
+.vram-forecast-gb-value:not(.vram-forecast-gb-accented) {
+  filter: drop-shadow(0 0 8px transparent);
+}
+
+/* Scenario badge — fixed corner slot */
+.vram-forecast-scenario-badge {
+  width: 4.75rem;
+  min-height: 1.75rem;
+}
+
+.vram-forecast-scenario-badge > div {
+  width: 100%;
+}
+
+/* SOURCE row — breathing room below FORECAST "needs" line */
+.vram-forecast-source {
+  padding-top: 6px;
+}
+
+/* SOURCE band — exactly two text lines under FORECAST header */
+.memory-source-strip {
+  height: 22px;
+  min-height: 22px;
+  max-height: 22px;
+}
+
+/* SOURCE kind — widest label (FIT PROBE) reserves width */
+.memory-source-kind-label {
+  display: inline-block;
+  min-width: 4.75rem;
+}
+
+/* FIT probe btn — RUN / PROBING / RE-PROBE share one width */
+.fit-probe-btn {
+  min-width: 5.25rem;
+  text-align: center;
 }
 
 .industrial-display-frame {
@@ -1812,6 +1950,15 @@ html, body, #root {
     inset 0 -1px 3px var(--theme-phosphor-inset-bottom);
 }
 
+/* CLEAN — minimal phosphor fill (no extra gradient layers) */
+[data-display-texture="clean"] .phosphor-screen-inner.phosphor-display-surface {
+  background-image: none;
+}
+
+.phosphor-display-surface {
+  contain: paint;
+}
+
 /* Display texture overlays — VRAM forecast + Fusion overlay phosphor surfaces */
 .phosphor-display-surface::before,
 .phosphor-display-surface::after {
@@ -1833,70 +1980,146 @@ html, body, #root {
   z-index: 4;
 }
 
-/* CRT — aperture grille + rolling scan mesh + vignette + sweeping raster beam */
-[data-display-texture="crt"] .phosphor-display-surface::after {
-  display: block;
-  opacity: 1;
-  mix-blend-mode: multiply;
+/* GLITCH — static phosphor base + sparse cyberpunk hits (opacity/transform only, ~94% idle frames) */
+[data-display-texture="glitch"] .phosphor-screen-inner.phosphor-display-surface,
+[data-display-texture="glitch"] .phosphor-screen.phosphor-display-surface {
+  background-color: var(--phosphor-bg, #030801);
   background-image:
-    repeating-linear-gradient(
-      90deg,
-      color-mix(in srgb, var(--theme-display-texture-aperture) 80%, #ff4040 20%) 0px,
-      color-mix(in srgb, var(--theme-display-texture-aperture) 80%, #ff4040 20%) 1px,
-      color-mix(in srgb, var(--theme-display-texture-aperture) 80%, #40ff60 20%) 1px,
-      color-mix(in srgb, var(--theme-display-texture-aperture) 80%, #40ff60 20%) 2px,
-      color-mix(in srgb, var(--theme-display-texture-aperture) 80%, #4080ff 20%) 2px,
-      color-mix(in srgb, var(--theme-display-texture-aperture) 80%, #4080ff 20%) 3px,
-      transparent 3px,
-      transparent 3px
-    ),
+    radial-gradient(circle, var(--theme-display-dot-matrix) 1px, transparent 1px),
     repeating-linear-gradient(
       to bottom,
       transparent 0px,
-      transparent 1px,
-      var(--theme-display-texture-scan) 1px,
-      var(--theme-display-texture-scan) 2px
+      transparent 2px,
+      var(--theme-display-lcd-band) 2px,
+      var(--theme-display-lcd-band) 4px
     ),
     repeating-linear-gradient(
-      to bottom,
-      var(--theme-display-texture-scan-bright) 0px,
-      var(--theme-display-texture-scan-bright) 1px,
-      transparent 1px,
-      transparent 4px
-    ),
-    radial-gradient(ellipse at center, transparent 42%, var(--theme-display-texture-vignette) 100%);
-  background-size: 3px 100%, 100% 2px, 100% 5px, 100% 100%;
-  animation: display-crt-roll 6s linear infinite;
-}
-
-[data-display-texture="crt"] .phosphor-display-surface::before {
-  display: block;
-  opacity: 0.85;
-  background: linear-gradient(
-    to bottom,
-    transparent 0%,
-    transparent 46%,
-    color-mix(in srgb, var(--theme-display-texture-beam) 25%, transparent) 49%,
-    var(--theme-display-texture-beam) 50%,
-    color-mix(in srgb, var(--theme-display-texture-beam) 25%, transparent) 51%,
-    transparent 54%,
-    transparent 100%
-  );
-  background-size: 100% 14%;
-  background-repeat: no-repeat;
-  mix-blend-mode: soft-light;
-  animation: display-crt-beam-sweep 2.8s linear infinite;
-}
-
-/* PHOSPHOR DARK — VRAM forecast: recessed dark phosphor + dot matrix + bloom */
-[data-display-texture="phosphor-dark"] .phosphor-screen-inner.phosphor-display-surface {
-  background-color: var(--phosphor-bg, #030801);
+      90deg,
+      rgba(255, 48, 96, 0.04) 0 1px,
+      rgba(48, 255, 160, 0.03) 1px 2px,
+      rgba(48, 140, 255, 0.04) 2px 3px,
+      transparent 3px 3px
+    );
+  background-size: 2px 2px, 100% 4px, 3px 100%;
   box-shadow:
-    inset 0 2px 8px var(--theme-phosphor-inset-top),
-    inset 0 -2px 8px var(--theme-phosphor-inset-bottom);
+    inset 0 2px 6px var(--theme-phosphor-inset-top),
+    inset 0 -1px 3px var(--theme-phosphor-inset-bottom);
+}
+
+[data-display-texture="glitch"] .phosphor-display-surface::before,
+[data-display-texture="glitch"] .phosphor-display-surface::after {
+  display: none !important;
+}
+
+[data-display-texture="glitch"] .phosphor-display-surface > :not(.display-glitch-fx) {
+  position: relative;
+  z-index: 2;
+}
+
+/* GLITCH FX — multi-block scan slices + RGB split (stepped = mostly idle, no filter/blend) */
+.display-glitch-fx {
+  display: none;
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  pointer-events: none;
+  border-radius: inherit;
+}
+
+[data-display-texture="glitch"] .display-glitch-fx {
+  display: block;
+}
+
+.display-glitch-ambient,
+.display-glitch-chroma,
+.display-glitch-block {
+  position: absolute;
+  left: 0;
+  right: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Idle veil — faint scan + micro RGB twitch between major bursts */
+.display-glitch-ambient {
+  inset: 0;
+  opacity: 0.07;
   background-image:
-    radial-gradient(ellipse at center, var(--phosphor-glow) 0%, transparent 70%),
-    radial-gradient(circle, var(--theme-display-dot-matrix) 0.5px, transparent 0.5px),
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0 2px,
+      rgba(0, 220, 255, 0.05) 2px 3px,
+      transparent 3px 5px
+    ),
+    linear-gradient(
+      90deg,
+      rgba(255, 40, 120, 0.04) 0%,
+      transparent 30%,
+      transparent 70%,
+      rgba(80, 140, 255, 0.04) 100%
+    );
+  background-size: 100% 5px, 100% 100%;
+  animation: display-glitch-ambient-idle 2.6s steps(1, end) infinite;
+}
+
+.display-glitch-chroma {
+  inset: 0;
+  background:
+    linear-gradient(90deg, rgba(255, 40, 120, 0.22) 0%, transparent 28%),
+    linear-gradient(90deg, transparent 36%, rgba(0, 255, 200, 0.16) 48%, transparent 60%),
+    linear-gradient(90deg, transparent 72%, rgba(80, 140, 255, 0.2) 100%);
+  animation: display-glitch-chroma-burst 4.8s steps(1, end) infinite;
+}
+
+.display-glitch-block {
+  background-image:
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0 1px,
+      rgba(255, 255, 255, 0.14) 1px 2px,
+      transparent 2px 4px
+    );
+  background-size: 100% 4px;
+}
+
+.display-glitch-block--1 {
+  top: 11%;
+  height: 5%;
+  background-color: rgba(0, 220, 255, 0.2);
+  animation: display-glitch-block-a 5.2s steps(1, end) infinite;
+}
+
+.display-glitch-block--2 {
+  top: 27%;
+  height: 7%;
+  background-color: rgba(255, 0, 200, 0.18);
+  animation: display-glitch-block-b 6.4s steps(1, end) infinite;
+  animation-delay: -1.8s;
+}
+
+.display-glitch-block--3 {
+  top: 49%;
+  height: 4%;
+  background-color: rgba(0, 255, 130, 0.2);
+  animation: display-glitch-block-c 4.6s steps(1, end) infinite;
+  animation-delay: -2.6s;
+}
+
+.display-glitch-block--4 {
+  top: 68%;
+  height: 6%;
+  background-color: rgba(100, 120, 255, 0.19);
+  animation: display-glitch-block-d 7.1s steps(1, end) infinite;
+  animation-delay: -4.1s;
+}
+
+/* PHOSPHOR DARK — static dot matrix (same technique as phosphor-light, dark palette) */
+[data-display-texture="phosphor-dark"] .phosphor-screen-inner.phosphor-display-surface,
+[data-display-texture="phosphor-dark"] .phosphor-screen.phosphor-display-surface {
+  background-color: var(--phosphor-bg, #030801);
+  background-image:
+    radial-gradient(circle, var(--theme-display-dot-matrix) 1px, transparent 1px),
     repeating-linear-gradient(
       to bottom,
       transparent 0px,
@@ -1904,32 +2127,17 @@ html, body, #root {
       var(--theme-display-lcd-band) 2px,
       var(--theme-display-lcd-band) 4px
     );
-  background-size: 100% 100%, 2px 2px, 100% 4px;
+  background-size: 2px 2px, 100% 4px;
+  box-shadow:
+    inset 0 2px 6px var(--theme-phosphor-inset-top),
+    inset 0 -1px 3px var(--theme-phosphor-inset-bottom);
 }
 
-[data-display-texture="phosphor-dark"] .phosphor-screen-inner.phosphor-display-surface::after {
-  display: block;
-  opacity: 1;
-  background-image:
-    radial-gradient(ellipse 85% 65% at 50% 42%, var(--phosphor-glow) 0%, transparent 68%),
-    radial-gradient(ellipse at center, transparent 62%, var(--theme-display-texture-vignette) 100%);
-  animation: display-phosphor-bloom 5s ease-in-out infinite;
-}
-
-[data-display-texture="phosphor-dark"] .phosphor-screen-inner.phosphor-display-surface::before {
-  display: block;
-  opacity: 0.55;
-  background: linear-gradient(
-    125deg,
-    transparent 0%,
-    transparent 38%,
-    var(--theme-display-texture-glare) 48%,
-    transparent 58%,
-    transparent 100%
-  );
-  background-size: 220% 220%;
-  mix-blend-mode: soft-light;
-  animation: display-phosphor-glare 7s ease-in-out infinite;
+[data-display-texture="phosphor-dark"] .phosphor-screen-inner.phosphor-display-surface::after,
+[data-display-texture="phosphor-dark"] .phosphor-screen-inner.phosphor-display-surface::before,
+[data-display-texture="phosphor-dark"] .phosphor-screen.phosphor-display-surface::after,
+[data-display-texture="phosphor-dark"] .phosphor-screen.phosphor-display-surface::before {
+  display: none;
 }
 
 /* PHOSPHOR LIGHT — VRAM + fusion: beige e-ink LCD */
@@ -1956,22 +2164,6 @@ html, body, #root {
 [data-display-texture="phosphor-light"] .phosphor-screen-inner.phosphor-display-surface::before,
 [data-display-texture="phosphor-light"] .phosphor-screen.phosphor-display-surface::after,
 [data-display-texture="phosphor-light"] .phosphor-screen.phosphor-display-surface::before {
-  display: none;
-}
-
-/* PHOSPHOR DARK — fusion overlay: themed dark phosphor glow */
-[data-display-texture="phosphor-dark"] .phosphor-screen.phosphor-display-surface {
-  background-color: var(--phosphor-bg, #08140a);
-  background-image:
-    radial-gradient(ellipse at center, var(--phosphor-glow, rgba(74, 222, 128, 0.06)) 0%, transparent 70%);
-  box-shadow:
-    inset 0 2px 6px var(--theme-phosphor-inset-top),
-    inset 0 -1px 3px var(--theme-phosphor-inset-bottom),
-    inset 0 1px 40px color-mix(in srgb, var(--theme-text) 8%, transparent);
-}
-
-[data-display-texture="phosphor-dark"] .phosphor-screen.phosphor-display-surface::after,
-[data-display-texture="phosphor-dark"] .phosphor-screen.phosphor-display-surface::before {
   display: none;
 }
 
@@ -2027,34 +2219,188 @@ html, body, #root {
   background-color: var(--fusion-eink-bar-bg) !important;
 }
 
-@keyframes display-crt-roll {
-  from { background-position: 0 0, 0 0, 0 0, 0 0; }
-  to { background-position: 0 0, 0 10px, 0 20px, 0 0; }
+@keyframes display-glitch-ambient-idle {
+  0%, 100% { opacity: 0.06; transform: translate3d(0, 0, 0); }
+  6% { opacity: 0.1; transform: translate3d(-2px, 0, 0); }
+  12% { opacity: 0.07; transform: translate3d(2px, 0, 0); }
+  19% { opacity: 0.11; transform: translate3d(-1px, 1px, 0); }
+  25% { opacity: 0.08; transform: translate3d(1px, 0, 0); }
+  33% { opacity: 0.1; transform: translate3d(-2px, -1px, 0); }
+  41% { opacity: 0.07; transform: translate3d(2px, 0, 0); }
+  48% { opacity: 0.12; transform: translate3d(-1px, 0, 0); }
+  55% { opacity: 0.08; transform: translate3d(1px, 1px, 0); }
+  62% { opacity: 0.1; transform: translate3d(-2px, 0, 0); }
+  70% { opacity: 0.07; transform: translate3d(2px, -1px, 0); }
+  78% { opacity: 0.11; transform: translate3d(-1px, 0, 0); }
+  86% { opacity: 0.08; transform: translate3d(1px, 0, 0); }
+  93% { opacity: 0.1; transform: translate3d(-2px, 1px, 0); }
 }
 
-@keyframes display-crt-beam-sweep {
-  from { background-position: 0 -20%; }
-  to { background-position: 0 120%; }
+@keyframes display-glitch-chroma-burst {
+  0%, 100% { opacity: 0; transform: translate3d(0, 0, 0); }
+  4% { opacity: 0.18; transform: translate3d(-3px, 0, 0); }
+  5% { opacity: 0; }
+  14% { opacity: 0.14; transform: translate3d(2px, 0, 0); }
+  15% { opacity: 0; }
+  24% { opacity: 0.16; transform: translate3d(-2px, 0, 0); }
+  25% { opacity: 0; }
+  38% { opacity: 0.12; transform: translate3d(3px, 0, 0); }
+  39% { opacity: 0; }
+  52% { opacity: 0.55; transform: translate3d(-7px, 0, 0); }
+  53% { opacity: 0.4; transform: translate3d(6px, 0, 0); }
+  54% { opacity: 0.28; transform: translate3d(-4px, 1px, 0); }
+  55% { opacity: 0; }
+  64% { opacity: 0.48; transform: translate3d(8px, -1px, 0); }
+  65% { opacity: 0.32; transform: translate3d(-5px, 0, 0); }
+  66% { opacity: 0; }
+  78% { opacity: 0.2; transform: translate3d(-4px, 0, 0); }
+  79% { opacity: 0; }
+  88% { opacity: 0.38; transform: translate3d(-6px, 2px, 0); }
+  89% { opacity: 0; }
 }
 
-@keyframes display-phosphor-bloom {
-  0%, 100% { opacity: 0.5; filter: brightness(0.96); }
-  50% { opacity: 0.95; filter: brightness(1.06); }
+@keyframes display-glitch-block-a {
+  0%, 100% { opacity: 0; transform: translate3d(0, 0, 0); }
+  7% { opacity: 0.22; transform: translate3d(-4px, 0, 0); }
+  8% { opacity: 0; }
+  18% { opacity: 0.18; transform: translate3d(3px, 0, 0); }
+  19% { opacity: 0; }
+  31% { opacity: 0.2; transform: translate3d(-3px, 1px, 0); }
+  32% { opacity: 0; }
+  46% { opacity: 0.75; transform: translate3d(-10px, 0, 0); }
+  47% { opacity: 0.55; transform: translate3d(8px, 0, 0); }
+  48% { opacity: 0; }
+  58% { opacity: 0.65; transform: translate3d(6px, -3px, 0); }
+  59% { opacity: 0; }
+  72% { opacity: 0.24; transform: translate3d(-5px, 0, 0); }
+  73% { opacity: 0; }
+  86% { opacity: 0.5; transform: translate3d(-7px, 2px, 0); }
+  87% { opacity: 0; }
 }
 
-@keyframes display-phosphor-glare {
-  0%, 100% { background-position: 0% 30%; opacity: 0.35; }
-  50% { background-position: 100% 70%; opacity: 0.7; }
+@keyframes display-glitch-block-b {
+  0%, 100% { opacity: 0; transform: translate3d(0, 0, 0); }
+  9% { opacity: 0.2; transform: translate3d(5px, 0, 0); }
+  10% { opacity: 0; }
+  22% { opacity: 0.16; transform: translate3d(-4px, 1px, 0); }
+  23% { opacity: 0; }
+  36% { opacity: 0.22; transform: translate3d(4px, 0, 0); }
+  37% { opacity: 0; }
+  50% { opacity: 0.7; transform: translate3d(12px, 0, 0); }
+  51% { opacity: 0.45; transform: translate3d(-9px, 0, 0); }
+  52% { opacity: 0; }
+  63% { opacity: 0.6; transform: translate3d(-6px, 4px, 0); }
+  64% { opacity: 0.35; transform: translate3d(5px, 0, 0); }
+  65% { opacity: 0; }
+  76% { opacity: 0.18; transform: translate3d(-3px, 0, 0); }
+  77% { opacity: 0; }
+  90% { opacity: 0.55; transform: translate3d(9px, -2px, 0); }
+  91% { opacity: 0; }
 }
 
-[data-theme="arctic"][data-display-texture="crt"] .phosphor-display-surface::after {
-  mix-blend-mode: soft-light;
-  opacity: 0.72;
+@keyframes display-glitch-block-c {
+  0%, 100% { opacity: 0; transform: translate3d(0, 0, 0); }
+  5% { opacity: 0.24; transform: translate3d(-5px, 0, 0); }
+  6% { opacity: 0; }
+  17% { opacity: 0.17; transform: translate3d(4px, 0, 0); }
+  18% { opacity: 0; }
+  29% { opacity: 0.21; transform: translate3d(-3px, -1px, 0); }
+  30% { opacity: 0; }
+  44% { opacity: 0.8; transform: translate3d(-8px, 0, 0); }
+  45% { opacity: 0; }
+  56% { opacity: 0.6; transform: translate3d(7px, 3px, 0); }
+  57% { opacity: 0.4; transform: translate3d(-5px, 0, 0); }
+  58% { opacity: 0; }
+  69% { opacity: 0.19; transform: translate3d(3px, 0, 0); }
+  70% { opacity: 0; }
+  84% { opacity: 0.7; transform: translate3d(10px, -4px, 0); }
+  85% { opacity: 0; }
 }
 
-[data-theme="arctic"][data-display-texture="crt"] .phosphor-display-surface::before {
-  mix-blend-mode: overlay;
-  opacity: 0.5;
+@keyframes display-glitch-block-d {
+  0%, 100% { opacity: 0; transform: translate3d(0, 0, 0); }
+  11% { opacity: 0.19; transform: translate3d(4px, 0, 0); }
+  12% { opacity: 0; }
+  26% { opacity: 0.15; transform: translate3d(-3px, 1px, 0); }
+  27% { opacity: 0; }
+  40% { opacity: 0.65; transform: translate3d(9px, 0, 0); }
+  41% { opacity: 0.5; transform: translate3d(-11px, 0, 0); }
+  42% { opacity: 0; }
+  54% { opacity: 0.72; transform: translate3d(-7px, -5px, 0); }
+  55% { opacity: 0; }
+  67% { opacity: 0.2; transform: translate3d(5px, 0, 0); }
+  68% { opacity: 0; }
+  82% { opacity: 0.58; transform: translate3d(6px, 3px, 0); }
+  83% { opacity: 0.3; transform: translate3d(-4px, 0, 0); }
+  84% { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .industrial-display-area [data-display-texture="glitch"] .display-glitch-ambient,
+  .industrial-display-area [data-display-texture="glitch"] .display-glitch-chroma,
+  .industrial-display-area [data-display-texture="glitch"] .display-glitch-block,
+  .industrial-display-area .moe-badge-root.moe-badge-suggest {
+    animation: none !important;
+  }
+}
+
+/* ARCTIC — darker recessed VRAM phosphor (all display textures) */
+[data-theme="arctic"] .phosphor-screen-inner.phosphor-display-surface,
+[data-theme="arctic"] .vram-forecast-display.phosphor-display-surface {
+  background-color: var(--phosphor-bg);
+}
+
+[data-theme="arctic"][data-display-texture="phosphor-light"] .phosphor-screen-inner.phosphor-display-surface,
+[data-theme="arctic"][data-display-texture="phosphor-light"] .phosphor-screen.phosphor-display-surface {
+  background-color: var(--fusion-eink-surface);
+  box-shadow:
+    inset 0 2px 6px rgba(0, 0, 0, 0.32),
+    inset 0 -1px 3px rgba(0, 0, 0, 0.18),
+    inset 0 1px 40px rgba(255, 255, 255, 0.1);
+}
+
+/* ARCTIC + GLITCH — softer chroma on pale phosphor */
+[data-theme="arctic"][data-display-texture="glitch"] .phosphor-screen-inner.phosphor-display-surface,
+[data-theme="arctic"][data-display-texture="glitch"] .phosphor-screen.phosphor-display-surface {
+  background-image:
+    radial-gradient(circle, var(--theme-display-dot-matrix) 1px, transparent 1px),
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0px,
+      transparent 2px,
+      var(--theme-display-lcd-band) 2px,
+      var(--theme-display-lcd-band) 4px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(255, 180, 180, 0.08) 0 1px,
+      rgba(180, 255, 200, 0.07) 1px 2px,
+      rgba(180, 210, 255, 0.08) 2px 3px,
+      transparent 3px 3px
+    );
+}
+
+[data-theme="arctic"][data-display-texture="glitch"] .display-glitch-chroma {
+  background:
+    linear-gradient(90deg, rgba(255, 100, 140, 0.14) 0%, transparent 28%),
+    linear-gradient(90deg, transparent 36%, rgba(60, 180, 140, 0.12) 48%, transparent 60%),
+    linear-gradient(90deg, transparent 72%, rgba(80, 120, 200, 0.13) 100%);
+}
+
+[data-theme="arctic"][data-display-texture="glitch"] .display-glitch-block--1 {
+  background-color: rgba(0, 160, 200, 0.16);
+}
+
+[data-theme="arctic"][data-display-texture="glitch"] .display-glitch-block--2 {
+  background-color: rgba(200, 80, 180, 0.14);
+}
+
+[data-theme="arctic"][data-display-texture="glitch"] .display-glitch-block--3 {
+  background-color: rgba(42, 140, 90, 0.15);
+}
+
+[data-theme="arctic"][data-display-texture="glitch"] .display-glitch-block--4 {
+  background-color: rgba(80, 100, 180, 0.14);
 }
 
 /* ── Eject panel — running engines, gunmetal bg, flush below display bevel ─── */
@@ -2127,6 +2473,19 @@ html, body, #root {
 .industrial-display-area .gpu-card {
   background-color: var(--theme-industrial-gpu-card-bg) !important;
   border-color: var(--theme-industrial-gpu-border) !important;
+}
+
+/* Forecast phosphor — no bar width / card fade animations on param-driven updates */
+.industrial-display-area .gpu-bar-fill {
+  transition: none !important;
+}
+
+.industrial-display-area .gpu-card-enter {
+  animation: none !important;
+}
+
+.industrial-display-area .gpu-ram-enter {
+  animation: none !important;
 }
 
 /* Selected GPU name — ring only; slight brighten without class swap */
@@ -2268,20 +2627,12 @@ html, body, #root {
   50% { opacity: 0.6; box-shadow: 0 0 0 3px rgba(118, 185, 0, 0); }
 }
 
-/* ── Gunmetal Card — selected model, subtle lift + accent rail ─── */
+/* ── Gunmetal Card — selected model, flat fill + accent rail (no grain — cheaper paint) ─── */
 .gunmetal-card {
   background-color: var(--theme-card-selected-bg);
-  background-image: repeating-linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.02) 0px,
-    transparent 1px,
-    transparent 4px
-  );
   border: 1px solid color-mix(in srgb, var(--theme-card-selected-accent) 32%, var(--theme-border-subtle)) !important;
   border-radius: 6px !important;
-  box-shadow:
-    0 1px 2px color-mix(in srgb, var(--theme-text) 10%, transparent),
-    0 3px 8px color-mix(in srgb, var(--theme-text) 8%, transparent);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--theme-text) 8%, transparent);
 }
 
 .gunmetal-card::before {
@@ -2349,6 +2700,13 @@ html, body, #root {
   border-color: var(--theme-chip-solid-bg) !important;
   color: var(--theme-chip-solid-text) !important;
   box-shadow: 0 0 4px var(--theme-accent-glow) !important;
+}
+
+/* Chip value area — single line, no wrap-induced row height jumps */
+[data-config-panel] [data-param-row] > .flex.gap-1 {
+  flex-wrap: nowrap !important;
+  align-items: center;
+  min-height: 18px;
 }
 
 /* Param labels on e-ink */
@@ -3136,13 +3494,26 @@ select option {
 /* Simple pulsing border for suggestion state */
 @keyframes pulseBorder {
   0%, 100% { 
-    box-shadow: 0 0 4px rgba(251, 146, 60, 0.4), inset 0 0 4px rgba(251, 146, 60, 0.2);
+    box-shadow: 0 0 12px rgba(251, 146, 60, 0.35), inset 0 0 4px rgba(251, 146, 60, 0.2);
     border-color: rgba(251, 146, 60, 0.8);
   }
   50% { 
     box-shadow: 0 0 12px rgba(251, 146, 60, 0.7), inset 0 0 8px rgba(251, 146, 60, 0.4);
     border-color: rgba(251, 146, 60, 1);
   }
+}
+
+/* MOE badge — reserved outer glow so gold ↔ suggest ↔ idle does not nudge bars */
+.moe-badge-root {
+  box-shadow: 0 0 15px transparent;
+}
+
+.moe-badge-root.moe-badge-gold {
+  box-shadow: 0 0 15px rgba(251, 191, 36, 0.5);
+}
+
+.moe-badge-root.moe-badge-suggest {
+  box-shadow: 0 0 12px transparent;
 }
 
 .animate-dashed-border {
@@ -3483,17 +3854,8 @@ select option {
   to { opacity: 1; transform: translateY(0); }
 }
 
-@keyframes layoutTabEnter {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
 .layout-header-enter {
   animation: layoutHeaderEnter 0.5s ease-out both;
-}
-
-.layout-tab-enter {
-  animation: layoutTabEnter 0.25s ease-out both;
 }
 
 /* ── EngineConfigPanel animations ─── */
@@ -3506,22 +3868,19 @@ select option {
   animation: configEmptyEnter 0.5s ease-out both;
 }
 
-@keyframes launchReadyPulse {
-  0%, 100% {
-    box-shadow:
-      0 0 0 0 rgba(74, 222, 128, 0.06),
-      inset 0 0 0 0 rgba(74, 222, 128, 0);
-  }
-  50% {
-    box-shadow:
-      0 0 16px 1px rgba(74, 222, 128, 0.2),
-      inset 0 1px 0 rgba(74, 222, 128, 0.08);
-  }
+.config-launch-btn:not(:disabled):not(.launch-ack) {
+  box-shadow: 0 0 12px 1px rgba(74, 222, 128, 0.14);
+  overflow: hidden;
 }
 
-.config-launch-btn:not(:disabled):not(.launch-ack) {
-  animation: launchReadyPulse 2.8s ease-in-out infinite;
-  overflow: hidden;
+.config-launch-btn:not(:disabled):not(.launch-ack)::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 1px 0 rgba(74, 222, 128, 0.12);
+  opacity: 0.65;
+  pointer-events: none;
 }
 
 .config-launch-btn:not(:disabled):hover {
@@ -3567,16 +3926,7 @@ select option {
 
 [data-config-panel] .config-params-scroll {
   padding-bottom: 0.5rem;
-}
-
-/* ── ModelCard animations ─── */
-@keyframes modelCardEnter {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.model-card-enter {
-  animation: modelCardEnter 0.3s ease-out both;
+  scrollbar-gutter: stable;
 }
 
 /* ── MiniModelCard animations ─── */

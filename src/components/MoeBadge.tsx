@@ -15,14 +15,18 @@ export default function MoeBadge({
 
   return (
     <div 
-      className={`relative inline-flex flex-row items-center rounded-sm cursor-pointer px-[2px] ${className} ${
+      className={`moe-badge-root relative inline-flex flex-row items-center rounded-sm cursor-pointer px-[2px] shrink-0 ${className} ${
         isGold
-          ? "bg-gold-metallic shadow-[0_0_15px_rgba(251,191,36,0.5)]"
+          ? "moe-badge-gold bg-gold-metallic"
           : shouldHighlight
-            ? "border border-dashed animate-dashed-border border-orange-400/80 hover:border-orange-300"
+            ? "moe-badge-suggest border border-dashed animate-dashed-border border-orange-400/80 hover:border-orange-300"
             : "border border-gray-500/40 hover:border-gray-500/60"
       }`}
-      title={suggestionText || "MOE VRAM Optimizer available"}
+      title={
+        isGold
+          ? "MOE_OPTIMAL active — click to switch back to regular offload"
+          : suggestionText || "Click to enable MOE_OPTIMAL offload"
+      }
       onClick={(e) => {
         e.stopPropagation();
         onMoeSuggestionClick?.();

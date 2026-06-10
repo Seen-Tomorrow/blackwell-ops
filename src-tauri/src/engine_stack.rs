@@ -12,8 +12,9 @@ fn fit_scanner_estimate_vram(config: &EngineConfig) -> f64 {
     } else {
         config.backend_type.clone()
     };
-    let key = crate::vram_learn::learned_vram_key_from_config(&config.model_path, &provider_id, config);
-    if let Some(entry) = crate::vram_learn::lookup_learned_vram(&key) {
+    if let Some(entry) =
+        crate::vram_learn::lookup_learned_vram_for_config(&config.model_path, &provider_id, config)
+    {
         return entry.vram_mib;
     }
 
@@ -239,7 +240,9 @@ impl EngineStack {
         // Engine spawned now routed to Blackwell Output Console
 
         // Extract stderr pipe and start reader immediately
-        let stderr = child.stderr.take().unwrap();
+        let stderr = child.stderr.take().ok_or_else(|| {
+            format!("Failed to capture stderr for {}", binary_path.display())
+        })?;
         let learn_snapshot = crate::vram_learn::snapshot_from_config(
             &config.model_path,
             &backend_type,
@@ -515,9 +518,9 @@ impl EngineStack {
         if emit_console {
             if let Some(hub) = hub {
                 let msg = if exited {
-                    "[STOP] graceful — VRAM learn pending on stderr".to_string()
+                    "[STOP] graceful — stderr draining (exit breakdown may refine learned VRAM)".to_string()
                 } else {
-                    "[STOP] force-killed (VRAM learn may be skipped)".to_string()
+                    "[STOP] force-killed (exit breakdown skipped)".to_string()
                 };
                 hub.emit_console_line(
                     crate::output_console::BlackwellOutputConsoleCategory::Engines,

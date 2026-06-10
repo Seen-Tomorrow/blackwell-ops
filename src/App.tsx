@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { unstable_batchedUpdates } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 
 import Layout from "./components/Layout";
 import StackView from "./components/StackView";
@@ -11,7 +10,6 @@ import TelemetryLab from "./components/telemetry-lab/TelemetryLab";
 import TelemetryViewToggle from "./components/TelemetryViewToggle";
 import IntelPage from "./components/IntelPage";
 import ConfigPage from "./components/ConfigPage";
-import MobileSentinelPage from "./components/MobileSentinelPage";
 import Reactor11 from "./components/Reactor11";
 import ModelHub from "./components/ModelHub";
 import LogLineText from "./components/LogLineText";
@@ -24,6 +22,7 @@ import { ThemeProvider } from "./context/ThemeContext";
 import { ToastProvider } from "./components/Toast";
 import { FoundryProvider } from "./hooks/useBuildDock";
 import { useSetupGuide } from "./hooks/useSetupGuide";
+import { useTauriListen } from "./hooks/useTauriListen";
 import {
   isPowerUserActive,
   loadPowerUserState,
@@ -57,19 +56,8 @@ function App() {
 
   const logsScrollRef = useRef<HTMLDivElement>(null);
   const autoScrollRef = useRef(true);
-  // Unsubscribe refs for Tauri event listeners — survive StrictMode mount/unmount/remount cycle.
-  // Each ref holds the unsubscribe function from listen().then() so cleanup can call it reliably.
-  const unsubEngineLogBatch = useRef<(() => void) | null>(null);
-  const unsubEngineSystem = useRef<(() => void) | null>(null);
-  const unsubEngineLoadFailed = useRef<(() => void) | null>(null);
-  const unsubSlotCleared = useRef<(() => void) | null>(null);
   const flatLogsRef = useRef<Map<number, Array<{ text: string; alias: string }>>>(new Map());
   const logsLengthsRef = useRef<Record<number, number>>({});
-
-  // unsubFusionUpdate removed — listener moved to useFusionData hook
-  const unsubGgufProgress = useRef<(() => void) | null>(null);
-  const unsubGgufComplete = useRef<(() => void) | null>(null);
-  const unsubStackChanged = useRef<(() => void) | null>(null);
 
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [providers, setProviders] = useState<ProviderConfig[]>([]);
@@ -257,21 +245,10 @@ function App() {
     return () => window.removeEventListener(EVENTS.reloadProviders, handler);
   }, [reloadProviders]);
 
-  // Refresh catalog provider state after a Foundry build publishes new profile binaries.
-  useEffect(() => {
-    let cancelled = false;
-    let unlisten: (() => void) | null = null;
-    listen<{ phase: string }>("foundry-progress", (e) => {
-      if (e.payload.phase === "Complete") {
-        void reloadProviders();
-      }
-    }).then((u) => {
-      if (!cancelled) unlisten = u;
-    });
-    return () => {
-      cancelled = true;
-      unlisten?.();
-    };
+  useTauriListen<{ phase: string }>("foundry-progress", (payload) => {
+    if (payload.phase === "Complete") {
+      void reloadProviders();
+    }
   }, [reloadProviders]);
 
   const reloadModels = useCallback(async () => {
@@ -302,152 +279,101 @@ function App() {
     return () => window.removeEventListener(EVENTS.navigateConfig, handler);
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    listen("engine-log-batch", (e: any) => {
-      if (cancelled) return;
-      const payload = e.payload;
-      if (payload && payload.slot !== undefined && payload.entries?.length > 0) {
-        unstable_batchedUpdates(() => {
-          try {
-            const batch = payload as LogBatch;
-            setLogs((prev) => {
-              const next = new Map(prev);
-              const existing = next.get(batch.slot) || [];
-              const updated = [...existing, ...batch.entries].slice(-5000);
-              next.set(batch.slot, updated);
-              if (!prev.has(batch.slot)) {
-                setActiveLogSlot(batch.slot);
-              }
-              return next;
-            });
-          } catch {}
-        });
-      }
-    }).then((u) => { if (!cancelled) unsubEngineLogBatch.current = u; });
-
-    return () => { cancelled = true; unsubEngineLogBatch.current?.(); };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    listen("engine-system", (e: any) => {
-      if (cancelled) return;
-      const payload = e.payload as SystemEvent;
-      try {
-        if (payload && payload.slot !== undefined && payload.text) {
-          unstable_batchedUpdates(() => {
-            setSystemEvents((prev) => {
-              const next = new Map(prev);
-              const existing = next.get(payload.slot) || [];
-              const updated = [...existing, { text: payload.text, timestamp: payload.timestamp }].slice(-50);
-              next.set(payload.slot, updated);
-              return next;
-            });
-          });
-         }
-      } catch {}
-    }).then((u) => { if (!cancelled) unsubEngineSystem.current = u; });
-
-    return () => { cancelled = true; unsubEngineSystem.current?.(); };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    listen("engine-load-failed", (e: any) => {
-      if (cancelled) return;
-      const payload = e.payload as { slot?: number; alias?: string; reason?: string };
-      if (payload?.reason) {
-        dispatchAppEvent(EVENTS.launchError, { message: payload.reason });
-      }
-      if (payload?.slot !== undefined) {
-        dispatchAppEvent(EVENTS.slotCleared, { slot: payload.slot });
-      }
-    }).then((u) => {
-      if (!cancelled) {
-        unsubEngineLoadFailed.current = u;
-      }
-    });
-
-    return () => {
-      cancelled = true;
-      unsubEngineLoadFailed.current?.();
-    };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    listen("slot-cleared", (e: any) => {
-      if (cancelled) return;
-      const payload = e.payload as { slot: number };
+  useTauriListen<LogBatch>("engine-log-batch", (payload) => {
+    if (payload?.slot !== undefined && payload.entries?.length > 0) {
       unstable_batchedUpdates(() => {
         try {
-          if (payload && payload.slot !== undefined) {
-            releaseSlotLogCaches(payload.slot);
-            setActiveLogSlot((prev) => (prev === payload.slot ? "all" : prev));
-            dispatchAppEvent(EVENTS.slotCleared, payload);
-            // Route to Blackwell Output Console (ENGINES category)
-            void invoke("emit_to_blackwell_console", {
-              category: "engines",
-              content: `[SLOT-CLEARED] Slot ${payload.slot}`,
-              style: "Warning",
-            });
-          }
+          setLogs((prev) => {
+            const next = new Map(prev);
+            const existing = next.get(payload.slot) || [];
+            const updated = [...existing, ...payload.entries].slice(-5000);
+            next.set(payload.slot, updated);
+            if (!prev.has(payload.slot)) {
+              setActiveLogSlot(payload.slot);
+            }
+            return next;
+          });
         } catch {}
       });
-    }).then((u) => { if (!cancelled) unsubSlotCleared.current = u; });
+    }
+  });
 
-    return () => { cancelled = true; unsubSlotCleared.current?.(); };
+  useTauriListen<SystemEvent>("engine-system", (payload) => {
+    try {
+      if (payload?.slot !== undefined && payload.text) {
+        unstable_batchedUpdates(() => {
+          setSystemEvents((prev) => {
+            const next = new Map(prev);
+            const existing = next.get(payload.slot) || [];
+            const updated = [...existing, { text: payload.text, timestamp: payload.timestamp }].slice(-50);
+            next.set(payload.slot, updated);
+            return next;
+          });
+        });
+      }
+    } catch {}
+  });
+
+  useTauriListen<{ slot?: number; alias?: string; reason?: string }>("engine-load-failed", (payload) => {
+    if (payload?.reason) {
+      dispatchAppEvent(EVENTS.launchError, { message: payload.reason });
+    }
+    if (payload?.slot !== undefined) {
+      dispatchAppEvent(EVENTS.slotCleared, { slot: payload.slot });
+    }
+  });
+
+  useTauriListen<{ slot: number }>("slot-cleared", (payload) => {
+    unstable_batchedUpdates(() => {
+      try {
+        if (payload?.slot !== undefined) {
+          releaseSlotLogCaches(payload.slot);
+          setActiveLogSlot((prev) => (prev === payload.slot ? "all" : prev));
+          dispatchAppEvent(EVENTS.slotCleared, payload);
+          void invoke("emit_to_blackwell_console", {
+            category: "engines",
+            content: `[SLOT-CLEARED] Slot ${payload.slot}`,
+            style: "Warning",
+          });
+        }
+      } catch {}
+    });
   }, [releaseSlotLogCaches]);
 
-  // Fusion data is now managed by useFusionData hook in StackView/VramBadge — single listener, no duplication.
+  useTauriListen<{ scanned: number; failed: number }>("gguf-scan-progress", (payload) => {
+    setBatchScanState((s) => ({ ...s, scanned: payload.scanned, failed: payload.failed }));
+    void invoke("emit_to_blackwell_console", {
+      category: "utils",
+      content: `[GGUF-SCAN] Progress: ${payload.scanned} scanned, ${payload.failed} failed`,
+      style: "Normal",
+    });
+  });
+
+  useTauriListen<{ scanned: number; failed: number }>("gguf-scan-complete", (payload) => {
+    setBatchScanState((s) => ({ ...s, active: false, scanned: payload.scanned, failed: payload.failed }));
+    invoke("list_models").then((data) => setModels(data as ModelEntry[])).catch(() => {});
+    void invoke("emit_to_blackwell_console", {
+      category: "utils",
+      content: `[GGUF-SCAN] Complete: ${payload.scanned} scanned, ${payload.failed} failed`,
+      style: "Success",
+    });
+  });
+
+  useTauriListen<StackEntry[]>("stack-changed", (payload) => {
+    setStack(payload);
+  });
 
   useEffect(() => {
-    let cancelled = false;
-
-    listen("gguf-scan-progress", (e: any) => {
-      if (cancelled) return;
-      const p = e.payload as { scanned: number; failed: number };
-      setBatchScanState(s => ({ ...s, scanned: p.scanned, failed: p.failed }));
-      // Route to Blackwell Output Console (UTILS category)
-      void invoke("emit_to_blackwell_console", {
-        category: "utils",
-        content: `[GGUF-SCAN] Progress: ${p.scanned} scanned, ${p.failed} failed`,
-        style: "Normal",
-      });
-    }).then((u) => { if (!cancelled) unsubGgufProgress.current = u; });
-
-    listen("gguf-scan-complete", (e: any) => {
-      if (cancelled) return;
-      const p = e.payload as { scanned: number; failed: number };
-      setBatchScanState(s => ({ ...s, active: false, scanned: p.scanned, failed: p.failed }));
-      invoke("list_models").then(data => setModels(data as ModelEntry[])).catch(() => {});
-      // Route to Blackwell Output Console (UTILS category)
-      void invoke("emit_to_blackwell_console", {
-        category: "utils",
-        content: `[GGUF-SCAN] Complete: ${p.scanned} scanned, ${p.failed} failed`,
-        style: "Success",
-      });
-    }).then((u) => { if (!cancelled) unsubGgufComplete.current = u; });
-
-    return () => { cancelled = true; unsubGgufProgress.current?.(); unsubGgufComplete.current?.(); };
-  }, []);
-
-  useEffect(() => {
-    // Push-based stack updates — Rust emits "stack-changed" on every status transition.
-    let cancelled = false;
-
-    listen("stack-changed", (e: any) => {
-      if (cancelled) return;
-      setStack(e.payload as StackEntry[]);
-    }).then((u) => { if (!cancelled) unsubStackChanged.current = u; });
-
     invoke<StackEntry[]>("get_stack_status")
-      .then(data => setStack(data))
+      .then((data) => setStack(data))
       .catch(() => {});
-
-    return () => { cancelled = true; unsubStackChanged.current?.(); };
   }, []);
+
+  useEffect(() => {
+    if (activeTab === "sentinel") {
+      setActiveTab("catalog");
+    }
+  }, [activeTab]);
 
   const handleLaunchEngine = useCallback(
     async (config: any) => {
@@ -676,7 +602,7 @@ function App() {
             </div>
           </div>
         )}
-        {activeTab === "sentinel" && <MobileSentinelPage stack={stack} />}
+
             </Layout>
           </StatusProvider>
         </TelemetryProvider>

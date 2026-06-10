@@ -1015,7 +1015,7 @@ fn strip_windows_extended_prefix(path: &str) -> String {
 }
 
 /// Normalize a model path for dedup comparison (case-insensitive on Windows, no trailing slashes).
-fn model_path_key(path: &str) -> String {
+pub fn model_path_key(path: &str) -> String {
     let trimmed = strip_windows_extended_prefix(expand_path_placeholders(path).trim());
     if trimmed.is_empty() {
         return String::new();
@@ -1040,7 +1040,7 @@ fn model_path_key(path: &str) -> String {
 }
 
 /// Resolve to canonical stored path when the directory exists.
-fn resolve_model_path(path: &str) -> String {
+pub fn resolve_model_path(path: &str) -> String {
     let trimmed = strip_windows_extended_prefix(path.trim());
     if trimmed.is_empty() {
         return String::new();
@@ -1188,6 +1188,59 @@ pub fn calculate_disk_usage(paths: &[ModelPathEntry]) -> Vec<PathDiskUsage> {
         });
     }
     result
+}
+
+/// Allowed HuggingFace download hosts for Model Hub.
+pub fn validate_download_url(url: &str) -> Result<(), String> {
+    let lower = url.trim().to_lowercase();
+    if !lower.starts_with("https://") {
+        return Err("Download URL must use HTTPS".to_string());
+    }
+    let rest = &lower[8..];
+    let host = rest.split('/').next().unwrap_or("");
+    let allowed = host == "huggingface.co"
+        || host.ends_with(".huggingface.co")
+        || host == "cdn-lfs.huggingface.co"
+        || host == "cdn-lfs.hf.co";
+    if !allowed {
+        return Err(format!("Download host not allowed: {host}"));
+    }
+    Ok(())
+}
+
+fn download_dest_roots(config: &AppConfig) -> Vec<PathBuf> {
+    let mut roots: Vec<PathBuf> = get_model_paths(config)
+        .into_iter()
+        .map(|entry| PathBuf::from(entry.path))
+        .collect();
+    roots.push(default_models_dir());
+    roots
+}
+
+/// Ensure download destination stays under configured model library roots.
+pub fn validate_download_dest(dest_path: &str, config: &AppConfig) -> Result<(), String> {
+    let resolved = resolve_path(dest_path);
+    let dest_parent = resolved
+        .parent()
+        .ok_or_else(|| "Invalid download destination".to_string())?;
+    let parent_canon = dest_parent
+        .canonicalize()
+        .map_err(|e| format!("Download parent directory missing: {e}"))?;
+
+    for root in download_dest_roots(config) {
+        let root_resolved = resolve_path(root.to_string_lossy().as_ref());
+        let root_canon = root_resolved
+            .canonicalize()
+            .or_else(|_| {
+                std::fs::create_dir_all(&root_resolved).map_err(|e| e.to_string())?;
+                root_resolved.canonicalize().map_err(|e| e.to_string())
+            })?;
+        if parent_canon.starts_with(&root_canon) {
+            return Ok(());
+        }
+    }
+
+    Err("Download destination must be under a configured model library path".to_string())
 }
 
 pub fn get_default_download_path(config: &AppConfig) -> String {
@@ -1717,6 +1770,11 @@ fn build_config_with_providers_full(_gpu_count: usize, mut config: AppConfig) ->
 pub fn dev_reset_first_run(
     config: tauri::State<'_, std::sync::Arc<std::sync::Mutex<AppConfig>>>,
 ) -> Result<(), String> {
+    #[cfg(not(debug_assertions))]
+    {
+        return Err("dev_reset_first_run is only available in debug builds".to_string());
+    }
+
     crate::model_cache::clear_cache()?;
 
     let hf_token = {

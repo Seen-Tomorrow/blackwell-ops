@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useEffect, useRef, Fragment } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { useTauriListen } from "../hooks/useTauriListen";
 import type { ProviderConfig, UserEditedTemplateParam, FitScanComplete, FitScanProgress, FitScanFull, FitDataPoint, BinaryUpdateInfo } from "../lib/types";
 import { DEFAULT_PROVIDER_ID, isProfileBuilt } from "../lib/types";
 import { useFoundry, type Env } from "../hooks/useBuildDock";
@@ -497,39 +498,25 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
     return () => { unsub.then(u => u()); };
   }, [onProvidersChange]);
 
-  // ── Binary update event listeners ─────────────────────────────
+  useTauriListen<{ provider_id: string; profile: string }>("binary-update:download-start", (payload) => {
+    const key = `${payload.provider_id}:${payload.profile}`;
+    setUpdateStatuses((prev) => ({ ...prev, [key]: "downloading" }));
+  });
 
-  useEffect(() => {
-    let unsubStart: (() => void) | null = null;
-    let unsubProgress: (() => void) | null = null;
-    let unsubComplete: (() => void) | null = null;
+  useTauriListen<{ provider_id: string; profile: string; status: string }>("binary-update:download-progress", (payload) => {
+    const key = `${payload.provider_id}:${payload.profile}`;
+    setUpdateStatuses((prev) => ({
+      ...prev,
+      [key]: payload.status === "extracting" ? "extracting" : "downloading",
+    }));
+  });
 
-    listen("binary-update:download-start", (e: any) => {
-      const p = e.payload as { provider_id: string; profile: string };
-      const key = `${p.provider_id}:${p.profile}`;
-      setUpdateStatuses(prev => ({ ...prev, [key]: "downloading" }));
-    }).then(u => { unsubStart = u; });
-
-    listen("binary-update:download-progress", (e: any) => {
-      const p = e.payload as { provider_id: string; profile: string; status: string };
-      const key = `${p.provider_id}:${p.profile}`;
-      setUpdateStatuses(prev => ({ ...prev, [key]: p.status === "extracting" ? "extracting" : "downloading" }));
-    }).then(u => { unsubProgress = u; });
-
-    listen("binary-update:download-complete", (e: any) => {
-      const p = e.payload as { provider_id: string; profile: string };
-      const key = `${p.provider_id}:${p.profile}`;
-      setUpdateStatuses(prev => ({ ...prev, [key]: "complete" }));
-      invoke<ProviderConfig[]>("refresh_build_info", { providerId: p.provider_id })
-        .then(updated => { if (updated.length > 0) onProvidersChange(updated); })
-        .catch((err) => console.error("[Foundry] Binary update event error:", err));
-    }).then(u => { unsubComplete = u; });
-
-    return () => {
-      unsubStart?.();
-      unsubProgress?.();
-      unsubComplete?.();
-    };
+  useTauriListen<{ provider_id: string; profile: string }>("binary-update:download-complete", (payload) => {
+    const key = `${payload.provider_id}:${payload.profile}`;
+    setUpdateStatuses((prev) => ({ ...prev, [key]: "complete" }));
+    invoke<ProviderConfig[]>("refresh_build_info", { providerId: payload.provider_id })
+      .then((updated) => { if (updated.length > 0) onProvidersChange(updated); })
+      .catch((err) => console.error("[Foundry] Binary update event error:", err));
   }, [onProvidersChange]);
 
   // ── Foundry handlers ──────────────────────────────────────────

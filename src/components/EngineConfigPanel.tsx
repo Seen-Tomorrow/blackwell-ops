@@ -28,6 +28,7 @@ import { useScenarioEvaluator } from "../hooks/useScenarioEvaluator";
 import type { SetupGuideState } from "../hooks/useSetupGuide";
 import { useConfigResolver } from "../hooks/useConfigResolver";
 import { useDisplayTexture } from "../hooks/useDisplayTexture";
+import DisplayGlitchOverlay from "./DisplayGlitchOverlay";
 import { useFoundry } from "../hooks/useBuildDock";
 import { buildAutoVramLaunchParams } from "../lib/autoVramLaunch";
 import { committedSlotsFromStack } from "../services/vram/scenarios/scenarios_factory";
@@ -596,7 +597,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     // ── Slider ptype — render range input instead of value chips ───────────
     if (def.ptype === 'slider') {
       return (
-        <div key={paramRowKey(def, rowIdx)} data-param-row className={`flex items-center ${isLocked ? 'opacity-50' : ''}`}>
+        <div key={paramRowKey(def, rowIdx)} data-param-row className={`flex items-center min-h-[22px] ${isLocked ? 'opacity-50' : ''}`}>
           {isUserAdded && <div className="w-0.5 h-4 flex-shrink-0 bg-yellow-400/40 mr-1.5" />}
           {!isUserAdded && <div className="w-0.5 h-4 flex-shrink-0 mr-1.5" />}
           <span
@@ -617,7 +618,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     }
 
     return (
-      <div key={paramRowKey(def, rowIdx)} data-param-row className={`flex items-center ${isLocked ? 'opacity-50' : ''}`}>
+      <div key={paramRowKey(def, rowIdx)} data-param-row className={`flex items-center min-h-[22px] ${isLocked ? 'opacity-50' : ''}`}>
         {isUserAdded && <div className="w-0.5 h-4 flex-shrink-0 bg-yellow-400/40 mr-1.5" />}
         {!isUserAdded && <div className="w-0.5 h-4 flex-shrink-0 mr-1.5" />}
         <span
@@ -627,7 +628,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           {def.label}
         </span>
 
-        <div className="flex gap-1 flex-wrap flex-1 min-w-0">
+        <div className="flex gap-1 flex-nowrap flex-1 min-w-0 items-center min-h-[18px]">
           {baseValues.filter((v: any) => !(v?._hidden)).map((val, valIdx) => (
             <button
               key={`${paramRowKey(def, rowIdx)}-val-${valIdx}-${String(val)}`}
@@ -872,11 +873,12 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
               type="button"
               onClick={cycleDisplayTexture}
               className="display-texture-toggle absolute top-[3px] left-1/2 -translate-x-1/2 z-[60]"
-              title={`Display texture: ${displayTextureLabel}. Click to cycle CLEAN / CRT / PHOSPHOR DARK / PHOSPHOR LIGHT.`}
+              title={`Display texture: ${displayTextureLabel}. Click to cycle CLEAN / GLITCH / PHOSPHOR DARK / PHOSPHOR LIGHT.`}
             >
               {displayTextureLabel}
             </button>
             <div className="phosphor-screen-inner phosphor-display-surface">
+              <DisplayGlitchOverlay />
               {setupGuide.showWelcome ? (
                 <WelcomeAnimation onComplete={setupGuide.completeWelcome} />
               ) : (
@@ -989,7 +991,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                   <div data-param-row className="runtime-profile-row flex items-center">
                     <div className="w-0.5 h-4 flex-shrink-0 mr-1.5" />
                     <span className={`${PARAM_LABEL_CLASS} runtime-profile-label`}>RUNTIME PROFILE</span>
-                    <div className="flex gap-1 flex-wrap flex-1 min-w-0">
+                    <div className="flex gap-1 flex-nowrap flex-1 min-w-0 items-center min-h-[18px]">
                       {availableProfiles.map(profile => {
                         const meta = ENV_META[profile];
                         const hasBuild = builtProfiles.includes(profile);
@@ -1034,11 +1036,12 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                 type="button"
                 onClick={cycleDisplayTexture}
                 className="display-texture-toggle absolute top-[3px] left-1/2 -translate-x-1/2 z-[60]"
-                title={`Display texture: ${displayTextureLabel}. Click to cycle CLEAN / CRT / PHOSPHOR DARK / PHOSPHOR LIGHT.`}
+                title={`Display texture: ${displayTextureLabel}. Click to cycle CLEAN / GLITCH / PHOSPHOR DARK / PHOSPHOR LIGHT.`}
               >
                 {displayTextureLabel}
               </button>
               <div className="phosphor-screen-inner phosphor-display-surface vram-forecast-display">
+                <DisplayGlitchOverlay />
                 {setupGuide.active ? (
                   setupGuide.showWelcome ? (
                     <WelcomeAnimation onComplete={setupGuide.completeWelcome} />
@@ -1079,7 +1082,10 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                     gpuLoadTargetsMib={booterProps.gpuLoadTargetsMib}
                     offloadMode={config["offload_mode"]}
                     onMoeSuggestionClick={() => {
-                      updateParam("offload_mode", "moe_optimal");
+                      updateParam(
+                        "offload_mode",
+                        config["offload_mode"] === "moe_optimal" ? "regular" : "moe_optimal",
+                      );
                     }}
                     hideValidate={simpleModeActive}
                     hideMoeBadge={simpleModeActive}

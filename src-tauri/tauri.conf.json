@@ -1,6 +1,6 @@
 {
   "productName": "Blackwell Ops",
-  "version": "0.7.7",
+  "version": "1.0.0",
   "identifier": "com.blackwell-ops.app",
   "build": {
     "frontendDist": "../dist",
@@ -22,7 +22,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self' http://localhost:1420; script-src 'self' 'unsafe-inline' 'unsafe-eval' http://localhost:1420; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob:; font-src 'self' data: https://fonts.gstatic.com https://fonts.googleapis.com; connect-src 'self' http://localhost:1420 ws://localhost:1420;"
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob:; font-src 'self' data: https://fonts.gstatic.com https://fonts.googleapis.com; connect-src 'self';"
     }
   },
   "bundle": {
@@ -46,7 +46,7 @@
   },
   "plugins": {
     "updater": {
-      "active": true,
+      "active": false,
       "dialog": false,
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDk4NTg0OEM1M0Y1NDFGMjUKUldRbEgxUS94VWhZbVBhYnlDUzc1bmxyd3RPTitwQ1dtcEpxZlFzb3ZqOWQ4eVdDQW9TL3F1UkwK"
     }

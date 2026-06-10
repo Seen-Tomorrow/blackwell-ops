@@ -1,6 +1,6 @@
 {
   "productName": "Blackwell Ops DEV",
-  "version": "0.7.7",
+  "version": "1.0.0",
   "identifier": "com.blackwell-ops.app.dev",
   "build": {
     "beforeDevCommand": "npm run server",

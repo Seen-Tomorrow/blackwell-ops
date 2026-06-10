@@ -1,4 +1,5 @@
 import type { GpuInfo, ModelMetadata, EngineConfig, Scenario, StyleObject, RunningEngine, GpuAllocation, VramManifest, MoeSuggestion } from "../../../lib/types";
+import { attachMemorySource } from "../memorySource";
 
 // ── Constants (derived from real launch data) ────────────────────────────────
 
@@ -91,6 +92,8 @@ export interface ScenarioInput {
   learnedHostMib?: number;
   /** Per-GPU SELF MiB from learned breakdown. */
   learnedGpuBreakdownMib?: number[];
+  /** ISO timestamp from learned-vram.json for SOURCE provenance. */
+  learnedMeasuredAt?: string;
 }
 
 // ── Pure Helpers (no scenario logic) ────────────────────────────────────────
@@ -672,6 +675,40 @@ interface VramManifestWithMoe extends VramManifest {
   moeSuggestion?: MoeSuggestion | null;
 }
 
+/** Overlay learned-vram.json measurements on any scenario (not only AUTO_FIT). */
+export function applyLearnedVramOverlay(
+  manifest: VramManifest,
+  input: ScenarioInput,
+  validatedVramMib?: number,
+): VramManifest {
+  if (validatedVramMib != null) return manifest;
+  if (manifest.learnedFromPreviousRun) return manifest;
+  if (!input.learnedVramMib || input.learnedVramMib <= 0) return manifest;
+
+  const learnedGpuGb = input.learnedVramMib / 1024;
+  const learnedHostGb = input.learnedHostMib ? input.learnedHostMib / 1024 : 0;
+  const totalNeedGb = learnedGpuGb + learnedHostGb;
+
+  let gpuAllocations = manifest.gpuAllocations;
+  if (
+    input.learnedGpuBreakdownMib
+    && input.learnedGpuBreakdownMib.length === input.gpus.length
+  ) {
+    gpuAllocations = manifest.gpuAllocations.map((alloc, i) => ({
+      ...alloc,
+      projectedLoadGb: round2((input.learnedGpuBreakdownMib![i] ?? 0) / 1024),
+    }));
+  }
+
+  return {
+    ...manifest,
+    learnedFromPreviousRun: true,
+    vramTotalGb: round2(Math.max(totalNeedGb, learnedGpuGb)),
+    ramTotalGb: learnedHostGb > 0 ? round2(learnedHostGb) : manifest.ramTotalGb,
+    gpuAllocations,
+  };
+}
+
 export function evaluate(input: ScenarioInput, validatedVramMib?: number): VramManifest {
   const computed = computeValues(input, validatedVramMib);
 
@@ -703,7 +740,10 @@ export function evaluate(input: ScenarioInput, validatedVramMib?: number): VramM
   // Always sync moeSuggestion (remove when not applicable)
   (manifest as VramManifestWithMoe).moeSuggestion = moeSuggestion;
 
-  return manifest;
+  return attachMemorySource(
+    applyLearnedVramOverlay(manifest, input, validatedVramMib),
+    input,
+  );
 }
 
 /** Apply FIT-validated total to a formula-based manifest.

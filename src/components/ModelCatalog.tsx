@@ -53,45 +53,14 @@ export default function ModelCatalog(props: ModelCatalogProps) {
 
   // Auto-scroll selected model into view in the catalog scroll container
   const catalogScrollRef = useRef<HTMLDivElement>(null);
-  const [dynamicMaxHeight, setDynamicMaxHeight] = useState<number | undefined>(undefined);
-
-  useEffect(() => {
-    if (!catalogScrollRef.current || visibleCount === "all") {
-      setDynamicMaxHeight(undefined);
-      return;
-    }
-    const container = catalogScrollRef.current;
-    const count = parseInt(visibleCount);
-
-    const measureAndSet = () => {
-      const cards = container.querySelectorAll('[data-model-path]');
-      if (cards.length === 0) return;
-      const totalCards = cards.length;
-      const style = window.getComputedStyle(container);
-      const padTop = parseFloat(style.paddingTop);
-      const padBottom = parseFloat(style.paddingBottom);
-      const contentHeight = container.scrollHeight - padTop - padBottom;
-      const gapsTotal = 8 * (totalCards - 1);
-      const cardsTotalHeight = contentHeight - gapsTotal;
-      const avgCardH = cardsTotalHeight / totalCards;
-      const needed = avgCardH * count + 8 * (count - 1) + padTop + padBottom;
-      // Cap at available parent space (use offsetHeight, not getBoundingClientRect)
-      const parentH = container.parentElement.offsetHeight;
-      const usedAbove = container.offsetTop;
-      const available = parentH - usedAbove;
-      setDynamicMaxHeight(Math.min(needed, available));
-    };
-
-    requestAnimationFrame(() => setTimeout(measureAndSet, 100));
-  }, [visibleCount, catalogModels.length]);
 
   useEffect(() => {
     if (!catalogSelectedModel || !catalogScrollRef.current) return;
     const container = catalogScrollRef.current;
     requestAnimationFrame(() => {
-      const el = container.querySelector(`[data-model-path="${catalogSelectedModel.path}"]`);
+      const el = container.querySelector(`[data-model-path="${CSS.escape(catalogSelectedModel.path)}"]`);
       if (el) {
-        el.scrollIntoView({ block: "start", behavior: "smooth" });
+        el.scrollIntoView({ block: "nearest", behavior: "auto" });
       }
     });
   }, [catalogSelectedModel?.path]);
@@ -119,14 +88,16 @@ export default function ModelCatalog(props: ModelCatalogProps) {
         <button
           key={field}
           onClick={() => handleSort(field)}
-          className={`px-2 py-0.5 text-[8px] font-mono uppercase tracking-wider transition-colors rounded-sm ${
+          className={`catalog-sort-btn px-2 py-0.5 text-[8px] font-mono uppercase tracking-wider transition-colors rounded-sm ${
             sortField === field
               ? "text-nv-green bg-nv-green/10"
               : "text-stealth-muted hover:text-white"
           }`}
         >
           {sortLabels[field] || field.replace("_", " ")}
-          {sortField === field && <span className="ml-1">{sortDirection === "asc" ? "▲" : "▼"}</span>}
+          <span className="catalog-sort-arrow ml-1" aria-hidden="true">
+            {sortField === field ? (sortDirection === "asc" ? "▲" : "▼") : ""}
+          </span>
         </button>
       ))}
       <div className="flex-1" />
@@ -202,7 +173,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
   return (
     <div className="flex flex-col h-full min-h-0 overflow-hidden" data-model-catalog>
       {/* Top bar */}
-      <div className="px-4 py-2.5 border-b border-stealth-border/50 flex items-center justify-between fade-in">
+      <div className="px-4 py-2.5 border-b border-stealth-border/50 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <h2 className="text-xs font-mono theme-accent-text tracking-widest">✦ MODEL CATALOG</h2>
           <span className="text-[8px] font-mono opacity-40">({allFiltered.length} / {models.length})</span>
@@ -250,10 +221,14 @@ export default function ModelCatalog(props: ModelCatalogProps) {
           {renderSortBar()}
 
           {/* Scrollable catalog zone — all models, height constrained by visibleCount */}
-          {(() => {
-            const style = visibleCount !== 'all' && dynamicMaxHeight ? { height: `${dynamicMaxHeight}px` } : undefined;
-            return (
-              <div ref={catalogScrollRef} id="model-table-container" className={`overflow-y-auto eink-scrollbar pt-3 px-3 pb-5 ${visibleCount === 'all' ? 'flex-1 min-h-0' : 'flex-shrink-0'}`} style={style}>
+          <div
+            ref={catalogScrollRef}
+            id="model-table-container"
+            data-visible-count={visibleCount}
+            className={`overflow-y-auto eink-scrollbar pt-3 px-3 pb-5 ${
+              visibleCount === "all" ? "flex-1 min-h-0" : "catalog-scroll--limited flex-shrink-0"
+            }`}
+          >
             {allFiltered.length === 0 ? (
               <div className="flex items-center justify-center h-full text-stealth-muted text-xs font-mono opacity-50">
                 NO MODELS FOUND
@@ -261,31 +236,29 @@ export default function ModelCatalog(props: ModelCatalogProps) {
             ) : (
               <div className="grid grid-cols-1 gap-2">
                 {catalogModels.map((model, idx) => {
-                    const isSelected = catalogSelectedModel?.path === model.path;
-                    return (
-                      <div key={model.path} data-model-path={model.path}>
-                        <ModelCard
-                          model={model}
-                          idx={idx}
-                          isSelected={isSelected}
-                          isHighlighted={highlightIndex >= pinnedModels.length && highlightIndex - pinnedModels.length === idx && zone !== "config"}
-                          fitStatus={getFitStatus(
-                            model.metadata && model.metadata.file_size_bytes > 0
-                              ? Math.floor(model.metadata.file_size_bytes / (1024 * 1024))
-                              : Math.floor(parseFloat(model.size_str) * 1024)
-                          )}
-                          onSelect={handleSelect}
-                          onScanModel={handleScanModel}
-                          scanningPath={scanningPath}
-                        />
-                      </div>
-                    );
-                  })}
+                  const isSelected = catalogSelectedModel?.path === model.path;
+                  return (
+                    <div key={model.path} data-model-path={model.path}>
+                      <ModelCard
+                        model={model}
+                        idx={idx}
+                        isSelected={isSelected}
+                        isHighlighted={highlightIndex >= pinnedModels.length && highlightIndex - pinnedModels.length === idx && zone !== "config"}
+                        fitStatus={getFitStatus(
+                          model.metadata && model.metadata.file_size_bytes > 0
+                            ? Math.floor(model.metadata.file_size_bytes / (1024 * 1024))
+                            : Math.floor(parseFloat(model.size_str) * 1024)
+                        )}
+                        onSelect={handleSelect}
+                        onScanModel={handleScanModel}
+                        scanningPath={scanningPath}
+                      />
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
-            );
-          })()}
         </div>
 
         <div

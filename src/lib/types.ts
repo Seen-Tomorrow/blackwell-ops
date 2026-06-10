@@ -482,6 +482,19 @@ export interface GpuAllocation {
   runningEngines: RunningEngine[];
 }
 
+/** Where the forecast GB number comes from — priority: FIT PROBE → LEARNED → FIT CACHE → FORMULA */
+export type MemorySourceKind = "formula" | "fit_cache" | "fit_probe" | "learned";
+
+export interface MemorySource {
+  kind: MemorySourceKind;
+  /** Primary provenance line (9px muted in UI). */
+  detail: string;
+  /** Optional second line — GPU/host breakdown or hint text. */
+  breakdown?: string;
+  /** Confidence tier: formula=1 … learned=4 */
+  confidence: 1 | 2 | 3 | 4;
+}
+
 export interface VramManifest {
   scenario: Scenario;
   style: StyleObject;
@@ -520,6 +533,10 @@ export interface VramManifest {
   moeSuggestion?: MoeSuggestion | null;
   /** AUTO_FIT: engine will launch with --split-mode layer across GPUs. */
   autoLayerSplit?: boolean;
+  /** Active memory estimation path — drives SOURCE panel and GB accent color. */
+  memorySource?: MemorySource;
+  /** Display timestamp for on-demand FIT PROBE (set when user runs validate). */
+  fitProbeMeasuredAt?: string;
 }
 
 /** Per-GPU component breakdown parsed from llama's memory table. */

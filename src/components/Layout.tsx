@@ -76,7 +76,7 @@ const tabs: { id: Tab; label: string; icon: string; hidden?: boolean }[] = [
   { id: "intel", label: "INTEL", icon: "\uD83D\uDCF0" },
   { id: "logs", label: "LOGS", icon: "\uD83D\uDCCD" },
   { id: "config", label: "CONFIG", icon: "\u2699" },
-  { id: "sentinel", label: "SENTINEL", icon: "\u2694" },
+  { id: "sentinel", label: "SENTINEL", icon: "\u2694", hidden: true },
 ];
 
 export default function Layout({ activeTab, onTabChange, children, providers = [], appUpdate, hasBinaryUpdates, onInstallAppUpdate }: LayoutProps) {
@@ -148,9 +148,11 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
           category: string;
         } | null>("get_blackwell_output_console_latest_line");
         if (latest?.content) {
-          setLastConsoleLine(latest.content);
+          setLastConsoleLine((prev) => (prev === latest.content ? prev : latest.content));
           const cat = latest.category ? parseOutputConsoleCategory(latest.category) : null;
-          if (cat) setLastConsoleCategory(cat);
+          if (cat) {
+            setLastConsoleCategory((prev) => (prev === cat ? prev : cat));
+          }
         }
       } catch {
         // silent
@@ -224,7 +226,7 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
                 <button
                   onClick={() => onTabChange(tab.id)}
                   {...(tab.id === "config" ? { "data-onboarding": "config-tab" } : {})}
-                  className={`app-nav-tab px-4 py-1.5 text-xs font-mono tracking-wider transition-all duration-200 rounded-sm ${
+                  className={`app-nav-tab px-4 py-1.5 text-xs font-mono tracking-wider rounded-sm ${
                     activeTab === tab.id ? "app-nav-tab-active" : ""
                   }`}
                 >
@@ -307,10 +309,7 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
 
       {/* Main content area */}
       <main className="flex-1 min-h-0 overflow-hidden relative z-10">
-        <div
-          key={activeTab}
-          className="app-main-scroll h-full min-h-0 overflow-hidden layout-tab-enter"
-        >
+        <div className="app-main-scroll h-full min-h-0 overflow-hidden">
           <div className="app-main-zoom">
             <div className="app-main-frame">{children}</div>
           </div>

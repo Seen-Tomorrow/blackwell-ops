@@ -26,7 +26,7 @@ import { normalizeDisplayTexture, type DisplayTexture } from "./displayTexture";
  * | BlackOps-logs-ansi-enabled | "0" \| "1" | ENGINE LOGS ANSI color rendering |
  * | BlackOps-startup-updates | JSON | Cached startup update check results |
  * | BlackOps-fusion-hero-tps | live \| avg | Fusion hero TPS display mode |
- * | BlackOps-display-texture | clean \| crt \| phosphor-dark \| phosphor-light | Display texture cycle |
+ * | BlackOps-display-texture | clean \| glitch \| phosphor-dark \| phosphor-light | Display texture cycle |
  * | BlackOps-catalog-split-width | number string (px) | Model catalog / engine config split |
  * | BlackOps-telemetry-view | standard \| lab | TELEMETRY tab: panel vs lab catalogue |
  * | BlackOps-setup-guide-dismissed | "1" | User dismissed first-run setup guide |

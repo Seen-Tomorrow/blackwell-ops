@@ -2,7 +2,10 @@ import type { GpuInfo, VramManifest, ModelMetadata } from "../lib/types";
 import GpuTopology from "./GpuTopology";
 import FusionOverlay from "./FusionOverlay";
 import MoeBadge from "./MoeBadge";
+import MemorySourcePanel, { manifestHasFitProbe } from "./MemorySourcePanel";
 import { useFusionData } from "../hooks/useFusionData";
+import { MEMORY_SOURCE_ACCENT } from "../services/vram/memorySource";
+import DisplayGlitchOverlay from "./DisplayGlitchOverlay";
 
 interface VramBadgeProps {
   manifest: VramManifest | null;
@@ -23,7 +26,7 @@ interface VramBadgeProps {
   modelLayerTotal?: number;
   gpuLoadTargetsMib?: Record<number, number>;
   offloadMode?: string; // Current Offload_Mode config value (e.g., "moe_optimal")
-  onMoeSuggestionClick?: () => void; // Callback to auto-switch to MOE_OPTIMAL
+  onMoeSuggestionClick?: () => void; // Toggle offload_mode regular ↔ moe_optimal
   /** Hide FIT validate button (Auto VRAM launch handles tuning). */
   hideValidate?: boolean;
   /** Hide MOE_OPTIMAL badge (not applicable in Auto VRAM mode). */
@@ -45,14 +48,17 @@ export default function VramBadge({
 
   const s = manifest.style;
   const t = s.uiTemplate;
-  const isLearned = manifest.learnedFromPreviousRun === true;
-  const isCertified = manifest.validatedVramMib != null && !isLearned;
-  // Total memory need: VRAM portion + RAM portion (expert FFN offload, layer spill, etc.)
+  const memorySource = manifest.memorySource;
+  const sourceAccent = memorySource
+    ? MEMORY_SOURCE_ACCENT[memorySource.kind]
+    : null;
+  const isFitProbe = manifest.validatedVramMib != null && !manifest.learnedFromPreviousRun;
   const totalNeedGb = manifest.vramTotalGb + manifest.ramTotalGb;
-  const displayTotalGb = isCertified
-    ? (manifest.validatedVramMib! / 1024)
+  const displayTotalGb = isFitProbe
+    ? (manifest.validatedVramMib! / 1024) + (manifest.validatedHostMib ? manifest.validatedHostMib / 1024 : manifest.ramTotalGb)
     : totalNeedGb;
   const neededText = displayTotalGb.toFixed(1);
+  const gbAccentClass = sourceAccent?.gbGradient || s.titleColor;
 
   // Total manufactured VRAM capacity across all GPUs
   const totalVramMib = gpus.reduce((sum, g) => {
@@ -74,7 +80,7 @@ export default function VramBadge({
   const ramMfgGb = manifest.ramManufacturedGb.toFixed(0);
 
   return (
-    <div className={`vram-badge-forecast px-3 py-2.5 relative min-h-full ${className || ''}`}>
+    <div className={`vram-badge-forecast px-3 py-2.5 relative flex flex-col h-full min-h-0 overflow-hidden ${className || ''}`}>
       {/* Overlay when a specific engine is selected (mini card click) — covers entire forecast container */}
       {selectedSlotIdx !== null && selectedSlotIdx !== undefined && activeEnginePort
         && (engineStatus === "LOADING" || engineStatus === "RUNNING") && (
@@ -82,6 +88,7 @@ export default function VramBadge({
           className="!absolute inset-0 z-50 phosphor-screen phosphor-display-surface overflow-hidden flex flex-col rounded-xl border border-stealth-border p-[6px]"
           style={{ animation: 'fadeIn 0.2s ease' }}
         >
+          <DisplayGlitchOverlay />
           <FusionOverlay
             alias={activeEngineAlias}
             enginePort={activeEnginePort}
@@ -98,98 +105,46 @@ export default function VramBadge({
         </div>
       )}
 
-      {/* ── Header row ─── */}
-      <div className="flex items-baseline gap-1 mb-2">
-        <span className={`text-xl font-mono ${s.titleColor}`}>FORECAST: model</span>
-
-        {/* Bordered block — button floats above, expands when certified */}
-        <div className={`relative inline-flex flex-col rounded-sm border px-2 py-1 transition-all ${
-          isCertified
-            ? "border-amber-400/50"
-            : isLearned
-              ? "border-cyan-400/50"
-              : "border-stealth-muted/30"
-        }`}>
-          {/* Button — floating below the box */}
-          {onValidate && (
-            <div
-              className={`absolute -bottom-5 left-1/2 -translate-x-1/2 ${hideValidate ? "invisible pointer-events-none" : ""}`}
-              aria-hidden={hideValidate}
-            >
-              <button
-                onClick={onValidate}
-                disabled={isValidating}
-                className={`px-2 py-0.5 text-[7px] font-mono tracking-widest rounded-sm border whitespace-nowrap transition-all ${
-                  isValidating
-                    ? "border-yellow-400/40 text-yellow-400 cursor-wait animate-pulse"
-                    : isCertified
-                      ? "border-amber-400/50 text-amber-400 hover:bg-amber-400/10"
-                      : "border-stealth-muted text-stealth-muted hover:text-white hover:border-stealth-muted"
-                }`}
-              >
-                {isValidating ? "⟳ SCANNING" : isCertified ? "↻ MEASURED" : "⚡ ESTIMATED"}
-              </button>
-            </div>
-          )}
-
-          {/* Main line: needs // X GB // [CERTIFIED] — same height before and after validation */}
-          <div className="flex items-baseline gap-1">
-            <span className={`text-xl font-mono ${s.titleColor}`}>needs</span>
-            <span className="text-[9px] font-mono text-stealth-muted">//</span>
-            <span className={`text-xl font-mono transition-all ${
-              isCertified
-                ? "bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-500 bg-clip-text text-transparent drop-shadow-[0_0_8px_rgba(251,191,36,0.4)]"
-                : isLearned
-                  ? "bg-gradient-to-r from-cyan-300 via-sky-400 to-cyan-500 bg-clip-text text-transparent drop-shadow-[0_0_8px_rgba(34,211,238,0.35)]"
-                  : `${s.titleColor}`
-             }`}>
-               {neededText} GB
-            </span>
-            <span className="text-[9px] font-mono text-stealth-muted">//</span>
-
-            {/* CERTIFIED badge — inline after // */}
-              {isCertified && (
-                <div
-                  style={{ animation: 'fadeIn 0.25s ease' }}
-                  className="flex items-center gap-1"
-                >
-                  <svg width="15" height="15" viewBox="0 0 10 10" fill="none">
-                    <circle cx="5" cy="5" r="4.5" stroke="#FBBF24" strokeWidth="1"/>
-                    <path d="M3 5L4.5 6.5L7 3.5" stroke="#FBBF24" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                  <span className="text-[9px] font-mono tracking-widest text-amber-400">CERTIFIED</span>
-                </div>
-              )}
-              {isLearned && (
-                <div
-                  style={{ animation: 'fadeIn 0.25s ease' }}
-                  className="flex items-center gap-1"
-                  title="VRAM footprint measured on a previous launch with this model + config"
-                >
-                  <svg width="15" height="15" viewBox="0 0 10 10" fill="none">
-                    <path d="M7.5 2.5H5.5V4.5" stroke="#22D3EE" strokeWidth="0.9" strokeLinecap="round" strokeLinejoin="round"/>
-                    <path d="M2.5 5C2.5 3.62 3.62 2.5 5 2.5C6.05 2.5 6.95 3.15 7.35 4" stroke="#22D3EE" strokeWidth="0.9" strokeLinecap="round"/>
-                    <path d="M2.5 7.5H4.5V5.5" stroke="#22D3EE" strokeWidth="0.9" strokeLinecap="round" strokeLinejoin="round"/>
-                    <path d="M7.5 5C7.5 6.38 6.38 7.5 5 7.5C3.95 7.5 3.05 6.85 2.65 6" stroke="#22D3EE" strokeWidth="0.9" strokeLinecap="round"/>
-                  </svg>
-                  <span className="text-[9px] font-mono tracking-widest text-cyan-400">LEARNED</span>
-                </div>
-              )}
-          </div>
+      {/* FORECAST + SOURCE — pinned header, never scrolls */}
+      <div
+        className="vram-forecast-header flex-shrink-0 grid gap-x-1 gap-y-0.5 mb-1 min-w-0 pr-16"
+        style={{ gridTemplateColumns: "auto 1fr" }}
+      >
+        <span className={`text-xl font-mono ${s.titleColor} col-start-1 row-start-1 shrink-0`}>
+          FORECAST: model
+        </span>
+        <div className="col-start-2 row-start-1 flex items-baseline gap-1 min-w-0 vram-forecast-needs-row">
+          <span className={`text-xl font-mono ${s.titleColor}`}>needs</span>
+          <span
+            className={`text-xl font-mono vram-forecast-gb-value ${gbAccentClass} ${
+              sourceAccent?.gbGradient ? "vram-forecast-gb-accented" : ""
+            }`}
+          >
+            {neededText}
+          </span>
+          <span className={`text-xl font-mono ${s.titleColor}`}>GB</span>
+          <span className="text-[9px] font-mono text-stealth-muted">of</span>
+          <span className="text-xl font-mono text-stealth-muted vram-forecast-gb-value">
+            {totalAvailableGb.toFixed(1)}
+          </span>
+          <span className="text-xl font-mono text-stealth-muted">GB</span>
+          <span className="text-[9px] font-mono text-stealth-muted">TOTAL MEMORY</span>
         </div>
-
-        <span className="text-[9px] font-mono text-stealth-muted">of</span>
-        <span className="text-xl font-mono text-stealth-muted">{totalAvailableGb.toFixed(1)} GB</span>
-        <span className="text-[9px] font-mono text-stealth-muted">TOTAL MEMORY</span>
-        
-        {/* MOE Suggestion Badge — always visible for MoE models, positioned next to capacity numbers */}
+        {memorySource && (
+          <div className="vram-forecast-source col-start-2 row-start-2 min-w-0">
+            <MemorySourcePanel
+              memorySource={memorySource}
+              isValidating={isValidating}
+              hasProbed={manifestHasFitProbe(manifest)}
+              onValidate={onValidate}
+              hideValidate={hideValidate}
+            />
+          </div>
+        )}
       </div>
 
       {/* ── Top-right: scenario badge only, absolute corner ─── */}
-      <div
-        style={{ animation: 'fadeIn 0.3s ease', opacity: 0.75 }}
-        className="absolute top-0 right-2"
-      >
+      <div className="absolute top-0 right-2 opacity-75 vram-forecast-scenario-badge">
         {/* Scenario badge */}
         <div className={`inline-flex flex-col items-end gap-0.5 px-2 py-0.5 rounded-sm ${s.badgeBg}`}>
           <span className="text-[7px] font-mono text-stealth-muted">{manifest.scenario}</span>
@@ -197,14 +152,25 @@ export default function VramBadge({
         </div>
       </div>
 
-      {/* ── VRAM + RAM bars with MOE badge ─── */}
-      <div className="relative mt-6">
-        {/* Bars take 75% width, leaving empty space on right for MOE badge */}
+      {/* Bars, warnings, topology — scroll inside phosphor when tall (e.g. MULTI_SPILL) */}
+      <div className="vram-badge-body relative flex-1 min-h-0 overflow-y-auto overflow-x-hidden eink-scrollbar mt-2">
+        {/* Bars block — MOE badge anchors to right, vertically centered over VRAM + RAM */}
+        <div className="vram-badge-bars relative">
+        {!hideMoeBadge && modelMeta?.n_expert > 0 && (
+          <div className="absolute right-0 top-0 bottom-0 flex items-center z-10">
+            <MoeBadge
+              offloadMode={offloadMode}
+              shouldHighlight={manifest.moeSuggestion?.shouldHighlight}
+              onMoeSuggestionClick={onMoeSuggestionClick}
+              suggestionText={manifest.moeSuggestion?.suggestionText}
+            />
+          </div>
+        )}
         {/* VRAM bar row */}
         <div className="flex items-center gap-2">
           <div style={{ backgroundColor: 'rgb(20,20,20)' }} className="relative h-4 w-[70%] rounded-sm overflow-hidden border border-stealth-border/30">
             <div
-              style={{ width: `${vramUsagePct}%`, transition: 'width 0.4s ease-out' }}
+              style={{ width: `${vramUsagePct}%` }}
               className={`h-full rounded-sm ${s.gpuBarColor}`}
             />
           </div>
@@ -216,25 +182,13 @@ export default function VramBadge({
           {t.gpuLayerText}
         </p>
 
-   {/* MOE Badge - absolutely positioned in empty 25% space on right, aligned to full bars height */}
-        {!hideMoeBadge && modelMeta?.n_expert > 0 && (
-          <div className="absolute right-0 top-[-10px] h-full flex items-center z-10">
-            <MoeBadge 
-              offloadMode={offloadMode}
-              shouldHighlight={manifest.moeSuggestion?.shouldHighlight}
-              onMoeSuggestionClick={onMoeSuggestionClick}
-              suggestionText={manifest.moeSuggestion?.suggestionText}
-            />
-          </div>
-        )}
-
         {/* RAM bar row */}
         {(t.showRamBar !== false) && (
           <>
-            <div className="flex items-center gap-2 mt-3">
+            <div className="flex items-center gap-2 mt-2">
               <div style={{ backgroundColor: 'rgb(20,20,20)' }} className="relative h-4 w-[70%] rounded-sm overflow-hidden border border-stealth-border/30">
                 <div
-                  style={{ width: `${ramUsagePct}%`, transition: 'width 0.4s ease-out' }}
+                  style={{ width: `${ramUsagePct}%` }}
                   className={`h-full rounded-sm ${
                     offloadMode === "moe_optimal" ? "bg-orange-hatched" : "bg-blue-700"
                   }`}
@@ -249,9 +203,7 @@ export default function VramBadge({
             </p>
           </>
         )}
-
-     
-      </div>
+        </div>
 
       {/* Offload warning — controlled by scenario's offloadWarningText */}
       {t.offloadWarningText && (
@@ -267,7 +219,7 @@ export default function VramBadge({
 
       {/* ── GPU topology below — always rendered ─── */}
       {manifest.gpuAllocations.length > 0 && (
-        <div className="mt-3">
+        <div className="mt-2 pb-0.5">
           <GpuTopology
             gpuAllocations={manifest.gpuAllocations}
             gpuBarColor={s.gpuBarColor}
@@ -279,6 +231,7 @@ export default function VramBadge({
           />
         </div>
       )}
+      </div>
     </div>
   );
 }

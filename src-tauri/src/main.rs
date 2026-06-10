@@ -301,6 +301,7 @@ async fn get_default_download_path(
 async fn start_download(
     app: tauri::AppHandle,
     manager: tauri::State<'_, Arc<RwLock<DownloadManager>>>,
+    config: tauri::State<'_, Arc<std::sync::Mutex<config::AppConfig>>>,
     hf_model_id: String,
     file_name: String,
     url: String,
@@ -310,6 +311,12 @@ async fn start_download(
     quant_type: String,
     lfs_oid: String,
 ) -> Result<String, String> {
+    config::validate_download_url(&url)?;
+    {
+        let cfg = config.lock().map_err(|e| e.to_string())?;
+        config::validate_download_dest(&dest_path, &cfg)?;
+    }
+
     let mut dm = manager.write().await;
     let task_id = dm.start_download(hf_model_id, file_name, url, total_bytes, dest_path, hf_author, quant_type, lfs_oid, Arc::clone(&manager)).await?;
     drop(dm);
@@ -493,8 +500,14 @@ async fn main() {
                 api.prevent_close();
                 let app_handle = window.app_handle().clone();
                 let stack_clone = app_handle.state::<AppContext>().stack.clone();
+                let fit_cancel = app_handle.state::<AppContext>().fit_scan_cancel.clone();
                 tauri::async_runtime::spawn(async move {
                     fusion_brain::stop_all_brains().await;
+                    {
+                        let guard = fit_cancel.lock().await;
+                        guard.store(true, std::sync::atomic::Ordering::Relaxed);
+                    }
+                    reactor_foundry::foundry_kill_all_children();
                     EngineStack::kill_all(&stack_clone).await;
                     app_handle.exit(0);
                 });

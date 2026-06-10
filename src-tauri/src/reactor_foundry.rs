@@ -68,6 +68,11 @@ fn track_pid(pid: u32) {
     CHILD_PIDS.lock().unwrap().push(pid);
 }
 
+/// Kill any in-flight Foundry child processes (cmake, ninja, git, etc.).
+pub fn foundry_kill_all_children() {
+    kill_all_children();
+}
+
 fn kill_all_children() {
     let pids = {
         let mut guard = CHILD_PIDS.lock().unwrap();

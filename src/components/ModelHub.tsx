@@ -40,7 +40,6 @@ function formatETA(seconds: number): string {
 }
 
 export default function ModelHub() {
-  const [subView, setSubView] = useState<'search' | 'library'>('search');
   const [downloads, setDownloads] = useState<DownloadTask[]>([]);
   const completedRefs = useRef(new Set<string>());
 
@@ -73,35 +72,13 @@ export default function ModelHub() {
   return (
     <div className="flex flex-col h-full px-6 py-4 gap-3" data-model-hub>
       <div className="flex items-center gap-2 border-b border-stealth-border pb-2">
-        <button
-          onClick={() => setSubView('search')}
-          className={`px-4 py-1.5 text-xs font-mono tracking-wider transition-all rounded-sm ${
-            subView === 'search'
-              ? 'value-chip-active'
-              : 'value-chip'
-          }`}
-        >
+        <span className="px-4 py-1.5 text-xs font-mono tracking-wider value-chip-active">
           SEARCH & DOWNLOAD
-        </button>
-        <button
-          onClick={() => setSubView('library')}
-          className={`px-4 py-1.5 text-xs font-mono tracking-wider transition-all rounded-sm ${
-            subView === 'library'
-              ? 'value-chip-active'
-              : 'value-chip'
-          }`}
-        >
-          LIBRARY
-        </button>
+        </span>
       </div>
 
       <div className="flex-1 overflow-hidden">
-        {subView === 'search' && <ModelHubSearch />}
-        {subView === 'library' && (
-          <div className="flex items-center justify-center h-full text-stealth-muted/50 font-mono text-xs italic">
-            LIBRARY VIEW — COMING SOON
-          </div>
-        )}
+        <ModelHubSearch />
       </div>
 
       {activeDownloads.length > 0 && (

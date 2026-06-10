@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { ModelEntry, EngineConfig, GpuInfo, StackEntry, SystemInfo, VramManifest, FitScanResult } from "../lib/types";
-import { evaluate, applyFitValidation, committedSlotsFromStack, committedStackKey, type ScenarioInput, type FitPoint } from "../services/vram/scenarios/scenarios_factory";
+import { evaluate, applyFitValidation, committedSlotsFromStack, committedStackKey, parseCtx, type ScenarioInput, type FitPoint } from "../services/vram/scenarios/scenarios_factory";
+import { attachMemorySource, MEMORY_SOURCE_LABELS } from "../services/vram/memorySource";
 
 interface LearnedVramFitAttempt {
   vram_mib: number;
@@ -45,6 +46,7 @@ function emitScenarioDebug(
   uiTemplate: any,
   engineConfig: EngineConfig,
   validatedGb?: number,
+  memorySourceLabel?: string,
 ) {
   const lines: string[] = [];
   lines.push(`[SCENARIO] Model: ${modelName} | Meta: ${modelMeta ? 'YES' : 'NO'} | Arch: ${modelMeta?.architecture || '?'} | Layers: ${modelMeta?.n_layer ?? '?'} | Params: ${modelMeta?.total_params_str || '?'} | Size: ${(modelMeta?.file_size_bytes / (1024**3)).toFixed(1)}G`);
@@ -64,6 +66,10 @@ function emitScenarioDebug(
   }
 
   lines.push(`[SCENARIO] Scenario: ${scenario} | W:${vramWeightsGb.toFixed(1)}G KV:${vramKvGb.toFixed(1)}G OH:${vramOverheadGb.toFixed(1)}G Total:${totalNeedGb.toFixed(1)}G`);
+
+  if (memorySourceLabel) {
+    lines.push(`[SCENARIO] SOURCE: ${memorySourceLabel}`);
+  }
 
   const allocText = gpuAllocations.map((a: any) => {
     const pct = ((a.projectedLoadGb / a.vramManufacturedGb) * 100).toFixed(0);
@@ -127,13 +133,19 @@ export function useScenarioEvaluator({
   const learnedVramRef = useRef<number | null>(null);
   const learnedHostRef = useRef<number | null>(null);
   const learnedGpuBreakdownRef = useRef<number[] | null>(null);
+  const learnedMeasuredAtRef = useRef<string | undefined>(undefined);
   const lastFitModelPathRef = useRef("");
+  const learnedFetchGenRef = useRef(0);
+  const learnedFetchPendingRef = useRef(false);
   const autoVramLaunchRef = useRef(autoVramLaunch);
   const fitStyleRef = useRef(fitStyle);
   autoVramLaunchRef.current = autoVramLaunch;
   fitStyleRef.current = fitStyle;
   const lastScenarioDebugModelRef = useRef("");
   const lastScenarioDebugNameRef = useRef("");
+  const hadSysInfoRef = useRef(systemInfo != null);
+  const runEvaluationRef = useRef<() => void>(() => {});
+  const scheduleEvaluationRef = useRef<() => void>(() => {});
 
   // Unstable refs: these objects change every render/poll but shouldn't churn deps.
   // Read from refs inside the callback to get latest values without re-creating the callback.
@@ -210,6 +222,7 @@ export function useScenarioEvaluator({
       learnedVramMib: learnedVramRef.current ?? undefined,
       learnedHostMib: learnedHostRef.current ?? undefined,
       learnedGpuBreakdownMib: learnedGpuBreakdownRef.current ?? undefined,
+      learnedMeasuredAt: learnedMeasuredAtRef.current,
     };
 
     try {
@@ -225,7 +238,8 @@ export function useScenarioEvaluator({
           result.vramWeightsGb, result.vramKvGb, result.vramOverheadGb,
           result.vramTotalGb, result.gpuAllocations, result.gpuLayers, result.ramLayers,
           result.validatedVramMib, result.formulaVramTotalGb, result.validatedComponentsMib,
-          result.style.uiTemplate, engineConfig,
+          result.style.uiTemplate, engineConfig, undefined,
+          result.memorySource ? MEMORY_SOURCE_LABELS[result.memorySource.kind] : undefined,
         );
         lastScenarioDebugModelRef.current = model.path;
         lastScenarioDebugNameRef.current = result.scenario;
@@ -238,6 +252,21 @@ export function useScenarioEvaluator({
     }
   }, [model]);
 
+  runEvaluationRef.current = runEvaluation;
+
+  const scheduleEvaluation = useCallback(() => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => {
+      if (learnedFetchPendingRef.current) {
+        scheduleEvaluationRef.current();
+        return;
+      }
+      runEvaluationRef.current();
+    }, 150);
+  }, []);
+
+  scheduleEvaluationRef.current = scheduleEvaluation;
+
   useEffect(() => {
     // Reset on unmount to handle Strict Mode double-mount correctly
     return () => {
@@ -246,24 +275,29 @@ export function useScenarioEvaluator({
     };
   }, []);
 
-  // Fetch learned VRAM when model/config fingerprint changes
+  // Fetch learned VRAM when model/config fingerprint changes — gate eval until settled
   useEffect(() => {
     if (!model) {
       learnedVramRef.current = null;
       learnedHostRef.current = null;
       learnedGpuBreakdownRef.current = null;
+      learnedMeasuredAtRef.current = undefined;
+      learnedFetchPendingRef.current = false;
       return;
     }
+    const fetchGen = ++learnedFetchGenRef.current;
+    learnedFetchPendingRef.current = true;
     const curConfig = configRef.current;
     void invoke<LearnedVramEntry | null>("get_learned_vram", {
       modelPath: model.path,
       providerId: curConfig.backend_type || "ggml-master",
-      ctx: String(curConfig.ctx ?? "32768"),
+      ctx: String(parseCtx(curConfig.ctx ?? "32768")),
       kvQuant: String(curConfig["kv_quant"] ?? "f16"),
       device: String(curConfig.device ?? "GPU-0"),
       split: String(curConfig.split ?? "none"),
     })
       .then((entry) => {
+        if (fetchGen !== learnedFetchGenRef.current) return;
         const lastAttempt = entry?.fit_attempts?.length
           ? entry.fit_attempts[entry.fit_attempts.length - 1]
           : undefined;
@@ -271,15 +305,21 @@ export function useScenarioEvaluator({
         learnedHostRef.current = lastAttempt?.host_mib ?? null;
         learnedGpuBreakdownRef.current =
           entry?.gpu_breakdown_mib ?? lastAttempt?.gpu_breakdown_mib ?? null;
-        if (timerRef.current) clearTimeout(timerRef.current);
-        timerRef.current = setTimeout(runEvaluation, 50);
+        learnedMeasuredAtRef.current = entry?.measured_at;
       })
       .catch(() => {
+        if (fetchGen !== learnedFetchGenRef.current) return;
         learnedVramRef.current = null;
         learnedHostRef.current = null;
         learnedGpuBreakdownRef.current = null;
+        learnedMeasuredAtRef.current = undefined;
+      })
+      .finally(() => {
+        if (fetchGen !== learnedFetchGenRef.current) return;
+        learnedFetchPendingRef.current = false;
+        scheduleEvaluationRef.current();
       });
-  }, [model?.path, configKey, stackKey, runEvaluation]);
+  }, [model?.path, configKey]);
 
   // Fetch FIT scan points when model path changes, cache per model
   useEffect(() => {
@@ -320,18 +360,18 @@ export function useScenarioEvaluator({
     const topologyChanged = gpuTopologyKey !== lastTopologyRef.current || isFirstMount;
     const configChanged = configKey !== lastConfigKeyRef.current || isFirstMount;
     const stackChanged = stackKey !== lastStackKeyRef.current || isFirstMount;
-    const sysInfoChanged = sysInfoLoaded && !isFirstMount;
+    const sysInfoJustLoaded = sysInfoLoaded && !hadSysInfoRef.current;
+    hadSysInfoRef.current = sysInfoLoaded;
 
-    if (!modelChanged && !topologyChanged && !configChanged && !stackChanged && !sysInfoChanged) return;
+    if (!modelChanged && !topologyChanged && !configChanged && !stackChanged && !sysInfoJustLoaded) return;
     lastModelPathRef.current = model.path;
     lastTopologyRef.current = gpuTopologyKey;
     lastConfigKeyRef.current = configKey;
     lastStackKeyRef.current = stackKey;
 
-    if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(runEvaluation, 150);
+    scheduleEvaluationRef.current();
     return () => { if (timerRef.current) clearTimeout(timerRef.current); };
-  }, [model, gpuTopologyKey, gpus.length, configKey, stackKey, sysInfoLoaded, runEvaluation]);
+  }, [model, gpuTopologyKey, gpus.length, configKey, stackKey, sysInfoLoaded]);
 
   // FIT validation — runs llama-fit-params with current config, re-evaluates scenario with measured total
   const validate = useCallback(async () => {
@@ -375,20 +415,36 @@ export function useScenarioEvaluator({
         ramManufacturedGb: sysInfo.total_memory_manufactured_mib / 1024,
         mmprojSizeMib: model.mmproj_size_mib,
         fitPoints: fitPointsRef.current || undefined,
+        autoVramLaunch: autoVramLaunchRef.current,
+        fitStyle: fitStyleRef.current,
+        learnedVramMib: learnedVramRef.current ?? undefined,
+        learnedHostMib: learnedHostRef.current ?? undefined,
+        learnedGpuBreakdownMib: learnedGpuBreakdownRef.current ?? undefined,
+        learnedMeasuredAt: learnedMeasuredAtRef.current,
       };
+
+      const probeMeasuredAt = new Date().toLocaleString(undefined, {
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
 
       // Evaluate with measured VRAM total — this will pick the correct scenario based on reality
       const newManifest = evaluate(input, result.vram_mib);
-      
-      // Also store validation metadata for display (CERTIFIED badge, scale factor, etc.)
-      const validatedManifest: VramManifest = {
-        ...newManifest,
-        validatedVramMib: result.vram_mib,
-        validatedGpuBreakdownMib: result.gpu_breakdown_mib,
-        validatedHostMib: result.host_mib,
-        validatedComponentsMib: result.gpu_components_mib ?? null,
-      };
-      
+
+      const validatedManifest = attachMemorySource(
+        {
+          ...newManifest,
+          validatedVramMib: result.vram_mib,
+          validatedGpuBreakdownMib: result.gpu_breakdown_mib,
+          validatedHostMib: result.host_mib,
+          validatedComponentsMib: result.gpu_components_mib ?? null,
+          fitProbeMeasuredAt: probeMeasuredAt,
+        },
+        input,
+      );
+
       setManifest(validatedManifest);
 
      // Validation debug emission — emit when scenario changed or validation newly applied
@@ -401,6 +457,9 @@ export function useScenarioEvaluator({
           validatedManifest.vramTotalGb, validatedManifest.gpuAllocations, validatedManifest.gpuLayers, validatedManifest.ramLayers,
           validatedManifest.validatedVramMib, validatedManifest.formulaVramTotalGb, validatedManifest.validatedComponentsMib,
           newManifest.style.uiTemplate, engineConfig, result.vram_mib / 1024,
+          validatedManifest.memorySource
+            ? MEMORY_SOURCE_LABELS[validatedManifest.memorySource.kind]
+            : undefined,
         );
         lastScenarioDebugModelRef.current = model.path;
         lastScenarioDebugNameRef.current = newManifest.scenario;

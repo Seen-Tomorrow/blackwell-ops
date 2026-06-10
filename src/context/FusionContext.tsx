@@ -152,10 +152,13 @@ export function FusionProvider({
     setEngines(new Map());
   });
 
+  const hasLiveEngines = stack.some(isRunningEntry);
+
   useEffect(() => {
+    if (!hasLiveEngines) return;
     const id = window.setInterval(flushIfDue, RENDER_INTERVAL_MS);
     return () => window.clearInterval(id);
-  }, [flushIfDue]);
+  }, [hasLiveEngines, flushIfDue]);
 
   const getEngine = useCallback(
     (slotIdx: number) => engines.get(slotIdx) ?? null,

@@ -47,9 +47,8 @@ export default function ModelCard({ model, idx, isSelected, isHighlighted, fitSt
 
   return (
     <div
-      key={model.path}
       onClick={() => onSelect(model)}
-      className={`relative cursor-pointer rounded-sm p-2.5 model-card-enter ${
+      className={`relative cursor-pointer rounded-sm p-2.5 model-catalog-card ${
         isSelected
            ? "gunmetal-card border"
            : "buried-card"
