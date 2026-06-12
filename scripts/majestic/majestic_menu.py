@@ -276,6 +276,7 @@ def print_header() -> None:
     print("  1  CHECK   - am I ready to ship? (safe)")
     print("  2  PACK    - mirror, bundle, build, stage installer")
     print("  3  SHIP    - upload to GitHub (asks YES)")
+    print(" 10  BUMP    - patch+1 in tauri.conf.json + package.json (asks YES)")
     print()
     print("  4  Pack dry-run")
     print("  5  Ship dry-run")
@@ -328,8 +329,10 @@ def main() -> int:
             code = 0
         elif choice == "9":
             code = backup_paranoid()
+        elif choice == "10":
+            code = run_majestic("bump")
         else:
-            print("Unknown choice. Use 0-9.")
+            print("Unknown choice. Use 0-10.")
             code = 1
 
         print()

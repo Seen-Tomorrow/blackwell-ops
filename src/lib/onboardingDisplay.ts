@@ -14,6 +14,9 @@ export const DISPLAY_BEZEL_PADDING_PX = 18;
 /** Minimum outer frame height in setup/forecast mode (px) — `.industrial-display-frame--setup`. */
 export const DISPLAY_FRAME_MIN_HEIGHT_PX = 240;
 
+/** Fixed phosphor inner height for forecast / fusion (px) — `.vram-forecast-display`. */
+export const FORECAST_PHOSPHOR_HEIGHT_PX = 250;
+
 /** VramBadge / setup content horizontal padding (px) — `px-3`. */
 export const PHOSPHOR_CONTENT_PAD_X_PX = 12;
 

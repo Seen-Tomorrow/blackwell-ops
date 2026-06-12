@@ -26,6 +26,7 @@ import type { SetupGuideState } from "../hooks/useSetupGuide";
 import type { RawCatalogEntry } from "../lib/catalog";
 import { catalogEntryToParam } from "../lib/catalog";
 
+
 type ConfigSubTab = "providers" | "params" | "paths";
 
 interface ConfigPageProps {

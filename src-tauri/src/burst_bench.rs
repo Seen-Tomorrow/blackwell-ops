@@ -3,8 +3,17 @@
 //! Strategy: 1 warmup run (fixed length=1024) + 1 measured run (user-selected n_predict) → single result values.
 //! Uses engine-reported timings (prompt_ms, predicted_ms) not HTTP round-trip time.
 
+use crate::bench_cancel::{self, post_json_cancellable};
 use serde::Serialize;
 use tauri::Emitter;
+
+struct BenchPortGuard(u16);
+
+impl Drop for BenchPortGuard {
+    fn drop(&mut self) {
+        bench_cancel::end(self.0);
+    }
+}
 
 /// ~500 token prompt to properly warm Blackwell kernels for realistic prefill measurement.
 const BENCH_PROMPT_UNIQUE: &str = "The architecture of modern large language models represents a fundamental shift in how we approach artificial intelligence and natural language processing. These systems are built on the transformer architecture, which relies entirely on self-attention mechanisms to process input sequences. The key innovation is that each position can attend to all positions in the previous layer, allowing the model to capture long-range dependencies that were previously difficult for recurrent architectures. Training these models requires massive computational resources, often involving thousands of GPU hours across distributed clusters. The scaling laws discovered by Kaplan and subsequent researchers show that model performance improves predictably with compute budget, dataset size, and parameter count. This has led to an arms race in model sizes, from GPT-3's 175 billion parameters to models exceeding one trillion parameters. Inference optimization is equally critical, as serving these models at scale requires techniques like quantization, speculative decoding, and efficient attention implementations. The KV cache alone can consume significant memory during long-context generation, making memory management a first-class concern in production deployments. Techniques such as PagedAttention have revolutionized how we handle the KV cache by eliminating memory fragmentation through virtual memory-like paging. Flash Attention further optimizes the computation by reordering operations to minimize HBM access, achieving both speedup and memory reduction. As models grow larger, tensor parallelism across multiple GPUs becomes essential for both training and inference workloads.";
@@ -33,6 +42,8 @@ pub async fn cmd_burst_bench(
     n_predict: usize,
     bench_prompt_mode: String,
 ) -> Result<BenchResult, String> {
+    let cancel = bench_cancel::begin(port);
+    let _guard = BenchPortGuard(port);
     let url = format!("http://127.0.0.1:{}/completion", port);
     let client = reqwest::Client::new();
 
@@ -62,6 +73,18 @@ pub async fn cmd_burst_bench(
     let mut measured_run: Option<RunStats> = None;
 
     for run in 0..TOTAL_RUNS {
+        if bench_cancel::is_cancelled(&cancel) {
+            return Ok(BenchResult {
+                prompt_tokens: 0,
+                gen_tokens: 0,
+                prompt_tps: 0.0,
+                gen_tps: 0.0,
+                itl_ms: 0.0,
+                success: false,
+                error: Some("Cancelled".to_string()),
+            });
+        }
+
         // Signal phase to frontend so UI can show WARMUP vs MEASURED
         let phase = if run < WARMUP_RUNS { "warmup" } else { "measured" };
         let effective_length = if run < WARMUP_RUNS { WARMUP_TOKENS } else { n_predict };
@@ -90,44 +113,45 @@ pub async fn cmd_burst_bench(
             "ignore_eos": true,  // force full n_predict tokens even if model wants to eos early on the unique prompt content
         });
 
-        match client.post(&url)
-            .header("Content-Type", "application/json")
-            .json(&body)
-            .send()
-            .await {
-                Ok(resp) => {
-                    if !resp.status().is_success() {
-                        return Err(format!("Server returned error: {}", resp.status()));
-                    }
+        match post_json_cancellable(&client, &url, &body, &cancel).await {
+            Ok(parsed) => {
+                // Extract token counts
+                let p_tokens = parsed["tokens_evaluated"].as_u64().unwrap_or(0) as usize;
+                let g_tokens = parsed["tokens_predicted"].as_u64().unwrap_or(0) as usize;
 
-                    let parsed: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+                // Engine-reported timings in ms (not HTTP round-trip)
+                let p_ms = parsed["timings"]["prompt_ms"].as_f64().unwrap_or(0.0);
+                let g_ms = parsed["timings"]["predicted_ms"].as_f64().unwrap_or(0.0);
 
-                    // Extract token counts
-                    let p_tokens = parsed["tokens_evaluated"].as_u64().unwrap_or(0) as usize;
-                    let g_tokens = parsed["tokens_predicted"].as_u64().unwrap_or(0) as usize;
+                // Calculate per-run metrics
+                let prompt_tps = if p_ms > 0.0 { (p_tokens as f64 / p_ms) * 1000.0 } else { 0.0 };
+                let gen_tps = if g_ms > 0.0 { (g_tokens as f64 / g_ms) * 1000.0 } else { 0.0 };
 
-                    // Engine-reported timings in ms (not HTTP round-trip)
-                    let p_ms = parsed["timings"]["prompt_ms"].as_f64().unwrap_or(0.0);
-                    let g_ms = parsed["timings"]["predicted_ms"].as_f64().unwrap_or(0.0);
+                log::info!("[BENCH_TG] run {} | mode={} | prefill: {:.1} TPS | gen: {:.1} TPS | p_tok={} g_tok={}",
+                    run + 1, bench_prompt_mode, prompt_tps, gen_tps, p_tokens, g_tokens);
 
-                    // Calculate per-run metrics
-                    let prompt_tps = if p_ms > 0.0 { (p_tokens as f64 / p_ms) * 1000.0 } else { 0.0 };
-                    let gen_tps = if g_ms > 0.0 { (g_tokens as f64 / g_ms) * 1000.0 } else { 0.0 };
-
-                    log::info!("[BENCH_TG] run {} | mode={} | prefill: {:.1} TPS | gen: {:.1} TPS | p_tok={} g_tok={}",
-                        run + 1, bench_prompt_mode, prompt_tps, gen_tps, p_tokens, g_tokens);
-
-                    if run >= WARMUP_RUNS {
-                        measured_run = Some(RunStats {
-                            prompt_tps,
-                            gen_tps,
-                            prompt_tokens: p_tokens,
-                            gen_tokens: g_tokens,
-                        });
-                    }
+                if run >= WARMUP_RUNS {
+                    measured_run = Some(RunStats {
+                        prompt_tps,
+                        gen_tps,
+                        prompt_tokens: p_tokens,
+                        gen_tokens: g_tokens,
+                    });
                 }
-                Err(e) => return Err(format!("Request failed: {}", e)),
             }
+            Err(e) if e == "Cancelled" => {
+                return Ok(BenchResult {
+                    prompt_tokens: 0,
+                    gen_tokens: 0,
+                    prompt_tps: 0.0,
+                    gen_tps: 0.0,
+                    itl_ms: 0.0,
+                    success: false,
+                    error: Some("Cancelled".to_string()),
+                });
+            }
+            Err(e) => return Err(e),
+        }
 
         if run < WARMUP_RUNS {
             // Re-release all slots *after* warmup (before measured) so the measured run starts with completely cold

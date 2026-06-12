@@ -70,8 +70,10 @@
   --theme-display-lcd-band: color-mix(in srgb, var(--theme-bg) 6%, transparent);
   /* Phosphor LIGHT — e-ink LCD (fusion overlay) */
   --fusion-eink-surface: #c8d4b8;
-  --fusion-eink-dot: rgba(0, 0, 0, 0.03);
+  --fusion-eink-dot: rgba(0, 0, 0, 0.025);
   --fusion-eink-band: rgba(0, 0, 0, 0.01);
+  --fusion-eink-band-opacity: 0.55;
+  --fusion-eink-texture-blend: multiply;
   --fusion-eink-text-muted: #3a3a3a;
   --fusion-eink-text-accent: #4d7a00;
   --fusion-eink-text-cyan: #0088aa;
@@ -89,15 +91,15 @@
   --theme-selection-text: #000000;
   --theme-eject-header-bg: #000000;
   --theme-eject-header-text: #b87a00;
-  --theme-eject-card-bg: rgba(255, 255, 255, 0.03);
+  --theme-eject-card-bg: rgba(255, 255, 255, 0.025);
   --theme-eject-card-hover-bg: rgba(255, 255, 255, 0.05);
   --theme-eject-card-text: #e8e2d6;
   --theme-eject-card-muted: #9a9488;
   --theme-eject-badge-bg: #000000;
-  --theme-eject-card-border: rgba(255, 255, 255, 0.06);
-  --theme-eject-card-hover-border: rgba(184, 122, 0, 0.2);
-  --theme-eject-card-selected-bg: rgba(184, 122, 0, 0.08);
-  --theme-eject-card-selected-border: rgba(184, 122, 0, 0.35);
+  --theme-eject-card-border: rgba(255, 255, 255, 0.05);
+  --theme-eject-card-hover-border: rgba(184, 122, 0, 0.22);
+  --theme-eject-card-selected-bg: rgba(184, 122, 0, 0.16);
+  --theme-eject-card-selected-border: rgba(184, 122, 0, 0.55);
   --theme-provider-label: rgba(245, 151, 31, 0.8);
   --theme-provider-pill-bg: #1a1206;
   --theme-provider-pill-border: #b87a00;
@@ -1753,6 +1755,29 @@ html, body, #root {
     inset 0 -1px 4px color-mix(in srgb, var(--theme-bezel-inset-lo) 30%, transparent);
 }
 
+/* Fusion live stats + bench values — theme phosphor text; dark ink on phosphor-light only */
+.fusion-readout-emphasis {
+  color: var(--theme-phosphor-text);
+}
+
+.fusion-readout-divider {
+  color: var(--theme-phosphor-text-muted);
+  opacity: 0.45;
+}
+
+[data-display-texture="phosphor-light"] .phosphor-screen .fusion-readout-emphasis,
+[data-display-texture="phosphor-light"] .phosphor-screen-inner .fusion-readout-emphasis,
+[data-display-texture="phosphor-light"] .bench-widget-panel .fusion-readout-emphasis {
+  color: #0f1419;
+}
+
+[data-display-texture="phosphor-light"] .phosphor-screen .fusion-readout-divider,
+[data-display-texture="phosphor-light"] .phosphor-screen-inner .fusion-readout-divider,
+[data-display-texture="phosphor-light"] .bench-widget-panel .fusion-readout-divider {
+  color: #0f1419;
+  opacity: 0.28;
+}
+
 /* Bench controls + results — recessed into engine card, lighter than phosphor screen */
 .bench-widget-panel {
   box-shadow: inset 0 1px 4px var(--theme-bench-inset-shadow);
@@ -2252,31 +2277,46 @@ html, body, #root {
   display: none;
 }
 
-/* PHOSPHOR LIGHT — VRAM + fusion: beige e-ink LCD */
+/* PHOSPHOR LIGHT — VRAM + fusion: beige e-ink LCD (dot matrix as top overlay filter) */
 [data-display-texture="phosphor-light"] .phosphor-screen-inner.phosphor-display-surface,
 [data-display-texture="phosphor-light"] .phosphor-screen.phosphor-display-surface {
   background-color: var(--fusion-eink-surface);
-  background-image:
-    radial-gradient(circle, var(--fusion-eink-dot) 1px, transparent 1px),
-    repeating-linear-gradient(
-      to bottom,
-      transparent 0px,
-      transparent 2px,
-      var(--fusion-eink-band) 2px,
-      var(--fusion-eink-band) 4px
-    );
-  background-size: 2px 2px, 100% 4px;
+  background-image: none;
   box-shadow:
     inset 0 2px 6px rgba(0, 0, 0, 0.25),
     inset 0 -1px 3px rgba(0, 0, 0, 0.15),
     inset 0 1px 40px rgba(255, 255, 255, 0.3);
 }
 
-[data-display-texture="phosphor-light"] .phosphor-screen-inner.phosphor-display-surface::after,
 [data-display-texture="phosphor-light"] .phosphor-screen-inner.phosphor-display-surface::before,
-[data-display-texture="phosphor-light"] .phosphor-screen.phosphor-display-surface::after,
 [data-display-texture="phosphor-light"] .phosphor-screen.phosphor-display-surface::before {
-  display: none;
+  display: block;
+  opacity: var(--fusion-eink-band-opacity);
+  z-index: 7;
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0px,
+    transparent 2px,
+    var(--fusion-eink-band) 2px,
+    var(--fusion-eink-band) 4px
+  );
+  background-size: 100% 4px;
+  mix-blend-mode: var(--fusion-eink-texture-blend);
+}
+
+[data-display-texture="phosphor-light"] .phosphor-screen-inner.phosphor-display-surface::after,
+[data-display-texture="phosphor-light"] .phosphor-screen.phosphor-display-surface::after {
+  display: block;
+  opacity: 1;
+  z-index: 8;
+  background-image: radial-gradient(circle, var(--fusion-eink-dot) 1px, transparent 1px);
+  background-size: 2px 2px;
+  mix-blend-mode: var(--fusion-eink-texture-blend);
+}
+
+[data-display-texture="phosphor-light"] .phosphor-display-surface > * {
+  position: relative;
+  z-index: 1;
 }
 
 /* PHOSPHOR LIGHT — e-ink text palette (VRAM forecast + fusion overlay) */
@@ -2329,6 +2369,17 @@ html, body, #root {
 
 [data-display-texture="phosphor-light"] .phosphor-screen-inner .relative.overflow-hidden.border-stealth-border\/30 {
   background-color: var(--fusion-eink-bar-bg) !important;
+}
+
+/* PHOSPHOR LIGHT — PREFILL hero TPS: Arctic slate on e-ink (all app themes + share capture) */
+[data-display-texture="phosphor-light"] .phosphor-screen .fusion-prefill-hero-value--active,
+[data-display-texture="phosphor-light"] .phosphor-screen-inner .fusion-prefill-hero-value--active {
+  color: #4a5568;
+}
+
+[data-display-texture="phosphor-light"] .phosphor-screen .fusion-prefill-hero-value--idle,
+[data-display-texture="phosphor-light"] .phosphor-screen-inner .fusion-prefill-hero-value--idle {
+  color: rgba(90, 100, 120, 0.38);
 }
 
 @keyframes display-glitch-ambient-idle {
@@ -2454,6 +2505,132 @@ html, body, #root {
   .industrial-display-area .moe-badge-root.moe-badge-suggest {
     animation: none !important;
   }
+}
+
+/* ── Fusion share card capture + menu ─────────────────────────────── */
+.fusion-share-capture-brand-shell {
+  position: fixed;
+  z-index: 2147483646;
+  pointer-events: none;
+  overflow: hidden;
+  background: #f4f6f8;
+  color: #1a2030;
+}
+
+.fusion-share-capture-footer-shell {
+  position: fixed;
+  z-index: 2147483646;
+  pointer-events: none;
+  overflow: hidden;
+  background: #0a0c10;
+  color: #e8edf2;
+}
+
+/* Offscreen capture — panel-accent mat + inset bezel with live cast shadow. */
+.fusion-share-capture-stage[data-fusion-share-capture] {
+  background: var(--theme-panel-accent);
+  overflow: visible;
+}
+
+.fusion-share-capture-stage[data-fusion-share-capture] > .industrial-display-frame {
+  overflow: visible;
+  box-shadow: var(--theme-bezel-cast-shadow),
+    inset 1px 1px 0 var(--theme-bezel-inset-hi),
+    inset -1px -1px 0 var(--theme-bezel-inset-lo),
+    inset 0 2px 10px color-mix(in srgb, var(--theme-bezel-inset-lo) 45%, transparent),
+    inset 0 -1px 4px color-mix(in srgb, var(--theme-bezel-inset-lo) 30%, transparent);
+}
+
+/* Offscreen clone — match live phosphor height; pin hero TPS (no viewport vh). */
+.fusion-share-capture-stage[data-fusion-share-capture] .vram-forecast-display {
+  height: 250px !important;
+  min-height: 250px !important;
+  max-height: 250px !important;
+}
+
+.fusion-share-capture-stage[data-fusion-share-capture] .fusion-prefill-hero-value,
+.fusion-share-capture-stage[data-fusion-share-capture] [style*="6vh"] {
+  font-size: 2.75rem !important;
+  line-height: 1 !important;
+}
+
+.fusion-share-trigger {
+  color: inherit;
+}
+
+.fusion-share-menu {
+  padding: 4px;
+  border-radius: 4px;
+  border: 1px solid var(--theme-border-subtle);
+  background: color-mix(in srgb, var(--theme-panel) 92%, var(--theme-bg));
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.28);
+}
+
+.fusion-share-menu__btn {
+  text-align: left;
+  font-family: "JetBrains Mono", "Roboto Mono", monospace;
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 4px 6px;
+  border-radius: 3px;
+  border: 1px solid var(--theme-border-subtle);
+  background: color-mix(in srgb, var(--theme-text) 88%, transparent);
+  color: color-mix(in srgb, var(--theme-bg) 70%, transparent);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.fusion-share-menu__btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--theme-text) 95%, transparent);
+  color: var(--theme-bg);
+}
+
+.fusion-share-menu__btn:disabled {
+  opacity: 0.45;
+  cursor: wait;
+}
+
+.fusion-share-capture-wrapper {
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+}
+
+.fusion-share-capture-brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 14px 8px;
+  background: var(--theme-bg);
+  border-bottom: 1px solid var(--theme-border-subtle);
+}
+
+.fusion-share-capture-brand .fusion-share-brand-mark {
+  color: var(--theme-text);
+}
+
+.fusion-share-capture-frame {
+  margin: 0;
+}
+
+/* Fusion overlay — PREFILL hero TPS (default slate; phosphor-light + ARCTIC overrides below) */
+.fusion-prefill-hero-value--active {
+  color: rgba(148, 163, 184, 0.7);
+}
+
+.fusion-prefill-hero-value--idle {
+  color: rgba(148, 163, 184, 0.25);
+}
+
+[data-theme="arctic"] .phosphor-screen .fusion-prefill-hero-value--active,
+[data-theme="arctic"] .phosphor-screen-inner .fusion-prefill-hero-value--active {
+  color: #4a5568;
+}
+
+[data-theme="arctic"] .phosphor-screen .fusion-prefill-hero-value--idle,
+[data-theme="arctic"] .phosphor-screen-inner .fusion-prefill-hero-value--idle {
+  color: rgba(90, 100, 120, 0.38);
 }
 
 /* ARCTIC — darker recessed VRAM phosphor (all display textures) */
@@ -2665,6 +2842,20 @@ html, body, #root {
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.04),
     0 1px 2px rgba(0, 0, 0, 0.15) !important;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    opacity 0.15s ease;
+}
+
+/* Idle cards recede; selected card stays full strength */
+[data-config-panel] .running-engine-card:not(.running-engine-card-selected) {
+  opacity: 0.58;
+}
+
+[data-config-panel] .running-engine-card:not(.running-engine-card-selected):hover {
+  opacity: 0.82;
 }
 
 [data-config-panel] .running-engine-card:hover {
@@ -2673,8 +2864,24 @@ html, body, #root {
 }
 
 [data-config-panel] .running-engine-card-selected {
+  opacity: 1;
   background: var(--theme-eject-card-selected-bg) !important;
   border-color: var(--theme-eject-card-selected-border) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 0 0 1px color-mix(in srgb, var(--theme-eject-card-selected-border) 45%, transparent),
+    0 2px 10px color-mix(in srgb, var(--theme-eject-card-selected-border) 24%, transparent) !important;
+}
+
+[data-theme="arctic"] [data-config-panel] .running-engine-card:not(.running-engine-card-selected) {
+  opacity: 0.68;
+}
+
+[data-theme="arctic"] [data-config-panel] .running-engine-card-selected {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.65),
+    0 0 0 1px var(--theme-eject-card-selected-border),
+    0 2px 12px rgba(42, 107, 74, 0.2) !important;
 }
 
 /* Runtime profile tag — tiny amber line under model name */

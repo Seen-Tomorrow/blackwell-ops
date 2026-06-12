@@ -32,6 +32,7 @@ import DisplayGlitchOverlay from "./DisplayGlitchOverlay";
 import { useFoundry } from "../hooks/useBuildDock";
 import { buildAutoVramLaunchParams } from "../lib/autoVramLaunch";
 import { committedSlotsFromStack } from "../services/vram/scenarios/scenarios_factory";
+import type { FusionShareLaunchConfig } from "../lib/fusionShareCapture";
 
 
 
@@ -105,6 +106,9 @@ function deriveParamGroups(groupKeys: string[]): ParamGroupMeta[] {
 
 const SPEC_DECODING_GROUP = "SPECULATIVE-DECODING";
 const SPEC_DECODING_LAUNCH_KEYS = ["spec_type", "spec_draft_n_max"] as const;
+
+/** Auto VRAM simple mode still shows these in RUNTIME-CONFIG and passes them at launch. */
+const SIMPLE_MODE_RUNTIME_KEYS = ["base_port"] as const;
 
 function isSpecDecodingActive(params: UserEditedTemplateParam[]): boolean {
   return params
@@ -335,7 +339,10 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   const simpleModeActive = providerSupportsAutoVram && autoVramEnabled;
   const visibleParamKeys = useMemo(() => {
     if (!simpleModeActive) return null;
-    return new Set(launchProfile?.simpleParamKeys ?? ["device", "ctx"]);
+    return new Set([
+      ...(launchProfile?.simpleParamKeys ?? ["device", "ctx"]),
+      ...SIMPLE_MODE_RUNTIME_KEYS,
+    ]);
   }, [simpleModeActive, launchProfile?.simpleParamKeys]);
 
   useEffect(() => {
@@ -470,6 +477,25 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   });
 
   const splitModeActive = isSplitModeActive(config.split);
+
+  const shareLaunchConfig = useMemo((): FusionShareLaunchConfig => ({
+    ctx: config.ctx,
+    batch: config.batch,
+    ubatch: config.ubatch,
+    flashAttn: config.flash_attn != null ? String(config.flash_attn) : undefined,
+    splitMode: config.split != null ? String(config.split) : undefined,
+    kvQuant: config.kv_quant != null ? String(config.kv_quant) : undefined,
+  }), [config.ctx, config.batch, config.ubatch, config.flash_attn, config.split, config.kv_quant]);
+
+  const shareProfileMeta = useMemo(() => {
+    const meta = ENV_META[selectedBinaryProfile];
+    const provider = resolvedProviders?.find((p) => p.id === effectiveBackendType);
+    return {
+      providerName: provider?.display_name || provider?.id,
+      profileLabel: meta.label,
+      cudaVersion: meta.cuda,
+    };
+  }, [selectedBinaryProfile, resolvedProviders, effectiveBackendType]);
 
   // Manual split → all GPUs; solo → manifest projection; badge click still forces split=none
   const selectedGpuIndices = useMemo(() => {
@@ -755,8 +781,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     finalAlias = resolveUniqueAlias(finalAlias, stack);
 
     const autoVramLaunchKeys = simpleModeActive && isSpecDecodingActive(allParamsResolved)
-      ? [...new Set([...simpleParamKeys, ...SPEC_DECODING_LAUNCH_KEYS])]
-      : simpleParamKeys;
+      ? [...new Set([...simpleParamKeys, ...SIMPLE_MODE_RUNTIME_KEYS, ...SPEC_DECODING_LAUNCH_KEYS])]
+      : [...new Set([...simpleParamKeys, ...SIMPLE_MODE_RUNTIME_KEYS])];
 
     const extraParams: Record<string, unknown> = simpleModeActive && model.metadata
       ? buildAutoVramLaunchParams({
@@ -1020,7 +1046,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         className={onboardingDisplay.area}
         data-display-texture={displayTexture}
       >
-          <div className={onboardingDisplay.frame}>
+          <div className={onboardingDisplay.frame} data-fusion-share-frame>
               <button
                 type="button"
                 onClick={cycleDisplayTexture}
@@ -1081,6 +1107,12 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                     hideValidate={simpleModeActive}
                     hideMoeBadge={simpleModeActive}
                     modelMeta={model?.metadata}
+                    modelName={model?.name}
+                    modelQuant={model?.quant}
+                    providerName={shareProfileMeta.providerName}
+                    profileLabel={shareProfileMeta.profileLabel}
+                    cudaVersion={shareProfileMeta.cudaVersion}
+                    launchConfig={shareLaunchConfig}
                   />
                 )}
               </div>

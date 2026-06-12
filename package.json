@@ -1,7 +1,7 @@
 {
   "name": "blackwell-ops",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.1",
   "type": "module",
   "scripts": {
     "server": "vite --port 1420",
@@ -16,6 +16,7 @@
     "prerelease": "powershell -ExecutionPolicy Bypass -File scripts/mirror-artifacts.ps1 && powershell -ExecutionPolicy Bypass -File scripts/prepare-release-runtime.ps1",
     "release": "npm run build && tauri build",
     "majestic:check": "powershell -ExecutionPolicy Bypass -File scripts/majestic/majestic.ps1 -Mode check",
+    "majestic:bump": "powershell -ExecutionPolicy Bypass -File scripts/majestic/majestic.ps1 -Mode bump",
     "majestic:pack": "powershell -ExecutionPolicy Bypass -File scripts/majestic/majestic.ps1 -Mode pack",
     "majestic:ship": "powershell -ExecutionPolicy Bypass -File scripts/majestic/majestic.ps1 -Mode ship"
   },
@@ -23,6 +24,7 @@
     "@tauri-apps/api": "^2.11.0",
     "@tauri-apps/plugin-shell": "^2",
     "ansi-to-html": "^0.7.2",
+    "html-to-image": "^1.11.13",
     "react": "^19.2.6",
     "react-dom": "^19.2.6"
   },

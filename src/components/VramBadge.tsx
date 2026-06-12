@@ -6,6 +6,7 @@ import MemorySourcePanel, { manifestHasFitProbe } from "./MemorySourcePanel";
 import { useFusionData } from "../hooks/useFusionData";
 import { MEMORY_SOURCE_ACCENT } from "../services/vram/memorySource";
 import DisplayGlitchOverlay from "./DisplayGlitchOverlay";
+import type { FusionShareLaunchConfig } from "../lib/fusionShareCapture";
 
 interface VramBadgeProps {
   manifest: VramManifest | null;
@@ -32,6 +33,12 @@ interface VramBadgeProps {
   /** Hide MOE_OPTIMAL badge (not applicable in Auto VRAM mode). */
   hideMoeBadge?: boolean;
   className?: string;
+  modelName?: string;
+  modelQuant?: string;
+  providerName?: string;
+  profileLabel?: string;
+  cudaVersion?: string;
+  launchConfig?: FusionShareLaunchConfig;
 }
 
 /** Pure skeleton renderer — reads all text, visibility, and colors from scenario's uiTemplate.
@@ -39,7 +46,8 @@ interface VramBadgeProps {
 export default function VramBadge({
   manifest, gpus, modelMeta, selectedGpuIndices, onDeviceSelect, isValidating, onValidate,
   isModelRunning, activeEngineAlias, activeEnginePort, selectedSlotIdx, supportsFusion = true, engineStatus,
-  gpuMask = "", vramTargetMib, modelLayerTotal, gpuLoadTargetsMib, offloadMode, onMoeSuggestionClick, hideValidate = false, hideMoeBadge = false, className
+  gpuMask = "", vramTargetMib, modelLayerTotal, gpuLoadTargetsMib, offloadMode, onMoeSuggestionClick, hideValidate = false, hideMoeBadge = false, className,
+  modelName, modelQuant, providerName, profileLabel, cudaVersion, launchConfig,
 }: VramBadgeProps) {
   const { getEngine } = useFusionData();
   const fusion = selectedSlotIdx !== null && selectedSlotIdx !== undefined ? getEngine(selectedSlotIdx) : null;
@@ -101,6 +109,12 @@ export default function VramBadge({
             vramTargetMib={vramTargetMib}
             modelLayerTotal={modelLayerTotal}
             gpuLoadTargetsMib={gpuLoadTargetsMib}
+            modelName={modelName}
+            modelQuant={modelQuant}
+            providerName={providerName}
+            profileLabel={profileLabel}
+            cudaVersion={cudaVersion}
+            launchConfig={launchConfig}
           />
         </div>
       )}

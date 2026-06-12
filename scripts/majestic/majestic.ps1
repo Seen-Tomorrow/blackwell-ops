@@ -1,9 +1,9 @@
 # Majestic - private release automation for Blackwell Ops.
-# Usage: .\scripts\majestic\majestic.ps1 -Mode check|pack|ship [-DryRun]
+# Usage: .\scripts\majestic\majestic.ps1 -Mode check|pack|ship|bump [-DryRun]
 
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('check', 'pack', 'ship')]
+    [ValidateSet('check', 'pack', 'ship', 'bump')]
     [string]$Mode,
 
     [switch]$DryRun
@@ -35,12 +35,52 @@ function Read-MajesticConfig {
     Get-Content -LiteralPath $config_path -Raw | ConvertFrom-Json
 }
 
+function Get-TauriConfPath {
+    Join-Path $root 'src-tauri\tauri.conf.json'
+}
+
+function Get-PackageJsonPath {
+    Join-Path $root 'package.json'
+}
+
 function Read-AppVersion {
-    $tauri_conf = Join-Path $root 'src-tauri\tauri.conf.json'
+    $tauri_conf = Get-TauriConfPath
     if (-not (Test-Path -LiteralPath $tauri_conf)) {
         throw "Missing tauri.conf.json"
     }
     (Get-Content -LiteralPath $tauri_conf -Raw | ConvertFrom-Json).version
+}
+
+function Get-BumpedPatchVersion {
+    param([string]$Current)
+    $parts = $Current.Split('.')
+    $major = 0
+    $minor = 0
+    $patch = 0
+    if ($parts.Length -ge 1 -and $parts[0] -match '^\d+$') { [void][int]::TryParse($parts[0], [ref]$major) }
+    if ($parts.Length -ge 2 -and $parts[1] -match '^\d+$') { [void][int]::TryParse($parts[1], [ref]$minor) }
+    if ($parts.Length -ge 3 -and $parts[2] -match '^\d+$') { [void][int]::TryParse($parts[2], [ref]$patch) }
+    "$major.$minor.$($patch + 1)"
+}
+
+function Set-JsonFileVersion {
+    param(
+        [string]$Path,
+        [string]$NewVersion
+    )
+    if (-not (Test-Path -LiteralPath $Path)) {
+        throw "Missing file: $Path"
+    }
+    $content = Get-Content -LiteralPath $Path -Raw
+    $pattern = '("version"\s*:\s*")[^"]+(")'
+    $match = [regex]::Match($content, $pattern)
+    if (-not $match.Success) {
+        throw "version field not found in $Path"
+    }
+    $updated = $content.Substring(0, $match.Index) +
+        $match.Groups[1].Value + $NewVersion + $match.Groups[2].Value +
+        $content.Substring($match.Index + $match.Length)
+    [System.IO.File]::WriteAllText($Path, $updated)
 }
 
 function Get-TagName {
@@ -331,6 +371,31 @@ function Invoke-MajesticPack {
     }
 }
 
+function Invoke-MajesticBump {
+    $current = Read-AppVersion
+    $newVersion = Get-BumpedPatchVersion -Current $current
+    $tag = Get-TagName -Version $newVersion -Prefix (Read-MajesticConfig).tagPrefix
+
+    Write-Majestic "Bump patch version: $current -> $newVersion (tag will be $tag)" -Color Cyan
+    Write-Majestic "Updates: src-tauri/tauri.conf.json + package.json" -Color DarkGray
+
+    if ($DryRun) {
+        Write-Majestic "[dry-run] would bump version to $newVersion" -Color Yellow
+        return
+    }
+
+    $confirm = Read-Host "Type YES to bump to $newVersion"
+    if ($confirm -ne 'YES') {
+        Write-Majestic "Bump cancelled." -Color Yellow
+        return
+    }
+
+    Set-JsonFileVersion -Path (Get-TauriConfPath) -NewVersion $newVersion
+    Set-JsonFileVersion -Path (Get-PackageJsonPath) -NewVersion $newVersion
+    Write-Majestic "Version bumped to $newVersion" -Color Green
+    Write-Majestic "Next: pack (rebuild installer) then ship." -Color Cyan
+}
+
 function Assert-ShipUnlocked {
     if (-not (Test-Path -LiteralPath $enabled_path)) {
         throw @"
@@ -395,13 +460,17 @@ function Invoke-MajesticShip {
 
         $tag_exists = [bool](git tag -l $tag 2>$null)
         if (-not $tag_exists) {
-            Write-Majestic "Creating git tag $tag..." -Color Cyan
+            Write-Majestic "Creating local git tag $tag on current commit..." -Color Cyan
             git tag -a $tag -m "Release $tag"
+        } else {
+            Write-Majestic "Local git tag $tag already exists - reusing." -Color DarkGray
         }
 
         if ($Config.ship.pushTag) {
             Write-Majestic "Pushing tag $tag to origin..." -Color Cyan
             git push origin $tag
+        } else {
+            Write-Majestic "pushTag=false - skipping git push (gh release still creates GitHub tag)." -Color DarkGray
         }
 
         $release_exists = $false
@@ -449,4 +518,5 @@ switch ($Mode) {
     }
     'pack' { Invoke-MajesticPack -Config $config }
     'ship' { Invoke-MajesticShip -Config $config }
+    'bump' { Invoke-MajesticBump }
 }

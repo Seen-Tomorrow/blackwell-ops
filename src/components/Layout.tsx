@@ -12,6 +12,7 @@ import BlackwellOutputConsole, {
 import OutputConsoleInlineDock from "./OutputConsoleInlineDock";
 import FoundryModal from "./FoundryModal";
 import ThemePicker from "./ThemePicker";
+import BlackwellBrandMark from "./BlackwellBrandMark";
 import {
   cyclePowerUserState,
   loadUiDensity,
@@ -201,23 +202,7 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
       <header className="app-header flex items-center justify-between px-6 py-3 backdrop-blur-sm relative z-30 layout-header-enter">
         <div className="flex items-center gap-4">
           {/* Logo / Brand */}
-          <div className="flex items-center gap-2">
-            <svg width="28" height="28" viewBox="0 0 28 28" fill="none" className="flex-shrink-0 app-header-logo">
-              {/* Ghost silhouette made of PCB traces */}
-              <path d="M14 2L6 8v10l8 6 8-6V8L14 2z" stroke="currentColor" strokeWidth="1.5" fill="none" />
-              <path d="M14 6v16M10 10h8M10 14h8M10 18h8" stroke="currentColor" strokeWidth="0.75" opacity="0.5" />
-              <circle cx="11" cy="12" r="1.5" fill="currentColor" opacity="0.8" />
-              <circle cx="17" cy="12" r="1.5" fill="currentColor" opacity="0.8" />
-            </svg>
-            <div>
-              <h1 className="app-header-title text-sm font-mono font-bold tracking-widest">
-                BLACKWELL OPS
-              </h1>
-              <p className="app-header-subtitle text-[8px] font-mono tracking-wider">
-                v{__TAURI_VERSION__} · BUILD {__APP_VERSION__}
-              </p>
-            </div>
-          </div>
+          <BlackwellBrandMark />
 
           {/* Nav tabs */}
           <nav className="flex items-center gap-1 ml-8">

@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { FusionUpdate } from "../lib/types";
-import BenchWidget from "./BenchWidget";
+import BenchWidget, { type BenchHeroPatch, type BenchSessionMode } from "./BenchWidget";
 import FusionBooter from "./FusionBooter";
+import FusionShareMenu from "./FusionShareMenu";
+import type { FusionShareLaunchConfig } from "../lib/fusionShareCapture";
 import SlotCtxBars from "./SlotCtxBars";
 import type { GpuInfo } from "../lib/types";
 import { useFusionHeroTpsMode } from "../hooks/useFusionHeroTpsMode";
@@ -21,6 +23,12 @@ interface FusionOverlayProps {
   vramTargetMib?: number;
   modelLayerTotal?: number;
   gpuLoadTargetsMib?: Record<number, number>;
+  modelName?: string;
+  modelQuant?: string;
+  providerName?: string;
+  profileLabel?: string;
+  cudaVersion?: string;
+  launchConfig?: FusionShareLaunchConfig;
 }
 
 function formatMs(ms: number): string {
@@ -52,6 +60,12 @@ export default function FusionOverlay({
   vramTargetMib,
   modelLayerTotal,
   gpuLoadTargetsMib,
+  modelName,
+  modelQuant,
+  providerName,
+  profileLabel,
+  cudaVersion,
+  launchConfig,
 }: FusionOverlayProps) {
   const displayAlias = alias ?? "ENGINE";
   const displayPort = enginePort ?? 9090;
@@ -66,10 +80,17 @@ export default function FusionOverlay({
   const [displayFrozen, setDisplayFrozen] = useState<LastRequestStats | null>(null);
   const [isStopping, setIsStopping] = useState(false);
   const stoppingRef = useRef(false);
+  const [benchHero, setBenchHero] = useState<{ tg: number | null; pp: number | null }>({
+    tg: null,
+    pp: null,
+  });
+  const [benchSessionMode, setBenchSessionMode] = useState<BenchSessionMode>("idle");
   const { mode: heroTpsMode, toggle: toggleHeroTpsMode } = useFusionHeroTpsMode();
 
   useTauriListen<{ slot: number }>("slot-cleared", ({ slot }) => {
     engineStates.current.delete(slot);
+    setBenchHero({ tg: null, pp: null });
+    setBenchSessionMode("idle");
     if (fusion?.slotIdx === slot) {
       setDisplayFrozen(null);
       stoppingRef.current = false;
@@ -79,6 +100,8 @@ export default function FusionOverlay({
 
   useTauriListen("engines-all-stopped", () => {
     engineStates.current.clear();
+    setBenchHero({ tg: null, pp: null });
+    setBenchSessionMode("idle");
     setDisplayFrozen(null);
     stoppingRef.current = false;
     setIsStopping(false);
@@ -150,6 +173,13 @@ export default function FusionOverlay({
     ttftMs: fusion.ttftMs != null ? formatMs(fusion.ttftMs) : null,
     elapsedMs: formatMs(fusion.requestElapsedMs),
   } as LastRequestStats : (displayFrozen ?? defaultSnapshot);
+
+  const handleBenchHeroPatch = useCallback((patch: BenchHeroPatch) => {
+    setBenchHero((prev) => ({
+      tg: patch.tg !== undefined ? patch.tg : prev.tg,
+      pp: patch.pp !== undefined ? patch.pp : prev.pp,
+    }));
+  }, []);
 
   const [isBenchWarmup, setIsBenchWarmup] = useState(false);
   useTauriListen<{ port: number; phase: string }>("bench-tg-progress", (payload) => {
@@ -252,9 +282,28 @@ export default function FusionOverlay({
         ? fusion.prefillTpsMetrics.toFixed(0)
         : "--";
 
+  const suppressPrefillHero =
+    benchSessionMode === "tg" ||
+    (benchSessionMode === "both" && benchHero.pp == null);
+  const suppressTgHero = benchSessionMode === "pp";
+  const ppHeroTps = benchHero.pp;
+  const ppHeroDisplay = suppressPrefillHero
+    ? "--"
+    : ppHeroTps != null
+      ? ppHeroTps.toFixed(0)
+      : ppTpsValue;
+  const ppHeroActive = !suppressPrefillHero && (ppHeroTps != null ? ppHeroTps > 0 : ppTpsValue !== "--");
+
   const tgTpsLive = clampHeroTps(Math.max(fusion.genTpsInstant ?? 0, fusion.logGenTps ?? 0));
   const tgTpsPick = clampHeroTps(heroTpsMode === "avg" ? fusion.genTps : tgTpsLive);
   const tgTpsValue = tgTpsPick > 0 ? tgTpsPick.toFixed(1) : "--";
+  const tgHeroTps = benchHero.tg;
+  const tgHeroDisplay = suppressTgHero
+    ? "--"
+    : tgHeroTps != null
+      ? tgHeroTps.toFixed(1)
+      : tgTpsValue;
+  const tgHeroActive = !suppressTgHero && (tgHeroTps != null ? tgHeroTps > 0 : tgTpsPick > 0);
 
   // Primary prefill progress/tokens from /slots poll (reliable); LP log is red comparison fallback
   const prefillTotal = fusion.prefillTokensTotal ?? 0;
@@ -271,7 +320,7 @@ export default function FusionOverlay({
     fusion.logPromptTokens ?? 0,
   );
   const showPrefillProgress =
-    isPrefillPhase && (prefillTotal > 0 || primaryPrefillProgress > 0);
+    !suppressPrefillHero && isPrefillPhase && (prefillTotal > 0 || primaryPrefillProgress > 0);
 
   return (
     <div className="relative w-full h-full overflow-hidden">
@@ -308,7 +357,16 @@ export default function FusionOverlay({
         >
           {/* ═══ HEADER — alias + phase indicator + controls ═══════ */}
           <div className="flex items-center flex-shrink-0 mb-1 gap-2">
-            <div className="flex items-center flex-1 min-w-0 justify-start">
+            <div className="flex items-center flex-1 min-w-0 justify-start gap-1.5">
+              <FusionShareMenu
+                alias={displayAlias}
+                providerName={providerName}
+                modelName={modelName}
+                modelQuant={modelQuant}
+                profileLabel={profileLabel}
+                cudaVersion={cudaVersion}
+                launchConfig={launchConfig}
+              />
               <span className="text-[9px] font-mono text-stealth-muted/40 tracking-widest">
                 CONTEXT SLOTS
               </span>
@@ -352,9 +410,8 @@ export default function FusionOverlay({
           {/* ═══ MAIN BODY — bars | TG hero | PREFILL ═══ */}
           <div className="flex gap-2 flex-1 min-h-0" style={{ alignItems: 'stretch' }}>
 
-            {/* ── LEFT: Slot CTX bars (side-by-side, full height) ─── */}
-            {/* Give more room when multiple bars are shown (parallel > 1), whether unified or partitioned. */}
-            <div className="flex-shrink-0" style={{ width: (fusion.parallel <= 1) ? '12%' : '18%', minWidth: (fusion.parallel <= 1) ? 64 : 110 }}>
+            {/* ── LEFT: Slot CTX bars — fixed 4-slot baseline width (bars scale inside) ─── */}
+            <div className="flex-shrink-0" style={{ width: "18%", minWidth: 110 }}>
               <SlotCtxBars
                 slotCtx={fusion.slotCtx}
                 ctxTotal={ctxTotal}
@@ -367,7 +424,7 @@ export default function FusionOverlay({
             <div className="flex gap-3 flex-1 min-h-0">
               {/* ── LEFT: TG TPS HERO (dominant) ─── */}
               <div className={`flex flex-col items-center justify-start px-2 py-1.5 rounded-sm border transition-colors relative ${
-                 fusion.phase === "TG"
+                 !suppressTgHero && fusion.phase === "TG"
                    ? "border-green-500/30 bg-black/8"
                    : "border-stone-500/10 bg-black/4"
                }`} style={{ flex: '1 1 60%' }}>
@@ -389,25 +446,25 @@ export default function FusionOverlay({
                      className="font-mono font-bold tracking-tight leading-none"
                      style={{
                        fontSize: 'clamp(2rem, 6vh, 3.5rem)',
-                       color: tgTpsPick > 0 ? '#22c55e' : 'rgba(148,163,184,0.25)'
+                       color: tgHeroActive ? '#22c55e' : 'rgba(148,163,184,0.25)'
                      }}
                    >
-                     {tgTpsValue}
+                     {tgHeroDisplay}
                    </span>
                    <span className="text-[7px] font-mono text-stealth-muted/30 tracking-wider">tok/s</span>
                  </div>
 
                 {/* Per-request micro-stats — always visible, no layout shifts */}
                  <div className="flex items-center gap-2 mt-1.5">
-                   <span className={`text-[8px] font-mono ${showLive ? "text-black" : "text-stealth-muted/35"}`}>
+                   <span className={`text-[8px] font-mono ${showLive ? "fusion-readout-emphasis" : "text-stealth-muted/35"}`}>
                      {statsToDisplay.genTokensSlots > 0 ? statsToDisplay.genTokensSlots + " tok" : "--"}
                    </span>
-                   <span className={`text-[6px] ${showLive ? "text-black" : "text-stealth-muted/15"}`}>│</span>
-                   <span className={`text-[8px] font-mono ${showLive ? "text-black" : "text-stealth-muted/35"}`}>
+                   <span className={`text-[6px] ${showLive ? "fusion-readout-divider" : "text-stealth-muted/15"}`}>│</span>
+                   <span className={`text-[8px] font-mono ${showLive ? "fusion-readout-emphasis" : "text-stealth-muted/35"}`}>
                      TTFT {statsToDisplay.ttftMs ?? "--"}
                    </span>
-                   <span className={`text-[6px] ${showLive ? "text-black" : "text-stealth-muted/15"}`}>│</span>
-                   <span className={`text-[8px] font-mono ${showLive ? "text-black" : "text-stealth-muted/35"}`}>
+                   <span className={`text-[6px] ${showLive ? "fusion-readout-divider" : "text-stealth-muted/15"}`}>│</span>
+                   <span className={`text-[8px] font-mono ${showLive ? "fusion-readout-emphasis" : "text-stealth-muted/35"}`}>
                      {statsToDisplay.elapsedMs}
                    </span>
                  </div>
@@ -422,7 +479,7 @@ export default function FusionOverlay({
 
               {/* ── RIGHT: PREFILL (secondary) — use logPrefillTps as primary, fallback to /metrics ─── */}
               <div className={`flex flex-col items-center justify-start px-2 py-1.5 rounded-sm border transition-colors ${
-                isPrefillPhase
+                !suppressPrefillHero && isPrefillPhase
                   ? "border-stealth-muted/30 bg-black/8"
                   : "border-stone-500/10 bg-black/4"
               }`} style={{ flex: '1 1 40%' }}>
@@ -432,13 +489,14 @@ export default function FusionOverlay({
                 {/* PP TPS number — primary value from log parser, fallback to /metrics */}
                 <div className="flex items-baseline gap-1">
                   <span
-                    className="font-mono font-bold tracking-tight leading-none"
-                    style={{
-                      fontSize: 'clamp(2rem, 6vh, 3.5rem)',
-                      color: ppTpsValue !== "--" ? 'rgba(148,163,184,0.7)' : 'rgba(148,163,184,0.25)'
-                    }}
+                    className={`fusion-prefill-hero-value font-mono font-bold tracking-tight leading-none ${
+                      ppHeroActive
+                        ? "fusion-prefill-hero-value--active"
+                        : "fusion-prefill-hero-value--idle"
+                    }`}
+                    style={{ fontSize: "clamp(2rem, 6vh, 3.5rem)" }}
                   >
-                    {ppTpsValue}
+                    {ppHeroDisplay}
                   </span>
                   <span className="text-[7px] font-mono text-stealth-muted/30 tracking-wider">tok/s</span>
                 </div>
@@ -455,14 +513,14 @@ export default function FusionOverlay({
                         }}
                       />
                     </div>
-                    <span className="text-[12px] font-mono text-black flex-shrink-0">
+                    <span className="text-[12px] font-mono fusion-readout-emphasis flex-shrink-0">
                       {(primaryPrefillProgress * 100).toFixed(0)}%
                     </span>
                   </div>
                 )}
 
                 {/* Prompt fill: processed vs task size (from logs + /slots). Hidden outside PP so TG doesn't show stale "274/274". */}
-                {isPrefillPhase && (
+                {!suppressPrefillHero && isPrefillPhase && (
                   <span className="text-[7px] font-mono text-stealth-muted/40 mt-0.5" title="Prompt tokens processed / estimated task size">
                     {primaryPrefillTokens > 0
                       ? prefillTotal > 0 && primaryPrefillTokens < prefillTotal
@@ -475,10 +533,14 @@ export default function FusionOverlay({
             </div>
           </div>
 
-          {/* ═══ BENCH WIDGET — compact ══════════════ */}
+          {/* ═══ BENCH WIDGET — fixed panel height (see BenchWidget) ═══ */}
           <div className="flex-shrink-0 mt-1">
             {fusion.engine_state !== "LOADING" && (
-              <BenchWidget port={displayPort} />
+              <BenchWidget
+                port={displayPort}
+                onHeroPatch={handleBenchHeroPatch}
+                onBenchSessionChange={setBenchSessionMode}
+              />
             )}
           </div>
         </div>

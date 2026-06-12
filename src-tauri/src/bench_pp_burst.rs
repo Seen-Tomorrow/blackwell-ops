@@ -4,8 +4,18 @@
 //! Generates a synthetic prompt targeting ~N tokens, POSTs to /completion with n_predict=0,
 //! and returns prefill TPS from engine-reported timings.
 
+use crate::bench_cancel::{self, post_json_cancellable};
 use serde::Serialize;
 use tauri::Emitter;
+use tokio_util::sync::CancellationToken;
+
+struct BenchPortGuard(u16);
+
+impl Drop for BenchPortGuard {
+    fn drop(&mut self) {
+        bench_cancel::end(self.0);
+    }
+}
 
 /// Large vocabulary of diverse English words for unique-mode PP burst (~10K words).
 const UNIQUE_WORDS: &[&str] = &[
@@ -76,6 +86,8 @@ pub async fn cmd_bench_pp_burst(
     target_tokens: usize,
     bench_prompt_mode: String,
 ) -> Result<BenchPPResult, String> {
+    let cancel = bench_cancel::begin(port);
+    let _guard = BenchPortGuard(port);
     let url = format!("http://127.0.0.1:{}/completion", port);
     let client = reqwest::Client::new();
 
@@ -103,6 +115,15 @@ pub async fn cmd_bench_pp_burst(
     let mut measured_run: Option<RunStats> = None;
 
     for run in 0..TOTAL_RUNS {
+        if bench_cancel::is_cancelled(&cancel) {
+            return Ok(BenchPPResult {
+                bench_prefill_tps: 0.0,
+                bench_prompt_tokens_actual: 0,
+                success: false,
+                error: Some("Cancelled".to_string()),
+            });
+        }
+
         // Signal phase to frontend so UI can show WARMUP vs MEASURED
         let phase = if run < WARMUP_RUNS { "warmup" } else { "measured" };
         let effective_target = if run < WARMUP_RUNS { WARMUP_TOKENS } else { target_tokens };
@@ -124,7 +145,18 @@ pub async fn cmd_bench_pp_burst(
                 build_unique_prompt(WARMUP_TOKENS)
             }
         } else {
-            build_prompt_for_token_target(&client, port, effective_target, repetitive).await
+            match build_prompt_for_token_target(&client, port, effective_target, repetitive, &cancel).await {
+                Ok(text) => text,
+                Err(e) if e == "Cancelled" => {
+                    return Ok(BenchPPResult {
+                        bench_prefill_tps: 0.0,
+                        bench_prompt_tokens_actual: 0,
+                        success: false,
+                        error: Some("Cancelled".to_string()),
+                    });
+                }
+                Err(e) => return Err(e),
+            }
         };
 
         let body = serde_json::json!({
@@ -135,41 +167,32 @@ pub async fn cmd_bench_pp_burst(
             "cache_prompt": false,
         });
 
-        match client.post(&url)
-            .header("Content-Type", "application/json")
-            .json(&body)
-            .send()
-            .await {
-                Ok(resp) => {
-                    if !resp.status().is_success() {
-                        let status = resp.status();
-                        if status.as_u16() == 400 {
-                            return Err(format!(
-                                "Server rejected ({}). Prompt may exceed engine n_ctx — try smaller target or increase context window.",
-                                status
-                            ));
-                        }
-                        return Err(format!("Server returned error: {}", status));
-                    }
+        match post_json_cancellable(&client, &url, &body, &cancel).await {
+            Ok(parsed) => {
+                let p_tokens = parsed["tokens_evaluated"].as_u64().unwrap_or(0) as usize;
+                let p_ms = parsed["timings"]["prompt_ms"].as_f64().unwrap_or(0.0);
+                let prefill_tps = if p_ms > 0.0 { (p_tokens as f64 / p_ms) * 1000.0 } else { 0.0 };
 
-                    let parsed: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+                log::info!("[BENCH_PP] run {} | mode={} | target={} actual={} tok | prefill: {:.1} TPS",
+                    run + 1, bench_prompt_mode, effective_target, p_tokens, prefill_tps);
 
-                    let p_tokens = parsed["tokens_evaluated"].as_u64().unwrap_or(0) as usize;
-                    let p_ms = parsed["timings"]["prompt_ms"].as_f64().unwrap_or(0.0);
-                    let prefill_tps = if p_ms > 0.0 { (p_tokens as f64 / p_ms) * 1000.0 } else { 0.0 };
-
-                    log::info!("[BENCH_PP] run {} | mode={} | target={} actual={} tok | prefill: {:.1} TPS",
-                        run + 1, bench_prompt_mode, effective_target, p_tokens, prefill_tps);
-
-                    if run >= WARMUP_RUNS {
-                        measured_run = Some(RunStats {
-                            prefill_tps,
-                            prompt_tokens: p_tokens,
-                        });
-                    }
+                if run >= WARMUP_RUNS {
+                    measured_run = Some(RunStats {
+                        prefill_tps,
+                        prompt_tokens: p_tokens,
+                    });
                 }
-                Err(e) => return Err(format!("Request failed: {}", e)),
             }
+            Err(e) if e == "Cancelled" => {
+                return Ok(BenchPPResult {
+                    bench_prefill_tps: 0.0,
+                    bench_prompt_tokens_actual: 0,
+                    success: false,
+                    error: Some("Cancelled".to_string()),
+                });
+            }
+            Err(e) => return Err(e),
+        }
 
         if run < WARMUP_RUNS {
             // Re-release after PP warmup so measured PP starts cold (no KV/prompt cache reuse from the warmup run).
@@ -266,9 +289,14 @@ async fn build_prompt_for_token_target(
     port: u16,
     target_tokens: usize,
     repetitive: bool,
-) -> String {
+    cancel: &CancellationToken,
+) -> Result<String, String> {
+    if bench_cancel::is_cancelled(cancel) {
+        return Err("Cancelled".to_string());
+    }
+
     if target_tokens == 0 {
-        return String::new();
+        return Ok(String::new());
     }
 
     let build = |words: usize| -> String {
@@ -290,10 +318,14 @@ async fn build_prompt_for_token_target(
     let mut best_err = i64::MAX;
 
     for _ in 0..5 {
+        if bench_cancel::is_cancelled(cancel) {
+            return Err("Cancelled".to_string());
+        }
+
         let text = build(words);
         let Some(actual) = count_prompt_tokens(client, port, &text).await else {
             log::debug!("[BENCH_PP] /tokenize unavailable — using word estimate {}", words);
-            return text;
+            return Ok(text);
         };
 
         let err = (actual as i64 - target_tokens as i64).abs();
@@ -304,7 +336,7 @@ async fn build_prompt_for_token_target(
                 actual,
                 words
             );
-            return text;
+            return Ok(text);
         }
         if err < best_err {
             best_err = err;
@@ -335,7 +367,7 @@ async fn build_prompt_for_token_target(
             words
         );
     }
-    best_text
+    Ok(best_text)
 }
 
 /// Build a repetitive prompt by repeating the pattern.

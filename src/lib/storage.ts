@@ -33,6 +33,7 @@ import { normalizeDisplayTexture, type DisplayTexture } from "./displayTexture";
  * | BlackOps-setup-guide-dismissed | "1" | User dismissed first-run setup guide |
  * | BlackOps-setup-welcome-seen | "1" | Welcome animation already played once |
  * | BlackOps-setup-guide-preview | "1" | Dev: force welcome + guide in VRAM display |
+
  * | BlackOps-catalog-override:{providerId} | JSON Record<paramKey, value> | Launch-time param chip overrides |
  * | BlackOps-group-order:{providerId} | JSON string[] | CONFIG param group order |
  * | BlackOps-engine-alias:{modelPath} | string | Per-model launch alias |
@@ -225,6 +226,7 @@ export function foundryLastRefreshKey(providerSignature: string): string {
 const STALE_STORAGE_KEYS = [
   "blackops-phosphor-theme",
   `${STORAGE_PREFIX}ctx-slider-variant`,
+  `${STORAGE_PREFIX}brand-logo`,
 ] as const;
 
 // ── Low-level IO ───────────────────────────────────────────────────────────

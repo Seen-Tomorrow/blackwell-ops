@@ -8,15 +8,30 @@ You keep coding and using Foundry in DEV. Majestic ships when you say so.
 Majestic.bat
 ```
 
-Menu: CHECK → PACK → SHIP (plus dry-runs and open output folder).
+Menu: **10 BUMP** → CHECK → PACK → SHIP (plus backups and dry-runs).
 
 ## Or npm
 
 ```powershell
+npm run majestic:bump     # 1.0.0 → 1.0.1 in tauri.conf.json + package.json (asks YES)
 npm run majestic:check    # am I ready? (safe, read-only)
 npm run majestic:pack     # mirror → bundle → build installer (+ optional zips)
 npm run majestic:ship     # upload to GitHub (needs unlock file + type YES)
 ```
+
+## Version bump
+
+**BUMP** increments the **patch** only (`1.0.0` → `1.0.1`). Syncs `src-tauri/tauri.conf.json` and `package.json`. Run **before PACK** so the installer name matches.
+
+## Git tags on SHIP
+
+SHIP does **not** commit your code. It does:
+
+1. **Local** annotated tag `v1.0.0` on current `HEAD` (if missing)
+2. **GitHub Release** via `gh release create v1.0.0` — this creates the **tag on GitHub** and uploads assets
+3. **`git push origin tag`** only if `"pushTag": true` in `majestic.config.json` (default **false**)
+
+So the GitHub release tag is automatic; pushing the tag to `origin` via plain git is optional.
 
 ## First-time unlock (ship only)
 

@@ -9,6 +9,7 @@ import {
 } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { FusionUpdate, StackEntry } from "../lib/types";
+import { resetAllBenchPortStates } from "../lib/benchPortStore";
 import { useTauriListen } from "../hooks/useTauriListen";
 
 const RENDER_INTERVAL_MS = 100;
@@ -136,6 +137,7 @@ export function FusionProvider({
 
   useTauriListen<{ slot: number }>("slot-cleared", (payload) => {
     if (payload?.slot === undefined) return;
+    resetAllBenchPortStates();
     const map = mapRef.current;
     if (!map.has(payload.slot)) return;
     map.delete(payload.slot);
@@ -145,6 +147,7 @@ export function FusionProvider({
   });
 
   useTauriListen<{ slots: number[] }>("engines-all-stopped", () => {
+    resetAllBenchPortStates();
     if (mapRef.current.size === 0) return;
     mapRef.current.clear();
     dirtyRef.current = true;

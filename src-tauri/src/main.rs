@@ -17,6 +17,7 @@ mod vram_learn;
 mod mobile_bridge;
 mod burst_bench;
 mod bench_pp_burst;
+mod bench_cancel;
 mod gguf_scan;
 mod model_cache;
 mod download_manager;
@@ -577,6 +578,7 @@ async fn main() {
             engine::clear_model_cache_cmd,
             burst_bench::cmd_burst_bench,
             bench_pp_burst::cmd_bench_pp_burst,
+            bench_cancel::cmd_cancel_bench,
             fusion_brain::get_fusion_snapshots,
             // Mobile Sentinel Bridge commands (always active)
             mobile_bridge::cmd_mobile_bridge_start,
