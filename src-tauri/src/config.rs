@@ -22,13 +22,16 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use tauri::{Manager, path::BaseDirectory};
 
-use crate::types::{ModelPathEntry, PathDiskUsage, ProviderConfig};
+use crate::types::{ModelLibraryValidation, ModelPathEntry, PathDiskUsage, ProviderConfig};
 
 /// Hard ceiling for engine stack size — individual providers may declare lower limits in spawn_profile.
 pub const ABSOLUTE_MAX_ENGINE_SLOTS: usize = 128;
 
 /// Default provider ID — bundled with the app, always present.
 pub const DEFAULT_PROVIDER_ID: &str = "ggml-master";
+
+/// Default runtime binary profile when none is selected (fresh install / empty slot).
+pub const DEFAULT_BINARY_PROFILE: &str = "frontier";
 
 /// App root directory — parent of the running executable (portable).
 /// DEV: target/debug/ or target/release/ during development.
@@ -699,10 +702,14 @@ fn discover_providers() -> Vec<crate::types::ProviderConfig> {
                                 version: "disk-scanned".to_string(),
                                 build_date: date_str,
                                 cuda_version: None,
+                                cuda_architectures: None,
                             });
                         }
-                        if main_binary.is_empty() {
-                            main_binary = format!("runtime/{}/vanguard/llama-server.exe", pid);
+                        let rel = format!("runtime/{}/{}/llama-server.exe", pid, profile);
+                        if profile == DEFAULT_BINARY_PROFILE {
+                            main_binary = rel;
+                        } else if main_binary.is_empty() {
+                            main_binary = rel;
                         }
                     }
                 }
@@ -924,26 +931,79 @@ fn user_home_dir() -> Option<PathBuf> {
     }
 }
 
-/// True when the standard LM Studio models directory exists on this machine.
-pub fn lm_studio_models_available() -> bool {
-    let expanded = expand_path_placeholders(lm_studio_model_path_template());
-    !expanded.is_empty() && std::path::Path::new(&expanded).is_dir()
+/// Expanded default LM Studio models folder for display (no `%USERPROFILE%` placeholders).
+pub fn lm_studio_default_path_display() -> String {
+    let template = lm_studio_model_path_template();
+    let resolved = resolve_stored_model_path(template);
+    if resolved.is_empty() {
+        expand_path_placeholders(template)
+    } else {
+        resolved
+    }
 }
 
-/// Add the portable LM Studio models path if the folder exists and is not already configured.
+/// True when the standard LM Studio models directory exists on this machine.
+pub fn lm_studio_models_available() -> bool {
+    validate_model_library(lm_studio_model_path_template()).gguf_count > 0
+}
+
+/// Probe a model library folder — exists on disk and contains at least one `.gguf`.
+pub fn validate_model_library(path: &str) -> ModelLibraryValidation {
+    let resolved = resolve_stored_model_path(path);
+    if resolved.is_empty() {
+        return ModelLibraryValidation {
+            exists: false,
+            gguf_count: 0,
+            resolved_path: String::new(),
+        };
+    }
+    let dir = std::path::Path::new(&resolved);
+    if !dir.is_dir() {
+        return ModelLibraryValidation {
+            exists: false,
+            gguf_count: 0,
+            resolved_path: resolved,
+        };
+    }
+    ModelLibraryValidation {
+        exists: true,
+        gguf_count: crate::model_catalog::count_gguf_files(dir),
+        resolved_path: resolved,
+    }
+}
+
+fn entry_has_models(entry: &ModelPathEntry) -> bool {
+    if is_factory_placeholder_entry(entry) {
+        return false;
+    }
+    validate_model_library(&entry.path).gguf_count > 0
+}
+
+/// Add the portable LM Studio models path when the folder exists and contains GGUF models.
 pub fn add_lmstudio_model_path(config: &mut AppConfig) -> Result<bool, String> {
     let template = lm_studio_model_path_template();
-    if !lm_studio_models_available() {
-        return Err(
-            "LM Studio models folder not found. Install LM Studio or add your model folder manually."
-                .to_string(),
-        );
+    let validation = validate_model_library(template);
+    if !validation.exists {
+        let display_path = if validation.resolved_path.is_empty() {
+            lm_studio_default_path_display()
+        } else {
+            validation.resolved_path.clone()
+        };
+        return Err(format!(
+            "LM Studio models folder not found at {display_path}. Use Browse to pick your library."
+        ));
+    }
+    if validation.gguf_count == 0 {
+        return Err(format!(
+            "No GGUF models found in {}. LM Studio may use a custom folder — use Browse to pick it.",
+            validation.resolved_path
+        ));
     }
     if find_model_path_index(config.model_paths.as_slice(), template).is_some() {
         return Ok(false);
     }
-    let resolved = resolve_stored_model_path(template);
-    if !resolved.is_empty() && find_model_path_index(config.model_paths.as_slice(), &resolved).is_some()
+    if !validation.resolved_path.is_empty()
+        && find_model_path_index(config.model_paths.as_slice(), &validation.resolved_path).is_some()
     {
         return Ok(false);
     }
@@ -963,6 +1023,17 @@ fn default_model_path_entry() -> ModelPathEntry {
     }
 }
 
+/// Factory-seeded `<app>/models` entry — not a user-configured library for onboarding.
+pub fn is_factory_placeholder_entry(entry: &ModelPathEntry) -> bool {
+    entry.label == DEFAULT_MODEL_PATH_LABEL
+        && model_path_key(&entry.path) == model_path_key(DEFAULT_MODEL_PATH_REL)
+}
+
+/// True when the user has linked a library that exists and contains GGUF models.
+pub fn model_library_configured(config: &AppConfig) -> bool {
+    config.model_paths.iter().any(entry_has_models)
+}
+
 /// Absolute path to the default bundled model directory.
 pub fn default_models_dir() -> PathBuf {
     resolve_path(DEFAULT_MODEL_PATH_REL)
@@ -976,7 +1047,7 @@ fn is_absolute_model_path(path: &str) -> bool {
 }
 
 /// Resolve a stored model path for catalog scan and display (relative → app root).
-fn resolve_stored_model_path(path: &str) -> String {
+pub fn resolve_stored_model_path(path: &str) -> String {
     let expanded = expand_path_placeholders(path);
     let trimmed = strip_windows_extended_prefix(expanded.trim());
     if trimmed.is_empty() {
@@ -1611,6 +1682,7 @@ fn build_info_from_exe_mtime(exe: &std::path::Path) -> Option<crate::types::Buil
         version: "foundry-artifact".to_string(),
         build_date,
         cuda_version: None,
+        cuda_architectures: None,
     })
 }
 
@@ -1626,7 +1698,9 @@ fn merge_discovered_binaries(p: &mut crate::types::ProviderConfig) {
                 .map(|existing| info.build_date.as_str() > existing.build_date.as_str())
                 .unwrap_or(true);
             if adopt {
-                p.build_info_per_env.insert(env, info);
+                let enriched =
+                    crate::engine_utils::enrich_build_info_cuda_arch(info, &p.build_profile);
+                p.build_info_per_env.insert(env, enriched);
             }
         }
     }
@@ -2042,6 +2116,46 @@ mod merge_tests {
             super::strip_windows_extended_prefix(r"C:\already\normal"),
             r"C:\already\normal"
         );
+    }
+
+    #[test]
+    fn factory_placeholder_models_path_is_ignored_for_setup() {
+        let fresh = AppConfig::default();
+        assert!(!super::model_library_configured(&fresh));
+
+        let base = std::env::temp_dir().join(format!("bwops-setup-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).expect("library root");
+        std::fs::write(base.join("empty-library"), b"").expect("marker");
+
+        let empty_library = AppConfig {
+            model_paths: vec![ModelPathEntry {
+                path: base.to_string_lossy().to_string(),
+                label: "Empty".to_string(),
+                is_default: true,
+            }],
+            gpu_slots: 0,
+            hf_token: String::new(),
+            providers: Vec::new(),
+            default_download_path: Some(base.to_string_lossy().to_string()),
+        };
+        assert!(!super::model_library_configured(&empty_library));
+
+        std::fs::write(base.join("demo.Q4_K_M.gguf"), b"gguf").expect("gguf");
+        let with_models = AppConfig {
+            model_paths: vec![ModelPathEntry {
+                path: base.to_string_lossy().to_string(),
+                label: "My Models".to_string(),
+                is_default: true,
+            }],
+            gpu_slots: 0,
+            hf_token: String::new(),
+            providers: Vec::new(),
+            default_download_path: Some(base.to_string_lossy().to_string()),
+        };
+        assert!(super::model_library_configured(&with_models));
+
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]

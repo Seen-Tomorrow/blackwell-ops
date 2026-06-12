@@ -10,18 +10,19 @@ import {
   saveSetupWelcomeSeen,
 } from "../lib/storage";
 
-export type SetupPhase = "paths" | "scan-meta" | "ready";
+export type SetupPhase = "paths" | "scan-meta" | "fit-scan" | "drivers";
 
 export interface SetupGuideState {
   active: boolean;
   phase: SetupPhase;
+  pathsDone: boolean;
+  metaDone: boolean;
   showWelcome: boolean;
   welcomeDone: boolean;
   completeWelcome: () => void;
   dismiss: () => void;
   modelsCount: number;
   scannedCount: number;
-  pathCount: number;
 }
 
 interface UseSetupGuideOptions {
@@ -31,14 +32,14 @@ interface UseSetupGuideOptions {
 export function useSetupGuide({ models }: UseSetupGuideOptions) {
   const [dismissed, setDismissed] = useState(() => isSetupGuideDismissed());
   const [welcomeDone, setWelcomeDone] = useState(() => isSetupWelcomeSeen());
-  const [pathCount, setPathCount] = useState(0);
+  const [pathsConfigured, setPathsConfigured] = useState(false);
 
   const refreshPaths = useCallback(async () => {
     try {
-      const paths = await invoke<Array<{ path: string }>>("list_model_paths");
-      setPathCount(paths.length);
+      const configured = await invoke<boolean>("model_library_configured");
+      setPathsConfigured(configured);
     } catch {
-      setPathCount(0);
+      setPathsConfigured(false);
     }
   }, []);
 
@@ -61,14 +62,19 @@ export function useSetupGuide({ models }: UseSetupGuideOptions) {
     [models],
   );
 
+  const modelsCount = models.length;
+  const pathsDone = pathsConfigured;
+  const metaDone = modelsCount > 0 && scannedCount >= modelsCount;
+
   const phase: SetupPhase = useMemo(() => {
-    if (models.length === 0) return "paths";
-    if (scannedCount === 0) return "scan-meta";
-    return "ready";
-  }, [models.length, scannedCount]);
+    if (!pathsDone) return "paths";
+    if (!metaDone) return "scan-meta";
+    return "fit-scan";
+  }, [pathsDone, metaDone]);
 
   const preview = isSetupGuidePreview();
-  const active = preview || (!dismissed && phase !== "ready");
+  const active = preview || !dismissed;
+
   const showWelcome = active && !welcomeDone;
 
   const completeWelcome = useCallback(() => {
@@ -96,12 +102,13 @@ export function useSetupGuide({ models }: UseSetupGuideOptions) {
   return {
     active,
     phase,
+    pathsDone,
+    metaDone,
     showWelcome,
     welcomeDone,
     completeWelcome,
     dismiss,
-    modelsCount: models.length,
+    modelsCount,
     scannedCount,
-    pathCount,
   };
 }

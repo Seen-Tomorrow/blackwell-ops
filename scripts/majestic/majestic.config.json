@@ -1,0 +1,21 @@
+{
+  "tagPrefix": "v",
+  "repo": "Seen-Tomorrow/blackwell-ops",
+  "providers": {
+    "ggml-master": ["vanguard", "frontier", "fresh", "stable"],
+    "ik": ["vanguard"]
+  },
+  "upload": {
+    "installer": true,
+    "binaryZips": false
+  },
+  "ship": {
+    "pushTag": false,
+    "pushCommit": false,
+    "releaseNotes": "Blackwell Ops release — engine binaries bundled in the NSIS installer."
+  },
+  "pack": {
+    "skipBuildIfInstallerFresh": true,
+    "installerMaxAgeMinutes": 180
+  }
+}

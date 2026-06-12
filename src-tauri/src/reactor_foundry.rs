@@ -1248,10 +1248,12 @@ pub async fn foundry_build(
 
             let mut cfg = app.config.lock().map_err(|e| e.to_string())?;
             if let Some(provider) = cfg.providers.iter_mut().find(|p| p.id == provider_id) {
+                let arches = crate::engine_utils::parse_cuda_architectures_from_cmake(&cmake_extra);
                 let build_info = crate::types::BuildInfo {
                     version: build_info_raw.version,
                     build_date: build_info_raw.build_date,
                     cuda_version: build_info_raw.cuda_version.clone(),
+                    cuda_architectures: if arches.is_empty() { None } else { Some(arches) },
                 };
                 provider.build_info_per_env.insert(profile_id.clone(), build_info.clone());
                 provider.build_info_per_env.insert("current".to_string(), build_info);
@@ -1282,7 +1284,7 @@ pub async fn foundry_build(
     // Feed final success message into the Blackwell Output Console
     app.blackwell_output_console_manager.emit_line_to_category(
         BlackwellOutputConsoleCategory::Foundry,
-        "=== Foundry build completed successfully ===".to_string(),
+        crate::output_console::format_console_banner("Foundry build completed successfully"),
         BlackwellOutputConsoleLineStyle::Success,
     );
 
@@ -1451,10 +1453,18 @@ pub async fn refresh_build_info(
 
     let mut updated_info: Vec<(String, crate::types::BuildInfo)> = Vec::new();
 
+    let build_profile = prov.build_profile.clone();
+
     for env_label in foundry_toolchain::profile_ids_or_default() {
         if let Some(path_str) = prov.binary_path_per_env.get(&env_label) {
             match crate::engine::get_binary_build_info(path_str.clone()).await {
-                Ok(info) => {
+                Ok(mut info) => {
+                    if let Some(existing) = prov.build_info_per_env.get(&env_label) {
+                        if existing.cuda_architectures.as_ref().is_some_and(|v| !v.is_empty()) {
+                            info.cuda_architectures = existing.cuda_architectures.clone();
+                        }
+                    }
+                    info = crate::engine_utils::enrich_build_info_cuda_arch(info, &build_profile);
                     log::info!("[refresh] {} env '{}': {} built {}", provider_id, env_label, info.version, info.build_date);
                     updated_info.push((env_label.to_string(), info));
                 }

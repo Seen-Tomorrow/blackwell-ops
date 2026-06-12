@@ -1,4 +1,4 @@
-import { ENV_META, type Env } from "../lib/foundry_constants";
+import { DEFAULT_BINARY_PROFILE, ENV_META, type Env } from "../lib/foundry_constants";
 import { sanitizeAlias } from "../lib/types";
 
 interface EngineBannerProps {
@@ -13,7 +13,7 @@ interface EngineBannerProps {
 }
 
 function runtimeProfileLabel(binaryProfile?: string): string {
-  const key = (binaryProfile || "vanguard").toLowerCase() as Env;
+  const key = (binaryProfile || DEFAULT_BINARY_PROFILE).toLowerCase() as Env;
   return ENV_META[key]?.label ?? key.toUpperCase();
 }
 

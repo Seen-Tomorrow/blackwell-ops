@@ -101,6 +101,19 @@ async fn list_model_paths(
 }
 
 #[tauri::command]
+fn model_library_configured(
+    config: tauri::State<'_, Arc<std::sync::Mutex<config::AppConfig>>>,
+) -> Result<bool, String> {
+    let cfg = config.lock().map_err(|e| e.to_string())?;
+    Ok(config::model_library_configured(&cfg))
+}
+
+#[tauri::command]
+fn validate_model_library(path: String) -> Result<crate::types::ModelLibraryValidation, String> {
+    Ok(config::validate_model_library(&path))
+}
+
+#[tauri::command]
 async fn add_model_path(
     config: tauri::State<'_, Arc<std::sync::Mutex<config::AppConfig>>>,
     path: String,
@@ -126,6 +139,11 @@ async fn remove_model_path(
 #[tauri::command]
 fn lmstudio_models_available() -> bool {
     config::lm_studio_models_available()
+}
+
+#[tauri::command]
+fn get_lm_studio_default_path() -> String {
+    config::lm_studio_default_path_display()
 }
 
 #[tauri::command]
@@ -602,8 +620,11 @@ async fn main() {
             get_hf_token,
             // Model Path management commands
             list_model_paths,
+            model_library_configured,
+            validate_model_library,
             add_model_path,
             add_lmstudio_model_path,
+            get_lm_studio_default_path,
             lmstudio_models_available,
             remove_model_path,
             set_default_model_path,

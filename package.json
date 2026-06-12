@@ -14,7 +14,10 @@
     "rebuild:dev:selective": "powershell -ExecutionPolicy Bypass -File scripts/rebuild-dev-selective.ps1",
     "preview": "vite preview",
     "prerelease": "powershell -ExecutionPolicy Bypass -File scripts/mirror-artifacts.ps1 && powershell -ExecutionPolicy Bypass -File scripts/prepare-release-runtime.ps1",
-    "release": "npm run build && tauri build"
+    "release": "npm run build && tauri build",
+    "majestic:check": "powershell -ExecutionPolicy Bypass -File scripts/majestic/majestic.ps1 -Mode check",
+    "majestic:pack": "powershell -ExecutionPolicy Bypass -File scripts/majestic/majestic.ps1 -Mode pack",
+    "majestic:ship": "powershell -ExecutionPolicy Bypass -File scripts/majestic/majestic.ps1 -Mode ship"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.0",

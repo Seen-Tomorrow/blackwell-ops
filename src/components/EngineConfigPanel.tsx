@@ -16,7 +16,7 @@ import {
   writeStorage,
 } from "../lib/storage";
 import { dispatchAppEvent, EVENTS } from "../lib/events";
-import { ENV_META, ENV_ORDER, type Env } from "../lib/foundry_constants";
+import { DEFAULT_BINARY_PROFILE, ENV_META, ENV_ORDER, type Env } from "../lib/foundry_constants";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import VramBadge from "./VramBadge";
@@ -80,20 +80,11 @@ function isSplitModeActive(split: unknown): boolean {
 }
 
 function pickBestBinaryProfile(provider: ProviderConfig | undefined): EnvProfile {
-  if (!provider) return "frontier";
-  const profiles: EnvProfile[] = [...ENV_ORDER];
-  const available = profiles.filter((p) => isProfileBuilt(provider, p));
-  if (available.length === 0) return "frontier";
-  let best = available[0];
-  let bestDate = profileEnvLookup(provider.buildInfoPerEnv, best)?.buildDate ?? "";
-  for (const p of available.slice(1)) {
-    const d = profileEnvLookup(provider.buildInfoPerEnv, p)?.buildDate ?? "";
-    if (d > bestDate) {
-      best = p;
-      bestDate = d;
-    }
-  }
-  return best;
+  if (!provider) return DEFAULT_BINARY_PROFILE;
+  const available = ENV_ORDER.filter((p) => isProfileBuilt(provider, p));
+  if (available.length === 0) return DEFAULT_BINARY_PROFILE;
+  if (available.includes(DEFAULT_BINARY_PROFILE)) return DEFAULT_BINARY_PROFILE;
+  return available[0];
 }
 
 const PROFILE_COLORS: Record<string, string> = {
@@ -217,7 +208,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   const [launchAck, setLaunchAck] = useState(false);
   const launchAckTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const [selectedBinaryProfile, setSelectedBinaryProfile] = useState<EnvProfile>("frontier");
+  const [selectedBinaryProfile, setSelectedBinaryProfile] = useState<EnvProfile>(DEFAULT_BINARY_PROFILE);
 
 
   const [specFlash, setSpecFlash] = useState(false);
@@ -884,6 +875,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
               ) : (
                 <SetupGuideDisplay
                   phase={setupGuide.phase}
+                  pathsDone={setupGuide.pathsDone}
+                  metaDone={setupGuide.metaDone}
                   modelsCount={setupGuide.modelsCount}
                   scannedCount={setupGuide.scannedCount}
                   onDismiss={setupGuide.dismiss}
@@ -1044,6 +1037,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                   ) : (
                     <SetupGuideDisplay
                       phase={setupGuide.phase}
+                      pathsDone={setupGuide.pathsDone}
+                      metaDone={setupGuide.metaDone}
                       modelsCount={setupGuide.modelsCount}
                       scannedCount={setupGuide.scannedCount}
                       onDismiss={setupGuide.dismiss}

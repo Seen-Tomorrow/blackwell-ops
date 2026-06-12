@@ -138,9 +138,3 @@ flowchart LR
   INST -->|"merge on load"| USER
 
 ───
-
-Slot cap reminder
-
-max_engine_slots lives in each provider’s factory JSON under spawn_profile, not in app_config.json’s gpu_slots. After editing, restart the app and look for logs like max_engine_slots=128 and Initializing EngineStack with 128 engine slot(s).
-
-If you want, I can also verify your target/debug/runtime/ggml-master/config/ file matches the repo copy right now.

@@ -43,6 +43,13 @@ const SKIP_DIRS: &[&str] = &["node_modules", ".git", "target", "__pycache__",
                               ".vscode", ".idea", "dist", "build", "src-tauri", 
                               ".next", ".nuxt", ".cache"];
 
+/// Count `.gguf` model files under a directory (recursive, skips mmproj and partial downloads).
+pub fn count_gguf_files(dir: &Path) -> usize {
+    let mut files = Vec::new();
+    collect_gguf_files(dir, &mut files);
+    files.len()
+}
+
 /// Recursively collect all .gguf files under a directory, skipping known junk dirs.
 fn collect_gguf_files(dir: &Path, out: &mut Vec<PathBuf>) {
     let entries = match std::fs::read_dir(dir) {

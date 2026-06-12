@@ -352,11 +352,6 @@ function App() {
   useTauriListen<{ scanned: number; failed: number }>("gguf-scan-complete", (payload) => {
     setBatchScanState((s) => ({ ...s, active: false, scanned: payload.scanned, failed: payload.failed }));
     invoke("list_models").then((data) => setModels(data as ModelEntry[])).catch(() => {});
-    void invoke("emit_to_blackwell_console", {
-      category: "utils",
-      content: `[GGUF-SCAN] Complete: ${payload.scanned} scanned, ${payload.failed} failed`,
-      style: "Success",
-    });
   });
 
   useTauriListen<StackEntry[]>("stack-changed", (payload) => {

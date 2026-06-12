@@ -3,6 +3,7 @@ import { ProviderConfig, BinaryUpdateInfo } from "../lib/types";
 import { getProviderOrigin } from "../lib/types";
 import type { Env } from "../hooks/useBuildDock";
 import { ENV_META } from "../lib/foundry_constants";
+import { cudaArchOptimizedLabel, resolveProfileCudaArchitectures } from "../lib/cudaArchUtils";
 
 export type UpdateStatus = "idle" | "checking" | "downloading" | "extracting" | "complete" | "error";
 
@@ -47,6 +48,8 @@ interface BuildProfileRowProps {
 
 export function BuildProfileRow({ env, meta, provider, isLatestBuild, hasBackup, isBuilding, onBuild, onRestoreConfirm, binaryUpdate, updateStatus, updateError, onUpdateBinary, onRevert }: BuildProfileRowProps) {
   const buildInfo = provider.buildInfoPerEnv?.[env];
+  const cudaArchitectures = resolveProfileCudaArchitectures(provider, buildInfo);
+  const cudaArchLabel = cudaArchOptimizedLabel(cudaArchitectures);
   const binaryPath = provider.binaryPathPerEnv?.[env];
   const isDownloaded = !!binaryPath && isDownloadedBinary(binaryPath);
 
@@ -77,15 +80,20 @@ export function BuildProfileRow({ env, meta, provider, isLatestBuild, hasBackup,
         )}
       </div>
 
-      <div className="flex-1 min-w-[120px] flex items-center gap-2">
+      <div className="flex-1 min-w-[120px] flex items-center gap-2 flex-wrap">
         {buildInfo ? (
           <>
             <span
               className="text-[8px] font-mono config-muted truncate"
-              title={`v${buildInfo.version}${buildInfo.cudaVersion ? ` · CUDA ${buildInfo.cudaVersion}` : ""} · Built: ${buildInfo.buildDate}`}
+              title={`v${buildInfo.version}${buildInfo.cudaVersion ? ` · CUDA ${buildInfo.cudaVersion}` : ""} · Built: ${buildInfo.buildDate}${cudaArchLabel ? ` · ${cudaArchLabel}` : ""}`}
             >
               v{buildInfo.version}{buildInfo.cudaVersion ? ` · CUDA ${buildInfo.cudaVersion}` : ""} · {buildInfo.buildDate}
             </span>
+            {cudaArchLabel && (
+              <span className="foundry-cuda-arch-inline text-[7px] font-mono shrink-0">
+                {cudaArchLabel}
+              </span>
+            )}
             {isLatestBuild && (
               <span className="value-chip-active text-[7px] font-mono px-1.5 py-0.5 rounded-sm shrink-0">LATEST</span>
             )}

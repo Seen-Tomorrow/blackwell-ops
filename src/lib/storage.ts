@@ -36,7 +36,7 @@ import { normalizeDisplayTexture, type DisplayTexture } from "./displayTexture";
  * | BlackOps-catalog-override:{providerId} | JSON Record<paramKey, value> | Launch-time param chip overrides |
  * | BlackOps-group-order:{providerId} | JSON string[] | CONFIG param group order |
  * | BlackOps-engine-alias:{modelPath} | string | Per-model launch alias |
- * | BlackOps-binary-profile:{providerId} | vanguard \| frontier \| fresh \| stable | Selected binary env profile |
+ * | BlackOps-binary-profile:{providerId} | fresh \| vanguard \| frontier \| stable | Selected binary env profile |
  * | BlackOps-foundry-last-refresh:{signature} | timestamp string | Foundry git refresh throttle |
  * | BlackOps-auto-vram:{providerId} | "0" \| "1" | Auto VRAM simplified mode per provider |
 

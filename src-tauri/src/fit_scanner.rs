@@ -3,6 +3,8 @@
 //! Self-contained scan plan with hardcoded GGML-compatible CLI commands.
 //! No template system involvement — directly builds args for llama-fit-params.exe.
 
+use crate::log_hub::LogHub;
+use crate::output_console::{BlackwellOutputConsoleCategory, BlackwellOutputConsoleLineStyle};
 use crate::telemetry::detect_gpu_count;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -633,25 +635,49 @@ fn parse_gpu_components(output: &str) -> Option<Vec<GpuComponentMib>> {
 
 // ── Library Scanner ─────────────────────────────────────────────────
 
+fn emit_fit_scan_line(
+    log_hub: Option<&LogHub>,
+    category: BlackwellOutputConsoleCategory,
+    content: &str,
+    style: BlackwellOutputConsoleLineStyle,
+) {
+    if let Some(hub) = log_hub {
+        hub.emit_console_line(category, content, style);
+    }
+}
+
 /// Extract model name from full path (last component without .gguf).
 pub fn extract_model_name(path: &str) -> String {
     crate::engine_utils::extract_model_name(path)
 }
 
 /// Find all models using the shared model_catalog logic (multi-path, shard dedup, mmproj filter).
-fn find_all_models(paths: &[String]) -> Vec<String> {
-    let path_entries: Vec<crate::types::ModelPathEntry> = paths.iter().enumerate().map(|(i, p)| {
-        crate::types::ModelPathEntry {
+fn find_all_models(paths: &[String], log_hub: Option<&LogHub>) -> Vec<String> {
+    let path_entries: Vec<crate::types::ModelPathEntry> = paths
+        .iter()
+        .filter(|p| !p.trim().is_empty())
+        .enumerate()
+        .map(|(i, p)| crate::types::ModelPathEntry {
             path: p.clone(),
-            label: if i == 0 && !p.is_empty() { "Default".into() } else { format!("Path {}", i + 1) },
+            label: if i == 0 && !p.is_empty() {
+                "Default".into()
+            } else {
+                format!("Path {}", i + 1)
+            },
             is_default: i == 0,
-        }
-    }).collect();
+        })
+        .collect();
 
-    match crate::model_catalog::merge_catalogs(&path_entries, None, None) {
+    match crate::model_catalog::merge_catalogs(&path_entries, log_hub, None) {
         Ok((entries, _conflicts)) => entries.into_iter().map(|e| e.path).collect(),
         Err(e) => {
             log::warn!("Failed to scan model paths: {}", e);
+            emit_fit_scan_line(
+                log_hub,
+                BlackwellOutputConsoleCategory::Error,
+                &format!("[FIT-SCAN] Catalog scan failed: {e}"),
+                BlackwellOutputConsoleLineStyle::Error,
+            );
             Vec::new()
         }
     }
@@ -693,12 +719,29 @@ pub async fn scan_library(
     provider_id: String,
     progress_tx: Option<broadcast::Sender<FitScanProgress>>,
     cancelled: StdArc<AtomicBool>,
+    log_hub: Option<LogHub>,
 ) -> FitScanComplete {
+    let hub_ref = log_hub.as_ref();
+
     // Use shared model_catalog logic for multi-path scanning, shard dedup, mmproj filter
-    let models = find_all_models(model_paths);
+    let models = find_all_models(model_paths, hub_ref);
     let total = models.len();
 
     if total == 0 {
+        let msg = if model_paths.iter().all(|p| p.trim().is_empty()) {
+            "[FIT-SCAN] No model library paths configured.".to_string()
+        } else {
+            format!(
+                "[FIT-SCAN] No GGUF models found under {} configured path(s).",
+                model_paths.iter().filter(|p| !p.trim().is_empty()).count()
+            )
+        };
+        emit_fit_scan_line(
+            hub_ref,
+            BlackwellOutputConsoleCategory::Error,
+            &msg,
+            BlackwellOutputConsoleLineStyle::Error,
+        );
         return FitScanComplete {
             provider_id,
             total_models: 0,
@@ -770,8 +813,10 @@ pub async fn scan_library(
         let cancel = cancelled.clone();
         let prog_tx = progress_tx.clone();
         let full_map = full_results_map.clone();
+        let log_hub_task = log_hub.clone();
 
         let handle = tokio::spawn(async move {
+            let hub = log_hub_task.as_ref();
             if cancel.load(Ordering::Relaxed) {
                 return None as Option<(String, FitScanFull)>;
             }
@@ -857,6 +902,25 @@ pub async fn scan_library(
                     Err(e) => {
                         failures.push(format!("{}:{}", label, e));
                         log::warn!("Scan {} failed for {}: {}", label, model_path, e);
+                        emit_fit_scan_line(
+                            hub,
+                            BlackwellOutputConsoleCategory::Error,
+                            &format!(
+                                "[FIT-SCAN] {} | {label} | {e}",
+                                extract_model_name(&model_path)
+                            ),
+                            BlackwellOutputConsoleLineStyle::Error,
+                        );
+                        if let Some(tx) = &prog_tx {
+                            let _ = tx.send(FitScanProgress {
+                                model_path: model_path.clone(),
+                                model_name: model_name.clone(),
+                                status: "error".to_string(),
+                                args: None,
+                                vram_mib: None,
+                                label: Some((*label).to_string()),
+                            });
+                        }
                     },
                 }
             }
@@ -898,6 +962,12 @@ pub async fn scan_library(
             Ok(None) => {} // Semaphore was closed or cancelled
             Err(e) => {
                 log::error!("Library scan task panicked: {}", e);
+                emit_fit_scan_line(
+                    hub_ref,
+                    BlackwellOutputConsoleCategory::Error,
+                    &format!("[FIT-SCAN] Scan task failed: {e}"),
+                    BlackwellOutputConsoleLineStyle::Error,
+                );
                 let mut f = failed_count.lock().await;
                 *f += 1;
             }

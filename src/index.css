@@ -1513,7 +1513,7 @@ html, body, #root {
   min-height: 240px;
 }
 
-/* Welcome splash only — square phosphor canvas; does not affect forecast/VramBadge frame */
+/* Welcome splash — 1680×960 art frame; scales down to panel width / viewport height */
 .industrial-display-area--welcome {
   flex: 1 1 auto;
   display: flex;
@@ -1521,15 +1521,21 @@ html, body, #root {
   justify-content: center;
   min-height: 0;
   padding: 8px 0;
+  overflow: hidden;
 }
 
 .industrial-display-frame--welcome {
-  width: min(100%, 560px, calc(100vh - 10rem));
-  aspect-ratio: 1 / 1;
-  flex-shrink: 0;
+  --welcome-max-w: 1680px;
+  --welcome-max-h: 960px;
+  --welcome-vh-cap: calc(100vh - 10rem);
+  aspect-ratio: 1680 / 960;
+  width: min(100%, var(--welcome-max-w), calc(var(--welcome-vh-cap) * 1680 / 960));
+  max-height: min(var(--welcome-max-h), var(--welcome-vh-cap));
+  flex-shrink: 1;
   display: flex;
   flex-direction: column;
   min-height: 0;
+  min-width: 0;
 }
 
 .industrial-display-frame--welcome .phosphor-screen-inner {
@@ -1547,10 +1553,85 @@ html, body, #root {
   min-height: 0;
 }
 
+/* Onboarding setup checklist */
+.setup-checklist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.setup-checklist__item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  font-size: 9px;
+  font-family: ui-monospace, monospace;
+  color: rgba(148, 163, 184, 0.55);
+  transition: color 0.15s ease;
+}
+
+.setup-checklist__item--current {
+  color: rgba(118, 185, 0, 0.95);
+}
+
+.setup-checklist__item--done {
+  color: rgba(118, 185, 0, 0.82);
+}
+
+.setup-checklist__mark {
+  flex-shrink: 0;
+  width: 1rem;
+  text-align: center;
+  font-weight: 700;
+  line-height: 1.35;
+  color: rgba(148, 163, 184, 0.35);
+}
+
+.setup-checklist__item--done .setup-checklist__mark {
+  color: #4ade80;
+}
+
+.setup-checklist__item--current .setup-checklist__mark {
+  color: rgba(118, 185, 0, 0.9);
+}
+
+.setup-checklist__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.setup-checklist__title {
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.setup-checklist__optional {
+  font-weight: 400;
+  text-transform: lowercase;
+  opacity: 0.65;
+}
+
+.setup-checklist__detail {
+  font-size: 8px;
+  line-height: 1.35;
+  opacity: 0.85;
+}
+
+.setup-checklist__checkbox {
+  accent-color: #76b900;
+}
+
 .setup-welcome-art {
+  display: block;
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  object-fit: cover;
 }
 
 /* Forecast phosphor screen — fixed canvas so Auto VRAM mode does not shrink Fusion overlay */
@@ -4319,6 +4400,13 @@ select option {
   background: rgba(118, 185, 0, 0.22) !important;
   border: 1px solid rgba(118, 185, 0, 0.55) !important;
   color: #76b900 !important;
+}
+
+/* CMAKE_CUDA_ARCHITECTURES — inline after build version */
+.foundry-cuda-arch-inline {
+  color: rgba(118, 185, 0, 0.75);
+  letter-spacing: 0.02em;
+  opacity: 0.85;
 }
 
 /* First-run onboarding — pulse targets */

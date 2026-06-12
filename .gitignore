@@ -57,6 +57,14 @@ toolchain/vs/
 # --- Tauri Updater Signing Key (NEVER commit!) ---
 src-tauri/updater_private.key
 
+# --- Majestic release robot (local only) ---
+.majestic-out/
+.majestic-backup/
+scripts/majestic/.majestic-enabled
+scripts/majestic/.majestic-secrets
+scripts/majestic/majestic.lock
+scripts/majestic/__pycache__/
+
 # --- OpenCode Specific ---
 .local/
 opencode.db*

@@ -1,9 +1,9 @@
 import { useMemo } from "react";
 import type { ModelEntry, StackEntry } from "../lib/types";
-import { ENV_META, type Env } from "../lib/foundry_constants";
+import { DEFAULT_BINARY_PROFILE, ENV_META, type Env } from "../lib/foundry_constants";
 
 function runtimeProfileLabel(binaryProfile?: string): string {
-  const key = (binaryProfile || "vanguard").toLowerCase() as Env;
+  const key = (binaryProfile || DEFAULT_BINARY_PROFILE).toLowerCase() as Env;
   return ENV_META[key]?.label ?? key.toUpperCase();
 }
 

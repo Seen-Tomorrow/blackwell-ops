@@ -6,6 +6,7 @@ import type { ProviderConfig, UserEditedTemplateParam, FitScanComplete, FitScanP
 import { DEFAULT_PROVIDER_ID, isProfileBuilt } from "../lib/types";
 import { useFoundry, type Env } from "../hooks/useBuildDock";
 import { ENV_ORDER, ENV_META } from "../lib/foundry_constants";
+import { FIT_SCAN_PARALLEL_OPTIONS } from "../lib/onboarding";
 import { dispatchAppEvent, EVENTS } from "../lib/events";
 import { loadFoundryLastRefresh, loadStartupUpdatesCache, saveFoundryLastRefresh } from "../lib/storage";
 import { BuildProfileRow, RestoreConfirmModal, parseCmakeFlags, UpdateStatus } from "./FoundryComponents";
@@ -268,7 +269,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
   // ── FIT Scan handlers ────────────────────────────────────────
 
   const handleScanLibrary = useCallback(async (providerId: string) => {
-    const currentParallel = parallelRef.current[providerId] ?? 4;
+    const currentParallel = parallelRef.current[providerId] ?? FIT_SCAN_PARALLEL_OPTIONS[0];
 
     setScanStates((prev) => {
       const oldState = prev[providerId];
@@ -359,12 +360,13 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
           const evt: FitScanProgress = e.payload;
           if (!evt || !evt.model_path) return;
 
-          // Route to Blackwell Output Console (UTILS category)
-          void invoke("emit_to_blackwell_console", {
-            category: "utils",
-            content: `[FIT-SCAN] ${evt.model_path} | ${evt.status} | ${evt.label || ''} | ${evt.vram_mib != null ? evt.vram_mib + ' MiB' : ''}`,
-            style: evt.status === "complete" ? "Success" : "Normal",
-          });
+          if (evt.status !== "error") {
+            void invoke("emit_to_blackwell_console", {
+              category: "utils",
+              content: `[FIT-SCAN] ${evt.model_path} | ${evt.status} | ${evt.label || ''} | ${evt.vram_mib != null ? evt.vram_mib + ' MiB' : ''}`,
+              style: evt.status === "complete" ? "Success" : "Normal",
+            });
+          }
 
           setScanStates((prev) => {
             const hasActiveScan = Object.values(prev).some(s => s.status === "scanning");
@@ -840,7 +842,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
                         </button>
                       ) : scanLibraryMenuId === p.id ? (
                         <div className="flex items-center gap-1">
-                          {[4, 8, 16].map((n) => (
+                          {FIT_SCAN_PARALLEL_OPTIONS.map((n) => (
                             <button
                               key={n}
                               onClick={(e) => {

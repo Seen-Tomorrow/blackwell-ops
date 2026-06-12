@@ -303,7 +303,7 @@ impl EngineStack {
             slot.provider_name = provider_display_name;
             slot.backend_type = backend_type;
             slot.binary_profile = if config.binary_profile.is_empty() {
-                "vanguard".to_string()
+                crate::config::DEFAULT_BINARY_PROFILE.to_string()
             } else {
                 config.binary_profile.clone()
             };
@@ -802,7 +802,7 @@ impl EngineStack {
 
     fn normalized_slot_profile(raw: &str) -> String {
         if raw.is_empty() {
-            "vanguard".to_string()
+            crate::config::DEFAULT_BINARY_PROFILE.to_string()
         } else {
             raw.to_ascii_lowercase()
         }

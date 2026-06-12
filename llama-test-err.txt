@@ -1,2 +1,0 @@
-version: 28 (1e1aca0)
-built with MSVC 19.51.36243.0 for x64

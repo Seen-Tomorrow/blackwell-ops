@@ -277,7 +277,7 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
               className={`app-chrome-control-btn px-1.5 text-[8px] font-mono transition-colors leading-none ${uiDensity === "compact" ? "text-yellow-400/90" : ""}`}
               title={uiDensity === "compact" ? "Density: Compact (click for Comfortable)" : "Density: Comfortable (click for Compact)"}
             >
-              {uiDensity === "compact" ? "CMP" : "CMF"}
+              {uiDensity === "compact" ? "COMPACT" : "COMFORT"}
             </button>
             <span className="app-chrome-control-btn text-[8px] font-mono opacity-40">|</span>
             <button onClick={() => adjustZoom(-ZOOM_STEP)} className="app-chrome-control-btn px-1 text-[9px] font-mono transition-colors leading-none" title="Decrease text scale">−</button>

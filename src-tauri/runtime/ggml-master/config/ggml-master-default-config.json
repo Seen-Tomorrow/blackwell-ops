@@ -6,7 +6,7 @@
   "git_url": "https://github.com/ggml-org/llama.cpp",
   "branch": "master",
   "template_type": "ggml-llama",
-  "templateVersion": 7,
+  "templateVersion": 9,
   "build_profile": "-DGGML_CUDA=ON\n-DCMAKE_CUDA_ARCHITECTURES=\"86;89;120\"\n-DGGML_CUDA_PEER_TO_PEER=ON\n-DGGML_CUDA_FA_ALL_QUANTS=ON\n-DGGML_AVX512=ON\n-DGGML_NATIVE=ON\n-DCMAKE_CUDA_FLAGS=\"-Xcompiler /wd4056 -Xcompiler /wd4756 --diag-suppress 221\"\n-Wno-dev",
   "spawn_profile": {
     "model_flag": ["-m"],
@@ -34,6 +34,42 @@
       "dock": "runtime",
       "ui_group": "MULTI-GPU",
       "note": "Select GPU via CUDA_VISIBLE_DEVICES mask — not emitted as a CLI flag."
+    },
+    {
+      "key": "offload_mode",
+      "label": "OFFLOAD-MODE",
+      "flag": null,
+      "ptype": "logic_only",
+      "values": ["regular", "moe_optimal"],
+      "default": "regular",
+      "dock": "runtime",
+      "ui_group": "MULTI-GPU",
+      "note": "moe_optimal adds expert eviction filter and forces KV quant to q4_0.",
+      "sub_params": {
+        "moe_optimal": ["-ot", "\\\\.ffn_.*_exps\\\\.=CPU", "-ctk", "q4_0", "-ctv", "q4_0"]
+      }
+    },
+    {
+      "key": "split",
+      "label": "SPLIT",
+      "flag": "--split-mode",
+      "ptype": "arg_select",
+      "values": ["none", "layer", "row", "tensor"],
+      "default": "none",
+      "dock": "runtime",
+      "ui_group": "MULTI-GPU",
+      "note": "How to split model across multiple GPUs."
+    },
+    {
+      "key": "base_port",
+      "label": "BASE-PORT",
+      "flag": null,
+      "ptype": "logic_only",
+      "values": [8080, 8180, 8888, 9090],
+      "default": 8080,
+      "dock": "runtime",
+      "ui_group": "RUNTIME-CONFIG",
+      "note": "Starting port for engine instances. Auto-increments per slot."
     },
     {
       "key": "kv_quant",
@@ -97,6 +133,16 @@
       "note": "When off and Parallel > 1, each sequence gets its own KV cache (VRAM multiplied by np)."
     },
     {
+      "key": "flash_attn",
+      "label": "FLASH-ATTN",
+      "flag": "--flash-attn",
+      "ptype": "arg_select",
+      "values": ["on", "off", "auto"],
+      "default": "on",
+      "ui_group": "PERFORMANCE",
+      "note": "Enable Flash Attention 2."
+    },
+    {
       "key": "rope_scaling",
       "label": "ROPE-SCALING",
       "flag": "--rope-scaling",
@@ -137,42 +183,6 @@
       "note": "RoPE frequency base. 'auto' resolves from GGUF metadata rope_freq_base."
     },
     {
-      "key": "offload_mode",
-      "label": "OFFLOAD-MODE",
-      "flag": null,
-      "ptype": "logic_only",
-      "values": ["regular", "moe_optimal"],
-      "default": "regular",
-      "dock": "runtime",
-      "ui_group": "MULTI-GPU",
-      "note": "moe_optimal adds expert eviction filter and forces KV quant to q4_0.",
-      "sub_params": {
-        "moe_optimal": ["-ot", "\\\\.ffn_.*_exps\\\\.=CPU", "-ctk", "q4_0", "-ctv", "q4_0"]
-      }
-    },
-    {
-      "key": "split",
-      "label": "SPLIT",
-      "flag": "--split-mode",
-      "ptype": "arg_select",
-      "values": ["none", "layer", "row", "tensor"],
-      "default": "none",
-      "dock": "runtime",
-      "ui_group": "MULTI-GPU",
-      "note": "How to split model across multiple GPUs."
-    },
-    {
-      "key": "base_port",
-      "label": "BASE-PORT",
-      "flag": null,
-      "ptype": "logic_only",
-      "values": [8080, 8180, 8888, 9090],
-      "default": 8080,
-      "dock": "runtime",
-      "ui_group": "RUNTIME-CONFIG",
-      "note": "Starting port for engine instances. Auto-increments per slot."
-    },
-    {
       "key": "vision",
       "label": "VISION",
       "flag": "--mmproj",
@@ -206,16 +216,6 @@
       "default": "on",
       "ui_group": "FEATURE-FLAGS",
       "note": "on = use mmap (no flag), off = --no-mmap. Inverted logic."
-    },
-    {
-      "key": "flash_attn",
-      "label": "FLASH-ATTN",
-      "flag": "--flash-attn",
-      "ptype": "arg_select",
-      "values": ["on", "off", "auto"],
-      "default": "on",
-      "ui_group": "PERFORMANCE",
-      "note": "Enable Flash Attention 2."
     },
     {
       "key": "jinja",
@@ -253,8 +253,8 @@
       "label": "SPEC-DRAFT-N-MAX",
       "flag": "--spec-draft-n-max",
       "ptype": "arg_select",
-      "values": [1, 2, 3, 4, 5, 6, 8, 10, 16, 20],
-      "default": 3,
+      "values": [1, 2, 3, 4, 5, 6, 8, 10, 16],
+      "default": 2,
       "ui_group": "SPECULATIVE-DECODING",
       "hidden_default": true,
       "note": "Maximum number of draft tokens per speculative decoding step."

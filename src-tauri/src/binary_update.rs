@@ -272,6 +272,7 @@ pub async fn download_binary_update(
                 version: String::new(),
                 build_date: String::new(),
                 cuda_version: None,
+                cuda_architectures: None,
             }
         });
 

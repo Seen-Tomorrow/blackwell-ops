@@ -28,6 +28,12 @@ export interface PathDiskUsage {
   fileCount: number;
 }
 
+export interface ModelLibraryValidation {
+  exists: boolean;
+  ggufCount: number;
+  resolvedPath: string;
+}
+
 export interface HfMetadata {
   hfModelId: string;
   author: string;
@@ -194,6 +200,8 @@ export interface BuildInfo {
   version: string;
   buildDate: string;
   cudaVersion?: string;
+  /** GPU arch codes from CMAKE_CUDA_ARCHITECTURES at build time (e.g. ["86","89","120"]). */
+  cudaArchitectures?: string[];
 }
 
 /** Binary update info from check_binary_updates IPC command. */

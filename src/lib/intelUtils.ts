@@ -1,4 +1,5 @@
 import type { IntelItem, ProviderConfig } from "./types";
+import { DEFAULT_BINARY_PROFILE } from "./foundry_constants";
 import { binaryProfileKey, catalogOverrideKey, readJsonStorage, readStorage } from "./storage";
 
 export const INTEL_GENESIS_KEYS = [
@@ -131,7 +132,7 @@ export function extractPrNumber(item: IntelItem): number | null {
 
 export function providerBuildSummary(provider: ProviderConfig | undefined): string | null {
   if (!provider) return null;
-  const env = readStorage(binaryProfileKey(provider.id)) ?? "vanguard";
+  const env = readStorage(binaryProfileKey(provider.id)) ?? DEFAULT_BINARY_PROFILE;
   const build = provider.buildInfoPerEnv?.[env];
   const lastPr = provider.lastPrPerEnv?.[env];
   const parts: string[] = [];
@@ -147,7 +148,7 @@ export function isBuildBehindBreaking(
   if (!item.is_breaking || !provider) return false;
   const prNum = extractPrNumber(item);
   if (prNum == null) return false;
-  const env = readStorage(binaryProfileKey(provider.id)) ?? "vanguard";
+  const env = readStorage(binaryProfileKey(provider.id)) ?? DEFAULT_BINARY_PROFILE;
   const lastPrRaw = provider.lastPrPerEnv?.[env];
   if (!lastPrRaw) return true;
   const lastPr = Number.parseInt(lastPrRaw.replace(/\D/g, ""), 10);

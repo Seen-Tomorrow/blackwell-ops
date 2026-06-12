@@ -11,7 +11,10 @@ use crate::engine_stack::SlotStatus;
 use crate::config::AppConfig;
 use crate::engine_stack::EngineStack;
 use crate::log_hub::LogHub;
-use crate::output_console::{BlackwellOutputConsoleCategory, BlackwellOutputConsoleLineStyle, BlackwellOutputConsoleManager};
+use crate::output_console::{
+    format_console_completion, BlackwellOutputConsoleCategory, BlackwellOutputConsoleLineStyle,
+    BlackwellOutputConsoleManager,
+};
 use crate::types::{EngineConfig, ModelEntry, ModelMetadata};
 use crate::types::StackEntry;
 
@@ -371,7 +374,7 @@ pub async fn launch_engine(
         slot_id: slot_idx as u32,
         provider_type: backend_type,
         binary_profile: if config.binary_profile.is_empty() {
-            "vanguard".to_string()
+            crate::config::DEFAULT_BINARY_PROFILE.to_string()
         } else {
             config.binary_profile.clone()
         },
@@ -698,14 +701,27 @@ pub async fn fit_scan_library(
         guard.clone()
     };
 
-    // Use provided path or ALL configured model paths from config
+    // Use provided path or ALL configured model paths — resolved the same way as list_models.
     let all_paths = if !model_base.is_empty() {
-        vec![model_base]
+        vec![crate::config::resolve_stored_model_path(&model_base)]
     } else {
-        cfg.model_paths.iter().map(|p| p.path.clone()).collect::<Vec<_>>()
+        crate::config::get_model_paths(&cfg)
+            .into_iter()
+            .map(|p| p.path)
+            .collect::<Vec<_>>()
     };
 
-    let fit_binary = fit_scanner::resolve_fit_binary(&cfg, &provider_id, "")?;
+    let fit_binary = match fit_scanner::resolve_fit_binary(&cfg, &provider_id, "") {
+        Ok(path) => path,
+        Err(e) => {
+            app.log_hub.emit_console_line(
+                BlackwellOutputConsoleCategory::Error,
+                &format!("[FIT-SCAN] {e}"),
+                BlackwellOutputConsoleLineStyle::Error,
+            );
+            return Err(e);
+        }
+    };
 
     // Get total GPU VRAM for fit checking
     let gpus = telemetry::scan_gpus().await.unwrap_or_default();
@@ -738,9 +754,41 @@ pub async fn fit_scan_library(
 
     // Run library scan — scans all configured paths, deduplicates across them
     let result = fit_scanner::scan_library(
-        &fit_binary, &all_paths, parallel_count.max(1), total_gpu_mib,
-        provider_id.clone(), Some(progress_tx), cancel_flag,
-    ).await;
+        &fit_binary,
+        &all_paths,
+        parallel_count.max(1),
+        total_gpu_mib,
+        provider_id.clone(),
+        Some(progress_tx),
+        cancel_flag,
+        Some(app.log_hub.clone()),
+    )
+    .await;
+
+    let models_with_errors = result
+        .results
+        .values()
+        .filter(|entry| entry.error.is_some())
+        .count();
+    let summary_style = if models_with_errors > 0 || result.failed > 0 {
+        BlackwellOutputConsoleLineStyle::Warning
+    } else {
+        BlackwellOutputConsoleLineStyle::Success
+    };
+    app.log_hub.emit_console_line(
+        BlackwellOutputConsoleCategory::Utils,
+        &format_console_completion(
+            "VRAM fit scan complete",
+            &format!(
+                "{}/{} models ({} failed, {} with scan errors)",
+                result.completed,
+                result.total_models,
+                result.failed,
+                models_with_errors
+            ),
+        ),
+        summary_style,
+    );
 
     Ok(result)
 }
@@ -807,6 +855,7 @@ pub async fn get_binary_build_info(binary_path: String) -> Result<crate::types::
             version, 
             build_date,
             cuda_version: None,
+            cuda_architectures: None,
         });
     }
 
@@ -819,6 +868,7 @@ pub async fn get_binary_build_info(binary_path: String) -> Result<crate::types::
         version: "unknown".to_string(), 
         build_date,
         cuda_version: None,
+        cuda_architectures: None,
     })
 }
 
@@ -992,14 +1042,29 @@ pub async fn scan_all_models_cmd(
         });
     }
 
-    // Emit complete event
+    // Emit complete event + docked-console banner
+    let final_scanned = scanned;
+    let final_failed = failed;
     let lh = log_hub.clone();
     tokio::spawn(async move {
         lh.emit("gguf-scan-complete", &serde_json::json!({
-            "scanned": scanned,
-            "failed": failed,
+            "scanned": final_scanned,
+            "failed": final_failed,
             "total": total,
         }));
+        let style = if final_failed > 0 {
+            BlackwellOutputConsoleLineStyle::Warning
+        } else {
+            BlackwellOutputConsoleLineStyle::Success
+        };
+        lh.emit_console_line(
+            BlackwellOutputConsoleCategory::Utils,
+            &format_console_completion(
+                "GGUF metadata scan complete",
+                &format!("{final_scanned} scanned, {final_failed} failed, {total} total"),
+            ),
+            style,
+        );
     });
 
     Ok(scanned)

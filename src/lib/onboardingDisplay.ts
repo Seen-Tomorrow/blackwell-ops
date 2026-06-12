@@ -20,8 +20,16 @@ export const PHOSPHOR_CONTENT_PAD_X_PX = 12;
 /** VramBadge / setup content vertical padding (px) — `py-2.5`. */
 export const PHOSPHOR_CONTENT_PAD_Y_PX = 10;
 
-/** Welcome splash — square phosphor cap (px); matches `.industrial-display-frame--welcome`. */
-export const WELCOME_FRAME_MAX_PX = 560;
+/** Welcome splash art + frame design size (px); matches `onboarding-intro.webp`. */
+export const WELCOME_ART_WIDTH_PX = 1680;
+export const WELCOME_ART_HEIGHT_PX = 960;
+
+/** Max rendered frame cap (px) — CSS shrinks below this on smaller viewports/panels. */
+export const WELCOME_FRAME_MAX_WIDTH_PX = WELCOME_ART_WIDTH_PX;
+export const WELCOME_FRAME_MAX_HEIGHT_PX = WELCOME_ART_HEIGHT_PX;
+
+/** Welcome splash aspect ratio (width ÷ height). */
+export const WELCOME_ASPECT_RATIO = WELCOME_ART_WIDTH_PX / WELCOME_ART_HEIGHT_PX;
 
 /** Reference shell width for static art exports (px). */
 export const REFERENCE_SHELL_WIDTH_PX = 1280;
@@ -31,14 +39,8 @@ export const REFERENCE_PHOSPHOR_WIDTH_PX =
   REFERENCE_SHELL_WIDTH_PX - CATALOG_SPLIT_DEFAULT_PX - DISPLAY_BEZEL_PADDING_PX * 2;
 // = 824
 
-/** Square welcome asset — design at this size (scales down on narrow panels). */
-export const WELCOME_ART_DESIGN_PX = WELCOME_FRAME_MAX_PX;
-
-/** Phosphor inner square at reference shell (px) — min(panel width, cap). */
-export const REFERENCE_WELCOME_INNER_PX = Math.min(REFERENCE_PHOSPHOR_WIDTH_PX, WELCOME_FRAME_MAX_PX);
-
-/** Welcome splash aspect ratio (always 1:1). */
-export const WELCOME_ASPECT_RATIO = 1;
+/** Welcome inner width at reference shell (px) — panel width caps the 1680 design width. */
+export const REFERENCE_WELCOME_INNER_PX = Math.min(REFERENCE_PHOSPHOR_WIDTH_PX, WELCOME_FRAME_MAX_WIDTH_PX);
 
 /**
  * Phosphor inner height at reference (px).

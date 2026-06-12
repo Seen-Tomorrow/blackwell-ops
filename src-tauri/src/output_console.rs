@@ -16,6 +16,21 @@ use std::time::Instant;
 /// Used in logs, errors, and documentation.
 pub const BLACKWELL_OUTPUT_CONSOLE_FEATURE_NAME: &str = "Blackwell Output Console";
 
+/// Full-line banner (`=== message ===`) — e.g. Foundry build complete.
+pub fn format_console_banner(message: &str) -> String {
+    let trimmed = message.trim();
+    if trimmed.starts_with("===") && trimmed.ends_with("===") {
+        trimmed.to_string()
+    } else {
+        format!("=== {trimmed} ===")
+    }
+}
+
+/// Title banner + trailing detail on one docked-console line (`=== title === detail`).
+pub fn format_console_completion(title: &str, detail: &str) -> String {
+    format!("{} {}", format_console_banner(title), detail.trim())
+}
+
 /// Static categories (tabs) available in the Blackwell Output Console.
 ///
 /// These are intentionally kept as a simple enum for now.

@@ -409,6 +409,9 @@ pub struct BuildInfo {
     /// CUDA version detected from binary --version output (e.g., "12.8").
     #[serde(default, rename = "cudaVersion")]
     pub cuda_version: Option<String>,
+    /// GPU architectures from CMAKE_CUDA_ARCHITECTURES at build time (e.g., ["86", "89", "120"]).
+    #[serde(default, rename = "cudaArchitectures", skip_serializing_if = "Option::is_none")]
+    pub cuda_architectures: Option<Vec<String>>,
 }
 
 // ── User-edited Template Param (persisted to disk) ────────────────────
@@ -607,6 +610,16 @@ pub struct PathDiskUsage {
     /// Number of GGUF files.
     #[serde(rename = "fileCount")]
     pub file_count: usize,
+}
+
+/// Result of probing a model library folder before onboarding / path add.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelLibraryValidation {
+    pub exists: bool,
+    #[serde(rename = "ggufCount")]
+    pub gguf_count: usize,
+    #[serde(rename = "resolvedPath")]
+    pub resolved_path: String,
 }
 
 /// Response from search_hf_models IPC command.

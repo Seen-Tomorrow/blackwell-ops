@@ -80,6 +80,10 @@ export function getEnvColors(_env: Env): EnvColorSet {
 }
 
 // ── Environment Ordering (mirrors toolchain/manifest.json) ───────────
+/** Default runtime profile for new installs / no saved preference. */
+export const DEFAULT_BINARY_PROFILE: Env = "frontier";
+
+/** UI + selection order (mirrors toolchain/manifest.json). */
 export const ENV_ORDER: Env[] = ["frontier", "vanguard", "fresh", "stable"];
 
 export interface EnvMeta {

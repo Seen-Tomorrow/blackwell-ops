@@ -11,7 +11,11 @@ use crate::types::EngineConfig;
 /// Resolve binary path for a provider ID. Self-healing: if a stored path doesn't exist on disk,
 /// it falls through to the next candidate and logs a warning about the stale entry.
 pub fn find_provider_binary(cfg: &AppConfig, provider_id: &str, binary_profile: &str) -> Result<PathBuf, String> {
-    let profile_to_try = if binary_profile.is_empty() { "vanguard" } else { binary_profile };
+    let profile_to_try = if binary_profile.is_empty() {
+        crate::config::DEFAULT_BINARY_PROFILE
+    } else {
+        binary_profile
+    };
 
     for p in &cfg.providers {
         if p.id == provider_id {
@@ -263,6 +267,47 @@ pub fn extract_model_name(path: &str) -> String {
         .unwrap_or("unknown")
         .trim_end_matches(".gguf")
         .to_string()
+}
+
+fn split_cuda_arch_list(raw: &str) -> Vec<String> {
+    raw.split(';')
+        .map(|s| s.trim().trim_matches('"').to_string())
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
+/// Parse `-DCMAKE_CUDA_ARCHITECTURES="86;89;120"` (or unquoted) from cmake flag text.
+pub fn parse_cuda_architectures_from_cmake(cmake_flags: &str) -> Vec<String> {
+    if let Ok(re) = regex::Regex::new(r#"(?i)CMAKE_CUDA_ARCHITECTURES\s*=\s*"([^"]+)""#) {
+        if let Some(caps) = re.captures(cmake_flags) {
+            return split_cuda_arch_list(&caps[1]);
+        }
+    }
+    if let Ok(re) = regex::Regex::new(r#"(?i)CMAKE_CUDA_ARCHITECTURES\s*=\s*([0-9A-Za-z;]+)"#) {
+        if let Some(caps) = re.captures(cmake_flags) {
+            return split_cuda_arch_list(&caps[1]);
+        }
+    }
+    Vec::new()
+}
+
+/// Attach parsed CUDA arch list when missing (preserves existing stored values).
+pub fn enrich_build_info_cuda_arch(
+    mut info: crate::types::BuildInfo,
+    cmake_flags: &str,
+) -> crate::types::BuildInfo {
+    let missing = info
+        .cuda_architectures
+        .as_ref()
+        .map(|v| v.is_empty())
+        .unwrap_or(true);
+    if missing {
+        let arches = parse_cuda_architectures_from_cmake(cmake_flags);
+        if !arches.is_empty() {
+            info.cuda_architectures = Some(arches);
+        }
+    }
+    info
 }
 
 /// Strip ANSI escape sequences from a string.
