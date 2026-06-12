@@ -714,9 +714,11 @@ impl FusionBrain {
         self.lp_prompt_tokens = 0;
         self.last_cached_log_at = None;
         self.last_cached_log_tokens = 0;
-        self.prefill_tps_instant = 0.0;
+       self.prefill_tps_instant = 0.0;
+        self.gen_tps_instant = 0.0;
         self.prev_instant_poll_at = None;
         self.prev_instant_prefill_tokens = 0;
+        self.prev_instant_gen_decoded = 0;
         if self.request_start.is_none() {
             self.start_request_clock();
         }
@@ -940,8 +942,15 @@ impl FusionBrain {
             return;
         }
 
-        // Log belt: from NewPrompt until sampler_init — always PP (ignores /slots n_decoded flicker).
+       // Log belt: from NewPrompt until sampler_init — normally PP.
+        // Fallback: if /slots already shows active generation (n_decoded > 0, n_remain > 0),
+        // trust the faster signal and transition to Tg immediately instead of waiting for SamplerInit.
         if self.log_request_open && !self.log_prefill_done {
+            if Self::slots_have_active_generation(slots) {
+                self.phase = InferencePhase::Tg;
+                self.log_prefill_done = true;
+                return;
+            }
             self.phase = InferencePhase::PP;
             return;
         }

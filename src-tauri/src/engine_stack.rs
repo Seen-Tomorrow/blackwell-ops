@@ -287,6 +287,15 @@ impl EngineStack {
             }
         }
 
+        if let Err(e) = crate::engine_port_lock::write_lock(config.port, pid, binary_path) {
+            log::warn!(
+                "[port_lock] Failed to write lock for port {} (PID {}): {}",
+                config.port,
+                pid,
+                e
+            );
+        }
+
         // Update slot state under per-slot lock only
         {
             let mut slot = slot_arc.lock();
@@ -393,38 +402,6 @@ impl EngineStack {
         });
     }
 
-    /// Check if a Windows process is still alive by PID using OpenProcess + GetExitCodeProcess.
-    pub(crate) fn is_process_alive(pid: u32) -> bool {
-        use windows_sys::Win32::System::Threading::{
-            OpenProcess, GetExitCodeProcess, PROCESS_QUERY_INFORMATION,
-        };
-        use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
-
-        // SAFETY: PROCESS_QUERY_INFORMATION is all we need for GetExitCodeProcess.
-        // DO NOT add PROCESS_VM_READ — it causes OpenProcess to be denied on child processes,
-        // making the reaper think the process is dead and kill it via kill_process_by_port.
-        let handle = unsafe {
-            OpenProcess(PROCESS_QUERY_INFORMATION, 0, pid)
-        };
-
-        if handle == INVALID_HANDLE_VALUE {
-            // Transient access denial during heavy GPU load — assume alive to avoid false kills.
-            return true;
-        }
-
-        let mut exit_code: u32 = 0;
-        let success = unsafe { GetExitCodeProcess(handle, &mut exit_code) } != 0;
-
-        unsafe { CloseHandle(handle); }
-
-        if !success {
-            return true; // Can't determine, assume alive
-        }
-
-        const STILL_ACTIVE: u32 = 259;
-        exit_code == STILL_ACTIVE
-    }
-
     /// Background reaper: monitors a PID and cleans up the slot if the process dies unexpectedly.
     fn spawn_reaper(
         slot_idx: usize,
@@ -446,11 +423,6 @@ impl EngineStack {
             }
         };
 
-        let (port, alias) = {
-            let slot = slot_arc.lock();
-            (slot.port, slot.alias.clone())
-        };
-
         tokio::spawn(async move {
             loop {
                 tokio::time::sleep(std::time::Duration::from_millis(500)).await;
@@ -459,7 +431,7 @@ impl EngineStack {
                     break;
                 }
 
-                let alive = Self::is_process_alive(pid);
+                let alive = crate::engine_utils::is_process_alive(pid);
 
                 if !alive {
                     let still_loading = {
@@ -483,13 +455,8 @@ impl EngineStack {
         });
     }
 
-    async fn kill_process_by_port(port: u16) -> Result<(), String> {
-        crate::engine_utils::kill_process_by_port(port).await
-    }
-
-    /// Background orphan cleanup — only when graceful stop failed.
+    /// Background process teardown after slot is cleared — PID-only kill, never port scan.
     async fn finish_process_stop(
-        port: u16,
         pid: Option<u32>,
         proc: std::process::Child,
         hub: Option<LogHub>,
@@ -497,7 +464,7 @@ impl EngineStack {
         alias: String,
         emit_console: bool,
     ) {
-        let exited = crate::engine_utils::stop_child_fast(proc, pid, port).await;
+        let exited = crate::engine_utils::stop_child_fast(proc, pid).await;
 
         if emit_console {
             if let Some(hub) = hub {
@@ -530,10 +497,10 @@ impl EngineStack {
             if matches!(slot.status, SlotStatus::Idle) {
                 return;
             }
-            (slot.alias.clone(), slot.port, slot.pid)
+            (slot.alias.clone(), slot.pid)
         };
 
-        let (alias, port, pid) = snapshot;
+        let (alias, pid) = snapshot;
 
         crate::fusion_brain::stop_brain(slot_idx).await;
 
@@ -583,7 +550,6 @@ impl EngineStack {
 
         if let Some(proc) = proc_to_stop {
             tokio::spawn(Self::finish_process_stop(
-                port,
                 pid,
                 proc,
                 Some(log_hub),
@@ -591,11 +557,8 @@ impl EngineStack {
                 alias,
                 false,
             ));
-        } else {
-            if let Some(p) = pid {
-                let _ = crate::engine_utils::kill_process_by_pid(p).await;
-            }
-            let _ = Self::kill_process_by_port(port).await;
+        } else if let Some(p) = pid {
+            let _ = crate::engine_utils::kill_process_by_pid(p).await;
         }
     }
 
@@ -603,6 +566,7 @@ impl EngineStack {
     fn clear_slot(&self, idx: usize) {
         if let Some(slot_arc) = &self.slots[idx] {
             let mut slot = slot_arc.lock();
+            let port = slot.port;
             slot.reaper_cancel.store(true, Ordering::Release);
             slot.status = SlotStatus::Idle;
             slot.child_proc = None;
@@ -619,6 +583,8 @@ impl EngineStack {
             slot.binary_profile.clear();
             slot.supports_fusion = false;
             slot.reaper_cancel = Arc::new(AtomicBool::new(false));
+            drop(slot);
+            crate::engine_port_lock::delete_lock(port);
         }
     }
 
@@ -659,15 +625,14 @@ impl EngineStack {
         crate::fusion_brain::stop_brain(slot_idx).await;
 
         // Extract process handle under per-slot lock only
-        let (port, alias, pid, proc_to_stop, hub_opt) = {
+        let (alias, pid, proc_to_stop, hub_opt) = {
             let stack = stack_ref.lock().await;
             let mut slot = stack.slots[slot_idx].as_ref().ok_or("Slot not found")?.lock();
-            let port = slot.port;
             let alias = slot.alias.clone();
             let pid = slot.pid;
             let proc_to_stop = slot.child_proc.take();
             let hub_opt = stack.log_hub.as_ref().map(|h| h.clone());
-            (port, alias, pid, proc_to_stop, hub_opt)
+            (alias, pid, proc_to_stop, hub_opt)
         };
 
         // Immediate UI feedback — don't block on process teardown or port scan
@@ -682,7 +647,6 @@ impl EngineStack {
 
         if let Some(proc) = proc_to_stop {
             Self::finish_process_stop(
-                port,
                 pid,
                 proc,
                 hub_opt,
@@ -713,7 +677,6 @@ impl EngineStack {
                     if filter(&mut slot) {
                         targets.push((
                             i,
-                            slot.port,
                             slot.pid,
                             slot.alias.clone(),
                             slot.child_proc.take(),
@@ -724,16 +687,16 @@ impl EngineStack {
             stack.log_hub.as_ref().map(|h| h.clone())
         };
 
-        let stopped: Vec<usize> = targets.iter().map(|(i, _, _, _, _)| *i).collect();
+        let stopped: Vec<usize> = targets.iter().map(|(i, _, _, _)| *i).collect();
 
-        for (i, _, _, _, _) in &targets {
+        for (i, _, _, _) in &targets {
             crate::fusion_brain::stop_brain(*i).await;
         }
 
         // Immediate UI — clear slots and emit before slow process/port cleanup
         {
             let stack = stack_ref.lock().await;
-            for (i, _, _, _, _) in &targets {
+            for (i, _, _, _) in &targets {
                 stack.clear_slot(*i);
                 if emit_events {
                     if let Some(hub) = log_hub_ref.as_ref() {
@@ -745,11 +708,10 @@ impl EngineStack {
         }
 
         let mut kill_handles = Vec::new();
-        for (i, port, pid, alias, proc_to_stop) in targets {
+        for (i, pid, alias, proc_to_stop) in targets {
             if let Some(proc) = proc_to_stop {
                 let hub_clone = log_hub_ref.clone();
                 let handle = tokio::spawn(Self::finish_process_stop(
-                    port,
                     pid,
                     proc,
                     hub_clone,

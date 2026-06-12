@@ -156,12 +156,12 @@ pub fn reap_child_handle(child: &mut std::process::Child) -> bool {
     false
 }
 
-/// Stop a no-console engine: brief CTRL+C attempt, then taskkill + port cleanup, then reap handle.
+/// Stop a no-console engine: brief CTRL+C attempt, then taskkill by PID, then reap handle.
 /// Release builds spawn with CREATE_NO_WINDOW — AttachConsole usually fails, so taskkill is the reliable path.
+/// Never scans or kills by port — foreign listeners (LM Studio, other Blackwell instances) must not be touched.
 pub async fn stop_child_fast(
     mut child: std::process::Child,
     pid: Option<u32>,
-    port: u16,
 ) -> bool {
     if let Some(p) = pid {
         if request_console_ctrl_c(p) {
@@ -177,7 +177,6 @@ pub async fn stop_child_fast(
         }
         let _ = kill_process_by_pid(p).await;
     }
-    let _ = kill_process_by_port(port).await;
 
     tokio::task::spawn_blocking(move || reap_child_handle(&mut child))
         .await
@@ -205,6 +204,127 @@ pub async fn kill_process_by_pid(pid: u32) -> Result<(), String> {
     Ok(())
 }
 
+/// Windows: PID listening on TCP `port` (LISTENING rows only — ignores client connections).
+pub async fn get_listening_pid(port: u16) -> Option<u32> {
+    tokio::task::spawn_blocking(move || get_listening_pid_blocking(port))
+        .await
+        .ok()
+        .flatten()
+}
+
+fn get_listening_pid_blocking(port: u16) -> Option<u32> {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+    let output = std::process::Command::new("netstat")
+        .args(["-ano", "-p", "tcp"])
+        .creation_flags(CREATE_NO_WINDOW)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let text = String::from_utf8_lossy(&output.stdout);
+    for line in text.lines() {
+        if !line.contains("LISTENING") {
+            continue;
+        }
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.len() < 5 {
+            continue;
+        }
+        let local_port = parse_netstat_local_port(parts[1])?;
+        if local_port != port {
+            continue;
+        }
+        return parts.last()?.parse().ok();
+    }
+    None
+}
+
+fn parse_netstat_local_port(local: &str) -> Option<u16> {
+    if let Some(rest) = local.strip_prefix('[') {
+        if let Some((_, after)) = rest.split_once("]:") {
+            return after.parse().ok();
+        }
+    }
+    local.rsplit(':').next()?.parse().ok()
+}
+
+/// Full path to a process executable (Windows).
+pub fn get_process_image_path(pid: u32) -> Option<PathBuf> {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+    let script = format!(
+        "(Get-Process -Id {pid} -ErrorAction SilentlyContinue).Path"
+    );
+    let output = std::process::Command::new("powershell")
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            &script,
+        ])
+        .creation_flags(CREATE_NO_WINDOW)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if path.is_empty() {
+        return None;
+    }
+    Some(PathBuf::from(path))
+}
+
+/// Compare two paths to the same executable (canonical when possible).
+pub fn same_executable_path(a: &Path, b: &Path) -> bool {
+    if a == b {
+        return true;
+    }
+    match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
+        (Ok(ca), Ok(cb)) => ca == cb,
+        _ => a.file_name().is_some() && a.file_name() == b.file_name(),
+    }
+}
+
+/// Check if a Windows process is still alive by PID.
+/// Uses `PROCESS_QUERY_INFORMATION` only — do NOT add `PROCESS_VM_READ` (denied on child processes).
+pub fn is_process_alive(pid: u32) -> bool {
+    use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
+    use windows_sys::Win32::System::Threading::{
+        GetExitCodeProcess, OpenProcess, PROCESS_QUERY_INFORMATION,
+    };
+
+    let handle = unsafe { OpenProcess(PROCESS_QUERY_INFORMATION, 0, pid) };
+    if handle == INVALID_HANDLE_VALUE {
+        return true;
+    }
+
+    let mut exit_code: u32 = 0;
+    let success = unsafe { GetExitCodeProcess(handle, &mut exit_code) } != 0;
+    unsafe { CloseHandle(handle) };
+
+    if !success {
+        return true;
+    }
+
+    const STILL_ACTIVE: u32 = 259;
+    exit_code == STILL_ACTIVE
+}
+
 /// Fast check — true if something is accepting TCP connections on 127.0.0.1:port.
 pub async fn is_port_in_use(port: u16) -> bool {
     let addr = format!("127.0.0.1:{}", port);
@@ -215,33 +335,6 @@ pub async fn is_port_in_use(port: u16) -> bool {
     .await
     .map(|r| r.is_ok())
     .unwrap_or(false)
-}
-
-/// Kill process listening on a given port via PowerShell taskkill.
-/// Slow — spawns PowerShell + netstat. Use only as last-resort orphan cleanup.
-pub async fn kill_process_by_port(port: u16) -> Result<(), String> {
-    let ps_script = format!(
-        r"$pids = netstat -ano | Select-String ':{0} ' | ForEach-Object {{ ($_ -split '\s+')[-1] }}; $pids | Where-Object {{ $_.Length -gt 0 }} | ForEach-Object {{ taskkill /F /PID $_ }}",
-        port
-    );
-
-    let output = tokio::process::Command::new("powershell")
-        .args(&["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", &ps_script])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .creation_flags(0x08000000)
-        .output()
-        .await
-        .map_err(|e| format!("Failed to kill process on port {}: {}", port, e))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        if !stderr.contains("could not be found") && !stderr.contains("ERROR") {
-            log::warn!("Kill port {} stderr: {}", port, stderr);
-        }
-    }
-
-    Ok(())
 }
 
 /// Human-readable Windows child process exit code (NTSTATUS / Win32).

@@ -476,5 +476,46 @@ Framer-motion has been fully removed from all components. All animations migrate
 
 ---
 
+## 13. Engine Port Lock — Ghost-Only Reclaim (Fixed 2026-06-13)
+
+**Files:** `engine_port_lock.rs`, `engine.rs`, `engine_stack.rs`, `engine_utils.rs`
+
+### Problem
+
+Launch used `kill_process_by_port` when `is_port_in_use` returned true. That PowerShell/netstat script taskkilled **every** PID matching `:PORT ` in netstat — including **ESTABLISHED** TCP clients (fusion brain, health pollers). Running dev + release on the same `base_port` could kill the sibling app's cargo/WebView while llama-server survived.
+
+### Fix — never carpet-bomb ports
+
+| Case | Action |
+|------|--------|
+| Port free (~150ms connect probe) | Launch |
+| Port busy, verified Blackwell orphan | `taskkill /PID` on **LISTENING** PID only, then launch |
+| Port busy, foreign app / live sibling instance | **Fail** with clear error — stop other server or change BASE-PORT |
+
+### Lock files
+
+`{app_root}/config/engine-locks/{port}.json` — written after spawn survives 500ms alive check; deleted in `clear_slot`.
+
+Fields: `engine_pid`, `owner_app_pid`, `binary_path`, `reserved_at`.
+
+**Reclaim verification chain:** lock exists → LISTENING PID matches `engine_pid` → lock binary matches launch binary → `Get-Process` image path matches → owner is current app PID **or** owner app is dead (prior crash).
+
+### API surface
+
+- `engine_port_lock::reclaim_our_ghost_or_fail` — called from `launch_engine` before spawn; releases reserved slot on error
+- `engine_port_lock::write_lock` — called from `load_slot` after alive check
+- `engine_port_lock::delete_lock` — called from `clear_slot`
+- `engine_utils::get_listening_pid` — LISTENING rows only (ignores ESTABLISHED clients)
+- `engine_utils::stop_child_fast` — PID-only; **no port parameter, no port scan**
+- `engine_utils::kill_process_by_port` — **removed** (dead code hazard)
+
+### Pitfalls for future edits
+
+- Do **not** reintroduce port-based taskkill on launch, stop, reaper, or `fail_loading_slot`.
+- `is_process_alive` lives in `engine_utils.rs` — `PROCESS_QUERY_INFORMATION` only (see `Engines.md`).
+- Reaper still only handles **Loading** slots; zombie Running slots after unexpected death remain a separate gap.
+
+---
+
 ### Reference
 See `FUSION-metrics.md` for complete field table. Storage/event key tables live in `src/lib/storage.ts` and `src/lib/events.ts` headers.

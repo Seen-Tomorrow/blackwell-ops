@@ -660,7 +660,7 @@ impl LogHub {
             stack.get_slot(slot_idx).and_then(|s| s.pid)
         };
         if let Some(pid) = pid {
-            if crate::engine_stack::EngineStack::is_process_alive(pid) {
+            if crate::engine_utils::is_process_alive(pid) {
                 log::warn!(
                     "[log_hub] slot={} stderr closed but pid {} still alive — not failing load ({})",
                     slot_idx,

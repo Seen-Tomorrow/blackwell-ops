@@ -23,6 +23,7 @@ mod model_cache;
 mod download_manager;
 mod model_catalog;
 mod engine_utils;
+mod engine_port_lock;
 mod fusion_brain;
 mod fusion_poller;
 mod fusion_logparser;

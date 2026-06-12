@@ -107,8 +107,34 @@ function deriveParamGroups(groupKeys: string[]): ParamGroupMeta[] {
 const SPEC_DECODING_GROUP = "SPECULATIVE-DECODING";
 const SPEC_DECODING_LAUNCH_KEYS = ["spec_type", "spec_draft_n_max"] as const;
 
-/** Auto VRAM simple mode still shows these in RUNTIME-CONFIG and passes them at launch. */
-const SIMPLE_MODE_RUNTIME_KEYS = ["base_port"] as const;
+const RUNTIME_CONFIG_UI_GROUP = "RUNTIME-CONFIG";
+
+/**
+ * Auto VRAM mode: visible + launched, but rendered in the left column to balance the dock.
+ * Manual mode keeps the template ui_group (RUNTIME-CONFIG → right column).
+ */
+const SIMPLE_MODE_LEFT_RUNTIME_KEYS = ["base_port"] as const;
+const SIMPLE_MODE_LEFT_RUNTIME_KEY_SET = new Set<string>(SIMPLE_MODE_LEFT_RUNTIME_KEYS);
+
+function splitRuntimeDockColumns(
+  runtimeDocked: UserEditedTemplateParam[],
+  simpleMode: boolean,
+): { leftParams: UserEditedTemplateParam[]; rightParams: UserEditedTemplateParam[] } {
+  if (!simpleMode) {
+    return {
+      leftParams: runtimeDocked.filter((d) => d.ui_group !== RUNTIME_CONFIG_UI_GROUP),
+      rightParams: runtimeDocked.filter((d) => d.ui_group === RUNTIME_CONFIG_UI_GROUP),
+    };
+  }
+  return {
+    leftParams: runtimeDocked.filter(
+      (d) => d.ui_group !== RUNTIME_CONFIG_UI_GROUP || SIMPLE_MODE_LEFT_RUNTIME_KEY_SET.has(d.key),
+    ),
+    rightParams: runtimeDocked.filter(
+      (d) => d.ui_group === RUNTIME_CONFIG_UI_GROUP && !SIMPLE_MODE_LEFT_RUNTIME_KEY_SET.has(d.key),
+    ),
+  };
+}
 
 function isSpecDecodingActive(params: UserEditedTemplateParam[]): boolean {
   return params
@@ -341,7 +367,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     if (!simpleModeActive) return null;
     return new Set([
       ...(launchProfile?.simpleParamKeys ?? ["device", "ctx"]),
-      ...SIMPLE_MODE_RUNTIME_KEYS,
+      ...SIMPLE_MODE_LEFT_RUNTIME_KEYS,
     ]);
   }, [simpleModeActive, launchProfile?.simpleParamKeys]);
 
@@ -781,8 +807,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     finalAlias = resolveUniqueAlias(finalAlias, stack);
 
     const autoVramLaunchKeys = simpleModeActive && isSpecDecodingActive(allParamsResolved)
-      ? [...new Set([...simpleParamKeys, ...SIMPLE_MODE_RUNTIME_KEYS, ...SPEC_DECODING_LAUNCH_KEYS])]
-      : [...new Set([...simpleParamKeys, ...SIMPLE_MODE_RUNTIME_KEYS])];
+      ? [...new Set([...simpleParamKeys, ...SIMPLE_MODE_LEFT_RUNTIME_KEYS, ...SPEC_DECODING_LAUNCH_KEYS])]
+      : [...new Set([...simpleParamKeys, ...SIMPLE_MODE_LEFT_RUNTIME_KEYS])];
 
     const extraParams: Record<string, unknown> = simpleModeActive && model.metadata
       ? buildAutoVramLaunchParams({
@@ -944,8 +970,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       {/* ── Mandatory Config Block (2-column) ─────────────── */}
       {dockedParams["runtime"] && dockedParams["runtime"].length > 0 && (() => {
         const runtimeDocked = dockedParams["runtime"];
-        const leftParams = runtimeDocked.filter(d => d.ui_group !== "RUNTIME-CONFIG");
-        const rightParams = runtimeDocked.filter(d => d.ui_group === "RUNTIME-CONFIG");
+        const { leftParams, rightParams } = splitRuntimeDockColumns(runtimeDocked, simpleModeActive);
         const currentProvider = resolvedProviders?.find(p => p.id === effectiveBackendType);
         const availableProfiles: EnvProfile[] = [...ENV_ORDER];
         const builtProfiles = ENV_ORDER.filter((env) => isProfileBuilt(currentProvider, env));

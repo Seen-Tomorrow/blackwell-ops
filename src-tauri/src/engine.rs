@@ -205,10 +205,13 @@ pub async fn launch_engine(
 
     config.port = slot_port;
 
-    // Only run slow netstat kill when something is actually listening (orphan from prior crash).
-    if engine_utils::is_port_in_use(slot_port).await {
-        let _ = engine_utils::kill_process_by_port(slot_port).await;
-        tokio::time::sleep(Duration::from_millis(150)).await;
+    if let Err(e) = crate::engine_port_lock::reclaim_our_ghost_or_fail(slot_port, &binary_path).await {
+        {
+            let stack = app.stack.lock().await;
+            stack.release_reserved_slot(slot_idx);
+            stack.emit_stack_changed();
+        }
+        return Err(e);
     }
 
     let provider_display_name = backend_type.clone();
