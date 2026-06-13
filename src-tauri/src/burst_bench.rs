@@ -1,6 +1,6 @@
 //! TG (generation) burst benchmark — single measured run after warmup for clean TPS measurement.
 //!
-//! Strategy: 1 warmup run (fixed length=1024) + 1 measured run (user-selected n_predict) → single result values.
+//! Strategy: 1 warmup run (fixed length=512) + 1 measured run (user-selected n_predict) → single result values.
 //! Uses engine-reported timings (prompt_ms, predicted_ms) not HTTP round-trip time.
 
 use crate::bench_cancel::{self, post_json_cancellable};
@@ -50,7 +50,7 @@ pub async fn cmd_burst_bench(
     const WARMUP_RUNS: usize = 1;
     const MEASURED_RUNS: usize = 1;
     const TOTAL_RUNS: usize = WARMUP_RUNS + MEASURED_RUNS;
-    const WARMUP_TOKENS: usize = 1024;  // fixed length for warmup phase (gen n_predict); small + fast for "warm" kernels
+    const WARMUP_TOKENS: usize = 512;
 
     struct RunStats {
         prompt_tps: f64,
@@ -88,6 +88,7 @@ pub async fn cmd_burst_bench(
         // Signal phase to frontend so UI can show WARMUP vs MEASURED
         let phase = if run < WARMUP_RUNS { "warmup" } else { "measured" };
         let effective_length = if run < WARMUP_RUNS { WARMUP_TOKENS } else { n_predict };
+        crate::fusion_brain::reset_bench_meters_for_port(port);
         let _ = app_handle.emit("bench-tg-progress", serde_json::json!({
             "port": port,
             "phase": phase,

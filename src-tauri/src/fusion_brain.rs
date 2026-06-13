@@ -16,8 +16,10 @@ const MAX_DISPLAY_TPS: f64 = 200_000.0;
 const MIN_SESSION_TPS_ELAPSED_MS: u64 = 400;
 /// Ignore first-poll token bursts after reset (KV restore / cache jump).
 const MAX_INSTANT_TOKEN_JUMP: usize = 2048;
-/// Active request polling cadence.
-const POLL_ACTIVE_MS: u64 = 100;
+/// Active request polling cadence — matches log_hub stderr batch tick.
+const POLL_ACTIVE_MS: u64 = crate::log_hub::TELEMETRY_TICK_MS;
+/// Min Δt between instant-TPS samples (slightly under poll interval for timer jitter).
+const MIN_INSTANT_TPS_DT_SEC: f64 = 0.008;
 /// Idle + ready cadence — cuts browser IPC churn when nothing changes.
 const POLL_IDLE_MS: u64 = 500;
 /// Re-emit idle snapshots periodically so frontend can rehydrate after HMR/remount.
@@ -482,6 +484,29 @@ impl FusionBrain {
         self.prev_instant_gen_decoded = 0;
     }
 
+    /// Bench warmup/measured phases reuse the same slot without an idle gap — force fresh TG/PP meters.
+    fn reset_bench_meters(&mut self) {
+        self.phase = InferencePhase::PP;
+        self.lp_phase = InferencePhase::PP;
+        self.log_request_open = false;
+        self.log_prefill_done = false;
+        self.prompt_tokens = 0;
+        self.prefill_tps = 0.0;
+        self.ttft_ms = None;
+        self.start_request_clock();
+        self.tg_start_time = None;
+        self.tg_start_n_decoded = 0;
+        self.last_gen_tps = 0.0;
+        self.lp_gen_tps = 0.0;
+        self.lp_reset_prompt = false;
+        self.lp_reset_regression = false;
+        self.reset_prefill_counters();
+        for s in self.slot_states.values_mut() {
+            s.was_processing = false;
+        }
+        self.emit_dirty = true;
+    }
+
     fn update_instant_tps(&mut self, slots: &[fusion_poller::SlotData], now: Instant) {
         let tokens = self.prefill_tokens.max(self.lp_prompt_tokens);
         let mut total_n_decoded: usize = 0;
@@ -493,10 +518,10 @@ impl FusionBrain {
 
         if let Some(prev) = self.prev_instant_poll_at {
             let dt = now.duration_since(prev).as_secs_f64();
-            if dt >= 0.05 {
+            if dt >= MIN_INSTANT_TPS_DT_SEC {
                 if tokens > self.prev_instant_prefill_tokens {
                     let delta = tokens - self.prev_instant_prefill_tokens;
-                    // First sample after reset often jumps by full cache size in one 100ms poll.
+                    // First sample after reset often jumps by full cache size in one poll.
                     if self.prev_instant_prefill_tokens > 0 || delta <= MAX_INSTANT_TOKEN_JUMP {
                         let rate = delta as f64 / dt;
                         self.prefill_tps_instant = clamp_display_tps(rate);
@@ -595,9 +620,10 @@ impl FusionBrain {
     ) {
         let mut brain = Self::new(&config);
 
-        // Channel for parsed log events from stderr → this brain task (bounded to backpressure on slow consumer)
-        let (event_tx, mut event_rx) = tokio::sync::mpsc::channel::<crate::fusion_logparser::LogEvent>(1024);
-        register_log_receiver(config.slot_idx, event_tx);
+        // Channel for log events + bench meter resets → this brain task (bounded to backpressure on slow consumer)
+        let (event_tx, mut event_rx) =
+            tokio::sync::mpsc::channel::<BrainInbound>(1024);
+        register_brain_inbound(config.slot_idx, event_tx);
 
         // Emit initial LOADING update so frontend shows launch animation
         let init = brain.build_update(&[], None);
@@ -618,16 +644,23 @@ impl FusionBrain {
         loop {
             tokio::select! {
                 _ = cancel.cancelled() => {
-                    unregister_log_receiver(slot_idx);
+                    unregister_brain_inbound(slot_idx);
                     let term = brain.build_terminal_update();
                     brain.force_emit(&log_hub, term);
                     return;
                 }
 
-                // Log events update state; emit coalesces on next poll tick (≤100ms active).
-                Some(log_event) = event_rx.recv() => {
-                    brain.process_log_event(&log_event);
-                    brain.emit_dirty = true;
+                // Log events + bench resets update state; emit coalesces on next poll tick (≤10ms active).
+                Some(inbound) = event_rx.recv() => {
+                    match inbound {
+                        BrainInbound::Log(log_event) => {
+                            brain.process_log_event(&log_event);
+                            brain.emit_dirty = true;
+                        }
+                        BrainInbound::BenchMeterReset => {
+                            brain.reset_bench_meters();
+                        }
+                    }
                 }
 
                 _ = tokio::time::sleep_until(next_poll) => {
@@ -927,7 +960,7 @@ impl FusionBrain {
             .map(|m| m.requests_processing > 0)
             .unwrap_or(false);
         // /slots is_processing and /metrics requests_processing often lag (text bench, WebUI).
-        // engine_state ACTIVE is the belt that keeps PP from being wiped every 100ms poll.
+        // engine_state ACTIVE is the belt that keeps PP from being wiped every poll tick.
         let in_flight = any_processing
             || metrics_busy
             || self.log_request_open
@@ -1057,7 +1090,12 @@ impl FusionBrain {
                 self.tg_start_time = None;
                 self.tg_start_n_decoded = 0;
                 self.ttft_ms = None;
-                self.reset_prefill_counters();
+                // NewPrompt log often lands before the first /slots poll that sees is_processing.
+                // reset_prefill_counters() clears prefill_tokens_total and disables /slots progress
+                // until print_timing PP (~70% on long prefills).
+                if !(self.lp_reset_prompt && self.prefill_tokens_total > 0) {
+                    self.reset_prefill_counters();
+                }
             }
 
             if d.ended_session {
@@ -1368,32 +1406,53 @@ pub fn get_fusion_snapshots() -> Vec<FusionUpdate> {
 
 use tokio::sync::Mutex as TokioMutex;
 
+/// Inbound messages to a running FusionBrain task (stderr logs + bench phase boundaries).
+pub enum BrainInbound {
+    Log(crate::fusion_logparser::LogEvent),
+    BenchMeterReset,
+}
+
 static BRAIN_REGISTRY: std::sync::LazyLock<
     TokioMutex<HashMap<usize, (tokio_util::task::AbortOnDropHandle<()>, tokio_util::sync::CancellationToken)>>,
 > = std::sync::LazyLock::new(|| TokioMutex::new(HashMap::new()));
 
-/// Registry of log event senders — keyed by slot_idx.
+/// Registry of brain inbound senders — keyed by slot_idx.
 /// Uses parking_lot Mutex so .lock() is safe inside both blocking & async contexts.
-static LOG_EVENT_SENDERS: std::sync::LazyLock<
-    parking_lot::Mutex<HashMap<usize, tokio::sync::mpsc::Sender<crate::fusion_logparser::LogEvent>>>,
+static BRAIN_INBOUND_SENDERS: std::sync::LazyLock<
+    parking_lot::Mutex<HashMap<usize, tokio::sync::mpsc::Sender<BrainInbound>>>,
 > = std::sync::LazyLock::new(|| parking_lot::Mutex::new(HashMap::new()));
 
-/// Register this brain's log event receiver channel. Called from run() before polling starts.
-pub fn register_log_receiver(slot_idx: usize, tx: tokio::sync::mpsc::Sender<crate::fusion_logparser::LogEvent>) {
-    let mut registry = LOG_EVENT_SENDERS.lock();
+/// Register this brain's inbound channel. Called from run() before polling starts.
+pub fn register_brain_inbound(slot_idx: usize, tx: tokio::sync::mpsc::Sender<BrainInbound>) {
+    let mut registry = BRAIN_INBOUND_SENDERS.lock();
     registry.insert(slot_idx, tx);
 }
 
-fn unregister_log_receiver(slot_idx: usize) {
-    let mut registry = LOG_EVENT_SENDERS.lock();
+fn unregister_brain_inbound(slot_idx: usize) {
+    let mut registry = BRAIN_INBOUND_SENDERS.lock();
     registry.remove(&slot_idx);
 }
 
 /// Route a parsed log event to the brain for the given slot (fire-and-forget, drops on full).
 pub fn route_log_event(slot_idx: usize, event: crate::fusion_logparser::LogEvent) {
-    let registry = LOG_EVENT_SENDERS.lock();
+    let registry = BRAIN_INBOUND_SENDERS.lock();
     if let Some(tx) = registry.get(&slot_idx) {
-        let _ = tx.try_send(event); // bounded channel — drops on full (backpressure)
+        let _ = tx.try_send(BrainInbound::Log(event));
+    }
+}
+
+/// Reset fusion hero meters at bench phase boundaries (warmup ↔ measured).
+pub fn reset_bench_meters_for_port(port: u16) {
+    let slot_idx = FUSION_SNAPSHOT_CACHE
+        .lock()
+        .values()
+        .find(|u| u.port == port)
+        .map(|u| u.slot_idx);
+    if let Some(idx) = slot_idx {
+        let registry = BRAIN_INBOUND_SENDERS.lock();
+        if let Some(tx) = registry.get(&idx) {
+            let _ = tx.try_send(BrainInbound::BenchMeterReset);
+        }
     }
 }
 
@@ -1404,10 +1463,10 @@ pub async fn start_brain(log_hub: LogHub, config: FusionConfig) {
     if let Some((_, cancel)) = registry.remove(&config.slot_idx) {
         cancel.cancel();
     }
-    // Clear old log event sender so events between cancel and new register don't route to dead channel
+    // Clear old inbound sender so events between cancel and new register don't route to dead channel
     {
-        let mut event_senders = LOG_EVENT_SENDERS.lock();
-        event_senders.remove(&config.slot_idx);
+        let mut senders = BRAIN_INBOUND_SENDERS.lock();
+        senders.remove(&config.slot_idx);
     }
 
     let idx = config.slot_idx;
@@ -1422,10 +1481,10 @@ pub async fn stop_brain(slot_idx: usize) {
         // Fusion brain stopping now routed to Blackwell Output Console
         cancel.cancel();
     }
-    // Also clean up log event sender channel for this slot
+    // Also clean up inbound channel for this slot
     {
-        let mut event_senders = LOG_EVENT_SENDERS.lock();
-        event_senders.remove(&slot_idx);
+        let mut senders = BRAIN_INBOUND_SENDERS.lock();
+        senders.remove(&slot_idx);
     }
     remove_fusion_snapshot(slot_idx);
 }
@@ -1437,10 +1496,10 @@ pub async fn stop_all_brains() {
         // Fusion brain stopping now routed to Blackwell Output Console
         cancel.cancel();
     }
-    // Drain all log event channels too
+    // Drain all inbound channels too
     {
-        let mut event_senders = LOG_EVENT_SENDERS.lock();
-        event_senders.clear();
+        let mut senders = BRAIN_INBOUND_SENDERS.lock();
+        senders.clear();
     }
     FUSION_SNAPSHOT_CACHE.lock().clear();
 }

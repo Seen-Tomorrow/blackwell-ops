@@ -365,11 +365,11 @@ export default function BenchWidget({
                      <span className="text-[7px] font-mono text-stealth-muted truncate">
                        {ps.tgRunning
                          ? (ps.tgPhase === "warmup"
-                           ? `TG WARMUP (${ps.tgEffectiveLength ?? 1024} tok)`
+                           ? `TG WARMUP (${ps.tgEffectiveLength ?? 512} tok)`
                            : `TG (${ps.nPredict} tok)...`)
                          : ps.ppRunning
                            ? (ps.ppPhase === "warmup"
-                             ? `PP WARMUP (${formatBenchK(ps.ppEffectiveLength ?? 1024)} tok)`
+                             ? `PP WARMUP (${formatBenchK(ps.ppEffectiveLength ?? 512)} tok)`
                              : `PP (${formatBenchK(ps.ppTargetTokens)} tok)...`)
                            : ""}
                      </span>

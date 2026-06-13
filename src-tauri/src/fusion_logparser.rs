@@ -1,6 +1,6 @@
 //! Fusion Log Parser — regex definitions for modern llama.cpp -lv 4 log format.
 //!
-//! STATUS: WIRED INTO FUSION BRAIN via log_hub.rs → LOG_EVENT_SENDERS registry.
+//! STATUS: WIRED INTO FUSION BRAIN via log_hub.rs → BRAIN_INBOUND_SENDERS registry.
 //! Parsed events route to FusionBrain through mpsc channel on each slot's brain task.
 
 #![allow(dead_code)]

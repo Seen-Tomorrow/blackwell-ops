@@ -32,7 +32,9 @@ pub struct LogBatch {
     pub entries: Vec<LogEntry>,
 }
 
-const BATCH_INTERVAL_MS: u64 = 10;
+/// Shared telemetry tick — stderr log batch flush and fusion /slots poll cadence.
+pub const TELEMETRY_TICK_MS: u64 = 10;
+const BATCH_INTERVAL_MS: u64 = TELEMETRY_TICK_MS;
 const MAX_BATCH_SIZE: usize = 10;
 /// Bounded stderr line queue — drops on flood instead of unbounded RAM growth.
 const STDERR_LINE_CHANNEL_CAP: usize = 4096;

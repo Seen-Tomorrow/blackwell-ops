@@ -94,7 +94,7 @@ pub async fn cmd_bench_pp_burst(
     const WARMUP_RUNS: usize = 1;
     const MEASURED_RUNS: usize = 1;
     const TOTAL_RUNS: usize = WARMUP_RUNS + MEASURED_RUNS;
-    const WARMUP_TOKENS: usize = 1024;  // fixed length for warmup phase (prompt target size); small/fast (warmup may be near-pointless for pure PP but provides 1 phase for UI consistency)
+    const WARMUP_TOKENS: usize = 512;
 
     struct RunStats {
         prefill_tps: f64,
@@ -127,6 +127,7 @@ pub async fn cmd_bench_pp_burst(
         // Signal phase to frontend so UI can show WARMUP vs MEASURED
         let phase = if run < WARMUP_RUNS { "warmup" } else { "measured" };
         let effective_target = if run < WARMUP_RUNS { WARMUP_TOKENS } else { target_tokens };
+        crate::fusion_brain::reset_bench_meters_for_port(port);
         let _ = app_handle.emit("bench-pp-progress", serde_json::json!({
             "port": port,
             "phase": phase,
