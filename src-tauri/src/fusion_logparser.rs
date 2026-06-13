@@ -17,6 +17,7 @@ static RE_PRINT_TIMING_GEN: OnceLock<regex::Regex> = OnceLock::new();
 static RE_STOP_PROCESSING: OnceLock<regex::Regex> = OnceLock::new();
 static RE_CACHED_PROMPT: OnceLock<regex::Regex> = OnceLock::new();
 static RE_PROMPT_EVAL: OnceLock<regex::Regex> = OnceLock::new();
+static RE_FORCE_PROMPT_REPROCESS: OnceLock<regex::Regex> = OnceLock::new();
 
 fn re_new_prompt() -> &'static regex::Regex {
     RE_NEW_PROMPT.get_or_init(|| {
@@ -74,6 +75,15 @@ fn re_prompt_eval() -> &'static regex::Regex {
     })
 }
 
+fn re_force_prompt_reprocess() -> &'static regex::Regex {
+    RE_FORCE_PROMPT_REPROCESS.get_or_init(|| {
+        regex::Regex::new(
+            r"slot update_slots:\s+id\s+(\d+)\s*\|\s*task\s*(-?\d+)\s*\|\s*forcing full prompt re-processing",
+        )
+        .unwrap()
+    })
+}
+
 fn re_cached_prompt() -> &'static regex::Regex {
     RE_CACHED_PROMPT.get_or_init(|| {
         // Multimodal / chunked prefill: live prompt fill before sampler_init (no print_timing PP <3s)
@@ -126,6 +136,11 @@ pub enum LogEvent {
         slot_id: usize,
         tokens: usize,
         eval_ms: f64,
+    },
+    /// SWA / hybrid cache miss — same task re-prefills without a `new prompt` line.
+    ForcePromptReprocess {
+        slot_id: usize,
+        task_id: i64,
     },
 }
 
@@ -204,6 +219,16 @@ pub fn parse_line(line: &str) -> Option<LogEvent> {
                 tokens,
                 eval_ms,
             });
+        }
+    }
+
+    // SWA / hybrid: cache invalidated — full re-prefill on an already-busy slot (no new prompt line)
+    if let Some(caps) = re_force_prompt_reprocess().captures(line) {
+        if let (Ok(slot_id), Ok(task_id)) = (
+            caps.get(1)?.as_str().parse::<usize>(),
+            caps.get(2)?.as_str().parse::<i64>(),
+        ) {
+            return Some(LogEvent::ForcePromptReprocess { slot_id, task_id });
         }
     }
 

@@ -34,7 +34,9 @@ Traps and invariants only — not a code map. Read the source for flows, schemas
 - `BINARY_UPDATES_ENABLED = false` in `binary_update.rs` until GitHub releases exist.
 - Fusion prefill % needs `prefill_tokens_total` from `NewPrompt` log; `/slots` `n_prompt_tokens_processed` is the numerator. Do not call `reset_prefill_counters()` on `/slots` new_request after NewPrompt — it zeroes total and forces fallback to sparse `print_timing` stderr lines.
 - Bench warmup→measured has no `/slots` idle gap — call `reset_bench_meters_for_port` at each bench phase start or hero AVG/LIVE TPS bleeds warmup into measured.
-- **TODO — 10ms telemetry tick (trial):** Active fusion poll + frontend render were lowered from 100ms → `log_hub::TELEMETRY_TICK_MS` (10ms) to sync with stderr log batching. Idle poll still 500ms. **Revisit:** keep or revert after checking CPU/localhost load — each active engine ≈ 200 HTTP polls/s (`/slots` + `/metrics` @ 10ms). Touch `TELEMETRY_TICK_MS`, `fusion_brain` `POLL_ACTIVE_MS`, `FusionContext` `RENDER_INTERVAL_MS`.
+- **TODO — telemetry tick:** Trial at 10ms (`log_hub::TELEMETRY_TICK_MS`) — feels realtime and improved phase/meter reliability vs 100ms, but ~200 HTTP polls/s per active engine is heavy. **Revisit:** keep 10ms, try 25–50ms middle ground, or revert. Touch `TELEMETRY_TICK_MS`, `fusion_brain` `POLL_ACTIVE_MS`, `FusionContext` `RENDER_INTERVAL_MS`.
+- **SWA / long-lived slots (Opencode):** TG detection must use **per-request** `n_decoded > request_start_n_decoded`, not `n_decoded > 0`. Parse `forcing full prompt re-processing` → PP. Slot may never idle between turns — also detect `id_task` change as `new_request`. Raw `n_decoded` from prior chat looks like TG during SWA re-prefill.
+- **Agent burst micro-idle:** Opencode file-read cadence &lt;1s — don't `stop_request_clock` / IDLE / zero CTX on brief `/slots` idle; use `INTER_REQUEST_GAP_HOLD_MS` + `max(live, sessionNDecoded)` on bars.
 
 ---
 

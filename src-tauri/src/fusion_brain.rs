@@ -14,6 +14,8 @@ use crate::fusion_poller::{self, MetricsSnapshot};
 const MAX_DISPLAY_TPS: f64 = 200_000.0;
 /// Session-average needs enough wall time before tokens/elapsed is meaningful.
 const MIN_SESSION_TPS_ELAPSED_MS: u64 = 400;
+/// Agent bursts (Opencode file reads) gap /slots idle briefly — don't flash IDLE or zero CTX.
+const INTER_REQUEST_GAP_HOLD_MS: u64 = 1200;
 /// Ignore first-poll token bursts after reset (KV restore / cache jump).
 const MAX_INSTANT_TOKEN_JUMP: usize = 2048;
 /// Active request polling cadence — matches log_hub stderr batch tick.
@@ -73,6 +75,7 @@ struct SlotTrackState {
     prev_timestamp: Instant,
     request_start_n_decoded: usize,
     was_processing: bool,
+    current_task_id: Option<i64>,
     total_tokens_lifetime: usize,
     // Current prompt snapshot (for prefill progress + accurate ctx fill including cached history)
     current_prompt_tokens: usize,
@@ -88,6 +91,7 @@ impl SlotTrackState {
             prev_timestamp: Instant::now(),
             request_start_n_decoded: 0,
             was_processing: false,
+            current_task_id: None,
             total_tokens_lifetime: 0,
             current_prompt_tokens: 0,
             current_prompt_processed: 0,
@@ -376,6 +380,9 @@ pub struct FusionBrain {
     /// Skip fusion-update IPC when fingerprint unchanged (log belt sets emit_dirty).
     last_emit_fp: Option<FusionEmitFingerprint>,
     emit_dirty: bool,
+
+    /// Last poll where any slot reported `is_processing` (inter-request hold).
+    last_slot_busy_at: Option<Instant>,
 }
 
 impl FusionBrain {
@@ -429,7 +436,18 @@ impl FusionBrain {
             prev_instant_gen_decoded: 0,
             last_emit_fp: None,
             emit_dirty: false,
+            last_slot_busy_at: None,
         }
+    }
+
+    fn within_inter_request_hold(&self, now: Instant) -> bool {
+        self.last_slot_busy_at
+            .map(|t| now.duration_since(t).as_millis() < INTER_REQUEST_GAP_HOLD_MS as u128)
+            .unwrap_or(false)
+    }
+
+    fn touch_slot_activity(&mut self, now: Instant) {
+        self.last_slot_busy_at = Some(now);
     }
 
     fn is_idle_ready(&self) -> bool {
@@ -549,16 +567,75 @@ impl FusionBrain {
         }
     }
 
-    /// True generation: output tokens are being produced for a request with decode budget remaining.
-    /// PP bench (`n_predict: 0`) still evaluates one token — that must not flip UI to TG.
-    fn slots_have_active_generation(slots: &[fusion_poller::SlotData]) -> bool {
+    /// Pin TG decode baseline when a request (or SWA re-prefill) starts on a slot that never went idle.
+    fn begin_request_on_slot(&mut self, slot_id: usize, task_id: Option<i64>) {
+        let baseline = self
+            .slot_states
+            .get(&slot_id)
+            .map(|s| s.prev_n_decoded)
+            .unwrap_or(0);
+        let s = self
+            .slot_states
+            .entry(slot_id)
+            .or_insert_with(SlotTrackState::new);
+        s.request_start_n_decoded = baseline;
+        if let Some(tid) = task_id {
+            s.current_task_id = Some(tid);
+        }
+        self.tg_start_time = None;
+        self.tg_start_n_decoded = 0;
+        self.last_gen_tps = 0.0;
+        self.ttft_ms = None;
+    }
+
+    /// True generation: new output tokens this request with decode budget remaining.
+    /// Stale session `n_decoded` on long-lived slots (Opencode, SWA) must not read as TG during PP.
+    fn slots_have_active_generation(&self, slots: &[fusion_poller::SlotData]) -> bool {
         slots.iter().any(|s| {
             if !s.is_processing || s.next_token.is_empty() {
                 return false;
             }
             let t = &s.next_token[0];
-            t.n_decoded > 0 && t.n_remain > 0
+            if t.n_remain <= 0 {
+                return false;
+            }
+            let baseline = self
+                .slot_states
+                .get(&s.id)
+                .map(|st| st.request_start_n_decoded)
+                .unwrap_or(0);
+            t.n_decoded > baseline
         })
+    }
+
+    /// /slots shows prompt eval still in flight — beats stale decode counters during SWA re-prefill.
+    fn slots_prefill_in_progress(&self, slots: &[fusion_poller::SlotData]) -> bool {
+        if self.log_prefill_done {
+            return false;
+        }
+        if self.log_request_open
+            && self.lp_prefill_progress > 0.0
+            && self.lp_prefill_progress < 0.995
+        {
+            return true;
+        }
+        let total = self.prefill_tokens_total;
+        for slot in slots {
+            if !slot.is_processing {
+                continue;
+            }
+            if total > 0 && slot.n_prompt_tokens_processed + 2 < total {
+                return true;
+            }
+            if total == 0
+                && slot.n_prompt_tokens > 0
+                && slot.n_prompt_tokens_processed > 0
+                && slot.n_prompt_tokens_processed < slot.n_prompt_tokens
+            {
+                return true;
+            }
+        }
+        false
     }
 
     /// Merge log belt + /slots suspenders into the values we emit to the UI.
@@ -717,14 +794,21 @@ impl FusionBrain {
                 self.handle_cached_prompt_tokens(*cached_tokens);
             }
             // NewPrompt — belt: reset all LP state at exact request start (fires before any PP work)
-            crate::fusion_logparser::LogEvent::NewPrompt { prompt_tokens, .. } => self.handle_new_prompt(*prompt_tokens),
+            crate::fusion_logparser::LogEvent::NewPrompt {
+                slot_id,
+                task_id,
+                prompt_tokens,
+            } => self.handle_new_prompt(*slot_id, *task_id, *prompt_tokens),
+            crate::fusion_logparser::LogEvent::ForcePromptReprocess { slot_id, task_id } => {
+                self.handle_force_prompt_reprocess(*slot_id, *task_id);
+            }
             crate::fusion_logparser::LogEvent::PromptEvalComplete { tokens, eval_ms, .. } => {
                 self.handle_prompt_eval_complete(*tokens, *eval_ms);
             }
         }
     }
 
-    fn handle_new_prompt(&mut self, prompt_tokens: usize) {
+    fn handle_new_prompt(&mut self, slot_id: usize, task_id: i64, prompt_tokens: usize) {
         // Belt: definitive request start — reset LP state to zero so progress bar starts at 0%
         // LP reset now routed to Blackwell Output Console
         self.log_request_open = true;
@@ -752,9 +836,31 @@ impl FusionBrain {
         self.prev_instant_poll_at = None;
         self.prev_instant_prefill_tokens = 0;
         self.prev_instant_gen_decoded = 0;
-        if self.request_start.is_none() {
-            self.start_request_clock();
-        }
+        self.begin_request_on_slot(slot_id, Some(task_id));
+        self.start_request_clock();
+        self.touch_slot_activity(Instant::now());
+    }
+
+    fn handle_force_prompt_reprocess(&mut self, slot_id: usize, task_id: i64) {
+        // SWA / hybrid cache miss: same task, slot stays busy — stale n_decoded looks like TG.
+        self.log_request_open = true;
+        self.log_prefill_done = false;
+        self.phase = InferencePhase::PP;
+        self.lp_phase = InferencePhase::PP;
+        self.lp_prefill_progress = 0.0;
+        self.lp_prefill_tps = 0.0;
+        self.lp_gen_tps = 0.0;
+        self.prefill_progress = 0.0;
+        self.prefill_tokens = 0;
+        self.prefill_tps_instant = 0.0;
+        self.gen_tps_instant = 0.0;
+        self.prev_instant_poll_at = None;
+        self.prev_instant_prefill_tokens = 0;
+        self.prev_instant_gen_decoded = 0;
+        self.begin_request_on_slot(slot_id, Some(task_id));
+        self.start_request_clock();
+        self.touch_slot_activity(Instant::now());
+        self.emit_dirty = true;
     }
 
     fn handle_prompt_eval_complete(&mut self, tokens: usize, eval_ms: f64) {
@@ -857,14 +963,18 @@ impl FusionBrain {
 
     fn handle_stop_processing(&mut self) {
         self.log_request_open = false;
+        self.lp_reset_prompt = false;
+        self.lp_reset_regression = false;
+        // Agent bursts: stop processing log between turns — don't wipe phase/meters during hold.
+        if self.within_inter_request_hold(Instant::now()) {
+            return;
+        }
         self.log_prefill_done = false;
         self.phase = InferencePhase::Idle;
         self.lp_phase = InferencePhase::Idle;
         self.lp_prefill_progress = 0.0;
         self.lp_prefill_tps = 0.0;
         self.lp_prompt_tokens = 0;
-        self.lp_reset_prompt = false;
-        self.lp_reset_regression = false;
         self.stop_request_clock();
         self.reset_prefill_counters();
     }
@@ -909,7 +1019,10 @@ impl FusionBrain {
         } else if request_ended {
             // /metrics requests_processing can dip to 0 between chunks — don't clear if logs/slots still busy.
             let slots_busy = slots.iter().any(|s| s.is_processing);
-            if !slots_busy && !self.log_request_open {
+            if !slots_busy
+                && !self.log_request_open
+                && !self.within_inter_request_hold(now)
+            {
                 self.log_prefill_done = false;
                 self.engine_state = EngineState::Ready;
                 self.phase = InferencePhase::Idle;
@@ -942,8 +1055,13 @@ impl FusionBrain {
                 }
             }
             if self.phase == InferencePhase::Tg && self.tg_start_time.is_none() {
+                let baseline: usize = self
+                    .slot_states
+                    .values()
+                    .map(|s| s.request_start_n_decoded)
+                    .sum();
+                self.tg_start_n_decoded = baseline;
                 self.tg_start_time = Some(now);
-                self.tg_start_n_decoded = 0;
             }
         }
 
@@ -953,7 +1071,12 @@ impl FusionBrain {
     }
 
     /// Phase: PP while prefill is in flight; TG only when decode budget remains (n_remain > 0).
-    fn reconcile_phase(&mut self, slots: &[fusion_poller::SlotData], any_processing: bool) {
+    fn reconcile_phase(
+        &mut self,
+        slots: &[fusion_poller::SlotData],
+        any_processing: bool,
+        now: Instant,
+    ) {
         let metrics_busy = self
             .prev_metrics
             .as_ref()
@@ -964,7 +1087,8 @@ impl FusionBrain {
         let in_flight = any_processing
             || metrics_busy
             || self.log_request_open
-            || self.engine_state == EngineState::Active;
+            || self.engine_state == EngineState::Active
+            || self.within_inter_request_hold(now);
 
         if !in_flight {
             self.log_request_open = false;
@@ -975,21 +1099,17 @@ impl FusionBrain {
             return;
         }
 
-       // Log belt: from NewPrompt until sampler_init — normally PP.
-        // Fallback: if /slots already shows active generation (n_decoded > 0, n_remain > 0),
-        // trust the faster signal and transition to Tg immediately instead of waiting for SamplerInit.
-        if self.log_request_open && !self.log_prefill_done {
-            if Self::slots_have_active_generation(slots) {
-                self.phase = InferencePhase::Tg;
+        // Active decode beats stale print_timing PP progress (AVG hero needs stable TG + tg_start_time).
+        if self.slots_have_active_generation(slots) {
+            if self.log_request_open {
                 self.log_prefill_done = true;
-                return;
             }
-            self.phase = InferencePhase::PP;
+            self.phase = InferencePhase::Tg;
             return;
         }
 
-        if Self::slots_have_active_generation(slots) {
-            self.phase = InferencePhase::Tg;
+        if self.slots_prefill_in_progress(slots) {
+            self.phase = InferencePhase::PP;
             return;
         }
 
@@ -1055,7 +1175,12 @@ impl FusionBrain {
             let n_decoded = if has_token_data { slot.next_token[0].n_decoded } else { 0 };
             let s = self.slot_states.entry(slot.id).or_insert_with(SlotTrackState::new);
 
-            let new_request = is_proc && !s.was_processing;
+            let task_changed = match (slot.id_task, s.current_task_id) {
+                (Some(new_id), Some(old_id)) => new_id != old_id,
+                (Some(_), None) => is_proc,
+                _ => false,
+            };
+            let new_request = (is_proc && !s.was_processing) || (is_proc && task_changed);
             let ended_session = !is_proc && s.was_processing;
             let request_tokens_on_end = if ended_session {
                 n_decoded.saturating_sub(s.request_start_n_decoded)
@@ -1079,17 +1204,16 @@ impl FusionBrain {
         // Second pass: apply decisions — safe to mutate self now
         for d in &decisions {
             if d.new_request {
-                if let Some(s) = self.slot_states.get_mut(&d.id) {
-                    s.request_start_n_decoded = d.n_decoded;
-                }
+                let task_id = slots
+                    .iter()
+                    .find(|sl| sl.id == d.id)
+                    .and_then(|sl| sl.id_task);
+                self.begin_request_on_slot(d.id, task_id);
                 self.phase = InferencePhase::PP;
                 self.log_request_open = true;
                 self.log_prefill_done = false;
                 self.start_request_clock();
                 self.engine_state = EngineState::Active;
-                self.tg_start_time = None;
-                self.tg_start_n_decoded = 0;
-                self.ttft_ms = None;
                 // NewPrompt log often lands before the first /slots poll that sees is_processing.
                 // reset_prefill_counters() clears prefill_tokens_total and disables /slots progress
                 // until print_timing PP (~70% on long prefills).
@@ -1104,9 +1228,9 @@ impl FusionBrain {
                     s.total_tokens_lifetime += d.request_tokens_on_end;
                 }
                 self.session_tokens_generated += d.request_tokens_on_end;
-                // Always stop wall-clock + TG meter when slot goes idle (/slots is ground truth for "request done").
-                self.stop_request_clock();
-                if !self.log_request_open {
+                // Micro idle between agent turns — defer clock/phase reset until hold expires.
+                if !self.within_inter_request_hold(now) && !self.log_request_open {
+                    self.stop_request_clock();
                     self.log_prefill_done = false;
                     self.phase = InferencePhase::Idle;
                     self.prompt_tokens = 0;
@@ -1155,12 +1279,19 @@ impl FusionBrain {
                 s.prev_n_decoded = new_val;
                 s.prev_timestamp = now;
                 s.was_processing = d.is_proc;
+                if let Some(tid) = slots.iter().find(|sl| sl.id == d.id).and_then(|sl| sl.id_task) {
+                    s.current_task_id = Some(tid);
+                }
             }
 
         }
 
+        if any_processing {
+            self.touch_slot_activity(now);
+        }
+
         self.update_prefill_from_slots(slots);
-        self.reconcile_phase(slots, any_processing);
+        self.reconcile_phase(slots, any_processing, now);
         self.update_instant_tps(slots, now);
 
         let seen_ids: HashSet<usize> = slots.iter().map(|s| s.id).collect();
@@ -1180,13 +1311,20 @@ impl FusionBrain {
             }
         }
 
-        // Capture TG start snapshot when we enter generation
+        // Capture TG start snapshot when we enter generation (per-request baseline, not 0).
         if self.phase == InferencePhase::Tg && self.tg_start_time.is_none() {
             let mut total_at_transition: usize = 0;
             for slot in slots {
                 if !slot.next_token.is_empty() {
                     total_at_transition += slot.next_token[0].n_decoded;
                 }
+            }
+            if total_at_transition == 0 {
+                total_at_transition = self
+                    .slot_states
+                    .values()
+                    .map(|s| s.request_start_n_decoded)
+                    .sum();
             }
             self.tg_start_n_decoded = total_at_transition;
             self.tg_start_time = Some(now);
@@ -1224,23 +1362,8 @@ impl FusionBrain {
             }
         }
 
-        let request_live = self.request_start.is_some();
-        // Gen TPS only while a live request is generating (no decay after slot idle).
-        let gen_tps = if self.phase == InferencePhase::Tg && request_live {
-            if let Some(start) = self.tg_start_time {
-                let elapsed_ms = start.elapsed().as_millis() as u64;
-                if elapsed_ms > 0 && total_n_decoded > self.tg_start_n_decoded {
-                    let tokens_generated = total_n_decoded.saturating_sub(self.tg_start_n_decoded);
-                    (tokens_generated as f64) / (elapsed_ms as f64 / 1000.0)
-                } else {
-                    self.last_gen_tps
-                }
-            } else {
-                0.0
-            }
-        } else {
-            0.0
-        };
+        let request_live = self.request_start.is_some()
+            || self.within_inter_request_hold(Instant::now());
 
         // Per-request tokens: sum of (n_decoded - request_start_n_decoded) across slots
         let mut gen_tokens_request_slots: usize = 0;
@@ -1252,6 +1375,23 @@ impl FusionBrain {
                 }
             }
         }
+
+        // Gen TPS (hero AVG): first decoded token counts — no 1s wait for elapsed>0 && multiple tokens.
+        let gen_tps = if self.phase == InferencePhase::Tg && request_live {
+            if let Some(start) = self.tg_start_time {
+                let tokens_since_tg = total_n_decoded.saturating_sub(self.tg_start_n_decoded);
+                let elapsed_ms = start.elapsed().as_millis().max(1) as u64;
+                if tokens_since_tg > 0 {
+                    (tokens_since_tg as f64) / (elapsed_ms as f64 / 1000.0)
+                } else {
+                    self.last_gen_tps
+                }
+            } else {
+                0.0
+            }
+        } else {
+            0.0
+        };
 
         // Prefill TPS from /metrics gauge
         let prefill_tps_metrics = metrics.map(|m| m.prompt_tps_gauge).unwrap_or(0.0);
@@ -1303,14 +1443,29 @@ impl FusionBrain {
                 }
                 info.id_task = slot.id_task;
                 info.speculative = slot.speculative;
+                if slot.is_processing {
+                    info.is_processing = true;
+                    info.prompt_tokens = slot.n_prompt_tokens;
+                    info.prompt_tokens_processed = slot.n_prompt_tokens_processed;
+                    info.prompt_tokens_cache = slot.n_prompt_tokens_cache;
+                    if !slot.next_token.is_empty() {
+                        info.n_decoded = slot.next_token[0].n_decoded;
+                    }
+                }
             }
         }
 
         let (prefill_progress, prefill_tokens) = self.merged_prefill_display();
 
         // Same formula as bench panel: total prompt tokens / wall time (not the /metrics smoothed gauge).
-        let mut prefill_tps_session = if request_elapsed_ms >= MIN_SESSION_TPS_ELAPSED_MS && prefill_tokens > 0 {
-            clamp_display_tps((prefill_tokens as f64 / request_elapsed_ms as f64) * 1000.0)
+        let mut prefill_tps_session = if prefill_tokens > 0 && request_elapsed_ms > 0 {
+            if request_elapsed_ms >= MIN_SESSION_TPS_ELAPSED_MS {
+                clamp_display_tps((prefill_tokens as f64 / request_elapsed_ms as f64) * 1000.0)
+            } else if self.lp_prefill_tps > 0.0 {
+                clamp_display_tps(self.lp_prefill_tps)
+            } else {
+                clamp_display_tps((prefill_tokens as f64 / request_elapsed_ms as f64) * 1000.0)
+            }
         } else if self.lp_prefill_tps > 0.0 {
             clamp_display_tps(self.lp_prefill_tps)
         } else {

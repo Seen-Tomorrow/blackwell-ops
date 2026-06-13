@@ -40,7 +40,8 @@ export default function SlotCtxBars({ slotCtx, ctxTotal, parallel, unifiedKv }: 
 
     if (slot) {
       const live = (slot.promptTokensCache || 0) + (slot.promptTokensProcessed || 0) + (slot.n_decoded || 0);
-      const base = live > 0 ? live : slot.sessionNDecoded;
+      // Short agent turns reset live fields before session KV — never flash 0% when session still full.
+      const base = Math.max(live, slot.sessionNDecoded ?? 0);
       const pct = barCapacity > 0 ? Math.min((base / barCapacity) * 100, 100) : 0;
       return { index: i, sessionNDecoded: base, isProcessing: slot.is_processing, pct, isActive };
     }
