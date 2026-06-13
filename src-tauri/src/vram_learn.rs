@@ -40,11 +40,37 @@ struct LearnedVramStore {
 
 static STORE_MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
+const STORE_FILE: &str = "learned-vram.json";
+
+fn legacy_store_path() -> PathBuf {
+    crate::config::app_root_dir().join("config").join(STORE_FILE)
+}
+
 fn store_path() -> PathBuf {
-    crate::config::app_root_dir().join("config").join("learned-vram.json")
+    crate::config::cache_dir().join(STORE_FILE)
+}
+
+/// One-time move from config/learned-vram.json → config/cache/learned-vram.json.
+fn migrate_legacy_store_if_needed() {
+    let path = store_path();
+    if path.exists() {
+        return;
+    }
+    let legacy = legacy_store_path();
+    if !legacy.exists() {
+        return;
+    }
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    match std::fs::rename(&legacy, &path) {
+        Ok(()) => log::info!("[vram_learn] Migrated {STORE_FILE} to config/cache/"),
+        Err(e) => log::warn!("[vram_learn] Failed to migrate {STORE_FILE}: {e}"),
+    }
 }
 
 fn load_store() -> LearnedVramStore {
+    migrate_legacy_store_if_needed();
     let path = store_path();
     if !path.exists() {
         return LearnedVramStore::default();

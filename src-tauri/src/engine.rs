@@ -265,30 +265,33 @@ pub async fn launch_engine(
         .and_then(|v| v.parse::<usize>().ok())
         .unwrap_or(32768);
 
-    // Helper to build the on_ready closure (Arc — shared by log reader + HTTP health probe)
+    // Promote stack slot LOADING→RUNNING (idempotent — GGML /health can fire before model load).
     fn make_on_ready(
         stack: Arc<tokio::sync::Mutex<EngineStack>>,
         slot_idx: usize,
     ) -> Arc<dyn Fn() + Send + Sync> {
-        use std::sync::atomic::{AtomicBool, Ordering};
-        let fired = Arc::new(AtomicBool::new(false));
         Arc::new(move || {
-            if fired.swap(true, Ordering::AcqRel) {
-                return;
-            }
             let s_clone = stack.clone();
             let si = slot_idx;
             tokio::spawn(async move {
-                // Update slot status under lock, then drop lock BEFORE emitting
-                {
+                let should_emit = {
                     let s = s_clone.lock().await;
-                    if let Some(mut slot) = s.get_slot(si) {
-                        use crate::engine_stack::SlotStatus;
-                        slot.status = SlotStatus::Running;
-                    }; // drop parking_lot MutexGuard before dropping tokio guard
-                } // tokio Mutex dropped here — no hold during emit
-                // Re-acquire for emit_stack_changed (get_status + emit)
-                {
+                    let promote = {
+                        if let Some(mut slot) = s.get_slot(si) {
+                            use crate::engine_stack::SlotStatus;
+                            if matches!(slot.status, SlotStatus::Loading) {
+                                slot.status = SlotStatus::Running;
+                                true
+                            } else {
+                                false
+                            }
+                        } else {
+                            false
+                        }
+                    };
+                    promote
+                };
+                if should_emit {
                     let s = s_clone.lock().await;
                     s.emit_stack_changed();
                 }

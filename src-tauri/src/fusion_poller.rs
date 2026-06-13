@@ -42,7 +42,16 @@ pub struct TokenInfo {
 
 /// Poll /slots endpoint. Returns per-slot snapshots or error.
 pub async fn poll_slots(client: &reqwest::Client, port: u16) -> Result<Vec<SlotData>, String> {
-    let url = format!("http://localhost:{}/slots", port);
+    poll_slots_on(client, "localhost", port).await
+}
+
+/// Poll /slots on a specific host (readiness probes use 127.0.0.1 to match engine bind + /health).
+pub async fn poll_slots_on(
+    client: &reqwest::Client,
+    host: &str,
+    port: u16,
+) -> Result<Vec<SlotData>, String> {
+    let url = format!("http://{host}:{port}/slots");
     let resp = client.get(&url).send().await.map_err(|e| format!("HTTP error: {}", e))?;
 
     if !resp.status().is_success() {

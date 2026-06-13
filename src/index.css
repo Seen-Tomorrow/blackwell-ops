@@ -3535,6 +3535,17 @@ button.engine-logs-slot-chip.engine-logs-slot-chip--active .engine-logs-slot-chi
   cursor: not-allowed;
 }
 
+/* Scroll pane — fixed footer/console overlays bottom; reserve space so tail line stays visible */
+[data-engine-logs] .engine-logs-scroll {
+  padding-bottom: calc(var(--app-footer-h) + 0.5rem);
+  scroll-padding-bottom: calc(var(--app-footer-h) + 0.5rem);
+}
+
+.app-shell--console-docked [data-engine-logs] .engine-logs-scroll {
+  padding-bottom: calc(var(--boc-docked-reserve) + 0.5rem);
+  scroll-padding-bottom: calc(var(--boc-docked-reserve) + 0.5rem);
+}
+
 [data-engine-logs] .text-white,
 [data-engine-logs] .text-white\/80,
 [data-engine-logs] .text-white\/90 {

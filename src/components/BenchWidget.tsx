@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { bench_TGBenchResult, bench_PPBurstResult } from "../lib/types";
 import {
   getBenchPortState,
+  notifyBenchPortStore,
   resetAllBenchPortStates,
   subscribeBenchPortStore,
   type BenchSessionMode,
@@ -43,10 +44,13 @@ export default function BenchWidget({
   const ps = getBenchPortState(port);
 
   const [, setTick] = useState(0);
-  const tick = () => setTick(t => t + 1);
+  const bump = () => {
+    notifyBenchPortStore();
+    setTick((t) => t + 1);
+  };
   const benchAbortRef = useRef(false);
 
-  useEffect(() => subscribeBenchPortStore(tick), []);
+  useEffect(() => subscribeBenchPortStore(() => setTick((t) => t + 1)), []);
 
   /** Restore this port's cached results when navigating between running engines. */
   useEffect(() => {
@@ -54,17 +58,19 @@ export default function BenchWidget({
     if (!state.showResults) {
       onBenchSessionChange?.("idle");
       onHeroPatch?.({ tg: null, pp: null });
-      return;
+    } else {
+      onBenchSessionChange?.(state.sessionMode);
+      const heroPatch: BenchHeroPatch = {};
+      if (state.tgResult?.success && state.tgResult.gen_tps > 0) {
+        heroPatch.tg = state.tgResult.gen_tps;
+      }
+      if (state.ppResult?.success && state.ppResult.bench_prefill_tps > 0) {
+        heroPatch.pp = state.ppResult.bench_prefill_tps;
+      }
+      onHeroPatch?.(heroPatch);
     }
-    onBenchSessionChange?.(state.sessionMode);
-    const heroPatch: BenchHeroPatch = {};
-    if (state.tgResult?.success && state.tgResult.gen_tps > 0) {
-      heroPatch.tg = state.tgResult.gen_tps;
-    }
-    if (state.ppResult?.success && state.ppResult.bench_prefill_tps > 0) {
-      heroPatch.pp = state.ppResult.bench_prefill_tps;
-    }
-    onHeroPatch?.(heroPatch);
+    // Sync UI when this instance mounts or port changes (other tab may have updated the store).
+    bump();
   }, [port, onBenchSessionChange, onHeroPatch]);
 
   const patchHero = (patch: BenchHeroPatch) => {
@@ -83,7 +89,7 @@ export default function BenchWidget({
     setSessionMode("idle");
     patchHero({ tg: null, pp: null });
     benchAbortRef.current = true;
-    tick();
+    bump();
   };
 
   const stopBench = async () => {
@@ -99,7 +105,7 @@ export default function BenchWidget({
     resetAllBenchPortStates();
     onBenchSessionChange?.("idle");
     patchHero({ tg: null, pp: null });
-    tick();
+    bump();
   };
 
   useTauriListen<{ slot: number }>("slot-cleared", clearBenchOnEngineStop);
@@ -111,7 +117,7 @@ export default function BenchWidget({
       if (payload.port !== port) return;
       ps.tgPhase = payload.phase as "warmup" | "measured";
       if (payload.effectiveLength != null) ps.tgEffectiveLength = payload.effectiveLength;
-      tick();
+      bump();
     },
     [port],
   );
@@ -122,7 +128,7 @@ export default function BenchWidget({
       if (payload.port !== port) return;
       ps.ppPhase = payload.phase as "warmup" | "measured";
       if (payload.effectiveLength != null) ps.ppEffectiveLength = payload.effectiveLength;
-      tick();
+      bump();
     },
     [port],
   );
@@ -133,7 +139,7 @@ export default function BenchWidget({
     ps.tgPhase = "warmup";
     ps.tgEffectiveLength = 1024;
     if (patchHeroOnSuccess) patchHero({ tg: null });
-    tick();
+    bump();
     try {
       const res: bench_TGBenchResult = await invoke("cmd_burst_bench", {
         port,
@@ -158,7 +164,7 @@ export default function BenchWidget({
     } finally {
       ps.tgRunning = false;
       ps.tgPhase = null;
-      tick();
+      bump();
     }
   };
 
@@ -168,7 +174,7 @@ export default function BenchWidget({
     ps.ppPhase = "warmup";
     ps.ppEffectiveLength = 1024;
     if (patchHeroOnSuccess) patchHero({ pp: null });
-    tick();
+    bump();
     try {
       const res: bench_PPBurstResult = await invoke("cmd_bench_pp_burst", {
         port,
@@ -192,7 +198,7 @@ export default function BenchWidget({
     } finally {
       ps.ppRunning = false;
       ps.ppPhase = null;
-      tick();
+      bump();
     }
   };
 
@@ -203,7 +209,7 @@ export default function BenchWidget({
     ps.showResults = true;
     ps.ppResult = null;
     patchHero({ tg: null, pp: null });
-    tick();
+    bump();
     await executeBenchTg();
   };
 
@@ -214,7 +220,7 @@ export default function BenchWidget({
     ps.showResults = true;
     ps.tgResult = null;
     patchHero({ tg: null, pp: null });
-    tick();
+    bump();
     await executeBenchPp();
   };
 
@@ -226,7 +232,7 @@ export default function BenchWidget({
     ps.tgResult = null;
     ps.ppResult = null;
     patchHero({ tg: null, pp: null });
-    tick();
+    bump();
 
     await executeBenchTg(false);
     if (benchAbortRef.current || ps.tgResult?.error === "Cancelled") return;
@@ -240,12 +246,12 @@ export default function BenchWidget({
       heroPatch.pp = ps.ppResult.bench_prefill_tps;
     }
     patchHero(heroPatch);
-    tick();
+    bump();
   };
 
   const cyclePromptMode = () => {
     ps.promptMode = ps.promptMode === "unique" ? "repetitive" : "unique";
-    tick();
+    bump();
   };
 
   const isAnyRunning = ps.tgRunning || ps.ppRunning;
@@ -272,7 +278,7 @@ export default function BenchWidget({
       ps.ppResult = null;
       patchHero({ tg: null, pp: null });
     }
-    tick();
+    bump();
   };
 
   /** Fixed height — idle controls and PP/TG progress/results share the same footprint (no fusion layout jump). */
@@ -298,7 +304,7 @@ export default function BenchWidget({
               {TG_PREDICT_OPTIONS.map((tok) => (
                 <button
                   key={tok}
-                  onClick={() => { ps.nPredict = tok; tick(); }}
+                  onClick={() => { ps.nPredict = tok; bump(); }}
                   disabled={isAnyRunning}
                   className={`px-1 py-0 text-[6px] font-mono rounded-sm ${chipBtnClass(ps.nPredict === tok, isAnyRunning)}`}
                 >
@@ -319,7 +325,7 @@ export default function BenchWidget({
               {PP_TOKEN_OPTIONS.map((tok) => (
                 <button
                   key={tok}
-                  onClick={() => { ps.ppTargetTokens = tok; tick(); }}
+                  onClick={() => { ps.ppTargetTokens = tok; bump(); }}
                   disabled={isAnyRunning}
                   className={`px-1 py-0 text-[6px] font-mono rounded-sm ${chipBtnClass(ps.ppTargetTokens === tok, isAnyRunning)}`}
                 >

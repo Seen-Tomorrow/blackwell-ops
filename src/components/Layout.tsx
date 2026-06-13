@@ -177,6 +177,16 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
     });
   }, []); // setZoom is stable (React guarantee), functional update ensures latest value
 
+  useEffect(() => {
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey) return;
+      e.preventDefault();
+      adjustZoom(e.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP);
+    };
+    window.addEventListener("wheel", onWheel, { passive: false });
+    return () => window.removeEventListener("wheel", onWheel);
+  }, [adjustZoom]);
+
   const toggleUiDensity = useCallback(() => {
     setUiDensity(prev => {
       const next: UiDensity = prev === "comfortable" ? "compact" : "comfortable";
@@ -265,9 +275,9 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
               {uiDensity === "compact" ? "COMPACT" : "COMFORT"}
             </button>
             <span className="app-chrome-control-btn text-[8px] font-mono opacity-40">|</span>
-            <button onClick={() => adjustZoom(-ZOOM_STEP)} className="app-chrome-control-btn px-1 text-[9px] font-mono transition-colors leading-none" title="Decrease text scale">−</button>
-            <span className="app-chrome-control-btn text-[8px] font-mono opacity-60 w-8 text-center" title="Text scale">{Math.round(zoom * 100)}%</span>
-            <button onClick={() => adjustZoom(ZOOM_STEP)} className="app-chrome-control-btn px-1 text-[9px] font-mono transition-colors leading-none" title="Increase text scale">+</button>
+            <button onClick={() => adjustZoom(-ZOOM_STEP)} className="app-chrome-control-btn px-1 text-[9px] font-mono transition-colors leading-none" title="Decrease text scale (Ctrl+scroll)">−</button>
+            <span className="app-chrome-control-btn text-[8px] font-mono opacity-60 w-8 text-center" title="Text scale (Ctrl+scroll)">{Math.round(zoom * 100)}%</span>
+            <button onClick={() => adjustZoom(ZOOM_STEP)} className="app-chrome-control-btn px-1 text-[9px] font-mono transition-colors leading-none" title="Increase text scale (Ctrl+scroll)">+</button>
             {__BUILD_MODE__ === "dev" && (
               <>
                 <span className="app-chrome-control-btn text-[8px] font-mono opacity-40">|</span>

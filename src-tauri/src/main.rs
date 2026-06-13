@@ -30,6 +30,7 @@ mod fusion_logparser;
 mod provider_mgmt;
 mod llama_catalog;
 mod binary_update;
+mod secrets;
 
 #[cfg(feature = "reactor11")]
 pub mod features;
@@ -51,7 +52,6 @@ async fn search_hf_models(
     vram_limit_gb: Option<u32>,
     sort: Option<String>,
     limit: Option<usize>,
-    hf_token: Option<String>,
 ) -> Result<crate::types::HfSearchResponse, String> {
     let filters = crate::types::HfSearchFilters {
         query,
@@ -59,37 +59,14 @@ async fn search_hf_models(
         limit: limit.unwrap_or(50),
         sort: sort.unwrap_or_else(|| "downloads".to_string()),
     };
+    let hf_token = secrets::get_secret("hf_token")?;
     hf_api::search_models(&filters, hf_token.as_deref()).await
 }
 
 #[tauri::command]
-async fn get_hf_model_info(
-    model_id: String,
-    hf_token: Option<String>,
-) -> Result<crate::types::HfModelInfo, String> {
+async fn get_hf_model_info(model_id: String) -> Result<crate::types::HfModelInfo, String> {
+    let hf_token = secrets::get_secret("hf_token")?;
     hf_api::get_model_info(&model_id, hf_token.as_deref()).await
-}
-
-#[tauri::command]
-async fn set_hf_token(token: String, app_config: tauri::State<'_, Arc<std::sync::Mutex<config::AppConfig>>>) -> Result<(), String> {
-    let mut cfg = app_config.lock().map_err(|e| e.to_string())?;
-    cfg.hf_token = token;
-    config::save_config(&mut cfg).map_err(|e| e.to_string())?;
-    Ok(())
-}
-
-#[tauri::command]
-async fn get_hf_token(app_config: tauri::State<'_, Arc<std::sync::Mutex<config::AppConfig>>>) -> Result<Option<String>, String> {
-    let cfg = app_config.lock().map_err(|e| e.to_string())?;
-    if !cfg.hf_token.is_empty() {
-        let masked = if cfg.hf_token.len() > 10 {
-            format!("{}***", &cfg.hf_token[..6])
-        } else {
-            "***".to_string()
-        };
-        return Ok(Some(masked));
-    }
-    Ok(None)
 }
 
 // ── Model Path Management Commands ────────────────────────────────────
@@ -476,7 +453,15 @@ async fn main() {
             config::ensure_portable_structure(app.handle());
 
             // Load config with bundled path resolution (needs app handle)
-            let app_config = config::load_config_with_app(app.handle());
+            let mut app_config = config::load_config_with_app(app.handle());
+            let had_legacy_hf = !app_config.hf_token.is_empty();
+            if let Err(e) = secrets::migrate_legacy_hf_token(&mut app_config) {
+                log::warn!("[secrets] Legacy HF token migration failed: {e}");
+            } else if had_legacy_hf {
+                if let Err(e) = config::save_config(&mut app_config) {
+                    log::warn!("[secrets] Failed to clear legacy hf_token from config: {e}");
+                }
+            }
 
             let slot_count = crate::templates::resolve_engine_slot_count();
             let stack = Arc::new(Mutex::new(EngineStack::new(slot_count)));
@@ -619,8 +604,9 @@ async fn main() {
             // HF Search commands
             search_hf_models,
             get_hf_model_info,
-            set_hf_token,
-            get_hf_token,
+            secrets::list_app_secrets,
+            secrets::set_app_secret,
+            secrets::delete_app_secret,
             // Model Path management commands
             list_model_paths,
             model_library_configured,

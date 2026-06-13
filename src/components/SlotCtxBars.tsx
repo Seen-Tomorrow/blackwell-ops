@@ -23,6 +23,7 @@ const BASELINE_SLOTS = 4;
 
 export default function SlotCtxBars({ slotCtx, ctxTotal, parallel, unifiedKv }: SlotCtxBarsProps) {
   const numBars = Math.max(1, parallel || 1);
+  // Partitioned: each slot owns ctx/parallel. Unified: all slots share one ctx-sized pool.
   const barCapacity = unifiedKv ? ctxTotal : Math.floor(ctxTotal / numBars);
   /** Flex units per bar — 4-slot baseline: 1→4 wide, 2→2 wide each, 4→1 wide each */
   const barFlexUnits = BASELINE_SLOTS / numBars;
@@ -66,7 +67,7 @@ export default function SlotCtxBars({ slotCtx, ctxTotal, parallel, unifiedKv }: 
       {slot.isActive && unifiedKv && numBars === 1 && (
         <span className="absolute top-0.5 left-0 right-0 text-center z-10 pointer-events-none px-0.5">
           <span className={sharedCapacityChip}>
-            {formatTokenCount(barCapacity)} · shared across
+            {formatTokenCount(barCapacity)} · shared pool
           </span>
         </span>
       )}
@@ -79,6 +80,16 @@ export default function SlotCtxBars({ slotCtx, ctxTotal, parallel, unifiedKv }: 
             transition: "height 0.3s ease",
           }}
         />
+      )}
+      {slot.isActive && (
+        <span className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
+          <span
+            className="text-[7px] font-mono font-bold tracking-wider text-white/90"
+            style={{ textShadow: "0 0 4px rgba(0,0,0,0.95), 0 1px 2px rgba(0,0,0,0.8)" }}
+          >
+            S{slot.index + 1}
+          </span>
+        </span>
       )}
     </div>
   );
@@ -103,27 +114,31 @@ export default function SlotCtxBars({ slotCtx, ctxTotal, parallel, unifiedKv }: 
           {showSharedSpan && (
             <div className="absolute top-0 left-0 right-0 z-10 pointer-events-none px-0.5">
               <span className={sharedCapacityChip}>
-                {formatTokenCount(barCapacity)} · shared across
+                {formatTokenCount(barCapacity)} · shared pool
               </span>
             </div>
           )}
           {activeSlots.map(renderBarColumn)}
         </div>
 
-        <div className="flex gap-0.5 mt-1 flex-shrink-0 min-w-0">
+        <div className="flex gap-0.5 mt-0.5 flex-shrink-0 min-w-0">
           {activeSlots.map((slot) => (
             <div
               key={slot.index}
-              className="flex flex-col items-center min-w-0"
+              className="flex items-center justify-center min-w-0"
               style={barColumnStyle}
             >
-              <span className="text-[7px] font-mono bg-black/50 text-white/80 px-1 py-0.5 rounded-sm">
-                S{slot.index + 1}
-              </span>
               <span
                 className={`text-[9px] font-mono font-bold ${
                   slot.pct > 0 ? "fusion-readout-emphasis" : "text-stealth-muted/15"
                 }`}
+                title={
+                  slot.pct > 0
+                    ? unifiedKv
+                      ? `${Math.round(slot.pct)}% of shared ${formatTokenCount(ctxTotal)} pool (this slot)`
+                      : `${Math.round(slot.pct)}% of ${formatTokenCount(barCapacity)} slot budget`
+                    : undefined
+                }
               >
                 {slot.pct > 0 ? `${Math.round(slot.pct)}%` : ""}
               </span>

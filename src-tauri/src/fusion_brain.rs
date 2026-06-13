@@ -21,7 +21,7 @@ const MAX_INSTANT_TOKEN_JUMP: usize = 2048;
 /// Active request polling cadence — matches log_hub stderr batch tick.
 const POLL_ACTIVE_MS: u64 = crate::log_hub::TELEMETRY_TICK_MS;
 /// Min Δt between instant-TPS samples (slightly under poll interval for timer jitter).
-const MIN_INSTANT_TPS_DT_SEC: f64 = 0.008;
+const MIN_INSTANT_TPS_DT_SEC: f64 = 0.02;
 /// Idle + ready cadence — cuts browser IPC churn when nothing changes.
 const POLL_IDLE_MS: u64 = 500;
 /// Re-emit idle snapshots periodically so frontend can rehydrate after HMR/remount.

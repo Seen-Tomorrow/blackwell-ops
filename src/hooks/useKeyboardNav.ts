@@ -2,10 +2,14 @@ import { useState, useEffect, useCallback } from "react";
 
 export type KeyboardZone = "search" | "config" | null;
 
+function isEnterKey(e: KeyboardEvent): boolean {
+  return e.key === "Enter" || e.code === "NumpadEnter";
+}
+
 interface UseKeyboardNavOptions {
   modelCount: number;
   onSelectModel: (index: number) => void;
-  onLaunch?: () => void;
+  onLaunch?: (highlightIndex: number) => void;
 }
 
 // Arrow/Enter navigation for model list and config zone.
@@ -36,12 +40,13 @@ export function useKeyboardNav({ modelCount, onSelectModel, onLaunch }: UseKeybo
   }, [handleArrowKeys]);
 
   const handleEnter = useCallback((e: KeyboardEvent) => {
-    if (e.ctrlKey && e.key === "Enter" && onLaunch) {
+    if (e.ctrlKey && isEnterKey(e) && onLaunch) {
       e.preventDefault();
-      onLaunch();
+      e.stopPropagation();
+      onLaunch(highlightIndex);
       return;
     }
-    if (e.key === "Enter" && !e.ctrlKey && !e.shiftKey) {
+    if (isEnterKey(e) && !e.ctrlKey && !e.shiftKey) {
       e.preventDefault();
       const activeEl = document.activeElement;
       if (activeEl instanceof HTMLInputElement) activeEl.blur();

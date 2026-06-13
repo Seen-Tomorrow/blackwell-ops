@@ -30,12 +30,12 @@ function StatBlock({ label, value, highlight }: {
 
 export default memo(function SlotLogPanel({ entry, logs, systemEvents, fusionUpdate, n_ctx = 32768, onStop }: SlotLogPanelProps) {
   const logRef = useRef<HTMLDivElement>(null);
-  // Auto-scroll only on mount or when system events change (not every log line)
+  // Tail-follow stderr batch stream (same buffer as LOG tab — 90px viewport needs explicit scroll).
   useEffect(() => {
-    if (logRef.current && systemEvents.length > 0) {
+    if (logRef.current) {
       logRef.current.scrollTop = logRef.current.scrollHeight;
     }
-  }, [systemEvents]);
+  }, [logs.length, systemEvents.length]);
 
   // Phase: fusion /slots is authoritative for BUSY/READY, logs provide PROMPT_PROCESSING detail.
   // Prioritize explicit "PP" phase so prefill is not overridden to GENERATING by ACTIVE state.
@@ -131,11 +131,11 @@ export default memo(function SlotLogPanel({ entry, logs, systemEvents, fusionUpd
       {/* Benchmark controls — full width */}
       {entry.status === "RUNNING" && (
         <div className="px-3 py-1">
-          <BenchWidget port={entry.port} compact />
+          <BenchWidget key={`bench-${entry.idx}-${entry.port}`} port={entry.port} compact />
         </div>
       )}
 
-      {/* Live log stream from LogHub (stdout streaming, batched at 100ms) */}
+      {/* Live log stream from LogHub (stderr only, batched ~25ms) */}
       <div ref={logRef} className="engine-stack-log px-3 py-2 border-t border-stealth-border/30 h-[90px] overflow-y-auto overflow-x-hidden eink-scrollbar">
         {visibleLogs.length === 0 && systemEvents.length === 0 ? (
           <p className="text-[10px] font-mono text-stealth-muted/50 italic">

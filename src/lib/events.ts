@@ -22,7 +22,7 @@
  */
 
 export type NavigateConfigDetail = {
-  subTab?: "providers" | "params" | "paths";
+  subTab?: "providers" | "params" | "paths" | "secrets";
 };
 
 import { invoke } from "@tauri-apps/api/core";
@@ -55,11 +55,9 @@ export const EVENTS = {
 export type AppEventName = (typeof EVENTS)[keyof typeof EVENTS];
 
 export function dispatchAppEvent(event: AppEventName, detail?: unknown): void {
-  if (detail !== undefined) {
-    window.dispatchEvent(new CustomEvent(event, { detail }));
-  } else {
-    window.dispatchEvent(new Event(event));
-  }
+  window.dispatchEvent(
+    detail !== undefined ? new CustomEvent(event, { detail }) : new CustomEvent(event),
+  );
 }
 
 export function dispatchPowerUserChanged(): void {

@@ -248,9 +248,8 @@ impl EngineStack {
             let ready_flag = model_ready.clone();
             let cb = on_ready.clone();
             std::sync::Arc::new(move || {
-                if !ready_flag.swap(true, std::sync::atomic::Ordering::AcqRel) {
-                    cb();
-                }
+                cb();
+                ready_flag.store(true, std::sync::atomic::Ordering::Release);
             })
         };
         log_hub.spawn_slot_reader(
@@ -317,7 +316,12 @@ impl EngineStack {
                 config.binary_profile.clone()
             };
             slot.supports_fusion = supports_fusion;
-            slot.status = SlotStatus::Loading;
+            // Health/stderr readiness can fire while we still hold child/pid setup below.
+            // Never downgrade Running → Loading or on_ready is one-shot and the stack sticks LOADING
+            // while fusion /slots already reports READY (bench + phase bar gated on stack status).
+            if !matches!(slot.status, SlotStatus::Running) {
+                slot.status = SlotStatus::Loading;
+            }
         }
 
         let reaper_cancel = {
@@ -329,8 +333,56 @@ impl EngineStack {
         Ok(())
     }
 
-    /// Poll llama-server `/health` until the model is loaded and slots are available.
-    /// Authoritative readiness signal — works regardless of stderr verbosity or log format.
+    /// GGML can return /health ok while weights load; 5xx/unavailable from /slots means keep waiting.
+    fn slots_still_loading(err: &str) -> bool {
+        let lower = err.to_lowercase();
+        lower.contains("status 5")
+            || lower.contains("unavailable")
+            || lower.contains("loading model")
+    }
+
+    /// `/slots` idle — same criterion fusion uses (model loaded, not processing).
+    /// IK: fall back to `/health` ok (only true after weights load). GGML: never trust `/health`
+    /// while `/slots` returns empty or a still-loading HTTP error.
+    async fn probe_readiness_source(client: &reqwest::Client, port: u16) -> Option<&'static str> {
+        match crate::fusion_poller::poll_slots_on(client, "127.0.0.1", port).await {
+            Ok(slots) => {
+                if !slots.is_empty() && slots.iter().all(|s| !s.is_processing) {
+                    Some("GET /slots idle")
+                } else {
+                    None
+                }
+            }
+            Err(e) => {
+                if Self::slots_still_loading(&e) {
+                    return None;
+                }
+                // IK: /health ok only after weights load. GGML: blocked above while /slots 5xx.
+                if Self::probe_health_ok(client, port).await {
+                    Some("GET /health ok")
+                } else {
+                    None
+                }
+            }
+        }
+    }
+
+    /// `/health` status=ok — IK returns ok only when weights are loaded; GGML returns ok while HTTP is up.
+    async fn probe_health_ok(client: &reqwest::Client, port: u16) -> bool {
+        let url = format!("http://127.0.0.1:{}/health", port);
+        let Ok(resp) = client.get(&url).send().await else {
+            return false;
+        };
+        if !resp.status().is_success() {
+            return false;
+        }
+        let Ok(body) = resp.json::<serde_json::Value>().await else {
+            return false;
+        };
+        body["status"].as_str() == Some("ok")
+    }
+
+    /// Poll until stack readiness — prefer `/slots` (GGML-safe); fall back to `/health` when /slots is absent.
     fn spawn_health_readiness_probe(
         port: u16,
         alias: String,
@@ -340,7 +392,7 @@ impl EngineStack {
     ) {
         tokio::spawn(async move {
             let client = match reqwest::Client::builder()
-                .timeout(std::time::Duration::from_secs(2))
+                .timeout(std::time::Duration::from_millis(1500))
                 .build()
             {
                 Ok(c) => c,
@@ -349,7 +401,6 @@ impl EngineStack {
                     reqwest::Client::new()
                 }
             };
-            let url = format!("http://127.0.0.1:{}/health", port);
 
             // 1200 × 500ms = 10 min — mmap + --fit on large models can exceed 5 min; we never kill on timeout.
             for _ in 0..1200 {
@@ -360,29 +411,21 @@ impl EngineStack {
                     }
                 }
 
-                if let Ok(resp) = client.get(&url).send().await {
-                    if resp.status().is_success() {
-                        if let Ok(body) = resp.json::<serde_json::Value>().await {
-                            match body["status"].as_str() {
-                                Some("ok") => {
-                                    let status = body["status"].as_str().unwrap_or("?");
-                                    log_hub.emit_console_line(
-                                        crate::output_console::BlackwellOutputConsoleCategory::Debug,
-                                        &format!("[{alias}] readiness=GET /health | port={port} status={status}"),
-                                        crate::output_console::BlackwellOutputConsoleLineStyle::Normal,
-                                    );
-                                    log_hub.emit_console_line(
-                                        crate::output_console::BlackwellOutputConsoleCategory::Engines,
-                                        &format!("[{alias}] Engine ready"),
-                                        crate::output_console::BlackwellOutputConsoleLineStyle::Normal,
-                                    );
-                                    on_ready();
-                                    return;
-                                }
-                                _ => {}
-                            }
-                        }
-                    }
+                let source = Self::probe_readiness_source(&client, port).await;
+
+                if let Some(source) = source {
+                    log_hub.emit_console_line(
+                        crate::output_console::BlackwellOutputConsoleCategory::Debug,
+                        &format!("[{alias}] readiness={source} | port={port}"),
+                        crate::output_console::BlackwellOutputConsoleLineStyle::Normal,
+                    );
+                    log_hub.emit_console_line(
+                        crate::output_console::BlackwellOutputConsoleCategory::Engines,
+                        &format!("[{alias}] Engine ready"),
+                        crate::output_console::BlackwellOutputConsoleLineStyle::Normal,
+                    );
+                    on_ready();
+                    return;
                 }
 
                 tokio::time::sleep(std::time::Duration::from_millis(500)).await;

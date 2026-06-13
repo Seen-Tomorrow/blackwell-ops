@@ -1,5 +1,6 @@
 use crate::engine::AppContext;
 use crate::types::ProviderConfig;
+use reqwest::header::{HeaderMap, AUTHORIZATION};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use tauri::command;
@@ -70,10 +71,25 @@ struct IntelChannel {
 }
 
 fn build_client() -> reqwest::Client {
-    reqwest::Client::builder()
-        .user_agent("blackwell-ops-intel/1.0")
-        .build()
-        .expect("failed to build reqwest client")
+    let mut builder = reqwest::Client::builder()
+        .user_agent("blackwell-ops-intel/1.0");
+
+    match std::env::var("GITHUB_TOKEN") {
+        Ok(ref token) if !token.is_empty() => {
+            eprintln!("[intel] GITHUB_TOKEN detected (length={})", token.len());
+            let mut headers = HeaderMap::new();
+            headers.insert(
+                AUTHORIZATION,
+                reqwest::header::HeaderValue::from_str(&format!("Bearer {}", token)).unwrap(),
+            );
+            builder = builder.default_headers(headers);
+        }
+        _ => {
+            eprintln!("[intel] WARNING: GITHUB_TOKEN not set — rate limited to 60/hr");
+        }
+    }
+
+    builder.build().expect("failed to build reqwest client")
 }
 
 #[derive(Deserialize)]
@@ -172,6 +188,10 @@ fn channels_from_providers(providers: &[ProviderConfig]) -> Vec<IntelChannel> {
     channels
 }
 
+fn is_labelless_repo(owner: &str, repo: &str) -> bool {
+    matches!((owner, repo), ("ikawrakow", "ik_llama.cpp"))
+}
+
 fn pr_labels_for_repo(owner: &str, repo: &str) -> &'static [&'static str] {
     match (owner, repo) {
         ("ikawrakow", "ik_llama.cpp") => &["cuda", "server", "breaking-change", "ggml"],
@@ -196,18 +216,47 @@ fn labels_are_breaking(labels: &[String]) -> bool {
         .any(|l| l.eq_ignore_ascii_case("breaking-change"))
 }
 
+fn keyword_classify(text: &str) -> Vec<String> {
+    let lower = text.to_lowercase();
+    let mut tags = Vec::new();
+    if lower.contains("breaking") || lower.contains("breaking change") {
+        tags.push("breaking-change".into());
+    }
+    if lower.contains("cuda") || lower.contains("gpu") || lower.contains("vulkan") || lower.contains("rocm") || lower.contains("hip") {
+        tags.push("cuda".into());
+    }
+    if lower.contains("server") || lower.contains("llama-server") || lower.contains("http") || lower.contains("api") {
+        tags.push("server".into());
+    }
+    if lower.contains("ggml") {
+        tags.push("ggml".into());
+    }
+    tags
+}
+
 fn pr_item_from_json(
     item: &serde_json::Value,
     channel_id: &str,
     source: &str,
     is_open: bool,
+    use_keyword_classification: bool,
 ) -> Option<IntelItem> {
     let number = item["number"].as_u64()?;
     let title = item["title"].as_str()?.to_string();
     let html_url = item["html_url"].as_str()?.to_string();
     let body = item["body"].as_str().unwrap_or("");
-    let labels = extract_labels(item);
-    let is_breaking = labels_are_breaking(&labels);
+    let raw_labels = extract_labels(item);
+
+    let (labels, is_breaking) = if use_keyword_classification {
+        let combined = format!("{} {}", title, body);
+        let kw_labels = keyword_classify(&combined);
+        let breaking = kw_labels.iter().any(|l| l.eq_ignore_ascii_case("breaking-change"));
+        (kw_labels, breaking)
+    } else {
+        let breaking = labels_are_breaking(&raw_labels);
+        (raw_labels, breaking)
+    };
+
     let timestamp = if is_open {
         item["updated_at"]
             .as_str()
@@ -319,25 +368,79 @@ async fn fetch_prs_by_labels(
             channel.owner, channel.repo, state, label, sort
         );
 
-        if let Ok(resp) = client.get(&url).send().await {
-            if let Ok(json) = resp.json::<serde_json::Value>().await {
-                if let Some(items) = json["items"].as_array() {
-                    for item in items {
-                        if let Some(number) = item["number"].as_u64() {
-                            if seen_numbers.insert(number) {
-                                if let Some(intel_item) =
-                                    pr_item_from_json(item, &channel.id, source, is_open)
-                                {
-                                    all_items.push(intel_item);
+        match client.get(&url).send().await {
+            Ok(resp) => {
+                eprintln!("[intel] {} {} label={} status={} rate={}/{}",
+                    channel.repo, state, label,
+                    resp.status(),
+                    resp.headers().get("x-ratelimit-remaining").and_then(|v| v.to_str().ok()).unwrap_or("?"),
+                    resp.headers().get("x-ratelimit-limit").and_then(|v| v.to_str().ok()).unwrap_or("?")
+                );
+                if let Ok(json) = resp.json::<serde_json::Value>().await {
+                    if let Some(items) = json["items"].as_array() {
+                        for item in items {
+                            if let Some(number) = item["number"].as_u64() {
+                                if seen_numbers.insert(number) {
+                                    if let Some(intel_item) =
+                                        pr_item_from_json(item, &channel.id, source, is_open, false)
+                                    {
+                                        all_items.push(intel_item);
+                                    }
                                 }
                             }
                         }
                     }
                 }
             }
+            Err(e) => {
+                eprintln!("[intel] {} {} label={} fetch error: {}", channel.repo, state, label, e);
+            }
         }
 
         tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
+    }
+
+    all_items
+}
+
+async fn fetch_prs_without_labels(
+    client: &reqwest::Client,
+    channel: &IntelChannel,
+    is_open: bool,
+    source: &str,
+) -> Vec<IntelItem> {
+    let state = if is_open { "open" } else { "closed" };
+    let sort = if is_open { "updated" } else { "closed_at" };
+    let url = format!(
+        "https://api.github.com/search/issues?q=repo:{}/{}+is:pr+is:{}&sort={}&order=desc&per_page=10",
+        channel.owner, channel.repo, state, sort
+    );
+
+    let mut all_items = Vec::new();
+
+    match client.get(&url).send().await {
+        Ok(resp) => {
+            eprintln!("[intel] {} {} status={} rate={}/{}",
+                channel.repo, state,
+                resp.status(),
+                resp.headers().get("x-ratelimit-remaining").and_then(|v| v.to_str().ok()).unwrap_or("?"),
+                resp.headers().get("x-ratelimit-limit").and_then(|v| v.to_str().ok()).unwrap_or("?")
+            );
+            if let Ok(json) = resp.json::<serde_json::Value>().await {
+                if let Some(items) = json["items"].as_array() {
+                    for item in items {
+                        if let Some(intel_item) =
+                            pr_item_from_json(item, &channel.id, source, is_open, true)
+                        {
+                            all_items.push(intel_item);
+                        }
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            eprintln!("[intel] {} {} fetch error: {}", channel.repo, state, e);
+        }
     }
 
     all_items
@@ -360,8 +463,19 @@ async fn fetch_recent_releases(client: &reqwest::Client, channel: &IntelChannel)
     }
 
     let releases = match client.get(&url).send().await {
-        Ok(resp) => resp.json::<Vec<ReleaseSummary>>().await.unwrap_or_default(),
-        Err(_) => return vec![],
+        Ok(resp) => {
+            eprintln!("[intel] {} releases status={} rate={}/{}",
+                channel.repo,
+                resp.status(),
+                resp.headers().get("x-ratelimit-remaining").and_then(|v| v.to_str().ok()).unwrap_or("?"),
+                resp.headers().get("x-ratelimit-limit").and_then(|v| v.to_str().ok()).unwrap_or("?")
+            );
+            resp.json::<Vec<ReleaseSummary>>().await.unwrap_or_default()
+        }
+        Err(e) => {
+            eprintln!("[intel] {} releases fetch error: {}", channel.repo, e);
+            return vec![];
+        }
     };
 
     releases
@@ -390,20 +504,30 @@ async fn fetch_recent_releases(client: &reqwest::Client, channel: &IntelChannel)
 }
 
 async fn fetch_channel_intel(client: &reqwest::Client, channel: &IntelChannel) -> Vec<IntelItem> {
-    let labels = pr_labels_for_repo(&channel.owner, &channel.repo);
+    let labelless = is_labelless_repo(&channel.owner, &channel.repo);
 
-    let (discussions, closed_prs, open_prs, releases) = tokio::join!(
-        fetch_discussion_comments(client, channel),
-        fetch_prs_by_labels(client, channel, labels, false, "pr"),
-        fetch_prs_by_labels(
-            client,
-            channel,
-            &["breaking-change", "cuda", "server"],
-            true,
-            "open_pr"
-        ),
-        fetch_recent_releases(client, channel),
-    );
+    let (discussions, closed_prs, open_prs, releases) = if labelless {
+        tokio::join!(
+            fetch_discussion_comments(client, channel),
+            fetch_prs_without_labels(client, channel, false, "pr"),
+            fetch_prs_without_labels(client, channel, true, "open_pr"),
+            fetch_recent_releases(client, channel),
+        )
+    } else {
+        let labels = pr_labels_for_repo(&channel.owner, &channel.repo);
+        tokio::join!(
+            fetch_discussion_comments(client, channel),
+            fetch_prs_by_labels(client, channel, labels, false, "pr"),
+            fetch_prs_by_labels(
+                client,
+                channel,
+                &["breaking-change", "cuda", "server"],
+                true,
+                "open_pr"
+            ),
+            fetch_recent_releases(client, channel),
+        )
+    };
 
     let mut items = discussions;
     items.extend(closed_prs);

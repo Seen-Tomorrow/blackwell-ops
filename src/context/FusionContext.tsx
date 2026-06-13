@@ -12,8 +12,8 @@ import type { FusionUpdate, StackEntry } from "../lib/types";
 import { resetAllBenchPortStates } from "../lib/benchPortStore";
 import { useTauriListen } from "../hooks/useTauriListen";
 
-/** Match backend fusion poll + log_hub stderr batch tick (10ms). */
-const RENDER_INTERVAL_MS = 10;
+/** Match backend fusion poll + log_hub stderr batch tick (`TELEMETRY_TICK_MS`). */
+const RENDER_INTERVAL_MS = 25;
 
 function isRunningEntry(s: StackEntry): boolean {
   return s.status === "RUNNING" || s.status === "LOADING";

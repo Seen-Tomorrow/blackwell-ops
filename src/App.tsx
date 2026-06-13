@@ -543,7 +543,7 @@ function App() {
             />
             <div
               ref={logsScrollRef}
-              className="theme-surface-inset flex-1 overflow-x-hidden overflow-y-auto rounded-sm p-3 min-h-0"
+              className="engine-logs-scroll theme-surface-inset flex-1 overflow-x-hidden overflow-y-auto rounded-sm p-3 min-h-0"
               onScroll={handleLogsScroll}
             >
               {logs.size === 0 && getActiveStackSlots(stack).length === 0 ? (

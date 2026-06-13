@@ -33,7 +33,8 @@ pub struct LogBatch {
 }
 
 /// Shared telemetry tick — stderr log batch flush and fusion /slots poll cadence.
-pub const TELEMETRY_TICK_MS: u64 = 10;
+/// Single knob keeps log console and fusion meters aligned (25ms ≈ 80 HTTP polls/s per active engine).
+pub const TELEMETRY_TICK_MS: u64 = 25;
 const BATCH_INTERVAL_MS: u64 = TELEMETRY_TICK_MS;
 const MAX_BATCH_SIZE: usize = 10;
 /// Bounded stderr line queue — drops on flood instead of unbounded RAM growth.
@@ -145,9 +146,8 @@ impl LogHub {
             let ready_flag = model_ready.clone();
             let cb = on_ready.clone();
             move || {
-                if !ready_flag.swap(true, Ordering::AcqRel) {
-                    cb();
-                }
+                cb();
+                ready_flag.store(true, Ordering::Release);
             }
         };
 
@@ -565,10 +565,11 @@ impl LogHub {
         }
     }
 
-    /// Model finished loading — NOT merely "HTTP listening" (llama starts HTTP before weights).
+    /// Model finished loading — NOT merely "HTTP listening" (GGML starts HTTP before weights).
     fn is_engine_ready_log_line(line: &str) -> bool {
         let lower = line.to_lowercase();
         lower.contains("all slots are idle")
+            || (lower.contains("update_slots") && lower.contains("idle"))
             || lower.contains("model loaded")
     }
 

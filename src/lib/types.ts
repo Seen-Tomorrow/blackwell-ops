@@ -34,6 +34,14 @@ export interface ModelLibraryValidation {
   resolvedPath: string;
 }
 
+export interface SecretStatus {
+  key: string;
+  label: string;
+  description: string;
+  configured: boolean;
+  preview?: string;
+}
+
 export interface HfMetadata {
   hfModelId: string;
   author: string;

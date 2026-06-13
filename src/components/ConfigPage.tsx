@@ -6,6 +6,7 @@ import type { UserEditedTemplateParam, ProviderConfig, ProviderTemplate, Provide
 import { DEFAULT_PROVIDER_ID } from "../lib/types";
 import ValueBubbles from "./ValueBubbles";
 import ProvidersConfig from "./ProvidersConfig";
+import SecretsConfig from "./SecretsConfig";
 import ParamCreatorModal from "./ParamCreatorModal";
 import ParamCatalogSearch from "./ParamCatalogSearch";
 import {
@@ -27,7 +28,7 @@ import type { RawCatalogEntry } from "../lib/catalog";
 import { catalogEntryToParam } from "../lib/catalog";
 
 
-type ConfigSubTab = "providers" | "params" | "paths";
+type ConfigSubTab = "providers" | "params" | "paths" | "secrets";
 
 interface ConfigPageProps {
   providers?: ProviderConfig[];
@@ -747,6 +748,7 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
         <button onClick={() => setSubTab("providers")} className={`app-nav-tab px-3 py-1 text-[10px] font-mono tracking-wider rounded-sm ${subTab === "providers" ? "app-nav-tab-active" : ""}`}>PROVIDERS</button>
         <button onClick={() => setSubTab("params")} className={`app-nav-tab px-3 py-1 text-[10px] font-mono tracking-wider rounded-sm ${subTab === "params" ? "app-nav-tab-active" : ""}`}>PARAMETERS</button>
         <button onClick={() => setSubTab("paths")} data-onboarding="paths-tab" className={`app-nav-tab px-3 py-1 text-[10px] font-mono tracking-wider rounded-sm ${subTab === "paths" ? "app-nav-tab-active" : ""}`}>PATHS</button>
+        <button onClick={() => setSubTab("secrets")} className={`app-nav-tab px-3 py-1 text-[10px] font-mono tracking-wider rounded-sm ${subTab === "secrets" ? "app-nav-tab-active" : ""}`}>SECRETS</button>
        </div>
 
        {subTab === "providers" ? (
@@ -755,6 +757,8 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
          </div>
        ) : subTab === "paths" ? (
          <ModelPathsPanel />
+       ) : subTab === "secrets" ? (
+         <SecretsConfig />
        ) : (
         <div className="flex-1 flex flex-col overflow-hidden min-h-0">
           {/* Toolbar */}

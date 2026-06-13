@@ -304,9 +304,12 @@ export function useModelCatalog({ models, gpus, stack, scanningPath, setScanning
     if (allFiltered[index]) handleSelect(allFiltered[index]);
   }, [allFiltered, handleSelect]);
 
-  const handleLaunchFromConfig = useCallback(() => {
-    dispatchAppEvent(EVENTS.launchEngine);
-  }, []);
+  const handleLaunchFromConfig = useCallback((highlightIndex: number) => {
+    const highlighted = allFiltered[highlightIndex];
+    if (highlighted) handleSelect(highlighted);
+    // Defer one tick so EngineConfigPanel receives the updated model prop.
+    window.setTimeout(() => dispatchAppEvent(EVENTS.launchEngine), 0);
+  }, [allFiltered, handleSelect]);
 
   const { highlightIndex, zone } = useKeyboardNav({
     modelCount: allFiltered.length,

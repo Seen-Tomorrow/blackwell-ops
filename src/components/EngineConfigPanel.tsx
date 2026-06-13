@@ -881,8 +881,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
   // Keyboard launch — Ctrl+Enter triggers ignite (must track handleAddToStack for fresh manifest)
   useEffect(() => {
-    const handler = (e: Event) => {
-      if (!(e instanceof CustomEvent)) return;
+    const handler = () => {
       handleAddToStack();
     };
     window.addEventListener(EVENTS.launchEngine, handler);

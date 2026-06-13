@@ -40,7 +40,8 @@ function defaultBenchState(): BenchPortState {
 const portStates = new Map<number, BenchPortState>();
 const listeners = new Set<() => void>();
 
-function notifyListeners(): void {
+/** Wake every mounted BenchWidget (fusion overlay + engine stack share per-port state). */
+export function notifyBenchPortStore(): void {
   for (const fn of listeners) fn();
 }
 
@@ -63,5 +64,5 @@ export function subscribeBenchPortStore(listener: () => void): () => void {
 export function resetAllBenchPortStates(): void {
   if (portStates.size === 0) return;
   portStates.clear();
-  notifyListeners();
+  notifyBenchPortStore();
 }

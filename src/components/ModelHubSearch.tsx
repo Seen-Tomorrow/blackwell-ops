@@ -79,10 +79,8 @@ export default function ModelHubSearch() {
     setLoadingDetail(true);
     (async () => {
       try {
-        const token = await invoke<string | null>('get_hf_token').catch(() => null);
         const info = await invoke<HfModelInfo>('get_hf_model_info', {
           modelId: selectedId,
-          hfToken: token || undefined,
         });
         if (!cancelled) setDetailInfo(info);
       } catch (e) {
@@ -99,13 +97,11 @@ export default function ModelHubSearch() {
     setLoading(true);
     setSelectedId(null);
     try {
-      const token = await invoke<string | null>('get_hf_token').catch(() => null);
       const resp = await invoke<HfSearchResponse>('search_hf_models', {
         query: query.trim(),
         vramLimitGb: vramTier > 0 ? vramTier : undefined,
         sort: sortBy,
         limit: 50,
-        hfToken: token || undefined,
       });
       let models = resp.models;
       if (sortBy === 'lastModified') {
