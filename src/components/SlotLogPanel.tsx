@@ -99,9 +99,12 @@ export default memo(function SlotLogPanel({ entry, logs, systemEvents, fusionUpd
               {" "}
               {displayPhase === "PP" ? "PROMPT PROCESSING" : displayPhase === "GENERATING" ? "TOKEN GENERATION" : "\u00A0"}
             </span>
-            {fusionUpdate?.ttftMs != null && fusionUpdate.ttftMs > 0 ? (
+            {fusionUpdate?.prefillMs != null && fusionUpdate.prefillMs > 0 ? (
               <span className="text-[9px] font-mono text-telemetry-amber">
-                TTFT: {fusionUpdate.ttftMs.toFixed(0)}ms
+                PP: {fusionUpdate.prefillMs.toFixed(0)}ms
+                {fusionUpdate.decodeTtftMs != null
+                  ? ` · +1st: ${fusionUpdate.decodeTtftMs < 1 ? "<1" : fusionUpdate.decodeTtftMs.toFixed(0)}ms`
+                  : ""}
               </span>
             ) : (
               <span className="text-[9px] font-mono opacity-0 select-none" aria-hidden="true">{"\u00A0"}</span>

@@ -14,9 +14,12 @@ import {
   isPowerUserActive,
   loadPowerUserState,
   catalogOverrideKey,
+  effectiveParamDefault,
   groupOrderKey,
   normalizeUiGroup,
+  paramUiGroup,
   readJsonStorage,
+  resolveGroupOrder,
   removeStorage,
   writeJsonStorage,
   savePowerUserState,
@@ -156,19 +159,27 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
   }, [selectedProviderId, currentProvider]);
 
   const saveGroupOrder = useCallback(async (newOrder: string[]) => {
+    const normalized = newOrder.map(normalizeUiGroup);
     // Persist to localStorage (A)
-    writeJsonStorage(groupOrderKey(selectedProviderId), newOrder.map(normalizeUiGroup));
-    setCustomGroupOrder(newOrder);
+    writeJsonStorage(groupOrderKey(selectedProviderId), normalized);
+    setCustomGroupOrder(normalized);
     // Persist to user_providers_config.json via save_provider (B)
     if (currentProvider) {
-      const updated = { ...currentProvider, groupOrder: newOrder };
+      const updated = { ...currentProvider, groupOrder: normalized };
       try { await invoke("save_provider", { provider: updated }); dispatchAppEvent(EVENTS.reloadProviders); } catch {}
     }
   }, [selectedProviderId, currentProvider]);
 
   const buildUserSavedParams = useCallback((provider: ProviderConfig | undefined): UserEditedTemplateParam[] => {
     if (!provider || !provider.userEditedTemplateParams) return [];
-    return [...provider.userEditedTemplateParams].sort((a, b) => a.order - b.order);
+    return [...provider.userEditedTemplateParams]
+      .sort((a, b) => a.order - b.order)
+      .map((p) => ({
+        ...p,
+        ui_group: p.ui_group ? paramUiGroup(p.ui_group) : p.ui_group,
+        defaultValue: effectiveParamDefault(p.defaultValue as string | number | null | undefined),
+        factoryDefault: effectiveParamDefault(p.factoryDefault as string | number | null | undefined),
+      }));
   }, []);
   const userSavedParams = useMemo(() => buildUserSavedParams(currentProvider), [currentProvider, buildUserSavedParams]);
 
@@ -205,12 +216,12 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
 
   // ── Existing groups from user-saved + provider default params ───────────────
   const existingGroups = useMemo(() => {
-    const seen = new Set<string>(["Feature Flags", "USER-ADDED-FROM-CATALOG"]);
+    const seen = new Set<string>([paramUiGroup("Feature Flags"), "USER-ADDED-FROM-CATALOG"]);
     for (const def of userSavedParamsWithDefaults) {
-      if (def.ui_group) seen.add(def.ui_group);
+      seen.add(paramUiGroup(def.ui_group));
     }
     for (const gp of providerDefaultParams) {
-      if (gp.ui_group) seen.add(gp.ui_group);
+      seen.add(paramUiGroup(gp.ui_group));
     }
     return Array.from(seen);
   }, [userSavedParamsWithDefaults, providerDefaultParams]);
@@ -569,9 +580,9 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
       ptype: def.ptype || "arg_select",
       flag: def.flag ?? "",
       pattern: def.pattern ?? "",
-      uiGroup: def.ui_group || "Feature Flags",
+      uiGroup: paramUiGroup(def.ui_group),
       values: (() => { const merged = [...(def.values || [])]; const ua = def.userAddedValues || []; for (const v of ua) { if (!merged.some(x => String(x) === String(v))) merged.push(v); } return merged; })(),
-      defaultValue: def.defaultValue ?? "",
+      defaultValue: effectiveParamDefault(def.defaultValue) ?? "",
       subParams: Object.fromEntries(
         Object.entries(def.sub_params || {}).map(([k, v]) => [k, (v as string[]).join(" ")])
       ),
@@ -605,27 +616,33 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
         // Preserve original type: try number first
         return Number.isFinite(Number(s)) ? Number(s) : s;
       });
-      // Determine new ui_group — persist change if different from current
-      const newUiGroup = paramMetaForm.uiGroup || "Feature Flags";
+      const newUiGroup = paramUiGroup(paramMetaForm.uiGroup);
       const nextPtype = (paramMetaForm.ptype === d.ptype ? d.ptype : paramMetaForm.ptype) as UserEditedTemplateParam["ptype"];
+      const nextDefault = paramMetaForm.defaultValue !== "" && paramMetaForm.defaultValue != null
+        ? paramMetaForm.defaultValue
+        : undefined;
       return {
         ...d,
         ptype: nextPtype,
         flag: paramMetaForm.flag || null,
         pattern: paramMetaForm.ptype === "path_scanner" ? paramMetaForm.pattern : undefined,
-        ui_group: newUiGroup !== d.ui_group ? newUiGroup : d.ui_group || undefined,
+        ui_group: newUiGroup,
         values: vals,
-        defaultValue: paramMetaForm.defaultValue !== "" ? paramMetaForm.defaultValue : undefined,
+        defaultValue: nextDefault,
         sub_params: Object.keys(subParams).length > 0 ? subParams : undefined,
         userAddedValues: mergedUserAdded.length > 0 ? mergedUserAdded : undefined,
       };
     });
 
-    // Ensure the new group exists in groupOrder if it's a new group
-    const newGroup = paramMetaForm.uiGroup ? normalizeUiGroup(paramMetaForm.uiGroup) : undefined;
+    // Append target group to custom order (preserve existing order — never promote to first)
+    const newUiGroup = paramUiGroup(paramMetaForm.uiGroup);
     let updatedProvider = { ...currentProvider, userEditedTemplateParams: updatedUserParams };
-    if (newGroup && currentProvider.groupOrder && !currentProvider.groupOrder.some(g => normalizeUiGroup(g) === newGroup)) {
-      updatedProvider.groupOrder = [...currentProvider.groupOrder, newGroup];
+    const baseOrder = resolveGroupOrder(updatedUserParams, customGroupOrder);
+    if (!baseOrder.includes(newUiGroup)) {
+      const newOrder = [...baseOrder, newUiGroup];
+      writeJsonStorage(groupOrderKey(selectedProviderId), newOrder);
+      setCustomGroupOrder(newOrder);
+      updatedProvider = { ...updatedProvider, groupOrder: newOrder };
     }
 
     setAllProviders(prev => prev.map(p => p.id !== selectedProviderId ? p : updatedProvider));
@@ -633,7 +650,7 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
     setEditingParamKey(null);
     setParamMetaForm(null);
     showSaved("SAVED");
-  }, [paramMetaForm, editingParamKey, currentProvider, buildUserSavedParams, persistProviderToConfig, selectedProviderId]);
+  }, [paramMetaForm, editingParamKey, currentProvider, buildUserSavedParams, persistProviderToConfig, selectedProviderId, customGroupOrder]);
 
   // ── Drag state for reorder ───────────────────────────────────────
   const dragKeyRef = useRef<string | null>(null);
@@ -712,16 +729,7 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
       const targetIdx = parseInt(rowEl.getAttribute("data-group-idx") || "-1", 10);
       if (targetIdx < 0) { setDraggingGroup(null); groupDragRef.current = null; groupHasMovedRef.current = false; return; }
 
-      // Derive current groups for comparison
-      const seen = new Set<string>();
-      const derivedOrder: string[] = [];
-      for (const def of userSavedParamsWithDefaults) {
-        const g = def.ui_group || "Feature Flags";
-        if (!seen.has(g)) { seen.add(g); derivedOrder.push(g); }
-      }
-      const currentOrder = (customGroupOrder && customGroupOrder.length > 0)
-        ? [...customGroupOrder.filter(g => seen.has(g)), ...derivedOrder.filter(g => !customGroupOrder!.includes(g))]
-        : derivedOrder;
+      const currentOrder = resolveGroupOrder(userSavedParamsWithDefaults, customGroupOrder);
 
       const sourceName = groupDragRef.current;
       const fromIdx = currentOrder.indexOf(sourceName);
@@ -858,24 +866,11 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
               <div className="flex items-center justify-center h-full text-stealth-muted text-xs font-mono">LOADING PARAMETERS...</div>
             ) : (
               (() => {
-                // Derive group order: custom (user-set) > template insertion order
-                const seen = new Set<string>();
-                const derivedOrder: string[] = [];
-                for (const def of userSavedParamsWithDefaults) {
-                  const g = def.ui_group || "Feature Flags";
-                  if (!seen.has(g)) {
-                    seen.add(g);
-                    derivedOrder.push(g);
-                  }
-                }
-                // Use custom order if set, otherwise use template insertion order
-                const groupOrder: string[] = (customGroupOrder && customGroupOrder.length > 0)
-                  ? [...customGroupOrder.filter(g => seen.has(g)), ...derivedOrder.filter(g => !customGroupOrder!.includes(g))]
-                  : derivedOrder;
+                const groupOrder = resolveGroupOrder(userSavedParamsWithDefaults, customGroupOrder);
 
                 const groups: Record<string, UserEditedTemplateParam[]> = {};
                 for (const def of userSavedParamsWithDefaults) {
-                  const g = def.ui_group || "Feature Flags";
+                  const g = paramUiGroup(def.ui_group);
                   if (!groups[g]) groups[g] = [];
                   groups[g].push(def);
                 }
@@ -925,10 +920,12 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
                                const defKey = def.key;
 
                                // Effective value: user override > current default
-                               const factoryDefault = def.factoryDefault;
-                               const effectiveDefault = def.defaultValue !== undefined ? String(def.defaultValue) : undefined;
+                               const factoryDefault = effectiveParamDefault(def.factoryDefault);
+                               const effectiveDefault = effectiveParamDefault(def.defaultValue);
                                const currentOverride = userOverrides[defKey];
-                               const currentValue = currentOverride !== undefined ? String(currentOverride) : (effectiveDefault ?? "");
+                               const currentValue = currentOverride !== undefined
+                                 ? String(currentOverride)
+                                 : (effectiveDefault !== undefined ? String(effectiveDefault) : "");
 
                                // Yellow accent: not in provider default params
                                const isUserAdded = providerDefaultParams.length > 0 && !providerDefaultParams.some(gp => gp.key === def.key);
@@ -1000,7 +997,7 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
 hiddenValues={def.hiddenValues || []}
                                       availableValues={def.values || []}
                                       userAddedValues={def.userAddedValues || []}
-                                      defaultValue={effectiveDefault}
+                                      defaultValue={effectiveDefault !== undefined ? String(effectiveDefault) : undefined}
                                       factoryDefault={factoryDefault !== undefined ? String(factoryDefault) : undefined}
                                       onChangeDefault={isPowerUser
                                         ? (v: string | number) => changeDefaultValue(def.key, v)

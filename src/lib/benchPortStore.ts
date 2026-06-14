@@ -9,6 +9,8 @@ export interface BenchPortState {
   tgPhase: "warmup" | "measured" | null;
   tgEffectiveLength: number | null;
   nPredict: number;
+  /** User toggle — warmup still auto-skips when nPredict > 512 (measured run is long enough). */
+  tgWarmupEnabled: boolean;
   promptMode: bench_PromptMode;
   ppRunning: boolean;
   ppResult: bench_PPBurstResult | null;
@@ -26,6 +28,7 @@ function defaultBenchState(): BenchPortState {
     tgPhase: null,
     tgEffectiveLength: null,
     nPredict: 256,
+    tgWarmupEnabled: true,
     promptMode: "unique",
     ppRunning: false,
     ppResult: null,
@@ -58,6 +61,11 @@ export function getBenchPortState(port: number): BenchPortState {
 export function subscribeBenchPortStore(listener: () => void): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);
+}
+
+/** TG warmup runs only when enabled and n_predict ≤ 512 (longer measured runs self-warm). */
+export function tgWarmupWillRun(nPredict: number, tgWarmupEnabled: boolean): boolean {
+  return tgWarmupEnabled && nPredict <= 512;
 }
 
 /** Drop all cached bench results — call when any engine slot stops. */

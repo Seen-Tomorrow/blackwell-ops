@@ -6,6 +6,7 @@ import {
   notifyBenchPortStore,
   resetAllBenchPortStates,
   subscribeBenchPortStore,
+  tgWarmupWillRun,
   type BenchSessionMode,
 } from "../lib/benchPortStore";
 import { useTauriListen } from "../hooks/useTauriListen";
@@ -134,10 +135,11 @@ export default function BenchWidget({
   );
 
   const executeBenchTg = async (patchHeroOnSuccess = true): Promise<void> => {
+    const willWarmup = tgWarmupWillRun(ps.nPredict, ps.tgWarmupEnabled);
     ps.tgRunning = true;
     ps.tgResult = null;
-    ps.tgPhase = "warmup";
-    ps.tgEffectiveLength = 1024;
+    ps.tgPhase = willWarmup ? "warmup" : "measured";
+    ps.tgEffectiveLength = willWarmup ? 512 : ps.nPredict;
     if (patchHeroOnSuccess) patchHero({ tg: null });
     bump();
     try {
@@ -145,6 +147,7 @@ export default function BenchWidget({
         port,
         nPredict: ps.nPredict,
         benchPromptMode: ps.promptMode,
+        tgWarmupEnabled: ps.tgWarmupEnabled,
       });
       ps.tgResult = res;
       if (!res.success && res.error === "Cancelled") {
@@ -254,6 +257,18 @@ export default function BenchWidget({
     bump();
   };
 
+  const toggleTgWarmup = () => {
+    ps.tgWarmupEnabled = !ps.tgWarmupEnabled;
+    bump();
+  };
+
+  const tgWarmupEffective = tgWarmupWillRun(ps.nPredict, ps.tgWarmupEnabled);
+  const tgWarmupTitle = tgWarmupEffective
+    ? "512-token warmup run before measured TG bench"
+    : ps.tgWarmupEnabled && ps.nPredict > 512
+      ? "Warmup auto-skipped — n_predict > 512 (measured run self-warms)"
+      : "Warmup disabled — measured run only (for TTFT experiments)";
+
   const isAnyRunning = ps.tgRunning || ps.ppRunning;
   const showTgResults =
     (ps.sessionMode === "tg" || ps.sessionMode === "both") && Boolean(ps.tgResult) && !ps.tgRunning;
@@ -300,6 +315,21 @@ export default function BenchWidget({
         {!isAnyRunning && !ps.showResults && (
           <>
             <div className="flex items-center justify-end gap-1">
+              <button
+                type="button"
+                onClick={toggleTgWarmup}
+                disabled={isAnyRunning}
+                title={tgWarmupTitle}
+                className={`bench-muted-btn px-1 py-0.5 text-[6px] font-mono rounded-sm focus:outline-none cursor-pointer select-none disabled:opacity-30 flex-shrink-0 ${
+                  tgWarmupEffective ? "text-yellow-400/90" : "text-stealth-muted/55"
+                }`}
+              >
+                {ps.tgWarmupEnabled
+                  ? tgWarmupEffective
+                    ? "WU ON"
+                    : "WU SKIP"
+                  : "WU OFF"}
+              </button>
               <span className="text-[6px] font-mono text-stealth-muted/40 tracking-wider flex-shrink-0 mr-0.5">TG</span>
               {TG_PREDICT_OPTIONS.map((tok) => (
                 <button

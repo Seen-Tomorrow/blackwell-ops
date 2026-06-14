@@ -26,13 +26,16 @@ interface FusionOverlayProps {
   modelName?: string;
   modelQuant?: string;
   providerName?: string;
+  providerBuildVersion?: string;
   profileLabel?: string;
   cudaVersion?: string;
   launchConfig?: FusionShareLaunchConfig;
+  hwTopo?: string;
 }
 
 function formatMs(ms: number): string {
-  if (ms < 1000) return `${ms.toFixed(0)}ms`;
+  if (ms < 1) return "<1ms";
+  if (ms < 1000) return ms < 100 ? `${ms.toFixed(1)}ms` : `${ms.toFixed(0)}ms`;
   return `${(ms / 1000).toFixed(1)}s`;
 }
 
@@ -44,8 +47,16 @@ function formatK(n: number): string {
 
 interface LastRequestStats {
   genTokensSlots: number;
-  ttftMs: string | null;
+  prefillMs: string | null;
+  decodeTtftMs: string | null;
   elapsedMs: string;
+}
+
+function fusionTimingStats(fusion: FusionUpdate): Pick<LastRequestStats, "prefillMs" | "decodeTtftMs"> {
+  return {
+    prefillMs: fusion.prefillMs != null ? formatMs(fusion.prefillMs) : null,
+    decodeTtftMs: fusion.decodeTtftMs != null ? formatMs(fusion.decodeTtftMs) : null,
+  };
 }
 
 export default function FusionOverlay({
@@ -63,9 +74,11 @@ export default function FusionOverlay({
   modelName,
   modelQuant,
   providerName,
+  providerBuildVersion,
   profileLabel,
   cudaVersion,
   launchConfig,
+  hwTopo,
 }: FusionOverlayProps) {
   const displayAlias = alias ?? "ENGINE";
   const displayPort = enginePort ?? 9090;
@@ -133,7 +146,7 @@ export default function FusionOverlay({
     if (!engState) {
       engState = {
         frozenStats: null,
-        liveSnapshot: { genTokensSlots: 0, ttftMs: null, elapsedMs: "0ms" },
+        liveSnapshot: { genTokensSlots: 0, prefillMs: null, decodeTtftMs: null, elapsedMs: "0ms" },
         wasActive: false,
       };
       engineStates.current.set(fusion.slotIdx, engState);
@@ -145,16 +158,14 @@ export default function FusionOverlay({
       engState.frozenStats = null;
       engState.liveSnapshot = {
         genTokensSlots: fusion.genTokensPerRequestSlots,
-        ttftMs: fusion.ttftMs != null ? formatMs(fusion.ttftMs) : null,
+        ...fusionTimingStats(fusion),
         elapsedMs: formatMs(fusion.requestElapsedMs),
       };
       setDisplayFrozen(null);
     } else if (engState.wasActive) {
       engState.wasActive = false;
-      if (engState.liveSnapshot.genTokensSlots > 0) {
-        engState.frozenStats = { ...engState.liveSnapshot };
-        setDisplayFrozen(engState.frozenStats);
-      }
+      engState.frozenStats = { ...engState.liveSnapshot };
+      setDisplayFrozen(engState.frozenStats);
     } else {
       setDisplayFrozen(engState.frozenStats);
     }
@@ -162,15 +173,21 @@ export default function FusionOverlay({
     fusion?.slotIdx,
     fusion?.phase,
     fusion?.genTokensPerRequestSlots,
-    fusion?.ttftMs,
+    fusion?.prefillMs,
+    fusion?.decodeTtftMs,
     fusion?.requestElapsedMs,
   ]);
 
   const showLive = fusion != null && isActive;
-  const defaultSnapshot: LastRequestStats = { genTokensSlots: 0, ttftMs: null, elapsedMs: "0ms" };
+  const defaultSnapshot: LastRequestStats = {
+    genTokensSlots: 0,
+    prefillMs: null,
+    decodeTtftMs: null,
+    elapsedMs: "0ms",
+  };
   const statsToDisplay = showLive && fusion ? {
     genTokensSlots: fusion.genTokensPerRequestSlots,
-    ttftMs: fusion.ttftMs != null ? formatMs(fusion.ttftMs) : null,
+    ...fusionTimingStats(fusion),
     elapsedMs: formatMs(fusion.requestElapsedMs),
   } as LastRequestStats : (displayFrozen ?? defaultSnapshot);
 
@@ -305,6 +322,18 @@ export default function FusionOverlay({
       : tgTpsValue;
   const tgHeroActive = !suppressTgHero && (tgHeroTps != null ? tgHeroTps > 0 : tgTpsPick > 0);
 
+  const specSlotActive = fusion.slotCtx?.some((s) => s.speculative) ?? false;
+  const mtpAcceptPct =
+    fusion.specDraftAcceptRate != null && fusion.specDraftAcceptRate > 0
+      ? (fusion.specDraftAcceptRate * 100).toFixed(1)
+      : null;
+  const mtpAcceptTitle =
+    fusion.specDraftAcceptedLast != null && fusion.specDraftGeneratedLast != null
+      ? `Last: ${fusion.specDraftAcceptedLast}/${fusion.specDraftGeneratedLast} accepted · Session: ${fusion.specDraftAccepted ?? 0}/${fusion.specDraftGenerated ?? 0}`
+      : fusion.specDraftGenerated
+        ? `Session: ${fusion.specDraftAccepted ?? 0}/${fusion.specDraftGenerated} draft tokens accepted`
+        : "MTP draft acceptance (updates when a request completes)";
+
   // Primary prefill progress/tokens from /slots poll (reliable); LP log is red comparison fallback
   const prefillTotal = fusion.prefillTokensTotal ?? 0;
   // Belt: ACTIVE without TG = still prefill (fixes /slots lag during bench + WebUI text)
@@ -361,11 +390,13 @@ export default function FusionOverlay({
               <FusionShareMenu
                 alias={displayAlias}
                 providerName={providerName}
+                providerBuildVersion={providerBuildVersion}
                 modelName={modelName}
                 modelQuant={modelQuant}
                 profileLabel={profileLabel}
                 cudaVersion={cudaVersion}
                 launchConfig={launchConfig}
+                hwTopo={hwTopo}
               />
               <span className="text-[9px] font-mono text-stealth-muted/40 tracking-widest">
                 CONTEXT SLOTS
@@ -454,19 +485,40 @@ export default function FusionOverlay({
                    <span className="text-[7px] font-mono text-stealth-muted/30 tracking-wider">tok/s</span>
                  </div>
 
-                {/* Per-request micro-stats — always visible, no layout shifts */}
-                 <div className="flex items-center gap-2 mt-1.5">
+                {/* Per-request micro-stats — PP prefill vs +1st decode after prefill */}
+                 <div className="flex items-center flex-wrap gap-x-2 gap-y-0.5 mt-1.5">
                    <span className={`text-[8px] font-mono ${showLive ? "fusion-readout-emphasis" : "text-stealth-muted/35"}`}>
                      {statsToDisplay.genTokensSlots > 0 ? statsToDisplay.genTokensSlots + " tok" : "--"}
                    </span>
                    <span className={`text-[6px] ${showLive ? "fusion-readout-divider" : "text-stealth-muted/15"}`}>│</span>
-                   <span className={`text-[8px] font-mono ${showLive ? "fusion-readout-emphasis" : "text-stealth-muted/35"}`}>
-                     TTFT {statsToDisplay.ttftMs ?? "--"}
+                   <span
+                     className={`text-[8px] font-mono ${showLive ? "fusion-readout-emphasis" : "text-stealth-muted/35"}`}
+                     title="Prompt prefill duration"
+                   >
+                     PP {statsToDisplay.prefillMs ?? "--"}
+                   </span>
+                   <span className={`text-[6px] ${showLive ? "fusion-readout-divider" : "text-stealth-muted/15"}`}>│</span>
+                   <span
+                     className={`text-[8px] font-mono ${showLive ? "fusion-readout-emphasis" : "text-stealth-muted/35"}`}
+                     title="First output token after prefill"
+                   >
+                     +1st {statsToDisplay.decodeTtftMs ?? "--"}
                    </span>
                    <span className={`text-[6px] ${showLive ? "fusion-readout-divider" : "text-stealth-muted/15"}`}>│</span>
                    <span className={`text-[8px] font-mono ${showLive ? "fusion-readout-emphasis" : "text-stealth-muted/35"}`}>
-                     {statsToDisplay.elapsedMs}
+                     ELAPSED {statsToDisplay.elapsedMs}
                    </span>
+                   {(specSlotActive || mtpAcceptPct != null) && mtpAcceptPct != null && (
+                     <>
+                       <span className={`text-[6px] ${showLive ? "fusion-readout-divider" : "text-stealth-muted/15"}`}>│</span>
+                       <span
+                         className={`text-[8px] font-mono ${showLive ? "text-amber-300/90" : "text-stealth-muted/45"}`}
+                         title={mtpAcceptTitle}
+                       >
+                         MTP {mtpAcceptPct}%
+                       </span>
+                     </>
+                   )}
                  </div>
 
                  {/* Bench warmup overlay — TEMP DISABLED */}

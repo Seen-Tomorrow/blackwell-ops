@@ -192,6 +192,12 @@ pub struct FusionUpdate {
     pub request_elapsed_ms: u64,
     #[serde(rename = "ttftMs", skip_serializing_if = "Option::is_none")]
     pub ttft_ms: Option<f64>,
+    /// Wall ms for prompt prefill only (sampler_init / prompt eval complete).
+    #[serde(rename = "prefillMs", skip_serializing_if = "Option::is_none")]
+    pub prefill_ms: Option<f64>,
+    /// Wall ms from prefill complete → first output token (TG decode start).
+    #[serde(rename = "decodeTtftMs", skip_serializing_if = "Option::is_none")]
+    pub decode_ttft_ms: Option<f64>,
 
     // ── Per-slot CTX bars (from /slots only) ───────────────────────
     #[serde(rename = "slotCtx")]
@@ -217,6 +223,21 @@ pub struct FusionUpdate {
     #[serde(rename = "logPhase")]
     pub lp_phase: InferencePhase,       // phase derived purely from log events (PP→TG via sampler_init)
 
+    /// Session cumulative MTP draft acceptance rate (accepted / generated), 0–1.
+    #[serde(rename = "specDraftAcceptRate", skip_serializing_if = "Option::is_none")]
+    pub spec_draft_accept_rate: Option<f64>,
+    #[serde(rename = "specDraftAccepted")]
+    pub spec_draft_accepted: u64,
+    #[serde(rename = "specDraftGenerated")]
+    pub spec_draft_generated: u64,
+    /// Last completed request draft acceptance (from print_timing line).
+    #[serde(rename = "specDraftAcceptRateLast", skip_serializing_if = "Option::is_none")]
+    pub spec_draft_accept_rate_last: Option<f64>,
+    #[serde(rename = "specDraftAcceptedLast", skip_serializing_if = "Option::is_none")]
+    pub spec_draft_accepted_last: Option<usize>,
+    #[serde(rename = "specDraftGeneratedLast", skip_serializing_if = "Option::is_none")]
+    pub spec_draft_generated_last: Option<usize>,
+
     /// Reset source indicator — "prompt" if NewPrompt caught request start (belt), "regression" if fallback detected (suspenders). Flashes for visual feedback then clears on next PP line.
     #[serde(rename = "phaseResetSource", skip_serializing_if = "Option::is_none")]
     pub lp_reset_source: Option<&'static str>,  // Some("prompt") or Some("regression")
@@ -241,12 +262,17 @@ struct FusionEmitFingerprint {
     ctx_fill_centi: u32,
     request_elapsed_ms: u64,
     ttft_ms: u64,
+    prefill_ms: u64,
+    decode_ttft_ms: u64,
     slot_ctx_hash: u64,
     log_progress_milli: u32,
     log_pp_tps_centi: u32,
     log_prompt_tokens: u32,
     log_gen_tps_deci: u32,
     log_phase_tag: u8,
+    spec_draft_accept_rate_milli: u32,
+    spec_draft_accepted: u64,
+    spec_draft_generated: u64,
 }
 
 impl FusionEmitFingerprint {
@@ -268,12 +294,20 @@ impl FusionEmitFingerprint {
             ctx_fill_centi: (u.ctx_fill_pct * 100.0).round() as u32,
             request_elapsed_ms: u.request_elapsed_ms,
             ttft_ms: u.ttft_ms.map(|v| v.round() as u64).unwrap_or(0),
+            prefill_ms: u.prefill_ms.map(|v| v.round() as u64).unwrap_or(0),
+            decode_ttft_ms: u.decode_ttft_ms.map(|v| v.round() as u64).unwrap_or(0),
             slot_ctx_hash: hash_slot_ctx(&u.slot_ctx),
             log_progress_milli: (u.lp_prefill_progress * 1000.0).round() as u32,
             log_pp_tps_centi: (u.lp_prefill_tps * 100.0).round() as u32,
             log_prompt_tokens: u.lp_prompt_tokens.min(u32::MAX as usize) as u32,
             log_gen_tps_deci: (u.lp_gen_tps * 10.0).round() as u32,
             log_phase_tag: phase_tag(&u.lp_phase),
+            spec_draft_accept_rate_milli: u
+                .spec_draft_accept_rate
+                .map(|r| (r * 1000.0).round() as u32)
+                .unwrap_or(0),
+            spec_draft_accepted: u.spec_draft_accepted,
+            spec_draft_generated: u.spec_draft_generated,
         }
     }
 }
@@ -329,6 +363,8 @@ pub struct FusionBrain {
     prompt_tokens: usize,
     prefill_tps: f64,
     ttft_ms: Option<f64>,
+    prefill_ms: Option<f64>,
+    decode_ttft_ms: Option<f64>,
     slot_states: HashMap<usize, SlotTrackState>,
     session_tokens_generated: usize,
     prev_metrics: Option<MetricsSnapshot>,
@@ -383,6 +419,14 @@ pub struct FusionBrain {
 
     /// Last poll where any slot reported `is_processing` (inter-request hold).
     last_slot_busy_at: Option<Instant>,
+
+    /// MTP draft acceptance — session cumulative + last request snapshot.
+    spec_draft_accept_rate: Option<f64>,
+    spec_draft_accepted_total: u64,
+    spec_draft_generated_total: u64,
+    spec_draft_accept_rate_last: Option<f64>,
+    spec_draft_accepted_last: Option<usize>,
+    spec_draft_generated_last: Option<usize>,
 }
 
 impl FusionBrain {
@@ -400,6 +444,8 @@ impl FusionBrain {
             prompt_tokens: 0,
             prefill_tps: 0.0,
             ttft_ms: None,
+            prefill_ms: None,
+            decode_ttft_ms: None,
             slot_states: HashMap::new(),
             session_tokens_generated: 0,
             prev_metrics: None,
@@ -437,6 +483,12 @@ impl FusionBrain {
             last_emit_fp: None,
             emit_dirty: false,
             last_slot_busy_at: None,
+            spec_draft_accept_rate: None,
+            spec_draft_accepted_total: 0,
+            spec_draft_generated_total: 0,
+            spec_draft_accept_rate_last: None,
+            spec_draft_accepted_last: None,
+            spec_draft_generated_last: None,
         }
     }
 
@@ -472,9 +524,57 @@ impl FusionBrain {
         log_hub.emit("fusion-update", &update);
     }
 
-    fn start_request_clock(&mut self) {
+    /// Authoritative request start — clears per-request timing for a new request.
+    fn restart_request_clock(&mut self) {
         self.request_start = Some(Instant::now());
         self.request_elapsed_frozen_ms = 0;
+        self.ttft_ms = None;
+        self.prefill_ms = None;
+        self.decode_ttft_ms = None;
+    }
+
+    fn capture_prefill_if_unset(&mut self) {
+        if self.prefill_ms.is_some() {
+            return;
+        }
+        if let Some(start) = self.request_start {
+            let ms = start.elapsed().as_secs_f64() * 1000.0;
+            if ms > 0.0 {
+                self.prefill_ms = Some(ms);
+                self.update_decode_ttft_from_split();
+            }
+        }
+    }
+
+    fn update_decode_ttft_from_split(&mut self) {
+        if self.decode_ttft_ms.is_some() {
+            return;
+        }
+        if let (Some(ttft), Some(prefill)) = (self.ttft_ms, self.prefill_ms) {
+            self.decode_ttft_ms = Some((ttft - prefill).max(0.0));
+        }
+    }
+
+    /// Belt when logs/slots/metrics race — never reset an already-running clock (bench TTFT).
+    fn ensure_request_clock(&mut self) {
+        if self.request_start.is_none() {
+            self.restart_request_clock();
+        }
+    }
+
+    fn capture_ttft_if_unset(&mut self) {
+        if self.ttft_ms.is_some() {
+            return;
+        }
+        if let Some(start) = self.request_start {
+            let ms = start.elapsed().as_secs_f64() * 1000.0;
+            if ms > 0.0 {
+                self.ttft_ms = Some(ms);
+            }
+        } else if self.request_elapsed_frozen_ms > 0 {
+            self.ttft_ms = Some(self.request_elapsed_frozen_ms as f64);
+        }
+        self.update_decode_ttft_from_split();
     }
 
     fn stop_request_clock(&mut self) {
@@ -510,8 +610,11 @@ impl FusionBrain {
         self.log_prefill_done = false;
         self.prompt_tokens = 0;
         self.prefill_tps = 0.0;
+        self.request_start = None;
+        self.request_elapsed_frozen_ms = 0;
         self.ttft_ms = None;
-        self.start_request_clock();
+        self.prefill_ms = None;
+        self.decode_ttft_ms = None;
         self.tg_start_time = None;
         self.tg_start_n_decoded = 0;
         self.last_gen_tps = 0.0;
@@ -585,7 +688,6 @@ impl FusionBrain {
         self.tg_start_time = None;
         self.tg_start_n_decoded = 0;
         self.last_gen_tps = 0.0;
-        self.ttft_ms = None;
     }
 
     /// True generation: new output tokens this request with decode budget remaining.
@@ -786,6 +888,9 @@ impl FusionBrain {
         match event {
             crate::fusion_logparser::LogEvent::PrintTimingPP { .. } => self.handle_print_timing_pp(event),
             crate::fusion_logparser::LogEvent::PrintTimingGen { .. } => self.handle_print_timing_gen(event),
+            crate::fusion_logparser::LogEvent::DraftAcceptance { .. } => {
+                self.handle_draft_acceptance(event);
+            }
             crate::fusion_logparser::LogEvent::SamplerInit { total_tokens, .. } => {
                 self.handle_sampler_init(*total_tokens);
             }
@@ -837,7 +942,7 @@ impl FusionBrain {
         self.prev_instant_prefill_tokens = 0;
         self.prev_instant_gen_decoded = 0;
         self.begin_request_on_slot(slot_id, Some(task_id));
-        self.start_request_clock();
+        self.restart_request_clock();
         self.touch_slot_activity(Instant::now());
     }
 
@@ -858,7 +963,7 @@ impl FusionBrain {
         self.prev_instant_prefill_tokens = 0;
         self.prev_instant_gen_decoded = 0;
         self.begin_request_on_slot(slot_id, Some(task_id));
-        self.start_request_clock();
+        self.restart_request_clock();
         self.touch_slot_activity(Instant::now());
         self.emit_dirty = true;
     }
@@ -875,6 +980,8 @@ impl FusionBrain {
         self.lp_prefill_progress = 1.0;
         if eval_ms > 0.0 {
             self.prefill_tps_eval = clamp_display_tps((tokens as f64 / eval_ms) * 1000.0);
+            self.prefill_ms = Some(eval_ms);
+            self.update_decode_ttft_from_split();
         }
     }
 
@@ -909,6 +1016,7 @@ impl FusionBrain {
 
     fn handle_print_timing_gen(&mut self, e: &crate::fusion_logparser::LogEvent) {
         if let crate::fusion_logparser::LogEvent::PrintTimingGen { gen_tps, .. } = e {
+            self.capture_ttft_if_unset();
             self.lp_phase = InferencePhase::Tg;
             self.lp_gen_tps = *gen_tps;
             if *gen_tps > 0.0 {
@@ -916,6 +1024,30 @@ impl FusionBrain {
             }
             // Phase TG is decided in reconcile_phase (requires n_remain > 0), not from log alone.
         }
+    }
+
+    fn handle_draft_acceptance(&mut self, e: &crate::fusion_logparser::LogEvent) {
+        let crate::fusion_logparser::LogEvent::DraftAcceptance {
+            accepted,
+            generated,
+            accept_rate,
+            ..
+        } = e
+        else {
+            return;
+        };
+        if *generated == 0 {
+            return;
+        }
+        self.spec_draft_accepted_total += *accepted as u64;
+        self.spec_draft_generated_total += *generated as u64;
+        self.spec_draft_accept_rate = Some(
+            self.spec_draft_accepted_total as f64 / self.spec_draft_generated_total as f64,
+        );
+        self.spec_draft_accept_rate_last = Some(*accept_rate);
+        self.spec_draft_accepted_last = Some(*accepted);
+        self.spec_draft_generated_last = Some(*generated);
+        self.emit_dirty = true;
     }
 
     fn handle_cached_prompt_tokens(&mut self, cached_tokens: usize) {
@@ -952,6 +1084,7 @@ impl FusionBrain {
     fn handle_sampler_init(&mut self, task_total_tokens: usize) {
         // Prefill finished — remain PP until /slots shows real generation (n_remain > 0).
         self.log_prefill_done = true;
+        self.capture_prefill_if_unset();
         self.lp_phase = InferencePhase::PP;
         if self.prefill_tokens_total == 0 && task_total_tokens > 0 {
             self.prefill_tokens_total = task_total_tokens;
@@ -1013,9 +1146,8 @@ impl FusionBrain {
             self.phase = InferencePhase::PP;
             self.log_request_open = true;
             self.log_prefill_done = false;
-            self.start_request_clock();
+            self.ensure_request_clock();
             self.engine_state = EngineState::Active;
-            self.ttft_ms = None;
         } else if request_ended {
             // /metrics requests_processing can dip to 0 between chunks — don't clear if logs/slots still busy.
             let slots_busy = slots.iter().any(|s| s.is_processing);
@@ -1028,7 +1160,6 @@ impl FusionBrain {
                 self.phase = InferencePhase::Idle;
                 self.stop_request_clock();
                 self.prompt_tokens = 0;
-                self.ttft_ms = None;
                 self.reset_prefill_counters();
             }
         }
@@ -1046,23 +1177,17 @@ impl FusionBrain {
             }
         }
 
-        // Phase PP↔TG is decided in process_slots (WebUI rule: TG iff n_decoded > 0 on a busy slot).
-        // Here we only capture TTFT / TG timing when /metrics sees the first predicted token.
-        if tt_delta > 0 {
-            if self.ttft_ms.is_none() {
-                if let Some(start) = self.request_start {
-                    self.ttft_ms = Some(start.elapsed().as_millis() as f64);
-                }
-            }
-            if self.phase == InferencePhase::Tg && self.tg_start_time.is_none() {
-                let baseline: usize = self
-                    .slot_states
-                    .values()
-                    .map(|s| s.request_start_n_decoded)
-                    .sum();
-                self.tg_start_n_decoded = baseline;
-                self.tg_start_time = Some(now);
-            }
+        // Phase PP↔TG is decided in process_slots. TTFT is captured there on first real decode
+        // (per-request n_decoded) — not from predicted_tokens_total, which is cumulative and often
+        // updates in one batch at request end (bench TG showed multi-second bogus TTFT).
+        if tt_delta > 0 && self.phase == InferencePhase::Tg && self.tg_start_time.is_none() {
+            let baseline: usize = self
+                .slot_states
+                .values()
+                .map(|s| s.request_start_n_decoded)
+                .sum();
+            self.tg_start_n_decoded = baseline;
+            self.tg_start_time = Some(now);
         }
 
         // Store current snapshot for next delta computation
@@ -1202,6 +1327,7 @@ impl FusionBrain {
         }
 
         // Second pass: apply decisions — safe to mutate self now
+        let mut saw_first_decode = false;
         for d in &decisions {
             if d.new_request {
                 let task_id = slots
@@ -1212,7 +1338,7 @@ impl FusionBrain {
                 self.phase = InferencePhase::PP;
                 self.log_request_open = true;
                 self.log_prefill_done = false;
-                self.start_request_clock();
+                self.ensure_request_clock();
                 self.engine_state = EngineState::Active;
                 // NewPrompt log often lands before the first /slots poll that sees is_processing.
                 // reset_prefill_counters() clears prefill_tokens_total and disables /slots progress
@@ -1223,20 +1349,35 @@ impl FusionBrain {
             }
 
             if d.ended_session {
+                if d.request_tokens_on_end > 0 {
+                    self.capture_ttft_if_unset();
+                }
                 if let Some(s) = self.slot_states.get_mut(&d.id) {
                     // Pure generated tokens for the "gen per session" stats (separate from ctx fill bars)
                     s.total_tokens_lifetime += d.request_tokens_on_end;
                 }
                 self.session_tokens_generated += d.request_tokens_on_end;
-                // Micro idle between agent turns — defer clock/phase reset until hold expires.
+                // Freeze per-request wall clock immediately — micro-stats must not tick after slot ends.
+                self.stop_request_clock();
+                self.tg_start_time = None;
+                // Micro idle between agent turns — defer phase reset until hold expires.
                 if !self.within_inter_request_hold(now) && !self.log_request_open {
-                    self.stop_request_clock();
                     self.log_prefill_done = false;
                     self.phase = InferencePhase::Idle;
                     self.prompt_tokens = 0;
                     self.tg_start_n_decoded = 0;
-                    self.ttft_ms = None;
                     self.reset_prefill_counters();
+                }
+            }
+
+            if d.is_proc {
+                if self
+                    .slot_states
+                    .get(&d.id)
+                    .map(|s| d.n_decoded > s.request_start_n_decoded)
+                    .unwrap_or(false)
+                {
+                    saw_first_decode = true;
                 }
             }
 
@@ -1286,6 +1427,10 @@ impl FusionBrain {
 
         }
 
+        if saw_first_decode {
+            self.capture_ttft_if_unset();
+        }
+
         if any_processing {
             self.touch_slot_activity(now);
         }
@@ -1311,8 +1456,9 @@ impl FusionBrain {
             }
         }
 
-        // Capture TG start snapshot when we enter generation (per-request baseline, not 0).
+        // Capture TG start when /slots first shows real generation this request.
         if self.phase == InferencePhase::Tg && self.tg_start_time.is_none() {
+            self.capture_ttft_if_unset();
             let mut total_at_transition: usize = 0;
             for slot in slots {
                 if !slot.next_token.is_empty() {
@@ -1496,6 +1642,8 @@ impl FusionBrain {
             ctx_total: self.ctx_total,
             request_elapsed_ms,
             ttft_ms: self.ttft_ms,
+            prefill_ms: self.prefill_ms,
+            decode_ttft_ms: self.decode_ttft_ms,
             slot_ctx,
             parallel: self.parallel,
             unified_kv: self.unified_kv,
@@ -1513,6 +1661,12 @@ impl FusionBrain {
             } else {
                 None
             },
+            spec_draft_accept_rate: self.spec_draft_accept_rate,
+            spec_draft_accepted: self.spec_draft_accepted_total,
+            spec_draft_generated: self.spec_draft_generated_total,
+            spec_draft_accept_rate_last: self.spec_draft_accept_rate_last,
+            spec_draft_accepted_last: self.spec_draft_accepted_last,
+            spec_draft_generated_last: self.spec_draft_generated_last,
         }
     }
 
@@ -1530,6 +1684,12 @@ impl FusionBrain {
         update.prefill_progress = 0.0;
         update.prefill_tokens = 0;
         update.prefill_tokens_total = 0;
+        update.spec_draft_accept_rate = None;
+        update.spec_draft_accepted = 0;
+        update.spec_draft_generated = 0;
+        update.spec_draft_accept_rate_last = None;
+        update.spec_draft_accepted_last = None;
+        update.spec_draft_generated_last = None;
         // Note: lp_reset_source stays as computed by build_update above (shows last reset source)
         update
     }

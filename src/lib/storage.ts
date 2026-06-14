@@ -480,3 +480,38 @@ export function saveLogsAnsiEnabled(enabled: boolean): void {
 export function normalizeUiGroup(raw: string): string {
   return raw.trim().toUpperCase().replace(/[^A-Z0-9\-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
 }
+
+/** Canonical UI group key for a param row (always normalized). */
+export function paramUiGroup(uiGroup?: string): string {
+  return normalizeUiGroup(uiGroup || "Feature Flags");
+}
+
+/** Treat JSON `null` defaults from disk as unset — avoids rendering a bogus "null" override bubble. */
+export function effectiveParamDefault(
+  defaultValue: string | number | null | undefined,
+): string | number | undefined {
+  if (defaultValue === null || defaultValue === undefined) return undefined;
+  return defaultValue;
+}
+
+/** Merge custom group order (localStorage / provider) with template insertion order. */
+export function resolveGroupOrder(
+  params: Array<{ ui_group?: string }>,
+  customGroupOrder: string[] | null,
+): string[] {
+  const seen = new Set<string>();
+  const derivedOrder: string[] = [];
+  for (const def of params) {
+    const g = paramUiGroup(def.ui_group);
+    if (!seen.has(g)) {
+      seen.add(g);
+      derivedOrder.push(g);
+    }
+  }
+  if (!customGroupOrder || customGroupOrder.length === 0) return derivedOrder;
+  const normalizedCustom = customGroupOrder.map(normalizeUiGroup);
+  return [
+    ...normalizedCustom.filter((g) => seen.has(g)),
+    ...derivedOrder.filter((g) => !normalizedCustom.includes(g)),
+  ];
+}

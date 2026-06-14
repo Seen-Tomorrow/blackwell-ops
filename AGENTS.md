@@ -26,6 +26,8 @@ Traps and invariants only — not a code map. Read the source for flows, schemas
 
 `merge_template_for_provider` syncs structure from factory templates on every load/save. User-owned fields that must not be overwritten: `hidden`, `order`, `userAddedValues`, `hidden_values`. Bump factory `templateVersion` when shipping param changes — mismatch surfaces `needs_template_attention` in ConfigPage.
 
+**Spec decoding group (`SPECULATIVE-DECODING`)** — Exception to normal per-group hiding. Engine config has an ON/OFF toggle that flips `hidden` on the whole group (`toggle_group_hidden`); spec flags must be fully omitted from CLI — zero/off is not enough. Toggle state reads **all** group params (any visible = ON). Rows shown in engine config and values in `useConfigResolver` must still respect per-param `hidden` from ConfigPage — use `specVisibleParams` (`!hidden`), not the full `allGroupedParams` list. Rust `build_cmd` already skips `param.hidden`.
+
 ---
 
 ## Known gaps / flags

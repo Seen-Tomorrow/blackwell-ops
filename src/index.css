@@ -2513,8 +2513,6 @@ html, body, #root {
   z-index: 2147483646;
   pointer-events: none;
   overflow: hidden;
-  background: #f4f6f8;
-  color: #1a2030;
 }
 
 .fusion-share-capture-footer-shell {
@@ -2541,21 +2539,97 @@ html, body, #root {
     inset 0 -1px 4px color-mix(in srgb, var(--theme-bezel-inset-lo) 30%, transparent);
 }
 
-/* Offscreen clone — match live phosphor height; pin hero TPS (no viewport vh). */
+/* Offscreen clone — shorter capture phosphor; pin hero TPS (no viewport vh). */
 .fusion-share-capture-stage[data-fusion-share-capture] .vram-forecast-display {
-  height: 250px !important;
-  min-height: 250px !important;
-  max-height: 250px !important;
+  height: 208px !important;
+  min-height: 208px !important;
+  max-height: 208px !important;
 }
 
 .fusion-share-capture-stage[data-fusion-share-capture] .fusion-prefill-hero-value,
 .fusion-share-capture-stage[data-fusion-share-capture] [style*="6vh"] {
-  font-size: 2.75rem !important;
+  font-size: 2.5rem !important;
   line-height: 1 !important;
+}
+
+/* Share capture — fixed ARCTIC/SLATE; beats live app theme + display texture on :root */
+.fusion-share-capture-stage[data-fusion-share-capture][data-theme="slate"][data-display-texture="phosphor-dark"] .phosphor-screen.phosphor-display-surface,
+.fusion-share-capture-stage[data-fusion-share-capture][data-theme="slate"][data-display-texture="phosphor-dark"] .phosphor-screen-inner.phosphor-display-surface {
+  background-color: var(--phosphor-bg, #080808) !important;
+  background-image:
+    radial-gradient(circle, var(--theme-display-dot-matrix) 1px, transparent 1px),
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0px,
+      transparent 2px,
+      var(--theme-display-lcd-band) 2px,
+      var(--theme-display-lcd-band) 4px
+    ) !important;
+  background-size: 2px 2px, 100% 4px !important;
+  box-shadow:
+    inset 0 2px 6px var(--theme-phosphor-inset-top),
+    inset 0 -1px 3px var(--theme-phosphor-inset-bottom) !important;
+}
+
+.fusion-share-capture-stage[data-fusion-share-capture][data-theme="arctic"][data-display-texture="phosphor-light"] .phosphor-screen.phosphor-display-surface,
+.fusion-share-capture-stage[data-fusion-share-capture][data-theme="arctic"][data-display-texture="phosphor-light"] .phosphor-screen-inner.phosphor-display-surface {
+  background-color: var(--fusion-eink-surface, #94a494) !important;
+  background-image: none !important;
+  box-shadow:
+    inset 0 2px 6px rgba(0, 0, 0, 0.25),
+    inset 0 -1px 3px rgba(0, 0, 0, 0.15),
+    inset 0 1px 40px rgba(255, 255, 255, 0.3) !important;
+}
+
+.fusion-share-capture-stage[data-fusion-share-capture][data-theme="arctic"] > .industrial-display-frame {
+  background-image:
+    linear-gradient(175deg, #d6dee6 0%, #b6c2ce 28%, #9aacb8 52%, #b2beca 78%, #c6ced6 100%),
+    repeating-linear-gradient(135deg, var(--theme-bezel-grain) 0px, transparent 1px, transparent 3px) !important;
+}
+
+.fusion-share-capture-stage[data-fusion-share-capture][data-theme="slate"] > .industrial-display-frame {
+  background-color: var(--theme-industrial-bg) !important;
+  background-image:
+    linear-gradient(175deg, #2a2a30 0%, #1a1a1e 45%, #121218 100%),
+    repeating-linear-gradient(135deg, var(--theme-bezel-grain) 0px, transparent 1px, transparent 3px) !important;
 }
 
 .fusion-share-trigger {
   color: inherit;
+}
+
+.fusion-share-variant-btn {
+  color: inherit;
+  min-width: 1.75rem;
+}
+
+.fusion-share-variant-label {
+  font-family: "JetBrains Mono", "Roboto Mono", monospace;
+  font-size: 6px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 1;
+}
+
+.fusion-share-variant-swatch {
+  display: block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex-shrink: 0;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.fusion-share-variant-swatch--white {
+  background: linear-gradient(145deg, #f4f6f8 0%, #dce2ea 55%, #b8c4d0 100%);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.06);
+}
+
+.fusion-share-variant-swatch--black {
+  background:
+    radial-gradient(circle at 35% 35%, rgba(200, 200, 210, 0.12) 0%, transparent 55%),
+    #080808;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
 }
 
 .fusion-share-menu {

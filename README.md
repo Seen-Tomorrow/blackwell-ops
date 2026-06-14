@@ -81,19 +81,11 @@ Users can **Foundry-build** their own engines, mirror artifacts, or download ass
 
 ## Screenshots & demo
 
-*Coming with the v1.0 launch series — screenshots and a ~1 minute walkthrough video covering the selling points.*
+Drop assets under `docs/screenshots/` (PNG or WebP) and promo video under `docs/promo/`.
 
-```
-docs/screenshots/     ← drop assets here
-docs/promo/           ← 1m promo video
-```
-
-<!-- Placeholder grid — replace paths when ready -->
-<!--
 | Main dashboard | Engine stack | Foundry build |
 |:---:|:---:|:---:|
 | ![Dashboard](docs/screenshots/dashboard.png) | ![Stack](docs/screenshots/stack.png) | ![Foundry](docs/screenshots/foundry.png) |
--->
 
 ---
 

@@ -8,6 +8,7 @@ import {
   binaryProfileKey,
   engineAliasKey,
   loadAutoVramEnabled,
+  paramUiGroup,
   readJsonStorage,
   readStorage,
   removeStorage,
@@ -32,7 +33,7 @@ import DisplayGlitchOverlay from "./DisplayGlitchOverlay";
 import { useFoundry } from "../hooks/useBuildDock";
 import { buildAutoVramLaunchParams } from "../lib/autoVramLaunch";
 import { committedSlotsFromStack } from "../services/vram/scenarios/scenarios_factory";
-import type { FusionShareLaunchConfig } from "../lib/fusionShareCapture";
+import { formatShareHwTopo, type FusionShareLaunchConfig } from "../lib/fusionShareCapture";
 
 
 
@@ -105,7 +106,7 @@ function deriveParamGroups(groupKeys: string[]): ParamGroupMeta[] {
 }
 
 const SPEC_DECODING_GROUP = "SPECULATIVE-DECODING";
-const SPEC_DECODING_LAUNCH_KEYS = ["spec_type", "spec_draft_n_max"] as const;
+const SPEC_DECODING_LAUNCH_KEYS = ["spec_type", "spec_draft_n_max", "spec_draft_n_min"] as const;
 
 const RUNTIME_CONFIG_UI_GROUP = "RUNTIME-CONFIG";
 
@@ -138,7 +139,7 @@ function splitRuntimeDockColumns(
 
 function isSpecDecodingActive(params: UserEditedTemplateParam[]): boolean {
   return params
-    .filter((p) => p.ui_group === SPEC_DECODING_GROUP)
+    .filter((p) => paramUiGroup(p.ui_group) === SPEC_DECODING_GROUP)
     .some((p) => !p.hidden);
 }
 
@@ -511,17 +512,38 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     flashAttn: config.flash_attn != null ? String(config.flash_attn) : undefined,
     splitMode: config.split != null ? String(config.split) : undefined,
     kvQuant: config.kv_quant != null ? String(config.kv_quant) : undefined,
-  }), [config.ctx, config.batch, config.ubatch, config.flash_attn, config.split, config.kv_quant]);
+    specType: config.spec_type != null ? String(config.spec_type) : undefined,
+    specDraftNMax: config.spec_draft_n_max != null ? config.spec_draft_n_max : undefined,
+    specDraftNMin: config.spec_draft_n_min != null ? config.spec_draft_n_min : undefined,
+  }), [
+    config.ctx,
+    config.batch,
+    config.ubatch,
+    config.flash_attn,
+    config.split,
+    config.kv_quant,
+    config.spec_type,
+    config.spec_draft_n_max,
+    config.spec_draft_n_min,
+  ]);
 
   const shareProfileMeta = useMemo(() => {
     const meta = ENV_META[selectedBinaryProfile];
     const provider = resolvedProviders?.find((p) => p.id === effectiveBackendType);
+    const runningEntry =
+      selectedSlotIdx != null && selectedSlotIdx >= 0
+        ? stack.find((s) => s.idx === selectedSlotIdx)
+        : undefined;
+    const buildInfo =
+      runningEntry?.build_info ??
+      (provider ? profileEnvLookup(provider.buildInfoPerEnv, selectedBinaryProfile) : undefined);
     return {
       providerName: provider?.display_name || provider?.id,
+      providerBuildVersion: buildInfo?.version ? `v${buildInfo.version}` : undefined,
       profileLabel: meta.label,
       cudaVersion: meta.cuda,
     };
-  }, [selectedBinaryProfile, resolvedProviders, effectiveBackendType]);
+  }, [selectedBinaryProfile, resolvedProviders, effectiveBackendType, selectedSlotIdx, stack]);
 
   // Manual split → all GPUs; solo → manifest projection; badge click still forces split=none
   const selectedGpuIndices = useMemo(() => {
@@ -566,6 +588,11 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     vramCalc.manifest?.gpuLayers,
     vramCalc.manifest?.gpuAllocations,
   ]);
+
+  const shareHwTopo = useMemo(
+    () => formatShareHwTopo(gpus, booterProps.gpuMask),
+    [gpus, booterProps.gpuMask],
+  );
 
   // ── Provider default param keys (for yellow accent on user-added params) ──
   const [providerDefaultKeys, setProviderDefaultKeys] = useState<Set<string>>(new Set());
@@ -699,26 +726,26 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     const groups: Record<string, UserEditedTemplateParam[]> = {};
     for (const def of allParamsForLaunch) {
       if (def.hidden || def.dock) continue;
-      const groupId = def.ui_group || 'Feature Flags';
+      const groupId = paramUiGroup(def.ui_group);
       if (!groups[groupId]) groups[groupId] = [];
       groups[groupId].push(def);
     }
     return groups;
   }, [allParamsForLaunch]);
 
-  // All params by group — includes hidden ones (spec-decoding switch reads from here)
+  // All params by group — includes hidden ones (spec-decoding ON/OFF toggle reads from here)
   const allGroupedParams = useMemo(() => {
     const groups: Record<string, UserEditedTemplateParam[]> = {};
     const source = simpleModeActive ? allParamsResolved : allParamsForLaunch;
     for (const def of source) {
       if (def.dock) continue;
-      const groupId = def.ui_group || "Feature Flags";
+      const groupId = paramUiGroup(def.ui_group);
       if (!groups[groupId]) groups[groupId] = [];
       groups[groupId].push(def);
     }
     if (simpleModeActive) {
       for (const def of allParamsResolved) {
-        if (def.dock || def.ui_group !== SPEC_DECODING_GROUP) continue;
+        if (def.dock || paramUiGroup(def.ui_group) !== SPEC_DECODING_GROUP) continue;
         if (!groups[SPEC_DECODING_GROUP]) groups[SPEC_DECODING_GROUP] = [];
         if (!groups[SPEC_DECODING_GROUP].some((p) => p.key === def.key)) {
           groups[SPEC_DECODING_GROUP].push(def);
@@ -1134,9 +1161,11 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                     modelName={model?.name}
                     modelQuant={model?.quant}
                     providerName={shareProfileMeta.providerName}
+                    providerBuildVersion={shareProfileMeta.providerBuildVersion}
                     profileLabel={shareProfileMeta.profileLabel}
                     cudaVersion={shareProfileMeta.cudaVersion}
                     launchConfig={shareLaunchConfig}
+                    hwTopo={shareHwTopo}
                   />
                 )}
               </div>
@@ -1218,11 +1247,13 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
             if (isSpecGroup) {
               const specAllParams = allGroupedParams[group.id] || [];
-               if (specAllParams.length === 0) return null;
-               const isMtpModel = (model?.metadata?.nextn_predict_layers ?? 0) > 0;
-               // Force OFF visually for non-MTP models — params may be unhidden from previous MTP session
-               const allHidden = specAllParams.every(d => d.hidden);
-               const specActive = isMtpModel ? !allHidden : false;
+              if (specAllParams.length === 0) return null;
+              // Toggle reads all params (incl. hidden); rows only show non-hidden (ConfigPage per-param hide).
+              const specVisibleParams = specAllParams.filter((d) => !d.hidden);
+              const isMtpModel = (model?.metadata?.nextn_predict_layers ?? 0) > 0;
+              // Force OFF visually for non-MTP models — params may be unhidden from previous MTP session
+              const allHidden = specAllParams.every((d) => d.hidden);
+              const specActive = isMtpModel ? !allHidden : false;
 
               return (
                 <div key={group.id}>
@@ -1291,9 +1322,9 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                     </div>
                   )}
 
-                  {isMtpModel && specActive && (
+                  {isMtpModel && specActive && specVisibleParams.length > 0 && (
                     <div className="config-spec-params space-y-2.5 mt-2">
-                      {specAllParams.map((def, i) => (
+                      {specVisibleParams.map((def, i) => (
                         <div key={paramRowKey(def, i)} className="spec-param-unlock" style={{ opacity: 0 }}>
                           {renderParamRow(def, false, i)}
                         </div>

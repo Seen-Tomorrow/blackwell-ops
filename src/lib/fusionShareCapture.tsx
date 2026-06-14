@@ -1,13 +1,22 @@
 import { toCanvas } from "html-to-image";
 import { brandLogoMarkup } from "./brandLogos";
 import type { DisplayTexture } from "./displayTexture";
-import { DISPLAY_BEZEL_PADDING_PX, FORECAST_PHOSPHOR_HEIGHT_PX } from "./onboardingDisplay";
+import { DISPLAY_BEZEL_PADDING_PX } from "./onboardingDisplay";
 import { getThemeById } from "../themes/app-themes";
+import type { GpuInfo } from "./types";
 
 export const FUSION_SHARE_FRAME_SELECTOR = "[data-fusion-share-frame]";
 
-/** Share cards always snapshot as phosphor-light e-ink (readable on every app theme). */
-const SHARE_CAPTURE_TEXTURE: DisplayTexture = "phosphor-light";
+/** White = ARCTIC + phosphor-light; black = SLATE + phosphor-dark. */
+export type FusionShareVariant = "white" | "black";
+
+const SHARE_VARIANT_CONFIG: Record<
+  FusionShareVariant,
+  { themeId: string; texture: DisplayTexture }
+> = {
+  white: { themeId: "arctic", texture: "phosphor-light" },
+  black: { themeId: "slate", texture: "phosphor-dark" },
+};
 
 export interface FusionShareLaunchConfig {
   ctx?: string | number;
@@ -16,19 +25,28 @@ export interface FusionShareLaunchConfig {
   flashAttn?: string;
   splitMode?: string;
   kvQuant?: string;
+  specType?: string;
+  specDraftNMax?: string | number;
+  specDraftNMin?: string | number;
 }
 
 export interface FusionShareMeta {
   providerName?: string;
+  /** Engine binary build string, e.g. "v51 (ac4cdde)". */
+  providerBuildVersion?: string;
   modelName?: string;
   modelQuant?: string;
   profileLabel?: string;
   cudaVersion?: string;
+  /** e.g. "2xRTX PRO 6000 96GB" — GPUs the bench ran on. */
+  hwTopo?: string;
   launchConfig?: FusionShareLaunchConfig;
 }
 
-/** Share cards always render as ARCTIC — unified look across users/themes. */
-const SHARE_CAPTURE_THEME_ID = "arctic";
+/** Shorter phosphor in share cards — room for 2-row params + HW topo band. */
+export const FUSION_SHARE_CAPTURE_PHOSPHOR_HEIGHT_PX = 208;
+export const FUSION_SHARE_EXPORT_HW_TOPO_HEIGHT = 22;
+
 const NV_GREEN = "#76B900";
 
 const CAPTURE_STRIP_SELECTORS = [
@@ -42,31 +60,30 @@ const CAPTURE_STRIP_SELECTORS = [
 
 /**
  * Export layout budget (CSS px):
- * 1. White header (provider · profile · model · params).
+ * 1. Dark header (provider · profile · model · params).
  * 2. Gap + frame (live phosphor + bezel height).
  * 3. Footer (logo + version) pinned to bottom of frame.
  * 4. Width derived from total height so the full card stays 16:9.
  */
 const SHARE_ASPECT_W = 16;
 const SHARE_ASPECT_H = 9;
-export const FUSION_SHARE_EXPORT_GAP = 10;
+export const FUSION_SHARE_EXPORT_GAP = 8;
 /** Panel-accent mat around the bezel in share captures (CSS px). */
 export const FUSION_SHARE_EXPORT_FRAME_PAD_TOP = 0;
 export const FUSION_SHARE_EXPORT_FRAME_PAD_X = 20;
-export const FUSION_SHARE_EXPORT_FRAME_PAD_BOTTOM = 20;
-/** Matches live `.vram-forecast-display` + gunmetal bezel padding. */
-export const FUSION_SHARE_LIVE_FRAME_HEIGHT_PX =
-  FORECAST_PHOSPHOR_HEIGHT_PX + DISPLAY_BEZEL_PADDING_PX * 2;
-/** Gunmetal bezel block height (phosphor + frame padding). */
-export const FUSION_SHARE_EXPORT_BEZEL_HEIGHT_PX = FUSION_SHARE_LIVE_FRAME_HEIGHT_PX;
-/** Middle card section — bezel inset with panel-accent breathing room + drop shadow. */
+export const FUSION_SHARE_EXPORT_FRAME_PAD_BOTTOM = 14;
+/** Gunmetal bezel block height (capture phosphor + frame padding). */
+export const FUSION_SHARE_EXPORT_BEZEL_HEIGHT_PX =
+  FUSION_SHARE_CAPTURE_PHOSPHOR_HEIGHT_PX + DISPLAY_BEZEL_PADDING_PX * 2;
+/** Middle card section — bezel + HW topo band inside panel-accent mat. */
 export const FUSION_SHARE_EXPORT_FRAME_HEIGHT =
   FUSION_SHARE_EXPORT_BEZEL_HEIGHT_PX +
   FUSION_SHARE_EXPORT_FRAME_PAD_TOP +
+  FUSION_SHARE_EXPORT_HW_TOPO_HEIGHT +
   FUSION_SHARE_EXPORT_FRAME_PAD_BOTTOM;
 export const FUSION_SHARE_EXPORT_FOOTER_HEIGHT = 27;
-/** Provider · profile · model · params — white header bar only. */
-export const FUSION_SHARE_EXPORT_HEADER_HEIGHT = 80;
+/** Identity row + up to two params chip rows. */
+export const FUSION_SHARE_EXPORT_HEADER_HEIGHT = 94;
 /** @deprecated Use FUSION_SHARE_EXPORT_HEADER_HEIGHT — kept for callers expecting brand height. */
 export const FUSION_SHARE_EXPORT_BRAND_HEIGHT = FUSION_SHARE_EXPORT_HEADER_HEIGHT;
 export const FUSION_SHARE_EXPORT_TOTAL_HEIGHT =
@@ -78,11 +95,12 @@ export const FUSION_SHARE_EXPORT_WIDTH = Math.round(
   (FUSION_SHARE_EXPORT_TOTAL_HEIGHT * SHARE_ASPECT_W) / SHARE_ASPECT_H,
 );
 const FUSION_SHARE_FOOTER_LOGO_HEIGHT = 22;
-const FUSION_SHARE_HEADER_BG = "#f4f6f8";
-const FUSION_SHARE_HEADER_TEXT = "#1a2030";
-const FUSION_SHARE_HEADER_MUTED = "rgba(26, 32, 48, 0.45)";
-const FUSION_SHARE_HEADER_DIVIDER = "rgba(30, 50, 80, 0.22)";
-const FUSION_SHARE_HEADER_BORDER = "rgba(30, 50, 80, 0.12)";
+/** Identity row only — params row uses industrial panel-accent band. */
+const FUSION_SHARE_IDENTITY_BG = "#0a0c10";
+const FUSION_SHARE_IDENTITY_TEXT = "#f4f6f8";
+const FUSION_SHARE_IDENTITY_MUTED = "rgba(244, 246, 248, 0.42)";
+const FUSION_SHARE_IDENTITY_DIVIDER = "rgba(244, 246, 248, 0.28)";
+const FUSION_SHARE_CYAN = "#00e5ff";
 const FUSION_SHARE_FOOTER_BG = "#0a0c10";
 const FUSION_SHARE_FOOTER_BORDER = "rgba(118, 185, 0, 0.22)";
 /** CSS card × FUSION_SHARE_EXPORT_PIXEL_RATIO → PNG (e.g. ~707×398 → ~2828×1592). */
@@ -124,11 +142,20 @@ interface PaddingRestore {
   borderRadius: string;
 }
 
+interface ParamsRowPalette {
+  muted: string;
+  divider: string;
+  border: string;
+  boxBg: string;
+}
+
 interface CaptureColors {
   /** Brand header bar */
   brandBar: string;
   /** `.industrial-display-area` brushed panel behind bezel */
   panelAccent: string;
+  /** Params row — panel-accent → theme-bg (matches display surround). */
+  paramsBandBg: string;
   /** Industrial VRAM bezel */
   industrialBg: string;
   /** Merged card letterbox fill */
@@ -142,36 +169,107 @@ interface CaptureColors {
   divider: string;
 }
 
-function arcticToken(name: string, fallback: string): string {
-  const theme = getThemeById(SHARE_CAPTURE_THEME_ID);
+function themeToken(themeId: string, name: string, fallback: string): string {
+  const theme = getThemeById(themeId);
   return theme.tokens[name] ?? fallback;
 }
 
-function resolveCaptureColors(): CaptureColors {
-  const industrialBg = arcticToken("--theme-industrial-bg", "#b0bcc8");
-  const panelAccent = arcticToken("--theme-panel-accent", "#dce2ea");
+function resolveCaptureColors(variant: FusionShareVariant = "white"): CaptureColors {
+  const { themeId } = SHARE_VARIANT_CONFIG[variant];
+  const industrialBg = themeToken(themeId, "--theme-industrial-bg", "#b0bcc8");
+  const panelAccent = themeToken(themeId, "--theme-panel-accent", "#dce2ea");
+  const themeBg = themeToken(themeId, "--theme-bg", "#e8ecef");
   return {
-    brandBar: arcticToken("--theme-panel", "#f4f6f8"),
+    brandBar: themeToken(themeId, "--theme-panel", "#f4f6f8"),
     panelAccent,
+    paramsBandBg: `linear-gradient(180deg, ${panelAccent} 0%, ${themeBg} 100%)`,
     industrialBg,
     cardFill: panelAccent,
-    title: arcticToken("--theme-header-title", "#1a2030"),
-    subtitle: arcticToken("--theme-header-subtitle", "rgba(26, 32, 48, 0.45)"),
-    logo: arcticToken("--theme-header-logo", "#2a6b4a"),
-    accent: arcticToken("--theme-accent-bright", "#1a5a3a"),
-    accentSoft: arcticToken("--theme-chip-active-bg", "rgba(42, 107, 74, 0.16)"),
-    border: arcticToken("--theme-border-subtle", "rgba(30, 50, 80, 0.12)"),
-    divider: arcticToken("--theme-border", "#b8c4d0"),
+    title: themeToken(themeId, "--theme-header-title", "#1a2030"),
+    subtitle: themeToken(themeId, "--theme-header-subtitle", "rgba(26, 32, 48, 0.45)"),
+    logo: themeToken(themeId, "--theme-header-logo", "#2a6b4a"),
+    accent: themeToken(themeId, "--theme-accent-bright", "#1a5a3a"),
+    accentSoft: themeToken(themeId, "--theme-chip-active-bg", "rgba(42, 107, 74, 0.16)"),
+    border: themeToken(themeId, "--theme-border-subtle", "rgba(30, 50, 80, 0.12)"),
+    divider: themeToken(themeId, "--theme-border", "#b8c4d0"),
   };
 }
 
-function applyShareCaptureTheme(host: HTMLElement): void {
-  host.setAttribute("data-theme", SHARE_CAPTURE_THEME_ID);
-  host.setAttribute("data-display-texture", SHARE_CAPTURE_TEXTURE);
-  const theme = getThemeById(SHARE_CAPTURE_THEME_ID);
+function applyShareCaptureTheme(host: HTMLElement, variant: FusionShareVariant): void {
+  const { themeId, texture } = SHARE_VARIANT_CONFIG[variant];
+  host.setAttribute("data-theme", themeId);
+  host.setAttribute("data-display-texture", texture);
+  host.setAttribute("data-fusion-share-variant", variant);
+  const theme = getThemeById(themeId);
   for (const [key, value] of Object.entries(theme.tokens)) {
     host.style.setProperty(key, value);
   }
+}
+
+interface DocumentThemeLock {
+  restore: () => void;
+}
+
+/** Force ARCTIC/SLATE on :root during rasterize — document texture leaks into clones otherwise. */
+function lockDocumentThemeForCapture(variant: FusionShareVariant): DocumentThemeLock {
+  const root = document.documentElement;
+  const { themeId, texture } = SHARE_VARIANT_CONFIG[variant];
+  const theme = getThemeById(themeId);
+  const prevTheme = root.getAttribute("data-theme");
+  const prevTexture = root.getAttribute("data-display-texture");
+  const prevInline = new Map<string, string>();
+  for (const key of Object.keys(theme.tokens)) {
+    prevInline.set(key, root.style.getPropertyValue(key));
+  }
+
+  root.setAttribute("data-theme", themeId);
+  root.setAttribute("data-display-texture", texture);
+  for (const [key, value] of Object.entries(theme.tokens)) {
+    root.style.setProperty(key, value);
+  }
+
+  return {
+    restore: () => {
+      if (prevTheme != null) root.setAttribute("data-theme", prevTheme);
+      else root.removeAttribute("data-theme");
+      if (prevTexture != null) root.setAttribute("data-display-texture", prevTexture);
+      else root.removeAttribute("data-display-texture");
+      for (const [key, prev] of prevInline) {
+        if (prev) root.style.setProperty(key, prev);
+        else root.style.removeProperty(key);
+      }
+    },
+  };
+}
+
+export function formatShareHwTopo(gpus: GpuInfo[], gpuMask?: string): string | undefined {
+  if (gpus.length === 0) return undefined;
+
+  const indices = gpuMask?.trim()
+    ? gpuMask
+        .split(",")
+        .map((s) => Number.parseInt(s.trim(), 10))
+        .filter((n) => !Number.isNaN(n))
+    : gpus.map((g) => g.index);
+
+  const selected = indices
+    .map((i) => gpus.find((g) => g.index === i))
+    .filter((g): g is GpuInfo => g != null);
+  if (selected.length === 0) return undefined;
+
+  const groups = new Map<string, { count: number; label: string }>();
+  for (const gpu of selected) {
+    const vramGb = Math.round((gpu.memory_total_manufactured || gpu.memory_total) / 1024);
+    const shortName = gpu.name.replace(/^NVIDIA\s+/i, "").trim();
+    const key = `${shortName}|${vramGb}`;
+    const entry = groups.get(key);
+    if (entry) entry.count += 1;
+    else groups.set(key, { count: 1, label: `${shortName} ${vramGb}GB` });
+  }
+
+  return Array.from(groups.values())
+    .map((g) => (g.count > 1 ? `${g.count}x${g.label}` : g.label))
+    .join(" · ");
 }
 
 interface PrimedSurface {
@@ -202,11 +300,11 @@ function restorePrimedSurfaces(primed: PrimedSurface[]): void {
   });
 }
 
-function brandDivider(): HTMLSpanElement {
+function brandDivider(color: string): HTMLSpanElement {
   const divider = document.createElement("span");
   divider.textContent = "│";
   divider.style.flexShrink = "0";
-  divider.style.color = FUSION_SHARE_HEADER_DIVIDER;
+  divider.style.color = color;
   divider.style.opacity = "0.85";
   divider.style.fontFamily = "'JetBrains Mono', 'Roboto Mono', monospace";
   divider.style.fontSize = "11px";
@@ -244,7 +342,9 @@ function formatShareFlashAttn(value: string | undefined): string | null {
 
 function formatShareSplitMode(value: string | undefined): string | null {
   if (!value?.trim()) return null;
-  return `split ${value.trim().toLowerCase()}`;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "none" || normalized === "0") return null;
+  return `split ${normalized}`;
 }
 
 function formatShareKvQuant(value: string | undefined): string | null {
@@ -252,14 +352,37 @@ function formatShareKvQuant(value: string | undefined): string | null {
   return `KV ${value.trim().toUpperCase()}`;
 }
 
-function brandConfigLabel(text: string): HTMLSpanElement {
+function formatShareSpecType(value: string | undefined): string | null {
+  if (!value?.trim()) return null;
+  return `SPEC-TYPE ${value.trim().toUpperCase()}`;
+}
+
+function formatShareSpecDraftNMax(value: string | number | undefined): string | null {
+  if (value === undefined || value === null || value === "") return null;
+  return `DRAFT-N-MAX ${value}`;
+}
+
+function formatShareSpecDraftNMin(value: string | number | undefined): string | null {
+  if (value === undefined || value === null || value === "") return null;
+  if (value === 0 || value === "0") return null;
+  return `DRAFT-N-MIN ${value}`;
+}
+
+type ParamChipKind = "config" | "split";
+
+interface ParamChip {
+  text: string;
+  kind: ParamChipKind;
+}
+
+function brandConfigLabel(text: string, mutedColor: string): HTMLSpanElement {
   const label = document.createElement("span");
   label.textContent = text;
   label.style.fontFamily = "monospace";
   label.style.fontSize = "9px";
   label.style.fontWeight = "400";
   label.style.letterSpacing = "0.04em";
-  label.style.color = FUSION_SHARE_HEADER_MUTED;
+  label.style.color = mutedColor;
   label.style.opacity = "1";
   label.style.whiteSpace = "nowrap";
   label.style.flexShrink = "0";
@@ -267,16 +390,18 @@ function brandConfigLabel(text: string): HTMLSpanElement {
   return label;
 }
 
-function brandKvQuantLabel(text: string): HTMLSpanElement {
+function brandBadgeLabel(text: string, color: string, bgAlpha = 0.14): HTMLSpanElement {
   const label = document.createElement("span");
   label.textContent = text;
   label.style.fontFamily = "monospace";
   label.style.fontSize = "10px";
   label.style.fontWeight = "700";
   label.style.letterSpacing = "0.05em";
-  label.style.color = NV_GREEN;
-  label.style.background = "rgba(118, 185, 0, 0.14)";
-  label.style.border = `1px solid ${NV_GREEN}`;
+  label.style.color = color;
+  label.style.background = color.startsWith("#")
+    ? `rgba(${Number.parseInt(color.slice(1, 3), 16)}, ${Number.parseInt(color.slice(3, 5), 16)}, ${Number.parseInt(color.slice(5, 7), 16)}, ${bgAlpha})`
+    : color;
+  label.style.border = `1px solid ${color}`;
   label.style.borderRadius = "4px";
   label.style.padding = "2px 7px";
   label.style.whiteSpace = "nowrap";
@@ -285,25 +410,71 @@ function brandKvQuantLabel(text: string): HTMLSpanElement {
   return label;
 }
 
-function collectShareLaunchConfigSegments(
-  launchConfig: FusionShareLaunchConfig | undefined,
-): string[] {
+function brandKvQuantLabel(text: string): HTMLSpanElement {
+  return brandBadgeLabel(text, NV_GREEN, 0.14);
+}
+
+function brandModelQuantLabel(text: string): HTMLSpanElement {
+  return brandBadgeLabel(text, FUSION_SHARE_CYAN, 0.12);
+}
+
+function brandSplitLabel(text: string, variant: FusionShareVariant): HTMLSpanElement {
+  const label = document.createElement("span");
+  label.textContent = text;
+  label.style.fontFamily = "monospace";
+  label.style.fontSize = "9px";
+  label.style.fontWeight = "700";
+  label.style.letterSpacing = "0.04em";
+  label.style.borderRadius = "4px";
+  label.style.padding = "2px 7px";
+  label.style.whiteSpace = "nowrap";
+  label.style.flexShrink = "0";
+  label.style.lineHeight = "1.2";
+  if (variant === "white") {
+    label.style.background = "#0a0c10";
+    label.style.color = "#f4f6f8";
+    label.style.border = "1px solid #0a0c10";
+  } else {
+    label.style.background = "#f5c400";
+    label.style.color = "#0a0c10";
+    label.style.border = "1px solid #b89200";
+  }
+  return label;
+}
+
+function collectShareLaunchConfigRow1(launchConfig: FusionShareLaunchConfig | undefined): ParamChip[] {
   if (!launchConfig) return [];
 
-  const segments: string[] = [];
+  const chips: ParamChip[] = [];
   const ctx = formatShareCtx(launchConfig.ctx);
-  if (ctx) segments.push(`CTX ${ctx}`);
+  if (ctx) chips.push({ text: `CTX ${ctx}`, kind: "config" });
 
   const batchPair = formatShareBatchPair(launchConfig.batch, launchConfig.ubatch);
-  if (batchPair) segments.push(batchPair);
+  if (batchPair) chips.push({ text: batchPair, kind: "config" });
 
   const flashAttn = formatShareFlashAttn(launchConfig.flashAttn);
-  if (flashAttn) segments.push(flashAttn);
+  if (flashAttn) chips.push({ text: flashAttn, kind: "config" });
 
   const splitMode = formatShareSplitMode(launchConfig.splitMode);
-  if (splitMode) segments.push(splitMode);
+  if (splitMode) chips.push({ text: splitMode, kind: "split" });
 
-  return segments;
+  return chips;
+}
+
+function collectShareLaunchConfigRow2(launchConfig: FusionShareLaunchConfig | undefined): ParamChip[] {
+  if (!launchConfig) return [];
+
+  const chips: ParamChip[] = [];
+  const specType = formatShareSpecType(launchConfig.specType);
+  if (specType) chips.push({ text: specType, kind: "config" });
+
+  const specDraftNMax = formatShareSpecDraftNMax(launchConfig.specDraftNMax);
+  if (specDraftNMax) chips.push({ text: specDraftNMax, kind: "config" });
+
+  const specDraftNMin = formatShareSpecDraftNMin(launchConfig.specDraftNMin);
+  if (specDraftNMin) chips.push({ text: specDraftNMin, kind: "config" });
+
+  return chips;
 }
 
 function brandCudaBadge(cudaVersion: string): HTMLSpanElement {
@@ -323,37 +494,107 @@ function brandCudaBadge(cudaVersion: string): HTMLSpanElement {
   return badge;
 }
 
-function createLaunchParamsBox(
-  launchConfig: FusionShareLaunchConfig | undefined,
+function appendParamChips(
+  parent: HTMLElement,
+  chips: ParamChip[],
+  palette: ParamsRowPalette,
+  variant: FusionShareVariant,
+  kvQuant?: string | null,
+): void {
+  let hasContent = false;
+  if (kvQuant) {
+    parent.appendChild(brandKvQuantLabel(kvQuant));
+    hasContent = true;
+  }
+  chips.forEach((chip) => {
+    if (hasContent) parent.appendChild(brandDivider(palette.divider));
+    if (chip.kind === "split") {
+      parent.appendChild(brandSplitLabel(chip.text, variant));
+    } else {
+      parent.appendChild(brandConfigLabel(chip.text, palette.muted));
+    }
+    hasContent = true;
+  });
+}
+
+function createParamsChipRow(
+  chips: ParamChip[],
+  palette: ParamsRowPalette,
+  variant: FusionShareVariant,
+  kvQuant?: string | null,
 ): HTMLElement | null {
-  const kvQuant = formatShareKvQuant(launchConfig?.kvQuant);
-  const segments = collectShareLaunchConfigSegments(launchConfig);
-  if (!kvQuant && segments.length === 0) return null;
+  if (!kvQuant && chips.length === 0) return null;
 
   const box = document.createElement("div");
   box.style.display = "inline-flex";
   box.style.alignItems = "center";
   box.style.flexWrap = "nowrap";
   box.style.gap = "6px";
-  box.style.padding = "6px 14px";
-  box.style.border = `1px solid ${FUSION_SHARE_HEADER_BORDER}`;
+  box.style.padding = "4px 10px";
+  box.style.border = `1px solid ${palette.border}`;
   box.style.borderRadius = "6px";
   box.style.maxWidth = "100%";
   box.style.overflow = "hidden";
-
-  if (kvQuant) {
-    box.appendChild(brandKvQuantLabel(kvQuant));
-    if (segments.length > 0) {
-      box.appendChild(brandDivider());
-    }
-  }
-
-  segments.forEach((segment, index) => {
-    if (index > 0) box.appendChild(brandDivider());
-    box.appendChild(brandConfigLabel(segment));
-  });
-
+  box.style.background = palette.boxBg;
+  appendParamChips(box, chips, palette, variant, kvQuant);
   return box;
+}
+
+function createLaunchParamsSection(
+  launchConfig: FusionShareLaunchConfig | undefined,
+  palette: ParamsRowPalette,
+  variant: FusionShareVariant,
+): HTMLElement | null {
+  const kvQuant = formatShareKvQuant(launchConfig?.kvQuant);
+  const row1Chips = collectShareLaunchConfigRow1(launchConfig);
+  const row2Chips = collectShareLaunchConfigRow2(launchConfig);
+  const row1 = createParamsChipRow(row1Chips, palette, variant, kvQuant);
+  const row2 = row2Chips.length > 0 ? createParamsChipRow(row2Chips, palette, variant) : null;
+  if (!row1 && !row2) return null;
+
+  const section = document.createElement("div");
+  section.style.display = "flex";
+  section.style.flexDirection = "column";
+  section.style.gap = "3px";
+  section.style.width = "100%";
+  section.style.minWidth = "0";
+  if (row1) section.appendChild(row1);
+  if (row2) section.appendChild(row2);
+  return section;
+}
+
+function createHwTopoBand(
+  text: string,
+  colors: CaptureColors,
+  width: number,
+): HTMLElement {
+  const band = document.createElement("div");
+  band.className = "fusion-share-hw-topo-band";
+  band.style.width = `${width}px`;
+  band.style.height = `${FUSION_SHARE_EXPORT_HW_TOPO_HEIGHT}px`;
+  band.style.display = "flex";
+  band.style.alignItems = "center";
+  band.style.marginTop = "6px";
+  band.style.padding = "0 2px";
+  band.style.boxSizing = "border-box";
+  band.style.overflow = "hidden";
+
+  const label = document.createElement("span");
+  label.textContent = text;
+  label.style.fontFamily = "'JetBrains Mono', 'Roboto Mono', monospace";
+  label.style.fontSize = "8px";
+  label.style.fontWeight = "600";
+  label.style.letterSpacing = "0.05em";
+  label.style.color = colors.subtitle;
+  label.style.webkitTextFillColor = colors.subtitle;
+  label.style.lineHeight = "1.2";
+  label.style.whiteSpace = "nowrap";
+  label.style.overflow = "hidden";
+  label.style.textOverflow = "ellipsis";
+  label.style.flex = "1";
+  label.style.minWidth = "0";
+  band.appendChild(label);
+  return band;
 }
 
 interface FrameCaptureStage {
@@ -385,7 +626,12 @@ function unmountCaptureShell(shell: HTMLElement): void {
 }
 
 /** Offscreen clone at fixed CSS px — avoids mutating the live panel and ignores UI zoom. */
-function createFrameCaptureStage(source: HTMLElement, colors: CaptureColors): FrameCaptureStage {
+function createFrameCaptureStage(
+  source: HTMLElement,
+  colors: CaptureColors,
+  variant: FusionShareVariant,
+  hwTopo?: string,
+): FrameCaptureStage {
   const padTop = FUSION_SHARE_EXPORT_FRAME_PAD_TOP;
   const padX = FUSION_SHARE_EXPORT_FRAME_PAD_X;
   const padBottom = FUSION_SHARE_EXPORT_FRAME_PAD_BOTTOM;
@@ -396,7 +642,7 @@ function createFrameCaptureStage(source: HTMLElement, colors: CaptureColors): Fr
   stage.className = "fusion-share-capture-stage";
   stage.setAttribute("data-fusion-share-capture", "");
   stage.setAttribute("data-fusion-share-exclude", "");
-  applyShareCaptureTheme(stage);
+  applyShareCaptureTheme(stage, variant);
   stage.style.setProperty("--ui-text-scale", "1");
   stage.style.width = `${FUSION_SHARE_EXPORT_WIDTH}px`;
   stage.style.height = `${FUSION_SHARE_EXPORT_FRAME_HEIGHT}px`;
@@ -407,6 +653,7 @@ function createFrameCaptureStage(source: HTMLElement, colors: CaptureColors): Fr
   stage.style.boxSizing = "border-box";
 
   const frame = source.cloneNode(true) as HTMLElement;
+  applyShareCaptureTheme(frame, variant);
   frame.style.width = `${innerWidth}px`;
   frame.style.height = `${bezelHeight}px`;
   frame.style.minHeight = `${bezelHeight}px`;
@@ -421,6 +668,10 @@ function createFrameCaptureStage(source: HTMLElement, colors: CaptureColors): Fr
   normalizeFusionCaptureLayout(frame);
 
   stage.appendChild(frame);
+  const topoText = hwTopo?.trim();
+  if (topoText) {
+    stage.appendChild(createHwTopoBand(topoText, colors, innerWidth));
+  }
   return { stage, frame };
 }
 
@@ -448,7 +699,7 @@ function forceFusionCapturePaint(frame: HTMLElement): void {
 }
 
 /** Live overlay hero uses `clamp(…, 6vh, …)` — offscreen capture must pin a fixed size. */
-const FUSION_CAPTURE_HERO_FONT_PX = 44;
+const FUSION_CAPTURE_HERO_FONT_PX = 40;
 
 function stripForecastPaddingForCapture(frame: HTMLElement): PaddingRestore[] {
   const restores: PaddingRestore[] = [];
@@ -514,9 +765,9 @@ function restoreForecastPadding(restores: PaddingRestore[]): void {
 function normalizeFusionCaptureLayout(frame: HTMLElement): void {
   const display = frame.querySelector(".vram-forecast-display");
   if (display instanceof HTMLElement) {
-    display.style.height = `${FORECAST_PHOSPHOR_HEIGHT_PX}px`;
-    display.style.minHeight = `${FORECAST_PHOSPHOR_HEIGHT_PX}px`;
-    display.style.maxHeight = `${FORECAST_PHOSPHOR_HEIGHT_PX}px`;
+    display.style.height = `${FUSION_SHARE_CAPTURE_PHOSPHOR_HEIGHT_PX}px`;
+    display.style.minHeight = `${FUSION_SHARE_CAPTURE_PHOSPHOR_HEIGHT_PX}px`;
+    display.style.maxHeight = `${FUSION_SHARE_CAPTURE_PHOSPHOR_HEIGHT_PX}px`;
   }
 
   frame.querySelectorAll<HTMLElement>(".fusion-prefill-hero-value").forEach((el) => {
@@ -538,8 +789,23 @@ function brandIdentityLabel(text: string, weight = "700"): HTMLSpanElement {
   label.style.fontSize = "11px";
   label.style.fontWeight = weight;
   label.style.letterSpacing = "0.06em";
-  label.style.color = FUSION_SHARE_HEADER_TEXT;
-  label.style.webkitTextFillColor = FUSION_SHARE_HEADER_TEXT;
+  label.style.color = FUSION_SHARE_IDENTITY_TEXT;
+  label.style.webkitTextFillColor = FUSION_SHARE_IDENTITY_TEXT;
+  label.style.lineHeight = "1.2";
+  label.style.flexShrink = "0";
+  label.style.whiteSpace = "nowrap";
+  return label;
+}
+
+function brandMutedCaption(text: string, mutedColor = FUSION_SHARE_IDENTITY_MUTED): HTMLSpanElement {
+  const label = document.createElement("span");
+  label.textContent = text;
+  label.style.fontFamily = "monospace";
+  label.style.fontSize = "8px";
+  label.style.fontWeight = "500";
+  label.style.letterSpacing = "0.04em";
+  label.style.color = mutedColor;
+  label.style.webkitTextFillColor = mutedColor;
   label.style.lineHeight = "1.2";
   label.style.flexShrink = "0";
   label.style.whiteSpace = "nowrap";
@@ -593,10 +859,21 @@ function createFooterShell(): HTMLElement {
   return shell;
 }
 
-function createHeaderShell(meta: FusionShareMeta): HTMLElement {
+function createHeaderShell(meta: FusionShareMeta, variant: FusionShareVariant): HTMLElement {
+  const colors = resolveCaptureColors(variant);
+  const paramsPalette: ParamsRowPalette = {
+    muted: colors.subtitle,
+    divider: colors.divider,
+    border: colors.border,
+    boxBg: variant === "white" ? "rgba(255, 255, 255, 0.28)" : "rgba(255, 255, 255, 0.06)",
+  };
+  const paramsSection = createLaunchParamsSection(meta.launchConfig, paramsPalette, variant);
+
   const shell = document.createElement("div");
   shell.className = "fusion-share-capture-brand-shell";
   shell.setAttribute("data-fusion-share-exclude", "");
+  shell.setAttribute("data-fusion-share-capture", "");
+  applyShareCaptureTheme(shell, variant);
   shell.style.setProperty("--ui-text-scale", "1");
 
   shell.style.top = "0";
@@ -609,87 +886,99 @@ function createHeaderShell(meta: FusionShareMeta): HTMLElement {
   shell.style.position = "fixed";
   shell.style.display = "flex";
   shell.style.flexDirection = "column";
-  shell.style.background = FUSION_SHARE_HEADER_BG;
-  shell.style.color = FUSION_SHARE_HEADER_TEXT;
+  shell.style.background = paramsSection ? colors.panelAccent : FUSION_SHARE_IDENTITY_BG;
   shell.style.overflow = "hidden";
-  shell.style.borderBottom = `1px solid ${FUSION_SHARE_HEADER_BORDER}`;
-
-  const main = document.createElement("div");
-  main.style.flex = "1";
-  main.style.display = "flex";
-  main.style.flexDirection = "column";
-  main.style.justifyContent = "center";
-  main.style.gap = "6px";
-  main.style.padding = "6px 12px 4px";
-  main.style.minWidth = "0";
-  main.style.boxSizing = "border-box";
-  main.style.overflow = "hidden";
-  main.style.background = FUSION_SHARE_HEADER_BG;
+  shell.style.borderBottom = `1px solid ${colors.border}`;
 
   const providerName = meta.providerName?.trim();
+  const providerBuildVersion = meta.providerBuildVersion?.trim();
   const profileLabel = meta.profileLabel?.trim();
   const cudaVersion = meta.cudaVersion?.trim();
   const modelName = meta.modelName?.trim();
   const modelQuant = meta.modelQuant?.trim();
-  const hasIdentityLine = providerName || profileLabel || cudaVersion || modelName || modelQuant;
+  const hasIdentityLine =
+    providerName || providerBuildVersion || profileLabel || cudaVersion || modelName || modelQuant;
 
   if (hasIdentityLine) {
-    const stackRow = document.createElement("div");
-    stackRow.style.display = "flex";
-    stackRow.style.alignItems = "center";
-    stackRow.style.gap = "8px";
-    stackRow.style.minWidth = "0";
-    stackRow.style.width = "100%";
-    stackRow.style.overflow = "hidden";
-    stackRow.style.whiteSpace = "nowrap";
+    const identityRow = document.createElement("div");
+    identityRow.style.display = "flex";
+    identityRow.style.alignItems = "center";
+    identityRow.style.gap = "8px";
+    identityRow.style.minWidth = "0";
+    identityRow.style.width = "100%";
+    identityRow.style.overflow = "hidden";
+    identityRow.style.whiteSpace = "nowrap";
+    identityRow.style.background = FUSION_SHARE_IDENTITY_BG;
+    identityRow.style.color = FUSION_SHARE_IDENTITY_TEXT;
+    identityRow.style.flex = paramsSection ? "0 0 auto" : "1";
+    identityRow.style.padding = paramsSection ? "6px 12px 5px" : "6px 12px";
+    identityRow.style.boxSizing = "border-box";
 
     if (providerName) {
-      stackRow.appendChild(brandIdentityLabel(providerName));
+      identityRow.appendChild(brandIdentityLabel(providerName));
+      if (providerBuildVersion) {
+        identityRow.appendChild(brandMutedCaption(providerBuildVersion));
+      }
+    } else if (providerBuildVersion) {
+      identityRow.appendChild(brandMutedCaption(providerBuildVersion));
     }
     if (profileLabel) {
-      if (providerName) {
-        stackRow.appendChild(brandDivider());
+      if (providerName || providerBuildVersion) {
+        identityRow.appendChild(brandDivider(FUSION_SHARE_IDENTITY_DIVIDER));
       }
-      stackRow.appendChild(brandIdentityLabel(profileLabel));
+      identityRow.appendChild(brandIdentityLabel(profileLabel));
     }
     if (cudaVersion) {
-      stackRow.appendChild(brandCudaBadge(cudaVersion));
+      identityRow.appendChild(brandCudaBadge(cudaVersion));
     }
 
     if (modelName || modelQuant) {
-      if (providerName || profileLabel || cudaVersion) {
-        stackRow.appendChild(brandDivider());
+      if (providerName || providerBuildVersion || profileLabel || cudaVersion) {
+        identityRow.appendChild(brandDivider(FUSION_SHARE_IDENTITY_DIVIDER));
       }
 
-      const modelLine = document.createElement("span");
-      const modelParts = [modelName, modelQuant].filter(Boolean);
-      modelLine.textContent = modelParts.join(" ");
-      modelLine.style.fontFamily = "monospace";
-      modelLine.style.fontSize = "11px";
-      modelLine.style.fontWeight = "600";
-      modelLine.style.color = FUSION_SHARE_HEADER_TEXT;
-      modelLine.style.webkitTextFillColor = FUSION_SHARE_HEADER_TEXT;
-      modelLine.style.lineHeight = "1.2";
-      modelLine.style.flex = "1";
-      modelLine.style.minWidth = "0";
-      modelLine.style.overflow = "hidden";
-      modelLine.style.textOverflow = "ellipsis";
-      modelLine.style.whiteSpace = "nowrap";
-      stackRow.appendChild(modelLine);
+      if (modelName) {
+        const modelLine = document.createElement("span");
+        modelLine.textContent = modelName;
+        modelLine.style.fontFamily = "monospace";
+        modelLine.style.fontSize = "11px";
+        modelLine.style.fontWeight = "600";
+        modelLine.style.color = FUSION_SHARE_IDENTITY_TEXT;
+        modelLine.style.webkitTextFillColor = FUSION_SHARE_IDENTITY_TEXT;
+        modelLine.style.lineHeight = "1.2";
+        modelLine.style.flex = "1";
+        modelLine.style.minWidth = "0";
+        modelLine.style.overflow = "hidden";
+        modelLine.style.textOverflow = "ellipsis";
+        modelLine.style.whiteSpace = "nowrap";
+        identityRow.appendChild(modelLine);
+      }
+
+      if (modelQuant) {
+        identityRow.appendChild(brandModelQuantLabel(modelQuant));
+      }
     }
 
-    main.appendChild(stackRow);
+    shell.appendChild(identityRow);
   }
 
-  const paramsBox = createLaunchParamsBox(meta.launchConfig);
-  if (paramsBox) {
-    paramsBox.style.maxWidth = "100%";
-    paramsBox.style.flexShrink = "1";
-    paramsBox.style.minWidth = "0";
-    main.appendChild(paramsBox);
+  if (paramsSection) {
+    const paramsRow = document.createElement("div");
+    paramsRow.style.flex = "1";
+    paramsRow.style.display = "flex";
+    paramsRow.style.alignItems = "flex-start";
+    paramsRow.style.minWidth = "0";
+    paramsRow.style.width = "100%";
+    paramsRow.style.padding = "4px 12px 5px";
+    paramsRow.style.boxSizing = "border-box";
+    paramsRow.style.overflow = "hidden";
+    paramsRow.style.background = colors.paramsBandBg;
+    paramsSection.style.maxWidth = "100%";
+    paramsSection.style.flexShrink = "1";
+    paramsSection.style.minWidth = "0";
+    paramsRow.appendChild(paramsSection);
+    shell.appendChild(paramsRow);
   }
-
-  shell.appendChild(main);
 
   return shell;
 }
@@ -963,9 +1252,9 @@ function drawHeaderFallbackCanvas(width: number, pixelRatio: number): HTMLCanvas
 
   const cssHeight = FUSION_SHARE_EXPORT_HEADER_HEIGHT;
 
-  ctx.fillStyle = FUSION_SHARE_HEADER_BG;
+  ctx.fillStyle = FUSION_SHARE_IDENTITY_BG;
   ctx.fillRect(0, 0, width, canvas.height);
-  ctx.fillStyle = FUSION_SHARE_HEADER_TEXT;
+  ctx.fillStyle = FUSION_SHARE_IDENTITY_TEXT;
   ctx.font = `700 ${15 * pixelRatio}px 'JetBrains Mono', 'Roboto Mono', monospace`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
@@ -1002,7 +1291,10 @@ function mergeCanvases(
   return merged;
 }
 
-async function renderFusionSharePngOnce(meta: FusionShareMeta): Promise<Blob> {
+async function renderFusionSharePngOnce(
+  meta: FusionShareMeta,
+  variant: FusionShareVariant = "white",
+): Promise<Blob> {
   const sourceFrame = document.querySelector(FUSION_SHARE_FRAME_SELECTOR);
   if (!(sourceFrame instanceof HTMLElement)) {
     throw new Error("VRAM display frame not found");
@@ -1013,7 +1305,7 @@ async function renderFusionSharePngOnce(meta: FusionShareMeta): Promise<Blob> {
     throw new Error("VRAM display frame is not visible");
   }
 
-  const colors = resolveCaptureColors();
+  const colors = resolveCaptureColors(variant);
   const pixelRatio = FUSION_SHARE_EXPORT_PIXEL_RATIO;
   const targetFrameW = FUSION_SHARE_EXPORT_WIDTH * pixelRatio;
   const targetFrameH = FUSION_SHARE_EXPORT_FRAME_HEIGHT * pixelRatio;
@@ -1022,8 +1314,9 @@ async function renderFusionSharePngOnce(meta: FusionShareMeta): Promise<Blob> {
   const targetFooterW = FUSION_SHARE_EXPORT_WIDTH * pixelRatio;
   const targetFooterH = FUSION_SHARE_EXPORT_FOOTER_HEIGHT * pixelRatio;
 
-  const { stage, frame } = createFrameCaptureStage(sourceFrame, colors);
-  const headerShell = createHeaderShell(meta);
+  const themeLock = lockDocumentThemeForCapture(variant);
+  const { stage, frame } = createFrameCaptureStage(sourceFrame, colors, variant, meta.hwTopo);
+  const headerShell = createHeaderShell(meta, variant);
   const footerShell = createFooterShell();
 
   const hidden = [
@@ -1040,7 +1333,7 @@ async function renderFusionSharePngOnce(meta: FusionShareMeta): Promise<Blob> {
 
   try {
     let headerCanvas = await captureMountedShell(headerShell, {
-      backgroundColor: FUSION_SHARE_HEADER_BG,
+      backgroundColor: colors.panelAccent,
       canvasWidth: targetHeaderW,
       canvasHeight: targetHeaderH,
     });
@@ -1048,7 +1341,7 @@ async function renderFusionSharePngOnce(meta: FusionShareMeta): Promise<Blob> {
     if (!canvasHasVisiblePixels(headerCanvas)) {
       headerCanvas = drawHeaderFallbackCanvas(targetHeaderW, pixelRatio);
     } else if (headerCanvas.width !== targetHeaderW || headerCanvas.height !== targetHeaderH) {
-      headerCanvas = cropCanvas(headerCanvas, targetHeaderW, targetHeaderH, FUSION_SHARE_HEADER_BG);
+      headerCanvas = cropCanvas(headerCanvas, targetHeaderW, targetHeaderH, colors.panelAccent);
     }
 
     mountCaptureShell(stage);
@@ -1109,6 +1402,7 @@ async function renderFusionSharePngOnce(meta: FusionShareMeta): Promise<Blob> {
     const merged = mergeCanvases(headerCanvas, frameCanvas, footerCanvas, colors.cardFill);
     return await canvasToBlob(merged);
   } finally {
+    themeLock.restore();
     restoreForecastPadding(paddingRestore);
     restorePrimedSurfaces(primedSurfaces);
     restoreCaptureChrome(hidden);
@@ -1119,21 +1413,31 @@ async function renderFusionSharePngOnce(meta: FusionShareMeta): Promise<Blob> {
   }
 }
 
-export async function renderFusionSharePng(meta: FusionShareMeta = {}): Promise<Blob> {
+export async function renderFusionSharePng(
+  meta: FusionShareMeta = {},
+  variant: FusionShareVariant = "white",
+): Promise<Blob> {
   try {
-    return await renderFusionSharePngOnce(meta);
+    return await renderFusionSharePngOnce(meta, variant);
   } catch (first) {
     await waitForPaint(2);
-    return await renderFusionSharePngOnce(meta);
+    return await renderFusionSharePngOnce(meta, variant);
   }
 }
 
-export async function copyFusionSharePngToClipboard(meta: FusionShareMeta = {}): Promise<void> {
-  const pngPromise = renderFusionSharePng(meta);
+export async function copyFusionSharePngToClipboard(
+  meta: FusionShareMeta = {},
+  variant: FusionShareVariant = "white",
+): Promise<void> {
+  const pngPromise = renderFusionSharePng(meta, variant);
   await writeClipboardPngPromise(pngPromise);
 }
 
-export function downloadFusionSharePng(blob: Blob, alias?: string): void {
+export function downloadFusionSharePng(
+  blob: Blob,
+  alias?: string,
+  variant: FusionShareVariant = "white",
+): void {
   const slug = alias
     ? alias.replace(/[^\w.-]+/g, "_").replace(/^_|_$/g, "").slice(0, 40)
     : "fusion";
@@ -1141,7 +1445,7 @@ export function downloadFusionSharePng(blob: Blob, alias?: string): void {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download = `blackwell-ops-${slug}-${stamp}.png`;
+  anchor.download = `blackwell-ops-${slug}-${variant}-${stamp}.png`;
   anchor.click();
   URL.revokeObjectURL(url);
 }

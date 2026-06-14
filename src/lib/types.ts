@@ -378,7 +378,11 @@ export interface FusionUpdate {
 
   // Request timing
   requestElapsedMs: number;
-  ttftMs?: number | null;          // from /metrics prompt_seconds delta
+  ttftMs?: number | null;          // wall ms from request start → first decode token (/slots)
+  /** Prompt prefill duration only (sampler_init / prompt eval). */
+  prefillMs?: number | null;
+  /** First output token after prefill completes (ttftMs − prefillMs). */
+  decodeTtftMs?: number | null;
 
   // Per-slot CTX bars (from /slots only)
   slotCtx: SlotCtxInfo[];
@@ -405,6 +409,15 @@ export interface FusionUpdate {
 
   /** Reset source indicator — "prompt" if NewPrompt caught request start (belt), "regression" if fallback detected (suspenders). Flashes for visual feedback then clears on next PP line. */
   phaseResetSource?: "prompt" | "regression";
+
+  /** Session cumulative MTP draft acceptance rate (0–1) from print_timing stderr. */
+  specDraftAcceptRate?: number;
+  specDraftAccepted?: number;
+  specDraftGenerated?: number;
+  /** Last completed request draft acceptance snapshot. */
+  specDraftAcceptRateLast?: number;
+  specDraftAcceptedLast?: number;
+  specDraftGeneratedLast?: number;
 }
 
 export interface VramFitResult {

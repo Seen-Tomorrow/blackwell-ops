@@ -36,9 +36,11 @@ interface VramBadgeProps {
   modelName?: string;
   modelQuant?: string;
   providerName?: string;
+  providerBuildVersion?: string;
   profileLabel?: string;
   cudaVersion?: string;
   launchConfig?: FusionShareLaunchConfig;
+  hwTopo?: string;
 }
 
 /** Pure skeleton renderer — reads all text, visibility, and colors from scenario's uiTemplate.
@@ -47,7 +49,7 @@ export default function VramBadge({
   manifest, gpus, modelMeta, selectedGpuIndices, onDeviceSelect, isValidating, onValidate,
   isModelRunning, activeEngineAlias, activeEnginePort, selectedSlotIdx, supportsFusion = true, engineStatus,
   gpuMask = "", vramTargetMib, modelLayerTotal, gpuLoadTargetsMib, offloadMode, onMoeSuggestionClick, hideValidate = false, hideMoeBadge = false, className,
-  modelName, modelQuant, providerName, profileLabel, cudaVersion, launchConfig,
+  modelName, modelQuant, providerName, providerBuildVersion, profileLabel, cudaVersion, launchConfig, hwTopo,
 }: VramBadgeProps) {
   const { getEngine } = useFusionData();
   const fusion = selectedSlotIdx !== null && selectedSlotIdx !== undefined ? getEngine(selectedSlotIdx) : null;
@@ -112,9 +114,11 @@ export default function VramBadge({
             modelName={modelName}
             modelQuant={modelQuant}
             providerName={providerName}
+            providerBuildVersion={providerBuildVersion}
             profileLabel={profileLabel}
             cudaVersion={cudaVersion}
             launchConfig={launchConfig}
+            hwTopo={hwTopo}
           />
         </div>
       )}

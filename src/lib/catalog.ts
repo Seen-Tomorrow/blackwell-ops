@@ -17,6 +17,58 @@ export interface RawCatalogEntry {
   env_var?: string;
 }
 
+function isScalarValue(v: unknown): v is string | number {
+  return typeof v === "string" || typeof v === "number";
+}
+
+/** Coerce a catalog default_value (incl. boolean false) into a param value. */
+export function coerceCatalogDefault(entry: RawCatalogEntry): string | number | undefined {
+  const dv = entry.default_value;
+  if (dv === null || dv === undefined) return undefined;
+  if (typeof dv === "boolean") {
+    if (entry.ptype === "switch_onoff") return dv ? "on" : "off";
+    return dv ? 1 : 0;
+  }
+  if (isScalarValue(dv)) return dv;
+  return undefined;
+}
+
+/** Collect display values from catalog entry: discrete values → presets → engine default as first entry. */
+export function collectCatalogValues(entry: RawCatalogEntry): (string | number)[] {
+  const raw: (string | number)[] = [];
+  const pushUnique = (v: string | number) => {
+    if (!raw.some((x) => String(x) === String(v))) raw.push(v);
+  };
+
+  if (entry.values && entry.values.length > 0) {
+    for (const v of entry.values) {
+      if (isScalarValue(v)) pushUnique(v);
+    }
+  } else if (entry.presets && entry.presets.length > 0) {
+    for (const v of entry.presets) {
+      if (isScalarValue(v)) pushUnique(v);
+    }
+  }
+
+  if (entry.ptype === "switch_onoff" || entry.ptype === "switch_inverted") {
+    if (entry.ptype === "switch_onoff") {
+      if (!raw.includes("on")) pushUnique("on");
+      if (!raw.includes("off")) pushUnique("off");
+    } else {
+      if (!raw.includes(1)) pushUnique(1);
+      if (!raw.includes(0)) pushUnique(0);
+    }
+  }
+
+  const defaultValue = coerceCatalogDefault(entry);
+  if (defaultValue !== undefined) {
+    const without = raw.filter((v) => String(v) !== String(defaultValue));
+    return [defaultValue, ...without];
+  }
+
+  return raw;
+}
+
 /**
  * Normalize a raw catalog entry into a UserEditedTemplateParam ready for addition.
  * Assigns "USER-ADDED-FROM-CATALOG" ui_group.
@@ -24,26 +76,10 @@ export interface RawCatalogEntry {
 export function catalogEntryToParam(
   entry: RawCatalogEntry,
   existingParams: UserEditedTemplateParam[],
-  maxOrder: number,
+  _maxOrder: number,
 ): Omit<UserEditedTemplateParam, "order"> {
-  // Use values from catalog entry
-  let values: (string | number)[] = [];
-  if (entry.values && entry.values.length > 0) {
-    values = entry.values.filter((v): v is string | number => typeof v === "string" || typeof v === "number");
-  }
-
-  // For switch types, ensure true/false are present as strings
-  if (entry.ptype === "switch_onoff" || entry.ptype === "switch_inverted") {
-    if (!values.includes("on")) values.push("on");
-    if (!values.includes("off")) values.push("off");
-  }
-
-  // Use first value as default, or default_value from catalog
-  const defaultValue = entry.default_value
-    ? (typeof entry.default_value === "string" || typeof entry.default_value === "number"
-      ? entry.default_value
-      : undefined)
-    : (values.length > 0 ? values[0] : undefined);
+  const values = collectCatalogValues(entry);
+  const defaultValue = coerceCatalogDefault(entry) ?? (values.length > 0 ? values[0] : undefined);
 
   // Check if key already exists — if so, we skip addition
   const exists = existingParams.some((p) => p.key === entry.key);

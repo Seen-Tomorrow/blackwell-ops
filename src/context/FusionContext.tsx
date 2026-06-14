@@ -38,11 +38,16 @@ function fusionPayloadEqual(a: FusionUpdate, b: FusionUpdate): boolean {
     && a.ctxFillPct === b.ctxFillPct
     && a.requestElapsedMs === b.requestElapsedMs
     && (a.ttftMs ?? null) === (b.ttftMs ?? null)
+    && (a.prefillMs ?? null) === (b.prefillMs ?? null)
+    && (a.decodeTtftMs ?? null) === (b.decodeTtftMs ?? null)
     && (a.logPrefillProgress ?? 0) === (b.logPrefillProgress ?? 0)
     && (a.logPrefillTps ?? 0) === (b.logPrefillTps ?? 0)
     && (a.logPromptTokens ?? 0) === (b.logPromptTokens ?? 0)
     && (a.logGenTps ?? 0) === (b.logGenTps ?? 0)
     && a.logPhase === b.logPhase
+    && (a.specDraftAcceptRate ?? 0) === (b.specDraftAcceptRate ?? 0)
+    && (a.specDraftAccepted ?? 0) === (b.specDraftAccepted ?? 0)
+    && (a.specDraftGenerated ?? 0) === (b.specDraftGenerated ?? 0)
     && a.slotCtx.length === b.slotCtx.length
     && a.slotCtx.every((s, i) => {
       const t = b.slotCtx[i];

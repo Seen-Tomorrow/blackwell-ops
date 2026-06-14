@@ -13,6 +13,7 @@ static RE_NEW_PROMPT: OnceLock<regex::Regex> = OnceLock::new();
 static RE_SAMPLER_INIT: OnceLock<regex::Regex> = OnceLock::new();
 static RE_PRINT_TIMING_PP: OnceLock<regex::Regex> = OnceLock::new();
 static RE_PRINT_TIMING_GEN: OnceLock<regex::Regex> = OnceLock::new();
+static RE_DRAFT_ACCEPTANCE: OnceLock<regex::Regex> = OnceLock::new();
 
 static RE_STOP_PROCESSING: OnceLock<regex::Regex> = OnceLock::new();
 static RE_CACHED_PROMPT: OnceLock<regex::Regex> = OnceLock::new();
@@ -51,6 +52,16 @@ fn re_print_timing_gen() -> &'static regex::Regex {
     RE_PRINT_TIMING_GEN.get_or_init(|| {
         regex::Regex::new(
             r"slot print_timing:\s+id\s+(\d+)\s*\|\s*task\s*(-?\d+)\s*\|\s*n_decoded\s*=\s*(\d+),\s*tg\s*=\s*([\d.]+)\s*t/s",
+        )
+        .unwrap()
+    })
+}
+
+fn re_draft_acceptance() -> &'static regex::Regex {
+    RE_DRAFT_ACCEPTANCE.get_or_init(|| {
+        // slot print_timing: id 0 | task 718 | draft acceptance = 0.91729 ( 244 accepted / 266 generated)
+        regex::Regex::new(
+            r"slot print_timing:\s+id\s+(\d+)\s*\|\s*task\s*(-?\d+)\s*\|\s*draft acceptance\s*=\s*([\d.]+)\s*\(\s*(\d+)\s+accepted\s*/\s*(\d+)\s+generated\s*\)",
         )
         .unwrap()
     })
@@ -120,6 +131,14 @@ pub enum LogEvent {
         n_decoded: usize,
         gen_tps: f64,
     },
+    /// MTP / speculative draft acceptance summary at end of a request (`print_timing` block).
+    DraftAcceptance {
+        slot_id: usize,
+        task_id: i64,
+        accept_rate: f64,
+        accepted: usize,
+        generated: usize,
+    },
     StopProcessing {
         slot_id: usize,
         task_id: i64,
@@ -146,8 +165,19 @@ pub enum LogEvent {
 
 // ── Pure parser function — no side effects, no I/O, no global state ──
 
+/// Strip llama.cpp log prefix (`0.33.442.579 I slot …`) so regexes match engine stderr.
+fn line_for_fusion_parse(line: &str) -> &str {
+    if let Some(idx) = line.find("slot ") {
+        &line[idx..]
+    } else {
+        line
+    }
+}
+
 /// Parse a single log line. Returns first matching event or None.
 pub fn parse_line(line: &str) -> Option<LogEvent> {
+    let line = line_for_fusion_parse(line);
+
     // New prompt detection
     if let Some(caps) = re_new_prompt().captures(line) {
         if let (Ok(slot_id), Ok(task_id), Ok(prompt_tokens)) = (
@@ -193,6 +223,25 @@ pub fn parse_line(line: &str) -> Option<LogEvent> {
                 progress,
                 elapsed_s,
                 pp_tps,
+            });
+        }
+    }
+
+    // MTP draft acceptance — end-of-request summary (spec decoding)
+    if let Some(caps) = re_draft_acceptance().captures(line) {
+        if let (Ok(slot_id), Ok(task_id), Ok(accept_rate), Ok(accepted), Ok(generated)) = (
+            caps.get(1)?.as_str().parse::<usize>(),
+            caps.get(2)?.as_str().parse::<i64>(),
+            caps.get(3)?.as_str().parse::<f64>(),
+            caps.get(4)?.as_str().parse::<usize>(),
+            caps.get(5)?.as_str().parse::<usize>(),
+        ) {
+            return Some(LogEvent::DraftAcceptance {
+                slot_id,
+                task_id,
+                accept_rate,
+                accepted,
+                generated,
             });
         }
     }
@@ -263,4 +312,31 @@ pub fn parse_line(line: &str) -> Option<LogEvent> {
     }
 
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_draft_acceptance_line() {
+        let line = "0.33.442.579 I slot print_timing: id 0 | task 718 | draft acceptance = 0.91729 ( 244 accepted / 266 generated)";
+        let ev = parse_line(line).expect("draft acceptance");
+        match ev {
+            LogEvent::DraftAcceptance {
+                slot_id,
+                task_id,
+                accept_rate,
+                accepted,
+                generated,
+            } => {
+                assert_eq!(slot_id, 0);
+                assert_eq!(task_id, 718);
+                assert!((accept_rate - 0.91729).abs() < 0.00001);
+                assert_eq!(accepted, 244);
+                assert_eq!(generated, 266);
+            }
+            other => panic!("unexpected event: {:?}", other),
+        }
+    }
 }

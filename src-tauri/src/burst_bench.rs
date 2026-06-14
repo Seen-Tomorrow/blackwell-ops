@@ -41,16 +41,21 @@ pub async fn cmd_burst_bench(
     port: u16,
     n_predict: usize,
     bench_prompt_mode: String,
+    tg_warmup_enabled: bool,
 ) -> Result<BenchResult, String> {
     let cancel = bench_cancel::begin(port);
     let _guard = BenchPortGuard(port);
     let url = format!("http://127.0.0.1:{}/completion", port);
     let client = reqwest::Client::new();
 
-    const WARMUP_RUNS: usize = 1;
-    const MEASURED_RUNS: usize = 1;
-    const TOTAL_RUNS: usize = WARMUP_RUNS + MEASURED_RUNS;
     const WARMUP_TOKENS: usize = 512;
+    // Long measured runs self-warm the GPU; optional 512-tok warmup only when n_predict ≤ 512.
+    let warmup_runs = if tg_warmup_enabled && n_predict <= WARMUP_TOKENS {
+        1
+    } else {
+        0
+    };
+    let total_runs = warmup_runs + 1;
 
     struct RunStats {
         prompt_tps: f64,
@@ -72,7 +77,7 @@ pub async fn cmd_burst_bench(
 
     let mut measured_run: Option<RunStats> = None;
 
-    for run in 0..TOTAL_RUNS {
+    for run in 0..total_runs {
         if bench_cancel::is_cancelled(&cancel) {
             return Ok(BenchResult {
                 prompt_tokens: 0,
@@ -85,16 +90,17 @@ pub async fn cmd_burst_bench(
             });
         }
 
-        // Signal phase to frontend so UI can show WARMUP vs MEASURED
-        let phase = if run < WARMUP_RUNS { "warmup" } else { "measured" };
-        let effective_length = if run < WARMUP_RUNS { WARMUP_TOKENS } else { n_predict };
+        let is_warmup = run < warmup_runs;
+        let phase = if is_warmup { "warmup" } else { "measured" };
+        let effective_length = if is_warmup { WARMUP_TOKENS } else { n_predict };
         crate::fusion_brain::reset_bench_meters_for_port(port);
         let _ = app_handle.emit("bench-tg-progress", serde_json::json!({
             "port": port,
             "phase": phase,
             "run": run + 1,
-            "total": TOTAL_RUNS,
-            "effectiveLength": effective_length,  // for accurate UI labels (no hardcodes)
+            "total": total_runs,
+            "effectiveLength": effective_length,
+            "warmupSkipped": warmup_runs == 0,
         }));
 
         let bench_prompt_text = if bench_prompt_mode == "repetitive" {
@@ -131,7 +137,7 @@ pub async fn cmd_burst_bench(
                 log::info!("[BENCH_TG] run {} | mode={} | prefill: {:.1} TPS | gen: {:.1} TPS | p_tok={} g_tok={}",
                     run + 1, bench_prompt_mode, prompt_tps, gen_tps, p_tokens, g_tokens);
 
-                if run >= WARMUP_RUNS {
+                if !is_warmup {
                     measured_run = Some(RunStats {
                         prompt_tps,
                         gen_tps,
@@ -154,7 +160,7 @@ pub async fn cmd_burst_bench(
             Err(e) => return Err(e),
         }
 
-        if run < WARMUP_RUNS {
+        if is_warmup {
             // Re-release all slots *after* warmup (before measured) so the measured run starts with completely cold
             // prompt/KV cache. This prevents the unique long prompt from being treated as "cached from previous run"
             // (warmup), which was causing measured to "generate 21 tokens and end" instead of full n_predict.
