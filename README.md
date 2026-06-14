@@ -15,7 +15,7 @@ You do **not** need Linux to run serious LLM workloads on your own hardware. Tha
 
 ## What it is
 
-Blackwell Ops is a **single native Windows app** that orchestrates `llama-server` engines, model libraries, VRAM fit scanning, foundry builds, and live telemetry — without Docker, without WSL gymnastics, without handing your stack to a cloud.
+Blackwell Ops is a **single native Windows app** that orchestrates `llama-server` engines (more will follow), model libraries, VRAM fit scanning, foundry builds, and live telemetry — without Docker, without WSL gymnastics, without handing your stack to a cloud.
 
 Drop the installer (or portable tree) anywhere. The app recreates its ecosystem around itself: configs, runtime engines, foundry artifacts, and user preferences — all relative to the install directory.
 
@@ -28,8 +28,8 @@ Drop the installer (or portable tree) anywhere. The app recreates its ecosystem 
 | | |
 |---|---|
 | **Core binary** | ~12 MB Rust executable |
-| **Typical RAM (app shell)** | ~38 MB running — about half what Windows Notepad wants for itself |
-| **Engine slots (factory)** | Up to **64** concurrent instance configs (GGML master) |
+| **Typical RAM (app shell)** | ~38 MB running — about half what Windows Notepad needs |
+| **Engine slots (factory)** | Up to **64** concurrent instances (GGML master) |
 | **Stress-tested** | **64** engine instances orchestrated with **~400 MB** total app RAM overhead |
 | **Build investment** | ~**2,000 hours** across ~4 months |
 | **GPU targets** | **AMPERE · ADA · BLACKWELL** (`SM86 / SM89 / SM120`) |
@@ -42,7 +42,7 @@ Drop the installer (or portable tree) anywhere. The app recreates its ecosystem 
 
 - **Native Win32/Tauri shell** — no Electron bloat, no Linux subsystem tax  
 - **Foundry** — build `llama-server` from source on your machine (VS2022 / VS2026 + CUDA 12.8–13.3)  
-- **Portable path model** — clone the folder, it still works  
+- **Portable path model** — clone/move the folder, it still works, even from a flash drive.
 - **Full config freedom** — factory templates merge with your overrides; nothing hidden behind a SaaS panel  
 - **Low idle cost** — run many engine *slots* without many heavy processes until you launch  
 
@@ -105,21 +105,6 @@ First-run onboarding walks the rest.
 - **NVIDIA GPU** recommended (CUDA builds bundled)  
 - **GGUF models** — not included; you bring your own weights  
 - Optional: **Visual Studio Build Tools + CUDA** if you Foundry-build engines locally  
-
----
-
-## Development
-
-```powershell
-npm install
-npm run dev          # Tauri dev + hot reload
-npm run release      # mirror artifacts → NSIS installer
-```
-
-Foundry artifacts land under `src-tauri/target/debug/foundry/artifacts/`.  
-Release prep mirrors into `runtime/` and bundles a trimmed `runtime-bundle/` for the installer.
-
-See `Agents.md` for architecture notes and `scripts/majestic/` for the private release robot (optional).
 
 ---
 
