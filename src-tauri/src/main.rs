@@ -266,16 +266,6 @@ async fn emit_to_blackwell_console(
 }
 
 #[tauri::command]
-async fn open_blackwell_output_window(app: tauri::AppHandle) -> Result<(), String> {
-    // This will eventually create a real separate Tauri window for the Output Console.
-    // For now this is a placeholder that the frontend can call.
-    // Full implementation will use WebviewWindowBuilder with a dedicated label.
-    // Placeholder — will create a real WebviewWindow when frontend routing is ready.
-    // TODO: Create real WebviewWindow here when frontend routing for it is ready.
-    Ok(())
-}
-
-#[tauri::command]
 async fn get_disk_usage(
     config: tauri::State<'_, Arc<std::sync::Mutex<config::AppConfig>>>,
 ) -> Result<Vec<crate::types::PathDiskUsage>, String> {
@@ -592,7 +582,6 @@ async fn main() {
             get_blackwell_output_console_latest_line,
             clear_blackwell_output_console_category,
             clear_all_blackwell_output_console_buffers,
-            open_blackwell_output_window,
             emit_to_blackwell_console,
             // Download manager commands
             start_download,

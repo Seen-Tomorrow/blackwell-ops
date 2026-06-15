@@ -84,8 +84,8 @@ export function useKeyboardNav({ modelCount, onSelectModel, onLaunch }: UseKeybo
   }, [zone]);
 
   useEffect(() => {
-    const el = document.querySelector(`[data-highlight="${highlightIndex}"]`);
-    el?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    const els = document.querySelectorAll("#model-table-container [data-model-path]");
+    els[highlightIndex]?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }, [highlightIndex]);
 
   useEffect(() => {

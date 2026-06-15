@@ -64,8 +64,30 @@ fn resolve_template_type(provider_id: &str) -> &'static str {
 
 // ── PID Tracking ─────────────────────────────────────────────────────
 
+fn with_child_pids<F, R>(f: F) -> Option<R>
+where
+    F: FnOnce(&mut Vec<u32>) -> R,
+{
+    match CHILD_PIDS.lock() {
+        Ok(mut guard) => Some(f(&mut *guard)),
+        Err(e) => {
+            log::error!("[foundry] child PID registry poisoned: {e}");
+            None
+        }
+    }
+}
+
+fn try_lock_log_buf(buf: &std::sync::Mutex<Vec<String>>) -> Option<std::sync::MutexGuard<'_, Vec<String>>> {
+    buf.lock()
+        .map_err(|e| {
+            log::error!("[foundry] log buffer mutex poisoned: {e}");
+            e
+        })
+        .ok()
+}
+
 fn track_pid(pid: u32) {
-    CHILD_PIDS.lock().unwrap().push(pid);
+    with_child_pids(|pids| pids.push(pid));
 }
 
 /// Kill any in-flight Foundry child processes (cmake, ninja, git, etc.).
@@ -74,10 +96,7 @@ pub fn foundry_kill_all_children() {
 }
 
 fn kill_all_children() {
-    let pids = {
-        let mut guard = CHILD_PIDS.lock().unwrap();
-        std::mem::take(&mut *guard)
-    };
+    let pids = with_child_pids(|pids| std::mem::take(pids)).unwrap_or_default();
     for pid in pids {
         let _ = std::process::Command::new("taskkill")
             .args(&["/T", "/F", "/PID", &pid.to_string()])
@@ -87,7 +106,7 @@ fn kill_all_children() {
 }
 
 fn clear_pids() {
-    CHILD_PIDS.lock().unwrap().clear();
+    let _ = with_child_pids(|pids| pids.clear());
 }
 
 // ── Foundry Directory Helpers ───────────────────────────────────────
@@ -139,6 +158,16 @@ static BUILD_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU6
 
 static CURRENT_BUILD: std::sync::LazyLock<TokioMutex<Option<BuildState>>> =
     std::sync::LazyLock::new(|| TokioMutex::new(None));
+
+async fn snapshot_build_state() -> Option<BuildState> {
+    CURRENT_BUILD.lock().await.as_ref().cloned()
+}
+
+async fn require_build_state(context: &str) -> Result<BuildState, String> {
+    snapshot_build_state()
+        .await
+        .ok_or_else(|| format!("Foundry build state missing ({context})"))
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BuildProgress {
@@ -225,8 +254,20 @@ async fn stream_child_output(
     app_handle: &tauri::AppHandle,
     state: &BuildState,
 ) -> (Option<std::process::ExitStatus>, Vec<String>) {
-    let stdout = child.stdout.take().expect("Failed to capture stdout");
-    let stderr = child.stderr.take().expect("Failed to capture stderr");
+    let stdout = match child.stdout.take() {
+        Some(s) => s,
+        None => {
+            log::error!("[foundry] failed to capture child stdout");
+            return (None, Vec::new());
+        }
+    };
+    let stderr = match child.stderr.take() {
+        Some(s) => s,
+        None => {
+            log::error!("[foundry] failed to capture child stderr");
+            return (None, Vec::new());
+        }
+    };
 
     let stderr_capture: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
     let stderr_clone = stderr_capture.clone();
@@ -248,9 +289,11 @@ async fn stream_child_output(
         loop {
             if flush_done_inner.load(Ordering::SeqCst) { break };
             interval.tick().await;
-            let batch = log_buffer_flush.lock().unwrap().drain(..).collect::<Vec<String>>();
-            if !batch.is_empty() {
-                emit_build_batch(&app_handle_flush, &state_flush, batch);
+            if let Some(mut buf) = try_lock_log_buf(&log_buffer_flush) {
+                let batch = buf.drain(..).collect::<Vec<String>>();
+                if !batch.is_empty() {
+                    emit_build_batch(&app_handle_flush, &state_flush, batch);
+                }
             }
         }
     });
@@ -262,7 +305,9 @@ async fn stream_child_output(
         let mut stdout_lines = stdout_reader.lines();
         while let Ok(Some(line)) = stdout_lines.next_line().await {
             if !line.trim().is_empty() {
-                log_buffer.lock().unwrap().push(line);
+                if let Some(mut buf) = try_lock_log_buf(&log_buffer) {
+                    buf.push(line);
+                }
             }
         }
 
@@ -270,13 +315,19 @@ async fn stream_child_output(
         let mut stderr_lines = stderr_reader.lines();
         while let Ok(Some(line)) = stderr_lines.next_line().await {
             if !line.trim().is_empty() {
-                log_buffer.lock().unwrap().push(format!("[ERR] {}", line));
-                stderr_clone2.lock().unwrap().push(line);
+                if let Some(mut buf) = try_lock_log_buf(&log_buffer) {
+                    buf.push(format!("[ERR] {}", line));
+                }
+                if let Some(mut err_buf) = try_lock_log_buf(&stderr_clone2) {
+                    err_buf.push(line);
+                }
             }
         }
-        let batch = log_buffer.lock().unwrap().drain(..).collect::<Vec<String>>();
-        if !batch.is_empty() {
-            emit_build_batch(&app_handle_clone, &state_clone, batch);
+        if let Some(mut buf) = try_lock_log_buf(&log_buffer) {
+            let batch = buf.drain(..).collect::<Vec<String>>();
+            if !batch.is_empty() {
+                emit_build_batch(&app_handle_clone, &state_clone, batch);
+            }
         }
     });
 
@@ -297,7 +348,9 @@ async fn stream_child_output(
     let stderr_text = if status.is_none() {
         Vec::new()
     } else {
-        stderr_capture.lock().unwrap().drain(..).collect::<Vec<String>>()
+        try_lock_log_buf(&stderr_capture)
+            .map(|mut buf| buf.drain(..).collect::<Vec<String>>())
+            .unwrap_or_default()
     };
 
     (status, stderr_text)
@@ -358,8 +411,8 @@ fn parse_github_pr(url: &str) -> Option<(String, String)> {
         let pr_num = after.split('/').next().unwrap_or(after).trim().to_string();
         if let Some(re) = regex::Regex::new(r"(?:https?://)?github\.com/([^/]+)/([^/?#]+)").ok() {
             if let Some(caps) = re.captures(before) {
-                let owner = caps.get(1).unwrap().as_str().to_string();
-                let repo = caps.get(2).unwrap().as_str().to_string();
+                let owner = caps.get(1)?.as_str();
+                let repo = caps.get(2)?.as_str();
                 return Some((format!("{}/{}", owner, repo), pr_num));
             }
         }
@@ -480,10 +533,7 @@ pub async fn foundry_build(
         BlackwellOutputConsoleLineStyle::Highlight,
     );
 
-    let state = {
-        let current = CURRENT_BUILD.lock().await;
-        current.as_ref().cloned().expect("build state reserved above")
-    };
+    let state = require_build_state("build start").await?;
 
     emit_build_event(app_handle, &state, None);
 
@@ -522,13 +572,12 @@ pub async fn foundry_build(
 
     let _stopped_count = if running_for_profile.is_empty() {
         // Fast path — nothing to stop for this profile
-        emit_build_event(app_handle, &{
-            let c = CURRENT_BUILD.lock().await;
-            c.as_ref().cloned().unwrap()
-        }, Some(format!(
-            "No running engines for '{}' profile '{}' — proceeding directly to build.",
-            provider_id, profile_id
-        )));
+        if let Some(s) = snapshot_build_state().await {
+            emit_build_event(app_handle, &s, Some(format!(
+                "No running engines for '{}' profile '{}' — proceeding directly to build.",
+                provider_id, profile_id
+            )));
+        }
         0
     } else {
         let stopped: Vec<usize> = EngineStack::stop_slots_by_provider_and_profile_parallel(
@@ -601,13 +650,16 @@ pub async fn foundry_build(
             let _ = tokio::fs::remove_dir_all(&src_dir).await;
         }
 
+        let clone_parent = engine_root.parent().ok_or_else(|| {
+            format!("Invalid engine root (no parent): {}", engine_root.display())
+        })?;
         let clone_output = tokio::process::Command::new("git")
             .args(["clone", "--depth", "1", "--recursive"])
             .arg(&*git_url)
             .arg("-b")
             .arg(branch)
             .arg(&src_dir)
-            .current_dir(engine_root.parent().unwrap())
+            .current_dir(clone_parent)
             .creation_flags(0x08000000)
             .output()
             .await
@@ -692,11 +744,12 @@ pub async fn foundry_build(
                         if patch.trim().is_empty() {
                             emit_config_event(app_handle, &provider_id, &profile_id, build_id,
                                 Some(format!("[PR] #{} already applied — no changes needed", pr_num)));
-                        } else {
-                            let patch_path = src_dir.parent().unwrap().join("pr-patch.diff");
+                        } else if let Some(patch_parent) = src_dir.parent() {
+                            let patch_path = patch_parent.join("pr-patch.diff");
                             if let Ok(()) = tokio::fs::write(&patch_path, &patch).await {
+                                if let Some(patch_path_str) = patch_path.to_str() {
                                 let mut apply_output = tokio::process::Command::new("git")
-                                    .args(["apply", "--whitespace=nowarn", patch_path.to_str().unwrap()])
+                                    .args(["apply", "--whitespace=nowarn", patch_path_str])
                                     .current_dir(&src_dir)
                                     .creation_flags(0x08000000)
                                     .output()
@@ -704,7 +757,7 @@ pub async fn foundry_build(
 
                                 if apply_output.as_ref().map_or(true, |o| !o.status.success()) {
                                     apply_output = tokio::process::Command::new("git")
-                                        .args(["apply", "--3way", "--whitespace=nowarn", patch_path.to_str().unwrap()])
+                                        .args(["apply", "--3way", "--whitespace=nowarn", patch_path_str])
                                         .current_dir(&src_dir)
                                         .creation_flags(0x08000000)
                                         .output()
@@ -743,10 +796,17 @@ pub async fn foundry_build(
                                             Some(format!("[WARN] PR #{} apply failed: {} — continuing build", pr_num, stderr)));
                                     }
                                 }
+                                } else {
+                                    emit_config_event(app_handle, &provider_id, &profile_id, build_id,
+                                        Some("[WARN] Patch path is not valid UTF-8 — skipping PR apply".into()));
+                                }
                             } else {
                                 emit_config_event(app_handle, &provider_id, &profile_id, build_id,
                                     Some(format!("[WARN] PR #{} could not write patch file — continuing build", pr_num)));
                             }
+                        } else {
+                            emit_config_event(app_handle, &provider_id, &profile_id, build_id,
+                                Some("[WARN] Cannot resolve patch path — skipping PR apply".into()));
                         }
                     }
                 }
@@ -890,10 +950,7 @@ pub async fn foundry_build(
     let stderr_capture_clone = stderr_capture.clone();
 
     let app_handle_cfg = app_handle.clone();
-    let state_cfg = {
-        let c = CURRENT_BUILD.lock().await;
-        c.as_ref().cloned().unwrap()
-    };
+    let state_cfg = require_build_state("cmake configure").await?;
 
     let log_buffer: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
     let log_buffer_flush = log_buffer.clone();
@@ -909,9 +966,11 @@ pub async fn foundry_build(
         loop {
             if flush_done_inner.load(Ordering::SeqCst) { break };
             interval.tick().await;
-            let batch = log_buffer_flush.lock().unwrap().drain(..).collect::<Vec<String>>();
-            if !batch.is_empty() {
-                emit_build_batch(&app_handle_flush, &state_flush, batch);
+            if let Some(mut buf) = try_lock_log_buf(&log_buffer_flush) {
+                let batch = buf.drain(..).collect::<Vec<String>>();
+                if !batch.is_empty() {
+                    emit_build_batch(&app_handle_flush, &state_flush, batch);
+                }
             }
         }
     });
@@ -926,7 +985,9 @@ pub async fn foundry_build(
         let mut stdout_lines = stdout_reader.lines();
         while let Ok(Some(line)) = stdout_lines.next_line().await {
             if !line.trim().is_empty() {
-                log_buffer.lock().unwrap().push(line);
+                if let Some(mut buf) = try_lock_log_buf(&log_buffer) {
+                    buf.push(line);
+                }
             }
         }
 
@@ -934,13 +995,19 @@ pub async fn foundry_build(
         let mut stderr_lines = stderr_reader.lines();
         while let Ok(Some(line)) = stderr_lines.next_line().await {
             if !line.trim().is_empty() {
-                log_buffer.lock().unwrap().push(format!("[ERR] {}", line));
-                stderr_capture_clone2.lock().unwrap().push(line);
+                if let Some(mut buf) = try_lock_log_buf(&log_buffer) {
+                    buf.push(format!("[ERR] {}", line));
+                }
+                if let Some(mut err_buf) = try_lock_log_buf(&stderr_capture_clone2) {
+                    err_buf.push(line);
+                }
             }
         }
-        let batch = log_buffer.lock().unwrap().drain(..).collect::<Vec<String>>();
-        if !batch.is_empty() {
-            emit_build_batch(&app_handle_cfg, &state_cfg, batch);
+        if let Some(mut buf) = try_lock_log_buf(&log_buffer) {
+            let batch = buf.drain(..).collect::<Vec<String>>();
+            if !batch.is_empty() {
+                emit_build_batch(&app_handle_cfg, &state_cfg, batch);
+            }
         }
     });
 
@@ -960,19 +1027,19 @@ pub async fn foundry_build(
     flush_done.store(true, Ordering::SeqCst);
     stream_handle.await.ok();
 
-    if cfg_status.is_none() {
+    let Some(cfg_status) = cfg_status else {
         clear_pids();
         let _ = tokio::fs::remove_file(&cfg_batch_path).await;
         clear_build_slot_if_matches(build_id, &provider_id, &*app).await;
         return Err("CMake configure process terminated unexpectedly.".to_string());
-    }
-
-    let cfg_status = cfg_status.unwrap();
+    };
 
     let _ = tokio::fs::remove_file(&cfg_batch_path).await;
 
     if !cfg_status.success() {
-        let stderr_text: String = stderr_capture.lock().unwrap().join("\n");
+        let stderr_text: String = try_lock_log_buf(&stderr_capture)
+            .map(|buf| buf.join("\n"))
+            .unwrap_or_default();
         rollback_build(app_handle, &provider_id, &profile_id, build_id, &src_dir, &cmake_build_output_dir)
             .with_message(if stderr_text.is_empty() { "CMake configure failed.".into() } else { format!("CMake configure failed:\n{}", stderr_text) })
             .execute().await;
@@ -1003,13 +1070,12 @@ pub async fn foundry_build(
             s.phase = BuildPhase::WaitingForConfirm;
         }
     }
-    emit_build_event(app_handle, &{
-        let c = CURRENT_BUILD.lock().await;
-        c.as_ref().cloned().unwrap()
-    }, Some(format!(
-        "[WAIT-CONFIRM] CMake configure complete. {} targets detected.\nReview the log above — click PROCEED to start compilation (may take 10+ minutes).",
-        if cmake_extra.is_empty() { "Default" } else { "Custom" }
-    )));
+    if let Some(state) = snapshot_build_state().await {
+        emit_build_event(app_handle, &state, Some(format!(
+            "[WAIT-CONFIRM] CMake configure complete. {} targets detected.\nReview the log above — click PROCEED to start compilation (may take 10+ minutes).",
+            if cmake_extra.is_empty() { "Default" } else { "Custom" }
+        )));
+    }
 
     let timeout_dur = std::time::Duration::from_secs(600);
     let start = std::time::Instant::now();
@@ -1045,10 +1111,9 @@ pub async fn foundry_build(
             if let Some(ref mut s) = *current {
                 s.phase = BuildPhase::Failed("Build cancelled: no confirmation within 10 minutes.".into());
             }
-            emit_build_event(app_handle, &{
-                let c = CURRENT_BUILD.lock().await;
-                c.as_ref().cloned().unwrap()
-            }, None);
+            if let Some(state) = snapshot_build_state().await {
+                emit_build_event(app_handle, &state, None);
+            }
             *CURRENT_BUILD.lock().await = None;
             return Err("Build cancelled: user did not confirm.".to_string());
         }
@@ -1065,12 +1130,11 @@ pub async fn foundry_build(
 
     // ── PHASE 2: CMake Build (after user approval) ───────────────────
 
-    emit_build_event(app_handle, &{
-        let c = CURRENT_BUILD.lock().await;
-        c.as_ref().cloned().unwrap()
-    }, Some(format!(
-        "[BUILD] Starting compilation with {} cores...", num_cpus
-    )));
+    if let Some(state) = snapshot_build_state().await {
+        emit_build_event(app_handle, &state, Some(format!(
+            "[BUILD] Starting compilation with {} cores...", num_cpus
+        )));
+    }
 
     let nvcc_bin = profile.cuda_root.join("bin").to_string_lossy().to_string();
     let versioned_var = profile.cuda_path_var();
@@ -1105,10 +1169,7 @@ pub async fn foundry_build(
         track_pid(pid);
     }
 
-    let state_for_stream = {
-        let c = CURRENT_BUILD.lock().await;
-        c.as_ref().cloned().unwrap()
-    };
+    let state_for_stream = require_build_state("compilation").await?;
 
     let (build_status, stderr_text) = stream_child_output(
         child2,
@@ -1116,17 +1177,15 @@ pub async fn foundry_build(
         &state_for_stream,
     ).await;
 
-    if build_status.is_none() {
-        clear_pids();
-        let _ = tokio::fs::remove_file(&build_batch_path).await;
-        do_rollback(&cmake_build_output_dir).await;
-        // work/ (incl. build_dir) nuked on exit
-        return Err("Build cancelled by user.".to_string());
-    }
-
     let _ = tokio::fs::remove_file(&build_batch_path).await;
 
-    if !build_status.unwrap().success() {
+    let Some(build_status) = build_status else {
+        clear_pids();
+        do_rollback(&cmake_build_output_dir).await;
+        return Err("Build cancelled by user.".to_string());
+    };
+
+    if !build_status.success() {
         let stderr_text: String = stderr_text.join("\n");
         rollback_build(app_handle, &provider_id, &profile_id, build_id, &src_dir, &cmake_build_output_dir)
             .with_message(if stderr_text.is_empty() { "Build failed.".into() } else { format!("Build failed:\n{}", stderr_text) })
@@ -1153,10 +1212,9 @@ pub async fn foundry_build(
             s.phase = BuildPhase::Validating;
         }
     }
-    emit_build_event(app_handle, &{
-        let c = CURRENT_BUILD.lock().await;
-        c.as_ref().cloned().unwrap()
-    }, Some("[STAGE 3/3] VALIDATE — Checking core binaries...".into()));
+    if let Some(state) = snapshot_build_state().await {
+        emit_build_event(app_handle, &state, Some("[STAGE 3/3] VALIDATE — Checking core binaries...".into()));
+    }
 
     let core_binaries = ["llama-server.exe", "llama-cli.exe", "llama-quantize.exe"];
 
@@ -1226,10 +1284,9 @@ pub async fn foundry_build(
             s.phase = BuildPhase::Complete;
         }
     }
-    emit_build_event(app_handle, &{
-        let c = CURRENT_BUILD.lock().await;
-        c.as_ref().cloned().unwrap()
-    }, Some("Build successful. Capturing version info...".into()));
+    if let Some(state) = snapshot_build_state().await {
+        emit_build_event(app_handle, &state, Some("Build successful. Capturing version info...".into()));
+    }
 
     // Publish sacred artifacts (copy from disposable work tree into artifacts/<id>/<env>/Release)
     // This is the ONLY place the sacred tree is written during a normal build.
@@ -1276,10 +1333,9 @@ pub async fn foundry_build(
         }
     }
 
-    emit_build_event(app_handle, &{
-        let c = CURRENT_BUILD.lock().await;
-        c.as_ref().cloned().unwrap()
-    }, Some("Foundry build complete.".into()));
+    if let Some(state) = snapshot_build_state().await {
+        emit_build_event(app_handle, &state, Some("Foundry build complete.".into()));
+    }
 
     // Feed final success message into the Blackwell Output Console
     app.blackwell_output_console_manager.emit_line_to_category(
@@ -1305,10 +1361,7 @@ pub async fn foundry_build(
 
     // Just tidy the PID list. Do not kill on success — children are expected to die naturally
     // once the tracked cmake --build child has exited (pre-refactor behavior).
-    let remaining = {
-        let mut guard = CHILD_PIDS.lock().unwrap();
-        std::mem::take(&mut *guard)
-    };
+    let remaining = with_child_pids(|pids| std::mem::take(pids)).unwrap_or_default();
     if !remaining.is_empty() {
         log::info!("[foundry] Success path: {} tracked PIDs left (expected to have exited naturally)", remaining.len());
     }
@@ -1423,21 +1476,22 @@ pub async fn refresh_build_info(
                             // Never point config at disposable work/ directories.
                             let sacred_exe = crate::config::foundry_artifacts_dir()
                                 .join(&provider_id).join("vanguard").join("Release").join("llama-server.exe");
-                            let sacred_dir: PathBuf = sacred_exe.parent().unwrap().to_path_buf();
-                            let _ = tokio::fs::create_dir_all(&sacred_dir).await;
-                            if copy_dir_contents(&new_bin, &sacred_dir).await.is_ok() && sacred_exe.exists() {
-                                let mut cfg = app.config.lock().map_err(|e| e.to_string())?;
-                                if let Some(p) = cfg.providers.iter_mut().find(|p| p.id == provider_id) {
-                                    let rel = crate::config::to_relative_path(&sacred_exe);
-                                    p.binary_path_per_env.insert("vanguard".to_string(), rel.clone());
-                                    p.binary_path = rel;
+                            if let Some(sacred_dir) = sacred_exe.parent() {
+                                let _ = tokio::fs::create_dir_all(sacred_dir).await;
+                                if copy_dir_contents(&new_bin, &sacred_dir.to_path_buf()).await.is_ok() && sacred_exe.exists() {
+                                    let mut cfg = app.config.lock().map_err(|e| e.to_string())?;
+                                    if let Some(p) = cfg.providers.iter_mut().find(|p| p.id == provider_id) {
+                                        let rel = crate::config::to_relative_path(&sacred_exe);
+                                        p.binary_path_per_env.insert("vanguard".to_string(), rel.clone());
+                                        p.binary_path = rel;
+                                    }
+                                    drop(cfg);
+                                    if let Err(e) = persist_providers_atomic(&*app) {
+                                        log::error!("[foundry] Failed to persist provider config: {}", e);
+                                    }
+                                } else {
+                                    log::warn!("[migration] Failed to copy binaries to sacred artifacts for '{}'", provider_id);
                                 }
-                                drop(cfg);
-                                if let Err(e) = persist_providers_atomic(&*app) {
-                                    log::error!("[foundry] Failed to persist provider config: {}", e);
-                                }
-                            } else {
-                                log::warn!("[migration] Failed to copy binaries to sacred artifacts for '{}'", provider_id);
                             }
                         }
                     } else {
@@ -1532,9 +1586,13 @@ pub async fn foundry_restore(
     }
 
     // --- Artifacts-based restore (Release.prev → Release) ---
-    let artifacts_prev = crate::config::foundry_artifact_release_dir(&provider_id, &env_label)
+    let sacred_release = crate::config::foundry_artifact_release_dir(&provider_id, &env_label);
+    let artifacts_prev = sacred_release
         .parent()
-        .unwrap()
+        .ok_or_else(|| format!(
+            "Invalid artifact path for '{}' ({}): {}",
+            provider_id, env_label, sacred_release.display()
+        ))?
         .join("Release.prev");
 
     if !artifacts_prev.exists() {
@@ -1545,8 +1603,6 @@ pub async fn foundry_restore(
             provider_id, env_label
         ));
     }
-
-    let sacred_release = crate::config::foundry_artifact_release_dir(&provider_id, &env_label);
 
     // Remove current Release dir if it exists
     if sacred_release.exists() {
@@ -1718,7 +1774,10 @@ async fn publish_artifacts_to_sacred(
 
     // Keep one previous artifact for the "Restore Previous Build" button (user request).
     // Before overwriting, move the current Release to Release.prev (deleting old .prev if present).
-    let prev_dir = sacred.parent().unwrap().join("Release.prev");
+    let prev_dir = sacred
+        .parent()
+        .ok_or_else(|| format!("Invalid sacred artifact path: {}", sacred.display()))?
+        .join("Release.prev");
     if sacred.exists() {
         // Remove any previous .prev
         if prev_dir.exists() {

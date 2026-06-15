@@ -60,10 +60,7 @@ pub async fn post_json(
     if !resp.status().is_success() {
         let status = resp.status();
         let msg = if status.as_u16() == 400 {
-            format!(
-                "Server rejected ({}). Prompt may exceed engine n_ctx — try smaller target or increase context window.",
-                status
-            )
+            "Prompt size exceeded your actual context size".to_string()
         } else {
             format!("Server returned error: {}", status)
         };

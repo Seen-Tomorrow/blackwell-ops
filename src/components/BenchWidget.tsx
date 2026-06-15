@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { bench_TGBenchResult, bench_PPBurstResult, GpuInfo } from "../lib/types";
-import { computeBenchPanelHeight, shouldShowBenchGpuTopo } from "../lib/benchPanelLayout";
+import { BENCH_RESULT_ROW_PX, computeBenchPanelHeight, shouldShowBenchGpuTopo } from "../lib/benchPanelLayout";
 import {
   buildBenchGpuTopoEntries,
   formatBenchSplitHeadline,
@@ -86,7 +86,7 @@ export function BenchResultsActionsCol({ shareMeta, onClose }: BenchResultsFoote
       {shareMeta && (
         <>
           <span className="text-[5px] font-mono text-stealth-muted/45 uppercase tracking-wider leading-none">
-            Share
+            SHARE results
           </span>
           <FusionShareMenu
             alias={shareMeta.alias}
@@ -107,7 +107,7 @@ export function BenchResultsActionsCol({ shareMeta, onClose }: BenchResultsFoote
         onClick={onClose}
         className="bench-muted-btn text-[6px] font-mono transition-colors px-1.5 py-0.5 rounded-sm leading-none uppercase tracking-wide"
       >
-        HIDE
+        HIDE results
       </button>
     </div>
   );
@@ -513,12 +513,15 @@ export default function BenchWidget({
     : (compact ? "text-sm" : "text-xl");
   const benchUnitClass = dualResults ? "text-[5px]" : "text-[6px]";
   const benchRowPadClass = dualResults ? "gap-y-0 py-0" : (compact ? "gap-y-0 py-0" : "gap-y-0.5 py-0.5");
-  const benchResultGridClass = (withActions: boolean) =>
-    `bench-results-grid ${withActions ? "bench-results-grid--actions" : ""} grid gap-x-1.5 px-1 ${benchRowPadClass}`;
+  const benchResultGridClass = () =>
+    `bench-results-grid grid gap-x-1.5 ${benchRowPadClass}`;
   const showInlineActions = footerDocked && Boolean(shareMeta) && hasResults && !isAnyRunning;
   const showShareFooter = !footerDocked && !isAnyRunning && hasResults;
-  const showActionsOnTgRow = showInlineActions && showTgResults && !showPpResults;
-  const showActionsOnPpRow = showInlineActions && showPpResults;
+  const ppErrorNotice =
+    showPpResults && ps.ppResult && !ps.ppResult.success
+      ? `PREFILL bench failed: ${ps.ppResult.error || "unknown"}`
+      : null;
+  const showResultsSidebar = Boolean(ppErrorNotice) || showInlineActions;
   const dismissResults = onCloseResults ?? closeResults;
 
   return (
@@ -632,7 +635,8 @@ export default function BenchWidget({
 
         {ps.showResults && (
            <div className={`bench-results-stack flex flex-col flex-1 min-h-0 ${footerDocked ? "" : "h-full overflow-hidden"}`}>
-             <div className="bench-results-body px-1 flex flex-col flex-shrink-0 min-h-0">
+             <div className="bench-results-body flex flex-row items-stretch gap-x-1 px-1 flex-shrink-0 min-h-0">
+               <div className="flex flex-col flex-1 min-w-0">
                {isAnyRunning && (
                  <div className="flex items-center justify-between gap-1.5 px-1 py-0.5">
                    <div className="flex items-center gap-1.5 min-w-0">
@@ -667,7 +671,7 @@ export default function BenchWidget({
 
                {showTgResults && ps.tgResult && (
                 ps.tgResult.success ? (
-                  <div className={benchResultGridClass(showActionsOnTgRow)}>
+                  <div className={benchResultGridClass()}>
                     <div>
                       <p className={`${benchLabelClass} font-mono text-stealth-muted uppercase tracking-wider`}>REQUEST LENGTH</p>
                       <p className={`font-mono fusion-readout-emphasis leading-none ${benchValueClass}`}>{ps.tgResult.gen_tokens}</p>
@@ -693,18 +697,14 @@ export default function BenchWidget({
                         {(ps.tgResult.parallel_requests ?? 1) > 1 ? "req ms" : "ms"}
                       </p>
                     </div>
-                    {showActionsOnTgRow && shareMeta && (
-                      <BenchResultsActionsCol shareMeta={shareMeta} onClose={dismissResults} />
-                    )}
                   </div>
                 ) : (
                   <p className="text-[7px] font-mono text-red-400 px-1 py-0.5">TG FAILED: {ps.tgResult.error || "unknown"}</p>
                 )
               )}
 
-              {showPpResults && ps.ppResult && (
-                ps.ppResult.success ? (
-                  <div className={benchResultGridClass(showActionsOnPpRow)}>
+              {showPpResults && ps.ppResult?.success && (
+                  <div className={benchResultGridClass()}>
                     <div>
                       <p className={`${benchLabelClass} font-mono text-stealth-muted uppercase tracking-wider`}>TOKENS</p>
                       <p className={`font-mono fusion-readout-emphasis leading-none ${benchValueClass}`}>
@@ -719,15 +719,25 @@ export default function BenchWidget({
                       </p>
                       <p className={`${benchUnitClass} font-mono text-stealth-muted/50`}>tok/s</p>
                     </div>
-                    {showActionsOnPpRow && <div aria-hidden />}
-                    {showActionsOnPpRow && shareMeta && (
-                      <BenchResultsActionsCol shareMeta={shareMeta} onClose={dismissResults} />
-                    )}
                   </div>
-                ) : (
-                  <p className="text-[7px] font-mono text-red-400 px-1 py-0.5">PP FAILED: {ps.ppResult.error || "unknown"}</p>
-                )
               )}
+             </div>
+
+             {showResultsSidebar && (
+               <div
+                 className="bench-results-sidebar flex flex-col items-end justify-end flex-shrink-0 self-stretch max-w-[11rem] min-w-[4.25rem]"
+                 style={{ minHeight: ppErrorNotice && !showTgResults && !ps.ppResult?.success ? BENCH_RESULT_ROW_PX : undefined }}
+               >
+                 {ppErrorNotice && (
+                   <p className="text-[6px] font-mono text-red-400 text-right leading-tight mb-auto pt-0.5">
+                     {ppErrorNotice}
+                   </p>
+                 )}
+                 {showInlineActions && shareMeta && (
+                   <BenchResultsActionsCol shareMeta={shareMeta} onClose={dismissResults} />
+                 )}
+               </div>
+             )}
              </div>
 
             {showGpuTopo && benchHw && (

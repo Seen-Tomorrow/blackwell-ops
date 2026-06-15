@@ -1,14 +1,12 @@
 import { useState, useCallback, useMemo, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { ModelEntry, EngineConfig, GpuInfo, ProviderConfig, SystemInfo, StackEntry } from "../lib/types";
+import type { ModelEntry, StackEntry } from "../lib/types";
 import { useKeyboardNav } from "./useKeyboardNav";
 import { KEYS, readStorage, writeStorage } from "../lib/storage";
 import { dispatchAppEvent, EVENTS } from "../lib/events";
 
 export type SortField = (keyof ModelEntry) | "date";
 export type SortDirection = "asc" | "desc";
-export type FitStatus = { label: string; colorClass: string };
-
 /** Searchable text from model fields + badge labels shown on ModelCard. */
 function modelSearchText(m: ModelEntry): string {
   const parts = [m.name, m.author, m.quant];
@@ -43,7 +41,6 @@ function modelMatchesSearch(m: ModelEntry, words: string[]): boolean {
 
 interface UseModelCatalogParams {
   models: ModelEntry[];
-  gpus: GpuInfo[];
   stack: StackEntry[];
   scanningPath: string | null;
   setScanningPath: (p: string | null) => void;
@@ -52,7 +49,7 @@ interface UseModelCatalogParams {
   onReload: () => void;
 }
 
-export function useModelCatalog({ models, gpus, stack, scanningPath, setScanningPath, batchScanState, setBatchScanState, onReload }: UseModelCatalogParams) {
+export function useModelCatalog({ models, stack, scanningPath, setScanningPath, batchScanState, setBatchScanState, onReload }: UseModelCatalogParams) {
   const [search, setSearch] = useState("");
   // Visual highlight in catalog list only — set by catalog card clicks
   const [catalogSelectedModel, setCatalogSelectedModel] = useState<ModelEntry | null>(null);
@@ -217,8 +214,8 @@ export function useModelCatalog({ models, gpus, stack, scanningPath, setScanning
     return map;
   }, [stack]);
 
-  // All models sorted, then split for pinned zone (running) and catalog zone (all models)
-  const { pinnedModels, catalogModels, allFiltered } = useMemo(() => {
+  // Sorted + filtered model list — flat catalog (running engines shown on right panel only)
+  const catalogModels = useMemo(() => {
     let sorted = [...models].sort((a, b) => {
       let comparison = 0;
       if (sortField === "date") {
@@ -238,42 +235,16 @@ export function useModelCatalog({ models, gpus, stack, scanningPath, setScanning
       return sortDirection === "asc" ? comparison : -comparison;
     });
 
-    // Pinned zone: models with running instances (one entry per model, not per instance — instances shown in pinned grid)
-    const pinned: ModelEntry[] = [];
-    for (const m of sorted) {
-      if (runningModelPaths.has(m.path)) pinned.push(m);
-    }
-
     const searchWords = search.trim()
       ? search.toLowerCase().trim().split(/\s+/)
       : null;
 
-    // Apply search filter to pinned zone
-    let filteredPinned = pinned;
     if (searchWords) {
-      filteredPinned = pinned.filter(m => modelMatchesSearch(m, searchWords));
+      sorted = sorted.filter(m => modelMatchesSearch(m, searchWords));
     }
 
-    // Catalog zone: ALL models (including running), with search filter
-    let catalogAll = [...sorted];
-    if (searchWords) {
-      catalogAll = sorted.filter(m => modelMatchesSearch(m, searchWords));
-    }
-
-    // allFiltered is pinned + catalog for keyboard nav indexing
-    const all = [...filteredPinned, ...catalogAll];
-    return { pinnedModels: filteredPinned, catalogModels: catalogAll, allFiltered: all };
-  }, [models, sortField, sortDirection, search, runningModelPaths]);
-
-  // VRAM fit status
-  const getFitStatus = useCallback((modelSizeMib: number): FitStatus => {
-    if (gpus.length === 0) return { label: "—", colorClass: "text-stealth-muted" };
-    const singleGpuVram = gpus[0].memory_total_manufactured || gpus[0].memory_total;
-    const totalVramMib = gpus.reduce((sum, g) => sum + (g.memory_total_manufactured || g.memory_total), 0);
-    if (modelSizeMib <= singleGpuVram) return { label: "FITS", colorClass: "text-nv-green" };
-    if (modelSizeMib <= totalVramMib) return { label: "SPLIT", colorClass: "text-telemetry-cyan" };
-    return { label: "RAM OFFLOAD", colorClass: "text-telemetry-red" };
-  }, [gpus]);
+    return sorted;
+  }, [models, sortField, sortDirection, search]);
 
   // Scan handlers
   const handleScanModel = useCallback(async (model: ModelEntry) => {
@@ -301,18 +272,18 @@ export function useModelCatalog({ models, gpus, stack, scanningPath, setScanning
 
   // Keyboard navigation
   const handleKeyboardSelect = useCallback((index: number) => {
-    if (allFiltered[index]) handleSelect(allFiltered[index]);
-  }, [allFiltered, handleSelect]);
+    if (catalogModels[index]) handleSelect(catalogModels[index]);
+  }, [catalogModels, handleSelect]);
 
   const handleLaunchFromConfig = useCallback((highlightIndex: number) => {
-    const highlighted = allFiltered[highlightIndex];
+    const highlighted = catalogModels[highlightIndex];
     if (highlighted) handleSelect(highlighted);
     // Defer one tick so EngineConfigPanel receives the updated model prop.
     window.setTimeout(() => dispatchAppEvent(EVENTS.launchEngine), 0);
-  }, [allFiltered, handleSelect]);
+  }, [catalogModels, handleSelect]);
 
-  const { highlightIndex, zone } = useKeyboardNav({
-    modelCount: allFiltered.length,
+  const { zone } = useKeyboardNav({
+    modelCount: catalogModels.length,
     onSelectModel: handleKeyboardSelect,
     onLaunch: handleLaunchFromConfig,
   });
@@ -324,11 +295,10 @@ export function useModelCatalog({ models, gpus, stack, scanningPath, setScanning
     selectedSlotIdx: selectedSlotIdxState, setSelectedSlotIdx,
     visibleCount, setVisibleCount,
     sortField, sortDirection, handleSort,
-    pinnedModels, catalogModels, allFiltered,
+    catalogModels,
     runningModelPaths, runningInstances, activeEngineByModel,
-    getFitStatus,
     scanningPath, setScanningPath, handleScanModel,
     batchScanState, setBatchScanState, handleScanAll, handleCancelScan,
-    highlightIndex, zone,
+    zone,
   };
 }

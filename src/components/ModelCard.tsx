@@ -1,18 +1,20 @@
 import type { ModelEntry } from "../lib/types";
-import type { FitStatus } from "../hooks/useModelCatalog";
 
 interface ModelCardProps {
   model: ModelEntry;
-  idx: number;
   isSelected: boolean;
-  isHighlighted: boolean;
-  fitStatus: FitStatus;
   onSelect: (model: ModelEntry) => void;
   onScanModel?: (model: ModelEntry) => void;
   scanningPath: string | null;
 }
 
-export default function ModelCard({ model, idx, isSelected, isHighlighted, fitStatus, onSelect, onScanModel, scanningPath }: ModelCardProps) {
+export default function ModelCard({
+  model,
+  isSelected,
+  onSelect,
+  onScanModel,
+  scanningPath,
+}: ModelCardProps) {
   const hasMetadata = !!model.metadata;
   const isScanning = scanningPath === model.path;
 
@@ -50,8 +52,8 @@ export default function ModelCard({ model, idx, isSelected, isHighlighted, fitSt
       onClick={() => onSelect(model)}
       className={`relative cursor-pointer rounded-sm p-2.5 model-catalog-card ${
         isSelected
-           ? "gunmetal-card border"
-           : "buried-card"
+          ? "gunmetal-card border"
+          : "buried-card"
       }`}
     >
       {/* ── Author + path + GGUF badge ─── */}
@@ -77,7 +79,7 @@ export default function ModelCard({ model, idx, isSelected, isHighlighted, fitSt
         {model.name}
       </span>
 
-      {(paramsNum || (model.metadata?.nextn_predict_layers ?? 0 > 0)) && (
+      {(paramsNum || (model.metadata?.nextn_predict_layers ?? 0) > 0) && (
         <div className="flex items-center gap-1 mt-0.5">
           {paramsNum && (
             <span className="text-[8px] font-mono text-white">{paramsNum}</span>

@@ -1,5 +1,5 @@
 import { useRef, useEffect, useMemo, useState } from "react";
-import type { EngineConfig, ProviderConfig, StackEntry } from "../lib/types";
+import type { EngineConfig, ModelEntry, ProviderConfig, StackEntry } from "../lib/types";
 import EngineConfigPanel from "./EngineConfigPanel";
 import ModelCard from "./ModelCard";
 
@@ -35,16 +35,16 @@ export default function ModelCatalog(props: ModelCatalogProps) {
   const [showScanMenu, setShowScanMenu] = useState(false);
 
   const catalog = useModelCatalog({
-    models, gpus, stack, scanningPath, setScanningPath, batchScanState, setBatchScanState, onReload,
+    models, stack, scanningPath, setScanningPath, batchScanState, setBatchScanState, onReload,
   });
 
   const { containerRef: splitContainerRef, catalogWidth, isDragging, startDrag, resetWidth } =
     useCatalogSplitResize();
 
   const { search, setSearch, catalogSelectedModel, panelActiveModel, handleSelect, handleSelectBySlot, selectedSlotIdx, sortField, sortDirection, handleSort,
-    pinnedModels, catalogModels, allFiltered, runningModelPaths, runningInstances, activeEngineByModel,
-    getFitStatus, handleScanModel, handleScanAll, handleCancelScan,
-    highlightIndex, zone, visibleCount, setVisibleCount } = catalog;
+    catalogModels, runningModelPaths,
+    handleScanModel, handleScanAll, handleCancelScan,
+    zone, visibleCount, setVisibleCount } = catalog;
 
   const startScan = (concurrency: number) => {
     setShowScanMenu(false);
@@ -179,7 +179,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
       <div className="px-4 py-2.5 border-b border-stealth-border/50 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <h2 className="text-xs font-mono theme-accent-text tracking-widest">✦ MODEL CATALOG</h2>
-          <span className="text-[8px] font-mono opacity-40">({allFiltered.length} / {models.length})</span>
+          <span className="text-[8px] font-mono opacity-40">({catalogModels.length} / {models.length})</span>
           {zone === "config" && (
             <span className="text-[8px] font-mono px-1.5 py-0.5 rounded-sm border border-telemetry-cyan/40 text-telemetry-cyan bg-telemetry-cyan/10">
               CONFIG [Ctrl+Enter]
@@ -232,26 +232,19 @@ export default function ModelCatalog(props: ModelCatalogProps) {
               visibleCount === "all" ? "flex-1 min-h-0" : "catalog-scroll--limited flex-shrink-0"
             }`}
           >
-            {allFiltered.length === 0 ? (
+            {catalogModels.length === 0 ? (
               <div className="flex items-center justify-center h-full text-stealth-muted text-xs font-mono opacity-50">
                 NO MODELS FOUND
               </div>
             ) : (
               <div className="grid grid-cols-1 gap-2">
-                {catalogModels.map((model, idx) => {
+                {catalogModels.map((model) => {
                   const isSelected = catalogSelectedModel?.path === model.path;
                   return (
                     <div key={model.path} data-model-path={model.path}>
                       <ModelCard
                         model={model}
-                        idx={idx}
                         isSelected={isSelected}
-                        isHighlighted={highlightIndex >= pinnedModels.length && highlightIndex - pinnedModels.length === idx && zone !== "config"}
-                        fitStatus={getFitStatus(
-                          model.metadata && model.metadata.file_size_bytes > 0
-                            ? Math.floor(model.metadata.file_size_bytes / (1024 * 1024))
-                            : Math.floor(parseFloat(model.size_str) * 1024)
-                        )}
                         onSelect={handleSelect}
                         onScanModel={handleScanModel}
                         scanningPath={scanningPath}
