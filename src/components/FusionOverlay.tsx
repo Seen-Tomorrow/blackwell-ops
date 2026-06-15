@@ -311,7 +311,11 @@ export default function FusionOverlay({
       : ppTpsValue;
   const ppHeroActive = !suppressPrefillHero && (ppHeroTps != null ? ppHeroTps > 0 : ppTpsValue !== "--");
 
-  const tgTpsLive = clampHeroTps(Math.max(fusion.genTpsInstant ?? 0, fusion.logGenTps ?? 0));
+  const tgTpsLive = clampHeroTps(
+    (fusion.genTpsInstant ?? 0) > 0
+      ? (fusion.genTpsInstant ?? 0)
+      : (fusion.logGenTps ?? 0),
+  );
   const tgTpsPick = clampHeroTps(heroTpsMode === "avg" ? fusion.genTps : tgTpsLive);
   const tgTpsValue = tgTpsPick > 0 ? tgTpsPick.toFixed(1) : "--";
   const tgHeroTps = benchHero.tg;
