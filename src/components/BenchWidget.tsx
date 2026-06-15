@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { bench_TGBenchResult, bench_PPBurstResult, GpuInfo } from "../lib/types";
-import { computeBenchPanelHeight } from "../lib/benchPanelLayout";
+import { computeBenchPanelHeight, shouldShowBenchGpuTopo } from "../lib/benchPanelLayout";
 import {
   buildBenchGpuTopoEntries,
   formatBenchSplitHeadline,
@@ -28,6 +28,89 @@ export type BenchHeroPatch = {
 export interface BenchResultsFooterProps {
   shareMeta?: FusionShareMeta & { alias?: string };
   onClose: () => void;
+}
+
+export interface BenchHwTopoProps {
+  gpus: GpuInfo[];
+  gpuMask?: string;
+  splitMode?: string;
+}
+
+export function BenchHwTopo({ gpus, gpuMask, splitMode, fullWidth = false }: BenchHwTopoProps & { fullWidth?: boolean }) {
+  const gpuTopoEntries = useMemo(
+    () => buildBenchGpuTopoEntries(gpus, gpuMask),
+    [gpus, gpuMask],
+  );
+  const gpuSplitHeadline = useMemo(
+    () => formatBenchSplitHeadline(gpus, gpuMask, splitMode),
+    [gpus, gpuMask, splitMode],
+  );
+  if (gpuTopoEntries.length === 0 || !gpuSplitHeadline) return null;
+
+  return (
+    <div
+      className={`bench-hw-topo flex-shrink-0 pt-0.5 mt-2.5 border-t border-stealth-border/15 ${
+        fullWidth ? "bench-hw-topo--row w-full px-1.5" : "px-1"
+      }`}
+    >
+      <p className="text-[5px] font-mono text-stealth-muted/45 tracking-wider uppercase leading-none mb-0.5">
+        {gpuSplitHeadline}
+      </p>
+      <div className="bench-hw-topo-grid">
+        {gpuTopoEntries.map((entry) => (
+          <div key={entry.key} className="bench-hw-topo-entry">
+            <span
+              className="bench-hw-topo-swatch"
+              style={{ backgroundColor: entry.color }}
+              aria-hidden
+            />
+            <span className="bench-hw-topo-label">
+              {entry.count}× {entry.label}
+              {entry.driverVersion && (
+                <span className="bench-hw-topo-driver">drv {entry.driverVersion}</span>
+              )}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function BenchResultsActionsCol({ shareMeta, onClose }: BenchResultsFooterProps) {
+  return (
+    <div
+      className="bench-results-actions flex flex-col items-end justify-end gap-0.5 self-stretch min-w-0"
+      data-fusion-share-exclude
+    >
+      {shareMeta && (
+        <>
+          <span className="text-[5px] font-mono text-stealth-muted/45 uppercase tracking-wider leading-none">
+            Share
+          </span>
+          <FusionShareMenu
+            alias={shareMeta.alias}
+            providerName={shareMeta.providerName}
+            providerBuildVersion={shareMeta.providerBuildVersion}
+            modelName={shareMeta.modelName}
+            modelQuant={shareMeta.modelQuant}
+            profileLabel={shareMeta.profileLabel}
+            cudaVersion={shareMeta.cudaVersion}
+            launchConfig={shareMeta.launchConfig}
+            hwTopo={shareMeta.hwTopo}
+            triggerStyle="share-icon"
+          />
+        </>
+      )}
+      <button
+        type="button"
+        onClick={onClose}
+        className="bench-muted-btn text-[6px] font-mono transition-colors px-1.5 py-0.5 rounded-sm leading-none uppercase tracking-wide"
+      >
+        HIDE
+      </button>
+    </div>
+  );
 }
 
 export function BenchResultsFooter({ shareMeta, onClose }: BenchResultsFooterProps) {
@@ -71,8 +154,10 @@ interface BenchWidgetProps {
   onHeroPatch?: (patch: BenchHeroPatch) => void;
   /** TG / PP / both — fusion overlay shows only the matching hero lane. */
   onBenchSessionChange?: (mode: BenchSessionMode) => void;
-  /** Fusion share card — shown with HIDE after bench results (fusion overlay only). */
+  /** Fusion share card — inline actions col or footer row when results are shown. */
   shareMeta?: FusionShareMeta & { alias?: string };
+  /** Fusion overlay close — overrides default store reset when provided. */
+  onCloseResults?: () => void;
   /** GPUs + split used for bench result footer (included in share capture). */
   benchHw?: BenchHwContext;
 }
@@ -100,6 +185,7 @@ export default function BenchWidget({
   shareMeta,
   benchHw,
   footerDocked = false,
+  onCloseResults,
 }: BenchWidgetProps) {
   const ps = getBenchPortState(port);
 
@@ -380,18 +466,19 @@ export default function BenchWidget({
   const benchRowClass = "bench-control-row flex items-center justify-end gap-1 flex-shrink-0 overflow-hidden";
   const dualResults = ps.sessionMode === "both";
 
-  const gpuTopoEntries = useMemo(
-    () => (benchHw ? buildBenchGpuTopoEntries(benchHw.gpus, benchHw.gpuMask) : []),
-    [benchHw],
-  );
-  const gpuSplitHeadline = useMemo(
-    () =>
-      benchHw
-        ? formatBenchSplitHeadline(benchHw.gpus, benchHw.gpuMask, benchHw.splitMode)
-        : null,
-    [benchHw],
-  );
-  const showGpuTopo = hasResults && !isAnyRunning && gpuTopoEntries.length > 0 && !compact;
+  const showGpuTopo =
+    benchHw
+    && shouldShowBenchGpuTopo({
+      showResults: ps.showResults,
+      sessionMode: ps.sessionMode,
+      tgRunning: ps.tgRunning,
+      ppRunning: ps.ppRunning,
+      tgResult: ps.tgResult,
+      ppResult: ps.ppResult,
+      compact,
+      gpus: benchHw.gpus,
+      gpuMask: benchHw.gpuMask,
+    });
 
   /** Fixed height — idle vs results (+ optional HW topo band). */
   const panelHeight = useMemo(
@@ -406,6 +493,7 @@ export default function BenchWidget({
         compact,
         gpus: benchHw?.gpus,
         gpuMask: benchHw?.gpuMask,
+        inlineActions: footerDocked,
       }),
     [
       ps.showResults,
@@ -416,6 +504,7 @@ export default function BenchWidget({
       ps.ppResult,
       compact,
       benchHw,
+      footerDocked,
     ],
   );
   const benchLabelClass = dualResults ? "text-[5px]" : "text-[6px]";
@@ -424,20 +513,21 @@ export default function BenchWidget({
     : (compact ? "text-sm" : "text-xl");
   const benchUnitClass = dualResults ? "text-[5px]" : "text-[6px]";
   const benchRowPadClass = dualResults ? "gap-y-0 py-0" : (compact ? "gap-y-0 py-0" : "gap-y-0.5 py-0.5");
-  const benchResultGridClass = `grid grid-cols-3 gap-x-2 px-1 ${benchRowPadClass}`;
+  const benchResultGridClass = (withActions: boolean) =>
+    `bench-results-grid ${withActions ? "bench-results-grid--actions" : ""} grid gap-x-1.5 px-1 ${benchRowPadClass}`;
+  const showInlineActions = footerDocked && Boolean(shareMeta) && hasResults && !isAnyRunning;
   const showShareFooter = !footerDocked && !isAnyRunning && hasResults;
+  const showActionsOnTgRow = showInlineActions && showTgResults && !showPpResults;
+  const showActionsOnPpRow = showInlineActions && showPpResults;
+  const dismissResults = onCloseResults ?? closeResults;
 
   return (
       <div
         className={`bench-widget-panel w-full h-full rounded-sm flex flex-col overflow-hidden flex-shrink-0 ${compact ? "p-1" : "p-1.5"}`}
         style={{
-          ...(footerDocked
-            ? { height: "100%", minHeight: 0, maxHeight: "100%" }
-            : {
-                height: panelHeight,
-                minHeight: panelHeight,
-                maxHeight: panelHeight,
-              }),
+          height: panelHeight,
+          minHeight: panelHeight,
+          maxHeight: panelHeight,
           ["--bench-control-row-h" as string]: `${benchRowH}px`,
         }}
       >
@@ -541,8 +631,8 @@ export default function BenchWidget({
         )}
 
         {ps.showResults && (
-           <div className="bench-results-stack flex flex-col h-full min-h-0 overflow-hidden">
-             <div className="bench-results-body px-1 flex flex-col flex-shrink-0 min-h-0 overflow-hidden">
+           <div className={`bench-results-stack flex flex-col flex-1 min-h-0 ${footerDocked ? "" : "h-full overflow-hidden"}`}>
+             <div className="bench-results-body px-1 flex flex-col flex-shrink-0 min-h-0">
                {isAnyRunning && (
                  <div className="flex items-center justify-between gap-1.5 px-1 py-0.5">
                    <div className="flex items-center gap-1.5 min-w-0">
@@ -577,7 +667,7 @@ export default function BenchWidget({
 
                {showTgResults && ps.tgResult && (
                 ps.tgResult.success ? (
-                  <div className={benchResultGridClass}>
+                  <div className={benchResultGridClass(showActionsOnTgRow)}>
                     <div>
                       <p className={`${benchLabelClass} font-mono text-stealth-muted uppercase tracking-wider`}>REQUEST LENGTH</p>
                       <p className={`font-mono fusion-readout-emphasis leading-none ${benchValueClass}`}>{ps.tgResult.gen_tokens}</p>
@@ -603,6 +693,9 @@ export default function BenchWidget({
                         {(ps.tgResult.parallel_requests ?? 1) > 1 ? "req ms" : "ms"}
                       </p>
                     </div>
+                    {showActionsOnTgRow && shareMeta && (
+                      <BenchResultsActionsCol shareMeta={shareMeta} onClose={dismissResults} />
+                    )}
                   </div>
                 ) : (
                   <p className="text-[7px] font-mono text-red-400 px-1 py-0.5">TG FAILED: {ps.tgResult.error || "unknown"}</p>
@@ -611,7 +704,7 @@ export default function BenchWidget({
 
               {showPpResults && ps.ppResult && (
                 ps.ppResult.success ? (
-                  <div className={benchResultGridClass}>
+                  <div className={benchResultGridClass(showActionsOnPpRow)}>
                     <div>
                       <p className={`${benchLabelClass} font-mono text-stealth-muted uppercase tracking-wider`}>TOKENS</p>
                       <p className={`font-mono fusion-readout-emphasis leading-none ${benchValueClass}`}>
@@ -626,6 +719,10 @@ export default function BenchWidget({
                       </p>
                       <p className={`${benchUnitClass} font-mono text-stealth-muted/50`}>tok/s</p>
                     </div>
+                    {showActionsOnPpRow && <div aria-hidden />}
+                    {showActionsOnPpRow && shareMeta && (
+                      <BenchResultsActionsCol shareMeta={shareMeta} onClose={dismissResults} />
+                    )}
                   </div>
                 ) : (
                   <p className="text-[7px] font-mono text-red-400 px-1 py-0.5">PP FAILED: {ps.ppResult.error || "unknown"}</p>
@@ -633,33 +730,17 @@ export default function BenchWidget({
               )}
              </div>
 
-            {showGpuTopo && gpuSplitHeadline && (
-              <div className="bench-hw-topo flex-shrink-0 px-1 pt-0.5 mt-2.5 border-t border-stealth-border/15">
-                <p className="text-[5px] font-mono text-stealth-muted/45 tracking-wider uppercase leading-none mb-0.5">
-                  {gpuSplitHeadline}
-                </p>
-                <div className="bench-hw-topo-grid">
-                  {gpuTopoEntries.map((entry) => (
-                    <div key={entry.key} className="bench-hw-topo-entry">
-                      <span
-                        className="bench-hw-topo-swatch"
-                        style={{ backgroundColor: entry.color }}
-                        aria-hidden
-                      />
-                      <span className="bench-hw-topo-label">
-                        {entry.count}× {entry.label}
-                        {entry.driverVersion && (
-                          <span className="bench-hw-topo-driver">drv {entry.driverVersion}</span>
-                        )}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
+            {showGpuTopo && benchHw && (
+              <BenchHwTopo
+                fullWidth
+                gpus={benchHw.gpus}
+                gpuMask={benchHw.gpuMask}
+                splitMode={benchHw.splitMode}
+              />
             )}
 
             {showShareFooter && shareMeta && (
-              <BenchResultsFooter shareMeta={shareMeta} onClose={closeResults} />
+              <BenchResultsFooter shareMeta={shareMeta} onClose={dismissResults} />
             )}
           </div>
         )}

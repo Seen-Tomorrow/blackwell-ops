@@ -13,6 +13,8 @@ interface FusionShareMenuProps extends FusionShareMeta {
   alias?: string;
   /** Bench footer — share glyph + SHARE RESULTS label before variant swatches. */
   labeled?: boolean;
+  /** Inline bench actions — black/white share-icon triggers instead of color swatches. */
+  triggerStyle?: "swatch" | "share-icon";
 }
 
 const VARIANTS: { id: FusionShareVariant; title: string }[] = [
@@ -86,6 +88,7 @@ export default function FusionShareMenu({
   launchConfig,
   hwTopo,
   labeled = false,
+  triggerStyle = "swatch",
 }: FusionShareMenuProps) {
   const shareMeta: FusionShareMeta = {
     providerName,
@@ -227,15 +230,23 @@ export default function FusionShareMenu({
               aria-expanded={isOpen}
               aria-haspopup="menu"
               className={`fusion-share-variant-btn flex items-center justify-center h-5 w-5 rounded-sm border transition-colors select-none ${
-                isOpen
-                  ? "border-stealth-muted/50 text-stealth-muted/80 bg-black/10"
-                  : "border-stealth-border/50 text-stealth-muted/55 hover:text-stealth-muted/80 hover:border-stealth-muted/40 bg-transparent"
+                triggerStyle === "share-icon"
+                  ? `fusion-share-variant-btn--icon fusion-share-variant-btn--${id} ${
+                      isOpen ? "fusion-share-variant-btn--open" : ""
+                    }`
+                  : isOpen
+                    ? "border-stealth-muted/50 text-stealth-muted/80 bg-black/10"
+                    : "border-stealth-border/50 text-stealth-muted/55 hover:text-stealth-muted/80 hover:border-stealth-muted/40 bg-transparent"
               } ${busy ? "opacity-50 cursor-wait" : "cursor-pointer"}`}
             >
-              <span
-                className={`fusion-share-variant-swatch fusion-share-variant-swatch--${id}`}
-                aria-hidden
-              />
+              {triggerStyle === "share-icon" ? (
+                <ShareGlyph className="w-3 h-3 flex-shrink-0" />
+              ) : (
+                <span
+                  className={`fusion-share-variant-swatch fusion-share-variant-swatch--${id}`}
+                  aria-hidden
+                />
+              )}
             </button>
           </div>
         );

@@ -1798,6 +1798,10 @@ html, body, #root {
   box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.25);
 }
 
+.bench-widget-panel .bench-hw-topo--row {
+  box-sizing: border-box;
+}
+
 .bench-widget-panel .bench-hw-topo-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1841,6 +1845,18 @@ html, body, #root {
   letter-spacing: 0.02em;
   color: color-mix(in srgb, var(--theme-text) 42%, transparent);
   white-space: nowrap;
+}
+
+.bench-widget-panel .bench-results-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.bench-widget-panel .bench-results-grid--actions {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) auto;
+}
+
+.bench-widget-panel .bench-results-actions {
+  padding-bottom: 1px;
 }
 
 .bench-widget-panel .bench-results-stack {
@@ -2688,6 +2704,29 @@ html, body, #root {
   color: inherit;
   min-width: 1.25rem;
   padding: 0;
+}
+
+.fusion-share-variant-btn--icon.fusion-share-variant-btn--white {
+  border-color: rgba(255, 255, 255, 0.22);
+  background: linear-gradient(145deg, #f4f6f8 0%, #dce2ea 55%, #b8c4d0 100%);
+  color: #101418;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.06);
+}
+
+.fusion-share-variant-btn--icon.fusion-share-variant-btn--black {
+  border-color: rgba(255, 255, 255, 0.14);
+  background: linear-gradient(145deg, #3a3a42 0%, #1a1a1e 55%, #09090b 100%);
+  color: #f4f6f8;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+}
+
+.fusion-share-variant-btn--icon:hover:not(:disabled) {
+  filter: brightness(1.06);
+}
+
+.fusion-share-variant-btn--icon.fusion-share-variant-btn--open {
+  outline: 1px solid rgba(148, 163, 184, 0.45);
+  outline-offset: 1px;
 }
 
 .fusion-share-variant-swatch {

@@ -34,9 +34,71 @@ export const FUSION_BENCH_IDLE_SLACK_PX = 46;
 export const FUSION_DASHBOARD_TIGHT_CHROME_PX =
   FORECAST_PHOSPHOR_HEIGHT_PX - BENCH_IDLE_PANEL_PX - FUSION_BENCH_IDLE_SLACK_PX + 14;
 
+export type BenchPanelLayoutOpts = {
+  showResults: boolean;
+  tgRunning: boolean;
+  ppRunning: boolean;
+  sessionMode: BenchSessionMode;
+  tgResult: unknown;
+  ppResult: unknown;
+  compact?: boolean;
+  gpus?: GpuInfo[];
+  gpuMask?: string;
+  /** SHARE/HIDE in results grid — no separate footer row (fusion overlay). */
+  inlineActions?: boolean;
+};
+
+function benchResultVisibility(opts: BenchPanelLayoutOpts) {
+  const isAnyRunning = opts.tgRunning || opts.ppRunning;
+  const showTgResults =
+    (opts.sessionMode === "tg" || opts.sessionMode === "both") && Boolean(opts.tgResult) && !opts.tgRunning;
+  const showPpResults =
+    (opts.sessionMode === "pp" || opts.sessionMode === "both") && Boolean(opts.ppResult) && !opts.ppRunning;
+  return { isAnyRunning, showTgResults, showPpResults, hasResults: showTgResults || showPpResults };
+}
+
+export function shouldShowBenchGpuTopo(opts: BenchPanelLayoutOpts): boolean {
+  const compact = opts.compact ?? false;
+  const { isAnyRunning, hasResults } = benchResultVisibility(opts);
+  const gpuTopoEntries =
+    opts.gpus && hasResults && !isAnyRunning
+      ? buildBenchGpuTopoEntries(opts.gpus, opts.gpuMask)
+      : [];
+  return (
+    opts.showResults
+    && hasResults
+    && !isAnyRunning
+    && gpuTopoEntries.length > 0
+    && !compact
+  );
+}
+
+/** Results-only body when SHARE/HIDE + GPU topo are docked outside BenchWidget. */
+export function computeBenchWidgetBodyHeight(opts: BenchPanelLayoutOpts): number {
+  const compact = opts.compact ?? false;
+  const { isAnyRunning, showTgResults, showPpResults } = benchResultVisibility(opts);
+
+  const idlePanelHeight = compact ? 70 : BENCH_IDLE_PANEL_PX;
+  if (!opts.showResults && !isAnyRunning) return idlePanelHeight;
+
+  if (compact) {
+    if (!opts.showResults && isAnyRunning) return 52;
+    const rows = (showTgResults ? 1 : 0) + (showPpResults ? 1 : 0);
+    let h = 8 + (isAnyRunning ? 16 : 0) + rows * 28;
+    if (!opts.inlineActions && !isAnyRunning && rows > 0) h += 18;
+    return h;
+  }
+
+  let height = BENCH_PANEL_PAD_Y;
+  if (isAnyRunning) height += BENCH_RUNNING_ROW_PX;
+  if (showTgResults) height += BENCH_RESULT_ROW_PX;
+  if (showPpResults) height += BENCH_RESULT_ROW_PX;
+  return Math.max(height, isAnyRunning ? 56 : BENCH_IDLE_PANEL_PX);
+}
+
 /** Results + topo area inside the bench slot (footer docked separately in FusionOverlay). */
 export function computeBenchContentHeight(
-  opts: Parameters<typeof computeBenchPanelHeight>[0],
+  opts: BenchPanelLayoutOpts,
   shareFooterVisible: boolean,
 ): number {
   const total = computeBenchPanelHeight(opts);
@@ -59,50 +121,25 @@ export function computeBenchPhosphorExtra(opts: Parameters<typeof computeBenchPa
   return Math.max(0, computeFusionPhosphorHeight(panelH) - FORECAST_PHOSPHOR_HEIGHT_PX);
 }
 
-export function computeBenchPanelHeight(opts: {
-  showResults: boolean;
-  tgRunning: boolean;
-  ppRunning: boolean;
-  sessionMode: BenchSessionMode;
-  tgResult: unknown;
-  ppResult: unknown;
-  compact?: boolean;
-  gpus?: GpuInfo[];
-  gpuMask?: string;
-}): number {
+export function computeBenchPanelHeight(opts: BenchPanelLayoutOpts): number {
   const compact = opts.compact ?? false;
-  const isAnyRunning = opts.tgRunning || opts.ppRunning;
-  const idlePanelHeight = compact ? 70 : BENCH_IDLE_PANEL_PX;
-
-  if (!opts.showResults && !isAnyRunning) return idlePanelHeight;
-
-  const showTgResults =
-    (opts.sessionMode === "tg" || opts.sessionMode === "both") && Boolean(opts.tgResult) && !opts.tgRunning;
-  const showPpResults =
-    (opts.sessionMode === "pp" || opts.sessionMode === "both") && Boolean(opts.ppResult) && !opts.ppRunning;
-  const hasResults = showTgResults || showPpResults;
-
-  const gpuTopoEntries =
-    opts.gpus && hasResults && !isAnyRunning
-      ? buildBenchGpuTopoEntries(opts.gpus, opts.gpuMask)
-      : [];
-  const showGpuTopo = hasResults && !isAnyRunning && gpuTopoEntries.length > 0 && !compact;
+  const { isAnyRunning, hasResults } = benchResultVisibility(opts);
+  const showGpuTopo = shouldShowBenchGpuTopo(opts);
 
   if (compact) {
+    if (!opts.showResults && !isAnyRunning) return 70;
     if (!opts.showResults && isAnyRunning) return 52;
-    const rows = (showTgResults ? 1 : 0) + (showPpResults ? 1 : 0);
+    const rows =
+      ((opts.sessionMode === "tg" || opts.sessionMode === "both") && Boolean(opts.tgResult) && !opts.tgRunning ? 1 : 0)
+      + ((opts.sessionMode === "pp" || opts.sessionMode === "both") && Boolean(opts.ppResult) && !opts.ppRunning ? 1 : 0);
     let h = 8 + (isAnyRunning ? 16 : 0) + rows * 28;
     if (showGpuTopo) h += 22;
-    if (!isAnyRunning && hasResults) h += 18;
+    if (!opts.inlineActions && !isAnyRunning && hasResults) h += 18;
     return h;
   }
 
-  let height = BENCH_PANEL_PAD_Y;
-  if (isAnyRunning) height += BENCH_RUNNING_ROW_PX;
-  if (showTgResults) height += BENCH_RESULT_ROW_PX;
-  if (showPpResults) height += BENCH_RESULT_ROW_PX;
+  let height = computeBenchWidgetBodyHeight(opts);
   if (showGpuTopo) height += BENCH_GPU_TOPO_PX;
-  if (!isAnyRunning && hasResults) height += BENCH_SHARE_FOOTER_PX;
-
-  return Math.max(height, isAnyRunning ? 56 : BENCH_IDLE_PANEL_PX);
+  if (!opts.inlineActions && !isAnyRunning && hasResults) height += BENCH_SHARE_FOOTER_PX;
+  return height;
 }

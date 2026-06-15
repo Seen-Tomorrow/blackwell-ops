@@ -2,12 +2,11 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { FusionUpdate } from "../lib/types";
 import {
-  BENCH_SHARE_FOOTER_PX,
   computeBenchPanelHeight,
   isBenchPanelExpanded,
 } from "../lib/benchPanelLayout";
 import { getBenchPortState, notifyBenchPortStore, subscribeBenchPortStore } from "../lib/benchPortStore";
-import BenchWidget, { BenchResultsFooter, type BenchHeroPatch, type BenchSessionMode } from "./BenchWidget";
+import BenchWidget, { type BenchHeroPatch, type BenchSessionMode } from "./BenchWidget";
 import FusionBooter from "./FusionBooter";
 import type { FusionShareLaunchConfig } from "../lib/fusionShareCapture";
 import SlotCtxBars from "./SlotCtxBars";
@@ -120,12 +119,11 @@ export default function FusionOverlay({
         ppResult: benchPs.ppResult,
         gpus,
         gpuMask,
+        inlineActions: true,
       }),
     [benchPs, gpus, gpuMask],
   );
   const benchPanelExpanded = isBenchPanelExpanded(benchPanelHeight);
-  const showBenchShareFooter =
-    benchPs.showResults && !benchPs.tgRunning && !benchPs.ppRunning;
 
   const handleCloseBenchResults = useCallback(() => {
     const ps = getBenchPortState(displayPort);
@@ -622,7 +620,7 @@ export default function FusionOverlay({
 
           {/* ═══ BENCH WIDGET — fixed panel height (see BenchWidget / benchPanelLayout) ═══ */}
           <div
-            className={`flex flex-col flex-shrink-0 overflow-hidden ${benchPanelExpanded ? "" : "mt-1"}`}
+            className={`bench-widget-panel flex flex-col flex-shrink-0 overflow-visible ${benchPanelExpanded ? "" : "mt-1"}`}
             style={{
               height: benchPanelHeight,
               minHeight: benchPanelHeight,
@@ -630,42 +628,29 @@ export default function FusionOverlay({
             }}
           >
             {fusion.engine_state !== "LOADING" && (
-              <>
-                <div className="flex-1 min-h-0 overflow-hidden">
-                  <BenchWidget
-                    port={displayPort}
-                    footerDocked
-                    onHeroPatch={handleBenchHeroPatch}
-                    onBenchSessionChange={setBenchSessionMode}
-                    benchHw={{
-                      gpus,
-                      gpuMask,
-                      splitMode: launchConfig?.splitMode,
-                    }}
-                  />
-                </div>
-                {showBenchShareFooter && (
-                  <div
-                    className="flex-shrink-0 overflow-visible"
-                    style={{ height: BENCH_SHARE_FOOTER_PX, minHeight: BENCH_SHARE_FOOTER_PX }}
-                  >
-                    <BenchResultsFooter
-                      shareMeta={{
-                        alias: displayAlias,
-                        providerName,
-                        providerBuildVersion,
-                        modelName,
-                        modelQuant,
-                        profileLabel,
-                        cudaVersion,
-                        launchConfig,
-                        hwTopo,
-                      }}
-                      onClose={handleCloseBenchResults}
-                    />
-                  </div>
-                )}
-              </>
+              <BenchWidget
+                port={displayPort}
+                footerDocked
+                onHeroPatch={handleBenchHeroPatch}
+                onBenchSessionChange={setBenchSessionMode}
+                onCloseResults={handleCloseBenchResults}
+                shareMeta={{
+                  alias: displayAlias,
+                  providerName,
+                  providerBuildVersion,
+                  modelName,
+                  modelQuant,
+                  profileLabel,
+                  cudaVersion,
+                  launchConfig,
+                  hwTopo,
+                }}
+                benchHw={{
+                  gpus,
+                  gpuMask,
+                  splitMode: launchConfig?.splitMode,
+                }}
+              />
             )}
           </div>
         </div>

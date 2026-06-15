@@ -223,6 +223,10 @@ pub fn build_fit_command(
     let mut args = vec![
         "-m".into(),
         model_path.into(),
+        // Direct memory estimate to stdout — avoids the fitting path that can exit 1
+        // (e.g. tensor split) before any breakdown is printed.
+        "--fit-print".into(),
+        "on".into(),
         "--fit".into(),
         "off".into(),
         // Force all layers onto GPU — prevents llama-fit-params from auto-calculating ngl
@@ -256,6 +260,59 @@ pub fn build_fit_command(
 }
 
 // ── Output Parsing ────────────────────────────────────────────────
+
+/// Parse stdout from `--fit-print on` / `common_fit_print`.
+/// Lines: "<device> <model_mib> <ctx_mib> <compute_mib>" (Host row uses same layout).
+fn parse_fit_print_stdout(stdout: &str) -> Option<FitScanRaw> {
+    let mut gpu_self: Vec<f64> = Vec::new();
+    let mut gpu_components: Vec<GpuComponentMib> = Vec::new();
+    let mut host_mib: Option<f64> = None;
+
+    for line in stdout.lines() {
+        let cleaned = strip_ansi(line);
+        let trimmed = cleaned.trim();
+        if trimmed.is_empty() || trimmed.to_lowercase().contains("printing estimated memory") {
+            continue;
+        }
+
+        let parts: Vec<&str> = trimmed.split_whitespace().collect();
+        if parts.len() < 4 {
+            continue;
+        }
+
+        let model_mib: f64 = parts[1].parse().ok()?;
+        let ctx_mib: f64 = parts[2].parse().ok()?;
+        let compute_mib: f64 = parts[3].parse().ok()?;
+        let self_mib = model_mib + ctx_mib + compute_mib;
+
+        if parts[0].eq_ignore_ascii_case("host") {
+            host_mib = Some(self_mib);
+        } else {
+            gpu_self.push(self_mib);
+            gpu_components.push(GpuComponentMib {
+                model_mib,
+                ctx_mib,
+                compute_mib,
+            });
+        }
+    }
+
+    if gpu_self.is_empty() {
+        return None;
+    }
+
+    let vram_mib: f64 = gpu_self.iter().sum();
+    if vram_mib <= 0.0 {
+        return None;
+    }
+
+    Some(FitScanRaw {
+        vram_mib,
+        gpu_breakdown_mib: Some(gpu_self),
+        host_mib,
+        gpu_components_mib: Some(gpu_components),
+    })
+}
 
 /// Parse MiB from llama-fit-params.exe output.
 fn parse_fit_output(output: &str) -> Option<f64> {
@@ -391,16 +448,23 @@ pub async fn scan_single_anchor(
 
     // DEBUG Llama-fit-scanner result - now routed to Blackwell Output Console
 
-    let vram_mib = if let Some(v) = parse_fit_output(&combined_output) {
-        v
-    } else if let Some(projected) = parse_projected_vram(&combined_output) {
-        projected
-    } else {
-        log::warn!("Fit scan parse failed for {}: exit={:?}", model_path, output.status.code());
-        return Err(format!(
-            "Could not parse VRAM from fit output. Exit code: {:?}",
-            output.status.code()
-        ));
+    if let Some(raw) = parse_fit_print_stdout(&stdout) {
+        return Ok(raw);
+    }
+
+    let vram_mib = parse_fit_output(&combined_output)
+        .or_else(|| parse_engine_memory_breakdown_mib(&combined_output))
+        .or_else(|| parse_projected_vram(&combined_output));
+
+    let vram_mib = match vram_mib {
+        Some(v) if v > 0.0 => v,
+        _ => {
+            log::warn!("Fit scan parse failed for {}: exit={:?}", model_path, output.status.code());
+            return Err(format!(
+                "Could not parse VRAM from fit output. Exit code: {:?}",
+                output.status.code()
+            ));
+        }
     };
 
     let (gpu_breakdown_mib, host_mib) = parse_fit_breakdown(&combined_output);
@@ -430,8 +494,8 @@ fn parse_projected_vram(output: &str) -> Option<f64> {
 /// Extract model VRAM from memory breakdown line.
 /// Format: (total = model + context + compute) → we want "model" value.
 fn extract_model_from_breakdown(line: &str) -> Option<f64> {
-    // Find the parenthesized section: (152340 = 131595 +   20336 +     408)
-    if let Some(start) = line.find('(') {
+    // Numeric breakdown is the last parenthesized group — skip the GPU name "(RTX ...)" prefix.
+    if let Some(start) = line.rfind('(') {
         if let Some(end) = line[start..].find(')') {
             let inner = &line[start + 1..start + end];
             // Split by '=' to get total and breakdown: "152340 = 131595 +   20336 +     408"
@@ -1036,7 +1100,10 @@ pub fn get_fit_scan_points(model_path: String) -> Option<Vec<FitDataPoint>> {
 
 #[cfg(test)]
 mod memory_breakdown_tests {
-    use super::{parse_all_memory_breakdown_tables, parse_engine_memory_breakdown};
+    use super::{
+        parse_all_memory_breakdown_tables, parse_engine_memory_breakdown,
+        parse_engine_memory_breakdown_mib, parse_fit_print_stdout,
+    };
 
     const FIT_AT_LOAD: &str = r#"0.00.971.498 I common_memory_breakdown_print: | memory breakdown [MiB]                                 | total    free    self   model   context   compute    unaccounted |
 0.00.971.505 I common_memory_breakdown_print: |   - CUDA0 (RTX PRO 6000 Blackwell Workstation Edition) | 97886 = 95357 + (2395 =   500 +    1632 +     263) +         133 |
@@ -1045,6 +1112,39 @@ mod memory_breakdown_tests {
     const AT_EXIT: &str = r#"0.04.450.376 I common_memory_breakdown_print: | memory breakdown [MiB]                                 | total    free    self   model   context   compute    unaccounted |
 0.04.450.381 I common_memory_breakdown_print: |   - CUDA0 (RTX PRO 6000 Blackwell Workstation Edition) | 97886 = 92883 + (2395 =   500 +    1632 +     263) +        2607 |
 0.04.450.382 I common_memory_breakdown_print: |   - Host                                               |                   269 =   137 +       0 +     131                |"#;
+
+    #[test]
+    fn parses_fit_print_stdout_single_gpu() {
+        const OUT: &str = r#"0.00.041.481 I llama_fit_params: printing estimated memory in MiB to stdout (device, model, context, compute) ...
+CUDA0 20386 2197 505
+Host 994 0 52
+"#;
+        let raw = parse_fit_print_stdout(OUT).expect("fit-print stdout");
+        assert_eq!(raw.vram_mib, 23088.0);
+        assert_eq!(raw.gpu_breakdown_mib, Some(vec![23088.0]));
+        assert_eq!(raw.host_mib, Some(1046.0));
+        assert_eq!(raw.gpu_components_mib.as_ref().map(|c| c.len()), Some(1));
+    }
+
+    #[test]
+    fn parses_fit_print_stdout_multi_gpu_and_tensor_meta() {
+        const OUT: &str = r#"CUDA0 9829 1179 226
+CUDA1 10556 1167 649
+Host 994 0 84
+"#;
+        let raw = parse_fit_print_stdout(OUT).expect("fit-print stdout");
+        assert_eq!(raw.vram_mib, 23606.0);
+        assert_eq!(raw.gpu_breakdown_mib, Some(vec![11234.0, 12372.0]));
+        assert_eq!(raw.host_mib, Some(1078.0));
+    }
+
+    #[test]
+    fn breakdown_fallback_when_no_summary_line() {
+        const FIT_AT_LOAD: &str = r#"0.00.971.498 I common_memory_breakdown_print: | memory breakdown [MiB]                                 | total    free    self   model   context   compute    unaccounted |
+0.00.971.505 I common_memory_breakdown_print: |   - CUDA0 (RTX PRO 6000 Blackwell Workstation Edition) | 97886 = 95357 + (2395 =   500 +    1632 +     263) +         133 |
+0.00.971.506 I common_memory_breakdown_print: |   - Host                                               |                   269 =   137 +       0 +     131                |"#;
+        assert_eq!(parse_engine_memory_breakdown_mib(FIT_AT_LOAD), Some(2395.0));
+    }
 
     #[test]
     fn parses_fit_time_breakdown_from_real_stderr() {

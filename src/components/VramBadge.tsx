@@ -80,6 +80,7 @@ export default function VramBadge({
       ppResult: ps.ppResult,
       gpus,
       gpuMask,
+      inlineActions: true,
     });
     return computeFusionPhosphorHeight(benchPanelHeight);
   }, [fusionOverlayActive, activeEnginePort, benchLayoutTick, gpus, gpuMask]);
