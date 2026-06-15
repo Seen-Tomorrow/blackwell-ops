@@ -241,6 +241,10 @@ pub struct FusionUpdate {
     /// Reset source indicator — "prompt" if NewPrompt caught request start (belt), "regression" if fallback detected (suspenders). Flashes for visual feedback then clears on next PP line.
     #[serde(rename = "phaseResetSource", skip_serializing_if = "Option::is_none")]
     pub lp_reset_source: Option<&'static str>,  // Some("prompt") or Some("regression")
+
+    /// Wall clock + hero AVG/LIVE must not tick after request end (bench HTTP return, stop processing, idle tail).
+    #[serde(rename = "requestClosed")]
+    pub request_closed: bool,
 }
 
 /// Quantized snapshot for emit-on-change (avoids ~10 Hz identical fusion-update IPC).
@@ -374,6 +378,8 @@ pub struct FusionBrain {
     tg_start_time: Option<Instant>,
     tg_start_n_decoded: usize,
     last_gen_tps: f64,  // "last known" value — persists across phase transitions
+    /// Pinned hero AVG when `request_closed` (immune to post-end elapsed growth).
+    frozen_request_gen_tps: f64,
 
     // ── Log-parsed tracking fields ────────────────────────────────
     lp_prefill_progress: f64,       // exact 0→1 from print_timing PP line
@@ -458,6 +464,7 @@ impl FusionBrain {
             tg_start_time: None,
             tg_start_n_decoded: 0,
             last_gen_tps: 0.0,
+            frozen_request_gen_tps: 0.0,
 
             // Log-parsed fields — initialized to zero/Idle
             lp_prefill_progress: 0.0,
@@ -531,6 +538,7 @@ impl FusionBrain {
     /// Authoritative request start — clears per-request timing for a new request.
     fn restart_request_clock(&mut self) {
         self.request_closed = false;
+        self.frozen_request_gen_tps = 0.0;
         self.request_start = Some(Instant::now());
         self.request_elapsed_frozen_ms = 0;
         self.ttft_ms = None;
@@ -612,6 +620,34 @@ impl FusionBrain {
     }
 
     /// Bench warmup/measured phases reuse the same slot without an idle gap — force fresh TG/PP meters.
+    /// Definitive request end — freeze elapsed + pin hero AVG (survives stale lp_gen_tps / delayed stop log).
+    fn finalize_request_meters(&mut self, slots: &[fusion_poller::SlotData]) {
+        if self.request_closed {
+            return;
+        }
+        if let Some(start) = self.tg_start_time {
+            let tokens = self.per_request_gen_tokens(slots);
+            let elapsed_ms = start.elapsed().as_millis().max(1) as u64;
+            if tokens > 0 {
+                self.frozen_request_gen_tps =
+                    clamp_display_tps((tokens as f64) / (elapsed_ms as f64 / 1000.0));
+                self.last_gen_tps = self.frozen_request_gen_tps;
+            } else if self.last_gen_tps > 0.0 {
+                self.frozen_request_gen_tps = self.last_gen_tps;
+            }
+        } else if self.last_gen_tps > 0.0 {
+            self.frozen_request_gen_tps = self.last_gen_tps;
+        }
+        self.log_request_open = false;
+        self.stop_request_clock();
+        self.lp_gen_tps = 0.0;
+        self.gen_tps_instant = 0.0;
+        self.log_prefill_done = false;
+        self.phase = InferencePhase::Idle;
+        self.lp_phase = InferencePhase::Idle;
+        self.emit_dirty = true;
+    }
+
     fn reset_bench_meters(&mut self) {
         self.phase = InferencePhase::PP;
         self.lp_phase = InferencePhase::PP;
@@ -622,6 +658,7 @@ impl FusionBrain {
         self.request_start = None;
         self.request_elapsed_frozen_ms = 0;
         self.request_closed = false;
+        self.frozen_request_gen_tps = 0.0;
         self.ttft_ms = None;
         self.prefill_ms = None;
         self.decode_ttft_ms = None;
@@ -656,6 +693,9 @@ impl FusionBrain {
     }
 
     fn update_instant_tps(&mut self, slots: &[fusion_poller::SlotData], now: Instant) {
+        if self.request_closed {
+            return;
+        }
         let tokens = self.prefill_tokens.max(self.lp_prompt_tokens);
         let gen_request_tokens = self.per_request_gen_tokens(slots);
 
@@ -888,6 +928,9 @@ impl FusionBrain {
                         }
                         BrainInbound::BenchMeterReset => {
                             brain.reset_bench_meters();
+                        }
+                        BrainInbound::BenchMeterFreeze => {
+                            brain.finalize_request_meters(&[]);
                         }
                     }
                 }
@@ -1172,16 +1215,9 @@ impl FusionBrain {
     }
 
     fn handle_stop_processing(&mut self) {
-        self.log_request_open = false;
         self.lp_reset_prompt = false;
         self.lp_reset_regression = false;
-        // Definitive request end — freeze clock and tear down (hold is for brief /slots idle only).
-        self.stop_request_clock();
-        self.lp_gen_tps = 0.0;
-        self.gen_tps_instant = 0.0;
-        self.log_prefill_done = false;
-        self.phase = InferencePhase::Idle;
-        self.lp_phase = InferencePhase::Idle;
+        self.finalize_request_meters(&[]);
         self.lp_prefill_progress = 0.0;
         self.lp_prefill_tps = 0.0;
         self.lp_prompt_tokens = 0;
@@ -1572,13 +1608,25 @@ impl FusionBrain {
         }
 
         // Update last known gen TPS — store for use during phase transitions / after request end.
-        if let Some(start) = self.tg_start_time {
-            let tokens_generated = self.per_request_gen_tokens(slots);
-            let elapsed_ms = start.elapsed().as_millis() as u64;
-            if elapsed_ms > 0 && tokens_generated > 0 {
-                self.last_gen_tps =
-                    (tokens_generated as f64) / (elapsed_ms as f64 / 1000.0);
+        if !self.request_closed {
+            if let Some(start) = self.tg_start_time {
+                let tokens_generated = self.per_request_gen_tokens(slots);
+                let elapsed_ms = start.elapsed().as_millis() as u64;
+                if elapsed_ms > 0 && tokens_generated > 0 {
+                    self.last_gen_tps =
+                        (tokens_generated as f64) / (elapsed_ms as f64 / 1000.0);
+                }
             }
+        }
+
+        // Idle tail after TG — lp_gen_tps can keep phase TG until stop log; freeze once hold expires.
+        if !any_processing
+            && !self.request_closed
+            && self.request_start.is_some()
+            && self.log_prefill_done
+            && !self.within_inter_request_hold(now)
+        {
+            self.finalize_request_meters(slots);
         }
 
     }
@@ -1611,8 +1659,14 @@ impl FusionBrain {
             }
         }
 
-        // Gen TPS (hero AVG): per-request tokens / TG wall time while clock is running.
-        let gen_tps = if !self.request_closed && request_live && self.effective_generation_active() {
+        // Gen TPS (hero AVG): live during request; pinned after finalize (no post-end decay).
+        let gen_tps = if self.request_closed {
+            if self.frozen_request_gen_tps > 0.0 {
+                self.frozen_request_gen_tps
+            } else {
+                self.last_gen_tps
+            }
+        } else if request_live && self.effective_generation_active() {
             if let Some(start) = self.tg_start_time {
                 let tokens_since_tg = self.per_request_gen_tokens(slots);
                 let elapsed_ms = start.elapsed().as_millis().max(1) as u64;
@@ -1760,6 +1814,7 @@ impl FusionBrain {
             spec_draft_accept_rate_last: self.spec_draft_accept_rate_last,
             spec_draft_accepted_last: self.spec_draft_accepted_last,
             spec_draft_generated_last: self.spec_draft_generated_last,
+            request_closed: self.request_closed,
         }
     }
 
@@ -1818,6 +1873,8 @@ use tokio::sync::Mutex as TokioMutex;
 pub enum BrainInbound {
     Log(crate::fusion_logparser::LogEvent),
     BenchMeterReset,
+    /// Bench HTTP returned — freeze meters before trailing print_timing / stop log.
+    BenchMeterFreeze,
 }
 
 static BRAIN_REGISTRY: std::sync::LazyLock<
@@ -1846,6 +1903,21 @@ pub fn route_log_event(slot_idx: usize, event: crate::fusion_logparser::LogEvent
     let registry = BRAIN_INBOUND_SENDERS.lock();
     if let Some(tx) = registry.get(&slot_idx) {
         let _ = tx.try_send(BrainInbound::Log(event));
+    }
+}
+
+/// Freeze fusion hero meters when a bench HTTP run completes (definitive for stream:false).
+pub fn freeze_request_meters_for_port(port: u16) {
+    let slot_idx = FUSION_SNAPSHOT_CACHE
+        .lock()
+        .values()
+        .find(|u| u.port == port)
+        .map(|u| u.slot_idx);
+    if let Some(idx) = slot_idx {
+        let registry = BRAIN_INBOUND_SENDERS.lock();
+        if let Some(tx) = registry.get(&idx) {
+            let _ = tx.try_send(BrainInbound::BenchMeterFreeze);
+        }
     }
 }
 

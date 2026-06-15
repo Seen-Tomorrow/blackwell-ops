@@ -143,6 +143,31 @@ function isSpecDecodingActive(params: UserEditedTemplateParam[]): boolean {
     .some((p) => !p.hidden);
 }
 
+function resolveParallelSlots(
+  config: Record<string, unknown>,
+  params: UserEditedTemplateParam[],
+): number {
+  const raw = config.parallel;
+  if (raw != null && raw !== "") {
+    const n = Number(raw);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  const parallelDef = params.find((p) => p.key === "parallel");
+  const fallback = parallelDef?.defaultValue ?? parallelDef?.values?.[0] ?? 1;
+  const n = Number(fallback);
+  return Number.isFinite(n) && n > 0 ? n : 1;
+}
+
+function mtpParallelConflict(
+  model: { metadata?: { nextn_predict_layers?: number } } | null | undefined,
+  params: UserEditedTemplateParam[],
+  config: Record<string, unknown>,
+): boolean {
+  if ((model?.metadata?.nextn_predict_layers ?? 0) <= 0) return false;
+  if (!isSpecDecodingActive(params)) return false;
+  return resolveParallelSlots(config, params) > 1;
+}
+
 function collectActiveAliases(stack: StackEntry[]): Set<string> {
   const used = new Set<string>();
   for (const s of stack) {
@@ -504,6 +529,15 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   });
 
   const splitModeActive = isSplitModeActive(config.split);
+
+  const mtpParallelWarn = useMemo(
+    () => mtpParallelConflict(model, allParamsResolved, config),
+    [model, allParamsResolved, config],
+  );
+  const mtpParallelSlotCount = useMemo(
+    () => resolveParallelSlots(config, allParamsResolved),
+    [config, allParamsResolved],
+  );
 
   const shareLaunchConfig = useMemo((): FusionShareLaunchConfig => ({
     ctx: config.ctx,
@@ -1316,7 +1350,19 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                     </div>
                   </div>
 
-                  {isMtpModel && specActive && (
+                  {isMtpModel && specActive && mtpParallelWarn && (
+                    <div
+                      className="rounded-sm px-3 py-2 text-[8px] font-mono leading-snug tracking-wide flex flex-col gap-0.5 text-[#FFB800]/95 border border-[#FFB800]/25 bg-[#FFB800]/5"
+                      title="ik_llama strips MTP when --parallel > 1 at engine startup"
+                    >
+                      <span className="uppercase">MTP + parallel ×{mtpParallelSlotCount} conflict</span>
+                      <span className="normal-case tracking-normal text-[7px] text-[#FFB800]/80">
+                        Engine disables speculative decoding at launch — use parallel = 1 for MTP speed, or turn MTP off for multi-slot throughput.
+                      </span>
+                    </div>
+                  )}
+
+                  {isMtpModel && specActive && !mtpParallelWarn && (
                     <div className="rounded-sm px-3 py-2 text-[8px] font-mono tracking-wide uppercase flex items-center gap-1 text-nv-green">
                       Speculative mode active
                     </div>
@@ -1432,17 +1478,31 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         )}
       </div>
 
-        <div className="config-launch-dock flex-shrink-0 px-4 flex items-center gap-3">
-          <button
-            onClick={handleAddToStack}
-            disabled={!model || vramCalc.manifest?.scenario === 'HW_LOCKED' || selectedProfileIsBuilding}
-            className={`flex-1 min-w-0 ignite-btn px-4 py-2 text-[12px] font-mono tracking-[0.22em] rounded-sm disabled:opacity-40 disabled:cursor-not-allowed config-launch-btn ${launchAck ? "launch-ack" : ""}`}
-          >
-            LAUNCH ENGINE
-          </button>
-          <span className="shrink-0 text-[8px] font-mono text-stealth-muted/40 whitespace-nowrap config-launch-hint">
-            Ctrl+Enter
-          </span>
+        <div className="config-launch-dock flex-shrink-0 px-4 flex flex-col gap-2">
+          {mtpParallelWarn && (
+            <div
+              className="rounded-sm px-2.5 py-1.5 text-[7px] font-mono leading-snug border border-[#FFB800]/30 bg-[#FFB800]/8 text-[#FFB800]/95"
+              role="status"
+            >
+              <span className="uppercase tracking-wide">⚠ MTP disabled at launch</span>
+              {" — "}
+              <span className="text-[#FFB800]/85">
+                parallel ×{mtpParallelSlotCount} strips speculative decoding (slow path). Set parallel = 1 for MTP, or turn MTP off for multi-slot.
+              </span>
+            </div>
+          )}
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleAddToStack}
+              disabled={!model || vramCalc.manifest?.scenario === 'HW_LOCKED' || selectedProfileIsBuilding}
+              className={`flex-1 min-w-0 ignite-btn px-4 py-2 text-[12px] font-mono tracking-[0.22em] rounded-sm disabled:opacity-40 disabled:cursor-not-allowed config-launch-btn ${launchAck ? "launch-ack" : ""}`}
+            >
+              LAUNCH ENGINE
+            </button>
+            <span className="shrink-0 text-[8px] font-mono text-stealth-muted/40 whitespace-nowrap config-launch-hint">
+              Ctrl+Enter
+            </span>
+          </div>
         </div>
       </div>
     </div>

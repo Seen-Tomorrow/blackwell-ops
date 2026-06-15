@@ -253,6 +253,12 @@ export interface bench_TGBenchResult {
   itl_ms: number;
   success: boolean;
   error?: string;
+  /** Concurrent feeds on measured run (1 = legacy single-request). */
+  parallel_requests?: number;
+  /** Total gen tok/s across all parallel feeds (wall clock). */
+  aggregate_gen_tps?: number;
+  /** Mean per-request engine gen tok/s when parallel > 1. */
+  per_request_gen_tps?: number;
 }
 
 /** PP (prefill) burst benchmark result from cmd_bench_pp_burst IPC command. */
@@ -277,6 +283,8 @@ export interface GpuInfo {
   power_limit: number;
   utilization_gpu: number;
   utilization_memory: number;
+  /** NVIDIA driver version from nvidia-smi (e.g. "610.47.23"). */
+  driver_version?: string;
 }
 
 export interface CpuInfo {
@@ -378,6 +386,8 @@ export interface FusionUpdate {
 
   // Request timing
   requestElapsedMs: number;
+  /** True after request end — elapsed + hero AVG must not tick (bench HTTP return / stop processing). */
+  requestClosed?: boolean;
   ttftMs?: number | null;          // wall ms from request start → first decode token (/slots)
   /** Prompt prefill duration only (sampler_init / prompt eval). */
   prefillMs?: number | null;

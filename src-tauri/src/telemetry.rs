@@ -25,6 +25,8 @@ pub struct GpuInfo {
     pub power_limit: f32,      // Watts
     pub utilization_gpu: u32,  // Percentage
     pub utilization_memory: u32, // Percentage
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub driver_version: Option<String>, // e.g. "610.47.23" from nvidia-smi
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -79,7 +81,7 @@ fn get_physical_ram_bytes() -> Result<u64, String> {
 pub async fn scan_gpus() -> Result<Vec<GpuInfo>, String> {
     let output = tokio::process::Command::new("nvidia-smi")
         .args(&[
-            "--query-gpu=index,name,memory.total,memory.used,memory.free,temperature.gpu,power.draw,power.limit,utilization.gpu,utilization.memory",
+            "--query-gpu=index,name,driver_version,memory.total,memory.used,memory.free,temperature.gpu,power.draw,power.limit,utilization.gpu,utilization.memory",
             "--format=csv,noheader,nounits",
         ])
         .stdout(Stdio::piped())   // MUST be piped — null() discards output, returns empty GPU list
@@ -103,37 +105,42 @@ pub async fn scan_gpus() -> Result<Vec<GpuInfo>, String> {
             continue;
         }
 
-        // Split from the right: last 8 fields are always numeric (mem_total through util_mem)
-        // Everything between index(0) and those 8 fields is the GPU name
+        // Split from the right: last 9 fields are driver_version + mem/temp/power/util metrics.
+        // Everything between index(0) and those fields is the GPU name.
         let parts: Vec<&str> = line.split(',').map(|s| s.trim()).collect();
 
-        if parts.len() < 9 {
+        if parts.len() < 10 {
             log::debug!("nvidia-smi line has too few fields ({}): {}", parts.len(), line);
             continue;
         }
 
         let index: u32 = parts[0].parse().unwrap_or(0);
 
-        // GPU name is between index and the last 8 numeric fields
-        let num_numeric = 8;
-        let name_end = parts.len() - num_numeric;
+        let num_trailing = 9;
+        let name_end = parts.len() - num_trailing;
         let gpu_name = if name_end > 1 {
             parts[1..name_end].join(", ")
         } else {
             "Unknown GPU".to_string()
         };
 
-        // Last 8 numeric fields: memory.total, mem.used, mem.free, temp.gpu,
+        // driver_version, memory.total, mem.used, mem.free, temp.gpu,
         //   power.draw, power.limit, util.gpu, util.mem
         let base = name_end;
-        let memory_total: u64 = parts[base].parse().unwrap_or(0);
-        let memory_used: u64 = parts[base + 1].parse().unwrap_or(0);
-        let memory_free: u64 = parts[base + 2].parse().unwrap_or(0);
-        let temperature_gpu: u32 = parts[base + 3].parse().unwrap_or(0);
-        let power_draw: f32 = parts[base + 4].parse().unwrap_or(0.0);
-        let power_limit: f32 = parts[base + 5].parse().unwrap_or(0.0);
-        let utilization_gpu: u32 = parts[base + 6].parse().unwrap_or(0);
-        let utilization_memory: u32 = parts[base + 7].parse().unwrap_or(0);
+        let driver_raw = parts[base].trim();
+        let driver_version = if driver_raw.is_empty() || driver_raw == "[N/A]" {
+            None
+        } else {
+            Some(driver_raw.to_string())
+        };
+        let memory_total: u64 = parts[base + 1].parse().unwrap_or(0);
+        let memory_used: u64 = parts[base + 2].parse().unwrap_or(0);
+        let memory_free: u64 = parts[base + 3].parse().unwrap_or(0);
+        let temperature_gpu: u32 = parts[base + 4].parse().unwrap_or(0);
+        let power_draw: f32 = parts[base + 5].parse().unwrap_or(0.0);
+        let power_limit: f32 = parts[base + 6].parse().unwrap_or(0.0);
+        let utilization_gpu: u32 = parts[base + 7].parse().unwrap_or(0);
+        let utilization_memory: u32 = parts[base + 8].parse().unwrap_or(0);
 
         gpus.push(GpuInfo {
             index,
@@ -149,6 +156,7 @@ pub async fn scan_gpus() -> Result<Vec<GpuInfo>, String> {
             power_limit,
             utilization_gpu,
             utilization_memory,
+            driver_version,
         });
     }
 

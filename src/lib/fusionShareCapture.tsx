@@ -43,9 +43,8 @@ export interface FusionShareMeta {
   launchConfig?: FusionShareLaunchConfig;
 }
 
-/** Shorter phosphor in share cards — room for 2-row params + HW topo band. */
+/** Shorter phosphor in share cards — room for 2-row params + bench HW topo in clone. */
 export const FUSION_SHARE_CAPTURE_PHOSPHOR_HEIGHT_PX = 208;
-export const FUSION_SHARE_EXPORT_HW_TOPO_HEIGHT = 22;
 
 const NV_GREEN = "#76B900";
 
@@ -79,7 +78,6 @@ export const FUSION_SHARE_EXPORT_BEZEL_HEIGHT_PX =
 export const FUSION_SHARE_EXPORT_FRAME_HEIGHT =
   FUSION_SHARE_EXPORT_BEZEL_HEIGHT_PX +
   FUSION_SHARE_EXPORT_FRAME_PAD_TOP +
-  FUSION_SHARE_EXPORT_HW_TOPO_HEIGHT +
   FUSION_SHARE_EXPORT_FRAME_PAD_BOTTOM;
 export const FUSION_SHARE_EXPORT_FOOTER_HEIGHT = 27;
 /** Identity row + up to two params chip rows. */
@@ -563,40 +561,6 @@ function createLaunchParamsSection(
   return section;
 }
 
-function createHwTopoBand(
-  text: string,
-  colors: CaptureColors,
-  width: number,
-): HTMLElement {
-  const band = document.createElement("div");
-  band.className = "fusion-share-hw-topo-band";
-  band.style.width = `${width}px`;
-  band.style.height = `${FUSION_SHARE_EXPORT_HW_TOPO_HEIGHT}px`;
-  band.style.display = "flex";
-  band.style.alignItems = "center";
-  band.style.marginTop = "6px";
-  band.style.padding = "0 2px";
-  band.style.boxSizing = "border-box";
-  band.style.overflow = "hidden";
-
-  const label = document.createElement("span");
-  label.textContent = text;
-  label.style.fontFamily = "'JetBrains Mono', 'Roboto Mono', monospace";
-  label.style.fontSize = "8px";
-  label.style.fontWeight = "600";
-  label.style.letterSpacing = "0.05em";
-  label.style.color = colors.subtitle;
-  label.style.webkitTextFillColor = colors.subtitle;
-  label.style.lineHeight = "1.2";
-  label.style.whiteSpace = "nowrap";
-  label.style.overflow = "hidden";
-  label.style.textOverflow = "ellipsis";
-  label.style.flex = "1";
-  label.style.minWidth = "0";
-  band.appendChild(label);
-  return band;
-}
-
 interface FrameCaptureStage {
   stage: HTMLElement;
   frame: HTMLElement;
@@ -630,7 +594,6 @@ function createFrameCaptureStage(
   source: HTMLElement,
   colors: CaptureColors,
   variant: FusionShareVariant,
-  hwTopo?: string,
 ): FrameCaptureStage {
   const padTop = FUSION_SHARE_EXPORT_FRAME_PAD_TOP;
   const padX = FUSION_SHARE_EXPORT_FRAME_PAD_X;
@@ -668,10 +631,6 @@ function createFrameCaptureStage(
   normalizeFusionCaptureLayout(frame);
 
   stage.appendChild(frame);
-  const topoText = hwTopo?.trim();
-  if (topoText) {
-    stage.appendChild(createHwTopoBand(topoText, colors, innerWidth));
-  }
   return { stage, frame };
 }
 
@@ -763,21 +722,43 @@ function restoreForecastPadding(restores: PaddingRestore[]): void {
 }
 
 function normalizeFusionCaptureLayout(frame: HTMLElement): void {
+  const phosphorH = `${FUSION_SHARE_CAPTURE_PHOSPHOR_HEIGHT_PX}px`;
+
   const display = frame.querySelector(".vram-forecast-display");
   if (display instanceof HTMLElement) {
-    display.style.height = `${FUSION_SHARE_CAPTURE_PHOSPHOR_HEIGHT_PX}px`;
-    display.style.minHeight = `${FUSION_SHARE_CAPTURE_PHOSPHOR_HEIGHT_PX}px`;
-    display.style.maxHeight = `${FUSION_SHARE_CAPTURE_PHOSPHOR_HEIGHT_PX}px`;
+    display.style.height = phosphorH;
+    display.style.minHeight = phosphorH;
+    display.style.maxHeight = phosphorH;
+  }
+
+  const forecast = frame.querySelector(".vram-badge-forecast");
+  if (forecast instanceof HTMLElement) {
+    forecast.style.height = phosphorH;
+    forecast.style.minHeight = phosphorH;
+    forecast.style.maxHeight = phosphorH;
+  }
+
+  const fusionPanel = frame.querySelector(
+    ".vram-badge-forecast > .phosphor-screen.phosphor-display-surface",
+  );
+  if (fusionPanel instanceof HTMLElement) {
+    fusionPanel.style.inset = "0";
+    fusionPanel.style.width = "100%";
+    fusionPanel.style.height = phosphorH;
+    fusionPanel.style.minHeight = phosphorH;
+    fusionPanel.style.maxHeight = phosphorH;
   }
 
   frame.querySelectorAll<HTMLElement>(".fusion-prefill-hero-value").forEach((el) => {
     el.style.fontSize = `${FUSION_CAPTURE_HERO_FONT_PX}px`;
+    el.style.lineHeight = "1";
   });
 
   frame.querySelectorAll<HTMLElement>("[style]").forEach((el) => {
     const fontSize = el.style.fontSize;
     if (fontSize.includes("vh") || fontSize.includes("clamp")) {
       el.style.fontSize = `${FUSION_CAPTURE_HERO_FONT_PX}px`;
+      el.style.lineHeight = "1";
     }
   });
 }
@@ -1157,16 +1138,20 @@ function hexToRgb(hex: string): [number, number, number] | null {
   return [(value >> 16) & 255, (value >> 8) & 255, value & 255];
 }
 
-/** Mat fills the border — require non-mat pixels in the bezel center. */
+/**
+ * Bezel center must show phosphor content. Compare against the industrial face
+ * color — SLATE mat (#0c0c0c) sits too close to phosphor (#080808) and used to
+ * force a live-frame fallback with different proportions than the white clone path.
+ */
 function canvasHasBezelContent(
   canvas: HTMLCanvasElement,
   pixelRatio: number,
-  matColor: string,
+  bezelFaceColor: string,
 ): boolean {
   const ctx = canvas.getContext("2d");
   if (!ctx || canvas.width < 8 || canvas.height < 8) return false;
 
-  const matRgb = hexToRgb(matColor);
+  const refRgb = hexToRgb(bezelFaceColor);
   const padTop = FUSION_SHARE_EXPORT_FRAME_PAD_TOP * pixelRatio;
   const padBottom = FUSION_SHARE_EXPORT_FRAME_PAD_BOTTOM * pixelRatio;
   const bezelH = canvas.height - padTop - padBottom;
@@ -1182,11 +1167,11 @@ function canvasHasBezelContent(
   for (let i = 0; i < data.length; i += 4) {
     const alpha = data[i + 3];
     if (alpha < 24) continue;
-    if (!matRgb) return true;
-    const dr = Math.abs(data[i] - matRgb[0]);
-    const dg = Math.abs(data[i + 1] - matRgb[1]);
-    const db = Math.abs(data[i + 2] - matRgb[2]);
-    if (dr + dg + db > 36) return true;
+    if (!refRgb) return true;
+    const dr = Math.abs(data[i] - refRgb[0]);
+    const dg = Math.abs(data[i + 1] - refRgb[1]);
+    const db = Math.abs(data[i + 2] - refRgb[2]);
+    if (Math.max(dr, dg, db) > 10) return true;
   }
   return false;
 }
@@ -1315,7 +1300,7 @@ async function renderFusionSharePngOnce(
   const targetFooterH = FUSION_SHARE_EXPORT_FOOTER_HEIGHT * pixelRatio;
 
   const themeLock = lockDocumentThemeForCapture(variant);
-  const { stage, frame } = createFrameCaptureStage(sourceFrame, colors, variant, meta.hwTopo);
+  const { stage, frame } = createFrameCaptureStage(sourceFrame, colors, variant);
   const headerShell = createHeaderShell(meta, variant);
   const footerShell = createFooterShell();
 
@@ -1353,7 +1338,7 @@ async function renderFusionSharePngOnce(
       canvasHeight: targetFrameH,
     });
 
-    if (!canvasHasBezelContent(frameCanvas, pixelRatio, colors.panelAccent)) {
+    if (!canvasHasBezelContent(frameCanvas, pixelRatio, colors.industrialBg)) {
       let bezelCanvas = await captureNode(frame, {
         backgroundColor: colors.industrialBg,
         canvasWidth: targetBezelW,
@@ -1364,7 +1349,7 @@ async function renderFusionSharePngOnce(
       }
 
       const cloneMat = compositeFrameWithMat(bezelCanvas, pixelRatio, colors.panelAccent);
-      if (!canvasHasBezelContent(cloneMat, pixelRatio, colors.panelAccent)) {
+      if (!canvasHasBezelContent(cloneMat, pixelRatio, colors.industrialBg)) {
         unmountCaptureShell(stage);
         await waitForPaint(2);
         let liveCanvas = await captureNode(sourceFrame, {

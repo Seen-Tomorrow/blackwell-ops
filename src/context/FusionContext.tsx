@@ -37,6 +37,7 @@ function fusionPayloadEqual(a: FusionUpdate, b: FusionUpdate): boolean {
     && a.ctxUsedSession === b.ctxUsedSession
     && a.ctxFillPct === b.ctxFillPct
     && a.requestElapsedMs === b.requestElapsedMs
+    && (a.requestClosed ?? false) === (b.requestClosed ?? false)
     && (a.ttftMs ?? null) === (b.ttftMs ?? null)
     && (a.prefillMs ?? null) === (b.prefillMs ?? null)
     && (a.decodeTtftMs ?? null) === (b.decodeTtftMs ?? null)

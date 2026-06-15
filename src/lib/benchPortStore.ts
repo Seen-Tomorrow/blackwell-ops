@@ -9,6 +9,8 @@ export interface BenchPortState {
   tgPhase: "warmup" | "measured" | null;
   tgEffectiveLength: number | null;
   nPredict: number;
+  /** Concurrent identical `/completion` feeds on the measured TG run (1 = single request). */
+  tgParallel: number;
   /** User toggle — warmup still auto-skips when nPredict > 512 (measured run is long enough). */
   tgWarmupEnabled: boolean;
   promptMode: bench_PromptMode;
@@ -28,6 +30,7 @@ function defaultBenchState(): BenchPortState {
     tgPhase: null,
     tgEffectiveLength: null,
     nPredict: 256,
+    tgParallel: 1,
     tgWarmupEnabled: true,
     promptMode: "unique",
     ppRunning: false,

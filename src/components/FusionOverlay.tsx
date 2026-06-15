@@ -1,9 +1,14 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { FusionUpdate } from "../lib/types";
-import BenchWidget, { type BenchHeroPatch, type BenchSessionMode } from "./BenchWidget";
+import {
+  BENCH_SHARE_FOOTER_PX,
+  computeBenchPanelHeight,
+  isBenchPanelExpanded,
+} from "../lib/benchPanelLayout";
+import { getBenchPortState, notifyBenchPortStore, subscribeBenchPortStore } from "../lib/benchPortStore";
+import BenchWidget, { BenchResultsFooter, type BenchHeroPatch, type BenchSessionMode } from "./BenchWidget";
 import FusionBooter from "./FusionBooter";
-import FusionShareMenu from "./FusionShareMenu";
 import type { FusionShareLaunchConfig } from "../lib/fusionShareCapture";
 import SlotCtxBars from "./SlotCtxBars";
 import type { GpuInfo } from "../lib/types";
@@ -98,7 +103,39 @@ export default function FusionOverlay({
     pp: null,
   });
   const [benchSessionMode, setBenchSessionMode] = useState<BenchSessionMode>("idle");
+  const [benchLayoutTick, setBenchLayoutTick] = useState(0);
   const { mode: heroTpsMode, toggle: toggleHeroTpsMode } = useFusionHeroTpsMode();
+
+  useEffect(() => subscribeBenchPortStore(() => setBenchLayoutTick((t) => t + 1)), []);
+
+  const benchPs = useMemo(() => getBenchPortState(displayPort), [displayPort, benchLayoutTick]);
+  const benchPanelHeight = useMemo(
+    () =>
+      computeBenchPanelHeight({
+        showResults: benchPs.showResults,
+        tgRunning: benchPs.tgRunning,
+        ppRunning: benchPs.ppRunning,
+        sessionMode: benchPs.sessionMode,
+        tgResult: benchPs.tgResult,
+        ppResult: benchPs.ppResult,
+        gpus,
+        gpuMask,
+      }),
+    [benchPs, gpus, gpuMask],
+  );
+  const benchPanelExpanded = isBenchPanelExpanded(benchPanelHeight);
+  const showBenchShareFooter =
+    benchPs.showResults && !benchPs.tgRunning && !benchPs.ppRunning;
+
+  const handleCloseBenchResults = useCallback(() => {
+    const ps = getBenchPortState(displayPort);
+    ps.showResults = false;
+    ps.tgResult = null;
+    ps.ppResult = null;
+    setBenchSessionMode("idle");
+    setBenchHero({ tg: null, pp: null });
+    notifyBenchPortStore();
+  }, [displayPort]);
 
   useTauriListen<{ slot: number }>("slot-cleared", ({ slot }) => {
     engineStates.current.delete(slot);
@@ -137,7 +174,8 @@ export default function FusionOverlay({
     }
   }, [displayAlias, slotIdx]);
 
-  const isActive = fusion != null && fusion.phase !== "IDLE";
+  const isActive =
+    fusion != null && fusion.phase !== "IDLE" && fusion.requestClosed !== true;
 
   useEffect(() => {
     if (!fusion || fusion.slotIdx < 0) return;
@@ -152,7 +190,7 @@ export default function FusionOverlay({
       engineStates.current.set(fusion.slotIdx, engState);
     }
 
-    const active = fusion.phase !== "IDLE";
+    const active = fusion.phase !== "IDLE" && fusion.requestClosed !== true;
     if (active) {
       engState.wasActive = true;
       engState.frozenStats = null;
@@ -176,6 +214,7 @@ export default function FusionOverlay({
     fusion?.prefillMs,
     fusion?.decodeTtftMs,
     fusion?.requestElapsedMs,
+    fusion?.requestClosed,
   ]);
 
   const showLive = fusion != null && isActive;
@@ -391,17 +430,6 @@ export default function FusionOverlay({
           {/* ═══ HEADER — alias + phase indicator + controls ═══════ */}
           <div className="flex items-center flex-shrink-0 mb-1 gap-2">
             <div className="flex items-center flex-1 min-w-0 justify-start gap-1.5">
-              <FusionShareMenu
-                alias={displayAlias}
-                providerName={providerName}
-                providerBuildVersion={providerBuildVersion}
-                modelName={modelName}
-                modelQuant={modelQuant}
-                profileLabel={profileLabel}
-                cudaVersion={cudaVersion}
-                launchConfig={launchConfig}
-                hwTopo={hwTopo}
-              />
               <span className="text-[9px] font-mono text-stealth-muted/40 tracking-widest">
                 CONTEXT SLOTS
               </span>
@@ -442,11 +470,11 @@ export default function FusionOverlay({
             </div>
           </div>
 
-          {/* ═══ MAIN BODY — bars | TG hero | PREFILL ═══ */}
-          <div className="flex gap-2 flex-1 min-h-0" style={{ alignItems: 'stretch' }}>
+          {/* ═══ MAIN BODY — bars | TG hero | PREFILL (natural height; bench slot owns extra phosphor) ═══ */}
+          <div className="flex gap-2 flex-shrink-0 items-start">
 
             {/* ── LEFT: Slot CTX bars — fixed 4-slot baseline width (bars scale inside) ─── */}
-            <div className="flex-shrink-0" style={{ width: "18%", minWidth: 110 }}>
+            <div className="flex-shrink-0 self-stretch min-h-0" style={{ width: "18%", minWidth: 110 }}>
               <SlotCtxBars
                 slotCtx={fusion.slotCtx}
                 ctxTotal={ctxTotal}
@@ -456,7 +484,7 @@ export default function FusionOverlay({
             </div>
 
             {/* ── RIGHT: TG hero + PREFILL side by side ─── */}
-            <div className="flex gap-3 flex-1 min-h-0">
+            <div className="flex gap-3 flex-1 min-w-0">
               {/* ── LEFT: TG TPS HERO (dominant) ─── */}
               <div className={`flex flex-col items-center justify-start px-2 py-1.5 rounded-sm border transition-colors relative ${
                  !suppressTgHero && fusion.phase === "TG"
@@ -490,33 +518,33 @@ export default function FusionOverlay({
                  </div>
 
                 {/* Per-request micro-stats — PP prefill vs +1st decode after prefill */}
-                 <div className="flex items-center flex-wrap gap-x-2 gap-y-0.5 mt-1.5">
-                   <span className={`text-[8px] font-mono ${showLive ? "fusion-readout-emphasis" : "text-stealth-muted/35"}`}>
+                 <div className="flex items-center justify-center w-full min-w-0 gap-x-1 mt-1.5 overflow-hidden flex-nowrap">
+                   <span className={`text-[7px] font-mono flex-shrink-0 ${showLive ? "fusion-readout-emphasis" : "text-stealth-muted/35"}`}>
                      {statsToDisplay.genTokensSlots > 0 ? statsToDisplay.genTokensSlots + " tok" : "--"}
                    </span>
-                   <span className={`text-[6px] ${showLive ? "fusion-readout-divider" : "text-stealth-muted/15"}`}>│</span>
+                   <span className={`text-[6px] flex-shrink-0 ${showLive ? "fusion-readout-divider" : "text-stealth-muted/15"}`}>│</span>
                    <span
-                     className={`text-[8px] font-mono ${showLive ? "fusion-readout-emphasis" : "text-stealth-muted/35"}`}
+                     className={`text-[7px] font-mono flex-shrink-0 ${showLive ? "fusion-readout-emphasis" : "text-stealth-muted/35"}`}
                      title="Prompt prefill duration"
                    >
                      PP {statsToDisplay.prefillMs ?? "--"}
                    </span>
-                   <span className={`text-[6px] ${showLive ? "fusion-readout-divider" : "text-stealth-muted/15"}`}>│</span>
+                   <span className={`text-[6px] flex-shrink-0 ${showLive ? "fusion-readout-divider" : "text-stealth-muted/15"}`}>│</span>
                    <span
-                     className={`text-[8px] font-mono ${showLive ? "fusion-readout-emphasis" : "text-stealth-muted/35"}`}
+                     className={`text-[7px] font-mono flex-shrink-0 ${showLive ? "fusion-readout-emphasis" : "text-stealth-muted/35"}`}
                      title="First output token after prefill"
                    >
                      +1st {statsToDisplay.decodeTtftMs ?? "--"}
                    </span>
-                   <span className={`text-[6px] ${showLive ? "fusion-readout-divider" : "text-stealth-muted/15"}`}>│</span>
-                   <span className={`text-[8px] font-mono ${showLive ? "fusion-readout-emphasis" : "text-stealth-muted/35"}`}>
+                   <span className={`text-[6px] flex-shrink-0 ${showLive ? "fusion-readout-divider" : "text-stealth-muted/15"}`}>│</span>
+                   <span className={`text-[7px] font-mono flex-shrink-0 ${showLive ? "fusion-readout-emphasis" : "text-stealth-muted/35"}`}>
                      ELAPSED {statsToDisplay.elapsedMs}
                    </span>
                    {(specSlotActive || mtpAcceptPct != null) && mtpAcceptPct != null && (
                      <>
-                       <span className={`text-[6px] ${showLive ? "fusion-readout-divider" : "text-stealth-muted/15"}`}>│</span>
+                       <span className={`text-[6px] flex-shrink-0 ${showLive ? "fusion-readout-divider" : "text-stealth-muted/15"}`}>│</span>
                        <span
-                         className={`text-[8px] font-mono ${showLive ? "text-amber-300/90" : "text-stealth-muted/45"}`}
+                         className={`text-[7px] font-mono flex-shrink-0 whitespace-nowrap ${showLive ? "text-amber-300/90" : "text-stealth-muted/45"}`}
                          title={mtpAcceptTitle}
                        >
                          MTP {mtpAcceptPct}%
@@ -589,14 +617,55 @@ export default function FusionOverlay({
             </div>
           </div>
 
-          {/* ═══ BENCH WIDGET — fixed panel height (see BenchWidget) ═══ */}
-          <div className="flex-shrink-0 mt-1">
+          {/* Idle bench only — expanded results sit flush under hero (no dead gap). */}
+          {!benchPanelExpanded && <div className="flex-1 min-h-0" aria-hidden />}
+
+          {/* ═══ BENCH WIDGET — fixed panel height (see BenchWidget / benchPanelLayout) ═══ */}
+          <div
+            className={`flex flex-col flex-shrink-0 overflow-hidden ${benchPanelExpanded ? "" : "mt-1"}`}
+            style={{
+              height: benchPanelHeight,
+              minHeight: benchPanelHeight,
+              maxHeight: benchPanelHeight,
+            }}
+          >
             {fusion.engine_state !== "LOADING" && (
-              <BenchWidget
-                port={displayPort}
-                onHeroPatch={handleBenchHeroPatch}
-                onBenchSessionChange={setBenchSessionMode}
-              />
+              <>
+                <div className="flex-1 min-h-0 overflow-hidden">
+                  <BenchWidget
+                    port={displayPort}
+                    footerDocked
+                    onHeroPatch={handleBenchHeroPatch}
+                    onBenchSessionChange={setBenchSessionMode}
+                    benchHw={{
+                      gpus,
+                      gpuMask,
+                      splitMode: launchConfig?.splitMode,
+                    }}
+                  />
+                </div>
+                {showBenchShareFooter && (
+                  <div
+                    className="flex-shrink-0 overflow-visible"
+                    style={{ height: BENCH_SHARE_FOOTER_PX, minHeight: BENCH_SHARE_FOOTER_PX }}
+                  >
+                    <BenchResultsFooter
+                      shareMeta={{
+                        alias: displayAlias,
+                        providerName,
+                        providerBuildVersion,
+                        modelName,
+                        modelQuant,
+                        profileLabel,
+                        cudaVersion,
+                        launchConfig,
+                        hwTopo,
+                      }}
+                      onClose={handleCloseBenchResults}
+                    />
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>

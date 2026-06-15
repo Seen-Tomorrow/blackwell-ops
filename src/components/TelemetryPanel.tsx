@@ -1,4 +1,5 @@
 import type { GpuInfo, CpuInfo } from "../lib/types";
+import { formatGpuDriverVersion } from "../lib/benchHwTopo";
 import { useTelemetry } from "../context/TelemetryContext";
 
 export default function TelemetryPanel() {
@@ -82,13 +83,17 @@ function GpuCard({ gpu }: { gpu: GpuInfo }) {
   const vramPercent = gpu.memory_total > 0 ? (gpu.memory_used / gpu.memory_total) * 100 : 0;
   const tempColor = gpu.temperature_gpu > 85 ? "text-telemetry-red" : gpu.temperature_gpu > 70 ? "text-telemetry-amber" : "text-nv-green";
   const powerPercent = gpu.power_limit > 0 ? (gpu.power_draw / gpu.power_limit) * 100 : 0;
+  const driverVer = formatGpuDriverVersion(gpu.driver_version);
 
   return (
     <div className="theme-surface rounded-sm overflow-hidden">
       <div className="theme-surface-header px-3 py-2.5 border-b border-stealth-border flex items-center justify-between">
         <div>
           <h3 className="text-[11px] font-mono text-white truncate">{gpu.name}</h3>
-          <p className="text-[9px] font-mono text-stealth-muted mt-0.5">GPU-{gpu.index}</p>
+          <p className="text-[9px] font-mono text-stealth-muted mt-0.5">
+            GPU-{gpu.index}
+            {driverVer ? ` [driver ver: ${driverVer}]` : ""}
+          </p>
         </div>
         <span className={`text-sm font-mono ${tempColor}`}>
           {gpu.temperature_gpu}°C

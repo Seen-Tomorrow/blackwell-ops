@@ -1,4 +1,8 @@
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { GpuInfo, VramManifest, ModelMetadata } from "../lib/types";
+import { computeBenchPanelHeight, computeFusionPhosphorHeight } from "../lib/benchPanelLayout";
+import { getBenchPortState, subscribeBenchPortStore } from "../lib/benchPortStore";
+import { FORECAST_PHOSPHOR_HEIGHT_PX } from "../lib/onboardingDisplay";
 import GpuTopology from "./GpuTopology";
 import FusionOverlay from "./FusionOverlay";
 import MoeBadge from "./MoeBadge";
@@ -53,6 +57,53 @@ export default function VramBadge({
 }: VramBadgeProps) {
   const { getEngine } = useFusionData();
   const fusion = selectedSlotIdx !== null && selectedSlotIdx !== undefined ? getEngine(selectedSlotIdx) : null;
+  const [benchLayoutTick, setBenchLayoutTick] = useState(0);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => subscribeBenchPortStore(() => setBenchLayoutTick((t) => t + 1)), []);
+
+  const fusionOverlayActive =
+    selectedSlotIdx !== null &&
+    selectedSlotIdx !== undefined &&
+    activeEnginePort != null &&
+    (engineStatus === "LOADING" || engineStatus === "RUNNING");
+
+  const fusionPhosphorHeight = useMemo(() => {
+    if (!fusionOverlayActive || activeEnginePort == null) return FORECAST_PHOSPHOR_HEIGHT_PX;
+    const ps = getBenchPortState(activeEnginePort);
+    const benchPanelHeight = computeBenchPanelHeight({
+      showResults: ps.showResults,
+      tgRunning: ps.tgRunning,
+      ppRunning: ps.ppRunning,
+      sessionMode: ps.sessionMode,
+      tgResult: ps.tgResult,
+      ppResult: ps.ppResult,
+      gpus,
+      gpuMask,
+    });
+    return computeFusionPhosphorHeight(benchPanelHeight);
+  }, [fusionOverlayActive, activeEnginePort, benchLayoutTick, gpus, gpuMask]);
+
+  useEffect(() => {
+    const display = rootRef.current?.closest(".vram-forecast-display");
+    if (!(display instanceof HTMLElement)) return;
+
+    if (fusionPhosphorHeight > FORECAST_PHOSPHOR_HEIGHT_PX) {
+      display.style.height = `${fusionPhosphorHeight}px`;
+      display.style.minHeight = `${fusionPhosphorHeight}px`;
+      display.style.maxHeight = `${fusionPhosphorHeight}px`;
+    } else {
+      display.style.height = "";
+      display.style.minHeight = "";
+      display.style.maxHeight = "";
+    }
+
+    return () => {
+      display.style.height = "";
+      display.style.minHeight = "";
+      display.style.maxHeight = "";
+    };
+  }, [fusionPhosphorHeight]);
 
   if (!manifest) return null;
 
@@ -90,10 +141,12 @@ export default function VramBadge({
   const ramMfgGb = manifest.ramManufacturedGb.toFixed(0);
 
   return (
-    <div className={`vram-badge-forecast px-3 py-2.5 relative flex flex-col h-full min-h-0 overflow-hidden ${className || ''}`}>
+    <div
+      ref={rootRef}
+      className={`vram-badge-forecast px-3 py-2.5 relative flex flex-col h-full min-h-0 overflow-hidden ${className || ''}`}
+    >
       {/* Overlay when a specific engine is selected (mini card click) — covers entire forecast container */}
-      {selectedSlotIdx !== null && selectedSlotIdx !== undefined && activeEnginePort
-        && (engineStatus === "LOADING" || engineStatus === "RUNNING") && (
+      {fusionOverlayActive && (
         <div
           className="!absolute inset-0 z-50 phosphor-screen phosphor-display-surface overflow-hidden flex flex-col rounded-xl border border-stealth-border p-[6px]"
           style={{ animation: 'fadeIn 0.2s ease' }}

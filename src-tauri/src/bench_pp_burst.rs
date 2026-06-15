@@ -4,16 +4,24 @@
 //! Generates a synthetic prompt targeting ~N tokens, POSTs to /completion with n_predict=0,
 //! and returns prefill TPS from engine-reported timings.
 
-use crate::bench_cancel::{self, post_json_cancellable};
+use crate::bench_cancel::{self, post_json};
 use serde::Serialize;
 use tauri::Emitter;
-use tokio_util::sync::CancellationToken;
 
 struct BenchPortGuard(u16);
 
 impl Drop for BenchPortGuard {
     fn drop(&mut self) {
         bench_cancel::end(self.0);
+    }
+}
+
+fn bench_stopped_pp_result() -> BenchPPResult {
+    BenchPPResult {
+        bench_prefill_tps: 0.0,
+        bench_prompt_tokens_actual: 0,
+        success: false,
+        error: Some("Stopped".to_string()),
     }
 }
 
@@ -86,10 +94,10 @@ pub async fn cmd_bench_pp_burst(
     target_tokens: usize,
     bench_prompt_mode: String,
 ) -> Result<BenchPPResult, String> {
-    let cancel = bench_cancel::begin(port);
+    bench_cancel::begin(port);
     let _guard = BenchPortGuard(port);
-    let url = format!("http://127.0.0.1:{}/completion", port);
-    let client = reqwest::Client::new();
+    let url = format!("http://127.0.0.1:{port}/completion");
+    let client = bench_cancel::bench_http_client(1)?;
 
     const WARMUP_RUNS: usize = 1;
     const MEASURED_RUNS: usize = 1;
@@ -102,11 +110,14 @@ pub async fn cmd_bench_pp_burst(
     }
 
     // Release all slot KV caches once before the benchmark loop to prevent prompt caching from skewing results.
-    if let Ok(slots_resp) = client.get(&format!("http://127.0.0.1:{}/slots", port)).send().await {
+    if let Ok(slots_resp) = client.get(&format!("http://127.0.0.1:{port}/slots")).send().await {
         if let Ok(slots) = slots_resp.json::<Vec<serde_json::Value>>().await {
             for slot in &slots {
                 let idx = slot["id"].as_u64().unwrap_or(0);
-                let _ = client.post(&format!("http://127.0.0.1:{}/slots/{}/release", port, idx)).send().await;
+                let _ = client
+                    .post(&format!("http://127.0.0.1:{port}/slots/{idx}/release"))
+                    .send()
+                    .await;
             }
             log::debug!("[BENCH_PP] released {} slots before benchmark", slots.len());
         }
@@ -115,26 +126,28 @@ pub async fn cmd_bench_pp_burst(
     let mut measured_run: Option<RunStats> = None;
 
     for run in 0..TOTAL_RUNS {
-        if bench_cancel::is_cancelled(&cancel) {
-            return Ok(BenchPPResult {
-                bench_prefill_tps: 0.0,
-                bench_prompt_tokens_actual: 0,
-                success: false,
-                error: Some("Cancelled".to_string()),
-            });
+        if bench_cancel::stop_after_current_requested(port) {
+            return Ok(bench_stopped_pp_result());
         }
 
         // Signal phase to frontend so UI can show WARMUP vs MEASURED
         let phase = if run < WARMUP_RUNS { "warmup" } else { "measured" };
-        let effective_target = if run < WARMUP_RUNS { WARMUP_TOKENS } else { target_tokens };
+        let effective_target = if run < WARMUP_RUNS {
+            WARMUP_TOKENS
+        } else {
+            target_tokens
+        };
         crate::fusion_brain::reset_bench_meters_for_port(port);
-        let _ = app_handle.emit("bench-pp-progress", serde_json::json!({
-            "port": port,
-            "phase": phase,
-            "run": run + 1,
-            "total": TOTAL_RUNS,
-            "effectiveLength": effective_target,  // for accurate UI labels (no hardcodes)
-        }));
+        let _ = app_handle.emit(
+            "bench-pp-progress",
+            serde_json::json!({
+                "port": port,
+                "phase": phase,
+                "run": run + 1,
+                "total": TOTAL_RUNS,
+                "effectiveLength": effective_target,
+            }),
+        );
 
         // Measured run: calibrate via /tokenize so actual ≈ chip target (tokens, not words).
         // Warmup stays a fast fixed-size prompt.
@@ -146,16 +159,9 @@ pub async fn cmd_bench_pp_burst(
                 build_unique_prompt(WARMUP_TOKENS)
             }
         } else {
-            match build_prompt_for_token_target(&client, port, effective_target, repetitive, &cancel).await {
+            match build_prompt_for_token_target(&client, port, effective_target, repetitive).await {
                 Ok(text) => text,
-                Err(e) if e == "Cancelled" => {
-                    return Ok(BenchPPResult {
-                        bench_prefill_tps: 0.0,
-                        bench_prompt_tokens_actual: 0,
-                        success: false,
-                        error: Some("Cancelled".to_string()),
-                    });
-                }
+                Err(e) if e == "Stopped" => return Ok(bench_stopped_pp_result()),
                 Err(e) => return Err(e),
             }
         };
@@ -168,14 +174,24 @@ pub async fn cmd_bench_pp_burst(
             "cache_prompt": false,
         });
 
-        match post_json_cancellable(&client, &url, &body, &cancel).await {
+        match post_json(&client, &url, &body).await {
             Ok(parsed) => {
                 let p_tokens = parsed["tokens_evaluated"].as_u64().unwrap_or(0) as usize;
                 let p_ms = parsed["timings"]["prompt_ms"].as_f64().unwrap_or(0.0);
-                let prefill_tps = if p_ms > 0.0 { (p_tokens as f64 / p_ms) * 1000.0 } else { 0.0 };
+                let prefill_tps = if p_ms > 0.0 {
+                    (p_tokens as f64 / p_ms) * 1000.0
+                } else {
+                    0.0
+                };
 
-                log::info!("[BENCH_PP] run {} | mode={} | target={} actual={} tok | prefill: {:.1} TPS",
-                    run + 1, bench_prompt_mode, effective_target, p_tokens, prefill_tps);
+                log::info!(
+                    "[BENCH_PP] run {} | mode={} | target={} actual={} tok | prefill: {:.1} TPS",
+                    run + 1,
+                    bench_prompt_mode,
+                    effective_target,
+                    p_tokens,
+                    prefill_tps
+                );
 
                 if run >= WARMUP_RUNS {
                     measured_run = Some(RunStats {
@@ -184,28 +200,29 @@ pub async fn cmd_bench_pp_burst(
                     });
                 }
             }
-            Err(e) if e == "Cancelled" => {
-                return Ok(BenchPPResult {
-                    bench_prefill_tps: 0.0,
-                    bench_prompt_tokens_actual: 0,
-                    success: false,
-                    error: Some("Cancelled".to_string()),
-                });
-            }
             Err(e) => return Err(e),
+        }
+
+        if bench_cancel::stop_after_current_requested(port) {
+            return Ok(bench_stopped_pp_result());
         }
 
         if run < WARMUP_RUNS {
             // Re-release after PP warmup so measured PP starts cold (no KV/prompt cache reuse from the warmup run).
-            // Although PP bench uses n_predict=0 (pure prefill), the release ensures the synthetic prompt for
-            // measured isn't "recognized" from the just-done warmup (even with cache_prompt:false).
-            if let Ok(slots_resp) = client.get(&format!("http://127.0.0.1:{}/slots", port)).send().await {
+            if let Ok(slots_resp) = client.get(&format!("http://127.0.0.1:{port}/slots")).send().await
+            {
                 if let Ok(slots) = slots_resp.json::<Vec<serde_json::Value>>().await {
                     for slot in &slots {
                         let idx = slot["id"].as_u64().unwrap_or(0);
-                        let _ = client.post(&format!("http://127.0.0.1:{}/slots/{}/release", port, idx)).send().await;
+                        let _ = client
+                            .post(&format!("http://127.0.0.1:{port}/slots/{idx}/release"))
+                            .send()
+                            .await;
                     }
-                    log::debug!("[BENCH_PP] released {} slots after warmup for cold measured run", slots.len());
+                    log::debug!(
+                        "[BENCH_PP] released {} slots after warmup for cold measured run",
+                        slots.len()
+                    );
                 }
             }
         }
@@ -223,8 +240,13 @@ pub async fn cmd_bench_pp_burst(
         }
     };
 
-    log::info!("[BENCH_PP] RESULT | mode={} | target={} actual={} tok | prefill: {:.1} TPS",
-        bench_prompt_mode, target_tokens, run.prompt_tokens, run.prefill_tps);
+    log::info!(
+        "[BENCH_PP] RESULT | mode={} | target={} actual={} tok | prefill: {:.1} TPS",
+        bench_prompt_mode,
+        target_tokens,
+        run.prompt_tokens,
+        run.prefill_tps
+    );
 
     Ok(BenchPPResult {
         bench_prefill_tps: run.prefill_tps,
@@ -237,8 +259,23 @@ pub async fn cmd_bench_pp_burst(
 /// Build a unique-vocabulary prompt by cycling through UNIQUE_WORDS in coherent-ish sentences.
 fn build_unique_prompt(target_words: usize) -> String {
     let mut words = Vec::with_capacity(target_words);
-    let template_verbs = ["demonstrates", "utilizes", "transforms", "optimizes", "accelerates", "enables", "facilitates", "orchestrates"];
-    let template_connectors = ["which", "that", "whereby", "through which", "by means of which"];
+    let template_verbs = [
+        "demonstrates",
+        "utilizes",
+        "transforms",
+        "optimizes",
+        "accelerates",
+        "enables",
+        "facilitates",
+        "orchestrates",
+    ];
+    let template_connectors = [
+        "which",
+        "that",
+        "whereby",
+        "through which",
+        "by means of which",
+    ];
 
     let mut word_idx = 0;
     while words.len() < target_words {
@@ -267,7 +304,7 @@ fn token_target_tolerance(target: usize) -> i64 {
 
 /// POST /tokenize — returns token count for this server's loaded model.
 async fn count_prompt_tokens(client: &reqwest::Client, port: u16, content: &str) -> Option<usize> {
-    let url = format!("http://127.0.0.1:{}/tokenize", port);
+    let url = format!("http://127.0.0.1:{port}/tokenize");
     let body = serde_json::json!({
         "content": content,
         "add_special": false,
@@ -290,10 +327,9 @@ async fn build_prompt_for_token_target(
     port: u16,
     target_tokens: usize,
     repetitive: bool,
-    cancel: &CancellationToken,
 ) -> Result<String, String> {
-    if bench_cancel::is_cancelled(cancel) {
-        return Err("Cancelled".to_string());
+    if bench_cancel::stop_after_current_requested(port) {
+        return Err("Stopped".to_string());
     }
 
     if target_tokens == 0 {
@@ -319,13 +355,16 @@ async fn build_prompt_for_token_target(
     let mut best_err = i64::MAX;
 
     for _ in 0..5 {
-        if bench_cancel::is_cancelled(cancel) {
-            return Err("Cancelled".to_string());
+        if bench_cancel::stop_after_current_requested(port) {
+            return Err("Stopped".to_string());
         }
 
         let text = build(words);
         let Some(actual) = count_prompt_tokens(client, port, &text).await else {
-            log::debug!("[BENCH_PP] /tokenize unavailable — using word estimate {}", words);
+            log::debug!(
+                "[BENCH_PP] /tokenize unavailable — using word estimate {}",
+                words
+            );
             return Ok(text);
         };
 
@@ -347,8 +386,7 @@ async fn build_prompt_for_token_target(
             break;
         }
 
-        words = ((words as f64) * (target_tokens as f64 / actual as f64))
-            .round() as usize;
+        words = ((words as f64) * (target_tokens as f64 / actual as f64)).round() as usize;
         words = words.clamp(64, target_tokens.saturating_mul(3));
     }
 
@@ -378,7 +416,9 @@ fn build_repetitive_prompt(target_words: usize) -> String {
 
     while words.len() < target_words {
         for &word in &pattern_words {
-            if words.len() >= target_words { break; }
+            if words.len() >= target_words {
+                break;
+            }
             words.push(word);
         }
     }
