@@ -8,10 +8,13 @@ use crate::output_console::{BlackwellOutputConsoleCategory, BlackwellOutputConso
 use crate::telemetry::detect_gpu_count;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::io::Read;
+use std::os::windows::process::CommandExt;
+use std::path::{Path, PathBuf};
+use std::process::{Command, ExitStatus, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc as StdArc;
-use tokio::process::Command;
+use std::time::Duration;
 use tokio::sync::{broadcast, Semaphore};
 use tokio::sync::Mutex as TokioMutex;
 
@@ -411,42 +414,127 @@ pub struct FitScanRaw {
     pub gpu_components_mib: Option<Vec<GpuComponentMib>>,
 }
 
+struct FitProcessOutput {
+    stdout: Vec<u8>,
+    stderr: Vec<u8>,
+    status: ExitStatus,
+}
+
+/// Blocking FIT subprocess — mirrors gguf_scan / engine_stack spawn pattern.
+///
+/// `tokio::process::Command::output()` with CREATE_NO_WINDOW intermittently returns
+/// ERROR_INVALID_HANDLE (os error 6) in release builds on Windows. Stdio must be
+/// explicit; CWD must be the binary directory so bundled DLLs resolve beside the exe.
+fn run_fit_process_blocking(
+    fit_binary: &str,
+    args: &[String],
+    cuda_visible_devices: &str,
+    timeout: Duration,
+) -> Result<FitProcessOutput, String> {
+    let binary_path = Path::new(fit_binary);
+    let work_dir = binary_path
+        .parent()
+        .ok_or_else(|| format!("Fit binary has no parent directory: {}", fit_binary))?;
+
+    let mut child = Command::new(fit_binary)
+        .current_dir(work_dir)
+        .args(args)
+        .args(crate::types::LLAMA_DIAGNOSTIC_FLAGS.iter().map(|s| s.to_string()))
+        .env("CUDA_VISIBLE_DEVICES", cuda_visible_devices)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .creation_flags(0x08000000) // CREATE_NO_WINDOW — prevents CMD flash in release builds
+        .spawn()
+        .map_err(|e| format!("Failed to spawn {}: {}", fit_binary, e))?;
+
+    let mut stdout_pipe = child
+        .stdout
+        .take()
+        .ok_or_else(|| "Failed to capture stdout".to_string())?;
+    let mut stderr_pipe = child
+        .stderr
+        .take()
+        .ok_or_else(|| "Failed to capture stderr".to_string())?;
+
+    let stdout_handle = std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        let _ = stdout_pipe.read_to_end(&mut buf);
+        buf
+    });
+    let stderr_handle = std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        let _ = stderr_pipe.read_to_end(&mut buf);
+        buf
+    });
+
+    let start = std::time::Instant::now();
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) => {
+                if start.elapsed() >= timeout {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    let _ = stdout_handle.join();
+                    let _ = stderr_handle.join();
+                    return Err(format!("timed out after {}s", timeout.as_secs()));
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            Err(e) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                let _ = stdout_handle.join();
+                let _ = stderr_handle.join();
+                return Err(e.to_string());
+            }
+        }
+    };
+
+    let stdout = stdout_handle.join().unwrap_or_default();
+    let stderr = stderr_handle.join().unwrap_or_default();
+
+    Ok(FitProcessOutput {
+        stdout,
+        stderr,
+        status,
+    })
+}
+
 /// Scan a single model at one anchor point with pre-built CLI args.
 pub async fn scan_single_anchor(
     fit_binary: &str,
     args: &[String],
     cuda_visible_devices: &str,
 ) -> Result<FitScanRaw, String> {
-    let model_path = args.iter()
+    let model_path = args
+        .iter()
         .position(|a| a == "-m")
         .and_then(|i| args.get(i + 1))
         .map(String::as_str)
         .unwrap_or("unknown");
 
-    // DEBUG Llama-fit-scanner launch memo - now routed to Blackwell Output Console
+    let fit_binary = fit_binary.to_string();
+    let args = args.to_vec();
+    let cuda_visible_devices = cuda_visible_devices.to_string();
+    let model_path_owned = model_path.to_string();
 
-    let spawn_future = Command::new(fit_binary)
-        .args(args)
-        .args(crate::types::LLAMA_DIAGNOSTIC_FLAGS.iter().map(|s| s.to_string()))
-        .env("CUDA_VISIBLE_DEVICES", cuda_visible_devices)
-        .creation_flags(0x08000000) // CREATE_NO_WINDOW — prevents CMD flash in release builds
-        .output();
-
-    let timeout_result = tokio::time::timeout(
-        std::time::Duration::from_secs(SCAN_TIMEOUT_SECS),
-        spawn_future,
-    ).await;
-
-    let output = match timeout_result {
-        Ok(inner) => inner.map_err(|e| format!("Fit scan IO error for {}: {}", model_path, e))?,
-        Err(_) => return Err(format!("Fit scan timed out after {}s for {}", SCAN_TIMEOUT_SECS, model_path)),
-    };
+    let output = tokio::task::spawn_blocking(move || {
+        run_fit_process_blocking(
+            &fit_binary,
+            &args,
+            &cuda_visible_devices,
+            Duration::from_secs(SCAN_TIMEOUT_SECS),
+        )
+    })
+    .await
+    .map_err(|e| format!("Fit scan task failed for {}: {}", model_path_owned, e))?
+    .map_err(|e| format!("Fit scan IO error for {}: {}", model_path_owned, e))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
     let combined_output = format!("{}\n{}", stdout, stderr);
-
-    // DEBUG Llama-fit-scanner result - now routed to Blackwell Output Console
 
     if let Some(raw) = parse_fit_print_stdout(&stdout) {
         return Ok(raw);
@@ -459,7 +547,11 @@ pub async fn scan_single_anchor(
     let vram_mib = match vram_mib {
         Some(v) if v > 0.0 => v,
         _ => {
-            log::warn!("Fit scan parse failed for {}: exit={:?}", model_path, output.status.code());
+            log::warn!(
+                "Fit scan parse failed for {}: exit={:?}",
+                model_path,
+                output.status.code()
+            );
             return Err(format!(
                 "Could not parse VRAM from fit output. Exit code: {:?}",
                 output.status.code()
@@ -470,9 +562,12 @@ pub async fn scan_single_anchor(
     let (gpu_breakdown_mib, host_mib) = parse_fit_breakdown(&combined_output);
     let gpu_components_mib = parse_gpu_components(&combined_output);
 
-    // Fit scan results now routed to Blackwell Output Console
-
-    Ok(FitScanRaw { vram_mib, gpu_breakdown_mib, host_mib, gpu_components_mib })
+    Ok(FitScanRaw {
+        vram_mib,
+        gpu_breakdown_mib,
+        host_mib,
+        gpu_components_mib,
+    })
 }
 
 /// Parse projected VRAM from memory breakdown when model doesn't fit single GPU.

@@ -82,6 +82,23 @@ pub struct HfMetadata {
     pub lfs_oid: String,
 }
 
+/// Result of checking an HF GGUF file against local disk.
+#[derive(Debug, Clone, Serialize)]
+pub struct DiskCheckResult {
+    /// Quant type (e.g. "Q4_K_M")
+    #[serde(rename = "quantType")]
+    pub quant_type: String,
+    /// How the file matched on disk: "lfs" = exact LFS OID match, "size" = file size match, "mismatch" = same quant different size, "none" = not present
+    #[serde(rename = "matchType")]
+    pub match_type: String,
+    /// File size on disk if a local file was found (for mismatch display)
+    #[serde(rename = "diskFileSize", skip_serializing_if = "Option::is_none")]
+    pub disk_file_size: Option<u64>,
+    /// Author of the disk file (for mismatch confirmation modal)
+    #[serde(rename = "diskAuthor", skip_serializing_if = "Option::is_none")]
+    pub disk_author: Option<String>,
+}
+
 // ── Model Catalog Entry ────────────────────────────────────────────────
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelEntry {
@@ -104,6 +121,9 @@ pub struct ModelEntry {
     pub metadata: Option<ModelMetadata>,
     #[serde(default, skip_serializing_if = "Option::is_none", rename = "hfMeta")]
     pub hf_meta: Option<HfMetadata>,
+    /// Discovered HF repo ID from directory structure or cache (e.g. "unsloth/Qwen3.5-4B-GGUF"). Present even when hf_meta is None.
+    #[serde(default, skip_serializing_if = "Option::is_none", rename = "hfModelId")]
+    pub hf_model_id: Option<String>,
 }
 
 /// Duplicate model found across multiple configured paths during catalog merge.
@@ -260,6 +280,8 @@ pub struct ModelEntryInternal {
     pub shards: i32,
     /// Configured path label this entry came from (e.g. ".lmstudio", "Default").
     pub source_path_label: String,
+    /// Discovered HF repo ID from directory structure (e.g. "unsloth/Qwen3.5-4B-GGUF")
+    pub hf_model_id: Option<String>,
 }
 
 // ── Stack Entry (for frontend display) ─────────────────────────────────
@@ -507,16 +529,79 @@ where
     serializer.serialize_u64(*val)
 }
 
+/// One physical GGUF file — a single model or one shard of a sharded quant.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GgufShard {
+    #[serde(rename = "fileName")]
+    pub file_name: String,
+    #[serde(rename = "pathInRepo")]
+    pub path_in_repo: String,
+    pub size_bytes: u64,
+    pub url: String,
+    #[serde(default, rename = "lfsOid")]
+    pub lfs_oid: String,
+}
+
 /// A single GGUF quantization variant available for download.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GgufFile {
     /// Display name (e.g. "Llama-3.1-8B-IQ1_Ms.gguf")
     pub r#type: String,           // HF API calls this "type" — the quant tag like Q4_K_M
     pub size_bytes: u64,
-    pub url: String,              // direct download URL from hf.co
+    pub url: String,              // direct download URL from hf.co (first shard when sharded)
     /// LFS content hash (SHA-256) from HF tree endpoint for incremental scan.
-    #[serde(default)]
+    #[serde(default, rename = "lfsOid")]
     pub lfs_oid: String,
+    /// Individual shard files when the quant is split (e.g. `-00001-of-00004`).
+    #[serde(default)]
+    pub shards: Vec<GgufShard>,
+    /// 1 for single-file quants; >1 when `shards` is populated.
+    #[serde(default = "default_shard_count", rename = "shardCount")]
+    pub shard_count: u32,
+}
+
+fn default_shard_count() -> u32 {
+    1
+}
+
+impl GgufFile {
+    /// Expand to concrete download parts — single-file quants synthesize one shard from `url`.
+    pub fn download_parts(&self) -> Vec<GgufShard> {
+        if !self.shards.is_empty() {
+            return self.shards.clone();
+        }
+        let path_in_repo = hf_resolve_path_from_url(&self.url).unwrap_or_else(|| {
+            self.url
+                .rsplit('/')
+                .next()
+                .unwrap_or(&self.url)
+                .to_string()
+        });
+        let file_name = path_in_repo
+            .rsplit('/')
+            .next()
+            .unwrap_or(path_in_repo.as_str())
+            .to_string();
+        vec![GgufShard {
+            file_name,
+            path_in_repo,
+            size_bytes: self.size_bytes,
+            url: self.url.clone(),
+            lfs_oid: self.lfs_oid.clone(),
+        }]
+    }
+}
+
+/// Path inside the HF repo from a `/resolve/main/` download URL.
+pub fn hf_resolve_path_from_url(url: &str) -> Option<String> {
+    const MARKER: &str = "/resolve/main/";
+    let idx = url.find(MARKER)?;
+    let path = url[idx + MARKER.len()..].trim();
+    if path.is_empty() {
+        None
+    } else {
+        Some(path.to_string())
+    }
 }
 
 /// Filters for HF model search.
@@ -645,5 +730,58 @@ pub struct HfModelInfo {
     pub likes_count: u64,
     /// All GGUF files available for this model.
     pub gguf_files: Vec<GgufFile>,
+}
+
+/// Result of checking a single GGUF file on HF for updates.
+#[derive(Debug, Clone, Serialize)]
+pub struct HfFileUpdateCheck {
+    /// Quant type
+    #[serde(rename = "quantType")]
+    pub quant_type: String,
+    /// Whether an update is available on HF
+    #[serde(rename = "hasUpdate")]
+    pub has_update: bool,
+    /// Current cached file size (0 if not cached)
+    #[serde(rename = "cachedSizeBytes")]
+    pub cached_size_bytes: u64,
+    /// Current HF file size
+    #[serde(rename = "hfSizeBytes")]
+    pub hf_size_bytes: u64,
+    /// Current HF LFS OID
+    #[serde(rename = "hfLfsOid")]
+    pub hf_lfs_oid: String,
+    /// Match reason: "lfs_match" = same OID, "size_match" = same size different OID, "changed" = different size
+    #[serde(rename = "status")]
+    pub status: String,
+}
+
+/// Aggregated update status for an HF repo.
+#[derive(Debug, Clone, Serialize)]
+pub struct HfRepoUpdateStatus {
+    /// HF model ID
+    #[serde(rename = "hfModelId")]
+    pub hf_model_id: String,
+    /// Per-quant results — only quants with a local on-disk copy in this repo.
+    pub files: Vec<HfFileUpdateCheck>,
+    /// Local quants checked (on disk under this HF repo).
+    #[serde(rename = "localCopyCount")]
+    pub local_copy_count: usize,
+    /// Local quants that differ from current HF (size/LFS mismatch).
+    #[serde(rename = "updateCount")]
+    pub update_count: usize,
+    /// Error message if the check failed
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// Catalog entry with an HF update available for its paired repo + quant.
+#[derive(Debug, Clone, Serialize)]
+pub struct CatalogUpdateEntry {
+    pub path: String,
+    #[serde(rename = "hfModelId")]
+    pub hf_model_id: String,
+    pub quant: String,
+    #[serde(rename = "hasUpdate")]
+    pub has_update: bool,
 }
 

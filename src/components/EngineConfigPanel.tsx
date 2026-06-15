@@ -1357,7 +1357,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                     >
                       <span className="uppercase">MTP + parallel ×{mtpParallelSlotCount} conflict</span>
                       <span className="normal-case tracking-normal text-[7px] text-[#FFB800]/80">
-                        Engine disables speculative decoding at launch — use parallel = 1 for MTP speed, or turn MTP off for multi-slot throughput.
+                        Engine disables speculative decoding at launch — use parallel = 1 for MTP speed.
                       </span>
                     </div>
                   )}

@@ -23,6 +23,7 @@ interface ModelCatalogProps {
   setBatchScanState: React.Dispatch<React.SetStateAction<{ active: boolean; scanned: number; failed: number; total: number }>>;
   stack: StackEntry[];
   setupGuide: SetupGuideState;
+  catalogHfUpdates?: Set<string>;
 }
 
 const sortLabels: Record<string, string> = {
@@ -30,7 +31,7 @@ const sortLabels: Record<string, string> = {
 };
 
 export default function ModelCatalog(props: ModelCatalogProps) {
-  const { models, onLaunch, error, onReload, providers: externalProviders, committedVramMib, isPowerUser, scanningPath, setScanningPath, batchScanState, setBatchScanState, stack, setupGuide } = props;
+  const { models, onLaunch, error, onReload, providers: externalProviders, committedVramMib, isPowerUser, scanningPath, setScanningPath, batchScanState, setBatchScanState, stack, setupGuide, catalogHfUpdates } = props;
   const { gpus, systemInfo } = useTelemetry();
   const [showScanMenu, setShowScanMenu] = useState(false);
 
@@ -248,6 +249,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
                         onSelect={handleSelect}
                         onScanModel={handleScanModel}
                         scanningPath={scanningPath}
+                        hfUpdateAvailable={catalogHfUpdates?.has(model.path) ?? false}
                       />
                     </div>
                   );

@@ -6,6 +6,7 @@ interface ModelCardProps {
   onSelect: (model: ModelEntry) => void;
   onScanModel?: (model: ModelEntry) => void;
   scanningPath: string | null;
+  hfUpdateAvailable?: boolean;
 }
 
 export default function ModelCard({
@@ -14,6 +15,7 @@ export default function ModelCard({
   onSelect,
   onScanModel,
   scanningPath,
+  hfUpdateAvailable = false,
 }: ModelCardProps) {
   const hasMetadata = !!model.metadata;
   const isScanning = scanningPath === model.path;
@@ -68,6 +70,14 @@ export default function ModelCard({
           <span className="text-[8px] font-mono px-1 py-0.5 rounded-sm border border-gray-500/20 text-gray-500">
             GGUF
           </span>
+          {hfUpdateAvailable && (
+            <span
+              className="text-[7px] font-mono px-1 py-0.5 rounded-sm border border-yellow-400/30 text-yellow-400/80 bg-yellow-400/10"
+              title="Newer version available on Hugging Face"
+            >
+              HF UPDATE
+            </span>
+          )}
         </div>
       </div>
 

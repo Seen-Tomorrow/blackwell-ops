@@ -53,20 +53,42 @@ async fn search_hf_models(
     sort: Option<String>,
     limit: Option<usize>,
 ) -> Result<crate::types::HfSearchResponse, String> {
-    let filters = crate::types::HfSearchFilters {
-        query,
-        vram_limit_gb: vram_limit_gb.unwrap_or(0),
-        limit: limit.unwrap_or(50),
-        sort: sort.unwrap_or_else(|| "downloads".to_string()),
-    };
+    let filters = config::normalize_hf_search_inputs(query, vram_limit_gb, sort, limit)?;
     let hf_token = secrets::get_secret("hf_token")?;
     hf_api::search_models(&filters, hf_token.as_deref()).await
 }
 
 #[tauri::command]
 async fn get_hf_model_info(model_id: String) -> Result<crate::types::HfModelInfo, String> {
+    config::validate_hf_model_id(&model_id)?;
     let hf_token = secrets::get_secret("hf_token")?;
     hf_api::get_model_info(&model_id, hf_token.as_deref()).await
+}
+
+#[tauri::command]
+async fn check_hf_repo_updates(
+    config: tauri::State<'_, Arc<std::sync::Mutex<config::AppConfig>>>,
+    model_id: String,
+) -> Result<crate::types::HfRepoUpdateStatus, String> {
+    config::validate_hf_model_id(&model_id)?;
+    let paths = {
+        let cfg = config.lock().map_err(|e| e.to_string())?;
+        config::get_model_paths(&cfg)
+    };
+    let hf_token = secrets::get_secret("hf_token")?;
+    hf_api::check_repo_for_updates(&model_id, &paths, hf_token.as_deref()).await
+}
+
+#[tauri::command]
+async fn check_catalog_hf_updates(
+    config: tauri::State<'_, Arc<std::sync::Mutex<config::AppConfig>>>,
+) -> Result<Vec<crate::types::CatalogUpdateEntry>, String> {
+    let paths = {
+        let cfg = config.lock().map_err(|e| e.to_string())?;
+        config::get_model_paths(&cfg)
+    };
+    let hf_token = secrets::get_secret("hf_token")?;
+    hf_api::check_catalog_hf_updates(&paths, hf_token.as_deref()).await
 }
 
 // ── Model Path Management Commands ────────────────────────────────────
@@ -298,13 +320,18 @@ async fn start_download(
     quant_type: String,
     lfs_oid: String,
 ) -> Result<String, String> {
-    config::validate_download_url(&url)?;
+    config::validate_hf_model_id(&hf_model_id)?;
+    config::validate_download_file_name(&file_name)?;
+    config::validate_download_url_matches_model(&url, &hf_model_id, &file_name)?;
     {
         let cfg = config.lock().map_err(|e| e.to_string())?;
         config::validate_download_dest(&dest_path, &cfg)?;
     }
 
     let mut dm = manager.write().await;
+    if dm.has_active_task_for_dest(&dest_path) {
+        return Err("A download for this file is already in progress".to_string());
+    }
     let task_id = dm.start_download(hf_model_id, file_name, url, total_bytes, dest_path, hf_author, quant_type, lfs_oid, Arc::clone(&manager)).await?;
     drop(dm);
 
@@ -314,6 +341,84 @@ async fn start_download(
     }));
 
     Ok(task_id)
+}
+
+/// Download all parts of a quant — single file or full shard set.
+#[tauri::command]
+async fn start_quant_download(
+    app: tauri::AppHandle,
+    manager: tauri::State<'_, Arc<RwLock<DownloadManager>>>,
+    config: tauri::State<'_, Arc<std::sync::Mutex<config::AppConfig>>>,
+    hf_model_id: String,
+    hf_author: String,
+    quant_type: String,
+    gguf_file: crate::types::GgufFile,
+) -> Result<Vec<String>, String> {
+    config::validate_hf_model_id(&hf_model_id)?;
+    config::validate_quant_download(&gguf_file, &hf_model_id)?;
+
+    let default_path = {
+        let cfg = config.lock().map_err(|e| e.to_string())?;
+        config::get_default_download_path(&cfg)
+    };
+
+    let parts = gguf_file.download_parts();
+    let mut task_ids: Vec<String> = Vec::new();
+    let mut skipped_complete = 0usize;
+    let mut skipped_active = 0usize;
+
+    let mut dm = manager.write().await;
+    for part in parts {
+        let dest_path = config::build_quant_dest_path(&default_path, &hf_model_id, &part.path_in_repo)?;
+        {
+            let cfg = config.lock().map_err(|e| e.to_string())?;
+            config::validate_download_dest(&dest_path, &cfg)?;
+        }
+
+        if config::quant_part_already_downloaded(&dest_path, part.size_bytes, &part.lfs_oid) {
+            skipped_complete += 1;
+            continue;
+        }
+        if dm.has_active_task_for_dest(&dest_path) {
+            skipped_active += 1;
+            continue;
+        }
+
+        let task_id = dm
+            .start_download(
+                hf_model_id.clone(),
+                part.file_name.clone(),
+                part.url.clone(),
+                part.size_bytes,
+                dest_path,
+                hf_author.clone(),
+                quant_type.clone(),
+                part.lfs_oid.clone(),
+                Arc::clone(&manager),
+            )
+            .await?;
+        task_ids.push(task_id);
+    }
+    drop(dm);
+
+    if task_ids.is_empty() {
+        if skipped_complete > 0 && skipped_active == 0 {
+            return Err("All parts already downloaded".to_string());
+        }
+        if skipped_active > 0 {
+            return Err("All parts already downloaded or in progress".to_string());
+        }
+        return Err("No files to download".to_string());
+    }
+
+    for task_id in &task_ids {
+        let _ = app.emit("download-event", serde_json::json!({
+            "type": "queued",
+            "taskId": task_id,
+        }));
+    }
+
+    Ok(task_ids)
 }
 
 #[tauri::command]
@@ -390,6 +495,74 @@ async fn clear_completed_downloads(
     let mut dm = manager.write().await;
     dm.remove_completed();
     Ok(())
+}
+
+/// Check whether the target file already exists on disk and compare its LFS OID.
+#[tauri::command]
+fn check_download_target(
+    config: tauri::State<'_, Arc<std::sync::Mutex<config::AppConfig>>>,
+    dest_path: String,
+    lfs_oid: String,
+) -> Result<serde_json::Value, String> {
+    {
+        let cfg = config.lock().map_err(|e| e.to_string())?;
+        config::validate_download_dest(&dest_path, &cfg)?;
+    }
+
+    let exists = std::path::Path::new(&dest_path).exists();
+    if !exists {
+        return Ok(serde_json::json!({
+            "exists": false,
+            "sameModel": false,
+            "lfsMatch": false,
+            "cachedLfsOid": null,
+        }));
+    }
+
+    // Look up cached HF metadata for this file
+    let cached_hf = crate::model_cache::get_hf_metadata(&dest_path);
+    let cached_lfs = cached_hf.as_ref().and_then(|m| if m.lfs_oid.is_empty() { None } else { Some(m.lfs_oid.clone()) });
+
+    let cached_oid_str = cached_lfs.clone();
+    // Both empty = can't differentiate, assume identical (pre-fix downloads or non-LFS files).
+    let lfs_match = if lfs_oid.is_empty() {
+        cached_lfs.is_none()
+    } else {
+        cached_lfs.as_deref() == Some(lfs_oid.as_str())
+    };
+
+    // Determine sameModel: same cached HF model ID or same filename
+    let same_model = cached_hf.is_some();
+
+    Ok(serde_json::json!({
+        "exists": true,
+        "sameModel": same_model,
+        "lfsMatch": lfs_match,
+        "cachedLfsOid": cached_oid_str,
+    }))
+}
+
+/// Check HF GGUF files against local disk catalog. Returns per-file match results.
+#[tauri::command]
+async fn check_hf_files_against_disk(
+    config: tauri::State<'_, Arc<std::sync::Mutex<config::AppConfig>>>,
+    gguf_files: Vec<crate::types::GgufFile>,
+    app: tauri::AppHandle,
+    hf_model_id: Option<String>,
+) -> Result<Vec<crate::types::DiskCheckResult>, String> {
+    if let Some(ref model_id) = hf_model_id {
+        config::validate_hf_model_id(model_id)?;
+    }
+    for gf in &gguf_files {
+        if !gf.url.is_empty() {
+            config::validate_download_url(&gf.url)?;
+        }
+    }
+
+    let cfg = config.lock().map_err(|e| e.to_string())?;
+    let paths = config::get_model_paths(&cfg);
+    let log_hub = app.state::<AppContext>().log_hub.clone();
+    Ok(model_catalog::check_hf_files_against_disk(&paths, &gguf_files, Some(&log_hub), hf_model_id.as_deref()))
 }
 
 use engine::AppContext;
@@ -479,6 +652,16 @@ async fn main() {
 
             // ── Download Manager ──
             let download_mgr = Arc::new(tokio::sync::RwLock::new(DownloadManager::new()));
+
+            // Recover orphaned .part files from prior session
+            {
+                let dm_clone = download_mgr.clone();
+                tauri::async_runtime::spawn(async move {
+                    let mut dm = dm_clone.write().await;
+                    dm.recover_part_files();
+                });
+            }
+
             app.manage(download_mgr);
 
             // -- Mobile Bridge
@@ -585,14 +768,19 @@ async fn main() {
             emit_to_blackwell_console,
             // Download manager commands
             start_download,
+            start_quant_download,
             pause_download,
             cancel_download,
             resume_download,
             get_download_tasks,
             clear_completed_downloads,
+            check_download_target,
+            check_hf_files_against_disk,
             // HF Search commands
             search_hf_models,
             get_hf_model_info,
+            check_hf_repo_updates,
+            check_catalog_hf_updates,
             secrets::list_app_secrets,
             secrets::set_app_secret,
             secrets::delete_app_secret,

@@ -9,7 +9,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use crate::output_console::{BlackwellOutputConsoleCategory, BlackwellOutputConsoleLineStyle};
-use crate::types::{CatalogDedupConflict, ModelEntry, ModelEntryInternal, ModelPathEntry};
+use crate::types::{CatalogDedupConflict, DiskCheckResult, GgufFile, ModelEntry, ModelEntryInternal, ModelPathEntry};
 
 /// Scan a directory for mmproj companion files. Returns the one with largest filesize.
 /// Filesize is the proxy for precision (F32 > F16 in bytes).
@@ -188,6 +188,15 @@ pub fn scan_path(
         let size_str = calc_size_str_from_bytes(file_size + mmproj_size);
         let abs_path = file_path.to_string_lossy().to_string();
 
+        // Derive HF repo ID from directory structure (LM Studio pattern: author/model-GGUF/file.gguf)
+        let hf_model_id = if components.len() >= 2 {
+            // The HF repo is typically "author/model-GGUF" for LM Studio — keep -GGUF since HF repos carry it
+            let repo_name = components[1..].join("/");
+            Some(format!("{}/{}", components[0], repo_name))
+        } else {
+            None
+        };
+
         // Dedup key: author/name/base_name — handles sharded models across structures
         let full_id = format!("{}/{}/{}", author, name, base_name);
 
@@ -210,6 +219,7 @@ pub fn scan_path(
                 total_bytes: file_size + mmproj_size,
                 shards: 1,
                 source_path_label: String::new(), // Will be set by caller
+                hf_model_id,
             });
         }
     }
@@ -382,6 +392,11 @@ pub fn merge_catalogs(
                 (internal.author, internal.name, internal.quant) // Filename heuristics only
             };
 
+            // Resolve HF model ID: cache > directory structure
+            let resolved_hf_model_id = hf_meta.as_ref()
+                .map(|h| h.hf_model_id.clone())
+                .or_else(|| internal.hf_model_id.clone());
+
             ModelEntry {
                 path: internal.path,
                 author,
@@ -395,18 +410,48 @@ pub fn merge_catalogs(
                 source_path_label: internal.source_path_label,
                 metadata: cached_meta,
                 hf_meta,
+                hf_model_id: resolved_hf_model_id,
             }
         })
         .collect();
 
+    // Persist discovered HF pairings to model_cache.json — saves pairing for future updates
+    let mut paired_count: usize = 0;
+    for entry in &final_catalog {
+        if entry.hf_meta.is_none() && entry.hf_model_id.is_some() {
+            let hf_model_id = entry.hf_model_id.as_ref().unwrap();
+            let hf_meta = crate::types::HfMetadata {
+                hf_model_id: hf_model_id.clone(),
+                author: entry.author.clone(),
+                repo_name: entry.name.clone(),
+                tags: Vec::new(),
+                downloads: 0,
+                likes_count: 0,
+                quant_type: entry.quant.clone(),
+                file_size_bytes: entry.metadata.as_ref().map(|m| m.file_size_bytes).unwrap_or(0),
+                last_modified: String::new(),
+                lfs_oid: String::new(),
+            };
+            if let Err(e) = crate::model_cache::set_hf_metadata(&entry.path, hf_meta) {
+                log::warn!("[catalog] Failed to persist HF pairing for {}: {}", entry.path, e);
+            } else {
+                paired_count += 1;
+            }
+        }
+    }
+    if paired_count > 0 {
+        log::info!("[catalog] Persisted {} HF pairings to model_cache.json", paired_count);
+    }
+
     // LOG: merge complete with metadata stats
     if let Some(lh) = log_hub {
         let with_meta = final_catalog.iter().filter(|e| e.metadata.is_some()).count();
-        let with_hf = final_catalog.iter().filter(|e| e.hf_meta.is_some()).count();
+        let with_hf_full = final_catalog.iter().filter(|e| e.hf_meta.is_some()).count();
+        let with_hf_id = final_catalog.iter().filter(|e| e.hf_model_id.is_some()).count();
         lh.emit_console_line(
             BlackwellOutputConsoleCategory::Utils,
-            &format!("[MERGE] ✅ {} models cataloged ({} with GGUF metadata, {} with HF data)", 
-                final_catalog.len(), with_meta, with_hf),
+            &format!("[MERGE] ✅ {} models cataloged ({} with GGUF metadata, {} with HF data, {} paired to HF repo)",
+                final_catalog.len(), with_meta, with_hf_full, with_hf_id),
             BlackwellOutputConsoleLineStyle::Success);
     }
 
@@ -617,4 +662,182 @@ pub fn get_total_model_size(model_path: &str) -> u64 {
         }
     }
     std::fs::metadata(model_path).ok().map(|m| m.len()).unwrap_or(0)
+}
+
+/// Check HF GGUF files against local disk. Returns one DiskCheckResult per file.
+/// Matching: LFS OID (exact) > file size (same quant + same bytes) > mismatch (same quant, different size).
+pub fn check_hf_files_against_disk(
+    paths: &[ModelPathEntry],
+    gguf_files: &[GgufFile],
+    log_hub: Option<&crate::log_hub::LogHub>,
+    hf_model_id: Option<&str>,
+) -> Vec<DiskCheckResult> {
+    // Build internal catalog entries for size lookup (no logging, no exclusion)
+    let mut catalog: Vec<ModelEntryInternal> = Vec::new();
+    for path_entry in paths {
+        if let Ok(entries) = scan_path(&PathBuf::from(&path_entry.path), None) {
+            catalog.extend(entries);
+        }
+    }
+
+    // Load model cache for LFS OID lookup + HF repo ID resolution
+    let model_cache = crate::model_cache::load_cache();
+
+    // Resolve HF repo ID for each catalog entry: cache > directory structure
+    let resolved: Vec<(&ModelEntryInternal, Option<String>)> = catalog.iter().map(|entry| {
+        let cache_key = entry.path.replace("\\", "/");
+        let from_cache = model_cache.get(&entry.path)
+            .or_else(|| model_cache.get(&cache_key))
+            .and_then(|ce| ce.hf_meta.as_ref())
+            .map(|hf| hf.hf_model_id.clone());
+        (entry, from_cache.or_else(|| entry.hf_model_id.clone()))
+    }).collect();
+
+    // Filter to only entries matching the requested HF repo
+    let scoped: Vec<(&ModelEntryInternal, Option<String>)> = resolved.into_iter()
+        .filter(|(_entry, repo_id)| {
+            if let Some(target) = hf_model_id {
+                repo_id.as_deref() == Some(target)
+            } else {
+                // No HF model ID provided — fall back to full catalog (legacy behavior)
+                true
+            }
+        })
+        .collect();
+
+    // Build indexes from scoped (repo-filtered) entries only
+    let mut size_index: HashMap<(String, u64), &ModelEntryInternal> = HashMap::new();
+    let mut quant_index: HashMap<String, &ModelEntryInternal> = HashMap::new();
+    for (entry, _repo_id) in &scoped {
+        let quant_key = entry.quant.clone();
+        // Index by (quant, size) for exact match
+        let size_key = (quant_key.clone(), entry.model_bytes);
+        if !size_index.contains_key(&size_key) {
+            size_index.insert(size_key, *entry);
+        }
+        // Index by quant alone for mismatch detection
+        if !quant_index.contains_key(&quant_key) {
+            quant_index.insert(quant_key, *entry);
+        }
+    }
+
+    // LOG: disk check start
+    if let Some(lh) = log_hub {
+        let label = hf_model_id.unwrap_or("unknown");
+        lh.emit_console_line(
+            BlackwellOutputConsoleCategory::Utils,
+            &format!("[DISK CHECK] Scanning {} quants for {}", gguf_files.len(), label),
+            BlackwellOutputConsoleLineStyle::Normal);
+    }
+
+    // Counters for summary
+    let mut n_lfs: usize = 0;
+    let mut n_size: usize = 0;
+    let mut n_mismatch: usize = 0;
+    let mut n_none: usize = 0;
+
+    let results: Vec<DiskCheckResult> = gguf_files.iter().map(|gf| {
+        // Step 1: Check LFS OID against model cache
+        let lfs_match = if !gf.lfs_oid.is_empty() {
+            model_cache.values().find_map(|cached| {
+                cached.hf_meta.as_ref().and_then(|hf| {
+                    if hf.lfs_oid == gf.lfs_oid {
+                        Some(true)
+                    } else {
+                        None
+                    }
+                })
+            }).unwrap_or(false)
+        } else {
+            false
+        };
+
+        if lfs_match {
+            if let Some(lh) = log_hub {
+                let oid_preview = if gf.lfs_oid.len() > 16 {
+                    &gf.lfs_oid[..16]
+                } else {
+                    gf.lfs_oid.as_str()
+                };
+                lh.emit_console_line(
+                    BlackwellOutputConsoleCategory::Debug,
+                    &format!("[DISK DEBUG] {} → LFS match (oid: {})", gf.r#type, oid_preview),
+                    BlackwellOutputConsoleLineStyle::Success);
+            }
+            n_lfs += 1;
+            return DiskCheckResult {
+                quant_type: gf.r#type.clone(),
+                match_type: "lfs".to_string(),
+                disk_file_size: None,
+                disk_author: None,
+            };
+        }
+
+        // Step 2: Check file size match (scoped to same HF repo)
+        let size_match = size_index.get(&(gf.r#type.clone(), gf.size_bytes));
+        if let Some(_entry) = size_match {
+            if let Some(lh) = log_hub {
+                lh.emit_console_line(
+                    BlackwellOutputConsoleCategory::Debug,
+                    &format!("[DISK DEBUG] {} → size match ({} bytes)", gf.r#type, gf.size_bytes),
+                    BlackwellOutputConsoleLineStyle::Normal);
+            }
+            n_size += 1;
+            return DiskCheckResult {
+                quant_type: gf.r#type.clone(),
+                match_type: "size".to_string(),
+                disk_file_size: None,
+                disk_author: None,
+            };
+        }
+
+        // Step 3: Check for size mismatch (same quant, different size)
+        if let Some(entry) = quant_index.get(&gf.r#type) {
+            if let Some(lh) = log_hub {
+                lh.emit_console_line(
+                    BlackwellOutputConsoleCategory::Debug,
+                    &format!("[DISK DEBUG] {} → mismatch (disk: {} bytes, HF: {} bytes, disk author: {})",
+                        gf.r#type, entry.model_bytes, gf.size_bytes, entry.author),
+                    BlackwellOutputConsoleLineStyle::Warning);
+            }
+            n_mismatch += 1;
+            return DiskCheckResult {
+                quant_type: gf.r#type.clone(),
+                match_type: "mismatch".to_string(),
+                disk_file_size: Some(entry.model_bytes),
+                disk_author: Some(entry.author.clone()),
+            };
+        }
+
+        // Step 4: Not present
+        if let Some(lh) = log_hub {
+            lh.emit_console_line(
+                BlackwellOutputConsoleCategory::Debug,
+                &format!("[DISK DEBUG] {} → not found", gf.r#type),
+                BlackwellOutputConsoleLineStyle::Normal);
+        }
+        n_none += 1;
+
+        DiskCheckResult {
+            quant_type: gf.r#type.clone(),
+            match_type: "none".to_string(),
+            disk_file_size: None,
+            disk_author: None,
+        }
+    }).collect();
+
+    // LOG: summary banner
+    if let Some(lh) = log_hub {
+        let label = hf_model_id.unwrap_or("unknown");
+        lh.emit_console_line(
+            BlackwellOutputConsoleCategory::Utils,
+            &crate::output_console::format_console_completion(
+                "HF disk check complete",
+                &format!("{} verified, {} on-disk, {} mismatch, {} missing out of {} total for {}",
+                    n_lfs, n_size, n_mismatch, n_none, results.len(), label),
+            ),
+            BlackwellOutputConsoleLineStyle::Success);
+    }
+
+    results
 }

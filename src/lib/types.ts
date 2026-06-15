@@ -14,6 +14,7 @@ export interface ModelEntry {
   sourcePathLabel?: string;
   metadata?: ModelMetadata;
   hfMeta?: HfMetadata;
+  hfModelId?: string;
 }
 
 export interface ModelPathEntry {
@@ -690,11 +691,21 @@ export interface IntelFeed {
 
 // ── Hugging Face Hub Types ───────────────────────────────────────
 
+export interface GgufShard {
+  fileName: string;
+  pathInRepo: string;
+  size_bytes: number;
+  url: string;
+  lfsOid?: string;
+}
+
 export interface GgufFile {
   type: string;        // quant tag like "Q4_K_M"
   size_bytes: number;
-  url: string;         // direct download URL
+  url: string;         // direct download URL (first shard when sharded)
   lfsOid?: string;     // LFS content hash for incremental scan
+  shards?: GgufShard[];
+  shardCount?: number;
 }
 
 export interface HfModel {
@@ -749,6 +760,46 @@ export interface DownloadTask {
   hfAuthor?: string;
   quantType?: string;
   lfsOid?: string;     // LFS content hash for incremental scan
+}
+
+export interface DownloadTargetCheck {
+  exists: boolean;
+  sameModel: boolean;
+  lfsMatch: boolean;
+  cachedLfsOid: string | null;
+}
+
+export interface DiskCheckResult {
+  quantType: string;
+  matchType: 'lfs' | 'size' | 'mismatch' | 'none';
+  diskFileSize: number | null;
+  diskAuthor: string | null;
+}
+
+export interface HfFileUpdateCheck {
+  quantType: string;
+  hasUpdate: boolean;
+  cachedSizeBytes: number;
+  hfSizeBytes: number;
+  hfLfsOid: string;
+  status: 'lfs_match' | 'size_match' | 'changed' | 'not_cached';
+}
+
+export interface HfRepoUpdateStatus {
+  hfModelId: string;
+  files: HfFileUpdateCheck[];
+  /** Local quants on disk for this repo that were checked */
+  localCopyCount: number;
+  /** How many of those local quants are out of date on HF */
+  updateCount: number;
+  error?: string | null;
+}
+
+export interface CatalogUpdateEntry {
+  path: string;
+  hfModelId: string;
+  quant: string;
+  hasUpdate: boolean;
 }
 
 /** Sanitize alias for CLI/API use — replaces spaces and commas with hyphens. */

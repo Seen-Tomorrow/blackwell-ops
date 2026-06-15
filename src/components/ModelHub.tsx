@@ -1,37 +1,44 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import ModelHubSearch from './ModelHubSearch';
 import ModelHubDownloadPaths from './ModelHubDownloadPaths';
 import ModelHubDownloads from './ModelHubDownloads';
 import type { DownloadTask } from '@/lib/types';
 import { dispatchAppEvent, EVENTS } from '@/lib/events';
+import { useTauriListen } from '../hooks/useTauriListen';
 
 export default function ModelHub() {
   const [downloads, setDownloads] = useState<DownloadTask[]>([]);
   const completedRefs = useRef(new Set<string>());
+  const pollRef = useRef<(() => void) | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    const poll = async () => {
-      try {
-        const tasks = await invoke<DownloadTask[]>('get_download_tasks');
-        if (cancelled) return;
-        setDownloads(tasks);
-        for (const t of tasks) {
-          if (t.status === 'completed' && !completedRefs.current.has(t.id)) {
-            completedRefs.current.add(t.id);
-            dispatchAppEvent(EVENTS.downloadCompleted);
-          }
-        }
-      } catch {
-        if (!cancelled) {
-          console.error('Failed to poll download tasks');
+  const pollDownloads = useCallback(async () => {
+    try {
+      const tasks = await invoke<DownloadTask[]>('get_download_tasks');
+      setDownloads(tasks);
+      for (const t of tasks) {
+        if (t.status === 'completed' && !completedRefs.current.has(t.id)) {
+          completedRefs.current.add(t.id);
+          dispatchAppEvent(EVENTS.downloadCompleted);
         }
       }
-    };
-    poll();
-    const interval = setInterval(poll, 500);
-    return () => { cancelled = true; clearInterval(interval); };
+    } catch {
+      console.error('Failed to poll download tasks');
+    }
+  }, []);
+
+  useEffect(() => {
+    pollRef.current = () => { void pollDownloads(); };
+  }, [pollDownloads]);
+
+  useEffect(() => {
+    void pollDownloads();
+    const interval = setInterval(() => { void pollDownloads(); }, 500);
+    return () => clearInterval(interval);
+  }, [pollDownloads]);
+
+  useTauriListen<{ type?: string }>('download-event', () => {
+    pollRef.current?.();
   }, []);
 
   return (

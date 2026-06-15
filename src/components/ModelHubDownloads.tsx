@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import type { DownloadTask, DownloadStatus } from '@/lib/types';
 
@@ -37,15 +37,28 @@ function formatETA(seconds: number): string {
   return `${m}m ${s}s`;
 }
 
+function formatSize(bytes: number): string {
+  const gb = bytes / (1024 * 1024 * 1024);
+  if (gb >= 1) return `${gb.toFixed(1)} GB`;
+  const mb = bytes / (1024 * 1024);
+  return `${mb.toFixed(0)} MB`;
+}
+
 interface ModelHubDownloadsProps {
   downloads: DownloadTask[];
 }
 
 export default function ModelHubDownloads({ downloads }: ModelHubDownloadsProps) {
   const activeDownloads = downloads.filter((d) => ACTIVE_STATUSES.includes(d.status));
+  const [actionError, setActionError] = useState<string | null>(null);
 
   return (
     <div className="flex h-full min-h-0 flex-col px-3 py-2.5">
+      {actionError && (
+        <div className="mb-2 truncate text-[8px] font-mono text-red-400/80">
+          {actionError}
+        </div>
+      )}
       <div className="mb-2 flex items-center gap-2 text-[9px] font-mono tracking-wider uppercase text-stealth-muted">
         <span>Downloads</span>
         {activeDownloads.length > 0 && (
@@ -60,7 +73,7 @@ export default function ModelHubDownloads({ downloads }: ModelHubDownloadsProps)
           </div>
         ) : (
           activeDownloads.map((task) => (
-            <DownloadProgressRow key={task.id} task={task} />
+            <DownloadProgressRow key={task.id} task={task} onActionError={setActionError} />
           ))
         )}
       </div>
@@ -68,39 +81,55 @@ export default function ModelHubDownloads({ downloads }: ModelHubDownloadsProps)
   );
 }
 
-function DownloadProgressRow({ task }: { task: DownloadTask }) {
+function DownloadProgressRow({
+  task,
+  onActionError,
+}: {
+  task: DownloadTask;
+  onActionError: (msg: string | null) => void;
+}) {
   const pct = task.totalBytes > 0 ? Math.round((task.downloadedBytes / task.totalBytes) * 100) : 0;
   const speedStr = formatSpeed(task.speedBps);
   const etaStr = formatETA(task.etaSeconds);
 
+  const reportActionError = useCallback((action: string, e: unknown) => {
+    console.error(`Failed to ${action} download:`, e);
+    const detail = typeof e === 'string' ? e : 'unknown error';
+    onActionError(`${action.toUpperCase()} FAILED: ${detail}`);
+  }, [onActionError]);
+
   const handlePause = useCallback(async () => {
+    onActionError(null);
     try {
       await invoke('pause_download', { taskId: task.id });
     } catch (e) {
-      console.error('Failed to pause download:', e);
+      reportActionError('pause', e);
     }
-  }, [task.id]);
+  }, [task.id, onActionError, reportActionError]);
 
   const handleResume = useCallback(async () => {
+    onActionError(null);
     try {
       await invoke('resume_download', { taskId: task.id });
     } catch (e) {
-      console.error('Failed to resume download:', e);
+      reportActionError('resume', e);
     }
-  }, [task.id]);
+  }, [task.id, onActionError, reportActionError]);
 
   const handleCancel = useCallback(async () => {
+    onActionError(null);
     try {
       await invoke('cancel_download', { taskId: task.id });
     } catch (e) {
-      console.error('Failed to cancel download:', e);
+      reportActionError('cancel', e);
     }
-  }, [task.id]);
+  }, [task.id, onActionError, reportActionError]);
 
   return (
     <div className="rounded-sm border border-stealth-border/60 bg-stealth-surface/40 p-2 space-y-1.5">
       <div className="flex items-center justify-between gap-2 text-[9px] font-mono">
         <span className="truncate text-white/80">{task.hfModelId}</span>
+        <span className="shrink-0 text-stealth-muted/40">{formatSize(task.downloadedBytes)} / {formatSize(task.totalBytes)}</span>
         <div className="flex shrink-0 items-center gap-2">
           {task.status === 'downloading' && (
             <>

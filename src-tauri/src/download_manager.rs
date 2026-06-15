@@ -5,15 +5,103 @@
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use chrono::Utc;
 use futures_util::StreamExt;
 use reqwest::header::RANGE;
+use serde::{Deserialize, Serialize};
 use tokio::fs::{self, OpenOptions};
 use tokio::io::AsyncWriteExt;
 use tokio::sync::RwLock;
 use crate::types::{DownloadStatus, DownloadTask};
+
+/// Persisted manifest entry — survives restart so we can recover orphaned .part files.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ManifestEntry {
+    /// Original task ID (microsecond timestamp).
+    task_id: String,
+    #[serde(rename = "hfModelId")]
+    hf_model_id: String,
+    file_name: String,
+    download_url: String,
+    total_bytes: u64,
+    dest_path: String,
+    #[serde(default)]
+    hf_author: String,
+    #[serde(rename = "quantType")]
+    quant_type: String,
+    #[serde(default, rename = "lfsOid")]
+    lfs_oid: String,
+}
+
+const MANIFEST_FILE: &str = "download_tasks.json";
+
+fn manifest_path() -> PathBuf {
+    crate::config::cache_dir().join(MANIFEST_FILE)
+}
+
+/// Load the task manifest from disk.
+fn load_manifest() -> HashMap<String, ManifestEntry> {
+    let path = manifest_path();
+    if !path.exists() {
+        return HashMap::new();
+    }
+    match std::fs::read_to_string(&path) {
+        Ok(content) => serde_json::from_str(&content).unwrap_or_default(),
+        Err(_) => HashMap::new(),
+    }
+}
+
+/// Save the task manifest to disk — atomic write via .tmp + rename to avoid corruption on crash.
+fn save_manifest(manifest: &HashMap<String, ManifestEntry>) {
+    let path = manifest_path();
+    let tmp_path = path.with_extension("json.tmp");
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let json = match serde_json::to_string_pretty(manifest) {
+        Ok(j) => j,
+        Err(e) => {
+            log::warn!("[download] Failed to serialize manifest: {}", e);
+            return;
+        }
+    };
+    // Write to .tmp first, then atomic rename — prevents truncated JSON on crash.
+    if let Err(e) = std::fs::write(&tmp_path, json) {
+        log::warn!("[download] Failed to write manifest temp: {}", e);
+        return;
+    }
+    if let Err(e) = std::fs::rename(&tmp_path, &path) {
+        log::warn!("[download] Failed to rename manifest: {}", e);
+        // Fallback: try to clean up tmp so it doesn't linger
+        let _ = std::fs::remove_file(&tmp_path);
+    }
+}
+
+/// Persist a task to the manifest for crash recovery.
+fn persist_task_to_manifest(task: &DownloadTask) {
+    let mut manifest = load_manifest();
+    manifest.insert(task.id.clone(), ManifestEntry {
+        task_id: task.id.clone(),
+        hf_model_id: task.hf_model_id.clone(),
+        file_name: task.file_name.clone(),
+        download_url: task.download_url.clone(),
+        total_bytes: task.total_bytes,
+        dest_path: task.dest_path.clone(),
+        hf_author: task.hf_author.clone(),
+        quant_type: task.quant_type.clone(),
+        lfs_oid: task.lfs_oid.clone(),
+    });
+    save_manifest(&manifest);
+}
+
+/// Remove a task from the manifest.
+fn remove_task_from_manifest(task_id: &str) {
+    let mut manifest = load_manifest();
+    manifest.remove(task_id);
+    save_manifest(&manifest);
+}
 
 /// Maximum number of concurrent downloads.
 const DEFAULT_MAX_CONCURRENT: usize = 3;
@@ -86,6 +174,10 @@ impl DownloadManager {
 
         self.tasks.insert(task_id.clone(), task);
 
+        // Persist to manifest for crash recovery
+        let task_ref = self.tasks.get(&task_id).unwrap();
+        persist_task_to_manifest(task_ref);
+
         let worker_arc = self_arc;
         let task_id_for_worker = task_id.clone();
         tokio::spawn(async move {
@@ -93,6 +185,63 @@ impl DownloadManager {
         });
 
         Ok(task_id)
+    }
+
+    /// Recover orphaned .part files from crash/exit using persisted manifest.
+    /// Creates Paused tasks so the user can resume or cancel them.
+    pub fn recover_part_files(&mut self) {
+        let manifest = load_manifest();
+        if manifest.is_empty() {
+            return;
+        }
+        log::info!("[download] Checking {} manifest entries for recoverable .part files", manifest.len());
+
+        let mut recovered = 0;
+        let mut stale = 0;
+
+        for (task_id, entry) in manifest {
+            let partial_path = partial_download_path(&entry.dest_path);
+            if !Path::new(&partial_path).exists() {
+                stale += 1;
+                continue;
+            }
+
+            let part_size = std::fs::metadata(&partial_path)
+                .ok()
+                .map(|m| m.len())
+                .unwrap_or(0);
+
+            log::info!(
+                "[download] Recovering .part file: {} ({} bytes)",
+                partial_path,
+                part_size
+            );
+
+            let task = DownloadTask {
+                id: task_id.clone(),
+                hf_model_id: entry.hf_model_id,
+                file_name: entry.file_name,
+                download_url: entry.download_url,
+                total_bytes: entry.total_bytes,
+                downloaded_bytes: part_size,
+                status: DownloadStatus::Paused,
+                dest_path: entry.dest_path,
+                speed_bps: 0,
+                pause_offset: part_size,
+                error: None,
+                eta_seconds: 0,
+                hf_author: entry.hf_author,
+                quant_type: entry.quant_type,
+                lfs_oid: entry.lfs_oid,
+            };
+
+            self.tasks.insert(task_id, task);
+            recovered += 1;
+        }
+
+        if recovered > 0 {
+            log::info!("[download] Recovered {} orphaned download(s) ({} stale manifest entries discarded)", recovered, stale);
+        }
     }
 
     /// Pause a running download. Worker flushes progress and sets `pause_offset` on exit.
@@ -119,6 +268,12 @@ impl DownloadManager {
                 let partial = partial_download_path(&dest);
                 task.status = DownloadStatus::Failed;
                 task.error = Some("Cancelled".to_string());
+
+                // Manifest cleanup — spawned off blocking pool to avoid stalling IPC handler.
+                let tid = task_id.to_string();
+                std::thread::spawn(move || {
+                    remove_task_from_manifest(&tid);
+                });
 
                 // Remove partial (and legacy in-progress final path) from disk
                 tokio::task::spawn_blocking(move || {
@@ -149,6 +304,9 @@ impl DownloadManager {
                     task.error = None;
                     task.speed_bps = 0;
                     task.eta_seconds = 0;
+
+                    // Persist for recovery
+                    persist_task_to_manifest(task);
 
                     let worker_arc = self_arc;
                     tokio::spawn(async move {
@@ -186,9 +344,18 @@ impl DownloadManager {
                 .map(|t| t.id.clone())
                 .collect();
 
-            for id in to_remove {
-                self.tasks.remove(&id);
+            // In-memory removal under lock.
+            for id in &to_remove {
+                self.tasks.remove(id);
             }
+
+            // Manifest cleanup — batch outside lock on blocking pool.
+            let ids = to_remove.clone();
+            std::thread::spawn(move || {
+                for id in &ids {
+                    remove_task_from_manifest(id);
+                }
+            });
         }
     }
 
@@ -198,6 +365,27 @@ impl DownloadManager {
             .values()
             .filter(|t| matches!(t.status, DownloadStatus::Downloading))
             .count()
+    }
+
+    /// True when the same resolved destination already has a queued/active/paused task.
+    pub fn has_active_task_for_dest(&self, dest_path: &str) -> bool {
+        let target = crate::config::resolve_path(dest_path)
+            .to_string_lossy()
+            .to_string();
+        if target.is_empty() {
+            return false;
+        }
+        self.tasks.values().any(|t| {
+            matches!(
+                t.status,
+                DownloadStatus::Queued | DownloadStatus::Downloading | DownloadStatus::Paused
+            ) && {
+                let existing = crate::config::resolve_path(&t.dest_path)
+                    .to_string_lossy()
+                    .to_string();
+                !existing.is_empty() && existing == target
+            }
+        })
     }
 
     /// Resolved final paths for queued/active/paused tasks — hide from model catalog until complete.
@@ -526,83 +714,124 @@ async fn mark_completed_worker(
     task_id: &str,
     dest_path: &str,
 ) {
-    let mut dm = manager.write().await;
-    let Some(task) = dm.tasks.get_mut(task_id) else {
-        return;
-    };
+    // Phase 1: Validate completion and extract metadata under lock — minimal hold time.
+    let (partial_path, dest_to_rename, task_id_for_finalization) = {
+        let mut dm = manager.write().await;
+        let Some(task) = dm.tasks.get_mut(task_id) else {
+            return;
+        };
 
-    if !matches!(task.status, DownloadStatus::Downloading) {
-        return;
-    }
+        if !matches!(task.status, DownloadStatus::Downloading) {
+            return;
+        }
 
-    if !download_bytes_complete(task.downloaded_bytes, task.total_bytes) {
-        task.status = DownloadStatus::Failed;
-        task.error = Some(format!(
-            "Download incomplete: {}/{} bytes",
-            task.downloaded_bytes, task.total_bytes
-        ));
+        if !download_bytes_complete(task.downloaded_bytes, task.total_bytes) {
+            task.status = DownloadStatus::Failed;
+            task.error = Some(format!(
+                "Download incomplete: {}/{} bytes",
+                task.downloaded_bytes, task.total_bytes
+            ));
+            task.speed_bps = 0;
+            task.eta_seconds = 0;
+            remove_task_from_manifest(task_id);
+            return;
+        }
+
+        // Mark completed under lock — release before slow disk I/O.
+        task.status = DownloadStatus::Completed;
         task.speed_bps = 0;
         task.eta_seconds = 0;
+        task.pause_offset = 0;
+
+        let pp = partial_download_path(dest_path);
+        (pp, dest_path.to_string(), task_id.to_string())
+    };
+
+    // Phase 2: Disk operations — no lock held, other downloads proceed concurrently.
+    // Delete old .gguf if it exists (replacement/update download)
+    if Path::new(&dest_to_rename).exists() {
+        log::info!("[download] Replacing existing model: {}", dest_to_rename);
+        if let Err(e) = std::fs::remove_file(&dest_to_rename) {
+            log::warn!("[download] Failed to remove existing model {}: {}", dest_to_rename, e);
+        }
+    }
+
+    if let Err(e) = std::fs::rename(&partial_path, &dest_to_rename) {
+        // Re-acquire lock to mark failed if rename failed.
+        let mut dm = manager.write().await;
+        if let Some(task) = dm.tasks.get_mut(&task_id_for_finalization) {
+            task.status = DownloadStatus::Failed;
+            task.error = Some(format!("Failed to finalize download: {}", e));
+            task.speed_bps = 0;
+            task.eta_seconds = 0;
+        }
+        remove_task_from_manifest(&task_id_for_finalization);
         return;
     }
 
-    let partial_path = partial_download_path(dest_path);
-    if let Err(e) = std::fs::rename(&partial_path, dest_path) {
-        task.status = DownloadStatus::Failed;
-        task.error = Some(format!("Failed to finalize download: {}", e));
-        task.speed_bps = 0;
-        task.eta_seconds = 0;
-        return;
+    // Remove manifest entry — outside lock.
+    remove_task_from_manifest(&task_id_for_finalization);
+
+    // Phase 3: Save HF metadata cache — outside lock.
+    let dm_snapshot = manager.read().await;
+    let cache_data = dm_snapshot.tasks.get(&task_id_for_finalization).map(|t| {
+        let repo_name = if let Some(pos) = t.hf_model_id.find('/') {
+            t.hf_model_id[pos + 1..].to_string()
+        } else {
+            t.hf_model_id.clone()
+        };
+        (
+            t.hf_model_id.clone(),
+            t.hf_author.clone(),
+            t.quant_type.clone(),
+            t.total_bytes,
+            t.lfs_oid.clone(),
+            repo_name,
+        )
+    });
+    drop(dm_snapshot);
+
+    if let Some((hf_model_id, hf_author, quant_type, total_bytes, lfs_oid, repo_name)) = cache_data {
+        let hf_meta = crate::types::HfMetadata {
+            hf_model_id,
+            author: hf_author,
+            repo_name,
+            tags: Vec::new(),
+            downloads: 0,
+            likes_count: 0,
+            quant_type,
+            file_size_bytes: total_bytes,
+            last_modified: String::new(),
+            lfs_oid,
+        };
+        if let Err(e) = crate::model_cache::set_hf_metadata(&dest_to_rename, hf_meta) {
+            log::warn!("[download] Failed to save HF metadata for {}: {}", dest_to_rename, e);
+        } else {
+            log::info!("[download] HF metadata saved to cache for {}", dest_to_rename);
+        }
     }
 
-    task.status = DownloadStatus::Completed;
-    task.speed_bps = 0;
-    task.eta_seconds = 0;
-    task.pause_offset = 0;
-
-    let hf_model_id_for_cache = task.hf_model_id.clone();
-    let hf_author_for_cache = task.hf_author.clone();
-    let quant_type_for_cache = task.quant_type.clone();
-    let total_bytes_for_cache = task.total_bytes;
-    let lfs_oid = task.lfs_oid.clone();
-
-    let repo_name = if let Some(pos) = hf_model_id_for_cache.find('/') {
-        hf_model_id_for_cache[pos + 1..].to_string()
-    } else {
-        hf_model_id_for_cache.clone()
-    };
-
-    let hf_meta = crate::types::HfMetadata {
-        hf_model_id: hf_model_id_for_cache,
-        author: hf_author_for_cache,
-        repo_name,
-        tags: Vec::new(),
-        downloads: 0,
-        likes_count: 0,
-        quant_type: quant_type_for_cache,
-        file_size_bytes: total_bytes_for_cache,
-        last_modified: String::new(),
-        lfs_oid,
-    };
-
-    if let Err(e) = crate::model_cache::set_hf_metadata(dest_path, hf_meta) {
-        log::warn!("[download] Failed to save HF metadata for {}: {}", dest_path, e);
-    } else {
-        log::info!("[download] HF metadata saved to cache for {}", dest_path);
-    }
-
-    log::info!("Download complete: {} -> {}", task_id, dest_path);
+    log::info!("Download complete: {} -> {}", task_id_for_finalization, dest_to_rename);
 }
 
 /// Mark a task as failed with an error message.
 async fn mark_failed(manager: &Arc<RwLock<DownloadManager>>, task_id: &str, error_msg: String) {
-    let mut dm = manager.write().await;
-    if let Some(task) = dm.tasks.get_mut(task_id) {
-        task.status = DownloadStatus::Failed;
-        task.error = Some(error_msg);
-        task.speed_bps = 0;
-        task.eta_seconds = 0;
+    // Phase 1: Update in-memory state under lock — minimal hold.
+    {
+        let mut dm = manager.write().await;
+        if let Some(task) = dm.tasks.get_mut(task_id) {
+            task.status = DownloadStatus::Failed;
+            task.error = Some(error_msg);
+            task.speed_bps = 0;
+            task.eta_seconds = 0;
+        }
     }
+
+    // Phase 2: Manifest cleanup — outside lock, on blocking pool to avoid stalling tokio workers.
+    let tid = task_id.to_string();
+    tokio::task::spawn_blocking(move || {
+        remove_task_from_manifest(&tid);
+    });
 }
 
 /// Generate a unique task ID using microsecond timestamp.
@@ -717,6 +946,34 @@ mod tests {
         let paths = dm.in_progress_dest_paths();
         assert_eq!(paths.len(), 1);
         assert!(paths.iter().any(|p| p.ends_with("models\\m.gguf") || p.ends_with("models/m.gguf")));
+    }
+
+    #[test]
+    fn has_active_task_for_dest_matches_resolved_paths() {
+        let mut dm = DownloadManager::new();
+        dm.tasks.insert(
+            "active".to_string(),
+            DownloadTask {
+                id: "active".to_string(),
+                hf_model_id: "a/m".to_string(),
+                file_name: "m.gguf".to_string(),
+                download_url: "https://x".to_string(),
+                total_bytes: 100,
+                downloaded_bytes: 10,
+                status: DownloadStatus::Downloading,
+                dest_path: "models/m.gguf".to_string(),
+                speed_bps: 0,
+                pause_offset: 0,
+                error: None,
+                eta_seconds: 0,
+                hf_author: "a".to_string(),
+                quant_type: "Q4".to_string(),
+                lfs_oid: String::new(),
+            },
+        );
+
+        assert!(dm.has_active_task_for_dest("models/m.gguf"));
+        assert!(!dm.has_active_task_for_dest("models/other.gguf"));
     }
 
     #[tokio::test]

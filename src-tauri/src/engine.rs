@@ -933,6 +933,7 @@ pub async fn scan_model_metadata_cmd(
     let file_size = total_file_size;
 
     let hf_meta_for_entry = crate::model_cache::get_hf_metadata(&model_path);
+    let hf_id = hf_meta_for_entry.as_ref().map(|h| h.hf_model_id.clone());
     Ok(crate::types::ModelEntry {
         path: model_path,
         author: "unknown".to_string(),
@@ -946,6 +947,7 @@ pub async fn scan_model_metadata_cmd(
         source_path_label: String::new(),
         metadata: Some(metadata),
         hf_meta: hf_meta_for_entry,
+        hf_model_id: hf_id,
     })
 }
 

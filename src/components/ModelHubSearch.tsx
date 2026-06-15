@@ -2,7 +2,7 @@ import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { join } from '@tauri-apps/api/path';
 import { open } from '@tauri-apps/plugin-shell';
-import type { HfModel, GgufFile, HfSearchResponse, HfModelInfo } from '@/lib/types';
+import type { DownloadTargetCheck, DiskCheckResult, GgufFile, GgufShard, HfModel, HfModelInfo, HfSearchResponse, HfRepoUpdateStatus } from '@/lib/types';
 import { useModelHubSplitResize } from '../hooks/useCatalogSplitResize';
 import QuantBadge from './QuantBadge';
 import VramFitBadge from './VramFitBadge';
@@ -10,6 +10,68 @@ import ModelStatsRow from './ModelStatsRow';
 
 function hfModelUrl(modelId: string): string {
   return `https://huggingface.co/${modelId}`;
+}
+
+function parseHfRepoParts(modelId: string): { hfAuthor: string; repoName: string } {
+  const slashIdx = modelId.indexOf('/');
+  if (slashIdx <= 0 || slashIdx >= modelId.length - 1) {
+    return { hfAuthor: 'unknown', repoName: modelId };
+  }
+  return {
+    hfAuthor: modelId.slice(0, slashIdx),
+    repoName: modelId.slice(slashIdx + 1),
+  };
+}
+
+function shardCount(file: GgufFile): number {
+  return file.shardCount ?? file.shards?.length ?? 1;
+}
+
+function getDownloadParts(file: GgufFile): GgufShard[] {
+  if (file.shards?.length) return file.shards;
+  const pathInRepo = file.url.split('/resolve/main/')[1] || `${file.type}.gguf`;
+  const fileName = pathInRepo.split('/').pop() || `${file.type}.gguf`;
+  return [{
+    fileName,
+    pathInRepo,
+    size_bytes: file.size_bytes,
+    url: file.url,
+    lfsOid: file.lfsOid,
+  }];
+}
+
+async function buildDownloadDestPath(modelId: string, pathInRepo: string): Promise<string> {
+  const defaultPath = await invoke<string>('get_default_download_path');
+  const { hfAuthor, repoName } = parseHfRepoParts(modelId);
+  const segments = pathInRepo.split('/').filter(Boolean);
+  return join(defaultPath, hfAuthor, repoName, ...segments);
+}
+
+async function checkQuantPartsOnDisk(
+  modelId: string,
+  file: GgufFile,
+): Promise<{ allComplete: boolean; anyExists: boolean }> {
+  const parts = getDownloadParts(file);
+  let allComplete = true;
+  let anyExists = false;
+  for (const part of parts) {
+    const destPath = await buildDownloadDestPath(modelId, part.pathInRepo);
+    const check = await invoke<DownloadTargetCheck>('check_download_target', {
+      destPath,
+      lfsOid: part.lfsOid || '',
+    });
+    if (check.exists) anyExists = true;
+    if (!check.exists || !check.lfsMatch) allComplete = false;
+  }
+  return { allComplete, anyExists };
+}
+
+function downloadToastLabel(file: GgufFile, action?: 'update' | 'replace'): string {
+  const n = shardCount(file);
+  const shardLabel = n > 1 ? ` (${n} shards)` : '';
+  if (action === 'update') return `⬇ UPDATING ${file.type}${shardLabel}...`;
+  if (action === 'replace') return `⬇ REPLACING ${file.type}${shardLabel}...`;
+  return `⬇ DOWNLOADING ${file.type}${shardLabel}...`;
 }
 
 const VRAM_TIERS = [8, 12, 16, 24, 48, 96];
@@ -61,6 +123,16 @@ export default function ModelHubSearch() {
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [ggufOnly, setGgufOnly] = useState(true);
+  const [confirmDownload, setConfirmDownload] = useState<{
+    modelId: string;
+    file: GgufFile;
+    action: 'update' | 'replace';
+    diskFileSize?: number | null;
+    diskAuthor?: string | null;
+  } | null>(null);
+  const [diskChecks, setDiskChecks] = useState<Map<string, DiskCheckResult> | null>(null);
+  const [hfUpdates, setHfUpdates] = useState<HfRepoUpdateStatus | null>(null);
+  const [checkingUpdates, setCheckingUpdates] = useState(false);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const showToast = useCallback((msg: string) => {
@@ -74,7 +146,7 @@ export default function ModelHubSearch() {
   }, []);
 
   useEffect(() => {
-    if (!selectedId) { setDetailInfo(null); return; }
+    if (!selectedId) { setDetailInfo(null); setDiskChecks(null); setHfUpdates(null); return; }
     let cancelled = false;
     setLoadingDetail(true);
     (async () => {
@@ -82,15 +154,59 @@ export default function ModelHubSearch() {
         const info = await invoke<HfModelInfo>('get_hf_model_info', {
           modelId: selectedId,
         });
-        if (!cancelled) setDetailInfo(info);
+        if (!cancelled) {
+          setDetailInfo(info);
+          // Check disk presence for each GGUF file
+          if (info.gguf_files && info.gguf_files.length > 0) {
+            try {
+              const results = await invoke<DiskCheckResult[]>('check_hf_files_against_disk', {
+                ggufFiles: info.gguf_files,
+                hfModelId: info.id,
+              });
+              const map = new Map<string, DiskCheckResult>();
+              for (const r of results) {
+                map.set(r.quantType, r);
+              }
+              if (!cancelled) setDiskChecks(map);
+            } catch (e) {
+              console.error('Disk check failed:', e);
+            }
+          }
+        }
       } catch (e) {
         console.error('Failed to load model info:', e);
+        if (!cancelled) {
+          showToast(`FAILED TO LOAD MODEL: ${typeof e === 'string' ? e : 'unknown error'}`);
+        }
       } finally {
         if (!cancelled) setLoadingDetail(false);
       }
     })();
     return () => { cancelled = true; };
-  }, [selectedId]);
+  }, [selectedId, showToast]);
+
+  const checkUpdates = useCallback(async () => {
+    if (!selectedId) return;
+    setCheckingUpdates(true);
+    try {
+      const status = await invoke<HfRepoUpdateStatus>('check_hf_repo_updates', {
+        modelId: selectedId,
+      });
+      setHfUpdates(status);
+      if (status.localCopyCount === 0) {
+        showToast('NO LOCAL COPIES OF THIS REPO — DOWNLOAD A QUANT FIRST');
+      } else if (status.updateCount > 0) {
+        showToast(`⚠ ${status.updateCount} LOCAL QUANT${status.updateCount > 1 ? 'S' : ''} OUT OF DATE ON HF`);
+      } else {
+        showToast(`✓ ALL ${status.localCopyCount} LOCAL QUANT${status.localCopyCount > 1 ? 'S' : ''} UP TO DATE`);
+      }
+    } catch (e) {
+      console.error('Update check failed:', e);
+      showToast(`UPDATE CHECK FAILED: ${typeof e === 'string' ? e : 'unknown'}`);
+    } finally {
+      setCheckingUpdates(false);
+    }
+  }, [selectedId, showToast]);
 
   const doSearch = useCallback(async () => {
     if (!query.trim()) return;
@@ -126,33 +242,75 @@ export default function ModelHubSearch() {
   }, [showToast]);
 
   const handleDownload = useCallback(async (modelId: string, file: GgufFile) => {
+    if (!file.url?.trim()) {
+      showToast('DOWNLOAD URL MISSING — RELOAD MODEL DETAILS');
+      return;
+    }
+
     try {
-      const defaultPath = await invoke<string>('get_default_download_path');
-      const urlParts = file.url.split('/resolve/main/');
-      const filePathInRepo = urlParts.length > 1 ? urlParts[1] : '';
-      const fileName = filePathInRepo.split('/').pop() || `${file.type}.gguf`;
+      const { hfAuthor } = parseHfRepoParts(modelId);
+      const { allComplete, anyExists } = await checkQuantPartsOnDisk(modelId, file);
 
-      const slashIdx = modelId.indexOf('/');
-      const hfAuthor = slashIdx > 0 ? modelId.slice(0, slashIdx) : 'unknown';
-      const repoName = slashIdx > 0 ? modelId.slice(slashIdx + 1) : modelId;
-      const destPath = await join(defaultPath, hfAuthor, repoName, fileName);
+      if (allComplete) {
+        showToast(`✓ ${file.type} ALREADY DOWNLOADED`);
+        return;
+      }
+      if (anyExists) {
+        const diskCheck = diskChecks?.get(file.type) ?? null;
+        setConfirmDownload({
+          modelId,
+          file,
+          action: 'update',
+          diskFileSize: diskCheck?.diskFileSize ?? null,
+          diskAuthor: diskCheck?.diskAuthor ?? null,
+        });
+        return;
+      }
 
-      await invoke('start_download', {
+      await invoke<string[]>('start_quant_download', {
         hfModelId: modelId,
-        fileName,
-        url: file.url,
-        totalBytes: file.size_bytes,
-        destPath,
         hfAuthor,
         quantType: file.type,
-        lfsOid: file.lfsOid || '',
+        ggufFile: file,
       });
-      showToast(`⬇ DOWNLOADING ${file.type}...`);
+      showToast(downloadToastLabel(file));
     } catch (e) {
       console.error('Download failed:', e);
       showToast(`DOWNLOAD FAILED: ${typeof e === 'string' ? e : 'unknown error'}`);
     }
-  }, [showToast]);
+  }, [showToast, diskChecks]);
+
+  const handleConfirmDownload = useCallback(async () => {
+    if (!confirmDownload) return;
+    const { modelId, file, action } = confirmDownload;
+    setConfirmDownload(null);
+
+    if (!file.url?.trim()) {
+      showToast('DOWNLOAD URL MISSING — RELOAD MODEL DETAILS');
+      return;
+    }
+
+    try {
+      const { hfAuthor } = parseHfRepoParts(modelId);
+      const { allComplete } = await checkQuantPartsOnDisk(modelId, file);
+
+      if (allComplete) {
+        showToast(`✓ ${file.type} ALREADY DOWNLOADED`);
+        return;
+      }
+
+      await invoke<string[]>('start_quant_download', {
+        hfModelId: modelId,
+        hfAuthor,
+        quantType: file.type,
+        ggufFile: file,
+      });
+      showToast(downloadToastLabel(file, action === 'update' ? 'update' : 'replace'));
+    } catch (e) {
+      console.error('Download failed:', e);
+      showToast(`DOWNLOAD FAILED: ${typeof e === 'string' ? e : 'unknown error'}`);
+    }
+  }, [confirmDownload, showToast]);
 
   const handleVramToggle = useCallback((gb: number) => {
     setVramTier(prev => prev === gb ? 0 : gb);
@@ -175,6 +333,60 @@ export default function ModelHubSearch() {
       {toast && (
         <div className="absolute top-4 right-4 z-50 px-3 py-1.5 text-[10px] font-mono tracking-wider bg-nv-green/20 border border-nv-green/40 text-nv-green rounded-sm toast-enter">
           {toast}
+        </div>
+      )}
+
+      {confirmDownload && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 fade-in">
+          <div className="gunmetal-card p-5 max-w-sm w-full mx-4 border border-yellow-400/30 rounded-sm">
+            <div className="text-[10px] font-mono text-yellow-400 tracking-wider uppercase mb-3">
+              {confirmDownload.action === 'update' ? '⚠ MODEL UPDATED ON HF' : '⚠ REPLACE EXISTING FILE'}
+            </div>
+            <p className="text-[11px] font-mono text-white/80 mb-3">
+              {confirmDownload.action === 'update'
+                ? shardCount(confirmDownload.file) > 1
+                  ? `A newer version of this quant is available on HuggingFace. All ${shardCount(confirmDownload.file)} shard files will be replaced after download completes.`
+                  : 'A newer version of this quant is available on HuggingFace. The existing file will be replaced after download completes.'
+                : shardCount(confirmDownload.file) > 1
+                  ? `Some shard files already exist. All ${shardCount(confirmDownload.file)} parts will be re-downloaded.`
+                  : 'A file with this name already exists. It will be replaced after download completes.'}
+            </p>
+            {(confirmDownload.diskFileSize || confirmDownload.diskAuthor) ? (
+              <div className="mb-3 space-y-1.5 text-[9px] font-mono">
+                <div className="flex items-center gap-2">
+                  <span className="text-stealth-muted w-16">DISK</span>
+                  {confirmDownload.diskAuthor && <span className="text-stealth-muted/70">{confirmDownload.diskAuthor}</span>}
+                  <span className="text-yellow-400/80">{confirmDownload.file.type}</span>
+                  {confirmDownload.diskFileSize && <span className="text-stealth-muted/50">{formatSize(confirmDownload.diskFileSize)}</span>}
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-stealth-muted w-16">HF</span>
+                  <span className="text-nv-green/80">{confirmDownload.file.type}</span>
+                  <span className="text-stealth-muted/50">{formatSize(confirmDownload.file.size_bytes)}</span>
+                </div>
+              </div>
+            ) : (
+              <p className="text-[10px] font-mono text-stealth-muted mb-4">
+                {confirmDownload.file.type}
+              </p>
+            )}
+            <div className="flex items-center gap-2 justify-end">
+              <button
+                type="button"
+                onClick={() => setConfirmDownload(null)}
+                className="px-3 py-1.5 text-[10px] font-mono tracking-wider border border-stealth-border/60 text-stealth-muted rounded-sm hover:bg-stealth-muted/10 transition-all"
+              >
+                CANCEL
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDownload}
+                className="px-3 py-1.5 text-[10px] font-mono tracking-wider bg-yellow-400/20 text-yellow-400 border border-yellow-400/40 rounded-sm hover:bg-yellow-400/30 transition-all"
+              >
+                {confirmDownload.action === 'update' ? 'UPDATE MODEL' : 'REPLACE FILE'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -343,14 +555,31 @@ export default function ModelHubSearch() {
                   <h2 className="text-xs font-mono model-card-name tracking-wide truncate">{detailInfo.id}</h2>
                   <span className="text-[9px] font-mono text-stealth-muted">{detailInfo.author}</span>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => handleOpenHfPage(detailInfo.id)}
-                  className="shrink-0 rounded-sm border border-telemetry-cyan/30 px-2 py-1 text-[8px] font-mono text-telemetry-cyan/80 transition-colors whitespace-nowrap hover:bg-telemetry-cyan/10 hover:text-telemetry-cyan"
-                >
-                  VIEW ON HF ↗
-                </button>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={checkUpdates}
+                    disabled={checkingUpdates}
+                    className="rounded-sm border border-yellow-400/30 px-2 py-1 text-[8px] font-mono text-yellow-400/80 transition-colors whitespace-nowrap hover:bg-yellow-400/10 hover:text-yellow-400 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {checkingUpdates ? 'CHECKING...' : 'CHECK UPDATES'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenHfPage(detailInfo.id)}
+                    className="rounded-sm border border-telemetry-cyan/30 px-2 py-1 text-[8px] font-mono text-telemetry-cyan/80 transition-colors whitespace-nowrap hover:bg-telemetry-cyan/10 hover:text-telemetry-cyan"
+                  >
+                    VIEW ON HF ↗
+                  </button>
+                </div>
               </div>
+              {hfUpdates && hfUpdates.localCopyCount > 0 && hfUpdates.updateCount > 0 && (
+                <div className="mb-2 pb-2 border-b border-stealth-border/40">
+                  <div className="text-[9px] font-mono text-yellow-400 tracking-wider">
+                    ⚠ {hfUpdates.updateCount} OF {hfUpdates.localCopyCount} LOCAL QUANT{hfUpdates.localCopyCount > 1 ? 'S' : ''} OUT OF DATE ON HF
+                  </div>
+                </div>
+              )}
 
               <ModelStatsRow
                 downloads={detailInfo.downloads}
@@ -372,36 +601,71 @@ export default function ModelHubSearch() {
                   QUANTS ({selectedGgufFiles.length})
                 </h3>
 
-                {selectedGgufFiles.map((file) => {
-                  const vramGb = vramTier > 0 ? vramTier : 24;
-                  return (
-                    <div
-                      key={`${file.type}-${file.size_bytes}-${file.url}`}
-                      className="theme-surface-row flex items-center justify-between py-2 px-2.5 mb-1 rounded-sm hover:border-nv-green/20 transition-all hub-file-enter"
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <VramFitBadge sizeBytes={file.size_bytes} vramGb={vramGb} />
-                        <QuantBadge type={file.type} sizeBytes={file.size_bytes} />
-                        <span className="text-[10px] font-mono text-stealth-muted/60 flex-shrink-0">
-                          {formatSize(file.size_bytes)}
-                        </span>
-                      </div>
-
-                      <button
-                        onClick={() => handleDownload(detailInfo.id, file)}
-                        className="px-3 py-1 text-[9px] font-mono tracking-wider bg-nv-green/20 text-nv-green border border-nv-green/40 rounded-sm hover:bg-nv-green/30 transition-all flex-shrink-0 ml-2"
+                <div className="max-h-[300px] overflow-y-auto eink-scrollbar pr-1">
+                  {selectedGgufFiles.map((file) => {
+                    const vramGb = vramTier > 0 ? vramTier : 24;
+                    const diskCheck = diskChecks?.get(file.type) ?? null;
+                    const matchType = diskCheck?.matchType ?? 'none';
+                    const hfUpdate = (matchType !== 'none')
+                      ? (hfUpdates?.files.find(f => f.quantType === file.type) ?? null)
+                      : null;
+                    const shards = shardCount(file);
+                    return (
+                      <div
+                        key={`${file.type}-${file.size_bytes}-${file.url}`}
+                        className="theme-surface-row flex items-center justify-between py-2 px-2.5 mb-1 rounded-sm hover:border-nv-green/20 transition-all hub-file-enter"
                       >
-                        DOWNLOAD
-                      </button>
-                    </div>
-                  );
-                })}
+                        <div className="flex items-center gap-3 min-w-0">
+                          <VramFitBadge sizeBytes={file.size_bytes} vramGb={vramGb} />
+                          <QuantBadge type={file.type} sizeBytes={file.size_bytes} />
+                          <span className="text-[10px] font-mono text-stealth-muted/60 flex-shrink-0">
+                            {formatSize(file.size_bytes)}
+                          </span>
+                          {shards > 1 && (
+                            <span className="shrink-0 rounded-sm border border-stealth-border/50 bg-stealth-surface/60 px-1 py-0.5 text-[8px] font-mono text-stealth-muted/70">
+                              {shards} SHARDS
+                            </span>
+                          )}
+                          {hfUpdate?.hasUpdate && (
+                            <span className="shrink-0 text-[8px] font-mono text-yellow-400/70 flex items-center gap-1">
+                              ⚠ UPDATED
+                            </span>
+                          )}
+                        </div>
 
-                {selectedGgufFiles.length === 0 && (
-                  <p className="text-[10px] font-mono text-stealth-muted/40 italic py-4 text-center">
-                    NO GGUF FILES FOUND FOR THIS MODEL
-                  </p>
-                )}
+                        {matchType === 'lfs' ? (
+                          <span className="shrink-0 px-2 py-1 text-[9px] font-mono tracking-wider text-nv-green border border-nv-green/30 rounded-sm bg-nv-green/10">
+                            ✓ IDENTICAL
+                          </span>
+                        ) : matchType === 'size' ? (
+                          <span className="shrink-0 px-2 py-1 text-[9px] font-mono tracking-wider text-blue-400 border border-blue-400/30 rounded-sm bg-blue-400/10">
+                            ✓ ON DISK
+                          </span>
+                        ) : matchType === 'mismatch' ? (
+                          <button
+                            onClick={() => handleDownload(detailInfo.id, file)}
+                            className="shrink-0 px-3 py-1 text-[9px] font-mono tracking-wider bg-yellow-400/20 text-yellow-400 border border-yellow-400/40 rounded-sm hover:bg-yellow-400/30 transition-all"
+                          >
+                            UPDATE
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleDownload(detailInfo.id, file)}
+                            className="shrink-0 px-3 py-1 text-[9px] font-mono tracking-wider bg-nv-green/20 text-nv-green border border-nv-green/40 rounded-sm hover:bg-nv-green/30 transition-all"
+                          >
+                            DOWNLOAD
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                  {selectedGgufFiles.length === 0 && (
+                    <p className="text-[10px] font-mono text-stealth-muted/40 italic py-4 text-center">
+                      NO GGUF FILES FOUND FOR THIS MODEL
+                    </p>
+                  )}
+                </div>
               </div>
             </div>
           ) : selectedSearchModel ? (

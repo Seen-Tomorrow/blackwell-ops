@@ -49,6 +49,8 @@ interface ProviderScanState {
   results?: FitScanComplete;
   error?: string;
   scanStartTime?: number;
+  /** Progress panel dismissed while scan still runs on backend */
+  panelHidden?: boolean;
 }
 
 export default function ProvidersConfig({ providers: initialProviders, onProvidersChange }: ProvidersConfigProps) {
@@ -311,6 +313,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
           completed: result.completed,
           failed: result.failed,
           results: result,
+          panelHidden: false,
         },
       }));
 
@@ -344,6 +347,26 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
         failed: 0,
       },
     }));
+  }, []);
+
+  const handleHideScan = useCallback((providerId: string) => {
+    setScanStates((prev) => {
+      const ps = prev[providerId];
+      if (!ps) return prev;
+      if (ps.status === "scanning") {
+        return { ...prev, [providerId]: { ...ps, panelHidden: true } };
+      }
+      return {
+        ...prev,
+        [providerId]: {
+          status: "idle",
+          parallel: ps.parallel,
+          totalModels: 0,
+          completed: 0,
+          failed: 0,
+        },
+      };
+    });
   }, []);
 
   // ── FIT scan event listener ───────────────────────────────────
@@ -571,7 +594,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
   const renderScanProgress = (providerId: string) => {
     const state = scanStates[providerId];
 
-    if (!state || state.status === "idle") {
+    if (!state || state.status === "idle" || state.panelHidden) {
       return null;
     }
 
@@ -671,10 +694,11 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
             </button>
           )}
           <button
-            onClick={() => handleStopScan(providerId)}
-            className="value-chip text-[8px] font-mono px-2 py-0.5 rounded-sm"
+            onClick={() => handleHideScan(providerId)}
+            className="value-chip text-[7px] font-mono px-2 py-0.5 rounded-sm"
+            title={state.status === "scanning" ? "Dismiss panel — scan keeps running in background" : "Dismiss scan results"}
           >
-            CLEAR
+            {state.status === "scanning" ? "HIDE - will continue in background" : "DISMISS"}
           </button>
         </div>
       </div>

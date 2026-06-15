@@ -38,7 +38,7 @@ import {
 } from "./lib/storage";
 import { dispatchAppEvent, EVENTS } from "./lib/events";
 import { getActiveStackSlots, isActiveEngineSlot } from "./lib/engineStack";
-import type { ModelEntry, StackEntry, LogBatch, LogEntry, SystemEvent, ProviderConfig, AppUpdateInfo } from "./lib/types";
+import type { ModelEntry, StackEntry, LogBatch, LogEntry, SystemEvent, ProviderConfig, AppUpdateInfo, CatalogUpdateEntry } from "./lib/types";
 
 export type Tab = "catalog" | "modelhub" | "stack" | "reactor11" | "telemetry" | "intel" | "logs" | "config" | "sentinel";
 
@@ -60,6 +60,7 @@ function App() {
   const logsLengthsRef = useRef<Record<number, number>>({});
 
   const [catalogError, setCatalogError] = useState<string | null>(null);
+  const [catalogHfUpdates, setCatalogHfUpdates] = useState<Set<string>>(() => new Set());
   const [providers, setProviders] = useState<ProviderConfig[]>([]);
   const [scanningPath, setScanningPath] = useState<string | null>(null);
   const [batchScanState, setBatchScanState] = useState<{active: boolean; scanned: number; failed: number; total: number}>({ active: false, scanned: 0, failed: 0, total: 0 });
@@ -178,19 +179,6 @@ function App() {
   }, []);
 
   useEffect(() => {
-    invoke<ModelEntry[]>("list_models")
-      .then((data) => {
-        setModels(data);
-        setCatalogError(null);
-      })
-      .catch((err) => {
-        const msg = typeof err === "string" ? err : JSON.stringify(err);
-        console.error("Failed to load models:", msg);
-        setCatalogError(msg);
-      });
-  }, []);
-
-  useEffect(() => {
     invoke<ProviderConfig[]>("list_providers")
       .then((data) => setProviders(data))
       .catch(console.error);
@@ -251,17 +239,31 @@ function App() {
     }
   }, [reloadProviders]);
 
+  const refreshCatalogHfUpdates = useCallback(async () => {
+    try {
+      const entries = await invoke<CatalogUpdateEntry[]>("check_catalog_hf_updates");
+      setCatalogHfUpdates(new Set(entries.filter((e) => e.hasUpdate).map((e) => e.path)));
+    } catch (err) {
+      console.error("Catalog HF update check failed:", err);
+    }
+  }, []);
+
   const reloadModels = useCallback(async () => {
     try {
       setCatalogError(null);
       const data = await invoke<ModelEntry[]>("list_models");
       setModels(data);
+      void refreshCatalogHfUpdates();
     } catch (err) {
       const msg = typeof err === "string" ? err : JSON.stringify(err);
       console.error("Failed to reload models:", msg);
       setCatalogError(msg);
     }
-  }, []);
+  }, [refreshCatalogHfUpdates]);
+
+  useEffect(() => {
+    void reloadModels();
+  }, [reloadModels]);
 
   useEffect(() => {
     const handler = () => { void reloadModels(); };
@@ -502,7 +504,7 @@ function App() {
             <StatusProvider value={{ totalParams, hiddenCount, onShowAll: handleShowAll }}>
             <Layout activeTab={activeTab} onTabChange={(tab) => { setActiveTab(tab); if (tab === "config") setHasBinaryUpdates(false); }} providers={providers} appUpdate={appUpdate} hasBinaryUpdates={hasBinaryUpdates} onInstallAppUpdate={handleInstallAppUpdate}>
         {activeTab === "catalog" && (
-              <ModelCatalog models={models} onLaunch={handleLaunchEngine} error={catalogError} onReload={reloadModels} providers={providers} committedVramMib={committedVramMib} isPowerUser={isPowerUser} scanningPath={scanningPath} setScanningPath={setScanningPath} batchScanState={batchScanState} setBatchScanState={setBatchScanState} stack={stack} setupGuide={setupGuide} />
+              <ModelCatalog models={models} onLaunch={handleLaunchEngine} error={catalogError} onReload={reloadModels} providers={providers} committedVramMib={committedVramMib} isPowerUser={isPowerUser} scanningPath={scanningPath} setScanningPath={setScanningPath} batchScanState={batchScanState} setBatchScanState={setBatchScanState} stack={stack} setupGuide={setupGuide} catalogHfUpdates={catalogHfUpdates} />
            )}
         <div className={`h-full min-h-0 flex flex-col ${activeTab === "modelhub" ? "" : "hidden"}`}>
           <ModelHub />
