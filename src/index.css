@@ -1860,8 +1860,12 @@ html, body, #root {
 }
 
 .bench-widget-panel .bench-results-stack {
-  flex: 1 1 auto;
+  flex-shrink: 0;
   min-height: 0;
+}
+
+.bench-widget-panel .bench-hw-topo {
+  flex-shrink: 0;
 }
 
 .bench-widget-panel .bench-results-footer {

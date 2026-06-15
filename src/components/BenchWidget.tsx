@@ -1,7 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { bench_TGBenchResult, bench_PPBurstResult, GpuInfo } from "../lib/types";
-import { BENCH_RESULT_ROW_PX, computeBenchPanelHeight, shouldShowBenchGpuTopo } from "../lib/benchPanelLayout";
+import {
+  BENCH_RESULT_ROW_DUAL_PX,
+  BENCH_RESULT_ROW_PX,
+  computeBenchPanelHeight,
+  isDualBenchResults,
+  shouldShowBenchGpuTopo,
+} from "../lib/benchPanelLayout";
 import {
   buildBenchGpuTopoEntries,
   formatBenchSplitHeadline,
@@ -465,6 +471,16 @@ export default function BenchWidget({
   const benchRowH = compact ? 16 : 18;
   const benchRowClass = "bench-control-row flex items-center justify-end gap-1 flex-shrink-0 overflow-hidden";
   const dualResults = ps.sessionMode === "both";
+  const dualBenchLayout = isDualBenchResults({
+    showResults: ps.showResults,
+    tgRunning: ps.tgRunning,
+    ppRunning: ps.ppRunning,
+    sessionMode: ps.sessionMode,
+    tgResult: ps.tgResult,
+    ppResult: ps.ppResult,
+    inlineActions: footerDocked,
+  });
+  const benchResultRowPx = dualResults ? BENCH_RESULT_ROW_DUAL_PX : BENCH_RESULT_ROW_PX;
 
   const showGpuTopo =
     benchHw
@@ -527,11 +543,13 @@ export default function BenchWidget({
   return (
       <div
         className={`bench-widget-panel w-full h-full rounded-sm flex flex-col overflow-hidden flex-shrink-0 ${compact ? "p-1" : "p-1.5"}`}
+        data-bench-dual-results={dualBenchLayout ? "" : undefined}
         style={{
           height: panelHeight,
           minHeight: panelHeight,
           maxHeight: panelHeight,
           ["--bench-control-row-h" as string]: `${benchRowH}px`,
+          ["--bench-result-row-h" as string]: `${benchResultRowPx}px`,
         }}
       >
         {!isAnyRunning && !ps.showResults && (
@@ -634,9 +652,9 @@ export default function BenchWidget({
         )}
 
         {ps.showResults && (
-           <div className={`bench-results-stack flex flex-col flex-1 min-h-0 ${footerDocked ? "" : "h-full overflow-hidden"}`}>
-             <div className="bench-results-body flex flex-row items-stretch gap-x-1 px-1 flex-shrink-0 min-h-0">
-               <div className="flex flex-col flex-1 min-w-0">
+           <div className={`bench-results-stack flex flex-col flex-shrink-0 min-h-0 ${footerDocked ? "" : "h-full overflow-hidden"}`}>
+             <div className="bench-results-body flex flex-row items-start gap-x-1 px-1 flex-shrink-0">
+               <div className={`flex flex-col flex-1 min-w-0${dualBenchLayout ? " gap-y-1" : ""}`}>
                {isAnyRunning && (
                  <div className="flex items-center justify-between gap-1.5 px-1 py-0.5">
                    <div className="flex items-center gap-1.5 min-w-0">
@@ -726,7 +744,7 @@ export default function BenchWidget({
              {showResultsSidebar && (
                <div
                  className="bench-results-sidebar flex flex-col items-end justify-end flex-shrink-0 self-stretch max-w-[11rem] min-w-[4.25rem]"
-                 style={{ minHeight: ppErrorNotice && !showTgResults && !ps.ppResult?.success ? BENCH_RESULT_ROW_PX : undefined }}
+                 style={{ minHeight: ppErrorNotice && !showTgResults && !ps.ppResult?.success ? benchResultRowPx : undefined }}
                >
                  {ppErrorNotice && (
                    <p className="text-[6px] font-mono text-red-400 text-right leading-tight mb-auto pt-0.5">

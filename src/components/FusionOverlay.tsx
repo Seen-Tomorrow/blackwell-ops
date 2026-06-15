@@ -619,15 +619,8 @@ export default function FusionOverlay({
           {!benchPanelExpanded && <div className="flex-1 min-h-0" aria-hidden />}
 
           {/* ═══ BENCH WIDGET — fixed panel height (see BenchWidget / benchPanelLayout) ═══ */}
-          <div
-            className={`bench-widget-panel flex flex-col flex-shrink-0 overflow-visible ${benchPanelExpanded ? "" : "mt-1"}`}
-            style={{
-              height: benchPanelHeight,
-              minHeight: benchPanelHeight,
-              maxHeight: benchPanelHeight,
-            }}
-          >
-            {fusion.engine_state !== "LOADING" && (
+          {fusion.engine_state !== "LOADING" && (
+            <div className={`flex-shrink-0${benchPanelExpanded ? "" : " mt-1"}`}>
               <BenchWidget
                 port={displayPort}
                 footerDocked
@@ -651,8 +644,8 @@ export default function FusionOverlay({
                   splitMode: launchConfig?.splitMode,
                 }}
               />
-            )}
-          </div>
+            </div>
+          )}
         </div>
       )}
     </div>
