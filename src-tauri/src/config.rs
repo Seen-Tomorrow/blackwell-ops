@@ -1061,6 +1061,48 @@ pub fn resolve_stored_model_path(path: &str) -> String {
     resolve_model_path(&candidate.to_string_lossy())
 }
 
+/// Short catalog badge for a configured model library — `parent/models` from the resolved path.
+pub fn format_catalog_source_path_label(stored_path: &str) -> String {
+    let resolved = resolve_stored_model_path(stored_path);
+    if resolved.is_empty() {
+        return String::new();
+    }
+
+    let path = std::path::Path::new(&resolved);
+    let normals: Vec<String> = path
+        .components()
+        .filter_map(|c| match c {
+            std::path::Component::Normal(s) => Some(s.to_string_lossy().to_string()),
+            _ => None,
+        })
+        .collect();
+
+    match normals.len() {
+        0 => String::new(),
+        1 => {
+            let leaf = &normals[0];
+            if let Some(drive) = path
+                .components()
+                .find_map(|c| match c {
+                    std::path::Component::Prefix(p) => {
+                        Some(p.as_os_str().to_string_lossy().trim_end_matches(':').to_string())
+                    }
+                    _ => None,
+                })
+            {
+                format!("{}/{}", drive, leaf)
+            } else {
+                leaf.clone()
+            }
+        }
+        _ => {
+            let leaf = &normals[normals.len() - 1];
+            let parent = &normals[normals.len() - 2];
+            format!("{}/{}", parent, leaf)
+        }
+    }
+}
+
 fn uses_path_placeholders(path: &str) -> bool {
     let trimmed = path.trim();
     trimmed.contains('%') || trimmed.starts_with("~/") || trimmed.starts_with("~\\") || trimmed == "~"
@@ -1188,12 +1230,7 @@ pub fn add_model_path(config: &mut AppConfig, path: String, label: Option<String
         return;
     }
     let stored_path = normalize_stored_model_path(&path, &resolved);
-    let computed_label = label.unwrap_or_else(|| {
-        std::path::Path::new(&resolved)
-            .file_name()
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_else(|| resolved.clone())
-    });
+    let computed_label = label.unwrap_or_else(|| format_catalog_source_path_label(&path));
     let is_default = config.model_paths.is_empty();
     config.model_paths.push(ModelPathEntry {
         path: stored_path,
@@ -2360,6 +2397,22 @@ mod merge_tests {
         assert!(super::model_library_configured(&with_models));
 
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn catalog_source_path_label_uses_parent_and_leaf() {
+        assert_eq!(
+            super::format_catalog_source_path_label(r"C:\Users\alice\.lmstudio\models"),
+            ".lmstudio/models"
+        );
+        assert_eq!(
+            super::format_catalog_source_path_label(r"D:\AI-MASTER\models"),
+            "AI-MASTER/models"
+        );
+        assert_eq!(
+            super::format_catalog_source_path_label(r"D:\models"),
+            "D/models"
+        );
     }
 
     #[test]

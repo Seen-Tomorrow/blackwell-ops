@@ -267,7 +267,8 @@ pub fn merge_catalogs(
     for path_entry in paths {
         let entries = scan_path(&PathBuf::from(&path_entry.path), log_hub)?;
         for mut entry in entries {
-            entry.source_path_label = path_entry.label.clone();
+            entry.source_path_label =
+                crate::config::format_catalog_source_path_label(&path_entry.path);
             all_internal.push(entry);
         }
     }

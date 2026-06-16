@@ -78,7 +78,12 @@
   --fusion-eink-text-accent: #4d7a00;
   --fusion-eink-text-cyan: #0088aa;
   --fusion-eink-text-amber: #b87a00;
+  --fusion-eink-text-red: #5a2828;
+  --fusion-eink-text-violet: #4a3858;
   --fusion-eink-bar-bg: #465a40;
+  --fusion-eink-gpu-selected-border: #526848;
+  --fusion-eink-gpu-selected-bg: rgba(70, 90, 64, 0.45);
+  --fusion-eink-gpu-selected-shadow: 0 0 0 1px rgba(82, 104, 72, 0.55), 0 2px 5px rgba(40, 50, 36, 0.25);
   --fusion-eink-border: rgba(60, 60, 60, 0.25);
   /* PHOSPHOR LIGHT readout ink — per-theme overrides in app-themes.ts */
   --fusion-eink-readout: #1e3a14;
@@ -3567,6 +3572,86 @@ html:not([data-theme="arctic"]) [data-display-texture="clean"] .phosphor-display
   background-color: var(--theme-industrial-bar-track) !important;
 }
 
+/* PHOSPHOR LIGHT — VRAM forecast: dark e-ink ink (beats industrial-display-area brights) */
+[data-display-texture="phosphor-light"] .vram-forecast-display .text-cyan-400,
+[data-display-texture="phosphor-light"] .industrial-display-area .vram-forecast-display .text-cyan-400,
+[data-display-texture="phosphor-light"] .vram-forecast-display .text-electric-blue,
+[data-display-texture="phosphor-light"] .vram-forecast-display .text-blue-700,
+[data-display-texture="phosphor-light"] .industrial-display-area .vram-forecast-display .text-electric-blue,
+[data-display-texture="phosphor-light"] .industrial-display-area .vram-forecast-display .text-blue-700 {
+  color: var(--fusion-eink-text-cyan) !important;
+}
+
+[data-display-texture="phosphor-light"] .vram-forecast-display .text-nv-green,
+[data-display-texture="phosphor-light"] .industrial-display-area .vram-forecast-display .text-nv-green {
+  color: var(--fusion-eink-text-accent) !important;
+}
+
+[data-display-texture="phosphor-light"] .vram-forecast-display .text-orange-400,
+[data-display-texture="phosphor-light"] .vram-forecast-display .text-telemetry-amber,
+[data-display-texture="phosphor-light"] .vram-forecast-display .text-amber-400,
+[data-display-texture="phosphor-light"] .industrial-display-area .vram-forecast-display .text-orange-400,
+[data-display-texture="phosphor-light"] .industrial-display-area .vram-forecast-display .text-telemetry-amber,
+[data-display-texture="phosphor-light"] .industrial-display-area .vram-forecast-display .text-amber-400 {
+  color: var(--fusion-eink-text-amber) !important;
+}
+
+[data-display-texture="phosphor-light"] .vram-forecast-display .text-red-400,
+[data-display-texture="phosphor-light"] .vram-forecast-display .text-telemetry-red,
+[data-display-texture="phosphor-light"] .industrial-display-area .vram-forecast-display .text-red-400,
+[data-display-texture="phosphor-light"] .industrial-display-area .vram-forecast-display .text-telemetry-red {
+  color: var(--fusion-eink-text-red) !important;
+}
+
+[data-display-texture="phosphor-light"] .vram-forecast-display .text-violet-400,
+[data-display-texture="phosphor-light"] .industrial-display-area .vram-forecast-display .text-violet-400 {
+  color: var(--fusion-eink-text-violet) !important;
+}
+
+[data-display-texture="phosphor-light"] .vram-forecast-display .text-gray-500,
+[data-display-texture="phosphor-light"] .industrial-display-area .vram-forecast-display .text-gray-500 {
+  color: var(--fusion-eink-text-muted) !important;
+}
+
+/* PHOSPHOR LIGHT — measured GB digits: drop neon gradients for flat e-ink */
+[data-display-texture="phosphor-light"] .vram-forecast-display .vram-forecast-gb-accented,
+[data-display-texture="phosphor-light"] .industrial-display-area .vram-forecast-display .vram-forecast-gb-accented {
+  background-image: none !important;
+  background-clip: unset !important;
+  -webkit-background-clip: unset !important;
+  -webkit-text-fill-color: currentColor !important;
+  filter: none !important;
+  text-shadow: none !important;
+}
+
+[data-display-texture="phosphor-light"] .vram-forecast-display .vram-forecast-gb-accented--learned,
+[data-display-texture="phosphor-light"] .industrial-display-area .vram-forecast-display .vram-forecast-gb-accented--learned {
+  color: var(--fusion-eink-text-cyan) !important;
+}
+
+[data-display-texture="phosphor-light"] .vram-forecast-display .vram-forecast-gb-accented--fit_probe,
+[data-display-texture="phosphor-light"] .industrial-display-area .vram-forecast-display .vram-forecast-gb-accented--fit_probe {
+  color: var(--fusion-eink-text-amber) !important;
+}
+
+[data-display-texture="phosphor-light"] .vram-forecast-display .vram-forecast-gb-accented--fit_cache,
+[data-display-texture="phosphor-light"] .industrial-display-area .vram-forecast-display .vram-forecast-gb-accented--fit_cache {
+  color: var(--fusion-eink-text-violet) !important;
+}
+
+/* PHOSPHOR LIGHT — GPU topo selected: darkened theme-accent ring */
+[data-display-texture="phosphor-light"] .vram-forecast-display .gpu-card.gpu-selected,
+[data-display-texture="phosphor-light"] .industrial-display-area .vram-forecast-display .gpu-card.gpu-selected {
+  border-color: var(--fusion-eink-gpu-selected-border) !important;
+  background-color: var(--fusion-eink-gpu-selected-bg) !important;
+  box-shadow: var(--fusion-eink-gpu-selected-shadow) !important;
+}
+
+[data-display-texture="phosphor-light"] .vram-forecast-display .gpu-selected .gpu-card-name,
+[data-display-texture="phosphor-light"] .industrial-display-area .vram-forecast-display .gpu-selected .gpu-card-name {
+  color: var(--fusion-eink-gpu-name-selected) !important;
+}
+
 
 
 /* ── Running engines panel — grey bg, compact row cards (below VRAM) ─── */
@@ -4864,6 +4949,18 @@ button.engine-logs-slot-chip.engine-logs-slot-chip--active .engine-logs-slot-chi
 
 [data-theme="arctic"] .buried-card {
   background: color-mix(in srgb, var(--theme-panel) 82%, transparent);
+}
+
+/* ARCTIC catalog — quant badge: dark teal ink on white/light cards */
+[data-theme="arctic"] [data-model-catalog] .model-card-quant-badge--cyan {
+  color: #1a5a68 !important;
+  border-color: color-mix(in srgb, #1a5a68 40%, transparent) !important;
+}
+
+[data-theme="arctic"] [data-model-catalog] .model-card-quant-badge--nvfp {
+  color: var(--theme-accent-dim) !important;
+  border-color: var(--theme-chip-border) !important;
+  background: var(--theme-chip-bg) !important;
 }
 
 /* ── Select option styling (WebView2 ignores inline styles on <option>) ─── */

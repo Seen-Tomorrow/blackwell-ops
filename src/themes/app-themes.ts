@@ -140,6 +140,11 @@ const MATRIX: AppTheme = {
     "--fusion-eink-hw-driver": "#5a7050",
     "--fusion-eink-gpu-name": "#4a6a4a",
     "--fusion-eink-gpu-name-selected": "#1e3a14",
+    "--fusion-eink-text-red": "#5a2828",
+    "--fusion-eink-text-violet": "#4a3858",
+    "--fusion-eink-gpu-selected-border": "#526848",
+    "--fusion-eink-gpu-selected-bg": "rgba(70, 90, 64, 0.45)",
+    "--fusion-eink-gpu-selected-shadow": "0 0 0 1px rgba(82, 104, 72, 0.55), 0 2px 5px rgba(40, 50, 36, 0.25)",
   },
 };
 
@@ -271,6 +276,11 @@ const AMBER: AppTheme = {
     "--fusion-eink-hw-driver": "#8a7050",
     "--fusion-eink-gpu-name": "#7a6030",
     "--fusion-eink-gpu-name-selected": "#4a3018",
+    "--fusion-eink-text-red": "#6a3028",
+    "--fusion-eink-text-violet": "#5a4048",
+    "--fusion-eink-gpu-selected-border": "#7a5838",
+    "--fusion-eink-gpu-selected-bg": "rgba(100, 80, 48, 0.45)",
+    "--fusion-eink-gpu-selected-shadow": "0 0 0 1px rgba(122, 88, 56, 0.55), 0 2px 5px rgba(50, 36, 24, 0.25)",
   },
 };
 
@@ -402,6 +412,11 @@ const CYAN: AppTheme = {
     "--fusion-eink-hw-driver": "#4a7888",
     "--fusion-eink-gpu-name": "#2a5a6a",
     "--fusion-eink-gpu-name-selected": "#0a4a58",
+    "--fusion-eink-text-red": "#4a3038",
+    "--fusion-eink-text-violet": "#3a4858",
+    "--fusion-eink-gpu-selected-border": "#4a6868",
+    "--fusion-eink-gpu-selected-bg": "rgba(58, 90, 90, 0.45)",
+    "--fusion-eink-gpu-selected-shadow": "0 0 0 1px rgba(74, 104, 104, 0.55), 0 2px 5px rgba(24, 40, 40, 0.25)",
   },
 };
 
@@ -533,6 +548,11 @@ const SLATE: AppTheme = {
     "--fusion-eink-hw-driver": "#6a6a78",
     "--fusion-eink-gpu-name": "#5a5a6a",
     "--fusion-eink-gpu-name-selected": "#2e2e38",
+    "--fusion-eink-text-red": "#4a3840",
+    "--fusion-eink-text-violet": "#484858",
+    "--fusion-eink-gpu-selected-border": "#686870",
+    "--fusion-eink-gpu-selected-bg": "rgba(90, 90, 96, 0.4)",
+    "--fusion-eink-gpu-selected-shadow": "0 0 0 1px rgba(104, 104, 112, 0.5), 0 2px 5px rgba(36, 36, 40, 0.22)",
   },
 };
 
@@ -598,6 +618,11 @@ const ARCTIC: AppTheme = {
     "--fusion-eink-hw-driver": "#4a6a5a",
     "--fusion-eink-gpu-name": "#3a5a4a",
     "--fusion-eink-gpu-name-selected": "#1a4030",
+    "--fusion-eink-text-red": "#4a3838",
+    "--fusion-eink-text-violet": "#3a4850",
+    "--fusion-eink-gpu-selected-border": "#526858",
+    "--fusion-eink-gpu-selected-bg": "rgba(68, 90, 80, 0.45)",
+    "--fusion-eink-gpu-selected-shadow": "0 0 0 1px rgba(82, 104, 88, 0.52), 0 2px 5px rgba(32, 44, 38, 0.22)",
     /* CRT / display texture — light palette; default scan formulas band too hard on ARCTIC */
     "--theme-display-texture-scan": "rgba(255, 255, 255, 0.05)",
     "--theme-display-texture-scan-bright": "rgba(255, 255, 255, 0.08)",

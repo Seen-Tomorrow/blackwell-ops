@@ -254,7 +254,9 @@ export default function VramBadge({
           <span className={`text-xl font-mono ${s.titleColor}`}>needs</span>
           <span
             className={`text-xl font-mono vram-forecast-gb-value ${gbAccentClass} ${
-              sourceAccent?.gbGradient ? "vram-forecast-gb-accented" : ""
+              sourceAccent?.gbGradient && memorySource
+                ? `vram-forecast-gb-accented vram-forecast-gb-accented--${memorySource.kind}`
+                : ""
             }`}
           >
             {neededText}

@@ -46,8 +46,8 @@ export default function ModelCard({
 
   const isNvfp = quantBadge && (quantBadge.toLowerCase().includes('nvfp4') || quantBadge.toLowerCase().includes('mxfp4'));
   const quantBadgeClass = isNvfp
-    ? 'bg-nv-green/10 border border-nv-green/20 text-nv-green/50'
-    : 'border border-telemetry-cyan/15 text-telemetry-cyan/50';
+    ? 'model-card-quant-badge model-card-quant-badge--nvfp bg-nv-green/10 border border-nv-green/20 text-nv-green/50'
+    : 'model-card-quant-badge model-card-quant-badge--cyan border border-telemetry-cyan/15 text-telemetry-cyan/50';
 
   return (
     <div
