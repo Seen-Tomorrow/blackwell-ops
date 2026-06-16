@@ -11,7 +11,7 @@ export interface BenchPortState {
   nPredict: number;
   /** Concurrent identical `/completion` feeds on the measured TG run (1 = single request). */
   tgParallel: number;
-  /** User toggle — warmup still auto-skips when nPredict > 512 (measured run is long enough). */
+  /** User toggle — 512-tok warmup run before measured TG (any n_predict target). */
   tgWarmupEnabled: boolean;
   promptMode: bench_PromptMode;
   ppRunning: boolean;
@@ -29,7 +29,7 @@ function defaultBenchState(): BenchPortState {
     tgResult: null,
     tgPhase: null,
     tgEffectiveLength: null,
-    nPredict: 256,
+    nPredict: 1024,
     tgParallel: 1,
     tgWarmupEnabled: true,
     promptMode: "unique",
@@ -66,9 +66,9 @@ export function subscribeBenchPortStore(listener: () => void): () => void {
   return () => listeners.delete(listener);
 }
 
-/** TG warmup runs only when enabled and n_predict ≤ 512 (longer measured runs self-warm). */
-export function tgWarmupWillRun(nPredict: number, tgWarmupEnabled: boolean): boolean {
-  return tgWarmupEnabled && nPredict <= 512;
+/** TG warmup runs when the user toggle is ON (always 512-tok decode, then measured at n_predict). */
+export function tgWarmupWillRun(_nPredict: number, tgWarmupEnabled: boolean): boolean {
+  return tgWarmupEnabled;
 }
 
 /** Drop all cached bench results — call when any engine slot stops. */

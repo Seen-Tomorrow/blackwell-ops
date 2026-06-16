@@ -2,7 +2,6 @@ import SlotLogPanel from "./SlotLogPanel";
 import EngineBanner from "./EngineBanner";
 
 import type { StackEntry, LogEntry } from "../lib/types";
-import { useFusionData } from "../hooks/useFusionData";
 import { getActiveStackSlots } from "../lib/engineStack";
 
 const EMPTY_LOGS: LogEntry[] = [];
@@ -26,7 +25,6 @@ function cardGlowClass(status: string): string {
 }
 
 export default function StackView({ stack, logs, systemEvents, onStop, onStopAll }: StackViewProps) {
-  const { getEngine } = useFusionData();
   const activeSlots = getActiveStackSlots(stack);
   const onlineCount = activeSlots.filter((e) => e.status === "RUNNING").length;
   const loadingCount = activeSlots.filter((e) => e.status === "LOADING").length;
@@ -85,7 +83,6 @@ export default function StackView({ stack, logs, systemEvents, onStop, onStopAll
                   entry={entry}
                   logs={logs.get(entry.idx) ?? EMPTY_LOGS}
                   systemEvents={systemEvents.get(entry.idx) ?? EMPTY_EVENTS}
-                  fusionUpdate={getEngine(entry.idx)}
                   n_ctx={entry.n_ctx || 32768}
                   onStop={onStop}
                 />

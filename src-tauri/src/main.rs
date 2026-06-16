@@ -15,6 +15,7 @@ mod nvml_probe;
 mod fit_scanner;
 mod vram_learn;
 mod mobile_bridge;
+mod bench_prompts;
 mod burst_bench;
 mod bench_pp_burst;
 mod bench_cancel;

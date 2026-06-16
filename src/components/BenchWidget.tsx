@@ -174,7 +174,7 @@ export interface BenchHwContext {
   splitMode?: string;
 }
 
-const TG_PREDICT_OPTIONS = [256, 512, 1024, 2048, 4096, 6144, 8192];
+const TG_PREDICT_OPTIONS = [512, 1024, 2048, 4096, 6144, 8192, 10000];
 const TG_PARALLEL_OPTIONS = [1, 4, 8, 16, 128];
 const PP_TOKEN_OPTIONS = [8192, 16384, 32768, 65536, 100000];
 
@@ -431,12 +431,9 @@ export default function BenchWidget({
     bump();
   };
 
-  const tgWarmupEffective = tgWarmupWillRun(ps.nPredict, ps.tgWarmupEnabled);
-  const tgWarmupTitle = tgWarmupEffective
-    ? "512-token warmup run before measured TG bench"
-    : ps.tgWarmupEnabled && ps.nPredict > 512
-      ? "Warmup auto-skipped — n_predict > 512 (measured run self-warms)"
-      : "Warmup disabled — measured run only (for TTFT experiments)";
+  const tgWarmupTitle = ps.tgWarmupEnabled
+    ? "512-token warmup decode, then measured run at selected n_predict"
+    : "Warmup off — measured run only";
 
   const isAnyRunning = ps.tgRunning || ps.ppRunning;
   const showTgResults =
@@ -563,7 +560,7 @@ export default function BenchWidget({
                   disabled={isAnyRunning}
                   className={`px-1 py-0 text-[6px] font-mono rounded-sm ${chipBtnClass(ps.nPredict === tok, isAnyRunning)}`}
                 >
-                  {tok}
+                  {formatBenchK(tok)}
                 </button>
               ))}
               <button
@@ -606,19 +603,20 @@ export default function BenchWidget({
                 disabled={isAnyRunning}
                 title={tgWarmupTitle}
                 className={`bench-muted-btn px-1.5 py-0.5 text-[6px] font-mono rounded-sm focus:outline-none cursor-pointer select-none disabled:opacity-30 flex-shrink-0 ${
-                  tgWarmupEffective ? "text-yellow-400/90" : "text-stealth-muted/55"
+                  ps.tgWarmupEnabled ? "text-yellow-400/90" : "text-stealth-muted/55"
                 }`}
               >
-                {ps.tgWarmupEnabled
-                  ? tgWarmupEffective
-                    ? "ON"
-                    : "SKIP"
-                  : "OFF"}
+                {ps.tgWarmupEnabled ? "ON" : "OFF"}
               </button>
               <button
                 onClick={cyclePromptMode}
                 disabled={isAnyRunning}
                 className="bench-muted-btn px-1 py-0.5 text-[6px] font-mono rounded-sm focus:outline-none cursor-pointer select-none disabled:opacity-30"
+                title={
+                  ps.promptMode === "unique"
+                    ? "Unique: diverse technical vocabulary (512-tok prefill, token-calibrated). TG decode is temp-0 continuation."
+                    : "Repetitive: fixed phrase cycled to 512-tok prefill — predictable for MTP/spec-decode. TG decode is temp-0 continuation of the pattern."
+                }
               >
                 {ps.promptMode === "unique" ? "Unique ▸" : "◂ Repetitive"}
               </button>

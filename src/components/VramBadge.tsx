@@ -7,7 +7,7 @@ import GpuTopology from "./GpuTopology";
 import FusionOverlay from "./FusionOverlay";
 import MoeBadge from "./MoeBadge";
 import MemorySourcePanel, { manifestHasFitProbe } from "./MemorySourcePanel";
-import { useFusionData } from "../hooks/useFusionData";
+import { useFusionSlot } from "../hooks/useFusionData";
 import { MEMORY_SOURCE_ACCENT } from "../services/vram/memorySource";
 import DisplayGlitchOverlay from "./DisplayGlitchOverlay";
 import type { FusionShareLaunchConfig } from "../lib/fusionShareCapture";
@@ -47,6 +47,82 @@ interface VramBadgeProps {
   hwTopo?: string;
 }
 
+/** Isolated fusion subscriber — keeps forecast/topo off the 25–40 Hz fusion tick path. */
+function VramBadgeFusionLayer({
+  active,
+  selectedSlotIdx,
+  activeEngineAlias,
+  activeEnginePort,
+  supportsFusion,
+  engineStatus,
+  gpus,
+  gpuMask,
+  vramTargetMib,
+  modelLayerTotal,
+  gpuLoadTargetsMib,
+  modelName,
+  modelQuant,
+  providerName,
+  providerBuildVersion,
+  profileLabel,
+  cudaVersion,
+  launchConfig,
+  hwTopo,
+}: {
+  active: boolean;
+  selectedSlotIdx?: number | null;
+  activeEngineAlias?: string;
+  activeEnginePort?: number;
+  supportsFusion?: boolean;
+  engineStatus?: string;
+  gpus: GpuInfo[];
+  gpuMask?: string;
+  vramTargetMib?: number;
+  modelLayerTotal?: number;
+  gpuLoadTargetsMib?: Record<number, number>;
+  modelName?: string;
+  modelQuant?: string;
+  providerName?: string;
+  providerBuildVersion?: string;
+  profileLabel?: string;
+  cudaVersion?: string;
+  launchConfig?: FusionShareLaunchConfig;
+  hwTopo?: string;
+}) {
+  const fusion = useFusionSlot(active ? selectedSlotIdx : null);
+  if (!active) return null;
+
+  return (
+    <div
+      className="!absolute inset-0 z-50 phosphor-screen phosphor-display-surface overflow-hidden flex flex-col rounded-xl border border-stealth-border p-[6px]"
+      style={{ animation: "fadeIn 0.2s ease" }}
+    >
+      <DisplayGlitchOverlay />
+      <FusionOverlay
+        alias={activeEngineAlias}
+        enginePort={activeEnginePort}
+        fusion={fusion}
+        supportsFusion={supportsFusion}
+        engineStatus={engineStatus}
+        slotIdx={selectedSlotIdx ?? -1}
+        gpus={gpus}
+        gpuMask={gpuMask}
+        vramTargetMib={vramTargetMib}
+        modelLayerTotal={modelLayerTotal}
+        gpuLoadTargetsMib={gpuLoadTargetsMib}
+        modelName={modelName}
+        modelQuant={modelQuant}
+        providerName={providerName}
+        providerBuildVersion={providerBuildVersion}
+        profileLabel={profileLabel}
+        cudaVersion={cudaVersion}
+        launchConfig={launchConfig}
+        hwTopo={hwTopo}
+      />
+    </div>
+  );
+}
+
 /** Pure skeleton renderer — reads all text, visibility, and colors from scenario's uiTemplate.
  *  GOLDEN RULE: Never add conditional logic or hardcoded text here. */
 export default function VramBadge({
@@ -55,8 +131,6 @@ export default function VramBadge({
   gpuMask = "", vramTargetMib, modelLayerTotal, gpuLoadTargetsMib, offloadMode, onMoeSuggestionClick, hideValidate = false, hideMoeBadge = false, className,
   modelName, modelQuant, providerName, providerBuildVersion, profileLabel, cudaVersion, launchConfig, hwTopo,
 }: VramBadgeProps) {
-  const { getEngine } = useFusionData();
-  const fusion = selectedSlotIdx !== null && selectedSlotIdx !== undefined ? getEngine(selectedSlotIdx) : null;
   const [benchLayoutTick, setBenchLayoutTick] = useState(0);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -146,36 +220,27 @@ export default function VramBadge({
       ref={rootRef}
       className={`vram-badge-forecast px-3 py-2.5 relative flex flex-col h-full min-h-0 overflow-hidden ${className || ''}`}
     >
-      {/* Overlay when a specific engine is selected (mini card click) — covers entire forecast container */}
-      {fusionOverlayActive && (
-        <div
-          className="!absolute inset-0 z-50 phosphor-screen phosphor-display-surface overflow-hidden flex flex-col rounded-xl border border-stealth-border p-[6px]"
-          style={{ animation: 'fadeIn 0.2s ease' }}
-        >
-          <DisplayGlitchOverlay />
-          <FusionOverlay
-            alias={activeEngineAlias}
-            enginePort={activeEnginePort}
-            fusion={fusion}
-            supportsFusion={supportsFusion}
-            engineStatus={engineStatus}
-            slotIdx={selectedSlotIdx ?? -1}
-            gpus={gpus}
-            gpuMask={gpuMask}
-            vramTargetMib={vramTargetMib}
-            modelLayerTotal={modelLayerTotal}
-            gpuLoadTargetsMib={gpuLoadTargetsMib}
-            modelName={modelName}
-            modelQuant={modelQuant}
-            providerName={providerName}
-            providerBuildVersion={providerBuildVersion}
-            profileLabel={profileLabel}
-            cudaVersion={cudaVersion}
-            launchConfig={launchConfig}
-            hwTopo={hwTopo}
-          />
-        </div>
-      )}
+      <VramBadgeFusionLayer
+        active={fusionOverlayActive}
+        selectedSlotIdx={selectedSlotIdx}
+        activeEngineAlias={activeEngineAlias}
+        activeEnginePort={activeEnginePort}
+        supportsFusion={supportsFusion}
+        engineStatus={engineStatus}
+        gpus={gpus}
+        gpuMask={gpuMask}
+        vramTargetMib={vramTargetMib}
+        modelLayerTotal={modelLayerTotal}
+        gpuLoadTargetsMib={gpuLoadTargetsMib}
+        modelName={modelName}
+        modelQuant={modelQuant}
+        providerName={providerName}
+        providerBuildVersion={providerBuildVersion}
+        profileLabel={profileLabel}
+        cudaVersion={cudaVersion}
+        launchConfig={launchConfig}
+        hwTopo={hwTopo}
+      />
 
       {/* FORECAST + SOURCE — pinned header, never scrolls */}
       <div

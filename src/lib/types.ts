@@ -242,7 +242,12 @@ export interface StartupUpdateStatus {
   binaryUpdates: ProviderBinaryUpdates[];
 }
 
-/** Prompt mode for benchmark generation — unique vocabulary or repetitive pattern. */
+/**
+ * TG + PP bench prompt corpus (shared backend builder).
+ * Unique — cycles diverse technical vocabulary. Repetitive — cycles a fixed short phrase.
+ * TG: 512-token prefill (calibrated via /tokenize); measured decode = n_predict at temp 0.
+ * PP: token target from chip; prefill-only (n_predict=0).
+ */
 export type bench_PromptMode = "unique" | "repetitive";
 
 /** TG (generation) burst benchmark result from cmd_burst_bench IPC command. */

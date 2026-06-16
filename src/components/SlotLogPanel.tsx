@@ -1,13 +1,13 @@
 import { useEffect, useRef, memo } from "react";
-import type { StackEntry, LogEntry, FusionUpdate } from "../lib/types";
+import type { StackEntry, LogEntry } from "../lib/types";
 import AnsiText from "./AnsiText";
 import BenchWidget from "./BenchWidget";
+import { useFusionSlot } from "../hooks/useFusionData";
 
 interface SlotLogPanelProps {
   entry: StackEntry;
   logs: LogEntry[];
   systemEvents: Array<{ text: string; timestamp: string }>;
-  fusionUpdate?: FusionUpdate | null;
   n_ctx?: number;
   onStop: (slotIdx: number) => void;
 }
@@ -28,7 +28,8 @@ function StatBlock({ label, value, highlight }: {
 }
 // Memoized SlotLogPanel — only re-renders when entry, logs, or onStop change
 
-export default memo(function SlotLogPanel({ entry, logs, systemEvents, fusionUpdate, n_ctx = 32768, onStop }: SlotLogPanelProps) {
+export default memo(function SlotLogPanel({ entry, logs, systemEvents, n_ctx = 32768, onStop }: SlotLogPanelProps) {
+  const fusionUpdate = useFusionSlot(entry.idx);
   const logRef = useRef<HTMLDivElement>(null);
   // Tail-follow stderr batch stream (same buffer as LOG tab — 90px viewport needs explicit scroll).
   useEffect(() => {

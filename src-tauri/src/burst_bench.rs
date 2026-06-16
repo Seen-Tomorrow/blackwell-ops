@@ -1,12 +1,14 @@
 //! TG (generation) burst benchmark — single measured run after warmup for clean TPS measurement.
 //!
-//! Strategy: 1 warmup run (fixed length=512) + 1 measured run (user-selected n_predict) → single result values.
+//! Strategy: optional 1 warmup run (512-tok decode) + 1 measured run (user n_predict).
+//! Prefill prompt is token-calibrated (shared with PP bench) — same text for warmup + measured.
 //! Measured run can fan out N identical `/completion` requests in parallel (load / multi-slot stress).
 //! Uses engine-reported timings (prompt_ms, predicted_ms) not HTTP round-trip time.
 
 use std::time::Instant;
 
 use crate::bench_cancel::{self, post_json};
+use crate::bench_prompts::{self, TG_PREFILL_TARGET_TOKENS};
 use serde::Serialize;
 use tauri::Emitter;
 use tokio::task::JoinSet;
@@ -18,12 +20,6 @@ impl Drop for BenchPortGuard {
         bench_cancel::end(self.0);
     }
 }
-
-/// ~500 token prompt to properly warm Blackwell kernels for realistic prefill measurement.
-const BENCH_PROMPT_UNIQUE: &str = "The architecture of modern large language models represents a fundamental shift in how we approach artificial intelligence and natural language processing. These systems are built on the transformer architecture, which relies entirely on self-attention mechanisms to process input sequences. The key innovation is that each position can attend to all positions in the previous layer, allowing the model to capture long-range dependencies that were previously difficult for recurrent architectures. Training these models requires massive computational resources, often involving thousands of GPU hours across distributed clusters. The scaling laws discovered by Kaplan and subsequent researchers show that model performance improves predictably with compute budget, dataset size, and parameter count. This has led to an arms race in model sizes, from GPT-3's 175 billion parameters to models exceeding one trillion parameters. Inference optimization is equally critical, as serving these models at scale requires techniques like quantization, speculative decoding, and efficient attention implementations. The KV cache alone can consume significant memory during long-context generation, making memory management a first-class concern in production deployments. Techniques such as PagedAttention have revolutionized how we handle the KV cache by eliminating memory fragmentation through virtual memory-like paging. Flash Attention further optimizes the computation by reordering operations to minimize HBM access, achieving both speedup and memory reduction. As models grow larger, tensor parallelism across multiple GPUs becomes essential for both training and inference workloads.";
-
-/// Repetitive prompt pattern — predictable output ideal for testing speculative decoding acceleration.
-const BENCH_PROMPT_REPETITIVE: &str = "the cat sat on the mat and then walked away because it was tired so the dog ran after the cat but the cat jumped over the fence and the dog could not follow because the fence was too high so the dog went back to the house where the cat had been sitting on the mat and the dog lay down next to the mat because it was also tired from running after the cat that had jumped over the fence which was too high for the dog to climb so they both rested on the mat until the sun went down behind the old oak tree in the backyard where the children used to play before they grew up and moved away to different cities far from the house with the tall fence and ";
 
 #[derive(Debug, Clone)]
 struct RunStats {
@@ -288,23 +284,36 @@ pub async fn cmd_burst_bench(
         );
     }
 
+    let repetitive = bench_prompts::is_repetitive_mode(&bench_prompt_mode);
+
     log::info!(
-        "[BENCH_TG] start | n_predict={} parallel={} engine_slots={} mode={}",
+        "[BENCH_TG] start | n_predict={} parallel={} engine_slots={} mode={} prefill_target={}",
         n_predict,
         parallel_requests,
         engine_slots,
-        bench_prompt_mode
+        bench_prompt_mode,
+        TG_PREFILL_TARGET_TOKENS
     );
 
-    const WARMUP_TOKENS: usize = 512;
-    let warmup_runs = if tg_warmup_enabled && n_predict <= WARMUP_TOKENS {
-        1
-    } else {
-        0
-    };
+    let warmup_runs = if tg_warmup_enabled { 1 } else { 0 };
     let total_runs = warmup_runs + 1;
 
     release_all_slots(&client, port, "before benchmark").await;
+
+    // One calibrated prefill for warmup + measured — decode length alone varies via n_predict.
+    let bench_prompt_text = match bench_prompts::build_prompt_for_token_target(
+        &client,
+        port,
+        TG_PREFILL_TARGET_TOKENS,
+        repetitive,
+        "[BENCH_TG]",
+    )
+    .await
+    {
+        Ok(text) => text,
+        Err(e) if e == "Stopped" => return Ok(bench_stopped_result(parallel_requests)),
+        Err(e) => return Err(e),
+    };
 
     let mut measured_run: Option<RunStats> = None;
     let mut measured_parallel = 1usize;
@@ -318,7 +327,11 @@ pub async fn cmd_burst_bench(
 
         let is_warmup = run < warmup_runs;
         let phase = if is_warmup { "warmup" } else { "measured" };
-        let effective_length = if is_warmup { WARMUP_TOKENS } else { n_predict };
+        let effective_length = if is_warmup {
+            TG_PREFILL_TARGET_TOKENS
+        } else {
+            n_predict
+        };
         let run_parallel = if is_warmup { 1 } else { parallel_requests };
 
         crate::fusion_brain::reset_bench_meters_for_port(port);
@@ -335,16 +348,10 @@ pub async fn cmd_burst_bench(
             }),
         );
 
-        let bench_prompt_text = if bench_prompt_mode == "repetitive" {
-            BENCH_PROMPT_REPETITIVE
-        } else {
-            BENCH_PROMPT_UNIQUE
-        };
-
         match run_measured_completions(
             &client,
             &url,
-            bench_prompt_text,
+            &bench_prompt_text,
             effective_length,
             run_parallel,
         )

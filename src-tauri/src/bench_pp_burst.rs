@@ -5,6 +5,7 @@
 //! and returns prefill TPS from engine-reported timings.
 
 use crate::bench_cancel::{self, post_json};
+use crate::bench_prompts::{self, TG_PREFILL_TARGET_TOKENS};
 use serde::Serialize;
 use tauri::Emitter;
 
@@ -24,59 +25,6 @@ fn bench_stopped_pp_result() -> BenchPPResult {
         error: Some("Stopped".to_string()),
     }
 }
-
-/// Large vocabulary of diverse English words for unique-mode PP burst (~10K words).
-const UNIQUE_WORDS: &[&str] = &[
-    "architecture", "transformer", "attention", "mechanism", "sequence", "position", "layer",
-    "dependency", "recurrent", "computational", "distributed", "cluster", "scaling", "predictably",
-    "budget", "parameter", "inference", "optimization", "quantization", "speculative", "decoding",
-    "efficient", "implementation", "fragmentation", "virtual", "paging", "reordering", "operation",
-    "access", "speedup", "reduction", "parallelism", "workload", "fundamental", "approach",
-    "artificial", "intelligence", "processing", "innovation", "capture", "previously", "difficult",
-    "massive", "resource", "involving", "thousands", "discovered", "subsequent", "researcher",
-    "performance", "improves", "dataset", "count", "exceeding", "trillion", "equally", "critical",
-    "serving", "technique", "consume", "significant", "management", "first-class", "production",
-    "revolutionized", "eliminating", "memory-like", "further", "minimize", "achieve", "essential",
-    "neural", "network", "gradient", "backpropagation", "regularization", "dropout", "batch",
-    "normalization", "activation", "relu", "sigmoid", "tanh", "embedding", "dimensionality",
-    "reduction", "principal", "component", "analysis", "clustering", "classification", "regression",
-    "supervised", "unsupervised", "reinforcement", "learning", "reward", "penalty", "exploration",
-    "exploitation", "policy", "gradient", "actor-critic", "monte-carlo", "temporal", "difference",
-    "function", "approximation", "generalization", "overfitting", "underfitting", "cross-validation",
-    "hyperparameter", "tuning", "grid", "search", "randomized", "bayesian", "optimization",
-    "transfer", "fine-tuning", "pretraining", "masked", "language", "modeling", "next-token",
-    "prediction", "autoregressive", "non-autoregressive", "bidirectional", "encoder-decoder",
-    "sequence-to-sequence", "translation", "summarization", "question-answering", "generation",
-    "coherence", "fluency", "consistency", "hallucination", "factuality", "alignment", "safety",
-    "robustness", "interpretability", "explainability", "fairness", "bias", "mitigation",
-    "differential", "privacy", "federated", "edge", "computing", "latency", "throughput",
-    "bandwidth", "concurrency", "synchronization", "asynchronous", "parallelization", "vectorization",
-    "kernel", "fusion", "tiling", "blocking", "shared-memory", "global-memory", "register",
-    "allocation", "unrolling", "inlining", "compilation", "just-in-time", "ahead-of-time",
-    "representation", "knowledge", "distillation", "compression", "pruning", "sparsity",
-    "mixture", "experts", "gating", "routing", "conditional", "computation", "adaptive",
-    "curriculum", "meta-learning", "few-shot", "zero-shot", "prompting", "chain-of-thought",
-    "retrieval-augmented", "generation", "vector-database", "similarity", "cosine", "euclidean",
-    "manhattan", "chebyshev", "minkowski", "jaccard", "levenshtein", "dynamic-programming",
-    "beam-search", "nucleus", "top-k", "sampling", "temperature", "repetition-penalty",
-    "length-normalization", "exposure-bias", "teacher-forcing", "scheduled-sampling",
-    "self-critical", "sequence-training", "reinforcement-learned", "sequence-modeling",
-    "hierarchical", "attention-is-all-you-need", "gpt", "bert", "t5", "llama", "mistral",
-    "deepseek", "claude", "gemini", "anthropic", "openai", "google", "meta", "microsoft",
-    "nvidia", "amd", "intel", "qualcomm", "apple-silicon", "tpu", "gpu", "cpu", "fpga",
-    "asic", "neuromorphic", "quantum-computing", "photonic", "memristor", "spintronic",
-    "superconducting", "topological", "error-correcting", "qubit", "entanglement", "superposition",
-    "shor-algorithm", "grover-search", "variational", "quantum-eigensolver", "quantum-approximate",
-    "optimization-algorithm", "quantum-machine-learning", "quantum-neural-network",
-    "barren-platEAU", "gradient-vanishing", "expressibility", "entanglement-capacity",
-    "shadow-tomography", "randomized-benchmarking", "gate-fidelity", "coherence-time",
-    "relaxation", "dephasing", "cross-resonance", "echo-sequence", "dynamical-decoupling",
-    "pulse-shaping", "optimal-control", "gradient-ascent", "pulse-optimization",
-    "krotov-method", "crab-algorithm", "closed-loop-learning", "reinforcement-pulse-design",
-];
-
-/// Short repetitive pattern for testing speculative decoding on predictable content.
-const REPETITIVE_PATTERN: &str = "the cat sat on the mat and then walked away because it was tired so the dog ran after the cat but the cat jumped over the fence";
 
 #[derive(Debug, Serialize)]
 pub struct BenchPPResult {
@@ -102,12 +50,13 @@ pub async fn cmd_bench_pp_burst(
     const WARMUP_RUNS: usize = 1;
     const MEASURED_RUNS: usize = 1;
     const TOTAL_RUNS: usize = WARMUP_RUNS + MEASURED_RUNS;
-    const WARMUP_TOKENS: usize = 512;
 
     struct RunStats {
         prefill_tps: f64,
         prompt_tokens: usize,
     }
+
+    let repetitive = bench_prompts::is_repetitive_mode(&bench_prompt_mode);
 
     // Release all slot KV caches once before the benchmark loop to prevent prompt caching from skewing results.
     if let Ok(slots_resp) = client.get(&format!("http://127.0.0.1:{port}/slots")).send().await {
@@ -130,10 +79,9 @@ pub async fn cmd_bench_pp_burst(
             return Ok(bench_stopped_pp_result());
         }
 
-        // Signal phase to frontend so UI can show WARMUP vs MEASURED
         let phase = if run < WARMUP_RUNS { "warmup" } else { "measured" };
         let effective_target = if run < WARMUP_RUNS {
-            WARMUP_TOKENS
+            TG_PREFILL_TARGET_TOKENS
         } else {
             target_tokens
         };
@@ -149,21 +97,18 @@ pub async fn cmd_bench_pp_burst(
             }),
         );
 
-        // Measured run: calibrate via /tokenize so actual ≈ chip target (tokens, not words).
-        // Warmup stays a fast fixed-size prompt.
-        let repetitive = bench_prompt_mode == "repetitive";
-        let bench_prompt_text = if run < WARMUP_RUNS {
-            if repetitive {
-                build_repetitive_prompt(WARMUP_TOKENS)
-            } else {
-                build_unique_prompt(WARMUP_TOKENS)
-            }
-        } else {
-            match build_prompt_for_token_target(&client, port, effective_target, repetitive).await {
-                Ok(text) => text,
-                Err(e) if e == "Stopped" => return Ok(bench_stopped_pp_result()),
-                Err(e) => return Err(e),
-            }
+        let bench_prompt_text = match bench_prompts::build_prompt_for_token_target(
+            &client,
+            port,
+            effective_target,
+            repetitive,
+            "[BENCH_PP]",
+        )
+        .await
+        {
+            Ok(text) => text,
+            Err(e) if e == "Stopped" => return Ok(bench_stopped_pp_result()),
+            Err(e) => return Err(e),
         };
 
         let body = serde_json::json!({
@@ -208,7 +153,6 @@ pub async fn cmd_bench_pp_burst(
         }
 
         if run < WARMUP_RUNS {
-            // Re-release after PP warmup so measured PP starts cold (no KV/prompt cache reuse from the warmup run).
             if let Ok(slots_resp) = client.get(&format!("http://127.0.0.1:{port}/slots")).send().await
             {
                 if let Ok(slots) = slots_resp.json::<Vec<serde_json::Value>>().await {
@@ -254,174 +198,4 @@ pub async fn cmd_bench_pp_burst(
         success: true,
         error: None,
     })
-}
-
-/// Build a unique-vocabulary prompt by cycling through UNIQUE_WORDS in coherent-ish sentences.
-fn build_unique_prompt(target_words: usize) -> String {
-    let mut words = Vec::with_capacity(target_words);
-    let template_verbs = [
-        "demonstrates",
-        "utilizes",
-        "transforms",
-        "optimizes",
-        "accelerates",
-        "enables",
-        "facilitates",
-        "orchestrates",
-    ];
-    let template_connectors = [
-        "which",
-        "that",
-        "whereby",
-        "through which",
-        "by means of which",
-    ];
-
-    let mut word_idx = 0;
-    while words.len() < target_words {
-        if words.is_empty() || words.len() % 20 == 0 {
-            words.push("the");
-        }
-        if words.len() < target_words {
-            words.push(UNIQUE_WORDS[word_idx % UNIQUE_WORDS.len()]);
-            word_idx += 1;
-        }
-        if words.len() < target_words && words.len() % 10 == 0 {
-            words.push(template_verbs[(words.len() / 10) % template_verbs.len()]);
-        }
-        if words.len() < target_words && words.len() % 15 == 0 {
-            words.push(template_connectors[(words.len() / 15) % template_connectors.len()]);
-        }
-    }
-
-    words.join(" ")
-}
-
-/// How close tokenize count must be to the UI chip target (tokens).
-fn token_target_tolerance(target: usize) -> i64 {
-    (target as i64 / 25).max(256) // ~4% or 256 tok
-}
-
-/// POST /tokenize — returns token count for this server's loaded model.
-async fn count_prompt_tokens(client: &reqwest::Client, port: u16, content: &str) -> Option<usize> {
-    let url = format!("http://127.0.0.1:{port}/tokenize");
-    let body = serde_json::json!({
-        "content": content,
-        "add_special": false,
-        "parse_special": false,
-    });
-    let resp = client.post(&url).json(&body).send().await.ok()?;
-    if !resp.status().is_success() {
-        return None;
-    }
-    let parsed: serde_json::Value = resp.json().await.ok()?;
-    parsed
-        .get("tokens")
-        .and_then(|t| t.as_array())
-        .map(|a| a.len())
-}
-
-/// Build prompt text so tokenize count is within tolerance of `target_tokens` (2–4 /tokenize probes).
-async fn build_prompt_for_token_target(
-    client: &reqwest::Client,
-    port: u16,
-    target_tokens: usize,
-    repetitive: bool,
-) -> Result<String, String> {
-    if bench_cancel::stop_after_current_requested(port) {
-        return Err("Stopped".to_string());
-    }
-
-    if target_tokens == 0 {
-        return Ok(String::new());
-    }
-
-    let build = |words: usize| -> String {
-        if repetitive {
-            build_repetitive_prompt(words)
-        } else {
-            build_unique_prompt(words)
-        }
-    };
-
-    // Start ~1 word per token for our synthetic corpora; unique hyphenated terms can be >1 tok/word.
-    let mut words = if repetitive {
-        target_tokens
-    } else {
-        target_tokens.saturating_mul(11) / 10
-    };
-
-    let mut best_text = build(words);
-    let mut best_err = i64::MAX;
-
-    for _ in 0..5 {
-        if bench_cancel::stop_after_current_requested(port) {
-            return Err("Stopped".to_string());
-        }
-
-        let text = build(words);
-        let Some(actual) = count_prompt_tokens(client, port, &text).await else {
-            log::debug!(
-                "[BENCH_PP] /tokenize unavailable — using word estimate {}",
-                words
-            );
-            return Ok(text);
-        };
-
-        let err = (actual as i64 - target_tokens as i64).abs();
-        if err <= token_target_tolerance(target_tokens) {
-            log::info!(
-                "[BENCH_PP] prompt calibrated: target={} actual={} words={}",
-                target_tokens,
-                actual,
-                words
-            );
-            return Ok(text);
-        }
-        if err < best_err {
-            best_err = err;
-            best_text = text;
-        }
-        if actual == 0 {
-            break;
-        }
-
-        words = ((words as f64) * (target_tokens as f64 / actual as f64)).round() as usize;
-        words = words.clamp(64, target_tokens.saturating_mul(3));
-    }
-
-    if let Some(actual) = count_prompt_tokens(client, port, &best_text).await {
-        log::info!(
-            "[BENCH_PP] prompt best-effort: target={} tokenize={} err={} words={}",
-            target_tokens,
-            actual,
-            best_err,
-            words
-        );
-    } else {
-        log::info!(
-            "[BENCH_PP] prompt best-effort: target={} err={} words={}",
-            target_tokens,
-            best_err,
-            words
-        );
-    }
-    Ok(best_text)
-}
-
-/// Build a repetitive prompt by repeating the pattern.
-fn build_repetitive_prompt(target_words: usize) -> String {
-    let pattern_words: Vec<&str> = REPETITIVE_PATTERN.split_whitespace().collect();
-    let mut words = Vec::with_capacity(target_words);
-
-    while words.len() < target_words {
-        for &word in &pattern_words {
-            if words.len() >= target_words {
-                break;
-            }
-            words.push(word);
-        }
-    }
-
-    words.join(" ")
 }
