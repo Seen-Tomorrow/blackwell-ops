@@ -1086,18 +1086,13 @@ fn strip_windows_extended_prefix(path: &str) -> String {
 }
 
 /// Normalize a model path for dedup comparison (case-insensitive on Windows, no trailing slashes).
+/// Relative entries like `models` resolve against app root — same as `resolve_stored_model_path`.
 pub fn model_path_key(path: &str) -> String {
-    let trimmed = strip_windows_extended_prefix(expand_path_placeholders(path).trim());
-    if trimmed.is_empty() {
+    let resolved = resolve_stored_model_path(path);
+    if resolved.is_empty() {
         return String::new();
     }
-    let pb = std::path::PathBuf::from(&trimmed);
-    let normalized = if pb.exists() {
-        pb.canonicalize().unwrap_or(pb)
-    } else {
-        pb
-    };
-    let s = strip_windows_extended_prefix(&normalized.to_string_lossy())
+    let s = strip_windows_extended_prefix(&resolved)
         .trim_end_matches(['\\', '/'])
         .to_string();
     #[cfg(windows)]
@@ -1235,15 +1230,27 @@ pub fn remove_model_path(config: &mut AppConfig, path: &str) -> Result<(), Strin
     Ok(())
 }
 
-pub fn set_default_model_path(config: &mut AppConfig, path: &str) {
+pub fn set_default_model_path(config: &mut AppConfig, path: &str) -> Result<(), String> {
     let key = model_path_key(path);
+    if key.is_empty() {
+        return Err("Invalid model path".to_string());
+    }
+    let mut matched = false;
     for p in &mut config.model_paths {
-        p.is_default = model_path_key(&p.path) == key;
+        let is_match = model_path_key(&p.path) == key;
+        if is_match {
+            matched = true;
+        }
+        p.is_default = is_match;
     }
-    // Update the memo: where downloads go
-    if let Some(idx) = find_model_path_index(&config.model_paths, path) {
-        config.default_download_path = Some(config.model_paths[idx].path.clone());
+    if !matched {
+        return Err(format!("Model path not found: {path}"));
     }
+    // Update the memo: where downloads go (stored form, not resolved display path)
+    if let Some(entry) = config.model_paths.iter().find(|p| p.is_default) {
+        config.default_download_path = Some(entry.path.clone());
+    }
+    Ok(())
 }
 
 pub fn calculate_disk_usage(paths: &[ModelPathEntry]) -> Vec<PathDiskUsage> {
@@ -1610,24 +1617,19 @@ fn sanitize_model_paths(config: &mut AppConfig) -> bool {
         }
     }
 
-    // Prefer default_download_path memo when it matches an existing entry
-    if let Some(ref memo) = config.default_download_path {
-        if let Some(idx) = find_model_path_index(&config.model_paths, memo) {
-            for (i, p) in config.model_paths.iter_mut().enumerate() {
-                let should_default = i == idx;
-                if p.is_default != should_default {
-                    p.is_default = should_default;
-                    changed = true;
-                }
+    // No default flagged — recover from memo, then first entry
+    if !found_default {
+        if let Some(ref memo) = config.default_download_path {
+            if let Some(idx) = find_model_path_index(&config.model_paths, memo) {
+                config.model_paths[idx].is_default = true;
+                found_default = true;
+                changed = true;
             }
-            found_default = true;
         }
-    }
-
-    // Ensure at least one default
-    if !found_default && !config.model_paths.is_empty() {
-        config.model_paths[0].is_default = true;
-        changed = true;
+        if !found_default && !config.model_paths.is_empty() {
+            config.model_paths[0].is_default = true;
+            changed = true;
+        }
     }
 
     let new_memo = config.model_paths.iter()
@@ -2380,6 +2382,46 @@ mod merge_tests {
     }
 
     #[test]
+    fn set_default_model_path_accepts_resolved_absolute_for_relative_models_entry() {
+        let models_dir = default_models_dir();
+        std::fs::create_dir_all(&models_dir).expect("models dir");
+
+        let mut config = AppConfig {
+            model_paths: vec![
+                ModelPathEntry {
+                    path: DEFAULT_MODEL_PATH_REL.to_string(),
+                    label: DEFAULT_MODEL_PATH_LABEL.to_string(),
+                    is_default: false,
+                },
+                ModelPathEntry {
+                    path: "C:\\other\\models".to_string(),
+                    label: "Other".to_string(),
+                    is_default: true,
+                },
+            ],
+            gpu_slots: 0,
+            hf_token: String::new(),
+            providers: Vec::new(),
+            default_download_path: Some("C:\\other\\models".to_string()),
+        };
+
+        let resolved_models = resolve_stored_model_path(DEFAULT_MODEL_PATH_REL);
+        set_default_model_path(&mut config, &resolved_models).expect("switch to bundled models");
+        sanitize_model_paths(&mut config);
+
+        let models_entry = config
+            .model_paths
+            .iter()
+            .find(|p| model_path_key(&p.path) == model_path_key(DEFAULT_MODEL_PATH_REL))
+            .expect("models entry");
+        assert!(models_entry.is_default);
+        assert_eq!(
+            config.default_download_path.as_deref(),
+            Some(DEFAULT_MODEL_PATH_REL)
+        );
+    }
+
+    #[test]
     fn sanitize_keeps_single_default_and_syncs_memo() {
         let mut config = AppConfig {
             model_paths: vec![
@@ -2392,6 +2434,33 @@ mod merge_tests {
                     path: "C:\\path-b".to_string(),
                     label: "B".to_string(),
                     is_default: true,
+                },
+            ],
+            gpu_slots: 4,
+            hf_token: String::new(),
+            providers: Vec::new(),
+            default_download_path: Some("C:\\path-b".to_string()),
+        };
+        assert!(super::sanitize_model_paths(&mut config));
+        assert_eq!(config.model_paths.iter().filter(|p| p.is_default).count(), 1);
+        // Explicit is_default wins over stale memo when both were flagged
+        assert_eq!(config.default_download_path.as_deref(), Some("C:\\path-a"));
+        assert!(config.model_paths.iter().find(|p| p.path == "C:\\path-a").unwrap().is_default);
+    }
+
+    #[test]
+    fn sanitize_recovers_default_from_memo_when_unflagged() {
+        let mut config = AppConfig {
+            model_paths: vec![
+                ModelPathEntry {
+                    path: "C:\\path-a".to_string(),
+                    label: "A".to_string(),
+                    is_default: false,
+                },
+                ModelPathEntry {
+                    path: "C:\\path-b".to_string(),
+                    label: "B".to_string(),
+                    is_default: false,
                 },
             ],
             gpu_slots: 4,

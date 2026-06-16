@@ -629,6 +629,7 @@ function createFrameCaptureStage(
   frame.style.margin = "0";
 
   normalizeFusionCaptureLayout(frame);
+  injectCaptureBezelModeBanner(frame);
 
   stage.appendChild(frame);
   return { stage, frame };
@@ -719,6 +720,35 @@ function restoreForecastPadding(restores: PaddingRestore[]): void {
       el.style.overflow = "";
     }
   });
+}
+
+function readBenchConcurrencyFromCaptureFrame(frame: HTMLElement): number | null {
+  const mult = frame.querySelector(".bench-concurrency-badge__mult");
+  if (!(mult instanceof HTMLElement)) return null;
+  const match = mult.textContent?.trim().match(/^×(\d+)$/);
+  if (!match) return null;
+  const parallel = Number.parseInt(match[1], 10);
+  return Number.isFinite(parallel) && parallel > 0 ? parallel : null;
+}
+
+/** Share card only — one bezel line from measured TG bench concurrency. */
+function injectCaptureBezelModeBanner(frame: HTMLElement): void {
+  const parallel = readBenchConcurrencyFromCaptureFrame(frame);
+  if (parallel == null) return;
+
+  const banner = document.createElement("div");
+  banner.className = "vram-bezel-mode-banner--capture";
+
+  const line = document.createElement("span");
+  if (parallel <= 1) {
+    line.className = "vram-bezel-mode-banner__single";
+    line.textContent = "single session";
+  } else {
+    line.className = "vram-bezel-mode-banner__parallel";
+    line.textContent = "multiple concurrency /agentic parallel work";
+  }
+  banner.appendChild(line);
+  frame.appendChild(banner);
 }
 
 function normalizeFusionCaptureLayout(frame: HTMLElement): void {

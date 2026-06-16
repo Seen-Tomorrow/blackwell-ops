@@ -166,7 +166,7 @@ async fn set_default_model_path(
     path: String,
 ) -> Result<(), String> {
     let mut cfg = config.lock().map_err(|e| e.to_string())?;
-    config::set_default_model_path(&mut cfg, &path);
+    config::set_default_model_path(&mut cfg, &path)?;
     config::save_config(&mut cfg).map_err(|e| e.to_string())?;
     Ok(())
 }

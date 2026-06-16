@@ -1,8 +1,9 @@
-import { useEffect, useRef, memo } from "react";
+import { useEffect, useRef, useState, memo } from "react";
 import type { StackEntry, LogEntry } from "../lib/types";
 import AnsiText from "./AnsiText";
 import BenchWidget from "./BenchWidget";
 import { useFusionSlot } from "../hooks/useFusionData";
+import { getBenchPortState, subscribeBenchPortStore } from "../lib/benchPortStore";
 
 interface SlotLogPanelProps {
   entry: StackEntry;
@@ -28,9 +29,33 @@ function StatBlock({ label, value, highlight }: {
 }
 // Memoized SlotLogPanel — only re-renders when entry, logs, or onStop change
 
+function benchStackSummary(port: number): string | null {
+  const ps = getBenchPortState(port);
+  if (ps.tgRunning || ps.ppRunning) return "running…";
+  if (ps.tgResult?.success && ps.tgResult.gen_tps > 0) {
+    return `TG ${ps.tgResult.gen_tps.toFixed(0)} tok/s`;
+  }
+  if (ps.ppResult?.success && ps.ppResult.bench_prefill_tps > 0) {
+    return `PP ${ps.ppResult.bench_prefill_tps.toFixed(0)} tok/s`;
+  }
+  return null;
+}
+
 export default memo(function SlotLogPanel({ entry, logs, systemEvents, n_ctx = 32768, onStop }: SlotLogPanelProps) {
   const fusionUpdate = useFusionSlot(entry.idx);
   const logRef = useRef<HTMLDivElement>(null);
+  const [benchExpanded, setBenchExpanded] = useState(false);
+  const [, setBenchTick] = useState(0);
+
+  useEffect(() => subscribeBenchPortStore(() => setBenchTick((t) => t + 1)), []);
+
+  const benchPs = getBenchPortState(entry.port);
+  const benchBusy = benchPs.tgRunning || benchPs.ppRunning;
+  const benchHasResults = benchPs.showResults && Boolean(benchPs.tgResult || benchPs.ppResult);
+
+  useEffect(() => {
+    if (benchBusy || benchHasResults) setBenchExpanded(true);
+  }, [benchBusy, benchHasResults]);
   // Tail-follow stderr batch stream (same buffer as LOG tab — 90px viewport needs explicit scroll).
   useEffect(() => {
     if (logRef.current) {
@@ -132,10 +157,35 @@ export default memo(function SlotLogPanel({ entry, logs, systemEvents, n_ctx = 3
         </div>
       </div>
 
-      {/* Benchmark controls — full width */}
+      {/* Benchmark — same per-port store as Fusion overlay; stack UI is controls + results only */}
       {entry.status === "RUNNING" && (
-        <div className="px-3 py-1">
-          <BenchWidget key={`bench-${entry.idx}-${entry.port}`} port={entry.port} compact />
+        <div className="engine-stack-bench border-t border-stealth-border/30">
+          <button
+            type="button"
+            className="engine-stack-bench-toggle w-full flex items-center justify-between gap-2 px-3 py-1.5 text-left"
+            onClick={() => setBenchExpanded((open) => !open)}
+            aria-expanded={benchExpanded}
+            aria-controls={`engine-stack-bench-${entry.idx}`}
+          >
+            <span className="text-[8px] font-mono tracking-wider text-stealth-muted/60 uppercase">
+              Benchmark
+            </span>
+            <span className="flex items-center gap-2 min-w-0">
+              {!benchExpanded && (
+                <span className="text-[8px] font-mono text-nv-green/75 truncate">
+                  {benchStackSummary(entry.port) ?? ""}
+                </span>
+              )}
+              <span className="text-[18px] leading-none font-mono text-stealth-muted/45 flex-shrink-0" aria-hidden>
+                {benchExpanded ? "▾" : "▸"}
+              </span>
+            </span>
+          </button>
+          {benchExpanded && (
+            <div id={`engine-stack-bench-${entry.idx}`} className="px-3 pb-2 min-w-0">
+              <BenchWidget key={`bench-${entry.idx}-${entry.port}`} port={entry.port} stackMode />
+            </div>
+          )}
         </div>
       )}
 

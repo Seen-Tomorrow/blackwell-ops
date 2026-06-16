@@ -3,7 +3,10 @@
 //! Strategy: optional 1 warmup run (512-tok decode) + 1 measured run (user n_predict).
 //! Prefill prompt is token-calibrated (shared with PP bench) — same text for warmup + measured.
 //! Measured run can fan out N identical `/completion` requests in parallel (load / multi-slot stress).
-//! Uses engine-reported timings (prompt_ms, predicted_ms) not HTTP round-trip time.
+//! Uses engine-reported timings (prompt_ms, predicted_ms).
+//! Parallel measured runs: headline TG TPS = sum(gen_tokens) / decode wall window
+//! (HTTP wall minus max per-feed prefill — prefills overlap, must not sum prompt_ms).
+//! Per-slot engine decode rate is stored in `per_request_gen_tps` (~ITL / req ms).
 
 use std::time::Instant;
 
@@ -27,6 +30,8 @@ struct RunStats {
     gen_tps: f64,
     prompt_tokens: usize,
     gen_tokens: usize,
+    prompt_ms: f64,
+    predicted_ms: f64,
 }
 
 #[derive(Debug, Serialize)]
@@ -35,7 +40,7 @@ pub struct BenchResult {
     pub gen_tokens: usize,
     /// Prefill throughput (tokens/sec) — per-request average on the measured run
     pub prompt_tps: f64,
-    /// Generation throughput (tokens/sec) — per-request engine timing (parallel=1) or aggregate wall TPS
+    /// Generation throughput (tokens/sec) — engine `predicted_ms` when parallel=1; system aggregate when parallel>1
     pub gen_tps: f64,
     /// Inter-token latency (ms) — derived from `gen_tps`
     pub itl_ms: f64,
@@ -91,6 +96,8 @@ fn stats_from_completion(parsed: &serde_json::Value) -> RunStats {
         gen_tps,
         prompt_tokens: p_tokens,
         gen_tokens: g_tokens,
+        prompt_ms: p_ms,
+        predicted_ms: g_ms,
     }
 }
 
@@ -199,6 +206,18 @@ async fn run_measured_completions(
     Ok((runs, wall_ms))
 }
 
+/// Decode-only wall window for parallel feeds — subtract overlapping prefill, not summed prefill.
+fn parallel_decode_window_ms(runs: &[RunStats], wall_ms: f64) -> f64 {
+    let max_prompt_ms = runs.iter().map(|r| r.prompt_ms).fold(0.0f64, f64::max);
+    let max_predicted_ms = runs.iter().map(|r| r.predicted_ms).fold(0.0f64, f64::max);
+    let decode_ms = wall_ms - max_prompt_ms;
+    if decode_ms > 1.0 {
+        decode_ms
+    } else {
+        max_predicted_ms.max(1.0)
+    }
+}
+
 fn aggregate_parallel_runs(
     runs: &[RunStats],
     wall_ms: f64,
@@ -210,33 +229,51 @@ fn aggregate_parallel_runs(
             gen_tps: 0.0,
             prompt_tokens: 0,
             gen_tokens: 0,
+            prompt_ms: 0.0,
+            predicted_ms: 0.0,
         };
     }
 
     let n = runs.len() as f64;
     let total_gen: usize = runs.iter().map(|r| r.gen_tokens).sum();
     let total_prompt: usize = runs.iter().map(|r| r.prompt_tokens).sum();
+    let max_prompt_ms = runs.iter().map(|r| r.prompt_ms).fold(0.0f64, f64::max);
+    let total_predicted_ms: f64 = runs.iter().map(|r| r.predicted_ms).sum();
     let avg_prompt_tps = runs.iter().map(|r| r.prompt_tps).sum::<f64>() / n;
     let avg_gen_tps = runs.iter().map(|r| r.gen_tps).sum::<f64>() / n;
-    let aggregate_gen_tps = if wall_ms > 0.0 {
+    let decode_window_ms = parallel_decode_window_ms(runs, wall_ms);
+    let system_gen_tps = (total_gen as f64 / decode_window_ms) * 1000.0;
+    let wall_raw_tps = if wall_ms > 0.0 {
         (total_gen as f64 / wall_ms) * 1000.0
+    } else {
+        system_gen_tps
+    };
+    let summed_pred_tps = if total_predicted_ms > 0.0 {
+        (total_gen as f64 / total_predicted_ms) * 1000.0
     } else {
         avg_gen_tps
     };
 
     log::info!(
-        "[BENCH_TG] parallel×{} | per-req gen avg {:.1} TPS | aggregate {:.1} TPS | total g_tok={}",
+        "[BENCH_TG] parallel×{} | system {:.1} TPS (decode window {:.0} ms) | per-req avg {:.1} TPS | wall raw {:.1} TPS | summed-pred {:.1} TPS | max_p_ms={:.0} wall_ms={:.0} | g_tok={}",
         parallel_requests,
+        system_gen_tps,
+        decode_window_ms,
         avg_gen_tps,
-        aggregate_gen_tps,
+        wall_raw_tps,
+        summed_pred_tps,
+        max_prompt_ms,
+        wall_ms,
         total_gen
     );
 
     RunStats {
         prompt_tps: avg_prompt_tps,
-        gen_tps: aggregate_gen_tps,
+        gen_tps: system_gen_tps,
         prompt_tokens: total_prompt,
         gen_tokens: total_gen,
+        prompt_ms: max_prompt_ms,
+        predicted_ms: decode_window_ms,
     }
 }
 
@@ -361,21 +398,17 @@ pub async fn cmd_burst_bench(
                 let summary = if run_parallel > 1 {
                     let avg_gen = runs.iter().map(|r| r.gen_tps).sum::<f64>() / runs.len() as f64;
                     measured_per_request_gen_tps = Some(avg_gen);
-                    measured_aggregate_gen_tps = Some(
-                        if wall_ms > 0.0 {
-                            (runs.iter().map(|r| r.gen_tokens).sum::<usize>() as f64 / wall_ms)
-                                * 1000.0
-                        } else {
-                            avg_gen
-                        },
-                    );
-                    aggregate_parallel_runs(&runs, wall_ms, run_parallel)
+                    let agg = aggregate_parallel_runs(&runs, wall_ms, run_parallel);
+                    measured_aggregate_gen_tps = Some(agg.gen_tps);
+                    agg
                 } else {
                     runs.into_iter().next().unwrap_or(RunStats {
                         prompt_tps: 0.0,
                         gen_tps: 0.0,
                         prompt_tokens: 0,
                         gen_tokens: 0,
+                        prompt_ms: 0.0,
+                        predicted_ms: 0.0,
                     })
                 };
 

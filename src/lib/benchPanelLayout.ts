@@ -48,6 +48,8 @@ export type BenchPanelLayoutOpts = {
   tgResult: unknown;
   ppResult: unknown;
   compact?: boolean;
+  /** Engine stack card — compact controls + results + HIDE only (no share / GPU topo). */
+  stackMode?: boolean;
   gpus?: GpuInfo[];
   gpuMask?: string;
   /** SHARE/HIDE in results grid — no separate footer row (fusion overlay). */
@@ -96,6 +98,7 @@ export function computeBenchGpuTopoHeightPx(gpus?: GpuInfo[], gpuMask?: string):
 
 export function shouldShowBenchGpuTopo(opts: BenchPanelLayoutOpts): boolean {
   const compact = opts.compact ?? false;
+  const stackMode = opts.stackMode ?? false;
   const { isAnyRunning, hasResults } = benchResultVisibility(opts);
   const gpuTopoEntries =
     opts.gpus && hasResults && !isAnyRunning
@@ -107,6 +110,7 @@ export function shouldShowBenchGpuTopo(opts: BenchPanelLayoutOpts): boolean {
     && !isAnyRunning
     && gpuTopoEntries.length > 0
     && !compact
+    && !stackMode
   );
 }
 

@@ -51,7 +51,7 @@ export default function ModelHub() {
 
       <div className="flex-1 overflow-hidden flex flex-col min-h-0 gap-0">
         <div className="grid shrink-0 grid-cols-2 min-h-[160px] max-h-[40%] border border-stealth-border/60 rounded-sm overflow-hidden divide-x divide-stealth-border/60">
-          <ModelHubDownloadPaths />
+          <ModelHubDownloadPaths downloads={downloads} />
           <ModelHubDownloads downloads={downloads} />
         </div>
 

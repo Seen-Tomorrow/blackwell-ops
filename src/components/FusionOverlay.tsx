@@ -471,7 +471,7 @@ export default function FusionOverlay({
           {/* ═══ MAIN BODY — bars | TG hero | PREFILL (natural height; bench slot owns extra phosphor) ═══ */}
           <div className="flex gap-2 flex-shrink-0 items-start">
 
-            {/* ── LEFT: Slot CTX bars — fixed 4-slot baseline width (bars scale inside) ─── */}
+            {/* ── LEFT: Slot CTX bars — up to 8 individual bars; compact ×N above that ─── */}
             <div className="flex-shrink-0 self-stretch min-h-0" style={{ width: "18%", minWidth: 110 }}>
               <SlotCtxBars
                 slotCtx={fusion.slotCtx}

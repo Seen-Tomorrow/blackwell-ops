@@ -33,6 +33,7 @@ import { normalizeDisplayTexture, type DisplayTexture } from "./displayTexture";
  * | BlackOps-setup-guide-dismissed | "1" | User dismissed first-run setup guide |
  * | BlackOps-setup-welcome-seen | "1" | Welcome animation already played once |
  * | BlackOps-setup-guide-preview | "1" | Dev: force welcome + guide in VRAM display |
+ * | BlackOps-bench-controls | JSON | Global TG/PP bench control chips (n_predict, concurrency, warmup, prompt mode) |
 
  * | BlackOps-catalog-override:{providerId} | JSON Record<paramKey, value> | Launch-time param chip overrides |
  * | BlackOps-group-order:{providerId} | JSON string[] | CONFIG param group order |
@@ -113,6 +114,7 @@ export const KEYS = {
   setupGuideDismissed: `${STORAGE_PREFIX}setup-guide-dismissed`,
   setupWelcomeSeen: `${STORAGE_PREFIX}setup-welcome-seen`,
   setupGuidePreview: `${STORAGE_PREFIX}setup-guide-preview`,
+  benchControls: `${STORAGE_PREFIX}bench-controls`,
 } as const;
 
 export function isSetupGuideDismissed(): boolean {
@@ -474,6 +476,70 @@ export function loadLogsAnsiEnabled(defaultEnabled = true): boolean {
 
 export function saveLogsAnsiEnabled(enabled: boolean): void {
   writeStorage(KEYS.logsAnsiEnabled, enabled ? "1" : "0");
+}
+
+// ── Bench control chips (global — not per-port results/runtime) ─────────────
+
+export const BENCH_TG_PREDICT_OPTIONS = [512, 1024, 2048, 4096, 6144, 8192, 10000] as const;
+export const BENCH_TG_PARALLEL_OPTIONS = [1, 4, 8, 16, 32, 64, 128] as const;
+export const BENCH_PP_TOKEN_OPTIONS = [8192, 16384, 32768, 65536, 100000] as const;
+
+export type BenchPromptMode = "unique" | "repetitive";
+
+export interface BenchControlPrefs {
+  nPredict: number;
+  tgParallel: number;
+  tgWarmupEnabled: boolean;
+  promptMode: BenchPromptMode;
+  ppTargetTokens: number;
+}
+
+export const BENCH_CONTROL_DEFAULTS: BenchControlPrefs = {
+  nPredict: 1024,
+  tgParallel: 1,
+  tgWarmupEnabled: true,
+  promptMode: "unique",
+  ppTargetTokens: 8192,
+};
+
+const BENCH_N_PREDICT_ALLOWED = new Set<number>(BENCH_TG_PREDICT_OPTIONS);
+const BENCH_TG_PARALLEL_ALLOWED = new Set<number>(BENCH_TG_PARALLEL_OPTIONS);
+const BENCH_PP_TOKEN_ALLOWED = new Set<number>(BENCH_PP_TOKEN_OPTIONS);
+
+function normalizeBenchControlPrefs(raw: unknown): BenchControlPrefs | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const nPredict = typeof o.nPredict === "number" ? o.nPredict : NaN;
+  const tgParallel = typeof o.tgParallel === "number" ? o.tgParallel : NaN;
+  const ppTargetTokens = typeof o.ppTargetTokens === "number" ? o.ppTargetTokens : NaN;
+  const tgWarmupEnabled = o.tgWarmupEnabled;
+  const promptMode = o.promptMode;
+  if (
+    !BENCH_N_PREDICT_ALLOWED.has(nPredict)
+    || !BENCH_TG_PARALLEL_ALLOWED.has(tgParallel)
+    || !BENCH_PP_TOKEN_ALLOWED.has(ppTargetTokens)
+    || typeof tgWarmupEnabled !== "boolean"
+    || (promptMode !== "unique" && promptMode !== "repetitive")
+  ) {
+    return null;
+  }
+  return {
+    nPredict,
+    tgParallel,
+    tgWarmupEnabled,
+    promptMode,
+    ppTargetTokens,
+  };
+}
+
+export function loadBenchControlPrefs(): BenchControlPrefs {
+  return normalizeBenchControlPrefs(readJsonStorage(KEYS.benchControls)) ?? BENCH_CONTROL_DEFAULTS;
+}
+
+export function saveBenchControlPrefs(prefs: BenchControlPrefs): void {
+  const normalized = normalizeBenchControlPrefs(prefs);
+  if (!normalized) return;
+  writeJsonStorage(KEYS.benchControls, normalized);
 }
 
 /** Normalize a UI group name to uppercase-hyphen format (e.g. "Speculative Decoding" → "SPECULATIVE-DECODING") */

@@ -13,8 +13,14 @@ import {
   formatBenchSplitHeadline,
 } from "../lib/benchHwTopo";
 import {
+  BENCH_PP_TOKEN_OPTIONS,
+  BENCH_TG_PARALLEL_OPTIONS,
+  BENCH_TG_PREDICT_OPTIONS,
+} from "../lib/storage";
+import {
   getBenchPortState,
   notifyBenchPortStore,
+  persistBenchControls,
   resetAllBenchPortStates,
   subscribeBenchPortStore,
   tgWarmupWillRun,
@@ -154,6 +160,11 @@ interface BenchWidgetProps {
   port: number;
   /** Tighter layout for engine stack cards — smaller result type + panel height. */
   compact?: boolean;
+  /**
+   * Engine stack slot — shares per-port bench store with Fusion overlay but UI is
+   * controls + results + HIDE only (no share capture, no GPU topo).
+   */
+  stackMode?: boolean;
   /** SHARE/HIDE row owned by FusionOverlay — widget only renders results + topo. */
   footerDocked?: boolean;
   /** Sync fusion hero TPS with bench results while the results panel is open. */
@@ -174,18 +185,45 @@ export interface BenchHwContext {
   splitMode?: string;
 }
 
-const TG_PREDICT_OPTIONS = [512, 1024, 2048, 4096, 6144, 8192, 10000];
-const TG_PARALLEL_OPTIONS = [1, 4, 8, 16, 128];
-const PP_TOKEN_OPTIONS = [8192, 16384, 32768, 65536, 100000];
-
 function formatBenchK(n: number): string {
   if (n >= 1000) return `${Math.floor(n / 1000)}K`;
   return n.toString();
 }
 
+const BENCH_CONCURRENCY_HELP =
+  "Measured TG only (warmup stays ×1). Each concurrent feed pins to its own engine slot — ×4 needs --parallel ≥ 4 at launch. "
+  + "Picking more than the engine has caps to the slot count (e.g. ×128 with 16 slots runs ×16). "
+  + "MTP / speculative models: use ×1 — ik_llama disables speculative decoding when --parallel > 1 at launch.";
+
+function benchConcurrencyChipTitle(n: number): string {
+  if (n === 1) {
+    return "Single /completion feed — no multi-slot stress. Safe for MTP / speculative models.";
+  }
+  return `×${n}: ${n} parallel /completion feeds pinned to slots 0–${n - 1}. Requires --parallel ≥ ${n} at launch; capped to live slot count if lower. Not for MTP models.`;
+}
+
+function BenchConcurrencyBadge({
+  parallel,
+  compact = false,
+}: {
+  parallel: number;
+  compact?: boolean;
+}) {
+  return (
+    <span
+      className={`bench-concurrency-badge${compact ? " bench-concurrency-badge--compact" : ""}`}
+      title={benchConcurrencyChipTitle(parallel)}
+    >
+      <span className="bench-concurrency-badge__label">CONCURRENCY</span>
+      <span className="bench-concurrency-badge__mult">×{parallel}</span>
+    </span>
+  );
+}
+
 export default function BenchWidget({
   port,
   compact = false,
+  stackMode = false,
   onHeroPatch,
   onBenchSessionChange,
   shareMeta,
@@ -193,12 +231,17 @@ export default function BenchWidget({
   footerDocked = false,
   onCloseResults,
 }: BenchWidgetProps) {
+  const isCompact = compact || stackMode;
   const ps = getBenchPortState(port);
 
   const [, setTick] = useState(0);
   const bump = () => {
     notifyBenchPortStore();
     setTick((t) => t + 1);
+  };
+  const bumpControls = () => {
+    persistBenchControls(ps);
+    bump();
   };
   const benchAbortRef = useRef(false);
   const benchStopPendingRef = useRef(false);
@@ -423,12 +466,12 @@ export default function BenchWidget({
 
   const cyclePromptMode = () => {
     ps.promptMode = ps.promptMode === "unique" ? "repetitive" : "unique";
-    bump();
+    bumpControls();
   };
 
   const toggleTgWarmup = () => {
     ps.tgWarmupEnabled = !ps.tgWarmupEnabled;
-    bump();
+    bumpControls();
   };
 
   const tgWarmupTitle = ps.tgWarmupEnabled
@@ -465,7 +508,7 @@ export default function BenchWidget({
     bump();
   };
 
-  const benchRowH = compact ? 16 : 18;
+  const benchRowH = isCompact ? 16 : 18;
   const benchRowClass = "bench-control-row flex items-center justify-end gap-1 flex-shrink-0 overflow-hidden";
   const dualResults = ps.sessionMode === "both";
   const dualBenchLayout = isDualBenchResults({
@@ -480,7 +523,8 @@ export default function BenchWidget({
   const benchResultRowPx = dualResults ? BENCH_RESULT_ROW_DUAL_PX : BENCH_RESULT_ROW_PX;
 
   const showGpuTopo =
-    benchHw
+    !stackMode
+    && benchHw
     && shouldShowBenchGpuTopo({
       showResults: ps.showResults,
       sessionMode: ps.sessionMode,
@@ -488,7 +532,8 @@ export default function BenchWidget({
       ppRunning: ps.ppRunning,
       tgResult: ps.tgResult,
       ppResult: ps.ppResult,
-      compact,
+      compact: isCompact,
+      stackMode,
       gpus: benchHw.gpus,
       gpuMask: benchHw.gpuMask,
     });
@@ -503,7 +548,8 @@ export default function BenchWidget({
         sessionMode: ps.sessionMode,
         tgResult: ps.tgResult,
         ppResult: ps.ppResult,
-        compact,
+        compact: isCompact,
+        stackMode,
         gpus: benchHw?.gpus,
         gpuMask: benchHw?.gpuMask,
         inlineActions: footerDocked,
@@ -515,31 +561,33 @@ export default function BenchWidget({
       ps.sessionMode,
       ps.tgResult,
       ps.ppResult,
-      compact,
+      isCompact,
+      stackMode,
       benchHw,
       footerDocked,
     ],
   );
   const benchLabelClass = dualResults ? "text-[5px]" : "text-[6px]";
   const benchValueClass = dualResults
-    ? (compact ? "text-[10px]" : "text-[15px]")
-    : (compact ? "text-sm" : "text-xl");
+    ? (isCompact ? "text-[10px]" : "text-[15px]")
+    : (isCompact ? "text-sm" : "text-xl");
   const benchUnitClass = dualResults ? "text-[5px]" : "text-[6px]";
-  const benchRowPadClass = dualResults ? "gap-y-0 py-0" : (compact ? "gap-y-0 py-0" : "gap-y-0.5 py-0.5");
+  const benchRowPadClass = dualResults ? "gap-y-0 py-0" : (isCompact ? "gap-y-0 py-0" : "gap-y-0.5 py-0.5");
   const benchResultGridClass = () =>
     `bench-results-grid grid gap-x-1.5 ${benchRowPadClass}`;
   const showInlineActions = footerDocked && Boolean(shareMeta) && hasResults && !isAnyRunning;
-  const showShareFooter = !footerDocked && !isAnyRunning && hasResults;
+  const showStackDismiss = stackMode && hasResults && !isAnyRunning;
+  const showShareFooter = !footerDocked && !stackMode && !isAnyRunning && hasResults && Boolean(shareMeta);
   const ppErrorNotice =
     showPpResults && ps.ppResult && !ps.ppResult.success
       ? `PREFILL bench failed: ${ps.ppResult.error || "unknown"}`
       : null;
-  const showResultsSidebar = Boolean(ppErrorNotice) || showInlineActions;
+  const showResultsSidebar = Boolean(ppErrorNotice) || showInlineActions || showStackDismiss;
   const dismissResults = onCloseResults ?? closeResults;
 
   return (
       <div
-        className={`bench-widget-panel w-full h-full rounded-sm flex flex-col overflow-hidden flex-shrink-0 ${compact ? "p-1" : "p-1.5"}`}
+        className={`bench-widget-panel w-full h-full rounded-sm flex flex-col overflow-hidden flex-shrink-0 ${isCompact ? "p-1" : "p-1.5"}`}
         data-bench-dual-results={dualBenchLayout ? "" : undefined}
         style={{
           height: panelHeight,
@@ -553,10 +601,10 @@ export default function BenchWidget({
           <div className="mt-auto flex flex-col flex-shrink-0">
             <div className={benchRowClass}>
               <span className="text-[6px] font-mono text-stealth-muted/40 tracking-wider flex-shrink-0 mr-0.5">TG</span>
-              {TG_PREDICT_OPTIONS.map((tok) => (
+              {BENCH_TG_PREDICT_OPTIONS.map((tok) => (
                 <button
                   key={tok}
-                  onClick={() => { ps.nPredict = tok; bump(); }}
+                  onClick={() => { ps.nPredict = tok; bumpControls(); }}
                   disabled={isAnyRunning}
                   className={`px-1 py-0 text-[6px] font-mono rounded-sm ${chipBtnClass(ps.nPredict === tok, isAnyRunning)}`}
                 >
@@ -574,10 +622,10 @@ export default function BenchWidget({
 
             <div className={benchRowClass}>
               <span className="text-[6px] font-mono text-stealth-muted/40 tracking-wider flex-shrink-0 mr-0.5">PP</span>
-              {PP_TOKEN_OPTIONS.map((tok) => (
+              {BENCH_PP_TOKEN_OPTIONS.map((tok) => (
                 <button
                   key={tok}
-                  onClick={() => { ps.ppTargetTokens = tok; bump(); }}
+                  onClick={() => { ps.ppTargetTokens = tok; bumpControls(); }}
                   disabled={isAnyRunning}
                   className={`px-1 py-0 text-[6px] font-mono rounded-sm ${chipBtnClass(ps.ppTargetTokens === tok, isAnyRunning)}`}
                 >
@@ -631,15 +679,18 @@ export default function BenchWidget({
             </div>
 
             <div className={benchRowClass}>
-              <span className="text-[6px] font-mono text-stealth-muted/40 tracking-wider flex-shrink-0 mr-0.5">
+              <span
+                className="text-[6px] font-mono text-stealth-muted/40 tracking-wider flex-shrink-0 mr-0.5"
+                title={BENCH_CONCURRENCY_HELP}
+              >
                 CONCURRENCY
               </span>
-              {TG_PARALLEL_OPTIONS.map((n) => (
+              {BENCH_TG_PARALLEL_OPTIONS.map((n) => (
                 <button
                   key={`par-${n}`}
-                  onClick={() => { ps.tgParallel = n; bump(); }}
+                  onClick={() => { ps.tgParallel = n; bumpControls(); }}
                   disabled={isAnyRunning}
-                  title={`${n} concurrent completion request${n === 1 ? "" : "s"} on measured TG run`}
+                  title={benchConcurrencyChipTitle(n)}
                   className={`px-1 py-0 text-[6px] font-mono rounded-sm ${concurrencyChipClass(ps.tgParallel === n, isAnyRunning)}`}
                 >
                   ×{n}
@@ -698,9 +749,12 @@ export default function BenchWidget({
                     <div>
                       <p className={`${benchLabelClass} font-mono text-stealth-muted uppercase tracking-wider`}>GENERATION</p>
                       <p className={`font-mono fusion-readout-emphasis leading-none ${benchValueClass}`}>{ps.tgResult.gen_tps.toFixed(1)}</p>
-                      <p className={`${benchUnitClass} font-mono text-stealth-muted/50`}>
-                        {`req CONCURRENCY x${ps.tgResult.parallel_requests ?? 1}`}
-                      </p>
+                      <div className="bench-result-unit-slot">
+                        <BenchConcurrencyBadge
+                          parallel={ps.tgResult.parallel_requests ?? 1}
+                          compact={dualResults}
+                        />
+                      </div>
                     </div>
                     <div>
                       <p className={`${benchLabelClass} font-mono text-stealth-muted uppercase tracking-wider`}>ITL</p>
@@ -751,6 +805,15 @@ export default function BenchWidget({
                  )}
                  {showInlineActions && shareMeta && (
                    <BenchResultsActionsCol shareMeta={shareMeta} onClose={dismissResults} />
+                 )}
+                 {showStackDismiss && (
+                   <button
+                     type="button"
+                     onClick={dismissResults}
+                     className="bench-muted-btn text-[6px] font-mono transition-colors px-1.5 py-0.5 rounded-sm leading-none uppercase tracking-wide"
+                   >
+                     HIDE results
+                   </button>
                  )}
                </div>
              )}

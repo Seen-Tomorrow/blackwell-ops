@@ -1798,6 +1798,58 @@ html, body, #root {
   box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.25);
 }
 
+/* TG result unit row — fixed height so the amber badge can overlay without growing the grid */
+.bench-widget-panel .bench-result-unit-slot {
+  position: relative;
+  height: 7px;
+  flex-shrink: 0;
+  overflow: visible;
+}
+
+/* TG result — muted label + amber split chip on ×N only */
+.bench-widget-panel .bench-concurrency-badge {
+  position: absolute;
+  left: 0;
+  bottom: -10px;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 6px;
+  line-height: 1;
+  white-space: nowrap;
+  pointer-events: auto;
+}
+
+.bench-widget-panel .bench-concurrency-badge--compact {
+  font-size: 5px;
+  gap: 2px;
+}
+
+.bench-widget-panel .bench-concurrency-badge__label {
+  font-size: 1em;
+  font-weight: 400;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--theme-text) 50%, transparent);
+}
+
+.bench-widget-panel .bench-concurrency-badge__mult {
+  font-size: 2em;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  border-radius: 3px;
+  padding: 0 5px;
+  background: #f5c400;
+  color: #0a0c10;
+  border: 1px solid #b89200;
+}
+
+.bench-widget-panel .bench-concurrency-badge--compact .bench-concurrency-badge__mult {
+  padding: 0 4px;
+}
+
 .bench-widget-panel .bench-hw-topo--row {
   box-sizing: border-box;
 }
@@ -2109,6 +2161,49 @@ html, body, #root {
 
 [data-theme="arctic"] .boc-refresh:active {
   color: var(--theme-text);
+}
+
+/* ── Share capture only — bench concurrency legend on gunmetal bezel top ─── */
+.vram-bezel-mode-banner--capture {
+  position: absolute;
+  top: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 70;
+  max-width: calc(100% - 4rem);
+  pointer-events: none;
+  text-align: center;
+}
+
+.vram-bezel-mode-banner--capture .vram-bezel-mode-banner__single,
+.vram-bezel-mode-banner--capture .vram-bezel-mode-banner__parallel {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 7px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.vram-bezel-mode-banner--capture .vram-bezel-mode-banner__single {
+  color: rgba(244, 246, 248, 0.82);
+}
+
+.vram-bezel-mode-banner--capture .vram-bezel-mode-banner__parallel {
+  color: #f5c400;
+  font-weight: 600;
+}
+
+.fusion-share-capture-stage[data-fusion-share-capture] .vram-bezel-mode-banner--capture .vram-bezel-mode-banner__single {
+  color: rgba(244, 246, 248, 0.88);
+}
+
+.fusion-share-capture-stage[data-fusion-share-capture][data-theme="arctic"] .vram-bezel-mode-banner--capture .vram-bezel-mode-banner__single {
+  color: rgba(55, 65, 81, 0.88);
+}
+
+.fusion-share-capture-stage[data-fusion-share-capture][data-theme="arctic"] .vram-bezel-mode-banner--capture .vram-bezel-mode-banner__parallel {
+  color: #b87a00;
 }
 
 /* ── Display texture toggle — outline pill on bezel top ─── */
@@ -2656,6 +2751,19 @@ html, body, #root {
 .fusion-share-capture-stage[data-fusion-share-capture] [style*="6vh"] {
   font-size: 2.5rem !important;
   line-height: 1 !important;
+}
+
+.fusion-share-capture-stage[data-fusion-share-capture] .bench-concurrency-badge {
+  bottom: -10px !important;
+  font-size: 7px !important;
+}
+
+.fusion-share-capture-stage[data-fusion-share-capture] .bench-concurrency-badge--compact {
+  font-size: 6px !important;
+}
+
+.fusion-share-capture-stage[data-fusion-share-capture] .bench-concurrency-badge__mult {
+  padding: 0 6px !important;
 }
 
 /* Share capture — fixed ARCTIC/SLATE; beats live app theme + display texture on :root */
@@ -3393,6 +3501,26 @@ html, body, #root {
 
 [data-engine-stack] .engine-stack-header {
   background: var(--theme-panel);
+}
+
+[data-engine-stack] .engine-stack-bench {
+  background: var(--theme-panel);
+}
+
+[data-engine-stack] .engine-stack-bench-toggle {
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  transition: background-color 0.15s ease;
+}
+
+[data-engine-stack] .engine-stack-bench-toggle:hover {
+  background: color-mix(in srgb, var(--theme-accent) 6%, transparent);
+}
+
+[data-engine-stack] .engine-stack-bench .bench-widget-panel {
+  border: 1px solid var(--theme-border-subtle);
+  background: var(--theme-industrial-bar-track);
 }
 
 /* ── Shared theme surfaces — reusable across tabs ─── */

@@ -1,7 +1,25 @@
 import { useCallback, useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import type { ModelPathEntry } from '@/lib/types';
+import type { DownloadStatus, DownloadTask, ModelPathEntry } from '@/lib/types';
 import { dispatchAppEvent, EVENTS } from '@/lib/events';
+
+const ACTIVE_DOWNLOAD_STATUSES: DownloadStatus[] = ['downloading', 'queued', 'paused', 'scanning'];
+
+function normalizeModelPathKey(path: string): string {
+  return displayModelPath(path).replace(/[/\\]+$/, '').toLowerCase();
+}
+
+function pathHasActiveDownloads(path: string, downloads: DownloadTask[]): boolean {
+  const root = normalizeModelPathKey(path);
+  if (!root) return false;
+  const rootPrefix = `${root}/`;
+  const rootPrefixBackslash = `${root}\\`;
+  return downloads.some((task) => {
+    if (!ACTIVE_DOWNLOAD_STATUSES.includes(task.status)) return false;
+    const dest = normalizeModelPathKey(task.destPath);
+    return dest === root || dest.startsWith(rootPrefix) || dest.startsWith(rootPrefixBackslash);
+  });
+}
 
 function displayModelPath(path: string): string {
   if (path.startsWith('\\\\?\\UNC\\')) {
@@ -13,9 +31,14 @@ function displayModelPath(path: string): string {
   return path;
 }
 
-export default function ModelHubDownloadPaths() {
+interface ModelHubDownloadPathsProps {
+  downloads: DownloadTask[];
+}
+
+export default function ModelHubDownloadPaths({ downloads }: ModelHubDownloadPathsProps) {
   const [paths, setPaths] = useState<ModelPathEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [pathError, setPathError] = useState<string | null>(null);
 
   const loadPaths = useCallback(async () => {
     try {
@@ -40,11 +63,14 @@ export default function ModelHubDownloadPaths() {
 
   const handleSetDefault = useCallback(async (path: string) => {
     try {
+      setPathError(null);
       await invoke('set_default_model_path', { path });
       loadPaths();
       dispatchAppEvent(EVENTS.modelPathsChanged);
     } catch (e) {
-      console.error('Failed to set default model path:', e);
+      const msg = typeof e === 'string' ? e : 'Failed to set default download folder';
+      console.error('Failed to set default model path:', msg);
+      setPathError(msg);
     }
   }, [loadPaths]);
 
@@ -69,8 +95,15 @@ export default function ModelHubDownloadPaths() {
       <div className="mb-2 text-[9px] font-mono text-stealth-muted tracking-wider uppercase">
         Download folder
       </div>
+      {pathError && (
+        <div className="mb-2 rounded-sm border border-telemetry-red/30 bg-telemetry-red/5 px-2 py-1 text-[8px] font-mono text-telemetry-red">
+          {pathError}
+        </div>
+      )}
       <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto">
-      {paths.map((entry) => (
+      {paths.map((entry) => {
+        const activeHere = pathHasActiveDownloads(entry.path, downloads);
+        return (
         <div
           key={entry.path}
           className={`flex items-center justify-between gap-3 rounded-sm px-2.5 py-1.5 ${
@@ -84,6 +117,11 @@ export default function ModelHubDownloadPaths() {
                   DEFAULT
                 </span>
               )}
+              {activeHere && (
+                <span className="shrink-0 text-[8px] font-mono text-yellow-400/80 bg-yellow-400/10 px-1.5 py-0.5 rounded-sm">
+                  DOWNLOADING
+                </span>
+              )}
               <span className="truncate text-[10px] font-mono text-white/90">
                 {entry.label || entry.path}
               </span>
@@ -91,6 +129,11 @@ export default function ModelHubDownloadPaths() {
             <div className="truncate text-[8px] font-mono text-stealth-muted/80">
               {displayModelPath(entry.path)}
             </div>
+            {activeHere && !entry.isDefault && (
+              <div className="mt-0.5 text-[7px] font-mono text-stealth-muted/60">
+                In-progress downloads stay in this folder
+              </div>
+            )}
           </div>
           {!entry.isDefault && (
             <button
@@ -103,7 +146,8 @@ export default function ModelHubDownloadPaths() {
             </button>
           )}
         </div>
-      ))}
+        );
+      })}
       </div>
     </div>
   );
