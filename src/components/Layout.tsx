@@ -27,6 +27,7 @@ import {
 import {
   dispatchAppEvent,
   dispatchPowerUserChanged,
+  dispatchClearLocalStorage,
   dispatchReplaySetupGuide,
   dispatchReplaySetupGuideOnboardingOnly,
   EVENTS,
@@ -294,6 +295,14 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
                   title="Dev: first-run reset (paths → models/ only, clears meta cache, keeps providers/binaries, replays onboarding). Shift+click: onboarding UI only."
                 >
                   ↺ SETUP
+                </button>
+                <button
+                  type="button"
+                  onClick={() => dispatchClearLocalStorage(true)}
+                  className="app-chrome-control-btn px-1.5 text-[8px] font-mono transition-colors leading-none text-yellow-400/70 hover:text-yellow-400"
+                  title="Dev: clear all BlackOps localStorage and reload"
+                >
+                  CLR LS
                 </button>
               </>
             )}

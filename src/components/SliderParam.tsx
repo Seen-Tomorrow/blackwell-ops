@@ -26,11 +26,9 @@ export default function SliderParam(props: SliderParamSharedProps) {
           onChange={handleInputChange}
           onBlur={handleInputCommit}
           onKeyDown={handleInputKeyDown}
-          className={`w-16 px-2 py-0.5 text-[9px] font-mono border rounded-sm focus:outline-none transition-colors flex-shrink-0 ${
-            userEdited
-              ? "bg-black border-white/30 focus:border-white/50 mono-user-input"
-              : "bg-green-400/5 border-green-400/20 focus:border-green-400/40"
-          } text-right`}
+          className={`ctx-slider-value-input w-16 px-2 py-0.5 text-[9px] font-mono border rounded-sm transition-colors flex-shrink-0 text-right${
+            userEdited ? " ctx-slider-value-input--edited mono-user-input" : ""
+          }`}
         />
       </div>
     </div>

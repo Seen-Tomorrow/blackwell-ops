@@ -976,7 +976,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
               type="button"
               onClick={cycleDisplayTexture}
               className="display-texture-toggle absolute top-[3px] left-1/2 -translate-x-1/2 z-[60]"
-              title={`Display texture: ${displayTextureLabel}. Click to cycle CLEAN / GLITCH / PHOSPHOR DARK / PHOSPHOR LIGHT.`}
+              title={`Display texture: ${displayTextureLabel}. Click to cycle CLEAN / PHOSPHOR DARK / PHOSPHOR LIGHT.`}
             >
               {displayTextureLabel}
             </button>
@@ -1136,7 +1136,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                 type="button"
                 onClick={cycleDisplayTexture}
                 className="display-texture-toggle absolute top-[3px] left-1/2 -translate-x-1/2 z-[60]"
-                title={`Display texture: ${displayTextureLabel}. Click to cycle CLEAN / GLITCH / PHOSPHOR DARK / PHOSPHOR LIGHT.`}
+                title={`Display texture: ${displayTextureLabel}. Click to cycle CLEAN / PHOSPHOR DARK / PHOSPHOR LIGHT.`}
               >
                 {displayTextureLabel}
               </button>

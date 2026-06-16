@@ -26,7 +26,7 @@ import { normalizeDisplayTexture, type DisplayTexture } from "./displayTexture";
  * | BlackOps-logs-ansi-enabled | "0" \| "1" | ENGINE LOGS ANSI color rendering |
  * | BlackOps-startup-updates | JSON | Cached startup update check results |
  * | BlackOps-fusion-hero-tps | live \| avg | Fusion hero TPS display mode |
- * | BlackOps-display-texture | clean \| glitch \| phosphor-dark \| phosphor-light | Display texture cycle |
+ * | BlackOps-display-texture | clean \| phosphor-dark \| phosphor-light | Display texture cycle (glitch legacy → clean) |
  * | BlackOps-catalog-split-width | number string (px) | Model catalog / engine config split |
  * | BlackOps-model-hub-split-width | number string (0–1) | Model Hub results / quants split ratio |
  * | BlackOps-telemetry-view | standard \| lab | TELEMETRY tab: panel vs lab catalogue |
@@ -255,6 +255,25 @@ export function removeStorage(key: string): void {
   } catch {
     // ignore
   }
+}
+
+/** All registry keys currently in localStorage (static + dynamic `BlackOps-*` namespaces). */
+export function listBlackOpsStorageKeys(): string[] {
+  try {
+    return Object.keys(localStorage).filter((key) => key.startsWith(STORAGE_PREFIX));
+  } catch {
+    return [];
+  }
+}
+
+/** Remove every `BlackOps-*` key — UI prefs, overrides, bench chips, per-provider dynamic keys. */
+export function clearAllBlackOpsStorage(): number {
+  let cleared = 0;
+  for (const key of listBlackOpsStorageKeys()) {
+    removeStorage(key);
+    cleared += 1;
+  }
+  return cleared;
 }
 
 export function readJsonStorage<T>(key: string): T | null {

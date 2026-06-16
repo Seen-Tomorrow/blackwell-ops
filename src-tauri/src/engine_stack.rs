@@ -5,6 +5,23 @@ use crate::log_hub::LogHub;
 
 pub const DEFAULT_N_CTX: usize = 32768;
 
+/// When TENSOR split is active, silent engine exits are common — nudge users toward LAYER/NONE.
+fn format_load_failure_reason(reason: &str, split_mode: &str) -> String {
+    let trimmed = reason.trim();
+    let core = if trimmed.is_empty() {
+        "Engine stopped or crashed during model load (no stderr detail)".to_string()
+    } else {
+        trimmed.to_string()
+    };
+    if split_mode.trim().eq_ignore_ascii_case("tensor") {
+        format!(
+            "{core} — this model may not support TENSOR split; try LAYER or NONE in MULTI-GPU settings"
+        )
+    } else {
+        core
+    }
+}
+
 /// Estimate committed VRAM for a launched engine — learned → FIT scan → file size fallback.
 fn fit_scanner_estimate_vram(config: &EngineConfig) -> f64 {
     let provider_id = if config.backend_type.is_empty() {
@@ -78,6 +95,8 @@ pub struct EngineSlot {
     pub n_ctx: usize,
     pub provider_name: String,
     pub backend_type: String,
+    /// Multi-GPU split mode at launch (`none` / `layer` / `row` / `tensor`) — for load-failure hints.
+    pub split_mode: String,
     /// Runtime profile binary env (vanguard/frontier/fresh/stable) used at launch.
     pub binary_profile: String,
     pub supports_fusion: bool,
@@ -108,6 +127,7 @@ impl EngineStack {
                 n_ctx: DEFAULT_N_CTX,
                 provider_name: String::new(),
                 backend_type: String::new(),
+                split_mode: String::new(),
                 binary_profile: String::new(),
                 supports_fusion: true,
                 reaper_cancel: Arc::new(AtomicBool::new(false)),
@@ -312,6 +332,7 @@ impl EngineStack {
                 .unwrap_or(32768);
             slot.provider_name = provider_display_name;
             slot.backend_type = backend_type;
+            slot.split_mode = config.get_param_str("split").unwrap_or_default();
             slot.binary_profile = if config.binary_profile.is_empty() {
                 crate::config::DEFAULT_BINARY_PROFILE.to_string()
             } else {
@@ -631,21 +652,18 @@ impl EngineStack {
             if matches!(slot.status, SlotStatus::Idle) {
                 return;
             }
-            (slot.alias.clone(), slot.pid)
+            (
+                slot.alias.clone(),
+                slot.pid,
+                slot.split_mode.clone(),
+            )
         };
 
-        let (alias, pid) = snapshot;
+        let (alias, pid, split_mode) = snapshot;
 
         crate::fusion_brain::stop_brain(slot_idx).await;
 
-        let user_reason = {
-            let trimmed = reason.trim();
-            if trimmed.is_empty() {
-                "Engine stopped or crashed during model load (no stderr detail)".to_string()
-            } else {
-                trimmed.to_string()
-            }
-        };
+        let user_reason = format_load_failure_reason(reason, &split_mode);
         let launch_err = format!("LAUNCH_ERROR: {}", user_reason);
         log_hub.emit_system_event(slot_idx, &alias, &launch_err).await;
         log_hub.emit_console_line(
@@ -714,6 +732,7 @@ impl EngineStack {
             slot.n_ctx = DEFAULT_N_CTX;
             slot.provider_name.clear();
             slot.backend_type.clear();
+            slot.split_mode.clear();
             slot.binary_profile.clear();
             slot.supports_fusion = false;
             slot.reaper_cancel = Arc::new(AtomicBool::new(false));
@@ -1014,5 +1033,29 @@ impl EngineStack {
         let slot_arc = self.slots.get(idx)?.as_ref()?;
         let slot = slot_arc.lock();
         slot.pid
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::format_load_failure_reason;
+
+    #[test]
+    fn tensor_split_appends_layer_none_hint() {
+        let msg = format_load_failure_reason(
+            "Engine process exited during model load",
+            "tensor",
+        );
+        assert!(msg.contains("TENSOR split"));
+        assert!(msg.contains("LAYER or NONE"));
+    }
+
+    #[test]
+    fn non_tensor_split_keeps_reason() {
+        let msg = format_load_failure_reason(
+            "Engine process exited during model load",
+            "layer",
+        );
+        assert_eq!(msg, "Engine process exited during model load");
     }
 }

@@ -33,6 +33,7 @@ export function useSetupGuide({ models }: UseSetupGuideOptions) {
   const [dismissed, setDismissed] = useState(() => isSetupGuideDismissed());
   const [welcomeDone, setWelcomeDone] = useState(() => isSetupWelcomeSeen());
   const [pathsConfigured, setPathsConfigured] = useState(false);
+  const [pathsReady, setPathsReady] = useState(false);
 
   const refreshPaths = useCallback(async () => {
     try {
@@ -40,6 +41,8 @@ export function useSetupGuide({ models }: UseSetupGuideOptions) {
       setPathsConfigured(configured);
     } catch {
       setPathsConfigured(false);
+    } finally {
+      setPathsReady(true);
     }
   }, []);
 
@@ -73,9 +76,32 @@ export function useSetupGuide({ models }: UseSetupGuideOptions) {
   }, [pathsDone, metaDone]);
 
   const preview = isSetupGuidePreview();
-  const active = preview || !dismissed;
+  /** Catalog has models — may be true even when `model_library_configured` is false (factory `models/` path). */
+  const catalogReady = pathsReady && modelsCount > 0;
+  /**
+   * Setup is done when the catalog works and the user has progressed past first-run —
+   * not when every GGUF has metadata, and not only when dismiss survived CLEAR STORAGE.
+   * Do not gate on `pathsDone` / `model_library_configured`; that RPC ignores the bundled path.
+   */
+  const setupSatisfied =
+    catalogReady
+    && (dismissed || welcomeDone || scannedCount > 0 || metaDone);
+  const active = preview || (pathsReady && !setupSatisfied);
 
   const showWelcome = active && !welcomeDone;
+
+  // Re-persist onboarding keys once disk state satisfies setup (e.g. after CLEAR STORAGE).
+  useEffect(() => {
+    if (preview || !setupSatisfied) return;
+    if (!dismissed) {
+      saveSetupGuideDismissed();
+      setDismissed(true);
+    }
+    if (!welcomeDone) {
+      saveSetupWelcomeSeen();
+      setWelcomeDone(true);
+    }
+  }, [preview, setupSatisfied, dismissed, welcomeDone]);
 
   const completeWelcome = useCallback(() => {
     if (!preview) saveSetupWelcomeSeen();

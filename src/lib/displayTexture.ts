@@ -1,6 +1,7 @@
 /** Industrial display surface textures — VRAM bezel + Fusion overlay phosphor screens. */
 
-export const DISPLAY_TEXTURE_ORDER = ["clean", "glitch", "phosphor-dark", "phosphor-light"] as const;
+/** User-facing cycle order (GLITCH CSS remains; not offered in the toggle). */
+export const DISPLAY_TEXTURE_ORDER = ["clean", "phosphor-dark", "phosphor-light"] as const;
 
 export type DisplayTexture = (typeof DISPLAY_TEXTURE_ORDER)[number];
 
@@ -8,14 +9,14 @@ export type PhosphorProfile = "dark" | "light";
 
 export const DISPLAY_TEXTURE_LABELS: Record<DisplayTexture, string> = {
   clean: "CLEAN",
-  glitch: "GLITCH",
   "phosphor-dark": "PHOSPHOR DARK",
   "phosphor-light": "PHOSPHOR LIGHT",
 };
 
 const LEGACY_TEXTURE_MAP: Record<string, DisplayTexture> = {
-  crt: "glitch",
-  scanline: "glitch",
+  crt: "clean",
+  scanline: "clean",
+  glitch: "clean",
   dotmatrix: "phosphor-dark",
   grid: "phosphor-dark",
   phosphor: "phosphor-light",

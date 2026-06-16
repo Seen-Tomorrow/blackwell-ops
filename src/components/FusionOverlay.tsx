@@ -517,32 +517,32 @@ export default function FusionOverlay({
 
                 {/* Per-request micro-stats — PP prefill vs +1st decode after prefill */}
                  <div className="flex items-center justify-center w-full min-w-0 gap-x-1 mt-1.5 overflow-hidden flex-nowrap">
-                   <span className={`text-[7px] font-mono flex-shrink-0 ${showLive ? "fusion-readout-emphasis" : "text-stealth-muted/35"}`}>
+                   <span className={`text-[7px] font-mono flex-shrink-0 ${showLive ? "fusion-readout-emphasis" : "fusion-readout-idle"}`}>
                      {statsToDisplay.genTokensSlots > 0 ? statsToDisplay.genTokensSlots + " tok" : "--"}
                    </span>
-                   <span className={`text-[6px] flex-shrink-0 ${showLive ? "fusion-readout-divider" : "text-stealth-muted/15"}`}>│</span>
+                   <span className={`text-[6px] flex-shrink-0 ${showLive ? "fusion-readout-divider" : "fusion-readout-divider-idle"}`}>│</span>
                    <span
-                     className={`text-[7px] font-mono flex-shrink-0 ${showLive ? "fusion-readout-emphasis" : "text-stealth-muted/35"}`}
+                     className={`text-[7px] font-mono flex-shrink-0 ${showLive ? "fusion-readout-emphasis" : "fusion-readout-idle"}`}
                      title="Prompt prefill duration"
                    >
                      PP {statsToDisplay.prefillMs ?? "--"}
                    </span>
-                   <span className={`text-[6px] flex-shrink-0 ${showLive ? "fusion-readout-divider" : "text-stealth-muted/15"}`}>│</span>
+                   <span className={`text-[6px] flex-shrink-0 ${showLive ? "fusion-readout-divider" : "fusion-readout-divider-idle"}`}>│</span>
                    <span
-                     className={`text-[7px] font-mono flex-shrink-0 ${showLive ? "fusion-readout-emphasis" : "text-stealth-muted/35"}`}
+                     className={`text-[7px] font-mono flex-shrink-0 ${showLive ? "fusion-readout-emphasis" : "fusion-readout-idle"}`}
                      title="First output token after prefill"
                    >
                      +1st {statsToDisplay.decodeTtftMs ?? "--"}
                    </span>
-                   <span className={`text-[6px] flex-shrink-0 ${showLive ? "fusion-readout-divider" : "text-stealth-muted/15"}`}>│</span>
-                   <span className={`text-[7px] font-mono flex-shrink-0 ${showLive ? "fusion-readout-emphasis" : "text-stealth-muted/35"}`}>
+                   <span className={`text-[6px] flex-shrink-0 ${showLive ? "fusion-readout-divider" : "fusion-readout-divider-idle"}`}>│</span>
+                   <span className={`text-[7px] font-mono flex-shrink-0 ${showLive ? "fusion-readout-emphasis" : "fusion-readout-idle"}`}>
                      ELAPSED {statsToDisplay.elapsedMs}
                    </span>
                    {(specSlotActive || mtpAcceptPct != null) && mtpAcceptPct != null && (
                      <>
-                       <span className={`text-[6px] flex-shrink-0 ${showLive ? "fusion-readout-divider" : "text-stealth-muted/15"}`}>│</span>
+                       <span className={`text-[6px] flex-shrink-0 ${showLive ? "fusion-readout-divider" : "fusion-readout-divider-idle"}`}>│</span>
                        <span
-                         className={`text-[7px] font-mono flex-shrink-0 whitespace-nowrap ${showLive ? "text-amber-300/90" : "text-stealth-muted/45"}`}
+                         className={`text-[7px] font-mono flex-shrink-0 whitespace-nowrap ${showLive ? "text-amber-300/90" : "fusion-readout-idle"}`}
                          title={mtpAcceptTitle}
                        >
                          MTP {mtpAcceptPct}%

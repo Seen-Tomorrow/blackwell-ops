@@ -79,7 +79,7 @@ export default function GpuTopology({ gpuAllocations, gpuBarColor, ramVisible, r
             >
               {/* GPU header */}
               <div className="flex justify-between items-center mb-1.5">
-                <span className="gpu-card-name text-[9px] font-mono truncate flex-1 mr-2 text-stealth-muted" title={alloc.name}>
+                <span className="gpu-card-name text-[9px] font-mono truncate flex-1 mr-2" title={alloc.name}>
                   {alloc.name}
                 </span>
                 <span style={{ color: pctColor }} className="text-[7px] font-mono flex-shrink-0">

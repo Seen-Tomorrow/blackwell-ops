@@ -9,8 +9,8 @@ export const BENCH_PANEL_PAD_Y = 12;
 export const BENCH_RESULT_ROW_PX = 42;
 /** One stacked result band in RUN BOTH (smaller dual typography). */
 export const BENCH_RESULT_ROW_DUAL_PX = 32;
-/** Vertical gap between TG and PP rows in RUN BOTH (gap-y-1). */
-export const BENCH_DUAL_ROW_GAP_PX = 4;
+/** Vertical gap between TG and PP rows in RUN BOTH (gap-y-2.5). */
+export const BENCH_DUAL_ROW_GAP_PX = 10;
 /** Share + HIDE footer row. */
 export const BENCH_SHARE_FOOTER_PX = 28;
 /** Margin above GPU topo band (bench-hw-topo mt-2.5). */

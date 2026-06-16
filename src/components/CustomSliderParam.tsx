@@ -159,8 +159,8 @@ export default function CustomSliderParam({
           >
             <span
               aria-hidden
-              className={`absolute left-1/2 -translate-x-1/2 block w-[3px] rounded-sm transition-colors ${
-                isActive ? "bg-[#4ade80]" : "bg-[#4ade80]/35"
+              className={`ctx-slider-tick absolute left-1/2 -translate-x-1/2 block w-[3px] rounded-sm transition-colors${
+                isActive ? " ctx-slider-tick--active" : ""
               }`}
               style={{ top: `${TICK_TOP_PX}px`, height: `${TICK_HEIGHT_PX}px` }}
             />
@@ -182,7 +182,7 @@ export default function CustomSliderParam({
             />
             {hoveredPresetIdx === idx && (
               <span
-                className="absolute left-1/2 text-[7px] font-mono text-[#4ade80] whitespace-nowrap pointer-events-none"
+                className="ctx-slider-tick-tooltip absolute left-1/2 text-[7px] font-mono whitespace-nowrap pointer-events-none"
                 style={{ top: "0px", transform: "translate(-50%, -100%)" }}
               >
                 {formatTokenLabel(pNum)}

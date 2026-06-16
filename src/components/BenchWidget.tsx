@@ -215,7 +215,7 @@ function BenchConcurrencyBadge({
       title={benchConcurrencyChipTitle(parallel)}
     >
       <span className="bench-concurrency-badge__label">CONCURRENCY</span>
-      <span className="bench-concurrency-badge__mult">×{parallel}</span>
+      <span className="bench-concurrency-badge__mult fusion-mult-chip">×{parallel}</span>
     </span>
   );
 }
@@ -703,7 +703,7 @@ export default function BenchWidget({
         {ps.showResults && (
            <div className={`bench-results-stack flex flex-col flex-shrink-0 min-h-0 ${footerDocked ? "" : "h-full overflow-hidden"}`}>
              <div className="bench-results-body flex flex-row items-start gap-x-1 px-1 flex-shrink-0">
-               <div className={`flex flex-col flex-1 min-w-0${dualBenchLayout ? " gap-y-1" : ""}`}>
+               <div className={`flex flex-col flex-1 min-w-0${dualBenchLayout ? " gap-y-2.5" : ""}`}>
                {isAnyRunning && (
                  <div className="flex items-center justify-between gap-1.5 px-1 py-0.5">
                    <div className="flex items-center gap-1.5 min-w-0">

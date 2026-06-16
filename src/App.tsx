@@ -26,7 +26,6 @@ import { useTauriListen } from "./hooks/useTauriListen";
 import {
   isPowerUserActive,
   loadPowerUserState,
-  STORAGE_PREFIX,
   loadLogSearchBySlot,
   saveLogSearchBySlot,
   loadLogsAnsiEnabled,
@@ -145,14 +144,7 @@ function App() {
   }, []);
 
   const handleShowAll = useCallback(() => {
-    try {
-      for (const key of Object.keys(localStorage)) {
-        if (key.startsWith(STORAGE_PREFIX)) {
-          localStorage.removeItem(key);
-        }
-      }
-      dispatchAppEvent(EVENTS.paramConfigChanged);
-    } catch {}
+    dispatchAppEvent(EVENTS.showAllHiddenParams);
   }, []);
 
   useEffect(() => {

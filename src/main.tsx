@@ -6,6 +6,7 @@ import "./index.css";
 import "./controls.css";
 import { applyAppTheme, getThemeById } from "./themes/app-themes";
 import {
+  dispatchClearLocalStorage,
   dispatchReplaySetupGuide,
   dispatchReplaySetupGuideOnboardingOnly,
 } from "./lib/events";
@@ -24,12 +25,15 @@ if (__BUILD_MODE__ === "dev") {
     previewSetupWelcome: () => void;
     /** Exit preview mode and clear onboarding keys, then reload. */
     resetSetupGuide: () => void;
+    /** Wipe all `BlackOps-*` localStorage keys and reload. */
+    clearLocalStorage: () => void;
   }
   (window as Window & { __blackopsDev?: BlackOpsDevTools }).__blackopsDev = {
     previewSetupWelcome: () => {
       dispatchReplaySetupGuideOnboardingOnly();
     },
     resetSetupGuide: () => { void dispatchReplaySetupGuide(); },
+    clearLocalStorage: () => { dispatchClearLocalStorage(true); },
   };
 }
 

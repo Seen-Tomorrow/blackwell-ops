@@ -19,6 +19,8 @@
  * | BlackOps-navigate-config | Switch to CONFIG tab; detail.subTab selects sub-tab |
  * | BlackOps-setup-guide-changed | Setup guide phase/dismiss state changed |
  * | BlackOps-reset-setup-guide | Clear onboarding keys and replay welcome/guide in-app |
+ * | BlackOps-show-all-hidden-params | CONFIG footer — unhide all hidden param rows (current provider) |
+ * | BlackOps-local-storage-cleared | All `BlackOps-*` keys removed (before optional reload) |
  */
 
 export type NavigateConfigDetail = {
@@ -27,6 +29,7 @@ export type NavigateConfigDetail = {
 
 import { invoke } from "@tauri-apps/api/core";
 import {
+  clearAllBlackOpsStorage,
   disableSetupGuidePreview,
   enableSetupGuidePreview,
   resetSetupGuideState,
@@ -50,6 +53,8 @@ export const EVENTS = {
   navigateConfig: `${STORAGE_PREFIX}navigate-config`,
   setupGuideChanged: `${STORAGE_PREFIX}setup-guide-changed`,
   resetSetupGuide: `${STORAGE_PREFIX}reset-setup-guide`,
+  showAllHiddenParams: `${STORAGE_PREFIX}show-all-hidden-params`,
+  localStorageCleared: `${STORAGE_PREFIX}local-storage-cleared`,
 } as const;
 
 export type AppEventName = (typeof EVENTS)[keyof typeof EVENTS];
@@ -85,4 +90,18 @@ export function dispatchReplaySetupGuideOnboardingOnly(): void {
   resetSetupGuideState();
   enableSetupGuidePreview();
   window.location.reload();
+}
+
+/** Remove all `BlackOps-*` localStorage keys (prefs, overrides, bench chips, dynamic provider keys). */
+export function dispatchClearLocalStorage(reload = true): number {
+  const cleared = clearAllBlackOpsStorage();
+  dispatchAppEvent(EVENTS.localStorageCleared, { cleared });
+  if (reload) {
+    window.location.reload();
+  }
+  return cleared;
+}
+
+export function dispatchShowAllHiddenParams(): void {
+  dispatchAppEvent(EVENTS.showAllHiddenParams);
 }

@@ -97,8 +97,8 @@ function BarTrack({
 }) {
   return (
     <div
-      className={`flex-1 min-h-0 w-full rounded-sm overflow-hidden relative ${
-        isActive ? "bg-white/5" : "border border-white/5 bg-transparent"
+      className={`ctx-bar-track flex-1 min-h-0 w-full rounded-sm overflow-hidden relative ${
+        isActive ? "ctx-bar-track--active" : "ctx-bar-track--empty"
       }`}
     >
       {isActive && emptyLabel && pct <= 0 && (
@@ -122,10 +122,11 @@ function BarTrack({
       )}
       {isActive && pct > 0 && (
         <div
-          className="absolute bottom-0 left-0 right-0 rounded-sm z-[1]"
+          className={`ctx-bar-fill absolute bottom-0 left-0 right-0 rounded-sm z-[1] ${
+            isProcessing ? "ctx-bar-fill--processing" : "ctx-bar-fill--idle"
+          }`}
           style={{
             height: `${pct}%`,
-            backgroundColor: isProcessing ? "#22c55e" : "rgba(99,102,241,0.5)",
             transition: "height 0.3s ease",
           }}
         />
@@ -181,7 +182,7 @@ export default function SlotCtxBars({ slotCtx, ctxTotal, parallel, unifiedKv }: 
           style={{ paddingTop: showSharedSpan ? 11 : 0 }}
         >
           {showSharedSpan && (
-            <div className="absolute top-0 left-0 right-0 z-10 pointer-events-none px-0.5">
+            <div className="absolute -top-1 left-0 right-0 z-10 pointer-events-none px-0.5">
               <span className={sharedPoolChip}>
                 {formatTokenCount(barCapacity)} · shared pool
               </span>
@@ -207,7 +208,7 @@ export default function SlotCtxBars({ slotCtx, ctxTotal, parallel, unifiedKv }: 
               className="flex flex-col items-center min-w-0"
               style={equalBarStyle}
             >
-              <span className="text-[7px] font-mono bg-black/50 text-white/80 px-1 py-0.5 rounded-sm leading-none">
+              <span className="ctx-bar-slot-label text-[7px] font-mono px-1 py-0.5 rounded-sm leading-none">
                 S{slot.index + 1}
               </span>
             </div>
@@ -244,7 +245,7 @@ export default function SlotCtxBars({ slotCtx, ctxTotal, parallel, unifiedKv }: 
 
         <div className="flex justify-center mt-0.5 flex-shrink-0 min-w-0">
           <span
-            className="ctx-bar-compact-label text-[7px] font-mono bg-black/50 text-white/80 px-1.5 py-0.5 rounded-sm leading-none tracking-wide"
+            className="fusion-mult-chip ctx-bar-compact-label text-[7px] font-mono px-1.5 py-0.5 rounded-sm leading-none tracking-wide"
             title={compactTitle}
           >
             ×{numSlots}

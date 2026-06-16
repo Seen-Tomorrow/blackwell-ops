@@ -74,12 +74,37 @@
   --fusion-eink-band: rgba(0, 0, 0, 0.01);
   --fusion-eink-band-opacity: 0.55;
   --fusion-eink-texture-blend: multiply;
-  --fusion-eink-text-muted: #3a3a3a;
+  --fusion-eink-text-muted: #4a6a4a;
   --fusion-eink-text-accent: #4d7a00;
   --fusion-eink-text-cyan: #0088aa;
   --fusion-eink-text-amber: #b87a00;
-  --fusion-eink-bar-bg: #d4cfc5;
+  --fusion-eink-bar-bg: #465a40;
   --fusion-eink-border: rgba(60, 60, 60, 0.25);
+  /* PHOSPHOR LIGHT readout ink — per-theme overrides in app-themes.ts */
+  --fusion-eink-readout: #1e3a14;
+  --fusion-eink-readout-divider: #1e3a14;
+  --fusion-eink-readout-divider-opacity: 0.32;
+  --fusion-eink-readout-idle: #5a6a52;
+  --fusion-eink-readout-idle-divider: #5a6a52;
+  --fusion-eink-readout-idle-divider-opacity: 0.48;
+  --fusion-eink-concurrency-label: #4a6a4a;
+  --fusion-eink-concurrency-chip-bg: #243818;
+  --fusion-eink-concurrency-chip-fg: #9ed44a;
+  --fusion-eink-concurrency-chip-border: #4d7a00;
+  --fusion-eink-ctx-chip-border: rgba(77, 122, 0, 0.5);
+  --fusion-eink-ctx-chip-fg: #4a6a4a;
+  --fusion-eink-ctx-fill-pct: #1e3a14;
+  --fusion-eink-ctx-fill-pct-shadow: rgba(200, 212, 184, 0.9);
+  --fusion-eink-ctx-track-bg: rgba(0, 0, 0, 0.06);
+  --fusion-eink-ctx-track-border: rgba(60, 60, 60, 0.2);
+  --fusion-eink-ctx-fill-processing: #22c55e;
+  --fusion-eink-ctx-fill-idle: rgba(74, 222, 128, 0.4);
+  --fusion-eink-ctx-slot-bg: rgba(0, 0, 0, 0.06);
+  --fusion-eink-ctx-slot-fg: #4a6a4a;
+  --fusion-eink-hw-label: #3a5a32;
+  --fusion-eink-hw-driver: #5a7050;
+  --fusion-eink-gpu-name: #4a6a4a;
+  --fusion-eink-gpu-name-selected: #1e3a14;
   --theme-card-recessed-border: #1c1e22;
   --theme-card-selected-bg: #1c1e22;
   --theme-card-selected-accent: #b87a00;
@@ -1765,17 +1790,288 @@ html, body, #root {
   opacity: 0.45;
 }
 
+/* PHOSPHOR LIGHT — TG micro-stats + bench readout (theme tokens via --fusion-eink-readout-*) */
 [data-display-texture="phosphor-light"] .phosphor-screen .fusion-readout-emphasis,
 [data-display-texture="phosphor-light"] .phosphor-screen-inner .fusion-readout-emphasis,
 [data-display-texture="phosphor-light"] .bench-widget-panel .fusion-readout-emphasis {
-  color: #0f1419;
+  color: var(--fusion-eink-readout);
 }
 
 [data-display-texture="phosphor-light"] .phosphor-screen .fusion-readout-divider,
 [data-display-texture="phosphor-light"] .phosphor-screen-inner .fusion-readout-divider,
 [data-display-texture="phosphor-light"] .bench-widget-panel .fusion-readout-divider {
-  color: #0f1419;
-  opacity: 0.28;
+  color: var(--fusion-eink-readout-divider);
+  opacity: var(--fusion-eink-readout-divider-opacity);
+}
+
+[data-display-texture="phosphor-light"] .phosphor-screen .fusion-readout-idle {
+  color: var(--fusion-eink-readout-idle) !important;
+  opacity: 1 !important;
+}
+
+[data-display-texture="phosphor-light"] .phosphor-screen .fusion-readout-divider-idle {
+  color: var(--fusion-eink-readout-idle-divider) !important;
+  opacity: var(--fusion-eink-readout-idle-divider-opacity) !important;
+}
+
+/* PHOSPHOR LIGHT — CONCURRENCY label */
+[data-display-texture="phosphor-light"] .bench-widget-panel .bench-concurrency-badge__label {
+  color: var(--fusion-eink-concurrency-label);
+  opacity: 1;
+}
+
+/* PHOSPHOR LIGHT — shared ×N multiplier chip (bench TG + ctx compact) */
+[data-display-texture="phosphor-light"] .fusion-mult-chip,
+[data-display-texture="phosphor-light"] .bench-widget-panel .bench-concurrency-badge__mult {
+  --bench-concurrency-chip-bg: var(--fusion-eink-concurrency-chip-bg);
+  --bench-concurrency-chip-fg: var(--fusion-eink-concurrency-chip-fg);
+  --bench-concurrency-chip-border: var(--fusion-eink-concurrency-chip-border);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--fusion-eink-concurrency-chip-border) 35%, transparent);
+}
+
+[data-theme="arctic"] [data-display-texture="clean"] .phosphor-screen .ctx-shared-pool-chip,
+[data-theme="arctic"] [data-display-texture="clean"] .phosphor-screen-inner .ctx-shared-pool-chip,
+[data-theme="arctic"] [data-display-texture="clean"] .phosphor-screen .ctx-bar-capacity-chip,
+[data-theme="arctic"] [data-display-texture="clean"] .phosphor-screen-inner .ctx-bar-capacity-chip {
+  border-color: var(--fusion-eink-ctx-chip-border);
+  color: var(--fusion-eink-ctx-chip-fg);
+}
+
+[data-theme="arctic"] [data-display-texture="clean"] .phosphor-screen .ctx-bar-fill-pct--active,
+[data-theme="arctic"] [data-display-texture="clean"] .phosphor-screen-inner .ctx-bar-fill-pct--active {
+  color: var(--fusion-eink-ctx-fill-pct);
+  text-shadow:
+    0 0 3px var(--fusion-eink-ctx-fill-pct-shadow),
+    0 0 6px color-mix(in srgb, var(--fusion-eink-ctx-fill-pct-shadow) 55%, transparent);
+}
+
+[data-theme="arctic"] [data-display-texture="clean"] .phosphor-screen .ctx-bar-track--active,
+[data-theme="arctic"] [data-display-texture="clean"] .phosphor-screen-inner .ctx-bar-track--active {
+  background: var(--fusion-eink-ctx-track-bg);
+  border-color: transparent;
+}
+
+[data-theme="arctic"] [data-display-texture="clean"] .phosphor-screen .ctx-bar-track--empty,
+[data-theme="arctic"] [data-display-texture="clean"] .phosphor-screen-inner .ctx-bar-track--empty {
+  background: transparent;
+  border-color: var(--fusion-eink-ctx-track-border);
+}
+
+[data-theme="arctic"] [data-display-texture="clean"] .phosphor-screen .ctx-bar-fill--processing,
+[data-theme="arctic"] [data-display-texture="clean"] .phosphor-screen-inner .ctx-bar-fill--processing {
+  background: var(--fusion-eink-ctx-fill-processing);
+}
+
+[data-theme="arctic"] [data-display-texture="clean"] .phosphor-screen .ctx-bar-fill--idle,
+[data-theme="arctic"] [data-display-texture="clean"] .phosphor-screen-inner .ctx-bar-fill--idle {
+  background: var(--fusion-eink-ctx-fill-idle);
+}
+
+[data-theme="arctic"] [data-display-texture="clean"] .phosphor-screen .ctx-bar-slot-label,
+[data-theme="arctic"] [data-display-texture="clean"] .phosphor-screen-inner .ctx-bar-slot-label {
+  background: var(--fusion-eink-ctx-slot-bg);
+  color: var(--fusion-eink-ctx-slot-fg);
+}
+
+/* PHOSPHOR LIGHT — ctx slot bars */
+[data-display-texture="phosphor-light"] .phosphor-screen .ctx-shared-pool-chip,
+[data-display-texture="phosphor-light"] .phosphor-screen-inner .ctx-shared-pool-chip,
+[data-display-texture="phosphor-light"] .phosphor-screen .ctx-bar-capacity-chip,
+[data-display-texture="phosphor-light"] .phosphor-screen-inner .ctx-bar-capacity-chip {
+  border-color: var(--fusion-eink-ctx-chip-border);
+  color: var(--fusion-eink-ctx-chip-fg);
+}
+
+[data-display-texture="phosphor-light"] .phosphor-screen .ctx-bar-fill-pct--active,
+[data-display-texture="phosphor-light"] .phosphor-screen-inner .ctx-bar-fill-pct--active {
+  color: var(--fusion-eink-ctx-fill-pct);
+  text-shadow:
+    0 0 3px var(--fusion-eink-ctx-fill-pct-shadow),
+    0 0 6px color-mix(in srgb, var(--fusion-eink-ctx-fill-pct-shadow) 55%, transparent);
+}
+
+[data-display-texture="phosphor-light"] .phosphor-screen .ctx-bar-track--active,
+[data-display-texture="phosphor-light"] .phosphor-screen-inner .ctx-bar-track--active {
+  background: var(--fusion-eink-ctx-track-bg);
+  border-color: transparent;
+}
+
+[data-display-texture="phosphor-light"] .phosphor-screen .ctx-bar-track--empty,
+[data-display-texture="phosphor-light"] .phosphor-screen-inner .ctx-bar-track--empty {
+  background: transparent;
+  border-color: var(--fusion-eink-ctx-track-border);
+}
+
+[data-display-texture="phosphor-light"] .phosphor-screen .ctx-bar-fill--processing,
+[data-display-texture="phosphor-light"] .phosphor-screen-inner .ctx-bar-fill--processing {
+  background: var(--fusion-eink-ctx-fill-processing);
+}
+
+[data-display-texture="phosphor-light"] .phosphor-screen .ctx-bar-fill--idle,
+[data-display-texture="phosphor-light"] .phosphor-screen-inner .ctx-bar-fill--idle {
+  background: var(--fusion-eink-ctx-fill-idle);
+}
+
+[data-display-texture="phosphor-light"] .phosphor-screen .ctx-bar-slot-label,
+[data-display-texture="phosphor-light"] .phosphor-screen-inner .ctx-bar-slot-label {
+  background: var(--fusion-eink-ctx-slot-bg);
+  color: var(--fusion-eink-ctx-slot-fg);
+}
+
+/* PHOSPHOR LIGHT — bench GPU name + driver */
+[data-display-texture="phosphor-light"] .bench-widget-panel .bench-hw-topo-label {
+  color: var(--fusion-eink-hw-label);
+}
+
+[data-display-texture="phosphor-light"] .bench-widget-panel .bench-hw-topo-driver {
+  color: var(--fusion-eink-hw-driver);
+}
+
+[data-display-texture="phosphor-light"] .phosphor-display-surface .gpu-card-name {
+  color: var(--fusion-eink-gpu-name) !important;
+}
+
+[data-display-texture="phosphor-light"] .phosphor-display-surface .gpu-selected .gpu-card-name {
+  color: var(--fusion-eink-gpu-name-selected) !important;
+}
+
+/* PHOSPHOR DARK + CLEAN (non-ARCTIC) — lift TG hero micro-stats (tok / PP / +1st / ELAPSED) */
+[data-display-texture="phosphor-dark"] .phosphor-screen .fusion-readout-emphasis,
+html:not([data-theme="arctic"]) [data-display-texture="clean"] .phosphor-screen .fusion-readout-emphasis {
+  color: color-mix(in srgb, var(--theme-phosphor-text) 72%, #e8edf4);
+}
+
+[data-display-texture="phosphor-dark"] .phosphor-screen .fusion-readout-divider,
+html:not([data-theme="arctic"]) [data-display-texture="clean"] .phosphor-screen .fusion-readout-divider {
+  color: color-mix(in srgb, var(--theme-phosphor-text-muted) 48%, #a8b4c4);
+  opacity: 0.72;
+}
+
+/* PHOSPHOR DARK + CLEAN (non-ARCTIC) — idle TG micro-stats */
+[data-display-texture="phosphor-dark"] .phosphor-screen .fusion-readout-idle,
+html:not([data-theme="arctic"]) [data-display-texture="clean"] .phosphor-screen .fusion-readout-idle {
+  color: #939daa !important;
+  opacity: 1 !important;
+}
+
+[data-display-texture="phosphor-dark"] .phosphor-screen .fusion-readout-divider-idle,
+html:not([data-theme="arctic"]) [data-display-texture="clean"] .phosphor-screen .fusion-readout-divider-idle {
+  color: #727c8c !important;
+  opacity: 0.72 !important;
+}
+
+/* ARCTIC + CLEAN (white face) — e-ink TG micro-stats */
+[data-theme="arctic"] [data-display-texture="clean"] .phosphor-screen .fusion-readout-emphasis,
+[data-theme="arctic"] [data-display-texture="clean"] .phosphor-screen-inner .fusion-readout-emphasis {
+  color: var(--fusion-eink-readout);
+}
+
+[data-theme="arctic"] [data-display-texture="clean"] .phosphor-screen .fusion-readout-divider,
+[data-theme="arctic"] [data-display-texture="clean"] .phosphor-screen-inner .fusion-readout-divider {
+  color: var(--fusion-eink-readout-divider);
+  opacity: var(--fusion-eink-readout-divider-opacity);
+}
+
+[data-theme="arctic"] [data-display-texture="clean"] .phosphor-screen .fusion-readout-idle {
+  color: var(--fusion-eink-readout-idle) !important;
+  opacity: 1 !important;
+}
+
+[data-theme="arctic"] [data-display-texture="clean"] .phosphor-screen .fusion-readout-divider-idle {
+  color: var(--fusion-eink-readout-idle-divider) !important;
+  opacity: var(--fusion-eink-readout-idle-divider-opacity) !important;
+}
+
+/* PHOSPHOR DARK + CLEAN (non-ARCTIC) — ctx slot bars */
+[data-display-texture="phosphor-dark"] .phosphor-screen .ctx-shared-pool-chip,
+[data-display-texture="phosphor-dark"] .phosphor-screen-inner .ctx-shared-pool-chip,
+html:not([data-theme="arctic"]) [data-display-texture="clean"] .phosphor-screen .ctx-shared-pool-chip,
+html:not([data-theme="arctic"]) [data-display-texture="clean"] .phosphor-screen-inner .ctx-shared-pool-chip {
+  border-color: color-mix(in srgb, var(--theme-phosphor-text) 45%, transparent);
+  color: color-mix(in srgb, var(--theme-phosphor-text) 82%, transparent);
+}
+
+[data-display-texture="phosphor-dark"] .phosphor-screen .ctx-bar-capacity-chip,
+[data-display-texture="phosphor-dark"] .phosphor-screen-inner .ctx-bar-capacity-chip,
+html:not([data-theme="arctic"]) [data-display-texture="clean"] .phosphor-screen .ctx-bar-capacity-chip,
+html:not([data-theme="arctic"]) [data-display-texture="clean"] .phosphor-screen-inner .ctx-bar-capacity-chip {
+  border-color: var(--theme-phosphor-border);
+  color: color-mix(in srgb, var(--theme-phosphor-text-muted) 72%, transparent);
+}
+
+[data-display-texture="phosphor-dark"] .phosphor-screen .ctx-bar-fill-pct--active,
+[data-display-texture="phosphor-dark"] .phosphor-screen-inner .ctx-bar-fill-pct--active,
+html:not([data-theme="arctic"]) [data-display-texture="clean"] .phosphor-screen .ctx-bar-fill-pct--active,
+html:not([data-theme="arctic"]) [data-display-texture="clean"] .phosphor-screen-inner .ctx-bar-fill-pct--active {
+  color: rgba(255, 255, 255, 0.92);
+  text-shadow: 0 0 4px rgba(0, 0, 0, 0.95), 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+
+[data-display-texture="phosphor-dark"] .phosphor-screen .ctx-bar-track--active,
+[data-display-texture="phosphor-dark"] .phosphor-screen-inner .ctx-bar-track--active,
+html:not([data-theme="arctic"]) [data-display-texture="clean"] .phosphor-screen .ctx-bar-track--active,
+html:not([data-theme="arctic"]) [data-display-texture="clean"] .phosphor-screen-inner .ctx-bar-track--active {
+  background: color-mix(in srgb, var(--theme-phosphor-bar-bg) 65%, transparent);
+  border-color: transparent;
+}
+
+[data-display-texture="phosphor-dark"] .phosphor-screen .ctx-bar-track--empty,
+[data-display-texture="phosphor-dark"] .phosphor-screen-inner .ctx-bar-track--empty,
+html:not([data-theme="arctic"]) [data-display-texture="clean"] .phosphor-screen .ctx-bar-track--empty,
+html:not([data-theme="arctic"]) [data-display-texture="clean"] .phosphor-screen-inner .ctx-bar-track--empty {
+  background: transparent;
+  border-color: color-mix(in srgb, var(--theme-phosphor-border) 55%, transparent);
+}
+
+[data-display-texture="phosphor-dark"] .phosphor-screen .ctx-bar-fill--processing,
+[data-display-texture="phosphor-dark"] .phosphor-screen-inner .ctx-bar-fill--processing,
+html:not([data-theme="arctic"]) [data-display-texture="clean"] .phosphor-screen .ctx-bar-fill--processing,
+html:not([data-theme="arctic"]) [data-display-texture="clean"] .phosphor-screen-inner .ctx-bar-fill--processing {
+  background: #22c55e;
+}
+
+[data-display-texture="phosphor-dark"] .phosphor-screen .ctx-bar-fill--idle,
+[data-display-texture="phosphor-dark"] .phosphor-screen-inner .ctx-bar-fill--idle,
+html:not([data-theme="arctic"]) [data-display-texture="clean"] .phosphor-screen .ctx-bar-fill--idle,
+html:not([data-theme="arctic"]) [data-display-texture="clean"] .phosphor-screen-inner .ctx-bar-fill--idle {
+  background: color-mix(in srgb, var(--theme-phosphor-text) 38%, transparent);
+}
+
+[data-display-texture="phosphor-dark"] .phosphor-screen .ctx-bar-slot-label,
+[data-display-texture="phosphor-dark"] .phosphor-screen-inner .ctx-bar-slot-label,
+html:not([data-theme="arctic"]) [data-display-texture="clean"] .phosphor-screen .ctx-bar-slot-label,
+html:not([data-theme="arctic"]) [data-display-texture="clean"] .phosphor-screen-inner .ctx-bar-slot-label {
+  background: color-mix(in srgb, var(--theme-bg) 50%, transparent);
+  color: color-mix(in srgb, var(--theme-phosphor-text) 78%, transparent);
+}
+
+/* PHOSPHOR DARK + CLEAN — shared ×N multiplier chip (outline amber, all themes incl. ARCTIC) */
+[data-display-texture="phosphor-dark"] .fusion-mult-chip,
+[data-display-texture="phosphor-dark"] .bench-widget-panel .bench-concurrency-badge__mult,
+[data-display-texture="clean"] .fusion-mult-chip,
+[data-display-texture="clean"] .bench-widget-panel .bench-concurrency-badge__mult {
+  --bench-concurrency-chip-bg: color-mix(in srgb, var(--theme-bg) 76%, #000);
+  --bench-concurrency-chip-fg: #ffd24a;
+  --bench-concurrency-chip-border: #c99700;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55);
+}
+
+[data-theme="arctic"] [data-display-texture="phosphor-dark"] .phosphor-screen .ctx-shared-pool-chip,
+[data-theme="arctic"] [data-display-texture="phosphor-dark"] .phosphor-screen-inner .ctx-shared-pool-chip {
+  border-color: rgba(107, 114, 128, 0.5);
+  color: rgba(75, 85, 99, 0.92);
+}
+
+[data-theme="arctic"] [data-display-texture="phosphor-dark"] .phosphor-screen .ctx-bar-capacity-chip,
+[data-theme="arctic"] [data-display-texture="phosphor-dark"] .phosphor-screen-inner .ctx-bar-capacity-chip {
+  border-color: rgba(107, 114, 128, 0.5);
+  color: rgba(75, 85, 99, 0.88);
+}
+
+[data-theme="arctic"] [data-display-texture="phosphor-dark"] .phosphor-screen .ctx-bar-fill-pct--active,
+[data-theme="arctic"] [data-display-texture="phosphor-dark"] .phosphor-screen-inner .ctx-bar-fill-pct--active {
+  color: rgba(17, 24, 39, 0.92);
+  text-shadow: 0 0 3px rgba(255, 255, 255, 0.85), 0 0 6px rgba(255, 255, 255, 0.45);
 }
 
 /* Bench controls + results — recessed into engine card, lighter than phosphor screen */
@@ -1796,6 +2092,23 @@ html, body, #root {
 .bench-widget-panel .bench-concurrency-chip.value-chip-active {
   border-color: rgba(248, 113, 113, 0.95);
   box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.25);
+}
+
+/* PHOSPHOR LIGHT + ARCTIC CLEAN — bench control chips: e-ink active fill (per-theme contrast) */
+[data-display-texture="phosphor-light"] .bench-widget-panel .value-chip-active,
+[data-theme="arctic"] [data-display-texture="clean"] .bench-widget-panel .value-chip-active {
+  background: var(--fusion-eink-concurrency-chip-bg) !important;
+  border-color: var(--fusion-eink-concurrency-chip-border) !important;
+  color: var(--fusion-eink-concurrency-chip-fg) !important;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--fusion-eink-concurrency-chip-border) 45%, transparent);
+}
+
+[data-display-texture="phosphor-light"] .bench-widget-panel .bench-concurrency-chip.value-chip-active,
+[data-theme="arctic"] [data-display-texture="clean"] .bench-widget-panel .bench-concurrency-chip.value-chip-active {
+  background: var(--fusion-eink-concurrency-chip-bg) !important;
+  border-color: var(--fusion-eink-concurrency-chip-border) !important;
+  color: var(--fusion-eink-concurrency-chip-fg) !important;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--fusion-eink-concurrency-chip-border) 45%, transparent);
 }
 
 /* TG result unit row — fixed height so the amber badge can overlay without growing the grid */
@@ -1834,16 +2147,38 @@ html, body, #root {
   color: color-mix(in srgb, var(--theme-text) 50%, transparent);
 }
 
+.fusion-mult-chip,
 .bench-widget-panel .bench-concurrency-badge__mult {
-  font-size: 2em;
   font-weight: 700;
   line-height: 1;
   letter-spacing: 0.02em;
   border-radius: 3px;
+  background: var(--bench-concurrency-chip-bg, #f5c400);
+  color: var(--bench-concurrency-chip-fg, #0a0c10);
+  border: 1px solid var(--bench-concurrency-chip-border, #b89200);
+}
+
+.bench-widget-panel .bench-concurrency-badge__mult {
+  font-size: 2em;
   padding: 0 5px;
-  background: #f5c400;
-  color: #0a0c10;
-  border: 1px solid #b89200;
+}
+
+/* PHOSPHOR DARK + CLEAN (non-ARCTIC) — bench concurrency label */
+html:not([data-theme="arctic"]) [data-display-texture="phosphor-dark"] .bench-widget-panel .bench-concurrency-badge__label,
+html:not([data-theme="arctic"]) [data-display-texture="clean"] .bench-widget-panel .bench-concurrency-badge__label {
+  color: var(--theme-text-muted);
+  opacity: 0.95;
+}
+
+/* ARCTIC — CLEAN texture concurrency label (phosphor-light uses --fusion-eink-concurrency-label) */
+[data-theme="arctic"] [data-display-texture="clean"] .bench-widget-panel .bench-concurrency-badge__label {
+  color: color-mix(in srgb, var(--theme-text) 50%, transparent);
+  opacity: 1;
+}
+
+[data-theme="arctic"] [data-display-texture="phosphor-dark"] .bench-widget-panel .bench-concurrency-badge__label {
+  color: #8a8a9a;
+  opacity: 0.95;
 }
 
 .bench-widget-panel .bench-concurrency-badge--compact .bench-concurrency-badge__mult {
@@ -1899,6 +2234,15 @@ html, body, #root {
   white-space: nowrap;
 }
 
+/* PHOSPHOR DARK — hw topo uses phosphor tokens (ARCTIC inherits SLATE vars on display face) */
+[data-display-texture="phosphor-dark"] .bench-widget-panel .bench-hw-topo-label {
+  color: color-mix(in srgb, var(--theme-phosphor-text) 82%, transparent);
+}
+
+[data-display-texture="phosphor-dark"] .bench-widget-panel .bench-hw-topo-driver {
+  color: color-mix(in srgb, var(--theme-phosphor-text-muted) 90%, transparent);
+}
+
 .bench-widget-panel .bench-results-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
@@ -1924,6 +2268,24 @@ html, body, #root {
   flex-shrink: 0;
 }
 
+/* ARCTIC bench — SLATE chip / control palette on phosphor (theme tokens stay light elsewhere) */
+[data-theme="arctic"] .bench-widget-panel {
+  --theme-chip-bg: rgba(200, 200, 210, 0.04);
+  --theme-chip-border: rgba(200, 200, 210, 0.15);
+  --theme-chip-text: #6a6a7a;
+  --theme-chip-hover-border: rgba(200, 200, 210, 0.35);
+  --theme-chip-hover-text: #c8c8d0;
+  --theme-chip-active-bg: rgba(200, 200, 210, 0.12);
+  --theme-chip-active-border: rgba(200, 200, 210, 0.45);
+  --theme-chip-active-text: #e0e0e8;
+  --theme-text: #d0d0d8;
+  --theme-bg: #080808;
+  --theme-text-muted: #5a5a6a;
+  --theme-border-subtle: rgba(200, 200, 210, 0.08);
+  --theme-border: #222228;
+  --theme-panel-accent: #0c0c0c;
+}
+
 .bench-widget-panel .bench-muted-btn {
   background: color-mix(in srgb, var(--theme-text) 88%, transparent) !important;
   color: color-mix(in srgb, var(--theme-bg) 65%, transparent) !important;
@@ -1933,18 +2295,6 @@ html, body, #root {
 .bench-widget-panel .bench-muted-btn:hover:not(:disabled) {
   background: color-mix(in srgb, var(--theme-text) 95%, transparent) !important;
   color: var(--theme-bg) !important;
-}
-
-[data-theme="arctic"] .bench-widget-panel .bench-muted-btn {
-  background: var(--theme-panel-accent) !important;
-  color: var(--theme-text-muted) !important;
-  border-color: var(--theme-border);
-}
-
-[data-theme="arctic"] .bench-widget-panel .bench-muted-btn:hover:not(:disabled) {
-  background: var(--theme-chip-active-bg) !important;
-  color: var(--theme-text) !important;
-  border-color: var(--theme-chip-active-border);
 }
 
 /* ── Blackwell Output Console (expanded / docked) ─── */
@@ -2271,9 +2621,18 @@ html, body, #root {
     inset 0 -1px 3px var(--theme-phosphor-inset-bottom);
 }
 
-/* CLEAN — minimal phosphor fill (no extra gradient layers) */
-[data-display-texture="clean"] .phosphor-screen-inner.phosphor-display-surface {
+/* CLEAN — flat --phosphor-bg face (same color as PHOSPHOR DARK, no dot matrix / scanlines); ARCTIC → white below */
+[data-display-texture="clean"] .phosphor-display-surface {
+  background-color: var(--phosphor-bg, #030801);
   background-image: none;
+  box-shadow:
+    inset 0 2px 6px var(--theme-phosphor-inset-top),
+    inset 0 -1px 3px var(--theme-phosphor-inset-bottom);
+}
+
+[data-display-texture="clean"] .phosphor-display-surface::before,
+[data-display-texture="clean"] .phosphor-display-surface::after {
+  display: none !important;
 }
 
 .phosphor-display-surface {
@@ -2462,18 +2821,16 @@ html, body, #root {
 }
 
 /* PHOSPHOR LIGHT — VRAM + fusion: beige e-ink LCD (dot matrix as top overlay filter) */
-[data-display-texture="phosphor-light"] .phosphor-screen-inner.phosphor-display-surface,
-[data-display-texture="phosphor-light"] .phosphor-screen.phosphor-display-surface {
-  background-color: var(--fusion-eink-surface);
-  background-image: none;
+[data-display-texture="phosphor-light"] .phosphor-display-surface {
+  background-color: var(--fusion-eink-surface) !important;
+  background-image: none !important;
   box-shadow:
     inset 0 2px 6px rgba(0, 0, 0, 0.25),
     inset 0 -1px 3px rgba(0, 0, 0, 0.15),
-    inset 0 1px 40px rgba(255, 255, 255, 0.3);
+    inset 0 1px 40px rgba(255, 255, 255, 0.3) !important;
 }
 
-[data-display-texture="phosphor-light"] .phosphor-screen-inner.phosphor-display-surface::before,
-[data-display-texture="phosphor-light"] .phosphor-screen.phosphor-display-surface::before {
+[data-display-texture="phosphor-light"] .phosphor-display-surface::before {
   display: block;
   opacity: var(--fusion-eink-band-opacity);
   z-index: 7;
@@ -2488,8 +2845,7 @@ html, body, #root {
   mix-blend-mode: var(--fusion-eink-texture-blend);
 }
 
-[data-display-texture="phosphor-light"] .phosphor-screen-inner.phosphor-display-surface::after,
-[data-display-texture="phosphor-light"] .phosphor-screen.phosphor-display-surface::after {
+[data-display-texture="phosphor-light"] .phosphor-display-surface::after {
   display: block;
   opacity: 1;
   z-index: 8;
@@ -2551,7 +2907,9 @@ html, body, #root {
   border-color: var(--fusion-eink-border) !important;
 }
 
-[data-display-texture="phosphor-light"] .phosphor-screen-inner .relative.overflow-hidden.border-stealth-border\/30 {
+/* PHOSPHOR LIGHT — VRAM forecast bar tracks: darkened theme accent (not neutral pink-beige) */
+[data-display-texture="phosphor-light"] .vram-forecast-display .relative.overflow-hidden.border-stealth-border\/30,
+[data-display-texture="phosphor-light"] .industrial-display-area .vram-forecast-display .relative.overflow-hidden.border-stealth-border\/30 {
   background-color: var(--fusion-eink-bar-bg) !important;
 }
 
@@ -2787,7 +3145,7 @@ html, body, #root {
 
 .fusion-share-capture-stage[data-fusion-share-capture][data-theme="arctic"][data-display-texture="phosphor-light"] .phosphor-screen.phosphor-display-surface,
 .fusion-share-capture-stage[data-fusion-share-capture][data-theme="arctic"][data-display-texture="phosphor-light"] .phosphor-screen-inner.phosphor-display-surface {
-  background-color: var(--fusion-eink-surface, #94a494) !important;
+  background-color: var(--fusion-eink-surface, #c8d4b8) !important;
   background-image: none !important;
   box-shadow:
     inset 0 2px 6px rgba(0, 0, 0, 0.25),
@@ -2943,24 +3301,136 @@ html, body, #root {
   color: rgba(90, 100, 120, 0.38);
 }
 
-/* ARCTIC — darker recessed VRAM phosphor (all display textures) */
-[data-theme="arctic"] .phosphor-screen-inner.phosphor-display-surface,
-[data-theme="arctic"] .vram-forecast-display.phosphor-display-surface {
+/*
+ * ARCTIC display textures — `data-display-texture` lives on the panel ancestor
+ * (EngineConfigPanel), not on <html>. Use descendant selectors, not [data-theme][data-display-texture].
+ */
+
+/* ARCTIC + PHOSPHOR LIGHT — same e-ink tokens as dark themes (no --phosphor-bg / glow bleed) */
+[data-theme="arctic"] [data-display-texture="phosphor-light"] .phosphor-display-surface {
+  background-color: var(--fusion-eink-surface) !important;
+  background-image: none !important;
+  box-shadow:
+    inset 0 2px 6px rgba(0, 0, 0, 0.25),
+    inset 0 -1px 3px rgba(0, 0, 0, 0.15),
+    inset 0 1px 40px rgba(255, 255, 255, 0.3) !important;
+}
+
+/* ARCTIC + PHOSPHOR DARK — SLATE CRT face + phosphor tokens (not ARCTIC light-theme vars) */
+[data-theme="arctic"] [data-display-texture="phosphor-dark"] .phosphor-display-surface {
+  --phosphor-bg: #080808;
+  --phosphor-glow: rgba(200, 200, 200, 0.05);
+  --theme-phosphor-text: #c8c8d0;
+  --theme-phosphor-text-muted: #6a6a7a;
+  --theme-phosphor-bar-bg: rgba(200, 200, 210, 0.08);
+  --theme-phosphor-border: rgba(200, 200, 210, 0.12);
+  --theme-phosphor-inset-top: rgba(0, 0, 0, 0.35);
+  --theme-phosphor-inset-bottom: rgba(0, 0, 0, 0.12);
+  --theme-display-dot-matrix: color-mix(in srgb, #c8c8d0 5%, transparent);
+  --theme-display-lcd-band: color-mix(in srgb, #080808 6%, transparent);
+  background-color: #080808 !important;
+  background-image:
+    radial-gradient(circle, var(--theme-display-dot-matrix) 1px, transparent 1px),
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0px,
+      transparent 2px,
+      var(--theme-display-lcd-band) 2px,
+      var(--theme-display-lcd-band) 4px
+    ) !important;
+  background-size: 2px 2px, 100% 4px;
+  box-shadow:
+    inset 0 2px 6px var(--theme-phosphor-inset-top),
+    inset 0 -1px 3px var(--theme-phosphor-inset-bottom) !important;
+}
+
+/* ARCTIC + PHOSPHOR DARK — SLATE readout palette on forecast + fusion */
+[data-theme="arctic"] [data-display-texture="phosphor-dark"] .phosphor-display-surface .text-stealth-muted,
+[data-theme="arctic"] [data-display-texture="phosphor-dark"] .phosphor-display-surface .text-stealth-muted\/30,
+[data-theme="arctic"] [data-display-texture="phosphor-dark"] .phosphor-display-surface .text-stealth-muted\/40,
+[data-theme="arctic"] [data-display-texture="phosphor-dark"] .phosphor-display-surface .text-stealth-muted\/50,
+[data-theme="arctic"] [data-display-texture="phosphor-dark"] .phosphor-display-surface .text-stealth-muted\/60 {
+  color: #6a6a7a !important;
+}
+
+[data-theme="arctic"] [data-display-texture="phosphor-dark"] .phosphor-display-surface .text-nv-green {
+  color: #c8c8d0 !important;
+}
+
+[data-theme="arctic"] [data-display-texture="phosphor-dark"] .phosphor-display-surface .text-telemetry-cyan,
+[data-theme="arctic"] [data-display-texture="phosphor-dark"] .phosphor-display-surface .text-telemetry-cyan\/70 {
+  color: #0088aa !important;
+}
+
+[data-theme="arctic"] [data-display-texture="phosphor-dark"] .phosphor-display-surface .text-orange-400,
+[data-theme="arctic"] [data-display-texture="phosphor-dark"] .phosphor-display-surface .text-telemetry-amber,
+[data-theme="arctic"] [data-display-texture="phosphor-dark"] .phosphor-display-surface .text-telemetry-amber\/80 {
+  color: #b87a00 !important;
+}
+
+[data-theme="arctic"] [data-display-texture="phosphor-dark"] .phosphor-display-surface .bg-stealth-dark {
+  background-color: rgba(200, 200, 210, 0.08) !important;
+}
+
+[data-theme="arctic"] [data-display-texture="phosphor-dark"] .phosphor-display-surface .border-stealth-border,
+[data-theme="arctic"] [data-display-texture="phosphor-dark"] .phosphor-display-surface .border-stealth-border\/30,
+[data-theme="arctic"] [data-display-texture="phosphor-dark"] .phosphor-display-surface .border-stealth-border\/50 {
+  border-color: rgba(200, 200, 210, 0.12) !important;
+}
+
+[data-theme="arctic"] [data-display-texture="phosphor-dark"] .phosphor-display-surface .relative.overflow-hidden.border-stealth-border\/30 {
+  background-color: rgba(200, 200, 210, 0.04) !important;
+}
+
+[data-theme="arctic"] [data-display-texture="phosphor-dark"] .phosphor-display-surface .gpu-card {
+  background-color: rgba(200, 200, 210, 0.04) !important;
+  border-color: rgba(200, 200, 210, 0.15) !important;
+}
+
+[data-display-texture="phosphor-dark"] .phosphor-display-surface .gpu-card-name,
+html:not([data-theme="arctic"]) [data-display-texture="clean"] .phosphor-display-surface .gpu-card-name {
+  color: var(--theme-phosphor-text-muted) !important;
+}
+
+[data-display-texture="phosphor-dark"] .phosphor-display-surface .gpu-selected .gpu-card-name,
+html:not([data-theme="arctic"]) [data-display-texture="clean"] .phosphor-display-surface .gpu-selected .gpu-card-name {
+  color: var(--theme-phosphor-text) !important;
+}
+
+[data-theme="arctic"] [data-display-texture="clean"] .phosphor-display-surface .gpu-card-name {
+  color: var(--fusion-eink-gpu-name) !important;
+}
+
+[data-theme="arctic"] [data-display-texture="clean"] .phosphor-display-surface .gpu-selected .gpu-card-name {
+  color: var(--fusion-eink-gpu-name-selected) !important;
+}
+
+[data-theme="arctic"] [data-display-texture="phosphor-dark"] .phosphor-screen .fusion-prefill-hero-value--active,
+[data-theme="arctic"] [data-display-texture="phosphor-dark"] .phosphor-screen-inner .fusion-prefill-hero-value--active {
+  color: rgba(148, 163, 184, 0.7);
+}
+
+[data-theme="arctic"] [data-display-texture="phosphor-dark"] .phosphor-screen .fusion-prefill-hero-value--idle,
+[data-theme="arctic"] [data-display-texture="phosphor-dark"] .phosphor-screen-inner .fusion-prefill-hero-value--idle {
+  color: rgba(148, 163, 184, 0.25);
+}
+
+/* ARCTIC + CLEAN — flat white (only theme that keeps CLEAN bright) */
+[data-theme="arctic"] [data-display-texture="clean"] .phosphor-display-surface {
+  background-color: #ffffff !important;
+  background-image: none !important;
+  box-shadow:
+    inset 0 1px 0 rgba(0, 0, 0, 0.05),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.03) !important;
+}
+
+/* ARCTIC + GLITCH — recessed VRAM + softer chroma */
+[data-theme="arctic"] [data-display-texture="glitch"] .phosphor-screen-inner.phosphor-display-surface,
+[data-theme="arctic"] [data-display-texture="glitch"] .vram-forecast-display.phosphor-display-surface {
   background-color: var(--phosphor-bg);
 }
 
-[data-theme="arctic"][data-display-texture="phosphor-light"] .phosphor-screen-inner.phosphor-display-surface,
-[data-theme="arctic"][data-display-texture="phosphor-light"] .phosphor-screen.phosphor-display-surface {
-  background-color: var(--fusion-eink-surface);
-  box-shadow:
-    inset 0 2px 6px rgba(0, 0, 0, 0.32),
-    inset 0 -1px 3px rgba(0, 0, 0, 0.18),
-    inset 0 1px 40px rgba(255, 255, 255, 0.1);
-}
-
-/* ARCTIC + GLITCH — softer chroma on pale phosphor */
-[data-theme="arctic"][data-display-texture="glitch"] .phosphor-screen-inner.phosphor-display-surface,
-[data-theme="arctic"][data-display-texture="glitch"] .phosphor-screen.phosphor-display-surface {
+[data-theme="arctic"] [data-display-texture="glitch"] .phosphor-screen-inner.phosphor-display-surface {
   background-image:
     radial-gradient(circle, var(--theme-display-dot-matrix) 1px, transparent 1px),
     repeating-linear-gradient(
@@ -2979,26 +3449,26 @@ html, body, #root {
     );
 }
 
-[data-theme="arctic"][data-display-texture="glitch"] .display-glitch-chroma {
+[data-theme="arctic"] [data-display-texture="glitch"] .display-glitch-chroma {
   background:
     linear-gradient(90deg, rgba(255, 100, 140, 0.14) 0%, transparent 28%),
     linear-gradient(90deg, transparent 36%, rgba(60, 180, 140, 0.12) 48%, transparent 60%),
     linear-gradient(90deg, transparent 72%, rgba(80, 120, 200, 0.13) 100%);
 }
 
-[data-theme="arctic"][data-display-texture="glitch"] .display-glitch-block--1 {
+[data-theme="arctic"] [data-display-texture="glitch"] .display-glitch-block--1 {
   background-color: rgba(0, 160, 200, 0.16);
 }
 
-[data-theme="arctic"][data-display-texture="glitch"] .display-glitch-block--2 {
+[data-theme="arctic"] [data-display-texture="glitch"] .display-glitch-block--2 {
   background-color: rgba(200, 80, 180, 0.14);
 }
 
-[data-theme="arctic"][data-display-texture="glitch"] .display-glitch-block--3 {
+[data-theme="arctic"] [data-display-texture="glitch"] .display-glitch-block--3 {
   background-color: rgba(42, 140, 90, 0.15);
 }
 
-[data-theme="arctic"][data-display-texture="glitch"] .display-glitch-block--4 {
+[data-theme="arctic"] [data-display-texture="glitch"] .display-glitch-block--4 {
   background-color: rgba(80, 100, 180, 0.14);
 }
 
@@ -3092,7 +3562,7 @@ html, body, #root {
   color: var(--theme-industrial-text) !important;
 }
 
-/* VRAM/RAM bar tracks on display bg */
+/* VRAM/RAM bar tracks on display bg (DARK / CLEAN); phosphor-light uses --fusion-eink-bar-bg below */
 .industrial-display-area .relative.overflow-hidden.border-stealth-border\/30 {
   background-color: var(--theme-industrial-bar-track) !important;
 }
@@ -4448,7 +4918,7 @@ select option {
   background-blend-mode: overlay;
 }
 
-/* ── Fusion overlay — phosphor screen glow ─── */
+/* ── Fusion overlay — phosphor screen glow (display textures override via .phosphor-display-surface) ─── */
 .phosphor-screen {
   border-radius: 6px;
   background-color: var(--phosphor-bg, #08140a);
@@ -4458,6 +4928,28 @@ select option {
     inset 0 2px 6px var(--theme-phosphor-inset-top),
     inset 0 -1px 3px var(--theme-phosphor-inset-bottom),
     inset 0 1px 40px color-mix(in srgb, var(--theme-text) 8%, transparent);
+}
+
+/* Late cascade guard — texture modes own .phosphor-display-surface faces (VRAM + fusion) */
+[data-display-texture="phosphor-light"] .phosphor-display-surface.phosphor-screen,
+[data-display-texture="phosphor-light"] .phosphor-display-surface.phosphor-screen-inner,
+[data-display-texture="phosphor-light"] .phosphor-display-surface.vram-forecast-display {
+  background-color: var(--fusion-eink-surface) !important;
+  background-image: none !important;
+}
+
+[data-display-texture="clean"] .phosphor-display-surface.phosphor-screen,
+[data-display-texture="clean"] .phosphor-display-surface.phosphor-screen-inner,
+[data-display-texture="clean"] .phosphor-display-surface.vram-forecast-display {
+  background-color: var(--phosphor-bg, #030801) !important;
+  background-image: none !important;
+}
+
+[data-theme="arctic"] [data-display-texture="clean"] .phosphor-display-surface.phosphor-screen,
+[data-theme="arctic"] [data-display-texture="clean"] .phosphor-display-surface.phosphor-screen-inner,
+[data-theme="arctic"] [data-display-texture="clean"] .phosphor-display-surface.vram-forecast-display {
+  background-color: #ffffff !important;
+  background-image: none !important;
 }
 
 /* Themed text on phosphor screen (fusion overlay) */
@@ -4503,29 +4995,38 @@ select option {
   text-shadow: 0 0 3px rgba(245, 240, 232, 0.9), 0 0 6px rgba(245, 240, 232, 0.5);
 }
 
-/* Shared pool badge — outline only; white on dark phosphor, grey on arctic */
+/* CTX slot bars — base fallbacks (texture + theme rules above override) */
+.ctx-shared-pool-chip,
+.ctx-bar-capacity-chip {
+  border-width: 1px;
+  border-style: solid;
+}
+
 .ctx-shared-pool-chip {
   border-color: rgba(255, 255, 255, 0.45);
   color: rgba(255, 255, 255, 0.82);
 }
 
-[data-theme="arctic"] .ctx-shared-pool-chip {
-  border-color: rgba(75, 85, 99, 0.55);
-  color: rgba(55, 65, 81, 0.92);
-}
-
-/* Per-slot capacity outline (partitioned mode, empty bar) */
 .ctx-bar-capacity-chip {
   border-color: var(--theme-phosphor-border, rgba(148, 163, 184, 0.45));
   color: rgba(148, 163, 184, 0.72);
 }
 
-[data-theme="arctic"] .ctx-bar-capacity-chip {
-  border-color: rgba(107, 114, 128, 0.5);
-  color: rgba(75, 85, 99, 0.88);
+.ctx-bar-track {
+  border-width: 1px;
+  border-style: solid;
 }
 
-/* Fill % pinned inside bar top */
+.ctx-bar-track--active {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: transparent;
+}
+
+.ctx-bar-track--empty {
+  background: transparent;
+  border-color: rgba(255, 255, 255, 0.05);
+}
+
 .ctx-bar-fill-pct--active {
   color: rgba(255, 255, 255, 0.92);
   text-shadow: 0 0 4px rgba(0, 0, 0, 0.95), 0 1px 2px rgba(0, 0, 0, 0.8);
@@ -4535,9 +5036,22 @@ select option {
   color: transparent;
 }
 
-[data-theme="arctic"] .ctx-bar-fill-pct--active {
-  color: rgba(17, 24, 39, 0.92);
-  text-shadow: 0 0 3px rgba(255, 255, 255, 0.85), 0 0 6px rgba(255, 255, 255, 0.45);
+.ctx-bar-fill--processing {
+  background: #22c55e;
+}
+
+.ctx-bar-fill--idle {
+  background: rgba(99, 102, 241, 0.5);
+}
+
+.ctx-bar-slot-label {
+  background: rgba(0, 0, 0, 0.5);
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.fusion-mult-chip {
+  display: inline-block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
 
 /* ── Dock expanded panel slide-up animation ─── */
@@ -4641,17 +5155,50 @@ select option {
   filter: grayscale(1);
 }
 
-/* ── CTX slider track (native + custom) ── */
+/* ── CTX slider track (native + custom) — uses app theme accent tokens ── */
 .ctx-slider-track {
-  background: #0a0a0f;
-  border: 1px solid rgba(74, 222, 128, 0.3);
+  background: var(--theme-panel-accent);
+  border: 1px solid color-mix(in srgb, var(--theme-accent-bright) 30%, transparent);
   box-sizing: border-box;
 }
 
 .ctx-slider-thumb {
-  background: #4ade80;
-  box-shadow: 0 0 6px rgba(74, 222, 128, 0.3);
+  background: var(--theme-accent-bright);
+  box-shadow: 0 0 6px var(--theme-accent-glow);
   pointer-events: none;
+}
+
+.ctx-slider-tick {
+  background: color-mix(in srgb, var(--theme-accent-bright) 35%, transparent);
+}
+
+.ctx-slider-tick--active {
+  background: var(--theme-accent-bright);
+}
+
+.ctx-slider-tick-tooltip {
+  color: var(--theme-accent-bright);
+}
+
+.ctx-slider-value-input {
+  background: var(--theme-chip-bg);
+  border: 1px solid var(--theme-chip-border);
+  color: var(--theme-text);
+}
+
+.ctx-slider-value-input:focus {
+  border-color: var(--theme-chip-active-border);
+  outline: none;
+}
+
+.ctx-slider-value-input--edited {
+  background: var(--theme-bg);
+  border-color: var(--theme-border-subtle);
+  color: var(--theme-text);
+}
+
+.ctx-slider-value-input--edited:focus {
+  border-color: color-mix(in srgb, var(--theme-text) 35%, transparent);
 }
 
 /* Native range — transparent track so .ctx-slider-track shows through */
@@ -4669,19 +5216,19 @@ select option {
   background: transparent !important;
 }
 
-/* ── Slider Param (slider-param class) — hollow green, chip color #4ade80 ── */
+/* ── Slider Param (slider-param class) — theme accent track + thumb ── */
 
 .slider-param::-webkit-slider-runnable-track {
   height: 6px;
-  background: #0a0a0f !important;
-  border: 1px solid rgba(74, 222, 128, 0.3);
+  background: var(--theme-panel-accent) !important;
+  border: 1px solid color-mix(in srgb, var(--theme-accent-bright) 30%, transparent);
   border-radius: 2px;
 }
 
 .slider-param::-moz-range-track {
   height: 6px;
-  background: #0a0a0f !important;
-  border: 1px solid rgba(74, 222, 128, 0.3);
+  background: var(--theme-panel-accent) !important;
+  border: 1px solid color-mix(in srgb, var(--theme-accent-bright) 30%, transparent);
   border-radius: 2px;
 }
 
@@ -4694,8 +5241,8 @@ select option {
   width: 15px;
   height: 15px;
   border-radius: 2px;
-  background: #4ade80 !important;
-  box-shadow: 0 0 6px rgba(74, 222, 128, 0.3);
+  background: var(--theme-accent-bright) !important;
+  box-shadow: 0 0 6px var(--theme-accent-glow);
   margin-top: -3px; /* center thumb on track */
 }
 
@@ -4703,8 +5250,8 @@ select option {
   width: 15px;
   height: 15px;
   border-radius: 2px;
-  background: #4ade80 !important;
-  box-shadow: 0 0 6px rgba(74, 222, 128, 0.3);
+  background: var(--theme-accent-bright) !important;
+  box-shadow: 0 0 6px var(--theme-accent-glow);
   border: none;
 }
 
@@ -4713,14 +5260,14 @@ select option {
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: rgba(74, 222, 128, 0.2);
+  background: color-mix(in srgb, var(--theme-accent-bright) 20%, transparent);
   transition: all 0.15s ease;
 }
 .slider-snap-dot-active {
   width: 7px !important;
   height: 7px !important;
-  background: #4ade80 !important;
-  box-shadow: 0 0 6px rgba(74, 222, 128, 0.5);
+  background: var(--theme-accent-bright) !important;
+  box-shadow: 0 0 6px var(--theme-accent-glow);
 }
 
 /* ── FusionOverlay animations ─── */

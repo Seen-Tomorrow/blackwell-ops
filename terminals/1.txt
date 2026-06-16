@@ -3,7 +3,7 @@ pid: 25720
 cwd: "C:\Users\GHOST-TOWER\INFRA\blackwell-ops"
 command: "foreach ($port in 9091..9098) { $r = Test-NetConnection -ComputerName 127.0.0.1 -Port $port -WarningAction SilentlyContinue; Write-Host \"port $port : $($r.TcpTestSucceeded)\" }; Get-Process -Id 37236,34020 -ErrorAction SilentlyContinue | Format-Table Id,ProcessName"
 started_at: 2026-06-16T08:01:14.896Z
-running_for_ms: 14290014 
+running_for_ms: 22590013 
 ---
 port 9091 : False
 port 9092 : False

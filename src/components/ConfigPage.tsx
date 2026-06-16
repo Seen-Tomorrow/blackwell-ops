@@ -25,7 +25,13 @@ import {
   savePowerUserState,
   type PowerUserState,
 } from "../lib/storage";
-import { dispatchAppEvent, dispatchPowerUserChanged, EVENTS, type NavigateConfigDetail } from "../lib/events";
+import {
+  dispatchAppEvent,
+  dispatchClearLocalStorage,
+  dispatchPowerUserChanged,
+  EVENTS,
+  type NavigateConfigDetail,
+} from "../lib/events";
 import type { SetupGuideState } from "../hooks/useSetupGuide";
 import type { RawCatalogEntry } from "../lib/catalog";
 import { catalogEntryToParam } from "../lib/catalog";
@@ -104,6 +110,7 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
 
   // Reset confirm dialog
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [showClearStorageConfirm, setShowClearStorageConfirm] = useState(false);
 
   // ── Param creator modal state ───────────────────────────────
   const [showCreatorModal, setShowCreatorModal] = useState(false);
@@ -283,6 +290,32 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
     dispatchAppEvent(EVENTS.paramConfigChanged);
     showSaved("RESET TO DEFAULTS");
   }, [currentProvider, isPowerUser, selectedProviderId]);
+
+  useEffect(() => {
+    const unhideAllHiddenParams = async () => {
+      if (!currentProvider || !isPowerUser) return;
+      const currentUserParams = buildUserSavedParams(currentProvider);
+      if (!currentUserParams.some((d) => d.hidden)) return;
+      const updatedUserParams = currentUserParams.map((d) =>
+        d.hidden ? { ...d, hidden: false } : d,
+      );
+      const updatedProvider = { ...currentProvider, userEditedTemplateParams: updatedUserParams };
+      setAllProviders((prev) =>
+        prev.map((p) => (p.id !== selectedProviderId ? p : updatedProvider)),
+      );
+      await persistProviderToConfig(updatedProvider);
+      dispatchAppEvent(EVENTS.paramConfigChanged);
+      showSaved("UNHIDDEN");
+    };
+    window.addEventListener(EVENTS.showAllHiddenParams, unhideAllHiddenParams);
+    return () => window.removeEventListener(EVENTS.showAllHiddenParams, unhideAllHiddenParams);
+  }, [
+    currentProvider,
+    isPowerUser,
+    buildUserSavedParams,
+    persistProviderToConfig,
+    selectedProviderId,
+  ]);
 
   // ── Admin: add new param definition (from modal) ────────────────────────
   const handleCreatorSubmit = useCallback(async (def: Omit<UserEditedTemplateParam, "order">) => {
@@ -803,6 +836,14 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
             <div className="ml-auto flex gap-2 items-center">
               {/* Action buttons — visible when unlocked */}
               <div className={`flex gap-2 transition-opacity ${isPowerUser ? "opacity-100" : "opacity-0 pointer-events-none"}`}>
+                <button
+                  type="button"
+                  onClick={() => setShowClearStorageConfirm(true)}
+                  className="value-chip text-[9px] font-mono px-2 py-1 rounded-sm"
+                  title="Clear all BlackOps localStorage (theme, bench chips, catalog overrides, splits) and reload"
+                >
+                  CLEAR STORAGE
+                </button>
                 <button onClick={() => setShowResetConfirm(true)}
                   className="value-chip text-[9px] font-mono px-2 py-1 rounded-sm">
                   RESET TO DEFAULTS
@@ -824,6 +865,33 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
 
           {/* Reset confirm + saved flash */}
           <div className="relative">
+            {showClearStorageConfirm && (
+              <div className="absolute inset-0 bg-black/60 z-50" onClick={() => setShowClearStorageConfirm(false)}>
+                <div className="config-form-panel rounded-sm p-6 max-w-sm absolute top-[85px] right-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+                  <h3 className="text-xs font-mono theme-accent-text mb-3">CLEAR LOCAL STORAGE</h3>
+                  <p className="text-[10px] font-mono config-muted mb-4">
+                    Removes all BlackOps UI preferences from this machine — theme, zoom, bench chips, catalog overrides, split widths, log search, and per-provider keys. Provider configs on disk are untouched. The app will reload.
+                  </p>
+                  <div className="flex gap-2 justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setShowClearStorageConfirm(false)}
+                      className="value-chip text-[9px] font-mono px-3 py-1 rounded-sm"
+                    >
+                      CANCEL
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => dispatchClearLocalStorage(true)}
+                      className="value-chip-active text-[9px] font-mono px-3 py-1 rounded-sm"
+                    >
+                      YES, CLEAR
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {showResetConfirm && (
               <div className="absolute inset-0 bg-black/60 z-50" onClick={() => setShowResetConfirm(false)}>
                 <div className="config-form-panel rounded-sm p-6 max-w-sm absolute top-[85px] right-4 shadow-2xl" onClick={e => e.stopPropagation()}>

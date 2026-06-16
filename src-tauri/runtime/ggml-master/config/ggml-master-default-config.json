@@ -6,7 +6,7 @@
   "git_url": "https://github.com/ggml-org/llama.cpp",
   "branch": "master",
   "template_type": "ggml-llama",
-  "templateVersion": 9,
+  "templateVersion": 11,
   "build_profile": "-DGGML_CUDA=ON\n-DCMAKE_CUDA_ARCHITECTURES=\"86;89;120\"\n-DGGML_CUDA_PEER_TO_PEER=ON\n-DGGML_CUDA_FA_ALL_QUANTS=ON\n-DGGML_AVX512=ON\n-DGGML_NATIVE=ON\n-DCMAKE_CUDA_FLAGS=\"-Xcompiler /wd4056 -Xcompiler /wd4756 --diag-suppress 221\"\n-Wno-dev",
   "spawn_profile": {
     "model_flag": ["-m"],
@@ -98,7 +98,7 @@
       "flag": "--batch-size",
       "ptype": "arg_select",
       "values": [128, 256, 512, 1024, 2048, 4096, 8192],
-      "default": 2048,
+      "default": 4096,
       "ui_group": "PERFORMANCE",
       "note": "Batch size for token processing."
     },
@@ -107,7 +107,7 @@
       "label": "UBATCH",
       "flag": "--ubatch-size",
       "ptype": "arg_select",
-      "values": [128, 256, 512, 1024, 2048, 4096, 8192],
+      "values": [32, 64, 128, 256, 512, 1024, 2048],
       "default": 512,
       "ui_group": "PERFORMANCE",
       "note": "Micro-batch size for inference."
@@ -117,7 +117,7 @@
       "label": "PARALLEL",
       "flag": "--parallel",
       "ptype": "arg_select",
-      "values": [1, 2, 4, 8],
+      "values": [1, 2, 4, 8, 16, 32],
       "default": 1,
       "ui_group": "PERFORMANCE",
       "note": "Number of concurrent request sequences."
@@ -141,46 +141,6 @@
       "default": "on",
       "ui_group": "PERFORMANCE",
       "note": "Enable Flash Attention 2."
-    },
-    {
-      "key": "rope_scaling",
-      "label": "ROPE-SCALING",
-      "flag": "--rope-scaling",
-      "ptype": "arg_select",
-      "values": ["none", "linear", "yarn"],
-      "default": "none",
-      "ui_group": "ADVANCED",
-      "note": "RoPE scaling type for context extension beyond training limit. 'none' = no scaling."
-    },
-    {
-      "key": "rope_scale",
-      "label": "ROPE-SCALE",
-      "flag": "--rope-scale",
-      "ptype": "arg_select",
-      "values": [1, 2, 4, 8, 16],
-      "default": 1,
-      "ui_group": "ADVANCED",
-      "note": "Context expansion factor. 1.0 = native training context. Increase to extend beyond n_ctx_train."
-    },
-    {
-      "key": "yarn_orig_ctx",
-      "label": "YARN-ORIG-CTX",
-      "flag": "--yarn-orig-ctx",
-      "ptype": "arg_select",
-      "values": ["auto", 4096, 8192, 16384, 32768],
-      "default": "auto",
-      "ui_group": "ADVANCED",
-      "note": "Original training context for YaRN scaling. 'auto' resolves from GGUF metadata n_ctx_train."
-    },
-    {
-      "key": "rope_freq_base",
-      "label": "ROPE-FREQ-BASE",
-      "flag": "--rope-freq-base",
-      "ptype": "arg_select",
-      "values": ["auto", 10000, 50000, 100000, 1000000],
-      "default": "auto",
-      "ui_group": "ADVANCED",
-      "note": "RoPE frequency base. 'auto' resolves from GGUF metadata rope_freq_base."
     },
     {
       "key": "vision",
@@ -213,7 +173,7 @@
       "flag": "--no-mmap",
       "ptype": "switch_inverted",
       "values": ["on", "off"],
-      "default": "on",
+      "default": "off",
       "ui_group": "FEATURE-FLAGS",
       "note": "on = use mmap (no flag), off = --no-mmap. Inverted logic."
     },
@@ -254,10 +214,21 @@
       "flag": "--spec-draft-n-max",
       "ptype": "arg_select",
       "values": [1, 2, 3, 4, 5, 6, 8, 10, 16],
-      "default": 2,
+      "default": 3,
       "ui_group": "SPECULATIVE-DECODING",
       "hidden_default": true,
       "note": "Maximum number of draft tokens per speculative decoding step."
+    },
+	    {
+      "key": "spec_draft_n_min",
+      "label": "SPEC-DRAFT-N-MIN",
+      "flag": "--spec-draft-n-min",
+      "ptype": "arg_select",
+      "values": [1, 2, 3, 4, 5],
+      "default": 1,
+      "ui_group": "SPECULATIVE-DECODING",
+      "hidden_default": true,
+      "note": "minimum number of draft tokens to use for speculative decoding."
     }
   ]
 }
