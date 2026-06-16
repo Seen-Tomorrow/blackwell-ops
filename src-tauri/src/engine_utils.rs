@@ -303,14 +303,20 @@ pub fn same_executable_path(a: &Path, b: &Path) -> bool {
 /// Check if a Windows process is still alive by PID.
 /// Uses `PROCESS_QUERY_INFORMATION` only — do NOT add `PROCESS_VM_READ` (denied on child processes).
 pub fn is_process_alive(pid: u32) -> bool {
-    use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
+    use windows_sys::Win32::Foundation::{CloseHandle, GetLastError, INVALID_HANDLE_VALUE};
     use windows_sys::Win32::System::Threading::{
         GetExitCodeProcess, OpenProcess, PROCESS_QUERY_INFORMATION,
     };
 
+    if pid == 0 {
+        return false;
+    }
+
     let handle = unsafe { OpenProcess(PROCESS_QUERY_INFORMATION, 0, pid) };
     if handle == INVALID_HANDLE_VALUE {
-        return true;
+        // ERROR_INVALID_PARAMETER (87) — PID does not exist. ERROR_ACCESS_DENIED (5) — exists but protected.
+        let err = unsafe { GetLastError() };
+        return err == windows_sys::Win32::Foundation::ERROR_ACCESS_DENIED;
     }
 
     let mut exit_code: u32 = 0;

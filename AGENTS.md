@@ -12,7 +12,7 @@ Traps and invariants only — not a code map. Read the source for flows, schemas
 
 **Frontend persistence** — New localStorage keys → `storage.ts`. New window events → `events.ts`. Tauri event names (`engine-log-batch`, etc.) are backend-owned strings.
 
-**Windows `is_process_alive`** — `PROCESS_QUERY_INFORMATION` only. `PROCESS_VM_READ` is denied on child processes → false “dead” reads.
+**Windows `is_process_alive`** — `PROCESS_QUERY_INFORMATION` only. `PROCESS_VM_READ` is denied on child processes → false “dead” reads. `OpenProcess` failure with `ERROR_INVALID_PARAMETER` = PID gone (dead); `ERROR_ACCESS_DENIED` = treat as alive (protected process).
 
 ---
 
@@ -32,7 +32,9 @@ Traps and invariants only — not a code map. Read the source for flows, schemas
 
 ## Known gaps / flags
 
-- Reaper cleans up slots only while status is `Loading`; engine death after `Running` is not auto-cleared.
+- Reaper clears slots + `engine-locks` on unexpected exit (Loading or Running). Stale locks from prior sessions are swept on app start and when launching on a free port.
+- **Quiet stderr loads** — Some models stop writing to stderr early (pipe EOF) while still loading. `log_hub` must not fail the slot when spawn-time `engine_pid` is still alive; HTTP `/slots` or `/health` readiness owns promotion to Running. Do not require stderr “model loaded” lines for these models.
+- **GPU topo “External apps”** — Grey = NVML used minus (breakdown SELF + capped CUDA/runtime, max 4 GiB/GPU). Do not assign all NVML to our bar when a foreign app (LM Studio) shares the GPU. Stale NVML after stop = background `scan_gpus` + `gpuMemoryKey` re-eval + burst poll on `slot-cleared` (+2s).
 - `BINARY_UPDATES_ENABLED = false` in `binary_update.rs` until GitHub releases exist.
 - Fusion prefill % needs `prefill_tokens_total` from `NewPrompt` log; `/slots` `n_prompt_tokens_processed` is the numerator. Do not call `reset_prefill_counters()` on `/slots` new_request after NewPrompt — it zeroes total and forces fallback to sparse `print_timing` stderr lines.
 - Bench warmup→measured has no `/slots` idle gap — call `reset_bench_meters_for_port` at each bench phase start or hero AVG/LIVE TPS bleeds warmup into measured.

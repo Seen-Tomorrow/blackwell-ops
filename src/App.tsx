@@ -16,7 +16,7 @@ import LogLineText from "./components/LogLineText";
 import EngineLogsSwitcher from "./components/EngineLogsSwitcher";
 import { StatusProvider } from "./context/StatusBarContext";
 
-import { TelemetryProvider } from "./context/TelemetryContext";
+import { TelemetryProvider, type GpuPollTier } from "./context/TelemetryContext";
 import { FusionProvider } from "./context/FusionContext";
 import { ThemeProvider } from "./context/ThemeContext";
 import { ToastProvider } from "./components/Toast";
@@ -38,7 +38,7 @@ import {
 } from "./lib/storage";
 import { dispatchAppEvent, EVENTS } from "./lib/events";
 import { getActiveStackSlots, isActiveEngineSlot } from "./lib/engineStack";
-import type { ModelEntry, StackEntry, LogBatch, LogEntry, SystemEvent, ProviderConfig, AppUpdateInfo, CatalogUpdateEntry } from "./lib/types";
+import type { ModelEntry, StackEntry, LogBatch, LogEntry, SystemEvent, ProviderConfig, AppUpdateInfo } from "./lib/types";
 
 export type Tab = "catalog" | "modelhub" | "stack" | "reactor11" | "telemetry" | "intel" | "logs" | "config" | "sentinel";
 
@@ -60,7 +60,7 @@ function App() {
   const logsLengthsRef = useRef<Record<number, number>>({});
 
   const [catalogError, setCatalogError] = useState<string | null>(null);
-  const [catalogHfUpdates, setCatalogHfUpdates] = useState<Set<string>>(() => new Set());
+  const [catalogHfUpdates] = useState<Set<string>>(() => new Set()); // populated when manual check ships — CATALOG-HF-UPDATES.md
   const [providers, setProviders] = useState<ProviderConfig[]>([]);
   const [scanningPath, setScanningPath] = useState<string | null>(null);
   const [batchScanState, setBatchScanState] = useState<{active: boolean; scanned: number; failed: number; total: number}>({ active: false, scanned: 0, failed: 0, total: 0 });
@@ -239,27 +239,18 @@ function App() {
     }
   }, [reloadProviders]);
 
-  const refreshCatalogHfUpdates = useCallback(async () => {
-    try {
-      const entries = await invoke<CatalogUpdateEntry[]>("check_catalog_hf_updates");
-      setCatalogHfUpdates(new Set(entries.filter((e) => e.hasUpdate).map((e) => e.path)));
-    } catch (err) {
-      console.error("Catalog HF update check failed:", err);
-    }
-  }, []);
-
+  // Catalog HF update check disabled until catalog UX is ready — see CATALOG-HF-UPDATES.md
   const reloadModels = useCallback(async () => {
     try {
       setCatalogError(null);
       const data = await invoke<ModelEntry[]>("list_models");
       setModels(data);
-      void refreshCatalogHfUpdates();
     } catch (err) {
       const msg = typeof err === "string" ? err : JSON.stringify(err);
       console.error("Failed to reload models:", msg);
       setCatalogError(msg);
     }
-  }, [refreshCatalogHfUpdates]);
+  }, []);
 
   useEffect(() => {
     void reloadModels();
@@ -495,20 +486,33 @@ function App() {
     }, 0);
   }, [stack]);
 
+  const hasLiveEngines = useMemo(
+    () => stack.some(isActiveEngineSlot),
+    [stack],
+  );
+
+  const gpuPollTier = useMemo((): GpuPollTier => {
+    if (activeTab === "telemetry") return "fast";
+    if (activeTab === "catalog" || hasLiveEngines) return "normal";
+    return "idle";
+  }, [activeTab, hasLiveEngines]);
+
   return (
     <FusionProvider stack={stack}>
     <ToastProvider>
       <ThemeProvider>
         <FoundryProvider>
-          <TelemetryProvider pollingActive={activeTab === "telemetry"}>
+          <TelemetryProvider pollingActive={activeTab === "telemetry"} gpuPollTier={gpuPollTier}>
             <StatusProvider value={{ totalParams, hiddenCount, onShowAll: handleShowAll }}>
             <Layout activeTab={activeTab} onTabChange={(tab) => { setActiveTab(tab); if (tab === "config") setHasBinaryUpdates(false); }} providers={providers} appUpdate={appUpdate} hasBinaryUpdates={hasBinaryUpdates} onInstallAppUpdate={handleInstallAppUpdate}>
         {activeTab === "catalog" && (
               <ModelCatalog models={models} onLaunch={handleLaunchEngine} error={catalogError} onReload={reloadModels} providers={providers} committedVramMib={committedVramMib} isPowerUser={isPowerUser} scanningPath={scanningPath} setScanningPath={setScanningPath} batchScanState={batchScanState} setBatchScanState={setBatchScanState} stack={stack} setupGuide={setupGuide} catalogHfUpdates={catalogHfUpdates} />
            )}
-        <div className={`h-full min-h-0 flex flex-col ${activeTab === "modelhub" ? "" : "hidden"}`}>
-          <ModelHub />
-        </div>
+        {activeTab === "modelhub" && (
+          <div className="h-full min-h-0 flex flex-col">
+            <ModelHub />
+          </div>
+        )}
         {activeTab === "config" && <ConfigPage providers={providers} setupGuide={setupGuide} />}
         {activeTab === "stack" && (
           <StackView stack={stack} logs={logs} systemEvents={systemEvents} onStop={handleStopEngine} onStopAll={handleStopAll} />

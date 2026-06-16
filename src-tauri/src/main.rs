@@ -662,6 +662,11 @@ async fn main() {
                 });
             }
 
+            // Remove engine-locks left when engines crashed or the app was killed
+            tauri::async_runtime::spawn(async move {
+                engine_port_lock::sweep_stale_locks().await;
+            });
+
             app.manage(download_mgr);
 
             // -- Mobile Bridge

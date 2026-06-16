@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { ModelEntry, EngineConfig, GpuInfo, StackEntry, SystemInfo, VramManifest, FitScanResult } from "../lib/types";
 import { evaluate, applyFitValidation, committedSlotsFromStack, committedStackKey, parseCtx, type ScenarioInput, type FitPoint } from "../services/vram/scenarios/scenarios_factory";
 import { attachMemorySource, MEMORY_SOURCE_LABELS } from "../services/vram/memorySource";
+import { gpuMemoryBucketKey, vramManifestSnapshotEqual } from "../lib/telemetryGpu";
 
 interface LearnedVramFitAttempt {
   vram_mib: number;
@@ -113,12 +114,18 @@ export function useScenarioEvaluator({
   fitStyle = "",
 }: UseScenarioEvaluatorProps) {
   const [manifest, setManifest] = useState<VramManifest | null>(null);
+  const manifestRef = useRef<VramManifest | null>(null);
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [isValidating, setIsValidating] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Stabilize GPU reference: telemetry polls every 250ms creating new object refs.
-  // Only re-evaluate when GPU topology meaningfully changes (count or total VRAM shifts).
+  const commitManifest = useCallback((next: VramManifest | null) => {
+    if (vramManifestSnapshotEqual(manifestRef.current, next)) return;
+    manifestRef.current = next;
+    setManifest(next);
+  }, []);
+
+  // GPU count/capacity — stable across NVML noise.
   const gpuTopologyKey = gpus.length > 0
     ? `${gpus.length}-${gpus.reduce((s, g) => s + (g.memory_total_manufactured || g.memory_total), 0)}`
     : "0";
@@ -126,6 +133,7 @@ export function useScenarioEvaluator({
   // Track last topology key to skip redundant re-evals from telemetry noise.
   const isMountedRef = useRef(false);
   const lastTopologyRef = useRef<string>("");
+  const lastGpuMemoryRef = useRef<string>("");
   const lastModelPathRef = useRef("");
   const lastConfigKeyRef = useRef<string>("");
   const lastStackKeyRef = useRef<string>("");
@@ -164,6 +172,8 @@ export function useScenarioEvaluator({
 
   // Stack fingerprint — changes when committed engines (RUNNING/LOADING) start/stop or VRAM shifts.
   const stackKey = committedStackKey(stack);
+  // NVML used MiB buckets — finer when engines run (external bar), coarser when idle forecast only.
+  const gpuMemoryKey = gpuMemoryBucketKey(gpus, stackKey === "" ? 512 : 128);
 
   // System info loaded flag — triggers re-eval when it arrives (was null before).
   const sysInfoLoaded = systemInfo != null;
@@ -175,7 +185,7 @@ export function useScenarioEvaluator({
     const curConfig = configRef.current;
 
     if (!model || curGpus.length === 0) {
-      setManifest(null);
+      commitManifest(null);
       return;
     }
 
@@ -186,7 +196,7 @@ export function useScenarioEvaluator({
         content: `[ScenarioEvaluator] No cached GGUF metadata for ${model.path.split("/").pop()}`,
         style: "Warning",
       });
-      setManifest(null);
+      commitManifest(null);
       return;
     }
 
@@ -227,7 +237,7 @@ export function useScenarioEvaluator({
 
     try {
       const result = evaluate(input);
-      setManifest(result);
+      commitManifest(result);
 
       // Scenario debug emission (deduped by model path + scenario name)
       if (model.path !== lastScenarioDebugModelRef.current || result.scenario !== lastScenarioDebugNameRef.current) {
@@ -246,11 +256,11 @@ export function useScenarioEvaluator({
       }
     } catch (e) {
       console.error("[ScenarioEvaluator]", e);
-      setManifest(null);
+      commitManifest(null);
     } finally {
       setIsEvaluating(false);
     }
-  }, [model]);
+  }, [model, commitManifest]);
 
   runEvaluationRef.current = runEvaluation;
 
@@ -340,8 +350,9 @@ export function useScenarioEvaluator({
 
   useEffect(() => {
     if (!model || gpus.length === 0) {
-      setManifest(null);
+      commitManifest(null);
       lastTopologyRef.current = "";
+      lastGpuMemoryRef.current = "";
       lastModelPathRef.current = "";
       lastConfigKeyRef.current = "";
       lastStackKeyRef.current = "";
@@ -358,20 +369,24 @@ export function useScenarioEvaluator({
     // Skip re-eval only when model, topology, config, AND stack are all stable.
     const modelChanged = model.path !== lastModelPathRef.current || isFirstMount;
     const topologyChanged = gpuTopologyKey !== lastTopologyRef.current || isFirstMount;
+    const gpuMemoryChanged = gpuMemoryKey !== lastGpuMemoryRef.current || isFirstMount;
     const configChanged = configKey !== lastConfigKeyRef.current || isFirstMount;
     const stackChanged = stackKey !== lastStackKeyRef.current || isFirstMount;
     const sysInfoJustLoaded = sysInfoLoaded && !hadSysInfoRef.current;
     hadSysInfoRef.current = sysInfoLoaded;
 
-    if (!modelChanged && !topologyChanged && !configChanged && !stackChanged && !sysInfoJustLoaded) return;
+    if (!modelChanged && !topologyChanged && !gpuMemoryChanged && !configChanged && !stackChanged && !sysInfoJustLoaded) {
+      return;
+    }
     lastModelPathRef.current = model.path;
     lastTopologyRef.current = gpuTopologyKey;
+    lastGpuMemoryRef.current = gpuMemoryKey;
     lastConfigKeyRef.current = configKey;
     lastStackKeyRef.current = stackKey;
 
     scheduleEvaluationRef.current();
     return () => { if (timerRef.current) clearTimeout(timerRef.current); };
-  }, [model, gpuTopologyKey, gpus.length, configKey, stackKey, sysInfoLoaded]);
+  }, [model, gpuTopologyKey, gpuMemoryKey, gpus.length, configKey, stackKey, sysInfoLoaded, commitManifest]);
 
   // FIT validation — runs llama-fit-params with current config, re-evaluates scenario with measured total
   const validate = useCallback(async () => {
@@ -445,7 +460,7 @@ export function useScenarioEvaluator({
         input,
       );
 
-      setManifest(validatedManifest);
+      commitManifest(validatedManifest);
 
      // Validation debug emission — emit when scenario changed or validation newly applied
       if (model.path !== lastScenarioDebugModelRef.current || newManifest.scenario !== lastScenarioDebugNameRef.current || result.vram_mib !== validatedManifest.validatedVramMib) {
@@ -469,7 +484,7 @@ export function useScenarioEvaluator({
     } finally {
       setIsValidating(false);
     }
-  }, [model]);
+  }, [model, commitManifest]);
 
   return { manifest, isEvaluating, isValidating, validate };
 }

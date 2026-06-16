@@ -1,6 +1,8 @@
-import { createContext, useContext, useState, useEffect, useCallback } from "react";
+import { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { GpuInfo, CpuInfo, SystemInfo } from "../lib/types";
+import { gpuScanSnapshotEqual } from "../lib/telemetryGpu";
+import { useTauriListen } from "../hooks/useTauriListen";
 
 interface TelemetryState {
   gpus: GpuInfo[];
@@ -18,23 +20,52 @@ export function useTelemetry() {
   return useContext(TelemetryContext);
 }
 
-const GPU_INTERVAL_MS = 250;
+const GPU_FAST_INTERVAL_MS = 250;
+/** Catalog VRAM topo — 1s while catalog tab or live engines. */
+const GPU_BACKGROUND_INTERVAL_MS = 1000;
+/** Idle tabs — slow poll; slot-cleared still triggers immediate refresh. */
+const GPU_IDLE_INTERVAL_MS = 5000;
 const CPU_INTERVAL_MS = 500;
+/** NVML can lag CUDA free by 1–2s after engine stop. */
+const GPU_POST_STOP_POLL_MS = 2000;
+
+export type GpuPollTier = "fast" | "normal" | "idle";
+
+function gpuPollIntervalMs(tier: GpuPollTier): number {
+  if (tier === "fast") return GPU_FAST_INTERVAL_MS;
+  if (tier === "normal") return GPU_BACKGROUND_INTERVAL_MS;
+  return GPU_IDLE_INTERVAL_MS;
+}
+
+function gpuVramBucketMib(tier: GpuPollTier): number {
+  if (tier === "fast") return 64;
+  if (tier === "normal") return 128;
+  return 256;
+}
 
 export function TelemetryProvider({
   children,
   pollingActive,
+  gpuPollTier = "idle",
 }: {
   children: React.ReactNode;
   pollingActive: boolean;
+  /** fast = telemetry tab; normal = catalog or live engines; idle = other tabs */
+  gpuPollTier?: GpuPollTier;
 }) {
   const [gpus, setGpus] = useState<GpuInfo[]>([]);
   const [cpu, setCpu] = useState<CpuInfo | null>(null);
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
+  const gpusRef = useRef<GpuInfo[]>([]);
+  const gpuPollTierRef = useRef(gpuPollTier);
+  gpuPollTierRef.current = gpuPollTier;
 
   const pollGpu = useCallback(async () => {
     try {
       const data = await invoke<GpuInfo[]>("scan_gpus");
+      const bucketMib = gpuVramBucketMib(gpuPollTierRef.current);
+      if (gpuScanSnapshotEqual(gpusRef.current, data, bucketMib)) return;
+      gpusRef.current = data;
       setGpus(data);
     } catch {}
   }, []);
@@ -46,6 +77,26 @@ export function TelemetryProvider({
     } catch {}
   }, []);
 
+  const postStopPollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const schedulePostStopGpuPoll = useCallback(() => {
+    void pollGpu();
+    if (postStopPollRef.current) clearTimeout(postStopPollRef.current);
+    postStopPollRef.current = setTimeout(() => {
+      postStopPollRef.current = null;
+      void pollGpu();
+    }, GPU_POST_STOP_POLL_MS);
+  }, [pollGpu]);
+
+  useEffect(() => {
+    return () => {
+      if (postStopPollRef.current) clearTimeout(postStopPollRef.current);
+    };
+  }, []);
+
+  // Refresh NVML soon after engine stop — clears stale "External apps" hatched VRAM on topo.
+  useTauriListen<{ slot: number }>("slot-cleared", schedulePostStopGpuPoll, [schedulePostStopGpuPoll]);
+
   // One-time system info + hardware bootstrap snapshot (catalog / fit / reactor)
   useEffect(() => {
     invoke<SystemInfo>("scan_system_info")
@@ -55,38 +106,55 @@ export function TelemetryProvider({
     pollCpu();
   }, [pollGpu, pollCpu]);
 
-  // Live polling only while TELEMETRY tab is active
+  // GPU poll tier: fast (telemetry) / normal (catalog or engines) / idle (other tabs).
   useEffect(() => {
-    if (!pollingActive) return;
-
     let paused = document.visibilityState !== "visible";
+    const interval = gpuPollIntervalMs(gpuPollTier);
 
-    const tickGpu = () => { if (!paused) pollGpu(); };
-    const tickCpu = () => { if (!paused) pollCpu(); };
-
+    const tickGpu = () => { if (!paused) void pollGpu(); };
     tickGpu();
-    tickCpu();
-    const gpuTimer = setInterval(tickGpu, GPU_INTERVAL_MS);
-    const cpuTimer = setInterval(tickCpu, CPU_INTERVAL_MS);
+    const gpuTimer = setInterval(tickGpu, interval);
 
     const handleVisibility = () => {
       paused = document.visibilityState !== "visible";
-      if (!paused) {
-        pollGpu();
-        pollCpu();
-      }
+      if (!paused) void pollGpu();
     };
     document.addEventListener("visibilitychange", handleVisibility);
 
     return () => {
       clearInterval(gpuTimer);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, [gpuPollTier, pollGpu]);
+
+  // CPU live polling only while TELEMETRY tab is active
+  useEffect(() => {
+    if (!pollingActive) return;
+
+    let paused = document.visibilityState !== "visible";
+    const tickCpu = () => { if (!paused) void pollCpu(); };
+    tickCpu();
+    const cpuTimer = setInterval(tickCpu, CPU_INTERVAL_MS);
+
+    const handleVisibility = () => {
+      paused = document.visibilityState !== "visible";
+      if (!paused) void pollCpu();
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    return () => {
       clearInterval(cpuTimer);
       document.removeEventListener("visibilitychange", handleVisibility);
     };
-  }, [pollingActive, pollGpu, pollCpu]);
+  }, [pollingActive, pollCpu]);
+
+  const value = useMemo(
+    () => ({ gpus, cpu, systemInfo }),
+    [gpus, cpu, systemInfo],
+  );
 
   return (
-    <TelemetryContext.Provider value={{ gpus, cpu, systemInfo }}>
+    <TelemetryContext.Provider value={value}>
       {children}
     </TelemetryContext.Provider>
   );

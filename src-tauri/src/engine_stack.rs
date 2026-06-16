@@ -255,6 +255,8 @@ impl EngineStack {
         log_hub.spawn_slot_reader(
             slot_idx,
             config.alias.clone(),
+            pid,
+            config.port,
             stderr,
             learn_snapshot,
             model_ready,
@@ -414,6 +416,13 @@ impl EngineStack {
                 let source = Self::probe_readiness_source(&client, port).await;
 
                 if let Some(source) = source {
+                    let still_loading = {
+                        let slot = slot_arc.lock();
+                        matches!(slot.status, SlotStatus::Loading)
+                    };
+                    if !still_loading {
+                        return;
+                    }
                     log_hub.emit_console_line(
                         crate::output_console::BlackwellOutputConsoleCategory::Debug,
                         &format!("[{alias}] readiness={source} | port={port}"),
@@ -477,21 +486,7 @@ impl EngineStack {
                 let alive = crate::engine_utils::is_process_alive(pid);
 
                 if !alive {
-                    let still_loading = {
-                        let stack = stack_ref.lock().await;
-                        stack
-                            .get_slot(slot_idx)
-                            .map_or(false, |s| matches!(s.status, SlotStatus::Loading))
-                    };
-                    if still_loading {
-                        Self::fail_loading_slot(
-                            slot_idx,
-                            &stack_ref,
-                            log_hub.clone(),
-                            "Engine process exited during model load",
-                        )
-                        .await;
-                    }
+                    Self::handle_engine_died(slot_idx, &stack_ref, log_hub.clone()).await;
                     break;
                 }
             }
@@ -522,6 +517,102 @@ impl EngineStack {
                     crate::output_console::BlackwellOutputConsoleLineStyle::Warning,
                 );
             }
+        }
+    }
+
+    /// Reaper entry: engine PID gone while slot still Loading or Running.
+    async fn handle_engine_died(
+        slot_idx: usize,
+        stack_ref: &Arc<tokio::sync::Mutex<EngineStack>>,
+        log_hub: LogHub,
+    ) {
+        let during_load = {
+            let stack = stack_ref.lock().await;
+            let Some(slot) = stack.get_slot(slot_idx) else {
+                return;
+            };
+            if matches!(slot.status, SlotStatus::Idle) {
+                return;
+            }
+            matches!(slot.status, SlotStatus::Loading)
+        };
+
+        if during_load {
+            Self::fail_loading_slot(
+                slot_idx,
+                stack_ref,
+                log_hub,
+                "Engine process exited during model load",
+            )
+            .await;
+        } else {
+            Self::clear_crashed_running_slot(slot_idx, stack_ref, log_hub).await;
+        }
+    }
+
+    /// Running engine exited unexpectedly — clear slot, delete port lock, notify UI (not a launch error).
+    async fn clear_crashed_running_slot(
+        slot_idx: usize,
+        stack_ref: &Arc<tokio::sync::Mutex<EngineStack>>,
+        log_hub: LogHub,
+    ) {
+        let snapshot = {
+            let stack = stack_ref.lock().await;
+            let Some(slot) = stack.get_slot(slot_idx) else {
+                return;
+            };
+            if !matches!(slot.status, SlotStatus::Running) {
+                return;
+            }
+            (slot.alias.clone(), slot.pid)
+        };
+
+        let (alias, pid) = snapshot;
+
+        crate::fusion_brain::stop_brain(slot_idx).await;
+
+        log_hub
+            .emit_system_event(
+                slot_idx,
+                &alias,
+                "ENGINE_EXIT: Engine process exited unexpectedly",
+            )
+            .await;
+        log_hub.emit_console_line(
+            crate::output_console::BlackwellOutputConsoleCategory::Engines,
+            &format!("[{alias}] Engine exited unexpectedly — slot cleared"),
+            crate::output_console::BlackwellOutputConsoleLineStyle::Warning,
+        );
+
+        let proc_to_stop = {
+            let stack = stack_ref.lock().await;
+            stack
+                .slots
+                .get(slot_idx)
+                .and_then(|s| s.as_ref())
+                .map(|slot_arc| {
+                    let mut slot = slot_arc.lock();
+                    slot.child_proc.take()
+                })
+                .flatten()
+        };
+
+        {
+            let stack = stack_ref.lock().await;
+            stack.clear_slot(slot_idx);
+            stack.emit_stack_changed();
+        }
+        log_hub.emit("slot-cleared", &serde_json::json!({ "slot": slot_idx }));
+
+        if let Some(proc) = proc_to_stop {
+            tokio::spawn(Self::finish_process_stop(
+                pid,
+                proc,
+                Some(log_hub),
+                slot_idx,
+                alias,
+                false,
+            ));
         }
     }
 

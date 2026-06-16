@@ -49,9 +49,68 @@ fn read_lock(port: u16) -> Option<EnginePortLock> {
     serde_json::from_str(&data).ok()
 }
 
+/// Remove lock files left after engine/app crashes (engine dead and/or port free).
+pub async fn sweep_stale_locks() {
+    let dir = locks_dir();
+    let Ok(entries) = std::fs::read_dir(&dir) else {
+        return;
+    };
+
+    let mut removed = 0usize;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Some(port) = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .and_then(|s| s.parse::<u16>().ok())
+        else {
+            continue;
+        };
+
+        let Some(lock) = read_lock(port) else {
+            let _ = std::fs::remove_file(&path);
+            removed += 1;
+            continue;
+        };
+
+        // Port free = no listener; lock is orphaned metadata regardless of PID recycle quirks.
+        let port_busy = crate::engine_utils::is_port_in_use(port).await;
+        if !port_busy {
+            log::info!(
+                "[port_lock] Sweep: removing stale lock for port {port} (port free, lock PID {})",
+                lock.engine_pid
+            );
+            delete_lock(port);
+            removed += 1;
+            continue;
+        }
+
+        // Port busy but listener differs from lock — stale lock file.
+        if let Some(listener_pid) = crate::engine_utils::get_listening_pid(port).await {
+            if listener_pid != lock.engine_pid {
+                log::info!(
+                    "[port_lock] Sweep: removing stale lock for port {port} \
+                     (listener PID {listener_pid} != lock PID {})",
+                    lock.engine_pid
+                );
+                delete_lock(port);
+                removed += 1;
+            }
+        }
+    }
+
+    if removed > 0 {
+        log::info!("[port_lock] Sweep removed {removed} stale engine lock(s)");
+    }
+}
+
 /// Port busy: kill only a verified Blackwell orphan; otherwise fail without touching other apps.
 pub async fn reclaim_our_ghost_or_fail(port: u16, binary_path: &Path) -> Result<(), String> {
     if !crate::engine_utils::is_port_in_use(port).await {
+        if read_lock(port).is_some() {
+            log::info!("[port_lock] Port {port} free — removing stale lock file");
+            delete_lock(port);
+        }
         return Ok(());
     }
 

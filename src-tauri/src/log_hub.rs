@@ -84,6 +84,8 @@ impl LogHub {
         &self,
         slot_idx: usize,
         alias: String,
+        engine_pid: u32,
+        engine_port: u16,
         stderr: std::process::ChildStderr,
         learn_snapshot: crate::vram_learn::VramLearnSnapshot,
         model_ready: std::sync::Arc<std::sync::atomic::AtomicBool>,
@@ -121,6 +123,8 @@ impl LogHub {
             app_handle,
             slot_idx,
             alias,
+            engine_pid,
+            engine_port,
             line_rx,
             learn_snapshot,
             model_ready,
@@ -135,6 +139,8 @@ impl LogHub {
         app_handle: AppHandle,
         slot_idx: usize,
         alias: String,
+        engine_pid: u32,
+        engine_port: u16,
         mut line_rx: mpsc::Receiver<String>,
         learn_snapshot: crate::vram_learn::VramLearnSnapshot,
         model_ready: std::sync::Arc<std::sync::atomic::AtomicBool>,
@@ -204,6 +210,8 @@ impl LogHub {
                                     &app_handle,
                                     slot_idx,
                                     &alias,
+                                    engine_pid,
+                                    engine_port,
                                     model_ready.load(Ordering::Acquire),
                                     "Engine exited before model finished loading",
                                 )
@@ -638,13 +646,36 @@ impl LogHub {
     async fn cleanup_slot_if_still_active(
         app_handle: &AppHandle,
         slot_idx: usize,
-        _alias: &str,
+        alias: &str,
+        engine_pid: u32,
+        engine_port: u16,
         model_ready: bool,
         reason: &str,
     ) {
         if model_ready {
             return;
         }
+
+        // Stderr pipe EOF ≠ process exit. Quiet/new models often stop writing to stderr
+        // while mmap/GPU load continues — defer readiness to the HTTP probe.
+        if crate::engine_utils::is_process_alive(engine_pid) {
+            log::info!(
+                "[log_hub] slot={} ({}) stderr ended but engine PID {engine_pid} still alive on port {engine_port} — waiting on HTTP readiness",
+                slot_idx,
+                alias
+            );
+            if let Some(ctx) = app_handle.try_state::<crate::engine::AppContext>() {
+                ctx.blackwell_output_console_manager.emit_line_to_category(
+                    BlackwellOutputConsoleCategory::Engines,
+                    format!(
+                        "[{alias}] Stderr quiet — model still loading (readiness via HTTP on port {engine_port})"
+                    ),
+                    BlackwellOutputConsoleLineStyle::Normal,
+                );
+            }
+            return;
+        }
+
         let Some(ctx) = app_handle.try_state::<crate::engine::AppContext>() else {
             return;
         };
@@ -656,22 +687,6 @@ impl LogHub {
         };
         if !still_active {
             return;
-        }
-
-        let pid = {
-            let stack = ctx.stack.lock().await;
-            stack.get_slot(slot_idx).and_then(|s| s.pid)
-        };
-        if let Some(pid) = pid {
-            if crate::engine_utils::is_process_alive(pid) {
-                log::warn!(
-                    "[log_hub] slot={} stderr closed but pid {} still alive — not failing load ({})",
-                    slot_idx,
-                    pid,
-                    reason
-                );
-                return;
-            }
         }
 
         crate::engine_stack::EngineStack::fail_loading_slot(

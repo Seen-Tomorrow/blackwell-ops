@@ -1,4 +1,5 @@
 import type { GpuAllocation } from "../lib/types";
+import { splitGpuTopoBarUsage } from "../services/vram/scenarios/scenarios_factory";
 
 interface GpuTopologyProps {
   gpuAllocations: GpuAllocation[];
@@ -24,10 +25,14 @@ export default function GpuTopology({ gpuAllocations, gpuBarColor, ramVisible, r
           // Projected load percentage
           const projectedPct = totalMib > 0 ? (alloc.projectedLoadGb * 1024 / totalMib) * 100 : 0;
 
-          // Running engines + external breakdown
-          const totalRunningMib = alloc.runningEngines.reduce((sum, e) => sum + e.vramUsedMib, 0);
-          const osOtherMib = Math.max(0, usedMib - totalRunningMib);
-          const runningPct = totalMib > 0 ? (totalRunningMib / totalMib) * 100 : 0;
+          const breakdownMib = alloc.runningEngines.reduce((sum, e) => sum + e.vramUsedMib, 0);
+          const hasOurEngines = alloc.runningEngines.length > 0;
+          const { engineBarMib, osOtherMib, attributedOverheadMib } = splitGpuTopoBarUsage(
+            usedMib,
+            breakdownMib,
+            hasOurEngines,
+          );
+          const enginePct = totalMib > 0 ? (engineBarMib / totalMib) * 100 : 0;
           const osPct = totalMib > 0 ? (osOtherMib / totalMib) * 100 : 0;
 
           // Total utilization: projected + existing used (cap at 100% for display)
@@ -54,8 +59,11 @@ export default function GpuTopology({ gpuAllocations, gpuBarColor, ramVisible, r
 
           const isSelected = selectedGpuIndices?.includes(alloc.gpuIndex) ?? false;
 
-          // Tooltip text
-          const tooltipText = `Running engines: ${(totalRunningMib / 1024).toFixed(1)} GB | External apps: ${(osOtherMib / 1024).toFixed(1)} GB`;
+          const tooltipText = hasOurEngines
+            ? attributedOverheadMib >= 64
+              ? `Engines: ${(engineBarMib / 1024).toFixed(1)} GB (${(breakdownMib / 1024).toFixed(1)} GB weights + ${(attributedOverheadMib / 1024).toFixed(1)} GB CUDA/runtime) | External: ${(osOtherMib / 1024).toFixed(1)} GB`
+              : `Engines: ${(engineBarMib / 1024).toFixed(1)} GB | External: ${(osOtherMib / 1024).toFixed(1)} GB`
+            : `Running engines: ${(breakdownMib / 1024).toFixed(1)} GB | External apps: ${(osOtherMib / 1024).toFixed(1)} GB`;
 
           return (
             <div
@@ -102,11 +110,11 @@ export default function GpuTopology({ gpuAllocations, gpuBarColor, ramVisible, r
                   />
                 )}
 
-                {/* Running engines — fills from right after external, colored by utilization (capped) */}
-                {totalRunningMib > 0 && (
+                {/* Our engines — breakdown SELF + capped CUDA/runtime overhead */}
+                {engineBarMib > 0 && (
                   <div
                     style={{
-                      width: `${Math.min(runningPct, 100)}%`,
+                      width: `${Math.min(enginePct, 100)}%`,
                       right: `${osPct}%`,
                       backgroundColor: existingBarColor,
                       backgroundImage: HATCH_PATTERN,

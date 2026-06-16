@@ -148,6 +148,34 @@ export function gpuHasRunningEngines(gpuIdx: number, slots: RunningSlotInfo[]): 
   return slots.some(s => s.gpuMask.split(",").some(p => p.trim() === String(gpuIdx)));
 }
 
+/**
+ * VRAM bar split for GpuTopology — breakdown SELF is weights only; NVML includes CUDA/runtime.
+ * Cap overhead we attribute to our engines so foreign apps (LM Studio, etc.) stay in External.
+ */
+export const CUDA_RUNTIME_OVERHEAD_CAP_MIB = 4096;
+
+export function splitGpuTopoBarUsage(
+  usedMib: number,
+  breakdownMib: number,
+  hasOurEngines: boolean,
+): { engineBarMib: number; osOtherMib: number; attributedOverheadMib: number } {
+  if (!hasOurEngines) {
+    return {
+      engineBarMib: breakdownMib,
+      osOtherMib: Math.max(0, usedMib - breakdownMib),
+      attributedOverheadMib: 0,
+    };
+  }
+  const deltaMib = Math.max(0, usedMib - breakdownMib);
+  const attributedOverheadMib = Math.min(deltaMib, CUDA_RUNTIME_OVERHEAD_CAP_MIB);
+  const engineBarMib = breakdownMib + attributedOverheadMib;
+  return {
+    engineBarMib,
+    osOtherMib: Math.max(0, usedMib - engineBarMib),
+    attributedOverheadMib,
+  };
+}
+
 /** Per-GPU free VRAM (GB) — single source of truth for scenarios + auto VRAM launch. */
 export function computeGpuAvailableList(
   gpus: GpuInfo[],
