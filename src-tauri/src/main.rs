@@ -758,6 +758,8 @@ async fn main() {
             reactor_foundry::foundry_restore,
             reactor_foundry::foundry_check_toolchain,
             reactor_foundry::foundry_get_profiles,
+            foundry_toolchain::foundry_get_toolchain_install_info,
+            foundry_toolchain::foundry_open_toolchain_install_folder,
 
             // Blackwell Output Console commands (power-user output system)
             get_blackwell_output_console_categories,

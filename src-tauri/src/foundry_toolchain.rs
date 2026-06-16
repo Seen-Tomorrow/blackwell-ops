@@ -58,6 +58,31 @@ pub struct ProfileCheck {
     pub missing: Vec<String>,
 }
 
+/// Pinned GitHub release for the portable Foundry toolchain bundle.
+pub const TOOLCHAIN_RELEASE_TAG: &str = "toolchain";
+pub const TOOLCHAIN_GITHUB_REPO: &str = "Seen-Tomorrow/blackwell-ops";
+pub const TOOLCHAIN_ARCHIVE_PARTS: &[&str] = &[
+    "toolchain.7z.001",
+    "toolchain.7z.002",
+    "toolchain.7z.003",
+];
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ToolchainInstallInfo {
+    pub app_root: String,
+    pub extract_target: String,
+    pub toolchain_dir: String,
+    pub release_url: String,
+    pub archive_parts: Vec<String>,
+    pub compressed_size_label: String,
+    pub uncompressed_size_label: String,
+    pub manifest_present: bool,
+    pub profiles_ready: usize,
+    pub profiles_total: usize,
+    pub all_ready: bool,
+    pub profile_checks: Vec<ProfileCheck>,
+}
+
 pub fn toolchain_dir() -> PathBuf {
     crate::config::app_root_dir().join("toolchain")
 }
@@ -296,4 +321,72 @@ pub fn validate_profile_ready(id: &str) -> Result<ResolvedProfile, String> {
         ));
     }
     Ok(resolved)
+}
+
+pub fn toolchain_release_url() -> String {
+    format!(
+        "https://github.com/{}/releases/tag/{}",
+        TOOLCHAIN_GITHUB_REPO, TOOLCHAIN_RELEASE_TAG
+    )
+}
+
+pub fn install_info() -> Result<ToolchainInstallInfo, String> {
+    let app_root = crate::config::app_root_dir();
+    let tc_dir = toolchain_dir();
+    let checks = check_all_profiles()?;
+    let profiles_ready = checks.iter().filter(|c| c.ready).count();
+    let profiles_total = checks.len();
+
+    Ok(ToolchainInstallInfo {
+        app_root: app_root.to_string_lossy().to_string(),
+        extract_target: app_root.to_string_lossy().to_string(),
+        toolchain_dir: tc_dir.to_string_lossy().to_string(),
+        release_url: toolchain_release_url(),
+        archive_parts: TOOLCHAIN_ARCHIVE_PARTS.iter().map(|s| (*s).to_string()).collect(),
+        compressed_size_label: "~5.6 GB (3 parts)".to_string(),
+        uncompressed_size_label: "~22 GB".to_string(),
+        manifest_present: manifest_path().exists(),
+        profiles_ready,
+        profiles_total,
+        all_ready: profiles_ready == profiles_total && profiles_total > 0,
+        profile_checks: checks,
+    })
+}
+
+#[cfg(windows)]
+fn open_path_in_shell(path: &std::path::Path) -> Result<(), String> {
+    std::process::Command::new("explorer")
+        .arg(path)
+        .spawn()
+        .map_err(|e| format!("Failed to open folder: {}", e))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn foundry_get_toolchain_install_info(
+) -> Result<ToolchainInstallInfo, String> {
+    install_info()
+}
+
+/// Opens the app root folder where the user extracts the toolchain archive.
+#[tauri::command]
+pub async fn foundry_open_toolchain_install_folder() -> Result<(), String> {
+    let root = crate::config::app_root_dir();
+    if let Err(e) = ensure_manifest_on_disk() {
+        log::debug!("[toolchain] ensure_manifest_on_disk: {}", e);
+    }
+    if let Some(parent) = toolchain_dir().parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::create_dir_all(toolchain_dir());
+
+    #[cfg(windows)]
+    {
+        open_path_in_shell(&root)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = root;
+        Err("Portable Foundry toolchain is supported on Windows only.".into())
+    }
 }

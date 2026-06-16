@@ -1,17 +1,8 @@
-import { useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { useState } from "react";
 import type { ProviderConfig } from "../lib/types";
 import { useTelemetry } from "../context/TelemetryContext";
 import { ENV_META, type Env } from "../lib/foundry_constants";
-
-interface ProfileCheck {
-  id: string;
-  label: string;
-  cuda: string;
-  vs_label: string;
-  ready: boolean;
-  missing: string[];
-}
+import FoundryToolchainPanel from "./FoundryToolchainPanel";
 
 interface FoundryConfirmFormProps {
   provider: ProviderConfig;
@@ -52,21 +43,8 @@ export default function FoundryConfirmForm({
   const cpuThreads = cpu?.threads ?? 0;
   const cpuPhysical = cpu?.cores ?? 0;
 
-  const [toolchainCheck, setToolchainCheck] = useState<ProfileCheck | null>(null);
+  const [toolchainReady, setToolchainReady] = useState(false);
   const envMeta = ENV_META[environment];
-
-  useEffect(() => {
-    let mounted = true;
-    invoke<ProfileCheck[]>("foundry_check_toolchain")
-      .then((checks) => {
-        if (!mounted) return;
-        setToolchainCheck(checks.find((c) => c.id === environment) ?? null);
-      })
-      .catch(() => { if (mounted) setToolchainCheck(null); });
-    return () => { mounted = false; };
-  }, [environment]);
-
-  const toolchainReady = toolchainCheck?.ready ?? false;
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm">
@@ -103,18 +81,13 @@ export default function FoundryConfirmForm({
               <span className="value-chip text-[7px] font-mono px-1.5 py-0.5 rounded-sm opacity-80">{envMeta.vs}</span>
             </div>
 
-            {toolchainCheck && (
-              <div className={`pt-1 text-[8px] font-mono ${toolchainReady ? "text-nv-green" : "text-red-400"}`}>
-                {toolchainReady
-                  ? `✓ Portable toolchain ready (${toolchainCheck.vs_label} + CUDA ${toolchainCheck.cuda})`
-                  : `✗ Toolchain incomplete — run scripts/populate-foundry-toolchain.ps1`}
-                {!toolchainReady && toolchainCheck.missing.length > 0 && (
-                  <div className="text-[7px] text-stealth-muted mt-1 truncate" title={toolchainCheck.missing.join("\n")}>
-                    Missing: {toolchainCheck.missing[0]}
-                  </div>
-                )}
-              </div>
-            )}
+            <div className="pt-1">
+              <FoundryToolchainPanel
+                compact
+                requiredProfile={environment}
+                onReadyChange={setToolchainReady}
+              />
+            </div>
 
             {/* Build profile — provider CMake flags (first editable block) */}
             <div className="pt-2">
@@ -232,7 +205,7 @@ export default function FoundryConfirmForm({
               <button
                 type="button"
                 onClick={onConfirmBuild}
-                disabled={toolchainCheck !== null && !toolchainReady}
+                disabled={!toolchainReady}
                 className="foundry-confirm-build-btn"
               >
                 YES — BUILD

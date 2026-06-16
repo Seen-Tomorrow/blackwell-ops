@@ -100,3 +100,13 @@ export const ENV_META: Record<Env, EnvMeta> = {
   fresh:    { label: "FRESH",    cuda: "13.1", vs: "VS Build Tools 2022",        color: "fresh",    description: "Recent stable CUDA on VS2022" },
   stable:   { label: "STABLE",   cuda: "12.8", vs: "VS Build Tools 2022",        color: "stable",   description: "Long-lived compatibility profile" },
 };
+
+/** Pinned GitHub release for the portable Foundry toolchain (manual download). */
+export const TOOLCHAIN_RELEASE_TAG = "toolchain";
+export const TOOLCHAIN_RELEASE_URL =
+  "https://github.com/Seen-Tomorrow/blackwell-ops/releases/tag/toolchain";
+export const TOOLCHAIN_ARCHIVE_PARTS = [
+  "toolchain.7z.001",
+  "toolchain.7z.002",
+  "toolchain.7z.003",
+] as const;

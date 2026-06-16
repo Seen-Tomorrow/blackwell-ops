@@ -10,6 +10,7 @@ import { FIT_SCAN_PARALLEL_OPTIONS } from "../lib/onboarding";
 import { dispatchAppEvent, EVENTS } from "../lib/events";
 import { loadFoundryLastRefresh, loadStartupUpdatesCache, saveFoundryLastRefresh } from "../lib/storage";
 import { BuildProfileRow, RestoreConfirmModal, parseCmakeFlags, UpdateStatus } from "./FoundryComponents";
+import FoundryToolchainPanel from "./FoundryToolchainPanel";
 
 function formatElapsed(startTime: number): string {
   const secs = Math.floor((Date.now() - startTime) / 1000);
@@ -947,6 +948,11 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
                           <span className="text-[8px] font-mono config-muted truncate max-w-[240px]" title={p.git_url}>
                             {p.git_url.replace(/.*\/\/|\.git$/g, "")} :{p.branch}
                           </span>
+                        </div>
+
+                        {/* Portable toolchain — manual install guide */}
+                        <div className="px-3 pt-2 pb-1 border-b border-stealth-border/30">
+                          <FoundryToolchainPanel />
                         </div>
 
                         {/* Build profiles — vertical stack */}
