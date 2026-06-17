@@ -101,6 +101,8 @@ export interface UserEditedTemplateParam {
   values: (string | number)[];
   order: number;
   hidden?: boolean;
+  /** Per-param catalog hide — survives SPECULATIVE-DECODING group OFF/ON. */
+  userHidden?: boolean;
   hiddenValues?: (string | number)[];
   defaultValue?: string | number;
 

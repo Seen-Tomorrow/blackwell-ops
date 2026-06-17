@@ -131,6 +131,7 @@ export default function ParamCreatorModal({
       label: form.label || form.key.trim(),
       values: form.values,
       hidden: false,
+      userHidden: false,
       defaultValue: form.defaultValue !== "" ? form.defaultValue : undefined,
       ui_group: group || undefined,
     };

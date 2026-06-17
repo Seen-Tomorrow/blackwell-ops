@@ -271,7 +271,7 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
     dispatchAppEvent(EVENTS.paramConfigChanged);
   }, [selectedProviderId]);
 
-  // ── Reset to factory defaults (RESET TO DEFAULTS) — instant, deletes user config file ───
+  // ── Reset to factory defaults (RESET TO FACTORY DEFAULTS) — instant, deletes user config file ───
   const confirmReset = useCallback(async () => {
     if (!currentProvider || !isPowerUser) return;
     setShowResetConfirm(false);
@@ -297,7 +297,7 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
       const currentUserParams = buildUserSavedParams(currentProvider);
       if (!currentUserParams.some((d) => d.hidden)) return;
       const updatedUserParams = currentUserParams.map((d) =>
-        d.hidden ? { ...d, hidden: false } : d,
+        d.hidden ? { ...d, hidden: false, userHidden: false } : d,
       );
       const updatedProvider = { ...currentProvider, userEditedTemplateParams: updatedUserParams };
       setAllProviders((prev) =>
@@ -376,7 +376,11 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
     if (!currentProvider || !isPowerUser) return;
     
     const currentUserParams = buildUserSavedParams(currentProvider);
-    const updatedUserParams = currentUserParams.map(d => d.key === key ? { ...d, hidden: !d.hidden } : d);
+    const updatedUserParams = currentUserParams.map((d) => {
+      if (d.key !== key) return d;
+      const hidden = !d.hidden;
+      return { ...d, hidden, userHidden: hidden };
+    });
     const updatedProvider = { ...currentProvider, userEditedTemplateParams: updatedUserParams };
 
     setAllProviders(prev => prev.map(p => p.id !== selectedProviderId ? p : updatedProvider));
@@ -895,9 +899,9 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
             {showResetConfirm && (
               <div className="absolute inset-0 bg-black/60 z-50" onClick={() => setShowResetConfirm(false)}>
                 <div className="config-form-panel rounded-sm p-6 max-w-sm absolute top-[85px] right-4 shadow-2xl" onClick={e => e.stopPropagation()}>
-                  <h3 className="text-xs font-mono theme-accent-text mb-3">CONFIRM RESET</h3>
+                  <h3 className="text-xs font-mono theme-accent-text mb-3">CONFIRM RESET TO FACTORY</h3>
                   <p className="text-[10px] font-mono config-muted mb-4">
-                    This will reset all parameters to template defaults, remove added params and values, restore hidden items. Cannot be undone.
+                    This is hard factory reset, remove added params and values, restore hidden items. Cannot be undone - but APP will work. APP restart is needed!
                   </p>
                   <div className="flex gap-2 justify-end">
                     <button onClick={() => setShowResetConfirm(false)}

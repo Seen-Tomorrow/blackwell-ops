@@ -115,6 +115,7 @@ const RUNTIME_CONFIG_UI_GROUP = "RUNTIME-CONFIG";
  * Manual mode keeps the template ui_group (RUNTIME-CONFIG → right column).
  */
 const SIMPLE_MODE_LEFT_RUNTIME_KEYS = ["base_port"] as const;
+const BASE_PORT_CHIP_TOOLTIP = "Set your starting port, we will increment from here";
 const SIMPLE_MODE_LEFT_RUNTIME_KEY_SET = new Set<string>(SIMPLE_MODE_LEFT_RUNTIME_KEYS);
 
 function splitRuntimeDockColumns(
@@ -737,6 +738,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             <button
               key={`${paramRowKey(def, rowIdx)}-val-${valIdx}-${String(val)}`}
               tabIndex={isLocked ? -1 : 0}
+              title={def.key === "base_port" ? BASE_PORT_CHIP_TOOLTIP : undefined}
               onClick={() => {
                 if (isLocked) return;
                 updateParam(def.key, val);
@@ -1460,7 +1462,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                       testFlagsMode === "add" ? "mode-btn-add" : "mode-btn-replace"
                     }`}
                   >
-                    {testFlagsMode === "add" ? "+ ADD" : "= REP"}
+                    {testFlagsMode === "add" ? "+ APPEND" : "= REPLACE"}
                   </button>
                 )}
                 <button

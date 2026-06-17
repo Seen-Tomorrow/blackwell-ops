@@ -682,7 +682,7 @@ const ARCTIC: AppTheme = {
     "--theme-header-border": "#b8c4d0",
     "--theme-header-title": "#1a2030",
     "--theme-header-subtitle": "rgba(26, 32, 48, 0.45)",
-    "--theme-header-logo": "#2a6b4a",
+    "--theme-header-logo": "#1a2030",
     "--theme-nav-text": "#5a6478",
     "--theme-nav-hover-text": "#1a2030",
     "--theme-nav-hover-bg": "rgba(42, 107, 74, 0.08)",

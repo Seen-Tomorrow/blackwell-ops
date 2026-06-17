@@ -213,7 +213,7 @@
       "label": "SPEC-DRAFT-N-MAX",
       "flag": "--spec-draft-n-max",
       "ptype": "arg_select",
-      "values": [1, 2, 3, 4, 5, 6, 8, 10, 16],
+      "values": [1, 2, 3, 4, 5, 6, 8, 10, 12],
       "default": 3,
       "ui_group": "SPECULATIVE-DECODING",
       "hidden_default": true,

@@ -448,6 +448,9 @@ pub struct UserEditedTemplateParam {
     pub order: i32,
     #[serde(default)]
     pub hidden: bool,
+    /// Per-param catalog hide set in ConfigPage — survives SPECULATIVE-DECODING group OFF/ON.
+    #[serde(default, rename = "userHidden")]
+    pub user_hidden: bool,
     /// Values hidden from the catalog UI (persisted, but still usable).
     #[serde(default, rename = "hiddenValues")]
     pub hidden_values: Vec<serde_json::Value>,

@@ -136,8 +136,39 @@ pub async fn remove_provider(id: String, app: tauri::State<'_, AppContext>) -> R
     Ok(())
 }
 
+/// Toggle group visibility for engine config. OFF hides every param in the group; ON restores only
+/// params the user did not individually hide in ConfigPage (`user_hidden`).
+/// Returns the new group-off state (`true` = all hidden, `false` = group on).
+pub fn apply_group_hidden_toggle(
+    params: &mut [crate::types::UserEditedTemplateParam],
+    norm_group: &str,
+) -> bool {
+    let mut group_off = true;
+    for ep in params.iter() {
+        if crate::config::normalize_ui_group(&ep.ui_group) == norm_group {
+            if !ep.hidden {
+                group_off = false;
+                break;
+            }
+        }
+    }
+
+    group_off = !group_off;
+
+    for ep in params.iter_mut() {
+        if crate::config::normalize_ui_group(&ep.ui_group) == norm_group {
+            if group_off {
+                ep.hidden = true;
+            } else {
+                ep.hidden = ep.user_hidden;
+            }
+        }
+    }
+
+    group_off
+}
+
 /// Toggle `hidden` on every param belonging to a given UI group within a provider.
-/// Returns the new hidden state (`true` = all hidden, `false` = all visible).
 #[tauri::command]
 pub async fn toggle_group_hidden(provider_id: String, group_id: String, app: tauri::State<'_, AppContext>) -> Result<bool, String> {
     let mut cfg = app.config.lock().map_err(|e| e.to_string())?;
@@ -147,26 +178,7 @@ pub async fn toggle_group_hidden(provider_id: String, group_id: String, app: tau
         .ok_or(format!("Provider '{}' not found", provider_id))?;
 
     let norm_group = crate::config::normalize_ui_group(&group_id);
-
-    // Determine current state: if any param in the group is visible, we'll hide all. Otherwise unhide all.
-    let mut new_hidden = true;
-    for ep in &prov.user_edited_template_params {
-        if crate::config::normalize_ui_group(&ep.ui_group) == norm_group {
-            if !ep.hidden {
-                new_hidden = false;
-                break;
-            }
-        }
-    }
-
-    // Flip: if any visible → hide all. If all hidden → unhide all.
-    new_hidden = !new_hidden;
-
-    for ep in &mut prov.user_edited_template_params {
-        if crate::config::normalize_ui_group(&ep.ui_group) == norm_group {
-            ep.hidden = new_hidden;
-        }
-    }
+    let group_off = apply_group_hidden_toggle(&mut prov.user_edited_template_params, &norm_group);
 
     // Persist only this provider's config (targeted write)
     let updated_provider = cfg.providers.iter().find(|p| p.id == provider_id).cloned();
@@ -176,5 +188,51 @@ pub async fn toggle_group_hidden(provider_id: String, group_id: String, app: tau
         persist_single_provider(provider)?;
     }
 
-    Ok(new_hidden)
+    Ok(group_off)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::UserEditedTemplateParam;
+
+    fn spec_param(key: &str, hidden: bool, user_hidden: bool) -> UserEditedTemplateParam {
+        UserEditedTemplateParam {
+            key: key.to_string(),
+            label: key.to_string(),
+            values: vec![serde_json::json!("1")],
+            order: 0,
+            hidden,
+            user_hidden,
+            hidden_values: Vec::new(),
+            flag: None,
+            flag_pair: Vec::new(),
+            ptype: "arg_select".to_string(),
+            step: None,
+            ui_group: "SPECULATIVE-DECODING".to_string(),
+            note: String::new(),
+            pattern: String::new(),
+            default_value: serde_json::json!("1"),
+            user_added_values: Vec::new(),
+            factory_default: serde_json::json!("1"),
+            sub_params: None,
+            dock: String::new(),
+        }
+    }
+
+    #[test]
+    fn group_off_on_respects_user_hidden() {
+        let mut params = vec![
+            spec_param("draft", false, false),
+            spec_param("custom", true, true),
+        ];
+
+        assert!(apply_group_hidden_toggle(&mut params, "SPECULATIVE-DECODING"));
+        assert!(params.iter().all(|p| p.hidden));
+
+        assert!(!apply_group_hidden_toggle(&mut params, "SPECULATIVE-DECODING"));
+        assert!(!params[0].hidden);
+        assert!(params[1].hidden);
+        assert!(params[1].user_hidden);
+    }
 }

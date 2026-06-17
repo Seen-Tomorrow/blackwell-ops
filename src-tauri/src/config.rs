@@ -7,7 +7,7 @@
 //!
 //! ## Merge (`merge_template_for_provider`)
 //! Runs on every load and `save_provider`. Factory structural fields backfill; user cosmetic choices
-//! (hidden, order, userAddedValues, hidden_values) are never overwritten.
+//! (hidden, userHidden, order, userAddedValues, hidden_values) are never overwritten.
 //!
 //! ## RESET TO DEFAULTS
 //! Deletes user config file + frontend clears overrides and group-order localStorage. Full factory wipe.
@@ -615,6 +615,7 @@ fn user_edited_param_from_template(tp: &crate::templates::ProviderDefaultParam, 
         values: tp.values.clone(),
         order,
         hidden: tp.hidden_default,
+        user_hidden: false,
         hidden_values: Vec::new(),
         flag: tp.flag.clone(),
         flag_pair: tp.flag_pair.clone(),
@@ -1684,7 +1685,7 @@ fn sanitize_model_paths(config: &mut AppConfig) -> bool {
 /// Schema evolution merge: sync structural fields from fresh template, retain user UI preferences.
 ///
 /// Aggressive sync philosophy — factory template is source of truth for everything structural.
-/// Only purely cosmetic/organizational choices are preserved: hidden, order, userAddedValues, hidden_values.
+/// Only purely cosmetic/organizational choices are preserved: hidden, userHidden, order, userAddedValues, hidden_values.
 
 /// Normalize a JSON value to a canonical string for dedup comparison.
 /// Numbers are compared by numeric equality (1 == 1.0), everything else by string.
@@ -1869,6 +1870,7 @@ fn merge_user_params_with_template(
                 values: tmpl.values.clone(),
                 order: (user_edited.len() + i as usize) as i32,
                 hidden: tmpl.hidden_default,
+                user_hidden: false,
                 hidden_values: Vec::new(),
                 flag: tmpl.flag.clone(),
                 flag_pair: tmpl.flag_pair.clone(),
@@ -2168,6 +2170,7 @@ mod merge_tests {
             values: values.iter().map(|v| serde_json::Value::String(v.to_string())).collect(),
             order,
             hidden: true,
+            user_hidden: false,
             hidden_values: vec![serde_json::Value::String("hidden_val".to_string())],
             flag: Some(format!("--{}", key)),
             flag_pair: Vec::new(),
