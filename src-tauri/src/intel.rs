@@ -76,7 +76,7 @@ fn build_client() -> reqwest::Client {
 
     match std::env::var("GITHUB_TOKEN") {
         Ok(ref token) if !token.is_empty() => {
-            eprintln!("[intel] GITHUB_TOKEN detected (length={})", token.len());
+            log::debug!("[intel] GITHUB_TOKEN configured");
             let mut headers = HeaderMap::new();
             headers.insert(
                 AUTHORIZATION,
@@ -85,7 +85,7 @@ fn build_client() -> reqwest::Client {
             builder = builder.default_headers(headers);
         }
         _ => {
-            eprintln!("[intel] WARNING: GITHUB_TOKEN not set — rate limited to 60/hr");
+            log::debug!("[intel] GITHUB_TOKEN not set — rate limited to 60/hr");
         }
     }
 
@@ -370,8 +370,11 @@ async fn fetch_prs_by_labels(
 
         match client.get(&url).send().await {
             Ok(resp) => {
-                eprintln!("[intel] {} {} label={} status={} rate={}/{}",
-                    channel.repo, state, label,
+                log::debug!(
+                    "[intel] {} {} label={} status={} rate={}/{}",
+                    channel.repo,
+                    state,
+                    label,
                     resp.status(),
                     resp.headers().get("x-ratelimit-remaining").and_then(|v| v.to_str().ok()).unwrap_or("?"),
                     resp.headers().get("x-ratelimit-limit").and_then(|v| v.to_str().ok()).unwrap_or("?")
@@ -393,7 +396,7 @@ async fn fetch_prs_by_labels(
                 }
             }
             Err(e) => {
-                eprintln!("[intel] {} {} label={} fetch error: {}", channel.repo, state, label, e);
+                log::debug!("[intel] {} {} label={} fetch error: {}", channel.repo, state, label, e);
             }
         }
 
@@ -420,8 +423,10 @@ async fn fetch_prs_without_labels(
 
     match client.get(&url).send().await {
         Ok(resp) => {
-            eprintln!("[intel] {} {} status={} rate={}/{}",
-                channel.repo, state,
+            log::debug!(
+                "[intel] {} {} status={} rate={}/{}",
+                channel.repo,
+                state,
                 resp.status(),
                 resp.headers().get("x-ratelimit-remaining").and_then(|v| v.to_str().ok()).unwrap_or("?"),
                 resp.headers().get("x-ratelimit-limit").and_then(|v| v.to_str().ok()).unwrap_or("?")
@@ -439,7 +444,7 @@ async fn fetch_prs_without_labels(
             }
         }
         Err(e) => {
-            eprintln!("[intel] {} {} fetch error: {}", channel.repo, state, e);
+            log::debug!("[intel] {} {} fetch error: {}", channel.repo, state, e);
         }
     }
 
@@ -464,7 +469,8 @@ async fn fetch_recent_releases(client: &reqwest::Client, channel: &IntelChannel)
 
     let releases = match client.get(&url).send().await {
         Ok(resp) => {
-            eprintln!("[intel] {} releases status={} rate={}/{}",
+            log::debug!(
+                "[intel] {} releases status={} rate={}/{}",
                 channel.repo,
                 resp.status(),
                 resp.headers().get("x-ratelimit-remaining").and_then(|v| v.to_str().ok()).unwrap_or("?"),
@@ -473,7 +479,7 @@ async fn fetch_recent_releases(client: &reqwest::Client, channel: &IntelChannel)
             resp.json::<Vec<ReleaseSummary>>().await.unwrap_or_default()
         }
         Err(e) => {
-            eprintln!("[intel] {} releases fetch error: {}", channel.repo, e);
+            log::debug!("[intel] {} releases fetch error: {}", channel.repo, e);
             return vec![];
         }
     };

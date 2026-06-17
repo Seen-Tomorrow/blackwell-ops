@@ -236,16 +236,19 @@ pub async fn launch_engine(
 
     // Launch command logged to Blackwell Output Console instead of eprintln!
 
-    let log_path = std::env::temp_dir().join("blackwell-launch.log");
-    match std::fs::OpenOptions::new().create(true).append(true).open(&log_path) {
-        Ok(mut f) => {
-            use std::io::Write;
-            if let Err(e) = writeln!(f, "\n[{}] slot={} CMD:\n{}\n", chrono::Local::now().format("%H:%M:%S%.3f"), slot_idx, launch_cmd) {
-                log::warn!("Failed to write launch log: {}", e);
-            }
-            if let Err(e) = f.flush() { log::warn!("Failed to flush launch log: {}", e); }
-        },
-        Err(e) => log::warn!("Failed to open launch log at {}: {}", log_path.display(), e),
+    #[cfg(debug_assertions)]
+    {
+        let log_path = std::env::temp_dir().join("blackwell-launch.log");
+        match std::fs::OpenOptions::new().create(true).append(true).open(&log_path) {
+            Ok(mut f) => {
+                use std::io::Write;
+                if let Err(e) = writeln!(f, "\n[{}] slot={} CMD:\n{}\n", chrono::Local::now().format("%H:%M:%S%.3f"), slot_idx, launch_cmd) {
+                    log::warn!("Failed to write launch log: {}", e);
+                }
+                if let Err(e) = f.flush() { log::warn!("Failed to flush launch log: {}", e); }
+            },
+            Err(e) => log::warn!("Failed to open launch log at {}: {}", log_path.display(), e),
+        }
     }
 
     // Route launch status to Blackwell Output Console

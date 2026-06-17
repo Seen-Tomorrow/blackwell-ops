@@ -106,21 +106,14 @@ pub fn to_relative_path(abs: &PathBuf) -> String {
     }
 }
 
-/// DEV only: refresh `runtime/<provider>/config/*.json` from `src-tauri/runtime` so spawn_profile edits
-/// (e.g. max_engine_slots) apply without re-running predev or wiping mirrored binaries.
-#[cfg(debug_assertions)]
-fn sync_dev_runtime_factory_configs(app_root: &std::path::Path) {
-    let source = app_root.join("../../runtime");
+/// Copy factory `*-default-config.json` files from `source/<provider>/config/` into app_root runtime.
+fn copy_factory_config_jsons(source: &std::path::Path, app_root: &std::path::Path) -> usize {
     if !source.is_dir() {
-        log::debug!(
-            "[setup] Dev factory config sync skipped — source not found at {}",
-            source.display()
-        );
-        return;
+        return 0;
     }
 
     let mut copied = 0usize;
-    for entry in std::fs::read_dir(&source).into_iter().flatten().filter_map(|e| e.ok()) {
+    for entry in std::fs::read_dir(source).into_iter().flatten().filter_map(|e| e.ok()) {
         if !entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false) {
             continue;
         }
@@ -145,12 +138,59 @@ fn sync_dev_runtime_factory_configs(app_root: &std::path::Path) {
             }
         }
     }
+    copied
+}
 
+/// DEV only: refresh `runtime/<provider>/config/*.json` from `src-tauri/runtime` so spawn_profile edits
+/// (e.g. max_engine_slots, templateVersion) apply without re-running predev or wiping mirrored binaries.
+#[cfg(debug_assertions)]
+fn sync_dev_runtime_factory_configs(app_root: &std::path::Path) {
+    let source = app_root.join("../../runtime");
+    if !source.is_dir() {
+        log::debug!(
+            "[setup] Dev factory config sync skipped — source not found at {}",
+            source.display()
+        );
+        return;
+    }
+
+    let copied = copy_factory_config_jsons(&source, app_root);
     if copied > 0 {
         log::info!(
             "[setup] Dev: synced {} factory config JSON file(s) from {}",
             copied,
             source.display()
+        );
+    }
+}
+
+/// REL: refresh factory config JSON from bundled resources on every launch so templateVersion
+/// bumps ship to existing installs (runtime/ binaries are not re-copied once present).
+fn sync_runtime_factory_configs_from_resources(
+    app_handle: &tauri::AppHandle,
+    app_root: &std::path::Path,
+) {
+    let resource_path = match app_handle.path().resolve("runtime", BaseDirectory::Resource) {
+        Ok(p) => p,
+        Err(e) => {
+            log::warn!("[setup] Factory config sync skipped — runtime resource unavailable: {}", e);
+            return;
+        }
+    };
+
+    if !resource_path.exists() {
+        log::debug!(
+            "[setup] Factory config sync skipped — no runtime resource at {}",
+            resource_path.display()
+        );
+        return;
+    }
+
+    let copied = copy_factory_config_jsons(&resource_path, app_root);
+    if copied > 0 {
+        log::info!(
+            "[setup] Synced {} factory config JSON file(s) from bundled runtime",
+            copied
         );
     }
 }
@@ -162,6 +202,8 @@ pub fn ensure_portable_structure(app_handle: &tauri::AppHandle) {
 
     #[cfg(debug_assertions)]
     sync_dev_runtime_factory_configs(&root);
+    #[cfg(not(debug_assertions))]
+    sync_runtime_factory_configs_from_resources(app_handle, &root);
 
     // Create directories
     let _ = std::fs::create_dir_all(&data);
@@ -1701,6 +1743,17 @@ pub fn json_val_key(v: &serde_json::Value) -> String {
     }
 }
 
+/// Read `templateVersion` from the factory default config for a provider or template type.
+pub fn factory_template_version_for_provider(
+    provider_id: &str,
+    template_type: &str,
+    factory_provided: bool,
+) -> u32 {
+    resolve_merge_template_key(provider_id, template_type, factory_provided)
+        .map(|key| crate::templates::get_template_version_for_provider(&key))
+        .unwrap_or(1)
+}
+
 /// Resolve which runtime folder supplies the factory template for merge.
 pub fn resolve_merge_template_key(
     provider_id: &str,
@@ -2010,9 +2063,16 @@ fn build_config_with_providers_full(_gpu_count: usize, mut config: AppConfig) ->
 
             // Template version mismatch → set attention flag for UI banner.
             // Merge already applied; banner is advisory — save syncs version or user hits RESET.
-            if meta.template_version != p.template_version {
-                log::info!("[config] Provider '{}' template version changed: user={}, factory={}",
-                    p.id, meta.template_version, p.template_version);
+            let factory_tv =
+                factory_template_version_for_provider(&p.id, &effective_template_type, true);
+            p.template_version = factory_tv;
+            if meta.template_version != factory_tv {
+                log::info!(
+                    "[config] Provider '{}' template version changed: user={}, factory={}",
+                    p.id,
+                    meta.template_version,
+                    factory_tv
+                );
                 p.needs_template_attention = true;
             }
             if !meta.build_info_per_env.is_empty() {

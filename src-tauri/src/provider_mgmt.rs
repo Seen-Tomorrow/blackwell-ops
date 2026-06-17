@@ -83,6 +83,14 @@ pub async fn save_provider(provider: crate::types::ProviderConfig, app: tauri::S
 
     save_provider.group_order = save_provider.group_order.iter().map(|g| crate::config::normalize_ui_group(g)).collect();
 
+    // Acknowledge factory template on save — dismisses ConfigPage banner and persists current templateVersion.
+    save_provider.template_version = crate::config::factory_template_version_for_provider(
+        &save_provider.id,
+        &save_provider.template_type,
+        save_provider.factory_provided,
+    );
+    save_provider.needs_template_attention = false;
+
     if save_provider.user_edited_template_params.is_empty() {
         let user_config_path = crate::config::provider_user_config_path(&save_provider.id);
         if !user_config_path.exists() {

@@ -438,10 +438,12 @@ impl ProviderTemplate {
                         args.push(s.to_string());
                     }
                 }
-                let full_cmd = format!("{} {}", self.binary_name, args.join(" "));
-                // Launch command test now routed to Blackwell Output Console
-                let log_path = std::env::temp_dir().join("blackwell-launch.log");
-                let _ = std::fs::write(&log_path, &full_cmd);
+                #[cfg(debug_assertions)]
+                {
+                    let full_cmd = format!("{} {}", self.binary_name, args.join(" "));
+                    let log_path = std::env::temp_dir().join("blackwell-launch.log");
+                    let _ = std::fs::write(&log_path, &full_cmd);
+                }
                 return args;
             }
         }
@@ -546,10 +548,9 @@ impl ProviderTemplate {
 
         normalize_ik_cli_args(&mut args);
 
+        #[cfg(debug_assertions)]
         if !config.model_path.is_empty() {
             let full_cmd = format!("{} {}", self.binary_name, args.join(" "));
-            // Launch command now routed to Blackwell Output Console
-
             let log_path = std::env::temp_dir().join("blackwell-launch.log");
             if let Err(e) = std::fs::write(&log_path, &full_cmd) {
                 log::warn!("[LAUNCH_CMD] Failed to write log: {}", e);

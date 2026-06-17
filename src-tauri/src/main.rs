@@ -576,7 +576,7 @@ use tauri::Emitter;
 
 #[tokio::main]
 async fn main() {
-    // Enable full backtrace on panic
+    #[cfg(debug_assertions)]
     std::env::set_var("RUST_BACKTRACE", "1");
     // Custom panic handler — writes backtrace to file for debugging crashes
     std::panic::set_hook(Box::new(|info| {
@@ -599,8 +599,6 @@ async fn main() {
         builder.filter_level(log::LevelFilter::Info);
         builder.init();
     }
-    #[cfg(not(debug_assertions))]
-    env_logger::init();
 
     let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
