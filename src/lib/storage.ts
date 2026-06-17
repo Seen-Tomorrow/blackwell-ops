@@ -26,6 +26,7 @@ import { normalizeDisplayTexture, type DisplayTexture } from "./displayTexture";
  * | BlackOps-logs-ansi-enabled | "0" \| "1" | ENGINE LOGS ANSI color rendering |
  * | BlackOps-startup-updates | JSON | Cached startup update check results |
  * | BlackOps-fusion-hero-tps | live \| avg | Fusion hero TPS display mode |
+ * | BlackOps-fusion-bench-tray | open \| stowed | Fusion overlay benchmark tray visibility |
  * | BlackOps-display-texture | clean \| phosphor-dark \| phosphor-light | Display texture cycle (glitch legacy → clean) |
  * | BlackOps-catalog-split-width | number string (px) | Model catalog / engine config split |
  * | BlackOps-model-hub-split-width | number string (0–1) | Model Hub results / quants split ratio |
@@ -107,6 +108,7 @@ export const KEYS = {
   logsAnsiEnabled: `${STORAGE_PREFIX}logs-ansi-enabled`,
   startupUpdates: `${STORAGE_PREFIX}startup-updates`,
   fusionHeroTpsMode: `${STORAGE_PREFIX}fusion-hero-tps`,
+  fusionBenchTray: `${STORAGE_PREFIX}fusion-bench-tray`,
   displayTexture: `${STORAGE_PREFIX}display-texture`,
   catalogSplitWidth: `${STORAGE_PREFIX}catalog-split-width`,
   modelHubSplitWidth: `${STORAGE_PREFIX}model-hub-split-width`,
@@ -382,6 +384,17 @@ export function loadFusionHeroTpsMode(): FusionHeroTpsMode {
 
 export function saveFusionHeroTpsMode(mode: FusionHeroTpsMode): void {
   writeStorage(KEYS.fusionHeroTpsMode, mode);
+}
+
+export type FusionBenchTrayState = "open" | "stowed";
+
+export function loadFusionBenchTray(): FusionBenchTrayState {
+  const v = readStorage(KEYS.fusionBenchTray);
+  return v === "stowed" ? "stowed" : "open";
+}
+
+export function saveFusionBenchTray(state: FusionBenchTrayState): void {
+  writeStorage(KEYS.fusionBenchTray, state);
 }
 
 export function loadDisplayTexture(): DisplayTexture {

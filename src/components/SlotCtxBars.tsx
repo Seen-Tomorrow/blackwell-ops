@@ -23,7 +23,7 @@ const equalBarStyle = { flex: "1 1 0%" } as const;
 const outlineChip =
   "ctx-bar-capacity-chip text-[6px] font-mono tracking-wider px-1 py-0.5 rounded-sm border bg-transparent";
 
-function formatTokenCount(n: number): string {
+export function formatTokenCount(n: number): string {
   if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
   if (n >= 1000) return `${Math.floor(n / 1000)}K`;
   return n.toString();
@@ -234,14 +234,7 @@ export default function SlotCtxBars({ slotCtx, ctxTotal, ctxPerSlot, parallel }:
     <div className="flex w-full h-full min-h-0">
       <div className="flex flex-col flex-1 min-w-0 h-full min-h-0">
         {compact ? renderCompactBars() : renderIndividualBars()}
-        {numSlots > 1 && ctxTotal > 0 && !compact && (
-          <span
-            className="text-[6px] font-mono text-stealth-muted/40 text-center mt-0.5 tracking-wide"
-            title={`${formatTokenCount(ctxTotal)} total context · ${formatTokenCount(defaultCapacity)} per slot`}
-          >
-            {formatTokenCount(ctxTotal)}
-          </span>
-        )}
+
       </div>
     </div>
   );

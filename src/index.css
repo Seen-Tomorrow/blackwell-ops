@@ -2346,6 +2346,127 @@ html:not([data-theme="arctic"]) [data-display-texture="clean"] .bench-widget-pan
   padding-bottom: 1px;
 }
 
+.bench-widget-panel .bench-results-hide-btn {
+  margin-top: 10px;
+  align-self: flex-end;
+}
+
+/* Fusion benchmark tray latch — phosphor drawer lip (no chevron) */
+.fusion-bench-latch {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-family: inherit;
+  line-height: 1;
+  transition: opacity 0.15s ease;
+}
+
+.fusion-bench-latch:hover {
+  opacity: 1;
+}
+
+.fusion-bench-latch--open {
+  margin-top: 4px;
+  margin-bottom: 2px;
+  opacity: 0.72;
+}
+
+.fusion-bench-latch--stowed {
+  margin-top: 6px;
+  opacity: 0.88;
+}
+
+.fusion-bench-latch__rule {
+  flex: 1 1 0;
+  min-width: 12px;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--theme-text-muted, #64748b) 28%, transparent) 18%,
+    color-mix(in srgb, var(--theme-text-muted, #64748b) 28%, transparent) 82%,
+    transparent
+  );
+}
+
+.fusion-bench-latch__core {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 3px 8px 3px 6px;
+  border-radius: 2px;
+  border: 1px solid color-mix(in srgb, var(--theme-border-subtle, rgba(120, 113, 108, 0.2)) 80%, transparent);
+  background: color-mix(in srgb, var(--theme-bg, #000) 55%, transparent);
+  box-shadow: inset 0 1px 3px var(--theme-bench-inset-shadow, rgba(0, 0, 0, 0.35));
+}
+
+.fusion-bench-latch:hover .fusion-bench-latch__core {
+  border-color: color-mix(in srgb, var(--theme-text-muted, #64748b) 45%, transparent);
+  background: color-mix(in srgb, var(--theme-bg, #000) 40%, transparent);
+}
+
+.fusion-bench-latch__segments {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.fusion-bench-latch__segments > span {
+  display: block;
+  width: 4px;
+  height: 7px;
+  border-radius: 1px;
+  background: color-mix(in srgb, var(--theme-text-muted, #64748b) 18%, transparent);
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.45);
+  transition: background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.fusion-bench-latch__segments > span.is-lit {
+  background: color-mix(in srgb, var(--fusion-readout-accent, #94a3b8) 72%, transparent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 0 4px color-mix(in srgb, var(--fusion-readout-accent, #94a3b8) 35%, transparent);
+}
+
+.fusion-bench-latch--stowed .fusion-bench-latch__segments > span:first-child {
+  background: color-mix(in srgb, var(--fusion-readout-accent, #94a3b8) 55%, transparent);
+  box-shadow: 0 0 3px color-mix(in srgb, var(--fusion-readout-accent, #94a3b8) 28%, transparent);
+}
+
+.fusion-bench-latch__label {
+  font-size: 6px;
+  font-family: ui-monospace, monospace;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--theme-text-muted, #64748b) 75%, transparent);
+}
+
+.fusion-bench-latch__action {
+  font-size: 6px;
+  font-family: ui-monospace, monospace;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--theme-text-muted, #64748b) 55%, transparent);
+  padding-left: 4px;
+  border-left: 1px solid color-mix(in srgb, var(--theme-border-subtle, rgba(120, 113, 108, 0.2)) 90%, transparent);
+}
+
+.fusion-bench-latch:hover .fusion-bench-latch__action {
+  color: color-mix(in srgb, var(--theme-text, #e2e8f0) 70%, transparent);
+}
+
+[data-display-texture="phosphor-light"] .fusion-bench-latch__segments > span.is-lit,
+[data-display-texture="phosphor-light"] .fusion-bench-latch--stowed .fusion-bench-latch__segments > span:first-child {
+  background: color-mix(in srgb, var(--fusion-eink-readout-fg, #1a1a1a) 55%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--fusion-eink-readout-fg, #1a1a1a) 25%, transparent);
+}
+
 .bench-widget-panel .bench-results-stack {
   flex-shrink: 0;
   min-height: 0;

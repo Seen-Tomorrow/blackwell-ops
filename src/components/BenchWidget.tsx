@@ -93,11 +93,11 @@ export function BenchHwTopo({ gpus, gpuMask, splitMode, fullWidth = false }: Ben
 export function BenchResultsActionsCol({ shareMeta, onClose }: BenchResultsFooterProps) {
   return (
     <div
-      className="bench-results-actions flex flex-col items-end justify-end gap-0.5 self-stretch min-w-0"
+      className="bench-results-actions flex flex-col items-end justify-end self-stretch min-w-0 w-full"
       data-fusion-share-exclude
     >
       {shareMeta && (
-        <>
+        <div className="flex flex-col items-end gap-0.5 w-full">
           <span className="text-[5px] font-mono text-stealth-muted/45 uppercase tracking-wider leading-none">
             SHARE results
           </span>
@@ -113,12 +113,12 @@ export function BenchResultsActionsCol({ shareMeta, onClose }: BenchResultsFoote
             hwTopo={shareMeta.hwTopo}
             triggerStyle="share-icon"
           />
-        </>
+        </div>
       )}
       <button
         type="button"
         onClick={onClose}
-        className="bench-muted-btn text-[6px] font-mono transition-colors px-1.5 py-0.5 rounded-sm leading-none uppercase tracking-wide"
+        className="bench-results-hide-btn bench-muted-btn text-[6px] font-mono transition-colors px-1.5 py-0.5 rounded-sm leading-none uppercase tracking-wide self-end"
       >
         HIDE results
       </button>

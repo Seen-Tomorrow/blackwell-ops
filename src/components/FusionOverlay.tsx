@@ -6,8 +6,10 @@ import { getBenchPortState, notifyBenchPortStore } from "../lib/benchPortStore";
 import BenchWidget, { type BenchHeroPatch, type BenchSessionMode } from "./BenchWidget";
 import FusionBooter from "./FusionBooter";
 import type { FusionShareLaunchConfig } from "../lib/fusionShareCapture";
-import SlotCtxBars from "./SlotCtxBars";
+import FusionBenchTrayLatch from "./FusionBenchTrayLatch";
+import SlotCtxBars, { formatTokenCount } from "./SlotCtxBars";
 import type { GpuInfo } from "../lib/types";
+import { useFusionBenchTray } from "../hooks/useFusionBenchTray";
 import { useFusionHeroTpsMode } from "../hooks/useFusionHeroTpsMode";
 import { useTauriListen } from "../hooks/useTauriListen";
 
@@ -100,6 +102,7 @@ export default function FusionOverlay({
   });
   const [benchSessionMode, setBenchSessionMode] = useState<BenchSessionMode>("idle");
   const { mode: heroTpsMode, toggle: toggleHeroTpsMode } = useFusionHeroTpsMode();
+  const { open: benchTrayOpen, toggle: toggleBenchTray } = useFusionBenchTray();
 
   const handleCloseBenchResults = useCallback(() => {
     const ps = getBenchPortState(displayPort);
@@ -411,6 +414,21 @@ export default function FusionOverlay({
               <span className="text-[9px] font-mono text-stealth-muted/40 tracking-widest">
                 CONTEXT SLOTS
               </span>
+              {ctxTotal > 0 && (
+                <>
+                  <span className="text-[8px] font-mono text-stealth-muted/25 select-none">│</span>
+                  <span
+                    className="text-[8px] font-mono text-stealth-muted/50 tracking-wider"
+                    title={
+                      fusion.parallel > 1 && ctxPerSlot > 0
+                        ? `${formatTokenCount(ctxTotal)} total · ${formatTokenCount(ctxPerSlot)} per slot`
+                        : `${formatTokenCount(ctxTotal)} total context`
+                    }
+                  >
+                    {formatTokenCount(ctxTotal)} total
+                  </span>
+                </>
+              )}
             </div>
             <div className="flex items-center justify-center gap-2 flex-shrink-0">
               {isPrefillPhase && (
@@ -611,35 +629,38 @@ export default function FusionOverlay({
 
           <div className="flex-1 min-h-0" aria-hidden />
 
-          {/* ═══ BENCH WIDGET — fixed slot height (see benchPanelLayout) ═══ */}
+          {/* ═══ BENCHMARK TRAY — stowable bench + results (persisted) ═══ */}
           {fusion.engine_state !== "LOADING" && (
-            <div className="flex-shrink-0 mt-1">
-              <BenchWidget
-                port={displayPort}
-                footerDocked
-                onHeroPatch={handleBenchHeroPatch}
-                onBenchSessionChange={setBenchSessionMode}
-                onCloseResults={handleCloseBenchResults}
-                shareMeta={{
-                  alias: displayAlias,
-                  providerName,
-                  providerBuildVersion,
-                  modelName,
-                  modelQuant,
-                  profileLabel,
-                  cudaVersion,
-                  launchConfig,
-                  hwTopo,
-                  tgTps:
-                    benchHero.tg ??
-                    (tgTpsPick > 0 ? tgTpsPick : null),
-                }}
-                benchHw={{
-                  gpus,
-                  gpuMask,
-                  splitMode: launchConfig?.splitMode,
-                }}
-              />
+            <div className="flex-shrink-0 flex flex-col">
+              <FusionBenchTrayLatch open={benchTrayOpen} onToggle={toggleBenchTray} />
+              {benchTrayOpen && (
+                <BenchWidget
+                  port={displayPort}
+                  footerDocked
+                  onHeroPatch={handleBenchHeroPatch}
+                  onBenchSessionChange={setBenchSessionMode}
+                  onCloseResults={handleCloseBenchResults}
+                  shareMeta={{
+                    alias: displayAlias,
+                    providerName,
+                    providerBuildVersion,
+                    modelName,
+                    modelQuant,
+                    profileLabel,
+                    cudaVersion,
+                    launchConfig,
+                    hwTopo,
+                    tgTps:
+                      benchHero.tg ??
+                      (tgTpsPick > 0 ? tgTpsPick : null),
+                  }}
+                  benchHw={{
+                    gpus,
+                    gpuMask,
+                    splitMode: launchConfig?.splitMode,
+                  }}
+                />
+              )}
             </div>
           )}
         </div>

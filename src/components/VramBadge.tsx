@@ -1,6 +1,10 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { GpuInfo, VramManifest, ModelMetadata } from "../lib/types";
 import { computeFusionPhosphorFixedHeight } from "../lib/benchPanelLayout";
+import {
+  getFusionBenchTrayOpen,
+  subscribeFusionBenchTray,
+} from "../lib/fusionBenchTrayStore";
 import { FORECAST_PHOSPHOR_HEIGHT_PX } from "../lib/onboardingDisplay";
 import GpuTopology from "./GpuTopology";
 import FusionOverlay from "./FusionOverlay";
@@ -131,6 +135,11 @@ export default function VramBadge({
   modelName, modelQuant, providerName, providerBuildVersion, profileLabel, cudaVersion, launchConfig, hwTopo,
 }: VramBadgeProps) {
   const rootRef = useRef<HTMLDivElement>(null);
+  const [, setTrayRev] = useState(0);
+
+  useEffect(() => subscribeFusionBenchTray(() => setTrayRev((t) => t + 1)), []);
+
+  const benchTrayOpen = getFusionBenchTrayOpen();
 
   const fusionOverlayActive =
     selectedSlotIdx !== null &&
@@ -139,9 +148,9 @@ export default function VramBadge({
     (engineStatus === "LOADING" || engineStatus === "RUNNING");
 
   const fusionPhosphorHeight = useMemo(() => {
-    if (!fusionOverlayActive) return FORECAST_PHOSPHOR_HEIGHT_PX;
+    if (!fusionOverlayActive || !benchTrayOpen) return FORECAST_PHOSPHOR_HEIGHT_PX;
     return computeFusionPhosphorFixedHeight({ gpus, gpuMask, inlineActions: true });
-  }, [fusionOverlayActive, gpus, gpuMask]);
+  }, [fusionOverlayActive, benchTrayOpen, gpus, gpuMask]);
 
   useEffect(() => {
     const display = rootRef.current?.closest(".vram-forecast-display");
