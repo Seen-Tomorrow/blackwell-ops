@@ -85,6 +85,9 @@ export default function FusionShareMenu({
   cudaVersion,
   launchConfig,
   hwTopo,
+  shareGpus,
+  shareGpuMask,
+  shareSplitMode,
   tgTps,
   labeled = false,
   triggerStyle = "swatch",
@@ -98,6 +101,9 @@ export default function FusionShareMenu({
     cudaVersion,
     launchConfig,
     hwTopo,
+    shareGpus,
+    shareGpuMask,
+    shareSplitMode,
     tgTps,
   };
   const [openVariant, setOpenVariant] = useState<FusionShareVariant | null>(null);
@@ -198,7 +204,21 @@ export default function FusionShareMenu({
         setBusy(false);
       }
     },
-    [busy, cudaVersion, hwTopo, launchConfig, modelName, modelQuant, profileLabel, providerBuildVersion, providerName, tgTps],
+    [
+      busy,
+      cudaVersion,
+      hwTopo,
+      launchConfig,
+      modelName,
+      modelQuant,
+      profileLabel,
+      providerBuildVersion,
+      providerName,
+      shareGpus,
+      shareGpuMask,
+      shareSplitMode,
+      tgTps,
+    ],
   );
 
   return (

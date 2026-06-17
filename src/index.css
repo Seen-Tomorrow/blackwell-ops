@@ -2406,6 +2406,10 @@ html:not([data-theme="arctic"]) [data-display-texture="clean"] .bench-widget-pan
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.bench-widget-panel[data-bench-dual-results] .bench-results-grid {
+  min-height: var(--bench-result-row-h, 40px);
+}
+
 .bench-widget-panel .bench-results-grid--actions {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) auto;
 }
@@ -3369,9 +3373,113 @@ html:not([data-theme="arctic"]) [data-display-texture="clean"] .bench-widget-pan
 
 .fusion-share-capture-stage[data-fusion-share-capture] .vram-forecast-display,
 .fusion-share-capture-stage[data-fusion-share-capture] .vram-badge-forecast {
-  height: 208px !important;
-  min-height: 208px !important;
-  max-height: 208px !important;
+  height: var(--fusion-share-phosphor-h, 264px) !important;
+  min-height: var(--fusion-share-phosphor-h, 264px) !important;
+  max-height: var(--fusion-share-phosphor-h, 264px) !important;
+}
+
+.fusion-share-capture-stage[data-fusion-share-capture] .vram-badge-forecast > .phosphor-screen.phosphor-display-surface {
+  height: var(--fusion-share-phosphor-h, 264px) !important;
+  min-height: var(--fusion-share-phosphor-h, 264px) !important;
+  max-height: var(--fusion-share-phosphor-h, 264px) !important;
+}
+
+.fusion-share-capture-stage[data-fusion-share-capture] > .industrial-display-frame .fusion-share-bezel-brand {
+  position: absolute;
+  right: 15px;
+  bottom: 7px;
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 1px;
+  max-width: calc(100% - 20px);
+  pointer-events: none;
+}
+
+.fusion-share-bezel-brand__logo {
+  display: inline-flex;
+  flex-shrink: 0;
+  line-height: 0;
+  color: #76b900;
+}
+
+.fusion-share-capture-stage[data-fusion-share-capture][data-theme="arctic"] .fusion-share-bezel-brand__logo {
+  color: #0a0c10;
+}
+
+.fusion-share-bezel-brand__version {
+  font-family: ui-monospace, monospace;
+  font-size: 6px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  line-height: 1;
+  white-space: nowrap;
+  color: rgba(118, 185, 0, 0.82);
+}
+
+.fusion-share-capture-stage[data-fusion-share-capture][data-theme="arctic"] .fusion-share-bezel-brand__version {
+  color: rgba(55, 90, 45, 0.88);
+}
+
+.fusion-share-hw-band__topo {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+  gap: 3px;
+  justify-content: center;
+}
+
+.fusion-share-hw-band__headline {
+  font-family: ui-monospace, monospace;
+  font-size: 8px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  line-height: 1.1;
+  color: color-mix(in srgb, var(--theme-text-muted, #64748b) 82%, transparent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fusion-share-hw-band__chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  align-content: flex-start;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+}
+
+.fusion-share-hw-band__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  font-family: ui-monospace, monospace;
+  font-size: 9px;
+  line-height: 1.15;
+  color: color-mix(in srgb, var(--theme-text, #e2e8f0) 78%, transparent);
+}
+
+.fusion-share-hw-band__swatch {
+  width: 7px;
+  height: 7px;
+  border-radius: 1px;
+  flex-shrink: 0;
+}
+
+.fusion-share-hw-band__driver {
+  opacity: 0.72;
+}
+
+.fusion-share-capture-stage[data-fusion-share-capture][data-theme="arctic"] .fusion-share-hw-band__headline,
+.fusion-share-capture-stage[data-fusion-share-capture][data-theme="arctic"] .fusion-share-hw-band__chip {
+  color: rgba(55, 65, 81, 0.88);
 }
 
 .fusion-share-capture-stage[data-fusion-share-capture] .vram-badge-forecast > .phosphor-screen.phosphor-display-surface {
@@ -3426,11 +3534,26 @@ html:not([data-theme="arctic"]) [data-display-texture="clean"] .bench-widget-pan
 .fusion-share-capture-stage[data-fusion-share-capture][data-theme="arctic"][data-display-texture="phosphor-light"] .phosphor-screen.phosphor-display-surface,
 .fusion-share-capture-stage[data-fusion-share-capture][data-theme="arctic"][data-display-texture="phosphor-light"] .phosphor-screen-inner.phosphor-display-surface {
   background-color: var(--fusion-eink-surface, #c8d4b8) !important;
-  background-image: none !important;
+  background-image:
+    radial-gradient(circle, var(--fusion-eink-dot, rgba(0, 0, 0, 0.025)) 1px, transparent 1px),
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0px,
+      transparent 2px,
+      var(--fusion-eink-band, rgba(0, 0, 0, 0.01)) 2px,
+      var(--fusion-eink-band, rgba(0, 0, 0, 0.01)) 4px
+    ) !important;
+  background-size: 2px 2px, 100% 4px !important;
   box-shadow:
     inset 0 2px 6px rgba(0, 0, 0, 0.25),
     inset 0 -1px 3px rgba(0, 0, 0, 0.15),
     inset 0 1px 40px rgba(255, 255, 255, 0.3) !important;
+}
+
+/* Light share card — baked texture like dark; no multiply overlay on content */
+.fusion-share-capture-stage[data-fusion-share-capture][data-theme="arctic"][data-display-texture="phosphor-light"] .phosphor-display-surface::before,
+.fusion-share-capture-stage[data-fusion-share-capture][data-theme="arctic"][data-display-texture="phosphor-light"] .phosphor-display-surface::after {
+  display: none !important;
 }
 
 .fusion-share-capture-stage[data-fusion-share-capture][data-theme="arctic"] > .industrial-display-frame {

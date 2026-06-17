@@ -111,6 +111,9 @@ export function BenchResultsActionsCol({ shareMeta, onClose }: BenchResultsFoote
             cudaVersion={shareMeta.cudaVersion}
             launchConfig={shareMeta.launchConfig}
             hwTopo={shareMeta.hwTopo}
+            shareGpus={shareMeta.shareGpus}
+            shareGpuMask={shareMeta.shareGpuMask}
+            shareSplitMode={shareMeta.shareSplitMode}
             triggerStyle="share-icon"
           />
         </div>
@@ -144,6 +147,9 @@ export function BenchResultsFooter({ shareMeta, onClose }: BenchResultsFooterPro
           cudaVersion={shareMeta.cudaVersion}
           launchConfig={shareMeta.launchConfig}
           hwTopo={shareMeta.hwTopo}
+          shareGpus={shareMeta.shareGpus}
+          shareGpuMask={shareMeta.shareGpuMask}
+          shareSplitMode={shareMeta.shareSplitMode}
         />
       )}
       <button

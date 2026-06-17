@@ -1,4 +1,13 @@
 import { toCanvas } from "html-to-image";
+import {
+  buildFusionShareGpuTopoEntries,
+  formatFusionShareSplitHeadline,
+} from "./benchHwTopo";
+import {
+  computeFusionShareCapturePhosphorHeightPx,
+  computeFusionShareHwBandHeightPx,
+  FUSION_SHARE_BRAND_LOGO_PX,
+} from "./benchPanelLayout";
 import { brandLogoMarkup } from "./brandLogos";
 import { nextFusionShareDailySeq } from "./storage";
 import type { DisplayTexture } from "./displayTexture";
@@ -41,6 +50,10 @@ export interface FusionShareMeta {
   cudaVersion?: string;
   /** e.g. "2xRTX PRO 6000 96GB" — GPUs the bench ran on. */
   hwTopo?: string;
+  /** Full GPU list for share HW band (live bench omits in-panel topo). */
+  shareGpus?: GpuInfo[];
+  shareGpuMask?: string;
+  shareSplitMode?: string;
   launchConfig?: FusionShareLaunchConfig;
   /** Last TG TPS (bench measured or live hero) — used in share PNG filename. */
   tgTps?: number | null;
@@ -80,8 +93,8 @@ export function buildFusionShareFilename(meta: FusionShareDownloadMeta = {}): st
   return `Blackwell-OPS-${versionTag}_model_${modelSlug}--${tps}tps--${datePart}--${seq}.png`;
 }
 
-/** Shorter phosphor in share cards — room for 2-row params + bench HW topo in clone. */
-export const FUSION_SHARE_CAPTURE_PHOSPHOR_HEIGHT_PX = 208;
+/** Default share phosphor budget — synced with benchPanelLayout (no latch / in-panel topo). */
+export const FUSION_SHARE_CAPTURE_PHOSPHOR_HEIGHT_PX = computeFusionShareCapturePhosphorHeightPx();
 
 const NV_GREEN = "#76B900";
 
@@ -92,14 +105,15 @@ const CAPTURE_STRIP_SELECTORS = [
   ".display-glitch-chroma",
   ".display-glitch-block",
   ".vram-forecast-scenario-badge",
+  ".fusion-bench-latch",
+  ".bench-hw-topo",
 ].join(",");
 
 /**
  * Export layout budget (CSS px):
  * 1. Dark header (provider · profile · model · params).
- * 2. Gap + frame (live phosphor + bezel height).
- * 3. Footer (logo + version) pinned to bottom of frame.
- * 4. Width derived from total height so the full card stays 16:9.
+ * 2. Gap + mat (bezel phosphor + GPU topo + corner brand).
+ * 3. Width derived from total height so the full card stays 16:9.
  */
 const SHARE_ASPECT_W = 16;
 const SHARE_ASPECT_H = 9;
@@ -108,56 +122,99 @@ export const FUSION_SHARE_EXPORT_GAP = 8;
 export const FUSION_SHARE_EXPORT_FRAME_PAD_TOP = 0;
 export const FUSION_SHARE_EXPORT_FRAME_PAD_X = 20;
 export const FUSION_SHARE_EXPORT_FRAME_PAD_BOTTOM = 14;
-/** Gunmetal bezel block height (capture phosphor + frame padding). */
-export const FUSION_SHARE_EXPORT_BEZEL_HEIGHT_PX =
-  FUSION_SHARE_CAPTURE_PHOSPHOR_HEIGHT_PX + DISPLAY_BEZEL_PADDING_PX * 2;
-/** Middle card section — bezel + HW topo band inside panel-accent mat. */
-export const FUSION_SHARE_EXPORT_FRAME_HEIGHT =
-  FUSION_SHARE_EXPORT_BEZEL_HEIGHT_PX +
-  FUSION_SHARE_EXPORT_FRAME_PAD_TOP +
-  FUSION_SHARE_EXPORT_FRAME_PAD_BOTTOM;
-export const FUSION_SHARE_EXPORT_FOOTER_HEIGHT = 27;
 /** Identity row + up to two params chip rows. */
 export const FUSION_SHARE_EXPORT_HEADER_HEIGHT = 94;
 /** @deprecated Use FUSION_SHARE_EXPORT_HEADER_HEIGHT — kept for callers expecting brand height. */
 export const FUSION_SHARE_EXPORT_BRAND_HEIGHT = FUSION_SHARE_EXPORT_HEADER_HEIGHT;
-export const FUSION_SHARE_EXPORT_TOTAL_HEIGHT =
-  FUSION_SHARE_EXPORT_HEADER_HEIGHT +
-  FUSION_SHARE_EXPORT_GAP +
-  FUSION_SHARE_EXPORT_FRAME_HEIGHT +
-  FUSION_SHARE_EXPORT_FOOTER_HEIGHT;
-export const FUSION_SHARE_EXPORT_WIDTH = Math.round(
-  (FUSION_SHARE_EXPORT_TOTAL_HEIGHT * SHARE_ASPECT_W) / SHARE_ASPECT_H,
-);
-const FUSION_SHARE_FOOTER_LOGO_HEIGHT = 22;
+/** @deprecated Footer removed — logo + version live in bottom-right bezel corner. */
+export const FUSION_SHARE_EXPORT_FOOTER_HEIGHT = 0;
+
+export interface FusionShareExportLayout {
+  phosphorHeightPx: number;
+  bezelHeightPx: number;
+  hwBandHeightPx: number;
+  frameHeightPx: number;
+  totalHeightPx: number;
+  widthPx: number;
+}
+
+export function computeFusionShareExportLayout(meta: FusionShareMeta = {}): FusionShareExportLayout {
+  const phosphorHeightPx = computeFusionShareCapturePhosphorHeightPx({
+    gpus: meta.shareGpus,
+    gpuMask: meta.shareGpuMask,
+  });
+  let hwBandHeightPx = computeFusionShareHwBandHeightPx(
+    meta.shareGpus,
+    meta.shareGpuMask,
+    meta.hwTopo,
+  );
+  const bezelHeightPx = phosphorHeightPx + DISPLAY_BEZEL_PADDING_PX * 2;
+  let frameHeightPx =
+    bezelHeightPx
+    + hwBandHeightPx
+    + FUSION_SHARE_EXPORT_FRAME_PAD_TOP
+    + FUSION_SHARE_EXPORT_FRAME_PAD_BOTTOM;
+  let totalHeightPx =
+    FUSION_SHARE_EXPORT_HEADER_HEIGHT + FUSION_SHARE_EXPORT_GAP + frameHeightPx;
+  let widthPx = Math.round((totalHeightPx * SHARE_ASPECT_W) / SHARE_ASPECT_H);
+  const innerWidth = widthPx - FUSION_SHARE_EXPORT_FRAME_PAD_X * 2;
+  const refinedHwBandHeightPx = computeFusionShareHwBandHeightPx(
+    meta.shareGpus,
+    meta.shareGpuMask,
+    meta.hwTopo,
+    innerWidth,
+  );
+  if (refinedHwBandHeightPx !== hwBandHeightPx) {
+    hwBandHeightPx = refinedHwBandHeightPx;
+    frameHeightPx =
+      bezelHeightPx
+      + hwBandHeightPx
+      + FUSION_SHARE_EXPORT_FRAME_PAD_TOP
+      + FUSION_SHARE_EXPORT_FRAME_PAD_BOTTOM;
+    totalHeightPx =
+      FUSION_SHARE_EXPORT_HEADER_HEIGHT + FUSION_SHARE_EXPORT_GAP + frameHeightPx;
+    widthPx = Math.round((totalHeightPx * SHARE_ASPECT_W) / SHARE_ASPECT_H);
+  }
+  return {
+    phosphorHeightPx,
+    bezelHeightPx,
+    hwBandHeightPx,
+    frameHeightPx,
+    totalHeightPx,
+    widthPx,
+  };
+}
+
+const DEFAULT_FUSION_SHARE_LAYOUT = computeFusionShareExportLayout();
+
+/** Gunmetal bezel block height (capture phosphor + frame padding) — default budget. */
+export const FUSION_SHARE_EXPORT_BEZEL_HEIGHT_PX = DEFAULT_FUSION_SHARE_LAYOUT.bezelHeightPx;
+/** Middle card section — bezel + HW band inside panel-accent mat. */
+export const FUSION_SHARE_EXPORT_FRAME_HEIGHT = DEFAULT_FUSION_SHARE_LAYOUT.frameHeightPx;
+export const FUSION_SHARE_EXPORT_TOTAL_HEIGHT = DEFAULT_FUSION_SHARE_LAYOUT.totalHeightPx;
+export const FUSION_SHARE_EXPORT_WIDTH = DEFAULT_FUSION_SHARE_LAYOUT.widthPx;
 /** Identity row only — params row uses industrial panel-accent band. */
 const FUSION_SHARE_IDENTITY_BG = "#0a0c10";
 const FUSION_SHARE_IDENTITY_TEXT = "#f4f6f8";
 const FUSION_SHARE_IDENTITY_MUTED = "rgba(244, 246, 248, 0.42)";
 const FUSION_SHARE_IDENTITY_DIVIDER = "rgba(244, 246, 248, 0.28)";
 const FUSION_SHARE_CYAN = "#00e5ff";
-const FUSION_SHARE_FOOTER_BG = "#0a0c10";
-const FUSION_SHARE_FOOTER_BORDER = "rgba(118, 185, 0, 0.22)";
 /** CSS card × FUSION_SHARE_EXPORT_PIXEL_RATIO → PNG (e.g. ~707×398 → ~2828×1592). */
 export const FUSION_SHARE_EXPORT_PIXEL_RATIO = 4;
 
-export function fusionShareExportPixelSize(): {
+export function fusionShareExportPixelSize(meta: FusionShareMeta = {}): {
   width: number;
   height: number;
   brandHeight: number;
   frameHeight: number;
-  footerHeight: number;
 } {
+  const layout = computeFusionShareExportLayout(meta);
   const scale = FUSION_SHARE_EXPORT_PIXEL_RATIO;
-  const brandHeight = FUSION_SHARE_EXPORT_HEADER_HEIGHT * scale;
-  const frameHeight = FUSION_SHARE_EXPORT_FRAME_HEIGHT * scale;
-  const footerHeight = FUSION_SHARE_EXPORT_FOOTER_HEIGHT * scale;
   return {
-    width: FUSION_SHARE_EXPORT_WIDTH * scale,
-    height: FUSION_SHARE_EXPORT_TOTAL_HEIGHT * scale,
-    brandHeight,
-    frameHeight,
-    footerHeight,
+    width: layout.widthPx * scale,
+    height: layout.totalHeightPx * scale,
+    brandHeight: FUSION_SHARE_EXPORT_HEADER_HEIGHT * scale,
+    frameHeight: layout.frameHeightPx * scale,
   };
 }
 
@@ -445,19 +502,12 @@ function brandBadgeLabel(text: string, color: string, bgAlpha = 0.14): HTMLSpanE
   return label;
 }
 
-function brandKvQuantLabel(text: string): HTMLSpanElement {
-  return brandBadgeLabel(text, NV_GREEN, 0.14);
-}
-
-function brandModelQuantLabel(text: string): HTMLSpanElement {
-  return brandBadgeLabel(text, FUSION_SHARE_CYAN, 0.12);
-}
-
-function brandSplitLabel(text: string, variant: FusionShareVariant): HTMLSpanElement {
+/** Matches bench concurrency ×N — amber ink + border on black fill. */
+function brandAmberChipLabel(text: string, fontSize = "9px"): HTMLSpanElement {
   const label = document.createElement("span");
   label.textContent = text;
   label.style.fontFamily = "monospace";
-  label.style.fontSize = "9px";
+  label.style.fontSize = fontSize;
   label.style.fontWeight = "700";
   label.style.letterSpacing = "0.04em";
   label.style.borderRadius = "4px";
@@ -465,16 +515,23 @@ function brandSplitLabel(text: string, variant: FusionShareVariant): HTMLSpanEle
   label.style.whiteSpace = "nowrap";
   label.style.flexShrink = "0";
   label.style.lineHeight = "1.2";
-  if (variant === "white") {
-    label.style.background = "#0a0c10";
-    label.style.color = "#f4f6f8";
-    label.style.border = "1px solid #0a0c10";
-  } else {
-    label.style.background = "#f5c400";
-    label.style.color = "#0a0c10";
-    label.style.border = "1px solid #b89200";
-  }
+  label.style.background = "#0a0c10";
+  label.style.color = "#ffd24a";
+  label.style.border = "1px solid #c99700";
+  label.style.boxShadow = "0 0 0 1px rgba(0, 0, 0, 0.55)";
   return label;
+}
+
+function brandKvQuantLabel(text: string): HTMLSpanElement {
+  return brandAmberChipLabel(text, "10px");
+}
+
+function brandModelQuantLabel(text: string): HTMLSpanElement {
+  return brandBadgeLabel(text, FUSION_SHARE_CYAN, 0.12);
+}
+
+function brandSplitLabel(text: string, _variant: FusionShareVariant): HTMLSpanElement {
+  return brandAmberChipLabel(text);
 }
 
 function collectShareLaunchConfigRow1(launchConfig: FusionShareLaunchConfig | undefined): ParamChip[] {
@@ -626,17 +683,118 @@ function unmountCaptureShell(shell: HTMLElement): void {
   }
 }
 
+function shareAppVersionText(): string {
+  return `v${__TAURI_VERSION__} · BUILD ${__APP_VERSION__}`;
+}
+
+function createShareBezelBrand(): HTMLElement {
+  const brand = document.createElement("div");
+  brand.className = "fusion-share-bezel-brand";
+
+  const logoWrap = document.createElement("span");
+  logoWrap.className = "fusion-share-bezel-brand__logo";
+  logoWrap.innerHTML = brandLogoMarkup(FUSION_SHARE_BRAND_LOGO_PX);
+
+  const versionEl = document.createElement("span");
+  versionEl.className = "fusion-share-bezel-brand__version";
+  versionEl.textContent = shareAppVersionText();
+
+  brand.append(logoWrap, versionEl);
+  return brand;
+}
+
+function createShareHwBand(
+  meta: FusionShareMeta,
+  layout: FusionShareExportLayout,
+): HTMLElement | null {
+  if (layout.hwBandHeightPx <= 0) return null;
+
+  const band = document.createElement("div");
+  band.className = "fusion-share-hw-band";
+  band.style.height = `${layout.hwBandHeightPx}px`;
+  band.style.minHeight = `${layout.hwBandHeightPx}px`;
+  band.style.maxHeight = `${layout.hwBandHeightPx}px`;
+  band.style.display = "flex";
+  band.style.alignItems = "center";
+  band.style.padding = "0 2px";
+  band.style.boxSizing = "border-box";
+  band.style.overflow = "visible";
+  band.style.width = "100%";
+
+  const topoCol = document.createElement("div");
+  topoCol.className = "fusion-share-hw-band__topo";
+
+  const gpus = meta.shareGpus;
+  let hasTopo = false;
+  if (gpus && gpus.length > 0) {
+    const entries = buildFusionShareGpuTopoEntries(gpus, meta.shareGpuMask);
+    if (entries.length > 0) {
+      hasTopo = true;
+      const headline = formatFusionShareSplitHeadline(
+        gpus,
+        meta.shareGpuMask,
+        meta.shareSplitMode ?? meta.launchConfig?.splitMode,
+      );
+      if (headline) {
+        const headlineEl = document.createElement("span");
+        headlineEl.className = "fusion-share-hw-band__headline";
+        headlineEl.textContent = headline;
+        topoCol.appendChild(headlineEl);
+      }
+
+      const chips = document.createElement("div");
+      chips.className = "fusion-share-hw-band__chips";
+      for (const entry of entries) {
+        const chip = document.createElement("span");
+        chip.className = "fusion-share-hw-band__chip";
+
+        const swatch = document.createElement("span");
+        swatch.className = "fusion-share-hw-band__swatch";
+        swatch.style.backgroundColor = entry.color;
+        swatch.setAttribute("aria-hidden", "true");
+
+        const label = document.createElement("span");
+        label.className = "fusion-share-hw-band__label";
+        label.textContent = `${entry.count}× ${entry.label}`;
+        if (entry.driverVersion) {
+          label.appendChild(document.createElement("wbr"));
+          const drv = document.createElement("span");
+          drv.className = "fusion-share-hw-band__driver";
+          drv.textContent = ` drv ${entry.driverVersion}`;
+          label.appendChild(drv);
+        }
+
+        chip.append(swatch, label);
+        chips.appendChild(chip);
+      }
+      topoCol.appendChild(chips);
+    }
+  } else if (meta.hwTopo?.trim()) {
+    hasTopo = true;
+    const fallback = document.createElement("span");
+    fallback.className = "fusion-share-hw-band__headline";
+    fallback.textContent = meta.hwTopo.trim();
+    topoCol.appendChild(fallback);
+  }
+
+  if (!hasTopo) return null;
+
+  band.appendChild(topoCol);
+  return band;
+}
+
 /** Offscreen clone at fixed CSS px — avoids mutating the live panel and ignores UI zoom. */
 function createFrameCaptureStage(
   source: HTMLElement,
   colors: CaptureColors,
   variant: FusionShareVariant,
+  layout: FusionShareExportLayout,
+  meta: FusionShareMeta,
 ): FrameCaptureStage {
   const padTop = FUSION_SHARE_EXPORT_FRAME_PAD_TOP;
   const padX = FUSION_SHARE_EXPORT_FRAME_PAD_X;
   const padBottom = FUSION_SHARE_EXPORT_FRAME_PAD_BOTTOM;
-  const bezelHeight = FUSION_SHARE_EXPORT_BEZEL_HEIGHT_PX;
-  const innerWidth = FUSION_SHARE_EXPORT_WIDTH - padX * 2;
+  const innerWidth = layout.widthPx - padX * 2;
 
   const stage = document.createElement("div");
   stage.className = "fusion-share-capture-stage";
@@ -644,31 +802,39 @@ function createFrameCaptureStage(
   stage.setAttribute("data-fusion-share-exclude", "");
   applyShareCaptureTheme(stage, variant);
   stage.style.setProperty("--ui-text-scale", "1");
-  stage.style.width = `${FUSION_SHARE_EXPORT_WIDTH}px`;
-  stage.style.height = `${FUSION_SHARE_EXPORT_FRAME_HEIGHT}px`;
+  stage.style.setProperty("--fusion-share-phosphor-h", `${layout.phosphorHeightPx}px`);
+  stage.style.width = `${layout.widthPx}px`;
+  stage.style.height = `${layout.frameHeightPx}px`;
   stage.style.padding = `${padTop}px ${padX}px ${padBottom}px ${padX}px`;
   stage.style.background = colors.panelAccent;
-  stage.style.display = "block";
+  stage.style.display = "flex";
+  stage.style.flexDirection = "column";
+  stage.style.alignItems = "stretch";
   stage.style.overflow = "visible";
   stage.style.boxSizing = "border-box";
 
   const frame = source.cloneNode(true) as HTMLElement;
   applyShareCaptureTheme(frame, variant);
   frame.style.width = `${innerWidth}px`;
-  frame.style.height = `${bezelHeight}px`;
-  frame.style.minHeight = `${bezelHeight}px`;
-  frame.style.maxHeight = `${bezelHeight}px`;
+  frame.style.height = `${layout.bezelHeightPx}px`;
+  frame.style.minHeight = `${layout.bezelHeightPx}px`;
+  frame.style.maxHeight = `${layout.bezelHeightPx}px`;
   frame.style.maxWidth = `${innerWidth}px`;
   frame.style.minWidth = "0";
   frame.style.display = "block";
+  frame.style.flexShrink = "0";
   frame.style.boxSizing = "border-box";
-  frame.style.overflow = "visible";
+  frame.style.overflow = "hidden";
   frame.style.margin = "0";
+  frame.style.position = "relative";
 
-  normalizeFusionCaptureLayout(frame);
+  normalizeFusionCaptureLayout(frame, layout.phosphorHeightPx);
   injectCaptureBezelModeBanner(frame);
+  frame.appendChild(createShareBezelBrand());
 
   stage.appendChild(frame);
+  const hwBand = createShareHwBand(meta, layout);
+  if (hwBand) stage.appendChild(hwBand);
   return { stage, frame };
 }
 
@@ -788,8 +954,9 @@ function injectCaptureBezelModeBanner(frame: HTMLElement): void {
   frame.appendChild(banner);
 }
 
-function normalizeFusionCaptureLayout(frame: HTMLElement): void {
-  const phosphorH = `${FUSION_SHARE_CAPTURE_PHOSPHOR_HEIGHT_PX}px`;
+function normalizeFusionCaptureLayout(frame: HTMLElement, phosphorHeightPx: number): void {
+  const phosphorH = `${phosphorHeightPx}px`;
+  frame.style.setProperty("--fusion-share-phosphor-h", phosphorH);
 
   const display = frame.querySelector(".vram-forecast-display");
   if (display instanceof HTMLElement) {
@@ -860,54 +1027,7 @@ function brandMutedCaption(text: string, mutedColor = FUSION_SHARE_IDENTITY_MUTE
   return label;
 }
 
-function createFooterShell(): HTMLElement {
-  const shell = document.createElement("div");
-  shell.className = "fusion-share-capture-footer-shell";
-  shell.setAttribute("data-fusion-share-exclude", "");
-  shell.style.setProperty("--ui-text-scale", "1");
-
-  shell.style.top = "0";
-  shell.style.left = "0";
-  shell.style.width = `${FUSION_SHARE_EXPORT_WIDTH}px`;
-  shell.style.height = `${FUSION_SHARE_EXPORT_FOOTER_HEIGHT}px`;
-  shell.style.zIndex = "2147483647";
-  shell.style.pointerEvents = "none";
-  shell.style.boxSizing = "border-box";
-  shell.style.position = "fixed";
-  shell.style.display = "flex";
-  shell.style.alignItems = "center";
-  shell.style.justifyContent = "flex-end";
-  shell.style.gap = "10px";
-  shell.style.padding = "0 10px";
-  shell.style.background = FUSION_SHARE_FOOTER_BG;
-  shell.style.borderTop = `1px solid ${FUSION_SHARE_FOOTER_BORDER}`;
-  shell.style.overflow = "hidden";
-
-  const versionLine = document.createElement("span");
-  versionLine.textContent = `v${__TAURI_VERSION__} · BUILD ${__APP_VERSION__}`;
-  versionLine.style.fontFamily = "monospace";
-  versionLine.style.fontSize = "7px";
-  versionLine.style.fontWeight = "600";
-  versionLine.style.letterSpacing = "0.05em";
-  versionLine.style.color = "rgba(118, 185, 0, 0.82)";
-  versionLine.style.webkitTextFillColor = "rgba(118, 185, 0, 0.82)";
-  versionLine.style.lineHeight = "1";
-  versionLine.style.whiteSpace = "nowrap";
-  versionLine.style.flexShrink = "0";
-  shell.appendChild(versionLine);
-
-  const logoWrap = document.createElement("span");
-  logoWrap.style.display = "inline-flex";
-  logoWrap.style.color = NV_GREEN;
-  logoWrap.style.lineHeight = "0";
-  logoWrap.style.flexShrink = "0";
-  logoWrap.innerHTML = brandLogoMarkup(FUSION_SHARE_FOOTER_LOGO_HEIGHT);
-  shell.appendChild(logoWrap);
-
-  return shell;
-}
-
-function createHeaderShell(meta: FusionShareMeta, variant: FusionShareVariant): HTMLElement {
+function createHeaderShell(meta: FusionShareMeta, variant: FusionShareVariant, layout: FusionShareExportLayout): HTMLElement {
   const colors = resolveCaptureColors(variant);
   const paramsPalette: ParamsRowPalette = {
     muted: colors.subtitle,
@@ -926,7 +1046,7 @@ function createHeaderShell(meta: FusionShareMeta, variant: FusionShareVariant): 
 
   shell.style.top = "0";
   shell.style.left = "0";
-  shell.style.width = `${FUSION_SHARE_EXPORT_WIDTH}px`;
+  shell.style.width = `${layout.widthPx}px`;
   shell.style.height = `${FUSION_SHARE_EXPORT_HEADER_HEIGHT}px`;
   shell.style.zIndex = "2147483647";
   shell.style.pointerEvents = "none";
@@ -1260,10 +1380,11 @@ function compositeFrameWithMat(
   frameCanvas: HTMLCanvasElement,
   pixelRatio: number,
   matColor: string,
+  layout: FusionShareExportLayout,
 ): HTMLCanvasElement {
   const out = document.createElement("canvas");
-  out.width = FUSION_SHARE_EXPORT_WIDTH * pixelRatio;
-  out.height = FUSION_SHARE_EXPORT_FRAME_HEIGHT * pixelRatio;
+  out.width = layout.widthPx * pixelRatio;
+  out.height = layout.frameHeightPx * pixelRatio;
   const ctx = out.getContext("2d");
   if (!ctx) return frameCanvas;
 
@@ -1318,12 +1439,11 @@ function drawHeaderFallbackCanvas(width: number, pixelRatio: number): HTMLCanvas
 function mergeCanvases(
   headerCanvas: HTMLCanvasElement,
   frameCanvas: HTMLCanvasElement,
-  footerCanvas: HTMLCanvasElement,
   backgroundColor: string,
 ): HTMLCanvasElement {
   const gap = FUSION_SHARE_EXPORT_GAP * FUSION_SHARE_EXPORT_PIXEL_RATIO;
   const width = frameCanvas.width;
-  const height = headerCanvas.height + gap + frameCanvas.height + footerCanvas.height;
+  const height = headerCanvas.height + gap + frameCanvas.height;
   const merged = document.createElement("canvas");
   merged.width = width;
   merged.height = height;
@@ -1338,8 +1458,6 @@ function mergeCanvases(
   ctx.drawImage(headerCanvas, 0, y);
   y += headerCanvas.height + gap;
   ctx.drawImage(frameCanvas, 0, y);
-  y += frameCanvas.height;
-  ctx.drawImage(footerCanvas, 0, y);
   return merged;
 }
 
@@ -1358,18 +1476,16 @@ async function renderFusionSharePngOnce(
   }
 
   const colors = resolveCaptureColors(variant);
+  const layout = computeFusionShareExportLayout(meta);
   const pixelRatio = FUSION_SHARE_EXPORT_PIXEL_RATIO;
-  const targetFrameW = FUSION_SHARE_EXPORT_WIDTH * pixelRatio;
-  const targetFrameH = FUSION_SHARE_EXPORT_FRAME_HEIGHT * pixelRatio;
-  const targetHeaderW = FUSION_SHARE_EXPORT_WIDTH * pixelRatio;
+  const targetFrameW = layout.widthPx * pixelRatio;
+  const targetFrameH = layout.frameHeightPx * pixelRatio;
+  const targetHeaderW = layout.widthPx * pixelRatio;
   const targetHeaderH = FUSION_SHARE_EXPORT_HEADER_HEIGHT * pixelRatio;
-  const targetFooterW = FUSION_SHARE_EXPORT_WIDTH * pixelRatio;
-  const targetFooterH = FUSION_SHARE_EXPORT_FOOTER_HEIGHT * pixelRatio;
 
   const themeLock = lockDocumentThemeForCapture(variant);
-  const { stage, frame } = createFrameCaptureStage(sourceFrame, colors, variant);
-  const headerShell = createHeaderShell(meta, variant);
-  const footerShell = createFooterShell();
+  const { stage, frame } = createFrameCaptureStage(sourceFrame, colors, variant, layout, meta);
+  const headerShell = createHeaderShell(meta, variant, layout);
 
   const hidden = [
     ...hideCaptureChrome(frame),
@@ -1380,8 +1496,8 @@ async function renderFusionSharePngOnce(
   const paddingRestore = stripForecastPaddingForCapture(frame);
   forceFusionCapturePaint(frame);
 
-  const targetBezelW = (FUSION_SHARE_EXPORT_WIDTH - FUSION_SHARE_EXPORT_FRAME_PAD_X * 2) * pixelRatio;
-  const targetBezelH = FUSION_SHARE_EXPORT_BEZEL_HEIGHT_PX * pixelRatio;
+  const targetBezelW = (layout.widthPx - FUSION_SHARE_EXPORT_FRAME_PAD_X * 2) * pixelRatio;
+  const targetBezelH = layout.bezelHeightPx * pixelRatio;
 
   try {
     let headerCanvas = await captureMountedShell(headerShell, {
@@ -1415,7 +1531,7 @@ async function renderFusionSharePngOnce(
         bezelCanvas = cropCanvas(bezelCanvas, targetBezelW, targetBezelH, colors.industrialBg);
       }
 
-      const cloneMat = compositeFrameWithMat(bezelCanvas, pixelRatio, colors.panelAccent);
+      const cloneMat = compositeFrameWithMat(bezelCanvas, pixelRatio, colors.panelAccent, layout);
       if (!canvasHasBezelContent(cloneMat, pixelRatio, colors.industrialBg)) {
         unmountCaptureShell(stage);
         await waitForPaint(2);
@@ -1432,7 +1548,7 @@ async function renderFusionSharePngOnce(
         await waitForPaint(2);
       }
 
-      frameCanvas = compositeFrameWithMat(bezelCanvas, pixelRatio, colors.panelAccent);
+      frameCanvas = compositeFrameWithMat(bezelCanvas, pixelRatio, colors.panelAccent, layout);
     }
 
     unmountCaptureShell(stage);
@@ -1441,17 +1557,7 @@ async function renderFusionSharePngOnce(
       frameCanvas = cropCanvas(frameCanvas, targetFrameW, targetFrameH, colors.panelAccent);
     }
 
-    let footerCanvas = await captureMountedShell(footerShell, {
-      backgroundColor: FUSION_SHARE_FOOTER_BG,
-      canvasWidth: targetFooterW,
-      canvasHeight: targetFooterH,
-    });
-
-    if (footerCanvas.width !== targetFooterW || footerCanvas.height !== targetFooterH) {
-      footerCanvas = cropCanvas(footerCanvas, targetFooterW, targetFooterH, FUSION_SHARE_FOOTER_BG);
-    }
-
-    const merged = mergeCanvases(headerCanvas, frameCanvas, footerCanvas, colors.cardFill);
+    const merged = mergeCanvases(headerCanvas, frameCanvas, colors.cardFill);
     return await canvasToBlob(merged);
   } finally {
     themeLock.restore();
@@ -1460,7 +1566,6 @@ async function renderFusionSharePngOnce(
     restoreCaptureChrome(hidden);
     restoreFrameOverflow(overflowRestore);
     unmountCaptureShell(headerShell);
-    unmountCaptureShell(footerShell);
     unmountCaptureShell(stage);
   }
 }

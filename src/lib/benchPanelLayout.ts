@@ -1,4 +1,8 @@
-import { buildBenchGpuTopoEntries } from "./benchHwTopo";
+import {
+  buildBenchGpuTopoEntries,
+  buildFusionShareGpuTopoEntries,
+  type BenchGpuTopoEntry,
+} from "./benchHwTopo";
 import type { BenchSessionMode } from "./benchPortStore";
 import { FORECAST_PHOSPHOR_HEIGHT_PX } from "./onboardingDisplay";
 import type { GpuInfo } from "./types";
@@ -7,8 +11,8 @@ import type { GpuInfo } from "./types";
 export const BENCH_PANEL_PAD_Y = 12;
 /** One TG/PP result grid row at text-xl (label + value + unit). */
 export const BENCH_RESULT_ROW_PX = 42;
-/** One stacked result band in RUN BOTH (smaller dual typography). */
-export const BENCH_RESULT_ROW_DUAL_PX = 32;
+/** One stacked result band in RUN BOTH (label + 15px value + unit slot + ×N badge overhang). */
+export const BENCH_RESULT_ROW_DUAL_PX = 40;
 /** Vertical gap between TG and PP rows in RUN BOTH (gap-y-2.5). */
 export const BENCH_DUAL_ROW_GAP_PX = 10;
 /** Share + HIDE footer row. */
@@ -36,8 +40,8 @@ export const FUSION_BENCH_IDLE_SLACK_PX = 18;
 /** Fixed hero row height (slots + TG + PP) — PP progress slot always reserved. */
 export const FUSION_HERO_ROW_PX = 122;
 
-/** Benchmark tray latch row (drawer lip control). */
-export const FUSION_BENCH_TRAY_LATCH_PX = 26;
+/** Benchmark tray latch row (drawer lip control + open/stowed margins). */
+export const FUSION_BENCH_TRAY_LATCH_PX = 28;
 
 /**
  * Header + hero + dashboard padding when bench is flush under the hero (no flex spacer).
@@ -117,7 +121,71 @@ export function shouldShowBenchGpuTopo(opts: BenchPanelLayoutOpts): boolean {
     && gpuTopoEntries.length > 0
     && !compact
     && !stackMode
+    && !opts.inlineActions
   );
+}
+
+/** Share PNG phosphor — dashboard chrome + max bench slot; no tray latch or in-panel GPU topo. */
+export function computeFusionShareCapturePhosphorHeightPx(
+  opts: Pick<BenchPanelLayoutOpts, "gpus" | "gpuMask"> = {},
+): number {
+  const slotH = computeFusionBenchSlotHeight({
+    gpus: opts.gpus,
+    gpuMask: opts.gpuMask,
+    inlineActions: true,
+  });
+  return FUSION_DASHBOARD_TIGHT_CHROME_PX + slotH;
+}
+
+/** Share capture logo lockup in bottom-right bezel corner. */
+export const FUSION_SHARE_BRAND_LOGO_PX = 30;
+
+const SHARE_HW_CHIP_GAP_PX = 6;
+const SHARE_HW_CHIP_ROW_H_PX = 11;
+const SHARE_HW_CHIP_ROW_GAP_PX = 3;
+const SHARE_HW_HEADLINE_H_PX = 8;
+const SHARE_HW_HEADLINE_GAP_PX = 3;
+const SHARE_HW_BAND_PAD_PX = 4;
+/** Pre-aspect inner width estimate for first-pass row wrap. */
+const SHARE_HW_BAND_EST_WIDTH_PX = 640;
+
+function estimateShareHwChipWidthPx(entry: BenchGpuTopoEntry): number {
+  const label = `${entry.count}× ${entry.label}`;
+  const driver = entry.driverVersion ? ` drv ${entry.driverVersion}` : "";
+  return Math.ceil((label.length + driver.length) * 5.4) + 11;
+}
+
+function estimateShareHwChipRows(entries: BenchGpuTopoEntry[], bandWidthPx: number): number {
+  if (entries.length === 0) return 0;
+  let rows = 1;
+  let rowUsed = 0;
+  for (const entry of entries) {
+    const chipW = estimateShareHwChipWidthPx(entry);
+    const gap = rowUsed > 0 ? SHARE_HW_CHIP_GAP_PX : 0;
+    if (rowUsed > 0 && rowUsed + gap + chipW > bandWidthPx) {
+      rows += 1;
+      rowUsed = chipW;
+    } else {
+      rowUsed += gap + chipW;
+    }
+  }
+  return rows;
+}
+
+/** GPU topo row below share bezel (brand lives in bezel corner). */
+export function computeFusionShareHwBandHeightPx(
+  gpus?: GpuInfo[],
+  gpuMask?: string,
+  hwTopo?: string,
+  bandWidthPx = SHARE_HW_BAND_EST_WIDTH_PX,
+): number {
+  const entries = gpus ? buildFusionShareGpuTopoEntries(gpus, gpuMask) : [];
+  if (entries.length === 0) {
+    return hwTopo?.trim() ? SHARE_HW_HEADLINE_H_PX + SHARE_HW_BAND_PAD_PX : 0;
+  }
+  const rows = estimateShareHwChipRows(entries, bandWidthPx);
+  const chipsH = rows * SHARE_HW_CHIP_ROW_H_PX + Math.max(0, rows - 1) * SHARE_HW_CHIP_ROW_GAP_PX;
+  return SHARE_HW_HEADLINE_H_PX + SHARE_HW_HEADLINE_GAP_PX + chipsH + SHARE_HW_BAND_PAD_PX;
 }
 
 /** Results-only body when SHARE/HIDE + GPU topo are docked outside BenchWidget. */
@@ -145,7 +213,7 @@ export function computeBenchWidgetBodyHeight(opts: BenchPanelLayoutOpts): number
   return height;
 }
 
-/** Results + topo area inside the bench slot (footer docked separately in FusionOverlay). */
+/** Results body inside the bench slot (fusion overlay docks share actions separately). */
 export function computeBenchContentHeight(
   opts: BenchPanelLayoutOpts,
   shareFooterVisible: boolean,
@@ -204,12 +272,15 @@ export function computeFusionBenchSlotHeight(
   return Math.max(...candidates.map(computeBenchPanelHeight));
 }
 
-/** Fixed fusion phosphor height for a GPU topo — does not change with bench run state. */
+/** Fixed fusion phosphor height when bench tray is open — chrome + latch + max bench slot. */
 export function computeFusionPhosphorFixedHeight(
   opts: Pick<BenchPanelLayoutOpts, "gpus" | "gpuMask" | "inlineActions">,
 ): number {
-  const slotH = computeFusionBenchSlotHeight(opts);
-  return FORECAST_PHOSPHOR_HEIGHT_PX + Math.max(0, slotH - BENCH_IDLE_PANEL_PX);
+  return (
+    FUSION_DASHBOARD_TIGHT_CHROME_PX
+    + FUSION_BENCH_TRAY_LATCH_PX
+    + computeFusionBenchSlotHeight(opts)
+  );
 }
 
 /** Metrics-only phosphor — header + hero + tray latch (no bench slack). */

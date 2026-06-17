@@ -83,12 +83,32 @@ export function buildBenchGpuTopoEntries(
   return Array.from(groups.values()).sort((a, b) => a.indices[0] - b.indices[0]);
 }
 
-export function formatBenchSplitHeadline(
+/** Share capture — use full GPU list when bench mask is unset (multi-GPU). */
+export function buildFusionShareGpuTopoEntries(
+  gpus: GpuInfo[],
+  gpuMask?: string,
+): BenchGpuTopoEntry[] {
+  const masked = buildBenchGpuTopoEntries(gpus, gpuMask);
+  if (masked.length > 0) return masked;
+  if (gpus.length <= 1) return masked;
+  return buildBenchGpuTopoEntries(gpus, gpus.map((g) => String(g.index)).join(","));
+}
+
+export function formatFusionShareSplitHeadline(
   gpus: GpuInfo[],
   gpuMask: string | undefined,
   splitMode: string | undefined,
 ): string | null {
-  const indices = parseGpuMaskIndices(gpuMask, gpus);
+  const entries = buildFusionShareGpuTopoEntries(gpus, gpuMask);
+  if (entries.length === 0) return null;
+  const indices = entries.flatMap((e) => e.indices);
+  return formatBenchSplitHeadlineFromIndices(indices, splitMode);
+}
+
+function formatBenchSplitHeadlineFromIndices(
+  indices: number[],
+  splitMode: string | undefined,
+): string | null {
   if (indices.length === 0) return null;
 
   const split = String(splitMode ?? "none").trim().toLowerCase();
@@ -102,4 +122,13 @@ export function formatBenchSplitHeadline(
     return `${n} GPUs · ${split} split`;
   }
   return `${n} GPUs`;
+}
+
+export function formatBenchSplitHeadline(
+  gpus: GpuInfo[],
+  gpuMask: string | undefined,
+  splitMode: string | undefined,
+): string | null {
+  const indices = parseGpuMaskIndices(gpuMask, gpus);
+  return formatBenchSplitHeadlineFromIndices(indices, splitMode);
 }
