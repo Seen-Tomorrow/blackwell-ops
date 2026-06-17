@@ -381,7 +381,9 @@ export interface FusionUpdate {
   prefillTokensTotal: number; // target prompt size for current request
 
   // Generation metrics (primary source = /slots)
-  genTps: number;         // session average since TG start (hero AVG mode)
+  genTps: number;         // per-request TG avg (gated; legacy fallback)
+  /** Cumulative decode TPS across bursts — hero AVG mode (mirrors prefillTpsSession). */
+  genTpsSession?: number;
   genTpsInstant?: number; // per-poll / log chunk — hero LIVE mode
 
   genTokensPerRequestSlots: number;    // from /slots n_decoded current value

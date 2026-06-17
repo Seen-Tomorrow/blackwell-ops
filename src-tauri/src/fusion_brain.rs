@@ -14,6 +14,8 @@ use crate::fusion_poller::{self, MetricsSnapshot};
 const MAX_DISPLAY_TPS: f64 = 200_000.0;
 /// PP hero AVG: need sustained prefill wall time (sparse agent file bursts skew tokens/request_elapsed).
 const MIN_PP_SESSION_AVG_MS: u64 = 10_000;
+/// Per-request + session TG AVG: suppress elapsed≈0 spikes (500ms filters 200k flash).
+const MIN_TG_PER_REQUEST_AVG_MS: u64 = 500;
 /// Agent bursts (Opencode file reads) gap /slots idle briefly — don't flash IDLE or zero CTX.
 const INTER_REQUEST_GAP_HOLD_MS: u64 = 1200;
 /// Ignore first-poll token bursts after reset (KV restore / cache jump).
@@ -212,6 +214,10 @@ pub struct FusionUpdate {
     #[serde(rename = "genTps")]
     pub gen_tps: f64,
 
+    /// Session-average TG TPS (cumulative decode wall) — hero AVG mode, mirrors prefillTpsSession.
+    #[serde(rename = "genTpsSession")]
+    pub gen_tps_session: f64,
+
     /// Per-poll / log-chunk generation TPS (responsive; use with hero LIVE mode).
     #[serde(rename = "genTpsInstant")]
     pub gen_tps_instant: f64,
@@ -306,6 +312,7 @@ struct FusionEmitFingerprint {
     prefill_tps_instant_centi: u32,
     prefill_tps_metrics_centi: u32,
     gen_tps_deci: u32,
+    gen_tps_session_deci: u32,
     gen_tps_instant_deci: u32,
     gen_tokens_request: u32,
     gen_tokens_session: u32,
@@ -338,6 +345,7 @@ impl FusionEmitFingerprint {
             prefill_tps_instant_centi: (u.prefill_tps_instant * 100.0).round() as u32,
             prefill_tps_metrics_centi: (u.prefill_tps_metrics * 100.0).round() as u32,
             gen_tps_deci: (u.gen_tps * 10.0).round() as u32,
+            gen_tps_session_deci: (u.gen_tps_session * 10.0).round() as u32,
             gen_tps_instant_deci: (u.gen_tps_instant * 10.0).round() as u32,
             gen_tokens_request: u.gen_tokens_per_request_slots.min(u32::MAX as usize) as u32,
             gen_tokens_session: u.gen_tokens_per_session.min(u32::MAX as usize) as u32,
@@ -489,6 +497,12 @@ pub struct FusionBrain {
     pp_completed_ms: u64,
     pp_burst_peak_tokens: usize,
     pp_burst_started_at: Option<Instant>,
+
+    /// TG hero AVG — cumulative decode tokens / wall across bursts this engine session.
+    tg_completed_tokens: u64,
+    tg_completed_ms: u64,
+    tg_burst_peak_tokens: usize,
+    tg_burst_started_at: Option<Instant>,
 }
 
 impl FusionBrain {
@@ -557,6 +571,10 @@ impl FusionBrain {
             pp_completed_ms: 0,
             pp_burst_peak_tokens: 0,
             pp_burst_started_at: None,
+            tg_completed_tokens: 0,
+            tg_completed_ms: 0,
+            tg_burst_peak_tokens: 0,
+            tg_burst_started_at: None,
         }
     }
 
@@ -616,6 +634,67 @@ impl FusionBrain {
         self.pp_completed_tokens = 0;
         self.pp_completed_ms = 0;
         self.pp_burst_peak_tokens = 0;
+    }
+
+    fn tg_generation_active(&self, slots: &[fusion_poller::SlotData]) -> bool {
+        !self.request_closed
+            && (self.phase == InferencePhase::Tg
+                || self.slots_have_active_generation(slots)
+                || (self.log_request_open && self.log_prefill_done && self.lp_gen_tps > 0.0))
+    }
+
+    fn close_tg_burst(&mut self) {
+        if let Some(start) = self.tg_burst_started_at.take() {
+            let ms = start.elapsed().as_millis() as u64;
+            if ms > 0 && self.tg_burst_peak_tokens > 0 {
+                self.tg_completed_ms = self.tg_completed_ms.saturating_add(ms);
+                self.tg_completed_tokens = self
+                    .tg_completed_tokens
+                    .saturating_add(self.tg_burst_peak_tokens as u64);
+            }
+        }
+        self.tg_burst_peak_tokens = 0;
+    }
+
+    fn tick_tg_session_avg(&mut self, slots: &[fusion_poller::SlotData]) {
+        let tg_active = self.tg_generation_active(slots);
+        if tg_active {
+            if self.tg_burst_started_at.is_none() {
+                self.tg_burst_started_at = Some(Instant::now());
+            }
+            let tokens = self.per_request_gen_tokens(slots);
+            if tokens > self.tg_burst_peak_tokens {
+                self.tg_burst_peak_tokens = tokens;
+            }
+        } else if self.tg_burst_started_at.is_some() {
+            self.close_tg_burst();
+        }
+    }
+
+    fn tg_session_avg_tps(&self, slots: &[fusion_poller::SlotData]) -> f64 {
+        let mut total_ms = self.tg_completed_ms;
+        let mut total_tokens = self.tg_completed_tokens;
+        if self.tg_generation_active(slots) {
+            if let Some(start) = self.tg_burst_started_at {
+                total_ms += start.elapsed().as_millis() as u64;
+            }
+            let peak = self
+                .per_request_gen_tokens(slots)
+                .max(self.tg_burst_peak_tokens) as u64;
+            total_tokens = self.tg_completed_tokens.saturating_add(peak);
+        }
+        if total_ms >= MIN_TG_PER_REQUEST_AVG_MS && total_tokens > 0 {
+            clamp_display_tps((total_tokens as f64 / total_ms as f64) * 1000.0)
+        } else {
+            0.0
+        }
+    }
+
+    fn reset_tg_session_avg(&mut self) {
+        self.close_tg_burst();
+        self.tg_completed_tokens = 0;
+        self.tg_completed_ms = 0;
+        self.tg_burst_peak_tokens = 0;
     }
 
     fn within_inter_request_hold(&self, now: Instant) -> bool {
@@ -753,6 +832,7 @@ impl FusionBrain {
         } else if self.last_gen_tps > 0.0 {
             self.frozen_request_gen_tps = self.last_gen_tps;
         }
+        self.close_tg_burst();
         self.log_request_open = false;
         self.stop_request_clock();
         self.lp_gen_tps = 0.0;
@@ -785,6 +865,7 @@ impl FusionBrain {
         self.lp_reset_regression = false;
         self.reset_prefill_counters();
         self.reset_pp_session_avg();
+        self.reset_tg_session_avg();
         for s in self.slot_states.values_mut() {
             s.was_processing = false;
             s.session_n_decoded = 0;
@@ -1850,6 +1931,7 @@ impl FusionBrain {
         self.reconcile_phase(slots, any_processing, now);
         let (_, prefill_tokens_tick) = self.merged_prefill_display();
         self.tick_pp_session_avg(slots, prefill_tokens_tick);
+        self.tick_tg_session_avg(slots);
         self.update_instant_tps(slots, now);
 
         let seen_ids: HashSet<usize> = slots.iter().map(|s| s.id).collect();
@@ -1951,16 +2033,18 @@ impl FusionBrain {
         } else if request_live && self.effective_generation_active() {
             if let Some(start) = self.tg_start_time {
                 let tokens_since_tg = self.per_request_gen_tokens(slots);
-                let elapsed_ms = start.elapsed().as_millis().max(1) as u64;
-                if tokens_since_tg > 0 {
-                    (tokens_since_tg as f64) / (elapsed_ms as f64 / 1000.0)
+                let elapsed_ms = start.elapsed().as_millis() as u64;
+                if tokens_since_tg > 0 && elapsed_ms >= MIN_TG_PER_REQUEST_AVG_MS {
+                    clamp_display_tps(
+                        (tokens_since_tg as f64) / (elapsed_ms as f64 / 1000.0),
+                    )
                 } else {
-                    self.last_gen_tps.max(self.lp_gen_tps)
+                    0.0
                 }
             } else if self.lp_gen_tps > 0.0 {
-                self.lp_gen_tps
+                clamp_display_tps(self.lp_gen_tps)
             } else {
-                self.last_gen_tps
+                0.0
             }
         } else if self.last_gen_tps > 0.0 {
             self.last_gen_tps
@@ -2114,6 +2198,7 @@ impl FusionBrain {
         } else if prefill_tps_session <= 0.0 && self.lp_prefill_tps > 0.0 {
             prefill_tps_session = clamp_display_tps(self.lp_prefill_tps);
         }
+        let gen_tps_session = self.tg_session_avg_tps(slots);
 
         FusionUpdate {
             alias: self.alias.clone(),
@@ -2128,6 +2213,7 @@ impl FusionBrain {
             prefill_tokens,
             prefill_tokens_total: self.prefill_tokens_total,
             gen_tps: clamp_display_tps(gen_tps),
+            gen_tps_session,
             gen_tps_instant: clamp_display_tps(self.gen_tps_instant),
             gen_tokens_per_request_slots: gen_tokens_request_slots,
             gen_tokens_per_session: self.session_tokens_generated,

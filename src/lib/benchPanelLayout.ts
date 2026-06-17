@@ -33,6 +33,9 @@ export const BENCH_PHOSPHOR_EXTRA_PX = 64;
  */
 export const FUSION_BENCH_IDLE_SLACK_PX = 46;
 
+/** Fixed hero row height (slots + TG + PP) — PP progress slot always reserved. */
+export const FUSION_HERO_ROW_PX = 122;
+
 /**
  * Header + hero + dashboard padding when bench is flush under the hero (no flex spacer).
  * Includes ~14px headroom for 6vh hero clamp + micro-stats row.
@@ -162,6 +165,48 @@ export function computeFusionPhosphorHeight(benchPanelHeight: number): number {
 export function computeBenchPhosphorExtra(opts: Parameters<typeof computeBenchPanelHeight>[0]): number {
   const panelH = computeBenchPanelHeight(opts);
   return Math.max(0, computeFusionPhosphorHeight(panelH) - FORECAST_PHOSPHOR_HEIGHT_PX);
+}
+
+const FUSION_BENCH_SLOT_STUB = {} as unknown;
+
+/** Fusion overlay bench slot — max height across idle / running / results (no state jumps). */
+export function computeFusionBenchSlotHeight(
+  opts: Pick<BenchPanelLayoutOpts, "gpus" | "gpuMask" | "inlineActions">,
+): number {
+  const base: BenchPanelLayoutOpts = {
+    showResults: false,
+    tgRunning: false,
+    ppRunning: false,
+    sessionMode: "idle",
+    tgResult: null,
+    ppResult: null,
+    inlineActions: opts.inlineActions ?? true,
+    gpus: opts.gpus,
+    gpuMask: opts.gpuMask,
+  };
+  const candidates: BenchPanelLayoutOpts[] = [
+    base,
+    { ...base, showResults: true, tgRunning: true },
+    { ...base, showResults: true, ppRunning: true },
+    { ...base, showResults: true, sessionMode: "tg", tgResult: FUSION_BENCH_SLOT_STUB, ppResult: null },
+    { ...base, showResults: true, sessionMode: "pp", tgResult: null, ppResult: FUSION_BENCH_SLOT_STUB },
+    {
+      ...base,
+      showResults: true,
+      sessionMode: "both",
+      tgResult: FUSION_BENCH_SLOT_STUB,
+      ppResult: FUSION_BENCH_SLOT_STUB,
+    },
+  ];
+  return Math.max(...candidates.map(computeBenchPanelHeight));
+}
+
+/** Fixed fusion phosphor height for a GPU topo — does not change with bench run state. */
+export function computeFusionPhosphorFixedHeight(
+  opts: Pick<BenchPanelLayoutOpts, "gpus" | "gpuMask" | "inlineActions">,
+): number {
+  const slotH = computeFusionBenchSlotHeight(opts);
+  return FORECAST_PHOSPHOR_HEIGHT_PX + Math.max(0, slotH - BENCH_IDLE_PANEL_PX);
 }
 
 export function computeBenchPanelHeight(opts: BenchPanelLayoutOpts): number {

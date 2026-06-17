@@ -15,7 +15,7 @@ export const DISPLAY_BEZEL_PADDING_PX = 18;
 export const DISPLAY_FRAME_MIN_HEIGHT_PX = 240;
 
 /** Fixed phosphor inner height for forecast / fusion (px) — `.vram-forecast-display`. */
-export const FORECAST_PHOSPHOR_HEIGHT_PX = 250;
+export const FORECAST_PHOSPHOR_HEIGHT_PX = 278;
 
 /** VramBadge / setup content horizontal padding (px) — `px-3`. */
 export const PHOSPHOR_CONTENT_PAD_X_PX = 12;

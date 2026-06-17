@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type { GpuInfo, VramManifest, ModelMetadata } from "../lib/types";
-import { computeBenchPanelHeight, computeFusionPhosphorHeight } from "../lib/benchPanelLayout";
-import { getBenchPortState, subscribeBenchPortStore } from "../lib/benchPortStore";
+import { computeFusionPhosphorFixedHeight } from "../lib/benchPanelLayout";
 import { FORECAST_PHOSPHOR_HEIGHT_PX } from "../lib/onboardingDisplay";
 import GpuTopology from "./GpuTopology";
 import FusionOverlay from "./FusionOverlay";
@@ -131,10 +130,7 @@ export default function VramBadge({
   gpuMask = "", vramTargetMib, modelLayerTotal, gpuLoadTargetsMib, offloadMode, onMoeSuggestionClick, hideValidate = false, hideMoeBadge = false, className,
   modelName, modelQuant, providerName, providerBuildVersion, profileLabel, cudaVersion, launchConfig, hwTopo,
 }: VramBadgeProps) {
-  const [benchLayoutTick, setBenchLayoutTick] = useState(0);
   const rootRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => subscribeBenchPortStore(() => setBenchLayoutTick((t) => t + 1)), []);
 
   const fusionOverlayActive =
     selectedSlotIdx !== null &&
@@ -143,27 +139,15 @@ export default function VramBadge({
     (engineStatus === "LOADING" || engineStatus === "RUNNING");
 
   const fusionPhosphorHeight = useMemo(() => {
-    if (!fusionOverlayActive || activeEnginePort == null) return FORECAST_PHOSPHOR_HEIGHT_PX;
-    const ps = getBenchPortState(activeEnginePort);
-    const benchPanelHeight = computeBenchPanelHeight({
-      showResults: ps.showResults,
-      tgRunning: ps.tgRunning,
-      ppRunning: ps.ppRunning,
-      sessionMode: ps.sessionMode,
-      tgResult: ps.tgResult,
-      ppResult: ps.ppResult,
-      gpus,
-      gpuMask,
-      inlineActions: true,
-    });
-    return computeFusionPhosphorHeight(benchPanelHeight);
-  }, [fusionOverlayActive, activeEnginePort, benchLayoutTick, gpus, gpuMask]);
+    if (!fusionOverlayActive) return FORECAST_PHOSPHOR_HEIGHT_PX;
+    return computeFusionPhosphorFixedHeight({ gpus, gpuMask, inlineActions: true });
+  }, [fusionOverlayActive, gpus, gpuMask]);
 
   useEffect(() => {
     const display = rootRef.current?.closest(".vram-forecast-display");
     if (!(display instanceof HTMLElement)) return;
 
-    if (fusionPhosphorHeight > FORECAST_PHOSPHOR_HEIGHT_PX) {
+    if (fusionPhosphorHeight !== FORECAST_PHOSPHOR_HEIGHT_PX) {
       display.style.height = `${fusionPhosphorHeight}px`;
       display.style.minHeight = `${fusionPhosphorHeight}px`;
       display.style.maxHeight = `${fusionPhosphorHeight}px`;

@@ -13,6 +13,7 @@ export function fusionPayloadEqual(a: FusionUpdate, b: FusionUpdate): boolean {
     && (a.prefillTpsInstant ?? 0) === (b.prefillTpsInstant ?? 0)
     && a.prefillTpsMetrics === b.prefillTpsMetrics
     && a.genTps === b.genTps
+    && (a.genTpsSession ?? 0) === (b.genTpsSession ?? 0)
     && (a.genTpsInstant ?? 0) === (b.genTpsInstant ?? 0)
     && a.genTokensPerRequestSlots === b.genTokensPerRequestSlots
     && a.genTokensPerSession === b.genTokensPerSession

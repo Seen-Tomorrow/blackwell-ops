@@ -234,12 +234,12 @@ export default function SlotCtxBars({ slotCtx, ctxTotal, ctxPerSlot, parallel }:
     <div className="flex w-full h-full min-h-0">
       <div className="flex flex-col flex-1 min-w-0 h-full min-h-0">
         {compact ? renderCompactBars() : renderIndividualBars()}
-        {numSlots > 1 && defaultCapacity > 0 && !compact && (
+        {numSlots > 1 && ctxTotal > 0 && !compact && (
           <span
             className="text-[6px] font-mono text-stealth-muted/40 text-center mt-0.5 tracking-wide"
-            title={`Engine allocates ${formatTokenCount(defaultCapacity)} KV per slot (${formatTokenCount(ctxTotal)} ÷ ${numSlots})`}
+            title={`${formatTokenCount(ctxTotal)} total context · ${formatTokenCount(defaultCapacity)} per slot`}
           >
-            {formatTokenCount(defaultCapacity)}/slot
+            {formatTokenCount(ctxTotal)}
           </span>
         )}
       </div>

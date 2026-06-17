@@ -1754,9 +1754,9 @@ html, body, #root {
 
 /* Forecast phosphor screen — fixed canvas so Auto VRAM mode does not shrink Fusion overlay */
 .vram-forecast-display {
-  height: 250px;
-  min-height: 250px;
-  max-height: 250px;
+  height: 278px;
+  min-height: 278px;
+  max-height: 278px;
   display: flex;
   flex-direction: column;
   overflow: hidden;

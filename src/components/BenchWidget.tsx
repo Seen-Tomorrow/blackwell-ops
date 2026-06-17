@@ -5,6 +5,7 @@ import {
   BENCH_RESULT_ROW_DUAL_PX,
   BENCH_RESULT_ROW_PX,
   computeBenchPanelHeight,
+  computeFusionBenchSlotHeight,
   isDualBenchResults,
   shouldShowBenchGpuTopo,
 } from "../lib/benchPanelLayout";
@@ -538,10 +539,10 @@ export default function BenchWidget({
       gpuMask: benchHw.gpuMask,
     });
 
-  /** Fixed height — idle vs results (+ optional HW topo band). */
+  /** Fixed height — fusion overlay reserves max slot; stack/compact stay dynamic. */
   const panelHeight = useMemo(
-    () =>
-      computeBenchPanelHeight({
+    () => {
+      const layoutOpts = {
         showResults: ps.showResults,
         tgRunning: ps.tgRunning,
         ppRunning: ps.ppRunning,
@@ -553,7 +554,12 @@ export default function BenchWidget({
         gpus: benchHw?.gpus,
         gpuMask: benchHw?.gpuMask,
         inlineActions: footerDocked,
-      }),
+      };
+      if (footerDocked) {
+        return computeFusionBenchSlotHeight(layoutOpts);
+      }
+      return computeBenchPanelHeight(layoutOpts);
+    },
     [
       ps.showResults,
       ps.tgRunning,
