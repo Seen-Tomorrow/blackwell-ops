@@ -101,8 +101,8 @@ export function BenchResultsActionsCol({ shareMeta, onClose }: BenchResultsFoote
             SHARE results
           </span>
           <FusionShareMenu
-            alias={shareMeta.alias}
             providerName={shareMeta.providerName}
+            tgTps={shareMeta.tgTps}
             providerBuildVersion={shareMeta.providerBuildVersion}
             modelName={shareMeta.modelName}
             modelQuant={shareMeta.modelQuant}
@@ -134,8 +134,8 @@ export function BenchResultsFooter({ shareMeta, onClose }: BenchResultsFooterPro
       {shareMeta && (
         <FusionShareMenu
           labeled
-          alias={shareMeta.alias}
           providerName={shareMeta.providerName}
+          tgTps={shareMeta.tgTps}
           providerBuildVersion={shareMeta.providerBuildVersion}
           modelName={shareMeta.modelName}
           modelQuant={shareMeta.modelQuant}

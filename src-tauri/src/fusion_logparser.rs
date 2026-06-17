@@ -10,6 +10,8 @@ use std::sync::OnceLock;
 // ── Compiled Regex Patterns (all static, zero runtime compilation) ───
 
 static RE_NEW_PROMPT: OnceLock<regex::Regex> = OnceLock::new();
+static RE_NEW_PROMPT_CTX: OnceLock<regex::Regex> = OnceLock::new();
+static RE_NEW_SLOT: OnceLock<regex::Regex> = OnceLock::new();
 static RE_SAMPLER_INIT: OnceLock<regex::Regex> = OnceLock::new();
 static RE_PRINT_TIMING_PP: OnceLock<regex::Regex> = OnceLock::new();
 static RE_PRINT_TIMING_GEN: OnceLock<regex::Regex> = OnceLock::new();
@@ -24,6 +26,24 @@ fn re_new_prompt() -> &'static regex::Regex {
     RE_NEW_PROMPT.get_or_init(|| {
         regex::Regex::new(
             r"slot update_slots:\s+id\s+(\d+)\s*\|\s*task\s*(-?\d+)\s*\|\s*new prompt.*?task\.n_tokens\s*=\s*(\d+)",
+        )
+        .unwrap()
+    })
+}
+
+fn re_new_prompt_ctx() -> &'static regex::Regex {
+    RE_NEW_PROMPT_CTX.get_or_init(|| {
+        regex::Regex::new(
+            r"slot update_slots:\s+id\s+(\d+)\s*\|\s*task\s*(-?\d+)\s*\|\s*new prompt,\s*n_ctx_slot\s*=\s*(\d+).*?task\.n_tokens\s*=\s*(\d+)",
+        )
+        .unwrap()
+    })
+}
+
+fn re_new_slot() -> &'static regex::Regex {
+    RE_NEW_SLOT.get_or_init(|| {
+        regex::Regex::new(
+            r"slot update_slots:\s+id\s+(\d+)\s*\|\s*task\s*(-?\d+)\s*\|\s*new slot,\s*n_ctx\s*=\s*(\d+)",
         )
         .unwrap()
     })
@@ -113,6 +133,12 @@ pub enum LogEvent {
         slot_id: usize,
         task_id: i64,
         prompt_tokens: usize,
+        n_ctx_slot: Option<usize>,
+    },
+    /// Slot init — per-slot KV budget (`new slot, n_ctx = N`).
+    NewSlot {
+        slot_id: usize,
+        n_ctx: usize,
     },
     SamplerInit {
         slot_id: usize,
@@ -178,7 +204,22 @@ fn line_for_fusion_parse(line: &str) -> &str {
 pub fn parse_line(line: &str) -> Option<LogEvent> {
     let line = line_for_fusion_parse(line);
 
-    // New prompt detection
+    // New prompt detection (prefer n_ctx_slot when present)
+    if let Some(caps) = re_new_prompt_ctx().captures(line) {
+        if let (Ok(slot_id), Ok(task_id), Ok(n_ctx_slot), Ok(prompt_tokens)) = (
+            caps.get(1)?.as_str().parse::<usize>(),
+            caps.get(2)?.as_str().parse::<i64>(),
+            caps.get(3)?.as_str().parse::<usize>(),
+            caps.get(4)?.as_str().parse::<usize>(),
+        ) {
+            return Some(LogEvent::NewPrompt {
+                slot_id,
+                task_id,
+                prompt_tokens,
+                n_ctx_slot: Some(n_ctx_slot),
+            });
+        }
+    }
     if let Some(caps) = re_new_prompt().captures(line) {
         if let (Ok(slot_id), Ok(task_id), Ok(prompt_tokens)) = (
             caps.get(1)?.as_str().parse::<usize>(),
@@ -189,7 +230,17 @@ pub fn parse_line(line: &str) -> Option<LogEvent> {
                 slot_id,
                 task_id,
                 prompt_tokens,
+                n_ctx_slot: None,
             });
+        }
+    }
+
+    if let Some(caps) = re_new_slot().captures(line) {
+        if let (Ok(slot_id), Ok(n_ctx)) = (
+            caps.get(1)?.as_str().parse::<usize>(),
+            caps.get(3)?.as_str().parse::<usize>(),
+        ) {
+            return Some(LogEvent::NewSlot { slot_id, n_ctx });
         }
     }
 
@@ -317,6 +368,39 @@ pub fn parse_line(line: &str) -> Option<LogEvent> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_new_prompt_with_n_ctx_slot() {
+        let line = "0.33.442.579 I slot update_slots: id 1 | task 42 | new prompt, n_ctx_slot = 32768, n_keep = 0, task.n_tokens = 12000";
+        let ev = parse_line(line).expect("new prompt");
+        match ev {
+            LogEvent::NewPrompt {
+                slot_id,
+                task_id,
+                prompt_tokens,
+                n_ctx_slot,
+            } => {
+                assert_eq!(slot_id, 1);
+                assert_eq!(task_id, 42);
+                assert_eq!(prompt_tokens, 12000);
+                assert_eq!(n_ctx_slot, Some(32768));
+            }
+            other => panic!("unexpected event: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_new_slot_line() {
+        let line = "0.33.442.579 I slot update_slots: id 0 | task -1 | new slot, n_ctx = 32768";
+        let ev = parse_line(line).expect("new slot");
+        match ev {
+            LogEvent::NewSlot { slot_id, n_ctx } => {
+                assert_eq!(slot_id, 0);
+                assert_eq!(n_ctx, 32768);
+            }
+            other => panic!("unexpected event: {:?}", other),
+        }
+    }
 
     #[test]
     fn parse_draft_acceptance_line() {

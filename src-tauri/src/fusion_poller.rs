@@ -26,6 +26,27 @@ pub struct SlotData {
     pub id_task: Option<i64>,
     #[serde(default)]
     pub speculative: bool,
+    // IK engine /slots uses numeric state+command instead of is_processing + prompt token fields.
+    #[serde(default)]
+    pub state: i32,
+    #[serde(default)]
+    pub command: i32,
+}
+
+/// IK `server-context.h`: SLOT_STATE_PROCESSING = 1, SLOT_COMMAND_LOAD_PROMPT = 1.
+const IK_SLOT_STATE_PROCESSING: i32 = 1;
+const IK_SLOT_COMMAND_LOAD_PROMPT: i32 = 1;
+
+/// Normalize engine-specific /slots shapes into the fields fusion_brain expects.
+pub fn normalize_slots(slots: &mut [SlotData]) {
+    for slot in slots.iter_mut() {
+        if !slot.is_processing
+            && (slot.state == IK_SLOT_STATE_PROCESSING
+                || (slot.state == 0 && slot.command == IK_SLOT_COMMAND_LOAD_PROMPT))
+        {
+            slot.is_processing = true;
+        }
+    }
 }
 
 #[derive(serde::Deserialize)]
@@ -58,7 +79,12 @@ pub async fn poll_slots_on(
         return Err(format!("Status {}", resp.status()));
     }
 
-    resp.json::<Vec<SlotData>>().await.map_err(|e| format!("JSON parse: {}", e))
+    let mut slots: Vec<SlotData> = resp
+        .json::<Vec<SlotData>>()
+        .await
+        .map_err(|e| format!("JSON parse: {}", e))?;
+    normalize_slots(&mut slots);
+    Ok(slots)
 }
 
 // ── /metrics deserialization types ───────────────────────────────────

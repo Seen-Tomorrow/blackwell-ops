@@ -20,6 +20,7 @@ import {
 migrateLegacyStorageKeys();
 
 if (__BUILD_MODE__ === "dev") {
+  document.documentElement.classList.add("app-build--dev");
   interface BlackOpsDevTools {
     /** Replay welcome (3s) + setup guide in the VRAM display, then reload. */
     previewSetupWelcome: () => void;

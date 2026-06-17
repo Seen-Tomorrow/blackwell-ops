@@ -469,6 +469,92 @@ html, body, #root {
   color: var(--theme-footer-text);
 }
 
+/* DEV build — Rosso Corsa rgb(212, 0, 0) / #D40000 (footer + expanded/detached output console) */
+.app-build--dev {
+  --dev-rosso: #d40000;
+  --dev-rosso-deep: #8f0000;
+  --dev-rosso-shell: #120000;
+}
+
+.app-build--dev .blackwell-output-console {
+  --boc-amber: var(--dev-rosso);
+}
+
+.app-build--dev .blackwell-output-console__header,
+.app-build--dev .app-footer-console__header {
+  background: var(--dev-rosso) !important;
+  border-bottom-color: #000000;
+  color: #000000;
+}
+
+.app-build--dev .app-footer,
+.app-build--dev .app-footer.app-footer-expanded {
+  background: var(--dev-rosso-shell);
+  border-top-color: var(--dev-rosso);
+  color: rgba(255, 200, 200, 0.82);
+}
+
+.app-build--dev .app-footer-console__status {
+  background: #080000;
+  color: rgba(255, 160, 160, 0.65);
+}
+
+.app-build--dev .app-footer-console__live {
+  background: rgba(212, 0, 0, 0.22);
+  border-color: rgba(212, 0, 0, 0.55);
+  color: rgba(255, 245, 245, 0.92);
+}
+
+.app-build--dev .app-footer-console__live:hover {
+  border-color: rgba(212, 0, 0, 0.85);
+  box-shadow:
+    inset 0 1px 3px rgba(0, 0, 0, 0.45),
+    0 0 0 1px rgba(212, 0, 0, 0.4);
+}
+
+.app-build--dev .app-footer-console__live-label {
+  color: rgba(255, 100, 100, 0.9);
+}
+
+.app-build--dev .app-footer-stat-link:hover {
+  color: #ffc8c8;
+}
+
+.app-build--dev .foundry-status-chip {
+  border-color: rgba(212, 0, 0, 0.75);
+  background: rgba(143, 0, 0, 0.65);
+  color: #ffe8e8;
+}
+
+.app-build--dev .app-footer-dev-tag {
+  padding: 0 0.35rem;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  border-radius: 2px;
+  border: 1px solid #8f0000;
+  background: var(--dev-rosso);
+  color: #000000;
+}
+
+[data-theme="arctic"].app-build--dev .app-footer,
+[data-theme="arctic"].app-build--dev .app-footer.app-footer-expanded {
+  background: #fce8e8;
+  border-top-color: var(--dev-rosso);
+  color: #8f0000;
+}
+
+[data-theme="arctic"].app-build--dev .app-footer-console__status {
+  background: #f5d8d8;
+  color: #a80000;
+}
+
+[data-theme="arctic"].app-build--dev .blackwell-output-console__header,
+[data-theme="arctic"].app-build--dev .app-footer-console__header {
+  background: var(--dev-rosso) !important;
+  color: #000000;
+}
+
 /* Status bar — upper half amber console header, lower half stats + inset live line */
 .app-footer-console {
   display: flex;

@@ -25,6 +25,7 @@ import WelcomeAnimation from "./onboarding/WelcomeAnimation";
 import SetupGuideDisplay from "./onboarding/SetupGuideDisplay";
 import RunningEnginesPanel from "./RunningEnginesPanel";
 import SliderParam from "./SliderParam";
+import { formatTokenLabel } from "../lib/sliderParamUtils";
 import { useScenarioEvaluator } from "../hooks/useScenarioEvaluator";
 import type { SetupGuideState } from "../hooks/useSetupGuide";
 import { useConfigResolver } from "../hooks/useConfigResolver";
@@ -701,23 +702,43 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
     // ── Slider ptype — render range input instead of value chips ───────────
     if (def.ptype === 'slider') {
+      const ctxNumeric =
+        def.key === "ctx"
+          ? (typeof currentValue === "number" ? currentValue : parseInt(String(currentValue), 10))
+          : 0;
+      const ctxPerSlot =
+        def.key === "ctx" && mtpParallelSlotCount > 1 && Number.isFinite(ctxNumeric) && ctxNumeric > 0
+          ? Math.floor(ctxNumeric / mtpParallelSlotCount)
+          : 0;
       return (
         <div key={paramRowKey(def, rowIdx)} data-param-row className={`flex items-start min-h-[22px] ${isLocked ? 'opacity-50' : ''}`}>
           {isUserAdded && <div className="w-0.5 h-4 flex-shrink-0 bg-yellow-400/40 mr-1.5 mt-0.5" />}
           {!isUserAdded && <div className="w-0.5 h-4 flex-shrink-0 mr-1.5 mt-0.5" />}
           <span
             className={`font-mono w-24 flex-shrink-0 uppercase tracking-wider truncate text-[9px] mt-0.5 ${isUserAdded ? 'text-yellow-400/80' : 'text-stealth-muted'}`}
-            title={def.label}
+            title={def.key === "ctx" && ctxPerSlot > 0
+              ? `${formatTokenLabel(ctxNumeric)} total ÷ ${mtpParallelSlotCount} slots = ${formatTokenLabel(ctxPerSlot)} per slot`
+              : def.label}
           >
             {def.label}
           </span>
-          <SliderParam
-            paramKey={def.key}
-            currentValue={currentValue}
-            onChange={(v) => updateParam(def.key, v)}
-            step={def.step ?? 1024}
-            values={baseValues}
-          />
+          <div className="flex flex-col flex-1 min-w-0">
+            <SliderParam
+              paramKey={def.key}
+              currentValue={currentValue}
+              onChange={(v) => updateParam(def.key, v)}
+              step={def.step ?? 1024}
+              values={baseValues}
+            />
+            {ctxPerSlot > 0 && (
+              <span
+                className="text-[7px] font-mono text-stealth-muted/50 tracking-wide mt-0.5"
+                title={`Each parallel slot gets ${formatTokenLabel(ctxPerSlot)} KV (${formatTokenLabel(ctxNumeric)} ÷ ${mtpParallelSlotCount})`}
+              >
+                {formatTokenLabel(ctxPerSlot)} per slot
+              </span>
+            )}
+          </div>
         </div>
       );
     }
@@ -755,7 +776,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         </div>
       </div>
     );
-  }, [config, gpus.length, providerDefaultKeys, updateParam]);
+  }, [config, gpus.length, providerDefaultKeys, updateParam, mtpParallelSlotCount]);
 
   // Grouped params — skip docked (rendered separately)
   const groupedParams = useMemo(() => {

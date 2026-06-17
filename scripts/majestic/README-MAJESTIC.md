@@ -13,7 +13,7 @@ Menu: **10 BUMP** → CHECK → PACK → SHIP (plus backups and dry-runs).
 ## Or npm
 
 ```powershell
-npm run majestic:bump     # 1.0.0 → 1.0.1 in tauri.conf.json + package.json (asks YES)
+npm run majestic:bump     # 1.0.0 → 1.0.1 in tauri.conf.json, tauri.conf.dev.json, package.json, Cargo.toml (asks YES)
 npm run majestic:check    # am I ready? (safe, read-only)
 npm run majestic:pack     # mirror → bundle → build installer (+ optional zips)
 npm run majestic:ship     # upload to GitHub (needs unlock file + type YES)
@@ -21,7 +21,7 @@ npm run majestic:ship     # upload to GitHub (needs unlock file + type YES)
 
 ## Version bump
 
-**BUMP** increments the **patch** only (`1.0.0` → `1.0.1`). Syncs `src-tauri/tauri.conf.json` and `package.json`. Run **before PACK** so the installer name matches.
+**BUMP** increments the **patch** only (`1.0.0` → `1.0.1`). Syncs `tauri.conf.json`, `tauri.conf.dev.json`, `package.json`, and `Cargo.toml`. Run **before PACK** so the installer name matches.
 
 ## Git tags on SHIP
 

@@ -1,5 +1,6 @@
 import { toCanvas } from "html-to-image";
 import { brandLogoMarkup } from "./brandLogos";
+import { nextFusionShareDailySeq } from "./storage";
 import type { DisplayTexture } from "./displayTexture";
 import { DISPLAY_BEZEL_PADDING_PX } from "./onboardingDisplay";
 import { getThemeById } from "../themes/app-themes";
@@ -41,6 +42,42 @@ export interface FusionShareMeta {
   /** e.g. "2xRTX PRO 6000 96GB" — GPUs the bench ran on. */
   hwTopo?: string;
   launchConfig?: FusionShareLaunchConfig;
+  /** Last TG TPS (bench measured or live hero) — used in share PNG filename. */
+  tgTps?: number | null;
+}
+
+export interface FusionShareDownloadMeta {
+  modelName?: string;
+  tgTps?: number | null;
+  appVersion?: string;
+}
+
+/** SEO-friendly PNG name: Blackwell-OPS-v1.0.3_model_QWEN3-27B--193tps--2026-06-17--1.png */
+export function buildFusionShareFilename(meta: FusionShareDownloadMeta = {}): string {
+  const rawVersion = (meta.appVersion ?? __TAURI_VERSION__ ?? "0.0.0").trim();
+  const versionTag = rawVersion.toLowerCase().startsWith("v") ? rawVersion : `v${rawVersion}`;
+
+  const modelRaw = meta.modelName?.trim();
+  const modelSlug = modelRaw
+    ? modelRaw
+        .replace(/[^\w.-]+/g, "-")
+        .replace(/-+/g, "-")
+        .replace(/^-|-$/g, "")
+        .slice(0, 72)
+        .toUpperCase()
+    : "UNKNOWN";
+
+  const tps =
+    meta.tgTps != null && Number.isFinite(meta.tgTps) && meta.tgTps > 0
+      ? Math.round(meta.tgTps)
+      : 0;
+
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const datePart = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  const seq = nextFusionShareDailySeq(datePart);
+
+  return `Blackwell-OPS-${versionTag}_model_${modelSlug}--${tps}tps--${datePart}--${seq}.png`;
 }
 
 /** Shorter phosphor in share cards — room for 2-row params + bench HW topo in clone. */
@@ -1450,17 +1487,12 @@ export async function copyFusionSharePngToClipboard(
 
 export function downloadFusionSharePng(
   blob: Blob,
-  alias?: string,
-  variant: FusionShareVariant = "white",
+  meta: FusionShareDownloadMeta = {},
 ): void {
-  const slug = alias
-    ? alias.replace(/[^\w.-]+/g, "_").replace(/^_|_$/g, "").slice(0, 40)
-    : "fusion";
-  const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download = `blackwell-ops-${slug}-${variant}-${stamp}.png`;
+  anchor.download = buildFusionShareFilename(meta);
   anchor.click();
   URL.revokeObjectURL(url);
 }

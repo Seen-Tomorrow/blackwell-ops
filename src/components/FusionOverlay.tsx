@@ -319,6 +319,7 @@ export default function FusionOverlay({
 
   const isLaunching = fusion.engine_state === "LOADING";
   const ctxTotal = fusion.ctxTotal || 0;
+  const ctxPerSlot = fusion.ctxPerSlot || 0;
 
   const MAX_HERO_TPS = 200_000;
   const clampHeroTps = (n: number) => (n > 0 && n <= MAX_HERO_TPS ? n : 0);
@@ -476,8 +477,8 @@ export default function FusionOverlay({
               <SlotCtxBars
                 slotCtx={fusion.slotCtx}
                 ctxTotal={ctxTotal}
+                ctxPerSlot={ctxPerSlot}
                 parallel={fusion.parallel}
-                unifiedKv={fusion.unified_kv}
               />
             </div>
 
@@ -637,6 +638,9 @@ export default function FusionOverlay({
                   cudaVersion,
                   launchConfig,
                   hwTopo,
+                  tgTps:
+                    benchHero.tg ??
+                    (tgTpsPick > 0 ? tgTpsPick : null),
                 }}
                 benchHw={{
                   gpus,

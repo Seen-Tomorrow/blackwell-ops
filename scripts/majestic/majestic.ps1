@@ -39,8 +39,16 @@ function Get-TauriConfPath {
     Join-Path $root 'src-tauri\tauri.conf.json'
 }
 
+function Get-TauriDevConfPath {
+    Join-Path $root 'src-tauri\tauri.conf.dev.json'
+}
+
 function Get-PackageJsonPath {
     Join-Path $root 'package.json'
+}
+
+function Get-CargoTomlPath {
+    Join-Path $root 'src-tauri\Cargo.toml'
 }
 
 function Read-AppVersion {
@@ -73,6 +81,26 @@ function Set-JsonFileVersion {
     }
     $content = Get-Content -LiteralPath $Path -Raw
     $pattern = '("version"\s*:\s*")[^"]+(")'
+    $match = [regex]::Match($content, $pattern)
+    if (-not $match.Success) {
+        throw "version field not found in $Path"
+    }
+    $updated = $content.Substring(0, $match.Index) +
+        $match.Groups[1].Value + $NewVersion + $match.Groups[2].Value +
+        $content.Substring($match.Index + $match.Length)
+    [System.IO.File]::WriteAllText($Path, $updated)
+}
+
+function Set-CargoTomlVersion {
+    param(
+        [string]$Path,
+        [string]$NewVersion
+    )
+    if (-not (Test-Path -LiteralPath $Path)) {
+        throw "Missing file: $Path"
+    }
+    $content = Get-Content -LiteralPath $Path -Raw
+    $pattern = '(?m)^(version\s*=\s*")[^"]+(")'
     $match = [regex]::Match($content, $pattern)
     if (-not $match.Success) {
         throw "version field not found in $Path"
@@ -377,7 +405,7 @@ function Invoke-MajesticBump {
     $tag = Get-TagName -Version $newVersion -Prefix (Read-MajesticConfig).tagPrefix
 
     Write-Majestic "Bump patch version: $current -> $newVersion (tag will be $tag)" -Color Cyan
-    Write-Majestic "Updates: src-tauri/tauri.conf.json + package.json" -Color DarkGray
+    Write-Majestic "Updates: tauri.conf.json + tauri.conf.dev.json + package.json + Cargo.toml" -Color DarkGray
 
     if ($DryRun) {
         Write-Majestic "[dry-run] would bump version to $newVersion" -Color Yellow
@@ -391,7 +419,9 @@ function Invoke-MajesticBump {
     }
 
     Set-JsonFileVersion -Path (Get-TauriConfPath) -NewVersion $newVersion
+    Set-JsonFileVersion -Path (Get-TauriDevConfPath) -NewVersion $newVersion
     Set-JsonFileVersion -Path (Get-PackageJsonPath) -NewVersion $newVersion
+    Set-CargoTomlVersion -Path (Get-CargoTomlPath) -NewVersion $newVersion
     Write-Majestic "Version bumped to $newVersion" -Color Green
     Write-Majestic "Next: pack (rebuild installer) then ship." -Color Cyan
 }

@@ -333,7 +333,9 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
       </main>
 
       {/* Bottom status bar — mini console is fixed chrome (amber header + inset live line) */}
-      <footer className={`app-footer fixed bottom-0 left-0 right-0 z-20 ${isOutputConsoleExpanded ? "app-footer-expanded" : ""}`}>
+      <footer
+        className={`app-footer fixed bottom-0 left-0 right-0 z-20 ${isOutputConsoleExpanded ? "app-footer-expanded" : ""}`}
+      >
         <OutputConsoleInlineDock
           liveLine={lastConsoleLine}
           liveCategory={lastConsoleCategory}
@@ -348,6 +350,11 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
           }}
           statusLeft={
             <>
+              {__BUILD_MODE__ === "dev" && (
+                <span className="app-footer-dev-tag" title="Development build — not a release installer">
+                  DEV
+                </span>
+              )}
               <span>PLATFORM: WINDOWS</span>
               <span>TOKIO: ACTIVE</span>
             </>

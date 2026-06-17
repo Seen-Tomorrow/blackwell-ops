@@ -353,6 +353,8 @@ export interface SlotCtxInfo {
   nRemain?: number;
   idTask?: number;
   speculative?: boolean;
+  /** Per-slot KV budget from engine (`/slots` n_ctx or log `n_ctx_slot`). */
+  nCtxSlot?: number;
 }
 
 /** FUSION real-time engine monitoring data — emitted from Rust /slots + /metrics fusion brain. */
@@ -387,10 +389,11 @@ export interface FusionUpdate {
   // Combined session total
   genTokensPerSession: number;
 
-  // Context usage (primary source = /slots only)
-  ctxUsedSession: number;          // cumulative across requests this session
-  ctxFillPct: number;              // (ctx_used_session / ctx_total) * 100
-  ctxTotal: number;                // engine context window size in tokens
+  // Context usage (log-primary fill; per-slot budget from engine n_ctx)
+  ctxUsedSession: number;          // peak slot KV fill this session
+  ctxFillPct: number;              // max per-slot fill % vs n_ctx_slot
+  ctxTotal: number;                // configured -c context size
+  ctxPerSlot?: number;             // per-slot KV budget (n_ctx_seq)
 
   // Request timing
   requestElapsedMs: number;

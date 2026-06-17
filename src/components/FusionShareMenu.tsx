@@ -10,7 +10,6 @@ import {
 } from "../lib/fusionShareCapture";
 
 interface FusionShareMenuProps extends FusionShareMeta {
-  alias?: string;
   /** Bench footer — share glyph + SHARE RESULTS label before variant swatches. */
   labeled?: boolean;
   /** Inline bench actions — black/white share-icon triggers instead of color swatches. */
@@ -78,7 +77,6 @@ function DownloadGlyph({ className }: { className?: string }) {
 }
 
 export default function FusionShareMenu({
-  alias,
   providerName,
   providerBuildVersion,
   modelName,
@@ -87,6 +85,7 @@ export default function FusionShareMenu({
   cudaVersion,
   launchConfig,
   hwTopo,
+  tgTps,
   labeled = false,
   triggerStyle = "swatch",
 }: FusionShareMenuProps) {
@@ -99,6 +98,7 @@ export default function FusionShareMenu({
     cudaVersion,
     launchConfig,
     hwTopo,
+    tgTps,
   };
   const [openVariant, setOpenVariant] = useState<FusionShareVariant | null>(null);
   const [busy, setBusy] = useState(false);
@@ -176,7 +176,11 @@ export default function FusionShareMenu({
           );
         } else {
           const blob = await renderFusionSharePng(shareMeta, variant);
-          downloadFusionSharePng(blob, alias, variant);
+          downloadFusionSharePng(blob, {
+            modelName,
+            tgTps,
+            appVersion: __TAURI_VERSION__,
+          });
           toastFusionShare(
             `Fusion card downloaded (${variant === "white" ? "light" : "dark"})`,
             "success",
@@ -194,7 +198,7 @@ export default function FusionShareMenu({
         setBusy(false);
       }
     },
-    [alias, busy, cudaVersion, hwTopo, launchConfig, modelName, modelQuant, profileLabel, providerBuildVersion, providerName],
+    [busy, cudaVersion, hwTopo, launchConfig, modelName, modelQuant, profileLabel, providerBuildVersion, providerName, tgTps],
   );
 
   return (

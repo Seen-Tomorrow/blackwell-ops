@@ -115,6 +115,8 @@ export const KEYS = {
   setupWelcomeSeen: `${STORAGE_PREFIX}setup-welcome-seen`,
   setupGuidePreview: `${STORAGE_PREFIX}setup-guide-preview`,
   benchControls: `${STORAGE_PREFIX}bench-controls`,
+  /** Daily fusion share PNG sequence (1–999), keyed by YYYY-MM-DD. */
+  fusionShareSeq: `${STORAGE_PREFIX}fusion-share-seq`,
 } as const;
 
 export function isSetupGuideDismissed(): boolean {
@@ -218,6 +220,19 @@ export function engineAliasKey(modelPath: string): string {
 
 export function binaryProfileKey(providerId: string): string {
   return `${STORAGE_PREFIX}binary-profile:${providerId}`;
+}
+
+/** Next fusion share filename index for `dateKey` (local calendar day), 1–999 then wraps. */
+export function nextFusionShareDailySeq(dateKey: string): number {
+  const prev = readJsonStorage<{ date: string; n: number }>(KEYS.fusionShareSeq);
+  const n =
+    prev?.date === dateKey && typeof prev.n === "number"
+      ? prev.n >= 999
+        ? 1
+        : prev.n + 1
+      : 1;
+  writeJsonStorage(KEYS.fusionShareSeq, { date: dateKey, n });
+  return n;
 }
 
 export function foundryLastRefreshKey(providerSignature: string): string {

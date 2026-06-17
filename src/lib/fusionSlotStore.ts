@@ -18,6 +18,7 @@ export function fusionPayloadEqual(a: FusionUpdate, b: FusionUpdate): boolean {
     && a.genTokensPerSession === b.genTokensPerSession
     && a.ctxUsedSession === b.ctxUsedSession
     && a.ctxFillPct === b.ctxFillPct
+    && (a.ctxPerSlot ?? 0) === (b.ctxPerSlot ?? 0)
     && a.requestElapsedMs === b.requestElapsedMs
     && (a.requestClosed ?? false) === (b.requestClosed ?? false)
     && (a.ttftMs ?? null) === (b.ttftMs ?? null)
@@ -42,6 +43,7 @@ export function fusionPayloadEqual(a: FusionUpdate, b: FusionUpdate): boolean {
         && s.is_processing === t.is_processing
         && s.promptTokensProcessed === t.promptTokensProcessed
         && s.promptTokensCache === t.promptTokensCache
+        && (s.nCtxSlot ?? 0) === (t.nCtxSlot ?? 0)
       );
     })
   );
