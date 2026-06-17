@@ -627,7 +627,7 @@ export default function FusionOverlay({
             </div>
           </div>
 
-          <div className="flex-1 min-h-0" aria-hidden />
+          {benchTrayOpen && <div className="flex-1 min-h-0" aria-hidden />}
 
           {/* ═══ BENCHMARK TRAY — stowable bench + results (persisted) ═══ */}
           {fusion.engine_state !== "LOADING" && (

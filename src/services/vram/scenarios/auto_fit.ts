@@ -102,7 +102,7 @@ export function tryEvaluate(input: ScenarioInput, computed: ComputedValues): Vra
             : "→ Layer offload decided by engine at launch",
         showRamBar: showHostRam,
         offloadWarningText: isRealHostOffload
-          ? "Host RAM offload active — expect slower inference"
+          ? "Host RAM offload — slower inference"
           : undefined,
       },
     },

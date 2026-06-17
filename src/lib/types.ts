@@ -498,9 +498,9 @@ export interface UiTemplate {
   ramLayerText: string;
   /** Whether to show the RAM bar + layer text at all */
   showRamBar?: boolean;
-  /** Offload warning text (e.g. "RAM offload active — expect slower inference"). Omit or null to hide. */
+  /** Inset label on RAM bar (e.g. "RAM offload — slower inference"). Omit or null to hide. */
   offloadWarningText?: string | null;
-  /** KV spill risk warning text. Omit or null to hide. */
+  /** Inset label on VRAM bar (e.g. KV spill risk). Omit or null to hide. */
   kvSpillRiskText?: string | null;
 }
 

@@ -31,10 +31,13 @@ export const BENCH_PHOSPHOR_EXTRA_PX = 64;
  * Flex slack between the fusion hero row and idle bench controls in the base phosphor.
  * Omitted when bench results sit flush under the hero.
  */
-export const FUSION_BENCH_IDLE_SLACK_PX = 46;
+export const FUSION_BENCH_IDLE_SLACK_PX = 18;
 
 /** Fixed hero row height (slots + TG + PP) — PP progress slot always reserved. */
 export const FUSION_HERO_ROW_PX = 122;
+
+/** Benchmark tray latch row (drawer lip control). */
+export const FUSION_BENCH_TRAY_LATCH_PX = 26;
 
 /**
  * Header + hero + dashboard padding when bench is flush under the hero (no flex spacer).
@@ -207,6 +210,20 @@ export function computeFusionPhosphorFixedHeight(
 ): number {
   const slotH = computeFusionBenchSlotHeight(opts);
   return FORECAST_PHOSPHOR_HEIGHT_PX + Math.max(0, slotH - BENCH_IDLE_PANEL_PX);
+}
+
+/** Metrics-only phosphor — header + hero + tray latch (no bench slack). */
+export function computeFusionPhosphorStowedHeight(): number {
+  return FUSION_DASHBOARD_TIGHT_CHROME_PX + FUSION_BENCH_TRAY_LATCH_PX;
+}
+
+/** Fusion overlay phosphor height from tray open/closed. */
+export function computeFusionPhosphorHeightForTray(
+  benchTrayOpen: boolean,
+  opts: Pick<BenchPanelLayoutOpts, "gpus" | "gpuMask" | "inlineActions">,
+): number {
+  if (!benchTrayOpen) return computeFusionPhosphorStowedHeight();
+  return computeFusionPhosphorFixedHeight(opts);
 }
 
 export function computeBenchPanelHeight(opts: BenchPanelLayoutOpts): number {

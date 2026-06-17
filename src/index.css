@@ -1752,25 +1752,48 @@ html, body, #root {
   object-fit: cover;
 }
 
-/* Forecast phosphor screen — fixed canvas so Auto VRAM mode does not shrink Fusion overlay */
+/* Forecast phosphor — hugs content; fusion overlay pins height inline */
 .vram-forecast-display {
-  height: 278px;
-  min-height: 278px;
-  max-height: 278px;
+  position: relative;
+  height: auto;
+  min-height: 0;
+  max-height: none;
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
 
-/* Fill the full phosphor inset — body scrolls when scenario content is tall */
+.vram-forecast-display[data-content-height-managed] {
+  flex: 0 0 auto;
+  overflow: hidden;
+}
+
+.industrial-display-frame[data-content-height-managed] {
+  height: fit-content;
+  min-height: 0;
+}
+
+.vram-forecast-display[data-fusion-height-managed] {
+  transition:
+    height 0.22s ease,
+    min-height 0.22s ease,
+    max-height 0.22s ease;
+}
+
+/* Forecast badge — content height by default; fusion overlay stretches to fill phosphor */
 .vram-badge-forecast {
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   width: 100%;
-  height: 100%;
+  height: auto;
   min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+.vram-forecast-display[data-fusion-height-managed] .vram-badge-forecast {
+  flex: 1 1 auto;
+  height: 100%;
 }
 
 .vram-badge-body {
@@ -1789,9 +1812,9 @@ html, body, #root {
 
 /* FORECAST header — fixed canvas (same idea as DEVICE row: chip/glow swaps must not nudge layout) */
 .vram-forecast-header {
-  height: 58px;
-  min-height: 58px;
-  max-height: 58px;
+  height: 52px;
+  min-height: 52px;
+  max-height: 52px;
   flex-shrink: 0;
 }
 
@@ -1825,7 +1848,52 @@ html, body, #root {
 
 /* SOURCE row — breathing room below FORECAST "needs" line */
 .vram-forecast-source {
-  padding-top: 6px;
+  padding-top: 4px;
+}
+
+/* VRAM / RAM bars — compact inset warnings (SPILL, AUTO host offload) */
+.vram-forecast-bar__inset-label {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 6px;
+  font-size: 7px;
+  font-family: ui-monospace, monospace;
+  line-height: 1;
+  text-align: right;
+  pointer-events: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vram-forecast-bar__inset-label--ram {
+  color: rgba(191, 219, 254, 0.92);
+  text-shadow: 0 0 4px rgba(0, 0, 0, 0.85);
+}
+
+.vram-forecast-bar__inset-label--kv {
+  color: rgba(248, 113, 113, 0.92);
+  text-shadow: 0 0 4px rgba(0, 0, 0, 0.85);
+}
+
+.vram-forecast-bar__inset-label--kv-critical {
+  color: rgba(248, 113, 113, 0.98);
+  text-shadow: 0 0 5px rgba(0, 0, 0, 0.9);
+}
+
+[data-display-texture="phosphor-light"] .vram-forecast-bar__inset-label--ram {
+  color: rgba(30, 58, 138, 0.88);
+  text-shadow: none;
+}
+
+[data-display-texture="phosphor-light"] .vram-forecast-bar__inset-label--kv,
+[data-display-texture="phosphor-light"] .vram-forecast-bar__inset-label--kv-critical {
+  color: rgba(153, 27, 27, 0.9);
+  text-shadow: none;
 }
 
 /* SOURCE band — exactly two text lines under FORECAST header */

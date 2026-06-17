@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { GpuInfo, VramManifest, ModelMetadata } from "../lib/types";
-import { computeFusionPhosphorFixedHeight } from "../lib/benchPanelLayout";
+import { computeFusionPhosphorHeightForTray } from "../lib/benchPanelLayout";
 import {
   getFusionBenchTrayOpen,
   subscribeFusionBenchTray,
@@ -10,6 +10,7 @@ import GpuTopology from "./GpuTopology";
 import FusionOverlay from "./FusionOverlay";
 import MoeBadge from "./MoeBadge";
 import MemorySourcePanel, { manifestHasFitProbe } from "./MemorySourcePanel";
+import { useForecastContentHeight } from "../hooks/useForecastContentHeight";
 import { useFusionSlot } from "../hooks/useFusionData";
 import { MEMORY_SOURCE_ACCENT } from "../services/vram/memorySource";
 import DisplayGlitchOverlay from "./DisplayGlitchOverlay";
@@ -148,30 +149,54 @@ export default function VramBadge({
     (engineStatus === "LOADING" || engineStatus === "RUNNING");
 
   const fusionPhosphorHeight = useMemo(() => {
-    if (!fusionOverlayActive || !benchTrayOpen) return FORECAST_PHOSPHOR_HEIGHT_PX;
-    return computeFusionPhosphorFixedHeight({ gpus, gpuMask, inlineActions: true });
-  }, [fusionOverlayActive, benchTrayOpen, gpus, gpuMask]);
+    if (!fusionOverlayActive) return FORECAST_PHOSPHOR_HEIGHT_PX;
+    if (engineStatus === "LOADING") return FORECAST_PHOSPHOR_HEIGHT_PX;
+    return computeFusionPhosphorHeightForTray(benchTrayOpen, {
+      gpus,
+      gpuMask,
+      inlineActions: true,
+    });
+  }, [fusionOverlayActive, engineStatus, benchTrayOpen, gpus, gpuMask]);
 
   useEffect(() => {
     const display = rootRef.current?.closest(".vram-forecast-display");
     if (!(display instanceof HTMLElement)) return;
 
-    if (fusionPhosphorHeight !== FORECAST_PHOSPHOR_HEIGHT_PX) {
-      display.style.height = `${fusionPhosphorHeight}px`;
-      display.style.minHeight = `${fusionPhosphorHeight}px`;
-      display.style.maxHeight = `${fusionPhosphorHeight}px`;
-    } else {
-      display.style.height = "";
-      display.style.minHeight = "";
-      display.style.maxHeight = "";
-    }
-
-    return () => {
+    const clearInlineHeight = () => {
       display.style.height = "";
       display.style.minHeight = "";
       display.style.maxHeight = "";
     };
-  }, [fusionPhosphorHeight]);
+
+    if (fusionOverlayActive) {
+      display.dataset.fusionHeightManaged = "";
+      if (!benchTrayOpen) display.setAttribute("data-fusion-tray-stowed", "");
+      else display.removeAttribute("data-fusion-tray-stowed");
+      display.style.height = `${fusionPhosphorHeight}px`;
+      display.style.minHeight = `${fusionPhosphorHeight}px`;
+      display.style.maxHeight = `${fusionPhosphorHeight}px`;
+    } else {
+      delete display.dataset.fusionHeightManaged;
+      display.removeAttribute("data-fusion-tray-stowed");
+      clearInlineHeight();
+    }
+
+    return () => {
+      delete display.dataset.fusionHeightManaged;
+      display.removeAttribute("data-fusion-tray-stowed");
+      clearInlineHeight();
+    };
+  }, [fusionPhosphorHeight, fusionOverlayActive, benchTrayOpen]);
+
+  const forecastContentKey = manifest
+    ? `${manifest.scenario}|${manifest.gpuAllocations.length}|${manifest.memorySource?.kind ?? ""}|${manifest.style.uiTemplate.showRamBar ?? 1}`
+    : "";
+
+  useForecastContentHeight(
+    rootRef,
+    !!manifest && !fusionOverlayActive,
+    forecastContentKey,
+  );
 
   if (!manifest) return null;
 
@@ -211,7 +236,7 @@ export default function VramBadge({
   return (
     <div
       ref={rootRef}
-      className={`vram-badge-forecast px-3 py-2.5 relative flex flex-col h-full min-h-0 overflow-hidden ${className || ''}`}
+      className={`vram-badge-forecast px-3 py-2 relative flex flex-col min-h-0 overflow-hidden ${className || ""}`}
     >
       <VramBadgeFusionLayer
         active={fusionOverlayActive}
@@ -285,7 +310,7 @@ export default function VramBadge({
       </div>
 
       {/* Bars, warnings, topology — scroll inside phosphor when tall (e.g. MULTI_SPILL) */}
-      <div className="vram-badge-body relative flex-1 min-h-0 overflow-y-auto overflow-x-hidden eink-scrollbar mt-2">
+      <div className="vram-badge-body relative flex-shrink-0 overflow-x-hidden mt-1.5">
         {/* Bars block — MOE badge anchors to right, vertically centered over VRAM + RAM */}
         <div className="vram-badge-bars relative">
         {!hideMoeBadge && modelMeta?.n_expert > 0 && (
@@ -298,60 +323,74 @@ export default function VramBadge({
             />
           </div>
         )}
-        {/* VRAM bar row */}
+        {/* GPU / VRAM bar row */}
         <div className="flex items-center gap-2">
-          <div style={{ backgroundColor: 'rgb(20,20,20)' }} className="relative h-4 w-[70%] rounded-sm overflow-hidden border border-stealth-border/30">
+          <div
+            style={{ backgroundColor: "rgb(20,20,20)" }}
+            className="vram-forecast-vram-bar relative h-4 w-[70%] rounded-sm overflow-hidden border border-stealth-border/30"
+          >
             <div
               style={{ width: `${vramUsagePct}%` }}
               className={`h-full rounded-sm ${s.gpuBarColor}`}
             />
+            {t.kvSpillRiskText && (
+              <span
+                className={`vram-forecast-bar__inset-label${
+                  s.kvSpillCritical
+                    ? " vram-forecast-bar__inset-label--kv-critical"
+                    : " vram-forecast-bar__inset-label--kv"
+                }`}
+                title={`${t.kvSpillRiskText} — verify with test run`}
+              >
+                {t.kvSpillRiskText}
+              </span>
+            )}
           </div>
           <span className={`text-[12px] font-mono ${s.titleColor}`}>| {totalVramGb.toFixed(0)} GB</span>
         </div>
 
-        {/* GPU layer info — text from scenario */}
-        <p className={`text-[9px] font-mono ${s.titleColor} mt-1`}>
+        {/* GPU layer info */}
+        <p className={`text-[9px] font-mono leading-tight ${s.titleColor} mt-0.5`}>
           {t.gpuLayerText}
         </p>
 
         {/* RAM bar row */}
         {(t.showRamBar !== false) && (
           <>
-            <div className="flex items-center gap-2 mt-2">
-              <div style={{ backgroundColor: 'rgb(20,20,20)' }} className="relative h-4 w-[70%] rounded-sm overflow-hidden border border-stealth-border/30">
+            <div className="flex items-center gap-2 mt-1.5">
+              <div
+                style={{ backgroundColor: "rgb(20,20,20)" }}
+                className="vram-forecast-ram-bar relative h-4 w-[70%] rounded-sm overflow-hidden border border-stealth-border/30"
+              >
                 <div
                   style={{ width: `${ramUsagePct}%` }}
                   className={`h-full rounded-sm ${
                     offloadMode === "moe_optimal" ? "bg-orange-hatched" : "bg-blue-700"
                   }`}
                 />
+                {t.offloadWarningText && (
+                  <span
+                    className="vram-forecast-bar__inset-label vram-forecast-bar__inset-label--ram"
+                    title={t.offloadWarningText}
+                  >
+                    {t.offloadWarningText}
+                  </span>
+                )}
               </div>
               <span className="text-[12px] font-mono text-blue-700">| {ramMfgGb} GB</span>
             </div>
 
             {/* RAM layer info — text from scenario */}
-            <p className="text-[9px] font-mono text-blue-700 mt-1">
+            <p className="text-[9px] font-mono text-blue-700 mt-0.5 leading-tight">
               {t.ramLayerText}
             </p>
           </>
         )}
         </div>
 
-      {/* Offload warning — controlled by scenario's offloadWarningText */}
-      {t.offloadWarningText && (
-         <p className="text-[8px] font-mono text-blue-700 mt-1">
-            {t.offloadWarningText}
-        </p>
-      )}
-
-      {/* KV spill risk — controlled by scenario's kvSpillRiskText */}
-      {t.kvSpillRiskText && (
-         <p className="text-[8px] font-mono text-telemetry-red mt-1">{t.kvSpillRiskText}</p>
-      )}
-
       {/* ── GPU topology below — always rendered ─── */}
       {manifest.gpuAllocations.length > 0 && (
-        <div className="mt-2 pb-0.5">
+        <div className="mt-1.5 pb-0.5">
           <GpuTopology
             gpuAllocations={manifest.gpuAllocations}
             gpuBarColor={s.gpuBarColor}
