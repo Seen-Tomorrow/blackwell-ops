@@ -155,6 +155,19 @@ export interface ProviderConfig {
   launchProfile?: LaunchProfile;
 }
 
+/** Factory engine-config layout defaults — shipped in *-default-config.json. */
+export interface LayoutDefaults {
+  configColumnCount?: 1 | 2 | 3;
+  configColumnWidths?: number[];
+  groupDisplayZone?: Record<string, "above" | "below">;
+  groupColumn?: Record<string, number>;
+}
+
+export interface ExportFactoryTemplateResult {
+  templateVersion: number;
+  paths: string[];
+}
+
 /** Factory launch profile — drives Auto VRAM UI and --fit wiring at launch. */
 export interface LaunchProfile {
   autoVram?: boolean;

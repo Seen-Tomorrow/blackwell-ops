@@ -127,6 +127,21 @@ pub async fn save_provider(provider: crate::types::ProviderConfig, app: tauri::S
 }
 
 #[tauri::command]
+pub async fn export_provider_factory_template(
+    input: crate::config::ExportFactoryTemplateInput,
+    handle: tauri::AppHandle,
+    ctx: tauri::State<'_, AppContext>,
+) -> Result<crate::config::ExportFactoryTemplateResult, String> {
+    let result = crate::config::export_provider_factory_template(input)?;
+    let fresh = crate::config::load_config_with_app(&handle);
+    {
+        let mut cfg = ctx.config.lock().map_err(|e| e.to_string())?;
+        *cfg = fresh;
+    }
+    Ok(result)
+}
+
+#[tauri::command]
 pub async fn remove_provider(id: String, app: tauri::State<'_, AppContext>) -> Result<(), String> {
     let mut cfg = app.config.lock().map_err(|e| e.to_string())?;
 

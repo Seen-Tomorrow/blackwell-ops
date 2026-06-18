@@ -1,234 +1,512 @@
 {
-  "id": "ggml-master",
-  "display_name": "GGML Master",
   "binary_name": "llama-server.exe",
-  "description": "Official llama.cpp master build",
-  "git_url": "https://github.com/ggml-org/llama.cpp",
   "branch": "master",
-  "template_type": "ggml-llama",
-  "templateVersion": 11,
   "build_profile": "-DGGML_CUDA=ON\n-DCMAKE_CUDA_ARCHITECTURES=\"86;89;120\"\n-DGGML_CUDA_PEER_TO_PEER=ON\n-DGGML_CUDA_FA_ALL_QUANTS=ON\n-DGGML_AVX512=ON\n-DGGML_NATIVE=ON\n-DCMAKE_CUDA_FLAGS=\"-Xcompiler /wd4056 -Xcompiler /wd4756 --diag-suppress 221\"\n-Wno-dev",
-  "spawn_profile": {
-    "model_flag": ["-m"],
-    "port_flag": ["--port"],
-    "alias_flag": ["--alias"],
-    "verbosity_args": ["-lv", "4"],
-    "auto_vram": true,
-    "fit_style": "ggml_fit_params",
-    "simple_param_keys": ["device", "ctx", "kv_quant", "parallel", "mmap"],
-    "enable_metrics": true,
-    "supports_fusion": true,
-    "max_engine_slots": 64,
-    "gpu_env": "CUDA_VISIBLE_DEVICES",
-    "ngl_flag": ["--n-gpu-layers"],
-    "mmproj_flag": ["--mmproj"]
+  "description": "Official llama.cpp master build",
+  "display_name": "GGML Master",
+  "git_url": "https://github.com/ggml-org/llama.cpp",
+  "groupOrder": [
+    "CORE",
+    "PERFORMANCE",
+    "FEATURE-FLAGS",
+    "SPECULATIVE-DECODING",
+    "MULTI-GPU",
+    "RUNTIME-CONFIG"
+  ],
+  "id": "ggml-master",
+  "layoutDefaults": {
+    "configColumnCount": 3,
+    "configColumnWidths": [
+      0.3869776905748129,
+      0.240469442627716,
+      0.3725528667974711
+    ],
+    "groupColumn": {
+      "FEATURE-FLAGS": 1,
+      "PERFORMANCE": 0,
+      "SPECULATIVE-DECODING": 2
+    },
+    "groupDisplayZone": {
+      "CORE": "above"
+    }
   },
   "params": [
     {
-      "key": "device",
-      "label": "DEVICE",
-      "flag": null,
-      "ptype": "logic_only",
-      "values": ["GPU-0", "GPU-1"],
       "default": "GPU-0",
       "dock": "runtime",
+      "flag": null,
+      "flag_pair": [],
+      "hidden_default": false,
+      "key": "device",
+      "label": "DEVICE",
+      "note": "Select GPU via CUDA_VISIBLE_DEVICES mask — not emitted as a CLI flag.",
+      "pattern": "",
+      "ptype": "logic_only",
+      "step": null,
+      "sub_params": null,
       "ui_group": "MULTI-GPU",
-      "note": "Select GPU via CUDA_VISIBLE_DEVICES mask — not emitted as a CLI flag."
+      "values": [
+        "GPU-0",
+        "GPU-1"
+      ]
     },
     {
-      "key": "offload_mode",
-      "label": "OFFLOAD-MODE",
-      "flag": null,
-      "ptype": "logic_only",
-      "values": ["regular", "moe_optimal"],
       "default": "regular",
       "dock": "runtime",
-      "ui_group": "MULTI-GPU",
+      "flag": null,
+      "flag_pair": [],
+      "hidden_default": false,
+      "key": "offload_mode",
+      "label": "OFFLOAD-MODE",
       "note": "moe_optimal adds expert eviction filter and forces KV quant to q4_0.",
+      "pattern": "",
+      "ptype": "logic_only",
+      "step": null,
       "sub_params": {
-        "moe_optimal": ["-ot", "\\\\.ffn_.*_exps\\\\.=CPU", "-ctk", "q4_0", "-ctv", "q4_0"]
-      }
+        "moe_optimal": [
+          "-ot",
+          "\\\\.ffn_.*_exps\\\\.=CPU",
+          "-ctk",
+          "q4_0",
+          "-ctv",
+          "q4_0"
+        ]
+      },
+      "ui_group": "MULTI-GPU",
+      "values": [
+        "regular",
+        "moe_optimal"
+      ]
     },
     {
-      "key": "split",
-      "label": "SPLIT",
-      "flag": "--split-mode",
-      "ptype": "arg_select",
-      "values": ["none", "layer", "row", "tensor"],
       "default": "none",
       "dock": "runtime",
+      "flag": "--split-mode",
+      "flag_pair": [],
+      "hidden_default": false,
+      "key": "split",
+      "label": "SPLIT",
+      "note": "How to split model across multiple GPUs.",
+      "pattern": "",
+      "ptype": "arg_select",
+      "step": null,
+      "sub_params": null,
       "ui_group": "MULTI-GPU",
-      "note": "How to split model across multiple GPUs."
+      "values": [
+        "none",
+        "layer",
+        "row",
+        "tensor"
+      ]
     },
     {
-      "key": "base_port",
-      "label": "BASE-PORT",
-      "flag": null,
-      "ptype": "logic_only",
-      "values": [8080, 8180, 8888, 9090],
       "default": 8080,
       "dock": "runtime",
+      "flag": null,
+      "flag_pair": [],
+      "hidden_default": false,
+      "key": "base_port",
+      "label": "BASE-PORT",
+      "note": "Starting port for engine instances. Auto-increments per slot.",
+      "pattern": "",
+      "ptype": "logic_only",
+      "step": null,
+      "sub_params": null,
       "ui_group": "RUNTIME-CONFIG",
-      "note": "Starting port for engine instances. Auto-increments per slot."
+      "values": [
+        8080,
+        8180,
+        8888,
+        9090
+      ]
     },
     {
+      "default": "q4_0",
+      "dock": "",
+      "flag": null,
+      "flag_pair": [
+        "--cache-type-k",
+        "--cache-type-v"
+      ],
+      "hidden_default": false,
       "key": "kv_quant",
       "label": "KV-QUANT (K+V)",
+      "note": "KV cache data type for both K and V cache, set together.",
+      "pattern": "",
       "ptype": "arg_select_double",
-      "flag_pair": ["--cache-type-k", "--cache-type-v"],
-      "values": ["q4_0", "q8_0", "f16"],
-      "default": "q4_0",
-      "ui_group": "CORE",
-      "note": "KV cache data type for both K and V cache, set together."
+      "step": null,
+      "sub_params": null,
+      "ui_group": "PERFORMANCE",
+      "values": [
+        "q4_0",
+        "q8_0",
+        "f16"
+      ]
     },
     {
+      "default": 32768,
+      "dock": "",
+      "flag": "--ctx-size",
+      "flag_pair": [],
+      "hidden_default": false,
       "key": "ctx",
       "label": "CTX",
-      "flag": "--ctx-size",
+      "note": "Context window size in tokens.",
+      "pattern": "",
       "ptype": "slider",
-      "step": 1024,
-      "default": 32768,
-      "values": [8192, 16384, 32768, 65536, 131072, 262144, 524288],
+      "step": 1024.0,
+      "sub_params": null,
       "ui_group": "CORE",
-      "note": "Context window size in tokens."
+      "values": [
+        8192,
+        16384,
+        32768,
+        65536,
+        131072,
+        262144,
+        524288
+      ]
     },
     {
+      "default": 4096,
+      "dock": "",
+      "flag": "--batch-size",
+      "flag_pair": [],
+      "hidden_default": false,
       "key": "batch",
       "label": "BATCH",
-      "flag": "--batch-size",
+      "note": "Batch size for token processing.",
+      "pattern": "",
       "ptype": "arg_select",
-      "values": [128, 256, 512, 1024, 2048, 4096, 8192],
-      "default": 4096,
+      "step": null,
+      "sub_params": null,
       "ui_group": "PERFORMANCE",
-      "note": "Batch size for token processing."
+      "values": [
+        128,
+        256,
+        512,
+        1024,
+        2048,
+        4096,
+        8192
+      ]
     },
     {
+      "default": 512,
+      "dock": "",
+      "flag": "--ubatch-size",
+      "flag_pair": [],
+      "hidden_default": false,
       "key": "ubatch",
       "label": "UBATCH",
-      "flag": "--ubatch-size",
+      "note": "Micro-batch size for inference.",
+      "pattern": "",
       "ptype": "arg_select",
-      "values": [32, 64, 128, 256, 512, 1024, 2048],
-      "default": 512,
+      "step": null,
+      "sub_params": null,
       "ui_group": "PERFORMANCE",
-      "note": "Micro-batch size for inference."
+      "values": [
+        32,
+        64,
+        128,
+        256,
+        512,
+        1024,
+        2048
+      ]
     },
     {
+      "default": 1,
+      "dock": "",
+      "flag": "--parallel",
+      "flag_pair": [],
+      "hidden_default": false,
       "key": "parallel",
       "label": "PARALLEL",
-      "flag": "--parallel",
+      "note": "Number of concurrent request sequences.",
+      "pattern": "",
       "ptype": "arg_select",
-      "values": [1, 2, 4, 8, 16, 32],
-      "default": 1,
+      "step": null,
+      "sub_params": null,
       "ui_group": "PERFORMANCE",
-      "note": "Number of concurrent request sequences."
+      "values": [
+        1,
+        2,
+        4,
+        8,
+        16,
+        32
+      ]
     },
     {
+      "default": "on",
+      "dock": "",
+      "flag": "--no-kv-unified",
+      "flag_pair": [],
+      "hidden_default": false,
       "key": "unified_kv",
       "label": "UNIFIED-KV",
-      "flag": "--no-kv-unified",
+      "note": "When off and Parallel > 1, each sequence gets its own KV cache (VRAM multiplied by np).",
+      "pattern": "",
       "ptype": "switch_inverted",
-      "values": ["on", "off"],
-      "default": "on",
+      "step": null,
+      "sub_params": null,
       "ui_group": "PERFORMANCE",
-      "note": "When off and Parallel > 1, each sequence gets its own KV cache (VRAM multiplied by np)."
+      "values": [
+        "on",
+        "off"
+      ]
     },
     {
+      "default": "on",
+      "dock": "",
+      "flag": "--flash-attn",
+      "flag_pair": [],
+      "hidden_default": false,
       "key": "flash_attn",
       "label": "FLASH-ATTN",
-      "flag": "--flash-attn",
+      "note": "Enable Flash Attention 2.",
+      "pattern": "",
       "ptype": "arg_select",
-      "values": ["on", "off", "auto"],
-      "default": "on",
+      "step": null,
+      "sub_params": null,
       "ui_group": "PERFORMANCE",
-      "note": "Enable Flash Attention 2."
+      "values": [
+        "on",
+        "off",
+        "auto"
+      ]
     },
     {
+      "default": "auto",
+      "dock": "",
+      "flag": "--mmproj",
+      "flag_pair": [],
+      "hidden_default": false,
       "key": "vision",
       "label": "VISION",
-      "flag": "--mmproj",
-      "ptype": "path_scanner",
-      "values": ["auto", "off"],
-      "default": "auto",
-      "ui_group": "FEATURE-FLAGS",
+      "note": "auto scans model directory for mmproj/projector files.",
       "pattern": "*mmproj*",
-      "note": "auto scans model directory for mmproj/projector files."
+      "ptype": "path_scanner",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "FEATURE-FLAGS",
+      "values": [
+        "auto",
+        "off"
+      ]
     },
     {
+      "default": "off",
+      "dock": "",
+      "flag": "--reasoning",
+      "flag_pair": [],
+      "hidden_default": false,
       "key": "reasoning",
       "label": "REASONING",
-      "flag": "--reasoning",
-      "ptype": "arg_select",
-      "values": ["on", "off"],
-      "default": "off",
-      "ui_group": "FEATURE-FLAGS",
       "note": "Enable chain-of-thought reasoning output.",
+      "pattern": "",
+      "ptype": "arg_select",
+      "step": null,
       "sub_params": {
-        "on": ["--reasoning-budget", "4096", "--reasoning-format", "deepseek"],
-        "off": []
-      }
+        "off": [],
+        "on": [
+          "--reasoning-budget",
+          "4096",
+          "--reasoning-format",
+          "deepseek"
+        ]
+      },
+      "ui_group": "FEATURE-FLAGS",
+      "values": [
+        "on",
+        "off"
+      ]
     },
     {
+      "default": "off",
+      "dock": "",
+      "flag": "--no-mmap",
+      "flag_pair": [],
+      "hidden_default": false,
       "key": "mmap",
       "label": "MMAP",
-      "flag": "--no-mmap",
+      "note": "on = use mmap (no flag), off = --no-mmap. Inverted logic.",
+      "pattern": "",
       "ptype": "switch_inverted",
-      "values": ["on", "off"],
-      "default": "off",
+      "step": null,
+      "sub_params": null,
       "ui_group": "FEATURE-FLAGS",
-      "note": "on = use mmap (no flag), off = --no-mmap. Inverted logic."
+      "values": [
+        "on",
+        "off"
+      ]
     },
     {
+      "default": "on",
+      "dock": "",
+      "flag": "--jinja",
+      "flag_pair": [],
+      "hidden_default": false,
       "key": "jinja",
       "label": "JINJA",
-      "flag": "--jinja",
+      "note": "Enable Jinja templating for chat.",
+      "pattern": "",
       "ptype": "switch_onoff",
-      "values": ["on", "off"],
-      "default": "on",
+      "step": null,
+      "sub_params": null,
       "ui_group": "FEATURE-FLAGS",
-      "note": "Enable Jinja templating for chat."
+      "values": [
+        "on",
+        "off"
+      ]
     },
     {
+      "default": "on",
+      "dock": "",
+      "flag": "--cont-batching",
+      "flag_pair": [],
+      "hidden_default": false,
       "key": "cont_batching",
       "label": "CONT-BATCHING",
-      "flag": "--cont-batching",
+      "note": "Enable continuous batching.",
+      "pattern": "",
       "ptype": "switch_onoff",
-      "values": ["on", "off"],
-      "default": "on",
+      "step": null,
+      "sub_params": null,
       "ui_group": "FEATURE-FLAGS",
-      "note": "Enable continuous batching."
+      "values": [
+        "on",
+        "off"
+      ]
     },
     {
+      "default": "draft-mtp",
+      "dock": "",
+      "flag": "--spec-type",
+      "flag_pair": [],
+      "hidden_default": false,
       "key": "spec_type",
       "label": "SPEC-TYPE",
-      "flag": "--spec-type",
+      "note": "Comma-separated speculative decoding types. 'none' disables.",
+      "pattern": "",
       "ptype": "arg_select",
-      "values": ["none", "draft-simple", "draft-eagle3", "draft-mtp", "ngram-simple", "ngram-map-k", "ngram-map-k4v", "ngram-mod", "ngram-cache"],
-      "default": "draft-mtp",
+      "step": null,
+      "sub_params": null,
       "ui_group": "SPECULATIVE-DECODING",
-      "hidden_default": true,
-      "note": "Comma-separated speculative decoding types. 'none' disables."
+      "values": [
+        "none",
+        "draft-simple",
+        "draft-eagle3",
+        "draft-mtp",
+        "ngram-simple",
+        "ngram-map-k",
+        "ngram-map-k4v",
+        "ngram-mod",
+        "ngram-cache"
+      ]
     },
     {
+      "default": 3,
+      "dock": "",
+      "flag": "--spec-draft-n-max",
+      "flag_pair": [],
+      "hidden_default": false,
       "key": "spec_draft_n_max",
       "label": "SPEC-DRAFT-N-MAX",
-      "flag": "--spec-draft-n-max",
+      "note": "Maximum number of draft tokens per speculative decoding step.",
+      "pattern": "",
       "ptype": "arg_select",
-      "values": [1, 2, 3, 4, 5, 6, 8, 10, 12],
-      "default": 3,
+      "step": null,
+      "sub_params": null,
       "ui_group": "SPECULATIVE-DECODING",
-      "hidden_default": true,
-      "note": "Maximum number of draft tokens per speculative decoding step."
+      "values": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        8,
+        10,
+        12
+      ]
     },
-	    {
+    {
+      "default": 1,
+      "dock": "",
+      "flag": "--spec-draft-n-min",
+      "flag_pair": [],
+      "hidden_default": false,
       "key": "spec_draft_n_min",
       "label": "SPEC-DRAFT-N-MIN",
-      "flag": "--spec-draft-n-min",
+      "note": "minimum number of draft tokens to use for speculative decoding.",
+      "pattern": "",
       "ptype": "arg_select",
-      "values": [1, 2, 3, 4, 5],
-      "default": 1,
+      "step": null,
+      "sub_params": null,
       "ui_group": "SPECULATIVE-DECODING",
+      "values": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    {
+      "default": 1,
+      "dock": "",
+      "flag": "--spec-draft-threads",
+      "flag_pair": [],
       "hidden_default": true,
-      "note": "minimum number of draft tokens to use for speculative decoding."
+      "key": "spec_draft_threads",
+      "label": "Spec Draft Threads",
+      "note": "",
+      "pattern": "",
+      "ptype": "arg_select",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "SPECULATIVE-DECODING",
+      "values": [
+        1
+      ]
     }
-  ]
+  ],
+  "spawn_profile": {
+    "alias_flag": [
+      "--alias"
+    ],
+    "auto_vram": true,
+    "enable_metrics": true,
+    "fit_style": "ggml_fit_params",
+    "gpu_env": "CUDA_VISIBLE_DEVICES",
+    "max_engine_slots": 64,
+    "mmproj_flag": [
+      "--mmproj"
+    ],
+    "model_flag": [
+      "-m"
+    ],
+    "ngl_flag": [
+      "--n-gpu-layers"
+    ],
+    "port_flag": [
+      "--port"
+    ],
+    "simple_param_keys": [
+      "device",
+      "ctx",
+      "kv_quant",
+      "parallel",
+      "mmap"
+    ],
+    "supports_fusion": true,
+    "verbosity_args": [
+      "-lv",
+      "4"
+    ]
+  },
+  "templateVersion": 12,
+  "template_type": "ggml-llama"
 }

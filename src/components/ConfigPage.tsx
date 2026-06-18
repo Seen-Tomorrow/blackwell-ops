@@ -2,7 +2,7 @@
 
 import React, { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { UserEditedTemplateParam, ProviderConfig, ProviderTemplate, ProviderDefaultParam, ModelPathEntry, PathDiskUsage } from "../lib/types";
+import type { UserEditedTemplateParam, ProviderConfig, ProviderTemplate, ProviderDefaultParam, ModelPathEntry, PathDiskUsage, LayoutDefaults, ExportFactoryTemplateResult } from "../lib/types";
 import { DEFAULT_PROVIDER_ID } from "../lib/types";
 import ValueBubbles from "./ValueBubbles";
 import ProvidersConfig from "./ProvidersConfig";
@@ -15,9 +15,13 @@ import {
   loadPowerUserState,
   catalogOverrideKey,
   effectiveParamDefault,
+  applyCatalogOverridesToExportParams,
   groupOrderKey,
   groupDisplayZoneKey,
   loadGroupDisplayZone,
+  loadGroupColumn,
+  loadConfigColumnCount,
+  loadConfigColumnWidths,
   saveGroupDisplayZone,
   type GroupDisplayZone,
   normalizeUiGroup,
@@ -322,6 +326,58 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
     dispatchAppEvent(EVENTS.paramConfigChanged);
     showSaved("RESET TO DEFAULTS");
   }, [currentProvider, isPowerUser, selectedProviderId]);
+
+  const handleExportFactoryTemplate = useCallback(async () => {
+    if (!currentProvider || !isPowerUser) return;
+    if (!currentProvider.factory_provided) {
+      showSaved("EXPORT — factory providers only");
+      return;
+    }
+    const columnCount = loadConfigColumnCount(
+      selectedProviderId,
+      currentProvider.configColumnCount,
+    );
+    const layoutDefaults: LayoutDefaults = {
+      configColumnCount: columnCount,
+      configColumnWidths: loadConfigColumnWidths(
+        selectedProviderId,
+        columnCount,
+        currentProvider.configColumnWidths,
+      ),
+      groupDisplayZone: loadGroupDisplayZone(
+        selectedProviderId,
+        currentProvider.groupDisplayZone,
+      ),
+      groupColumn: loadGroupColumn(selectedProviderId, currentProvider.groupColumn),
+    };
+    const groupOrder = resolveGroupOrder(userSavedParamsWithDefaults, customGroupOrder);
+    const overrides =
+      readJsonStorage<Record<string, string | number>>(catalogOverrideKey(selectedProviderId)) ??
+      userOverrides;
+    const exportParams = applyCatalogOverridesToExportParams(userSavedParamsWithDefaults, overrides);
+    try {
+      const result = await invoke<ExportFactoryTemplateResult>("export_provider_factory_template", {
+        input: {
+          providerId: selectedProviderId,
+          userEditedTemplateParams: exportParams,
+          groupOrder,
+          layoutDefaults,
+        },
+      });
+      dispatchAppEvent(EVENTS.reloadProviders);
+      showSaved(`FACTORY v${result.templateVersion} exported`);
+    } catch (err) {
+      console.error("[CONFIG] Factory export failed:", err);
+      showSaved("EXPORT FAILED");
+    }
+  }, [
+    currentProvider,
+    isPowerUser,
+    selectedProviderId,
+    userSavedParamsWithDefaults,
+    customGroupOrder,
+    userOverrides,
+  ]);
 
   useEffect(() => {
     const unhideAllHiddenParams = async () => {
@@ -880,6 +936,14 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
                 >
                   CLEAR STORAGE
                 </button>
+                <button
+                  type="button"
+                  onClick={() => void handleExportFactoryTemplate()}
+                  className="value-chip-active text-[9px] font-mono px-2 py-1 rounded-sm"
+                  title="Write live params + group/layout to factory default JSON (bumps templateVersion). Dev: also updates src-tauri/runtime."
+                >
+                  EXPORT FACTORY
+                </button>
                 <button onClick={() => setShowResetConfirm(true)}
                   className="value-chip text-[9px] font-mono px-2 py-1 rounded-sm">
                   RESET TO DEFAULTS
@@ -953,14 +1017,10 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
 
           {/* Template update banner — shows when factory template version changed */}
           {currentProvider?.needsTemplateAttention && (
-            <div className="mx-4 mt-3 px-3 py-2 foundry-profile-row rounded-sm flex items-start justify-between gap-3">
+            <div className="mx-4 mt-3 px-3 py-2 foundry-profile-row rounded-sm">
               <span className="text-[9px] font-mono config-muted leading-tight">
-                ⚠ Factory template updated — new options were merged automatically. Save any change to dismiss, or RESET TO DEFAULTS if engines fail to launch.
+                ⚠ Factory template updated — new options were merged automatically. Save any change to dismiss.
               </span>
-              {isPowerUser && (
-                <button onClick={() => setShowResetConfirm(true)}
-                  className="shrink-0 value-chip-active text-[8px] font-mono px-2 py-0.5 rounded-sm">RESET NOW</button>
-              )}
             </div>
           )}
 

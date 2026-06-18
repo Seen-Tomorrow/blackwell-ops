@@ -326,6 +326,28 @@ pub fn default_ctx_size() -> usize { 32768 }
 
 // ── Provider Configuration ─────────────────────────────────────────────
 
+/// Engine config column / pin layout — factory defaults + per-user overrides.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct LayoutDefaults {
+    #[serde(default, rename = "configColumnCount")]
+    pub config_column_count: u8,
+    #[serde(default, rename = "configColumnWidths")]
+    pub config_column_widths: Vec<f64>,
+    #[serde(default, rename = "groupDisplayZone")]
+    pub group_display_zone: HashMap<String, String>,
+    #[serde(default, rename = "groupColumn")]
+    pub group_column: HashMap<String, u32>,
+}
+
+impl LayoutDefaults {
+    pub fn is_empty(&self) -> bool {
+        self.config_column_count == 0
+            && self.config_column_widths.is_empty()
+            && self.group_display_zone.is_empty()
+            && self.group_column.is_empty()
+    }
+}
+
 /// Factory launch profile synced from `spawn_profile` — drives Auto VRAM UI and --fit wiring.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct LaunchProfile {
@@ -368,6 +390,14 @@ pub struct ProviderConfig {
     /// Custom group order set by user (overrides template insertion order). Empty = use template order.
     #[serde(default, rename = "groupOrder")]
     pub group_order: Vec<String>,
+    #[serde(default, rename = "groupDisplayZone", skip_serializing_if = "HashMap::is_empty")]
+    pub group_display_zone: HashMap<String, String>,
+    #[serde(default, rename = "configColumnCount", skip_serializing_if = "Option::is_none")]
+    pub config_column_count: Option<u8>,
+    #[serde(default, rename = "configColumnWidths", skip_serializing_if = "Vec::is_empty")]
+    pub config_column_widths: Vec<f64>,
+    #[serde(default, rename = "groupColumn", skip_serializing_if = "HashMap::is_empty")]
+    pub group_column: HashMap<String, u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub _original_id: Option<String>,
     #[serde(default)]

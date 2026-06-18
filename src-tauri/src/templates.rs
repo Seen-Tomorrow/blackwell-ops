@@ -247,6 +247,37 @@ pub fn load_provider_defaults(provider_id: &str) -> Option<ProviderTemplate> {
     })
 }
 
+fn factory_default_config_path(provider_id: &str) -> std::path::PathBuf {
+    crate::config::app_root_dir()
+        .join("runtime")
+        .join(provider_id)
+        .join("config")
+        .join(format!("{provider_id}-default-config.json"))
+}
+
+/// Read factory `groupOrder` + `layoutDefaults` from default config JSON.
+pub fn load_factory_layout_supplement(provider_id: &str) -> (Vec<String>, crate::types::LayoutDefaults) {
+    let path = factory_default_config_path(provider_id);
+    if !path.exists() {
+        return (Vec::new(), crate::types::LayoutDefaults::default());
+    }
+    let content = match std::fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(_) => return (Vec::new(), crate::types::LayoutDefaults::default()),
+    };
+    #[derive(Deserialize, Default)]
+    struct Supplement {
+        #[serde(default, rename = "groupOrder")]
+        group_order: Vec<String>,
+        #[serde(default, rename = "layoutDefaults")]
+        layout_defaults: crate::types::LayoutDefaults,
+    }
+    match serde_json::from_str::<Supplement>(&content) {
+        Ok(s) => (s.group_order, s.layout_defaults),
+        Err(_) => (Vec::new(), crate::types::LayoutDefaults::default()),
+    }
+}
+
 /// Resolve global engine stack capacity from provider factory `spawn_profile.max_engine_slots`.
 /// Uses the maximum across all discovered runtime providers, clamped to [`crate::config::ABSOLUTE_MAX_ENGINE_SLOTS`].
 pub fn resolve_engine_slot_count() -> usize {

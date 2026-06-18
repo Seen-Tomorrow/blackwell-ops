@@ -309,6 +309,14 @@ pub struct ProviderMeta {
     /// Custom group order set by user (overrides template insertion order). Empty = use template order.
     #[serde(default, rename = "groupOrder")]
     pub group_order: Vec<String>,
+    #[serde(default, rename = "groupDisplayZone", skip_serializing_if = "HashMap::is_empty")]
+    pub group_display_zone: HashMap<String, String>,
+    #[serde(default, rename = "configColumnCount", skip_serializing_if = "Option::is_none")]
+    pub config_column_count: Option<u8>,
+    #[serde(default, rename = "configColumnWidths", skip_serializing_if = "Vec::is_empty")]
+    pub config_column_widths: Vec<f64>,
+    #[serde(default, rename = "groupColumn", skip_serializing_if = "HashMap::is_empty")]
+    pub group_column: HashMap<String, u32>,
     /// Per-environment build info captured from binary --version + file mtime.
     #[serde(default, skip_serializing_if = "HashMap::is_empty", rename = "buildInfoPerEnv")]
     pub build_info_per_env: HashMap<String, crate::types::BuildInfo>,
@@ -345,6 +353,10 @@ impl ProviderMeta {
             build_profile: p.build_profile.clone(),
             user_edited_template_params: p.user_edited_template_params.clone(),
             group_order: p.group_order.clone(),
+            group_display_zone: p.group_display_zone.clone(),
+            config_column_count: p.config_column_count,
+            config_column_widths: p.config_column_widths.clone(),
+            group_column: p.group_column.clone(),
             template_type: p.template_type.clone(),
             build_info_per_env: p.build_info_per_env.clone(),
             binary_path_per_env: p.binary_path_per_env.iter().map(|(k, v)| (k.clone(), to_relative_path(&PathBuf::from(v)))).collect(),
@@ -394,6 +406,105 @@ impl Default for AppConfig {
 /// Get the user config file path for a provider.
 pub fn provider_user_config_path(provider_id: &str) -> PathBuf {
     config_dir().join(format!("{}-user-config.json", provider_id))
+}
+
+/// Factory default config JSON on disk (runtime mirror).
+pub fn factory_default_config_path(provider_id: &str) -> PathBuf {
+    app_root_dir()
+        .join("runtime")
+        .join(provider_id)
+        .join("config")
+        .join(format!("{provider_id}-default-config.json"))
+}
+
+#[cfg(debug_assertions)]
+fn dev_factory_default_config_source_path(provider_id: &str) -> Option<PathBuf> {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("runtime")
+        .join(provider_id)
+        .join("config")
+        .join(format!("{provider_id}-default-config.json"));
+    if path.exists() {
+        Some(path)
+    } else {
+        None
+    }
+}
+
+fn factory_layout_supplement_for_provider(provider_id: &str, template_type: &str, factory_provided: bool) -> (Vec<String>, crate::types::LayoutDefaults) {
+    let key = resolve_merge_template_key(provider_id, template_type, factory_provided)
+        .unwrap_or_else(|| provider_id.to_string());
+    crate::templates::load_factory_layout_supplement(&key)
+}
+
+fn apply_factory_layout_defaults(
+    provider: &mut crate::types::ProviderConfig,
+    factory_key: &str,
+) {
+    let (factory_group_order, factory_layout) =
+        crate::templates::load_factory_layout_supplement(factory_key);
+    if provider.group_order.is_empty() && !factory_group_order.is_empty() {
+        provider.group_order = factory_group_order
+            .into_iter()
+            .map(|g| normalize_ui_group(&g))
+            .collect();
+    }
+    if provider.group_display_zone.is_empty() && !factory_layout.group_display_zone.is_empty() {
+        provider.group_display_zone = factory_layout.group_display_zone.clone();
+    }
+    if provider.config_column_count.is_none() && factory_layout.config_column_count > 0 {
+        provider.config_column_count = Some(factory_layout.config_column_count.clamp(1, 3));
+    }
+    if provider.config_column_widths.is_empty() && !factory_layout.config_column_widths.is_empty() {
+        provider.config_column_widths = factory_layout.config_column_widths.clone();
+    }
+    if provider.group_column.is_empty() && !factory_layout.group_column.is_empty() {
+        provider.group_column = factory_layout.group_column.clone();
+    }
+}
+
+fn apply_meta_layout_overrides(
+    provider: &mut crate::types::ProviderConfig,
+    meta: &ProviderMeta,
+    factory_key: &str,
+) {
+    if !meta.group_order.is_empty() {
+        provider.group_order = meta.group_order.clone();
+    } else {
+        apply_factory_layout_defaults(provider, factory_key);
+        return;
+    }
+    if !meta.group_display_zone.is_empty() {
+        provider.group_display_zone = meta.group_display_zone.clone();
+    }
+    if meta.config_column_count.is_some() {
+        provider.config_column_count = meta.config_column_count;
+    }
+    if !meta.config_column_widths.is_empty() {
+        provider.config_column_widths = meta.config_column_widths.clone();
+    }
+    if !meta.group_column.is_empty() {
+        provider.group_column = meta.group_column.clone();
+    }
+    if provider.group_display_zone.is_empty()
+        || provider.config_column_count.is_none()
+        || provider.config_column_widths.is_empty()
+        || provider.group_column.is_empty()
+    {
+        let (_, factory_layout) = crate::templates::load_factory_layout_supplement(factory_key);
+        if provider.group_display_zone.is_empty() && !factory_layout.group_display_zone.is_empty() {
+            provider.group_display_zone = factory_layout.group_display_zone;
+        }
+        if provider.config_column_count.is_none() && factory_layout.config_column_count > 0 {
+            provider.config_column_count = Some(factory_layout.config_column_count.clamp(1, 3));
+        }
+        if provider.config_column_widths.is_empty() && !factory_layout.config_column_widths.is_empty() {
+            provider.config_column_widths = factory_layout.config_column_widths;
+        }
+        if provider.group_column.is_empty() && !factory_layout.group_column.is_empty() {
+            provider.group_column = factory_layout.group_column;
+        }
+    }
 }
 
 /// Load all per-provider user configs from disk.
@@ -757,7 +868,7 @@ fn discover_providers() -> Vec<crate::types::ProviderConfig> {
                     }
                 }
 
-                providers.push(crate::types::ProviderConfig {
+                let mut discovered = crate::types::ProviderConfig {
                     id: identity.id.clone(),
                     display_name: identity.display_name,
                     binary_path: main_binary,
@@ -765,6 +876,10 @@ fn discover_providers() -> Vec<crate::types::ProviderConfig> {
                     params: serde_json::json!({}),
                     user_edited_template_params: params_for_provider(&identity.id),
                     group_order: Vec::new(),
+                    group_display_zone: HashMap::new(),
+                    config_column_count: None,
+                    config_column_widths: Vec::new(),
+                    group_column: HashMap::new(),
                     _original_id: None,
                     git_url: identity.git_url,
                     branch: identity.branch,
@@ -781,7 +896,9 @@ fn discover_providers() -> Vec<crate::types::ProviderConfig> {
                     launch_profile: crate::templates::load_provider_defaults(&identity.id)
                         .map(|t| crate::types::LaunchProfile::from_spawn_profile(&t.spawn_profile))
                         .unwrap_or_default(),
-                });
+                };
+                apply_factory_layout_defaults(&mut discovered, &identity.id);
+                providers.push(discovered);
             }
         }
     }
@@ -2084,9 +2201,9 @@ fn build_config_with_providers_full(_gpu_count: usize, mut config: AppConfig) ->
             if !meta.downloaded_version_per_env.is_empty() {
                 p.downloaded_version_per_env = meta.downloaded_version_per_env.clone();
             }
-            if !meta.group_order.is_empty() {
-                p.group_order = meta.group_order.clone();
-            }
+            let factory_key = resolve_merge_template_key(&p.id, &effective_template_type, true)
+                .unwrap_or_else(|| p.id.clone());
+            apply_meta_layout_overrides(&mut p, meta, &factory_key);
             if !meta.last_pr_per_env.is_empty() {
                 p.last_pr_per_env = meta.last_pr_per_env.clone();
             }
@@ -2125,23 +2242,28 @@ fn build_config_with_providers_full(_gpu_count: usize, mut config: AppConfig) ->
                 (meta.template_version, false)
             };
 
-            providers.push(crate::types::ProviderConfig {
+            let factory_key = tmpl_key.clone().unwrap_or_else(|| meta.id.clone());
+            let mut custom = crate::types::ProviderConfig {
                 id: meta.id.clone(),
                 display_name: meta.display_name.clone(),
                 binary_path: meta.binary_path.clone(),
                 enabled: meta.enabled,
-          params: serde_json::json!({}),
-                  user_edited_template_params: user_edited_params,
-                group_order: meta.group_order.clone(),
+                params: serde_json::json!({}),
+                user_edited_template_params: user_edited_params,
+                group_order: Vec::new(),
+                group_display_zone: HashMap::new(),
+                config_column_count: None,
+                config_column_widths: Vec::new(),
+                group_column: HashMap::new(),
                 _original_id: None,
                 git_url: meta.git_url.clone(),
                 branch: meta.branch.clone(),
                 build_profile: meta.build_profile.clone(),
                 template_type: resolved_type,
-                build_info_per_env: meta.build_info_per_env,
-                binary_path_per_env: meta.binary_path_per_env,
-                downloaded_version_per_env: meta.downloaded_version_per_env,
-                last_pr_per_env: meta.last_pr_per_env,
+                build_info_per_env: meta.build_info_per_env.clone(),
+                binary_path_per_env: meta.binary_path_per_env.clone(),
+                downloaded_version_per_env: meta.downloaded_version_per_env.clone(),
+                last_pr_per_env: meta.last_pr_per_env.clone(),
                 display_order: meta.display_order,
                 factory_provided: false,
                 template_version: if tv_changed { factory_tv } else { meta.template_version },
@@ -2151,7 +2273,9 @@ fn build_config_with_providers_full(_gpu_count: usize, mut config: AppConfig) ->
                     .and_then(|key| crate::templates::load_provider_defaults(key))
                     .map(|t| crate::types::LaunchProfile::from_spawn_profile(&t.spawn_profile))
                     .unwrap_or_default(),
-            });
+            };
+            apply_meta_layout_overrides(&mut custom, &meta, &factory_key);
+            providers.push(custom);
         }
     }
 
@@ -2204,6 +2328,225 @@ pub fn dev_reset_first_run(
         "[config] dev_reset_first_run: paths reset, cache cleared, {provider_count} provider(s) rediscovered",
     );
     Ok(())
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct ExportFactoryTemplateInput {
+    #[serde(rename = "providerId")]
+    pub provider_id: String,
+    #[serde(rename = "userEditedTemplateParams")]
+    pub user_edited_template_params: Vec<crate::types::UserEditedTemplateParam>,
+    #[serde(default, rename = "groupOrder")]
+    pub group_order: Vec<String>,
+    #[serde(default, rename = "layoutDefaults")]
+    pub layout_defaults: crate::types::LayoutDefaults,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ExportFactoryTemplateResult {
+    #[serde(rename = "templateVersion")]
+    pub template_version: u32,
+    pub paths: Vec<String>,
+}
+
+fn user_param_to_factory_param(p: &crate::types::UserEditedTemplateParam) -> crate::templates::ProviderDefaultParam {
+    let mut values = p.values.clone();
+    let existing: std::collections::HashSet<String> = values.iter().map(|v| json_val_key(v)).collect();
+    for uv in &p.user_added_values {
+        let k = json_val_key(uv);
+        if !k.is_empty() && !existing.contains(&k) {
+            values.push(uv.clone());
+        }
+    }
+
+    let default = if !p.default_value.is_null() {
+        p.default_value.clone()
+    } else if let Some(first) = values.first() {
+        first.clone()
+    } else if !p.factory_default.is_null() {
+        p.factory_default.clone()
+    } else {
+        serde_json::Value::Null
+    };
+
+    let sub_params = p.sub_params.as_ref().map(|m| {
+        let obj: serde_json::Map<String, serde_json::Value> = m
+            .iter()
+            .map(|(k, v)| {
+                (
+                    k.clone(),
+                    serde_json::Value::Array(
+                        v.iter()
+                            .map(|s| serde_json::Value::String(s.clone()))
+                            .collect(),
+                    ),
+                )
+            })
+            .collect();
+        serde_json::Value::Object(obj)
+    });
+
+    crate::templates::ProviderDefaultParam {
+        key: p.key.clone(),
+        label: p.label.clone(),
+        flag: p.flag.clone().filter(|f| !f.is_empty()),
+        flag_pair: p.flag_pair.clone(),
+        ptype: if p.ptype.is_empty() {
+            default_ptype()
+        } else {
+            p.ptype.clone()
+        },
+        values,
+        step: p.step,
+        default,
+        ui_group: normalize_ui_group(&p.ui_group),
+        note: p.note.clone(),
+        pattern: p.pattern.clone(),
+        sub_params,
+        dock: p.dock.clone(),
+        hidden_default: p.hidden,
+    }
+}
+
+fn default_ptype() -> String {
+    crate::types::default_ptype()
+}
+
+/// Canonical key order for factory default config JSON (identity + spawn at top).
+const FACTORY_CONFIG_KEY_ORDER: &[&str] = &[
+    "id",
+    "display_name",
+    "binary_name",
+    "description",
+    "git_url",
+    "branch",
+    "template_type",
+    "templateVersion",
+    "build_profile",
+    "spawn_profile",
+    "params",
+    "groupOrder",
+    "layoutDefaults",
+];
+
+fn reorder_factory_config_root(obj: serde_json::Map<String, serde_json::Value>) -> serde_json::Value {
+    let mut ordered = serde_json::Map::new();
+    let mut rest = obj;
+    for key in FACTORY_CONFIG_KEY_ORDER {
+        if let Some(v) = rest.remove(*key) {
+            ordered.insert(key.to_string(), v);
+        }
+    }
+    for (k, v) in rest {
+        ordered.insert(k, v);
+    }
+    serde_json::Value::Object(ordered)
+}
+
+/// Promote live UI config to factory default JSON (admin). Bumps `templateVersion` automatically.
+pub fn export_provider_factory_template(
+    input: ExportFactoryTemplateInput,
+) -> Result<ExportFactoryTemplateResult, String> {
+    let path = factory_default_config_path(&input.provider_id);
+    if !path.exists() {
+        return Err(format!(
+            "Factory config not found for '{}' at {}",
+            input.provider_id,
+            path.display()
+        ));
+    }
+
+    let content = std::fs::read_to_string(&path)
+        .map_err(|e| format!("Failed to read {}: {}", path.display(), e))?;
+    let mut root: serde_json::Value = serde_json::from_str(&content)
+        .map_err(|e| format!("Invalid factory JSON at {}: {}", path.display(), e))?;
+
+    let current_tv = root
+        .get("templateVersion")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(1) as u32;
+    let new_tv = current_tv.saturating_add(1);
+
+    let validation_errors =
+        validate_provider_params(&input.provider_id, &input.user_edited_template_params);
+    if !validation_errors.is_empty() {
+        return Err(validation_errors.join("\n"));
+    }
+
+    let mut sorted = input.user_edited_template_params.clone();
+    sorted.sort_by_key(|p| p.order);
+    let factory_params: Vec<crate::templates::ProviderDefaultParam> =
+        sorted.iter().map(user_param_to_factory_param).collect();
+
+    let group_order: Vec<String> = input
+        .group_order
+        .iter()
+        .map(|g| normalize_ui_group(g))
+        .collect();
+
+    let layout = input.layout_defaults.clone();
+    let pretty = serde_json::to_string_pretty(&factory_params)
+        .map_err(|e| format!("Failed to serialize params: {e}"))?;
+    let params_value: serde_json::Value =
+        serde_json::from_str(&pretty).map_err(|e| format!("Failed to encode params: {e}"))?;
+
+    if let Some(obj) = root.as_object_mut() {
+        obj.insert("params".to_string(), params_value);
+        obj.insert(
+            "groupOrder".to_string(),
+            serde_json::to_value(&group_order).map_err(|e| e.to_string())?,
+        );
+        obj.insert(
+            "layoutDefaults".to_string(),
+            serde_json::to_value(&layout).map_err(|e| e.to_string())?,
+        );
+        obj.insert(
+            "templateVersion".to_string(),
+            serde_json::Value::Number(new_tv.into()),
+        );
+    } else {
+        return Err("Factory config root must be a JSON object".to_string());
+    }
+
+    root = root
+        .as_object()
+        .map(|o| reorder_factory_config_root(o.clone()))
+        .unwrap_or(root);
+
+    // Author bumped factory — sync user meta version so reload won't show attention banner.
+    if let Some(mut meta) = load_user_providers_meta()
+        .into_iter()
+        .find(|m| m.id == input.provider_id)
+    {
+        meta.template_version = new_tv;
+        let _ = save_provider_user_config(&meta);
+    }
+
+    let output = serde_json::to_string_pretty(&root).map_err(|e| e.to_string())?;
+    let mut written = Vec::new();
+
+    std::fs::write(&path, &output)
+        .map_err(|e| format!("Failed to write {}: {}", path.display(), e))?;
+    written.push(path.display().to_string());
+
+    #[cfg(debug_assertions)]
+    if let Some(src) = dev_factory_default_config_source_path(&input.provider_id) {
+        std::fs::write(&src, &output)
+            .map_err(|e| format!("Failed to write dev source {}: {}", src.display(), e))?;
+        written.push(src.display().to_string());
+    }
+
+    log::info!(
+        "[config] Exported factory template for '{}' → templateVersion={} ({} file(s))",
+        input.provider_id,
+        new_tv,
+        written.len()
+    );
+
+    Ok(ExportFactoryTemplateResult {
+        template_version: new_tv,
+        paths: written,
+    })
 }
 
 #[tauri::command]

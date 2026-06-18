@@ -713,6 +713,19 @@ export function effectiveParamDefault(
   return defaultValue;
 }
 
+/** Apply engine-config localStorage overrides as `defaultValue` for factory export. */
+export function applyCatalogOverridesToExportParams<T extends { key: string; defaultValue?: string | number }>(
+  params: T[],
+  overrides: Record<string, string | number>,
+): T[] {
+  if (!Object.keys(overrides).length) return params;
+  return params.map((p) => {
+    const ov = overrides[p.key];
+    if (ov === undefined) return p;
+    return { ...p, defaultValue: ov };
+  });
+}
+
 /** Merge custom group order (localStorage / provider) with template insertion order. */
 export function resolveGroupOrder(
   params: Array<{ ui_group?: string }>,

@@ -707,6 +707,7 @@ async fn main() {
             // Provider management commands
             provider_mgmt::list_providers,
             provider_mgmt::save_provider,
+            provider_mgmt::export_provider_factory_template,
             provider_mgmt::remove_provider,
             provider_mgmt::toggle_group_hidden,
             engine::get_binary_build_info,
