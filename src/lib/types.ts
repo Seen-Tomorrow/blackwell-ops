@@ -130,6 +130,8 @@ export interface ProviderConfig {
   params?: Record<string, any>;
   userEditedTemplateParams?: UserEditedTemplateParam[];
   groupOrder?: string[]; // Custom group order (empty = use template insertion order)
+  /** Per-group pin above VRAM display (default: below). */
+  groupDisplayZone?: Record<string, "above" | "below">;
   _original_id?: string;
   git_url?: string;
   branch?: string;

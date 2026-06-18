@@ -60,8 +60,7 @@
       "ptype": "logic_only",
       "values": ["1", "0"],
       "default": "1",
-      "dock": "runtime",
-      "ui_group": "MULTI-GPU",
+      "ui_group": "CORE",
       "note": "Split-Mode F16 (1) uses 16-bit for inter-GPU data exchange. Faster on dual RTX 6000s.",
       "sub_params": {
         "1": ["-smf16"],

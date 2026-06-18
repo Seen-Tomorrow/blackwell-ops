@@ -38,6 +38,7 @@ import { normalizeDisplayTexture, type DisplayTexture } from "./displayTexture";
 
  * | BlackOps-catalog-override:{providerId} | JSON Record<paramKey, value> | Launch-time param chip overrides |
  * | BlackOps-group-order:{providerId} | JSON string[] | CONFIG param group order |
+ * | BlackOps-group-display-zone:{providerId} | JSON Record<group, above\|below> | Pin groups above VRAM display |
  * | BlackOps-engine-alias:{modelPath} | string | Per-model launch alias |
  * | BlackOps-binary-profile:{providerId} | fresh \| vanguard \| frontier \| stable | Selected binary env profile |
  * | BlackOps-foundry-last-refresh:{signature} | timestamp string | Foundry git refresh throttle |
@@ -110,6 +111,7 @@ export const KEYS = {
   fusionHeroTpsMode: `${STORAGE_PREFIX}fusion-hero-tps`,
   fusionBenchTray: `${STORAGE_PREFIX}fusion-bench-tray`,
   displayTexture: `${STORAGE_PREFIX}display-texture`,
+  configLayoutMode: `${STORAGE_PREFIX}config-layout-mode`,
   catalogSplitWidth: `${STORAGE_PREFIX}catalog-split-width`,
   modelHubSplitWidth: `${STORAGE_PREFIX}model-hub-split-width`,
   telemetryView: `${STORAGE_PREFIX}telemetry-view`,
@@ -199,6 +201,28 @@ export const overridesKey = catalogOverrideKey;
 
 export function groupOrderKey(providerId: string): string {
   return `${STORAGE_PREFIX}group-order:${providerId}`;
+}
+
+export type GroupDisplayZone = "above" | "below";
+
+export function groupDisplayZoneKey(providerId: string): string {
+  return `${STORAGE_PREFIX}group-display-zone:${providerId}`;
+}
+
+export function loadGroupDisplayZone(
+  providerId: string,
+  fromProvider?: Record<string, GroupDisplayZone>,
+): Record<string, GroupDisplayZone> {
+  const stored = readJsonStorage<Record<string, GroupDisplayZone>>(groupDisplayZoneKey(providerId));
+  if (stored && typeof stored === "object") return stored;
+  return fromProvider ?? {};
+}
+
+export function saveGroupDisplayZone(
+  providerId: string,
+  zones: Record<string, GroupDisplayZone>,
+): void {
+  writeJsonStorage(groupDisplayZoneKey(providerId), zones);
 }
 
 export function autoVramKey(providerId: string): string {

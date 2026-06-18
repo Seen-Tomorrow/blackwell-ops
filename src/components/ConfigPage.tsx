@@ -16,6 +16,10 @@ import {
   catalogOverrideKey,
   effectiveParamDefault,
   groupOrderKey,
+  groupDisplayZoneKey,
+  loadGroupDisplayZone,
+  saveGroupDisplayZone,
+  type GroupDisplayZone,
   normalizeUiGroup,
   paramUiGroup,
   readJsonStorage,
@@ -164,6 +168,34 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
       setCustomGroupOrder(null);
     }
   }, [selectedProviderId, currentProvider]);
+
+  const [customGroupDisplayZone, setCustomGroupDisplayZone] = useState<Record<string, GroupDisplayZone>>({});
+
+  useEffect(() => {
+    setCustomGroupDisplayZone(loadGroupDisplayZone(selectedProviderId, currentProvider?.groupDisplayZone));
+  }, [selectedProviderId, currentProvider]);
+
+  const toggleGroupDisplayZone = useCallback(
+    async (groupName: string) => {
+      const normalized = normalizeUiGroup(groupName);
+      const next = { ...customGroupDisplayZone };
+      if (next[normalized] === "above") delete next[normalized];
+      else next[normalized] = "above";
+      saveGroupDisplayZone(selectedProviderId, next);
+      setCustomGroupDisplayZone(next);
+      if (currentProvider) {
+        const updated = { ...currentProvider, groupDisplayZone: next };
+        try {
+          await invoke("save_provider", { provider: updated });
+          dispatchAppEvent(EVENTS.reloadProviders);
+        } catch {
+          /* ignore */
+        }
+      }
+      dispatchAppEvent(EVENTS.paramConfigChanged);
+    },
+    [customGroupDisplayZone, currentProvider, selectedProviderId],
+  );
 
   const saveGroupOrder = useCallback(async (newOrder: string[]) => {
     const normalized = newOrder.map(normalizeUiGroup);
@@ -982,6 +1014,22 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
                             )}
                             <span>{groupName}</span>
                             <span className="opacity-40">({groupParams.length})</span>
+                            <button
+                              type="button"
+                              onClick={() => toggleGroupDisplayZone(groupName)}
+                              className={`ml-auto px-1.5 py-0 text-[7px] font-mono rounded-sm border transition-colors ${
+                                customGroupDisplayZone[normalizeUiGroup(groupName)] === "above"
+                                  ? "border-nv-green/50 text-nv-green/90 bg-nv-green/10"
+                                  : "border-stealth-border/40 text-stealth-muted/45 hover:text-stealth-muted"
+                              }`}
+                              title={
+                                customGroupDisplayZone[normalizeUiGroup(groupName)] === "above"
+                                  ? "Pinned above VRAM display — click to move below"
+                                  : "Pin group above VRAM display"
+                              }
+                            >
+                              {customGroupDisplayZone[normalizeUiGroup(groupName)] === "above" ? "▲ DISP" : "▽ DISP"}
+                            </button>
                           </div>
                           <div className="space-y-1.5">
 {groupParams.map((def, localIdx) => {

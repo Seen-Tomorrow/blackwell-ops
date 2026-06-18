@@ -9,6 +9,7 @@ import { FORECAST_PHOSPHOR_HEIGHT_PX } from "../lib/onboardingDisplay";
 import GpuTopology from "./GpuTopology";
 import FusionOverlay from "./FusionOverlay";
 import MoeBadge from "./MoeBadge";
+import MemModeToggle from "./MemModeToggle";
 import MemorySourcePanel, { manifestHasFitProbe } from "./MemorySourcePanel";
 import { useForecastContentHeight } from "../hooks/useForecastContentHeight";
 import { useFusionSlot } from "../hooks/useFusionData";
@@ -40,6 +41,10 @@ interface VramBadgeProps {
   hideValidate?: boolean;
   /** Hide MOE_OPTIMAL badge (not applicable in Auto VRAM mode). */
   hideMoeBadge?: boolean;
+  /** Provider supports auto VRAM / --fit launch path. */
+  memModeAvailable?: boolean;
+  memModeAuto?: boolean;
+  onMemModeChange?: (auto: boolean) => void;
   className?: string;
   modelName?: string;
   modelQuant?: string;
@@ -132,7 +137,8 @@ function VramBadgeFusionLayer({
 export default function VramBadge({
   manifest, gpus, modelMeta, selectedGpuIndices, onDeviceSelect, isValidating, onValidate,
   isModelRunning, activeEngineAlias, activeEnginePort, selectedSlotIdx, supportsFusion = true, engineStatus,
-  gpuMask = "", vramTargetMib, modelLayerTotal, gpuLoadTargetsMib, offloadMode, onMoeSuggestionClick, hideValidate = false, hideMoeBadge = false, className,
+  gpuMask = "", vramTargetMib, modelLayerTotal, gpuLoadTargetsMib, offloadMode, onMoeSuggestionClick, hideValidate = false, hideMoeBadge = false,
+  memModeAvailable = false, memModeAuto = true, onMemModeChange, className,
   modelName, modelQuant, providerName, providerBuildVersion, profileLabel, cudaVersion, launchConfig, hwTopo,
 }: VramBadgeProps) {
   const rootRef = useRef<HTMLDivElement>(null);
@@ -298,6 +304,14 @@ export default function VramBadge({
             />
           </div>
         )}
+      </div>
+
+      <div className="vram-mem-mode-row flex-shrink-0 mb-1 min-w-0">
+        <MemModeToggle
+          available={memModeAvailable}
+          enabled={memModeAuto}
+          onChange={(auto) => onMemModeChange?.(auto)}
+        />
       </div>
 
       {/* ── Top-right: scenario badge only, absolute corner ─── */}
