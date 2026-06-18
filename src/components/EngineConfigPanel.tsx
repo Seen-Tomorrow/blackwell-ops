@@ -26,7 +26,8 @@ import ConfigBelowGroups from "./ConfigBelowGroups";
 import GpuAssignPanel from "./GpuAssignPanel";
 import GroupHeaderControls from "./GroupHeaderControls";
 import type { ConfigColumnCount } from "../lib/configColumnLayout";
-import { resolveGroupColumn } from "../lib/configColumnLayout";
+import { effectiveGroupColumn } from "../lib/configColumnLayout";
+import { isEmptyGroupDeletable } from "../lib/groupLayoutUtils";
 import { useGroupLayoutControls } from "../hooks/useGroupLayoutControls";
 import { dispatchAppEvent, EVENTS } from "../lib/events";
 import { DEFAULT_BINARY_PROFILE, ENV_META, ENV_ORDER, type Env } from "../lib/foundry_constants";
@@ -130,6 +131,13 @@ function isSpecDecodingActive(params: UserEditedTemplateParam[]): boolean {
     .some((p) => !p.hidden);
 }
 
+function configFlagEnabled(config: Record<string, unknown>, key: string): boolean {
+  const v = config[key];
+  if (v === true || v === 1 || v === "1") return true;
+  if (v === false || v === 0 || v === "0") return false;
+  return String(v ?? "").trim().toLowerCase() === "true";
+}
+
 function resolveParallelSlots(
   config: Record<string, unknown>,
   params: UserEditedTemplateParam[],
@@ -143,6 +151,15 @@ function resolveParallelSlots(
   const fallback = parallelDef?.defaultValue ?? parallelDef?.values?.[0] ?? 1;
   const n = Number(fallback);
   return Number.isFinite(n) && n > 0 ? n : 1;
+}
+
+/** CTX ÷ slots — unified KV uses one pool; otherwise parallel slot count. */
+function resolveCtxSlotCount(
+  config: Record<string, unknown>,
+  params: UserEditedTemplateParam[],
+): number {
+  if (configFlagEnabled(config, "unified_kv")) return 1;
+  return resolveParallelSlots(config, params);
 }
 
 function mtpParallelConflict(
@@ -654,9 +671,10 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         def.key === "ctx"
           ? (typeof currentValue === "number" ? currentValue : parseInt(String(currentValue), 10))
           : 0;
+      const ctxSlotCount = def.key === "ctx" ? resolveCtxSlotCount(config, allParamsResolved) : 1;
       const ctxPerSlot =
-        def.key === "ctx" && mtpParallelSlotCount > 1 && Number.isFinite(ctxNumeric) && ctxNumeric > 0
-          ? Math.floor(ctxNumeric / mtpParallelSlotCount)
+        def.key === "ctx" && ctxSlotCount > 1 && Number.isFinite(ctxNumeric) && ctxNumeric > 0
+          ? Math.floor(ctxNumeric / ctxSlotCount)
           : 0;
       return (
         <div key={paramRowKey(def, rowIdx)} data-param-row className={`flex items-center min-h-[22px] ${isLocked ? "opacity-50" : ""}`}>
@@ -665,26 +683,28 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           <span
             className={`font-mono flex-shrink-0 uppercase tracking-wider text-[9px] flex items-center gap-1.5 min-w-0 ${def.key === "ctx" && ctxPerSlot > 0 ? "w-auto max-w-[40%]" : "w-24 truncate"} ${isUserAdded ? "text-yellow-400/80" : "text-stealth-muted"}`}
             title={def.key === "ctx" && ctxPerSlot > 0
-              ? `${formatTokenLabel(ctxNumeric)} total ÷ ${mtpParallelSlotCount} slots = ${formatTokenLabel(ctxPerSlot)} per slot`
+              ? `${formatTokenLabel(ctxNumeric)} ÷ ${ctxSlotCount} slots = ${formatTokenLabel(ctxPerSlot)} per slot`
               : def.label}
           >
             <span className="truncate">{def.label}</span>
-            {ctxPerSlot > 0 && (
-              <span
-                className="text-[7px] font-mono text-stealth-muted/55 tracking-wide whitespace-nowrap flex-shrink-0"
-                title={`Each parallel slot gets ${formatTokenLabel(ctxPerSlot)} KV (${formatTokenLabel(ctxNumeric)} ÷ ${mtpParallelSlotCount})`}
-              >
-                {formatTokenLabel(ctxPerSlot)} per slot
-              </span>
-            )}
           </span>
           <div className="flex-1 min-w-0">
             <SliderParam
               paramKey={def.key}
               currentValue={currentValue}
+              defaultValue={def.defaultValue}
               onChange={(v) => updateParam(def.key, v)}
               step={def.step ?? 1024}
               values={baseValues}
+              perSlotReserve={ctxSlotCount > 1}
+              perSlotLabel={
+                ctxPerSlot > 0 ? formatTokenLabel(ctxPerSlot) : undefined
+              }
+              perSlotTitle={
+                ctxPerSlot > 0
+                  ? `Per slot: ${formatTokenLabel(ctxNumeric)} ÷ ${ctxSlotCount}`
+                  : undefined
+              }
             />
           </div>
         </div>
@@ -724,7 +744,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         </div>
       </div>
     );
-  }, [config, gpus.length, providerDefaultKeys, updateParam, mtpParallelSlotCount]);
+  }, [config, gpus.length, providerDefaultKeys, updateParam, allParamsResolved]);
 
   const isPanelChromeParam = useCallback((def: UserEditedTemplateParam) => {
     return Boolean(def.dock) || PANEL_CHROME_PARAM_KEYS.has(def.key);
@@ -783,18 +803,23 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     aboveGroupKeys,
     belowGroupKeys,
     belowGroupsByColumn,
+    aboveGroupsByColumn,
+    aboveColumnWidths,
     groupDisplayZone,
     columnCount,
     columnWidths,
     groupColumn,
     draggingGroup,
     draggingGutterIndex,
+    draggingAboveGutterIndex,
     handleGroupDragStart,
     handleGutterDragStart,
+    handleAboveGutterDragStart,
     shiftGroupColumn,
     setBelowColumnCount,
     toggleGroupDisplayZone,
     toggleGroupHidden,
+    deleteEmptyGroup,
     isGroupHidden,
   } = useGroupLayoutControls({
     providerId: effectiveBackendType,
@@ -821,7 +846,16 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     (groupId: string, zone: GroupDisplayZone, opts?: { hideZoneToggle?: boolean; hideHideToggle?: boolean }) => {
       if (!layoutModeActive) return null;
       const displayZone = groupDisplayZone[normalizeUiGroup(groupId)] === "above" ? "above" : "below";
-      const colIdx = zone === "below" ? resolveGroupColumn(groupId, groupColumn) : 0;
+      const zoneKeys = zone === "above" ? aboveGroupKeys : belowGroupKeys;
+      const zoneColumnCount = zone === "above" ? 2 : columnCount;
+      const colIdx = effectiveGroupColumn(
+        groupId,
+        zoneKeys,
+        groupColumn,
+        zoneColumnCount,
+        zone,
+      );
+      const emptyDeletable = isEmptyGroupDeletable(groupId, allGroupedParams);
       return (
         <GroupHeaderControls
           zone={zone}
@@ -829,14 +863,16 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           isHidden={isGroupHidden(groupId)}
           isDragging={draggingGroup === groupId}
           hideZoneToggle={opts?.hideZoneToggle}
-          hideHideToggle={opts?.hideHideToggle}
+          hideHideToggle={opts?.hideHideToggle || emptyDeletable}
+          showDelete={emptyDeletable}
           columnIdx={colIdx}
-          columnCount={columnCount}
-          onMoveColumnLeft={() => shiftGroupColumn(groupId, -1)}
-          onMoveColumnRight={() => shiftGroupColumn(groupId, 1)}
+          columnCount={zoneColumnCount}
+          onMoveColumnLeft={() => shiftGroupColumn(groupId, -1, zone)}
+          onMoveColumnRight={() => shiftGroupColumn(groupId, 1, zone)}
           onDragStart={(e) => handleGroupDragStart(e, zone, groupId)}
           onToggleZone={() => { void toggleGroupDisplayZone(groupId); }}
           onToggleHide={() => { void toggleGroupHidden(groupId); }}
+          onDelete={() => { void deleteEmptyGroup(groupId); }}
         />
       );
     },
@@ -845,19 +881,32 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       groupDisplayZone,
       groupColumn,
       columnCount,
+      aboveGroupKeys,
+      belowGroupKeys,
+      allGroupedParams,
       isGroupHidden,
       draggingGroup,
       handleGroupDragStart,
       shiftGroupColumn,
       toggleGroupDisplayZone,
       toggleGroupHidden,
+      deleteEmptyGroup,
     ],
   );
 
-  const renderParamGroup = useCallback((group: ParamGroupMeta, zone: GroupDisplayZone) => {
+  const renderParamGroup = useCallback((
+    group: ParamGroupMeta,
+    zone: GroupDisplayZone,
+    placement?: { groupIdx?: number },
+  ) => {
     const groupParams = groupedParams[group.id];
     const isSpecGroup = group.id === SPEC_DECODING_GROUP;
     const groupHidden = !isSpecGroup && isGroupHidden(group.id);
+    const hideLeadHeader =
+      zone === "above"
+      && placement?.groupIdx === 0
+      && !layoutModeActive
+      && !isSpecGroup;
 
     if (isSpecGroup) {
       const specAllParams = allGroupedParams[group.id] || [];
@@ -951,6 +1000,19 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
     const allInGroup = allGroupedParams[group.id] || [];
     if (!groupParams || groupParams.length === 0) {
+      if (layoutModeActive && isEmptyGroupDeletable(group.id, allGroupedParams)) {
+        return (
+          <div key={group.id} className="config-param-group--empty opacity-70">
+            <div
+              className={`config-group-header flex items-center gap-1.5 text-[8px] font-mono tracking-widest uppercase mb-2 pb-1 border-b border-dashed border-stealth-border/35 text-stealth-muted/55 ${draggingGroup === group.id ? "config-group-header--dragging" : ""}`}
+            >
+              <span className="flex-1 min-w-0 truncate">{group.label}</span>
+              <span className="opacity-50 flex-shrink-0">(empty)</span>
+              {renderGroupLayoutControls(group.id, zone)}
+            </div>
+          </div>
+        );
+      }
       if (!layoutModeActive || !groupHidden || allInGroup.length === 0) return null;
       return (
         <div key={group.id} className="config-param-group--hidden opacity-50">
@@ -966,11 +1028,12 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     }
 
     const isCollapsed = collapsedGroups.has(group.id);
+    const showContent = hideLeadHeader || !isCollapsed;
     const headerClass = `config-group-header flex items-center gap-1.5 text-[8px] font-mono tracking-widest uppercase mb-2 pb-1 border-b border-stealth-border/30 w-full ${draggingGroup === group.id ? "config-group-header--dragging" : ""}`;
 
     return (
       <div key={group.id} className={groupHidden ? "config-param-group--hidden opacity-50" : undefined}>
-        {group.alwaysOpen ? (
+        {!hideLeadHeader && (group.alwaysOpen ? (
           <div className={headerClass}>
             <span className="flex-1 min-w-0 truncate">{group.label}</span>
             {renderGroupLayoutControls(group.id, zone)}
@@ -988,9 +1051,9 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             </button>
             {renderGroupLayoutControls(group.id, zone)}
           </div>
-        )}
+        ))}
 
-        {!isCollapsed && (
+        {showContent && (
           <div className="space-y-2.5">
             {groupParams.map((def, i) => renderParamRow(def, false, i))}
           </div>
@@ -1266,58 +1329,26 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                 );
               })}
             </div>
-            <div className="config-column-count flex items-center gap-0.5 flex-shrink-0 ml-2">
-              {([1, 2, 3] as ConfigColumnCount[]).map((n) => (
-                <button
-                  key={n}
-                  type="button"
-                  onClick={() => setBelowColumnCount(n)}
-                  className={`config-column-count__btn px-1.5 py-0.5 text-[8px] font-mono rounded-sm border transition-colors ${
-                    columnCount === n
-                      ? "border-nv-green/45 text-nv-green/90 bg-nv-green/10"
-                      : "border-stealth-border/40 text-stealth-muted/45 hover:text-stealth-muted"
-                  }`}
-                  title={`${n} column${n > 1 ? "s" : ""} below display`}
-                >
-                  {n}C
-                </button>
-              ))}
-            </div>
-            <button
-              type="button"
-              onClick={toggleLayoutMode}
-              className={`config-layout-mode-btn flex-shrink-0 ml-1.5 px-2 py-0.5 text-[8px] font-mono rounded-sm border transition-colors ${
-                layoutModeActive
-                  ? "config-layout-mode-btn--on border-nv-green/50 text-nv-green bg-nv-green/10"
-                  : "border-stealth-border/40 text-stealth-muted/50 hover:text-stealth-muted"
-              }`}
-              title={
-                layoutModeActive
-                  ? "Layout mode on — drag, pin, and hide groups"
-                  : "Edit group layout — reorder, pin above/below, hide"
-              }
-            >
-              LAYOUT{layoutModeActive ? " ON" : ""}
-            </button>
           </div>
         </div>
       )}
 
       {aboveGroupKeys.length > 0 && (
-        <div className="config-params-above border-b section-divider relative">
-          <div className="config-params-above__wrap">
-            {deriveParamGroups(aboveGroupKeys).map((group, groupIdx) => (
-              <div
-                key={group.id}
-                className="config-param-group-tile"
-                data-group-zone="above"
-                data-group-idx={groupIdx}
-                data-group-id={group.id}
-              >
-                {renderParamGroup(group, "above")}
-              </div>
-            ))}
-          </div>
+        <div className="config-params-above relative">
+          <ConfigBelowGroups
+            zone="above"
+            columnCount={2}
+            columnWidths={[...aboveColumnWidths]}
+            belowGroupsByColumn={aboveGroupsByColumn}
+            onGutterDragStart={handleAboveGutterDragStart}
+            draggingGutterIndex={draggingAboveGutterIndex}
+            layoutModeActive={layoutModeActive}
+            renderGroup={(groupId, _columnIdx, groupIdx) => {
+              const group = deriveParamGroups(aboveGroupKeys).find((g) => g.id === groupId);
+              if (!group) return null;
+              return renderParamGroup(group, "above", { groupIdx });
+            }}
+          />
         </div>
       )}
 
@@ -1425,6 +1456,43 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
       {/* Parameters scroll + launch dock (button always visible at panel bottom) */}
       <div className="flex flex-col flex-1 min-h-0">
+      {allParamsForLaunch.length > 0 && (
+        <div className="config-params-below-toolbar px-4 py-1.5 flex items-center justify-end gap-1.5 flex-shrink-0 border-b section-divider">
+          <div className="config-column-count flex items-center gap-0.5">
+            {([1, 2, 3] as ConfigColumnCount[]).map((n) => (
+              <button
+                key={n}
+                type="button"
+                onClick={() => setBelowColumnCount(n)}
+                className={`config-column-count__btn px-1.5 py-0.5 text-[8px] font-mono rounded-sm border transition-colors ${
+                  columnCount === n
+                    ? "border-nv-green/45 text-nv-green/90 bg-nv-green/10"
+                    : "border-stealth-border/40 text-stealth-muted/45 hover:text-stealth-muted"
+                }`}
+                title={`${n} column${n > 1 ? "s" : ""} below display`}
+              >
+                {n}C
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={toggleLayoutMode}
+            className={`config-layout-mode-btn px-2 py-0.5 text-[8px] font-mono rounded-sm border transition-colors ${
+              layoutModeActive
+                ? "config-layout-mode-btn--on border-nv-green/50 text-nv-green bg-nv-green/10"
+                : "border-stealth-border/40 text-stealth-muted/50 hover:text-stealth-muted"
+            }`}
+            title={
+              layoutModeActive
+                ? "Layout mode on — drag, pin, and hide groups"
+                : "Edit group layout — reorder, pin above/below, hide"
+            }
+          >
+            LAYOUT{layoutModeActive ? " ON" : ""}
+          </button>
+        </div>
+      )}
       <div className="config-params-scroll px-4 py-3 relative flex-1 overflow-y-auto eink-scrollbar eink-panel min-h-0">
         {allParamsForLaunch.length === 0 ? (
           <div className="text-stealth-muted text-[10px] font-mono opacity-50">NO PARAMS DEFINED</div>
@@ -1439,51 +1507,11 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             renderGroup={(groupId) => {
               const group = belowGroupMetaById.get(groupId);
               if (!group) return null;
-              return renderParamGroup(group, "below");
+              return renderParamGroup(group, "below", undefined);
             }}
           />
         )}
 
-        {isPowerUser && (
-          <div className={`relative mt-1.5 border rounded-sm overflow-hidden custom-flags-block ${testFlagsEnabled ? "custom-flags-active" : ""}`}>
-            <div className="custom-flags-body px-2 py-1 flex items-center gap-1.5 min-h-0">
-              <span className="text-[8px] font-mono uppercase tracking-wider shrink-0 custom-flags-label">
-                CUSTOM FLAGS
-              </span>
-              {testFlagsEnabled && (
-                <input
-                  type="text"
-                  value={testFlags}
-                  onChange={(e) => setTestFlags(e.target.value)}
-                  placeholder="-sm layer -smf32 1 ..."
-                  className="custom-flags-input flex-1 min-w-0 border text-[8px] font-mono px-2 py-0 leading-none focus:outline-none rounded-sm border-amber-600/30 focus:border-amber-600/50 placeholder:text-stealth-muted/40"
-                />
-              )}
-              <div className="flex items-center gap-1 shrink-0 ml-auto">
-                {testFlagsEnabled && (
-                  <button
-                    type="button"
-                    onClick={() => setTestFlagsMode(m => m === "add" ? "replace" : "add")}
-                    className={`px-1.5 py-0 text-[7px] font-mono border rounded-sm transition-all duration-150 cursor-pointer ${
-                      testFlagsMode === "add" ? "mode-btn-add" : "mode-btn-replace"
-                    }`}
-                  >
-                    {testFlagsMode === "add" ? "+ APPEND" : "= REPLACE"}
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => setTestFlagsEnabled(v => !v)}
-                  className={`px-1.5 py-0 text-[7px] font-mono border rounded-sm transition-all duration-150 cursor-pointer ${
-                    testFlagsEnabled ? "mode-btn-add" : "mode-btn-off"
-                  }`}
-                >
-                  {testFlagsEnabled ? "ON" : "OFF"}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
 
         <div className="config-launch-dock flex-shrink-0 px-4 flex flex-col gap-2">
@@ -1501,15 +1529,17 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           )}
           <div className="config-launch-dock__grid">
             <div className="config-launch-dock__fields">
-              <div data-param-row className="flex items-center">
+              <div data-param-row className="flex items-center min-h-[22px]">
                 <div className="w-0.5 h-4 flex-shrink-0 mr-1.5" />
-                <span className="font-mono flex-shrink-0 uppercase tracking-wider truncate text-[9px] text-stealth-muted config-launch-alias-label">
+                <span
+                  className={PARAM_LABEL_CLASS}
+                  title={
+                    aliasIsUserSet
+                      ? "Alias — user set"
+                      : `Alias — autoset to ${autoAlias}`
+                  }
+                >
                   Alias
-                  {aliasIsUserSet ? (
-                    <span className="mono-user-set"> - user set</span>
-                  ) : (
-                    <span className="mono-autoset normal-case tracking-normal"> - autoset to {autoAlias}</span>
-                  )}
                 </span>
                 <input
                   type="text"
@@ -1530,6 +1560,11 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                     }
                     setAliasInput(val);
                   }}
+                  title={
+                    aliasIsUserSet
+                      ? "User-set launch alias"
+                      : `Autoset to ${autoAlias} when empty`
+                  }
                   className={`flex-1 min-w-0 transition-colors ${
                     aliasUserEditedRef.current
                       ? `${paramChipClass(true)} mono-user-input`
@@ -1543,15 +1578,55 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
               <button
                 onClick={handleAddToStack}
                 disabled={!model || vramCalc.manifest?.scenario === "HW_LOCKED" || selectedProfileIsBuilding}
-                className={`w-full min-w-0 ignite-btn px-4 py-2 text-[12px] font-mono tracking-[0.22em] rounded-sm disabled:opacity-40 disabled:cursor-not-allowed config-launch-btn ${launchAck ? "launch-ack" : ""}`}
+                className={`w-full h-full min-h-0 min-w-0 ignite-btn config-launch-btn px-4 py-2 text-[12px] font-mono tracking-[0.22em] rounded-sm disabled:opacity-40 disabled:cursor-not-allowed flex flex-col items-center justify-center gap-1 ${launchAck ? "launch-ack" : ""}`}
               >
-                LAUNCH ENGINE
+                <span>LAUNCH ENGINE</span>
+                <span className="config-launch-btn__hint text-[7px] font-mono tracking-wider normal-case font-normal">
+                  Ctrl+Enter
+                </span>
               </button>
-              <span className="text-[8px] font-mono text-stealth-muted/40 whitespace-nowrap config-launch-hint text-right">
-                Ctrl+Enter
-              </span>
             </div>
           </div>
+          {isPowerUser && (
+            <div className={`custom-flags-block border rounded-sm overflow-hidden ${testFlagsEnabled ? "custom-flags-active" : ""}`}>
+              <div className="custom-flags-body px-2 py-1 flex items-center gap-1.5 min-h-0">
+                <span className="text-[8px] font-mono uppercase tracking-wider shrink-0 custom-flags-label">
+                  CUSTOM FLAGS
+                </span>
+                {testFlagsEnabled && (
+                  <input
+                    type="text"
+                    value={testFlags}
+                    onChange={(e) => setTestFlags(e.target.value)}
+                    placeholder="-sm layer -smf32 1 ..."
+                    className="custom-flags-input flex-1 min-w-0 border text-[8px] font-mono px-2 py-0 leading-none focus:outline-none rounded-sm border-amber-600/30 focus:border-amber-600/50 placeholder:text-stealth-muted/40"
+                  />
+                )}
+                <div className="flex items-center gap-1 shrink-0 ml-auto">
+                  {testFlagsEnabled && (
+                    <button
+                      type="button"
+                      onClick={() => setTestFlagsMode(m => m === "add" ? "replace" : "add")}
+                      className={`px-1.5 py-0 text-[7px] font-mono border rounded-sm transition-all duration-150 cursor-pointer ${
+                        testFlagsMode === "add" ? "mode-btn-add" : "mode-btn-replace"
+                      }`}
+                    >
+                      {testFlagsMode === "add" ? "+ APPEND" : "= REPLACE"}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setTestFlagsEnabled(v => !v)}
+                    className={`px-1.5 py-0 text-[7px] font-mono border rounded-sm transition-all duration-150 cursor-pointer ${
+                      testFlagsEnabled ? "mode-btn-add" : "mode-btn-off"
+                    }`}
+                  >
+                    {testFlagsEnabled ? "ON" : "OFF"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

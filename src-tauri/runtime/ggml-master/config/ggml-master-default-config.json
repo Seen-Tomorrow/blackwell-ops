@@ -6,56 +6,44 @@
   "display_name": "GGML Master",
   "git_url": "https://github.com/ggml-org/llama.cpp",
   "groupOrder": [
-    "CORE",
     "PERFORMANCE",
     "FEATURE-FLAGS",
-    "SPECULATIVE-DECODING",
-    "MULTI-GPU",
-    "RUNTIME-CONFIG"
+    "ADVANCED",
+    "SYSTEM",
+    "ABOVE-CONFIG",
+    "SPECULATIVE-DECODING"
   ],
   "id": "ggml-master",
   "layoutDefaults": {
+    "aboveColumnWidths": [
+      0.23350705580023445,
+      0.7664929441997655
+    ],
     "configColumnCount": 3,
     "configColumnWidths": [
-      0.3869776905748129,
-      0.240469442627716,
-      0.3725528667974711
+      0.42492331113359105,
+      0.17538344433204475,
+      0.39969324453436417
     ],
     "groupColumn": {
+      "ABOVE-CONFIG": 1,
+      "ADVANCED": 1,
       "FEATURE-FLAGS": 1,
       "PERFORMANCE": 0,
-      "SPECULATIVE-DECODING": 2
+      "SPECULATIVE-DECODING": 2,
+      "USER-ADDED-FROM-CATALOG": 2
     },
     "groupDisplayZone": {
-      "CORE": "above"
+      "ABOVE-CONFIG": "above"
     }
   },
   "params": [
-    {
-      "default": "GPU-0",
-      "dock": "runtime",
-      "flag": null,
-      "flag_pair": [],
-      "hidden_default": false,
-      "key": "device",
-      "label": "DEVICE",
-      "note": "Select GPU via CUDA_VISIBLE_DEVICES mask — not emitted as a CLI flag.",
-      "pattern": "",
-      "ptype": "logic_only",
-      "step": null,
-      "sub_params": null,
-      "ui_group": "MULTI-GPU",
-      "values": [
-        "GPU-0",
-        "GPU-1"
-      ]
-    },
     {
       "default": "regular",
       "dock": "runtime",
       "flag": null,
       "flag_pair": [],
-      "hidden_default": false,
+      "hidden_default": true,
       "key": "offload_mode",
       "label": "OFFLOAD-MODE",
       "note": "moe_optimal adds expert eviction filter and forces KV quant to q4_0.",
@@ -72,7 +60,7 @@
           "q4_0"
         ]
       },
-      "ui_group": "MULTI-GPU",
+      "ui_group": "SYSTEM",
       "values": [
         "regular",
         "moe_optimal"
@@ -83,7 +71,7 @@
       "dock": "runtime",
       "flag": "--split-mode",
       "flag_pair": [],
-      "hidden_default": false,
+      "hidden_default": true,
       "key": "split",
       "label": "SPLIT",
       "note": "How to split model across multiple GPUs.",
@@ -91,11 +79,10 @@
       "ptype": "arg_select",
       "step": null,
       "sub_params": null,
-      "ui_group": "MULTI-GPU",
+      "ui_group": "SYSTEM",
       "values": [
         "none",
         "layer",
-        "row",
         "tensor"
       ]
     },
@@ -104,7 +91,7 @@
       "dock": "runtime",
       "flag": null,
       "flag_pair": [],
-      "hidden_default": false,
+      "hidden_default": true,
       "key": "base_port",
       "label": "BASE-PORT",
       "note": "Starting port for engine instances. Auto-increments per slot.",
@@ -112,7 +99,7 @@
       "ptype": "logic_only",
       "step": null,
       "sub_params": null,
-      "ui_group": "RUNTIME-CONFIG",
+      "ui_group": "SYSTEM",
       "values": [
         8080,
         8180,
@@ -136,7 +123,7 @@
       "ptype": "arg_select_double",
       "step": null,
       "sub_params": null,
-      "ui_group": "PERFORMANCE",
+      "ui_group": "ABOVE-CONFIG",
       "values": [
         "q4_0",
         "q8_0",
@@ -156,9 +143,8 @@
       "ptype": "slider",
       "step": 1024.0,
       "sub_params": null,
-      "ui_group": "CORE",
+      "ui_group": "ABOVE-CONFIG",
       "values": [
-        8192,
         16384,
         32768,
         65536,
@@ -182,7 +168,6 @@
       "sub_params": null,
       "ui_group": "PERFORMANCE",
       "values": [
-        128,
         256,
         512,
         1024,
@@ -192,7 +177,7 @@
       ]
     },
     {
-      "default": 512,
+      "default": 256,
       "dock": "",
       "flag": "--ubatch-size",
       "flag_pair": [],
@@ -212,7 +197,7 @@
         256,
         512,
         1024,
-        2048
+        16
       ]
     },
     {
@@ -395,7 +380,6 @@
       "sub_params": null,
       "ui_group": "SPECULATIVE-DECODING",
       "values": [
-        "none",
         "draft-simple",
         "draft-eagle3",
         "draft-mtp",
@@ -455,20 +439,40 @@
       ]
     },
     {
+      "default": "on",
+      "dock": "",
+      "flag": "--swa-full",
+      "flag_pair": [],
+      "hidden_default": false,
+      "key": "swa_full",
+      "label": "Swa Full",
+      "note": "a-full                              use full-size SWA cache (default: false)",
+      "pattern": "",
+      "ptype": "switch_onoff",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "ADVANCED",
+      "values": [
+        "off",
+        "on"
+      ]
+    },
+    {
       "default": 1,
       "dock": "",
-      "flag": "--spec-draft-threads",
+      "flag": "--cache-reuse",
       "flag_pair": [],
-      "hidden_default": true,
-      "key": "spec_draft_threads",
-      "label": "Spec Draft Threads",
-      "note": "",
+      "hidden_default": false,
+      "key": "cache_reuse",
+      "label": "Cache Reuse",
+      "note": "he-reuse N                         min chunk size to attempt reusing from the cache via KV shifting,",
       "pattern": "",
       "ptype": "arg_select",
       "step": null,
       "sub_params": null,
-      "ui_group": "SPECULATIVE-DECODING",
+      "ui_group": "ADVANCED",
       "values": [
+        0,
         1
       ]
     }
@@ -507,6 +511,6 @@
       "4"
     ]
   },
-  "templateVersion": 12,
+  "templateVersion": 17,
   "template_type": "ggml-llama"
 }

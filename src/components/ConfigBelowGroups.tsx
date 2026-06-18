@@ -10,6 +10,8 @@ interface ConfigBelowGroupsProps {
   onGutterDragStart: (gutterIndex: number, e: React.MouseEvent) => void;
   draggingGutterIndex?: number | null;
   layoutModeActive?: boolean;
+  /** `above` = pinned above VRAM display; `below` = main param scroll (default). */
+  zone?: "above" | "below";
 }
 
 export default function ConfigBelowGroups({
@@ -20,15 +22,18 @@ export default function ConfigBelowGroups({
   onGutterDragStart,
   draggingGutterIndex = null,
   layoutModeActive = false,
+  zone = "below",
 }: ConfigBelowGroupsProps) {
+  const zonePrefix = zone === "above" ? "config-params-above" : "config-params-below";
+
   if (columnCount === 1) {
     const col = belowGroupsByColumn[0] ?? [];
     return (
-      <div className="config-params-below config-params-below--1c min-w-0">
+      <div className={`${zonePrefix} ${zonePrefix}--1c min-w-0`}>
         {col.map((groupId, groupIdx) => (
           <div
             key={groupId}
-            data-group-zone="below"
+            data-group-zone={zone}
             data-column-idx={0}
             data-group-idx={groupIdx}
             data-group-id={groupId}
@@ -59,7 +64,7 @@ export default function ConfigBelowGroups({
           {groups.map((groupId, groupIdx) => (
             <div
               key={groupId}
-              data-group-zone="below"
+              data-group-zone={zone}
               data-column-idx={colIdx}
               data-group-idx={groupIdx}
               data-group-id={groupId}
@@ -90,9 +95,10 @@ export default function ConfigBelowGroups({
 
   return (
     <div
-      className={`config-params-below config-params-below--multi config-params-below--${columnCount}c min-w-0`}
+      className={`${zonePrefix} ${zonePrefix}--multi ${zonePrefix}--${columnCount}c min-w-0`}
       style={{ gridTemplateColumns: columnWidthsToGridTemplate(columnWidths) }}
       data-config-column-count={columnCount}
+      data-config-zone={zone}
     >
       {cells}
     </div>

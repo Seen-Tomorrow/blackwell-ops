@@ -13,6 +13,7 @@ import {
   buildBenchGpuTopoEntries,
   formatBenchSplitHeadline,
 } from "../lib/benchHwTopo";
+import { benchFailureLine } from "../lib/benchErrorUtils";
 import {
   BENCH_PP_TOKEN_OPTIONS,
   BENCH_TG_PARALLEL_OPTIONS,
@@ -590,11 +591,16 @@ export default function BenchWidget({
   const showInlineActions = footerDocked && Boolean(shareMeta) && hasResults && !isAnyRunning;
   const showStackDismiss = stackMode && hasResults && !isAnyRunning;
   const showShareFooter = !footerDocked && !stackMode && !isAnyRunning && hasResults && Boolean(shareMeta);
+  const tgErrorNotice =
+    showTgResults && ps.tgResult && !ps.tgResult.success
+      ? benchFailureLine("tg", ps.tgResult.error)
+      : null;
   const ppErrorNotice =
     showPpResults && ps.ppResult && !ps.ppResult.success
-      ? `PREFILL bench failed: ${ps.ppResult.error || "unknown"}`
+      ? benchFailureLine("pp", ps.ppResult.error)
       : null;
-  const showResultsSidebar = Boolean(ppErrorNotice) || showInlineActions || showStackDismiss;
+  const benchErrorNotice = tgErrorNotice ?? ppErrorNotice;
+  const showResultsSidebar = Boolean(benchErrorNotice) || showInlineActions || showStackDismiss;
   const dismissResults = onCloseResults ?? closeResults;
 
   return (
@@ -748,8 +754,7 @@ export default function BenchWidget({
                  </div>
                )}
 
-               {showTgResults && ps.tgResult && (
-                ps.tgResult.success ? (
+               {showTgResults && ps.tgResult?.success && (
                   <div className={benchResultGridClass()}>
                     <div>
                       <p className={`${benchLabelClass} font-mono text-stealth-muted uppercase tracking-wider`}>REQUEST LENGTH</p>
@@ -780,9 +785,6 @@ export default function BenchWidget({
                       </p>
                     </div>
                   </div>
-                ) : (
-                  <p className="text-[7px] font-mono text-red-400 px-1 py-0.5">TG FAILED: {ps.tgResult.error || "unknown"}</p>
-                )
               )}
 
               {showPpResults && ps.ppResult?.success && (
@@ -808,11 +810,16 @@ export default function BenchWidget({
              {showResultsSidebar && (
                <div
                  className="bench-results-sidebar flex flex-col items-end justify-end flex-shrink-0 self-stretch max-w-[11rem] min-w-[4.25rem]"
-                 style={{ minHeight: ppErrorNotice && !showTgResults && !ps.ppResult?.success ? benchResultRowPx : undefined }}
+                 style={{
+                   minHeight:
+                     benchErrorNotice && !(showTgResults && ps.tgResult?.success) && !(showPpResults && ps.ppResult?.success)
+                       ? benchResultRowPx
+                       : undefined,
+                 }}
                >
-                 {ppErrorNotice && (
-                   <p className="text-[6px] font-mono text-red-400 text-right leading-tight mb-auto pt-0.5">
-                     {ppErrorNotice}
+                 {benchErrorNotice && (
+                   <p className="text-[6px] font-mono text-red-400 text-right leading-snug mb-auto pt-0.5 max-w-[11rem]">
+                     {benchErrorNotice}
                    </p>
                  )}
                  {showInlineActions && shareMeta && (

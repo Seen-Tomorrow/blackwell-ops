@@ -8,11 +8,14 @@
  * - Selected non-default → green or overridden highlight
  */
 
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useMemo } from "react";
+import { compareParamValues } from "../lib/paramValueSort";
+
+type ValueBubbleItem = { val: string | number; isUserAdded: boolean };
 
 interface ValueBubblesProps {
   paramKey: string;
-  isPowerUser?: boolean;        // true = power-user unlocked — show editor controls
+  editorUnlocked?: boolean;     // CONFIG editor unlocked — show value/row controls
   currentValue?: string | number; // the value currently selected for this model+provider
   onOverrideChange?: (value: string | number) => void;   // user selects a different value
   addValue?: (value: string | number) => void;            // admin adds new value to param's available list
@@ -37,7 +40,7 @@ interface ValueBubblesProps {
 
 export default function ValueBubbles({
   paramKey,
-  isPowerUser = false,
+  editorUnlocked = false,
   currentValue = "",
   onOverrideChange,
   addValue,
@@ -57,22 +60,30 @@ export default function ValueBubbles({
   const [inputValue, setInputValue] = useState("");
   const [expandedSubs, setExpandedSubs] = useState<Record<string, boolean>>({});
 
-  // ── Build unified display list (template values + user-added), deduped ──────────
-  const seen = new Set<string>();
-  const userAddedSet = new Set((userAddedValues || []).map(v => String(v)));
-  type DisplayItem = { val: string | number; isUserAdded: boolean };
-  const allDisplayValues: DisplayItem[] = [];
+  // ── Build unified display list (template values + user-added), deduped + sorted ──
+  const allDisplayValues = useMemo(() => {
+    const seen = new Set<string>();
+    const userAddedSet = new Set((userAddedValues || []).map((v) => String(v)));
+    const items: ValueBubbleItem[] = [];
 
-  if (availableValues) {
-    for (const v of availableValues) {
-      const key = String(v);
-      if (!seen.has(key)) { seen.add(key); allDisplayValues.push({ val: v, isUserAdded: userAddedSet.has(key) }); }
+    if (availableValues) {
+      for (const v of availableValues) {
+        const key = String(v);
+        if (!seen.has(key)) {
+          seen.add(key);
+          items.push({ val: v, isUserAdded: userAddedSet.has(key) });
+        }
+      }
     }
-  }
-  for (const v of userAddedValues || []) {
-    const key = String(v);
-    if (!seen.has(key)) { seen.add(key); allDisplayValues.push({ val: v, isUserAdded: true }); }
-  }
+    for (const v of userAddedValues || []) {
+      const key = String(v);
+      if (!seen.has(key)) {
+        seen.add(key);
+        items.push({ val: v, isUserAdded: true });
+      }
+    }
+    return items.sort((a, b) => compareParamValues(a.val, b.val));
+  }, [availableValues, userAddedValues]);
 
   // ── Submit value from input field ─────────────────────────────────────────────
   const submitValue = useCallback(() => {
@@ -113,7 +124,7 @@ export default function ValueBubbles({
     getSubArgs(val).length > 0;
 
   // ── Render single bubble ───────────────────────────────────────────────────────
-  const renderBubble = (item: DisplayItem, idx: number) => {
+  const renderBubble = (item: ValueBubbleItem, idx: number) => {
     const { val, isUserAdded } = item;
     const selected = String(val) === String(currentValue);
     const hidden = isHidden(val);
@@ -124,7 +135,7 @@ export default function ValueBubbles({
         <span key={`hidden-${paramKey}-${idx}`}
           className="inline-flex items-center gap-1 px-2 py-0.5 border text-[11px] font-mono rounded-sm bg-nv-green/8 border-nv-green/30 text-nv-green line-through opacity-40">
           {String(val)}
-          {isPowerUser && toggleHiddenValue && (
+          {editorUnlocked && toggleHiddenValue && (
             <button onClick={() => toggleHiddenValue(paramKey, val)}
               className="leading-none text-nv-green/50 hover:text-yellow-400 transition-colors"
               title="Show value in catalog">
@@ -146,30 +157,17 @@ export default function ValueBubbles({
       const isFactoryDefault = factoryDefault !== undefined &&
         String(val).toUpperCase() === String(factoryDefault).toUpperCase();
 
-      if (isDefault) {
-        // This param has a defined default — distinguish factory vs user-set
-        if (!isFactoryDefault) {
-          // User-set default: yellow border + yellow text (distinct from green factory)
-          style = "bg-nv-green/30 border-double border-2 border-yellow-400/80 text-yellow-300";
-        } else {
-          // Factory default: green styling only
-          style = selected
-            ? "bg-nv-green/30 border-double border-2 border-nv-green/70 text-nv-green"
-            : "";
-        }
+      if (isDefault && !isFactoryDefault) {
+        // User-set default: yellow border + yellow text (distinct from green factory)
+        style = "bg-nv-green/30 border-double border-2 border-yellow-400/80 text-yellow-300";
+      } else if (isDefault && isFactoryDefault) {
+        // Factory default — strong green badge regardless of runtime selection
+        style = "bg-nv-green/30 border-double border-2 border-nv-green/70 text-nv-green";
       } else if (selected) {
-        // Selected but not the default value
-        style = "";
+        // Runtime override / active pick — lighter than default badge
+        style = "bg-nv-green/15 border border-nv-green/45 text-nv-green";
       } else {
-        // Not a default, not selected
-        style = "";
-      }
-
-      // Apply base styles if no conditional style was set
-      if (!style) {
-        style = selected
-          ? "bg-nv-green/30 border-double border-2 border-nv-green/70 text-nv-green"
-          : "bg-nv-green/10 border border-nv-green/30 text-nv-green/70 hover:text-white";
+        style = "bg-nv-green/10 border border-nv-green/30 text-nv-green/70 hover:text-white";
       }
     }
 
@@ -178,7 +176,7 @@ export default function ValueBubbles({
         className={`inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-mono rounded-sm transition-all ${style}`}>
 
         {/* Set as default button — admin only (only on non-default values) */}
-        {isPowerUser && defaultValue !== undefined && String(val) !== String(defaultValue) && onChangeDefault && (
+        {editorUnlocked && defaultValue !== undefined && String(val) !== String(defaultValue) && onChangeDefault && (
           <button onClick={() => onChangeDefault(val)}
             className="leading-none font-bold text-[12px] text-nv-green/60 hover:text-yellow-400 transition-colors"
             title="Set as default value">
@@ -220,8 +218,8 @@ export default function ValueBubbles({
           </span>
         )}
 
-        {/* Remove value — admin only, user-added values */}
-        {isPowerUser && isUserAdded && removeValue && (
+        {/* Remove value — admin only */}
+        {editorUnlocked && removeValue && (
           <button onClick={(e) => { e.stopPropagation(); removeValue(val); }}
             className="leading-none text-red-400/60 hover:text-red-400 transition-colors"
             title="Remove this value">
@@ -230,7 +228,7 @@ export default function ValueBubbles({
         )}
 
         {/* Hide toggle — admin only */}
-        {isPowerUser && (
+        {editorUnlocked && (
           <button onClick={() => toggleHiddenValue?.(paramKey, val)}
             className="leading-none text-nv-green/50 hover:text-yellow-400 transition-colors"
             title="Hide this value (persists)">
@@ -239,7 +237,7 @@ export default function ValueBubbles({
         )}
 
         {/* Edit sub-params — admin only, shown when value has sub_params */}
-        {isPowerUser && onEditValue && hasSubArgs(String(val)) && (
+        {editorUnlocked && onEditValue && hasSubArgs(String(val)) && (
           <button onClick={(e) => {
             e.stopPropagation();
             onEditValue(val);
@@ -277,7 +275,7 @@ export default function ValueBubbles({
           <input type="text" placeholder="+ add" value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); submitValue(); } }}
-            className="w-12 bg-transparent border-b border-stealth-border/50 text-[9px] font-mono text-nv-green focus:outline-none px-1 py-0.5 placeholder:text-white/40" />
+            className="config-param-add-input w-12 bg-transparent border-b border-stealth-border/50 text-[9px] font-mono text-nv-green focus:outline-none px-1 py-0.5 placeholder:text-white/40" />
         )}
       </div>
 

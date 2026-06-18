@@ -6,7 +6,7 @@
   "git_url": "https://github.com/ikawrakow/ik_llama.cpp",
   "branch": "main",
   "template_type": "ik-llama",
-  "templateVersion": 5,
+  "templateVersion": 6,
   "build_profile": "-DGGML_CUDA=ON\n-DCMAKE_CUDA_ARCHITECTURES=\"86;89;120\"\n-DGGML_CUDA_PEER_TO_PEER=ON\n-DGGML_CUDA_FA_ALL_QUANTS=ON\n-DGGML_AVX512=ON\n-DGGML_NATIVE=ON\n-DCMAKE_CUDA_FLAGS=\"-Xcompiler /wd4056 -Xcompiler /wd4756 --diag-suppress 221\"\n-Wno-dev",
   "spawn_profile": {
     "model_flag": ["-m"],
@@ -28,17 +28,6 @@
     "mmproj_flag": ["--mmproj"]
   },
   "params": [
-    {
-      "key": "device",
-      "label": "DEVICE",
-      "flag": null,
-      "ptype": "logic_only",
-      "values": ["GPU-0", "GPU-1"],
-      "default": "GPU-0",
-      "dock": "runtime",
-      "ui_group": "MULTI-GPU",
-      "note": "Select GPU via CUDA_VISIBLE_DEVICES mask — not emitted as a CLI flag."
-    },
     {
       "key": "ik_perf",
       "label": "IK-Performance",
@@ -75,7 +64,7 @@
       "values": ["none", "layer", "graph"],
       "default": "none",
       "dock": "runtime",
-      "ui_group": "MULTI-GPU",
+      "ui_group": "SYSTEM",
       "note": "How to split model across multiple GPUs."
     },
     {
@@ -86,7 +75,7 @@
       "values": [8080, 8888, 9090],
       "default": 8080,
       "dock": "runtime",
-      "ui_group": "RUNTIME-CONFIG",
+      "ui_group": "SYSTEM",
       "note": "Starting port for engine instances. Auto-increments per slot."
     },
     {

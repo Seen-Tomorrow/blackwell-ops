@@ -69,6 +69,7 @@ pub async fn save_provider(provider: crate::types::ProviderConfig, app: tauri::S
             &save_provider.template_type,
             save_provider.factory_provided,
             &save_provider.user_edited_template_params,
+            &save_provider.excluded_param_keys,
         );
     }
 

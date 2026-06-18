@@ -40,9 +40,9 @@ const MAX_ZOOM = 1.5;
 const ZOOM_STEP = 0.05;
 
 const POWER_USER_LABELS: Record<PowerUserState, string> = {
-  locked: "POWER USER — LOCKED",
-  unlocked: "POWER USER — UNLOCKED",
-  permanently: "POWER USER — PERMANENTLY UNLOCKED",
+  locked: "EDITOR — LOCKED",
+  unlocked: "EDITOR — UNLOCKED",
+  permanently: "EDITOR — PERMANENTLY UNLOCKED",
 };
 
 const POWER_USER_COLORS: Record<PowerUserState, string> = {
@@ -266,7 +266,7 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
                 className={`app-header-power-user text-[8px] font-mono tracking-wider transition-colors flex-shrink-0 whitespace-nowrap ${POWER_USER_COLORS[powerUserState]}`}
                 title={POWER_USER_LABELS[powerUserState]}
               >
-                POWER USER {powerUserState === "locked" ? "\u{1F512}" : powerUserState === "unlocked" ? "\u{1F513}" : "\u{1F511}"}
+                EDITOR {powerUserState === "locked" ? "\u{1F512}" : powerUserState === "unlocked" ? "\u{1F513}" : "\u{1F511}"}
               </button>
               <span className="app-quick-settings__sep app-chrome-control-btn text-[8px] font-mono opacity-40">|</span>
               <button

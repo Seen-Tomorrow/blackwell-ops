@@ -1,5 +1,6 @@
 // Types and helpers for the live llama-server --help catalog.
 
+import { sortParamValues } from "./paramValueSort";
 import type { UserEditedTemplateParam } from "./types";
 
 /** Raw catalog entry from Rust `get_llama_catalog` command (`includeAll` when power-user unlocked). */
@@ -33,7 +34,7 @@ export function coerceCatalogDefault(entry: RawCatalogEntry): string | number | 
   return undefined;
 }
 
-/** Collect display values from catalog entry: discrete values → presets → engine default as first entry. */
+/** Collect display values from catalog entry: discrete help values + default only (no auto presets). */
 export function collectCatalogValues(entry: RawCatalogEntry): (string | number)[] {
   const raw: (string | number)[] = [];
   const pushUnique = (v: string | number) => {
@@ -42,10 +43,6 @@ export function collectCatalogValues(entry: RawCatalogEntry): (string | number)[
 
   if (entry.values && entry.values.length > 0) {
     for (const v of entry.values) {
-      if (isScalarValue(v)) pushUnique(v);
-    }
-  } else if (entry.presets && entry.presets.length > 0) {
-    for (const v of entry.presets) {
       if (isScalarValue(v)) pushUnique(v);
     }
   }
@@ -62,11 +59,10 @@ export function collectCatalogValues(entry: RawCatalogEntry): (string | number)[
 
   const defaultValue = coerceCatalogDefault(entry);
   if (defaultValue !== undefined) {
-    const without = raw.filter((v) => String(v) !== String(defaultValue));
-    return [defaultValue, ...without];
+    pushUnique(defaultValue);
   }
 
-  return raw;
+  return sortParamValues(raw);
 }
 
 /**

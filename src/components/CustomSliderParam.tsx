@@ -52,6 +52,7 @@ function useTrackWidth() {
 export default function CustomSliderParam({
   paramKey,
   currentValue,
+  defaultValue,
   onChange,
   step = 1024,
   values = [],
@@ -126,6 +127,14 @@ export default function CustomSliderParam({
 
   const thumbPct = thumbCenterPercent(safeValue, min, max, trackWidthPx);
 
+  const defaultNumeric =
+    defaultValue !== undefined
+      ? typeof defaultValue === "number"
+        ? defaultValue
+        : parseInt(String(defaultValue), 10)
+      : NaN;
+  const hasDefault = !isNaN(defaultNumeric);
+
   return (
     <div
       ref={trackRef}
@@ -144,7 +153,8 @@ export default function CustomSliderParam({
       {numericValues.map((pNum, idx) => {
         const pct =
           trackWidthPx > 0 ? thumbCenterPercent(pNum, min, max, trackWidthPx) : 0;
-        const isActive = safeValue === pNum;
+        const isDefault = hasDefault && pNum === defaultNumeric;
+        const isSelected = safeValue === pNum && !isDefault;
         return (
           <div
             key={`${paramKey}-tick-${pNum}`}
@@ -160,7 +170,7 @@ export default function CustomSliderParam({
             <span
               aria-hidden
               className={`ctx-slider-tick absolute left-1/2 -translate-x-1/2 block w-[3px] rounded-sm transition-colors${
-                isActive ? " ctx-slider-tick--active" : ""
+                isDefault ? " ctx-slider-tick--default" : isSelected ? " ctx-slider-tick--selected" : ""
               }`}
               style={{ top: `${TICK_TOP_PX}px`, height: `${TICK_HEIGHT_PX}px` }}
             />

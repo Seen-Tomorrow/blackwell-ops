@@ -4,11 +4,13 @@ import {
   applyBelowGroupDrop,
   adjustColumnGutter,
   moveGroupToColumn,
-  resolveGroupColumn,
+  effectiveGroupColumn,
   defaultColumnWidths,
   findGroupDropTarget,
   normalizeColumnWidths,
+  ABOVE_COLUMN_COUNT,
   partitionBelowGroupsByColumn,
+  partitionAboveGroupsByColumn,
   type ConfigColumnCount,
 } from "../lib/configColumnLayout";
 import { dispatchAppEvent, EVENTS } from "../lib/events";
@@ -20,7 +22,14 @@ import {
   type GroupDisplayZone,
 } from "../lib/paramDisplayZone";
 import {
+  isEmptyGroupDeletable,
+  pruneStaleGroupOrder,
+  resolveGroupOrderForAdmin,
+  stripGroupFromLayout,
+} from "../lib/groupLayoutUtils";
+import {
   groupOrderKey,
+  loadAboveColumnWidths,
   loadConfigColumnCount,
   loadConfigColumnWidths,
   loadGroupColumn,
@@ -28,6 +37,7 @@ import {
   normalizeUiGroup,
   readJsonStorage,
   resolveGroupOrder,
+  saveAboveColumnWidths,
   saveConfigColumnCount,
   saveConfigColumnWidths,
   saveGroupColumn,
@@ -70,12 +80,14 @@ export function useGroupLayoutControls({
   const [columnCount, setColumnCount] = useState<ConfigColumnCount>(1);
   const [columnWidths, setColumnWidths] = useState<number[]>([1]);
   const [groupColumn, setGroupColumn] = useState<Record<string, number>>({});
+  const [aboveColumnWidths, setAboveColumnWidths] = useState<[number, number]>([0.65, 0.35]);
 
   const reloadColumnLayout = useCallback(() => {
     const count = loadConfigColumnCount(providerId, currentProvider?.configColumnCount);
     setColumnCount(count);
     setColumnWidths(loadConfigColumnWidths(providerId, count, currentProvider?.configColumnWidths));
     setGroupColumn(loadGroupColumn(providerId, currentProvider?.groupColumn));
+    setAboveColumnWidths(loadAboveColumnWidths(providerId, currentProvider?.aboveColumnWidths));
   }, [providerId, currentProvider]);
 
   useEffect(() => {
@@ -130,6 +142,13 @@ export function useGroupLayoutControls({
     },
     [providerId, persistProviderPatch],
   );
+
+  useEffect(() => {
+    if (!customGroupOrder?.length || layoutParams.length === 0) return;
+    const pruned = pruneStaleGroupOrder(customGroupOrder, layoutParams);
+    if (pruned.length === customGroupOrder.length) return;
+    void saveGroupOrder(pruned);
+  }, [customGroupOrder, layoutParams, saveGroupOrder]);
 
   const saveGroupColumnState = useCallback(
     async (next: Record<string, number>) => {
@@ -200,18 +219,57 @@ export function useGroupLayoutControls({
     [providerId],
   );
 
+  const deleteEmptyGroup = useCallback(
+    async (groupName: string) => {
+      if (!isEmptyGroupDeletable(groupName, allGroupedParams)) return;
+      const baseOrder = customGroupOrder ?? [];
+      const stripped = stripGroupFromLayout(
+        groupName,
+        baseOrder,
+        groupDisplayZone,
+        groupColumn,
+      );
+      void saveGroupOrder(stripped.groupOrder);
+      saveGroupDisplayZone(providerId, stripped.groupDisplayZone);
+      setGroupDisplayZone(stripped.groupDisplayZone);
+      saveGroupColumn(providerId, stripped.groupColumn);
+      setGroupColumn(stripped.groupColumn);
+      await persistProviderPatch({
+        groupOrder: stripped.groupOrder,
+        groupDisplayZone: stripped.groupDisplayZone,
+        groupColumn: stripped.groupColumn,
+      });
+      dispatchAppEvent(EVENTS.paramConfigChanged);
+    },
+    [
+      allGroupedParams,
+      customGroupOrder,
+      groupDisplayZone,
+      groupColumn,
+      providerId,
+      saveGroupOrder,
+      persistProviderPatch,
+    ],
+  );
+
   const orderedGroupKeys = useMemo(() => {
     const allGroups = new Set([
       ...Object.keys(groupedParams),
       ...Object.keys(allGroupedParams),
     ]);
-    return resolveGroupOrder(layoutParams, customGroupOrder).filter((g) => allGroups.has(g));
-  }, [layoutParams, customGroupOrder, groupedParams, allGroupedParams]);
+    const order = layoutModeActive
+      ? resolveGroupOrderForAdmin(layoutParams, customGroupOrder)
+      : resolveGroupOrder(layoutParams, customGroupOrder);
+    return order.filter(
+      (g) => allGroups.has(g) || (layoutModeActive && isEmptyGroupDeletable(g, allGroupedParams)),
+    );
+  }, [layoutParams, customGroupOrder, groupedParams, allGroupedParams, layoutModeActive]);
 
   const groupIncluded = useCallback(
     (groupId: string) => {
       if (isGroupVisible) return isGroupVisible(groupId);
       if ((groupedParams[groupId]?.length ?? 0) > 0) return true;
+      if (layoutModeActive && isEmptyGroupDeletable(groupId, allGroupedParams)) return true;
       return layoutModeActive && isGroupFullyHidden(groupId, allGroupedParams);
     },
     [isGroupVisible, groupedParams, allGroupedParams, layoutModeActive],
@@ -227,6 +285,11 @@ export function useGroupLayoutControls({
     [belowGroupKeys, groupColumn, columnCount],
   );
 
+  const aboveGroupsByColumn = useMemo(
+    () => partitionAboveGroupsByColumn(aboveGroupKeys, groupColumn),
+    [aboveGroupKeys, groupColumn],
+  );
+
   const isGroupHidden = useCallback(
     (groupId: string) => isGroupFullyHidden(groupId, allGroupedParams),
     [allGroupedParams],
@@ -237,6 +300,7 @@ export function useGroupLayoutControls({
   const gutterDragRef = useRef<{ gutterIndex: number; startX: number; startWidths: number[] } | null>(null);
   const [draggingGroup, setDraggingGroup] = useState<string | null>(null);
   const [draggingGutterIndex, setDraggingGutterIndex] = useState<number | null>(null);
+  const [draggingAboveGutterIndex, setDraggingAboveGutterIndex] = useState<number | null>(null);
 
   const clearDragListeners = useCallback(() => {
     const listeners = dragListenersRef.current;
@@ -261,6 +325,24 @@ export function useGroupLayoutControls({
       if (!ctx?.hasMoved) return;
 
       const panel = document.querySelector("[data-config-panel]");
+
+      if (ctx.zone === "above" && ctx.zoneKeys.length > 0) {
+        const target = findGroupDropTarget(clientX, clientY, "above", panel ?? document);
+        if (!target) return;
+        const { newOrder, newGroupColumn } = applyBelowGroupDrop(
+          ctx.orderedKeys,
+          ctx.zoneKeys,
+          groupColumn,
+          ABOVE_COLUMN_COUNT,
+          ctx.groupName,
+          target.columnIdx,
+          target.groupIdx,
+          "above",
+        );
+        void saveGroupOrder(newOrder);
+        void saveGroupColumnState(newGroupColumn);
+        return;
+      }
 
       if (ctx.zone === "below" && columnCount > 1) {
         const target = findGroupDropTarget(clientX, clientY, "below", panel ?? document);
@@ -346,17 +428,35 @@ export function useGroupLayoutControls({
     ],
   );
 
+  const saveAboveColumnLayout = useCallback(
+    async (widths: [number, number]) => {
+      saveAboveColumnWidths(providerId, widths);
+      setAboveColumnWidths(widths);
+      await persistProviderPatch({ aboveColumnWidths: widths });
+      dispatchAppEvent(EVENTS.paramConfigChanged);
+    },
+    [providerId, persistProviderPatch],
+  );
+
   const shiftGroupColumn = useCallback(
-    (groupId: string, direction: -1 | 1) => {
-      if (columnCount < 2) return;
-      const current = resolveGroupColumn(groupId, groupColumn);
+    (groupId: string, direction: -1 | 1, zone: GroupDisplayZone = "below") => {
+      const zoneColumnCount = zone === "above" ? ABOVE_COLUMN_COUNT : columnCount;
+      const zoneKeys = zone === "above" ? aboveGroupKeys : belowGroupKeys;
+      if (zoneColumnCount < 2) return;
+      const current = effectiveGroupColumn(
+        groupId,
+        zoneKeys,
+        groupColumn,
+        zoneColumnCount,
+        zone,
+      );
       const target = current + direction;
-      if (target < 0 || target >= columnCount || target === current) return;
+      if (target < 0 || target >= zoneColumnCount || target === current) return;
       const { newOrder, newGroupColumn } = moveGroupToColumn(
         orderedGroupKeys,
-        belowGroupKeys,
+        zoneKeys,
         groupColumn,
-        columnCount,
+        zoneColumnCount,
         groupId,
         target,
       );
@@ -368,6 +468,7 @@ export function useGroupLayoutControls({
       groupColumn,
       orderedGroupKeys,
       belowGroupKeys,
+      aboveGroupKeys,
       saveGroupOrder,
       saveGroupColumnState,
     ],
@@ -414,23 +515,71 @@ export function useGroupLayoutControls({
     [columnCount, columnWidths, clearDragListeners, saveColumnLayout],
   );
 
+  const handleAboveGutterDragStart = useCallback(
+    (gutterIndex: number, e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.button !== 0) return;
+
+      clearDragListeners();
+      const container = (e.currentTarget as HTMLElement).closest(
+        ".config-params-above--multi",
+      ) as HTMLElement | null;
+      const startWidths = [...aboveColumnWidths];
+      gutterDragRef.current = { gutterIndex, startX: e.clientX, startWidths };
+      setDraggingAboveGutterIndex(gutterIndex);
+
+      const onMove = (ev: MouseEvent) => {
+        const ctx = gutterDragRef.current;
+        if (!ctx || !container) return;
+        const width = container.getBoundingClientRect().width;
+        const delta = ev.clientX - ctx.startX;
+        const next = adjustColumnGutter(ctx.startWidths, ctx.gutterIndex, delta, width);
+        setAboveColumnWidths([next[0]!, next[1]!]);
+      };
+
+      const onUp = (ev: MouseEvent) => {
+        const ctx = gutterDragRef.current;
+        gutterDragRef.current = null;
+        setDraggingAboveGutterIndex(null);
+        clearDragListeners();
+        if (!ctx) return;
+        const container = document.querySelector(".config-params-above--multi") as HTMLElement | null;
+        const width = container?.getBoundingClientRect().width ?? 0;
+        const delta = ev.clientX - ctx.startX;
+        const next = adjustColumnGutter(ctx.startWidths, ctx.gutterIndex, delta, width);
+        void saveAboveColumnLayout([next[0]!, next[1]!]);
+      };
+
+      dragListenersRef.current = { move: onMove, up: onUp };
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    },
+    [aboveColumnWidths, clearDragListeners, saveAboveColumnLayout],
+  );
+
   return {
     orderedGroupKeys,
     aboveGroupKeys,
     belowGroupKeys,
     belowGroupsByColumn,
+    aboveGroupsByColumn,
+    aboveColumnWidths,
     groupDisplayZone,
     columnCount,
     columnWidths,
     groupColumn,
     draggingGroup,
     draggingGutterIndex,
+    draggingAboveGutterIndex,
     handleGroupDragStart,
     handleGutterDragStart,
+    handleAboveGutterDragStart,
     shiftGroupColumn,
     setBelowColumnCount,
     toggleGroupDisplayZone,
     toggleGroupHidden,
+    deleteEmptyGroup,
     isGroupHidden,
   };
 }

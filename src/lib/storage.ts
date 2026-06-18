@@ -1,3 +1,4 @@
+import { normalizeAboveColumnWidths } from "./configColumnLayout";
 import { normalizeDisplayTexture, type DisplayTexture } from "./displayTexture";
 
 /**
@@ -27,6 +28,7 @@ import { normalizeDisplayTexture, type DisplayTexture } from "./displayTexture";
  * | BlackOps-startup-updates | JSON | Cached startup update check results |
  * | BlackOps-fusion-hero-tps | live \| avg | Fusion hero TPS display mode |
  * | BlackOps-fusion-bench-tray | open \| stowed | Fusion overlay benchmark tray visibility |
+ * | BlackOps-config-param-legend | open \| stowed | CONFIG PARAMETERS editor legend panel |
  * | BlackOps-display-texture | clean \| phosphor-dark \| phosphor-light | Display texture cycle (glitch legacy → clean) |
  * | BlackOps-catalog-split-width | number string (px) | Model catalog / engine config split |
  * | BlackOps-model-hub-split-width | number string (0–1) | Model Hub results / quants split ratio |
@@ -81,6 +83,11 @@ export function isPowerUserActive(state: PowerUserState): boolean {
   return state !== "locked";
 }
 
+/** CONFIG / catalog editor unlocked — any user can toggle; not admin. */
+export function isEditorUnlocked(state: PowerUserState): boolean {
+  return isPowerUserActive(state);
+}
+
 export function cyclePowerUserState(current: PowerUserState): PowerUserState {
   if (current === "locked") return "unlocked";
   if (current === "unlocked") return "permanently";
@@ -110,6 +117,7 @@ export const KEYS = {
   startupUpdates: `${STORAGE_PREFIX}startup-updates`,
   fusionHeroTpsMode: `${STORAGE_PREFIX}fusion-hero-tps`,
   fusionBenchTray: `${STORAGE_PREFIX}fusion-bench-tray`,
+  configParamLegend: `${STORAGE_PREFIX}config-param-legend`,
   displayTexture: `${STORAGE_PREFIX}display-texture`,
   configLayoutMode: `${STORAGE_PREFIX}config-layout-mode`,
   catalogSplitWidth: `${STORAGE_PREFIX}catalog-split-width`,
@@ -239,6 +247,10 @@ export function groupColumnKey(providerId: string): string {
   return `${STORAGE_PREFIX}group-column:${providerId}`;
 }
 
+export function aboveColumnWidthsKey(providerId: string): string {
+  return `${STORAGE_PREFIX}above-column-widths:${providerId}`;
+}
+
 export function loadConfigColumnCount(
   providerId: string,
   fromProvider?: ConfigColumnCount,
@@ -305,6 +317,20 @@ export function loadGroupColumn(
 
 export function saveGroupColumn(providerId: string, columns: Record<string, number>): void {
   writeJsonStorage(groupColumnKey(providerId), columns);
+}
+
+export function loadAboveColumnWidths(
+  providerId: string,
+  fromProvider?: number[],
+): [number, number] {
+  const stored = readJsonStorage<number[]>(aboveColumnWidthsKey(providerId));
+  if (stored) return normalizeAboveColumnWidths(stored);
+  if (fromProvider) return normalizeAboveColumnWidths(fromProvider);
+  return normalizeAboveColumnWidths(null);
+}
+
+export function saveAboveColumnWidths(providerId: string, widths: [number, number]): void {
+  writeJsonStorage(aboveColumnWidthsKey(providerId), widths);
 }
 
 export function autoVramKey(providerId: string): string {
@@ -501,6 +527,17 @@ export function loadFusionBenchTray(): FusionBenchTrayState {
 
 export function saveFusionBenchTray(state: FusionBenchTrayState): void {
   writeStorage(KEYS.fusionBenchTray, state);
+}
+
+export type ConfigParamLegendState = "open" | "stowed";
+
+export function loadConfigParamLegend(): ConfigParamLegendState {
+  const v = readStorage(KEYS.configParamLegend);
+  return v === "open" ? "open" : "stowed";
+}
+
+export function saveConfigParamLegend(state: ConfigParamLegendState): void {
+  writeStorage(KEYS.configParamLegend, state);
 }
 
 export function loadDisplayTexture(): DisplayTexture {
@@ -711,19 +748,6 @@ export function effectiveParamDefault(
 ): string | number | undefined {
   if (defaultValue === null || defaultValue === undefined) return undefined;
   return defaultValue;
-}
-
-/** Apply engine-config localStorage overrides as `defaultValue` for factory export. */
-export function applyCatalogOverridesToExportParams<T extends { key: string; defaultValue?: string | number }>(
-  params: T[],
-  overrides: Record<string, string | number>,
-): T[] {
-  if (!Object.keys(overrides).length) return params;
-  return params.map((p) => {
-    const ov = overrides[p.key];
-    if (ov === undefined) return p;
-    return { ...p, defaultValue: ov };
-  });
 }
 
 /** Merge custom group order (localStorage / provider) with template insertion order. */

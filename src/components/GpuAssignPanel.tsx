@@ -1,5 +1,8 @@
 import type { GpuInfo } from "../lib/types";
 
+const PARAM_LABEL_CLASS =
+  "gpu-assign-panel__label font-mono w-24 flex-shrink-0 uppercase tracking-wider truncate text-[9px] text-stealth-muted";
+
 function paramChipClass(active: boolean): string {
   return `px-2 py-0.5 text-[9px] font-mono rounded-sm focus:outline-none ${
     active ? "value-chip-active" : "value-chip"
@@ -37,8 +40,8 @@ export default function GpuAssignPanel({
     <div className="gpu-assign-panel flex-shrink-0" data-gpu-assign-panel>
       <div className="gpu-assign-panel__grid">
         <div className="gpu-assign-panel__half gpu-assign-panel__half--device">
-          <span className="gpu-assign-panel__label">DEVICE</span>
-          <div className="gpu-assign-panel__chips flex items-center gap-1.5 min-w-0">
+          <span className={PARAM_LABEL_CLASS}>Device</span>
+          <div className="gpu-assign-panel__chips config-chip-row flex items-center gap-1.5 min-w-0">
             {splitActive ? (
               <span
                 className={`${paramChipClass(true)} opacity-90 cursor-default`}
@@ -62,8 +65,8 @@ export default function GpuAssignPanel({
         </div>
         <div className="gpu-assign-panel__divider" aria-hidden />
         <div className="gpu-assign-panel__half gpu-assign-panel__half--split">
-          <span className="gpu-assign-panel__label">SPLIT</span>
-          <div className="gpu-assign-panel__chips flex items-center gap-1.5 min-w-0">
+          <span className={PARAM_LABEL_CLASS}>Split</span>
+          <div className="gpu-assign-panel__chips config-chip-row flex items-center gap-1.5 min-w-0">
             {splitValues.map((val) => (
               <button
                 key={String(val)}

@@ -7,7 +7,7 @@
 //!
 //! ## Merge (`merge_template_for_provider`)
 //! Runs on every load and `save_provider`. Factory structural fields backfill; user cosmetic choices
-//! (hidden, userHidden, order, userAddedValues, hidden_values) are never overwritten.
+//! (hidden, userHidden, order, userAddedValues, hidden_values, values) are never overwritten.
 //!
 //! ## RESET TO DEFAULTS
 //! Deletes user config file + frontend clears overrides and group-order localStorage. Full factory wipe.
@@ -306,6 +306,9 @@ pub struct ProviderMeta {
     pub template_type: String,
     #[serde(default, rename = "userEditedTemplateParams")]
     pub user_edited_template_params: Vec<crate::types::UserEditedTemplateParam>,
+    /// Factory param keys removed by admin — merge will not re-append from template.
+    #[serde(default, rename = "excludedParamKeys", skip_serializing_if = "Vec::is_empty")]
+    pub excluded_param_keys: Vec<String>,
     /// Custom group order set by user (overrides template insertion order). Empty = use template order.
     #[serde(default, rename = "groupOrder")]
     pub group_order: Vec<String>,
@@ -317,6 +320,8 @@ pub struct ProviderMeta {
     pub config_column_widths: Vec<f64>,
     #[serde(default, rename = "groupColumn", skip_serializing_if = "HashMap::is_empty")]
     pub group_column: HashMap<String, u32>,
+    #[serde(default, rename = "aboveColumnWidths", skip_serializing_if = "Vec::is_empty")]
+    pub above_column_widths: Vec<f64>,
     /// Per-environment build info captured from binary --version + file mtime.
     #[serde(default, skip_serializing_if = "HashMap::is_empty", rename = "buildInfoPerEnv")]
     pub build_info_per_env: HashMap<String, crate::types::BuildInfo>,
@@ -352,11 +357,13 @@ impl ProviderMeta {
             branch: p.branch.clone(),
             build_profile: p.build_profile.clone(),
             user_edited_template_params: p.user_edited_template_params.clone(),
+            excluded_param_keys: p.excluded_param_keys.clone(),
             group_order: p.group_order.clone(),
             group_display_zone: p.group_display_zone.clone(),
             config_column_count: p.config_column_count,
             config_column_widths: p.config_column_widths.clone(),
             group_column: p.group_column.clone(),
+            above_column_widths: p.above_column_widths.clone(),
             template_type: p.template_type.clone(),
             build_info_per_env: p.build_info_per_env.clone(),
             binary_path_per_env: p.binary_path_per_env.iter().map(|(k, v)| (k.clone(), to_relative_path(&PathBuf::from(v)))).collect(),
@@ -461,6 +468,9 @@ fn apply_factory_layout_defaults(
     if provider.group_column.is_empty() && !factory_layout.group_column.is_empty() {
         provider.group_column = factory_layout.group_column.clone();
     }
+    if provider.above_column_widths.is_empty() && !factory_layout.above_column_widths.is_empty() {
+        provider.above_column_widths = factory_layout.above_column_widths.clone();
+    }
 }
 
 fn apply_meta_layout_overrides(
@@ -486,10 +496,14 @@ fn apply_meta_layout_overrides(
     if !meta.group_column.is_empty() {
         provider.group_column = meta.group_column.clone();
     }
+    if !meta.above_column_widths.is_empty() {
+        provider.above_column_widths = meta.above_column_widths.clone();
+    }
     if provider.group_display_zone.is_empty()
         || provider.config_column_count.is_none()
         || provider.config_column_widths.is_empty()
         || provider.group_column.is_empty()
+        || provider.above_column_widths.is_empty()
     {
         let (_, factory_layout) = crate::templates::load_factory_layout_supplement(factory_key);
         if provider.group_display_zone.is_empty() && !factory_layout.group_display_zone.is_empty() {
@@ -503,6 +517,9 @@ fn apply_meta_layout_overrides(
         }
         if provider.group_column.is_empty() && !factory_layout.group_column.is_empty() {
             provider.group_column = factory_layout.group_column;
+        }
+        if provider.above_column_widths.is_empty() && !factory_layout.above_column_widths.is_empty() {
+            provider.above_column_widths = factory_layout.above_column_widths;
         }
     }
 }
@@ -875,11 +892,13 @@ fn discover_providers() -> Vec<crate::types::ProviderConfig> {
                     enabled: true,
                     params: serde_json::json!({}),
                     user_edited_template_params: params_for_provider(&identity.id),
+                    excluded_param_keys: Vec::new(),
                     group_order: Vec::new(),
                     group_display_zone: HashMap::new(),
                     config_column_count: None,
                     config_column_widths: Vec::new(),
                     group_column: HashMap::new(),
+                    above_column_widths: Vec::new(),
                     _original_id: None,
                     git_url: identity.git_url,
                     branch: identity.branch,
@@ -1844,7 +1863,7 @@ fn sanitize_model_paths(config: &mut AppConfig) -> bool {
 /// Schema evolution merge: sync structural fields from fresh template, retain user UI preferences.
 ///
 /// Aggressive sync philosophy — factory template is source of truth for everything structural.
-/// Only purely cosmetic/organizational choices are preserved: hidden, userHidden, order, userAddedValues, hidden_values.
+/// Only purely cosmetic/organizational choices are preserved: hidden, userHidden, order, userAddedValues, hidden_values, values.
 
 /// Normalize a JSON value to a canonical string for dedup comparison.
 /// Numbers are compared by numeric equality (1 == 1.0), everything else by string.
@@ -1912,9 +1931,10 @@ pub fn merge_template_for_provider(
     template_type: &str,
     factory_provided: bool,
     user_edited: &[crate::types::UserEditedTemplateParam],
+    excluded_keys: &[String],
 ) -> Vec<crate::types::UserEditedTemplateParam> {
     let template_key = resolve_merge_template_key(provider_id, template_type, factory_provided);
-    let merged = merge_template_into_user_params_by_key(template_key.as_deref(), user_edited);
+    let merged = merge_template_into_user_params_by_key(template_key.as_deref(), user_edited, excluded_keys);
     dedupe_user_params_by_key(merged)
 }
 
@@ -1926,6 +1946,7 @@ pub fn merge_template_into_user_params(
     merge_template_into_user_params_by_key(
         template_key_for_type(template_type).as_deref(),
         user_edited,
+        &[],
     )
 }
 
@@ -1951,7 +1972,9 @@ fn template_sub_params_to_map(
 fn merge_user_params_with_template(
     template: &crate::templates::ProviderTemplate,
     user_edited: &[crate::types::UserEditedTemplateParam],
+    excluded_keys: &[String],
 ) -> Vec<crate::types::UserEditedTemplateParam> {
+    let excluded: std::collections::HashSet<&str> = excluded_keys.iter().map(|k| k.as_str()).collect();
     let tmpl_map: std::collections::HashMap<_, _> = template
         .params
         .iter()
@@ -1963,14 +1986,9 @@ fn merge_user_params_with_template(
     for user_param in user_edited {
         let mut m = user_param.clone();
         if let Some(tmpl) = tmpl_map.get(user_param.key.as_str()) {
-            // ── Values: keep existing + userAddedValues, append new template values not already present ──
-            {
-                let current_set: std::collections::HashSet<String> = m.values.iter().map(|v| json_val_key(v)).collect();
-                for tv in &tmpl.values {
-                    if !current_set.contains(&json_val_key(tv)) {
-                        m.values.push(tv.clone());
-                    }
-                }
+            // ── Values: user-owned catalog — only backfill when empty (never re-append deleted factory values) ──
+            if m.values.is_empty() && !tmpl.values.is_empty() {
+                m.values = tmpl.values.clone();
             }
 
             // ── factoryDefault: always sync from fresh template — keeps bubble styling correct ──
@@ -2031,8 +2049,13 @@ fn merge_user_params_with_template(
         merged.push(m);
     }
 
+    merged.retain(|p| !excluded.contains(p.key.as_str()));
+
     // Append new params from template that don't exist in user config
     for (i, tmpl) in template.params.iter().enumerate() {
+        if excluded.contains(tmpl.key.as_str()) {
+            continue;
+        }
         if !merged.iter().any(|p| p.key == tmpl.key) {
             let param = crate::types::UserEditedTemplateParam {
                 key: tmpl.key.clone(),
@@ -2132,14 +2155,25 @@ fn merge_discovered_binaries(p: &mut crate::types::ProviderConfig) {
 fn merge_template_into_user_params_by_key(
     template_key: Option<&str>,
     user_edited: &[crate::types::UserEditedTemplateParam],
+    excluded_keys: &[String],
 ) -> Vec<crate::types::UserEditedTemplateParam> {
     let Some(key) = template_key else {
-        return user_edited.to_vec();
+        let excluded: std::collections::HashSet<&str> = excluded_keys.iter().map(|k| k.as_str()).collect();
+        return user_edited
+            .iter()
+            .filter(|p| !excluded.contains(p.key.as_str()))
+            .cloned()
+            .collect();
     };
     let Some(template) = crate::templates::load_provider_defaults(key) else {
-        return user_edited.to_vec();
+        let excluded: std::collections::HashSet<&str> = excluded_keys.iter().map(|k| k.as_str()).collect();
+        return user_edited
+            .iter()
+            .filter(|p| !excluded.contains(p.key.as_str()))
+            .cloned()
+            .collect();
     };
-    merge_user_params_with_template(&template, user_edited)
+    merge_user_params_with_template(&template, user_edited, excluded_keys)
 }
 
 
@@ -2175,6 +2209,7 @@ fn build_config_with_providers_full(_gpu_count: usize, mut config: AppConfig) ->
                     &effective_template_type,
                     true,
                     &meta.user_edited_template_params,
+                    &meta.excluded_param_keys,
                 );
             }
 
@@ -2213,6 +2248,10 @@ fn build_config_with_providers_full(_gpu_count: usize, mut config: AppConfig) ->
             if !meta.template_type.is_empty() {
                 p.template_type = meta.template_type.clone();
             }
+            p.excluded_param_keys = meta.excluded_param_keys.clone();
+            if !meta.above_column_widths.is_empty() {
+                p.above_column_widths = meta.above_column_widths.clone();
+            }
         }
         merge_discovered_binaries(&mut p);
         if let Some(tmpl) = crate::templates::load_provider_defaults(&p.id) {
@@ -2227,7 +2266,13 @@ fn build_config_with_providers_full(_gpu_count: usize, mut config: AppConfig) ->
             let resolved_type = resolve_template_type(&meta.id, Some(&meta.template_type));
             let tmpl_key = template_key_for_type(&resolved_type);
         let user_edited_params = if !meta.user_edited_template_params.is_empty() {
-                merge_template_for_provider(&meta.id, &resolved_type, false, &meta.user_edited_template_params)
+                merge_template_for_provider(
+                    &meta.id,
+                    &resolved_type,
+                    false,
+                    &meta.user_edited_template_params,
+                    &meta.excluded_param_keys,
+                )
             } else if let Some(ref key) = tmpl_key {
                 params_for_provider(key)
             } else {
@@ -2250,11 +2295,13 @@ fn build_config_with_providers_full(_gpu_count: usize, mut config: AppConfig) ->
                 enabled: meta.enabled,
                 params: serde_json::json!({}),
                 user_edited_template_params: user_edited_params,
+                excluded_param_keys: meta.excluded_param_keys.clone(),
                 group_order: Vec::new(),
                 group_display_zone: HashMap::new(),
                 config_column_count: None,
                 config_column_widths: Vec::new(),
                 group_column: HashMap::new(),
+                above_column_widths: meta.above_column_widths.clone(),
                 _original_id: None,
                 git_url: meta.git_url.clone(),
                 branch: meta.branch.clone(),
@@ -2447,6 +2494,13 @@ fn reorder_factory_config_root(obj: serde_json::Map<String, serde_json::Value>) 
 pub fn export_provider_factory_template(
     input: ExportFactoryTemplateInput,
 ) -> Result<ExportFactoryTemplateResult, String> {
+    if !cfg!(debug_assertions) {
+        return Err(
+            "Factory export is only available in dev builds — user config cannot write factory files"
+                .to_string(),
+        );
+    }
+
     let path = factory_default_config_path(&input.provider_id);
     if !path.exists() {
         return Err(format!(
@@ -2600,7 +2654,7 @@ mod merge_tests {
     }
 
     #[test]
-    fn merge_appends_new_template_values() {
+    fn merge_preserves_user_values_catalog() {
         let template = make_template(vec![ProviderDefaultParam {
             key: "ctx".to_string(),
             label: "CTX".to_string(),
@@ -2622,13 +2676,42 @@ mod merge_tests {
         }]);
 
         let user = vec![make_user_param("ctx", &["8192", "user_custom"], "8192", 0)];
-        let merged = merge_user_params_with_template(&template, &user);
+        let merged = merge_user_params_with_template(&template, &user, &[]);
         let ctx = merged.iter().find(|p| p.key == "ctx").unwrap();
 
-        assert!(ctx.values.iter().any(|v| v.as_str() == Some("32768")));
+        assert!(!ctx.values.iter().any(|v| v.as_str() == Some("32768")));
         assert!(ctx.values.iter().any(|v| v.as_str() == Some("user_custom")));
         assert!(ctx.hidden);
         assert_eq!(ctx.user_added_values.len(), 1);
+    }
+
+    #[test]
+    fn merge_does_not_reappend_deleted_factory_values() {
+        let template = make_template(vec![ProviderDefaultParam {
+            key: "kv_quant".to_string(),
+            label: "KV".to_string(),
+            flag: Some("--cache-type-k".to_string()),
+            flag_pair: Vec::new(),
+            ptype: "arg_select".to_string(),
+            values: vec![
+                serde_json::Value::String("q4_0".to_string()),
+                serde_json::Value::String("q8_0".to_string()),
+            ],
+            step: None,
+            default: serde_json::Value::String("q4_0".to_string()),
+            ui_group: "CORE".to_string(),
+            note: String::new(),
+            pattern: String::new(),
+            sub_params: None,
+            dock: String::new(),
+            hidden_default: false,
+        }]);
+
+        let user = make_user_param("kv_quant", &["q4_0"], "q4_0", 0);
+        let merged = merge_user_params_with_template(&template, &[user], &[]);
+        let kv = merged.iter().find(|p| p.key == "kv_quant").unwrap();
+
+        assert!(!kv.values.iter().any(|v| v.as_str() == Some("q8_0")));
     }
 
     #[test]
@@ -2652,7 +2735,7 @@ mod merge_tests {
 
         let mut user = make_user_param("kv_quant", &["q4_0"], "stale_removed", 0);
         user.default_value = serde_json::Value::String("stale_removed".to_string());
-        let merged = merge_user_params_with_template(&template, &[user]);
+        let merged = merge_user_params_with_template(&template, &[user], &[]);
         let kv = merged.iter().find(|p| p.key == "kv_quant").unwrap();
 
         assert_eq!(kv.default_value.as_str(), Some("q4_0"));
@@ -2662,7 +2745,7 @@ mod merge_tests {
     fn merge_keeps_orphaned_user_param() {
         let template = make_template(vec![]);
         let user = vec![make_user_param("orphan_key", &["on"], "on", 0)];
-        let merged = merge_user_params_with_template(&template, &user);
+        let merged = merge_user_params_with_template(&template, &user, &[]);
 
         assert_eq!(merged.len(), 1);
         assert_eq!(merged[0].key, "orphan_key");
@@ -2688,7 +2771,7 @@ mod merge_tests {
         }]);
 
         let user = vec![make_user_param("existing", &["a"], "a", 0)];
-        let merged = merge_user_params_with_template(&template, &user);
+        let merged = merge_user_params_with_template(&template, &user, &[]);
 
         assert_eq!(merged.len(), 2);
         assert!(merged.iter().any(|p| p.key == "new_param"));
@@ -2722,7 +2805,7 @@ mod merge_tests {
         user_sp.insert("ON".to_string(), vec!["--user-on".to_string()]);
         user.sub_params = Some(user_sp);
 
-        let merged = merge_user_params_with_template(&template, &[user]);
+        let merged = merge_user_params_with_template(&template, &[user], &[]);
         let feat = merged.iter().find(|p| p.key == "feat").unwrap();
         let sp = feat.sub_params.as_ref().unwrap();
 

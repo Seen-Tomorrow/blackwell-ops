@@ -7,21 +7,22 @@ import { DEFAULT_PROVIDER_ID } from "../lib/types";
 import ValueBubbles from "./ValueBubbles";
 import ProvidersConfig from "./ProvidersConfig";
 import SecretsConfig from "./SecretsConfig";
-import ParamCreatorModal from "./ParamCreatorModal";
 import ParamCatalogSearch from "./ParamCatalogSearch";
+import ConfigParamLegend from "./ConfigParamLegend";
 import {
   cyclePowerUserState,
-  isPowerUserActive,
+  isEditorUnlocked,
   loadPowerUserState,
   catalogOverrideKey,
   effectiveParamDefault,
-  applyCatalogOverridesToExportParams,
   groupOrderKey,
   groupDisplayZoneKey,
   loadGroupDisplayZone,
   loadGroupColumn,
+  loadAboveColumnWidths,
   loadConfigColumnCount,
   loadConfigColumnWidths,
+  saveGroupColumn,
   saveGroupDisplayZone,
   type GroupDisplayZone,
   normalizeUiGroup,
@@ -43,6 +44,25 @@ import {
 import type { SetupGuideState } from "../hooks/useSetupGuide";
 import type { RawCatalogEntry } from "../lib/catalog";
 import { catalogEntryToParam } from "../lib/catalog";
+import { isDevBuild } from "../lib/build";
+import { sortParamValues } from "../lib/paramValueSort";
+import {
+  isEmptyGroupDeletable,
+  isGroupRenamable,
+  migrateCatalogGroupOrder,
+  pruneStaleGroupOrder,
+  renameGroupInLayout,
+  resolveGroupOrderForAdmin,
+  stripGroupFromLayout,
+} from "../lib/groupLayoutUtils";
+import {
+  isCatalogVisibleParam,
+  isSystemCatalogParam,
+  isSystemUiGroup,
+  migrateCatalogParams,
+  SYSTEM_CATALOG_PARAM_TOOLTIP,
+  SYSTEM_UI_GROUP,
+} from "../lib/systemParams";
 
 
 type ConfigSubTab = "providers" | "params" | "paths" | "secrets";
@@ -66,7 +86,8 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
   const [allProviders, setAllProviders] = useState<ProviderConfig[]>(externalProviders || []);
   // Power-user tri-state — synced with Layout.tsx header toggle
   const [powerUserState, setPowerUserState] = useState<PowerUserState>(loadPowerUserState);
-  const isPowerUser = isPowerUserActive(powerUserState);
+  const editorUnlocked = isEditorUnlocked(powerUserState);
+  const factoryExportEnabled = isDevBuild();
 
   useEffect(() => {
     const handler = () => setPowerUserState(loadPowerUserState());
@@ -119,9 +140,7 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
   // Reset confirm dialog
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [showClearStorageConfirm, setShowClearStorageConfirm] = useState(false);
-
-  // ── Param creator modal state ───────────────────────────────
-  const [showCreatorModal, setShowCreatorModal] = useState(false);
+  const [showExportConfirm, setShowExportConfirm] = useState(false);
 
   // ── Param catalog search state ───────────────────────────────
   const [showCatalogSearch, setShowCatalogSearch] = useState(false);
@@ -133,7 +152,7 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
 
   // ── Full param metadata editor state ─────────────────────────────
   type ParamMetaForm = {
-    ptype: string; flag: string; pattern: string; uiGroup: string;
+    ptype: string; flag: string; pattern: string; uiGroup: string; customGroup: string;
     values: (string | number)[]; defaultValue: string | number;
     subParams: Record<string, string>;
   };
@@ -174,6 +193,21 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
   }, [selectedProviderId, currentProvider]);
 
   const [customGroupDisplayZone, setCustomGroupDisplayZone] = useState<Record<string, GroupDisplayZone>>({});
+
+  /** Session-only collapse for reordering — not persisted; separate from engine config groups. */
+  const [collapsedConfigGroups, setCollapsedConfigGroups] = useState<Set<string>>(() => new Set());
+
+  const [renamingGroup, setRenamingGroup] = useState<string | null>(null);
+  const [renameGroupDraft, setRenameGroupDraft] = useState("");
+
+  const toggleConfigGroupCollapsed = useCallback((groupName: string) => {
+    setCollapsedConfigGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(groupName)) next.delete(groupName);
+      else next.add(groupName);
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     setCustomGroupDisplayZone(loadGroupDisplayZone(selectedProviderId, currentProvider?.groupDisplayZone));
@@ -254,12 +288,24 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
     });
   }, [userSavedParams, providerDefaultParams]);
 
+  const catalogVisibleParams = useMemo(
+    () => userSavedParamsWithDefaults.filter(isCatalogVisibleParam),
+    [userSavedParamsWithDefaults],
+  );
+
   // ── Hidden count for status bar ───────────────────────────────────
-  const hiddenCount = useMemo(() => userSavedParamsWithDefaults.filter(d => d.hidden).length, [userSavedParamsWithDefaults]);
+  const hiddenCount = useMemo(
+    () => catalogVisibleParams.filter((d) => d.hidden).length,
+    [catalogVisibleParams],
+  );
 
   // ── Existing groups from user-saved + provider default params ───────────────
   const existingGroups = useMemo(() => {
-    const seen = new Set<string>([paramUiGroup("Feature Flags"), "USER-ADDED-FROM-CATALOG"]);
+    const seen = new Set<string>([
+      paramUiGroup("Feature Flags"),
+      SYSTEM_UI_GROUP,
+      "USER-ADDED-FROM-CATALOG",
+    ]);
     for (const def of userSavedParamsWithDefaults) {
       seen.add(paramUiGroup(def.ui_group));
     }
@@ -268,16 +314,148 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
     }
     return Array.from(seen);
   }, [userSavedParamsWithDefaults, providerDefaultParams]);
+
+  const renameGroup = useCallback(
+    async (oldName: string, rawNewName: string) => {
+      if (!editorUnlocked || !currentProvider) return;
+      const newName = normalizeUiGroup(rawNewName.trim());
+      const oldNorm = normalizeUiGroup(oldName);
+      if (!newName || !isGroupRenamable(oldName)) {
+        showSaved("CANNOT RENAME");
+        return;
+      }
+      const baseOrder =
+        customGroupOrder ??
+        resolveGroupOrderForAdmin(catalogVisibleParams, customGroupOrder);
+      const groupColumn = loadGroupColumn(selectedProviderId, currentProvider.groupColumn);
+      const renamed = renameGroupInLayout(
+        oldName,
+        newName,
+        baseOrder,
+        customGroupDisplayZone,
+        groupColumn,
+      );
+      const existingGroupNames = new Set(
+        catalogVisibleParams.map((d) => paramUiGroup(d.ui_group)),
+      );
+      if (
+        (existingGroupNames.has(newName) && oldNorm !== newName) ||
+        !renamed
+      ) {
+        showSaved("NAME IN USE");
+        return;
+      }
+
+      const currentUserParams = buildUserSavedParams(currentProvider);
+      const updatedUserParams = currentUserParams.map((d) =>
+        paramUiGroup(d.ui_group) === oldNorm ? { ...d, ui_group: newName } : d,
+      );
+      await saveGroupOrder(renamed.groupOrder);
+      saveGroupDisplayZone(selectedProviderId, renamed.groupDisplayZone);
+      setCustomGroupDisplayZone(renamed.groupDisplayZone);
+      saveGroupColumn(selectedProviderId, renamed.groupColumn);
+
+      const updatedProvider: ProviderConfig = {
+        ...currentProvider,
+        userEditedTemplateParams: updatedUserParams,
+        groupOrder: renamed.groupOrder,
+        groupDisplayZone: renamed.groupDisplayZone,
+        groupColumn: renamed.groupColumn,
+      };
+      setAllProviders((prev) =>
+        prev.map((p) => (p.id !== selectedProviderId ? p : updatedProvider)),
+      );
+      try {
+        await invoke("save_provider", { provider: updatedProvider });
+        dispatchAppEvent(EVENTS.reloadProviders);
+      } catch {
+        /* ignore */
+      }
+      dispatchAppEvent(EVENTS.paramConfigChanged);
+      setRenamingGroup(null);
+      setRenameGroupDraft("");
+      showSaved("GROUP RENAMED");
+    },
+    [
+      editorUnlocked,
+      currentProvider,
+      customGroupOrder,
+      catalogVisibleParams,
+      customGroupDisplayZone,
+      selectedProviderId,
+      buildUserSavedParams,
+      saveGroupOrder,
+    ],
+  );
+
+  // Retired RUNTIME-CONFIG (and similar) — prune from saved order when no params use that group.
+  useEffect(() => {
+    if (!customGroupOrder?.length || catalogVisibleParams.length === 0) return;
+    const pruned = pruneStaleGroupOrder(customGroupOrder, catalogVisibleParams);
+    if (pruned.length === customGroupOrder.length) return;
+    void saveGroupOrder(pruned);
+  }, [customGroupOrder, catalogVisibleParams, saveGroupOrder]);
+
+  const deleteEmptyGroup = useCallback(
+    async (groupName: string) => {
+      if (!editorUnlocked || !currentProvider) return;
+      const groups: Record<string, UserEditedTemplateParam[]> = {};
+      for (const def of catalogVisibleParams) {
+        const g = paramUiGroup(def.ui_group);
+        if (!groups[g]) groups[g] = [];
+        groups[g].push(def);
+      }
+      if (!isEmptyGroupDeletable(groupName, groups)) return;
+
+      const baseOrder = customGroupOrder ?? currentProvider.groupOrder ?? [];
+      const groupColumn = loadGroupColumn(selectedProviderId, currentProvider.groupColumn);
+      const stripped = stripGroupFromLayout(
+        groupName,
+        baseOrder,
+        customGroupDisplayZone,
+        groupColumn,
+      );
+      await saveGroupOrder(stripped.groupOrder);
+      saveGroupDisplayZone(selectedProviderId, stripped.groupDisplayZone);
+      setCustomGroupDisplayZone(stripped.groupDisplayZone);
+      saveGroupColumn(selectedProviderId, stripped.groupColumn);
+      const updated = {
+        ...currentProvider,
+        groupOrder: stripped.groupOrder,
+        groupDisplayZone: stripped.groupDisplayZone,
+        groupColumn: stripped.groupColumn,
+      };
+      setAllProviders((prev) => prev.map((p) => (p.id !== selectedProviderId ? p : updated)));
+      try {
+        await invoke("save_provider", { provider: updated });
+        dispatchAppEvent(EVENTS.reloadProviders);
+      } catch {
+        /* ignore */
+      }
+      dispatchAppEvent(EVENTS.paramConfigChanged);
+      showSaved("GROUP REMOVED");
+    },
+    [
+      editorUnlocked,
+      currentProvider,
+      catalogVisibleParams,
+      customGroupOrder,
+      customGroupDisplayZone,
+      selectedProviderId,
+      saveGroupOrder,
+    ],
+  );
+
   // Fingerprint guard: only dispatch when params content actually changed, not on reference rotation.
   // Breaks the telemetry poll -> re-render -> dispatch -> refetch providers amplification loop.
   const lastDispatchRef = useRef<string>("");
   useEffect(() => {
-    if (userSavedParamsWithDefaults.length === 0) return;
-    const fingerprint = `${userSavedParamsWithDefaults.length}-${hiddenCount}`;
+    if (catalogVisibleParams.length === 0) return;
+    const fingerprint = `${catalogVisibleParams.length}-${hiddenCount}`;
     if (fingerprint === lastDispatchRef.current) return;
     lastDispatchRef.current = fingerprint;
-    dispatchAppEvent(EVENTS.paramConfigChanged, { totalParams: userSavedParamsWithDefaults.length, hiddenCount });
-  }, [userSavedParamsWithDefaults, hiddenCount]);
+    dispatchAppEvent(EVENTS.paramConfigChanged, { totalParams: catalogVisibleParams.length, hiddenCount });
+  }, [catalogVisibleParams, hiddenCount]);
 
   // ── Persist provider to Rust ───────────────────────────────────────
   const persistProviderToConfig = useCallback(async (provider: ProviderConfig) => {
@@ -286,6 +464,36 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
       dispatchAppEvent(EVENTS.reloadProviders);
     } catch (err) { console.error("[CONFIG] save_provider FAILED:", err); }
   }, []);
+
+  // Drop device from catalog; pin chrome params to SYSTEM; migrate MULTI-GPU → SYSTEM.
+  useEffect(() => {
+    if (!currentProvider) return;
+    const currentUserParams = buildUserSavedParams(currentProvider);
+    const { params: migratedParams, changed: paramsChanged } = migrateCatalogParams(currentUserParams);
+    const baseOrder = customGroupOrder ?? currentProvider.groupOrder ?? [];
+    const { order: migratedOrder, changed: orderChanged } = migrateCatalogGroupOrder(baseOrder);
+    if (!paramsChanged && !orderChanged) return;
+
+    let updatedProvider: ProviderConfig = {
+      ...currentProvider,
+      userEditedTemplateParams: migratedParams,
+    };
+    if (orderChanged) {
+      updatedProvider = { ...updatedProvider, groupOrder: migratedOrder };
+      writeJsonStorage(groupOrderKey(selectedProviderId), migratedOrder);
+      setCustomGroupOrder(migratedOrder);
+    }
+    setAllProviders((prev) =>
+      prev.map((p) => (p.id !== selectedProviderId ? p : updatedProvider)),
+    );
+    void persistProviderToConfig(updatedProvider);
+  }, [
+    currentProvider,
+    selectedProviderId,
+    customGroupOrder,
+    buildUserSavedParams,
+    persistProviderToConfig,
+  ]);
 
   // ── User override (selecting a value for this model + provider) ───
   const setOverride = useCallback((defKey: string, value: string | number) => {
@@ -309,7 +517,7 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
 
   // ── Reset to factory defaults (RESET TO FACTORY DEFAULTS) — instant, deletes user config file ───
   const confirmReset = useCallback(async () => {
-    if (!currentProvider || !isPowerUser) return;
+    if (!currentProvider || !editorUnlocked) return;
     setShowResetConfirm(false);
 
     try {
@@ -325,10 +533,10 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
     setCustomGroupOrder(null);
     dispatchAppEvent(EVENTS.paramConfigChanged);
     showSaved("RESET TO DEFAULTS");
-  }, [currentProvider, isPowerUser, selectedProviderId]);
+  }, [currentProvider, editorUnlocked, selectedProviderId]);
 
   const handleExportFactoryTemplate = useCallback(async () => {
-    if (!currentProvider || !isPowerUser) return;
+    if (!currentProvider || !factoryExportEnabled) return;
     if (!currentProvider.factory_provided) {
       showSaved("EXPORT — factory providers only");
       return;
@@ -349,17 +557,17 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
         currentProvider.groupDisplayZone,
       ),
       groupColumn: loadGroupColumn(selectedProviderId, currentProvider.groupColumn),
+      aboveColumnWidths: loadAboveColumnWidths(
+        selectedProviderId,
+        currentProvider.aboveColumnWidths,
+      ),
     };
-    const groupOrder = resolveGroupOrder(userSavedParamsWithDefaults, customGroupOrder);
-    const overrides =
-      readJsonStorage<Record<string, string | number>>(catalogOverrideKey(selectedProviderId)) ??
-      userOverrides;
-    const exportParams = applyCatalogOverridesToExportParams(userSavedParamsWithDefaults, overrides);
+    const groupOrder = resolveGroupOrder(catalogVisibleParams, customGroupOrder);
     try {
       const result = await invoke<ExportFactoryTemplateResult>("export_provider_factory_template", {
         input: {
           providerId: selectedProviderId,
-          userEditedTemplateParams: exportParams,
+          userEditedTemplateParams: catalogVisibleParams,
           groupOrder,
           layoutDefaults,
         },
@@ -372,16 +580,15 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
     }
   }, [
     currentProvider,
-    isPowerUser,
+    factoryExportEnabled,
     selectedProviderId,
-    userSavedParamsWithDefaults,
+    catalogVisibleParams,
     customGroupOrder,
-    userOverrides,
   ]);
 
   useEffect(() => {
     const unhideAllHiddenParams = async () => {
-      if (!currentProvider || !isPowerUser) return;
+      if (!currentProvider || !editorUnlocked) return;
       const currentUserParams = buildUserSavedParams(currentProvider);
       if (!currentUserParams.some((d) => d.hidden)) return;
       const updatedUserParams = currentUserParams.map((d) =>
@@ -399,36 +606,13 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
     return () => window.removeEventListener(EVENTS.showAllHiddenParams, unhideAllHiddenParams);
   }, [
     currentProvider,
-    isPowerUser,
+    editorUnlocked,
     buildUserSavedParams,
     persistProviderToConfig,
     selectedProviderId,
   ]);
 
-  // ── Admin: add new param definition (from modal) ────────────────────────
-  const handleCreatorSubmit = useCallback(async (def: Omit<UserEditedTemplateParam, "order">) => {
-    if (!currentProvider || !def.values.length) return;
-
-    const currentUserParams = buildUserSavedParams(currentProvider);
-    const maxOrder = Math.max(...currentUserParams.map(d => d.order), -1);
-    const newUserParam: UserEditedTemplateParam = { ...def, order: maxOrder + 1 };
-    const updatedUserParams = [...currentUserParams, newUserParam];
-
-    // Handle custom group — append to provider.groupOrder if not already there
-    let updatedProvider = { ...currentProvider, userEditedTemplateParams: updatedUserParams };
-    const newGroup = def.ui_group ? normalizeUiGroup(def.ui_group) : undefined;
-    if (newGroup && currentProvider.groupOrder && !currentProvider.groupOrder.some(g => normalizeUiGroup(g) === newGroup)) {
-      updatedProvider.groupOrder = [...currentProvider.groupOrder, newGroup];
-    }
-
-    setAllProviders(prev => prev.map(p => p.id !== selectedProviderId ? p : updatedProvider));
-    dispatchAppEvent(EVENTS.paramConfigChanged);
-    await persistProviderToConfig(updatedProvider);
-    setShowCreatorModal(false);
-    showSaved("SAVED");
-  }, [currentProvider, buildUserSavedParams, persistProviderToConfig, selectedProviderId]);
-
-  // ── Admin: add param from catalog search ────────────────────────
+  // ── Add param from catalog search ───────────────────────────────
   const handleCatalogAdd = useCallback(async (entry: RawCatalogEntry) => {
     if (!currentProvider) return;
 
@@ -461,8 +645,8 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
 
   // ── Admin: toggle hidden row (catalog visibility) ───────────────
   const toggleRowHidden = useCallback(async (key: string) => {
-    if (!currentProvider || !isPowerUser) return;
-    
+    if (!currentProvider || !editorUnlocked) return;
+
     const currentUserParams = buildUserSavedParams(currentProvider);
     const updatedUserParams = currentUserParams.map((d) => {
       if (d.key !== key) return d;
@@ -475,11 +659,11 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
     await persistProviderToConfig(updatedProvider);
     dispatchAppEvent(EVENTS.paramConfigChanged);
     showSaved("SAVED");
-  }, [currentProvider, isPowerUser, buildUserSavedParams, persistProviderToConfig, selectedProviderId]);
+  }, [currentProvider, editorUnlocked, buildUserSavedParams, persistProviderToConfig, selectedProviderId]);
 
   // ── Admin: toggle hidden value (hide from catalog only) ─────────
   const toggleHiddenValue = useCallback(async (key: string, value: string | number) => {
-    if (!currentProvider || !isPowerUser) return;
+    if (!currentProvider || !editorUnlocked) return;
     
     const currentUserParams = buildUserSavedParams(currentProvider);
     const updatedUserParams = currentUserParams.map(d => {
@@ -497,11 +681,11 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
     await persistProviderToConfig(updatedProvider);
     dispatchAppEvent(EVENTS.paramConfigChanged);
     showSaved("SAVED");
-  }, [currentProvider, isPowerUser, buildUserSavedParams, persistProviderToConfig, selectedProviderId]);
+  }, [currentProvider, editorUnlocked, buildUserSavedParams, persistProviderToConfig, selectedProviderId]);
 
   // ── Admin: change default value for a param ─────────────────────
   const changeDefaultValue = useCallback(async (key: string, value: string | number) => {
-    if (!currentProvider || !isPowerUser) return;
+    if (!currentProvider || !editorUnlocked) return;
     
     const currentUserParams = buildUserSavedParams(currentProvider);
     const updatedUserParams = currentUserParams.map(d => d.key === key ? { ...d, defaultValue: value } : d);
@@ -511,11 +695,11 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
     await persistProviderToConfig(updatedProvider);
     dispatchAppEvent(EVENTS.paramConfigChanged);
     showSaved("DEFAULT CHANGED");
-  }, [currentProvider, isPowerUser, buildUserSavedParams, persistProviderToConfig, selectedProviderId]);
+  }, [currentProvider, editorUnlocked, buildUserSavedParams, persistProviderToConfig, selectedProviderId]);
 
   // ── Admin: drag reorder ─────────────────────────────────────────
   const swapItems = useCallback(async (fromIdx: number, toIdx: number) => {
-    if (fromIdx === toIdx || fromIdx < 0 || !currentProvider || !isPowerUser) return;
+    if (fromIdx === toIdx || fromIdx < 0 || !currentProvider || !editorUnlocked) return;
     
     const currentUserParams = buildUserSavedParams(currentProvider);
     const d = [...currentUserParams];
@@ -527,11 +711,11 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
     dispatchAppEvent(EVENTS.paramConfigChanged);
     await persistProviderToConfig(updatedProvider);
     showSaved("SAVED");
-  }, [currentProvider, isPowerUser, buildUserSavedParams, persistProviderToConfig, selectedProviderId]);
+  }, [currentProvider, editorUnlocked, buildUserSavedParams, persistProviderToConfig, selectedProviderId]);
 
   // ── Admin: add value to param (writes to BOTH values and userAddedValues) ───
   const addValueToParam = useCallback(async (key: string, value: string | number) => {
-    if (!currentProvider || !isPowerUser) return;
+    if (!currentProvider || !editorUnlocked) return;
 
     const currentUserParams = buildUserSavedParams(currentProvider);
     const updatedUserParams = currentUserParams.map(d => {
@@ -544,7 +728,11 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
       if (!userAdded.some(v => String(v) === String(value))) {
         userAdded.push(value);
       }
-      return { ...d, values: vals, userAddedValues: userAdded.length > 0 ? userAdded : undefined };
+      return {
+        ...d,
+        values: sortParamValues(vals),
+        userAddedValues: userAdded.length > 0 ? userAdded : undefined,
+      };
     });
     const updatedProvider = { ...currentProvider, userEditedTemplateParams: updatedUserParams };
 
@@ -552,22 +740,29 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
     dispatchAppEvent(EVENTS.paramConfigChanged);
     await persistProviderToConfig(updatedProvider);
     showSaved("SAVED");
-  }, [currentProvider, isPowerUser, buildUserSavedParams, persistProviderToConfig, selectedProviderId]);
+  }, [currentProvider, editorUnlocked, buildUserSavedParams, persistProviderToConfig, selectedProviderId]);
 
   // ── Admin: remove value from param ───────────────────────────────
   const removeValueFromParam = useCallback(async (key: string, value: string | number) => {
-    if (!currentProvider || !isPowerUser) return;
+    if (!currentProvider || !editorUnlocked) return;
 
     const currentUserParams = buildUserSavedParams(currentProvider);
     const updatedUserParams = currentUserParams.map(d => {
       if (d.key !== key) return d;
-      const vals = (d.values || []).filter(v => String(v) !== String(value));
+      const vals = sortParamValues((d.values || []).filter(v => String(v) !== String(value)));
       const userAdded = (d.userAddedValues || []).filter(v => String(v) !== String(value));
+      const hiddenVals = (d.hiddenValues || []).filter(v => String(v) !== String(value));
       let newDefault = d.defaultValue;
       if (String(d.defaultValue) === String(value)) {
         newDefault = vals.length > 0 ? vals[0] : undefined;
       }
-      return { ...d, values: vals, userAddedValues: userAdded.length > 0 ? userAdded : undefined, defaultValue: newDefault };
+      return {
+        ...d,
+        values: vals,
+        userAddedValues: userAdded.length > 0 ? userAdded : undefined,
+        hiddenValues: hiddenVals.length > 0 ? hiddenVals : undefined,
+        defaultValue: newDefault,
+      };
     });
     const updatedProvider = { ...currentProvider, userEditedTemplateParams: updatedUserParams };
 
@@ -575,16 +770,16 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
     dispatchAppEvent(EVENTS.paramConfigChanged);
     await persistProviderToConfig(updatedProvider);
     showSaved("SAVED");
-  }, [currentProvider, isPowerUser, buildUserSavedParams, persistProviderToConfig, selectedProviderId]);
+  }, [currentProvider, editorUnlocked, buildUserSavedParams, persistProviderToConfig, selectedProviderId]);
 
   // ── Admin: open sub-params editor for a value ───────────────────
   const openSubParamsEditor = useCallback((paramKey: string, valueName: string) => {
-    if (!currentProvider || !isPowerUser) return;
+    if (!currentProvider || !editorUnlocked) return;
     setEditingValue({ paramKey, valueName });
     const def = userSavedParamsWithDefaults.find(d => d.key === paramKey);
     const existingArgs = def?.sub_params?.[valueName]?.join(" ") ?? "";
     setSubArgsText(prev => ({ ...prev, [paramKey + "::" + valueName]: existingArgs }));
-  }, [userSavedParamsWithDefaults, currentProvider, isPowerUser]);
+  }, [userSavedParamsWithDefaults, currentProvider, editorUnlocked]);
 
   // ── Admin: save sub-params edit for a value ─────────────────────
   const saveSubParamsEdit = useCallback(async () => {
@@ -636,7 +831,7 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
 
   // ── Admin: delete a value's sub-params entry and remove from values ─
   const deleteSubParamsEntry = useCallback(async (paramKey: string, valueName: string) => {
-    if (!currentProvider || !isPowerUser) return;
+    if (!currentProvider || !editorUnlocked) return;
     const currentUserParams = buildUserSavedParams(currentProvider);
     let updatedUserParams = currentUserParams.map(d => {
       if (d.key !== paramKey) return d;
@@ -663,11 +858,11 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
     setAllProviders(prev => prev.map(p => p.id !== selectedProviderId ? p : updatedProvider));
     await persistProviderToConfig(updatedProvider);
     showSaved("SAVED");
-  }, [currentProvider, isPowerUser, buildUserSavedParams, persistProviderToConfig, selectedProviderId]);
+  }, [currentProvider, editorUnlocked, buildUserSavedParams, persistProviderToConfig, selectedProviderId]);
 
   // ── Admin: restore param to provider default (full reset) ─────────
   const handleRestoreParam = useCallback(async (key: string) => {
-    if (!currentProvider || !isPowerUser) return;
+    if (!currentProvider || !editorUnlocked) return;
     try {
       const freshFromTemplateParam: UserEditedTemplateParam = await invoke("reset_param_to_template", {
         providerId: selectedProviderId, paramKey: key
@@ -681,31 +876,55 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
     } catch (err) {
       console.error("[CONFIG] reset_param_to_template failed:", err);
     }
-  }, [currentProvider, isPowerUser, buildUserSavedParams, persistProviderToConfig, selectedProviderId]);
+  }, [currentProvider, editorUnlocked, buildUserSavedParams, persistProviderToConfig, selectedProviderId]);
 
   // ── Admin: remove user-added param entirely ──────────────────────
   const handleRemoveParam = useCallback(async (key: string) => {
-    if (!currentProvider || !isPowerUser) return;
+    if (!currentProvider || !editorUnlocked) return;
+    if (isSystemCatalogParam({ key })) return;
     try {
+      const isFactoryParam =
+        providerDefaultParams.length > 0 && providerDefaultParams.some((gp) => gp.key === key);
       const currentUserParams = buildUserSavedParams(currentProvider);
-      const updatedUserParams = currentUserParams.filter(d => d.key !== key);
-      const updatedProvider = { ...currentProvider, userEditedTemplateParams: updatedUserParams };
-      setAllProviders(prev => prev.map(p => p.id !== selectedProviderId ? p : updatedProvider));
+      const updatedUserParams = currentUserParams.filter((d) => d.key !== key);
+      const excluded = [...(currentProvider.excludedParamKeys || [])];
+      if (isFactoryParam) {
+        if (!excluded.includes(key)) excluded.push(key);
+      } else {
+        const idx = excluded.indexOf(key);
+        if (idx >= 0) excluded.splice(idx, 1);
+      }
+      const updatedProvider: ProviderConfig = {
+        ...currentProvider,
+        userEditedTemplateParams: updatedUserParams,
+        excludedParamKeys: excluded.length > 0 ? excluded : undefined,
+      };
+      setAllProviders((prev) => prev.map((p) => (p.id !== selectedProviderId ? p : updatedProvider)));
       await persistProviderToConfig(updatedProvider);
+      dispatchAppEvent(EVENTS.paramConfigChanged);
       showSaved("REMOVED");
     } catch (err) {
       console.error("[CONFIG] remove param failed:", err);
     }
-  }, [currentProvider, isPowerUser, buildUserSavedParams, persistProviderToConfig, selectedProviderId]);
+  }, [
+    currentProvider,
+    editorUnlocked,
+    buildUserSavedParams,
+    persistProviderToConfig,
+    selectedProviderId,
+    providerDefaultParams,
+  ]);
 
   // ── Admin: open param metadata editor ───────────────────────────
   const openParamMetaEditor = useCallback((def: UserEditedTemplateParam) => {
     setEditingParamKey(def.key);
+    const group = paramUiGroup(def.ui_group);
     setParamMetaForm({
       ptype: def.ptype || "arg_select",
       flag: def.flag ?? "",
       pattern: def.pattern ?? "",
-      uiGroup: paramUiGroup(def.ui_group),
+      uiGroup: group,
+      customGroup: "",
       values: (() => { const merged = [...(def.values || [])]; const ua = def.userAddedValues || []; for (const v of ua) { if (!merged.some(x => String(x) === String(v))) merged.push(v); } return merged; })(),
       defaultValue: effectiveParamDefault(def.defaultValue) ?? "",
       subParams: Object.fromEntries(
@@ -741,18 +960,31 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
         // Preserve original type: try number first
         return Number.isFinite(Number(s)) ? Number(s) : s;
       });
-      const newUiGroup = paramUiGroup(paramMetaForm.uiGroup);
-      const nextPtype = (paramMetaForm.ptype === d.ptype ? d.ptype : paramMetaForm.ptype) as UserEditedTemplateParam["ptype"];
+      const isSystem = isSystemCatalogParam(d);
+      const rawGroup =
+        paramMetaForm.uiGroup === "__custom__" ? paramMetaForm.customGroup : paramMetaForm.uiGroup;
+      const newUiGroup = isSystem
+        ? paramUiGroup(d.ui_group)
+        : rawGroup
+          ? paramUiGroup(rawGroup)
+          : paramUiGroup("Feature Flags");
+      const nextPtype = isSystem
+        ? d.ptype
+        : ((paramMetaForm.ptype === d.ptype ? d.ptype : paramMetaForm.ptype) as UserEditedTemplateParam["ptype"]);
       const nextDefault = paramMetaForm.defaultValue !== "" && paramMetaForm.defaultValue != null
         ? paramMetaForm.defaultValue
         : undefined;
       return {
         ...d,
         ptype: nextPtype,
-        flag: paramMetaForm.flag || null,
-        pattern: paramMetaForm.ptype === "path_scanner" ? paramMetaForm.pattern : undefined,
+        flag: isSystem ? d.flag : paramMetaForm.flag || null,
+        pattern: isSystem
+          ? d.pattern
+          : paramMetaForm.ptype === "path_scanner"
+            ? paramMetaForm.pattern
+            : undefined,
         ui_group: newUiGroup,
-        values: vals,
+        values: sortParamValues(vals),
         defaultValue: nextDefault,
         sub_params: Object.keys(subParams).length > 0 ? subParams : undefined,
         userAddedValues: mergedUserAdded.length > 0 ? mergedUserAdded : undefined,
@@ -760,7 +992,9 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
     });
 
     // Append target group to custom order (preserve existing order — never promote to first)
-    const newUiGroup = paramUiGroup(paramMetaForm.uiGroup);
+    const rawGroup =
+      paramMetaForm.uiGroup === "__custom__" ? paramMetaForm.customGroup : paramMetaForm.uiGroup;
+    const newUiGroup = rawGroup ? paramUiGroup(rawGroup) : paramUiGroup("Feature Flags");
     let updatedProvider = { ...currentProvider, userEditedTemplateParams: updatedUserParams };
     const baseOrder = resolveGroupOrder(updatedUserParams, customGroupOrder);
     if (!baseOrder.includes(newUiGroup)) {
@@ -785,9 +1019,11 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
 
   const handleDragStart = (e: React.MouseEvent, idx: number) => {
     e.stopPropagation();
+    const def = catalogVisibleParams[idx];
+    if (!def || isSystemCatalogParam(def)) return;
     startPosRef.current = { x: e.clientX, y: e.clientY };
     hasMovedRef.current = false;
-    dragKeyRef.current = userSavedParamsWithDefaults[idx]?.key ?? null;
+    dragKeyRef.current = def.key ?? null;
     setDragging(true);
   };
 
@@ -811,14 +1047,33 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
       const targetIdx = parseInt(rowEl.getAttribute("data-row-idx") || "-1", 10);
       if (targetIdx < 0) { setDragging(false); dragKeyRef.current = null; hasMovedRef.current = false; return; }
       const sourceKey = dragKeyRef.current;
-      const fromIdx = userSavedParamsWithDefaults.findIndex(d => d.key === sourceKey);
-      if (fromIdx < 0 || targetIdx === fromIdx) { setDragging(false); dragKeyRef.current = null; hasMovedRef.current = false; return; }
-      swapItems(fromIdx, targetIdx);
+      const fromIdx = catalogVisibleParams.findIndex((d) => d.key === sourceKey);
+      const targetDef = catalogVisibleParams[targetIdx];
+      if (
+        fromIdx < 0 ||
+        targetIdx === fromIdx ||
+        !targetDef ||
+        isSystemCatalogParam(targetDef)
+      ) {
+        setDragging(false);
+        dragKeyRef.current = null;
+        hasMovedRef.current = false;
+        return;
+      }
+      const globalFromIdx = userSavedParamsWithDefaults.findIndex((d) => d.key === sourceKey);
+      const globalToIdx = userSavedParamsWithDefaults.findIndex((d) => d.key === targetDef.key);
+      if (globalFromIdx < 0 || globalToIdx < 0) {
+        setDragging(false);
+        dragKeyRef.current = null;
+        hasMovedRef.current = false;
+        return;
+      }
+      swapItems(globalFromIdx, globalToIdx);
       setDragging(false); dragKeyRef.current = null; hasMovedRef.current = false;
     };
     window.addEventListener("mouseup", h, { once: true });
     return () => window.removeEventListener("mouseup", h);
-  }, [dragging, userSavedParamsWithDefaults, swapItems]);
+  }, [dragging, catalogVisibleParams, userSavedParamsWithDefaults, swapItems]);
 
   // ── Group drag state for reorder ───────────────────────────────
   const groupDragRef = useRef<string | null>(null);
@@ -828,6 +1083,7 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
 
   const handleGroupDragStart = (e: React.MouseEvent, groupName: string) => {
     e.stopPropagation();
+    if (isSystemUiGroup(groupName)) return;
     groupStartPosRef.current = { x: e.clientX, y: e.clientY };
     groupHasMovedRef.current = false;
     groupDragRef.current = groupName;
@@ -854,7 +1110,7 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
       const targetIdx = parseInt(rowEl.getAttribute("data-group-idx") || "-1", 10);
       if (targetIdx < 0) { setDraggingGroup(null); groupDragRef.current = null; groupHasMovedRef.current = false; return; }
 
-      const currentOrder = resolveGroupOrder(userSavedParamsWithDefaults, customGroupOrder);
+      const currentOrder = resolveGroupOrder(catalogVisibleParams, customGroupOrder);
 
       const sourceName = groupDragRef.current;
       const fromIdx = currentOrder.indexOf(sourceName);
@@ -869,7 +1125,7 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
     };
     window.addEventListener("mouseup", h, { once: true });
     return () => window.removeEventListener("mouseup", h);
-  }, [draggingGroup, userSavedParamsWithDefaults, customGroupOrder, saveGroupOrder]);
+  }, [draggingGroup, catalogVisibleParams, customGroupOrder, saveGroupOrder]);
 
   const enabledProviders = useMemo(() => allProviders.filter(p => p.enabled), [allProviders]);
 
@@ -901,7 +1157,7 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
                 <h2 className="text-xs font-mono theme-accent-text tracking-widest">PARAMETER CONFIGURATION</h2>
                 <button onClick={handleEditorToggle}
                   className={`value-chip text-[9px] font-mono px-2 py-0.5 rounded-sm transition-colors ${
-                    isPowerUser ? "value-chip-active" : ""
+                    editorUnlocked ? "value-chip-active" : ""
                   }`}
                   title="Click to toggle editor lock state">
                   {powerUserState === "permanently" ? "\u{1F511} EDITOR — PERMANENTLY UNLOCKED"
@@ -924,42 +1180,41 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
               )}
             </div>
 
-            {/* Right side: action buttons (UNLOCKED) and legend (LOCKED) — both always rendered, opacity toggled */}
-            <div className="ml-auto flex gap-2 items-center">
+            <div className="ml-auto flex flex-wrap gap-2 items-start justify-end">
               {/* Action buttons — visible when unlocked */}
-              <div className={`flex gap-2 transition-opacity ${isPowerUser ? "opacity-100" : "opacity-0 pointer-events-none"}`}>
-                <button
-                  type="button"
-                  onClick={() => setShowClearStorageConfirm(true)}
-                  className="value-chip text-[9px] font-mono px-2 py-1 rounded-sm"
-                  title="Clear all BlackOps localStorage (theme, bench chips, catalog overrides, splits) and reload"
-                >
-                  CLEAR STORAGE
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void handleExportFactoryTemplate()}
-                  className="value-chip-active text-[9px] font-mono px-2 py-1 rounded-sm"
-                  title="Write live params + group/layout to factory default JSON (bumps templateVersion). Dev: also updates src-tauri/runtime."
-                >
-                  EXPORT FACTORY
-                </button>
-                <button onClick={() => setShowResetConfirm(true)}
-                  className="value-chip text-[9px] font-mono px-2 py-1 rounded-sm">
-                  RESET TO DEFAULTS
-                </button>
+              <div className={`flex gap-2 transition-opacity ${editorUnlocked || factoryExportEnabled ? "opacity-100" : "opacity-0 pointer-events-none"}`}>
+                {editorUnlocked && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setShowClearStorageConfirm(true)}
+                      className="value-chip text-[9px] font-mono px-2 py-1 rounded-sm"
+                      title="Clear all BlackOps localStorage (theme, bench chips, catalog overrides, splits) and reload"
+                    >
+                      CLEAR STORAGE
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowResetConfirm(true)}
+                      className="value-chip text-[9px] font-mono px-2 py-1 rounded-sm"
+                      title="Restore this provider from factory template — one-click recovery"
+                    >
+                      RESET TO DEFAULTS
+                    </button>
+                  </>
+                )}
+                {factoryExportEnabled && (
+                  <button
+                    type="button"
+                    onClick={() => setShowExportConfirm(true)}
+                    className="value-chip-active text-[9px] font-mono px-2 py-1 rounded-sm"
+                    title="Admin: write param defaults to factory JSON (dev build only)"
+                  >
+                    EXPORT FACTORY
+                  </button>
+                )}
               </div>
-              {/* Legend — visible when locked */}
-              <div className={`config-form-panel rounded-sm p-2 transition-opacity ${!isPowerUser ? "opacity-100" : "opacity-0 pointer-events-none"}`}>
-                <div className="grid grid-cols-[36px_1fr] gap-1 items-center" style={{ gridTemplateColumns: "36px 1fr" }}>
-                  <span className="value-chip-active inline-flex items-center justify-center px-2 py-0.5 text-[11px] font-mono rounded-sm">val</span>
-                  <span className="text-[8px] font-mono config-muted">Factory default value</span>
-                  <span className="value-chip inline-flex items-center justify-center px-2 py-0.5 text-[11px] font-mono rounded-sm border-2 border-dashed">val</span>
-                  <span className="text-[8px] font-mono config-muted">USER's new default</span>
-                  <span className="value-chip inline-flex items-center justify-center px-2 py-0.5 text-[11px] font-mono rounded-sm opacity-80">val</span>
-                  <span className="text-[8px] font-mono config-muted">USER's added values</span>
-                </div>
-              </div>
+              <ConfigParamLegend editorUnlocked={editorUnlocked} />
             </div>
           </div>
 
@@ -986,6 +1241,36 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
                       className="value-chip-active text-[9px] font-mono px-3 py-1 rounded-sm"
                     >
                       YES, CLEAR
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {showExportConfirm && (
+              <div className="absolute inset-0 bg-black/60 z-50" onClick={() => setShowExportConfirm(false)}>
+                <div className="config-form-panel rounded-sm p-6 max-w-sm absolute top-[85px] right-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+                  <h3 className="text-xs font-mono theme-accent-text mb-3">EXPORT FACTORY TEMPLATE</h3>
+                  <p className="text-[10px] font-mono config-muted mb-4">
+                    Writes current param defaults, groups, and layout to factory JSON and bumps templateVersion. Dev build also updates src-tauri/runtime. Cannot be undone easily — commit the JSON if you mean it.
+                  </p>
+                  <div className="flex gap-2 justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setShowExportConfirm(false)}
+                      className="value-chip text-[9px] font-mono px-3 py-1 rounded-sm"
+                    >
+                      CANCEL
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowExportConfirm(false);
+                        void handleExportFactoryTemplate();
+                      }}
+                      className="value-chip-active text-[9px] font-mono px-3 py-1 rounded-sm"
+                    >
+                      YES, EXPORT
                     </button>
                   </div>
                 </div>
@@ -1025,59 +1310,136 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
           )}
 
           {/* Param rows */}
-          <div className="flex-1 overflow-y-auto eink-scrollbar p-4 min-h-0">
-            {userSavedParamsWithDefaults.length === 0 ? (
+          <div className="config-params-list flex-1 overflow-y-auto eink-scrollbar p-4 min-h-0">
+            {catalogVisibleParams.length === 0 ? (
               <div className="flex items-center justify-center h-full text-stealth-muted text-xs font-mono">LOADING PARAMETERS...</div>
             ) : (
               (() => {
-                const groupOrder = resolveGroupOrder(userSavedParamsWithDefaults, customGroupOrder);
+                const groupOrder = editorUnlocked
+                  ? resolveGroupOrderForAdmin(catalogVisibleParams, customGroupOrder)
+                  : resolveGroupOrder(catalogVisibleParams, customGroupOrder);
 
                 const groups: Record<string, UserEditedTemplateParam[]> = {};
-                for (const def of userSavedParamsWithDefaults) {
+                for (const def of catalogVisibleParams) {
                   const g = paramUiGroup(def.ui_group);
                   if (!groups[g]) groups[g] = [];
                   groups[g].push(def);
                 }
 
                 return (
-                  <div className="space-y-3">
-                   {/* Add from catalog — all users; manual entry — power user only */}
-                      <div className="flex gap-2 mb-3">
-                        <button
-                          onClick={() => setShowCatalogSearch(true)}
-                          className="flex-1 py-3 text-xl font-mono bg-nv-green/15 border border-nv-green/40 text-nv-green hover:bg-nv-green/25 transition-colors rounded tracking-wider"
-                        >
-                          + ADD NEW FROM CATALOG
-                        </button>
-                        {isPowerUser && (
+                  <div className="config-param-group-block space-y-3">
+                      {editorUnlocked && (
+                        <div className="mb-3">
                           <button
-                            onClick={() => setShowCreatorModal(true)}
-                            className="px-3 py-2 text-[9px] font-mono border border-dashed border-yellow-400/30 text-yellow-400/60 hover:bg-yellow-400/5 hover:border-yellow-400/60 transition-colors rounded"
+                            onClick={() => setShowCatalogSearch(true)}
+                            className="w-full py-3 text-xl font-mono bg-nv-green/15 border border-nv-green/40 text-nv-green hover:bg-nv-green/25 transition-colors rounded tracking-wider"
                           >
-                            + MANUAL
+                            + ADD NEW FROM CATALOG
                           </button>
-                        )}
-                      </div>
-                    {groupOrder.filter(g => groups[g]).map((groupName, groupIdx) => {
-                      const groupParams = groups[groupName];
-                      if (!groupParams || groupParams.length === 0) return null;
+                        </div>
+                      )}
+                    {groupOrder.map((groupName, groupIdx) => {
+                      const groupParams = groups[groupName] ?? [];
+                      const isEmpty = groupParams.length === 0;
+                      if (isEmpty && !editorUnlocked) return null;
+                      if (isEmpty && !isEmptyGroupDeletable(groupName, groups)) return null;
+                      const isGroupCollapsed = collapsedConfigGroups.has(groupName);
+                      const isSystemGroup = isSystemUiGroup(groupName);
+                      const isRenaming = renamingGroup === groupName;
                       return (
                         <div key={groupName} data-group-idx={groupIdx}>
-                          {/* Group header with drag handle */}
-                          <div className={`flex items-center gap-1 text-[8px] font-mono tracking-widest uppercase mb-1.5 pb-1 border-b border-stealth-border/30 ${draggingGroup === groupName ? "text-yellow-400" : "text-stealth-muted/60"}`}>
-                            {isPowerUser && (
+                          {/* Group header — click to collapse/expand (session only) */}
+                          <div
+                            className={`config-param-group-header flex items-center gap-1 text-[8px] font-mono tracking-widest uppercase mb-1.5 pb-1 border-b ${
+                              isEmpty ? "border-dashed border-stealth-border/25" : "border-stealth-border/30"
+                            } ${isSystemGroup ? "config-param-group-header--system" : ""} ${
+                              draggingGroup === groupName ? "text-yellow-400" : isSystemGroup ? "" : "text-stealth-muted/60"
+                            }`}
+                            title={isSystemGroup ? "Engine panel placement — catalog bucket only" : undefined}
+                          >
+                            {editorUnlocked && !isSystemGroup && (
                               <button onMouseDown={(e) => handleGroupDragStart(e, groupName)}
                                 className="select-none px-1 cursor-grab active:cursor-grabbing hover:text-nv-green transition-colors"
                                 title="Click and drag to reorder group">
                                 &#x2630;
                               </button>
                             )}
-                            <span>{groupName}</span>
-                            <span className="opacity-40">({groupParams.length})</span>
+                            {isRenaming ? (
+                              <div className="flex items-center gap-1 flex-1 min-w-0">
+                                <input
+                                  type="text"
+                                  value={renameGroupDraft}
+                                  onChange={(e) => setRenameGroupDraft(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") void renameGroup(groupName, renameGroupDraft);
+                                    if (e.key === "Escape") {
+                                      setRenamingGroup(null);
+                                      setRenameGroupDraft("");
+                                    }
+                                  }}
+                                  className="flex-1 min-w-0 bg-transparent border-b border-yellow-400/40 text-[9px] font-mono text-white focus:outline-none px-1 py-0.5"
+                                  autoFocus
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => void renameGroup(groupName, renameGroupDraft)}
+                                  className="px-1.5 py-0 text-[7px] font-mono rounded-sm border border-nv-green/40 text-nv-green/90"
+                                >
+                                  OK
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setRenamingGroup(null);
+                                    setRenameGroupDraft("");
+                                  }}
+                                  className="px-1 py-0 text-[8px] font-mono text-stealth-muted"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            ) : (
+                            <button
+                              type="button"
+                              onClick={() => toggleConfigGroupCollapsed(groupName)}
+                              className="flex items-center gap-1 flex-1 min-w-0 text-left hover:text-white transition-colors"
+                              title={isGroupCollapsed ? "Expand group" : "Collapse group"}
+                            >
+                              <span className="text-[7px] flex-shrink-0">{isGroupCollapsed ? "▶" : "▼"}</span>
+                              <span className="truncate">{groupName}</span>
+                              <span className="opacity-40 flex-shrink-0">
+                                {isEmpty ? "(empty)" : `(${groupParams.length})`}
+                              </span>
+                            </button>
+                            )}
+                            {editorUnlocked && isGroupRenamable(groupName) && !isRenaming && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setRenamingGroup(groupName);
+                                  setRenameGroupDraft(groupName);
+                                }}
+                                className="flex-shrink-0 px-1.5 py-0 text-[7px] font-mono rounded-sm border border-stealth-border/40 text-stealth-muted/55 hover:text-stealth-muted transition-colors"
+                                title="Rename group"
+                              >
+                                REN
+                              </button>
+                            )}
+                            {editorUnlocked && isEmpty && (
+                              <button
+                                type="button"
+                                onClick={() => { void deleteEmptyGroup(groupName); }}
+                                className="flex-shrink-0 px-1.5 py-0 text-[7px] font-mono rounded-sm border border-red-400/35 text-red-400/75 hover:text-red-400 hover:border-red-400/55 transition-colors"
+                                title="Remove empty group"
+                              >
+                                DEL
+                              </button>
+                            )}
+                            {editorUnlocked && !isEmpty && !isSystemGroup && (
                             <button
                               type="button"
                               onClick={() => toggleGroupDisplayZone(groupName)}
-                              className={`ml-auto px-1.5 py-0 text-[7px] font-mono rounded-sm border transition-colors ${
+                              className={`flex-shrink-0 px-1.5 py-0 text-[7px] font-mono rounded-sm border transition-colors ${
                                 customGroupDisplayZone[normalizeUiGroup(groupName)] === "above"
                                   ? "border-nv-green/50 text-nv-green/90 bg-nv-green/10"
                                   : "border-stealth-border/40 text-stealth-muted/45 hover:text-stealth-muted"
@@ -1090,14 +1452,17 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
                             >
                               {customGroupDisplayZone[normalizeUiGroup(groupName)] === "above" ? "▲ DISP" : "▽ DISP"}
                             </button>
+                            )}
                           </div>
+                          {!isGroupCollapsed && !isEmpty && (
                           <div className="space-y-1.5">
 {groupParams.map((def, localIdx) => {
-                               const globalIdx = userSavedParamsWithDefaults.findIndex(
+                               const catalogIdx = catalogVisibleParams.findIndex(
                                  (d) => d.key === def.key && d.order === def.order,
                                );
                                const rowKey = `${def.key || "param"}-${def.order}-${localIdx}`;
                                const defKey = def.key;
+                               const isSystemParam = isSystemCatalogParam(def);
 
                                // Effective value: user override > current default
                                const factoryDefault = effectiveParamDefault(def.factoryDefault);
@@ -1112,8 +1477,12 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
 
                                  return (
                                     <React.Fragment key={rowKey}>
-                                    <div data-row-idx={globalIdx}
-                                     className={`flex items-center gap-2 p-2 rounded transition-all duration-150 ${
+                                    <div
+                                      data-row-idx={catalogIdx}
+                                      title={isSystemParam ? SYSTEM_CATALOG_PARAM_TOOLTIP : def.key}
+                                      className={`config-param-row flex items-center gap-2 p-2 rounded transition-all duration-150 ${
+                                        isSystemParam ? "config-param-row--system" : ""
+                                      } ${
                                        (dragging && def.key === dragKeyRef.current)
                                          ? "border-yellow-400/60 bg-yellow-400/10 opacity-70"
                                          : def.hidden
@@ -1122,23 +1491,34 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
                                      }`}>
 
                                    {/* Drag handle — admin only */}
-                                   {isPowerUser && (
-                                     <button onMouseDown={(e) => handleDragStart(e, globalIdx)}
+                                   {editorUnlocked && !isSystemParam && (
+                                     <button onMouseDown={(e) => handleDragStart(e, catalogIdx)}
                                        className="text-[8px] text-stealth-muted select-none px-1 cursor-grab active:cursor-grabbing hover:text-nv-green transition-colors"
                                        title="Click and drag to reorder">&#x2630;</button>
                                    )}
+                                   {editorUnlocked && isSystemParam && (
+                                     <span className="text-[8px] text-stealth-muted/25 select-none px-1" title={SYSTEM_CATALOG_PARAM_TOOLTIP}>&#x2630;</span>
+                                   )}
 
-                                   {/* Hidden toggle — admin only */}
-                                   {isPowerUser && (
+                                   {/* Hidden toggle — admin only (catalog visibility; engine chrome placement unchanged) */}
+                                   {editorUnlocked && (
                                      <button onClick={() => toggleRowHidden(def.key)}
                                        className={`text-[10px] select-none transition-colors ${def.hidden ? "text-yellow-400/35" : "text-nv-green/25 hover:text-nv-green"}`}
-                                       title={def.hidden ? "Show parameter in catalog" : "Hide from catalog"}>
+                                       title={
+                                         isSystemParam
+                                           ? def.hidden
+                                             ? "Show in catalog (engine panel placement unchanged)"
+                                             : "Hide from catalog (engine panel placement unchanged)"
+                                           : def.hidden
+                                             ? "Show parameter in catalog"
+                                             : "Hide from catalog"
+                                       }>
                                        {def.hidden ? "\u2713" : "\u25EF"}
                                      </button>
                                    )}
 
                                    {/* Edit param metadata + Restore to provider default — admin only */}
-{isPowerUser && (
+{editorUnlocked && !isSystemParam && (
                                       <div className="flex items-center gap-1 mr-2">
                                         <button onClick={() => openParamMetaEditor(def)}
                                           className="leading-none text-[15px] font-mono text-nv-green/40 hover:text-yellow-400 transition-colors"
@@ -1148,13 +1528,14 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
                                             className="leading-none text-[15px] font-mono text-blue-500/50 hover:text-blue-400 transition-colors"
                                             title="Restore this parameter row to DEFAULT">R</button>
                                         )}
-                                        {isUserAdded && (
-                                          <button onClick={() => handleRemoveParam(def.key)}
-                                            className="leading-none text-[15px] font-mono text-red-500/50 hover:text-red-400 transition-colors"
-                                            title="Remove this parameter entirely">D</button>
-                                        )}
+                                        <button onClick={() => handleRemoveParam(def.key)}
+                                          className="leading-none text-[15px] font-mono text-red-500/50 hover:text-red-400 transition-colors"
+                                          title={isUserAdded ? "Remove this parameter entirely" : "Remove factory param from config (excluded until reset)"}>D</button>
                                       </div>
                                     )}
+                                   {editorUnlocked && isSystemParam && (
+                                     <div className="flex items-center gap-1 mr-2 w-[3.25rem]" title={SYSTEM_CATALOG_PARAM_TOOLTIP} />
+                                   )}
 
 <span className="w-32 flex flex-col gap-0.5 px-1 py-0.5 truncate" title={def.key}>
                                        <span className={`text-[12px] font-mono leading-tight ${isUserAdded ? 'text-yellow-300' : ''}`}>
@@ -1167,22 +1548,22 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
                                    {/* Value bubbles */}
                                    <ValueBubbles
                                      paramKey={def.key}
-                                     isPowerUser={isPowerUser}
+                                     editorUnlocked={editorUnlocked}
                                      currentValue={currentValue}
                                       onOverrideChange={(val) => setOverride(defKey, val)}
                                       onClearOverride={() => clearOverride(def.key)}
-                                     addValue={isPowerUser ? (v: string | number) => addValueToParam(def.key, v) : undefined}
-                                     removeValue={isPowerUser ? (v: string | number) => removeValueFromParam(def.key, v) : undefined}
-                                     toggleHiddenValue={isPowerUser ? (_k: string, v: string | number) => toggleHiddenValue(def.key, v) : undefined}
+                                     addValue={editorUnlocked ? (v: string | number) => addValueToParam(def.key, v) : undefined}
+                                     removeValue={editorUnlocked ? (v: string | number) => removeValueFromParam(def.key, v) : undefined}
+                                     toggleHiddenValue={editorUnlocked ? (_k: string, v: string | number) => toggleHiddenValue(def.key, v) : undefined}
 hiddenValues={def.hiddenValues || []}
                                       availableValues={def.values || []}
                                       userAddedValues={def.userAddedValues || []}
                                       defaultValue={effectiveDefault !== undefined ? String(effectiveDefault) : undefined}
                                       factoryDefault={factoryDefault !== undefined ? String(factoryDefault) : undefined}
-                                      onChangeDefault={isPowerUser
+                                      onChangeDefault={editorUnlocked
                                         ? (v: string | number) => changeDefaultValue(def.key, v)
                                         : undefined}
-                                      onEditValue={isPowerUser ? (val: string | number) => openSubParamsEditor(def.key, String(val)) : undefined}
+                                      onEditValue={editorUnlocked ? (val: string | number) => openSubParamsEditor(def.key, String(val)) : undefined}
                                       ptype={def.ptype}
                                       subParams={def.sub_params || undefined}
                                    />
@@ -1197,6 +1578,7 @@ hiddenValues={def.hiddenValues || []}
                                        onSave={saveParamMetaEdit}
                                        onCancel={() => { setEditingParamKey(null); setParamMetaForm(null); }}
                                        existingGroups={existingGroups}
+                                       lockGroup={isSystemCatalogParam(def)}
                                      />
                                    )}
 
@@ -1214,6 +1596,7 @@ hiddenValues={def.hiddenValues || []}
                                   );
                              })}
                           </div>
+                          )}
                         </div>
                       );
                     })}
@@ -1225,7 +1608,7 @@ hiddenValues={def.hiddenValues || []}
 
           {/* Status bar footer */}
           <div className="flex-shrink-0 px-4 py-2.5 config-section-bar flex items-center justify-between">
-            <span className="text-[9px] font-mono config-muted">{userSavedParamsWithDefaults.length} parameter{userSavedParamsWithDefaults.length !== 1 ? "s" : ""}{hiddenCount > 0 ? ` (${hiddenCount} hidden)` : ""}</span>
+            <span className="text-[9px] font-mono config-muted">{catalogVisibleParams.length} parameter{catalogVisibleParams.length !== 1 ? "s" : ""}{hiddenCount > 0 ? ` (${hiddenCount} hidden)` : ""}</span>
             {currentProvider && (<span className="text-[9px] font-mono theme-accent-text">{currentProvider.display_name}</span>)}
           </div>
         </div>
@@ -1235,22 +1618,13 @@ hiddenValues={def.hiddenValues || []}
       {showCatalogSearch && (
         <ParamCatalogSearch
           providerId={selectedProviderId}
-          existingKeys={userSavedParams.map(d => d.key)}
-          isPowerUser={isPowerUser}
+          existingKeys={catalogVisibleParams.map((d) => d.key)}
+          editorUnlocked={editorUnlocked}
           onAdd={handleCatalogAdd}
           onClose={() => setShowCatalogSearch(false)}
         />
       )}
 
-      {/* Param Creator Modal */}
-      {showCreatorModal && (
-        <ParamCreatorModal
-          existingKeys={userSavedParams.map(d => d.key)}
-          existingGroups={existingGroups}
-          onClose={() => setShowCreatorModal(false)}
-          onSubmit={handleCreatorSubmit}
-        />
-      )}
     </div>
   );
 }
@@ -1300,13 +1674,15 @@ function ParamMetaEditor({
   onSave,
   onCancel,
   existingGroups,
+  lockGroup = false,
 }: {
   editingKey: string;
-  form: { ptype: string; flag: string; pattern: string; uiGroup: string; values: (string | number)[]; defaultValue: string | number; subParams: Record<string, string> };
+  form: { ptype: string; flag: string; pattern: string; uiGroup: string; customGroup: string; values: (string | number)[]; defaultValue: string | number; subParams: Record<string, string> };
   onFieldChange: (field: string, val: any) => void;
   onSave: () => void;
   onCancel: () => void;
   existingGroups: string[];
+  lockGroup?: boolean;
 }) {
   const [newValInput, setNewValInput] = useState("");
   const [selSubKey, setSelSubKey] = useState<string>("");
@@ -1360,13 +1736,54 @@ function ParamMetaEditor({
 
         {/* ui_group row */}
         <div className="flex gap-3 mb-2 mt-2 pt-2 border-t border-stealth-border/30">
-          <div className="flex flex-col gap-0.5">
+          <div className="flex flex-col gap-0.5 flex-1">
             <span className="text-[8px] font-mono text-stealth-muted">group</span>
-            <select value={form.uiGroup}
-              onChange={(e) => onFieldChange("uiGroup", e.target.value)}
-              className="w-48 bg-[#1a1a2e] border border-stealth-border/50 text-[10px] font-mono text-white px-1 py-0.5 focus:outline-none focus:border-nv-green/40 rounded">
-              {existingGroups.map(g => <option key={g} value={g}>{g}</option>)}
+            <select
+              disabled={lockGroup}
+              title={lockGroup ? SYSTEM_CATALOG_PARAM_TOOLTIP : undefined}
+              value={
+                form.uiGroup === "__custom__" ||
+                (form.uiGroup && !existingGroups.includes(form.uiGroup))
+                  ? "__custom__"
+                  : form.uiGroup || "__none__"
+              }
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v === "__custom__") {
+                  onFieldChange("uiGroup", "__custom__");
+                } else if (v === "__none__") {
+                  onFieldChange("uiGroup", "");
+                  onFieldChange("customGroup", "");
+                } else {
+                  onFieldChange("uiGroup", v);
+                  onFieldChange("customGroup", "");
+                }
+              }}
+              className="w-full bg-[#1a1a2e] border border-stealth-border/50 text-[10px] font-mono text-white px-1 py-0.5 focus:outline-none focus:border-nv-green/40 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <option value="__none__">— No group (Feature Flags) —</option>
+              {existingGroups.map((g) => (
+                <option key={g} value={g}>{g}</option>
+              ))}
+              <option value="__custom__">✏ Custom...</option>
             </select>
+            {(form.uiGroup === "__custom__" ||
+              (form.uiGroup && !existingGroups.includes(form.uiGroup))) && (
+              <input
+                type="text"
+                value={
+                  form.uiGroup === "__custom__"
+                    ? form.customGroup
+                    : form.uiGroup
+                }
+                onChange={(e) => {
+                  onFieldChange("uiGroup", "__custom__");
+                  onFieldChange("customGroup", e.target.value);
+                }}
+                placeholder="New group name..."
+                className="config-param-add-input bg-transparent border-b border-yellow-400/30 text-[10px] font-mono text-white focus:outline-none px-1 py-0.5 mt-1 placeholder:text-stealth-muted/50"
+              />
+            )}
           </div>
 
           {form.ptype === "path_scanner" && (
@@ -1402,7 +1819,7 @@ function ParamMetaEditor({
           onChange={(e) => setNewValInput(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addValueToForm(); } }}
           placeholder="+add"
-          className="w-16 bg-transparent border-b border-stealth-border/50 text-[9px] font-mono text-white focus:outline-none px-1" />
+          className="config-param-add-input w-16 bg-transparent border-b border-stealth-border/50 text-[9px] font-mono text-white focus:outline-none px-1" />
         <button onClick={addValueToForm}
           disabled={!newValInput.trim()}
           className="text-[8px] font-mono text-nv-green/60 hover:text-nv-green transition-colors ml-1">+VAL</button>

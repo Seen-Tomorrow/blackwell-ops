@@ -129,6 +129,8 @@ export interface ProviderConfig {
   enabled: boolean;
   params?: Record<string, any>;
   userEditedTemplateParams?: UserEditedTemplateParam[];
+  /** Factory param keys removed by admin — merge will not re-append from template. */
+  excludedParamKeys?: string[];
   groupOrder?: string[]; // Custom group order (empty = use template insertion order)
   /** Per-group pin above VRAM display (default: below). */
   groupDisplayZone?: Record<string, "above" | "below">;
@@ -138,6 +140,8 @@ export interface ProviderConfig {
   configColumnWidths?: number[];
   /** Per-group below-zone column index. */
   groupColumn?: Record<string, number>;
+  /** Pinned-above zone column widths (2 cols, default 65/35). */
+  aboveColumnWidths?: number[];
   _original_id?: string;
   git_url?: string;
   branch?: string;
@@ -161,6 +165,7 @@ export interface LayoutDefaults {
   configColumnWidths?: number[];
   groupDisplayZone?: Record<string, "above" | "below">;
   groupColumn?: Record<string, number>;
+  aboveColumnWidths?: number[];
 }
 
 export interface ExportFactoryTemplateResult {

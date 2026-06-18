@@ -42,6 +42,64 @@ pub fn end(port: u16) {
     }
 }
 
+fn extract_server_error_message(body: &str) -> Option<String> {
+    let parsed: serde_json::Value = serde_json::from_str(body).ok()?;
+    if let Some(msg) = parsed.get("message").and_then(|v| v.as_str()) {
+        return Some(msg.to_string());
+    }
+    parsed
+        .pointer("/error/message")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+}
+
+fn truncate_detail(msg: &str, max_len: usize) -> String {
+    if msg.chars().count() <= max_len {
+        return msg.to_string();
+    }
+    let end = msg
+        .char_indices()
+        .nth(max_len.saturating_sub(1))
+        .map(|(i, _)| i)
+        .unwrap_or(msg.len());
+    format!("{}…", &msg[..end])
+}
+
+/// Turn llama-server HTTP failures into bench-friendly copy (engine-owned failures).
+fn friendly_bench_http_error(status: reqwest::StatusCode, server_message: Option<&str>) -> String {
+    let code = status.as_u16();
+    let msg = server_message.unwrap_or("");
+    let lower = msg.to_ascii_lowercase();
+
+    if code == 400 {
+        if lower.contains("context") || lower.contains("exceed") {
+            return "Prompt exceeded context size".to_string();
+        }
+        if !msg.is_empty() {
+            return format!("Bad request: {}", truncate_detail(msg, 140));
+        }
+        return "Bad request".to_string();
+    }
+
+    if lower.contains("does not match the expected")
+        || lower.contains("content-only")
+        || lower.contains("chat_peg_parse")
+        || lower.contains("unparsed")
+    {
+        return "Model output didn't match the engine chat parser. Reasoning or chat-heavy models often fail Repetitive bench — try Unique mode or a base instruct model.".to_string();
+    }
+
+    if !msg.is_empty() {
+        return format!(
+            "Engine error (HTTP {}): {}",
+            code,
+            truncate_detail(msg, 140)
+        );
+    }
+
+    format!("Engine returned HTTP {code} — see engine log for details")
+}
+
 /// POST JSON to llama-server `/completion` — runs to completion (no mid-flight abort).
 pub async fn post_json(
     client: &reqwest::Client,
@@ -59,14 +117,40 @@ pub async fn post_json(
 
     if !resp.status().is_success() {
         let status = resp.status();
-        let msg = if status.as_u16() == 400 {
-            "Prompt size exceeded your actual context size".to_string()
-        } else {
-            format!("Server returned error: {}", status)
-        };
-        return Err(msg);
+        let body = resp.text().await.unwrap_or_default();
+        let server_msg = extract_server_error_message(&body);
+        return Err(friendly_bench_http_error(status, server_msg.as_deref()));
     }
     resp.json().await.map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_llama_server_error_json() {
+        let body = r#"{"code":500,"message":"The model produced output that does not match the expected Content-only format","type":"server_error"}"#;
+        let msg = extract_server_error_message(body).unwrap();
+        assert!(msg.contains("Content-only"));
+    }
+
+    #[test]
+    fn chat_parser_mismatch_gets_friendly_copy() {
+        let err = friendly_bench_http_error(
+            reqwest::StatusCode::INTERNAL_SERVER_ERROR,
+            Some("The model produced output that does not match the expected Content-only format"),
+        );
+        assert!(err.contains("chat parser"));
+        assert!(err.contains("Unique mode"));
+    }
+
+    #[test]
+    fn bare_500_without_body_is_actionable() {
+        let err = friendly_bench_http_error(reqwest::StatusCode::INTERNAL_SERVER_ERROR, None);
+        assert!(err.contains("HTTP 500"));
+        assert!(err.contains("engine log"));
+    }
 }
 
 /// Bench HTTP client — enough idle connections for parallel completion feeds.

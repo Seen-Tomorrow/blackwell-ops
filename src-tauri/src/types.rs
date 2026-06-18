@@ -337,6 +337,8 @@ pub struct LayoutDefaults {
     pub group_display_zone: HashMap<String, String>,
     #[serde(default, rename = "groupColumn")]
     pub group_column: HashMap<String, u32>,
+    #[serde(default, rename = "aboveColumnWidths")]
+    pub above_column_widths: Vec<f64>,
 }
 
 impl LayoutDefaults {
@@ -345,6 +347,7 @@ impl LayoutDefaults {
             && self.config_column_widths.is_empty()
             && self.group_display_zone.is_empty()
             && self.group_column.is_empty()
+            && self.above_column_widths.is_empty()
     }
 }
 
@@ -387,6 +390,9 @@ pub struct ProviderConfig {
     pub params: serde_json::Value,
     #[serde(default, rename = "userEditedTemplateParams")]
     pub user_edited_template_params: Vec<UserEditedTemplateParam>,
+    /// Factory param keys removed by admin — merge will not re-append from template.
+    #[serde(default, rename = "excludedParamKeys", skip_serializing_if = "Vec::is_empty")]
+    pub excluded_param_keys: Vec<String>,
     /// Custom group order set by user (overrides template insertion order). Empty = use template order.
     #[serde(default, rename = "groupOrder")]
     pub group_order: Vec<String>,
@@ -398,6 +404,8 @@ pub struct ProviderConfig {
     pub config_column_widths: Vec<f64>,
     #[serde(default, rename = "groupColumn", skip_serializing_if = "HashMap::is_empty")]
     pub group_column: HashMap<String, u32>,
+    #[serde(default, rename = "aboveColumnWidths", skip_serializing_if = "Vec::is_empty")]
+    pub above_column_widths: Vec<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub _original_id: Option<String>,
     #[serde(default)]
@@ -484,6 +492,7 @@ pub struct UserEditedTemplateParam {
     /// Values hidden from the catalog UI (persisted, but still usable).
     #[serde(default, rename = "hiddenValues")]
     pub hidden_values: Vec<serde_json::Value>,
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub flag: Option<String>,
     #[serde(default, rename = "flag_pair")]

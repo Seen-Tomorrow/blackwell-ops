@@ -9,8 +9,8 @@ import { searchCatalog } from "../lib/catalog";
 interface ParamCatalogSearchProps {
   providerId: string;
   existingKeys: string[];
-  /** When true (POWER USER unlocked), show unfiltered --help catalog. */
-  isPowerUser?: boolean;
+  /** When true (editor unlocked), show unfiltered --help catalog. */
+  editorUnlocked?: boolean;
   onAdd: (entry: RawCatalogEntry) => void;
   onClose: () => void;
 }
@@ -18,7 +18,7 @@ interface ParamCatalogSearchProps {
 export default function ParamCatalogSearch({
   providerId,
   existingKeys,
-  isPowerUser = false,
+  editorUnlocked = false,
   onAdd,
   onClose,
 }: ParamCatalogSearchProps) {
@@ -33,7 +33,7 @@ export default function ParamCatalogSearch({
     setError(null);
     invoke<RawCatalogEntry[]>("get_llama_catalog", {
       providerId,
-      includeAll: isPowerUser,
+      includeAll: editorUnlocked,
     })
       .then((data) => {
         setEntries(data);
@@ -43,7 +43,7 @@ export default function ParamCatalogSearch({
         setError(typeof err === "string" ? err : String(err));
         setLoading(false);
       });
-  }, [providerId, isPowerUser]);
+  }, [providerId, editorUnlocked]);
 
   useEffect(() => {
     if (!loading && inputRef.current) {
@@ -76,11 +76,11 @@ export default function ParamCatalogSearch({
             </span>
             {!loading && (
               <span className={`text-[8px] font-mono px-1.5 py-0.5 rounded-sm tracking-wide ${
-                isPowerUser
+                editorUnlocked
                   ? "border border-amber-400/50 text-amber-300 bg-amber-400/10"
                   : "border border-stealth-border/40 config-muted"
               }`}>
-                {isPowerUser
+                {editorUnlocked
                   ? "UNFILTERED list — be reasonable with what you add!"
                   : "FILTERED"}
               </span>

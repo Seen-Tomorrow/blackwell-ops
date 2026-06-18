@@ -11,6 +11,10 @@ export const DEFAULT_COLUMN_WIDTHS: Record<ConfigColumnCount, number[]> = {
 
 export const MIN_COLUMN_FRACTION = 0.15;
 
+/** Pinned-above VRAM zone — always two columns with draggable gutter. */
+export const ABOVE_COLUMN_COUNT = 2 as const;
+export const DEFAULT_ABOVE_COLUMN_WIDTHS: [number, number] = [0.65, 0.35];
+
 export function defaultColumnWidths(count: ConfigColumnCount): number[] {
   return [...DEFAULT_COLUMN_WIDTHS[count]];
 }
@@ -33,17 +37,77 @@ export function resolveGroupColumn(groupId: string, groupColumn: Record<string, 
   return groupColumn[normalizeUiGroup(groupId)] ?? 0;
 }
 
+/** Column a group actually renders in (partition-aware; handles 2C auto-alternate). */
+export function effectiveGroupColumn(
+  groupId: string,
+  zoneKeys: string[],
+  groupColumn: Record<string, number>,
+  columnCount: ConfigColumnCount | number,
+  zone?: GroupDisplayZone,
+): number {
+  const count = columnCount as ConfigColumnCount;
+  const cols =
+    zone === "above"
+      ? partitionAboveGroupsByColumn(zoneKeys, groupColumn)
+      : partitionBelowGroupsByColumn(zoneKeys, groupColumn, count);
+  const idx = cols.findIndex((col) => col.includes(groupId));
+  if (idx >= 0) return idx;
+  return Math.min(Math.max(0, resolveGroupColumn(groupId, groupColumn)), count - 1);
+}
+
+/** Explicit groupColumn wins; otherwise alternate L/R in 2-column layouts by zone order index. */
+function resolvePartitionColumn(
+  orderIndex: number,
+  key: string,
+  groupColumn: Record<string, number>,
+  columnCount: number,
+): number {
+  const norm = normalizeUiGroup(key);
+  const explicit = groupColumn[norm];
+  if (explicit !== undefined) {
+    return Math.min(Math.max(0, explicit), columnCount - 1);
+  }
+  if (columnCount === 2) {
+    return orderIndex % 2;
+  }
+  return 0;
+}
+
+export function partitionGroupsByColumn(
+  keys: string[],
+  groupColumn: Record<string, number>,
+  columnCount: number,
+): string[][] {
+  const cols: string[][] = Array.from({ length: columnCount }, () => []);
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i]!;
+    const col = resolvePartitionColumn(i, key, groupColumn, columnCount);
+    cols[col]!.push(key);
+  }
+  return cols;
+}
+
 export function partitionBelowGroupsByColumn(
   belowKeys: string[],
   groupColumn: Record<string, number>,
   columnCount: ConfigColumnCount,
 ): string[][] {
-  const cols: string[][] = Array.from({ length: columnCount }, () => []);
-  for (const key of belowKeys) {
-    const col = Math.min(Math.max(0, resolveGroupColumn(key, groupColumn)), columnCount - 1);
-    cols[col].push(key);
-  }
-  return cols;
+  return partitionGroupsByColumn(belowKeys, groupColumn, columnCount);
+}
+
+/** Above zone — always two columns; unassigned groups alternate L/R like below 2C. */
+export function partitionAboveGroupsByColumn(
+  aboveKeys: string[],
+  groupColumn: Record<string, number>,
+): string[][] {
+  return partitionGroupsByColumn(aboveKeys, groupColumn, ABOVE_COLUMN_COUNT);
+}
+
+export function normalizeAboveColumnWidths(widths?: number[] | null): [number, number] {
+  if (!widths || widths.length !== ABOVE_COLUMN_COUNT) return [...DEFAULT_ABOVE_COLUMN_WIDTHS];
+  const sum = widths.reduce((a, b) => a + b, 0);
+  if (!Number.isFinite(sum) || sum <= 0) return [...DEFAULT_ABOVE_COLUMN_WIDTHS];
+  return [widths[0]! / sum, widths[1]! / sum];
 }
 
 export interface GroupDropTarget {
@@ -55,13 +119,25 @@ function pointInRect(clientX: number, clientY: number, r: DOMRect): boolean {
   return clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom;
 }
 
+export function zoneLayoutRoot(
+  zone: GroupDisplayZone,
+  root: ParentNode = document,
+): ParentNode {
+  const selector =
+    zone === "above"
+      ? ".config-params-above"
+      : ".config-params-below--multi, .config-params-below--1c";
+  return root.querySelector(selector) ?? root;
+}
+
 export function findGroupDropTarget(
   clientX: number,
   clientY: number,
   zone: GroupDisplayZone,
   root: ParentNode = document,
 ): GroupDropTarget | null {
-  const columns = Array.from(root.querySelectorAll<HTMLElement>("[data-config-column]"));
+  const zoneRoot = zoneLayoutRoot(zone, root);
+  const columns = Array.from(zoneRoot.querySelectorAll<HTMLElement>("[data-config-column]"));
 
   if (columns.length > 0) {
     for (const col of columns) {
@@ -86,7 +162,7 @@ export function findGroupDropTarget(
   }
 
   const tiles = Array.from(
-    root.querySelectorAll<HTMLElement>(`[data-group-zone="${zone}"][data-group-idx]`),
+    zoneRoot.querySelectorAll<HTMLElement>(`[data-group-zone="${zone}"][data-group-idx]`),
   );
 
   for (const el of tiles) {
@@ -119,26 +195,75 @@ export function findGroupDropTarget(
 /** Move group to adjacent column (append at end of target column). */
 export function moveGroupToColumn(
   fullOrder: string[],
-  belowKeys: string[],
+  zoneKeys: string[],
   groupColumn: Record<string, number>,
-  columnCount: ConfigColumnCount,
+  columnCount: ConfigColumnCount | number,
   sourceGroup: string,
   targetColumn: number,
 ): { newOrder: string[]; newGroupColumn: Record<string, number> } {
-  const cols = partitionBelowGroupsByColumn(belowKeys, groupColumn, columnCount);
-  const insertAt = cols[Math.min(Math.max(0, targetColumn), columnCount - 1)]?.length ?? 0;
+  const count = columnCount as ConfigColumnCount;
+  const zoneKind = count === ABOVE_COLUMN_COUNT ? "above" : "below";
+  const cols =
+    zoneKind === "above"
+      ? partitionAboveGroupsByColumn(zoneKeys, groupColumn)
+      : partitionBelowGroupsByColumn(zoneKeys, groupColumn, count);
+
+  const sourceColumn = cols.findIndex((col) => col.includes(sourceGroup));
+  const safeTarget = Math.min(Math.max(0, targetColumn), count - 1);
+  if (sourceColumn < 0 || safeTarget === sourceColumn) {
+    return { newOrder: fullOrder, newGroupColumn: groupColumn };
+  }
+
+  const sourceIdxInCol = cols[sourceColumn]?.indexOf(sourceGroup) ?? -1;
+  const targetColGroups = cols[safeTarget] ?? [];
+  let occupant: string | undefined;
+  if (count === 2 && sourceIdxInCol >= 0) {
+    const paired = targetColGroups[sourceIdxInCol];
+    if (paired && paired !== sourceGroup) occupant = paired;
+  }
+  if (!occupant) {
+    occupant = targetColGroups.find((g) => g !== sourceGroup);
+  }
+
+  if (count === 2 && occupant) {
+    const normSource = normalizeUiGroup(sourceGroup);
+    const normOccupant = normalizeUiGroup(occupant);
+    return {
+      newOrder: fullOrder,
+      newGroupColumn: {
+        ...groupColumn,
+        [normSource]: safeTarget,
+        [normOccupant]: sourceColumn,
+      },
+    };
+  }
+
+  const insertAt = cols[safeTarget]?.length ?? 0;
   return applyBelowGroupDrop(
     fullOrder,
-    belowKeys,
+    zoneKeys,
     groupColumn,
-    columnCount,
+    count,
     sourceGroup,
-    targetColumn,
+    safeTarget,
     insertAt,
+    zoneKind === "above" ? "above" : "below",
   );
 }
 
-/** Reorder / move a below-zone group — updates global order + column map. */
+function partitionZoneGroupsByColumn(
+  zoneKeys: string[],
+  groupColumn: Record<string, number>,
+  columnCount: ConfigColumnCount,
+  zone?: GroupDisplayZone,
+): string[][] {
+  if (zone === "above") {
+    return partitionAboveGroupsByColumn(zoneKeys, groupColumn);
+  }
+  return partitionBelowGroupsByColumn(zoneKeys, groupColumn, columnCount);
+}
+
+/** Reorder / move a zone group — updates global order + column map. */
 export function applyBelowGroupDrop(
   fullOrder: string[],
   belowKeys: string[],
@@ -147,12 +272,13 @@ export function applyBelowGroupDrop(
   sourceGroup: string,
   targetColumn: number,
   targetGroupIdx: number,
+  zone?: GroupDisplayZone,
 ): { newOrder: string[]; newGroupColumn: Record<string, number> } {
   const norm = normalizeUiGroup(sourceGroup);
-  const cols = partitionBelowGroupsByColumn(belowKeys, groupColumn, columnCount);
-  const sourceColumn = Math.min(Math.max(0, resolveGroupColumn(sourceGroup, groupColumn)), columnCount - 1);
+  const cols = partitionZoneGroupsByColumn(belowKeys, groupColumn, columnCount, zone);
+  const sourceColumn = cols.findIndex((col) => col.includes(sourceGroup));
   const safeTargetColumn = Math.min(Math.max(0, targetColumn), columnCount - 1);
-  const fromIdx = cols[sourceColumn].indexOf(sourceGroup);
+  const fromIdx = sourceColumn >= 0 ? cols[sourceColumn]!.indexOf(sourceGroup) : -1;
   if (fromIdx < 0) {
     return { newOrder: fullOrder, newGroupColumn: groupColumn };
   }

@@ -14,6 +14,8 @@ interface GroupHeaderControlsProps {
   onDragStart: (e: React.MouseEvent) => void;
   onToggleZone: () => void;
   onToggleHide: () => void;
+  showDelete?: boolean;
+  onDelete?: () => void;
 }
 
 /** Layout-mode group chrome: drag handle, above/below pin, hide. */
@@ -31,9 +33,11 @@ export default function GroupHeaderControls({
   onDragStart,
   onToggleZone,
   onToggleHide,
+  showDelete = false,
+  onDelete,
 }: GroupHeaderControlsProps) {
   const pinnedAbove = displayZone === "above";
-  const showColumnArrows = zone === "below" && columnCount > 1;
+  const showColumnArrows = zone === "above" || (zone === "below" && columnCount > 1);
 
   return (
     <div
@@ -83,9 +87,9 @@ export default function GroupHeaderControls({
               ? "border-nv-green/50 text-nv-green/90 bg-nv-green/10"
               : "border-stealth-border/40 text-stealth-muted/45 hover:text-stealth-muted"
           }`}
-          title={pinnedAbove ? "Pinned above display — click to move below" : "Pin above VRAM display"}
+          title={pinnedAbove ? "Click to move below VRAM display" : "Click to pin above VRAM display"}
         >
-          {pinnedAbove ? "▲ ABOVE" : "▼ BELOW"}
+          {pinnedAbove ? "▼ BELOW" : "▲ ABOVE"}
         </button>
       )}
       {!hideHideToggle && (
@@ -100,6 +104,16 @@ export default function GroupHeaderControls({
           title={isHidden ? "Show group in engine config" : "Hide group from engine config"}
         >
           {isHidden ? "SHOW" : "HIDE"}
+        </button>
+      )}
+      {showDelete && onDelete && (
+        <button
+          type="button"
+          onClick={onDelete}
+          className="config-group-layout-controls__delete px-1.5 py-0 text-[7px] font-mono rounded-sm border border-red-400/35 text-red-400/75 hover:text-red-400 hover:border-red-400/55 transition-colors"
+          title="Remove empty group"
+        >
+          DEL
         </button>
       )}
     </div>

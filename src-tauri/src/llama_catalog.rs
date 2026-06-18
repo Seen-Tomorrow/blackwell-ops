@@ -511,15 +511,14 @@ fn determine_ptype(
         }
     }
 
-    // ── Numeric types — generate smart presets ──
+    // ── Numeric types — default only; no auto-generated preset ladders ──
     if let Some(dv) = default_value {
-        if let Some(num) = dv.as_i64() {
-            let presets = generate_numeric_presets(flag, num);
-            return ("arg_select".to_string(), Vec::new(), presets);
-        }
-        if let Some(num) = dv.as_f64() {
-            let presets = generate_numeric_presets_f64(flag, num);
-            return ("arg_select".to_string(), Vec::new(), presets);
+        if dv.as_i64().is_some() || dv.as_f64().is_some() {
+            return (
+                "arg_select".to_string(),
+                vec![dv.clone()],
+                Vec::new(),
+            );
         }
     }
 
@@ -532,174 +531,16 @@ fn determine_ptype(
                 return ("arg_select".to_string(), Vec::new(), Vec::new());
             }
         }
-        // Generic N → numeric arg (no default found)
+        // Generic N/M numeric arg without help default — empty values; user adds manually
         if let Some(token) = arg_token {
             if token == "N" || token == "M" {
-                return ("arg_select".to_string(), Vec::new(),
-                    vec![serde_json::json!(0), serde_json::json!(1), serde_json::json!(10), serde_json::json!(100)]);
+                return ("arg_select".to_string(), Vec::new(), Vec::new());
             }
         }
     }
 
     // ── Fallback ──
     ("arg_select".to_string(), Vec::new(), Vec::new())
-}
-
-/// Generate 5 smart presets for an integer parameter based on its known purpose.
-fn generate_numeric_presets(flag: &str, default: i64) -> Vec<serde_json::Value> {
-    let fl = flag.trim_start_matches('-');
-
-    // Known params with specific sane ranges
-    match fl {
-        "temp" | "temperature" => vec![
-            serde_json::json!(0.1), serde_json::json!(0.5), serde_json::json!(0.8),
-            serde_json::json!(1.0), serde_json::json!(1.5),
-        ],
-        "top-k" | "top_k" => vec![
-            serde_json::json!(0), serde_json::json!(10), serde_json::json!(40),
-            serde_json::json!(50), serde_json::json!(100),
-        ],
-        "top-p" | "top_p" | "typical-p" => vec![
-            serde_json::json!(0.5), serde_json::json!(0.8), serde_json::json!(0.9),
-            serde_json::json!(0.95), serde_json::json!(1.0),
-        ],
-        "min-p" | "min_p" => vec![
-            serde_json::json!(0.0), serde_json::json!(0.01), serde_json::json!(0.05),
-            serde_json::json!(0.1), serde_json::json!(0.2),
-        ],
-        "threads" if !fl.contains("batch") => {
-            let logical_cpus = std::thread::available_parallelism()
-                .map(|n| n.get() as i64)
-                .unwrap_or(8);
-            let half = logical_cpus / 2;
-            vec![
-                serde_json::json!(1), serde_json::json!(half.max(2)), serde_json::json!(logical_cpus),
-                serde_json::json!(logical_cpus * 2), serde_json::json!(-1),
-            ]
-        },
-        "threads-batch" | "threads_batch" => {
-            let logical_cpus = std::thread::available_parallelism()
-                .map(|n| n.get() as i64)
-                .unwrap_or(8);
-            let half = logical_cpus / 2;
-            vec![
-                serde_json::json!(1), serde_json::json!(half.max(2)), serde_json::json!(logical_cpus),
-                serde_json::json!(logical_cpus * 2), serde_json::json!(-1),
-            ]
-        },
-        "ctx-size" | "ctx_size" | "n-predict" | "n_predict" => vec![
-            serde_json::json!(2048), serde_json::json!(4096), serde_json::json!(8192),
-            serde_json::json!(16384), serde_json::json!(32768),
-        ],
-        "batch-size" | "batch_size" | "batch" => vec![
-            serde_json::json!(256), serde_json::json!(1024), serde_json::json!(2048),
-            serde_json::json!(4096), serde_json::json!(8192),
-        ],
-        "ubatch-size" | "ubatch_size" => vec![
-            serde_json::json!(512), serde_json::json!(1024), serde_json::json!(2048),
-            serde_json::json!(4096), serde_json::json!(8192),
-        ],
-        "parallel" => vec![
-            serde_json::json!(1), serde_json::json!(2), serde_json::json!(4),
-            serde_json::json!(8), serde_json::json!(16),
-        ],
-        "gpu-layers" | "n-gpu-layers" | "ngl" => vec![
-            serde_json::json!(1), serde_json::json!(20), serde_json::json!(50),
-            serde_json::json!(100), serde_json::json!(9999),
-        ],
-        "flash-attn" | "flash_attn" => vec![
-            serde_json::json!(0), serde_json::json!(1),
-        ],
-        "prio" => vec![
-            serde_json::json!(-1), serde_json::json!(0), serde_json::json!(1),
-            serde_json::json!(2), serde_json::json!(3),
-        ],
-        "poll" => vec![
-            serde_json::json!(0), serde_json::json!(25), serde_json::json!(50),
-            serde_json::json!(75), serde_json::json!(100),
-        ],
-        "reasoning-budget" | "think-budget" => vec![
-            serde_json::json!(-1), serde_json::json!(0), serde_json::json!(1024),
-            serde_json::json!(4096), serde_json::json!(8192),
-        ],
-        "cache-reuse" => vec![
-            serde_json::json!(0), serde_json::json!(64), serde_json::json!(256),
-            serde_json::json!(512), serde_json::json!(1024),
-        ],
-        "slot-prompt-similarity" | "sps" => vec![
-            serde_json::json!(0.0), serde_json::json!(0.1), serde_json::json!(0.3),
-            serde_json::json!(0.5), serde_json::json!(1.0),
-        ],
-        _ => {
-            // Generic: default/2, default, default*2, default*4, default*8
-            // But handle special defaults like -1 (means "auto/infinite")
-            if default < 0 {
-                vec![
-                    serde_json::json!(default), serde_json::json!(0), serde_json::json!(1),
-                    serde_json::json!(10), serde_json::json!(100),
-                ]
-            } else if default == 0 {
-                vec![
-                    serde_json::json!(0), serde_json::json!(1), serde_json::json!(10),
-                    serde_json::json!(100), serde_json::json!(1000),
-                ]
-            } else {
-                let d = default as f64;
-                vec![
-                    serde_json::json!((d / 2.0).max(1.0) as i64),
-                    serde_json::json!(default),
-                    serde_json::json!(default * 2),
-                    serde_json::json!(default * 4),
-                    serde_json::json!(default * 8),
-                ]
-            }
-        }
-    }
-}
-
-/// Generate 5 smart presets for a float parameter.
-fn generate_numeric_presets_f64(flag: &str, default: f64) -> Vec<serde_json::Value> {
-    let fl = flag.trim_start_matches('-');
-
-    match fl {
-        "temp" | "temperature" => vec![
-            serde_json::json!(0.1), serde_json::json!(0.5), serde_json::json!(0.8),
-            serde_json::json!(1.0), serde_json::json!(1.5),
-        ],
-        "rope-scale" | "rope-freq-scale" => vec![
-            serde_json::json!(0.5), serde_json::json!(1.0), serde_json::json!(1.2),
-            serde_json::json!(1.5), serde_json::json!(2.0),
-        ],
-        "yarn-ext-factor" => vec![
-            serde_json::json!(-1.0), serde_json::json!(0.0), serde_json::json!(0.5),
-            serde_json::json!(1.0), serde_json::json!(2.0),
-        ],
-        "yarn-attn-factor" => vec![
-            serde_json::json!(0.5), serde_json::json!(0.8), serde_json::json!(1.0),
-            serde_json::json!(1.2), serde_json::json!(1.5),
-        ],
-        _ => {
-            if default < 0.0 {
-                vec![
-                    serde_json::json!(default), serde_json::json!(0.0), serde_json::json!(1.0),
-                    serde_json::json!(10.0), serde_json::json!(100.0),
-                ]
-            } else if default == 0.0 {
-                vec![
-                    serde_json::json!(0.0), serde_json::json!(0.1), serde_json::json!(0.5),
-                    serde_json::json!(1.0), serde_json::json!(2.0),
-                ]
-            } else {
-                vec![
-                    serde_json::json!(default / 2.0),
-                    serde_json::json!(default),
-                    serde_json::json!(default * 2.0),
-                    serde_json::json!(default * 4.0),
-                    serde_json::json!(default * 8.0),
-                ]
-            }
-        }
-    }
 }
 
 /// Convert flag like `--threads-batch` → key `"threads_batch"`.
