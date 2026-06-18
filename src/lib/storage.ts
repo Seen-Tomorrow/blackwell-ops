@@ -225,6 +225,88 @@ export function saveGroupDisplayZone(
   writeJsonStorage(groupDisplayZoneKey(providerId), zones);
 }
 
+export type ConfigColumnCount = 1 | 2 | 3;
+
+export function configColumnCountKey(providerId: string): string {
+  return `${STORAGE_PREFIX}config-column-count:${providerId}`;
+}
+
+export function configColumnWidthsKey(providerId: string): string {
+  return `${STORAGE_PREFIX}config-column-widths:${providerId}`;
+}
+
+export function groupColumnKey(providerId: string): string {
+  return `${STORAGE_PREFIX}group-column:${providerId}`;
+}
+
+export function loadConfigColumnCount(
+  providerId: string,
+  fromProvider?: ConfigColumnCount,
+): ConfigColumnCount {
+  const stored = readJsonStorage<ConfigColumnCount>(configColumnCountKey(providerId));
+  if (stored === 2 || stored === 3) return stored;
+  if (fromProvider === 2 || fromProvider === 3) return fromProvider;
+  return 1;
+}
+
+export function saveConfigColumnCount(providerId: string, count: ConfigColumnCount): void {
+  writeJsonStorage(configColumnCountKey(providerId), count);
+}
+
+function normalizeStoredColumnWidths(count: ConfigColumnCount, widths?: number[] | null): number[] {
+  const defaults: Record<ConfigColumnCount, number[]> = {
+    1: [1],
+    2: [0.5, 0.5],
+    3: [0.4, 0.3, 0.3],
+  };
+  const fallback = defaults[count];
+  if (!widths || widths.length !== count) return [...fallback];
+  const sum = widths.reduce((a, b) => a + b, 0);
+  if (!Number.isFinite(sum) || sum <= 0) return [...fallback];
+  return widths.map((w) => w / sum);
+}
+
+export function loadConfigColumnWidths(
+  providerId: string,
+  count: ConfigColumnCount,
+  fromProvider?: number[],
+): number[] {
+  const stored = readJsonStorage<number[]>(configColumnWidthsKey(providerId));
+  if (stored) return normalizeStoredColumnWidths(count, stored);
+  if (fromProvider) return normalizeStoredColumnWidths(count, fromProvider);
+  return normalizeStoredColumnWidths(count, null);
+}
+
+export function saveConfigColumnWidths(providerId: string, widths: number[]): void {
+  writeJsonStorage(configColumnWidthsKey(providerId), widths);
+}
+
+export function loadGroupColumn(
+  providerId: string,
+  fromProvider?: Record<string, number>,
+): Record<string, number> {
+  const stored = readJsonStorage<Record<string, number>>(groupColumnKey(providerId));
+  if (stored && typeof stored === "object") {
+    const out: Record<string, number> = {};
+    for (const [k, v] of Object.entries(stored)) {
+      out[normalizeUiGroup(k)] = v;
+    }
+    return out;
+  }
+  if (fromProvider) {
+    const out: Record<string, number> = {};
+    for (const [k, v] of Object.entries(fromProvider)) {
+      out[normalizeUiGroup(k)] = v;
+    }
+    return out;
+  }
+  return {};
+}
+
+export function saveGroupColumn(providerId: string, columns: Record<string, number>): void {
+  writeJsonStorage(groupColumnKey(providerId), columns);
+}
+
 export function autoVramKey(providerId: string): string {
   return `${STORAGE_PREFIX}auto-vram:${providerId}`;
 }

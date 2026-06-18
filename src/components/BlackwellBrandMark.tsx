@@ -14,18 +14,16 @@ export default function BlackwellBrandMark({
 
   return (
     <div
-      className={`flex items-center gap-2 ${isShare ? "fusion-share-brand-mark" : ""}`}
+      className={`${isShare ? "fusion-share-brand-mark flex items-center gap-2" : "app-header-brand"}`}
     >
       <BrandLogoIcon
         height={APP_BRAND_LOGO_SIZE}
         className="flex-shrink-0 app-header-logo"
       />
       {showVersion && (
-        <div>
-          <p className="app-header-subtitle text-[8px] font-mono tracking-wider">
-            v{__TAURI_VERSION__} · BUILD {__APP_VERSION__}
-          </p>
-        </div>
+        <p className="app-header-version font-mono tracking-wide">
+          v{__TAURI_VERSION__} · {__APP_VERSION__}
+        </p>
       )}
     </div>
   );

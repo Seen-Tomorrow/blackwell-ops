@@ -13,6 +13,13 @@ export const DISPLAY_TEXTURE_LABELS: Record<DisplayTexture, string> = {
   "phosphor-light": "PHOSPHOR LIGHT",
 };
 
+/** Compact header picker labels */
+export const DISPLAY_TEXTURE_SHORT_LABELS: Record<DisplayTexture, string> = {
+  "phosphor-dark": "DARK",
+  "phosphor-light": "LIGHT",
+  clean: "CLEAN",
+};
+
 const LEGACY_TEXTURE_MAP: Record<string, DisplayTexture> = {
   crt: "clean",
   scanline: "clean",
@@ -33,7 +40,7 @@ export function isDisplayTexture(value: string | null | undefined): value is Dis
 export function normalizeDisplayTexture(value: string | null | undefined): DisplayTexture {
   if (isDisplayTexture(value)) return value;
   if (value && value in LEGACY_TEXTURE_MAP) return LEGACY_TEXTURE_MAP[value];
-  return "clean";
+  return "phosphor-dark";
 }
 
 export function nextDisplayTexture(current: DisplayTexture): DisplayTexture {

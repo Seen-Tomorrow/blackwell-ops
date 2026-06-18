@@ -1,5 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import {
+  applyBelowGroupDrop,
+  adjustColumnGutter,
+  moveGroupToColumn,
+  resolveGroupColumn,
+  defaultColumnWidths,
+  findGroupDropTarget,
+  normalizeColumnWidths,
+  partitionBelowGroupsByColumn,
+  type ConfigColumnCount,
+} from "../lib/configColumnLayout";
 import { dispatchAppEvent, EVENTS } from "../lib/events";
 import {
   findGroupDropIndex,
@@ -10,10 +21,16 @@ import {
 } from "../lib/paramDisplayZone";
 import {
   groupOrderKey,
+  loadConfigColumnCount,
+  loadConfigColumnWidths,
+  loadGroupColumn,
   loadGroupDisplayZone,
   normalizeUiGroup,
   readJsonStorage,
   resolveGroupOrder,
+  saveConfigColumnCount,
+  saveConfigColumnWidths,
+  saveGroupColumn,
   saveGroupDisplayZone,
   writeJsonStorage,
 } from "../lib/storage";
@@ -50,6 +67,16 @@ export function useGroupLayoutControls({
 }: UseGroupLayoutControlsArgs) {
   const [customGroupOrder, setCustomGroupOrder] = useState<string[] | null>(null);
   const [groupDisplayZone, setGroupDisplayZone] = useState<Record<string, GroupDisplayZone>>({});
+  const [columnCount, setColumnCount] = useState<ConfigColumnCount>(1);
+  const [columnWidths, setColumnWidths] = useState<number[]>([1]);
+  const [groupColumn, setGroupColumn] = useState<Record<string, number>>({});
+
+  const reloadColumnLayout = useCallback(() => {
+    const count = loadConfigColumnCount(providerId, currentProvider?.configColumnCount);
+    setColumnCount(count);
+    setColumnWidths(loadConfigColumnWidths(providerId, count, currentProvider?.configColumnWidths));
+    setGroupColumn(loadGroupColumn(providerId, currentProvider?.groupColumn));
+  }, [providerId, currentProvider]);
 
   useEffect(() => {
     try {
@@ -62,12 +89,14 @@ export function useGroupLayoutControls({
 
   useEffect(() => {
     setGroupDisplayZone(loadGroupDisplayZone(providerId, currentProvider?.groupDisplayZone));
-  }, [providerId, currentProvider]);
+    reloadColumnLayout();
+  }, [providerId, currentProvider, reloadColumnLayout]);
 
   useEffect(() => {
     const onConfigChanged = () => {
       setGroupDisplayZone(loadGroupDisplayZone(providerId, currentProvider?.groupDisplayZone));
       setCustomGroupOrder(readGroupOrder(providerId, currentProvider));
+      reloadColumnLayout();
     };
     window.addEventListener(EVENTS.paramConfigChanged, onConfigChanged);
     window.addEventListener(EVENTS.reloadProviders, onConfigChanged);
@@ -75,25 +104,73 @@ export function useGroupLayoutControls({
       window.removeEventListener(EVENTS.paramConfigChanged, onConfigChanged);
       window.removeEventListener(EVENTS.reloadProviders, onConfigChanged);
     };
-  }, [providerId, currentProvider]);
+  }, [providerId, currentProvider, reloadColumnLayout]);
+
+  const persistProviderPatch = useCallback(
+    async (patch: Partial<ProviderConfig>) => {
+      if (!currentProvider) return;
+      const updated = { ...currentProvider, ...patch };
+      try {
+        await invoke("save_provider", { provider: updated });
+        dispatchAppEvent(EVENTS.reloadProviders);
+      } catch {
+        /* ignore */
+      }
+    },
+    [currentProvider],
+  );
 
   const saveGroupOrder = useCallback(
     async (newOrder: string[]) => {
       const normalized = newOrder.map(normalizeUiGroup);
       writeJsonStorage(groupOrderKey(providerId), normalized);
       setCustomGroupOrder(normalized);
-      if (currentProvider) {
-        const updated = { ...currentProvider, groupOrder: normalized };
-        try {
-          await invoke("save_provider", { provider: updated });
-          dispatchAppEvent(EVENTS.reloadProviders);
-        } catch {
-          /* ignore */
-        }
-      }
+      await persistProviderPatch({ groupOrder: normalized });
       dispatchAppEvent(EVENTS.paramConfigChanged);
     },
-    [providerId, currentProvider],
+    [providerId, persistProviderPatch],
+  );
+
+  const saveGroupColumnState = useCallback(
+    async (next: Record<string, number>) => {
+      const normalized: Record<string, number> = {};
+      for (const [k, v] of Object.entries(next)) {
+        normalized[normalizeUiGroup(k)] = v;
+      }
+      saveGroupColumn(providerId, normalized);
+      setGroupColumn(normalized);
+      await persistProviderPatch({ groupColumn: normalized });
+      dispatchAppEvent(EVENTS.paramConfigChanged);
+    },
+    [providerId, persistProviderPatch],
+  );
+
+  const saveColumnLayout = useCallback(
+    async (count: ConfigColumnCount, widths: number[]) => {
+      const normalizedWidths = normalizeColumnWidths(count, widths);
+      saveConfigColumnCount(providerId, count);
+      saveConfigColumnWidths(providerId, normalizedWidths);
+      setColumnCount(count);
+      setColumnWidths(normalizedWidths);
+      await persistProviderPatch({
+        configColumnCount: count,
+        configColumnWidths: normalizedWidths,
+      });
+      dispatchAppEvent(EVENTS.paramConfigChanged);
+    },
+    [providerId, persistProviderPatch],
+  );
+
+  const setBelowColumnCount = useCallback(
+    (count: ConfigColumnCount) => {
+      const loaded = loadConfigColumnWidths(providerId, count, currentProvider?.configColumnWidths);
+      const normalized = normalizeColumnWidths(
+        count,
+        loaded.length === count ? loaded : defaultColumnWidths(count),
+      );
+      void saveColumnLayout(count, normalized);
+    },
+    [providerId, currentProvider, saveColumnLayout],
   );
 
   const toggleGroupDisplayZone = useCallback(
@@ -104,18 +181,10 @@ export function useGroupLayoutControls({
       else next[normalized] = "above";
       saveGroupDisplayZone(providerId, next);
       setGroupDisplayZone(next);
-      if (currentProvider) {
-        const updated = { ...currentProvider, groupDisplayZone: next };
-        try {
-          await invoke("save_provider", { provider: updated });
-          dispatchAppEvent(EVENTS.reloadProviders);
-        } catch {
-          /* ignore */
-        }
-      }
+      await persistProviderPatch({ groupDisplayZone: next });
       dispatchAppEvent(EVENTS.paramConfigChanged);
     },
-    [groupDisplayZone, providerId, currentProvider],
+    [groupDisplayZone, providerId, persistProviderPatch],
   );
 
   const toggleGroupHidden = useCallback(
@@ -153,6 +222,11 @@ export function useGroupLayoutControls({
     [orderedGroupKeys, groupDisplayZone, groupIncluded],
   );
 
+  const belowGroupsByColumn = useMemo(
+    () => partitionBelowGroupsByColumn(belowGroupKeys, groupColumn, columnCount),
+    [belowGroupKeys, groupColumn, columnCount],
+  );
+
   const isGroupHidden = useCallback(
     (groupId: string) => isGroupFullyHidden(groupId, allGroupedParams),
     [allGroupedParams],
@@ -160,7 +234,9 @@ export function useGroupLayoutControls({
 
   const dragContextRef = useRef<DragContext | null>(null);
   const dragListenersRef = useRef<{ move: (e: MouseEvent) => void; up: (e: MouseEvent) => void } | null>(null);
+  const gutterDragRef = useRef<{ gutterIndex: number; startX: number; startWidths: number[] } | null>(null);
   const [draggingGroup, setDraggingGroup] = useState<string | null>(null);
+  const [draggingGutterIndex, setDraggingGutterIndex] = useState<number | null>(null);
 
   const clearDragListeners = useCallback(() => {
     const listeners = dragListenersRef.current;
@@ -173,6 +249,7 @@ export function useGroupLayoutControls({
   useEffect(() => () => {
     clearDragListeners();
     dragContextRef.current = null;
+    gutterDragRef.current = null;
   }, [clearDragListeners]);
 
   const finishDrag = useCallback(
@@ -184,19 +261,38 @@ export function useGroupLayoutControls({
       if (!ctx?.hasMoved) return;
 
       const panel = document.querySelector("[data-config-panel]");
-      const targetIdx = findGroupDropIndex(
-        clientX,
-        clientY,
-        ctx.zone,
-        panel ?? document,
-      );
+
+      if (ctx.zone === "below" && columnCount > 1) {
+        const target = findGroupDropTarget(clientX, clientY, "below", panel ?? document);
+        if (!target) return;
+        const { newOrder, newGroupColumn } = applyBelowGroupDrop(
+          ctx.orderedKeys,
+          ctx.zoneKeys,
+          groupColumn,
+          columnCount,
+          ctx.groupName,
+          target.columnIdx,
+          target.groupIdx,
+        );
+        void saveGroupOrder(newOrder);
+        void saveGroupColumnState(newGroupColumn);
+        return;
+      }
+
+      const targetIdx = findGroupDropIndex(clientX, clientY, ctx.zone, panel ?? document);
       const fromIdx = ctx.zoneKeys.indexOf(ctx.groupName);
       if (targetIdx < 0 || fromIdx < 0 || targetIdx === fromIdx) return;
 
       const newOrder = reorderGroupsWithinZone(ctx.orderedKeys, ctx.zoneKeys, fromIdx, targetIdx);
       void saveGroupOrder(newOrder);
     },
-    [clearDragListeners, saveGroupOrder],
+    [
+      clearDragListeners,
+      columnCount,
+      groupColumn,
+      saveGroupOrder,
+      saveGroupColumnState,
+    ],
   );
 
   const handleGroupDragStart = useCallback(
@@ -206,10 +302,16 @@ export function useGroupLayoutControls({
       if (e.button !== 0) return;
 
       clearDragListeners();
+      const zoneKeys = zone === "above"
+        ? [...aboveGroupKeys]
+        : columnCount > 1
+          ? [...belowGroupKeys]
+          : [...belowGroupKeys];
+
       dragContextRef.current = {
         groupName,
         zone,
-        zoneKeys: zone === "above" ? [...aboveGroupKeys] : [...belowGroupKeys],
+        zoneKeys,
         orderedKeys: [...orderedGroupKeys],
         hasMoved: false,
         startX: e.clientX,
@@ -218,11 +320,11 @@ export function useGroupLayoutControls({
       setDraggingGroup(groupName);
 
       const onMove = (ev: MouseEvent) => {
-        const ctx = dragContextRef.current;
-        if (!ctx) return;
-        const dx = Math.abs(ev.clientX - ctx.startX);
-        const dy = Math.abs(ev.clientY - ctx.startY);
-        if (!ctx.hasMoved && (dx > 3 || dy > 3)) ctx.hasMoved = true;
+        const c = dragContextRef.current;
+        if (!c) return;
+        const dx = Math.abs(ev.clientX - c.startX);
+        const dy = Math.abs(ev.clientY - c.startY);
+        if (!c.hasMoved && (dx > 3 || dy > 3)) c.hasMoved = true;
       };
 
       const onUp = (ev: MouseEvent) => {
@@ -237,19 +339,96 @@ export function useGroupLayoutControls({
       layoutModeActive,
       aboveGroupKeys,
       belowGroupKeys,
+      columnCount,
       orderedGroupKeys,
       clearDragListeners,
       finishDrag,
     ],
   );
 
+  const shiftGroupColumn = useCallback(
+    (groupId: string, direction: -1 | 1) => {
+      if (columnCount < 2) return;
+      const current = resolveGroupColumn(groupId, groupColumn);
+      const target = current + direction;
+      if (target < 0 || target >= columnCount || target === current) return;
+      const { newOrder, newGroupColumn } = moveGroupToColumn(
+        orderedGroupKeys,
+        belowGroupKeys,
+        groupColumn,
+        columnCount,
+        groupId,
+        target,
+      );
+      void saveGroupOrder(newOrder);
+      void saveGroupColumnState(newGroupColumn);
+    },
+    [
+      columnCount,
+      groupColumn,
+      orderedGroupKeys,
+      belowGroupKeys,
+      saveGroupOrder,
+      saveGroupColumnState,
+    ],
+  );
+
+  const handleGutterDragStart = useCallback(
+    (gutterIndex: number, e: React.MouseEvent) => {
+      if (columnCount < 2) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.button !== 0) return;
+
+      clearDragListeners();
+      const container = (e.currentTarget as HTMLElement).closest(".config-params-below--multi") as HTMLElement | null;
+      const startWidths = [...columnWidths];
+      gutterDragRef.current = { gutterIndex, startX: e.clientX, startWidths };
+      setDraggingGutterIndex(gutterIndex);
+      const onMove = (ev: MouseEvent) => {
+        const ctx = gutterDragRef.current;
+        if (!ctx || !container) return;
+        const width = container.getBoundingClientRect().width;
+        const delta = ev.clientX - ctx.startX;
+        const next = adjustColumnGutter(ctx.startWidths, ctx.gutterIndex, delta, width);
+        setColumnWidths(next);
+      };
+
+      const onUp = (ev: MouseEvent) => {
+        const ctx = gutterDragRef.current;
+        gutterDragRef.current = null;
+        setDraggingGutterIndex(null);
+        clearDragListeners();
+        if (!ctx) return;
+        const container = document.querySelector(".config-params-below--multi") as HTMLElement | null;
+        const width = container?.getBoundingClientRect().width ?? 0;
+        const delta = ev.clientX - ctx.startX;
+        const next = adjustColumnGutter(ctx.startWidths, ctx.gutterIndex, delta, width);
+        void saveColumnLayout(columnCount, next);
+      };
+
+      dragListenersRef.current = { move: onMove, up: onUp };
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    },
+    [columnCount, columnWidths, clearDragListeners, saveColumnLayout],
+  );
+
   return {
     orderedGroupKeys,
     aboveGroupKeys,
     belowGroupKeys,
+    belowGroupsByColumn,
     groupDisplayZone,
+    columnCount,
+    columnWidths,
+    groupColumn,
     draggingGroup,
+    draggingGutterIndex,
     handleGroupDragStart,
+    handleGutterDragStart,
+    shiftGroupColumn,
+    setBelowColumnCount,
     toggleGroupDisplayZone,
     toggleGroupHidden,
     isGroupHidden,

@@ -19,6 +19,7 @@ import { StatusProvider } from "./context/StatusBarContext";
 import { TelemetryProvider, type GpuPollTier } from "./context/TelemetryContext";
 import { FusionProvider } from "./context/FusionContext";
 import { ThemeProvider } from "./context/ThemeContext";
+import { DisplayTextureProvider } from "./context/DisplayTextureContext";
 import { ToastProvider } from "./components/Toast";
 import { FoundryProvider } from "./hooks/useBuildDock";
 import { useSetupGuide } from "./hooks/useSetupGuide";
@@ -493,6 +494,7 @@ function App() {
     <FusionProvider stack={stack}>
     <ToastProvider>
       <ThemeProvider>
+        <DisplayTextureProvider>
         <FoundryProvider>
           <TelemetryProvider pollingActive={activeTab === "telemetry"} gpuPollTier={gpuPollTier}>
             <StatusProvider value={{ totalParams, hiddenCount, onShowAll: handleShowAll }}>
@@ -602,6 +604,7 @@ function App() {
           </StatusProvider>
         </TelemetryProvider>
       </FoundryProvider>
+        </DisplayTextureProvider>
     </ThemeProvider>
     </ToastProvider>
     </FusionProvider>

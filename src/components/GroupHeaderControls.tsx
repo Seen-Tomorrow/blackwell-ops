@@ -7,6 +7,10 @@ interface GroupHeaderControlsProps {
   isDragging: boolean;
   hideZoneToggle?: boolean;
   hideHideToggle?: boolean;
+  columnIdx?: number;
+  columnCount?: number;
+  onMoveColumnLeft?: () => void;
+  onMoveColumnRight?: () => void;
   onDragStart: (e: React.MouseEvent) => void;
   onToggleZone: () => void;
   onToggleHide: () => void;
@@ -20,11 +24,16 @@ export default function GroupHeaderControls({
   isDragging,
   hideZoneToggle = false,
   hideHideToggle = false,
+  columnIdx = 0,
+  columnCount = 1,
+  onMoveColumnLeft,
+  onMoveColumnRight,
   onDragStart,
   onToggleZone,
   onToggleHide,
 }: GroupHeaderControlsProps) {
   const pinnedAbove = displayZone === "above";
+  const showColumnArrows = zone === "below" && columnCount > 1;
 
   return (
     <div
@@ -43,6 +52,28 @@ export default function GroupHeaderControls({
       >
         &#x2630;
       </button>
+      {showColumnArrows && (
+        <div className="config-group-layout-controls__cols flex items-center gap-px">
+          <button
+            type="button"
+            disabled={columnIdx <= 0}
+            onClick={onMoveColumnLeft}
+            className="config-group-layout-controls__col-btn px-1 py-0 text-[8px] font-mono rounded-sm border border-stealth-border/40 text-stealth-muted/55 hover:text-stealth-muted disabled:opacity-25 disabled:cursor-not-allowed"
+            title="Move group to column on the left"
+          >
+            ◀
+          </button>
+          <button
+            type="button"
+            disabled={columnIdx >= columnCount - 1}
+            onClick={onMoveColumnRight}
+            className="config-group-layout-controls__col-btn px-1 py-0 text-[8px] font-mono rounded-sm border border-stealth-border/40 text-stealth-muted/55 hover:text-stealth-muted disabled:opacity-25 disabled:cursor-not-allowed"
+            title="Move group to column on the right"
+          >
+            ▶
+          </button>
+        </div>
+      )}
       {!hideZoneToggle && (
         <button
           type="button"

@@ -22,8 +22,11 @@ import {
   PANEL_CHROME_PARAM_KEYS,
 } from "../lib/paramDisplayZone";
 import type { GroupDisplayZone } from "../lib/storage";
+import ConfigBelowGroups from "./ConfigBelowGroups";
 import GpuAssignPanel from "./GpuAssignPanel";
 import GroupHeaderControls from "./GroupHeaderControls";
+import type { ConfigColumnCount } from "../lib/configColumnLayout";
+import { resolveGroupColumn } from "../lib/configColumnLayout";
 import { useGroupLayoutControls } from "../hooks/useGroupLayoutControls";
 import { dispatchAppEvent, EVENTS } from "../lib/events";
 import { DEFAULT_BINARY_PROFILE, ENV_META, ENV_ORDER, type Env } from "../lib/foundry_constants";
@@ -38,7 +41,7 @@ import { formatTokenLabel } from "../lib/sliderParamUtils";
 import { useScenarioEvaluator } from "../hooks/useScenarioEvaluator";
 import type { SetupGuideState } from "../hooks/useSetupGuide";
 import { useConfigResolver } from "../hooks/useConfigResolver";
-import { useDisplayTexture } from "../hooks/useDisplayTexture";
+import { useDisplayTexture } from "../context/DisplayTextureContext";
 import DisplayGlitchOverlay from "./DisplayGlitchOverlay";
 import { useFoundry } from "../hooks/useBuildDock";
 import { buildAutoVramLaunchParams } from "../lib/autoVramLaunch";
@@ -257,7 +260,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     () => readStorage(KEYS.configLayoutMode) === "1",
   );
 
-  const { texture: displayTexture, label: displayTextureLabel, cycle: cycleDisplayTexture } = useDisplayTexture();
+  const { texture: displayTexture } = useDisplayTexture();
 
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => {
     try {
@@ -312,19 +315,18 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           aliasUserEditedRef.current = true;
           setAliasIsUserSet(true);
         } else {
-          const autoName = nextEngineAlias(stack);
-          setAliasInput(autoName);
+          setAliasInput("");
           aliasUserEditedRef.current = false;
           setAliasIsUserSet(false);
-          aliasInitializedRef.current = { modelPath: model.path, done: true };
         }
       } catch {
+        setAliasInput("");
         aliasUserEditedRef.current = false;
         setAliasIsUserSet(false);
-        aliasInitializedRef.current = { modelPath: model.path, done: true };
       }
+      aliasInitializedRef.current = { modelPath: model.path, done: true };
     }
-  }, [model?.path, stack]);
+  }, [model?.path]);
 
   // Save alias to localStorage only when user has actively edited it (not on every keystroke)
   const saveAliasForModel = useCallback((modelPath: string, aliasValue: string) => {
@@ -531,6 +533,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     () => resolveParallelSlots(config, allParamsResolved),
     [config, allParamsResolved],
   );
+
+  const autoAlias = useMemo(() => nextEngineAlias(stack), [stack]);
 
   const shareLaunchConfig = useMemo((): FusionShareLaunchConfig => ({
     ctx: config.ctx,
@@ -778,9 +782,17 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   const {
     aboveGroupKeys,
     belowGroupKeys,
+    belowGroupsByColumn,
     groupDisplayZone,
+    columnCount,
+    columnWidths,
+    groupColumn,
     draggingGroup,
+    draggingGutterIndex,
     handleGroupDragStart,
+    handleGutterDragStart,
+    shiftGroupColumn,
+    setBelowColumnCount,
     toggleGroupDisplayZone,
     toggleGroupHidden,
     isGroupHidden,
@@ -799,10 +811,17 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     return ENV_ORDER.filter((env) => isProfileBuilt(currentProvider, env));
   }, [resolvedProviders, effectiveBackendType]);
 
+  const belowGroupMetaById = useMemo(() => {
+    const map = new Map<string, ParamGroupMeta>();
+    for (const g of deriveParamGroups(belowGroupKeys)) map.set(g.id, g);
+    return map;
+  }, [belowGroupKeys]);
+
   const renderGroupLayoutControls = useCallback(
     (groupId: string, zone: GroupDisplayZone, opts?: { hideZoneToggle?: boolean; hideHideToggle?: boolean }) => {
       if (!layoutModeActive) return null;
       const displayZone = groupDisplayZone[normalizeUiGroup(groupId)] === "above" ? "above" : "below";
+      const colIdx = zone === "below" ? resolveGroupColumn(groupId, groupColumn) : 0;
       return (
         <GroupHeaderControls
           zone={zone}
@@ -811,6 +830,10 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           isDragging={draggingGroup === groupId}
           hideZoneToggle={opts?.hideZoneToggle}
           hideHideToggle={opts?.hideHideToggle}
+          columnIdx={colIdx}
+          columnCount={columnCount}
+          onMoveColumnLeft={() => shiftGroupColumn(groupId, -1)}
+          onMoveColumnRight={() => shiftGroupColumn(groupId, 1)}
           onDragStart={(e) => handleGroupDragStart(e, zone, groupId)}
           onToggleZone={() => { void toggleGroupDisplayZone(groupId); }}
           onToggleHide={() => { void toggleGroupHidden(groupId); }}
@@ -820,9 +843,12 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     [
       layoutModeActive,
       groupDisplayZone,
+      groupColumn,
+      columnCount,
       isGroupHidden,
       draggingGroup,
       handleGroupDragStart,
+      shiftGroupColumn,
       toggleGroupDisplayZone,
       toggleGroupHidden,
     ],
@@ -892,19 +918,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             {renderGroupLayoutControls(group.id, zone, { hideHideToggle: true })}
           </div>
 
-          {isMtpModel && specActive && mtpParallelWarn && (
-            <div
-              className="rounded-sm px-3 py-2 text-[8px] font-mono leading-snug tracking-wide flex flex-col gap-0.5 text-[#FFB800]/95 border border-[#FFB800]/25 bg-[#FFB800]/5"
-              title="ik_llama strips MTP when --parallel > 1 at engine startup"
-            >
-              <span className="uppercase">MTP + parallel ×{mtpParallelSlotCount} conflict</span>
-              <span className="normal-case tracking-normal text-[7px] text-[#FFB800]/80">
-                Engine disables speculative decoding at launch — use parallel = 1 for MTP speed.
-              </span>
-            </div>
-          )}
-
-          {isMtpModel && specActive && !mtpParallelWarn && (
+          {isMtpModel && specActive && (
             <div className="rounded-sm px-3 py-2 text-[8px] font-mono tracking-wide uppercase flex items-center gap-1 text-nv-green">
               Speculative mode active
             </div>
@@ -952,7 +966,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     }
 
     const isCollapsed = collapsedGroups.has(group.id);
-    const headerClass = `config-group-header flex items-center gap-1.5 text-[8px] font-mono tracking-widest uppercase mb-2 pb-1 border-b border-stealth-border/30 w-full text-[#4ade80] opacity-45 ${draggingGroup === group.id ? "config-group-header--dragging text-yellow-400" : ""}`;
+    const headerClass = `config-group-header flex items-center gap-1.5 text-[8px] font-mono tracking-widest uppercase mb-2 pb-1 border-b border-stealth-border/30 w-full ${draggingGroup === group.id ? "config-group-header--dragging" : ""}`;
 
     return (
       <div key={group.id} className={groupHidden ? "config-param-group--hidden opacity-50" : undefined}>
@@ -992,7 +1006,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     collapsedGroups,
     toggleGroup,
     renderParamRow,
-    mtpParallelWarn,
     mtpParallelSlotCount,
     isMtpModel,
     layoutModeActive,
@@ -1110,11 +1123,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         if (result?.port) {
           dispatchAppEvent(EVENTS.launchSuccess, { alias: resolvedAlias, port: result.port });
         }
-        const wasUserEdited = aliasUserEditedRef.current;
-        if (wasUserEdited) {
+        if (aliasUserEditedRef.current) {
           saveAliasForModel(model.path, aliasInput.trim());
-        } else if (resolvedAlias !== aliasInput) {
-          setAliasInput(resolvedAlias);
         }
       })
       .catch((err: unknown) => {
@@ -1174,14 +1184,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           data-display-texture={displayTexture}
         >
           <div className={onboardingDisplay.frame}>
-            <button
-              type="button"
-              onClick={cycleDisplayTexture}
-              className="display-texture-toggle absolute top-[3px] left-1/2 -translate-x-1/2 z-[60]"
-              title={`Display texture: ${displayTextureLabel}. Click to cycle CLEAN / PHOSPHOR DARK / PHOSPHOR LIGHT.`}
-            >
-              {displayTextureLabel}
-            </button>
             <div className="phosphor-screen-inner phosphor-display-surface">
               <DisplayGlitchOverlay />
               {setupGuide.showWelcome ? (
@@ -1264,10 +1266,27 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                 );
               })}
             </div>
+            <div className="config-column-count flex items-center gap-0.5 flex-shrink-0 ml-2">
+              {([1, 2, 3] as ConfigColumnCount[]).map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => setBelowColumnCount(n)}
+                  className={`config-column-count__btn px-1.5 py-0.5 text-[8px] font-mono rounded-sm border transition-colors ${
+                    columnCount === n
+                      ? "border-nv-green/45 text-nv-green/90 bg-nv-green/10"
+                      : "border-stealth-border/40 text-stealth-muted/45 hover:text-stealth-muted"
+                  }`}
+                  title={`${n} column${n > 1 ? "s" : ""} below display`}
+                >
+                  {n}C
+                </button>
+              ))}
+            </div>
             <button
               type="button"
               onClick={toggleLayoutMode}
-              className={`config-layout-mode-btn flex-shrink-0 ml-2 px-2 py-0.5 text-[8px] font-mono rounded-sm border transition-colors ${
+              className={`config-layout-mode-btn flex-shrink-0 ml-1.5 px-2 py-0.5 text-[8px] font-mono rounded-sm border transition-colors ${
                 layoutModeActive
                   ? "config-layout-mode-btn--on border-nv-green/50 text-nv-green bg-nv-green/10"
                   : "border-stealth-border/40 text-stealth-muted/50 hover:text-stealth-muted"
@@ -1320,14 +1339,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           />
         )}
           <div className={onboardingDisplay.frame} data-fusion-share-frame>
-              <button
-                type="button"
-                onClick={cycleDisplayTexture}
-                className="display-texture-toggle absolute top-[3px] left-1/2 -translate-x-1/2 z-[60]"
-                title={`Display texture: ${displayTextureLabel}. Click to cycle CLEAN / PHOSPHOR DARK / PHOSPHOR LIGHT.`}
-              >
-                {displayTextureLabel}
-              </button>
               <div className="phosphor-screen-inner phosphor-display-surface vram-forecast-display">
                 <DisplayGlitchOverlay />
                 {setupGuide.active ? (
@@ -1418,21 +1429,19 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         {allParamsForLaunch.length === 0 ? (
           <div className="text-stealth-muted text-[10px] font-mono opacity-50">NO PARAMS DEFINED</div>
         ) : belowGroupKeys.length === 0 ? null : (
-          <div className="config-params-below min-w-0">
-            {deriveParamGroups(belowGroupKeys).map((group) => {
-              const groupIdx = belowGroupKeys.indexOf(group.id);
-              return (
-                <div
-                  key={group.id}
-                  data-group-zone="below"
-                  data-group-idx={groupIdx}
-                  data-group-id={group.id}
-                >
-                  {renderParamGroup(group, "below")}
-                </div>
-              );
-            })}
-          </div>
+          <ConfigBelowGroups
+            columnCount={columnCount}
+            columnWidths={columnWidths}
+            belowGroupsByColumn={belowGroupsByColumn}
+            onGutterDragStart={handleGutterDragStart}
+            draggingGutterIndex={draggingGutterIndex}
+            layoutModeActive={layoutModeActive}
+            renderGroup={(groupId) => {
+              const group = belowGroupMetaById.get(groupId);
+              if (!group) return null;
+              return renderParamGroup(group, "below");
+            }}
+          />
         )}
 
         {isPowerUser && (
@@ -1480,12 +1489,12 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         <div className="config-launch-dock flex-shrink-0 px-4 flex flex-col gap-2">
           {mtpParallelWarn && (
             <div
-              className="rounded-sm px-2.5 py-1.5 text-[7px] font-mono leading-snug border border-[#FFB800]/30 bg-[#FFB800]/8 text-[#FFB800]/95"
+              className="config-mtp-launch-warn rounded-sm px-2.5 py-1.5 text-[7px] font-mono leading-snug"
               role="status"
             >
               <span className="uppercase tracking-wide">⚠ MTP disabled at launch</span>
               {" — "}
-              <span className="text-[#FFB800]/85">
+              <span className="config-mtp-launch-warn__detail">
                 parallel ×{mtpParallelSlotCount} strips speculative decoding (slow path). Set parallel = 1 for MTP, or turn MTP off for multi-slot.
               </span>
             </div>
@@ -1494,8 +1503,13 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             <div className="config-launch-dock__fields">
               <div data-param-row className="flex items-center">
                 <div className="w-0.5 h-4 flex-shrink-0 mr-1.5" />
-                <span className={PARAM_LABEL_CLASS}>
-                  Alias{aliasIsUserSet ? <span className="mono-user-set"> - user set</span> : ""}
+                <span className="font-mono flex-shrink-0 uppercase tracking-wider truncate text-[9px] text-stealth-muted config-launch-alias-label">
+                  Alias
+                  {aliasIsUserSet ? (
+                    <span className="mono-user-set"> - user set</span>
+                  ) : (
+                    <span className="mono-autoset normal-case tracking-normal"> - autoset to {autoAlias}</span>
+                  )}
                 </span>
                 <input
                   type="text"
@@ -1508,6 +1522,11 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                     } else {
                       aliasUserEditedRef.current = false;
                       setAliasIsUserSet(false);
+                      if (model) {
+                        try {
+                          removeStorage(engineAliasKey(model.path));
+                        } catch {}
+                      }
                     }
                     setAliasInput(val);
                   }}
@@ -1516,7 +1535,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                       ? `${paramChipClass(true)} mono-user-input`
                       : paramChipClass(false)
                   }`}
-                  placeholder="auto..."
                 />
               </div>
               {basePortParamDef && renderParamRow(basePortParamDef, false, 0)}

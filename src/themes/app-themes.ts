@@ -704,10 +704,10 @@ const ARCTIC: AppTheme = {
 
 export const APP_THEMES: AppTheme[] = [MATRIX, AMBER, CYAN, SLATE, ARCTIC];
 
-export const DEFAULT_THEME_ID = "matrix";
+export const DEFAULT_THEME_ID = "slate";
 
 export function getThemeById(id: string): AppTheme {
-  return APP_THEMES.find(t => t.id === id) ?? MATRIX;
+  return APP_THEMES.find(t => t.id === id) ?? SLATE;
 }
 
 export function applyAppTheme(theme: AppTheme): void {

@@ -132,6 +132,12 @@ export interface ProviderConfig {
   groupOrder?: string[]; // Custom group order (empty = use template insertion order)
   /** Per-group pin above VRAM display (default: below). */
   groupDisplayZone?: Record<string, "above" | "below">;
+  /** Below-zone column layout (1–3). */
+  configColumnCount?: 1 | 2 | 3;
+  /** Below-zone column width fractions (sum = 1). */
+  configColumnWidths?: number[];
+  /** Per-group below-zone column index. */
+  groupColumn?: Record<string, number>;
   _original_id?: string;
   git_url?: string;
   branch?: string;

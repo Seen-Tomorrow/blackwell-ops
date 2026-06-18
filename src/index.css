@@ -247,10 +247,76 @@ html, body, #root {
   background: var(--theme-header-bg);
   border-bottom: 1px solid var(--theme-header-border);
   isolation: isolate;
+  overflow: visible;
   box-shadow:
     inset 0 1px 0 color-mix(in srgb, var(--theme-header-title) 6%, transparent),
     0 2px 6px color-mix(in srgb, #000000 30%, transparent),
     0 10px 24px color-mix(in srgb, #000000 16%, transparent);
+}
+
+.app-header__start {
+  flex: 1 1 auto;
+}
+
+.app-header__nav {
+  flex: 1 1 auto;
+  margin-left: 1.25rem;
+  gap: 0.375rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.app-header__nav::-webkit-scrollbar {
+  display: none;
+}
+
+.app-header__nav-item {
+  flex: 1 1 0;
+  min-width: 3.75rem;
+  display: flex;
+}
+
+.app-header__nav-item .app-nav-tab {
+  flex: 1 1 auto;
+}
+
+.app-header-brand {
+  position: relative;
+  flex-shrink: 0;
+  width: fit-content;
+  height: 40px;
+}
+
+.app-header-version {
+  position: absolute;
+  right: 0;
+  left: auto;
+  top: calc(100% + 3px);
+  margin: 0;
+  font-size: 6.5px;
+  line-height: 1.1;
+  white-space: nowrap;
+  text-align: right;
+  opacity: 1;
+  color: color-mix(in srgb, var(--theme-header-title) 42%, var(--theme-chrome-control-text) 58%);
+  pointer-events: none;
+}
+
+[data-theme="arctic"] .app-header-version {
+  color: color-mix(in srgb, #1a2030 78%, var(--theme-header-title) 22%);
+}
+
+.app-header-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-content: center;
+  max-width: min(56vw, 34rem);
+}
+
+.app-header-power-user,
+.app-header-update-btn {
+  flex-shrink: 0;
 }
 
 /* Keep chrome shadows above scrolling main content (same z-order issue as output console). */
@@ -419,9 +485,33 @@ html, body, #root {
 }
 
 .app-nav-tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 2rem;
+  padding:
+    clamp(0.35rem, calc(0.2rem + 0.35vw), 0.75rem)
+    clamp(0.5rem, calc(0.35rem + 1.1vw), 2rem);
+  font-size: clamp(0.625rem, calc(0.55rem + 0.42vw), 0.9375rem);
+  letter-spacing: 0.08em;
+  white-space: nowrap;
   color: var(--theme-nav-text);
   border: 1px solid transparent;
-  transition: color 0.2s ease, background-color 0.2s ease, border-color 0.2s ease;
+  transition:
+    color 0.2s ease,
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    padding 0.15s ease,
+    font-size 0.15s ease;
+}
+
+.app-shell[data-ui-density="compact"] .app-nav-tab {
+  min-height: 1.65rem;
+  padding:
+    clamp(0.25rem, calc(0.15rem + 0.25vw), 0.5rem)
+    clamp(0.4rem, calc(0.3rem + 0.8vw), 1.25rem);
+  font-size: clamp(0.5625rem, calc(0.5rem + 0.32vw), 0.75rem);
 }
 
 .app-nav-tab:hover {
@@ -430,6 +520,69 @@ html, body, #root {
 }
 
 .app-nav-tab-active {
+  background: var(--theme-nav-active-bg) !important;
+  color: var(--theme-nav-active-text) !important;
+  border-color: var(--theme-nav-active-border) !important;
+}
+
+.app-quick-settings {
+  border: 1px solid var(--theme-chrome-control-border);
+  border-radius: 6px;
+  padding: 3px 5px 2px;
+  flex-shrink: 0;
+}
+
+.app-quick-settings__tools {
+  border-top: 1px solid color-mix(in srgb, var(--theme-chrome-control-border) 55%, transparent);
+  margin-top: 2px;
+  padding-top: 3px;
+}
+
+.app-quick-settings__sep {
+  flex-shrink: 0;
+}
+
+.app-appearance-panel {
+  border: 1px solid var(--theme-chrome-control-border);
+  flex-shrink: 0;
+}
+
+.app-appearance-panel--embedded {
+  border: none;
+  border-radius: 0;
+  padding: 0;
+}
+
+.app-appearance-section {
+  min-height: 0;
+}
+
+.app-appearance-section__label {
+  color: var(--theme-chrome-control-text);
+  opacity: 0.45;
+  line-height: 1;
+  flex-shrink: 0;
+  width: 4.25rem;
+  white-space: nowrap;
+}
+
+.app-appearance-section__chips {
+  flex: 1 1 auto;
+  flex-wrap: nowrap;
+}
+
+.app-appearance-tab {
+  color: var(--theme-nav-text);
+  border: 1px solid transparent;
+  transition: color 0.2s ease, background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.app-appearance-tab:hover {
+  color: var(--theme-nav-hover-text);
+  background: var(--theme-nav-hover-bg);
+}
+
+.app-appearance-tab--active {
   background: var(--theme-nav-active-bg) !important;
   color: var(--theme-nav-active-text) !important;
   border-color: var(--theme-nav-active-border) !important;
@@ -2887,7 +3040,9 @@ html:not([data-theme="arctic"]) [data-display-texture="clean"] .bench-widget-pan
 
 /* ARCTIC — brushed aluminium bezel face (light themes need explicit metallic gradient) */
 [data-theme="arctic"] .industrial-display-frame,
-[data-theme="arctic"] .industrial-eject-panel {
+[data-theme="arctic"] .industrial-eject-panel,
+[data-theme="arctic"] .gpu-assign-panel,
+[data-theme="arctic"] [data-config-panel] .config-launch-dock {
   background-image:
     linear-gradient(175deg, #d6dee6 0%, #b6c2ce 28%, #9aacb8 52%, #b2beca 78%, #c6ced6 100%),
     repeating-linear-gradient(135deg, var(--theme-bezel-grain) 0px, transparent 1px, transparent 3px);
@@ -4011,22 +4166,73 @@ html:not([data-theme="arctic"]) [data-display-texture="clean"] .phosphor-display
 }
 
 .config-params-below {
-  display: flex;
-  flex-direction: column;
   width: 100%;
   min-width: 0;
+}
+
+.config-params-below--1c {
+  display: flex;
+  flex-direction: column;
   gap: 0.75rem;
 }
 
-.config-params-below > [data-group-zone] {
+.config-params-below--1c > [data-group-zone] {
   width: 100%;
   min-width: 0;
   flex-shrink: 0;
 }
 
+.config-params-below--multi {
+  --config-col-gutter-w: 7px;
+  display: grid;
+  align-items: stretch;
+  width: 100%;
+  min-width: 0;
+  gap: 0 0;
+}
+
+.config-params-col {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 100%;
+  overflow: hidden;
+}
+
+.config-params-col__stack {
+  flex: 1;
+  min-width: 0;
+  min-height: 2.5rem;
+}
+
+.config-column-drop-zone {
+  flex: 1;
+  min-height: 3.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Reuse catalog/catalog split handle between config columns */
+.config-params-below--multi .config-col-split-handle {
+  align-self: stretch;
+  min-height: 100%;
+  height: auto;
+}
+
 /* ── Power-user group layout controls (engine config headers) ─── */
+[data-config-panel] .config-group-header {
+  color: var(--theme-accent-bright);
+  opacity: 0.45;
+}
+
+[data-config-panel] .config-group-header button:hover {
+  color: var(--theme-text);
+}
+
 .config-group-header--dragging {
-  color: #facc15;
+  color: #facc15 !important;
+  opacity: 1 !important;
 }
 
 .config-layout-mode-btn--on {
@@ -4080,6 +4286,40 @@ html:not([data-theme="arctic"]) [data-display-texture="clean"] .phosphor-display
   gap: 4px;
   min-width: 0;
   justify-content: center;
+}
+
+.config-mtp-launch-warn {
+  border: 1px solid color-mix(in srgb, #ffb800 30%, transparent);
+  background: color-mix(in srgb, #ffb800 8%, transparent);
+  color: color-mix(in srgb, #ffb800 95%, transparent);
+}
+
+.config-mtp-launch-warn__detail {
+  color: color-mix(in srgb, #ffb800 85%, transparent);
+}
+
+[data-theme="arctic"] .config-mtp-launch-warn {
+  border-color: color-mix(in srgb, #92400e 50%, transparent);
+  background: color-mix(in srgb, #92400e 14%, transparent);
+  color: #78350f;
+}
+
+[data-theme="arctic"] .config-mtp-launch-warn__detail {
+  color: #92400e;
+}
+
+.mono-autoset {
+  opacity: 0.55;
+  text-transform: none;
+  letter-spacing: 0.02em;
+}
+
+.config-launch-alias-label {
+  width: auto;
+  max-width: min(58%, 12rem);
+  flex-shrink: 1;
+  min-width: 0;
+  line-height: 1.2;
 }
 
 .vram-mem-mode-row {
@@ -4516,12 +4756,7 @@ html:not([data-theme="arctic"]) [data-display-texture="clean"] .phosphor-display
   min-width: 0;
 }
 
-/* Below-zone groups — one full-width row each, no column wrap */
-.config-params-below [data-param-row] > .config-chip-row {
-  flex-wrap: nowrap !important;
-  overflow-x: auto;
-  scrollbar-width: thin;
-}
+
 
 /* Param labels on e-ink */
 .eink-panel [data-param-row] > span:first-of-type {
@@ -6134,11 +6369,18 @@ select option {
 
 /* Launch dock — pinned to bottom of engine config panel, clears fixed footer/console */
 [data-config-panel] .config-launch-dock {
-  background: var(--theme-panel-accent);
-  border-top: 1px solid var(--theme-border-subtle);
+  background-color: var(--theme-industrial-bg);
+  background-image: repeating-linear-gradient(
+    135deg,
+    var(--theme-bezel-grain) 0px,
+    transparent 1px,
+    transparent 4px
+  );
+  border-top: 1.5px solid var(--theme-bezel-edge-hi);
   box-shadow:
-    0 -2px 8px color-mix(in srgb, var(--theme-text) 5%, transparent),
-    0 -1px 0 color-mix(in srgb, var(--theme-accent) 8%, transparent);
+    inset 0 1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 35%, transparent),
+    0 -2px 6px color-mix(in srgb, #000000 30%, transparent),
+    0 -10px 24px color-mix(in srgb, #000000 16%, transparent);
   position: relative;
   z-index: 4;
   padding-top: var(--config-launch-dock-pad);

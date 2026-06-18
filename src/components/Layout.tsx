@@ -11,7 +11,7 @@ import BlackwellOutputConsole, {
 } from "./BlackwellOutputConsole";
 import OutputConsoleInlineDock from "./OutputConsoleInlineDock";
 import FoundryModal from "./FoundryModal";
-import ThemePicker from "./ThemePicker";
+import AppearanceControls from "./AppearanceControls";
 import BlackwellBrandMark from "./BlackwellBrandMark";
 import {
   cyclePowerUserState,
@@ -210,19 +210,20 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
       style={shellStyle}
     >
       {/* Top bar */}
-      <header className="app-header flex items-center justify-between px-6 py-3 backdrop-blur-sm relative z-30 layout-header-enter">
-        <div className="flex items-center gap-4">
+      <header className="app-header flex items-center justify-between gap-3 px-6 py-3 backdrop-blur-sm relative z-30 layout-header-enter min-w-0">
+        <div className="app-header__start flex items-center gap-4 min-w-0 flex-1">
           {/* Logo / Brand */}
           <BlackwellBrandMark />
 
           {/* Nav tabs */}
-          <nav className="flex items-center gap-1 ml-8">
+          <nav className="app-header__nav flex items-stretch min-w-0">
             {visibleTabs.map((tab) => (
-              <div key={tab.id} className="relative inline-block">
+              <div key={tab.id} className="app-header__nav-item relative min-w-0">
                 <button
+                  type="button"
                   onClick={() => onTabChange(tab.id)}
                   {...(tab.id === "config" ? { "data-onboarding": "config-tab" } : {})}
-                  className={`app-nav-tab px-4 py-1.5 text-xs font-mono tracking-wider rounded-sm ${
+                  className={`app-nav-tab font-mono rounded-sm ${
                     activeTab === tab.id ? "app-nav-tab-active" : ""
                   }`}
                 >
@@ -238,19 +239,17 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
           </nav>
         </div>
 
-        {/* Admin lock + Zoom controls */}
-        <div className="flex flex-col items-end gap-2">
-          {/* App update indicator */}
+        {/* Admin lock + zoom + appearance */}
+        <div className="app-header-actions flex items-center gap-1.5 flex-shrink-0">
           {appUpdate?.available && (
-            <div className="relative inline-block group">
+            <div className="relative inline-block group flex-shrink-0">
               <button
                 onClick={onInstallAppUpdate}
-                className="text-[9px] font-mono tracking-wider text-yellow-400 hover:text-yellow-300 transition-colors cursor-pointer"
-                title={`New APP version available: ${appUpdate.version}`}
+                className="app-header-update-btn text-[7px] font-mono tracking-wider text-yellow-400 hover:text-yellow-300 transition-colors cursor-pointer whitespace-nowrap"
+                title={`New app version available: ${appUpdate.version}`}
               >
-                NEW APP VERSION AVAILABLE
+                UPDATE
               </button>
-              {/* Release notes tooltip on hover */}
               {appUpdate.releaseNotes && (
                 <div className="absolute top-full right-0 mt-1 w-[360px] bg-[#0a0a1a] border border-yellow-400/40 rounded-sm p-3 pointer-events-none z-[9999] opacity-0 group-hover:opacity-100 transition-opacity shadow-2xl">
                   <div className="text-[8px] font-mono text-yellow-400 mb-1 tracking-wider">RELEASE NOTES</div>
@@ -259,53 +258,56 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
               )}
             </div>
           )}
-          <button onClick={handlePowerUserToggle}
-            className={`text-[9px] font-mono tracking-wider transition-colors ${POWER_USER_COLORS[powerUserState]}`}
-            title={POWER_USER_LABELS[powerUserState]}>
-            POWER USER {powerUserState === "locked" ? "\u{1F512}" : powerUserState === "unlocked" ? "\u{1F513}" : "\u{1F511}"}
-          </button>
-          <div className="flex items-center gap-2">
-            <ThemePicker variant="header" />
-            <div className="app-chrome-control flex items-center gap-1 rounded-sm px-1 py-0.5">
-            <button
-              type="button"
-              onClick={toggleUiDensity}
-              className={`app-chrome-control-btn px-1.5 text-[8px] font-mono transition-colors leading-none ${uiDensity === "compact" ? "text-yellow-400/90" : ""}`}
-              title={uiDensity === "compact" ? "Density: Compact (click for Comfortable)" : "Density: Comfortable (click for Compact)"}
-            >
-              {uiDensity === "compact" ? "COMPACT" : "COMFORT"}
-            </button>
-            <span className="app-chrome-control-btn text-[8px] font-mono opacity-40">|</span>
-            <button onClick={() => adjustZoom(-ZOOM_STEP)} className="app-chrome-control-btn px-1 text-[9px] font-mono transition-colors leading-none" title="Decrease text scale (Ctrl+scroll)">−</button>
-            <span className="app-chrome-control-btn text-[8px] font-mono opacity-60 w-8 text-center" title="Text scale (Ctrl+scroll)">{Math.round(zoom * 100)}%</span>
-            <button onClick={() => adjustZoom(ZOOM_STEP)} className="app-chrome-control-btn px-1 text-[9px] font-mono transition-colors leading-none" title="Increase text scale (Ctrl+scroll)">+</button>
-            {__BUILD_MODE__ === "dev" && (
-              <>
-                <span className="app-chrome-control-btn text-[8px] font-mono opacity-40">|</span>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    if (e.shiftKey) {
-                      dispatchReplaySetupGuideOnboardingOnly();
-                      return;
-                    }
-                    void dispatchReplaySetupGuide();
-                  }}
-                  className="app-chrome-control-btn px-1.5 text-[8px] font-mono transition-colors leading-none text-nv-green/70 hover:text-nv-green"
-                  title="Dev: first-run reset (paths → models/ only, clears meta cache, keeps providers/binaries, replays onboarding). Shift+click: onboarding UI only."
-                >
-                  ↺ SETUP
-                </button>
-                <button
-                  type="button"
-                  onClick={() => dispatchClearLocalStorage(true)}
-                  className="app-chrome-control-btn px-1.5 text-[8px] font-mono transition-colors leading-none text-yellow-400/70 hover:text-yellow-400"
-                  title="Dev: clear all BlackOps localStorage and reload"
-                >
-                  CLR LS
-                </button>
-              </>
-            )}
+          <div className="app-quick-settings flex flex-col gap-px flex-shrink-0">
+            <AppearanceControls embedded />
+            <div className="app-quick-settings__tools flex items-center gap-1 flex-wrap px-0.5 py-0.5">
+              <button
+                onClick={handlePowerUserToggle}
+                className={`app-header-power-user text-[8px] font-mono tracking-wider transition-colors flex-shrink-0 whitespace-nowrap ${POWER_USER_COLORS[powerUserState]}`}
+                title={POWER_USER_LABELS[powerUserState]}
+              >
+                POWER USER {powerUserState === "locked" ? "\u{1F512}" : powerUserState === "unlocked" ? "\u{1F513}" : "\u{1F511}"}
+              </button>
+              <span className="app-quick-settings__sep app-chrome-control-btn text-[8px] font-mono opacity-40">|</span>
+              <button
+                type="button"
+                onClick={toggleUiDensity}
+                className={`app-chrome-control-btn px-1.5 text-[8px] font-mono transition-colors leading-none ${uiDensity === "compact" ? "text-yellow-400/90" : ""}`}
+                title={uiDensity === "compact" ? "Density: Compact (click for Comfortable)" : "Density: Comfortable (click for Compact)"}
+              >
+                {uiDensity === "compact" ? "COMPACT" : "COMFORT"}
+              </button>
+              <span className="app-quick-settings__sep app-chrome-control-btn text-[8px] font-mono opacity-40">|</span>
+              <button onClick={() => adjustZoom(-ZOOM_STEP)} className="app-chrome-control-btn px-1 text-[9px] font-mono transition-colors leading-none" title="Decrease text scale (Ctrl+scroll)">−</button>
+              <span className="app-chrome-control-btn text-[8px] font-mono opacity-60 w-8 text-center" title="Text scale (Ctrl+scroll)">{Math.round(zoom * 100)}%</span>
+              <button onClick={() => adjustZoom(ZOOM_STEP)} className="app-chrome-control-btn px-1 text-[9px] font-mono transition-colors leading-none" title="Increase text scale (Ctrl+scroll)">+</button>
+              {__BUILD_MODE__ === "dev" && (
+                <>
+                  <span className="app-quick-settings__sep app-chrome-control-btn text-[8px] font-mono opacity-40">|</span>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      if (e.shiftKey) {
+                        dispatchReplaySetupGuideOnboardingOnly();
+                        return;
+                      }
+                      void dispatchReplaySetupGuide();
+                    }}
+                    className="app-chrome-control-btn px-1.5 text-[8px] font-mono transition-colors leading-none text-nv-green/70 hover:text-nv-green"
+                    title="Dev: first-run reset (paths → models/ only, clears meta cache, keeps providers/binaries, replays onboarding). Shift+click: onboarding UI only."
+                  >
+                    ↺ SETUP
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => dispatchClearLocalStorage(true)}
+                    className="app-chrome-control-btn px-1.5 text-[8px] font-mono transition-colors leading-none text-yellow-400/70 hover:text-yellow-400"
+                    title="Dev: clear all BlackOps localStorage and reload"
+                  >
+                    CLR LS
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
