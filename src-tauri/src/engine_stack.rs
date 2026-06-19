@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use crate::types::{EngineConfig, StackEntry};
@@ -155,6 +156,40 @@ impl EngineStack {
         None
     }
 
+    /// Ports reserved or actively served by non-idle stack slots.
+    pub fn reserved_ports(&self) -> HashSet<u16> {
+        self.slots
+            .iter()
+            .filter_map(|slot_opt| {
+                slot_opt.as_ref().and_then(|arc| {
+                    let slot = arc.lock();
+                    if matches!(slot.status, SlotStatus::Idle) || slot.port == 0 {
+                        None
+                    } else {
+                        Some(slot.port)
+                    }
+                })
+            })
+            .collect()
+    }
+
+    /// PIDs of engines this app instance is still loading or running.
+    pub fn live_engine_pids(&self) -> HashSet<u32> {
+        self.slots
+            .iter()
+            .filter_map(|slot_opt| {
+                slot_opt.as_ref().and_then(|arc| {
+                    let slot = arc.lock();
+                    if matches!(slot.status, SlotStatus::Idle) {
+                        None
+                    } else {
+                        slot.pid
+                    }
+                })
+            })
+            .collect()
+    }
+
     /// True if any non-idle slot already uses this alias.
     pub fn alias_in_use(&self, alias: &str) -> bool {
         self.slots.iter().any(|slot_opt| {
@@ -204,6 +239,7 @@ impl EngineStack {
         provider_display_name: String,
         backend_type: String,
         supports_fusion: bool,
+        fusion_adapter: crate::fusion::FusionAdapterId,
         stack_ref: &Arc<tokio::sync::Mutex<EngineStack>>,
         log_hub: LogHub,
         on_ready: Arc<dyn Fn() + Send + Sync>,
@@ -243,7 +279,7 @@ impl EngineStack {
             .env("CUDA_VISIBLE_DEVICES", &gpu_mask)
             .env("LLAMA_LOG_COLORS", "on")
             .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped());
 
         let mut child = match cmd.spawn() {
@@ -252,12 +288,12 @@ impl EngineStack {
         };
 
         let pid = child.id();
-        // Engine spawned now routed to Blackwell Output Console
+        crate::fusion::registry::register_slot_adapter(slot_idx, fusion_adapter);
 
-        // Extract stderr pipe and start reader immediately
         let stderr = child.stderr.take().ok_or_else(|| {
             format!("Failed to capture stderr for {}", binary_path.display())
         })?;
+        let stdout = child.stdout.take();
         let learn_snapshot = crate::vram_learn::snapshot_from_config(
             &config.model_path,
             &backend_type,
@@ -278,6 +314,7 @@ impl EngineStack {
             pid,
             config.port,
             stderr,
+            stdout,
             learn_snapshot,
             model_ready,
             fire_ready.clone(),
@@ -289,6 +326,7 @@ impl EngineStack {
             log_hub.clone(),
             fire_ready,
             slot_arc.clone(),
+            fusion_adapter,
         );
 
         // Quick alive check — give process 500ms to initialize (async — do not block tokio worker)
@@ -367,8 +405,12 @@ impl EngineStack {
     /// `/slots` idle — same criterion fusion uses (model loaded, not processing).
     /// IK: fall back to `/health` ok (only true after weights load). GGML: never trust `/health`
     /// while `/slots` returns empty or a still-loading HTTP error.
-    async fn probe_readiness_source(client: &reqwest::Client, port: u16) -> Option<&'static str> {
-        match crate::fusion_poller::poll_slots_on(client, "127.0.0.1", port).await {
+    async fn probe_readiness_source(
+        client: &reqwest::Client,
+        port: u16,
+        adapter: crate::fusion::FusionAdapterId,
+    ) -> Option<&'static str> {
+        match crate::fusion::poll_slots_normalized(client, "127.0.0.1", port, adapter).await {
             Ok(slots) => {
                 if !slots.is_empty() && slots.iter().all(|s| !s.is_processing) {
                     Some("GET /slots idle")
@@ -412,6 +454,7 @@ impl EngineStack {
         log_hub: LogHub,
         on_ready: Arc<dyn Fn() + Send + Sync>,
         slot_arc: Arc<parking_lot::Mutex<EngineSlot>>,
+        fusion_adapter: crate::fusion::FusionAdapterId,
     ) {
         tokio::spawn(async move {
             let client = match reqwest::Client::builder()
@@ -434,7 +477,7 @@ impl EngineStack {
                     }
                 }
 
-                let source = Self::probe_readiness_source(&client, port).await;
+                let source = Self::probe_readiness_source(&client, port, fusion_adapter).await;
 
                 if let Some(source) = source {
                     let still_loading = {
@@ -590,7 +633,7 @@ impl EngineStack {
 
         let (alias, pid) = snapshot;
 
-        crate::fusion_brain::stop_brain(slot_idx).await;
+        crate::fusion::stop_brain(slot_idx).await;
 
         log_hub
             .emit_system_event(
@@ -661,7 +704,7 @@ impl EngineStack {
 
         let (alias, pid, split_mode) = snapshot;
 
-        crate::fusion_brain::stop_brain(slot_idx).await;
+        crate::fusion::stop_brain(slot_idx).await;
 
         let user_reason = format_load_failure_reason(reason, &split_mode);
         let launch_err = format!("LAUNCH_ERROR: {}", user_reason);
@@ -775,7 +818,7 @@ impl EngineStack {
         slot_idx: usize,
         stack_ref: &Arc<tokio::sync::Mutex<EngineStack>>,
     ) -> Result<(), String> {
-        crate::fusion_brain::stop_brain(slot_idx).await;
+        crate::fusion::stop_brain(slot_idx).await;
 
         // Extract process handle under per-slot lock only
         let (alias, pid, proc_to_stop, hub_opt) = {
@@ -843,7 +886,7 @@ impl EngineStack {
         let stopped: Vec<usize> = targets.iter().map(|(i, _, _, _)| *i).collect();
 
         for (i, _, _, _) in &targets {
-            crate::fusion_brain::stop_brain(*i).await;
+            crate::fusion::stop_brain(*i).await;
         }
 
         // Immediate UI — clear slots and emit before slow process/port cleanup

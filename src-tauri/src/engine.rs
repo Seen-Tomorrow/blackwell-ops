@@ -20,11 +20,37 @@ use crate::types::StackEntry;
 
 const DEFAULT_BASE_PORT: u16 = 8080;
 const PRIVILEGED_PORT_THRESHOLD: u16 = 1024;
+const MAX_PORT_SCAN_RANGE: u16 = 512;
+
+/// Pick the next free engine port at or above `base_port`, skipping stack reservations,
+/// lock-file ownership, and TCP listeners already held by live stack engines.
+async fn pick_next_engine_port(
+    base_port: u16,
+    used_ports: &HashSet<u16>,
+    live_pids: &HashSet<u32>,
+) -> u16 {
+    let end = base_port.saturating_add(MAX_PORT_SCAN_RANGE);
+    for port in base_port..=end {
+        if port <= PRIVILEGED_PORT_THRESHOLD || used_ports.contains(&port) {
+            continue;
+        }
+        if !crate::engine_utils::is_port_in_use(port).await {
+            return port;
+        }
+        if let Some(listener_pid) = crate::engine_utils::get_listening_pid(port).await {
+            if live_pids.contains(&listener_pid) {
+                continue;
+            }
+        }
+        return port;
+    }
+    base_port
+}
 
 use crate::fit_scanner;
 use crate::telemetry;
 use crate::telemetry::detect_gpu_count;
-use crate::fusion_brain;
+use crate::fusion;
 use crate::model_catalog;
 use crate::model_cache;
 use crate::engine_utils;
@@ -120,9 +146,7 @@ pub async fn launch_engine(
 
     let binary_path = engine_utils::find_provider_binary(&cfg, &backend_type, &config.binary_profile)?;
 
-    let template = crate::templates::ProviderTemplate::load_by_id(&backend_type)
-        .or_else(|| crate::templates::ProviderTemplate::load(crate::config::DEFAULT_PROVIDER_ID).ok())
-        .ok_or(format!("No provider template available for '{}'", backend_type))?;
+    let template = crate::templates::ProviderTemplate::load_for_provider(&backend_type)?;
 
     let provider_opt2 = cfg.providers.iter().find(|p| p.id == backend_type);
 
@@ -182,7 +206,7 @@ pub async fn launch_engine(
         }
     }
 
-    let (slot_idx, slot_port) = {
+    let (slot_idx, slot_port, live_pids) = {
         let stack = match tokio::time::timeout(Duration::from_secs(5), app.stack.lock()).await {
             Ok(guard) => guard,
             Err(_) => {
@@ -191,21 +215,22 @@ pub async fn launch_engine(
             }
         };
         let slot_idx = stack.find_idle_slot().ok_or("All engine slots are occupied")?;
-        let used_ports: HashSet<u16> = stack.slots.iter()
-            .filter_map(|s| s.as_ref().map(|arc| arc.lock().port))
-            .filter(|&p| p != 0)
-            .collect();
-        let slot_port = (provider_base_port..)
-            .find(|p| !used_ports.contains(p) && *p > PRIVILEGED_PORT_THRESHOLD)
-            .unwrap_or(provider_base_port);
+        let mut used_ports = stack.reserved_ports();
+        used_ports.extend(crate::engine_port_lock::occupied_ports_from_locks());
+        let live_pids = stack.live_engine_pids();
+        let slot_port =
+            pick_next_engine_port(provider_base_port, &used_ports, &live_pids).await;
         stack.reserve_slot(slot_idx, &config.alias, slot_port)?;
         stack.emit_stack_changed();
-        (slot_idx, slot_port)
+        (slot_idx, slot_port, live_pids)
     };
 
     config.port = slot_port;
 
-    if let Err(e) = crate::engine_port_lock::reclaim_our_ghost_or_fail(slot_port, &binary_path).await {
+    if let Err(e) =
+        crate::engine_port_lock::reclaim_our_ghost_or_fail(slot_port, &binary_path, &live_pids)
+            .await
+    {
         {
             let stack = app.stack.lock().await;
             stack.release_reserved_slot(slot_idx);
@@ -220,6 +245,13 @@ pub async fn launch_engine(
     let final_user_params = guard_speculative_decoding(user_params, &config.model_path);
 
     let supports_fusion = template.spawn_profile.supports_fusion;
+    let fusion_adapter = fusion::resolve_adapter(
+        &backend_type,
+        provider_opt2
+            .map(|p| p.template_type.as_str())
+            .unwrap_or(""),
+        Some(template.spawn_profile.fusion_adapter.as_str()),
+    );
     let cmd_args = template.build_command(&config, &gpu_mask, &final_user_params);
     let launch_cmd = format!(
         "{} {}",
@@ -309,7 +341,8 @@ pub async fn launch_engine(
     for attempt in 0..2 {
         let result = EngineStack::load_slot(
             slot_idx, &config, &binary_path, gpu_mask.clone(), cmd_args.clone(),
-            provider_display_name.clone(), backend_type.clone(), supports_fusion, &app.stack,
+            provider_display_name.clone(), backend_type.clone(), supports_fusion, fusion_adapter,
+            &app.stack,
             app.log_hub.clone(),
             make_on_ready(stack_for_ready.clone(), slot_for_ready),
         ).await;
@@ -349,17 +382,20 @@ pub async fn launch_engine(
         let fusion_port = slot_port;
         let fusion_parallel = config.get_parallel();
         let fusion_unified_kv = config.get_unified_kv();
+        let fusion_provider_id = backend_type.clone();
 
         tokio::spawn(async move {
-            fusion_brain::start_brain(
+            fusion::start_brain(
                 fusion_log_hub,
-                fusion_brain::FusionConfig {
+                fusion::FusionConfig {
                     alias: fusion_alias,
                     slot_idx,
                     port: fusion_port,
                     ctx_total: ctx_size_int,
                     parallel: fusion_parallel,
                     unified_kv: fusion_unified_kv,
+                    provider_id: fusion_provider_id,
+                    adapter: fusion_adapter,
                 },
             ).await;
         });
@@ -524,7 +560,7 @@ pub async fn clean_exit(app: tauri::State<'_, AppContext>) -> Result<(), String>
     log::info!("Clean exit requested — killing all orphaned processes");
 
     // Stop fusion brains first to prevent orphaned HTTP polling
-    fusion_brain::stop_all_brains().await;
+    fusion::stop_all_brains().await;
 
     // kill_all is self-locking — no stack lock needed
     EngineStack::kill_all(&app.stack).await;
@@ -537,13 +573,7 @@ pub async fn clean_exit(app: tauri::State<'_, AppContext>) -> Result<(), String>
 pub fn get_template(provider_id: Option<String>) -> Result<crate::templates::ProviderTemplate, String> {
     let id = provider_id.unwrap_or_else(|| crate::config::DEFAULT_PROVIDER_ID.to_string());
 
-    // Try loading by specific ID first
-    if let Some(template) = crate::templates::ProviderTemplate::load_by_id(&id) {
-        return Ok(template);
-    }
-
-    // Fallback: load default template (ggml-master)
-    crate::templates::ProviderTemplate::load(crate::config::DEFAULT_PROVIDER_ID)
+    crate::templates::ProviderTemplate::load_for_provider(&id)
 }
 
 #[tauri::command]
@@ -575,9 +605,7 @@ pub async fn preview_launch_command(
     };
 
     let binary_path = engine_utils::find_provider_binary(&cfg, &backend_type, &config.binary_profile)?;
-    let template = crate::templates::ProviderTemplate::load_by_id(&backend_type)
-        .or_else(|| crate::templates::ProviderTemplate::load(crate::config::DEFAULT_PROVIDER_ID).ok())
-        .ok_or(format!("No provider template available for '{}'", backend_type))?;
+    let template = crate::templates::ProviderTemplate::load_for_provider(&backend_type)?;
 
     let provider_opt_prev = cfg.providers.iter().find(|p| p.id == backend_type);
     let user_params: Vec<crate::types::UserEditedTemplateParam> = provider_opt_prev

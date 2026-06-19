@@ -40,6 +40,11 @@
       },
       "nsis": {
         "compression": "none",
+        "template": "./nsis/installer.nsi",
+        "languages": ["English"],
+        "customLanguageFiles": {
+          "English": "./nsis/languages/English.nsh"
+        },
         "installerHooks": "./nsis-speedup.nsh"
       }
     }

@@ -5810,9 +5810,45 @@ button.engine-logs-slot-chip.engine-logs-slot-chip--active .engine-logs-slot-chi
   border-bottom: 1px solid var(--theme-border-subtle);
 }
 
+[data-config-page] .foundry-profile-group {
+  border: 1px solid var(--theme-eject-card-border);
+  border-radius: 2px;
+  overflow: hidden;
+  background: var(--theme-eject-card-bg);
+}
+
 [data-config-page] .foundry-profile-row {
   background: var(--theme-eject-card-bg);
-  border: 1px solid var(--theme-eject-card-border);
+  border: 1px solid transparent;
+  border-left: 3px solid transparent;
+}
+
+[data-config-page] .foundry-profile-row--active {
+  background: color-mix(in srgb, var(--config-user-accent, #facc15) 12%, var(--theme-eject-card-bg));
+  border-left-color: var(--config-user-accent, #facc15);
+}
+
+[data-config-page] .foundry-active-binary-badge {
+  background: color-mix(in srgb, var(--config-user-accent, #facc15) 22%, transparent);
+  border: 1px solid var(--config-user-accent, #facc15);
+  color: var(--config-user-accent, #facc15);
+  border-radius: 2px;
+  letter-spacing: 0.04em;
+}
+
+[data-theme="arctic"] [data-config-page] .foundry-profile-row--active {
+  background: color-mix(in srgb, var(--config-user-accent, #8a6020) 14%, var(--theme-eject-card-bg));
+  border-left-color: var(--config-user-accent, #8a6020);
+}
+
+[data-theme="arctic"] [data-config-page] .foundry-active-binary-badge {
+  background: color-mix(in srgb, var(--config-user-accent, #8a6020) 18%, transparent);
+  border-color: var(--config-user-accent, #8a6020);
+  color: var(--config-user-accent-light, #9a7028);
+}
+
+[data-config-page] .foundry-source-label {
+  color: var(--config-muted, #9ca3af);
 }
 
 [data-config-page] .foundry-profile-label {
@@ -5921,6 +5957,33 @@ button.engine-logs-slot-chip.engine-logs-slot-chip--active .engine-logs-slot-chi
 [data-config-page] .config-form-panel {
   background: var(--theme-panel);
   border: 1px solid var(--theme-border-subtle);
+}
+
+[data-config-page] .provider-row-group {
+  position: relative;
+  margin-bottom: 8px;
+}
+
+[data-config-page] .provider-form-popover {
+  position: relative;
+  z-index: 12;
+  background: var(--theme-panel);
+  border: 1px solid color-mix(in srgb, var(--theme-secondary) 28%, var(--theme-border-subtle));
+  box-shadow:
+    0 14px 36px rgba(0, 0, 0, 0.48),
+    0 6px 14px rgba(0, 0, 0, 0.32),
+    0 0 0 1px color-mix(in srgb, var(--theme-secondary) 10%, transparent);
+}
+
+[data-config-page] .provider-form-popover--edit {
+  margin: 6px 0 4px auto;
+  max-width: min(520px, 100%);
+  width: 100%;
+}
+
+[data-config-page] .provider-form-popover--add {
+  margin: 8px 0 16px 0;
+  max-width: min(520px, 100%);
 }
 
 [data-config-page] .config-input,

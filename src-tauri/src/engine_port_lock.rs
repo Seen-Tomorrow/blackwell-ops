@@ -1,6 +1,7 @@
 //! Per-port lock files — record engines we spawned so launch can reclaim only our orphans.
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -47,6 +48,44 @@ pub fn delete_lock(port: u16) {
 fn read_lock(port: u16) -> Option<EnginePortLock> {
     let data = std::fs::read_to_string(lock_file(port)).ok()?;
     serde_json::from_str(&data).ok()
+}
+
+/// Ports recorded in lock files for live engines owned by this app instance.
+pub fn occupied_ports_from_locks() -> HashSet<u16> {
+    let dir = locks_dir();
+    let Ok(entries) = std::fs::read_dir(&dir) else {
+        return HashSet::new();
+    };
+
+    let current_app_pid = std::process::id();
+    let mut ports = HashSet::new();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Some(port) = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .and_then(|s| s.parse::<u16>().ok())
+        else {
+            continue;
+        };
+        let Some(lock) = read_lock(port) else {
+            continue;
+        };
+        if lock.owner_app_pid != current_app_pid {
+            continue;
+        }
+        if crate::engine_utils::is_process_alive(lock.engine_pid) {
+            ports.insert(port);
+        }
+    }
+    ports
+}
+
+fn live_stack_engine_error(port: u16, listener_pid: u32) -> String {
+    format!(
+        "Port {port} is in use by another running Blackwell Ops engine (PID {listener_pid}). \
+         Stop that engine first or change BASE-PORT."
+    )
 }
 
 /// Remove lock files left after engine/app crashes (engine dead and/or port free).
@@ -105,7 +144,11 @@ pub async fn sweep_stale_locks() {
 }
 
 /// Port busy: kill only a verified Blackwell orphan; otherwise fail without touching other apps.
-pub async fn reclaim_our_ghost_or_fail(port: u16, binary_path: &Path) -> Result<(), String> {
+pub async fn reclaim_our_ghost_or_fail(
+    port: u16,
+    binary_path: &Path,
+    live_pids: &HashSet<u32>,
+) -> Result<(), String> {
     if !crate::engine_utils::is_port_in_use(port).await {
         if read_lock(port).is_some() {
             log::info!("[port_lock] Port {port} free — removing stale lock file");
@@ -121,27 +164,8 @@ pub async fn reclaim_our_ghost_or_fail(port: u16, binary_path: &Path) -> Result<
         )
     })?;
 
-    let lock = read_lock(port).ok_or_else(|| {
-        format!(
-            "Port {port} is in use by PID {listener_pid} (not a Blackwell Ops engine lock). \
-             Stop the other application or change BASE-PORT."
-        )
-    })?;
-
-    if lock.engine_pid != listener_pid {
-        return Err(format!(
-            "Port {port} is in use by PID {listener_pid} (lock expects PID {}). \
-             Stop the other application or change BASE-PORT.",
-            lock.engine_pid
-        ));
-    }
-
-    let locked_binary = crate::config::resolve_path(&lock.binary_path);
-    if !crate::engine_utils::same_executable_path(&locked_binary, binary_path) {
-        return Err(format!(
-            "Port {port} lock binary does not match this provider. \
-             Stop the other application or change BASE-PORT."
-        ));
+    if live_pids.contains(&listener_pid) {
+        return Err(live_stack_engine_error(port, listener_pid));
     }
 
     let listener_image = tokio::task::spawn_blocking(move || {
@@ -157,29 +181,66 @@ pub async fn reclaim_our_ghost_or_fail(port: u16, binary_path: &Path) -> Result<
         ));
     };
 
-    if !crate::engine_utils::same_executable_path(&listener_image, binary_path) {
-        return Err(format!(
-            "Port {port} is held by PID {listener_pid} ({}) — not our llama-server. \
-             Stop the other application or change BASE-PORT.",
-            listener_image.display()
-        ));
-    }
-
     let current_app_pid = std::process::id();
-    let owner_alive = crate::engine_utils::is_process_alive(lock.owner_app_pid);
 
-    if lock.owner_app_pid != current_app_pid && owner_alive {
-        return Err(format!(
-            "Port {port} is in use by another running Blackwell Ops instance (owner PID {}). \
-             Stop that engine first or change BASE-PORT.",
+    if let Some(lock) = read_lock(port) {
+        if lock.engine_pid != listener_pid {
+            return Err(format!(
+                "Port {port} is in use by PID {listener_pid} (lock expects PID {}). \
+                 Stop the other application or change BASE-PORT.",
+                lock.engine_pid
+            ));
+        }
+
+        let owner_alive = crate::engine_utils::is_process_alive(lock.owner_app_pid);
+        if lock.owner_app_pid == current_app_pid && owner_alive {
+            return Err(live_stack_engine_error(port, listener_pid));
+        }
+
+        if lock.owner_app_pid != current_app_pid && owner_alive {
+            return Err(format!(
+                "Port {port} is in use by another running Blackwell Ops instance (owner PID {}). \
+                 Stop that engine first or change BASE-PORT.",
+                lock.owner_app_pid
+            ));
+        }
+
+        let locked_binary = crate::config::resolve_path(&lock.binary_path);
+        let same_provider_binary =
+            crate::engine_utils::same_executable_path(&locked_binary, binary_path);
+        let managed_listener =
+            crate::engine_utils::is_managed_llama_server_image(&listener_image);
+        if !same_provider_binary && !managed_listener {
+            return Err(format!(
+                "Port {port} lock binary does not match this provider. \
+                 Stop the other application or change BASE-PORT."
+            ));
+        }
+
+        if !crate::engine_utils::same_executable_path(&listener_image, binary_path)
+            && !managed_listener
+        {
+            return Err(format!(
+                "Port {port} is held by PID {listener_pid} ({}) — not our llama-server. \
+                 Stop the other application or change BASE-PORT.",
+                listener_image.display()
+            ));
+        }
+
+        log::info!(
+            "[port_lock] Reclaiming orphan engine on port {port} (PID {listener_pid}, owner_app_pid={})",
             lock.owner_app_pid
+        );
+    } else if crate::engine_utils::is_managed_llama_server_image(&listener_image) {
+        log::info!(
+            "[port_lock] Reclaiming orphan engine on port {port} without lock metadata (PID {listener_pid})",
+        );
+    } else {
+        return Err(format!(
+            "Port {port} is in use by PID {listener_pid} (not a Blackwell Ops engine lock). \
+             Stop the other application or change BASE-PORT."
         ));
     }
-
-    log::info!(
-        "[port_lock] Reclaiming orphan engine on port {port} (PID {listener_pid}, owner_app_pid={})",
-        lock.owner_app_pid
-    );
 
     crate::engine_utils::kill_process_by_pid(listener_pid).await?;
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;

@@ -371,7 +371,7 @@ pub async fn cmd_burst_bench(
         };
         let run_parallel = if is_warmup { 1 } else { parallel_requests };
 
-        crate::fusion_brain::reset_bench_meters_for_port(port);
+        crate::fusion::reset_bench_meters_for_port(port).await;
         let _ = app_handle.emit(
             "bench-tg-progress",
             serde_json::json!({
@@ -423,7 +423,7 @@ pub async fn cmd_burst_bench(
                     summary.gen_tokens
                 );
 
-                crate::fusion_brain::freeze_request_meters_for_port(port);
+                crate::fusion::freeze_request_meters_for_port(port).await;
 
                 if !is_warmup {
                     measured_parallel = run_parallel;

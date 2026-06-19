@@ -215,6 +215,37 @@ pub async fn toggle_group_hidden(provider_id: String, group_id: String, app: tau
     Ok(group_off)
 }
 
+/// Switch active launch binary for a profile between foundry artifact and bundled runtime.
+#[tauri::command]
+pub async fn set_profile_binary_source(
+    provider_id: String,
+    profile: String,
+    source: String,
+    app: tauri::State<'_, AppContext>,
+) -> Result<Vec<crate::types::ProviderConfig>, String> {
+    let mut cfg = app.config.lock().map_err(|e| e.to_string())?;
+    let provider = cfg
+        .providers
+        .iter_mut()
+        .find(|p| p.id == provider_id)
+        .ok_or_else(|| format!("Provider '{}' not found", provider_id))?;
+
+    crate::profile_binaries::set_profile_source(provider, &profile, &source)?;
+    crate::profile_binaries::resolve_after_source_change(provider);
+
+    let updated = cfg.providers.clone();
+    drop(cfg);
+
+    persist_single_provider(
+        updated
+            .iter()
+            .find(|p| p.id == provider_id)
+            .ok_or_else(|| format!("Provider '{}' not found", provider_id))?,
+    )?;
+
+    Ok(updated)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

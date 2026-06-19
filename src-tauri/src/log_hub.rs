@@ -39,6 +39,12 @@ const BATCH_INTERVAL_MS: u64 = TELEMETRY_TICK_MS;
 const MAX_BATCH_SIZE: usize = 10;
 /// Bounded stderr line queue — drops on flood instead of unbounded RAM growth.
 const STDERR_LINE_CHANNEL_CAP: usize = 4096;
+
+/// Engine pipe line — stderr feeds UI + fusion; stdout is fusion/readiness only (lv≤3 INFO slot lines).
+enum EnginePipeLine {
+    Stderr(String),
+    Stdout(String),
+}
 /// MoE --fit can print dozens of memory tables; keep enough stderr for one load.
 const VRAM_LEARN_BUF_CAP: usize = 4096;
 
@@ -87,6 +93,7 @@ impl LogHub {
         engine_pid: u32,
         engine_port: u16,
         stderr: std::process::ChildStderr,
+        stdout: Option<std::process::ChildStdout>,
         learn_snapshot: crate::vram_learn::VramLearnSnapshot,
         model_ready: std::sync::Arc<std::sync::atomic::AtomicBool>,
         on_ready: std::sync::Arc<dyn Fn() + Send + Sync>,
@@ -94,11 +101,10 @@ impl LogHub {
         let app_handle = self.app_handle.clone();
 
         // Internal channel: pipe readers → main processing loop (bounded)
-        let (line_tx, line_rx) = mpsc::channel::<String>(STDERR_LINE_CHANNEL_CAP);
+        let (line_tx, line_rx) = mpsc::channel::<EnginePipeLine>(STDERR_LINE_CHANNEL_CAP);
 
-        // Spawn blocking reader for stderr (llama.cpp sends everything here)
         tokio::task::spawn_blocking({
-            let tx = line_tx;
+            let tx = line_tx.clone();
             move || {
                 use std::io::{BufRead, BufReader};
                 let reader = BufReader::new(stderr);
@@ -106,17 +112,33 @@ impl LogHub {
                     match line_result {
                         Ok(line) => {
                             if !line.is_empty() {
-                                let _ = tx.try_send(line);
+                                let _ = tx.try_send(EnginePipeLine::Stderr(line));
                             }
                         }
-                        Err(e) => {
-                            // Log hub stderr read error now routed to Blackwell Output Console
-                            break;
-                        }
+                        Err(_) => break,
                     }
                 }
             }
         });
+        if let Some(stdout) = stdout {
+            tokio::task::spawn_blocking({
+                let tx = line_tx;
+                move || {
+                    use std::io::{BufRead, BufReader};
+                    let reader = BufReader::new(stdout);
+                    for line_result in reader.lines() {
+                        match line_result {
+                            Ok(line) => {
+                                if !line.is_empty() {
+                                    let _ = tx.try_send(EnginePipeLine::Stdout(line));
+                                }
+                            }
+                            Err(_) => break,
+                        }
+                    }
+                }
+            });
+        }
 
         // Main processing loop: line pipeline + batching + readiness detection
         tokio::spawn(Self::process_lines(
@@ -141,7 +163,7 @@ impl LogHub {
         alias: String,
         engine_pid: u32,
         engine_port: u16,
-        mut line_rx: mpsc::Receiver<String>,
+        mut line_rx: mpsc::Receiver<EnginePipeLine>,
         learn_snapshot: crate::vram_learn::VramLearnSnapshot,
         model_ready: std::sync::Arc<std::sync::atomic::AtomicBool>,
         on_ready: std::sync::Arc<dyn Fn() + Send + Sync>,
@@ -174,8 +196,9 @@ impl LogHub {
 
                 // ── Raw line from pipe reader ─────────────────────────────
                 result = line_rx.recv() => {
-                    let raw_line = match result {
-                        Some(l) => l,
+                    let (raw_line, stdout_only) = match result {
+                        Some(EnginePipeLine::Stderr(l)) => (l, false),
+                        Some(EnginePipeLine::Stdout(l)) => (l, true),
                         None => {
                             if model_ready.load(Ordering::Acquire) {
                                 let prev = tables_persisted;
@@ -229,7 +252,8 @@ impl LogHub {
                     // ── Readiness check (one-shot) — before fatal heuristics ──────────────
                     if !model_ready.load(Ordering::Acquire) {
                         if Self::is_engine_ready_log_line(&cleaned) {
-                            Self::emit_readiness_debug(&app_handle, &alias, "stderr log pattern", &cleaned);
+                            let source = if stdout_only { "stdout log pattern" } else { "stderr log pattern" };
+                            Self::emit_readiness_debug(&app_handle, &alias, source, &cleaned);
                             fire_ready();
                             if let Some(ctx) = app_handle.try_state::<crate::engine::AppContext>() {
                                 ctx.blackwell_output_console_manager.emit_line_to_category(
@@ -267,7 +291,11 @@ impl LogHub {
                         }
                     }
 
-                    if !model_ready.load(Ordering::Acquire) && !load_failed && Self::is_fatal_load_error(&cleaned) {
+                    if !stdout_only
+                        && !model_ready.load(Ordering::Acquire)
+                        && !load_failed
+                        && Self::is_fatal_load_error(&cleaned)
+                    {
                         load_failed = true;
                         let reason = Self::extract_load_error_reason(&cleaned);
                         let reason = if reason.trim().is_empty() {
@@ -300,8 +328,9 @@ impl LogHub {
 
                     // Buffer all breakdown lines; persist only on complete tables (Host row).
                     let lower = cleaned.to_lowercase();
-                    let is_breakdown_line = lower.contains("common_memory_breakdown_print")
-                        || lower.contains("memory breakdown");
+                    let is_breakdown_line = !stdout_only
+                        && (lower.contains("common_memory_breakdown_print")
+                            || lower.contains("memory breakdown"));
                     if is_breakdown_line {
                         vram_learn_buf.push(cleaned.clone());
                         if vram_learn_buf.len() > VRAM_LEARN_BUF_CAP {
@@ -349,11 +378,11 @@ impl LogHub {
                     }
 
                     // Skip idle poll chatter before fusion parse (regex savings at steady state)
-                    if !Self::is_idle_chatter(&cleaned) {
-                        if let Some(log_event) = crate::fusion_logparser::parse_line(&cleaned) {
-                            crate::fusion_brain::route_log_event(slot_idx, log_event);
-                        }
-                    } else {
+                    if Self::is_idle_chatter(&cleaned) {
+                        continue;
+                    }
+                    crate::fusion::parse_and_route_log_event(slot_idx, &cleaned);
+                    if stdout_only {
                         continue;
                     }
 

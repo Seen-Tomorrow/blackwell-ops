@@ -149,7 +149,14 @@ export interface ProviderConfig {
   template_type?: string; // "ggml-llama" | "ik-llama" | "" (custom)
   display_order?: number;
   buildInfoPerEnv?: Record<string, BuildInfo>;
-  binaryPathPerEnv?: Record<string, string>; // env -> sacred artifact path (e.g. "vanguard" -> "foundry/artifacts/<id>/vanguard/Release/llama-server.exe")
+  binaryPathPerEnv?: Record<string, string>; // env -> active launch path (bundled, foundry, or updates/)
+  /** User preference per profile: foundry | bundled (empty = auto by mtime on upgrade). */
+  binarySourcePerEnv?: Record<string, string>;
+  /** Inventory — bundled installer binary (runtime/<id>/<profile>/). */
+  bundledBinaryPathPerEnv?: Record<string, string>;
+  foundryBinaryPathPerEnv?: Record<string, string>;
+  bundledBuildInfoPerEnv?: Record<string, BuildInfo>;
+  foundryBuildInfoPerEnv?: Record<string, BuildInfo>;
   downloadedVersionPerEnv?: Record<string, string>; // env -> GitHub release tag that was installed via update (e.g. "v0.7.8")
   lastPrPerEnv?: Record<string, string>; // env -> PR number (e.g. "stable" -> "21293")
   factory_provided?: boolean; // true = bundled in runtime/ or downloaded from GitHub releases
@@ -192,12 +199,40 @@ export function profileEnvLookup<T>(map: Record<string, T> | undefined, env: str
   return key ? map[key] : undefined;
 }
 
-/** True when a runtime profile has a binary path and/or build metadata on disk. */
+/** True when a foundry artifact exists for this profile. */
+export function isFoundryProfileBuilt(provider: ProviderConfig | undefined, env: string): boolean {
+  if (!provider) return false;
+  const path = profileEnvLookup(provider.foundryBinaryPathPerEnv, env);
+  const info = profileEnvLookup(provider.foundryBuildInfoPerEnv, env);
+  return !!(path?.trim() || info);
+}
+
+/** True when the active launch binary exists for this profile. */
 export function isProfileBuilt(provider: ProviderConfig | undefined, env: string): boolean {
   if (!provider) return false;
   const path = profileEnvLookup(provider.binaryPathPerEnv, env);
   const info = profileEnvLookup(provider.buildInfoPerEnv, env);
   return !!(path?.trim() || info);
+}
+
+function normalizeBinaryPath(path: string): string {
+  return path.replace(/\\/g, '/').toLowerCase();
+}
+
+/** True when the given inventory source is the active launch binary for this profile. */
+export function isProfileSourceActive(
+  provider: ProviderConfig,
+  env: string,
+  source: 'foundry' | 'bundled',
+): boolean {
+  const active = profileEnvLookup(provider.binaryPathPerEnv, env);
+  const inventory =
+    source === 'foundry'
+      ? profileEnvLookup(provider.foundryBinaryPathPerEnv, env)
+      : profileEnvLookup(provider.bundledBinaryPathPerEnv, env);
+  if (!active?.trim() || !inventory?.trim()) return false;
+  if (profileEnvLookup(provider.downloadedVersionPerEnv, env)) return false;
+  return normalizeBinaryPath(active) === normalizeBinaryPath(inventory);
 }
 
 /**

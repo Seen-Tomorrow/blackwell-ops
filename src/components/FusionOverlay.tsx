@@ -2,7 +2,11 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { FusionUpdate } from "../lib/types";
 import { FUSION_HERO_ROW_PX } from "../lib/benchPanelLayout";
-import { getBenchPortState, notifyBenchPortStore } from "../lib/benchPortStore";
+import {
+  getBenchPortState,
+  notifyBenchPortStore,
+  subscribeBenchPortStore,
+} from "../lib/benchPortStore";
 import BenchWidget, { type BenchHeroPatch, type BenchSessionMode } from "./BenchWidget";
 import FusionBooter from "./FusionBooter";
 import type { FusionShareLaunchConfig } from "../lib/fusionShareCapture";
@@ -101,6 +105,9 @@ export default function FusionOverlay({
     pp: null,
   });
   const [benchSessionMode, setBenchSessionMode] = useState<BenchSessionMode>("idle");
+  const [, setBenchPortTick] = useState(0);
+  useEffect(() => subscribeBenchPortStore(() => setBenchPortTick((n) => n + 1)), []);
+  const benchPort = getBenchPortState(displayPort);
   const { mode: heroTpsMode, toggle: toggleHeroTpsMode } = useFusionHeroTpsMode();
   const { open: benchTrayOpen, toggle: toggleBenchTray } = useFusionBenchTray();
 
@@ -316,9 +323,10 @@ export default function FusionOverlay({
         ? fusion.prefillTpsMetrics.toFixed(0)
         : "--";
 
+  // "both" sequence: hide PP hero only during TG; show live PP bar once PP bench starts.
   const suppressPrefillHero =
     benchSessionMode === "tg" ||
-    (benchSessionMode === "both" && benchHero.pp == null);
+    (benchSessionMode === "both" && benchHero.pp == null && !benchPort.ppRunning);
   const suppressTgHero = benchSessionMode === "pp";
   const ppHeroTps = benchHero.pp;
   const ppHeroDisplay = suppressPrefillHero

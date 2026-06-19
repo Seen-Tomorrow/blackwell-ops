@@ -7,8 +7,10 @@ use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 
+use crate::fusion::adapters::FusionAdapterId;
+use crate::fusion::registry;
 use crate::log_hub::LogHub;
-use crate::fusion_poller::{self, MetricsSnapshot};
+use crate::fusion::poller::MetricsSnapshot;
 
 /// Cap hero TPS (avoids million-TPS flash when elapsed≈0 or one poll ingests a huge cached chunk).
 const MAX_DISPLAY_TPS: f64 = 200_000.0;
@@ -77,6 +79,8 @@ pub struct FusionConfig {
     pub ctx_total: usize,
     pub parallel: i64,
     pub unified_kv: bool,
+    pub provider_id: String,
+    pub adapter: FusionAdapterId,
 }
 
 // ── Phase state machine ──────────────────────────────────────────────
@@ -416,6 +420,7 @@ pub struct FusionBrain {
     ctx_total: usize,
     parallel: i64,
     unified_kv: bool,
+    adapter: FusionAdapterId,
     phase: InferencePhase,
     engine_state: EngineState,
     request_start: Option<Instant>,
@@ -514,6 +519,7 @@ impl FusionBrain {
             ctx_total: config.ctx_total,
             parallel: config.parallel,
             unified_kv: config.unified_kv,
+            adapter: config.adapter,
             phase: InferencePhase::Idle,
             engine_state: EngineState::Loading,
             request_start: None,
@@ -578,7 +584,7 @@ impl FusionBrain {
         }
     }
 
-    fn pp_prefill_active(&self, slots: &[fusion_poller::SlotData]) -> bool {
+    fn pp_prefill_active(&self, slots: &[crate::fusion::poller::SlotData]) -> bool {
         self.phase == InferencePhase::PP
             || self.slots_prefill_in_progress(slots)
             || (self.log_request_open && !self.log_prefill_done)
@@ -598,7 +604,7 @@ impl FusionBrain {
         self.pp_burst_peak_tokens = 0;
     }
 
-    fn tick_pp_session_avg(&mut self, slots: &[fusion_poller::SlotData], prefill_tokens: usize) {
+    fn tick_pp_session_avg(&mut self, slots: &[crate::fusion::poller::SlotData], prefill_tokens: usize) {
         let pp_active = self.pp_prefill_active(slots);
         if pp_active {
             if self.pp_burst_started_at.is_none() {
@@ -612,7 +618,7 @@ impl FusionBrain {
         }
     }
 
-    fn pp_session_avg_tps(&self, slots: &[fusion_poller::SlotData], prefill_tokens: usize) -> f64 {
+    fn pp_session_avg_tps(&self, slots: &[crate::fusion::poller::SlotData], prefill_tokens: usize) -> f64 {
         let mut total_ms = self.pp_completed_ms;
         let mut total_tokens = self.pp_completed_tokens;
         if self.pp_prefill_active(slots) {
@@ -636,7 +642,7 @@ impl FusionBrain {
         self.pp_burst_peak_tokens = 0;
     }
 
-    fn tg_generation_active(&self, slots: &[fusion_poller::SlotData]) -> bool {
+    fn tg_generation_active(&self, slots: &[crate::fusion::poller::SlotData]) -> bool {
         !self.request_closed
             && (self.phase == InferencePhase::Tg
                 || self.slots_have_active_generation(slots)
@@ -656,7 +662,7 @@ impl FusionBrain {
         self.tg_burst_peak_tokens = 0;
     }
 
-    fn tick_tg_session_avg(&mut self, slots: &[fusion_poller::SlotData]) {
+    fn tick_tg_session_avg(&mut self, slots: &[crate::fusion::poller::SlotData]) {
         let tg_active = self.tg_generation_active(slots);
         if tg_active {
             if self.tg_burst_started_at.is_none() {
@@ -671,7 +677,7 @@ impl FusionBrain {
         }
     }
 
-    fn tg_session_avg_tps(&self, slots: &[fusion_poller::SlotData]) -> f64 {
+    fn tg_session_avg_tps(&self, slots: &[crate::fusion::poller::SlotData]) -> f64 {
         let mut total_ms = self.tg_completed_ms;
         let mut total_tokens = self.tg_completed_tokens;
         if self.tg_generation_active(slots) {
@@ -815,7 +821,7 @@ impl FusionBrain {
 
     /// Bench warmup/measured phases reuse the same slot without an idle gap — force fresh TG/PP meters.
     /// Definitive request end — freeze elapsed + pin hero AVG (survives stale lp_gen_tps / delayed stop log).
-    fn finalize_request_meters(&mut self, slots: &[fusion_poller::SlotData]) {
+    fn finalize_request_meters(&mut self, slots: &[crate::fusion::poller::SlotData]) {
         if self.request_closed {
             return;
         }
@@ -874,7 +880,7 @@ impl FusionBrain {
         self.emit_dirty = true;
     }
 
-    fn per_request_gen_tokens(&self, slots: &[fusion_poller::SlotData]) -> usize {
+    fn per_request_gen_tokens(&self, slots: &[crate::fusion::poller::SlotData]) -> usize {
         let mut n = 0usize;
         for slot in slots {
             if slot.next_token.is_empty() {
@@ -891,7 +897,7 @@ impl FusionBrain {
         n
     }
 
-    fn update_instant_tps(&mut self, slots: &[fusion_poller::SlotData], now: Instant) {
+    fn update_instant_tps(&mut self, slots: &[crate::fusion::poller::SlotData], now: Instant) {
         if self.request_closed {
             return;
         }
@@ -1038,7 +1044,7 @@ impl FusionBrain {
 
     /// Per-request decode progress — `n_decoded > request_start_n_decoded` (not raw `n_decoded > 0`).
     /// Do not gate on `n_remain <= 0`: unlimited chat uses negative `n_remain`; MTP can report 0 while finishing.
-    fn slot_has_request_decode(&self, slot: &fusion_poller::SlotData) -> bool {
+    fn slot_has_request_decode(&self, slot: &crate::fusion::poller::SlotData) -> bool {
         if !slot.is_processing || slot.next_token.is_empty() {
             return false;
         }
@@ -1051,7 +1057,7 @@ impl FusionBrain {
         t.n_decoded > baseline
     }
 
-    fn slots_have_active_generation(&self, slots: &[fusion_poller::SlotData]) -> bool {
+    fn slots_have_active_generation(&self, slots: &[crate::fusion::poller::SlotData]) -> bool {
         slots.iter().any(|s| self.slot_has_request_decode(s))
     }
 
@@ -1062,7 +1068,7 @@ impl FusionBrain {
     }
 
     /// /slots shows prompt eval still in flight — beats stale decode counters during SWA re-prefill.
-    fn slots_prefill_in_progress(&self, slots: &[fusion_poller::SlotData]) -> bool {
+    fn slots_prefill_in_progress(&self, slots: &[crate::fusion::poller::SlotData]) -> bool {
         if self.log_prefill_done {
             return false;
         }
@@ -1071,6 +1077,9 @@ impl FusionBrain {
             && self.lp_prefill_progress < 0.995
         {
             return true;
+        }
+        if !self.adapter.slots_expose_prompt_processed() {
+            return false;
         }
         let total = self.prefill_tokens_total;
         for slot in slots {
@@ -1149,6 +1158,7 @@ impl FusionBrain {
         cancel: tokio_util::sync::CancellationToken,
     ) {
         let mut brain = Self::new(&config);
+        registry::register_slot_adapter(config.slot_idx, config.adapter);
 
         // Channel for log events + bench meter resets → this brain task (bounded to backpressure on slow consumer)
         let (event_tx, mut event_rx) =
@@ -1187,11 +1197,17 @@ impl FusionBrain {
                             brain.process_log_event(&log_event);
                             brain.emit_dirty = true;
                         }
-                        BrainInbound::BenchMeterReset => {
+                        BrainInbound::BenchMeterReset(ack) => {
                             brain.reset_bench_meters();
+                            if let Some(tx) = ack {
+                                let _ = tx.send(());
+                            }
                         }
-                        BrainInbound::BenchMeterFreeze => {
+                        BrainInbound::BenchMeterFreeze(ack) => {
                             brain.finalize_request_meters(&[]);
+                            if let Some(tx) = ack {
+                                let _ = tx.send(());
+                            }
                         }
                     }
                 }
@@ -1200,11 +1216,11 @@ impl FusionBrain {
                     let poll_ms = if brain.is_idle_ready() { POLL_IDLE_MS } else { POLL_ACTIVE_MS };
                     next_poll = tokio::time::Instant::now() + tokio::time::Duration::from_millis(poll_ms);
 
-                    let slots_fut = fusion_poller::poll_slots(&client, brain.port);
-                    let metrics_fut = fusion_poller::poll_metrics(&client, brain.port);
+                    let slots_fut = crate::fusion::poller::poll_slots(&client, brain.port);
+                    let metrics_fut = crate::fusion::poller::poll_metrics(&client, brain.port);
                     let (slots_result, metrics_result) = tokio::join!(slots_fut, metrics_fut);
 
-                    let slot_data: Vec<fusion_poller::SlotData> = match slots_result {
+                    let mut slot_data: Vec<crate::fusion::poller::SlotData> = match slots_result {
                         Ok(slots) => slots,
                         Err(_e) => {
                             if brain.engine_state == EngineState::Loading {
@@ -1215,6 +1231,7 @@ impl FusionBrain {
                         }
                     };
 
+                    brain.adapter.normalize_slots(&mut slot_data);
                     brain.process_slots(&slot_data);
 
                     if let Ok(ref metrics) = metrics_result {
@@ -1238,48 +1255,94 @@ impl FusionBrain {
 
     // ── Log-parsed event handlers (stderr print_timing lines) ───────
 
-    fn process_log_event(&mut self, event: &crate::fusion_logparser::LogEvent) {
+    fn process_log_event(&mut self, event: &crate::fusion::log::LogEvent) {
         match event {
-            crate::fusion_logparser::LogEvent::PrintTimingPP { .. } => self.handle_print_timing_pp(event),
-            crate::fusion_logparser::LogEvent::PrintTimingGen { .. } => self.handle_print_timing_gen(event),
-            crate::fusion_logparser::LogEvent::DraftAcceptance { .. } => {
+            crate::fusion::log::LogEvent::PrintTimingPP { .. } => self.handle_print_timing_pp(event),
+            crate::fusion::log::LogEvent::PrintTimingGen { .. } => self.handle_print_timing_gen(event),
+            crate::fusion::log::LogEvent::DraftAcceptance { .. } => {
                 self.handle_draft_acceptance(event);
             }
-            crate::fusion_logparser::LogEvent::SamplerInit {
+            crate::fusion::log::LogEvent::SamplerInit {
                 slot_id,
                 total_tokens,
                 ..
             } => self.handle_sampler_init(*slot_id, *total_tokens),
-            crate::fusion_logparser::LogEvent::StopProcessing {
+            crate::fusion::log::LogEvent::StopProcessing {
                 slot_id,
                 n_tokens,
                 ..
             } => self.handle_stop_processing(*slot_id, *n_tokens),
-            crate::fusion_logparser::LogEvent::CachedPromptTokens {
+            crate::fusion::log::LogEvent::CachedPromptTokens {
                 slot_id,
                 cached_tokens,
                 ..
             } => self.handle_cached_prompt_tokens(*slot_id, *cached_tokens),
             // NewPrompt — belt: reset all LP state at exact request start (fires before any PP work)
-            crate::fusion_logparser::LogEvent::NewPrompt {
+            crate::fusion::log::LogEvent::NewPrompt {
                 slot_id,
                 task_id,
                 prompt_tokens,
                 n_ctx_slot,
             } => self.handle_new_prompt(*slot_id, *task_id, *prompt_tokens, *n_ctx_slot),
-            crate::fusion_logparser::LogEvent::NewSlot { slot_id, n_ctx } => {
+            crate::fusion::log::LogEvent::NewSlot { slot_id, n_ctx } => {
                 self.pin_slot_ctx_capacity(*slot_id, *n_ctx);
             }
-            crate::fusion_logparser::LogEvent::ForcePromptReprocess { slot_id, task_id } => {
+            crate::fusion::log::LogEvent::ForcePromptReprocess { slot_id, task_id } => {
                 self.handle_force_prompt_reprocess(*slot_id, *task_id);
             }
-            crate::fusion_logparser::LogEvent::PromptEvalComplete {
+            crate::fusion::log::LogEvent::PromptEvalComplete {
                 slot_id,
                 tokens,
                 eval_ms,
                 ..
             } => self.handle_prompt_eval_complete(*slot_id, *tokens, *eval_ms),
+            crate::fusion::log::LogEvent::PromptProcessingProgress {
+                slot_id,
+                task_id,
+                n_tokens,
+                progress,
+            } => self.handle_prompt_processing_progress(*slot_id, *task_id, *n_tokens, *progress),
         }
+    }
+
+    fn handle_prompt_processing_progress(
+        &mut self,
+        slot_id: usize,
+        task_id: i64,
+        n_tokens: usize,
+        progress: f64,
+    ) {
+        if progress <= 0.0 || n_tokens == 0 {
+            return;
+        }
+        // TG bench freeze can linger until reset is processed — Tom PP belt must reopen meters.
+        self.request_closed = false;
+        self.frozen_request_gen_tps = 0.0;
+        self.log_request_open = true;
+        self.log_prefill_done = false;
+        self.phase = InferencePhase::PP;
+        self.lp_phase = InferencePhase::PP;
+        let prog = progress.clamp(0.0, 1.0);
+        self.lp_prefill_progress = prog;
+        if prog > self.prefill_progress {
+            self.prefill_progress = prog;
+        }
+        self.lp_prompt_tokens = n_tokens;
+        if n_tokens > self.prefill_tokens {
+            self.prefill_tokens = n_tokens;
+        }
+        if self.prefill_tokens_total == 0 && prog > 0.0 {
+            let total = ((n_tokens as f64) / prog).round() as usize;
+            if total > 0 {
+                self.prefill_tokens_total = total;
+            }
+        }
+        if self.slot_states.get(&slot_id).map(|s| s.current_task_id).flatten().is_none() {
+            self.begin_request_on_slot(slot_id, Some(task_id), None);
+        }
+        self.restart_request_clock();
+        self.touch_slot_activity(Instant::now());
+        self.emit_dirty = true;
     }
 
     fn handle_new_prompt(
@@ -1395,8 +1458,8 @@ impl FusionBrain {
         self.bump_slot_ctx_from_log(slot_id, tokens, n_decoded);
     }
 
-    fn handle_print_timing_pp(&mut self, e: &crate::fusion_logparser::LogEvent) {
-        if let crate::fusion_logparser::LogEvent::PrintTimingPP {
+    fn handle_print_timing_pp(&mut self, e: &crate::fusion::log::LogEvent) {
+        if let crate::fusion::log::LogEvent::PrintTimingPP {
             slot_id,
             n_tokens,
             progress,
@@ -1437,8 +1500,8 @@ impl FusionBrain {
         }
     }
 
-    fn handle_print_timing_gen(&mut self, e: &crate::fusion_logparser::LogEvent) {
-        if let crate::fusion_logparser::LogEvent::PrintTimingGen {
+    fn handle_print_timing_gen(&mut self, e: &crate::fusion::log::LogEvent) {
+        if let crate::fusion::log::LogEvent::PrintTimingGen {
             gen_tps,
             slot_id,
             n_decoded,
@@ -1472,8 +1535,8 @@ impl FusionBrain {
         }
     }
 
-    fn handle_draft_acceptance(&mut self, e: &crate::fusion_logparser::LogEvent) {
-        let crate::fusion_logparser::LogEvent::DraftAcceptance {
+    fn handle_draft_acceptance(&mut self, e: &crate::fusion::log::LogEvent) {
+        let crate::fusion::log::LogEvent::DraftAcceptance {
             accepted,
             generated,
             accept_rate,
@@ -1598,11 +1661,11 @@ impl FusionBrain {
 
     // ── /metrics processing — phase detection + prefill TPS ─────────
 
-    fn process_metrics(&mut self, metrics: &MetricsSnapshot, slots: &[fusion_poller::SlotData]) {
+    fn process_metrics(&mut self, metrics: &MetricsSnapshot, slots: &[crate::fusion::poller::SlotData]) {
         let now = Instant::now();
 
         // Extract decisions from prev_metrics BEFORE mutating self
-        let (request_ended, new_request_started, pt_delta, ps_delta, tt_delta, dt_sec) =
+        let (request_ended, new_request_started, pt_delta, _ps_delta, tt_delta, dt_sec) =
             if let Some(ref prev) = self.prev_metrics {
                 let was_active = prev.requests_processing > 0;
                 let is_active = metrics.requests_processing > 0;
@@ -1683,14 +1746,25 @@ impl FusionBrain {
     /// Phase: PP while prefill is in flight; TG only when decode budget remains (n_remain > 0).
     fn reconcile_phase(
         &mut self,
-        slots: &[fusion_poller::SlotData],
+        slots: &[crate::fusion::poller::SlotData],
         any_processing: bool,
         now: Instant,
     ) {
         if self.request_closed {
-            self.phase = InferencePhase::Idle;
-            self.lp_phase = InferencePhase::Idle;
-            return;
+            // Belt: PP logs/slots can arrive before bench reset drains after TG freeze.
+            let pp_reopening = self.log_request_open
+                && !self.log_prefill_done
+                && (self.phase == InferencePhase::PP
+                    || self.lp_prefill_progress > 0.0
+                    || self.prefill_progress > 0.0);
+            if pp_reopening {
+                self.request_closed = false;
+                self.frozen_request_gen_tps = 0.0;
+            } else {
+                self.phase = InferencePhase::Idle;
+                self.lp_phase = InferencePhase::Idle;
+                return;
+            }
         }
 
         let metrics_busy = self
@@ -1738,8 +1812,8 @@ impl FusionBrain {
     }
 
     /// Update prefill progress from /slots `n_prompt_tokens_processed` only (never `n_prompt_tokens` — that is prompt.tokens.size()).
-    fn update_prefill_from_slots(&mut self, slots: &[fusion_poller::SlotData]) {
-        if self.prefill_tokens_total == 0 {
+    fn update_prefill_from_slots(&mut self, slots: &[crate::fusion::poller::SlotData]) {
+        if !self.adapter.slots_expose_prompt_processed() || self.prefill_tokens_total == 0 {
             return;
         }
         let total = self.prefill_tokens_total;
@@ -1764,7 +1838,7 @@ impl FusionBrain {
 
     // ── /slots processing — token counts, per-slot tracking ─────────
 
-    fn process_slots(&mut self, slots: &[fusion_poller::SlotData]) {
+    fn process_slots(&mut self, slots: &[crate::fusion::poller::SlotData]) {
         let now = Instant::now();
         let mut any_processing = false;
 
@@ -1999,7 +2073,7 @@ impl FusionBrain {
 
     fn build_update(
         &self,
-        slots: &[fusion_poller::SlotData],
+        slots: &[crate::fusion::poller::SlotData],
         metrics: Option<&MetricsSnapshot>,
     ) -> FusionUpdate {
         // Compute total n_decoded across all slots
@@ -2305,10 +2379,10 @@ use tokio::sync::Mutex as TokioMutex;
 
 /// Inbound messages to a running FusionBrain task (stderr logs + bench phase boundaries).
 pub enum BrainInbound {
-    Log(crate::fusion_logparser::LogEvent),
-    BenchMeterReset,
+    Log(crate::fusion::log::LogEvent),
+    BenchMeterReset(Option<tokio::sync::oneshot::Sender<()>>),
     /// Bench HTTP returned — freeze meters before trailing print_timing / stop log.
-    BenchMeterFreeze,
+    BenchMeterFreeze(Option<tokio::sync::oneshot::Sender<()>>),
 }
 
 static BRAIN_REGISTRY: std::sync::LazyLock<
@@ -2333,7 +2407,7 @@ fn unregister_brain_inbound(slot_idx: usize) {
 }
 
 /// Route a parsed log event to the brain for the given slot (fire-and-forget, drops on full).
-pub fn route_log_event(slot_idx: usize, event: crate::fusion_logparser::LogEvent) {
+pub fn route_log_event(slot_idx: usize, event: crate::fusion::log::LogEvent) {
     let registry = BRAIN_INBOUND_SENDERS.lock();
     if let Some(tx) = registry.get(&slot_idx) {
         let _ = tx.try_send(BrainInbound::Log(event));
@@ -2341,37 +2415,58 @@ pub fn route_log_event(slot_idx: usize, event: crate::fusion_logparser::LogEvent
 }
 
 /// Freeze fusion hero meters when a bench HTTP run completes (definitive for stream:false).
-pub fn freeze_request_meters_for_port(port: u16) {
+pub async fn freeze_request_meters_for_port(port: u16) {
     let slot_idx = FUSION_SNAPSHOT_CACHE
         .lock()
         .values()
         .find(|u| u.port == port)
         .map(|u| u.slot_idx);
     if let Some(idx) = slot_idx {
-        let registry = BRAIN_INBOUND_SENDERS.lock();
-        if let Some(tx) = registry.get(&idx) {
-            let _ = tx.try_send(BrainInbound::BenchMeterFreeze);
+        let (ack_tx, ack_rx) = tokio::sync::oneshot::channel();
+        let brain_tx = BRAIN_INBOUND_SENDERS.lock().get(&idx).cloned();
+        if let Some(tx) = brain_tx {
+            if tx.try_send(BrainInbound::BenchMeterFreeze(Some(ack_tx))).is_ok() {
+                let _ = tokio::time::timeout(
+                    std::time::Duration::from_millis(200),
+                    ack_rx,
+                )
+                .await;
+            }
         }
     }
 }
 
-/// Reset fusion hero meters at bench phase boundaries (warmup ↔ measured).
-pub fn reset_bench_meters_for_port(port: u16) {
+/// Reset fusion hero meters at bench phase boundaries (warmup ↔ measured, TG → PP).
+pub async fn reset_bench_meters_for_port(port: u16) {
     let slot_idx = FUSION_SNAPSHOT_CACHE
         .lock()
         .values()
         .find(|u| u.port == port)
         .map(|u| u.slot_idx);
     if let Some(idx) = slot_idx {
-        let registry = BRAIN_INBOUND_SENDERS.lock();
-        if let Some(tx) = registry.get(&idx) {
-            let _ = tx.try_send(BrainInbound::BenchMeterReset);
+        let (ack_tx, ack_rx) = tokio::sync::oneshot::channel();
+        let brain_tx = BRAIN_INBOUND_SENDERS.lock().get(&idx).cloned();
+        if let Some(tx) = brain_tx {
+            if tx.try_send(BrainInbound::BenchMeterReset(Some(ack_tx))).is_ok() {
+                let _ = tokio::time::timeout(
+                    std::time::Duration::from_millis(200),
+                    ack_rx,
+                )
+                .await;
+            }
         }
     }
 }
 
 /// Start a fusion brain for an engine. Keyed by slot_idx.
 pub async fn start_brain(log_hub: LogHub, config: FusionConfig) {
+    log::info!(
+        "[fusion] slot={} provider={} adapter={} port={}",
+        config.slot_idx,
+        config.provider_id,
+        config.adapter.as_str(),
+        config.port
+    );
     let mut registry = BRAIN_REGISTRY.lock().await;
 
     if let Some((_, cancel)) = registry.remove(&config.slot_idx) {
@@ -2400,13 +2495,14 @@ pub async fn stop_brain(slot_idx: usize) {
         let mut senders = BRAIN_INBOUND_SENDERS.lock();
         senders.remove(&slot_idx);
     }
+    registry::unregister_slot_adapter(slot_idx);
     remove_fusion_snapshot(slot_idx);
 }
 
 /// Stop all fusion brains. Call on app shutdown.
 pub async fn stop_all_brains() {
     let mut registry = BRAIN_REGISTRY.lock().await;
-    for (slot_idx, (_, cancel)) in registry.drain() {
+    for (_slot_idx, (_, cancel)) in registry.drain() {
         // Fusion brain stopping now routed to Blackwell Output Console
         cancel.cancel();
     }
@@ -2415,5 +2511,6 @@ pub async fn stop_all_brains() {
         let mut senders = BRAIN_INBOUND_SENDERS.lock();
         senders.clear();
     }
+    registry::clear_slot_adapters();
     FUSION_SNAPSHOT_CACHE.lock().clear();
 }

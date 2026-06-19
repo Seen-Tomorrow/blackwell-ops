@@ -1,43 +1,63 @@
 # FUSION — Metrics, Logic & Data Sources
 
-Reference for **Fusion Brain** (`fusion_brain.rs`): how `/slots`, `/metrics`, and stderr logs are fused into `FusionUpdate`, and how the UI consumes them.
+Reference for **Fusion** (`src-tauri/src/fusion/`): how `/slots`, `/metrics`, and engine logs are fused into `FusionUpdate`, and how the UI consumes them.
 
-**Last aligned with code:** 2026-06-05
+**Last aligned with code:** 2026-06-19
 
 ---
 
 ## 1. Architecture
 
 ```
-stderr ──► log_hub::spawn_slot_reader
-              └─► fusion_logparser::parse_line ──► route_log_event(slot_idx)
-                        └─► FusionBrain::process_log_event (mpsc, immediate fusion-update)
+stderr + stdout ──► log_hub::spawn_slot_reader
+                       └─► fusion::parse_and_route_log_event(slot_idx, line)
+                             ├─ registry::slot_adapter(slot_idx) → FusionAdapterId
+                             ├─ adapter.parse_log_line(line) → LogEvent
+                             └─ brain::route_log_event → FusionBrain::process_log_event
 
-HTTP ~100ms ──► fusion_poller::poll_slots  ──┐
-              fusion_poller::poll_metrics ──┼─► FusionBrain::process_slots / process_metrics
-                                            └─► build_update ──► emit "fusion-update"
+HTTP ~25ms ──► fusion::poller::poll_slots  ──┐
+             fusion::poller::poll_metrics ──┼─► adapter.normalize_slots
+                                             └─► FusionBrain::process_slots / process_metrics
+                                                   └─► build_update ──► emit "fusion-update"
 ```
 
 | Concept | Detail |
 |--------|--------|
 | **Instances** | One `FusionBrain` per **engine process** (stack `slot_idx` + HTTP `port`), not per llama parallel slot |
 | **Poll order** | `/slots` first, then `/metrics` (so PP state is current before metrics heuristics) |
-| **Poll interval** | 100 ms (`fusion_brain::run`) |
-| **Log path** | Log events also emit `fusion-update` immediately (not only on poll ticks) |
+| **Poll interval** | `log_hub::TELEMETRY_TICK_MS` (**25 ms** active; 500 ms idle+ready) |
+| **Log path** | Log events set `emit_dirty`; coalesced emit on next poll tick |
+| **Stdout** | Fusion-only tap at `-lv 3` (Tom PP progress on stdout INFO); not batched to UI log panel |
 | **Frontend map** | `useFusionData.ts` → `Map<slotIdx, FusionUpdate>` |
 
 **Source files**
 
 | File | Role |
 |------|------|
-| `fusion_poller.rs` | Deserialize `/slots`, parse Prometheus `/metrics` |
-| `fusion_logparser.rs` | Regex parse llama-server `-lv` lines → `LogEvent` |
-| `fusion_brain.rs` | State machine, fusion, `FusionUpdate` build |
-| `log_hub.rs` | Stderr reader → `parse_line` → `route_log_event` |
+| `fusion/mod.rs` | Public API: `parse_and_route_log_event`, `poll_slots_normalized`, `resolve_adapter` |
+| `fusion/poller.rs` | Deserialize `/slots`, parse Prometheus `/metrics` (provider-agnostic) |
+| `fusion/adapters/` | Per-provider log parsers + `/slots` normalization |
+| `fusion/adapters/parse_ggml.rs` | Shared ggml-org stderr regex belt |
+| `fusion/log.rs` | Canonical `LogEvent` enum |
+| `fusion/registry.rs` | `resolve_adapter`, per-slot adapter map for log_hub |
+| `fusion/brain.rs` | State machine, fusion, `FusionUpdate` build |
+| `log_hub.rs` | Stderr + stdout readers → fusion parse; stderr → UI batch |
 | `bench_pp_burst.rs` | PP bench (uses `/completion` + `/tokenize` calibration) |
 | `FusionOverlay.tsx` | Hero PP/TG, LIVE/AVG toggle, phase banner |
 | `SlotCtxBars.tsx` | Per-slot CTX bars + unified shared label |
 | `SlotLogPanel.tsx` | **LP** (log-parsed) comparison/debug |
+
+### 1.1 Per-provider adapters
+
+Adapter id is set via `spawn_profile.fusion_adapter` in factory JSON, with auto-fallback from `provider_id` / `template_type` in `registry::resolve_adapter`.
+
+| Adapter | `fusion_adapter` | Log verbosity | `/slots` PP fields | PP progress primary |
+|---------|------------------|---------------|--------------------|---------------------|
+| **ggml-master** | `ggml_master` | `-lv 4` stderr | Yes (`n_prompt_tokens_processed`) | `/slots` + stderr belt |
+| **ggml-tom** | `ggml_tom` | `-lv 3` (poll quiet) | **No** — omitted from JSON | stdout `PromptProcessingProgress` + `NewPrompt` |
+| **IK** | `ik_llama` | `-lv 4` stderr | Yes | `/slots` + stderr; `normalize_slots` maps `state`/`command` → `is_processing` |
+
+**Tuning a new fork:** add `fusion/adapters/<id>.rs`, register in `FusionAdapterId`, set factory `fusion_adapter`, add a unit test with a real log line. Keep phase/TPS math in `brain.rs`; adapters only translate I/O.
 
 ---
 
@@ -46,7 +66,7 @@ HTTP ~100ms ──► fusion_poller::poll_slots  ──┐
 | Concern | Primary | Secondary (belt) | Fallback |
 |--------|---------|-------------------|----------|
 | **Phase `PP` / `TG` / `IDLE`** | `/slots` + `reconcile_phase` | Logs: `log_request_open`, `log_prefill_done` | `/metrics` `requests_processing` |
-| **Prefill progress %** | `/slots` `n_prompt_tokens_processed` ÷ `prefill_tokens_total` | `max()` with log progress/tokens | — |
+| **Prefill progress %** | `/slots` `n_prompt_tokens_processed` ÷ `prefill_tokens_total` (ggml-master, IK) | Tom: `PromptProcessingProgress` on stdout; `max()` with log progress/tokens | — |
 | **`prefill_tokens_total`** | Log `NewPrompt` (`task.n_tokens`) | `PromptEvalComplete` / `SamplerInit` | — |
 | **Hero PP AVG TPS** | `prefill_tokens / request_elapsed_ms` | `prefill_tps_eval` after eval line | `logPrefillTps` |
 | **Hero PP LIVE TPS** | Per-poll token delta | `logPrefillTps` from `print_timing` PP | `prefillTpsMetrics` gauge |
@@ -108,13 +128,14 @@ Computed in `reconcile_phase()` after each `/slots` poll.
 
 ---
 
-## 4. Log parser (`fusion_logparser.rs`)
+## 4. Log parser (`fusion/adapters/`)
 
-Wired: every stderr line → `parse_line` → `route_log_event` → `process_log_event`.
+Wired: stderr + fusion-relevant stdout → `parse_and_route_log_event` → `route_log_event` → `process_log_event`. Shared ggml regexes live in `parse_ggml.rs`; Tom adds `PromptProcessingProgress` in `ggml_tom.rs`.
 
 | `LogEvent` | Regex trigger (summary) | Brain handler | Active use |
 |------------|-------------------------|---------------|------------|
 | `NewPrompt` | `new prompt` + `task.n_tokens = N` | `handle_new_prompt` | **Yes** — reset PP, set `prefill_tokens_total`, `log_request_open`, start clock |
+| `PromptProcessingProgress` | Tom stdout: `prompt processing progress, … progress = X` | `handle_prompt_processing_progress` | **Tom only** — primary PP % when `/slots` omits processed count |
 | `CachedPromptTokens` | `cached n_tokens = N` | `handle_cached_prompt_tokens` | **Yes** — live PP tokens/progress when `print_timing` PP sparse; throttled ~80 ms |
 | `SamplerInit` | `init sampler` + `total = N` | `handle_sampler_init` | **Yes** — `log_prefill_done = true`, progress → 100%; stay PP until slots TG |
 | `PromptEvalComplete` | `prompt eval time = X ms / N tokens` | `handle_prompt_eval_complete` | **Yes** — authoritative N, `prefill_tps_eval`, lock progress |
@@ -122,13 +143,13 @@ Wired: every stderr line → `parse_line` → `route_log_event` → `process_log
 | `PrintTimingGen` | `n_decoded, tg = X t/s` | `handle_print_timing_gen` | **Yes** — LP + instant TG TPS only |
 | `StopProcessing` | `stop processing` | `handle_stop_processing` | **Yes** — idle + reset (guarded by slots in metrics path) |
 
-**Known server quirk:** `print_timing` PP is skipped when prefill &lt; ~3 s → logs alone miss short PP; `/slots` + `cached n_tokens` cover that.
+**Known server quirk:** `print_timing` PP is skipped when prefill &lt; ~3 s → logs alone miss short PP; `/slots` + `cached n_tokens` cover that (ggml-master). Tom relies on stdout `PromptProcessingProgress` at `-lv 3`.
 
 **`lp_phase` / `logPhase`:** Updated by log handlers for **SlotLogPanel**; hero banner uses fused `phase`, not `logPhase`.
 
 ---
 
-## 5. `/slots` semantics (`fusion_poller::SlotData`)
+## 5. `/slots` semantics (`fusion/poller::SlotData`)
 
 | Field | Meaning | Used for |
 |-------|---------|----------|
@@ -169,7 +190,7 @@ Supports growth and **downward** correction after compaction/shift.
 
 ## 6. `/metrics` (`MetricsSnapshot`)
 
-Parsed keys (see `fusion_poller::parse_prometheus_text`):
+Parsed keys (see `fusion/poller::parse_prometheus_text`):
 
 | Prometheus key | Field | Use |
 |----------------|-------|-----|
@@ -324,7 +345,7 @@ Serde renames → camelCase in TypeScript (`types.ts`).
 
 | Event | Payload | When |
 |-------|---------|------|
-| `fusion-update` | `FusionUpdate` | On **change** (fingerprint) or `emit_dirty` after log belt; poll 100 ms active / 500 ms idle+ready |
+| `fusion-update` | `FusionUpdate` | On **change** (fingerprint) or `emit_dirty` after log belt; poll `TELEMETRY_TICK_MS` (25 ms) active / 500 ms idle+ready |
 | `engine-log-batch` | Log lines | Stderr batching |
 | `bench-pp-progress` | phase, `effectiveLength` | PP bench warmup/measured |
 | `bench-tg-progress` | phase | TG bench |
@@ -334,13 +355,15 @@ Serde renames → camelCase in TypeScript (`types.ts`).
 
 ## 13. Maintenance notes
 
-- **Emit policy (2026-06-05):** `FusionEmitFingerprint` in `fusion_brain.rs` — skip identical `fusion-update` IPC. Log events set `emit_dirty`; emit coalesces on next poll tick (≤100 ms). Idle+ready polls at 500 ms.
+- **Emit policy:** `FusionEmitFingerprint` in `fusion/brain.rs` — skip identical `fusion-update` IPC. Log events set `emit_dirty`; emit coalesces on next poll tick (≤`TELEMETRY_TICK_MS`). Idle+ready polls at 500 ms.
+- **Adapter selection:** `engine.rs` calls `fusion::resolve_adapter(provider_id, template_type, spawn_profile.fusion_adapter)`. `engine_stack` registers adapter before log reader starts.
+- **Tom verbosity:** `templates::apply_spawn_profile_overrides` sets `-lv 3` + `fusion_adapter: ggml_tom` — keeps external CMD quiet while fusion still gets PP belt on stdout.
+- **Brain PP from slots:** `update_prefill_from_slots` and `slots_prefill_in_progress` skip `/slots` PP paths when `adapter.slots_expose_prompt_processed() == false`.
 - **Frontend dedupe:** `useFusionData.ts` shallow-compares payloads before `map.set` / `setEngines`.
 - **Listeners:** Prefer `useTauriListen.ts` (generation-guarded) over raw `listen().then()` for StrictMode safety.
 - **Hooks:** `useFusionHeroTpsMode()` must run unconditionally at top of `FusionOverlay` (before `if (!fusion) return`).
 - **Lifecycle:** `stop_brain` runs from `engine.rs`, `engine_stack::shutdown_slots_generic`, `stop_slot`, and reaper. Brain `run()` calls `unregister_log_receiver` on cancel.
-- **Log pipeline:** `log_hub.rs` uses bounded stderr channel (4096); fusion `parse_line` runs **after** `is_idle_chatter` filter.
-- **Removing log parser:** Would require replacing `NewPrompt` / `cached n_tokens` / `log_request_open` belt before dropping `fusion_logparser.rs`.
+- **Log pipeline:** `log_hub.rs` uses bounded pipe channel (4096); fusion parse runs **after** `is_idle_chatter` filter. Stdout lines route to fusion only (not UI log batch).
 
 ---
 
@@ -355,3 +378,4 @@ Serde renames → camelCase in TypeScript (`types.ts`).
 | 2026-06 | PP bench `/tokenize` calibration for chip targets |
 | 2026-06 | This document rewritten as full logic spec |
 | 2026-06-05 | Emit-on-change, idle poll slowdown, browser leak fixes, `stop_brain` in all stop paths |
+| 2026-06-19 | Per-provider `fusion/adapters/` refactor; Tom stdout PP; `TELEMETRY_TICK_MS` = 25 ms; factory `fusion_adapter` field |

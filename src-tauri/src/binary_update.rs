@@ -473,9 +473,9 @@ pub async fn install_app_update(app_handle: tauri::AppHandle) -> Result<(), Stri
 
     log::info!("[app-update] Launching installer at {}", installer_path.display());
 
-    // Launch the installer silently (NSIS /S flag for silent install)
+    // Silent in-place upgrade — /UPDATE skips uninstall-first and preserves foundry/, config/, engines/
     std::process::Command::new("cmd")
-        .args(["/C", &format!("start \"\" /wait \"{}\" /S", installer_path.display())])
+        .args(["/C", &format!("start \"\" /wait \"{}\" /S /UPDATE", installer_path.display())])
         .spawn()
         .map_err(|e| format!("Failed to launch installer: {}", e))?;
 
@@ -566,10 +566,13 @@ pub async fn revert_binary_to_bundled(
     let mut cfg = cfg_state.lock().map_err(|e| format!("Failed to lock config: {}", e))?;
 
     if let Some(provider) = cfg.providers.iter_mut().find(|p| p.id == provider_id) {
-        // Remove per-env override — resolution chain will fall back to bundled binary
-        provider.binary_path_per_env.remove(&profile);
-        // Also clear stale download version tracking — we're using bundled now
+        crate::profile_binaries::set_profile_source(
+            provider,
+            &profile,
+            crate::profile_binaries::SOURCE_BUNDLED,
+        )?;
         provider.downloaded_version_per_env.remove(&profile);
+        crate::profile_binaries::resolve_after_source_change(provider);
 
         log::info!("[binary-update] Reverted {} [{}] to bundled default", provider_id, profile);
     } else {

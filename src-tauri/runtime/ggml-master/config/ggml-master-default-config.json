@@ -506,11 +506,12 @@
       "mmap"
     ],
     "supports_fusion": true,
+    "fusion_adapter": "ggml_master",
     "verbosity_args": [
       "-lv",
       "4"
     ]
   },
-  "templateVersion": 17,
+  "templateVersion": 18,
   "template_type": "ggml-llama"
 }

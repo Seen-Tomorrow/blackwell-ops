@@ -205,6 +205,34 @@ impl ResolvedProfile {
         )
     }
 
+    /// MSVC MASM (`ml64.exe`) — required since upstream ggml `project(... ASM)` + CMake CMP0194.
+    pub fn ml64_exe(&self, manifest: &ToolchainManifest) -> PathBuf {
+        let vs = vs_def(manifest, &self.def.vs).expect("profile VS key validated at resolve");
+        toolchain_dir()
+            .join("vs")
+            .join(&self.def.vs)
+            .join("VC")
+            .join("Tools")
+            .join("MSVC")
+            .join(&vs.msvc_version)
+            .join("bin")
+            .join("Hostx64")
+            .join("x64")
+            .join("ml64.exe")
+    }
+
+    pub fn cmake_asm_compiler_flag(&self, manifest: &ToolchainManifest) -> Result<String, String> {
+        let ml64 = self.ml64_exe(manifest);
+        if !ml64.exists() {
+            return Err(format!(
+                "MSVC assembler (ml64.exe) not found at {}. Recent ggml requires CMAKE_ASM_COMPILER — update the portable toolchain bundle.",
+                ml64.display()
+            ));
+        }
+        let path = ml64.to_string_lossy().replace('\\', "/");
+        Ok(format!(r#"-DCMAKE_ASM_COMPILER="{}""#, path))
+    }
+
     pub fn excluded_cuda_folders(&self, manifest: &ToolchainManifest) -> Vec<String> {
         manifest
             .profiles
@@ -264,6 +292,10 @@ impl ResolvedProfile {
             .join(&vs.msvc_version);
         if !msvc_dir.exists() {
             missing.push(format!("MSVC toolset: {}", msvc_dir.display()));
+        }
+        let ml64 = self.ml64_exe(manifest);
+        if !ml64.exists() {
+            missing.push(format!("MASM ml64.exe: {}", ml64.display()));
         }
         let sdk_inc = toolchain_dir()
             .join("Windows Kits")

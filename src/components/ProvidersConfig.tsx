@@ -3,13 +3,13 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useTauriListen } from "../hooks/useTauriListen";
 import type { ProviderConfig, UserEditedTemplateParam, FitScanComplete, FitScanProgress, FitScanFull, FitDataPoint, BinaryUpdateInfo } from "../lib/types";
-import { DEFAULT_PROVIDER_ID, isProfileBuilt } from "../lib/types";
+import { DEFAULT_PROVIDER_ID, isFoundryProfileBuilt } from "../lib/types";
 import { useFoundry, type Env } from "../hooks/useBuildDock";
 import { ENV_ORDER, ENV_META } from "../lib/foundry_constants";
 import { FIT_SCAN_PARALLEL_OPTIONS } from "../lib/onboarding";
 import { dispatchAppEvent, EVENTS } from "../lib/events";
 import { loadFoundryLastRefresh, loadStartupUpdatesCache, saveFoundryLastRefresh } from "../lib/storage";
-import { BuildProfileRow, RestoreConfirmModal, parseCmakeFlags, UpdateStatus } from "./FoundryComponents";
+import { BuildProfileRow, RestoreConfirmModal, parseCmakeFlags, UpdateStatus, type BinarySourceKind } from "./FoundryComponents";
 import FoundryToolchainPanel from "./FoundryToolchainPanel";
 
 function formatElapsed(startTime: number): string {
@@ -157,11 +157,6 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
       return;
     }
 
-    if (!form.binary_path.trim()) {
-      setError("Binary path is required.");
-      return;
-    }
-
     setLoading(true);
     setError(null);
 
@@ -219,8 +214,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
       factory_provided: p.factory_provided,
     });
     setEditingId(p.id);
-    setExpandedIds((prev) => new Set(prev).add(p.id));
-    setShowAddForm(true);
+    setShowAddForm(false);
   }, []);
 
   const handleCancel = useCallback(() => {
@@ -251,23 +245,6 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
       console.error("Failed to reorder provider:", err);
     }
   }, [loadProviders]);
-
-  const handleToggleEnabled = useCallback(async (id: string) => {
-    try {
-      const updated = providers.map((p) =>
-        p.id === id ? { ...p, enabled: !p.enabled } : p
-      );
-      for (const p of updated) {
-        if (p.id === id) {
-          await invoke("save_provider", { provider: p });
-        }
-      }
-      setProviders(updated);
-      onProvidersChange(updated);
-    } catch (err) {
-      console.error("Failed to toggle provider:", err);
-    }
-  }, [providers, onProvidersChange]);
 
   // ── FIT Scan handlers ────────────────────────────────────────
 
@@ -573,6 +550,25 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
     }
   }, [onProvidersChange]);
 
+  const handleSelectSource = useCallback(async (providerId: string, profile: Env, source: BinarySourceKind) => {
+    try {
+      const updated = await invoke<ProviderConfig[]>("set_profile_binary_source", {
+        providerId,
+        profile,
+        source,
+      });
+      if (updated.length > 0) {
+        onProvidersChange(updated);
+      }
+      const refreshed = await invoke<ProviderConfig[]>("refresh_build_info", { providerId });
+      if (refreshed.length > 0) {
+        onProvidersChange(refreshed);
+      }
+    } catch (err) {
+      console.error("[Foundry] Select binary source failed:", err);
+    }
+  }, [onProvidersChange]);
+
   const handleRestore = async () => {
     if (!restoreConfirm) return;
     try {
@@ -735,40 +731,18 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
         </button>
 
         {showAddForm && !editingId && (
-          <div className="config-form-panel space-y-2 mt-2 mb-3 p-4 rounded-sm">
-            {/* ID field */}
-            <div className="flex items-center gap-2">
-              <label className="text-[10px] font-mono config-muted w-24 flex-shrink-0 uppercase tracking-wider">Type ID</label>
-              <input type="text" placeholder="e.g. stable, nightly, my-ik-fork" value={form.id}
-                onChange={(e) => setForm((prev) => ({ ...prev, id: e.target.value, template_type: detectTemplateType(e.target.value) }))}
-                className="config-input flex-1 text-[11px] font-mono px-1 py-0.5" />
-            </div>
-            {/* Template Type selector */}
-            <div className="flex items-center gap-2">
-              <label className="text-[10px] font-mono config-muted w-24 flex-shrink-0 uppercase tracking-wider">Template</label>
-              <select value={form.template_type} onChange={(e) => setForm((prev) => ({ ...prev, template_type: e.target.value }))}
-                className="config-input flex-1 text-[11px] font-mono px-1 py-0.5 appearance-none">
-                <option value="ggml-llama">GGML-Llama (22 params)</option>
-                <option value="ik-llama">IK-Llama (8 params)</option>
-                <option value="">Custom (manual)</option>
-              </select>
-            </div>
-            {/* Display name */}
-            <div className="flex items-center gap-2">
-              <label className="text-[10px] font-mono config-muted w-24 flex-shrink-0 uppercase tracking-wider">Name</label>
-              <input type="text" placeholder="e.g. llama.cpp Stable" value={form.display_name}
-                onChange={(e) => setForm((prev) => ({ ...prev, display_name: e.target.value }))}
-                className="config-input flex-1 text-[11px] font-mono px-1 py-0.5" />
-            </div>
-            <ProviderFormFields form={form} setForm={setForm} handleBrowse={handleBrowse} isFactoryProvided={false} />
-            {/* Action buttons */}
-            <div className="flex gap-2 pt-1">
-              <button onClick={handleSave} disabled={loading || !form.id.trim() || !form.display_name.trim() || !form.binary_path.trim()}
-                className="value-chip-active text-[10px] font-mono px-3 py-1 rounded-sm disabled:opacity-40 disabled:cursor-not-allowed">
-                {loading ? "SAVING..." : "REGISTER"}
-              </button>
-            </div>
-          </div>
+          <ProviderFormPanel
+            mode="add"
+            form={form}
+            setForm={setForm}
+            loading={loading}
+            onSave={handleSave}
+            onCancel={handleCancel}
+            handleBrowse={handleBrowse}
+            isFactoryProvided={false}
+            detectTemplateType={detectTemplateType}
+            variant="add"
+          />
         )}
 
         {providers.length === 0 ? (
@@ -789,9 +763,10 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
               const isExpanded = expandedIds.has(p.id);
               return (
               <Fragment key={p.id}>
+              <div className="provider-row-group">
               <div
                 onClick={() => toggleExpanded(p.id)}
-                className={`config-provider-card flex gap-4 p-3 cursor-pointer mb-2 ${
+                className={`config-provider-card flex gap-4 p-3 cursor-pointer ${
                   editingId === p.id ? "is-editing" : isExpanded ? "is-expanded" : ""
                 } ${!p.enabled ? "opacity-40" : ""}`}>
                 {/* ── Position number ─────────── */}
@@ -815,13 +790,6 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
                 <div className="flex items-center gap-6 flex-1 min-w-0">
                   {/* ID + name column */}
                   <div className="flex items-center gap-2.5 flex-shrink-0">
-                    <button onClick={(e) => { e.stopPropagation(); handleToggleEnabled(p.id); }}
-                      className={`text-[10px] select-none transition-colors ${
-                        p.enabled ? "theme-accent-text" : "config-muted opacity-40"
-                      }`}
-                      title={p.enabled ? "Disable provider" : "Enable provider"}>
-                      {p.enabled ? "\u25CF" : "\u25EF"}
-                    </button>
                     <span className="provider-pill border text-[9px] font-mono px-1.5 py-0.5 rounded-sm shrink-0">
                       {p.id}
                     </span>
@@ -900,24 +868,26 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
                 </div>
               </div>
 
+              {editingId === p.id && (
+                <ProviderFormPanel
+                  mode="edit"
+                  form={form}
+                  setForm={setForm}
+                  loading={loading}
+                  onSave={handleSave}
+                  onCancel={handleCancel}
+                  handleBrowse={handleBrowse}
+                  isFactoryProvided={!!form.factory_provided}
+                  providerId={p.id}
+                  variant="edit"
+                />
+              )}
+
               {/* ── Expanded section ─────────── */}
               {isExpanded && (
                 <div className="ml-8 mr-2 mb-3 space-y-3">
                   {/* Foundry build environments — only show for providers with git config */}
                   {p.git_url && p.branch && (() => {
-                    const latestEnv = (() => {
-                      let latestDate = "";
-                      let latestKey: Env | null = null;
-                      for (const env of ENV_ORDER) {
-                        const info = p.buildInfoPerEnv?.[env];
-                        if (info && info.buildDate > latestDate) {
-                          latestDate = info.buildDate;
-                          latestKey = env;
-                        }
-                      }
-                      return latestKey;
-                    })();
-
                     const cmakeFlags = p.build_profile?.trim() || "";
                     const isCustomFlags = cmakeFlags.length > 0;
                     const flagLines = parseCmakeFlags(cmakeFlags);
@@ -959,18 +929,18 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
                         <div className="p-3 space-y-2">
                           {ENV_ORDER.map(env => {
                             const meta = ENV_META[env];
-                            const hasBackup = isProfileBuilt(p, env);
+                            const hasFoundryBackup = isFoundryProfileBuilt(p, env);
                             return (
                               <BuildProfileRow
                                 key={env}
                                 env={env}
                                 meta={meta}
                                 provider={p}
-                                isLatestBuild={latestEnv === env}
-                                hasBackup={!!hasBackup}
+                                hasFoundryBackup={!!hasFoundryBackup}
                                 isBuilding={buildProgress?.providerId === p.id && buildProgress?.environment.toLowerCase() === env}
                                 onBuild={() => openBuildModal(p.id, env)}
                                 onRestoreConfirm={() => setRestoreConfirm({ providerId: p.id, env })}
+                                onSelectSource={(source) => handleSelectSource(p.id, env, source)}
                                 binaryUpdate={(binaryUpdates[p.id] || {})[env]}
                                 updateStatus={updateStatuses[`${p.id}:${env}`] || "idle"}
                                 updateError={updateErrors[`${p.id}:${env}`]}
@@ -986,49 +956,10 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
 
                   {/* Scan progress/results */}
                   {renderScanProgress(p.id)}
-
-                  {/* Inline edit form — appears directly below the expanded provider */}
-                  {editingId === p.id && (
-                    <div className="config-form-panel rounded-sm p-3 space-y-2">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-[10px] font-mono theme-accent-text">{p.id} — EDIT PROVIDER</span>
-                        <button onClick={handleCancel} className="config-muted hover:theme-accent-text transition-colors leading-none">✕</button>
-                      </div>
-                      {/* ID field */}
-                      <div className="flex items-center gap-2">
-                        <label className="text-[10px] font-mono config-muted w-24 flex-shrink-0 uppercase tracking-wider">Type ID</label>
-                        <input type="text" value={form.id} onChange={(e) => setForm((prev) => ({ ...prev, id: e.target.value }))}
-                          className="config-input flex-1 text-[11px] font-mono px-1 py-0.5" />
-                      </div>
-                      {/* Template Type selector */}
-                      <div className="flex items-center gap-2">
-                        <label className="text-[10px] font-mono config-muted w-24 flex-shrink-0 uppercase tracking-wider">Template</label>
-                        <select value={form.template_type} onChange={(e) => setForm((prev) => ({ ...prev, template_type: e.target.value }))}
-                          className="config-input flex-1 text-[11px] font-mono px-1 py-0.5">
-                          <option value="ggml-llama" style={{fontSize: '11px'}}>GGML-Llama (22 params)</option>
-                          <option value="ik-llama" style={{fontSize: '11px'}}>IK-Llama (8 params)</option>
-                          <option value="" style={{fontSize: '11px'}}>Custom (manual)</option>
-                        </select>
-                      </div>
-                      {/* Display name */}
-                      <div className="flex items-center gap-2">
-                        <label className="text-[10px] font-mono config-muted w-24 flex-shrink-0 uppercase tracking-wider">Name</label>
-                        <input type="text" value={form.display_name} onChange={(e) => setForm((prev) => ({ ...prev, display_name: e.target.value }))}
-                          className="config-input flex-1 text-[11px] font-mono px-1 py-0.5" />
-                      </div>
-                      <ProviderFormFields form={form} setForm={setForm} handleBrowse={handleBrowse} isFactoryProvided={form.factory_provided} />
-                        {/* Action buttons */}
-                        <div className="flex gap-2 pt-1">
-                          <button onClick={handleSave} disabled={loading || !form.id.trim() || !form.display_name.trim() || !form.binary_path.trim()}
-                            className="value-chip-active text-[10px] font-mono px-3 py-1 rounded-sm disabled:opacity-40 disabled:cursor-not-allowed">
-                            {loading ? "SAVING..." : "UPDATE"}
-                          </button>
-                          <button onClick={handleCancel} className="value-chip text-[10px] font-mono px-3 py-1 rounded-sm">CANCEL</button>
-                        </div>
-                    </div>
-                  )}
                 </div>
               )}
+
+              </div>
 
               </Fragment>
               );
@@ -1058,6 +989,112 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
   );
 }
 
+interface ProviderFormPanelProps {
+  mode: "add" | "edit";
+  variant: "add" | "edit";
+  form: FormState;
+  setForm: React.Dispatch<React.SetStateAction<FormState>>;
+  loading: boolean;
+  onSave: () => void;
+  onCancel: () => void;
+  handleBrowse: () => void;
+  isFactoryProvided: boolean;
+  providerId?: string;
+  detectTemplateType?: (id: string) => string;
+}
+
+function ProviderFormPanel({
+  mode,
+  variant,
+  form,
+  setForm,
+  loading,
+  onSave,
+  onCancel,
+  handleBrowse,
+  isFactoryProvided,
+  providerId,
+  detectTemplateType,
+}: ProviderFormPanelProps) {
+  const title = mode === "add" ? "NEW PROVIDER" : `${providerId} — EDIT PROVIDER`;
+  const saveLabel = loading ? "SAVING..." : mode === "add" ? "REGISTER" : "UPDATE";
+
+  return (
+    <div
+      className={`provider-form-popover provider-form-popover--${variant} config-form-panel space-y-2 p-4 rounded-sm`}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-[10px] font-mono theme-accent-text tracking-wider">{title}</span>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="config-muted hover:theme-accent-text transition-colors leading-none text-sm"
+          aria-label="Close"
+        >
+          ✕
+        </button>
+      </div>
+      <div className="flex items-center gap-2">
+        <label className="text-[10px] font-mono config-muted w-24 flex-shrink-0 uppercase tracking-wider">Type ID</label>
+        <input
+          type="text"
+          placeholder={mode === "add" ? "e.g. stable, nightly, my-ik-fork" : undefined}
+          value={form.id}
+          onChange={(e) =>
+            setForm((prev) => ({
+              ...prev,
+              id: e.target.value,
+              ...(mode === "add" && detectTemplateType
+                ? { template_type: detectTemplateType(e.target.value) }
+                : {}),
+            }))
+          }
+          className="config-input flex-1 text-[11px] font-mono px-1 py-0.5"
+        />
+      </div>
+      <div className="flex items-center gap-2">
+        <label className="text-[10px] font-mono config-muted w-24 flex-shrink-0 uppercase tracking-wider">Template</label>
+        <select
+          value={form.template_type}
+          onChange={(e) => setForm((prev) => ({ ...prev, template_type: e.target.value }))}
+          className="config-input flex-1 text-[11px] font-mono px-1 py-0.5 appearance-none"
+        >
+          <option value="ggml-llama">GGML-Llama (22 params)</option>
+          <option value="ik-llama">IK-Llama (8 params)</option>
+          <option value="">Custom (manual)</option>
+        </select>
+      </div>
+      <div className="flex items-center gap-2">
+        <label className="text-[10px] font-mono config-muted w-24 flex-shrink-0 uppercase tracking-wider">Name</label>
+        <input
+          type="text"
+          placeholder={mode === "add" ? "e.g. llama.cpp Stable" : undefined}
+          value={form.display_name}
+          onChange={(e) => setForm((prev) => ({ ...prev, display_name: e.target.value }))}
+          className="config-input flex-1 text-[11px] font-mono px-1 py-0.5"
+        />
+      </div>
+      <ProviderFormFields form={form} setForm={setForm} handleBrowse={handleBrowse} isFactoryProvided={isFactoryProvided} />
+      <div className="flex gap-2 pt-1">
+        <button
+          type="button"
+          onClick={onSave}
+          disabled={loading || !form.id.trim() || !form.display_name.trim()}
+          className="value-chip-active text-[10px] font-mono px-3 py-1 rounded-sm disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          {saveLabel}
+        </button>
+        {mode === "edit" && (
+          <button type="button" onClick={onCancel} className="value-chip text-[10px] font-mono px-3 py-1 rounded-sm">
+            CANCEL
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // Shared form fields for both add and edit forms
 interface ProviderFormFieldsProps {
   form: FormState;
@@ -1071,7 +1108,9 @@ function ProviderFormFields({ form, setForm, handleBrowse, isFactoryProvided }: 
     <>
       {/* Binary path */}
       <div className="flex items-center gap-2">
-        <label className="text-[10px] font-mono config-muted w-24 flex-shrink-0 uppercase tracking-wider">Binary Path</label>
+        <label className="text-[10px] font-mono config-muted w-24 flex-shrink-0 uppercase tracking-wider">
+          Binary Path{isFactoryProvided ? "" : " (opt)"}
+        </label>
         {isFactoryProvided ? (
           <>
             <input type="text" value={form.binary_path} disabled

@@ -61,6 +61,9 @@ pub struct SpawnProfile {
     pub enable_metrics: bool,
     #[serde(default = "default_true")]
     pub supports_fusion: bool,
+    /// Fusion metrics adapter id (`ggml_master` | `ggml_tom` | `ik_llama`). Empty = auto from provider id.
+    #[serde(default)]
+    pub fusion_adapter: String,
     #[serde(default = "default_gpu_env")]
     pub gpu_env: String,
     #[serde(default = "default_ngl_flag")]
@@ -109,6 +112,7 @@ impl Default for SpawnProfile {
             fit_binary_provider: String::new(),
             enable_metrics: true,
             supports_fusion: true,
+            fusion_adapter: String::new(),
             gpu_env: default_gpu_env(),
             ngl_flag: default_ngl_flag(),
             mmproj_flag: default_mmproj_flag(),
@@ -327,6 +331,15 @@ pub fn resolve_engine_slot_count() -> usize {
     clamped
 }
 
+/// Per-provider spawn_profile tweaks after family template fallback.
+fn apply_spawn_profile_overrides(provider_id: &str, tmpl: &mut ProviderTemplate) {
+    // Tom logs /slots + /metrics poll paths at DEBUG (-lv 4) — Blackwell fusion hammers both.
+    if provider_id == "ggml-tom" {
+        tmpl.spawn_profile.verbosity_args = vec!["-lv".into(), "3".into()];
+        tmpl.spawn_profile.fusion_adapter = "ggml_tom".into();
+    }
+}
+
 impl ProviderTemplate {
     pub fn load(provider_id: &str) -> Result<Self, String> {
         load_provider_defaults(provider_id)
@@ -362,6 +375,15 @@ impl ProviderTemplate {
     /// Get a specific provider template by ID from disk.
     pub fn load_by_id(id: &str) -> Option<Self> {
         load_provider_defaults(id)
+    }
+
+    /// Load template for CLI launch — family fallback + per-provider spawn overrides.
+    pub fn load_for_provider(provider_id: &str) -> Result<Self, String> {
+        let mut tmpl = Self::load_by_id(provider_id)
+            .or_else(|| Self::load(crate::config::DEFAULT_PROVIDER_ID).ok())
+            .ok_or_else(|| format!("No provider template available for '{}'", provider_id))?;
+        apply_spawn_profile_overrides(provider_id, &mut tmpl);
+        Ok(tmpl)
     }
 
     /// Resolve a param value from extra_params override, then user's saved default_value.

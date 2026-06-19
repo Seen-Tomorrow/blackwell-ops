@@ -25,12 +25,11 @@ mod download_manager;
 mod model_catalog;
 mod engine_utils;
 mod engine_port_lock;
-mod fusion_brain;
-mod fusion_poller;
-mod fusion_logparser;
+mod fusion;
 mod provider_mgmt;
 mod llama_catalog;
 mod binary_update;
+mod profile_binaries;
 mod secrets;
 
 #[cfg(feature = "reactor11")]
@@ -684,7 +683,7 @@ async fn main() {
                 let stack_clone = app_handle.state::<AppContext>().stack.clone();
                 let fit_cancel = app_handle.state::<AppContext>().fit_scan_cancel.clone();
                 tauri::async_runtime::spawn(async move {
-                    fusion_brain::stop_all_brains().await;
+                    fusion::stop_all_brains().await;
                     {
                         let guard = fit_cancel.lock().await;
                         guard.store(true, std::sync::atomic::Ordering::Relaxed);
@@ -710,6 +709,7 @@ async fn main() {
             provider_mgmt::export_provider_factory_template,
             provider_mgmt::remove_provider,
             provider_mgmt::toggle_group_hidden,
+            provider_mgmt::set_profile_binary_source,
             engine::get_binary_build_info,
             engine::set_build_info_for_env,
             engine::open_file_dialog,
@@ -743,7 +743,7 @@ async fn main() {
             burst_bench::cmd_burst_bench,
             bench_pp_burst::cmd_bench_pp_burst,
             bench_cancel::cmd_cancel_bench,
-            fusion_brain::get_fusion_snapshots,
+            fusion::brain::get_fusion_snapshots,
             // Mobile Sentinel Bridge commands (always active)
             mobile_bridge::cmd_mobile_bridge_start,
             mobile_bridge::cmd_mobile_bridge_stop,

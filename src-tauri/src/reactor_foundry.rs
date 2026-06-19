@@ -228,6 +228,7 @@ fn build_isolated_batch_script(
     nvcc_bin: &str,
     versioned_var: &str,
     all_cuda_vars: &[String],
+    msvc_asm_bin: Option<&str>,
     final_command: String,
 ) -> Vec<String> {
     let mut lines = vec!["@echo off".to_string(), "set \"CUDA_PATH=\"".to_string()];
@@ -235,6 +236,9 @@ fn build_isolated_batch_script(
         lines.push(format!("set \"{var}=\""));
     }
     lines.push(format!("call \"{vs_devcmd}\" -arch=amd64 -host_arch=amd64"));
+    if let Some(asm_bin) = msvc_asm_bin {
+        lines.push(format!("set \"PATH={asm_bin};%PATH%\""));
+    }
     lines.push(format!("for /f \"usebackq delims=\" %%P in (`powershell -NoProfile -Command \"$p = $env:PATH -split ';' | Where-Object {{ $_.ToLower() -notlike '*nvidia gpu computing toolkit\\cuda*' -and $_.ToLower() -notlike '*\\toolchain\\cuda*' }}; Write-Output ($p -join ';')\"`) do set \"CLEANPATH=%%P\""));
     lines.push("if defined CLEANPATH set \"PATH=%CLEANPATH%\"".to_string());
     lines.push(format!("set \"CUDA_PATH={cuda_path_forced}\""));
@@ -891,6 +895,12 @@ pub async fn foundry_build(
         cuda_ver_short
     );
 
+    let asm_flag = profile.cmake_asm_compiler_flag(&manifest)?;
+    let ml64_bin = profile
+        .ml64_exe(&manifest)
+        .parent()
+        .map(|p| p.to_string_lossy().to_string());
+
     let joined_extra = if cmake_extra.is_empty() {
         String::new()
     } else {
@@ -906,13 +916,25 @@ pub async fn foundry_build(
     let build_dir_str = build_dir.to_string_lossy().replace('\\', "/");
     let src_dir_str   = src_dir.to_string_lossy().replace('\\', "/");
     let cmake_configure_line = if joined_extra.is_empty() {
-        format!(r#"cmake -B "{}" -S "{}" {} {} {}"#, build_dir_str, src_dir_str, gen_flag, toolset_flag, forced_cuda_flags)
+        format!(
+            r#"cmake -B "{}" -S "{}" {} {} {} {}"#,
+            build_dir_str, src_dir_str, gen_flag, toolset_flag, forced_cuda_flags, asm_flag
+        )
     } else {
-        format!(r#"cmake -B "{}" -S "{}" {} {} {} {}"#, build_dir_str, src_dir_str, gen_flag, toolset_flag, forced_cuda_flags, joined_extra)
+        format!(
+            r#"cmake -B "{}" -S "{}" {} {} {} {} {}"#,
+            build_dir_str, src_dir_str, gen_flag, toolset_flag, forced_cuda_flags, asm_flag, joined_extra
+        )
     };
 
     emit_config_event(app_handle, &provider_id, &profile_id, build_id, Some(format!(
-        "cmake -B work/build-{} -S llama.cpp {} {} {}{}", profile_id, gen_flag, toolset_flag, forced_cuda_flags, if !joined_extra.is_empty() { format!(" {}", joined_extra) } else { String::new() }
+        "cmake -B work/build-{} -S llama.cpp {} {} {} {}{}",
+        profile_id,
+        gen_flag,
+        toolset_flag,
+        asm_flag,
+        forced_cuda_flags,
+        if !joined_extra.is_empty() { format!(" {}", joined_extra) } else { String::new() }
     )));
 
     let cfg_batch_lines = build_isolated_batch_script(
@@ -921,6 +943,7 @@ pub async fn foundry_build(
         &nvcc_bin,
         &versioned_var,
         &all_cuda_vars,
+        ml64_bin.as_deref(),
         cmake_configure_line,
     );
     let cfg_batch_content = cfg_batch_lines.join("\n");
@@ -1147,6 +1170,7 @@ pub async fn foundry_build(
         &nvcc_bin,
         &versioned_var,
         &all_cuda_vars,
+        ml64_bin.as_deref(),
         format!(r#"cmake --build "{}" --config Release -j {}"#, build_dir_str, num_cpus),
     );
     let build_batch_content = build_batch_lines.join("\n");
@@ -1252,11 +1276,13 @@ pub async fn foundry_build(
             let mut cfg_mut = cfg.clone();
             for p in &mut cfg_mut.providers {
                 if p.id == provider_id {
-                    let abs = found_dir.join("llama-server.exe");
-                    let rel = crate::config::to_relative_path(&abs);
-                    // Set BOTH fields together to keep them in sync
-                    p.binary_path = rel.clone();
-                    p.binary_path_per_env.insert(profile_id.clone(), rel);
+                    let _ = found_dir.join("llama-server.exe");
+                    let _ = crate::profile_binaries::set_profile_source(
+                        p,
+                        &profile_id,
+                        crate::profile_binaries::SOURCE_FOUNDRY,
+                    );
+                    crate::profile_binaries::resolve_after_source_change(p);
                 }
             }
             drop(cfg);
@@ -1312,16 +1338,22 @@ pub async fn foundry_build(
                     cuda_version: build_info_raw.cuda_version.clone(),
                     cuda_architectures: if arches.is_empty() { None } else { Some(arches) },
                 };
-                provider.build_info_per_env.insert(profile_id.clone(), build_info.clone());
-                provider.build_info_per_env.insert("current".to_string(), build_info);
-
-                // per-env path → sacred artifacts (permanent, never nuked)
-                let rel_path = crate::config::to_relative_path(&std::path::PathBuf::from(&sacred_binary_path));
-                provider.binary_path_per_env.insert(profile_id.clone(), rel_path);
+                provider.binary_source_per_env.insert(
+                    profile_id.clone(),
+                    crate::profile_binaries::SOURCE_FOUNDRY.to_string(),
+                );
                 provider.downloaded_version_per_env.remove(&profile_id);
+                crate::profile_binaries::resolve_after_source_change(provider);
 
-                // main binary_path → sacred artifacts
-                provider.binary_path = crate::config::to_relative_path(&std::path::PathBuf::from(&sacred_binary_path));
+                provider
+                    .foundry_build_info_per_env
+                    .insert(profile_id.clone(), build_info.clone());
+                provider
+                    .build_info_per_env
+                    .insert(profile_id.clone(), build_info.clone());
+                provider
+                    .build_info_per_env
+                    .insert("current".to_string(), build_info);
             }
             drop(cfg);
             if let Err(e) = persist_providers_atomic(&*app) {
@@ -1505,52 +1537,25 @@ pub async fn refresh_build_info(
             .unwrap_or_else(|| prov)
     };
 
-    let mut updated_info: Vec<(String, crate::types::BuildInfo)> = Vec::new();
+    let mut provider = {
+        let cfg = app.config.lock().map_err(|e| e.to_string())?;
+        cfg.providers
+            .iter()
+            .find(|p| p.id == provider_id)
+            .cloned()
+            .ok_or_else(|| format!("Provider '{}' not found", provider_id))?
+    };
+    crate::profile_binaries::resolve_after_source_change(&mut provider);
+    let changed = enrich_provider_binary_info(&mut provider, &provider_id).await;
 
-    let build_profile = prov.build_profile.clone();
-
-    for env_label in foundry_toolchain::profile_ids_or_default() {
-        if let Some(path_str) = prov.binary_path_per_env.get(&env_label) {
-            match crate::engine::get_binary_build_info(path_str.clone()).await {
-                Ok(mut info) => {
-                    if let Some(existing) = prov.build_info_per_env.get(&env_label) {
-                        if existing.cuda_architectures.as_ref().is_some_and(|v| !v.is_empty()) {
-                            info.cuda_architectures = existing.cuda_architectures.clone();
-                        }
-                    }
-                    info = crate::engine_utils::enrich_build_info_cuda_arch(info, &build_profile);
-                    log::info!("[refresh] {} env '{}': {} built {}", provider_id, env_label, info.version, info.build_date);
-                    updated_info.push((env_label.to_string(), info));
-                }
-                Err(_) => { /* binary missing or failed — skip */ }
-            }
-        }
-    }
-
-    if !updated_info.is_empty() {
+    if changed {
         let mut cfg = app.config.lock().map_err(|e| e.to_string())?;
-        let mut changed = false;
         if let Some(p) = cfg.providers.iter_mut().find(|p| p.id == provider_id) {
-            for (env_label, info) in &updated_info {
-                let existing = p.build_info_per_env.get(env_label);
-                if existing.map(|e| e.version != info.version || e.build_date != info.build_date).unwrap_or(true) {
-                    p.build_info_per_env.insert(env_label.clone(), info.clone());
-                    changed = true;
-                }
-            }
-            if let Some(latest) = updated_info.iter().max_by_key(|(_, info)| info.build_date.as_str()) {
-                let current_existing = p.build_info_per_env.get("current");
-                if current_existing.map(|e| e.version != latest.1.version || e.build_date != latest.1.build_date).unwrap_or(true) {
-                    p.build_info_per_env.insert("current".to_string(), latest.1.clone());
-                    changed = true;
-                }
-            }
+            *p = provider;
         }
         drop(cfg);
-        if changed {
-            if let Err(e) = persist_providers_atomic(&*app) {
-                log::error!("[foundry] Failed to persist provider config: {}", e);
-            }
+        if let Err(e) = persist_providers_atomic(&*app) {
+            log::error!("[foundry] Failed to persist provider config: {}", e);
         }
     }
 
@@ -1628,15 +1633,21 @@ pub async fn foundry_restore(
     let info = crate::engine::get_binary_build_info(restored_exe.to_string_lossy().to_string()).await
         .map_err(|e| format!("Failed to extract build info from restored binary: {}", e))?;
 
-    // Update config (both fields together)
     {
         let mut cfg = app.config.lock().map_err(|e| e.to_string())?;
         if let Some(p) = cfg.providers.iter_mut().find(|p| p.id == provider_id) {
-            let rel = crate::config::to_relative_path(&restored_exe);
-            p.binary_path_per_env.insert(env_label.to_string(), rel.clone());
-            p.binary_path = rel;
-            p.build_info_per_env.insert(env_label.to_string(), info.clone());
-            p.build_info_per_env.insert("current".to_string(), info);
+            let _ = crate::profile_binaries::set_profile_source(
+                p,
+                &env_label,
+                crate::profile_binaries::SOURCE_FOUNDRY,
+            );
+            crate::profile_binaries::resolve_after_source_change(p);
+            p.foundry_build_info_per_env
+                .insert(env_label.to_string(), info.clone());
+            p.build_info_per_env
+                .insert(env_label.to_string(), info.clone());
+            p.build_info_per_env
+                .insert("current".to_string(), info);
         }
         drop(cfg);
     }
@@ -1658,6 +1669,122 @@ pub async fn foundry_restore(
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────
+
+async fn enrich_build_info_for_path(
+    path: &str,
+    build_profile: &str,
+    preserve_cuda: Option<Vec<String>>,
+) -> Option<crate::types::BuildInfo> {
+    let mut info = crate::engine::get_binary_build_info(path.to_string()).await.ok()?;
+    if let Some(arch) = preserve_cuda.filter(|v| !v.is_empty()) {
+        info.cuda_architectures = Some(arch);
+    }
+    Some(crate::engine_utils::enrich_build_info_cuda_arch(
+        info,
+        build_profile,
+    ))
+}
+
+async fn enrich_provider_binary_info(
+    provider: &mut crate::types::ProviderConfig,
+    provider_id: &str,
+) -> bool {
+    let build_profile = provider.build_profile.clone();
+    let profiles = foundry_toolchain::profile_ids_or_default();
+    let mut changed = false;
+
+    for env_label in &profiles {
+        if let Some(path) = provider.bundled_binary_path_per_env.get(env_label).cloned() {
+            let preserve = provider
+                .bundled_build_info_per_env
+                .get(env_label)
+                .and_then(|i| i.cuda_architectures.clone());
+            if let Some(info) =
+                enrich_build_info_for_path(&path, &build_profile, preserve).await
+            {
+                let existing = provider.bundled_build_info_per_env.get(env_label);
+                if existing
+                    .map(|e| e.version != info.version || e.build_date != info.build_date)
+                    .unwrap_or(true)
+                {
+                    provider
+                        .bundled_build_info_per_env
+                        .insert(env_label.clone(), info);
+                    changed = true;
+                }
+            }
+        }
+
+        if let Some(path) = provider.foundry_binary_path_per_env.get(env_label).cloned() {
+            let preserve = provider
+                .foundry_build_info_per_env
+                .get(env_label)
+                .and_then(|i| i.cuda_architectures.clone());
+            if let Some(info) =
+                enrich_build_info_for_path(&path, &build_profile, preserve).await
+            {
+                let existing = provider.foundry_build_info_per_env.get(env_label);
+                if existing
+                    .map(|e| e.version != info.version || e.build_date != info.build_date)
+                    .unwrap_or(true)
+                {
+                    provider
+                        .foundry_build_info_per_env
+                        .insert(env_label.clone(), info);
+                    changed = true;
+                }
+            }
+        }
+
+        if let Some(path) = provider.binary_path_per_env.get(env_label).cloned() {
+            let preserve = provider
+                .build_info_per_env
+                .get(env_label)
+                .and_then(|i| i.cuda_architectures.clone());
+            if let Some(info) =
+                enrich_build_info_for_path(&path, &build_profile, preserve).await
+            {
+                log::info!(
+                    "[refresh] {} env '{}': {} built {}",
+                    provider_id,
+                    env_label,
+                    info.version,
+                    info.build_date
+                );
+                let existing = provider.build_info_per_env.get(env_label);
+                if existing
+                    .map(|e| e.version != info.version || e.build_date != info.build_date)
+                    .unwrap_or(true)
+                {
+                    provider.build_info_per_env.insert(env_label.clone(), info);
+                    changed = true;
+                }
+            }
+        }
+    }
+
+    let profiles_set: std::collections::HashSet<&str> =
+        profiles.iter().map(|s| s.as_str()).collect();
+    if let Some((_, latest)) = provider
+        .build_info_per_env
+        .iter()
+        .filter(|(k, _)| profiles_set.contains(k.as_str()))
+        .max_by_key(|(_, info)| info.build_date.as_str())
+    {
+        let current_existing = provider.build_info_per_env.get("current");
+        if current_existing
+            .map(|e| e.version != latest.version || e.build_date != latest.build_date)
+            .unwrap_or(true)
+        {
+            provider
+                .build_info_per_env
+                .insert("current".to_string(), latest.clone());
+            changed = true;
+        }
+    }
+
+    changed
+}
 
 fn persist_providers_atomic(app: &crate::engine::AppContext) -> Result<(), String> {
     let providers = {

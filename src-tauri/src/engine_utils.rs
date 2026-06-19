@@ -296,8 +296,41 @@ pub fn same_executable_path(a: &Path, b: &Path) -> bool {
     }
     match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
         (Ok(ca), Ok(cb)) => ca == cb,
-        _ => a.file_name().is_some() && a.file_name() == b.file_name(),
+        _ => false,
     }
+}
+
+/// True when `path` points at a provider llama-server under our foundry or mirrored runtime tree.
+pub fn is_managed_llama_server_image(path: &Path) -> bool {
+    let file_ok = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .map(|n| n.eq_ignore_ascii_case("llama-server.exe"))
+        .unwrap_or(false);
+    if !file_ok {
+        return false;
+    }
+
+    let Ok(canonical) = std::fs::canonicalize(path) else {
+        let lossy = path.to_string_lossy().to_lowercase();
+        return lossy.contains("foundry") || lossy.contains("\\runtime\\");
+    };
+
+    let Ok(app_root) = std::fs::canonicalize(crate::config::app_root_dir()) else {
+        return false;
+    };
+    if !canonical.starts_with(&app_root) {
+        return false;
+    }
+
+    let rel = canonical
+        .strip_prefix(&app_root)
+        .unwrap_or(&canonical)
+        .to_string_lossy()
+        .replace('\\', "/")
+        .to_lowercase();
+
+    rel.contains("foundry/") || rel.starts_with("runtime/")
 }
 
 /// Check if a Windows process is still alive by PID.

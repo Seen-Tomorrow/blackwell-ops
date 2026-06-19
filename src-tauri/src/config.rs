@@ -325,9 +325,12 @@ pub struct ProviderMeta {
     /// Per-environment build info captured from binary --version + file mtime.
     #[serde(default, skip_serializing_if = "HashMap::is_empty", rename = "buildInfoPerEnv")]
     pub build_info_per_env: HashMap<String, crate::types::BuildInfo>,
-    /// Per-environment binary paths — each env's final sacred binary lives under foundry/artifacts/<id>/<env>/Release/llama-server.exe.
+    /// Active launch path per profile (resolved).
     #[serde(default, skip_serializing_if = "HashMap::is_empty", rename = "binaryPathPerEnv")]
     pub binary_path_per_env: HashMap<String, String>,
+    /// User preference: `foundry` | `bundled`.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty", rename = "binarySourcePerEnv")]
+    pub binary_source_per_env: HashMap<String, String>,
     /// Per-environment downloaded release version — tracks which GitHub release tag was installed via update.
     #[serde(default, skip_serializing_if = "HashMap::is_empty", rename = "downloadedVersionPerEnv")]
     pub downloaded_version_per_env: HashMap<String, String>,
@@ -367,6 +370,7 @@ impl ProviderMeta {
             template_type: p.template_type.clone(),
             build_info_per_env: p.build_info_per_env.clone(),
             binary_path_per_env: p.binary_path_per_env.iter().map(|(k, v)| (k.clone(), to_relative_path(&PathBuf::from(v)))).collect(),
+            binary_source_per_env: p.binary_source_per_env.clone(),
             downloaded_version_per_env: p.downloaded_version_per_env.clone(),
             last_pr_per_env: p.last_pr_per_env.clone(),
             display_order: p.display_order,
@@ -906,6 +910,11 @@ fn discover_providers() -> Vec<crate::types::ProviderConfig> {
                     template_type: identity.template_type,
                     build_info_per_env,
                     binary_path_per_env: per_env,
+                    binary_source_per_env: HashMap::new(),
+                    bundled_binary_path_per_env: HashMap::new(),
+                    foundry_binary_path_per_env: HashMap::new(),
+                    bundled_build_info_per_env: HashMap::new(),
+                    foundry_build_info_per_env: HashMap::new(),
                     downloaded_version_per_env: std::collections::HashMap::new(),
                     last_pr_per_env: std::collections::HashMap::new(),
                     display_order: providers.len() as i32,
@@ -2095,61 +2104,28 @@ fn merge_user_params_with_template(
     merged
 }
 
-/// Scan sacred foundry artifacts on disk (survives missed persist after a build).
-fn scan_foundry_profile_binaries(provider_id: &str) -> HashMap<String, String> {
-    let mut map = HashMap::new();
-    for profile in crate::foundry_toolchain::profile_ids_or_default() {
-        let exe = foundry_artifact_release_dir(provider_id, &profile).join("llama-server.exe");
-        if exe.exists() {
-            map.insert(profile.to_string(), to_relative_path(&exe));
-        }
+fn resolve_provider_binaries_from_meta(
+    p: &mut crate::types::ProviderConfig,
+    meta: Option<&ProviderMeta>,
+) {
+    let empty = HashMap::new();
+    let source_pref = meta
+        .map(|m| &m.binary_source_per_env)
+        .unwrap_or(&empty);
+    let saved_paths = meta
+        .map(|m| &m.binary_path_per_env)
+        .unwrap_or(&empty);
+    if let Some(m) = meta {
+        p.binary_source_per_env = m.binary_source_per_env.clone();
+        p.downloaded_version_per_env = m.downloaded_version_per_env.clone();
     }
-    map
-}
-
-fn build_info_from_exe_mtime(exe: &std::path::Path) -> Option<crate::types::BuildInfo> {
-    let m = std::fs::metadata(exe).ok()?;
-    let build_date = m
-        .modified()
-        .ok()
-        .map(|mt| DateTime::<Local>::from(mt).format("%Y-%m-%d %H:%M").to_string())
-        .unwrap_or_else(|| "unknown".to_string());
-    Some(crate::types::BuildInfo {
-        version: "foundry-artifact".to_string(),
-        build_date,
-        cuda_version: None,
-        cuda_architectures: None,
-    })
-}
-
-/// Merge runtime bundle + user meta + foundry disk scan into provider binary maps.
-fn merge_discovered_binaries(p: &mut crate::types::ProviderConfig) {
-    for (env, path) in scan_foundry_profile_binaries(&p.id) {
-        let abs = resolve_path(&path);
-        p.binary_path_per_env.insert(env.clone(), path);
-        if let Some(info) = build_info_from_exe_mtime(&abs) {
-            let adopt = p
-                .build_info_per_env
-                .get(&env)
-                .map(|existing| info.build_date.as_str() > existing.build_date.as_str())
-                .unwrap_or(true);
-            if adopt {
-                let enriched =
-                    crate::engine_utils::enrich_build_info_cuda_arch(info, &p.build_profile);
-                p.build_info_per_env.insert(env, enriched);
-            }
-        }
-    }
-
-    let profiles = crate::foundry_toolchain::profile_ids_or_default();
-    if let Some((_, info)) = p
-        .build_info_per_env
-        .iter()
-        .filter(|(k, _)| profiles.iter().any(|p| p == k.as_str()))
-        .max_by_key(|(_, info)| info.build_date.as_str())
-    {
-        p.build_info_per_env.insert("current".to_string(), info.clone());
-    }
+    crate::profile_binaries::resolve_provider_binaries(
+        p,
+        crate::profile_binaries::ResolveContext {
+            source_pref,
+            saved_paths,
+        },
+    );
 }
 
 fn merge_template_into_user_params_by_key(
@@ -2227,15 +2203,7 @@ fn build_config_with_providers_full(_gpu_count: usize, mut config: AppConfig) ->
                 );
                 p.needs_template_attention = true;
             }
-            if !meta.build_info_per_env.is_empty() {
-                p.build_info_per_env = meta.build_info_per_env.clone();
-            }
-            if !meta.binary_path_per_env.is_empty() {
-                p.binary_path_per_env = meta.binary_path_per_env.clone();
-            }
-            if !meta.downloaded_version_per_env.is_empty() {
-                p.downloaded_version_per_env = meta.downloaded_version_per_env.clone();
-            }
+            // Active binary paths + build info resolved after meta merge (see resolve_provider_binaries_from_meta).
             let factory_key = resolve_merge_template_key(&p.id, &effective_template_type, true)
                 .unwrap_or_else(|| p.id.clone());
             apply_meta_layout_overrides(&mut p, meta, &factory_key);
@@ -2253,7 +2221,8 @@ fn build_config_with_providers_full(_gpu_count: usize, mut config: AppConfig) ->
                 p.above_column_widths = meta.above_column_widths.clone();
             }
         }
-        merge_discovered_binaries(&mut p);
+        let pid = p.id.clone();
+        resolve_provider_binaries_from_meta(&mut p, meta_map.get(&pid).copied());
         if let Some(tmpl) = crate::templates::load_provider_defaults(&p.id) {
             p.launch_profile = crate::types::LaunchProfile::from_spawn_profile(&tmpl.spawn_profile);
         }
@@ -2307,8 +2276,13 @@ fn build_config_with_providers_full(_gpu_count: usize, mut config: AppConfig) ->
                 branch: meta.branch.clone(),
                 build_profile: meta.build_profile.clone(),
                 template_type: resolved_type,
-                build_info_per_env: meta.build_info_per_env.clone(),
-                binary_path_per_env: meta.binary_path_per_env.clone(),
+                build_info_per_env: HashMap::new(),
+                binary_path_per_env: HashMap::new(),
+                binary_source_per_env: meta.binary_source_per_env.clone(),
+                bundled_binary_path_per_env: HashMap::new(),
+                foundry_binary_path_per_env: HashMap::new(),
+                bundled_build_info_per_env: HashMap::new(),
+                foundry_build_info_per_env: HashMap::new(),
                 downloaded_version_per_env: meta.downloaded_version_per_env.clone(),
                 last_pr_per_env: meta.last_pr_per_env.clone(),
                 display_order: meta.display_order,
@@ -2322,6 +2296,7 @@ fn build_config_with_providers_full(_gpu_count: usize, mut config: AppConfig) ->
                     .unwrap_or_default(),
             };
             apply_meta_layout_overrides(&mut custom, &meta, &factory_key);
+            resolve_provider_binaries_from_meta(&mut custom, Some(&meta));
             providers.push(custom);
         }
     }
