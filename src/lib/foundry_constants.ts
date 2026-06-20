@@ -1,5 +1,5 @@
 // ── Env Type ─────────────────────────────────────────────────────────
-export type Env = "vanguard" | "frontier" | "stable" | "fresh";
+export type Env = "frontier" | "stable";
 
 // ── Build Phases (single source of truth) ────────────────────────────
 // These match the phases emitted by the Rust backend (reactor_foundry.rs)
@@ -83,8 +83,20 @@ export function getEnvColors(_env: Env): EnvColorSet {
 /** Default runtime profile for new installs / no saved preference. */
 export const DEFAULT_BINARY_PROFILE: Env = "frontier";
 
+/** Retired profiles — migrated to frontier on load. */
+export const RETIRED_ENVS = ["vanguard", "fresh"] as const;
+
+/** Normalize saved profile id (vanguard/fresh → frontier). */
+export function normalizeBinaryProfile(profile: string | null | undefined): Env {
+  const key = (profile || DEFAULT_BINARY_PROFILE).toLowerCase();
+  if (key === "stable") return "stable";
+  if (RETIRED_ENVS.includes(key as (typeof RETIRED_ENVS)[number])) return "frontier";
+  if (key === "frontier") return "frontier";
+  return DEFAULT_BINARY_PROFILE;
+}
+
 /** UI + selection order (mirrors toolchain/manifest.json). */
-export const ENV_ORDER: Env[] = ["frontier", "vanguard", "fresh", "stable"];
+export const ENV_ORDER: Env[] = ["frontier", "stable"];
 
 export interface EnvMeta {
   label: string;
@@ -95,9 +107,7 @@ export interface EnvMeta {
 }
 
 export const ENV_META: Record<Env, EnvMeta> = {
-  vanguard: { label: "VANGUARD", cuda: "13.2", vs: "VS Build Tools 2026 (v18)", color: "vanguard", description: "Primary cutting-edge profile" },
-  frontier: { label: "FRONTIER", cuda: "13.3", vs: "VS Build Tools 2026 (v18)", color: "frontier", description: "Experimental — newest CUDA" },
-  fresh:    { label: "FRESH",    cuda: "13.1", vs: "VS Build Tools 2022",        color: "fresh",    description: "Recent stable CUDA on VS2022" },
+  frontier: { label: "FRONTIER", cuda: "13.3", vs: "VS Build Tools 2026 (v18)", color: "frontier", description: "Bleeding-edge CUDA 13.3" },
   stable:   { label: "STABLE",   cuda: "12.8", vs: "VS Build Tools 2022",        color: "stable",   description: "Long-lived compatibility profile" },
 };
 

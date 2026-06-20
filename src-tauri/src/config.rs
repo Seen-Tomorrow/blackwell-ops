@@ -30,8 +30,20 @@ pub const ABSOLUTE_MAX_ENGINE_SLOTS: usize = 128;
 /// Default provider ID — bundled with the app, always present.
 pub const DEFAULT_PROVIDER_ID: &str = "ggml-master";
 
+/// Removed from factory/runtime — dropped from discovery and user meta on load.
+pub const PHASED_OUT_PROVIDER_IDS: &[&str] = &["ik"];
+
+pub fn is_phased_out_provider(id: &str) -> bool {
+    PHASED_OUT_PROVIDER_IDS
+        .iter()
+        .any(|p| p.eq_ignore_ascii_case(id))
+}
+
 /// Default runtime binary profile when none is selected (fresh install / empty slot).
 pub const DEFAULT_BINARY_PROFILE: &str = "frontier";
+
+/// FIT library + on-demand scans always use the frontier toolchain build.
+pub const FIT_SCAN_BINARY_PROFILE: &str = "frontier";
 
 /// App root directory — parent of the running executable (portable).
 /// DEV: target/debug/ or target/release/ during development.
@@ -852,6 +864,9 @@ fn discover_providers() -> Vec<crate::types::ProviderConfig> {
         }
 
         let pid = entry.file_name().to_string_lossy().to_string();
+        if is_phased_out_provider(&pid) {
+            continue;
+        }
         let config_path = entry.path().join("config").join(format!("{}-default-config.json", pid));
 
         if !config_path.exists() {
@@ -931,7 +946,19 @@ fn discover_providers() -> Vec<crate::types::ProviderConfig> {
         }
     }
 
-    providers.sort_by(|a, b| a.display_order.cmp(&b.display_order).then_with(|| a.id.cmp(&b.id)));
+    fn factory_provider_rank(id: &str) -> i32 {
+        match id {
+            "ggml-tom" => 0,
+            "ggml-master" => 1,
+            _ => 2,
+        }
+    }
+    providers.sort_by(|a, b| {
+        factory_provider_rank(&a.id)
+            .cmp(&factory_provider_rank(&b.id))
+            .then_with(|| a.display_order.cmp(&b.display_order))
+            .then_with(|| a.id.cmp(&b.id))
+    });
     for (i, p) in providers.iter_mut().enumerate() {
         p.display_order = i as i32;
     }
@@ -943,7 +970,6 @@ fn discover_providers() -> Vec<crate::types::ProviderConfig> {
 /// Map template_type to provider ID for loading defaults.
 pub fn template_key_for_type(template_type: &str) -> Option<String> {
     match template_type {
-        "ik-llama" => Some("ik".to_string()),
         "ggml-llama" => Some(DEFAULT_PROVIDER_ID.to_string()),
         _ => None,
     }
@@ -1978,6 +2004,49 @@ fn template_sub_params_to_map(
     })
 }
 
+fn is_numeric_literal_value(v: &serde_json::Value) -> bool {
+    if v.is_number() {
+        return true;
+    }
+    v.as_str()
+        .map(|s| {
+            let t = s.trim();
+            !t.is_empty() && t.parse::<f64>().is_ok() && t.chars().all(|c| c.is_ascii_digit() || c == '.' || c == '-')
+        })
+        .unwrap_or(false)
+}
+
+fn values_all_numeric(values: &[serde_json::Value]) -> bool {
+    values.len() >= 2 && values.iter().all(is_numeric_literal_value)
+}
+
+/// Preserve factory JSON order for string enums; numeric lists keep user/saved order.
+fn reorder_values_to_template(
+    values: &[serde_json::Value],
+    tmpl_values: &[serde_json::Value],
+) -> Vec<serde_json::Value> {
+    if values.is_empty() || tmpl_values.is_empty() || values_all_numeric(values) {
+        return values.to_vec();
+    }
+    let mut ordered = Vec::with_capacity(values.len());
+    let mut placed = std::collections::HashSet::new();
+    for tv in tmpl_values {
+        let key = json_val_key(tv);
+        if let Some(v) = values.iter().find(|v| json_val_key(v) == key) {
+            ordered.push(v.clone());
+            placed.insert(key);
+        }
+    }
+    for v in values {
+        let key = json_val_key(v);
+        if !placed.contains(&key) {
+            ordered.push(v.clone());
+            placed.insert(key);
+        }
+    }
+    ordered
+}
+
 fn merge_user_params_with_template(
     template: &crate::templates::ProviderTemplate,
     user_edited: &[crate::types::UserEditedTemplateParam],
@@ -1998,6 +2067,8 @@ fn merge_user_params_with_template(
             // ── Values: user-owned catalog — only backfill when empty (never re-append deleted factory values) ──
             if m.values.is_empty() && !tmpl.values.is_empty() {
                 m.values = tmpl.values.clone();
+            } else if !m.values.is_empty() && !tmpl.values.is_empty() {
+                m.values = reorder_values_to_template(&m.values, &tmpl.values);
             }
 
             // ── factoryDefault: always sync from fresh template — keeps bubble styling correct ──
@@ -2154,7 +2225,10 @@ fn merge_template_into_user_params_by_key(
 
 
 fn build_config_with_providers_full(_gpu_count: usize, mut config: AppConfig) -> AppConfig {
-    let metas = load_user_providers_meta();
+    let metas: Vec<ProviderMeta> = load_user_providers_meta()
+        .into_iter()
+        .filter(|m| !is_phased_out_provider(&m.id))
+        .collect();
 
     let meta_map: std::collections::HashMap<_, _> = metas.iter()
         .map(|m| (m.id.clone(), m))
@@ -2221,6 +2295,7 @@ fn build_config_with_providers_full(_gpu_count: usize, mut config: AppConfig) ->
                 p.above_column_widths = meta.above_column_widths.clone();
             }
         }
+        crate::profile_binaries::migrate_provider_profile_keys(&mut p);
         let pid = p.id.clone();
         resolve_provider_binaries_from_meta(&mut p, meta_map.get(&pid).copied());
         if let Some(tmpl) = crate::templates::load_provider_defaults(&p.id) {
@@ -2231,6 +2306,9 @@ fn build_config_with_providers_full(_gpu_count: usize, mut config: AppConfig) ->
 
     // Custom/user-created providers not found in runtime/ defaults
     for meta in metas_clone {
+        if is_phased_out_provider(&meta.id) {
+            continue;
+        }
         if !providers.iter().any(|p| p.id == meta.id) {
             let resolved_type = resolve_template_type(&meta.id, Some(&meta.template_type));
             let tmpl_key = template_key_for_type(&resolved_type);

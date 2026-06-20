@@ -2,8 +2,8 @@
   "tagPrefix": "v",
   "repo": "Seen-Tomorrow/blackwell-ops",
   "providers": {
-    "ggml-master": ["vanguard", "frontier", "fresh", "stable"],
-    "ik": ["vanguard"]
+    "ggml-master": ["frontier", "stable"],
+    "ggml-tom": ["frontier", "stable"]
   },
   "upload": {
     "installer": true,
@@ -12,7 +12,7 @@
   "ship": {
     "pushTag": false,
     "pushCommit": false,
-    "releaseNotes": "### Main APP + startup bundle with pre-build engines, optimized for AMPERE, ADA and BLACKWELL architectures.\n>Includes latest GGML Llama.cpp + IK llama\n>support out of the box cuda 13.3 / 13.2 / 13.1 / 12.8 )\n>built on VS2026 + VS2022"
+    "releaseNotes": "### Main APP + startup bundle with pre-build engines, optimized for AMPERE, ADA and BLACKWELL architectures.\n>Includes GGML Llama.cpp + Tom TQ\n>CUDA 13.3 (Frontier) + 12.8 (Stable)\n>built on VS2026 + VS2022"
   },
   "pack": {
     "skipBuildIfInstallerFresh": true,

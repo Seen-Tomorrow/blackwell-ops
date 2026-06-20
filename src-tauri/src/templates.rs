@@ -61,9 +61,12 @@ pub struct SpawnProfile {
     pub enable_metrics: bool,
     #[serde(default = "default_true")]
     pub supports_fusion: bool,
-    /// Fusion metrics adapter id (`ggml_master` | `ggml_tom` | `ik_llama`). Empty = auto from provider id.
+    /// Fusion metrics adapter id (`ggml_master` | `ggml_tom`). Empty = auto from provider id.
     #[serde(default)]
     pub fusion_adapter: String,
+    /// FIT scanner adapter id (`ggml_master` | `ggml_tom`). Empty = auto from provider id.
+    #[serde(default)]
+    pub fit_adapter: String,
     #[serde(default = "default_gpu_env")]
     pub gpu_env: String,
     #[serde(default = "default_ngl_flag")]
@@ -80,13 +83,13 @@ pub struct SpawnProfile {
     /// Auto VRAM mode for non-power-users — simplified engine config UI.
     #[serde(default)]
     pub auto_vram: bool,
-    /// `ik_native` (--fit tensor offload) | `ggml_fit_params` (--fit on + --fit-ctx) | `none`
+    /// `ggml_fit_params` (--fit on + --fit-ctx) | `none`
     #[serde(default)]
     pub fit_style: String,
     /// Param keys shown in Auto VRAM mode.
     #[serde(default)]
     pub simple_param_keys: Vec<String>,
-    /// IK `--fit-margin` MiB when using ik_native fit.
+    /// Reserved — unused (legacy field kept for config merge compatibility).
     #[serde(default)]
     pub fit_margin_mib: u32,
 }
@@ -113,6 +116,7 @@ impl Default for SpawnProfile {
             enable_metrics: true,
             supports_fusion: true,
             fusion_adapter: String::new(),
+            fit_adapter: String::new(),
             gpu_env: default_gpu_env(),
             ngl_flag: default_ngl_flag(),
             mmproj_flag: default_mmproj_flag(),
@@ -331,12 +335,20 @@ pub fn resolve_engine_slot_count() -> usize {
     clamped
 }
 
-/// Per-provider spawn_profile tweaks after family template fallback.
+/// Per-provider spawn_profile belt when factory JSON is stale (dev user configs without re-sync).
 fn apply_spawn_profile_overrides(provider_id: &str, tmpl: &mut ProviderTemplate) {
-    // Tom logs /slots + /metrics poll paths at DEBUG (-lv 4) — Blackwell fusion hammers both.
-    if provider_id == "ggml-tom" {
-        tmpl.spawn_profile.verbosity_args = vec!["-lv".into(), "3".into()];
+    if provider_id != "ggml-tom" {
+        return;
+    }
+    let tom_verbosity = vec!["-lv".to_string(), "3".to_string()];
+    if tmpl.spawn_profile.verbosity_args != tom_verbosity {
+        tmpl.spawn_profile.verbosity_args = vec!["-lv".to_string(), "3".to_string()];
+    }
+    if tmpl.spawn_profile.fusion_adapter.is_empty() {
         tmpl.spawn_profile.fusion_adapter = "ggml_tom".into();
+    }
+    if tmpl.spawn_profile.fit_adapter.is_empty() {
+        tmpl.spawn_profile.fit_adapter = "ggml_tom".into();
     }
 }
 
@@ -364,12 +376,8 @@ impl ProviderTemplate {
                 }
             }
         }
-        // Fallback: guess from ID
-        if id.to_lowercase().contains("ik") {
-            "ik-llama".to_string()
-        } else {
-            "ggml-llama".to_string()
-        }
+        // Fallback: GGML family
+        "ggml-llama".to_string()
     }
 
     /// Get a specific provider template by ID from disk.
@@ -463,19 +471,10 @@ impl ProviderTemplate {
 
         if auto_vram_launch {
             args.extend(sp.spawn_flags.clone());
-            match sp.fit_style.as_str() {
-                "ggml_fit_params" => {
-                    let ctx = resolve_launch_ctx_tokens(config, user_params);
-                    args.extend(["--fit".into(), "on".into()]);
-                    args.extend(["--fit-ctx".into(), ctx.to_string()]);
-                }
-                "ik_native" => {
-                    args.push("--fit".into());
-                    if sp.fit_margin_mib > 0 {
-                        args.extend(["--fit-margin".into(), sp.fit_margin_mib.to_string()]);
-                    }
-                }
-                _ => {}
+            if sp.fit_style.as_str() == "ggml_fit_params" {
+                let ctx = resolve_launch_ctx_tokens(config, user_params);
+                args.extend(["--fit".into(), "on".into()]);
+                args.extend(["--fit-ctx".into(), ctx.to_string()]);
             }
         }
 
@@ -577,8 +576,7 @@ impl ProviderTemplate {
 
         // n_gpu_layers injection — computed by VRAM scenario factory at runtime.
         // Skip when Auto VRAM launch handles offload (--fit / --fit on).
-        let fit_handles_offload = auto_vram_launch
-            && matches!(sp.fit_style.as_str(), "ik_native" | "ggml_fit_params");
+        let fit_handles_offload = auto_vram_launch && sp.fit_style.as_str() == "ggml_fit_params";
         if !fit_handles_offload {
             if let Some(ngl) = config.extra_params.get("__ngl") {
                 if let Some(flag) = sp.ngl_flag.first() {
@@ -598,8 +596,6 @@ impl ProviderTemplate {
                 }
             }
         }
-
-        normalize_ik_cli_args(&mut args);
 
         #[cfg(debug_assertions)]
         if !config.model_path.is_empty() {
@@ -736,104 +732,4 @@ fn parse_ctx_token_str(raw: &str) -> usize {
     s.parse::<usize>().unwrap_or(32768)
 }
 
-/// IK llama.cpp flags that were previously emitted as `-flag 0|1` but are now boolean-only.
-fn normalize_ik_cli_args(args: &mut Vec<String>) {
-    if !args.iter().any(|a| {
-        matches!(
-            a.as_str(),
-            "-sas" | "-khad" | "-vhad" | "-smf16" | "-smf32" | "-dio"
-        )
-    }) {
-        return;
-    }
 
-    const BOOL_FLAGS: &[&str] = &["-sas", "-gr", "-khad", "-vhad", "-smf16", "-smf32", "-no-gr"];
-
-    let mut out = Vec::with_capacity(args.len());
-    let mut i = 0;
-    while i < args.len() {
-        let arg = args[i].as_str();
-
-        if arg == "-dio" {
-            out.push("--simple-io".into());
-            i += 1;
-            continue;
-        }
-
-        if arg == "--split-mode" && i + 1 < args.len() && args[i + 1] == "row" {
-            out.push(args[i].clone());
-            out.push("graph".into());
-            i += 2;
-            continue;
-        }
-
-        if BOOL_FLAGS.contains(&arg) && i + 1 < args.len() && (args[i + 1] == "0" || args[i + 1] == "1") {
-            let val = args[i + 1].as_str();
-            if arg == "-smf16" {
-                if val == "1" {
-                    out.push("-smf16".into());
-                } else {
-                    out.push("-smf32".into());
-                }
-            } else if val == "1" {
-                out.push(args[i].clone());
-            }
-            i += 2;
-            continue;
-        }
-
-        out.push(args[i].clone());
-        i += 1;
-    }
-
-    *args = out;
-}
-
-#[cfg(test)]
-mod tests {
-    use super::normalize_ik_cli_args;
-
-    fn norm(input: &[&str]) -> Vec<String> {
-        let mut args: Vec<String> = input.iter().map(|s| s.to_string()).collect();
-        normalize_ik_cli_args(&mut args);
-        args
-    }
-
-    #[test]
-    fn ik_normalize_strips_legacy_bool_values() {
-        let out = norm(&[
-            "-sas", "1", "-gr", "1", "-khad", "1", "-vhad", "1", "-mla", "3", "-smf16", "1",
-        ]);
-        assert_eq!(
-            out,
-            vec![
-                "-sas", "-gr", "-khad", "-vhad", "-mla", "3", "-smf16",
-            ]
-        );
-    }
-
-    #[test]
-    fn ik_normalize_balanced_profile() {
-        let out = norm(&["-sas", "0", "-gr", "1", "-khad", "0", "-vhad", "0", "-mla", "1"]);
-        assert_eq!(out, vec!["-gr", "-mla", "1"]);
-    }
-
-    #[test]
-    fn ik_normalize_smf16_zero_maps_to_smf32() {
-        let out = norm(&["-smf16", "0"]);
-        assert_eq!(out, vec!["-smf32"]);
-    }
-
-    #[test]
-    fn ik_normalize_dio_maps_to_simple_io() {
-        let out = norm(&["-fa", "on", "-dio"]);
-        assert_eq!(out, vec!["-fa", "on", "--simple-io"]);
-    }
-
-    #[test]
-    fn ik_normalize_skips_non_ik_commands() {
-        let mut args = vec!["--port".into(), "8080".into(), "-gr".into(), "1".into()];
-        normalize_ik_cli_args(&mut args);
-        assert_eq!(args, vec!["--port", "8080", "-gr", "1"]);
-    }
-}

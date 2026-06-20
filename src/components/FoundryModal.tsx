@@ -18,7 +18,7 @@ import FoundryBuildProgress from "./FoundryBuildProgress";
 
 interface FoundryModalProps {
   provider: ProviderConfig;
-  environment: "vanguard" | "frontier" | "stable" | "fresh";
+  environment: "frontier" | "stable";
   onClose: () => void;
   onComplete?: (providerId: string) => void;
   visible: boolean;
@@ -380,7 +380,7 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
       const matching = stackStatus.filter((e: StackEngineStatus) =>
         e.provider_type === provider.id
         && e.status !== "IDLE"
-        && (e.binaryProfile || "vanguard").toLowerCase() === profileKey
+        && (e.binaryProfile || "frontier").toLowerCase() === profileKey
       );
 
       if (matching.length > 0) {

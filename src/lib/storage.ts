@@ -129,6 +129,8 @@ export const KEYS = {
   benchControls: `${STORAGE_PREFIX}bench-controls`,
   /** Daily fusion share PNG sequence (1–999), keyed by YYYY-MM-DD. */
   fusionShareSeq: `${STORAGE_PREFIX}fusion-share-seq`,
+  /** CONFIG providers FIT library scan UI — survives sub-tab navigation (session). */
+  fitScanSessions: `${STORAGE_PREFIX}fit-scan-sessions`,
 } as const;
 
 export function isSetupGuideDismissed(): boolean {

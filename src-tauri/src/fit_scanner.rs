@@ -63,8 +63,10 @@ const SCAN_PLAN: &[(&str, usize, &str, u32, u32, &str)] = &[
     // === SPLIT TAX — multi-GPU communication overhead at various contexts ===
     ("split_layer_64k", 65536, "q4_0", 512, 1, "layer"),
     ("split_row_64k", 65536, "q4_0", 512, 1, "row"),
+    ("split_tensor_64k", 65536, "q4_0", 512, 1, "tensor"),
     ("split_layer_256k", 262144, "q4_0", 512, 1, "layer"),
     ("split_row_256k", 262144, "q4_0", 512, 1, "row"),
+    ("split_tensor_256k", 262144, "q4_0", 512, 1, "tensor"),
 
     // === EDGE CASES — large batch + large context combos ===
     ("heavy_256k_b2k", 262144, "q4_0", 2048, 1, "none"),
@@ -135,13 +137,23 @@ pub struct FitScanFull {
     /// Error message if any scan failed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    /// Model intentionally not probed (e.g. Tom + MTP) — not a scan failure.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub skip_reason: Option<String>,
+    /// Per-label skips (e.g. Tom tensor points) — counted as done for incremental scan.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub skipped_points: Option<HashMap<String, String>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
- pub struct FitScanProgress {
+pub struct FitScanProgress {
     pub model_path: String,
     pub model_name: String,
-    pub status: String, // "scanning", "complete", "error"
+    /// `scanning` | `complete` | `error` | `skipped` | `point_skipped` | `library_meta`.
+    pub status: String,
+    /// Set when `status == "skipped"` (model-level skip, not a point failure).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub skip_reason: Option<String>,
     /// The CLI args used for this scan (for debugging).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub args: Option<String>,
@@ -151,6 +163,20 @@ pub struct FitScanFull {
     /// Scan point label (e.g., "base", "ctx_128k") — set on "complete" events.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_models: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scan_points_total: Option<usize>,
+}
+
+/// Cached FIT library partition — for incremental scan UI bootstrap + tab reconnect.
+#[derive(Debug, Clone, Serialize)]
+pub struct FitScanCacheSnapshot {
+    pub provider_id: String,
+    pub scan_points_total: usize,
+    pub results: HashMap<String, FitScanFull>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -179,42 +205,123 @@ pub fn find_fit_binary(provider_binary_path: &str) -> Option<String> {
     None
 }
 
-/// Resolve `llama-fit-params.exe` for a provider — local dir first, then `spawn_profile.fit_binary_provider`.
+fn fit_scan_profile(binary_profile: &str) -> &str {
+    if binary_profile.trim().is_empty() {
+        crate::config::FIT_SCAN_BINARY_PROFILE
+    } else {
+        binary_profile
+    }
+}
+
+fn foundry_fit_binary(provider_id: &str, profile: &str) -> Option<String> {
+    let path = crate::config::foundry_artifact_release_dir(provider_id, profile).join("llama-fit-params.exe");
+    if path.exists() {
+        return Some(path.to_string_lossy().to_string());
+    }
+    None
+}
+
+fn bundled_fit_binary(provider_id: &str, profile: &str) -> Option<String> {
+    let path = crate::config::resolve_path(&format!(
+        "runtime/{}/{}/llama-fit-params.exe",
+        provider_id, profile
+    ));
+    if path.exists() {
+        return Some(path.to_string_lossy().to_string());
+    }
+    None
+}
+
+fn fit_binary_borrow_chain(provider_id: &str) -> Vec<String> {
+    let mut chain = Vec::new();
+    if let Some(borrow) = crate::templates::load_provider_defaults(provider_id)
+        .map(|t| t.spawn_profile.fit_binary_provider)
+        .filter(|s| !s.trim().is_empty())
+    {
+        chain.push(borrow);
+    }
+    if !provider_id.eq_ignore_ascii_case(crate::config::DEFAULT_PROVIDER_ID) {
+        chain.push(crate::config::DEFAULT_PROVIDER_ID.to_string());
+    }
+    chain
+}
+
+/// Resolve `llama-fit-params.exe` — always frontier; provider foundry → bundled runtime → server dir → borrow chain.
 pub fn resolve_fit_binary(
     cfg: &crate::config::AppConfig,
     provider_id: &str,
     binary_profile: &str,
 ) -> Result<String, String> {
-    let server_path = crate::engine_utils::find_provider_binary(cfg, provider_id, binary_profile)?;
-    if let Some(fit) = find_fit_binary(server_path.to_str().unwrap_or("")) {
+    let profile = fit_scan_profile(binary_profile);
+    let fit_adapter = resolve_fit_adapter(provider_id);
+
+    if let Some(fit) = foundry_fit_binary(provider_id, profile) {
         return Ok(fit);
     }
 
-    let borrow_id = crate::templates::load_provider_defaults(provider_id)
-        .map(|t| t.spawn_profile.fit_binary_provider)
-        .unwrap_or_default();
-    let borrow_id = borrow_id.trim();
-    if borrow_id.is_empty() {
+    if let Some(fit) = bundled_fit_binary(provider_id, profile) {
+        return Ok(fit);
+    }
+
+    if let Ok(server_path) = crate::engine_utils::find_provider_binary(cfg, provider_id, profile) {
+        if let Some(fit) = find_fit_binary(server_path.to_str().unwrap_or("")) {
+            return Ok(fit);
+        }
+    }
+
+    // Tom rejects master `--fit-print` output — never borrow ggml-master fit-params.
+    if fit_adapter != crate::fit_adapters::FitAdapterId::GgmlTom {
+        for borrow_id in fit_binary_borrow_chain(provider_id) {
+            if borrow_id.eq_ignore_ascii_case(provider_id) {
+                continue;
+            }
+            if let Some(fit) = foundry_fit_binary(&borrow_id, profile) {
+                log::info!(
+                    "[FIT] Using foundry llama-fit-params from '{}' for provider '{}'",
+                    borrow_id,
+                    provider_id
+                );
+                return Ok(fit);
+            }
+            if let Some(fit) = bundled_fit_binary(&borrow_id, profile) {
+                log::info!(
+                    "[FIT] Using bundled llama-fit-params from '{}' for provider '{}'",
+                    borrow_id,
+                    provider_id
+                );
+                return Ok(fit);
+            }
+            if let Ok(borrow_server) = crate::engine_utils::find_provider_binary(cfg, &borrow_id, profile) {
+                if let Some(fit) = find_fit_binary(borrow_server.to_str().unwrap_or("")) {
+                    log::info!(
+                        "[FIT] Using llama-fit-params beside '{}' server for provider '{}'",
+                        borrow_id,
+                        provider_id
+                    );
+                    return Ok(fit);
+                }
+            }
+        }
+    }
+
+    if fit_adapter == crate::fit_adapters::FitAdapterId::GgmlTom {
         return Err(format!(
-            "llama-fit-params.exe not found beside {} — set spawn_profile.fit_binary_provider or build the tool",
-            server_path.display()
+            "Tom FIT requires ggml-tom llama-fit-params (Foundry {}). Build Tom {} in Foundry.",
+            profile, profile
         ));
     }
 
-    let borrow_server = crate::engine_utils::find_provider_binary(cfg, borrow_id, binary_profile)?;
-    find_fit_binary(borrow_server.to_str().unwrap_or("")).ok_or_else(|| {
-        format!(
-            "llama-fit-params.exe not found beside {} (borrowed from provider '{}')",
-            borrow_server.display(),
-            borrow_id
-        )
-    })
+    Err(format!(
+        "llama-fit-params.exe not found for provider '{}' (profile={}) — build Foundry {} or bundle the tool",
+        provider_id, profile, profile
+    ))
 }
 
 // ── Command Builder ────────────────────────────────────────────────
 
-/// Build CLI args for llama-fit-params.exe directly — no template system involvement.
+/// Build CLI args for llama-fit-params.exe — provider adapter selects `--fit-print` vs `--fit on`.
 pub fn build_fit_command(
+    provider_id: &str,
     model_path: &str,
     ctx_tokens: usize,
     kv_quant: &str,
@@ -223,15 +330,48 @@ pub fn build_fit_command(
     parallel: u32,
     split_mode: &str,
 ) -> Vec<String> {
+    let adapter = resolve_fit_adapter(provider_id);
+    adapter.build_scan_args(model_path, ctx_tokens, kv_quant, batch, ubatch, parallel, split_mode)
+}
+
+pub fn resolve_fit_adapter(provider_id: &str) -> crate::fit_adapters::FitAdapterId {
+    let spawn = crate::templates::load_provider_defaults(provider_id)
+        .map(|t| t.spawn_profile.fit_adapter)
+        .unwrap_or_default();
+    crate::fit_adapters::FitAdapterId::resolve(provider_id, &spawn)
+}
+
+/// Shared scan arg builder — `use_fit_print` false for Tom (uses `--fit on` + projected MiB line).
+pub fn build_fit_command_base(
+    model_path: &str,
+    ctx_tokens: usize,
+    kv_quant: &str,
+    batch: u32,
+    ubatch: u32,
+    parallel: u32,
+    split_mode: &str,
+    use_fit_print: bool,
+) -> Vec<String> {
     let mut args = vec![
         "-m".into(),
         model_path.into(),
+    ];
+
+    if use_fit_print {
         // Direct memory estimate to stdout — avoids the fitting path that can exit 1
         // (e.g. tensor split) before any breakdown is printed.
-        "--fit-print".into(),
-        "on".into(),
-        "--fit".into(),
-        "off".into(),
+        args.extend(["--fit-print".into(), "on".into(), "--fit".into(), "off".into()]);
+    } else {
+        args.extend([
+            "--fit".into(),
+            "on".into(),
+            "--fit-ctx".into(),
+            ctx_tokens.to_string(),
+        ]);
+    }
+
+    let mut args = args;
+    args.extend([
         // Force all layers onto GPU — prevents llama-fit-params from auto-calculating ngl
         // and offloading layers. We need the TRUE total VRAM requirement per scan point,
         // not a "fitted" result after internal layer reduction.
@@ -244,7 +384,7 @@ pub fn build_fit_command(
         // Batch sizes
         "--batch-size".into(), batch.to_string(),
         "--ubatch-size".into(), ubatch.to_string(),
-    ];
+    ]);
 
     // Parallel (only if > 1)
     if parallel > 1 {
@@ -266,7 +406,7 @@ pub fn build_fit_command(
 
 /// Parse stdout from `--fit-print on` / `common_fit_print`.
 /// Lines: "<device> <model_mib> <ctx_mib> <compute_mib>" (Host row uses same layout).
-fn parse_fit_print_stdout(stdout: &str) -> Option<FitScanRaw> {
+pub fn parse_fit_print_stdout(stdout: &str) -> Option<FitScanRaw> {
     let mut gpu_self: Vec<f64> = Vec::new();
     let mut gpu_components: Vec<GpuComponentMib> = Vec::new();
     let mut host_mib: Option<f64> = None;
@@ -318,7 +458,7 @@ fn parse_fit_print_stdout(stdout: &str) -> Option<FitScanRaw> {
 }
 
 /// Parse MiB from llama-fit-params.exe output.
-fn parse_fit_output(output: &str) -> Option<f64> {
+pub fn parse_fit_output(output: &str) -> Option<f64> {
     for line in output.lines() {
         let lower = line.to_lowercase();
         if (lower.contains("projected to use") || lower.contains("estimated to use")) 
@@ -502,12 +642,68 @@ fn run_fit_process_blocking(
     })
 }
 
+fn fit_stderr_reason(stderr: &str) -> String {
+    for line in stderr.lines().rev() {
+        let cleaned = strip_ansi(line);
+        let trimmed = cleaned.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let lower = trimmed.to_lowercase();
+        if lower.contains("failed to load model")
+            || lower.contains("failed to open gguf")
+            || lower.contains("failed to fit cli")
+            || lower.contains("failed to fit params")
+            || lower.contains("llama_params_fit:")
+            || lower.contains("error loading model")
+        {
+            return trimmed.chars().take(200).collect();
+        }
+    }
+    stderr
+        .lines()
+        .rev()
+        .map(strip_ansi)
+        .map(|l| l.trim().to_string())
+        .find(|l| !l.is_empty())
+        .map(|l| l.chars().take(200).collect())
+        .unwrap_or_else(|| "unknown fit error".to_string())
+}
+
+fn fit_process_error_message(
+    model_path: &str,
+    adapter: crate::fit_adapters::FitAdapterId,
+    fit_binary: &str,
+    exit_code: Option<i32>,
+    stderr: &str,
+) -> String {
+    format!(
+        "Fit process failed for {} (adapter={}, binary={}, exit={:?}): {}",
+        model_path,
+        adapter.as_str(),
+        fit_binary,
+        exit_code,
+        fit_stderr_reason(stderr)
+    )
+}
+
 /// Scan a single model at one anchor point with pre-built CLI args.
 pub async fn scan_single_anchor(
     fit_binary: &str,
     args: &[String],
     cuda_visible_devices: &str,
+    adapter: crate::fit_adapters::FitAdapterId,
 ) -> Result<FitScanRaw, String> {
+    if adapter == crate::fit_adapters::FitAdapterId::GgmlTom {
+        let norm = fit_binary.replace('\\', "/").to_lowercase();
+        if !norm.contains("ggml-tom") {
+            return Err(format!(
+                "Tom FIT requires ggml-tom llama-fit-params (Foundry {}). Resolved: {}",
+                crate::config::FIT_SCAN_BINARY_PROFILE,
+                fit_binary
+            ));
+        }
+    }
     let model_path = args
         .iter()
         .position(|a| a == "-m")
@@ -516,6 +712,7 @@ pub async fn scan_single_anchor(
         .unwrap_or("unknown");
 
     let fit_binary = fit_binary.to_string();
+    let fit_binary_log = fit_binary.clone();
     let args = args.to_vec();
     let cuda_visible_devices = cuda_visible_devices.to_string();
     let model_path_owned = model_path.to_string();
@@ -534,45 +731,49 @@ pub async fn scan_single_anchor(
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
-    let combined_output = format!("{}\n{}", stdout, stderr);
 
-    if let Some(raw) = parse_fit_print_stdout(&stdout) {
+    if !output.status.success() {
+        return Err(fit_process_error_message(
+            model_path,
+            adapter,
+            &fit_binary_log,
+            output.status.code(),
+            &stderr,
+        ));
+    }
+
+    if let Some(raw) = adapter.parse_scan_output(&stdout, &stderr) {
         return Ok(raw);
     }
 
-    let vram_mib = parse_fit_output(&combined_output)
-        .or_else(|| parse_engine_memory_breakdown_mib(&combined_output))
-        .or_else(|| parse_projected_vram(&combined_output));
-
-    let vram_mib = match vram_mib {
-        Some(v) if v > 0.0 => v,
-        _ => {
-            log::warn!(
-                "Fit scan parse failed for {}: exit={:?}",
-                model_path,
-                output.status.code()
-            );
-            return Err(format!(
-                "Could not parse VRAM from fit output. Exit code: {:?}",
-                output.status.code()
-            ));
-        }
-    };
-
-    let (gpu_breakdown_mib, host_mib) = parse_fit_breakdown(&combined_output);
-    let gpu_components_mib = parse_gpu_components(&combined_output);
-
-    Ok(FitScanRaw {
-        vram_mib,
-        gpu_breakdown_mib,
-        host_mib,
-        gpu_components_mib,
-    })
+    let stderr_tail: String = stderr
+        .lines()
+        .rev()
+        .take(8)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect::<Vec<_>>()
+        .join(" | ");
+    log::warn!(
+        "Fit scan parse failed for {} (adapter={}, binary={}): exit={:?} tail={}",
+        model_path,
+        adapter.as_str(),
+        fit_binary_log,
+        output.status.code(),
+        stderr_tail.chars().take(240).collect::<String>()
+    );
+    Err(format!(
+        "Could not parse VRAM from fit output (adapter={}, binary={}). Exit code: {:?}",
+        adapter.as_str(),
+        fit_binary_log,
+        output.status.code()
+    ))
 }
 
 /// Parse projected VRAM from memory breakdown when model doesn't fit single GPU.
 /// Extracts the "model" value from common_memory_breakdown_print lines.
-fn parse_projected_vram(output: &str) -> Option<f64> {
+pub fn parse_projected_vram(output: &str) -> Option<f64> {
     for line in output.lines() {
         let lower = line.to_lowercase();
         if lower.contains("memory breakdown") && (lower.contains("mib") || lower.contains("mi b")) {
@@ -722,7 +923,7 @@ fn extract_self_mib_from_cuda_breakdown_line(line: &str) -> Option<f64> {
     extract_number(inner.trim())
 }
 
-fn parse_fit_breakdown(output: &str) -> (Option<Vec<f64>>, Option<f64>) {
+pub fn parse_fit_breakdown(output: &str) -> (Option<Vec<f64>>, Option<f64>) {
     let tables = parse_all_memory_breakdown_tables(output);
     tables.last().map(|t| {
         (
@@ -737,7 +938,7 @@ fn parse_fit_breakdown(output: &str) -> (Option<Vec<f64>>, Option<f64>) {
 ///
 /// llama-fit-params prints multiple memory tables during its iterative fitting algorithm.
 /// We only want the LAST table — it represents the final fitted configuration.
-fn parse_gpu_components(output: &str) -> Option<Vec<GpuComponentMib>> {
+pub fn parse_gpu_components(output: &str) -> Option<Vec<GpuComponentMib>> {
     let mut last_components: Vec<GpuComponentMib> = Vec::new();
 
     for line in output.lines() {
@@ -810,6 +1011,24 @@ pub fn extract_model_name(path: &str) -> String {
     crate::engine_utils::extract_model_name(path)
 }
 
+fn fit_scan_full_skipped(model_path: &str, skip_reason: &str) -> FitScanFull {
+    FitScanFull {
+        model_path: model_path.to_string(),
+        points: Vec::new(),
+        error: None,
+        skip_reason: Some(skip_reason.to_string()),
+        skipped_points: None,
+    }
+}
+
+fn fit_scan_labels_done(full: &FitScanFull) -> HashSet<String> {
+    let mut done: HashSet<String> = full.points.iter().map(|p| p.label.clone()).collect();
+    if let Some(skipped) = &full.skipped_points {
+        done.extend(skipped.keys().cloned());
+    }
+    done
+}
+
 /// Find all models using the shared model_catalog logic (multi-path, shard dedup, mmproj filter).
 fn find_all_models(paths: &[String], log_hub: Option<&LogHub>) -> Vec<String> {
     let path_entries: Vec<crate::types::ModelPathEntry> = paths
@@ -840,6 +1059,15 @@ fn find_all_models(paths: &[String], log_hub: Option<&LogHub>) -> Vec<String> {
             Vec::new()
         }
     }
+}
+
+/// Lookup one model in the provider's fit-adapter partition (path + filename fallback).
+pub fn find_existing_scan_in_provider_partition(
+    provider_id: &str,
+    model_path: &str,
+) -> Option<FitScanFull> {
+    let data = load_full_scan_partition_for_provider(provider_id);
+    find_existing_scan(&data, model_path)
 }
 
 /// Find existing scan data for a model path, with filename fallback for robustness.
@@ -886,6 +1114,21 @@ pub async fn scan_library(
     let models = find_all_models(model_paths, hub_ref);
     let total = models.len();
 
+    if let Some(tx) = &progress_tx {
+        let _ = tx.send(FitScanProgress {
+            model_path: String::new(),
+            model_name: String::new(),
+            status: "library_meta".to_string(),
+            args: None,
+            vram_mib: None,
+            label: None,
+            provider_id: Some(provider_id.clone()),
+            total_models: Some(total),
+            scan_points_total: Some(SCAN_PLAN.len()),
+            skip_reason: None,
+        });
+    }
+
     if total == 0 {
         let msg = if model_paths.iter().all(|p| p.trim().is_empty()) {
             "[FIT-SCAN] No model library paths configured.".to_string()
@@ -911,8 +1154,26 @@ pub async fn scan_library(
         };
     }
 
-    // Load existing full scan data for incremental update
-    let existing_data = load_full_scan_export().unwrap_or_default();
+    let fit_adapter = resolve_fit_adapter(&provider_id);
+
+    log::info!(
+        "[FIT-SCAN] provider='{}' fit_adapter='{}' — cache partition is per adapter (not per provider)",
+        provider_id,
+        fit_adapter.as_str()
+    );
+    emit_fit_scan_line(
+        hub_ref,
+        BlackwellOutputConsoleCategory::Utils,
+        &format!(
+            "[FIT-SCAN] provider={} adapter={} (fit_scan_full.json partition)",
+            provider_id,
+            fit_adapter.as_str()
+        ),
+        BlackwellOutputConsoleLineStyle::Normal,
+    );
+
+    // Load existing partition for this fit adapter (ggml_master vs ggml_tom)
+    let existing_data = load_full_scan_partition(fit_adapter);
 
     // GPU count for per-point mask computation
     let gpu_count = detect_gpu_count();
@@ -935,22 +1196,63 @@ pub async fn scan_library(
         // Look up existing scan data with filename fallback for path robustness
         let existing_full: Option<FitScanFull> = find_existing_scan(&existing_data, &model_path);
         
-        // Build a HashSet of existing labels for this model
-        let existing_labels: HashSet<String> = existing_full.as_ref().map(|e| {
-            e.points.iter().map(|p| p.label.clone()).collect()
-        }).unwrap_or_default();
+        // Labels already measured or intentionally skipped (Tom tensor / etc.)
+        let labels_done: HashSet<String> = existing_full
+            .as_ref()
+            .map(fit_scan_labels_done)
+            .unwrap_or_default();
 
         // Build the set of SCAN_PLAN labels
         let plan_labels: HashSet<&str> = SCAN_PLAN.iter().map(|p| p.0).collect();
 
+        // Tom + MTP: no point probes — use cached skip or record one now (avoids 30s×N timeouts).
+        if let Some(skip_note) = fit_adapter.model_skip_note(&model_path) {
+            let result = existing_full
+                .filter(|e| e.skip_reason.is_some())
+                .unwrap_or_else(|| fit_scan_full_skipped(&model_path, skip_note));
+            if let Some(tx) = &progress_tx {
+                let _ = tx.send(FitScanProgress {
+                    model_path: model_path.clone(),
+                    model_name: extract_model_name(&model_path),
+                    status: "skipped".to_string(),
+                    args: None,
+                    vram_mib: None,
+                    label: None,
+                    provider_id: None,
+                    total_models: None,
+                    scan_points_total: None,
+                    skip_reason: result.skip_reason.clone(),
+                });
+            }
+            emit_fit_scan_line(
+                hub_ref,
+                BlackwellOutputConsoleCategory::Utils,
+                &format!(
+                    "[FIT-SCAN] {} | skipped | {}",
+                    extract_model_name(&model_path),
+                    skip_note
+                ),
+                BlackwellOutputConsoleLineStyle::Normal,
+            );
+            full_results_map.lock().await.insert(model_path.clone(), result);
+            continue;
+        }
+
         // If ALL labels are present, skip the model entirely (copy existing data)
-        let missing_labels: Vec<String> = if existing_labels.len() >= SCAN_PLAN.len() 
-            && plan_labels.is_subset(&existing_labels.iter().map(|s| s.as_str()).collect()) {
+        let missing_labels: Vec<String> = if existing_full
+            .as_ref()
+            .and_then(|e| e.skip_reason.as_ref())
+            .is_some()
+        {
+            Vec::new()
+        } else if labels_done.len() >= SCAN_PLAN.len()
+            && plan_labels.is_subset(&labels_done.iter().map(|s| s.as_str()).collect())
+        {
             Vec::new()
         } else {
-            // Only scan points whose label is NOT in the existing set
-            SCAN_PLAN.iter()
-                .filter(|p| !existing_labels.contains(p.0))
+            SCAN_PLAN
+                .iter()
+                .filter(|p| !labels_done.contains(p.0))
                 .map(|p| p.0.to_string())
                 .collect()
         };
@@ -963,8 +1265,15 @@ pub async fn scan_library(
             }
         }
 
-        // Existing points to carry forward for incremental scan
-        let existing_points: Vec<FitDataPoint> = existing_full.map(|e| e.points).unwrap_or_default();
+        // Existing points + per-label skips to carry forward for incremental scan
+        let existing_points: Vec<FitDataPoint> = existing_full
+            .as_ref()
+            .map(|e| e.points.clone())
+            .unwrap_or_default();
+        let existing_skipped: HashMap<String, String> = existing_full
+            .as_ref()
+            .and_then(|e| e.skipped_points.clone())
+            .unwrap_or_default();
 
         let sem = semaphore.clone();
         let fit_bin = fit_binary.to_string();
@@ -973,6 +1282,8 @@ pub async fn scan_library(
         let prog_tx = progress_tx.clone();
         let full_map = full_results_map.clone();
         let log_hub_task = log_hub.clone();
+        let scan_provider_id = provider_id.clone();
+        let scan_fit_adapter = fit_adapter;
 
         let handle = tokio::spawn(async move {
             let hub = log_hub_task.as_ref();
@@ -997,7 +1308,9 @@ pub async fn scan_library(
             } else {
                 existing_points.clone()
             };
+            let mut skipped_points: HashMap<String, String> = existing_skipped;
             let mut failures = Vec::new();
+            let fit_adapter = resolve_fit_adapter(&scan_provider_id);
 
             for (label, ctx_tokens, kv_q, batch_val, parallel_val, split_val) in SCAN_PLAN {
                 if cancel.load(Ordering::Relaxed) {
@@ -1009,6 +1322,35 @@ pub async fn scan_library(
                     continue;
                 }
 
+                // Adapter-owned skip (Tom tensor / MTP points) — no subprocess.
+                if let Some(note) = fit_adapter.point_skip_note(label, split_val) {
+                    skipped_points.insert((*label).to_string(), note.to_string());
+                    emit_fit_scan_line(
+                        hub,
+                        BlackwellOutputConsoleCategory::Utils,
+                        &format!(
+                            "[FIT-SCAN] {} | {label} | skipped | {note}",
+                            extract_model_name(&model_path)
+                        ),
+                        BlackwellOutputConsoleLineStyle::Normal,
+                    );
+                    if let Some(tx) = &prog_tx {
+                        let _ = tx.send(FitScanProgress {
+                            model_path: model_path.clone(),
+                            model_name: model_name.clone(),
+                            status: "point_skipped".to_string(),
+                            args: None,
+                            vram_mib: None,
+                            label: Some((*label).to_string()),
+                            provider_id: None,
+                            total_models: None,
+                            scan_points_total: None,
+                            skip_reason: Some(note.to_string()),
+                        });
+                    }
+                    continue;
+                }
+
                 // Compute GPU mask per-scan-point: split mode needs all GPUs visible
                 let point_gpu_mask = if *split_val != "none" && !split_val.is_empty() {
                     (0..gpu_count).map(|i| i.to_string()).collect::<Vec<_>>().join(",")
@@ -1017,9 +1359,15 @@ pub async fn scan_library(
                     "0".to_string()
                 };
 
-                // Build CLI args directly from scan plan parameters
                 let args = build_fit_command(
-                    &model_path, *ctx_tokens, kv_q, *batch_val, *batch_val, *parallel_val, split_val,
+                    &scan_provider_id,
+                    &model_path,
+                    *ctx_tokens,
+                    kv_q,
+                    *batch_val,
+                    *batch_val,
+                    *parallel_val,
+                    split_val,
                 );
 
                 // Emit progress before scan
@@ -1031,10 +1379,14 @@ pub async fn scan_library(
                         args: Some(args.join(" ")),
                         vram_mib: None,
                         label: Some((*label).to_string()),
+                        provider_id: None,
+                        total_models: None,
+                        scan_points_total: None,
+                        skip_reason: None,
                     });
                 }
 
-                match scan_single_anchor(&fit_bin, &args, &point_gpu_mask).await {
+                match scan_single_anchor(&fit_bin, &args, &point_gpu_mask, fit_adapter).await {
                     Ok(raw) => {
                         points.push(FitDataPoint {
                             label: (*label).to_string(),
@@ -1055,6 +1407,10 @@ pub async fn scan_library(
                                 args: None,
                                 vram_mib: Some(raw.vram_mib),
                                 label: Some((*label).to_string()),
+                                provider_id: None,
+                                total_models: None,
+                                scan_points_total: None,
+                                skip_reason: None,
                             });
                         }
                     },
@@ -1078,6 +1434,10 @@ pub async fn scan_library(
                                 args: None,
                                 vram_mib: None,
                                 label: Some((*label).to_string()),
+                                provider_id: None,
+                                total_models: None,
+                                scan_points_total: None,
+                                skip_reason: None,
                             });
                         }
                     },
@@ -1089,13 +1449,19 @@ pub async fn scan_library(
                 model_path: model_path.clone(),
                 points,
                 error: if failures.is_empty() { None } else { Some(failures.join(" | ")) },
+                skip_reason: None,
+                skipped_points: if skipped_points.is_empty() {
+                    None
+                } else {
+                    Some(skipped_points)
+                },
             };
 
             {
                 let mut map = full_map.lock().await;
                 map.insert(model_path.clone(), result.clone());
                 // Incremental save so data persists mid-scan (not just at the end)
-                save_full_scan_export(&map);
+                save_full_scan_partition(scan_fit_adapter, &map);
             }
 
             // Update completed count
@@ -1136,8 +1502,7 @@ pub async fn scan_library(
     let completed = final_results.len();
     let failed = *failed_count.lock().await;
 
-    // Save comprehensive scan data to JSON for analysis + future incremental scans
-    save_full_scan_export(&final_results);
+    save_full_scan_partition(fit_adapter, &final_results);
 
     FitScanComplete {
         provider_id,
@@ -1149,12 +1514,98 @@ pub async fn scan_library(
     }
 }
 
-// ── Full Scan Export ────────────────────────────────────────────────
+// ── Full Scan Export (partitioned by fit_adapter) ───────────────────
+const FIT_SCAN_EXPORT_VERSION: u32 = 2;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct FitScanPartitionedExport {
+    version: u32,
+    partitions: HashMap<String, HashMap<String, FitScanFull>>,
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum FitScanExportFile {
+    V2(FitScanPartitionedExport),
+    Legacy(HashMap<String, FitScanFull>),
+}
+
 fn full_scan_export_path() -> PathBuf {
     crate::config::cache_dir().join("fit_scan_full.json")
 }
 
-/// Clear the full scan export so next scan runs fresh (no incremental skip).
+fn load_all_scan_partitions() -> HashMap<String, HashMap<String, FitScanFull>> {
+    let path = full_scan_export_path();
+    if !path.exists() {
+        return HashMap::new();
+    }
+    let content = match std::fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(_) => return HashMap::new(),
+    };
+    match serde_json::from_str::<FitScanExportFile>(&content) {
+        Ok(FitScanExportFile::V2(exp)) => exp.partitions,
+        Ok(FitScanExportFile::Legacy(legacy)) => {
+            if legacy.is_empty() {
+                HashMap::new()
+            } else {
+                log::info!(
+                    "[FIT] Migrated {} model(s) in fit_scan_full.json → ggml_master partition",
+                    legacy.len()
+                );
+                let mut partitions = HashMap::new();
+                partitions.insert(crate::fit_adapters::FitAdapterId::GgmlMaster.as_str().to_string(), legacy);
+                partitions
+            }
+        }
+        Err(e) => {
+            log::warn!("[FIT] Failed to parse fit_scan_full.json: {e}");
+            HashMap::new()
+        }
+    }
+}
+
+fn write_all_scan_partitions(partitions: &HashMap<String, HashMap<String, FitScanFull>>) {
+    if partitions.values().all(|p| p.is_empty()) {
+        return;
+    }
+    let path = full_scan_export_path();
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    let export = FitScanPartitionedExport {
+        version: FIT_SCAN_EXPORT_VERSION,
+        partitions: partitions.clone(),
+    };
+    if let Ok(json) = serde_json::to_string_pretty(&export) {
+        let _ = std::fs::write(&path, json);
+    }
+}
+
+/// One fit-adapter partition (`ggml_master` | `ggml_tom`).
+pub fn load_full_scan_partition(adapter: crate::fit_adapters::FitAdapterId) -> HashMap<String, FitScanFull> {
+    load_all_scan_partitions()
+        .remove(adapter.as_str())
+        .unwrap_or_default()
+}
+
+pub fn load_full_scan_partition_for_provider(provider_id: &str) -> HashMap<String, FitScanFull> {
+    load_full_scan_partition(resolve_fit_adapter(provider_id))
+}
+
+fn save_full_scan_partition(
+    adapter: crate::fit_adapters::FitAdapterId,
+    partition: &HashMap<String, FitScanFull>,
+) {
+    if partition.is_empty() {
+        return;
+    }
+    let mut all = load_all_scan_partitions();
+    all.insert(adapter.as_str().to_string(), partition.clone());
+    write_all_scan_partitions(&all);
+}
+
+/// Clear all FIT library scan partitions.
 pub fn clear_full_scan_export() {
     let path = full_scan_export_path();
     if path.exists() {
@@ -1162,35 +1613,46 @@ pub fn clear_full_scan_export() {
     }
 }
 
-/// Save comprehensive scan data to JSON for offline analysis.
-fn save_full_scan_export(full_data: &HashMap<String, FitScanFull>) {
-    if full_data.is_empty() {
+/// Drop one fit-adapter partition (`ggml_master` | `ggml_tom`) — other providers' cache kept.
+pub fn clear_full_scan_partition(adapter: crate::fit_adapters::FitAdapterId) {
+    let mut all = load_all_scan_partitions();
+    if all.remove(adapter.as_str()).is_none() {
         return;
     }
-    let path = full_scan_export_path();
-    if let Some(dir) = path.parent() {
-        let _ = std::fs::create_dir_all(dir);
-    }
-    if let Ok(json) = serde_json::to_string_pretty(full_data) {
-        let _ = std::fs::write(&path, json);
+    if all.is_empty() {
+        clear_full_scan_export();
+    } else {
+        write_all_scan_partitions(&all);
     }
 }
 
-/// Load comprehensive scan data from JSON export.
-pub fn load_full_scan_export() -> Option<HashMap<String, FitScanFull>> {
-    let path = full_scan_export_path();
-    if !path.exists() {
-        return None;
-    }
-    let content = std::fs::read_to_string(&path).ok()?;
-    serde_json::from_str(&content).ok()
+pub fn clear_full_scan_partition_for_provider(provider_id: &str) {
+    let adapter = resolve_fit_adapter(provider_id);
+    log::info!(
+        "[FIT-SCAN] Force rescan — clearing {} partition for provider '{}'",
+        adapter.as_str(),
+        provider_id
+    );
+    clear_full_scan_partition(adapter);
 }
 
-/// Get raw FIT scan points for a model — used by diagnostics to show split mode measurements.
+/// Full cached library partition for one provider (incremental scan bootstrap / UI reconnect).
 #[tauri::command]
-pub fn get_fit_scan_points(model_path: String) -> Option<Vec<FitDataPoint>> {
-    let data = load_full_scan_export()?;
-    data.get(&model_path).map(|f| f.points.clone())
+pub fn get_fit_scan_cache_snapshot(provider_id: String) -> FitScanCacheSnapshot {
+    let adapter = resolve_fit_adapter(&provider_id);
+    FitScanCacheSnapshot {
+        provider_id,
+        scan_points_total: SCAN_PLAN.len(),
+        results: load_full_scan_partition(adapter),
+    }
+}
+
+/// Get raw FIT scan points for a model — partition follows provider fit_adapter.
+#[tauri::command]
+pub fn get_fit_scan_points(model_path: String, provider_id: Option<String>) -> Option<Vec<FitDataPoint>> {
+    let provider_id = provider_id.unwrap_or_else(|| crate::config::DEFAULT_PROVIDER_ID.to_string());
+    let data = load_full_scan_partition_for_provider(&provider_id);
+    find_existing_scan(&data, &model_path).map(|f| f.points.clone())
 }
 
 #[cfg(test)]

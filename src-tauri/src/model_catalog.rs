@@ -9,7 +9,98 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use crate::output_console::{BlackwellOutputConsoleCategory, BlackwellOutputConsoleLineStyle};
-use crate::types::{CatalogDedupConflict, DiskCheckResult, GgufFile, ModelEntry, ModelEntryInternal, ModelPathEntry};
+use crate::types::{
+    CatalogDedupConflict, DiskCheckResult, DownloadStatus, DownloadTask, GgufFile, ModelEntry,
+    ModelEntryInternal, ModelPathEntry, QuantDownloadBatch,
+};
+
+/// Paths + shard groups to omit from catalog during active/incomplete downloads.
+#[derive(Debug, Clone, Default)]
+pub struct CatalogScanExclusions {
+    pub dest_paths: HashSet<String>,
+    pub shard_groups: HashSet<String>,
+}
+
+impl CatalogScanExclusions {
+    pub fn is_empty(&self) -> bool {
+        self.dest_paths.is_empty() && self.shard_groups.is_empty()
+    }
+}
+
+pub fn shard_group_key_from_path(path: &str) -> String {
+    let resolved = crate::config::resolve_path(path);
+    let parent = resolved
+        .parent()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let fname = resolved
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("");
+    let base = strip_shard_pattern(fname);
+    format!("{}|{}", parent.to_lowercase(), base.to_lowercase())
+}
+
+pub fn catalog_exclusions_from_downloads(
+    tasks: &HashMap<String, DownloadTask>,
+    batches: &HashMap<String, QuantDownloadBatch>,
+) -> CatalogScanExclusions {
+    let mut dest_paths = HashSet::new();
+    let mut shard_groups = HashSet::new();
+
+    for task in tasks.values() {
+        if matches!(
+            task.status,
+            DownloadStatus::Queued | DownloadStatus::Downloading | DownloadStatus::Paused
+        ) {
+            let resolved = crate::config::resolve_path(&task.dest_path)
+                .to_string_lossy()
+                .to_string();
+            dest_paths.insert(resolved.clone());
+            shard_groups.insert(shard_group_key_from_path(&resolved));
+        }
+    }
+
+    for batch in batches.values() {
+        for part in &batch.parts {
+            let resolved = crate::config::resolve_path(&part.dest_path)
+                .to_string_lossy()
+                .to_string();
+            dest_paths.insert(resolved.clone());
+            shard_groups.insert(shard_group_key_from_path(&resolved));
+        }
+    }
+
+    CatalogScanExclusions {
+        dest_paths,
+        shard_groups,
+    }
+}
+
+/// Parse `-00001-of-00004` suffix → expected shard count (4).
+pub fn parse_shard_expected_total(filename: &str) -> Option<u32> {
+    let without_ext = filename.trim_end_matches(".gguf");
+    if let Some(of_pos) = find_case_insensitive_rfind(without_ext, "-of-") {
+        let after_of = &without_ext[of_pos + 4..];
+        if !after_of.is_empty() && after_of.chars().all(|c| c.is_ascii_digit()) {
+            return after_of.parse().ok();
+        }
+    }
+    None
+}
+
+fn is_incomplete_shard_entry(entry: &ModelEntryInternal) -> bool {
+    let Some(fname) = Path::new(&entry.path)
+        .file_name()
+        .and_then(|s| s.to_str())
+    else {
+        return false;
+    };
+    let Some(expected) = parse_shard_expected_total(fname) else {
+        return false;
+    };
+    (entry.shards as u32) < expected
+}
 
 /// Scan a directory for mmproj companion files. Returns the one with largest filesize.
 /// Filesize is the proxy for precision (F32 > F16 in bytes).
@@ -244,7 +335,7 @@ pub fn scan_path(
 pub fn merge_catalogs(
     paths: &[ModelPathEntry],
     log_hub: Option<&crate::log_hub::LogHub>,
-    exclude_paths: Option<&std::collections::HashSet<String>>,
+    exclusions: Option<&CatalogScanExclusions>,
 ) -> Result<(Vec<ModelEntry>, Vec<CatalogDedupConflict>), String> {
     let mut all_internal: Vec<ModelEntryInternal> = Vec::new();
 
@@ -273,14 +364,31 @@ pub fn merge_catalogs(
         }
     }
 
-    if let Some(exclude) = exclude_paths {
-        if !exclude.is_empty() {
+    let before_filter = all_internal.len();
+    all_internal.retain(|entry| !is_incomplete_shard_entry(entry));
+    if let Some(lh) = log_hub {
+        let skipped_incomplete = before_filter.saturating_sub(all_internal.len());
+        if skipped_incomplete > 0 {
+            lh.emit_console_line(
+                crate::output_console::BlackwellOutputConsoleCategory::Utils,
+                &format!("[MERGE] Skipped {skipped_incomplete} incomplete shard set(s) from catalog"),
+                crate::output_console::BlackwellOutputConsoleLineStyle::Normal,
+            );
+        }
+    }
+
+    if let Some(ex) = exclusions {
+        if !ex.is_empty() {
             let before = all_internal.len();
             all_internal.retain(|entry| {
                 let resolved = crate::config::resolve_path(&entry.path)
                     .to_string_lossy()
                     .to_string();
-                !exclude.contains(&resolved)
+                if ex.dest_paths.contains(&resolved) {
+                    return false;
+                }
+                let group = shard_group_key_from_path(&entry.path);
+                !ex.shard_groups.contains(&group)
             });
             if let Some(lh) = log_hub {
                 let skipped = before.saturating_sub(all_internal.len());
@@ -841,4 +949,95 @@ pub fn check_hf_files_against_disk(
     }
 
     results
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::{DownloadStatus, DownloadTask, QuantBatchPart, QuantDownloadBatch};
+
+    #[test]
+    fn parse_shard_expected_total_reads_of_suffix() {
+        assert_eq!(
+            parse_shard_expected_total("Model-00001-of-00004.gguf"),
+            Some(4)
+        );
+        assert_eq!(parse_shard_expected_total("single.gguf"), None);
+    }
+
+    #[test]
+    fn is_incomplete_shard_entry_detects_partial_set() {
+        let entry = ModelEntryInternal {
+            path: "D:/models/Minima-M3-00001-of-00004.gguf".to_string(),
+            author: "a".to_string(),
+            name: "Minima".to_string(),
+            quant: "Q4".to_string(),
+            size_str: "1GB".to_string(),
+            vision: false,
+            mmproj: None,
+            mmproj_size_mib: 0.0,
+            model_bytes: 1_000_000_000,
+            total_bytes: 1_000_000_000,
+            shards: 1,
+            source_path_label: String::new(),
+            hf_model_id: None,
+        };
+        assert!(is_incomplete_shard_entry(&entry));
+    }
+
+    #[test]
+    fn catalog_exclusions_cover_active_tasks_and_pending_batches() {
+        let mut tasks = HashMap::new();
+        tasks.insert(
+            "t1".to_string(),
+            DownloadTask {
+                id: "t1".to_string(),
+                hf_model_id: "a/m".to_string(),
+                file_name: "m-00002-of-00004.gguf".to_string(),
+                download_url: "https://x".to_string(),
+                total_bytes: 100,
+                downloaded_bytes: 10,
+                status: DownloadStatus::Downloading,
+                dest_path: "models/m-00002-of-00004.gguf".to_string(),
+                speed_bps: 0,
+                pause_offset: 0,
+                error: None,
+                eta_seconds: 0,
+                hf_author: "a".to_string(),
+                quant_type: "Q4".to_string(),
+                lfs_oid: String::new(),
+                batch_id: Some("batch-1".to_string()),
+            },
+        );
+
+        let mut batches = HashMap::new();
+        batches.insert(
+            "batch-1".to_string(),
+            QuantDownloadBatch {
+                id: "batch-1".to_string(),
+                hf_model_id: "a/m".to_string(),
+                quant_type: "Q4".to_string(),
+                hf_author: "a".to_string(),
+                parts: vec![
+                    QuantBatchPart {
+                        dest_path: "models/m-00001-of-00004.gguf".to_string(),
+                        total_bytes: 100,
+                        lfs_oid: String::new(),
+                        file_name: "m-00001-of-00004.gguf".to_string(),
+                    },
+                    QuantBatchPart {
+                        dest_path: "models/m-00002-of-00004.gguf".to_string(),
+                        total_bytes: 100,
+                        lfs_oid: String::new(),
+                        file_name: "m-00002-of-00004.gguf".to_string(),
+                    },
+                ],
+            },
+        );
+
+        let ex = catalog_exclusions_from_downloads(&tasks, &batches);
+        assert!(ex.dest_paths.len() >= 2);
+        assert_eq!(ex.shard_groups.len(), 1);
+        assert!(ex.shard_groups.iter().any(|g| g.contains("m.gguf")));
+    }
 }

@@ -32,7 +32,9 @@ export interface FoundryStatusPayload {
   log_line?: string | null;
 }
 
-export type Env = "vanguard" | "frontier" | "stable" | "fresh";
+import { normalizeBinaryProfile, type Env as FoundryEnv } from "../lib/foundry_constants";
+
+export type Env = FoundryEnv;
 
 // Internal clean session model (preferred)
 interface BuildSession {
@@ -166,7 +168,7 @@ function foundryReducer(state: FoundryInternalState, action: FoundryAction): Fou
       const newSession: BuildSession = {
         id: e.build_id ?? state.session?.id ?? -1,
         providerId: e.provider_id,
-        environment: e.environment as Env,
+        environment: normalizeBinaryProfile(e.environment),
         phase,
         logLine: e.log_lines?.[e.log_lines.length - 1] ?? e.log_line,
       };

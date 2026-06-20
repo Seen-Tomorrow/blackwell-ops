@@ -2,9 +2,9 @@
   "binary_name": "llama-server.exe",
   "branch": "master",
   "build_profile": "-DGGML_CUDA=ON\n-DCMAKE_CUDA_ARCHITECTURES=\"86;89;120\"\n-DGGML_CUDA_PEER_TO_PEER=ON\n-DGGML_CUDA_FA_ALL_QUANTS=ON\n-DGGML_AVX512=ON\n-DGGML_NATIVE=ON\n-DCMAKE_CUDA_FLAGS=\"-Xcompiler /wd4056 -Xcompiler /wd4756 --diag-suppress 221\"\n-Wno-dev",
-  "description": "Official llama.cpp master build",
-  "display_name": "GGML Master",
-  "git_url": "https://github.com/ggml-org/llama.cpp",
+  "description": "TheTom turboquant fork — TQ kernels, fused MTP, Windows-first builds",
+  "display_name": "GGML TomTQ",
+  "git_url": "https://github.com/TheTom/llama-cpp-turboquant",
   "groupOrder": [
     "PERFORMANCE",
     "FEATURE-FLAGS",
@@ -13,7 +13,7 @@
     "ABOVE-CONFIG",
     "SPECULATIVE-DECODING"
   ],
-  "id": "ggml-master",
+  "id": "ggml-tom",
   "layoutDefaults": {
     "aboveColumnWidths": [
       0.23350705580023445,
@@ -506,13 +506,13 @@
       "mmap"
     ],
     "supports_fusion": true,
-    "fusion_adapter": "ggml_master",
-    "fit_adapter": "ggml_master",
+    "fusion_adapter": "ggml_tom",
+    "fit_adapter": "ggml_tom",
     "verbosity_args": [
       "-lv",
-      "4"
+      "3"
     ]
   },
-  "templateVersion": 19,
+  "templateVersion": 1,
   "template_type": "ggml-llama"
 }

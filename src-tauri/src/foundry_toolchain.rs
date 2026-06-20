@@ -122,12 +122,19 @@ pub fn profile_ids(manifest: &ToolchainManifest) -> Vec<String> {
 pub fn profile_ids_or_default() -> Vec<String> {
     load_manifest()
         .map(|m| profile_ids(&m))
-        .unwrap_or_else(|_| vec![
-            "frontier".into(),
-            "vanguard".into(),
-            "fresh".into(),
-            "stable".into(),
-        ])
+        .unwrap_or_else(|_| vec!["frontier".into(), "stable".into()])
+}
+
+/// Retired runtime profiles — user prefs and per-env maps migrate to `frontier`.
+pub fn normalize_profile_id(id: &str) -> String {
+    match id.trim().to_lowercase().as_str() {
+        "vanguard" | "fresh" => "frontier".to_string(),
+        other => other.to_string(),
+    }
+}
+
+pub fn is_retired_profile(id: &str) -> bool {
+    matches!(id.trim().to_lowercase().as_str(), "vanguard" | "fresh")
 }
 
 pub fn find_profile_def<'a>(manifest: &'a ToolchainManifest, id: &str) -> Result<&'a ProfileDef, String> {

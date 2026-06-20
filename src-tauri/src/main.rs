@@ -12,6 +12,7 @@ mod types;
 
 mod templates;
 mod nvml_probe;
+mod fit_adapters;
 mod fit_scanner;
 mod vram_learn;
 mod mobile_bridge;
@@ -332,7 +333,20 @@ async fn start_download(
     if dm.has_active_task_for_dest(&dest_path) {
         return Err("A download for this file is already in progress".to_string());
     }
-    let task_id = dm.start_download(hf_model_id, file_name, url, total_bytes, dest_path, hf_author, quant_type, lfs_oid, Arc::clone(&manager)).await?;
+    let task_id = dm
+        .start_download(
+            hf_model_id,
+            file_name,
+            url,
+            total_bytes,
+            dest_path,
+            hf_author,
+            quant_type,
+            lfs_oid,
+            None,
+            Arc::clone(&manager),
+        )
+        .await?;
     drop(dm);
 
     let _ = app.emit("download-event", serde_json::json!({
@@ -368,12 +382,37 @@ async fn start_quant_download(
     let mut skipped_active = 0usize;
 
     let mut dm = manager.write().await;
-    for part in parts {
-        let dest_path = config::build_quant_dest_path(&default_path, &hf_model_id, &part.path_in_repo)?;
+
+    let mut batch_parts: Vec<crate::types::QuantBatchPart> = Vec::with_capacity(parts.len());
+    for part in &parts {
+        let dest_path =
+            config::build_quant_dest_path(&default_path, &hf_model_id, &part.path_in_repo)?;
         {
             let cfg = config.lock().map_err(|e| e.to_string())?;
             config::validate_download_dest(&dest_path, &cfg)?;
         }
+        batch_parts.push(crate::types::QuantBatchPart {
+            dest_path,
+            total_bytes: part.size_bytes,
+            lfs_oid: part.lfs_oid.clone(),
+            file_name: part.file_name.clone(),
+        });
+    }
+
+    let batch_id = if parts.len() > 1 {
+        Some(dm.begin_quant_batch(
+            hf_model_id.clone(),
+            hf_author.clone(),
+            quant_type.clone(),
+            batch_parts,
+        ))
+    } else {
+        None
+    };
+
+    for part in parts {
+        let dest_path =
+            config::build_quant_dest_path(&default_path, &hf_model_id, &part.path_in_repo)?;
 
         if config::quant_part_already_downloaded(&dest_path, part.size_bytes, &part.lfs_oid) {
             skipped_complete += 1;
@@ -394,6 +433,7 @@ async fn start_quant_download(
                 hf_author.clone(),
                 quant_type.clone(),
                 part.lfs_oid.clone(),
+                batch_id.clone(),
                 Arc::clone(&manager),
             )
             .await?;
@@ -641,6 +681,7 @@ async fn main() {
                 log_hub,
                 config: config_arc.clone(),
                 fit_scan_cancel: Arc::new(Mutex::new(Arc::new(AtomicBool::new(false)))),
+                slot_stderr_tails: Arc::new(parking_lot::Mutex::new(std::collections::HashMap::new())),
                 blackwell_output_console_manager: BlackwellOutputConsoleManager::new(2000),
             };
 
@@ -657,6 +698,7 @@ async fn main() {
                 tauri::async_runtime::spawn(async move {
                     let mut dm = dm_clone.write().await;
                     dm.recover_part_files();
+                    dm.try_finalize_pending_batches();
                 });
             }
 
@@ -734,6 +776,7 @@ async fn main() {
             engine::fit_scan_library,
             engine::fit_stop_scan,
             fit_scanner::get_fit_scan_points,
+            fit_scanner::get_fit_scan_cache_snapshot,
             vram_learn::get_learned_vram,
             // GGUF Metadata Scanner commands
             engine::scan_model_metadata_cmd,

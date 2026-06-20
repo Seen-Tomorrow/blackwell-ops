@@ -201,7 +201,7 @@ function formatBenchK(n: number): string {
 const BENCH_CONCURRENCY_HELP =
   "Measured TG only (warmup stays ×1). Each concurrent feed pins to its own engine slot — ×4 needs --parallel ≥ 4 at launch. "
   + "Picking more than the engine has caps to the slot count (e.g. ×128 with 16 slots runs ×16). "
-  + "MTP / speculative models: use ×1 — ik_llama disables speculative decoding when --parallel > 1 at launch.";
+  + "MTP / speculative models: use ×1 parallel when the draft model conflicts with multi-slot decode.";
 
 function benchConcurrencyChipTitle(n: number): string {
   if (n === 1) {

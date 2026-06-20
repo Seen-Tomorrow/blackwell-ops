@@ -10,7 +10,7 @@ interface BuildLogEntry {
 
 interface FoundryBuildProgressProps {
   provider: ProviderConfig;
-  environment: "vanguard" | "frontier" | "stable" | "fresh";
+  environment: "frontier" | "stable";
   logLines: BuildLogEntry[];
   currentStep: string;
   waitingForConfirm: boolean;

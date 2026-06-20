@@ -1,8 +1,31 @@
-import React, { useState, useCallback, useEffect, useRef, Fragment } from "react";
+import React, { useState, useCallback, useEffect, useRef, Fragment, useSyncExternalStore } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useTauriListen } from "../hooks/useTauriListen";
-import type { ProviderConfig, UserEditedTemplateParam, FitScanComplete, FitScanProgress, FitScanFull, FitDataPoint, BinaryUpdateInfo } from "../lib/types";
+import type { ProviderConfig, UserEditedTemplateParam, FitScanComplete, BinaryUpdateInfo } from "../lib/types";
+import {
+  beginFitScanSession,
+  bootstrapFitScanCache,
+  completeFitScanSession,
+  failFitScanSession,
+  getFitScanRevision,
+  getFitScanSessions,
+  hideFitScanPanel,
+  showFitScanPanel,
+  setFitScanActiveProvider,
+  stopFitScanLocal,
+  subscribeFitScanSessions,
+} from "../lib/fitScanSessionStore";
+import {
+  FIT_SCAN_TABLE_COLUMNS,
+  fitScanModelDisplayName,
+  fitScanProgressMetrics,
+  findFitScanPoint,
+  fitScanDonePointCount,
+  fitScanPointsLabel,
+  formatFitScanVramCell,
+  sortedFitScanResultEntries,
+} from "../lib/fitScanTable";
 import { DEFAULT_PROVIDER_ID, isFoundryProfileBuilt } from "../lib/types";
 import { useFoundry, type Env } from "../hooks/useBuildDock";
 import { ENV_ORDER, ENV_META } from "../lib/foundry_constants";
@@ -39,21 +62,6 @@ interface FormState {
   factory_provided?: boolean;
 }
 
-type ScanStatus = "idle" | "scanning" | "complete" | "error";
-
-interface ProviderScanState {
-  status: ScanStatus;
-  parallel: number;
-  totalModels: number;
-  completed: number;
-  failed: number;
-  results?: FitScanComplete;
-  error?: string;
-  scanStartTime?: number;
-  /** Progress panel dismissed while scan still runs on backend */
-  panelHidden?: boolean;
-}
-
 export default function ProvidersConfig({ providers: initialProviders, onProvidersChange }: ProvidersConfigProps) {
   const [providers, setProviders] = useState<ProviderConfig[]>(initialProviders);
   const [form, setForm] = useState<FormState>({
@@ -71,11 +79,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
   const { openBuildModal, buildProgress } = useFoundry();
   const [restoreConfirm, setRestoreConfirm] = useState<{ providerId: string; env: Env } | null>(null);
 
-  const detectTemplateType = useCallback((id: string) => {
-    const lower = id.toLowerCase();
-    if (lower.includes("ik")) return "ik-llama";
-    return "ggml-llama";
-  }, []);
+  const detectTemplateType = useCallback((_id: string) => "ggml-llama", []);
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
@@ -84,11 +88,20 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Per-provider scan states
-  const [scanStates, setScanStates] = useState<Record<string, ProviderScanState>>({});
+  useSyncExternalStore(subscribeFitScanSessions, getFitScanRevision, getFitScanRevision);
+  const scanStates = getFitScanSessions();
 
   // Ref to always have the latest parallel setting available during async operations
   const parallelRef = useRef<Record<string, number>>({});
+
+  useEffect(() => {
+    for (const [pid, ps] of Object.entries(getFitScanSessions())) {
+      if (ps.status === "scanning") {
+        setFitScanActiveProvider(pid);
+        return;
+      }
+    }
+  }, []);
 
   // Binary update state per provider/profile
   const [binaryUpdates, setBinaryUpdates] = useState<Record<string, Record<string, BinaryUpdateInfo>>>({});
@@ -248,24 +261,10 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
 
   // ── FIT Scan handlers ────────────────────────────────────────
 
-  const handleScanLibrary = useCallback(async (providerId: string) => {
+  const handleScanLibrary = useCallback(async (providerId: string, forceRescan = false) => {
     const currentParallel = parallelRef.current[providerId] ?? FIT_SCAN_PARALLEL_OPTIONS[0];
-
-    setScanStates((prev) => {
-      const oldState = prev[providerId];
-      return {
-        ...prev,
-        [providerId]: {
-          status: "scanning",
-          parallel: currentParallel,
-          totalModels: 0,
-          completed: 0,
-          failed: 0,
-          results: oldState?.results ? { ...oldState.results, results: {} } : undefined,
-          scanStartTime: Date.now(),
-        },
-      };
-    });
+    const cached = forceRescan ? null : await bootstrapFitScanCache(providerId);
+    beginFitScanSession(providerId, currentParallel, cached, forceRescan);
 
     try {
       const allProviders = await invoke<ProviderConfig[]>("list_providers");
@@ -279,35 +278,17 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
         parallelCount: Math.max(currentParallel, 1),
         batch,
         ubatch,
-        forceRescan: false,
+        forceRescan,
       });
 
-      setScanStates((prev) => ({
-        ...prev,
-        [providerId]: {
-          status: "complete",
-          parallel: currentParallel,
-          totalModels: result.total_models,
-          completed: result.completed,
-          failed: result.failed,
-          results: result,
-          panelHidden: false,
-        },
-      }));
-
+      completeFitScanSession(providerId, result);
     } catch (err) {
       console.error(`Scan library failed for ${providerId}:`, err);
-      setScanStates((prev) => ({
-        ...prev,
-        [providerId]: {
-          status: "error",
-          parallel: currentParallel,
-          totalModels: 0,
-          completed: 0,
-          failed: 0,
-          error: typeof err === "string" ? err : JSON.stringify(err),
-        },
-      }));
+      failFitScanSession(
+        providerId,
+        typeof err === "string" ? err : JSON.stringify(err),
+        currentParallel,
+      );
     }
   }, []);
 
@@ -315,105 +296,11 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
     try {
       await invoke("fit_stop_scan");
     } catch {}
-    setScanStates((prev) => ({
-      ...prev,
-      [providerId]: {
-        status: "idle",
-        parallel: prev[providerId]?.parallel || 2,
-        totalModels: 0,
-        completed: 0,
-        failed: 0,
-      },
-    }));
+    stopFitScanLocal(providerId);
   }, []);
 
   const handleHideScan = useCallback((providerId: string) => {
-    setScanStates((prev) => {
-      const ps = prev[providerId];
-      if (!ps) return prev;
-      if (ps.status === "scanning") {
-        return { ...prev, [providerId]: { ...ps, panelHidden: true } };
-      }
-      return {
-        ...prev,
-        [providerId]: {
-          status: "idle",
-          parallel: ps.parallel,
-          totalModels: 0,
-          completed: 0,
-          failed: 0,
-        },
-      };
-    });
-  }, []);
-
-  // ── FIT scan event listener ───────────────────────────────────
-
-  const listenerGuardRef = useRef(false);
-  useEffect(() => {
-    if (listenerGuardRef.current) return;
-    listenerGuardRef.current = true;
-
-    let unsub: (() => void) | null = null;
-    const init = async () => {
-      unsub = await listen<FitScanProgress>("fit-scan-progress", (e) => {
-        try {
-          const evt: FitScanProgress = e.payload;
-          if (!evt || !evt.model_path) return;
-
-          if (evt.status !== "error") {
-            void invoke("emit_to_blackwell_console", {
-              category: "utils",
-              content: `[FIT-SCAN] ${evt.model_path} | ${evt.status} | ${evt.label || ''} | ${evt.vram_mib != null ? evt.vram_mib + ' MiB' : ''}`,
-              style: evt.status === "complete" ? "Success" : "Normal",
-            });
-          }
-
-          setScanStates((prev) => {
-            const hasActiveScan = Object.values(prev).some(s => s.status === "scanning");
-            if (!hasActiveScan) return prev;
-
-            for (const [pid, ps] of Object.entries(prev)) {
-              if (ps.status !== "scanning") continue;
-
-               const existingResults = ps.results?.results ?? {};
-               const prevEntry: FitScanFull | undefined = existingResults[evt.model_path];
-
-                let newPoints = prevEntry ? prevEntry.points.filter(Boolean) : [];
-                 if (evt.status === "complete" && evt.vram_mib != null && evt.label) {
-                   const pt: FitDataPoint = {
-                     label: evt.label, ctx: 0, kv_quant: "", batch: 0, parallel: 0, split_mode: "",
-                     vram_mib: evt.vram_mib,
-                   };
-                   const existingIdx = newPoints.findIndex((p: FitDataPoint) => p.label === evt.label);
-                   if (existingIdx >= 0) {
-                     newPoints[existingIdx] = pt;
-                    } else if (newPoints.length < (ps.results?.scan_points_total ?? 999)) {
-                     newPoints.push(pt);
-                   }
-                 }
-
-               const entry: FitScanFull = prevEntry
-                  ? { ...prevEntry, points: newPoints }
-                  : { model_path: evt.model_path, points: newPoints, error: undefined };
-
-              const updatedResults = { ...existingResults, [evt.model_path]: entry };
-              return {
-                ...prev,
-                [pid]: {
-                  ...ps,
-                  totalModels: Math.max(ps.totalModels, Object.keys(updatedResults).length),
-                  results: ps.results ? { ...ps.results, results: updatedResults } : { total_models: 0, completed: 0, failed: 0, provider_id: pid, results: updatedResults },
-                },
-              };
-            }
-            return prev;
-          });
-        } catch {}
-      });
-    };
-    init();
-    return () => { if (unsub) unsub(); };
+    hideFitScanPanel(providerId);
   }, []);
 
   // ── Foundry build info refresh on mount ───────────────────────
@@ -591,7 +478,28 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
   const renderScanProgress = (providerId: string) => {
     const state = scanStates[providerId];
 
-    if (!state || state.status === "idle" || state.panelHidden) {
+    if (!state || state.status === "idle") {
+      return null;
+    }
+
+    if (state.panelHidden && state.status === "scanning") {
+      const metrics = fitScanProgressMetrics(state.results?.results ?? {}, state.results?.scan_points_total ?? 32);
+      return (
+        <div className="config-scan-panel mt-2 p-2 rounded-sm w-full flex items-center justify-between gap-2">
+          <span className="text-[8px] font-mono config-muted">
+            Scan running in background — {metrics.pointsDone} pts · {metrics.models} models
+          </span>
+          <button
+            onClick={() => showFitScanPanel(providerId)}
+            className="value-chip text-[8px] font-mono px-2 py-0.5 rounded-sm"
+          >
+            SHOW PROGRESS
+          </button>
+        </div>
+      );
+    }
+
+    if (state.panelHidden) {
       return null;
     }
 
@@ -617,23 +525,36 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
         </div>
 
         {/* Progress bar */}
-        {state.totalModels > 0 && (
+        {(state.totalModels > 0 || (state.results?.results && Object.keys(state.results.results).length > 0)) && (
           <div className="mb-1.5">
-            <div className="h-0.5 bg-stealth-border rounded-sm overflow-hidden">
-              <div
-                className={`h-full transition-all duration-300 ${state.status === "error" ? "bg-red-400" : ""}`}
-                style={{
-                  backgroundColor: state.status === "error" ? undefined : "var(--theme-accent)",
-                  width: `${state.status === "scanning" && state.results ? (Object.keys(state.results.results).length / Math.max(state.totalModels, 1)) * 100 : (state.completed / Math.max(state.totalModels, 1)) * 100}%`,
-                }}
-              />
-            </div>
-            <p className="text-[8px] font-mono config-muted mt-0.5">
-              {state.status === "scanning"
-                ? `${Object.keys(state.results?.results ?? {}).length} models...`
-                : `${state.completed} / ${state.totalModels}`}{state.failed > 0 && state.status !== "scanning" ? ` (${state.failed} failed)` : ""}
-              {state.scanStartTime && state.status === "complete" ? ` — done in ${formatElapsed(state.scanStartTime)}` : ""}
-            </p>
+            {(() => {
+              const pointsTotal = state.results?.scan_points_total ?? 32;
+              const metrics = fitScanProgressMetrics(state.results?.results ?? {}, pointsTotal);
+              const pct = state.status === "scanning"
+                ? (metrics.pointsDone / Math.max(metrics.pointsTotal, 1)) * 100
+                : (state.completed / Math.max(state.totalModels, 1)) * 100;
+              return (
+                <>
+                  <div className="h-0.5 bg-stealth-border rounded-sm overflow-hidden">
+                    <div
+                      className={`h-full transition-all duration-300 ${state.status === "error" ? "bg-red-400" : ""}`}
+                      style={{
+                        backgroundColor: state.status === "error" ? undefined : "var(--theme-accent)",
+                        width: `${Math.min(100, pct)}%`,
+                      }}
+                    />
+                  </div>
+                  <p className="text-[8px] font-mono config-muted mt-0.5">
+                    {state.status === "scanning"
+                      ? `${metrics.pointsDone} pts · ${metrics.models} models · ${pointsTotal} pts/model`
+                      : `${state.completed} / ${state.totalModels} models`}
+                    {state.failed > 0 && state.status !== "scanning" ? ` (${state.failed} failed)` : ""}
+                    {state.scanStartTime && state.status === "scanning" ? ` — ${formatElapsed(state.scanStartTime)}` : ""}
+                    {state.scanStartTime && state.status === "complete" ? ` — done in ${formatElapsed(state.scanStartTime)}` : ""}
+                  </p>
+                </>
+              );
+            })()}
           </div>
         )}
 
@@ -645,35 +566,83 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
         {/* Results table */}
         {state.results && Object.keys(state.results.results).length > 0 && (
           <div className="max-h-48 overflow-y-auto pr-1">
-            <div className="grid grid-cols-[20px_minmax(0,_1fr)_64px_64px_56px] items-center gap-1 text-[7px] font-mono py-0.5 config-muted uppercase tracking-wider border-b border-stealth-border/30 mb-0.5">
-              <span></span><span>Model</span>
-              <span>Base(8K)</span>
-              <span>128K/q4</span>
-              <span>Points</span>
+            <div
+              className="grid items-center gap-1 text-[7px] font-mono py-0.5 config-muted uppercase tracking-wider border-b border-stealth-border/30 mb-0.5"
+              style={{ gridTemplateColumns: `20px minmax(0,1fr) repeat(${FIT_SCAN_TABLE_COLUMNS.length}, 40px) 44px` }}
+            >
+              <span></span>
+              <span>Model</span>
+              {FIT_SCAN_TABLE_COLUMNS.map((col) => (
+                <span key={col.label} title={col.label}>{col.header}</span>
+              ))}
+              <span>Pts</span>
             </div>
-            {Object.entries(state.results.results).map(([path, entry]) => {
-               let modelName = path.split("\\").pop()?.replace(".gguf", "") || path;
-               modelName = modelName.replace(/-\d{3,}-of-\d{3,}$/i, "");
+            {sortedFitScanResultEntries(state.results.results).map(([path, entry]) => {
+              const modelName = fitScanModelDisplayName(path);
               const full = entry;
               const pts = full.points ?? [];
               const nPts = pts.length;
-
-               const basePt = pts.find((p: FitDataPoint) => p?.label === "base");
-               const q4Pt = pts.find((p: FitDataPoint) => p?.label === "quant_q4");
-               const pointsTotal = state.results!.scan_points_total ?? 999;
-               const isComplete = nPts >= pointsTotal;
+              const pointsTotal = state.results!.scan_points_total ?? 32;
+              const isSkipped = Boolean(full.skip_reason);
+              const donePts = fitScanDonePointCount(full);
+              const isComplete = isSkipped || donePts >= pointsTotal;
+              const isActive = state.status === "scanning" && state.activeModelPath === path;
+              const rowTitle = full.skip_reason ?? path;
 
               return (
-                <div key={path} className="grid grid-cols-[20px_minmax(0,_1fr)_64px_64px_56px] items-center gap-1 text-[8px] font-mono py-0.5">
-                  <span className={`${full.error ? "text-red-400" : isComplete || nPts > 0 ? "theme-accent-text" : "config-muted"}`}>
-                    {isComplete ? "\u2713" : nPts > 0 ? "\u25CF" : full.error ? "\u2716" : "!"}
+                <div
+                  key={path}
+                  className={`grid items-center gap-1 text-[8px] font-mono py-0.5 ${isActive ? "bg-stealth-border/20 rounded-sm" : ""}`}
+                  style={{ gridTemplateColumns: `20px minmax(0,1fr) repeat(${FIT_SCAN_TABLE_COLUMNS.length}, 40px) 44px` }}
+                >
+                  <span
+                    className={`${full.error && !isSkipped ? "text-red-400" : isSkipped ? "text-amber-400/80" : isComplete || nPts > 0 ? "theme-accent-text" : "config-muted"}`}
+                    title={full.skip_reason}
+                  >
+                    {isSkipped ? "\u2298" : isComplete ? "\u2713" : isActive ? "\u25CF" : nPts > 0 ? "\u25CB" : full.error ? "\u2716" : "!"}
                   </span>
-                  <span className="config-muted truncate" title={path}>
+                  <span className="config-muted truncate" title={rowTitle}>
                     {modelName}
+                    {isSkipped ? (
+                      <span className="ml-1 text-amber-400/70 uppercase tracking-wide">mtp</span>
+                    ) : null}
+                    {isActive && state.activeLabel ? (
+                      <span className="ml-1 opacity-50">{state.activeLabel}</span>
+                    ) : null}
                   </span>
-                  {basePt && basePt.vram_mib > 0 ? <span className="theme-accent-text">{(basePt.vram_mib / 1024).toFixed(1)}G</span> : <span></span>}
-                  {q4Pt && q4Pt.vram_mib > 0 ? <span className="theme-accent-text">{(q4Pt.vram_mib / 1024).toFixed(1)}G</span> : <span></span>}
-                    <span className={isComplete ? "theme-accent-text" : "config-muted"}>{nPts}/{pointsTotal}</span>
+                  {FIT_SCAN_TABLE_COLUMNS.map((col) => {
+                    const pt = findFitScanPoint(pts, col.label);
+                    const pointSkip = full.skipped_points?.[col.label];
+                    const cell = formatFitScanVramCell(
+                      pt,
+                      full.error,
+                      col.label,
+                      full.skip_reason,
+                      pointSkip,
+                    );
+                    const failed = cell === "✖";
+                    const skipped = cell === "MTP" || cell === "n/a";
+                    return (
+                      <span
+                        key={col.label}
+                        className={
+                          failed
+                            ? "text-red-400"
+                            : skipped
+                              ? "text-amber-400/70"
+                              : cell !== "—"
+                                ? "theme-accent-text"
+                                : "config-muted opacity-40"
+                        }
+                        title={pointSkip ?? full.skip_reason ?? col.label}
+                      >
+                        {cell}
+                      </span>
+                    );
+                  })}
+                  <span className={isSkipped ? "text-amber-400/70" : isComplete ? "theme-accent-text" : "config-muted"}>
+                    {fitScanPointsLabel(full, pointsTotal)}
+                  </span>
                 </div>
               );
             })}
@@ -684,7 +653,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
         <div className="flex gap-2 mt-2 pt-1.5 border-t border-stealth-border/50">
           {state.status !== "scanning" && (
             <button
-              onClick={() => handleScanLibrary(providerId)}
+              onClick={() => handleScanLibrary(providerId, true)}
               className="value-chip text-[8px] font-mono px-2 py-0.5 rounded-sm"
             >
               {"RESCAN"}
@@ -1061,7 +1030,6 @@ function ProviderFormPanel({
           className="config-input flex-1 text-[11px] font-mono px-1 py-0.5 appearance-none"
         >
           <option value="ggml-llama">GGML-Llama (22 params)</option>
-          <option value="ik-llama">IK-Llama (8 params)</option>
           <option value="">Custom (manual)</option>
         </select>
       </div>

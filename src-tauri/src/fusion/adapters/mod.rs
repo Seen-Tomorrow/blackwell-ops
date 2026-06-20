@@ -16,7 +16,6 @@
 mod parse_ggml;
 pub mod ggml_master;
 pub mod ggml_tom;
-pub mod ik;
 
 use crate::fusion::log::LogEvent;
 use crate::fusion::poller::SlotData;
@@ -26,7 +25,6 @@ use crate::fusion::poller::SlotData;
 pub enum FusionAdapterId {
     GgmlMaster,
     GgmlTom,
-    IkLlama,
 }
 
 impl FusionAdapterId {
@@ -34,7 +32,6 @@ impl FusionAdapterId {
         match self {
             Self::GgmlMaster => "ggml_master",
             Self::GgmlTom => "ggml_tom",
-            Self::IkLlama => "ik_llama",
         }
     }
 
@@ -42,7 +39,6 @@ impl FusionAdapterId {
         match s.trim().to_lowercase().as_str() {
             "ggml_master" | "ggml-master" | "ggml_llama" | "ggml-llama" => Some(Self::GgmlMaster),
             "ggml_tom" | "ggml-tom" => Some(Self::GgmlTom),
-            "ik_llama" | "ik-llama" | "ik" => Some(Self::IkLlama),
             _ => None,
         }
     }
@@ -51,7 +47,6 @@ impl FusionAdapterId {
         match self {
             Self::GgmlMaster => ggml_master::parse_log_line(line),
             Self::GgmlTom => ggml_tom::parse_log_line(line),
-            Self::IkLlama => ik::parse_log_line(line),
         }
     }
 
@@ -59,7 +54,6 @@ impl FusionAdapterId {
         match self {
             Self::GgmlMaster => ggml_master::normalize_slots(slots),
             Self::GgmlTom => ggml_tom::normalize_slots(slots),
-            Self::IkLlama => ik::normalize_slots(slots),
         }
     }
 
@@ -67,7 +61,6 @@ impl FusionAdapterId {
         match self {
             Self::GgmlMaster => ggml_master::slots_expose_prompt_processed(),
             Self::GgmlTom => ggml_tom::slots_expose_prompt_processed(),
-            Self::IkLlama => ik::slots_expose_prompt_processed(),
         }
     }
 }

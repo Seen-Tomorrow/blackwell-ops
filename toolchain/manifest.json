@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "windows_sdk_version": "10.0.26100.0",
   "vs": {
     "2022": {
@@ -23,25 +23,7 @@
       "cuda": "13.3",
       "generator": "Visual Studio 18 2026",
       "arch": "x64",
-      "description": "Experimental — newest CUDA toolkit"
-    },
-    {
-      "id": "vanguard",
-      "label": "VANGUARD",
-      "vs": "2026",
-      "cuda": "13.2",
-      "generator": "Visual Studio 18 2026",
-      "arch": "x64",
-      "description": "Primary cutting-edge profile"
-    },
-    {
-      "id": "fresh",
-      "label": "FRESH",
-      "vs": "2022",
-      "cuda": "13.1",
-      "generator": "Visual Studio 17 2022",
-      "arch": "x64",
-      "description": "Recent stable CUDA on VS2022"
+      "description": "Bleeding-edge CUDA 13.3 on VS2026"
     },
     {
       "id": "stable",

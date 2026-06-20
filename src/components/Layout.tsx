@@ -96,7 +96,7 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
     return prov || providers?.[0] || {} as ProviderConfig;
   }, [foundryModal, providers]);
 
-  const resolvedEnvironment = foundryModal?.environment || "vanguard";
+  const resolvedEnvironment = foundryModal?.environment || "frontier";
 
   // Dock slot click: if modal exists and is visible → minimize; if exists but hidden → restore; if no modal but build running → open fresh
   const [showTooltip, setShowTooltip] = useState(false);

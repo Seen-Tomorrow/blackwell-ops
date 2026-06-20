@@ -146,7 +146,7 @@ export interface ProviderConfig {
   git_url?: string;
   branch?: string;
   build_profile?: string;
-  template_type?: string; // "ggml-llama" | "ik-llama" | "" (custom)
+  template_type?: string; // "ggml-llama" | "" (custom)
   display_order?: number;
   buildInfoPerEnv?: Record<string, BuildInfo>;
   binaryPathPerEnv?: Record<string, string>; // env -> active launch path (bundled, foundry, or updates/)
@@ -681,10 +681,15 @@ export interface FitScanResult {
 export interface FitScanProgress {
   model_path: string;
   model_name: string;
-  status: 'scanning' | 'complete' | 'error';
+  status: 'scanning' | 'complete' | 'error' | 'skipped' | 'point_skipped' | 'library_meta';
   args?: string;
   vram_mib?: number;
   label?: string;
+  provider_id?: string;
+  total_models?: number;
+  scan_points_total?: number;
+  /** Model-level skip (e.g. Tom + MTP) — not a point failure */
+  skip_reason?: string;
 }
 
 /** Complete result from a library scan */
@@ -713,6 +718,10 @@ export interface FitScanFull {
   model_path: string;
   points: FitDataPoint[];
   error?: string;
+  /** Intentional skip — not counted as scan failure */
+  skip_reason?: string;
+  /** Per-label skips (e.g. Tom tensor) — label → reason */
+  skipped_points?: Record<string, string>;
 }
 
 export interface LogEntry {

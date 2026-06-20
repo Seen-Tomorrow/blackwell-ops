@@ -86,6 +86,8 @@ pub struct AppContext {
     pub config: Arc<std::sync::Mutex<AppConfig>>,
     /// Cancellation flag for in-progress library scans.
     pub fit_scan_cancel: Arc<Mutex<Arc<AtomicBool>>>,
+    /// Rolling stderr tail per slot — last N lines for load-failure diagnostics.
+    pub slot_stderr_tails: Arc<parking_lot::Mutex<std::collections::HashMap<usize, Vec<String>>>>,
 
     /// Central manager for the Blackwell Output Console (power-user tabbed output system).
     /// This is the single source of truth for all text streams shown in the Blackwell Output Console.
@@ -108,15 +110,15 @@ pub async fn list_models(
         return Ok(Vec::new());
     }
 
-    let exclude_paths = {
+    let exclusions = {
         let dm = downloads.read().await;
-        dm.in_progress_dest_paths()
+        dm.catalog_scan_exclusions()
     };
 
     let (entries, _conflicts) = model_catalog::merge_catalogs(
         &paths,
         None,
-        Some(&exclude_paths),
+        Some(&exclusions),
     )?;
     if !_conflicts.is_empty() {
         log::warn!("[list_models] Found {} cross-path duplicates (keeping largest)", _conflicts.len());
@@ -353,6 +355,9 @@ pub async fn launch_engine(
                 break;
             }
             Err(e) => {
+                if e == crate::engine_stack::LOAD_FAILURE_ALREADY_REPORTED {
+                    return Err("Model load failed".to_string());
+                }
                 last_err = Some(e);
                 if attempt == 0 {
                     app.blackwell_output_console_manager.emit_line_to_category(
@@ -693,10 +698,19 @@ pub async fn fit_scan_model(
     let gpu_mask = engine_utils::compute_gpu_mask_from_params(&device, &split_mode, gpu_count, false);
 
     // Build CLI args directly — no template involvement
+    let fit_adapter = fit_scanner::resolve_fit_adapter(&backend_type);
     let args = fit_scanner::build_fit_command(
-        &model_path, ctx_int, &kv_quant, batch, _ubatch, parallel, &split_mode,
+        &backend_type,
+        &model_path,
+        ctx_int,
+        &kv_quant,
+        batch,
+        _ubatch,
+        parallel,
+        &split_mode,
     );
-    let fit_result = fit_scanner::scan_single_anchor(&fit_binary, &args, &gpu_mask).await;
+    let fit_result =
+        fit_scanner::scan_single_anchor(&fit_binary, &args, &gpu_mask, fit_adapter).await;
     match &fit_result {
         Ok(raw) => {
             app.log_hub.emit_console_line(BlackwellOutputConsoleCategory::Utils, &format!("[FIT] {} -> {:.1} MiB", model_path, raw.vram_mib), BlackwellOutputConsoleLineStyle::Normal);
@@ -784,9 +798,9 @@ pub async fn fit_scan_library(
         *guard = cancel_flag.clone();
     }
 
-    // Force rescan: delete stale cache so nothing is skipped
+    // Force rescan: drop this provider's fit-adapter partition so incremental scan re-runs all points
     if force_rescan.unwrap_or(false) {
-        let _ = fit_scanner::clear_full_scan_export();
+        fit_scanner::clear_full_scan_partition_for_provider(&provider_id);
     }
 
     // Run library scan — scans all configured paths, deduplicates across them
@@ -805,7 +819,7 @@ pub async fn fit_scan_library(
     let models_with_errors = result
         .results
         .values()
-        .filter(|entry| entry.error.is_some())
+        .filter(|entry| entry.error.is_some() && entry.skip_reason.is_none())
         .count();
     let summary_style = if models_with_errors > 0 || result.failed > 0 {
         BlackwellOutputConsoleLineStyle::Warning

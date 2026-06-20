@@ -357,13 +357,13 @@ pub struct LaunchProfile {
     /// When true, non-power-users see simplified engine config (simple_param_keys only).
     #[serde(default, rename = "autoVram")]
     pub auto_vram: bool,
-    /// `ik_native` | `ggml_fit_params` | `none`
+    /// `ggml_fit_params` | `none`
     #[serde(default, rename = "fitStyle")]
     pub fit_style: String,
     /// Param keys visible in Auto VRAM mode (e.g. device, ctx, kv_quant).
     #[serde(default, rename = "simpleParamKeys")]
     pub simple_param_keys: Vec<String>,
-    /// IK `--fit-margin` MiB safety margin when fit_style is ik_native.
+    /// Legacy field — kept for config merge compatibility.
     #[serde(default, rename = "fitMarginMib")]
     pub fit_margin_mib: u32,
 }
@@ -416,11 +416,11 @@ pub struct ProviderConfig {
     pub build_profile: String,
     /// Template type determines which provider default config to load.
     /// "ggml-llama" = ggml-master (21 params, master for GGML family),
-    /// "ik-llama" = ik (9 IK-specific params),
+
     /// "" = custom (user adds all params manually, no template).
     #[serde(default)]
     pub template_type: String,
-    /// Per-environment build info (vanguard/stable/fresh) — captured from binary --version + file mtime.
+    /// Per-environment build info (frontier/stable) — captured from binary --version + file mtime.
     #[serde(default, skip_serializing_if = "HashMap::is_empty", rename = "buildInfoPerEnv")]
     pub build_info_per_env: HashMap<String, BuildInfo>,
     /// Active launch path per profile (resolved from bundled / foundry / download).
@@ -723,6 +723,34 @@ pub struct DownloadTask {
     /// LFS content hash for incremental scan skip on completion.
     #[serde(default, rename = "lfsOid")]
     pub lfs_oid: String,
+    /// Sharded quant batch — `.part` → `.gguf` rename deferred until all parts complete.
+    #[serde(default, skip_serializing_if = "Option::is_none", rename = "batchId")]
+    pub batch_id: Option<String>,
+}
+
+/// One file in a sharded quant download batch.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QuantBatchPart {
+    #[serde(rename = "destPath")]
+    pub dest_path: String,
+    #[serde(rename = "totalBytes")]
+    pub total_bytes: u64,
+    #[serde(default, rename = "lfsOid")]
+    pub lfs_oid: String,
+    pub file_name: String,
+}
+
+/// Sharded quant — finalize all `.part` files together when every part is complete.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QuantDownloadBatch {
+    pub id: String,
+    #[serde(rename = "hfModelId")]
+    pub hf_model_id: String,
+    #[serde(rename = "quantType")]
+    pub quant_type: String,
+    #[serde(default)]
+    pub hf_author: String,
+    pub parts: Vec<QuantBatchPart>,
 }
 
 // ── Model Paths Types ────────────────────────────────────────────────────

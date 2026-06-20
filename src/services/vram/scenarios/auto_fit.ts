@@ -45,10 +45,7 @@ export function tryEvaluate(input: ScenarioInput, computed: ComputedValues): Vra
     return loads;
   })();
 
-  const fitHint =
-    input.fitStyle === "ik_native"
-      ? "IK --fit auto-offloads tensors at load"
-      : "GGML --fit on pre-tunes before load";
+  const fitHint = "GGML --fit on pre-tunes before load";
 
   const splitHint = autoSplit
     ? `auto layer-split across ${input.gpus.length} GPU(s) + ${fitHint}`

@@ -4083,6 +4083,11 @@ html:not([data-theme="arctic"]) [data-display-texture="clean"] .phosphor-display
   border-left: 1px solid color-mix(in srgb, var(--theme-border-subtle) 65%, transparent);
 }
 
+.config-provider-profile-bar__half--profile > .flex {
+  justify-content: flex-end;
+  margin-left: auto;
+}
+
 .config-provider-profile-bar__label {
   font-size: 8px;
   font-family: ui-monospace, monospace;

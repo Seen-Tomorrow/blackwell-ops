@@ -168,7 +168,7 @@ export function useScenarioEvaluator({
 
   // Config fingerprint — only keys that affect scenario evaluation.
   // Changes here trigger re-eval (HW buttons, param chips). Telemetry noise doesn't touch these.
-  const configKey = `${config.device || ""}|${config.split || ""}|${config["offload_mode"] || ""}|${config.ctx || ""}|${config["kv_quant"] || ""}|${config.batch ?? ""}|${config.ubatch ?? ""}|${config.parallel ?? ""}|${config["flash_attn"] || ""}|${config.vision || ""}|${config["unified_kv"] || ""}|${config["rope_scaling"] || ""}|${config["rope_scale"] ?? ""}|${config.ik_perf || ""}|${config.gpu_sync || ""}|${config.cache_ram || ""}|auto=${autoVramLaunch ? "1" : "0"}`;
+  const configKey = `${config.device || ""}|${config.split || ""}|${config["offload_mode"] || ""}|${config.ctx || ""}|${config["kv_quant"] || ""}|${config.batch ?? ""}|${config.ubatch ?? ""}|${config.parallel ?? ""}|${config["flash_attn"] || ""}|${config.vision || ""}|${config["unified_kv"] || ""}|${config["rope_scaling"] || ""}|${config["rope_scale"] ?? ""}|${config.gpu_sync || ""}|${config.cache_ram || ""}|${config.backend_type || ""}|auto=${autoVramLaunch ? "1" : "0"}`;
 
   // Stack fingerprint — changes when committed engines (RUNNING/LOADING) start/stop or VRAM shifts.
   const stackKey = committedStackKey(stack);
@@ -341,12 +341,13 @@ export function useScenarioEvaluator({
     if (model.path === lastFitModelPathRef.current) return;
     lastFitModelPathRef.current = model.path;
 
-    invoke("get_fit_scan_points", { modelPath: model.path }).then((result: any) => {
+    const providerId = (config.backend_type as string) || "ggml-master";
+    invoke("get_fit_scan_points", { modelPath: model.path, providerId }).then((result: any) => {
       fitPointsRef.current = result ?? null;
     }).catch(() => {
       fitPointsRef.current = null;
     });
-  }, [model?.path]);
+  }, [model?.path, config.backend_type]);
 
   useEffect(() => {
     if (!model || gpus.length === 0) {

@@ -27,10 +27,8 @@ pub fn resolve_adapter(
         return id;
     }
     match template_type {
-        "ik-llama" => FusionAdapterId::IkLlama,
         "ggml-llama" => FusionAdapterId::GgmlMaster,
         _ if provider_id.eq_ignore_ascii_case("ggml-tom") => FusionAdapterId::GgmlTom,
-        _ if provider_id.to_lowercase().contains("ik") => FusionAdapterId::IkLlama,
         _ => FusionAdapterId::GgmlMaster,
     }
 }

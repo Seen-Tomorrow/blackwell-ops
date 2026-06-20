@@ -102,6 +102,33 @@ fn enrich(info: BuildInfo, build_profile: &str) -> BuildInfo {
     crate::engine_utils::enrich_build_info_cuda_arch(info, build_profile)
 }
 
+fn migrate_hashmap_keys<T: Clone>(map: &mut HashMap<String, T>) {
+    let retired: Vec<String> = map
+        .keys()
+        .filter(|k| crate::foundry_toolchain::is_retired_profile(k))
+        .cloned()
+        .collect();
+    for old in retired {
+        if let Some(val) = map.remove(&old) {
+            let new_key = crate::foundry_toolchain::normalize_profile_id(&old);
+            map.entry(new_key).or_insert(val);
+        }
+    }
+}
+
+/// vanguard/fresh → frontier on saved per-env maps.
+pub fn migrate_provider_profile_keys(p: &mut ProviderConfig) {
+    migrate_hashmap_keys(&mut p.binary_path_per_env);
+    migrate_hashmap_keys(&mut p.build_info_per_env);
+    migrate_hashmap_keys(&mut p.binary_source_per_env);
+    migrate_hashmap_keys(&mut p.bundled_binary_path_per_env);
+    migrate_hashmap_keys(&mut p.foundry_binary_path_per_env);
+    migrate_hashmap_keys(&mut p.bundled_build_info_per_env);
+    migrate_hashmap_keys(&mut p.foundry_build_info_per_env);
+    migrate_hashmap_keys(&mut p.downloaded_version_per_env);
+    migrate_hashmap_keys(&mut p.last_pr_per_env);
+}
+
 /// Scan both sources, resolve active path + metadata, populate inventory fields on `p`.
 pub fn resolve_provider_binaries(p: &mut ProviderConfig, ctx: ResolveContext<'_>) {
     p.bundled_binary_path_per_env.clear();

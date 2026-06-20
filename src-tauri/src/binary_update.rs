@@ -10,7 +10,7 @@ const BINARY_UPDATES_ENABLED: bool = false;
 
 /// Bundled providers that ship with bundled binaries.
 #[allow(dead_code)]
-const BUNDLED_PROVIDERS: &[&str] = &[crate::config::DEFAULT_PROVIDER_ID, "ik"];
+const BUNDLED_PROVIDERS: &[&str] = &[crate::config::DEFAULT_PROVIDER_ID, "ggml-tom"];
 
 #[derive(Debug, Clone, Serialize)]
 pub struct AppUpdateInfo {
@@ -34,9 +34,8 @@ pub struct StartupUpdateStatus {
 
 /// Profile metadata for display in UI.
 const PROFILES: &[(&str, &str)] = &[
-    ("vanguard", "Vanguard (VS2026 + CUDA 13.2)"),
+    ("frontier", "Frontier (VS2026 + CUDA 13.3)"),
     ("stable", "Stable (VS2022 + CUDA 12.8)"),
-    ("fresh", "Fresh (VS2022 + CUDA 13.1)"),
 ];
 
 /// GitHub repo hosting binary release assets.
@@ -512,9 +511,9 @@ pub async fn get_startup_updates(app_handle: tauri::AppHandle) -> Result<Startup
     // Run all checks in parallel (app + each provider's binary updates)
     let app_update_future = check_app_update(app_handle.clone());
     let ggml_future = check_binary_updates(crate::config::DEFAULT_PROVIDER_ID.to_string());
-    let ik_future = check_binary_updates("ik".to_string());
+    let tom_future = check_binary_updates("ggml-tom".to_string());
 
-    let (app_result, ggml_result, ik_result) = tokio::join!(app_update_future, ggml_future, ik_future);
+    let (app_result, ggml_result, tom_result) = tokio::join!(app_update_future, ggml_future, tom_future);
 
     // Process app update result
     let app_update = match app_result {
@@ -533,7 +532,7 @@ pub async fn get_startup_updates(app_handle: tauri::AppHandle) -> Result<Startup
     // Process binary updates results
     let mut binary_updates = Vec::new();
 
-    for (provider_id, result) in [(crate::config::DEFAULT_PROVIDER_ID, ggml_result), ("ik", ik_result)] {
+    for (provider_id, result) in [(crate::config::DEFAULT_PROVIDER_ID, ggml_result), ("ggml-tom", tom_result)] {
         match result {
             Ok(updates) => {
                 if !updates.is_empty() {

@@ -9,7 +9,7 @@
  */
 
 import React, { useState, useCallback, useMemo } from "react";
-import { compareParamValues } from "../lib/paramValueSort";
+import { compareParamValues, isNumericLiteral } from "../lib/paramValueSort";
 
 type ValueBubbleItem = { val: string | number; isUserAdded: boolean };
 
@@ -82,7 +82,10 @@ export default function ValueBubbles({
         items.push({ val: v, isUserAdded: true });
       }
     }
-    return items.sort((a, b) => compareParamValues(a.val, b.val));
+    if (items.length > 1 && items.every((i) => isNumericLiteral(i.val))) {
+      return items.sort((a, b) => compareParamValues(a.val, b.val));
+    }
+    return items;
   }, [availableValues, userAddedValues]);
 
   // ── Submit value from input field ─────────────────────────────────────────────

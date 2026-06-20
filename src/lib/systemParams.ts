@@ -1,4 +1,4 @@
-import { sortParamValues } from "./paramValueSort";
+import { isNumericLiteral, sortParamValues } from "./paramValueSort";
 import { normalizeUiGroup, paramUiGroup } from "./storage";
 
 /** CONFIG catalog bucket for engine chrome params (placement fixed in engine panel). */
@@ -44,7 +44,9 @@ function sortedValuesIfNeeded(values: (string | number)[] | undefined): {
   values: (string | number)[] | undefined;
   changed: boolean;
 } {
-  if (!values || values.length < 2) return { values, changed: false };
+  if (!values || values.length < 2 || !values.every(isNumericLiteral)) {
+    return { values, changed: false };
+  }
   const sorted = sortParamValues(values);
   const changed = sorted.some((v, i) => String(v) !== String(values[i]));
   return { values: sorted, changed };

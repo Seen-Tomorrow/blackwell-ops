@@ -47,7 +47,6 @@ enum EnginePipeLine {
 }
 /// MoE --fit can print dozens of memory tables; keep enough stderr for one load.
 const VRAM_LEARN_BUF_CAP: usize = 4096;
-
 pub struct LogHub {
     app_handle: AppHandle,
 }
@@ -82,6 +81,80 @@ impl LogHub {
         }
     }
 
+    pub fn clear_stderr_tail(&self, slot_idx: usize) {
+        let Some(ctx) = self.app_handle.try_state::<crate::engine::AppContext>() else {
+            return;
+        };
+        ctx.slot_stderr_tails.lock().remove(&slot_idx);
+    }
+
+    pub fn record_stderr_line(&self, slot_idx: usize, line: &str) {
+        let Some(ctx) = self.app_handle.try_state::<crate::engine::AppContext>() else {
+            return;
+        };
+        if Self::is_idle_chatter(line) || Self::is_stderr_tail_noise(line) {
+            return;
+        }
+        let cleaned = crate::engine_utils::strip_ansi(line).trim().to_string();
+        if cleaned.is_empty() {
+            return;
+        }
+        let mut tails = ctx.slot_stderr_tails.lock();
+        tails.insert(slot_idx, vec![cleaned]);
+    }
+
+    pub fn stderr_tail_line(&self, slot_idx: usize) -> Option<String> {
+        let Some(ctx) = self.app_handle.try_state::<crate::engine::AppContext>() else {
+            return None;
+        };
+        let tails = ctx.slot_stderr_tails.lock();
+        tails
+            .get(&slot_idx)
+            .and_then(|v| v.last())
+            .cloned()
+    }
+
+    pub(crate) fn is_stderr_tail_noise(line: &str) -> bool {
+        let lower = line.to_lowercase();
+        if lower.starts_with("device ")
+            && (lower.contains("compute capability") || lower.contains("vram:"))
+        {
+            return true;
+        }
+        if lower.starts_with("common_init_result:") {
+            return true;
+        }
+        false
+    }
+
+    fn is_generic_load_failure_reason(reason: &str) -> bool {
+        let lower = reason.to_lowercase();
+        lower.starts_with("engine process exited")
+            || lower.starts_with("engine exited before")
+            || lower.contains("engine stderr had no readable")
+            || lower.contains("engine reported a fatal error")
+            || lower.contains("engine stopped or crashed during model load")
+    }
+
+    pub fn format_reason_with_stderr_tail(base_reason: &str, tail: Option<&str>) -> String {
+        let Some(last_line) = tail.map(str::trim).filter(|s| !s.is_empty()) else {
+            return base_reason.to_string();
+        };
+
+        if base_reason.trim().eq_ignore_ascii_case(last_line) {
+            return base_reason.to_string();
+        }
+
+        if Self::is_generic_load_failure_reason(base_reason) {
+            if let Some(idx) = base_reason.find(" — this model may not support") {
+                return format!("{}{}", last_line, &base_reason[idx..]);
+            }
+            return last_line.to_string();
+        }
+
+        base_reason.to_string()
+    }
+
     /// Spawns the slot's log reader task.
     /// Reads stderr pipe, batches and emits "engine-log-batch" to frontend,
     /// detects readiness ("server is listening" / "all slots idle"),
@@ -99,6 +172,7 @@ impl LogHub {
         on_ready: std::sync::Arc<dyn Fn() + Send + Sync>,
     ) {
         let app_handle = self.app_handle.clone();
+        self.clear_stderr_tail(slot_idx);
 
         // Internal channel: pipe readers → main processing loop (bounded)
         let (line_tx, line_rx) = mpsc::channel::<EnginePipeLine>(STDERR_LINE_CHANNEL_CAP);
@@ -187,6 +261,8 @@ impl LogHub {
         let mut tables_seen: usize = 0;
         let mut tables_persisted: usize = 0;
         let mut vram_learn_buf: Vec<String> = Vec::with_capacity(256);
+        let fit_adapter =
+            crate::fit_scanner::resolve_fit_adapter(&learn_snapshot.provider_id);
 
         let mut flush_interval = tokio::time::interval(batch_interval);
 
@@ -209,6 +285,7 @@ impl LogHub {
                                     &vram_learn_buf,
                                     tables_persisted,
                                     "exit",
+                                    fit_adapter,
                                 )
                                 .await
                                 {
@@ -249,6 +326,10 @@ impl LogHub {
                     let cleaned = raw_line.trim().to_string();
                     if cleaned.is_empty() { continue; }
 
+                    if !stdout_only {
+                        LogHub::new(app_handle.clone()).record_stderr_line(slot_idx, &cleaned);
+                    }
+
                     // ── Readiness check (one-shot) — before fatal heuristics ──────────────
                     if !model_ready.load(Ordering::Acquire) {
                         if Self::is_engine_ready_log_line(&cleaned) {
@@ -271,6 +352,7 @@ impl LogHub {
                                     &vram_learn_buf,
                                     tables_persisted,
                                     "fit",
+                                    fit_adapter,
                                 )
                                 .await
                                 {
@@ -326,12 +408,8 @@ impl LogHub {
                         break;
                     }
 
-                    // Buffer all breakdown lines; persist only on complete tables (Host row).
-                    let lower = cleaned.to_lowercase();
-                    let is_breakdown_line = !stdout_only
-                        && (lower.contains("common_memory_breakdown_print")
-                            || lower.contains("memory breakdown"));
-                    if is_breakdown_line {
+                    // Buffer provider-specific learn lines; persist only on complete samples.
+                    if fit_adapter.is_vram_learn_line(&cleaned, stdout_only) {
                         vram_learn_buf.push(cleaned.clone());
                         if vram_learn_buf.len() > VRAM_LEARN_BUF_CAP {
                             log::warn!(
@@ -341,7 +419,7 @@ impl LogHub {
                             );
                         }
                     }
-                    if crate::fit_scanner::is_complete_memory_breakdown_table_line(&cleaned) {
+                    if fit_adapter.is_vram_learn_complete_line(&cleaned) {
                         let ready = model_ready.load(Ordering::Acquire);
                         let phase = if ready { "exit" } else { "fit" };
                         let prev_seen = tables_seen;
@@ -355,6 +433,7 @@ impl LogHub {
                             tables_persisted,
                             phase,
                             ready,
+                            fit_adapter,
                         )
                         .await
                         {
@@ -429,9 +508,10 @@ impl LogHub {
         line_buf: &[String],
         already_persisted: usize,
         phase: &str,
+        fit_adapter: crate::fit_adapters::FitAdapterId,
     ) -> Option<(f64, usize, Option<Vec<f64>>)> {
         let combined = line_buf.join("\n");
-        let tables = crate::fit_scanner::parse_all_memory_breakdown_tables(&combined);
+        let tables = fit_adapter.parse_vram_learn_tables(&combined);
         if tables.len() <= already_persisted {
             return None;
         }
@@ -478,9 +558,10 @@ impl LogHub {
         already_persisted: usize,
         phase: &str,
         persist: bool,
+        fit_adapter: crate::fit_adapters::FitAdapterId,
     ) -> Option<(f64, usize, Option<Vec<f64>>)> {
         let combined = line_buf.join("\n");
-        let tables = crate::fit_scanner::parse_all_memory_breakdown_tables(&combined);
+        let tables = fit_adapter.parse_vram_learn_tables(&combined);
         if tables.len() <= already_seen {
             return None;
         }
@@ -618,6 +699,10 @@ impl LogHub {
             return true;
         }
 
+        if lower.contains("invalid parameter") || lower.contains("invalid argument") {
+            return true;
+        }
+
         // Normal load info: `allocated 'CUDA_Host' buffer` — must not match `unable to allocate`.
         if lower.contains("unable to allocate") && !lower.contains("allocated '") {
             return true;
@@ -635,6 +720,10 @@ impl LogHub {
             || lower.contains("cudamalloc failed")
             || lower.contains("ggml_cuda error")
         {
+            return true;
+        }
+
+        if lower.contains("not implemented") || lower.starts_with("error:") {
             return true;
         }
 
@@ -795,5 +884,54 @@ impl LogHub {
         if let Err(e) = self.app_handle.emit("engine-system", &event) {
             log::warn!("Failed to emit engine-system event: {}", e);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::LogHub;
+
+    #[test]
+    fn format_reason_with_stderr_tail_replaces_generic_reason() {
+        let msg = LogHub::format_reason_with_stderr_tail(
+            "Engine process exited during model load",
+            Some("error: invalid argument: --foo"),
+        );
+        assert_eq!(msg, "error: invalid argument: --foo");
+    }
+
+    #[test]
+    fn format_reason_with_stderr_tail_keeps_tensor_hint() {
+        let msg = LogHub::format_reason_with_stderr_tail(
+            "Engine exited before model finished loading — this model may not support TENSOR split; try LAYER or NONE in MULTI-GPU settings",
+            Some("llama_init_from_model: simultaneous use of SPLIT_MODE_TENSOR and KV cache quantization not implemented"),
+        );
+        assert!(msg.starts_with("llama_init_from_model:"));
+        assert!(msg.contains("TENSOR split"));
+    }
+
+    #[test]
+    fn format_reason_with_stderr_tail_skips_duplicate_fatal_reason() {
+        let msg = LogHub::format_reason_with_stderr_tail(
+            "error: invalid argument: --sex",
+            Some("error: invalid argument: --sex"),
+        );
+        assert_eq!(msg, "error: invalid argument: --sex");
+    }
+
+    #[test]
+    fn format_reason_with_stderr_tail_empty_passthrough() {
+        let msg = LogHub::format_reason_with_stderr_tail("load timed out", None);
+        assert_eq!(msg, "load timed out");
+    }
+
+    #[test]
+    fn stderr_tail_noise_skips_gpu_enumeration() {
+        assert!(LogHub::is_stderr_tail_noise(
+            "Device 0: NVIDIA RTX PRO 6000 Blackwell Workstation Edition, compute capability 12.0, VMM: yes, VRAM: 97886 MiB"
+        ));
+        assert!(LogHub::is_stderr_tail_noise(
+            "common_init_result: added <|repo_name|> logit bias = -inf"
+        ));
     }
 }

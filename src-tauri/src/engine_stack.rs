@@ -5,6 +5,8 @@ use crate::types::{EngineConfig, StackEntry};
 use crate::log_hub::LogHub;
 
 pub const DEFAULT_N_CTX: usize = 32768;
+/// Returned from `load_slot` when `fail_loading_slot` already emitted the user-facing error.
+pub const LOAD_FAILURE_ALREADY_REPORTED: &str = "LOAD_FAILURE_ALREADY_REPORTED";
 
 /// When TENSOR split is active, silent engine exits are common — nudge users toward LAYER/NONE.
 fn format_load_failure_reason(reason: &str, split_mode: &str) -> String {
@@ -36,15 +38,16 @@ fn fit_scanner_estimate_vram(config: &EngineConfig) -> f64 {
         return entry.vram_mib;
     }
 
-    if let Some(scan_data) = crate::fit_scanner::load_full_scan_export() {
-        if let Some(full) = scan_data.get(&config.model_path) {
+    if let Some(full) = crate::fit_scanner::find_existing_scan_in_provider_partition(
+        &provider_id,
+        &config.model_path,
+    ) {
             let ctx_str = config.get_param_str("ctx").unwrap_or_else(|| "32768".to_string());
             let ctx_tokens = ctx_str.parse::<usize>().unwrap_or(32768);
-            if let Some(pt) = full.points.iter().find(|p| {
-                p.ctx == ctx_tokens && p.kv_quant.to_lowercase() == config.get_param_str("kv_quant").unwrap_or_else(|| "f16".to_string()).to_lowercase()
-            }) {
-                return pt.vram_mib;
-            }
+        if let Some(pt) = full.points.iter().find(|p| {
+            p.ctx == ctx_tokens && p.kv_quant.to_lowercase() == config.get_param_str("kv_quant").unwrap_or_else(|| "f16".to_string()).to_lowercase()
+        }) {
+            return pt.vram_mib;
         }
     }
     if let Ok(meta) = std::fs::metadata(&config.model_path) {
@@ -103,6 +106,8 @@ pub struct EngineSlot {
     pub supports_fusion: bool,
     /// Set when stop/clear runs — background reaper exits without duplicate cleanup.
     pub reaper_cancel: Arc<AtomicBool>,
+    /// One-shot guard — stderr EOF vs reaper must not both emit load-failure UI.
+    pub load_fail_claimed: Arc<AtomicBool>,
 }
 
 pub struct EngineStack {
@@ -132,6 +137,7 @@ impl EngineStack {
                 binary_profile: String::new(),
                 supports_fusion: true,
                 reaper_cancel: Arc::new(AtomicBool::new(false)),
+                load_fail_claimed: Arc::new(AtomicBool::new(false)),
             }))));
         }
 
@@ -212,6 +218,7 @@ impl EngineStack {
         slot.port = port;
         slot.child_proc = None;
         slot.pid = None;
+        slot.load_fail_claimed.store(false, Ordering::Release);
         Ok(())
     }
 
@@ -334,10 +341,20 @@ impl EngineStack {
         if let Ok(status) = child.try_wait() {
             if let Some(code) = status {
                 let exit_code = code.code().unwrap_or(-1);
-                {
+                let already_reported = {
+                    let stack = stack_ref.lock().await;
+                    stack.get_slot(slot_idx).map_or(true, |slot| {
+                        slot.load_fail_claimed.load(Ordering::Acquire)
+                            || matches!(slot.status, SlotStatus::Idle)
+                    })
+                };
+                if !already_reported {
                     let stack = stack_ref.lock().await;
                     stack.clear_slot(slot_idx);
                     stack.emit_stack_changed();
+                }
+                if already_reported {
+                    return Err(LOAD_FAILURE_ALREADY_REPORTED.to_string());
                 }
                 return Err(format!(
                     "Engine crashed immediately with exit code {}",
@@ -695,6 +712,10 @@ impl EngineStack {
             if matches!(slot.status, SlotStatus::Idle) {
                 return;
             }
+            if slot.load_fail_claimed.swap(true, Ordering::AcqRel) {
+                return;
+            }
+            slot.reaper_cancel.store(true, Ordering::Release);
             (
                 slot.alias.clone(),
                 slot.pid,
@@ -706,7 +727,12 @@ impl EngineStack {
 
         crate::fusion::stop_brain(slot_idx).await;
 
+        // Pipe reader may still be flushing the last stderr line after process exit.
+        tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+        let stderr_tail = log_hub.stderr_tail_line(slot_idx);
         let user_reason = format_load_failure_reason(reason, &split_mode);
+        let user_reason = LogHub::format_reason_with_stderr_tail(&user_reason, stderr_tail.as_deref());
+        log_hub.clear_stderr_tail(slot_idx);
         let launch_err = format!("LAUNCH_ERROR: {}", user_reason);
         log_hub.emit_system_event(slot_idx, &alias, &launch_err).await;
         log_hub.emit_console_line(
@@ -779,6 +805,7 @@ impl EngineStack {
             slot.binary_profile.clear();
             slot.supports_fusion = false;
             slot.reaper_cancel = Arc::new(AtomicBool::new(false));
+            slot.load_fail_claimed = Arc::new(AtomicBool::new(false));
             drop(slot);
             crate::engine_port_lock::delete_lock(port);
         }

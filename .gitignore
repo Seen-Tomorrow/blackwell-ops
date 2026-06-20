@@ -3,6 +3,8 @@
 Thumbs.db
 .vscode/
 .idea/
+agent-tools/
+terminals/
 *.suo
 *.ntvs*
 *.njsproj

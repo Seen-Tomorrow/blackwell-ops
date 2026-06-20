@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use tokio::fs::{self, OpenOptions};
 use tokio::io::AsyncWriteExt;
 use tokio::sync::RwLock;
-use crate::types::{DownloadStatus, DownloadTask};
+use crate::types::{DownloadStatus, DownloadTask, QuantBatchPart, QuantDownloadBatch};
 
 /// Persisted manifest entry — survives restart so we can recover orphaned .part files.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -33,9 +33,12 @@ struct ManifestEntry {
     quant_type: String,
     #[serde(default, rename = "lfsOid")]
     lfs_oid: String,
+    #[serde(default, skip_serializing_if = "Option::is_none", rename = "batchId")]
+    batch_id: Option<String>,
 }
 
 const MANIFEST_FILE: &str = "download_tasks.json";
+const BATCHES_FILE: &str = "download_batches.json";
 
 fn manifest_path() -> PathBuf {
     crate::config::cache_dir().join(MANIFEST_FILE)
@@ -92,6 +95,7 @@ fn persist_task_to_manifest(task: &DownloadTask) {
         hf_author: task.hf_author.clone(),
         quant_type: task.quant_type.clone(),
         lfs_oid: task.lfs_oid.clone(),
+        batch_id: task.batch_id.clone(),
     });
     save_manifest(&manifest);
 }
@@ -101,6 +105,51 @@ fn remove_task_from_manifest(task_id: &str) {
     let mut manifest = load_manifest();
     manifest.remove(task_id);
     save_manifest(&manifest);
+}
+
+fn batches_path() -> PathBuf {
+    crate::config::cache_dir().join(BATCHES_FILE)
+}
+
+fn load_quant_batches() -> HashMap<String, QuantDownloadBatch> {
+    let path = batches_path();
+    if !path.exists() {
+        return HashMap::new();
+    }
+    match std::fs::read_to_string(&path) {
+        Ok(content) => serde_json::from_str(&content).unwrap_or_default(),
+        Err(_) => HashMap::new(),
+    }
+}
+
+fn save_quant_batches(batches: &HashMap<String, QuantDownloadBatch>) {
+    let path = batches_path();
+    let tmp_path = path.with_extension("json.tmp");
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let json = match serde_json::to_string_pretty(batches) {
+        Ok(j) => j,
+        Err(e) => {
+            log::warn!("[download] Failed to serialize batch manifest: {}", e);
+            return;
+        }
+    };
+    if let Err(e) = std::fs::write(&tmp_path, json) {
+        log::warn!("[download] Failed to write batch manifest temp: {}", e);
+        return;
+    }
+    if let Err(e) = std::fs::rename(&tmp_path, &path) {
+        log::warn!("[download] Failed to rename batch manifest: {}", e);
+        let _ = std::fs::remove_file(&tmp_path);
+    }
+}
+
+fn remove_quant_batch(batch_id: &str) {
+    let mut batches = load_quant_batches();
+    if batches.remove(batch_id).is_some() {
+        save_quant_batches(&batches);
+    }
 }
 
 /// Maximum number of concurrent downloads.
@@ -124,6 +173,8 @@ pub fn partial_download_path(dest_path: &str) -> String {
 pub struct DownloadManager {
     /// All active/completed tasks. In-memory only — not persisted across restarts.
     tasks: HashMap<String, DownloadTask>,
+    /// Sharded quants — defer `.part` → `.gguf` until every part is complete.
+    quant_batches: HashMap<String, QuantDownloadBatch>,
     /// Max concurrent downloads (default 3).
     max_concurrent: usize,
 }
@@ -132,8 +183,39 @@ impl DownloadManager {
     pub fn new() -> Self {
         Self {
             tasks: HashMap::new(),
+            quant_batches: load_quant_batches(),
             max_concurrent: DEFAULT_MAX_CONCURRENT,
         }
+    }
+
+    /// Register a sharded quant batch (all expected dest paths, including already on disk).
+    pub fn register_quant_batch(&mut self, batch: QuantDownloadBatch) {
+        self.quant_batches.insert(batch.id.clone(), batch);
+        save_quant_batches(&self.quant_batches);
+    }
+
+    /// Start a quant batch before enqueueing per-shard tasks.
+    pub fn begin_quant_batch(
+        &mut self,
+        hf_model_id: String,
+        hf_author: String,
+        quant_type: String,
+        parts: Vec<QuantBatchPart>,
+    ) -> String {
+        let batch_id = generate_task_id();
+        self.register_quant_batch(QuantDownloadBatch {
+            id: batch_id.clone(),
+            hf_model_id,
+            quant_type,
+            hf_author,
+            parts,
+        });
+        batch_id
+    }
+
+    /// Paths + shard-group keys to hide from catalog while downloads are active.
+    pub fn catalog_scan_exclusions(&self) -> crate::model_catalog::CatalogScanExclusions {
+        crate::model_catalog::catalog_exclusions_from_downloads(&self.tasks, &self.quant_batches)
     }
 
     /// Create a new download task and spawn the background worker.
@@ -150,6 +232,7 @@ impl DownloadManager {
         hf_author: String,
         quant_type: String,
         lfs_oid: String,
+        batch_id: Option<String>,
         self_arc: Arc<RwLock<Self>>,
     ) -> Result<String, String> {
         let task_id = generate_task_id();
@@ -170,6 +253,7 @@ impl DownloadManager {
             hf_author,
             quant_type,
             lfs_oid,
+            batch_id,
         };
 
         self.tasks.insert(task_id.clone(), task);
@@ -233,6 +317,7 @@ impl DownloadManager {
                 hf_author: entry.hf_author,
                 quant_type: entry.quant_type,
                 lfs_oid: entry.lfs_oid,
+                batch_id: entry.batch_id,
             };
 
             self.tasks.insert(task_id, task);
@@ -241,6 +326,16 @@ impl DownloadManager {
 
         if recovered > 0 {
             log::info!("[download] Recovered {} orphaned download(s) ({} stale manifest entries discarded)", recovered, stale);
+        }
+    }
+
+    /// After recovery or when all batch parts finish — rename `.part` → `.gguf` together.
+    pub fn try_finalize_pending_batches(&mut self) {
+        let batch_ids: Vec<String> = self.quant_batches.keys().cloned().collect();
+        for batch_id in batch_ids {
+            if let Err(e) = try_finalize_quant_batch_sync(self, &batch_id) {
+                log::debug!("[download] Batch {} not ready to finalize: {}", batch_id, e);
+            }
         }
     }
 
@@ -708,14 +803,128 @@ async fn finalize_paused_worker(manager: &Arc<RwLock<DownloadManager>>, task_id:
     }
 }
 
-/// Mark a finished download complete and save HF metadata to the model cache.
+fn batch_has_in_flight(dm: &DownloadManager, batch_id: &str) -> bool {
+    dm.tasks.values().any(|t| {
+        t.batch_id.as_deref() == Some(batch_id)
+            && matches!(
+                t.status,
+                DownloadStatus::Queued | DownloadStatus::Downloading | DownloadStatus::Paused
+            )
+    })
+}
+
+fn part_bytes_ready(dest_path: &str, expected_size: u64, lfs_oid: &str) -> bool {
+    if crate::config::quant_part_already_downloaded(dest_path, expected_size, lfs_oid) {
+        return true;
+    }
+    let partial = partial_download_path(dest_path);
+    let Ok(meta) = std::fs::metadata(&partial) else {
+        return false;
+    };
+    download_bytes_complete(meta.len(), expected_size)
+}
+
+fn save_hf_metadata_for_part(
+    dest_path: &str,
+    hf_model_id: &str,
+    hf_author: &str,
+    quant_type: &str,
+    total_bytes: u64,
+    lfs_oid: &str,
+) {
+    let repo_name = hf_model_id
+        .find('/')
+        .map(|pos| hf_model_id[pos + 1..].to_string())
+        .unwrap_or_else(|| hf_model_id.to_string());
+    let hf_meta = crate::types::HfMetadata {
+        hf_model_id: hf_model_id.to_string(),
+        author: hf_author.to_string(),
+        repo_name,
+        tags: Vec::new(),
+        downloads: 0,
+        likes_count: 0,
+        quant_type: quant_type.to_string(),
+        file_size_bytes: total_bytes,
+        last_modified: String::new(),
+        lfs_oid: lfs_oid.to_string(),
+    };
+    if let Err(e) = crate::model_cache::set_hf_metadata(dest_path, hf_meta) {
+        log::warn!("[download] Failed to save HF metadata for {}: {}", dest_path, e);
+    }
+}
+
+fn finalize_part_on_disk(part: &QuantBatchPart, batch: &QuantDownloadBatch) -> Result<(), String> {
+    if crate::config::quant_part_already_downloaded(&part.dest_path, part.total_bytes, &part.lfs_oid) {
+        return Ok(());
+    }
+
+    let partial = partial_download_path(&part.dest_path);
+    if !Path::new(&partial).exists() {
+        return Err(format!("Missing partial file: {}", partial));
+    }
+
+    if Path::new(&part.dest_path).exists() {
+        log::info!("[download] Replacing existing model: {}", part.dest_path);
+        if let Err(e) = std::fs::remove_file(&part.dest_path) {
+            log::warn!("[download] Failed to remove existing model {}: {}", part.dest_path, e);
+        }
+    }
+
+    std::fs::rename(&partial, &part.dest_path)
+        .map_err(|e| format!("Failed to finalize {}: {}", part.dest_path, e))?;
+
+    save_hf_metadata_for_part(
+        &part.dest_path,
+        &batch.hf_model_id,
+        &batch.hf_author,
+        &batch.quant_type,
+        part.total_bytes,
+        &part.lfs_oid,
+    );
+    log::info!("[download] Finalized shard: {}", part.dest_path);
+    Ok(())
+}
+
+fn try_finalize_quant_batch_sync(dm: &mut DownloadManager, batch_id: &str) -> Result<(), String> {
+    let batch = dm
+        .quant_batches
+        .get(batch_id)
+        .cloned()
+        .ok_or_else(|| "batch not found".to_string())?;
+
+    if batch.parts.len() > 1 && batch_has_in_flight(dm, batch_id) {
+        return Err("sibling shards still downloading".to_string());
+    }
+
+    if !batch
+        .parts
+        .iter()
+        .all(|p| part_bytes_ready(&p.dest_path, p.total_bytes, &p.lfs_oid))
+    {
+        return Err("not all shard parts ready".to_string());
+    }
+
+    for part in &batch.parts {
+        finalize_part_on_disk(part, &batch)?;
+    }
+
+    dm.quant_batches.remove(batch_id);
+    remove_quant_batch(batch_id);
+    log::info!(
+        "[download] Finalized sharded quant batch {} ({} part(s))",
+        batch_id,
+        batch.parts.len()
+    );
+    Ok(())
+}
+
+/// Mark a finished download complete — sharded quants keep `.part` until the full batch is ready.
 async fn mark_completed_worker(
     manager: &Arc<RwLock<DownloadManager>>,
     task_id: &str,
     dest_path: &str,
 ) {
-    // Phase 1: Validate completion and extract metadata under lock — minimal hold time.
-    let (partial_path, dest_to_rename, task_id_for_finalization) = {
+    let batch_id = {
         let mut dm = manager.write().await;
         let Some(task) = dm.tasks.get_mut(task_id) else {
             return;
@@ -737,18 +946,34 @@ async fn mark_completed_worker(
             return;
         }
 
-        // Mark completed under lock — release before slow disk I/O.
         task.status = DownloadStatus::Completed;
         task.speed_bps = 0;
         task.eta_seconds = 0;
         task.pause_offset = 0;
-
-        let pp = partial_download_path(dest_path);
-        (pp, dest_path.to_string(), task_id.to_string())
+        task.batch_id.clone()
     };
 
-    // Phase 2: Disk operations — no lock held, other downloads proceed concurrently.
-    // Delete old .gguf if it exists (replacement/update download)
+    remove_task_from_manifest(task_id);
+
+    if let Some(batch_id) = batch_id {
+        let mut dm = manager.write().await;
+        match try_finalize_quant_batch_sync(&mut dm, &batch_id) {
+            Ok(()) => log::info!("[download] Batch {} finalized after {}", batch_id, dest_path),
+            Err(e) => log::info!(
+                "[download] Shard complete, batch {} waiting: {} ({})",
+                batch_id,
+                dest_path,
+                e
+            ),
+        }
+        return;
+    }
+
+    // Single-file download — rename immediately.
+    let partial_path = partial_download_path(dest_path);
+    let dest_to_rename = dest_path.to_string();
+    let task_id_for_finalization = task_id.to_string();
+
     if Path::new(&dest_to_rename).exists() {
         log::info!("[download] Replacing existing model: {}", dest_to_rename);
         if let Err(e) = std::fs::remove_file(&dest_to_rename) {
@@ -757,7 +982,6 @@ async fn mark_completed_worker(
     }
 
     if let Err(e) = std::fs::rename(&partial_path, &dest_to_rename) {
-        // Re-acquire lock to mark failed if rename failed.
         let mut dm = manager.write().await;
         if let Some(task) = dm.tasks.get_mut(&task_id_for_finalization) {
             task.status = DownloadStatus::Failed;
@@ -765,50 +989,30 @@ async fn mark_completed_worker(
             task.speed_bps = 0;
             task.eta_seconds = 0;
         }
-        remove_task_from_manifest(&task_id_for_finalization);
         return;
     }
 
-    // Remove manifest entry — outside lock.
-    remove_task_from_manifest(&task_id_for_finalization);
-
-    // Phase 3: Save HF metadata cache — outside lock.
     let dm_snapshot = manager.read().await;
     let cache_data = dm_snapshot.tasks.get(&task_id_for_finalization).map(|t| {
-        let repo_name = if let Some(pos) = t.hf_model_id.find('/') {
-            t.hf_model_id[pos + 1..].to_string()
-        } else {
-            t.hf_model_id.clone()
-        };
         (
             t.hf_model_id.clone(),
             t.hf_author.clone(),
             t.quant_type.clone(),
             t.total_bytes,
             t.lfs_oid.clone(),
-            repo_name,
         )
     });
     drop(dm_snapshot);
 
-    if let Some((hf_model_id, hf_author, quant_type, total_bytes, lfs_oid, repo_name)) = cache_data {
-        let hf_meta = crate::types::HfMetadata {
-            hf_model_id,
-            author: hf_author,
-            repo_name,
-            tags: Vec::new(),
-            downloads: 0,
-            likes_count: 0,
-            quant_type,
-            file_size_bytes: total_bytes,
-            last_modified: String::new(),
-            lfs_oid,
-        };
-        if let Err(e) = crate::model_cache::set_hf_metadata(&dest_to_rename, hf_meta) {
-            log::warn!("[download] Failed to save HF metadata for {}: {}", dest_to_rename, e);
-        } else {
-            log::info!("[download] HF metadata saved to cache for {}", dest_to_rename);
-        }
+    if let Some((hf_model_id, hf_author, quant_type, total_bytes, lfs_oid)) = cache_data {
+        save_hf_metadata_for_part(
+            &dest_to_rename,
+            &hf_model_id,
+            &hf_author,
+            &quant_type,
+            total_bytes,
+            &lfs_oid,
+        );
     }
 
     log::info!("Download complete: {} -> {}", task_id_for_finalization, dest_to_rename);
@@ -890,6 +1094,7 @@ mod tests {
                 hf_author: "author".to_string(),
                 quant_type: "Q4_K_M".to_string(),
                 lfs_oid: String::new(),
+                batch_id: None,
             },
         );
 
@@ -920,6 +1125,7 @@ mod tests {
                 hf_author: "a".to_string(),
                 quant_type: "Q4".to_string(),
                 lfs_oid: String::new(),
+                batch_id: None,
             },
         );
         dm.tasks.insert(
@@ -940,6 +1146,7 @@ mod tests {
                 hf_author: "a".to_string(),
                 quant_type: "Q4".to_string(),
                 lfs_oid: String::new(),
+                batch_id: None,
             },
         );
 
@@ -969,6 +1176,7 @@ mod tests {
                 hf_author: "a".to_string(),
                 quant_type: "Q4".to_string(),
                 lfs_oid: String::new(),
+                batch_id: None,
             },
         );
 
@@ -1000,6 +1208,7 @@ mod tests {
                     hf_author: "author".to_string(),
                     quant_type: "Q4_K_M".to_string(),
                     lfs_oid: String::new(),
+                    batch_id: None,
                 },
             );
         }

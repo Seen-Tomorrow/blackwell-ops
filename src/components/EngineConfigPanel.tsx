@@ -30,7 +30,7 @@ import { effectiveGroupColumn } from "../lib/configColumnLayout";
 import { isEmptyGroupDeletable } from "../lib/groupLayoutUtils";
 import { useGroupLayoutControls } from "../hooks/useGroupLayoutControls";
 import { dispatchAppEvent, EVENTS } from "../lib/events";
-import { DEFAULT_BINARY_PROFILE, ENV_META, ENV_ORDER, type Env } from "../lib/foundry_constants";
+import { DEFAULT_BINARY_PROFILE, ENV_META, ENV_ORDER, normalizeBinaryProfile, type Env } from "../lib/foundry_constants";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import VramBadge from "./VramBadge";
@@ -435,8 +435,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     const provider = resolvedProviders?.find((p) => p.id === effectiveBackendType);
     const built: EnvProfile[] = ENV_ORDER.filter((env) => isProfileBuilt(provider, env));
     try {
-      const saved = readStorage(binaryProfileKey(effectiveBackendType)) as EnvProfile | null;
-      if (saved && built.includes(saved)) {
+      const saved = normalizeBinaryProfile(readStorage(binaryProfileKey(effectiveBackendType)));
+      if (built.includes(saved)) {
         setSelectedBinaryProfile(saved);
         return;
       }

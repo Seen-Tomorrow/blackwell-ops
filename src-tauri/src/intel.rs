@@ -153,7 +153,7 @@ fn parse_github_repo(url: &str) -> Option<(String, String)> {
 fn channel_tab_label(provider: &ProviderConfig) -> String {
     match provider.id.as_str() {
         "ggml-master" => "GGML".into(),
-        "ik" => "IK".into(),
+        "ggml-tom" => "TOM".into(),
         _ => {
             if !provider.display_name.is_empty() {
                 provider.display_name.to_uppercase()
@@ -188,15 +188,12 @@ fn channels_from_providers(providers: &[ProviderConfig]) -> Vec<IntelChannel> {
     channels
 }
 
-fn is_labelless_repo(owner: &str, repo: &str) -> bool {
-    matches!((owner, repo), ("ikawrakow", "ik_llama.cpp"))
+fn is_labelless_repo(_owner: &str, _repo: &str) -> bool {
+    false
 }
 
-fn pr_labels_for_repo(owner: &str, repo: &str) -> &'static [&'static str] {
-    match (owner, repo) {
-        ("ikawrakow", "ik_llama.cpp") => &["cuda", "server", "breaking-change", "ggml"],
-        _ => &["server", "ggml", "cuda", "breaking-change"],
-    }
+fn pr_labels_for_repo(_owner: &str, _repo: &str) -> &'static [&'static str] {
+    &["server", "ggml", "cuda", "breaking-change"]
 }
 
 fn extract_labels(item: &serde_json::Value) -> Vec<String> {

@@ -38,12 +38,6 @@ const DEFAULT_CMAKE_FLAGS: &[(&str, &str)] = &[
         "-DGGML_AVX512=ON ",
         "-DGGML_NATIVE=ON"
     )),
-    ("ik-llama", concat!(
-        "-DLLAMA_CURL=OFF ",
-        "-DGGML_CUDA=ON ",
-        "-DCMAKE_CUDA_ARCHITECTURES=\"86;89;120\" ",
-        "-DGGML_CUDA_PEER_TO_PEER=ON "
-    )),
 ];
 
 fn get_default_cmake_flags(template_type: &str) -> &'static str {
@@ -54,12 +48,8 @@ fn get_default_cmake_flags(template_type: &str) -> &'static str {
         .unwrap_or("")
 }
 
-fn resolve_template_type(provider_id: &str) -> &'static str {
-    if provider_id.to_lowercase().contains("ik") {
-        "ik-llama"
-    } else {
-        "ggml-llama"
-    }
+fn resolve_template_type(_provider_id: &str) -> &'static str {
+    "ggml-llama"
 }
 
 // ── PID Tracking ─────────────────────────────────────────────────────
@@ -563,7 +553,7 @@ pub async fn foundry_build(
             .into_iter()
             .filter(|e| {
                 let slot_profile = if e.binary_profile.is_empty() {
-                    "vanguard"
+                    crate::config::DEFAULT_BINARY_PROFILE
                 } else {
                     e.binary_profile.as_str()
                 };
@@ -1497,7 +1487,7 @@ pub async fn refresh_build_info(
             let src_dir = foundry_src_dir(&provider_id);
             let old_build_dir = src_dir.join("build");
             if old_build_dir.exists() {
-                let new_build_dir = src_dir.join("build-vanguard");
+                let new_build_dir = src_dir.join("build-frontier");
                 if !new_build_dir.exists() && old_build_dir.join("bin").exists() {
                     log::info!("[migration] One-time historical migration of ancient 'build/' directory for '{}'", provider_id);
                     let _ = tokio::fs::create_dir_all(&new_build_dir).await;
@@ -1507,14 +1497,14 @@ pub async fn refresh_build_info(
                             // Publish binaries to sacred artifacts BEFORE setting paths.
                             // Never point config at disposable work/ directories.
                             let sacred_exe = crate::config::foundry_artifacts_dir()
-                                .join(&provider_id).join("vanguard").join("Release").join("llama-server.exe");
+                                .join(&provider_id).join("frontier").join("Release").join("llama-server.exe");
                             if let Some(sacred_dir) = sacred_exe.parent() {
                                 let _ = tokio::fs::create_dir_all(sacred_dir).await;
                                 if copy_dir_contents(&new_bin, &sacred_dir.to_path_buf()).await.is_ok() && sacred_exe.exists() {
                                     let mut cfg = app.config.lock().map_err(|e| e.to_string())?;
                                     if let Some(p) = cfg.providers.iter_mut().find(|p| p.id == provider_id) {
                                         let rel = crate::config::to_relative_path(&sacred_exe);
-                                        p.binary_path_per_env.insert("vanguard".to_string(), rel.clone());
+                                        p.binary_path_per_env.insert("frontier".to_string(), rel.clone());
                                         p.binary_path = rel;
                                     }
                                     drop(cfg);
