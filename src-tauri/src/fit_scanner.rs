@@ -341,6 +341,11 @@ pub fn resolve_fit_adapter(provider_id: &str) -> crate::fit_adapters::FitAdapter
     crate::fit_adapters::FitAdapterId::resolve(provider_id, &spawn)
 }
 
+/// Whole-model FIT skip for this provider (Tom MTP) — same gate as library scan.
+pub fn model_fit_skip_note(provider_id: &str, model_path: &str) -> Option<&'static str> {
+    resolve_fit_adapter(provider_id).model_skip_note(model_path)
+}
+
 /// Shared scan arg builder — `use_fit_print` false for Tom (uses `--fit on` + projected MiB line).
 pub fn build_fit_command_base(
     model_path: &str,

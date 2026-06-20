@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-shell";
-import { ENV_ORDER, TOOLCHAIN_ARCHIVE_PARTS, TOOLCHAIN_RELEASE_URL, type Env } from "../lib/foundry_constants";
+import { ENV_ORDER, TOOLCHAIN_RELEASE_URL, type Env } from "../lib/foundry_constants";
 
 interface ProfileCheck {
   id: string;
@@ -194,10 +194,10 @@ export default function FoundryToolchainPanel({
             <li>
               Open the{" "}
               <span className="text-telemetry-cyan">Foundry Toolchain</span> release and download all{" "}
-              {TOOLCHAIN_ARCHIVE_PARTS.length} parts ({info.compressed_size_label}).
+              {info.archive_parts.length} parts ({info.compressed_size_label}).
             </li>
             <li>
-              Put <span className="text-white/90">{TOOLCHAIN_ARCHIVE_PARTS.join(", ")}</span> in the same folder (below is fine).
+              Put <span className="text-white/90">{info.archive_parts.join(", ")}</span> in the same folder (below is fine).
             </li>
             <li>
               Right-click <span className="text-white/90">toolchain.7z.001</span> → 7-Zip →{" "}

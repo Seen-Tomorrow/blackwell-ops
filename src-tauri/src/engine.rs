@@ -178,6 +178,15 @@ pub async fn launch_engine(
     crate::config::validate_provider_binary(binary_path.to_str().unwrap_or(""))?;
     crate::config::validate_model_path(&config.model_path)?;
 
+    if let Some(note) = fit_scanner::model_fit_skip_note(&backend_type, &config.model_path) {
+        app.blackwell_output_console_manager.emit_line_to_category(
+            crate::output_console::BlackwellOutputConsoleCategory::Engines,
+            format!("[{}] Launch blocked: {}", config.alias, note),
+            crate::output_console::BlackwellOutputConsoleLineStyle::Warning,
+        );
+        return Err(note.to_string());
+    }
+
     // Compute port dynamically from provider's base_port with global collision avoidance
     let provider_base_port = config.get_param_str("base_port")
         .and_then(|v| v.parse::<u16>().ok())
@@ -685,6 +694,16 @@ pub async fn fit_scan_model(
     };
 
     let backend_type = _provider_id.unwrap_or_else(|| crate::config::DEFAULT_PROVIDER_ID.to_string());
+
+    if let Some(note) = fit_scanner::model_fit_skip_note(&backend_type, &model_path) {
+        app.log_hub.emit_console_line(
+            BlackwellOutputConsoleCategory::Utils,
+            &format!("[FIT] {} | skipped | {}", model_path, note),
+            BlackwellOutputConsoleLineStyle::Normal,
+        );
+        return Err(note.to_string());
+    }
+
     let fit_binary = fit_scanner::resolve_fit_binary(&cfg, &backend_type, "")?;
 
     // Resolve ctx — slider sends raw number, legacy string ("32k") still handled

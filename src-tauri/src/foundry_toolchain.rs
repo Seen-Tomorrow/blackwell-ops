@@ -64,7 +64,6 @@ pub const TOOLCHAIN_GITHUB_REPO: &str = "Seen-Tomorrow/blackwell-ops";
 pub const TOOLCHAIN_ARCHIVE_PARTS: &[&str] = &[
     "toolchain.7z.001",
     "toolchain.7z.002",
-    "toolchain.7z.003",
 ];
 
 #[derive(Debug, Clone, Serialize)]
@@ -382,8 +381,8 @@ pub fn install_info() -> Result<ToolchainInstallInfo, String> {
         toolchain_dir: tc_dir.to_string_lossy().to_string(),
         release_url: toolchain_release_url(),
         archive_parts: TOOLCHAIN_ARCHIVE_PARTS.iter().map(|s| (*s).to_string()).collect(),
-        compressed_size_label: "~5.6 GB (3 parts)".to_string(),
-        uncompressed_size_label: "~22 GB".to_string(),
+        compressed_size_label: "~3 GB (2 parts)".to_string(),
+        uncompressed_size_label: "~15 GB".to_string(),
         manifest_present: manifest_path().exists(),
         profiles_ready,
         profiles_total,

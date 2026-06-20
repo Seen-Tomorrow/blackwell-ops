@@ -7,16 +7,30 @@ use std::sync::OnceLock;
 use crate::fit_scanner::{parse_fit_breakdown, parse_gpu_components, FitScanRaw, MemoryBreakdownTable};
 
 pub const TOM_MTP_SKIP_NOTE: &str =
-    "MTP model (nextn_predict_layers) — Tom does not load draft/MTP models yet; FIT scan skipped";
+    "MTP model — Tom does not load draft/MTP models yet";
 
 pub const TOM_TENSOR_SKIP_NOTE: &str =
     "Tensor split — Tom llama-fit-params does not support SPLIT_MODE_TENSOR yet; no FIT data until tool update";
 
-/// MTP / draft model — GGUF meta scan (`nextn_predict_layers` > 0 in model_cache).
+/// MTP / draft model — GGUF meta (`nextn_predict_layers`), HF repo, or path heuristics.
 pub fn is_mtp_model(model_path: &str) -> bool {
-    crate::model_cache::get_cached(model_path)
+    if crate::model_cache::get_cached(model_path)
         .map(|m| m.nextn_predict_layers > 0)
         .unwrap_or(false)
+    {
+        return true;
+    }
+
+    if let Some(hf) = crate::model_cache::get_hf_metadata(model_path) {
+        let id_lower = hf.hf_model_id.to_lowercase();
+        let repo_lower = hf.repo_name.to_lowercase();
+        if id_lower.contains("mtp") || repo_lower.contains("mtp") {
+            return true;
+        }
+    }
+
+    let path_lower = model_path.replace('\\', "/").to_lowercase();
+    path_lower.contains("mtp-gguf") || path_lower.contains("-mtp-")
 }
 
 /// Whole-model skip (MTP).
@@ -171,5 +185,12 @@ llama_params_fit_impl: projected to use 15480 MiB of device memory vs. 190564 Mi
     fn tensor_point_skip_note() {
         assert!(point_skip_note("split_tensor_64k", "tensor").is_some());
         assert!(point_skip_note("base", "none").is_none());
+    }
+
+    #[test]
+    fn is_mtp_model_detects_mtp_gguf_path() {
+        assert!(is_mtp_model(
+            r"C:\models\unsloth\Qwen3.6-27B-MTP-GGUF\Qwen3.6-27B-UD-IQ2_XXS.gguf"
+        ));
     }
 }

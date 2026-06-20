@@ -30,6 +30,7 @@ import { effectiveGroupColumn } from "../lib/configColumnLayout";
 import { isEmptyGroupDeletable } from "../lib/groupLayoutUtils";
 import { useGroupLayoutControls } from "../hooks/useGroupLayoutControls";
 import { dispatchAppEvent, EVENTS } from "../lib/events";
+import { tomMtpBlocked, TOM_MTP_SKIP_MESSAGE } from "../lib/tomMtp";
 import { DEFAULT_BINARY_PROFILE, ENV_META, ENV_ORDER, normalizeBinaryProfile, type Env } from "../lib/foundry_constants";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -1133,6 +1134,10 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   const handleAddToStack = useCallback(() => {
     if (!model) return;
     if (selectedProfileIsBuilding) return;
+    if (tomMtpBlocked(effectiveBackendType, model)) {
+      dispatchAppEvent(EVENTS.launchError, { message: TOM_MTP_SKIP_MESSAGE });
+      return;
+    }
     const now = Date.now();
     if (now - lastLaunchAtRef.current < 60) return;
     lastLaunchAtRef.current = now;

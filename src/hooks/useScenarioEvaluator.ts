@@ -4,6 +4,7 @@ import type { ModelEntry, EngineConfig, GpuInfo, StackEntry, SystemInfo, VramMan
 import { evaluate, applyFitValidation, committedSlotsFromStack, committedStackKey, parseCtx, type ScenarioInput, type FitPoint } from "../services/vram/scenarios/scenarios_factory";
 import { attachMemorySource, MEMORY_SOURCE_LABELS } from "../services/vram/memorySource";
 import { gpuMemoryBucketKey, vramManifestSnapshotEqual } from "../lib/telemetryGpu";
+import { tomMtpBlocked, toastTomMtpSkip, TOM_MTP_SKIP_MESSAGE } from "../lib/tomMtp";
 
 interface LearnedVramFitAttempt {
   vram_mib: number;
@@ -392,9 +393,14 @@ export function useScenarioEvaluator({
   // FIT validation — runs llama-fit-params with current config, re-evaluates scenario with measured total
   const validate = useCallback(async () => {
     if (!model) return;
+    const curConfig = configRef.current;
+    const providerId = curConfig.backend_type || "";
+    if (tomMtpBlocked(providerId, model)) {
+      toastTomMtpSkip();
+      return;
+    }
     setIsValidating(true);
     try {
-      const curConfig = configRef.current;
       const result: FitScanResult = await invoke("fit_scan_model", {
         modelPath: model.path,
         providerId: curConfig.backend_type || null,
@@ -481,7 +487,13 @@ export function useScenarioEvaluator({
         lastScenarioDebugNameRef.current = newManifest.scenario;
       }
     } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
       console.error("[FitValidate]", e);
+      if (msg.includes(TOM_MTP_SKIP_MESSAGE) || msg.toLowerCase().includes("mtp")) {
+        toastTomMtpSkip(msg);
+      } else {
+        window.__blackopsToasts?.addToast(`FIT probe failed: ${msg}`, "error");
+      }
     } finally {
       setIsValidating(false);
     }

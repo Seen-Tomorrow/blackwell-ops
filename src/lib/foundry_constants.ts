@@ -118,5 +118,4 @@ export const TOOLCHAIN_RELEASE_URL =
 export const TOOLCHAIN_ARCHIVE_PARTS = [
   "toolchain.7z.001",
   "toolchain.7z.002",
-  "toolchain.7z.003",
 ] as const;
