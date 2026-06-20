@@ -1362,14 +1362,30 @@ html, body, #root {
 }
 
 /* ── Launch button ack — single subtle pulse, no click block ─── */
-@keyframes launchAckPulse {
-  0% { border-color: rgba(74, 222, 128, 0.35); background-color: rgba(74, 222, 128, 0.06); }
-  40% { border-color: rgba(74, 222, 128, 0.75); background-color: rgba(74, 222, 128, 0.14); }
-  100% { border-color: rgba(74, 222, 128, 0.35); background-color: rgba(74, 222, 128, 0.06); }
+@keyframes launchAckPulseChip {
+  0%, 100% {
+    border-color: color-mix(in srgb, var(--theme-chip-active-border) 68%, transparent);
+    background-color: color-mix(in srgb, var(--theme-chip-solid-bg) 52%, var(--theme-industrial-bg) 48%);
+  }
+  40% {
+    border-color: var(--theme-chip-active-border);
+    background-color: color-mix(in srgb, var(--theme-chip-solid-bg) 68%, var(--theme-industrial-bg) 32%);
+  }
+}
+
+@keyframes launchAckPulseAccent {
+  0%, 100% {
+    border-color: color-mix(in srgb, var(--theme-accent-bright) 68%, transparent);
+    background-color: color-mix(in srgb, var(--theme-accent) 52%, var(--theme-industrial-bg) 48%);
+  }
+  40% {
+    border-color: var(--theme-accent-bright);
+    background-color: color-mix(in srgb, var(--theme-accent) 68%, var(--theme-industrial-bg) 32%);
+  }
 }
 
 .ignite-btn.launch-ack {
-  animation: launchAckPulse 0.14s ease-out;
+  animation: launchAckPulseChip 0.14s ease-out;
 }
 
 /* ── Toast notification styles ─────────────────────────────────── */
@@ -1497,25 +1513,153 @@ html, body, #root {
 
 /* glitch-text removed — unused + glitchFlicker keyframes never defined */
 
-/* Ignite button styles */
+/* Ignite — per-theme accent; ARCTIC override below */
 .ignite-btn {
-  background: rgba(74, 222, 128, 0.14);
-  border: 1px solid rgba(74, 222, 128, 0.52);
-  color: #4ade80;
   text-transform: uppercase;
   font-weight: 600;
   position: relative;
   transition: border-color 0.12s ease, background-color 0.12s ease, color 0.12s ease;
 }
 
-.ignite-btn:hover:not(:disabled) {
-  border-color: rgba(74, 222, 128, 0.68);
-  background: rgba(74, 222, 128, 0.2);
+/* MATRIX — param config chip green (value-chip-active) */
+[data-theme="matrix"] .ignite-btn,
+[data-theme="matrix"] [data-config-panel] .config-launch-btn {
+  background: color-mix(in srgb, var(--theme-chip-solid-bg) 58%, var(--theme-industrial-bg) 42%);
+  border: 1px solid color-mix(in srgb, var(--theme-chip-active-border) 82%, transparent);
+  color: var(--theme-chip-active-text);
 }
 
-.ignite-btn:active:not(:disabled) {
-  border-color: rgba(74, 222, 128, 0.78);
-  background: rgba(74, 222, 128, 0.26);
+[data-theme="matrix"] .ignite-btn:hover:not(:disabled),
+[data-theme="matrix"] [data-config-panel] .config-launch-btn:hover:not(:disabled) {
+  border-color: var(--theme-chip-active-border);
+  background: color-mix(in srgb, var(--theme-chip-solid-bg) 68%, var(--theme-industrial-bg) 32%);
+  color: var(--theme-chip-hover-text);
+}
+
+[data-theme="matrix"] .ignite-btn:active:not(:disabled),
+[data-theme="matrix"] [data-config-panel] .config-launch-btn:active:not(:disabled) {
+  border-color: var(--theme-chip-solid-bg);
+  background: color-mix(in srgb, var(--theme-chip-solid-bg) 72%, var(--theme-industrial-bg) 28%);
+  color: var(--theme-chip-solid-text);
+}
+
+[data-theme="matrix"] .ignite-btn.launch-ack {
+  animation: launchAckPulseChip 0.14s ease-out;
+}
+
+/* AMBER + CYAN — theme accent (not chip outline) */
+[data-theme="amber"] .ignite-btn,
+[data-theme="amber"] [data-config-panel] .config-launch-btn,
+[data-theme="cyan"] .ignite-btn,
+[data-theme="cyan"] [data-config-panel] .config-launch-btn {
+  background: color-mix(in srgb, var(--theme-accent) 58%, var(--theme-industrial-bg) 42%);
+  border: 1px solid color-mix(in srgb, var(--theme-accent-bright) 78%, transparent);
+  color: var(--theme-accent-bright);
+}
+
+[data-theme="amber"] .ignite-btn:hover:not(:disabled),
+[data-theme="amber"] [data-config-panel] .config-launch-btn:hover:not(:disabled),
+[data-theme="cyan"] .ignite-btn:hover:not(:disabled),
+[data-theme="cyan"] [data-config-panel] .config-launch-btn:hover:not(:disabled) {
+  border-color: var(--theme-accent-bright);
+  background: color-mix(in srgb, var(--theme-accent) 68%, var(--theme-industrial-bg) 32%);
+  color: var(--theme-accent-bright);
+}
+
+[data-theme="amber"] .ignite-btn:active:not(:disabled),
+[data-theme="amber"] [data-config-panel] .config-launch-btn:active:not(:disabled),
+[data-theme="cyan"] .ignite-btn:active:not(:disabled),
+[data-theme="cyan"] [data-config-panel] .config-launch-btn:active:not(:disabled) {
+  border-color: var(--theme-accent);
+  background: color-mix(in srgb, var(--theme-accent) 74%, var(--theme-industrial-bg) 26%);
+  color: var(--theme-selection-text);
+}
+
+[data-theme="amber"] .ignite-btn.launch-ack,
+[data-theme="cyan"] .ignite-btn.launch-ack {
+  animation: launchAckPulseAccent 0.14s ease-out;
+}
+
+/* SLATE — provider-pill-active amber (selected provider chip) */
+[data-theme="slate"] .ignite-btn,
+[data-theme="slate"] [data-config-panel] .config-launch-btn {
+  background: var(--theme-provider-pill-active-bg);
+  border: 1px solid var(--theme-provider-pill-active-border);
+  color: var(--theme-provider-pill-active-text);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--theme-provider-pill-active-bg) 40%, transparent);
+}
+
+[data-theme="slate"] .ignite-btn:hover:not(:disabled),
+[data-theme="slate"] [data-config-panel] .config-launch-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--theme-provider-pill-active-bg) 82%, #ffffff 18%);
+  border-color: var(--theme-provider-pill-hover-border);
+  color: var(--theme-provider-pill-active-text);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--theme-provider-pill-active-bg) 48%, transparent);
+}
+
+[data-theme="slate"] .ignite-btn:active:not(:disabled),
+[data-theme="slate"] [data-config-panel] .config-launch-btn:active:not(:disabled) {
+  background: color-mix(in srgb, var(--theme-provider-pill-active-bg) 78%, var(--theme-provider-pill-active-text) 22%);
+  border-color: color-mix(in srgb, var(--theme-provider-pill-active-border) 70%, var(--theme-provider-pill-active-text) 30%);
+  color: var(--theme-provider-pill-active-text);
+  box-shadow: 0 0 4px color-mix(in srgb, var(--theme-provider-pill-active-bg) 28%, transparent);
+}
+
+@keyframes launchAckPulseSlate {
+  0%, 100% {
+    border-color: var(--theme-provider-pill-active-border);
+    background-color: var(--theme-provider-pill-active-bg);
+    color: var(--theme-provider-pill-active-text);
+  }
+  40% {
+    border-color: var(--theme-provider-pill-hover-border);
+    background-color: color-mix(in srgb, var(--theme-provider-pill-active-bg) 82%, #ffffff 18%);
+    color: var(--theme-provider-pill-active-text);
+  }
+}
+
+[data-theme="slate"] .ignite-btn.launch-ack {
+  animation: launchAckPulseSlate 0.14s ease-out;
+}
+
+/* ARCTIC — launch: opaque forest green on light brushed bezel */
+[data-theme="arctic"] .ignite-btn,
+[data-theme="arctic"] [data-config-panel] .config-launch-btn {
+  background: color-mix(in srgb, #166534 50%, #b0bcc6 50%);
+  border-color: color-mix(in srgb, #14532d 90%, transparent);
+  color: #052e16;
+}
+
+[data-theme="arctic"] .ignite-btn:hover:not(:disabled),
+[data-theme="arctic"] [data-config-panel] .config-launch-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, #15803d 58%, #a4b2be 42%);
+  border-color: #14532d;
+  color: #022c15;
+}
+
+[data-theme="arctic"] .ignite-btn:active:not(:disabled),
+[data-theme="arctic"] [data-config-panel] .config-launch-btn:active:not(:disabled) {
+  background: color-mix(in srgb, #14532d 65%, #98a8b4 35%);
+  border-color: #052e16;
+}
+
+@keyframes launchAckPulseArctic {
+  0% {
+    border-color: color-mix(in srgb, #14532d 70%, transparent);
+    background-color: color-mix(in srgb, #166534 46%, #b0bcc6 54%);
+  }
+  40% {
+    border-color: #14532d;
+    background-color: color-mix(in srgb, #15803d 62%, #a4b2be 38%);
+  }
+  100% {
+    border-color: color-mix(in srgb, #14532d 70%, transparent);
+    background-color: color-mix(in srgb, #166534 46%, #b0bcc6 54%);
+  }
+}
+
+[data-theme="arctic"] .ignite-btn.launch-ack {
+  animation: launchAckPulseArctic 0.14s ease-out;
 }
 
 /* Provider pill button — themed amber/secondary */
@@ -6596,7 +6740,7 @@ select option {
 }
 
 .config-launch-btn:not(:disabled):not(.launch-ack) {
-  box-shadow: 0 0 12px 1px rgba(74, 222, 128, 0.14);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35), 0 0 10px 1px var(--theme-accent-glow);
   overflow: hidden;
 }
 
@@ -6605,8 +6749,8 @@ select option {
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  box-shadow: inset 0 1px 0 rgba(74, 222, 128, 0.12);
-  opacity: 0.65;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--theme-chip-active-text) 22%, transparent);
+  opacity: 0.85;
   pointer-events: none;
 }
 
@@ -6622,7 +6766,7 @@ select option {
   background: linear-gradient(
     105deg,
     transparent 38%,
-    rgba(74, 222, 128, 0.14) 50%,
+    color-mix(in srgb, var(--theme-accent-bright) 18%, transparent) 50%,
     transparent 62%
   );
   transform: translateX(-130%);
@@ -6637,6 +6781,57 @@ select option {
 .config-launch-btn:active:not(:disabled) {
   transform: scale(0.992) translateY(0);
   transition: transform 0.08s ease;
+}
+
+/* Launch dock shine/glow — per-theme (must follow generic rules above) */
+[data-theme="matrix"] .config-launch-btn:not(:disabled):not(.launch-ack)::before {
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--theme-chip-active-text) 22%, transparent);
+}
+
+[data-theme="matrix"] .config-launch-btn:not(:disabled)::after {
+  background: linear-gradient(
+    105deg,
+    transparent 38%,
+    color-mix(in srgb, var(--theme-chip-hover-text) 18%, transparent) 50%,
+    transparent 62%
+  );
+}
+
+[data-theme="slate"] .config-launch-btn:not(:disabled):not(.launch-ack) {
+  box-shadow:
+    0 1px 4px rgba(0, 0, 0, 0.32),
+    0 0 6px color-mix(in srgb, var(--theme-provider-pill-active-bg) 40%, transparent);
+}
+
+[data-theme="slate"] .config-launch-btn:not(:disabled):not(.launch-ack)::before {
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #ffffff 22%, transparent);
+}
+
+[data-theme="slate"] .config-launch-btn:not(:disabled)::after {
+  background: linear-gradient(
+    105deg,
+    transparent 38%,
+    color-mix(in srgb, #ffffff 20%, transparent) 50%,
+    transparent 62%
+  );
+}
+
+[data-theme="arctic"] .config-launch-btn:not(:disabled):not(.launch-ack) {
+  box-shadow: 0 1px 4px rgba(20, 83, 45, 0.3), 0 0 8px 1px rgba(20, 83, 45, 0.14);
+}
+
+[data-theme="arctic"] .config-launch-btn:not(:disabled):not(.launch-ack)::before {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  opacity: 0.9;
+}
+
+[data-theme="arctic"] .config-launch-btn:not(:disabled)::after {
+  background: linear-gradient(
+    105deg,
+    transparent 38%,
+    rgba(255, 255, 255, 0.2) 50%,
+    transparent 62%
+  );
 }
 
 /* Launch dock — pinned to bottom of engine config panel, clears fixed footer/console */

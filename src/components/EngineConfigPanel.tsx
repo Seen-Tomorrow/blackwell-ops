@@ -1220,7 +1220,23 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     onLaunch,
   ]);
 
+  const launchDisabled =
+    !model || vramCalc.manifest?.scenario === "HW_LOCKED" || selectedProfileIsBuilding;
+
   // Keyboard launch — Ctrl+Enter triggers ignite (must track handleAddToStack for fresh manifest)
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (!e.ctrlKey || (e.key !== "Enter" && e.code !== "NumpadEnter")) return;
+      if (launchDisabled) return;
+      e.preventDefault();
+      e.stopPropagation();
+      handleAddToStack();
+    };
+    window.addEventListener("keydown", handler, true);
+    return () => window.removeEventListener("keydown", handler, true);
+  }, [launchDisabled, handleAddToStack]);
+
+  // Legacy path when MODELS_KEYBOARD_NAV_ENABLED is turned back on
   useEffect(() => {
     const handler = () => {
       handleAddToStack();
@@ -1582,7 +1598,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             <div className="config-launch-dock__action">
               <button
                 onClick={handleAddToStack}
-                disabled={!model || vramCalc.manifest?.scenario === "HW_LOCKED" || selectedProfileIsBuilding}
+                disabled={launchDisabled}
                 className={`w-full h-full min-h-0 min-w-0 ignite-btn config-launch-btn px-4 py-2 text-[12px] font-mono tracking-[0.22em] rounded-sm disabled:opacity-40 disabled:cursor-not-allowed flex flex-col items-center justify-center gap-1 ${launchAck ? "launch-ack" : ""}`}
               >
                 <span>LAUNCH ENGINE</span>

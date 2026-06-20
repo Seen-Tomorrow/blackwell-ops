@@ -382,7 +382,7 @@ pub fn install_info() -> Result<ToolchainInstallInfo, String> {
         release_url: toolchain_release_url(),
         archive_parts: TOOLCHAIN_ARCHIVE_PARTS.iter().map(|s| (*s).to_string()).collect(),
         compressed_size_label: "~3 GB (2 parts)".to_string(),
-        uncompressed_size_label: "~15 GB".to_string(),
+        uncompressed_size_label: "~13.6 GB".to_string(),
         manifest_present: manifest_path().exists(),
         profiles_ready,
         profiles_total,

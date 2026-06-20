@@ -124,7 +124,8 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
 
   useEffect(() => {
     if (didAutoExpandRef.current || providers.length === 0) return;
-    setExpandedIds(new Set(providers.map((p) => p.id)));
+    const defaultGgml = providers.find((p) => p.id === DEFAULT_PROVIDER_ID);
+    setExpandedIds(defaultGgml ? new Set([defaultGgml.id]) : new Set());
     didAutoExpandRef.current = true;
   }, [providers]);
 

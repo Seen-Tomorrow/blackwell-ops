@@ -1,5 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
 
+/** Catalog list/config keyboard nav — off; Ctrl+Enter launch lives in EngineConfigPanel. */
+export const MODELS_KEYBOARD_NAV_ENABLED = false;
+
 export type KeyboardZone = "search" | "config" | null;
 
 function isEnterKey(e: KeyboardEvent): boolean {
@@ -18,6 +21,7 @@ export function useKeyboardNav({ modelCount, onSelectModel, onLaunch }: UseKeybo
   const [zone, setZone] = useState<KeyboardZone>("search");
 
   useEffect(() => {
+    if (!MODELS_KEYBOARD_NAV_ENABLED) return;
     if (highlightIndex >= modelCount) {
       setHighlightIndex(Math.max(0, modelCount - 1));
     }
@@ -35,6 +39,7 @@ export function useKeyboardNav({ modelCount, onSelectModel, onLaunch }: UseKeybo
   }, [modelCount, zone]);
 
   useEffect(() => {
+    if (!MODELS_KEYBOARD_NAV_ENABLED) return;
     window.addEventListener("keydown", handleArrowKeys);
     return () => window.removeEventListener("keydown", handleArrowKeys);
   }, [handleArrowKeys]);
@@ -56,11 +61,13 @@ export function useKeyboardNav({ modelCount, onSelectModel, onLaunch }: UseKeybo
   }, [highlightIndex, onLaunch, onSelectModel]);
 
   useEffect(() => {
+    if (!MODELS_KEYBOARD_NAV_ENABLED) return;
     window.addEventListener("keydown", handleEnter, true);
     return () => window.removeEventListener("keydown", handleEnter, true);
   }, [handleEnter]);
 
   useEffect(() => {
+    if (!MODELS_KEYBOARD_NAV_ENABLED) return;
     const handler = (e: KeyboardEvent) => {
       if (e.key === "/") {
         e.preventDefault();
@@ -74,6 +81,7 @@ export function useKeyboardNav({ modelCount, onSelectModel, onLaunch }: UseKeybo
   }, []);
 
   useEffect(() => {
+    if (!MODELS_KEYBOARD_NAV_ENABLED) return;
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape" && zone === "config") {
         setZone("search");
@@ -84,11 +92,13 @@ export function useKeyboardNav({ modelCount, onSelectModel, onLaunch }: UseKeybo
   }, [zone]);
 
   useEffect(() => {
+    if (!MODELS_KEYBOARD_NAV_ENABLED) return;
     const els = document.querySelectorAll("#model-table-container [data-model-path]");
     els[highlightIndex]?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }, [highlightIndex]);
 
   useEffect(() => {
+    if (!MODELS_KEYBOARD_NAV_ENABLED) return;
     if (zone !== "config") return;
 
     const handler = (e: KeyboardEvent) => {
@@ -145,6 +155,7 @@ export function useKeyboardNav({ modelCount, onSelectModel, onLaunch }: UseKeybo
   }, [zone]);
 
   useEffect(() => {
+    if (!MODELS_KEYBOARD_NAV_ENABLED) return;
     if (zone !== "config") return;
     setTimeout(() => {
       const firstChip = document.querySelector('[data-config-panel] .value-chip, [data-config-panel] .value-chip-active') as HTMLButtonElement | null;
