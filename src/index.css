@@ -1400,7 +1400,81 @@ html, body, #root {
   pointer-events: none;
 }
 
+/* Inline toast row — MODELS catalog header + other tabs below app header */
+.catalog-top-bar {
+  min-height: 1.65rem;
+}
+
+.catalog-toast-anchor {
+  width: 80%;
+  max-width: 80%;
+  min-width: 0;
+  margin-left: auto;
+  height: 1.3rem;
+  display: flex;
+  align-items: center;
+}
+
+.app-toast-strip {
+  flex-shrink: 0;
+  width: 100%;
+  min-height: 1.3rem;
+  display: flex;
+  align-items: center;
+  position: relative;
+  z-index: 25;
+  pointer-events: none;
+}
+
+.app-toast-anchor {
+  width: 75%;
+  max-width: 75%;
+  min-width: 0;
+  height: 1.3rem;
+  display: flex;
+  align-items: center;
+}
+
+.toast-container--inline {
+  position: static;
+  top: auto;
+  right: auto;
+  z-index: auto;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  justify-content: flex-end;
+  gap: 5px;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.toast-container--inline .toast-item {
+  flex: 0 0 auto;
+  min-width: 0;
+  max-width: min(220px, 26vw);
+  padding: 2px 8px;
+  font-size: 8px;
+  line-height: 1.2;
+  animation: toastSlideInInline 0.2s ease-out forwards;
+}
+
+.toast-container--inline .toast-item__message {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@keyframes toastSlideInInline {
+  from { transform: translateX(-10px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
 .toast-item {
+  position: relative;
   pointer-events: auto;
   min-width: 280px;
   max-width: 400px;

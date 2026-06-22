@@ -34,6 +34,7 @@ import {
 } from "../lib/events";
 import { resolveAppShellWidthPx } from "../lib/uiShell";
 import { isMobileDevice } from "../lib/utils";
+import { ToastAnchor } from "./Toast";
 
 const MIN_ZOOM = 0.7;
 const MAX_ZOOM = 1.5;
@@ -312,6 +313,12 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
           </div>
         </div>
       </header>
+
+      {activeTab !== "catalog" && (
+        <div className="app-toast-strip">
+          <ToastAnchor className="app-toast-anchor" />
+        </div>
+      )}
 
       {/* Main content area */}
       <main className="flex-1 min-h-0 overflow-hidden relative z-10">
