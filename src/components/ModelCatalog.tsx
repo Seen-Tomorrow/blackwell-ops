@@ -16,7 +16,7 @@ interface ModelCatalogProps {
   onReload: () => void;
   providers?: ProviderConfig[];
   committedVramMib: number;
-  isPowerUser: boolean;
+
   scanningPath: string | null;
   setScanningPath: (p: string | null) => void;
   batchScanState: { active: boolean; scanned: number; failed: number; total: number };
@@ -31,7 +31,7 @@ const sortLabels: Record<string, string> = {
 };
 
 export default function ModelCatalog(props: ModelCatalogProps) {
-  const { models, onLaunch, error, onReload, providers: externalProviders, committedVramMib, isPowerUser, scanningPath, setScanningPath, batchScanState, setBatchScanState, stack, setupGuide, catalogHfUpdates } = props;
+  const { models, onLaunch, error, onReload, providers: externalProviders, committedVramMib, scanningPath, setScanningPath, batchScanState, setBatchScanState, stack, setupGuide, catalogHfUpdates } = props;
   const { gpus, systemInfo } = useTelemetry();
   const [showScanMenu, setShowScanMenu] = useState(false);
 
@@ -280,7 +280,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
             gpus={gpus}
             providers={externalProviders}
             committedVramMib={committedVramMib}
-            isPowerUser={isPowerUser}
+
             systemInfo={systemInfo}
             stack={stack}
             onLaunch={onLaunch}

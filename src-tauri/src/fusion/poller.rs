@@ -47,6 +47,21 @@ pub struct TokenInfo {
     pub has_new_line: bool,
 }
 
+/// Lightweight liveness probe — no JSON body parse beyond status=ok.
+pub async fn poll_health_ok(client: &reqwest::Client, port: u16) -> bool {
+    let url = format!("http://127.0.0.1:{port}/health");
+    let Ok(resp) = client.get(&url).send().await else {
+        return false;
+    };
+    if !resp.status().is_success() {
+        return false;
+    }
+    let Ok(body) = resp.json::<serde_json::Value>().await else {
+        return false;
+    };
+    body["status"].as_str() == Some("ok")
+}
+
 /// Poll /slots endpoint. Returns per-slot snapshots or error.
 pub async fn poll_slots(client: &reqwest::Client, port: u16) -> Result<Vec<SlotData>, String> {
     poll_slots_on(client, "localhost", port).await

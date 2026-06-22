@@ -297,8 +297,15 @@ static DISK_IO_POLLER_STARTED: AtomicBool = AtomicBool::new(false);
 /// PDH sample interval — matches FusionBooter frontend poll (~350ms) without PowerShell spawn overhead.
 const DISK_IO_POLL_INTERVAL_MS: u64 = 300;
 
+fn disk_io_poller_disabled() -> bool {
+    crate::debug_flags::flags().disable_disk_io
+}
+
 /// Start the single global disk I/O poller (idempotent). Called from app setup and first `scan_disk_io`.
 pub fn ensure_disk_io_poller() {
+    if disk_io_poller_disabled() {
+        return;
+    }
     if DISK_IO_POLLER_STARTED.swap(true, Ordering::SeqCst) {
         return;
     }

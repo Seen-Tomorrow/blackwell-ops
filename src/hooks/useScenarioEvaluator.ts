@@ -152,6 +152,14 @@ export function useScenarioEvaluator({
   fitStyleRef.current = fitStyle;
   const lastScenarioDebugModelRef = useRef("");
   const lastScenarioDebugNameRef = useRef("");
+  const probeSessionRef = useRef<{
+    configKey: string;
+    validatedVramMib: number;
+    validatedGpuBreakdownMib?: number[];
+    validatedHostMib?: number;
+    validatedComponentsMib?: VramManifest["validatedComponentsMib"];
+    fitProbeMeasuredAt: string;
+  } | null>(null);
   const hadSysInfoRef = useRef(systemInfo != null);
   const runEvaluationRef = useRef<() => void>(() => {});
   const scheduleEvaluationRef = useRef<() => void>(() => {});
@@ -170,6 +178,10 @@ export function useScenarioEvaluator({
   // Config fingerprint — only keys that affect scenario evaluation.
   // Changes here trigger re-eval (HW buttons, param chips). Telemetry noise doesn't touch these.
   const configKey = `${config.device || ""}|${config.split || ""}|${config["offload_mode"] || ""}|${config.ctx || ""}|${config["kv_quant"] || ""}|${config.batch ?? ""}|${config.ubatch ?? ""}|${config.parallel ?? ""}|${config["flash_attn"] || ""}|${config.vision || ""}|${config["unified_kv"] || ""}|${config["rope_scaling"] || ""}|${config["rope_scale"] ?? ""}|${config.gpu_sync || ""}|${config.cache_ram || ""}|${config.backend_type || ""}|auto=${autoVramLaunch ? "1" : "0"}`;
+
+  useEffect(() => {
+    probeSessionRef.current = null;
+  }, [configKey]);
 
   // Stack fingerprint — changes when committed engines (RUNNING/LOADING) start/stop or VRAM shifts.
   const stackKey = committedStackKey(stack);
@@ -237,7 +249,18 @@ export function useScenarioEvaluator({
     };
 
     try {
-      const result = evaluate(input);
+      let result = evaluate(input);
+      const session = probeSessionRef.current;
+      if (session && session.configKey === lastConfigKeyRef.current) {
+        result = attachMemorySource({
+          ...result,
+          validatedVramMib: session.validatedVramMib,
+          validatedGpuBreakdownMib: session.validatedGpuBreakdownMib,
+          validatedHostMib: session.validatedHostMib,
+          validatedComponentsMib: session.validatedComponentsMib,
+          fitProbeMeasuredAt: session.fitProbeMeasuredAt,
+        }, input);
+      }
       commitManifest(result);
 
       // Scenario debug emission (deduped by model path + scenario name)
@@ -467,6 +490,15 @@ export function useScenarioEvaluator({
         input,
       );
 
+      probeSessionRef.current = {
+        configKey: lastConfigKeyRef.current || configKey,
+        validatedVramMib: result.vram_mib,
+        validatedGpuBreakdownMib: result.gpu_breakdown_mib,
+        validatedHostMib: result.host_mib,
+        validatedComponentsMib: result.gpu_components_mib ?? null,
+        fitProbeMeasuredAt: probeMeasuredAt,
+      };
+
       commitManifest(validatedManifest);
 
      // Validation debug emission — emit when scenario changed or validation newly applied
@@ -497,7 +529,7 @@ export function useScenarioEvaluator({
     } finally {
       setIsValidating(false);
     }
-  }, [model, commitManifest]);
+  }, [model, configKey, commitManifest]);
 
   return { manifest, isEvaluating, isValidating, validate };
 }

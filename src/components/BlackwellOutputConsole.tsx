@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
+import { frontendPollEnabled } from "../lib/debugFlags";
 
 interface OutputLine {
   timestamp: string;
@@ -128,9 +129,11 @@ export default function BlackwellOutputConsole({
   useEffect(() => {
     if (isOpen) {
       fetchBuffer(activeCategory);
-      pollInterval.current = window.setInterval(() => {
-        fetchBuffer(activeCategory, true);
-      }, 250);
+      if (frontendPollEnabled()) {
+        pollInterval.current = window.setInterval(() => {
+          fetchBuffer(activeCategory, true);
+        }, 250);
+      }
     } else if (pollInterval.current) {
       clearInterval(pollInterval.current);
       pollInterval.current = null;

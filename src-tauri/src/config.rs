@@ -815,6 +815,7 @@ fn user_edited_param_from_template(tp: &crate::templates::ProviderDefaultParam, 
         factory_default: tp.default.clone(),
         sub_params,
         dock: tp.dock.clone(),
+        essential: None,
     }
 }
 
@@ -2167,6 +2168,7 @@ fn merge_user_params_with_template(
                     })
                 }),
                 dock: tmpl.dock.clone(),
+                essential: None,
             };
             merged.push(param);
         }
@@ -2694,6 +2696,7 @@ mod merge_tests {
             factory_default: serde_json::Value::String(default.to_string()),
             sub_params: None,
             dock: String::new(),
+            essential: None,
         }
     }
 

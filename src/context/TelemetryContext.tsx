@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { GpuInfo, CpuInfo, SystemInfo } from "../lib/types";
 import { gpuScanSnapshotEqual } from "../lib/telemetryGpu";
 import { useTauriListen } from "../hooks/useTauriListen";
+import { frontendPollEnabled } from "../lib/debugFlags";
 
 interface TelemetryState {
   gpus: GpuInfo[];
@@ -61,6 +62,7 @@ export function TelemetryProvider({
   gpuPollTierRef.current = gpuPollTier;
 
   const pollGpu = useCallback(async () => {
+    if (!frontendPollEnabled()) return;
     try {
       const data = await invoke<GpuInfo[]>("scan_gpus");
       const bucketMib = gpuVramBucketMib(gpuPollTierRef.current);
@@ -71,6 +73,7 @@ export function TelemetryProvider({
   }, []);
 
   const pollCpu = useCallback(async () => {
+    if (!frontendPollEnabled()) return;
     try {
       const data = await invoke<CpuInfo>("scan_cpu");
       setCpu(data);

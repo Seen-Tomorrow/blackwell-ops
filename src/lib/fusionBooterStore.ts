@@ -1,4 +1,5 @@
 import { listen } from "@tauri-apps/api/event";
+import { frontendPollEnabled } from "./debugFlags";
 import type { LogBatch, SystemEvent } from "./types";
 import {
   LOAD_PHASE_ORDER,
@@ -174,15 +175,19 @@ function ensureGlobalListeners() {
     clearAllBooterSessions();
   });
 
-  setInterval(tickPhaseLadder, 40);
+  if (frontendPollEnabled()) {
+    setInterval(tickPhaseLadder, 40);
+  }
 
-  setInterval(() => {
+  if (frontendPollEnabled()) {
+    setInterval(() => {
     for (const session of sessions.values()) {
       if (session.loadFailed || session.phase === "ready") continue;
       session.pingAttempts += 1;
       bump(session);
     }
-  }, 500);
+    }, 500);
+  }
 }
 
 export function subscribeBooterSession(slotIdx: number, cb: () => void): () => void {

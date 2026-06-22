@@ -54,8 +54,10 @@ export function vramManifestSnapshotEqual(
     || prev.gpuLayers !== next.gpuLayers
     || prev.ramLayers !== next.ramLayers
     || prev.validatedVramMib !== next.validatedVramMib
+    || prev.fitProbeMeasuredAt !== next.fitProbeMeasuredAt
     || prev.learnedFromPreviousRun !== next.learnedFromPreviousRun
     || prev.autoLayerSplit !== next.autoLayerSplit
+    || prev.memorySource?.kind !== next.memorySource?.kind
   ) {
     return false;
   }

@@ -9,7 +9,7 @@ import { FORECAST_PHOSPHOR_HEIGHT_PX } from "../lib/onboardingDisplay";
 import GpuTopology from "./GpuTopology";
 import FusionOverlay from "./FusionOverlay";
 import MoeBadge from "./MoeBadge";
-import MemModeToggle from "./MemModeToggle";
+import FitLaunchToggle from "./FitLaunchToggle";
 import MemorySourcePanel, { manifestHasFitProbe } from "./MemorySourcePanel";
 import { useForecastContentHeight } from "../hooks/useForecastContentHeight";
 import { useFusionSlot } from "../hooks/useFusionData";
@@ -37,14 +37,12 @@ interface VramBadgeProps {
   gpuLoadTargetsMib?: Record<number, number>;
   offloadMode?: string; // Current Offload_Mode config value (e.g., "moe_optimal")
   onMoeSuggestionClick?: () => void; // Toggle offload_mode regular ↔ moe_optimal
-  /** Hide FIT validate button (Auto VRAM launch handles tuning). */
-  hideValidate?: boolean;
-  /** Hide MOE_OPTIMAL badge (not applicable in Auto VRAM mode). */
+  /** Hide MOE_OPTIMAL badge when not applicable. */
   hideMoeBadge?: boolean;
-  /** Provider supports auto VRAM / --fit launch path. */
-  memModeAvailable?: boolean;
-  memModeAuto?: boolean;
-  onMemModeChange?: (auto: boolean) => void;
+  /** Provider supports AUTO FIT launch path. */
+  fitLaunchAvailable?: boolean;
+  fitLaunchAuto?: boolean;
+  onFitLaunchChange?: (autoFit: boolean) => void;
   className?: string;
   modelName?: string;
   modelQuant?: string;
@@ -137,8 +135,8 @@ function VramBadgeFusionLayer({
 export default function VramBadge({
   manifest, gpus, modelMeta, selectedGpuIndices, onDeviceSelect, isValidating, onValidate,
   isModelRunning, activeEngineAlias, activeEnginePort, selectedSlotIdx, supportsFusion = true, engineStatus,
-  gpuMask = "", vramTargetMib, modelLayerTotal, gpuLoadTargetsMib, offloadMode, onMoeSuggestionClick, hideValidate = false, hideMoeBadge = false,
-  memModeAvailable = false, memModeAuto = true, onMemModeChange, className,
+  gpuMask = "", vramTargetMib, modelLayerTotal, gpuLoadTargetsMib, offloadMode, onMoeSuggestionClick, hideMoeBadge = false,
+  fitLaunchAvailable = false, fitLaunchAuto = true, onFitLaunchChange, className,
   modelName, modelQuant, providerName, providerBuildVersion, profileLabel, cudaVersion, launchConfig, hwTopo,
 }: VramBadgeProps) {
   const rootRef = useRef<HTMLDivElement>(null);
@@ -212,7 +210,7 @@ export default function VramBadge({
   const sourceAccent = memorySource
     ? MEMORY_SOURCE_ACCENT[memorySource.kind]
     : null;
-  const isFitProbe = manifest.validatedVramMib != null && !manifest.learnedFromPreviousRun;
+  const isFitProbe = memorySource?.kind === "fit_probe";
   const totalNeedGb = manifest.vramTotalGb + manifest.ramTotalGb;
   const displayTotalGb = isFitProbe
     ? (manifest.validatedVramMib! / 1024) + (manifest.validatedHostMib ? manifest.validatedHostMib / 1024 : manifest.ramTotalGb)
@@ -300,17 +298,16 @@ export default function VramBadge({
               isValidating={isValidating}
               hasProbed={manifestHasFitProbe(manifest)}
               onValidate={onValidate}
-              hideValidate={hideValidate}
             />
           </div>
         )}
       </div>
 
-      <div className="vram-mem-mode-row flex-shrink-0 mb-1 min-w-0">
-        <MemModeToggle
-          available={memModeAvailable}
-          enabled={memModeAuto}
-          onChange={(auto) => onMemModeChange?.(auto)}
+      <div className="vram-fit-launch-row flex-shrink-0 mb-1 min-w-0">
+        <FitLaunchToggle
+          available={fitLaunchAvailable}
+          autoFit={fitLaunchAuto}
+          onChange={(auto) => onFitLaunchChange?.(auto)}
         />
       </div>
 

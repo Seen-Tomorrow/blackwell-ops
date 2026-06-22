@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { frontendPollEnabled } from "../lib/debugFlags";
 import type { GpuInfo } from "../lib/types";
 import { LOAD_PHASE_ORDER, parseGpuMask, type LoadPhaseId } from "../lib/fusionLoadParser";
 import {
@@ -115,7 +116,7 @@ export function useFusionBooterState({
   const pollingActive = active && session != null && !session.loadFailed;
 
   useEffect(() => {
-    if (!pollingActive) return;
+    if (!pollingActive || !frontendPollEnabled()) return;
     let cancelled = false;
 
     const pollGpu = async () => {
@@ -134,7 +135,7 @@ export function useFusionBooterState({
   }, [pollingActive, slotIdx]);
 
   useEffect(() => {
-    if (!pollingActive) return;
+    if (!pollingActive || !frontendPollEnabled()) return;
     let cancelled = false;
 
     const pollDisk = async () => {

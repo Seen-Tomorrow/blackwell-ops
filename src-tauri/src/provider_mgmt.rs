@@ -272,6 +272,7 @@ mod tests {
             factory_default: serde_json::json!("1"),
             sub_params: None,
             dock: String::new(),
+            essential: None,
         }
     }
 

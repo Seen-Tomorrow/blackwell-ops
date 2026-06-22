@@ -23,13 +23,19 @@ const INTER_REQUEST_GAP_HOLD_MS: u64 = 1200;
 /// Ignore first-poll token bursts after reset (KV restore / cache jump).
 const MAX_INSTANT_TOKEN_JUMP: usize = 2048;
 /// Active request polling cadence — matches log_hub stderr batch tick.
-const POLL_ACTIVE_MS: u64 = crate::log_hub::TELEMETRY_TICK_MS;
+fn poll_active_ms() -> u64 {
+    crate::log_hub::telemetry_tick_ms()
+}
 /// Min Δt between instant-TPS samples (slightly under poll interval for timer jitter).
 const MIN_INSTANT_TPS_DT_SEC: f64 = 0.02;
-/// Idle + ready cadence — cuts browser IPC churn when nothing changes.
-const POLL_IDLE_MS: u64 = 500;
+/// Idle + ready cadence — override via `BLACKWELL_FUSION_IDLE_POLL_MS` (default 2500).
+fn poll_idle_ms() -> u64 {
+    crate::debug_flags::flags().fusion_idle_poll_ms
+}
 /// Re-emit idle snapshots periodically so frontend can rehydrate after HMR/remount.
-const IDLE_HEARTBEAT_MS: u64 = 5000;
+const IDLE_HEARTBEAT_MS: u64 = 10_000;
+/// Consecutive /health-only idle ticks before a full /slots sample.
+const IDLE_CHEAP_HEALTH_STREAK_MAX: u32 = 2;
 
 fn clamp_display_tps(tps: f64) -> f64 {
     if !tps.is_finite() || tps <= 0.0 {
@@ -1178,8 +1184,9 @@ impl FusionBrain {
 
         let slot_idx = config.slot_idx;
         let mut next_poll =
-            tokio::time::Instant::now() + tokio::time::Duration::from_millis(POLL_ACTIVE_MS);
+            tokio::time::Instant::now() + tokio::time::Duration::from_millis(poll_active_ms());
         let mut last_idle_heartbeat = std::time::Instant::now();
+        let mut idle_cheap_streak: u32 = 0;
 
         loop {
             tokio::select! {
@@ -1196,6 +1203,7 @@ impl FusionBrain {
                         BrainInbound::Log(log_event) => {
                             brain.process_log_event(&log_event);
                             brain.emit_dirty = true;
+                            idle_cheap_streak = 0;
                         }
                         BrainInbound::BenchMeterReset(ack) => {
                             brain.reset_bench_meters();
@@ -1213,12 +1221,41 @@ impl FusionBrain {
                 }
 
                 _ = tokio::time::sleep_until(next_poll) => {
-                    let poll_ms = if brain.is_idle_ready() { POLL_IDLE_MS } else { POLL_ACTIVE_MS };
+                    if crate::debug_flags::flags().disable_fusion_poll {
+                        continue;
+                    }
+
+                    let idle = brain.is_idle_ready();
+                    let poll_ms = if idle { poll_idle_ms() } else { poll_active_ms() };
                     next_poll = tokio::time::Instant::now() + tokio::time::Duration::from_millis(poll_ms);
 
-                    let slots_fut = crate::fusion::poller::poll_slots(&client, brain.port);
-                    let metrics_fut = crate::fusion::poller::poll_metrics(&client, brain.port);
-                    let (slots_result, metrics_result) = tokio::join!(slots_fut, metrics_fut);
+                    // Steady idle: cheap /health ticks between sparse /slots samples (cuts HTTP + IPC).
+                    if idle && !brain.emit_dirty && idle_cheap_streak < IDLE_CHEAP_HEALTH_STREAK_MAX {
+                        if crate::fusion::poller::poll_health_ok(&client, brain.port).await {
+                            idle_cheap_streak += 1;
+                            let heartbeat_due = last_idle_heartbeat.elapsed()
+                                >= std::time::Duration::from_millis(IDLE_HEARTBEAT_MS);
+                            if heartbeat_due {
+                                let update = brain.build_update(&[], None);
+                                brain.force_emit(&log_hub, update);
+                                last_idle_heartbeat = std::time::Instant::now();
+                            }
+                            continue;
+                        }
+                    }
+                    idle_cheap_streak = 0;
+
+                    let (slots_result, metrics_result) = if idle {
+                        (
+                            crate::fusion::poller::poll_slots(&client, brain.port).await,
+                            Err("idle-skip-metrics".to_string()),
+                        )
+                    } else {
+                        tokio::join!(
+                            crate::fusion::poller::poll_slots(&client, brain.port),
+                            crate::fusion::poller::poll_metrics(&client, brain.port),
+                        )
+                    };
 
                     let mut slot_data: Vec<crate::fusion::poller::SlotData> = match slots_result {
                         Ok(slots) => slots,

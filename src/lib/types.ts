@@ -120,6 +120,8 @@ export interface UserEditedTemplateParam {
   userAddedValues?: (string | number)[];
   /** Factory default from provider default config — set once at load. Never changes via admin edits. */
   factoryDefault?: string | number;
+  /** Essentials view — true=force show, false=force hide, unset=factory list. */
+  essential?: boolean;
 }
 
 export interface ProviderConfig {
@@ -180,13 +182,20 @@ export interface ExportFactoryTemplateResult {
   paths: string[];
 }
 
-/** Factory launch profile — drives Auto VRAM UI and --fit wiring at launch. */
+/** Factory launch profile — synced from spawn_profile on load. */
 export interface LaunchProfile {
   autoVram?: boolean;
   fitStyle?: string;
+  /** @deprecated Use fitLaunchKeys / essentialParamKeys — kept for factory JSON compat. */
   simpleParamKeys?: string[];
+  /** CLI whitelist for AUTO FIT launch (excludes split — engine decides). */
+  fitLaunchKeys?: string[];
+  /** Param keys shown in Essentials view (panel filter only). */
+  essentialParamKeys?: string[];
   fitMarginMib?: number;
 }
+
+export type ConfigViewMode = "essentials" | "full";
 
 /** Provider origin classification — derived from existing fields, not stored */
 export type ProviderOrigin = 'foundry' | 'downloaded' | 'bundled';

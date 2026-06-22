@@ -476,6 +476,9 @@ impl ProviderTemplate {
                 args.extend(["--fit".into(), "on".into()]);
                 args.extend(["--fit-ctx".into(), ctx.to_string()]);
             }
+        } else if sp.fit_style.as_str() == "ggml_fit_params" {
+            // MANUAL launch — disable implicit llama_params_fit at load (not the same as --fit on).
+            args.extend(["--fit".into(), "off".into()]);
         }
 
         if sp.enable_metrics {
@@ -507,9 +510,9 @@ impl ProviderTemplate {
         for param in &sorted_params {
             if param.hidden { continue; }
 
-            // Auto VRAM: only emit params explicitly present in extra_params (whitelist).
-            // Prevents stale split/batch/etc. from manual sessions leaking into --fit launches.
-            if auto_vram_launch {
+            // Whitelist launch — AUTO_FIT always; MANUAL when frontend sent a filtered extra_params
+            // set (Essentials vs Full). Without user keys in extra_params, emit all visible params.
+            if launch_uses_extra_params_whitelist(config) {
                 let key_present = config
                     .extra_params
                     .keys()
@@ -612,6 +615,13 @@ impl ProviderTemplate {
     // ── Inject functions for UserEditedTemplateParam (user params are source of truth) ─
 
     fn inject_arg_select_user(args: &mut Vec<String>, param: &crate::types::UserEditedTemplateParam, value: &str) {
+        let val_lower = value.to_lowercase();
+        // Omit --split-mode when split is inactive (matches fit scanner / manual solo-GPU path).
+        if param.key.eq_ignore_ascii_case("split")
+            && (val_lower.is_empty() || val_lower == "none")
+        {
+            return;
+        }
         if let Some(flag) = &param.flag {
             args.extend([flag.clone(), value.to_string()]);
         }
@@ -730,6 +740,107 @@ fn parse_ctx_token_str(raw: &str) -> usize {
         return num.parse::<usize>().unwrap_or(1) * 1024 * 1024;
     }
     s.parse::<usize>().unwrap_or(32768)
+}
+
+/// AUTO_FIT always whitelists; MANUAL whitelists when extra_params carries user param keys.
+fn launch_uses_extra_params_whitelist(config: &EngineConfig) -> bool {
+    if config
+        .extra_params
+        .get("__auto_vram")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+    {
+        return true;
+    }
+    config
+        .extra_params
+        .keys()
+        .any(|k| !k.starts_with("__"))
+}
+
+#[cfg(test)]
+mod build_cmd_tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    fn sample_template() -> ProviderTemplate {
+        ProviderTemplate {
+            binary_name: "llama-server.exe".to_string(),
+            description: "test".to_string(),
+            spawn_profile: SpawnProfile {
+                fit_style: "none".to_string(),
+                enable_metrics: false,
+                ..Default::default()
+            },
+            params: Vec::new(),
+        }
+    }
+
+    fn arg_param(key: &str, flag: &str, default: &str) -> crate::types::UserEditedTemplateParam {
+        crate::types::UserEditedTemplateParam {
+            key: key.to_string(),
+            label: key.to_string(),
+            values: vec![serde_json::json!(default)],
+            order: 0,
+            hidden: false,
+            user_hidden: false,
+            hidden_values: Vec::new(),
+            flag: Some(flag.to_string()),
+            flag_pair: Vec::new(),
+            ptype: "arg_select".to_string(),
+            step: None,
+            ui_group: "CORE".to_string(),
+            note: String::new(),
+            pattern: String::new(),
+            default_value: serde_json::json!(default),
+            user_added_values: Vec::new(),
+            factory_default: serde_json::json!(default),
+            sub_params: None,
+            dock: String::new(),
+            essential: None,
+        }
+    }
+
+    #[test]
+    fn manual_whitelist_skips_params_missing_from_extra_params() {
+        let mut ctx = arg_param("ctx", "--ctx-size", "32768");
+        ctx.order = 0;
+        let mut batch = arg_param("batch", "--batch-size", "2048");
+        batch.order = 1;
+
+        let mut extra = HashMap::new();
+        extra.insert("ctx".to_string(), serde_json::json!("32768"));
+
+        let config = EngineConfig {
+            alias: "test".to_string(),
+            model_path: "model.gguf".to_string(),
+            port: 8080,
+            backend_type: "ggml-master".to_string(),
+            binary_profile: String::new(),
+            extra_params: extra,
+        };
+
+        let args = sample_template().build_command(&config, "", &[ctx, batch]);
+        let joined = args.join(" ");
+        assert!(joined.contains("--ctx-size"));
+        assert!(!joined.contains("--batch-size"));
+    }
+
+    #[test]
+    fn manual_without_user_extra_params_emits_all_visible() {
+        let batch = arg_param("batch", "--batch-size", "2048");
+        let config = EngineConfig {
+            alias: String::new(),
+            model_path: "model.gguf".to_string(),
+            port: 8080,
+            backend_type: String::new(),
+            binary_profile: String::new(),
+            extra_params: HashMap::new(),
+        };
+
+        let args = sample_template().build_command(&config, "", &[batch]);
+        assert!(args.iter().any(|a| a == "--batch-size"));
+    }
 }
 
 

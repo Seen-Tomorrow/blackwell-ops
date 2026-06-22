@@ -34,8 +34,10 @@ pub struct LogBatch {
 
 /// Shared telemetry tick — stderr log batch flush and fusion /slots poll cadence.
 /// Single knob keeps log console and fusion meters aligned (25ms ≈ 80 HTTP polls/s per active engine).
-pub const TELEMETRY_TICK_MS: u64 = 25;
-const BATCH_INTERVAL_MS: u64 = TELEMETRY_TICK_MS;
+/// Override via `BLACKWELL_TELEMETRY_TICK_MS` for bisection (e.g. 500 or 2000).
+pub fn telemetry_tick_ms() -> u64 {
+    crate::debug_flags::flags().telemetry_tick_ms
+}
 const MAX_BATCH_SIZE: usize = 10;
 /// Bounded stderr line queue — drops on flood instead of unbounded RAM growth.
 const STDERR_LINE_CHANNEL_CAP: usize = 4096;
@@ -64,6 +66,9 @@ impl LogHub {
 
     /// Emit a generic event to all frontend windows.
     pub fn emit(&self, event: &str, payload: impl serde::Serialize + Clone) {
+        if crate::debug_flags::flags().disable_ipc_emit {
+            return;
+        }
         if let Err(e) = self.app_handle.emit(event, payload) {
             log::warn!("[LOG_HUB] emit failed: {}", e);
         }
@@ -255,7 +260,7 @@ impl LogHub {
 
         let mut batch_buffer: Vec<LogEntry> = Vec::with_capacity(MAX_BATCH_SIZE);
         let mut last_emit = tokio::time::Instant::now();
-        let batch_interval = tokio::time::Duration::from_millis(BATCH_INTERVAL_MS);
+        let batch_interval = tokio::time::Duration::from_millis(telemetry_tick_ms());
 
         let mut load_failed = false;
         let mut tables_seen: usize = 0;
@@ -691,9 +696,21 @@ impl LogHub {
             || lower.contains("model loaded")
     }
 
+    /// FIT probe gave up on this split mode — engine continues load; must not fail the slot.
+    fn is_fit_abort_warning(line: &str) -> bool {
+        let lower = line.to_lowercase();
+        (lower.contains("common_fit_params") || lower.contains("llama_params_fit"))
+            && (lower.contains("failed to fit params") || lower.contains("not implemented"))
+            && lower.contains("abort")
+    }
+
     /// True only for explicit engine-reported failures — not normal CUDA_Host buffer info lines.
     fn is_fatal_load_error(line: &str) -> bool {
         let lower = line.to_lowercase();
+
+        if Self::is_fit_abort_warning(line) {
+            return false;
+        }
 
         if lower.contains("exiting due to") || lower.contains("model loading error") {
             return true;
@@ -858,7 +875,7 @@ impl LogHub {
     ) -> bool {
         if batch_buffer.len() >= MAX_BATCH_SIZE || last_emit.elapsed() >= *batch_interval {
             let entries = std::mem::take(batch_buffer);
-            if !entries.is_empty() {
+            if !entries.is_empty() && !crate::debug_flags::flags().disable_ipc_emit {
                 let batch = LogBatch { slot: slot_idx, alias: alias.to_string(), entries };
                 if let Err(e) = app_handle.emit_to("main", "engine-log-batch", &batch) {
                     // Log hub emit_to failed now routed to Blackwell Output Console
@@ -933,5 +950,19 @@ mod tests {
         assert!(LogHub::is_stderr_tail_noise(
             "common_init_result: added <|repo_name|> logit bias = -inf"
         ));
+    }
+
+    #[test]
+    fn fit_tensor_abort_warning_is_not_fatal() {
+        let line = "common_fit_params: failed to fit params to free device memory: llama_params_fit is not implemented for SPLIT_MODE_TENSOR, abort";
+        assert!(LogHub::is_fit_abort_warning(line));
+        assert!(!LogHub::is_fatal_load_error(line));
+    }
+
+    #[test]
+    fn tensor_not_implemented_without_fit_abort_stays_fatal() {
+        let line = "llama_init_from_model: simultaneous use of SPLIT_MODE_TENSOR and KV cache quantization not implemented";
+        assert!(!LogHub::is_fit_abort_warning(line));
+        assert!(LogHub::is_fatal_load_error(line));
     }
 }

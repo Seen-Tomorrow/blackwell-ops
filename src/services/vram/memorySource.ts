@@ -71,8 +71,9 @@ export function resolveMemorySource(
   const splitSuffix =
     split.length > 0 && split.toUpperCase() !== "NONE" ? ` · ${split} split` : "";
 
-  if (manifest.validatedVramMib != null && !manifest.learnedFromPreviousRun) {
-    const when = manifest.fitProbeMeasuredAt ?? "just now";
+  // Active on-demand probe session — temporary overlay until config changes.
+  if (manifest.fitProbeMeasuredAt != null && manifest.validatedVramMib != null) {
+    const when = manifest.fitProbeMeasuredAt;
     return {
       kind: "fit_probe",
       detail: `llama-fit-params · measured ${when}`,
@@ -84,7 +85,11 @@ export function resolveMemorySource(
     };
   }
 
-  if (manifest.learnedFromPreviousRun) {
+  // Steady-state priority: LEARNED → FIT CACHE → FORMULA
+  if (
+    manifest.learnedFromPreviousRun
+    || (input.learnedVramMib != null && input.learnedVramMib > 0)
+  ) {
     return {
       kind: "learned",
       detail: `Prior launch · ${formatMeasuredAt(input.learnedMeasuredAt)} · ctx ${ctx}${splitSuffix}`,

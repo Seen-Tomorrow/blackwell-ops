@@ -1,5 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod crash_log;
+mod debug_flags;
 mod engine;
 mod disk_io_pdh;
 mod telemetry;
@@ -615,13 +617,27 @@ use tauri::Emitter;
 
 #[tokio::main]
 async fn main() {
+    crash_log::install_native_exception_logger();
+
     #[cfg(debug_assertions)]
     std::env::set_var("RUST_BACKTRACE", "1");
     // Custom panic handler — writes backtrace to file for debugging crashes
     std::panic::set_hook(Box::new(|info| {
+        let payload = info
+            .payload()
+            .downcast_ref::<&str>()
+            .map(|s| (*s).to_string())
+            .or_else(|| {
+                info.payload()
+                    .downcast_ref::<String>()
+                    .map(|s| s.clone())
+            })
+            .unwrap_or_else(|| "<non-string payload>".to_string());
+        let backtrace = std::backtrace::Backtrace::force_capture();
         let msg = format!(
-            "[PANIC] {}\n{:?}",
+            "[PANIC] {} — {}\n{backtrace}\n{:?}",
             info.location().map(|l| l.to_string()).unwrap_or_else(|| "unknown location".to_string()),
+            payload,
             info
         );
         // Panic info now routed to Blackwell Output Console
@@ -639,16 +655,11 @@ async fn main() {
         builder.init();
     }
 
-    let mut builder = tauri::Builder::default()
+    let _ = debug_flags::flags();
+
+    tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
-        .plugin(tauri_plugin_updater::Builder::new().build());
-
-    #[cfg(debug_assertions)]
-    {
-        builder = builder.plugin(tauri_plugin_mcp_bridge::init());
-    }
-
-    builder
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(move |app| {
             // Ensure portable directory structure exists, copy bundled binaries on first run
             config::ensure_portable_structure(app.handle());
@@ -787,6 +798,7 @@ async fn main() {
             bench_pp_burst::cmd_bench_pp_burst,
             bench_cancel::cmd_cancel_bench,
             fusion::brain::get_fusion_snapshots,
+            debug_flags::get_debug_flags,
             // Mobile Sentinel Bridge commands (always active)
             mobile_bridge::cmd_mobile_bridge_start,
             mobile_bridge::cmd_mobile_bridge_stop,

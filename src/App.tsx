@@ -500,7 +500,7 @@ function App() {
             <StatusProvider value={{ totalParams, hiddenCount, onShowAll: handleShowAll }}>
             <Layout activeTab={activeTab} onTabChange={(tab) => { setActiveTab(tab); if (tab === "config") setHasBinaryUpdates(false); }} providers={providers} appUpdate={appUpdate} hasBinaryUpdates={hasBinaryUpdates} onInstallAppUpdate={handleInstallAppUpdate}>
         {activeTab === "catalog" && (
-              <ModelCatalog models={models} onLaunch={handleLaunchEngine} error={catalogError} onReload={reloadModels} providers={providers} committedVramMib={committedVramMib} isPowerUser={isPowerUser} scanningPath={scanningPath} setScanningPath={setScanningPath} batchScanState={batchScanState} setBatchScanState={setBatchScanState} stack={stack} setupGuide={setupGuide} catalogHfUpdates={catalogHfUpdates} />
+              <ModelCatalog models={models} onLaunch={handleLaunchEngine} error={catalogError} onReload={reloadModels} providers={providers} committedVramMib={committedVramMib} scanningPath={scanningPath} setScanningPath={setScanningPath} batchScanState={batchScanState} setBatchScanState={setBatchScanState} stack={stack} setupGuide={setupGuide} catalogHfUpdates={catalogHfUpdates} />
            )}
         {activeTab === "modelhub" && (
           <div className="h-full min-h-0 flex flex-col">

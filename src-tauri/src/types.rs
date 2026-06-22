@@ -530,6 +530,9 @@ pub struct UserEditedTemplateParam {
     pub sub_params: Option<HashMap<String, Vec<String>>>,
     #[serde(default)]
     pub dock: String,
+    /// Essentials view in MODELS — true=force show, false=force hide, None=factory list.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub essential: Option<bool>,
 }
 
 impl UserEditedTemplateParam {

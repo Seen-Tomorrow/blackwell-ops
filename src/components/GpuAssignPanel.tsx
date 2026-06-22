@@ -21,6 +21,10 @@ interface GpuAssignPanelProps {
   splitValues: (string | number)[];
   onDeviceChange: (value: string) => void;
   onSplitChange: (value: string | number) => void;
+  /** AUTO FIT solo-GPU — hide split row (FIT owns offload). */
+  hideSplitRow?: boolean;
+  /** AUTO FIT multi-GPU — omit NONE when forecast/user already on split. */
+  hideSplitNone?: boolean;
 }
 
 export default function GpuAssignPanel({
@@ -30,15 +34,21 @@ export default function GpuAssignPanel({
   splitValues,
   onDeviceChange,
   onSplitChange,
+  hideSplitRow = false,
+  hideSplitNone = false,
 }: GpuAssignPanelProps) {
   if (gpus.length === 0) return null;
 
   const splitActive = isSplitModeActive(splitValue);
   const deviceOptions = gpus.map((_, i) => `GPU-${i}`);
+  const visibleSplitValues = splitValues.filter((val) => {
+    if (!hideSplitNone) return true;
+    return String(val).toLowerCase() !== "none";
+  });
 
   return (
     <div className="gpu-assign-panel flex-shrink-0" data-gpu-assign-panel>
-      <div className="gpu-assign-panel__grid">
+      <div className={`gpu-assign-panel__grid${hideSplitRow ? " gpu-assign-panel__grid--solo" : ""}`}>
         <div className="gpu-assign-panel__half gpu-assign-panel__half--device">
           <span className={PARAM_LABEL_CLASS}>Device</span>
           <div className="gpu-assign-panel__chips config-chip-row flex items-center gap-1.5 min-w-0">
@@ -63,24 +73,28 @@ export default function GpuAssignPanel({
             )}
           </div>
         </div>
-        <div className="gpu-assign-panel__divider" aria-hidden />
-        <div className="gpu-assign-panel__half gpu-assign-panel__half--split">
-          <span className={PARAM_LABEL_CLASS}>Split</span>
-          <div className="gpu-assign-panel__chips config-chip-row flex items-center gap-1.5 min-w-0">
-            {splitValues.map((val) => (
-              <button
-                key={String(val)}
-                type="button"
-                onClick={() => onSplitChange(val)}
-                className={paramChipClass(
-                  String(splitValue).toLowerCase() === String(val).toLowerCase(),
-                )}
-              >
-                {String(val)}
-              </button>
-            ))}
-          </div>
-        </div>
+        {!hideSplitRow && (
+          <>
+            <div className="gpu-assign-panel__divider" aria-hidden />
+            <div className="gpu-assign-panel__half gpu-assign-panel__half--split">
+              <span className={PARAM_LABEL_CLASS}>Split</span>
+              <div className="gpu-assign-panel__chips config-chip-row flex items-center gap-1.5 min-w-0">
+                {visibleSplitValues.map((val) => (
+                  <button
+                    key={String(val)}
+                    type="button"
+                    onClick={() => onSplitChange(val)}
+                    className={paramChipClass(
+                      String(splitValue).toLowerCase() === String(val).toLowerCase(),
+                    )}
+                  >
+                    {String(val)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

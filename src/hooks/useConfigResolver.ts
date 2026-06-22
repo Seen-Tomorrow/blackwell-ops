@@ -1,7 +1,8 @@
 // Merges param defaults with localStorage overrides.
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import type { UserEditedTemplateParam } from "../lib/types";
+import { paramsVisibilityFingerprint, resolveParamDefaultValue } from "../lib/paramConfigResolve";
 import { catalogOverrideKey, readJsonStorage, removeStorage, writeJsonStorage } from "../lib/storage";
 import { EVENTS } from "../lib/events";
 
@@ -34,24 +35,27 @@ export function useConfigResolver({
   backendType,
 }: UseConfigResolverOptions) {
   const [config, setConfig] = useState<Record<string, any>>({});
+  const paramsFingerprint = useMemo(
+    () => paramsVisibilityFingerprint(userEditedParams),
+    [userEditedParams],
+  );
 
   const loadConfig = useCallback(() => {
-    if (!userEditedParams.length) return;
-
-    const resolved: Record<string, any> = {};
-
-    // Step 1: Set defaults from param definitions
-    for (const p of userEditedParams) {
-      if (p.values?.length > 0 && !p.hidden) {
-        resolved[p.key] = p.defaultValue ?? p.values[0];
-      }
+    if (!userEditedParams.length) {
+      setConfig({});
+      return;
     }
 
-    // Step 2: Merge user overrides from localStorage
-    const stored = readJsonStorage<Record<string, unknown>>(catalogOverrideKey(backendType));
-    if (stored) Object.assign(resolved, stored);
+    const stored = readJsonStorage<Record<string, unknown>>(catalogOverrideKey(backendType)) ?? {};
+    const resolved: Record<string, any> = {};
 
-    // Step 3: Normalize all string values to lowercase for consistent comparison
+    // Only visible params enter active config — hidden group params stay omitted from CLI path.
+    for (const p of userEditedParams) {
+      if (p.hidden || !p.values?.length) continue;
+      const fallback = resolveParamDefaultValue(p);
+      resolved[p.key] = stored[p.key] ?? fallback;
+    }
+
     const normalized = Object.fromEntries(
       Object.entries(resolved).map(([k, v]) => [k, normalizeValue(v)])
     );
@@ -61,13 +65,13 @@ export function useConfigResolver({
 
   useEffect(() => {
     loadConfig();
-  }, [model, userEditedParams.length, backendType]);
+  }, [model, paramsFingerprint, backendType, loadConfig]);
 
   useEffect(() => {
     const handler = () => loadConfig();
     window.addEventListener(EVENTS.paramConfigChanged, handler);
     return () => window.removeEventListener(EVENTS.paramConfigChanged, handler);
-  }, [model, userEditedParams.length]);
+  }, [loadConfig]);
 
   const updateParam = useCallback((key: string, value: any) => {
     const normalizedValue = normalizeValue(value);

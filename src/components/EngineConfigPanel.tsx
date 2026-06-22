@@ -1,22 +1,31 @@
 // Model-specific parameter configuration and launch control.
 
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
-import type { ModelEntry, EngineConfig, GpuInfo, UserEditedTemplateParam, ProviderConfig, ProviderTemplate, StackEntry, SystemInfo } from "../lib/types";
+import type { ConfigViewMode, ModelEntry, EngineConfig, GpuInfo, UserEditedTemplateParam, ProviderConfig, ProviderTemplate, StackEntry, SystemInfo } from "../lib/types";
 import { DEFAULT_PROVIDER_ID, isProfileBuilt, profileEnvLookup } from "../lib/types";
 import {
   KEYS,
   binaryProfileKey,
   engineAliasKey,
   loadAutoVramEnabled,
+  loadConfigView,
   normalizeUiGroup,
   paramUiGroup,
   readJsonStorage,
   readStorage,
   removeStorage,
   saveAutoVramEnabled,
+  saveConfigView,
   writeJsonStorage,
   writeStorage,
 } from "../lib/storage";
+import {
+  isEssentialParam,
+  providerSupportsFitLaunch,
+  resolveEssentialParamKeys,
+  resolveManualLaunchKeys,
+} from "../lib/launchProfile";
+import ConfigViewToggle from "./ConfigViewToggle";
 import {
   isGroupFullyHidden,
   PANEL_CHROME_PARAM_KEYS,
@@ -47,6 +56,7 @@ import { useDisplayTexture } from "../context/DisplayTextureContext";
 import DisplayGlitchOverlay from "./DisplayGlitchOverlay";
 import { useFoundry } from "../hooks/useBuildDock";
 import { buildAutoVramLaunchParams } from "../lib/autoVramLaunch";
+import { buildLaunchExtraParams, paramValuesMatch } from "../lib/paramConfigResolve";
 import { committedSlotsFromStack } from "../services/vram/scenarios/scenarios_factory";
 import { formatShareHwTopo, type FusionShareLaunchConfig } from "../lib/fusionShareCapture";
 
@@ -121,10 +131,8 @@ function deriveParamGroups(groupKeys: string[]): ParamGroupMeta[] {
 }
 
 const SPEC_DECODING_GROUP = "SPECULATIVE-DECODING";
-const SPEC_DECODING_LAUNCH_KEYS = ["spec_type", "spec_draft_n_max", "spec_draft_n_min"] as const;
 
 const BASE_PORT_CHIP_TOOLTIP = "Set your starting port, we will increment from here";
-const SIMPLE_MODE_LEFT_RUNTIME_KEYS = ["base_port"] as const;
 
 function isSpecDecodingActive(params: UserEditedTemplateParam[]): boolean {
   return params
@@ -205,7 +213,6 @@ interface EngineConfigPanelProps {
   gpus: GpuInfo[];
   providers?: ProviderConfig[];
   committedVramMib: number;
-  isPowerUser: boolean;
   systemInfo?: SystemInfo | null;
   stack: StackEntry[];
   onLaunch: (config: EngineConfig) => Promise<any>;
@@ -220,7 +227,7 @@ interface EngineConfigPanelProps {
 }
 
 export default function EngineConfigPanel(props: EngineConfigPanelProps) {
-  const { model, gpus, providers: externalProviders, committedVramMib, isPowerUser, systemInfo, stack, onLaunch, isModelRunning, activeEngineAlias, activeEnginePort, selectedSlotIdx, supportsFusion = true, models, onSelectEngine, setupGuide } = props;
+  const { model, gpus, providers: externalProviders, committedVramMib, systemInfo, stack, onLaunch, isModelRunning, activeEngineAlias, activeEnginePort, selectedSlotIdx, supportsFusion = true, models, onSelectEngine, setupGuide } = props;
   const { buildProgress } = useFoundry();
   // Catalog keeps a copy of providers from App — refresh directly so profile chips match Config after Foundry builds.
   const [resolvedProviders, setResolvedProviders] = useState<ProviderConfig[]>(externalProviders ?? []);
@@ -273,7 +280,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
 
   const [specFlash, setSpecFlash] = useState(false);
-  const [autoVramEnabled, setAutoVramEnabled] = useState(true);
+  const [fitLaunchEnabled, setFitLaunchEnabled] = useState(true);
+  const [configView, setConfigView] = useState<ConfigViewMode>("essentials");
   const [layoutModeActive, setLayoutModeActive] = useState(
     () => readStorage(KEYS.configLayoutMode) === "1",
   );
@@ -400,25 +408,23 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     [resolvedProviders, effectiveBackendType],
   );
   const launchProfile = currentProvider?.launchProfile;
-  const providerSupportsAutoVram = Boolean(
-    launchProfile?.autoVram || launchProfile?.fitStyle,
+  const fitLaunchSupported = providerSupportsFitLaunch(launchProfile);
+  const fitLaunchActive = fitLaunchSupported && fitLaunchEnabled;
+  const essentialFactoryKeys = useMemo(
+    () => resolveEssentialParamKeys(launchProfile),
+    [launchProfile],
   );
-  const simpleModeActive = providerSupportsAutoVram && autoVramEnabled;
-  const visibleParamKeys = useMemo(() => {
-    if (!simpleModeActive) return null;
-    return new Set([
-      ...(launchProfile?.simpleParamKeys ?? ["device", "ctx"]),
-      ...SIMPLE_MODE_LEFT_RUNTIME_KEYS,
-    ]);
-  }, [simpleModeActive, launchProfile?.simpleParamKeys]);
-
   useEffect(() => {
-    if (!providerSupportsAutoVram) {
-      setAutoVramEnabled(false);
+    if (!fitLaunchSupported) {
+      setFitLaunchEnabled(false);
       return;
     }
-    setAutoVramEnabled(loadAutoVramEnabled(effectiveBackendType, launchProfile?.autoVram ?? true));
-  }, [effectiveBackendType, providerSupportsAutoVram, launchProfile?.autoVram]);
+    setFitLaunchEnabled(loadAutoVramEnabled(effectiveBackendType, launchProfile?.autoVram ?? true));
+  }, [effectiveBackendType, fitLaunchSupported, launchProfile?.autoVram]);
+
+  useEffect(() => {
+    setConfigView(loadConfigView(effectiveBackendType, "essentials"));
+  }, [effectiveBackendType]);
 
   const isProfileBuilding = useCallback((profile: EnvProfile): boolean => {
     if (!buildProgress) return false;
@@ -488,10 +494,15 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       .sort((a, b) => a.order - b.order);
   }, [userEditedParams, deviceParam, gpus]);
 
-  const allParamsForLaunch = useMemo(() => {
-    if (!visibleParamKeys) return allParamsResolved;
-    return allParamsResolved.filter((d) => visibleParamKeys.has(d.key));
-  }, [allParamsResolved, visibleParamKeys]);
+  const specActive = useMemo(
+    () => isSpecDecodingActive(allParamsResolved),
+    [allParamsResolved],
+  );
+
+  const allParamsForDisplay = useMemo(() => {
+    if (configView === "full") return allParamsResolved;
+    return allParamsResolved.filter((d) => isEssentialParam(d, essentialFactoryKeys));
+  }, [allParamsResolved, configView, essentialFactoryKeys]);
 
   const splitParamDef = useMemo(
     () => allParamsResolved.find((d) => d.key === "split"),
@@ -515,18 +526,10 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     [stack],
   );
 
-  const simpleParamKeys = launchProfile?.simpleParamKeys ?? ["device", "ctx"];
-
-  const scenarioConfig = useMemo(() => {
-    if (!simpleModeActive) {
-      return { ...config, backend_type: effectiveBackendType };
-    }
-    const params: Record<string, unknown> = {};
-    for (const key of simpleParamKeys) {
-      if (config[key] !== undefined) params[key] = config[key];
-    }
-    return { ...params, backend_type: effectiveBackendType };
-  }, [simpleModeActive, config, effectiveBackendType, simpleParamKeys]);
+  const scenarioConfig = useMemo(
+    () => ({ ...config, backend_type: effectiveBackendType }),
+    [config, effectiveBackendType],
+  );
 
   // Display value — manufactured capacity, no deductions (what users see)
   const displayVramMib = gpus.reduce((sum, g) => sum + (g.memory_total_manufactured || g.memory_total), 0);
@@ -537,7 +540,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     gpus,
     stack,
     systemInfo,
-    autoVramLaunch: simpleModeActive,
+    autoVramLaunch: fitLaunchActive,
     fitStyle: launchProfile?.fitStyle ?? "",
   });
 
@@ -596,14 +599,14 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
   // Manual split → all GPUs; solo → manifest projection; badge click still forces split=none
   const selectedGpuIndices = useMemo(() => {
-    if (!simpleModeActive && splitModeActive && gpus.length > 0) {
+    if (!fitLaunchActive && splitModeActive && gpus.length > 0) {
       return gpus.map((g) => g.index);
     }
     if (!vramCalc.manifest) return [];
     return vramCalc.manifest.gpuAllocations
       .filter((a) => a.projectedLoadGb > 0.1)
       .map((a) => a.gpuIndex);
-  }, [vramCalc.manifest, simpleModeActive, splitModeActive, gpus]);
+  }, [vramCalc.manifest, fitLaunchActive, splitModeActive, gpus]);
 
   const booterProps = useMemo(() => {
     const gpuLoadTargetsMib: Record<number, number> = {};
@@ -733,11 +736,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                 if (isLocked) return;
                 updateParam(def.key, val);
               }}
-              className={paramChipClass(
-                currentValue === val ||
-                (typeof currentValue === 'string' && typeof val === 'string' &&
-                  currentValue.toLowerCase() === String(val).toLowerCase())
-              )}
+              className={paramChipClass(paramValuesMatch(currentValue, val))}
             >
               {String(val)}
             </button>
@@ -754,19 +753,19 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   // Grouped params — panel chrome (device, split, port, offload) rendered elsewhere
   const groupedParams = useMemo(() => {
     const groups: Record<string, UserEditedTemplateParam[]> = {};
-    for (const def of allParamsForLaunch) {
+    for (const def of allParamsForDisplay) {
       if (def.hidden || isPanelChromeParam(def)) continue;
       const groupId = paramUiGroup(def.ui_group);
       if (!groups[groupId]) groups[groupId] = [];
       groups[groupId].push(def);
     }
     return groups;
-  }, [allParamsForLaunch, isPanelChromeParam]);
+  }, [allParamsForDisplay, isPanelChromeParam]);
 
   // All params by group — includes hidden ones (spec-decoding ON/OFF toggle reads from here)
   const allGroupedParams = useMemo(() => {
     const groups: Record<string, UserEditedTemplateParam[]> = {};
-    const source = simpleModeActive ? allParamsResolved : allParamsForLaunch;
+    const source = allParamsResolved;
     for (const def of source) {
       if (isPanelChromeParam(def)) continue;
       const groupId = paramUiGroup(def.ui_group);
@@ -781,7 +780,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       }
     }
     return groups;
-  }, [allParamsForLaunch, allParamsResolved, simpleModeActive, isPanelChromeParam]);
+  }, [allParamsResolved, isPanelChromeParam]);
 
   const isMtpModel = (model?.metadata?.nextn_predict_layers ?? 0) > 0;
 
@@ -933,9 +932,13 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                   disabled={!isMtpModel}
                   onChange={() => {
                     invoke<boolean>("toggle_group_hidden", { providerId: effectiveBackendType, groupId: group.id })
-                      .then(() => {
+                      .then(async () => {
                         setSpecFlash(true);
                         setTimeout(() => setSpecFlash(false), 400);
+                        try {
+                          const data = await invoke<ProviderConfig[]>("list_providers");
+                          if (data.length > 0) setResolvedProviders(data);
+                        } catch { /* reloadProviders event is fallback */ }
                         dispatchAppEvent(EVENTS.reloadProviders);
                         dispatchAppEvent(EVENTS.paramConfigChanged);
                       })
@@ -1150,21 +1153,29 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     }
     finalAlias = resolveUniqueAlias(finalAlias, stack);
 
-    const autoVramLaunchKeys = simpleModeActive && isSpecDecodingActive(allParamsResolved)
-      ? [...new Set([...simpleParamKeys, ...SIMPLE_MODE_LEFT_RUNTIME_KEYS, ...SPEC_DECODING_LAUNCH_KEYS])]
-      : [...new Set([...simpleParamKeys, ...SIMPLE_MODE_LEFT_RUNTIME_KEYS])];
+    const launchKeys = resolveManualLaunchKeys({
+      configView,
+      essentialFactoryKeys,
+      specActive,
+      allParams: allParamsResolved,
+    });
 
-    const extraParams: Record<string, unknown> = simpleModeActive && model.metadata
+    const extraParams: Record<string, unknown> = fitLaunchActive && model.metadata
       ? buildAutoVramLaunchParams({
           config,
-          simpleKeys: autoVramLaunchKeys,
+          launchKeys,
+          paramDefs: allParamsResolved,
           gpus,
           runningSlots: runningSlotsForPlan,
           manifest: vramCalc.manifest,
           weightGb: model.metadata.file_size_bytes / (1024 ** 3),
         })
-      : { ...config };
-    if (!simpleModeActive && vramCalc.manifest?.gpuLayers != null && vramCalc.manifest.ramLayers > 0) {
+      : buildLaunchExtraParams({
+          config,
+          keys: launchKeys,
+          paramDefs: allParamsResolved,
+        });
+    if (!fitLaunchActive && vramCalc.manifest?.gpuLayers != null && vramCalc.manifest.ramLayers > 0) {
       extraParams.__ngl = String(vramCalc.manifest.gpuLayers);
     }
 
@@ -1205,8 +1216,9 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     pulseLaunchAck,
     aliasInput,
     stack,
-    simpleModeActive,
-    simpleParamKeys,
+    fitLaunchActive,
+    configView,
+    essentialFactoryKeys,
     allParamsResolved,
     config,
     gpus,
@@ -1440,14 +1452,13 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                         config["offload_mode"] === "moe_optimal" ? "regular" : "moe_optimal",
                       );
                     }}
-                    memModeAvailable={providerSupportsAutoVram}
-                    memModeAuto={autoVramEnabled}
-                    onMemModeChange={(auto) => {
-                      setAutoVramEnabled(auto);
+                    fitLaunchAvailable={fitLaunchSupported}
+                    fitLaunchAuto={fitLaunchEnabled}
+                    onFitLaunchChange={(auto) => {
+                      setFitLaunchEnabled(auto);
                       saveAutoVramEnabled(effectiveBackendType, auto);
                     }}
-                    hideValidate={simpleModeActive}
-                    hideMoeBadge={simpleModeActive || !((model?.metadata?.n_expert ?? 0) > 0)}
+                    hideMoeBadge={!((model?.metadata?.n_expert ?? 0) > 0)}
                     modelMeta={model?.metadata}
                     modelName={model?.name}
                     modelQuant={model?.quant}
@@ -1477,8 +1488,15 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
       {/* Parameters scroll + launch dock (button always visible at panel bottom) */}
       <div className="flex flex-col flex-1 min-h-0">
-      {allParamsForLaunch.length > 0 && (
-        <div className="config-params-below-toolbar px-4 py-1.5 flex items-center justify-end gap-1.5 flex-shrink-0 border-b section-divider">
+      {allParamsForDisplay.length > 0 && (
+        <div className="config-params-below-toolbar px-4 py-1.5 flex items-center justify-end gap-2 flex-shrink-0 border-b section-divider">
+          <ConfigViewToggle
+            view={configView}
+            onChange={(view) => {
+              setConfigView(view);
+              saveConfigView(effectiveBackendType, view);
+            }}
+          />
           <div className="config-column-count flex items-center gap-0.5">
             {([1, 2, 3] as ConfigColumnCount[]).map((n) => (
               <button
@@ -1515,7 +1533,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         </div>
       )}
       <div className="config-params-scroll px-4 py-3 relative flex-1 overflow-y-auto eink-scrollbar eink-panel min-h-0">
-        {allParamsForLaunch.length === 0 ? (
+        {allParamsForDisplay.length === 0 ? (
           <div className="text-stealth-muted text-[10px] font-mono opacity-50">NO PARAMS DEFINED</div>
         ) : belowGroupKeys.length === 0 ? null : (
           <ConfigBelowGroups
@@ -1608,7 +1626,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
               </button>
             </div>
           </div>
-          {isPowerUser && (
+          {configView === "full" && (
             <div className={`custom-flags-block border rounded-sm overflow-hidden ${testFlagsEnabled ? "custom-flags-active" : ""}`}>
               <div className="custom-flags-body px-2 py-1 flex items-center gap-1.5 min-h-0">
                 <span className="text-[8px] font-mono uppercase tracking-wider shrink-0 custom-flags-label">

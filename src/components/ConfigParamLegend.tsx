@@ -166,6 +166,10 @@ export default function ConfigParamLegend({ editorUnlocked }: ConfigParamLegendP
           />
           <LegendRow chip={<span className="text-[10px] font-mono text-stealth-muted">◯</span>} label="Hide whole parameter row" />
           <LegendRow chip={<span className="text-[10px] font-mono text-stealth-muted">☰</span>} label="Drag to reorder" />
+          <LegendRow
+            chip={<span className="text-[8px] font-mono text-nv-green/70">ESS</span>}
+            label="Include in MODELS Essentials view (green = on, struck = excluded)"
+          />
           <LegendRow chip={<span className="text-[12px] font-mono text-nv-green/50">E</span>} label="Edit label, group, flags" />
           <LegendRow chip={<span className="text-[12px] font-mono text-red-500/50">D</span>} label="Remove parameter" />
           <LegendRow chip={<span className="text-[12px] font-mono text-blue-500/50">R</span>} label="Restore shipped preset for row" />

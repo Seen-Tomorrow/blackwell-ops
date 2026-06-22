@@ -9,11 +9,11 @@ export function isTomProvider(providerId: string): boolean {
   return id === "ggml-tom" || id === "ggml_tom" || id.includes("ggml-tom");
 }
 
-export function isMtpModel(model: Pick<ModelEntry, "path" | "metadata" | "hf_meta" | "hf_model_id">): boolean {
+export function isMtpModel(model: Pick<ModelEntry, "path" | "metadata" | "hfMeta" | "hfModelId">): boolean {
   if ((model.metadata?.nextn_predict_layers ?? 0) > 0) return true;
 
-  const hfId = (model.hf_meta?.hf_model_id ?? model.hf_model_id ?? "").toLowerCase();
-  const repo = (model.hf_meta?.repo_name ?? "").toLowerCase();
+  const hfId = (model.hfMeta?.hfModelId ?? model.hfModelId ?? "").toLowerCase();
+  const repo = (model.hfMeta?.repoName ?? "").toLowerCase();
   if (hfId.includes("mtp") || repo.includes("mtp")) return true;
 
   const path = model.path.replace(/\\/g, "/").toLowerCase();
@@ -22,7 +22,7 @@ export function isMtpModel(model: Pick<ModelEntry, "path" | "metadata" | "hf_met
 
 export function tomMtpBlocked(
   providerId: string,
-  model: Pick<ModelEntry, "path" | "metadata" | "hf_meta" | "hf_model_id">,
+  model: Pick<ModelEntry, "path" | "metadata" | "hfMeta" | "hfModelId">,
 ): boolean {
   return isTomProvider(providerId) && isMtpModel(model);
 }

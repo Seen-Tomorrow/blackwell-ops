@@ -1,4 +1,5 @@
 import { StrictMode } from "react";
+import { initDebugFlags } from "./lib/debugFlags";
 import App from "./App";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { createRoot } from "react-dom/client";
@@ -41,10 +42,12 @@ if (__BUILD_MODE__ === "dev") {
 // Apply saved theme before first paint to avoid flash
 applyAppTheme(getThemeById(readStorage(KEYS.appTheme) ?? "matrix"));
 
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <ErrorBoundary>
-      <App />
-    </ErrorBoundary>
-  </StrictMode>,
-);
+void initDebugFlags().then(() => {
+  createRoot(document.getElementById("root")!).render(
+    <StrictMode>
+      <ErrorBoundary>
+        <App />
+      </ErrorBoundary>
+    </StrictMode>,
+  );
+});

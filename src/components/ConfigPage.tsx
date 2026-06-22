@@ -4,6 +4,7 @@ import React, { useState, useCallback, useEffect, useMemo, useRef } from "react"
 import { invoke } from "@tauri-apps/api/core";
 import type { UserEditedTemplateParam, ProviderConfig, ProviderTemplate, ProviderDefaultParam, ModelPathEntry, PathDiskUsage, LayoutDefaults, ExportFactoryTemplateResult } from "../lib/types";
 import { DEFAULT_PROVIDER_ID } from "../lib/types";
+import { isEssentialParam, resolveEssentialParamKeys } from "../lib/launchProfile";
 import ValueBubbles from "./ValueBubbles";
 import ProvidersConfig from "./ProvidersConfig";
 import SecretsConfig from "./SecretsConfig";
@@ -660,6 +661,36 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
     dispatchAppEvent(EVENTS.paramConfigChanged);
     showSaved("SAVED");
   }, [currentProvider, editorUnlocked, buildUserSavedParams, persistProviderToConfig, selectedProviderId]);
+
+  const essentialFactoryKeys = useMemo(
+    () => resolveEssentialParamKeys(currentProvider?.launchProfile),
+    [currentProvider?.launchProfile],
+  );
+
+  const toggleParamEssential = useCallback(async (key: string) => {
+    if (!currentProvider || !editorUnlocked) return;
+    if (isSystemCatalogParam({ key })) return;
+
+    const currentUserParams = buildUserSavedParams(currentProvider);
+    const updatedUserParams = currentUserParams.map((d) => {
+      if (d.key !== key) return d;
+      const currently = isEssentialParam(d, essentialFactoryKeys);
+      return { ...d, essential: !currently };
+    });
+    const updatedProvider = { ...currentProvider, userEditedTemplateParams: updatedUserParams };
+
+    setAllProviders((prev) => prev.map((p) => (p.id !== selectedProviderId ? p : updatedProvider)));
+    await persistProviderToConfig(updatedProvider);
+    dispatchAppEvent(EVENTS.paramConfigChanged);
+    showSaved("SAVED");
+  }, [
+    currentProvider,
+    editorUnlocked,
+    essentialFactoryKeys,
+    buildUserSavedParams,
+    persistProviderToConfig,
+    selectedProviderId,
+  ]);
 
   // ── Admin: toggle hidden value (hide from catalog only) ─────────
   const toggleHiddenValue = useCallback(async (key: string, value: string | number) => {
@@ -1474,6 +1505,9 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
 
                                // Yellow accent: not in provider default params
                                const isUserAdded = providerDefaultParams.length > 0 && !providerDefaultParams.some(gp => gp.key === def.key);
+                               const essentialActive = isEssentialParam(def, essentialFactoryKeys);
+                               const essentialForced = def.essential === true;
+                               const essentialExcluded = def.essential === false;
 
                                  return (
                                     <React.Fragment key={rowKey}>
@@ -1498,6 +1532,36 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
                                    )}
                                    {editorUnlocked && isSystemParam && (
                                      <span className="text-[8px] text-stealth-muted/25 select-none px-1" title={SYSTEM_CATALOG_PARAM_TOOLTIP}>&#x2630;</span>
+                                   )}
+
+                                   {/* Essentials toggle — admin only (MODELS Essentials view) */}
+                                   {editorUnlocked && !isSystemParam && (
+                                     <button
+                                       onClick={() => toggleParamEssential(def.key)}
+                                       className={`config-param-ess text-[8px] font-mono px-0.5 select-none transition-colors ${
+                                         essentialExcluded
+                                           ? "text-stealth-muted/30 line-through"
+                                           : essentialActive
+                                             ? essentialForced
+                                               ? "config-param-ess--forced text-nv-green"
+                                               : "text-nv-green/70"
+                                             : "text-stealth-muted/35 hover:text-stealth-muted"
+                                       }`}
+                                       title={
+                                         essentialActive
+                                           ? essentialForced
+                                             ? "In Essentials (forced) — click to exclude"
+                                             : essentialExcluded
+                                               ? "Excluded from Essentials — click to include"
+                                               : "In Essentials (factory default) — click to exclude"
+                                           : "Not in Essentials — click to include"
+                                       }
+                                     >
+                                       ESS
+                                     </button>
+                                   )}
+                                   {editorUnlocked && isSystemParam && (
+                                     <span className="config-param-ess text-[8px] font-mono px-0.5 text-stealth-muted/20 select-none" title={SYSTEM_CATALOG_PARAM_TOOLTIP}>ESS</span>
                                    )}
 
                                    {/* Hidden toggle — admin only (catalog visibility; engine chrome placement unchanged) */}

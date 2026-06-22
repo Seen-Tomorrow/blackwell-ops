@@ -1,5 +1,6 @@
 import { normalizeAboveColumnWidths } from "./configColumnLayout";
 import { normalizeDisplayTexture, type DisplayTexture } from "./displayTexture";
+import type { ConfigViewMode } from "./types";
 
 /**
  * Centralized localStorage registry — single source of truth for all app keys.
@@ -348,6 +349,23 @@ export function loadAutoVramEnabled(providerId: string, factoryDefault: boolean)
 
 export function saveAutoVramEnabled(providerId: string, enabled: boolean): void {
   writeStorage(autoVramKey(providerId), enabled ? "1" : "0");
+}
+
+export function configViewKey(providerId: string): string {
+  return `${STORAGE_PREFIX}config-view:${providerId}`;
+}
+
+export function loadConfigView(
+  providerId: string,
+  factoryDefault: ConfigViewMode = "essentials",
+): ConfigViewMode {
+  const stored = readStorage(configViewKey(providerId));
+  if (stored === "full" || stored === "essentials") return stored;
+  return factoryDefault;
+}
+
+export function saveConfigView(providerId: string, mode: ConfigViewMode): void {
+  writeStorage(configViewKey(providerId), mode);
 }
 
 export function engineAliasKey(modelPath: string): string {
