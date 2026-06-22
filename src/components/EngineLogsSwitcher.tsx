@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import type { LogEntry, StackEntry } from "../lib/types";
 import { getActiveStackSlots, isActiveEngineSlot } from "../lib/engineStack";
+import TabPageHeader from "./TabPageHeader";
 
 export type ActiveLogSlot = number | "all";
 
@@ -83,40 +84,40 @@ export default function EngineLogsSwitcher({
 
   return (
     <div className="engine-logs-switcher flex-shrink-0">
-      <div className="engine-logs-switcher__bar">
-        <div className="engine-logs-switcher__title">
-          <h2 className="engine-logs-switcher__heading">ENGINE LOGS</h2>
+      <TabPageHeader
+        title="ENGINE LOGS"
+        meta={(
           <span className="engine-logs-switcher__count">
             {slots.length} log slot{slots.length === 1 ? "" : "s"}
             {activeEngineCount > 0 ? ` · ${activeEngineCount} active` : ""}
           </span>
-        </div>
+        )}
+      />
 
-        <div className="engine-logs-switcher__controls">
-          <button
-            type="button"
-            onClick={() => onAnsiEnabledChange(!ansiEnabled)}
-            className={`engine-logs-switcher__ansi-toggle${ansiEnabled ? " engine-logs-switcher__ansi-toggle--on" : ""}`}
-            title={ansiEnabled ? "ANSI colors on — click for plain text" : "Plain text — click for ANSI colors"}
-          >
-            ANSI {ansiEnabled ? "ON" : "OFF"}
-          </button>
-          <input
-            type="text"
-            value={slotFilter}
-            onChange={(e) => setSlotFilter(e.target.value)}
-            placeholder="Filter slots…"
-            className="engine-logs-switcher__filter theme-input"
-          />
-          <button
-            type="button"
-            onClick={onClearAllLogs}
-            disabled={logs.size === 0 && activeEngineCount === 0}
-            className="engine-logs-switcher__clear-all"
-          >
-            CLEAR ALL
-          </button>
-        </div>
+      <div className="engine-logs-switcher__controls-row">
+        <button
+          type="button"
+          onClick={() => onAnsiEnabledChange(!ansiEnabled)}
+          className={`engine-logs-switcher__ansi-toggle${ansiEnabled ? " engine-logs-switcher__ansi-toggle--on" : ""}`}
+          title={ansiEnabled ? "ANSI colors on — click for plain text" : "Plain text — click for ANSI colors"}
+        >
+          ANSI {ansiEnabled ? "ON" : "OFF"}
+        </button>
+        <input
+          type="text"
+          value={slotFilter}
+          onChange={(e) => setSlotFilter(e.target.value)}
+          placeholder="Filter slots…"
+          className="engine-logs-switcher__filter theme-input"
+        />
+        <button
+          type="button"
+          onClick={onClearAllLogs}
+          disabled={logs.size === 0 && activeEngineCount === 0}
+          className="engine-logs-switcher__clear-all"
+        >
+          CLEAR ALL
+        </button>
       </div>
 
       <div className="engine-logs-switcher__slots eink-scrollbar">

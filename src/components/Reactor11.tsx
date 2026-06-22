@@ -8,6 +8,7 @@ import R11_Sidebar from "./R11_Sidebar";
 import R11_Wells from "./R11_Wells";
 import R11_DiagnosticOverlay from "./R11_DiagnosticOverlay";
 import { useTelemetry } from "../context/TelemetryContext";
+import TabPageHeader from "./TabPageHeader";
 
 interface Props {
   models: ModelEntry[];
@@ -215,18 +216,16 @@ export default function Reactor11({ models }: Props) {
 
       {/* Reactor core area — fills remaining space (75% width) */}
       <div className="flex-1 flex flex-col relative">
-        {/* Top bar */}
-        <div className="flex items-center justify-between px-4 py-2 border-b border-stealth-border bg-stealth-dark/60 backdrop-blur-sm z-10">
-          <div>
-            <h2 className="text-xs font-mono text-nv-green tracking-widest flex items-center gap-2">
-              <span className="inline-block w-2 h-2 rounded-full bg-nv-green animate-pulse" />
-              REACTOR 11 — CORE CONTAINMENT
-            </h2>
-            <p className="text-[9px] font-mono text-stealth-muted/50 mt-0.5">
-              {rods.filter(r => r.status === "running").length} RODS ACTIVE — {(totalVramUsed / 1024).toFixed(1)}GB VRAM — {gpus.length} GPU(S)
-            </p>
-          </div>
+        <TabPageHeader
+          title="REACTOR 11"
+          meta={(
+            <span className="text-[8px] font-mono opacity-40">
+              {rods.filter(r => r.status === "running").length} RODS · {(totalVramUsed / 1024).toFixed(1)}GB · {gpus.length} GPU
+            </span>
+          )}
+        />
 
+        <div className="flex items-center justify-end gap-2 px-4 py-1 border-b border-stealth-border/50 bg-stealth-dark/60 backdrop-blur-sm z-10 flex-wrap">
           <div className="flex items-center gap-2">
             {/* Diagnostic toggle */}
             <button

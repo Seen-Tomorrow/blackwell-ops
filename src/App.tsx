@@ -14,6 +14,7 @@ import Reactor11 from "./components/Reactor11";
 import ModelHub from "./components/ModelHub";
 import LogLineText from "./components/LogLineText";
 import EngineLogsSwitcher from "./components/EngineLogsSwitcher";
+import TabPageHeader from "./components/TabPageHeader";
 import { StatusProvider } from "./context/StatusBarContext";
 
 import { TelemetryProvider, type GpuPollTier } from "./context/TelemetryContext";
@@ -515,16 +516,19 @@ function App() {
           <Reactor11 models={models} />
         )}
         {activeTab === "telemetry" && (
-          <div className="h-full flex flex-col p-4 gap-3 min-h-0" data-telemetry-page>
-            <TelemetryViewToggle mode={telemetryViewMode} onChange={setTelemetryViewMode} />
-            <div className="flex-1 min-h-0">
+          <div className="h-full flex flex-col min-h-0 overflow-hidden" data-telemetry-page>
+            <TabPageHeader
+              title="TELEMETRY"
+              actions={<TelemetryViewToggle mode={telemetryViewMode} onChange={setTelemetryViewMode} compact />}
+            />
+            <div className="flex-1 min-h-0 p-4">
               {telemetryViewMode === "lab" ? <TelemetryLab stack={stack} /> : <TelemetryPanel />}
             </div>
           </div>
         )}
         {activeTab === "intel" && <IntelPage />}
         {activeTab === "logs" && (
-          <div className="h-full flex flex-col p-4 gap-0" data-engine-logs>
+          <div className="h-full flex flex-col min-h-0 overflow-hidden" data-engine-logs>
             <EngineLogsSwitcher
               activeLogSlot={activeLogSlot}
               onActiveLogSlotChange={setActiveLogSlot}
@@ -543,7 +547,7 @@ function App() {
             />
             <div
               ref={logsScrollRef}
-              className="engine-logs-scroll theme-surface-inset flex-1 overflow-x-hidden overflow-y-auto rounded-sm p-3 min-h-0"
+              className="engine-logs-scroll theme-surface-inset flex-1 overflow-x-hidden overflow-y-auto rounded-sm p-3 min-h-0 mx-4 mb-4"
               onScroll={handleLogsScroll}
             >
               {logs.size === 0 && getActiveStackSlots(stack).length === 0 ? (

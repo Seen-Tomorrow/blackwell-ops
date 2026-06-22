@@ -1,5 +1,6 @@
 import SlotLogPanel from "./SlotLogPanel";
 import EngineBanner from "./EngineBanner";
+import TabPageHeader from "./TabPageHeader";
 
 import type { StackEntry, LogEntry } from "../lib/types";
 import { getActiveStackSlots } from "../lib/engineStack";
@@ -32,24 +33,25 @@ export default function StackView({ stack, logs, systemEvents, onStop, onStopAll
 
   return (
     <div className="flex flex-col h-full" data-engine-stack>
-      <div className="px-4 py-2.5 border-b border-stealth-border/50 flex items-center justify-between fade-in">
-        <div className="flex items-center gap-3 min-w-0">
-          <h2 className="text-xs font-mono theme-accent-text tracking-widest shrink-0">✦ ENGINE STACK</h2>
+      <TabPageHeader
+        title="ENGINE STACK"
+        meta={(
           <span className="text-[8px] font-mono opacity-40 shrink-0">
             {onlineCount} RUNNING
             {loadingCount > 0 ? ` · ${loadingCount} LOADING` : ""}
             {errorCount > 0 ? ` · ${errorCount} ERROR` : ""}
           </span>
-        </div>
-
-        <button
-          onClick={onStopAll}
-          disabled={activeSlots.length === 0}
-          className="px-2 py-0.5 text-[8px] font-mono border border-telemetry-red/40 text-telemetry-red hover:bg-telemetry-red/10 transition-colors rounded-sm disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
-        >
-          STOP ALL
-        </button>
-      </div>
+        )}
+        actions={(
+          <button
+            onClick={onStopAll}
+            disabled={activeSlots.length === 0}
+            className="px-2 py-0.5 text-[8px] font-mono border border-telemetry-red/40 text-telemetry-red hover:bg-telemetry-red/10 transition-colors rounded-sm disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
+          >
+            STOP ALL
+          </button>
+        )}
+      />
 
       <div className="flex-1 overflow-y-auto eink-scrollbar p-4 min-h-0">
         {activeSlots.length === 0 ? (

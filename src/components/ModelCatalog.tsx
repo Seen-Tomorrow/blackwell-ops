@@ -7,7 +7,7 @@ import { useModelCatalog, type SortField } from "../hooks/useModelCatalog";
 import type { SetupGuideState } from "../hooks/useSetupGuide";
 import { useCatalogSplitResize } from "../hooks/useCatalogSplitResize";
 import { useTelemetry } from "../context/TelemetryContext";
-import { ToastAnchor } from "./Toast";
+import TabPageHeader from "./TabPageHeader";
 
 
 interface ModelCatalogProps {
@@ -177,19 +177,15 @@ export default function ModelCatalog(props: ModelCatalogProps) {
 
   return (
     <div className="flex flex-col h-full min-h-0 overflow-hidden" data-model-catalog>
-      {/* Top bar — title left, launch toasts queue right-to-left in the open row */}
-      <div className="catalog-top-bar px-4 py-1 border-b border-stealth-border/50 flex items-center gap-3 min-w-0">
-        <div className="flex items-center gap-3 shrink-0">
-          <h2 className="text-xs font-mono theme-accent-text tracking-widest">✦ MODEL CATALOG</h2>
-          <span className="text-[8px] font-mono opacity-40">({catalogModels.length} / {models.length})</span>
-          {zone === "config" && (
-            <span className="text-[8px] font-mono px-1.5 py-0.5 rounded-sm border border-telemetry-cyan/40 text-telemetry-cyan bg-telemetry-cyan/10">
-              CONFIG [Ctrl+Enter]
-            </span>
-          )}
-        </div>
-        <ToastAnchor className="catalog-toast-anchor" />
-      </div>
+      <TabPageHeader
+        title="MODEL CATALOG"
+        meta={<span className="text-[8px] font-mono opacity-40">({catalogModels.length} / {models.length})</span>}
+        actions={zone === "config" ? (
+          <span className="text-[8px] font-mono px-1.5 py-0.5 rounded-sm border border-telemetry-cyan/40 text-telemetry-cyan bg-telemetry-cyan/10">
+            CONFIG [Ctrl+Enter]
+          </span>
+        ) : undefined}
+      />
 
       {/* Error banner */}
       {error && (

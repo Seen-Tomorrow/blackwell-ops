@@ -43,6 +43,7 @@ import {
   type NavigateConfigDetail,
 } from "../lib/events";
 import type { SetupGuideState } from "../hooks/useSetupGuide";
+import TabPageHeader from "./TabPageHeader";
 import type { RawCatalogEntry } from "../lib/catalog";
 import { catalogEntryToParam } from "../lib/catalog";
 import { isDevBuild } from "../lib/build";
@@ -211,6 +212,10 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
   }, []);
 
   useEffect(() => {
+    setCollapsedConfigGroups(new Set());
+  }, [selectedProviderId]);
+
+  useEffect(() => {
     setCustomGroupDisplayZone(loadGroupDisplayZone(selectedProviderId, currentProvider?.groupDisplayZone));
   }, [selectedProviderId, currentProvider]);
 
@@ -293,6 +298,41 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
     () => userSavedParamsWithDefaults.filter(isCatalogVisibleParam),
     [userSavedParamsWithDefaults],
   );
+
+  const visibleParamGroups = useMemo(() => {
+    if (catalogVisibleParams.length === 0) return [] as string[];
+
+    const groupOrder = editorUnlocked
+      ? resolveGroupOrderForAdmin(catalogVisibleParams, customGroupOrder)
+      : resolveGroupOrder(catalogVisibleParams, customGroupOrder);
+
+    const groups: Record<string, UserEditedTemplateParam[]> = {};
+    for (const def of catalogVisibleParams) {
+      const g = paramUiGroup(def.ui_group);
+      if (!groups[g]) groups[g] = [];
+      groups[g].push(def);
+    }
+
+    return groupOrder.filter((groupName) => {
+      const groupParams = groups[groupName] ?? [];
+      const isEmpty = groupParams.length === 0;
+      if (isEmpty && !editorUnlocked) return false;
+      if (isEmpty && !isEmptyGroupDeletable(groupName, groups)) return false;
+      return true;
+    });
+  }, [catalogVisibleParams, customGroupOrder, editorUnlocked]);
+
+  const allParamGroupsCollapsed = useMemo(
+    () => visibleParamGroups.length > 0 && visibleParamGroups.every((g) => collapsedConfigGroups.has(g)),
+    [visibleParamGroups, collapsedConfigGroups],
+  );
+
+  const toggleAllParamGroupsCollapsed = useCallback(() => {
+    setCollapsedConfigGroups((prev) => {
+      const allCollapsed = visibleParamGroups.length > 0 && visibleParamGroups.every((g) => prev.has(g));
+      return allCollapsed ? new Set() : new Set(visibleParamGroups);
+    });
+  }, [visibleParamGroups]);
 
   // ── Hidden count for status bar ───────────────────────────────────
   const hiddenCount = useMemo(
@@ -1163,8 +1203,8 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
   // ── Render ───────────────────────────────────────────────────────
   return (
     <div className="h-full flex flex-col overflow-hidden" data-config-page>
-      {/* Tab bar */}
-      <div className="px-4 py-2 config-section-bar flex items-center gap-1">
+      <TabPageHeader title="CONFIG" />
+      <div className="px-4 py-1 config-section-bar flex items-center gap-1">
         <button onClick={() => setSubTab("providers")} className={`app-nav-tab px-3 py-1 text-[10px] font-mono tracking-wider rounded-sm ${subTab === "providers" ? "app-nav-tab-active" : ""}`}>PROVIDERS</button>
         <button onClick={() => setSubTab("params")} className={`app-nav-tab px-3 py-1 text-[10px] font-mono tracking-wider rounded-sm ${subTab === "params" ? "app-nav-tab-active" : ""}`}>PARAMETERS</button>
         <button onClick={() => setSubTab("paths")} data-onboarding="paths-tab" className={`app-nav-tab px-3 py-1 text-[10px] font-mono tracking-wider rounded-sm ${subTab === "paths" ? "app-nav-tab-active" : ""}`}>PATHS</button>
@@ -1194,6 +1234,17 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
                   {powerUserState === "permanently" ? "\u{1F511} EDITOR — PERMANENTLY UNLOCKED"
                     : powerUserState === "unlocked" ? "\u{1F513} EDITOR — UNLOCKED"
                     : "\u{1F512} EDITOR — LOCKED"}
+                </button>
+                <button
+                  type="button"
+                  onClick={toggleAllParamGroupsCollapsed}
+                  disabled={visibleParamGroups.length === 0}
+                  className={`value-chip text-[9px] font-mono px-2 py-0.5 rounded-sm transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
+                    allParamGroupsCollapsed ? "value-chip-active" : ""
+                  }`}
+                  title={allParamGroupsCollapsed ? "Expand all parameter groups" : "Collapse all parameter groups"}
+                >
+                  {allParamGroupsCollapsed ? "▶ EXPAND ALL" : "▼ COLLAPSE ALL"}
                 </button>
               </div>
               <div className="h-4"></div>
