@@ -1,5 +1,6 @@
 import { normalizeAboveColumnWidths } from "./configColumnLayout";
 import { normalizeDisplayTexture, type DisplayTexture } from "./displayTexture";
+import { normalizeIndustrialBezelTexture, type IndustrialBezelTexture } from "./industrialBezelTexture";
 import type { ConfigViewMode } from "./types";
 
 /**
@@ -31,6 +32,7 @@ import type { ConfigViewMode } from "./types";
  * | BlackOps-fusion-bench-tray | open \| stowed | Fusion overlay benchmark tray visibility |
  * | BlackOps-config-param-legend | open \| stowed | CONFIG PARAMETERS editor legend panel |
  * | BlackOps-display-texture | clean \| phosphor-dark \| phosphor-light | Display texture cycle (glitch legacy → clean) |
+ * | BlackOps-industrial-bezel-texture | sandblast \| diamond \| brush | Dark-theme gunmetal bezel pattern |
  * | BlackOps-catalog-split-width | number string (px) | Model catalog / engine config split |
  * | BlackOps-model-hub-split-width | number string (0–1) | Model Hub results / quants split ratio |
  * | BlackOps-telemetry-view | standard \| lab | TELEMETRY tab: panel vs lab catalogue |
@@ -120,6 +122,7 @@ export const KEYS = {
   fusionBenchTray: `${STORAGE_PREFIX}fusion-bench-tray`,
   configParamLegend: `${STORAGE_PREFIX}config-param-legend`,
   displayTexture: `${STORAGE_PREFIX}display-texture`,
+  industrialBezelTexture: `${STORAGE_PREFIX}industrial-bezel-texture`,
   configLayoutMode: `${STORAGE_PREFIX}config-layout-mode`,
   catalogSplitWidth: `${STORAGE_PREFIX}catalog-split-width`,
   modelHubSplitWidth: `${STORAGE_PREFIX}model-hub-split-width`,
@@ -569,6 +572,14 @@ export function loadDisplayTexture(): DisplayTexture {
 
 export function saveDisplayTexture(texture: DisplayTexture): void {
   writeStorage(KEYS.displayTexture, texture);
+}
+
+export function loadIndustrialBezelTexture(): IndustrialBezelTexture {
+  return normalizeIndustrialBezelTexture(readStorage(KEYS.industrialBezelTexture));
+}
+
+export function saveIndustrialBezelTexture(texture: IndustrialBezelTexture): void {
+  writeStorage(KEYS.industrialBezelTexture, texture);
 }
 
 export function loadCatalogSplitWidth(): number {

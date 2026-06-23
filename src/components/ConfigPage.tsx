@@ -41,6 +41,7 @@ import {
   type PowerUserState,
 } from "../lib/storage";
 import {
+  consumePendingConfigSubTab,
   dispatchAppEvent,
   dispatchPowerUserChanged,
   EVENTS,
@@ -88,7 +89,7 @@ function parseValue(v: string): string | number {
 }
 
 export default function ConfigPage({ providers: externalProviders, setupGuide }: ConfigPageProps) {
-  const [subTab, setSubTab] = useState<ConfigSubTab>("providers");
+  const [subTab, setSubTab] = useState<ConfigSubTab>(() => consumePendingConfigSubTab() ?? "providers");
   const [selectedProviderId, setSelectedProviderId] = useState<string>(DEFAULT_PROVIDER_ID);
   const [allProviders, setAllProviders] = useState<ProviderConfig[]>(externalProviders || []);
   // Power-user tri-state — synced with Layout.tsx header toggle

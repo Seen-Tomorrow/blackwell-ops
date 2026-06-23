@@ -42,7 +42,7 @@
   --theme-phosphor-text-muted: #3a6a4a;
   --theme-phosphor-bar-bg: rgba(74, 222, 128, 0.08);
   --theme-phosphor-border: rgba(74, 222, 128, 0.12);
-  --theme-industrial-bg: #1c1e22;
+  --theme-industrial-bg: #111810;
   --theme-industrial-text: #4ade80;
   --theme-industrial-muted: #4ade80;
   --theme-industrial-bar-track: rgba(74, 222, 128, 0.03);
@@ -51,10 +51,81 @@
   --theme-industrial-gpu-selected: rgba(74, 222, 128, 0.7);
   --theme-gpu-topo-selected-border: rgba(148, 163, 184, 0.5);
   --theme-gpu-topo-selected-shadow: 0 0 10px rgba(148, 163, 184, 0.22);
-  --theme-bezel-edge-hi: rgba(200, 210, 220, 0.12);
+  --theme-bezel-edge-hi: rgba(74, 222, 128, 0.14);
   --theme-bezel-edge-lo: rgba(0, 0, 0, 0.28);
-  --theme-bezel-grain: rgba(255, 255, 255, 0.025);
-  --theme-bezel-inset-hi: rgba(255, 255, 255, 0.06);
+  --theme-bezel-grain: rgba(74, 222, 128, 0.03);
+  /* Bezel pattern variants — grain tokens adapt per theme (incl. ARCTIC). */
+  --theme-industrial-texture-sandblast:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--theme-bezel-edge-hi) 20%, transparent) 0%,
+      transparent 14%,
+      transparent 86%,
+      color-mix(in srgb, #000000 26%, transparent) 100%
+    ),
+    radial-gradient(
+      circle,
+      color-mix(in srgb, var(--theme-bezel-grain) 110%, transparent) 0.55px,
+      transparent 0.65px
+    )
+      0 0 / 3px 3px,
+    radial-gradient(
+      circle,
+      color-mix(in srgb, #000000 14%, transparent) 0.4px,
+      transparent 0.5px
+    )
+      1.5px 1.5px / 3px 3px;
+  --theme-industrial-texture-diamond:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--theme-bezel-edge-hi) 18%, transparent) 0%,
+      transparent 12%,
+      transparent 88%,
+      color-mix(in srgb, #000000 28%, transparent) 100%
+    ),
+    repeating-linear-gradient(
+      60deg,
+      transparent 0px,
+      transparent 2px,
+      color-mix(in srgb, var(--theme-bezel-grain) 95%, transparent) 2px,
+      transparent 3px,
+      transparent 5px
+    ),
+    repeating-linear-gradient(
+      -60deg,
+      transparent 0px,
+      transparent 2px,
+      color-mix(in srgb, var(--theme-bezel-grain) 95%, transparent) 2px,
+      transparent 3px,
+      transparent 5px
+    );
+  /* Fine horizontal brush strokes — distinct from grit stipple and diamond mesh. */
+  --theme-industrial-texture-brush:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--theme-bezel-edge-hi) 18%, transparent) 0%,
+      transparent 12%,
+      transparent 88%,
+      color-mix(in srgb, #000000 28%, transparent) 100%
+    ),
+    repeating-linear-gradient(
+      0deg,
+      transparent 0px,
+      transparent 2px,
+      color-mix(in srgb, var(--theme-bezel-grain) 85%, transparent) 2px,
+      transparent 2.5px,
+      transparent 4px
+    ),
+    repeating-linear-gradient(
+      0deg,
+      transparent 0px,
+      transparent 4px,
+      color-mix(in srgb, #000000 12%, transparent) 4px,
+      transparent 4.5px,
+      transparent 8px
+    );
+  --theme-industrial-texture-active: var(--theme-industrial-texture-sandblast);
+  --theme-bezel-inset-hi: rgba(74, 222, 128, 0.07);
   --theme-bezel-inset-lo: rgba(0, 0, 0, 0.22);
   --theme-phosphor-inset-top: rgba(0, 0, 0, 0.35);
   --theme-phosphor-inset-bottom: rgba(0, 0, 0, 0.12);
@@ -110,8 +181,8 @@
   --fusion-eink-hw-driver: #5a7050;
   --fusion-eink-gpu-name: #4a6a4a;
   --fusion-eink-gpu-name-selected: #1e3a14;
-  --theme-card-recessed-border: #1c1e22;
-  --theme-card-selected-bg: #1c1e22;
+  --theme-card-recessed-border: #111810;
+  --theme-card-selected-bg: #111810;
   --theme-card-selected-accent: #b87a00;
   --theme-scrollbar-track: rgba(10, 10, 15, 0.5);
   --theme-scrollbar-thumb: rgba(118, 185, 0, 0.3);
@@ -286,6 +357,10 @@ html, body, #root {
   flex-shrink: 0;
   width: fit-content;
   height: 40px;
+}
+
+.app-header-brand .app-header-logo {
+  transform: translateY(-5px);
 }
 
 .app-header-version {
@@ -580,6 +655,9 @@ html, body, #root {
   border-radius: 6px;
   padding: 3px 5px 2px;
   flex-shrink: 0;
+  width: fit-content;
+  max-width: 100%;
+  align-items: flex-start;
 }
 
 .app-quick-settings__tools {
@@ -601,10 +679,16 @@ html, body, #root {
   border: none;
   border-radius: 0;
   padding: 0;
+  width: fit-content;
+  max-width: 100%;
 }
 
 .app-appearance-section {
   min-height: 0;
+}
+
+.app-appearance-section--inline {
+  flex-wrap: nowrap;
 }
 
 .app-appearance-section__label {
@@ -614,6 +698,15 @@ html, body, #root {
   flex-shrink: 0;
   width: 4.25rem;
   white-space: nowrap;
+}
+
+.app-appearance-section__label--compact {
+  width: auto;
+  letter-spacing: 0.08em;
+}
+
+.app-appearance-inline-group {
+  min-width: 0;
 }
 
 .app-appearance-section__chips {
@@ -2660,12 +2753,7 @@ html, body, #root {
   border-radius: 16px 16px 8px 8px;
   padding: 18px;
   background-color: var(--theme-industrial-bg);
-  background-image: repeating-linear-gradient(
-    135deg,
-    var(--theme-bezel-grain) 0px,
-    transparent 1px,
-    transparent 4px
-  );
+  background-image: var(--theme-industrial-texture-active);
   border-top: 1.5px solid var(--theme-bezel-edge-hi);
   border-left: 1.5px solid color-mix(in srgb, var(--theme-bezel-edge-hi) 65%, transparent);
   border-bottom: 1px solid var(--theme-bezel-edge-lo);
@@ -3639,8 +3727,74 @@ html:not([data-theme="arctic"]) [data-display-texture="clean"] .bench-widget-pan
   color: #b87a00;
 }
 
+html {
+  --theme-industrial-texture-active: var(--theme-industrial-texture-sandblast);
+}
+
+html[data-industrial-bezel="diamond"] {
+  --theme-industrial-texture-active: var(--theme-industrial-texture-diamond);
+}
+
+html[data-industrial-bezel="brush"] {
+  --theme-industrial-texture-active: var(--theme-industrial-texture-brush);
+}
+
+/* ARCTIC frame textures — GRIT is smooth aluminium only; DIAMOND/BRUSH use lighter shadows. */
+[data-theme="arctic"] {
+  --theme-industrial-texture-sandblast: none;
+  --theme-industrial-texture-diamond:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--theme-bezel-edge-hi) 18%, transparent) 0%,
+      transparent 12%,
+      transparent 88%,
+      color-mix(in srgb, #000000 10%, transparent) 100%
+    ),
+    repeating-linear-gradient(
+      60deg,
+      transparent 0px,
+      transparent 2px,
+      color-mix(in srgb, var(--theme-bezel-grain) 95%, transparent) 2px,
+      transparent 3px,
+      transparent 5px
+    ),
+    repeating-linear-gradient(
+      -60deg,
+      transparent 0px,
+      transparent 2px,
+      color-mix(in srgb, var(--theme-bezel-grain) 95%, transparent) 2px,
+      transparent 3px,
+      transparent 5px
+    );
+  --theme-industrial-texture-brush:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--theme-bezel-edge-hi) 18%, transparent) 0%,
+      transparent 12%,
+      transparent 88%,
+      color-mix(in srgb, #000000 10%, transparent) 100%
+    ),
+    repeating-linear-gradient(
+      0deg,
+      transparent 0px,
+      transparent 2px,
+      color-mix(in srgb, var(--theme-bezel-grain) 85%, transparent) 2px,
+      transparent 2.5px,
+      transparent 4px
+    ),
+    repeating-linear-gradient(
+      0deg,
+      transparent 0px,
+      transparent 4px,
+      color-mix(in srgb, #000000 5%, transparent) 4px,
+      transparent 4.5px,
+      transparent 8px
+    );
+}
+
 /* ── Display texture toggle — outline pill on bezel top ─── */
-.display-texture-toggle {
+.display-texture-toggle,
+.industrial-bezel-texture-toggle {
   font-family: ui-monospace, monospace;
   font-size: 6px;
   font-weight: 500;
@@ -3657,11 +3811,13 @@ html:not([data-theme="arctic"]) [data-display-texture="clean"] .bench-widget-pan
   transition: background-color 0.15s ease;
 }
 
-.display-texture-toggle:hover {
+.display-texture-toggle:hover,
+.industrial-bezel-texture-toggle:hover {
   background: rgba(255, 255, 255, 0.06);
 }
 
-.display-texture-toggle:focus-visible {
+.display-texture-toggle:focus-visible,
+.industrial-bezel-texture-toggle:focus-visible {
   outline: 1px solid #b0b0b0;
   outline-offset: 2px;
 }
@@ -3671,26 +3827,29 @@ html:not([data-theme="arctic"]) [data-display-texture="clean"] .bench-widget-pan
   background: #e8dcc0 !important;
 }
 
-[data-theme="arctic"] .display-texture-toggle {
+[data-theme="arctic"] .display-texture-toggle,
+[data-theme="arctic"] .industrial-bezel-texture-toggle {
   border-color: #4a4a4a;
   color: #4a4a4a;
 }
 
-[data-theme="arctic"] .display-texture-toggle:hover {
+[data-theme="arctic"] .display-texture-toggle:hover,
+[data-theme="arctic"] .industrial-bezel-texture-toggle:hover {
   background: rgba(0, 0, 0, 0.06);
 }
 
-[data-theme="arctic"] .display-texture-toggle:focus-visible {
+[data-theme="arctic"] .display-texture-toggle:focus-visible,
+[data-theme="arctic"] .industrial-bezel-texture-toggle:focus-visible {
   outline-color: #4a4a4a;
 }
 
-/* ARCTIC — brushed aluminium bezel face (light themes need explicit metallic gradient) */
+/* ARCTIC — smooth brushed aluminium; DIAMOND/BRUSH overlay when cycled off GRIT */
 [data-theme="arctic"] .industrial-display-frame,
 [data-theme="arctic"] .industrial-eject-panel,
 [data-theme="arctic"] .gpu-assign-panel {
   background-image:
-    linear-gradient(175deg, #d6dee6 0%, #b6c2ce 28%, #9aacb8 52%, #b2beca 78%, #c6ced6 100%),
-    repeating-linear-gradient(135deg, var(--theme-bezel-grain) 0px, transparent 1px, transparent 3px);
+    var(--theme-industrial-texture-active),
+    linear-gradient(175deg, #d6dee6 0%, #b6c2ce 28%, #9aacb8 52%, #b2beca 78%, #c6ced6 100%);
 }
 
 [data-theme="arctic"] [data-config-panel] .config-param-add-input {
@@ -4548,6 +4707,13 @@ html:not([data-theme="arctic"]) [data-display-texture="clean"] .bench-widget-pan
   --theme-phosphor-inset-bottom: rgba(0, 0, 0, 0.12);
   --theme-display-dot-matrix: color-mix(in srgb, #c8c8d0 5%, transparent);
   --theme-display-lcd-band: color-mix(in srgb, #080808 6%, transparent);
+  /* SLATE phosphor-dark chrome — bench latch OPEN/STOW readability on dark CRT */
+  --theme-bg: #080808;
+  --theme-text: #d0d0d8;
+  --theme-text-muted: #5a5a6a;
+  --theme-border-subtle: rgba(200, 200, 210, 0.08);
+  --theme-bench-inset-shadow: rgba(0, 0, 0, 0.22);
+  --fusion-readout-accent: #94a3b8;
   background-color: #080808 !important;
   background-image:
     radial-gradient(circle, var(--theme-display-dot-matrix) 1px, transparent 1px),
@@ -4738,12 +4904,7 @@ html:not([data-theme="arctic"]) [data-display-texture="clean"] .phosphor-display
   margin: 0 24px -6px;
   padding: 2px 8px 5px;
   background-color: var(--theme-industrial-bg);
-  background-image: repeating-linear-gradient(
-    135deg,
-    var(--theme-bezel-grain) 0px,
-    transparent 1px,
-    transparent 4px
-  );
+  background-image: var(--theme-industrial-texture-active);
   border-radius: 4px 4px 0 0;
   border-top: 1px solid color-mix(in srgb, var(--theme-bezel-edge-hi) 55%, transparent);
   border-left: 1px solid color-mix(in srgb, var(--theme-bezel-edge-hi) 35%, transparent);
@@ -5336,12 +5497,7 @@ html:not([data-theme="arctic"]) [data-display-texture="clean"] .phosphor-display
   margin: -10px 24px 0;
   padding: 4px 8px 0px;
   background-color: var(--theme-industrial-bg);
-  background-image: repeating-linear-gradient(
-    135deg,
-    var(--theme-bezel-grain) 0px,
-    transparent 1px,
-    transparent 4px
-  );
+  background-image: var(--theme-industrial-texture-active);
   border-radius: 4px;
   border-top: 1px solid color-mix(in srgb, var(--theme-bezel-edge-hi) 50%, transparent);
   border-left: 1px solid color-mix(in srgb, var(--theme-bezel-edge-hi) 35%, transparent);
@@ -5665,12 +5821,20 @@ html:not([data-theme="arctic"]) [data-display-texture="clean"] .phosphor-display
   50% { opacity: 0.6; box-shadow: 0 0 0 3px rgba(118, 185, 0, 0); }
 }
 
-/* ── Gunmetal Card — selected model, flat fill + accent rail (no grain — cheaper paint) ─── */
+/* ── Gunmetal Card — selected model, frame texture + accent rail ─── */
 .gunmetal-card {
   background-color: var(--theme-card-selected-bg);
+  background-image: var(--theme-industrial-texture-active);
   border: 1px solid color-mix(in srgb, var(--theme-card-selected-accent) 32%, var(--theme-border-subtle)) !important;
   border-radius: 6px !important;
   box-shadow: 0 1px 2px color-mix(in srgb, var(--theme-text) 8%, transparent);
+}
+
+[data-theme="arctic"] .gunmetal-card {
+  background-color: #b6c2ce;
+  background-image:
+    var(--theme-industrial-texture-active),
+    linear-gradient(175deg, #d6dee6 0%, #b6c2ce 28%, #9aacb8 52%, #b2beca 78%, #c6ced6 100%);
 }
 
 .gunmetal-card::before {
@@ -7659,12 +7823,7 @@ select option {
   z-index: 0;
   pointer-events: none;
   background-color: var(--theme-industrial-bg);
-  background-image: repeating-linear-gradient(
-    135deg,
-    var(--theme-bezel-grain) 0px,
-    transparent 1px,
-    transparent 4px
-  );
+  background-image: var(--theme-industrial-texture-active);
 }
 
 [data-config-panel] .config-launch-dock__content {
@@ -7715,8 +7874,8 @@ select option {
 [data-theme="arctic"] [data-config-panel] .config-launch-dock::before {
   background-color: #b6c2ce;
   background-image:
-    linear-gradient(175deg, #d6dee6 0%, #b6c2ce 28%, #9aacb8 52%, #b2beca 78%, #c6ced6 100%),
-    repeating-linear-gradient(135deg, var(--theme-bezel-grain) 0px, transparent 1px, transparent 3px);
+    var(--theme-industrial-texture-active),
+    linear-gradient(175deg, #d6dee6 0%, #b6c2ce 28%, #9aacb8 52%, #b2beca 78%, #c6ced6 100%);
 }
 
 [data-theme="arctic"] [data-config-panel] .config-launch-dock__alias input.value-chip,

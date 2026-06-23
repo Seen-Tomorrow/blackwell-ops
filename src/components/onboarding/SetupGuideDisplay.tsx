@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { SetupPhase } from "../../hooks/useSetupGuide";
-import { dispatchAppEvent, EVENTS, type NavigateConfigDetail } from "../../lib/events";
+import { dispatchAppEvent, dispatchNavigateConfig, EVENTS } from "../../lib/events";
 import { FIT_SCAN_PARALLEL_OPTIONS } from "../../lib/onboarding";
 import type {
   FitScanComplete,
@@ -97,7 +97,7 @@ export default function SetupGuideDisplay({
   }, [metaDone]);
 
   const openPaths = () => {
-    dispatchAppEvent(EVENTS.navigateConfig, { subTab: "paths" } satisfies NavigateConfigDetail);
+    dispatchNavigateConfig({ subTab: "paths" });
   };
 
   const browseModelLibrary = useCallback(async () => {

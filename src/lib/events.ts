@@ -65,6 +65,20 @@ export function dispatchAppEvent(event: AppEventName, detail?: unknown): void {
   );
 }
 
+let pendingConfigSubTab: NavigateConfigDetail["subTab"] | null = null;
+
+/** Consumed once when ConfigPage mounts (sub-tab intent survives tab switch). */
+export function consumePendingConfigSubTab(): NavigateConfigDetail["subTab"] | null {
+  const tab = pendingConfigSubTab;
+  pendingConfigSubTab = null;
+  return tab;
+}
+
+export function dispatchNavigateConfig(detail?: NavigateConfigDetail): void {
+  if (detail?.subTab) pendingConfigSubTab = detail.subTab;
+  dispatchAppEvent(EVENTS.navigateConfig, detail);
+}
+
 export function dispatchPowerUserChanged(): void {
   dispatchAppEvent(EVENTS.powerUserChanged);
 }
@@ -104,7 +118,7 @@ export function dispatchClearLocalStorage(reload = true): number {
 
 /** Navigate to CONFIG → RECOVERY (header shortcut — always reachable). */
 export function dispatchNavigateRecovery(): void {
-  dispatchAppEvent(EVENTS.navigateConfig, { subTab: "recovery" } satisfies NavigateConfigDetail);
+  dispatchNavigateConfig({ subTab: "recovery" });
 }
 
 /**

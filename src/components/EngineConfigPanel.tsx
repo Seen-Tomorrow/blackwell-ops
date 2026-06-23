@@ -55,6 +55,7 @@ import { useScenarioEvaluator } from "../hooks/useScenarioEvaluator";
 import type { SetupGuideState } from "../hooks/useSetupGuide";
 import { useConfigResolver } from "../hooks/useConfigResolver";
 import { useDisplayTexture } from "../context/DisplayTextureContext";
+
 import DisplayGlitchOverlay from "./DisplayGlitchOverlay";
 import { useFoundry } from "../hooks/useBuildDock";
 import { buildAutoVramLaunchParams } from "../lib/autoVramLaunch";
@@ -1451,7 +1452,10 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
   if (!model && setupGuide.active) {
     return (
-      <div className="flex flex-col h-full min-h-0 overflow-hidden" data-config-panel>
+      <div
+        className="flex flex-col h-full min-h-0 overflow-hidden"
+        data-config-panel
+      >
         <div
           className={onboardingDisplay.area}
           data-display-texture={displayTexture}

@@ -101,6 +101,7 @@ const NV_GREEN = "#76B900";
 const CAPTURE_STRIP_SELECTORS = [
   "[data-fusion-share-exclude]",
   ".display-texture-toggle",
+  ".industrial-bezel-texture-toggle",
   ".display-glitch-ambient",
   ".display-glitch-chroma",
   ".display-glitch-block",

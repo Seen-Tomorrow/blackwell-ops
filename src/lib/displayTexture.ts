@@ -1,7 +1,7 @@
 /** Industrial display surface textures — VRAM bezel + Fusion overlay phosphor screens. */
 
 /** User-facing cycle order (GLITCH CSS remains; not offered in the toggle). */
-export const DISPLAY_TEXTURE_ORDER = ["clean", "phosphor-dark", "phosphor-light"] as const;
+export const DISPLAY_TEXTURE_ORDER = ["phosphor-dark", "phosphor-light", "clean"] as const;
 
 export type DisplayTexture = (typeof DISPLAY_TEXTURE_ORDER)[number];
 
