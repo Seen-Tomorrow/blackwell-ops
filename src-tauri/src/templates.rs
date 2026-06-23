@@ -89,9 +89,15 @@ pub struct SpawnProfile {
     /// Param keys shown in Auto VRAM mode.
     #[serde(default)]
     pub simple_param_keys: Vec<String>,
+    /// Param keys shown in Essentials view (engine config panel filter).
+    #[serde(default, rename = "essentialParamKeys")]
+    pub essential_param_keys: Vec<String>,
     /// Reserved — unused (legacy field kept for config merge compatibility).
     #[serde(default)]
     pub fit_margin_mib: u32,
+    /// When false, UI omits tensor/row from SPLIT chips (provider lacks stable tensor+FIT).
+    #[serde(default = "default_true")]
+    pub tensor_split: bool,
 }
 
 fn default_model_flag() -> Vec<String> { vec!["-m".into()] }
@@ -125,7 +131,9 @@ impl Default for SpawnProfile {
             auto_vram: false,
             fit_style: String::new(),
             simple_param_keys: Vec::new(),
+            essential_param_keys: Vec::new(),
             fit_margin_mib: 256,
+            tensor_split: true,
         }
     }
 }
@@ -469,16 +477,20 @@ impl ProviderTemplate {
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
 
+        let moe_optimal_launch = extra_param_eq_ignore_ascii(config, "offload_mode", "moe_optimal");
+
         if auto_vram_launch {
-            args.extend(sp.spawn_flags.clone());
-            if sp.fit_style.as_str() == "ggml_fit_params" {
-                let ctx = resolve_launch_ctx_tokens(config, user_params);
-                args.extend(["--fit".into(), "on".into()]);
-                args.extend(["--fit-ctx".into(), ctx.to_string()]);
+            if moe_optimal_launch {
+                // MOE_OPTIMAL owns expert placement — --fit on fights eviction/tensor offload strategy.
+                args.extend(["--fit".into(), "off".into()]);
+            } else {
+                args.extend(sp.spawn_flags.clone());
+                if sp.fit_style.as_str() == "ggml_fit_params" {
+                    let ctx = resolve_launch_ctx_tokens(config, user_params);
+                    args.extend(["--fit".into(), "on".into()]);
+                    args.extend(["--fit-ctx".into(), ctx.to_string()]);
+                }
             }
-        } else if sp.fit_style.as_str() == "ggml_fit_params" {
-            // MANUAL launch — disable implicit llama_params_fit at load (not the same as --fit on).
-            args.extend(["--fit".into(), "off".into()]);
         }
 
         if sp.enable_metrics {
@@ -579,7 +591,8 @@ impl ProviderTemplate {
 
         // n_gpu_layers injection — computed by VRAM scenario factory at runtime.
         // Skip when Auto VRAM launch handles offload (--fit / --fit on).
-        let fit_handles_offload = auto_vram_launch && sp.fit_style.as_str() == "ggml_fit_params";
+        let fit_handles_offload =
+            auto_vram_launch && !moe_optimal_launch && sp.fit_style.as_str() == "ggml_fit_params";
         if !fit_handles_offload {
             if let Some(ngl) = config.extra_params.get("__ngl") {
                 if let Some(flag) = sp.ngl_flag.first() {
@@ -742,6 +755,14 @@ fn parse_ctx_token_str(raw: &str) -> usize {
     s.parse::<usize>().unwrap_or(32768)
 }
 
+fn extra_param_eq_ignore_ascii(config: &EngineConfig, key: &str, expected: &str) -> bool {
+    config
+        .extra_params
+        .get(key)
+        .and_then(|v| v.as_str())
+        .is_some_and(|s| s.eq_ignore_ascii_case(expected))
+}
+
 /// AUTO_FIT always whitelists; MANUAL whitelists when extra_params carries user param keys.
 fn launch_uses_extra_params_whitelist(config: &EngineConfig) -> bool {
     if config
@@ -824,6 +845,42 @@ mod build_cmd_tests {
         let joined = args.join(" ");
         assert!(joined.contains("--ctx-size"));
         assert!(!joined.contains("--batch-size"));
+    }
+
+    #[test]
+    fn auto_vram_moe_optimal_uses_fit_off_not_fit_on() {
+        let mut sp = SpawnProfile::default();
+        sp.fit_style = "ggml_fit_params".to_string();
+
+        let template = ProviderTemplate {
+            binary_name: "llama-server.exe".to_string(),
+            description: "test".to_string(),
+            spawn_profile: sp,
+            params: Vec::new(),
+        };
+
+        let mut extra = HashMap::new();
+        extra.insert("__auto_vram".to_string(), serde_json::json!(true));
+        extra.insert("offload_mode".to_string(), serde_json::json!("moe_optimal"));
+
+        let config = EngineConfig {
+            alias: String::new(),
+            model_path: "model.gguf".to_string(),
+            port: 8080,
+            backend_type: "ggml-master".to_string(),
+            binary_profile: String::new(),
+            extra_params: extra,
+        };
+
+        let args = template.build_command(&config, "", &[]);
+        let fit_on = args
+            .windows(2)
+            .any(|w| w[0] == "--fit" && w[1] == "on");
+        let fit_off = args
+            .windows(2)
+            .any(|w| w[0] == "--fit" && w[1] == "off");
+        assert!(!fit_on, "MOE_OPTIMAL must not launch with --fit on: {args:?}");
+        assert!(fit_off, "MOE_OPTIMAL must launch with --fit off: {args:?}");
     }
 
     #[test]

@@ -56,15 +56,22 @@ export function buildAutoVramLaunchParams(opts: {
   runningSlots: RunningSlotInfo[];
   manifest: VramManifest | null;
   weightGb: number;
+  fullAutoMode?: boolean;
+  memoryMode?: "full_auto" | "assisted";
 }): Record<string, unknown> {
-  const { config, launchKeys, paramDefs, gpus, runningSlots, manifest, weightGb } = opts;
+  const { config, launchKeys, paramDefs, gpus, runningSlots, manifest, weightGb, fullAutoMode, memoryMode } = opts;
 
   const perGpu = computeGpuAvailableList(gpus, runningSlots);
   const autoSplit = resolveAutoLayerSplit({ manifest, weightGb, perGpuAvailable: perGpu });
 
-  const params: Record<string, unknown> = { __auto_vram: true };
+  const params: Record<string, unknown> = {
+    __auto_vram: true,
+    __memory_mode: memoryMode ?? (fullAutoMode ? "full_auto" : "assisted"),
+    ...(fullAutoMode ? { offload_mode: "regular" } : {}),
+  };
   for (const key of launchKeys) {
     if (key === "split") continue;
+    if (fullAutoMode && (key === "device" || key === "split" || key === "offload_mode")) continue;
     const value = paramDefs?.length
       ? resolveVisibleParamValue(key, config, paramDefs)
       : config[key];
@@ -73,15 +80,22 @@ export function buildAutoVramLaunchParams(opts: {
     }
   }
 
-  // Multi-GPU: user split choice (layer / tensor / row) wins; default layer when forecast promotes split.
+  // Multi-GPU split — ASSISTED: user choice wins; FULL AUTO: FIT/forecast only (no persisted chrome).
   if (gpus.length > 1 && params.split === undefined) {
-    const userSplit = config.split != null ? String(config.split).trim().toLowerCase() : "";
-    if (userSplit.length > 0 && userSplit !== "none") {
-      params.split = userSplit;
-      params.gpu_sync = config.gpu_sync ?? "1";
-    } else if (autoSplit) {
-      params.split = "layer";
-      params.gpu_sync = config.gpu_sync ?? "1";
+    if (fullAutoMode) {
+      if (autoSplit) {
+        params.split = "layer";
+        params.gpu_sync = config.gpu_sync ?? "1";
+      }
+    } else {
+      const userSplit = config.split != null ? String(config.split).trim().toLowerCase() : "";
+      if (userSplit.length > 0 && userSplit !== "none") {
+        params.split = userSplit;
+        params.gpu_sync = config.gpu_sync ?? "1";
+      } else if (autoSplit) {
+        params.split = "layer";
+        params.gpu_sync = config.gpu_sync ?? "1";
+      }
     }
   }
 

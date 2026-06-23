@@ -508,6 +508,7 @@
     "supports_fusion": true,
     "fusion_adapter": "ggml_tom",
     "fit_adapter": "ggml_tom",
+    "tensor_split": false,
     "verbosity_args": [
       "-lv",
       "3"

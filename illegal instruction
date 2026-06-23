@@ -1,0 +1,74 @@
+Good — stable with meters waking confirms the fix is in the right place.
+
+What was wrong (short version)
+
+Two layers:
+
+1. The actual crash — a bug in the Tauri/Wry/WebView stack, not your engines or NVIDIA drivers.
+   The procdump showed 0xC000001D inside blackwell-ops.exe on this path:
+
+WebView2 (WebResourceRequested)
+     → wry custom_protocol_handler
+       → tauri IPC
+         → clone Rc<EventLoopRunner>  ← refcount already dead
+           → ud2 (illegal instruction)
+
+   That's undefined behavior in the UI bridge — use-after-free on a shared event-loop handle.
+
+2. What triggered it — fusion idle polling created enough background pressure to hit that bug every few minutes.
+
+It wasn't "HTTP crashes the app"
+
+The HTTP calls themselves (GET /slots, GET /metrics to localhost) run in Rust/tokio and don't touch WebView directly.
+
+The chain was:
+
+Per idle engine, every 500ms:
+  /slots + /metrics  (2 HTTP requests)
+    → parse JSON, update fusion state
+      → fusion-update Tauri emit → WebView IPC
+
+With many engines idle at once, that scales badly:
+
+┌───────────────┬───────────────────────────────────────────────────┐
+│ Before        │ 8 idle engines                                    │
+├───────────────┼───────────────────────────────────────────────────┤
+│ Poll interval │ 500ms                                             │
+├───────────────┼───────────────────────────────────────────────────┤
+│ Endpoints     │ /slots + /metrics                                 │
+├───────────────┼───────────────────────────────────────────────────┤
+│ HTTP rate     │ ~32 req/s                                         │
+├───────────────┼───────────────────────────────────────────────────┤
+│ IPC           │ periodic fusion-update even when mostly unchanged │
+└───────────────┴───────────────────────────────────────────────────┘
+
+So it wasn't one bad request — it was sustained volume: many engines × frequent polls × JSON work × IPC into WebView. That eventually landed on the fragile Wry/Tauri IPC path and tripped the Rc bug.
+
+Your bisect fit that: BLACKWELL_DISABLE_FUSION_POLL=1 removed the whole loop → no crash. Frontend GPU poll, disk I/O, etc. were fine on their own.
+
+What we changed
+
+Idle engines now use a cheap heartbeat:
+
+• 2.5s tick instead of 500ms
+• /health only for 2 ticks, then one /slots sample
+• No /metrics while idle
+• Full 25ms poll only when actually inferring (PP/TG)
+• stderr log belt still drives live meters during real work
+
+That cuts idle load by roughly 20–40× with N engines, which stays under the threshold that was provoking the WebView crash.
+
+What it wasn't
+
+• NVIDIA power management / GPU sleep (possible for stale VRAM, not this exit code)
+• llama-server children
+• MCP bridge
+• Random driver illegal instructions
+
+Bottom line
+
+Bug: Tauri 2.11.x / Wry 0.55.x WebView IPC lifetime issue.
+Trigger: fusion idle polling at too high a rate across multiple engines.
+Fix: throttle idle polling + cheap heartbeat; keep aggressive polling only during active inference.
+
+Worth filing upstream to tauri-apps/tauri (https://github.com/tauri-apps/tauri) with your procdump if you want a proper framework fix — our change is a solid workaround.

@@ -319,6 +319,9 @@ pub struct StackEntry {
     /// Whether live Fusion monitoring is enabled for this provider.
     #[serde(default = "default_true", rename = "supportsFusion")]
     pub supports_fusion: bool,
+    /// Multi-GPU split at launch (`none` / `layer` / `row` / `tensor`).
+    #[serde(default, rename = "splitMode")]
+    pub split_mode: String,
 }
 
 pub fn default_provider_type() -> String { crate::config::DEFAULT_PROVIDER_ID.to_string() }
@@ -363,18 +366,30 @@ pub struct LaunchProfile {
     /// Param keys visible in Auto VRAM mode (e.g. device, ctx, kv_quant).
     #[serde(default, rename = "simpleParamKeys")]
     pub simple_param_keys: Vec<String>,
+    /// Param keys shown in Essentials view (engine config panel filter).
+    #[serde(default, rename = "essentialParamKeys")]
+    pub essential_param_keys: Vec<String>,
     /// Legacy field — kept for config merge compatibility.
     #[serde(default, rename = "fitMarginMib")]
     pub fit_margin_mib: u32,
+    #[serde(default = "default_true", rename = "tensorSplit")]
+    pub tensor_split: bool,
 }
 
 impl LaunchProfile {
     pub fn from_spawn_profile(sp: &crate::templates::SpawnProfile) -> Self {
+        let essential = if !sp.essential_param_keys.is_empty() {
+            sp.essential_param_keys.clone()
+        } else {
+            sp.simple_param_keys.clone()
+        };
         Self {
             auto_vram: sp.auto_vram,
             fit_style: sp.fit_style.clone(),
             simple_param_keys: sp.simple_param_keys.clone(),
+            essential_param_keys: essential,
             fit_margin_mib: sp.fit_margin_mib,
+            tensor_split: sp.tensor_split,
         }
     }
 }

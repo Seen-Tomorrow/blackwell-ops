@@ -259,10 +259,10 @@ export default function BlackwellOutputConsole({
 
   const panel = (
     <div
-      className={`blackwell-output-console flex flex-col text-[10px] font-mono ${
+      className={`blackwell-output-console flex flex-col font-mono ${
         isDetached
-          ? "blackwell-output-console--detached fixed z-[110] rounded overflow-hidden"
-          : "blackwell-output-console--docked fixed left-0 right-0 z-[40]"
+          ? "blackwell-output-console--detached fixed z-[110] rounded overflow-hidden text-[10px]"
+          : `blackwell-output-console--docked fixed left-0 right-0 z-[40]${compact ? " blackwell-output-console--compact" : " text-[10px]"}`
       } ${isDetached && (isDragging || isResizing) ? "blackwell-output-console--interacting" : ""}`}
       style={{
         ...(isDetached
@@ -285,11 +285,11 @@ export default function BlackwellOutputConsole({
       onDragStart={(e) => e.preventDefault()}
     >
       <div
-        className={`blackwell-output-console__header flex items-center justify-between px-4 tracking-[1.5px] text-[9px] cursor-grab active:cursor-grabbing ${compact ? "py-0.5" : "py-1"}`}
+        className={`blackwell-output-console__header flex items-center justify-between px-3 tracking-[1.2px] cursor-grab active:cursor-grabbing ${compact ? "" : "px-4 tracking-[1.5px] text-[9px] py-1"}`}
         onMouseDown={startDrag}
       >
         <div className="flex items-center gap-2">
-          <span className={`font-bold ${compact ? "text-[8px]" : ""}`}>BLACKWELL OUTPUT CONSOLE</span>
+          <span className="font-bold">BLACKWELL OUTPUT CONSOLE</span>
           {!compact && <span className="boc-version-badge px-1.5 py-px text-[7px]">v0.9</span>}
         </div>
 
@@ -298,7 +298,7 @@ export default function BlackwellOutputConsole({
             <button
               key={cat}
               onClick={() => setActiveCategory(cat)}
-              className={`boc-tab px-2 py-0.5 rounded-sm border text-[8px] transition-all ${
+              className={`boc-tab boc-tab--toolbar rounded-sm border transition-all ${
                 cat === "error"
                   ? activeCategory === cat
                     ? "boc-tab--error-active"
@@ -319,16 +319,16 @@ export default function BlackwellOutputConsole({
           <button onClick={() => void clearAll()} className="boc-action-btn boc-action-btn--clear" title="Clear all">ALL</button>
 
           {isDetached ? (
-            <button onClick={() => setIsDetached(false)} className="boc-utility-btn px-2 py-0.5 text-[8px]">DOCK</button>
+            <button onClick={() => setIsDetached(false)} className="boc-utility-btn">DOCK</button>
           ) : (
-            <button onClick={() => setIsDetached(true)} className="boc-utility-btn px-2 py-0.5 text-[8px]">DETACH</button>
+            <button onClick={() => setIsDetached(true)} className="boc-utility-btn">DETACH</button>
           )}
 
-          <button onClick={handleClose} className="boc-close-btn px-2 py-0.5 text-[10px] ml-1">✕</button>
+          <button onClick={handleClose} className="boc-close-btn ml-1">✕</button>
         </div>
       </div>
 
-      <div className={`blackwell-output-console__body flex-1 overflow-auto p-2 text-[9.5px] leading-[1.35] custom-scrollbar min-h-0 ${isDetached ? "pb-4" : "pb-1"}`}>
+      <div className={`blackwell-output-console__body app-console-mono flex-1 overflow-auto custom-scrollbar min-h-0 ${isDetached ? "p-2 pb-4 text-[9.5px] leading-[1.35]" : compact ? "p-1.5 pb-1" : "p-2 pb-1 text-[9.5px] leading-[1.35]"}`}>
         {isLoading && <div className="boc-sync pl-1">SYNCING TELEMETRY...</div>}
 
         {!isLoading && lines.length === 0 && (

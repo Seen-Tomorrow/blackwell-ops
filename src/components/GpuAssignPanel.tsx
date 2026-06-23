@@ -1,12 +1,16 @@
 import type { GpuInfo } from "../lib/types";
 
-const PARAM_LABEL_CLASS =
-  "gpu-assign-panel__label font-mono w-24 flex-shrink-0 uppercase tracking-wider truncate text-[9px] text-stealth-muted";
+const DEVICE_LABEL_CLASS =
+  "gpu-assign-panel__label font-mono w-14 flex-shrink-0 uppercase tracking-wider truncate text-[9px] text-stealth-muted";
 
-function paramChipClass(active: boolean): string {
-  return `px-2 py-0.5 text-[9px] font-mono rounded-sm focus:outline-none ${
+const SPLIT_LABEL_CLASS =
+  "gpu-assign-panel__label font-mono w-10 flex-shrink-0 uppercase tracking-wider truncate text-[9px] text-stealth-muted text-right";
+
+function paramChipClass(active: boolean, disabled?: boolean): string {
+  const base = `px-2 py-0.5 text-[9px] font-mono rounded-sm focus:outline-none ${
     active ? "value-chip-active" : "value-chip"
   }`;
+  return disabled ? `${base} gpu-assign-chip--locked` : base;
 }
 
 function isSplitModeActive(split: unknown): boolean {
@@ -21,10 +25,13 @@ interface GpuAssignPanelProps {
   splitValues: (string | number)[];
   onDeviceChange: (value: string) => void;
   onSplitChange: (value: string | number) => void;
-  /** AUTO FIT solo-GPU — hide split row (FIT owns offload). */
-  hideSplitRow?: boolean;
-  /** AUTO FIT multi-GPU — omit NONE when forecast/user already on split. */
+  /** FULL AUTO — hatched, non-interactive chrome. */
+  chromeDisabled?: boolean;
+  deviceLocked?: boolean;
+  splitLocked?: boolean;
   hideSplitNone?: boolean;
+  /** Hide tensor/row when provider spawn_profile.tensor_split is false. */
+  hideTensorSplit?: boolean;
 }
 
 export default function GpuAssignPanel({
@@ -34,28 +41,41 @@ export default function GpuAssignPanel({
   splitValues,
   onDeviceChange,
   onSplitChange,
-  hideSplitRow = false,
+  chromeDisabled = false,
+  deviceLocked = false,
+  splitLocked = false,
   hideSplitNone = false,
+  hideTensorSplit = false,
 }: GpuAssignPanelProps) {
   if (gpus.length === 0) return null;
 
   const splitActive = isSplitModeActive(splitValue);
   const deviceOptions = gpus.map((_, i) => `GPU-${i}`);
   const visibleSplitValues = splitValues.filter((val) => {
-    if (!hideSplitNone) return true;
-    return String(val).toLowerCase() !== "none";
+    const mode = String(val).toLowerCase();
+    if (hideSplitNone && mode === "none") return false;
+    if (hideTensorSplit && (mode === "tensor" || mode === "row")) return false;
+    return true;
   });
+  const showSplitRow = gpus.length > 1;
+  const panelClass = chromeDisabled ? " gpu-assign-panel--chrome-disabled" : "";
+
+  const chipDisabled = (locked: boolean) => chromeDisabled || locked;
 
   return (
-    <div className="gpu-assign-panel flex-shrink-0" data-gpu-assign-panel>
-      <div className={`gpu-assign-panel__grid${hideSplitRow ? " gpu-assign-panel__grid--solo" : ""}`}>
+    <div className={`gpu-assign-panel flex-shrink-0${panelClass}`} data-gpu-assign-panel>
+      <div className={`gpu-assign-panel__grid${!showSplitRow ? " gpu-assign-panel__grid--solo" : ""}`}>
         <div className="gpu-assign-panel__half gpu-assign-panel__half--device">
-          <span className={PARAM_LABEL_CLASS}>Device</span>
+          <span className={DEVICE_LABEL_CLASS}>Device</span>
           <div className="gpu-assign-panel__chips config-chip-row flex items-center gap-1.5 min-w-0">
             {splitActive ? (
               <span
-                className={`${paramChipClass(true)} opacity-90 cursor-default`}
-                title="Split mode uses all detected GPUs. Set SPLIT to none to pick a single GPU."
+                className={`${paramChipClass(true, chromeDisabled)} opacity-90 cursor-default`}
+                title={
+                  chromeDisabled
+                    ? "FULL AUTO — engine picks GPU placement"
+                    : "Split mode uses all detected GPUs. Set SPLIT to none to pick a single GPU."
+                }
               >
                 ALL ({gpus.length})
               </span>
@@ -64,8 +84,9 @@ export default function GpuAssignPanel({
                 <button
                   key={val}
                   type="button"
+                  disabled={chipDisabled(deviceLocked)}
                   onClick={() => onDeviceChange(val)}
-                  className={paramChipClass(String(deviceValue) === val)}
+                  className={paramChipClass(String(deviceValue) === val, chromeDisabled || deviceLocked)}
                 >
                   {val}
                 </button>
@@ -73,19 +94,21 @@ export default function GpuAssignPanel({
             )}
           </div>
         </div>
-        {!hideSplitRow && (
+        {showSplitRow && (
           <>
             <div className="gpu-assign-panel__divider" aria-hidden />
             <div className="gpu-assign-panel__half gpu-assign-panel__half--split">
-              <span className={PARAM_LABEL_CLASS}>Split</span>
+              <span className={SPLIT_LABEL_CLASS}>Split</span>
               <div className="gpu-assign-panel__chips config-chip-row flex items-center gap-1.5 min-w-0">
                 {visibleSplitValues.map((val) => (
                   <button
                     key={String(val)}
                     type="button"
+                    disabled={chipDisabled(splitLocked)}
                     onClick={() => onSplitChange(val)}
                     className={paramChipClass(
                       String(splitValue).toLowerCase() === String(val).toLowerCase(),
+                      chromeDisabled || splitLocked,
                     )}
                   >
                     {String(val)}

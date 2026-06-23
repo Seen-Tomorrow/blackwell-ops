@@ -55,11 +55,6 @@ const SCAN_PLAN: &[(&str, usize, &str, u32, u32, &str)] = &[
     ("batch_4k", 131072, "q4_0", 4096, 1, "none"),
     ("batch_8k", 131072, "q4_0", 8192, 1, "none"),
 
-    // === PARALLEL SWEEP — per-sequence overhead ===
-    ("parallel_2", 131072, "q4_0", 512, 2, "none"),
-    ("parallel_4", 131072, "q4_0", 512, 4, "none"),
-    ("parallel_8", 131072, "q4_0", 512, 8, "none"),
-
     // === SPLIT TAX — multi-GPU communication overhead at various contexts ===
     ("split_layer_64k", 65536, "q4_0", 512, 1, "layer"),
     ("split_row_64k", 65536, "q4_0", 512, 1, "row"),

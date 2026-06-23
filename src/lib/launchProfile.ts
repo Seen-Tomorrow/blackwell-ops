@@ -1,5 +1,6 @@
 import type { ConfigViewMode, LaunchProfile, UserEditedTemplateParam } from "./types";
 import { PANEL_CHROME_PARAM_KEYS } from "./paramDisplayZone";
+import { isCatalogVisibleParam, isSystemCatalogParam } from "./systemParams";
 
 /** Dock / launch chrome — always shown in essentials (alias uses separate row). */
 export const LAUNCH_DOCK_PARAM_KEYS = ["base_port"] as const;
@@ -60,6 +61,27 @@ export function isEssentialParam(
   if (def.essential === true) return true;
   if (def.essential === false) return false;
   return factoryEssentialKeys.has(def.key);
+}
+
+/**
+ * Effective Essentials list for factory export — scroll-area params only (excludes
+ * engine chrome / topology-owned keys). Order follows param `order`.
+ */
+export function computeEssentialParamKeysForExport(
+  params: UserEditedTemplateParam[],
+  factoryEssentialKeys: Set<string>,
+): string[] {
+  const sorted = [...params].sort((a, b) => a.order - b.order);
+  const keys: string[] = [];
+  const seen = new Set<string>();
+  for (const p of sorted) {
+    if (p.hidden || !isCatalogVisibleParam(p) || isSystemCatalogParam(p)) continue;
+    if (!isEssentialParam(p, factoryEssentialKeys)) continue;
+    if (seen.has(p.key)) continue;
+    seen.add(p.key);
+    keys.push(p.key);
+  }
+  return keys;
 }
 
 export function providerSupportsFitLaunch(profile?: LaunchProfile): boolean {

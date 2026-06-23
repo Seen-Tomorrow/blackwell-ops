@@ -7,6 +7,11 @@ function runtimeProfileLabel(binaryProfile?: string): string {
   return ENV_META[key]?.label ?? key.toUpperCase();
 }
 
+function runtimeSplitLabel(splitMode?: string): string {
+  const raw = String(splitMode ?? "none").trim().toLowerCase();
+  return raw.length > 0 ? raw : "none";
+}
+
 interface RunningEnginesPanelProps {
   stack: StackEntry[];
   models: ModelEntry[];
@@ -64,9 +69,14 @@ export default function RunningEnginesPanel({ stack, models, selectedSlotIdx, on
                   {runtimeProfileLabel(item.entry.binaryProfile)}
                 </span>
               </div>
-              <span className="text-[8px] font-mono text-telemetry-cyan shrink-0 bg-telemetry-cyan/10 border border-telemetry-cyan/20 px-1 py-0.5 rounded-sm">
-                {gpuLabel}
-              </span>
+              <div className="flex flex-col shrink-0 gap-0.5 items-start max-w-[4.25rem]">
+                <span className="text-[8px] font-mono text-telemetry-cyan bg-telemetry-cyan/10 border border-telemetry-cyan/20 px-1 py-0.5 rounded-sm leading-none">
+                  {gpuLabel}
+                </span>
+                <span className="running-engine-profile-label pl-0.5">
+                  S: {runtimeSplitLabel(item.entry.splitMode)}
+                </span>
+              </div>
               <span
                 className={`text-[10px] font-mono truncate flex-1 min-w-0 ${isThisSelected ? "text-nv-green" : "text-white"}`}
                 title={item.modelName}

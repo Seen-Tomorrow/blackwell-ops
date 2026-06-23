@@ -55,7 +55,6 @@ function wasFitCacheUsed(input: ScenarioInput): boolean {
     userCtx,
     cfgStr(engineConfig, "kv_quant", "f16"),
     cfgNum(engineConfig, "batch", 2048),
-    cfgNum(engineConfig, "parallel", 1),
     splitMode,
     weightsGb,
   ) !== null;
@@ -85,10 +84,13 @@ export function resolveMemorySource(
     };
   }
 
-  // Steady-state priority: LEARNED → FIT CACHE → FORMULA
+  // Steady-state priority: LEARNED → FIT CACHE → FORMULA (FULL AUTO uses live formula/FIT cache only)
   if (
-    manifest.learnedFromPreviousRun
-    || (input.learnedVramMib != null && input.learnedVramMib > 0)
+    !input.fullAutoMode
+    && (
+      manifest.learnedFromPreviousRun
+      || (input.learnedVramMib != null && input.learnedVramMib > 0)
+    )
   ) {
     return {
       kind: "learned",

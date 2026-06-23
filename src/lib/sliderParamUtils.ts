@@ -9,8 +9,10 @@ import {
 export const SLIDER_THUMB_WIDTH_PX = 15;
 export const TRACK_HEIGHT_PX = 6;
 export const TICK_ZONE_HEIGHT_PX = 8;
+/** Input / label control height — vertically centered in TRACK_AREA_HEIGHT_PX. */
+export const CONTROL_ROW_HEIGHT_PX = 18;
 export const TRACK_AREA_HEIGHT_PX = 28;
-export const TRACK_TOP_PX = 6;
+export const TRACK_TOP_PX = (TRACK_AREA_HEIGHT_PX - TRACK_HEIGHT_PX) / 2;
 export const TRACK_BOTTOM_PX = TRACK_TOP_PX + TRACK_HEIGHT_PX;
 export const TICK_TOP_PX = TRACK_BOTTOM_PX + 2;
 export const TICK_HEIGHT_PX = TICK_ZONE_HEIGHT_PX;

@@ -16,7 +16,7 @@
  * | BlackOps-download-completed | Model Hub download finished — refresh catalog |
  * | BlackOps-telemetry-view-changed | TELEMETRY tab switched standard ↔ lab |
  * | BlackOps-model-paths-changed | Model path added/removed/default changed — refresh catalog |
- * | BlackOps-navigate-config | Switch to CONFIG tab; detail.subTab selects sub-tab |
+ * | BlackOps-navigate-config | Switch to CONFIG tab; detail.subTab selects sub-tab (incl. recovery) |
  * | BlackOps-setup-guide-changed | Setup guide phase/dismiss state changed |
  * | BlackOps-reset-setup-guide | Clear onboarding keys and replay welcome/guide in-app |
  * | BlackOps-show-all-hidden-params | CONFIG footer — unhide all hidden param rows (current provider) |
@@ -24,7 +24,7 @@
  */
 
 export type NavigateConfigDetail = {
-  subTab?: "providers" | "params" | "paths" | "secrets";
+  subTab?: "providers" | "params" | "paths" | "secrets" | "recovery";
 };
 
 import { invoke } from "@tauri-apps/api/core";
@@ -100,6 +100,21 @@ export function dispatchClearLocalStorage(reload = true): number {
     window.location.reload();
   }
   return cleared;
+}
+
+/** Navigate to CONFIG → RECOVERY (header shortcut — always reachable). */
+export function dispatchNavigateRecovery(): void {
+  dispatchAppEvent(EVENTS.navigateConfig, { subTab: "recovery" } satisfies NavigateConfigDetail);
+}
+
+/**
+ * Reset portable `config/` to factory defaults, clear onboarding keys, reload.
+ * Same outcome as manually deleting the config folder while the app is closed.
+ */
+export async function dispatchResetAppConfig(): Promise<void> {
+  resetSetupGuideState();
+  await invoke("reset_app_config");
+  window.location.reload();
 }
 
 export function dispatchShowAllHiddenParams(): void {

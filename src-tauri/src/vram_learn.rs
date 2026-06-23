@@ -107,14 +107,53 @@ fn normalize_model_path_for_key(model_path: &str) -> String {
     crate::config::resolve_model_path(model_path)
 }
 
-fn param_suffix(provider_id: &str, ctx: &str, kv_quant: &str, device: &str, split: &str) -> String {
+fn normalize_offload_mode(offload_mode: &str) -> String {
+    let s = offload_mode.trim().to_lowercase();
+    if s.is_empty() || s == "regular" {
+        "regular".to_string()
+    } else {
+        s
+    }
+}
+
+fn param_suffix(
+    provider_id: &str,
+    ctx: &str,
+    kv_quant: &str,
+    device: &str,
+    split: &str,
+    memory_mode: &str,
+    offload_mode: &str,
+) -> String {
     format!(
-        "|{}|ctx={}|kv={}|dev={}|split={}",
+        "|{}|ctx={}|kv={}|dev={}|split={}|mode={}|offload={}",
         provider_id,
         normalize_ctx_key(ctx),
         kv_quant.trim().to_lowercase(),
         device.trim(),
         split.trim().to_lowercase(),
+        memory_mode.trim().to_lowercase(),
+        normalize_offload_mode(offload_mode),
+    )
+}
+
+/// Pre-offload suffix — keys written before offload_mode was part of the fingerprint.
+fn param_suffix_legacy(
+    provider_id: &str,
+    ctx: &str,
+    kv_quant: &str,
+    device: &str,
+    split: &str,
+    memory_mode: &str,
+) -> String {
+    format!(
+        "|{}|ctx={}|kv={}|dev={}|split={}|mode={}",
+        provider_id,
+        normalize_ctx_key(ctx),
+        kv_quant.trim().to_lowercase(),
+        device.trim(),
+        split.trim().to_lowercase(),
+        memory_mode.trim().to_lowercase(),
     )
 }
 
@@ -126,12 +165,22 @@ pub fn learned_vram_key(
     kv_quant: &str,
     device: &str,
     split: &str,
+    memory_mode: &str,
+    offload_mode: &str,
 ) -> String {
     let normalized_path = normalize_model_path_for_key(model_path);
     format!(
         "{}{}",
         normalized_path,
-        param_suffix(provider_id, ctx, kv_quant, device, split),
+        param_suffix(
+            provider_id,
+            ctx,
+            kv_quant,
+            device,
+            split,
+            memory_mode,
+            offload_mode,
+        ),
     )
 }
 
@@ -155,6 +204,16 @@ pub fn snapshot_from_config(
     }
 }
 
+fn memory_mode_from_config(config: &EngineConfig) -> String {
+    config
+        .extra_params
+        .get("__memory_mode")
+        .and_then(|v| v.as_str())
+        .map(|s| s.trim().to_lowercase())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "full_auto".to_string())
+}
+
 pub fn learned_vram_key_from_config(model_path: &str, provider_id: &str, config: &EngineConfig) -> String {
     learned_vram_key(
         model_path,
@@ -163,6 +222,10 @@ pub fn learned_vram_key_from_config(model_path: &str, provider_id: &str, config:
         &config.get_param_str("kv_quant").unwrap_or_else(|| "f16".to_string()),
         &config.get_param_str("device").unwrap_or_else(|| "GPU-0".to_string()),
         &config.get_param_str("split").unwrap_or_else(|| "none".to_string()),
+        &memory_mode_from_config(config),
+        &config
+            .get_param_str("offload_mode")
+            .unwrap_or_else(|| "regular".to_string()),
     )
 }
 
@@ -173,35 +236,34 @@ fn lookup_learned_vram_fuzzy(
     kv_quant: &str,
     device: &str,
     split: &str,
+    memory_mode: &str,
+    offload_mode: &str,
 ) -> Option<LearnedVramEntry> {
     let store = load_store();
-    let primary = learned_vram_key(model_path, provider_id, ctx, kv_quant, device, split);
+    let normalized_path = normalize_model_path_for_key(model_path);
+    let primary = learned_vram_key(
+        model_path,
+        provider_id,
+        ctx,
+        kv_quant,
+        device,
+        split,
+        memory_mode,
+        offload_mode,
+    );
     if let Some(entry) = store.entries.get(&primary) {
         return Some(entry.clone());
     }
-
-    // Legacy keys written before path/ctx normalization.
-    let legacy = format!(
-        "{}{}",
-        model_path,
-        param_suffix(provider_id, ctx, kv_quant, device, split),
-    );
-    if legacy != primary {
-        if let Some(entry) = store.entries.get(&legacy) {
-            return Some(entry.clone());
-        }
+    // Legacy entries lack |offload= — only reuse for regular offload, never MOE_OPTIMAL.
+    if normalize_offload_mode(offload_mode) == "regular" {
+        let legacy_key = format!(
+            "{}{}",
+            normalized_path,
+            param_suffix_legacy(provider_id, ctx, kv_quant, device, split, memory_mode),
+        );
+        return store.entries.get(&legacy_key).cloned();
     }
-
-    let suffix = param_suffix(provider_id, ctx, kv_quant, device, split);
-    let path_key = crate::config::model_path_key(&normalize_model_path_for_key(model_path));
-    store.entries.iter().find_map(|(key, entry)| {
-        let stored_path = key.strip_suffix(&suffix)?;
-        if crate::config::model_path_key(stored_path) == path_key {
-            Some(entry.clone())
-        } else {
-            None
-        }
-    })
+    None
 }
 
 pub fn lookup_learned_vram(key: &str) -> Option<LearnedVramEntry> {
@@ -224,6 +286,10 @@ pub fn lookup_learned_vram_for_config(
         &config.get_param_str("kv_quant").unwrap_or_else(|| "f16".to_string()),
         &config.get_param_str("device").unwrap_or_else(|| "GPU-0".to_string()),
         &config.get_param_str("split").unwrap_or_else(|| "none".to_string()),
+        &memory_mode_from_config(config),
+        &config
+            .get_param_str("offload_mode")
+            .unwrap_or_else(|| "regular".to_string()),
     )
 }
 
@@ -432,7 +498,28 @@ pub fn get_learned_vram(
     kv_quant: String,
     device: String,
     split: String,
+    memory_mode: Option<String>,
+    offload_mode: Option<String>,
 ) -> Option<LearnedVramEntry> {
     let _guard = STORE_MUTEX.lock().ok()?;
-    lookup_learned_vram_fuzzy(&model_path, &provider_id, &ctx, &kv_quant, &device, &split)
+    let mode = memory_mode
+        .as_deref()
+        .map(|s| s.trim().to_lowercase())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "full_auto".to_string());
+    let offload = offload_mode
+        .as_deref()
+        .map(|s| s.trim().to_lowercase())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "regular".to_string());
+    lookup_learned_vram_fuzzy(
+        &model_path,
+        &provider_id,
+        &ctx,
+        &kv_quant,
+        &device,
+        &split,
+        &mode,
+        &offload,
+    )
 }

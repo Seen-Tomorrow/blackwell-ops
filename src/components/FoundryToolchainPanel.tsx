@@ -186,23 +186,23 @@ export default function FoundryToolchainPanel({
           Portable VS Build Tools, Windows SDK, and CUDA toolkits are installed. Foundry builds can use any profile.
         </p>
       ) : (
-        <div className="border border-yellow-400/25 bg-yellow-400/[0.04] rounded-sm p-2.5 space-y-2">
-          <p className="text-[8px] font-mono text-yellow-400/90 font-bold uppercase tracking-wide">
+        <div className="foundry-toolchain-install-guide border border-yellow-400/30 bg-yellow-400/5 rounded-sm p-2.5 space-y-2">
+          <p className="foundry-toolchain-install-guide__title text-[8px] font-mono text-yellow-400/90 font-bold uppercase tracking-wide">
             One-time manual install
           </p>
-          <ol className="list-decimal list-inside space-y-1.5 text-[8px] font-mono text-white/75 leading-relaxed">
+          <ol className="foundry-toolchain-install-guide__body list-decimal list-inside space-y-1.5 text-[8px] font-mono text-white/75 leading-relaxed">
             <li>
               Open the{" "}
               <span className="text-telemetry-cyan">Foundry Toolchain</span> release and download all{" "}
               {info.archive_parts.length} parts ({info.compressed_size_label}).
             </li>
             <li>
-              Put <span className="text-white/90">{info.archive_parts.join(", ")}</span> in the same folder (below is fine).
+              Put <span className="foundry-toolchain-install-guide__emph text-white/90">{info.archive_parts.join(", ")}</span> in the same folder (below is fine).
             </li>
             <li>
-              Right-click <span className="text-white/90">toolchain.7z.001</span> → 7-Zip →{" "}
-              <span className="text-white/90">Extract Here</span> into the app folder below.
-              Needs <span className="text-white/90">{info.uncompressed_size_label}</span> free disk space.
+              Right-click <span className="foundry-toolchain-install-guide__emph text-white/90">toolchain.7z.001</span> → 7-Zip →{" "}
+              <span className="foundry-toolchain-install-guide__emph text-white/90">Extract Here</span> into the app folder below.
+              Needs <span className="foundry-toolchain-install-guide__emph text-white/90">{info.uncompressed_size_label}</span> free disk space.
             </li>
             <li>
               After extract you must have{" "}
@@ -223,25 +223,25 @@ export default function FoundryToolchainPanel({
             )}
           </div>
 
-          <div className="flex flex-wrap gap-1.5 pt-0.5">
+          <div className="foundry-toolchain-install-guide__actions flex flex-wrap gap-1.5 pt-0.5">
             <button
               type="button"
               onClick={() => void handleOpenRelease()}
-              className="px-2 py-0.5 text-[8px] font-mono border border-telemetry-cyan/50 text-telemetry-cyan hover:bg-telemetry-cyan/10 transition-colors rounded-sm"
+              className="foundry-toolchain-btn foundry-toolchain-btn--link"
             >
-              OPEN RELEASE
+              OPEN GIT RELEASE PAGE
             </button>
             <button
               type="button"
               onClick={() => void handleCopyPath()}
-              className="px-2 py-0.5 text-[8px] font-mono border border-stealth-border text-stealth-muted hover:text-white transition-colors rounded-sm"
+              className="foundry-toolchain-btn foundry-toolchain-btn--neutral"
             >
               {copied ? "COPIED" : "COPY PATH"}
             </button>
             <button
               type="button"
               onClick={() => void handleOpenFolder()}
-              className="px-2 py-0.5 text-[8px] font-mono border border-stealth-border text-stealth-muted hover:text-white transition-colors rounded-sm"
+              className="foundry-toolchain-btn foundry-toolchain-btn--neutral"
             >
               OPEN FOLDER
             </button>
@@ -249,7 +249,7 @@ export default function FoundryToolchainPanel({
               type="button"
               onClick={() => void refresh()}
               disabled={loading}
-              className="px-2 py-0.5 text-[8px] font-mono border border-nv-green/40 text-nv-green hover:bg-nv-green/10 transition-colors rounded-sm disabled:opacity-40"
+              className="foundry-toolchain-btn foundry-toolchain-btn--action"
             >
               {loading ? "CHECKING…" : "RE-CHECK"}
             </button>

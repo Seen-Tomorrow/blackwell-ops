@@ -1,17 +1,17 @@
-# Mirror foundry artifacts from DEV to runtime (FULL tree — for DEV + release prep)
+# Mirror foundry artifacts from DEV to runtime (FULL tree - for DEV + release prep)
 # Usage: .\scripts\mirror-artifacts.ps1
 # Run before release; follow with prepare-release-runtime.ps1 to strip for NSIS.
 #
 # Profile policy (see runtime-distribution.ps1):
-#   ggml-master -> vanguard, frontier, fresh, stable (all 4)
-#   ik          -> vanguard only
+#   ggml-master, ggml-tom -> frontier, stable
+#   vanguard/fresh retired - not mirrored
 #
 # Flow:
 #   1. Clear stale binaries in each allowed profile dir (runtime/<provider>/<env>/)
 #   2. Copy ALL Release binaries from foundry artifacts (foundry/artifacts/<provider>/<env>/Release/)
 #   3. Config files at runtime/<provider>/config/ are NOT touched
 #
-# DEV keeps the full mirror via npm run predev. Distribution ships only
+# DEV sync uses npm run predev (sync-dev-runtime.ps1). Distribution ships only
 # llama-server.exe, llama-fit-params.exe, and DLLs (see prepare-release-runtime.ps1).
 
 $ErrorActionPreference = "Stop"
@@ -35,17 +35,17 @@ $skipped = 0
 
 foreach ($provider in $providers) {
     $provider_id = $provider.Name
-    $allowed_profiles = Get-RuntimeBundleProfiles -ProviderId $provider_id
 
-    if ($allowed_profiles.Count -gt 0) {
-        $env_dirs = $allowed_profiles | ForEach-Object {
-            Join-Path $provider.FullName $_
-        } | Where-Object { Test-Path -LiteralPath $_ }
-    } else {
-        $env_dirs = Get-ChildItem -LiteralPath $provider.FullName -Directory |
-            Where-Object { -not $_.Name.EndsWith(".prev") } |
-            ForEach-Object { $_.FullName }
+    if (-not (Test-RuntimeBundleProvider -ProviderId $provider_id)) {
+        Write-Host "[mirror-artifacts] $provider_id not in bundle policy - skipping." -ForegroundColor DarkGray
+        $skipped++
+        continue
     }
+
+    $allowed_profiles = Get-RuntimeBundleProfiles -ProviderId $provider_id
+    $env_dirs = $allowed_profiles | ForEach-Object {
+        Join-Path $provider.FullName $_
+    } | Where-Object { Test-Path -LiteralPath $_ }
 
     foreach ($env_dir in $env_dirs) {
         $env_name = Split-Path -Leaf $env_dir

@@ -4,10 +4,15 @@ import React, { useState, useCallback, useEffect, useMemo, useRef } from "react"
 import { invoke } from "@tauri-apps/api/core";
 import type { UserEditedTemplateParam, ProviderConfig, ProviderTemplate, ProviderDefaultParam, ModelPathEntry, PathDiskUsage, LayoutDefaults, ExportFactoryTemplateResult } from "../lib/types";
 import { DEFAULT_PROVIDER_ID } from "../lib/types";
-import { isEssentialParam, resolveEssentialParamKeys } from "../lib/launchProfile";
+import {
+  computeEssentialParamKeysForExport,
+  isEssentialParam,
+  resolveEssentialParamKeys,
+} from "../lib/launchProfile";
 import ValueBubbles from "./ValueBubbles";
 import ProvidersConfig from "./ProvidersConfig";
 import SecretsConfig from "./SecretsConfig";
+import RecoveryConfig from "./RecoveryConfig";
 import ParamCatalogSearch from "./ParamCatalogSearch";
 import ConfigParamLegend from "./ConfigParamLegend";
 import {
@@ -37,7 +42,6 @@ import {
 } from "../lib/storage";
 import {
   dispatchAppEvent,
-  dispatchClearLocalStorage,
   dispatchPowerUserChanged,
   EVENTS,
   type NavigateConfigDetail,
@@ -55,6 +59,7 @@ import {
   pruneStaleGroupOrder,
   renameGroupInLayout,
   resolveGroupOrderForAdmin,
+  resolveGroupOrderForExport,
   stripGroupFromLayout,
 } from "../lib/groupLayoutUtils";
 import {
@@ -67,7 +72,7 @@ import {
 } from "../lib/systemParams";
 
 
-type ConfigSubTab = "providers" | "params" | "paths" | "secrets";
+type ConfigSubTab = "providers" | "params" | "paths" | "secrets" | "recovery";
 
 interface ConfigPageProps {
   providers?: ProviderConfig[];
@@ -141,7 +146,6 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
 
   // Reset confirm dialog
   const [showResetConfirm, setShowResetConfirm] = useState(false);
-  const [showClearStorageConfirm, setShowClearStorageConfirm] = useState(false);
   const [showExportConfirm, setShowExportConfirm] = useState(false);
 
   // ── Param catalog search state ───────────────────────────────
@@ -603,7 +607,17 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
         currentProvider.aboveColumnWidths,
       ),
     };
-    const groupOrder = resolveGroupOrder(catalogVisibleParams, customGroupOrder);
+    const storedGroupOrder = readJsonStorage<string[]>(groupOrderKey(selectedProviderId));
+    const exportGroupOrderBase =
+      storedGroupOrder?.map(normalizeUiGroup) ??
+      currentProvider.groupOrder?.map(normalizeUiGroup) ??
+      customGroupOrder;
+    const groupOrder = resolveGroupOrderForExport(catalogVisibleParams, exportGroupOrderBase);
+    const essentialFactoryKeys = resolveEssentialParamKeys(currentProvider.launchProfile);
+    const essentialParamKeys = computeEssentialParamKeysForExport(
+      catalogVisibleParams,
+      essentialFactoryKeys,
+    );
     try {
       const result = await invoke<ExportFactoryTemplateResult>("export_provider_factory_template", {
         input: {
@@ -611,6 +625,7 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
           userEditedTemplateParams: catalogVisibleParams,
           groupOrder,
           layoutDefaults,
+          essentialParamKeys,
         },
       });
       dispatchAppEvent(EVENTS.reloadProviders);
@@ -1209,6 +1224,7 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
         <button onClick={() => setSubTab("params")} className={`app-nav-tab px-3 py-1 text-[10px] font-mono tracking-wider rounded-sm ${subTab === "params" ? "app-nav-tab-active" : ""}`}>PARAMETERS</button>
         <button onClick={() => setSubTab("paths")} data-onboarding="paths-tab" className={`app-nav-tab px-3 py-1 text-[10px] font-mono tracking-wider rounded-sm ${subTab === "paths" ? "app-nav-tab-active" : ""}`}>PATHS</button>
         <button onClick={() => setSubTab("secrets")} className={`app-nav-tab px-3 py-1 text-[10px] font-mono tracking-wider rounded-sm ${subTab === "secrets" ? "app-nav-tab-active" : ""}`}>SECRETS</button>
+        <button onClick={() => setSubTab("recovery")} className={`app-nav-tab px-3 py-1 text-[10px] font-mono tracking-wider rounded-sm ${subTab === "recovery" ? "app-nav-tab-active" : ""}`}>RECOVERY</button>
        </div>
 
        {subTab === "providers" ? (
@@ -1219,6 +1235,8 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
          <ModelPathsPanel />
        ) : subTab === "secrets" ? (
          <SecretsConfig />
+       ) : subTab === "recovery" ? (
+         <RecoveryConfig />
        ) : (
         <div className="flex-1 flex flex-col overflow-hidden min-h-0">
           {/* Toolbar */}
@@ -1266,24 +1284,14 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
               {/* Action buttons — visible when unlocked */}
               <div className={`flex gap-2 transition-opacity ${editorUnlocked || factoryExportEnabled ? "opacity-100" : "opacity-0 pointer-events-none"}`}>
                 {editorUnlocked && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => setShowClearStorageConfirm(true)}
-                      className="value-chip text-[9px] font-mono px-2 py-1 rounded-sm"
-                      title="Clear all BlackOps localStorage (theme, bench chips, catalog overrides, splits) and reload"
-                    >
-                      CLEAR STORAGE
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setShowResetConfirm(true)}
-                      className="value-chip text-[9px] font-mono px-2 py-1 rounded-sm"
-                      title="Restore this provider from factory template — one-click recovery"
-                    >
-                      RESET TO DEFAULTS
-                    </button>
-                  </>
+                  <button
+                    type="button"
+                    onClick={() => setShowResetConfirm(true)}
+                    className="value-chip text-[9px] font-mono px-2 py-1 rounded-sm"
+                    title="Restore this provider from factory template — one-click recovery"
+                  >
+                    RESET TO DEFAULTS
+                  </button>
                 )}
                 {factoryExportEnabled && (
                   <button
@@ -1302,39 +1310,12 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
 
           {/* Reset confirm + saved flash */}
           <div className="relative">
-            {showClearStorageConfirm && (
-              <div className="absolute inset-0 bg-black/60 z-50" onClick={() => setShowClearStorageConfirm(false)}>
-                <div className="config-form-panel rounded-sm p-6 max-w-sm absolute top-[85px] right-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-                  <h3 className="text-xs font-mono theme-accent-text mb-3">CLEAR LOCAL STORAGE</h3>
-                  <p className="text-[10px] font-mono config-muted mb-4">
-                    Removes all BlackOps UI preferences from this machine — theme, zoom, bench chips, catalog overrides, split widths, log search, and per-provider keys. Provider configs on disk are untouched. The app will reload.
-                  </p>
-                  <div className="flex gap-2 justify-end">
-                    <button
-                      type="button"
-                      onClick={() => setShowClearStorageConfirm(false)}
-                      className="value-chip text-[9px] font-mono px-3 py-1 rounded-sm"
-                    >
-                      CANCEL
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => dispatchClearLocalStorage(true)}
-                      className="value-chip-active text-[9px] font-mono px-3 py-1 rounded-sm"
-                    >
-                      YES, CLEAR
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
             {showExportConfirm && (
               <div className="absolute inset-0 bg-black/60 z-50" onClick={() => setShowExportConfirm(false)}>
                 <div className="config-form-panel rounded-sm p-6 max-w-sm absolute top-[85px] right-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
                   <h3 className="text-xs font-mono theme-accent-text mb-3">EXPORT FACTORY TEMPLATE</h3>
                   <p className="text-[10px] font-mono config-muted mb-4">
-                    Writes current param defaults, groups, and layout to factory JSON and bumps templateVersion. Dev build also updates src-tauri/runtime. Cannot be undone easily — commit the JSON if you mean it.
+                    Writes param defaults, groups, layout, and Essentials list to factory JSON and bumps templateVersion. Dev build also updates src-tauri/runtime. Cannot be undone easily — commit the JSON if you mean it.
                   </p>
                   <div className="flex gap-2 justify-end">
                     <button

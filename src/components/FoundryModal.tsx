@@ -15,6 +15,7 @@ interface StackEngineStatus {
 }
 import FoundryConfirmForm from "./FoundryConfirmForm";
 import FoundryBuildProgress from "./FoundryBuildProgress";
+import FoundryWindowShell from "./FoundryWindowShell";
 
 interface FoundryModalProps {
   provider: ProviderConfig;
@@ -437,20 +438,22 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
   // Backup Locked state (rare, keep inline for now)
   if (phase === "backup-locked") {
     return (
-      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm">
-        <div className="w-[50vw] max-w-[520px] border border-yellow-400/40 bg-stealth-panel rounded-sm shadow-2xl">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-stealth-border">
-            <h3 className="text-xs font-mono text-yellow-400 tracking-wider">⚠ BINARY LOCKED</h3>
-          </div>
-          <div className="px-4 py-5 space-y-4">
-            <p className="text-[10px] font-mono text-stealth-muted uppercase tracking-wider">Engine binary is currently in use</p>
-          </div>
-          <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-stealth-border">
+      <FoundryWindowShell
+        title="⚠ BINARY LOCKED"
+        tone="amber"
+        variant="compact"
+        onMinimize={onMinimize}
+        footer={(
+          <>
             <button onClick={handleCancel} className="px-3 py-1 text-[9px] font-mono border border-red-400/60 text-red-400">CANCEL BUILD</button>
             <button onClick={handleBackupLockedYes} className="px-4 py-1 text-[9px] font-mono border rounded-sm bg-nv-green/20 border-nv-green/60 text-nv-green">YES — STOP ENGINES &amp; PROCEED</button>
-          </div>
+          </>
+        )}
+      >
+        <div className="px-4 py-5">
+          <p className="text-[10px] font-mono text-stealth-muted uppercase tracking-wider">Engine binary is currently in use</p>
         </div>
-      </div>
+      </FoundryWindowShell>
     );
   }
 
@@ -480,22 +483,28 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
   // Special immediate feedback screen while we are stopping engines (before any real progress events arrive).
   if (stoppingEngines && !isComplete && !isError) {
     return (
-      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm">
-        <div className="w-[min(92vw,620px)] border border-yellow-400/40 bg-stealth-panel rounded-sm p-8 text-center space-y-4">
-          <div className="text-yellow-400 text-2xl font-mono tracking-[4px]">STOPPING ENGINES</div>
+      <FoundryWindowShell
+        title="STOPPING ENGINES"
+        tone="amber"
+        variant="compact"
+        onMinimize={onMinimize}
+        footer={(
+          <button
+            onClick={handleCancel}
+            className="px-4 py-1 text-[9px] font-mono border border-red-400/60 text-red-400 hover:bg-red-500/20"
+          >
+            CANCEL BUILD
+          </button>
+        )}
+      >
+        <div className="px-6 py-6 text-center space-y-3">
           <div className="text-[11px] font-mono text-white/80">
             BUILD needs exclusive access.<br />
             Automatically stopping engines using <span className="text-yellow-400 font-bold">{provider.display_name}</span> · <span className="text-yellow-400 font-bold">{environment.toUpperCase()}</span> profile...
           </div>
-          <div className="text-[9px] font-mono text-stealth-muted pt-2">This can take 5–15 seconds. The build will start automatically after engines are stopped.</div>
-          <button
-            onClick={handleCancel}
-            className="mt-4 px-4 py-1 text-[9px] font-mono border border-red-400/60 text-red-400 hover:bg-red-500/20"
-          >
-            CANCEL BUILD
-          </button>
+          <div className="text-[9px] font-mono text-stealth-muted">This can take 5–15 seconds. The build will start automatically after engines are stopped.</div>
         </div>
-      </div>
+      </FoundryWindowShell>
     );
   }
 
@@ -503,7 +512,7 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
   return (
     <>
       {reattachedFromBackend && (
-        <div className="fixed top-2 left-1/2 -translate-x-1/2 z-[110] px-3 py-1 text-[9px] font-mono border border-yellow-400/50 bg-yellow-400/10 text-yellow-300 rounded-sm pointer-events-none">
+        <div className="fixed top-2 left-1/2 -translate-x-1/2 z-[95] px-3 py-1 text-[9px] font-mono border border-yellow-400/50 bg-yellow-400/10 text-yellow-300 rounded-sm pointer-events-none">
           Build still running — UI reattached after reload
         </div>
       )}

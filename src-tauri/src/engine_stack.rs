@@ -1053,6 +1053,7 @@ impl EngineStack {
             provider_name: slot.provider_name.clone(),
             build_info: None,
             supports_fusion: slot.supports_fusion,
+            split_mode: slot.split_mode.clone(),
         }
     }
 
@@ -1075,6 +1076,7 @@ impl EngineStack {
             provider_name: String::new(),
             build_info: None,
             supports_fusion: false,
+            split_mode: String::new(),
         }
     }
 

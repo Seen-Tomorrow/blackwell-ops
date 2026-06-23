@@ -33,6 +33,7 @@ import {
 import type { GroupDisplayZone } from "../lib/storage";
 import ConfigBelowGroups from "./ConfigBelowGroups";
 import GpuAssignPanel from "./GpuAssignPanel";
+import DisplayChromeHints from "./DisplayChromeHints";
 import GroupHeaderControls from "./GroupHeaderControls";
 import type { ConfigColumnCount } from "../lib/configColumnLayout";
 import { effectiveGroupColumn } from "../lib/configColumnLayout";
@@ -56,6 +57,7 @@ import { useDisplayTexture } from "../context/DisplayTextureContext";
 import DisplayGlitchOverlay from "./DisplayGlitchOverlay";
 import { useFoundry } from "../hooks/useBuildDock";
 import { buildAutoVramLaunchParams } from "../lib/autoVramLaunch";
+import { resolveLaunchChromePolicy } from "../lib/launchChromePolicy";
 import { buildLaunchExtraParams, paramValuesMatch } from "../lib/paramConfigResolve";
 import { committedSlotsFromStack } from "../services/vram/scenarios/scenarios_factory";
 import { formatShareHwTopo, type FusionShareLaunchConfig } from "../lib/fusionShareCapture";
@@ -90,6 +92,9 @@ function onboardingDisplayClasses(setupGuide: SetupGuideState): {
 
 const PARAM_LABEL_CLASS =
   "font-mono w-24 flex-shrink-0 uppercase tracking-wider truncate text-[9px] text-stealth-muted";
+
+const LAUNCH_DOCK_LABEL_CLASS =
+  "config-launch-dock__label font-mono w-11 flex-shrink-0 uppercase tracking-wider truncate text-[9px] text-stealth-muted";
 
 /** Section headers (MEMORY MANAGEMENT, speculative decoding) — narrow column, wraps short. */
 const SECTION_LABEL_CLASS =
@@ -273,6 +278,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   const aliasInitializedRef = useRef<{ modelPath: string; done: boolean }>({ modelPath: "", done: false });
   const aliasUserEditedRef = useRef(false);
   const lastLaunchAtRef = useRef(0);
+  const autoSplitPromotedRef = useRef(false);
   const [launchAck, setLaunchAck] = useState(false);
   const launchAckTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -293,7 +299,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       const saved = readStorage(KEYS.collapsedGroups);
       if (saved) return new Set(JSON.parse(saved));
     } catch {}
-    return new Set(["ADVANCED", "FEATURE-FLAGS"]);
+    // Fresh install: only tuck away ADVANCED; FEATURE-FLAGS stays expanded (no LS entry yet).
+    return new Set(["ADVANCED"]);
   });
 
   const toggleLayoutMode = useCallback(() => {
@@ -409,7 +416,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   );
   const launchProfile = currentProvider?.launchProfile;
   const fitLaunchSupported = providerSupportsFitLaunch(launchProfile);
-  const fitLaunchActive = fitLaunchSupported && fitLaunchEnabled;
+  const fullAutoMode = fitLaunchSupported && fitLaunchEnabled;
+  const tensorSplitSupported = launchProfile?.tensorSplit !== false;
   const essentialFactoryKeys = useMemo(
     () => resolveEssentialParamKeys(launchProfile),
     [launchProfile],
@@ -527,8 +535,12 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   );
 
   const scenarioConfig = useMemo(
-    () => ({ ...config, backend_type: effectiveBackendType }),
-    [config, effectiveBackendType],
+    () => ({
+      ...config,
+      backend_type: effectiveBackendType,
+      ...(fullAutoMode ? { split: "none", offload_mode: "regular" } : {}),
+    }),
+    [config, effectiveBackendType, fullAutoMode],
   );
 
   // Display value — manufactured capacity, no deductions (what users see)
@@ -540,11 +552,52 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     gpus,
     stack,
     systemInfo,
-    autoVramLaunch: fitLaunchActive,
+    autoVramLaunch: fitLaunchSupported,
+    fullAutoMode,
     fitStyle: launchProfile?.fitStyle ?? "",
   });
 
   const splitModeActive = isSplitModeActive(config.split);
+
+  const launchChrome = useMemo(
+    () => resolveLaunchChromePolicy({
+      fullAutoMode,
+      gpus,
+      config,
+      manifest: vramCalc.manifest,
+      weightGb: (model?.metadata?.file_size_bytes ?? 0) / (1024 ** 3),
+      runningSlots: runningSlotsForPlan,
+    }),
+    [fullAutoMode, gpus, config, vramCalc.manifest, model?.metadata?.file_size_bytes, runningSlotsForPlan],
+  );
+
+  useEffect(() => {
+    if (!fullAutoMode) return;
+    if (String(config["offload_mode"] ?? "regular").toLowerCase() === "moe_optimal") {
+      updateParam("offload_mode", "regular");
+    }
+  }, [fullAutoMode, config["offload_mode"], updateParam]);
+
+  useEffect(() => {
+    if (fullAutoMode) return;
+    const split = String(config.split ?? "none").trim().toLowerCase();
+    if (launchChrome.hideSplitNone) {
+      if (split === "none" || split === "") {
+        autoSplitPromotedRef.current = true;
+        updateParam("split", "layer");
+      }
+      return;
+    }
+    if (autoSplitPromotedRef.current && split === "layer") {
+      autoSplitPromotedRef.current = false;
+      updateParam("split", "none");
+    }
+  }, [fullAutoMode, launchChrome.hideSplitNone, config.split, updateParam]);
+
+  const showChromeHints = useMemo(
+    () => !fullAutoMode && !stack.some((s) => s.status === "LOADING"),
+    [fullAutoMode, stack],
+  );
 
   const mtpParallelWarn = useMemo(
     () => mtpParallelConflict(model, allParamsResolved, config),
@@ -597,16 +650,15 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     };
   }, [selectedBinaryProfile, resolvedProviders, effectiveBackendType, selectedSlotIdx, stack]);
 
-  // Manual split → all GPUs; solo → manifest projection; badge click still forces split=none
   const selectedGpuIndices = useMemo(() => {
-    if (!fitLaunchActive && splitModeActive && gpus.length > 0) {
+    if (splitModeActive && gpus.length > 0) {
       return gpus.map((g) => g.index);
     }
     if (!vramCalc.manifest) return [];
     return vramCalc.manifest.gpuAllocations
       .filter((a) => a.projectedLoadGb > 0.1)
       .map((a) => a.gpuIndex);
-  }, [vramCalc.manifest, fitLaunchActive, splitModeActive, gpus]);
+  }, [vramCalc.manifest, splitModeActive, gpus]);
 
   const booterProps = useMemo(() => {
     const gpuLoadTargetsMib: Record<number, number> = {};
@@ -681,18 +733,18 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           ? Math.floor(ctxNumeric / ctxSlotCount)
           : 0;
       return (
-        <div key={paramRowKey(def, rowIdx)} data-param-row className={`flex items-center min-h-[22px] ${isLocked ? "opacity-50" : ""}`}>
+        <div key={paramRowKey(def, rowIdx)} data-param-row className={`flex items-center min-h-[28px] ${isLocked ? "opacity-50" : ""}`}>
           {isUserAdded && <div className="w-0.5 h-4 flex-shrink-0 bg-yellow-400/40 mr-1.5" />}
           {!isUserAdded && <div className="w-0.5 h-4 flex-shrink-0 mr-1.5" />}
           <span
-            className={`font-mono flex-shrink-0 uppercase tracking-wider text-[9px] flex items-center gap-1.5 min-w-0 ${def.key === "ctx" && ctxPerSlot > 0 ? "w-auto max-w-[40%]" : "w-24 truncate"} ${isUserAdded ? "text-yellow-400/80" : "text-stealth-muted"}`}
+            className={`font-mono flex-shrink-0 uppercase tracking-wider text-[9px] flex items-center gap-1.5 min-w-0 leading-none ${def.key === "ctx" && ctxPerSlot > 0 ? "w-auto max-w-[40%]" : "w-24 truncate"} ${isUserAdded ? "text-yellow-400/80" : "text-stealth-muted"}`}
             title={def.key === "ctx" && ctxPerSlot > 0
               ? `${formatTokenLabel(ctxNumeric)} ÷ ${ctxSlotCount} slots = ${formatTokenLabel(ctxPerSlot)} per slot`
               : def.label}
           >
             <span className="truncate">{def.label}</span>
           </span>
-          <div className="flex-1 min-w-0">
+          <div className="ctx-slider-field flex-1 min-w-0">
             <SliderParam
               paramKey={def.key}
               currentValue={currentValue}
@@ -1160,7 +1212,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       allParams: allParamsResolved,
     });
 
-    const extraParams: Record<string, unknown> = fitLaunchActive && model.metadata
+    const extraParams: Record<string, unknown> = fitLaunchSupported && model.metadata
       ? buildAutoVramLaunchParams({
           config,
           launchKeys,
@@ -1169,15 +1221,14 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           runningSlots: runningSlotsForPlan,
           manifest: vramCalc.manifest,
           weightGb: model.metadata.file_size_bytes / (1024 ** 3),
+          fullAutoMode,
+          memoryMode: fullAutoMode ? "full_auto" : "assisted",
         })
       : buildLaunchExtraParams({
           config,
           keys: launchKeys,
           paramDefs: allParamsResolved,
         });
-    if (!fitLaunchActive && vramCalc.manifest?.gpuLayers != null && vramCalc.manifest.ramLayers > 0) {
-      extraParams.__ngl = String(vramCalc.manifest.gpuLayers);
-    }
 
     const fullConfig: EngineConfig = {
       alias: finalAlias,
@@ -1216,7 +1267,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     pulseLaunchAck,
     aliasInput,
     stack,
-    fitLaunchActive,
+    fitLaunchSupported,
+    fullAutoMode,
     configView,
     essentialFactoryKeys,
     allParamsResolved,
@@ -1233,7 +1285,10 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   ]);
 
   const launchDisabled =
-    !model || vramCalc.manifest?.scenario === "HW_LOCKED" || selectedProfileIsBuilding;
+    !model
+    || selectedProfileIsBuilding
+    || vramCalc.manifest?.scenario === "HW_LOCKED"
+    || (vramCalc.manifest != null && !vramCalc.manifest.fits);
 
   // Keyboard launch — Ctrl+Enter triggers ignite (must track handleAddToStack for fresh manifest)
   useEffect(() => {
@@ -1395,14 +1450,30 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             deviceValue={config.device}
             splitValue={config.split}
             splitValues={splitParamDef?.values ?? ["none"]}
+            chromeDisabled={launchChrome.chromeDisabled}
+            deviceLocked={launchChrome.deviceLocked}
+            splitLocked={launchChrome.splitLocked}
+            hideSplitNone={launchChrome.hideSplitNone}
+            hideTensorSplit={!tensorSplitSupported}
             onDeviceChange={(v) => {
+              if (launchChrome.chromeDisabled || launchChrome.deviceLocked) return;
               updateParam("device", v);
               if (isSplitModeActive(config.split)) updateParam("split", "none");
             }}
-            onSplitChange={(v) => updateParam("split", v)}
+            onSplitChange={(v) => {
+              if (launchChrome.chromeDisabled || launchChrome.splitLocked) return;
+              autoSplitPromotedRef.current = false;
+              updateParam("split", v);
+            }}
           />
         )}
           <div className={onboardingDisplay.frame} data-fusion-share-frame>
+              {showChromeHints && (
+                <DisplayChromeHints
+                  policyReason={launchChrome.reason}
+                  tensorSplitWarn={launchChrome.tensorSplitWarn}
+                />
+              )}
               <div className="phosphor-screen-inner phosphor-display-surface vram-forecast-display">
                 <DisplayGlitchOverlay />
                 {setupGuide.active ? (
@@ -1424,6 +1495,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                     gpus={gpus}
                     selectedGpuIndices={selectedGpuIndices.length > 0 ? selectedGpuIndices : undefined}
                     onDeviceSelect={(gpuIndex) => {
+                      if (launchChrome.chromeDisabled || launchChrome.deviceLocked) return;
                       updateParam("device", `GPU-${gpuIndex}`);
                       if (isSplitModeActive(config.split)) {
                         updateParam("split", "none");
@@ -1453,12 +1525,22 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                       );
                     }}
                     fitLaunchAvailable={fitLaunchSupported}
-                    fitLaunchAuto={fitLaunchEnabled}
-                    onFitLaunchChange={(auto) => {
-                      setFitLaunchEnabled(auto);
-                      saveAutoVramEnabled(effectiveBackendType, auto);
+                    fullAutoMode={fullAutoMode}
+                    onFitLaunchChange={(nextFullAuto) => {
+                      setFitLaunchEnabled(nextFullAuto);
+                      saveAutoVramEnabled(effectiveBackendType, nextFullAuto);
+                      if (nextFullAuto) {
+                        autoSplitPromotedRef.current = false;
+                        updateParam("split", "none");
+                        if (String(config["offload_mode"] ?? "regular").toLowerCase() === "moe_optimal") {
+                          updateParam("offload_mode", "regular");
+                        }
+                      } else {
+                        setConfigView("full");
+                        saveConfigView(effectiveBackendType, "full");
+                      }
                     }}
-                    hideMoeBadge={!((model?.metadata?.n_expert ?? 0) > 0)}
+                    hideMoeBadge={fullAutoMode || !((model?.metadata?.n_expert ?? 0) > 0)}
                     modelMeta={model?.metadata}
                     modelName={model?.name}
                     modelQuant={model?.quant}
@@ -1553,7 +1635,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
       </div>
 
-        <div className="config-launch-dock flex-shrink-0 px-4 flex flex-col gap-2">
+        <div className="config-launch-dock flex-shrink-0 px-4 flex flex-col">
           {mtpParallelWarn && (
             <div
               className="config-mtp-launch-warn rounded-sm px-2.5 py-1.5 text-[7px] font-mono leading-snug"
@@ -1567,57 +1649,102 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             </div>
           )}
           <div className="config-launch-dock__grid">
-            <div className="config-launch-dock__fields">
-              <div data-param-row className="flex items-center min-h-[22px]">
-                <div className="w-0.5 h-4 flex-shrink-0 mr-1.5" />
-                <span
-                  className={PARAM_LABEL_CLASS}
-                  title={
-                    aliasIsUserSet
-                      ? "Alias — user set"
-                      : `Alias — autoset to ${autoAlias}`
-                  }
-                >
-                  Alias
-                </span>
-                <input
-                  type="text"
-                  value={aliasInput}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    if (val.trim()) {
-                      aliasUserEditedRef.current = true;
-                      setAliasIsUserSet(true);
-                    } else {
-                      aliasUserEditedRef.current = false;
-                      setAliasIsUserSet(false);
-                      if (model) {
-                        try {
-                          removeStorage(engineAliasKey(model.path));
-                        } catch {}
-                      }
+            <div className="config-launch-dock__left">
+              <div className="config-launch-dock__meta">
+                <div data-param-row className="config-launch-dock__alias flex items-center min-h-[22px] min-w-0">
+                  <span
+                    className={LAUNCH_DOCK_LABEL_CLASS}
+                    title={
+                      aliasIsUserSet
+                        ? "Alias — user set"
+                        : `Alias — autoset to ${autoAlias}`
                     }
-                    setAliasInput(val);
-                  }}
-                  title={
-                    aliasIsUserSet
-                      ? "User-set launch alias"
-                      : `Autoset to ${autoAlias} when empty`
-                  }
-                  className={`flex-1 min-w-0 transition-colors ${
-                    aliasUserEditedRef.current
-                      ? `${paramChipClass(true)} mono-user-input`
-                      : paramChipClass(false)
-                  }`}
-                />
+                  >
+                    Alias
+                  </span>
+                  <input
+                    type="text"
+                    value={aliasInput}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val.trim()) {
+                        aliasUserEditedRef.current = true;
+                        setAliasIsUserSet(true);
+                      } else {
+                        aliasUserEditedRef.current = false;
+                        setAliasIsUserSet(false);
+                        if (model) {
+                          try {
+                            removeStorage(engineAliasKey(model.path));
+                          } catch {}
+                        }
+                      }
+                      setAliasInput(val);
+                    }}
+                    title={
+                      aliasIsUserSet
+                        ? "User-set launch alias"
+                        : `Autoset to ${autoAlias} when empty`
+                    }
+                    className={`flex-1 min-w-0 transition-colors ${
+                      aliasUserEditedRef.current
+                        ? `${paramChipClass(true)} mono-user-input`
+                        : paramChipClass(false)
+                    }`}
+                  />
+                </div>
+                {basePortParamDef && (
+                  <div className="config-launch-dock__port min-w-0">
+                    {renderParamRow(basePortParamDef, false, 0)}
+                  </div>
+                )}
               </div>
-              {basePortParamDef && renderParamRow(basePortParamDef, false, 0)}
+              {configView === "full" && (
+                <div className={`custom-flags-block border rounded-sm overflow-hidden ${testFlagsEnabled ? "custom-flags-active" : ""}`}>
+                  <div className="custom-flags-body px-2 py-1 flex items-center gap-1.5 min-h-0">
+                    <span className="text-[8px] font-mono uppercase tracking-wider shrink-0 custom-flags-label">
+                      CUSTOM FLAGS
+                    </span>
+                    {testFlagsEnabled && (
+                      <input
+                        type="text"
+                        value={testFlags}
+                        onChange={(e) => setTestFlags(e.target.value)}
+                        placeholder="-sm layer -smf32 1 ..."
+                        className="custom-flags-input flex-1 min-w-0 border text-[8px] font-mono px-2 py-0 leading-none focus:outline-none rounded-sm border-amber-600/30 focus:border-amber-600/50 placeholder:text-stealth-muted/40"
+                      />
+                    )}
+                    <div className="flex items-center gap-1 shrink-0 ml-auto">
+                      {testFlagsEnabled && (
+                        <button
+                          type="button"
+                          onClick={() => setTestFlagsMode(m => m === "add" ? "replace" : "add")}
+                          className={`px-1.5 py-0 text-[7px] font-mono border rounded-sm transition-all duration-150 cursor-pointer ${
+                            testFlagsMode === "add" ? "mode-btn-add" : "mode-btn-replace"
+                          }`}
+                        >
+                          {testFlagsMode === "add" ? "+ APPEND" : "= REPLACE"}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setTestFlagsEnabled(v => !v)}
+                        className={`px-1.5 py-0 text-[7px] font-mono border rounded-sm transition-all duration-150 cursor-pointer ${
+                          testFlagsEnabled ? "mode-btn-add" : "mode-btn-off"
+                        }`}
+                      >
+                        {testFlagsEnabled ? "ON" : "OFF"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
             <div className="config-launch-dock__action">
               <button
                 onClick={handleAddToStack}
                 disabled={launchDisabled}
-                className={`w-full h-full min-h-0 min-w-0 ignite-btn config-launch-btn px-4 py-2 text-[12px] font-mono tracking-[0.22em] rounded-sm disabled:opacity-40 disabled:cursor-not-allowed flex flex-col items-center justify-center gap-1 ${launchAck ? "launch-ack" : ""}`}
+                className={`w-full h-full min-h-[2.75rem] min-w-0 ignite-btn config-launch-btn px-2 py-1.5 text-[11px] font-mono tracking-[0.18em] rounded-sm disabled:opacity-40 disabled:cursor-not-allowed flex flex-col items-center justify-center gap-0.5 ${launchAck ? "launch-ack" : ""}`}
               >
                 <span>LAUNCH ENGINE</span>
                 <span className="config-launch-btn__hint text-[7px] font-mono tracking-wider normal-case font-normal">
@@ -1626,46 +1753,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
               </button>
             </div>
           </div>
-          {configView === "full" && (
-            <div className={`custom-flags-block border rounded-sm overflow-hidden ${testFlagsEnabled ? "custom-flags-active" : ""}`}>
-              <div className="custom-flags-body px-2 py-1 flex items-center gap-1.5 min-h-0">
-                <span className="text-[8px] font-mono uppercase tracking-wider shrink-0 custom-flags-label">
-                  CUSTOM FLAGS
-                </span>
-                {testFlagsEnabled && (
-                  <input
-                    type="text"
-                    value={testFlags}
-                    onChange={(e) => setTestFlags(e.target.value)}
-                    placeholder="-sm layer -smf32 1 ..."
-                    className="custom-flags-input flex-1 min-w-0 border text-[8px] font-mono px-2 py-0 leading-none focus:outline-none rounded-sm border-amber-600/30 focus:border-amber-600/50 placeholder:text-stealth-muted/40"
-                  />
-                )}
-                <div className="flex items-center gap-1 shrink-0 ml-auto">
-                  {testFlagsEnabled && (
-                    <button
-                      type="button"
-                      onClick={() => setTestFlagsMode(m => m === "add" ? "replace" : "add")}
-                      className={`px-1.5 py-0 text-[7px] font-mono border rounded-sm transition-all duration-150 cursor-pointer ${
-                        testFlagsMode === "add" ? "mode-btn-add" : "mode-btn-replace"
-                      }`}
-                    >
-                      {testFlagsMode === "add" ? "+ APPEND" : "= REPLACE"}
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => setTestFlagsEnabled(v => !v)}
-                    className={`px-1.5 py-0 text-[7px] font-mono border rounded-sm transition-all duration-150 cursor-pointer ${
-                      testFlagsEnabled ? "mode-btn-add" : "mode-btn-off"
-                    }`}
-                  >
-                    {testFlagsEnabled ? "ON" : "OFF"}
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
         </div>
       </div>
     </div>

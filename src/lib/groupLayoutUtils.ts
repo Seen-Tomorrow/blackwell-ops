@@ -150,6 +150,53 @@ export function renameGroupInLayout(
   };
 }
 
+/** Pin SYSTEM to the end of a group order list (factory export / release JSON). */
+export function pinSystemGroupLast(order: string[]): string[] {
+  const without = order.filter((g) => normalizeUiGroup(g) !== SYSTEM_UI_GROUP);
+  if (order.some((g) => normalizeUiGroup(g) === SYSTEM_UI_GROUP)) {
+    return [...without, SYSTEM_UI_GROUP];
+  }
+  return without;
+}
+
+/**
+ * Factory export group order — preserves the full saved layout order (including empty
+ * placeholder groups), appends any param groups missing from the saved order, pins SYSTEM last.
+ */
+export function resolveGroupOrderForExport(
+  params: Array<{ ui_group?: string }>,
+  customGroupOrder: string[] | null,
+): string[] {
+  const paramGroups: string[] = [];
+  const paramGroupSet = new Set<string>();
+  for (const def of params) {
+    const g = paramUiGroup(def.ui_group);
+    if (!paramGroupSet.has(g)) {
+      paramGroupSet.add(g);
+      paramGroups.push(g);
+    }
+  }
+
+  let order: string[];
+  if (customGroupOrder && customGroupOrder.length > 0) {
+    const seen = new Set<string>();
+    order = [];
+    for (const raw of customGroupOrder) {
+      const g = normalizeUiGroup(raw);
+      if (seen.has(g)) continue;
+      seen.add(g);
+      order.push(g);
+    }
+    for (const g of paramGroups) {
+      if (!seen.has(g)) order.push(g);
+    }
+  } else {
+    order = [...paramGroups];
+  }
+
+  return pinSystemGroupLast(order);
+}
+
 /** Replace retired MULTI-GPU bucket with SYSTEM in saved group order. */
 export function migrateCatalogGroupOrder(order: string[]): { order: string[]; changed: boolean } {
   let changed = false;

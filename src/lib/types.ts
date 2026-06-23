@@ -186,6 +186,8 @@ export interface ExportFactoryTemplateResult {
 export interface LaunchProfile {
   autoVram?: boolean;
   fitStyle?: string;
+  /** When false, hide tensor (and row) from SPLIT chips — provider lacks stable tensor+FIT. */
+  tensorSplit?: boolean;
   /** @deprecated Use fitLaunchKeys / essentialParamKeys — kept for factory JSON compat. */
   simpleParamKeys?: string[];
   /** CLI whitelist for AUTO FIT launch (excludes split — engine decides). */
@@ -406,6 +408,8 @@ export interface StackEntry {
   build_info?: BuildInfo;
   /** Live Fusion monitoring enabled for this provider (from spawn_profile). */
   supportsFusion?: boolean;
+  /** Multi-GPU split at launch (`none` / `layer` / `row` / `tensor`). */
+  splitMode?: string;
 }
 
 /** Per-slot context bar info — matches Rust SlotCtxInfo struct */
@@ -526,15 +530,7 @@ export interface VramFitResult {
 
 /** Scenario Factory types — single source of truth for VRAM evaluation */
 
-export type Scenario =
-  | 'AUTO_FIT'
-  | 'SOLO_FIT'
-  | 'SOLO_PRESSURE'
-  | 'SOLO_SPILL'
-  | 'MULTI_FIT'
-  | 'MULTI_PRESSURE'
-  | 'MULTI_SPILL'
-  | 'HW_LOCKED';
+export type Scenario = 'AUTO_FIT' | 'HW_LOCKED';
 
 /** MOE_OPTIMAL suggestion — computed internally, not exposed as scenario */
 export interface MoeSuggestion {
@@ -562,12 +558,19 @@ export interface MoeSuggestion {
  *  GOLDEN RULE: If you want to change text, visibility, or color of an element in the forecast block,
  *  edit the scenario's uiTemplate — NOT VramBadge.tsx. */
 export interface UiTemplate {
+  /** FULL AUTO hero headline — replaces detailed bars when showDetailedForecast is false. */
+  heroText?: string;
+  heroSubtext?: string;
+  /** ASSISTED shows full breakdown; FULL AUTO collapses to hero. */
+  showDetailedForecast?: boolean;
   /** GPU layer info line text (e.g. "→ 37 layers goes to GPU VRAM ~ 48.6 GB (32%)") */
   gpuLayerText: string;
   /** RAM layer info line text (e.g. "→ 23 layers in RAM — 111 GB offload (44%)") */
   ramLayerText: string;
   /** Whether to show the RAM bar + layer text at all */
   showRamBar?: boolean;
+  /** MOE_OPTIMAL expert weights — orange hatched RAM bar. */
+  moeRamBar?: boolean;
   /** Inset label on RAM bar (e.g. "RAM offload — slower inference"). Omit or null to hide. */
   offloadWarningText?: string | null;
   /** Inset label on VRAM bar (e.g. KV spill risk). Omit or null to hide. */

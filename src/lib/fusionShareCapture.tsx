@@ -691,6 +691,9 @@ function createShareBezelBrand(): HTMLElement {
   const brand = document.createElement("div");
   brand.className = "fusion-share-bezel-brand";
 
+  const badge = document.createElement("div");
+  badge.className = "fusion-share-bezel-brand__badge";
+
   const logoWrap = document.createElement("span");
   logoWrap.className = "fusion-share-bezel-brand__logo";
   logoWrap.innerHTML = brandLogoMarkup(FUSION_SHARE_BRAND_LOGO_PX);
@@ -699,8 +702,35 @@ function createShareBezelBrand(): HTMLElement {
   versionEl.className = "fusion-share-bezel-brand__version";
   versionEl.textContent = shareAppVersionText();
 
-  brand.append(logoWrap, versionEl);
+  badge.append(logoWrap, versionEl);
+  brand.appendChild(badge);
   return brand;
+}
+
+function resolveSharePhosphorHost(frame: HTMLElement): HTMLElement | null {
+  const selectors = [
+    ".vram-badge-forecast > .phosphor-screen.phosphor-display-surface",
+    ".vram-forecast-display .phosphor-screen.phosphor-display-surface",
+    ".vram-badge-forecast > .phosphor-screen-inner.phosphor-display-surface",
+  ];
+  for (const selector of selectors) {
+    const el = frame.querySelector(selector);
+    if (el instanceof HTMLElement) return el;
+  }
+  return null;
+}
+
+/** Corner badge on the phosphor face — does not affect layout flow. */
+function injectShareBezelBrand(frame: HTMLElement): void {
+  const host = resolveSharePhosphorHost(frame);
+  if (!host) {
+    frame.appendChild(createShareBezelBrand());
+    return;
+  }
+  if (!host.style.position || host.style.position === "static") {
+    host.style.position = "relative";
+  }
+  host.appendChild(createShareBezelBrand());
 }
 
 function createShareHwBand(
@@ -830,7 +860,7 @@ function createFrameCaptureStage(
 
   normalizeFusionCaptureLayout(frame, layout.phosphorHeightPx);
   injectCaptureBezelModeBanner(frame);
-  frame.appendChild(createShareBezelBrand());
+  injectShareBezelBrand(frame);
 
   stage.appendChild(frame);
   const hwBand = createShareHwBand(meta, layout);

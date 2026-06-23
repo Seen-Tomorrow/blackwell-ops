@@ -55,7 +55,7 @@ pub fn app_root_dir() -> std::path::PathBuf {
 }
 
 /// User data directory: config/ — same in DEV and REL.
-fn config_dir() -> std::path::PathBuf {
+pub fn config_dir() -> std::path::PathBuf {
     app_root_dir().join("config")
 }
 
@@ -409,6 +409,9 @@ pub struct AppConfig {
     /// Where downloads go — derived from the default model path.
     #[serde(default)]
     pub default_download_path: Option<String>,
+    /// First-run onboarding checklist finished — persisted so config wipe can replay the wizard.
+    #[serde(default)]
+    pub setup_completed: bool,
 }
 
 impl Default for AppConfig {
@@ -420,6 +423,7 @@ impl Default for AppConfig {
             hf_token: String::new(),
             providers: Vec::new(),
             default_download_path: Some(entry.path),
+            setup_completed: false,
         }
     }
 }
@@ -832,6 +836,15 @@ pub fn params_for_provider(provider_id: &str) -> Vec<crate::types::UserEditedTem
     }
 }
 
+/// Fresh-install provider table order — user `display_order` from CONFIG overrides after reorder.
+fn factory_provider_rank(id: &str) -> i32 {
+    match id {
+        id if id == DEFAULT_PROVIDER_ID => 0,
+        "ggml-tom" => 1,
+        _ => 2,
+    }
+}
+
 /// Discover providers from disk: scan runtime/ directory for default configs.
 fn discover_providers() -> Vec<crate::types::ProviderConfig> {
     let mut providers = Vec::new();
@@ -947,13 +960,6 @@ fn discover_providers() -> Vec<crate::types::ProviderConfig> {
         }
     }
 
-    fn factory_provider_rank(id: &str) -> i32 {
-        match id {
-            "ggml-tom" => 0,
-            "ggml-master" => 1,
-            _ => 2,
-        }
-    }
     providers.sort_by(|a, b| {
         factory_provider_rank(&a.id)
             .cmp(&factory_provider_rank(&b.id))
@@ -2413,6 +2419,7 @@ pub fn dev_reset_first_run(
 
     let mut fresh = build_fresh_config();
     fresh.hf_token = hf_token;
+    fresh.setup_completed = false;
 
     let gpu_count = crate::telemetry::detect_gpu_count();
     let built = build_config_with_providers_full(gpu_count, fresh);
@@ -2432,6 +2439,107 @@ pub fn dev_reset_first_run(
     Ok(())
 }
 
+/// Portable config folder path for UI (e.g. CONFIG → RECOVERY).
+#[tauri::command]
+pub fn get_config_dir() -> String {
+    config_dir().to_string_lossy().to_string()
+}
+
+#[tauri::command]
+pub fn is_setup_completed(
+    config: tauri::State<'_, std::sync::Arc<std::sync::Mutex<AppConfig>>>,
+) -> Result<bool, String> {
+    let cfg = config.lock().map_err(|e| e.to_string())?;
+    Ok(cfg.setup_completed)
+}
+
+#[tauri::command]
+pub fn mark_setup_completed(
+    config: tauri::State<'_, std::sync::Arc<std::sync::Mutex<AppConfig>>>,
+) -> Result<(), String> {
+    let mut cfg = config.lock().map_err(|e| e.to_string())?;
+    if cfg.setup_completed {
+        return Ok(());
+    }
+    cfg.setup_completed = true;
+    save_config(&mut cfg)?;
+    log::info!("[config] setup_completed persisted");
+    Ok(())
+}
+
+fn remove_user_provider_configs() -> Result<usize, String> {
+    let cd = config_dir();
+    if !cd.exists() {
+        return Ok(0);
+    }
+    let mut removed = 0usize;
+    for entry in std::fs::read_dir(&cd).into_iter().flatten() {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let name = entry.file_name();
+        let file_name = name.to_string_lossy();
+        if file_name.ends_with("-user-config.json") {
+            std::fs::remove_file(entry.path()).map_err(|e| e.to_string())?;
+            removed += 1;
+        }
+    }
+    Ok(removed)
+}
+
+fn clear_config_cache_dir() -> Result<(), String> {
+    let dir = cache_dir();
+    if !dir.exists() {
+        std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+    for entry in std::fs::read_dir(&dir).into_iter().flatten() {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+        if path.is_dir() {
+            std::fs::remove_dir_all(&path).map_err(|e| e.to_string())?;
+        } else {
+            std::fs::remove_file(&path).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
+}
+
+/// Reset portable `config/` to factory defaults — available in release builds.
+/// Model files, foundry artifacts, and runtime binaries are untouched.
+#[tauri::command]
+pub fn reset_app_config(
+    config: tauri::State<'_, std::sync::Arc<std::sync::Mutex<AppConfig>>>,
+) -> Result<(), String> {
+    let hf_token = {
+        let cfg = config.lock().map_err(|e| e.to_string())?;
+        cfg.hf_token.clone()
+    };
+
+    let removed_configs = remove_user_provider_configs()?;
+    clear_config_cache_dir()?;
+    crate::model_cache::clear_cache()?;
+
+    let mut fresh = build_fresh_config();
+    fresh.hf_token = hf_token;
+    fresh.setup_completed = false;
+
+    let gpu_count = crate::telemetry::detect_gpu_count();
+    let built = build_config_with_providers_full(gpu_count, fresh);
+
+    let provider_count = built.providers.len();
+    let mut to_persist = built.clone();
+    save_config(&mut to_persist)?;
+
+    {
+        let mut cfg = config.lock().map_err(|e| e.to_string())?;
+        *cfg = built;
+    }
+    let _ = std::fs::create_dir_all(default_models_dir());
+    log::info!(
+        "[config] reset_app_config: removed {removed_configs} user config(s), cache cleared, {provider_count} provider(s) rediscovered",
+    );
+    Ok(())
+}
+
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct ExportFactoryTemplateInput {
     #[serde(rename = "providerId")]
@@ -2442,6 +2550,8 @@ pub struct ExportFactoryTemplateInput {
     pub group_order: Vec<String>,
     #[serde(default, rename = "layoutDefaults")]
     pub layout_defaults: crate::types::LayoutDefaults,
+    #[serde(default, rename = "essentialParamKeys")]
+    pub essential_param_keys: Vec<String>,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -2531,6 +2641,60 @@ const FACTORY_CONFIG_KEY_ORDER: &[&str] = &[
     "layoutDefaults",
 ];
 
+const SYSTEM_UI_GROUP: &str = "SYSTEM";
+
+/// Factory export: preserve saved group order, dedupe, pin SYSTEM last.
+fn finalize_factory_group_order(order: Vec<String>) -> Vec<String> {
+    let mut seen = std::collections::HashSet::new();
+    let mut deduped = Vec::new();
+    let mut had_system = false;
+    for g in order {
+        let norm = normalize_ui_group(&g);
+        if norm == SYSTEM_UI_GROUP {
+            had_system = true;
+            continue;
+        }
+        if seen.insert(norm.clone()) {
+            deduped.push(norm);
+        }
+    }
+    if had_system {
+        deduped.push(SYSTEM_UI_GROUP.to_string());
+    }
+    deduped
+}
+
+/// Sort params for factory JSON: group order first, `order` within group, SYSTEM group last.
+fn sort_params_for_factory_export(
+    params: &mut [crate::types::UserEditedTemplateParam],
+    group_order: &[String],
+) {
+    let mut group_rank: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    for (i, g) in group_order.iter().enumerate() {
+        let norm = normalize_ui_group(g);
+        if norm != SYSTEM_UI_GROUP {
+            group_rank.entry(norm).or_insert(i);
+        }
+    }
+    let system_rank = group_order.len().max(1);
+
+    params.sort_by(|a, b| {
+        let ga = normalize_ui_group(&a.ui_group);
+        let gb = normalize_ui_group(&b.ui_group);
+        let ra = if ga == SYSTEM_UI_GROUP {
+            system_rank
+        } else {
+            *group_rank.get(&ga).unwrap_or(&usize::MAX)
+        };
+        let rb = if gb == SYSTEM_UI_GROUP {
+            system_rank
+        } else {
+            *group_rank.get(&gb).unwrap_or(&usize::MAX)
+        };
+        ra.cmp(&rb).then(a.order.cmp(&b.order))
+    });
+}
+
 fn reorder_factory_config_root(obj: serde_json::Map<String, serde_json::Value>) -> serde_json::Value {
     let mut ordered = serde_json::Map::new();
     let mut rest = obj;
@@ -2582,22 +2746,26 @@ pub fn export_provider_factory_template(
         return Err(validation_errors.join("\n"));
     }
 
+    let group_order = finalize_factory_group_order(
+        input
+            .group_order
+            .iter()
+            .map(|g| normalize_ui_group(g))
+            .collect(),
+    );
+
     let mut sorted = input.user_edited_template_params.clone();
-    sorted.sort_by_key(|p| p.order);
+    sort_params_for_factory_export(&mut sorted, &group_order);
     let factory_params: Vec<crate::templates::ProviderDefaultParam> =
         sorted.iter().map(user_param_to_factory_param).collect();
-
-    let group_order: Vec<String> = input
-        .group_order
-        .iter()
-        .map(|g| normalize_ui_group(g))
-        .collect();
 
     let layout = input.layout_defaults.clone();
     let pretty = serde_json::to_string_pretty(&factory_params)
         .map_err(|e| format!("Failed to serialize params: {e}"))?;
     let params_value: serde_json::Value =
         serde_json::from_str(&pretty).map_err(|e| format!("Failed to encode params: {e}"))?;
+
+    let essential_keys = input.essential_param_keys.clone();
 
     if let Some(obj) = root.as_object_mut() {
         obj.insert("params".to_string(), params_value);
@@ -2613,6 +2781,20 @@ pub fn export_provider_factory_template(
             "templateVersion".to_string(),
             serde_json::Value::Number(new_tv.into()),
         );
+
+        let spawn_value = obj
+            .entry("spawn_profile".to_string())
+            .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
+        if let Some(sp) = spawn_value.as_object_mut() {
+            sp.insert(
+                "essentialParamKeys".to_string(),
+                serde_json::to_value(&essential_keys).map_err(|e| e.to_string())?,
+            );
+            sp.insert(
+                "simple_param_keys".to_string(),
+                serde_json::to_value(&essential_keys).map_err(|e| e.to_string())?,
+            );
+        }
     } else {
         return Err("Factory config root must be a JSON object".to_string());
     }
@@ -2628,6 +2810,9 @@ pub fn export_provider_factory_template(
         .find(|m| m.id == input.provider_id)
     {
         meta.template_version = new_tv;
+        for p in &mut meta.user_edited_template_params {
+            p.essential = None;
+        }
         let _ = save_provider_user_config(&meta);
     }
 
@@ -2646,9 +2831,10 @@ pub fn export_provider_factory_template(
     }
 
     log::info!(
-        "[config] Exported factory template for '{}' → templateVersion={} ({} file(s))",
+        "[config] Exported factory template for '{}' → templateVersion={} essentials={} ({} file(s))",
         input.provider_id,
         new_tv,
+        essential_keys.len(),
         written.len()
     );
 
@@ -3212,5 +3398,46 @@ mod merge_tests {
             None
         )
         .is_err());
+    }
+
+    fn make_grouped_param(key: &str, ui_group: &str, order: i32) -> crate::types::UserEditedTemplateParam {
+        let mut p = make_user_param(key, &["a"], "a", order);
+        p.ui_group = ui_group.to_string();
+        p
+    }
+
+    #[test]
+    fn factory_provider_rank_puts_master_first() {
+        assert!(factory_provider_rank(DEFAULT_PROVIDER_ID) < factory_provider_rank("ggml-tom"));
+    }
+
+    #[test]
+    fn finalize_factory_group_order_pins_system_last() {
+        let order = finalize_factory_group_order(vec![
+            "SYSTEM".into(),
+            "PERFORMANCE".into(),
+            "FEATURE-FLAGS".into(),
+        ]);
+        assert_eq!(order, vec!["PERFORMANCE", "FEATURE-FLAGS", "SYSTEM"]);
+    }
+
+    #[test]
+    fn sort_params_for_factory_export_orders_by_group_then_order() {
+        let group_order = vec![
+            "ABOVE-CONFIG-LEFT".into(),
+            "PERFORMANCE".into(),
+            "SYSTEM".into(),
+        ];
+        let mut params = vec![
+            make_grouped_param("base_port", "SYSTEM", 0),
+            make_grouped_param("batch", "PERFORMANCE", 2),
+            make_grouped_param("ctx", "ABOVE-CONFIG-LEFT", 1),
+            make_grouped_param("split", "SYSTEM", 1),
+        ];
+        sort_params_for_factory_export(&mut params, &group_order);
+        assert_eq!(
+            params.iter().map(|p| p.key.as_str()).collect::<Vec<_>>(),
+            vec!["ctx", "batch", "base_port", "split"]
+        );
     }
 }

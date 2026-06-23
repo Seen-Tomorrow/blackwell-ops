@@ -58,6 +58,7 @@ export function vramManifestSnapshotEqual(
     || prev.learnedFromPreviousRun !== next.learnedFromPreviousRun
     || prev.autoLayerSplit !== next.autoLayerSplit
     || prev.memorySource?.kind !== next.memorySource?.kind
+    || prev.style.label !== next.style.label
   ) {
     return false;
   }
@@ -87,6 +88,19 @@ export function vramManifestSnapshotEqual(
       if (ra.slotAlias !== rb.slotAlias || ra.modelShort !== rb.modelShort) return false;
       if (Math.abs(ra.vramUsedMib - rb.vramUsedMib) >= 64) return false;
     }
+  }
+  const prevUi = prev.style.uiTemplate;
+  const nextUi = next.style.uiTemplate;
+  if (
+    prevUi.showDetailedForecast !== nextUi.showDetailedForecast
+    || prevUi.showRamBar !== nextUi.showRamBar
+    || prevUi.heroText !== nextUi.heroText
+    || prevUi.heroSubtext !== nextUi.heroSubtext
+    || prevUi.gpuLayerText !== nextUi.gpuLayerText
+    || prevUi.ramLayerText !== nextUi.ramLayerText
+    || prevUi.moeRamBar !== nextUi.moeRamBar
+  ) {
+    return false;
   }
   return true;
 }

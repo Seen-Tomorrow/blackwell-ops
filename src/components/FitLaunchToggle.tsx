@@ -1,37 +1,37 @@
 interface FitLaunchToggleProps {
-  autoFit: boolean;
+  fullAuto: boolean;
   available: boolean;
-  onChange: (autoFit: boolean) => void;
+  onChange: (fullAuto: boolean) => void;
 }
 
-/** Segmented switch — MANUAL vs AUTO FIT launch (under VRAM forecast). */
-export default function FitLaunchToggle({ autoFit, available, onChange }: FitLaunchToggleProps) {
+/** Segmented switch — ASSISTED vs FULL AUTO memory launch (under VRAM forecast). */
+export default function FitLaunchToggle({ fullAuto, available, onChange }: FitLaunchToggleProps) {
   if (!available) return null;
 
   return (
     <div
       className="segment-switch segment-switch--fit-launch"
       data-segment-switch
-      data-active={autoFit ? "right" : "left"}
+      data-active={fullAuto ? "right" : "left"}
       role="group"
       aria-label="Launch memory mode"
     >
       <span className="segment-switch__thumb" aria-hidden />
       <button
         type="button"
-        className={`segment-switch__option${!autoFit ? " segment-switch__option--active" : ""}`}
-        aria-pressed={!autoFit}
+        className={`segment-switch__option${!fullAuto ? " segment-switch__option--active" : ""}`}
+        aria-pressed={!fullAuto}
         onClick={() => onChange(false)}
       >
-        MANUAL
+        ASSISTED
       </button>
       <button
         type="button"
-        className={`segment-switch__option${autoFit ? " segment-switch__option--active" : ""}`}
-        aria-pressed={autoFit}
+        className={`segment-switch__option${fullAuto ? " segment-switch__option--active" : ""}`}
+        aria-pressed={fullAuto}
         onClick={() => onChange(true)}
       >
-        AUTO FIT
+        FULL AUTO
       </button>
     </div>
   );

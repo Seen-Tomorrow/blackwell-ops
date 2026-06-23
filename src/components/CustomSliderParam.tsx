@@ -138,7 +138,7 @@ export default function CustomSliderParam({
   return (
     <div
       ref={trackRef}
-      className="relative flex-1 min-w-0 select-none touch-none"
+      className="ctx-slider-track-host relative flex-1 min-w-0 select-none touch-none"
       style={{ height: `${TRACK_AREA_HEIGHT_PX}px` }}
       onPointerDown={handleTrackPointerDown}
       onPointerMove={handleTrackPointerMove}

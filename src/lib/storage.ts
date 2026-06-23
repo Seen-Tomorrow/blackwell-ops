@@ -34,8 +34,8 @@ import type { ConfigViewMode } from "./types";
  * | BlackOps-catalog-split-width | number string (px) | Model catalog / engine config split |
  * | BlackOps-model-hub-split-width | number string (0–1) | Model Hub results / quants split ratio |
  * | BlackOps-telemetry-view | standard \| lab | TELEMETRY tab: panel vs lab catalogue |
- * | BlackOps-setup-guide-dismissed | "1" | User dismissed first-run setup guide |
- * | BlackOps-setup-welcome-seen | "1" | Welcome animation already played once |
+ * | BlackOps-setup-guide-dismissed | "1" | Setup guide dismissed (cache; authority is app_config.setup_completed) |
+ * | BlackOps-setup-welcome-seen | "1" | Welcome animation seen (cache; replayed when config/ is reset) |
  * | BlackOps-setup-guide-preview | "1" | Dev: force welcome + guide in VRAM display |
  * | BlackOps-bench-controls | JSON | Global TG/PP bench control chips (n_predict, concurrency, warmup, prompt mode) |
 
@@ -529,9 +529,12 @@ export function migrateLegacyStorageKeys(): void {
 
 export type FusionHeroTpsMode = "live" | "avg";
 
+export const FUSION_HERO_TPS_DEFAULT: FusionHeroTpsMode = "avg";
+
 export function loadFusionHeroTpsMode(): FusionHeroTpsMode {
   const v = readStorage(KEYS.fusionHeroTpsMode);
-  return v === "avg" ? "avg" : "live";
+  if (v === "avg" || v === "live") return v;
+  return FUSION_HERO_TPS_DEFAULT;
 }
 
 export function saveFusionHeroTpsMode(mode: FusionHeroTpsMode): void {
@@ -707,9 +710,9 @@ export interface BenchControlPrefs {
 export const BENCH_CONTROL_DEFAULTS: BenchControlPrefs = {
   nPredict: 1024,
   tgParallel: 1,
-  tgWarmupEnabled: true,
-  promptMode: "unique",
-  ppTargetTokens: 8192,
+  tgWarmupEnabled: false,
+  promptMode: "repetitive",
+  ppTargetTokens: 16384,
 };
 
 const BENCH_N_PREDICT_ALLOWED = new Set<number>(BENCH_TG_PREDICT_OPTIONS);

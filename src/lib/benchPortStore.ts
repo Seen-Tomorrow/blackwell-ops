@@ -1,5 +1,6 @@
 import type { bench_TGBenchResult, bench_PPBurstResult, bench_PromptMode } from "./types";
 import {
+  BENCH_CONTROL_DEFAULTS,
   loadBenchControlPrefs,
   saveBenchControlPrefs,
   type BenchControlPrefs,
@@ -42,15 +43,15 @@ function defaultBenchState(): BenchPortState {
     tgResult: null,
     tgPhase: null,
     tgEffectiveLength: null,
-    nPredict: 1024,
-    tgParallel: 1,
-    tgWarmupEnabled: true,
-    promptMode: "unique",
+    nPredict: BENCH_CONTROL_DEFAULTS.nPredict,
+    tgParallel: BENCH_CONTROL_DEFAULTS.tgParallel,
+    tgWarmupEnabled: BENCH_CONTROL_DEFAULTS.tgWarmupEnabled,
+    promptMode: BENCH_CONTROL_DEFAULTS.promptMode,
     ppRunning: false,
     ppResult: null,
     ppPhase: null,
     ppEffectiveLength: null,
-    ppTargetTokens: 8192,
+    ppTargetTokens: BENCH_CONTROL_DEFAULTS.ppTargetTokens,
     showResults: false,
     sessionMode: "idle",
   };

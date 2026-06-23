@@ -444,6 +444,7 @@ pub async fn launch_engine(
         provider_name: provider_display_name,
         build_info: None,
         supports_fusion,
+        split_mode: config.get_param_str("split").unwrap_or_else(|| "none".to_string()),
     })
 }
 
@@ -562,6 +563,7 @@ pub async fn get_stack_status(app: tauri::State<'_, AppContext>) -> Result<Vec<S
                 provider_name: e.provider_name.clone(),
                 build_info,
                 supports_fusion: e.supports_fusion,
+                split_mode: e.split_mode.clone(),
             }
         })
         .collect();
@@ -683,7 +685,6 @@ pub async fn fit_scan_model(
     split_mode: String,
     batch: u32,
     _ubatch: u32,
-    parallel: u32,
     _flash_attn: bool,
     _offload_mode: String,
     app: tauri::State<'_, AppContext>,
@@ -718,6 +719,7 @@ pub async fn fit_scan_model(
 
     // Build CLI args directly — no template involvement
     let fit_adapter = fit_scanner::resolve_fit_adapter(&backend_type);
+    // Slot count does not affect VRAM measurement — unified KV shares one pool.
     let args = fit_scanner::build_fit_command(
         &backend_type,
         &model_path,
@@ -725,7 +727,7 @@ pub async fn fit_scan_model(
         &kv_quant,
         batch,
         _ubatch,
-        parallel,
+        1,
         &split_mode,
     );
     let fit_result =

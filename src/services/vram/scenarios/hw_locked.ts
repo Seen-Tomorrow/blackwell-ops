@@ -19,9 +19,12 @@ export function evaluate(input: ScenarioInput, computed: ComputedValues, reason:
       bgTint: "bg-gray-800/5",
       badgeBg: "bg-gray-800/20",
       icon: "!",
-      label: "HW LOCKED",
+      label: "DO NOT FIT",
       ramVisible: false,
       uiTemplate: {
+        heroText: "WON'T LAUNCH",
+        heroSubtext: reason,
+        showDetailedForecast: input.fullAutoMode !== true,
         gpuLayerText: `→ 0 layers on GPU — insufficient VRAM`,
         ramLayerText: `→ ${nLayer} layers in RAM — ${computed.ramWeightsGb > 0 ? `${computed.ramWeightsGb.toFixed(1)} GB expert FFN + ` : ''}${computed.weightsOnGpuGb.toFixed(1)} GB weights (cannot launch)`,
         showRamBar: true,

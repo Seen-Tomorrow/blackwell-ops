@@ -1,10 +1,57 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { ModelEntry, EngineConfig, GpuInfo, StackEntry, SystemInfo, VramManifest, FitScanResult } from "../lib/types";
-import { evaluate, applyFitValidation, committedSlotsFromStack, committedStackKey, parseCtx, type ScenarioInput, type FitPoint } from "../services/vram/scenarios/scenarios_factory";
+import { evaluate, committedSlotsFromStack, committedStackKey, parseCtx, type ScenarioInput, type FitPoint } from "../services/vram/scenarios/scenarios_factory";
 import { attachMemorySource, MEMORY_SOURCE_LABELS } from "../services/vram/memorySource";
 import { gpuMemoryBucketKey, vramManifestSnapshotEqual } from "../lib/telemetryGpu";
 import { tomMtpBlocked, toastTomMtpSkip, TOM_MTP_SKIP_MESSAGE } from "../lib/tomMtp";
+
+type ProbeSession = {
+  modelPath: string;
+  configKey: string;
+  validatedVramMib: number;
+  validatedGpuBreakdownMib?: number[];
+  validatedHostMib?: number;
+  validatedComponentsMib?: VramManifest["validatedComponentsMib"];
+  fitProbeMeasuredAt: string;
+};
+
+function scenarioConfigKey(
+  config: Record<string, unknown>,
+  autoVramLaunch: boolean,
+  memoryMode: "full_auto" | "assisted",
+): string {
+  return `${config.device || ""}|${config.split || ""}|${config["offload_mode"] || ""}|${config.ctx || ""}|${config["kv_quant"] || ""}|${config.batch ?? ""}|${config.ubatch ?? ""}|${config["flash_attn"] || ""}|${config.vision || ""}|${config["unified_kv"] || ""}|${config["rope_scaling"] || ""}|${config["rope_scale"] ?? ""}|${config.gpu_sync || ""}|${config.cache_ram || ""}|${config.backend_type || ""}|fit=${autoVramLaunch ? "1" : "0"}|mode=${memoryMode}`;
+}
+
+function probeScenarioFields(session: ProbeSession | null, modelPath: string, configKey: string) {
+  if (!session || session.modelPath !== modelPath || session.configKey !== configKey) {
+    return {};
+  }
+  return {
+    fitProbeVramMib: session.validatedVramMib,
+    fitProbeHostMib: session.validatedHostMib,
+    fitProbeGpuBreakdownMib: session.validatedGpuBreakdownMib,
+  };
+}
+
+function attachProbeManifest(
+  manifest: VramManifest,
+  session: ProbeSession,
+  input: ScenarioInput,
+): VramManifest {
+  return attachMemorySource(
+    {
+      ...manifest,
+      validatedVramMib: session.validatedVramMib,
+      validatedGpuBreakdownMib: session.validatedGpuBreakdownMib,
+      validatedHostMib: session.validatedHostMib,
+      validatedComponentsMib: session.validatedComponentsMib,
+      fitProbeMeasuredAt: session.fitProbeMeasuredAt,
+    },
+    input,
+  );
+}
 
 interface LearnedVramFitAttempt {
   vram_mib: number;
@@ -26,6 +73,7 @@ interface UseScenarioEvaluatorProps {
   stack: StackEntry[];
   systemInfo?: SystemInfo | null;
   autoVramLaunch?: boolean;
+  fullAutoMode?: boolean;
   fitStyle?: string;
 }
 
@@ -112,6 +160,7 @@ export function useScenarioEvaluator({
   stack,
   systemInfo,
   autoVramLaunch = false,
+  fullAutoMode = true,
   fitStyle = "",
 }: UseScenarioEvaluatorProps) {
   const [manifest, setManifest] = useState<VramManifest | null>(null);
@@ -147,19 +196,14 @@ export function useScenarioEvaluator({
   const learnedFetchGenRef = useRef(0);
   const learnedFetchPendingRef = useRef(false);
   const autoVramLaunchRef = useRef(autoVramLaunch);
+  const fullAutoModeRef = useRef(fullAutoMode);
   const fitStyleRef = useRef(fitStyle);
   autoVramLaunchRef.current = autoVramLaunch;
+  fullAutoModeRef.current = fullAutoMode;
   fitStyleRef.current = fitStyle;
   const lastScenarioDebugModelRef = useRef("");
   const lastScenarioDebugNameRef = useRef("");
-  const probeSessionRef = useRef<{
-    configKey: string;
-    validatedVramMib: number;
-    validatedGpuBreakdownMib?: number[];
-    validatedHostMib?: number;
-    validatedComponentsMib?: VramManifest["validatedComponentsMib"];
-    fitProbeMeasuredAt: string;
-  } | null>(null);
+  const probeSessionRef = useRef<ProbeSession | null>(null);
   const hadSysInfoRef = useRef(systemInfo != null);
   const runEvaluationRef = useRef<() => void>(() => {});
   const scheduleEvaluationRef = useRef<() => void>(() => {});
@@ -177,11 +221,12 @@ export function useScenarioEvaluator({
 
   // Config fingerprint — only keys that affect scenario evaluation.
   // Changes here trigger re-eval (HW buttons, param chips). Telemetry noise doesn't touch these.
-  const configKey = `${config.device || ""}|${config.split || ""}|${config["offload_mode"] || ""}|${config.ctx || ""}|${config["kv_quant"] || ""}|${config.batch ?? ""}|${config.ubatch ?? ""}|${config.parallel ?? ""}|${config["flash_attn"] || ""}|${config.vision || ""}|${config["unified_kv"] || ""}|${config["rope_scaling"] || ""}|${config["rope_scale"] ?? ""}|${config.gpu_sync || ""}|${config.cache_ram || ""}|${config.backend_type || ""}|auto=${autoVramLaunch ? "1" : "0"}`;
+  const memoryMode = fullAutoMode ? "full_auto" : "assisted";
+  const configKey = scenarioConfigKey(config, autoVramLaunch, memoryMode);
 
   useEffect(() => {
     probeSessionRef.current = null;
-  }, [configKey]);
+  }, [configKey, model?.path]);
 
   // Stack fingerprint — changes when committed engines (RUNNING/LOADING) start/stop or VRAM shifts.
   const stackKey = committedStackKey(stack);
@@ -231,6 +276,12 @@ export function useScenarioEvaluator({
       total_memory_manufactured_mib: 0,
     };
 
+    const curConfigKey = scenarioConfigKey(
+      curConfig,
+      autoVramLaunchRef.current,
+      fullAutoModeRef.current ? "full_auto" : "assisted",
+    );
+    const session = probeSessionRef.current;
     const input: ScenarioInput = {
       modelMeta: model.metadata,
       engineConfig,
@@ -241,25 +292,19 @@ export function useScenarioEvaluator({
       mmprojSizeMib: model.mmproj_size_mib,
       fitPoints: fitPointsRef.current || undefined,
       autoVramLaunch: autoVramLaunchRef.current,
+      fullAutoMode: fullAutoModeRef.current,
       fitStyle: fitStyleRef.current,
       learnedVramMib: learnedVramRef.current ?? undefined,
       learnedHostMib: learnedHostRef.current ?? undefined,
       learnedGpuBreakdownMib: learnedGpuBreakdownRef.current ?? undefined,
       learnedMeasuredAt: learnedMeasuredAtRef.current,
+      ...probeScenarioFields(session, model.path, curConfigKey),
     };
 
     try {
       let result = evaluate(input);
-      const session = probeSessionRef.current;
-      if (session && session.configKey === lastConfigKeyRef.current) {
-        result = attachMemorySource({
-          ...result,
-          validatedVramMib: session.validatedVramMib,
-          validatedGpuBreakdownMib: session.validatedGpuBreakdownMib,
-          validatedHostMib: session.validatedHostMib,
-          validatedComponentsMib: session.validatedComponentsMib,
-          fitProbeMeasuredAt: session.fitProbeMeasuredAt,
-        }, input);
+      if (session && session.modelPath === model.path && session.configKey === curConfigKey) {
+        result = attachProbeManifest(result, session, input);
       }
       commitManifest(result);
 
@@ -329,6 +374,8 @@ export function useScenarioEvaluator({
       kvQuant: String(curConfig["kv_quant"] ?? "f16"),
       device: String(curConfig.device ?? "GPU-0"),
       split: String(curConfig.split ?? "none"),
+      memoryMode: fullAutoModeRef.current ? "full_auto" : "assisted",
+      offloadMode: String(curConfig["offload_mode"] ?? "regular"),
     })
       .then((entry) => {
         if (fetchGen !== learnedFetchGenRef.current) return;
@@ -433,7 +480,6 @@ export function useScenarioEvaluator({
         splitMode: (curConfig.split || "none").toString().toLowerCase(),
         batch: typeof curConfig.batch === 'number' ? curConfig.batch : parseInt(String(curConfig.batch), 10) || 2048,
         ubatch: typeof curConfig.ubatch === 'number' ? curConfig.ubatch : parseInt(String(curConfig.ubatch), 10) || 512,
-        parallel: typeof curConfig.parallel === 'number' ? curConfig.parallel : parseInt(String(curConfig.parallel), 10) || 1,
         flashAttn: curConfig["flash_attn"]?.toString().toLowerCase() !== "off",
         offloadMode: (curConfig["offload_mode"] || "regular").toString(),
       });
@@ -451,6 +497,19 @@ export function useScenarioEvaluator({
 
       const sysInfo = systemInfoRef.current || { total_memory_mib: 0, available_memory_mib: 0, total_memory_manufactured_mib: 0 };
 
+      const probeMeasuredAt = new Date().toLocaleString(undefined, {
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+
+      const curConfigKey = scenarioConfigKey(
+        curConfig,
+        autoVramLaunchRef.current,
+        fullAutoModeRef.current ? "full_auto" : "assisted",
+      );
+
       const input: ScenarioInput = {
         modelMeta: model.metadata!,
         engineConfig,
@@ -461,37 +520,20 @@ export function useScenarioEvaluator({
         mmprojSizeMib: model.mmproj_size_mib,
         fitPoints: fitPointsRef.current || undefined,
         autoVramLaunch: autoVramLaunchRef.current,
+        fullAutoMode: fullAutoModeRef.current,
         fitStyle: fitStyleRef.current,
         learnedVramMib: learnedVramRef.current ?? undefined,
         learnedHostMib: learnedHostRef.current ?? undefined,
         learnedGpuBreakdownMib: learnedGpuBreakdownRef.current ?? undefined,
         learnedMeasuredAt: learnedMeasuredAtRef.current,
+        fitProbeVramMib: result.vram_mib,
+        fitProbeHostMib: result.host_mib,
+        fitProbeGpuBreakdownMib: result.gpu_breakdown_mib,
       };
 
-      const probeMeasuredAt = new Date().toLocaleString(undefined, {
-        month: "short",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-
-      // Evaluate with measured VRAM total — this will pick the correct scenario based on reality
-      const newManifest = evaluate(input, result.vram_mib);
-
-      const validatedManifest = attachMemorySource(
-        {
-          ...newManifest,
-          validatedVramMib: result.vram_mib,
-          validatedGpuBreakdownMib: result.gpu_breakdown_mib,
-          validatedHostMib: result.host_mib,
-          validatedComponentsMib: result.gpu_components_mib ?? null,
-          fitProbeMeasuredAt: probeMeasuredAt,
-        },
-        input,
-      );
-
-      probeSessionRef.current = {
-        configKey: lastConfigKeyRef.current || configKey,
+      const session: ProbeSession = {
+        modelPath: model.path,
+        configKey: curConfigKey,
         validatedVramMib: result.vram_mib,
         validatedGpuBreakdownMib: result.gpu_breakdown_mib,
         validatedHostMib: result.host_mib,
@@ -499,24 +541,28 @@ export function useScenarioEvaluator({
         fitProbeMeasuredAt: probeMeasuredAt,
       };
 
+      probeSessionRef.current = session;
+
+      const validatedManifest = attachProbeManifest(evaluate(input), session, input);
+
       commitManifest(validatedManifest);
 
      // Validation debug emission — emit when scenario changed or validation newly applied
-      if (model.path !== lastScenarioDebugModelRef.current || newManifest.scenario !== lastScenarioDebugNameRef.current || result.vram_mib !== validatedManifest.validatedVramMib) {
+      if (model.path !== lastScenarioDebugModelRef.current || validatedManifest.scenario !== lastScenarioDebugNameRef.current || result.vram_mib !== validatedManifest.validatedVramMib) {
         const modelName = model.path.split(/[\/\\]/).pop() || model.path;
         const fps = fitPointsRef.current;
         emitScenarioDebug(
-          modelName, model.metadata, fps, newManifest.scenario,
+          modelName, model.metadata, fps, validatedManifest.scenario,
           validatedManifest.vramWeightsGb, validatedManifest.vramKvGb, validatedManifest.vramOverheadGb,
           validatedManifest.vramTotalGb, validatedManifest.gpuAllocations, validatedManifest.gpuLayers, validatedManifest.ramLayers,
           validatedManifest.validatedVramMib, validatedManifest.formulaVramTotalGb, validatedManifest.validatedComponentsMib,
-          newManifest.style.uiTemplate, engineConfig, result.vram_mib / 1024,
+          validatedManifest.style.uiTemplate, engineConfig, result.vram_mib / 1024,
           validatedManifest.memorySource
             ? MEMORY_SOURCE_LABELS[validatedManifest.memorySource.kind]
             : undefined,
         );
         lastScenarioDebugModelRef.current = model.path;
-        lastScenarioDebugNameRef.current = newManifest.scenario;
+        lastScenarioDebugNameRef.current = validatedManifest.scenario;
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);

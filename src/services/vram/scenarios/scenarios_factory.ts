@@ -4,7 +4,6 @@ import { attachMemorySource } from "../memorySource";
 // ── Constants (derived from real launch data) ────────────────────────────────
 
 export const RS_BUFFER_PER_GPU_GB = 0.1; // Reduced from 0.3 to match actual llama.cpp memory usage
-export const CUDA_PARALLEL_OVERHEAD_PER_REQ_GB = 0.5;
 export const CUDA_CTX_OVERHEAD_FACTOR = 0.5 / 131072;
 
 // ── FIT scan data types ─────────────────────────────────────────────────────
@@ -83,8 +82,10 @@ export interface ScenarioInput {
   ramManufacturedGb: number;
   mmprojSizeMib?: number;
   fitPoints?: FitPoint[];
-  /** True when launch will use provider --fit / --fit on (Auto VRAM mode). */
+  /** True when launch uses provider --fit on (all FIT-capable providers). */
   autoVramLaunch?: boolean;
+  /** FULL AUTO vs ASSISTED — drives forecast hero + chrome policy. */
+  fullAutoMode?: boolean;
   fitStyle?: string;
   /** Post-launch measured VRAM from learned-vram.json (MiB). */
   learnedVramMib?: number;
@@ -94,6 +95,10 @@ export interface ScenarioInput {
   learnedGpuBreakdownMib?: number[];
   /** ISO timestamp from learned-vram.json for SOURCE provenance. */
   learnedMeasuredAt?: string;
+  /** Active FIT probe session — authoritative until config changes. */
+  fitProbeVramMib?: number;
+  fitProbeHostMib?: number;
+  fitProbeGpuBreakdownMib?: number[];
 }
 
 // ── Pure Helpers (no scenario logic) ────────────────────────────────────────
@@ -191,6 +196,28 @@ export function computeGpuAvailableList(
     const committed = Math.max(nvmlUsed, stackUsed);
     return Math.max(0, manufactured - committed);
   });
+}
+
+/** Free VRAM (all GPUs) + free host RAM — upper bound for a single launch. */
+export function systemMemoryAvailableGb(
+  computed: ComputedValues,
+  input: Pick<ScenarioInput, "ramAvailableGb">,
+): number {
+  return computed.multiTotalAvailable + input.ramAvailableGb;
+}
+
+export function systemMemoryHeadroomGb(poolGb: number): number {
+  return Math.max(2.0, poolGb * 0.02);
+}
+
+/** True when the estimate cannot fit in combined GPU VRAM + host RAM. */
+export function exceedsSystemMemory(
+  estimateGb: number,
+  computed: ComputedValues,
+  input: Pick<ScenarioInput, "ramAvailableGb">,
+): boolean {
+  const poolGb = systemMemoryAvailableGb(computed, input);
+  return estimateGb > poolGb - systemMemoryHeadroomGb(poolGb);
 }
 
 /** Accessors for flattened EngineConfig — read from extra_params with defaults. */
@@ -367,7 +394,6 @@ export function extrapolateVramFromPoints(
   userCtx: number,
   _userKvQuant: string,
   userBatch: number,
-  userParallel: number,
   splitMode: string,
   weightsGb: number
 ): number | null {
@@ -394,15 +420,6 @@ export function extrapolateVramFromPoints(
     const splitTax = estimateSplitTaxMiB(points, splitMode.toLowerCase());
     if (splitTax !== null) {
       totalMib += splitTax;
-    }
-  }
-
-  // Parallel overhead
-  if (userParallel > 1) {
-    const parallel2 = findFitPoint(points, "parallel_2");
-    if (parallel2) {
-      const perParallelOverhead = parallel2.vram_mib - base.vram_mib;
-      totalMib += perParallelOverhead * (userParallel - 1);
     }
   }
 
@@ -473,32 +490,50 @@ export function computeValues(input: ScenarioInput, validatedVramMib?: number): 
   const numGpusUsed = splitActive ? numGpusTotal : (deviceStr.includes("/") ? deviceStr.split("/").length : 1);
 
   const weightsOnGpuGb = weightsGb * gpuWeightFraction;
+  const ramWeightsGb = weightsGb - weightsOnGpuGb;
+  const moeOptimal = gpuWeightFraction < 1.0;
 
   // Vision addon — mmproj file size only
   const visionGb = cfgStr(engineConfig, "vision", "auto").toUpperCase() !== "OFF" ? (input.mmprojSizeMib || 0) / 1024 : 0;
 
   let overheadGb: number;
+  let fitCacheExtrapolatedGb: number | null = null;
 
   if (input.fitPoints && input.fitPoints.length > 0) {
     // ── FIT-based estimation ────────────────────────────────────────────
     const splitMode = splitActive ? cfgStr(engineConfig, "split", "none").toLowerCase() : "";
     const extrapolatedMib = extrapolateVramFromPoints(
-      input.fitPoints, userCtx, cfgStr(engineConfig, "kv_quant", "f16"), cfgNum(engineConfig, "batch", 2048), cfgNum(engineConfig, "parallel", 1), splitMode, weightsGb
+      input.fitPoints, userCtx, cfgStr(engineConfig, "kv_quant", "f16"), cfgNum(engineConfig, "batch", 2048), splitMode, weightsGb
     );
 
     if (extrapolatedMib !== null) {
-      // Derive overhead from measured FIT data: residual after subtracting known components.
-      // Use max of FIT-derived and formula-derived to avoid underestimation when extrapolation
-      // was measured at different config (e.g., q4_0/8K base vs user's f16/1M ctx).
-      const fitOverheadGb = Math.max(0, extrapolatedMib / 1024 - weightsOnGpuGb - kvCacheGb - visionGb);
-      const formulaOverheadGb = computeDefaultOverhead(engineConfig, modelMeta, weightsGb, numGpusUsed, effectiveCtx, isMoe);
-      overheadGb = Math.max(fitOverheadGb, formulaOverheadGb);
+      fitCacheExtrapolatedGb = extrapolatedMib / 1024;
+      const formulaOverheadGb = computeDefaultOverhead(
+        engineConfig, modelMeta, weightsGb, weightsOnGpuGb, numGpusUsed, effectiveCtx, isMoe, moeOptimal,
+      );
+      if (moeOptimal) {
+        // Library scan measures regular offload (all experts on GPU) — peel experts to host RAM.
+        const moeGpuGb = Math.max(
+          weightsOnGpuGb + kvCacheGb + visionGb,
+          fitCacheExtrapolatedGb - ramWeightsGb,
+        );
+        overheadGb = Math.max(0, moeGpuGb - weightsOnGpuGb - kvCacheGb - visionGb);
+        overheadGb = Math.max(overheadGb, formulaOverheadGb);
+      } else {
+        // Derive overhead from measured FIT data: residual after subtracting known components.
+        const fitOverheadGb = Math.max(0, fitCacheExtrapolatedGb - weightsOnGpuGb - kvCacheGb - visionGb);
+        overheadGb = Math.max(fitOverheadGb, formulaOverheadGb);
+      }
     } else {
-      overheadGb = computeDefaultOverhead(engineConfig, modelMeta, weightsGb, numGpusUsed, effectiveCtx, isMoe);
+      overheadGb = computeDefaultOverhead(
+        engineConfig, modelMeta, weightsGb, weightsOnGpuGb, numGpusUsed, effectiveCtx, isMoe, moeOptimal,
+      );
     }
   } else {
     // ── Default formula (no FIT data) ───────────────────────────────────
-    overheadGb = computeDefaultOverhead(engineConfig, modelMeta, weightsGb, numGpusUsed, effectiveCtx, isMoe);
+    overheadGb = computeDefaultOverhead(
+      engineConfig, modelMeta, weightsGb, weightsOnGpuGb, numGpusUsed, effectiveCtx, isMoe, moeOptimal,
+    );
   }
 
   // vramTotalGb is ALWAYS the sum of components — guarantees guards and display are consistent.
@@ -517,8 +552,6 @@ export function computeValues(input: ScenarioInput, validatedVramMib?: number): 
   // Target GPU from config
   const targetGpuIdx = parseInt(deviceStr.replace("GPU-", "").split("/")[0], 10) || 0;
 
-  const ramWeightsGb = weightsGb - weightsOnGpuGb;
-
   return {
     weightsGb, kvCacheGb, overheadGb, visionGb, vramTotalGb,
     gpuAvailable, singleMaxAvailable, multiTotalAvailable,
@@ -532,16 +565,17 @@ function computeDefaultOverhead(
   engineConfig: EngineConfig,
   modelMeta: ModelMetadata,
   weightsGb: number,
+  weightsOnGpuGb: number,
   numGpusUsed: number,
   effectiveCtx: number,
-  isMoe: boolean
+  isMoe: boolean,
+  moeOptimal: boolean,
 ): number {
-  const baseOverheadPerGpu = estimateDefaultOverheadGb(weightsGb);
+  const baseOverheadPerGpu = estimateDefaultOverheadGb(moeOptimal ? weightsOnGpuGb : weightsGb);
 
- // Activation memory: single universal constant, no arch tiers
-  const effectiveParallel = cfgBool(engineConfig, "unified_kv", false) ? 1 : cfgNum(engineConfig, "parallel", 1);
-  let activationOverheadGb = (cfgNum(engineConfig, "ubatch", 512) * effectiveParallel / 1024) * 1.5 * (modelMeta.n_embd / 4096);
-  const batchWorkspaceGb = Math.min((cfgNum(engineConfig, "batch", 2048) * effectiveParallel / 1024) * 0.375, 2.0);
+  // Slot count does not affect VRAM forecast — unified KV shares one pool; FIT scan no longer sweeps parallel.
+  let activationOverheadGb = (cfgNum(engineConfig, "ubatch", 512) / 1024) * 1.5 * (modelMeta.n_embd / 4096);
+  const batchWorkspaceGb = Math.min((cfgNum(engineConfig, "batch", 2048) / 1024) * 0.375, 2.0);
 
   // Flash attention reduces activation memory by ~15%
   if (cfgBool(engineConfig, "flash_attn", false)) {
@@ -558,15 +592,12 @@ function computeDefaultOverhead(
     activationOverheadGb *= 1.05;
   }
 
-  // Parallel overhead — kept even with unified_kv (per-sequence buffer still exists)
-  const parallelOverhead = Math.max(0, cfgNum(engineConfig, "parallel", 1) - 1) * CUDA_PARALLEL_OVERHEAD_PER_REQ_GB;
-
   // Context overhead scales past 64K but caps at 2 GB to prevent blowup on 1M ctx.
   const ctxOverhead = effectiveCtx > 65536
     ? Math.min((effectiveCtx - 65536) * CUDA_CTX_OVERHEAD_FACTOR, 2.0)
     : 0;
 
-  return baseOverheadPerGpu * numGpusUsed + activationOverheadGb + batchWorkspaceGb + RS_BUFFER_PER_GPU_GB * numGpusUsed + parallelOverhead + ctxOverhead;
+  return baseOverheadPerGpu * numGpusUsed + activationOverheadGb + batchWorkspaceGb + RS_BUFFER_PER_GPU_GB * numGpusUsed + ctxOverhead;
 }
 
 // ── Build Manifest (pure formatter) ────────────────────────────────────────
@@ -625,12 +656,6 @@ export function buildManifest(
 // ── Orchestrator (strict sequential dispatch) ───────────────────────────────
 
 import { tryEvaluate as autoFit } from "./auto_fit";
-import { tryEvaluate as soloFit } from "./solo_fit";
-import { tryEvaluate as soloPressure } from "./solo_pressure";
-import { tryEvaluate as multiFit } from "./multi_fit";
-import { tryEvaluate as multiPressure } from "./multi_pressure";
-import { tryEvaluate as soloSpill } from "./solo_spill";
-import { tryEvaluate as multiSpill } from "./multi_spill";
 import { evaluate as hwLocked } from "./hw_locked";
 
 /** Compute MOE_OPTIMAL suggestion internally (not exposed as actual scenario) */
@@ -655,38 +680,18 @@ function computeMoeAlternative(
     const moeGpuFraction = computeMoeGpuWeightFraction(modelMeta);
     const moeWeightsOnGpuGb = computed.weightsGb * moeGpuFraction;
     
-    // Check if MOE_OPTIMAL would be better than current scenario
-    const currentIsSpill = 
-      currentManifest.scenario === 'SOLO_SPILL' || 
-      currentManifest.scenario === 'MULTI_SPILL';
-    
     const moeVramTotal = moeWeightsOnGpuGb + computed.kvCacheGb + computed.overheadGb + computed.visionGb;
     const currentVramTotal = currentManifest.vramTotalGb;
-    
-    // MOE_OPTIMAL is beneficial if:
-    // - Current scenario is spill AND MOE would fit on GPU, OR
-    // - Current scenario is MULTI_FIT/MULTI_PRESSURE and MOE reduces GPU utilization below 85%, OR
-    // - MOE saves any meaningful VRAM (>2 GB) even if both fit
     const vramSaved = currentVramTotal - moeVramTotal;
     const wouldFitOnGpu = moeVramTotal <= computed.singleMaxAvailable;
-    
-    // Check GPU utilization reduction for multi-GPU scenarios
-    const isMultiScenario = 
-      currentManifest.scenario === 'MULTI_FIT' || 
-      currentManifest.scenario === 'MULTI_PRESSURE';
-    
-    const totalGpuCapacityGb = computed.multiTotalAvailable;
-    const moeUtilizationRatio = totalGpuCapacityGb > 0 ? moeVramTotal / totalGpuCapacityGb : 1.0;
-    const wouldReduceUtilBelow85Pct = isMultiScenario && moeUtilizationRatio < 0.85;
-    
-    // Determine if suggestion should be highlighted (animated border)
-    // Only highlight for spill scenarios, ignore VRAM savings
-    const shouldHighlight = currentIsSpill;
+    const hostOffloadLikely = currentManifest.ramTotalGb > 0.5
+      || (currentManifest.style.uiTemplate.offloadWarningText?.length ?? 0) > 0;
+    const shouldHighlight = hostOffloadLikely && wouldFitOnGpu;
     
     return {
       wouldFit: wouldFitOnGpu || vramSaved > 0,
       vramSavedGb: vramSaved > 0 ? vramSaved : undefined,
-      avoidsSpill: currentIsSpill && wouldFitOnGpu,
+      avoidsSpill: hostOffloadLikely && wouldFitOnGpu,
       speedImpact: "<10%",
       shouldHighlight, // New field to control animation
       suggestionText: wouldFitOnGpu 
@@ -703,38 +708,14 @@ interface VramManifestWithMoe extends VramManifest {
   moeSuggestion?: MoeSuggestion | null;
 }
 
-/** Overlay learned-vram.json measurements on any scenario (not only AUTO_FIT). */
+/** Learned VRAM totals + per-GPU projection are owned by AUTO_FIT — do not stomp forecast bars here. */
 export function applyLearnedVramOverlay(
   manifest: VramManifest,
-  input: ScenarioInput,
+  _input: ScenarioInput,
   validatedVramMib?: number,
 ): VramManifest {
   if (validatedVramMib != null) return manifest;
-  if (manifest.learnedFromPreviousRun) return manifest;
-  if (!input.learnedVramMib || input.learnedVramMib <= 0) return manifest;
-
-  const learnedGpuGb = input.learnedVramMib / 1024;
-  const learnedHostGb = input.learnedHostMib ? input.learnedHostMib / 1024 : 0;
-  const totalNeedGb = learnedGpuGb + learnedHostGb;
-
-  let gpuAllocations = manifest.gpuAllocations;
-  if (
-    input.learnedGpuBreakdownMib
-    && input.learnedGpuBreakdownMib.length === input.gpus.length
-  ) {
-    gpuAllocations = manifest.gpuAllocations.map((alloc, i) => ({
-      ...alloc,
-      projectedLoadGb: round2((input.learnedGpuBreakdownMib![i] ?? 0) / 1024),
-    }));
-  }
-
-  return {
-    ...manifest,
-    learnedFromPreviousRun: true,
-    vramTotalGb: round2(Math.max(totalNeedGb, learnedGpuGb)),
-    ramTotalGb: learnedHostGb > 0 ? round2(learnedHostGb) : manifest.ramTotalGb,
-    gpuAllocations,
-  };
+  return manifest;
 }
 
 export function evaluate(input: ScenarioInput, validatedVramMib?: number): VramManifest {
@@ -745,15 +726,7 @@ export function evaluate(input: ScenarioInput, validatedVramMib?: number): VramM
     return hwLocked(input, computed, "No GPUs detected");
   }
 
-  // Evaluation order: auto-fit launch → single-GPU fits → spill → multi-GPU distribution
-  const result =
-    autoFit(input, computed) ||
-    soloFit(input, computed) ||
-    soloPressure(input, computed) ||
-    soloSpill(input, computed) ||
-    multiSpill(input, computed) ||
-    multiFit(input, computed) ||
-    multiPressure(input, computed);
+  const result = autoFit(input, computed);
 
   let manifest: VramManifest | null = result;
 

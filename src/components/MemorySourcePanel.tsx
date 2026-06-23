@@ -95,7 +95,7 @@ export function FitProbeButton({
       type="button"
       onClick={onClick}
       disabled={isValidating}
-      className={`fit-probe-btn ml-1 px-1.5 py-px text-[7px] font-mono tracking-widest rounded-sm border whitespace-nowrap shrink-0 transition-colors ${
+      className={`fit-probe-btn px-1.5 py-px text-[7px] font-mono tracking-widest rounded-sm border whitespace-nowrap shrink-0 transition-colors ${
         isValidating
           ? "border-yellow-400/40 text-yellow-400 cursor-wait animate-pulse"
           : hasProbed

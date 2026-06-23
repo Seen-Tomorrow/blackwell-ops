@@ -28,6 +28,7 @@ import {
   dispatchAppEvent,
   dispatchPowerUserChanged,
   dispatchClearLocalStorage,
+  dispatchNavigateRecovery,
   dispatchReplaySetupGuide,
   dispatchReplaySetupGuideOnboardingOnly,
   EVENTS,
@@ -281,6 +282,15 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
               <button onClick={() => adjustZoom(-ZOOM_STEP)} className="app-chrome-control-btn px-1 text-[9px] font-mono transition-colors leading-none" title="Decrease text scale (Ctrl+scroll)">−</button>
               <span className="app-chrome-control-btn text-[8px] font-mono opacity-60 w-8 text-center" title="Text scale (Ctrl+scroll)">{Math.round(zoom * 100)}%</span>
               <button onClick={() => adjustZoom(ZOOM_STEP)} className="app-chrome-control-btn px-1 text-[9px] font-mono transition-colors leading-none" title="Increase text scale (Ctrl+scroll)">+</button>
+              <span className="app-quick-settings__sep app-chrome-control-btn text-[8px] font-mono opacity-40">|</span>
+              <button
+                type="button"
+                onClick={dispatchNavigateRecovery}
+                className="app-chrome-control-btn px-1.5 text-[8px] font-mono transition-colors leading-none text-nv-green/70 hover:text-nv-green"
+                title="CONFIG → RECOVERY — clear local UI prefs or reset portable config/"
+              >
+                RECOVERY
+              </button>
               {__BUILD_MODE__ === "dev" && (
                 <>
                   <span className="app-quick-settings__sep app-chrome-control-btn text-[8px] font-mono opacity-40">|</span>

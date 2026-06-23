@@ -6,27 +6,28 @@
   "display_name": "GGML Master",
   "git_url": "https://github.com/ggml-org/llama.cpp",
   "groupOrder": [
+    "ABOVE-CONFIG-LEFT",
+    "ABOVE-CONFIG-RIGHT",
     "PERFORMANCE",
     "FEATURE-FLAGS",
     "ADVANCED",
-    "SYSTEM",
-    "ABOVE-CONFIG",
-    "SPECULATIVE-DECODING"
+    "SPECULATIVE-DECODING",
+    "SYSTEM"
   ],
   "id": "ggml-master",
   "layoutDefaults": {
     "aboveColumnWidths": [
-      0.23350705580023445,
-      0.7664929441997655
+      0.28549267823914976,
+      0.7145073217608502
     ],
     "configColumnCount": 3,
     "configColumnWidths": [
-      0.42492331113359105,
-      0.17538344433204475,
-      0.39969324453436417
+      0.4036496350364964,
+      0.20875912408759123,
+      0.3875912408759124
     ],
     "groupColumn": {
-      "ABOVE-CONFIG": 1,
+      "ABOVE-CONFIG-RIGHT": 1,
       "ADVANCED": 1,
       "FEATURE-FLAGS": 1,
       "PERFORMANCE": 0,
@@ -34,79 +35,11 @@
       "USER-ADDED-FROM-CATALOG": 2
     },
     "groupDisplayZone": {
-      "ABOVE-CONFIG": "above"
+      "ABOVE-CONFIG-LEFT": "above",
+      "ABOVE-CONFIG-RIGHT": "above"
     }
   },
   "params": [
-    {
-      "default": "regular",
-      "dock": "runtime",
-      "flag": null,
-      "flag_pair": [],
-      "hidden_default": true,
-      "key": "offload_mode",
-      "label": "OFFLOAD-MODE",
-      "note": "moe_optimal adds expert eviction filter and forces KV quant to q4_0.",
-      "pattern": "",
-      "ptype": "logic_only",
-      "step": null,
-      "sub_params": {
-        "moe_optimal": [
-          "-ot",
-          "\\\\.ffn_.*_exps\\\\.=CPU",
-          "-ctk",
-          "q4_0",
-          "-ctv",
-          "q4_0"
-        ]
-      },
-      "ui_group": "SYSTEM",
-      "values": [
-        "regular",
-        "moe_optimal"
-      ]
-    },
-    {
-      "default": "none",
-      "dock": "runtime",
-      "flag": "--split-mode",
-      "flag_pair": [],
-      "hidden_default": true,
-      "key": "split",
-      "label": "SPLIT",
-      "note": "How to split model across multiple GPUs.",
-      "pattern": "",
-      "ptype": "arg_select",
-      "step": null,
-      "sub_params": null,
-      "ui_group": "SYSTEM",
-      "values": [
-        "none",
-        "layer",
-        "tensor"
-      ]
-    },
-    {
-      "default": 8080,
-      "dock": "runtime",
-      "flag": null,
-      "flag_pair": [],
-      "hidden_default": true,
-      "key": "base_port",
-      "label": "BASE-PORT",
-      "note": "Starting port for engine instances. Auto-increments per slot.",
-      "pattern": "",
-      "ptype": "logic_only",
-      "step": null,
-      "sub_params": null,
-      "ui_group": "SYSTEM",
-      "values": [
-        8080,
-        8180,
-        8888,
-        9090
-      ]
-    },
     {
       "default": "q4_0",
       "dock": "",
@@ -123,7 +56,7 @@
       "ptype": "arg_select_double",
       "step": null,
       "sub_params": null,
-      "ui_group": "ABOVE-CONFIG",
+      "ui_group": "ABOVE-CONFIG-LEFT",
       "values": [
         "q4_0",
         "q8_0",
@@ -143,7 +76,7 @@
       "ptype": "slider",
       "step": 1024.0,
       "sub_params": null,
-      "ui_group": "ABOVE-CONFIG",
+      "ui_group": "ABOVE-CONFIG-RIGHT",
       "values": [
         16384,
         32768,
@@ -177,7 +110,7 @@
       ]
     },
     {
-      "default": 256,
+      "default": 512,
       "dock": "",
       "flag": "--ubatch-size",
       "flag_pair": [],
@@ -191,13 +124,13 @@
       "sub_params": null,
       "ui_group": "PERFORMANCE",
       "values": [
+        16,
         32,
         64,
         128,
         256,
         512,
-        1024,
-        16
+        1024
       ]
     },
     {
@@ -220,7 +153,8 @@
         4,
         8,
         16,
-        32
+        32,
+        64
       ]
     },
     {
@@ -366,11 +300,49 @@
       ]
     },
     {
+      "default": "on",
+      "dock": "",
+      "flag": "--swa-full",
+      "flag_pair": [],
+      "hidden_default": true,
+      "key": "swa_full",
+      "label": "Swa Full",
+      "note": "a-full                              use full-size SWA cache (default: false)",
+      "pattern": "",
+      "ptype": "switch_onoff",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "ADVANCED",
+      "values": [
+        "off",
+        "on"
+      ]
+    },
+    {
+      "default": 1,
+      "dock": "",
+      "flag": "--cache-reuse",
+      "flag_pair": [],
+      "hidden_default": true,
+      "key": "cache_reuse",
+      "label": "Cache Reuse",
+      "note": "he-reuse N                         min chunk size to attempt reusing from the cache via KV shifting,",
+      "pattern": "",
+      "ptype": "arg_select",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "ADVANCED",
+      "values": [
+        0,
+        1
+      ]
+    },
+    {
       "default": "draft-mtp",
       "dock": "",
       "flag": "--spec-type",
       "flag_pair": [],
-      "hidden_default": false,
+      "hidden_default": true,
       "key": "spec_type",
       "label": "SPEC-TYPE",
       "note": "Comma-separated speculative decoding types. 'none' disables.",
@@ -395,7 +367,7 @@
       "dock": "",
       "flag": "--spec-draft-n-max",
       "flag_pair": [],
-      "hidden_default": false,
+      "hidden_default": true,
       "key": "spec_draft_n_max",
       "label": "SPEC-DRAFT-N-MAX",
       "note": "Maximum number of draft tokens per speculative decoding step.",
@@ -421,7 +393,7 @@
       "dock": "",
       "flag": "--spec-draft-n-min",
       "flag_pair": [],
-      "hidden_default": false,
+      "hidden_default": true,
       "key": "spec_draft_n_min",
       "label": "SPEC-DRAFT-N-MIN",
       "note": "minimum number of draft tokens to use for speculative decoding.",
@@ -439,41 +411,69 @@
       ]
     },
     {
-      "default": "on",
-      "dock": "",
-      "flag": "--swa-full",
+      "default": "regular",
+      "dock": "runtime",
+      "flag": null,
       "flag_pair": [],
       "hidden_default": false,
-      "key": "swa_full",
-      "label": "Swa Full",
-      "note": "a-full                              use full-size SWA cache (default: false)",
+      "key": "offload_mode",
+      "label": "OFFLOAD-MODE",
+      "note": "moe_optimal adds expert eviction filter and forces KV quant to q4_0.",
       "pattern": "",
-      "ptype": "switch_onoff",
+      "ptype": "logic_only",
       "step": null,
-      "sub_params": null,
-      "ui_group": "ADVANCED",
+      "sub_params": {
+        "moe_optimal": [
+          "--no-op-offload",
+          "--cpu-moe"
+        ]
+      },
+      "ui_group": "SYSTEM",
       "values": [
-        "off",
-        "on"
+        "regular",
+        "moe_optimal"
       ]
     },
     {
-      "default": 1,
-      "dock": "",
-      "flag": "--cache-reuse",
+      "default": "none",
+      "dock": "runtime",
+      "flag": "--split-mode",
       "flag_pair": [],
       "hidden_default": false,
-      "key": "cache_reuse",
-      "label": "Cache Reuse",
-      "note": "he-reuse N                         min chunk size to attempt reusing from the cache via KV shifting,",
+      "key": "split",
+      "label": "SPLIT",
+      "note": "How to split model across multiple GPUs.",
       "pattern": "",
       "ptype": "arg_select",
       "step": null,
       "sub_params": null,
-      "ui_group": "ADVANCED",
+      "ui_group": "SYSTEM",
       "values": [
-        0,
-        1
+        "none",
+        "layer",
+        "tensor",
+        "row"
+      ]
+    },
+    {
+      "default": 8080,
+      "dock": "runtime",
+      "flag": null,
+      "flag_pair": [],
+      "hidden_default": false,
+      "key": "base_port",
+      "label": "BASE-PORT",
+      "note": "Starting port for engine instances. Auto-increments per slot.",
+      "pattern": "",
+      "ptype": "logic_only",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "SYSTEM",
+      "values": [
+        8080,
+        8180,
+        8888,
+        9090
       ]
     }
   ],
@@ -483,7 +483,19 @@
     ],
     "auto_vram": true,
     "enable_metrics": true,
+    "essentialParamKeys": [
+      "kv_quant",
+      "ctx",
+      "batch",
+      "ubatch",
+      "parallel",
+      "vision",
+      "mmap",
+      "cont_batching"
+    ],
+    "fit_adapter": "ggml_master",
     "fit_style": "ggml_fit_params",
+    "fusion_adapter": "ggml_master",
     "gpu_env": "CUDA_VISIBLE_DEVICES",
     "max_engine_slots": 64,
     "mmproj_flag": [
@@ -499,20 +511,22 @@
       "--port"
     ],
     "simple_param_keys": [
-      "device",
-      "ctx",
       "kv_quant",
+      "ctx",
+      "batch",
+      "ubatch",
       "parallel",
-      "mmap"
+      "vision",
+      "mmap",
+      "cont_batching"
     ],
     "supports_fusion": true,
-    "fusion_adapter": "ggml_master",
-    "fit_adapter": "ggml_master",
+    "tensor_split": true,
     "verbosity_args": [
       "-lv",
       "4"
     ]
   },
-  "templateVersion": 19,
+  "templateVersion": 21,
   "template_type": "ggml-llama"
 }
