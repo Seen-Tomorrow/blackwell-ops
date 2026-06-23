@@ -9,6 +9,7 @@ import {
   engineAliasKey,
   loadAutoVramEnabled,
   loadConfigView,
+  loadUiDensity,
   normalizeUiGroup,
   paramUiGroup,
   readJsonStorage,
@@ -213,6 +214,25 @@ function resolveUniqueAlias(requested: string, stack: StackEntry[]): string {
   return `${requested}_${suffix}`;
 }
 
+function isAutoEngineAlias(name: string): boolean {
+  return /^ENGINE_\d+$/i.test(name.trim());
+}
+
+/** Commit alias field: empty or auto ENGINE_N → default naming; anything else → user custom. */
+function resolveAliasCommit(
+  trimmed: string,
+  wasUserSet: boolean,
+  autoAlias: string,
+): { userSet: boolean; committed: string } {
+  if (!trimmed) {
+    return { userSet: false, committed: "" };
+  }
+  if (!wasUserSet && (trimmed === autoAlias || isAutoEngineAlias(trimmed))) {
+    return { userSet: false, committed: "" };
+  }
+  return { userSet: true, committed: trimmed };
+}
+
 interface EngineConfigPanelProps {
   model: ModelEntry | null;
   gpus: GpuInfo[];
@@ -275,8 +295,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
   const [aliasInput, setAliasInput] = useState<string>("");
   const [aliasIsUserSet, setAliasIsUserSet] = useState(false);
+  const [aliasFocused, setAliasFocused] = useState(false);
   const aliasInitializedRef = useRef<{ modelPath: string; done: boolean }>({ modelPath: "", done: false });
-  const aliasUserEditedRef = useRef(false);
   const lastLaunchAtRef = useRef(0);
   const autoSplitPromotedRef = useRef(false);
   const [launchAck, setLaunchAck] = useState(false);
@@ -290,6 +310,9 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   const [configView, setConfigView] = useState<ConfigViewMode>("essentials");
   const [layoutModeActive, setLayoutModeActive] = useState(
     () => readStorage(KEYS.configLayoutMode) === "1",
+  );
+  const [uiDensityCompact, setUiDensityCompact] = useState(
+    () => loadUiDensity() === "compact",
   );
 
   const { texture: displayTexture } = useDisplayTexture();
@@ -333,6 +356,16 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     writeStorage(KEYS.testFlagsMode, testFlagsMode);
   }, [testFlagsMode]);
 
+  useEffect(() => {
+    const shell = document.querySelector(".app-shell");
+    if (!shell) return;
+    const sync = () => setUiDensityCompact(shell.getAttribute("data-ui-density") === "compact");
+    sync();
+    const observer = new MutationObserver(sync);
+    observer.observe(shell, { attributes: true, attributeFilter: ["data-ui-density"] });
+    return () => observer.disconnect();
+  }, []);
+
   // Auto-populate alias when model changes — per-model persistence
   useEffect(() => {
     if (!model) return;
@@ -345,43 +378,79 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         const saved = readStorage(key);
         if (saved) {
           setAliasInput(saved);
-          aliasUserEditedRef.current = true;
           setAliasIsUserSet(true);
         } else {
-          setAliasInput("");
-          aliasUserEditedRef.current = false;
           setAliasIsUserSet(false);
         }
       } catch {
-        setAliasInput("");
-        aliasUserEditedRef.current = false;
         setAliasIsUserSet(false);
       }
       aliasInitializedRef.current = { modelPath: model.path, done: true };
     }
   }, [model?.path]);
 
-  // Save alias to localStorage only when user has actively edited it (not on every keystroke)
-  const saveAliasForModel = useCallback((modelPath: string, aliasValue: string) => {
+  const autoAlias = useMemo(() => nextEngineAlias(stack), [stack]);
+
+  const aliasDisplayValue = aliasFocused
+    ? aliasInput
+    : aliasIsUserSet
+      ? aliasInput
+      : autoAlias;
+
+  const aliasShowClr = useMemo(() => {
+    if (aliasIsUserSet) return true;
+    if (!aliasFocused) return false;
+    return resolveAliasCommit(aliasInput.trim(), false, autoAlias).userSet;
+  }, [aliasIsUserSet, aliasFocused, aliasInput, autoAlias]);
+
+  const clearPersistedAlias = useCallback((modelPath: string) => {
     try {
-      if (aliasValue.trim()) {
-        writeStorage(engineAliasKey(modelPath), aliasValue.trim());
+      removeStorage(engineAliasKey(modelPath));
+    } catch {}
+  }, []);
+
+  const persistAliasForModel = useCallback((modelPath: string, aliasValue: string) => {
+    try {
+      const trimmed = aliasValue.trim();
+      if (trimmed) {
+        writeStorage(engineAliasKey(modelPath), trimmed);
       } else {
         removeStorage(engineAliasKey(modelPath));
       }
     } catch {}
   }, []);
 
-  // Clear persisted alias when user clears the input field
-  useEffect(() => {
-    if (!model || !aliasInitializedRef.current.done) return;
-    try {
-      if (aliasUserEditedRef.current && !aliasInput.trim()) {
-        removeStorage(engineAliasKey(model.path));
-        setAliasIsUserSet(false);
-      }
-    } catch {}
-  }, [aliasInput, model?.path]);
+  const commitAliasField = useCallback(() => {
+    const { userSet, committed } = resolveAliasCommit(aliasInput.trim(), aliasIsUserSet, autoAlias);
+    if (!userSet) {
+      setAliasIsUserSet(false);
+      if (model) clearPersistedAlias(model.path);
+    } else {
+      setAliasIsUserSet(true);
+      setAliasInput(committed);
+    }
+    return { userSet, committed };
+  }, [aliasInput, aliasIsUserSet, autoAlias, model, clearPersistedAlias]);
+
+  const handleAliasFocus = useCallback((e: React.FocusEvent<HTMLInputElement>) => {
+    setAliasFocused(true);
+    if (!aliasIsUserSet) {
+      setAliasInput(autoAlias);
+    }
+    requestAnimationFrame(() => e.currentTarget.select());
+  }, [aliasIsUserSet, autoAlias]);
+
+  const handleAliasBlur = useCallback(() => {
+    setAliasFocused(false);
+    commitAliasField();
+  }, [commitAliasField]);
+
+  const handleAliasClear = useCallback(() => {
+    setAliasIsUserSet(false);
+    setAliasFocused(false);
+    setAliasInput("");
+    if (model) clearPersistedAlias(model.path);
+  }, [model, clearPersistedAlias]);
 
   // Auto-select default provider when providers load (runs once on mount)
   const providerInitDone = useRef(false);
@@ -608,7 +677,49 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     [config, allParamsResolved],
   );
 
-  const autoAlias = useMemo(() => nextEngineAlias(stack), [stack]);
+  const customFlagsBlock = useMemo(() => {
+    if (configView !== "full") return null;
+    return (
+      <div className={`custom-flags-block border rounded-sm overflow-hidden ${testFlagsEnabled ? "custom-flags-active" : ""}`}>
+        <div className="custom-flags-body px-2 py-1 flex items-center gap-1.5 min-h-0">
+          <span className="text-[8px] font-mono uppercase tracking-wider shrink-0 custom-flags-label">
+            CUSTOM FLAGS
+          </span>
+          {testFlagsEnabled && (
+            <input
+              type="text"
+              value={testFlags}
+              onChange={(e) => setTestFlags(e.target.value)}
+              placeholder="-sm layer -smf32 1 ..."
+              className="custom-flags-input flex-1 min-w-0 border text-[8px] font-mono px-2 py-0 leading-none focus:outline-none rounded-sm border-amber-600/30 focus:border-amber-600/50 placeholder:text-stealth-muted/40"
+            />
+          )}
+          <div className="flex items-center gap-1 shrink-0 ml-auto">
+            {testFlagsEnabled && (
+              <button
+                type="button"
+                onClick={() => setTestFlagsMode((m) => (m === "add" ? "replace" : "add"))}
+                className={`px-1.5 py-0 text-[7px] font-mono border rounded-sm transition-all duration-150 cursor-pointer ${
+                  testFlagsMode === "add" ? "mode-btn-add" : "mode-btn-replace"
+                }`}
+              >
+                {testFlagsMode === "add" ? "+ APPEND to config" : "= REPLACE config"}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setTestFlagsEnabled((v) => !v)}
+              className={`px-1.5 py-0 text-[7px] font-mono border rounded-sm transition-all duration-150 cursor-pointer ${
+                testFlagsEnabled ? "mode-btn-add" : "mode-btn-off"
+              }`}
+            >
+              {testFlagsEnabled ? "ON" : "OFF"}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }, [configView, testFlags, testFlagsEnabled, testFlagsMode]);
 
   const shareLaunchConfig = useMemo((): FusionShareLaunchConfig => ({
     ctx: config.ctx,
@@ -1198,12 +1309,18 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     lastLaunchAtRef.current = now;
     pulseLaunchAck();
 
-    // Resolve final alias: user input if non-empty, otherwise auto-generate
-    let finalAlias = aliasInput.trim();
-    if (!finalAlias) {
-      finalAlias = nextEngineAlias(stack);
-    }
-    finalAlias = resolveUniqueAlias(finalAlias, stack);
+    const launchDraft = aliasFocused ? aliasInput : (aliasIsUserSet ? aliasInput : autoAlias);
+    const { userSet: launchUserSet, committed: launchAlias } = resolveAliasCommit(
+      launchDraft.trim(),
+      aliasIsUserSet,
+      autoAlias,
+    );
+    const finalAlias = resolveUniqueAlias(
+      launchUserSet ? launchAlias : nextEngineAlias(stack),
+      stack,
+    );
+    const persistAliasAtLaunch = launchUserSet;
+    const aliasToPersist = launchAlias;
 
     const launchKeys = resolveManualLaunchKeys({
       configView,
@@ -1253,8 +1370,10 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         if (result?.port) {
           dispatchAppEvent(EVENTS.launchSuccess, { alias: resolvedAlias, port: result.port });
         }
-        if (aliasUserEditedRef.current) {
-          saveAliasForModel(model.path, aliasInput.trim());
+        if (persistAliasAtLaunch) {
+          persistAliasForModel(model.path, aliasToPersist);
+          setAliasIsUserSet(true);
+          setAliasInput(aliasToPersist);
         }
       })
       .catch((err: unknown) => {
@@ -1266,6 +1385,9 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     selectedProfileIsBuilding,
     pulseLaunchAck,
     aliasInput,
+    aliasIsUserSet,
+    aliasFocused,
+    autoAlias,
     stack,
     fitLaunchSupported,
     fullAutoMode,
@@ -1633,9 +1755,14 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           />
         )}
 
+        {uiDensityCompact && customFlagsBlock ? (
+          <div className="config-launch-dock__flags-scroll">{customFlagsBlock}</div>
+        ) : null}
+
       </div>
 
         <div className="config-launch-dock flex-shrink-0 px-4 flex flex-col">
+          <div className="config-launch-dock__content flex flex-col min-w-0">
           {mtpParallelWarn && (
             <div
               className="config-mtp-launch-warn rounded-sm px-2.5 py-1.5 text-[7px] font-mono leading-snug"
@@ -1662,36 +1789,40 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                   >
                     Alias
                   </span>
-                  <input
-                    type="text"
-                    value={aliasInput}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      if (val.trim()) {
-                        aliasUserEditedRef.current = true;
-                        setAliasIsUserSet(true);
-                      } else {
-                        aliasUserEditedRef.current = false;
-                        setAliasIsUserSet(false);
-                        if (model) {
-                          try {
-                            removeStorage(engineAliasKey(model.path));
-                          } catch {}
-                        }
-                      }
-                      setAliasInput(val);
-                    }}
-                    title={
-                      aliasIsUserSet
-                        ? "User-set launch alias"
-                        : `Autoset to ${autoAlias} when empty`
-                    }
-                    className={`flex-1 min-w-0 transition-colors ${
-                      aliasUserEditedRef.current
-                        ? `${paramChipClass(true)} mono-user-input`
-                        : paramChipClass(false)
+                  <div
+                    className={`config-launch-dock__alias-field flex-1 min-w-0${
+                      aliasShowClr ? " config-launch-dock__alias-field--has-clr" : ""
                     }`}
-                  />
+                  >
+                    <input
+                      type="text"
+                      value={aliasDisplayValue}
+                      onFocus={handleAliasFocus}
+                      onBlur={handleAliasBlur}
+                      onChange={(e) => setAliasInput(e.target.value)}
+                      title={
+                        aliasIsUserSet
+                          ? "User-set launch alias"
+                          : `Autoset to ${autoAlias} — updates as engines start/stop`
+                      }
+                      className={`w-full min-w-0 transition-colors ${
+                        aliasIsUserSet
+                          ? `${paramChipClass(true)} mono-user-input`
+                          : paramChipClass(false)
+                      }`}
+                    />
+                    {aliasShowClr ? (
+                      <button
+                        type="button"
+                        className="config-launch-dock__alias-clr"
+                        title={`Clear custom alias — revert to ${autoAlias}`}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={handleAliasClear}
+                      >
+                        CLR
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
                 {basePortParamDef && (
                   <div className="config-launch-dock__port min-w-0">
@@ -1699,46 +1830,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                   </div>
                 )}
               </div>
-              {configView === "full" && (
-                <div className={`custom-flags-block border rounded-sm overflow-hidden ${testFlagsEnabled ? "custom-flags-active" : ""}`}>
-                  <div className="custom-flags-body px-2 py-1 flex items-center gap-1.5 min-h-0">
-                    <span className="text-[8px] font-mono uppercase tracking-wider shrink-0 custom-flags-label">
-                      CUSTOM FLAGS
-                    </span>
-                    {testFlagsEnabled && (
-                      <input
-                        type="text"
-                        value={testFlags}
-                        onChange={(e) => setTestFlags(e.target.value)}
-                        placeholder="-sm layer -smf32 1 ..."
-                        className="custom-flags-input flex-1 min-w-0 border text-[8px] font-mono px-2 py-0 leading-none focus:outline-none rounded-sm border-amber-600/30 focus:border-amber-600/50 placeholder:text-stealth-muted/40"
-                      />
-                    )}
-                    <div className="flex items-center gap-1 shrink-0 ml-auto">
-                      {testFlagsEnabled && (
-                        <button
-                          type="button"
-                          onClick={() => setTestFlagsMode(m => m === "add" ? "replace" : "add")}
-                          className={`px-1.5 py-0 text-[7px] font-mono border rounded-sm transition-all duration-150 cursor-pointer ${
-                            testFlagsMode === "add" ? "mode-btn-add" : "mode-btn-replace"
-                          }`}
-                        >
-                          {testFlagsMode === "add" ? "+ APPEND" : "= REPLACE"}
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => setTestFlagsEnabled(v => !v)}
-                        className={`px-1.5 py-0 text-[7px] font-mono border rounded-sm transition-all duration-150 cursor-pointer ${
-                          testFlagsEnabled ? "mode-btn-add" : "mode-btn-off"
-                        }`}
-                      >
-                        {testFlagsEnabled ? "ON" : "OFF"}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
+              {!uiDensityCompact && customFlagsBlock}
             </div>
             <div className="config-launch-dock__action">
               <button
@@ -1752,6 +1844,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                 </span>
               </button>
             </div>
+          </div>
           </div>
         </div>
       </div>

@@ -332,8 +332,8 @@ html, body, #root {
   --boc-docked-h: 100px;
   --boc-launch-gap: 3px;
   --boc-docked-reserve: calc(var(--boc-docked-h) + var(--app-footer-h) + var(--boc-launch-gap));
-  --config-launch-dock-pad: 0.5rem;
-  --config-launch-dock-pad-top: 0;
+  --config-launch-dock-pad: 2px;
+  --config-launch-dock-pad-top: 4px;
   --app-shell-width-px: 1280px;
   --ui-text-scale: 1;
 }
@@ -410,8 +410,33 @@ html, body, #root {
   padding-bottom: 0.125rem !important;
 }
 
-.app-shell[data-ui-density="compact"] [data-config-panel] .config-launch-dock {
-  padding-top: 0;
+.app-shell[data-ui-density="compact"] [data-config-panel] .config-launch-dock__grid {
+  gap: 6px;
+}
+
+.app-shell[data-ui-density="compact"] [data-config-panel] .config-launch-dock__left {
+  gap: 0;
+}
+
+.app-shell[data-ui-density="compact"] [data-config-panel] .config-launch-dock__meta [data-param-row] {
+  min-height: 18px;
+}
+
+.app-shell[data-ui-density="compact"] [data-config-panel] .config-launch-dock .config-launch-btn {
+  min-height: 2rem !important;
+  padding-top: 0.2rem !important;
+  padding-bottom: 0.2rem !important;
+  font-size: 10px !important;
+  letter-spacing: 0.14em !important;
+}
+
+.app-shell[data-ui-density="compact"] [data-config-panel] .config-launch-dock .config-launch-btn__hint {
+  display: none;
+}
+
+.app-shell[data-ui-density="compact"] [data-config-panel] .config-launch-dock__flags-scroll {
+  margin-top: 0.5rem;
+  padding-bottom: 0.25rem;
 }
 
 /* Docked full console — reserve footer + console height so launch dock sits just above console */
@@ -3376,6 +3401,11 @@ html:not([data-theme="arctic"]) [data-display-texture="clean"] .bench-widget-pan
   box-shadow: 0 16px 40px color-mix(in srgb, #000000 65%, transparent);
 }
 
+.blackwell-output-console--detached .blackwell-output-console__header {
+  padding-top: 0.2rem;
+  padding-bottom: 0.25rem;
+}
+
 .blackwell-output-console--interacting {
   user-select: none;
 }
@@ -3657,8 +3687,7 @@ html:not([data-theme="arctic"]) [data-display-texture="clean"] .bench-widget-pan
 /* ARCTIC — brushed aluminium bezel face (light themes need explicit metallic gradient) */
 [data-theme="arctic"] .industrial-display-frame,
 [data-theme="arctic"] .industrial-eject-panel,
-[data-theme="arctic"] .gpu-assign-panel,
-[data-theme="arctic"] [data-config-panel] .config-launch-dock {
+[data-theme="arctic"] .gpu-assign-panel {
   background-image:
     linear-gradient(175deg, #d6dee6 0%, #b6c2ce 28%, #9aacb8 52%, #b2beca 78%, #c6ced6 100%),
     repeating-linear-gradient(135deg, var(--theme-bezel-grain) 0px, transparent 1px, transparent 3px);
@@ -5171,6 +5200,46 @@ html:not([data-theme="arctic"]) [data-display-texture="clean"] .phosphor-display
   flex: 6 1 0;
 }
 
+.config-launch-dock__alias-field {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.config-launch-dock__alias-field--has-clr input {
+  padding-right: 1.75rem;
+}
+
+.config-launch-dock__alias-clr {
+  position: absolute;
+  right: 3px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 13px;
+  padding: 1px 3px;
+  font-size: 6px;
+  font-family: ui-monospace, monospace;
+  letter-spacing: 0.05em;
+  line-height: 1;
+  border: 1px solid #000000;
+  border-radius: 3px;
+  background: #000000;
+  color: #f87171;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.config-launch-dock__alias-clr:hover {
+  background: #141414;
+  border-color: #000000;
+  color: #fca5a5;
+}
+
 /* Segmented switch — MANUAL/AUTO FIT + ESSENTIALS/FULL */
 .segment-switch {
   position: relative;
@@ -6516,29 +6585,30 @@ button.engine-logs-slot-chip.engine-logs-slot-chip--active .engine-logs-slot-chi
   color: var(--theme-provider-label);
 }
 
-/* ── Custom Flags block (launch dock footer) ─── */
-[data-config-panel] .config-launch-dock .custom-flags-block {
+/* ── Custom Flags block (launch dock + compact scroll slot) ─── */
+[data-config-panel] .config-launch-dock .custom-flags-block,
+[data-config-panel] .config-launch-dock__flags-scroll .custom-flags-block {
   border-color: rgba(184, 122, 0, 0.32);
   margin-top: 0;
 }
 
-[data-config-panel] .config-launch-dock .custom-flags-block.custom-flags-active {
+[data-config-panel] .config-launch-dock .custom-flags-block.custom-flags-active,
+[data-config-panel] .config-launch-dock__flags-scroll .custom-flags-block.custom-flags-active {
   border-color: rgba(184, 122, 0, 0.58);
 }
 
-[data-config-panel] .config-launch-dock .custom-flags-body {
-  background: rgba(184, 122, 0, 0.1);
+[data-config-panel] .config-launch-dock .custom-flags-body,
+[data-config-panel] .config-launch-dock__flags-scroll .custom-flags-body {
+  background: transparent;
 }
 
-[data-config-panel] .config-launch-dock .custom-flags-block.custom-flags-active .custom-flags-body {
-  background: rgba(184, 122, 0, 0.16);
-}
-
-[data-config-panel] .config-launch-dock .custom-flags-label {
+[data-config-panel] .config-launch-dock .custom-flags-label,
+[data-config-panel] .config-launch-dock__flags-scroll .custom-flags-label {
   color: rgba(184, 122, 0, 0.72);
 }
 
-[data-config-panel] .config-launch-dock .custom-flags-active .custom-flags-label {
+[data-config-panel] .config-launch-dock .custom-flags-active .custom-flags-label,
+[data-config-panel] .config-launch-dock__flags-scroll .custom-flags-active .custom-flags-label {
   color: rgba(184, 122, 0, 0.95);
 }
 
@@ -7569,6 +7639,25 @@ select option {
 
 /* Launch dock — pinned to bottom of engine config panel, clears fixed footer/console */
 [data-config-panel] .config-launch-dock {
+  background: transparent;
+  border-top: 1.5px solid var(--theme-bezel-edge-hi);
+  box-shadow:
+    0 -2px 6px color-mix(in srgb, #000000 30%, transparent),
+    0 -10px 24px color-mix(in srgb, #000000 16%, transparent);
+  position: relative;
+  z-index: 4;
+  isolation: isolate;
+  padding-top: var(--config-launch-dock-pad-top);
+  padding-bottom: calc(var(--config-launch-dock-pad) + var(--app-footer-h));
+  gap: 0.25rem;
+}
+
+[data-config-panel] .config-launch-dock::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
   background-color: var(--theme-industrial-bg);
   background-image: repeating-linear-gradient(
     135deg,
@@ -7576,15 +7665,109 @@ select option {
     transparent 1px,
     transparent 4px
   );
-  border-top: 1.5px solid var(--theme-bezel-edge-hi);
-  box-shadow:
-    0 -2px 6px color-mix(in srgb, #000000 30%, transparent),
-    0 -10px 24px color-mix(in srgb, #000000 16%, transparent);
+}
+
+[data-config-panel] .config-launch-dock__content {
   position: relative;
-  z-index: 4;
-  padding-top: var(--config-launch-dock-pad-top);
-  padding-bottom: calc(var(--config-launch-dock-pad) + var(--app-footer-h));
+  z-index: 1;
+  isolation: isolate;
   gap: 0.25rem;
+  min-width: 0;
+}
+
+/* Gunmetal grain sits on ::before only — controls need opaque fills so grain does not bleed through. */
+[data-config-panel] .config-launch-dock input.value-chip,
+[data-config-panel] .config-launch-dock input.value-chip-active,
+[data-config-panel] .config-launch-dock .config-chip-row .value-chip,
+[data-config-panel] .config-launch-dock .config-chip-row .value-chip-active,
+[data-config-panel] .config-launch-dock .custom-flags-input,
+[data-config-panel] .config-launch-dock__flags-scroll .custom-flags-input {
+  background-color: var(--theme-panel-accent) !important;
+  background-image: none !important;
+}
+
+[data-config-panel] .config-launch-dock input.value-chip-active,
+[data-config-panel] .config-launch-dock .config-chip-row .value-chip-active {
+  background-color: var(--theme-chip-solid-bg) !important;
+  color: var(--theme-chip-solid-text) !important;
+  border-color: var(--theme-chip-solid-bg) !important;
+}
+
+[data-config-panel] .config-launch-dock .mode-btn-add,
+[data-config-panel] .config-launch-dock__flags-scroll .mode-btn-add {
+  background-color: color-mix(in srgb, #4ade80 14%, var(--theme-panel-accent) 86%) !important;
+}
+
+[data-config-panel] .config-launch-dock .mode-btn-replace,
+[data-config-panel] .config-launch-dock__flags-scroll .mode-btn-replace {
+  background-color: color-mix(in srgb, #f87171 14%, var(--theme-panel-accent) 86%) !important;
+}
+
+[data-config-panel] .config-launch-dock .mode-btn-off,
+[data-config-panel] .config-launch-dock__flags-scroll .mode-btn-off {
+  background-color: color-mix(in srgb, #b87a00 10%, var(--theme-panel-accent) 90%) !important;
+}
+
+[data-config-panel] .config-launch-dock .config-mtp-launch-warn {
+  background-color: color-mix(in srgb, #ffb800 14%, var(--theme-panel-accent) 86%) !important;
+}
+
+[data-theme="arctic"] [data-config-panel] .config-launch-dock::before {
+  background-color: #b6c2ce;
+  background-image:
+    linear-gradient(175deg, #d6dee6 0%, #b6c2ce 28%, #9aacb8 52%, #b2beca 78%, #c6ced6 100%),
+    repeating-linear-gradient(135deg, var(--theme-bezel-grain) 0px, transparent 1px, transparent 3px);
+}
+
+[data-theme="arctic"] [data-config-panel] .config-launch-dock__alias input.value-chip,
+[data-theme="arctic"] [data-config-panel] .config-launch-dock__alias input.value-chip-active {
+  background: color-mix(in srgb, #4a5a68 92%, #2a3540 8%) !important;
+  border-color: color-mix(in srgb, #3d4f5e 70%, #2a6b4a 30%) !important;
+  color: #eef2f6 !important;
+}
+
+[data-theme="arctic"] [data-config-panel] .config-launch-dock__alias input.value-chip-active.mono-user-input {
+  color: #f4f8fc !important;
+}
+
+[data-theme="arctic"] [data-config-panel] .config-launch-dock__alias-clr {
+  background: #000000;
+  border-color: #000000;
+  color: #fca5a5;
+}
+
+[data-theme="arctic"] [data-config-panel] .config-launch-dock__alias-clr:hover {
+  background: #1a1a1a;
+  border-color: #000000;
+  color: #fecaca;
+}
+
+[data-theme="arctic"] [data-config-panel] .config-launch-dock .mode-btn-add,
+[data-theme="arctic"] [data-config-panel] .config-launch-dock__flags-scroll .mode-btn-add {
+  background-color: #0f3020 !important;
+  border-color: #1a5a3a !important;
+  color: #86efac !important;
+}
+
+[data-theme="arctic"] [data-config-panel] .config-launch-dock .mode-btn-replace,
+[data-theme="arctic"] [data-config-panel] .config-launch-dock__flags-scroll .mode-btn-replace {
+  background-color: #3a1818 !important;
+  border-color: #6a2828 !important;
+  color: #fca5a5 !important;
+}
+
+[data-theme="arctic"] [data-config-panel] .config-launch-dock__port .value-chip-active {
+  background: color-mix(in srgb, #1a5a3a 82%, #0f3020 18%) !important;
+  border-color: #144a30 !important;
+  color: #eef6f0 !important;
+  box-shadow: 0 0 0 1px color-mix(in srgb, #2a6b4a 35%, transparent) !important;
+}
+
+[data-theme="arctic"] [data-config-panel] .config-launch-dock .custom-flags-input,
+[data-theme="arctic"] [data-config-panel] .config-launch-dock__flags-scroll .custom-flags-input {
+  background: color-mix(in srgb, #4a5a68 90%, #2a3540 10%);
+  color: #eef2f6;
+  border-color: color-mix(in srgb, #8a6020 45%, #3d4f5e 55%) !important;
 }
 
 [data-config-panel] .config-params-scroll {

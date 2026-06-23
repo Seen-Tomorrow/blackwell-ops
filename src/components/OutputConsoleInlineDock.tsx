@@ -52,13 +52,7 @@ export default function OutputConsoleInlineDock({
                   <span
                     key={cat}
                     className={`boc-tab rounded-sm border shrink-0 ${
-                      cat === "error"
-                        ? isLive
-                          ? "boc-tab--error-active"
-                          : "boc-tab--error"
-                        : isLive
-                          ? "boc-tab--active"
-                          : "boc-tab--idle"
+                      isLive ? "boc-tab--active" : "boc-tab--idle"
                     }`}
                   >
                     {OUTPUT_CONSOLE_CATEGORY_LABELS[cat]}

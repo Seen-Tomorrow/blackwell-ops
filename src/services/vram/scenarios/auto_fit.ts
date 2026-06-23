@@ -168,7 +168,7 @@ export function tryEvaluate(input: ScenarioInput, computed: ComputedValues): Vra
           : autoSplit
             ? "VRAM spread across GPUs — offload decided at load"
             : assisted
-              ? "Host RAM available — engine decides at launch"
+              ? "engine might use some RAM at launch"
               : "Layer offload decided by engine at launch",
         showRamBar: assisted,
         moeRamBar: moeRamGb > 0.5,

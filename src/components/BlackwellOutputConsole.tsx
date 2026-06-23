@@ -18,7 +18,7 @@ interface BlackwellOutputConsoleProps {
   openWithCategory?: OutputConsoleCategory | null;
 }
 
-export const OUTPUT_CONSOLE_CATEGORIES = ["engines", "utils", "foundry", "error", "general", "debug"] as const;
+export const OUTPUT_CONSOLE_CATEGORIES = ["engines", "utils", "foundry", "error", "debug"] as const;
 export type OutputConsoleCategory = typeof OUTPUT_CONSOLE_CATEGORIES[number];
 
 type Category = OutputConsoleCategory;
@@ -35,7 +35,6 @@ export const OUTPUT_CONSOLE_CATEGORY_LABELS: Record<Category, string> = {
   utils: "Utils",
   foundry: "Foundry",
   error: "Error",
-  general: "General",
   debug: "Debug",
 };
 
@@ -299,13 +298,7 @@ export default function BlackwellOutputConsole({
               key={cat}
               onClick={() => setActiveCategory(cat)}
               className={`boc-tab boc-tab--toolbar rounded-sm border transition-all ${
-                cat === "error"
-                  ? activeCategory === cat
-                    ? "boc-tab--error-active"
-                    : "boc-tab--error"
-                  : activeCategory === cat
-                    ? "boc-tab--active"
-                    : "boc-tab--idle"
+                activeCategory === cat ? "boc-tab--active" : "boc-tab--idle"
               }`}
             >
               {CATEGORY_LABELS[cat]}
