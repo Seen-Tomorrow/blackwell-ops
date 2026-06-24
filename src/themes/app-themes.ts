@@ -12,6 +12,17 @@ export interface AppTheme {
   tokens: Record<string, string>;
 }
 
+/** Mirrored in index.css as --display-profile-bezel-cast (ARCTIC + LIGHT reference). */
+const DISPLAY_PROFILE_BEZEL_CAST =
+  "0 6px 18px rgba(40, 60, 80, 0.28), 0 2px 6px rgba(40, 60, 80, 0.16)";
+
+/** Mirrored in index.css as --display-profile-bench-inset (dark theme + LIGHT reference). */
+const DISPLAY_PROFILE_BENCH_INSET = "rgba(0, 0, 0, 0.22)";
+
+/** Default bezel drop shadow for dark CRT themes (DARK / CLEAN display). */
+const DARK_BEZEL_CAST_SHADOW =
+  "0 8px 24px rgba(0, 0, 0, 0.75), 0 3px 8px rgba(0, 0, 0, 0.55)";
+
 const MATRIX: AppTheme = {
   id: "matrix",
   name: "MATRIX",
@@ -61,8 +72,8 @@ const MATRIX: AppTheme = {
     "--theme-bezel-inset-lo": "rgba(0, 0, 0, 0.22)",
     "--theme-phosphor-inset-top": "rgba(0, 0, 0, 0.35)",
     "--theme-phosphor-inset-bottom": "rgba(0, 0, 0, 0.12)",
-    "--theme-bezel-cast-shadow": "0 8px 24px rgba(0, 0, 0, 0.75), 0 3px 8px rgba(0, 0, 0, 0.55)",
-    "--theme-bench-inset-shadow": "rgba(0, 0, 0, 0.22)",
+    "--theme-bezel-cast-shadow": DARK_BEZEL_CAST_SHADOW,
+    "--theme-bench-inset-shadow": DISPLAY_PROFILE_BENCH_INSET,
     "--theme-card-recessed-border": "#111810",
     "--theme-card-selected-bg": "#111810",
     "--theme-card-selected-accent": "#b87a00",
@@ -333,8 +344,8 @@ const CYAN: AppTheme = {
     "--theme-bezel-inset-lo": "rgba(0, 0, 0, 0.22)",
     "--theme-phosphor-inset-top": "rgba(0, 0, 0, 0.35)",
     "--theme-phosphor-inset-bottom": "rgba(0, 0, 0, 0.12)",
-    "--theme-bezel-cast-shadow": "0 8px 24px rgba(0, 0, 0, 0.75), 0 3px 8px rgba(0, 0, 0, 0.55)",
-    "--theme-bench-inset-shadow": "rgba(0, 0, 0, 0.22)",
+    "--theme-bezel-cast-shadow": DARK_BEZEL_CAST_SHADOW,
+    "--theme-bench-inset-shadow": DISPLAY_PROFILE_BENCH_INSET,
     "--theme-card-recessed-border": "#141c22",
     "--theme-card-selected-bg": "#141c22",
     "--theme-card-selected-accent": "#00b8d4",
@@ -469,8 +480,8 @@ const SLATE: AppTheme = {
     "--theme-bezel-inset-lo": "rgba(0, 0, 0, 0.22)",
     "--theme-phosphor-inset-top": "rgba(0, 0, 0, 0.35)",
     "--theme-phosphor-inset-bottom": "rgba(0, 0, 0, 0.12)",
-    "--theme-bezel-cast-shadow": "0 8px 24px rgba(0, 0, 0, 0.75), 0 3px 8px rgba(0, 0, 0, 0.55)",
-    "--theme-bench-inset-shadow": "rgba(0, 0, 0, 0.22)",
+    "--theme-bezel-cast-shadow": DARK_BEZEL_CAST_SHADOW,
+    "--theme-bench-inset-shadow": DISPLAY_PROFILE_BENCH_INSET,
     "--theme-card-recessed-border": "#1a1a1e",
     "--theme-card-selected-bg": "#1a1a1e",
     "--theme-card-selected-accent": "#8a8a9a",
@@ -647,7 +658,8 @@ const ARCTIC: AppTheme = {
     "--theme-bezel-inset-lo": "rgba(80, 100, 120, 0.1)",
     "--theme-phosphor-inset-top": "rgba(80, 100, 120, 0.14)",
     "--theme-phosphor-inset-bottom": "rgba(80, 100, 120, 0.06)",
-    "--theme-bezel-cast-shadow": "0 6px 18px rgba(40, 60, 80, 0.28), 0 2px 6px rgba(40, 60, 80, 0.16)",
+    "--theme-bezel-cast-shadow": DISPLAY_PROFILE_BEZEL_CAST,
+    /* Header chrome; phosphor LIGHT display overrides to --display-profile-bench-inset in CSS */
     "--theme-bench-inset-shadow": "rgba(60, 80, 100, 0.12)",
     "--theme-card-recessed-border": "#b0bcc8",
     "--theme-card-selected-bg": "#b0bcc8",

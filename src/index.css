@@ -131,6 +131,13 @@
   --theme-phosphor-inset-bottom: rgba(0, 0, 0, 0.12);
   --theme-bezel-cast-shadow: 0 8px 24px rgba(0, 0, 0, 0.75), 0 3px 8px rgba(0, 0, 0, 0.55);
   --theme-bench-inset-shadow: rgba(0, 0, 0, 0.22);
+  /* Display combo references — bench tray: dark theme+LIGHT; inner face recess: ARCTIC+LIGHT */
+  --display-profile-bench-inset: rgba(0, 0, 0, 0.22);
+  --display-profile-phosphor-inset-top: rgba(0, 0, 0, 0.25);
+  --display-profile-phosphor-inset-bottom: rgba(0, 0, 0, 0.15);
+  --display-profile-phosphor-inset-glare: rgba(255, 255, 255, 0.3);
+  /* Outer frame drop shadow (not the inner display recess) */
+  --display-profile-bezel-cast: 0 6px 18px rgba(40, 60, 80, 0.28), 0 2px 6px rgba(40, 60, 80, 0.16);
   --theme-display-texture-scan: color-mix(in srgb, var(--theme-bg) 42%, transparent);
   --theme-display-texture-scan-bright: color-mix(in srgb, var(--theme-phosphor-text) 18%, transparent);
   --theme-display-texture-vignette: color-mix(in srgb, var(--theme-bg) 38%, transparent);
@@ -2551,11 +2558,9 @@ html, body, #root {
   min-height: 0;
 }
 
+/* Fusion tray height is set inline — no CSS transition (avoids stuck half-open after HMR) */
 .vram-forecast-display[data-fusion-height-managed] {
-  transition:
-    height 0.22s ease,
-    min-height 0.22s ease,
-    max-height 0.22s ease;
+  transition: none;
 }
 
 /* Forecast badge — content height by default; fusion overlay stretches to fill phosphor */
@@ -2764,6 +2769,11 @@ html, body, #root {
     inset -1px -1px 0 var(--theme-bezel-inset-lo),
     inset 0 2px 10px color-mix(in srgb, var(--theme-bezel-inset-lo) 45%, transparent),
     inset 0 -1px 4px color-mix(in srgb, var(--theme-bezel-inset-lo) 30%, transparent);
+}
+
+/* LIGHT display — outer frame drop shadow only (inner display recess uses --display-profile-phosphor-inset-*) */
+[data-display-texture="phosphor-light"] .industrial-display-frame {
+  --theme-bezel-cast-shadow: var(--display-profile-bezel-cast);
 }
 
 /* Fusion live stats + bench values — theme phosphor text; dark ink on phosphor-light only */
@@ -4073,12 +4083,14 @@ html[data-industrial-bezel="brush"] {
 
 /* PHOSPHOR LIGHT — VRAM + fusion: beige e-ink LCD (dot matrix as top overlay filter) */
 [data-display-texture="phosphor-light"] .phosphor-display-surface {
+  /* Bench tray + latch recess — dark-theme+LIGHT reference (not header chrome) */
+  --theme-bench-inset-shadow: var(--display-profile-bench-inset);
   background-color: var(--fusion-eink-surface) !important;
   background-image: none !important;
   box-shadow:
-    inset 0 2px 6px rgba(0, 0, 0, 0.25),
-    inset 0 -1px 3px rgba(0, 0, 0, 0.15),
-    inset 0 1px 40px rgba(255, 255, 255, 0.3) !important;
+    inset 0 2px 6px var(--display-profile-phosphor-inset-top),
+    inset 0 -1px 3px var(--display-profile-phosphor-inset-bottom),
+    inset 0 1px 40px var(--display-profile-phosphor-inset-glare) !important;
 }
 
 [data-display-texture="phosphor-light"] .phosphor-display-surface::before {
@@ -4521,9 +4533,9 @@ html[data-industrial-bezel="brush"] {
     ) !important;
   background-size: 2px 2px, 100% 4px !important;
   box-shadow:
-    inset 0 2px 6px rgba(0, 0, 0, 0.25),
-    inset 0 -1px 3px rgba(0, 0, 0, 0.15),
-    inset 0 1px 40px rgba(255, 255, 255, 0.3) !important;
+    inset 0 2px 6px var(--display-profile-phosphor-inset-top),
+    inset 0 -1px 3px var(--display-profile-phosphor-inset-bottom),
+    inset 0 1px 40px var(--display-profile-phosphor-inset-glare) !important;
 }
 
 /* Light share card — baked texture like dark; no multiply overlay on content */
@@ -4690,9 +4702,9 @@ html[data-industrial-bezel="brush"] {
   background-color: var(--fusion-eink-surface) !important;
   background-image: none !important;
   box-shadow:
-    inset 0 2px 6px rgba(0, 0, 0, 0.25),
-    inset 0 -1px 3px rgba(0, 0, 0, 0.15),
-    inset 0 1px 40px rgba(255, 255, 255, 0.3) !important;
+    inset 0 2px 6px var(--display-profile-phosphor-inset-top),
+    inset 0 -1px 3px var(--display-profile-phosphor-inset-bottom),
+    inset 0 1px 40px var(--display-profile-phosphor-inset-glare) !important;
 }
 
 /* ARCTIC + PHOSPHOR DARK — SLATE CRT face + phosphor tokens (not ARCTIC light-theme vars) */
@@ -4801,13 +4813,14 @@ html:not([data-theme="arctic"]) [data-display-texture="clean"] .phosphor-display
   color: rgba(148, 163, 184, 0.25);
 }
 
-/* ARCTIC + CLEAN — flat white (only theme that keeps CLEAN bright) */
+/* ARCTIC + CLEAN — flat white; inner recess matches ARCTIC+LIGHT (bezel cast on display face) */
 [data-theme="arctic"] [data-display-texture="clean"] .phosphor-display-surface {
   background-color: #ffffff !important;
   background-image: none !important;
   box-shadow:
-    inset 0 1px 0 rgba(0, 0, 0, 0.05),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.03) !important;
+    inset 0 2px 6px var(--display-profile-phosphor-inset-top),
+    inset 0 -1px 3px var(--display-profile-phosphor-inset-bottom),
+    inset 0 1px 40px var(--display-profile-phosphor-inset-glare) !important;
 }
 
 /* ARCTIC + GLITCH — recessed VRAM + softer chroma */

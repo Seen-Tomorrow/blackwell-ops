@@ -25,6 +25,7 @@ export function useForecastContentHeight(
     const sync = () => {
       cancelAnimationFrame(raf);
       raf = requestAnimationFrame(() => {
+        if (display.dataset.fusionHeightManaged !== undefined) return;
         const h = badge.offsetHeight;
         if (h <= 0) return;
         display.dataset.contentHeightManaged = "";
@@ -57,9 +58,11 @@ export function useForecastContentHeight(
       zoomObserver?.disconnect();
       window.removeEventListener("resize", sync);
       delete display.dataset.contentHeightManaged;
-      display.style.height = "";
-      display.style.minHeight = "";
-      display.style.maxHeight = "";
+      if (display.dataset.fusionHeightManaged === undefined) {
+        display.style.height = "";
+        display.style.minHeight = "";
+        display.style.maxHeight = "";
+      }
       if (frame instanceof HTMLElement) {
         delete frame.dataset.contentHeightManaged;
         frame.style.minHeight = "";

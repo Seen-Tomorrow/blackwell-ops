@@ -544,6 +544,8 @@ export default function BenchWidget({
       stackMode,
       gpus: benchHw.gpus,
       gpuMask: benchHw.gpuMask,
+      /* Fusion overlay — GPU topo lives in share capture HW band only */
+      inlineActions: footerDocked,
     });
 
   /** Fixed height — fusion overlay reserves max slot; stack/compact stay dynamic. */

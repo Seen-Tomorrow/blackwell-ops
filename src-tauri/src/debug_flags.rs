@@ -23,7 +23,7 @@ fn env_flag(name: &str) -> bool {
 }
 
 fn parse_telemetry_tick_ms() -> u64 {
-    parse_env_ms("BLACKWELL_TELEMETRY_TICK_MS", 25)
+    parse_env_ms("BLACKWELL_TELEMETRY_TICK_MS", 50)
 }
 
 fn parse_fusion_idle_poll_ms() -> u64 {

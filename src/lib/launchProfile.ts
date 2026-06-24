@@ -1,6 +1,6 @@
-import type { ConfigViewMode, LaunchProfile, UserEditedTemplateParam } from "./types";
+import type { ConfigViewMode, LaunchProfile, ProviderDefaultParam, UserEditedTemplateParam } from "./types";
 import { PANEL_CHROME_PARAM_KEYS } from "./paramDisplayZone";
-import { isCatalogVisibleParam, isSystemCatalogParam } from "./systemParams";
+import { ENGINE_ONLY_PARAM_KEYS, isCatalogVisibleParam, isSystemCatalogParam } from "./systemParams";
 
 /** Dock / launch chrome — always shown in essentials (alias uses separate row). */
 export const LAUNCH_DOCK_PARAM_KEYS = ["base_port"] as const;
@@ -61,6 +61,62 @@ export function isEssentialParam(
   if (def.essential === true) return true;
   if (def.essential === false) return false;
   return factoryEssentialKeys.has(def.key);
+}
+
+function factoryParamToExportRow(fp: ProviderDefaultParam, order: number): UserEditedTemplateParam {
+  return {
+    key: fp.key,
+    label: fp.label,
+    values: [...fp.values],
+    order,
+    hidden: fp.hidden_default ?? false,
+    userHidden: false,
+    flag: fp.flag,
+    flag_pair: fp.flag_pair,
+    ptype: fp.ptype,
+    step: fp.step,
+    ui_group: fp.ui_group,
+    note: fp.note ?? "",
+    pattern: fp.pattern ?? "",
+    sub_params: fp.sub_params,
+    defaultValue: fp.default,
+    factoryDefault: fp.default,
+    dock: fp.dock ?? "",
+  };
+}
+
+/**
+ * Full param list for factory JSON export — every catalog param (including hidden),
+ * plus factory blueprint rows not on disk (unless admin-excluded).
+ * Skips topology-owned keys (device) — values come from GPU scan at runtime.
+ */
+export function buildParamsForFactoryExport(
+  userParams: UserEditedTemplateParam[],
+  factoryParams: ProviderDefaultParam[],
+  excludedKeys?: string[],
+): UserEditedTemplateParam[] {
+  const excluded = new Set(excludedKeys ?? []);
+  const isExportable = (key: string) =>
+    !ENGINE_ONLY_PARAM_KEYS.has(key) && !excluded.has(key);
+
+  const byKey = new Set(
+    userParams.filter((p) => isExportable(p.key)).map((p) => p.key),
+  );
+  const out: UserEditedTemplateParam[] = userParams
+    .filter((p) => isExportable(p.key))
+    .map((p) => ({
+      ...p,
+      hidden: Boolean(p.hidden || p.userHidden),
+    }));
+
+  let maxOrder = out.reduce((max, p) => Math.max(max, p.order), 0);
+  for (const fp of factoryParams) {
+    if (byKey.has(fp.key) || !isExportable(fp.key)) continue;
+    maxOrder += 1;
+    out.push(factoryParamToExportRow(fp, maxOrder));
+  }
+
+  return out;
 }
 
 /**

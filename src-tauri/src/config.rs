@@ -2090,7 +2090,10 @@ fn merge_user_params_with_template(
             }
 
             // ── Structural fields: sync from template (source of truth) ──
-            m.label = tmpl.label.clone();
+            // label: preserve user rename from ConfigPage — backfill only when empty
+            if m.label.is_empty() {
+                m.label = tmpl.label.clone();
+            }
             if m.flag.is_none() || m.flag.as_deref().map_or(false, |s| s.is_empty()) {
                 m.flag = tmpl.flag.clone();
             }
@@ -2616,7 +2619,7 @@ fn user_param_to_factory_param(p: &crate::types::UserEditedTemplateParam) -> cra
         pattern: p.pattern.clone(),
         sub_params,
         dock: p.dock.clone(),
-        hidden_default: p.hidden,
+        hidden_default: p.hidden || p.user_hidden,
     }
 }
 

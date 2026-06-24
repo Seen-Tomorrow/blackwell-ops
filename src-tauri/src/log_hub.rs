@@ -33,7 +33,7 @@ pub struct LogBatch {
 }
 
 /// Shared telemetry tick — stderr log batch flush and fusion /slots poll cadence.
-/// Single knob keeps log console and fusion meters aligned (25ms ≈ 80 HTTP polls/s per active engine).
+/// Single knob keeps log console and fusion meters aligned (50ms ≈ 40 HTTP polls/s per active engine).
 /// Override via `BLACKWELL_TELEMETRY_TICK_MS` for bisection (e.g. 500 or 2000).
 pub fn telemetry_tick_ms() -> u64 {
     crate::debug_flags::flags().telemetry_tick_ms

@@ -11,6 +11,14 @@ function notifyFusionBenchTrayStore(): void {
   for (const fn of listeners) fn();
 }
 
+/** Re-read persisted tray state (HMR / remount — module singleton can desync from localStorage). */
+export function refreshFusionBenchTrayFromStorage(): void {
+  const next = loadFusionBenchTray();
+  if (next === trayState) return;
+  trayState = next;
+  notifyFusionBenchTrayStore();
+}
+
 export function getFusionBenchTrayOpen(): boolean {
   return trayState === "open";
 }
@@ -27,6 +35,7 @@ export function toggleFusionBenchTray(): void {
 }
 
 export function subscribeFusionBenchTray(listener: () => void): () => void {
+  refreshFusionBenchTrayFromStorage();
   listeners.add(listener);
   return () => listeners.delete(listener);
 }

@@ -10,25 +10,26 @@
     "ABOVE-CONFIG-RIGHT",
     "PERFORMANCE",
     "FEATURE-FLAGS",
-    "ADVANCED",
     "SPECULATIVE-DECODING",
+    "DEV-WORKFLOW",
     "SYSTEM"
   ],
   "id": "ggml-master",
   "layoutDefaults": {
     "aboveColumnWidths": [
-      0.28549267823914976,
-      0.7145073217608502
+      0.2932969614492709,
+      0.706703038550729
     ],
     "configColumnCount": 3,
     "configColumnWidths": [
-      0.4036496350364964,
-      0.20875912408759123,
-      0.3875912408759124
+      0.370371523246269,
+      0.32248294949489353,
+      0.3071455272588375
     ],
     "groupColumn": {
       "ABOVE-CONFIG-RIGHT": 1,
       "ADVANCED": 1,
+      "DEV-WORKFLOW": 2,
       "FEATURE-FLAGS": 1,
       "PERFORMANCE": 0,
       "SPECULATIVE-DECODING": 2,
@@ -124,7 +125,6 @@
       "sub_params": null,
       "ui_group": "PERFORMANCE",
       "values": [
-        16,
         32,
         64,
         128,
@@ -197,6 +197,57 @@
       ]
     },
     {
+      "default": "on",
+      "dock": "",
+      "flag": "--reasoning",
+      "flag_pair": [],
+      "hidden_default": false,
+      "key": "reasoning",
+      "label": "REASONING budget",
+      "note": "Enable chain-of-thought reasoning output.",
+      "pattern": "",
+      "ptype": "arg_select",
+      "step": null,
+      "sub_params": {
+        "2000": [
+          "--reasoning-budget",
+          "2000",
+          "--reasoning-budget-message",
+          "Thinking budget exceeded, let's answer now."
+        ],
+        "4000": [
+          "--reasoning-budget",
+          "4000",
+          "--reasoning-budget-message",
+          "Thinking budget exceeded, let's answer now."
+        ],
+        "8000": [
+          "--reasoning-budget",
+          "8000",
+          "--reasoning-budget-message",
+          "Thinking budget exceeded, let's answer now."
+        ],
+        "off": [
+          "--reasoning-budget",
+          "1",
+          "--reasoning-budget-message",
+          "Proceed to final answer."
+        ],
+        "on": [
+          "--reasoning-budget",
+          "-1"
+        ]
+      },
+      "ui_group": "FEATURE-FLAGS",
+      "values": [
+        "on",
+        "off",
+        2000,
+        4000,
+        8000
+      ]
+    },
+    {
       "default": "auto",
       "dock": "",
       "flag": "--mmproj",
@@ -212,33 +263,6 @@
       "ui_group": "FEATURE-FLAGS",
       "values": [
         "auto",
-        "off"
-      ]
-    },
-    {
-      "default": "off",
-      "dock": "",
-      "flag": "--reasoning",
-      "flag_pair": [],
-      "hidden_default": false,
-      "key": "reasoning",
-      "label": "REASONING",
-      "note": "Enable chain-of-thought reasoning output.",
-      "pattern": "",
-      "ptype": "arg_select",
-      "step": null,
-      "sub_params": {
-        "off": [],
-        "on": [
-          "--reasoning-budget",
-          "4096",
-          "--reasoning-format",
-          "deepseek"
-        ]
-      },
-      "ui_group": "FEATURE-FLAGS",
-      "values": [
-        "on",
         "off"
       ]
     },
@@ -300,49 +324,11 @@
       ]
     },
     {
-      "default": "on",
-      "dock": "",
-      "flag": "--swa-full",
-      "flag_pair": [],
-      "hidden_default": true,
-      "key": "swa_full",
-      "label": "Swa Full",
-      "note": "a-full                              use full-size SWA cache (default: false)",
-      "pattern": "",
-      "ptype": "switch_onoff",
-      "step": null,
-      "sub_params": null,
-      "ui_group": "ADVANCED",
-      "values": [
-        "off",
-        "on"
-      ]
-    },
-    {
-      "default": 1,
-      "dock": "",
-      "flag": "--cache-reuse",
-      "flag_pair": [],
-      "hidden_default": true,
-      "key": "cache_reuse",
-      "label": "Cache Reuse",
-      "note": "he-reuse N                         min chunk size to attempt reusing from the cache via KV shifting,",
-      "pattern": "",
-      "ptype": "arg_select",
-      "step": null,
-      "sub_params": null,
-      "ui_group": "ADVANCED",
-      "values": [
-        0,
-        1
-      ]
-    },
-    {
       "default": "draft-mtp",
       "dock": "",
       "flag": "--spec-type",
       "flag_pair": [],
-      "hidden_default": true,
+      "hidden_default": false,
       "key": "spec_type",
       "label": "SPEC-TYPE",
       "note": "Comma-separated speculative decoding types. 'none' disables.",
@@ -367,7 +353,7 @@
       "dock": "",
       "flag": "--spec-draft-n-max",
       "flag_pair": [],
-      "hidden_default": true,
+      "hidden_default": false,
       "key": "spec_draft_n_max",
       "label": "SPEC-DRAFT-N-MAX",
       "note": "Maximum number of draft tokens per speculative decoding step.",
@@ -393,7 +379,7 @@
       "dock": "",
       "flag": "--spec-draft-n-min",
       "flag_pair": [],
-      "hidden_default": true,
+      "hidden_default": false,
       "key": "spec_draft_n_min",
       "label": "SPEC-DRAFT-N-MIN",
       "note": "minimum number of draft tokens to use for speculative decoding.",
@@ -408,6 +394,64 @@
         3,
         4,
         5
+      ]
+    },
+    {
+      "default": "on",
+      "dock": "",
+      "flag": "--spm-infill",
+      "flag_pair": [],
+      "hidden_default": false,
+      "key": "spm_infill",
+      "label": "Spm Infill",
+      "note": "m-infill                            use Suffix/Prefix/Middle pattern for infill (instead of",
+      "pattern": "",
+      "ptype": "switch_onoff",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "DEV-WORKFLOW",
+      "values": [
+        "on",
+        "off"
+      ]
+    },
+    {
+      "default": "on",
+      "dock": "",
+      "flag": "--swa-full",
+      "flag_pair": [],
+      "hidden_default": false,
+      "key": "swa_full",
+      "label": "Swa Full",
+      "note": "a-full                              use full-size SWA cache (default: false)",
+      "pattern": "",
+      "ptype": "switch_onoff",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "DEV-WORKFLOW",
+      "values": [
+        "off",
+        "on"
+      ]
+    },
+    {
+      "default": 8192,
+      "dock": "",
+      "flag": "--cache-ram",
+      "flag_pair": [],
+      "hidden_default": false,
+      "key": "cache_ram",
+      "label": "Cache Ram",
+      "note": "set the maximum cache size in MiB (default: 8192, -1 - no limit, 0 -",
+      "pattern": "",
+      "ptype": "arg_select",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "DEV-WORKFLOW",
+      "values": [
+        8192,
+        16384,
+        32768
       ]
     },
     {
@@ -491,7 +535,10 @@
       "parallel",
       "vision",
       "mmap",
-      "cont_batching"
+      "cont_batching",
+      "spec_type",
+      "spec_draft_n_max",
+      "spec_draft_n_min"
     ],
     "fit_adapter": "ggml_master",
     "fit_style": "ggml_fit_params",
@@ -518,7 +565,10 @@
       "parallel",
       "vision",
       "mmap",
-      "cont_batching"
+      "cont_batching",
+      "spec_type",
+      "spec_draft_n_max",
+      "spec_draft_n_min"
     ],
     "supports_fusion": true,
     "tensor_split": true,
@@ -527,6 +577,6 @@
       "4"
     ]
   },
-  "templateVersion": 21,
+  "templateVersion": 22,
   "template_type": "ggml-llama"
 }

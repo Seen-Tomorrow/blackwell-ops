@@ -14,7 +14,7 @@ const DEFAULT_FLAGS: DebugFlags = {
   disableIpcEmit: false,
   disableFrontendPoll: false,
   disableDiskIo: false,
-  telemetryTickMs: 25,
+  telemetryTickMs: 50,
   fusionIdlePollMs: 2500,
 };
 

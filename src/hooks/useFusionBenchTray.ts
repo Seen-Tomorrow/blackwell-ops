@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   getFusionBenchTrayOpen,
+  refreshFusionBenchTrayFromStorage,
   setFusionBenchTray,
   subscribeFusionBenchTray,
   toggleFusionBenchTray,
@@ -13,7 +14,10 @@ export type { FusionBenchTrayState };
 export function useFusionBenchTray() {
   const [, bump] = useState(0);
 
-  useEffect(() => subscribeFusionBenchTray(() => bump((t) => t + 1)), []);
+  useEffect(() => {
+    refreshFusionBenchTrayFromStorage();
+    return subscribeFusionBenchTray(() => bump((t) => t + 1));
+  }, []);
 
   return {
     open: getFusionBenchTrayOpen(),

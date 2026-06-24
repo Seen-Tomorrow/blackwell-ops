@@ -1,11 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import type { GpuInfo, VramManifest, ModelMetadata } from "../lib/types";
 import { computeFusionPhosphorHeightForTray } from "../lib/benchPanelLayout";
-import {
-  getFusionBenchTrayOpen,
-  subscribeFusionBenchTray,
-} from "../lib/fusionBenchTrayStore";
+import { getFusionBenchTrayOpen, refreshFusionBenchTrayFromStorage } from "../lib/fusionBenchTrayStore";
 import { FORECAST_PHOSPHOR_HEIGHT_PX } from "../lib/onboardingDisplay";
+import { useFusionBenchTray } from "../hooks/useFusionBenchTray";
 import GpuTopology from "./GpuTopology";
 import FusionOverlay from "./FusionOverlay";
 import MoeBadge from "./MoeBadge";
@@ -142,11 +140,7 @@ export default function VramBadge({
   modelName, modelQuant, providerName, providerBuildVersion, profileLabel, cudaVersion, launchConfig, hwTopo,
 }: VramBadgeProps) {
   const rootRef = useRef<HTMLDivElement>(null);
-  const [, setTrayRev] = useState(0);
-
-  useEffect(() => subscribeFusionBenchTray(() => setTrayRev((t) => t + 1)), []);
-
-  const benchTrayOpen = getFusionBenchTrayOpen();
+  const { open: benchTrayOpen } = useFusionBenchTray();
 
   const fusionOverlayActive =
     selectedSlotIdx !== null &&
@@ -154,45 +148,55 @@ export default function VramBadge({
     activeEnginePort != null &&
     (engineStatus === "LOADING" || engineStatus === "RUNNING");
 
-  const fusionPhosphorHeight = useMemo(() => {
-    if (!fusionOverlayActive) return FORECAST_PHOSPHOR_HEIGHT_PX;
-    if (engineStatus === "LOADING") return FORECAST_PHOSPHOR_HEIGHT_PX;
-    return computeFusionPhosphorHeightForTray(benchTrayOpen, {
+  const applyFusionDisplayHeight = () => {
+    const display = rootRef.current?.closest(".vram-forecast-display");
+    if (!(display instanceof HTMLElement)) return;
+
+    if (!fusionOverlayActive || engineStatus === "LOADING") {
+      delete display.dataset.fusionHeightManaged;
+      display.removeAttribute("data-fusion-tray-stowed");
+      display.style.height = "";
+      display.style.minHeight = "";
+      display.style.maxHeight = "";
+      return;
+    }
+
+    refreshFusionBenchTrayFromStorage();
+    const trayOpen = getFusionBenchTrayOpen();
+    const heightPx = computeFusionPhosphorHeightForTray(trayOpen, {
       gpus,
       gpuMask,
       inlineActions: true,
     });
+
+    display.dataset.fusionHeightManaged = "";
+    if (!trayOpen) display.setAttribute("data-fusion-tray-stowed", "");
+    else display.removeAttribute("data-fusion-tray-stowed");
+
+    display.style.height = `${heightPx}px`;
+    display.style.minHeight = `${heightPx}px`;
+    display.style.maxHeight = `${heightPx}px`;
+  };
+
+  /* Before paint — avoid one frame of stowed height with an open tray after HMR */
+  useLayoutEffect(() => {
+    applyFusionDisplayHeight();
   }, [fusionOverlayActive, engineStatus, benchTrayOpen, gpus, gpuMask]);
 
+  /* HMR: forecast ResizeObserver or effect teardown can clear height after layout */
   useEffect(() => {
-    const display = rootRef.current?.closest(".vram-forecast-display");
-    if (!(display instanceof HTMLElement)) return;
-
-    const clearInlineHeight = () => {
-      display.style.height = "";
-      display.style.minHeight = "";
-      display.style.maxHeight = "";
-    };
-
-    if (fusionOverlayActive) {
-      display.dataset.fusionHeightManaged = "";
-      if (!benchTrayOpen) display.setAttribute("data-fusion-tray-stowed", "");
-      else display.removeAttribute("data-fusion-tray-stowed");
-      display.style.height = `${fusionPhosphorHeight}px`;
-      display.style.minHeight = `${fusionPhosphorHeight}px`;
-      display.style.maxHeight = `${fusionPhosphorHeight}px`;
-    } else {
-      delete display.dataset.fusionHeightManaged;
-      display.removeAttribute("data-fusion-tray-stowed");
-      clearInlineHeight();
-    }
-
+    if (!fusionOverlayActive || engineStatus === "LOADING") return;
+    let raf1 = 0;
+    let raf2 = 0;
+    raf1 = requestAnimationFrame(() => {
+      applyFusionDisplayHeight();
+      raf2 = requestAnimationFrame(applyFusionDisplayHeight);
+    });
     return () => {
-      delete display.dataset.fusionHeightManaged;
-      display.removeAttribute("data-fusion-tray-stowed");
-      clearInlineHeight();
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
     };
-  }, [fusionPhosphorHeight, fusionOverlayActive, benchTrayOpen]);
+  }, [fusionOverlayActive, engineStatus, benchTrayOpen, gpus, gpuMask]);
 
   // Mode toggle is UI state — layout follows prop, not manifest snapshot dedup.
   const showDetailedForecast = fitLaunchAvailable

@@ -6,6 +6,7 @@
 //! without any hardcoded flag logic. Adding a new backend requires adding a provider folder to runtime/.
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use crate::types::EngineConfig;
@@ -635,6 +636,10 @@ impl ProviderTemplate {
         {
             return;
         }
+        // When this value carries sub_params, only those args go to CLI — omit parent flag+value.
+        if Self::value_has_nonempty_sub_params(param, value) {
+            return;
+        }
         if let Some(flag) = &param.flag {
             args.extend([flag.clone(), value.to_string()]);
         }
@@ -683,6 +688,56 @@ impl ProviderTemplate {
         None
     }
 
+    fn sub_params_entry<'a>(
+        sp: &'a HashMap<String, Vec<String>>,
+        value: &str,
+    ) -> Option<&'a Vec<String>> {
+        if let Some(entry) = sp.get(value) {
+            return Some(entry);
+        }
+        sp.iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case(value))
+            .map(|(_, v)| v)
+    }
+
+    fn value_has_nonempty_sub_params(
+        param: &crate::types::UserEditedTemplateParam,
+        value: &str,
+    ) -> bool {
+        param
+            .sub_params
+            .as_ref()
+            .and_then(|sp| Self::sub_params_entry(sp, value))
+            .is_some_and(|args| !args.is_empty())
+    }
+
+    /// Merge argv tokens split by naive whitespace inside quoted values (legacy sub_params saves).
+    fn repair_quoted_arg_fragments(entry_args: &[String]) -> Vec<String> {
+        let mut out = Vec::new();
+        let mut i = 0;
+        while i < entry_args.len() {
+            let arg = &entry_args[i];
+            let starts_quoted = arg.starts_with('"') && !arg.ends_with('"');
+            if starts_quoted {
+                let mut parts = vec![arg.trim_start_matches('"').to_string()];
+                i += 1;
+                while i < entry_args.len() && !entry_args[i].ends_with('"') {
+                    parts.push(entry_args[i].clone());
+                    i += 1;
+                }
+                if i < entry_args.len() {
+                    parts.push(entry_args[i].trim_end_matches('"').to_string());
+                    i += 1;
+                }
+                out.push(parts.join(" "));
+            } else {
+                out.push(arg.clone());
+                i += 1;
+            }
+        }
+        out
+    }
+
     /// Inject sub_params from user's saved state (authoritative — no defaults fallback).
     fn inject_sub_params_user(
         args: &mut Vec<String>,
@@ -690,8 +745,10 @@ impl ProviderTemplate {
         value: &str,
     ) {
         if let Some(ref sp) = param.sub_params {
-            if let Some(entry_args) = sp.get(value) {
-                for arg in entry_args { args.push(arg.clone()); }
+            if let Some(entry_args) = Self::sub_params_entry(sp, value) {
+                for arg in Self::repair_quoted_arg_fragments(entry_args) {
+                    args.push(arg);
+                }
             }
         }
     }
@@ -897,6 +954,95 @@ mod build_cmd_tests {
 
         let args = sample_template().build_command(&config, "", &[batch]);
         assert!(args.iter().any(|a| a == "--batch-size"));
+    }
+
+    #[test]
+    fn arg_select_omits_parent_flag_when_value_has_nonempty_sub_params() {
+        let mut reasoning = arg_param("reasoning", "--reasoning", "off");
+        reasoning.sub_params = Some(HashMap::from([
+            (
+                "off".to_string(),
+                vec![
+                    "--reasoning-budget".to_string(),
+                    "0".to_string(),
+                    "--reasoning-budget-message".to_string(),
+                    "Proceed to final answer.".to_string(),
+                ],
+            ),
+            ("on".to_string(), vec![]),
+        ]));
+
+        let config = EngineConfig {
+            alias: String::new(),
+            model_path: "model.gguf".to_string(),
+            port: 8080,
+            backend_type: String::new(),
+            binary_profile: String::new(),
+            extra_params: HashMap::new(),
+        };
+
+        let args = sample_template().build_command(&config, "", &[reasoning]);
+        assert!(
+            !args.iter().any(|a| a == "--reasoning"),
+            "parent flag must be omitted when sub_params carry the CLI: {args:?}"
+        );
+        assert!(args.windows(2).any(|w| w[0] == "--reasoning-budget" && w[1] == "0"));
+        assert!(args
+            .windows(2)
+            .any(|w| w[0] == "--reasoning-budget-message" && w[1] == "Proceed to final answer."));
+    }
+
+    #[test]
+    fn repair_quoted_arg_fragments_merges_legacy_splits() {
+        let broken = vec![
+            "--reasoning-budget".to_string(),
+            "0".to_string(),
+            "--reasoning-budget-message".to_string(),
+            "\"Proceed".to_string(),
+            "to".to_string(),
+            "final".to_string(),
+            "answer.\"".to_string(),
+        ];
+        let repaired = ProviderTemplate::repair_quoted_arg_fragments(&broken);
+        assert_eq!(
+            repaired,
+            vec![
+                "--reasoning-budget".to_string(),
+                "0".to_string(),
+                "--reasoning-budget-message".to_string(),
+                "Proceed to final answer.".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn arg_select_keeps_parent_flag_when_sub_params_empty() {
+        let mut reasoning = arg_param("reasoning", "--reasoning", "off");
+        reasoning.sub_params = Some(HashMap::from([
+            ("off".to_string(), vec![]),
+            (
+                "on".to_string(),
+                vec![
+                    "--reasoning-budget".to_string(),
+                    "4096".to_string(),
+                ],
+            ),
+        ]));
+
+        let config = EngineConfig {
+            alias: String::new(),
+            model_path: "model.gguf".to_string(),
+            port: 8080,
+            backend_type: String::new(),
+            binary_profile: String::new(),
+            extra_params: HashMap::new(),
+        };
+
+        let args = sample_template().build_command(&config, "", &[reasoning]);
+        assert!(
+            args.windows(2).any(|w| w[0] == "--reasoning" && w[1] == "off"),
+            "empty sub_params must still emit parent flag+value: {args:?}"
+        );
     }
 }
 

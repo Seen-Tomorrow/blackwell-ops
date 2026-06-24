@@ -5,6 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { UserEditedTemplateParam, ProviderConfig, ProviderTemplate, ProviderDefaultParam, ModelPathEntry, PathDiskUsage, LayoutDefaults, ExportFactoryTemplateResult } from "../lib/types";
 import { DEFAULT_PROVIDER_ID } from "../lib/types";
 import {
+  buildParamsForFactoryExport,
   computeEssentialParamKeysForExport,
   isEssentialParam,
   resolveEssentialParamKeys,
@@ -52,6 +53,7 @@ import TabPageHeader from "./TabPageHeader";
 import type { RawCatalogEntry } from "../lib/catalog";
 import { catalogEntryToParam } from "../lib/catalog";
 import { isDevBuild } from "../lib/build";
+import { formatCliArgString, parseCliArgString, repairBrokenQuotedSubParams } from "../lib/cliArgString";
 import { sortParamValues } from "../lib/paramValueSort";
 import {
   isEmptyGroupDeletable,
@@ -159,6 +161,7 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
 
   // ── Full param metadata editor state ─────────────────────────────
   type ParamMetaForm = {
+    label: string;
     ptype: string; flag: string; pattern: string; uiGroup: string; customGroup: string;
     values: (string | number)[]; defaultValue: string | number;
     subParams: Record<string, string>;
@@ -613,17 +616,22 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
       storedGroupOrder?.map(normalizeUiGroup) ??
       currentProvider.groupOrder?.map(normalizeUiGroup) ??
       customGroupOrder;
-    const groupOrder = resolveGroupOrderForExport(catalogVisibleParams, exportGroupOrderBase);
+    const exportParams = buildParamsForFactoryExport(
+      userSavedParamsWithDefaults,
+      providerDefaultParams,
+      currentProvider.excludedParamKeys,
+    );
+    const groupOrder = resolveGroupOrderForExport(exportParams, exportGroupOrderBase);
     const essentialFactoryKeys = resolveEssentialParamKeys(currentProvider.launchProfile);
     const essentialParamKeys = computeEssentialParamKeysForExport(
-      catalogVisibleParams,
+      exportParams,
       essentialFactoryKeys,
     );
     try {
       const result = await invoke<ExportFactoryTemplateResult>("export_provider_factory_template", {
         input: {
           providerId: selectedProviderId,
-          userEditedTemplateParams: catalogVisibleParams,
+          userEditedTemplateParams: exportParams,
           groupOrder,
           layoutDefaults,
           essentialParamKeys,
@@ -639,7 +647,8 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
     currentProvider,
     factoryExportEnabled,
     selectedProviderId,
-    catalogVisibleParams,
+    userSavedParamsWithDefaults,
+    providerDefaultParams,
     customGroupOrder,
   ]);
 
@@ -864,7 +873,9 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
     if (!currentProvider || !editorUnlocked) return;
     setEditingValue({ paramKey, valueName });
     const def = userSavedParamsWithDefaults.find(d => d.key === paramKey);
-    const existingArgs = def?.sub_params?.[valueName]?.join(" ") ?? "";
+    const existingArgs = def?.sub_params?.[valueName]
+      ? formatCliArgString(repairBrokenQuotedSubParams(def.sub_params[valueName]))
+      : "";
     setSubArgsText(prev => ({ ...prev, [paramKey + "::" + valueName]: existingArgs }));
   }, [userSavedParamsWithDefaults, currentProvider, editorUnlocked]);
 
@@ -874,8 +885,7 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
     const { paramKey, valueName } = editingValue;
     const rawText = subArgsText[paramKey + "::" + valueName] ?? "";
     
-    // Parse space-separated args
-    const args: string[] = rawText.trim().split(/\s+/).filter(Boolean);
+    const args = repairBrokenQuotedSubParams(parseCliArgString(rawText.trim()));
     
     const currentUserParams = buildUserSavedParams(currentProvider);
     let updatedUserParams = currentUserParams.map(d => {
@@ -1007,6 +1017,7 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
     setEditingParamKey(def.key);
     const group = paramUiGroup(def.ui_group);
     setParamMetaForm({
+      label: def.label || def.key,
       ptype: def.ptype || "arg_select",
       flag: def.flag ?? "",
       pattern: def.pattern ?? "",
@@ -1015,7 +1026,10 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
       values: (() => { const merged = [...(def.values || [])]; const ua = def.userAddedValues || []; for (const v of ua) { if (!merged.some(x => String(x) === String(v))) merged.push(v); } return merged; })(),
       defaultValue: effectiveParamDefault(def.defaultValue) ?? "",
       subParams: Object.fromEntries(
-        Object.entries(def.sub_params || {}).map(([k, v]) => [k, (v as string[]).join(" ")])
+        Object.entries(def.sub_params || {}).map(([k, v]) => [
+          k,
+          formatCliArgString(repairBrokenQuotedSubParams(v as string[])),
+        ])
       ),
     });
   }, []);
@@ -1028,7 +1042,7 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
       if (d.key !== editingParamKey) return d;
       const subParams: Record<string, string[]> = {};
       for (const [k, v] of Object.entries(paramMetaForm.subParams)) {
-        const args = v.trim().split(/\s+/).filter(Boolean);
+        const args = repairBrokenQuotedSubParams(parseCliArgString(v.trim()));
         if (args.length > 0) subParams[k] = args;
       }
       // Use form.values as source of truth — it contains merged template + user-added values
@@ -1061,8 +1075,10 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
       const nextDefault = paramMetaForm.defaultValue !== "" && paramMetaForm.defaultValue != null
         ? paramMetaForm.defaultValue
         : undefined;
+      const nextLabel = paramMetaForm.label.trim() || d.key;
       return {
         ...d,
+        label: nextLabel,
         ptype: nextPtype,
         flag: isSystem ? d.flag : paramMetaForm.flag || null,
         pattern: isSystem
@@ -1774,7 +1790,7 @@ function ParamMetaEditor({
   lockGroup = false,
 }: {
   editingKey: string;
-  form: { ptype: string; flag: string; pattern: string; uiGroup: string; customGroup: string; values: (string | number)[]; defaultValue: string | number; subParams: Record<string, string> };
+  form: { label: string; ptype: string; flag: string; pattern: string; uiGroup: string; customGroup: string; values: (string | number)[]; defaultValue: string | number; subParams: Record<string, string> };
   onFieldChange: (field: string, val: any) => void;
   onSave: () => void;
   onCancel: () => void;
@@ -1801,6 +1817,18 @@ function ParamMetaEditor({
       <div className="flex items-center justify-between mb-3">
         <span className="text-[10px] font-mono text-yellow-400">{editingKey} — PARAM METADATA</span>
         <button onClick={onCancel} className="text-stealth-muted hover:text-white transition-colors leading-none">✕</button>
+      </div>
+
+      {/* label row */}
+      <div className="flex flex-col gap-0.5 mb-2">
+        <span className="text-[8px] font-mono text-stealth-muted">label</span>
+        <input
+          type="text"
+          value={form.label}
+          onChange={(e) => onFieldChange("label", e.target.value)}
+          placeholder={editingKey}
+          className="w-full bg-transparent border-b border-stealth-border/50 text-[10px] font-mono text-white focus:outline-none px-1 py-0.5"
+        />
       </div>
 
       {/* ptype + flag row */}

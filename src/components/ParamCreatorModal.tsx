@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import type { UserEditedTemplateParam } from "../lib/types";
+import { parseCliArgString } from "../lib/cliArgString";
 import { loadParamCreatorMode, normalizeUiGroup, saveParamCreatorMode } from "../lib/storage";
 
 interface CreatorForm {
@@ -122,7 +123,7 @@ export default function ParamCreatorModal({
       ? Object.fromEntries(
           Object.entries(form.subParams)
             .filter(([, v]) => v.trim())
-            .map(([k, v]) => [k, v.trim().split(/\s+/).filter(Boolean)])
+            .map(([k, v]) => [k, parseCliArgString(v.trim())])
         ) as Record<string, string[]>
       : undefined;
 

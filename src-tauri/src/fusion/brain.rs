@@ -28,14 +28,35 @@ fn poll_active_ms() -> u64 {
 }
 /// Min Δt between instant-TPS samples (slightly under poll interval for timer jitter).
 const MIN_INSTANT_TPS_DT_SEC: f64 = 0.02;
-/// Idle + ready cadence — override via `BLACKWELL_FUSION_IDLE_POLL_MS` (default 2500).
+/// Cold idle + ready cadence — override via `BLACKWELL_FUSION_IDLE_POLL_MS` (default 2500).
 fn poll_idle_ms() -> u64 {
     crate::debug_flags::flags().fusion_idle_poll_ms
 }
+/// Warm idle: recently-used engine between agent turns — /slots only, no /metrics.
+/// Tight enough to catch PP start before n_prompt_tokens_processed races ahead (was 400ms).
+const WARM_IDLE_POLL_MS: u64 = 100;
+/// Stay on warm cadence for this long after last slot activity (coding-session belt).
+const WARM_IDLE_WINDOW_MS: u64 = 60_000;
 /// Re-emit idle snapshots periodically so frontend can rehydrate after HMR/remount.
 const IDLE_HEARTBEAT_MS: u64 = 10_000;
-/// Consecutive /health-only idle ticks before a full /slots sample.
+/// Consecutive /health-only cold-idle ticks before a full /slots sample.
 const IDLE_CHEAP_HEALTH_STREAK_MAX: u32 = 2;
+
+/// Log lines that signal in-flight work — reschedule active poll + immediate emit (belt).
+fn log_event_wakes_poll(event: &crate::fusion::log::LogEvent) -> bool {
+    use crate::fusion::log::LogEvent;
+    matches!(
+        event,
+        LogEvent::NewPrompt { .. }
+            | LogEvent::PromptProcessingProgress { .. }
+            | LogEvent::SamplerInit { .. }
+            | LogEvent::PrintTimingPP { .. }
+            | LogEvent::PrintTimingGen { .. }
+            | LogEvent::CachedPromptTokens { .. }
+            | LogEvent::ForcePromptReprocess { .. }
+            | LogEvent::PromptEvalComplete { .. }
+    )
+}
 
 fn clamp_display_tps(tps: f64) -> f64 {
     if !tps.is_finite() || tps <= 0.0 {
@@ -723,6 +744,110 @@ impl FusionBrain {
         self.phase == InferencePhase::Idle && self.engine_state == EngineState::Ready
     }
 
+    /// Recently-used engine between agent turns — faster /slots-only polls (warm tier).
+    fn is_warm_idle(&self, now: Instant) -> bool {
+        if !self.is_idle_ready() {
+            return false;
+        }
+        self.log_request_open
+            || self.emit_dirty
+            || self.within_inter_request_hold(now)
+            || self
+                .last_slot_busy_at
+                .map(|t| now.duration_since(t).as_millis() < WARM_IDLE_WINDOW_MS as u128)
+                .unwrap_or(false)
+    }
+
+    fn poll_tier_ms(&self, now: Instant) -> u64 {
+        if !self.is_idle_ready() || self.log_request_open || self.phase == InferencePhase::PP {
+            poll_active_ms()
+        } else if self.is_warm_idle(now) {
+            WARM_IDLE_POLL_MS
+        } else {
+            poll_idle_ms()
+        }
+    }
+
+    /// True when /slots or log belt should run at active cadence (PP start before phase flips).
+    fn wants_active_poll(&self) -> bool {
+        !self.is_idle_ready() || self.log_request_open || self.phase == InferencePhase::PP
+    }
+
+    /// HTTP poll + state merge + emit. Returns true when brain left idle-ready (active tier).
+    async fn fusion_poll_cycle(
+        &mut self,
+        client: &reqwest::Client,
+        log_hub: &LogHub,
+        idle_cheap_streak: &mut u32,
+        last_idle_heartbeat: &mut Instant,
+    ) -> bool {
+        let now = Instant::now();
+        let cold_idle = self.is_idle_ready() && !self.is_warm_idle(now);
+
+        if cold_idle && !self.emit_dirty && *idle_cheap_streak < IDLE_CHEAP_HEALTH_STREAK_MAX {
+            if crate::fusion::poller::poll_health_ok(client, self.port).await {
+                *idle_cheap_streak += 1;
+                let heartbeat_due =
+                    last_idle_heartbeat.elapsed() >= std::time::Duration::from_millis(IDLE_HEARTBEAT_MS);
+                if heartbeat_due {
+                    let update = self.build_update(&[], None);
+                    self.force_emit(log_hub, update);
+                    *last_idle_heartbeat = Instant::now();
+                }
+                return false;
+            }
+        }
+        *idle_cheap_streak = 0;
+
+        let idle_ready = self.is_idle_ready();
+        let (slots_result, metrics_result) = if idle_ready {
+            (
+                crate::fusion::poller::poll_slots(client, self.port).await,
+                Err("idle-skip-metrics".to_string()),
+            )
+        } else {
+            tokio::join!(
+                crate::fusion::poller::poll_slots(client, self.port),
+                crate::fusion::poller::poll_metrics(client, self.port),
+            )
+        };
+
+        let mut slot_data: Vec<crate::fusion::poller::SlotData> = match slots_result {
+            Ok(slots) => slots,
+            Err(_e) => {
+                if self.engine_state == EngineState::Loading {
+                    let update = self.build_update(&[], metrics_result.as_ref().ok());
+                    self.try_emit(log_hub, update);
+                }
+                return false;
+            }
+        };
+
+        let was_idle_ready = self.is_idle_ready();
+        self.adapter.normalize_slots(&mut slot_data);
+        self.process_slots(&slot_data);
+
+        if let Ok(ref metrics) = metrics_result {
+            self.process_metrics(metrics, &slot_data);
+        }
+
+        if was_idle_ready && !self.is_idle_ready() {
+            self.emit_dirty = true;
+        }
+
+        let update = self.build_update(&slot_data, metrics_result.as_ref().ok());
+        let idle_heartbeat_due = self.is_idle_ready()
+            && last_idle_heartbeat.elapsed() >= std::time::Duration::from_millis(IDLE_HEARTBEAT_MS);
+        if idle_heartbeat_due {
+            self.force_emit(log_hub, update);
+            *last_idle_heartbeat = Instant::now();
+        } else {
+            self.try_emit(log_hub, update);
+        }
+
+        !self.is_idle_ready()
+    }
+
     fn force_emit(&mut self, log_hub: &LogHub, update: FusionUpdate) {
         self.last_emit_fp = Some(FusionEmitFingerprint::from_update(&update));
         self.emit_dirty = false;
@@ -1197,13 +1322,46 @@ impl FusionBrain {
                     return;
                 }
 
-                // Log events + bench resets update state; emit coalesces on next poll tick (≤10ms active).
+                // Log belt: immediate emit (A) + optional /slots wake (D); active poll on activity.
                 Some(inbound) = event_rx.recv() => {
                     match inbound {
                         BrainInbound::Log(log_event) => {
+                            let wakes = log_event_wakes_poll(&log_event);
                             brain.process_log_event(&log_event);
                             brain.emit_dirty = true;
                             idle_cheap_streak = 0;
+
+                            let preview = brain.build_update(&[], None);
+                            if wakes {
+                                brain.force_emit(&log_hub, preview);
+                            } else {
+                                brain.try_emit(&log_hub, preview);
+                            }
+
+                            let mut promote_active = wakes;
+                            // Belt wake: merge /slots on activity logs (not only cold-idle path).
+                            if wakes || brain.is_idle_ready() {
+                                if brain
+                                    .fusion_poll_cycle(
+                                        &client,
+                                        &log_hub,
+                                        &mut idle_cheap_streak,
+                                        &mut last_idle_heartbeat,
+                                    )
+                                    .await
+                                {
+                                    promote_active = true;
+                                }
+                            }
+
+                            let now = std::time::Instant::now();
+                            let poll_ms = if promote_active || brain.wants_active_poll() {
+                                poll_active_ms()
+                            } else {
+                                brain.poll_tier_ms(now)
+                            };
+                            next_poll = tokio::time::Instant::now()
+                                + tokio::time::Duration::from_millis(poll_ms);
                         }
                         BrainInbound::BenchMeterReset(ack) => {
                             brain.reset_bench_meters();
@@ -1225,66 +1383,18 @@ impl FusionBrain {
                         continue;
                     }
 
-                    let idle = brain.is_idle_ready();
-                    let poll_ms = if idle { poll_idle_ms() } else { poll_active_ms() };
-                    next_poll = tokio::time::Instant::now() + tokio::time::Duration::from_millis(poll_ms);
-
-                    // Steady idle: cheap /health ticks between sparse /slots samples (cuts HTTP + IPC).
-                    if idle && !brain.emit_dirty && idle_cheap_streak < IDLE_CHEAP_HEALTH_STREAK_MAX {
-                        if crate::fusion::poller::poll_health_ok(&client, brain.port).await {
-                            idle_cheap_streak += 1;
-                            let heartbeat_due = last_idle_heartbeat.elapsed()
-                                >= std::time::Duration::from_millis(IDLE_HEARTBEAT_MS);
-                            if heartbeat_due {
-                                let update = brain.build_update(&[], None);
-                                brain.force_emit(&log_hub, update);
-                                last_idle_heartbeat = std::time::Instant::now();
-                            }
-                            continue;
-                        }
-                    }
-                    idle_cheap_streak = 0;
-
-                    let (slots_result, metrics_result) = if idle {
-                        (
-                            crate::fusion::poller::poll_slots(&client, brain.port).await,
-                            Err("idle-skip-metrics".to_string()),
+                    let _ = brain
+                        .fusion_poll_cycle(
+                            &client,
+                            &log_hub,
+                            &mut idle_cheap_streak,
+                            &mut last_idle_heartbeat,
                         )
-                    } else {
-                        tokio::join!(
-                            crate::fusion::poller::poll_slots(&client, brain.port),
-                            crate::fusion::poller::poll_metrics(&client, brain.port),
-                        )
-                    };
+                        .await;
 
-                    let mut slot_data: Vec<crate::fusion::poller::SlotData> = match slots_result {
-                        Ok(slots) => slots,
-                        Err(_e) => {
-                            if brain.engine_state == EngineState::Loading {
-                                let update = brain.build_update(&[], metrics_result.as_ref().ok());
-                                brain.try_emit(&log_hub, update);
-                            }
-                            continue;
-                        }
-                    };
-
-                    brain.adapter.normalize_slots(&mut slot_data);
-                    brain.process_slots(&slot_data);
-
-                    if let Ok(ref metrics) = metrics_result {
-                        brain.process_metrics(metrics, &slot_data);
-                    }
-
-                    let update = brain.build_update(&slot_data, metrics_result.as_ref().ok());
-                    let idle_heartbeat_due = brain.is_idle_ready()
-                        && last_idle_heartbeat.elapsed()
-                            >= std::time::Duration::from_millis(IDLE_HEARTBEAT_MS);
-                    if idle_heartbeat_due {
-                        brain.force_emit(&log_hub, update);
-                        last_idle_heartbeat = std::time::Instant::now();
-                    } else {
-                        brain.try_emit(&log_hub, update);
-                    }
+                    let poll_ms = brain.poll_tier_ms(std::time::Instant::now());
+                    next_poll = tokio::time::Instant::now()
+                        + tokio::time::Duration::from_millis(poll_ms);
                 }
             }
         }
@@ -1378,6 +1488,7 @@ impl FusionBrain {
             self.begin_request_on_slot(slot_id, Some(task_id), None);
         }
         self.restart_request_clock();
+        self.engine_state = EngineState::Active;
         self.touch_slot_activity(Instant::now());
         self.emit_dirty = true;
     }
@@ -1423,7 +1534,9 @@ impl FusionBrain {
         self.prev_instant_gen_decoded = 0;
         self.begin_request_on_slot(slot_id, Some(task_id), None);
         self.restart_request_clock();
+        self.engine_state = EngineState::Active;
         self.touch_slot_activity(Instant::now());
+        self.emit_dirty = true;
         // Do not bump from task.n_tokens — planned size, not KV fill; wait for cached / sampler / stop lines.
     }
 
