@@ -10,9 +10,10 @@
 > *This project is my testament to open source and a **local inference first** mission.*
 
 You do **not** need Linux to run serious LLM workloads on your own hardware. That story is a myth. Blackwell Ops exists to challenge it — directly, on Windows, with performance and restraint as first-class goals.
-
+docs/screenshots/Dashboard-themes.png
 ---
-
+![Dashboard-themes](docs/screenshots/Dashboard-themes.png)
+ docs/screenshots/Dashboard-themes.png   
 ## What it is
 
 Blackwell Ops is a **single native Windows app** that orchestrates `llama-server` engines (more will follow), model libraries, VRAM fit scanning, foundry builds, and live telemetry — without Docker, without WSL gymnastics, without handing your stack to a cloud.
@@ -20,7 +21,7 @@ Blackwell Ops is a **single native Windows app** that orchestrates `llama-server
 Drop the installer (or portable tree) anywhere. The app recreates its ecosystem around itself: configs, runtime engines, foundry artifacts, and user preferences — all relative to the install directory.
 
 **At v1.0** the focus is **GGML / llama.cpp** (official master + IK fork bundled). Any llama-compatible fork can be wired in; fusion performance metrics may not map 1:1 to every backend yet. The architecture is **semi–backend-agnostic** by design — support grows over time.
-
+(docs/screenshots/Dashboard-themes.jpg)
 ---
 
 ## By the numbers
@@ -85,7 +86,7 @@ Drop assets under `docs/screenshots/` (PNG or WebP) and promo video under `docs/
 
 | Main dashboard | Engine stack | Foundry build |
 |:---:|:---:|:---:|
-| ![Dashboard](docs/screenshots/dashboard.png) | ![Stack](docs/screenshots/stack.png) | ![Foundry](docs/screenshots/foundry.png) |
+| ![Dashboard](docs/screenshots/Dashboard.png) | ![Stack](docs/screenshots/Stack.png) | ![Foundry](docs/screenshots/Foundry.png) |
 
 ---
 
