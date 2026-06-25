@@ -99,10 +99,14 @@ export default function BlackwellOutputConsole({
   }, [isOpen]);
 
   useEffect(() => {
-    if (isOpen && !wasOpenRef.current && openWithCategory) {
+    if (!isOpen) {
+      wasOpenRef.current = false;
+      return;
+    }
+    if (openWithCategory) {
       setActiveCategory(openWithCategory);
     }
-    wasOpenRef.current = isOpen;
+    wasOpenRef.current = true;
   }, [isOpen, openWithCategory]);
 
   const handleClose = useCallback(() => {

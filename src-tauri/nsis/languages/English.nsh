@@ -1,6 +1,6 @@
 LangString addOrReinstall ${LANG_ENGLISH} "Update in place (recommended)$\nKeeps foundry builds, config, and engines"
 LangString alreadyInstalled ${LANG_ENGLISH} "Already Installed"
-LangString alreadyInstalledLong ${LANG_ENGLISH} "${PRODUCTNAME} ${VERSION} is already installed.$\n$\nChoose Update in place to refresh the app while keeping your foundry builds, config, and engines.$\n$\nTo install side-by-side, pick Update in place, click Next, then choose a new empty folder on the next page.$\n$\nUninstall removes the app and bundled runtime from the install folder. Foundry and config folders may remain - remove them manually if needed."
+LangString alreadyInstalledLong ${LANG_ENGLISH} "${PRODUCTNAME} ${VERSION} is already installed.$\n$\nUpdate in place refreshes the app and keeps your foundry builds, config, and engines. For a side-by-side install, click Next and choose a new empty folder.$\n$\nUninstall removes the app and bundled runtime only. Foundry and config folders may remain - remove them manually if needed."
 LangString appRunning ${LANG_ENGLISH} "{{product_name}} is running! Please close it first then try again."
 LangString appRunningOkKill ${LANG_ENGLISH} "{{product_name}} is running!$\nClick OK to kill it"
 LangString chooseMaintenanceOption ${LANG_ENGLISH} "Choose how to continue."

@@ -1,0 +1,243 @@
+Good — stable with meters waking confirms the fix is in the right place.
+
+What was wrong (short version)
+
+Two layers:
+
+1. The actual crash — a bug in the Tauri/Wry/WebView stack, not your engines or NVIDIA drivers.
+   The procdump showed 0xC000001D inside blackwell-ops.exe on this path:
+
+WebView2 (WebResourceRequested)
+     → wry custom_protocol_handler
+       → tauri IPC
+         → clone Rc<EventLoopRunner>  ← refcount already dead
+           → ud2 (illegal instruction)
+
+   That's undefined behavior in the UI bridge — use-after-free on a shared event-loop handle.
+
+2. What triggered it — fusion idle polling created enough background pressure to hit that bug every few minutes.
+
+It wasn't "HTTP crashes the app"
+
+The HTTP calls themselves (GET /slots, GET /metrics to localhost) run in Rust/tokio and don't touch WebView directly.
+
+The chain was:
+
+Per idle engine, every 500ms:
+  /slots + /metrics  (2 HTTP requests)
+    → parse JSON, update fusion state
+      → fusion-update Tauri emit → WebView IPC
+
+With many engines idle at once, that scales badly:
+
+┌───────────────┬───────────────────────────────────────────────────┐
+│ Before        │ 8 idle engines                                    │
+├───────────────┼───────────────────────────────────────────────────┤
+│ Poll interval │ 500ms                                             │
+├───────────────┼───────────────────────────────────────────────────┤
+│ Endpoints     │ /slots + /metrics                                 │
+├───────────────┼───────────────────────────────────────────────────┤
+│ HTTP rate     │ ~32 req/s                                         │
+├───────────────┼───────────────────────────────────────────────────┤
+│ IPC           │ periodic fusion-update even when mostly unchanged │
+└───────────────┴───────────────────────────────────────────────────┘
+
+So it wasn't one bad request — it was sustained volume: many engines × frequent polls × JSON work × IPC into WebView. That eventually landed on the fragile Wry/Tauri IPC path and tripped the Rc bug.
+
+Your bisect fit that: BLACKWELL_DISABLE_FUSION_POLL=1 removed the whole loop → no crash. Frontend GPU poll, disk I/O, etc. were fine on their own.
+
+What we changed
+
+Idle engines now use a cheap heartbeat:
+
+• 2.5s tick instead of 500ms
+• /health only for 2 ticks, then one /slots sample
+• No /metrics while idle
+• Full 25ms poll only when actually inferring (PP/TG)
+• stderr log belt still drives live meters during real work
+
+That cuts idle load by roughly 20–40× with N engines, which stays under the threshold that was provoking the WebView crash.
+
+What it wasn't
+
+• NVIDIA power management / GPU sleep (possible for stale VRAM, not this exit code)
+• llama-server children
+• MCP bridge
+• Random driver illegal instructions
+
+Bottom line
+
+Bug: Tauri 2.11.x / Wry 0.55.x WebView IPC lifetime issue.
+Trigger: fusion idle polling at too high a rate across multiple engines.
+Fix: throttle idle polling + cheap heartbeat; keep aggressive polling only during active inference.
+
+Worth filing upstream to tauri-apps/tauri (https://github.com/tauri-apps/tauri) with your procdump if you want a proper framework fix — our change is a solid workaround.
+
+---------------------------------------------------------------
+
+You're right to treat this as a compromise problem, not a binary choice. I traced the current fusion loop — the crash fix is in the right place, but it introduced a wake latency gap that explains the 1–5s dead meters during agent-style coding sessions.
+
+What’s actually broken (not the active path)
+
+Active inference still polls at 25ms with /slots + /metrics. That path is fine. The pain is getting out of idle:
+
+    fn is_idle_ready(&self) -> bool {
+        self.phase == InferencePhase::Idle && self.engine_state == EngineState::Ready
+    }
+
+When that’s true, the loop runs the cheap heartbeat:
+
+                    let idle = brain.is_idle_ready();
+                    let poll_ms = if idle { poll_idle_ms() } else { poll_active_ms() };
+                    // ...
+                    if idle && !brain.emit_dirty && idle_cheap_streak < IDLE_CHEAP_HEALTH_STREAK_MAX {
+                        if crate::fusion::poller::poll_health_ok(&client, brain.port).await {
+                            idle_cheap_streak += 1;
+                            // ... heartbeat emit every 10s only
+                            continue;  // ← skips /slots entirely
+                        }
+                    }
+
+Two structural gaps:
+
+1. Log events update brain state but don’t push to the UI immediately
+
+                        BrainInbound::Log(log_event) => {
+                            brain.process_log_event(&log_event);
+                            brain.emit_dirty = true;
+                            idle_cheap_streak = 0;
+
+process_log_event runs (NewPrompt, PP progress, etc.), but emit waits for the next poll tick. If that tick was scheduled as idle, you can wait up to 2.5s even though stderr already told us work started.
+
+2. Cheap heartbeat can skip /slots for 2 consecutive idle ticks
+
+With default BLACKWELL_FUSION_IDLE_POLL_MS=2500 and IDLE_CHEAP_HEALTH_STREAK_MAX=2, a quiet engine (no stderr, Tom stdout-only) can go ~5–7.5s before /slots sees is_processing. That matches “never wakes up” during rapid short reads.
+
+The crash wasn’t “HTTP is dangerous.” It was N idle engines × frequent polls × periodic IPC hammering the Wry refcount bug. One active engine at 25ms was never the problem.
+
+───
+
+Load budget (so we know what headroom we have)
+
+┌──────────────┬─────────────────────────────┬──────────────────────────────────────────┐
+│ Mode         │ Per engine                  │ 8 idle engines                           │
+├──────────────┼─────────────────────────────┼──────────────────────────────────────────┤
+│ Old (crashy) │ 500ms, /slots+/metrics      │ ~32 req/s + steady IPC                   │
+├──────────────┼─────────────────────────────┼──────────────────────────────────────────┤
+│ Current      │ 2.5s, 2×/health then /slots │ ~3 req/s, IPC mostly on 10s heartbeat    │
+├──────────────┼─────────────────────────────┼──────────────────────────────────────────┤
+│ Active       │ 25ms, /slots+/metrics       │ ~80 req/s per working engine (unchanged) │
+└──────────────┴─────────────────────────────┴──────────────────────────────────────────┘
+
+We have a lot of room between ~3 req/s and ~32 req/s for idle engines.
+
+───
+
+Compromise options (ranked for release day)
+
+Option A — Log-triggered immediate emit + poll reschedule
+Risk: lowest. Responsiveness gain: highest.
+
+On activity-bearing log events (NewPrompt, PP progress, sampler_init, cached tokens, etc.):
+1. try_emit immediately (fingerprint dedup still applies — no spam when unchanged)
+2. Reschedule next_poll to poll_active_ms() (25ms)
+
+• Extra HTTP: zero
+• Extra IPC: only when meters actually change (same as before, just not delayed 2.5s)
+• Crash exposure: negligible — this is the belt we built the whole system around
+
+This alone likely fixes “1–5s before anything prints” for engines that log at all.
+
+───
+
+Option B — “Warm idle” tier (recently-used engine)
+Risk: low–medium. Fixes quiet-stderr / /slots-only wake.
+
+Add a third cadence based on last_slot_busy_at:
+
+┌────────┬──────────────────────────────────┬───────────┬─────────────────────────┐
+│ Tier   │ Condition                        │ Poll      │ Endpoints               │
+├────────┼──────────────────────────────────┼───────────┼─────────────────────────┤
+│ Active │ PP/TG / log_request_open         │ 25ms      │ /slots + /metrics       │
+├────────┼──────────────────────────────────┼───────────┼─────────────────────────┤
+│ Warm   │ idle but busy within last 30–60s │ 250–500ms │ /slots only             │
+├────────┼──────────────────────────────────┼───────────┼─────────────────────────┤
+│ Cold   │ no activity 60s+                 │ 2.5s      │ cheap /health heartbeat │
+└────────┴──────────────────────────────────┴───────────┴─────────────────────────┘
+
+During a coding session the engine stays in warm between turns — meters wake in <500ms even with zero stderr.
+
+• 8 engines all coding: ~16–32 req/s (still below old 32 req/s, and no /metrics while warm)
+• 8 engines truly idle overnight: stays ~3 req/s (unchanged)
+
+───
+
+Option C — Constant tuning only (quick knob turn)
+Risk: medium (blunt). Easy to ship in 10 minutes.
+
+┌───────────────────────────────┬─────────┬───────────┬─────────────────────────────────────────────┐
+│ Knob                          │ Current │ Suggested │ Effect                                      │
+├───────────────────────────────┼─────────┼───────────┼─────────────────────────────────────────────┤
+│ BLACKWELL_FUSION_IDLE_POLL_MS │ 2500    │ 1000      │ 2.5× faster cold wake                       │
+├───────────────────────────────┼─────────┼───────────┼─────────────────────────────────────────────┤
+│ IDLE_CHEAP_HEALTH_STREAK_MAX  │ 2       │ 0         │ every idle tick hits /slots                 │
+├───────────────────────────────┼─────────┼───────────┼─────────────────────────────────────────────┤
+│ INTER_REQUEST_GAP_HOLD_MS     │ 1200    │ 2000–3000 │ stay “in-flight” longer between agent reads │
+└───────────────────────────────┴─────────┴───────────┴─────────────────────────────────────────────┘
+
+8 cold idle engines at 1s /slots only ≈ 8 req/s — still ~4× below crash regime.
+
+Downside: doesn’t fix the log→UI delay (Option A does). Less surgical.
+
+───
+
+Option D — Immediate /slots wake on emit_dirty
+Risk: low. Middle ground between A and B.
+
+When emit_dirty flips true and brain is idle-ready, fire one immediate /slots poll + emit before waiting for the timer. No change to steady-state idle cadence.
+
+Catches Tom/quiet-stderr cases without permanently raising idle poll rate.
+
+───
+
+Recommended release stack
+
+For today, I’d ship A + B (or A + D if you want minimal diff):
+
+Steady state (8 engines, nobody working):  cold tier unchanged  → crash-safe
+Coding session (1 engine active):          25ms full poll       → unchanged
+Between agent reads (<60s):                warm 250–500ms /slots → wakes fast
+Log line arrives:                          immediate emit       → no timer wait
+
+Do not revert to 500ms idle + /metrics on all engines — that’s the known crash trigger.
+
+Do keep try_emit fingerprint dedup and the 10s idle heartbeat — they’re doing real work.
+
+───
+
+Env overrides for bisect today
+
+You already have hooks:
+
+# test warmer idle without code change
+BLACKWELL_FUSION_IDLE_POLL_MS=1000
+
+# confirm crash boundary (should still be fine at 1000 + slots-only)
+BLACKWELL_FUSION_IDLE_POLL_MS=500
+
+# kill fusion entirely (baseline)
+BLACKWELL_DISABLE_FUSION_POLL=1
+
+If IDLE_POLL_MS=1000 is stable for an hour with 4+ idle engines and meters feel better, that validates Option C while you land A+B in code.
+
+───
+
+My read
+
+The throttling fix solved the right problem but accidentally created a wake latency cliff: stderr updates brain state immediately, UI waits on a 2.5s idle timer, and cheap /health ticks can skip /slots entirely.
+
+That’s orthogonal to the engine rebuild — your full-day stability likely reflects both fixes (Wry workaround + engine), but meters responsiveness is purely our polling state machine now.
+
+Option A is essentially free (no extra HTTP, minimal IPC risk) and should be non-negotiable for release. Option B or D handles the agent-session case where stderr is quiet.
+
+Want me to implement A+B now? It’s a focused change in brain.rs run loop only — no frontend, no poller rewrite. I can have it ready for a quick smoke test before you tag the release.

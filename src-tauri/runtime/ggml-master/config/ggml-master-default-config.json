@@ -22,8 +22,8 @@
     ],
     "configColumnCount": 3,
     "configColumnWidths": [
-      0.370371523246269,
-      0.32248294949489353,
+      0.41638378995443703,
+      0.2764706827867255,
       0.3071455272588375
     ],
     "groupColumn": {
@@ -577,6 +577,6 @@
       "4"
     ]
   },
-  "templateVersion": 22,
+  "templateVersion": 23,
   "template_type": "ggml-llama"
 }

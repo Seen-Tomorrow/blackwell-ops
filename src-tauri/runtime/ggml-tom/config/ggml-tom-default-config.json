@@ -6,109 +6,40 @@
   "display_name": "GGML TomTQ",
   "git_url": "https://github.com/TheTom/llama-cpp-turboquant",
   "groupOrder": [
+    "ABOVE-CONFIG-LEFT",
+    "ABOVE-CONFIG-RIGHT",
     "PERFORMANCE",
     "FEATURE-FLAGS",
     "ADVANCED",
-    "SYSTEM",
-    "ABOVE-CONFIG",
-    "SPECULATIVE-DECODING"
+    "SPECULATIVE-DECODING",
+    "SYSTEM"
   ],
   "id": "ggml-tom",
   "layoutDefaults": {
     "aboveColumnWidths": [
-      0.23350705580023445,
-      0.7664929441997655
+      0.4504224771015508,
+      0.5495775228984492
     ],
     "configColumnCount": 3,
     "configColumnWidths": [
-      0.42492331113359105,
-      0.17538344433204475,
-      0.39969324453436417
+      0.4345092000311261,
+      0.2654907999688739,
+      0.3
     ],
     "groupColumn": {
-      "ABOVE-CONFIG": 1,
-      "ADVANCED": 1,
+      "ABOVE-CONFIG-LEFT": 0,
+      "ADVANCED": 2,
       "FEATURE-FLAGS": 1,
-      "PERFORMANCE": 0,
-      "SPECULATIVE-DECODING": 2,
-      "USER-ADDED-FROM-CATALOG": 2
+      "SPECULATIVE-DECODING": 2
     },
     "groupDisplayZone": {
-      "ABOVE-CONFIG": "above"
+      "ABOVE-CONFIG-LEFT": "above",
+      "ABOVE-CONFIG-RIGHT": "above"
     }
   },
   "params": [
     {
-      "default": "regular",
-      "dock": "runtime",
-      "flag": null,
-      "flag_pair": [],
-      "hidden_default": true,
-      "key": "offload_mode",
-      "label": "OFFLOAD-MODE",
-      "note": "moe_optimal adds expert eviction filter and forces KV quant to q4_0.",
-      "pattern": "",
-      "ptype": "logic_only",
-      "step": null,
-      "sub_params": {
-        "moe_optimal": [
-          "-ot",
-          "\\\\.ffn_.*_exps\\\\.=CPU",
-          "-ctk",
-          "q4_0",
-          "-ctv",
-          "q4_0"
-        ]
-      },
-      "ui_group": "SYSTEM",
-      "values": [
-        "regular",
-        "moe_optimal"
-      ]
-    },
-    {
-      "default": "none",
-      "dock": "runtime",
-      "flag": "--split-mode",
-      "flag_pair": [],
-      "hidden_default": true,
-      "key": "split",
-      "label": "SPLIT",
-      "note": "How to split model across multiple GPUs.",
-      "pattern": "",
-      "ptype": "arg_select",
-      "step": null,
-      "sub_params": null,
-      "ui_group": "SYSTEM",
-      "values": [
-        "none",
-        "layer",
-        "tensor"
-      ]
-    },
-    {
-      "default": 8080,
-      "dock": "runtime",
-      "flag": null,
-      "flag_pair": [],
-      "hidden_default": true,
-      "key": "base_port",
-      "label": "BASE-PORT",
-      "note": "Starting port for engine instances. Auto-increments per slot.",
-      "pattern": "",
-      "ptype": "logic_only",
-      "step": null,
-      "sub_params": null,
-      "ui_group": "SYSTEM",
-      "values": [
-        8080,
-        8180,
-        8888,
-        9090
-      ]
-    },
-    {
-      "default": "q4_0",
+      "default": "turbo3",
       "dock": "",
       "flag": null,
       "flag_pair": [
@@ -123,11 +54,14 @@
       "ptype": "arg_select_double",
       "step": null,
       "sub_params": null,
-      "ui_group": "ABOVE-CONFIG",
+      "ui_group": "ABOVE-CONFIG-LEFT",
       "values": [
         "q4_0",
         "q8_0",
-        "f16"
+        "f16",
+        "turbo2",
+        "turbo3",
+        "turbo4"
       ]
     },
     {
@@ -143,7 +77,7 @@
       "ptype": "slider",
       "step": 1024.0,
       "sub_params": null,
-      "ui_group": "ABOVE-CONFIG",
+      "ui_group": "ABOVE-CONFIG-RIGHT",
       "values": [
         16384,
         32768,
@@ -177,7 +111,7 @@
       ]
     },
     {
-      "default": 256,
+      "default": 512,
       "dock": "",
       "flag": "--ubatch-size",
       "flag_pair": [],
@@ -191,13 +125,13 @@
       "sub_params": null,
       "ui_group": "PERFORMANCE",
       "values": [
+        16,
         32,
         64,
         128,
         256,
         512,
-        1024,
-        16
+        1024
       ]
     },
     {
@@ -282,7 +216,7 @@
       ]
     },
     {
-      "default": "off",
+      "default": "on",
       "dock": "",
       "flag": "--reasoning",
       "flag_pair": [],
@@ -366,79 +300,6 @@
       ]
     },
     {
-      "default": "draft-mtp",
-      "dock": "",
-      "flag": "--spec-type",
-      "flag_pair": [],
-      "hidden_default": false,
-      "key": "spec_type",
-      "label": "SPEC-TYPE",
-      "note": "Comma-separated speculative decoding types. 'none' disables.",
-      "pattern": "",
-      "ptype": "arg_select",
-      "step": null,
-      "sub_params": null,
-      "ui_group": "SPECULATIVE-DECODING",
-      "values": [
-        "draft-simple",
-        "draft-eagle3",
-        "draft-mtp",
-        "ngram-simple",
-        "ngram-map-k",
-        "ngram-map-k4v",
-        "ngram-mod",
-        "ngram-cache"
-      ]
-    },
-    {
-      "default": 3,
-      "dock": "",
-      "flag": "--spec-draft-n-max",
-      "flag_pair": [],
-      "hidden_default": false,
-      "key": "spec_draft_n_max",
-      "label": "SPEC-DRAFT-N-MAX",
-      "note": "Maximum number of draft tokens per speculative decoding step.",
-      "pattern": "",
-      "ptype": "arg_select",
-      "step": null,
-      "sub_params": null,
-      "ui_group": "SPECULATIVE-DECODING",
-      "values": [
-        1,
-        2,
-        3,
-        4,
-        5,
-        6,
-        8,
-        10,
-        12
-      ]
-    },
-    {
-      "default": 1,
-      "dock": "",
-      "flag": "--spec-draft-n-min",
-      "flag_pair": [],
-      "hidden_default": false,
-      "key": "spec_draft_n_min",
-      "label": "SPEC-DRAFT-N-MIN",
-      "note": "minimum number of draft tokens to use for speculative decoding.",
-      "pattern": "",
-      "ptype": "arg_select",
-      "step": null,
-      "sub_params": null,
-      "ui_group": "SPECULATIVE-DECODING",
-      "values": [
-        1,
-        2,
-        3,
-        4,
-        5
-      ]
-    },
-    {
       "default": "on",
       "dock": "",
       "flag": "--swa-full",
@@ -475,6 +336,148 @@
         0,
         1
       ]
+    },
+    {
+      "default": "draft-mtp",
+      "dock": "",
+      "flag": "--spec-type",
+      "flag_pair": [],
+      "hidden_default": true,
+      "key": "spec_type",
+      "label": "SPEC-TYPE",
+      "note": "Comma-separated speculative decoding types. 'none' disables.",
+      "pattern": "",
+      "ptype": "arg_select",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "SPECULATIVE-DECODING",
+      "values": [
+        "draft-simple",
+        "draft-eagle3",
+        "draft-mtp",
+        "ngram-simple",
+        "ngram-map-k",
+        "ngram-map-k4v",
+        "ngram-mod",
+        "ngram-cache"
+      ]
+    },
+    {
+      "default": 3,
+      "dock": "",
+      "flag": "--spec-draft-n-max",
+      "flag_pair": [],
+      "hidden_default": true,
+      "key": "spec_draft_n_max",
+      "label": "SPEC-DRAFT-N-MAX",
+      "note": "Maximum number of draft tokens per speculative decoding step.",
+      "pattern": "",
+      "ptype": "arg_select",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "SPECULATIVE-DECODING",
+      "values": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        8,
+        10,
+        12
+      ]
+    },
+    {
+      "default": 1,
+      "dock": "",
+      "flag": "--spec-draft-n-min",
+      "flag_pair": [],
+      "hidden_default": true,
+      "key": "spec_draft_n_min",
+      "label": "SPEC-DRAFT-N-MIN",
+      "note": "minimum number of draft tokens to use for speculative decoding.",
+      "pattern": "",
+      "ptype": "arg_select",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "SPECULATIVE-DECODING",
+      "values": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    {
+      "default": "regular",
+      "dock": "runtime",
+      "flag": null,
+      "flag_pair": [],
+      "hidden_default": false,
+      "key": "offload_mode",
+      "label": "OFFLOAD-MODE",
+      "note": "moe_optimal adds expert eviction filter and forces KV quant to q4_0.",
+      "pattern": "",
+      "ptype": "logic_only",
+      "step": null,
+      "sub_params": {
+        "moe_optimal": [
+          "-ot",
+          "\\\\.ffn_.*_exps\\\\.=CPU",
+          "-ctk",
+          "q4_0",
+          "-ctv",
+          "q4_0"
+        ]
+      },
+      "ui_group": "SYSTEM",
+      "values": [
+        "regular",
+        "moe_optimal"
+      ]
+    },
+    {
+      "default": "none",
+      "dock": "runtime",
+      "flag": "--split-mode",
+      "flag_pair": [],
+      "hidden_default": false,
+      "key": "split",
+      "label": "SPLIT",
+      "note": "How to split model across multiple GPUs.",
+      "pattern": "",
+      "ptype": "arg_select",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "SYSTEM",
+      "values": [
+        "none",
+        "layer",
+        "tensor"
+      ]
+    },
+    {
+      "default": 8080,
+      "dock": "runtime",
+      "flag": null,
+      "flag_pair": [],
+      "hidden_default": false,
+      "key": "base_port",
+      "label": "BASE-PORT",
+      "note": "Starting port for engine instances. Auto-increments per slot.",
+      "pattern": "",
+      "ptype": "logic_only",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "SYSTEM",
+      "values": [
+        8080,
+        8180,
+        8888,
+        9090
+      ]
     }
   ],
   "spawn_profile": {
@@ -483,7 +486,19 @@
     ],
     "auto_vram": true,
     "enable_metrics": true,
+    "essentialParamKeys": [
+      "kv_quant",
+      "ctx",
+      "batch",
+      "ubatch",
+      "parallel",
+      "vision",
+      "mmap",
+      "cont_batching"
+    ],
+    "fit_adapter": "ggml_tom",
     "fit_style": "ggml_fit_params",
+    "fusion_adapter": "ggml_tom",
     "gpu_env": "CUDA_VISIBLE_DEVICES",
     "max_engine_slots": 64,
     "mmproj_flag": [
@@ -499,21 +514,22 @@
       "--port"
     ],
     "simple_param_keys": [
-      "device",
-      "ctx",
       "kv_quant",
+      "ctx",
+      "batch",
+      "ubatch",
       "parallel",
-      "mmap"
+      "vision",
+      "mmap",
+      "cont_batching"
     ],
     "supports_fusion": true,
-    "fusion_adapter": "ggml_tom",
-    "fit_adapter": "ggml_tom",
     "tensor_split": false,
     "verbosity_args": [
       "-lv",
       "3"
     ]
   },
-  "templateVersion": 1,
+  "templateVersion": 2,
   "template_type": "ggml-llama"
 }

@@ -10,6 +10,7 @@ interface OutputConsoleInlineDockProps {
   liveCategory: OutputConsoleCategory | null;
   isExpanded: boolean;
   onToggle: () => void;
+  onCategoryClick: (category: OutputConsoleCategory) => void;
   statusLeft: ReactNode;
   statusRight: ReactNode;
   foundrySlot?: ReactNode;
@@ -20,6 +21,7 @@ export default function OutputConsoleInlineDock({
   liveCategory,
   isExpanded,
   onToggle,
+  onCategoryClick,
   statusLeft,
   statusRight,
   foundrySlot,
@@ -49,14 +51,20 @@ export default function OutputConsoleInlineDock({
               {OUTPUT_CONSOLE_CATEGORIES.map((cat) => {
                 const isLive = liveCategory === cat;
                 return (
-                  <span
+                  <button
+                    type="button"
                     key={cat}
-                    className={`boc-tab rounded-sm border shrink-0 ${
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onCategoryClick(cat);
+                    }}
+                    className={`boc-tab rounded-sm border shrink-0 cursor-pointer ${
                       isLive ? "boc-tab--active" : "boc-tab--idle"
                     }`}
+                    title={`Open ${OUTPUT_CONSOLE_CATEGORY_LABELS[cat]} log`}
                   >
                     {OUTPUT_CONSOLE_CATEGORY_LABELS[cat]}
-                  </span>
+                  </button>
                 );
               })}
             </div>

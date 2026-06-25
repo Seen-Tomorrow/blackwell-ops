@@ -360,6 +360,10 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
               setIsOutputConsoleExpanded(true);
             }
           }}
+          onCategoryClick={(cat) => {
+            setConsoleOpenCategory(cat);
+            setIsOutputConsoleExpanded(true);
+          }}
           statusLeft={
             <>
               {__BUILD_MODE__ === "dev" && (
