@@ -9,29 +9,31 @@
 
 > *This project is my testament to open source and a **local inference first** mission.*
 
-You do **not** need Linux to run serious LLM workloads on your own hardware. That story is a myth. Blackwell Ops exists to challenge it — directly, on Windows, with performance and restraint as first-class goals.
-
+You do **not** need Linux to run serious LLM workloads on your own hardware.
+Blackwell Ops exists to challenge it — directly, on Windows, with top performance and minimal memory footprint.
+docs/screenshots/Dashboard-themes.png
 ---
-
+![Dashboard-themes](docs/screenshots/Dashboard-themes.png)
+ docs/screenshots/Dashboard-themes.png   
 ## What it is
 
-Blackwell Ops is a **single native Windows app** that orchestrates `llama-server` engines (more will follow), model libraries, VRAM fit scanning, foundry builds, and live telemetry — without Docker, without WSL gymnastics, without handing your stack to a cloud.
+Blackwell Ops is a Private infrastructure **native Windows app** that orchestrates `llama-server` engines (more will follow), model libraries, VRAM fit scanning, foundry CMAKE builds, and live telemetry — without Docker, without WSL gymnastics, without handing your stack to a cloud. Fully portable, Open Source, no telemetry.
 
-Drop the installer (or portable tree) anywhere. The app recreates its ecosystem around itself: configs, runtime engines, foundry artifacts, and user preferences — all relative to the install directory.
+Drop the installer, or portable folder anywhere. The app recreates its ecosystem around itself: configs, runtime engines, foundry artifacts, and user preferences — all relative to the install directory.
 
-**At v1.0** the focus is **GGML / llama.cpp** (official master + IK fork bundled). Any llama-compatible fork can be wired in; fusion performance metrics may not map 1:1 to every backend yet. The architecture is **semi–backend-agnostic** by design — support grows over time.
-
+**At v1.0.x** the focus is **GGML / llama.cpp** (official master + IK fork bundled). Any llama-compatible fork can be easily wired in; fusion performance metrics may not map 1:1 to every backend yet. The architecture is **semi–backend-agnostic** by design — support grows over time.
+(docs/screenshots/Dashboard-themes.jpg)
 ---
 
 ## By the numbers
 
 | | |
 |---|---|
-| **Core binary** | ~12 MB Rust executable |
-| **Typical RAM (app shell)** | ~38 MB running — about half what Windows Notepad needs |
+| **Core binary** | ~14 MB Rust executable |
+| **Typical RAM (app shell)** | ~40 MB running — about half what Windows Notepad needs |
 | **Engine slots (factory)** | Up to **64** concurrent instances (GGML master) |
 | **Stress-tested** | **64** engine instances orchestrated with **~400 MB** total app RAM overhead |
-| **Build investment** | ~**2,000 hours** across ~4 months |
+| **Build investment** | ~**2,000+ hours** across ~4 months |
 | **GPU targets** | **AMPERE · ADA · BLACKWELL** (`SM86 / SM89 / SM120`) |
 
 *Engine VRAM is separate — these figures are the ops layer, not model weights.*
@@ -55,11 +57,9 @@ Pre-built binaries ship for multiple toolchain generations — pick the profile 
 | Profile | CUDA | Toolchain |
 |---------|------|-----------|
 | **FRONTIER** | 13.3 | VS Build Tools 2026 |
-| **VANGUARD** | 13.2 | VS Build Tools 2026 |
-| **FRESH** | 13.1 | VS Build Tools 2022 |
 | **STABLE** | 12.8 | VS Build Tools 2022 |
 
-Includes **GGML Llama.cpp (master)** and **IK-Llama** runtimes.  
+Includes **GGML llama (master)** and **Tom-llama** runtimes.  
 Optimized for **AMPERE, ADA, and BLACKWELL** GPU architectures.
 
 Users can **Foundry-build** their own engines, mirror artifacts, or download asset packages later — the app does not lock you to shipped binaries.
@@ -85,7 +85,7 @@ Drop assets under `docs/screenshots/` (PNG or WebP) and promo video under `docs/
 
 | Main dashboard | Engine stack | Foundry build |
 |:---:|:---:|:---:|
-| ![Dashboard](docs/screenshots/dashboard.png) | ![Stack](docs/screenshots/stack.png) | ![Foundry](docs/screenshots/foundry.png) |
+| ![Dashboard](docs/screenshots/Dashboard.png) | ![Stack](docs/screenshots/Stack.png) | ![Foundry](docs/screenshots/Foundry.png) |
 
 ---
 
