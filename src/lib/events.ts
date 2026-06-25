@@ -21,6 +21,8 @@
  * | BlackOps-reset-setup-guide | Clear onboarding keys and replay welcome/guide in-app |
  * | BlackOps-show-all-hidden-params | CONFIG footer — unhide all hidden param rows (current provider) |
  * | BlackOps-local-storage-cleared | All `BlackOps-*` keys removed (before optional reload) |
+ * | BlackOps-provider-changed | Engine panel provider pill changed — catalog FIT cache refresh |
+ * | BlackOps-fit-scan-cache-changed | FIT library partition updated — refresh forecast points |
  */
 
 export type NavigateConfigDetail = {
@@ -55,6 +57,8 @@ export const EVENTS = {
   resetSetupGuide: `${STORAGE_PREFIX}reset-setup-guide`,
   showAllHiddenParams: `${STORAGE_PREFIX}show-all-hidden-params`,
   localStorageCleared: `${STORAGE_PREFIX}local-storage-cleared`,
+  providerChanged: `${STORAGE_PREFIX}provider-changed`,
+  fitScanCacheChanged: `${STORAGE_PREFIX}fit-scan-cache-changed`,
 } as const;
 
 export type AppEventName = (typeof EVENTS)[keyof typeof EVENTS];

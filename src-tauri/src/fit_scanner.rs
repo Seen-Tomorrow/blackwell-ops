@@ -8,6 +8,7 @@ use crate::output_console::{BlackwellOutputConsoleCategory, BlackwellOutputConso
 use crate::telemetry::detect_gpu_count;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
+use std::sync::LazyLock;
 use std::io::Read;
 use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
@@ -1021,7 +1022,7 @@ fn fit_scan_full_skipped(model_path: &str, skip_reason: &str) -> FitScanFull {
     }
 }
 
-fn fit_scan_labels_done(full: &FitScanFull) -> HashSet<String> {
+pub fn fit_scan_labels_done(full: &FitScanFull) -> HashSet<String> {
     let mut done: HashSet<String> = full.points.iter().map(|p| p.label.clone()).collect();
     if let Some(skipped) = &full.skipped_points {
         done.extend(skipped.keys().cloned());
@@ -1095,6 +1096,282 @@ fn find_existing_scan(
     }
     log::debug!("[FIT] Cache miss (no data): '{}'", model_path);
     None
+}
+
+/// Number of probe points per model — keep in sync with `FIT_SCAN_POINTS_TOTAL` in fitScanTable.ts.
+pub fn scan_points_total() -> usize {
+    SCAN_PLAN.len()
+}
+
+fn missing_scan_labels(existing_full: Option<&FitScanFull>) -> Vec<String> {
+    let labels_done: HashSet<String> = existing_full
+        .map(fit_scan_labels_done)
+        .unwrap_or_default();
+    let plan_labels: HashSet<&str> = SCAN_PLAN.iter().map(|p| p.0).collect();
+
+    if existing_full
+        .and_then(|e| e.skip_reason.as_ref())
+        .is_some()
+    {
+        return Vec::new();
+    }
+    if labels_done.len() >= SCAN_PLAN.len()
+        && plan_labels.is_subset(&labels_done.iter().map(|s| s.as_str()).collect())
+    {
+        return Vec::new();
+    }
+
+    SCAN_PLAN
+        .iter()
+        .filter(|p| !labels_done.contains(p.0))
+        .map(|p| p.0.to_string())
+        .collect()
+}
+
+/// Serializes partition RMW when multiple catalog FIT scans run in parallel.
+static PARTITION_PERSIST_LOCK: LazyLock<TokioMutex<()>> = LazyLock::new(|| TokioMutex::new(()));
+
+async fn persist_single_model_scan(
+    fit_adapter: crate::fit_adapters::FitAdapterId,
+    model_path: &str,
+    result: &FitScanFull,
+    shared_cache: Option<&TokioMutex<HashMap<String, FitScanFull>>>,
+) {
+    if let Some(cache) = shared_cache {
+        let mut map = cache.lock().await;
+        map.insert(model_path.to_string(), result.clone());
+        save_full_scan_partition(fit_adapter, &map);
+    } else {
+        let _guard = PARTITION_PERSIST_LOCK.lock().await;
+        let mut map = load_full_scan_partition(fit_adapter);
+        map.insert(model_path.to_string(), result.clone());
+        save_full_scan_partition(fit_adapter, &map);
+    }
+}
+
+/// Full SCAN_PLAN probe for one model — shared by library scan and on-demand catalog scan.
+pub async fn scan_single_model_full(
+    fit_binary: &str,
+    model_path: &str,
+    provider_id: &str,
+    progress_tx: Option<&broadcast::Sender<FitScanProgress>>,
+    cancelled: &AtomicBool,
+    log_hub: Option<&LogHub>,
+    force_rescan: bool,
+    shared_cache: Option<&TokioMutex<HashMap<String, FitScanFull>>>,
+) -> FitScanFull {
+    let fit_adapter = resolve_fit_adapter(provider_id);
+    let partition_snapshot: HashMap<String, FitScanFull> = if let Some(cache) = shared_cache {
+        cache.lock().await.clone()
+    } else {
+        load_full_scan_partition(fit_adapter)
+    };
+    let existing_full: Option<FitScanFull> = if force_rescan {
+        None
+    } else {
+        find_existing_scan(&partition_snapshot, model_path)
+    };
+
+    if let Some(skip_note) = fit_adapter.model_skip_note(model_path) {
+        let result = existing_full
+            .filter(|e| e.skip_reason.is_some())
+            .unwrap_or_else(|| fit_scan_full_skipped(model_path, skip_note));
+        if let Some(tx) = progress_tx {
+            let _ = tx.send(FitScanProgress {
+                model_path: model_path.to_string(),
+                model_name: extract_model_name(model_path),
+                status: "skipped".to_string(),
+                args: None,
+                vram_mib: None,
+                label: None,
+                provider_id: None,
+                total_models: None,
+                scan_points_total: Some(SCAN_PLAN.len()),
+                skip_reason: result.skip_reason.clone(),
+            });
+        }
+        persist_single_model_scan(fit_adapter, model_path, &result, shared_cache).await;
+        return result;
+    }
+
+    let missing_labels = if force_rescan {
+        SCAN_PLAN.iter().map(|p| p.0.to_string()).collect()
+    } else {
+        missing_scan_labels(existing_full.as_ref())
+    };
+
+    if missing_labels.is_empty() {
+        if let Some(existing) = existing_full {
+            return existing;
+        }
+    }
+
+    let model_name = extract_model_name(model_path);
+    let gpu_count = detect_gpu_count();
+    let existing_points: Vec<FitDataPoint> = existing_full
+        .as_ref()
+        .map(|e| e.points.clone())
+        .unwrap_or_default();
+    let mut skipped_points: HashMap<String, String> = existing_full
+        .as_ref()
+        .and_then(|e| e.skipped_points.clone())
+        .unwrap_or_default();
+
+    let mut points: Vec<FitDataPoint> = if missing_labels.is_empty() {
+        Vec::with_capacity(SCAN_PLAN.len())
+    } else {
+        existing_points.clone()
+    };
+    let mut failures = Vec::new();
+
+    for (label, ctx_tokens, kv_q, batch_val, parallel_val, split_val) in SCAN_PLAN {
+        if cancelled.load(Ordering::Relaxed) {
+            break;
+        }
+
+        if !missing_labels.iter().any(|l| l.as_str() == *label) {
+            continue;
+        }
+
+        if let Some(note) = fit_adapter.point_skip_note(label, split_val) {
+            skipped_points.insert((*label).to_string(), note.to_string());
+            emit_fit_scan_line(
+                log_hub,
+                BlackwellOutputConsoleCategory::Utils,
+                &format!(
+                    "[FIT-SCAN] {} | {label} | skipped | {note}",
+                    extract_model_name(model_path)
+                ),
+                BlackwellOutputConsoleLineStyle::Normal,
+            );
+            if let Some(tx) = progress_tx {
+                let _ = tx.send(FitScanProgress {
+                    model_path: model_path.to_string(),
+                    model_name: model_name.clone(),
+                    status: "point_skipped".to_string(),
+                    args: None,
+                    vram_mib: None,
+                    label: Some((*label).to_string()),
+                    provider_id: None,
+                    total_models: None,
+                    scan_points_total: Some(SCAN_PLAN.len()),
+                    skip_reason: Some(note.to_string()),
+                });
+            }
+            continue;
+        }
+
+        let point_gpu_mask = if *split_val != "none" && !split_val.is_empty() {
+            (0..gpu_count)
+                .map(|i| i.to_string())
+                .collect::<Vec<_>>()
+                .join(",")
+        } else {
+            "0".to_string()
+        };
+
+        let args = build_fit_command(
+            provider_id,
+            model_path,
+            *ctx_tokens,
+            kv_q,
+            *batch_val,
+            *batch_val,
+            *parallel_val,
+            split_val,
+        );
+
+        if let Some(tx) = progress_tx {
+            let _ = tx.send(FitScanProgress {
+                model_path: model_path.to_string(),
+                model_name: model_name.clone(),
+                status: "scanning".to_string(),
+                args: Some(args.join(" ")),
+                vram_mib: None,
+                label: Some((*label).to_string()),
+                provider_id: Some(provider_id.to_string()),
+                total_models: Some(1),
+                scan_points_total: Some(SCAN_PLAN.len()),
+                skip_reason: None,
+            });
+        }
+
+        match scan_single_anchor(fit_binary, &args, &point_gpu_mask, fit_adapter).await {
+            Ok(raw) => {
+                points.push(FitDataPoint {
+                    label: (*label).to_string(),
+                    ctx: *ctx_tokens,
+                    kv_quant: (*kv_q).to_string(),
+                    batch: *batch_val,
+                    parallel: *parallel_val,
+                    split_mode: (*split_val).to_string(),
+                    vram_mib: raw.vram_mib,
+                });
+
+                if let Some(tx) = progress_tx {
+                    let _ = tx.send(FitScanProgress {
+                        model_path: model_path.to_string(),
+                        model_name: model_name.clone(),
+                        status: "complete".to_string(),
+                        args: None,
+                        vram_mib: Some(raw.vram_mib),
+                        label: Some((*label).to_string()),
+                        provider_id: Some(provider_id.to_string()),
+                        total_models: Some(1),
+                        scan_points_total: Some(SCAN_PLAN.len()),
+                        skip_reason: None,
+                    });
+                }
+            }
+            Err(e) => {
+                failures.push(format!("{}:{}", label, e));
+                log::warn!("Scan {} failed for {}: {}", label, model_path, e);
+                emit_fit_scan_line(
+                    log_hub,
+                    BlackwellOutputConsoleCategory::Error,
+                    &format!(
+                        "[FIT-SCAN] {} | {label} | {e}",
+                        extract_model_name(model_path)
+                    ),
+                    BlackwellOutputConsoleLineStyle::Error,
+                );
+                if let Some(tx) = progress_tx {
+                    let _ = tx.send(FitScanProgress {
+                        model_path: model_path.to_string(),
+                        model_name: model_name.clone(),
+                        status: "error".to_string(),
+                        args: None,
+                        vram_mib: None,
+                        label: Some((*label).to_string()),
+                        provider_id: None,
+                        total_models: None,
+                        scan_points_total: None,
+                        skip_reason: None,
+                    });
+                }
+            }
+        }
+    }
+
+    let result = FitScanFull {
+        model_path: model_path.to_string(),
+        points,
+        error: if failures.is_empty() {
+            None
+        } else {
+            Some(failures.join(" | "))
+        },
+        skip_reason: None,
+        skipped_points: if skipped_points.is_empty() {
+            None
+        } else {
+            Some(skipped_points)
+        },
+    };
+
+    persist_single_model_scan(fit_adapter, model_path, &result, shared_cache).await;
+
+    result
 }
 
 /// Scan an entire library of models with parallel execution.
@@ -1172,19 +1449,13 @@ pub async fn scan_library(
         BlackwellOutputConsoleLineStyle::Normal,
     );
 
-    // Load existing partition for this fit adapter (ggml_master vs ggml_tom)
     let existing_data = load_full_scan_partition(fit_adapter);
 
-    // GPU count for per-point mask computation
-    let gpu_count = detect_gpu_count();
-
     let semaphore = StdArc::new(Semaphore::new(max_parallel as usize));
-    let completed_count = StdArc::new(TokioMutex::new(0usize));
     let failed_count = StdArc::new(TokioMutex::new(0usize));
 
-    // Full scan data for JSON export + IPC result
     let full_results_map: StdArc<TokioMutex<HashMap<String, FitScanFull>>> =
-        StdArc::new(TokioMutex::new(HashMap::with_capacity(total)));
+        StdArc::new(TokioMutex::new(existing_data));
 
     let mut handles = vec![];
 
@@ -1193,100 +1464,26 @@ pub async fn scan_library(
             break;
         }
 
-        // Look up existing scan data with filename fallback for path robustness
-        let existing_full: Option<FitScanFull> = find_existing_scan(&existing_data, &model_path);
-        
-        // Labels already measured or intentionally skipped (Tom tensor / etc.)
-        let labels_done: HashSet<String> = existing_full
-            .as_ref()
-            .map(fit_scan_labels_done)
-            .unwrap_or_default();
-
-        // Build the set of SCAN_PLAN labels
-        let plan_labels: HashSet<&str> = SCAN_PLAN.iter().map(|p| p.0).collect();
-
-        // Tom + MTP: no point probes — use cached skip or record one now (avoids 30s×N timeouts).
-        if let Some(skip_note) = fit_adapter.model_skip_note(&model_path) {
-            let result = existing_full
-                .filter(|e| e.skip_reason.is_some())
-                .unwrap_or_else(|| fit_scan_full_skipped(&model_path, skip_note));
-            if let Some(tx) = &progress_tx {
-                let _ = tx.send(FitScanProgress {
-                    model_path: model_path.clone(),
-                    model_name: extract_model_name(&model_path),
-                    status: "skipped".to_string(),
-                    args: None,
-                    vram_mib: None,
-                    label: None,
-                    provider_id: None,
-                    total_models: None,
-                    scan_points_total: None,
-                    skip_reason: result.skip_reason.clone(),
-                });
+        let existing_full = {
+            let map = full_results_map.lock().await;
+            find_existing_scan(&map, &model_path)
+        };
+        if missing_scan_labels(existing_full.as_ref()).is_empty() {
+            if let Some(existing) = existing_full {
+                full_results_map.lock().await.insert(model_path.clone(), existing);
             }
-            emit_fit_scan_line(
-                hub_ref,
-                BlackwellOutputConsoleCategory::Utils,
-                &format!(
-                    "[FIT-SCAN] {} | skipped | {}",
-                    extract_model_name(&model_path),
-                    skip_note
-                ),
-                BlackwellOutputConsoleLineStyle::Normal,
-            );
-            full_results_map.lock().await.insert(model_path.clone(), result);
             continue;
         }
 
-        // If ALL labels are present, skip the model entirely (copy existing data)
-        let missing_labels: Vec<String> = if existing_full
-            .as_ref()
-            .and_then(|e| e.skip_reason.as_ref())
-            .is_some()
-        {
-            Vec::new()
-        } else if labels_done.len() >= SCAN_PLAN.len()
-            && plan_labels.is_subset(&labels_done.iter().map(|s| s.as_str()).collect())
-        {
-            Vec::new()
-        } else {
-            SCAN_PLAN
-                .iter()
-                .filter(|p| !labels_done.contains(p.0))
-                .map(|p| p.0.to_string())
-                .collect()
-        };
-
-        if missing_labels.is_empty() {
-            // All points already scanned — insert directly (no spawn, avoids race with save)
-            if let Some(existing) = existing_full {
-                full_results_map.lock().await.insert(model_path.clone(), existing);
-                continue;
-            }
-        }
-
-        // Existing points + per-label skips to carry forward for incremental scan
-        let existing_points: Vec<FitDataPoint> = existing_full
-            .as_ref()
-            .map(|e| e.points.clone())
-            .unwrap_or_default();
-        let existing_skipped: HashMap<String, String> = existing_full
-            .as_ref()
-            .and_then(|e| e.skipped_points.clone())
-            .unwrap_or_default();
-
         let sem = semaphore.clone();
         let fit_bin = fit_binary.to_string();
-        let comp_count = completed_count.clone();
         let cancel = cancelled.clone();
         let prog_tx = progress_tx.clone();
         let full_map = full_results_map.clone();
         let log_hub_task = log_hub.clone();
         let scan_provider_id = provider_id.clone();
-        let scan_fit_adapter = fit_adapter;
 
         let handle = tokio::spawn(async move {
-            let hub = log_hub_task.as_ref();
             if cancel.load(Ordering::Relaxed) {
                 return None as Option<(String, FitScanFull)>;
             }
@@ -1300,175 +1497,17 @@ pub async fn scan_library(
                 return None as Option<(String, FitScanFull)>;
             }
 
-            let model_name = extract_model_name(&model_path);
-
-            // Start with existing points for incremental scan
-            let mut points: Vec<FitDataPoint> = if missing_labels.is_empty() {
-                Vec::with_capacity(SCAN_PLAN.len())
-            } else {
-                existing_points.clone()
-            };
-            let mut skipped_points: HashMap<String, String> = existing_skipped;
-            let mut failures = Vec::new();
-            let fit_adapter = resolve_fit_adapter(&scan_provider_id);
-
-            for (label, ctx_tokens, kv_q, batch_val, parallel_val, split_val) in SCAN_PLAN {
-                if cancel.load(Ordering::Relaxed) {
-                    break;
-                }
-
-                // Skip already-scanned labels for incremental update
-                if !missing_labels.iter().any(|l| l.as_str() == *label) {
-                    continue;
-                }
-
-                // Adapter-owned skip (Tom tensor / MTP points) — no subprocess.
-                if let Some(note) = fit_adapter.point_skip_note(label, split_val) {
-                    skipped_points.insert((*label).to_string(), note.to_string());
-                    emit_fit_scan_line(
-                        hub,
-                        BlackwellOutputConsoleCategory::Utils,
-                        &format!(
-                            "[FIT-SCAN] {} | {label} | skipped | {note}",
-                            extract_model_name(&model_path)
-                        ),
-                        BlackwellOutputConsoleLineStyle::Normal,
-                    );
-                    if let Some(tx) = &prog_tx {
-                        let _ = tx.send(FitScanProgress {
-                            model_path: model_path.clone(),
-                            model_name: model_name.clone(),
-                            status: "point_skipped".to_string(),
-                            args: None,
-                            vram_mib: None,
-                            label: Some((*label).to_string()),
-                            provider_id: None,
-                            total_models: None,
-                            scan_points_total: None,
-                            skip_reason: Some(note.to_string()),
-                        });
-                    }
-                    continue;
-                }
-
-                // Compute GPU mask per-scan-point: split mode needs all GPUs visible
-                let point_gpu_mask = if *split_val != "none" && !split_val.is_empty() {
-                    (0..gpu_count).map(|i| i.to_string()).collect::<Vec<_>>().join(",")
-                } else {
-                    // Single GPU — use GPU-0 for scan points
-                    "0".to_string()
-                };
-
-                let args = build_fit_command(
-                    &scan_provider_id,
-                    &model_path,
-                    *ctx_tokens,
-                    kv_q,
-                    *batch_val,
-                    *batch_val,
-                    *parallel_val,
-                    split_val,
-                );
-
-                // Emit progress before scan
-                if let Some(tx) = &prog_tx {
-                    let _ = tx.send(FitScanProgress {
-                        model_path: model_path.clone(),
-                        model_name: model_name.clone(),
-                        status: "scanning".to_string(),
-                        args: Some(args.join(" ")),
-                        vram_mib: None,
-                        label: Some((*label).to_string()),
-                        provider_id: None,
-                        total_models: None,
-                        scan_points_total: None,
-                        skip_reason: None,
-                    });
-                }
-
-                match scan_single_anchor(&fit_bin, &args, &point_gpu_mask, fit_adapter).await {
-                    Ok(raw) => {
-                        points.push(FitDataPoint {
-                            label: (*label).to_string(),
-                            ctx: *ctx_tokens,
-                            kv_quant: (*kv_q).to_string(),
-                            batch: *batch_val,
-                            parallel: *parallel_val,
-                            split_mode: (*split_val).to_string(),
-                            vram_mib: raw.vram_mib,
-                        });
-
-                        // Emit progress after scan
-                        if let Some(tx) = &prog_tx {
-                            let _ = tx.send(FitScanProgress {
-                                model_path: model_path.clone(),
-                                model_name: model_name.clone(),
-                                status: "complete".to_string(),
-                                args: None,
-                                vram_mib: Some(raw.vram_mib),
-                                label: Some((*label).to_string()),
-                                provider_id: None,
-                                total_models: None,
-                                scan_points_total: None,
-                                skip_reason: None,
-                            });
-                        }
-                    },
-                    Err(e) => {
-                        failures.push(format!("{}:{}", label, e));
-                        log::warn!("Scan {} failed for {}: {}", label, model_path, e);
-                        emit_fit_scan_line(
-                            hub,
-                            BlackwellOutputConsoleCategory::Error,
-                            &format!(
-                                "[FIT-SCAN] {} | {label} | {e}",
-                                extract_model_name(&model_path)
-                            ),
-                            BlackwellOutputConsoleLineStyle::Error,
-                        );
-                        if let Some(tx) = &prog_tx {
-                            let _ = tx.send(FitScanProgress {
-                                model_path: model_path.clone(),
-                                model_name: model_name.clone(),
-                                status: "error".to_string(),
-                                args: None,
-                                vram_mib: None,
-                                label: Some((*label).to_string()),
-                                provider_id: None,
-                                total_models: None,
-                                scan_points_total: None,
-                                skip_reason: None,
-                            });
-                        }
-                    },
-                }
-            }
-
-            // Save full scan data to shared map + persist incrementally to disk
-            let result = FitScanFull {
-                model_path: model_path.clone(),
-                points,
-                error: if failures.is_empty() { None } else { Some(failures.join(" | ")) },
-                skip_reason: None,
-                skipped_points: if skipped_points.is_empty() {
-                    None
-                } else {
-                    Some(skipped_points)
-                },
-            };
-
-            {
-                let mut map = full_map.lock().await;
-                map.insert(model_path.clone(), result.clone());
-                // Incremental save so data persists mid-scan (not just at the end)
-                save_full_scan_partition(scan_fit_adapter, &map);
-            }
-
-            // Update completed count
-            {
-                let mut c = comp_count.lock().await;
-                *c += 1;
-            }
+            let result = scan_single_model_full(
+                &fit_bin,
+                &model_path,
+                &scan_provider_id,
+                prog_tx.as_ref(),
+                &cancel,
+                log_hub_task.as_ref(),
+                false,
+                Some(full_map.as_ref()),
+            )
+            .await;
 
             Some((model_path.clone(), result))
         });
@@ -1642,7 +1681,7 @@ pub fn get_fit_scan_cache_snapshot(provider_id: String) -> FitScanCacheSnapshot 
     let adapter = resolve_fit_adapter(&provider_id);
     FitScanCacheSnapshot {
         provider_id,
-        scan_points_total: SCAN_PLAN.len(),
+        scan_points_total: scan_points_total(),
         results: load_full_scan_partition(adapter),
     }
 }

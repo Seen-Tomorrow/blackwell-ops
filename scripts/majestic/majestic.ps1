@@ -422,6 +422,21 @@ function Invoke-MajesticBump {
     Set-JsonFileVersion -Path (Get-TauriDevConfPath) -NewVersion $newVersion
     Set-JsonFileVersion -Path (Get-PackageJsonPath) -NewVersion $newVersion
     Set-CargoTomlVersion -Path (Get-CargoTomlPath) -NewVersion $newVersion
+
+    $old_tag = Get-TagName -Version $current -Prefix (Read-MajesticConfig).tagPrefix
+    Push-Location $root
+    try {
+        $prev_eap = $ErrorActionPreference
+        $ErrorActionPreference = 'SilentlyContinue'
+        git tag -d $old_tag 2>$null | Out-Null
+        $ErrorActionPreference = $prev_eap
+        if ($LASTEXITCODE -eq 0) {
+            Write-Majestic "Removed stale local tag $old_tag" -Color DarkGray
+        }
+    } finally {
+        Pop-Location
+    }
+
     Write-Majestic "Version bumped to $newVersion" -Color Green
     Write-Majestic "Next: pack (rebuild installer) then ship." -Color Cyan
 }
@@ -433,6 +448,106 @@ Ship is locked. Create the unlock file first:
   New-Item -ItemType File -Path scripts/majestic/.majestic-enabled -Force
 "@
     }
+}
+
+function Get-GhReleaseView {
+    param(
+        [string]$Tag,
+        [string]$Repo
+    )
+
+    # gh writes "release not found" to stderr — must not throw under $ErrorActionPreference Stop
+    $prev_eap = $ErrorActionPreference
+    $ErrorActionPreference = 'SilentlyContinue'
+    try {
+        $json = gh release view $Tag --repo $Repo --json isImmutable,assets 2>$null
+        if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($json)) {
+            return $null
+        }
+        return ($json | ConvertFrom-Json)
+    } finally {
+        $ErrorActionPreference = $prev_eap
+    }
+}
+
+function New-GhReleaseWithAssets {
+    param(
+        [string]$Tag,
+        [string]$Repo,
+        [string]$Notes,
+        [string[]]$Assets
+    )
+
+    # gh creates draft -> uploads files -> publishes (safe when repo immutability is on)
+    $gh_args = @(
+        'release', 'create', $Tag,
+        '--repo', $Repo,
+        '--title', $Tag,
+        '--notes', $Notes
+    ) + $Assets
+
+    $prev_eap = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $output = & gh @gh_args 2>&1 | Out-String
+        return [pscustomobject]@{
+            ExitCode = $LASTEXITCODE
+            Output   = $output.Trim()
+        }
+    } finally {
+        $ErrorActionPreference = $prev_eap
+    }
+}
+
+function Throw-GhReleaseCreateFailed {
+    param(
+        [string]$Tag,
+        [string]$Repo,
+        [string]$GhOutput
+    )
+
+    if ($GhOutput -match 'tag_name was used by an immutable release' -or
+        $GhOutput -match 'Cannot create ref due to creations being restricted') {
+        throw @"
+Cannot ship $Tag — GitHub permanently reserved this tag name after a prior immutable release.
+Deleting the release does not free the tag. Disabling immutability in settings does not help.
+
+Fix:
+  npm run majestic:bump          # e.g. 1.0.5 -> 1.0.6 (also drops the stale local tag)
+  npm run majestic:pack
+  npm run majestic:ship
+
+GitHub output:
+$GhOutput
+"@
+    }
+
+    throw "gh release create failed:`n$GhOutput"
+}
+
+function Throw-ImmutableReleaseBlocked {
+    param(
+        [string]$Tag,
+        [string]$Repo,
+        [int]$AssetCount
+    )
+
+    $reason = if ($AssetCount -eq 0) {
+        'was published with no assets'
+    } else {
+        'is locked and assets cannot be replaced'
+    }
+
+    throw @"
+GitHub release $Tag $reason. Immutable releases stay locked even after you disable release immutability in repo settings.
+
+Fix:
+  1. Delete the broken release:  gh release delete $Tag --repo $Repo --cleanup-tag --yes
+  2. GitHub does not allow reusing a tag from a deleted immutable release — bump patch:  npm run majestic:bump
+  3. majestic:pack, then majestic:ship on the new version
+
+Future ships use 'gh release create <tag> <assets...>' so assets attach before publish.
+"@
 }
 
 function Invoke-MajesticShip {
@@ -503,31 +618,23 @@ function Invoke-MajesticShip {
             Write-Majestic "pushTag=false - skipping git push (gh release still creates GitHub tag)." -Color DarkGray
         }
 
-        $release_exists = $false
-        try {
-            gh release view $tag --repo $Config.repo 2>$null | Out-Null
-            $release_exists = ($LASTEXITCODE -eq 0)
-        } catch {
-            $release_exists = $false
-        }
+        $release_meta = Get-GhReleaseView -Tag $tag -Repo $Config.repo
 
-        if (-not $release_exists) {
-            Write-Majestic "Creating GitHub release $tag..." -Color Cyan
-            gh release create $tag `
-                --repo $Config.repo `
-                --title $tag `
-                --notes $Config.ship.releaseNotes
-            if ($LASTEXITCODE -ne 0) {
-                throw "gh release create failed"
+        if ($null -eq $release_meta) {
+            Write-Majestic "Creating GitHub release $tag with $($assets.Count) asset(s)..." -Color Cyan
+            $create_result = New-GhReleaseWithAssets -Tag $tag -Repo $Config.repo -Notes $Config.ship.releaseNotes -Assets $assets
+            if ($create_result.ExitCode -ne 0) {
+                Throw-GhReleaseCreateFailed -Tag $tag -Repo $Config.repo -GhOutput $create_result.Output
             }
+        } elseif ($release_meta.isImmutable) {
+            $asset_count = @($release_meta.assets).Count
+            Throw-ImmutableReleaseBlocked -Tag $tag -Repo $Config.repo -AssetCount $asset_count
         } else {
-            Write-Majestic "Release $tag already exists - uploading assets only." -Color Yellow
-        }
-
-        Write-Majestic "Uploading $($assets.Count) asset(s)..." -Color Cyan
-        gh release upload $tag --repo $Config.repo --clobber @assets
-        if ($LASTEXITCODE -ne 0) {
-            throw "gh release upload failed"
+            Write-Majestic "Release $tag exists (mutable) - uploading $($assets.Count) asset(s)..." -Color Cyan
+            gh release upload $tag --repo $Config.repo --clobber @assets
+            if ($LASTEXITCODE -ne 0) {
+                throw "gh release upload failed"
+            }
         }
 
         Write-Majestic "SHIPPED $tag - https://github.com/$($Config.repo)/releases/tag/$tag" -Color Green

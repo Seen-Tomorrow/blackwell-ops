@@ -1,5 +1,8 @@
 import type { FitDataPoint, FitScanFull } from "./types";
 
+/** Full probe count per model — keep in sync with `SCAN_PLAN.len()` in fit_scanner.rs */
+export const FIT_SCAN_POINTS_TOTAL = 28;
+
 /** Highlight columns — keep in sync with SCAN_PLAN split labels in fit_scanner.rs */
 export const FIT_SCAN_TABLE_COLUMNS = [
   { label: "base", header: "Base" },
@@ -21,6 +24,62 @@ export function fitScanDonePointCount(full: FitScanFull): number {
   const measured = full.points?.length ?? 0;
   const skipped = full.skipped_points ? Object.keys(full.skipped_points).length : 0;
   return measured + skipped;
+}
+
+export function findFitScanEntry(
+  results: Record<string, FitScanFull>,
+  modelPath: string,
+): FitScanFull | undefined {
+  if (results[modelPath]) return results[modelPath];
+  const filename = modelPath.split(/[/\\]/).pop();
+  if (!filename) return undefined;
+  return Object.values(results).find(
+    (entry) => entry.model_path.split(/[/\\]/).pop() === filename,
+  );
+}
+
+export function modelHasCompleteFitScan(
+  full: FitScanFull | undefined,
+  pointsTotal: number = FIT_SCAN_POINTS_TOTAL,
+): boolean {
+  if (!full) return false;
+  if (full.skip_reason) return true;
+  return fitScanDonePointCount(full) >= pointsTotal;
+}
+
+export function mergeFitScanProgressPoint(
+  entry: FitScanFull | undefined,
+  modelPath: string,
+  label: string,
+  vramMib: number,
+): FitScanFull {
+  const prev = entry ?? { model_path: modelPath, points: [] };
+  const points = [...(prev.points ?? [])];
+  const pt: FitDataPoint = {
+    label,
+    ctx: 0,
+    kv_quant: "",
+    batch: 0,
+    parallel: 0,
+    split_mode: "",
+    vram_mib: vramMib,
+  };
+  const idx = points.findIndex((p) => p.label === label);
+  if (idx >= 0) points[idx] = pt;
+  else points.push(pt);
+  return { ...prev, model_path: modelPath, points, error: prev.error };
+}
+
+export function fitScanBadgeLabel(
+  full: FitScanFull | undefined,
+  pointsTotal: number = FIT_SCAN_POINTS_TOTAL,
+): string | null {
+  if (!full) return null;
+  if (full.skip_reason) return "FIT:skip";
+  const done = fitScanDonePointCount(full);
+  if (done >= pointsTotal) return `FIT:${pointsTotal}pts`;
+  if (done > 0) return `FIT:${done}/${pointsTotal}`;
+  return null;
 }
 
 export function formatFitScanVramCell(

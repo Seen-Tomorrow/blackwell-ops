@@ -1,0 +1,582 @@
+{
+  "binary_name": "llama-server.exe",
+  "branch": "master",
+  "build_profile": "-DGGML_CUDA=ON\n-DCMAKE_CUDA_ARCHITECTURES=\"86;89;120\"\n-DGGML_CUDA_PEER_TO_PEER=ON\n-DGGML_CUDA_FA_ALL_QUANTS=ON\n-DGGML_AVX512=ON\n-DGGML_NATIVE=ON\n-DCMAKE_CUDA_FLAGS=\"-Xcompiler /wd4056 -Xcompiler /wd4756 --diag-suppress 221\"\n-Wno-dev",
+  "description": "Official llama.cpp master build",
+  "display_name": "GGML Master",
+  "git_url": "https://github.com/ggml-org/llama.cpp",
+  "groupOrder": [
+    "ABOVE-CONFIG-LEFT",
+    "ABOVE-CONFIG-RIGHT",
+    "PERFORMANCE",
+    "FEATURE-FLAGS",
+    "SPECULATIVE-DECODING",
+    "DEV-WORKFLOW",
+    "SYSTEM"
+  ],
+  "id": "ggml-master",
+  "layoutDefaults": {
+    "aboveColumnWidths": [
+      0.2932969614492709,
+      0.706703038550729
+    ],
+    "configColumnCount": 3,
+    "configColumnWidths": [
+      0.41638378995443703,
+      0.2764706827867255,
+      0.3071455272588375
+    ],
+    "groupColumn": {
+      "ABOVE-CONFIG-RIGHT": 1,
+      "ADVANCED": 1,
+      "DEV-WORKFLOW": 2,
+      "FEATURE-FLAGS": 1,
+      "PERFORMANCE": 0,
+      "SPECULATIVE-DECODING": 2,
+      "USER-ADDED-FROM-CATALOG": 2
+    },
+    "groupDisplayZone": {
+      "ABOVE-CONFIG-LEFT": "above",
+      "ABOVE-CONFIG-RIGHT": "above"
+    }
+  },
+  "params": [
+    {
+      "default": "q4_0",
+      "dock": "",
+      "flag": null,
+      "flag_pair": [
+        "--cache-type-k",
+        "--cache-type-v"
+      ],
+      "hidden_default": false,
+      "key": "kv_quant",
+      "label": "KV-QUANT (K+V)",
+      "note": "KV cache data type for both K and V cache, set together.",
+      "pattern": "",
+      "ptype": "arg_select_double",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "ABOVE-CONFIG-LEFT",
+      "values": [
+        "q4_0",
+        "q8_0",
+        "f16"
+      ]
+    },
+    {
+      "default": 32768,
+      "dock": "",
+      "flag": "--ctx-size",
+      "flag_pair": [],
+      "hidden_default": false,
+      "key": "ctx",
+      "label": "CTX",
+      "note": "Context window size in tokens.",
+      "pattern": "",
+      "ptype": "slider",
+      "step": 1024.0,
+      "sub_params": null,
+      "ui_group": "ABOVE-CONFIG-RIGHT",
+      "values": [
+        16384,
+        32768,
+        65536,
+        131072,
+        262144,
+        524288
+      ]
+    },
+    {
+      "default": 4096,
+      "dock": "",
+      "flag": "--batch-size",
+      "flag_pair": [],
+      "hidden_default": false,
+      "key": "batch",
+      "label": "BATCH",
+      "note": "Batch size for token processing.",
+      "pattern": "",
+      "ptype": "arg_select",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "PERFORMANCE",
+      "values": [
+        256,
+        512,
+        1024,
+        2048,
+        4096,
+        8192
+      ]
+    },
+    {
+      "default": 512,
+      "dock": "",
+      "flag": "--ubatch-size",
+      "flag_pair": [],
+      "hidden_default": false,
+      "key": "ubatch",
+      "label": "UBATCH",
+      "note": "Micro-batch size for inference.",
+      "pattern": "",
+      "ptype": "arg_select",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "PERFORMANCE",
+      "values": [
+        32,
+        64,
+        128,
+        256,
+        512,
+        1024
+      ]
+    },
+    {
+      "default": 1,
+      "dock": "",
+      "flag": "--parallel",
+      "flag_pair": [],
+      "hidden_default": false,
+      "key": "parallel",
+      "label": "PARALLEL",
+      "note": "Number of concurrent request sequences.",
+      "pattern": "",
+      "ptype": "arg_select",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "PERFORMANCE",
+      "values": [
+        1,
+        2,
+        4,
+        8,
+        16,
+        32,
+        64
+      ]
+    },
+    {
+      "default": "on",
+      "dock": "",
+      "flag": "--no-kv-unified",
+      "flag_pair": [],
+      "hidden_default": false,
+      "key": "unified_kv",
+      "label": "UNIFIED-KV",
+      "note": "When off and Parallel > 1, each sequence gets its own KV cache (VRAM multiplied by np).",
+      "pattern": "",
+      "ptype": "switch_inverted",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "PERFORMANCE",
+      "values": [
+        "on",
+        "off"
+      ]
+    },
+    {
+      "default": "on",
+      "dock": "",
+      "flag": "--flash-attn",
+      "flag_pair": [],
+      "hidden_default": false,
+      "key": "flash_attn",
+      "label": "FLASH-ATTN",
+      "note": "Enable Flash Attention 2.",
+      "pattern": "",
+      "ptype": "arg_select",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "PERFORMANCE",
+      "values": [
+        "on",
+        "off",
+        "auto"
+      ]
+    },
+    {
+      "default": "on",
+      "dock": "",
+      "flag": "--reasoning",
+      "flag_pair": [],
+      "hidden_default": false,
+      "key": "reasoning",
+      "label": "REASONING budget",
+      "note": "Enable chain-of-thought reasoning output.",
+      "pattern": "",
+      "ptype": "arg_select",
+      "step": null,
+      "sub_params": {
+        "2000": [
+          "--reasoning-budget",
+          "2000",
+          "--reasoning-budget-message",
+          "Thinking budget exceeded, let's answer now."
+        ],
+        "4000": [
+          "--reasoning-budget",
+          "4000",
+          "--reasoning-budget-message",
+          "Thinking budget exceeded, let's answer now."
+        ],
+        "8000": [
+          "--reasoning-budget",
+          "8000",
+          "--reasoning-budget-message",
+          "Thinking budget exceeded, let's answer now."
+        ],
+        "off": [
+          "--reasoning-budget",
+          "1",
+          "--reasoning-budget-message",
+          "Proceed to final answer."
+        ],
+        "on": [
+          "--reasoning-budget",
+          "-1"
+        ]
+      },
+      "ui_group": "FEATURE-FLAGS",
+      "values": [
+        "on",
+        "off",
+        2000,
+        4000,
+        8000
+      ]
+    },
+    {
+      "default": "auto",
+      "dock": "",
+      "flag": "--mmproj",
+      "flag_pair": [],
+      "hidden_default": false,
+      "key": "vision",
+      "label": "VISION",
+      "note": "auto scans model directory for mmproj/projector files.",
+      "pattern": "*mmproj*",
+      "ptype": "path_scanner",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "FEATURE-FLAGS",
+      "values": [
+        "auto",
+        "off"
+      ]
+    },
+    {
+      "default": "off",
+      "dock": "",
+      "flag": "--no-mmap",
+      "flag_pair": [],
+      "hidden_default": false,
+      "key": "mmap",
+      "label": "MMAP",
+      "note": "on = use mmap (no flag), off = --no-mmap. Inverted logic.",
+      "pattern": "",
+      "ptype": "switch_inverted",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "FEATURE-FLAGS",
+      "values": [
+        "on",
+        "off"
+      ]
+    },
+    {
+      "default": "on",
+      "dock": "",
+      "flag": "--jinja",
+      "flag_pair": [],
+      "hidden_default": false,
+      "key": "jinja",
+      "label": "JINJA",
+      "note": "Enable Jinja templating for chat.",
+      "pattern": "",
+      "ptype": "switch_onoff",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "FEATURE-FLAGS",
+      "values": [
+        "on",
+        "off"
+      ]
+    },
+    {
+      "default": "on",
+      "dock": "",
+      "flag": "--cont-batching",
+      "flag_pair": [],
+      "hidden_default": false,
+      "key": "cont_batching",
+      "label": "CONT-BATCHING",
+      "note": "Enable continuous batching.",
+      "pattern": "",
+      "ptype": "switch_onoff",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "FEATURE-FLAGS",
+      "values": [
+        "on",
+        "off"
+      ]
+    },
+    {
+      "default": "draft-mtp",
+      "dock": "",
+      "flag": "--spec-type",
+      "flag_pair": [],
+      "hidden_default": false,
+      "key": "spec_type",
+      "label": "SPEC-TYPE",
+      "note": "Comma-separated speculative decoding types. 'none' disables.",
+      "pattern": "",
+      "ptype": "arg_select",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "SPECULATIVE-DECODING",
+      "values": [
+        "draft-simple",
+        "draft-eagle3",
+        "draft-mtp",
+        "ngram-simple",
+        "ngram-map-k",
+        "ngram-map-k4v",
+        "ngram-mod",
+        "ngram-cache"
+      ]
+    },
+    {
+      "default": 3,
+      "dock": "",
+      "flag": "--spec-draft-n-max",
+      "flag_pair": [],
+      "hidden_default": false,
+      "key": "spec_draft_n_max",
+      "label": "SPEC-DRAFT-N-MAX",
+      "note": "Maximum number of draft tokens per speculative decoding step.",
+      "pattern": "",
+      "ptype": "arg_select",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "SPECULATIVE-DECODING",
+      "values": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        8,
+        10,
+        12
+      ]
+    },
+    {
+      "default": 1,
+      "dock": "",
+      "flag": "--spec-draft-n-min",
+      "flag_pair": [],
+      "hidden_default": false,
+      "key": "spec_draft_n_min",
+      "label": "SPEC-DRAFT-N-MIN",
+      "note": "minimum number of draft tokens to use for speculative decoding.",
+      "pattern": "",
+      "ptype": "arg_select",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "SPECULATIVE-DECODING",
+      "values": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    {
+      "default": "on",
+      "dock": "",
+      "flag": "--spm-infill",
+      "flag_pair": [],
+      "hidden_default": false,
+      "key": "spm_infill",
+      "label": "Spm Infill",
+      "note": "m-infill                            use Suffix/Prefix/Middle pattern for infill (instead of",
+      "pattern": "",
+      "ptype": "switch_onoff",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "DEV-WORKFLOW",
+      "values": [
+        "on",
+        "off"
+      ]
+    },
+    {
+      "default": "on",
+      "dock": "",
+      "flag": "--swa-full",
+      "flag_pair": [],
+      "hidden_default": false,
+      "key": "swa_full",
+      "label": "Swa Full",
+      "note": "a-full                              use full-size SWA cache (default: false)",
+      "pattern": "",
+      "ptype": "switch_onoff",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "DEV-WORKFLOW",
+      "values": [
+        "off",
+        "on"
+      ]
+    },
+    {
+      "default": 8192,
+      "dock": "",
+      "flag": "--cache-ram",
+      "flag_pair": [],
+      "hidden_default": false,
+      "key": "cache_ram",
+      "label": "Cache Ram",
+      "note": "set the maximum cache size in MiB (default: 8192, -1 - no limit, 0 -",
+      "pattern": "",
+      "ptype": "arg_select",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "DEV-WORKFLOW",
+      "values": [
+        8192,
+        16384,
+        32768
+      ]
+    },
+    {
+      "default": "regular",
+      "dock": "runtime",
+      "flag": null,
+      "flag_pair": [],
+      "hidden_default": false,
+      "key": "offload_mode",
+      "label": "OFFLOAD-MODE",
+      "note": "moe_optimal adds expert eviction filter and forces KV quant to q4_0.",
+      "pattern": "",
+      "ptype": "logic_only",
+      "step": null,
+      "sub_params": {
+        "moe_optimal": [
+          "--no-op-offload",
+          "--cpu-moe"
+        ]
+      },
+      "ui_group": "SYSTEM",
+      "values": [
+        "regular",
+        "moe_optimal"
+      ]
+    },
+    {
+      "default": "none",
+      "dock": "runtime",
+      "flag": "--split-mode",
+      "flag_pair": [],
+      "hidden_default": false,
+      "key": "split",
+      "label": "SPLIT",
+      "note": "How to split model across multiple GPUs.",
+      "pattern": "",
+      "ptype": "arg_select",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "SYSTEM",
+      "values": [
+        "none",
+        "layer",
+        "tensor",
+        "row"
+      ]
+    },
+    {
+      "default": 8080,
+      "dock": "runtime",
+      "flag": null,
+      "flag_pair": [],
+      "hidden_default": false,
+      "key": "base_port",
+      "label": "BASE-PORT",
+      "note": "Starting port for engine instances. Auto-increments per slot.",
+      "pattern": "",
+      "ptype": "logic_only",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "SYSTEM",
+      "values": [
+        8080,
+        8180,
+        8888,
+        9090
+      ]
+    }
+  ],
+  "spawn_profile": {
+    "alias_flag": [
+      "--alias"
+    ],
+    "auto_vram": true,
+    "enable_metrics": true,
+    "essentialParamKeys": [
+      "kv_quant",
+      "ctx",
+      "batch",
+      "ubatch",
+      "parallel",
+      "vision",
+      "mmap",
+      "cont_batching",
+      "spec_type",
+      "spec_draft_n_max",
+      "spec_draft_n_min"
+    ],
+    "fit_adapter": "ggml_master",
+    "fit_style": "ggml_fit_params",
+    "fusion_adapter": "ggml_master",
+    "gpu_env": "CUDA_VISIBLE_DEVICES",
+    "max_engine_slots": 64,
+    "mmproj_flag": [
+      "--mmproj"
+    ],
+    "model_flag": [
+      "-m"
+    ],
+    "ngl_flag": [
+      "--n-gpu-layers"
+    ],
+    "port_flag": [
+      "--port"
+    ],
+    "simple_param_keys": [
+      "kv_quant",
+      "ctx",
+      "batch",
+      "ubatch",
+      "parallel",
+      "vision",
+      "mmap",
+      "cont_batching",
+      "spec_type",
+      "spec_draft_n_max",
+      "spec_draft_n_min"
+    ],
+    "supports_fusion": true,
+    "tensor_split": true,
+    "verbosity_args": [
+      "-lv",
+      "4"
+    ]
+  },
+  "templateVersion": 23,
+  "template_type": "ggml-llama"
+}

@@ -1,9 +1,19 @@
-import { useState, useCallback, useMemo, useEffect } from "react";
+import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { ModelEntry, StackEntry } from "../lib/types";
+import type { FitScanFull, FitScanProgress, ModelEntry, ProviderConfig, StackEntry } from "../lib/types";
+import { DEFAULT_PROVIDER_ID } from "../lib/types";
 import { useKeyboardNav } from "./useKeyboardNav";
+import { useTauriListen } from "./useTauriListen";
 import { KEYS, readStorage, writeStorage } from "../lib/storage";
 import { dispatchAppEvent, EVENTS } from "../lib/events";
+import { bootstrapFitScanCache } from "../lib/fitScanSessionStore";
+import {
+  FIT_SCAN_POINTS_TOTAL,
+  findFitScanEntry,
+  fitScanBadgeLabel,
+  mergeFitScanProgressPoint,
+  modelHasCompleteFitScan,
+} from "../lib/fitScanTable";
 
 export type SortField = (keyof ModelEntry) | "date";
 export type SortDirection = "asc" | "desc";
@@ -42,6 +52,7 @@ function modelMatchesSearch(m: ModelEntry, words: string[]): boolean {
 interface UseModelCatalogParams {
   models: ModelEntry[];
   stack: StackEntry[];
+  providers?: ProviderConfig[];
   scanningPath: string | null;
   setScanningPath: (p: string | null) => void;
   batchScanState: { active: boolean; scanned: number; failed: number; total: number };
@@ -49,7 +60,16 @@ interface UseModelCatalogParams {
   onReload: () => void;
 }
 
-export function useModelCatalog({ models, stack, scanningPath, setScanningPath, batchScanState, setBatchScanState, onReload }: UseModelCatalogParams) {
+export function useModelCatalog({
+  models,
+  stack,
+  providers,
+  scanningPath,
+  setScanningPath,
+  batchScanState,
+  setBatchScanState,
+  onReload,
+}: UseModelCatalogParams) {
   const [search, setSearch] = useState("");
   // Visual highlight in catalog list only — set by catalog card clicks
   const [catalogSelectedModel, setCatalogSelectedModel] = useState<ModelEntry | null>(null);
@@ -270,6 +290,156 @@ export function useModelCatalog({ models, stack, scanningPath, setScanningPath, 
     try { await invoke("cancel_gguf_scan_cmd"); } catch {}
   }, []);
 
+  const [fitProviderId, setFitProviderId] = useState(
+    () => readStorage(KEYS.lastProvider) || DEFAULT_PROVIDER_ID,
+  );
+  const [fitScanResults, setFitScanResults] = useState<Record<string, FitScanFull>>({});
+  const [fitScanPointsTotal, setFitScanPointsTotal] = useState(FIT_SCAN_POINTS_TOTAL);
+  const [fitScanningPaths, setFitScanningPaths] = useState<Set<string>>(() => new Set());
+  const [fitScanActiveLabels, setFitScanActiveLabels] = useState<Record<string, string>>({});
+  const fitScanInFlightRef = useRef(new Set<string>());
+  const fitScanningPathsRef = useRef(fitScanningPaths);
+  fitScanningPathsRef.current = fitScanningPaths;
+
+  const reloadFitScanCache = useCallback(async (providerId: string) => {
+    const cached = await bootstrapFitScanCache(providerId);
+    if (cached) {
+      setFitScanResults(cached.results);
+      setFitScanPointsTotal(cached.scan_points_total ?? FIT_SCAN_POINTS_TOTAL);
+    } else {
+      setFitScanResults({});
+      setFitScanPointsTotal(FIT_SCAN_POINTS_TOTAL);
+    }
+  }, []);
+
+  useEffect(() => {
+    void reloadFitScanCache(fitProviderId);
+  }, [fitProviderId, reloadFitScanCache]);
+
+  useEffect(() => {
+    const onProviderChanged = (e: Event) => {
+      const detail = (e as CustomEvent<{ providerId?: string }>).detail;
+      const next = detail?.providerId || readStorage(KEYS.lastProvider) || DEFAULT_PROVIDER_ID;
+      setFitProviderId(next);
+    };
+    const onFitCacheChanged = () => {
+      const pid = readStorage(KEYS.lastProvider) || DEFAULT_PROVIDER_ID;
+      void reloadFitScanCache(pid);
+    };
+    window.addEventListener(EVENTS.providerChanged, onProviderChanged);
+    window.addEventListener(EVENTS.fitScanCacheChanged, onFitCacheChanged);
+    return () => {
+      window.removeEventListener(EVENTS.providerChanged, onProviderChanged);
+      window.removeEventListener(EVENTS.fitScanCacheChanged, onFitCacheChanged);
+    };
+  }, [reloadFitScanCache]);
+
+  useTauriListen<FitScanProgress>("fit-scan-progress", (evt) => {
+    if (!evt.model_path) return;
+    if (evt.status === "scanning") {
+      if (fitScanningPathsRef.current.has(evt.model_path) && evt.label) {
+        setFitScanActiveLabels((prev) => ({ ...prev, [evt.model_path]: evt.label! }));
+      }
+      if (evt.scan_points_total) setFitScanPointsTotal(evt.scan_points_total);
+      return;
+    }
+    setFitScanResults((prev) => {
+      const entry = findFitScanEntry(prev, evt.model_path);
+      if (evt.status === "skipped") {
+        return {
+          ...prev,
+          [evt.model_path]: {
+            model_path: evt.model_path,
+            points: [],
+            skip_reason: evt.skip_reason,
+          },
+        };
+      }
+      if (evt.status === "point_skipped" && evt.label) {
+        const prevSkipped = { ...(entry?.skipped_points ?? {}) };
+        if (evt.skip_reason) prevSkipped[evt.label] = evt.skip_reason;
+        return {
+          ...prev,
+          [evt.model_path]: {
+            model_path: evt.model_path,
+            points: entry?.points ?? [],
+            error: entry?.error,
+            skip_reason: entry?.skip_reason,
+            skipped_points: prevSkipped,
+          },
+        };
+      }
+      if (evt.status === "complete" && evt.vram_mib != null && evt.label) {
+        return {
+          ...prev,
+          [evt.model_path]: mergeFitScanProgressPoint(entry, evt.model_path, evt.label, evt.vram_mib),
+        };
+      }
+      return prev;
+    });
+  });
+
+  const fitScanAvailable = useMemo(() => {
+    if (!providers?.length) return true;
+    const provider = providers.find((p) => p.id === fitProviderId);
+    return Boolean(provider?.enabled);
+  }, [fitProviderId, providers]);
+
+  const getFitScanBadge = useCallback(
+    (model: ModelEntry) => {
+      const entry = findFitScanEntry(fitScanResults, model.path);
+      return fitScanBadgeLabel(entry, fitScanPointsTotal);
+    },
+    [fitScanResults, fitScanPointsTotal],
+  );
+
+  const modelNeedsFitScan = useCallback(
+    (model: ModelEntry) => {
+      if (!model.metadata) return false;
+      const entry = findFitScanEntry(fitScanResults, model.path);
+      return !modelHasCompleteFitScan(entry, fitScanPointsTotal);
+    },
+    [fitScanResults, fitScanPointsTotal],
+  );
+
+  const isFitScanning = useCallback(
+    (modelPath: string) => fitScanningPaths.has(modelPath),
+    [fitScanningPaths],
+  );
+
+  const getFitScanActiveLabel = useCallback(
+    (modelPath: string) => fitScanActiveLabels[modelPath] ?? null,
+    [fitScanActiveLabels],
+  );
+
+  const handleFitScanModel = useCallback((model: ModelEntry) => {
+    if (!model.metadata || fitScanInFlightRef.current.has(model.path)) return;
+    fitScanInFlightRef.current.add(model.path);
+    setFitScanningPaths((prev) => new Set(prev).add(model.path));
+    setFitScanActiveLabels((prev) => ({ ...prev, [model.path]: "" }));
+
+    void invoke<FitScanFull>("fit_scan_single_model", {
+      modelPath: model.path,
+      providerId: fitProviderId,
+      forceRescan: false,
+    })
+      .then(() => reloadFitScanCache(fitProviderId))
+      .then(() => dispatchAppEvent(EVENTS.fitScanCacheChanged))
+      .catch((e) => console.error("FIT scan failed:", e))
+      .finally(() => {
+        fitScanInFlightRef.current.delete(model.path);
+        setFitScanningPaths((prev) => {
+          const next = new Set(prev);
+          next.delete(model.path);
+          return next;
+        });
+        setFitScanActiveLabels((prev) => {
+          const { [model.path]: _removed, ...rest } = prev;
+          return rest;
+        });
+      });
+  }, [fitProviderId, reloadFitScanCache]);
+
   // Keyboard navigation
   const handleKeyboardSelect = useCallback((index: number) => {
     if (catalogModels[index]) handleSelect(catalogModels[index]);
@@ -299,6 +469,8 @@ export function useModelCatalog({ models, stack, scanningPath, setScanningPath, 
     runningModelPaths, runningInstances, activeEngineByModel,
     scanningPath, setScanningPath, handleScanModel,
     batchScanState, setBatchScanState, handleScanAll, handleCancelScan,
+    fitScanAvailable, isFitScanning, getFitScanActiveLabel, getFitScanBadge, modelNeedsFitScan, handleFitScanModel,
+    fitScanningCount: fitScanningPaths.size,
     zone,
   };
 }

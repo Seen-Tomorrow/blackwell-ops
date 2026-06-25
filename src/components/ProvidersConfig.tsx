@@ -283,6 +283,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
       });
 
       completeFitScanSession(providerId, result);
+      dispatchAppEvent(EVENTS.fitScanCacheChanged);
     } catch (err) {
       console.error(`Scan library failed for ${providerId}:`, err);
       failFitScanSession(

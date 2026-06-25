@@ -381,7 +381,7 @@ export default function SetupGuideDisplay({
               onChange={(e) => setDriversConfirmed(e.target.checked)}
               className="setup-checklist__checkbox"
             />
-            I have recent NVIDIA drivers installed
+            I have recent NVIDIA drivers installed, v610+ required for cuda 13.3 (FRONTIER)
           </label>
         )}
 

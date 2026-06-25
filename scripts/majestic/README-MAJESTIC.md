@@ -28,7 +28,7 @@ npm run majestic:ship     # upload to GitHub (needs unlock file + type YES)
 SHIP does **not** commit your code. It does:
 
 1. **Local** annotated tag `v1.0.0` on current `HEAD` (if missing)
-2. **GitHub Release** via `gh release create v1.0.0` — this creates the **tag on GitHub** and uploads assets
+2. **GitHub Release** via `gh release create v1.0.0 <assets...>` — creates the tag and attaches assets **before** publish (required when release immutability is enabled)
 3. **`git push origin tag`** only if `"pushTag": true` in `majestic.config.json` (default **false**)
 
 So the GitHub release tag is automatic; pushing the tag to `origin` via plain git is optional.
@@ -54,7 +54,9 @@ PACK mirror **replaces files** in `src-tauri/runtime/<profile>/` (not `config/`)
 
 Menu **9 PARANOID** zips to `.majestic-backup/paranoid-*.zip` (**no compression**, ~15s). Keeps source + `src-tauri/runtime/` + `foundry/artifacts/` only (the 1h rebuild insurance). Skips llama.cpp `engines/`, `runtime-bundle`, repo `target/` dev mirror, `.pdb`, `node_modules`, Rust caches, `target/release/`.
 
-SHIP only touches GitHub (re-upload replaces release assets). Does not delete source, Foundry artifacts, or dev `target/debug/`.
+SHIP only touches GitHub. Mutable releases can be re-uploaded (`--clobber`); **immutable** releases cannot be changed after publish (disabling immutability in settings does not unlock old releases). If ship fails with HTTP 422, delete the broken release, **bump patch** (tag cannot be reused), pack, ship again.
+
+Does not delete source, Foundry artifacts, or dev `target/debug/`.
 
 ## What never gets committed
 

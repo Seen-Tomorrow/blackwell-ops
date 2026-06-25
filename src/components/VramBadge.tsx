@@ -152,14 +152,28 @@ export default function VramBadge({
     const display = rootRef.current?.closest(".vram-forecast-display");
     if (!(display instanceof HTMLElement)) return;
 
-    if (!fusionOverlayActive || engineStatus === "LOADING") {
+    if (!fusionOverlayActive) {
       delete display.dataset.fusionHeightManaged;
       display.removeAttribute("data-fusion-tray-stowed");
+      display.removeAttribute("data-fusion-boot");
       display.style.height = "";
       display.style.minHeight = "";
       display.style.maxHeight = "";
       return;
     }
+
+    // LOADING: pin phosphor to forecast baseline — do not hug compact FULL AUTO forecast body.
+    if (engineStatus === "LOADING") {
+      display.dataset.fusionHeightManaged = "";
+      display.setAttribute("data-fusion-boot", "");
+      display.removeAttribute("data-fusion-tray-stowed");
+      display.style.height = `${FORECAST_PHOSPHOR_HEIGHT_PX}px`;
+      display.style.minHeight = `${FORECAST_PHOSPHOR_HEIGHT_PX}px`;
+      display.style.maxHeight = `${FORECAST_PHOSPHOR_HEIGHT_PX}px`;
+      return;
+    }
+
+    display.removeAttribute("data-fusion-boot");
 
     refreshFusionBenchTrayFromStorage();
     const trayOpen = getFusionBenchTrayOpen();
@@ -185,7 +199,7 @@ export default function VramBadge({
 
   /* HMR: forecast ResizeObserver or effect teardown can clear height after layout */
   useEffect(() => {
-    if (!fusionOverlayActive || engineStatus === "LOADING") return;
+    if (!fusionOverlayActive) return;
     let raf1 = 0;
     let raf2 = 0;
     raf1 = requestAnimationFrame(() => {

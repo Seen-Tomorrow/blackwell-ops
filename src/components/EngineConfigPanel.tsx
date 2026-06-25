@@ -1499,6 +1499,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                   onClick={() => {
                     setSelectedProvider(p.id);
                     writeStorage(KEYS.lastProvider, p.id);
+                    dispatchAppEvent(EVENTS.providerChanged, { providerId: p.id });
                   }}
                   className={`flex-shrink-0 px-2 py-0.5 text-[9px] font-mono rounded-sm ${
                     selectedProvider === p.id ? "provider-pill-active" : "provider-pill"

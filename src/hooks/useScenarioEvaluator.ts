@@ -5,6 +5,7 @@ import { evaluate, committedSlotsFromStack, committedStackKey, parseCtx, type Sc
 import { attachMemorySource, MEMORY_SOURCE_LABELS } from "../services/vram/memorySource";
 import { gpuMemoryBucketKey, vramManifestSnapshotEqual } from "../lib/telemetryGpu";
 import { tomMtpBlocked, toastTomMtpSkip, TOM_MTP_SKIP_MESSAGE } from "../lib/tomMtp";
+import { EVENTS } from "../lib/events";
 
 type ProbeSession = {
   modelPath: string;
@@ -402,23 +403,33 @@ export function useScenarioEvaluator({
       });
   }, [model?.path, configKey]);
 
-  // Fetch FIT scan points when model path changes, cache per model
-  useEffect(() => {
+  const loadFitScanPoints = useCallback(() => {
     if (!model) {
       fitPointsRef.current = null;
       lastFitModelPathRef.current = "";
       return;
     }
-    if (model.path === lastFitModelPathRef.current) return;
     lastFitModelPathRef.current = model.path;
-
     const providerId = (config.backend_type as string) || "ggml-master";
-    invoke("get_fit_scan_points", { modelPath: model.path, providerId }).then((result: any) => {
-      fitPointsRef.current = result ?? null;
-    }).catch(() => {
-      fitPointsRef.current = null;
-    });
+    invoke("get_fit_scan_points", { modelPath: model.path, providerId })
+      .then((result: any) => {
+        fitPointsRef.current = result ?? null;
+        scheduleEvaluationRef.current();
+      })
+      .catch(() => {
+        fitPointsRef.current = null;
+      });
   }, [model?.path, config.backend_type]);
+
+  useEffect(() => {
+    loadFitScanPoints();
+  }, [loadFitScanPoints]);
+
+  useEffect(() => {
+    const onFitCacheChanged = () => loadFitScanPoints();
+    window.addEventListener(EVENTS.fitScanCacheChanged, onFitCacheChanged);
+    return () => window.removeEventListener(EVENTS.fitScanCacheChanged, onFitCacheChanged);
+  }, [loadFitScanPoints]);
 
   useEffect(() => {
     if (!model || gpus.length === 0) {

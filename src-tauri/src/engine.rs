@@ -759,6 +759,76 @@ pub async fn fit_scan_model(
 }
 
 #[tauri::command]
+pub async fn fit_scan_single_model(
+    model_path: String,
+    provider_id: String,
+    force_rescan: Option<bool>,
+    app: tauri::State<'_, AppContext>,
+) -> Result<fit_scanner::FitScanFull, String> {
+    let cfg = {
+        let guard = app.config.lock().map_err(|e| e.to_string())?;
+        guard.clone()
+    };
+
+    if let Some(note) = fit_scanner::model_fit_skip_note(&provider_id, &model_path) {
+        app.log_hub.emit_console_line(
+            BlackwellOutputConsoleCategory::Utils,
+            &format!("[FIT-SCAN] {} | skipped | {}", model_path, note),
+            BlackwellOutputConsoleLineStyle::Normal,
+        );
+        return Err(note.to_string());
+    }
+
+    let fit_binary = fit_scanner::resolve_fit_binary(&cfg, &provider_id, "")?;
+
+    let (progress_tx, _progress_rx) = broadcast::channel::<fit_scanner::FitScanProgress>(64);
+    let log_hub_clone = app.log_hub.clone();
+    let prog_for_spawn = progress_tx.clone();
+    tokio::spawn(async move {
+        let mut rx = prog_for_spawn.subscribe();
+        while let Ok(evt) = rx.recv().await {
+            log_hub_clone.emit("fit-scan-progress", &evt);
+        }
+    });
+
+    // Local cancel only — do not touch AppContext.fit_scan_cancel (library scan stop).
+    let cancel_flag = Arc::new(AtomicBool::new(false));
+
+    let result = fit_scanner::scan_single_model_full(
+        &fit_binary,
+        &model_path,
+        &provider_id,
+        Some(&progress_tx),
+        &cancel_flag,
+        Some(&app.log_hub),
+        force_rescan.unwrap_or(false),
+        None,
+    )
+    .await;
+
+    let summary_style = if result.error.is_some() && result.skip_reason.is_none() {
+        BlackwellOutputConsoleLineStyle::Warning
+    } else {
+        BlackwellOutputConsoleLineStyle::Success
+    };
+    app.log_hub.emit_console_line(
+        BlackwellOutputConsoleCategory::Utils,
+        &format_console_completion(
+            "VRAM fit model scan complete",
+            &format!(
+                "{} — {}/{} points",
+                fit_scanner::extract_model_name(&model_path),
+                fit_scanner::fit_scan_labels_done(&result).len(),
+                fit_scanner::scan_points_total()
+            ),
+        ),
+        summary_style,
+    );
+
+    Ok(result)
+}
+
+#[tauri::command]
 pub async fn fit_scan_library(
     provider_id: String,
     model_base: String,

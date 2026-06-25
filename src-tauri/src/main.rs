@@ -788,6 +788,7 @@ async fn main() {
             config::reorder_provider,
             // FIT Scanner commands
             engine::fit_scan_model,
+            engine::fit_scan_single_model,
             engine::fit_scan_library,
             engine::fit_stop_scan,
             fit_scanner::get_fit_scan_points,

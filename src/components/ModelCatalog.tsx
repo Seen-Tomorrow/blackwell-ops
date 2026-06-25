@@ -37,7 +37,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
   const [showScanMenu, setShowScanMenu] = useState(false);
 
   const catalog = useModelCatalog({
-    models, stack, scanningPath, setScanningPath, batchScanState, setBatchScanState, onReload,
+    models, stack, providers: externalProviders, scanningPath, setScanningPath, batchScanState, setBatchScanState, onReload,
   });
 
   const { containerRef: splitContainerRef, catalogWidth, isDragging, startDrag, resetWidth } =
@@ -46,6 +46,8 @@ export default function ModelCatalog(props: ModelCatalogProps) {
   const { search, setSearch, catalogSelectedModel, panelActiveModel, handleSelect, handleSelectBySlot, selectedSlotIdx, sortField, sortDirection, handleSort,
     catalogModels, runningModelPaths,
     handleScanModel, handleScanAll, handleCancelScan,
+    fitScanAvailable, isFitScanning, getFitScanActiveLabel, getFitScanBadge, modelNeedsFitScan, handleFitScanModel,
+    fitScanningCount,
     zone, visibleCount, setVisibleCount } = catalog;
 
   const startScan = (concurrency: number) => {
@@ -108,6 +110,11 @@ export default function ModelCatalog(props: ModelCatalogProps) {
       {batchScanState.active && (
         <span className="catalog-scan-status text-[8px] font-mono mr-2">
           SCAN: {batchScanState.scanned}/{batchScanState.total}
+        </span>
+      )}
+      {fitScanningCount > 0 && (
+        <span className="catalog-scan-status text-[8px] font-mono mr-2 text-violet-300/80">
+          FIT: {fitScanningCount} active
         </span>
       )}
       {batchScanState.active ? (
@@ -248,6 +255,12 @@ export default function ModelCatalog(props: ModelCatalogProps) {
                         onScanModel={handleScanModel}
                         scanningPath={scanningPath}
                         hfUpdateAvailable={catalogHfUpdates?.has(model.path) ?? false}
+                        fitScanBadge={getFitScanBadge(model)}
+                        fitScanAvailable={fitScanAvailable}
+                        needsFitScan={modelNeedsFitScan(model)}
+                        fitScanning={isFitScanning(model.path)}
+                        fitScanActiveLabel={getFitScanActiveLabel(model.path)}
+                        onFitScanModel={handleFitScanModel}
                       />
                     </div>
                   );
