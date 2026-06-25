@@ -396,7 +396,6 @@ html, body, #root {
   max-width: min(56vw, 34rem);
 }
 
-.app-header-power-user,
 .app-header-update-btn {
   flex-shrink: 0;
 }
@@ -664,13 +663,43 @@ html, body, #root {
   flex-shrink: 0;
   width: fit-content;
   max-width: 100%;
-  align-items: flex-start;
+  align-items: flex-end;
 }
 
 .app-quick-settings__tools {
+  align-self: stretch;
   border-top: 1px solid color-mix(in srgb, var(--theme-chrome-control-border) 55%, transparent);
   margin-top: 2px;
   padding-top: 3px;
+  min-width: 0;
+}
+
+.app-quick-settings__title {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  color: var(--theme-chrome-control-text);
+  opacity: 0.72;
+  line-height: 1;
+}
+
+.app-quick-settings__tool-group {
+  flex: 1 1 auto;
+}
+
+.app-quick-settings__recovery.app-chrome-control-btn {
+  font-weight: 700;
+  color: var(--theme-status-nominal);
+}
+
+.app-quick-settings__recovery.app-chrome-control-btn:hover {
+  color: var(--theme-chrome-control-hover);
+}
+
+.app-header-dev-tools {
+  border: 1px solid color-mix(in srgb, var(--theme-chrome-control-border) 70%, #facc15 30%);
+  border-radius: 6px;
+  padding: 3px 5px;
 }
 
 .app-quick-settings__sep {

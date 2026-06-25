@@ -276,15 +276,15 @@ Function PageReinstall
     Pop $R4
     ${IfThen} $(^RTL) = 1 ${|} nsDialogs::SetRTL $(^RTL) ${|}
 
-    ; alreadyInstalledLong is multi-paragraph — 42u clipped the last lines
-    ${NSD_CreateLabel} 0 0 100% 54u $R1
+    ; alreadyInstalledLong is multi-paragraph — needs ~64u to avoid clipping
+    ${NSD_CreateLabel} 0 0 100% 64u $R1
     Pop $R1
 
-    ${NSD_CreateRadioButton} 30u 58u -30u 24u $R2
+    ${NSD_CreateRadioButton} 30u 68u -30u 24u $R2
     Pop $R2
     ${NSD_OnClick} $R2 PageReinstallUpdateSelection
 
-    ${NSD_CreateRadioButton} 30u 84u -30u 24u $R3
+    ${NSD_CreateRadioButton} 30u 94u -30u 24u $R3
     Pop $R3
     ; Disable this radio button if downgrading and downgrades are disabled
     !if "${ALLOWDOWNGRADES}" == "false"

@@ -14,19 +14,14 @@ import FoundryModal from "./FoundryModal";
 import AppearanceControls from "./AppearanceControls";
 import BlackwellBrandMark from "./BlackwellBrandMark";
 import {
-  cyclePowerUserState,
   loadUiDensity,
   loadUiZoom,
-  loadPowerUserState,
   saveUiDensity,
   saveUiZoom,
-  savePowerUserState,
-  type PowerUserState,
   type UiDensity,
 } from "../lib/storage";
 import {
   dispatchAppEvent,
-  dispatchPowerUserChanged,
   dispatchClearLocalStorage,
   dispatchNavigateRecovery,
   dispatchReplaySetupGuide,
@@ -39,18 +34,6 @@ import { isMobileDevice } from "../lib/utils";
 const MIN_ZOOM = 0.7;
 const MAX_ZOOM = 1.5;
 const ZOOM_STEP = 0.05;
-
-const POWER_USER_LABELS: Record<PowerUserState, string> = {
-  locked: "EDITOR — LOCKED",
-  unlocked: "EDITOR — UNLOCKED",
-  permanently: "EDITOR — PERMANENTLY UNLOCKED",
-};
-
-const POWER_USER_COLORS: Record<PowerUserState, string> = {
-  locked: "app-chrome-muted",
-  unlocked: "text-yellow-400",
-  permanently: "text-yellow-400",
-};
 
 function loadZoom(): number {
   return loadUiZoom(1.0, MIN_ZOOM, MAX_ZOOM);
@@ -83,7 +66,6 @@ const tabs: { id: Tab; label: string; icon: string; hidden?: boolean }[] = [
 ];
 
 export default function Layout({ activeTab, onTabChange, children, providers = [], appUpdate, hasBinaryUpdates, onInstallAppUpdate }: LayoutProps) {
-  const [powerUserState, setPowerUserState] = useState<PowerUserState>(loadPowerUserState);
   const [zoom, setZoom] = useState(loadZoom);
   const [uiDensity, setUiDensity] = useState<UiDensity>(loadUiDensity);
   const [shellWidthPx, setShellWidthPx] = useState(() =>
@@ -108,25 +90,6 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
   const [lastConsoleLine, setLastConsoleLine] = useState<string>("Ready for telemetry");
   const [lastConsoleCategory, setLastConsoleCategory] = useState<OutputConsoleCategory | null>(null);
   const [consoleOpenCategory, setConsoleOpenCategory] = useState<OutputConsoleCategory | null>(null);
-
-  // Listen for power-user changes from other components (ConfigPage)
-  useEffect(() => {
-    let stale = false;
-    const handler = () => requestAnimationFrame(() => {
-      if (!stale) setPowerUserState(loadPowerUserState());
-    });
-    window.addEventListener(EVENTS.powerUserChanged, handler);
-    return () => { stale = true; window.removeEventListener(EVENTS.powerUserChanged, handler); };
-  }, []);
-
-  const handlePowerUserToggle = useCallback(() => {
-    setPowerUserState(prev => {
-      const next = cyclePowerUserState(prev);
-      savePowerUserState(next);
-      dispatchPowerUserChanged();
-      return next;
-    });
-  }, []);
 
   useEffect(() => {
     const check = () => setIsMobile(isMobileDevice());
@@ -259,67 +222,73 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
               )}
             </div>
           )}
-          <div className="app-quick-settings flex flex-col gap-px flex-shrink-0">
+          <div className="app-quick-settings flex flex-col items-end gap-px flex-shrink-0">
             <AppearanceControls embedded />
-            <div className="app-quick-settings__tools flex items-center gap-1 flex-wrap px-0.5 py-0.5">
-              <button
-                onClick={handlePowerUserToggle}
-                className={`app-header-power-user text-[8px] font-mono tracking-wider transition-colors flex-shrink-0 whitespace-nowrap ${POWER_USER_COLORS[powerUserState]}`}
-                title={POWER_USER_LABELS[powerUserState]}
-              >
-                EDITOR {powerUserState === "locked" ? "\u{1F512}" : powerUserState === "unlocked" ? "\u{1F513}" : "\u{1F511}"}
-              </button>
-              <span className="app-quick-settings__sep app-chrome-control-btn text-[8px] font-mono opacity-40">|</span>
-              <button
-                type="button"
-                onClick={toggleUiDensity}
-                className={`app-chrome-control-btn px-1.5 text-[8px] font-mono transition-colors leading-none ${uiDensity === "compact" ? "text-yellow-400/90" : ""}`}
-                title={uiDensity === "compact" ? "Density: Compact (click for Comfortable)" : "Density: Comfortable (click for Compact)"}
-              >
-                {uiDensity === "compact" ? "COMPACT" : "COMFORT"}
-              </button>
-              <span className="app-quick-settings__sep app-chrome-control-btn text-[8px] font-mono opacity-40">|</span>
-              <button onClick={() => adjustZoom(-ZOOM_STEP)} className="app-chrome-control-btn px-1 text-[9px] font-mono transition-colors leading-none" title="Decrease text scale (Ctrl+scroll)">−</button>
-              <span className="app-chrome-control-btn text-[8px] font-mono opacity-60 w-8 text-center" title="Text scale (Ctrl+scroll)">{Math.round(zoom * 100)}%</span>
-              <button onClick={() => adjustZoom(ZOOM_STEP)} className="app-chrome-control-btn px-1 text-[9px] font-mono transition-colors leading-none" title="Increase text scale (Ctrl+scroll)">+</button>
-              <span className="app-quick-settings__sep app-chrome-control-btn text-[8px] font-mono opacity-40">|</span>
+            <div className="app-quick-settings__tools app-quick-settings__row flex items-center gap-2">
+              <span className="app-quick-settings__title font-mono tracking-widest uppercase shrink-0">
+                Quick Settings
+              </span>
+              <div className="app-quick-settings__tool-group flex items-center gap-1 flex-wrap justify-end min-w-0">
+              <div className="app-appearance-inline-group flex items-center gap-0.5 flex-shrink-0">
+                <span className="app-appearance-section__label app-appearance-section__label--compact text-[6px] font-mono tracking-widest uppercase">
+                  Comfort
+                </span>
+                <button
+                  type="button"
+                  onClick={toggleUiDensity}
+                  className={`app-chrome-control-btn px-1.5 text-[8px] font-mono transition-colors leading-none ${uiDensity === "compact" ? "text-yellow-400/90" : ""}`}
+                  title={uiDensity === "compact" ? "Density: Compact (click for Comfortable)" : "Density: Comfortable (click for Compact)"}
+                >
+                  {uiDensity === "compact" ? "COMPACT" : "COMFORT"}
+                </button>
+              </div>
+              <span className="app-quick-settings__sep app-chrome-control-btn text-[8px] font-mono opacity-40" aria-hidden>|</span>
+              <div className="app-appearance-inline-group flex items-center gap-0.5 flex-shrink-0">
+                <span className="app-appearance-section__label app-appearance-section__label--compact text-[6px] font-mono tracking-widest uppercase">
+                  Zoom
+                </span>
+                <button onClick={() => adjustZoom(-ZOOM_STEP)} className="app-chrome-control-btn px-1 text-[9px] font-mono transition-colors leading-none" title="Decrease text scale (Ctrl+scroll)">−</button>
+                <span className="app-chrome-control-btn text-[8px] font-mono opacity-60 w-8 text-center" title="Text scale (Ctrl+scroll)">{Math.round(zoom * 100)}%</span>
+                <button onClick={() => adjustZoom(ZOOM_STEP)} className="app-chrome-control-btn px-1 text-[9px] font-mono transition-colors leading-none" title="Increase text scale (Ctrl+scroll)">+</button>
+              </div>
+              <span className="app-quick-settings__sep app-chrome-control-btn text-[8px] font-mono opacity-40" aria-hidden>|</span>
               <button
                 type="button"
                 onClick={dispatchNavigateRecovery}
-                className="app-chrome-control-btn px-1.5 text-[8px] font-mono transition-colors leading-none text-nv-green/70 hover:text-nv-green"
+                className="app-quick-settings__recovery app-chrome-control-btn px-1.5 text-[8px] font-mono transition-colors leading-none"
                 title="CONFIG → RECOVERY — clear local UI prefs or reset portable config/"
               >
                 RECOVERY
               </button>
-              {__BUILD_MODE__ === "dev" && (
-                <>
-                  <span className="app-quick-settings__sep app-chrome-control-btn text-[8px] font-mono opacity-40">|</span>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      if (e.shiftKey) {
-                        dispatchReplaySetupGuideOnboardingOnly();
-                        return;
-                      }
-                      void dispatchReplaySetupGuide();
-                    }}
-                    className="app-chrome-control-btn px-1.5 text-[8px] font-mono transition-colors leading-none text-nv-green/70 hover:text-nv-green"
-                    title="Dev: first-run reset (paths → models/ only, clears meta cache, keeps providers/binaries, replays onboarding). Shift+click: onboarding UI only."
-                  >
-                    ↺ SETUP
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => dispatchClearLocalStorage(true)}
-                    className="app-chrome-control-btn px-1.5 text-[8px] font-mono transition-colors leading-none text-yellow-400/70 hover:text-yellow-400"
-                    title="Dev: clear all BlackOps localStorage and reload"
-                  >
-                    CLR LS
-                  </button>
-                </>
-              )}
+              </div>
             </div>
           </div>
+          {__BUILD_MODE__ === "dev" && (
+            <div className="app-header-dev-tools flex items-center gap-1 flex-shrink-0">
+              <button
+                type="button"
+                onClick={(e) => {
+                  if (e.shiftKey) {
+                    dispatchReplaySetupGuideOnboardingOnly();
+                    return;
+                  }
+                  void dispatchReplaySetupGuide();
+                }}
+                className="app-chrome-control-btn px-1.5 text-[8px] font-mono transition-colors leading-none text-nv-green/70 hover:text-nv-green"
+                title="Dev: first-run reset (paths → models/ only, clears meta cache, keeps providers/binaries, replays onboarding). Shift+click: onboarding UI only."
+              >
+                ↺ SETUP
+              </button>
+              <button
+                type="button"
+                onClick={() => dispatchClearLocalStorage(true)}
+                className="app-chrome-control-btn px-1.5 text-[8px] font-mono transition-colors leading-none text-yellow-400/70 hover:text-yellow-400"
+                title="Dev: clear all BlackOps localStorage and reload"
+              >
+                CLR LS
+              </button>
+            </div>
+          )}
         </div>
       </header>
 
