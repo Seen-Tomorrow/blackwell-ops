@@ -1,8 +1,8 @@
 # Blackwell Ops
 
-**Windows-native local LLM inference app** — portable multi-engine orchestrator for llama.cpp (official master + Tom TurboQuant), with Foundry builds, VRAM fit scanning, and real-time telemetry.
+**Windows-native local LLM inference app** — a portable multi-engine orchestrator for llama.cpp (official master + Tom TurboQuant fork). Built for GGUF models on Windows with easy Foundry source builds, VRAM fit scanning, and live fusion telemetry.
 
-No WSL. No Electron. No cloud. Just serious local inference on your Windows machine.
+No WSL. No Electron. No Docker required. Native desktop app for running and managing local llama servers on Windows.
 
 [![Release](https://img.shields.io/github/v/release/Seen-Tomorrow/blackwell-ops?style=flat-square)](https://github.com/Seen-Tomorrow/blackwell-ops/releases)
 ![Platform](https://img.shields.io/badge/platform-Windows%20x64-0078D6?style=flat-square&logo=windows)
@@ -19,9 +19,9 @@ Blackwell Ops exists to challenge it — directly, on Windows, with top performa
 ![Dashboard-themes](docs/screenshots/Dashboard-themes.png)
 ## What it is
 
-Blackwell Ops is a private native Windows app for local LLM infrastructure that orchestrates `llama-server` engines (more will follow), model libraries, VRAM fit scanning, foundry CMake builds, and live telemetry — without Docker, without WSL gymnastics, without handing your stack to the cloud. Fully portable, Open Source, no telemetry.
+Blackwell Ops is a native Windows desktop app for local LLM / llama.cpp users. It orchestrates multiple `llama-server` instances (GGUF models), provides a GGUF model library with VRAM estimation, one-click Foundry CMake builds, and real-time telemetry — all without Docker, WSL, or cloud dependencies. Fully portable and open source.
 
-Drop the installer or portable folder anywhere. The app recreates its ecosystem around itself: configs, runtime engines, foundry artifacts, and user preferences — all relative to the install directory.
+Drop the installer or portable folder anywhere. The app recreates its ecosystem around itself: configs, runtime engines, foundry artifacts, and user preferences — all relative to the install directory. Great for portable local LLM setups or moving between machines.
 
 **At v1.0.x** the focus is **GGML / llama.cpp** (official master + Tom TurboQuant fork bundled). Any llama-compatible fork can be easily wired in; fusion performance metrics may not map 1:1 to every backend yet. The architecture is **semi–backend-agnostic** by design — support grows over time.
 ---
@@ -45,14 +45,14 @@ Drop the installer or portable folder anywhere. The app recreates its ecosystem 
 
 People running serious local LLMs on Windows often hit friction with existing tools:
 
-| Tool          | Windows Native | Multiple Engines | Easy Source Builds | Portable | Low Overhead | Full Config Freedom |
-|---------------|----------------|------------------|--------------------|----------|--------------|---------------------|
-| **Blackwell Ops** | ✅            | ✅ (up to 64)   | ✅ (Foundry)      | ✅      | ✅          | ✅                 |
-| Ollama        | Partial (WSL)  | Limited          | No                 | No       | Medium       | Limited            |
-| LM Studio     | ✅             | Limited          | No                 | No       | Medium       | Medium             |
-| llama-server (bare) | ✅        | Manual           | Manual             | Partial  | ✅           | ✅ (CLI only)      |
+| Tool          | Windows Native | Multiple Engines      | Easy Source Builds | Portable | Low Overhead | Full Config Freedom |
+|---------------|----------------|-----------------------|--------------------|----------|--------------|---------------------|
+| **Blackwell Ops** | ✅            | ✅ (up to 64 engines) | ✅ (Foundry)      | ✅      | ✅          | ✅                 |
+| Ollama        | Partial (WSL)  | Limited               | No                 | No       | Medium       | Limited            |
+| LM Studio     | ✅             | Limited               | No                 | No       | Medium       | Medium             |
+| llama-server (bare) | ✅        | Manual                | Manual             | Partial  | ✅           | ✅ (CLI only)      |
 
-**Blackwell Ops** gives you a real desktop app around the best llama.cpp forks, without forcing you into WSL or closed-source tools.
+**Blackwell Ops** is the Windows-native alternative to Ollama and LM Studio for power users who want full control over llama.cpp (and Tom TurboQuant builds) — multiple engines, source builds, and proper Windows integration.
 
 ### Core strengths
 - **Native Rust + Tauri** — tiny footprint, no Electron bloat or Linux subsystem tax
@@ -86,19 +86,18 @@ Pre-built binaries ship for multiple toolchain generations — pick the profile 
 ---
 
 ## Features
-- **rapid onboarding** — two-click path from zero to first inference (>1 minute of your time)
-- **Model library** — GGUF catalog, metadata scan, VRAM fit scan across your library, comprehensive benchmarks
-- **Engine stack** — monitor, bench or stop many `engine` instances from one surface  
-- **Provider templates** — Full params editor, params catalog - 1click add any of the 250+ parameters
-- **Foundry** — repo update, configure, compile, and publish binaries from the UI, support PR integrations and custom cmake flags 
-- **Fusion telemetry** — multilayered semi REAL-TIME metrics, generation, prefill, prefill progress etc  
-- **Console** — unified pipeline log (General, Engines, Foundry, Errors...dock or detach window
-- **Engine Logs** - up to 64 simultanous rich html log streams, with full text search and highlight
-- **Portable install** — relative paths, `runtime/` beside the exe, no registry religion 
-- **HW telemetry** - usefull statistics, vital signs for all your RIG HW
-- **Intel widgets** - llama news, PR, releases - comparison to what config you actually use atm.
+- **Rapid onboarding** — two-click setup for local LLM on Windows from zero to first inference
+- **GGUF Model Library** — catalog, metadata scan, VRAM fit estimation and benchmarks for your models
+- **Multi-engine stack** — run, monitor, bench or stop many llama.cpp / llama-server instances side-by-side
+- **Advanced Provider Config** — full params editor with 250+ parameters and factory templates
+- **Foundry Builds** — update, configure, compile and publish llama-server binaries directly from the UI (custom CMake flags supported)
+- **Fusion Telemetry** — real-time metrics (generation, prefill, progress) from multiple sources
+- **Unified Console & Logs** — dockable logs for Engines, Foundry, Errors with search and syntax highlight (supports 64+ concurrent streams)
+- **Portable & Lightweight** — relative paths, tiny RAM usage, works from USB stick, no registry
+- **Hardware Monitoring** — GPU/CPU stats and vital signs
+- **Zero Telemetry** — completely offline, no calling home, no data collection
 
-- **NO APP TELEMETRY, no calling home ever!!**
+Perfect for users looking for a **Windows native llama.cpp GUI**, **multiple llama engines**, or **portable local LLM server**.
 
 ---
 
