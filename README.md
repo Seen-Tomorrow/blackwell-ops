@@ -59,9 +59,9 @@ Pre-built binaries ship for multiple toolchain generations — pick the profile 
 | **FRONTIER** | 13.3 | VS Build Tools 2026 | - The one Cuda to rule them all
 | **STABLE** | 12.8 | VS Build Tools 2022 | - compatible path.
 
-Includes **GGML llama (master)** and **Tom-llama** runtimes.  
-Users can **Foundry-build** their own engines anytime (5minutes 1 click), or download asset packages later — the app does not lock you to shipped binaries.
-https://github.com/Seen-Tomorrow/blackwell-ops/releases/download/toolchain/toolchain.7z.001
+- Includes **GGML llama (master)** and **Tom-llama** runtimes.  
+- Users can **Foundry-build** their own engines anytime (5minutes 1 click), or download asset packages later — the app does not lock you to shipped binaries.
+
 ---
 
 ## Features
@@ -96,7 +96,7 @@ https://github.com/Seen-Tomorrow/blackwell-ops/releases/download/toolchain/toolc
 1. Download the latest **`Blackwell Ops_*_x64-setup.exe`** from [Releases](https://github.com/Seen-Tomorrow/blackwell-ops/releases).  
 2. Install (or extract portable layout if you ship a zip).  
 3. Finish the simple onboarding wizard and you can infer.
-[ONBOARDING VIDEO](docs/video/blackwell_ops_onboarding.mp4)
+![ONBOARDING VIDEO](docs/video/blackwell_ops_onboarding.mp4)
 
 ### Requirements
 
@@ -104,7 +104,7 @@ https://github.com/Seen-Tomorrow/blackwell-ops/releases/download/toolchain/toolc
 - **NVIDIA GPU** recommended (CUDA builds bundled), AMD, Intel will follow
 - **GGUF models** — not included; you bring your own weights  
 #### Optional and trongly recommended #### **BUILD TOOLS package** -for Foundry cmake builds
-[BUILD TOOLS package](https://github.com/Seen-Tomorrow/blackwell-ops/releases/tag/toolchain).
+![BUILD TOOLS package](https://github.com/Seen-Tomorrow/blackwell-ops/releases/tag/toolchain).
 
 ---
 
