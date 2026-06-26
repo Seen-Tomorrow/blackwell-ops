@@ -6,8 +6,9 @@ Thanks for your interest in contributing!
 - Report bugs using the bug report template
 - Suggest features
 - Improve documentation
-- Test on different Windows + GPU setups (especially Blackwell / Ada cards)
-- Share benchmarks or setups
+- Test on different Windows + GPU setups (especially Ampere / Ada cards)
+- Share benchmarks or setups, test all params paossible, share what made difference.
+- add custom providers (llama forks), share your experience
 
 ## Development
 See the README for build instructions.
