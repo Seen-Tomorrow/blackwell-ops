@@ -10,7 +10,7 @@
 > *This project is my testament to open source and a **local inference first** mission.*
 
 You do **not** need Linux to run serious LLM workloads on your own hardware.
-Blackwell Ops exists to challenge it — directly, on Windows, with top performance and minimal memory footprint.
+Blackwell Ops exists to bring all users preffering Windows the same or better experience, with top performance and minimal memory footprint.
 docs/screenshots/Dashboard-themes.png
 ---
 ![Dashboard-themes](docs/screenshots/Dashboard-themes.png)
@@ -19,9 +19,9 @@ docs/screenshots/Dashboard-themes.png
 
 Blackwell Ops is a Private infrastructure **native Windows app** that orchestrates `llama-server` engines (more will follow), model libraries, VRAM fit scanning, foundry CMAKE builds, and live telemetry — without Docker, without WSL gymnastics, without handing your stack to a cloud. Fully portable, Open Source, no telemetry.
 
-Drop the installer, or portable folder anywhere. The app recreates its ecosystem around itself: configs, runtime engines, foundry artifacts, and user preferences — all relative to the install directory.
+Use installer, or drop/move portable folder anywhere. The app recreates its ecosystem around itself: configs, runtime engines, foundry, and user preferences — all relative to the install directory.
 
-**At v1.0.x** the focus is **GGML / llama.cpp** (official master + IK fork bundled). Any llama-compatible fork can be easily wired in; fusion performance metrics may not map 1:1 to every backend yet. The architecture is **semi–backend-agnostic** by design — support grows over time.
+**At v1.0.x** the focus is **GGML / llama.cpp** (official master + TOm TurboQuant fork are bundled). Any llama-compatible fork can be easily wired in; fusion performance metrics may not map 1:1 to every backend yet. The architecture is **semi–backend-agnostic** by design — support grows over time.
 (docs/screenshots/Dashboard-themes.jpg)
 ---
 
@@ -33,8 +33,8 @@ Drop the installer, or portable folder anywhere. The app recreates its ecosystem
 | **Typical RAM (app shell)** | ~40 MB running — about half what Windows Notepad needs |
 | **Engine slots (factory)** | Up to **64** concurrent instances (GGML master) |
 | **Stress-tested** | **64** engine instances orchestrated with **~400 MB** total app RAM overhead |
-| **Build investment** | ~**2,000+ hours** across ~4 months |
-| **GPU targets** | **AMPERE · ADA · BLACKWELL** (`SM86 / SM89 / SM120`) |
+| **Build investment** | ~**2,500+ hours** across ~5 months |
+| **GPU targets** | **heavilly optimized for BLACKWELL, Cuda builds also for AMPERE · ADA ·**  |
 
 *Engine VRAM is separate — these figures are the ops layer, not model weights.*
 
@@ -42,7 +42,7 @@ Drop the installer, or portable folder anywhere. The app recreates its ecosystem
 
 ## Why Windows — on purpose
 
-- **Native Win32/Tauri shell** — no Electron bloat, no Linux subsystem tax  
+- **Native Rust, Win32/Tauri shell** — no Electron bloat, no Linux subsystem tax  
 - **Foundry** — build `llama-server` from source on your machine (VS2022 / VS2026 + CUDA 12.8–13.3)  
 - **Portable path model** — clone/move the folder, it still works, even from a flash drive.
 - **Full config freedom** — factory templates merge with your overrides; nothing hidden behind a SaaS panel  
@@ -56,32 +56,34 @@ Pre-built binaries ship for multiple toolchain generations — pick the profile 
 
 | Profile | CUDA | Toolchain |
 |---------|------|-----------|
-| **FRONTIER** | 13.3 | VS Build Tools 2026 |
-| **STABLE** | 12.8 | VS Build Tools 2022 |
+| **FRONTIER** | 13.3 | VS Build Tools 2026 | - The one Cuda to rule them all
+| **STABLE** | 12.8 | VS Build Tools 2022 | - compatible path.
 
 Includes **GGML llama (master)** and **Tom-llama** runtimes.  
-Optimized for **AMPERE, ADA, and BLACKWELL** GPU architectures.
-
-Users can **Foundry-build** their own engines, mirror artifacts, or download asset packages later — the app does not lock you to shipped binaries.
-
+Users can **Foundry-build** their own engines anytime (5minutes 1 click), or download asset packages later — the app does not lock you to shipped binaries.
+https://github.com/Seen-Tomorrow/blackwell-ops/releases/download/toolchain/toolchain.7z.001
 ---
 
 ## Features
+- **rapid onboarding** — two-click path from zero to first inference (>1 minute of your time)
+- **Model library** — GGUF catalog, metadata scan, VRAM fit scan across your library, comprehensive benchmarks
+- **Engine stack** — monitor, bench or stop many `engine` instances from one surface  
+- **Provider templates** — Full params editor, params catalog - 1click add any of the 250+ parameters
+- **Foundry** — repo update, configure, compile, and publish binaries from the UI, support PR integrations and custom cmake flags 
+- **Fusion telemetry** — multilayered semi REAL-TIME metrics, generation, prefill, prefill progress etc  
+- **Console** — unified pipeline log (General, Engines, Foundry, Errors...dock or detach window
+- **Engine Logs** - up to 64 simultanous rich html log streams, with full text search and highlight
+- **Portable install** — relative paths, `runtime/` beside the exe, no registry religion 
+- **HW telemetry** - usefull statistics, vital signs for all your RIG HW
+- **Intel widgets** - llama news, PR, releases - comparison to what config you actually use atm.
 
-- **Engine stack** — launch, monitor, and stop many `llama-server` instances from one surface  
-- **Model library** — GGUF catalog, metadata scan, VRAM fit scan across your library  
-- **Provider templates** — param catalogs per backend with merge-safe factory defaults  
-- **Foundry** — clone, configure, compile, and publish sacred artifacts from the UI  
-- **Fusion telemetry** — parse live stderr metrics where the backend supports it  
-- **Blackwell Output Console** — unified pipeline log (General, Engines, Foundry, Errors, …)  
-- **Onboarding** — two-click path from zero to first inference  
-- **Portable install** — relative paths, `runtime/` beside the exe, no registry religion  
+- **NO APP TELEMETRY, no calling home ever!!**
+
 
 ---
 
 ## Screenshots & demo
 
-Drop assets under `docs/screenshots/` (PNG or WebP) and promo video under `docs/promo/`.
 
 | Main dashboard | Engine stack | Foundry build |
 |:---:|:---:|:---:|
@@ -93,28 +95,27 @@ Drop assets under `docs/screenshots/` (PNG or WebP) and promo video under `docs/
 
 1. Download the latest **`Blackwell Ops_*_x64-setup.exe`** from [Releases](https://github.com/Seen-Tomorrow/blackwell-ops/releases).  
 2. Install (or extract portable layout if you ship a zip).  
-3. Point **Setup Guide → Step 1** at your GGUF model folder (or LM Studio path).  
-4. Pick a **provider profile** (FRONTIER / VANGUARD / FRESH / STABLE).  
-5. Launch an engine.  
-
-First-run onboarding walks the rest.
+3. Finish the simple onboarding wizard and you can infer.
+![Onboarding  - 1minute]
+(docs/video/blackwell_ops_onboarding.mp4)
 
 ### Requirements
 
 - **Windows 10/11 x64**  
-- **NVIDIA GPU** recommended (CUDA builds bundled)  
+- **NVIDIA GPU** recommended (CUDA builds bundled), AMD, Intel will follow
 - **GGUF models** — not included; you bring your own weights  
-- Optional: **Visual Studio Build Tools + CUDA** if you Foundry-build engines locally  
+- Optional and trongly recommended **Visual Studio Build Tools + CUDA** for Foundry cmake builds
+([https://img.shields.io/github/v/release/Seen-Tomorrow/blackwell-ops?style=flat-square)](https://github.com/Seen-Tomorrow/blackwell-ops/releases)](https://github.com/Seen-Tomorrow/blackwell-ops/releases/tag/toolchain)
 
 ---
 
 ## A personal note
 
-I did not type this codebase by hand line-by-line. I **vibe-coded** it on **local models** — mostly **Qwen3.5 236B** + **Qwen3.6 27B** — with hardening passes on **Composer 2.5**, on a custom workstation (**2× RTX PRO 6000 · 192 GB VRAM**).
+I did not type this codebase by hand line-by-line. I **vibe-coded** it on **local models** — mostly **Qwen3.5 236B** + **Qwen3.6 27B** — with hardening passes on **Composer 2.5**, on hand build custom workstation (**2× RTX PRO 6000 · 256 GB VRAM**).
 
 What I *did* bring is **30+ years** of love for PC hardware and Windows — how machines should feel, how software should respect RAM, how inference should stay on *your* desk.
 
-Roughly **2,000 hours** went into this across ~four months. Time not spent with my family and my **five-year-old daughter**, who I love more than anything. This repo is what that time became.
+Roughly **2,500 hours** went into this across ~five months. Time not spent with my family and my **five-year-old daughter**, who I love more than anything. This repo is what that time became.
 
 If Blackwell Ops helps one person run serious local inference on Windows without apologizing for their OS choice, it was worth it.
 
@@ -122,10 +123,10 @@ If Blackwell Ops helps one person run serious local inference on Windows without
 
 ## Roadmap (honest)
 
-- [ ] Promo video + screenshot pack  
 - [ ] In-app binary updates (GitHub release assets)  
-- [ ] Broader backend adapters beyond GGML-first  
-- [ ] Deeper fusion metrics for third-party forks  
+- [ ] Broader backend adapters beyond GGML llama and TOM llama
+- [ ] Deeper fusion metrics for third-party forks
+- [ ] and one surprise very soon ;-)
 
 ---
 
