@@ -121,7 +121,7 @@ A short auto-playing demo GIF lives in the Quick Start section below.
 
 First-run onboarding walks the rest.
 
-**Quick demo (replace `Dashboard.png` below with a short `onboarding-demo.gif` to make it auto-play inline):**
+**Quick demo (replace the image below with a short `onboarding-demo.gif` for auto-playing inline preview):**
 
 ![Onboarding demo](docs/screenshots/Dashboard.png)
 
