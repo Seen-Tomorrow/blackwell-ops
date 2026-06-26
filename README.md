@@ -1,6 +1,8 @@
 # Blackwell Ops
 
-**Windows-native command center for local LLM inference — open source, portable, and built to prove a point.**
+**Windows-native local LLM inference app** — portable multi-engine orchestrator for llama.cpp (official master + Tom TurboQuant), with Foundry builds, VRAM fit scanning, and real-time telemetry.
+
+No WSL. No Electron. No cloud. Just serious local inference on your Windows machine.
 
 [![Release](https://img.shields.io/github/v/release/Seen-Tomorrow/blackwell-ops?style=flat-square)](https://github.com/Seen-Tomorrow/blackwell-ops/releases)
 ![Platform](https://img.shields.io/badge/platform-Windows%20x64-0078D6?style=flat-square&logo=windows)
@@ -21,7 +23,7 @@ Blackwell Ops is a private native Windows app for local LLM infrastructure that 
 
 Drop the installer or portable folder anywhere. The app recreates its ecosystem around itself: configs, runtime engines, foundry artifacts, and user preferences — all relative to the install directory.
 
-**At v1.0.x** the focus is **GGML / llama.cpp** (official master + IK fork bundled). Any llama-compatible fork can be easily wired in; fusion performance metrics may not map 1:1 to every backend yet. The architecture is **semi–backend-agnostic** by design — support grows over time.
+**At v1.0.x** the focus is **GGML / llama.cpp** (official master + Tom TurboQuant fork bundled). Any llama-compatible fork can be easily wired in; fusion performance metrics may not map 1:1 to every backend yet. The architecture is **semi–backend-agnostic** by design — support grows over time.
 ---
 
 ## By the numbers
@@ -38,6 +40,26 @@ Drop the installer or portable folder anywhere. The app recreates its ecosystem 
 *Engine VRAM is separate — these figures are the ops layer, not model weights.*
 
 ---
+
+## Why Blackwell Ops?
+
+People running serious local LLMs on Windows often hit friction with existing tools:
+
+| Tool          | Windows Native | Multiple Engines | Easy Source Builds | Portable | Low Overhead | Full Config Freedom |
+|---------------|----------------|------------------|--------------------|----------|--------------|---------------------|
+| **Blackwell Ops** | ✅            | ✅ (up to 64)   | ✅ (Foundry)      | ✅      | ✅          | ✅                 |
+| Ollama        | Partial (WSL)  | Limited          | No                 | No       | Medium       | Limited            |
+| LM Studio     | ✅             | Limited          | No                 | No       | Medium       | Medium             |
+| llama-server (bare) | ✅        | Manual           | Manual             | Partial  | ✅           | ✅ (CLI only)      |
+
+**Blackwell Ops** gives you a real desktop app around the best llama.cpp forks, without forcing you into WSL or closed-source tools.
+
+### Core strengths
+- **Native Rust + Tauri** — tiny footprint, no Electron bloat or Linux subsystem tax
+- **Foundry** — one-click build `llama-server` from source with your preferred CUDA / VS version
+- **Portable** — works from USB, relative paths everywhere
+- **Multi-engine** — orchestrate many `llama-server` instances with shared config system
+- **Fusion telemetry** — real-time metrics from stderr + /slots without extra overhead
 
 ## Why Windows — on purpose
 
@@ -94,7 +116,7 @@ A short auto-playing demo GIF lives in the Quick Start section below.
 
 1. Download the latest **`Blackwell Ops_*_x64-setup.exe`** from [Releases](https://github.com/Seen-Tomorrow/blackwell-ops/releases).  
 2. Install (or extract portable layout if you ship a zip).  
-3. Point **Setup Guide → Step 1** at your GGUF model folder (or LM Studio path).  
+3. Point **Setup Guide → Step 1** at your GGUF model folder (or LM Studio / Ollama path).  
 4. Pick a **provider profile** (FRONTIER or STABLE).  
 5. Launch an engine.  
 
