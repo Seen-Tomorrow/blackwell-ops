@@ -1072,26 +1072,50 @@ pub fn find_existing_scan_in_provider_partition(
 }
 
 /// Find existing scan data for a model path, with filename fallback for robustness.
-/// Handles path format differences (case, trailing slash, UNC prefix) between runs.
+/// Canonical cache keys align with `model_cache` / `vram_learn` after path config changes.
 fn find_existing_scan(
     existing_data: &HashMap<String, FitScanFull>,
     model_path: &str,
 ) -> Option<FitScanFull> {
-    // Try exact match first
+    let target = fit_scan_storage_key(model_path);
+
+    if let Some(e) = existing_data.get(&target) {
+        return Some(e.clone());
+    }
     if let Some(e) = existing_data.get(model_path) {
         return Some(e.clone());
     }
-    // Fallback: match by filename (handles path format differences between runs)
-    let filename = PathBuf::from(model_path).file_name().and_then(|s| s.to_str()).map(String::from)?;
+    if let Some((key, e)) = existing_data
+        .iter()
+        .find(|(k, _)| fit_scan_storage_key(k) == target)
+    {
+        log::debug!(
+            "[FIT] Cache hit (canonical): '{}' -> '{}'",
+            model_path,
+            key
+        );
+        return Some(e.clone());
+    }
+
+    // Fallback: match by filename (duplicate basenames across libraries).
+    let filename = PathBuf::from(model_path)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .map(String::from)?;
     let found = existing_data.values().find(|v| {
-        PathBuf::from(&v.model_path).file_name()
+        PathBuf::from(&v.model_path)
+            .file_name()
             .and_then(|s| s.to_str())
             .map(String::from)
             .as_ref()
             == Some(&filename)
     });
     if let Some(e) = found {
-        log::debug!("[FIT] Cache miss (exact), filename match: '{}' -> '{}'", model_path, e.model_path);
+        log::debug!(
+            "[FIT] Cache hit (filename): '{}' -> '{}'",
+            model_path,
+            e.model_path
+        );
         return Some(e.clone());
     }
     log::debug!("[FIT] Cache miss (no data): '{}'", model_path);
@@ -1131,6 +1155,39 @@ fn missing_scan_labels(existing_full: Option<&FitScanFull>) -> Vec<String> {
 /// Serializes partition RMW when multiple catalog FIT scans run in parallel.
 static PARTITION_PERSIST_LOCK: LazyLock<TokioMutex<()>> = LazyLock::new(|| TokioMutex::new(()));
 
+fn fit_scan_storage_key(model_path: &str) -> String {
+    let key = crate::config::model_file_cache_key(model_path);
+    if key.is_empty() {
+        model_path.to_string()
+    } else {
+        key
+    }
+}
+
+fn fit_scan_alias_keys(map: &HashMap<String, FitScanFull>, model_path: &str) -> Vec<String> {
+    let target = fit_scan_storage_key(model_path);
+    map.keys()
+        .filter(|k| fit_scan_storage_key(k) == target)
+        .cloned()
+        .collect()
+}
+
+fn fit_scan_entry_for_storage(model_path: &str, result: &FitScanFull) -> FitScanFull {
+    let mut stored = result.clone();
+    stored.model_path = model_path.to_string();
+    stored
+}
+
+fn insert_fit_scan_result(map: &mut HashMap<String, FitScanFull>, model_path: &str, result: &FitScanFull) {
+    let storage_key = fit_scan_storage_key(model_path);
+    for alias in fit_scan_alias_keys(map, model_path) {
+        if alias != storage_key {
+            map.remove(&alias);
+        }
+    }
+    map.insert(storage_key, fit_scan_entry_for_storage(model_path, result));
+}
+
 async fn persist_single_model_scan(
     fit_adapter: crate::fit_adapters::FitAdapterId,
     model_path: &str,
@@ -1139,12 +1196,12 @@ async fn persist_single_model_scan(
 ) {
     if let Some(cache) = shared_cache {
         let mut map = cache.lock().await;
-        map.insert(model_path.to_string(), result.clone());
+        insert_fit_scan_result(&mut map, model_path, result);
         save_full_scan_partition(fit_adapter, &map);
     } else {
         let _guard = PARTITION_PERSIST_LOCK.lock().await;
         let mut map = load_full_scan_partition(fit_adapter);
-        map.insert(model_path.to_string(), result.clone());
+        insert_fit_scan_result(&mut map, model_path, result);
         save_full_scan_partition(fit_adapter, &map);
     }
 }
@@ -1470,7 +1527,8 @@ pub async fn scan_library(
         };
         if missing_scan_labels(existing_full.as_ref()).is_empty() {
             if let Some(existing) = existing_full {
-                full_results_map.lock().await.insert(model_path.clone(), existing);
+                let mut map = full_results_map.lock().await;
+                insert_fit_scan_result(&mut map, &model_path, &existing);
             }
             continue;
         }
@@ -1812,5 +1870,45 @@ Host 994 0 84
         assert_eq!(tables[0].total_gpu_self_mib(), 62000.0);
         assert_eq!(tables[1].total_gpu_self_mib(), 57000.0); // 45000 + 12000
         assert_eq!(tables[1].gpu_self_mib.len(), 2);
+    }
+}
+
+#[cfg(test)]
+mod cache_key_tests {
+    use super::{find_existing_scan, fit_scan_storage_key, insert_fit_scan_result, FitScanFull};
+    use std::collections::HashMap;
+
+    fn sample_scan(path: &str) -> FitScanFull {
+        FitScanFull {
+            model_path: path.to_string(),
+            points: vec![],
+            error: None,
+            skip_reason: None,
+            skipped_points: None,
+        }
+    }
+
+    #[test]
+    fn find_existing_scan_matches_legacy_slash_variant() {
+        let legacy = r"C:\library\author\model\weights-Q4_K_M.gguf";
+        let lookup = r"C:/library/author/model/weights-Q4_K_M.gguf";
+        let mut map = HashMap::new();
+        map.insert(legacy.to_string(), sample_scan(legacy));
+
+        let found = find_existing_scan(&map, lookup).expect("legacy slash alias");
+        assert_eq!(found.model_path, legacy);
+    }
+
+    #[test]
+    fn insert_fit_scan_result_rekeys_to_canonical_storage_key() {
+        let legacy = r"C:\library\author\model\weights-Q4_K_M.gguf";
+        let lookup = r"C:/library/author/model/weights-Q4_K_M.gguf";
+        let mut map = HashMap::new();
+        map.insert(legacy.to_string(), sample_scan(legacy));
+
+        insert_fit_scan_result(&mut map, lookup, &sample_scan(lookup));
+        assert!(!map.contains_key(legacy));
+        assert!(map.contains_key(&fit_scan_storage_key(lookup)));
+        assert_eq!(map.get(&fit_scan_storage_key(lookup)).unwrap().model_path, lookup);
     }
 }

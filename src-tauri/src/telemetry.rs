@@ -79,17 +79,18 @@ fn get_physical_ram_bytes() -> Result<u64, String> {
 /// Scan GPUs using nvidia-smi — returns real metrics from NVIDIA drivers
 #[tauri::command]
 pub async fn scan_gpus() -> Result<Vec<GpuInfo>, String> {
-    let output = tokio::process::Command::new("nvidia-smi")
-        .args(&[
+    let output = crate::engine_utils::run_hidden_output_async(|| {
+        let mut cmd = std::process::Command::new("nvidia-smi");
+        cmd.args([
             "--query-gpu=index,name,driver_version,memory.total,memory.used,memory.free,temperature.gpu,power.draw,power.limit,utilization.gpu,utilization.memory",
             "--format=csv,noheader,nounits",
         ])
-        .stdout(Stdio::piped())   // MUST be piped — null() discards output, returns empty GPU list
-        .stderr(Stdio::null())
-        .creation_flags(0x08000000) // CREATE_NO_WINDOW — prevents CMD window flash in release builds
-        .output()
-        .await
-        .map_err(|e| format!("nvidia-smi execution failed: {}", e))?;
+        .stdout(Stdio::piped()) // MUST be piped — null() discards output, returns empty GPU list
+        .stderr(Stdio::null());
+        cmd
+    })
+    .await
+    .map_err(|e| format!("nvidia-smi execution failed: {}", e))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
 

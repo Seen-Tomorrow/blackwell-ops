@@ -1601,7 +1601,10 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                   tensorSplitWarn={launchChrome.tensorSplitWarn}
                 />
               )}
-              <div className="phosphor-screen-inner phosphor-display-surface vram-forecast-display">
+              <div
+                key={setupGuide.active ? "setup-phosphor" : "forecast-phosphor"}
+                className="phosphor-screen-inner phosphor-display-surface vram-forecast-display"
+              >
                 <DisplayGlitchOverlay />
                 {setupGuide.active ? (
                   setupGuide.showWelcome ? (

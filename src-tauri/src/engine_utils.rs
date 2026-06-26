@@ -183,25 +183,118 @@ pub async fn stop_child_fast(
         .unwrap_or(false)
 }
 
-/// Fast kill by PID — avoids slow netstat scan when we already know the process.
-pub async fn kill_process_by_pid(pid: u32) -> Result<(), String> {
-    let output = tokio::process::Command::new("taskkill")
-        .args(["/F", "/T", "/PID", &pid.to_string()])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .creation_flags(0x08000000)
-        .output()
-        .await
-        .map_err(|e| format!("Failed to kill pid {}: {}", pid, e))?;
+/// Short-lived hidden subprocess — use instead of `tokio::process::Command::output()` +
+/// CREATE_NO_WINDOW on Windows release builds (ERROR_INVALID_HANDLE / os error 6).
+#[cfg(windows)]
+fn apply_create_no_window(cmd: &mut std::process::Command) {
+    use std::os::windows::process::CommandExt;
+    cmd.creation_flags(0x08000000);
+}
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        if !stderr.contains("not found") && !stderr.contains("ERROR") {
-            log::warn!("Kill pid {} stderr: {}", pid, stderr);
+#[cfg(not(windows))]
+fn apply_create_no_window(_cmd: &mut std::process::Command) {}
+
+pub fn run_hidden_output(
+    mut build: impl FnMut() -> std::process::Command,
+) -> std::io::Result<std::process::Output> {
+    const MAX_ATTEMPTS: u32 = 4;
+    let mut last_err: Option<std::io::Error> = None;
+
+    for attempt in 1..=MAX_ATTEMPTS {
+        let mut cmd = build();
+        apply_create_no_window(&mut cmd);
+        match cmd.output() {
+            Ok(output) => return Ok(output),
+            Err(e) => {
+                let retryable = e.raw_os_error() == Some(6)
+                    || e.to_string().to_ascii_lowercase().contains("invalid handle");
+                last_err = Some(e);
+                if !retryable && attempt == MAX_ATTEMPTS {
+                    break;
+                }
+            }
+        }
+        if attempt < MAX_ATTEMPTS {
+            std::thread::sleep(std::time::Duration::from_millis(50 * attempt as u64));
         }
     }
 
-    Ok(())
+    Err(last_err.unwrap_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::Other, "hidden command failed")
+    }))
+}
+
+pub async fn run_hidden_output_async(
+    build: impl FnMut() -> std::process::Command + Send + 'static,
+) -> Result<std::process::Output, String> {
+    tokio::task::spawn_blocking(move || run_hidden_output(build))
+        .await
+        .map_err(|e| format!("hidden command task failed: {e}"))?
+        .map_err(|e| e.to_string())
+}
+
+/// Blocking taskkill — mirrors FIT / netstat spawn pattern.
+///
+/// `tokio::process::Command::output()` with CREATE_NO_WINDOW intermittently returns
+/// ERROR_INVALID_HANDLE (os error 6) in release builds on Windows under rapid launch/stop.
+fn kill_process_by_pid_blocking(pid: u32) -> Result<(), String> {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+    const MAX_ATTEMPTS: u32 = 4;
+
+    let mut last_err = String::new();
+
+    for attempt in 1..=MAX_ATTEMPTS {
+        match std::process::Command::new("taskkill")
+            .args(["/F", "/T", "/PID", &pid.to_string()])
+            .creation_flags(CREATE_NO_WINDOW)
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .output()
+        {
+            Ok(output) => {
+                if output.status.success() {
+                    return Ok(());
+                }
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                if stderr.contains("not found") || stderr.contains("No tasks") {
+                    return Ok(());
+                }
+                if !stderr.contains("ERROR") {
+                    log::warn!("Kill pid {} stderr: {}", pid, stderr);
+                }
+                last_err = stderr.trim().to_string();
+            }
+            Err(e) => {
+                last_err = e.to_string();
+                let retryable = e.raw_os_error() == Some(6)
+                    || last_err.to_ascii_lowercase().contains("invalid handle");
+                if !retryable && attempt == MAX_ATTEMPTS {
+                    return Err(format!("Failed to kill pid {}: {}", pid, last_err));
+                }
+            }
+        }
+
+        if attempt < MAX_ATTEMPTS {
+            std::thread::sleep(std::time::Duration::from_millis(50 * attempt as u64));
+        }
+    }
+
+    Err(format!("Failed to kill pid {}: {}", pid, last_err))
+}
+
+/// Fast kill by PID — avoids slow netstat scan when we already know the process.
+pub async fn kill_process_by_pid(pid: u32) -> Result<(), String> {
+    if pid == 0 {
+        return Ok(());
+    }
+    if !is_process_alive(pid) {
+        return Ok(());
+    }
+
+    tokio::task::spawn_blocking(move || kill_process_by_pid_blocking(pid))
+        .await
+        .map_err(|e| format!("Failed to kill pid {}: {}", pid, e))?
 }
 
 /// Windows: PID listening on TCP `port` (LISTENING rows only — ignores client connections).

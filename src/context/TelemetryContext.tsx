@@ -102,11 +102,30 @@ export function TelemetryProvider({
 
   // One-time system info + hardware bootstrap snapshot (catalog / fit / reactor)
   useEffect(() => {
+    let cancelled = false;
     invoke<SystemInfo>("scan_system_info")
-      .then((data) => setSystemInfo(data))
+      .then((data) => {
+        if (!cancelled) setSystemInfo(data);
+      })
       .catch(console.error);
-    pollGpu();
+    void pollGpu();
     pollCpu();
+
+    // Fresh installs can miss the first NVML read — forecast stays empty until restart without retries.
+    let attempts = 0;
+    const bootstrapGpu = setInterval(() => {
+      if (cancelled || gpusRef.current.length > 0 || attempts >= 6) {
+        clearInterval(bootstrapGpu);
+        return;
+      }
+      attempts += 1;
+      void pollGpu();
+    }, 1500);
+
+    return () => {
+      cancelled = true;
+      clearInterval(bootstrapGpu);
+    };
   }, [pollGpu, pollCpu]);
 
   // GPU poll tier: fast (telemetry) / normal (catalog or engines) / idle (other tabs).

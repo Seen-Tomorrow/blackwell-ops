@@ -104,7 +104,7 @@ fn normalize_ctx_key(ctx: &str) -> String {
 }
 
 fn normalize_model_path_for_key(model_path: &str) -> String {
-    crate::config::resolve_model_path(model_path)
+    crate::config::model_file_cache_key(model_path)
 }
 
 fn normalize_offload_mode(offload_mode: &str) -> String {

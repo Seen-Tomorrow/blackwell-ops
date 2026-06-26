@@ -1,5 +1,6 @@
 use serde::Serialize;
 use std::collections::HashSet;
+use std::process::Stdio;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -942,6 +943,110 @@ pub async fn fit_stop_scan(app: tauri::State<'_, AppContext>) -> Result<(), Stri
     Ok(())
 }
 
+/// Labels from mtime-only scans — not a successful `--version` probe.
+pub(crate) fn is_placeholder_build_version(version: &str) -> bool {
+    matches!(
+        version.trim(),
+        "" | "unknown" | "bundled" | "disk-scanned" | "foundry-artifact" | "downloaded"
+    )
+}
+
+fn clean_version_probe_output(stdout: &[u8], stderr: &[u8]) -> String {
+    let raw = format!(
+        "{}{}",
+        String::from_utf8_lossy(stdout),
+        String::from_utf8_lossy(stderr)
+    );
+    regex::Regex::new(r"\x1b\[[0-9;?]*[a-zA-Z]")
+        .ok()
+        .map(|re| re.replace_all(&raw, "").to_string())
+        .unwrap_or(raw)
+        .chars()
+        .filter(|c| *c <= '\x7F')
+        .collect::<String>()
+}
+
+fn parse_llama_version_line(cleaned: &str) -> Option<String> {
+    let re = regex::Regex::new(r"version:\s*(\d+)\s*\(([^)]+)\)").ok()?;
+    re.captures(cleaned)
+        .map(|caps| format!("{} ({})", &caps[1], &caps[2]))
+}
+
+async fn probe_binary_version(path: &std::path::Path) -> Result<String, String> {
+    const MAX_ATTEMPTS: u32 = 4;
+    const RETRY_BASE_MS: u64 = 400;
+
+    let path_buf = path.to_path_buf();
+    let work_dir = path.parent().map(|p| p.to_path_buf());
+    let mut last_snippet = String::new();
+
+    for attempt in 1..=MAX_ATTEMPTS {
+        let path_for_probe = path_buf.clone();
+        let work_dir_for_probe = work_dir.clone();
+        let output = engine_utils::run_hidden_output_async(move || {
+            let mut cmd = std::process::Command::new(&path_for_probe);
+            cmd.args(["--version"])
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped());
+            if let Some(ref dir) = work_dir_for_probe {
+                cmd.current_dir(dir);
+            }
+            cmd
+        })
+        .await;
+
+        match output {
+            Ok(o) => {
+                let cleaned = clean_version_probe_output(&o.stdout, &o.stderr);
+                if !cleaned.is_empty() {
+                    last_snippet = cleaned.chars().take(200).collect();
+                }
+                if let Some(version) = parse_llama_version_line(&cleaned) {
+                    return Ok(version);
+                }
+                if !o.status.success() {
+                    log::debug!(
+                        "[build-info] --version exit {:?} for {} (attempt {}/{})",
+                        o.status.code(),
+                        path.display(),
+                        attempt,
+                        MAX_ATTEMPTS
+                    );
+                }
+            }
+            Err(e) => {
+                log::debug!(
+                    "[build-info] --version spawn failed for {} (attempt {}/{}): {}",
+                    path.display(),
+                    attempt,
+                    MAX_ATTEMPTS,
+                    e
+                );
+            }
+        }
+
+        if attempt < MAX_ATTEMPTS {
+            tokio::time::sleep(Duration::from_millis(RETRY_BASE_MS * attempt as u64)).await;
+        }
+    }
+
+    if !last_snippet.is_empty() {
+        log::warn!(
+            "Could not parse version from binary '{}' after {} attempts, output: {}",
+            path.display(),
+            MAX_ATTEMPTS,
+            last_snippet
+        );
+    } else {
+        log::warn!(
+            "Could not probe version from binary '{}' after {} attempts",
+            path.display(),
+            MAX_ATTEMPTS
+        );
+    }
+    Err(format!("Version probe failed for {}", path.display()))
+}
+
 #[tauri::command]
 pub async fn get_binary_build_info(binary_path: String) -> Result<crate::types::BuildInfo, String> {
     let path = crate::config::resolve_path(&binary_path);
@@ -957,57 +1062,9 @@ pub async fn get_binary_build_info(binary_path: String) -> Result<crate::types::
         })
         .unwrap_or_else(|| "unknown".to_string());
 
-    // Run binary with --version and capture both stdout and stderr
-    // (some binaries write CUDA init info to stdout, version line may be on either stream)
-    let output = tokio::process::Command::new(&path)
-        .args(["--version"])
-        .creation_flags(0x08000000) // CREATE_NO_WINDOW — prevents CMD flash in release builds
-        .output()
-        .await;
-
-    let cleaned = match output {
-        Ok(o) if o.status.success() => {
-            let raw = format!("{}{}", 
-                String::from_utf8_lossy(&o.stdout),
-                String::from_utf8_lossy(&o.stderr)
-            );
-            regex::Regex::new(r"\x1b\[[0-9;?]*[a-zA-Z]")
-                .ok()
-                .map(|re| re.replace_all(&raw, "").to_string())
-                .unwrap_or(raw)
-                .chars().filter(|c| *c <= '\x7F').collect::<String>()
-        }
-        Ok(_o) => {
-            log::warn!("Binary --version exited with error for '{}'", path.display());
-            String::new()
-        }
-        Err(e) => {
-            log::warn!("Failed to run binary --version '{}': {}", path.display(), e);
-            String::new()
-        }
-    };
-
-    // Parse version string — matches "version: 3 (f535774)" format
-    let re = regex::Regex::new(r"version:\s*(\d+)\s*\(([^)]+)\)")
-        .map_err(|e| format!("Regex error: {}", e))?;
-
-    if let Some(caps) = re.captures(&cleaned) {
-        let version = format!("{} ({})", &caps[1], &caps[2]);
-        return Ok(crate::types::BuildInfo { 
-            version, 
-            build_date,
-            cuda_version: None,
-            cuda_architectures: None,
-        });
-    }
-
-    // Version regex didn't match — still return mtime-based date with fallback version
-    if !cleaned.is_empty() {
-        log::warn!("Could not parse version from binary '{}', output: {}", 
-            path.display(), cleaned.chars().take(200).collect::<String>());
-    }
-    Ok(crate::types::BuildInfo { 
-        version: "unknown".to_string(), 
+    let version = probe_binary_version(&path).await?;
+    Ok(crate::types::BuildInfo {
+        version,
         build_date,
         cuda_version: None,
         cuda_architectures: None,

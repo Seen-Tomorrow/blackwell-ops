@@ -107,6 +107,22 @@ export function useModelCatalog({
     return (readStorage(KEYS.sortDir) as SortDirection) || "asc";
   });
 
+  // After onboarding — pick first scannable model when nothing is selected (fresh install has no lastModel).
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ active?: boolean }>).detail;
+      if (detail?.active !== false) return;
+      if (panelActiveModel) return;
+      const pick = models.find((m) => m.metadata) ?? models[0];
+      if (!pick) return;
+      setCatalogSelectedModel(pick);
+      setPanelActiveModel(pick);
+      writeStorage(KEYS.lastModel, pick.path);
+    };
+    window.addEventListener(EVENTS.setupGuideChanged, handler);
+    return () => window.removeEventListener(EVENTS.setupGuideChanged, handler);
+  }, [models, panelActiveModel]);
+
   // Restore last selected model from localStorage once models are loaded
   useEffect(() => {
     if (models.length === 0 || catalogSelectedModel !== null) return;

@@ -242,8 +242,21 @@ pub async fn reclaim_our_ghost_or_fail(
         ));
     }
 
-    crate::engine_utils::kill_process_by_pid(listener_pid).await?;
-    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    if crate::engine_utils::is_process_alive(listener_pid) {
+        crate::engine_utils::kill_process_by_pid(listener_pid).await?;
+    } else {
+        log::info!(
+            "[port_lock] Orphan PID {listener_pid} on port {port} already exited — waiting for port release"
+        );
+    }
+
+    for _ in 0..10 {
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        if !crate::engine_utils::is_port_in_use(port).await {
+            delete_lock(port);
+            return Ok(());
+        }
+    }
 
     if crate::engine_utils::is_port_in_use(port).await {
         return Err(format!(

@@ -1368,6 +1368,12 @@ pub fn model_path_key(path: &str) -> String {
     }
 }
 
+/// Stable on-disk cache key for a model `.gguf` file.
+/// Canonicalizes when the file exists so config path remove/re-add still hits cache.
+pub fn model_file_cache_key(path: &str) -> String {
+    resolve_model_path(path)
+}
+
 /// Resolve to canonical stored path when the directory exists.
 pub fn resolve_model_path(path: &str) -> String {
     let trimmed = strip_windows_extended_prefix(path.trim());

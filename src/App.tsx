@@ -39,6 +39,7 @@ import {
   type TelemetryViewMode,
 } from "./lib/storage";
 import { dispatchAppEvent, EVENTS } from "./lib/events";
+import { refreshProvidersBuildInfo } from "./lib/foundryBuildRefresh";
 import { getActiveStackSlots, isActiveEngineSlot } from "./lib/engineStack";
 import type { ModelEntry, StackEntry, LogBatch, LogEntry, SystemEvent, ProviderConfig, AppUpdateInfo } from "./lib/types";
 
@@ -174,9 +175,15 @@ function App() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
     invoke<ProviderConfig[]>("list_providers")
-      .then((data) => setProviders(data))
+      .then((data) => {
+        if (!cancelled) setProviders(data);
+      })
       .catch(console.error);
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // ── Startup update check (app + binary updates) ──────────────────────
@@ -218,12 +225,13 @@ function App() {
   const reloadProviders = useCallback(async () => {
     try {
       const data = await invoke<ProviderConfig[]>("list_providers");
-      setProviders(data);
+      const refreshed = await refreshProvidersBuildInfo(data);
+      setProviders(refreshed);
     } catch (err) { console.error("Failed to reload providers:", err); }
   }, []);
 
   useEffect(() => {
-    const handler = () => reloadProviders();
+    const handler = () => { void reloadProviders(); };
     window.addEventListener(EVENTS.reloadProviders, handler);
     return () => window.removeEventListener(EVENTS.reloadProviders, handler);
   }, [reloadProviders]);
@@ -260,6 +268,18 @@ function App() {
       window.removeEventListener(EVENTS.modelPathsChanged, handler);
     };
   }, [reloadModels]);
+
+  // Onboarding exit — refresh catalog + binary probes (Config tab is often skipped on first run).
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ active?: boolean }>).detail;
+      if (detail?.active !== false) return;
+      void reloadModels();
+      void reloadProviders();
+    };
+    window.addEventListener(EVENTS.setupGuideChanged, handler);
+    return () => window.removeEventListener(EVENTS.setupGuideChanged, handler);
+  }, [reloadModels, reloadProviders]);
 
   useEffect(() => {
     const handler = () => setActiveTab("config");

@@ -83,15 +83,40 @@ pub fn save_cache(cache: &HashMap<String, CachedEntry>) -> Result<(), String> {
     Ok(())
 }
 
-/// Resolve a model path to its cache key, handling forward/backward slash normalization.
-fn resolve_cache_key<'a>(cache: &'a HashMap<String, CachedEntry>, model_path: &str) -> Option<&'a String> {
-    if cache.contains_key(model_path) {
-        return Some(cache.keys().find(|k| k.as_str() == model_path).unwrap());
+fn storage_key_for(model_path: &str) -> String {
+    let key = crate::config::model_file_cache_key(model_path);
+    if key.is_empty() {
+        model_path.to_string()
+    } else {
+        key
     }
-    // Try normalized lookup (forward slashes vs backslashes)
+}
+
+fn keys_for_same_file(cache: &HashMap<String, CachedEntry>, model_path: &str) -> Vec<String> {
+    let target = storage_key_for(model_path);
+    cache
+        .keys()
+        .filter(|k| storage_key_for(k) == target)
+        .cloned()
+        .collect()
+}
+
+/// Resolve a model path to its cache key, handling canonical + legacy slash variants.
+fn resolve_cache_key(cache: &HashMap<String, CachedEntry>, model_path: &str) -> Option<String> {
+    let target = storage_key_for(model_path);
+    if target.is_empty() {
+        return None;
+    }
+    if cache.contains_key(&target) {
+        return Some(target);
+    }
+    if let Some(k) = cache.keys().find(|k| storage_key_for(k) == target) {
+        return Some(k.clone());
+    }
+    // Slash-only fallback for entries written before canonical keys.
     cache.keys().find(|k| {
-        k.as_str() == model_path.replace("\\", "/") || k.as_str() == model_path.replace("/", "\\")
-    })
+        k.as_str() == model_path.replace('\\', "/") || k.as_str() == model_path.replace('/', "\\")
+    }).cloned()
 }
 
 /// Get cached GGUF metadata for a model path if it's still fresh.
@@ -101,14 +126,14 @@ pub fn get_cached(model_path: &str) -> Option<ModelMetadata> {
     log::debug!("[Cache] All keys in cache: {:?}", cache.keys().collect::<Vec<_>>());
 
     let entry_key = match resolve_cache_key(&cache, model_path) {
-        Some(k) => k.clone(),
+        Some(k) => k,
         None => {
             log::debug!("[Cache] MISS for {}", model_path);
             return None;
         }
     };
 
-    let entry = cache.get(&entry_key).unwrap();
+    let entry = cache.get(&entry_key)?;
 
     // Must have GGUF metadata to return
     let gguf_meta = match &entry.gguf_meta {
@@ -147,6 +172,7 @@ pub fn get_cached(model_path: &str) -> Option<ModelMetadata> {
 /// Preserves existing hf_meta if the entry already exists.
 pub fn set_cached(model_path: &str, metadata: ModelMetadata) -> Result<(), String> {
     let mut cache = load_cache();
+    let storage_key = storage_key_for(model_path);
 
     let file_mtime_ms = std::fs::metadata(model_path)
         .ok()
@@ -155,17 +181,26 @@ pub fn set_cached(model_path: &str, metadata: ModelMetadata) -> Result<(), Strin
         .map(|d| d.as_millis() as u64)
         .unwrap_or(0);
 
-    // Preserve existing hf_meta if entry already exists
-    let existing_hf = cache.get(model_path).and_then(|e| e.hf_meta.clone());
+    // Preserve existing hf_meta from any legacy alias key.
+    let existing_hf = keys_for_same_file(&cache, model_path)
+        .iter()
+        .find_map(|k| cache.get(k).and_then(|e| e.hf_meta.clone()));
 
     log::debug!(
         "[Cache] SAVE key: {} (mtime {}, arch: {})",
-        model_path,
+        storage_key,
         file_mtime_ms,
         metadata.architecture
     );
+
+    for alias in keys_for_same_file(&cache, model_path) {
+        if alias != storage_key {
+            cache.remove(&alias);
+        }
+    }
+
     cache.insert(
-        model_path.to_string(),
+        storage_key,
         CachedEntry {
             hf_meta: existing_hf,
             gguf_meta: Some(metadata),
@@ -179,18 +214,31 @@ pub fn set_cached(model_path: &str, metadata: ModelMetadata) -> Result<(), Strin
 /// Set HF metadata for a model path. Preserves existing gguf_meta if present.
 pub fn set_hf_metadata(model_path: &str, hf_meta: HfMetadata) -> Result<(), String> {
     let mut cache = load_cache();
+    let storage_key = storage_key_for(model_path);
 
-    // Preserve existing gguf_meta and mtime if entry already exists
-    let existing_gguf = cache.get(model_path).and_then(|e| e.gguf_meta.clone());
-    let existing_mtime = cache.get(model_path).map(|e| e.file_mtime_ms).unwrap_or(0);
+    let aliases = keys_for_same_file(&cache, model_path);
+    let existing_gguf = aliases
+        .iter()
+        .find_map(|k| cache.get(k).and_then(|e| e.gguf_meta.clone()));
+    let existing_mtime = aliases
+        .iter()
+        .find_map(|k| cache.get(k).map(|e| e.file_mtime_ms))
+        .unwrap_or(0);
 
     log::debug!(
         "[Cache] SET HF meta for {} (model_id: {})",
-        model_path,
+        storage_key,
         hf_meta.hf_model_id
     );
+
+    for alias in aliases {
+        if alias != storage_key {
+            cache.remove(&alias);
+        }
+    }
+
     cache.insert(
-        model_path.to_string(),
+        storage_key,
         CachedEntry {
             hf_meta: Some(hf_meta),
             gguf_meta: existing_gguf,
@@ -205,23 +253,15 @@ pub fn set_hf_metadata(model_path: &str, hf_meta: HfMetadata) -> Result<(), Stri
 pub fn get_hf_metadata(model_path: &str) -> Option<HfMetadata> {
     let cache = load_cache();
 
-    let entry_key = match resolve_cache_key(&cache, model_path) {
-        Some(k) => k.clone(),
-        None => return None,
-    };
-
-    let entry = cache.get(&entry_key).unwrap();
-    entry.hf_meta.clone()
+    let entry_key = resolve_cache_key(&cache, model_path)?;
+    cache.get(&entry_key)?.hf_meta.clone()
 }
 
 /// Get cached GGUF metadata using a pre-loaded cache (avoids redundant disk reads).
 pub fn get_cached_with_cache(cache: &HashMap<String, CachedEntry>, model_path: &str) -> Option<ModelMetadata> {
-    let entry_key = match resolve_cache_key(cache, model_path) {
-        Some(k) => k.clone(),
-        None => return None,
-    };
+    let entry_key = resolve_cache_key(cache, model_path)?;
 
-    let entry = cache.get(&entry_key).unwrap();
+    let entry = cache.get(&entry_key)?;
     let gguf_meta = match &entry.gguf_meta {
         Some(m) => m,
         None => return None,
@@ -250,12 +290,8 @@ pub fn get_cached_with_cache(cache: &HashMap<String, CachedEntry>, model_path: &
 
 /// Get HF metadata using a pre-loaded cache.
 pub fn get_hf_metadata_with_cache(cache: &HashMap<String, CachedEntry>, model_path: &str) -> Option<HfMetadata> {
-    let entry_key = match resolve_cache_key(cache, model_path) {
-        Some(k) => k.clone(),
-        None => return None,
-    };
-
-    cache.get(&entry_key).unwrap().hf_meta.clone()
+    let entry_key = resolve_cache_key(cache, model_path)?;
+    cache.get(&entry_key)?.hf_meta.clone()
 }
 
 /// Clear the entire cache.

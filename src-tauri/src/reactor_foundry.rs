@@ -80,6 +80,18 @@ fn track_pid(pid: u32) {
     with_child_pids(|pids| pids.push(pid));
 }
 
+async fn git_hidden_output(
+    current_dir: PathBuf,
+    args: Vec<String>,
+) -> Result<std::process::Output, String> {
+    crate::engine_utils::run_hidden_output_async(move || {
+        let mut cmd = std::process::Command::new("git");
+        cmd.args(&args).current_dir(&current_dir);
+        cmd
+    })
+    .await
+}
+
 /// Kill any in-flight Foundry child processes (cmake, ninja, git, etc.).
 pub fn foundry_kill_all_children() {
     kill_all_children();
@@ -647,17 +659,21 @@ pub async fn foundry_build(
         let clone_parent = engine_root.parent().ok_or_else(|| {
             format!("Invalid engine root (no parent): {}", engine_root.display())
         })?;
-        let clone_output = tokio::process::Command::new("git")
-            .args(["clone", "--depth", "1", "--recursive"])
-            .arg(&*git_url)
-            .arg("-b")
-            .arg(branch)
-            .arg(&src_dir)
-            .current_dir(clone_parent)
-            .creation_flags(0x08000000)
-            .output()
-            .await
-            .map_err(|e| format!("Git clone failed: {}", e))?;
+        let clone_output = git_hidden_output(
+            clone_parent.to_path_buf(),
+            vec![
+                "clone".into(),
+                "--depth".into(),
+                "1".into(),
+                "--recursive".into(),
+                git_url.clone(),
+                "-b".into(),
+                branch.to_string(),
+                src_dir.to_string_lossy().into_owned(),
+            ],
+        )
+        .await
+        .map_err(|e| format!("Git clone failed: {}", e))?;
 
         if !clone_output.status.success() {
             let stderr = String::from_utf8_lossy(&clone_output.stderr).to_string();
@@ -667,21 +683,24 @@ pub async fn foundry_build(
 
         emit_config_event(app_handle, &provider_id, &profile_id, build_id, Some("Repository cloned.".into()));
     } else {
-        let pull_output = tokio::process::Command::new("git")
-            .args(["pull", "--recurse-submodules"])
-            .current_dir(&src_dir)
-            .creation_flags(0x08000000)
-            .output()
-            .await
-            .map_err(|e| format!("Git pull failed: {}", e))?;
+        let pull_output = git_hidden_output(
+            src_dir.clone(),
+            vec!["pull".into(), "--recurse-submodules".into()],
+        )
+        .await
+        .map_err(|e| format!("Git pull failed: {}", e))?;
 
         if pull_output.status.success() {
-            let _ = tokio::process::Command::new("git")
-                .args(["submodule", "update", "--init", "--recursive"])
-                .current_dir(&src_dir)
-                .creation_flags(0x08000000)
-                .output()
-                .await;
+            let _ = git_hidden_output(
+                src_dir.clone(),
+                vec![
+                    "submodule".into(),
+                    "update".into(),
+                    "--init".into(),
+                    "--recursive".into(),
+                ],
+            )
+            .await;
         }
 
         if !pull_output.status.success() {
@@ -742,20 +761,27 @@ pub async fn foundry_build(
                             let patch_path = patch_parent.join("pr-patch.diff");
                             if let Ok(()) = tokio::fs::write(&patch_path, &patch).await {
                                 if let Some(patch_path_str) = patch_path.to_str() {
-                                let mut apply_output = tokio::process::Command::new("git")
-                                    .args(["apply", "--whitespace=nowarn", patch_path_str])
-                                    .current_dir(&src_dir)
-                                    .creation_flags(0x08000000)
-                                    .output()
-                                    .await;
+                                let mut apply_output = git_hidden_output(
+                                    src_dir.clone(),
+                                    vec![
+                                        "apply".into(),
+                                        "--whitespace=nowarn".into(),
+                                        patch_path_str.to_string(),
+                                    ],
+                                )
+                                .await;
 
                                 if apply_output.as_ref().map_or(true, |o| !o.status.success()) {
-                                    apply_output = tokio::process::Command::new("git")
-                                        .args(["apply", "--3way", "--whitespace=nowarn", patch_path_str])
-                                        .current_dir(&src_dir)
-                                        .creation_flags(0x08000000)
-                                        .output()
-                                        .await;
+                                    apply_output = git_hidden_output(
+                                        src_dir.clone(),
+                                        vec![
+                                            "apply".into(),
+                                            "--3way".into(),
+                                            "--whitespace=nowarn".into(),
+                                            patch_path_str.to_string(),
+                                        ],
+                                    )
+                                    .await;
                                 }
 
                                 let _ = tokio::fs::remove_file(&patch_path).await;
@@ -781,11 +807,11 @@ pub async fn foundry_build(
                                                 .unwrap_or_default();
                                             raw.lines().next().map(|l| l.trim().to_string()).unwrap_or_else(|| "unknown error".into())
                                         };
-                                        let _ = tokio::process::Command::new("git")
-                                            .args(["merge", "--abort"])
-                                            .current_dir(&src_dir)
-                                            .output()
-                                            .await;
+                                        let _ = git_hidden_output(
+                                            src_dir.clone(),
+                                            vec!["merge".into(), "--abort".into()],
+                                        )
+                                        .await;
                                         emit_config_event(app_handle, &provider_id, &profile_id, build_id,
                                             Some(format!("[WARN] PR #{} apply failed: {} — continuing build", pr_num, stderr)));
                                     }
@@ -1666,6 +1692,9 @@ async fn enrich_build_info_for_path(
     preserve_cuda: Option<Vec<String>>,
 ) -> Option<crate::types::BuildInfo> {
     let mut info = crate::engine::get_binary_build_info(path.to_string()).await.ok()?;
+    if crate::engine::is_placeholder_build_version(&info.version) {
+        return None;
+    }
     if let Some(arch) = preserve_cuda.filter(|v| !v.is_empty()) {
         info.cuda_architectures = Some(arch);
     }

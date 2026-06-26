@@ -7,6 +7,7 @@ import { useModelCatalog, type SortField } from "../hooks/useModelCatalog";
 import type { SetupGuideState } from "../hooks/useSetupGuide";
 import { useCatalogSplitResize } from "../hooks/useCatalogSplitResize";
 import { useTelemetry } from "../context/TelemetryContext";
+import { dispatchNavigateConfig } from "../lib/events";
 import TabPageHeader from "./TabPageHeader";
 
 
@@ -239,8 +240,24 @@ export default function ModelCatalog(props: ModelCatalogProps) {
             }`}
           >
             {catalogModels.length === 0 ? (
-              <div className="flex items-center justify-center h-full text-stealth-muted text-xs font-mono opacity-50">
-                NO MODELS FOUND
+              <div className="flex flex-col items-center justify-center h-full min-h-[8rem] text-center px-4 py-6 gap-3">
+                <p className="text-stealth-muted text-xs font-mono opacity-50">
+                  {models.length > 0 && search.trim() ? "NO MATCHING MODELS" : "NO MODELS FOUND"}
+                </p>
+                {models.length === 0 && !setupGuide.pathsDone && (
+                  <>
+                    <p className="text-[10px] font-mono text-stealth-muted/70 leading-relaxed max-w-[220px]">
+                      Did you add your model path?
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => dispatchNavigateConfig({ subTab: "paths" })}
+                      className="px-2 py-0.5 text-[8px] font-mono tracking-widest rounded-sm border border-nv-green/50 text-nv-green hover:bg-nv-green/10 transition-colors"
+                    >
+                      CONFIG → PATHS
+                    </button>
+                  </>
+                )}
               </div>
             ) : (
               <div className="grid grid-cols-1 gap-2">

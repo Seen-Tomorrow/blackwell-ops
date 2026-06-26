@@ -5,7 +5,6 @@
 //! No caching — always fresh on every open.
 
 use serde::Serialize;
-use std::os::windows::process::CommandExt;
 use std::process::Command;
 use std::sync::Arc;
 
@@ -575,17 +574,27 @@ pub async fn get_llama_catalog(
     provider_id: String,
     include_all: Option<bool>,
 ) -> Result<Vec<LlamaCatalogEntry>, String> {
-    let cfg = config.lock().map_err(|e| e.to_string())?;
+    let binary_path = {
+        let cfg = config.lock().map_err(|e| e.to_string())?;
+        crate::engine_utils::find_provider_binary(&cfg, &provider_id, "")?
+    };
 
-    // Resolve binary path — uses shared self-healing resolver
-    let binary_path = crate::engine_utils::find_provider_binary(&cfg, &provider_id, "")?;
-
-    // Run binary --help
-    let output = Command::new(&binary_path)
-        .arg("--help")
-        .creation_flags(0x08000000) // CREATE_NO_WINDOW — prevents CMD flash in release builds
-        .output()
-        .map_err(|e| format!("Failed to run {}: {}", binary_path.display(), e))?;
+    // Run binary --help (blocking std::process — not tokio::process + CREATE_NO_WINDOW)
+    let binary_path_for_help = binary_path.clone();
+    let work_dir = binary_path.parent().map(|p| p.to_path_buf());
+    let output = tokio::task::spawn_blocking(move || {
+        crate::engine_utils::run_hidden_output(|| {
+            let mut cmd = Command::new(&binary_path_for_help);
+            cmd.arg("--help");
+            if let Some(ref dir) = work_dir {
+                cmd.current_dir(dir);
+            }
+            cmd
+        })
+    })
+    .await
+    .map_err(|e| format!("Help probe task failed: {}", e))?
+    .map_err(|e| format!("Failed to run {}: {}", binary_path.display(), e))?;
 
     // Combine stdout + stderr, decode as UTF-8 (lossy)
     let stdout = String::from_utf8_lossy(&output.stdout);

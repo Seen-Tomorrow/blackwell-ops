@@ -22,12 +22,27 @@ export function useForecastContentHeight(
     const frame = badge.closest(".industrial-display-frame");
 
     let raf = 0;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    let retryCount = 0;
     const sync = () => {
       cancelAnimationFrame(raf);
       raf = requestAnimationFrame(() => {
         if (display.dataset.fusionHeightManaged !== undefined) return;
         const h = badge.offsetHeight;
-        if (h <= 0) return;
+        if (h <= 0) {
+          // Onboarding → forecast swap can measure before layout settles.
+          if (retryCount < 8) {
+            retryCount += 1;
+            if (retryTimer) clearTimeout(retryTimer);
+            retryTimer = setTimeout(sync, 50 * retryCount);
+          }
+          return;
+        }
+        retryCount = 0;
+        if (retryTimer) {
+          clearTimeout(retryTimer);
+          retryTimer = null;
+        }
         display.dataset.contentHeightManaged = "";
         display.style.height = `${h}px`;
         display.style.minHeight = `${h}px`;
@@ -54,6 +69,7 @@ export function useForecastContentHeight(
 
     return () => {
       cancelAnimationFrame(raf);
+      if (retryTimer) clearTimeout(retryTimer);
       ro.disconnect();
       zoomObserver?.disconnect();
       window.removeEventListener("resize", sync);
