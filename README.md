@@ -96,16 +96,15 @@ https://github.com/Seen-Tomorrow/blackwell-ops/releases/download/toolchain/toolc
 1. Download the latest **`Blackwell Ops_*_x64-setup.exe`** from [Releases](https://github.com/Seen-Tomorrow/blackwell-ops/releases).  
 2. Install (or extract portable layout if you ship a zip).  
 3. Finish the simple onboarding wizard and you can infer.
-![Onboarding  - 1minute]
-(docs/video/blackwell_ops_onboarding.mp4)
+[ONBOARDING VIDEO](docs/video/blackwell_ops_onboarding.mp4)
 
 ### Requirements
 
 - **Windows 10/11 x64**  
 - **NVIDIA GPU** recommended (CUDA builds bundled), AMD, Intel will follow
 - **GGUF models** — not included; you bring your own weights  
-- Optional and trongly recommended **Visual Studio Build Tools + CUDA** for Foundry cmake builds
-([https://img.shields.io/github/v/release/Seen-Tomorrow/blackwell-ops?style=flat-square)](https://github.com/Seen-Tomorrow/blackwell-ops/releases)](https://github.com/Seen-Tomorrow/blackwell-ops/releases/tag/toolchain)
+#### Optional and trongly recommended #### **BUILD TOOLS package** -for Foundry cmake builds
+[BUILD TOOLS package](https://github.com/Seen-Tomorrow/blackwell-ops/releases/tag/toolchain).
 
 ---
 
