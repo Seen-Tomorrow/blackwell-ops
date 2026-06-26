@@ -11,18 +11,15 @@
 
 You do **not** need Linux to run serious LLM workloads on your own hardware.
 Blackwell Ops exists to challenge it — directly, on Windows, with top performance and minimal memory footprint.
-docs/screenshots/Dashboard-themes.png
 ---
 ![Dashboard-themes](docs/screenshots/Dashboard-themes.png)
- docs/screenshots/Dashboard-themes.png   
 ## What it is
 
-Blackwell Ops is a Private infrastructure **native Windows app** that orchestrates `llama-server` engines (more will follow), model libraries, VRAM fit scanning, foundry CMAKE builds, and live telemetry — without Docker, without WSL gymnastics, without handing your stack to a cloud. Fully portable, Open Source, no telemetry.
+Blackwell Ops is a private native Windows app for local LLM infrastructure that orchestrates `llama-server` engines (more will follow), model libraries, VRAM fit scanning, foundry CMake builds, and live telemetry — without Docker, without WSL gymnastics, without handing your stack to the cloud. Fully portable, Open Source, no telemetry.
 
-Drop the installer, or portable folder anywhere. The app recreates its ecosystem around itself: configs, runtime engines, foundry artifacts, and user preferences — all relative to the install directory.
+Drop the installer or portable folder anywhere. The app recreates its ecosystem around itself: configs, runtime engines, foundry artifacts, and user preferences — all relative to the install directory.
 
 **At v1.0.x** the focus is **GGML / llama.cpp** (official master + IK fork bundled). Any llama-compatible fork can be easily wired in; fusion performance metrics may not map 1:1 to every backend yet. The architecture is **semi–backend-agnostic** by design — support grows over time.
-(docs/screenshots/Dashboard-themes.jpg)
 ---
 
 ## By the numbers
@@ -71,7 +68,7 @@ Users can **Foundry-build** their own engines, mirror artifacts, or download ass
 - **Engine stack** — launch, monitor, and stop many `llama-server` instances from one surface  
 - **Model library** — GGUF catalog, metadata scan, VRAM fit scan across your library  
 - **Provider templates** — param catalogs per backend with merge-safe factory defaults  
-- **Foundry** — clone, configure, compile, and publish sacred artifacts from the UI  
+- **Foundry** — clone, configure, compile, and publish binaries from the UI  
 - **Fusion telemetry** — parse live stderr metrics where the backend supports it  
 - **Blackwell Output Console** — unified pipeline log (General, Engines, Foundry, Errors, …)  
 - **Onboarding** — two-click path from zero to first inference  
@@ -94,7 +91,7 @@ Drop assets under `docs/screenshots/` (PNG or WebP) and promo video under `docs/
 1. Download the latest **`Blackwell Ops_*_x64-setup.exe`** from [Releases](https://github.com/Seen-Tomorrow/blackwell-ops/releases).  
 2. Install (or extract portable layout if you ship a zip).  
 3. Point **Setup Guide → Step 1** at your GGUF model folder (or LM Studio path).  
-4. Pick a **provider profile** (FRONTIER / VANGUARD / FRESH / STABLE).  
+4. Pick a **provider profile** (FRONTIER or STABLE).  
 5. Launch an engine.  
 
 First-run onboarding walks the rest.
