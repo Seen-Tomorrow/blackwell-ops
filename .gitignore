@@ -62,6 +62,10 @@ src-tauri/updater_private.key
 # --- Majestic release robot (local only) ---
 .majestic-out/
 .majestic-backup/
+
+# --- Temp build/installer junk ---
+$tmp/
+$tmp/**
 scripts/majestic/.majestic-enabled
 scripts/majestic/.majestic-secrets
 scripts/majestic/majestic.lock

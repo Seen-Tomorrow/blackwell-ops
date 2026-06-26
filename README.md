@@ -82,7 +82,7 @@ Pre-built binaries ship for multiple toolchain generations — pick the profile 
 
 ## Screenshots & demo
 
-See the onboarding video in the Quick Start section below.
+A short auto-playing demo GIF lives in the Quick Start section below.
 
 | Main dashboard | Engine stack | Foundry build |
 |:---:|:---:|:---:|
@@ -100,11 +100,11 @@ See the onboarding video in the Quick Start section below.
 
 First-run onboarding walks the rest.
 
-Click the image to watch the quick onboarding video (direct from raw content, bypasses the blob viewer):
+**Quick demo (replace `Dashboard.png` below with a short `onboarding-demo.gif` to make it auto-play inline):**
 
-<a href="https://raw.githubusercontent.com/Seen-Tomorrow/blackwell-ops/main/docs/videos/blackwell_ops_onboarding.mp4" target="_blank">
-  <img src="https://raw.githubusercontent.com/Seen-Tomorrow/blackwell-ops/main/docs/screenshots/Dashboard.png" alt="Watch the onboarding video" width="480" />
-</a>
+![Onboarding demo](docs/screenshots/Dashboard.png)
+
+[Full video (MP4, 25s)](https://raw.githubusercontent.com/Seen-Tomorrow/blackwell-ops/main/docs/videos/blackwell_ops_onboarding.mp4)
 
 ### Requirements
 

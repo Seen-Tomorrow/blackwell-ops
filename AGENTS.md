@@ -50,4 +50,4 @@ Traps and invariants only — not a code map. Read the source for flows, schemas
 
 ## Optional reference
 
-`FUSION-metrics.md` — fusion poller field names when working on metrics/TG-PP, if that file is still current.
+`docs/FUSION-metrics.md` — fusion poller field names when working on metrics/TG-PP, if that file is still current.
