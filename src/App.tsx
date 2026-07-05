@@ -11,7 +11,7 @@ import TelemetryViewToggle from "./components/TelemetryViewToggle";
 import IntelPage from "./components/IntelPage";
 import ConfigPage from "./components/ConfigPage";
 import Reactor11 from "./components/Reactor11";
-import ModelHub from "./components/ModelHub";
+import ExtrasPage from "./components/ExtrasPage";
 import LogLineText from "./components/LogLineText";
 import EngineLogsSwitcher from "./components/EngineLogsSwitcher";
 import TabPageHeader from "./components/TabPageHeader";
@@ -43,7 +43,7 @@ import { refreshProvidersBuildInfo } from "./lib/foundryBuildRefresh";
 import { getActiveStackSlots, isActiveEngineSlot } from "./lib/engineStack";
 import type { ModelEntry, StackEntry, LogBatch, LogEntry, SystemEvent, ProviderConfig, AppUpdateInfo } from "./lib/types";
 
-export type Tab = "catalog" | "modelhub" | "stack" | "reactor11" | "telemetry" | "intel" | "logs" | "config" | "sentinel";
+export type Tab = "catalog" | "stack" | "extras" | "reactor11" | "telemetry" | "intel" | "logs" | "config" | "sentinel";
 
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>("catalog");
@@ -138,12 +138,18 @@ function App() {
     window.addEventListener(EVENTS.powerUserChanged, powerUserHandler);
     window.addEventListener(EVENTS.telemetryViewChanged, telemetryHandler);
     const navHandler = () => setActiveTab("stack");
+    const catalogNavHandler = () => setActiveTab("catalog");
+    const extrasNavHandler = () => setActiveTab("extras");
     window.addEventListener(EVENTS.navigateStack, navHandler);
+    window.addEventListener(EVENTS.navigateCatalog, catalogNavHandler);
+    window.addEventListener(EVENTS.navigateExtras, extrasNavHandler);
     return () => {
       window.removeEventListener("storage", handler);
       window.removeEventListener(EVENTS.powerUserChanged, powerUserHandler);
       window.removeEventListener(EVENTS.telemetryViewChanged, telemetryHandler);
       window.removeEventListener(EVENTS.navigateStack, navHandler);
+      window.removeEventListener(EVENTS.navigateCatalog, catalogNavHandler);
+      window.removeEventListener(EVENTS.navigateExtras, extrasNavHandler);
     };
   }, []);
 
@@ -525,14 +531,12 @@ function App() {
         {activeTab === "catalog" && (
               <ModelCatalog models={models} onLaunch={handleLaunchEngine} error={catalogError} onReload={reloadModels} providers={providers} committedVramMib={committedVramMib} scanningPath={scanningPath} setScanningPath={setScanningPath} batchScanState={batchScanState} setBatchScanState={setBatchScanState} stack={stack} setupGuide={setupGuide} catalogHfUpdates={catalogHfUpdates} />
            )}
-        {activeTab === "modelhub" && (
-          <div className="h-full min-h-0 flex flex-col">
-            <ModelHub />
-          </div>
-        )}
         {activeTab === "config" && <ConfigPage providers={providers} setupGuide={setupGuide} />}
         {activeTab === "stack" && (
           <StackView stack={stack} logs={logs} systemEvents={systemEvents} onStop={handleStopEngine} onStopAll={handleStopAll} />
+        )}
+        {activeTab === "extras" && (
+          <ExtrasPage stack={stack} models={models} />
         )}
         {activeTab === "reactor11" && (
           <Reactor11 models={models} />

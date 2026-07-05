@@ -8,6 +8,9 @@ import {
   MODEL_HUB_SPLIT_RATIO_DEFAULT,
   MODEL_HUB_SPLIT_RATIO_MAX,
   MODEL_HUB_SPLIT_RATIO_MIN,
+  PLAYGROUND_SPLIT_RATIO_DEFAULT,
+  PLAYGROUND_SPLIT_RATIO_MAX,
+  PLAYGROUND_SPLIT_RATIO_MIN,
   saveCatalogSplitWidth,
   saveModelHubSplitRatio,
 } from "../lib/storage";
@@ -180,6 +183,96 @@ export function useModelHubSplitResize() {
       window.removeEventListener("mouseup", onUp);
     };
   }, [isDragging, applyRatio]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || typeof ResizeObserver === "undefined") return;
+
+    const sync = () => applyRatio(ratioRef.current, container.offsetWidth);
+    sync();
+    const observer = new ResizeObserver(sync);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [applyRatio]);
+
+  return {
+    containerRef,
+    panelWidth,
+    isDragging,
+    startDrag,
+    resetWidth,
+  };
+}
+
+/** Playground code/preview split — ratio-based (default 45% code / 55% preview). */
+export function usePlaygroundSplitResize(initialRatio: number, onRatioChange: (ratio: number) => void) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const ratioRef = useRef(
+    Math.min(PLAYGROUND_SPLIT_RATIO_MAX, Math.max(PLAYGROUND_SPLIT_RATIO_MIN, initialRatio)),
+  );
+  const [panelWidth, setPanelWidth] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+
+  useEffect(() => {
+    ratioRef.current = Math.min(
+      PLAYGROUND_SPLIT_RATIO_MAX,
+      Math.max(PLAYGROUND_SPLIT_RATIO_MIN, initialRatio),
+    );
+    const width = containerRef.current?.offsetWidth ?? 0;
+    if (width > 0) setPanelWidth(Math.round(width * ratioRef.current));
+  }, [initialRatio]);
+
+  const applyRatio = useCallback((rawRatio: number, containerW?: number) => {
+    const width = containerW ?? containerRef.current?.offsetWidth ?? 0;
+    const ratio = Math.min(
+      PLAYGROUND_SPLIT_RATIO_MAX,
+      Math.max(PLAYGROUND_SPLIT_RATIO_MIN, rawRatio),
+    );
+    ratioRef.current = ratio;
+    if (width > 0) {
+      const px = Math.round(width * ratio);
+      setPanelWidth(px);
+      return px;
+    }
+    return 0;
+  }, []);
+
+  const startDrag = useCallback(() => {
+    setIsDragging(true);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  }, []);
+
+  const resetWidth = useCallback(() => {
+    applyRatio(PLAYGROUND_SPLIT_RATIO_DEFAULT);
+    onRatioChange(PLAYGROUND_SPLIT_RATIO_DEFAULT);
+  }, [applyRatio, onRatioChange]);
+
+  useEffect(() => {
+    if (!isDragging) return;
+
+    const onMove = (e: MouseEvent) => {
+      const container = containerRef.current;
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+      if (rect.width <= 0) return;
+      applyRatio((e.clientX - rect.left) / rect.width);
+    };
+
+    const onUp = () => {
+      setIsDragging(false);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      onRatioChange(ratioRef.current);
+    };
+
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, [isDragging, applyRatio, onRatioChange]);
 
   useEffect(() => {
     const container = containerRef.current;

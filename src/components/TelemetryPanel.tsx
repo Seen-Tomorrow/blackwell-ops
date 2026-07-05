@@ -1,9 +1,31 @@
 import type { GpuInfo, CpuInfo } from "../lib/types";
 import { formatGpuDriverVersion } from "../lib/benchHwTopo";
 import { useTelemetry } from "../context/TelemetryContext";
+import { useGpuControl, type GpuOcOverlay } from "../hooks/useGpuControl";
+import GpuOverclockPanel from "./GpuOverclockPanel";
 
 export default function TelemetryPanel() {
   const { gpus, cpu, systemInfo } = useTelemetry();
+  const {
+    ocMode,
+    syncGroup,
+    selectedGpuIndex,
+    sliderDevice,
+    activePreset,
+    busy,
+    elevated,
+    devices,
+    initialLoading,
+    error,
+    status,
+    getOverlay,
+    handleModeChange,
+    patchActivePreset,
+    handleApply,
+    handleResetAll,
+    handleResetGpu,
+    handleSelectGpu,
+  } = useGpuControl();
 
   const totalVram = gpus.reduce((sum, g) => sum + (g.memory_total_manufactured || g.memory_total), 0);
   const usedVram = gpus.reduce((sum, g) => sum + g.memory_used, 0);
@@ -25,11 +47,52 @@ export default function TelemetryPanel() {
       {cpu && <CpuMatrix cpu={cpu} />}
 
       {gpus.length > 0 && (
-        <div className="grid grid-cols-2 gap-3">
-          {gpus.map((gpu) => (
-            <GpuCard key={gpu.index} gpu={gpu} />
-          ))}
-        </div>
+        <>
+          <GpuOverclockPanel
+            ocMode={ocMode}
+            syncGroupCount={syncGroup.length}
+            syncGroupName={syncGroup[0]?.name ?? ""}
+            selectedGpuIndex={selectedGpuIndex}
+            sliderDevice={sliderDevice}
+            activePreset={activePreset}
+            busy={busy}
+            elevated={elevated}
+            devicesCount={devices.length}
+            initialLoading={initialLoading}
+            error={error}
+            status={status}
+            onModeChange={handleModeChange}
+            onPatchPreset={patchActivePreset}
+            onApply={handleApply}
+            onResetAll={handleResetAll}
+            onResetGpu={handleResetGpu}
+          />
+
+          <div className="theme-surface rounded-sm overflow-hidden" data-gpu-topology>
+            <div className="theme-surface-header px-3 py-2 border-b border-stealth-border">
+              <h3 className="text-[10px] font-mono text-white tracking-wider">GPU TOPOLOGY</h3>
+              <p className="text-[8px] font-mono text-stealth-muted mt-0.5">
+                Click a block to select OC target
+              </p>
+            </div>
+            <div className="px-3 py-2.5">
+              <div
+                className={`grid gap-3 ${gpus.length === 1 ? "grid-cols-1 max-w-[50%]" : "grid-cols-2"}`}
+              >
+                {gpus.map((gpu) => (
+                  <GpuCard
+                    key={gpu.index}
+                    gpu={gpu}
+                    oc={getOverlay(gpu.index)}
+                    selected={selectedGpuIndex === gpu.index}
+                    busy={busy}
+                    onSelect={() => handleSelectGpu(gpu.index)}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+        </>
       )}
     </div>
   );
@@ -79,31 +142,72 @@ function SummaryItem({ label, value, warning }: { label: string; value: string; 
   );
 }
 
-function GpuCard({ gpu }: { gpu: GpuInfo }) {
+function GpuCard({
+  gpu,
+  oc,
+  selected,
+  busy,
+  onSelect,
+}: {
+  gpu: GpuInfo;
+  oc?: GpuOcOverlay;
+  selected?: boolean;
+  busy?: boolean;
+  onSelect: () => void;
+}) {
   const vramPercent = gpu.memory_total > 0 ? (gpu.memory_used / gpu.memory_total) * 100 : 0;
   const tempColor = gpu.temperature_gpu > 85 ? "text-telemetry-red" : gpu.temperature_gpu > 70 ? "text-telemetry-amber" : "text-nv-green";
   const powerPercent = gpu.power_limit > 0 ? (gpu.power_draw / gpu.power_limit) * 100 : 0;
   const driverVer = formatGpuDriverVersion(gpu.driver_version);
 
   return (
-    <div className="theme-surface rounded-sm overflow-hidden">
-      <div className="theme-surface-header px-3 py-2.5 border-b border-stealth-border flex items-center justify-between">
-        <div>
-          <h3 className="text-[11px] font-mono text-white truncate">{gpu.name}</h3>
-          <p className="text-[9px] font-mono text-stealth-muted mt-0.5">
+    <button
+      type="button"
+      disabled={busy}
+      onClick={onSelect}
+      className={`rounded-sm border overflow-hidden text-left w-full transition-colors ${
+        selected
+          ? "border-nv-green/55 bg-black/25 ring-1 ring-nv-green/35"
+          : "border-stealth-border/40 bg-black/15 hover:border-stealth-border/70 hover:bg-black/20"
+      } disabled:opacity-60`}
+    >
+      <div className="px-3 py-2 border-b border-stealth-border/40 flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <h3 className="text-[10px] font-mono text-white truncate">{gpu.name}</h3>
+          <p className="text-[8px] font-mono text-stealth-muted mt-0.5">
             GPU-{gpu.index}
-            {driverVer ? ` [driver ver: ${driverVer}]` : ""}
+            {driverVer ? ` · drv ${driverVer}` : ""}
+            {selected ? " · OC target" : ""}
           </p>
         </div>
-        <span className={`text-sm font-mono ${tempColor}`}>
-          {gpu.temperature_gpu}°C
-        </span>
+        <div className="flex items-center shrink-0">
+          {oc && (
+            <span className="text-sm font-mono text-white/85 tabular-nums">
+              <span>
+                {oc.coreClockMhz} MHz
+                {oc.coreOffsetMhz > 0 && (
+                  <span className="text-nv-green/90"> +{oc.coreOffsetMhz} MHz</span>
+                )}
+              </span>
+              <span className="text-stealth-muted/45 mx-1.5">/</span>
+              <span>
+                {oc.memClockMhz} MHz
+                {oc.memOffsetMhz > 0 && (
+                  <span className="text-nv-green/90"> +{oc.memOffsetMhz} MHz</span>
+                )}
+              </span>
+            </span>
+          )}
+          <span className={`text-sm font-mono ml-5 pl-5 border-l border-stealth-border/40 ${tempColor}`}>
+            {gpu.temperature_gpu}°C
+          </span>
+        </div>
       </div>
 
-      <div className="px-3 py-2.5">
+      <div className="px-3 py-2 pointer-events-none">
         <div className="flex items-center justify-between mb-1">
-          <span className="text-[9px] font-mono text-stealth-muted tracking-wider">VRAM</span>
-          <p className="text-[9px] font-mono text-white/80">
+          <span className="text-[8px] font-mono text-stealth-muted tracking-wider">VRAM</span>
+          <p className="text-[8px] font-mono text-white/80">
             {(gpu.memory_used / 1024).toFixed(1)} / {(gpu.memory_total_manufactured || gpu.memory_total) / 1024} GB ({vramPercent.toFixed(0)}%)
           </p>
         </div>
@@ -117,9 +221,14 @@ function GpuCard({ gpu }: { gpu: GpuInfo }) {
         </div>
 
         <div className="flex items-center justify-between mt-2 mb-1">
-          <span className="text-[9px] font-mono text-stealth-muted tracking-wider">POWER</span>
-          <span className="text-[9px] font-mono text-white/80">
-            <span className="text-sm font-mono text-telemetry-amber">{gpu.power_draw.toFixed(1)}W</span> / {gpu.power_limit.toFixed(0)}W ({powerPercent.toFixed(0)}%)
+          <span className="text-[8px] font-mono text-stealth-muted tracking-wider">POWER</span>
+          <span className="text-[8px] font-mono text-white/80">
+            <span className="text-sm font-mono text-telemetry-amber">{gpu.power_draw.toFixed(1)}W</span>
+            {" / "}
+            {gpu.power_limit.toFixed(0)}W ({powerPercent.toFixed(0)}%)
+            {oc && oc.configPowerLimitW !== Math.round(gpu.power_limit) && (
+              <span className="text-nv-green/80 ml-1">→{oc.configPowerLimitW}W</span>
+            )}
           </span>
         </div>
         <div className="w-full h-1.5 theme-bar-track rounded-sm overflow-hidden">
@@ -129,12 +238,13 @@ function GpuCard({ gpu }: { gpu: GpuInfo }) {
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-3 mt-3">
+        <div className="grid grid-cols-2 gap-2 mt-2">
           <UtilGauge label="GPU UTIL" value={gpu.utilization_gpu} max={100} color="text-nv-green" barColor="bg-nv-green" />
           <UtilGauge label="MEM UTIL" value={gpu.utilization_memory} max={100} color="text-telemetry-cyan" barColor="bg-telemetry-cyan" />
         </div>
+
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -149,8 +259,8 @@ function UtilGauge({ label, value, max, color, barColor }: {
 
   return (
     <div>
-      <span className="text-[8px] font-mono text-stealth-muted tracking-wider">{label}</span>
-      <p className={`text-xs font-mono ${color}`}>{value}%</p>
+      <span className="text-[7px] font-mono text-stealth-muted tracking-wider">{label}</span>
+      <p className={`text-[10px] font-mono ${color}`}>{value}%</p>
       <div className="w-full h-1 theme-bar-track rounded-sm mt-0.5 overflow-hidden">
         <div
           style={{ width: `${percent}%` }}

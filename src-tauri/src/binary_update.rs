@@ -2,7 +2,7 @@
 
 use serde::Serialize;
 use std::path::PathBuf;
-use tauri::{Emitter, Manager};
+use tauri::Manager;
 
 /// Feature flag: set to true to enable binary update checks via GitHub API.
 /// Currently disabled because releases are not yet uploaded. Set to true when ready.
@@ -171,7 +171,8 @@ pub async fn download_binary_update(
         .ok_or_else(|| format!("Asset '{}' not found in latest release", asset_name))?;
 
     // Emit download start event
-    let _ = app_handle.emit("binary-update:download-start", &BinaryUpdateEvent {
+    crate::ipc_meter::emit_tracked(
+        &app_handle,"binary-update:download-start", &BinaryUpdateEvent {
         provider_id: provider_id.clone(),
         profile: profile.clone(),
         status: "downloading".to_string(),
@@ -192,7 +193,8 @@ pub async fn download_binary_update(
     let total_size = bytes.len();
 
     // Emit progress
-    let _ = app_handle.emit("binary-update:download-progress", &BinaryUpdateEvent {
+    crate::ipc_meter::emit_tracked(
+        &app_handle,"binary-update:download-progress", &BinaryUpdateEvent {
         provider_id: provider_id.clone(),
         profile: profile.clone(),
         status: "downloading".to_string(),
@@ -210,7 +212,8 @@ pub async fn download_binary_update(
     if current_binary.exists() {
         log::warn!("[binary-update] Target binary exists at {} — ensure no engine is using it before overwriting", current_binary.display());
         // Emit event to frontend asking user for confirmation
-        let _ = app_handle.emit("binary-update:confirm-overwrite", &BinaryUpdateEvent {
+        crate::ipc_meter::emit_tracked(
+        &app_handle,"binary-update:confirm-overwrite", &BinaryUpdateEvent {
             provider_id: provider_id.clone(),
             profile: profile.clone(),
             status: "confirm".to_string(),
@@ -225,7 +228,8 @@ pub async fn download_binary_update(
     std::fs::write(&temp_zip, &bytes).map_err(|e| format!("Failed to write zip: {}", e))?;
 
     // Extract using PowerShell's Expand-Archive (built-in on Windows)
-    let _ = app_handle.emit("binary-update:download-progress", &BinaryUpdateEvent {
+    crate::ipc_meter::emit_tracked(
+        &app_handle,"binary-update:download-progress", &BinaryUpdateEvent {
         provider_id: provider_id.clone(),
         profile: profile.clone(),
         status: "extracting".to_string(),
@@ -276,7 +280,8 @@ pub async fn download_binary_update(
         });
 
     // Emit success event with new path and build info
-    let _ = app_handle.emit("binary-update:download-complete", &BinaryUpdateEvent {
+    crate::ipc_meter::emit_tracked(
+        &app_handle,"binary-update:download-complete", &BinaryUpdateEvent {
         provider_id: provider_id.clone(),
         profile: profile.clone(),
         status: "complete".to_string(),
@@ -441,7 +446,8 @@ pub async fn install_app_update(app_handle: tauri::AppHandle) -> Result<(), Stri
         .ok_or_else(|| "No Windows installer found in latest release".to_string())?;
 
     // Emit download start event
-    let _ = app_handle.emit("app-update:download-start", &serde_json::json!({
+    crate::ipc_meter::emit_tracked(
+        &app_handle,"app-update:download-start", &serde_json::json!({
         "status": "downloading",
         "message": "Downloading update...",
     }));
@@ -465,7 +471,8 @@ pub async fn install_app_update(app_handle: tauri::AppHandle) -> Result<(), Stri
     std::fs::write(&installer_path, &bytes).map_err(|e| format!("Failed to write installer: {}", e))?;
 
     // Emit download complete event
-    let _ = app_handle.emit("app-update:download-complete", &serde_json::json!({
+    crate::ipc_meter::emit_tracked(
+        &app_handle,"app-update:download-complete", &serde_json::json!({
         "status": "complete",
         "message": "Update downloaded. Installing...",
     }));

@@ -29,12 +29,14 @@
     "active": true,
     "targets": ["nsis"],
     "resources": {
-      "runtime-bundle/": "runtime/"
+      "runtime-bundle/": "runtime/",
+      "bin/": "bin/"
     },
     "icon": [
       "icons/icon-release.ico"
     ],
     "windows": {
+      "minimumWebview2Version": "131.0.2903.0",
       "webviewInstallMode": {
         "type": "embedBootstrapper"
       },

@@ -69,6 +69,7 @@ impl LogHub {
         if crate::debug_flags::flags().disable_ipc_emit {
             return;
         }
+        crate::ipc_meter::record(event);
         if let Err(e) = self.app_handle.emit(event, payload) {
             log::warn!("[LOG_HUB] emit failed: {}", e);
         }
@@ -493,7 +494,8 @@ impl LogHub {
         }
 
         // Flush remaining batch on channel close
-        if !batch_buffer.is_empty() {
+        if !batch_buffer.is_empty() && !crate::debug_flags::flags().disable_ipc_emit {
+            crate::ipc_meter::record("engine-log-batch");
             let _ = app_handle.emit("engine-log-batch", &LogBatch {
                 slot: slot_idx,
                 alias: alias.clone(),
@@ -877,6 +879,7 @@ impl LogHub {
             let entries = std::mem::take(batch_buffer);
             if !entries.is_empty() && !crate::debug_flags::flags().disable_ipc_emit {
                 let batch = LogBatch { slot: slot_idx, alias: alias.to_string(), entries };
+                crate::ipc_meter::record("engine-log-batch");
                 if let Err(e) = app_handle.emit_to("main", "engine-log-batch", &batch) {
                     // Log hub emit_to failed now routed to Blackwell Output Console
                     let _ = app_handle.emit("engine-log-batch", &batch);
@@ -898,6 +901,10 @@ impl LogHub {
             timestamp: chrono::Local::now().format("%H:%M:%S%.3f").to_string(),
         };
 
+        if crate::debug_flags::flags().disable_ipc_emit {
+            return;
+        }
+        crate::ipc_meter::record("engine-system");
         if let Err(e) = self.app_handle.emit("engine-system", &event) {
             log::warn!("Failed to emit engine-system event: {}", e);
         }

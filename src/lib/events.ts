@@ -7,6 +7,8 @@
  * | BlackOps-reload-providers | Refetch provider list from Rust after config save |
  * | BlackOps-param-config-changed | Param catalog/count changed; reload overrides |
  * | BlackOps-navigate-stack | Switch to ENGINES tab (GPU topo click-through) |
+ * | BlackOps-navigate-catalog | Switch to OPERATIONS tab (catalog — model pick, FIT, bench) |
+ * | BlackOps-navigate-extras | Switch to EXTRAS tab; detail.subTab selects sub-tab |
  * | BlackOps-launch-engine | Request launch from catalog keyboard shortcut |
  * | BlackOps-launch-success | Engine started — status bar + toast |
  * | BlackOps-launch-error | Launch failed — status bar + toast |
@@ -36,6 +38,7 @@ import {
   enableSetupGuidePreview,
   resetSetupGuideState,
   STORAGE_PREFIX,
+  type ExtrasSubTab,
 } from "./storage";
 
 export const EVENTS = {
@@ -43,6 +46,8 @@ export const EVENTS = {
   reloadProviders: `${STORAGE_PREFIX}reload-providers`,
   paramConfigChanged: `${STORAGE_PREFIX}param-config-changed`,
   navigateStack: `${STORAGE_PREFIX}navigate-stack`,
+  navigateCatalog: `${STORAGE_PREFIX}navigate-catalog`,
+  navigateExtras: `${STORAGE_PREFIX}navigate-extras`,
   launchEngine: `${STORAGE_PREFIX}launch-engine`,
   launchSuccess: `${STORAGE_PREFIX}launch-success`,
   launchError: `${STORAGE_PREFIX}launch-error`,
@@ -81,6 +86,31 @@ export function consumePendingConfigSubTab(): NavigateConfigDetail["subTab"] | n
 export function dispatchNavigateConfig(detail?: NavigateConfigDetail): void {
   if (detail?.subTab) pendingConfigSubTab = detail.subTab;
   dispatchAppEvent(EVENTS.navigateConfig, detail);
+}
+
+export function dispatchNavigateCatalog(): void {
+  dispatchAppEvent(EVENTS.navigateCatalog);
+}
+
+export type NavigateExtrasDetail = {
+  subTab?: ExtrasSubTab;
+};
+
+let pendingExtrasSubTab: ExtrasSubTab | null = null;
+
+export function consumePendingExtrasSubTab(): ExtrasSubTab | null {
+  const tab = pendingExtrasSubTab;
+  pendingExtrasSubTab = null;
+  return tab;
+}
+
+export function dispatchNavigateExtras(detail?: NavigateExtrasDetail): void {
+  if (detail?.subTab) pendingExtrasSubTab = detail.subTab;
+  dispatchAppEvent(EVENTS.navigateExtras, detail);
+}
+
+export function dispatchNavigateModelHub(): void {
+  dispatchNavigateExtras({ subTab: "modelhub" });
 }
 
 export function dispatchPowerUserChanged(): void {

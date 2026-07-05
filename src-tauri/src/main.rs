@@ -2,6 +2,7 @@
 
 mod crash_log;
 mod debug_flags;
+mod ipc_meter;
 mod engine;
 mod disk_io_pdh;
 mod telemetry;
@@ -40,6 +41,9 @@ pub mod features;
 mod foundry_toolchain;
 mod reactor_foundry;
 mod output_console;
+mod playground;
+mod gpu_control;
+mod sidecar_elevate;
 
 
 use std::sync::Arc;
@@ -351,7 +355,7 @@ async fn start_download(
         .await?;
     drop(dm);
 
-    let _ = app.emit("download-event", serde_json::json!({
+    ipc_meter::emit_tracked(&app, "download-event", serde_json::json!({
         "type": "queued",
         "taskId": task_id,
     }));
@@ -454,7 +458,7 @@ async fn start_quant_download(
     }
 
     for task_id in &task_ids {
-        let _ = app.emit("download-event", serde_json::json!({
+        ipc_meter::emit_tracked(&app, "download-event", serde_json::json!({
             "type": "queued",
             "taskId": task_id,
         }));
@@ -473,7 +477,7 @@ async fn pause_download(
     dm.pause_task(&task_id)?;
     drop(dm);
 
-    let _ = app.emit("download-event", serde_json::json!({
+    ipc_meter::emit_tracked(&app, "download-event", serde_json::json!({
         "type": "paused",
         "taskId": task_id,
     }));
@@ -491,7 +495,7 @@ async fn cancel_download(
     dm.cancel_task(&task_id)?;
     drop(dm);
 
-    let _ = app.emit("download-event", serde_json::json!({
+    ipc_meter::emit_tracked(&app, "download-event", serde_json::json!({
         "type": "cancelled",
         "taskId": task_id,
     }));
@@ -510,7 +514,7 @@ async fn resume_download(
     drop(dm);
 
     if result.is_ok() {
-        let _ = app.emit("download-event", serde_json::json!({
+        ipc_meter::emit_tracked(&app, "download-event", serde_json::json!({
             "type": "resumed",
             "taskId": task_id,
         }));
@@ -613,7 +617,6 @@ use log_hub::LogHub;
 use mobile_bridge::MobileBridge;
 use download_manager::DownloadManager;
 use tauri::Manager;
-use tauri::Emitter;
 
 #[tokio::main]
 async fn main() {
@@ -725,6 +728,7 @@ async fn main() {
             app.manage(mobile_bridge.clone());
 
             telemetry::ensure_disk_io_poller();
+            ipc_meter::start_rotator();
 
             Ok(())
         })
@@ -802,8 +806,14 @@ async fn main() {
             burst_bench::cmd_burst_bench,
             bench_pp_burst::cmd_bench_pp_burst,
             bench_cancel::cmd_cancel_bench,
+            playground::playground_open_html_in_browser,
             fusion::brain::get_fusion_snapshots,
             debug_flags::get_debug_flags,
+            ipc_meter::get_ipc_meter_stats,
+            gpu_control::get_gpu_control_devices,
+            gpu_control::is_gpu_control_elevated,
+            gpu_control::apply_gpu_control_presets,
+            gpu_control::reset_gpu_control,
             // Mobile Sentinel Bridge commands (always active)
             mobile_bridge::cmd_mobile_bridge_start,
             mobile_bridge::cmd_mobile_bridge_stop,

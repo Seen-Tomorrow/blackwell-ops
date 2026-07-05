@@ -30,6 +30,7 @@ import {
 } from "../lib/events";
 import { resolveAppShellWidthPx } from "../lib/uiShell";
 import { isMobileDevice } from "../lib/utils";
+import IpcMeterFooter from "./IpcMeterFooter";
 
 const MIN_ZOOM = 0.7;
 const MAX_ZOOM = 1.5;
@@ -54,14 +55,14 @@ interface LayoutProps {
 }
 
 const tabs: { id: Tab; label: string; icon: string; hidden?: boolean }[] = [
-  { id: "catalog", label: "MODELS", icon: "\u269B" },
-  { id: "modelhub", label: "MODEL HUB", icon: "\uD83DDDC4" },
+  { id: "catalog", label: "OPERATIONS", icon: "\u269B" },
   { id: "stack", label: "ENGINES", icon: "\uD83D\uDDA4" },
-{ id: "reactor11", label: "Reactor11", icon: "\u269B", hidden: true },
   { id: "telemetry", label: "TELEMETRY", icon: "\uD83D\uDCCA" },
-  { id: "intel", label: "INTEL", icon: "\uD83D\uDCF0" },
   { id: "logs", label: "LOGS", icon: "\uD83D\uDCCD" },
+  { id: "intel", label: "INTEL", icon: "\uD83D\uDCF0" },
   { id: "config", label: "CONFIG", icon: "\u2699" },
+  { id: "extras", label: "EXTRAS", icon: "\u2726" },
+  { id: "reactor11", label: "Reactor11", icon: "\u269B", hidden: true },
   { id: "sentinel", label: "SENTINEL", icon: "\u2694", hidden: true },
 ];
 
@@ -390,6 +391,7 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
               <span className={`transition-colors ${flashMessage ? "status-flash" : "app-status-nominal"}`}>
                 {flashMessage || "SYSTEM NOMINAL"}
               </span>
+              <IpcMeterFooter />
             </>
           }
         />

@@ -13,7 +13,7 @@ use std::time::Instant;
 use crate::bench_cancel::{self, post_json};
 use crate::bench_prompts::{self, TG_PREFILL_TARGET_TOKENS};
 use serde::Serialize;
-use tauri::Emitter;
+
 use tokio::task::JoinSet;
 
 struct BenchPortGuard(u16);
@@ -372,7 +372,8 @@ pub async fn cmd_burst_bench(
         let run_parallel = if is_warmup { 1 } else { parallel_requests };
 
         crate::fusion::reset_bench_meters_for_port(port).await;
-        let _ = app_handle.emit(
+        crate::ipc_meter::emit_tracked(
+            &app_handle,
             "bench-tg-progress",
             serde_json::json!({
                 "port": port,

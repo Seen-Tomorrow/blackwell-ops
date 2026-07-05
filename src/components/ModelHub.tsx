@@ -8,7 +8,12 @@ import { dispatchAppEvent, EVENTS } from '@/lib/events';
 import { useTauriListen } from '../hooks/useTauriListen';
 import TabPageHeader from './TabPageHeader';
 
-export default function ModelHub() {
+interface ModelHubProps {
+  /** When true, parent ExtrasPage owns the page chrome. */
+  embedded?: boolean;
+}
+
+export default function ModelHub({ embedded = false }: ModelHubProps) {
   const [downloads, setDownloads] = useState<DownloadTask[]>([]);
   const completedRefs = useRef(new Set<string>());
   const pollRef = useRef<(() => void) | null>(null);
@@ -44,9 +49,9 @@ export default function ModelHub() {
 
   return (
     <div className="flex flex-col h-full min-h-0 overflow-hidden" data-model-hub>
-      <TabPageHeader title="MODEL HUB" />
+      {!embedded && <TabPageHeader title="MODEL HUB" />}
 
-      <div className="flex-1 overflow-hidden flex flex-col min-h-0 gap-0 px-4 py-3">
+      <div className={`flex-1 overflow-hidden flex flex-col min-h-0 gap-0 ${embedded ? "px-3 py-2" : "px-4 py-3"}`}>
         <div className="grid shrink-0 grid-cols-2 min-h-[160px] max-h-[40%] border border-stealth-border/60 rounded-sm overflow-hidden divide-x divide-stealth-border/60">
           <ModelHubDownloadPaths downloads={downloads} />
           <ModelHubDownloads downloads={downloads} />

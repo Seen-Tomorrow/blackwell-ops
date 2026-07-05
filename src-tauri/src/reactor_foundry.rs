@@ -13,8 +13,10 @@ use serde::{Deserialize, Serialize};
 use std::os::windows::process::CommandExt;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
-use tokio::sync::Mutex as TokioMutex;
-use tauri::Emitter;
+use std::sync::{Arc, LazyLock as StdLazyLock, Mutex};
+use tokio::sync::{Mutex as TokioMutex, Notify};
+use tauri::Manager;
+
 use crate::engine_stack::EngineStack;
 use crate::foundry_toolchain;
 use crate::output_console::{
@@ -23,6 +25,46 @@ use crate::output_console::{
 
 /// Global cancellation flag — set by foundry_cancel, polled during all long-running waits.
 static BUILD_CANCELLED: AtomicBool = AtomicBool::new(false);
+
+/// Wakes the configure→compile gate immediately when the user clicks PROCEED.
+static BUILD_CONFIRM_NOTIFY: StdLazyLock<Notify> = StdLazyLock::new(Notify::new);
+
+/// Arc clones passed into the background build worker (State cannot cross spawn).
+struct FoundryWorkerApp {
+    stack: Arc<TokioMutex<EngineStack>>,
+    config: Arc<std::sync::Mutex<crate::config::AppConfig>>,
+    app_handle: tauri::AppHandle,
+}
+
+fn foundry_console_start_session(
+    app_handle: &tauri::AppHandle,
+    build_id: u64,
+    provider_id: &str,
+    environment: &str,
+) {
+    app_handle
+        .state::<crate::engine::AppContext>()
+        .blackwell_output_console_manager
+        .start_new_foundry_build_session(build_id, provider_id.to_string(), environment.to_string());
+}
+
+fn foundry_console_end_session(app_handle: &tauri::AppHandle, build_id: u64) {
+    app_handle
+        .state::<crate::engine::AppContext>()
+        .blackwell_output_console_manager
+        .end_foundry_build_session(build_id);
+}
+
+fn foundry_console_emit(
+    app_handle: &tauri::AppHandle,
+    line: String,
+    style: BlackwellOutputConsoleLineStyle,
+) {
+    app_handle
+        .state::<crate::engine::AppContext>()
+        .blackwell_output_console_manager
+        .emit_line_to_category(BlackwellOutputConsoleCategory::Foundry, line, style);
+}
 
 /// Tracked child process PIDs for cleanup on cancel. Protected by Mutex for cross-thread access.
 static CHILD_PIDS: std::sync::LazyLock<std::sync::Mutex<Vec<u32>>> =
@@ -195,9 +237,7 @@ fn emit_build_event(
         "log_line": log_line,
     });
 
-    if let Err(e) = app_handle.emit("foundry-progress", &event) {
-        log::debug!("Failed to emit foundry-progress: {}", e);
-    }
+    crate::ipc_meter::emit_tracked(app_handle, "foundry-progress", &event);
 }
 
 fn emit_build_batch(
@@ -213,9 +253,7 @@ fn emit_build_batch(
         "log_lines": lines,
     });
 
-    if let Err(e) = app_handle.emit("foundry-progress", &event) {
-        log::debug!("Failed to emit foundry-progress batch: {}", e);
-    }
+    crate::ipc_meter::emit_tracked(app_handle, "foundry-progress", &event);
 }
 
 // ── Batch Script Builder ─────────────────────────────────────────────
@@ -252,8 +290,6 @@ fn build_isolated_batch_script(
 }
 
 // ── Streaming Log Infrastructure ─────────────────────────────────────
-
-use std::sync::{Arc, Mutex};
 
 async fn stream_child_output(
     mut child: tokio::process::Child,
@@ -387,7 +423,7 @@ fn is_cancelled() -> bool {
 async fn clear_build_slot_if_matches(
     build_id: u64,
     provider_id: &str,
-    app: &crate::engine::AppContext,
+    app_handle: &tauri::AppHandle,
 ) {
     let should_clear = {
         let mut current = CURRENT_BUILD.lock().await;
@@ -399,8 +435,7 @@ async fn clear_build_slot_if_matches(
         }
     };
     if should_clear {
-        app.blackwell_output_console_manager
-            .end_foundry_build_session(build_id);
+        foundry_console_end_session(app_handle, build_id);
         let work_root = crate::config::foundry_work_dir(provider_id);
         let _ = tokio::fs::remove_dir_all(&work_root).await;
     }
@@ -475,14 +510,12 @@ pub async fn foundry_build(
     max_cores: Option<u32>,
     cmake_flags: Option<String>,
     app: tauri::State<'_, crate::engine::AppContext>,
-    _app_handle: tauri::AppHandle,
+    app_handle: tauri::AppHandle,
 ) -> Result<(), String> {
-    let manifest = foundry_toolchain::load_manifest()?;
+    // Fail fast on bad profile/manifest before reserving the build slot.
     let profile = foundry_toolchain::validate_profile_ready(&environment)?;
     let profile_id = profile.env_label().to_string();
-    let all_cuda_vars = foundry_toolchain::all_cuda_path_vars(&manifest);
-
-    let app_handle = &_app_handle;
+    let _manifest = foundry_toolchain::load_manifest()?;
 
     // Reset cancellation state for new build
     BUILD_CANCELLED.store(false, Ordering::SeqCst);
@@ -509,17 +542,51 @@ pub async fn foundry_build(
         });
     }
 
-    // Start tracking this build in the Blackwell Output Console (power-user output system)
-    app.blackwell_output_console_manager
-        .start_new_foundry_build_session(
+    // Run the long build in the background so confirm/cancel IPC is never blocked by this command.
+    let worker = FoundryWorkerApp {
+        stack: app.stack.clone(),
+        config: app.config.clone(),
+        app_handle: app_handle.clone(),
+    };
+    tauri::async_runtime::spawn(async move {
+        if let Err(e) = run_foundry_build_worker(
+            worker,
+            provider_id,
+            environment,
+            pr_url,
+            max_cores,
+            cmake_flags,
             build_id,
-            provider_id.clone(),
-            environment.clone(),
-        );
+        )
+        .await
+        {
+            log::error!("[foundry] Background build task failed: {}", e);
+        }
+    });
 
-    // Emit an initial line into the Blackwell Output Console under the FOUNDRY category
-    app.blackwell_output_console_manager.emit_line_to_category(
-        BlackwellOutputConsoleCategory::Foundry,
+    Ok(())
+}
+
+async fn run_foundry_build_worker(
+    worker: FoundryWorkerApp,
+    provider_id: String,
+    environment: String,
+    pr_url: Option<String>,
+    max_cores: Option<u32>,
+    cmake_flags: Option<String>,
+    build_id: u64,
+) -> Result<(), String> {
+    let manifest = foundry_toolchain::load_manifest()?;
+    let profile = foundry_toolchain::validate_profile_ready(&environment)?;
+    let profile_id = profile.env_label().to_string();
+    let all_cuda_vars = foundry_toolchain::all_cuda_path_vars(&manifest);
+
+    let app_handle = &worker.app_handle;
+
+    foundry_console_start_session(app_handle, build_id, &provider_id, &environment);
+
+    foundry_console_emit(
+        app_handle,
         format!(
             "=== Starting Foundry build for '{}' ({}) - Build ID {} ===",
             provider_id, environment, build_id
@@ -527,14 +594,14 @@ pub async fn foundry_build(
         BlackwellOutputConsoleLineStyle::Command,
     );
 
-    app.blackwell_output_console_manager.emit_line_to_category(
-        BlackwellOutputConsoleCategory::Foundry,
+    foundry_console_emit(
+        app_handle,
         "Phase: Initializing repository and environment...".to_string(),
         BlackwellOutputConsoleLineStyle::Highlight,
     );
 
-    app.blackwell_output_console_manager.emit_line_to_category(
-        BlackwellOutputConsoleCategory::Foundry,
+    foundry_console_emit(
+        app_handle,
         "Phase: Configuring (CMake)...".to_string(),
         BlackwellOutputConsoleLineStyle::Highlight,
     );
@@ -551,7 +618,7 @@ pub async fn foundry_build(
     // Stop engines for this provider — but only if any are actually running.
     // This avoids unnecessary 5+ second delays when the user has no engines active for this provider.
     let backend_type: String = {
-        let cfg = app.config.lock().map_err(|e| e.to_string())?;
+        let cfg = worker.config.lock().map_err(|e| e.to_string())?;
         cfg.providers.iter()
             .find(|p| p.id == provider_id)
             .map(|p| p.id.clone())
@@ -560,7 +627,7 @@ pub async fn foundry_build(
 
     let profile_key = profile_id.to_ascii_lowercase();
     let running_for_profile: Vec<_> = {
-        let stack = app.stack.lock().await;
+        let stack = worker.stack.lock().await;
         stack.get_status()
             .into_iter()
             .filter(|e| {
@@ -589,7 +656,7 @@ pub async fn foundry_build(
         let stopped: Vec<usize> = EngineStack::stop_slots_by_provider_and_profile_parallel(
             &backend_type,
             &profile_key,
-            &app.stack,
+            &worker.stack,
         )
         .await;
         if !stopped.is_empty() {
@@ -635,7 +702,7 @@ pub async fn foundry_build(
     // ── Git Operations ───────────────────────────────────────────────
 
     let (git_url, branch) = {
-        let cfg = app.config.lock().map_err(|e| e.to_string())?;
+        let cfg = worker.config.lock().map_err(|e| e.to_string())?;
         let p = cfg.providers.iter()
             .find(|p| p.id == provider_id);
         (
@@ -719,7 +786,7 @@ pub async fn foundry_build(
                 // Try to resolve owner/repo if only a number was given (user request)
                 let resolved_owner_repo = owner_repo_opt.clone().or_else(|| {
                     // Load the provider's git_url and try to guess
-                    if let Ok(cfg) = app.config.lock() {
+                    if let Ok(cfg) = worker.config.lock() {
                         if let Some(p) = cfg.providers.iter().find(|p| p.id == provider_id) {
                             if !p.git_url.trim().is_empty() {
                                 return extract_github_owner_repo(&p.git_url);
@@ -792,7 +859,7 @@ pub async fn foundry_build(
                                             Some(format!("[PR] #{} applied successfully", pr_num)));
 
                                         let env_key = profile_id.clone();
-                                        if let Ok(mut cfg) = app.config.lock() {
+                                        if let Ok(mut cfg) = worker.config.lock() {
                                             if let Some(p) = cfg.providers.iter_mut().find(|p| p.id == provider_id) {
                                                 p.last_pr_per_env.insert(env_key, pr_num.clone());
                                             }
@@ -844,7 +911,7 @@ pub async fn foundry_build(
     // Sacred artifacts/<id>/<env>/Release is only written (by copy) on successful validation.
     // Therefore no pre-build backup/rename of a live binary is required.
     let _provider_display_name = {
-        let cfg = app.config.lock().map_err(|e| e.to_string())?;
+        let cfg = worker.config.lock().map_err(|e| e.to_string())?;
         cfg.providers.iter()
             .find(|p| p.id == provider_id)
             .map(|p| p.display_name.clone())
@@ -856,7 +923,7 @@ pub async fn foundry_build(
     let template_type = resolve_template_type(&provider_id);
 
     let cmake_extra = {
-        let cfg = app.config.lock().map_err(|e| e.to_string())?;
+        let cfg = worker.config.lock().map_err(|e| e.to_string())?;
         let p = cfg.providers.iter()
             .find(|p| p.id == provider_id);
         let build_profile = p.map(|p| p.build_profile.clone()).unwrap_or_default();
@@ -965,7 +1032,7 @@ pub async fn foundry_build(
     let cfg_batch_content = cfg_batch_lines.join("\n");
     let cfg_batch_path = work_root.join("_build_cfg.bat");
     if let Err(e) = tokio::fs::write(&cfg_batch_path, &cfg_batch_content).await {
-        clear_build_slot_if_matches(build_id, &provider_id, &*app).await;
+        clear_build_slot_if_matches(build_id, &provider_id, app_handle).await;
         return Err(format!("Failed to write build script: {}", e));
     }
 
@@ -984,7 +1051,6 @@ pub async fn foundry_build(
         track_pid(pid);
     }
 
-    use std::sync::{Arc, Mutex};
     let stderr_capture: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
     let stderr_capture_clone = stderr_capture.clone();
 
@@ -1058,7 +1124,7 @@ pub async fn foundry_build(
             stream_handle.await.ok();
             clear_pids();
             let _ = tokio::fs::remove_file(&cfg_batch_path).await;
-            clear_build_slot_if_matches(build_id, &provider_id, &*app).await;
+            clear_build_slot_if_matches(build_id, &provider_id, app_handle).await;
             return Err("Build cancelled by user.".to_string());
         }
     };
@@ -1069,7 +1135,7 @@ pub async fn foundry_build(
     let Some(cfg_status) = cfg_status else {
         clear_pids();
         let _ = tokio::fs::remove_file(&cfg_batch_path).await;
-        clear_build_slot_if_matches(build_id, &provider_id, &*app).await;
+        clear_build_slot_if_matches(build_id, &provider_id, app_handle).await;
         return Err("CMake configure process terminated unexpectedly.".to_string());
     };
 
@@ -1088,7 +1154,7 @@ pub async fn foundry_build(
         // Ensure work dir is cleaned even on early configure failure (prevents stuck "building" + orphaned work dir)
         let work_root = crate::config::foundry_work_dir(&provider_id);
         let _ = tokio::fs::remove_dir_all(&work_root).await;
-        app.blackwell_output_console_manager.end_foundry_build_session(build_id);
+        foundry_console_end_session(app_handle, build_id);
 
         *CURRENT_BUILD.lock().await = None;
         return Err("CMake configure failed. Check the log above for details.".to_string());
@@ -1097,7 +1163,7 @@ pub async fn foundry_build(
     // ── Check cancellation before showing PROCEED prompt ─────────────
     if is_cancelled() {
         clear_pids();
-        clear_build_slot_if_matches(build_id, &provider_id, &*app).await;
+        clear_build_slot_if_matches(build_id, &provider_id, app_handle).await;
         return Err("Build cancelled by user.".to_string());
     }
 
@@ -1125,7 +1191,7 @@ pub async fn foundry_build(
             // Explicit cleanup on cancel from WaitingForConfirm
             let work_root = crate::config::foundry_work_dir(&provider_id);
             let _ = tokio::fs::remove_dir_all(&work_root).await;
-            app.blackwell_output_console_manager.end_foundry_build_session(build_id);
+            foundry_console_end_session(app_handle, build_id);
 
             emit_build_event(app_handle, &BuildState {
                 build_id,
@@ -1156,13 +1222,16 @@ pub async fn foundry_build(
             *CURRENT_BUILD.lock().await = None;
             return Err("Build cancelled: user did not confirm.".to_string());
         }
-        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+        tokio::select! {
+            _ = BUILD_CONFIRM_NOTIFY.notified() => {}
+            _ = tokio::time::sleep(tokio::time::Duration::from_millis(200)) => {}
+        }
     }
 
     log::info!("User approved build, starting compilation...");
 
-    app.blackwell_output_console_manager.emit_line_to_category(
-        BlackwellOutputConsoleCategory::Foundry,
+    foundry_console_emit(
+        app_handle,
         "Phase: Compilation started...".to_string(),
         BlackwellOutputConsoleLineStyle::Highlight,
     );
@@ -1288,7 +1357,7 @@ pub async fn foundry_build(
     if let Some(found_dir) = &validated_binary_dir {
         if *found_dir != cmake_build_output_dir {
             log::info!("Binaries found at {:?}, updating provider path", found_dir);
-            let cfg = app.config.lock().map_err(|e| e.to_string())?;
+            let cfg = worker.config.lock().map_err(|e| e.to_string())?;
             let mut cfg_mut = cfg.clone();
             for p in &mut cfg_mut.providers {
                 if p.id == provider_id {
@@ -1302,7 +1371,7 @@ pub async fn foundry_build(
                 }
             }
             drop(cfg);
-            if let Err(e) = persist_providers_atomic(&*app) {
+            if let Err(e) = persist_providers_atomic(&worker.config) {
                 log::error!("[foundry] Failed to persist provider config after path correction: {}", e);
             }
         }
@@ -1345,7 +1414,7 @@ pub async fn foundry_build(
             log::info!("[foundry] Captured build info for provider '{}' profile '{}': {} built {}",
                 provider_id, profile_id, build_info_raw.version, build_info_raw.build_date);
 
-            let mut cfg = app.config.lock().map_err(|e| e.to_string())?;
+            let mut cfg = worker.config.lock().map_err(|e| e.to_string())?;
             if let Some(provider) = cfg.providers.iter_mut().find(|p| p.id == provider_id) {
                 let arches = crate::engine_utils::parse_cuda_architectures_from_cmake(&cmake_extra);
                 let build_info = crate::types::BuildInfo {
@@ -1372,7 +1441,7 @@ pub async fn foundry_build(
                     .insert("current".to_string(), build_info);
             }
             drop(cfg);
-            if let Err(e) = persist_providers_atomic(&*app) {
+            if let Err(e) = persist_providers_atomic(&worker.config) {
                 log::error!("[foundry] Failed to persist provider config: {}", e);
             }
         }
@@ -1386,15 +1455,14 @@ pub async fn foundry_build(
     }
 
     // Feed final success message into the Blackwell Output Console
-    app.blackwell_output_console_manager.emit_line_to_category(
-        BlackwellOutputConsoleCategory::Foundry,
+    foundry_console_emit(
+        app_handle,
         crate::output_console::format_console_banner("Foundry build completed successfully"),
         BlackwellOutputConsoleLineStyle::Success,
     );
 
     // End the session and clear its buffer (per design: clear on successful close)
-    app.blackwell_output_console_manager
-        .end_foundry_build_session(build_id);
+    foundry_console_end_session(app_handle, build_id);
 
     // On a clean successful build, let the tracked child (cmake --build) + its subtree terminate naturally.
     // This restores the reliable behavior that existed before the directory redesign work.
@@ -1455,7 +1523,7 @@ pub async fn foundry_cancel(
             "environment": state.profile_id,
             "log_line": Some("Build cancelled by user."),
         });
-        app_handle.emit("foundry-progress", &event).ok();
+        crate::ipc_meter::emit_tracked(&app_handle, "foundry-progress", &event);
     }
 
     Ok(())
@@ -1479,6 +1547,7 @@ pub async fn foundry_confirm_build() -> Result<(), String> {
     if let Some(ref mut state) = *current {
         if matches!(state.phase, BuildPhase::WaitingForConfirm) {
             state.phase = BuildPhase::Building;
+            BUILD_CONFIRM_NOTIFY.notify_waiters();
         }
     }
     Ok(())
@@ -1534,7 +1603,7 @@ pub async fn refresh_build_info(
                                         p.binary_path = rel;
                                     }
                                     drop(cfg);
-                                    if let Err(e) = persist_providers_atomic(&*app) {
+                                    if let Err(e) = persist_providers_atomic(&app.config) {
                                         log::error!("[foundry] Failed to persist provider config: {}", e);
                                     }
                                 } else {
@@ -1570,7 +1639,7 @@ pub async fn refresh_build_info(
             *p = provider;
         }
         drop(cfg);
-        if let Err(e) = persist_providers_atomic(&*app) {
+        if let Err(e) = persist_providers_atomic(&app.config) {
             log::error!("[foundry] Failed to persist provider config: {}", e);
         }
     }
@@ -1669,7 +1738,7 @@ pub async fn foundry_restore(
     }
 
     // Persist with error logging (not silent discard)
-    if let Err(e) = persist_providers_atomic(&*app) {
+    if let Err(e) = persist_providers_atomic(&app.config) {
         log::error!("[restore] Failed to persist provider config: {}", e);
     }
 
@@ -1805,9 +1874,9 @@ async fn enrich_provider_binary_info(
     changed
 }
 
-fn persist_providers_atomic(app: &crate::engine::AppContext) -> Result<(), String> {
+fn persist_providers_atomic(config: &Arc<std::sync::Mutex<crate::config::AppConfig>>) -> Result<(), String> {
     let providers = {
-        let cfg = app.config.lock().map_err(|e| e.to_string())?;
+        let cfg = config.lock().map_err(|e| e.to_string())?;
         cfg.providers.clone()
     };
     crate::config::persist_user_providers_meta(&providers)
@@ -1829,9 +1898,7 @@ fn emit_config_event(
         "log_line": log_line,
     });
 
-    if let Err(e) = app_handle.emit("foundry-progress", &event) {
-        log::debug!("Failed to emit foundry-progress: {}", e);
-    }
+    crate::ipc_meter::emit_tracked(app_handle, "foundry-progress", &event);
 }
 
 /// Rollback builder — allows attaching a custom failure message.
@@ -1865,9 +1932,7 @@ impl<'a> RollbackBuilder<'a> {
             "log_line": Some(msg),
         });
 
-        if let Err(e) = app_handle.emit("foundry-progress", &event) {
-            log::debug!("Failed to emit foundry-progress: {}", e);
-        }
+        crate::ipc_meter::emit_tracked(&app_handle, "foundry-progress", &event);
         *CURRENT_BUILD.lock().await = None;
     }
 }

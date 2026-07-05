@@ -4,7 +4,8 @@ import { readFileSync, writeFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, resolve } from "path";
 
-const host = process.env.TAURI_DEV_HOST || "0.0.0.0";
+// 127.0.0.1 — not 0.0.0.0/localhost. Elevated WebView2 on Windows breaks Origin validation with localhost.
+const host = process.env.TAURI_DEV_HOST || "127.0.0.1";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // ── Build mode ────────────────────────────────────────────────────────

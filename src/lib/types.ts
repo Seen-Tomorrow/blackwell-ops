@@ -896,6 +896,66 @@ export interface CatalogUpdateEntry {
   hasUpdate: boolean;
 }
 
+export type IpcMeterTier = "green" | "yellow" | "orange" | "red";
+
+export interface GpuControlDeviceInfo {
+  index: number;
+  name: string;
+  powerLimitW: number;
+  powerMinW: number;
+  powerMaxW: number;
+  powerDefaultW: number;
+  coreClockMhz: number;
+  memClockMhz: number;
+  maxCoreClockMhz: number;
+  maxMemClockMhz: number;
+}
+
+export type GpuControlOcMode = "sync" | "individual";
+
+export interface GpuControlSharedPreset {
+  powerLimitW: number;
+  coreOffsetMhz: number;
+  memOffsetMhz: number;
+}
+
+export interface GpuControlPreset {
+  gpuIndex: number;
+  powerLimitW: number;
+  coreOffsetMhz: number;
+  memOffsetMhz: number;
+}
+
+export interface GpuControlStepResult {
+  gpuIndex: number;
+  step: string;
+  ok: boolean;
+  detail?: string;
+}
+
+export interface GpuControlApplyResult {
+  ok: boolean;
+  steps: GpuControlStepResult[];
+  elevated: boolean;
+}
+
+export interface GpuControlSavedState {
+  reapplyOnLaunch: boolean;
+  ocMode: GpuControlOcMode;
+  selectedGpuIndex: number;
+  sharedPreset: GpuControlSharedPreset;
+  presets: GpuControlPreset[];
+}
+
+export interface IpcMeterSnapshot {
+  totalPerSec: number;
+  fusionPerSec: number;
+  logBatchPerSec: number;
+  otherPerSec: number;
+  peakPerSec: number;
+  tier: IpcMeterTier;
+}
+
 /** Sanitize alias for CLI/API use — replaces spaces and commas with hyphens. */
 export function sanitizeAlias(alias: string): string {
     return alias.replace(/[\s,]/g, "-");

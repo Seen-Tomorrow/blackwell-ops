@@ -31,7 +31,7 @@ export const StatusProvider: React.FC<{ value: any; children?: React.ReactNode }
     const handleSuccess = (e: Event) => {
       const detail = (e as CustomEvent).detail as { alias: string; port: number };
       if (detail?.alias && detail.port) {
-        setFlashMessage(`${detail.alias} ignited @ :${detail.port}`);
+        setFlashMessage(`${detail.alias} launched @ :${detail.port}`);
       }
     };
 

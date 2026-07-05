@@ -54,11 +54,28 @@ People running serious local LLMs on Windows often hit friction with existing to
 
 **Blackwell Ops** is the Windows-native alternative to Ollama and LM Studio for power users who want full control over llama.cpp (and Tom TurboQuant builds) — multiple engines, source builds, and proper Windows integration.
 
+### Parallel agents, no extra pain
+Most users run models in a single session. But llama-server supports **multiple parallel slots** on one instance.
+
+In Blackwell Ops you simply:
+- Set 4× or 8× parallel slots on a single model / single port
+- Tell your agent harness (OpenCode, etc.) something like:  
+  *"Use up to 8 parallel agents for any suitable work or sub-task"*
+
+Real results on the same hardware:
+- Qwen3.6-27B single slot + MTP → ~185 TPS per session, but **prefill is halved** (painful for coding)
+- Same model, **8× parallel, MTP off** → 330+ total TPS on one GPU
+- 2× RTX Pro with tensor split → **850 TPS** combined, with full prefill speed
+
+You get dramatically higher aggregate throughput and much snappier prefill behavior for agentic workflows — with almost no extra power draw.
+
+(You can also run completely separate engine instances if you prefer full isolation.)
+
 ### Core strengths
 - **Native Rust + Tauri** — tiny footprint, no Electron bloat or Linux subsystem tax
 - **Foundry** — one-click build `llama-server` from source with your preferred CUDA / VS version
 - **Portable** — works from USB, relative paths everywhere
-- **Multi-engine** — orchestrate many `llama-server` instances with shared config system
+- **Multi-engine stack** — orchestrate many `llama-server` instances (or parallel slots) with a shared config system
 - **Fusion telemetry** — real-time metrics from stderr + /slots without extra overhead
 
 ## Why Windows — on purpose
@@ -162,6 +179,7 @@ If Blackwell Ops helps one person run serious local inference on Windows without
 
 - **Releases:** https://github.com/Seen-Tomorrow/blackwell-ops/releases  
 - **Issues:** https://github.com/Seen-Tomorrow/blackwell-ops/issues  
+- **Third-party notices:** [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) (includes Nvidia Inspector / Orbmu2k attribution)
 
 ---
 

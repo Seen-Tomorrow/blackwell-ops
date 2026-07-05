@@ -32,20 +32,13 @@ libloading = "0.8"
 num_cpus = "1"
 regex = "1.10"
 parking_lot = "0.12"
-keyring = { version = "3", default-features = false }
 # Mobile Sentinel Bridge (WebSocket)
 tokio-tungstenite = "0.26"
 futures-util = "0.3"
 
 [target.'cfg(windows)'.dependencies]
-keyring = { version = "3", features = ["windows-native"] }
+keyring = { version = "3", default-features = false, features = ["windows-native"] }
 windows-sys = { version = "0.61", features = ["Win32_System_Console", "Win32_System_Threading", "Win32_Foundation", "Win32_System_Performance", "Win32_System_Diagnostics_Debug", "Win32_System_Kernel", "Win32_System_Memory", "Win32_System_LibraryLoader"] }
-
-[target.'cfg(target_os = "macos")'.dependencies]
-keyring = { version = "3", features = ["apple-native"] }
-
-[target.'cfg(target_os = "linux")'.dependencies]
-keyring = { version = "3", features = ["sync-secret-service", "crypto-rust"] }
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

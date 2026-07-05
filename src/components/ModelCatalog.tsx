@@ -186,7 +186,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
   return (
     <div className="flex flex-col h-full min-h-0 overflow-hidden" data-model-catalog>
       <TabPageHeader
-        title="MODEL CATALOG"
+        title="OPERATIONS"
         meta={<span className="text-[8px] font-mono opacity-40">({catalogModels.length} / {models.length})</span>}
         actions={zone === "config" ? (
           <span className="text-[8px] font-mono px-1.5 py-0.5 rounded-sm border border-telemetry-cyan/40 text-telemetry-cyan bg-telemetry-cyan/10">

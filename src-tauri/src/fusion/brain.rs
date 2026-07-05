@@ -791,7 +791,7 @@ impl FusionBrain {
                     last_idle_heartbeat.elapsed() >= std::time::Duration::from_millis(IDLE_HEARTBEAT_MS);
                 if heartbeat_due {
                     let update = self.build_update(&[], None);
-                    self.force_emit(log_hub, update);
+                    self.try_emit(log_hub, update);
                     *last_idle_heartbeat = Instant::now();
                 }
                 return false;
@@ -836,13 +836,11 @@ impl FusionBrain {
         }
 
         let update = self.build_update(&slot_data, metrics_result.as_ref().ok());
+        self.try_emit(log_hub, update);
         let idle_heartbeat_due = self.is_idle_ready()
             && last_idle_heartbeat.elapsed() >= std::time::Duration::from_millis(IDLE_HEARTBEAT_MS);
         if idle_heartbeat_due {
-            self.force_emit(log_hub, update);
             *last_idle_heartbeat = Instant::now();
-        } else {
-            self.try_emit(log_hub, update);
         }
 
         !self.is_idle_ready()

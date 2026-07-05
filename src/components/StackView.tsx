@@ -61,7 +61,7 @@ export default function StackView({ stack, logs, systemEvents, onStop, onStopAll
             </svg>
             <p className="text-xs font-mono tracking-wider theme-accent-text opacity-60">NO ENGINES DEPLOYED</p>
             <p className="text-[10px] font-mono mt-1 text-stealth-muted/60">
-              LAUNCH MODELS FROM THE MODELS TAB
+              PICK A MODEL ON THE OPERATIONS TAB
             </p>
           </div>
         ) : (

@@ -334,6 +334,8 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
     }, 7000);
 
     try {
+      // Fire-and-forget: the command returns immediately; progress comes via foundry-progress events.
+      // Awaiting the full build blocked confirm/cancel IPC under Tauri 2.11+.
       await invoke("foundry_build", {
         providerId: provider.id,
         environment,
@@ -408,20 +410,27 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
   }, []);
 
   const handleCancel = useCallback(async () => {
-    try { await invoke("foundry_cancel"); } catch {}
     setStoppingEngines(false);
+    setWaitingForConfirm(false);
     setLogLines([]);
     setCurrentStep("");
 
-    // Important: actually close the modal through the dock state machine.
-    // Without this, cancelling from WaitingForConfirm or error states leaves
-    // the dock thinking there's still an active (stuck) build session.
+    // Close UI first — never let a hung cancel invoke trap the modal open.
     onClose();
+    try { await invoke("foundry_cancel"); } catch (err) {
+      console.error("[Foundry] Cancel invoke failed:", err);
+    }
   }, [onClose]);
 
   const handleConfirmProceed = useCallback(async () => {
     setWaitingForConfirm(false);
-    try { await invoke("foundry_confirm_build"); } catch {}
+    setCurrentStep("Building");
+    try {
+      await invoke("foundry_confirm_build");
+    } catch (err) {
+      console.error("[Foundry] Confirm invoke failed:", err);
+      setWaitingForConfirm(true);
+    }
   }, []);
 
   const handleBackupLockedYes = useCallback(async () => {

@@ -221,10 +221,10 @@ function foundryReducer(state: FoundryInternalState, action: FoundryAction): Fou
         session: action.session,
         closed: false,
         reattachedFromBackend: inProgress && isMountRecovery,
-        // HMR/remount: keep modal minimized (status-bar chip) unless user must confirm compilation.
+        // Respect explicit minimize; only auto-show on cold mount (WAIT-CONFIRM) or attach.
         userWantsModalVisible: state.userWantsModalVisible
-          || action.session.phase === 'WaitingForConfirm'
-          || (inProgress && !isMountRecovery),
+          || (action.reason === 'mount' && action.session.phase === 'WaitingForConfirm')
+          || (inProgress && action.reason === 'attach'),
       };
     }
     case 'CANCELLED':

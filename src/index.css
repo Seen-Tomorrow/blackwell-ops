@@ -1274,7 +1274,7 @@ html, body, #root {
 /* Foundry — floating window above status bar (no fullscreen blur overlay) */
 .foundry-window {
   position: fixed;
-  z-index: 90;
+  z-index: 120;
   left: 10px;
   right: 10px;
   bottom: calc(var(--app-footer-h) + 10px);
@@ -1471,6 +1471,34 @@ html, body, #root {
 
 .app-status-nominal {
   color: var(--theme-status-nominal);
+}
+
+.app-footer-ipc {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.app-footer-ipc__detail {
+  margin-left: 0.35rem;
+  opacity: 0.72;
+  font-size: 0.92em;
+}
+
+.app-footer-ipc--green {
+  color: var(--theme-status-nominal);
+}
+
+.app-footer-ipc--yellow {
+  color: #facc15;
+}
+
+.app-footer-ipc--orange {
+  color: #fb923c;
+}
+
+.app-footer-ipc--red {
+  color: #f87171;
 }
 
 .app-footer-stat-link {
@@ -8090,6 +8118,80 @@ select option {
   opacity: 0.85;
 }
 
+/* ── PLAYGROUND — theme-scoped surfaces ─── */
+[data-playground] {
+  background: var(--theme-bg);
+  color: var(--theme-text-muted);
+}
+
+[data-playground] .playground-guide-banner {
+  background: var(--theme-accent-soft);
+  border-bottom: 1px solid color-mix(in srgb, var(--theme-accent) 28%, var(--theme-border-subtle) 72%);
+  color: var(--theme-text);
+}
+
+[data-playground] .playground-turn--user {
+  background: var(--theme-eject-card-bg);
+  border: 1px solid var(--theme-eject-card-border);
+  border-radius: 2px;
+}
+
+[data-playground] .playground-turn--assistant {
+  background: color-mix(in srgb, var(--theme-accent-soft) 65%, var(--theme-eject-card-bg) 35%);
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 30%, var(--theme-border-subtle) 70%);
+  border-radius: 2px;
+}
+
+[data-playground] .playground-preview-canvas {
+  background: var(--theme-bg);
+}
+
+[data-playground] .playground-fullscreen-overlay {
+  background: var(--theme-bg);
+  color: var(--theme-text-muted);
+}
+
+[data-playground] .playground-code-editor {
+  background: var(--theme-panel-accent);
+  color: var(--theme-text);
+}
+
+[data-playground] .playground-warn-btn {
+  color: var(--color-telemetry-amber);
+  border-color: color-mix(in srgb, var(--color-telemetry-amber) 45%, var(--theme-chip-border) 55%);
+  background: color-mix(in srgb, var(--color-telemetry-amber) 10%, var(--theme-chip-bg) 90%);
+}
+
+[data-playground] .playground-warn-btn:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--color-telemetry-amber) 65%, var(--theme-chip-border) 35%);
+  background: color-mix(in srgb, var(--color-telemetry-amber) 16%, var(--theme-chip-bg) 84%);
+}
+
+[data-playground] .playground-danger-btn {
+  color: var(--color-telemetry-red);
+  border-color: color-mix(in srgb, var(--color-telemetry-red) 40%, var(--theme-chip-border) 60%);
+}
+
+[data-playground] .playground-danger-btn:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--color-telemetry-red) 60%, var(--theme-chip-border) 40%);
+  background: color-mix(in srgb, var(--color-telemetry-red) 10%, var(--theme-chip-bg) 90%);
+}
+
+[data-playground] .playground-clear-session:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--color-telemetry-red) 55%, var(--theme-chip-border) 45%);
+  color: var(--color-telemetry-red);
+}
+
+[data-playground] .playground-view-toolbar .app-nav-tab {
+  width: auto;
+  min-height: 0;
+  padding: 0.375rem 0.75rem;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  border-radius: 0;
+  border-right: 1px solid var(--theme-border-subtle);
+}
+
 /* First-run onboarding — pulse targets */
 @keyframes onboarding-pulse {
   0%, 100% { box-shadow: 0 0 0 0 rgba(118, 185, 0, 0); }
@@ -8104,6 +8206,65 @@ body[data-onboarding-phase="paths"] [data-onboarding="add-folder"] {
 
 body[data-onboarding-phase="scan-meta"] [data-onboarding="scan-meta"] {
   animation: onboarding-pulse 1.8s ease-in-out infinite;
+}
+
+/* GPU overclock sliders — thick track, theme thumb */
+[data-gpu-overclock] .oc-slider {
+  appearance: none;
+  height: 1.35rem;
+  background: transparent;
+  cursor: pointer;
+}
+
+[data-gpu-overclock] .oc-slider:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+[data-gpu-overclock] .oc-slider::-webkit-slider-runnable-track {
+  height: 8px;
+  background: var(--theme-panel-accent);
+  border: 1px solid color-mix(in srgb, var(--theme-accent-bright) 28%, transparent);
+  border-radius: 2px;
+}
+
+[data-gpu-overclock] .oc-slider::-moz-range-track {
+  height: 8px;
+  background: var(--theme-panel-accent);
+  border: 1px solid color-mix(in srgb, var(--theme-accent-bright) 28%, transparent);
+  border-radius: 2px;
+}
+
+[data-gpu-overclock] .oc-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  margin-top: -5px;
+  border-radius: 2px;
+  background: var(--theme-accent-bright);
+  box-shadow: 0 0 8px var(--theme-accent-glow);
+}
+
+[data-gpu-overclock] .oc-slider::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border: none;
+  border-radius: 2px;
+  background: var(--theme-accent-bright);
+  box-shadow: 0 0 8px var(--theme-accent-glow);
+}
+
+[data-gpu-overclock] .oc-slider-default-mark {
+  position: absolute;
+  top: 50%;
+  z-index: 1;
+  width: 2px;
+  height: 13px;
+  transform: translate(-50%, -50%);
+  border-radius: 1px;
+  background: color-mix(in srgb, var(--color-telemetry-amber) 72%, transparent);
+  box-shadow: 0 0 4px color-mix(in srgb, var(--color-telemetry-amber) 35%, transparent);
+  pointer-events: none;
 }
 
 @keyframes setup-welcome-fade {
