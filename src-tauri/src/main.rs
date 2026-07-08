@@ -684,6 +684,15 @@ async fn main() {
                 t_structure.elapsed().as_secs_f64() * 1000.0
             );
 
+            // Proactively stage the bundled 7z (exe + dll) so it's ready in the
+            // portable bin/ folder from launch (consistent with gsudo).
+            let t_7z = std::time::Instant::now();
+            let _ = sidecar_elevate::stage_7z(app.handle());
+            log::info!(
+                "[startup] stage_7z: {:.0}ms",
+                t_7z.elapsed().as_secs_f64() * 1000.0
+            );
+
             // Load config with bundled path resolution (needs app handle)
             let t_config = std::time::Instant::now();
             let mut app_config = config::load_config_with_app(app.handle());

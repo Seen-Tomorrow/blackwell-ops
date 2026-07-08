@@ -6,6 +6,8 @@ use std::process::{ExitStatus, Output, Stdio};
 use tauri::{AppHandle, Manager};
 
 pub const GSUDO_EXE: &str = "gsudo.exe";
+pub const SEVEN_ZIP_EXE: &str = "7z.exe";
+pub const SEVEN_ZIP_DLL: &str = "7z.dll";
 /// gsudo: Win32 ERROR_CANCELLED (1223) or user-dismissed UAC (999).
 const GSUDO_UAC_DENIED: i32 = 1223;
 const GSUDO_UAC_CANCELLED: i32 = 999;
@@ -135,6 +137,13 @@ pub fn stage_bin(app: &AppHandle, name: &str) -> Result<PathBuf, String> {
 
 pub fn stage_gsudo(app: &AppHandle) -> Result<PathBuf, String> {
     stage_bin(app, GSUDO_EXE)
+}
+
+pub fn stage_7z(app: &AppHandle) -> Result<PathBuf, String> {
+    // Stage the exe (primary). The DLL must live next to it.
+    let exe = stage_bin(app, SEVEN_ZIP_EXE)?;
+    let _ = stage_bin(app, SEVEN_ZIP_DLL);
+    Ok(exe)
 }
 
 /// `net session` succeeds only for elevated administrators on Windows.

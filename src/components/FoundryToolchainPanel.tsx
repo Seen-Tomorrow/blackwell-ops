@@ -338,11 +338,12 @@ export default function FoundryToolchainPanel({
 
           <details className="text-[8px] font-mono text-white/60">
             <summary className="cursor-pointer text-stealth-muted hover:text-white/80">
-              Manual install (7-Zip)
+              Manual install (.7z)
             </summary>
             <ol className="foundry-toolchain-install-guide__body list-decimal list-inside space-y-1 mt-1.5 text-white/65 leading-relaxed">
               <li>Download from the GitHub release into the app folder below.</li>
-              <li>Right-click the .7z → 7-Zip → Extract Here (extract can take several minutes).</li>
+              <li>Right-click the .7z → 7-Zip (or WinRAR / PeaZip / 7-Zip File Manager) → Extract Here.</li>
+              <li className="text-[7px] opacity-70">The one-click download uses the bundled 7z from bin/ (always available).</li>
               <li>Confirm <span className="text-nv-green">toolchain\manifest.json</span> exists, then Re-check.</li>
             </ol>
           </details>

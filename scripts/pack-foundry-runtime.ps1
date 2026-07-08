@@ -17,6 +17,12 @@ param(
 $ErrorActionPreference = "Stop"
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 
+# Use the bundled 7z from src-tauri/bin (always available, no dependency on user's system).
+$SevenZip = Join-Path $RepoRoot "src-tauri\bin\7z.exe"
+if (-not (Test-Path $SevenZip)) {
+    throw "Bundled 7z.exe not found at $SevenZip. Make sure it (and 7z.dll) are in src-tauri\bin."
+}
+
 if ($ToolchainRoot) {
     $SourceRoot = $ToolchainRoot
 } else {
@@ -86,7 +92,7 @@ if (Test-Path $Output) { Remove-Item $Output -Force }
 # This avoids any relative-path resolution problems when the CWD changes
 # (previously caused archives to be written inside pack-runtime-staging\work\).
 $sourceToPack = Join-Path $staging "toolchain"
-& 7z a -t7z "-mx=$CompressionLevel" -mmt=on $Output $sourceToPack
+& $SevenZip a -t7z "-mx=$CompressionLevel" -mmt=on $Output $sourceToPack
 if ($LASTEXITCODE -ne 0) { throw "7z failed with exit $LASTEXITCODE" }
 
 $zipMb = [math]::Round((Get-Item $Output).Length / 1MB, 1)

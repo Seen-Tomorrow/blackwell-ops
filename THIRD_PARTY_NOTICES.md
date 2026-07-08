@@ -25,3 +25,11 @@ If you are packaging a release, ensure `src-tauri/bin/nvidiaInspector.exe` is pr
 
 - **Vendor:** NVIDIA Corporation
 - **Use:** GPU telemetry, power limit (`-pl`), and related queries. Requires an installed NVIDIA display driver.
+
+## 7-Zip
+
+- **Author:** Igor Pavlov
+- **Component:** `7z.exe` + `7z.dll` (LZMA / 7z archiver, console version)
+- **License:** GNU Lesser General Public License (LGPL) version 2.1 (with some BSD-style code for LZMA SDK; see 7-Zip license for full details)
+- **Use in Blackwell Ops:** Extraction of the portable toolchain packs (`.7z` archives containing CUDA runtimes and/or full VS + SDK toolchains) during one-click install via **Config → Foundry Toolchain**. Bundled to avoid requiring users to have 7-Zip installed on their system.
+- **Bundle:** `src-tauri/bin/7z.exe` and `7z.dll` (gitignored `*.exe`/ `*.dll` — see `bin/README.txt` before release builds). Staged to `{app_root}/bin/` on first use, consistent with `gsudo.exe`.

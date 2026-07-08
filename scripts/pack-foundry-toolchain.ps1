@@ -17,6 +17,12 @@ param(
 $ErrorActionPreference = "Stop"
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 
+# Always use the bundled 7z from src-tauri/bin (independent of user's system).
+$SevenZip = Join-Path $RepoRoot "src-tauri\bin\7z.exe"
+if (-not (Test-Path $SevenZip)) {
+    throw "Bundled 7z.exe not found at $SevenZip. Make sure it (and 7z.dll) are in src-tauri\bin."
+}
+
 if (-not $AppRoot) {
     $AppRoot = Join-Path $RepoRoot "src-tauri\target\debug"
 }
@@ -44,7 +50,7 @@ Write-Host "Packing $beforeGb GB from $ToolchainRoot -> $Output (mx=$Compression
 $toolchainParent = Split-Path $ToolchainRoot -Parent
 Push-Location $toolchainParent
 try {
-    & 7z a -t7z "-mx=$CompressionLevel" -mmt=on $Output "toolchain\*"
+    & $SevenZip a -t7z "-mx=$CompressionLevel" -mmt=on $Output "toolchain\*"
 } finally {
     Pop-Location
 }

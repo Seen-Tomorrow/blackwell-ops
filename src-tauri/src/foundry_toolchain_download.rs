@@ -86,41 +86,35 @@ async fn fetch_release_asset_url(client: &reqwest::Client, asset_name: &str) -> 
 }
 
 #[cfg(windows)]
-fn resolve_7z_exe() -> Result<PathBuf, String> {
-    let candidates = [
-        PathBuf::from(r"C:\Program Files\7-Zip\7z.exe"),
-        PathBuf::from(r"C:\Program Files (x86)\7-Zip\7z.exe"),
-    ];
-    for path in candidates {
-        if path.is_file() {
-            return Ok(path);
-        }
+fn resolve_7z_exe(_app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let app_root = crate::config::app_root_dir();
+
+    // Prefer the staged portable copy (next to exe) so 7z.exe can find 7z.dll sibling.
+    // Staging is done before extraction in the download flow.
+    let staged = app_root.join("bin").join("7z.exe");
+    if staged.is_file() {
+        return Ok(staged);
     }
-    if let Ok(output) = std::process::Command::new("where.exe").arg("7z").output() {
-        if output.status.success() {
-            let text = String::from_utf8_lossy(&output.stdout);
-            if let Some(first) = text.lines().map(str::trim).find(|l| !l.is_empty()) {
-                let path = PathBuf::from(first);
-                if path.is_file() {
-                    return Ok(path);
-                }
-            }
-        }
+
+    // Dev location (src-tauri/bin)
+    let dev = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("bin")
+        .join("7z.exe");
+    if dev.is_file() {
+        return Ok(dev);
     }
-    Err(
-        "7-Zip not found. Install 7-Zip (7z.exe on PATH) or extract the archive manually."
-            .into(),
-    )
+
+    Err("Bundled 7z.exe not found in bin/ (next to gsudo.exe).".into())
 }
 
 #[cfg(not(windows))]
-fn resolve_7z_exe() -> Result<PathBuf, String> {
+fn resolve_7z_exe(_app: &tauri::AppHandle) -> Result<PathBuf, String> {
     Err("Portable Foundry toolchain download is supported on Windows only.".into())
 }
 
 #[cfg(windows)]
-fn extract_7z_archive(archive: &Path, dest_root: &Path) -> Result<(), String> {
-    let seven_z = resolve_7z_exe()?;
+fn extract_7z_archive(archive: &Path, dest_root: &Path, app: &tauri::AppHandle) -> Result<(), String> {
+    let seven_z = resolve_7z_exe(app)?;
     std::fs::create_dir_all(dest_root)
         .map_err(|e| format!("Failed to create extract dir: {}", e))?;
 
@@ -151,7 +145,7 @@ fn extract_7z_archive(archive: &Path, dest_root: &Path) -> Result<(), String> {
 }
 
 #[cfg(not(windows))]
-fn extract_7z_archive(_archive: &Path, _dest_root: &Path) -> Result<(), String> {
+fn extract_7z_archive(_archive: &Path, _dest_root: &Path, _app: &tauri::AppHandle) -> Result<(), String> {
     Err("Portable Foundry toolchain download is supported on Windows only.".into())
 }
 
@@ -280,7 +274,11 @@ pub async fn foundry_download_toolchain(
         );
 
         let _ = foundry_toolchain::ensure_manifest_on_disk();
-        extract_7z_archive(&archive_path, &app_root)?;
+
+        // Belt-and-suspenders: stage again (no-op if already done at startup).
+        let _ = crate::sidecar_elevate::stage_7z(&app_handle)?;
+
+        extract_7z_archive(&archive_path, &app_root, &app_handle)?;
 
         let _ = std::fs::remove_file(&archive_path);
 
