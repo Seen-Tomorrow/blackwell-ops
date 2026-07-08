@@ -57,6 +57,7 @@ pub struct BenchResult {
     pub per_request_gen_tps: Option<f64>,
 }
 
+#[allow(dead_code)]
 fn default_parallel_one() -> usize {
     1
 }

@@ -28,8 +28,10 @@ pub struct SlotData {
     pub speculative: bool,
     // IK engine /slots uses numeric state+command instead of is_processing + prompt token fields.
     #[serde(default)]
+    #[allow(dead_code)]
     pub state: i32,
     #[serde(default)]
+    #[allow(dead_code)]
     pub command: i32,
 }
 
@@ -44,6 +46,7 @@ pub struct TokenInfo {
     #[serde(default)]
     pub n_remain: i64,
     #[serde(default)]
+    #[allow(dead_code)]
     pub has_new_line: bool,
 }
 
@@ -97,8 +100,11 @@ pub struct MetricsSnapshot {
     pub prompt_tps_gauge: f64,
     pub requests_processing: usize,
     // Additional potentially useful gauges/counters from full /metrics (llama.cpp server exposes several; we capture what is present for future richer fusion/perf viz)
+    #[allow(dead_code)]
     pub predicted_tps_gauge: f64,  // generation t/s gauge (often "llamacpp:predicted_tokens_seconds" or "tokens_predicted_seconds")
+    #[allow(dead_code)]
     pub n_decode_total: usize,     // total decode steps (busy indicator)
+    #[allow(dead_code)]
     pub n_busy_slots_total: usize, // cumulative busy slot count
 }
 

@@ -324,7 +324,9 @@ pub struct StackEntry {
     pub split_mode: String,
 }
 
+#[allow(dead_code)]
 pub fn default_provider_type() -> String { crate::config::DEFAULT_PROVIDER_ID.to_string() }
+#[allow(dead_code)]
 pub fn default_ctx_size() -> usize { 32768 }
 
 // ── Provider Configuration ─────────────────────────────────────────────
@@ -345,6 +347,7 @@ pub struct LayoutDefaults {
 }
 
 impl LayoutDefaults {
+    #[allow(dead_code)]
     pub fn is_empty(&self) -> bool {
         self.config_column_count == 0
             && self.config_column_widths.is_empty()

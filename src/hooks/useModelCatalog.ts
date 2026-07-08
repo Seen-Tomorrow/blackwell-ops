@@ -4,7 +4,7 @@ import type { FitScanFull, FitScanProgress, ModelEntry, ProviderConfig, StackEnt
 import { DEFAULT_PROVIDER_ID } from "../lib/types";
 import { useKeyboardNav } from "./useKeyboardNav";
 import { useTauriListen } from "./useTauriListen";
-import { KEYS, readStorage, writeStorage } from "../lib/storage";
+import { KEYS, loadLastModel, normalizeModelPathKey, readStorage, saveLastModel, writeStorage } from "../lib/storage";
 import { dispatchAppEvent, EVENTS } from "../lib/events";
 import { bootstrapFitScanCache } from "../lib/fitScanSessionStore";
 import {
@@ -49,6 +49,39 @@ function modelMatchesSearch(m: ModelEntry, words: string[]): boolean {
   return words.every(word => combined.includes(word));
 }
 
+function modelFileName(path: string): string {
+  const normalized = path.replace(/[/\\]+$/, "");
+  const slash = Math.max(normalized.lastIndexOf("/"), normalized.lastIndexOf("\\"));
+  return (slash >= 0 ? normalized.slice(slash + 1) : normalized).toLowerCase();
+}
+
+function findModelByPath(models: ModelEntry[], path: string): ModelEntry | undefined {
+  const key = normalizeModelPathKey(path);
+  const exact = models.find((m) => normalizeModelPathKey(m.path) === key);
+  if (exact) return exact;
+
+  // Merge dedup may keep a different folder path for the same file identity.
+  const base = modelFileName(path);
+  if (!base) return undefined;
+  const byFileName = models.filter((m) => modelFileName(m.path) === base);
+  return byFileName.length === 1 ? byFileName[0] : undefined;
+}
+
+function pickDefaultCatalogModel(models: ModelEntry[]): ModelEntry | undefined {
+  const sorted = [...models].sort((a, b) => a.name.localeCompare(b.name));
+  return sorted.find((m) => m.metadata) ?? sorted[0];
+}
+
+function applyCatalogSelection(
+  model: ModelEntry,
+  setCatalogSelectedModel: (m: ModelEntry) => void,
+  setPanelActiveModel: (m: ModelEntry) => void,
+): void {
+  setCatalogSelectedModel(model);
+  setPanelActiveModel(model);
+  saveLastModel(model.path);
+}
+
 interface UseModelCatalogParams {
   models: ModelEntry[];
   stack: StackEntry[];
@@ -75,6 +108,7 @@ export function useModelCatalog({
   const [catalogSelectedModel, setCatalogSelectedModel] = useState<ModelEntry | null>(null);
   // Right panel active model — set by catalog OR mini card clicks
   const [panelActiveModel, setPanelActiveModel] = useState<ModelEntry | null>(null);
+  const restoreAttemptedRef = useRef(false);
   const [selectedSlotIdxState, setSelectedSlotIdxState] = useState<number | null>(() => {
     try {
       const saved = readStorage(KEYS.selectedSlotIdx);
@@ -112,36 +146,49 @@ export function useModelCatalog({
     const handler = (e: Event) => {
       const detail = (e as CustomEvent<{ active?: boolean }>).detail;
       if (detail?.active !== false) return;
-      if (panelActiveModel) return;
-      const pick = models.find((m) => m.metadata) ?? models[0];
+      if (panelActiveModel || loadLastModel()) return;
+      const pick = pickDefaultCatalogModel(models);
       if (!pick) return;
-      setCatalogSelectedModel(pick);
-      setPanelActiveModel(pick);
-      writeStorage(KEYS.lastModel, pick.path);
+      applyCatalogSelection(pick, setCatalogSelectedModel, setPanelActiveModel);
     };
     window.addEventListener(EVENTS.setupGuideChanged, handler);
     return () => window.removeEventListener(EVENTS.setupGuideChanged, handler);
   }, [models, panelActiveModel]);
 
-  // Restore last selected model from localStorage once models are loaded
+  // Restore last model from localStorage once catalog is available. Do not overwrite a
+  // valid saved path when match fails (merge dedup may expose a different path for the
+  // same identity, or the catalog may still be loading).
   useEffect(() => {
-    if (models.length === 0 || catalogSelectedModel !== null) return;
-    try {
-      const savedPath = readStorage(KEYS.lastModel);
-      if (savedPath) {
-        const match = models.find(m => m.path === savedPath);
-        if (match) {
-          setCatalogSelectedModel(match);
-          setPanelActiveModel(match);
-        }
+    if (models.length === 0 || panelActiveModel !== null) return;
+
+    const savedPath = loadLastModel();
+    if (savedPath) {
+      const match = findModelByPath(models, savedPath);
+      if (match) {
+        applyCatalogSelection(match, setCatalogSelectedModel, setPanelActiveModel);
+        restoreAttemptedRef.current = true;
       }
-    } catch {}
-  }, [models, catalogSelectedModel]);
+      return;
+    }
+
+    if (restoreAttemptedRef.current) return;
+    const pick = pickDefaultCatalogModel(models);
+    if (!pick) return;
+    applyCatalogSelection(pick, setCatalogSelectedModel, setPanelActiveModel);
+    restoreAttemptedRef.current = true;
+  }, [models, panelActiveModel]);
+
+  // Persist whenever the right-panel model changes (catalog click, engine pick, launch, restore).
+  useEffect(() => {
+    if (panelActiveModel?.path) {
+      saveLastModel(panelActiveModel.path);
+    }
+  }, [panelActiveModel?.path]);
 
   // Refresh catalog selected model reference when models array updates
   useEffect(() => {
     if (!catalogSelectedModel || models.length === 0) return;
-    const fresh = models.find(m => m.path === catalogSelectedModel.path);
+    const fresh = findModelByPath(models, catalogSelectedModel.path);
     if (fresh && fresh !== catalogSelectedModel) {
       setCatalogSelectedModel(fresh);
     }
@@ -150,7 +197,7 @@ export function useModelCatalog({
   // Refresh panel active model reference when models array updates
   useEffect(() => {
     if (!panelActiveModel || models.length === 0) return;
-    const fresh = models.find(m => m.path === panelActiveModel.path);
+    const fresh = findModelByPath(models, panelActiveModel.path);
     if (fresh && fresh !== panelActiveModel) {
       setPanelActiveModel(fresh);
     }
@@ -167,7 +214,10 @@ export function useModelCatalog({
       const detail = (e as CustomEvent).detail as { slotIdx: number; modelPath: string };
       if (detail?.slotIdx !== undefined) {
         setSelectedSlotIdx(detail.slotIdx);
-        setPanelActiveModel(models.find(m => m.path === detail.modelPath) || null);
+        if (detail.modelPath) {
+          saveLastModel(detail.modelPath);
+        }
+        setPanelActiveModel(findModelByPath(models, detail.modelPath) || null);
       }
     };
     const onStopAll = () => {
@@ -196,18 +246,18 @@ export function useModelCatalog({
     setCatalogSelectedModel(model);
     setPanelActiveModel(model);
     setSelectedSlotIdx(null); // Generic selection — clear engine-specific pairing
-    writeStorage(KEYS.lastModel, model.path);
+    saveLastModel(model.path);
   }, []);
 
   // Select a specific running engine instance by slot index (for mini card clicks)
   const handleSelectBySlot = useCallback((slotIdx: number) => {
     const entry = stack.find(s => s.idx === slotIdx && (s.status === "RUNNING" || s.status === "LOADING"));
     if (entry?.model_path) {
-      const model = models.find(m => m.path === entry.model_path);
+      const model = findModelByPath(models, entry.model_path);
       if (model) {
         setPanelActiveModel(model);
         setSelectedSlotIdx(slotIdx);
-        writeStorage(KEYS.lastModel, model.path);
+        saveLastModel(model.path);
       }
     }
   }, [stack, models]);

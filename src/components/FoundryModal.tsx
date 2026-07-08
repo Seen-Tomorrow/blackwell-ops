@@ -16,6 +16,19 @@ interface StackEngineStatus {
 import FoundryConfirmForm from "./FoundryConfirmForm";
 import FoundryBuildProgress from "./FoundryBuildProgress";
 import FoundryWindowShell from "./FoundryWindowShell";
+import {
+  DEFAULT_FOUNDRY_CMAKE_BASE,
+  mergeBuildProfileWithArchitectures,
+  resolveSelectedCudaArchitectures,
+  stripCudaArchitecturesFromCmake,
+} from "../lib/cudaArchUtils";
+
+function splitFoundryBuildProfile(raw: string): { base: string; archCodes: string[] } {
+  const trimmed = raw.trim();
+  const archCodes = resolveSelectedCudaArchitectures(trimmed);
+  const base = stripCudaArchitecturesFromCmake(trimmed) || DEFAULT_FOUNDRY_CMAKE_BASE;
+  return { base, archCodes };
+}
 
 interface FoundryModalProps {
   provider: ProviderConfig;
@@ -139,7 +152,10 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
   // Confirm form state (only relevant before build starts)
   const [prUrl, setPrUrl] = useState("");
   const [maxCores, setMaxCores] = useState<number | null>(null);
-  const [buildProfile, setBuildProfile] = useState(() => provider.build_profile?.trim() ?? "");
+  const [buildProfile, setBuildProfile] = useState(() => splitFoundryBuildProfile(provider.build_profile ?? "").base);
+  const [selectedArchs, setSelectedArchs] = useState<string[]>(
+    () => splitFoundryBuildProfile(provider.build_profile ?? "").archCodes,
+  );
   const [backupRetryCount, setBackupRetryCount] = useState(0);
   const [showEngineWarning, setShowEngineWarning] = useState(false);
   const [engineListText, setEngineListText] = useState("");
@@ -164,7 +180,9 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
     buildIdRef.current = null;
     setPrUrl("");
     setMaxCores(null);
-    setBuildProfile(provider.build_profile?.trim() ?? "");
+    const split = splitFoundryBuildProfile(provider.build_profile ?? "");
+    setBuildProfile(split.base);
+    setSelectedArchs(split.archCodes);
     setBackupRetryCount(0);
     setShowEngineWarning(false);
     setEngineListText("");
@@ -308,7 +326,7 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
 
     buildInvokeInFlightRef.current = true;
 
-    const trimmedProfile = buildProfile.trim();
+    const trimmedProfile = mergeBuildProfileWithArchitectures(buildProfile, selectedArchs);
     const savedProfile = provider.build_profile?.trim() ?? "";
     if (trimmedProfile !== savedProfile) {
       try {
@@ -374,7 +392,7 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
       clearTimeout(overlayTimeout);
       buildInvokeInFlightRef.current = false;
     }
-  }, [provider, environment, prUrl, maxCores, buildProfile]);
+  }, [provider, environment, prUrl, maxCores, buildProfile, selectedArchs]);
 
   const handleConfirmBuild = useCallback(async () => {
     try {
@@ -476,6 +494,8 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
         setPrUrl={setPrUrl}
         buildProfile={buildProfile}
         setBuildProfile={setBuildProfile}
+        selectedArchs={selectedArchs}
+        setSelectedArchs={setSelectedArchs}
         maxCores={maxCores}
         setMaxCores={setMaxCores}
         showEngineWarning={showEngineWarning}

@@ -1,20 +1,25 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { lazy, Suspense, useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { unstable_batchedUpdates } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
 
 import Layout from "./components/Layout";
-import StackView from "./components/StackView";
 import ModelCatalog from "./components/ModelCatalog";
-import TelemetryPanel from "./components/TelemetryPanel";
-import TelemetryLab from "./components/telemetry-lab/TelemetryLab";
 import TelemetryViewToggle from "./components/TelemetryViewToggle";
-import IntelPage from "./components/IntelPage";
-import ConfigPage from "./components/ConfigPage";
-import Reactor11 from "./components/Reactor11";
-import ExtrasPage from "./components/ExtrasPage";
-import LogLineText from "./components/LogLineText";
-import EngineLogsSwitcher from "./components/EngineLogsSwitcher";
 import TabPageHeader from "./components/TabPageHeader";
+
+const StackView = lazy(() => import("./components/StackView"));
+const TelemetryPanel = lazy(() => import("./components/TelemetryPanel"));
+const TelemetryLab = lazy(() => import("./components/telemetry-lab/TelemetryLab"));
+const IntelPage = lazy(() => import("./components/IntelPage"));
+const ConfigPage = lazy(() => import("./components/ConfigPage"));
+const Reactor11 = lazy(() => import("./components/Reactor11"));
+const ExtrasPage = lazy(() => import("./components/ExtrasPage"));
+const LogLineText = lazy(() => import("./components/LogLineText"));
+const EngineLogsSwitcher = lazy(() => import("./components/EngineLogsSwitcher"));
+
+function TabFallback() {
+  return <div className="flex-1 min-h-0" aria-hidden />;
+}
 import { StatusProvider } from "./context/StatusBarContext";
 
 import { TelemetryProvider, type GpuPollTier } from "./context/TelemetryContext";
@@ -40,6 +45,7 @@ import {
 } from "./lib/storage";
 import { dispatchAppEvent, EVENTS } from "./lib/events";
 import { refreshProvidersBuildInfo } from "./lib/foundryBuildRefresh";
+import { BINARY_UPDATES_ENABLED } from "./lib/foundry_constants";
 import { getActiveStackSlots, isActiveEngineSlot } from "./lib/engineStack";
 import type { ModelEntry, StackEntry, LogBatch, LogEntry, SystemEvent, ProviderConfig, AppUpdateInfo } from "./lib/types";
 
@@ -197,6 +203,7 @@ function App() {
   const [hasBinaryUpdates, setHasBinaryUpdates] = useState(false);
 
   useEffect(() => {
+    if (!BINARY_UPDATES_ENABLED) return;
     invoke<any>("get_startup_updates")
       .then((data) => {
         if (data.appUpdate?.available) {
@@ -210,13 +217,12 @@ function App() {
         if (data.binaryUpdates && data.binaryUpdates.length > 0) {
           setHasBinaryUpdates(true);
         }
-        // Cache binary updates for ProvidersConfig expanded section (avoids duplicate API calls)
         saveStartupUpdatesCache({
           timestamp: Date.now(),
           binaryUpdates: data.binaryUpdates || [],
         });
       })
-      .catch(() => {}); // Silently ignore — don't block startup
+      .catch(() => {});
   }, []);
 
   const handleInstallAppUpdate = useCallback(async () => {
@@ -531,15 +537,25 @@ function App() {
         {activeTab === "catalog" && (
               <ModelCatalog models={models} onLaunch={handleLaunchEngine} error={catalogError} onReload={reloadModels} providers={providers} committedVramMib={committedVramMib} scanningPath={scanningPath} setScanningPath={setScanningPath} batchScanState={batchScanState} setBatchScanState={setBatchScanState} stack={stack} setupGuide={setupGuide} catalogHfUpdates={catalogHfUpdates} />
            )}
-        {activeTab === "config" && <ConfigPage providers={providers} setupGuide={setupGuide} />}
+        {activeTab === "config" && (
+          <Suspense fallback={<TabFallback />}>
+            <ConfigPage providers={providers} setupGuide={setupGuide} />
+          </Suspense>
+        )}
         {activeTab === "stack" && (
-          <StackView stack={stack} logs={logs} systemEvents={systemEvents} onStop={handleStopEngine} onStopAll={handleStopAll} />
+          <Suspense fallback={<TabFallback />}>
+            <StackView stack={stack} logs={logs} systemEvents={systemEvents} onStop={handleStopEngine} onStopAll={handleStopAll} />
+          </Suspense>
         )}
         {activeTab === "extras" && (
-          <ExtrasPage stack={stack} models={models} />
+          <Suspense fallback={<TabFallback />}>
+            <ExtrasPage stack={stack} models={models} />
+          </Suspense>
         )}
         {activeTab === "reactor11" && (
-          <Reactor11 models={models} />
+          <Suspense fallback={<TabFallback />}>
+            <Reactor11 models={models} />
+          </Suspense>
         )}
         {activeTab === "telemetry" && (
           <div className="h-full flex flex-col min-h-0 overflow-hidden" data-telemetry-page>
@@ -548,13 +564,20 @@ function App() {
               actions={<TelemetryViewToggle mode={telemetryViewMode} onChange={setTelemetryViewMode} compact />}
             />
             <div className="flex-1 min-h-0 p-4">
-              {telemetryViewMode === "lab" ? <TelemetryLab stack={stack} /> : <TelemetryPanel />}
+              <Suspense fallback={<TabFallback />}>
+                {telemetryViewMode === "lab" ? <TelemetryLab stack={stack} /> : <TelemetryPanel />}
+              </Suspense>
             </div>
           </div>
         )}
-        {activeTab === "intel" && <IntelPage />}
+        {activeTab === "intel" && (
+          <Suspense fallback={<TabFallback />}>
+            <IntelPage />
+          </Suspense>
+        )}
         {activeTab === "logs" && (
           <div className="h-full flex flex-col min-h-0 overflow-hidden" data-engine-logs>
+            <Suspense fallback={<TabFallback />}>
             <EngineLogsSwitcher
               activeLogSlot={activeLogSlot}
               onActiveLogSlotChange={setActiveLogSlot}
@@ -571,6 +594,7 @@ function App() {
                 saveLogsAnsiEnabled(enabled);
               }}
             />
+            </Suspense>
             <div
               ref={logsScrollRef}
               className="engine-logs-scroll theme-surface-inset flex-1 overflow-x-hidden overflow-y-auto rounded-sm p-3 min-h-0 mx-4 mb-4"
@@ -613,11 +637,13 @@ function App() {
                           return (
                             <p key={i} className="text-[10px] font-mono text-stealth-muted leading-relaxed break-all">
                               {activeLogSlot === "all" && <span className="text-nv-green/60">[{entry.alias}] </span>}
-                              <LogLineText
-                                text={entry.text}
-                                highlightQuery={lineQuery}
-                                ansiEnabled={logsAnsiEnabled}
-                              />
+                              <Suspense fallback={<span>{entry.text}</span>}>
+                                <LogLineText
+                                  text={entry.text}
+                                  highlightQuery={lineQuery}
+                                  ansiEnabled={logsAnsiEnabled}
+                                />
+                              </Suspense>
                             </p>
                           );
                         })}

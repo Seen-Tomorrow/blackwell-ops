@@ -99,7 +99,7 @@ Populate-VsInstance "2026" $Vs2026Src "14.51.36231" "18.0"
 if (-not $SkipCuda) {
     Write-Host "`n--- CUDA toolkits ---" -ForegroundColor Yellow
     $stripScript = Join-Path $RepoRoot "scripts\strip-cuda-toolkit.ps1"
-    foreach ($ver in @("12.8", "13.1", "13.2", "13.3")) {
+    foreach ($ver in @("12.8", "13.3")) {
         $src = Join-Path $CudaSrcRoot "v$ver"
         $dst = Join-Path $ToolchainRoot "cuda\v$ver"
         if (-not (Test-Path $src)) {

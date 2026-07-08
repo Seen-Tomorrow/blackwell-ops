@@ -1,9 +1,15 @@
-import { useState } from "react";
+import { useState, type Dispatch, type SetStateAction } from "react";
 import type { ProviderConfig } from "../lib/types";
 import { useTelemetry } from "../context/TelemetryContext";
 import { ENV_META, type Env } from "../lib/foundry_constants";
 import FoundryToolchainPanel from "./FoundryToolchainPanel";
 import FoundryWindowShell from "./FoundryWindowShell";
+import {
+  CUDA_ARCH_BUILD_OPTIONS,
+  DEFAULT_CUDA_ARCH_CODES,
+  formatCudaArchitecturesCmakeLine,
+  orderCudaArchCodes,
+} from "../lib/cudaArchUtils";
 
 interface FoundryConfirmFormProps {
   provider: ProviderConfig;
@@ -12,6 +18,8 @@ interface FoundryConfirmFormProps {
   setPrUrl: (v: string) => void;
   buildProfile: string;
   setBuildProfile: (v: string) => void;
+  selectedArchs: string[];
+  setSelectedArchs: Dispatch<SetStateAction<string[]>>;
   maxCores: number | null;
   setMaxCores: (v: number | null) => void;
   showEngineWarning: boolean;
@@ -30,6 +38,8 @@ export default function FoundryConfirmForm({
   setPrUrl,
   buildProfile,
   setBuildProfile,
+  selectedArchs,
+  setSelectedArchs,
   maxCores,
   setMaxCores,
   showEngineWarning,
@@ -46,6 +56,21 @@ export default function FoundryConfirmForm({
 
   const [toolchainReady, setToolchainReady] = useState(false);
   const envMeta = ENV_META[environment];
+  const orderedArchs = orderCudaArchCodes(selectedArchs);
+  const archCmakePreview = formatCudaArchitecturesCmakeLine(orderedArchs);
+
+  const toggleArch = (code: string) => {
+    setSelectedArchs((prev) => {
+      const set = new Set(prev);
+      if (set.has(code)) {
+        if (set.size <= 1) return prev;
+        set.delete(code);
+      } else {
+        set.add(code);
+      }
+      return orderCudaArchCodes([...set]);
+    });
+  };
 
   const footer = showEngineWarning ? (
     <>
@@ -123,13 +148,61 @@ export default function FoundryConfirmForm({
 
           <div className="pt-2">
             <label className="text-[8px] font-mono text-stealth-muted uppercase block mb-1">
+              CUDA GPU architectures
+            </label>
+            <p className="text-[7px] font-mono text-stealth-muted/80 mb-1.5 leading-tight">
+              Pick only the generations you own — each arch adds compile time (~5 min for one vs ~15 min for all three).
+            </p>
+            <div className="flex flex-wrap gap-1.5 mb-1.5">
+              {CUDA_ARCH_BUILD_OPTIONS.map((opt) => {
+                const active = selectedArchs.includes(opt.code);
+                return (
+                  <button
+                    key={opt.code}
+                    type="button"
+                    onClick={() => toggleArch(opt.code)}
+                    className={`foundry-arch-chip px-2 py-1 text-left border rounded-sm transition-all max-w-[11rem] ${
+                      active
+                        ? "foundry-arch-chip--active bg-nv-green/20 border-nv-green/60"
+                        : "border-stealth-border/70 text-stealth-muted hover:text-white hover:border-stealth-border"
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span className={`text-[9px] font-mono font-bold ${active ? "text-nv-green" : ""}`}>
+                        {opt.label}
+                      </span>
+                      <span className="cuda-badge text-[6px] font-mono px-1 py-0 rounded-sm">sm_{opt.code}</span>
+                    </div>
+                    <div className="text-[7px] font-mono opacity-75 leading-tight mt-0.5">{opt.hint}</div>
+                  </button>
+                );
+              })}
+              <button
+                type="button"
+                onClick={() => setSelectedArchs([...DEFAULT_CUDA_ARCH_CODES])}
+                className={`px-2 py-1 text-[8px] font-mono border rounded-sm transition-all self-stretch ${
+                  orderedArchs.length === DEFAULT_CUDA_ARCH_CODES.length
+                    ? "bg-nv-green/15 border-nv-green/50 text-nv-green"
+                    : "border-stealth-border text-stealth-muted hover:text-white"
+                }`}
+              >
+                ALL (ship)
+              </button>
+            </div>
+            {archCmakePreview && (
+              <p className="text-[7px] font-mono foundry-cuda-arch-inline mb-2">{archCmakePreview}</p>
+            )}
+          </div>
+
+          <div className="pt-1">
+            <label className="text-[8px] font-mono text-stealth-muted uppercase block mb-1">
               Build profile (CMake flags)
             </label>
             <p className="text-[7px] font-mono text-stealth-muted/80 mb-1.5 leading-tight">
-              Loaded from provider defaults. Edit here — saved to provider when you start the build, then passed to CMake configure.
+              Base flags from provider defaults — architectures above are merged when you build. Saved to provider on start.
             </p>
             <textarea
-              placeholder={"-DGGML_CUDA=ON\n-DCMAKE_CUDA_ARCHITECTURES=\"86;89;120\""}
+              placeholder={"-DGGML_CUDA=ON\n-DGGML_CUDA_FA_ALL_QUANTS=ON"}
               rows={5}
               className="foundry-build-profile-textarea w-full px-2 py-1.5 min-h-[5.5rem]"
               value={buildProfile}

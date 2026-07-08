@@ -33,7 +33,7 @@ pub struct LogBatch {
 }
 
 /// Shared telemetry tick — stderr log batch flush and fusion /slots poll cadence.
-/// Single knob keeps log console and fusion meters aligned (50ms ≈ 40 HTTP polls/s per active engine).
+/// Single knob keeps log console and fusion meters aligned (25ms ≈ 80 HTTP polls/s per active engine).
 /// Override via `BLACKWELL_TELEMETRY_TICK_MS` for bisection (e.g. 500 or 2000).
 pub fn telemetry_tick_ms() -> u64 {
     crate::debug_flags::flags().telemetry_tick_ms
@@ -237,6 +237,7 @@ impl LogHub {
     }
 
     /// Main processing loop: consumes raw lines from pipe readers, applies pipeline, batches to frontend.
+    #[allow(unused_assignments)] // load_failed / fit table counters span loop iterations
     async fn process_lines(
         app_handle: AppHandle,
         slot_idx: usize,
@@ -311,7 +312,6 @@ impl LogHub {
                                 }
                             }
                             if !load_failed {
-                                load_failed = true;
                                 Self::cleanup_slot_if_still_active(
                                     &app_handle,
                                     slot_idx,
@@ -509,7 +509,7 @@ impl LogHub {
     /// Parse stderr buffer, append any new complete breakdown tables.
     /// Returns (total_gpu_self_mib, table_count, per_gpu_self_mib).
     async fn persist_pending_fit_tables(
-        app_handle: &AppHandle,
+        _app_handle: &AppHandle,
         alias: &str,
         learn_snapshot: &crate::vram_learn::VramLearnSnapshot,
         line_buf: &[String],
@@ -880,7 +880,7 @@ impl LogHub {
             if !entries.is_empty() && !crate::debug_flags::flags().disable_ipc_emit {
                 let batch = LogBatch { slot: slot_idx, alias: alias.to_string(), entries };
                 crate::ipc_meter::record("engine-log-batch");
-                if let Err(e) = app_handle.emit_to("main", "engine-log-batch", &batch) {
+                if let Err(_e) = app_handle.emit_to("main", "engine-log-batch", &batch) {
                     // Log hub emit_to failed now routed to Blackwell Output Console
                     let _ = app_handle.emit("engine-log-batch", &batch);
                 }

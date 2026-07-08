@@ -1,5 +1,26 @@
 import type { BuildInfo, ProviderConfig } from "./types";
 
+/** Foundry build targets — matches shipping sm_86 / sm_89 / sm_120 matrix. */
+export const CUDA_ARCH_BUILD_OPTIONS = [
+  { code: "86", label: "Ampere", hint: "RTX 30xx · A100 · A40" },
+  { code: "89", label: "Ada Lovelace", hint: "RTX 40xx · L40 · L4" },
+  { code: "120", label: "Blackwell", hint: "RTX 50xx · RTX PRO 6000" },
+] as const;
+
+/** Default when factory build_profile omits CMAKE_CUDA_ARCHITECTURES (full ship matrix). */
+export const DEFAULT_CUDA_ARCH_CODES = CUDA_ARCH_BUILD_OPTIONS.map((o) => o.code);
+
+/** Provider cmake base — no CMAKE_CUDA_ARCHITECTURES (selected in Foundry modal). */
+export const DEFAULT_FOUNDRY_CMAKE_BASE = [
+  "-DGGML_CUDA=ON",
+  "-DGGML_CUDA_PEER_TO_PEER=ON",
+  "-DGGML_CUDA_FA_ALL_QUANTS=ON",
+  "-DGGML_AVX512=ON",
+  "-DGGML_NATIVE=ON",
+  '-DCMAKE_CUDA_FLAGS="-Xcompiler /wd4056 -Xcompiler /wd4756 --diag-suppress 221"',
+  "-Wno-dev",
+].join("\n");
+
 /** NVIDIA GPU generation labels for CMAKE_CUDA_ARCHITECTURES codes. */
 const CUDA_ARCH_FAMILY: Record<string, string> = {
   "70": "TURING",
@@ -15,6 +36,47 @@ const CUDA_ARCH_FAMILY: Record<string, string> = {
   "103": "BLACKWELL",
   "120": "BLACKWELL",
 };
+
+export function stripCudaArchitecturesFromCmake(flags: string): string {
+  return flags
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !/-D\s*CMAKE_CUDA_ARCHITECTURES\s*=/i.test(line))
+    .join("\n")
+    .trim();
+}
+
+export function formatCudaArchitecturesCmakeLine(codes: string[]): string {
+  const ordered = orderCudaArchCodes(codes);
+  if (ordered.length === 0) return "";
+  return `-DCMAKE_CUDA_ARCHITECTURES="${ordered.join(";")}"`;
+}
+
+/** Insert arch line immediately after `-DGGML_CUDA=ON` when present. */
+export function mergeBuildProfileWithArchitectures(baseFlags: string, archCodes: string[]): string {
+  const archLine = formatCudaArchitecturesCmakeLine(archCodes);
+  const stripped = stripCudaArchitecturesFromCmake(baseFlags.trim());
+  if (!archLine) return stripped;
+
+  const lines = stripped.split("\n").map((l) => l.trim()).filter(Boolean);
+  const cudaIdx = lines.findIndex((l) => /-D\s*GGML_CUDA\s*=\s*ON/i.test(l));
+  if (cudaIdx >= 0) {
+    lines.splice(cudaIdx + 1, 0, archLine);
+  } else {
+    lines.unshift("-DGGML_CUDA=ON", archLine);
+  }
+  return lines.join("\n");
+}
+
+export function orderCudaArchCodes(codes: string[]): string[] {
+  const set = new Set(codes.map((c) => c.trim()).filter(Boolean));
+  return CUDA_ARCH_BUILD_OPTIONS.map((o) => o.code).filter((c) => set.has(c));
+}
+
+export function resolveSelectedCudaArchitectures(flags: string): string[] {
+  const parsed = orderCudaArchCodes(parseCudaArchitecturesFromCmake(flags));
+  return parsed.length > 0 ? parsed : [...DEFAULT_CUDA_ARCH_CODES];
+}
 
 export function parseCudaArchitecturesFromCmake(flags: string): string[] {
   if (!flags.trim()) return [];

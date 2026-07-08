@@ -460,6 +460,10 @@ export interface FusionUpdate {
   genTpsSession?: number;
   genTpsInstant?: number; // per-poll / log chunk — hero LIVE mode
 
+  /** Hero meter lane — parallel bench uses poll-only aggregate wall clock. */
+  meterLane?: 'single' | 'parallel';
+  busySlotCount?: number;
+
   genTokensPerRequestSlots: number;    // from /slots n_decoded current value
 
   // Combined session total

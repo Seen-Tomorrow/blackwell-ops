@@ -48,6 +48,43 @@ Traps and invariants only — not a code map. Read the source for flows, schemas
 
 ---
 
+## npm scripts (dev / release)
+
+`tauri.conf.dev.json` has **no** `beforeDevCommand` — Vite and Tauri are separate. Do not re-couple them without an explicit reason.
+
+### Dev
+
+| Command | What it does |
+|---------|----------------|
+| `npm run vite` | Plain Vite on `127.0.0.1:1420` — browser/UI only (no Tauri IPC) |
+| `npm run server` | Warm Vite (`:1421` internal → `:1420` proxy) — start before the app for fast WebView load |
+| `npm run dev` | Tauri + Rust only — waits for `:1420`, then `cargo run` |
+
+`npm run dev` still runs `predev` (`sync-dev-runtime.ps1`) — dev runtime binary sync, not Vite.
+
+**Typical workflow** — two terminals:
+
+```bash
+# Terminal 1
+npm run server
+
+# Terminal 2 (after server is up)
+npm run dev
+```
+
+### Release
+
+| Command | Frontend | Rust | Prerelease scripts | NSIS installer |
+|---------|----------|------|-------------------|----------------|
+| `npm run release` | ✓ | ✓ release | ✓ mirror + prepare runtime | ✓ |
+| `npm run release:exe` | ✓ | ✓ release | ✗ | ✗ |
+| `npm run build:exe` | ✓ | ✓ release | ✗ | ✗ (alias of `release:exe`) |
+| `npm run build:rust` | ✗ (needs existing `dist/`) | ✓ release | ✗ | ✗ |
+
+Release exe: `src-tauri/target/release/blackwell-ops.exe`. Run `npm run build` first if `dist/` is stale before `build:rust`.
+
+---
+
 ## Optional reference
 
 `docs/FUSION-metrics.md` — fusion poller field names when working on metrics/TG-PP, if that file is still current.

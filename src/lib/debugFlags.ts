@@ -14,8 +14,8 @@ const DEFAULT_FLAGS: DebugFlags = {
   disableIpcEmit: false,
   disableFrontendPoll: false,
   disableDiskIo: false,
-  telemetryTickMs: 50,
-  fusionIdlePollMs: 2500,
+  telemetryTickMs: 25,
+  fusionIdlePollMs: 750,
 };
 
 let cached: DebugFlags = DEFAULT_FLAGS;

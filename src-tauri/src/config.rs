@@ -178,6 +178,7 @@ fn sync_dev_runtime_factory_configs(app_root: &std::path::Path) {
 
 /// REL: refresh factory config JSON from bundled resources on every launch so templateVersion
 /// bumps ship to existing installs (runtime/ binaries are not re-copied once present).
+#[cfg(not(debug_assertions))]
 fn sync_runtime_factory_configs_from_resources(
     app_handle: &tauri::AppHandle,
     app_root: &std::path::Path,
@@ -456,12 +457,6 @@ fn dev_factory_default_config_source_path(provider_id: &str) -> Option<PathBuf> 
     } else {
         None
     }
-}
-
-fn factory_layout_supplement_for_provider(provider_id: &str, template_type: &str, factory_provided: bool) -> (Vec<String>, crate::types::LayoutDefaults) {
-    let key = resolve_merge_template_key(provider_id, template_type, factory_provided)
-        .unwrap_or_else(|| provider_id.to_string());
-    crate::templates::load_factory_layout_supplement(&key)
 }
 
 fn apply_factory_layout_defaults(
@@ -996,10 +991,8 @@ pub fn resolve_template_type(provider_id: &str, disk_type: Option<&String>) -> S
 /// Internal: Load config with bundled path resolution (called from setup).
 pub fn load_config_with_app(_app_handle: &tauri::AppHandle) -> AppConfig {
     if let Some(saved) = load_saved_config() {
-        let gpu_count = crate::telemetry::detect_gpu_count();
-        build_config_with_providers_full(gpu_count, saved)
+        build_config_with_providers_full(saved)
     } else {
-        let gpu_count = crate::telemetry::detect_gpu_count();
         let fresh = build_fresh_config();
         let mut to_persist = fresh.clone();
         if let Err(e) = save_config(&mut to_persist) {
@@ -1007,7 +1000,7 @@ pub fn load_config_with_app(_app_handle: &tauri::AppHandle) -> AppConfig {
         } else {
             log::info!("[config] Created default app_config.json with model path '{}'", DEFAULT_MODEL_PATH_REL);
         }
-        build_config_with_providers_full(gpu_count, fresh)
+        build_config_with_providers_full(fresh)
     }
 }
 
@@ -1015,17 +1008,15 @@ pub fn load_config_with_app(_app_handle: &tauri::AppHandle) -> AppConfig {
 #[tauri::command]
 pub fn load_config() -> AppConfig {
     if let Some(saved) = load_saved_config() {
-        let gpu_count = crate::telemetry::detect_gpu_count();
-        return build_config_with_providers_full(gpu_count, saved);
+        return build_config_with_providers_full(saved);
     }
 
-    let gpu_count = crate::telemetry::detect_gpu_count();
     let fresh = build_fresh_config();
     let mut to_persist = fresh.clone();
     if let Err(e) = save_config(&mut to_persist) {
         log::warn!("[config] Failed to persist default app_config.json: {}", e);
     }
-    build_config_with_providers_full(gpu_count, fresh)
+    build_config_with_providers_full(fresh)
 }
 
 
@@ -1987,6 +1978,7 @@ pub fn merge_template_for_provider(
 }
 
 /// Merge using template_type → folder mapping (custom providers without factory JSON).
+#[allow(dead_code)]
 pub fn merge_template_into_user_params(
     template_type: &str,
     user_edited: &[crate::types::UserEditedTemplateParam],
@@ -2241,7 +2233,7 @@ fn merge_template_into_user_params_by_key(
 }
 
 
-fn build_config_with_providers_full(_gpu_count: usize, mut config: AppConfig) -> AppConfig {
+fn build_config_with_providers_full(mut config: AppConfig) -> AppConfig {
     let metas: Vec<ProviderMeta> = load_user_providers_meta()
         .into_iter()
         .filter(|m| !is_phased_out_provider(&m.id))
@@ -2430,8 +2422,7 @@ pub fn dev_reset_first_run(
     fresh.hf_token = hf_token;
     fresh.setup_completed = false;
 
-    let gpu_count = crate::telemetry::detect_gpu_count();
-    let built = build_config_with_providers_full(gpu_count, fresh);
+    let built = build_config_with_providers_full(fresh);
 
     let provider_count = built.providers.len();
     let mut to_persist = built.clone();
@@ -2531,8 +2522,7 @@ pub fn reset_app_config(
     fresh.hf_token = hf_token;
     fresh.setup_completed = false;
 
-    let gpu_count = crate::telemetry::detect_gpu_count();
-    let built = build_config_with_providers_full(gpu_count, fresh);
+    let built = build_config_with_providers_full(fresh);
 
     let provider_count = built.providers.len();
     let mut to_persist = built.clone();

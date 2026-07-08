@@ -1,4 +1,5 @@
 import { StrictMode } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { initDebugFlags } from "./lib/debugFlags";
 import App from "./App";
 import ErrorBoundary from "./components/ErrorBoundary";
@@ -42,12 +43,14 @@ if (__BUILD_MODE__ === "dev") {
 // Apply saved theme before first paint to avoid flash
 applyAppTheme(getThemeById(readStorage(KEYS.appTheme) ?? "matrix"));
 
-void initDebugFlags().then(() => {
-  createRoot(document.getElementById("root")!).render(
-    <StrictMode>
-      <ErrorBoundary>
-        <App />
-      </ErrorBoundary>
-    </StrictMode>,
-  );
-});
+void invoke("startup_frontend_ping").catch(() => {});
+
+createRoot(document.getElementById("root")!).render(
+  <StrictMode>
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
+  </StrictMode>,
+);
+
+void initDebugFlags();

@@ -4,12 +4,17 @@ import { listen } from "@tauri-apps/api/event";
 import type { SetupPhase } from "../../hooks/useSetupGuide";
 import { dispatchAppEvent, dispatchNavigateConfig, EVENTS } from "../../lib/events";
 import { FIT_SCAN_PARALLEL_OPTIONS } from "../../lib/onboarding";
+import FoundryToolchainPanel from "../FoundryToolchainPanel";
 import type {
   FitScanComplete,
   FitScanProgress,
   ModelLibraryValidation,
   ProviderConfig,
 } from "../../lib/types";
+import {
+  isToolchainOnboardingSkipped,
+  saveToolchainOnboardingSkipped,
+} from "../../lib/storage";
 
 const DEFAULT_FIT_PROVIDER = "ggml-master";
 
@@ -73,6 +78,9 @@ export default function SetupGuideDisplay({
   const [showFitScanMenu, setShowFitScanMenu] = useState(false);
   const [driversConfirmed, setDriversConfirmed] = useState(false);
   const [showDriversStep, setShowDriversStep] = useState(false);
+  const [toolchainSkipped, setToolchainSkipped] = useState(() => isToolchainOnboardingSkipped());
+  const [toolchainFoundryReady, setToolchainFoundryReady] = useState(false);
+  const [toolchainRuntimeReady, setToolchainRuntimeReady] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -235,6 +243,15 @@ export default function SetupGuideDisplay({
   const fitDone = fitStep === "done" || fitStep === "skipped";
   const driversStepActive = showDriversStep || (metaDone && fitDone);
   const fitCurrent = metaDone && !fitDone && !showDriversStep;
+  const toolchainStepDone =
+    toolchainSkipped || toolchainFoundryReady || toolchainRuntimeReady;
+  const toolchainStepCurrent =
+    driversStepActive && !toolchainStepDone && !toolchainSkipped;
+
+  const skipToolchain = useCallback(() => {
+    saveToolchainOnboardingSkipped();
+    setToolchainSkipped(true);
+  }, []);
 
   return (
     <div className="setup-guide px-3 py-2.5 min-h-[200px]">
@@ -267,8 +284,15 @@ export default function SetupGuideDisplay({
           detail="Measured VRAM per model — runs in background, logs to Output Console"
         />
         <ChecklistItem
+          done={toolchainStepDone}
+          current={toolchainStepCurrent}
+          optional
+          title="Foundry toolchain"
+          detail="1-click Full (~1.3 GB) for cmake builds, or CUDA Runtime-only for inference"
+        />
+        <ChecklistItem
           done={driversConfirmed}
-          current={driversStepActive && !driversConfirmed}
+          current={driversStepActive && toolchainStepDone && !driversConfirmed}
           title="Confirm NVIDIA drivers"
           detail="Recent Game Ready / Studio driver recommended for CUDA inference"
         />
@@ -373,7 +397,20 @@ export default function SetupGuideDisplay({
           </>
         )}
 
-        {driversStepActive && (
+        {driversStepActive && !toolchainStepDone && (
+          <div className="w-full mt-2 mb-1">
+            <FoundryToolchainPanel
+              onboarding
+              onSkip={skipToolchain}
+              onInstallStatusChange={(status) => {
+                setToolchainFoundryReady(status.foundryReady);
+                setToolchainRuntimeReady(status.runtimeReady);
+              }}
+            />
+          </div>
+        )}
+
+        {driversStepActive && toolchainStepDone && (
           <label className="flex items-center gap-2 text-[8px] font-mono text-stealth-muted cursor-pointer select-none">
             <input
               type="checkbox"

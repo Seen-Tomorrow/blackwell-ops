@@ -3,9 +3,8 @@
   "version": "1.0.7",
   "identifier": "com.blackwell-ops.app.dev",
   "build": {
-    "beforeDevCommand": "npm run server",
     "frontendDist": "../dist",
-    "devUrl": "http://127.0.0.1:1420"
+    "devUrl": "http://127.0.0.1:1420/index.html"
   },
   "app": {
     "withGlobalTauri": true,

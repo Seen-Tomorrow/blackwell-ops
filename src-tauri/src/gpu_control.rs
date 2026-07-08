@@ -62,8 +62,9 @@ pub fn is_gpu_control_elevated() -> bool {
 }
 
 fn run_nvidia_smi(args: &[&str]) -> Result<std::process::Output, String> {
-    crate::engine_utils::run_hidden_output(|| {
-        let mut cmd = std::process::Command::new("nvidia-smi");
+    let smi = crate::engine_utils::resolve_nvidia_smi_path();
+    crate::engine_utils::run_hidden_output(move || {
+        let mut cmd = std::process::Command::new(&smi);
         cmd.args(args)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
@@ -84,23 +85,7 @@ fn decode_output(output: &std::process::Output) -> String {
 }
 
 fn resolve_nvidia_smi_path() -> PathBuf {
-    if let Ok(output) = crate::engine_utils::run_hidden_output(|| {
-        let mut cmd = std::process::Command::new("where");
-        cmd.arg("nvidia-smi")
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null());
-        cmd
-    }) {
-        if output.status.success() {
-            if let Some(line) = String::from_utf8_lossy(&output.stdout).lines().next() {
-                let line = line.trim();
-                if !line.is_empty() {
-                    return PathBuf::from(line);
-                }
-            }
-        }
-    }
-    PathBuf::from(r"C:\Windows\System32\nvidia-smi.exe")
+    crate::engine_utils::resolve_nvidia_smi_path()
 }
 
 fn step_from_output(gpu_index: u32, step: impl Into<String>, out: &PrivilegedOutput) -> GpuControlStepResult {

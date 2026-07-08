@@ -54,6 +54,14 @@ export default defineConfig(async () => ({
   server: {
     host,
     port: 1420,
+    fs: {
+      deny: [
+        "**/foundry/**",
+        "**/src-tauri/target/**",
+        "**/work/**",
+        "**/llama.cpp/**",
+      ],
+    },
     watch: {
       ignored: [
         '**/src-tauri/target/**',
@@ -61,6 +69,21 @@ export default defineConfig(async () => ({
         '**/llama.cpp/tools/**',
       ],
     },
+  },
+
+  optimizeDeps: {
+    entries: ["./index.html"],
+    include: [
+      "react",
+      "react-dom",
+      "react-dom/client",
+      "@tauri-apps/api",
+      "@tauri-apps/api/core",
+      "@tauri-apps/api/event",
+      "@tauri-apps/api/window",
+      "@tauri-apps/plugin-shell",
+      "html-to-image",
+    ],
   },
 
   build: {

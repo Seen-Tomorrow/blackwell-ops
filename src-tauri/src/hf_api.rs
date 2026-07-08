@@ -132,6 +132,7 @@ pub fn aggregate_gguf_entries(
 #[derive(Debug, Deserialize)]
 struct HfApiLink {
     #[serde(rename = "self")]
+    #[allow(dead_code)]
     self_url: Option<String>,
 }
 

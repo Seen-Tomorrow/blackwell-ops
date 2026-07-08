@@ -79,8 +79,9 @@ fn get_physical_ram_bytes() -> Result<u64, String> {
 /// Scan GPUs using nvidia-smi — returns real metrics from NVIDIA drivers
 #[tauri::command]
 pub async fn scan_gpus() -> Result<Vec<GpuInfo>, String> {
-    let output = crate::engine_utils::run_hidden_output_async(|| {
-        let mut cmd = std::process::Command::new("nvidia-smi");
+    let smi = crate::engine_utils::resolve_nvidia_smi_path();
+    let output = crate::engine_utils::run_hidden_output_async(move || {
+        let mut cmd = std::process::Command::new(&smi);
         cmd.args([
             "--query-gpu=index,name,driver_version,memory.total,memory.used,memory.free,temperature.gpu,power.draw,power.limit,utilization.gpu,utilization.memory",
             "--format=csv,noheader,nounits",
@@ -394,7 +395,8 @@ pub async fn scan_system_info() -> Result<SystemInfo, String> {
 /// that; stdout must still be captured for the actual data.
 pub fn detect_gpu_count() -> usize {
     let fallback = 1; // Safe default — single GPU rather than guessing wrong
-    if let Ok(output) = std::process::Command::new("nvidia-smi")
+    let smi = crate::engine_utils::resolve_nvidia_smi_path();
+    if let Ok(output) = std::process::Command::new(&smi)
         .args(&["--query-gpu=index", "--format=csv,noheader"])
         .stdout(Stdio::piped())   // MUST be piped — null() discards output, always returns fallback
         .stderr(Stdio::null())
@@ -410,4 +412,15 @@ pub fn detect_gpu_count() -> usize {
     }
     log::warn!("[telemetry] nvidia-smi detection failed, falling back to {} GPU — GPU masking may be incorrect", fallback);
     fallback
+}
+
+/// Return the NVIDIA driver version string (e.g. "610.47") from the first GPU, if available.
+/// Used for per-profile driver compatibility indicators in the UI.
+#[tauri::command]
+pub async fn get_nvidia_driver_version() -> Result<Option<String>, String> {
+    let gpus = scan_gpus().await?;
+    Ok(gpus
+        .into_iter()
+        .filter_map(|g| g.driver_version)
+        .next())
 }

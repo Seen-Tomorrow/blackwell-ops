@@ -74,7 +74,6 @@ const DEFAULT_CMAKE_FLAGS: &[(&str, &str)] = &[
     ("ggml-llama", concat!(
         "-DLLAMA_CURL=OFF ",
         "-DGGML_CUDA=ON ",
-        "-DCMAKE_CUDA_ARCHITECTURES=\"86;89;120\" ",
         "-DGGML_CUDA_PEER_TO_PEER=ON ",
         "-DGGML_CUDA_FA_ALL_QUANTS=ON ",
         "-DGGML_AVX512=ON ",
@@ -694,7 +693,7 @@ async fn run_foundry_build_worker(
     let _ = tokio::fs::remove_dir_all(&work_root).await;
     if let Err(e) = tokio::fs::create_dir_all(&work_root).await {
         // Minimal rollback (will be simplified later)
-       rollback_build(app_handle, &provider_id, &profile_id, build_id, &src_dir, &cmake_build_output_dir).execute().await;
+       rollback_build(app_handle, &provider_id, &profile_id, build_id).execute().await;
         return Err(format!("Failed to create work directory: {}", e));
     }
     let _ = tokio::fs::create_dir_all(&build_dir).await;
@@ -712,7 +711,7 @@ async fn run_foundry_build_worker(
     };
 
     if git_url.is_empty() {
-            rollback_build(app_handle, &provider_id, &profile_id, build_id, &src_dir, &cmake_build_output_dir).execute().await;
+            rollback_build(app_handle, &provider_id, &profile_id, build_id).execute().await;
             return Err(format!("Provider '{}' has no git_url configured.", provider_id));
     }
 
@@ -744,7 +743,7 @@ async fn run_foundry_build_worker(
 
         if !clone_output.status.success() {
             let stderr = String::from_utf8_lossy(&clone_output.stderr).to_string();
-            rollback_build(app_handle, &provider_id, &profile_id, build_id, &src_dir, &cmake_build_output_dir).execute().await;
+            rollback_build(app_handle, &provider_id, &profile_id, build_id).execute().await;
             return Err(format!("Git clone failed: {}", stderr));
         }
 
@@ -772,7 +771,7 @@ async fn run_foundry_build_worker(
 
         if !pull_output.status.success() {
             let stderr = String::from_utf8_lossy(&pull_output.stderr).to_string();
-            rollback_build(app_handle, &provider_id, &profile_id, build_id, &src_dir, &cmake_build_output_dir).execute().await;
+            rollback_build(app_handle, &provider_id, &profile_id, build_id).execute().await;
             return Err(format!("Git pull failed: {}", stderr));
         }
 
@@ -1145,7 +1144,7 @@ async fn run_foundry_build_worker(
         let stderr_text: String = try_lock_log_buf(&stderr_capture)
             .map(|buf| buf.join("\n"))
             .unwrap_or_default();
-        rollback_build(app_handle, &provider_id, &profile_id, build_id, &src_dir, &cmake_build_output_dir)
+        rollback_build(app_handle, &provider_id, &profile_id, build_id)
             .with_message(if stderr_text.is_empty() { "CMake configure failed.".into() } else { format!("CMake configure failed:\n{}", stderr_text) })
             .execute().await;
 
@@ -1296,7 +1295,7 @@ async fn run_foundry_build_worker(
 
     if !build_status.success() {
         let stderr_text: String = stderr_text.join("\n");
-        rollback_build(app_handle, &provider_id, &profile_id, build_id, &src_dir, &cmake_build_output_dir)
+        rollback_build(app_handle, &provider_id, &profile_id, build_id)
             .with_message(if stderr_text.is_empty() { "Build failed.".into() } else { format!("Build failed:\n{}", stderr_text) })
             .execute().await;
 
@@ -1378,7 +1377,7 @@ async fn run_foundry_build_worker(
     }
 
     if !all_present {
-        rollback_build(app_handle, &provider_id, &profile_id, build_id, &src_dir, &cmake_build_output_dir)
+        rollback_build(app_handle, &provider_id, &profile_id, build_id)
             .with_message(format!("Missing core binaries: {}", missing.join(", ")))
             .execute().await;
 
@@ -1577,7 +1576,7 @@ pub async fn refresh_build_info(
         }
     };
 
-    let prov = {
+    let _prov = {
         if prov.binary_path_per_env.is_empty() && !prov.binary_path.is_empty() {
             let src_dir = foundry_src_dir(&provider_id);
             let old_build_dir = src_dir.join("build");
@@ -1907,8 +1906,6 @@ struct RollbackBuilder<'a> {
     provider_id: &'a str,
     profile_id: &'a str,
     build_id: u64,
-    src_dir: &'a PathBuf,
-    cmake_build_output_dir: &'a PathBuf,
     message: Option<String>,
 }
 
@@ -1919,7 +1916,7 @@ impl<'a> RollbackBuilder<'a> {
     }
 
     async fn execute(self) {
-        let Self { app_handle, provider_id, profile_id, build_id, src_dir: _, cmake_build_output_dir: _, message } = self;
+        let Self { app_handle, provider_id, profile_id, build_id, message } = self;
 
         // Directory rollback dance removed — sacred artifacts are never touched on failure paths.
         // The disposable work/ tree is nuked by the exit discipline in every terminal path.
@@ -1942,16 +1939,12 @@ fn rollback_build<'a>(
     provider_id: &'a str,
     profile_id: &'a str,
     build_id: u64,
-    src_dir: &'a PathBuf,
-    cmake_build_output_dir: &'a PathBuf,
 ) -> RollbackBuilder<'a> {
     RollbackBuilder {
         app_handle,
         provider_id,
         profile_id,
         build_id,
-        src_dir,
-        cmake_build_output_dir,
         message: None,
     }
 }

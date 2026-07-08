@@ -10,6 +10,45 @@ use crate::types::EngineConfig;
 
 /// Resolve binary path for a provider ID. Self-healing: if a stored path doesn't exist on disk,
 /// it falls through to the next candidate and logs a warning about the stale entry.
+/// Active binary env (`frontier` / `stable`); empty → app default.
+pub fn normalized_binary_profile(profile: &str) -> &str {
+    if profile.trim().is_empty() {
+        crate::config::DEFAULT_BINARY_PROFILE
+    } else {
+        profile.trim()
+    }
+}
+
+/// Infer profile from `runtime/.../frontier/llama-server.exe` or foundry artifact paths.
+pub fn binary_profile_from_path(path: &Path) -> Option<String> {
+    for comp in path.components() {
+        if let std::path::Component::Normal(os) = comp {
+            let s = os.to_string_lossy().to_lowercase();
+            if s == "frontier" || s == "stable" {
+                return Some(s);
+            }
+        }
+    }
+    None
+}
+
+/// Bind child to `<app_root>/toolchain/cuda` only — fails if portable runtime DLLs are missing.
+pub fn apply_cuda_toolchain_for_profile(
+    cmd: &mut std::process::Command,
+    binary_profile: &str,
+) -> Result<(), String> {
+    crate::foundry_toolchain::apply_portable_cuda_to_command(cmd, normalized_binary_profile(binary_profile))
+}
+
+pub fn apply_cuda_toolchain_for_binary(
+    cmd: &mut std::process::Command,
+    binary_path: &Path,
+) -> Result<(), String> {
+    let profile = binary_profile_from_path(binary_path)
+        .unwrap_or_else(|| crate::config::DEFAULT_BINARY_PROFILE.to_string());
+    crate::foundry_toolchain::apply_portable_cuda_to_command(cmd, profile.as_str())
+}
+
 pub fn find_provider_binary(cfg: &AppConfig, provider_id: &str, binary_profile: &str) -> Result<PathBuf, String> {
     let profile_to_try = if binary_profile.is_empty() {
         crate::config::DEFAULT_BINARY_PROFILE
@@ -85,6 +124,43 @@ pub fn compute_gpu_mask_from_params(device: &str, split_mode: &str, gpu_count: u
             .unwrap_or(0);
         if idx < gpu_count { idx.to_string() } else { "0".to_string() }
     }
+}
+
+/// Resolve the nvidia-smi executable in a Windows-friendly way.
+/// Prefers the driver-installed copy in System32 (bypasses PATH hijacks / CWD lookup).
+/// Falls back to `where` result (if it exists), then bare "nvidia-smi" (PATH).
+pub fn resolve_nvidia_smi_path() -> PathBuf {
+    #[cfg(windows)]
+    {
+        let system32 = PathBuf::from(r"C:\Windows\System32\nvidia-smi.exe");
+        if system32.exists() {
+            return system32;
+        }
+
+        // Fallback: ask where.exe (may find CUDA toolkit copy or other on PATH)
+        if let Ok(output) = run_hidden_output(|| {
+            let mut cmd = std::process::Command::new("where");
+            cmd.arg("nvidia-smi")
+                .stdout(Stdio::piped())
+                .stderr(Stdio::null());
+            cmd
+        }) {
+            if output.status.success() {
+                for line in String::from_utf8_lossy(&output.stdout).lines() {
+                    let trimmed = line.trim();
+                    if !trimmed.is_empty() {
+                        let p = PathBuf::from(trimmed);
+                        if p.exists() {
+                            return p;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Final fallback — rely on PATH at spawn time (also works for Linux/macOS nvidia-smi)
+    PathBuf::from("nvidia-smi")
 }
 
 /// Ask llama-server to shut down via CTRL+C on its console (prints memory breakdown on exit).

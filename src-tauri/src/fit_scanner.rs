@@ -577,7 +577,8 @@ fn run_fit_process_blocking(
         .parent()
         .ok_or_else(|| format!("Fit binary has no parent directory: {}", fit_binary))?;
 
-    let mut child = Command::new(fit_binary)
+    let mut child_cmd = Command::new(fit_binary);
+    child_cmd
         .current_dir(work_dir)
         .args(args)
         .args(crate::types::LLAMA_DIAGNOSTIC_FLAGS.iter().map(|s| s.to_string()))
@@ -585,7 +586,12 @@ fn run_fit_process_blocking(
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .creation_flags(0x08000000) // CREATE_NO_WINDOW — prevents CMD flash in release builds
+        .creation_flags(0x08000000); // CREATE_NO_WINDOW — prevents CMD flash in release builds
+    crate::engine_utils::apply_cuda_toolchain_for_profile(
+        &mut child_cmd,
+        crate::config::FIT_SCAN_BINARY_PROFILE,
+    )?;
+    let mut child = child_cmd
         .spawn()
         .map_err(|e| format!("Failed to spawn {}: {}", fit_binary, e))?;
 

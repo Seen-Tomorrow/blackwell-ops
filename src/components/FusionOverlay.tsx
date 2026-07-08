@@ -66,6 +66,78 @@ function fusionTimingStats(fusion: FusionUpdate): Pick<LastRequestStats, "prefil
   };
 }
 
+/** Matches backend inter-request hold — micro-stats must not flicker on brief /slots idle. */
+const MICRO_STATS_IDLE_HOLD_MS = 1500;
+
+interface MicroStatsLatch {
+  genTokens: number;
+  prefillMs: string | null;
+  decodeTtftMs: string | null;
+  elapsedMs: string;
+  sessionOpen: boolean;
+  lastBusyAt: number;
+}
+
+function freshMicroLatch(): MicroStatsLatch {
+  return {
+    genTokens: 0,
+    prefillMs: null,
+    decodeTtftMs: null,
+    elapsedMs: "0ms",
+    sessionOpen: false,
+    lastBusyAt: 0,
+  };
+}
+
+function resetMicroLatch(latch: MicroStatsLatch) {
+  Object.assign(latch, freshMicroLatch());
+}
+
+function fusionRequestInFlight(fusion: FusionUpdate): boolean {
+  if (fusion.requestClosed === true) return false;
+  const tokens = fusion.genTokensPerRequestSlots ?? 0;
+  return (
+    fusion.phase !== "IDLE"
+    || fusion.engine_state === "ACTIVE"
+    || tokens > 0
+    || fusion.logPhase === "TG"
+    || fusion.logPhase === "PP"
+    || (fusion.busySlotCount ?? 0) > 0
+  );
+}
+
+function fusionNewPromptReset(fusion: FusionUpdate, latch: MicroStatsLatch): boolean {
+  if (fusion.phaseResetSource === "prompt") return true;
+  const tokens = fusion.genTokensPerRequestSlots ?? 0;
+  return (
+    latch.genTokens > 0
+    && tokens === 0
+    && fusion.phase === "PP"
+    && (fusion.prefillProgress ?? 0) < 0.15
+  );
+}
+
+function updateMicroLatch(latch: MicroStatsLatch, fusion: FusionUpdate) {
+  const now = Date.now();
+  if (fusionNewPromptReset(fusion, latch)) {
+    resetMicroLatch(latch);
+  }
+  const timing = fusionTimingStats(fusion);
+  const tokens = fusion.genTokensPerRequestSlots ?? 0;
+  if (fusionRequestInFlight(fusion)) {
+    latch.sessionOpen = true;
+    latch.lastBusyAt = now;
+    if (tokens >= latch.genTokens) latch.genTokens = tokens;
+    if (timing.prefillMs != null) latch.prefillMs = timing.prefillMs;
+    if (timing.decodeTtftMs != null) latch.decodeTtftMs = timing.decodeTtftMs;
+    latch.elapsedMs = formatMs(fusion.requestElapsedMs);
+    return;
+  }
+  if (latch.sessionOpen && now - latch.lastBusyAt > MICRO_STATS_IDLE_HOLD_MS) {
+    latch.sessionOpen = false;
+  }
+}
+
 export default function FusionOverlay({
   alias,
   enginePort,
@@ -92,12 +164,10 @@ export default function FusionOverlay({
 
   // Per-engine state stored in a Map keyed by slotIdx — no remounting needed on switch
   interface EngineStateData {
-    frozenStats: LastRequestStats | null;
-    liveSnapshot: LastRequestStats;
-    wasActive: boolean;
+    microLatch: MicroStatsLatch;
   }
   const engineStates = useRef<Map<number, EngineStateData>>(new Map());
-  const [displayFrozen, setDisplayFrozen] = useState<LastRequestStats | null>(null);
+  const [, setMicroLatchTick] = useState(0);
   const [isStopping, setIsStopping] = useState(false);
   const stoppingRef = useRef(false);
   const [benchHero, setBenchHero] = useState<{ tg: number | null; pp: number | null }>({
@@ -126,7 +196,6 @@ export default function FusionOverlay({
     setBenchHero({ tg: null, pp: null });
     setBenchSessionMode("idle");
     if (fusion?.slotIdx === slot) {
-      setDisplayFrozen(null);
       stoppingRef.current = false;
       setIsStopping(false);
     }
@@ -136,7 +205,6 @@ export default function FusionOverlay({
     engineStates.current.clear();
     setBenchHero({ tg: null, pp: null });
     setBenchSessionMode("idle");
-    setDisplayFrozen(null);
     stoppingRef.current = false;
     setIsStopping(false);
   });
@@ -166,53 +234,36 @@ export default function FusionOverlay({
 
     let engState = engineStates.current.get(fusion.slotIdx);
     if (!engState) {
-      engState = {
-        frozenStats: null,
-        liveSnapshot: { genTokensSlots: 0, prefillMs: null, decodeTtftMs: null, elapsedMs: "0ms" },
-        wasActive: false,
-      };
+      engState = { microLatch: freshMicroLatch() };
       engineStates.current.set(fusion.slotIdx, engState);
     }
 
-    const active = fusion.phase !== "IDLE" && fusion.requestClosed !== true;
-    if (active) {
-      engState.wasActive = true;
-      engState.frozenStats = null;
-      engState.liveSnapshot = {
-        genTokensSlots: fusion.genTokensPerRequestSlots,
-        ...fusionTimingStats(fusion),
-        elapsedMs: formatMs(fusion.requestElapsedMs),
-      };
-      setDisplayFrozen(null);
-    } else if (engState.wasActive) {
-      engState.wasActive = false;
-      engState.frozenStats = { ...engState.liveSnapshot };
-      setDisplayFrozen(engState.frozenStats);
-    } else {
-      setDisplayFrozen(engState.frozenStats);
+    const before = { ...engState.microLatch };
+    updateMicroLatch(engState.microLatch, fusion);
+    const after = engState.microLatch;
+    if (
+      before.genTokens !== after.genTokens
+      || before.prefillMs !== after.prefillMs
+      || before.decodeTtftMs !== after.decodeTtftMs
+      || before.elapsedMs !== after.elapsedMs
+      || before.sessionOpen !== after.sessionOpen
+    ) {
+      setMicroLatchTick((t) => t + 1);
     }
   }, [
     fusion?.slotIdx,
     fusion?.phase,
+    fusion?.engine_state,
     fusion?.genTokensPerRequestSlots,
     fusion?.prefillMs,
     fusion?.decodeTtftMs,
     fusion?.requestElapsedMs,
     fusion?.requestClosed,
+    fusion?.logPhase,
+    fusion?.busySlotCount,
+    fusion?.prefillProgress,
+    fusion?.phaseResetSource,
   ]);
-
-  const showLive = fusion != null && isActive;
-  const defaultSnapshot: LastRequestStats = {
-    genTokensSlots: 0,
-    prefillMs: null,
-    decodeTtftMs: null,
-    elapsedMs: "0ms",
-  };
-  const statsToDisplay = showLive && fusion ? {
-    genTokensSlots: fusion.genTokensPerRequestSlots,
-    ...fusionTimingStats(fusion),
-    elapsedMs: formatMs(fusion.requestElapsedMs),
-  } as LastRequestStats : (displayFrozen ?? defaultSnapshot);
 
   const handleBenchHeroPatch = useCallback((patch: BenchHeroPatch) => {
     setBenchHero((prev) => ({
@@ -336,13 +387,16 @@ export default function FusionOverlay({
       : ppTpsValue;
   const ppHeroActive = !suppressPrefillHero && (ppHeroTps != null ? ppHeroTps > 0 : ppTpsValue !== "--");
 
+  const isParallelLane = fusion.meterLane === "parallel";
   const tgTpsLive = clampHeroTps(
     (fusion.genTpsInstant ?? 0) > 0
       ? (fusion.genTpsInstant ?? 0)
       : (fusion.logGenTps ?? 0),
   );
   const tgTpsAvg = clampHeroTps(
-    (fusion.genTpsSession ?? 0) > 0 ? (fusion.genTpsSession ?? 0) : (fusion.genTps ?? 0),
+    isParallelLane
+      ? (fusion.genTpsSession ?? fusion.genTps ?? 0)
+      : ((fusion.genTpsSession ?? 0) > 0 ? (fusion.genTpsSession ?? 0) : (fusion.genTps ?? 0)),
   );
   const tgTpsPick = clampHeroTps(heroTpsMode === "avg" ? tgTpsAvg : tgTpsLive);
   const tgTpsValue = tgTpsPick > 0 ? tgTpsPick.toFixed(1) : "--";
@@ -353,6 +407,11 @@ export default function FusionOverlay({
       ? tgHeroTps.toFixed(1)
       : tgTpsValue;
   const tgHeroActive = !suppressTgHero && (tgHeroTps != null ? tgHeroTps > 0 : tgTpsPick > 0);
+
+  const microLatch =
+    engineStates.current.get(fusion.slotIdx)?.microLatch ?? freshMicroLatch();
+  const microReadoutLive = microLatch.sessionOpen || isActive;
+  const microTokenText = microLatch.genTokens > 0 ? `${microLatch.genTokens} tok` : "--";
 
   const specSlotActive = fusion.slotCtx?.some((s) => s.speculative) ?? false;
   const mtpAcceptPct =
@@ -524,34 +583,36 @@ export default function FusionOverlay({
                    <span className="text-[7px] font-mono text-stealth-muted/30 tracking-wider">tok/s</span>
                  </div>
 
-                {/* Per-request micro-stats — PP prefill vs +1st decode after prefill */}
-                 <div className="flex items-center justify-center w-full min-w-0 gap-x-1 mt-1.5 overflow-hidden flex-nowrap">
-                   <span className={`text-[7px] font-mono flex-shrink-0 ${showLive ? "fusion-readout-emphasis" : "fusion-readout-idle"}`}>
-                     {statsToDisplay.genTokensSlots > 0 ? statsToDisplay.genTokensSlots + " tok" : "--"}
-                   </span>
-                   <span className={`text-[6px] flex-shrink-0 ${showLive ? "fusion-readout-divider" : "fusion-readout-divider-idle"}`}>│</span>
+                {/* Per-request micro-stats — latched + fixed-width cells (no jitter on multi-slot idle gaps) */}
+                 <div className="flex items-center justify-center w-full min-w-0 gap-x-1 mt-1.5 overflow-hidden flex-nowrap fusion-micro-readout">
                    <span
-                     className={`text-[7px] font-mono flex-shrink-0 ${showLive ? "fusion-readout-emphasis" : "fusion-readout-idle"}`}
+                     className={`fusion-micro-stat-cell fusion-micro-tokens text-[7px] font-mono ${microReadoutLive ? "fusion-readout-emphasis" : "fusion-readout-idle"}`}
+                   >
+                     {microTokenText}
+                   </span>
+                   <span className={`text-[6px] flex-shrink-0 ${microReadoutLive ? "fusion-readout-divider" : "fusion-readout-divider-idle"}`}>│</span>
+                   <span
+                     className={`fusion-micro-stat-cell fusion-micro-pp text-[7px] font-mono ${microReadoutLive ? "fusion-readout-emphasis" : "fusion-readout-idle"}`}
                      title="Prompt prefill duration"
                    >
-                     PP {statsToDisplay.prefillMs ?? "--"}
+                     PP {microLatch.prefillMs ?? "--"}
                    </span>
-                   <span className={`text-[6px] flex-shrink-0 ${showLive ? "fusion-readout-divider" : "fusion-readout-divider-idle"}`}>│</span>
+                   <span className={`text-[6px] flex-shrink-0 ${microReadoutLive ? "fusion-readout-divider" : "fusion-readout-divider-idle"}`}>│</span>
                    <span
-                     className={`text-[7px] font-mono flex-shrink-0 ${showLive ? "fusion-readout-emphasis" : "fusion-readout-idle"}`}
+                     className={`fusion-micro-stat-cell fusion-micro-decode text-[7px] font-mono ${microReadoutLive ? "fusion-readout-emphasis" : "fusion-readout-idle"}`}
                      title="First output token after prefill"
                    >
-                     +1st {statsToDisplay.decodeTtftMs ?? "--"}
+                     +1st {microLatch.decodeTtftMs ?? "--"}
                    </span>
-                   <span className={`text-[6px] flex-shrink-0 ${showLive ? "fusion-readout-divider" : "fusion-readout-divider-idle"}`}>│</span>
-                   <span className={`text-[7px] font-mono flex-shrink-0 ${showLive ? "fusion-readout-emphasis" : "fusion-readout-idle"}`}>
-                     ELAPSED {statsToDisplay.elapsedMs}
+                   <span className={`text-[6px] flex-shrink-0 ${microReadoutLive ? "fusion-readout-divider" : "fusion-readout-divider-idle"}`}>│</span>
+                   <span className={`fusion-micro-stat-cell fusion-micro-elapsed text-[7px] font-mono ${microReadoutLive ? "fusion-readout-emphasis" : "fusion-readout-idle"}`}>
+                     ELAPSED {microLatch.elapsedMs}
                    </span>
                    {(specSlotActive || mtpAcceptPct != null) && mtpAcceptPct != null && (
                      <>
-                       <span className={`text-[6px] flex-shrink-0 ${showLive ? "fusion-readout-divider" : "fusion-readout-divider-idle"}`}>│</span>
+                       <span className={`text-[6px] flex-shrink-0 ${microReadoutLive ? "fusion-readout-divider" : "fusion-readout-divider-idle"}`}>│</span>
                        <span
-                         className={`text-[7px] font-mono flex-shrink-0 whitespace-nowrap ${showLive ? "text-amber-300/90" : "fusion-readout-idle"}`}
+                         className={`text-[7px] font-mono flex-shrink-0 whitespace-nowrap ${microReadoutLive ? "text-amber-300/90" : "fusion-readout-idle"}`}
                          title={mtpAcceptTitle}
                        >
                          MTP {mtpAcceptPct}%

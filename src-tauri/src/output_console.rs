@@ -14,6 +14,7 @@ use std::time::Instant;
 
 /// The official name of this feature as chosen by the user.
 /// Used in logs, errors, and documentation.
+#[allow(dead_code)]
 pub const BLACKWELL_OUTPUT_CONSOLE_FEATURE_NAME: &str = "Blackwell Output Console";
 
 /// Full-line banner (`=== message ===`) — e.g. Foundry build complete.
@@ -70,6 +71,7 @@ impl BlackwellOutputConsoleCategory {
     }
 
     /// Returns a user-facing display name for this category.
+    #[allow(dead_code)]
     pub fn display_name(&self) -> &'static str {
         match self {
             BlackwellOutputConsoleCategory::Engines => "Engines",
@@ -123,6 +125,7 @@ pub struct BlackwellOutputConsoleTextLine {
 /// A bounded buffer that holds lines for one specific category of the Blackwell Output Console.
 #[derive(Debug)]
 pub struct BlackwellOutputConsoleCategoryBuffer {
+    #[allow(dead_code)]
     pub category: BlackwellOutputConsoleCategory,
 
     /// Maximum number of lines this buffer is allowed to hold.
@@ -171,6 +174,7 @@ impl BlackwellOutputConsoleCategoryBuffer {
 /// We track builds separately from the general FOUNDRY category buffer so we can implement
 /// "clear on successful modal close" behavior cleanly.
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct BlackwellOutputConsoleFoundryBuildSession {
     pub build_session_id: u64,
     pub provider_id: String,
@@ -376,4 +380,38 @@ pub struct BlackwellOutputConsoleLatestLine {
     pub content: String,
     pub style: BlackwellOutputConsoleLineStyle,
     pub category: String,
+}
+
+/// App handle for modules that emit console lines without an `AppContext` reference.
+static BLACKWELL_OUTPUT_CONSOLE_APP: std::sync::OnceLock<tauri::AppHandle> =
+    std::sync::OnceLock::new();
+
+/// Call once during Tauri setup (after `app.manage(AppContext)`).
+pub fn register_blackwell_output_console_app_handle(handle: tauri::AppHandle) {
+    let _ = BLACKWELL_OUTPUT_CONSOLE_APP.set(handle);
+}
+
+fn emit_blackwell_output_console_line(
+    category: BlackwellOutputConsoleCategory,
+    content: String,
+    style: BlackwellOutputConsoleLineStyle,
+) {
+    use tauri::Manager;
+    let Some(handle) = BLACKWELL_OUTPUT_CONSOLE_APP.get() else {
+        log::debug!("[console] {content}");
+        return;
+    };
+    if let Some(ctx) = handle.try_state::<crate::engine::AppContext>() {
+        ctx.blackwell_output_console_manager
+            .emit_line_to_category(category, content, style);
+    }
+}
+
+/// Debug tab — portable toolchain / CUDA PATH diagnostics.
+pub fn emit_blackwell_output_console_debug_line(content: impl Into<String>) {
+    emit_blackwell_output_console_line(
+        BlackwellOutputConsoleCategory::Debug,
+        content.into(),
+        BlackwellOutputConsoleLineStyle::Normal,
+    );
 }

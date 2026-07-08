@@ -6,6 +6,7 @@ use std::path::PathBuf;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct ToolchainManifest {
+    #[allow(dead_code)]
     pub version: u32,
     pub windows_sdk_version: String,
     pub vs: VsManifest,
@@ -61,10 +62,20 @@ pub struct ProfileCheck {
 /// Pinned GitHub release for the portable Foundry toolchain bundle.
 pub const TOOLCHAIN_RELEASE_TAG: &str = "toolchain";
 pub const TOOLCHAIN_GITHUB_REPO: &str = "Seen-Tomorrow/blackwell-ops";
-pub const TOOLCHAIN_ARCHIVE_PARTS: &[&str] = &[
-    "toolchain.7z.001",
-    "toolchain.7z.002",
-];
+pub const TOOLCHAIN_ARCHIVE_NAME: &str = "toolchain.7z";
+pub const TOOLCHAIN_RUNTIME_ARCHIVE_NAME: &str = "toolchain-runtime.7z";
+pub const TOOLCHAIN_ARCHIVE_PARTS: &[&str] = &[TOOLCHAIN_ARCHIVE_NAME];
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ToolchainPackOffer {
+    pub id: String,
+    pub label: String,
+    pub archive_name: String,
+    pub compressed_size_label: String,
+    pub uncompressed_size_label: String,
+    pub description: String,
+    pub recommended: bool,
+}
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ToolchainInstallInfo {
@@ -75,7 +86,9 @@ pub struct ToolchainInstallInfo {
     pub archive_parts: Vec<String>,
     pub compressed_size_label: String,
     pub uncompressed_size_label: String,
+    pub packs: Vec<ToolchainPackOffer>,
     pub manifest_present: bool,
+    pub runtime_ready: bool,
     pub profiles_ready: usize,
     pub profiles_total: usize,
     pub all_ready: bool,
@@ -329,6 +342,225 @@ impl ResolvedProfile {
     }
 }
 
+fn cuda_bin_dirs(cuda_root: &std::path::Path) -> Vec<std::path::PathBuf> {
+    vec![cuda_root.join("bin"), cuda_root.join("bin").join("x64")]
+}
+
+fn dir_has_essential_cuda_dll(bin_dir: &std::path::Path) -> bool {
+    if !bin_dir.is_dir() {
+        return false;
+    }
+    let Ok(entries) = std::fs::read_dir(bin_dir) else {
+        return false;
+    };
+    let mut has_cublas = false;
+    let mut has_cublas_lt = false;
+    let mut has_cudart = false;
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().to_lowercase();
+        if !name.ends_with(".dll") {
+            continue;
+        }
+        if name.starts_with("cublas64_") {
+            has_cublas = true;
+        } else if name.starts_with("cublaslt64_") {
+            has_cublas_lt = true;
+        } else if name.starts_with("cudart64_") {
+            has_cudart = true;
+        }
+    }
+    has_cublas && has_cublas_lt && has_cudart
+}
+
+pub fn cuda_runtime_ready_for_version(cuda_version: &str) -> bool {
+    let cuda_root = toolchain_dir().join("cuda").join(format!("v{}", cuda_version));
+    cuda_bin_dirs(&cuda_root)
+        .iter()
+        .any(|dir| dir_has_essential_cuda_dll(dir))
+}
+
+fn cuda_version_for_binary_profile(binary_profile: &str) -> Option<String> {
+    let key = normalize_profile_id(binary_profile);
+    if let Ok(manifest) = load_manifest() {
+        if let Some(def) = manifest
+            .profiles
+            .iter()
+            .find(|p| p.id.eq_ignore_ascii_case(&key))
+        {
+            return Some(def.cuda.clone());
+        }
+    }
+    match key.as_str() {
+        "stable" => Some("12.8".into()),
+        "frontier" => Some("13.3".into()),
+        _ => None,
+    }
+}
+
+/// True when a PATH entry points at a foreign CUDA install (system toolkit or another toolchain tree).
+pub fn path_entry_is_foreign_cuda(entry: &str) -> bool {
+    let lower = entry.trim().to_lowercase().replace('/', "\\");
+    if lower.is_empty() {
+        return false;
+    }
+    lower.contains("nvidia gpu computing toolkit\\cuda\\")
+        || lower.contains("\\toolchain\\cuda\\")
+}
+
+/// Drop system / foreign CUDA dirs from PATH — runtime only uses our bare portable `<app_root>/toolchain/cuda/v*/bin`.
+/// We only ever ship/require the three essential DLLs (cublas* + cudart*) for inference.
+pub fn scrub_foreign_cuda_from_path(path: &str) -> String {
+    path.split(';')
+        .filter(|entry| !path_entry_is_foreign_cuda(entry))
+        .map(str::trim)
+        .filter(|entry| !entry.is_empty())
+        .collect::<Vec<_>>()
+        .join(";")
+}
+
+/// App-root-relative path for debug console (`\toolchain\cuda\...`).
+fn toolchain_console_path(path: &std::path::Path) -> String {
+    let rel = crate::config::to_relative_path(&path.to_path_buf());
+    format!("\\{}", rel.replace('/', "\\"))
+}
+
+pub fn portable_cuda_missing_message(binary_profile: &str, cuda_version: &str) -> String {
+    format!(
+        "Portable CUDA {} runtime not found for profile '{}'.\n\
+         Expected cublas64_ + cublasLt64_ + cudart64_ DLLs under:\n  {}\n\
+         Install the CUDA Runtime pack (or Full toolchain) via CONFIG → Providers or onboarding.",
+        cuda_version,
+        binary_profile,
+        toolchain_dir()
+            .join("cuda")
+            .join(format!("v{}", cuda_version))
+            .display()
+    )
+}
+
+/// Bind child PATH/CUDA_* to `<app_root>/toolchain/cuda/v*` only — never system or third-party CUDA.
+///
+/// NOTE on stronger isolation: PATH + CUDA_PATH is the primary mechanism for the CUDA loader.
+/// A future improvement could call AddDllDirectory / SetDllDirectoryW right before spawn
+/// (and restore after) or use a tiny launcher stub that does SetDllDirectory then execs the real exe.
+/// Current approach matches what upstream llama.cpp Windows CUDA packages rely on.
+#[cfg(windows)]
+pub fn apply_portable_cuda_to_command(
+    cmd: &mut std::process::Command,
+    binary_profile: &str,
+) -> Result<(), String> {
+    let cuda_version = cuda_version_for_binary_profile(binary_profile).ok_or_else(|| {
+        format!(
+            "Unknown binary profile '{}' — cannot resolve portable CUDA version.",
+            binary_profile
+        )
+    })?;
+
+    if !cuda_runtime_ready_for_version(&cuda_version) {
+        return Err(portable_cuda_missing_message(binary_profile, &cuda_version));
+    }
+
+    let cuda_root = toolchain_dir().join("cuda").join(format!("v{}", cuda_version));
+    let mut toolchain_bins: Vec<String> = Vec::new();
+    let bin_x64 = cuda_root.join("bin").join("x64");
+    if bin_x64.is_dir() {
+        toolchain_bins.push(bin_x64.to_string_lossy().to_string());
+    }
+    let bin = cuda_root.join("bin");
+    if bin.is_dir() {
+        toolchain_bins.push(bin.to_string_lossy().to_string());
+    }
+    if toolchain_bins.is_empty() {
+        return Err(portable_cuda_missing_message(binary_profile, &cuda_version));
+    }
+
+    let scrubbed = scrub_foreign_cuda_from_path(&std::env::var("PATH").unwrap_or_default());
+    let new_path = if scrubbed.is_empty() {
+        toolchain_bins.join(";")
+    } else {
+        format!("{};{}", toolchain_bins.join(";"), scrubbed)
+    };
+
+    log::debug!(
+        "[cuda-path] profile={} CUDA {} — toolchain only: {}",
+        binary_profile,
+        cuda_version,
+        toolchain_bins.join(";")
+    );
+
+    let bins_display = toolchain_bins
+        .iter()
+        .map(|p| toolchain_console_path(std::path::Path::new(p)))
+        .collect::<Vec<_>>()
+        .join("; ");
+    let console_line = format!(
+        "[TOOLCHAIN] profile={} CUDA {} | bins: {} | root: {}",
+        binary_profile,
+        cuda_version,
+        bins_display,
+        toolchain_console_path(&cuda_root),
+    );
+    static LAST_TOOLCHAIN_CONSOLE_LINE: std::sync::Mutex<Option<String>> =
+        std::sync::Mutex::new(None);
+    let mut last = LAST_TOOLCHAIN_CONSOLE_LINE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    if last.as_deref() != Some(&console_line) {
+        *last = Some(console_line.clone());
+        crate::output_console::emit_blackwell_output_console_debug_line(console_line);
+    }
+
+    cmd.env_remove("CUDA_PATH");
+    if let Ok(manifest) = load_manifest() {
+        for var in all_cuda_path_vars(&manifest) {
+            cmd.env_remove(&var);
+        }
+    }
+
+    cmd.env("PATH", new_path);
+    cmd.env("CUDA_PATH", &cuda_root);
+    cmd.env(cuda_path_var(&cuda_version), &cuda_root);
+    Ok(())
+}
+
+#[cfg(not(windows))]
+pub fn apply_portable_cuda_to_command(
+    _cmd: &mut std::process::Command,
+    _binary_profile: &str,
+) -> Result<(), String> {
+    Err("Portable CUDA toolchain is supported on Windows only.".into())
+}
+
+pub fn check_runtime_ready(manifest: &ToolchainManifest) -> bool {
+    manifest
+        .profiles
+        .iter()
+        .all(|p| cuda_runtime_ready_for_version(&p.cuda))
+}
+
+pub fn toolchain_pack_offers() -> Vec<ToolchainPackOffer> {
+    vec![
+        ToolchainPackOffer {
+            id: "full".into(),
+            label: "Full Foundry".into(),
+            archive_name: TOOLCHAIN_ARCHIVE_NAME.into(),
+            compressed_size_label: "~1.3 GB".into(),
+            uncompressed_size_label: "~4.2 GB".into(),
+            description: "Full portable toolchain: VS Build Tools + Windows SDK + both CUDA versions. Required for Foundry cmake auto-builds. Also includes everything needed to run engines.".into(),
+            recommended: true,
+        },
+        ToolchainPackOffer {
+            id: "runtime".into(),
+            label: "CUDA Runtime".into(),
+            archive_name: TOOLCHAIN_RUNTIME_ARCHIVE_NAME.into(),
+            compressed_size_label: "~250-350 MB".into(),
+            uncompressed_size_label: "~600-800 MB".into(),
+            description: "Bare minimum CUDA runtime (cublas64 + cublasLt + cudart only). Matches what upstream llama.cpp ships for Windows CUDA binaries. Enough for running engines. Use Full pack only for Foundry cmake builds.".into(),
+            recommended: false,
+        },
+    ]
+}
+
 pub fn check_all_profiles() -> Result<Vec<ProfileCheck>, String> {
     let manifest = load_manifest()?;
     let mut out = Vec::new();
@@ -375,15 +607,20 @@ pub fn install_info() -> Result<ToolchainInstallInfo, String> {
     let profiles_ready = checks.iter().filter(|c| c.ready).count();
     let profiles_total = checks.len();
 
+    let manifest = load_manifest()?;
+    let runtime_ready = check_runtime_ready(&manifest);
+
     Ok(ToolchainInstallInfo {
         app_root: app_root.to_string_lossy().to_string(),
         extract_target: app_root.to_string_lossy().to_string(),
         toolchain_dir: tc_dir.to_string_lossy().to_string(),
         release_url: toolchain_release_url(),
         archive_parts: TOOLCHAIN_ARCHIVE_PARTS.iter().map(|s| (*s).to_string()).collect(),
-        compressed_size_label: "~3 GB (2 parts)".to_string(),
-        uncompressed_size_label: "~13.6 GB".to_string(),
+        compressed_size_label: "~1.3 GB".to_string(),
+        uncompressed_size_label: "~4.2 GB".to_string(),
+        packs: toolchain_pack_offers(),
         manifest_present: manifest_path().exists(),
+        runtime_ready,
         profiles_ready,
         profiles_total,
         all_ready: profiles_ready == profiles_total && profiles_total > 0,

@@ -111,11 +111,53 @@ export const ENV_META: Record<Env, EnvMeta> = {
   stable:   { label: "STABLE",   cuda: "12.8", vs: "VS Build Tools 2022",        color: "stable",   description: "Long-lived compatibility profile" },
 };
 
+/** Mirror of `BINARY_UPDATES_ENABLED` in `src-tauri/src/binary_update.rs`. */
+export const BINARY_UPDATES_ENABLED = false;
+
 /** Pinned GitHub release for the portable Foundry toolchain (manual download). */
 export const TOOLCHAIN_RELEASE_TAG = "toolchain";
 export const TOOLCHAIN_RELEASE_URL =
   "https://github.com/Seen-Tomorrow/blackwell-ops/releases/tag/toolchain";
-export const TOOLCHAIN_ARCHIVE_PARTS = [
-  "toolchain.7z.001",
-  "toolchain.7z.002",
-] as const;
+export const TOOLCHAIN_ARCHIVE_NAME = "toolchain.7z" as const;
+export const TOOLCHAIN_RUNTIME_ARCHIVE_NAME = "toolchain-runtime.7z" as const;
+export const TOOLCHAIN_ARCHIVE_PARTS = [TOOLCHAIN_ARCHIVE_NAME] as const;
+
+export type ToolchainPackId = "full" | "runtime";
+
+/** Minimum NVIDIA driver *major* version required per CUDA version (from official release notes).
+ *  See: CUDA Toolkit Release Notes "Table 2 CUDA Toolkit and Minimum Required Driver Version"
+ *  + CUDA Compatibility guide. Newer drivers always work.
+ *  frontier (13.3) → prefer recent driver (R610+); 13.x floor 580.
+ */
+export const CUDA_MIN_DRIVER_MAJOR: Record<string, number> = {
+  "13.3": 610,
+  "13": 580,
+  "12.8": 570,
+  "12": 525,
+};
+
+export function getMinDriverMajorForCuda(cuda: string): number {
+  const c = (cuda || "").trim();
+  if (c.startsWith("13.3")) return 610;
+  if (c.startsWith("13")) return 580;
+  if (c.startsWith("12.8")) return 570;
+  if (c.startsWith("12")) return 525;
+  return 525;
+}
+
+/** Parse major from "610.47.23" style string. */
+export function parseDriverMajor(version: string | null | undefined): number | null {
+  if (!version) return null;
+  const m = version.trim().split(".")[0];
+  const n = parseInt(m, 10);
+  return Number.isFinite(n) ? n : null;
+}
+
+export function isDriverSufficientForProfile(
+  driverVersion: string | null | undefined,
+  cudaVersion: string,
+): boolean {
+  const major = parseDriverMajor(driverVersion);
+  if (major == null) return false;
+  return major >= getMinDriverMajorForCuda(cudaVersion);
+}

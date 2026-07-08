@@ -6,7 +6,8 @@ use tauri::Manager;
 
 /// Feature flag: set to true to enable binary update checks via GitHub API.
 /// Currently disabled because releases are not yet uploaded. Set to true when ready.
-const BINARY_UPDATES_ENABLED: bool = false;
+/// Keep in sync with `BINARY_UPDATES_ENABLED` in `src/lib/foundry_constants.ts`.
+pub const BINARY_UPDATES_ENABLED: bool = false;
 
 /// Bundled providers that ship with bundled binaries.
 #[allow(dead_code)]
@@ -70,7 +71,7 @@ pub struct BinaryUpdateInfo {
 #[tauri::command]
 pub async fn check_binary_updates(provider_id: String) -> Result<Vec<BinaryUpdateInfo>, String> {
     if !BINARY_UPDATES_ENABLED {
-        log::warn!("[binary-update] Binary update checks disabled (feature flag off). Skipping for '{}'.", provider_id);
+        log::debug!("[binary-update] Binary update checks disabled (feature flag off). Skipping for '{}'.", provider_id);
         return Ok(Vec::new());
     }
 
@@ -358,7 +359,7 @@ pub fn get_profile_labels() -> Vec<serde_json::Value> {
 #[tauri::command]
 pub async fn check_app_update(app_handle: tauri::AppHandle) -> Result<AppUpdateInfo, String> {
     if !BINARY_UPDATES_ENABLED {
-        log::warn!("[binary-update] App update checks disabled (feature flag off). Skipping.");
+        log::debug!("[binary-update] App update checks disabled (feature flag off). Skipping.");
         let current_version = app_handle.package_info().version.to_string();
         return Ok(AppUpdateInfo {
             available: false,
@@ -503,7 +504,7 @@ pub async fn install_app_update(app_handle: tauri::AppHandle) -> Result<(), Stri
 #[tauri::command]
 pub async fn get_startup_updates(app_handle: tauri::AppHandle) -> Result<StartupUpdateStatus, String> {
     if !BINARY_UPDATES_ENABLED {
-        log::warn!("[binary-update] All update checks disabled (feature flag off). Returning empty results.");
+        log::debug!("[binary-update] All update checks disabled (feature flag off). Returning empty results.");
         return Ok(StartupUpdateStatus {
             app_update: AppUpdateInfo {
                 available: false,

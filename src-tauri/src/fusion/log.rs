@@ -1,6 +1,7 @@
 //! Canonical fusion log events — provider adapters map stderr/stdout lines into these.
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub enum LogEvent {
     NewPrompt {
         slot_id: usize,

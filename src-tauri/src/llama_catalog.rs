@@ -582,6 +582,10 @@ pub async fn get_llama_catalog(
     // Run binary --help (blocking std::process — not tokio::process + CREATE_NO_WINDOW)
     let binary_path_for_help = binary_path.clone();
     let work_dir = binary_path.parent().map(|p| p.to_path_buf());
+    {
+        let mut preflight = Command::new(&binary_path_for_help);
+        crate::engine_utils::apply_cuda_toolchain_for_binary(&mut preflight, &binary_path_for_help)?;
+    }
     let output = tokio::task::spawn_blocking(move || {
         crate::engine_utils::run_hidden_output(|| {
             let mut cmd = Command::new(&binary_path_for_help);
@@ -589,6 +593,7 @@ pub async fn get_llama_catalog(
             if let Some(ref dir) = work_dir {
                 cmd.current_dir(dir);
             }
+            let _ = crate::engine_utils::apply_cuda_toolchain_for_binary(&mut cmd, &binary_path_for_help);
             cmd
         })
     })

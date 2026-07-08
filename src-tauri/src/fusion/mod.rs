@@ -7,6 +7,7 @@
 pub mod adapters;
 pub mod brain;
 pub mod log;
+pub mod meter;
 pub mod poller;
 pub mod registry;
 

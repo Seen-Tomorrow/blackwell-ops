@@ -266,6 +266,7 @@ fn lookup_learned_vram_fuzzy(
     None
 }
 
+#[allow(dead_code)]
 pub fn lookup_learned_vram(key: &str) -> Option<LearnedVramEntry> {
     let _guard = STORE_MUTEX.lock().ok()?;
     let store = load_store();
@@ -293,6 +294,7 @@ pub fn lookup_learned_vram_for_config(
     )
 }
 
+#[allow(dead_code)]
 pub fn record_learned_vram(
     key: String,
     vram_mib: f64,

@@ -218,6 +218,35 @@ impl DownloadManager {
         crate::model_catalog::catalog_exclusions_from_downloads(&self.tasks, &self.quant_batches)
     }
 
+    /// Exclusions from on-disk manifests only — used when the manager write lock is held during recovery.
+    pub fn catalog_exclusions_from_persisted() -> crate::model_catalog::CatalogScanExclusions {
+        let mut dest_paths = HashSet::new();
+        let mut shard_groups = HashSet::new();
+
+        for entry in load_manifest().values() {
+            let resolved = crate::config::resolve_path(&entry.dest_path)
+                .to_string_lossy()
+                .to_string();
+            dest_paths.insert(resolved.clone());
+            shard_groups.insert(crate::model_catalog::shard_group_key_from_path(&resolved));
+        }
+
+        for batch in load_quant_batches().values() {
+            for part in &batch.parts {
+                let resolved = crate::config::resolve_path(&part.dest_path)
+                    .to_string_lossy()
+                    .to_string();
+                dest_paths.insert(resolved.clone());
+                shard_groups.insert(crate::model_catalog::shard_group_key_from_path(&resolved));
+            }
+        }
+
+        crate::model_catalog::CatalogScanExclusions {
+            dest_paths,
+            shard_groups,
+        }
+    }
+
     /// Create a new download task and spawn the background worker.
     ///
     /// The worker is spawned with a clone of this manager's Arc so it can
@@ -271,17 +300,19 @@ impl DownloadManager {
         Ok(task_id)
     }
 
-    /// Recover orphaned .part files from crash/exit using persisted manifest.
-    /// Creates Paused tasks so the user can resume or cancel them.
-    pub fn recover_part_files(&mut self) {
+    /// Scan persisted manifest for orphaned `.part` files — safe on a blocking thread (may stat large files).
+    pub fn gather_recovered_tasks() -> Vec<DownloadTask> {
         let manifest = load_manifest();
         if manifest.is_empty() {
-            return;
+            return Vec::new();
         }
-        log::info!("[download] Checking {} manifest entries for recoverable .part files", manifest.len());
+        log::info!(
+            "[download] Checking {} manifest entries for recoverable .part files",
+            manifest.len()
+        );
 
-        let mut recovered = 0;
-        let mut stale = 0;
+        let mut recovered = Vec::new();
+        let mut stale = 0usize;
 
         for (task_id, entry) in manifest {
             let partial_path = partial_download_path(&entry.dest_path);
@@ -301,7 +332,7 @@ impl DownloadManager {
                 part_size
             );
 
-            let task = DownloadTask {
+            recovered.push(DownloadTask {
                 id: task_id.clone(),
                 hf_model_id: entry.hf_model_id,
                 file_name: entry.file_name,
@@ -318,15 +349,29 @@ impl DownloadManager {
                 quant_type: entry.quant_type,
                 lfs_oid: entry.lfs_oid,
                 batch_id: entry.batch_id,
-            };
-
-            self.tasks.insert(task_id, task);
-            recovered += 1;
+            });
         }
 
-        if recovered > 0 {
-            log::info!("[download] Recovered {} orphaned download(s) ({} stale manifest entries discarded)", recovered, stale);
+        if !recovered.is_empty() {
+            log::info!(
+                "[download] Gathered {} recoverable download(s) ({} stale manifest entries discarded)",
+                recovered.len(),
+                stale
+            );
         }
+        recovered
+    }
+
+    /// Insert tasks gathered by [`Self::gather_recovered_tasks`] — keep lock hold minimal.
+    pub fn insert_recovered_tasks(&mut self, tasks: Vec<DownloadTask>) {
+        if tasks.is_empty() {
+            return;
+        }
+        let count = tasks.len();
+        for task in tasks {
+            self.tasks.insert(task.id.clone(), task);
+        }
+        log::info!("[download] Recovered {} orphaned download(s) into queue", count);
     }
 
     /// After recovery or when all batch parts finish — rename `.part` → `.gguf` together.
@@ -484,6 +529,7 @@ impl DownloadManager {
     }
 
     /// Resolved final paths for queued/active/paused tasks — hide from model catalog until complete.
+    #[allow(dead_code)]
     pub fn in_progress_dest_paths(&self) -> HashSet<String> {
         self.tasks
             .values()
@@ -657,8 +703,6 @@ impl DownloadManager {
         let mut last_speed: f64 = 0.0;
         let mut batch_bytes: u64 = 0;
         let mut progress_interval = tokio::time::interval(std::time::Duration::from_millis(PROGRESS_INTERVAL_MS));
-        let mut stream_finished = false;
-
         loop {
             tokio::select! {
                 _ = progress_interval.tick() => {
@@ -695,10 +739,7 @@ impl DownloadManager {
 
                     let chunk = match chunk_result {
                         Some(Ok(c)) => c,
-                        None => {
-                            stream_finished = true;
-                            break;
-                        }
+                        None => break,
                         Some(Err(e)) => {
                             mark_failed(&manager, &task_id, format!("Stream error: {}", e)).await;
                             return;
@@ -729,10 +770,8 @@ impl DownloadManager {
             return;
         }
 
-        if stream_finished {
-            let _ = file.flush().await;
-            mark_completed_worker(&manager, &task_id, &dest_path).await;
-        }
+        let _ = file.flush().await;
+        mark_completed_worker(&manager, &task_id, &dest_path).await;
     }
 }
 

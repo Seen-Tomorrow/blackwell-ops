@@ -2843,6 +2843,31 @@ html, body, #root {
   opacity: 0.45;
 }
 
+/* TG micro-stats row — fixed column widths so token flicker does not shift the line */
+.fusion-micro-stat-cell {
+  display: inline-block;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.fusion-micro-tokens {
+  min-width: 11ch;
+  text-align: right;
+}
+
+.fusion-micro-pp {
+  min-width: 7ch;
+}
+
+.fusion-micro-decode {
+  min-width: 8ch;
+}
+
+.fusion-micro-elapsed {
+  min-width: 11ch;
+}
+
 /* PHOSPHOR LIGHT — TG micro-stats + bench readout (theme tokens via --fusion-eink-readout-*) */
 [data-display-texture="phosphor-light"] .phosphor-screen .fusion-readout-emphasis,
 [data-display-texture="phosphor-light"] .phosphor-screen-inner .fusion-readout-emphasis,
@@ -8116,6 +8141,14 @@ select option {
   color: rgba(118, 185, 0, 0.75);
   letter-spacing: 0.02em;
   opacity: 0.85;
+}
+
+.foundry-arch-chip {
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.foundry-arch-chip--active {
+  color: #e8ffe0;
 }
 
 /* ── PLAYGROUND — theme-scoped surfaces ─── */

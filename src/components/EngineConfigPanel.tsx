@@ -42,7 +42,7 @@ import { isEmptyGroupDeletable } from "../lib/groupLayoutUtils";
 import { useGroupLayoutControls } from "../hooks/useGroupLayoutControls";
 import { dispatchAppEvent, EVENTS } from "../lib/events";
 import { tomMtpBlocked, TOM_MTP_SKIP_MESSAGE } from "../lib/tomMtp";
-import { DEFAULT_BINARY_PROFILE, ENV_META, ENV_ORDER, normalizeBinaryProfile, type Env } from "../lib/foundry_constants";
+import { DEFAULT_BINARY_PROFILE, ENV_META, ENV_ORDER, normalizeBinaryProfile, type Env, isDriverSufficientForProfile, getMinDriverMajorForCuda } from "../lib/foundry_constants";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import VramBadge from "./VramBadge";
@@ -305,6 +305,21 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
   const [selectedBinaryProfile, setSelectedBinaryProfile] = useState<EnvProfile>(DEFAULT_BINARY_PROFILE);
 
+  // NVIDIA driver version for profile compatibility indicators (fetched once)
+  const [driverVersion, setDriverVersion] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const v = await invoke<string | null>("get_nvidia_driver_version");
+        if (mounted) setDriverVersion(v ?? null);
+      } catch {
+        if (mounted) setDriverVersion(null);
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
 
   const [specFlash, setSpecFlash] = useState(false);
   const [fitLaunchEnabled, setFitLaunchEnabled] = useState(true);
@@ -1515,12 +1530,28 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           </div>
           <div className="config-provider-profile-bar__half config-provider-profile-bar__half--profile">
             <span className="config-provider-profile-bar__label">PROFILE</span>
+            {driverVersion && (
+              <span className="text-[7px] font-mono text-stealth-muted/60 ml-1" title="Driver version from nvidia-smi. Affects which CUDA profile(s) will work.">
+                drv {driverVersion.split(".")[0]}
+              </span>
+            )}
             <div className="flex gap-1 flex-wrap flex-1 min-w-0">
               {ENV_ORDER.map((profile) => {
                 const meta = ENV_META[profile];
                 const hasBuild = builtProfiles.includes(profile);
                 const building = isProfileBuilding(profile);
                 const isSelected = selectedBinaryProfile === profile;
+                const driverOk = isDriverSufficientForProfile(driverVersion, meta.cuda);
+                const driverStatus = driverVersion
+                  ? (driverOk ? "driver OK" : `driver too old (need ${meta.cuda} compat)`)
+                  : "driver unknown";
+
+                const driverClass = !hasBuild || building
+                  ? ""
+                  : driverOk
+                    ? "ring-1 ring-nv-green/50"
+                    : "ring-1 ring-red-400/60 text-red-300/90";
+
                 return (
                   <button
                     key={profile}
@@ -1528,18 +1559,23 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                     disabled={!hasBuild || building}
                     className={`flex-shrink-0 px-2 py-0.5 text-[9px] font-mono rounded-sm ${
                       isSelected ? "provider-pill-active" : "provider-pill"
-                    } ${
+                    } ${driverClass} ${
                       building
                         ? "opacity-40 cursor-not-allowed animate-pulse"
                         : !hasBuild
                           ? "opacity-25 cursor-not-allowed"
                           : ""
                     }`}
-                    title={`${meta.label} — CUDA ${meta.cuda}, ${meta.vs}${
-                      building ? " (build in progress)" : hasBuild ? "" : " (not yet built)"
+                    title={`${meta.label} — CUDA ${meta.cuda} (min driver ~${getMinDriverMajorForCuda(meta.cuda)}+)\n${meta.vs}\n${driverStatus}${
+                      building ? "\n(build in progress)" : hasBuild ? "" : "\n(not yet built or mirrored)"
                     }`}
                   >
                     {meta.label}
+                    {hasBuild && !building && (
+                      <span className={`ml-1 text-[7px] ${driverOk ? "text-nv-green/70" : "text-red-400/80"}`}>
+                        {driverOk ? "●" : "!"}
+                      </span>
+                    )}
                   </button>
                 );
               })}

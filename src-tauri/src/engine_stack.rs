@@ -288,6 +288,14 @@ impl EngineStack {
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped());
+        crate::engine_utils::apply_cuda_toolchain_for_profile(
+            &mut cmd,
+            if config.binary_profile.is_empty() {
+                crate::config::DEFAULT_BINARY_PROFILE
+            } else {
+                config.binary_profile.as_str()
+            },
+        )?;
 
         let mut child = match cmd.spawn() {
             Ok(c) => c,
@@ -1099,12 +1107,6 @@ impl EngineStack {
 
     pub fn get_slot(&self, idx: usize) -> Option<parking_lot::MutexGuard<'_, EngineSlot>> {
         self.slots[idx].as_ref().map(|arc| arc.lock())
-    }
-
-    pub fn get_slot_pid(&self, idx: usize) -> Option<u32> {
-        let slot_arc = self.slots.get(idx)?.as_ref()?;
-        let slot = slot_arc.lock();
-        slot.pid
     }
 }
 

@@ -1,4 +1,3 @@
-use serde::Serialize;
 use std::collections::HashSet;
 use std::process::Stdio;
 use std::sync::Arc;
@@ -111,16 +110,29 @@ pub async fn list_models(
         return Ok(Vec::new());
     }
 
-    let exclusions = {
-        let dm = downloads.read().await;
-        dm.catalog_scan_exclusions()
+    let exclusions = match downloads.try_read() {
+        Ok(dm) => dm.catalog_scan_exclusions(),
+        Err(_) => {
+            log::debug!(
+                "[list_models] download manager busy (recovery) — using persisted exclusion manifest"
+            );
+            crate::download_manager::DownloadManager::catalog_exclusions_from_persisted()
+        }
     };
 
-    let (entries, _conflicts) = model_catalog::merge_catalogs(
-        &paths,
-        None,
-        Some(&exclusions),
-    )?;
+    let t0 = std::time::Instant::now();
+    log::info!("[list_models] start ({} path(s))", paths.len());
+    let paths_for_scan = paths.clone();
+    let (entries, _conflicts) = tokio::task::spawn_blocking(move || {
+        model_catalog::merge_catalogs(&paths_for_scan, None, Some(&exclusions))
+    })
+    .await
+    .map_err(|e| format!("catalog scan task failed: {}", e))??;
+    log::info!(
+        "[list_models] complete: {:.0}ms ({} models)",
+        t0.elapsed().as_secs_f64() * 1000.0,
+        entries.len()
+    );
     if !_conflicts.is_empty() {
         log::warn!("[list_models] Found {} cross-path duplicates (keeping largest)", _conflicts.len());
     }
@@ -980,6 +992,11 @@ async fn probe_binary_version(path: &std::path::Path) -> Result<String, String> 
     let work_dir = path.parent().map(|p| p.to_path_buf());
     let mut last_snippet = String::new();
 
+    {
+        let mut preflight = std::process::Command::new(path);
+        engine_utils::apply_cuda_toolchain_for_binary(&mut preflight, path)?;
+    }
+
     for attempt in 1..=MAX_ATTEMPTS {
         let path_for_probe = path_buf.clone();
         let work_dir_for_probe = work_dir.clone();
@@ -991,6 +1008,7 @@ async fn probe_binary_version(path: &std::path::Path) -> Result<String, String> 
             if let Some(ref dir) = work_dir_for_probe {
                 cmd.current_dir(dir);
             }
+            let _ = engine_utils::apply_cuda_toolchain_for_binary(&mut cmd, &path_for_probe);
             cmd
         })
         .await;

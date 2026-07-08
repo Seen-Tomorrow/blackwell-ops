@@ -39,6 +39,7 @@ mod secrets;
 #[cfg(feature = "reactor11")]
 pub mod features;
 mod foundry_toolchain;
+mod foundry_toolchain_download;
 mod reactor_foundry;
 mod output_console;
 mod playground;
@@ -618,6 +619,12 @@ use mobile_bridge::MobileBridge;
 use download_manager::DownloadManager;
 use tauri::Manager;
 
+/// First frontend IPC after WebView loads the dev/bundled JS module — used to bisect startup delay.
+#[tauri::command]
+fn startup_frontend_ping() {
+    log::info!("[startup] frontend module loaded — IPC bridge live");
+}
+
 #[tokio::main]
 async fn main() {
     crash_log::install_native_exception_logger();
@@ -660,15 +667,30 @@ async fn main() {
 
     let _ = debug_flags::flags();
 
-    tauri::Builder::default()
-        .plugin(tauri_plugin_shell::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
+    let mut builder = tauri::Builder::default()
+        .plugin(tauri_plugin_shell::init());
+    // Updater plugin omitted while BINARY_UPDATES_ENABLED is false — no startup network probe.
+    if binary_update::BINARY_UPDATES_ENABLED {
+        builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+    }
+    builder
         .setup(move |app| {
+            let startup_t0 = std::time::Instant::now();
             // Ensure portable directory structure exists, copy bundled binaries on first run
+            let t_structure = std::time::Instant::now();
             config::ensure_portable_structure(app.handle());
+            log::info!(
+                "[startup] ensure_portable_structure: {:.0}ms",
+                t_structure.elapsed().as_secs_f64() * 1000.0
+            );
 
             // Load config with bundled path resolution (needs app handle)
+            let t_config = std::time::Instant::now();
             let mut app_config = config::load_config_with_app(app.handle());
+            log::info!(
+                "[startup] load_config_with_app: {:.0}ms",
+                t_config.elapsed().as_secs_f64() * 1000.0
+            );
             let had_legacy_hf = !app_config.hf_token.is_empty();
             if let Err(e) = secrets::migrate_legacy_hf_token(&mut app_config) {
                 log::warn!("[secrets] Legacy HF token migration failed: {e}");
@@ -701,18 +723,43 @@ async fn main() {
 
             app.manage(ctx);
 
+            crate::output_console::register_blackwell_output_console_app_handle(app.handle().clone());
+
             app.manage(config_arc);
 
             // ── Download Manager ──
             let download_mgr = Arc::new(tokio::sync::RwLock::new(DownloadManager::new()));
 
-            // Recover orphaned .part files from prior session
+            // Recover orphaned .part files from prior session — defer + blocking gather so
+            // startup IPC (list_models) is not queued behind large .part metadata / AV scans.
             {
                 let dm_clone = download_mgr.clone();
                 tauri::async_runtime::spawn(async move {
-                    let mut dm = dm_clone.write().await;
-                    dm.recover_part_files();
-                    dm.try_finalize_pending_batches();
+                    tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+                    let t0 = std::time::Instant::now();
+                    let recovered = match tokio::task::spawn_blocking(DownloadManager::gather_recovered_tasks)
+                        .await
+                    {
+                        Ok(tasks) => tasks,
+                        Err(e) => {
+                            log::warn!("[download] Recovery gather join failed: {}", e);
+                            Vec::new()
+                        }
+                    };
+                    log::info!(
+                        "[download] gather_recovered_tasks: {:.0}ms ({} task(s))",
+                        t0.elapsed().as_secs_f64() * 1000.0,
+                        recovered.len()
+                    );
+                    {
+                        let mut dm = dm_clone.write().await;
+                        dm.insert_recovered_tasks(recovered);
+                        dm.try_finalize_pending_batches();
+                    }
+                    log::info!(
+                        "[download] recovery complete: {:.0}ms total",
+                        t0.elapsed().as_secs_f64() * 1000.0
+                    );
                 });
             }
 
@@ -729,6 +776,11 @@ async fn main() {
 
             telemetry::ensure_disk_io_poller();
             ipc_meter::start_rotator();
+
+            log::info!(
+                "[startup] setup total: {:.0}ms",
+                startup_t0.elapsed().as_secs_f64() * 1000.0
+            );
 
             Ok(())
         })
@@ -779,6 +831,7 @@ async fn main() {
             telemetry::scan_gpus,
             telemetry::scan_cpu,
             telemetry::scan_system_info,
+            telemetry::get_nvidia_driver_version,
             telemetry::scan_disk_io,
             config::load_config,
             config::dev_reset_first_run,
@@ -809,6 +862,7 @@ async fn main() {
             playground::playground_open_html_in_browser,
             fusion::brain::get_fusion_snapshots,
             debug_flags::get_debug_flags,
+            startup_frontend_ping,
             ipc_meter::get_ipc_meter_stats,
             gpu_control::get_gpu_control_devices,
             gpu_control::is_gpu_control_elevated,
@@ -835,6 +889,7 @@ async fn main() {
             reactor_foundry::foundry_get_profiles,
             foundry_toolchain::foundry_get_toolchain_install_info,
             foundry_toolchain::foundry_open_toolchain_install_folder,
+            foundry_toolchain_download::foundry_download_toolchain,
 
             // Blackwell Output Console commands (power-user output system)
             get_blackwell_output_console_categories,

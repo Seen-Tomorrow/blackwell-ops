@@ -1,3 +1,5 @@
+#![allow(dead_code)] // junction temp probe — wired when telemetry needs NVML fallback
+
 use libloading::{Library, Symbol};
 use std::collections::HashMap;
 use std::sync::Mutex;

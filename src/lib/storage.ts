@@ -137,6 +137,8 @@ export const KEYS = {
   setupGuideDismissed: `${STORAGE_PREFIX}setup-guide-dismissed`,
   setupWelcomeSeen: `${STORAGE_PREFIX}setup-welcome-seen`,
   setupGuidePreview: `${STORAGE_PREFIX}setup-guide-preview`,
+  /** Onboarding: user skipped 1-click Foundry toolchain (offer again in CONFIG → providers). */
+  toolchainOnboardingSkipped: `${STORAGE_PREFIX}toolchain-onboarding-skipped`,
   benchControls: `${STORAGE_PREFIX}bench-controls`,
   /** Daily fusion share PNG sequence (1–999), keyed by YYYY-MM-DD. */
   fusionShareSeq: `${STORAGE_PREFIX}fusion-share-seq`,
@@ -234,6 +236,18 @@ export function isSetupGuideDismissed(): boolean {
 
 export function saveSetupGuideDismissed(): void {
   writeStorage(KEYS.setupGuideDismissed, "1");
+}
+
+export function isToolchainOnboardingSkipped(): boolean {
+  return readStorage(KEYS.toolchainOnboardingSkipped) === "1";
+}
+
+export function saveToolchainOnboardingSkipped(): void {
+  writeStorage(KEYS.toolchainOnboardingSkipped, "1");
+}
+
+export function clearToolchainOnboardingSkipped(): void {
+  removeStorage(KEYS.toolchainOnboardingSkipped);
 }
 
 export function isSetupWelcomeSeen(): boolean {
@@ -620,6 +634,32 @@ export function migrateLegacyStorageKeys(): void {
 }
 
 // ── Typed accessors ──────────────────────────────────────────────────────────
+
+/** Case-insensitive path key — mirrors backend `model_path_key` / ConfigPage dedup. */
+export function normalizeModelPathKey(path: string): string {
+  let p = path.trim();
+  if (p.startsWith("\\\\?\\UNC\\")) {
+    p = `\\\\${p.slice("\\\\?\\UNC\\".length)}`;
+  } else if (p.startsWith("\\\\?\\")) {
+    p = p.slice("\\\\?\\".length);
+  }
+  return p.replace(/[/\\]+$/, "").toLowerCase();
+}
+
+export function loadLastModel(): string | null {
+  const path = readStorage(KEYS.lastModel);
+  return path && path.trim().length > 0 ? path : null;
+}
+
+export function saveLastModel(modelPath: string): void {
+  const trimmed = modelPath.trim();
+  if (!trimmed) return;
+  writeStorage(KEYS.lastModel, trimmed);
+}
+
+export function clearLastModel(): void {
+  removeStorage(KEYS.lastModel);
+}
 
 export type FusionHeroTpsMode = "live" | "avg";
 

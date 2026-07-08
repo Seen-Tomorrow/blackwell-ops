@@ -8,12 +8,11 @@ use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 
 use crate::fusion::adapters::FusionAdapterId;
+use crate::fusion::meter::{self, FusionMeterLane, ParallelMeter};
 use crate::fusion::registry;
 use crate::log_hub::LogHub;
 use crate::fusion::poller::MetricsSnapshot;
 
-/// Cap hero TPS (avoids million-TPS flash when elapsed≈0 or one poll ingests a huge cached chunk).
-const MAX_DISPLAY_TPS: f64 = 200_000.0;
 /// PP hero AVG: need sustained prefill wall time (sparse agent file bursts skew tokens/request_elapsed).
 const MIN_PP_SESSION_AVG_MS: u64 = 10_000;
 /// Per-request + session TG AVG: suppress elapsed≈0 spikes (500ms filters 200k flash).
@@ -33,14 +32,16 @@ fn poll_idle_ms() -> u64 {
     crate::debug_flags::flags().fusion_idle_poll_ms
 }
 /// Warm idle: recently-used engine between agent turns — /slots only, no /metrics.
-/// Tight enough to catch PP start before n_prompt_tokens_processed races ahead (was 400ms).
-const WARM_IDLE_POLL_MS: u64 = 100;
+const WARM_IDLE_POLL_MS: u64 = 50;
 /// Stay on warm cadence for this long after last slot activity (coding-session belt).
 const WARM_IDLE_WINDOW_MS: u64 = 60_000;
 /// Re-emit idle snapshots periodically so frontend can rehydrate after HMR/remount.
 const IDLE_HEARTBEAT_MS: u64 = 10_000;
-/// Consecutive /health-only cold-idle ticks before a full /slots sample.
-const IDLE_CHEAP_HEALTH_STREAK_MAX: u32 = 2;
+/// Consecutive /health-only cold-idle ticks before a full /slots sample (0 = always /slots).
+const IDLE_CHEAP_HEALTH_STREAK_MAX: u32 = 0;
+/// Hold sparse `print_timing` PP TPS — poll deltas must exceed this fraction to replace LIVE.
+const PP_LOG_INSTANT_HOLD_MS: u64 = 1500;
+const PP_LOG_INSTANT_POLL_FLOOR: f64 = 0.25;
 
 /// Log lines that signal in-flight work — reschedule active poll + immediate emit (belt).
 fn log_event_wakes_poll(event: &crate::fusion::log::LogEvent) -> bool {
@@ -59,11 +60,7 @@ fn log_event_wakes_poll(event: &crate::fusion::log::LogEvent) -> bool {
 }
 
 fn clamp_display_tps(tps: f64) -> f64 {
-    if !tps.is_finite() || tps <= 0.0 {
-        0.0
-    } else {
-        tps.min(MAX_DISPLAY_TPS)
-    }
+    meter::clamp_display_tps(tps)
 }
 
 /// Per-slot KV budget when engine has not reported `n_ctx` yet (llama.cpp: n_ctx_seq = n_ctx / n_parallel).
@@ -329,6 +326,12 @@ pub struct FusionUpdate {
     /// Wall clock + hero AVG/LIVE must not tick after request end (bench HTTP return, stop processing, idle tail).
     #[serde(rename = "requestClosed")]
     pub request_closed: bool,
+
+    /// Hero meter lane — parallel bench uses poll-only aggregate wall clock (stderr is per-slot).
+    #[serde(rename = "meterLane")]
+    pub meter_lane: FusionMeterLane,
+    #[serde(rename = "busySlotCount")]
+    pub busy_slot_count: usize,
 }
 
 /// Quantized snapshot for emit-on-change (avoids ~10 Hz identical fusion-update IPC).
@@ -504,6 +507,8 @@ pub struct FusionBrain {
 
     /// Per-poll instant TPS (less smoothing than session averages).
     prefill_tps_instant: f64,
+    /// Wall time of last sparse stderr `print_timing` PP line (LIVE hold belt).
+    prefill_tps_log_at: Option<Instant>,
     gen_tps_instant: f64,
     prev_instant_poll_at: Option<Instant>,
     prev_instant_prefill_tokens: usize,
@@ -535,6 +540,11 @@ pub struct FusionBrain {
     tg_completed_ms: u64,
     tg_burst_peak_tokens: usize,
     tg_burst_started_at: Option<Instant>,
+
+    /// Parallel 8–64× hero meters — wall clock + latched peak (stderr TPS is per-slot).
+    parallel_meter: ParallelMeter,
+    /// Cached `/slots` busy count for log handlers without a slots slice.
+    last_busy_slot_count: usize,
 }
 
 impl FusionBrain {
@@ -587,6 +597,7 @@ impl FusionBrain {
             request_closed: false,
             prefill_tps_eval: 0.0,
             prefill_tps_instant: 0.0,
+            prefill_tps_log_at: None,
             gen_tps_instant: 0.0,
             prev_instant_poll_at: None,
             prev_instant_prefill_tokens: 0,
@@ -608,11 +619,65 @@ impl FusionBrain {
             tg_completed_ms: 0,
             tg_burst_peak_tokens: 0,
             tg_burst_started_at: None,
+            parallel_meter: ParallelMeter::default(),
+            last_busy_slot_count: 0,
         }
     }
 
+    fn metrics_requests_processing(&self) -> usize {
+        self.prev_metrics
+            .as_ref()
+            .map(|m| m.requests_processing as usize)
+            .unwrap_or(0)
+    }
+
+    fn sync_parallel_meter(&mut self, slots: &[crate::fusion::poller::SlotData]) {
+        let busy = self.busy_slot_count(slots);
+        self.last_busy_slot_count = busy;
+        let rp = self.metrics_requests_processing();
+        let was_parallel = self.parallel_meter.is_parallel(busy);
+        self.parallel_meter.observe_wave(rp, busy);
+        if !was_parallel && self.parallel_meter.is_parallel(busy) {
+            self.lp_gen_tps = 0.0;
+            self.lp_prefill_tps = 0.0;
+            self.prefill_tps_log_at = None;
+        }
+    }
+
+    /// Multi-slot bench / concurrency — hero TPS from poll sums only (stderr is per-slot ~80, not ×N).
+    fn aggregate_tps_mode(&self) -> bool {
+        self.parallel_meter.latched_peak() > 1
+    }
+
+    fn parallel_wave_ready(&self, slots: &[crate::fusion::poller::SlotData]) -> bool {
+        self.parallel_meter
+            .wave_ready(self.busy_slot_count(slots))
+    }
+
+    fn parallel_decode_tps(&self, slots: &[crate::fusion::poller::SlotData]) -> f64 {
+        ParallelMeter::wall_tps(
+            self.per_request_gen_tokens(slots),
+            self.parallel_meter.decode_wall_at(),
+            MIN_TG_PER_REQUEST_AVG_MS,
+        )
+    }
+
+    fn parallel_prefill_tps(&self, slots: &[crate::fusion::poller::SlotData]) -> f64 {
+        let (_, prefill_tokens) = self.merged_prefill_display(slots);
+        ParallelMeter::wall_tps(
+            prefill_tokens,
+            self.parallel_meter.prefill_wall_at(),
+            MIN_PP_SESSION_AVG_MS,
+        )
+    }
+
+    fn pp_burst_active(&self, slots: &[crate::fusion::poller::SlotData]) -> bool {
+        self.pp_prefill_active(slots) && self.parallel_wave_ready(slots)
+    }
+
     fn pp_prefill_active(&self, slots: &[crate::fusion::poller::SlotData]) -> bool {
-        self.phase == InferencePhase::PP
+        self.any_busy_slot_prefilling(slots)
+            || self.phase == InferencePhase::PP
             || self.slots_prefill_in_progress(slots)
             || (self.log_request_open && !self.log_prefill_done)
     }
@@ -632,7 +697,10 @@ impl FusionBrain {
     }
 
     fn tick_pp_session_avg(&mut self, slots: &[crate::fusion::poller::SlotData], prefill_tokens: usize) {
-        let pp_active = self.pp_prefill_active(slots);
+        if self.parallel_meter.is_parallel(self.busy_slot_count(slots)) {
+            return;
+        }
+        let pp_active = self.pp_burst_active(slots);
         if pp_active {
             if self.pp_burst_started_at.is_none() {
                 self.pp_burst_started_at = Some(Instant::now());
@@ -646,9 +714,15 @@ impl FusionBrain {
     }
 
     fn pp_session_avg_tps(&self, slots: &[crate::fusion::poller::SlotData], prefill_tokens: usize) -> f64 {
+        if self.parallel_meter.is_parallel(self.busy_slot_count(slots)) {
+            let wall = self.parallel_prefill_tps(slots);
+            if wall > 0.0 {
+                return wall;
+            }
+        }
         let mut total_ms = self.pp_completed_ms;
         let mut total_tokens = self.pp_completed_tokens;
-        if self.pp_prefill_active(slots) {
+        if self.pp_burst_active(slots) {
             if let Some(start) = self.pp_burst_started_at {
                 total_ms += start.elapsed().as_millis() as u64;
             }
@@ -690,7 +764,10 @@ impl FusionBrain {
     }
 
     fn tick_tg_session_avg(&mut self, slots: &[crate::fusion::poller::SlotData]) {
-        let tg_active = self.tg_generation_active(slots);
+        if self.parallel_meter.is_parallel(self.busy_slot_count(slots)) {
+            return;
+        }
+        let tg_active = self.tg_burst_active(slots);
         if tg_active {
             if self.tg_burst_started_at.is_none() {
                 self.tg_burst_started_at = Some(Instant::now());
@@ -705,9 +782,12 @@ impl FusionBrain {
     }
 
     fn tg_session_avg_tps(&self, slots: &[crate::fusion::poller::SlotData]) -> f64 {
+        if self.parallel_meter.is_parallel(self.busy_slot_count(slots)) {
+            return self.parallel_decode_tps(slots);
+        }
         let mut total_ms = self.tg_completed_ms;
         let mut total_tokens = self.tg_completed_tokens;
-        if self.tg_generation_active(slots) {
+        if self.tg_burst_active(slots) {
             if let Some(start) = self.tg_burst_started_at {
                 total_ms += start.elapsed().as_millis() as u64;
             }
@@ -942,10 +1022,106 @@ impl FusionBrain {
         self.last_cached_log_tokens = 0;
         self.prefill_tps_eval = 0.0;
         self.prefill_tps_instant = 0.0;
+        self.prefill_tps_log_at = None;
         self.gen_tps_instant = 0.0;
         self.prev_instant_poll_at = None;
         self.prev_instant_prefill_tokens = 0;
         self.prev_instant_gen_decoded = 0;
+    }
+
+    fn busy_slot_count(&self, slots: &[crate::fusion::poller::SlotData]) -> usize {
+        slots.iter().filter(|s| s.is_processing).count()
+    }
+
+    /// Single slot still in PP on a busy /slots row (parallel-safe).
+    fn slot_prefill_in_progress(&self, slot: &crate::fusion::poller::SlotData) -> bool {
+        if !slot.is_processing || self.log_prefill_done {
+            return false;
+        }
+        if self.slot_has_request_decode(slot) {
+            return false;
+        }
+        if self.adapter.slots_expose_prompt_processed() {
+            let total = self.prefill_tokens_total;
+            if total > 0 {
+                return slot.n_prompt_tokens_processed + 2 < total;
+            }
+            return slot.n_prompt_tokens > 0
+                && slot.n_prompt_tokens_processed > 0
+                && slot.n_prompt_tokens_processed < slot.n_prompt_tokens;
+        }
+        self.log_request_open && !self.log_prefill_done
+    }
+
+    fn any_busy_slot_prefilling(&self, slots: &[crate::fusion::poller::SlotData]) -> bool {
+        slots.iter().any(|s| self.slot_prefill_in_progress(s))
+    }
+
+    /// Sum `n_prompt_tokens_processed` across busy slots (64× concurrent prefill).
+    fn aggregate_prefill_work_tokens(&self, slots: &[crate::fusion::poller::SlotData]) -> usize {
+        if self.adapter.slots_expose_prompt_processed() {
+            let mut sum = 0usize;
+            for slot in slots {
+                if slot.is_processing {
+                    sum = sum.saturating_add(slot.n_prompt_tokens_processed);
+                }
+            }
+            if sum > 0 {
+                return sum;
+            }
+        }
+        self.prefill_tokens.max(self.lp_prompt_tokens)
+    }
+
+    /// TG AVG/LIVE window — multi-slot waits until every busy slot exits PP.
+    fn parallel_tg_decode_window_open(&self, slots: &[crate::fusion::poller::SlotData]) -> bool {
+        if self.request_closed {
+            return false;
+        }
+        let busy = self.busy_slot_count(slots);
+        if busy == 0 {
+            return self.tg_generation_active(slots);
+        }
+        if !self.slots_have_active_generation(slots) {
+            return false;
+        }
+        if busy <= 1 {
+            return true;
+        }
+        !self.any_busy_slot_prefilling(slots)
+    }
+
+    fn tg_burst_active(&self, slots: &[crate::fusion::poller::SlotData]) -> bool {
+        if !self.parallel_wave_ready(slots) {
+            return false;
+        }
+        if self.busy_slot_count(slots) <= 1 {
+            self.tg_generation_active(slots)
+        } else {
+            self.parallel_tg_decode_window_open(slots)
+        }
+    }
+
+    fn apply_pp_instant_from_poll(&mut self, rate: f64, now: Instant) {
+        let rate = clamp_display_tps(rate);
+        if rate <= 0.0 {
+            return;
+        }
+        if !self.aggregate_tps_mode() {
+            let log_fresh = self
+                .prefill_tps_log_at
+                .map(|t| now.duration_since(t).as_millis() < PP_LOG_INSTANT_HOLD_MS as u128)
+                .unwrap_or(false);
+            if log_fresh
+                && self.lp_prefill_tps > 0.0
+                && rate < self.lp_prefill_tps * PP_LOG_INSTANT_POLL_FLOOR
+            {
+                return;
+            }
+        }
+        if rate > self.prefill_tps_instant {
+            self.prefill_tps_instant = rate;
+        }
     }
 
     /// Bench warmup/measured phases reuse the same slot without an idle gap — force fresh TG/PP meters.
@@ -1001,6 +1177,8 @@ impl FusionBrain {
         self.reset_prefill_counters();
         self.reset_pp_session_avg();
         self.reset_tg_session_avg();
+        self.parallel_meter.reset();
+        self.last_busy_slot_count = 0;
         for s in self.slot_states.values_mut() {
             s.was_processing = false;
             s.session_n_decoded = 0;
@@ -1030,7 +1208,7 @@ impl FusionBrain {
         if self.request_closed {
             return;
         }
-        let tokens = self.prefill_tokens.max(self.lp_prompt_tokens);
+        let tokens = self.aggregate_prefill_work_tokens(slots);
         let gen_request_tokens = self.per_request_gen_tokens(slots);
 
         if let Some(prev) = self.prev_instant_poll_at {
@@ -1040,8 +1218,7 @@ impl FusionBrain {
                     let delta = tokens - self.prev_instant_prefill_tokens;
                     // First sample after reset often jumps by full cache size in one poll.
                     if self.prev_instant_prefill_tokens > 0 || delta <= MAX_INSTANT_TOKEN_JUMP {
-                        let rate = delta as f64 / dt;
-                        self.prefill_tps_instant = clamp_display_tps(rate);
+                        self.apply_pp_instant_from_poll(delta as f64 / dt, now);
                     }
                 }
                 if gen_request_tokens > self.prev_instant_gen_decoded {
@@ -1058,15 +1235,17 @@ impl FusionBrain {
         self.prev_instant_prefill_tokens = tokens;
         self.prev_instant_gen_decoded = gen_request_tokens;
 
-        // Log `tg =` is sparse (MTP) — fallback only when poll deltas have not produced LIVE TPS yet.
-        if self.prefill_tps_instant <= 0.0 && self.lp_prefill_tps > 0.0 {
-            self.prefill_tps_instant = clamp_display_tps(self.lp_prefill_tps);
-        }
-        if self.gen_tps_instant <= 0.0
-            && self.lp_gen_tps > 0.0
-            && self.effective_generation_active()
-        {
-            self.gen_tps_instant = clamp_display_tps(self.lp_gen_tps);
+        // Log `tg =` / PP print_timing is per-slot — skip stderr fallback when aggregating N slots.
+        if !self.aggregate_tps_mode() {
+            if self.prefill_tps_instant <= 0.0 && self.lp_prefill_tps > 0.0 {
+                self.prefill_tps_instant = clamp_display_tps(self.lp_prefill_tps);
+            }
+            if self.gen_tps_instant <= 0.0
+                && self.lp_gen_tps > 0.0
+                && self.effective_generation_active()
+            {
+                self.gen_tps_instant = clamp_display_tps(self.lp_gen_tps);
+            }
         }
     }
 
@@ -1230,15 +1409,35 @@ impl FusionBrain {
     }
 
     /// Merge log belt + /slots suspenders into the values we emit to the UI.
-    fn merged_prefill_display(&self) -> (f64, usize) {
+    fn merged_prefill_display(
+        &self,
+        slots: &[crate::fusion::poller::SlotData],
+    ) -> (f64, usize) {
         let total = self.prefill_tokens_total;
+        let busy_count = self.busy_slot_count(slots);
+        let aggregate_tokens = self.aggregate_prefill_work_tokens(slots);
+
+        if busy_count > 1 && self.adapter.slots_expose_prompt_processed() && total > 0 {
+            let wave_total = total.saturating_mul(busy_count);
+            let mut progress = (aggregate_tokens as f64 / wave_total as f64).clamp(0.0, 1.0);
+            if aggregate_tokens + 2 >= wave_total {
+                progress = 1.0;
+            }
+            progress = progress
+                .max(self.lp_prefill_progress)
+                .max(self.prefill_progress);
+            return (progress, aggregate_tokens);
+        }
+
         let mut progress = self
             .lp_prefill_progress
             .max(self.prefill_progress)
             .clamp(0.0, 1.0);
 
         // Live processed count: log `n_tokens` / cached lines (never stale total from prior bench).
-        let mut tokens = if self.lp_prompt_tokens > 0 {
+        let mut tokens = if aggregate_tokens > 0 {
+            aggregate_tokens
+        } else if self.lp_prompt_tokens > 0 {
             self.lp_prompt_tokens
         } else {
             self.prefill_tokens
@@ -1526,6 +1725,7 @@ impl FusionBrain {
             s.last_cached_log_tokens = 0;
         }
        self.prefill_tps_instant = 0.0;
+        self.prefill_tps_log_at = None;
         self.gen_tps_instant = 0.0;
         self.prev_instant_poll_at = None;
         self.prev_instant_prefill_tokens = 0;
@@ -1628,7 +1828,6 @@ impl FusionBrain {
             self.lp_phase = InferencePhase::PP;
             self.phase = InferencePhase::PP;
             self.lp_prefill_progress = *progress;
-            self.lp_prefill_tps = *pp_tps;
             self.lp_prompt_tokens = *n_tokens;
             if *n_tokens > self.prefill_tokens {
                 self.prefill_tokens = *n_tokens;
@@ -1636,8 +1835,15 @@ impl FusionBrain {
             if *progress > self.prefill_progress {
                 self.prefill_progress = *progress;
             }
-            if *pp_tps > 0.0 {
-                self.prefill_tps_instant = clamp_display_tps(*pp_tps);
+            if !self.aggregate_tps_mode() {
+                self.lp_prefill_tps = *pp_tps;
+                if *pp_tps > 0.0 {
+                    let log_tps = clamp_display_tps(*pp_tps);
+                    if log_tps > self.prefill_tps_instant {
+                        self.prefill_tps_instant = log_tps;
+                    }
+                    self.prefill_tps_log_at = Some(Instant::now());
+                }
             }
             let n_decoded = self
                 .slot_states
@@ -1661,18 +1867,20 @@ impl FusionBrain {
             self.log_prefill_done = true;
             self.lp_phase = InferencePhase::Tg;
             self.phase = InferencePhase::Tg;
-            self.lp_gen_tps = *gen_tps;
-            if *gen_tps > 0.0 {
-                self.gen_tps_instant = clamp_display_tps(*gen_tps);
-                self.last_gen_tps = self.gen_tps_instant;
-            }
-            if self.tg_start_time.is_none() {
-                self.tg_start_time = Some(Instant::now());
-                self.tg_start_n_decoded = self
-                    .slot_states
-                    .get(slot_id)
-                    .map(|s| s.request_start_n_decoded)
-                    .unwrap_or(0);
+            if !self.aggregate_tps_mode() {
+                self.lp_gen_tps = *gen_tps;
+                if *gen_tps > 0.0 {
+                    self.gen_tps_instant = clamp_display_tps(*gen_tps);
+                    self.last_gen_tps = self.gen_tps_instant;
+                }
+                if self.tg_start_time.is_none() {
+                    self.tg_start_time = Some(Instant::now());
+                    self.tg_start_n_decoded = self
+                        .slot_states
+                        .get(slot_id)
+                        .map(|s| s.request_start_n_decoded)
+                        .unwrap_or(0);
+                }
             }
             let prompt_base = self
                 .prefill_tokens_total
@@ -1920,13 +2128,24 @@ impl FusionBrain {
             .as_ref()
             .map(|m| m.requests_processing > 0)
             .unwrap_or(false);
+        let busy = self.busy_slot_count(slots);
+        let parallel_decode = self.parallel_meter.is_parallel(busy)
+            && self.parallel_meter.decode_wall_at().is_some()
+            && self.per_request_gen_tokens(slots) > 0;
         // /slots is_processing and /metrics requests_processing often lag (text bench, WebUI).
         // engine_state ACTIVE is the belt that keeps PP from being wiped every poll tick.
         let in_flight = any_processing
             || metrics_busy
             || self.log_request_open
             || self.engine_state == EngineState::Active
-            || self.within_inter_request_hold(now);
+            || self.within_inter_request_hold(now)
+            || parallel_decode;
+
+        if parallel_decode {
+            self.log_prefill_done = true;
+            self.phase = InferencePhase::Tg;
+            return;
+        }
 
         if !in_flight {
             self.log_request_open = false;
@@ -1965,17 +2184,18 @@ impl FusionBrain {
             return;
         }
         let total = self.prefill_tokens_total;
-        for slot in slots {
-            if !slot.is_processing {
-                continue;
-            }
-            let processed = slot.n_prompt_tokens_processed.min(total);
-            if processed > self.prefill_tokens {
-                self.prefill_tokens = processed;
-            }
+        let busy_count = self.busy_slot_count(slots).max(1);
+        let aggregate = self.aggregate_prefill_work_tokens(slots);
+        if aggregate > self.prefill_tokens {
+            self.prefill_tokens = aggregate;
         }
-        let mut prog = (self.prefill_tokens as f64 / total as f64).clamp(0.0, 1.0);
-        if self.prefill_tokens + 2 >= total {
+        let wave_total = total.saturating_mul(busy_count);
+        let mut prog = if wave_total > 0 {
+            (aggregate as f64 / wave_total as f64).clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        if aggregate + 2 >= wave_total {
             prog = 1.0;
         }
         // Log belt is ahead of /slots during long text prefill — never regress below log progress.
@@ -1988,6 +2208,8 @@ impl FusionBrain {
 
     fn process_slots(&mut self, slots: &[crate::fusion::poller::SlotData]) {
         let now = Instant::now();
+        self.sync_parallel_meter(slots);
+        let busy_count = self.last_busy_slot_count;
         let mut any_processing = false;
 
         // First pass: compute decisions without mutating slot_states
@@ -2149,9 +2371,18 @@ impl FusionBrain {
             self.finalize_request_meters(slots);
         }
 
+        if self.any_busy_slot_prefilling(slots) {
+            self.parallel_meter
+                .note_prefill_wave(now, busy_count);
+        }
+        let any_decode = self.slots_have_active_generation(slots);
+        let any_pp = self.any_busy_slot_prefilling(slots);
+        self.parallel_meter
+            .note_decode_wave(now, busy_count, any_decode, any_pp);
+
         self.update_prefill_from_slots(slots);
         self.reconcile_phase(slots, any_processing, now);
-        let (_, prefill_tokens_tick) = self.merged_prefill_display();
+        let (_, prefill_tokens_tick) = self.merged_prefill_display(slots);
         self.tick_pp_session_avg(slots, prefill_tokens_tick);
         self.tick_tg_session_avg(slots);
         self.update_instant_tps(slots, now);
@@ -2173,8 +2404,12 @@ impl FusionBrain {
             }
         }
 
-        // Capture TG start when /slots first shows real generation this request.
-        if self.phase == InferencePhase::Tg && self.tg_start_time.is_none() {
+        // Single-slot: defer TG clock until PP done. Parallel lane uses ParallelMeter decode wall.
+        if self.parallel_meter.is_parallel(busy_count) {
+            if self.any_busy_slot_prefilling(slots) {
+                self.tg_start_time = None;
+            }
+        } else if self.parallel_tg_decode_window_open(slots) && self.tg_start_time.is_none() {
             self.capture_ttft_if_unset();
             let mut total_at_transition: usize = 0;
             for slot in slots {
@@ -2195,7 +2430,12 @@ impl FusionBrain {
 
         // Update last known gen TPS — store for use during phase transitions / after request end.
         if !self.request_closed {
-            if let Some(start) = self.tg_start_time {
+            if self.parallel_meter.is_parallel(busy_count) {
+                let wall = self.parallel_decode_tps(slots);
+                if wall > 0.0 {
+                    self.last_gen_tps = wall;
+                }
+            } else if let Some(start) = self.tg_start_time {
                 let tokens_generated = self.per_request_gen_tokens(slots);
                 let elapsed_ms = start.elapsed().as_millis() as u64;
                 if elapsed_ms > 0 && tokens_generated > 0 {
@@ -2245,6 +2485,10 @@ impl FusionBrain {
             }
         }
 
+        let busy_slots = self.busy_slot_count(slots);
+        let meter_lane = self.parallel_meter.lane(busy_slots);
+        let parallel_lane = meter_lane == FusionMeterLane::Parallel;
+
         // Gen TPS (hero AVG): live during request; pinned after finalize (no post-end decay).
         let gen_tps = if self.request_closed {
             if self.frozen_request_gen_tps > 0.0 {
@@ -2252,14 +2496,29 @@ impl FusionBrain {
             } else {
                 self.last_gen_tps
             }
+        } else if parallel_lane && self.parallel_tg_decode_window_open(slots) {
+            let wall = self.parallel_decode_tps(slots);
+            if wall > 0.0 {
+                wall
+            } else if self.gen_tps_instant > 0.0 {
+                self.gen_tps_instant
+            } else {
+                0.0
+            }
         } else if request_live && self.effective_generation_active() {
-            if let Some(start) = self.tg_start_time {
-                let tokens_since_tg = self.per_request_gen_tokens(slots);
-                let elapsed_ms = start.elapsed().as_millis() as u64;
-                if tokens_since_tg > 0 && elapsed_ms >= MIN_TG_PER_REQUEST_AVG_MS {
-                    clamp_display_tps(
-                        (tokens_since_tg as f64) / (elapsed_ms as f64 / 1000.0),
-                    )
+            if self.tg_burst_active(slots) {
+                if let Some(start) = self.tg_start_time {
+                    let tokens_since_tg = self.per_request_gen_tokens(slots);
+                    let elapsed_ms = start.elapsed().as_millis() as u64;
+                    if tokens_since_tg > 0 && elapsed_ms >= MIN_TG_PER_REQUEST_AVG_MS {
+                        clamp_display_tps(
+                            (tokens_since_tg as f64) / (elapsed_ms as f64 / 1000.0),
+                        )
+                    } else {
+                        0.0
+                    }
+                } else if self.lp_gen_tps > 0.0 {
+                    clamp_display_tps(self.lp_gen_tps)
                 } else {
                     0.0
                 }
@@ -2411,16 +2670,21 @@ impl FusionBrain {
         }
         slot_ctx.sort_by_key(|s| s.id);
 
-        let (prefill_progress, prefill_tokens) = self.merged_prefill_display();
+        let (prefill_progress, prefill_tokens) = self.merged_prefill_display(slots);
 
         // PP hero AVG: cumulative PP wall across bursts — not tokens/request_elapsed (spikes on SWA/file cadence).
         let mut prefill_tps_session = self.pp_session_avg_tps(slots, prefill_tokens);
         if prefill_tps_session <= 0.0 && self.prefill_tps_eval > 0.0 {
             prefill_tps_session = self.prefill_tps_eval;
-        } else if prefill_tps_session <= 0.0 && self.lp_prefill_tps > 0.0 {
+        } else if prefill_tps_session <= 0.0 && !parallel_lane && self.lp_prefill_tps > 0.0 {
             prefill_tps_session = clamp_display_tps(self.lp_prefill_tps);
+        } else if prefill_tps_session <= 0.0 && parallel_lane && self.prefill_tps_instant > 0.0 {
+            prefill_tps_session = self.prefill_tps_instant;
         }
-        let gen_tps_session = self.tg_session_avg_tps(slots);
+        let mut gen_tps_session = self.tg_session_avg_tps(slots);
+        if parallel_lane && gen_tps_session <= 0.0 && gen_tps > 0.0 {
+            gen_tps_session = gen_tps;
+        }
 
         FusionUpdate {
             alias: self.alias.clone(),
@@ -2453,9 +2717,9 @@ impl FusionBrain {
 
             // ── Log-parsed values (from stderr print_timing lines) ──
             lp_prefill_progress: self.lp_prefill_progress,
-            lp_prefill_tps: self.lp_prefill_tps,
+            lp_prefill_tps: if parallel_lane { 0.0 } else { self.lp_prefill_tps },
             lp_prompt_tokens: self.lp_prompt_tokens,
-            lp_gen_tps: self.lp_gen_tps,
+            lp_gen_tps: if parallel_lane { 0.0 } else { self.lp_gen_tps },
             lp_phase: self.lp_phase,
             lp_reset_source: if self.lp_reset_prompt {
                 Some("prompt")
@@ -2471,6 +2735,8 @@ impl FusionBrain {
             spec_draft_accepted_last: self.spec_draft_accepted_last,
             spec_draft_generated_last: self.spec_draft_generated_last,
             request_closed: self.request_closed,
+            meter_lane,
+            busy_slot_count: busy_slots,
         }
     }
 

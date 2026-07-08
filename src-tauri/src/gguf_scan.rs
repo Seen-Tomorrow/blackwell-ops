@@ -36,15 +36,17 @@ pub fn scan_model_metadata(model_path: &str, binary_path: &str) -> Result<ModelM
         return Err(format!("Model file not found: {}", model_path));
     }
 
-    let mut child = Command::new(binary_path)
-        .args(["-m", model_path, "-ngl", "0", "-t", "1"]) // Single thread — reduce CPU load during scan
+    let mut cmd = Command::new(binary_path);
+    cmd.args(["-m", model_path, "-ngl", "0", "-t", "1"]) // Single thread — reduce CPU load during scan
         .args(crate::types::LLAMA_DIAGNOSTIC_FLAGS.iter().map(|s| s.to_string()))
         .env("CUDA_VISIBLE_DEVICES", "") // Hide GPUs — forces pure CPU, zero VRAM usage
         .env("OMP_NUM_THREADS", "1")     // Single thread — reduce CPU load during scan
         .stdin(Stdio::null())
         .stdout(Stdio::null()) // stdout is empty — all output goes to stderr
         .stderr(Stdio::piped())
-        .creation_flags(0x08000000) // CREATE_NO_WINDOW — prevents CMD flash in release builds
+        .creation_flags(0x08000000); // CREATE_NO_WINDOW — prevents CMD flash in release builds
+    crate::engine_utils::apply_cuda_toolchain_for_binary(&mut cmd, Path::new(binary_path))?;
+    let mut child = cmd
         .spawn()
         .map_err(|e| format!("Failed to spawn {}: {}", binary_path, e))?;
 
