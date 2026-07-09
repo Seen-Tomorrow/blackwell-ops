@@ -55,6 +55,8 @@ $ForcedCuda = "-DCMAKE_CUDA_COMPILER=`"$($Nvcc.Replace('\','/'))`" -DCUDAToolkit
 $AsmFlag = "-DCMAKE_ASM_COMPILER=`"$($Ml64.Replace('\','/'))`""
 $Flags = "-DLLAMA_CURL=OFF -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=`"$CudaArch`" -DGGML_CUDA_PEER_TO_PEER=ON"
 $Ml64Bin = Split-Path $Ml64 -Parent
+$Cmake = Join-Path $Toolchain "cmake\bin\cmake.exe"
+if (-not (Test-Path $Cmake)) { throw "Missing portable cmake: $Cmake (re-run populate-foundry-toolchain.ps1)" }
 
 $bat = @"
 @echo off
@@ -65,11 +67,11 @@ set "PATH=$Ml64Bin;%PATH%"
 set "CUDA_PATH=$CudaRoot"
 set "$CudaVar=$CudaRoot"
 set "PATH=$CudaRoot\bin;%PATH%"
-cmake -B "$BuildDir" -S "$SrcDir" $Gen $Toolset $ForcedCuda $AsmFlag $Flags
+"$Cmake" -B "$BuildDir" -S "$SrcDir" $Gen $Toolset $ForcedCuda $AsmFlag $Flags
 if errorlevel 1 exit /b 1
 "@
 if ($Build) {
-    $bat += "`ncmake --build `"$BuildDir`" --config Release --target llama-server -j %NUMBER_OF_PROCESSORS%"
+    $bat += "`n`"$Cmake`" --build `"$BuildDir`" --config Release --target llama-server -j %NUMBER_OF_PROCESSORS%"
 }
 
 $batPath = Join-Path $WorkRoot "_test_cfg.bat"

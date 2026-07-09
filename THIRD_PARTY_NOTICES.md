@@ -33,3 +33,19 @@ If you are packaging a release, ensure `src-tauri/bin/nvidiaInspector.exe` is pr
 - **License:** GNU Lesser General Public License (LGPL) version 2.1 (with some BSD-style code for LZMA SDK; see 7-Zip license for full details)
 - **Use in Blackwell Ops:** Extraction of the portable toolchain packs (`.7z` archives containing CUDA runtimes and/or full VS + SDK toolchains) during one-click install via **Config → Foundry Toolchain**. Bundled to avoid requiring users to have 7-Zip installed on their system.
 - **Bundle:** `src-tauri/bin/7z.exe` and `7z.dll` (gitignored `*.exe`/ `*.dll` — see `bin/README.txt` before release builds). Staged to `{app_root}/bin/` on first use, consistent with `gsudo.exe`.
+
+## Git for Windows (MinGit)
+
+- **Project:** [git-for-windows/git](https://github.com/git-for-windows/git)
+- **Component:** MinGit portable distribution (`cmd/git.exe`, `mingw64/`, `usr/`)
+- **License:** GNU General Public License version 2 (see upstream `COPYING`)
+- **Use in Blackwell Ops:** Foundry clone/pull/submodule and PR patch apply — no system Git install required.
+- **Bundle:** `src-tauri/bin/git/` (gitignored tree — run `scripts/stage-mingit.ps1` before release builds). Staged to `{app_root}/bin/git/` on app launch.
+
+## CMake (Kitware)
+
+- **Vendor:** Kitware, Inc.
+- **Component:** CMake console binaries + `share/cmake-*` modules
+- **License:** BSD 3-Clause (see upstream `Copyright.txt`)
+- **Use in Blackwell Ops:** Foundry `cmake configure` / `cmake --build` — invoked by absolute path, never from host PATH.
+- **Bundle:** Inside the Full Foundry toolchain `.7z` at `toolchain/cmake/` (populated via `scripts/populate-foundry-toolchain.ps1`, trimmed by `scripts/slim-foundry-toolchain.ps1`). Not shipped in the Runtime-only pack.

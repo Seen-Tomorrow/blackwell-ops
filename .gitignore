@@ -32,6 +32,7 @@ src-tauri/gen/
 src-tauri/binaries/*
 !src-tauri/binaries/.gitkeep
 src-tauri/runtime-bundle/
+src-tauri/bin/git/
 
 # --- AI / Llama Server Specific ---
 # Ignore the actual server executable if you download it externally
@@ -78,6 +79,3 @@ opencode.db*
 worktree/
 snapshot/
 log/
-.mcp.json
-.agentsroom/handoff-transcript-*.txt
-.agentsroom/handoff-summary-*.md

@@ -1484,9 +1484,15 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                 <SetupGuideDisplay
                   phase={setupGuide.phase}
                   pathsDone={setupGuide.pathsDone}
+                  toolchainDone={setupGuide.toolchainDone}
+                  runtimeReady={setupGuide.runtimeReady}
+                  modelsDeferred={setupGuide.modelsDeferred}
                   metaDone={setupGuide.metaDone}
+                  metaScanFailed={setupGuide.metaScanFailed}
                   modelsCount={setupGuide.modelsCount}
                   scannedCount={setupGuide.scannedCount}
+                  onDeferModels={setupGuide.deferModels}
+                  onSkipToolchain={setupGuide.skipToolchain}
                   onDismiss={setupGuide.dismiss}
                 />
               )}
@@ -1649,9 +1655,15 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                     <SetupGuideDisplay
                       phase={setupGuide.phase}
                       pathsDone={setupGuide.pathsDone}
+                      toolchainDone={setupGuide.toolchainDone}
+                      runtimeReady={setupGuide.runtimeReady}
+                      modelsDeferred={setupGuide.modelsDeferred}
                       metaDone={setupGuide.metaDone}
+                      metaScanFailed={setupGuide.metaScanFailed}
                       modelsCount={setupGuide.modelsCount}
                       scannedCount={setupGuide.scannedCount}
+                      onDeferModels={setupGuide.deferModels}
+                      onSkipToolchain={setupGuide.skipToolchain}
                       onDismiss={setupGuide.dismiss}
                     />
                   )

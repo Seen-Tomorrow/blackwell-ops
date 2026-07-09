@@ -32,8 +32,9 @@ pub fn parse_scan_output(stdout: &str, stderr: &str) -> Option<FitScanRaw> {
     }
 
     let combined = format!("{stdout}\n{stderr}");
-    let vram_mib = parse_fit_output(&combined)
-        .or_else(|| crate::fit_scanner::parse_engine_memory_breakdown_mib(&combined))
+    // Prefer the last memory-breakdown table over early "projected to use" lines from multi-pass --fit on.
+    let vram_mib = crate::fit_scanner::parse_engine_memory_breakdown_mib(&combined)
+        .or_else(|| parse_fit_output(&combined))
         .or_else(|| parse_projected_vram(&combined))?;
 
     if vram_mib <= 0.0 {

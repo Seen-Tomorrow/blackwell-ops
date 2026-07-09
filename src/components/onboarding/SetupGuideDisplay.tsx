@@ -11,10 +11,7 @@ import type {
   ModelLibraryValidation,
   ProviderConfig,
 } from "../../lib/types";
-import {
-  isToolchainOnboardingSkipped,
-  saveToolchainOnboardingSkipped,
-} from "../../lib/storage";
+
 
 const DEFAULT_FIT_PROVIDER = "ggml-master";
 
@@ -24,9 +21,15 @@ type FitScanParallel = (typeof FIT_SCAN_PARALLEL_OPTIONS)[number];
 interface SetupGuideDisplayProps {
   phase: SetupPhase;
   pathsDone: boolean;
+  toolchainDone: boolean;
+  runtimeReady: boolean;
+  modelsDeferred: boolean;
   metaDone: boolean;
+  metaScanFailed: number;
   modelsCount: number;
   scannedCount: number;
+  onDeferModels: () => void;
+  onSkipToolchain: () => void;
   onDismiss: () => void;
 }
 
@@ -62,9 +65,15 @@ function ChecklistItem({ done, current, title, detail, optional }: ChecklistItem
 export default function SetupGuideDisplay({
   phase,
   pathsDone,
+  toolchainDone,
+  runtimeReady,
+  modelsDeferred,
   metaDone,
+  metaScanFailed,
   modelsCount,
   scannedCount,
+  onDeferModels,
+  onSkipToolchain,
   onDismiss,
 }: SetupGuideDisplayProps) {
   const [migrating, setMigrating] = useState(false);
@@ -78,10 +87,6 @@ export default function SetupGuideDisplay({
   const [showFitScanMenu, setShowFitScanMenu] = useState(false);
   const [driversConfirmed, setDriversConfirmed] = useState(false);
   const [showDriversStep, setShowDriversStep] = useState(false);
-  const [toolchainSkipped, setToolchainSkipped] = useState(() => isToolchainOnboardingSkipped());
-  const [toolchainFoundryReady, setToolchainFoundryReady] = useState(false);
-  const [toolchainRuntimeReady, setToolchainRuntimeReady] = useState(false);
-
   useEffect(() => {
     let cancelled = false;
     invoke<string>("get_lm_studio_default_path")
@@ -241,17 +246,16 @@ export default function SetupGuideDisplay({
   }, []);
 
   const fitDone = fitStep === "done" || fitStep === "skipped";
+  const scanStepApplicable = modelsCount > 0 && !modelsDeferred;
   const driversStepActive = showDriversStep || (metaDone && fitDone);
   const fitCurrent = metaDone && !fitDone && !showDriversStep;
-  const toolchainStepDone =
-    toolchainSkipped || toolchainFoundryReady || toolchainRuntimeReady;
-  const toolchainStepCurrent =
-    driversStepActive && !toolchainStepDone && !toolchainSkipped;
+  const toolchainStepDone = toolchainDone;
+  const toolchainStepCurrent = phase === "toolchain";
 
-  const skipToolchain = useCallback(() => {
-    saveToolchainOnboardingSkipped();
-    setToolchainSkipped(true);
-  }, []);
+  const handleDeferModels = useCallback(() => {
+    onDeferModels();
+    setActionError(null);
+  }, [onDeferModels]);
 
   return (
     <div className="setup-guide px-3 py-2.5 min-h-[200px]">
@@ -268,27 +272,41 @@ export default function SetupGuideDisplay({
           done={pathsDone}
           current={phase === "paths"}
           title="Link your model library"
-          detail="LM Studio one-click or CONFIG → PATHS"
+          detail={
+            modelsDeferred
+              ? "Skipped — download models later from Model Hub"
+              : "LM Studio one-click or CONFIG → PATHS"
+          }
         />
         <ChecklistItem
-          done={metaDone}
-          current={phase === "scan-meta"}
-          title="Scan GGUF metadata"
-          detail={`CATALOG → SCAN META (${scannedCount}/${modelsCount})`}
+          done={toolchainStepDone}
+          current={toolchainStepCurrent}
+          optional={modelsDeferred || modelsCount === 0}
+          title="Portable toolchain"
+          detail={
+            modelsDeferred || modelsCount === 0
+              ? "Optional until you scan local GGUFs or run CUDA engines"
+              : "Required for SCAN META — ~1.15 GB one-time download"
+          }
         />
+        {scanStepApplicable && (
+          <ChecklistItem
+            done={metaDone}
+            current={phase === "scan-meta"}
+            title="Scan GGUF metadata"
+            detail={
+              metaScanFailed > 0
+                ? `CATALOG → SCAN META (${scannedCount}/${modelsCount}, ${metaScanFailed} failed)`
+                : `CATALOG → SCAN META (${scannedCount}/${modelsCount})`
+            }
+          />
+        )}
         <ChecklistItem
           done={fitDone}
           current={fitCurrent}
           optional
           title="VRAM fit scan (29-point)"
           detail="Measured VRAM per model — runs in background, logs to Output Console"
-        />
-        <ChecklistItem
-          done={toolchainStepDone}
-          current={toolchainStepCurrent}
-          optional
-          title="Foundry toolchain"
-          detail="1-click Full (~1.3 GB) for cmake builds, or CUDA Runtime-only for inference"
         />
         <ChecklistItem
           done={driversConfirmed}
@@ -308,9 +326,31 @@ export default function SetupGuideDisplay({
         </p>
       )}
 
-      {libraryLinked && modelsCount > 0 && phase === "scan-meta" && (
+      {phase === "toolchain" && !toolchainStepDone && (
+        <p className="mt-3 text-[8px] font-mono text-yellow-400/90 leading-relaxed">
+          SCAN META needs the portable toolchain (~1.15 GB) — bundled llama-server reads GGUF headers
+          via CUDA DLLs from that pack. You can download later from CONFIG → Providers.
+        </p>
+      )}
+
+      {libraryLinked && modelsCount > 0 && phase === "scan-meta" && runtimeReady && (
         <p className="mt-3 text-[8px] font-mono text-nv-green">
           {modelsCount} models loaded — run SCAN META next (button pulses above catalog).
+        </p>
+      )}
+
+      {phase === "scan-meta" && !runtimeReady && (
+        <p className="mt-3 text-[8px] font-mono text-yellow-400/90 leading-relaxed">
+          SCAN META is disabled until the portable toolchain is installed — use CONFIG → Providers
+          or re-open setup to download toolchain.7z (~1.15 GB).
+        </p>
+      )}
+
+      {metaScanFailed > 0 && metaDone && (
+        <p className="mt-3 text-[8px] font-mono text-yellow-400/90 leading-relaxed">
+          {metaScanFailed} model{metaScanFailed !== 1 ? "s" : ""} could not be parsed (corrupt or
+          unrecognized GGUF) — skipped for metadata. Continue setup; fix or remove those files later
+          in CATALOG.
         </p>
       )}
 
@@ -349,6 +389,29 @@ export default function SetupGuideDisplay({
               className="px-2 py-0.5 text-[8px] font-mono tracking-widest rounded-sm border border-nv-green/50 text-nv-green hover:bg-nv-green/10 transition-colors disabled:opacity-30"
             >
               OPEN PATHS
+            </button>
+            <button
+              type="button"
+              onClick={handleDeferModels}
+              disabled={migrating || browsing}
+              className="px-2 py-0.5 text-[8px] font-mono tracking-widest rounded-sm border border-stealth-muted/40 text-stealth-muted hover:text-white hover:border-stealth-muted transition-colors disabled:opacity-30"
+            >
+              I&apos;LL DOWNLOAD LATER
+            </button>
+          </>
+        )}
+
+        {phase === "toolchain" && !toolchainStepDone && (
+          <>
+            <div className="w-full mt-2 mb-1">
+              <FoundryToolchainPanel onboarding onSkip={onSkipToolchain} />
+            </div>
+            <button
+              type="button"
+              onClick={onSkipToolchain}
+              className="px-2 py-0.5 text-[8px] font-mono tracking-widest rounded-sm border border-stealth-muted/40 text-stealth-muted hover:text-white hover:border-stealth-muted transition-colors"
+            >
+              DOWNLOAD LATER
             </button>
           </>
         )}
@@ -395,19 +458,6 @@ export default function SetupGuideDisplay({
               SKIP
             </button>
           </>
-        )}
-
-        {driversStepActive && !toolchainStepDone && (
-          <div className="w-full mt-2 mb-1">
-            <FoundryToolchainPanel
-              onboarding
-              onSkip={skipToolchain}
-              onInstallStatusChange={(status) => {
-                setToolchainFoundryReady(status.foundryReady);
-                setToolchainRuntimeReady(status.runtimeReady);
-              }}
-            />
-          </div>
         )}
 
         {driversStepActive && toolchainStepDone && (

@@ -42,37 +42,13 @@ function Copy-Tree([string]$Source, [string]$Dest) {
     if ($LASTEXITCODE -ge 8) { throw "robocopy failed ($LASTEXITCODE) for $Source" }
 }
 
-function Write-Devcmd([string]$Path, [string]$MsvcVersion, [string]$VsLabel) {
-    $content = @"
-@echo off
-setlocal
-set "INSTANCE_ROOT=%~dp0"
-set "TOOLCHAIN_ROOT=%INSTANCE_ROOT%..\..\"
-set "WindowsSDKDir=%TOOLCHAIN_ROOT%Windows Kits\10\"
-set "WindowsSDKVersion=10.0.26100.0\"
-set "VCToolsInstallDir=%INSTANCE_ROOT%VC\Tools\MSVC\$MsvcVersion"
-set "VSCMD_ARG_TGT_ARCH=x64"
-set "VSCMD_ARG_HOST_ARCH=x64"
-set "VisualStudioVersion=$VsLabel"
-set "INCLUDE=%VCToolsInstallDir%\include;%WindowsSDKDir%Include\10.0.26100.0\ucrt;%WindowsSDKDir%Include\10.0.26100.0\shared;%WindowsSDKDir%Include\10.0.26100.0\um;%WindowsSDKDir%Include\10.0.26100.0\winrt;%WindowsSDKDir%Include\10.0.26100.0\cppwinrt"
-set "LIB=%VCToolsInstallDir%\lib\x64;%WindowsSDKDir%Lib\10.0.26100.0\ucrt\x64;%WindowsSDKDir%Lib\10.0.26100.0\um\x64"
-set "BUILD_TOOLS_BIN=%VCToolsInstallDir%\bin\Hostx64\x64;%INSTANCE_ROOT%MSBuild\Current\Bin;%WindowsSDKDir%bin\10.0.26100.0\x64;%WindowsSDKDir%bin\10.0.26100.0\x64\ucrt"
-set "PATH=%BUILD_TOOLS_BIN%;%PATH%"
-endlocal & set "INCLUDE=%INCLUDE%" & set "LIB=%LIB%" & set "PATH=%PATH%" & set "VisualStudioVersion=%VisualStudioVersion%"
-"@
-    Ensure-Dir (Split-Path $Path -Parent)
-    Set-Content -Path $Path -Value $content -Encoding ASCII
-    Write-Host "  wrote $Path"
-}
-
-function Populate-VsInstance([string]$Name, [string]$SrcRoot, [string]$MsvcVersion, [string]$VsLabel) {
+function Populate-VsInstance([string]$Name, [string]$SrcRoot, [string]$MsvcVersion) {
     $dest = Join-Path $ToolchainRoot "vs\$Name"
     Write-Host "`n--- VS $Name ($MsvcVersion) ---"
     Copy-Tree (Join-Path $SrcRoot "VC\Tools\MSVC\$MsvcVersion") (Join-Path $dest "VC\Tools\MSVC\$MsvcVersion")
     Copy-Tree (Join-Path $SrcRoot "VC\Auxiliary\Build") (Join-Path $dest "VC\Auxiliary\Build")
     Copy-Tree (Join-Path $SrcRoot "MSBuild") (Join-Path $dest "MSBuild")
     Copy-Tree (Join-Path $SrcRoot "Common7\Tools") (Join-Path $dest "Common7\Tools")
-    Write-Devcmd (Join-Path $dest "devcmd.bat") $MsvcVersion $VsLabel
 }
 
 Write-Host "=== Foundry Toolchain Populate ===" -ForegroundColor Cyan
@@ -93,8 +69,23 @@ if (Test-Path $sdkSource) {
     Remove-Item $sdkSource -Recurse -Force
 }
 
-Populate-VsInstance "2022" $Vs2022Src "14.44.35207" "17.0"
-Populate-VsInstance "2026" $Vs2026Src "14.51.36231" "18.0"
+Populate-VsInstance "2022" $Vs2022Src "14.44.35207"
+Populate-VsInstance "2026" $Vs2026Src "14.51.36231"
+
+Write-Host "`n--- Portable CMake ---" -ForegroundColor Yellow
+$CmakeDest = Join-Path $ToolchainRoot "cmake"
+$CmakeCandidates = @(
+    (Join-Path $Vs2026Src "Common7\IDE\CommonExtensions\Microsoft\CMake\CMake"),
+    (Join-Path $Vs2022Src "Common7\IDE\CommonExtensions\Microsoft\CMake\CMake"),
+    "C:\Program Files\CMake"
+)
+$CmakeSrc = $CmakeCandidates | Where-Object { Test-Path (Join-Path $_ "bin\cmake.exe") } | Select-Object -First 1
+if (-not $CmakeSrc) {
+    throw "CMake not found - install VS 'C++ CMake tools for Windows' or standalone CMake, then re-run."
+}
+Copy-Tree (Join-Path $CmakeSrc "bin") (Join-Path $CmakeDest "bin")
+Copy-Tree (Join-Path $CmakeSrc "share") (Join-Path $CmakeDest "share")
+Write-Host "  cmake from $CmakeSrc -> $CmakeDest"
 
 if (-not $SkipCuda) {
     Write-Host "`n--- CUDA toolkits ---" -ForegroundColor Yellow
@@ -109,6 +100,8 @@ if (-not $SkipCuda) {
         & $stripScript -Source $src -Destination $dst
     }
 }
+
+& (Join-Path $RepoRoot "scripts\toolchain-devcmd.ps1") -ToolchainRoot $ToolchainRoot
 
 Write-Host "`n=== Done ===" -ForegroundColor Green
 $totalGb = [math]::Round((Get-ChildItem $ToolchainRoot -Recurse -File -EA SilentlyContinue | Measure-Object Length -Sum).Sum / 1GB, 2)

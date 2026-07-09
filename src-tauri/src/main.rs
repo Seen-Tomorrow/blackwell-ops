@@ -39,7 +39,6 @@ mod secrets;
 #[cfg(feature = "reactor11")]
 pub mod features;
 mod foundry_toolchain;
-mod foundry_toolchain_download;
 mod reactor_foundry;
 mod output_console;
 mod playground;
@@ -525,6 +524,70 @@ async fn resume_download(
 }
 
 #[tauri::command]
+async fn start_toolchain_download(
+    app: tauri::AppHandle,
+    ctx: tauri::State<'_, AppContext>,
+    manager: tauri::State<'_, Arc<RwLock<DownloadManager>>>,
+    pack: Option<String>,
+) -> Result<String, String> {
+    {
+        let stack = ctx.stack.lock().await;
+        if let Some(msg) = engine::toolchain_install_blocked_message(&stack) {
+            return Err(msg);
+        }
+    }
+    let mut dm = manager.write().await;
+    let task_id = dm
+        .start_toolchain_download(pack, Arc::clone(&manager))
+        .await?;
+    drop(dm);
+
+    ipc_meter::emit_tracked(
+        &app,
+        "download-event",
+        serde_json::json!({
+            "type": "queued",
+            "taskId": task_id,
+            "taskKind": "toolchain",
+        }),
+    );
+
+    Ok(task_id)
+}
+
+#[tauri::command]
+async fn retry_toolchain_extract(
+    app: tauri::AppHandle,
+    ctx: tauri::State<'_, AppContext>,
+    manager: tauri::State<'_, Arc<RwLock<DownloadManager>>>,
+    pack: Option<String>,
+) -> Result<String, String> {
+    {
+        let stack = ctx.stack.lock().await;
+        if let Some(msg) = engine::toolchain_install_blocked_message(&stack) {
+            return Err(msg);
+        }
+    }
+    let mut dm = manager.write().await;
+    let task_id = dm
+        .retry_toolchain_extract(pack, Arc::clone(&manager))
+        .await?;
+    drop(dm);
+
+    ipc_meter::emit_tracked(
+        &app,
+        "download-event",
+        serde_json::json!({
+            "type": "extract",
+            "taskId": task_id,
+            "taskKind": "toolchain",
+        }),
+    );
+
+    Ok(task_id)
+}
+
+#[tauri::command]
 async fn get_download_tasks(
     manager: tauri::State<'_, Arc<RwLock<DownloadManager>>>,
 ) -> Result<Vec<serde_json::Value>, String> {
@@ -692,6 +755,16 @@ async fn main() {
                 "[startup] stage_7z: {:.0}ms",
                 t_7z.elapsed().as_secs_f64() * 1000.0
             );
+
+            let t_git = std::time::Instant::now();
+            if let Err(e) = sidecar_elevate::stage_git(app.handle()) {
+                log::debug!("[startup] stage_git skipped: {}", e);
+            } else {
+                log::info!(
+                    "[startup] stage_git: {:.0}ms",
+                    t_git.elapsed().as_secs_f64() * 1000.0
+                );
+            }
 
             // Load config with bundled path resolution (needs app handle)
             let t_config = std::time::Instant::now();
@@ -898,7 +971,6 @@ async fn main() {
             reactor_foundry::foundry_get_profiles,
             foundry_toolchain::foundry_get_toolchain_install_info,
             foundry_toolchain::foundry_open_toolchain_install_folder,
-            foundry_toolchain_download::foundry_download_toolchain,
 
             // Blackwell Output Console commands (power-user output system)
             get_blackwell_output_console_categories,
@@ -913,6 +985,8 @@ async fn main() {
             pause_download,
             cancel_download,
             resume_download,
+            start_toolchain_download,
+            retry_toolchain_extract,
             get_download_tasks,
             clear_completed_downloads,
             check_download_target,

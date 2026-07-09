@@ -526,6 +526,24 @@ pub async fn stop_engines_by_provider(provider_id: String, app: tauri::State<'_,
     Ok(format!("Stopped {} engine(s) for '{}'", stopped.len(), provider_id))
 }
 
+/// Block toolchain install/extract while engines hold CUDA runtime DLLs open.
+pub fn toolchain_install_blocked_message(stack: &EngineStack) -> Option<String> {
+    let running: Vec<String> = stack
+        .get_status()
+        .into_iter()
+        .filter(|e| e.status != "IDLE")
+        .map(|e| format!("{} [{}]", e.alias, e.status))
+        .collect();
+    if running.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "Stop {} running engine(s) before installing toolchain — CUDA runtime files are locked while engines are active:\n  {}",
+        running.len(),
+        running.join("\n  ")
+    ))
+}
+
 #[tauri::command]
 pub async fn get_stack_status(app: tauri::State<'_, AppContext>) -> Result<Vec<StackEntry>, String> {
     let stack = app.stack.lock().await;
@@ -1111,6 +1129,7 @@ pub async fn scan_model_metadata_cmd(
     provider_id: Option<String>,
     app: tauri::State<'_, AppContext>,
 ) -> Result<crate::types::ModelEntry, String> {
+    crate::foundry_toolchain::require_runtime_for_gguf_scan()?;
     let pid = provider_id.unwrap_or_else(|| crate::config::DEFAULT_PROVIDER_ID.to_string());
     let bin_str = {
         let cfg = app.config.lock().map_err(|e| e.to_string())?;
@@ -1169,6 +1188,7 @@ pub async fn scan_all_models_cmd(
     concurrency: Option<usize>,
     app: tauri::State<'_, AppContext>,
 ) -> Result<usize, String> {
+    crate::foundry_toolchain::require_runtime_for_gguf_scan()?;
     let (bin_str, all_paths, total) = {
         let cfg = app.config.lock().map_err(|e| e.to_string())?;
         let pid = provider_id.unwrap_or_else(|| crate::config::DEFAULT_PROVIDER_ID.to_string());

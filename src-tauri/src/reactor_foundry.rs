@@ -122,15 +122,43 @@ fn track_pid(pid: u32) {
 }
 
 async fn git_hidden_output(
+    git_exe: std::path::PathBuf,
     current_dir: PathBuf,
     args: Vec<String>,
 ) -> Result<std::process::Output, String> {
     crate::engine_utils::run_hidden_output_async(move || {
-        let mut cmd = std::process::Command::new("git");
+        let mut cmd = std::process::Command::new(&git_exe);
+        crate::sidecar_elevate::apply_portable_git_env(&mut cmd, &git_exe);
         cmd.args(&args).current_dir(&current_dir);
         cmd
     })
     .await
+}
+
+async fn ensure_git_available(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    let git_exe = crate::sidecar_elevate::resolve_git_exe(app)?;
+    match git_hidden_output(git_exe.clone(), std::env::temp_dir(), vec!["--version".into()]).await
+    {
+        Ok(output) if output.status.success() => Ok(git_exe),
+        Ok(output) => {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            Err(format!(
+                "Bundled Git check failed ({}): {}",
+                git_exe.display(),
+                if !stderr.trim().is_empty() {
+                    stderr.trim()
+                } else {
+                    stdout.trim()
+                }
+            ))
+        }
+        Err(e) => Err(format!(
+            "Bundled Git failed to run ({}): {}",
+            git_exe.display(),
+            e
+        )),
+    }
 }
 
 /// Kill any in-flight Foundry child processes (cmake, ninja, git, etc.).
@@ -268,6 +296,7 @@ fn build_isolated_batch_script(
     versioned_var: &str,
     all_cuda_vars: &[String],
     msvc_asm_bin: Option<&str>,
+    git_cmd_bin: Option<&str>,
     final_command: String,
 ) -> Vec<String> {
     let mut lines = vec!["@echo off".to_string(), "set \"CUDA_PATH=\"".to_string()];
@@ -275,11 +304,13 @@ fn build_isolated_batch_script(
         lines.push(format!("set \"{var}=\""));
     }
     lines.push(format!("call \"{vs_devcmd}\" -arch=amd64 -host_arch=amd64"));
+    if let Some(git_bin) = git_cmd_bin {
+        lines.push(format!("set \"PATH={git_bin};%PATH%\""));
+    }
     if let Some(asm_bin) = msvc_asm_bin {
         lines.push(format!("set \"PATH={asm_bin};%PATH%\""));
     }
-    lines.push(format!("for /f \"usebackq delims=\" %%P in (`powershell -NoProfile -Command \"$p = $env:PATH -split ';' | Where-Object {{ $_.ToLower() -notlike '*nvidia gpu computing toolkit\\cuda*' -and $_.ToLower() -notlike '*\\toolchain\\cuda*' }}; Write-Output ($p -join ';')\"`) do set \"CLEANPATH=%%P\""));
-    lines.push("if defined CLEANPATH set \"PATH=%CLEANPATH%\"".to_string());
+    // Match scripts/test-foundry-configure.ps1 (devcmd → ml64 → CUDA_PATH → nvcc bin → cmake).
     lines.push(format!("set \"CUDA_PATH={cuda_path_forced}\""));
     lines.push(format!("set \"{versioned_var}={cuda_path_forced}\""));
     lines.push(format!("set \"PATH={nvcc_bin};%PATH%\""));
@@ -700,6 +731,16 @@ async fn run_foundry_build_worker(
 
     // ── Git Operations ───────────────────────────────────────────────
 
+    let git_exe = match ensure_git_available(app_handle).await {
+        Ok(exe) => exe,
+        Err(e) => {
+            rollback_build(app_handle, &provider_id, &profile_id, build_id)
+                .execute()
+                .await;
+            return Err(e);
+        }
+    };
+
     let (git_url, branch) = {
         let cfg = worker.config.lock().map_err(|e| e.to_string())?;
         let p = cfg.providers.iter()
@@ -726,6 +767,7 @@ async fn run_foundry_build_worker(
             format!("Invalid engine root (no parent): {}", engine_root.display())
         })?;
         let clone_output = git_hidden_output(
+            git_exe.clone(),
             clone_parent.to_path_buf(),
             vec![
                 "clone".into(),
@@ -750,6 +792,7 @@ async fn run_foundry_build_worker(
         emit_config_event(app_handle, &provider_id, &profile_id, build_id, Some("Repository cloned.".into()));
     } else {
         let pull_output = git_hidden_output(
+            git_exe.clone(),
             src_dir.clone(),
             vec!["pull".into(), "--recurse-submodules".into()],
         )
@@ -758,6 +801,7 @@ async fn run_foundry_build_worker(
 
         if pull_output.status.success() {
             let _ = git_hidden_output(
+                git_exe.clone(),
                 src_dir.clone(),
                 vec![
                     "submodule".into(),
@@ -828,6 +872,7 @@ async fn run_foundry_build_worker(
                             if let Ok(()) = tokio::fs::write(&patch_path, &patch).await {
                                 if let Some(patch_path_str) = patch_path.to_str() {
                                 let mut apply_output = git_hidden_output(
+                                    git_exe.clone(),
                                     src_dir.clone(),
                                     vec![
                                         "apply".into(),
@@ -839,6 +884,7 @@ async fn run_foundry_build_worker(
 
                                 if apply_output.as_ref().map_or(true, |o| !o.status.success()) {
                                     apply_output = git_hidden_output(
+                                        git_exe.clone(),
                                         src_dir.clone(),
                                         vec![
                                             "apply".into(),
@@ -874,6 +920,7 @@ async fn run_foundry_build_worker(
                                             raw.lines().next().map(|l| l.trim().to_string()).unwrap_or_else(|| "unknown error".into())
                                         };
                                         let _ = git_hidden_output(
+                                            git_exe.clone(),
                                             src_dir.clone(),
                                             vec!["merge".into(), "--abort".into()],
                                         )
@@ -994,18 +1041,21 @@ async fn run_foundry_build_worker(
     let nvcc_bin = profile.cuda_root.join("bin").to_string_lossy().to_string();
     let versioned_var = profile.cuda_path_var();
 
+    let cmake_exe = foundry_toolchain::resolve_cmake_exe()?;
+    let cmake_cmd = cmake_exe.to_string_lossy().replace('\\', "/");
+
     // Absolute out-of-source configure (build tree lives in disposable work/ — never inside source)
     let build_dir_str = build_dir.to_string_lossy().replace('\\', "/");
     let src_dir_str   = src_dir.to_string_lossy().replace('\\', "/");
     let cmake_configure_line = if joined_extra.is_empty() {
         format!(
-            r#"cmake -B "{}" -S "{}" {} {} {} {}"#,
-            build_dir_str, src_dir_str, gen_flag, toolset_flag, forced_cuda_flags, asm_flag
+            r#""{}" -B "{}" -S "{}" {} {} {} {}"#,
+            cmake_cmd, build_dir_str, src_dir_str, gen_flag, toolset_flag, forced_cuda_flags, asm_flag
         )
     } else {
         format!(
-            r#"cmake -B "{}" -S "{}" {} {} {} {} {}"#,
-            build_dir_str, src_dir_str, gen_flag, toolset_flag, forced_cuda_flags, asm_flag, joined_extra
+            r#""{}" -B "{}" -S "{}" {} {} {} {} {}"#,
+            cmake_cmd, build_dir_str, src_dir_str, gen_flag, toolset_flag, forced_cuda_flags, asm_flag, joined_extra
         )
     };
 
@@ -1019,6 +1069,7 @@ async fn run_foundry_build_worker(
         if !joined_extra.is_empty() { format!(" {}", joined_extra) } else { String::new() }
     )));
 
+    let git_cmd_bin = git_exe.parent().map(|p| p.to_string_lossy().to_string());
     let cfg_batch_lines = build_isolated_batch_script(
         &vs_devcmd,
         &cuda_path_forced,
@@ -1026,6 +1077,7 @@ async fn run_foundry_build_worker(
         &versioned_var,
         &all_cuda_vars,
         ml64_bin.as_deref(),
+        git_cmd_bin.as_deref(),
         cmake_configure_line,
     );
     let cfg_batch_content = cfg_batch_lines.join("\n");
@@ -1035,16 +1087,18 @@ async fn run_foundry_build_worker(
         return Err(format!("Failed to write build script: {}", e));
     }
 
-    let scrubbed_path = profile.scrub_path(&manifest);
-    let mut cmd = tokio::process::Command::new("cmd");
-    cmd.args(&["/c", cfg_batch_path.to_string_lossy().as_ref()])
+    let (cfg_program, cfg_args) =
+        crate::sidecar_elevate::cmd_script_launch(&cfg_batch_path);
+    let mut cmd = tokio::process::Command::new(&cfg_program);
+    cmd.args(&cfg_args)
         .current_dir(&src_dir)
-        .env("PATH", &scrubbed_path)
         .creation_flags(0x08000000)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
 
-    let mut child = cmd.spawn().map_err(|e| format!("Failed to start cmake: {}", e))?;
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| format!("Failed to start cmake configure: {}", e))?;
 
     if let Some(pid) = child.id() {
         track_pid(pid);
@@ -1255,7 +1309,11 @@ async fn run_foundry_build_worker(
         &versioned_var,
         &all_cuda_vars,
         ml64_bin.as_deref(),
-        format!(r#"cmake --build "{}" --config Release -j {}"#, build_dir_str, num_cpus),
+        git_cmd_bin.as_deref(),
+        format!(
+            r#""{}" --build "{}" --config Release -j {}"#,
+            cmake_cmd, build_dir_str, num_cpus
+        ),
     );
     let build_batch_content = build_batch_lines.join("\n");
     let build_batch_path = work_root.join("_build_run.bat");
@@ -1263,15 +1321,18 @@ async fn run_foundry_build_worker(
         return Err(format!("Failed to write build script: {}", e));
     }
 
-    let mut cmd2 = tokio::process::Command::new("cmd");
-    cmd2.args(&["/c", build_batch_path.to_string_lossy().as_ref()])
+    let (build_program, build_args) =
+        crate::sidecar_elevate::cmd_script_launch(&build_batch_path);
+    let mut cmd2 = tokio::process::Command::new(&build_program);
+    cmd2.args(&build_args)
         .current_dir(&src_dir)
-        .env("PATH", &scrubbed_path)
         .creation_flags(0x08000000)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
 
-    let child2 = cmd2.spawn().map_err(|e| format!("Failed to start build: {}", e))?;
+    let child2 = cmd2
+        .spawn()
+        .map_err(|e| format!("Failed to start build: {}", e))?;
 
     if let Some(pid) = child2.id() {
         track_pid(pid);

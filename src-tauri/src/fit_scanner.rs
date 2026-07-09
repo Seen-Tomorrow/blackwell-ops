@@ -459,37 +459,48 @@ pub fn parse_fit_print_stdout(stdout: &str) -> Option<FitScanRaw> {
 }
 
 /// Parse MiB from llama-fit-params.exe output.
+/// Multi-pass --fit on runs emit several "projected to use" lines — keep the **last** match.
 pub fn parse_fit_output(output: &str) -> Option<f64> {
+    let mut last: Option<f64> = None;
+
     for line in output.lines() {
         let lower = line.to_lowercase();
-        if (lower.contains("projected to use") || lower.contains("estimated to use")) 
-            && (lower.contains("mib") || lower.contains("mb") || lower.contains("mi b")) {
+        if (lower.contains("projected to use") || lower.contains("estimated to use"))
+            && (lower.contains("mib") || lower.contains("mb") || lower.contains("mi b"))
+        {
             if let Some(num) = extract_number(line) {
-                return Some(num);
+                last = Some(num);
             }
         }
+    }
+    if last.is_some() {
+        return last;
     }
 
     for line in output.lines() {
         let lower = line.to_lowercase();
-        if (lower.contains("vram") || lower.contains("memory")) 
-            && (lower.contains("mib") || lower.contains("mb") || lower.contains("mi b")) {
+        if (lower.contains("vram") || lower.contains("memory"))
+            && (lower.contains("mib") || lower.contains("mb") || lower.contains("mi b"))
+        {
             if let Some(num) = extract_number(line) {
-                return Some(num);
+                last = Some(num);
             }
         }
+    }
+    if last.is_some() {
+        return last;
     }
 
     for line in output.lines() {
         let lower = line.to_lowercase();
         if lower.contains("mib") || lower.contains("mi b") {
             if let Some(num) = extract_number(line) {
-                return Some(num);
+                last = Some(num);
             }
         }
     }
 
-    None
+    last
 }
 
 /// Strip ANSI escape sequences from a string.
@@ -779,19 +790,20 @@ pub async fn scan_single_anchor(
 }
 
 /// Parse projected VRAM from memory breakdown when model doesn't fit single GPU.
-/// Extracts the "model" value from common_memory_breakdown_print lines.
+/// Extracts the "model" value from common_memory_breakdown_print lines (last CUDA row wins).
 pub fn parse_projected_vram(output: &str) -> Option<f64> {
+    let mut last: Option<f64> = None;
     for line in output.lines() {
         let lower = line.to_lowercase();
         if lower.contains("memory breakdown") && (lower.contains("mib") || lower.contains("mi b")) {
             // Parse the model column value from breakdown table
             // Format: | - CUDA0 ... | 97886 = 78968 + (152340 = 131595 +   20336 +     408) + ...
             if let Some(model_mib) = extract_model_from_breakdown(line) {
-                return Some(model_mib);
+                last = Some(model_mib);
             }
         }
     }
-    None
+    last
 }
 
 /// Extract model VRAM from memory breakdown line.
@@ -1859,6 +1871,26 @@ Host 994 0 84
         assert_eq!(tables.len(), 1);
         assert_eq!(tables[0].total_gpu_self_mib(), 186508.0);
         assert_eq!(tables[0].host_mib, Some(111400.0));
+    }
+
+    #[test]
+    fn parse_fit_output_uses_last_projected_line() {
+        const MULTI_PASS: &str = r#"0.00.439.268 I common_params_fit_impl: projected to use 297416 MiB of device memory vs. 190698 MiB of free device memory
+0.03.663.553 I common_fit_params: successfully fit params to free device memory"#;
+        assert_eq!(super::parse_fit_output(MULTI_PASS), Some(297416.0));
+    }
+
+    #[test]
+    fn master_fallback_prefers_last_breakdown_over_early_projected() {
+        const MULTI_PASS: &str = r#"0.00.439.268 I common_params_fit_impl: projected to use 297416 MiB of device memory vs. 190698 MiB of free device memory
+0.03.171.607 I common_memory_breakdown_print: | memory breakdown [MiB] | total free self model context compute unaccounted |
+0.03.171.614 I common_memory_breakdown_print: | - CUDA0 (GPU) | 97886 = 95349 + (94021 = 76339 + 916 + 16765) + -91483 |
+0.03.171.614 I common_memory_breakdown_print: | - CUDA1 (GPU) | 97886 = 95349 + (88672 = 71029 + 834 + 16808) + -86134 |
+0.03.171.615 I common_memory_breakdown_print: | - Host | 811 = 536 + 0 + 274 |"#;
+        let raw = crate::fit_adapters::FitAdapterId::GgmlMaster
+            .parse_scan_output("", MULTI_PASS)
+            .expect("fallback parse");
+        assert_eq!(raw.vram_mib, 182693.0);
     }
 
     #[test]

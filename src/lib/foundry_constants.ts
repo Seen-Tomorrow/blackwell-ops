@@ -119,10 +119,7 @@ export const TOOLCHAIN_RELEASE_TAG = "toolchain";
 export const TOOLCHAIN_RELEASE_URL =
   "https://github.com/Seen-Tomorrow/blackwell-ops/releases/tag/toolchain";
 export const TOOLCHAIN_ARCHIVE_NAME = "toolchain.7z" as const;
-export const TOOLCHAIN_RUNTIME_ARCHIVE_NAME = "toolchain-runtime.7z" as const;
 export const TOOLCHAIN_ARCHIVE_PARTS = [TOOLCHAIN_ARCHIVE_NAME] as const;
-
-export type ToolchainPackId = "full" | "runtime";
 
 /** Minimum NVIDIA driver *major* version required per CUDA version (from official release notes).
  *  See: CUDA Toolkit Release Notes "Table 2 CUDA Toolkit and Minimum Required Driver Version"

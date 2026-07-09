@@ -8,6 +8,9 @@ use tauri::{AppHandle, Manager};
 pub const GSUDO_EXE: &str = "gsudo.exe";
 pub const SEVEN_ZIP_EXE: &str = "7z.exe";
 pub const SEVEN_ZIP_DLL: &str = "7z.dll";
+/// MinGit layout: `bin/git/cmd/git.exe` (+ mingw64/, usr/).
+pub const GIT_ROOT_DIR: &str = "git";
+pub const GIT_EXE_REL: &str = "git/cmd/git.exe";
 /// gsudo: Win32 ERROR_CANCELLED (1223) or user-dismissed UAC (999).
 const GSUDO_UAC_DENIED: i32 = 1223;
 const GSUDO_UAC_CANCELLED: i32 = 999;
@@ -146,6 +149,129 @@ pub fn stage_7z(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(exe)
 }
 
+fn copy_dir_all(src: &Path, dst: &Path) -> Result<(), String> {
+    if !src.is_dir() {
+        return Err(format!("not a directory: {}", src.display()));
+    }
+    std::fs::create_dir_all(dst)
+        .map_err(|e| format!("create {}: {e}", dst.display()))?;
+    for entry in std::fs::read_dir(src).map_err(|e| format!("read {}: {e}", src.display()))? {
+        let entry = entry.map_err(|e| format!("read dir entry: {e}"))?;
+        let ty = entry
+            .file_type()
+            .map_err(|e| format!("file_type {}: {e}", entry.path().display()))?;
+        let dest_path = dst.join(entry.file_name());
+        if ty.is_dir() {
+            copy_dir_all(&entry.path(), &dest_path)?;
+        } else if ty.is_file() {
+            copy_if_newer(&entry.path(), &dest_path)?;
+        }
+    }
+    Ok(())
+}
+
+fn resolve_bundle_git_root(app: &AppHandle) -> Result<PathBuf, String> {
+    let marker = GIT_EXE_REL;
+    if let Ok(p) = app
+        .path()
+        .resolve(&format!("bin/{marker}"), tauri::path::BaseDirectory::Resource)
+    {
+        if p.is_file() {
+            return p.parent()
+                .and_then(|cmd| cmd.parent())
+                .map(|root| root.to_path_buf())
+                .ok_or_else(|| format!("invalid git bundle layout at {}", p.display()));
+        }
+    }
+
+    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("bin")
+        .join("git")
+        .join("cmd")
+        .join("git.exe");
+    if manifest.is_file() {
+        return manifest
+            .parent()
+            .and_then(|cmd| cmd.parent())
+            .map(|root| root.to_path_buf())
+            .ok_or_else(|| format!("invalid git bundle layout at {}", manifest.display()));
+    }
+
+    let staged = portable_bin_dir()
+        .join(GIT_ROOT_DIR)
+        .join("cmd")
+        .join("git.exe");
+    if staged.is_file() {
+        return staged
+            .parent()
+            .and_then(|cmd| cmd.parent())
+            .map(|root| root.to_path_buf())
+            .ok_or_else(|| format!("invalid staged git layout at {}", staged.display()));
+    }
+
+    Err(
+        "Portable Git (MinGit) not found — run scripts/stage-mingit.ps1 and place output under src-tauri/bin/git/ (see bin/README.txt)".into(),
+    )
+}
+
+/// Stage bundled MinGit tree into `{app_root}/bin/git/`.
+pub fn stage_git(app: &AppHandle) -> Result<PathBuf, String> {
+    let bundle_root = resolve_bundle_git_root(app)?;
+    let dest_root = portable_bin_dir().join(GIT_ROOT_DIR);
+    let dest_exe = dest_root.join("cmd").join("git.exe");
+    if !dest_exe.is_file() {
+        if dest_root.exists() {
+            std::fs::remove_dir_all(&dest_root)
+                .map_err(|e| format!("remove stale git stage {}: {e}", dest_root.display()))?;
+        }
+        copy_dir_all(&bundle_root, &dest_root)?;
+    }
+    if !dest_exe.is_file() {
+        return Err(format!(
+            "staged git.exe missing at {} after copy from {}",
+            dest_exe.display(),
+            bundle_root.display()
+        ));
+    }
+    Ok(dest_exe)
+}
+
+pub fn resolve_git_exe(app: &AppHandle) -> Result<PathBuf, String> {
+    let staged = portable_bin_dir()
+        .join(GIT_ROOT_DIR)
+        .join("cmd")
+        .join("git.exe");
+    if staged.is_file() {
+        return Ok(staged);
+    }
+    stage_git(app)
+}
+
+/// MinGit needs mingw64/usr on PATH for HTTPS clone and submodule helpers.
+pub fn apply_portable_git_env(cmd: &mut std::process::Command, git_exe: &Path) {
+    let Some(cmd_dir) = git_exe.parent() else {
+        return;
+    };
+    let Some(git_root) = cmd_dir.parent() else {
+        return;
+    };
+    let mut prefix = vec![
+        cmd_dir.to_path_buf(),
+        git_root.join("mingw64/bin"),
+        git_root.join("usr/bin"),
+    ];
+    let existing = std::env::var("PATH").unwrap_or_default();
+    if !existing.is_empty() {
+        prefix.push(PathBuf::from(existing));
+    }
+    let joined = prefix
+        .iter()
+        .map(|p| p.to_string_lossy().to_string())
+        .collect::<Vec<_>>()
+        .join(";");
+    cmd.env("PATH", joined);
+}
+
 /// `net session` succeeds only for elevated administrators on Windows.
 #[cfg(windows)]
 pub fn is_process_elevated() -> bool {
@@ -203,6 +329,16 @@ fn spawn_privileged(
         return Err(UAC_DENIED_MESSAGE.into());
     }
     Ok(result)
+}
+
+/// Launch `cmd /c <batch>` without elevation.
+/// Foundry cmake must stay non-elevated: gsudo breaks CMake 4.3 CUDA link-line probing (nvcc ABI check).
+pub fn cmd_script_launch(batch_path: &Path) -> (PathBuf, Vec<String>) {
+    let batch_arg = path_for_cmd(batch_path).to_string_lossy().to_string();
+    (
+        PathBuf::from("cmd"),
+        vec!["/c".to_string(), batch_arg],
+    )
 }
 
 /// Run `program` with admin rights. Uses gsudo when not elevated.

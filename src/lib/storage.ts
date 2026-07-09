@@ -139,6 +139,10 @@ export const KEYS = {
   setupGuidePreview: `${STORAGE_PREFIX}setup-guide-preview`,
   /** Onboarding: user skipped 1-click Foundry toolchain (offer again in CONFIG → providers). */
   toolchainOnboardingSkipped: `${STORAGE_PREFIX}toolchain-onboarding-skipped`,
+  /** Last completed GGUF batch scan during setup (scanned/failed/total). */
+  setupMetaScanSummary: `${STORAGE_PREFIX}setup-meta-scan-summary`,
+  /** Onboarding: user chose to download models later (skip library link + metadata scan). */
+  setupModelsDeferred: `${STORAGE_PREFIX}setup-models-deferred`,
   benchControls: `${STORAGE_PREFIX}bench-controls`,
   /** Daily fusion share PNG sequence (1–999), keyed by YYYY-MM-DD. */
   fusionShareSeq: `${STORAGE_PREFIX}fusion-share-seq`,
@@ -250,6 +254,55 @@ export function clearToolchainOnboardingSkipped(): void {
   removeStorage(KEYS.toolchainOnboardingSkipped);
 }
 
+export function isSetupModelsDeferred(): boolean {
+  return readStorage(KEYS.setupModelsDeferred) === "1";
+}
+
+export function saveSetupModelsDeferred(): void {
+  writeStorage(KEYS.setupModelsDeferred, "1");
+}
+
+export function clearSetupModelsDeferred(): void {
+  removeStorage(KEYS.setupModelsDeferred);
+}
+
+export interface SetupMetaScanSummary {
+  scanned: number;
+  failed: number;
+  total: number;
+}
+
+export function loadSetupMetaScanSummary(): SetupMetaScanSummary | null {
+  const raw = readStorage(KEYS.setupMetaScanSummary);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as Partial<SetupMetaScanSummary>;
+    if (
+      parsed &&
+      typeof parsed.scanned === "number" &&
+      typeof parsed.failed === "number" &&
+      typeof parsed.total === "number"
+    ) {
+      return {
+        scanned: parsed.scanned,
+        failed: parsed.failed,
+        total: parsed.total,
+      };
+    }
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+export function saveSetupMetaScanSummary(summary: SetupMetaScanSummary | null): void {
+  if (!summary) {
+    removeStorage(KEYS.setupMetaScanSummary);
+    return;
+  }
+  writeStorage(KEYS.setupMetaScanSummary, JSON.stringify(summary));
+}
+
 export function isSetupWelcomeSeen(): boolean {
   return readStorage(KEYS.setupWelcomeSeen) === "1";
 }
@@ -276,6 +329,8 @@ export function resetSetupGuideState(): void {
   removeStorage(KEYS.setupGuideDismissed);
   removeStorage(KEYS.setupWelcomeSeen);
   removeStorage(KEYS.setupGuidePreview);
+  removeStorage(KEYS.setupMetaScanSummary);
+  removeStorage(KEYS.setupModelsDeferred);
 }
 
 // ── Telemetry view (standard panel vs lab catalogue) ───────────────────────

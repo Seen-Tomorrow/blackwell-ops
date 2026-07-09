@@ -32,16 +32,29 @@ if (-not $Output) {
 }
 
 if (-not (Test-Path $ToolchainRoot)) {
-    throw "Toolchain not found: $ToolchainRoot — run populate-foundry-toolchain.ps1 first"
+    throw "Toolchain not found: $ToolchainRoot - run populate-foundry-toolchain.ps1 first"
 }
 
+& (Join-Path $RepoRoot "scripts\toolchain-validate.ps1") -ToolchainRoot $ToolchainRoot
+
+& (Join-Path $RepoRoot "scripts\toolchain-devcmd.ps1") -ToolchainRoot $ToolchainRoot
 & (Join-Path $RepoRoot "scripts\slim-foundry-toolchain.ps1") -ToolchainRoot $ToolchainRoot -PackProfile $PackProfile
 
 $outDir = Split-Path $Output -Parent
 if ($outDir -and -not (Test-Path $outDir)) {
     New-Item -ItemType Directory -Path $outDir -Force | Out-Null
 }
-if (Test-Path $Output) { Remove-Item $Output -Force }
+if (Test-Path $Output) {
+    $existingMb = [math]::Round((Get-Item $Output).Length / 1MB, 1)
+    if ($existingMb -ge 100) {
+        $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
+        $backup = "$Output.bak-$stamp"
+        Write-Host "Backing up existing archive ($existingMb MB) -> $backup" -ForegroundColor Yellow
+        Move-Item $Output $backup -Force
+    } else {
+        Remove-Item $Output -Force
+    }
+}
 
 $beforeGb = [math]::Round((Get-ChildItem $ToolchainRoot -Recurse -File | Measure-Object Length -Sum).Sum / 1GB, 2)
 Write-Host "Packing $beforeGb GB from $ToolchainRoot -> $Output (mx=$CompressionLevel)" -ForegroundColor Cyan
@@ -60,5 +73,5 @@ $zipMb = [math]::Round((Get-Item $Output).Length / 1MB, 1)
 $zipGb = [math]::Round((Get-Item $Output).Length / 1GB, 3)
 Write-Host "Archive: $zipMb MB ($zipGb GB)" -ForegroundColor Green
 if ($zipGb -ge 2.0) {
-    Write-Warning "Over GitHub 2 GB single-file limit — trim more or split."
+    Write-Warning "Over GitHub 2 GB single-file limit - trim more or split."
 }

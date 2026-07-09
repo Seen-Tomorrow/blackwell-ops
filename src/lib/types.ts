@@ -858,6 +858,8 @@ export interface DownloadTask {
   hfAuthor?: string;
   quantType?: string;
   lfsOid?: string;     // LFS content hash for incremental scan
+  /** `hf` (default) or `toolchain` */
+  taskKind?: 'hf' | 'toolchain';
 }
 
 export interface DownloadTargetCheck {

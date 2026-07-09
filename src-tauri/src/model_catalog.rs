@@ -1007,6 +1007,7 @@ mod tests {
                 quant_type: "Q4".to_string(),
                 lfs_oid: String::new(),
                 batch_id: Some("batch-1".to_string()),
+                task_kind: crate::types::TASK_KIND_HF.to_string(),
             },
         );
 

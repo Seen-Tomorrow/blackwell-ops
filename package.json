@@ -22,7 +22,8 @@
     "majestic:check": "powershell -ExecutionPolicy Bypass -File scripts/majestic/majestic.ps1 -Mode check",
     "majestic:bump": "powershell -ExecutionPolicy Bypass -File scripts/majestic/majestic.ps1 -Mode bump",
     "majestic:pack": "powershell -ExecutionPolicy Bypass -File scripts/majestic/majestic.ps1 -Mode pack",
-    "majestic:ship": "powershell -ExecutionPolicy Bypass -File scripts/majestic/majestic.ps1 -Mode ship"
+    "majestic:ship": "powershell -ExecutionPolicy Bypass -File scripts/majestic/majestic.ps1 -Mode ship",
+    "majestic:toolchain": "powershell -ExecutionPolicy Bypass -File scripts/build-foundry-toolchain.ps1"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.0",

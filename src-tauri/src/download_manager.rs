@@ -14,7 +14,10 @@ use serde::{Deserialize, Serialize};
 use tokio::fs::{self, OpenOptions};
 use tokio::io::AsyncWriteExt;
 use tokio::sync::RwLock;
-use crate::types::{DownloadStatus, DownloadTask, QuantBatchPart, QuantDownloadBatch};
+use crate::types::{
+    DownloadStatus, DownloadTask, QuantBatchPart, QuantDownloadBatch, TASK_KIND_HF,
+    TASK_KIND_TOOLCHAIN,
+};
 
 /// Persisted manifest entry — survives restart so we can recover orphaned .part files.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -35,6 +38,16 @@ struct ManifestEntry {
     lfs_oid: String,
     #[serde(default, skip_serializing_if = "Option::is_none", rename = "batchId")]
     batch_id: Option<String>,
+    #[serde(default = "default_manifest_task_kind", rename = "taskKind")]
+    task_kind: String,
+}
+
+fn default_manifest_task_kind() -> String {
+    TASK_KIND_HF.to_string()
+}
+
+fn is_toolchain_task(task: &DownloadTask) -> bool {
+    task.task_kind == TASK_KIND_TOOLCHAIN
 }
 
 const MANIFEST_FILE: &str = "download_tasks.json";
@@ -96,6 +109,7 @@ fn persist_task_to_manifest(task: &DownloadTask) {
         quant_type: task.quant_type.clone(),
         lfs_oid: task.lfs_oid.clone(),
         batch_id: task.batch_id.clone(),
+        task_kind: task.task_kind.clone(),
     });
     save_manifest(&manifest);
 }
@@ -283,6 +297,7 @@ impl DownloadManager {
             quant_type,
             lfs_oid,
             batch_id,
+            task_kind: TASK_KIND_HF.to_string(),
         };
 
         self.tasks.insert(task_id.clone(), task);
@@ -298,6 +313,188 @@ impl DownloadManager {
         });
 
         Ok(task_id)
+    }
+
+    /// Enqueue a portable Foundry toolchain archive download.
+    pub async fn start_toolchain_download(
+        &mut self,
+        pack: Option<String>,
+        self_arc: Arc<RwLock<Self>>,
+    ) -> Result<String, String> {
+        if self.has_active_toolchain_download() {
+            return Err("A toolchain download is already in progress.".into());
+        }
+
+        let pack_key = pack
+            .unwrap_or_else(|| "full".to_string())
+            .trim()
+            .to_lowercase();
+
+        if let Some(task_id) = self
+            .tasks
+            .iter()
+            .find(|(_, t)| {
+                is_toolchain_task(t)
+                    && t.quant_type == pack_key
+                    && t.status == DownloadStatus::Failed
+            })
+            .map(|(id, _)| id.clone())
+        {
+            self.resume_download(task_id.clone(), self_arc).await?;
+            return Ok(task_id);
+        }
+
+        let stale_ids: Vec<String> = self
+            .tasks
+            .iter()
+            .filter(|(_, t)| {
+                is_toolchain_task(t)
+                    && t.quant_type == pack_key
+                    && matches!(t.status, DownloadStatus::Completed)
+            })
+            .map(|(id, _)| id.clone())
+            .collect();
+        for id in stale_ids {
+            self.tasks.remove(&id);
+        }
+
+        let (download_url, archive_name, total_bytes) =
+            crate::foundry_toolchain::fetch_toolchain_asset(&pack_key).await?;
+        let dest_path = crate::foundry_toolchain::toolchain_download_dest(&archive_name);
+
+        if self.has_active_task_for_dest(&dest_path) {
+            return Err("A download for this toolchain archive is already in progress.".into());
+        }
+
+        std::fs::create_dir_all(
+            Path::new(&dest_path)
+                .parent()
+                .unwrap_or_else(|| Path::new(".")),
+        )
+        .map_err(|e| format!("Failed to create toolchain download dir: {}", e))?;
+
+        let partial_path = partial_download_path(&dest_path);
+        let resume_offset = std::fs::metadata(&partial_path)
+            .ok()
+            .map(|m| m.len())
+            .unwrap_or(0);
+
+        let task_id = generate_task_id();
+        let task = DownloadTask {
+            id: task_id.clone(),
+            hf_model_id: crate::foundry_toolchain::toolchain_pack_label(&pack_key).to_string(),
+            file_name: archive_name,
+            download_url,
+            total_bytes,
+            downloaded_bytes: resume_offset,
+            status: DownloadStatus::Queued,
+            dest_path,
+            speed_bps: 0,
+            pause_offset: resume_offset,
+            error: None,
+            eta_seconds: 0,
+            hf_author: String::new(),
+            quant_type: pack_key,
+            lfs_oid: String::new(),
+            batch_id: None,
+            task_kind: TASK_KIND_TOOLCHAIN.to_string(),
+        };
+
+        self.tasks.insert(task_id.clone(), task);
+        let task_ref = self.tasks.get(&task_id).unwrap();
+        persist_task_to_manifest(task_ref);
+
+        let worker_arc = self_arc;
+        let task_id_for_worker = task_id.clone();
+        tokio::spawn(async move {
+            Self::download_worker(task_id_for_worker, worker_arc).await;
+        });
+
+        Ok(task_id)
+    }
+
+    /// Re-run 7z extract from a cached or staged archive (no network download).
+    pub async fn retry_toolchain_extract(
+        &mut self,
+        pack: Option<String>,
+        self_arc: Arc<RwLock<Self>>,
+    ) -> Result<String, String> {
+        if self.has_active_toolchain_download() {
+            return Err("A toolchain download or extract is already in progress.".into());
+        }
+
+        let pack_key = pack
+            .unwrap_or_else(|| "full".to_string())
+            .trim()
+            .to_lowercase();
+        let archive_path = crate::foundry_toolchain::archive_for_reextract(&pack_key)?;
+        let archive_name = crate::foundry_toolchain::pack_archive_name(&pack_key)?;
+        let archive_str = archive_path.to_string_lossy().to_string();
+        let size = std::fs::metadata(&archive_path)
+            .ok()
+            .map(|m| m.len())
+            .unwrap_or(0);
+
+        let stale_ids: Vec<String> = self
+            .tasks
+            .iter()
+            .filter(|(_, t)| {
+                is_toolchain_task(t)
+                    && t.quant_type == pack_key
+                    && matches!(
+                        t.status,
+                        DownloadStatus::Completed | DownloadStatus::Failed
+                    )
+            })
+            .map(|(id, _)| id.clone())
+            .collect();
+        for id in stale_ids {
+            self.tasks.remove(&id);
+        }
+
+        let task_id = generate_task_id();
+        let task = DownloadTask {
+            id: task_id.clone(),
+            hf_model_id: crate::foundry_toolchain::toolchain_pack_label(&pack_key).to_string(),
+            file_name: archive_name.to_string(),
+            download_url: String::new(),
+            total_bytes: size,
+            downloaded_bytes: size,
+            status: DownloadStatus::Scanning,
+            dest_path: crate::foundry_toolchain::toolchain_download_dest(archive_name),
+            speed_bps: 0,
+            pause_offset: 0,
+            error: Some("Extracting toolchain…".to_string()),
+            eta_seconds: 0,
+            hf_author: String::new(),
+            quant_type: pack_key.clone(),
+            lfs_oid: String::new(),
+            batch_id: None,
+            task_kind: TASK_KIND_TOOLCHAIN.to_string(),
+        };
+        self.tasks.insert(task_id.clone(), task);
+
+        let manager_arc = self_arc;
+        let tid = task_id.clone();
+        tokio::spawn(async move {
+            finalize_toolchain_extract_worker(&manager_arc, &tid, &archive_str).await;
+        });
+
+        Ok(task_id)
+    }
+
+    /// True when any toolchain task is queued, downloading, paused, or extracting.
+    pub fn has_active_toolchain_download(&self) -> bool {
+        self.tasks.values().any(|t| {
+            is_toolchain_task(t)
+                && matches!(
+                    t.status,
+                    DownloadStatus::Queued
+                        | DownloadStatus::Downloading
+                        | DownloadStatus::Paused
+                        | DownloadStatus::Scanning
+                )
+        })
     }
 
     /// Scan persisted manifest for orphaned `.part` files — safe on a blocking thread (may stat large files).
@@ -349,6 +546,7 @@ impl DownloadManager {
                 quant_type: entry.quant_type,
                 lfs_oid: entry.lfs_oid,
                 batch_id: entry.batch_id,
+                task_kind: entry.task_kind,
             });
         }
 
@@ -446,6 +644,33 @@ impl DownloadManager {
                     task.eta_seconds = 0;
 
                     // Persist for recovery
+                    persist_task_to_manifest(task);
+
+                    let worker_arc = self_arc;
+                    tokio::spawn(async move {
+                        Self::download_worker(task_id, worker_arc).await;
+                    });
+
+                    Ok(())
+                }
+                DownloadStatus::Failed if is_toolchain_task(task) => {
+                    let partial = partial_download_path(&task.dest_path);
+                    let file_len = std::fs::metadata(&partial)
+                        .ok()
+                        .map(|m| m.len())
+                        .unwrap_or(0);
+                    if task.downloaded_bytes == 0 && file_len == 0 {
+                        return Err(format!(
+                            "Task {} has no partial data to resume (status: Failed)",
+                            task_id
+                        ));
+                    }
+                    task.downloaded_bytes = task.downloaded_bytes.max(file_len);
+                    task.pause_offset = task.downloaded_bytes;
+                    task.status = DownloadStatus::Queued;
+                    task.error = None;
+                    task.speed_bps = 0;
+                    task.eta_seconds = 0;
                     persist_task_to_manifest(task);
 
                     let worker_arc = self_arc;
@@ -963,7 +1188,7 @@ async fn mark_completed_worker(
     task_id: &str,
     dest_path: &str,
 ) {
-    let batch_id = {
+    let (batch_id, is_toolchain) = {
         let mut dm = manager.write().await;
         let Some(task) = dm.tasks.get_mut(task_id) else {
             return;
@@ -985,14 +1210,19 @@ async fn mark_completed_worker(
             return;
         }
 
-        task.status = DownloadStatus::Completed;
+        let toolchain = is_toolchain_task(task);
+        if !toolchain {
+            task.status = DownloadStatus::Completed;
+        }
         task.speed_bps = 0;
         task.eta_seconds = 0;
         task.pause_offset = 0;
-        task.batch_id.clone()
+        (task.batch_id.clone(), toolchain)
     };
 
-    remove_task_from_manifest(task_id);
+    if !is_toolchain {
+        remove_task_from_manifest(task_id);
+    }
 
     if let Some(batch_id) = batch_id {
         let mut dm = manager.write().await;
@@ -1014,9 +1244,9 @@ async fn mark_completed_worker(
     let task_id_for_finalization = task_id.to_string();
 
     if Path::new(&dest_to_rename).exists() {
-        log::info!("[download] Replacing existing model: {}", dest_to_rename);
+        log::info!("[download] Replacing existing file: {}", dest_to_rename);
         if let Err(e) = std::fs::remove_file(&dest_to_rename) {
-            log::warn!("[download] Failed to remove existing model {}: {}", dest_to_rename, e);
+            log::warn!("[download] Failed to remove existing file {}: {}", dest_to_rename, e);
         }
     }
 
@@ -1028,6 +1258,25 @@ async fn mark_completed_worker(
             task.speed_bps = 0;
             task.eta_seconds = 0;
         }
+        return;
+    }
+
+    if is_toolchain {
+        {
+            let mut dm = manager.write().await;
+            if let Some(task) = dm.tasks.get_mut(&task_id_for_finalization) {
+                task.status = DownloadStatus::Scanning;
+                task.speed_bps = 0;
+                task.eta_seconds = 0;
+                task.error = Some("Extracting toolchain…".to_string());
+            }
+        }
+        remove_task_from_manifest(&task_id_for_finalization);
+        let manager_arc = Arc::clone(manager);
+        let archive = dest_to_rename.clone();
+        tokio::spawn(async move {
+            finalize_toolchain_extract_worker(&manager_arc, &task_id_for_finalization, &archive).await;
+        });
         return;
     }
 
@@ -1057,8 +1306,59 @@ async fn mark_completed_worker(
     log::info!("Download complete: {} -> {}", task_id_for_finalization, dest_to_rename);
 }
 
+async fn finalize_toolchain_extract_worker(
+    manager: &Arc<RwLock<DownloadManager>>,
+    task_id: &str,
+    archive_path: &str,
+) {
+    let pack = {
+        let dm = manager.read().await;
+        dm.tasks
+            .get(task_id)
+            .map(|t| t.quant_type.clone())
+            .unwrap_or_else(|| "full".to_string())
+    };
+    let archive = archive_path.to_string();
+    let result = tokio::task::spawn_blocking(move || {
+        crate::foundry_toolchain::finalize_toolchain_install(Path::new(&archive), &pack)
+    })
+    .await;
+
+    let mut dm = manager.write().await;
+    let Some(task) = dm.tasks.get_mut(task_id) else {
+        return;
+    };
+
+    match result {
+        Ok(Ok(())) => {
+            task.status = DownloadStatus::Completed;
+            task.error = None;
+            log::info!("[download] Toolchain install complete: {}", task_id);
+        }
+        Ok(Err(e)) => {
+            task.status = DownloadStatus::Failed;
+            task.error = Some(e);
+            log::warn!("[download] Toolchain extraction failed for {}: {}", task_id, task.error.as_deref().unwrap_or(""));
+        }
+        Err(e) => {
+            task.status = DownloadStatus::Failed;
+            task.error = Some(format!("Extraction task panicked: {}", e));
+        }
+    }
+    task.speed_bps = 0;
+    task.eta_seconds = 0;
+}
+
 /// Mark a task as failed with an error message.
 async fn mark_failed(manager: &Arc<RwLock<DownloadManager>>, task_id: &str, error_msg: String) {
+    let keep_manifest = {
+        let dm = manager.read().await;
+        dm.tasks
+            .get(task_id)
+            .map(is_toolchain_task)
+            .unwrap_or(false)
+    };
+
     // Phase 1: Update in-memory state under lock — minimal hold.
     {
         let mut dm = manager.write().await;
@@ -1067,14 +1367,19 @@ async fn mark_failed(manager: &Arc<RwLock<DownloadManager>>, task_id: &str, erro
             task.error = Some(error_msg);
             task.speed_bps = 0;
             task.eta_seconds = 0;
+            if keep_manifest {
+                persist_task_to_manifest(task);
+            }
         }
     }
 
     // Phase 2: Manifest cleanup — outside lock, on blocking pool to avoid stalling tokio workers.
-    let tid = task_id.to_string();
-    tokio::task::spawn_blocking(move || {
-        remove_task_from_manifest(&tid);
-    });
+    if !keep_manifest {
+        let tid = task_id.to_string();
+        tokio::task::spawn_blocking(move || {
+            remove_task_from_manifest(&tid);
+        });
+    }
 }
 
 /// Generate a unique task ID using microsecond timestamp.
@@ -1134,6 +1439,7 @@ mod tests {
                 quant_type: "Q4_K_M".to_string(),
                 lfs_oid: String::new(),
                 batch_id: None,
+                task_kind: TASK_KIND_HF.to_string(),
             },
         );
 
@@ -1165,6 +1471,7 @@ mod tests {
                 quant_type: "Q4".to_string(),
                 lfs_oid: String::new(),
                 batch_id: None,
+                task_kind: TASK_KIND_HF.to_string(),
             },
         );
         dm.tasks.insert(
@@ -1186,6 +1493,7 @@ mod tests {
                 quant_type: "Q4".to_string(),
                 lfs_oid: String::new(),
                 batch_id: None,
+                task_kind: TASK_KIND_HF.to_string(),
             },
         );
 
@@ -1216,6 +1524,7 @@ mod tests {
                 quant_type: "Q4".to_string(),
                 lfs_oid: String::new(),
                 batch_id: None,
+                task_kind: TASK_KIND_HF.to_string(),
             },
         );
 
@@ -1248,6 +1557,7 @@ mod tests {
                     quant_type: "Q4_K_M".to_string(),
                     lfs_oid: String::new(),
                     batch_id: None,
+                    task_kind: TASK_KIND_HF.to_string(),
                 },
             );
         }

@@ -63,19 +63,7 @@ pub struct ProfileCheck {
 pub const TOOLCHAIN_RELEASE_TAG: &str = "toolchain";
 pub const TOOLCHAIN_GITHUB_REPO: &str = "Seen-Tomorrow/blackwell-ops";
 pub const TOOLCHAIN_ARCHIVE_NAME: &str = "toolchain.7z";
-pub const TOOLCHAIN_RUNTIME_ARCHIVE_NAME: &str = "toolchain-runtime.7z";
 pub const TOOLCHAIN_ARCHIVE_PARTS: &[&str] = &[TOOLCHAIN_ARCHIVE_NAME];
-
-#[derive(Debug, Clone, Serialize)]
-pub struct ToolchainPackOffer {
-    pub id: String,
-    pub label: String,
-    pub archive_name: String,
-    pub compressed_size_label: String,
-    pub uncompressed_size_label: String,
-    pub description: String,
-    pub recommended: bool,
-}
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ToolchainInstallInfo {
@@ -83,20 +71,49 @@ pub struct ToolchainInstallInfo {
     pub extract_target: String,
     pub toolchain_dir: String,
     pub release_url: String,
+    pub archive_name: String,
     pub archive_parts: Vec<String>,
     pub compressed_size_label: String,
     pub uncompressed_size_label: String,
-    pub packs: Vec<ToolchainPackOffer>,
     pub manifest_present: bool,
+    /// Portable CUDA runtime DLLs (cublas + cudart) present for both profiles.
     pub runtime_ready: bool,
     pub profiles_ready: usize,
     pub profiles_total: usize,
     pub all_ready: bool,
     pub profile_checks: Vec<ProfileCheck>,
+    /// Verified archives kept for re-extract without re-downloading.
+    pub cached_archives: Vec<CachedToolchainArchive>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CachedToolchainArchive {
+    pub pack: String,
+    pub archive_name: String,
+    pub size_bytes: u64,
+    /// `cache` (durable) or `download` (in-flight / failed verify, not yet promoted).
+    pub location: String,
 }
 
 pub fn toolchain_dir() -> PathBuf {
     crate::config::app_root_dir().join("toolchain")
+}
+
+/// Portable CMake shipped inside the Full Foundry toolchain pack (`toolchain/cmake/bin/cmake.exe`).
+pub fn cmake_exe_path() -> PathBuf {
+    toolchain_dir().join("cmake").join("bin").join("cmake.exe")
+}
+
+pub fn resolve_cmake_exe() -> Result<PathBuf, String> {
+    let path = cmake_exe_path();
+    if path.is_file() {
+        Ok(path)
+    } else {
+        Err(format!(
+            "Portable CMake not found at {}. Install or re-extract the Full Foundry toolchain pack.",
+            path.display()
+        ))
+    }
 }
 
 pub fn manifest_path() -> PathBuf {
@@ -121,9 +138,25 @@ pub fn ensure_manifest_on_disk() -> Result<(), String> {
 
 pub fn load_manifest() -> Result<ToolchainManifest, String> {
     ensure_manifest_on_disk()?;
+    read_manifest_from_disk()
+}
+
+/// Read manifest only — never writes the embedded stub (used post-extract verify).
+fn read_manifest_strict() -> Result<ToolchainManifest, String> {
+    let path = manifest_path();
+    if !path.is_file() {
+        return Err(format!(
+            "Toolchain manifest not found at {} — extract may have landed in the wrong folder.",
+            path.display()
+        ));
+    }
+    read_manifest_from_disk()
+}
+
+fn read_manifest_from_disk() -> Result<ToolchainManifest, String> {
     let path = manifest_path();
     let raw = std::fs::read_to_string(&path)
-        .map_err(|e| format!("Toolchain manifest not found at {}: {}", path.display(), e))?;
+        .map_err(|e| format!("Toolchain manifest not readable at {}: {}", path.display(), e))?;
     serde_json::from_str(&raw).map_err(|e| format!("Invalid toolchain manifest: {}", e))
 }
 
@@ -252,49 +285,6 @@ impl ResolvedProfile {
         Ok(format!(r#"-DCMAKE_ASM_COMPILER="{}""#, path))
     }
 
-    pub fn excluded_cuda_folders(&self, manifest: &ToolchainManifest) -> Vec<String> {
-        manifest
-            .profiles
-            .iter()
-            .filter(|p| !p.id.eq_ignore_ascii_case(&self.def.id))
-            .map(|p| format!("v{}", p.cuda))
-            .collect()
-    }
-
-    pub fn scrub_path(&self, manifest: &ToolchainManifest) -> String {
-        let current_path = std::env::var("PATH").unwrap_or_default();
-        let base = self.cuda_root.to_string_lossy().to_string();
-        let excluded: Vec<String> = self
-            .excluded_cuda_folders(manifest)
-            .iter()
-            .map(|s| s.to_lowercase())
-            .collect();
-
-        let mut filtered: Vec<String> = Vec::new();
-        for entry in current_path.split(';') {
-            let entry_lower = entry.to_lowercase();
-            let is_cuda_toolkit = entry_lower.contains("nvidia gpu computing toolkit\\cuda\\")
-                || entry_lower.contains("\\toolchain\\cuda\\");
-
-            if !is_cuda_toolkit {
-                filtered.push(entry.to_string());
-            } else {
-                let parts: Vec<&str> = entry_lower.split('\\').collect();
-                if let Some(last) = parts.last() {
-                    if !excluded.iter().any(|ex| last == ex) {
-                        filtered.push(entry.to_string());
-                    }
-                } else {
-                    filtered.push(entry.to_string());
-                }
-            }
-        }
-
-        let mut scrubbed = format!(r"{};\{}\;", format!("{}\\bin", base), format!("{}\\libnvvp", base));
-        scrubbed.push_str(&filtered.join(";"));
-        scrubbed
-    }
-
     pub fn check(&self, manifest: &ToolchainManifest) -> ProfileCheck {
         let vs = vs_def(manifest, &self.def.vs).unwrap();
         let mut missing = Vec::new();
@@ -329,6 +319,10 @@ impl ResolvedProfile {
         }
         if !self.cuda_root.join("include").exists() {
             missing.push(format!("CUDA include: {}", self.cuda_root.join("include").display()));
+        }
+        let cmake = cmake_exe_path();
+        if !cmake.is_file() {
+            missing.push(format!("CMake: {}", cmake.display()));
         }
 
         ProfileCheck {
@@ -428,7 +422,7 @@ pub fn portable_cuda_missing_message(binary_profile: &str, cuda_version: &str) -
     format!(
         "Portable CUDA {} runtime not found for profile '{}'.\n\
          Expected cublas64_ + cublasLt64_ + cudart64_ DLLs under:\n  {}\n\
-         Install the CUDA Runtime pack (or Full toolchain) via CONFIG → Providers or onboarding.",
+         Install the portable toolchain via CONFIG → Providers or onboarding.",
         cuda_version,
         binary_profile,
         toolchain_dir()
@@ -538,37 +532,58 @@ pub fn check_runtime_ready(manifest: &ToolchainManifest) -> bool {
         .all(|p| cuda_runtime_ready_for_version(&p.cuda))
 }
 
-pub fn toolchain_pack_offers() -> Vec<ToolchainPackOffer> {
-    vec![
-        ToolchainPackOffer {
-            id: "full".into(),
-            label: "Full Foundry".into(),
-            archive_name: TOOLCHAIN_ARCHIVE_NAME.into(),
-            compressed_size_label: "~1.3 GB".into(),
-            uncompressed_size_label: "~4.2 GB".into(),
-            description: "Full portable toolchain: VS Build Tools + Windows SDK + both CUDA versions. Required for Foundry cmake auto-builds. Also includes everything needed to run engines.".into(),
-            recommended: true,
-        },
-        ToolchainPackOffer {
-            id: "runtime".into(),
-            label: "CUDA Runtime".into(),
-            archive_name: TOOLCHAIN_RUNTIME_ARCHIVE_NAME.into(),
-            compressed_size_label: "~780 MB".into(),
-            uncompressed_size_label: "~1.3 GB".into(),
-            description: "Bare minimum CUDA runtime (cublas64 + cublasLt + cudart only). Matches what upstream llama.cpp ships for Windows CUDA binaries. Enough for running engines. Use Full pack only for Foundry cmake builds.".into(),
-            recommended: false,
-        },
-    ]
+/// GGUF metadata scan spawns llama-server — needs portable CUDA runtime DLLs on PATH.
+pub fn require_runtime_for_gguf_scan() -> Result<(), String> {
+    let manifest = load_manifest().map_err(|_| {
+        String::from(
+            "Portable toolchain is not installed. Install it in setup (or CONFIG → Providers) before scanning GGUF metadata.",
+        )
+    })?;
+    if check_runtime_ready(&manifest) {
+        Ok(())
+    } else {
+        Err("CUDA runtime DLLs are missing. Install the portable toolchain before scanning GGUF metadata.".into())
+    }
 }
 
 pub fn check_all_profiles() -> Result<Vec<ProfileCheck>, String> {
     let manifest = load_manifest()?;
+    Ok(profile_checks_for_manifest(&manifest))
+}
+
+fn check_all_profiles_strict() -> Result<Vec<ProfileCheck>, String> {
+    let manifest = read_manifest_strict()?;
+    Ok(profile_checks_for_manifest(&manifest))
+}
+
+fn profile_checks_for_manifest(manifest: &ToolchainManifest) -> Vec<ProfileCheck> {
     let mut out = Vec::new();
     for def in &manifest.profiles {
-        let resolved = resolve_profile(&def.id)?;
-        out.push(resolved.check(&manifest));
+        if let Ok(resolved) = resolve_profile_from_manifest(manifest, &def.id) {
+            out.push(resolved.check(manifest));
+        }
     }
-    Ok(out)
+    out
+}
+
+fn resolve_profile_from_manifest(
+    manifest: &ToolchainManifest,
+    id: &str,
+) -> Result<ResolvedProfile, String> {
+    let def = find_profile_def(manifest, id)?.clone();
+    let vs = vs_def(manifest, &def.vs)?;
+    let cuda_ver = def.cuda.clone();
+    let root = toolchain_dir();
+    Ok(ResolvedProfile {
+        def,
+        vs_devcmd: root.join(&vs.devcmd),
+        cuda_root: root.join("cuda").join(format!("v{}", cuda_ver)),
+        nvcc: root
+            .join("cuda")
+            .join(format!("v{}", cuda_ver))
+            .join("bin")
+            .join("nvcc.exe"),
+    })
 }
 
 pub fn all_cuda_path_vars(manifest: &ToolchainManifest) -> Vec<String> {
@@ -600,8 +615,405 @@ pub fn toolchain_release_url() -> String {
     )
 }
 
+pub fn pack_archive_name(pack: &str) -> Result<&'static str, String> {
+    match pack.trim().to_lowercase().as_str() {
+        "" | "full" | "runtime" => Ok(TOOLCHAIN_ARCHIVE_NAME),
+        other => Err(format!(
+            "Unknown toolchain pack '{}'. Expected 'full'.",
+            other
+        )),
+    }
+}
+
+pub fn toolchain_pack_label(_pack: &str) -> &'static str {
+    "Foundry Toolchain"
+}
+
+pub fn toolchain_download_dir() -> std::path::PathBuf {
+    crate::config::app_root_dir().join(".toolchain-download")
+}
+
+pub fn toolchain_archive_cache_dir() -> std::path::PathBuf {
+    toolchain_download_dir().join("cache")
+}
+
+pub fn toolchain_download_dest(archive_name: &str) -> String {
+    toolchain_download_dir()
+        .join(archive_name)
+        .to_string_lossy()
+        .to_string()
+}
+
+pub fn toolchain_archive_cache_path(archive_name: &str) -> std::path::PathBuf {
+    toolchain_archive_cache_dir().join(archive_name)
+}
+
+fn archive_size(path: &std::path::Path) -> u64 {
+    std::fs::metadata(path).ok().map(|m| m.len()).unwrap_or(0)
+}
+
+/// Archives available for re-extract (durable cache first, then unstaged download copy).
+pub fn list_reextractable_archives() -> Vec<CachedToolchainArchive> {
+    let mut out = Vec::new();
+    for pack in ["full"] {
+        let Ok(archive_name) = pack_archive_name(pack) else {
+            continue;
+        };
+        let cache = toolchain_archive_cache_path(archive_name);
+        if cache.is_file() {
+            out.push(CachedToolchainArchive {
+                pack: pack.to_string(),
+                archive_name: archive_name.to_string(),
+                size_bytes: archive_size(&cache),
+                location: "cache".into(),
+            });
+            continue;
+        }
+        let download = std::path::PathBuf::from(toolchain_download_dest(archive_name));
+        if download.is_file() {
+            out.push(CachedToolchainArchive {
+                pack: pack.to_string(),
+                archive_name: archive_name.to_string(),
+                size_bytes: archive_size(&download),
+                location: "download".into(),
+            });
+        }
+    }
+    out
+}
+
+pub fn archive_for_reextract(pack: &str) -> Result<std::path::PathBuf, String> {
+    let pack_key = pack.trim().to_lowercase();
+    let archive_name = pack_archive_name(&pack_key)?;
+    let cache = toolchain_archive_cache_path(archive_name);
+    if cache.is_file() {
+        return Ok(cache);
+    }
+    let download = std::path::PathBuf::from(toolchain_download_dest(archive_name));
+    if download.is_file() {
+        return Ok(download);
+    }
+    Err(format!(
+        "No local copy of {} — download the toolchain first.",
+        archive_name
+    ))
+}
+
+fn promote_archive_to_cache(archive_path: &std::path::Path, archive_name: &str) -> Result<(), String> {
+    let cache_dir = toolchain_archive_cache_dir();
+    std::fs::create_dir_all(&cache_dir)
+        .map_err(|e| format!("Failed to create toolchain cache dir: {}", e))?;
+    let cache_path = toolchain_archive_cache_path(archive_name);
+    if archive_path == cache_path.as_path() {
+        return Ok(());
+    }
+    if cache_path.exists() {
+        std::fs::remove_file(&cache_path)
+            .map_err(|e| format!("Failed to replace cached archive: {}", e))?;
+    }
+    match std::fs::rename(archive_path, &cache_path) {
+        Ok(()) => Ok(()),
+        Err(_) => {
+            std::fs::copy(archive_path, &cache_path)
+                .map_err(|e| format!("Failed to copy archive to cache: {}", e))?;
+            std::fs::remove_file(archive_path)
+                .map_err(|e| format!("Failed to remove staging archive: {}", e))?;
+            Ok(())
+        }
+    }
+}
+
+/// Resolve GitHub release asset URL and byte size for a toolchain pack.
+pub async fn fetch_toolchain_asset(pack: &str) -> Result<(String, String, u64), String> {
+    let pack_key = pack.trim().to_lowercase();
+    let archive_name = pack_archive_name(&pack_key)?;
+    let url = format!(
+        "https://api.github.com/repos/{}/releases/tags/{}",
+        TOOLCHAIN_GITHUB_REPO, TOOLCHAIN_RELEASE_TAG
+    );
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(&url)
+        .header("User-Agent", "Blackwell-Ops")
+        .header("Accept", "application/vnd.github+json")
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch toolchain release: {}", e))?;
+
+    if !resp.status().is_success() {
+        return Err(format!(
+            "GitHub release '{}' not found (HTTP {}). Upload toolchain assets first.",
+            TOOLCHAIN_RELEASE_TAG,
+            resp.status()
+        ));
+    }
+
+    let body: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse release JSON: {}", e))?;
+
+    let asset = body
+        .get("assets")
+        .and_then(|a| a.as_array())
+        .and_then(|arr| {
+            arr.iter().find(|a| {
+                a.get("name")
+                    .and_then(|n| n.as_str())
+                    .map(|n| n == archive_name)
+                    .unwrap_or(false)
+            })
+        })
+        .ok_or_else(|| {
+            format!(
+                "Asset '{}' not found on release '{}'.",
+                archive_name, TOOLCHAIN_RELEASE_TAG
+            )
+        })?;
+
+    let download_url = asset
+        .get("browser_download_url")
+        .and_then(|u| u.as_str())
+        .ok_or_else(|| format!("Asset '{}' has no download URL.", archive_name))?
+        .to_string();
+
+    let total_bytes = asset
+        .get("size")
+        .and_then(|s| s.as_u64())
+        .unwrap_or(0);
+
+    Ok((download_url, archive_name.to_string(), total_bytes))
+}
+
+#[cfg(windows)]
+pub fn resolve_7z_exe() -> Result<std::path::PathBuf, String> {
+    let app_root = crate::config::app_root_dir();
+    let staged = app_root.join("bin").join("7z.exe");
+    if staged.is_file() {
+        return Ok(staged);
+    }
+    let dev = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("bin")
+        .join("7z.exe");
+    if dev.is_file() {
+        return Ok(dev);
+    }
+    Err("Bundled 7z.exe not found in bin/ (next to gsudo.exe).".into())
+}
+
+#[cfg(not(windows))]
+pub fn resolve_7z_exe() -> Result<std::path::PathBuf, String> {
+    Err("Portable Foundry toolchain download is supported on Windows only.".into())
+}
+
+const STRAY_TOOLCHAIN_ROOTS: &[&str] = &["cuda", "vs", "Windows Kits", "manifest.json"];
+
+/// Misplaced extract roots from flat archives (cuda/, vs/ at app_root instead of toolchain/).
+fn remove_stray_toolchain_roots_at_app_root(app_root: &std::path::Path) -> Result<(), String> {
+    for name in STRAY_TOOLCHAIN_ROOTS {
+        let p = app_root.join(name);
+        if p.is_file() {
+            std::fs::remove_file(&p)
+                .map_err(|e| format!("Failed to remove stray {}: {}", p.display(), e))?;
+            log::info!("[toolchain] Removed stray file {}", p.display());
+        } else if p.is_dir() {
+            std::fs::remove_dir_all(&p)
+                .map_err(|e| format!("Failed to remove stray {}: {}", p.display(), e))?;
+            log::info!("[toolchain] Removed stray directory {}", p.display());
+        }
+    }
+    Ok(())
+}
+
+/// Move flat-layout payloads that landed at app_root into toolchain/ (legacy bad extracts).
+fn consolidate_stray_toolchain_into_toolchain_dir(app_root: &std::path::Path) -> Result<(), String> {
+    let tc = toolchain_dir();
+    std::fs::create_dir_all(&tc)
+        .map_err(|e| format!("Failed to create toolchain dir: {}", e))?;
+    for name in STRAY_TOOLCHAIN_ROOTS {
+        let src = app_root.join(name);
+        if !src.exists() {
+            continue;
+        }
+        let dst = tc.join(name);
+        if dst.exists() {
+            if src.is_file() && dst.is_file() {
+                std::fs::remove_file(&dst).map_err(|e| {
+                    format!("Failed to replace {}: {}", dst.display(), e)
+                })?;
+            } else {
+                continue;
+            }
+        }
+        std::fs::rename(&src, &dst).map_err(|e| {
+            format!(
+                "Failed to move {} into toolchain ({}): {}",
+                src.display(),
+                dst.display(),
+                e
+            )
+        })?;
+        log::info!(
+            "[toolchain] Consolidated {} -> {}",
+            src.display(),
+            dst.display()
+        );
+    }
+    Ok(())
+}
+
+/// Replaces the entire portable tree before extract (clean upgrade).
+pub fn prepare_toolchain_upgrade(_pack: &str) -> Result<(), String> {
+    let app_root = crate::config::app_root_dir();
+    let tc = toolchain_dir();
+    if tc.exists() {
+        std::fs::remove_dir_all(&tc).map_err(|e| {
+            format!(
+                "Failed to remove existing toolchain before install: {}",
+                e
+            )
+        })?;
+        log::info!(
+            "[toolchain] Removed existing toolchain tree for install ({})",
+            tc.display()
+        );
+    }
+    remove_stray_toolchain_roots_at_app_root(&app_root)?;
+    Ok(())
+}
+
+#[cfg(windows)]
+fn archive_has_toolchain_prefix(archive: &std::path::Path) -> Result<bool, String> {
+    let seven_z = resolve_7z_exe()?;
+    let output = std::process::Command::new(&seven_z)
+        .args(["l", "-slt", &archive.to_string_lossy()])
+        .output()
+        .map_err(|e| format!("Failed to list archive: {}", e))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Failed to inspect archive layout: {}", stderr.trim()));
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    for line in stdout.lines() {
+        let Some(path) = line.strip_prefix("Path = ") else {
+            continue;
+        };
+        let norm = path.trim().replace('\\', "/");
+        if norm == "toolchain" || norm.starts_with("toolchain/") {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+#[cfg(not(windows))]
+fn archive_has_toolchain_prefix(_archive: &std::path::Path) -> Result<bool, String> {
+    Ok(false)
+}
+
+fn resolve_toolchain_extract_dest(
+    archive: &std::path::Path,
+    app_root: &std::path::Path,
+) -> Result<std::path::PathBuf, String> {
+    if archive_has_toolchain_prefix(archive)? {
+        log::info!(
+            "[toolchain] Prefixed archive — extracting into app root ({})",
+            app_root.display()
+        );
+        Ok(app_root.to_path_buf())
+    } else {
+        let dest = toolchain_dir();
+        log::info!(
+            "[toolchain] Flat archive — extracting into toolchain dir ({})",
+            dest.display()
+        );
+        Ok(dest)
+    }
+}
+
+fn verify_toolchain_install(_pack: &str) -> Result<(), String> {
+    let checks = check_all_profiles_strict()?;
+    let not_ready: Vec<_> = checks.iter().filter(|c| !c.ready).collect();
+    if not_ready.is_empty() {
+        return Ok(());
+    }
+    let details: Vec<String> = not_ready
+        .iter()
+        .flat_map(|c| c.missing.iter().map(|m| format!("{}: {}", c.id, m)))
+        .collect();
+    Err(format!(
+        "Toolchain extracted but {} profile(s) still incomplete:\n  - {}",
+        not_ready.len(),
+        details.join("\n  - ")
+    ))
+}
+
+#[cfg(windows)]
+pub fn extract_toolchain_archive(
+    archive: &std::path::Path,
+    dest_root: &std::path::Path,
+) -> Result<(), String> {
+    let seven_z = resolve_7z_exe()?;
+    std::fs::create_dir_all(dest_root)
+        .map_err(|e| format!("Failed to create extract dir: {}", e))?;
+
+    let dest = dest_root.to_string_lossy().to_string();
+    let output = std::process::Command::new(&seven_z)
+        .args([
+            "x",
+            &archive.to_string_lossy(),
+            &format!("-o{}", dest),
+            "-y",
+            "-aoa",
+        ])
+        .output()
+        .map_err(|e| format!("Failed to run 7-Zip: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        return Err(format!(
+            "7-Zip extraction failed (exit {:?}): {} {}",
+            output.status.code(),
+            stderr.trim(),
+            stdout.trim()
+        )
+        .trim()
+        .to_string());
+    }
+    Ok(())
+}
+
+#[cfg(not(windows))]
+pub fn extract_toolchain_archive(
+    _archive: &std::path::Path,
+    _dest_root: &std::path::Path,
+) -> Result<(), String> {
+    Err("Portable Foundry toolchain download is supported on Windows only.".into())
+}
+
+/// Extract a toolchain archive into the app root. On success, move a copy into durable cache.
+pub fn finalize_toolchain_install(archive_path: &std::path::Path, pack: &str) -> Result<(), String> {
+    let app_root = crate::config::app_root_dir();
+    let pack_key = pack.trim().to_lowercase();
+    let archive_name = pack_archive_name(&pack_key)?;
+    prepare_toolchain_upgrade(&pack_key)?;
+    let extract_dest = resolve_toolchain_extract_dest(archive_path, &app_root)?;
+    extract_toolchain_archive(archive_path, &extract_dest)?;
+    consolidate_stray_toolchain_into_toolchain_dir(&app_root)?;
+    verify_toolchain_install(&pack_key)?;
+    promote_archive_to_cache(archive_path, archive_name)?;
+    log::info!(
+        "[toolchain] Verified and cached {} at {}",
+        archive_name,
+        toolchain_archive_cache_path(archive_name).display()
+    );
+    Ok(())
+}
+
 pub fn install_info() -> Result<ToolchainInstallInfo, String> {
     let app_root = crate::config::app_root_dir();
+    let _ = consolidate_stray_toolchain_into_toolchain_dir(&app_root);
     let tc_dir = toolchain_dir();
     let checks = check_all_profiles()?;
     let profiles_ready = checks.iter().filter(|c| c.ready).count();
@@ -615,16 +1027,17 @@ pub fn install_info() -> Result<ToolchainInstallInfo, String> {
         extract_target: app_root.to_string_lossy().to_string(),
         toolchain_dir: tc_dir.to_string_lossy().to_string(),
         release_url: toolchain_release_url(),
+        archive_name: TOOLCHAIN_ARCHIVE_NAME.to_string(),
         archive_parts: TOOLCHAIN_ARCHIVE_PARTS.iter().map(|s| (*s).to_string()).collect(),
-        compressed_size_label: "~1.3 GB".to_string(),
+        compressed_size_label: "~1.15 GB".to_string(),
         uncompressed_size_label: "~4.2 GB".to_string(),
-        packs: toolchain_pack_offers(),
         manifest_present: manifest_path().exists(),
         runtime_ready,
         profiles_ready,
         profiles_total,
         all_ready: profiles_ready == profiles_total && profiles_total > 0,
         profile_checks: checks,
+        cached_archives: list_reextractable_archives(),
     })
 }
 

@@ -37,7 +37,19 @@ pub fn scan_model_metadata(model_path: &str, binary_path: &str) -> Result<ModelM
     }
 
     let mut cmd = Command::new(binary_path);
-    cmd.args(["-m", model_path, "-ngl", "0", "-t", "1"]) // Single thread — reduce CPU load during scan
+    cmd.args([
+        "-m",
+        model_path,
+        "-ngl",
+        "0",
+        "-t",
+        "1",
+        // Master llama-server runs --fit on by default; large MoE models enter multi-pass
+        // VRAM fitting before GGUF KVs are printed, so the 15s scan window expires with
+        // no architecture. Metadata-only read — never fit layers during header scan.
+        "--fit",
+        "off",
+    ])
         .args(crate::types::LLAMA_DIAGNOSTIC_FLAGS.iter().map(|s| s.to_string()))
         .env("CUDA_VISIBLE_DEVICES", "") // Hide GPUs — forces pure CPU, zero VRAM usage
         .env("OMP_NUM_THREADS", "1")     // Single thread — reduce CPU load during scan
@@ -405,6 +417,77 @@ fn push_base_model_field(key: &str, value: &str, field: &str, m: &mut ModelMetad
                 _ => {}
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_line, scan_model_metadata};
+    use crate::types::ModelMetadata;
+
+    #[test]
+    fn parses_deepseek4_kv_lines() {
+        let mut m = ModelMetadata {
+            architecture: String::new(),
+            model_type_label: String::new(),
+            n_layer: 0,
+            n_ctx_train: 0,
+            n_embd: 0,
+            n_head: 0,
+            n_head_kv: 0,
+            n_expert: 0,
+            n_expert_used: 0,
+            rope_freq_base: 0.0,
+            rope_dim: 0,
+            feed_forward_length: 0,
+            expert_feed_forward_length: 0,
+            file_type_str: String::new(),
+            bpw: 0.0,
+            tensor_counts: std::collections::HashMap::new(),
+            total_params_str: String::new(),
+            vocab_size: 0,
+            general_name: String::new(),
+            rope_scaling_type: String::new(),
+            tokenizer_model: String::new(),
+            file_size_bytes: 0,
+            scan_timestamp: 0,
+            file_created: 0,
+            nextn_predict_layers: 0,
+            raw_kvs: std::collections::HashMap::new(),
+            raw_print_info: std::collections::HashMap::new(),
+            general_author: String::new(),
+            general_repo_url: String::new(),
+            general_basename: String::new(),
+            general_quantized_by: String::new(),
+            general_license: String::new(),
+            general_tags: Vec::new(),
+            base_models: Vec::new(),
+            chat_template: String::new(),
+        };
+
+        parse_line(
+            "0.00.228.850 I llama_model_loader: - kv   0:                       general.architecture str              = deepseek4",
+            &mut m,
+        );
+        parse_line(
+            "0.00.228.883 I llama_model_loader: - kv  15:                      deepseek4.block_count u32              = 43",
+            &mut m,
+        );
+        parse_line(
+            "0.00.228.895 I llama_model_loader: - kv  35:       deepseek4.expert_feed_forward_length u32              = 2048",
+            &mut m,
+        );
+        parse_line("0.00.342.167 I print_info: arch                  = deepseek4", &mut m);
+
+        assert_eq!(m.architecture, "deepseek4");
+        assert_eq!(m.n_layer, 43);
+        assert_eq!(m.expert_feed_forward_length, 2048);
+    }
+
+    #[test]
+    fn scan_model_metadata_requires_existing_file() {
+        let err = scan_model_metadata("Z:\\no-such-model.gguf", "llama-server.exe").unwrap_err();
+        assert!(err.contains("not found"));
     }
 }
 

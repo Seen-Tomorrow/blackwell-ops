@@ -696,6 +696,14 @@ pub struct HfSearchFilters {
 
 // ── Download Manager Types ───────────────────────────────────────────────
 
+/// HF model download vs portable Foundry toolchain archive.
+pub const TASK_KIND_HF: &str = "hf";
+pub const TASK_KIND_TOOLCHAIN: &str = "toolchain";
+
+fn default_download_task_kind() -> String {
+    TASK_KIND_HF.to_string()
+}
+
 /// Status of a download task.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
@@ -747,6 +755,9 @@ pub struct DownloadTask {
     /// Sharded quant batch — `.part` → `.gguf` rename deferred until all parts complete.
     #[serde(default, skip_serializing_if = "Option::is_none", rename = "batchId")]
     pub batch_id: Option<String>,
+    /// `hf` (default) or `toolchain` — toolchain tasks use `quant_type` `full`.
+    #[serde(default = "default_download_task_kind", rename = "taskKind")]
+    pub task_kind: String,
 }
 
 /// One file in a sharded quant download batch.

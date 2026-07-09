@@ -1,11 +1,9 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { useEffect, useRef } from 'react';
 import ModelHubSearch from './ModelHubSearch';
 import ModelHubDownloadPaths from './ModelHubDownloadPaths';
 import ModelHubDownloads from './ModelHubDownloads';
-import type { DownloadTask } from '@/lib/types';
 import { dispatchAppEvent, EVENTS } from '@/lib/events';
-import { useTauriListen } from '../hooks/useTauriListen';
+import { useDownloadTasks } from '../hooks/useDownloadTasks';
 import TabPageHeader from './TabPageHeader';
 
 interface ModelHubProps {
@@ -14,38 +12,17 @@ interface ModelHubProps {
 }
 
 export default function ModelHub({ embedded = false }: ModelHubProps) {
-  const [downloads, setDownloads] = useState<DownloadTask[]>([]);
+  const downloads = useDownloadTasks('hf');
   const completedRefs = useRef(new Set<string>());
-  const pollRef = useRef<(() => void) | null>(null);
 
-  const pollDownloads = useCallback(async () => {
-    try {
-      const tasks = await invoke<DownloadTask[]>('get_download_tasks');
-      setDownloads(tasks);
-      for (const t of tasks) {
-        if (t.status === 'completed' && !completedRefs.current.has(t.id)) {
-          completedRefs.current.add(t.id);
-          dispatchAppEvent(EVENTS.downloadCompleted);
-        }
+  useEffect(() => {
+    for (const t of downloads) {
+      if (t.status === 'completed' && !completedRefs.current.has(t.id)) {
+        completedRefs.current.add(t.id);
+        dispatchAppEvent(EVENTS.downloadCompleted);
       }
-    } catch {
-      console.error('Failed to poll download tasks');
     }
-  }, []);
-
-  useEffect(() => {
-    pollRef.current = () => { void pollDownloads(); };
-  }, [pollDownloads]);
-
-  useEffect(() => {
-    void pollDownloads();
-    const interval = setInterval(() => { void pollDownloads(); }, 500);
-    return () => clearInterval(interval);
-  }, [pollDownloads]);
-
-  useTauriListen<{ type?: string }>('download-event', () => {
-    pollRef.current?.();
-  }, []);
+  }, [downloads]);
 
   return (
     <div className="flex flex-col h-full min-h-0 overflow-hidden" data-model-hub>

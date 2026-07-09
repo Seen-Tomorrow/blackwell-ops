@@ -151,6 +151,18 @@ if (Test-Path $vsRoot) {
     }
 }
 
+# --- CMake: keep bin + Modules; drop docs/man ---
+$cmakeRoot = Join-Path $ToolchainRoot "cmake"
+if (Test-Path $cmakeRoot) {
+    Write-Host "`n--- Portable CMake ---" -ForegroundColor Yellow
+    foreach ($dir in @("doc", "man")) {
+        $totalFreed += Remove-TreeIfExists (Join-Path $cmakeRoot $dir)
+    }
+    Get-ChildItem (Join-Path $cmakeRoot "share") -Directory -EA SilentlyContinue |
+        Where-Object { $_.Name -notmatch '^cmake-' } |
+        ForEach-Object { $totalFreed += Remove-TreeIfExists $_.FullName }
+}
+
 # --- Windows SDK: native C/C++ only (no WinRT / cppwinrt) ---
 $kitsInc = Join-Path $ToolchainRoot "Windows Kits\10\Include\10.0.26100.0"
 if (Test-Path $kitsInc) {

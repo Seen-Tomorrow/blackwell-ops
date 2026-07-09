@@ -16,6 +16,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 MAJESTIC_DIR = ROOT / "scripts" / "majestic"
 MAJESTIC_PS1 = MAJESTIC_DIR / "majestic.ps1"
+BUILD_TOOLCHAIN_PS1 = ROOT / "scripts" / "build-foundry-toolchain.ps1"
 OUT_DIR = ROOT / ".majestic-out"
 BACKUP_ROOT = ROOT / ".majestic-backup"
 RUNTIME_DIR = ROOT / "src-tauri" / "runtime"
@@ -66,6 +67,30 @@ def read_version() -> str:
         return str(data.get("version", "?"))
     except (OSError, json.JSONDecodeError):
         return "?"
+
+
+def run_powershell_script(script: Path, *extra_args: str) -> int:
+    if not script.is_file():
+        print(f"[majestic] Missing script: {script}")
+        return 1
+
+    args = [
+        "powershell",
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        str(script),
+        *extra_args,
+    ]
+
+    print()
+    print(f"[majestic] Running: {' '.join(args)}")
+    print("-" * 60)
+
+    completed = subprocess.run(args, cwd=ROOT)
+    print("-" * 60)
+    return completed.returncode
 
 
 def run_majestic(mode: str, *, dry_run: bool = False) -> int:
@@ -284,6 +309,7 @@ def print_header() -> None:
     print("  7  Backup runtime (configs + binaries)")
     print("  8  Open .majestic-backup folder")
     print("  9  PARANOID backup (project zip, keeps foundry+toolchain)")
+    print(" 11  TOOLCHAIN - rebuild + pack toolchain.7z for GitHub upload")
     print()
     print("  0  Exit")
     print()
@@ -331,8 +357,14 @@ def main() -> int:
             code = backup_paranoid()
         elif choice == "10":
             code = run_majestic("bump")
+        elif choice == "11":
+            repack = input("Repack existing tree only (no host VS/CUDA)? [y/N]: ").strip().lower()
+            if repack in ("y", "yes"):
+                code = run_powershell_script(BUILD_TOOLCHAIN_PS1, "-RepackOnly")
+            else:
+                code = run_powershell_script(BUILD_TOOLCHAIN_PS1)
         else:
-            print("Unknown choice. Use 0-10.")
+            print("Unknown choice. Use 0-11.")
             code = 1
 
         print()

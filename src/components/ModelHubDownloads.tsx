@@ -1,48 +1,8 @@
-import { useCallback, useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { useState } from 'react';
 import type { DownloadTask, DownloadStatus } from '@/lib/types';
+import DownloadProgressRow from './DownloadProgressRow';
 
 const ACTIVE_STATUSES: DownloadStatus[] = ['downloading', 'queued', 'paused', 'scanning'];
-
-function statusColor(status: DownloadStatus): string {
-  switch (status) {
-    case 'downloading': return 'text-nv-green';
-    case 'paused': return 'text-yellow-400';
-    case 'failed': return 'text-red-400';
-    case 'scanning': return 'text-blue-400';
-    default: return 'text-stealth-muted/40';
-  }
-}
-
-function progressColor(status: DownloadStatus): string {
-  switch (status) {
-    case 'downloading': return 'bg-nv-green';
-    case 'paused': return 'bg-yellow-400';
-    case 'failed': return 'bg-red-400';
-    case 'scanning': return 'bg-blue-400 animate-pulse';
-    default: return 'bg-stealth-muted/20';
-  }
-}
-
-function formatSpeed(bps: number): string {
-  if (bps < 1024 * 1024) return `${Math.round(bps / 1024)} KB`;
-  return `${(bps / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function formatETA(seconds: number): string {
-  if (seconds === 0 || seconds > 36000) return '—';
-  if (seconds < 60) return `${seconds}s`;
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `${m}m ${s}s`;
-}
-
-function formatSize(bytes: number): string {
-  const gb = bytes / (1024 * 1024 * 1024);
-  if (gb >= 1) return `${gb.toFixed(1)} GB`;
-  const mb = bytes / (1024 * 1024);
-  return `${mb.toFixed(0)} MB`;
-}
 
 interface ModelHubDownloadsProps {
   downloads: DownloadTask[];
@@ -75,107 +35,6 @@ export default function ModelHubDownloads({ downloads }: ModelHubDownloadsProps)
           activeDownloads.map((task) => (
             <DownloadProgressRow key={task.id} task={task} onActionError={setActionError} />
           ))
-        )}
-      </div>
-    </div>
-  );
-}
-
-function DownloadProgressRow({
-  task,
-  onActionError,
-}: {
-  task: DownloadTask;
-  onActionError: (msg: string | null) => void;
-}) {
-  const pct = task.totalBytes > 0 ? Math.round((task.downloadedBytes / task.totalBytes) * 100) : 0;
-  const speedStr = formatSpeed(task.speedBps);
-  const etaStr = formatETA(task.etaSeconds);
-
-  const reportActionError = useCallback((action: string, e: unknown) => {
-    console.error(`Failed to ${action} download:`, e);
-    const detail = typeof e === 'string' ? e : 'unknown error';
-    onActionError(`${action.toUpperCase()} FAILED: ${detail}`);
-  }, [onActionError]);
-
-  const handlePause = useCallback(async () => {
-    onActionError(null);
-    try {
-      await invoke('pause_download', { taskId: task.id });
-    } catch (e) {
-      reportActionError('pause', e);
-    }
-  }, [task.id, onActionError, reportActionError]);
-
-  const handleResume = useCallback(async () => {
-    onActionError(null);
-    try {
-      await invoke('resume_download', { taskId: task.id });
-    } catch (e) {
-      reportActionError('resume', e);
-    }
-  }, [task.id, onActionError, reportActionError]);
-
-  const handleCancel = useCallback(async () => {
-    onActionError(null);
-    try {
-      await invoke('cancel_download', { taskId: task.id });
-    } catch (e) {
-      reportActionError('cancel', e);
-    }
-  }, [task.id, onActionError, reportActionError]);
-
-  return (
-    <div className="rounded-sm border border-stealth-border/60 bg-stealth-surface/40 p-2 space-y-1.5">
-      <div className="flex items-center justify-between gap-2 text-[9px] font-mono">
-        <span className="truncate text-white/80">{task.hfModelId}</span>
-        <span className="shrink-0 text-stealth-muted/40">{formatSize(task.downloadedBytes)} / {formatSize(task.totalBytes)}</span>
-        <div className="flex shrink-0 items-center gap-2">
-          {task.status === 'downloading' && (
-            <>
-              <span className="text-nv-green">{speedStr}/s</span>
-              <span className="text-stealth-muted/40">{etaStr}</span>
-            </>
-          )}
-          <span className={`uppercase ${statusColor(task.status)}`}>{task.status}</span>
-        </div>
-      </div>
-      <div className="h-1.5 overflow-hidden rounded-full bg-stealth-dark">
-        <div
-          className={`h-full transition-all duration-300 ${progressColor(task.status)}`}
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-      <div className="flex items-center gap-1.5">
-        {task.status === 'downloading' && (
-          <button
-            type="button"
-            onClick={handlePause}
-            className="rounded-sm border border-yellow-400/30 px-1.5 py-0.5 text-[8px] font-mono text-yellow-400 transition-all hover:bg-yellow-400/10"
-          >
-            PAUSE
-          </button>
-        )}
-        {task.status === 'paused' && (
-          <button
-            type="button"
-            onClick={handleResume}
-            className="rounded-sm border border-nv-green/30 px-1.5 py-0.5 text-[8px] font-mono text-nv-green transition-all hover:bg-nv-green/10"
-          >
-            RESUME
-          </button>
-        )}
-        {(task.status === 'downloading' || task.status === 'paused' || task.status === 'queued') && (
-          <button
-            type="button"
-            onClick={handleCancel}
-            className="rounded-sm border border-red-400/30 px-1.5 py-0.5 text-[8px] font-mono text-red-400 transition-all hover:bg-red-400/10"
-          >
-            CANCEL
-          </button>
-        )}
-        {task.status === 'failed' && task.error && (
-          <span className="truncate text-[8px] font-mono text-red-400/60">{task.error}</span>
         )}
       </div>
     </div>

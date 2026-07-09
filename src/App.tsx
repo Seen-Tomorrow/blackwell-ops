@@ -128,7 +128,7 @@ function App() {
   const [hiddenCount, setHiddenCount] = useState(0);
   const [isPowerUser, setIsPowerUser] = useState(() => isPowerUserActive(loadPowerUserState()));
   const [telemetryViewMode, setTelemetryViewModeState] = useState<TelemetryViewMode>(() => loadTelemetryViewMode());
-  const setupGuide = useSetupGuide({ models });
+  const setupGuide = useSetupGuide({ models, batchScanState });
 
   const setTelemetryViewMode = useCallback((mode: TelemetryViewMode) => {
     setTelemetryViewModeState(mode);
@@ -369,8 +369,14 @@ function App() {
     });
   });
 
-  useTauriListen<{ scanned: number; failed: number }>("gguf-scan-complete", (payload) => {
-    setBatchScanState((s) => ({ ...s, active: false, scanned: payload.scanned, failed: payload.failed }));
+  useTauriListen<{ scanned: number; failed: number; total?: number }>("gguf-scan-complete", (payload) => {
+    setBatchScanState((s) => ({
+      ...s,
+      active: false,
+      scanned: payload.scanned,
+      failed: payload.failed,
+      total: payload.total ?? s.total ?? payload.scanned + payload.failed,
+    }));
     invoke("list_models").then((data) => setModels(data as ModelEntry[])).catch(() => {});
   });
 
