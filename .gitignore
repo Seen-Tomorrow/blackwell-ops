@@ -73,6 +73,9 @@ scripts/majestic/.majestic-secrets
 scripts/majestic/majestic.lock
 scripts/majestic/__pycache__/
 
+# --- Internal docs (local only — not published) ---
+docs/internal/
+
 # --- OpenCode Specific ---
 .local/
 opencode.db*

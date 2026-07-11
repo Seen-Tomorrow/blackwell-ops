@@ -2971,6 +2971,13 @@ html, body, #root {
   background: var(--fusion-eink-ctx-fill-idle);
 }
 
+/* ARCTIC + CLEAN — VRAM/GPU bar fills match glacier-blue e-ink accent */
+[data-theme="arctic"] [data-display-texture="clean"] .vram-forecast-display .bg-nv-green,
+[data-theme="arctic"] [data-display-texture="clean"] .industrial-display-area .vram-forecast-display .bg-nv-green,
+[data-theme="arctic"] [data-display-texture="clean"] .industrial-display-area .gpu-bar-fill.bg-nv-green {
+  background-color: var(--fusion-eink-ctx-fill-processing) !important;
+}
+
 [data-theme="arctic"] [data-display-texture="clean"] .phosphor-screen .ctx-bar-slot-label,
 [data-theme="arctic"] [data-display-texture="clean"] .phosphor-screen-inner .ctx-bar-slot-label {
   background: var(--fusion-eink-ctx-slot-bg);
@@ -4283,6 +4290,13 @@ html[data-industrial-bezel="brush"] {
 [data-display-texture="phosphor-light"] .vram-forecast-display .relative.overflow-hidden.border-stealth-border\/30,
 [data-display-texture="phosphor-light"] .industrial-display-area .vram-forecast-display .relative.overflow-hidden.border-stealth-border\/30 {
   background-color: var(--fusion-eink-bar-bg) !important;
+}
+
+/* PHOSPHOR LIGHT — nominal VRAM/GPU bar fills follow per-theme e-ink accent (ARCTIC = glacier blue) */
+[data-display-texture="phosphor-light"] .vram-forecast-display .bg-nv-green,
+[data-display-texture="phosphor-light"] .industrial-display-area .vram-forecast-display .bg-nv-green,
+[data-display-texture="phosphor-light"] .industrial-display-area .gpu-bar-fill.bg-nv-green {
+  background-color: var(--fusion-eink-ctx-fill-processing) !important;
 }
 
 /* PHOSPHOR LIGHT — PREFILL hero TPS: Arctic slate on e-ink (all app themes + share capture) */

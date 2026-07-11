@@ -40,7 +40,7 @@ export default function GpuTopology({ gpuAllocations, gpuBarColor, ramVisible, r
           const totalUsedPct = Math.min(totalMib > 0 ? (totalUsedMib / totalMib) * 100 : 0, 100);
 
           // Color hex for inline styles — derive from tailwind class name
-          const barColorHex = gpuBarColor.includes('nv-green') || gpuBarColor.includes('green') ? '#76B900' :
+          const barColorHex = gpuBarColor.includes('nv-green') || gpuBarColor.includes('green') ? 'var(--fusion-eink-ctx-fill-processing)' :
                               gpuBarColor.includes('yellow') ? '#FBBF24' :
                               gpuBarColor.includes('telemetry-red') ? '#ff3333' :
                               gpuBarColor.includes('red-5') ? '#EF4444' :
@@ -48,7 +48,7 @@ export default function GpuTopology({ gpuAllocations, gpuBarColor, ramVisible, r
                               gpuBarColor.includes('orange') ? '#FB923C' :
                               gpuBarColor.includes('cyan') ? '#22D3EE' :
                               gpuBarColor.includes('gray') ? '#4B5563' :
-                              '#76B900';
+                              'var(--fusion-eink-ctx-fill-processing)';
 
           // Percentage label color — based on total utilization (existing + projected)
           const pctColor = totalUsedPct > 95 ? '#ff3333' : totalUsedPct > 85 ? '#FB923C' : barColorHex;
