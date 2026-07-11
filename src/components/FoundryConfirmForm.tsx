@@ -1,5 +1,6 @@
-import { useState, type Dispatch, type SetStateAction } from "react";
-import type { ProviderConfig } from "../lib/types";
+import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import type { FoundrySourcePreview, ProviderConfig } from "../lib/types";
 import { useTelemetry } from "../context/TelemetryContext";
 import { ENV_META, type Env } from "../lib/foundry_constants";
 import FoundryToolchainPanel from "./FoundryToolchainPanel";
@@ -55,9 +56,41 @@ export default function FoundryConfirmForm({
   const cpuPhysical = cpu?.cores ?? 0;
 
   const [toolchainReady, setToolchainReady] = useState(false);
+  const [sourcePreview, setSourcePreview] = useState<FoundrySourcePreview | null>(null);
+  const [sourcePreviewLoading, setSourcePreviewLoading] = useState(true);
   const envMeta = ENV_META[environment];
   const orderedArchs = orderCudaArchCodes(selectedArchs);
   const archCmakePreview = formatCudaArchitecturesCmakeLine(orderedArchs);
+
+  useEffect(() => {
+    let cancelled = false;
+    setSourcePreviewLoading(true);
+    void invoke<FoundrySourcePreview>("foundry_preview_source", {
+      providerId: provider.id,
+      environment,
+    })
+      .then((preview) => {
+        if (!cancelled) setSourcePreview(preview);
+      })
+      .catch(() => {
+        if (!cancelled) setSourcePreview(null);
+      })
+      .finally(() => {
+        if (!cancelled) setSourcePreviewLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [provider.id, environment]);
+
+  const previewToneClass =
+    sourcePreview?.banner_tone === "amber"
+      ? "foundry-source-banner--amber"
+      : sourcePreview?.banner_tone === "cyan"
+        ? "foundry-source-banner--cyan"
+        : sourcePreview?.banner_tone === "green"
+          ? "foundry-source-banner--green"
+          : "foundry-source-banner--muted";
 
   const toggleArch = (code: string) => {
     setSelectedArchs((prev) => {
@@ -115,6 +148,34 @@ export default function FoundryConfirmForm({
         <p className="text-[10px] font-mono text-stealth-muted uppercase tracking-wider">
           Ready to build?
         </p>
+
+        {sourcePreviewLoading ? (
+          <div className="foundry-source-banner foundry-source-banner--muted px-3 py-2.5 rounded-sm border animate-pulse">
+            <p className="text-[9px] font-mono tracking-wider uppercase opacity-70">
+              Checking source revision vs installed binary…
+            </p>
+          </div>
+        ) : sourcePreview ? (
+          <div className={`foundry-source-banner px-3 py-2.5 rounded-sm border ${previewToneClass}`}>
+            <p className="text-[10px] font-mono font-bold tracking-wider uppercase leading-snug">
+              {sourcePreview.status === "up_to_date" ? "Already up to date" : "Source check"}
+            </p>
+            <p className="text-[9px] font-mono leading-relaxed mt-1.5">{sourcePreview.message}</p>
+            {(sourcePreview.local_commit || sourcePreview.remote_commit || sourcePreview.installed_commit) && (
+              <p className="text-[7px] font-mono opacity-75 mt-2 leading-relaxed">
+                {sourcePreview.local_commit ? `local ${sourcePreview.local_commit}` : "local —"}
+                {" · "}
+                {sourcePreview.remote_commit ? `remote ${sourcePreview.remote_commit}` : "remote —"}
+                {" · "}
+                {sourcePreview.installed_commit
+                  ? `binary ${sourcePreview.installed_commit}`
+                  : sourcePreview.installed_version
+                    ? `binary ${sourcePreview.installed_version}`
+                    : "binary —"}
+              </p>
+            )}
+          </div>
+        ) : null}
 
         <div className="border border-stealth-border/60 bg-black/30 rounded-sm p-3 space-y-2">
           <div className="flex items-center gap-2">
@@ -202,7 +263,7 @@ export default function FoundryConfirmForm({
               Base flags from provider defaults — architectures above are merged when you build. Saved to provider on start.
             </p>
             <textarea
-              placeholder={"-DGGML_CUDA=ON\n-DGGML_CUDA_FA_ALL_QUANTS=ON"}
+              placeholder={"-DGGML_CUDA=ON\n-DGGML_AVX512=ON"}
               rows={5}
               className="foundry-build-profile-textarea w-full px-2 py-1.5 min-h-[5.5rem]"
               value={buildProfile}

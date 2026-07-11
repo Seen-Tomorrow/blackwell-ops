@@ -375,8 +375,7 @@ export function estimateSplitTaxMiB(points: FitPoint[], splitMode: string): numb
     `split_${mode}`,
     `split_${mode}_64k`,
     `split_${mode}_256k`,
-    mode === "graph" ? "split_row_64k" : null,
-  ].filter((l): l is string => l != null);
+  ];
 
   const baseNoBatch = findFitPoint(points, "base_no_batch");
   const base = baseNoBatch || findFitPoint(points, "base");

@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import type { StackEntry, ModelEntry } from "../lib/types";
 import { loadExtrasSubTab, saveExtrasSubTab, type ExtrasSubTab } from "../lib/storage";
 import { consumePendingExtrasSubTab, EVENTS, type NavigateExtrasDetail } from "../lib/events";
-import ModelHub from "./ModelHub";
+import IntelPage from "./IntelPage";
 import Playground from "./Playground";
 import TabPageHeader from "./TabPageHeader";
 
@@ -12,7 +12,7 @@ interface ExtrasPageProps {
 }
 
 const SUB_TABS: { id: ExtrasSubTab; label: string }[] = [
-  { id: "modelhub", label: "MODEL HUB" },
+  { id: "intel", label: "INTEL" },
   { id: "playground", label: "PLAYGROUND" },
 ];
 
@@ -40,7 +40,7 @@ export default function ExtrasPage({ stack, models }: ExtrasPageProps) {
         title="EXTRAS"
         meta={
           <span className="text-[8px] font-mono opacity-50 tracking-[1px]">
-            MODEL HUB, PLAYGROUND &amp; OTHER OPTIONAL TOOLS
+            INTEL, PLAYGROUND &amp; OTHER OPTIONAL TOOLS
           </span>
         }
       />
@@ -59,7 +59,7 @@ export default function ExtrasPage({ stack, models }: ExtrasPageProps) {
         ))}
       </div>
       <div className="flex-1 min-h-0 overflow-hidden">
-        {subTab === "modelhub" && <ModelHub embedded />}
+        {subTab === "intel" && <IntelPage embedded />}
         {subTab === "playground" && <Playground stack={stack} models={models} embedded />}
       </div>
     </div>

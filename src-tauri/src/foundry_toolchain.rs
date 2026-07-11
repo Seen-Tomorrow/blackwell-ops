@@ -68,7 +68,9 @@ pub const TOOLCHAIN_ARCHIVE_PARTS: &[&str] = &[TOOLCHAIN_ARCHIVE_NAME];
 #[derive(Debug, Clone, Serialize)]
 pub struct ToolchainInstallInfo {
     pub app_root: String,
-    pub extract_target: String,
+    extract_target: String,
+    /// Drop `toolchain.7z` here, then use install-from-cache in the app.
+    pub archive_cache_dir: String,
     pub toolchain_dir: String,
     pub release_url: String,
     pub archive_name: String,
@@ -883,9 +885,18 @@ pub fn prepare_toolchain_upgrade(_pack: &str) -> Result<(), String> {
 }
 
 #[cfg(windows)]
+fn command_no_window(program: &std::path::Path) -> std::process::Command {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    let mut cmd = std::process::Command::new(program);
+    cmd.creation_flags(CREATE_NO_WINDOW);
+    cmd
+}
+
+#[cfg(windows)]
 fn archive_has_toolchain_prefix(archive: &std::path::Path) -> Result<bool, String> {
     let seven_z = resolve_7z_exe()?;
-    let output = std::process::Command::new(&seven_z)
+    let output = command_no_window(&seven_z)
         .args(["l", "-slt", &archive.to_string_lossy()])
         .output()
         .map_err(|e| format!("Failed to list archive: {}", e))?;
@@ -958,7 +969,7 @@ pub fn extract_toolchain_archive(
         .map_err(|e| format!("Failed to create extract dir: {}", e))?;
 
     let dest = dest_root.to_string_lossy().to_string();
-    let output = std::process::Command::new(&seven_z)
+    let output = command_no_window(&seven_z)
         .args([
             "x",
             &archive.to_string_lossy(),
@@ -1022,9 +1033,13 @@ pub fn install_info() -> Result<ToolchainInstallInfo, String> {
     let manifest = load_manifest()?;
     let runtime_ready = check_runtime_ready(&manifest);
 
+    let cache_dir = toolchain_archive_cache_dir();
+    let _ = std::fs::create_dir_all(&cache_dir);
+
     Ok(ToolchainInstallInfo {
         app_root: app_root.to_string_lossy().to_string(),
         extract_target: app_root.to_string_lossy().to_string(),
+        archive_cache_dir: cache_dir.to_string_lossy().to_string(),
         toolchain_dir: tc_dir.to_string_lossy().to_string(),
         release_url: toolchain_release_url(),
         archive_name: TOOLCHAIN_ARCHIVE_NAME.to_string(),
@@ -1056,7 +1071,7 @@ pub async fn foundry_get_toolchain_install_info(
     install_info()
 }
 
-/// Opens the app root folder where the user extracts the toolchain archive.
+/// Opens the app root folder (legacy — prefer cache folder for manual drops).
 #[tauri::command]
 pub async fn foundry_open_toolchain_install_folder() -> Result<(), String> {
     let root = crate::config::app_root_dir();
@@ -1075,6 +1090,24 @@ pub async fn foundry_open_toolchain_install_folder() -> Result<(), String> {
     #[cfg(not(windows))]
     {
         let _ = root;
+        Err("Portable Foundry toolchain is supported on Windows only.".into())
+    }
+}
+
+/// Opens `.toolchain-download\cache` — drop `toolchain.7z` here for install-from-cache.
+#[tauri::command]
+pub async fn foundry_open_toolchain_cache_folder() -> Result<(), String> {
+    let cache_dir = toolchain_archive_cache_dir();
+    std::fs::create_dir_all(&cache_dir)
+        .map_err(|e| format!("Failed to create toolchain cache dir: {}", e))?;
+
+    #[cfg(windows)]
+    {
+        open_path_in_shell(&cache_dir)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = cache_dir;
         Err("Portable Foundry toolchain is supported on Windows only.".into())
     }
 }

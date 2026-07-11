@@ -158,7 +158,12 @@ export default function DownloadProgressRow({
           />
         </div>
       )}
-      {task.status === "scanning" && task.error && (
+      {task.status === "scanning" && task.taskKind === "toolchain" && (
+        <p className={`font-mono text-blue-400/80 ${compact ? "text-[7px]" : "text-[8px]"}`}>
+          {task.error ?? "Extracting toolchain…"} (~4 GB, may take a few minutes)
+        </p>
+      )}
+      {task.status === "scanning" && task.taskKind !== "toolchain" && task.error && (
         <p className={`font-mono text-stealth-muted/70 ${compact ? "text-[7px]" : "text-[8px]"}`}>
           {task.error}
         </p>

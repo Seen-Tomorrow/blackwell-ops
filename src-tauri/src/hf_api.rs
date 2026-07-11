@@ -39,6 +39,15 @@ pub struct RawGgufTreeEntry {
     pub size: u64,
     pub path_in_repo: String,
     pub lfs_oid: String,
+    pub last_modified: String,
+}
+
+fn latest_iso_date<'a>(dates: impl Iterator<Item = &'a str>) -> String {
+    dates
+        .filter(|d| !d.is_empty())
+        .max()
+        .unwrap_or_default()
+        .to_string()
 }
 
 /// Merge shard siblings into single quant entries with summed sizes.
@@ -89,12 +98,14 @@ pub fn aggregate_gguf_entries(
                         size_bytes: e.size,
                         url: build_hf_resolve_url(namespace, repo, &e.path_in_repo),
                         lfs_oid: e.lfs_oid.clone(),
+                        last_modified: e.last_modified.clone(),
                     }
                 })
                 .collect();
             shards.sort_by(|a, b| a.path_in_repo.cmp(&b.path_in_repo));
             let total: u64 = shards.iter().map(|s| s.size_bytes).sum();
             let first_url = shards.first().map(|s| s.url.clone()).unwrap_or_default();
+            let last_modified = latest_iso_date(shards.iter().map(|s| s.last_modified.as_str()));
             result.push(GgufFile {
                 r#type: quant,
                 size_bytes: total,
@@ -102,6 +113,7 @@ pub fn aggregate_gguf_entries(
                 lfs_oid: String::new(),
                 shards,
                 shard_count: 0,
+                last_modified,
             });
         } else if let Some(single) = single_entries.iter().min_by_key(|e| e.size) {
             result.push(GgufFile {
@@ -111,6 +123,7 @@ pub fn aggregate_gguf_entries(
                 lfs_oid: single.lfs_oid.clone(),
                 shards: Vec::new(),
                 shard_count: 1,
+                last_modified: single.last_modified.clone(),
             });
         }
     }
@@ -175,6 +188,8 @@ struct HfApiModelInfo {
     downloads: u64,
     #[serde(default)]
     likes: u64,
+    #[serde(default, rename = "lastModified")]
+    last_modified: String,
 }
 
 /// Extract GGUF files from a list of HF API siblings (aggregates shards per quant).
@@ -195,6 +210,7 @@ fn extract_gguf_files(siblings: &[HfSibling], model_id: &str) -> Vec<GgufFile> {
             size: sib.size,
             path_in_repo: sib.rfilename.clone(),
             lfs_oid: String::new(),
+            last_modified: String::new(),
         });
     }
     aggregate_gguf_entries(raw, namespace, repo)
@@ -395,6 +411,7 @@ async fn fetch_repo_gguf_files(
                         .as_ref()
                         .map(|l| l.oid.clone())
                         .unwrap_or_default(),
+                    last_modified: String::new(),
                 });
             }
         }
@@ -415,6 +432,112 @@ async fn fetch_repo_gguf_files(
     }
 
     Ok(aggregate_gguf_entries(raw_entries, namespace, repo))
+}
+
+/// Per-quant lastCommit.date — batched paths-info only (no tree re-fetch).
+/// Keys are quant tags (e.g. `Q4_K_M`); sharded quants use the latest shard date.
+pub async fn fetch_quant_last_modified(
+    model_id: &str,
+    paths: &[String],
+    token: Option<&str>,
+) -> Result<HashMap<String, String>, String> {
+    let parts: Vec<&str> = model_id.split('/').collect();
+    if parts.len() != 2 {
+        return Err(format!("Invalid model ID format: {model_id}"));
+    }
+    let (namespace, repo) = (parts[0], parts[1]);
+    if paths.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let client = build_client(token);
+    let path_dates = fetch_paths_last_modified(&client, namespace, repo, paths).await?;
+
+    let mut by_quant: HashMap<String, String> = HashMap::new();
+    for (path, date) in path_dates {
+        let filename = path.rsplit('/').next().unwrap_or(path.as_str());
+        let quant = model_catalog::extract_quant(filename);
+        by_quant
+            .entry(quant)
+            .and_modify(|existing| {
+                if date.as_str() > existing.as_str() {
+                    *existing = date.clone();
+                }
+            })
+            .or_insert(date);
+    }
+
+    Ok(by_quant)
+}
+
+const PATHS_INFO_BATCH: usize = 100;
+
+#[derive(Debug, Deserialize)]
+struct HfPathLastCommit {
+    date: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct HfPathInfoEntry {
+    path: String,
+    #[serde(default, rename = "lastCommit")]
+    last_commit: Option<HfPathLastCommit>,
+}
+
+/// Per-file lastCommit.date via HF paths-info (expand=true). Batched POST.
+async fn fetch_paths_last_modified(
+    client: &Client,
+    namespace: &str,
+    repo: &str,
+    paths: &[String],
+) -> Result<HashMap<String, String>, String> {
+    if paths.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let url = format!(
+        "https://huggingface.co/api/models/{namespace}/{repo}/paths-info/main"
+    );
+    let mut dates = HashMap::new();
+
+    for chunk in paths.chunks(PATHS_INFO_BATCH) {
+        let body = serde_json::json!({
+            "paths": chunk,
+            "expand": true,
+        });
+        let resp = client
+            .post(&url)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| format!("paths-info request failed: {e}"))?;
+
+        if !resp.status().is_success() {
+            log::warn!(
+                "paths-info returned {} for {}/{} ({} paths)",
+                resp.status(),
+                namespace,
+                repo,
+                chunk.len()
+            );
+            continue;
+        }
+
+        let entries: Vec<HfPathInfoEntry> = resp
+            .json()
+            .await
+            .map_err(|e| format!("Failed to parse paths-info response: {e}"))?;
+
+        for entry in entries {
+            if let Some(commit) = entry.last_commit {
+                if !commit.date.is_empty() {
+                    dates.insert(entry.path, commit.date);
+                }
+            }
+        }
+    }
+
+    Ok(dates)
 }
 
 fn update_checks_from_disk(
@@ -503,6 +626,7 @@ pub async fn get_model_info(model_id: &str, token: Option<&str>) -> Result<HfMod
         tags: api_model.tags,
         downloads: api_model.downloads,
         likes_count: api_model.likes,
+        last_modified: api_model.last_modified,
         gguf_files,
     })
 }
@@ -633,12 +757,14 @@ mod tests {
                 size: 1_000,
                 path_in_repo: "m-00002-of-00002.gguf".into(),
                 lfs_oid: "b".into(),
+                last_modified: "2026-03-01T00:00:00.000Z".into(),
             },
             RawGgufTreeEntry {
                 quant: "Q4_K_M".into(),
                 size: 2_000,
                 path_in_repo: "m-00001-of-00002.gguf".into(),
                 lfs_oid: "a".into(),
+                last_modified: "2026-03-02T00:00:00.000Z".into(),
             },
         ];
         let out = aggregate_gguf_entries(entries, "author", "repo");
@@ -647,6 +773,7 @@ mod tests {
         assert_eq!(out[0].shard_count, 2);
         assert_eq!(out[0].shards.len(), 2);
         assert_eq!(out[0].shards[0].path_in_repo, "m-00001-of-00002.gguf");
+        assert_eq!(out[0].last_modified, "2026-03-02T00:00:00.000Z");
     }
 
     #[test]
@@ -660,6 +787,7 @@ mod tests {
             lfs_oid: String::new(),
             shards: Vec::new(),
             shard_count: 1,
+            last_modified: String::new(),
         }];
         let disk = vec![
             DiskCheckResult {
@@ -689,18 +817,21 @@ mod tests {
                 size: 500,
                 path_in_repo: "model-Q4_K_M.gguf".into(),
                 lfs_oid: String::new(),
+                last_modified: String::new(),
             },
             RawGgufTreeEntry {
                 quant: "Q4_K_M".into(),
                 size: 1_000,
                 path_in_repo: "model-00001-of-00002.gguf".into(),
                 lfs_oid: String::new(),
+                last_modified: String::new(),
             },
             RawGgufTreeEntry {
                 quant: "Q4_K_M".into(),
                 size: 1_000,
                 path_in_repo: "model-00002-of-00002.gguf".into(),
                 lfs_oid: String::new(),
+                last_modified: String::new(),
             },
         ];
         let out = aggregate_gguf_entries(entries, "a", "b");

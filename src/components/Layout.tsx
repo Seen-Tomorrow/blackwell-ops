@@ -59,9 +59,9 @@ const tabs: { id: Tab; label: string; icon: string; hidden?: boolean }[] = [
   { id: "stack", label: "ENGINES", icon: "\uD83D\uDDA4" },
   { id: "telemetry", label: "TELEMETRY", icon: "\uD83D\uDCCA" },
   { id: "logs", label: "LOGS", icon: "\uD83D\uDCCD" },
-  { id: "intel", label: "INTEL", icon: "\uD83D\uDCF0" },
-  { id: "config", label: "CONFIG", icon: "\u2699" },
+  { id: "modelhub", label: "MODEL HUB", icon: "\u2B21" },
   { id: "extras", label: "EXTRAS", icon: "\u2726" },
+  { id: "config", label: "CONFIG", icon: "\u2699" },
   { id: "reactor11", label: "Reactor11", icon: "\u269B", hidden: true },
   { id: "sentinel", label: "SENTINEL", icon: "\u2694", hidden: true },
 ];
@@ -276,7 +276,7 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
                   void dispatchReplaySetupGuide();
                 }}
                 className="app-chrome-control-btn px-1.5 text-[8px] font-mono transition-colors leading-none text-nv-green/70 hover:text-nv-green"
-                title="Dev: first-run reset (paths → models/ only, clears meta cache, keeps providers/binaries, replays onboarding). Shift+click: onboarding UI only."
+                title="Dev: full first-run replay — same as CONFIG → RECOVERY → RESET CONFIG. Shift+click: onboarding UI only (keeps paths + metadata cache)."
               >
                 ↺ SETUP
               </button>
@@ -284,7 +284,7 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
                 type="button"
                 onClick={() => dispatchClearLocalStorage(true)}
                 className="app-chrome-control-btn px-1.5 text-[8px] font-mono transition-colors leading-none text-yellow-400/70 hover:text-yellow-400"
-                title="Dev: clear all BlackOps localStorage and reload"
+                title="Dev: clear BlackOps localStorage only (UI prefs) — does NOT reset config/ or replay setup. Use ↺ SETUP for fresh-install test."
               >
                 CLR LS
               </button>
@@ -342,7 +342,7 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
                 </span>
               )}
               <span>PLATFORM: WINDOWS</span>
-              <span>TOKIO: ACTIVE</span>
+              
             </>
           }
           foundrySlot={

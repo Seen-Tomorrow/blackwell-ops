@@ -11,15 +11,7 @@ export const CUDA_ARCH_BUILD_OPTIONS = [
 export const DEFAULT_CUDA_ARCH_CODES = CUDA_ARCH_BUILD_OPTIONS.map((o) => o.code);
 
 /** Provider cmake base — no CMAKE_CUDA_ARCHITECTURES (selected in Foundry modal). */
-export const DEFAULT_FOUNDRY_CMAKE_BASE = [
-  "-DGGML_CUDA=ON",
-  "-DGGML_CUDA_PEER_TO_PEER=ON",
-  "-DGGML_CUDA_FA_ALL_QUANTS=ON",
-  "-DGGML_AVX512=ON",
-  "-DGGML_NATIVE=ON",
-  '-DCMAKE_CUDA_FLAGS="-Xcompiler /wd4056 -Xcompiler /wd4756 --diag-suppress 221"',
-  "-Wno-dev",
-].join("\n");
+export const DEFAULT_FOUNDRY_CMAKE_BASE = ["-DGGML_CUDA=ON", "-DGGML_AVX512=ON"].join("\n");
 
 /** NVIDIA GPU generation labels for CMAKE_CUDA_ARCHITECTURES codes. */
 const CUDA_ARCH_FAMILY: Record<string, string> = {

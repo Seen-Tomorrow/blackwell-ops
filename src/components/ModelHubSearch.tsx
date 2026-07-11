@@ -40,6 +40,27 @@ function getDownloadParts(file: GgufFile): GgufShard[] {
   }];
 }
 
+function collectGgufRepoPaths(files: GgufFile[]): string[] {
+  const paths: string[] = [];
+  for (const file of files) {
+    for (const part of getDownloadParts(file)) {
+      if (part.pathInRepo) paths.push(part.pathInRepo);
+    }
+  }
+  return paths;
+}
+
+function applyQuantDates(info: HfModelInfo, dates: Record<string, string>): HfModelInfo {
+  if (!dates || Object.keys(dates).length === 0) return info;
+  return {
+    ...info,
+    gguf_files: info.gguf_files.map((file) => ({
+      ...file,
+      lastModified: dates[file.type] ?? file.lastModified,
+    })),
+  };
+}
+
 async function buildDownloadDestPath(modelId: string, pathInRepo: string): Promise<string> {
   const defaultPath = await invoke<string>('get_default_download_path');
   const { hfAuthor, repoName } = parseHfRepoParts(modelId);
@@ -94,6 +115,13 @@ function formatSize(bytes: number): string {
   return `${mb.toFixed(0)} MB`;
 }
 
+function formatQuantDate(iso?: string): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
 function getVramFitColor(sizeBytes: number, vramGb: number): string {
   if (!vramGb || sizeBytes === 0) return 'bg-stealth-muted/30';
   const sizeGb = sizeBytes / (1024 * 1024 * 1024);
@@ -133,6 +161,7 @@ export default function ModelHubSearch() {
   const [diskChecks, setDiskChecks] = useState<Map<string, DiskCheckResult> | null>(null);
   const [hfUpdates, setHfUpdates] = useState<HfRepoUpdateStatus | null>(null);
   const [checkingUpdates, setCheckingUpdates] = useState(false);
+  const [loadingQuantDates, setLoadingQuantDates] = useState(false);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const showToast = useCallback((msg: string) => {
@@ -146,40 +175,65 @@ export default function ModelHubSearch() {
   }, []);
 
   useEffect(() => {
-    if (!selectedId) { setDetailInfo(null); setDiskChecks(null); setHfUpdates(null); return; }
+    if (!selectedId) {
+      setDetailInfo(null);
+      setDiskChecks(null);
+      setHfUpdates(null);
+      setLoadingQuantDates(false);
+      return;
+    }
     let cancelled = false;
     setLoadingDetail(true);
+    setLoadingQuantDates(false);
     (async () => {
       try {
         const info = await invoke<HfModelInfo>('get_hf_model_info', {
           modelId: selectedId,
         });
-        if (!cancelled) {
-          setDetailInfo(info);
-          // Check disk presence for each GGUF file
-          if (info.gguf_files && info.gguf_files.length > 0) {
-            try {
-              const results = await invoke<DiskCheckResult[]>('check_hf_files_against_disk', {
-                ggufFiles: info.gguf_files,
-                hfModelId: info.id,
+        if (cancelled) return;
+
+        setDetailInfo(info);
+        setLoadingDetail(false);
+
+        if (info.gguf_files?.length) {
+          const paths = collectGgufRepoPaths(info.gguf_files);
+          if (paths.length > 0) {
+            setLoadingQuantDates(true);
+            invoke<Record<string, string>>('get_hf_quant_dates', {
+              modelId: selectedId,
+              paths,
+            })
+              .then((dates) => {
+                if (!cancelled) {
+                  setDetailInfo((prev) => (prev ? applyQuantDates(prev, dates) : prev));
+                }
+              })
+              .catch((e) => console.error('Quant date fetch failed:', e))
+              .finally(() => {
+                if (!cancelled) setLoadingQuantDates(false);
               });
+          }
+
+          invoke<DiskCheckResult[]>('check_hf_files_against_disk', {
+            ggufFiles: info.gguf_files,
+            hfModelId: info.id,
+          })
+            .then((results) => {
+              if (cancelled) return;
               const map = new Map<string, DiskCheckResult>();
               for (const r of results) {
                 map.set(r.quantType, r);
               }
-              if (!cancelled) setDiskChecks(map);
-            } catch (e) {
-              console.error('Disk check failed:', e);
-            }
-          }
+              setDiskChecks(map);
+            })
+            .catch((e) => console.error('Disk check failed:', e));
         }
       } catch (e) {
         console.error('Failed to load model info:', e);
         if (!cancelled) {
           showToast(`FAILED TO LOAD MODEL: ${typeof e === 'string' ? e : 'unknown error'}`);
+          setLoadingDetail(false);
         }
-      } finally {
-        if (!cancelled) setLoadingDetail(false);
       }
     })();
     return () => { cancelled = true; };
@@ -597,8 +651,11 @@ export default function ModelHubSearch() {
               )}
 
               <div>
-                <h3 className="text-[8px] font-mono text-nv-green tracking-wider uppercase mb-2">
-                  QUANTS ({selectedGgufFiles.length})
+                <h3 className="text-[8px] font-mono text-nv-green tracking-wider uppercase mb-2 flex items-center gap-2">
+                  <span>QUANTS ({selectedGgufFiles.length})</span>
+                  {loadingQuantDates && (
+                    <span className="text-stealth-muted/50 normal-case tracking-normal">dates…</span>
+                  )}
                 </h3>
 
                 <div className="max-h-[300px] overflow-y-auto eink-scrollbar pr-1">
@@ -621,6 +678,16 @@ export default function ModelHubSearch() {
                           <span className="text-[10px] font-mono text-stealth-muted/60 flex-shrink-0">
                             {formatSize(file.size_bytes)}
                           </span>
+                          {file.lastModified ? (
+                            <span
+                              className="shrink-0 text-[8px] font-mono text-stealth-muted/50"
+                              title={file.lastModified}
+                            >
+                              {formatQuantDate(file.lastModified)}
+                            </span>
+                          ) : loadingQuantDates ? (
+                            <span className="shrink-0 text-[8px] font-mono text-stealth-muted/30">…</span>
+                          ) : null}
                           {shards > 1 && (
                             <span className="shrink-0 rounded-sm border border-stealth-border/50 bg-stealth-surface/60 px-1 py-0.5 text-[8px] font-mono text-stealth-muted/70">
                               {shards} SHARDS

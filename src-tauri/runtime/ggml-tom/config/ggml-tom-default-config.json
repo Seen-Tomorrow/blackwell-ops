@@ -1,7 +1,7 @@
 {
   "binary_name": "llama-server.exe",
   "branch": "master",
-  "build_profile": "-DGGML_CUDA=ON\n-DGGML_CUDA_PEER_TO_PEER=ON\n-DGGML_CUDA_FA_ALL_QUANTS=ON\n-DGGML_AVX512=ON\n-DGGML_NATIVE=ON\n-DCMAKE_CUDA_FLAGS=\"-Xcompiler /wd4056 -Xcompiler /wd4756 --diag-suppress 221\"\n-Wno-dev",
+  "build_profile": "-DGGML_CUDA=ON\n-DGGML_AVX512=ON",
   "description": "TheTom turboquant fork — TQ kernels, fused MTP, Windows-first builds",
   "display_name": "GGML TomTQ",
   "git_url": "https://github.com/TheTom/llama-cpp-turboquant",

@@ -1120,6 +1120,32 @@ html, body, #root {
   background: color-mix(in srgb, #8a6020 24%, #ffffff 76%);
 }
 
+/* Foundry confirm — pre-build source vs binary revision banner */
+.foundry-source-banner--amber {
+  border-color: rgba(250, 204, 21, 0.45);
+  background: rgba(250, 204, 21, 0.08);
+  color: rgba(253, 224, 71, 0.95);
+  box-shadow: 0 0 18px rgba(250, 204, 21, 0.08);
+}
+
+.foundry-source-banner--cyan {
+  border-color: rgba(34, 211, 238, 0.4);
+  background: rgba(34, 211, 238, 0.07);
+  color: rgba(165, 243, 252, 0.95);
+}
+
+.foundry-source-banner--green {
+  border-color: rgba(118, 185, 0, 0.45);
+  background: rgba(118, 185, 0, 0.08);
+  color: rgba(163, 230, 53, 0.95);
+}
+
+.foundry-source-banner--muted {
+  border-color: rgba(148, 163, 184, 0.25);
+  background: rgba(15, 23, 42, 0.35);
+  color: rgba(148, 163, 184, 0.9);
+}
+
 /* Providers page — BUILD row action */
 .foundry-build-btn {
   display: inline-flex;
@@ -1402,7 +1428,7 @@ html, body, #root {
 }
 
 [data-theme="arctic"] .foundry-window__header--green {
-  background: color-mix(in srgb, #2a6b4a 88%, #ffffff 12%);
+  background: color-mix(in srgb, var(--theme-chip-solid-bg) 88%, #ffffff 12%);
   color: #f4f6f8;
 }
 
@@ -2148,39 +2174,39 @@ html, body, #root {
   animation: launchAckPulseSlate 0.14s ease-out;
 }
 
-/* ARCTIC — launch: opaque forest green on light brushed bezel */
+/* ARCTIC — launch: glacier steel on light brushed bezel */
 [data-theme="arctic"] .ignite-btn,
 [data-theme="arctic"] [data-config-panel] .config-launch-btn {
-  background: color-mix(in srgb, #166534 50%, #b0bcc6 50%);
-  border-color: color-mix(in srgb, #14532d 90%, transparent);
-  color: #052e16;
+  background: color-mix(in srgb, var(--theme-chip-solid-bg) 52%, #b0bcc6 48%);
+  border-color: color-mix(in srgb, #3d6f94 88%, transparent);
+  color: #0f2a40;
 }
 
 [data-theme="arctic"] .ignite-btn:hover:not(:disabled),
 [data-theme="arctic"] [data-config-panel] .config-launch-btn:hover:not(:disabled) {
-  background: color-mix(in srgb, #15803d 58%, #a4b2be 42%);
-  border-color: #14532d;
-  color: #022c15;
+  background: color-mix(in srgb, var(--theme-chip-solid-bg) 62%, #a4b2be 38%);
+  border-color: #3d6f94;
+  color: #0a2238;
 }
 
 [data-theme="arctic"] .ignite-btn:active:not(:disabled),
 [data-theme="arctic"] [data-config-panel] .config-launch-btn:active:not(:disabled) {
-  background: color-mix(in srgb, #14532d 65%, #98a8b4 35%);
-  border-color: #052e16;
+  background: color-mix(in srgb, #3d6f94 58%, #98a8b4 42%);
+  border-color: #1a3d5c;
 }
 
 @keyframes launchAckPulseArctic {
   0% {
-    border-color: color-mix(in srgb, #14532d 70%, transparent);
-    background-color: color-mix(in srgb, #166534 46%, #b0bcc6 54%);
+    border-color: color-mix(in srgb, #3d6f94 70%, transparent);
+    background-color: color-mix(in srgb, var(--theme-chip-solid-bg) 48%, #b0bcc6 52%);
   }
   40% {
-    border-color: #14532d;
-    background-color: color-mix(in srgb, #15803d 62%, #a4b2be 38%);
+    border-color: #3d6f94;
+    background-color: color-mix(in srgb, var(--theme-chip-solid-bg) 64%, #a4b2be 36%);
   }
   100% {
-    border-color: color-mix(in srgb, #14532d 70%, transparent);
-    background-color: color-mix(in srgb, #166534 46%, #b0bcc6 54%);
+    border-color: color-mix(in srgb, #3d6f94 70%, transparent);
+    background-color: color-mix(in srgb, var(--theme-chip-solid-bg) 48%, #b0bcc6 52%);
   }
 }
 
@@ -3834,29 +3860,30 @@ html[data-industrial-bezel="brush"] {
 /* ARCTIC frame textures — GRIT is smooth aluminium only; DIAMOND/BRUSH use lighter shadows. */
 [data-theme="arctic"] {
   --theme-industrial-texture-sandblast: none;
+  /* DIAMOND — whisper-light cool mesh on silver aluminium (not fence-dark) */
   --theme-industrial-texture-diamond:
     linear-gradient(
       180deg,
-      color-mix(in srgb, var(--theme-bezel-edge-hi) 18%, transparent) 0%,
+      color-mix(in srgb, var(--theme-bezel-edge-hi) 12%, transparent) 0%,
       transparent 12%,
       transparent 88%,
-      color-mix(in srgb, #000000 10%, transparent) 100%
+      color-mix(in srgb, #000000 8%, transparent) 100%
     ),
     repeating-linear-gradient(
       60deg,
       transparent 0px,
       transparent 2px,
-      color-mix(in srgb, var(--theme-bezel-grain) 95%, transparent) 2px,
+      rgba(130, 148, 164, 0.13) 2px,
       transparent 3px,
-      transparent 5px
+      transparent 6px
     ),
     repeating-linear-gradient(
       -60deg,
       transparent 0px,
       transparent 2px,
-      color-mix(in srgb, var(--theme-bezel-grain) 95%, transparent) 2px,
+      rgba(130, 148, 164, 0.13) 2px,
       transparent 3px,
-      transparent 5px
+      transparent 6px
     );
   --theme-industrial-texture-brush:
     linear-gradient(
@@ -6851,11 +6878,6 @@ button.engine-logs-slot-chip.engine-logs-slot-chip--active .engine-logs-slot-chi
   margin-top: 0;
 }
 
-[data-config-panel] .config-launch-dock .custom-flags-block.custom-flags-active,
-[data-config-panel] .config-launch-dock__flags-scroll .custom-flags-block.custom-flags-active {
-  border-color: rgba(184, 122, 0, 0.58);
-}
-
 [data-config-panel] .config-launch-dock .custom-flags-body,
 [data-config-panel] .config-launch-dock__flags-scroll .custom-flags-body {
   background: transparent;
@@ -6866,9 +6888,207 @@ button.engine-logs-slot-chip.engine-logs-slot-chip--active .engine-logs-slot-chi
   color: rgba(184, 122, 0, 0.72);
 }
 
-[data-config-panel] .config-launch-dock .custom-flags-active .custom-flags-label,
-[data-config-panel] .config-launch-dock__flags-scroll .custom-flags-active .custom-flags-label {
-  color: rgba(184, 122, 0, 0.95);
+/* Custom flags chrome tokens (config panel — not only dev builds) */
+[data-config-panel] {
+  --dev-rosso: #d40000;
+  --dev-rosso-deep: #8f0000;
+  --custom-flags-amber: #b45309;
+  --custom-flags-amber-deep: #92400e;
+}
+
+/* APPEND mode — solid amber chrome (matches launch button banner) */
+[data-config-panel] .custom-flags-block.custom-flags-active {
+  border-color: var(--custom-flags-amber);
+}
+
+[data-config-panel] .custom-flags-block.custom-flags-active .custom-flags-body {
+  background: var(--custom-flags-amber);
+}
+
+[data-config-panel] .custom-flags-block.custom-flags-active .custom-flags-label {
+  color: #fff;
+}
+
+[data-config-panel] .custom-flags-block.custom-flags-active .custom-flags-input {
+  background: var(--custom-flags-amber-deep);
+  border-color: #fde68a !important;
+  color: #fff;
+}
+
+[data-config-panel] .custom-flags-block.custom-flags-active .custom-flags-input::placeholder {
+  color: #fef3c7;
+}
+
+[data-config-panel] .custom-flags-block.custom-flags-active .mode-btn-add {
+  border-color: #fef3c7;
+  color: #fff;
+  background: var(--custom-flags-amber);
+}
+
+[data-config-panel] .custom-flags-block.custom-flags-active .mode-btn-replace {
+  border-color: #fde68a;
+  color: #fffbeb;
+  background: var(--custom-flags-amber-deep);
+}
+
+[data-config-panel] .custom-flags-block.custom-flags-active .mode-btn-off {
+  border-color: #fde68a;
+  color: #fffbeb;
+  background: var(--custom-flags-amber-deep);
+}
+
+/* REPLACE mode — dev rosso chrome; panel config is bypassed at launch */
+[data-config-panel] .custom-flags-block.custom-flags-replace {
+  border-color: var(--dev-rosso);
+}
+
+[data-config-panel] .custom-flags-block.custom-flags-replace .custom-flags-body {
+  background: var(--dev-rosso);
+}
+
+[data-config-panel] .custom-flags-block.custom-flags-replace .custom-flags-label {
+  color: #fff;
+}
+
+[data-config-panel] .custom-flags-block.custom-flags-replace .custom-flags-input {
+  background: var(--dev-rosso-deep);
+  border-color: #ffb4b4 !important;
+  color: #fff;
+}
+
+[data-config-panel] .custom-flags-block.custom-flags-replace .custom-flags-input::placeholder {
+  color: #ffc9c9;
+}
+
+[data-config-panel] .custom-flags-block.custom-flags-replace .mode-btn-replace {
+  border-color: #fff;
+  color: #fff;
+  background: var(--dev-rosso);
+}
+
+[data-config-panel] .custom-flags-block.custom-flags-replace .mode-btn-add {
+  border-color: #ffb4b4;
+  color: #ffe4e4;
+  background: var(--dev-rosso-deep);
+}
+
+[data-config-panel] .custom-flags-block.custom-flags-replace .mode-btn-off {
+  border-color: #ffb4b4;
+  color: #ffe4e4;
+  background: var(--dev-rosso-deep);
+}
+
+.config-panel-params--bypassed {
+  opacity: 0.38;
+  filter: saturate(0.25);
+  transition: opacity 0.2s ease, filter 0.2s ease;
+}
+
+.config-launch-btn--custom-active {
+  padding-top: 0;
+}
+
+.config-launch-btn__custom-warn {
+  display: block;
+  width: calc(100% + 1rem);
+  margin: -0.375rem -0.5rem 0.2rem;
+  padding: 3px 6px;
+  background: var(--dev-rosso);
+  color: #fff;
+  font-size: 6.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  line-height: 1.15;
+}
+
+.config-launch-btn__custom-warn--append {
+  background: var(--custom-flags-amber, #b45309);
+  color: #fff;
+}
+
+.config-replace-confirm {
+  border: 1px solid var(--dev-rosso);
+  background: var(--dev-rosso-shell, #120000);
+  backdrop-filter: blur(2px);
+}
+
+.config-replace-confirm__launch {
+  border: 1px solid var(--dev-rosso);
+  background: var(--dev-rosso);
+  color: #fff;
+}
+
+.config-replace-confirm__launch:hover {
+  background: var(--dev-rosso-deep);
+}
+
+.config-replace-confirm__cancel {
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.custom-flags-popover {
+  position: fixed;
+  z-index: 220;
+  transform: translateY(calc(-100% - 8px));
+  padding: 8px;
+  background: var(--theme-surface-inset, #0a0a0c);
+  border-color: rgba(184, 122, 0, 0.45);
+  box-shadow:
+    0 10px 28px rgba(0, 0, 0, 0.55),
+    0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
+.custom-flags-popover--append {
+  background: var(--custom-flags-amber-deep, #92400e);
+  border-color: var(--custom-flags-amber, #b45309);
+  box-shadow:
+    0 10px 28px rgba(0, 0, 0, 0.55),
+    0 0 0 1px var(--custom-flags-amber, #b45309);
+}
+
+.custom-flags-popover--replace {
+  background: var(--dev-rosso-deep);
+  border-color: var(--dev-rosso);
+  box-shadow:
+    0 10px 28px rgba(0, 0, 0, 0.6),
+    0 0 0 1px var(--dev-rosso);
+}
+
+.custom-flags-popover__input {
+  display: block;
+  min-height: 54px;
+  resize: vertical;
+  line-height: 1.35;
+  max-height: 140px;
+  background: rgba(0, 0, 0, 0.35);
+  border-color: rgba(184, 122, 0, 0.35);
+  color: var(--theme-text, #e8e8ec);
+}
+
+.custom-flags-popover--append .custom-flags-popover__input {
+  background: #000;
+  border-color: #fde68a;
+  color: #fff;
+}
+
+.custom-flags-popover--replace .custom-flags-popover__input {
+  background: #000;
+  border-color: #ffb4b4;
+  color: #fff;
+}
+
+.custom-flags-popover__hint {
+  color: var(--theme-text-muted, #9ca3af);
+}
+
+.custom-flags-popover--append .custom-flags-popover__hint {
+  color: #fef3c7;
+}
+
+.custom-flags-popover--replace .custom-flags-popover__hint {
+  color: #ffe0e0;
 }
 
 /* Mode toggle buttons inside Custom Flags */
@@ -7947,18 +8167,18 @@ select option {
   border-color: var(--theme-chip-solid-bg) !important;
 }
 
-[data-config-panel] .config-launch-dock .mode-btn-add,
-[data-config-panel] .config-launch-dock__flags-scroll .mode-btn-add {
+[data-config-panel] .config-launch-dock .custom-flags-block:not(.custom-flags-active):not(.custom-flags-replace) .mode-btn-add,
+[data-config-panel] .config-launch-dock__flags-scroll .custom-flags-block:not(.custom-flags-active):not(.custom-flags-replace) .mode-btn-add {
   background-color: color-mix(in srgb, #4ade80 14%, var(--theme-panel-accent) 86%) !important;
 }
 
-[data-config-panel] .config-launch-dock .mode-btn-replace,
-[data-config-panel] .config-launch-dock__flags-scroll .mode-btn-replace {
+[data-config-panel] .config-launch-dock .custom-flags-block:not(.custom-flags-active):not(.custom-flags-replace) .mode-btn-replace,
+[data-config-panel] .config-launch-dock__flags-scroll .custom-flags-block:not(.custom-flags-active):not(.custom-flags-replace) .mode-btn-replace {
   background-color: color-mix(in srgb, #f87171 14%, var(--theme-panel-accent) 86%) !important;
 }
 
-[data-config-panel] .config-launch-dock .mode-btn-off,
-[data-config-panel] .config-launch-dock__flags-scroll .mode-btn-off {
+[data-config-panel] .config-launch-dock .custom-flags-block:not(.custom-flags-active):not(.custom-flags-replace) .mode-btn-off,
+[data-config-panel] .config-launch-dock__flags-scroll .custom-flags-block:not(.custom-flags-active):not(.custom-flags-replace) .mode-btn-off {
   background-color: color-mix(in srgb, #b87a00 10%, var(--theme-panel-accent) 90%) !important;
 }
 
@@ -7976,8 +8196,8 @@ select option {
 [data-theme="arctic"] [data-config-panel] .config-launch-dock__alias input.value-chip,
 [data-theme="arctic"] [data-config-panel] .config-launch-dock__alias input.value-chip-active {
   background: color-mix(in srgb, #4a5a68 92%, #2a3540 8%) !important;
-  border-color: color-mix(in srgb, #3d4f5e 70%, #2a6b4a 30%) !important;
-  color: #eef2f6 !important;
+  border-color: color-mix(in srgb, #3d4f5e 68%, var(--theme-chip-solid-bg) 32%) !important;
+  color: #1a2330 !important;
 }
 
 [data-theme="arctic"] [data-config-panel] .config-launch-dock__alias input.value-chip-active.mono-user-input {
@@ -7996,32 +8216,64 @@ select option {
   color: #fecaca;
 }
 
-[data-theme="arctic"] [data-config-panel] .config-launch-dock .mode-btn-add,
-[data-theme="arctic"] [data-config-panel] .config-launch-dock__flags-scroll .mode-btn-add {
-  background-color: #0f3020 !important;
-  border-color: #1a5a3a !important;
-  color: #86efac !important;
+[data-theme="arctic"] [data-config-panel] .config-launch-dock .custom-flags-block:not(.custom-flags-active):not(.custom-flags-replace) .mode-btn-add,
+[data-theme="arctic"] [data-config-panel] .config-launch-dock__flags-scroll .custom-flags-block:not(.custom-flags-active):not(.custom-flags-replace) .mode-btn-add {
+  background-color: color-mix(in srgb, var(--theme-chip-solid-bg) 22%, #dce2ea 78%) !important;
+  border-color: color-mix(in srgb, var(--theme-chip-active-border) 70%, #b8c4d0 30%) !important;
+  color: #2a5070 !important;
 }
 
-[data-theme="arctic"] [data-config-panel] .config-launch-dock .mode-btn-replace,
-[data-theme="arctic"] [data-config-panel] .config-launch-dock__flags-scroll .mode-btn-replace {
+[data-theme="arctic"] [data-config-panel] .config-launch-dock .custom-flags-block:not(.custom-flags-active):not(.custom-flags-replace) .mode-btn-replace,
+[data-theme="arctic"] [data-config-panel] .config-launch-dock__flags-scroll .custom-flags-block:not(.custom-flags-active):not(.custom-flags-replace) .mode-btn-replace {
   background-color: #3a1818 !important;
   border-color: #6a2828 !important;
   color: #fca5a5 !important;
 }
 
-[data-theme="arctic"] [data-config-panel] .config-launch-dock__port .value-chip-active {
-  background: color-mix(in srgb, #1a5a3a 82%, #0f3020 18%) !important;
-  border-color: #144a30 !important;
-  color: #eef6f0 !important;
-  box-shadow: 0 0 0 1px color-mix(in srgb, #2a6b4a 35%, transparent) !important;
+/* Collapsed input only — APPEND/REPLACE chrome keeps amber/rosso tokens below */
+[data-theme="arctic"] [data-config-panel] .config-launch-dock .custom-flags-block:not(.custom-flags-active):not(.custom-flags-replace) .custom-flags-input,
+[data-theme="arctic"] [data-config-panel] .config-launch-dock__flags-scroll .custom-flags-block:not(.custom-flags-active):not(.custom-flags-replace) .custom-flags-input {
+  background: color-mix(in srgb, #4a5a68 90%, #2a3540 10%);
+  color: #1a2330;
+  border-color: color-mix(in srgb, #8a6020 45%, #3d4f5e 55%) !important;
 }
 
-[data-theme="arctic"] [data-config-panel] .config-launch-dock .custom-flags-input,
-[data-theme="arctic"] [data-config-panel] .config-launch-dock__flags-scroll .custom-flags-input {
-  background: color-mix(in srgb, #4a5a68 90%, #2a3540 10%);
-  color: #eef2f6;
-  border-color: color-mix(in srgb, #8a6020 45%, #3d4f5e 55%) !important;
+[data-theme="arctic"] [data-config-panel] .custom-flags-block.custom-flags-active .custom-flags-input {
+  background: var(--custom-flags-amber-deep) !important;
+  border-color: #fde68a !important;
+  color: #fff !important;
+}
+
+[data-theme="arctic"] [data-config-panel] .custom-flags-block.custom-flags-replace .custom-flags-input {
+  background: var(--dev-rosso-deep) !important;
+  border-color: #ffb4b4 !important;
+  color: #fff !important;
+}
+
+[data-theme="arctic"] [data-config-panel] .custom-flags-block.custom-flags-active .mode-btn-add {
+  background: var(--custom-flags-amber) !important;
+  border-color: #fef3c7 !important;
+  color: #fff !important;
+}
+
+[data-theme="arctic"] [data-config-panel] .custom-flags-block.custom-flags-active .mode-btn-replace,
+[data-theme="arctic"] [data-config-panel] .custom-flags-block.custom-flags-active .mode-btn-off {
+  background: var(--custom-flags-amber-deep) !important;
+  border-color: #fde68a !important;
+  color: #fffbeb !important;
+}
+
+[data-theme="arctic"] [data-config-panel] .custom-flags-block.custom-flags-replace .mode-btn-replace {
+  background: var(--dev-rosso) !important;
+  border-color: #fff !important;
+  color: #fff !important;
+}
+
+[data-theme="arctic"] [data-config-panel] .custom-flags-block.custom-flags-replace .mode-btn-add,
+[data-theme="arctic"] [data-config-panel] .custom-flags-block.custom-flags-replace .mode-btn-off {
+  background: var(--dev-rosso-deep) !important;
+  border-color: #ffb4b4 !important;
+  color: #ffe4e4 !important;
 }
 
 [data-config-panel] .config-params-scroll {
@@ -8110,13 +8362,26 @@ select option {
   animation: toastEnter 0.3s ease-out both;
 }
 
-/* FusionBooter — NVMe read hero: keep MiB/s digits inside the bordered block */
+/* FusionBooter — NVMe read hero: fixed MiB/s slot (no GiB flip / font resize during load) */
 .fusion-disk-hero {
   box-sizing: border-box;
 }
 
 .fusion-disk-hero > span {
   max-width: 100%;
+}
+
+.fusion-disk-hero__value {
+  font-size: clamp(1.55rem, 5vh, 2.25rem);
+  min-width: 7ch;
+}
+
+.fusion-disk-hero__mbit {
+  font-size: clamp(0.65rem, 1.65vh, 0.8rem);
+  min-width: 11ch;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  color: rgba(34, 211, 238, 0.62);
 }
 
 /* FusionBooter — animated GPU interconnect during model load */
@@ -8237,7 +8502,8 @@ body[data-onboarding-phase="paths"] [data-onboarding="add-folder"] {
   animation: onboarding-pulse 1.8s ease-in-out infinite;
 }
 
-body[data-onboarding-phase="scan-meta"] [data-onboarding="scan-meta"] {
+body[data-onboarding-phase="scan-meta"] [data-onboarding="scan-meta"],
+.foundry-toolchain-btn--cache-ready {
   animation: onboarding-pulse 1.8s ease-in-out infinite;
 }
 

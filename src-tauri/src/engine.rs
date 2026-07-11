@@ -283,6 +283,17 @@ pub async fn launch_engine(
         cmd_args.join(" ")
     );
 
+    if config.extra_params.get("__test_args").is_some() {
+        app.blackwell_output_console_manager.emit_line_to_category(
+            crate::output_console::BlackwellOutputConsoleCategory::Engines,
+            format!(
+                "[CUSTOM_FLAGS] {} — REPLACE mode: panel config bypassed; only custom flags used",
+                config.alias
+            ),
+            crate::output_console::BlackwellOutputConsoleLineStyle::Warning,
+        );
+    }
+
     // Emit full launch command to Blackwell Output Console (DEBUG category)
     app.blackwell_output_console_manager.emit_line_to_category(
         crate::output_console::BlackwellOutputConsoleCategory::Debug,

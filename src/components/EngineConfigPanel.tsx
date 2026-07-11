@@ -1,6 +1,7 @@
 // Model-specific parameter configuration and launch control.
 
-import { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { useState, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { createPortal } from "react-dom";
 import type { ConfigViewMode, ModelEntry, EngineConfig, GpuInfo, UserEditedTemplateParam, ProviderConfig, ProviderTemplate, StackEntry, SystemInfo } from "../lib/types";
 import { DEFAULT_PROVIDER_ID, isProfileBuilt, profileEnvLookup } from "../lib/types";
 import {
@@ -289,10 +290,16 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     return readStorage(KEYS.testFlagsOn) === "1";
   });
 
-  // Test flags mode: "add" (prepend to config) or "replace" (bypass all params)
+  // Test flags mode: "add" (append to config) or "replace" (bypass all params)
   const [testFlagsMode, setTestFlagsMode] = useState<"add" | "replace">(() => {
-    return readStorage(KEYS.testFlagsMode) === "add" ? "add" : "replace";
+    return readStorage(KEYS.testFlagsMode) === "replace" ? "replace" : "add";
   });
+  const [customFlagsEditorOpen, setCustomFlagsEditorOpen] = useState(false);
+  const [customFlagsDraft, setCustomFlagsDraft] = useState("");
+  const [customFlagsPopoverPos, setCustomFlagsPopoverPos] = useState({ top: 0, left: 0, width: 0 });
+  const customFlagsAnchorRef = useRef<HTMLDivElement>(null);
+  const customFlagsPopoverRef = useRef<HTMLDivElement>(null);
+  const [replaceLaunchConfirmOpen, setReplaceLaunchConfirmOpen] = useState(false);
 
   const [aliasInput, setAliasInput] = useState<string>("");
   const [aliasIsUserSet, setAliasIsUserSet] = useState(false);
@@ -693,49 +700,177 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     [config, allParamsResolved],
   );
 
-  const customFlagsBlock = useMemo(() => {
+  const customFlagsReplaceActive = testFlagsEnabled && testFlagsMode === "replace";
+  const customFlagsLaunchActive = testFlagsEnabled;
+  const paramsBypassedClass = customFlagsReplaceActive ? " config-panel-params--bypassed" : "";
+
+  useEffect(() => {
+    if (!customFlagsReplaceActive) {
+      setReplaceLaunchConfirmOpen(false);
+    }
+  }, [customFlagsReplaceActive]);
+
+  const closeCustomFlagsEditor = useCallback((save: boolean) => {
+    if (save) {
+      setTestFlags(customFlagsDraft);
+    }
+    setCustomFlagsEditorOpen(false);
+  }, [customFlagsDraft]);
+
+  const openCustomFlagsEditor = useCallback(() => {
+    if (customFlagsEditorOpen) return;
+    setCustomFlagsDraft(testFlags);
+    setCustomFlagsEditorOpen(true);
+  }, [testFlags, customFlagsEditorOpen]);
+
+  const updateCustomFlagsPopoverPos = useCallback(() => {
+    const anchor = customFlagsAnchorRef.current;
+    if (!anchor) return;
+    const rect = anchor.getBoundingClientRect();
+    setCustomFlagsPopoverPos({
+      top: rect.top,
+      left: rect.left,
+      width: rect.width,
+    });
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!customFlagsEditorOpen) return;
+    updateCustomFlagsPopoverPos();
+  }, [customFlagsEditorOpen, updateCustomFlagsPopoverPos]);
+
+  useEffect(() => {
+    if (!customFlagsEditorOpen) return;
+    const onResize = () => updateCustomFlagsPopoverPos();
+    window.addEventListener("resize", onResize);
+    window.addEventListener("scroll", onResize, true);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("scroll", onResize, true);
+    };
+  }, [customFlagsEditorOpen, updateCustomFlagsPopoverPos]);
+
+  useEffect(() => {
+    if (!customFlagsEditorOpen) return;
+    const onPointerDown = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (customFlagsAnchorRef.current?.contains(target)) return;
+      if (customFlagsPopoverRef.current?.contains(target)) return;
+      closeCustomFlagsEditor(true);
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeCustomFlagsEditor(true);
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [customFlagsEditorOpen, closeCustomFlagsEditor]);
+
+  const renderCustomFlagsBlock = useCallback(() => {
     if (configView !== "full") return null;
-    return (
-      <div className={`custom-flags-block border rounded-sm overflow-hidden ${testFlagsEnabled ? "custom-flags-active" : ""}`}>
-        <div className="custom-flags-body px-2 py-1 flex items-center gap-1.5 min-h-0">
-          <span className="text-[8px] font-mono uppercase tracking-wider shrink-0 custom-flags-label">
-            CUSTOM FLAGS
-          </span>
-          {testFlagsEnabled && (
-            <input
-              type="text"
-              value={testFlags}
-              onChange={(e) => setTestFlags(e.target.value)}
-              placeholder="-sm layer -smf32 1 ..."
-              className="custom-flags-input flex-1 min-w-0 border text-[8px] font-mono px-2 py-0 leading-none focus:outline-none rounded-sm border-amber-600/30 focus:border-amber-600/50 placeholder:text-stealth-muted/40"
+    const blockClass = customFlagsReplaceActive
+      ? "custom-flags-replace"
+      : testFlagsEnabled
+        ? "custom-flags-active"
+        : "";
+    const popover = customFlagsEditorOpen
+      ? createPortal(
+          <div
+            ref={customFlagsPopoverRef}
+            className={`custom-flags-popover border rounded-sm${
+              customFlagsReplaceActive
+                ? " custom-flags-popover--replace"
+                : " custom-flags-popover--append"
+            }`}
+            style={{
+              top: customFlagsPopoverPos.top,
+              left: customFlagsPopoverPos.left,
+              width: customFlagsPopoverPos.width,
+            }}
+            role="dialog"
+            aria-label="Edit custom flags"
+          >
+            <textarea
+              rows={3}
+              value={customFlagsDraft}
+              onChange={(e) => setCustomFlagsDraft(e.target.value)}
+              autoFocus
+              placeholder="-m model.gguf --split-mode layer -c 32768 ..."
+              className="custom-flags-popover__input w-full border text-[8px] font-mono px-2 py-1.5 leading-snug focus:outline-none rounded-sm"
             />
-          )}
-          <div className="flex items-center gap-1 shrink-0 ml-auto">
-            {testFlagsEnabled && (
-              <button
-                type="button"
-                onClick={() => setTestFlagsMode((m) => (m === "add" ? "replace" : "add"))}
-                className={`px-1.5 py-0 text-[7px] font-mono border rounded-sm transition-all duration-150 cursor-pointer ${
-                  testFlagsMode === "add" ? "mode-btn-add" : "mode-btn-replace"
-                }`}
-              >
-                {testFlagsMode === "add" ? "+ APPEND to config" : "= REPLACE config"}
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={() => setTestFlagsEnabled((v) => !v)}
-              className={`px-1.5 py-0 text-[7px] font-mono border rounded-sm transition-all duration-150 cursor-pointer ${
-                testFlagsEnabled ? "mode-btn-add" : "mode-btn-off"
-              }`}
-            >
-              {testFlagsEnabled ? "ON" : "OFF"}
-            </button>
+            <p className="custom-flags-popover__hint text-[6.5px] font-mono uppercase tracking-wide mt-1 opacity-70">
+              Click outside to save
+            </p>
+          </div>,
+          document.body,
+        )
+      : null;
+
+    return (
+      <>
+        <div ref={customFlagsAnchorRef} className="custom-flags-anchor relative">
+          <div className={`custom-flags-block border rounded-sm overflow-hidden ${blockClass}`}>
+            <div className="custom-flags-body px-2 py-1 flex items-center gap-1.5 min-h-0">
+              <span className="text-[8px] font-mono uppercase tracking-wider shrink-0 custom-flags-label">
+                CUSTOM FLAGS
+              </span>
+              {testFlagsEnabled && (
+                <input
+                  type="text"
+                  readOnly
+                  value={testFlags}
+                  onClick={openCustomFlagsEditor}
+                  onFocus={openCustomFlagsEditor}
+                  placeholder="-sm layer -smf32 1 ..."
+                  title="Click to open editor"
+                  className="custom-flags-input flex-1 min-w-0 border text-[8px] font-mono px-2 py-0 leading-none focus:outline-none rounded-sm border-amber-600/30 focus:border-amber-600/50 placeholder:text-stealth-muted/40 cursor-text"
+                />
+              )}
+              <div className="flex items-center gap-1 shrink-0 ml-auto">
+                {testFlagsEnabled && (
+                  <button
+                    type="button"
+                    onClick={() => setTestFlagsMode((m) => (m === "add" ? "replace" : "add"))}
+                    className={`px-1.5 py-0 text-[7px] font-mono border rounded-sm transition-all duration-150 cursor-pointer ${
+                      testFlagsMode === "add" ? "mode-btn-add" : "mode-btn-replace"
+                    }`}
+                  >
+                    {testFlagsMode === "add" ? "+ APPEND to config" : "= REPLACE config"}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCustomFlagsEditorOpen(false);
+                    setTestFlagsEnabled((v) => !v);
+                  }}
+                  className={`px-1.5 py-0 text-[7px] font-mono border rounded-sm transition-all duration-150 cursor-pointer ${
+                    testFlagsEnabled ? "mode-btn-add" : "mode-btn-off"
+                  }`}
+                >
+                  {testFlagsEnabled ? "ON" : "OFF"}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
+        {popover}
+      </>
     );
-  }, [configView, testFlags, testFlagsEnabled, testFlagsMode]);
+  }, [
+    configView,
+    testFlags,
+    testFlagsEnabled,
+    testFlagsMode,
+    customFlagsReplaceActive,
+    customFlagsEditorOpen,
+    customFlagsDraft,
+    customFlagsPopoverPos,
+    openCustomFlagsEditor,
+  ]);
 
   const shareLaunchConfig = useMemo((): FusionShareLaunchConfig => ({
     ctx: config.ctx,
@@ -1313,16 +1448,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     if (launchAckTimerRef.current) clearTimeout(launchAckTimerRef.current);
   }, []);
 
-  const handleAddToStack = useCallback(() => {
+  const performLaunch = useCallback(() => {
     if (!model) return;
-    if (selectedProfileIsBuilding) return;
-    if (tomMtpBlocked(effectiveBackendType, model)) {
-      dispatchAppEvent(EVENTS.launchError, { message: TOM_MTP_SKIP_MESSAGE });
-      return;
-    }
-    const now = Date.now();
-    if (now - lastLaunchAtRef.current < 60) return;
-    lastLaunchAtRef.current = now;
     pulseLaunchAck();
 
     const launchDraft = aliasFocused ? aliasInput : (aliasIsUserSet ? aliasInput : autoAlias);
@@ -1398,7 +1525,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       });
   }, [
     model,
-    selectedProfileIsBuilding,
     pulseLaunchAck,
     aliasInput,
     aliasIsUserSet,
@@ -1420,6 +1546,45 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     testFlags,
     testFlagsMode,
     onLaunch,
+  ]);
+
+  const acknowledgeReplaceLaunch = useCallback(() => {
+    try {
+      sessionStorage.setItem(KEYS.customFlagsReplaceAck, "1");
+    } catch { /* ignore quota / private mode */ }
+    setReplaceLaunchConfirmOpen(false);
+    performLaunch();
+  }, [performLaunch]);
+
+  const handleAddToStack = useCallback(() => {
+    if (!model) return;
+    if (selectedProfileIsBuilding) return;
+    if (tomMtpBlocked(effectiveBackendType, model)) {
+      dispatchAppEvent(EVENTS.launchError, { message: TOM_MTP_SKIP_MESSAGE });
+      return;
+    }
+    const now = Date.now();
+    if (now - lastLaunchAtRef.current < 60) return;
+    lastLaunchAtRef.current = now;
+
+    if (customFlagsReplaceActive) {
+      let acked = false;
+      try {
+        acked = sessionStorage.getItem(KEYS.customFlagsReplaceAck) === "1";
+      } catch { /* ignore */ }
+      if (!acked) {
+        setReplaceLaunchConfirmOpen(true);
+        return;
+      }
+    }
+
+    performLaunch();
+  }, [
+    model,
+    selectedProfileIsBuilding,
+    effectiveBackendType,
+    customFlagsReplaceActive,
+    performLaunch,
   ]);
 
   const launchDisabled =
@@ -1450,26 +1615,15 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     return () => window.removeEventListener(EVENTS.launchEngine, handler);
   }, [handleAddToStack]);
 
-  // ── Empty state (setup guide still uses the VRAM display) ─────────────────
-  if (!model && !setupGuide.active) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full text-stealth-muted font-mono">
-        <div className="text-center config-empty-enter">
-          <div className="text-3xl mb-3 text-stealth-muted/40">⬡</div>
-          <p className="text-xs tracking-widest uppercase">SELECT A MODEL</p>
-          <p className="text-[9px] mt-1 opacity-50">Choose from the catalog to configure</p>
-        </div>
-      </div>
-    );
-  }
-
   const onboardingDisplay = onboardingDisplayClasses(setupGuide);
 
-  if (!model && setupGuide.active) {
+  // Onboarding owns the phosphor panel — hide provider/profile/config chrome until dismiss.
+  if (setupGuide.active) {
     return (
       <div
         className="flex flex-col h-full min-h-0 overflow-hidden"
         data-config-panel
+        data-onboarding-active
       >
         <div
           className={onboardingDisplay.area}
@@ -1484,20 +1638,36 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                 <SetupGuideDisplay
                   phase={setupGuide.phase}
                   pathsDone={setupGuide.pathsDone}
-                  toolchainDone={setupGuide.toolchainDone}
+                  toolchainSkipped={setupGuide.toolchainSkipped}
                   runtimeReady={setupGuide.runtimeReady}
+                  toolchainChecked={setupGuide.toolchainChecked}
+                  toolchainBusy={setupGuide.toolchainBusy}
                   modelsDeferred={setupGuide.modelsDeferred}
                   metaDone={setupGuide.metaDone}
                   metaScanFailed={setupGuide.metaScanFailed}
                   modelsCount={setupGuide.modelsCount}
                   scannedCount={setupGuide.scannedCount}
+                  catalogLoaded={setupGuide.catalogLoaded}
                   onDeferModels={setupGuide.deferModels}
                   onSkipToolchain={setupGuide.skipToolchain}
+                  onSkipMetaScan={setupGuide.skipMetaScan}
                   onDismiss={setupGuide.dismiss}
                 />
               )}
             </div>
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!model) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full text-stealth-muted font-mono">
+        <div className="text-center config-empty-enter">
+          <div className="text-3xl mb-3 text-stealth-muted/40">⬡</div>
+          <p className="text-xs tracking-widest uppercase">SELECT A MODEL</p>
+          <p className="text-[9px] mt-1 opacity-50">Choose from the catalog to configure</p>
         </div>
       </div>
     );
@@ -1591,7 +1761,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       )}
 
       {aboveGroupKeys.length > 0 && (
-        <div className="config-params-above relative">
+        <div className={`config-params-above relative${paramsBypassedClass}`}>
           <ConfigBelowGroups
             zone="above"
             columnCount={2}
@@ -1613,7 +1783,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         className={onboardingDisplay.area}
         data-display-texture={displayTexture}
       >
-        {model && !setupGuide.active && gpus.length > 0 && (
+        {model && gpus.length > 0 && (
           <GpuAssignPanel
             gpus={gpus}
             deviceValue={config.device}
@@ -1644,31 +1814,11 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                 />
               )}
               <div
-                key={setupGuide.active ? "setup-phosphor" : "forecast-phosphor"}
+                key="forecast-phosphor"
                 className="phosphor-screen-inner phosphor-display-surface vram-forecast-display"
               >
                 <DisplayGlitchOverlay />
-                {setupGuide.active ? (
-                  setupGuide.showWelcome ? (
-                    <WelcomeAnimation onComplete={setupGuide.completeWelcome} />
-                  ) : (
-                    <SetupGuideDisplay
-                      phase={setupGuide.phase}
-                      pathsDone={setupGuide.pathsDone}
-                      toolchainDone={setupGuide.toolchainDone}
-                      runtimeReady={setupGuide.runtimeReady}
-                      modelsDeferred={setupGuide.modelsDeferred}
-                      metaDone={setupGuide.metaDone}
-                      metaScanFailed={setupGuide.metaScanFailed}
-                      modelsCount={setupGuide.modelsCount}
-                      scannedCount={setupGuide.scannedCount}
-                      onDeferModels={setupGuide.deferModels}
-                      onSkipToolchain={setupGuide.skipToolchain}
-                      onDismiss={setupGuide.dismiss}
-                    />
-                  )
-                ) : (
-                  <VramBadge
+                <VramBadge
                     manifest={vramCalc.manifest}
                     gpus={gpus}
                     selectedGpuIndices={selectedGpuIndices.length > 0 ? selectedGpuIndices : undefined}
@@ -1729,7 +1879,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                     launchConfig={shareLaunchConfig}
                     hwTopo={shareHwTopo}
                   />
-                )}
               </div>
           </div>
 
@@ -1755,6 +1904,10 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             onChange={(view) => {
               setConfigView(view);
               saveConfigView(effectiveBackendType, view);
+              if (view === "essentials") {
+                setTestFlagsEnabled(false);
+                setCustomFlagsEditorOpen(false);
+              }
             }}
           />
           <div className="config-column-count flex items-center gap-0.5">
@@ -1792,7 +1945,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           </button>
         </div>
       )}
-      <div className="config-params-scroll px-4 py-3 relative flex-1 overflow-y-auto eink-scrollbar eink-panel min-h-0">
+      <div className={`config-params-scroll px-4 py-3 relative flex-1 overflow-y-auto eink-scrollbar eink-panel min-h-0${paramsBypassedClass}`}>
         {allParamsForDisplay.length === 0 ? (
           <div className="text-stealth-muted text-[10px] font-mono opacity-50">NO PARAMS DEFINED</div>
         ) : belowGroupKeys.length === 0 ? null : (
@@ -1811,8 +1964,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           />
         )}
 
-        {uiDensityCompact && customFlagsBlock ? (
-          <div className="config-launch-dock__flags-scroll">{customFlagsBlock}</div>
+        {uiDensityCompact && configView === "full" ? (
+          <div className="config-launch-dock__flags-scroll">{renderCustomFlagsBlock()}</div>
         ) : null}
 
       </div>
@@ -1886,16 +2039,64 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                   </div>
                 )}
               </div>
-              {!uiDensityCompact && customFlagsBlock}
+              {!uiDensityCompact && renderCustomFlagsBlock()}
             </div>
-            <div className="config-launch-dock__action">
+            <div className="config-launch-dock__action relative">
+              {replaceLaunchConfirmOpen && (
+                <div
+                  className="config-replace-confirm absolute inset-0 z-10 flex flex-col justify-center gap-2 rounded-sm px-2 py-2"
+                  role="alertdialog"
+                  aria-labelledby="replace-confirm-title"
+                >
+                  <p
+                    id="replace-confirm-title"
+                    className="text-[7px] font-mono leading-snug text-white/95"
+                  >
+                    <span className="uppercase tracking-wide font-semibold">Replace mode</span>
+                    {" — "}
+                    panel settings are ignored. Only your custom flags are sent to the engine.
+                  </p>
+                  <div className="flex gap-1.5">
+                    <button
+                      type="button"
+                      onClick={acknowledgeReplaceLaunch}
+                      className="config-replace-confirm__launch flex-1 px-2 py-1 text-[7px] font-mono uppercase tracking-wide rounded-sm"
+                    >
+                      Launch anyway
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setReplaceLaunchConfirmOpen(false)}
+                      className="config-replace-confirm__cancel px-2 py-1 text-[7px] font-mono uppercase tracking-wide rounded-sm"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
               <button
                 onClick={handleAddToStack}
                 disabled={launchDisabled}
-                className={`w-full h-full min-h-[2.75rem] min-w-0 ignite-btn config-launch-btn px-2 py-1.5 text-[11px] font-mono tracking-[0.18em] rounded-sm disabled:opacity-40 disabled:cursor-not-allowed flex flex-col items-center justify-center gap-0.5 ${launchAck ? "launch-ack" : ""}`}
+                title={
+                  customFlagsReplaceActive
+                    ? "REPLACE mode — panel config is bypassed; only custom flags are used"
+                    : customFlagsLaunchActive
+                      ? "APPEND mode — custom flags are added to panel config"
+                      : undefined
+                }
+                className={`w-full h-full min-h-[2.75rem] min-w-0 ignite-btn config-launch-btn px-2 py-1.5 text-[11px] font-mono tracking-[0.18em] rounded-sm disabled:opacity-40 disabled:cursor-not-allowed flex flex-col items-stretch justify-center gap-0.5 overflow-hidden ${launchAck ? "launch-ack" : ""}${customFlagsLaunchActive ? " config-launch-btn--custom-active" : ""}`}
               >
-                <span>LAUNCH ENGINE</span>
-                <span className="config-launch-btn__hint text-[7px] font-mono tracking-wider normal-case font-normal">
+                {customFlagsLaunchActive && (
+                  <span
+                    className={`config-launch-btn__custom-warn uppercase tracking-wide${
+                      customFlagsReplaceActive ? "" : " config-launch-btn__custom-warn--append"
+                    }`}
+                  >
+                    Custom engine config active
+                  </span>
+                )}
+                <span className="text-center">LAUNCH ENGINE</span>
+                <span className="config-launch-btn__hint text-[7px] font-mono tracking-wider normal-case font-normal text-center">
                   Ctrl+Enter
                 </span>
               </button>

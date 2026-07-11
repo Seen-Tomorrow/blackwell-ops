@@ -24,7 +24,7 @@ export interface CachedToolchainArchive {
 
 export interface ToolchainInstallInfo {
   app_root: string;
-  extract_target: string;
+  archive_cache_dir: string;
   toolchain_dir: string;
   release_url: string;
   archive_name: string;
@@ -49,7 +49,6 @@ interface FoundryToolchainPanelProps {
   requiredProfile?: Env;
   onReadyChange?: (ready: boolean) => void;
   onInstallStatusChange?: (status: { foundryReady: boolean; runtimeReady: boolean }) => void;
-  onSkip?: () => void;
 }
 
 const ACTIVE_TOOLCHAIN_STATUSES: DownloadStatus[] = [
@@ -77,12 +76,12 @@ export default function FoundryToolchainPanel({
   requiredProfile,
   onReadyChange,
   onInstallStatusChange,
-  onSkip,
 }: FoundryToolchainPanelProps) {
   const [info, setInfo] = useState<ToolchainInstallInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionError, setActionError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [showManual, setShowManual] = useState(false);
   const toolchainDownloads = useDownloadTasks("toolchain");
 
   const activeTask = toolchainDownloads.find((t) =>
@@ -154,22 +153,22 @@ export default function FoundryToolchainPanel({
     }
   }, [info?.release_url]);
 
-  const handleCopyPath = useCallback(async () => {
-    if (!info?.extract_target) return;
+  const handleCopyCachePath = useCallback(async () => {
+    if (!info?.archive_cache_dir) return;
     setActionError(null);
     try {
-      await navigator.clipboard.writeText(info.extract_target);
+      await navigator.clipboard.writeText(info.archive_cache_dir);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 2000);
     } catch (e) {
       setActionError(`Failed to copy path: ${e}`);
     }
-  }, [info?.extract_target]);
+  }, [info?.archive_cache_dir]);
 
-  const handleOpenFolder = useCallback(async () => {
+  const handleOpenCacheFolder = useCallback(async () => {
     setActionError(null);
     try {
-      await invoke("foundry_open_toolchain_install_folder");
+      await invoke("foundry_open_toolchain_cache_folder");
     } catch (e) {
       setActionError(String(e));
     }
@@ -214,7 +213,7 @@ export default function FoundryToolchainPanel({
   const packActive =
     Boolean(busyTask) ||
     (activeTask?.status === "failed" && activeTask.quantType === "full");
-  const canReextract = Boolean(cached) && !info.all_ready && !downloading;
+  const canInstallFromCache = Boolean(cached) && !downloading;
 
   const statusLabel = info.all_ready
     ? "READY"
@@ -312,9 +311,13 @@ export default function FoundryToolchainPanel({
                 {info.archive_name}
               </span>
               <span className="text-[7px] font-mono text-stealth-muted">
-                {info.compressed_size_label} download · {info.uncompressed_size_label} extracted
+                {info.compressed_size_label} download · {info.uncompressed_size_label} installed
               </span>
             </div>
+            <p className="text-[7px] font-mono text-white/60 leading-relaxed">
+              One-click download extracts automatically. Already have the archive? Drop it in the cache
+              folder and use Install from cache.
+            </p>
             <div className="flex flex-wrap gap-1.5">
               <button
                 type="button"
@@ -336,86 +339,103 @@ export default function FoundryToolchainPanel({
                     ? "INSTALLED"
                     : `DOWNLOAD ${info.archive_name.toUpperCase()}`}
               </button>
-              {canReextract && (
-                <button
-                  type="button"
-                  onClick={() => void handleReextract()}
-                  className="foundry-toolchain-btn foundry-toolchain-btn--neutral"
-                  title={
-                    cached?.location === "cache"
-                      ? "Re-extract from cached archive (no download)"
-                      : "Re-extract from local copy (no download)"
-                  }
-                >
-                  RE-EXTRACT
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => void handleReextract()}
+                disabled={!canInstallFromCache || info.all_ready}
+                className={`foundry-toolchain-btn ${
+                  cached && !info.all_ready && !downloading
+                    ? "catalog-scan-btn foundry-toolchain-btn--action foundry-toolchain-btn--cache-ready"
+                    : "foundry-toolchain-btn--neutral"
+                }`}
+                title={
+                  cached
+                    ? cached.location === "cache"
+                      ? "Extract toolchain.7z from cache (no download)"
+                      : "Extract local copy (no download)"
+                    : `Place ${info.archive_name} in the cache folder, then click here`
+                }
+              >
+                INSTALL FROM CACHE
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowManual((v) => !v)}
+                className={`foundry-toolchain-btn foundry-toolchain-btn--neutral${
+                  showManual ? " ring-1 ring-telemetry-cyan/50" : ""
+                }`}
+              >
+                {showManual ? "HIDE MANUAL" : "MANUAL"}
+              </button>
             </div>
           </div>
 
-          <details className="text-[8px] font-mono text-white/60">
-            <summary className="cursor-pointer text-stealth-muted hover:text-white/80">
-              Manual install (.7z)
-            </summary>
-            <ol className="foundry-toolchain-install-guide__body list-decimal list-inside space-y-1 mt-1.5 text-white/65 leading-relaxed">
-              <li>Download {info.archive_name} from the GitHub release into the app folder below.</li>
-              <li>Right-click the .7z → 7-Zip (or WinRAR / PeaZip / 7-Zip File Manager) → Extract Here.</li>
-              <li className="text-[7px] opacity-70">The one-click download uses the bundled 7z from bin/ (always available).</li>
-              <li>Confirm <span className="text-nv-green">toolchain\manifest.json</span> exists, then Re-check.</li>
-            </ol>
-          </details>
+          {showManual && (
+            <div className="foundry-toolchain-install-guide border border-stealth-border/40 bg-black/25 rounded-sm p-2.5 space-y-2">
+              <p className="text-[8px] font-mono text-stealth-muted uppercase tracking-wide">
+                Manual install
+              </p>
+              <ol className="foundry-toolchain-install-guide__body list-decimal list-inside space-y-1 text-[8px] font-mono text-white/65 leading-relaxed">
+                <li>
+                  Download <span className="text-nv-green">{info.archive_name}</span> from the GitHub
+                  release (or use Download above).
+                </li>
+                <li>
+                  Place the file in the cache folder below — do not extract it yourself.
+                </li>
+                <li>
+                  Click <span className="text-nv-green">Install from cache</span> — the app extracts
+                  and verifies into <span className="text-nv-green">toolchain\</span> automatically.
+                </li>
+              </ol>
 
-          <div className="rounded-sm border border-stealth-border/50 bg-black/30 px-2 py-1.5 space-y-0.5">
-            <div className="text-[7px] font-mono text-stealth-muted uppercase">App folder</div>
-            <div className="text-[8px] font-mono text-telemetry-cyan break-all">{info.extract_target}</div>
-            {!info.manifest_present && (
-              <div className="text-[7px] font-mono text-red-400/80">
-                manifest.json not found yet
+              <div className="rounded-sm border border-stealth-border/50 bg-black/30 px-2 py-1.5 space-y-0.5">
+                <div className="text-[7px] font-mono text-stealth-muted uppercase">Cache folder</div>
+                <div className="text-[8px] font-mono text-telemetry-cyan break-all">
+                  {info.archive_cache_dir}
+                </div>
+                {!info.manifest_present && (
+                  <div className="text-[7px] font-mono text-stealth-muted/80">
+                    {cached
+                      ? `${info.archive_name} found — click Install from cache`
+                      : `Waiting for ${info.archive_name} in cache`}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
 
-          <div className="foundry-toolchain-install-guide__actions flex flex-wrap gap-1.5 pt-0.5">
-            <button
-              type="button"
-              onClick={() => void handleOpenRelease()}
-              className="foundry-toolchain-btn foundry-toolchain-btn--link"
-            >
-              OPEN RELEASE PAGE
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleCopyPath()}
-              className="foundry-toolchain-btn foundry-toolchain-btn--neutral"
-            >
-              {copied ? "COPIED" : "COPY PATH"}
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleOpenFolder()}
-              className="foundry-toolchain-btn foundry-toolchain-btn--neutral"
-            >
-              OPEN FOLDER
-            </button>
-            <button
-              type="button"
-              onClick={() => void refresh()}
-              disabled={loading || downloading}
-              className="foundry-toolchain-btn foundry-toolchain-btn--action"
-            >
-              {loading ? "CHECKING…" : "RE-CHECK"}
-            </button>
-            {onboarding && onSkip && !info.all_ready && (
-              <button
-                type="button"
-                onClick={onSkip}
-                disabled={downloading}
-                className="foundry-toolchain-btn foundry-toolchain-btn--neutral"
-              >
-                SKIP FOR NOW
-              </button>
-            )}
-          </div>
+              <div className="foundry-toolchain-install-guide__actions flex flex-wrap gap-1.5 pt-0.5">
+                <button
+                  type="button"
+                  onClick={() => void handleOpenCacheFolder()}
+                  className="foundry-toolchain-btn foundry-toolchain-btn--neutral"
+                >
+                  OPEN CACHE FOLDER
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleCopyCachePath()}
+                  className="foundry-toolchain-btn foundry-toolchain-btn--neutral"
+                >
+                  {copied ? "COPIED" : "COPY CACHE PATH"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleOpenRelease()}
+                  className="foundry-toolchain-btn foundry-toolchain-btn--link"
+                >
+                  OPEN RELEASE PAGE
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void refresh()}
+                  disabled={loading || downloading}
+                  className="foundry-toolchain-btn foundry-toolchain-btn--action"
+                >
+                  {loading ? "CHECKING…" : "RE-CHECK"}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

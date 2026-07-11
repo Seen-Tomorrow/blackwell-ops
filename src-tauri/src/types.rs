@@ -615,6 +615,9 @@ pub struct GgufShard {
     pub url: String,
     #[serde(default, rename = "lfsOid")]
     pub lfs_oid: String,
+    /// ISO-8601 commit date from HF paths-info (per shard).
+    #[serde(default, rename = "lastModified")]
+    pub last_modified: String,
 }
 
 /// A single GGUF quantization variant available for download.
@@ -633,6 +636,9 @@ pub struct GgufFile {
     /// 1 for single-file quants; >1 when `shards` is populated.
     #[serde(default = "default_shard_count", rename = "shardCount")]
     pub shard_count: u32,
+    /// ISO-8601 commit date — latest shard date when sharded.
+    #[serde(default, rename = "lastModified")]
+    pub last_modified: String,
 }
 
 fn default_shard_count() -> u32 {
@@ -663,6 +669,7 @@ impl GgufFile {
             size_bytes: self.size_bytes,
             url: self.url.clone(),
             lfs_oid: self.lfs_oid.clone(),
+            last_modified: self.last_modified.clone(),
         }]
     }
 }
@@ -842,6 +849,9 @@ pub struct HfModelInfo {
     #[serde(default)]
     pub downloads: u64,
     pub likes_count: u64,
+    /// Repo-level lastModified from HF model metadata.
+    #[serde(default, rename = "lastModified")]
+    pub last_modified: String,
     /// All GGUF files available for this model.
     pub gguf_files: Vec<GgufFile>,
 }

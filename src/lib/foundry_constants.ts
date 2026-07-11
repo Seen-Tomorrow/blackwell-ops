@@ -126,6 +126,8 @@ export const TOOLCHAIN_ARCHIVE_PARTS = [TOOLCHAIN_ARCHIVE_NAME] as const;
  *  + CUDA Compatibility guide. Newer drivers always work.
  *  frontier (13.3) → prefer recent driver (R610+); 13.x floor 580.
  */
+export const NVIDIA_DRIVERS_URL = "https://www.nvidia.com/en-us/drivers/";
+
 export const CUDA_MIN_DRIVER_MAJOR: Record<string, number> = {
   "13.3": 610,
   "13": 580,

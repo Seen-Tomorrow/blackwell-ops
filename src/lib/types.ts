@@ -278,6 +278,18 @@ export interface ProviderDefaultParam extends Omit<UserEditedTemplateParam, 'val
   hidden_default?: boolean;
 }
 
+/** Pre-build source/binary revision check — shown on Foundry confirm modal. */
+export interface FoundrySourcePreview {
+  status: "up_to_date" | "update_available" | "first_clone" | "binary_stale" | "no_binary" | "offline" | "unknown";
+  branch: string;
+  local_commit?: string | null;
+  remote_commit?: string | null;
+  installed_version?: string | null;
+  installed_commit?: string | null;
+  message: string;
+  banner_tone: "green" | "amber" | "cyan" | "muted";
+}
+
 /** Build metadata extracted from a compiled binary via --version + file mtime. */
 export interface BuildInfo {
   version: string;
@@ -795,6 +807,7 @@ export interface GgufShard {
   size_bytes: number;
   url: string;
   lfsOid?: string;
+  lastModified?: string;
 }
 
 export interface GgufFile {
@@ -804,6 +817,7 @@ export interface GgufFile {
   lfsOid?: string;     // LFS content hash for incremental scan
   shards?: GgufShard[];
   shardCount?: number;
+  lastModified?: string;
 }
 
 export interface HfModel {
@@ -835,6 +849,7 @@ export interface HfModelInfo {
   tags: string[];
   downloads: number;
   likes_count: number;
+  last_modified?: string;
   gguf_files: GgufFile[];
 }
 

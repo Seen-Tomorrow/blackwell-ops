@@ -71,14 +71,10 @@ static CHILD_PIDS: std::sync::LazyLock<std::sync::Mutex<Vec<u32>>> =
     std::sync::LazyLock::new(|| std::sync::Mutex::new(Vec::new()));
 
 const DEFAULT_CMAKE_FLAGS: &[(&str, &str)] = &[
-    ("ggml-llama", concat!(
-        "-DLLAMA_CURL=OFF ",
-        "-DGGML_CUDA=ON ",
-        "-DGGML_CUDA_PEER_TO_PEER=ON ",
-        "-DGGML_CUDA_FA_ALL_QUANTS=ON ",
-        "-DGGML_AVX512=ON ",
-        "-DGGML_NATIVE=ON"
-    )),
+    (
+        "ggml-llama",
+        concat!("-DLLAMA_CURL=OFF ", "-DGGML_CUDA=ON ", "-DGGML_AVX512=ON"),
+    ),
 ];
 
 fn get_default_cmake_flags(template_type: &str) -> &'static str {
@@ -188,9 +184,11 @@ fn foundry_src_dir(provider_id: &str) -> PathBuf {
 
 // ── State Machine ────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum BuildPhase {
     Idle,
+    GitClone,
+    GitPull,
     Configuring,
     WaitingForConfirm,
     Building,
@@ -204,6 +202,8 @@ impl BuildPhase {
     pub fn step_name(&self) -> &'static str {
         match self {
             Self::Idle => "Idle",
+            Self::GitClone => "GitClone",
+            Self::GitPull => "GitPull",
             Self::Configuring => "Configuring",
             Self::WaitingForConfirm => "WaitingForConfirm",
             Self::Building => "Building",
@@ -238,6 +238,39 @@ async fn require_build_state(context: &str) -> Result<BuildState, String> {
     snapshot_build_state()
         .await
         .ok_or_else(|| format!("Foundry build state missing ({context})"))
+}
+
+async fn set_build_phase(phase: BuildPhase) {
+    let mut current = CURRENT_BUILD.lock().await;
+    if let Some(ref mut s) = *current {
+        s.phase = phase;
+    }
+}
+
+fn spawn_repo_heartbeat(
+    app_handle: tauri::AppHandle,
+    action_label: &'static str,
+    watch_phase: BuildPhase,
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        let mut elapsed: u64 = 0;
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(15)).await;
+            elapsed += 15;
+            let state = match snapshot_build_state().await {
+                Some(s) if s.phase == watch_phase => s,
+                _ => break,
+            };
+            emit_build_event(
+                &app_handle,
+                &state,
+                Some(format!(
+                    "[STAGE 1/4] REPOSITORY — Still {}… {}s elapsed (slow internet is normal — do not close the app)",
+                    action_label, elapsed
+                )),
+            );
+        }
+    })
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -763,9 +796,22 @@ async fn run_foundry_build_worker(
             let _ = tokio::fs::remove_dir_all(&src_dir).await;
         }
 
+        set_build_phase(BuildPhase::GitClone).await;
+        if let Some(state) = snapshot_build_state().await {
+            emit_build_event(
+                app_handle,
+                &state,
+                Some(format!(
+                    "[STAGE 1/4] REPOSITORY — Cloning {} (branch {})… First download can take several minutes on slow internet.",
+                    git_url, branch
+                )),
+            );
+        }
+
         let clone_parent = engine_root.parent().ok_or_else(|| {
             format!("Invalid engine root (no parent): {}", engine_root.display())
         })?;
+        let heartbeat = spawn_repo_heartbeat(app_handle.clone(), "cloning repository", BuildPhase::GitClone);
         let clone_output = git_hidden_output(
             git_exe.clone(),
             clone_parent.to_path_buf(),
@@ -782,6 +828,7 @@ async fn run_foundry_build_worker(
         )
         .await
         .map_err(|e| format!("Git clone failed: {}", e))?;
+        heartbeat.abort();
 
         if !clone_output.status.success() {
             let stderr = String::from_utf8_lossy(&clone_output.stderr).to_string();
@@ -789,8 +836,28 @@ async fn run_foundry_build_worker(
             return Err(format!("Git clone failed: {}", stderr));
         }
 
-        emit_config_event(app_handle, &provider_id, &profile_id, build_id, Some("Repository cloned.".into()));
+        set_build_phase(BuildPhase::Configuring).await;
+        emit_config_event(
+            app_handle,
+            &provider_id,
+            &profile_id,
+            build_id,
+            Some("[STAGE 1/4] REPOSITORY — Clone complete.".into()),
+        );
     } else {
+        set_build_phase(BuildPhase::GitPull).await;
+        if let Some(state) = snapshot_build_state().await {
+            emit_build_event(
+                app_handle,
+                &state,
+                Some(format!(
+                    "[STAGE 1/4] REPOSITORY — Fetching latest changes for branch '{}'…",
+                    branch
+                )),
+            );
+        }
+
+        let heartbeat = spawn_repo_heartbeat(app_handle.clone(), "updating repository", BuildPhase::GitPull);
         let pull_output = git_hidden_output(
             git_exe.clone(),
             src_dir.clone(),
@@ -812,6 +879,7 @@ async fn run_foundry_build_worker(
             )
             .await;
         }
+        heartbeat.abort();
 
         if !pull_output.status.success() {
             let stderr = String::from_utf8_lossy(&pull_output.stderr).to_string();
@@ -819,7 +887,14 @@ async fn run_foundry_build_worker(
             return Err(format!("Git pull failed: {}", stderr));
         }
 
-        emit_config_event(app_handle, &provider_id, &profile_id, build_id, Some("Repository updated.".into()));
+        set_build_phase(BuildPhase::Configuring).await;
+        emit_config_event(
+            app_handle,
+            &provider_id,
+            &profile_id,
+            build_id,
+            Some("[STAGE 1/4] REPOSITORY — Repository updated.".into()),
+        );
     }
 
     // ── PR Patch Apply (optional) — URL or number format ─────────────
@@ -1001,7 +1076,7 @@ async fn run_foundry_build_worker(
     let num_cpus = max_cores_usize.unwrap_or(available).min(available).max(2);
 
     emit_config_event(app_handle, &provider_id, &profile_id, build_id, Some(format!(
-        "[STAGE 1/3] CMAKE CONFIGURE — {} cores detected", num_cpus
+        "[STAGE 2/4] CMAKE CONFIGURE — {} cores detected", num_cpus
     )));
 
     emit_config_event(app_handle, &provider_id, &profile_id, build_id, Some(format!(
@@ -1011,7 +1086,7 @@ async fn run_foundry_build_worker(
         profile.nvcc.display()
     )));
 
-    emit_config_event(app_handle, &provider_id, &profile_id, build_id, Some("[STAGE 1/3] CMAKE CONFIGURE — Reviewing flags below. Click PROCEED to start compilation.".into()));
+    emit_config_event(app_handle, &provider_id, &profile_id, build_id, Some("[STAGE 2/4] CMAKE CONFIGURE — Reviewing flags below. Click PROCEED to start compilation.".into()));
 
     let cuda_ver_short = profile.cuda_version_short();
     let toolset_flag = format!("-T \"cuda={}\"", cuda_ver_short);
@@ -1293,7 +1368,7 @@ async fn run_foundry_build_worker(
 
     if let Some(state) = snapshot_build_state().await {
         emit_build_event(app_handle, &state, Some(format!(
-            "[BUILD] Starting compilation with {} cores...", num_cpus
+            "[STAGE 3/4] BUILD — Starting compilation with {} cores...", num_cpus
         )));
     }
 
@@ -1382,7 +1457,7 @@ async fn run_foundry_build_worker(
         }
     }
     if let Some(state) = snapshot_build_state().await {
-        emit_build_event(app_handle, &state, Some("[STAGE 3/3] VALIDATE — Checking core binaries...".into()));
+        emit_build_event(app_handle, &state, Some("[STAGE 4/4] VALIDATE — Checking core binaries...".into()));
     }
 
     let core_binaries = ["llama-server.exe", "llama-cli.exe", "llama-quantize.exe"];
@@ -1587,6 +1662,257 @@ pub async fn foundry_cancel(
     }
 
     Ok(())
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct FoundrySourcePreview {
+    pub status: String,
+    pub branch: String,
+    pub local_commit: Option<String>,
+    pub remote_commit: Option<String>,
+    pub installed_version: Option<String>,
+    pub installed_commit: Option<String>,
+    pub message: String,
+    pub banner_tone: String,
+}
+
+fn short_commit_hash(hash: &str) -> String {
+    hash.trim().chars().take(8).collect()
+}
+
+fn extract_commit_from_build_version(version: &str) -> Option<String> {
+    let re = regex::Regex::new(r"\(([^)]+)\)").ok()?;
+    re.captures(version.trim())
+        .map(|caps| short_commit_hash(&caps[1]))
+}
+
+fn commits_match(a: &str, b: &str) -> bool {
+    let a = a.trim().to_lowercase();
+    let b = b.trim().to_lowercase();
+    if a.is_empty() || b.is_empty() {
+        return false;
+    }
+    a == b || a.starts_with(&b) || b.starts_with(&a)
+}
+
+async fn git_rev_parse_short(git_exe: &std::path::Path, repo_dir: &std::path::Path) -> Option<String> {
+    let output = git_hidden_output(
+        git_exe.to_path_buf(),
+        repo_dir.to_path_buf(),
+        vec!["rev-parse".into(), "--short=8".into(), "HEAD".into()],
+    )
+    .await
+    .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let hash = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if hash.is_empty() {
+        None
+    } else {
+        Some(hash)
+    }
+}
+
+async fn git_ls_remote_short(
+    git_exe: &std::path::Path,
+    git_url: &str,
+    branch: &str,
+) -> Option<String> {
+    let output = git_hidden_output(
+        git_exe.to_path_buf(),
+        std::env::temp_dir(),
+        vec![
+            "ls-remote".into(),
+            "--heads".into(),
+            git_url.into(),
+            branch.into(),
+        ],
+    )
+    .await
+    .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let line = stdout.lines().next()?.trim();
+    let hash = line.split_whitespace().next()?.trim();
+    if hash.is_empty() {
+        None
+    } else {
+        Some(short_commit_hash(hash))
+    }
+}
+
+#[tauri::command]
+pub async fn foundry_preview_source(
+    app: tauri::State<'_, crate::engine::AppContext>,
+    app_handle: tauri::AppHandle,
+    provider_id: String,
+    environment: String,
+) -> Result<FoundrySourcePreview, String> {
+    let profile_key = environment.to_ascii_lowercase();
+    let (git_url, branch, installed_version, installed_commit) = {
+        let cfg = app.config.lock().map_err(|e| e.to_string())?;
+        let provider = cfg
+            .providers
+            .iter()
+            .find(|p| p.id == provider_id)
+            .ok_or_else(|| format!("Provider '{}' not found", provider_id))?;
+        let branch = if provider.branch.trim().is_empty() {
+            "main".to_string()
+        } else {
+            provider.branch.clone()
+        };
+        let build_info = provider
+            .foundry_build_info_per_env
+            .get(&profile_key)
+            .or_else(|| provider.bundled_build_info_per_env.get(&profile_key));
+        let installed_version = build_info.map(|b| b.version.clone());
+        let installed_commit = installed_version
+            .as_deref()
+            .and_then(extract_commit_from_build_version);
+        (
+            provider.git_url.clone(),
+            branch,
+            installed_version,
+            installed_commit,
+        )
+    };
+
+    if git_url.trim().is_empty() {
+        return Ok(FoundrySourcePreview {
+            status: "unknown".into(),
+            branch,
+            local_commit: None,
+            remote_commit: None,
+            installed_version,
+            installed_commit,
+            message: "Provider has no git URL — cannot compare source revisions.".into(),
+            banner_tone: "muted".into(),
+        });
+    }
+
+    let src_dir = foundry_src_dir(&provider_id);
+    let has_repo = src_dir.join(".git").exists();
+    let git_exe = ensure_git_available(&app_handle).await.ok();
+
+    let local_commit = if has_repo {
+        match git_exe.as_ref() {
+            Some(exe) => git_rev_parse_short(exe, &src_dir).await,
+            None => None,
+        }
+    } else {
+        None
+    };
+
+    let remote_commit = if let Some(ref exe) = git_exe {
+        git_ls_remote_short(exe, git_url.trim(), branch.trim()).await
+    } else {
+        None
+    };
+
+    let remote_known = remote_commit.is_some();
+    let source_current = if remote_known {
+        local_commit
+            .as_deref()
+            .zip(remote_commit.as_deref())
+            .map(|(local, remote)| commits_match(local, remote))
+            .unwrap_or(false)
+    } else {
+        has_repo
+    };
+
+    let (status, message, banner_tone) = if !has_repo {
+        (
+            "first_clone",
+            format!(
+                "First build will clone {} @ {} — download can take several minutes on slow internet.",
+                git_url.trim(),
+                branch
+            ),
+            "cyan",
+        )
+    } else if remote_known
+        && local_commit.is_some()
+        && remote_commit.is_some()
+        && !commits_match(local_commit.as_deref().unwrap(), remote_commit.as_deref().unwrap())
+    {
+        (
+            "update_available",
+            format!(
+                "New commits on {} — local {} → remote {}. Build will pull before compile.",
+                branch,
+                local_commit.as_deref().unwrap_or("?"),
+                remote_commit.as_deref().unwrap_or("?")
+            ),
+            "cyan",
+        )
+    } else if source_current
+        && installed_commit.is_some()
+        && local_commit.is_some()
+        && commits_match(installed_commit.as_deref().unwrap(), local_commit.as_deref().unwrap())
+    {
+        (
+            "up_to_date",
+            format!(
+                "Your {} binary already matches the latest {} source (commit {}). Rebuild only if you changed CMake flags or GPU architectures.",
+                environment.to_uppercase(),
+                branch,
+                local_commit.as_deref().unwrap_or("?")
+            ),
+            "amber",
+        )
+    } else if source_current && installed_commit.is_none() {
+        (
+            "no_binary",
+            format!(
+                "Repository is current on {} ({}), but no {} Foundry binary is installed yet — build required.",
+                branch,
+                local_commit.as_deref().unwrap_or("?"),
+                environment.to_uppercase()
+            ),
+            "cyan",
+        )
+    } else if source_current {
+        (
+            "binary_stale",
+            format!(
+                "Repository is current on {} ({}), but your {} binary ({}) was built from a different revision — build recommended.",
+                branch,
+                local_commit.as_deref().unwrap_or("?"),
+                environment.to_uppercase(),
+                installed_version.as_deref().unwrap_or("unknown")
+            ),
+            "cyan",
+        )
+    } else if !remote_known {
+        (
+            "offline",
+            format!(
+                "Could not reach remote git (offline?). Local checkout: {}.",
+                local_commit.as_deref().unwrap_or("unknown")
+            ),
+            "muted",
+        )
+    } else {
+        (
+            "unknown",
+            "Could not determine whether a rebuild is needed.".into(),
+            "muted",
+        )
+    };
+
+    Ok(FoundrySourcePreview {
+        status: status.into(),
+        branch,
+        local_commit,
+        remote_commit,
+        installed_version,
+        installed_commit,
+        message: message.into(),
+        banner_tone: banner_tone.into(),
+    })
 }
 
 #[tauri::command]

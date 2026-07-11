@@ -1,7 +1,7 @@
 {
   "binary_name": "llama-server.exe",
   "branch": "master",
-  "build_profile": "-DGGML_CUDA=ON\n-DGGML_CUDA_PEER_TO_PEER=ON\n-DGGML_CUDA_FA_ALL_QUANTS=ON\n-DGGML_AVX512=ON\n-DGGML_NATIVE=ON\n-DCMAKE_CUDA_FLAGS=\"-Xcompiler /wd4056 -Xcompiler /wd4756 --diag-suppress 221\"\n-Wno-dev",
+  "build_profile": "-DGGML_CUDA=ON\n-DGGML_AVX512=ON",
   "description": "Official llama.cpp master build",
   "display_name": "GGML Master",
   "git_url": "https://github.com/ggml-org/llama.cpp",
@@ -12,19 +12,20 @@
     "FEATURE-FLAGS",
     "SPECULATIVE-DECODING",
     "DEV-WORKFLOW",
+    "USER-ADDED-FROM-CATALOG",
     "SYSTEM"
   ],
   "id": "ggml-master",
   "layoutDefaults": {
     "aboveColumnWidths": [
-      0.2932969614492709,
-      0.706703038550729
+      0.3440248023150586,
+      0.6559751976849414
     ],
     "configColumnCount": 3,
     "configColumnWidths": [
-      0.41638378995443703,
-      0.2764706827867255,
-      0.3071455272588375
+      0.38501364367274904,
+      0.325486536351863,
+      0.289499819975388
     ],
     "groupColumn": {
       "ABOVE-CONFIG-RIGHT": 1,
@@ -61,7 +62,8 @@
       "values": [
         "q4_0",
         "q8_0",
-        "f16"
+        "f16",
+        "bf16"
       ]
     },
     {
@@ -102,7 +104,6 @@
       "sub_params": null,
       "ui_group": "PERFORMANCE",
       "values": [
-        256,
         512,
         1024,
         2048,
@@ -125,7 +126,6 @@
       "sub_params": null,
       "ui_group": "PERFORMANCE",
       "values": [
-        32,
         64,
         128,
         256,
@@ -153,8 +153,7 @@
         4,
         8,
         16,
-        32,
-        64
+        32
       ]
     },
     {
@@ -243,8 +242,45 @@
         "on",
         "off",
         2000,
-        4000,
-        8000
+        4000
+      ]
+    },
+    {
+      "default": "off",
+      "dock": "",
+      "flag": "--reasoning-preserve",
+      "flag_pair": [],
+      "hidden_default": false,
+      "key": "reasoning_preserve",
+      "label": "Reasoning Preserve",
+      "note": "",
+      "pattern": "",
+      "ptype": "switch_onoff",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "FEATURE-FLAGS",
+      "values": [
+        "on",
+        "off"
+      ]
+    },
+    {
+      "default": "on",
+      "dock": "",
+      "flag": "--cont-batching",
+      "flag_pair": [],
+      "hidden_default": false,
+      "key": "cont_batching",
+      "label": "CONT-BATCHING",
+      "note": "Enable continuous batching.",
+      "pattern": "",
+      "ptype": "switch_onoff",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "FEATURE-FLAGS",
+      "values": [
+        "on",
+        "off"
       ]
     },
     {
@@ -305,30 +341,11 @@
       ]
     },
     {
-      "default": "on",
-      "dock": "",
-      "flag": "--cont-batching",
-      "flag_pair": [],
-      "hidden_default": false,
-      "key": "cont_batching",
-      "label": "CONT-BATCHING",
-      "note": "Enable continuous batching.",
-      "pattern": "",
-      "ptype": "switch_onoff",
-      "step": null,
-      "sub_params": null,
-      "ui_group": "FEATURE-FLAGS",
-      "values": [
-        "on",
-        "off"
-      ]
-    },
-    {
       "default": "draft-mtp",
       "dock": "",
       "flag": "--spec-type",
       "flag_pair": [],
-      "hidden_default": false,
+      "hidden_default": true,
       "key": "spec_type",
       "label": "SPEC-TYPE",
       "note": "Comma-separated speculative decoding types. 'none' disables.",
@@ -342,10 +359,7 @@
         "draft-eagle3",
         "draft-mtp",
         "ngram-simple",
-        "ngram-map-k",
-        "ngram-map-k4v",
-        "ngram-mod",
-        "ngram-cache"
+        "ngram-mod"
       ]
     },
     {
@@ -353,7 +367,7 @@
       "dock": "",
       "flag": "--spec-draft-n-max",
       "flag_pair": [],
-      "hidden_default": false,
+      "hidden_default": true,
       "key": "spec_draft_n_max",
       "label": "SPEC-DRAFT-N-MAX",
       "note": "Maximum number of draft tokens per speculative decoding step.",
@@ -366,11 +380,8 @@
         1,
         2,
         3,
-        4,
-        5,
         6,
         8,
-        10,
         12
       ]
     },
@@ -379,7 +390,7 @@
       "dock": "",
       "flag": "--spec-draft-n-min",
       "flag_pair": [],
-      "hidden_default": false,
+      "hidden_default": true,
       "key": "spec_draft_n_min",
       "label": "SPEC-DRAFT-N-MIN",
       "note": "minimum number of draft tokens to use for speculative decoding.",
@@ -416,7 +427,7 @@
       ]
     },
     {
-      "default": "on",
+      "default": "off",
       "dock": "",
       "flag": "--swa-full",
       "flag_pair": [],
@@ -495,12 +506,11 @@
       "values": [
         "none",
         "layer",
-        "tensor",
-        "row"
+        "tensor"
       ]
     },
     {
-      "default": 8080,
+      "default": 8888,
       "dock": "runtime",
       "flag": null,
       "flag_pair": [],
@@ -533,12 +543,9 @@
       "batch",
       "ubatch",
       "parallel",
-      "vision",
-      "mmap",
       "cont_batching",
-      "spec_type",
-      "spec_draft_n_max",
-      "spec_draft_n_min"
+      "vision",
+      "mmap"
     ],
     "fit_adapter": "ggml_master",
     "fit_style": "ggml_fit_params",
@@ -563,12 +570,9 @@
       "batch",
       "ubatch",
       "parallel",
-      "vision",
-      "mmap",
       "cont_batching",
-      "spec_type",
-      "spec_draft_n_max",
-      "spec_draft_n_min"
+      "vision",
+      "mmap"
     ],
     "supports_fusion": true,
     "tensor_split": true,
@@ -577,6 +581,6 @@
       "4"
     ]
   },
-  "templateVersion": 23,
+  "templateVersion": 25,
   "template_type": "ggml-llama"
 }

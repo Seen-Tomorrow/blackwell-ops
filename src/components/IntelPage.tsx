@@ -13,7 +13,12 @@ import {
 import { KEYS, readStorage } from "../lib/storage";
 import TabPageHeader from "./TabPageHeader";
 
-export default function IntelPage() {
+interface IntelPageProps {
+  /** When true, parent ExtrasPage owns the page chrome. */
+  embedded?: boolean;
+}
+
+export default function IntelPage({ embedded = false }: IntelPageProps) {
   const { feed, providers, status, refresh } = useIntelFeed();
   const channels = feed?.channels ?? [];
 
@@ -54,27 +59,28 @@ export default function IntelPage() {
   const activeProvider = providers.find((p) => p.id === effectiveChannel);
   const buildSummary = providerBuildSummary(activeProvider);
 
+  const refreshBtn = (
+    <button
+      type="button"
+      onClick={() => void refresh()}
+      disabled={status === "loading"}
+      className="intel-refresh-btn shrink-0"
+    >
+      {status === "loading" ? "FETCHING..." : "REFRESH"}
+    </button>
+  );
+
   return (
     <div className="h-full flex flex-col min-h-0 overflow-hidden" data-intel-page>
-      <TabPageHeader
-        title="INTEL"
-        actions={(
-          <button
-            type="button"
-            onClick={() => void refresh()}
-            disabled={status === "loading"}
-            className="intel-refresh-btn shrink-0"
-          >
-            {status === "loading" ? "FETCHING..." : "REFRESH"}
-          </button>
-        )}
-      />
-      <p className="flex-shrink-0 px-4 py-1 text-[8px] font-mono text-stealth-muted/60 border-b border-stealth-border/30">
+      {!embedded && (
+        <TabPageHeader title="INTEL" actions={refreshBtn} />
+      )}
+      <p className={`flex-shrink-0 py-1 text-[8px] font-mono text-stealth-muted/60 border-b border-stealth-border/30 ${embedded ? "px-3" : "px-4"}`}>
         Multi-provider backend news — discussions, PRs, releases from your enabled provider repos
         {buildSummary && effectiveChannel !== "all" ? ` · Active stack · ${buildSummary}` : ""}
       </p>
 
-      <div className="flex-shrink-0 flex flex-wrap items-center gap-2 px-4 pt-2">
+      <div className={`flex-shrink-0 flex flex-wrap items-center gap-2 pt-2 ${embedded ? "px-3" : "px-4"}`}>
         <div className="intel-channel-tabs flex items-center gap-1 flex-wrap">
           <button
             type="button"
@@ -110,9 +116,11 @@ export default function IntelPage() {
             </button>
           ))}
         </div>
+
+        {embedded && <span className="ml-auto">{refreshBtn}</span>}
       </div>
 
-      <div className="flex-1 min-h-0 px-4 pb-4">
+      <div className={`flex-1 min-h-0 pb-4 ${embedded ? "px-3" : "px-4"}`}>
         <IntelWidget
           items={listItems}
           pinnedBreaking={pinnedBreaking}

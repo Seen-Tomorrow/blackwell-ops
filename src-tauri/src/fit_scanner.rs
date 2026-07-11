@@ -58,10 +58,8 @@ const SCAN_PLAN: &[(&str, usize, &str, u32, u32, &str)] = &[
 
     // === SPLIT TAX — multi-GPU communication overhead at various contexts ===
     ("split_layer_64k", 65536, "q4_0", 512, 1, "layer"),
-    ("split_row_64k", 65536, "q4_0", 512, 1, "row"),
     ("split_tensor_64k", 65536, "q4_0", 512, 1, "tensor"),
     ("split_layer_256k", 262144, "q4_0", 512, 1, "layer"),
-    ("split_row_256k", 262144, "q4_0", 512, 1, "row"),
     ("split_tensor_256k", 262144, "q4_0", 512, 1, "tensor"),
 
     // === EDGE CASES — large batch + large context combos ===

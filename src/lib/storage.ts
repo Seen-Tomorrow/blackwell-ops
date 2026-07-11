@@ -112,6 +112,8 @@ export const KEYS = {
   testFlags: `${STORAGE_PREFIX}test-flags`,
   testFlagsOn: `${STORAGE_PREFIX}test-flags-on`,
   testFlagsMode: `${STORAGE_PREFIX}test-flags-mode`,
+  /** sessionStorage — user acknowledged REPLACE launch confirm this session */
+  customFlagsReplaceAck: `${STORAGE_PREFIX}custom-flags-replace-ack`,
   collapsedGroups: `${STORAGE_PREFIX}collapsed-groups`,
   lastModel: `${STORAGE_PREFIX}last-model`,
   sortField: `${STORAGE_PREFIX}sort-field`,
@@ -156,13 +158,13 @@ export const KEYS = {
   gpuControlState: `${STORAGE_PREFIX}gpu-control-state`,
 } as const;
 
-export type ExtrasSubTab = "modelhub" | "playground";
+export type ExtrasSubTab = "intel" | "playground";
 
-const EXTRAS_SUB_TAB_DEFAULT: ExtrasSubTab = "modelhub";
+const EXTRAS_SUB_TAB_DEFAULT: ExtrasSubTab = "intel";
 
 export function loadExtrasSubTab(): ExtrasSubTab {
   const v = readStorage(KEYS.extrasSubTab);
-  if (v === "modelhub" || v === "playground") return v;
+  if (v === "intel" || v === "playground") return v;
   return EXTRAS_SUB_TAB_DEFAULT;
 }
 
@@ -331,6 +333,7 @@ export function resetSetupGuideState(): void {
   removeStorage(KEYS.setupGuidePreview);
   removeStorage(KEYS.setupMetaScanSummary);
   removeStorage(KEYS.setupModelsDeferred);
+  clearToolchainOnboardingSkipped();
 }
 
 // ── Telemetry view (standard panel vs lab catalogue) ───────────────────────

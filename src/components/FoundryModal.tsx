@@ -68,6 +68,8 @@ type ModalPhase = "confirm" | "building" | "complete" | "error" | "backup-locked
 
 function mapBackendPhase(bp: string): { frontend: ModalPhase | null; special?: string } {
   switch (bp) {
+    case "GitClone":
+    case "GitPull":
     case "Configuring": return { frontend: null };
     case "WaitingForConfirm": return { frontend: "building", special: "wait-confirm" };
     case "Building": return { frontend: "building" };
@@ -83,13 +85,22 @@ function stepToModalPhase(step: string): ModalPhase {
   if (step === "complete") return "complete";
   if (step === "error") return "error";
   if (step === "backup-locked") return "backup-locked";
-  if (step === "configuring" || step === "building" || step === "validating" || step === "waiting-confirm") {
+  if (
+    step === "configuring"
+    || step === "building"
+    || step === "validating"
+    || step === "waiting-confirm"
+    || step === "clone"
+    || step === "pull"
+  ) {
     return "building";
   }
   return "confirm";
 }
 
 const ACTIVE_BACKEND_PHASES = new Set([
+  "GitClone",
+  "GitPull",
   "Configuring",
   "WaitingForConfirm",
   "Building",

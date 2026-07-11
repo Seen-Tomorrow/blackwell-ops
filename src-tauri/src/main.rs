@@ -73,6 +73,16 @@ async fn get_hf_model_info(model_id: String) -> Result<crate::types::HfModelInfo
 }
 
 #[tauri::command]
+async fn get_hf_quant_dates(
+    model_id: String,
+    paths: Vec<String>,
+) -> Result<std::collections::HashMap<String, String>, String> {
+    config::validate_hf_model_id(&model_id)?;
+    let hf_token = secrets::get_secret("hf_token")?;
+    hf_api::fetch_quant_last_modified(&model_id, &paths, hf_token.as_deref()).await
+}
+
+#[tauri::command]
 async fn check_hf_repo_updates(
     config: tauri::State<'_, Arc<std::sync::Mutex<config::AppConfig>>>,
     model_id: String,
@@ -962,6 +972,7 @@ async fn main() {
             // Reactor Foundry build commands
             reactor_foundry::foundry_build,
             reactor_foundry::foundry_cancel,
+            reactor_foundry::foundry_preview_source,
             reactor_foundry::foundry_status,
             reactor_foundry::foundry_confirm_build,
             reactor_foundry::foundry_resume_backup,
@@ -971,6 +982,7 @@ async fn main() {
             reactor_foundry::foundry_get_profiles,
             foundry_toolchain::foundry_get_toolchain_install_info,
             foundry_toolchain::foundry_open_toolchain_install_folder,
+            foundry_toolchain::foundry_open_toolchain_cache_folder,
 
             // Blackwell Output Console commands (power-user output system)
             get_blackwell_output_console_categories,
@@ -994,6 +1006,7 @@ async fn main() {
             // HF Search commands
             search_hf_models,
             get_hf_model_info,
+            get_hf_quant_dates,
             check_hf_repo_updates,
             check_catalog_hf_updates,
             secrets::list_app_secrets,

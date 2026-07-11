@@ -10,10 +10,10 @@ import TabPageHeader from "./components/TabPageHeader";
 const StackView = lazy(() => import("./components/StackView"));
 const TelemetryPanel = lazy(() => import("./components/TelemetryPanel"));
 const TelemetryLab = lazy(() => import("./components/telemetry-lab/TelemetryLab"));
-const IntelPage = lazy(() => import("./components/IntelPage"));
 const ConfigPage = lazy(() => import("./components/ConfigPage"));
 const Reactor11 = lazy(() => import("./components/Reactor11"));
 const ExtrasPage = lazy(() => import("./components/ExtrasPage"));
+const ModelHub = lazy(() => import("./components/ModelHub"));
 const LogLineText = lazy(() => import("./components/LogLineText"));
 const EngineLogsSwitcher = lazy(() => import("./components/EngineLogsSwitcher"));
 
@@ -49,11 +49,12 @@ import { BINARY_UPDATES_ENABLED } from "./lib/foundry_constants";
 import { getActiveStackSlots, isActiveEngineSlot } from "./lib/engineStack";
 import type { ModelEntry, StackEntry, LogBatch, LogEntry, SystemEvent, ProviderConfig, AppUpdateInfo } from "./lib/types";
 
-export type Tab = "catalog" | "stack" | "extras" | "reactor11" | "telemetry" | "intel" | "logs" | "config" | "sentinel";
+export type Tab = "catalog" | "stack" | "extras" | "reactor11" | "telemetry" | "modelhub" | "logs" | "config" | "sentinel";
 
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>("catalog");
   const [models, setModels] = useState<ModelEntry[]>([]);
+  const [catalogLoaded, setCatalogLoaded] = useState(false);
   const [stack, setStack] = useState<StackEntry[]>([]);
   const [logs, setLogs] = useState<Map<number, LogEntry[]>>(new Map());
   const [systemEvents, setSystemEvents] = useState<Map<number, Array<{ text: string; timestamp: string }>>>(new Map());
@@ -128,7 +129,7 @@ function App() {
   const [hiddenCount, setHiddenCount] = useState(0);
   const [isPowerUser, setIsPowerUser] = useState(() => isPowerUserActive(loadPowerUserState()));
   const [telemetryViewMode, setTelemetryViewModeState] = useState<TelemetryViewMode>(() => loadTelemetryViewMode());
-  const setupGuide = useSetupGuide({ models, batchScanState });
+  const setupGuide = useSetupGuide({ models, catalogLoaded, batchScanState });
 
   const setTelemetryViewMode = useCallback((mode: TelemetryViewMode) => {
     setTelemetryViewModeState(mode);
@@ -146,9 +147,11 @@ function App() {
     const navHandler = () => setActiveTab("stack");
     const catalogNavHandler = () => setActiveTab("catalog");
     const extrasNavHandler = () => setActiveTab("extras");
+    const modelHubNavHandler = () => setActiveTab("modelhub");
     window.addEventListener(EVENTS.navigateStack, navHandler);
     window.addEventListener(EVENTS.navigateCatalog, catalogNavHandler);
     window.addEventListener(EVENTS.navigateExtras, extrasNavHandler);
+    window.addEventListener(EVENTS.navigateModelHub, modelHubNavHandler);
     return () => {
       window.removeEventListener("storage", handler);
       window.removeEventListener(EVENTS.powerUserChanged, powerUserHandler);
@@ -156,6 +159,7 @@ function App() {
       window.removeEventListener(EVENTS.navigateStack, navHandler);
       window.removeEventListener(EVENTS.navigateCatalog, catalogNavHandler);
       window.removeEventListener(EVENTS.navigateExtras, extrasNavHandler);
+      window.removeEventListener(EVENTS.navigateModelHub, modelHubNavHandler);
     };
   }, []);
 
@@ -264,6 +268,8 @@ function App() {
       const msg = typeof err === "string" ? err : JSON.stringify(err);
       console.error("Failed to reload models:", msg);
       setCatalogError(msg);
+    } finally {
+      setCatalogLoaded(true);
     }
   }, []);
 
@@ -553,6 +559,11 @@ function App() {
             <StackView stack={stack} logs={logs} systemEvents={systemEvents} onStop={handleStopEngine} onStopAll={handleStopAll} />
           </Suspense>
         )}
+        {activeTab === "modelhub" && (
+          <Suspense fallback={<TabFallback />}>
+            <ModelHub />
+          </Suspense>
+        )}
         {activeTab === "extras" && (
           <Suspense fallback={<TabFallback />}>
             <ExtrasPage stack={stack} models={models} />
@@ -575,11 +586,6 @@ function App() {
               </Suspense>
             </div>
           </div>
-        )}
-        {activeTab === "intel" && (
-          <Suspense fallback={<TabFallback />}>
-            <IntelPage />
-          </Suspense>
         )}
         {activeTab === "logs" && (
           <div className="h-full flex flex-col min-h-0 overflow-hidden" data-engine-logs>

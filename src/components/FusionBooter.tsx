@@ -7,7 +7,6 @@ import {
 } from "../lib/fusionLoadParser";
 
 const MAX_BOOT_GPUS = 8;
-const GIB_HERO_THRESHOLD_MIB = 1024;
 
 interface FusionBooterProps {
   slotIdx: number;
@@ -25,25 +24,6 @@ function binaryStream(tick: number, len = 8, seed = 0): string {
     const wave = (tick * 3 + i * 2 + seed) % 11;
     return wave < 4 ? "0" : wave < 8 ? "1" : "·";
   }).join("").replace(/·/g, "0");
-}
-
-function formatDiskThroughput(mibPerS: number): { value: string; unit: string } {
-  if (mibPerS >= GIB_HERO_THRESHOLD_MIB) {
-    return { value: (mibPerS / 1024).toFixed(1), unit: "GiB/s" };
-  }
-  return { value: mibPerS.toFixed(1), unit: "MiB/s" };
-}
-
-/** MiB/s hero numbers are wider (e.g. 856.3) — scale down so they stay inside the NVMe block. */
-function diskHeroFontSize(value: string, unit: string): string {
-  if (unit === "GiB/s") {
-    return "clamp(1.35rem, 4vh, 2.2rem)";
-  }
-  const len = value.length;
-  if (len >= 6) return "clamp(0.85rem, 2.2vh, 1.15rem)";
-  if (len >= 5) return "clamp(0.95rem, 2.5vh, 1.3rem)";
-  if (len >= 4) return "clamp(1.05rem, 2.8vh, 1.45rem)";
-  return "clamp(1.15rem, 3.2vh, 1.6rem)";
 }
 
 function vramLoadForGpu(loads: GpuVramLoad[], index: number): GpuVramLoad | undefined {
@@ -116,14 +96,18 @@ function GpuLoadMap({
   );
 }
 
+function formatDiskRate(n: number): string {
+  return Math.round(n).toLocaleString("en-US");
+}
+
 function DiskIoHero({ mibPerS }: { mibPerS: number }) {
-  const { value, unit } = formatDiskThroughput(mibPerS);
-  const gbitPerS = (mibPerS * 8) / 1000;
+  const value = formatDiskRate(mibPerS);
+  const mbitPerS = formatDiskRate(mibPerS * 8);
   const hot = mibPerS >= 4096;
 
   return (
     <div
-      className={`fusion-disk-hero flex flex-col items-center justify-center px-1.5 py-1 rounded-sm border flex-shrink-0 self-stretch min-w-[92px] w-[28%] max-w-[108px] overflow-hidden ${
+      className={`fusion-disk-hero flex flex-col items-center justify-center px-2 py-1 rounded-sm border flex-shrink-0 self-stretch min-w-[118px] w-[34%] max-w-[148px] overflow-hidden ${
         hot ? "border-telemetry-cyan/40 bg-black/10" : "border-stone-500/10 bg-black/4"
       }`}
     >
@@ -131,17 +115,16 @@ function DiskIoHero({ mibPerS }: { mibPerS: number }) {
         NVMe READ
       </span>
       <span
-        className="font-mono font-bold tabular-nums tracking-tight leading-none w-full text-center px-0.5 overflow-hidden transition-all duration-200 ease-out"
+        className="fusion-disk-hero__value font-mono font-bold tabular-nums tracking-tight leading-none text-center"
         style={{
-          fontSize: diskHeroFontSize(value, unit),
           color: hot ? "#22d3ee" : mibPerS > 8 ? "rgba(34, 211, 238, 0.75)" : "rgba(34, 211, 238, 0.35)",
         }}
       >
         {value}
       </span>
-      <span className="text-[7px] font-mono text-stealth-muted/40 tracking-wider mt-0.5 px-0.5">{unit}</span>
-      <span className="text-[6px] font-mono text-stealth-muted/35 mt-1 px-0.5 text-center leading-tight truncate max-w-full">
-        {gbitPerS >= 1 ? `${gbitPerS.toFixed(1)} Gbit/s` : `${(mibPerS * 8).toFixed(0)} Mbit/s`}
+      <span className="text-[8px] font-mono text-stealth-muted/55 tracking-wider mt-0.5 px-0.5">MiB/s</span>
+      <span className="fusion-disk-hero__mbit font-mono mt-1 px-0.5 text-center leading-tight">
+        {mbitPerS} Mbit/s
       </span>
     </div>
   );

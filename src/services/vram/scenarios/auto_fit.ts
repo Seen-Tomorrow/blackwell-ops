@@ -63,19 +63,25 @@ export function tryEvaluate(input: ScenarioInput, computed: ComputedValues): Vra
     ? Math.max(0, estimateGb - gpuProjectionGb)
     : 0);
 
+  const userSplitMultiGpu = computed.splitActive && input.gpus.length > 1;
+  const breakdownSpansMultipleGpus = (loadsGb: number[]) =>
+    loadsGb.filter((gb) => gb > 0.1).length > 1;
+
   const perGpuLoad = (() => {
     const probeBreakdown = input.fitProbeGpuBreakdownMib;
     if (probeBreakdown && probeBreakdown.length === input.gpus.length) {
-      return probeBreakdown.map((mib) => mib / 1024);
+      const loads = probeBreakdown.map((mib) => mib / 1024);
+      if (!userSplitMultiGpu || breakdownSpansMultipleGpus(loads)) return loads;
     }
     if (
       useLearnedProjection
       && input.learnedGpuBreakdownMib
       && input.learnedGpuBreakdownMib.length === input.gpus.length
     ) {
-      return input.learnedGpuBreakdownMib.map((mib) => mib / 1024);
+      const loads = input.learnedGpuBreakdownMib.map((mib) => mib / 1024);
+      if (!userSplitMultiGpu || breakdownSpansMultipleGpus(loads)) return loads;
     }
-    if (autoSplit) {
+    if (autoSplit || userSplitMultiGpu) {
       return autoSplitPerGpuLoad(gpuProjectionGb, input.gpus, computed.gpuAvailable);
     }
     const loads = Array(input.gpus.length).fill(0);
@@ -87,7 +93,9 @@ export function tryEvaluate(input: ScenarioInput, computed: ComputedValues): Vra
 
   const splitHint = autoSplit
     ? `auto split across ${input.gpus.length} GPU(s) + ${fitHint}`
-    : fitHint;
+    : userSplitMultiGpu
+      ? `split across ${input.gpus.length} GPU(s) + ${fitHint}`
+      : fitHint;
 
   const headroomThreshold = targetAvail - headroomGb;
   const totalProjectedGb = gpuProjectionGb + hostOffloadGb;

@@ -45,7 +45,9 @@ export default function ModelCatalog(props: ModelCatalogProps) {
     useCatalogSplitResize();
 
   const scanBlockedByToolchain =
-    setupGuide.active && !setupGuide.runtimeReady && setupGuide.phase !== "paths";
+    setupGuide.active
+    && setupGuide.phase === "scan-meta"
+    && !setupGuide.runtimeReady;
 
   const { search, setSearch, catalogSelectedModel, panelActiveModel, handleSelect, handleSelectBySlot, selectedSlotIdx, sortField, sortDirection, handleSort,
     catalogModels, runningModelPaths,
@@ -152,11 +154,13 @@ export default function ModelCatalog(props: ModelCatalogProps) {
         <button
           onClick={() => setShowScanMenu(true)}
           disabled={scanningPath !== null || scanBlockedByToolchain}
-          data-onboarding="scan-meta"
-          className="catalog-scan-btn px-2 py-0.5 text-[8px] font-mono transition-colors rounded-sm disabled:opacity-30"
+          data-onboarding={setupGuide.phase === "scan-meta" && !scanBlockedByToolchain ? "scan-meta" : undefined}
+          className={`catalog-scan-btn px-2 py-0.5 text-[8px] font-mono transition-colors rounded-sm disabled:opacity-30${
+            setupGuide.phase === "scan-meta" && !scanBlockedByToolchain ? " catalog-scan-btn--onboarding" : ""
+          }`}
           title={
             scanBlockedByToolchain
-              ? "Install CUDA runtime toolchain in setup before scanning"
+              ? "Install toolchain or use NEXT in setup to skip metadata scan"
               : "Scan all models for metadata"
           }
         >

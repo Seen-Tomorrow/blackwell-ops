@@ -32,7 +32,7 @@ import { ENV_ORDER, ENV_META } from "../lib/foundry_constants";
 import { FIT_SCAN_PARALLEL_OPTIONS } from "../lib/onboarding";
 import { dispatchAppEvent, EVENTS } from "../lib/events";
 import { loadFoundryLastRefresh, loadStartupUpdatesCache, saveFoundryLastRefresh } from "../lib/storage";
-import { BuildProfileRow, RestoreConfirmModal, parseCmakeFlags, UpdateStatus, type BinarySourceKind } from "./FoundryComponents";
+import { BuildProfileRow, RestoreConfirmModal, UpdateStatus, type BinarySourceKind } from "./FoundryComponents";
 import FoundryToolchainPanel from "./FoundryToolchainPanel";
 
 function formatElapsed(startTime: number): string {
@@ -858,34 +858,12 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
               {isExpanded && (
                 <div className="ml-8 mr-2 mb-3 space-y-3">
                   {/* Foundry build environments — only show for providers with git config */}
-                  {p.git_url && p.branch && (() => {
-                    const cmakeFlags = p.build_profile?.trim() || "";
-                    const isCustomFlags = cmakeFlags.length > 0;
-                    const flagLines = parseCmakeFlags(cmakeFlags);
-
-                    return (
+                  {p.git_url && p.branch && (
                       <div className="foundry-build-panel">
                         {/* Foundry header */}
                         <div className="foundry-build-header flex items-center gap-3 px-3 py-2">
                           <span style={{ fontSize: '12px' }}>⚒</span>
                           <span className="text-[9px] font-mono theme-accent-text tracking-wider">FOUNDRY BUILDS</span>
-                          {/* CMake flags badge */}
-                          <div className="relative inline-block group">
-                            <span className={`value-chip text-[7px] font-mono px-1.5 py-0.5 rounded-sm cursor-help ${isCustomFlags ? "value-chip-active" : ""}`}>
-                              {isCustomFlags ? "CUSTOM FLAGS" : "DEFAULT"}
-                            </span>
-                            <div className="absolute top-full left-0 mt-1 w-[320px] config-form-panel rounded-sm p-2 pointer-events-none z-[9999] opacity-0 group-hover:opacity-100 transition-opacity shadow-2xl">
-                              {flagLines.length > 0 ? (
-                                <div className="space-y-0.5">
-                                  {flagLines.map((f, i) => (
-                                    <div key={i} className="text-[7px] font-mono config-muted whitespace-pre-wrap break-all">{f}</div>
-                                  ))}
-                                </div>
-                              ) : (
-                                <div className="text-[7px] font-mono config-muted">Using default cmake flags for {p.template_type || "ggml-llama"}</div>
-                              )}
-                            </div>
-                          </div>
                           <span className="text-[8px] font-mono config-muted truncate max-w-[240px]" title={p.git_url}>
                             {p.git_url.replace(/.*\/\/|\.git$/g, "")} :{p.branch}
                           </span>
@@ -922,8 +900,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
                           })}
                         </div>
                       </div>
-                    );
-                  })()}
+                  )}
 
                   {/* Scan progress/results */}
                   {renderScanProgress(p.id)}

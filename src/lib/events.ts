@@ -8,7 +8,8 @@
  * | BlackOps-param-config-changed | Param catalog/count changed; reload overrides |
  * | BlackOps-navigate-stack | Switch to ENGINES tab (GPU topo click-through) |
  * | BlackOps-navigate-catalog | Switch to OPERATIONS tab (catalog — model pick, FIT, bench) |
- * | BlackOps-navigate-extras | Switch to EXTRAS tab; detail.subTab selects sub-tab |
+ * | BlackOps-navigate-extras | Switch to EXTRAS tab; detail.subTab selects sub-tab (intel, playground) |
+ * | BlackOps-navigate-model-hub | Switch to MODEL HUB tab |
  * | BlackOps-launch-engine | Request launch from catalog keyboard shortcut |
  * | BlackOps-launch-success | Engine started — status bar + toast |
  * | BlackOps-launch-error | Launch failed — status bar + toast |
@@ -48,6 +49,7 @@ export const EVENTS = {
   navigateStack: `${STORAGE_PREFIX}navigate-stack`,
   navigateCatalog: `${STORAGE_PREFIX}navigate-catalog`,
   navigateExtras: `${STORAGE_PREFIX}navigate-extras`,
+  navigateModelHub: `${STORAGE_PREFIX}navigate-model-hub`,
   launchEngine: `${STORAGE_PREFIX}launch-engine`,
   launchSuccess: `${STORAGE_PREFIX}launch-success`,
   launchError: `${STORAGE_PREFIX}launch-error`,
@@ -110,7 +112,7 @@ export function dispatchNavigateExtras(detail?: NavigateExtrasDetail): void {
 }
 
 export function dispatchNavigateModelHub(): void {
-  dispatchNavigateExtras({ subTab: "modelhub" });
+  dispatchAppEvent(EVENTS.navigateModelHub);
 }
 
 export function dispatchPowerUserChanged(): void {
@@ -118,19 +120,20 @@ export function dispatchPowerUserChanged(): void {
 }
 
 /**
- * Dev — full first-run: onboarding keys + model paths (models/ only) + model cache, then reload.
- * Bundled providers are re-discovered in memory (no app restart). LM Studio paths are removed;
- * GGUF files on disk are untouched.
+ * Full first-run replay — same as CONFIG → RECOVERY → RESET CONFIG.
+ * Wipes portable config/ (paths → factory models/, caches, setup_completed), clears onboarding
+ * keys, reloads. GGUF files, foundry artifacts, and runtime binaries on disk are untouched.
  */
-export async function dispatchReplaySetupGuide(): Promise<void> {
+export async function dispatchReplayFirstRun(): Promise<void> {
   resetSetupGuideState();
   disableSetupGuidePreview();
-  try {
-    await invoke("dev_reset_first_run");
-  } catch (err) {
-    console.error("[dev_reset_first_run]", err);
-  }
+  await invoke("reset_app_config");
   window.location.reload();
+}
+
+/** Dev header ↺ SETUP — identical to recovery full reset (fresh-install test path). */
+export async function dispatchReplaySetupGuide(): Promise<void> {
+  await dispatchReplayFirstRun();
 }
 
 /** Dev — replay welcome/guide only; keeps model paths and metadata cache. */
@@ -156,13 +159,10 @@ export function dispatchNavigateRecovery(): void {
 }
 
 /**
- * Reset portable `config/` to factory defaults, clear onboarding keys, reload.
- * Same outcome as manually deleting the config folder while the app is closed.
+ * CONFIG → RECOVERY → RESET CONFIG — same code path as dev ↺ SETUP.
  */
 export async function dispatchResetAppConfig(): Promise<void> {
-  resetSetupGuideState();
-  await invoke("reset_app_config");
-  window.location.reload();
+  await dispatchReplayFirstRun();
 }
 
 export function dispatchShowAllHiddenParams(): void {

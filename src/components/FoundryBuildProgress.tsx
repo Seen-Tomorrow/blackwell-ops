@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import type { ProviderConfig } from "../lib/types";
 import FoundryWindowShell, { type FoundryWindowTone } from "./FoundryWindowShell";
+import { getStepLabel } from "../lib/foundry_constants";
 
 interface BuildLogEntry {
   step: string;
@@ -112,7 +113,9 @@ export default function FoundryBuildProgress({
         {!isComplete && !isError && (
           <div className="flex items-center gap-2">
             <span className="text-[8px] font-mono text-stealth-muted uppercase tracking-wider">Step:</span>
-            <span className="text-[9px] font-mono text-telemetry-cyan animate-pulse">{currentStep || "INITIALIZING..."}</span>
+            <span className="text-[9px] font-mono text-telemetry-cyan animate-pulse">
+              {currentStep ? getStepLabel(currentStep) : "INITIALIZING..."}
+            </span>
           </div>
         )}
 

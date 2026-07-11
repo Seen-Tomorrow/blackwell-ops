@@ -77,6 +77,8 @@ const FoundryContext = createContext<FoundryCtx>({
 });
 
 const IN_PROGRESS_PHASES = new Set([
+  "GitClone",
+  "GitPull",
   "Configuring",
   "WaitingForConfirm",
   "Building",
@@ -99,6 +101,8 @@ function sessionFromStatus(status: FoundryStatusPayload): BuildSession {
 }
 
 const PHASE_MAP: Record<string, string> = {
+  GitClone: "clone",
+  GitPull: "pull",
   Configuring: "configuring",
   WaitingForConfirm: "waiting-confirm",
   Building: "building",
