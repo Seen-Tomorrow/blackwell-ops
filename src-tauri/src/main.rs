@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod crash_log;
+mod session_log;
 mod debug_flags;
 mod ipc_meter;
 mod engine;
@@ -18,6 +19,7 @@ mod nvml_probe;
 mod fit_adapters;
 mod fit_scanner;
 mod vram_learn;
+mod launch_memory_parse;
 mod mobile_bridge;
 mod bench_prompts;
 mod burst_bench;
@@ -701,6 +703,7 @@ fn startup_frontend_ping() {
 #[tokio::main]
 async fn main() {
     crash_log::install_native_exception_logger();
+    session_log::init();
 
     #[cfg(debug_assertions)]
     std::env::set_var("RUST_BACKTRACE", "1");
@@ -746,6 +749,12 @@ async fn main() {
     if binary_update::BINARY_UPDATES_ENABLED {
         builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
     }
+
+    #[cfg(debug_assertions)]
+    {
+        builder = builder.plugin(tauri_plugin_mcp_bridge::init());
+    }
+
     builder
         .setup(move |app| {
             let startup_t0 = std::time::Instant::now();
@@ -954,6 +963,8 @@ async fn main() {
             playground::playground_open_html_in_browser,
             fusion::brain::get_fusion_snapshots,
             debug_flags::get_debug_flags,
+            session_log::get_session_log_status,
+            session_log::set_session_log_enabled,
             startup_frontend_ping,
             ipc_meter::get_ipc_meter_stats,
             gpu_control::get_gpu_control_devices,
@@ -980,6 +991,8 @@ async fn main() {
             reactor_foundry::foundry_restore,
             reactor_foundry::foundry_check_toolchain,
             reactor_foundry::foundry_get_profiles,
+            reactor_foundry::foundry_work_cache_status,
+            reactor_foundry::foundry_clear_work_cache,
             foundry_toolchain::foundry_get_toolchain_install_info,
             foundry_toolchain::foundry_open_toolchain_install_folder,
             foundry_toolchain::foundry_open_toolchain_cache_folder,

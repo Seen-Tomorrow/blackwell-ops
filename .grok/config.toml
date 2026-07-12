@@ -1,0 +1,13 @@
+[mcp_servers.chrome-devtools]
+command = "npx"
+args = [
+    "-y",
+    "chrome-devtools-mcp@latest",
+    "--executablePath=C:/Program Files/BraveSoftware/Brave-Browser/Application/brave.exe",
+]
+enabled = true
+
+[mcp_servers.tauri]
+command = "npx"
+args = ["-y", "@hypothesi/tauri-mcp-server@0.12.0"]
+enabled = true

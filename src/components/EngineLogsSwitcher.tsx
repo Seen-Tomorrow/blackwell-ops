@@ -13,6 +13,7 @@ interface EngineLogsSwitcherProps {
   logSearchBySlot: Record<number, string>;
   onSlotLogSearchChange: (slot: number, query: string) => void;
   onClearSlotLogSearch: (slot: number) => void;
+  onLogSearchStep?: () => void;
   onClearSlotLogs: (slot: number) => void;
   onClearAllLogs: () => void;
   ansiEnabled: boolean;
@@ -36,6 +37,7 @@ export default function EngineLogsSwitcher({
   logSearchBySlot,
   onSlotLogSearchChange,
   onClearSlotLogSearch,
+  onLogSearchStep,
   onClearSlotLogs,
   onClearAllLogs,
   ansiEnabled,
@@ -172,9 +174,19 @@ export default function EngineLogsSwitcher({
             type="text"
             value={logSearchBySlot[activeLogSlot] ?? ""}
             onChange={(e) => onSlotLogSearchChange(activeLogSlot, e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && logSearchBySlot[activeLogSlot]?.trim()) {
+                e.preventDefault();
+                onLogSearchStep?.();
+              }
+            }}
             placeholder="error, timeout | cuda"
             className="engine-logs-switcher__search theme-input"
+            title="Enter — jump to next match"
           />
+          <span className="engine-logs-switcher__search-hint text-[7px] font-mono text-stealth-muted/50 uppercase tracking-wider">
+            Enter = next
+          </span>
           <button
             type="button"
             title="Reset search highlight"

@@ -68,6 +68,7 @@ function App() {
   const autoScrollRef = useRef(true);
   const flatLogsRef = useRef<Map<number, Array<{ text: string; alias: string }>>>(new Map());
   const logsLengthsRef = useRef<Record<number, number>>({});
+  const logSearchHitIndexRef = useRef(0);
 
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [catalogHfUpdates] = useState<Set<string>>(() => new Set()); // populated when manual check ships — CATALOG-HF-UPDATES.md
@@ -76,6 +77,7 @@ function App() {
   const [batchScanState, setBatchScanState] = useState<{active: boolean; scanned: number; failed: number; total: number}>({ active: false, scanned: 0, failed: 0, total: 0 });
 
   const clearSlotLogSearch = useCallback((slot: number) => {
+    logSearchHitIndexRef.current = 0;
     setLogSearchBySlot((prev) => {
       if (!(slot in prev)) return prev;
       const next = { ...prev };
@@ -86,6 +88,7 @@ function App() {
   }, []);
 
   const setSlotLogSearch = useCallback((slot: number, query: string) => {
+    logSearchHitIndexRef.current = 0;
     setLogSearchBySlot((prev) => {
       const next = { ...prev };
       if (!query.trim()) {
@@ -97,6 +100,26 @@ function App() {
       return next;
     });
   }, []);
+
+  const scrollToLogSearchHit = useCallback((hitIndex: number, behavior: ScrollBehavior = "smooth") => {
+    const root = logsScrollRef.current;
+    if (!root) return 0;
+    const hits = root.querySelectorAll<HTMLElement>(".log-search-hit");
+    if (hits.length === 0) return 0;
+    const idx = ((hitIndex % hits.length) + hits.length) % hits.length;
+    hits.forEach((el, i) => {
+      el.classList.toggle("log-search-hit--current", i === idx);
+    });
+    hits[idx]?.scrollIntoView({ block: "center", behavior });
+    return hits.length;
+  }, []);
+
+  const stepLogSearchHit = useCallback(() => {
+    const count = scrollToLogSearchHit(logSearchHitIndexRef.current + 1);
+    if (count > 0) {
+      logSearchHitIndexRef.current = (logSearchHitIndexRef.current + 1) % count;
+    }
+  }, [scrollToLogSearchHit]);
 
   const releaseSlotLogCaches = useCallback((slot?: number) => {
     if (slot === undefined) {
@@ -516,6 +539,27 @@ function App() {
     return result;
   }, [logs]);
 
+  const activeLogSearchQuery = useMemo(() => {
+    if (typeof activeLogSlot !== "number") return "";
+    return logSearchBySlot[activeLogSlot]?.trim() ?? "";
+  }, [activeLogSlot, logSearchBySlot]);
+
+  useEffect(() => {
+    if (activeTab !== "logs") return;
+    logSearchHitIndexRef.current = 0;
+    if (!activeLogSearchQuery) {
+      logsScrollRef.current
+        ?.querySelectorAll(".log-search-hit--current")
+        .forEach((el) => el.classList.remove("log-search-hit--current"));
+      return;
+    }
+    autoScrollRef.current = false;
+    const frame = requestAnimationFrame(() => {
+      scrollToLogSearchHit(0, "auto");
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [activeTab, activeLogSearchQuery, activeLogSlot, flatLogs, scrollToLogSearchHit]);
+
   const committedVramMib = useMemo(() => {
     return stack.reduce((sum, s) => {
       if (s.status === "RUNNING" && s.vram_mib) {
@@ -598,6 +642,7 @@ function App() {
               logSearchBySlot={logSearchBySlot}
               onSlotLogSearchChange={setSlotLogSearch}
               onClearSlotLogSearch={clearSlotLogSearch}
+              onLogSearchStep={stepLogSearchHit}
               onClearSlotLogs={handleClearSlotLogs}
               onClearAllLogs={handleClearAllLogs}
               ansiEnabled={logsAnsiEnabled}

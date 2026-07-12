@@ -2276,6 +2276,11 @@ html, body, #root {
   box-shadow: none;
 }
 
+.log-search-hit--current {
+  outline: 1px solid rgba(255, 220, 120, 0.9);
+  outline-offset: 1px;
+}
+
 /* Section divider with glow */
 .section-divider {
   border-color: rgba(26, 46, 26, 0.5);
@@ -2696,7 +2701,7 @@ html, body, #root {
 
 .vram-forecast-header__fit-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
   min-width: 0;
 }
@@ -2706,6 +2711,7 @@ html, body, #root {
   align-items: center;
   gap: 6px;
   flex-shrink: 0;
+  padding-top: 1px;
 }
 
 .vram-forecast-header__fit-row .segment-switch--fit-launch {
@@ -2713,8 +2719,12 @@ html, body, #root {
 }
 
 .vram-forecast-needs-row {
-  white-space: nowrap;
-  overflow: hidden;
+  line-height: 1.2;
+}
+
+.vram-forecast-needs-sep {
+  padding: 0 2px;
+  letter-spacing: -0.05em;
 }
 
 .vram-forecast-hero {
@@ -2737,7 +2747,7 @@ html, body, #root {
   max-width: 28rem;
 }
 
-/* Tabular digits + fixed slots so 9.1 → 88.4 does not shift "of TOTAL MEMORY" */
+/* Tabular digits + fixed slots so 9.1 → 88.4 does not shift "of VRAM / RAM" */
 .vram-forecast-gb-value {
   font-variant-numeric: tabular-nums;
   display: inline-block;
@@ -2816,11 +2826,13 @@ html, body, #root {
   text-shadow: none;
 }
 
-/* SOURCE band — exactly two text lines under FORECAST header */
+/* SOURCE band — header row + up to 3 provenance/breakdown lines */
 .memory-source-strip {
-  height: 22px;
   min-height: 22px;
-  max-height: 22px;
+}
+
+.memory-source-body {
+  min-height: 0;
 }
 
 /* SOURCE kind — widest label (FIT PROBE) reserves width */
@@ -8420,6 +8432,17 @@ select option {
   color: rgba(118, 185, 0, 0.75);
   letter-spacing: 0.02em;
   opacity: 0.85;
+}
+
+.foundry-clear-cache-btn {
+  color: var(--color-telemetry-red);
+  border-color: color-mix(in srgb, var(--color-telemetry-red) 45%, var(--theme-chip-border) 55%);
+  background: color-mix(in srgb, var(--color-telemetry-red) 8%, var(--theme-chip-bg) 92%);
+}
+
+.foundry-clear-cache-btn:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--color-telemetry-red) 65%, var(--theme-chip-border) 35%);
+  background: color-mix(in srgb, var(--color-telemetry-red) 14%, var(--theme-chip-bg) 86%);
 }
 
 .foundry-arch-chip {

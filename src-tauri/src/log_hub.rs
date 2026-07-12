@@ -267,6 +267,7 @@ impl LogHub {
         let mut load_failed = false;
         let mut tables_seen: usize = 0;
         let mut tables_persisted: usize = 0;
+        let mut launch_snapshot_persisted = false;
         let mut vram_learn_buf: Vec<String> = Vec::with_capacity(256);
         let fit_adapter =
             crate::fit_scanner::resolve_fit_adapter(&learn_snapshot.provider_id);
@@ -283,6 +284,12 @@ impl LogHub {
                         Some(EnginePipeLine::Stderr(l)) => (l, false),
                         Some(EnginePipeLine::Stdout(l)) => (l, true),
                         None => {
+                            crate::session_log::note_pipe_closed(
+                                slot_idx,
+                                &alias,
+                                engine_pid,
+                                model_ready.load(Ordering::Acquire),
+                            );
                             if model_ready.load(Ordering::Acquire) {
                                 let prev = tables_persisted;
                                 if let Some((mib, total, gpu_breakdown)) = Self::persist_pending_fit_tables(
@@ -332,6 +339,15 @@ impl LogHub {
                     let cleaned = raw_line.trim().to_string();
                     if cleaned.is_empty() { continue; }
 
+                    if !Self::is_idle_chatter(&cleaned) {
+                        crate::session_log::write_engine_line(
+                            slot_idx,
+                            &alias,
+                            stdout_only,
+                            &cleaned,
+                        );
+                    }
+
                     if !stdout_only {
                         LogHub::new(app_handle.clone()).record_stderr_line(slot_idx, &cleaned);
                     }
@@ -348,6 +364,27 @@ impl LogHub {
                                     format!("[{}] Engine ready", alias),
                                     BlackwellOutputConsoleLineStyle::Normal,
                                 );
+                            }
+                            if !launch_snapshot_persisted {
+                                if let Some((mib, gpu_breakdown, profile)) =
+                                    Self::persist_launch_memory_snapshot(
+                                        &app_handle,
+                                        slot_idx,
+                                        &alias,
+                                        &learn_snapshot,
+                                        &vram_learn_buf,
+                                    )
+                                    .await
+                                {
+                                    launch_snapshot_persisted = true;
+                                    Self::emit_launch_memory_learn_progress(
+                                        &app_handle,
+                                        &alias,
+                                        mib,
+                                        profile.as_deref(),
+                                        gpu_breakdown.as_deref(),
+                                    );
+                                }
                             }
                             if tables_seen > tables_persisted {
                                 let prev = tables_persisted;
@@ -415,7 +452,10 @@ impl LogHub {
                     }
 
                     // Buffer provider-specific learn lines; persist only on complete samples.
-                    if fit_adapter.is_vram_learn_line(&cleaned, stdout_only) {
+                    if !stdout_only
+                        && (fit_adapter.is_vram_learn_line(&cleaned, stdout_only)
+                            || crate::launch_memory_parse::is_launch_memory_line(&cleaned))
+                    {
                         vram_learn_buf.push(cleaned.clone());
                         if vram_learn_buf.len() > VRAM_LEARN_BUF_CAP {
                             log::warn!(
@@ -508,8 +548,21 @@ impl LogHub {
 
     /// Parse stderr buffer, append any new complete breakdown tables.
     /// Returns (total_gpu_self_mib, table_count, per_gpu_self_mib).
+    fn emit_learned_vram_changed(
+        app_handle: &AppHandle,
+        learn_snapshot: &crate::vram_learn::VramLearnSnapshot,
+    ) {
+        LogHub::new(app_handle.clone()).emit(
+            "learned-vram-changed",
+            &serde_json::json!({
+                "model_path": learn_snapshot.model_path,
+                "provider_id": learn_snapshot.provider_id,
+            }),
+        );
+    }
+
     async fn persist_pending_fit_tables(
-        _app_handle: &AppHandle,
+        app_handle: &AppHandle,
         alias: &str,
         learn_snapshot: &crate::vram_learn::VramLearnSnapshot,
         line_buf: &[String],
@@ -545,6 +598,7 @@ impl LogHub {
                     latest_mib,
                     phase
                 );
+                Self::emit_learned_vram_changed(app_handle, learn_snapshot);
                 Some((latest_mib, total, gpu_breakdown))
             }
             Ok(None) => None,
@@ -606,6 +660,7 @@ impl LogHub {
                         total,
                         phase
                     );
+                    Self::emit_learned_vram_changed(app_handle, learn_snapshot);
                 }
                 Ok(None) => {}
                 Err(e) => {
@@ -635,6 +690,74 @@ impl LogHub {
                 .join(" + "),
             Some(list) if !list.is_empty() => format!("{:.0}", list[0]),
             _ => String::new(),
+        }
+    }
+
+    async fn persist_launch_memory_snapshot(
+        app_handle: &AppHandle,
+        slot_idx: usize,
+        alias: &str,
+        learn_snapshot: &crate::vram_learn::VramLearnSnapshot,
+        line_buf: &[String],
+    ) -> Option<(f64, Option<Vec<f64>>, Option<String>)> {
+        let combined = line_buf.join("\n");
+        let snapshot = crate::launch_memory_parse::parse_launch_memory_snapshot(&combined)?;
+        let mib = snapshot.vram_mib;
+        let gpu_breakdown = Some(snapshot.gpu_breakdown_mib.clone());
+        let profile = snapshot.reference_profile.clone();
+
+        if let Some(ctx) = app_handle.try_state::<crate::engine::AppContext>() {
+            let stack = ctx.stack.lock().await;
+            stack.update_slot_vram(slot_idx, mib, gpu_breakdown.clone());
+            stack.emit_stack_changed();
+        }
+
+        match crate::vram_learn::record_launch_memory_snapshot(
+            &learn_snapshot.learn_key,
+            snapshot,
+        ) {
+            Ok(()) => {
+                log::info!(
+                    "[vram_learn] launch snapshot slot={} provider={} → {:.1} MiB GPU ({})",
+                    slot_idx,
+                    learn_snapshot.provider_id,
+                    mib,
+                    profile.as_deref().unwrap_or("generic"),
+                );
+                Self::emit_learned_vram_changed(app_handle, learn_snapshot);
+                Some((mib, gpu_breakdown, profile))
+            }
+            Err(e) => {
+                log::warn!("[vram_learn] launch snapshot persist failed for {alias}: {e}");
+                None
+            }
+        }
+    }
+
+    fn emit_launch_memory_learn_progress(
+        app_handle: &AppHandle,
+        alias: &str,
+        mib: f64,
+        profile: Option<&str>,
+        gpu_breakdown: Option<&[f64]>,
+    ) {
+        let per_gpu = Self::format_gpu_self_breakdown(gpu_breakdown);
+        let gpu_detail = if per_gpu.is_empty() {
+            String::new()
+        } else {
+            format!(" ({per_gpu})")
+        };
+        let profile_tag = profile
+            .map(|p| format!(" · {p}"))
+            .unwrap_or_default();
+        if let Some(ctx) = app_handle.try_state::<crate::engine::AppContext>() {
+            ctx.blackwell_output_console_manager.emit_line_to_category(
+                BlackwellOutputConsoleCategory::Engines,
+                format!(
+                    "[{alias}] Learned launch memory: {mib:.0} MiB{gpu_detail}{profile_tag} — buffer inventory saved"
+                ),
+                BlackwellOutputConsoleLineStyle::Normal,
+            );
         }
     }
 
@@ -947,6 +1070,13 @@ mod tests {
     fn format_reason_with_stderr_tail_empty_passthrough() {
         let msg = LogHub::format_reason_with_stderr_tail("load timed out", None);
         assert_eq!(msg, "load timed out");
+    }
+
+    #[test]
+    fn idle_chatter_matches_steady_state_slots_poll() {
+        assert!(LogHub::is_idle_chatter(
+            "14.24.080.725 I srv  update_slots: all slots are idle"
+        ));
     }
 
     #[test]

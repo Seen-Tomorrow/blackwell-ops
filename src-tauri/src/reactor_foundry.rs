@@ -2,11 +2,12 @@
 //!
 //! Directory policy (see FOUNDRY_DIRECTORY_STRUCTURE_MAP.md §1, §5, §6):
 //!   engines/<provider_id>/llama.cpp/   — kept source tree (git clone/pull target, reused for incremental builds)
-//!   engines/<provider_id>/work/         — **DISPOSABLE** — nuked with one remove_dir_all on every build exit (success/fail/cancel)
+//!   engines/<provider_id>/work/         — **DISPOSABLE** in release; **retained in DEV** for CMake incremental cache
 //!   artifacts/<provider_id>/<env>/Release/ — **SACRED** — only written on successful validation; automatic cleanup never touches it
 //!
 //! Build flow: clone/pull into llama.cpp, configure+build into a temp tree under work/build-{env}/,
-//! on success copy the Release artifacts into the sacred artifacts tree, then nuke work/.
+//! on success copy the Release artifacts into the sacred artifacts tree.
+//! Release builds nuke work/ on exit; debug builds keep work/build-{profile}/ when the cmake fingerprint matches.
 //! No build-* directories are ever created inside llama.cpp anymore. All legacy delete guards around profile trees are gone.
 
 use serde::{Deserialize, Serialize};
@@ -83,6 +84,167 @@ fn get_default_cmake_flags(template_type: &str) -> &'static str {
         .find(|(key, _)| *key == template_type)
         .map(|(_, flags)| *flags)
         .unwrap_or("")
+}
+
+/// DEV-only: retain `work/build-{profile}/` between Foundry runs for incremental CMake/nvcc.
+const FOUNDRY_CACHE_KEY_FILE: &str = ".blackwell-foundry-cache-key";
+
+fn foundry_keep_work_cache() -> bool {
+    cfg!(debug_assertions)
+}
+
+fn foundry_cache_fingerprint(profile_id: &str, cmake_configure_line: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(profile_id.as_bytes());
+    hasher.update(b"\0");
+    hasher.update(cmake_configure_line.as_bytes());
+    format!("{:x}", hasher.finalize())
+}
+
+async fn read_foundry_cache_key(build_dir: &std::path::Path) -> Option<String> {
+    let path = build_dir.join(FOUNDRY_CACHE_KEY_FILE);
+    let content = tokio::fs::read_to_string(&path).await.ok()?;
+    let trimmed = content.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
+}
+
+async fn write_foundry_cache_key(build_dir: &std::path::Path, key: &str) -> Result<(), String> {
+    tokio::fs::write(build_dir.join(FOUNDRY_CACHE_KEY_FILE), format!("{key}\n"))
+        .await
+        .map_err(|e| format!("Failed to write Foundry cache key: {e}"))
+}
+
+/// Prepare `work/build-{profile}/` — reuse when DEV cache fingerprint matches, else fresh tree.
+async fn prepare_foundry_build_dir(
+    build_dir: &std::path::Path,
+    cache_fingerprint: &str,
+) -> Result<bool, String> {
+    let cache_hit = if foundry_keep_work_cache()
+        && build_dir.join("CMakeCache.txt").is_file()
+        && read_foundry_cache_key(build_dir).await.as_deref() == Some(cache_fingerprint)
+    {
+        true
+    } else {
+        false
+    };
+
+    if cache_hit {
+        return Ok(true);
+    }
+
+    if build_dir.exists() {
+        tokio::fs::remove_dir_all(build_dir)
+            .await
+            .map_err(|e| format!("Failed to reset Foundry build dir: {e}"))?;
+    }
+    tokio::fs::create_dir_all(build_dir)
+        .await
+        .map_err(|e| format!("Failed to create Foundry build dir: {e}"))?;
+    Ok(false)
+}
+
+async fn nuke_foundry_work_tree(provider_id: &str) {
+    let work_root = crate::config::foundry_work_dir(provider_id);
+    let _ = tokio::fs::remove_dir_all(&work_root).await;
+}
+
+async fn nuke_foundry_work_tree_on_exit(provider_id: &str) {
+    if foundry_keep_work_cache() {
+        return;
+    }
+    nuke_foundry_work_tree(provider_id).await;
+}
+
+/// Shipping targets only — avoids building 50+ llama tools and flaky VS tail custom rules.
+const FOUNDRY_CMAKE_BUILD_TARGETS: &[&str] = &[
+    "llama-server",
+    "llama-cli",
+    "llama-quantize",
+    "llama-fit-params",
+];
+
+const FOUNDRY_CORE_BINARIES: &[&str] = &[
+    "llama-server.exe",
+    "llama-cli.exe",
+    "llama-quantize.exe",
+];
+
+struct FoundryCoreBinaryCheck {
+    all_present: bool,
+    missing: Vec<String>,
+    binary_dir: Option<PathBuf>,
+}
+
+fn foundry_batch_script_paths(work_root: &std::path::Path, profile_id: &str) -> (PathBuf, PathBuf) {
+    let pid = foundry_toolchain::normalize_profile_id(profile_id);
+    (
+        work_root.join(format!("_build_cfg_{pid}.bat")),
+        work_root.join(format!("_build_run_{pid}.bat")),
+    )
+}
+
+fn foundry_cmake_build_target_args() -> String {
+    FOUNDRY_CMAKE_BUILD_TARGETS
+        .iter()
+        .map(|t| format!(" --target {t}"))
+        .collect()
+}
+
+fn foundry_release_candidate_dirs(build_dir: &std::path::Path, src_dir: &std::path::Path) -> Vec<PathBuf> {
+    vec![
+        build_dir.join("bin").join("Release"),
+        src_dir.join("bin").join("Release"),
+        src_dir.join("build").join("Release"),
+    ]
+}
+
+fn check_foundry_core_binaries(candidate_dirs: &[PathBuf]) -> FoundryCoreBinaryCheck {
+    let mut missing = Vec::new();
+    let mut binary_dir = None;
+
+    for bin in FOUNDRY_CORE_BINARIES {
+        let mut found = false;
+        for dir in candidate_dirs {
+            if dir.join(bin).is_file() {
+                found = true;
+                if binary_dir.is_none() {
+                    binary_dir = Some(dir.clone());
+                }
+                break;
+            }
+        }
+        if !found {
+            missing.push((*bin).to_string());
+        }
+    }
+
+    FoundryCoreBinaryCheck {
+        all_present: missing.is_empty(),
+        missing,
+        binary_dir,
+    }
+}
+
+fn is_windows_vs_tail_batch_flake(stderr: &str) -> bool {
+    stderr.to_ascii_lowercase().contains("the batch file cannot be found")
+}
+
+async fn nuke_foundry_build_dir_on_configure_fail(
+    provider_id: &str,
+    profile_id: &str,
+) {
+    if foundry_keep_work_cache() {
+        let build_dir = crate::config::foundry_work_dir(provider_id)
+            .join(format!("build-{profile_id}"));
+        let _ = tokio::fs::remove_dir_all(&build_dir).await;
+        return;
+    }
+    nuke_foundry_work_tree(provider_id).await;
 }
 
 fn resolve_template_type(_provider_id: &str) -> &'static str {
@@ -499,8 +661,7 @@ async fn clear_build_slot_if_matches(
     };
     if should_clear {
         foundry_console_end_session(app_handle, build_id);
-        let work_root = crate::config::foundry_work_dir(provider_id);
-        let _ = tokio::fs::remove_dir_all(&work_root).await;
+        nuke_foundry_work_tree_on_exit(provider_id).await;
     }
 }
 
@@ -739,8 +900,8 @@ async fn run_foundry_build_worker(
     //
     // engine_root = foundry/engines/<provider_id>
     //   src_dir     = engine_root/llama.cpp          (kept for git reuse — never touched by cleanup)
-    //   work_root   = engine_root/work               (DISPOSABLE — nuked on every exit)
-    //     build_dir = work_root/build-{env}        (ephemeral CMake tree for this attempt)
+    //   work_root   = engine_root/work               (DISPOSABLE in release; cached in DEV)
+    //     build_dir = work_root/build-{env}        (CMake tree — reused in DEV when flags match)
     //
     // cmake_build_output_dir = build_dir/bin/Release  ← where cmake puts binaries during build
     // sacred_binary_path     = foundry/artifacts/<provider>/<env>/Release  ← permanent, never nuked
@@ -753,14 +914,19 @@ async fn run_foundry_build_worker(
     let cmake_build_output_dir = build_dir.join("bin").join("Release");
     // NOTE: bin_bak / rename dance removed entirely from normal build flow. Sacred artifacts are never touched during a build attempt.
 
-    // Defensive nuke of any leftover work/ from a previous crashed build (safe — disposable by policy)
-    let _ = tokio::fs::remove_dir_all(&work_root).await;
-    if let Err(e) = tokio::fs::create_dir_all(&work_root).await {
-        // Minimal rollback (will be simplified later)
-       rollback_build(app_handle, &provider_id, &profile_id, build_id).execute().await;
-        return Err(format!("Failed to create work directory: {}", e));
+    // Release: nuke work/ every build. DEV: keep work/ — per-profile dir validated before configure.
+    if foundry_keep_work_cache() {
+        if let Err(e) = tokio::fs::create_dir_all(&work_root).await {
+            rollback_build(app_handle, &provider_id, &profile_id, build_id).execute().await;
+            return Err(format!("Failed to create work directory: {}", e));
+        }
+    } else {
+        let _ = tokio::fs::remove_dir_all(&work_root).await;
+        if let Err(e) = tokio::fs::create_dir_all(&work_root).await {
+            rollback_build(app_handle, &provider_id, &profile_id, build_id).execute().await;
+            return Err(format!("Failed to create work directory: {}", e));
+        }
     }
-    let _ = tokio::fs::create_dir_all(&build_dir).await;
 
     // ── Git Operations ───────────────────────────────────────────────
 
@@ -1134,6 +1300,36 @@ async fn run_foundry_build_worker(
         )
     };
 
+    let cache_fingerprint = foundry_cache_fingerprint(&profile_id, &cmake_configure_line);
+    let cache_reused = match prepare_foundry_build_dir(&build_dir, &cache_fingerprint).await {
+        Ok(reused) => reused,
+        Err(e) => {
+            rollback_build(app_handle, &provider_id, &profile_id, build_id).execute().await;
+            return Err(e);
+        }
+    };
+    if cache_reused {
+        emit_config_event(
+            app_handle,
+            &provider_id,
+            &profile_id,
+            build_id,
+            Some(format!(
+                "[CACHE] Reusing CMake build tree for build-{profile_id} (DEV incremental — flags unchanged)"
+            )),
+        );
+    } else if foundry_keep_work_cache() {
+        emit_config_event(
+            app_handle,
+            &provider_id,
+            &profile_id,
+            build_id,
+            Some(format!(
+                "[CACHE] Cold CMake tree for build-{profile_id} (new profile, flag change, or manual clear)"
+            )),
+        );
+    }
+
     emit_config_event(app_handle, &provider_id, &profile_id, build_id, Some(format!(
         "cmake -B work/build-{} -S llama.cpp {} {} {} {}{}",
         profile_id,
@@ -1156,7 +1352,7 @@ async fn run_foundry_build_worker(
         cmake_configure_line,
     );
     let cfg_batch_content = cfg_batch_lines.join("\n");
-    let cfg_batch_path = work_root.join("_build_cfg.bat");
+    let (cfg_batch_path, _) = foundry_batch_script_paths(&work_root, &profile_id);
     if let Err(e) = tokio::fs::write(&cfg_batch_path, &cfg_batch_content).await {
         clear_build_slot_if_matches(build_id, &provider_id, app_handle).await;
         return Err(format!("Failed to write build script: {}", e));
@@ -1251,7 +1447,6 @@ async fn run_foundry_build_worker(
             flush_done.store(true, Ordering::SeqCst);
             stream_handle.await.ok();
             clear_pids();
-            let _ = tokio::fs::remove_file(&cfg_batch_path).await;
             clear_build_slot_if_matches(build_id, &provider_id, app_handle).await;
             return Err("Build cancelled by user.".to_string());
         }
@@ -1262,12 +1457,9 @@ async fn run_foundry_build_worker(
 
     let Some(cfg_status) = cfg_status else {
         clear_pids();
-        let _ = tokio::fs::remove_file(&cfg_batch_path).await;
         clear_build_slot_if_matches(build_id, &provider_id, app_handle).await;
         return Err("CMake configure process terminated unexpectedly.".to_string());
     };
-
-    let _ = tokio::fs::remove_file(&cfg_batch_path).await;
 
     if !cfg_status.success() {
         let stderr_text: String = try_lock_log_buf(&stderr_capture)
@@ -1279,13 +1471,15 @@ async fn run_foundry_build_worker(
 
         clear_pids();
 
-        // Ensure work dir is cleaned even on early configure failure (prevents stuck "building" + orphaned work dir)
-        let work_root = crate::config::foundry_work_dir(&provider_id);
-        let _ = tokio::fs::remove_dir_all(&work_root).await;
+        nuke_foundry_build_dir_on_configure_fail(&provider_id, &profile_id).await;
         foundry_console_end_session(app_handle, build_id);
 
         *CURRENT_BUILD.lock().await = None;
         return Err("CMake configure failed. Check the log above for details.".to_string());
+    }
+
+    if let Err(e) = write_foundry_cache_key(&build_dir, &cache_fingerprint).await {
+        log::warn!("[foundry] Failed to persist cache fingerprint: {e}");
     }
 
     // ── Check cancellation before showing PROCEED prompt ─────────────
@@ -1316,9 +1510,7 @@ async fn run_foundry_build_worker(
         if is_cancelled() || CURRENT_BUILD.lock().await.is_none() {
             clear_pids();
 
-            // Explicit cleanup on cancel from WaitingForConfirm
-            let work_root = crate::config::foundry_work_dir(&provider_id);
-            let _ = tokio::fs::remove_dir_all(&work_root).await;
+            nuke_foundry_work_tree_on_exit(&provider_id).await;
             foundry_console_end_session(app_handle, build_id);
 
             emit_build_event(app_handle, &BuildState {
@@ -1368,7 +1560,9 @@ async fn run_foundry_build_worker(
 
     if let Some(state) = snapshot_build_state().await {
         emit_build_event(app_handle, &state, Some(format!(
-            "[STAGE 3/4] BUILD — Starting compilation with {} cores...", num_cpus
+            "[STAGE 3/4] BUILD — {} target(s), {} cores...",
+            FOUNDRY_CMAKE_BUILD_TARGETS.len(),
+            num_cpus
         )));
     }
 
@@ -1377,6 +1571,7 @@ async fn run_foundry_build_worker(
 
     // Absolute --build (no cd, no reliance on relative layout)
     let build_dir_str = build_dir.to_string_lossy().replace('\\', "/");
+    let build_target_args = foundry_cmake_build_target_args();
     let build_batch_lines = build_isolated_batch_script(
         &vs_devcmd,
         &cuda_path_forced,
@@ -1386,12 +1581,12 @@ async fn run_foundry_build_worker(
         ml64_bin.as_deref(),
         git_cmd_bin.as_deref(),
         format!(
-            r#""{}" --build "{}" --config Release -j {}"#,
-            cmake_cmd, build_dir_str, num_cpus
+            r#""{}" --build "{}" --config Release{build_target_args} -j {num_cpus}"#,
+            cmake_cmd, build_dir_str
         ),
     );
     let build_batch_content = build_batch_lines.join("\n");
-    let build_batch_path = work_root.join("_build_run.bat");
+    let (_, build_batch_path) = foundry_batch_script_paths(&work_root, &profile_id);
     if let Err(e) = tokio::fs::write(&build_batch_path, &build_batch_content).await {
         return Err(format!("Failed to write build script: {}", e));
     }
@@ -1421,24 +1616,47 @@ async fn run_foundry_build_worker(
         &state_for_stream,
     ).await;
 
-    let _ = tokio::fs::remove_file(&build_batch_path).await;
-
     let Some(build_status) = build_status else {
         clear_pids();
         do_rollback(&cmake_build_output_dir).await;
         return Err("Build cancelled by user.".to_string());
     };
 
+    let stderr_joined = stderr_text.join("\n");
+    let mut recovered_tail_flake = false;
     if !build_status.success() {
-        let stderr_text: String = stderr_text.join("\n");
-        rollback_build(app_handle, &provider_id, &profile_id, build_id)
-            .with_message(if stderr_text.is_empty() { "Build failed.".into() } else { format!("Build failed:\n{}", stderr_text) })
-            .execute().await;
+        let precheck = check_foundry_core_binaries(&foundry_release_candidate_dirs(
+            &build_dir,
+            &src_dir,
+        ));
+        if precheck.all_present && is_windows_vs_tail_batch_flake(&stderr_joined) {
+            recovered_tail_flake = true;
+            if let Some(state) = snapshot_build_state().await {
+                emit_build_event(
+                    app_handle,
+                    &state,
+                    Some(
+                        "[WARN] MSBuild exited non-zero after shipping targets linked \
+                         (Windows VS tail rule: batch file cannot be found). \
+                         Core binaries present — continuing validation."
+                            .into(),
+                    ),
+                );
+            }
+        } else {
+            rollback_build(app_handle, &provider_id, &profile_id, build_id)
+                .with_message(if stderr_joined.is_empty() {
+                    "Build failed.".into()
+                } else {
+                    format!("Build failed:\n{stderr_joined}")
+                })
+                .execute()
+                .await;
 
-        // work/ (incl. build_dir) nuked on exit — no per-path delete needed
-        clear_pids();
-        *CURRENT_BUILD.lock().await = None;
-        return Err(format!("Build failed.\nSTDERR: {}", stderr_text));
+            clear_pids();
+            *CURRENT_BUILD.lock().await = None;
+            return Err(format!("Build failed.\nSTDERR: {stderr_joined}"));
+        }
     }
 
     clear_pids();
@@ -1460,34 +1678,11 @@ async fn run_foundry_build_worker(
         emit_build_event(app_handle, &state, Some("[STAGE 4/4] VALIDATE — Checking core binaries...".into()));
     }
 
-    let core_binaries = ["llama-server.exe", "llama-cli.exe", "llama-quantize.exe"];
-
-    let candidate_dirs: Vec<PathBuf> = vec![
-        cmake_build_output_dir.clone(),
-        src_dir.join("bin").join("Release"),
-        src_dir.join("build").join("Release"),
-    ];
-
-    let mut all_present = true;
-    let mut missing: Vec<String> = vec![];
-    let mut validated_binary_dir: Option<PathBuf> = None;
-
-    for bin in &core_binaries {
-        let mut found = false;
-        for dir in &candidate_dirs {
-            if dir.join(bin).exists() {
-                found = true;
-                if validated_binary_dir.is_none() {
-                    validated_binary_dir = Some(dir.clone());
-                }
-                break;
-            }
-        }
-        if !found {
-            all_present = false;
-            missing.push(bin.to_string());
-        }
-    }
+    let candidate_dirs = foundry_release_candidate_dirs(&build_dir, &src_dir);
+    let binary_check = check_foundry_core_binaries(&candidate_dirs);
+    let all_present = binary_check.all_present;
+    let missing = binary_check.missing;
+    let validated_binary_dir = binary_check.binary_dir;
 
     if let Some(found_dir) = &validated_binary_dir {
         if *found_dir != cmake_build_output_dir {
@@ -1517,9 +1712,14 @@ async fn run_foundry_build_worker(
             .with_message(format!("Missing core binaries: {}", missing.join(", ")))
             .execute().await;
 
-        // work/ nuked on exit
         *CURRENT_BUILD.lock().await = None;
         return Err(format!("Build completed but core binaries missing: {}", missing.join(", ")));
+    }
+
+    if recovered_tail_flake {
+        log::warn!(
+            "[foundry] Recovered Windows VS tail-rule flake for {provider_id}/{profile_id}"
+        );
     }
 
     // ── Success: Capture build info + update per-env paths ────────────
@@ -1607,8 +1807,7 @@ async fn run_foundry_build_worker(
     // Any stubborn residue will be cleaned on the next build entry anyway.
     tokio::time::sleep(std::time::Duration::from_millis(750)).await;
 
-    let work_root = crate::config::foundry_work_dir(&provider_id);
-    let _ = tokio::fs::remove_dir_all(&work_root).await;
+    nuke_foundry_work_tree_on_exit(&provider_id).await;
 
     // Just tidy the PID list. Do not kill on success — children are expected to die naturally
     // once the tracked cmake --build child has exited (pre-refactor behavior).
@@ -1646,9 +1845,7 @@ pub async fn foundry_cancel(
         app.blackwell_output_console_manager
             .end_foundry_build_session(state.build_id);
 
-        // Explicit nuke of the disposable work tree for this provider (new policy)
-        let work_root = crate::config::foundry_work_dir(&state.provider_id);
-        let _ = tokio::fs::remove_dir_all(&work_root).await;
+        nuke_foundry_work_tree_on_exit(&state.provider_id).await;
 
         // Emit a final Failed phase event for the frontend (existing behavior)
         let event = serde_json::json!({
@@ -2421,4 +2618,57 @@ pub async fn foundry_check_toolchain() -> Result<Vec<foundry_toolchain::ProfileC
 pub async fn foundry_get_profiles() -> Result<Vec<foundry_toolchain::ProfileDef>, String> {
     let manifest = foundry_toolchain::load_manifest()?;
     Ok(manifest.profiles)
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FoundryWorkCacheStatus {
+    /// True when the running binary is a debug (DEV) build — cache retention is active.
+    pub dev_cache_enabled: bool,
+    pub profile_id: String,
+    pub build_dir_exists: bool,
+    pub cmake_cache_present: bool,
+}
+
+/// DEV confirm modal: whether a warm CMake tree exists for this provider/profile.
+#[tauri::command]
+pub async fn foundry_work_cache_status(
+    provider_id: String,
+    profile_id: String,
+) -> Result<FoundryWorkCacheStatus, String> {
+    let profile_id = foundry_toolchain::normalize_profile_id(&profile_id);
+    let build_dir = crate::config::foundry_work_dir(&provider_id).join(format!("build-{profile_id}"));
+    Ok(FoundryWorkCacheStatus {
+        dev_cache_enabled: foundry_keep_work_cache(),
+        profile_id,
+        build_dir_exists: build_dir.is_dir(),
+        cmake_cache_present: build_dir.join("CMakeCache.txt").is_file(),
+    })
+}
+
+/// DEV only — delete `foundry/engines/<provider>/work/` (or one `build-{profile}/` subtree).
+#[tauri::command]
+pub async fn foundry_clear_work_cache(
+    provider_id: String,
+    profile_id: Option<String>,
+) -> Result<(), String> {
+    if !foundry_keep_work_cache() {
+        return Err("CMake work cache clear is only available in DEV builds.".into());
+    }
+
+    let work_root = crate::config::foundry_work_dir(&provider_id);
+    if let Some(profile) = profile_id {
+        let profile_id = foundry_toolchain::normalize_profile_id(&profile);
+        let build_dir = work_root.join(format!("build-{profile_id}"));
+        if build_dir.exists() {
+            tokio::fs::remove_dir_all(&build_dir)
+                .await
+                .map_err(|e| format!("Failed to clear Foundry build cache: {e}"))?;
+        }
+    } else if work_root.exists() {
+        tokio::fs::remove_dir_all(&work_root)
+            .await
+            .map_err(|e| format!("Failed to clear Foundry work directory: {e}"))?;
+    }
+    Ok(())
 }

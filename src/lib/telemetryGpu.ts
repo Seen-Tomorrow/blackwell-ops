@@ -58,6 +58,9 @@ export function vramManifestSnapshotEqual(
     || prev.learnedFromPreviousRun !== next.learnedFromPreviousRun
     || prev.autoLayerSplit !== next.autoLayerSplit
     || prev.memorySource?.kind !== next.memorySource?.kind
+    || prev.memorySource?.detail !== next.memorySource?.detail
+    || prev.memorySource?.breakdown !== next.memorySource?.breakdown
+    || prev.memorySource?.breakdownSecondary !== next.memorySource?.breakdownSecondary
     || prev.style.label !== next.style.label
   ) {
     return false;

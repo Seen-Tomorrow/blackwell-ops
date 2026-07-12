@@ -5,6 +5,8 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{LazyLock, Mutex};
 
+use crate::fit_scanner::GpuComponentMib;
+use crate::launch_memory_parse::LaunchMemorySnapshot;
 use crate::types::EngineConfig;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -23,10 +25,19 @@ pub struct LearnedVramFitAttempt {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LearnedVramEntry {
-    /// Latest table — used for forecast (last FIT probe or exit table).
+    /// Authoritative GPU total — launch buffer inventory when present, else FIT/exit table.
     pub vram_mib: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub gpu_breakdown_mib: Option<Vec<f64>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub host_mib: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gpu_components_mib: Option<Vec<GpuComponentMib>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub host_components_mib: Option<GpuComponentMib>,
+    /// Post-load buffer parse — see `launch_memory_parse` architecture memo.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub launch_snapshot: Option<LaunchMemorySnapshot>,
     pub measured_at: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub fit_attempts: Vec<LearnedVramFitAttempt>,
@@ -116,6 +127,28 @@ fn normalize_offload_mode(offload_mode: &str) -> String {
     }
 }
 
+fn normalize_spec_type(spec_type: &str) -> String {
+    let s = spec_type.trim().to_lowercase();
+    if s.is_empty() || s == "none" {
+        "none".to_string()
+    } else {
+        s
+    }
+}
+
+fn optional_launch_suffix(spec_type: &str, cache_ram: &str) -> String {
+    let mut out = String::new();
+    let spec = normalize_spec_type(spec_type);
+    if spec != "none" {
+        out.push_str(&format!("|spec={spec}"));
+    }
+    let ram = cache_ram.trim();
+    if !ram.is_empty() && ram != "0" {
+        out.push_str(&format!("|cache_ram={ram}"));
+    }
+    out
+}
+
 fn param_suffix(
     provider_id: &str,
     ctx: &str,
@@ -124,9 +157,11 @@ fn param_suffix(
     split: &str,
     memory_mode: &str,
     offload_mode: &str,
+    spec_type: &str,
+    cache_ram: &str,
 ) -> String {
     format!(
-        "|{}|ctx={}|kv={}|dev={}|split={}|mode={}|offload={}",
+        "|{}|ctx={}|kv={}|dev={}|split={}|mode={}|offload={}{}",
         provider_id,
         normalize_ctx_key(ctx),
         kv_quant.trim().to_lowercase(),
@@ -134,6 +169,7 @@ fn param_suffix(
         split.trim().to_lowercase(),
         memory_mode.trim().to_lowercase(),
         normalize_offload_mode(offload_mode),
+        optional_launch_suffix(spec_type, cache_ram),
     )
 }
 
@@ -167,6 +203,8 @@ pub fn learned_vram_key(
     split: &str,
     memory_mode: &str,
     offload_mode: &str,
+    spec_type: &str,
+    cache_ram: &str,
 ) -> String {
     let normalized_path = normalize_model_path_for_key(model_path);
     format!(
@@ -180,6 +218,8 @@ pub fn learned_vram_key(
             split,
             memory_mode,
             offload_mode,
+            spec_type,
+            cache_ram,
         ),
     )
 }
@@ -226,6 +266,12 @@ pub fn learned_vram_key_from_config(model_path: &str, provider_id: &str, config:
         &config
             .get_param_str("offload_mode")
             .unwrap_or_else(|| "regular".to_string()),
+        &config
+            .get_param_str("spec_type")
+            .unwrap_or_else(|| "none".to_string()),
+        &config
+            .get_param_str("cache_ram")
+            .unwrap_or_else(|| "0".to_string()),
     )
 }
 
@@ -238,6 +284,8 @@ fn lookup_learned_vram_fuzzy(
     split: &str,
     memory_mode: &str,
     offload_mode: &str,
+    spec_type: &str,
+    cache_ram: &str,
 ) -> Option<LearnedVramEntry> {
     let store = load_store();
     let normalized_path = normalize_model_path_for_key(model_path);
@@ -250,9 +298,31 @@ fn lookup_learned_vram_fuzzy(
         split,
         memory_mode,
         offload_mode,
+        spec_type,
+        cache_ram,
     );
     if let Some(entry) = store.entries.get(&primary) {
         return Some(entry.clone());
+    }
+    // Without spec/cache_ram suffix (pre-MTP keys).
+    if normalize_spec_type(spec_type) == "none" && (cache_ram.trim().is_empty() || cache_ram == "0") {
+        let without_launch = learned_vram_key(
+            model_path,
+            provider_id,
+            ctx,
+            kv_quant,
+            device,
+            split,
+            memory_mode,
+            offload_mode,
+            "none",
+            "0",
+        );
+        if without_launch != primary {
+            if let Some(entry) = store.entries.get(&without_launch) {
+                return Some(entry.clone());
+            }
+        }
     }
     // Legacy entries lack |offload= — only reuse for regular offload, never MOE_OPTIMAL.
     if normalize_offload_mode(offload_mode) == "regular" {
@@ -261,7 +331,30 @@ fn lookup_learned_vram_fuzzy(
             normalized_path,
             param_suffix_legacy(provider_id, ctx, kv_quant, device, split, memory_mode),
         );
-        return store.entries.get(&legacy_key).cloned();
+        if let Some(entry) = store.entries.get(&legacy_key) {
+            return Some(entry.clone());
+        }
+    }
+    // Launch may omit __memory_mode — entry stored under full_auto while UI reads assisted (or vice versa).
+    for alt_mode in ["assisted", "full_auto"] {
+        if alt_mode == memory_mode {
+            continue;
+        }
+        let alt_key = learned_vram_key(
+            model_path,
+            provider_id,
+            ctx,
+            kv_quant,
+            device,
+            split,
+            alt_mode,
+            offload_mode,
+            spec_type,
+            cache_ram,
+        );
+        if let Some(entry) = store.entries.get(&alt_key) {
+            return Some(entry.clone());
+        }
     }
     None
 }
@@ -291,6 +384,12 @@ pub fn lookup_learned_vram_for_config(
         &config
             .get_param_str("offload_mode")
             .unwrap_or_else(|| "regular".to_string()),
+        &config
+            .get_param_str("spec_type")
+            .unwrap_or_else(|| "none".to_string()),
+        &config
+            .get_param_str("cache_ram")
+            .unwrap_or_else(|| "0".to_string()),
     )
 }
 
@@ -309,6 +408,10 @@ pub fn record_learned_vram(
         LearnedVramEntry {
             vram_mib,
             gpu_breakdown_mib,
+            host_mib: None,
+            gpu_components_mib: None,
+            host_components_mib: None,
+            launch_snapshot: None,
             measured_at: chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
             fit_attempts: Vec::new(),
         },
@@ -372,6 +475,10 @@ pub fn append_fit_breakdown_tables(
     let entry = store.entries.entry(key.to_string()).or_insert_with(|| LearnedVramEntry {
         vram_mib: 0.0,
         gpu_breakdown_mib: None,
+        host_mib: None,
+        gpu_components_mib: None,
+        host_components_mib: None,
+        launch_snapshot: None,
         measured_at: String::new(),
         fit_attempts: Vec::new(),
     });
@@ -411,6 +518,7 @@ pub fn append_fit_breakdown_tables(
         latest_mib = mib;
         entry.vram_mib = mib;
         entry.gpu_breakdown_mib = Some(table.gpu_self_mib.clone());
+        entry.host_mib = table.host_mib;
         entry.measured_at = now;
         dirty = true;
     }
@@ -492,6 +600,36 @@ mod dedup_tests {
     }
 }
 
+/// Persist post-load buffer inventory — overrides FIT-era totals for forecast/topo.
+pub fn record_launch_memory_snapshot(
+    key: &str,
+    snapshot: LaunchMemorySnapshot,
+) -> Result<(), String> {
+    let _guard = STORE_MUTEX
+        .lock()
+        .map_err(|e| format!("learned-vram store lock poisoned: {e}"))?;
+    let mut store = load_store();
+    let entry = store.entries.entry(key.to_string()).or_insert_with(|| LearnedVramEntry {
+        vram_mib: 0.0,
+        gpu_breakdown_mib: None,
+        host_mib: None,
+        gpu_components_mib: None,
+        host_components_mib: None,
+        launch_snapshot: None,
+        measured_at: String::new(),
+        fit_attempts: Vec::new(),
+    });
+
+    entry.vram_mib = snapshot.vram_mib;
+    entry.gpu_breakdown_mib = Some(snapshot.gpu_breakdown_mib.clone());
+    entry.host_mib = Some(snapshot.host_mib);
+    entry.gpu_components_mib = snapshot.gpu_components_mib.clone();
+    entry.host_components_mib = snapshot.host_components_mib.clone();
+    entry.measured_at = snapshot.measured_at.clone();
+    entry.launch_snapshot = Some(snapshot);
+    save_store(&store)
+}
+
 #[tauri::command]
 pub fn get_learned_vram(
     model_path: String,
@@ -502,6 +640,8 @@ pub fn get_learned_vram(
     split: String,
     memory_mode: Option<String>,
     offload_mode: Option<String>,
+    spec_type: Option<String>,
+    cache_ram: Option<String>,
 ) -> Option<LearnedVramEntry> {
     let _guard = STORE_MUTEX.lock().ok()?;
     let mode = memory_mode
@@ -514,6 +654,12 @@ pub fn get_learned_vram(
         .map(|s| s.trim().to_lowercase())
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "regular".to_string());
+    let spec = spec_type
+        .as_deref()
+        .unwrap_or("none");
+    let cache = cache_ram
+        .as_deref()
+        .unwrap_or("0");
     lookup_learned_vram_fuzzy(
         &model_path,
         &provider_id,
@@ -523,5 +669,7 @@ pub fn get_learned_vram(
         &split,
         &mode,
         &offload,
+        spec,
+        cache,
     )
 }

@@ -63,6 +63,7 @@ import { buildAutoVramLaunchParams } from "../lib/autoVramLaunch";
 import { resolveLaunchChromePolicy } from "../lib/launchChromePolicy";
 import { buildLaunchExtraParams, paramValuesMatch } from "../lib/paramConfigResolve";
 import { committedSlotsFromStack } from "../services/vram/scenarios/scenarios_factory";
+import { useGpuIdleBaseline } from "../hooks/useGpuIdleBaseline";
 import { formatShareHwTopo, type FusionShareLaunchConfig } from "../lib/fusionShareCapture";
 
 
@@ -625,6 +626,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     () => committedSlotsFromStack(stack),
     [stack],
   );
+
+  const gpuIdleBaselineMib = useGpuIdleBaseline(gpus, stack);
 
   const scenarioConfig = useMemo(
     () => ({
@@ -1496,7 +1499,10 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       port: 0, // Backend computes the actual port from base_port + collision avoidance
       backend_type: effectiveBackendType,
       binary_profile: selectedBinaryProfile,
-      extra_params: extraParams,
+      extra_params: {
+        ...extraParams,
+        __memory_mode: fullAutoMode ? "full_auto" : "assisted",
+      },
     };
 
     // Inject test flags into extra_params if enabled
@@ -1878,6 +1884,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                     cudaVersion={shareProfileMeta.cudaVersion}
                     launchConfig={shareLaunchConfig}
                     hwTopo={shareHwTopo}
+                    gpuIdleBaselineMib={gpuIdleBaselineMib}
                   />
               </div>
           </div>

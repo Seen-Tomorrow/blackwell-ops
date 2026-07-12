@@ -21,6 +21,9 @@ Traps and invariants only — not a code map. Read the source for flows, schemas
 `work/` is nuked every build exit. `foundry/artifacts/.../Release/` is the only durable binary location. Provider `binary_path` / `binary_path_per_env` must point at artifacts after a foundry build, never at cmake temp output under `work/`.
 
 ---
+## APP/engine logs
+C:\Users\GHOST-TOWER\INFRA\blackwell-ops\src-tauri\target\debug\config\logs
+---
 
 ## Provider config merge
 

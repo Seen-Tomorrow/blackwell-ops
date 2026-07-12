@@ -6,6 +6,7 @@ Thumbs.db
 agent-tools/
 terminals/
 work/
+mcps/
 *.suo
 *.ntvs*
 *.njsproj

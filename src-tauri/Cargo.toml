@@ -15,6 +15,7 @@ reactor11 = []
 tauri = { version = "2.11", features = [] }
 tauri-plugin-shell = "2"
 tauri-plugin-updater = "2"
+tauri-plugin-mcp-bridge = "0.12"
 tokio = { version = "1", features = ["full"] }
 tokio-util = { version = "0.7", features = ["rt"] }
 serde = { version = "1.0", features = ["derive"] }

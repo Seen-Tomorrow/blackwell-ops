@@ -16,6 +16,8 @@ import BlackwellBrandMark from "./BlackwellBrandMark";
 import {
   loadUiDensity,
   loadUiZoom,
+  loadSessionLogEnabled,
+  saveSessionLogEnabled,
   saveUiDensity,
   saveUiZoom,
   type UiDensity,
@@ -42,6 +44,14 @@ function loadZoom(): number {
 
 function saveZoom(zoom: number): void {
   saveUiZoom(zoom);
+}
+
+interface SessionLogStatus {
+  dev_build: boolean;
+  active: boolean;
+  env_forced: boolean;
+  runtime_enabled: boolean;
+  session_dir: string | null;
 }
 
 interface LayoutProps {
@@ -91,6 +101,47 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
   const [lastConsoleLine, setLastConsoleLine] = useState<string>("Ready for telemetry");
   const [lastConsoleCategory, setLastConsoleCategory] = useState<OutputConsoleCategory | null>(null);
   const [consoleOpenCategory, setConsoleOpenCategory] = useState<OutputConsoleCategory | null>(null);
+  const [sessionLogActive, setSessionLogActive] = useState(__BUILD_MODE__ === "dev");
+  const [sessionLogEnvForced, setSessionLogEnvForced] = useState(false);
+  const [sessionLogDir, setSessionLogDir] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (__BUILD_MODE__ !== "dev") return;
+    void (async () => {
+      try {
+        const status = await invoke<SessionLogStatus>("get_session_log_status");
+        setSessionLogEnvForced(status.env_forced);
+        setSessionLogDir(status.session_dir);
+        if (status.env_forced) {
+          setSessionLogActive(status.active);
+          return;
+        }
+        const pref = loadSessionLogEnabled();
+        if (pref !== status.runtime_enabled) {
+          const synced = await invoke<SessionLogStatus>("set_session_log_enabled", { enabled: pref });
+          setSessionLogActive(synced.active);
+          setSessionLogDir(synced.session_dir);
+        } else {
+          setSessionLogActive(status.active);
+        }
+      } catch {
+        // silent — non-Tauri or command unavailable
+      }
+    })();
+  }, []);
+
+  const toggleSessionLog = useCallback(async () => {
+    if (sessionLogEnvForced) return;
+    const next = !sessionLogActive;
+    try {
+      const status = await invoke<SessionLogStatus>("set_session_log_enabled", { enabled: next });
+      setSessionLogActive(status.active);
+      setSessionLogDir(status.session_dir);
+      saveSessionLogEnabled(next);
+    } catch {
+      // silent
+    }
+  }, [sessionLogActive, sessionLogEnvForced]);
 
   useEffect(() => {
     const check = () => setIsMobile(isMobileDevice());
@@ -265,28 +316,47 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
             </div>
           </div>
           {__BUILD_MODE__ === "dev" && (
-            <div className="app-header-dev-tools flex items-center gap-1 flex-shrink-0">
+            <div className="app-header-dev-tools flex flex-col items-end gap-0.5 flex-shrink-0">
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    if (e.shiftKey) {
+                      dispatchReplaySetupGuideOnboardingOnly();
+                      return;
+                    }
+                    void dispatchReplaySetupGuide();
+                  }}
+                  className="app-chrome-control-btn px-1.5 text-[8px] font-mono transition-colors leading-none text-nv-green/70 hover:text-nv-green"
+                  title="Dev: full first-run replay — same as CONFIG → RECOVERY → RESET CONFIG. Shift+click: onboarding UI only (keeps paths + metadata cache)."
+                >
+                  ↺ SETUP
+                </button>
+                <button
+                  type="button"
+                  onClick={() => dispatchClearLocalStorage(true)}
+                  className="app-chrome-control-btn px-1.5 text-[8px] font-mono transition-colors leading-none text-yellow-400/70 hover:text-yellow-400"
+                  title="Dev: clear BlackOps localStorage only (UI prefs) — does NOT reset config/ or replay setup. Use ↺ SETUP for fresh-install test."
+                >
+                  CLR LS
+                </button>
+              </div>
               <button
                 type="button"
-                onClick={(e) => {
-                  if (e.shiftKey) {
-                    dispatchReplaySetupGuideOnboardingOnly();
-                    return;
-                  }
-                  void dispatchReplaySetupGuide();
-                }}
-                className="app-chrome-control-btn px-1.5 text-[8px] font-mono transition-colors leading-none text-nv-green/70 hover:text-nv-green"
-                title="Dev: full first-run replay — same as CONFIG → RECOVERY → RESET CONFIG. Shift+click: onboarding UI only (keeps paths + metadata cache)."
+                onClick={() => { void toggleSessionLog(); }}
+                disabled={sessionLogEnvForced}
+                className={`app-chrome-control-btn px-1.5 text-[8px] font-mono transition-colors leading-none ${
+                  sessionLogActive ? "text-cyan-300/90 hover:text-cyan-200" : "text-white/40 hover:text-white/60"
+                }${sessionLogEnvForced ? " opacity-60 cursor-not-allowed" : ""}`}
+                title={
+                  sessionLogEnvForced
+                    ? `Session file log ${sessionLogActive ? "ON" : "OFF"} (BLACKWELL_SESSION_LOG env)${sessionLogDir ? ` — ${sessionLogDir}` : ""}`
+                    : sessionLogActive
+                      ? `Session file log ON — engine stderr/stdout under config/logs/sessions/${sessionLogDir ? `\n${sessionLogDir}` : ""}`
+                      : "Session file log OFF — click to mirror engine stderr/stdout to config/logs/sessions/"
+                }
               >
-                ↺ SETUP
-              </button>
-              <button
-                type="button"
-                onClick={() => dispatchClearLocalStorage(true)}
-                className="app-chrome-control-btn px-1.5 text-[8px] font-mono transition-colors leading-none text-yellow-400/70 hover:text-yellow-400"
-                title="Dev: clear BlackOps localStorage only (UI prefs) — does NOT reset config/ or replay setup. Use ↺ SETUP for fresh-install test."
-              >
-                CLR LS
+                SESS LOG {sessionLogActive ? "ON" : "OFF"}
               </button>
             </div>
           )}

@@ -290,6 +290,14 @@ export interface FoundrySourcePreview {
   banner_tone: "green" | "amber" | "cyan" | "muted";
 }
 
+/** DEV Foundry confirm modal — CMake work tree under foundry/engines/.../work/build-{profile}/ */
+export interface FoundryWorkCacheStatus {
+  devCacheEnabled: boolean;
+  profileId: string;
+  buildDirExists: boolean;
+  cmakeCachePresent: boolean;
+}
+
 /** Build metadata extracted from a compiled binary via --version + file mtime. */
 export interface BuildInfo {
   version: string;
@@ -630,8 +638,10 @@ export interface MemorySource {
   kind: MemorySourceKind;
   /** Primary provenance line (9px muted in UI). */
   detail: string;
-  /** Optional second line — GPU/host breakdown or hint text. */
+  /** Breakdown line 1 — profile, per-GPU split, or hint text. */
   breakdown?: string;
+  /** Breakdown line 2 — W/KV/OH components + host RAM when learned. */
+  breakdownSecondary?: string;
   /** Confidence tier: formula=1 … learned=4 */
   confidence: 1 | 2 | 3 | 4;
 }

@@ -303,6 +303,14 @@ impl EngineStack {
         };
 
         let pid = child.id();
+        let launch_cmd = format!("{} {}", binary_path.display(), cmd_args.join(" "));
+        crate::session_log::record_launch(
+            slot_idx,
+            &config.alias,
+            pid,
+            config.port,
+            &launch_cmd,
+        );
         crate::fusion::registry::register_slot_adapter(slot_idx, fusion_adapter);
 
         let stderr = child.stderr.take().ok_or_else(|| {
@@ -795,6 +803,7 @@ impl EngineStack {
     fn clear_slot(&self, idx: usize) {
         if let Some(slot_arc) = &self.slots[idx] {
             let mut slot = slot_arc.lock();
+            let cleared_alias = slot.alias.clone();
             let port = slot.port;
             slot.reaper_cancel.store(true, Ordering::Release);
             slot.status = SlotStatus::Idle;
@@ -815,6 +824,7 @@ impl EngineStack {
             slot.reaper_cancel = Arc::new(AtomicBool::new(false));
             slot.load_fail_claimed = Arc::new(AtomicBool::new(false));
             drop(slot);
+            crate::session_log::note_slot_cleared(idx, &cleared_alias);
             crate::engine_port_lock::delete_lock(port);
         }
     }

@@ -7,13 +7,36 @@ interface GpuTopologyProps {
   ramVisible: boolean;
   ramTotalGb: number;
   ramManufacturedGb: number;
+  /** Per-GPU NVML used (MiB) while idle — session baseline before first engine launch. */
+  gpuIdleBaselineMib?: Record<number, number>;
   selectedGpuIndices?: number[];
   onDeviceSelect?: (gpuIndex: number) => void;
 }
 
 const HATCH_PATTERN = `repeating-linear-gradient(-45deg, transparent, transparent 2px, rgba(0,0,0,0.35) 2px, rgba(0,0,0,0.35) 4px)`;
 
-export default function GpuTopology({ gpuAllocations, gpuBarColor, ramVisible, ramTotalGb, ramManufacturedGb, selectedGpuIndices, onDeviceSelect }: GpuTopologyProps) {
+function formatExternalTooltip(systemReservedMib: number, foreignAppsMib: number): string {
+  const parts: string[] = [];
+  if (systemReservedMib >= 48) {
+    parts.push(`System: ${(systemReservedMib / 1024).toFixed(1)} GB`);
+  }
+  if (foreignAppsMib >= 64) {
+    parts.push(`External apps: ${(foreignAppsMib / 1024).toFixed(1)} GB`);
+  }
+  if (parts.length === 0) return "External: 0 GB";
+  return parts.join(" | ");
+}
+
+export default function GpuTopology({
+  gpuAllocations,
+  gpuBarColor,
+  ramVisible,
+  ramTotalGb,
+  ramManufacturedGb,
+  gpuIdleBaselineMib,
+  selectedGpuIndices,
+  onDeviceSelect,
+}: GpuTopologyProps) {
   return (
     <div className="space-y-2 gpu-topology-root">
       {/* GPU Grid — 2 per row */}
@@ -27,11 +50,15 @@ export default function GpuTopology({ gpuAllocations, gpuBarColor, ramVisible, r
 
           const breakdownMib = alloc.runningEngines.reduce((sum, e) => sum + e.vramUsedMib, 0);
           const hasOurEngines = alloc.runningEngines.length > 0;
-          const { engineBarMib, osOtherMib, attributedOverheadMib } = splitGpuTopoBarUsage(
-            usedMib,
-            breakdownMib,
-            hasOurEngines,
-          );
+          const idleBaselineMib = gpuIdleBaselineMib?.[alloc.gpuIndex] ?? 0;
+          const {
+            engineBarMib,
+            osOtherMib,
+            attributedOverheadMib,
+            breakdownUnderReports,
+            systemReservedMib,
+            foreignAppsMib,
+          } = splitGpuTopoBarUsage(usedMib, breakdownMib, hasOurEngines, idleBaselineMib, alloc.gpuIndex);
           const enginePct = totalMib > 0 ? (engineBarMib / totalMib) * 100 : 0;
           const osPct = totalMib > 0 ? (osOtherMib / totalMib) * 100 : 0;
 
@@ -59,11 +86,13 @@ export default function GpuTopology({ gpuAllocations, gpuBarColor, ramVisible, r
 
           const isSelected = selectedGpuIndices?.includes(alloc.gpuIndex) ?? false;
 
+          const overheadLabel = breakdownUnderReports ? "KV/runtime" : "CUDA/runtime";
+          const externalDetail = formatExternalTooltip(systemReservedMib, foreignAppsMib);
           const tooltipText = hasOurEngines
             ? attributedOverheadMib >= 64
-              ? `Engines: ${(engineBarMib / 1024).toFixed(1)} GB (${(breakdownMib / 1024).toFixed(1)} GB weights + ${(attributedOverheadMib / 1024).toFixed(1)} GB CUDA/runtime) | External: ${(osOtherMib / 1024).toFixed(1)} GB`
-              : `Engines: ${(engineBarMib / 1024).toFixed(1)} GB | External: ${(osOtherMib / 1024).toFixed(1)} GB`
-            : `Running engines: ${(breakdownMib / 1024).toFixed(1)} GB | External apps: ${(osOtherMib / 1024).toFixed(1)} GB`;
+              ? `Engines: ${(engineBarMib / 1024).toFixed(1)} GB (${(breakdownMib / 1024).toFixed(1)} GB tracked + ${(attributedOverheadMib / 1024).toFixed(1)} GB ${overheadLabel}) | ${externalDetail}`
+              : `Engines: ${(engineBarMib / 1024).toFixed(1)} GB | ${externalDetail}`
+            : `Running engines: ${(breakdownMib / 1024).toFixed(1)} GB | ${externalDetail}`;
 
           return (
             <div

@@ -126,6 +126,8 @@ export const KEYS = {
   appTheme: `${STORAGE_PREFIX}app-theme`,
   logSearchBySlot: `${STORAGE_PREFIX}log-search-by-slot`,
   logsAnsiEnabled: `${STORAGE_PREFIX}logs-ansi-enabled`,
+  /** DEV session file log toggle (stderr/stdout under config/logs/sessions/). */
+  sessionLogEnabled: `${STORAGE_PREFIX}session-log-enabled`,
   startupUpdates: `${STORAGE_PREFIX}startup-updates`,
   fusionHeroTpsMode: `${STORAGE_PREFIX}fusion-hero-tps`,
   fusionBenchTray: `${STORAGE_PREFIX}fusion-bench-tray`,
@@ -878,6 +880,17 @@ export function saveLogSearchBySlot(map: Record<number, string>): void {
   } else {
     writeJsonStorage(KEYS.logSearchBySlot, serializable);
   }
+}
+
+export function loadSessionLogEnabled(defaultEnabled = true): boolean {
+  const value = readStorage(KEYS.sessionLogEnabled);
+  if (value === "0") return false;
+  if (value === "1") return true;
+  return defaultEnabled;
+}
+
+export function saveSessionLogEnabled(enabled: boolean): void {
+  writeStorage(KEYS.sessionLogEnabled, enabled ? "1" : "0");
 }
 
 export function loadLogsAnsiEnabled(defaultEnabled = true): boolean {

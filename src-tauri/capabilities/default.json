@@ -4,6 +4,7 @@
   "windows": ["main"],
   "permissions": [
     "core:default",
-    "shell:default"
+    "shell:default",
+    "mcp-bridge:default"
   ]
 }

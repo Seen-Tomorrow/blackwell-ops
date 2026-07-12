@@ -6,6 +6,7 @@ import { attachMemorySource, MEMORY_SOURCE_LABELS } from "../services/vram/memor
 import { gpuMemoryBucketKey, vramManifestSnapshotEqual } from "../lib/telemetryGpu";
 import { tomMtpBlocked, toastTomMtpSkip, TOM_MTP_SKIP_MESSAGE } from "../lib/tomMtp";
 import { EVENTS } from "../lib/events";
+import { useTauriListen } from "./useTauriListen";
 
 type ProbeSession = {
   modelPath: string;
@@ -22,7 +23,7 @@ function scenarioConfigKey(
   autoVramLaunch: boolean,
   memoryMode: "full_auto" | "assisted",
 ): string {
-  return `${config.device || ""}|${config.split || ""}|${config["offload_mode"] || ""}|${config.ctx || ""}|${config["kv_quant"] || ""}|${config.batch ?? ""}|${config.ubatch ?? ""}|${config["flash_attn"] || ""}|${config.vision || ""}|${config["unified_kv"] || ""}|${config["rope_scaling"] || ""}|${config["rope_scale"] ?? ""}|${config.gpu_sync || ""}|${config.cache_ram || ""}|${config.backend_type || ""}|fit=${autoVramLaunch ? "1" : "0"}|mode=${memoryMode}`;
+  return `${config.device || ""}|${config.split || ""}|${config["offload_mode"] || ""}|${config.ctx || ""}|${config["kv_quant"] || ""}|${config.batch ?? ""}|${config.ubatch ?? ""}|${config["flash_attn"] || ""}|${config.vision || ""}|${config["unified_kv"] || ""}|${config["rope_scaling"] || ""}|${config["rope_scale"] ?? ""}|${config.gpu_sync || ""}|${config.cache_ram || ""}|${config.spec_type || ""}|${config.backend_type || ""}|fit=${autoVramLaunch ? "1" : "0"}|mode=${memoryMode}`;
 }
 
 function probeScenarioFields(session: ProbeSession | null, modelPath: string, configKey: string) {
@@ -60,10 +61,27 @@ interface LearnedVramFitAttempt {
   gpu_breakdown_mib?: number[];
 }
 
+interface LearnedLaunchSnapshot {
+  parser_id: string;
+  reference_profile?: string;
+  vram_mib: number;
+  gpu_breakdown_mib: number[];
+  gpu_components_mib?: VramManifest["validatedComponentsMib"];
+  host_mib: number;
+  host_pinned_mib?: number;
+  mtp_context_mib?: number;
+  vision_mib?: number;
+  prompt_cache_limit_mib?: number;
+  effective_ctx?: number;
+}
+
 interface LearnedVramEntry {
   vram_mib: number;
   measured_at?: string;
   gpu_breakdown_mib?: number[];
+  host_mib?: number;
+  gpu_components_mib?: VramManifest["validatedComponentsMib"];
+  launch_snapshot?: LearnedLaunchSnapshot;
   fit_attempts?: LearnedVramFitAttempt[];
 }
 
@@ -192,6 +210,8 @@ export function useScenarioEvaluator({
   const learnedVramRef = useRef<number | null>(null);
   const learnedHostRef = useRef<number | null>(null);
   const learnedGpuBreakdownRef = useRef<number[] | null>(null);
+  const learnedGpuComponentsRef = useRef<VramManifest["validatedComponentsMib"]>(null);
+  const learnedLaunchProfileRef = useRef<string | undefined>(undefined);
   const learnedMeasuredAtRef = useRef<string | undefined>(undefined);
   const lastFitModelPathRef = useRef("");
   const learnedFetchGenRef = useRef(0);
@@ -298,6 +318,8 @@ export function useScenarioEvaluator({
       learnedVramMib: learnedVramRef.current ?? undefined,
       learnedHostMib: learnedHostRef.current ?? undefined,
       learnedGpuBreakdownMib: learnedGpuBreakdownRef.current ?? undefined,
+      learnedGpuComponentsMib: learnedGpuComponentsRef.current ?? undefined,
+      learnedLaunchProfile: learnedLaunchProfileRef.current,
       learnedMeasuredAt: learnedMeasuredAtRef.current,
       ...probeScenarioFields(session, model.path, curConfigKey),
     };
@@ -355,12 +377,13 @@ export function useScenarioEvaluator({
     };
   }, []);
 
-  // Fetch learned VRAM when model/config fingerprint changes — gate eval until settled
-  useEffect(() => {
+  const refreshLearnedVram = useCallback(() => {
     if (!model) {
       learnedVramRef.current = null;
       learnedHostRef.current = null;
       learnedGpuBreakdownRef.current = null;
+      learnedGpuComponentsRef.current = null;
+      learnedLaunchProfileRef.current = undefined;
       learnedMeasuredAtRef.current = undefined;
       learnedFetchPendingRef.current = false;
       return;
@@ -377,16 +400,23 @@ export function useScenarioEvaluator({
       split: String(curConfig.split ?? "none"),
       memoryMode: fullAutoModeRef.current ? "full_auto" : "assisted",
       offloadMode: String(curConfig["offload_mode"] ?? "regular"),
+      specType: String(curConfig.spec_type ?? "none"),
+      cacheRam: String(curConfig.cache_ram ?? "0"),
     })
       .then((entry) => {
         if (fetchGen !== learnedFetchGenRef.current) return;
+        const snap = entry?.launch_snapshot;
         const lastAttempt = entry?.fit_attempts?.length
           ? entry.fit_attempts[entry.fit_attempts.length - 1]
           : undefined;
-        learnedVramRef.current = entry?.vram_mib ?? null;
-        learnedHostRef.current = lastAttempt?.host_mib ?? null;
+        learnedVramRef.current = snap?.vram_mib ?? entry?.vram_mib ?? null;
+        learnedHostRef.current =
+          snap?.host_mib ?? entry?.host_mib ?? lastAttempt?.host_mib ?? null;
         learnedGpuBreakdownRef.current =
-          entry?.gpu_breakdown_mib ?? lastAttempt?.gpu_breakdown_mib ?? null;
+          snap?.gpu_breakdown_mib ?? entry?.gpu_breakdown_mib ?? lastAttempt?.gpu_breakdown_mib ?? null;
+        learnedGpuComponentsRef.current =
+          snap?.gpu_components_mib ?? entry?.gpu_components_mib ?? null;
+        learnedLaunchProfileRef.current = snap?.reference_profile;
         learnedMeasuredAtRef.current = entry?.measured_at;
       })
       .catch(() => {
@@ -394,6 +424,8 @@ export function useScenarioEvaluator({
         learnedVramRef.current = null;
         learnedHostRef.current = null;
         learnedGpuBreakdownRef.current = null;
+        learnedGpuComponentsRef.current = null;
+        learnedLaunchProfileRef.current = undefined;
         learnedMeasuredAtRef.current = undefined;
       })
       .finally(() => {
@@ -402,6 +434,29 @@ export function useScenarioEvaluator({
         scheduleEvaluationRef.current();
       });
   }, [model?.path, configKey]);
+
+  // Fetch learned VRAM when model/config fingerprint changes — gate eval until settled
+  useEffect(() => {
+    refreshLearnedVram();
+  }, [refreshLearnedVram]);
+
+  // Re-fetch after launch learn persists (model loaded / exit tables) without switching models
+  useTauriListen<{ model_path?: string; provider_id?: string }>(
+    "learned-vram-changed",
+    () => {
+      refreshLearnedVram();
+    },
+    [refreshLearnedVram],
+  );
+
+  // Exit-table persist can land just before slot-cleared — short delay catches first-run learn.
+  useTauriListen<{ slot: number }>(
+    "slot-cleared",
+    () => {
+      window.setTimeout(() => refreshLearnedVram(), 300);
+    },
+    [refreshLearnedVram],
+  );
 
   const loadFitScanPoints = useCallback(() => {
     if (!model) {
@@ -536,6 +591,8 @@ export function useScenarioEvaluator({
         learnedVramMib: learnedVramRef.current ?? undefined,
         learnedHostMib: learnedHostRef.current ?? undefined,
         learnedGpuBreakdownMib: learnedGpuBreakdownRef.current ?? undefined,
+        learnedGpuComponentsMib: learnedGpuComponentsRef.current ?? undefined,
+        learnedLaunchProfile: learnedLaunchProfileRef.current,
         learnedMeasuredAt: learnedMeasuredAtRef.current,
         fitProbeVramMib: result.vram_mib,
         fitProbeHostMib: result.host_mib,

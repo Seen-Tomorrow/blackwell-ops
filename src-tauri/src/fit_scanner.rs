@@ -929,6 +929,49 @@ fn is_memory_breakdown_header(line: &str) -> bool {
             || (lower.contains("total") && lower.contains("free") && lower.contains("self")))
 }
 
+/// Trailing unaccounted MiB after the SELF paren: `... (2395 = 500 + 1632 + 263) + 133`
+fn extract_unaccounted_mib_from_cuda_breakdown_line(line: &str) -> Option<f64> {
+    let last_close = line.rfind(')')?;
+    let after = line[last_close + 1..].trim();
+    let plus_idx = after.rfind('+')?;
+    extract_number(after[plus_idx + 1..].trim())
+}
+
+/// Sum of positive per-GPU `unaccounted` from the last complete memory breakdown table.
+/// Engine definition: `unaccounted = total - free - self` (accounting residual, NOT split tax).
+/// Values are often negative during --fit; do not surface in forecast UI.
+pub fn parse_last_breakdown_unaccounted_mib(output: &str) -> Option<f64> {
+    let mut last_sum: Option<f64> = None;
+    let mut in_table = false;
+    let mut table_sum = 0.0_f64;
+
+    for line in output.lines() {
+        if is_memory_breakdown_header(line) {
+            table_sum = 0.0;
+            in_table = true;
+            continue;
+        }
+        if !in_table || !line.contains('|') {
+            continue;
+        }
+        let lower = line.to_lowercase();
+        if lower.contains("cuda") {
+            if let Some(v) = extract_unaccounted_mib_from_cuda_breakdown_line(line) {
+                if v > 0.0 {
+                    table_sum += v;
+                }
+            }
+        } else if lower.contains("host") && !lower.contains("cuda") {
+            if table_sum > 0.5 {
+                last_sum = Some(table_sum);
+            }
+            in_table = false;
+        }
+    }
+
+    last_sum
+}
+
 /// SELF MiB from a CUDA row: `... (2395 = 500 + 1632 + 263) ...`
 fn extract_self_mib_from_cuda_breakdown_line(line: &str) -> Option<f64> {
     let last_open = line.rfind('(')?;
@@ -1773,6 +1816,7 @@ mod memory_breakdown_tests {
     use super::{
         parse_all_memory_breakdown_tables, parse_engine_memory_breakdown,
         parse_engine_memory_breakdown_mib, parse_fit_print_stdout,
+        parse_last_breakdown_unaccounted_mib,
     };
 
     const FIT_AT_LOAD: &str = r#"0.00.971.498 I common_memory_breakdown_print: | memory breakdown [MiB]                                 | total    free    self   model   context   compute    unaccounted |
@@ -1835,6 +1879,13 @@ Host 994 0 84
         let combined = format!("{FIT_AT_LOAD}\n{AT_EXIT}");
         let (total, _) = parse_engine_memory_breakdown(&combined);
         assert_eq!(total, Some(2395.0));
+    }
+
+    #[test]
+    fn parses_last_breakdown_unaccounted_mib() {
+        assert_eq!(parse_last_breakdown_unaccounted_mib(FIT_AT_LOAD), Some(133.0));
+        let combined = format!("{FIT_AT_LOAD}\n{AT_EXIT}");
+        assert_eq!(parse_last_breakdown_unaccounted_mib(&combined), Some(2607.0));
     }
 
     #[test]

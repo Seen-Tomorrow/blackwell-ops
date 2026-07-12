@@ -52,6 +52,8 @@ interface VramBadgeProps {
   cudaVersion?: string;
   launchConfig?: FusionShareLaunchConfig;
   hwTopo?: string;
+  /** Session idle NVML baseline per GPU index (MiB) — see useGpuIdleBaseline. */
+  gpuIdleBaselineMib?: Record<number, number>;
 }
 
 /** Isolated fusion subscriber — keeps forecast/topo off the 25–40 Hz fusion tick path. */
@@ -138,6 +140,7 @@ export default function VramBadge({
   gpuMask = "", vramTargetMib, modelLayerTotal, gpuLoadTargetsMib, offloadMode, onMoeSuggestionClick, hideMoeBadge = false,
   fitLaunchAvailable = false, fullAutoMode = true, onFitLaunchChange, hideFitProbe = false, className,
   modelName, modelQuant, providerName, providerBuildVersion, profileLabel, cudaVersion, launchConfig, hwTopo,
+  gpuIdleBaselineMib,
 }: VramBadgeProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const { open: benchTrayOpen } = useFusionBenchTray();
@@ -236,12 +239,19 @@ export default function VramBadge({
     ? MEMORY_SOURCE_ACCENT[memorySource.kind]
     : null;
   const isFitProbe = memorySource?.kind === "fit_probe";
-  const totalNeedGb = manifest.vramTotalGb + manifest.ramTotalGb;
-  const displayTotalGb = isFitProbe
-    ? (manifest.validatedVramMib! / 1024) + (manifest.validatedHostMib ? manifest.validatedHostMib / 1024 : manifest.ramTotalGb)
-    : totalNeedGb;
-  const neededText = displayTotalGb.toFixed(1);
+  const displayVramNeedGb = isFitProbe
+    ? manifest.validatedVramMib! / 1024
+    : manifest.vramTotalGb;
+  const displayRamNeedGb = isFitProbe
+    ? (manifest.validatedHostMib != null && manifest.validatedHostMib > 0
+        ? manifest.validatedHostMib / 1024
+        : manifest.ramTotalGb)
+    : manifest.ramTotalGb;
+  const showRamNeed = displayRamNeedGb >= 0.05;
   const gbAccentClass = sourceAccent?.gbGradient || s.titleColor;
+  const vramNeedClass = sourceAccent?.gbGradient && memorySource
+    ? `${sourceAccent.gbGradient} vram-forecast-gb-accented vram-forecast-gb-accented--${memorySource.kind}`
+    : gbAccentClass;
 
   // Total manufactured VRAM capacity across all GPUs
   const totalVramMib = gpus.reduce((sum, g) => {
@@ -249,11 +259,10 @@ export default function VramBadge({
   }, 0);
   const totalVramGb = totalVramMib / 1024;
 
-  // Total available: manufactured VRAM + manufactured RAM
-  const totalAvailableGb = totalVramGb + manifest.ramManufacturedGb;
-
-  // Usage percentage for main VRAM bar
-  const vramUsagePct = totalVramMib > 0 ? Math.min((displayTotalGb * 1024 / totalVramMib) * 100, 100) : 0;
+  // Usage percentage for main VRAM bar — GPU need only, not host RAM
+  const vramUsagePct = totalVramMib > 0
+    ? Math.min((displayVramNeedGb * 1024 / totalVramMib) * 100, 100)
+    : 0;
 
  // RAM headroom: available RAM minus projected RAM usage
   const ramHeadroomMib = (manifest.ramAvailableGb - manifest.ramTotalGb) * 1024;
@@ -341,24 +350,35 @@ export default function VramBadge({
             <span className={`text-xl font-mono ${s.titleColor} shrink-0`}>
               FORECAST: model
             </span>
-            <div className="flex items-baseline gap-1 min-w-0 vram-forecast-needs-row">
-              <span className={`text-xl font-mono ${s.titleColor}`}>needs</span>
-              <span
-                className={`text-xl font-mono vram-forecast-gb-value ${gbAccentClass} ${
-                  sourceAccent?.gbGradient && memorySource
-                    ? `vram-forecast-gb-accented vram-forecast-gb-accented--${memorySource.kind}`
-                    : ""
-                }`}
-              >
-                {neededText}
-              </span>
-              <span className={`text-xl font-mono ${s.titleColor}`}>GB</span>
-              <span className="text-[9px] font-mono text-stealth-muted">of</span>
-              <span className="text-xl font-mono text-stealth-muted vram-forecast-gb-value">
-                {totalAvailableGb.toFixed(1)}
-              </span>
-              <span className="text-xl font-mono text-stealth-muted">GB</span>
-              <span className="text-[9px] font-mono text-stealth-muted">TOTAL MEMORY</span>
+            <div className="vram-forecast-needs min-w-0">
+              <div className="flex flex-wrap items-baseline gap-x-1 gap-y-px min-w-0 vram-forecast-needs-row">
+                <span className={`text-xl font-mono ${s.titleColor}`}>needs</span>
+                <span className={`text-xl font-mono vram-forecast-gb-value ${vramNeedClass}`}>
+                  {displayVramNeedGb.toFixed(1)}
+                </span>
+                <span className={`text-xl font-mono ${s.titleColor}`}>GB</span>
+                <span className="text-[9px] font-mono text-stealth-muted">of</span>
+                <span className="text-xl font-mono text-stealth-muted vram-forecast-gb-value">
+                  {totalVramGb.toFixed(1)}
+                </span>
+                <span className="text-xl font-mono text-stealth-muted">GB</span>
+                <span className="text-[9px] font-mono text-stealth-muted tracking-wide">VRAM</span>
+                {showRamNeed ? (
+                  <>
+                    <span className="vram-forecast-needs-sep text-[9px] font-mono text-stealth-muted/50">//</span>
+                    <span className="text-xl font-mono text-blue-400 vram-forecast-gb-value">
+                      {displayRamNeedGb.toFixed(1)}
+                    </span>
+                    <span className="text-xl font-mono text-blue-400">GB</span>
+                    <span className="text-[9px] font-mono text-stealth-muted">of</span>
+                    <span className="text-xl font-mono text-stealth-muted vram-forecast-gb-value">
+                      {manifest.ramManufacturedGb.toFixed(1)}
+                    </span>
+                    <span className="text-xl font-mono text-stealth-muted">GB</span>
+                    <span className="text-[9px] font-mono text-blue-400/80 tracking-wide">RAM</span>
+                  </>
+                ) : null}
+              </div>
             </div>
           </div>
           {forecastFitRow}
@@ -470,6 +490,7 @@ export default function VramBadge({
             ramVisible={false}
             ramTotalGb={manifest.ramTotalGb}
             ramManufacturedGb={manifest.ramManufacturedGb}
+            gpuIdleBaselineMib={gpuIdleBaselineMib}
             selectedGpuIndices={selectedGpuIndices}
             onDeviceSelect={onDeviceSelect}
           />

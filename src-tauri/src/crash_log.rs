@@ -13,6 +13,7 @@ mod imp {
     static INSTALLED: AtomicBool = AtomicBool::new(false);
 
     fn append_crash_line(line: &str) {
+        crate::session_log::append_crash_line(line);
         let path = std::env::temp_dir().join("blackwell-crash.log");
         if let Ok(mut f) = std::fs::OpenOptions::new()
             .create(true)

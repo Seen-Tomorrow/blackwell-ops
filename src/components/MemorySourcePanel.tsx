@@ -27,7 +27,7 @@ function ConfidencePips({ level }: { level: MemorySource["confidence"] }) {
   );
 }
 
-/** Two-line SOURCE block — row 1: SOURCE · kind · probe btn; row 2: provenance spread horizontally. */
+/** SOURCE block — row 1: kind; rows 2–4: provenance + two-line breakdown. */
 export default function MemorySourcePanel({
   memorySource,
   isValidating = false,
@@ -58,16 +58,18 @@ export default function MemorySourcePanel({
         )}
       </div>
 
-      <div className="flex items-center gap-1 min-w-0 text-[8px] font-mono leading-none text-stealth-muted">
-        <span className="truncate min-w-0 flex-1">{memorySource.detail}</span>
-        {memorySource.breakdown && (
-          <>
-            <span className="text-stealth-muted/40 shrink-0">·</span>
-            <span className="truncate min-w-0 flex-1 text-stealth-muted/75">
-              {memorySource.breakdown}
-            </span>
-          </>
-        )}
+      <div className="memory-source-body flex flex-col gap-px min-w-0 text-[8px] font-mono leading-tight text-stealth-muted">
+        <span className="truncate min-w-0">{memorySource.detail}</span>
+        {memorySource.breakdown ? (
+          <span className="min-w-0 text-stealth-muted/80 leading-snug">
+            {memorySource.breakdown}
+          </span>
+        ) : null}
+        {memorySource.breakdownSecondary ? (
+          <span className="min-w-0 text-stealth-muted/65 leading-snug">
+            {memorySource.breakdownSecondary}
+          </span>
+        ) : null}
       </div>
     </div>
   );

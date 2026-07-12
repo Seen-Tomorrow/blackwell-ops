@@ -1,7 +1,8 @@
-import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
+import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { FoundrySourcePreview, ProviderConfig } from "../lib/types";
+import type { FoundrySourcePreview, FoundryWorkCacheStatus, ProviderConfig } from "../lib/types";
 import { useTelemetry } from "../context/TelemetryContext";
+import { isDevBuild } from "../lib/build";
 import { ENV_META, type Env } from "../lib/foundry_constants";
 import FoundryToolchainPanel from "./FoundryToolchainPanel";
 import FoundryWindowShell from "./FoundryWindowShell";
@@ -58,6 +59,9 @@ export default function FoundryConfirmForm({
   const [toolchainReady, setToolchainReady] = useState(false);
   const [sourcePreview, setSourcePreview] = useState<FoundrySourcePreview | null>(null);
   const [sourcePreviewLoading, setSourcePreviewLoading] = useState(true);
+  const [workCache, setWorkCache] = useState<FoundryWorkCacheStatus | null>(null);
+  const [workCacheClearing, setWorkCacheClearing] = useState(false);
+  const showDevCache = isDevBuild();
   const envMeta = ENV_META[environment];
   const orderedArchs = orderCudaArchCodes(selectedArchs);
   const archCmakePreview = formatCudaArchitecturesCmakeLine(orderedArchs);
@@ -82,6 +86,46 @@ export default function FoundryConfirmForm({
       cancelled = true;
     };
   }, [provider.id, environment]);
+
+  const refreshWorkCache = useCallback(() => {
+    if (!showDevCache) return;
+    void invoke<FoundryWorkCacheStatus>("foundry_work_cache_status", {
+      providerId: provider.id,
+      profileId: environment,
+    })
+      .then(setWorkCache)
+      .catch(() => setWorkCache(null));
+  }, [showDevCache, provider.id, environment]);
+
+  useEffect(() => {
+    refreshWorkCache();
+  }, [refreshWorkCache]);
+
+  const handleClearWorkCache = useCallback(async () => {
+    if (!showDevCache || workCacheClearing) return;
+    const warm = workCache?.cmakeCachePresent;
+    if (
+      !window.confirm(
+        warm
+          ? `Clear CMake build cache for ${provider.id} / ${environment.toUpperCase()}?\n\nNext build will be a full cold compile (~4–15 min depending on arch count).`
+          : `No warm CMake cache for build-${environment}. Clear work/ anyway?`,
+      )
+    ) {
+      return;
+    }
+    setWorkCacheClearing(true);
+    try {
+      await invoke("foundry_clear_work_cache", {
+        providerId: provider.id,
+        profileId: environment,
+      });
+      refreshWorkCache();
+    } catch (err) {
+      console.error("[Foundry] Clear work cache failed:", err);
+    } finally {
+      setWorkCacheClearing(false);
+    }
+  }, [showDevCache, workCacheClearing, workCache?.cmakeCachePresent, provider.id, environment, refreshWorkCache]);
 
   const previewToneClass =
     sourcePreview?.banner_tone === "amber"
@@ -206,6 +250,35 @@ export default function FoundryConfirmForm({
               onReadyChange={setToolchainReady}
             />
           </div>
+
+          {showDevCache && (
+            <div className="foundry-dev-cache-row pt-2 flex flex-wrap items-center justify-between gap-2 border border-stealth-border/40 rounded-sm px-2 py-1.5 bg-black/25">
+              <div className="min-w-0">
+                <p className="text-[8px] font-mono text-stealth-muted uppercase tracking-wider">
+                  DEV · CMake cache
+                </p>
+                <p className="text-[8px] font-mono leading-relaxed mt-0.5">
+                  {workCache?.cmakeCachePresent ? (
+                    <span className="text-nv-green">
+                      Warm — build-{environment} (incremental rebuilds when flags unchanged)
+                    </span>
+                  ) : (
+                    <span className="text-stealth-muted">
+                      Cold — full compile on next build
+                    </span>
+                  )}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => void handleClearWorkCache()}
+                disabled={workCacheClearing}
+                className="foundry-clear-cache-btn shrink-0 px-2 py-1 text-[8px] font-mono border rounded-sm transition-colors disabled:opacity-50"
+              >
+                {workCacheClearing ? "CLEARING…" : "CLEAR CACHE"}
+              </button>
+            </div>
+          )}
 
           <div className="pt-2">
             <label className="text-[8px] font-mono text-stealth-muted uppercase block mb-1">

@@ -93,6 +93,10 @@ export interface ScenarioInput {
   learnedHostMib?: number;
   /** Per-GPU SELF MiB from learned breakdown. */
   learnedGpuBreakdownMib?: number[];
+  /** Per-GPU model/ctx/compute from launch buffer inventory. */
+  learnedGpuComponentsMib?: Array<{ model_mib: number; ctx_mib: number; compute_mib: number }>;
+  /** Reference profile tag from launch parser (e.g. QWEN3.6-27B MTP). */
+  learnedLaunchProfile?: string;
   /** ISO timestamp from learned-vram.json for SOURCE provenance. */
   learnedMeasuredAt?: string;
   /** Active FIT probe session — authoritative until config changes. */
@@ -141,10 +145,14 @@ export function getRunningEnginesOnGpu(gpuIdx: number, slots: RunningSlotInfo[])
       const maskParts = s.gpuMask.split(",").map((p) => p.trim());
       const gpuCount = maskParts.length;
       const idxInMask = maskParts.findIndex((p) => p === String(gpuIdx));
-      const vramUsedMib =
+      const perGpuShare = s.vramMib / gpuCount;
+      const perGpuBreakdown =
         s.gpuBreakdownMib && idxInMask >= 0 && idxInMask < s.gpuBreakdownMib.length
           ? s.gpuBreakdownMib[idxInMask]
-          : s.vramMib / gpuCount;
+          : 0;
+      // Prefer the higher of per-GPU SELF breakdown vs even split of slot total —
+      // breakdown can lag (early table) while vram_mib was updated, or vice versa.
+      const vramUsedMib = Math.max(perGpuShare, perGpuBreakdown);
       return { slotAlias: s.alias, modelShort: s.modelShort, vramUsedMib };
     });
 }
@@ -154,30 +162,144 @@ export function gpuHasRunningEngines(gpuIdx: number, slots: RunningSlotInfo[]): 
 }
 
 /**
- * VRAM bar split for GpuTopology — breakdown SELF is weights only; NVML includes CUDA/runtime.
- * Cap overhead we attribute to our engines so foreign apps (LM Studio, etc.) stay in External.
+ * VRAM bar split for GpuTopology — breakdown SELF is model+ctx+compute when memory table parsed.
+ * When breakdown lags NVML (large KV, no table yet), attribute the gap to our engines and
+ * cap External at 4 GiB/GPU. When breakdown is current, cap engine CUDA/runtime overhead instead
+ * so foreign apps (LM Studio, etc.) stay in External.
  */
 export const CUDA_RUNTIME_OVERHEAD_CAP_MIB = 4096;
+/** Baseline at/above this = foreign app (LM Studio, etc.) present before our launch. */
+const FOREIGN_BASELINE_THRESHOLD_MIB = 1024;
+/** CUDA0 driver context — applied when NVML baseline under-captured (<512 MiB). */
+const CUDA0_SYSTEM_RESERVE_FLOOR_MIB = 640;
+
+function effectiveSessionBaselineMib(idleBaselineMib: number, gpuIndex?: number): number {
+  if (idleBaselineMib >= 512) return idleBaselineMib;
+  if (gpuIndex === 0 && idleBaselineMib < 512) {
+    return Math.max(idleBaselineMib, CUDA0_SYSTEM_RESERVE_FLOOR_MIB);
+  }
+  return idleBaselineMib;
+}
+
+function splitExternalMib(
+  osOtherMib: number,
+  sessionBaselineMib: number,
+): { systemReservedMib: number; foreignAppsMib: number } {
+  if (sessionBaselineMib >= FOREIGN_BASELINE_THRESHOLD_MIB) {
+    return {
+      systemReservedMib: 0,
+      foreignAppsMib: Math.max(0, osOtherMib),
+    };
+  }
+  const systemReservedMib = Math.min(sessionBaselineMib, osOtherMib);
+  return {
+    systemReservedMib,
+    foreignAppsMib: Math.max(0, osOtherMib - systemReservedMib),
+  };
+}
 
 export function splitGpuTopoBarUsage(
   usedMib: number,
   breakdownMib: number,
   hasOurEngines: boolean,
-): { engineBarMib: number; osOtherMib: number; attributedOverheadMib: number } {
+  idleBaselineMib = 0,
+  gpuIndex?: number,
+): {
+  engineBarMib: number;
+  osOtherMib: number;
+  attributedOverheadMib: number;
+  breakdownUnderReports: boolean;
+  systemReservedMib: number;
+  foreignAppsMib: number;
+} {
+  const sessionBaselineMib = Math.max(
+    0,
+    Math.min(effectiveSessionBaselineMib(idleBaselineMib, gpuIndex), usedMib),
+  );
+
   if (!hasOurEngines) {
+    const osOtherMib = Math.max(0, usedMib - breakdownMib);
+    const { systemReservedMib, foreignAppsMib } = splitExternalMib(osOtherMib, sessionBaselineMib);
     return {
       engineBarMib: breakdownMib,
-      osOtherMib: Math.max(0, usedMib - breakdownMib),
+      osOtherMib,
       attributedOverheadMib: 0,
+      breakdownUnderReports: false,
+      systemReservedMib,
+      foreignAppsMib,
     };
   }
-  const deltaMib = Math.max(0, usedMib - breakdownMib);
+
+  const aboveSessionMib = Math.max(0, usedMib - sessionBaselineMib);
+  const deltaMib = Math.max(0, aboveSessionMib - breakdownMib);
+  const driverSlackMaxMib = CUDA_RUNTIME_OVERHEAD_CAP_MIB * 2;
+  const foreignPreloaded = sessionBaselineMib >= FOREIGN_BASELINE_THRESHOLD_MIB;
+
+  // NVML ≫ tracked SELF — typical when only weights/file-size estimate is known (512K KV not in table).
+  const breakdownUnderReports =
+    !foreignPreloaded
+    && deltaMib > CUDA_RUNTIME_OVERHEAD_CAP_MIB
+    && breakdownMib < aboveSessionMib * 0.5;
+
+  if (breakdownUnderReports) {
+    const foreignAboveEngineMib = Math.min(deltaMib, CUDA_RUNTIME_OVERHEAD_CAP_MIB);
+    const osOtherMib = sessionBaselineMib + foreignAboveEngineMib;
+    const engineBarMib = usedMib - osOtherMib;
+    const attributedOverheadMib = Math.max(0, engineBarMib - breakdownMib);
+    const { systemReservedMib, foreignAppsMib } = splitExternalMib(osOtherMib, sessionBaselineMib);
+    return {
+      engineBarMib,
+      osOtherMib,
+      attributedOverheadMib,
+      breakdownUnderReports: true,
+      systemReservedMib,
+      foreignAppsMib: foreignPreloaded ? osOtherMib : foreignAppsMib,
+    };
+  }
+
+  // LM Studio (etc.) was already resident — hold session baseline, attribute NVML gap above SELF to our engine.
+  if (foreignPreloaded) {
+    const slackMib = Math.min(deltaMib, driverSlackMaxMib);
+    const engineBarMib = Math.min(aboveSessionMib, breakdownMib + slackMib);
+    const osOtherMib = Math.max(sessionBaselineMib, usedMib - engineBarMib);
+    const attributedOverheadMib = Math.max(0, engineBarMib - breakdownMib);
+    return {
+      engineBarMib,
+      osOtherMib,
+      attributedOverheadMib,
+      breakdownUnderReports: false,
+      systemReservedMib: 0,
+      foreignAppsMib: osOtherMib,
+    };
+  }
+
+  // Clean GPU — sched_reserve / driver buffers above SELF are still our engine.
+  const breakdownLooksComplete = breakdownMib >= aboveSessionMib * 0.65;
+  if (breakdownLooksComplete && deltaMib > 0 && deltaMib <= driverSlackMaxMib) {
+    const osOtherMib = sessionBaselineMib;
+    const engineBarMib = usedMib - osOtherMib;
+    const attributedOverheadMib = Math.max(0, engineBarMib - breakdownMib);
+    return {
+      engineBarMib,
+      osOtherMib,
+      attributedOverheadMib,
+      breakdownUnderReports: false,
+      systemReservedMib: sessionBaselineMib,
+      foreignAppsMib: 0,
+    };
+  }
+
   const attributedOverheadMib = Math.min(deltaMib, CUDA_RUNTIME_OVERHEAD_CAP_MIB);
   const engineBarMib = breakdownMib + attributedOverheadMib;
+  const osOtherMib = Math.max(sessionBaselineMib, usedMib - engineBarMib);
+  const { systemReservedMib, foreignAppsMib } = splitExternalMib(osOtherMib, sessionBaselineMib);
   return {
     engineBarMib,
-    osOtherMib: Math.max(0, usedMib - engineBarMib),
+    osOtherMib,
     attributedOverheadMib,
+    breakdownUnderReports: false,
+    systemReservedMib,
+    foreignAppsMib,
   };
 }
 
