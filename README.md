@@ -71,6 +71,27 @@ You get dramatically higher aggregate throughput and much snappier prefill behav
 
 (You can also run completely separate engine instances if you prefer full isolation.)
 
+### Speculative decoding — MTP & DFlash, out of the box
+
+Blackwell Ops treats faster generation as a first-class feature, not a hidden CLI flag. **Multi-Token Prediction (MTP)** and **DFlash** speculative decoding are wired through the whole stack — catalog, pairing, launch, and telemetry — so you can actually use them without hand-editing `--spec-type` and `--spec-draft-model`.
+
+| | **MTP** | **DFlash** |
+|---|---------|------------|
+| **What it is** | Draft tokens baked into the main GGUF (`nextn` layers) | Separate lightweight draft model loaded alongside the main |
+| **Best for** | Single-session speed on MTP-capable weights (Qwen 3.x, etc.) | Multi-slot / agent workloads — full prefill speed with parallel agents |
+| **Setup** | Turn spec on — no second file | Family-matched draft picker finds the right `.gguf` in your library |
+| **Parallel slots** | Use **1×** parallel (MTP + multi-slot conflict) | **4× / 8×** parallel — aggregate TPS without halving prefill |
+
+**What you get in the app**
+
+- **Smart catalog** — MAIN / DRAFT / ALL filter; DFLASH badges on external draft models; Gemma, Qwen, and family-aware pairing (no random cross-family matches).
+- **Engine config** — spec group with ON/OFF toggle, live **MTP** / **DFLASH** mode badge, and a ★ best-match draft picker when DFlash is selected.
+- **Both on the same main** — a model can ship with baked-in MTP *and* support an external DFlash draft; pick the mode that fits the workload (MTP for one chat, DFlash when you crank parallel agents).
+- **FULL-AUTO + Essentials** — Regular Joe path: spec turns on when your model supports it, only **MTP** and **DFLASH** shown, sensible N-max / N-min presets applied automatically; Full config view stays untouched for power users.
+- **Launch-safe** — draft-only GGUFs cannot be launched as mains; DFlash launches with `--fit off` and a resolved `--spec-draft-model` path.
+
+*DFlash / external drafts are on **GGML master** today; Tom TurboQuant remains MTP-focused for now.*
+
 ### Core strengths
 - **Native Rust + Tauri** — tiny footprint, no Electron bloat or Linux subsystem tax
 - **Foundry** — one-click build `llama-server` from source with your preferred CUDA / VS version
@@ -109,6 +130,7 @@ Pre-built binaries ship for multiple toolchain generations — pick the profile 
 - **Advanced Provider Config** — full params editor with 250+ parameters and factory templates
 - **Foundry Builds** — update, configure, compile and publish llama-server binaries directly from the UI (custom CMake flags supported)
 - **Fusion Telemetry** — real-time metrics (generation, prefill, progress) from multiple sources
+- **MTP & DFlash speculative decoding** — catalog pairing, mode badges, draft picker, FULL-AUTO presets, full launch validation
 - **Unified Console & Logs** — dockable logs for Engines, Foundry, Errors with search and syntax highlight (supports 64+ concurrent streams)
 - **Portable & Lightweight** — relative paths, tiny RAM usage, works from USB stick, no registry
 - **Hardware Monitoring** — GPU/CPU stats and vital signs
