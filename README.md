@@ -184,7 +184,7 @@ I **vibe-coded** this app on **local models** — mostly **Qwen3.5 236B** + **Qw
 
 I baked in **30+ years** of love for PC hardware and Windows — how machines should feel, how software should respect RAM, how inference should stay on *your* desk.
 
-Roughly **3,000 hours** went into this across ~five months. Time not spent with my family and my **five-year-old daughter**, who I love more than anything. This repo is what that time became.
+Roughly **3,000 hours** went into this across ~six months. Time not spent with my family and my **five-year-old daughter**, who I love more than anything. This repo is what that time became.
 
 If Blackwell Ops helps one person run serious local inference on Windows without apologizing for their OS choice, it was worth it.
 PS: This is my first coding endeavor. I openly state this, as inspiration to anyone hesitating to use AI besides chating. AI scene, including the local only is very powerfull already - DO NOT WAIT - JUST DO IT NOW, anyone can.
