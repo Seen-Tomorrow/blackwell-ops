@@ -187,6 +187,9 @@ I baked in **30+ years** of love for PC hardware and Windows — how machines sh
 Roughly **3,000 hours** went into this across ~five months. Time not spent with my family and my **five-year-old daughter**, who I love more than anything. This repo is what that time became.
 
 If Blackwell Ops helps one person run serious local inference on Windows without apologizing for their OS choice, it was worth it.
+PS: This is my first coding endeavor. I openly state this, as inspiration to anyone hesitating to use AI besides chating. AI scene, including the local only is very powerfull already - DO NOT WAIT - JUST DO IT NOW, anyone can.
+-This was very difficult project as a "starter", now it is progressively more easy. I had been fully determined to achieve this, since i had a strong skill in HW suite and clear idea how i want this to work. I would NEVER achieve that without AI - NEVER!
+-I'am etternally gratefull to my family, to be supportive and respecting the need to pursue my purpose in this. Love you Karla.
 
 ---
 
