@@ -1,6 +1,7 @@
 # Blackwell Ops
 
-**Windows-native local LLM inference app** — a portable multi-engine orchestrator for llama.cpp (official master + Tom TurboQuant fork). Built for GGUF models on Windows with easy Foundry source builds, VRAM fit scanning, and live fusion telemetry.
+**Windows-native local LLM inference** — a portable, tiny, single-exe multi-engine orchestrator for llama.cpp (official master + Tom TurboQuant fork). Built for GGUF models on Windows with easy Foundry builds from source , State of the art MEMORY forecast, and live fusion telemetry.
+-support MTP, Dflash and TurboQuant out of the box.
 
 No WSL. No Electron. No Docker required. Native desktop app for running and managing local llama servers on Windows.
 
@@ -73,7 +74,7 @@ You get dramatically higher aggregate throughput and much snappier prefill behav
 
 ### Speculative decoding — MTP & DFlash, out of the box
 
-Blackwell Ops treats faster generation as a first-class feature, not a hidden CLI flag. **Multi-Token Prediction (MTP)** and **DFlash** speculative decoding are wired through the whole stack — catalog, pairing, launch, and telemetry — so you can actually use them without hand-editing `--spec-type` and `--spec-draft-model`.
+Blackwell Ops treats faster generation as a first-class feature, not a hidden CLI flag. **Multi-Token Prediction (MTP)** and **DFlash** speculative decoding are wired through the whole stack — catalog, pairing, launch, and telemetry — so you can rapidly test a ton of settings just by clicking.
 
 | | **MTP** | **DFlash** |
 |---|---------|------------|
@@ -178,11 +179,11 @@ First-run onboarding walks the rest.
 
 ## A personal note
 
-I did not type this codebase by hand line-by-line. I **vibe-coded** it on **local models** — mostly **Qwen3.5 236B** + **Qwen3.6 27B** — with hardening passes on **Composer 2.5**, on hand build custom workstation (**2× RTX PRO 6000 · 256 GB VRAM**).
+I **vibe-coded** this app on **local models** — mostly **Qwen3.5 236B** + **Qwen3.6 27B** + **Step3.7-flash** — with hardening passes on **Composer 2.5**, on hand build custom workstation (**2× RTX PRO 6000 · 256 GB VRAM**).
 
-What I *did* bring is **30+ years** of love for PC hardware and Windows — how machines should feel, how software should respect RAM, how inference should stay on *your* desk.
+I baked in **30+ years** of love for PC hardware and Windows — how machines should feel, how software should respect RAM, how inference should stay on *your* desk.
 
-Roughly **2,500 hours** went into this across ~five months. Time not spent with my family and my **five-year-old daughter**, who I love more than anything. This repo is what that time became.
+Roughly **3,000 hours** went into this across ~five months. Time not spent with my family and my **five-year-old daughter**, who I love more than anything. This repo is what that time became.
 
 If Blackwell Ops helps one person run serious local inference on Windows without apologizing for their OS choice, it was worth it.
 
