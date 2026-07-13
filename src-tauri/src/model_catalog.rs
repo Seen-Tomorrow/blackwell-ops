@@ -506,6 +506,14 @@ pub fn merge_catalogs(
                 .map(|h| h.hf_model_id.clone())
                 .or_else(|| internal.hf_model_id.clone());
 
+            let draft_role_hint = crate::spec_draft::resolve_catalog_draft_role(
+                &internal.path,
+                &name,
+                resolved_hf_model_id.as_deref(),
+                Some(internal.source_path_label.as_str()).filter(|s| !s.is_empty()),
+                cached_meta.as_ref(),
+            );
+
             ModelEntry {
                 path: internal.path,
                 author,
@@ -520,6 +528,7 @@ pub fn merge_catalogs(
                 metadata: cached_meta,
                 hf_meta,
                 hf_model_id: resolved_hf_model_id,
+                draft_role_hint,
             }
         })
         .collect();

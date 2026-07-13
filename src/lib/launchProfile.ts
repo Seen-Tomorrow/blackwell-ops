@@ -7,6 +7,7 @@ export const LAUNCH_DOCK_PARAM_KEYS = ["base_port"] as const;
 
 export const SPEC_DECODING_LAUNCH_KEYS = [
   "spec_type",
+  "spec_draft_model",
   "spec_draft_n_max",
   "spec_draft_n_min",
 ] as const;

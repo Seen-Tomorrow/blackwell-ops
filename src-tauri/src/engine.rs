@@ -55,29 +55,101 @@ use crate::model_catalog;
 use crate::model_cache;
 use crate::engine_utils;
 
-/// Auto-hide SPECULATIVE-DECODING params if the model doesn't support MTP.
-/// Cache-only lookup — models always have cached metadata from library/single scan.
+/// Strip speculative params when unsafe: external draft-only files as `-m`, or MTP on non-MTP targets.
 fn guard_speculative_decoding(
     user_params: Vec<crate::types::UserEditedTemplateParam>,
     model_path: &str,
 ) -> Vec<crate::types::UserEditedTemplateParam> {
-    let has_mtp = if let Some(meta) = model_cache::get_cached(model_path) {
-        meta.nextn_predict_layers > 0
-    } else {
-        false // No cache — default to non-MTP, safe fallback
-    };
-
-    if has_mtp {
-        return user_params;
-    }
+    let cached = model_cache::get_cached(model_path);
+    let launchable = crate::spec_draft::is_launchable_target(cached.as_ref(), model_path);
 
     let mut filtered = user_params;
-    for p in &mut filtered {
-        if p.ui_group == "SPECULATIVE-DECODING" && !p.hidden {
-            p.hidden = true;
+    if !launchable {
+        for p in &mut filtered {
+            if p.ui_group == "SPECULATIVE-DECODING" && !p.hidden {
+                p.hidden = true;
+            }
         }
+        return filtered;
     }
+
     filtered
+}
+
+fn validate_spec_launch(config: &crate::types::EngineConfig) -> Result<(), String> {
+    if !crate::spec_draft::is_launchable_target(
+        model_cache::get_cached(&config.model_path).as_ref(),
+        &config.model_path,
+    ) {
+        return Err(
+            "Selected file is a draft model — pick a main model to launch, then assign this as the draft."
+                .into(),
+        );
+    }
+
+    let spec_type = config.get_param_str("spec_type").unwrap_or_default();
+    if spec_type.is_empty() || spec_type.eq_ignore_ascii_case("none") {
+        return Ok(());
+    }
+
+    if spec_type.eq_ignore_ascii_case("draft-mtp") {
+        let has_mtp = model_cache::get_cached(&config.model_path)
+            .map(|m| m.nextn_predict_layers > 0)
+            .unwrap_or(false);
+        if !has_mtp {
+            return Err(
+                "MTP speculative decoding requires a model with nextn_predict_layers — use DFlash or turn spec off."
+                    .into(),
+            );
+        }
+        return Ok(());
+    }
+
+    if !crate::spec_draft::spec_type_needs_external_draft(&spec_type) {
+        return Ok(());
+    }
+
+    let draft_value = config
+        .get_param_str("spec_draft_model")
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+
+    if draft_value.is_empty() || draft_value.eq_ignore_ascii_case("off") {
+        return Err(format!(
+            "Speculative decoding ({spec_type}) requires a draft model — set DRAFT-MODEL to a .gguf file."
+        ));
+    }
+
+    let pattern = if spec_type.to_lowercase().contains("eagle3") {
+        "*eagle3*"
+    } else {
+        "*dflash*"
+    };
+    let resolved = crate::spec_draft::resolve_spec_draft_model_path(
+        &config.model_path,
+        &draft_value,
+        pattern,
+    )
+    .or_else(|| {
+        if draft_value.ends_with(".gguf") && std::path::Path::new(&draft_value).is_file() {
+            Some(draft_value.clone())
+        } else {
+            None
+        }
+    });
+
+    let Some(path) = resolved else {
+        return Err(format!(
+            "Draft model path must be a .gguf file (got \"{draft_value}\")"
+        ));
+    };
+
+    if !path.to_lowercase().ends_with(".gguf") {
+        return Err("Draft model path must end with .gguf".into());
+    }
+
+    Ok(())
 }
 
 pub struct AppContext {
@@ -190,6 +262,7 @@ pub async fn launch_engine(
 
     crate::config::validate_provider_binary(binary_path.to_str().unwrap_or(""))?;
     crate::config::validate_model_path(&config.model_path)?;
+    validate_spec_launch(&config)?;
 
     if let Some(note) = fit_scanner::model_fit_skip_note(&backend_type, &config.model_path) {
         app.blackwell_output_console_manager.emit_line_to_category(
@@ -1447,6 +1520,13 @@ pub async fn scan_model_metadata_cmd(
     } else {
         metadata.file_type_str.clone()
     };
+    let draft_role_hint = crate::spec_draft::resolve_catalog_draft_role(
+        &model_path,
+        "scanning",
+        hf_id.as_deref(),
+        None,
+        Some(&metadata),
+    );
     Ok(crate::types::ModelEntry {
         path: model_path,
         author: "unknown".to_string(),
@@ -1461,6 +1541,7 @@ pub async fn scan_model_metadata_cmd(
         metadata: Some(metadata),
         hf_meta: hf_meta_for_entry,
         hf_model_id: hf_id,
+        draft_role_hint,
     })
 }
 

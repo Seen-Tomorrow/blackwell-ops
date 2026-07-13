@@ -29,6 +29,7 @@ mod gguf_scan;
 mod model_cache;
 mod download_manager;
 mod model_catalog;
+mod spec_draft;
 mod engine_utils;
 mod engine_port_lock;
 mod fusion;

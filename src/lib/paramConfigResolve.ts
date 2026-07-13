@@ -1,5 +1,8 @@
 import type { UserEditedTemplateParam } from "./types";
 
+/** Picker-driven — no value chips; may stay hidden in SYSTEM while still launching. */
+const INTERNAL_LAUNCH_PARAM_KEYS = new Set(["spec_draft_model"]);
+
 /** Fingerprint visibility + defaults so config reloads when SPEC group toggles. */
 export function paramsVisibilityFingerprint(params: UserEditedTemplateParam[]): string {
   return params
@@ -19,7 +22,12 @@ export function resolveVisibleParamValue(
   params: UserEditedTemplateParam[],
 ): unknown {
   const def = params.find((p) => p.key === key);
-  if (!def || def.hidden) return undefined;
+  if (!def) return undefined;
+  if (INTERNAL_LAUNCH_PARAM_KEYS.has(key)) {
+    const v = config[key];
+    return v !== undefined && String(v).trim() !== "" ? v : undefined;
+  }
+  if (def.hidden) return undefined;
   if (config[key] !== undefined) return config[key];
   return resolveParamDefaultValue(def);
 }

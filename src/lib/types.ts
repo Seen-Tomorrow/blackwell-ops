@@ -15,6 +15,8 @@ export interface ModelEntry {
   metadata?: ModelMetadata;
   hfMeta?: HfMetadata;
   hfModelId?: string;
+  /** Path/name-derived draft role from catalog scan — works without GGUF metadata. */
+  draftRoleHint?: string;
 }
 
 export interface ModelPathEntry {
@@ -76,12 +78,16 @@ export interface ModelMetadata {
   total_params_str: string;
   vocab_size: number;
   generalName: string;
+  general_basename?: string;
   ropeScalingType: string;
   tokenizerModel: string;
   file_size_bytes: number;
   scan_timestamp: number;
   file_created?: number;
   nextn_predict_layers?: number;
+  /** none | mtp_embedded | external_dflash | external_eagle3 */
+  draft_role?: string;
+  rawKvs?: Record<string, string>;
 }
 
 export interface EngineConfig {

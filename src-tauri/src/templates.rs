@@ -524,7 +524,9 @@ impl ProviderTemplate {
         sorted_params.sort_by(|a, b| a.order.cmp(&b.order));
 
         for param in &sorted_params {
-            if param.hidden { continue; }
+            if param.hidden && !param.key.eq_ignore_ascii_case("spec_draft_model") {
+                continue;
+            }
 
             // Whitelist launch — AUTO_FIT always; MANUAL when frontend sent a filtered extra_params
             // set (Essentials vs Full). Without user keys in extra_params, emit all visible params.
@@ -585,12 +587,40 @@ impl ProviderTemplate {
                         }
                     }
                 },
-                "logic_only" => {},
+                "logic_only" => {
+                    if param.key == "spec_draft_model" {
+                        Self::inject_spec_draft_model_user(&mut args, param, &config.model_path, &final_value_str);
+                    }
+                },
                 _ => { log::debug!("[build_cmd] unknown ptype '{}' for '{}', skipping", param.ptype, param.key); }
             }
 
             // Inject sub_params — user's saved state is authoritative
             Self::inject_sub_params_user(&mut args, param, &final_value_str);
+        }
+
+        // Picker-driven draft path — SYSTEM/hidden param may be absent from merged user_params.
+        if external_draft_spec
+            && !args.iter().any(|a| a == "--spec-draft-model")
+        {
+            if let Some(draft_val) = config.get_param_str("spec_draft_model") {
+                let spec_lower = config
+                    .get_param_str("spec_type")
+                    .unwrap_or_default()
+                    .to_lowercase();
+                let pattern = if spec_lower.contains("eagle3") {
+                    "*eagle3*"
+                } else {
+                    "*dflash*"
+                };
+                if let Some(path) = crate::spec_draft::resolve_spec_draft_model_path(
+                    &config.model_path,
+                    &draft_val,
+                    pattern,
+                ) {
+                    args.extend(["--spec-draft-model".into(), path]);
+                }
+            }
         }
 
         // n_gpu_layers injection — computed by VRAM scenario factory at runtime.
@@ -672,6 +702,18 @@ impl ProviderTemplate {
     fn inject_switch_inverted_user(args: &mut Vec<String>, param: &crate::types::UserEditedTemplateParam, value: &str) {
         if value.to_lowercase() == "off" {
             if let Some(flag) = &param.flag { args.push(flag.clone()); }
+        }
+    }
+
+    fn inject_spec_draft_model_user(
+        args: &mut Vec<String>,
+        param: &crate::types::UserEditedTemplateParam,
+        model_path: &str,
+        value: &str,
+    ) {
+        if let Some(path) = crate::spec_draft::resolve_spec_draft_model_path(model_path, value, &param.pattern) {
+            let flag = param.flag.clone().unwrap_or_else(|| "--spec-draft-model".into());
+            args.extend([flag, path]);
         }
     }
 

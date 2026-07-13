@@ -356,6 +356,7 @@
       "ui_group": "SPECULATIVE-DECODING",
       "values": [
         "draft-simple",
+        "draft-dflash",
         "draft-eagle3",
         "draft-mtp",
         "ngram-simple",
@@ -363,7 +364,23 @@
       ]
     },
     {
-      "default": 3,
+      "default": "",
+      "dock": "runtime",
+      "flag": "--spec-draft-model",
+      "flag_pair": [],
+      "hidden_default": true,
+      "key": "spec_draft_model",
+      "label": "DRAFT-MODEL",
+      "note": "Internal — draft .gguf path set by engine config draft picker (DFlash/Eagle3).",
+      "pattern": "*dflash*",
+      "ptype": "logic_only",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "SYSTEM",
+      "values": []
+    },
+    {
+      "default": 4,
       "dock": "",
       "flag": "--spec-draft-n-max",
       "flag_pair": [],
@@ -581,6 +598,6 @@
       "4"
     ]
   },
-  "templateVersion": 25,
+  "templateVersion": 28,
   "template_type": "ggml-llama"
 }

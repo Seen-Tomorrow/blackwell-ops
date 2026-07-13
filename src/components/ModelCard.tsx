@@ -1,4 +1,5 @@
 import type { ModelEntry } from "../lib/types";
+import { draftRoleBadge, draftRoleFromModel, isExternalDraftOnly } from "../lib/specDraft";
 
 interface ModelCardProps {
   model: ModelEntry;
@@ -31,6 +32,9 @@ export default function ModelCard({
 }: ModelCardProps) {
   const hasMetadata = !!model.metadata;
   const isScanning = scanningPath === model.path;
+  const draftRole = draftRoleFromModel(model);
+  const draftBadge = draftRoleBadge(draftRole);
+  const isDraftOnly = isExternalDraftOnly(model);
 
   const isShardNoiseQuant = (label: string) => /^\d{3,}$/.test(label.trim());
   let quantBadge: string | null = null;
@@ -71,6 +75,8 @@ export default function ModelCard({
     <div
       onClick={() => onSelect(model)}
       className={`relative cursor-pointer rounded-sm p-2.5 model-catalog-card ${
+        isDraftOnly ? "model-catalog-card--draft " : ""
+      }${
         isSelected
           ? "gunmetal-card border"
           : "buried-card"
@@ -107,7 +113,7 @@ export default function ModelCard({
         {model.name}
       </span>
 
-      {(paramsNum || (model.metadata?.nextn_predict_layers ?? 0) > 0) && (
+      {(paramsNum || (model.metadata?.nextn_predict_layers ?? 0) > 0 || draftBadge) && (
         <div className="flex items-center gap-1 mt-0.5">
           {paramsNum && (
             <span className="text-[8px] font-mono text-white">{paramsNum}</span>
@@ -115,8 +121,10 @@ export default function ModelCard({
           {archBadge && (
             <span className="text-[7px] font-mono bg-black text-white/70 px-1 py-0.5 rounded-sm">{archBadge}</span>
           )}
-          {(model.metadata?.nextn_predict_layers ?? 0) > 0 && (
-            <span className="text-[7px] font-mono bg-black text-white/70 px-1 py-0.5 rounded-sm">MTP</span>
+          {draftBadge && !isDraftOnly && (
+            <span className="text-[7px] font-mono bg-black text-white/70 px-1 py-0.5 rounded-sm">
+              {draftBadge}
+            </span>
           )}
           {hasMetadata && (
             <span className="text-[7px] font-mono text-white/[0.06]" title={model.metadata.architecture}>
@@ -164,6 +172,11 @@ export default function ModelCard({
                   : "FIT SCAN"}
               </button>
             )}
+            {draftBadge && isDraftOnly && (
+              <span className="text-[7px] font-mono px-1 py-0.5 rounded-sm bg-violet-500/15 border border-violet-400/25 text-violet-300/80">
+                {draftBadge}
+              </span>
+            )}
             {hasMultimodal && (
               <span className="text-[8px] font-mono px-1 py-0.5 rounded-sm border border-amber-400/15 text-amber-400/50">
                 MULTIMODAL
@@ -186,17 +199,24 @@ export default function ModelCard({
                 : '--'}
             </span>
           </div>
-          <button
-            onClick={(e) => { e.stopPropagation(); onScanModel?.(model); }}
-            disabled={isScanning || scanningPath !== null}
-            className={`text-[7px] font-mono px-1.5 py-0.5 rounded-sm transition-colors ${
-              isScanning
-                ? 'text-telemetry-cyan border border-telemetry-cyan/40 bg-telemetry-cyan/10'
-                : 'text-orange-400 border border-orange-400/30 hover:bg-orange-400/10 disabled:opacity-30'
-            }`}
-          >
-            {isScanning ? '⠋ SCANNING...' : '⚠ SCAN'}
-          </button>
+          <div className="flex items-center gap-1">
+            {draftBadge && (
+              <span className="text-[7px] font-mono px-1 py-0.5 rounded-sm bg-violet-500/15 border border-violet-400/25 text-violet-300/80">
+                {draftBadge}
+              </span>
+            )}
+            <button
+              onClick={(e) => { e.stopPropagation(); onScanModel?.(model); }}
+              disabled={isScanning || scanningPath !== null}
+              className={`text-[7px] font-mono px-1.5 py-0.5 rounded-sm transition-colors ${
+                isScanning
+                  ? 'text-telemetry-cyan border border-telemetry-cyan/40 bg-telemetry-cyan/10'
+                  : 'text-orange-400 border border-orange-400/30 hover:bg-orange-400/10 disabled:opacity-30'
+              }`}
+            >
+              {isScanning ? '⠋ SCANNING...' : '⚠ SCAN'}
+            </button>
+          </div>
         </div>
       )}
     </div>

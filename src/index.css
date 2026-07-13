@@ -1713,6 +1713,10 @@ html, body, #root {
   contain: layout style paint;
 }
 
+.model-catalog-card--draft {
+  opacity: 0.82;
+}
+
 .catalog-sort-bar {
   min-width: 0;
 }
@@ -1744,6 +1748,18 @@ html, body, #root {
 
 .catalog-sort-actions {
   flex-shrink: 0;
+}
+
+.catalog-search-wrap {
+  min-width: 0;
+}
+
+.catalog-search-input {
+  min-width: 0;
+}
+
+.catalog-search-actions {
+  max-width: 42%;
 }
 
 /* Visible-count viewport — CSS estimate avoids post-mount measure layout shifts */
@@ -6083,7 +6099,7 @@ html:not([data-theme="arctic"]) [data-display-texture="clean"] .phosphor-display
   color: var(--theme-accent-bright) !important;
 }
 
-/* Section titles — short column wrap (MEMORY MANAGEMENT, SPECULATIVE DECODING, …) */
+/* Section titles — short column wrap (MEMORY MANAGEMENT, …) */
 [data-config-panel] [data-param-row] > .config-section-label {
   width: auto;
   max-width: 6.5rem;
@@ -6097,6 +6113,58 @@ html:not([data-theme="arctic"]) [data-display-texture="clean"] .phosphor-display
   flex-wrap: wrap;
   row-gap: 0.25rem;
   column-gap: 0.5rem;
+}
+
+/* Spec decoding row has toggle inline — keep title on one line */
+[data-config-panel] .config-spec-decoding.config-section-row {
+  flex-wrap: nowrap;
+}
+
+[data-config-panel] .config-spec-decoding > .config-section-label {
+  max-width: none;
+  white-space: nowrap;
+}
+
+.config-spec-mode-badge {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 0.3rem 0.55rem;
+  border-radius: 2px;
+  white-space: nowrap;
+  line-height: 1;
+}
+
+.config-spec-mode-badge--dflash {
+  background: rgba(139, 92, 246, 0.18);
+  border: 1px solid rgba(167, 139, 250, 0.4);
+  color: rgba(216, 201, 255, 0.95);
+  box-shadow: 0 0 10px rgba(139, 92, 246, 0.12);
+}
+
+.config-spec-mode-badge--mtp {
+  background: rgba(118, 185, 0, 0.14);
+  border: 1px solid rgba(118, 185, 0, 0.42);
+  color: rgba(164, 220, 60, 0.95);
+  box-shadow: 0 0 10px rgba(118, 185, 0, 0.1);
+}
+
+.config-spec-mode-badge--eagle3 {
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.38);
+  color: rgba(253, 211, 77, 0.95);
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.08);
+}
+
+.config-spec-mode-badge--default {
+  background: var(--theme-chip-active-bg);
+  border: 1px solid var(--theme-chip-active-border);
+  color: var(--theme-chip-active-text);
 }
 
 /* Scrollbar on e-ink */

@@ -124,6 +124,9 @@ pub struct ModelEntry {
     /// Discovered HF repo ID from directory structure or cache (e.g. "unsloth/Qwen3.5-4B-GGUF"). Present even when hf_meta is None.
     #[serde(default, skip_serializing_if = "Option::is_none", rename = "hfModelId")]
     pub hf_model_id: Option<String>,
+    /// Path/name-derived draft role — set at catalog merge, works without GGUF scan.
+    #[serde(default, rename = "draftRoleHint")]
+    pub draft_role_hint: String,
 }
 
 /// Duplicate model found across multiple configured paths during catalog merge.
@@ -227,6 +230,9 @@ pub struct ModelMetadata {
     /// Number of nextn prediction layers (>0 means MTP model)
     #[serde(default, rename = "nextn_predict_layers")]
     pub nextn_predict_layers: u32,
+    /// Draft role: none | mtp_embedded | external_dflash | external_eagle3
+    #[serde(default, rename = "draft_role")]
+    pub draft_role: String,
 
     // ── Raw KV dumps (full GGUF header for future use) ────────────────
     /// All KV pairs from GGUF header — key → stringified value. Skips tokenizer arrays.

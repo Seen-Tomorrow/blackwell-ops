@@ -49,7 +49,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
     && setupGuide.phase === "scan-meta"
     && !setupGuide.runtimeReady;
 
-  const { search, setSearch, catalogSelectedModel, panelActiveModel, handleSelect, handleSelectBySlot, selectedSlotIdx, sortField, sortDirection, handleSort,
+  const { search, setSearch, draftFilter, setCatalogDraftFilter, catalogSelectedModel, panelActiveModel, handleSelect, handleSelectBySlot, selectedSlotIdx, sortField, sortDirection, handleSort,
     catalogModels, runningModelPaths,
     handleScanModel, handleScanAll, handleCancelScan,
     fitScanAvailable, isFitScanning, getFitScanActiveLabel, getFitScanBadge, modelNeedsFitScan, handleFitScanModel,
@@ -91,6 +91,71 @@ export default function ModelCatalog(props: ModelCatalogProps) {
   const effectiveEnginePort = effectiveEngineEntry?.port;
   const effectiveSupportsFusion = effectiveEngineEntry?.supportsFusion ?? true;
 
+  const renderScanMetaControl = () => {
+    if (batchScanState.active) {
+      return (
+        <>
+          <span className="catalog-scan-status text-[7px] font-mono whitespace-nowrap">
+            {batchScanState.scanned}/{batchScanState.total}
+          </span>
+          <button
+            onClick={handleCancelScan}
+            className="catalog-scan-btn px-1.5 py-0.5 text-[7px] font-mono border border-telemetry-red/40 text-telemetry-red hover:bg-telemetry-red/10 transition-colors rounded-sm"
+            title="Stop batch scan"
+          >
+            STOP
+          </button>
+        </>
+      );
+    }
+    if (showScanMenu) {
+      return (
+        <>
+          <button
+            onClick={() => startScan(4)}
+            disabled={scanningPath !== null}
+            className="catalog-scan-btn px-1.5 py-0.5 text-[7px] font-mono transition-colors rounded-sm disabled:opacity-30"
+            title="Scan all models with 4x parallelism (~2GB RAM)"
+          >
+            4×
+          </button>
+          <button
+            onClick={() => startScan(8)}
+            disabled={scanningPath !== null}
+            className="catalog-scan-btn px-1.5 py-0.5 text-[7px] font-mono transition-colors rounded-sm disabled:opacity-30"
+            title="Scan all models with 8x parallelism (~4GB RAM)"
+          >
+            8×
+          </button>
+          <button
+            onClick={() => setShowScanMenu(false)}
+            className="catalog-scan-btn px-1 py-0.5 text-[7px] font-mono transition-colors rounded-sm opacity-60"
+            title="Close scan menu"
+          >
+            ✕
+          </button>
+        </>
+      );
+    }
+    return (
+      <button
+        onClick={() => setShowScanMenu(true)}
+        disabled={scanningPath !== null || scanBlockedByToolchain}
+        data-onboarding={setupGuide.phase === "scan-meta" && !scanBlockedByToolchain ? "scan-meta" : undefined}
+        className={`catalog-scan-btn px-1.5 py-0.5 text-[7px] font-mono transition-colors rounded-sm disabled:opacity-30 whitespace-nowrap${
+          setupGuide.phase === "scan-meta" && !scanBlockedByToolchain ? " catalog-scan-btn--onboarding" : ""
+        }`}
+        title={
+          scanBlockedByToolchain
+            ? "Install toolchain or use NEXT in setup to skip metadata scan"
+            : "Scan all models for metadata"
+        }
+      >
+        SCAN META ▾
+      </button>
+    );
+  };
+
   // ── Sort bar ────────────────
   const renderSortBar = () => (
     <div className="catalog-sort-bar flex items-center gap-2 px-3 py-1.5 min-w-0">
@@ -113,60 +178,31 @@ export default function ModelCatalog(props: ModelCatalogProps) {
         ))}
       </div>
       <div className="catalog-sort-actions flex items-center gap-1 shrink-0">
-      {batchScanState.active && (
-        <span className="catalog-scan-status text-[8px] font-mono mr-2">
-          SCAN: {batchScanState.scanned}/{batchScanState.total}
-        </span>
-      )}
       {fitScanningCount > 0 && (
-        <span className="catalog-scan-status text-[8px] font-mono mr-2 text-violet-300/80">
-          FIT: {fitScanningCount} active
+        <span className="catalog-scan-status text-[8px] font-mono text-violet-300/80 whitespace-nowrap">
+          FIT {fitScanningCount}
         </span>
       )}
-      {batchScanState.active ? (
-        <button
-          onClick={handleCancelScan}
-          className="px-2 py-0.5 text-[8px] font-mono border border-telemetry-red/40 text-telemetry-red hover:bg-telemetry-red/10 transition-colors rounded-sm"
-          title="Stop batch scan"
-        >
-          ⏹ STOP
-        </button>
-      ) : showScanMenu ? (
-        <div className="flex items-center gap-1">
+      <div className="catalog-draft-filter flex items-center gap-0.5 mr-1">
+        {(["regular", "draft", "all"] as const).map((mode) => (
           <button
-            onClick={() => startScan(4)}
-            disabled={scanningPath !== null}
-            className="catalog-scan-btn px-2 py-0.5 text-[8px] font-mono transition-colors rounded-sm disabled:opacity-30"
-            title="Scan all models with 4x parallelism (~2GB RAM)"
+            key={mode}
+            onClick={() => setCatalogDraftFilter(mode)}
+            className={`px-1.5 py-0 text-[7px] font-mono uppercase rounded-sm transition-colors ${
+              draftFilter === mode ? "value-chip-active" : "value-chip"
+            }`}
+            title={
+              mode === "regular"
+                ? "Main models only"
+                : mode === "draft"
+                  ? "Draft models (DFlash / Eagle3)"
+                  : "All GGUF files"
+            }
           >
-            SPEED 4×
+            {mode === "regular" ? "MAIN" : mode === "draft" ? "DRAFT" : "ALL"}
           </button>
-          <button
-            onClick={() => startScan(8)}
-            disabled={scanningPath !== null}
-            className="catalog-scan-btn px-2 py-0.5 text-[8px] font-mono transition-colors rounded-sm disabled:opacity-30"
-            title="Scan all models with 8x parallelism (~4GB RAM)"
-          >
-            SPEED 8×
-          </button>
-        </div>
-      ) : (
-        <button
-          onClick={() => setShowScanMenu(true)}
-          disabled={scanningPath !== null || scanBlockedByToolchain}
-          data-onboarding={setupGuide.phase === "scan-meta" && !scanBlockedByToolchain ? "scan-meta" : undefined}
-          className={`catalog-scan-btn px-2 py-0.5 text-[8px] font-mono transition-colors rounded-sm disabled:opacity-30${
-            setupGuide.phase === "scan-meta" && !scanBlockedByToolchain ? " catalog-scan-btn--onboarding" : ""
-          }`}
-          title={
-            scanBlockedByToolchain
-              ? "Install toolchain or use NEXT in setup to skip metadata scan"
-              : "Scan all models for metadata"
-          }
-        >
-          SCAN META ▾
-        </button>
-      )}
+        ))}
+      </div>
       <div className="flex items-center gap-1">
         {(["4", "6", "8"] as const).map(count => (
           <button
@@ -227,16 +263,25 @@ export default function ModelCatalog(props: ModelCatalogProps) {
           style={{ width: catalogWidth }}
         >
 
-          {/* Search bar */}
+          {/* Search bar + scan meta (in-field, right) */}
           <div className="px-3 py-2 flex-shrink-0">
-            <input
-              type="text"
-              placeholder="▶  SEARCH MODELS..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              autoFocus
-              className="theme-input w-full text-xs font-mono px-3 py-1.5 rounded-sm"
-            />
+            <div className="catalog-search-wrap relative min-w-0">
+              <input
+                type="text"
+                placeholder="▶  SEARCH MODELS..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                autoFocus
+                className={`catalog-search-input theme-input w-full text-xs font-mono pl-3 py-1.5 rounded-sm ${
+                  showScanMenu || batchScanState.active ? "pr-[8.25rem]" : "pr-[6.5rem]"
+                }`}
+              />
+              <div className="catalog-search-actions absolute inset-y-0 right-1.5 flex items-center gap-1 pointer-events-none">
+                <div className="flex items-center gap-1 pointer-events-auto">
+                  {renderScanMetaControl()}
+                </div>
+              </div>
+            </div>
           </div>
 
           {renderSortBar()}

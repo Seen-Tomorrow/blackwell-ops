@@ -8,6 +8,8 @@ import {
   KEYS,
   binaryProfileKey,
   engineAliasKey,
+  migrateGlobalSpecOutOfCatalogOverrides,
+  normalizeModelPathKey,
   loadAutoVramEnabled,
   loadConfigView,
   loadUiDensity,
@@ -43,6 +45,29 @@ import { isEmptyGroupDeletable } from "../lib/groupLayoutUtils";
 import { useGroupLayoutControls } from "../hooks/useGroupLayoutControls";
 import { dispatchAppEvent, EVENTS } from "../lib/events";
 import { tomMtpBlocked, TOM_MTP_SKIP_MESSAGE } from "../lib/tomMtp";
+import {
+  type DraftRole,
+  type ScoredDraft,
+  type SpecCapability,
+  defaultSpecTypeForMain,
+  draftRoleForSpecType,
+  findScoredDraftCandidates,
+  isDraftPairingValid,
+  isExternalDraftOnly,
+  isLaunchableMain,
+  isValidGgufDraftPath,
+  essentialsSpecChipLabel,
+  essentialsSpecPreset,
+  loadDraftPairing,
+  loadModelSpecOverride,
+  pickBestDraftPair,
+  saveModelSpecOverride,
+  resolveDraftPathLabel,
+  saveDraftPairing,
+  specCapabilitiesForMain,
+  specTypeAllowsParallel,
+  specTypeNeedsExternalDraft,
+} from "../lib/specDraft";
 import { DEFAULT_BINARY_PROFILE, ENV_META, ENV_ORDER, normalizeBinaryProfile, type Env, isDriverSufficientForProfile, getMinDriverMajorForCuda } from "../lib/foundry_constants";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -109,6 +134,14 @@ function paramChipClass(active: boolean): string {
   return `px-2 py-0.5 text-[9px] font-mono rounded-sm focus:outline-none ${
     active ? "value-chip-active" : "value-chip"
   }`;
+}
+
+function specModeBadgeClass(specType: string): string {
+  const mode = specType.trim().toLowerCase().replace("draft-", "");
+  if (mode === "dflash") return "config-spec-mode-badge config-spec-mode-badge--dflash";
+  if (mode === "mtp") return "config-spec-mode-badge config-spec-mode-badge--mtp";
+  if (mode === "eagle3") return "config-spec-mode-badge config-spec-mode-badge--eagle3";
+  return "config-spec-mode-badge config-spec-mode-badge--default";
 }
 
 function isSplitModeActive(split: unknown): boolean {
@@ -181,14 +214,48 @@ function resolveCtxSlotCount(
   return resolveParallelSlots(config, params);
 }
 
-function mtpParallelConflict(
-  model: { metadata?: { nextn_predict_layers?: number } } | null | undefined,
+function specParallelConflict(
+  specType: string | undefined,
   params: UserEditedTemplateParam[],
   config: Record<string, unknown>,
 ): boolean {
-  if ((model?.metadata?.nextn_predict_layers ?? 0) <= 0) return false;
-  if (!isSpecDecodingActive(params)) return false;
+  if (!specType || !isSpecDecodingActive(params)) return false;
+  if (specTypeAllowsParallel(specType)) return false;
   return resolveParallelSlots(config, params) > 1;
+}
+
+const SPEC_TYPE_BY_CAPABILITY: Record<SpecCapability, string> = {
+  dflash: "draft-dflash",
+  mtp: "draft-mtp",
+  eagle3: "draft-eagle3",
+};
+
+function filterSpecTypeValues(
+  values: (string | number)[],
+  caps: SpecCapability[],
+  essentialsSimpleMode?: boolean,
+): (string | number)[] {
+  const allowed = new Set<string>();
+  for (const cap of caps) {
+    if (essentialsSimpleMode && cap !== "mtp" && cap !== "dflash") continue;
+    allowed.add(SPEC_TYPE_BY_CAPABILITY[cap]);
+  }
+  return values.filter((v) => {
+    const s = String(v).toLowerCase();
+    if (essentialsSimpleMode) return allowed.has(s);
+    if (s.startsWith("ngram") || s === "draft-simple") return true;
+    return allowed.has(s);
+  });
+}
+
+function applyEssentialsSpecPreset(
+  specType: string,
+  updateParam: (key: string, value: string | number) => void,
+): void {
+  const preset = essentialsSpecPreset(specType);
+  if (!preset) return;
+  updateParam("spec_draft_n_max", preset.spec_draft_n_max);
+  updateParam("spec_draft_n_min", preset.spec_draft_n_min);
 }
 
 function collectActiveAliases(stack: StackEntry[]): Set<string> {
@@ -511,6 +578,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   const launchProfile = currentProvider?.launchProfile;
   const fitLaunchSupported = providerSupportsFitLaunch(launchProfile);
   const fullAutoMode = fitLaunchSupported && fitLaunchEnabled;
+  /** FULL-AUTO + Essentials — MTP/DFLASH only, presets, auto-enable when capable. */
+  const specSimpleMode = fullAutoMode && configView === "essentials";
   const tensorSplitSupported = launchProfile?.tensorSplit !== false;
   const essentialFactoryKeys = useMemo(
     () => resolveEssentialParamKeys(launchProfile),
@@ -695,14 +764,157 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     [fullAutoMode, stack],
   );
 
-  const mtpParallelWarn = useMemo(
-    () => mtpParallelConflict(model, allParamsResolved, config),
-    [model, allParamsResolved, config],
+  const activeSpecType = config.spec_type != null ? String(config.spec_type) : undefined;
+
+  const specParallelWarn = useMemo(
+    () => specParallelConflict(activeSpecType, allParamsResolved, config),
+    [activeSpecType, allParamsResolved, config],
   );
   const mtpParallelSlotCount = useMemo(
     () => resolveParallelSlots(config, allParamsResolved),
     [config, allParamsResolved],
   );
+
+  const specCapabilities = useMemo(
+    () => (model && models?.length ? specCapabilitiesForMain(model, models, effectiveBackendType) : []),
+    [model, models, effectiveBackendType],
+  );
+  const hasSpecCapability = specCapabilities.length > 0;
+  const modelIsDraftOnly = model ? isExternalDraftOnly(model) : false;
+
+  const activeDraftRole: DraftRole | null = useMemo(() => {
+    if (!activeSpecType) return null;
+    return draftRoleForSpecType(activeSpecType);
+  }, [activeSpecType]);
+
+  const scoredDraftCandidates = useMemo((): ScoredDraft[] => {
+    if (!model || !models?.length || !activeDraftRole) return [];
+    return findScoredDraftCandidates(model, models, activeDraftRole);
+  }, [model, models, activeDraftRole]);
+
+  const [showAllDrafts, setShowAllDrafts] = useState(false);
+
+  useEffect(() => {
+    setShowAllDrafts(false);
+  }, [model?.path, activeDraftRole]);
+
+  const specNeedsExternalDraft = Boolean(
+    activeSpecType && specTypeNeedsExternalDraft(activeSpecType) && specActive,
+  );
+
+  const currentDraftPath = config.spec_draft_model != null ? String(config.spec_draft_model) : "";
+  const draftPathValid =
+    !specNeedsExternalDraft
+    || isValidGgufDraftPath(currentDraftPath);
+
+  // Legacy template stored auto/on — resolve to picker selection.
+  useEffect(() => {
+    if (!specNeedsExternalDraft || !model) return;
+    const cur = currentDraftPath.trim().toLowerCase();
+    if (cur !== "auto" && cur !== "on") return;
+    const best = scoredDraftCandidates[0]?.model;
+    if (!best) return;
+    updateParam("spec_draft_model", best.path);
+    if (activeSpecType) {
+      saveDraftPairing(model.path, activeSpecType, best.path);
+    }
+  }, [
+    specNeedsExternalDraft,
+    model,
+    currentDraftPath,
+    scoredDraftCandidates,
+    activeSpecType,
+    updateParam,
+  ]);
+
+  const specAutoConfiguredRef = useRef<string | null>(null);
+  const specSimpleBootRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    migrateGlobalSpecOutOfCatalogOverrides(effectiveBackendType);
+  }, [effectiveBackendType]);
+
+  useEffect(() => {
+    if (!specSimpleMode || !model || !hasSpecCapability || specActive) return;
+    if (loadModelSpecOverride(model.path)?.spec_type) return;
+
+    const pathKey = normalizeModelPathKey(model.path);
+    if (specSimpleBootRef.current === pathKey) return;
+    specSimpleBootRef.current = pathKey;
+
+    invoke<boolean>("toggle_group_hidden", { providerId: effectiveBackendType, groupId: SPEC_DECODING_GROUP })
+      .then(async () => {
+        setSpecFlash(true);
+        setTimeout(() => setSpecFlash(false), 400);
+        try {
+          const data = await invoke<ProviderConfig[]>("list_providers");
+          if (data.length > 0) setResolvedProviders(data);
+        } catch { /* reloadProviders event is fallback */ }
+        dispatchAppEvent(EVENTS.reloadProviders);
+        dispatchAppEvent(EVENTS.paramConfigChanged);
+      })
+      .catch((err) => console.error("[specSimpleBoot] toggle_group_hidden failed:", err));
+  }, [specSimpleMode, model, hasSpecCapability, specActive, effectiveBackendType]);
+
+  useEffect(() => {
+    if (!specSimpleMode || !specActive || !activeSpecType) return;
+    const preset = essentialsSpecPreset(activeSpecType);
+    if (!preset) return;
+    const max = Number(config.spec_draft_n_max);
+    const min = Number(config.spec_draft_n_min);
+    if (max !== preset.spec_draft_n_max) updateParam("spec_draft_n_max", preset.spec_draft_n_max);
+    if (min !== preset.spec_draft_n_min) updateParam("spec_draft_n_min", preset.spec_draft_n_min);
+  }, [
+    specSimpleMode,
+    specActive,
+    activeSpecType,
+    config.spec_draft_n_max,
+    config.spec_draft_n_min,
+    updateParam,
+  ]);
+
+  useEffect(() => {
+    if (!model || !models?.length || modelIsDraftOnly) return;
+    const pathKey = normalizeModelPathKey(model.path);
+    if (specAutoConfiguredRef.current === pathKey) return;
+
+    if (loadModelSpecOverride(model.path)?.spec_type) {
+      specAutoConfiguredRef.current = pathKey;
+      return;
+    }
+
+    const applyPrefill = (specType: string, draftPath?: string) => {
+      const patch: Record<string, string | number> = { spec_type: specType };
+      if (draftPath) patch.spec_draft_model = draftPath;
+      const preset = specSimpleMode ? essentialsSpecPreset(specType) : null;
+      if (preset) {
+        patch.spec_draft_n_max = preset.spec_draft_n_max;
+        patch.spec_draft_n_min = preset.spec_draft_n_min;
+      } else if (specType === "draft-dflash") {
+        patch.spec_draft_n_max = 4;
+      }
+      saveModelSpecOverride(model.path, patch);
+      if (draftPath) saveDraftPairing(model.path, specType, draftPath);
+      dispatchAppEvent(EVENTS.paramConfigChanged);
+    };
+
+    const saved = loadDraftPairing(model.path);
+    if (saved && isDraftPairingValid(saved, model, models)) {
+      applyPrefill(saved.specType, saved.draftPath);
+      specAutoConfiguredRef.current = pathKey;
+      return;
+    }
+
+    const defaultType = defaultSpecTypeForMain(model, models, effectiveBackendType);
+    if (defaultType === "draft-dflash") {
+      const draft = pickBestDraftPair(model, models, "external_dflash");
+      if (draft) applyPrefill("draft-dflash", draft.path);
+    } else if (defaultType === "draft-mtp") {
+      applyPrefill("draft-mtp");
+    }
+
+    specAutoConfiguredRef.current = pathKey;
+  }, [model, models, effectiveBackendType, modelIsDraftOnly, specSimpleMode]);
 
   const customFlagsReplaceActive = testFlagsEnabled && testFlagsMode === "replace";
   const customFlagsLaunchActive = testFlagsEnabled;
@@ -981,7 +1193,10 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     // Merge values + userAddedValues (user-added params from ConfigPage admin edit)
     const seenVals = new Set((def.values || []).map(v => String(v)));
     const allValues = [...(def.values || []), ...(def.userAddedValues || []).filter(v => !seenVals.has(String(v)))];
-    const baseValues = allValues.filter(v => !(def.hiddenValues || []).some(hv => String(hv) === String(v)));
+    let baseValues = allValues.filter(v => !(def.hiddenValues || []).some(hv => String(hv) === String(v)));
+    if (def.key === "spec_type" && specCapabilities.length > 0) {
+      baseValues = filterSpecTypeValues(baseValues, specCapabilities, specSimpleMode);
+    }
     const currentValue = config[def.key];
 
     // Yellow accent: user-added params (not in provider default params, not system-injected via dock)
@@ -1041,7 +1256,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           className={`${PARAM_LABEL_CLASS} mt-0.5 ${isUserAdded ? 'text-yellow-400/80' : ''}`}
           title={def.label}
         >
-          {def.label}
+          {specSimpleMode && def.key === "spec_type" ? "MODE" : def.label}
         </span>
 
         <div className="config-chip-row flex gap-1.5 flex-wrap flex-1 min-w-0 items-center min-h-[18px]">
@@ -1053,16 +1268,21 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
               onClick={() => {
                 if (isLocked) return;
                 updateParam(def.key, val);
+                if (specSimpleMode && def.key === "spec_type") {
+                  applyEssentialsSpecPreset(String(val), updateParam);
+                }
               }}
               className={paramChipClass(paramValuesMatch(currentValue, val))}
             >
-              {String(val)}
+              {specSimpleMode && def.key === "spec_type"
+                ? essentialsSpecChipLabel(String(val))
+                : String(val)}
             </button>
           ))}
         </div>
       </div>
     );
-  }, [config, gpus.length, providerDefaultKeys, updateParam, allParamsResolved]);
+  }, [config, gpus.length, providerDefaultKeys, updateParam, allParamsResolved, specCapabilities, specSimpleMode]);
 
   const isPanelChromeParam = useCallback((def: UserEditedTemplateParam) => {
     return Boolean(def.dock) || PANEL_CHROME_PARAM_KEYS.has(def.key);
@@ -1100,21 +1320,19 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     return groups;
   }, [allParamsResolved, isPanelChromeParam]);
 
-  const isMtpModel = (model?.metadata?.nextn_predict_layers ?? 0) > 0;
-
   const isGroupVisible = useCallback(
     (groupId: string) => {
       if ((groupedParams[groupId]?.length ?? 0) > 0) return true;
       if (
         groupId === SPEC_DECODING_GROUP &&
-        isMtpModel &&
+        hasSpecCapability &&
         allParamsResolved.some((d) => paramUiGroup(d.ui_group) === SPEC_DECODING_GROUP)
       ) {
         return true;
       }
       return layoutModeActive && isGroupFullyHidden(groupId, allGroupedParams);
     },
-    [groupedParams, isMtpModel, allParamsResolved, layoutModeActive, allGroupedParams],
+    [groupedParams, hasSpecCapability, allParamsResolved, layoutModeActive, allGroupedParams],
   );
 
   const {
@@ -1231,7 +1449,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       if (specAllParams.length === 0) return null;
       const specVisibleParams = specAllParams.filter((d) => !d.hidden);
       const allHidden = specAllParams.every((d) => d.hidden);
-      const specActive = isMtpModel ? !allHidden : false;
+      const specGroupActive = hasSpecCapability && !allHidden;
 
       return (
         <div key={group.id}>
@@ -1242,12 +1460,12 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             <div className="w-0.5 h-4 flex-shrink-0 mr-1.5" />
             <span className={SECTION_LABEL_CLASS}>SPECULATIVE DECODING</span>
             <div className="flex flex-1 min-w-0 items-center">
-              <label className={`toggle-switch ${!isMtpModel ? "opacity-40 pointer-events-none" : ""}`}>
+              <label className={`toggle-switch ${!hasSpecCapability ? "opacity-40 pointer-events-none" : ""}`}>
                 <input
                   type="checkbox"
                   className="toggle-input"
-                  checked={specActive}
-                  disabled={!isMtpModel}
+                  checked={specGroupActive}
+                  disabled={!hasSpecCapability}
                   onChange={() => {
                     invoke<boolean>("toggle_group_hidden", { providerId: effectiveBackendType, groupId: group.id })
                       .then(async () => {
@@ -1285,35 +1503,115 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                   <span className="label-on">ON</span>
                 </span>
               </label>
+              {specGroupActive && activeSpecType && (
+                <span className={specModeBadgeClass(activeSpecType)}>
+                  {String(activeSpecType).replace("draft-", "").toUpperCase()}
+                </span>
+              )}
             </div>
             {renderGroupLayoutControls(group.id, zone, { hideHideToggle: true })}
           </div>
 
-          {isMtpModel && specActive && (
-            <div className="rounded-sm px-3 py-2 text-[8px] font-mono tracking-wide uppercase flex items-center gap-1 text-nv-green">
-              Speculative mode active
-            </div>
-          )}
-
-          {isMtpModel && specActive && specVisibleParams.length > 0 && (
+          {hasSpecCapability && specGroupActive && specVisibleParams.length > 0 && (
             <div className="config-spec-params space-y-2.5 mt-2">
-              {specVisibleParams.map((def, i) => (
-                <div key={paramRowKey(def, i)} className="spec-param-unlock" style={{ opacity: 0 }}>
-                  {renderParamRow(def, false, i)}
+              {specVisibleParams
+                .filter((d) => d.key !== "spec_draft_model")
+                .filter((d) => !specSimpleMode || (d.key !== "spec_draft_n_max" && d.key !== "spec_draft_n_min"))
+                .map((def, i) => (
+                  <div key={paramRowKey(def, i)} className="spec-param-unlock" style={{ opacity: 0 }}>
+                    {renderParamRow(def, false, i)}
+                  </div>
+                ))}
+              {specNeedsExternalDraft && (
+                <div data-param-row className="flex flex-col gap-1.5 min-h-[22px]">
+                  <div className="flex items-start min-h-[22px]">
+                    <div className="w-0.5 h-4 flex-shrink-0 mr-1.5 mt-0.5" />
+                    <span className={`${PARAM_LABEL_CLASS} mt-0.5`} title="External draft GGUF paired with this main model">
+                      {specSimpleMode ? "DRAFT" : "DRAFT MODEL"}
+                    </span>
+                    <div className="config-chip-row flex gap-1.5 flex-wrap flex-1 min-w-0 items-center min-h-[18px]">
+                      {scoredDraftCandidates.length === 0 ? (
+                        <span className="text-[8px] font-mono text-telemetry-red/80 uppercase">
+                          {specSimpleMode
+                            ? "Add a matching draft model to your library"
+                            : "No family-matched draft in library"}
+                        </span>
+                      ) : (
+                        <>
+                          {(showAllDrafts ? scoredDraftCandidates : scoredDraftCandidates.slice(0, 2)).map(
+                            ({ model: draft, score }, idx) => {
+                              const selected = currentDraftPath === draft.path;
+                              const recommended = idx === 0;
+                              return (
+                                <button
+                                  key={draft.path}
+                                  type="button"
+                                  onClick={() => {
+                                    updateParam("spec_draft_model", draft.path);
+                                    if (model && activeSpecType) {
+                                      saveDraftPairing(model.path, activeSpecType, draft.path);
+                                    }
+                                  }}
+                                  className={paramChipClass(selected)}
+                                  title={`${draft.path} (match ${score})`}
+                                >
+                                  {recommended ? "★ " : ""}
+                                  {resolveDraftPathLabel(draft.path)}
+                                </button>
+                              );
+                            },
+                          )}
+                          {scoredDraftCandidates.length > 2 && (
+                            <button
+                              type="button"
+                              onClick={() => setShowAllDrafts((v) => !v)}
+                              className="value-chip text-[7px] font-mono uppercase px-1.5 py-0.5 rounded-sm"
+                            >
+                              {showAllDrafts
+                                ? "LESS"
+                                : `+${scoredDraftCandidates.length - 2} MORE`}
+                            </button>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  {scoredDraftCandidates.length > 0 && (
+                    <div className="text-[7px] font-mono text-stealth-muted/45 uppercase ml-6 tracking-wide">
+                      Draft model paired by model family + name
+                    </div>
+                  )}
+                  {specNeedsExternalDraft && !draftPathValid && (
+                    <div className="text-[7px] font-mono text-telemetry-red/75 uppercase ml-6 tracking-wide">
+                      Select a .gguf draft file before launch
+                    </div>
+                  )}
                 </div>
-              ))}
+              )}
             </div>
           )}
 
-          {!isMtpModel && (
+          {!hasSpecCapability && (
             <div className="text-[8px] font-mono text-stealth-muted/30 tracking-wider uppercase mt-1 ml-2">
-              Requires an MTP model for speculative decoding
+              {modelIsDraftOnly
+                ? "Draft model — select a main model to launch with speculative decoding"
+                : "No speculative decoding available for this model"}
             </div>
           )}
 
-          {isMtpModel && !specActive && specAllParams.length > 0 && (
+          {hasSpecCapability && !specGroupActive && specAllParams.length > 0 && (
             <div className="text-[8px] font-mono text-stealth-muted/30 tracking-wider uppercase mt-1 ml-2">
-              {specAllParams.length} parameter{specAllParams.length > 1 ? "s" : ""} locked — activate to configure
+              {specSimpleMode
+                ? "Turn on for faster generation (MTP or DFlash)"
+                : `${specAllParams.length} parameter${specAllParams.length > 1 ? "s" : ""} locked — activate to configure${
+                    specCapabilities.includes("dflash") && specCapabilities.includes("mtp")
+                      ? " (MTP baked-in · DFlash ready)"
+                      : specCapabilities.includes("dflash")
+                        ? " (DFlash ready)"
+                        : specCapabilities.includes("mtp")
+                          ? " (MTP)"
+                          : ""
+                  }`}
             </div>
           )}
         </div>
@@ -1392,7 +1690,18 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     toggleGroup,
     renderParamRow,
     mtpParallelSlotCount,
-    isMtpModel,
+    hasSpecCapability,
+    specCapabilities,
+    modelIsDraftOnly,
+    activeSpecType,
+    scoredDraftCandidates,
+    showAllDrafts,
+    setShowAllDrafts,
+    specNeedsExternalDraft,
+    config.spec_draft_model,
+    updateParam,
+    model,
+    specSimpleMode,
     layoutModeActive,
     isGroupHidden,
     draggingGroup,
@@ -1575,6 +1884,18 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   const handleAddToStack = useCallback(() => {
     if (!model) return;
     if (selectedProfileIsBuilding) return;
+    if (!isLaunchableMain(model)) {
+      dispatchAppEvent(EVENTS.launchError, {
+        message: "Draft models cannot be launched as mains — select a main model and assign this file as the draft.",
+      });
+      return;
+    }
+    if (specNeedsExternalDraft && !draftPathValid) {
+      dispatchAppEvent(EVENTS.launchError, {
+        message: "Select a draft model (.gguf) for speculative decoding before launch.",
+      });
+      return;
+    }
     if (tomMtpBlocked(effectiveBackendType, model)) {
       dispatchAppEvent(EVENTS.launchError, { message: TOM_MTP_SKIP_MESSAGE });
       return;
@@ -1600,11 +1921,15 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     selectedProfileIsBuilding,
     effectiveBackendType,
     customFlagsReplaceActive,
+    specNeedsExternalDraft,
+    draftPathValid,
     performLaunch,
   ]);
 
   const launchDisabled =
     !model
+    || modelIsDraftOnly
+    || (specNeedsExternalDraft && !draftPathValid)
     || selectedProfileIsBuilding
     || vramCalc.manifest?.scenario === "HW_LOCKED"
     || (vramCalc.manifest != null && !vramCalc.manifest.fits);
@@ -1989,15 +2314,27 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
         <div className="config-launch-dock flex-shrink-0 px-4 flex flex-col">
           <div className="config-launch-dock__content flex flex-col min-w-0">
-          {mtpParallelWarn && (
+          {specParallelWarn && (
             <div
               className="config-mtp-launch-warn rounded-sm px-2.5 py-1.5 text-[7px] font-mono leading-snug"
               role="status"
             >
-              <span className="uppercase tracking-wide">⚠ MTP disabled at launch</span>
+              <span className="uppercase tracking-wide">⚠ MTP limited at launch</span>
               {" — "}
               <span className="config-mtp-launch-warn__detail">
-                parallel ×{mtpParallelSlotCount} strips speculative decoding (slow path). Set parallel = 1 for MTP, or turn MTP off for multi-slot.
+                parallel ×{mtpParallelSlotCount} strips MTP speculative decoding. Use parallel = 1 for MTP, or switch to DFlash for multi-slot.
+              </span>
+            </div>
+          )}
+          {modelIsDraftOnly && (
+            <div
+              className="config-mtp-launch-warn rounded-sm px-2.5 py-1.5 text-[7px] font-mono leading-snug"
+              role="status"
+            >
+              <span className="uppercase tracking-wide">Draft model</span>
+              {" — "}
+              <span className="config-mtp-launch-warn__detail">
+                Cannot launch draft GGUF as main. Filter catalog to MAIN and pick the base model.
               </span>
             </div>
           )}

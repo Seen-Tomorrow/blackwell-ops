@@ -29,6 +29,9 @@ import type {
  * | BlackOps-ui-zoom | number string | Main content text scale (0.7–1.5) |
  * | BlackOps-ui-density | comfortable \| compact | Engine config chip/row density |
  * | BlackOps-catalog-visible-count | 4 \| 6 \| 8 \| all | Models visible per page |
+ * | BlackOps-catalog-draft-filter | regular \| draft \| all | Catalog main/draft filter |
+ * | BlackOps-model-spec:{modelPath} | JSON | Per-main-model spec decode overrides |
+ * | BlackOps-draft-pairings | JSON Record<targetPath, {specType, draftPath}> | Per-target spec draft pairings |
  * | BlackOps-param-creator-mode | simple \| advanced | Param creator UI mode |
  * | BlackOps-selected-slot-idx | number string | Last selected engine slot (-1 = none) |
  * | BlackOps-app-theme | string | Active app theme id (matrix, amber, …) |
@@ -121,6 +124,8 @@ export const KEYS = {
   uiZoom: `${STORAGE_PREFIX}ui-zoom`,
   uiDensity: `${STORAGE_PREFIX}ui-density`,
   catalogVisibleCount: `${STORAGE_PREFIX}catalog-visible-count`,
+  catalogDraftFilter: `${STORAGE_PREFIX}catalog-draft-filter`,
+  draftPairings: `${STORAGE_PREFIX}draft-pairings`,
   paramCreatorMode: `${STORAGE_PREFIX}param-creator-mode`,
   selectedSlotIdx: `${STORAGE_PREFIX}selected-slot-idx`,
   appTheme: `${STORAGE_PREFIX}app-theme`,
@@ -373,6 +378,33 @@ export function saveUiDensity(density: UiDensity): void {
 
 export function catalogOverrideKey(providerId: string): string {
   return `${STORAGE_PREFIX}catalog-override:${providerId}`;
+}
+
+export type ModelSpecOverride = {
+  spec_type?: string;
+  spec_draft_model?: string;
+  spec_draft_n_max?: number | string;
+  spec_draft_n_min?: number | string;
+};
+
+export function modelSpecOverrideKey(modelPath: string): string {
+  return `${STORAGE_PREFIX}model-spec:${normalizeModelPathKey(modelPath)}`;
+}
+
+/** Strip spec keys mistakenly stored in global catalog overrides (pre per-model fix). */
+export function migrateGlobalSpecOutOfCatalogOverrides(providerId: string): void {
+  const key = catalogOverrideKey(providerId);
+  const stored = readJsonStorage<Record<string, unknown>>(key);
+  if (!stored) return;
+  const specKeys = ["spec_type", "spec_draft_model", "spec_draft_n_max", "spec_draft_n_min"];
+  let changed = false;
+  for (const k of specKeys) {
+    if (k in stored) {
+      delete stored[k];
+      changed = true;
+    }
+  }
+  if (changed) writeJsonStorage(key, stored);
 }
 
 /** @deprecated Use `catalogOverrideKey` */

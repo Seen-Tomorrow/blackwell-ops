@@ -14,6 +14,12 @@ import {
   mergeFitScanProgressPoint,
   modelHasCompleteFitScan,
 } from "../lib/fitScanTable";
+import {
+  type CatalogDraftFilter,
+  draftRoleFromModel,
+  isLaunchableMain,
+  matchesCatalogDraftFilter,
+} from "../lib/specDraft";
 
 export type SortField = (keyof ModelEntry) | "date";
 export type SortDirection = "asc" | "desc";
@@ -35,6 +41,10 @@ function modelSearchText(m: ModelEntry): string {
   if ((meta.nextn_predict_layers ?? 0) > 0) {
     parts.push("mtp");
   }
+
+  const draftRole = draftRoleFromModel(m);
+  if (draftRole === "external_dflash") parts.push("dflash", "draft");
+  if (draftRole === "external_eagle3") parts.push("eagle3", "draft");
 
   const quantUpper = ft?.toUpperCase() ?? "";
   if (quantUpper.includes("NVFP4") || quantUpper.includes("MXFP4")) {
@@ -69,7 +79,12 @@ function findModelByPath(models: ModelEntry[], path: string): ModelEntry | undef
 
 function pickDefaultCatalogModel(models: ModelEntry[]): ModelEntry | undefined {
   const sorted = [...models].sort((a, b) => a.name.localeCompare(b.name));
-  return sorted.find((m) => m.metadata) ?? sorted[0];
+  return (
+    sorted.find((m) => m.metadata && isLaunchableMain(m))
+    ?? sorted.find((m) => isLaunchableMain(m))
+    ?? sorted.find((m) => m.metadata)
+    ?? sorted[0]
+  );
 }
 
 function applyCatalogSelection(
@@ -104,6 +119,11 @@ export function useModelCatalog({
   onReload,
 }: UseModelCatalogParams) {
   const [search, setSearch] = useState("");
+  const [draftFilter, setDraftFilter] = useState<CatalogDraftFilter>(() => {
+    const v = readStorage(KEYS.catalogDraftFilter);
+    if (v === "draft" || v === "all") return v;
+    return "regular";
+  });
   // Visual highlight in catalog list only — set by catalog card clicks
   const [catalogSelectedModel, setCatalogSelectedModel] = useState<ModelEntry | null>(null);
   // Right panel active model — set by catalog OR mini card clicks
@@ -325,12 +345,19 @@ export function useModelCatalog({
       ? search.toLowerCase().trim().split(/\s+/)
       : null;
 
+    sorted = sorted.filter((m) => matchesCatalogDraftFilter(m, draftFilter));
+
     if (searchWords) {
       sorted = sorted.filter(m => modelMatchesSearch(m, searchWords));
     }
 
     return sorted;
-  }, [models, sortField, sortDirection, search]);
+  }, [models, sortField, sortDirection, search, draftFilter]);
+
+  const setCatalogDraftFilter = useCallback((filter: CatalogDraftFilter) => {
+    setDraftFilter(filter);
+    writeStorage(KEYS.catalogDraftFilter, filter);
+  }, []);
 
   // Scan handlers
   const handleScanModel = useCallback(async (model: ModelEntry) => {
@@ -526,6 +553,7 @@ export function useModelCatalog({
 
   return {
     search, setSearch,
+    draftFilter, setCatalogDraftFilter,
     catalogSelectedModel, setCatalogSelectedModel, handleSelect, handleSelectBySlot, clearEngineSelection,
     panelActiveModel, setPanelActiveModel,
     selectedSlotIdx: selectedSlotIdxState, setSelectedSlotIdx,
