@@ -375,7 +375,7 @@ pub fn cuda_runtime_ready_for_version(cuda_version: &str) -> bool {
         .any(|dir| dir_has_essential_cuda_dll(dir))
 }
 
-fn cuda_version_for_binary_profile(binary_profile: &str) -> Option<String> {
+pub fn cuda_version_for_binary_profile(binary_profile: &str) -> Option<String> {
     let key = normalize_profile_id(binary_profile);
     if let Ok(manifest) = load_manifest() {
         if let Some(def) = manifest
@@ -418,6 +418,48 @@ pub fn scrub_foreign_cuda_from_path(path: &str) -> String {
 fn toolchain_console_path(path: &std::path::Path) -> String {
     let rel = crate::config::to_relative_path(&path.to_path_buf());
     format!("\\{}", rel.replace('/', "\\"))
+}
+
+/// Portable CUDA dirs + env var names for external CMD / batch launch (NoBSproof).
+pub struct PortableCudaEnv {
+    pub cuda_version: String,
+    pub cuda_root: std::path::PathBuf,
+    pub path_prefix: String,
+    pub cuda_path_var: String,
+}
+
+pub fn portable_cuda_env_for_profile(binary_profile: &str) -> Result<PortableCudaEnv, String> {
+    let cuda_version = cuda_version_for_binary_profile(binary_profile).ok_or_else(|| {
+        format!(
+            "Unknown binary profile '{}' — cannot resolve portable CUDA version.",
+            binary_profile
+        )
+    })?;
+    if !cuda_runtime_ready_for_version(&cuda_version) {
+        return Err(portable_cuda_missing_message(binary_profile, &cuda_version));
+    }
+
+    let cuda_root = toolchain_dir().join("cuda").join(format!("v{}", cuda_version));
+    let mut toolchain_bins: Vec<String> = Vec::new();
+    let bin_x64 = cuda_root.join("bin").join("x64");
+    if bin_x64.is_dir() {
+        toolchain_bins.push(bin_x64.to_string_lossy().to_string());
+    }
+    let bin = cuda_root.join("bin");
+    if bin.is_dir() {
+        toolchain_bins.push(bin.to_string_lossy().to_string());
+    }
+    if toolchain_bins.is_empty() {
+        return Err(portable_cuda_missing_message(binary_profile, &cuda_version));
+    }
+
+    let cuda_path_var_name = cuda_path_var(&cuda_version);
+    Ok(PortableCudaEnv {
+        cuda_version,
+        cuda_root,
+        path_prefix: toolchain_bins.join(";"),
+        cuda_path_var: cuda_path_var_name,
+    })
 }
 
 pub fn portable_cuda_missing_message(binary_profile: &str, cuda_version: &str) -> String {

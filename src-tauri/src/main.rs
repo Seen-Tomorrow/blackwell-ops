@@ -928,6 +928,7 @@ async fn main() {
             engine::get_template,
             engine::get_template_for_provider,
             engine::preview_launch_command,
+            engine::open_nobsproof_cmd,
             intel::fetch_github_intel,
             telemetry::scan_gpus,
             telemetry::scan_cpu,

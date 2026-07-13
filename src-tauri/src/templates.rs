@@ -479,10 +479,12 @@ impl ProviderTemplate {
             .unwrap_or(false);
 
         let moe_optimal_launch = extra_param_eq_ignore_ascii(config, "offload_mode", "moe_optimal");
+        let external_draft_spec = external_draft_spec_needs_fit_off(config);
 
         if auto_vram_launch {
-            if moe_optimal_launch {
+            if moe_optimal_launch || external_draft_spec {
                 // MOE_OPTIMAL owns expert placement — --fit on fights eviction/tensor offload strategy.
+                // External draft specs (dflash/eagle3/…) probe draft VRAM before ctx_other exists — hard-fail.
                 args.extend(["--fit".into(), "off".into()]);
             } else {
                 args.extend(sp.spawn_flags.clone());
@@ -506,6 +508,7 @@ impl ProviderTemplate {
                         args.push(s.to_string());
                     }
                 }
+                finalize_launch_cli_args(&mut args);
                 #[cfg(debug_assertions)]
                 {
                     let full_cmd = format!("{} {}", self.binary_name, args.join(" "));
@@ -613,6 +616,8 @@ impl ProviderTemplate {
                 }
             }
         }
+
+        finalize_launch_cli_args(&mut args);
 
         #[cfg(debug_assertions)]
         if !config.model_path.is_empty() {
@@ -775,6 +780,53 @@ impl ProviderTemplate {
 
 }
 
+fn flag_pair_value<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
+    let mut last = None;
+    let mut i = 0;
+    while i + 1 < args.len() {
+        if args[i] == flag {
+            last = Some(args[i + 1].as_str());
+            i += 2;
+        } else {
+            i += 1;
+        }
+    }
+    last
+}
+
+fn remove_all_flag_pairs(args: &mut Vec<String>, flag: &str) {
+    let mut i = 0;
+    while i < args.len() {
+        if args.get(i).map(|s| s.as_str()) == Some(flag) && i + 1 < args.len() {
+            args.remove(i + 1);
+            args.remove(i);
+        } else {
+            i += 1;
+        }
+    }
+}
+
+/// Keep only the last `--flag value` occurrence — later custom flags win over auto-VRAM defaults.
+fn dedupe_flag_pair_last_wins(args: &mut Vec<String>, flag: &str) {
+    let Some(value) = flag_pair_value(args, flag).map(|s| s.to_string()) else {
+        return;
+    };
+    remove_all_flag_pairs(args, flag);
+    args.push(flag.to_string());
+    args.push(value);
+}
+
+/// Collapse duplicate paired flags; drop `--fit-ctx` when final `--fit` is `off`.
+fn finalize_launch_cli_args(args: &mut Vec<String>) {
+    dedupe_flag_pair_last_wins(args, "--fit");
+    if flag_pair_value(args, "--fit")
+        .map(|v| v.eq_ignore_ascii_case("off"))
+        .unwrap_or(false)
+    {
+        remove_all_flag_pairs(args, "--fit-ctx");
+    }
+}
+
 /// Resolve user ctx for `--fit-ctx` from extra_params or saved user params.
 fn resolve_launch_ctx_tokens(
     config: &EngineConfig,
@@ -810,6 +862,67 @@ fn parse_ctx_token_str(raw: &str) -> usize {
         return num.parse::<usize>().unwrap_or(1) * 1024 * 1024;
     }
     s.parse::<usize>().unwrap_or(32768)
+}
+
+fn spec_types_in_launch(config: &EngineConfig) -> Vec<String> {
+    let mut types = Vec::new();
+    if let Some(t) = config.get_param_str("spec_type") {
+        let trimmed = t.trim();
+        if !trimmed.is_empty() && !trimmed.eq_ignore_ascii_case("none") {
+            types.push(trimmed.to_string());
+        }
+    }
+    for key in ["__test_args", "__test_args_add"] {
+        let Some(arr) = config.extra_params.get(key).and_then(|v| v.as_array()) else {
+            continue;
+        };
+        let items: Vec<&str> = arr.iter().filter_map(|v| v.as_str()).collect();
+        for w in items.windows(2) {
+            if matches!(w[0], "--spec-type" | "-spec-type") {
+                types.push(w[1].to_string());
+            }
+        }
+    }
+    types
+}
+
+/// Draft models loaded from `--spec-draft-model` (dflash, eagle3, …) need the target ctx first.
+/// llama-server's `--fit on` path probes draft memory without `ctx_other` and aborts load.
+fn external_draft_spec_needs_fit_off(config: &EngineConfig) -> bool {
+    let has_draft_model_flag = config
+        .extra_params
+        .keys()
+        .any(|k| k.eq_ignore_ascii_case("spec_draft_model"))
+        || config.get_param_str("spec_draft_model").is_some_and(|s| !s.trim().is_empty())
+        || launch_args_contain_flag(config, "--spec-draft-model")
+        || launch_args_contain_flag(config, "--model-draft");
+
+    for spec in spec_types_in_launch(config) {
+        let lower = spec.to_lowercase();
+        if lower.contains("dflash") || lower.contains("eagle3") {
+            return true;
+        }
+        // MTP reuses the target weights — fit probe skips full draft-model load.
+        if lower == "draft-mtp" {
+            continue;
+        }
+        if lower.starts_with("draft-") && has_draft_model_flag {
+            return true;
+        }
+    }
+    false
+}
+
+fn launch_args_contain_flag(config: &EngineConfig, flag: &str) -> bool {
+    for key in ["__test_args", "__test_args_add"] {
+        let Some(arr) = config.extra_params.get(key).and_then(|v| v.as_array()) else {
+            continue;
+        };
+        if arr.iter().any(|v| v.as_str() == Some(flag)) {
+            return true;
+        }
+    }
+    false
 }
 
 fn extra_param_eq_ignore_ascii(config: &EngineConfig, key: &str, expected: &str) -> bool {
@@ -902,6 +1015,91 @@ mod build_cmd_tests {
         let joined = args.join(" ");
         assert!(joined.contains("--ctx-size"));
         assert!(!joined.contains("--batch-size"));
+    }
+
+    #[test]
+    fn external_draft_dflash_forces_fit_off() {
+        let mut sp = SpawnProfile::default();
+        sp.fit_style = "ggml_fit_params".to_string();
+
+        let template = ProviderTemplate {
+            binary_name: "llama-server.exe".to_string(),
+            description: "test".to_string(),
+            spawn_profile: sp,
+            params: Vec::new(),
+        };
+
+        let mut extra = HashMap::new();
+        extra.insert("__auto_vram".to_string(), serde_json::json!(true));
+        extra.insert("spec_type".to_string(), serde_json::json!("draft-dflash"));
+        extra.insert(
+            "spec_draft_model".to_string(),
+            serde_json::json!("models/draft"),
+        );
+
+        let config = EngineConfig {
+            alias: String::new(),
+            model_path: "model.gguf".to_string(),
+            port: 8888,
+            backend_type: "ggml-master".to_string(),
+            binary_profile: String::new(),
+            extra_params: extra,
+        };
+
+        let args = template.build_command(&config, "", &[]);
+        assert!(
+            args.windows(2).any(|w| w[0] == "--fit" && w[1] == "off"),
+            "draft-dflash must launch with --fit off: {args:?}"
+        );
+        assert!(
+            !args.windows(2).any(|w| w[0] == "--fit" && w[1] == "on"),
+            "draft-dflash must not launch with --fit on: {args:?}"
+        );
+    }
+
+    #[test]
+    fn custom_fit_off_overrides_auto_vram_fit_on() {
+        let mut sp = SpawnProfile::default();
+        sp.fit_style = "ggml_fit_params".to_string();
+
+        let template = ProviderTemplate {
+            binary_name: "llama-server.exe".to_string(),
+            description: "test".to_string(),
+            spawn_profile: sp,
+            params: Vec::new(),
+        };
+
+        let mut extra = HashMap::new();
+        extra.insert("__auto_vram".to_string(), serde_json::json!(true));
+        extra.insert("ctx".to_string(), serde_json::json!("131072"));
+        extra.insert(
+            "__test_args_add".to_string(),
+            serde_json::json!(["--fit", "off"]),
+        );
+
+        let config = EngineConfig {
+            alias: String::new(),
+            model_path: "model.gguf".to_string(),
+            port: 8888,
+            backend_type: "ggml-master".to_string(),
+            binary_profile: String::new(),
+            extra_params: extra,
+        };
+
+        let mut ctx_param = arg_param("ctx", "--ctx-size", "131072");
+        ctx_param.order = 0;
+
+        let args = template.build_command(&config, "", &[ctx_param]);
+        let fit_pairs: Vec<_> = args
+            .windows(2)
+            .filter(|w| w[0] == "--fit")
+            .map(|w| w[1].as_str())
+            .collect();
+        assert_eq!(fit_pairs, vec!["off"], "last --fit must win: {args:?}");
+        assert!(
+            !args.windows(2).any(|w| w[0] == "--fit-ctx"),
+            "--fit-ctx must be dropped when --fit off wins: {args:?}"
+        );
     }
 
     #[test]

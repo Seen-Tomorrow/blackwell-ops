@@ -632,6 +632,242 @@ pub fn get_template_for_provider(provider_id: String) -> Result<crate::templates
     Ok(crate::templates::load_provider_defaults(&template_key).ok_or("Unknown provider")?)
 }
 
+struct AssembledLaunch {
+    launch_cmd: String,
+    gpu_mask: String,
+    model_dir: std::path::PathBuf,
+    binary_profile: String,
+}
+
+fn assemble_launch_command(
+    cfg: &AppConfig,
+    config: &EngineConfig,
+    backend_type: &str,
+) -> Result<AssembledLaunch, String> {
+    let binary_path = engine_utils::find_provider_binary(cfg, backend_type, &config.binary_profile)?;
+    let template = crate::templates::ProviderTemplate::load_for_provider(backend_type)?;
+
+    let user_params: Vec<crate::types::UserEditedTemplateParam> = cfg
+        .providers
+        .iter()
+        .find(|p| p.id == backend_type)
+        .map(|p| p.user_edited_template_params.clone())
+        .unwrap_or_default();
+
+    let test_has_split = config
+        .extra_params
+        .get("__test_args")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.windows(2).any(|w| {
+                w[0]
+                    .as_str()
+                    .map(|s| s == "-sm" || s == "--split-mode")
+                    .unwrap_or(false)
+                    && w.get(1).and_then(|s| s.as_str()).map(|v| {
+                        !matches!(v.to_uppercase().as_str(), "NONE" | "0")
+                    }).unwrap_or(false)
+            })
+        })
+        .unwrap_or(false);
+
+    let gpu_count = detect_gpu_count();
+    let gpu_mask = engine_utils::compute_gpu_mask(config, gpu_count, test_has_split);
+    let final_user_params = guard_speculative_decoding(user_params, &config.model_path);
+    let cmd_args = template.build_command(config, &gpu_mask, &final_user_params);
+    let launch_cmd = format!(
+        "{} {}",
+        engine_utils::format_debug_executable(&binary_path),
+        cmd_args.join(" ")
+    );
+
+    let model_dir = std::path::Path::new(&config.model_path)
+        .parent()
+        .map(std::path::Path::to_path_buf)
+        .unwrap_or_else(crate::config::app_root_dir);
+
+    let binary_profile = if config.binary_profile.is_empty() {
+        crate::config::DEFAULT_BINARY_PROFILE.to_string()
+    } else {
+        config.binary_profile.clone()
+    };
+
+    Ok(AssembledLaunch {
+        launch_cmd,
+        gpu_mask,
+        model_dir,
+        binary_profile,
+    })
+}
+
+async fn peek_next_launch_port(
+    app: &tauri::State<'_, AppContext>,
+    config: &EngineConfig,
+    backend_type: &str,
+) -> Result<u16, String> {
+    let provider_base_port = config
+        .get_param_str("base_port")
+        .and_then(|v| v.parse::<u16>().ok())
+        .unwrap_or(DEFAULT_BASE_PORT);
+    if provider_base_port <= PRIVILEGED_PORT_THRESHOLD {
+        return Err(format!(
+            "base_port {} is too low — must be > {}",
+            provider_base_port, PRIVILEGED_PORT_THRESHOLD
+        ));
+    }
+
+    let stack = tokio::time::timeout(Duration::from_secs(5), app.stack.lock())
+        .await
+        .map_err(|_| "Stack lock timeout".to_string())?;
+    let mut used_ports = stack.reserved_ports();
+    used_ports.extend(crate::engine_port_lock::occupied_ports_from_locks());
+    let live_pids = stack.live_engine_pids();
+    drop(stack);
+
+    Ok(
+        pick_next_engine_port(provider_base_port, &used_ports, &live_pids).await,
+    )
+}
+
+#[cfg(windows)]
+fn batch_quote(value: &str) -> String {
+    format!("\"{}\"", value.replace('"', "\"\""))
+}
+
+#[cfg(windows)]
+fn write_nobsproof_batch(
+    assembled: &AssembledLaunch,
+    cuda: &crate::foundry_toolchain::PortableCudaEnv,
+) -> Result<std::path::PathBuf, String> {
+    let scrubbed = crate::foundry_toolchain::scrub_foreign_cuda_from_path(
+        &std::env::var("PATH").unwrap_or_default(),
+    );
+    let path_value = if scrubbed.is_empty() {
+        cuda.path_prefix.clone()
+    } else {
+        format!("{};{}", cuda.path_prefix, scrubbed)
+    };
+
+    let cuda_root = cuda.cuda_root.to_string_lossy().to_string();
+    let model_dir = assembled.model_dir.to_string_lossy().to_string();
+    let script_dir = crate::config::config_dir().join("nobsproof");
+    std::fs::create_dir_all(&script_dir)
+        .map_err(|e| format!("Failed to create {}: {}", script_dir.display(), e))?;
+
+    let script_path = script_dir.join("latest.cmd");
+    let fit_off = assembled
+        .launch_cmd
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .windows(2)
+        .any(|w| (w[0] == "--fit" || w[0] == "-fit") && w[1].eq_ignore_ascii_case("off"));
+    let fit_env = if fit_off {
+        "set \"LLAMA_ARG_FIT=off\"\r\n"
+    } else {
+        ""
+    };
+    let body = format!(
+        "@echo off\r\n\
+         title Blackwell NoBSproof\r\n\
+         setlocal EnableExtensions\r\n\
+         set \"BLACKWELL_NOBSPROOF=1\"\r\n\
+         {fit_env}\
+         echo NoBSproof - portable CUDA {} / profile {}\r\n\
+         echo CWD: {}\r\n\
+         echo GPU mask: {}\r\n\
+         echo.\r\n\
+         set \"PATH={}\"\r\n\
+         set \"CUDA_PATH={}\"\r\n\
+         set \"{}={}\"\r\n\
+         set \"CUDA_VISIBLE_DEVICES={}\"\r\n\
+         set \"LLAMA_LOG_COLORS=on\"\r\n\
+         cd /d {}\r\n\
+         echo Running:\r\n\
+         echo   {}\r\n\
+         echo.\r\n\
+         {}\r\n\
+         echo.\r\n\
+         echo Exit code: %%ERRORLEVEL%%\r\n",
+        cuda.cuda_version,
+        assembled.binary_profile,
+        batch_quote(&model_dir),
+        assembled.gpu_mask,
+        path_value,
+        cuda_root,
+        cuda.cuda_path_var,
+        cuda_root,
+        assembled.gpu_mask,
+        batch_quote(&model_dir),
+        assembled.launch_cmd,
+        assembled.launch_cmd,
+    );
+
+    std::fs::write(&script_path, body)
+        .map_err(|e| format!("Failed to write {}: {}", script_path.display(), e))?;
+    Ok(script_path)
+}
+
+#[cfg(windows)]
+fn spawn_nobsproof_cmd_window(script_path: &std::path::Path) -> Result<(), String> {
+    use std::os::windows::process::CommandExt;
+    use std::process::Stdio;
+
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+    const CREATE_NEW_CONSOLE: u32 = 0x00000010;
+
+    let script = script_path.to_string_lossy().to_string();
+    let script_ps = script.replace('\'', "''");
+
+    let mut spawn_hidden = |program: &str, args: &[&str]| -> Result<(), std::io::Error> {
+        std::process::Command::new(program)
+            .args(args)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .creation_flags(CREATE_NO_WINDOW)
+            .spawn()
+            .map(|_| ())
+    };
+
+    // 1) PowerShell Start-Process — fully detached visible console, no job breakaway needed.
+    let ps_cmd = format!(
+        "$p='{script_ps}'; Start-Process -FilePath cmd.exe -ArgumentList '/k',$p -WindowStyle Normal"
+    );
+    if spawn_hidden(
+        "powershell",
+        &[
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            &ps_cmd,
+        ],
+    )
+    .is_ok()
+    {
+        return Ok(());
+    }
+
+    // 2) cmd start — empty quoted title ("") is required; unquoted first token = program name.
+    if spawn_hidden(
+        "cmd",
+        &["/C", "start", "", "/k", &script],
+    )
+    .is_ok()
+    {
+        return Ok(());
+    }
+
+    // 3) Last resort — direct console (may share dev terminal stderr; still usable).
+    std::process::Command::new("cmd")
+        .args(["/k", &script])
+        .creation_flags(CREATE_NEW_CONSOLE)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("Failed to open CMD window: {}", e))
+}
+
 #[tauri::command]
 pub async fn preview_launch_command(
     config: EngineConfig,
@@ -639,7 +875,11 @@ pub async fn preview_launch_command(
     app: tauri::State<'_, AppContext>,
 ) -> Result<String, String> {
     let backend_type = provider_id.unwrap_or_else(|| {
-        if config.backend_type.is_empty() { crate::config::DEFAULT_PROVIDER_ID.to_string() } else { config.backend_type.clone() }
+        if config.backend_type.is_empty() {
+            crate::config::DEFAULT_PROVIDER_ID.to_string()
+        } else {
+            config.backend_type.clone()
+        }
     });
 
     let cfg = {
@@ -647,26 +887,62 @@ pub async fn preview_launch_command(
         guard.clone()
     };
 
-    let binary_path = engine_utils::find_provider_binary(&cfg, &backend_type, &config.binary_profile)?;
-    let template = crate::templates::ProviderTemplate::load_for_provider(&backend_type)?;
+    let mut config = config;
+    config.port = peek_next_launch_port(&app, &config, &backend_type).await?;
+    assemble_launch_command(&cfg, &config, &backend_type).map(|a| a.launch_cmd)
+}
 
-    let provider_opt_prev = cfg.providers.iter().find(|p| p.id == backend_type);
-    let user_params: Vec<crate::types::UserEditedTemplateParam> = provider_opt_prev
-        .map(|p| p.user_edited_template_params.clone())
-        .unwrap_or_default();
+/// DEV-only: write `config/nobsproof/latest.cmd` with portable CUDA env + exact launch CLI, open CMD.
+#[tauri::command]
+pub async fn open_nobsproof_cmd(
+    config: EngineConfig,
+    provider_id: Option<String>,
+    app: tauri::State<'_, AppContext>,
+) -> Result<String, String> {
+    if !cfg!(debug_assertions) {
+        return Err("NoBSproof CMD is available in DEV builds only.".into());
+    }
 
-    let gpu_count = detect_gpu_count();
-    let gpu_mask = engine_utils::compute_gpu_mask(&config, gpu_count, false);
+    let backend_type = provider_id.unwrap_or_else(|| {
+        if config.backend_type.is_empty() {
+            crate::config::DEFAULT_PROVIDER_ID.to_string()
+        } else {
+            config.backend_type.clone()
+        }
+    });
 
-    // Guard: auto-hide SPECULATIVE-DECODING params for non-MTP models — prevents CLI crash
-    let final_user_params = guard_speculative_decoding(user_params, &config.model_path);
+    let cfg = {
+        let guard = app.config.lock().map_err(|e| e.to_string())?;
+        guard.clone()
+    };
 
-    let cmd_args = template.build_command(&config, &gpu_mask, &final_user_params);
-    Ok(format!(
-        "{} {}",
-        engine_utils::format_debug_executable(&binary_path),
-        cmd_args.join(" ")
-    ))
+    crate::config::validate_model_path(&config.model_path)?;
+
+    let mut config = config;
+    config.port = peek_next_launch_port(&app, &config, &backend_type).await?;
+    let assembled = assemble_launch_command(&cfg, &config, &backend_type)?;
+    let cuda = crate::foundry_toolchain::portable_cuda_env_for_profile(&assembled.binary_profile)?;
+
+    #[cfg(windows)]
+    {
+        let script_path = write_nobsproof_batch(&assembled, &cuda)?;
+        spawn_nobsproof_cmd_window(&script_path)?;
+        app.blackwell_output_console_manager.emit_line_to_category(
+            BlackwellOutputConsoleCategory::Debug,
+            format!(
+                "[NoBSproof] Opened CMD — script: {}",
+                script_path.display()
+            ),
+            BlackwellOutputConsoleLineStyle::Command,
+        );
+        Ok(script_path.to_string_lossy().to_string())
+    }
+
+    #[cfg(not(windows))]
+    {
+        let _ = (assembled, cuda);
+        Err("NoBSproof CMD is supported on Windows only.".into())
+    }
 }
 
 // ── File Dialog (rfd native dialog) ───────────────────────────────
@@ -1160,11 +1436,22 @@ pub async fn scan_model_metadata_cmd(
 
     let hf_meta_for_entry = crate::model_cache::get_hf_metadata(&model_path);
     let hf_id = hf_meta_for_entry.as_ref().map(|h| h.hf_model_id.clone());
+    let fname = std::path::Path::new(&model_path)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("");
+    let quant = if metadata.file_type_str.trim().is_empty()
+        || crate::model_catalog::is_shard_noise_quant(&metadata.file_type_str)
+    {
+        crate::model_catalog::extract_quant(fname)
+    } else {
+        metadata.file_type_str.clone()
+    };
     Ok(crate::types::ModelEntry {
         path: model_path,
         author: "unknown".to_string(),
         name: "scanning".to_string(),
-        quant: metadata.file_type_str.clone(),
+        quant,
         size_str: model_catalog::calc_size_str_from_bytes(file_size),
         vision: false,
         mmproj: None,

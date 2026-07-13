@@ -5437,6 +5437,18 @@ html:not([data-theme="arctic"]) [data-display-texture="clean"] .phosphor-display
   line-height: 1;
 }
 
+.config-nobsproof-btn {
+  border-color: color-mix(in srgb, var(--dev-rosso, #c41e3a) 55%, transparent);
+  background: color-mix(in srgb, var(--dev-rosso, #c41e3a) 12%, transparent);
+  color: color-mix(in srgb, var(--dev-rosso, #c41e3a) 88%, #fff 12%);
+}
+
+.config-nobsproof-btn:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--dev-rosso, #c41e3a) 75%, transparent);
+  background: color-mix(in srgb, var(--dev-rosso, #c41e3a) 22%, transparent);
+  color: #fff;
+}
+
 .config-mtp-launch-warn {
   border: 1px solid color-mix(in srgb, #ffb800 30%, transparent);
   background: color-mix(in srgb, #ffb800 8%, transparent);

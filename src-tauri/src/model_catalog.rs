@@ -622,15 +622,41 @@ fn find_case_insensitive_rfind(s: &str, pattern: &str) -> Option<usize> {
 
 /// Extract quant type from filename. Returns known quant string or fallback.
 const KNOWN_QUANTS: &[&str] = &[
-    "Q8_0", "Q8_K", "Q6_K",
+    "Q8_0", "Q8_K", "Q6_K", "Q6_K_XL", "Q6_K_L",
     "Q5_0", "Q5_1", "Q5_K_M", "Q5_K_S",
-    "Q4_0", "Q4_1", "Q4_K_M", "Q4_K_S",
+    "Q4_0", "Q4_1", "Q4_K_M", "Q4_K_S", "Q4_K_XL", "Q4_K_L",
     "Q3_K_M", "Q3_K_S", "Q2_K",
     "IQ4_NL", "IQ3_S", "IQ3_M", "IQ3_XS", "IQ3_XXS",
     "IQ2_S", "IQ2_XS", "IQ2_MS", "IQ2_L",
     "IQ1_S", "IQ1_NL",
     "FP8_E4M3", "FP8_E5M2",
 ];
+
+/// True when a label is a shard index/count (e.g. `00004`) rather than a quant tag.
+pub fn is_shard_noise_quant(label: &str) -> bool {
+    let trimmed = label.trim();
+    !trimmed.is_empty()
+        && trimmed.len() >= 3
+        && trimmed.chars().all(|c| c.is_ascii_digit())
+}
+
+fn is_shard_noise_segment(seg: &str) -> bool {
+    seg.eq_ignore_ascii_case("of") || is_shard_noise_quant(seg)
+}
+
+/// Q4_K_XL, IQ4_NL, etc. — quant-like even when not in KNOWN_QUANTS.
+fn looks_like_quant_segment(seg: &str) -> bool {
+    if seg.len() < 3 {
+        return false;
+    }
+    if match_known_quant_in(seg).is_some() {
+        return true;
+    }
+    let upper = seg.to_uppercase();
+    (upper.starts_with('Q') || upper.starts_with("IQ"))
+        && upper.chars().any(|c| c.is_ascii_digit())
+        && upper.contains('_')
+}
 
 fn check_early_formats(filename: &str) -> Option<String> {
     let lower = filename.to_lowercase();
@@ -668,32 +694,68 @@ fn find_best_segment_match(filename: &str) -> Option<String> {
     let without_ext = filename.trim_end_matches(".gguf");
     let segments: Vec<&str> = without_ext.split(|c: char| c == '-' || c == '.').collect();
 
-    let mut best_match: Option<&str> = None;
-    let mut best_len = 0;
+    let mut best_known: Option<&str> = None;
+    let mut best_known_len = 0;
+    let mut best_heuristic: Option<&str> = None;
+    let mut best_heuristic_len = 0;
 
     for seg in &segments {
-        if seg.is_empty() || seg.len() < 3 { continue; }
-        if match_known_quant_in(seg).is_some() && seg.len() > best_len {
-            best_match = Some(*seg);
-            best_len = seg.len();
+        if seg.is_empty() || seg.len() < 3 || is_shard_noise_segment(seg) {
+            continue;
+        }
+        if match_known_quant_in(seg).is_some() && seg.len() > best_known_len {
+            best_known = Some(*seg);
+            best_known_len = seg.len();
+        } else if looks_like_quant_segment(seg) && seg.len() > best_heuristic_len {
+            best_heuristic = Some(*seg);
+            best_heuristic_len = seg.len();
         }
     }
 
-    // Return the canonical quant name for the best matching segment
-    best_match.and_then(|m| match_known_quant_in(m))
+    if let Some(m) = best_known {
+        return match_known_quant_in(m);
+    }
+    best_heuristic.map(|s| s.to_string())
+}
+
+/// Walk filename segments right-to-left, skipping shard suffixes like `00001-of-00004`.
+fn find_quant_segment_reverse(filename: &str) -> Option<String> {
+    let stripped = strip_shard_pattern(filename);
+    let without_ext = stripped.trim_end_matches(".gguf");
+    let segments: Vec<&str> = without_ext.split(|c: char| c == '-' || c == '.').collect();
+
+    for seg in segments.iter().rev() {
+        if seg.is_empty() || is_shard_noise_segment(seg) {
+            continue;
+        }
+        if let Some(q) = match_known_quant_in(seg) {
+            return Some(q);
+        }
+        if looks_like_quant_segment(seg) {
+            return Some(seg.to_string());
+        }
+    }
+
+    match_known_quant_in(without_ext)
 }
 
 pub fn extract_quant(filename: &str) -> String {
-    if !filename.ends_with(".gguf") {
-        return fallback_quant(filename);
+    let normalized = if filename.ends_with(".gguf") {
+        strip_shard_pattern(filename)
+    } else {
+        filename.to_string()
+    };
+
+    if !normalized.ends_with(".gguf") {
+        return fallback_quant(&normalized);
     }
 
     // Check early formats first
-    if let Some(q) = check_early_formats(filename) {
+    if let Some(q) = check_early_formats(&normalized) {
         return q;
     }
 
-    let without_ext = &filename[..filename.len() - 5];
+    let without_ext = &normalized[..normalized.len() - 5];
 
     // Look for "27B-Q8_0" pattern — quant after size suffix
     let chars: Vec<char> = without_ext.chars().collect();
@@ -706,14 +768,17 @@ pub fn extract_quant(filename: &str) -> String {
                         if let Some(q) = match_known_quant_in(suffix) {
                             return q;
                         }
-                        return fallback_quant(filename);
+                        if let Some(q) = find_quant_segment_reverse(&normalized) {
+                            return q;
+                        }
+                        return fallback_quant(&normalized);
                     }
                 }
             }
         }
     }
 
-    fallback_quant(filename)
+    fallback_quant(&normalized)
 }
 
 fn fallback_quant(filename: &str) -> String {
@@ -727,16 +792,8 @@ fn fallback_quant(filename: &str) -> String {
         return q;
     }
 
-    // Last resort: if filename contains "q" or "iq", use last segment as quant name
-    let lower = filename.to_lowercase();
-    let without_ext = filename.trim_end_matches(".gguf");
-    let segments: Vec<&str> = without_ext.split(|c: char| c == '-' || c == '.').collect();
-    if let Some(last_seg) = segments.last() {
-        if !last_seg.is_empty() && last_seg.len() >= 3 {
-            if lower.contains("q") || lower.contains("iq") {
-                return last_seg.to_string();
-            }
-        }
+    if let Some(q) = find_quant_segment_reverse(filename) {
+        return q;
     }
 
     "GGUF".to_string()
@@ -963,6 +1020,32 @@ mod tests {
             Some(4)
         );
         assert_eq!(parse_shard_expected_total("single.gguf"), None);
+    }
+
+    #[test]
+    fn extract_quant_ud_sharded_q4_k_xl() {
+        assert_eq!(
+            extract_quant("Step-3.7-Flash-UD-Q4_K_XL-00001-of-00004.gguf"),
+            "Q4_K_XL"
+        );
+    }
+
+    #[test]
+    fn extract_quant_sharded_q4_k_m() {
+        assert_eq!(
+            extract_quant("Llama-3-8B-Q4_K_M-00001-of-00002.gguf"),
+            "Q4_K_M"
+        );
+    }
+
+    #[test]
+    fn extract_quant_does_not_use_shard_count_as_quant() {
+        assert_eq!(
+            extract_quant("Some-Model-Q4_K_M-00001-of-00004.gguf"),
+            "Q4_K_M"
+        );
+        assert!(!is_shard_noise_quant("Q4_K_M"));
+        assert!(is_shard_noise_quant("00004"));
     }
 
     #[test]

@@ -32,12 +32,18 @@ export default function ModelCard({
   const hasMetadata = !!model.metadata;
   const isScanning = scanningPath === model.path;
 
+  const isShardNoiseQuant = (label: string) => /^\d{3,}$/.test(label.trim());
   let quantBadge: string | null = null;
-  if (hasMetadata && model.metadata.file_type_str) {
-    const ft = model.metadata.file_type_str.trim();
-    if (ft) {
-      quantBadge = ft.toUpperCase();
-    }
+  const headerQuant = model.metadata?.file_type_str?.trim() ?? "";
+  const catalogQuant = model.quant?.trim() ?? "";
+  const resolvedQuant =
+    headerQuant && !isShardNoiseQuant(headerQuant)
+      ? headerQuant
+      : catalogQuant && catalogQuant !== "GGUF" && !isShardNoiseQuant(catalogQuant)
+        ? catalogQuant
+        : "";
+  if (resolvedQuant) {
+    quantBadge = resolvedQuant.toUpperCase();
   }
 
   let paramsNum = "";

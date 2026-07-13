@@ -59,9 +59,10 @@ import { useDisplayTexture } from "../context/DisplayTextureContext";
 
 import DisplayGlitchOverlay from "./DisplayGlitchOverlay";
 import { useFoundry } from "../hooks/useBuildDock";
-import { buildAutoVramLaunchParams } from "../lib/autoVramLaunch";
+import { isDevBuild } from "../lib/build";
+import { buildLaunchFullConfig } from "../lib/buildLaunchFullConfig";
 import { resolveLaunchChromePolicy } from "../lib/launchChromePolicy";
-import { buildLaunchExtraParams, paramValuesMatch } from "../lib/paramConfigResolve";
+import { paramValuesMatch } from "../lib/paramConfigResolve";
 import { committedSlotsFromStack } from "../services/vram/scenarios/scenarios_factory";
 import { useGpuIdleBaseline } from "../hooks/useGpuIdleBaseline";
 import { formatShareHwTopo, type FusionShareLaunchConfig } from "../lib/fusionShareCapture";
@@ -1451,9 +1452,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     if (launchAckTimerRef.current) clearTimeout(launchAckTimerRef.current);
   }, []);
 
-  const performLaunch = useCallback(() => {
-    if (!model) return;
-    pulseLaunchAck();
+  const buildCurrentLaunchConfig = useCallback((): EngineConfig | null => {
+    if (!model) return null;
 
     const launchDraft = aliasFocused ? aliasInput : (aliasIsUserSet ? aliasInput : autoAlias);
     const { userSet: launchUserSet, committed: launchAlias } = resolveAliasCommit(
@@ -1465,57 +1465,69 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       launchUserSet ? launchAlias : nextEngineAlias(stack),
       stack,
     );
-    const persistAliasAtLaunch = launchUserSet;
-    const aliasToPersist = launchAlias;
 
-    const launchKeys = resolveManualLaunchKeys({
+    return buildLaunchFullConfig({
+      model,
+      finalAlias,
+      config,
+      effectiveBackendType,
+      selectedBinaryProfile,
+      fitLaunchSupported,
+      fullAutoMode,
       configView,
       essentialFactoryKeys,
       specActive,
-      allParams: allParamsResolved,
+      allParamsResolved,
+      gpus,
+      runningSlotsForPlan,
+      vramManifest: vramCalc.manifest,
+      testFlagsEnabled,
+      testFlags,
+      testFlagsMode,
     });
+  }, [
+    model,
+    aliasFocused,
+    aliasInput,
+    aliasIsUserSet,
+    autoAlias,
+    stack,
+    config,
+    effectiveBackendType,
+    selectedBinaryProfile,
+    fitLaunchSupported,
+    fullAutoMode,
+    configView,
+    essentialFactoryKeys,
+    specActive,
+    allParamsResolved,
+    gpus,
+    runningSlotsForPlan,
+    vramCalc.manifest,
+    testFlagsEnabled,
+    testFlags,
+    testFlagsMode,
+  ]);
 
-    const extraParams: Record<string, unknown> = fitLaunchSupported && model.metadata
-      ? buildAutoVramLaunchParams({
-          config,
-          launchKeys,
-          paramDefs: allParamsResolved,
-          gpus,
-          runningSlots: runningSlotsForPlan,
-          manifest: vramCalc.manifest,
-          weightGb: model.metadata.file_size_bytes / (1024 ** 3),
-          fullAutoMode,
-          memoryMode: fullAutoMode ? "full_auto" : "assisted",
-        })
-      : buildLaunchExtraParams({
-          config,
-          keys: launchKeys,
-          paramDefs: allParamsResolved,
-        });
+  const performLaunch = useCallback(() => {
+    if (!model) return;
+    pulseLaunchAck();
 
-    const fullConfig: EngineConfig = {
-      alias: finalAlias,
-      model_path: model.path,
-      port: 0, // Backend computes the actual port from base_port + collision avoidance
-      backend_type: effectiveBackendType,
-      binary_profile: selectedBinaryProfile,
-      extra_params: {
-        ...extraParams,
-        __memory_mode: fullAutoMode ? "full_auto" : "assisted",
-      },
-    };
+    const launchDraft = aliasFocused ? aliasInput : (aliasIsUserSet ? aliasInput : autoAlias);
+    const { userSet: launchUserSet, committed: launchAlias } = resolveAliasCommit(
+      launchDraft.trim(),
+      aliasIsUserSet,
+      autoAlias,
+    );
+    const persistAliasAtLaunch = launchUserSet;
+    const aliasToPersist = launchAlias;
 
-    // Inject test flags into extra_params if enabled
-    if (testFlagsEnabled && testFlags.trim()) {
-      const testArgs = testFlags.trim().split(/\s+/).filter(Boolean);
-      fullConfig.extra_params = testFlagsMode === "replace"
-        ? { __test_args: testArgs } // REPLACE: bypass all params, use only raw flags
-        : { ...fullConfig.extra_params, __test_args_add: testArgs }; // ADD: merge with user config, append test flags
-    }
+    const fullConfig = buildCurrentLaunchConfig();
+    if (!fullConfig) return;
 
     void onLaunch(fullConfig)
       .then((result) => {
-        const resolvedAlias = result?.alias ?? finalAlias;
+        const resolvedAlias = result?.alias ?? fullConfig.alias;
         if (result?.port) {
           dispatchAppEvent(EVENTS.launchSuccess, { alias: resolvedAlias, port: result.port });
         }
@@ -1536,23 +1548,21 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     aliasIsUserSet,
     aliasFocused,
     autoAlias,
-    stack,
-    fitLaunchSupported,
-    fullAutoMode,
-    configView,
-    essentialFactoryKeys,
-    allParamsResolved,
-    config,
-    gpus,
-    runningSlotsForPlan,
-    vramCalc.manifest,
-    effectiveBackendType,
-    selectedBinaryProfile,
-    testFlagsEnabled,
-    testFlags,
-    testFlagsMode,
+    buildCurrentLaunchConfig,
     onLaunch,
   ]);
+
+  const handleOpenNobsproofCmd = useCallback(() => {
+    const fullConfig = buildCurrentLaunchConfig();
+    if (!fullConfig) return;
+    void invoke<string>("open_nobsproof_cmd", {
+      config: fullConfig,
+      providerId: effectiveBackendType,
+    }).catch((err: unknown) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      dispatchAppEvent(EVENTS.launchError, { message: `NoBSproof CMD: ${msg}` });
+    });
+  }, [buildCurrentLaunchConfig, effectiveBackendType]);
 
   const acknowledgeReplaceLaunch = useCallback(() => {
     try {
@@ -2049,6 +2059,17 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
               {!uiDensityCompact && renderCustomFlagsBlock()}
             </div>
             <div className="config-launch-dock__action relative">
+              {isDevBuild() && (
+                <button
+                  type="button"
+                  onClick={handleOpenNobsproofCmd}
+                  disabled={launchDisabled}
+                  className="config-nobsproof-btn absolute bottom-1 right-1 z-20 px-1.5 py-0.5 text-[7px] font-mono uppercase tracking-wider rounded-sm border disabled:opacity-40 disabled:cursor-not-allowed"
+                  title="NoBSproof — open exact launch CLI in a new CMD window (DEV)"
+                >
+                  CMD
+                </button>
+              )}
               {replaceLaunchConfirmOpen && (
                 <div
                   className="config-replace-confirm absolute inset-0 z-10 flex flex-col justify-center gap-2 rounded-sm px-2 py-2"
