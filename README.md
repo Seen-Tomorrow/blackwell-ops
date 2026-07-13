@@ -24,7 +24,8 @@ Blackwell Ops is a native Windows desktop app for local LLM / llama.cpp users. I
 
 Drop the installer or portable folder anywhere. The app recreates its ecosystem around itself: configs, runtime engines, foundry artifacts, and user preferences — all relative to the install directory. Great for portable local LLM setups or moving between machines.
 
-**At v1.0.x** the focus is **GGML / llama.cpp** (official master + Tom TurboQuant fork bundled). Any llama-compatible fork can be easily wired in; fusion performance metrics may not map 1:1 to every backend yet. The architecture is **semi–backend-agnostic** by design — support grows over time.
+**At v1.0.x** we strongly focus on **GGML / llama.cpp** (official master + Tom TurboQuant fork bundled). 
+Any llama-compatible fork can be easily wired in by users on 2 clicks. The architecture is **semi–backend-agnostic** by design — support grows over time.
 ---
 
 ## By the numbers
