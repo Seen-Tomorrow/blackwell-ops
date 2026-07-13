@@ -1,4 +1,4 @@
-# Blackwell Ops
+# Blackwell Ops, pocket mini datacenter for local AI
 
 **Windows-native local LLM inference** — a portable, tiny, single-exe multi-engine orchestrator for llama.cpp (official master + Tom TurboQuant fork). Built for GGUF models on Windows with easy Foundry builds from source , State of the art MEMORY forecast, and live fusion telemetry.
 -support MTP, Dflash and TurboQuant out of the box.
