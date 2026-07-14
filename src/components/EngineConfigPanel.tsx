@@ -12,12 +12,16 @@ import {
   normalizeModelPathKey,
   loadAutoVramEnabled,
   loadConfigView,
+  loadEnginesInRail,
+  loadHwMonitorOpen,
   loadLaunchDockCollapsed,
   loadLaunchDockPosition,
   loadLaunchDockPositionExplicit,
   loadUiDensity,
   type LaunchDockPosition,
   normalizeUiGroup,
+  saveEnginesInRail,
+  saveHwMonitorOpen,
   saveLaunchDockCollapsed,
   saveLaunchDockPosition,
   paramUiGroup,
@@ -49,7 +53,8 @@ import type { ConfigColumnCount } from "../lib/configColumnLayout";
 import { effectiveGroupColumn } from "../lib/configColumnLayout";
 import { isEmptyGroupDeletable } from "../lib/groupLayoutUtils";
 import { useGroupLayoutControls } from "../hooks/useGroupLayoutControls";
-import { useLaunchDockRailResize } from "../hooks/useCatalogSplitResize";
+import { useLaunchDockRailResize, useLaunchRailInnerResize } from "../hooks/useCatalogSplitResize";
+import LaunchRailTelemetry from "./LaunchRailTelemetry";
 import { suggestLaunchDockPosition } from "../lib/launchDockLayout";
 import { dispatchAppEvent, EVENTS } from "../lib/events";
 import { tomMtpBlocked, TOM_MTP_SKIP_MESSAGE } from "../lib/tomMtp";
@@ -66,9 +71,12 @@ import {
   isValidGgufDraftPath,
   essentialsSpecChipLabel,
   essentialsSpecPreset,
+  clearModelSpecOverride,
+  isSpecTypeValidForMain,
   loadDraftPairing,
   loadModelSpecOverride,
   pickBestDraftPair,
+  resolveSpecLaunchActive,
   saveModelSpecOverride,
   resolveDraftPathLabel,
   saveDraftPairing,
@@ -84,7 +92,7 @@ import WelcomeAnimation from "./onboarding/WelcomeAnimation";
 import SetupGuideDisplay from "./onboarding/SetupGuideDisplay";
 import RunningEnginesPanel from "./RunningEnginesPanel";
 import SliderParam from "./SliderParam";
-import { formatTokenLabel } from "../lib/sliderParamUtils";
+import { formatCtxChipLabel, formatTokenLabel } from "../lib/sliderParamUtils";
 import { useScenarioEvaluator } from "../hooks/useScenarioEvaluator";
 import type { SetupGuideState } from "../hooks/useSetupGuide";
 import { useConfigResolver } from "../hooks/useConfigResolver";
@@ -423,14 +431,59 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   const [launchDockPosition, setLaunchDockPosition] = useState<LaunchDockPosition>(loadLaunchDockPosition);
   const [launchDockPositionExplicit, setLaunchDockPositionExplicit] = useState(loadLaunchDockPositionExplicit);
   const [launchDockCollapsed, setLaunchDockCollapsed] = useState(loadLaunchDockCollapsed);
-  const launchRailEnabled = launchDockPosition === "right";
+  const [hwMonitorOpen, setHwMonitorOpen] = useState(loadHwMonitorOpen);
+  const [enginesInRail, setEnginesInRail] = useState(loadEnginesInRail);
+  const showLaunchRail = launchDockPosition === "right";
+  const showRightColumn = hwMonitorOpen || showLaunchRail;
+  const showRailInnerSplit = showLaunchRail && hwMonitorOpen;
+  const showEnginesBelowVram = !(enginesInRail && showLaunchRail);
   const {
     containerRef: launchDockMainRef,
     railWidth: launchRailWidth,
     isDragging: launchRailDragging,
     startDrag: startLaunchRailDrag,
     resetWidth: resetLaunchRailWidth,
-  } = useLaunchDockRailResize(launchRailEnabled);
+  } = useLaunchDockRailResize(showRightColumn);
+  const {
+    railRef: launchRailInnerRef,
+    telemetryHeight: launchRailTelemetryHeight,
+    isDragging: launchRailInnerDragging,
+    startDrag: startLaunchRailInnerDrag,
+    resetRatio: resetLaunchRailInnerRatio,
+    setChromeStackHeight: setLaunchRailChromeHeight,
+  } = useLaunchRailInnerResize(showRailInnerSplit);
+  const launchRailDisplayMeasureRef = useRef<HTMLDivElement>(null);
+  const launchRailToolbarMeasureRef = useRef<HTMLDivElement>(null);
+
+  const toggleHwMonitor = useCallback(() => {
+    const next = !hwMonitorOpen;
+    setHwMonitorOpen(next);
+    saveHwMonitorOpen(next);
+    dispatchAppEvent(EVENTS.hwMonitorOpenChanged, { open: next });
+  }, [hwMonitorOpen]);
+
+  const toggleEnginesInRail = useCallback(() => {
+    const next = !enginesInRail;
+    setEnginesInRail(next);
+    saveEnginesInRail(next);
+  }, [enginesInRail]);
+
+  useLayoutEffect(() => {
+    if (!showRailInnerSplit) return;
+    const apply = () => {
+      const displayH = launchRailDisplayMeasureRef.current?.offsetHeight ?? 0;
+      const toolbarH = launchRailToolbarMeasureRef.current?.offsetHeight ?? 0;
+      setLaunchRailChromeHeight(displayH + toolbarH);
+    };
+    apply();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(apply);
+    const displayEl = launchRailDisplayMeasureRef.current;
+    const toolbarEl = launchRailToolbarMeasureRef.current;
+    if (displayEl) observer.observe(displayEl);
+    if (toolbarEl) observer.observe(toolbarEl);
+    return () => observer.disconnect();
+  }, [showRailInnerSplit, setLaunchRailChromeHeight, model, gpus.length]);
 
   const { texture: displayTexture } = useDisplayTexture();
 
@@ -716,7 +769,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       .sort((a, b) => a.order - b.order);
   }, [userEditedParams, deviceParam, gpus]);
 
-  const specActive = useMemo(
+  const specDecodingGroupVisible = useMemo(
     () => isSpecDecodingActive(allParamsResolved),
     [allParamsResolved],
   );
@@ -831,6 +884,28 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     [model, models, effectiveBackendType],
   );
   const hasSpecCapability = specCapabilities.length > 0;
+  const specActive = useMemo(
+    () => hasSpecCapability && specDecodingGroupVisible,
+    [hasSpecCapability, specDecodingGroupVisible],
+  );
+  const specLaunchActive = useMemo(() => {
+    if (!model || !models?.length) return false;
+    return resolveSpecLaunchActive({
+      groupActive: specDecodingGroupVisible,
+      hasCapability: hasSpecCapability,
+      specType: activeSpecType,
+      model,
+      models,
+      providerId: effectiveBackendType,
+    });
+  }, [
+    model,
+    models,
+    specDecodingGroupVisible,
+    hasSpecCapability,
+    activeSpecType,
+    effectiveBackendType,
+  ]);
   const modelIsDraftOnly = model ? isExternalDraftOnly(model) : false;
 
   const activeDraftRole: DraftRole | null = useMemo(() => {
@@ -850,7 +925,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   }, [model?.path, activeDraftRole]);
 
   const specNeedsExternalDraft = Boolean(
-    activeSpecType && specTypeNeedsExternalDraft(activeSpecType) && specActive,
+    activeSpecType && specTypeNeedsExternalDraft(activeSpecType) && specLaunchActive,
   );
 
   const currentDraftPath = config.spec_draft_model != null ? String(config.spec_draft_model) : "";
@@ -880,10 +955,73 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
   const specAutoConfiguredRef = useRef<string | null>(null);
   const specSimpleBootRef = useRef<string | null>(null);
+  const specGroupAutoHideRef = useRef<string | null>(null);
 
   useEffect(() => {
     migrateGlobalSpecOutOfCatalogOverrides(effectiveBackendType);
   }, [effectiveBackendType]);
+
+  useEffect(() => {
+    if (!model) return;
+    if (specLaunchActive) return;
+    if (!loadModelSpecOverride(model.path)) return;
+    clearModelSpecOverride(model.path);
+    dispatchAppEvent(EVENTS.paramConfigChanged);
+  }, [model?.path, specLaunchActive]);
+
+  useEffect(() => {
+    if (!model || hasSpecCapability || !specDecodingGroupVisible) return;
+    const pathKey = normalizeModelPathKey(model.path);
+    if (specGroupAutoHideRef.current === pathKey) return;
+    specGroupAutoHideRef.current = pathKey;
+
+    invoke<boolean>("toggle_group_hidden", { providerId: effectiveBackendType, groupId: SPEC_DECODING_GROUP })
+      .then(async () => {
+        setSpecFlash(true);
+        setTimeout(() => setSpecFlash(false), 400);
+        try {
+          const data = await invoke<ProviderConfig[]>("list_providers");
+          if (data.length > 0) setResolvedProviders(data);
+        } catch { /* reloadProviders event is fallback */ }
+        dispatchAppEvent(EVENTS.reloadProviders);
+        dispatchAppEvent(EVENTS.paramConfigChanged);
+      })
+      .catch((err) => console.error("[specGroupAutoHide] toggle_group_hidden failed:", err));
+  }, [model, hasSpecCapability, specDecodingGroupVisible, effectiveBackendType]);
+
+  useEffect(() => {
+    if (!model || !models?.length || modelIsDraftOnly) return;
+    if (!specDecodingGroupVisible || !hasSpecCapability) return;
+
+    const currentType = config.spec_type != null ? String(config.spec_type).trim() : "";
+    if (!currentType || currentType.toLowerCase() === "none") return;
+    if (isSpecTypeValidForMain(currentType, model, models, effectiveBackendType)) return;
+
+    const replacement = defaultSpecTypeForMain(model, models, effectiveBackendType);
+    if (!replacement) return;
+
+    updateParam("spec_type", replacement);
+    const preset = specSimpleMode ? essentialsSpecPreset(replacement) : null;
+    if (preset) {
+      updateParam("spec_draft_n_max", preset.spec_draft_n_max);
+      updateParam("spec_draft_n_min", preset.spec_draft_n_min);
+    }
+    const role = draftRoleForSpecType(replacement);
+    if (role) {
+      const draft = pickBestDraftPair(model, models, role);
+      if (draft) updateParam("spec_draft_model", draft.path);
+    }
+  }, [
+    model,
+    models,
+    modelIsDraftOnly,
+    specDecodingGroupVisible,
+    hasSpecCapability,
+    config.spec_type,
+    effectiveBackendType,
+    specSimpleMode,
+    updateParam,
+  ]);
 
   useEffect(() => {
     if (!specSimpleMode || !model || !hasSpecCapability || specActive) return;
@@ -929,7 +1067,11 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     const pathKey = normalizeModelPathKey(model.path);
     if (specAutoConfiguredRef.current === pathKey) return;
 
-    if (loadModelSpecOverride(model.path)?.spec_type) {
+    const savedOverride = loadModelSpecOverride(model.path);
+    if (
+      savedOverride?.spec_type
+      && isSpecTypeValidForMain(String(savedOverride.spec_type), model, models, effectiveBackendType)
+    ) {
       specAutoConfiguredRef.current = pathKey;
       return;
     }
@@ -1277,18 +1419,22 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           ? Math.floor(ctxNumeric / ctxSlotCount)
           : 0;
       return (
-        <div key={paramRowKey(def, rowIdx)} data-param-row className={`flex items-center min-h-[28px] ${isLocked ? "opacity-50" : ""}`}>
-          {isUserAdded && <div className="w-0.5 h-4 flex-shrink-0 bg-yellow-400/40 mr-1.5" />}
-          {!isUserAdded && <div className="w-0.5 h-4 flex-shrink-0 mr-1.5" />}
+        <div
+          key={paramRowKey(def, rowIdx)}
+          data-param-row
+          className={`ctx-slider-param-row flex items-start min-h-[22px] ${isLocked ? "opacity-50" : ""}`}
+        >
+          {isUserAdded && <div className="w-0.5 h-4 flex-shrink-0 bg-yellow-400/40 mr-1.5 mt-0.5" />}
+          {!isUserAdded && <div className="w-0.5 h-4 flex-shrink-0 mr-1.5 mt-0.5" />}
           <span
-            className={`font-mono flex-shrink-0 uppercase tracking-wider text-[9px] flex items-center gap-1.5 min-w-0 leading-none ${def.key === "ctx" && ctxPerSlot > 0 ? "w-auto max-w-[40%]" : "w-24 truncate"} ${isUserAdded ? "text-yellow-400/80" : "text-stealth-muted"}`}
+            className={`ctx-slider-param-label ${PARAM_LABEL_CLASS} mt-0.5 ${def.key === "ctx" && ctxPerSlot > 0 ? "!w-auto max-w-[40%]" : ""} ${isUserAdded ? "text-yellow-400/80" : ""}`}
             title={def.key === "ctx" && ctxPerSlot > 0
-              ? `${formatTokenLabel(ctxNumeric)} ÷ ${ctxSlotCount} slots = ${formatTokenLabel(ctxPerSlot)} per slot`
+              ? `${formatCtxChipLabel(ctxNumeric)} (${ctxNumeric}) ÷ ${ctxSlotCount} slots = ${formatCtxChipLabel(ctxPerSlot)} per slot`
               : def.label}
           >
-            <span className="truncate">{def.label}</span>
+            {def.label}
           </span>
-          <div className="ctx-slider-field flex-1 min-w-0">
+          <div className="ctx-slider-field flex-1 min-w-0 min-h-[18px] flex items-center">
             <SliderParam
               paramKey={def.key}
               currentValue={currentValue}
@@ -1297,12 +1443,10 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
               step={def.step ?? 1024}
               values={baseValues}
               perSlotReserve={ctxSlotCount > 1}
-              perSlotLabel={
-                ctxPerSlot > 0 ? formatTokenLabel(ctxPerSlot) : undefined
-              }
+              perSlotTokens={ctxPerSlot > 0 ? ctxPerSlot : undefined}
               perSlotTitle={
                 ctxPerSlot > 0
-                  ? `Per slot: ${formatTokenLabel(ctxNumeric)} ÷ ${ctxSlotCount}`
+                  ? `Per slot: ${formatCtxChipLabel(ctxNumeric)} (${ctxNumeric}) ÷ ${ctxSlotCount}`
                   : undefined
               }
             />
@@ -1848,7 +1992,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       fullAutoMode,
       configView,
       essentialFactoryKeys,
-      specActive,
+      specActive: specLaunchActive,
       allParamsResolved,
       gpus,
       runningSlotsForPlan,
@@ -1871,7 +2015,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     fullAutoMode,
     configView,
     essentialFactoryKeys,
-    specActive,
+    specLaunchActive,
     allParamsResolved,
     gpus,
     runningSlotsForPlan,
@@ -2084,6 +2228,13 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       data-layout-mode={layoutModeActive ? "on" : "off"}
       data-launch-dock-position={launchDockPosition}
       data-launch-dock-collapsed={launchDockCollapsed && launchDockPosition === "bottom" ? "true" : "false"}
+      data-hw-monitor-open={hwMonitorOpen ? "true" : "false"}
+      data-engines-in-rail={enginesInRail ? "true" : "false"}
+      style={
+        showRightColumn
+          ? ({ "--config-launch-rail-width": `${launchRailWidth}px` } as React.CSSProperties)
+          : undefined
+      }
     >
       {resolvedProviders && resolvedProviders.length > 0 && (
         <div className="px-4 py-2 border-b section-divider relative flex-shrink-0 config-provider-profile-bar">
@@ -2190,6 +2341,14 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         className="config-rail-workspace flex-1 min-h-0"
       >
       <div
+        className={
+          showRightColumn
+            ? "config-rail-left flex flex-col flex-1 min-h-0 min-w-0"
+            : "contents"
+        }
+      >
+      <div
+        ref={showRailInnerSplit ? launchRailDisplayMeasureRef : undefined}
         className={onboardingDisplay.area}
         data-display-texture={displayTexture}
       >
@@ -2293,8 +2452,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
               </div>
           </div>
 
-          {/* Running Engines — eject panel below display */}
-          {onSelectEngine && models && (
+          {/* Running Engines — fusion switcher; default below VRAM display */}
+          {showEnginesBelowVram && onSelectEngine && models && (
             <div className="industrial-eject-panel relative flex-shrink min-h-0">
               <RunningEnginesPanel
                 stack={stack}
@@ -2307,11 +2466,16 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       </div>
 
       <div
-        className={`config-panel-center flex flex-col min-h-0 ${
-          launchDockPosition === "bottom" ? "flex-1" : ""
-        }`}
+        className={
+          launchDockPosition === "right"
+            ? "config-rail-main-column flex flex-col flex-1 min-h-0 min-w-0"
+            : `config-panel-center flex flex-col min-h-0 ${launchDockPosition === "bottom" ? "flex-1" : ""}`
+        }
       >
-      <div className="config-panel-toolbar px-4 py-0.5 flex items-center justify-between gap-2 flex-shrink-0 border-b section-divider">
+      <div
+        ref={showRailInnerSplit ? launchRailToolbarMeasureRef : undefined}
+        className="config-panel-toolbar px-4 py-0.5 flex items-center justify-between gap-2 flex-shrink-0 border-b section-divider"
+      >
         <div className="config-launch-dock-controls flex items-center gap-1.5 min-w-0">
           <span className="text-[7px] font-mono text-stealth-muted/45 uppercase tracking-wider shrink-0">
             Dock
@@ -2356,6 +2520,40 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             <span className="text-[7px] font-mono text-stealth-muted/40 hidden md:inline shrink-0">
               auto
             </span>
+          )}
+          <button
+            type="button"
+            onClick={toggleHwMonitor}
+            className={`px-1.5 py-0.5 text-[8px] font-mono rounded-sm border transition-colors ${
+              hwMonitorOpen
+                ? "border-nv-green/45 text-nv-green/90 bg-nv-green/10"
+                : "border-stealth-border/40 text-stealth-muted/45 hover:text-stealth-muted"
+            }`}
+            title={
+              hwMonitorOpen
+                ? "HW monitor on — live CPU/GPU stats (CPU polling active)"
+                : "HW monitor off — open for live CPU/GPU column (works with BOT or RAIL dock)"
+            }
+          >
+            HW
+          </button>
+          {showLaunchRail && (
+            <button
+              type="button"
+              onClick={toggleEnginesInRail}
+              className={`px-1.5 py-0.5 text-[8px] font-mono rounded-sm border transition-colors ${
+                enginesInRail
+                  ? "border-nv-green/45 text-nv-green/90 bg-nv-green/10"
+                  : "border-stealth-border/40 text-stealth-muted/45 hover:text-stealth-muted"
+              }`}
+              title={
+                enginesInRail
+                  ? "Engine switcher in launch rail — click to restore below VRAM display"
+                  : "Engine switcher below VRAM display — click to move into launch rail"
+              }
+            >
+              ENG{enginesInRail ? "↑RAIL" : "↓DSP"}
+            </button>
           )}
         </div>
         {allParamsForDisplay.length > 0 && (
@@ -2605,29 +2803,69 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         </div>
       )}
       </div>
+      </div>
 
-      {launchDockPosition === "right" && (
+      {showRightColumn && (
         <>
           <div
             role="separator"
             aria-orientation="vertical"
             aria-valuenow={launchRailWidth}
-            aria-label="Resize launch rail"
+            aria-label="Resize side column"
             className={`launch-rail-split-handle catalog-split-handle${launchRailDragging ? " is-dragging" : ""}`}
             onMouseDown={(e) => {
               e.preventDefault();
               startLaunchRailDrag();
             }}
             onDoubleClick={resetLaunchRailWidth}
-            title="Drag to resize launch rail · double-click to reset"
+            title="Drag to resize side column · double-click to reset"
           />
           <div
-            className="config-launch-rail flex-shrink-0 min-h-0 min-w-0"
+            ref={launchRailInnerRef}
+            className={`config-launch-rail flex-shrink-0 min-h-0 min-w-0${hwMonitorOpen && !showLaunchRail ? " config-launch-rail--hw-only" : ""}`}
             style={{ width: launchRailWidth }}
           >
-            <div className="config-launch-rail__bezel-zone" aria-hidden="true" />
-            <div className="config-launch-dock flex flex-col flex-1 min-h-0 px-3">
+            {hwMonitorOpen && (
+              <div
+                className={`launch-rail-telemetry min-h-0 overflow-hidden ${
+                  showLaunchRail ? "flex-shrink-0" : "flex-1"
+                }`}
+                style={
+                  showLaunchRail && launchRailTelemetryHeight > 0
+                    ? { height: launchRailTelemetryHeight }
+                    : undefined
+                }
+              >
+                <LaunchRailTelemetry />
+              </div>
+            )}
+            {showRailInnerSplit && (
+              <div
+                role="separator"
+                aria-orientation="horizontal"
+                aria-label="Resize telemetry and launch sections"
+                className={`launch-rail-inner-split-handle${launchRailInnerDragging ? " is-dragging" : ""}`}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  startLaunchRailInnerDrag();
+                }}
+                onDoubleClick={resetLaunchRailInnerRatio}
+                title="Drag to resize telemetry vs launch · double-click to reset"
+              />
+            )}
+            {showLaunchRail && (
+            <div className="launch-rail-launch flex flex-col flex-1 min-h-0 min-w-0">
+            <div className="config-launch-dock flex flex-col flex-1 min-h-0 px-3 pt-2">
               <div className="config-launch-dock__content flex flex-col flex-1 min-h-0 min-w-0">
+                {enginesInRail && onSelectEngine && models && (
+                  <RunningEnginesPanel
+                    stack={stack}
+                    models={models}
+                    selectedSlotIdx={selectedSlotIdx ?? null}
+                    onSelectEngine={onSelectEngine}
+                    variant="rail"
+                  />
+                )}
                 {specParallelWarn && (
                   <div
                     className="config-mtp-launch-warn rounded-sm px-2.5 py-1.5 text-[7px] font-mono leading-snug shrink-0"
@@ -2785,6 +3023,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                 </div>
               </div>
             </div>
+            </div>
+            )}
           </div>
         </>
       )}

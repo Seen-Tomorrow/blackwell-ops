@@ -39,6 +39,7 @@ import {
   loadLogsAnsiEnabled,
   saveLogsAnsiEnabled,
   saveStartupUpdatesCache,
+  loadHwMonitorOpen,
   loadTelemetryViewMode,
   saveTelemetryViewMode,
   type TelemetryViewMode,
@@ -152,6 +153,16 @@ function App() {
   const [hiddenCount, setHiddenCount] = useState(0);
   const [isPowerUser, setIsPowerUser] = useState(() => isPowerUserActive(loadPowerUserState()));
   const [telemetryViewMode, setTelemetryViewModeState] = useState<TelemetryViewMode>(() => loadTelemetryViewMode());
+  const [hwMonitorOpen, setHwMonitorOpen] = useState(() => loadHwMonitorOpen());
+
+  useEffect(() => {
+    const onHwMonitor = (e: Event) => {
+      const open = (e as CustomEvent<{ open?: boolean }>).detail?.open;
+      setHwMonitorOpen(typeof open === "boolean" ? open : loadHwMonitorOpen());
+    };
+    window.addEventListener(EVENTS.hwMonitorOpenChanged, onHwMonitor);
+    return () => window.removeEventListener(EVENTS.hwMonitorOpenChanged, onHwMonitor);
+  }, []);
   const setupGuide = useSetupGuide({ models, catalogLoaded, batchScanState });
 
   const setTelemetryViewMode = useCallback((mode: TelemetryViewMode) => {
@@ -587,7 +598,7 @@ function App() {
         <DisplayTextureProvider>
         <IndustrialBezelTextureProvider>
         <FoundryProvider>
-          <TelemetryProvider pollingActive={activeTab === "telemetry"} gpuPollTier={gpuPollTier}>
+          <TelemetryProvider pollingActive={activeTab === "telemetry" || hwMonitorOpen} gpuPollTier={gpuPollTier}>
             <StatusProvider value={{ totalParams, hiddenCount, onShowAll: handleShowAll }}>
             <Layout activeTab={activeTab} onTabChange={(tab) => { setActiveTab(tab); if (tab === "config") setHasBinaryUpdates(false); }} providers={providers} appUpdate={appUpdate} hasBinaryUpdates={hasBinaryUpdates} onInstallAppUpdate={handleInstallAppUpdate}>
         {activeTab === "catalog" && (

@@ -9,6 +9,7 @@ import type {
 import { buildAutoVramLaunchParams } from "./autoVramLaunch";
 import { buildLaunchExtraParams } from "./paramConfigResolve";
 import { resolveManualLaunchKeys } from "./launchProfile";
+import { stripSpecExtraParams } from "./specDraft";
 import type { RunningSlotInfo } from "../services/vram/scenarios/scenarios_factory";
 
 export type BuildLaunchFullConfigInput = {
@@ -79,6 +80,10 @@ export function buildLaunchFullConfig(input: BuildLaunchFullConfigInput): Engine
           paramDefs: allParamsResolved,
         });
 
+  const launchExtra = specActive
+    ? extraParams
+    : stripSpecExtraParams(extraParams);
+
   const fullConfig: EngineConfig = {
     alias: finalAlias,
     model_path: model.path,
@@ -86,7 +91,7 @@ export function buildLaunchFullConfig(input: BuildLaunchFullConfigInput): Engine
     backend_type: effectiveBackendType,
     binary_profile: selectedBinaryProfile,
     extra_params: {
-      ...extraParams,
+      ...launchExtra,
       __memory_mode: fullAutoMode ? "full_auto" : "assisted",
     },
   };

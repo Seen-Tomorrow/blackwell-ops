@@ -4,8 +4,10 @@ import { normalizeIndustrialBezelTexture, type IndustrialBezelTexture } from "./
 import type { LaunchDockPosition } from "./launchDockLayout";
 import {
   clampLaunchDockRailWidth,
+  clampLaunchRailTelemetryRatio,
   LAUNCH_DOCK_POSITION_DEFAULT,
   LAUNCH_DOCK_RAIL_WIDTH_DEFAULT,
+  LAUNCH_RAIL_TELEMETRY_RATIO_DEFAULT,
   suggestLaunchDockPosition,
 } from "./launchDockLayout";
 import { capCodeSize, PLAYGROUND_MAX_CODE_CHARS } from "./playgroundCodegen";
@@ -51,6 +53,7 @@ import type {
  * | BlackOps-display-texture | clean \| phosphor-dark \| phosphor-light | Display texture cycle (glitch legacy → clean) |
  * | BlackOps-industrial-bezel-texture | sandblast \| diamond \| brush | Dark-theme gunmetal bezel pattern |
  * | BlackOps-catalog-split-width | number string (px) | Model catalog / engine config split |
+ * | BlackOps-catalog-list-collapsed | "0" \| "1" | Model catalog list fully collapsed |
  * | BlackOps-model-hub-split-width | number string (0–1) | Model Hub results / quants split ratio |
  * | BlackOps-telemetry-view | standard \| lab | TELEMETRY tab: panel vs lab catalogue |
  * | BlackOps-setup-guide-dismissed | "1" | Setup guide dismissed (cache; authority is app_config.setup_completed) |
@@ -153,7 +156,14 @@ export const KEYS = {
   launchDockPositionExplicit: `${STORAGE_PREFIX}launch-dock-position-explicit`,
   launchDockCollapsed: `${STORAGE_PREFIX}launch-dock-collapsed`,
   launchDockRailWidth: `${STORAGE_PREFIX}launch-dock-rail-width`,
+  /** Right rail — telemetry vs launch vertical split (0–1 ratio). */
+  launchRailTelemetryRatio: `${STORAGE_PREFIX}launch-rail-telemetry-ratio`,
+  /** Config panel — live HW monitor column (any dock layout). */
+  hwMonitorOpen: `${STORAGE_PREFIX}hw-monitor-open`,
+  /** Running engine / fusion switcher in launch rail instead of below VRAM display. */
+  enginesInRail: `${STORAGE_PREFIX}engines-in-rail`,
   catalogSplitWidth: `${STORAGE_PREFIX}catalog-split-width`,
+  catalogListCollapsed: `${STORAGE_PREFIX}catalog-list-collapsed`,
   modelHubSplitWidth: `${STORAGE_PREFIX}model-hub-split-width`,
   telemetryView: `${STORAGE_PREFIX}telemetry-view`,
   setupGuideDismissed: `${STORAGE_PREFIX}setup-guide-dismissed`,
@@ -427,6 +437,34 @@ export function loadLaunchDockRailWidth(): number {
 
 export function saveLaunchDockRailWidth(width: number): void {
   writeStorage(KEYS.launchDockRailWidth, String(clampLaunchDockRailWidth(width)));
+}
+
+export function loadLaunchRailTelemetryRatio(): number {
+  const raw = readStorage(KEYS.launchRailTelemetryRatio);
+  if (!raw) return LAUNCH_RAIL_TELEMETRY_RATIO_DEFAULT;
+  const n = Number.parseFloat(raw);
+  if (!Number.isFinite(n)) return LAUNCH_RAIL_TELEMETRY_RATIO_DEFAULT;
+  return clampLaunchRailTelemetryRatio(n);
+}
+
+export function saveLaunchRailTelemetryRatio(ratio: number): void {
+  writeStorage(KEYS.launchRailTelemetryRatio, String(clampLaunchRailTelemetryRatio(ratio)));
+}
+
+export function loadHwMonitorOpen(): boolean {
+  return readStorage(KEYS.hwMonitorOpen) === "1";
+}
+
+export function saveHwMonitorOpen(open: boolean): void {
+  writeStorage(KEYS.hwMonitorOpen, open ? "1" : "0");
+}
+
+export function loadEnginesInRail(): boolean {
+  return readStorage(KEYS.enginesInRail) === "1";
+}
+
+export function saveEnginesInRail(inRail: boolean): void {
+  writeStorage(KEYS.enginesInRail, inRail ? "1" : "0");
 }
 
 // ── Dynamic key builders (BlackOps-{namespace}:{id}) ─────────────────────────
@@ -874,6 +912,14 @@ export function saveCatalogSplitWidth(width: number): void {
     Math.max(CATALOG_SPLIT_WIDTH_MIN, Math.round(width)),
   );
   writeStorage(KEYS.catalogSplitWidth, String(clamped));
+}
+
+export function loadCatalogListCollapsed(): boolean {
+  return readStorage(KEYS.catalogListCollapsed) === "1";
+}
+
+export function saveCatalogListCollapsed(collapsed: boolean): void {
+  writeStorage(KEYS.catalogListCollapsed, collapsed ? "1" : "0");
 }
 
 export function loadModelHubSplitRatio(): number {

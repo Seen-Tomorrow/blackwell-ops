@@ -47,8 +47,18 @@ export default function ModelCatalog(props: ModelCatalogProps) {
     models, stack, providers: externalProviders, scanningPath, setScanningPath, batchScanState, setBatchScanState, onReload,
   });
 
-  const { containerRef: splitContainerRef, catalogWidth, isDragging, startDrag, resetWidth } =
-    useCatalogSplitResize();
+  const {
+    containerRef: splitContainerRef,
+    catalogWidth,
+    catalogCollapsed,
+    isDragging,
+    startDrag,
+    resetWidth,
+    toggleCatalogCollapsed,
+  } = useCatalogSplitResize();
+
+  const splitRailRef = useRef<HTMLDivElement>(null);
+  const [toggleTopPx, setToggleTopPx] = useState<number | null>(null);
 
   const scanBlockedByToolchain =
     setupGuide.active
@@ -63,10 +73,67 @@ export default function ModelCatalog(props: ModelCatalogProps) {
     fitScanningCount,
     zone, visibleCount, setVisibleCount } = catalog;
 
+  useEffect(() => {
+    const workspace = splitContainerRef.current;
+    if (!workspace) return;
+
+    const measureToggleTop = () => {
+      const rail = splitRailRef.current;
+      if (!rail) {
+        setToggleTopPx(null);
+        return;
+      }
+      const catalogPanel = workspace.querySelector(".catalog-list-panel");
+      const anchor = catalogPanel ?? workspace;
+      const anchorRect = anchor.getBoundingClientRect();
+      const railRect = rail.getBoundingClientRect();
+      setToggleTopPx(Math.round(anchorRect.top - railRect.top));
+    };
+
+    measureToggleTop();
+
+    const observer = new ResizeObserver(measureToggleTop);
+    observer.observe(workspace);
+    const catalogPanel = workspace.querySelector(".catalog-list-panel");
+    if (catalogPanel) observer.observe(catalogPanel);
+    const rail = splitRailRef.current;
+    if (rail) observer.observe(rail);
+
+    window.addEventListener("resize", measureToggleTop);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", measureToggleTop);
+    };
+  }, [splitContainerRef, catalogCollapsed]);
+
   const startScan = (concurrency: number) => {
     setShowScanMenu(false);
     handleScanAll(concurrency);
   };
+
+  const toggleTopStyle =
+    toggleTopPx != null
+      ? ({ "--catalog-toggle-top": `${toggleTopPx}px` } as React.CSSProperties)
+      : undefined;
+
+  const renderCatalogToggle = (className: string) => (
+    <button
+      type="button"
+      className={className}
+      style={toggleTopStyle}
+      onClick={toggleCatalogCollapsed}
+      title={catalogCollapsed ? "Expand model catalog" : "Collapse model catalog"}
+      aria-expanded={!catalogCollapsed}
+      aria-label={catalogCollapsed ? "Expand model catalog" : "Collapse model catalog"}
+    >
+      <span
+        className={`catalog-split-toggle__glyph${catalogCollapsed ? "" : " catalog-split-toggle__glyph--collapse"}`}
+        aria-hidden
+      >
+        ▶
+      </span>
+    </button>
+  );
 
   const editTarget = panelActiveModel ?? catalogSelectedModel;
   const editTargetRunning = editTarget ? runningModelPaths.has(editTarget.path) : false;
@@ -386,10 +453,16 @@ export default function ModelCatalog(props: ModelCatalogProps) {
       )}
 
       {/* Split panels — drag handle resets to default on double-click */}
-      <div ref={splitContainerRef} className="flex flex-1 overflow-hidden min-h-0">
+      <div
+        ref={splitContainerRef}
+        className={`catalog-split-workspace flex flex-1 overflow-hidden min-h-0${
+          catalogCollapsed ? " catalog-split-workspace--collapsed" : ""
+        }`}
+      >
         {/* Left panel — model browser */}
+        {!catalogCollapsed && (
         <div
-          className="flex flex-col eink-panel-wrapper flex-shrink-0 min-h-0"
+          className="catalog-list-panel flex flex-col eink-panel-wrapper flex-shrink-0 min-h-0 min-w-0 overflow-hidden"
           style={{ width: catalogWidth }}
         >
 
@@ -546,20 +619,36 @@ export default function ModelCatalog(props: ModelCatalogProps) {
             )}
           </div>
         </div>
+        )}
 
         <div
-          role="separator"
-          aria-orientation="vertical"
-          aria-valuenow={catalogWidth}
-          aria-label="Resize catalog and engine config panels"
-          className={`catalog-split-handle${isDragging ? " is-dragging" : ""}`}
-          onMouseDown={(e) => {
-            e.preventDefault();
-            startDrag();
-          }}
-          onDoubleClick={resetWidth}
-          title="Drag to resize · double-click to reset"
-        />
+          ref={splitRailRef}
+          className={`catalog-split-rail flex-shrink-0${catalogCollapsed ? " catalog-split-rail--collapsed" : ""}${
+            isDragging ? " is-dragging" : ""
+          }`}
+        >
+          {renderCatalogToggle("catalog-split-toggle")}
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-valuenow={catalogCollapsed ? 0 : catalogWidth}
+            aria-label="Resize catalog and engine config panels"
+            className={`catalog-split-handle${isDragging ? " is-dragging" : ""}`}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              startDrag();
+            }}
+            onDoubleClick={() => {
+              if (catalogCollapsed) toggleCatalogCollapsed();
+              else resetWidth();
+            }}
+            title={
+              catalogCollapsed
+                ? "Drag to expand and resize · double-click to expand"
+                : "Drag to resize · double-click to reset width"
+            }
+          />
+        </div>
 
         {/* Right panel — config + diagnostics (height-bound; internal scroll only) */}
         <div className="flex-1 min-w-0 min-h-0 eink-panel-wrapper overflow-hidden flex flex-col">

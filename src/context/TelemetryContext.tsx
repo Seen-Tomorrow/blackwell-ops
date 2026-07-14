@@ -149,7 +149,7 @@ export function TelemetryProvider({
     };
   }, [gpuPollTier, pollGpu]);
 
-  // CPU live polling only while TELEMETRY tab is active
+  // CPU live polling — TELEMETRY tab or config-panel HW monitor (see App pollingActive)
   useEffect(() => {
     if (!pollingActive) return;
 

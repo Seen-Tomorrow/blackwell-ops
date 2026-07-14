@@ -3,54 +3,64 @@
  */
 
 import React from "react";
-import { useSliderParamState, type SliderParamSharedProps } from "../lib/sliderParamUtils";
+import {
+  formatCtxChipLabel,
+  useSliderParamState,
+  type SliderParamSharedProps,
+} from "../lib/sliderParamUtils";
 import CustomSliderParam from "./CustomSliderParam";
 
 interface SliderParamProps extends SliderParamSharedProps {
-  perSlotLabel?: string;
+  /** Per-slot token count (shown as rounded K/M chip when parallel > 1). */
+  perSlotTokens?: number;
   perSlotTitle?: string;
   /** Reserve fixed per-slot field width (avoids track jump when parallel > 1). */
   perSlotReserve?: boolean;
 }
 
 export default function SliderParam({
-  perSlotLabel,
+  perSlotTokens,
   perSlotTitle,
   perSlotReserve = false,
   ...props
 }: SliderParamProps) {
   const {
-    inputStr,
+    shownValue,
     userEdited,
+    beginEdit,
+    finishEdit,
     handleInputChange,
-    handleInputCommit,
     handleInputKeyDown,
   } = useSliderParamState(props);
 
-  const showPerSlotField = perSlotReserve || Boolean(perSlotLabel);
+  const showPerSlotField = perSlotReserve || (perSlotTokens != null && perSlotTokens > 0);
+  const perSlotLabel =
+    perSlotTokens != null && perSlotTokens > 0 ? formatCtxChipLabel(perSlotTokens) : undefined;
+  const chipBase = "py-0.5 text-[9px] font-mono rounded-sm focus:outline-none";
 
   return (
-    <div className="ctx-slider-row flex items-center gap-2 min-w-0 flex-1">
+    <div className="ctx-slider-row flex items-center gap-1 min-w-0 flex-1">
       <CustomSliderParam {...props} />
 
       <input
         type="text"
-        value={inputStr}
+        value={shownValue}
+        onFocus={beginEdit}
         onChange={handleInputChange}
-        onBlur={handleInputCommit}
+        onBlur={finishEdit}
         onKeyDown={handleInputKeyDown}
-        className={`ctx-slider-value-input w-16 text-[9px] font-mono border rounded-sm transition-colors flex-shrink-0 text-right${
-          userEdited ? " ctx-slider-value-input--edited mono-user-input" : ""
+        className={`ctx-slider-value-input ctx-slider-chip--reserve flex-shrink-0 text-center ${chipBase} value-chip-active${
+          userEdited ? " mono-user-input" : ""
         }`}
       />
 
       {showPerSlotField && (
-        <span
-          className="ctx-slider-value-input ctx-slider-per-slot text-[8px] font-mono border rounded-sm flex-shrink-0 text-right"
-          title={perSlotTitle}
-        >
-          {perSlotLabel ? `${perSlotLabel} /slot` : "— /slot"}
-        </span>
+        <div className="ctx-slider-per-slot-stack ctx-slider-chip--reserve flex-shrink-0" title={perSlotTitle}>
+          <span className={`ctx-slider-per-slot-chip text-center ${chipBase} value-chip`}>
+            {perSlotLabel ?? "—"}
+          </span>
+          <span className="ctx-slider-per-slot-caption font-mono uppercase tracking-wide">/slot</span>
+        </div>
       )}
     </div>
   );

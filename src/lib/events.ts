@@ -66,6 +66,8 @@ export const EVENTS = {
   localStorageCleared: `${STORAGE_PREFIX}local-storage-cleared`,
   providerChanged: `${STORAGE_PREFIX}provider-changed`,
   fitScanCacheChanged: `${STORAGE_PREFIX}fit-scan-cache-changed`,
+  /** Config panel HW monitor open — enables CPU live polling outside TELEMETRY tab. */
+  hwMonitorOpenChanged: `${STORAGE_PREFIX}hw-monitor-open-changed`,
 } as const;
 
 export type AppEventName = (typeof EVENTS)[keyof typeof EVENTS];

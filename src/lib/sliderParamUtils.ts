@@ -9,9 +9,10 @@ import {
 export const SLIDER_THUMB_WIDTH_PX = 15;
 export const TRACK_HEIGHT_PX = 6;
 export const TICK_ZONE_HEIGHT_PX = 8;
-/** Input / label control height — vertically centered in TRACK_AREA_HEIGHT_PX. */
+/** Input / label control height — matches value-chip row in param rows. */
 export const CONTROL_ROW_HEIGHT_PX = 18;
-export const TRACK_AREA_HEIGHT_PX = 28;
+/** Visible track band — preset ticks overflow below without stretching the param row. */
+export const TRACK_AREA_HEIGHT_PX = CONTROL_ROW_HEIGHT_PX;
 export const TRACK_TOP_PX = (TRACK_AREA_HEIGHT_PX - TRACK_HEIGHT_PX) / 2;
 export const TRACK_BOTTOM_PX = TRACK_TOP_PX + TRACK_HEIGHT_PX;
 export const TICK_TOP_PX = TRACK_BOTTOM_PX + 2;
@@ -41,6 +42,36 @@ export function formatTokenLabel(n: number): string {
     return `${n / 1024}K`;
   }
   return String(n);
+}
+
+/** Rounded K/M chip label — CTX total + per-slot (e.g. 256K, not 262144 or 59.125K). */
+export function formatCtxChipLabel(n: number): string {
+  if (n >= 1_048_576) {
+    const m = n / 1_048_576;
+    return m % 1 === 0 ? `${m}M` : `${Math.round(m * 10) / 10}M`;
+  }
+  if (n >= 1024) {
+    return `${Math.round(n / 1024)}K`;
+  }
+  return String(Math.round(n));
+}
+
+/** @deprecated Use formatCtxChipLabel */
+export const formatPerSlotTokenLabel = formatCtxChipLabel;
+
+/** Parse CTX field — raw integers (20000) or K/M suffix (256K, 1.5M). */
+export function parseCtxTokenInput(raw: string): number | null {
+  const s = raw.trim().replace(/,/g, "");
+  if (!s) return null;
+  const km = /^(\d+(?:\.\d+)?)\s*([kKmM])$/.exec(s);
+  if (km) {
+    const n = parseFloat(km[1]);
+    if (isNaN(n)) return null;
+    const mult = km[2].toLowerCase() === "m" ? 1_048_576 : 1024;
+    return Math.round(n * mult);
+  }
+  const n = parseInt(s, 10);
+  return isNaN(n) ? null : n;
 }
 
 /** Map value → thumb-center % of track (accounts for thumb inset at min/max). */
@@ -97,50 +128,62 @@ export function useSliderParamState({
   const safeValue =
     isNaN(numericValue) || numericValue < min ? min : Math.min(numericValue, max);
 
-  const [inputStr, setInputStr] = useState<string>(String(safeValue));
-  const [userEdited, setUserEdited] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draftStr, setDraftStr] = useState(String(safeValue));
+
+  const displayLabel = formatCtxChipLabel(safeValue);
 
   useLayoutEffect(() => {
-    setInputStr(String(safeValue));
-    setUserEdited(false);
-  }, [safeValue]);
+    if (!editing) {
+      setDraftStr(String(safeValue));
+    }
+  }, [safeValue, editing]);
 
   const commitValue = useCallback(
     (val: number) => {
       const clamped = clampSteppedValue(val, min, max, step);
       onChange(clamped);
-      setInputStr(String(clamped));
+      setDraftStr(String(clamped));
     },
     [onChange, min, max, step],
   );
 
-  const handleInputChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
-    setInputStr(e.target.value);
-    setUserEdited(true);
-  }, []);
+  const beginEdit = useCallback(() => {
+    setDraftStr(String(safeValue));
+    setEditing(true);
+  }, [safeValue]);
 
-  const handleInputCommit = useCallback(() => {
-    let parsed = parseInt(inputStr.trim(), 10);
-    if (isNaN(parsed)) parsed = safeValue;
-    commitValue(parsed);
-    setUserEdited(false);
-  }, [inputStr, safeValue, commitValue]);
+  const finishEdit = useCallback(() => {
+    const parsed = parseCtxTokenInput(draftStr);
+    commitValue(parsed ?? safeValue);
+    setEditing(false);
+  }, [draftStr, safeValue, commitValue]);
+
+  const handleInputChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
+    setDraftStr(e.target.value);
+  }, []);
 
   const handleInputKeyDown = useCallback(
     (e: KeyboardEvent<HTMLInputElement>) => {
       if (e.key === "Enter") {
         e.preventDefault();
-        handleInputCommit();
+        finishEdit();
+        (e.target as HTMLInputElement).blur();
       }
     },
-    [handleInputCommit],
+    [finishEdit],
   );
 
+  const shownValue = editing ? draftStr : displayLabel;
+  const userEdited = editing && draftStr.trim() !== String(safeValue);
+
   return {
-    inputStr,
+    shownValue,
+    editing,
     userEdited,
+    beginEdit,
+    finishEdit,
     handleInputChange,
-    handleInputCommit,
     handleInputKeyDown,
   };
 }

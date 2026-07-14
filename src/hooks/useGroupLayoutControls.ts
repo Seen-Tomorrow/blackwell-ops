@@ -459,6 +459,7 @@ export function useGroupLayoutControls({
         zoneColumnCount,
         groupId,
         target,
+        zone,
       );
       void saveGroupOrder(newOrder);
       void saveGroupColumnState(newGroupColumn);

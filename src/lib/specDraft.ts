@@ -1,9 +1,11 @@
-import type { ModelEntry } from "./types";
+import type { ModelEntry, UserEditedTemplateParam } from "./types";
 import {
   KEYS,
   modelSpecOverrideKey,
   normalizeModelPathKey,
+  paramUiGroup,
   readJsonStorage,
+  removeStorage,
   writeJsonStorage,
   type ModelSpecOverride,
 } from "./storage";
@@ -19,6 +21,44 @@ export const MODEL_SPEC_PARAM_KEYS = [
   "spec_draft_n_max",
   "spec_draft_n_min",
 ] as const;
+
+export const SPEC_DECODING_UI_GROUP = "SPECULATIVE-DECODING";
+
+const MODEL_SPEC_KEY_SET = new Set<string>(MODEL_SPEC_PARAM_KEYS);
+
+/** Any visible param in SPECULATIVE-DECODING — matches backend group toggle state. */
+export function isSpecDecodingGroupActive(params: UserEditedTemplateParam[]): boolean {
+  return params
+    .filter((p) => paramUiGroup(p.ui_group) === SPEC_DECODING_UI_GROUP)
+    .some((p) => !p.hidden);
+}
+
+/** Authoritative launch gate — group on, model capable, spec mode valid for this main. */
+export function resolveSpecLaunchActive(opts: {
+  groupActive: boolean;
+  hasCapability: boolean;
+  specType: string | undefined;
+  model: ModelEntry;
+  models: ModelEntry[];
+  providerId: string;
+}): boolean {
+  if (!opts.groupActive || !opts.hasCapability) return false;
+  const st = opts.specType?.trim() ?? "";
+  if (!st || st.toLowerCase() === "none") return false;
+  return isSpecTypeValidForMain(st, opts.model, opts.models, opts.providerId);
+}
+
+export function isModelSpecParamKey(key: string): boolean {
+  return MODEL_SPEC_KEY_SET.has(key);
+}
+
+export function stripSpecExtraParams<T extends Record<string, unknown>>(params: T): T {
+  const out = { ...params };
+  for (const k of MODEL_SPEC_PARAM_KEYS) {
+    delete out[k];
+  }
+  return out;
+}
 
 /** FULL-AUTO + Essentials — fixed N-max / N-min (hidden from UI). */
 export const ESSENTIALS_SPEC_PRESETS: Record<
@@ -399,6 +439,22 @@ export function defaultSpecTypeForMain(
   return null;
 }
 
+/** Whether the chosen spec mode is supported by this main model (e.g. MTP needs nextn layers). */
+export function isSpecTypeValidForMain(
+  specType: string,
+  main: ModelEntry,
+  models: ModelEntry[],
+  providerId: string,
+): boolean {
+  const normalized = specType.trim().toLowerCase();
+  if (!normalized || normalized === "none") return true;
+  const caps = specCapabilitiesForMain(main, models, providerId);
+  if (normalized === "draft-mtp") return caps.includes("mtp");
+  if (normalized === "draft-dflash") return caps.includes("dflash");
+  if (normalized.includes("eagle3") || normalized === "draft-eagle3") return caps.includes("eagle3");
+  return true;
+}
+
 export function specTypeNeedsExternalDraft(specType: string): boolean {
   const lower = specType.trim().toLowerCase();
   if (lower.includes("dflash") || lower.includes("eagle3")) return true;
@@ -446,6 +502,11 @@ export function saveModelSpecOverride(mainPath: string, patch: ModelSpecOverride
   if (!mainPath) return;
   const prev = loadModelSpecOverride(mainPath) ?? {};
   writeJsonStorage(modelSpecOverrideKey(mainPath), { ...prev, ...patch });
+}
+
+export function clearModelSpecOverride(mainPath: string): void {
+  if (!mainPath) return;
+  removeStorage(modelSpecOverrideKey(mainPath));
 }
 
 export function isDraftPairingValid(

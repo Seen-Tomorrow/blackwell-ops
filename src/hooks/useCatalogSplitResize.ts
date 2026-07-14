@@ -3,13 +3,16 @@ import {
   LAUNCH_DOCK_RAIL_WIDTH_DEFAULT,
   LAUNCH_DOCK_RAIL_WIDTH_MAX,
   LAUNCH_DOCK_RAIL_WIDTH_MIN,
+  LAUNCH_RAIL_TELEMETRY_RATIO_DEFAULT,
 } from "../lib/launchDockLayout";
 import {
   CATALOG_SPLIT_WIDTH_DEFAULT,
   CATALOG_SPLIT_WIDTH_MAX,
   CATALOG_SPLIT_WIDTH_MIN,
+  loadCatalogListCollapsed,
   loadCatalogSplitWidth,
   loadLaunchDockRailWidth,
+  loadLaunchRailTelemetryRatio,
   loadModelHubSplitRatio,
   MODEL_HUB_SPLIT_RATIO_DEFAULT,
   MODEL_HUB_SPLIT_RATIO_MAX,
@@ -17,8 +20,10 @@ import {
   PLAYGROUND_SPLIT_RATIO_DEFAULT,
   PLAYGROUND_SPLIT_RATIO_MAX,
   PLAYGROUND_SPLIT_RATIO_MIN,
+  saveCatalogListCollapsed,
   saveCatalogSplitWidth,
   saveLaunchDockRailWidth,
+  saveLaunchRailTelemetryRatio,
   saveModelHubSplitRatio,
 } from "../lib/storage";
 
@@ -118,6 +123,7 @@ export function usePanelSplitResize(config: PanelSplitResizeConfig) {
 }
 
 export function useCatalogSplitResize() {
+  const [catalogCollapsed, setCatalogCollapsed] = useState(loadCatalogListCollapsed);
   const split = usePanelSplitResize({
     loadWidth: loadCatalogSplitWidth,
     saveWidth: saveCatalogSplitWidth,
@@ -125,7 +131,33 @@ export function useCatalogSplitResize() {
     minWidth: CATALOG_SPLIT_WIDTH_MIN,
     maxWidth: CATALOG_SPLIT_WIDTH_MAX,
   });
-  return { ...split, catalogWidth: split.panelWidth };
+
+  const setCollapsed = useCallback((next: boolean) => {
+    setCatalogCollapsed(next);
+    saveCatalogListCollapsed(next);
+  }, []);
+
+  const toggleCatalogCollapsed = useCallback(() => {
+    setCollapsed(!catalogCollapsed);
+  }, [catalogCollapsed, setCollapsed]);
+
+  const expandCatalog = useCallback(() => {
+    if (catalogCollapsed) setCollapsed(false);
+  }, [catalogCollapsed, setCollapsed]);
+
+  const startCatalogDrag = useCallback(() => {
+    if (catalogCollapsed) setCollapsed(false);
+    split.startDrag();
+  }, [catalogCollapsed, setCollapsed, split]);
+
+  return {
+    ...split,
+    catalogWidth: catalogCollapsed ? 0 : split.panelWidth,
+    catalogCollapsed,
+    toggleCatalogCollapsed,
+    expandCatalog,
+    startDrag: startCatalogDrag,
+  };
 }
 
 /** Right launch rail — drag handle sits on the rail's left edge. */
@@ -193,6 +225,86 @@ export function useLaunchDockRailResize(enabled: boolean) {
     isDragging,
     startDrag,
     resetWidth,
+  };
+}
+
+/** Vertical split between telemetry HUD and launch block inside the right rail. */
+export function useLaunchRailInnerResize(enabled: boolean) {
+  const railRef = useRef<HTMLDivElement>(null);
+  const ratioRef = useRef(loadLaunchRailTelemetryRatio());
+  const [telemetryRatio, setTelemetryRatio] = useState(ratioRef.current);
+  const [isDragging, setIsDragging] = useState(false);
+  const [railHeight, setRailHeight] = useState(0);
+  const [chromeStackHeight, setChromeStackHeight] = useState(0);
+
+  const startDrag = useCallback(() => {
+    if (!enabled) return;
+    setIsDragging(true);
+    document.body.style.cursor = "row-resize";
+    document.body.style.userSelect = "none";
+  }, [enabled]);
+
+  const resetRatio = useCallback(() => {
+    ratioRef.current = LAUNCH_RAIL_TELEMETRY_RATIO_DEFAULT;
+    setTelemetryRatio(LAUNCH_RAIL_TELEMETRY_RATIO_DEFAULT);
+    saveLaunchRailTelemetryRatio(LAUNCH_RAIL_TELEMETRY_RATIO_DEFAULT);
+  }, []);
+
+  useEffect(() => {
+    if (!enabled || !isDragging) return;
+
+    const onMove = (e: MouseEvent) => {
+      const rail = railRef.current;
+      if (!rail) return;
+      const rect = rail.getBoundingClientRect();
+      const next = (e.clientY - rect.top) / Math.max(rect.height, 1);
+      const clamped = Math.min(0.72, Math.max(0.22, next));
+      ratioRef.current = clamped;
+      setTelemetryRatio(clamped);
+    };
+
+    const onUp = () => {
+      setIsDragging(false);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      saveLaunchRailTelemetryRatio(ratioRef.current);
+    };
+
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, [enabled, isDragging]);
+
+  useEffect(() => {
+    if (!enabled || !railRef.current || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      setRailHeight(railRef.current?.offsetHeight ?? 0);
+    });
+    observer.observe(railRef.current);
+    setRailHeight(railRef.current.offsetHeight);
+    return () => observer.disconnect();
+  }, [enabled]);
+
+  const telemetryHeight = (() => {
+    if (railHeight <= 0) return 0;
+    const ratioHeight = railHeight * telemetryRatio;
+    const chromeMin = chromeStackHeight > 0 ? chromeStackHeight : 0;
+    const handleReserve = 7;
+    const maxTelemetry = railHeight - handleReserve - 120;
+    return Math.round(Math.min(maxTelemetry, Math.max(ratioHeight, chromeMin)));
+  })();
+
+  return {
+    railRef,
+    telemetryHeight,
+    telemetryRatio,
+    isDragging,
+    startDrag,
+    resetRatio,
+    setChromeStackHeight,
   };
 }
 

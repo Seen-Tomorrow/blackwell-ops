@@ -1,6 +1,8 @@
 import type { ConfigViewMode, LaunchProfile, ProviderDefaultParam, UserEditedTemplateParam } from "./types";
 import { PANEL_CHROME_PARAM_KEYS } from "./paramDisplayZone";
 import { ENGINE_ONLY_PARAM_KEYS, isCatalogVisibleParam, isSystemCatalogParam } from "./systemParams";
+import { isModelSpecParamKey, SPEC_DECODING_UI_GROUP } from "./specDraft";
+import { paramUiGroup } from "./storage";
 
 /** Dock / launch chrome — always shown in essentials (alias uses separate row). */
 export const LAUNCH_DOCK_PARAM_KEYS = ["base_port"] as const;
@@ -11,6 +13,11 @@ export const SPEC_DECODING_LAUNCH_KEYS = [
   "spec_draft_n_max",
   "spec_draft_n_min",
 ] as const;
+
+function skipSpecParamForLaunch(p: UserEditedTemplateParam, specActive: boolean): boolean {
+  if (specActive) return false;
+  return paramUiGroup(p.ui_group) === SPEC_DECODING_UI_GROUP || isModelSpecParamKey(p.key);
+}
 
 const DEFAULT_ESSENTIAL_KEYS = ["device", "ctx"] as const;
 
@@ -157,11 +164,15 @@ export function resolveManualLaunchKeys(opts: {
 
   if (opts.configView === "full") {
     for (const p of opts.allParams) {
-      if (!p.hidden) keys.add(p.key);
+      if (!p.hidden && !skipSpecParamForLaunch(p, opts.specActive)) keys.add(p.key);
     }
   } else {
     for (const p of opts.allParams) {
-      if (!p.hidden && isEssentialParam(p, opts.essentialFactoryKeys)) {
+      if (
+        !p.hidden
+        && isEssentialParam(p, opts.essentialFactoryKeys)
+        && !skipSpecParamForLaunch(p, opts.specActive)
+      ) {
         keys.add(p.key);
       }
     }

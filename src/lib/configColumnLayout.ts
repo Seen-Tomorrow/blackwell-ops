@@ -37,7 +37,7 @@ export function resolveGroupColumn(groupId: string, groupColumn: Record<string, 
   return groupColumn[normalizeUiGroup(groupId)] ?? 0;
 }
 
-/** Column a group actually renders in (partition-aware; handles 2C auto-alternate). */
+/** Column a group actually renders in (partition-aware; respects groupColumn map). */
 export function effectiveGroupColumn(
   groupId: string,
   zoneKeys: string[],
@@ -55,9 +55,8 @@ export function effectiveGroupColumn(
   return Math.min(Math.max(0, resolveGroupColumn(groupId, groupColumn)), count - 1);
 }
 
-/** Explicit groupColumn wins; otherwise alternate L/R in 2-column layouts by zone order index. */
+/** Explicit groupColumn wins; otherwise column 0 (no auto-interleave). */
 function resolvePartitionColumn(
-  orderIndex: number,
   key: string,
   groupColumn: Record<string, number>,
   columnCount: number,
@@ -66,9 +65,6 @@ function resolvePartitionColumn(
   const explicit = groupColumn[norm];
   if (explicit !== undefined) {
     return Math.min(Math.max(0, explicit), columnCount - 1);
-  }
-  if (columnCount === 2) {
-    return orderIndex % 2;
   }
   return 0;
 }
@@ -79,9 +75,8 @@ export function partitionGroupsByColumn(
   columnCount: number,
 ): string[][] {
   const cols: string[][] = Array.from({ length: columnCount }, () => []);
-  for (let i = 0; i < keys.length; i++) {
-    const key = keys[i]!;
-    const col = resolvePartitionColumn(i, key, groupColumn, columnCount);
+  for (const key of keys) {
+    const col = resolvePartitionColumn(key, groupColumn, columnCount);
     cols[col]!.push(key);
   }
   return cols;
@@ -95,7 +90,7 @@ export function partitionBelowGroupsByColumn(
   return partitionGroupsByColumn(belowKeys, groupColumn, columnCount);
 }
 
-/** Above zone — always two columns; unassigned groups alternate L/R like below 2C. */
+/** Above zone — always two columns; unassigned groups default to column 0. */
 export function partitionAboveGroupsByColumn(
   aboveKeys: string[],
   groupColumn: Record<string, number>,
@@ -192,7 +187,7 @@ export function findGroupDropTarget(
   return best;
 }
 
-/** Move group to adjacent column (append at end of target column). */
+/** Move group to adjacent column (append at end of target column; no paired swap). */
 export function moveGroupToColumn(
   fullOrder: string[],
   zoneKeys: string[],
@@ -200,42 +195,15 @@ export function moveGroupToColumn(
   columnCount: ConfigColumnCount | number,
   sourceGroup: string,
   targetColumn: number,
+  zone: GroupDisplayZone = "below",
 ): { newOrder: string[]; newGroupColumn: Record<string, number> } {
   const count = columnCount as ConfigColumnCount;
-  const zoneKind = count === ABOVE_COLUMN_COUNT ? "above" : "below";
-  const cols =
-    zoneKind === "above"
-      ? partitionAboveGroupsByColumn(zoneKeys, groupColumn)
-      : partitionBelowGroupsByColumn(zoneKeys, groupColumn, count);
+  const cols = partitionZoneGroupsByColumn(zoneKeys, groupColumn, count, zone);
 
   const sourceColumn = cols.findIndex((col) => col.includes(sourceGroup));
   const safeTarget = Math.min(Math.max(0, targetColumn), count - 1);
   if (sourceColumn < 0 || safeTarget === sourceColumn) {
     return { newOrder: fullOrder, newGroupColumn: groupColumn };
-  }
-
-  const sourceIdxInCol = cols[sourceColumn]?.indexOf(sourceGroup) ?? -1;
-  const targetColGroups = cols[safeTarget] ?? [];
-  let occupant: string | undefined;
-  if (count === 2 && sourceIdxInCol >= 0) {
-    const paired = targetColGroups[sourceIdxInCol];
-    if (paired && paired !== sourceGroup) occupant = paired;
-  }
-  if (!occupant) {
-    occupant = targetColGroups.find((g) => g !== sourceGroup);
-  }
-
-  if (count === 2 && occupant) {
-    const normSource = normalizeUiGroup(sourceGroup);
-    const normOccupant = normalizeUiGroup(occupant);
-    return {
-      newOrder: fullOrder,
-      newGroupColumn: {
-        ...groupColumn,
-        [normSource]: safeTarget,
-        [normOccupant]: sourceColumn,
-      },
-    };
   }
 
   const insertAt = cols[safeTarget]?.length ?? 0;
@@ -247,7 +215,7 @@ export function moveGroupToColumn(
     sourceGroup,
     safeTarget,
     insertAt,
-    zoneKind === "above" ? "above" : "below",
+    zone,
   );
 }
 

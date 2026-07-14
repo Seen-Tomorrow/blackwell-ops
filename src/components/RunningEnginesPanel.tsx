@@ -17,9 +17,17 @@ interface RunningEnginesPanelProps {
   models: ModelEntry[];
   selectedSlotIdx: number | null;
   onSelectEngine: (slotIdx: number) => void;
+  /** Compact vertical chips for launch rail. */
+  variant?: "default" | "rail";
 }
 
-export default function RunningEnginesPanel({ stack, models, selectedSlotIdx, onSelectEngine }: RunningEnginesPanelProps) {
+export default function RunningEnginesPanel({
+  stack,
+  models,
+  selectedSlotIdx,
+  onSelectEngine,
+  variant = "default",
+}: RunningEnginesPanelProps) {
   const instances = useMemo(() => {
     const result: { entry: StackEntry; modelName: string; quant: string; sizeStr: string; vramUsedGb?: number }[] = [];
     for (const s of stack) {
@@ -37,6 +45,43 @@ export default function RunningEnginesPanel({ stack, models, selectedSlotIdx, on
   }, [stack, models]);
 
   if (instances.length === 0) return null;
+
+  if (variant === "rail") {
+    return (
+      <div className="launch-rail-engines shrink-0">
+        <p className="launch-rail-engines__label text-[7px] font-mono uppercase tracking-wider text-stealth-muted/50 px-0.5 mb-1">
+          Running · {instances.length}
+        </p>
+        <div className="launch-rail-engines__list flex flex-col gap-1">
+          {instances.map((item) => {
+            const isThisSelected = selectedSlotIdx === item.entry.idx;
+            const gpuLabel = item.entry.gpu.split(",").map((g) => `G${g.trim()}`).join(",");
+            return (
+              <button
+                key={`slot-${item.entry.idx}`}
+                type="button"
+                onClick={() => onSelectEngine(item.entry.idx)}
+                className={`launch-rail-engine-chip w-full text-left rounded-sm px-2 py-1 border flex items-center gap-1.5 min-w-0 transition-colors ${
+                  isThisSelected ? "launch-rail-engine-chip--selected" : ""
+                }`}
+              >
+                <span className="text-[8px] font-mono text-white/80 shrink-0 tabular-nums">
+                  :{item.entry.port}
+                </span>
+                <span className="text-[8px] font-mono text-nv-green/90 shrink-0 truncate max-w-[3.5rem]" title={item.entry.alias}>
+                  {item.entry.alias}
+                </span>
+                <span className="text-[7px] font-mono text-telemetry-cyan/80 shrink-0">{gpuLabel}</span>
+                <span className="text-[7px] font-mono text-stealth-muted/55 truncate flex-1 min-w-0" title={item.modelName}>
+                  {item.modelName}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="border-t border-stealth-border/50">

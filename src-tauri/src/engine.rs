@@ -55,22 +55,72 @@ use crate::model_catalog;
 use crate::model_cache;
 use crate::engine_utils;
 
+const SPEC_EXTRA_PARAM_KEYS: &[&str] = &[
+    "spec_type",
+    "spec_draft_model",
+    "spec_draft_n_max",
+    "spec_draft_n_min",
+];
+
+fn is_spec_decoding_group_active(user_params: &[crate::types::UserEditedTemplateParam]) -> bool {
+    user_params
+        .iter()
+        .filter(|p| p.ui_group == "SPECULATIVE-DECODING")
+        .any(|p| !p.hidden)
+}
+
+fn model_has_embedded_mtp(model_path: &str) -> bool {
+    model_cache::get_cached(model_path)
+        .map(|m| m.nextn_predict_layers > 0)
+        .unwrap_or(false)
+}
+
+fn strip_spec_extra_params(config: &mut crate::types::EngineConfig) {
+    config.extra_params.retain(|k, _| {
+        !SPEC_EXTRA_PARAM_KEYS
+            .iter()
+            .any(|sk| k.eq_ignore_ascii_case(sk))
+    });
+}
+
+/// Drop stale spec keys from launch payload when the UI group is off or MTP is invalid for `-m`.
+fn sanitize_spec_extra_params(
+    config: &mut crate::types::EngineConfig,
+    user_params: &[crate::types::UserEditedTemplateParam],
+) {
+    let group_active = is_spec_decoding_group_active(user_params);
+    let stale_mtp = config
+        .get_param_str("spec_type")
+        .is_some_and(|t| t.eq_ignore_ascii_case("draft-mtp"))
+        && !model_has_embedded_mtp(&config.model_path);
+
+    if !group_active || stale_mtp {
+        strip_spec_extra_params(config);
+    }
+}
+
 /// Strip speculative params when unsafe: external draft-only files as `-m`, or MTP on non-MTP targets.
 fn guard_speculative_decoding(
     user_params: Vec<crate::types::UserEditedTemplateParam>,
     model_path: &str,
+    config: &crate::types::EngineConfig,
 ) -> Vec<crate::types::UserEditedTemplateParam> {
     let cached = model_cache::get_cached(model_path);
     let launchable = crate::spec_draft::is_launchable_target(cached.as_ref(), model_path);
 
     let mut filtered = user_params;
-    if !launchable {
+    let group_active = is_spec_decoding_group_active(&filtered);
+    let stale_mtp = config
+        .get_param_str("spec_type")
+        .is_some_and(|t| t.eq_ignore_ascii_case("draft-mtp"))
+        && !model_has_embedded_mtp(model_path);
+
+    if !launchable || !group_active || stale_mtp {
         for p in &mut filtered {
             if p.ui_group == "SPECULATIVE-DECODING" && !p.hidden {
                 p.hidden = true;
             }
         }
-        return filtered;
     }
 
     filtered
@@ -262,6 +312,7 @@ pub async fn launch_engine(
 
     crate::config::validate_provider_binary(binary_path.to_str().unwrap_or(""))?;
     crate::config::validate_model_path(&config.model_path)?;
+    sanitize_spec_extra_params(&mut config, &user_params);
     validate_spec_launch(&config)?;
 
     if let Some(note) = fit_scanner::model_fit_skip_note(&backend_type, &config.model_path) {
@@ -338,8 +389,8 @@ pub async fn launch_engine(
 
     let provider_display_name = backend_type.clone();
 
-    // Guard: auto-hide SPECULATIVE-DECODING params for non-MTP models — prevents CLI crash
-    let final_user_params = guard_speculative_decoding(user_params, &config.model_path);
+    // Guard: hide SPEC params when group is off, draft-only `-m`, or stale MTP on non-MTP targets.
+    let final_user_params = guard_speculative_decoding(user_params, &config.model_path, &config);
 
     let supports_fusion = template.spawn_profile.supports_fusion;
     let fusion_adapter = fusion::resolve_adapter(
@@ -727,6 +778,9 @@ fn assemble_launch_command(
         .map(|p| p.user_edited_template_params.clone())
         .unwrap_or_default();
 
+    let mut config = config.clone();
+    sanitize_spec_extra_params(&mut config, &user_params);
+
     let test_has_split = config
         .extra_params
         .get("__test_args")
@@ -745,9 +799,9 @@ fn assemble_launch_command(
         .unwrap_or(false);
 
     let gpu_count = detect_gpu_count();
-    let gpu_mask = engine_utils::compute_gpu_mask(config, gpu_count, test_has_split);
-    let final_user_params = guard_speculative_decoding(user_params, &config.model_path);
-    let cmd_args = template.build_command(config, &gpu_mask, &final_user_params);
+    let gpu_mask = engine_utils::compute_gpu_mask(&config, gpu_count, test_has_split);
+    let final_user_params = guard_speculative_decoding(user_params, &config.model_path, &config);
+    let cmd_args = template.build_command(&config, &gpu_mask, &final_user_params);
     let launch_cmd = format!(
         "{} {}",
         engine_utils::format_debug_executable(&binary_path),

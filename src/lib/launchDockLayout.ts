@@ -18,3 +18,15 @@ export function clampLaunchDockRailWidth(width: number): number {
     Math.max(LAUNCH_DOCK_RAIL_WIDTH_MIN, Math.round(width)),
   );
 }
+
+/** Telemetry vs launch vertical split inside the right rail (fraction of rail height). */
+export const LAUNCH_RAIL_TELEMETRY_RATIO_DEFAULT = 0.38;
+export const LAUNCH_RAIL_TELEMETRY_RATIO_MIN = 0.22;
+export const LAUNCH_RAIL_TELEMETRY_RATIO_MAX = 0.72;
+
+export function clampLaunchRailTelemetryRatio(ratio: number): number {
+  return Math.min(
+    LAUNCH_RAIL_TELEMETRY_RATIO_MAX,
+    Math.max(LAUNCH_RAIL_TELEMETRY_RATIO_MIN, ratio),
+  );
+}

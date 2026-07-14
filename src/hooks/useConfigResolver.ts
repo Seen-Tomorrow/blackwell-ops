@@ -3,8 +3,12 @@
 import { useState, useCallback, useEffect, useMemo } from "react";
 import type { ModelEntry, UserEditedTemplateParam } from "../lib/types";
 import { paramsVisibilityFingerprint, resolveParamDefaultValue } from "../lib/paramConfigResolve";
-import { MODEL_SPEC_PARAM_KEYS } from "../lib/specDraft";
-import { loadModelSpecOverride, saveModelSpecOverride } from "../lib/specDraft";
+import {
+  isSpecDecodingGroupActive,
+  loadModelSpecOverride,
+  MODEL_SPEC_PARAM_KEYS,
+  saveModelSpecOverride,
+} from "../lib/specDraft";
 import {
   catalogOverrideKey,
   modelSpecOverrideKey,
@@ -57,14 +61,17 @@ export function useConfigResolver({
 
     const stored = readJsonStorage<Record<string, unknown>>(catalogOverrideKey(backendType)) ?? {};
     const modelSpec = modelPath ? loadModelSpecOverride(modelPath) : null;
+    const specGroupActive = isSpecDecodingGroupActive(userEditedParams);
     const resolved: Record<string, any> = {};
 
     // Only visible params enter active config — hidden group params stay omitted from CLI path.
     for (const p of userEditedParams) {
       const isSpecKey = SPEC_KEY_SET.has(p.key);
       const internalSpec = p.key === "spec_draft_model";
+      if (isSpecKey && !specGroupActive) continue;
       if (!internalSpec && (p.hidden || !p.values?.length)) continue;
       if (internalSpec && p.hidden) {
+        if (!specGroupActive) continue;
         const modelVal = modelSpec?.[p.key as keyof ModelSpecOverride];
         if (modelVal !== undefined) resolved[p.key] = modelVal;
         continue;
