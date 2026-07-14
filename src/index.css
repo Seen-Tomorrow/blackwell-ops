@@ -1713,6 +1713,51 @@ html, body, #root {
   position: relative;
 }
 
+/* Catalog list — industrial rail texture (mirrors config-launch-rail) */
+[data-model-catalog] .catalog-list-panel.eink-panel-wrapper {
+  isolation: isolate;
+  background-color: var(--theme-industrial-bg);
+  background-image: var(--theme-industrial-texture-active);
+  border: none;
+  border-right: 1.5px solid var(--theme-bezel-edge-hi);
+  box-shadow:
+    2px 0 6px color-mix(in srgb, #000000 24%, transparent),
+    8px 0 20px color-mix(in srgb, #000000 12%, transparent);
+}
+
+[data-model-catalog] .catalog-list-panel.eink-panel-wrapper::before {
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--theme-bezel-edge-hi) 75%, transparent),
+    transparent
+  );
+}
+
+[data-theme="arctic"] [data-model-catalog] .catalog-list-panel.eink-panel-wrapper {
+  background-color: #b6c2ce;
+  background-image:
+    var(--theme-industrial-texture-active),
+    linear-gradient(175deg, #d6dee6 0%, #b6c2ce 28%, #9aacb8 52%, #b2beca 78%, #c6ced6 100%);
+}
+
+[data-model-catalog] .catalog-list-scroll.eink-scrollbar::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--theme-industrial-muted) 40%, var(--theme-industrial-bg) 60%);
+}
+
+[data-model-catalog] .catalog-list-scroll.eink-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--theme-accent) 36%, var(--theme-industrial-bg) 64%);
+}
+
+[data-theme="arctic"] [data-model-catalog] .catalog-list-scroll.eink-scrollbar::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, #4a5a68 38%, #9aacb8 62%);
+}
+
+[data-theme="arctic"] [data-model-catalog] .catalog-list-scroll.eink-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, #3a4a58 42%, #8a9aa8 58%);
+}
+
 .catalog-split-rail--collapsed {
   overflow: visible;
 }
@@ -1845,6 +1890,12 @@ html, body, #root {
   flex-shrink: 0;
 }
 
+.catalog-cycle-btn {
+  min-width: 2.125rem;
+  text-align: center;
+  flex-shrink: 0;
+}
+
 .catalog-search-wrap {
   min-width: 0;
 }
@@ -1855,6 +1906,17 @@ html, body, #root {
 
 .catalog-search-actions {
   max-width: 42%;
+}
+
+/* Catalog list — vertical scrollbar on the left (Chromium / WebView2) */
+.catalog-list-scroll {
+  direction: rtl;
+  /* Physical right = split side — keep list content off the resize rail */
+  padding-right: 1.125rem;
+}
+
+.catalog-list-scroll > * {
+  direction: ltr;
 }
 
 /* Visible-count viewport — CSS estimate avoids post-mount measure layout shifts */
@@ -1900,6 +1962,36 @@ html, body, #root {
   background: color-mix(in srgb, var(--theme-panel-accent) 70%, var(--theme-panel) 30%);
   border-color: color-mix(in srgb, var(--theme-border) 75%, var(--theme-accent) 25%);
   box-shadow: 0 1px 3px color-mix(in srgb, var(--theme-text) 6%, transparent);
+}
+
+/* Catalog cards on industrial panel — flat rest state, raised selection ring */
+[data-model-catalog] .buried-card {
+  background: color-mix(in srgb, var(--theme-panel) 62%, transparent);
+  border-color: color-mix(in srgb, var(--theme-border-subtle) 88%, transparent);
+}
+
+[data-model-catalog] .buried-card:hover {
+  background: color-mix(in srgb, var(--theme-panel) 78%, var(--theme-panel-accent) 22%);
+  border-color: color-mix(in srgb, var(--theme-border) 68%, var(--theme-accent) 32%);
+}
+
+[data-model-catalog] .gunmetal-card {
+  background-color: color-mix(in srgb, var(--theme-panel) 74%, var(--theme-card-selected-accent) 6%);
+  background-image: linear-gradient(
+    165deg,
+    color-mix(in srgb, var(--theme-panel) 90%, transparent) 0%,
+    color-mix(in srgb, var(--theme-panel-accent) 62%, transparent) 100%
+  );
+  border: 2px solid color-mix(in srgb, var(--theme-card-selected-accent) 72%, var(--theme-border)) !important;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--theme-card-selected-accent) 38%, transparent),
+    0 0 14px color-mix(in srgb, var(--theme-card-selected-accent) 22%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 24%, transparent);
+}
+
+[data-model-catalog] .gunmetal-card::before {
+  width: 4px;
+  box-shadow: 0 0 8px color-mix(in srgb, var(--theme-card-selected-accent) 52%, transparent);
 }
 
 /* ── E-ink Card — glass panel over eink surface ─── */
@@ -5149,12 +5241,13 @@ html:not([data-theme="arctic"]) [data-display-texture="clean"] .phosphor-display
   align-items: stretch;
 }
 
-/* Match center column width when right rail / HW monitor column is open */
-[data-config-panel][data-launch-dock-position="right"] .config-provider-profile-bar,
-[data-config-panel][data-hw-monitor-open="true"] .config-provider-profile-bar {
-  box-sizing: border-box;
-  width: calc(100% - var(--config-launch-rail-width, 240px) - 7px);
-  max-width: calc(100% - var(--config-launch-rail-width, 240px) - 7px);
+.config-panel-top-chrome {
+  min-width: 0;
+}
+
+.config-params-above-shell {
+  min-width: 0;
+  width: 100%;
   flex-shrink: 0;
 }
 
@@ -5570,6 +5663,23 @@ html:not([data-theme="arctic"]) [data-display-texture="clean"] .phosphor-display
 }
 
 /* ── Launch dock layout — bottom bar vs right rail ─── */
+.config-panel-body {
+  min-width: 0;
+}
+
+.config-panel-body--split {
+  flex-direction: row;
+  align-items: stretch;
+}
+
+.config-panel-body--stacked {
+  flex-direction: column;
+}
+
+.config-panel-center-stack {
+  min-width: 0;
+}
+
 .config-rail-workspace {
   min-width: 0;
 }
@@ -5621,6 +5731,29 @@ html:not([data-theme="arctic"]) [data-display-texture="clean"] .phosphor-display
   background: var(--theme-panel-accent);
 }
 
+.config-panel-toolbar__label {
+  font-size: 7px;
+  font-family: ui-monospace, monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--theme-text-muted) 45%, transparent);
+  flex-shrink: 0;
+}
+
+.config-panel-toolbar__chrome {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.config-panel-toolbar__sep {
+  align-self: stretch;
+  width: 1px;
+  min-height: 1.1rem;
+  margin: 0 2px;
+  background: color-mix(in srgb, var(--theme-border-subtle) 70%, transparent);
+  flex-shrink: 0;
+}
+
 .config-launch-rail {
   position: relative;
   z-index: 1;
@@ -5634,6 +5767,33 @@ html:not([data-theme="arctic"]) [data-display-texture="clean"] .phosphor-display
     -8px 0 20px color-mix(in srgb, #000000 12%, transparent);
   background-color: var(--theme-industrial-bg);
   background-image: var(--theme-industrial-texture-active);
+}
+
+.launch-rail-upper-pad,
+.launch-rail-align-pad,
+.launch-rail-lower-fill {
+  flex-shrink: 0;
+  min-width: 0;
+  pointer-events: none;
+}
+
+.launch-rail-lower-fill {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.launch-rail-body {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+}
+
+/* ARCTIC — full-height launch rail matches catalog aluminium panel */
+[data-theme="arctic"] [data-config-panel] .config-launch-rail {
+  background-color: #b6c2ce;
+  background-image:
+    var(--theme-industrial-texture-active),
+    linear-gradient(175deg, #d6dee6 0%, #b6c2ce 28%, #9aacb8 52%, #b2beca 78%, #c6ced6 100%);
 }
 
 .launch-rail-inner-split-handle {
@@ -8418,8 +8578,22 @@ button.engine-logs-slot-chip.engine-logs-slot-chip--active .engine-logs-slot-chi
   color: var(--theme-text-muted) !important;
 }
 
-[data-theme="arctic"] .buried-card {
+[data-theme="arctic"] [data-model-catalog] .buried-card {
   background: color-mix(in srgb, var(--theme-panel) 82%, transparent);
+}
+
+[data-theme="arctic"] [data-model-catalog] .gunmetal-card {
+  background-color: color-mix(in srgb, var(--theme-panel) 94%, #b6c2ce 6%);
+  background-image: linear-gradient(
+    165deg,
+    color-mix(in srgb, #f4f6f8 92%, transparent) 0%,
+    color-mix(in srgb, var(--theme-panel-accent) 78%, transparent) 100%
+  );
+  border-color: color-mix(in srgb, var(--theme-card-selected-accent) 82%, #3a4a58) !important;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--theme-card-selected-accent) 42%, transparent),
+    0 2px 12px color-mix(in srgb, #3a4a58 18%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.58);
 }
 
 /* ARCTIC catalog — quant badge: dark teal ink on white/light cards */

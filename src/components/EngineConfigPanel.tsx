@@ -452,8 +452,11 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     resetRatio: resetLaunchRailInnerRatio,
     setChromeStackHeight: setLaunchRailChromeHeight,
   } = useLaunchRailInnerResize(showRailInnerSplit);
+  const launchRailTopChromeMeasureRef = useRef<HTMLDivElement>(null);
   const launchRailDisplayMeasureRef = useRef<HTMLDivElement>(null);
   const launchRailToolbarMeasureRef = useRef<HTMLDivElement>(null);
+  const [launchRailUpperPadHeight, setLaunchRailUpperPadHeight] = useState(0);
+  const [launchRailDisplayHeight, setLaunchRailDisplayHeight] = useState(0);
 
   const toggleHwMonitor = useCallback(() => {
     const next = !hwMonitorOpen;
@@ -467,23 +470,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     setEnginesInRail(next);
     saveEnginesInRail(next);
   }, [enginesInRail]);
-
-  useLayoutEffect(() => {
-    if (!showRailInnerSplit) return;
-    const apply = () => {
-      const displayH = launchRailDisplayMeasureRef.current?.offsetHeight ?? 0;
-      const toolbarH = launchRailToolbarMeasureRef.current?.offsetHeight ?? 0;
-      setLaunchRailChromeHeight(displayH + toolbarH);
-    };
-    apply();
-    if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(apply);
-    const displayEl = launchRailDisplayMeasureRef.current;
-    const toolbarEl = launchRailToolbarMeasureRef.current;
-    if (displayEl) observer.observe(displayEl);
-    if (toolbarEl) observer.observe(toolbarEl);
-    return () => observer.disconnect();
-  }, [showRailInnerSplit, setLaunchRailChromeHeight, model, gpus.length]);
 
   const { texture: displayTexture } = useDisplayTexture();
 
@@ -1574,6 +1560,46 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     isGroupVisible,
   });
 
+  useLayoutEffect(() => {
+    if (!showRightColumn) return;
+    const applyTop = () => {
+      setLaunchRailUpperPadHeight(launchRailTopChromeMeasureRef.current?.offsetHeight ?? 0);
+    };
+    applyTop();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(applyTop);
+    const topEl = launchRailTopChromeMeasureRef.current;
+    if (topEl) observer.observe(topEl);
+    return () => observer.disconnect();
+  }, [showRightColumn, resolvedProviders, aboveGroupKeys.length]);
+
+  useLayoutEffect(() => {
+    if (!hwMonitorOpen && !showLaunchRail) return;
+    const apply = () => {
+      const displayH = launchRailDisplayMeasureRef.current?.offsetHeight ?? 0;
+      setLaunchRailDisplayHeight(displayH);
+      if (showRailInnerSplit) {
+        const toolbarH = launchRailToolbarMeasureRef.current?.offsetHeight ?? 0;
+        setLaunchRailChromeHeight(displayH + toolbarH);
+      }
+    };
+    apply();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(apply);
+    const displayEl = launchRailDisplayMeasureRef.current;
+    const toolbarEl = launchRailToolbarMeasureRef.current;
+    if (displayEl) observer.observe(displayEl);
+    if (toolbarEl) observer.observe(toolbarEl);
+    return () => observer.disconnect();
+  }, [
+    hwMonitorOpen,
+    showLaunchRail,
+    showRailInnerSplit,
+    setLaunchRailChromeHeight,
+    model,
+    gpus.length,
+  ]);
+
   const builtProfiles = useMemo(() => {
     const currentProvider = resolvedProviders?.find((p) => p.id === effectiveBackendType);
     return ENV_ORDER.filter((env) => isProfileBuilt(currentProvider, env));
@@ -2230,12 +2256,15 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       data-launch-dock-collapsed={launchDockCollapsed && launchDockPosition === "bottom" ? "true" : "false"}
       data-hw-monitor-open={hwMonitorOpen ? "true" : "false"}
       data-engines-in-rail={enginesInRail ? "true" : "false"}
-      style={
-        showRightColumn
-          ? ({ "--config-launch-rail-width": `${launchRailWidth}px` } as React.CSSProperties)
-          : undefined
-      }
     >
+      <div
+        ref={launchDockMainRef}
+        className={`config-panel-body flex flex-1 min-h-0 min-w-0${
+          showRightColumn ? " config-panel-body--split" : " config-panel-body--stacked"
+        }`}
+      >
+        <div className="config-panel-center-stack flex flex-col flex-1 min-h-0 min-w-0">
+          <div ref={launchRailTopChromeMeasureRef} className="config-panel-top-chrome flex-shrink-0">
       {resolvedProviders && resolvedProviders.length > 0 && (
         <div className="px-4 py-2 border-b section-divider relative flex-shrink-0 config-provider-profile-bar">
           <div className="config-provider-profile-bar__half config-provider-profile-bar__half--providers">
@@ -2265,7 +2294,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             <span className="config-provider-profile-bar__label">PROFILE</span>
             {driverVersion && (
               <span className="text-[7px] font-mono text-stealth-muted/60 ml-1" title="Driver version from nvidia-smi. Affects which CUDA profile(s) will work.">
-                drv {driverVersion.split(".")[0]}
+                display driver v{driverVersion.split(".")[0]}
               </span>
             )}
             <div className="flex gap-1 flex-wrap flex-1 min-w-0">
@@ -2318,7 +2347,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       )}
 
       {aboveGroupKeys.length > 0 && (
-        <div className={`config-params-above relative${paramsBypassedClass}`}>
+        <div className={`config-params-above-shell relative${paramsBypassedClass}`}>
           <ConfigBelowGroups
             zone="above"
             columnCount={2}
@@ -2335,11 +2364,9 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           />
         </div>
       )}
+          </div>
 
-      <div
-        ref={launchDockMainRef}
-        className="config-rail-workspace flex-1 min-h-0"
-      >
+      <div className="config-rail-workspace flex-1 min-h-0">
       <div
         className={
           showRightColumn
@@ -2348,7 +2375,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         }
       >
       <div
-        ref={showRailInnerSplit ? launchRailDisplayMeasureRef : undefined}
+        ref={hwMonitorOpen || showLaunchRail ? launchRailDisplayMeasureRef : undefined}
         className={onboardingDisplay.area}
         data-display-texture={displayTexture}
       >
@@ -2474,90 +2501,11 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       >
       <div
         ref={showRailInnerSplit ? launchRailToolbarMeasureRef : undefined}
-        className="config-panel-toolbar px-4 py-0.5 flex items-center justify-between gap-2 flex-shrink-0 border-b section-divider"
+        className="config-panel-toolbar px-4 py-0.5 flex items-center gap-3 flex-shrink-0 border-b section-divider"
       >
-        <div className="config-launch-dock-controls flex items-center gap-1.5 min-w-0">
-          <span className="text-[7px] font-mono text-stealth-muted/45 uppercase tracking-wider shrink-0">
-            Dock
-          </span>
-          <div className="flex items-center gap-0.5">
-            <button
-              type="button"
-              onClick={() => setLaunchDockPositionUser("bottom")}
-              className={`px-1.5 py-0.5 text-[8px] font-mono rounded-sm border transition-colors ${
-                launchDockPosition === "bottom"
-                  ? "border-nv-green/45 text-nv-green/90 bg-nv-green/10"
-                  : "border-stealth-border/40 text-stealth-muted/45 hover:text-stealth-muted"
-              }`}
-              title="Launch dock along the bottom"
-            >
-              BOT
-            </button>
-            <button
-              type="button"
-              onClick={() => setLaunchDockPositionUser("right")}
-              className={`px-1.5 py-0.5 text-[8px] font-mono rounded-sm border transition-colors ${
-                launchDockPosition === "right"
-                  ? "border-nv-green/45 text-nv-green/90 bg-nv-green/10"
-                  : "border-stealth-border/40 text-stealth-muted/45 hover:text-stealth-muted"
-              }`}
-              title="Launch rail — full-height column on the right (auto on short viewports until you pick)"
-            >
-              RAIL
-            </button>
-            {launchDockPosition === "bottom" && (
-              <button
-                type="button"
-                onClick={toggleLaunchDockCollapsed}
-                className="px-1 py-0.5 text-[8px] font-mono rounded-sm border border-stealth-border/40 text-stealth-muted/45 hover:text-stealth-muted transition-colors"
-                title={launchDockCollapsed ? "Expand launch dock (show custom flags)" : "Collapse launch dock — alias, port, launch only"}
-              >
-                {launchDockCollapsed ? "▼" : "▲"}
-              </button>
-            )}
-          </div>
-          {!launchDockPositionExplicit && (
-            <span className="text-[7px] font-mono text-stealth-muted/40 hidden md:inline shrink-0">
-              auto
-            </span>
-          )}
-          <button
-            type="button"
-            onClick={toggleHwMonitor}
-            className={`px-1.5 py-0.5 text-[8px] font-mono rounded-sm border transition-colors ${
-              hwMonitorOpen
-                ? "border-nv-green/45 text-nv-green/90 bg-nv-green/10"
-                : "border-stealth-border/40 text-stealth-muted/45 hover:text-stealth-muted"
-            }`}
-            title={
-              hwMonitorOpen
-                ? "HW monitor on — live CPU/GPU stats (CPU polling active)"
-                : "HW monitor off — open for live CPU/GPU column (works with BOT or RAIL dock)"
-            }
-          >
-            HW
-          </button>
-          {showLaunchRail && (
-            <button
-              type="button"
-              onClick={toggleEnginesInRail}
-              className={`px-1.5 py-0.5 text-[8px] font-mono rounded-sm border transition-colors ${
-                enginesInRail
-                  ? "border-nv-green/45 text-nv-green/90 bg-nv-green/10"
-                  : "border-stealth-border/40 text-stealth-muted/45 hover:text-stealth-muted"
-              }`}
-              title={
-                enginesInRail
-                  ? "Engine switcher in launch rail — click to restore below VRAM display"
-                  : "Engine switcher below VRAM display — click to move into launch rail"
-              }
-            >
-              ENG{enginesInRail ? "↑RAIL" : "↓DSP"}
-            </button>
-          )}
-        </div>
         {allParamsForDisplay.length > 0 && (
-          <div className="config-panel-toolbar__view flex items-center gap-2 flex-shrink-0">
+          <div className="config-panel-toolbar__config flex items-center gap-1.5 flex-shrink-0">
+            <span className="config-panel-toolbar__label">CONFIG</span>
             <ConfigViewToggle
               view={configView}
               onChange={(view) => {
@@ -2569,41 +2517,126 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                 }
               }}
             />
-            <div className="config-column-count flex items-center gap-0.5">
-              {([1, 2, 3] as ConfigColumnCount[]).map((n) => (
-                <button
-                  key={n}
-                  type="button"
-                  onClick={() => setBelowColumnCount(n)}
-                  className={`config-column-count__btn px-1.5 py-0.5 text-[8px] font-mono rounded-sm border transition-colors ${
-                    columnCount === n
-                      ? "border-nv-green/45 text-nv-green/90 bg-nv-green/10"
-                      : "border-stealth-border/40 text-stealth-muted/45 hover:text-stealth-muted"
-                  }`}
-                  title={`${n} column${n > 1 ? "s" : ""} below display`}
-                >
-                  {n}C
-                </button>
-              ))}
-            </div>
-            <button
-              type="button"
-              onClick={toggleLayoutMode}
-              className={`config-layout-mode-btn px-2 py-0.5 text-[8px] font-mono rounded-sm border transition-colors ${
-                layoutModeActive
-                  ? "config-layout-mode-btn--on border-nv-green/50 text-nv-green bg-nv-green/10"
-                  : "border-stealth-border/40 text-stealth-muted/50 hover:text-stealth-muted"
-              }`}
-              title={
-                layoutModeActive
-                  ? "Layout mode on — drag, pin, and hide groups"
-                  : "Edit group layout — reorder, pin above/below, hide"
-              }
-            >
-              LAYOUT{layoutModeActive ? " ON" : ""}
-            </button>
           </div>
         )}
+        <div className="config-panel-toolbar__chrome flex items-center gap-1.5 min-w-0 ml-auto flex-shrink-0">
+          <div className="config-launch-dock-controls flex items-center gap-1.5 min-w-0">
+            <span className="config-panel-toolbar__label">LAUNCH DOCK</span>
+            <div className="flex items-center gap-0.5">
+              <button
+                type="button"
+                onClick={() => setLaunchDockPositionUser("bottom")}
+                className={`px-1.5 py-0.5 text-[8px] font-mono rounded-sm border transition-colors ${
+                  launchDockPosition === "bottom"
+                    ? "border-nv-green/45 text-nv-green/90 bg-nv-green/10"
+                    : "border-stealth-border/40 text-stealth-muted/45 hover:text-stealth-muted"
+                }`}
+                title="Launch dock along the bottom"
+              >
+                BOTOM
+              </button>
+              {launchDockPosition === "bottom" && (
+                <button
+                  type="button"
+                  onClick={toggleLaunchDockCollapsed}
+                  className="px-1 py-0.5 text-[8px] font-mono rounded-sm border border-stealth-border/40 text-stealth-muted/45 hover:text-stealth-muted transition-colors"
+                  title={launchDockCollapsed ? "Expand launch dock (show custom flags)" : "Collapse launch dock — alias, port, launch only"}
+                >
+                  {launchDockCollapsed ? "▼" : "▲"}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setLaunchDockPositionUser("right")}
+                className={`px-1.5 py-0.5 text-[8px] font-mono rounded-sm border transition-colors ${
+                  launchDockPosition === "right"
+                    ? "border-nv-green/45 text-nv-green/90 bg-nv-green/10"
+                    : "border-stealth-border/40 text-stealth-muted/45 hover:text-stealth-muted"
+                }`}
+                title="Launch rail — full-height column on the right (auto on short viewports until you pick)"
+              >
+                RIGHT RAIL
+              </button>
+            </div>
+            {!launchDockPositionExplicit && (
+              <span className="text-[7px] font-mono text-stealth-muted/40 hidden md:inline shrink-0">
+                auto
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={toggleHwMonitor}
+              className={`px-1.5 py-0.5 text-[8px] font-mono rounded-sm border transition-colors ${
+                hwMonitorOpen
+                  ? "border-nv-green/45 text-nv-green/90 bg-nv-green/10"
+                  : "border-stealth-border/40 text-stealth-muted/45 hover:text-stealth-muted"
+              }`}
+              title={
+                hwMonitorOpen
+                  ? "HW monitor on — live CPU/GPU stats (CPU polling active)"
+                  : "HW monitor off — open for live CPU/GPU column (works with BOT or RAIL dock)"
+              }
+            >
+              HW MONITOR
+            </button>
+            {showLaunchRail && (
+              <button
+                type="button"
+                onClick={toggleEnginesInRail}
+                className={`px-1.5 py-0.5 text-[8px] font-mono rounded-sm border transition-colors ${
+                  enginesInRail
+                    ? "border-nv-green/45 text-nv-green/90 bg-nv-green/10"
+                    : "border-stealth-border/40 text-stealth-muted/45 hover:text-stealth-muted"
+                }`}
+                title={
+                  enginesInRail
+                    ? "Engine switcher in launch rail — click to restore below VRAM display"
+                    : "Engine switcher below VRAM display — click to move into launch rail"
+                }
+              >
+                ENGINES{enginesInRail ? "↑RAIL" : "↓DSP"}
+              </button>
+            )}
+          </div>
+          {allParamsForDisplay.length > 0 && (
+            <>
+              <span className="config-panel-toolbar__sep" aria-hidden />
+              <div className="config-column-count flex items-center gap-0.5 flex-shrink-0">
+                {([1, 2, 3] as ConfigColumnCount[]).map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => setBelowColumnCount(n)}
+                    className={`config-column-count__btn px-1.5 py-0.5 text-[8px] font-mono rounded-sm border transition-colors ${
+                      columnCount === n
+                        ? "border-nv-green/45 text-nv-green/90 bg-nv-green/10"
+                        : "border-stealth-border/40 text-stealth-muted/45 hover:text-stealth-muted"
+                    }`}
+                    title={`${n} column${n > 1 ? "s" : ""} below display`}
+                  >
+                    {n}C
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={toggleLayoutMode}
+                className={`config-layout-mode-btn px-2 py-0.5 text-[8px] font-mono rounded-sm border transition-colors ${
+                  layoutModeActive
+                    ? "config-layout-mode-btn--on border-nv-green/50 text-nv-green bg-nv-green/10"
+                    : "border-stealth-border/40 text-stealth-muted/50 hover:text-stealth-muted"
+                }`}
+                title={
+                  layoutModeActive
+                    ? "Layout mode on — drag, pin, and hide groups"
+                    : "Edit group layout — reorder, pin above/below, hide"
+                }
+              >
+                LAYOUT{layoutModeActive ? " ON" : ""}
+              </button>
+            </>
+          )}
+        </div>
       </div>
       <div className={`config-params-scroll px-4 py-3 relative flex-1 overflow-y-auto eink-scrollbar eink-panel min-h-0${paramsBypassedClass}`}>
         {allParamsForDisplay.length === 0 ? (
@@ -2804,6 +2837,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       )}
       </div>
       </div>
+      </div>
+        </div>
 
       {showRightColumn && (
         <>
@@ -2821,24 +2856,41 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             title="Drag to resize side column · double-click to reset"
           />
           <div
-            ref={launchRailInnerRef}
-            className={`config-launch-rail flex-shrink-0 min-h-0 min-w-0${hwMonitorOpen && !showLaunchRail ? " config-launch-rail--hw-only" : ""}`}
+            className={`config-launch-rail flex flex-col flex-shrink-0 min-h-0 min-w-0 self-stretch${
+              hwMonitorOpen && !showLaunchRail ? " config-launch-rail--hw-only" : ""
+            }`}
             style={{ width: launchRailWidth }}
           >
+            {launchRailUpperPadHeight > 0 ? (
+              <div
+                className="launch-rail-upper-pad flex-shrink-0"
+                style={{ height: launchRailUpperPadHeight }}
+                aria-hidden
+              />
+            ) : null}
+            <div ref={launchRailInnerRef} className="launch-rail-body flex flex-col flex-1 min-h-0 min-w-0">
             {hwMonitorOpen && (
               <div
-                className={`launch-rail-telemetry min-h-0 overflow-hidden ${
-                  showLaunchRail ? "flex-shrink-0" : "flex-1"
-                }`}
-                style={
-                  showLaunchRail && launchRailTelemetryHeight > 0
-                    ? { height: launchRailTelemetryHeight }
-                    : undefined
-                }
+                className="launch-rail-telemetry flex-shrink-0 min-h-0 overflow-hidden"
+                style={{
+                  height:
+                    showLaunchRail && launchRailTelemetryHeight > 0
+                      ? launchRailTelemetryHeight
+                      : launchRailDisplayHeight > 0
+                        ? launchRailDisplayHeight
+                        : undefined,
+                }}
               >
                 <LaunchRailTelemetry />
               </div>
             )}
+            {showLaunchRail && !hwMonitorOpen && launchRailDisplayHeight > 0 ? (
+              <div
+                className="launch-rail-align-pad flex-shrink-0"
+                style={{ height: launchRailDisplayHeight }}
+                aria-hidden
+              />
+            ) : null}
             {showRailInnerSplit && (
               <div
                 role="separator"
@@ -3025,6 +3077,10 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             </div>
             </div>
             )}
+            {hwMonitorOpen && !showLaunchRail ? (
+              <div className="launch-rail-lower-fill flex-1 min-h-0" aria-hidden />
+            ) : null}
+            </div>
           </div>
         </>
       )}

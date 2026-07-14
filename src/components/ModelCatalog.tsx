@@ -1,4 +1,5 @@
-import { useRef, useEffect, useMemo, useState } from "react";
+import { useRef, useEffect, useMemo, useState, useCallback } from "react";
+import type { CatalogDraftFilter } from "../lib/specDraft";
 import type { EngineConfig, ModelEntry, ProviderConfig, StackEntry } from "../lib/types";
 import EngineConfigPanel from "./EngineConfigPanel";
 import ModelCard from "./ModelCard";
@@ -30,6 +31,15 @@ interface ModelCatalogProps {
 
 const sortLabels: Record<string, string> = {
   name: 'NAME', author: 'AUTHOR', size_str: 'SIZE', date: 'DATE'
+};
+
+const DRAFT_FILTER_CYCLE: CatalogDraftFilter[] = ["regular", "draft", "all"];
+const VISIBLE_COUNT_CYCLE: Array<"4" | "6" | "8" | "all"> = ["4", "6", "8", "all"];
+
+const draftFilterLabels: Record<CatalogDraftFilter, string> = {
+  regular: "MAIN",
+  draft: "DRAFT",
+  all: "ALL",
 };
 
 export default function ModelCatalog(props: ModelCatalogProps) {
@@ -72,6 +82,18 @@ export default function ModelCatalog(props: ModelCatalogProps) {
     fitScanAvailable, isFitScanning, getFitScanActiveLabel, getFitScanBadge, modelNeedsFitScan, handleFitScanModel,
     fitScanningCount,
     zone, visibleCount, setVisibleCount } = catalog;
+
+  const cycleDraftFilter = useCallback(() => {
+    const idx = DRAFT_FILTER_CYCLE.indexOf(draftFilter);
+    const next = DRAFT_FILTER_CYCLE[(idx + 1) % DRAFT_FILTER_CYCLE.length];
+    setCatalogDraftFilter(next);
+  }, [draftFilter, setCatalogDraftFilter]);
+
+  const cycleVisibleCount = useCallback(() => {
+    const idx = VISIBLE_COUNT_CYCLE.indexOf(visibleCount);
+    const next = VISIBLE_COUNT_CYCLE[(idx + 1) % VISIBLE_COUNT_CYCLE.length];
+    setVisibleCount(next);
+  }, [visibleCount, setVisibleCount]);
 
   useEffect(() => {
     const workspace = splitContainerRef.current;
@@ -375,52 +397,27 @@ export default function ModelCatalog(props: ModelCatalogProps) {
         ))}
       </div>
       <div className="catalog-sort-actions flex items-center gap-1 shrink-0">
-      {fitScanningCount > 0 && (
-        <span className="catalog-scan-status text-[8px] font-mono text-violet-300/80 whitespace-nowrap">
-          FIT {fitScanningCount}
-        </span>
-      )}
-      <div className="catalog-draft-filter flex items-center gap-0.5 mr-1">
-        {(["regular", "draft", "all"] as const).map((mode) => (
-          <button
-            key={mode}
-            onClick={() => setCatalogDraftFilter(mode)}
-            className={`px-1.5 py-0 text-[7px] font-mono uppercase rounded-sm transition-colors ${
-              draftFilter === mode ? "value-chip-active" : "value-chip"
-            }`}
-            title={
-              mode === "regular"
-                ? "Main models only"
-                : mode === "draft"
-                  ? "Draft models (DFlash / Eagle3)"
-                  : "All GGUF files"
-            }
-          >
-            {mode === "regular" ? "MAIN" : mode === "draft" ? "DRAFT" : "ALL"}
-          </button>
-        ))}
-      </div>
-      <div className="flex items-center gap-1">
-        {(["4", "6", "8"] as const).map(count => (
-          <button
-            key={count}
-            onClick={() => setVisibleCount(count)}
-            className={`px-1.5 py-0 text-[7px] font-mono rounded-sm transition-colors ${
-              visibleCount === count ? "value-chip-active" : "value-chip"
-            }`}
-          >
-            {count}
-          </button>
-        ))}
+        {fitScanningCount > 0 && (
+          <span className="catalog-scan-status text-[8px] font-mono text-violet-300/80 whitespace-nowrap">
+            FIT {fitScanningCount}
+          </span>
+        )}
         <button
-          onClick={() => setVisibleCount("all")}
-          className={`px-1.5 py-0 text-[7px] font-mono rounded-sm transition-colors ${
-            visibleCount === "all" ? "value-chip-active" : "value-chip"
-          }`}
+          type="button"
+          onClick={cycleDraftFilter}
+          className="catalog-cycle-btn value-chip px-1.5 py-0 text-[7px] font-mono uppercase rounded-sm transition-colors"
+          title="Model filter — click to cycle: MAIN → DRAFT → ALL"
         >
-          ALL
+          {draftFilterLabels[draftFilter]}
         </button>
-      </div>
+        <button
+          type="button"
+          onClick={cycleVisibleCount}
+          className="catalog-cycle-btn value-chip px-1.5 py-0 text-[7px] font-mono rounded-sm transition-colors"
+          title="Catalog list height — click to cycle: 4 → 6 → 8 → MAX (full scroll)"
+        >
+          {visibleCount === "all" ? "MAX" : visibleCount}
+        </button>
       </div>
     </div>
   );
@@ -568,7 +565,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
             ref={catalogScrollRef}
             id="model-table-container"
             data-visible-count={visibleCount}
-            className={`overflow-y-auto eink-scrollbar pt-3 px-3 pb-5 ${
+            className={`catalog-list-scroll overflow-y-auto eink-scrollbar pt-3 px-3 pb-5 ${
               visibleCount === "all" ? "flex-1 min-h-0" : "catalog-scroll--limited flex-shrink-0"
             }`}
           >
