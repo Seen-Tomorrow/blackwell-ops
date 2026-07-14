@@ -1,9 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  LAUNCH_DOCK_RAIL_WIDTH_DEFAULT,
+  LAUNCH_DOCK_RAIL_WIDTH_MAX,
+  LAUNCH_DOCK_RAIL_WIDTH_MIN,
+} from "../lib/launchDockLayout";
+import {
   CATALOG_SPLIT_WIDTH_DEFAULT,
   CATALOG_SPLIT_WIDTH_MAX,
   CATALOG_SPLIT_WIDTH_MIN,
   loadCatalogSplitWidth,
+  loadLaunchDockRailWidth,
   loadModelHubSplitRatio,
   MODEL_HUB_SPLIT_RATIO_DEFAULT,
   MODEL_HUB_SPLIT_RATIO_MAX,
@@ -12,6 +18,7 @@ import {
   PLAYGROUND_SPLIT_RATIO_MAX,
   PLAYGROUND_SPLIT_RATIO_MIN,
   saveCatalogSplitWidth,
+  saveLaunchDockRailWidth,
   saveModelHubSplitRatio,
 } from "../lib/storage";
 
@@ -119,6 +126,74 @@ export function useCatalogSplitResize() {
     maxWidth: CATALOG_SPLIT_WIDTH_MAX,
   });
   return { ...split, catalogWidth: split.panelWidth };
+}
+
+/** Right launch rail — drag handle sits on the rail's left edge. */
+export function useLaunchDockRailResize(enabled: boolean) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const widthRef = useRef(loadLaunchDockRailWidth());
+  const [railWidth, setRailWidth] = useState(widthRef.current);
+  const [isDragging, setIsDragging] = useState(false);
+
+  const applyWidth = useCallback((raw: number) => {
+    const next = Math.min(
+      LAUNCH_DOCK_RAIL_WIDTH_MAX,
+      Math.max(LAUNCH_DOCK_RAIL_WIDTH_MIN, Math.round(raw)),
+    );
+    widthRef.current = next;
+    setRailWidth(next);
+    return next;
+  }, []);
+
+  const startDrag = useCallback(() => {
+    if (!enabled) return;
+    setIsDragging(true);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  }, [enabled]);
+
+  const resetWidth = useCallback(() => {
+    const next = applyWidth(LAUNCH_DOCK_RAIL_WIDTH_DEFAULT);
+    saveLaunchDockRailWidth(next);
+  }, [applyWidth]);
+
+  useEffect(() => {
+    if (!enabled || !isDragging) return;
+
+    const onMove = (e: MouseEvent) => {
+      const container = containerRef.current;
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+      applyWidth(rect.right - e.clientX);
+    };
+
+    const onUp = () => {
+      setIsDragging(false);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      saveLaunchDockRailWidth(widthRef.current);
+    };
+
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, [enabled, isDragging, applyWidth]);
+
+  useEffect(() => {
+    if (!enabled) return;
+    applyWidth(widthRef.current);
+  }, [enabled, applyWidth]);
+
+  return {
+    containerRef,
+    railWidth,
+    isDragging,
+    startDrag,
+    resetWidth,
+  };
 }
 
 function clampModelHubRatio(ratio: number): number {

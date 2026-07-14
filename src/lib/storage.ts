@@ -1,6 +1,13 @@
 import { normalizeAboveColumnWidths } from "./configColumnLayout";
 import { normalizeDisplayTexture, type DisplayTexture } from "./displayTexture";
 import { normalizeIndustrialBezelTexture, type IndustrialBezelTexture } from "./industrialBezelTexture";
+import type { LaunchDockPosition } from "./launchDockLayout";
+import {
+  clampLaunchDockRailWidth,
+  LAUNCH_DOCK_POSITION_DEFAULT,
+  LAUNCH_DOCK_RAIL_WIDTH_DEFAULT,
+  suggestLaunchDockPosition,
+} from "./launchDockLayout";
 import { capCodeSize, PLAYGROUND_MAX_CODE_CHARS } from "./playgroundCodegen";
 import type {
   ConfigViewMode,
@@ -140,6 +147,12 @@ export const KEYS = {
   displayTexture: `${STORAGE_PREFIX}display-texture`,
   industrialBezelTexture: `${STORAGE_PREFIX}industrial-bezel-texture`,
   configLayoutMode: `${STORAGE_PREFIX}config-layout-mode`,
+  /** Engine config launch dock — bottom bar or right rail (`bottom` | `right`). */
+  launchDockPosition: `${STORAGE_PREFIX}launch-dock-position`,
+  /** Set when user picks dock position manually — disables viewport auto-suggest. */
+  launchDockPositionExplicit: `${STORAGE_PREFIX}launch-dock-position-explicit`,
+  launchDockCollapsed: `${STORAGE_PREFIX}launch-dock-collapsed`,
+  launchDockRailWidth: `${STORAGE_PREFIX}launch-dock-rail-width`,
   catalogSplitWidth: `${STORAGE_PREFIX}catalog-split-width`,
   modelHubSplitWidth: `${STORAGE_PREFIX}model-hub-split-width`,
   telemetryView: `${STORAGE_PREFIX}telemetry-view`,
@@ -372,6 +385,48 @@ export function loadUiDensity(): UiDensity {
 
 export function saveUiDensity(density: UiDensity): void {
   writeStorage(KEYS.uiDensity, density);
+}
+
+// ── Engine config launch dock layout ───────────────────────────────────────
+
+export type { LaunchDockPosition };
+
+export function loadLaunchDockPositionExplicit(): boolean {
+  return readStorage(KEYS.launchDockPositionExplicit) === "1";
+}
+
+export function loadLaunchDockPosition(): LaunchDockPosition {
+  const raw = readStorage(KEYS.launchDockPosition);
+  if (raw === "bottom" || raw === "right") return raw;
+  if (typeof window !== "undefined") {
+    return suggestLaunchDockPosition(window.innerHeight);
+  }
+  return LAUNCH_DOCK_POSITION_DEFAULT;
+}
+
+export function saveLaunchDockPosition(position: LaunchDockPosition, explicit: boolean): void {
+  writeStorage(KEYS.launchDockPosition, position);
+  writeStorage(KEYS.launchDockPositionExplicit, explicit ? "1" : "0");
+}
+
+export function loadLaunchDockCollapsed(): boolean {
+  return readStorage(KEYS.launchDockCollapsed) === "1";
+}
+
+export function saveLaunchDockCollapsed(collapsed: boolean): void {
+  writeStorage(KEYS.launchDockCollapsed, collapsed ? "1" : "0");
+}
+
+export function loadLaunchDockRailWidth(): number {
+  const raw = readStorage(KEYS.launchDockRailWidth);
+  if (!raw) return LAUNCH_DOCK_RAIL_WIDTH_DEFAULT;
+  const n = Number.parseInt(raw, 10);
+  if (!Number.isFinite(n)) return LAUNCH_DOCK_RAIL_WIDTH_DEFAULT;
+  return clampLaunchDockRailWidth(n);
+}
+
+export function saveLaunchDockRailWidth(width: number): void {
+  writeStorage(KEYS.launchDockRailWidth, String(clampLaunchDockRailWidth(width)));
 }
 
 // ── Dynamic key builders (BlackOps-{namespace}:{id}) ─────────────────────────

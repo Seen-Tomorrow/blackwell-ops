@@ -12,8 +12,14 @@ import {
   normalizeModelPathKey,
   loadAutoVramEnabled,
   loadConfigView,
+  loadLaunchDockCollapsed,
+  loadLaunchDockPosition,
+  loadLaunchDockPositionExplicit,
   loadUiDensity,
+  type LaunchDockPosition,
   normalizeUiGroup,
+  saveLaunchDockCollapsed,
+  saveLaunchDockPosition,
   paramUiGroup,
   readJsonStorage,
   readStorage,
@@ -43,6 +49,8 @@ import type { ConfigColumnCount } from "../lib/configColumnLayout";
 import { effectiveGroupColumn } from "../lib/configColumnLayout";
 import { isEmptyGroupDeletable } from "../lib/groupLayoutUtils";
 import { useGroupLayoutControls } from "../hooks/useGroupLayoutControls";
+import { useLaunchDockRailResize } from "../hooks/useCatalogSplitResize";
+import { suggestLaunchDockPosition } from "../lib/launchDockLayout";
 import { dispatchAppEvent, EVENTS } from "../lib/events";
 import { tomMtpBlocked, TOM_MTP_SKIP_MESSAGE } from "../lib/tomMtp";
 import {
@@ -365,7 +373,13 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   });
   const [customFlagsEditorOpen, setCustomFlagsEditorOpen] = useState(false);
   const [customFlagsDraft, setCustomFlagsDraft] = useState("");
-  const [customFlagsPopoverPos, setCustomFlagsPopoverPos] = useState({ top: 0, left: 0, width: 0 });
+  const [customFlagsPopoverPos, setCustomFlagsPopoverPos] = useState({
+    top: 0,
+    left: 0,
+    width: 0,
+    placement: "above" as "above" | "below",
+    maxHeight: 140,
+  });
   const customFlagsAnchorRef = useRef<HTMLDivElement>(null);
   const customFlagsPopoverRef = useRef<HTMLDivElement>(null);
   const [replaceLaunchConfirmOpen, setReplaceLaunchConfirmOpen] = useState(false);
@@ -406,6 +420,17 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   const [uiDensityCompact, setUiDensityCompact] = useState(
     () => loadUiDensity() === "compact",
   );
+  const [launchDockPosition, setLaunchDockPosition] = useState<LaunchDockPosition>(loadLaunchDockPosition);
+  const [launchDockPositionExplicit, setLaunchDockPositionExplicit] = useState(loadLaunchDockPositionExplicit);
+  const [launchDockCollapsed, setLaunchDockCollapsed] = useState(loadLaunchDockCollapsed);
+  const launchRailEnabled = launchDockPosition === "right";
+  const {
+    containerRef: launchDockMainRef,
+    railWidth: launchRailWidth,
+    isDragging: launchRailDragging,
+    startDrag: startLaunchRailDrag,
+    resetWidth: resetLaunchRailWidth,
+  } = useLaunchDockRailResize(launchRailEnabled);
 
   const { texture: displayTexture } = useDisplayTexture();
 
@@ -425,6 +450,32 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       return next;
     });
   }, []);
+
+  const setLaunchDockPositionUser = useCallback((position: LaunchDockPosition) => {
+    setLaunchDockPosition(position);
+    setLaunchDockPositionExplicit(true);
+    saveLaunchDockPosition(position, true);
+    if (position === "right") {
+      setLaunchDockCollapsed(false);
+      saveLaunchDockCollapsed(false);
+    }
+  }, []);
+
+  const toggleLaunchDockCollapsed = useCallback(() => {
+    setLaunchDockCollapsed((prev) => {
+      const next = !prev;
+      saveLaunchDockCollapsed(next);
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    if (launchDockPositionExplicit) return;
+    const apply = () => setLaunchDockPosition(suggestLaunchDockPosition(window.innerHeight));
+    apply();
+    window.addEventListener("resize", apply);
+    return () => window.removeEventListener("resize", apply);
+  }, [launchDockPositionExplicit]);
 
   const toggleGroup = useCallback((groupId: string) => {
     setCollapsedGroups(prev => {
@@ -943,17 +994,24 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     const anchor = customFlagsAnchorRef.current;
     if (!anchor) return;
     const rect = anchor.getBoundingClientRect();
+    const placement = launchDockPosition === "right" ? "below" : "above";
+    const maxHeight =
+      placement === "below"
+        ? Math.max(120, Math.min(360, window.innerHeight - rect.bottom - 32))
+        : 140;
     setCustomFlagsPopoverPos({
-      top: rect.top,
+      top: placement === "above" ? rect.top : rect.bottom,
       left: rect.left,
       width: rect.width,
+      placement,
+      maxHeight,
     });
-  }, []);
+  }, [launchDockPosition]);
 
   useLayoutEffect(() => {
     if (!customFlagsEditorOpen) return;
     updateCustomFlagsPopoverPos();
-  }, [customFlagsEditorOpen, updateCustomFlagsPopoverPos]);
+  }, [customFlagsEditorOpen, updateCustomFlagsPopoverPos, launchDockPosition]);
 
   useEffect(() => {
     if (!customFlagsEditorOpen) return;
@@ -992,11 +1050,14 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       : testFlagsEnabled
         ? "custom-flags-active"
         : "";
+    const popoverPlacementBelow = customFlagsPopoverPos.placement === "below";
     const popover = customFlagsEditorOpen
       ? createPortal(
           <div
             ref={customFlagsPopoverRef}
             className={`custom-flags-popover border rounded-sm${
+              popoverPlacementBelow ? " custom-flags-popover--below" : ""
+            }${
               customFlagsReplaceActive
                 ? " custom-flags-popover--replace"
                 : " custom-flags-popover--append"
@@ -1010,12 +1071,13 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             aria-label="Edit custom flags"
           >
             <textarea
-              rows={3}
+              rows={popoverPlacementBelow ? 10 : 3}
               value={customFlagsDraft}
               onChange={(e) => setCustomFlagsDraft(e.target.value)}
               autoFocus
               placeholder="-m model.gguf --split-mode layer -c 32768 ..."
               className="custom-flags-popover__input w-full border text-[8px] font-mono px-2 py-1.5 leading-snug focus:outline-none rounded-sm"
+              style={{ maxHeight: customFlagsPopoverPos.maxHeight }}
             />
             <p className="custom-flags-popover__hint text-[6.5px] font-mono uppercase tracking-wide mt-1 opacity-70">
               Click outside to save
@@ -1086,6 +1148,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     customFlagsDraft,
     customFlagsPopoverPos,
     openCustomFlagsEditor,
+    launchDockPosition,
   ]);
 
   const shareLaunchConfig = useMemo((): FusionShareLaunchConfig => ({
@@ -2019,6 +2082,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       className="flex flex-col h-full min-h-0 overflow-hidden"
       data-config-panel
       data-layout-mode={layoutModeActive ? "on" : "off"}
+      data-launch-dock-position={launchDockPosition}
+      data-launch-dock-collapsed={launchDockCollapsed && launchDockPosition === "bottom" ? "true" : "false"}
     >
       {resolvedProviders && resolvedProviders.length > 0 && (
         <div className="px-4 py-2 border-b section-divider relative flex-shrink-0 config-provider-profile-bar">
@@ -2120,6 +2185,10 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         </div>
       )}
 
+      <div
+        ref={launchDockMainRef}
+        className="config-rail-workspace flex-1 min-h-0"
+      >
       <div
         className={onboardingDisplay.area}
         data-display-texture={displayTexture}
@@ -2237,56 +2306,107 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           )}
       </div>
 
-      {/* Parameters scroll + launch dock (button always visible at panel bottom) */}
-      <div className="flex flex-col flex-1 min-h-0">
-      {allParamsForDisplay.length > 0 && (
-        <div className="config-params-below-toolbar px-4 py-1.5 flex items-center justify-end gap-2 flex-shrink-0 border-b section-divider">
-          <ConfigViewToggle
-            view={configView}
-            onChange={(view) => {
-              setConfigView(view);
-              saveConfigView(effectiveBackendType, view);
-              if (view === "essentials") {
-                setTestFlagsEnabled(false);
-                setCustomFlagsEditorOpen(false);
-              }
-            }}
-          />
-          <div className="config-column-count flex items-center gap-0.5">
-            {([1, 2, 3] as ConfigColumnCount[]).map((n) => (
+      <div
+        className={`config-panel-center flex flex-col min-h-0 ${
+          launchDockPosition === "bottom" ? "flex-1" : ""
+        }`}
+      >
+      <div className="config-panel-toolbar px-4 py-0.5 flex items-center justify-between gap-2 flex-shrink-0 border-b section-divider">
+        <div className="config-launch-dock-controls flex items-center gap-1.5 min-w-0">
+          <span className="text-[7px] font-mono text-stealth-muted/45 uppercase tracking-wider shrink-0">
+            Dock
+          </span>
+          <div className="flex items-center gap-0.5">
+            <button
+              type="button"
+              onClick={() => setLaunchDockPositionUser("bottom")}
+              className={`px-1.5 py-0.5 text-[8px] font-mono rounded-sm border transition-colors ${
+                launchDockPosition === "bottom"
+                  ? "border-nv-green/45 text-nv-green/90 bg-nv-green/10"
+                  : "border-stealth-border/40 text-stealth-muted/45 hover:text-stealth-muted"
+              }`}
+              title="Launch dock along the bottom"
+            >
+              BOT
+            </button>
+            <button
+              type="button"
+              onClick={() => setLaunchDockPositionUser("right")}
+              className={`px-1.5 py-0.5 text-[8px] font-mono rounded-sm border transition-colors ${
+                launchDockPosition === "right"
+                  ? "border-nv-green/45 text-nv-green/90 bg-nv-green/10"
+                  : "border-stealth-border/40 text-stealth-muted/45 hover:text-stealth-muted"
+              }`}
+              title="Launch rail — full-height column on the right (auto on short viewports until you pick)"
+            >
+              RAIL
+            </button>
+            {launchDockPosition === "bottom" && (
               <button
-                key={n}
                 type="button"
-                onClick={() => setBelowColumnCount(n)}
-                className={`config-column-count__btn px-1.5 py-0.5 text-[8px] font-mono rounded-sm border transition-colors ${
-                  columnCount === n
-                    ? "border-nv-green/45 text-nv-green/90 bg-nv-green/10"
-                    : "border-stealth-border/40 text-stealth-muted/45 hover:text-stealth-muted"
-                }`}
-                title={`${n} column${n > 1 ? "s" : ""} below display`}
+                onClick={toggleLaunchDockCollapsed}
+                className="px-1 py-0.5 text-[8px] font-mono rounded-sm border border-stealth-border/40 text-stealth-muted/45 hover:text-stealth-muted transition-colors"
+                title={launchDockCollapsed ? "Expand launch dock (show custom flags)" : "Collapse launch dock — alias, port, launch only"}
               >
-                {n}C
+                {launchDockCollapsed ? "▼" : "▲"}
               </button>
-            ))}
+            )}
           </div>
-          <button
-            type="button"
-            onClick={toggleLayoutMode}
-            className={`config-layout-mode-btn px-2 py-0.5 text-[8px] font-mono rounded-sm border transition-colors ${
-              layoutModeActive
-                ? "config-layout-mode-btn--on border-nv-green/50 text-nv-green bg-nv-green/10"
-                : "border-stealth-border/40 text-stealth-muted/50 hover:text-stealth-muted"
-            }`}
-            title={
-              layoutModeActive
-                ? "Layout mode on — drag, pin, and hide groups"
-                : "Edit group layout — reorder, pin above/below, hide"
-            }
-          >
-            LAYOUT{layoutModeActive ? " ON" : ""}
-          </button>
+          {!launchDockPositionExplicit && (
+            <span className="text-[7px] font-mono text-stealth-muted/40 hidden md:inline shrink-0">
+              auto
+            </span>
+          )}
         </div>
-      )}
+        {allParamsForDisplay.length > 0 && (
+          <div className="config-panel-toolbar__view flex items-center gap-2 flex-shrink-0">
+            <ConfigViewToggle
+              view={configView}
+              onChange={(view) => {
+                setConfigView(view);
+                saveConfigView(effectiveBackendType, view);
+                if (view === "essentials") {
+                  setTestFlagsEnabled(false);
+                  setCustomFlagsEditorOpen(false);
+                }
+              }}
+            />
+            <div className="config-column-count flex items-center gap-0.5">
+              {([1, 2, 3] as ConfigColumnCount[]).map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => setBelowColumnCount(n)}
+                  className={`config-column-count__btn px-1.5 py-0.5 text-[8px] font-mono rounded-sm border transition-colors ${
+                    columnCount === n
+                      ? "border-nv-green/45 text-nv-green/90 bg-nv-green/10"
+                      : "border-stealth-border/40 text-stealth-muted/45 hover:text-stealth-muted"
+                  }`}
+                  title={`${n} column${n > 1 ? "s" : ""} below display`}
+                >
+                  {n}C
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={toggleLayoutMode}
+              className={`config-layout-mode-btn px-2 py-0.5 text-[8px] font-mono rounded-sm border transition-colors ${
+                layoutModeActive
+                  ? "config-layout-mode-btn--on border-nv-green/50 text-nv-green bg-nv-green/10"
+                  : "border-stealth-border/40 text-stealth-muted/50 hover:text-stealth-muted"
+              }`}
+              title={
+                layoutModeActive
+                  ? "Layout mode on — drag, pin, and hide groups"
+                  : "Edit group layout — reorder, pin above/below, hide"
+              }
+            >
+              LAYOUT{layoutModeActive ? " ON" : ""}
+            </button>
+          </div>
+        )}
+      </div>
       <div className={`config-params-scroll px-4 py-3 relative flex-1 overflow-y-auto eink-scrollbar eink-panel min-h-0${paramsBypassedClass}`}>
         {allParamsForDisplay.length === 0 ? (
           <div className="text-stealth-muted text-[10px] font-mono opacity-50">NO PARAMS DEFINED</div>
@@ -2306,14 +2426,28 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           />
         )}
 
-        {uiDensityCompact && configView === "full" ? (
+        {uiDensityCompact && configView === "full" && launchDockPosition === "bottom" && !launchDockCollapsed ? (
           <div className="config-launch-dock__flags-scroll">{renderCustomFlagsBlock()}</div>
         ) : null}
 
       </div>
 
+      {launchDockPosition === "bottom" && (
         <div className="config-launch-dock flex-shrink-0 px-4 flex flex-col">
           <div className="config-launch-dock__content flex flex-col min-w-0">
+          {launchDockCollapsed && customFlagsLaunchActive && configView === "full" && (
+            <button
+              type="button"
+              onClick={() => {
+                setLaunchDockCollapsed(false);
+                saveLaunchDockCollapsed(false);
+              }}
+              className="config-launch-dock__flags-pill w-full text-left rounded-sm px-2 py-1 text-[7px] font-mono border border-amber-500/35 text-amber-300/85 bg-amber-500/10 hover:bg-amber-500/15 transition-colors"
+              title="Expand dock to edit custom flags"
+            >
+              CUSTOM FLAGS {customFlagsReplaceActive ? "REPLACE" : "APPEND"} — click to expand
+            </button>
+          )}
           {specParallelWarn && (
             <div
               className="config-mtp-launch-warn rounded-sm px-2.5 py-1.5 text-[7px] font-mono leading-snug"
@@ -2393,7 +2527,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                   </div>
                 )}
               </div>
-              {!uiDensityCompact && renderCustomFlagsBlock()}
+              {!uiDensityCompact && !launchDockCollapsed && renderCustomFlagsBlock()}
             </div>
             <div className="config-launch-dock__action relative">
               {isDevBuild() && (
@@ -2469,6 +2603,191 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           </div>
           </div>
         </div>
+      )}
+      </div>
+
+      {launchDockPosition === "right" && (
+        <>
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-valuenow={launchRailWidth}
+            aria-label="Resize launch rail"
+            className={`launch-rail-split-handle catalog-split-handle${launchRailDragging ? " is-dragging" : ""}`}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              startLaunchRailDrag();
+            }}
+            onDoubleClick={resetLaunchRailWidth}
+            title="Drag to resize launch rail · double-click to reset"
+          />
+          <div
+            className="config-launch-rail flex-shrink-0 min-h-0 min-w-0"
+            style={{ width: launchRailWidth }}
+          >
+            <div className="config-launch-rail__bezel-zone" aria-hidden="true" />
+            <div className="config-launch-dock flex flex-col flex-1 min-h-0 px-3">
+              <div className="config-launch-dock__content flex flex-col flex-1 min-h-0 min-w-0">
+                {specParallelWarn && (
+                  <div
+                    className="config-mtp-launch-warn rounded-sm px-2.5 py-1.5 text-[7px] font-mono leading-snug shrink-0"
+                    role="status"
+                  >
+                    <span className="uppercase tracking-wide">⚠ MTP limited at launch</span>
+                    {" — "}
+                    <span className="config-mtp-launch-warn__detail">
+                      parallel ×{mtpParallelSlotCount} strips MTP speculative decoding. Use parallel = 1 for MTP, or switch to DFlash for multi-slot.
+                    </span>
+                  </div>
+                )}
+                {modelIsDraftOnly && (
+                  <div
+                    className="config-mtp-launch-warn rounded-sm px-2.5 py-1.5 text-[7px] font-mono leading-snug shrink-0"
+                    role="status"
+                  >
+                    <span className="uppercase tracking-wide">Draft model</span>
+                    {" — "}
+                    <span className="config-mtp-launch-warn__detail">
+                      Cannot launch draft GGUF as main. Filter catalog to MAIN and pick the base model.
+                    </span>
+                  </div>
+                )}
+                <div className="config-launch-dock__grid config-launch-dock__grid--rail flex flex-col flex-1 min-h-0 gap-2">
+                  <div className="config-launch-dock__meta flex flex-col gap-2 shrink-0">
+                    <div data-param-row className="config-launch-dock__alias flex items-center min-h-[22px] min-w-0">
+                      <span
+                        className={LAUNCH_DOCK_LABEL_CLASS}
+                        title={
+                          aliasIsUserSet
+                            ? "Alias — user set"
+                            : `Alias — autoset to ${autoAlias}`
+                        }
+                      >
+                        Alias
+                      </span>
+                      <div
+                        className={`config-launch-dock__alias-field flex-1 min-w-0${
+                          aliasShowClr ? " config-launch-dock__alias-field--has-clr" : ""
+                        }`}
+                      >
+                        <input
+                          type="text"
+                          value={aliasDisplayValue}
+                          onFocus={handleAliasFocus}
+                          onBlur={handleAliasBlur}
+                          onChange={(e) => setAliasInput(e.target.value)}
+                          title={
+                            aliasIsUserSet
+                              ? "User-set launch alias"
+                              : `Autoset to ${autoAlias} — updates as engines start/stop`
+                          }
+                          className={`w-full min-w-0 transition-colors ${
+                            aliasIsUserSet
+                              ? `${paramChipClass(true)} mono-user-input`
+                              : paramChipClass(false)
+                          }`}
+                        />
+                        {aliasShowClr ? (
+                          <button
+                            type="button"
+                            className="config-launch-dock__alias-clr"
+                            title={`Clear custom alias — revert to ${autoAlias}`}
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={handleAliasClear}
+                          >
+                            CLR
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+                    {basePortParamDef && (
+                      <div className="config-launch-dock__port min-w-0">
+                        {renderParamRow(basePortParamDef, false, 0)}
+                      </div>
+                    )}
+                  </div>
+                  {configView === "full" && (
+                    <div className="config-launch-dock__rail-flags flex-1 min-h-0 overflow-y-auto eink-scrollbar">
+                      {renderCustomFlagsBlock()}
+                    </div>
+                  )}
+                  <div className="config-launch-dock__action relative shrink-0">
+                    {isDevBuild() && (
+                      <button
+                        type="button"
+                        onClick={handleOpenNobsproofCmd}
+                        disabled={launchDisabled}
+                        className="config-nobsproof-btn absolute bottom-1 right-1 z-20 px-1.5 py-0.5 text-[7px] font-mono uppercase tracking-wider rounded-sm border disabled:opacity-40 disabled:cursor-not-allowed"
+                        title="NoBSproof — open exact launch CLI in a new CMD window (DEV)"
+                      >
+                        CMD
+                      </button>
+                    )}
+                    {replaceLaunchConfirmOpen && (
+                      <div
+                        className="config-replace-confirm absolute inset-0 z-10 flex flex-col justify-center gap-2 rounded-sm px-2 py-2"
+                        role="alertdialog"
+                        aria-labelledby="replace-confirm-title-rail"
+                      >
+                        <p
+                          id="replace-confirm-title-rail"
+                          className="text-[7px] font-mono leading-snug text-white/95"
+                        >
+                          <span className="uppercase tracking-wide font-semibold">Replace mode</span>
+                          {" — "}
+                          panel settings are ignored. Only your custom flags are sent to the engine.
+                        </p>
+                        <div className="flex gap-1.5">
+                          <button
+                            type="button"
+                            onClick={acknowledgeReplaceLaunch}
+                            className="config-replace-confirm__launch flex-1 px-2 py-1 text-[7px] font-mono uppercase tracking-wide rounded-sm"
+                          >
+                            Launch anyway
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setReplaceLaunchConfirmOpen(false)}
+                            className="config-replace-confirm__cancel px-2 py-1 text-[7px] font-mono uppercase tracking-wide rounded-sm"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                    <button
+                      onClick={handleAddToStack}
+                      disabled={launchDisabled}
+                      title={
+                        customFlagsReplaceActive
+                          ? "REPLACE mode — panel config is bypassed; only custom flags are used"
+                          : customFlagsLaunchActive
+                            ? "APPEND mode — custom flags are added to panel config"
+                            : undefined
+                      }
+                      className={`w-full h-full min-h-[2.75rem] min-w-0 ignite-btn config-launch-btn px-2 py-1.5 text-[11px] font-mono tracking-[0.18em] rounded-sm disabled:opacity-40 disabled:cursor-not-allowed flex flex-col items-stretch justify-center gap-0.5 overflow-hidden ${launchAck ? "launch-ack" : ""}${customFlagsLaunchActive ? " config-launch-btn--custom-active" : ""}`}
+                    >
+                      {customFlagsLaunchActive && (
+                        <span
+                          className={`config-launch-btn__custom-warn uppercase tracking-wide${
+                            customFlagsReplaceActive ? "" : " config-launch-btn__custom-warn--append"
+                          }`}
+                        >
+                          Custom engine config active
+                        </span>
+                      )}
+                      <span className="text-center">LAUNCH ENGINE</span>
+                      <span className="config-launch-btn__hint text-[7px] font-mono tracking-wider normal-case font-normal text-center">
+                        Ctrl+Enter
+                      </span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
       </div>
     </div>
   );

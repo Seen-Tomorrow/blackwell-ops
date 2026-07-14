@@ -5415,6 +5415,207 @@ html:not([data-theme="arctic"]) [data-display-texture="clean"] .phosphor-display
   border-color: color-mix(in srgb, var(--color-electric-blue, #4da3ff) 42%, var(--color-stealth-border)) !important;
 }
 
+/* ── Launch dock layout — bottom bar vs right rail ─── */
+.config-rail-workspace {
+  min-width: 0;
+}
+
+[data-config-panel][data-launch-dock-position="bottom"] .config-rail-workspace {
+  display: flex;
+  flex-direction: column;
+}
+
+[data-config-panel][data-launch-dock-position="right"] .config-rail-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 7px auto;
+  grid-template-rows: auto 1fr;
+}
+
+[data-config-panel][data-launch-dock-position="right"] .config-rail-workspace > .industrial-display-area {
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
+}
+
+[data-config-panel][data-launch-dock-position="right"] .config-rail-workspace > .config-panel-center {
+  grid-column: 1;
+  grid-row: 2;
+  min-height: 0;
+}
+
+[data-config-panel][data-launch-dock-position="right"] .config-rail-workspace > .launch-rail-split-handle {
+  grid-column: 2;
+  grid-row: 1 / 3;
+  align-self: stretch;
+}
+
+[data-config-panel][data-launch-dock-position="right"] .config-rail-workspace > .config-launch-rail {
+  grid-column: 3;
+  grid-row: 1 / 3;
+  display: grid;
+  grid-template-rows: subgrid;
+  min-height: 0;
+}
+
+[data-config-panel][data-launch-dock-position="right"] .industrial-display-frame {
+  z-index: 4;
+}
+
+.config-panel-main {
+  min-width: 0;
+}
+
+.config-panel-center {
+  min-width: 0;
+}
+
+.config-panel-toolbar {
+  background: var(--theme-panel-accent);
+}
+
+.config-launch-rail {
+  position: relative;
+  z-index: 1;
+  isolation: isolate;
+}
+
+.config-launch-rail__bezel-zone {
+  grid-row: 1;
+  min-height: 0;
+  pointer-events: none;
+}
+
+[data-config-panel][data-launch-dock-position="right"] .config-launch-rail .config-launch-dock {
+  grid-row: 2;
+  min-height: 0;
+  align-self: stretch;
+}
+
+[data-config-panel][data-launch-dock-position="right"] .config-launch-dock {
+  border-top: none;
+  box-shadow: none;
+  flex: 1;
+  min-height: 0;
+  z-index: 1;
+  padding-top: 0.5rem;
+  padding-bottom: calc(var(--config-launch-dock-pad) + var(--app-footer-h));
+}
+
+[data-config-panel][data-launch-dock-position="right"] .config-launch-dock::before {
+  border-left: none;
+}
+
+[data-config-panel][data-launch-dock-position="right"] .config-launch-rail .config-launch-dock {
+  border-left: 1.5px solid var(--theme-bezel-edge-hi);
+  box-shadow:
+    -2px 0 6px color-mix(in srgb, #000000 24%, transparent),
+    -8px 0 20px color-mix(in srgb, #000000 12%, transparent);
+}
+
+[data-config-panel][data-launch-dock-position="right"] .config-launch-dock__grid--rail {
+  display: flex;
+  flex-direction: column;
+}
+
+[data-config-panel][data-launch-dock-position="right"] .config-launch-dock__meta {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+
+[data-config-panel][data-launch-dock-position="right"] .config-launch-dock__port [data-param-row] {
+  flex-wrap: wrap;
+}
+
+[data-config-panel][data-launch-dock-position="right"] .config-launch-dock__rail-flags {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+[data-config-panel][data-launch-dock-position="right"] .config-launch-dock__rail-flags .custom-flags-anchor {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+[data-config-panel][data-launch-dock-position="right"] .config-launch-dock__rail-flags .custom-flags-block {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+[data-config-panel][data-launch-dock-position="right"] .config-launch-dock__rail-flags .custom-flags-body {
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+
+[data-config-panel][data-launch-dock-position="right"] .config-launch-dock__rail-flags .custom-flags-input {
+  width: 100%;
+  min-height: 22px;
+  height: auto;
+}
+
+[data-config-panel][data-launch-dock-position="right"] .config-launch-dock__rail-flags .custom-flags-body > .flex.items-center {
+  width: 100%;
+  margin-left: 0 !important;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 4px;
+}
+
+[data-config-panel][data-launch-dock-position="right"] .config-launch-dock__rail-flags .custom-flags-block .mode-btn-add,
+[data-config-panel][data-launch-dock-position="right"] .config-launch-dock__rail-flags .custom-flags-block .mode-btn-replace,
+[data-config-panel][data-launch-dock-position="right"] .config-launch-dock__rail-flags .custom-flags-block .mode-btn-off {
+  white-space: normal;
+  text-align: center;
+  line-height: 1.15;
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+
+[data-config-panel][data-launch-dock-collapsed="true"] .config-launch-dock__grid {
+  grid-template-columns: minmax(0, 2.2fr) minmax(0, 2.2fr) minmax(0, 1.6fr);
+  align-items: stretch;
+}
+
+[data-config-panel][data-launch-dock-collapsed="true"] .config-launch-dock__left {
+  display: contents;
+}
+
+[data-config-panel][data-launch-dock-collapsed="true"] .config-launch-dock__meta {
+  display: contents;
+}
+
+[data-config-panel][data-launch-dock-collapsed="true"] .config-launch-dock__alias {
+  grid-column: 1;
+}
+
+[data-config-panel][data-launch-dock-collapsed="true"] .config-launch-dock__port {
+  grid-column: 2;
+}
+
+[data-config-panel][data-launch-dock-collapsed="true"] .config-launch-dock__action {
+  grid-column: 3;
+}
+
+[data-config-panel][data-launch-dock-collapsed="true"] .config-launch-dock .config-launch-btn {
+  min-height: 2.25rem !important;
+}
+
+[data-config-panel][data-launch-dock-collapsed="true"] .config-launch-dock .config-launch-btn__hint {
+  display: none;
+}
+
+.app-shell--console-docked [data-config-panel][data-launch-dock-position="right"] .config-launch-rail .config-launch-dock {
+  padding-bottom: 0;
+}
+
 /* ── Launch dock — left meta/flags (70%) | launch btn (30%) ─── */
 .config-launch-dock__grid {
   display: grid;
@@ -7144,6 +7345,16 @@ button.engine-logs-slot-chip.engine-logs-slot-chip--active .engine-logs-slot-chi
   box-shadow:
     0 10px 28px rgba(0, 0, 0, 0.55),
     0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
+.custom-flags-popover--below {
+  transform: translateY(8px);
+}
+
+.custom-flags-popover--below .custom-flags-popover__input {
+  min-height: 120px;
+  max-height: none;
+  resize: vertical;
 }
 
 .custom-flags-popover--append {
