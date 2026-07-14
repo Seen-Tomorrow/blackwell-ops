@@ -1,6 +1,7 @@
-# Blackwell Ops
+# Blackwell Ops, pocket mini datacenter for local AI
 
-**Windows-native local LLM inference app** — a portable multi-engine orchestrator for llama.cpp (official master + Tom TurboQuant fork). Built for GGUF models on Windows with easy Foundry source builds, VRAM fit scanning, and live fusion telemetry.
+**Windows-native local LLM inference** — a portable, tiny, single-exe multi-engine orchestrator for llama.cpp (official master + Tom TurboQuant fork). Built for GGUF models on Windows with easy Foundry builds from source , State of the art MEMORY forecast, and live fusion telemetry.
+-support MTP, Dflash and TurboQuant out of the box.
 
 No WSL. No Electron. No Docker required. Native desktop app for running and managing local llama servers on Windows.
 
@@ -23,7 +24,8 @@ Blackwell Ops is a native Windows desktop app for local LLM / llama.cpp users. I
 
 Drop the installer or portable folder anywhere. The app recreates its ecosystem around itself: configs, runtime engines, foundry artifacts, and user preferences — all relative to the install directory. Great for portable local LLM setups or moving between machines.
 
-**At v1.0.x** the focus is **GGML / llama.cpp** (official master + Tom TurboQuant fork bundled). Any llama-compatible fork can be easily wired in; fusion performance metrics may not map 1:1 to every backend yet. The architecture is **semi–backend-agnostic** by design — support grows over time.
+**At v1.0.x** we strongly focus on **GGML / llama.cpp** (official master + Tom TurboQuant fork bundled). 
+Any llama-compatible fork can be easily wired in by users in 2 clicks. You will get most of funcionality right away, including 1click builds form source anytime. The architecture is **semi–backend-agnostic** by design — support grows over time.
 ---
 
 ## By the numbers
@@ -73,7 +75,7 @@ You get dramatically higher aggregate throughput and much snappier prefill behav
 
 ### Speculative decoding — MTP & DFlash, out of the box
 
-Blackwell Ops treats faster generation as a first-class feature, not a hidden CLI flag. **Multi-Token Prediction (MTP)** and **DFlash** speculative decoding are wired through the whole stack — catalog, pairing, launch, and telemetry — so you can actually use them without hand-editing `--spec-type` and `--spec-draft-model`.
+Blackwell Ops treats faster generation as a first-class feature, not a hidden CLI flag. **Multi-Token Prediction (MTP)** and **DFlash** speculative decoding are wired through the whole stack — catalog, pairing, launch, and telemetry — so you can rapidly test a ton of settings just by clicking.
 
 | | **MTP** | **DFlash** |
 |---|---------|------------|
@@ -178,13 +180,17 @@ First-run onboarding walks the rest.
 
 ## A personal note
 
-I did not type this codebase by hand line-by-line. I **vibe-coded** it on **local models** — mostly **Qwen3.5 236B** + **Qwen3.6 27B** — with hardening passes on **Composer 2.5**, on hand build custom workstation (**2× RTX PRO 6000 · 256 GB VRAM**).
+I **vibe-coded** this app on **local models** — mostly **Qwen3.5 236B** + **Qwen3.6 27B** + **Step3.7-flash** — with hardening passes on **Composer 2.5**, on hand build custom workstation (**2× RTX PRO 6000 · 256 GB VRAM**).
 
-What I *did* bring is **30+ years** of love for PC hardware and Windows — how machines should feel, how software should respect RAM, how inference should stay on *your* desk.
+I baked in **30+ years** of love for PC hardware and Windows — how machines should feel, how software should respect RAM, how inference should stay on *your* desk.
 
-Roughly **2,500 hours** went into this across ~five months. Time not spent with my family and my **five-year-old daughter**, who I love more than anything. This repo is what that time became.
+Roughly **3,000 hours** went into this across ~six months. Time not spent with my family and my **five-year-old daughter**, who I love more than anything. This repo is what that time became.
 
 If Blackwell Ops helps one person run serious local inference on Windows without apologizing for their OS choice, it was worth it.
+PS: This is my first coding endeavor. I openly state this, as inspiration to anyone hesitating to use AI besides chating. AI scene, including the local only is very powerfull already - DO NOT WAIT - JUST DO IT NOW, anyone can.
+-This was very difficult project as a "starter", now it is progressively more easy. I had been fully determined to achieve this, since i had a strong skill in HW suite and clear idea how i want this to work. I would NEVER achieve that without AI - NEVER!
+
+-I'am etternally gratefull to my family, to be supportive and respecting the need to pursue my purpose in this. Love you Karla.
 
 ---
 
