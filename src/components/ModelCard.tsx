@@ -1,5 +1,6 @@
 import type { ModelEntry } from "../lib/types";
 import { draftRoleBadge, draftRoleFromModel, isExternalDraftOnly } from "../lib/specDraft";
+import { revealPathInExplorer } from "../lib/utils";
 
 interface ModelCardProps {
   model: ModelEntry;
@@ -87,9 +88,17 @@ export default function ModelCard({
         <span className="text-[8px] font-mono text-stealth-muted truncate">{model.author}</span>
         <div className="flex items-center gap-1.5 flex-shrink-0">
           {model.sourcePathLabel && (
-            <span className="text-[7px] font-mono text-stealth-muted/50 bg-stealth-surface px-1 py-0.5 rounded-sm" title={model.path}>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                void revealPathInExplorer(model.path);
+              }}
+              className="text-[7px] font-mono text-stealth-muted/50 bg-stealth-surface px-1 py-0.5 rounded-sm hover:text-stealth-muted hover:bg-stealth-surface/80 transition-colors cursor-pointer"
+              title={`Open in Explorer: ${model.path}`}
+            >
               📁 {model.sourcePathLabel}
-            </span>
+            </button>
           )}
           <span className="text-[8px] font-mono px-1 py-0.5 rounded-sm border border-gray-500/20 text-gray-500">
             GGUF

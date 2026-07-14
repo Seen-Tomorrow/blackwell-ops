@@ -1,5 +1,15 @@
 /** Shared utility functions — single source of truth */
 
+import { invoke } from "@tauri-apps/api/core";
+
+export async function revealPathInExplorer(path: string): Promise<void> {
+  try {
+    await invoke("reveal_path_in_explorer", { path });
+  } catch (e) {
+    console.error("[revealPathInExplorer]", e);
+  }
+}
+
 export function isMobileDevice(): boolean {
   try {
     if (typeof window === "undefined") return false;

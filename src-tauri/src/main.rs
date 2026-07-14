@@ -31,6 +31,7 @@ mod download_manager;
 mod model_catalog;
 mod spec_draft;
 mod engine_utils;
+mod trash_util;
 mod engine_port_lock;
 mod fusion;
 mod provider_mgmt;
@@ -925,6 +926,9 @@ async fn main() {
             engine::set_build_info_for_env,
             engine::open_file_dialog,
             engine::open_folder_dialog,
+            engine::reveal_path_in_explorer,
+            engine::delete_model_file_cmd,
+            engine::rename_model_file_cmd,
             // Template loading
             engine::get_template,
             engine::get_template_for_provider,

@@ -1065,6 +1065,45 @@ pub fn validate_model_path(path: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Resolve a catalog `.gguf` path and ensure it lives under a configured model library root.
+pub fn validate_model_library_file(path: &str, config: &AppConfig) -> Result<PathBuf, String> {
+    let resolved = resolve_model_path(path);
+    if resolved.is_empty() {
+        return Err("Empty model path".into());
+    }
+    let pb = PathBuf::from(&resolved);
+    if !pb.is_file() {
+        return Err(format!("Model file not found: {}", pb.display()));
+    }
+    if !pb
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.eq_ignore_ascii_case("gguf"))
+        .unwrap_or(false)
+    {
+        return Err("Only .gguf model files can be edited from the catalog".into());
+    }
+
+    let file_canon = pb
+        .canonicalize()
+        .map_err(|e| format!("Cannot resolve model file path: {e}"))?;
+
+    for root in download_dest_roots(config) {
+        let root_resolved = resolve_path(root.to_string_lossy().as_ref());
+        if root_resolved.as_os_str().is_empty() {
+            continue;
+        }
+        let Ok(root_canon) = root_resolved.canonicalize() else {
+            continue;
+        };
+        if file_canon.starts_with(&root_canon) {
+            return Ok(pb);
+        }
+    }
+
+    Err("Model file must be under a configured model library path".into())
+}
+
 pub fn validate_provider_binary(path: &str) -> Result<(), String> {
     let p = resolve_path(path);
     if !p.exists() {

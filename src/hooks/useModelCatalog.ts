@@ -383,6 +383,34 @@ export function useModelCatalog({
     try { await invoke("cancel_gguf_scan_cmd"); } catch {}
   }, []);
 
+  const clearModelSelection = useCallback(() => {
+    setCatalogSelectedModel(null);
+    setPanelActiveModel(null);
+  }, []);
+
+  const handleDeleteModel = useCallback(async (model: ModelEntry) => {
+    await invoke("delete_model_file_cmd", { path: model.path });
+    if (catalogSelectedModel?.path === model.path || panelActiveModel?.path === model.path) {
+      clearModelSelection();
+    }
+    await onReload();
+  }, [catalogSelectedModel, panelActiveModel, clearModelSelection, onReload]);
+
+  const handleRenameModel = useCallback(async (model: ModelEntry, newFileName: string) => {
+    const newPath = await invoke<string>("rename_model_file_cmd", {
+      path: model.path,
+      newFileName,
+    });
+    if (catalogSelectedModel?.path === model.path) {
+      setCatalogSelectedModel({ ...model, path: newPath });
+    }
+    if (panelActiveModel?.path === model.path) {
+      setPanelActiveModel({ ...model, path: newPath });
+      saveLastModel(newPath);
+    }
+    await onReload();
+  }, [catalogSelectedModel, panelActiveModel, onReload]);
+
   const [fitProviderId, setFitProviderId] = useState(
     () => readStorage(KEYS.lastProvider) || DEFAULT_PROVIDER_ID,
   );
@@ -563,6 +591,7 @@ export function useModelCatalog({
     runningModelPaths, runningInstances, activeEngineByModel,
     scanningPath, setScanningPath, handleScanModel,
     batchScanState, setBatchScanState, handleScanAll, handleCancelScan,
+    handleDeleteModel, handleRenameModel,
     fitScanAvailable, isFitScanning, getFitScanActiveLabel, getFitScanBadge, modelNeedsFitScan, handleFitScanModel,
     fitScanningCount: fitScanningPaths.size,
     zone,

@@ -6,6 +6,7 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import { createRoot } from "react-dom/client";
 import "./index.css";
 import "./controls.css";
+import { applyNativeWindowTheme } from "./lib/nativeWindowTheme";
 import { applyAppTheme, getThemeById } from "./themes/app-themes";
 import {
   dispatchClearLocalStorage,
@@ -41,7 +42,9 @@ if (__BUILD_MODE__ === "dev") {
 }
 
 // Apply saved theme before first paint to avoid flash
-applyAppTheme(getThemeById(readStorage(KEYS.appTheme) ?? "matrix"));
+const bootTheme = getThemeById(readStorage(KEYS.appTheme) ?? "matrix");
+applyAppTheme(bootTheme);
+void applyNativeWindowTheme(bootTheme);
 
 void invoke("startup_frontend_ping").catch(() => {});
 

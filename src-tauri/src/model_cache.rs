@@ -294,6 +294,36 @@ pub fn get_hf_metadata_with_cache(cache: &HashMap<String, CachedEntry>, model_pa
     cache.get(&entry_key)?.hf_meta.clone()
 }
 
+/// Drop cached metadata for one model file (all path aliases).
+pub fn remove_cached(model_path: &str) -> Result<(), String> {
+    let mut cache = load_cache();
+    let keys = keys_for_same_file(&cache, model_path);
+    if keys.is_empty() {
+        return Ok(());
+    }
+    for key in keys {
+        cache.remove(&key);
+    }
+    save_cache(&cache)
+}
+
+/// Move a cache entry from an old on-disk path to a new one after rename.
+pub fn rename_cached_path(old_path: &str, new_path: &str) -> Result<(), String> {
+    let mut cache = load_cache();
+    let old_key = match resolve_cache_key(&cache, old_path) {
+        Some(k) => k,
+        None => return Ok(()),
+    };
+    let Some(entry) = cache.remove(&old_key) else {
+        return Ok(());
+    };
+    for alias in keys_for_same_file(&cache, old_path) {
+        cache.remove(&alias);
+    }
+    cache.insert(storage_key_for(new_path), entry);
+    save_cache(&cache)
+}
+
 /// Clear the entire cache.
 pub fn clear_cache() -> Result<(), String> {
     let path = cache_path();

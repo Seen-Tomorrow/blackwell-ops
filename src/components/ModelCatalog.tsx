@@ -36,6 +36,12 @@ export default function ModelCatalog(props: ModelCatalogProps) {
   const { models, onLaunch, error, onReload, providers: externalProviders, committedVramMib, scanningPath, setScanningPath, batchScanState, setBatchScanState, stack, setupGuide, catalogHfUpdates } = props;
   const { gpus, systemInfo } = useTelemetry();
   const [showScanMenu, setShowScanMenu] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renameValue, setRenameValue] = useState("");
+  const [fileEditBusy, setFileEditBusy] = useState(false);
+  const [fileEditError, setFileEditError] = useState<string | null>(null);
 
   const catalog = useModelCatalog({
     models, stack, providers: externalProviders, scanningPath, setScanningPath, batchScanState, setBatchScanState, onReload,
@@ -52,6 +58,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
   const { search, setSearch, draftFilter, setCatalogDraftFilter, catalogSelectedModel, panelActiveModel, handleSelect, handleSelectBySlot, selectedSlotIdx, sortField, sortDirection, handleSort,
     catalogModels, runningModelPaths,
     handleScanModel, handleScanAll, handleCancelScan,
+    handleDeleteModel, handleRenameModel,
     fitScanAvailable, isFitScanning, getFitScanActiveLabel, getFitScanBadge, modelNeedsFitScan, handleFitScanModel,
     fitScanningCount,
     zone, visibleCount, setVisibleCount } = catalog;
@@ -59,6 +66,64 @@ export default function ModelCatalog(props: ModelCatalogProps) {
   const startScan = (concurrency: number) => {
     setShowScanMenu(false);
     handleScanAll(concurrency);
+  };
+
+  const editTarget = panelActiveModel ?? catalogSelectedModel;
+  const editTargetRunning = editTarget ? runningModelPaths.has(editTarget.path) : false;
+  const editActionsDisabled = !editTarget || fileEditBusy || editTargetRunning;
+
+  const closeEditMode = () => {
+    setEditMode(false);
+    setDeleteConfirmOpen(false);
+    setRenameOpen(false);
+    setFileEditError(null);
+  };
+
+  const openRename = () => {
+    if (!editTarget) return;
+    const slash = Math.max(editTarget.path.lastIndexOf("/"), editTarget.path.lastIndexOf("\\"));
+    setRenameValue(slash >= 0 ? editTarget.path.slice(slash + 1) : editTarget.path);
+    setRenameOpen(true);
+    setDeleteConfirmOpen(false);
+    setFileEditError(null);
+  };
+
+  const confirmRename = async () => {
+    if (!editTarget || !renameValue.trim()) return;
+    setFileEditBusy(true);
+    setFileEditError(null);
+    try {
+      await handleRenameModel(editTarget, renameValue.trim());
+      setRenameOpen(false);
+      setEditMode(false);
+    } catch (e) {
+      setFileEditError(typeof e === "string" ? e : String(e));
+    } finally {
+      setFileEditBusy(false);
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (!editTarget) return;
+    setFileEditBusy(true);
+    setFileEditError(null);
+    try {
+      await handleDeleteModel(editTarget);
+      setDeleteConfirmOpen(false);
+      setEditMode(false);
+    } catch (e) {
+      setFileEditError(typeof e === "string" ? e : String(e));
+    } finally {
+      setFileEditBusy(false);
+    }
+  };
+
+  const searchInputPadding = () => {
+    if (batchScanState.active) return "pr-[8.25rem]";
+    if (showScanMenu && editMode) return "pr-[15rem]";
+    if (showScanMenu) return "pr-[8.25rem]";
+    if (editMode) return "pr-[11.5rem]";
+    return "pr-[8.5rem]";
   };
 
   // Auto-scroll selected model into view in the catalog scroll container
@@ -152,6 +217,71 @@ export default function ModelCatalog(props: ModelCatalogProps) {
         }
       >
         SCAN META ▾
+      </button>
+    );
+  };
+
+  const renderEditControl = () => {
+    if (editMode) {
+      return (
+        <>
+          <button
+            type="button"
+            onClick={openRename}
+            disabled={editActionsDisabled}
+            className="catalog-scan-btn px-1.5 py-0.5 text-[7px] font-mono transition-colors rounded-sm disabled:opacity-30 whitespace-nowrap"
+            title={
+              editTargetRunning
+                ? "Stop the engine before renaming"
+                : editTarget
+                  ? `Rename ${editTarget.name}.gguf on disk — catalog display name is heuristic and updates after rescan`
+                  : "Select a model first"
+            }
+          >
+            REN
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setRenameOpen(false);
+              setDeleteConfirmOpen(true);
+              setFileEditError(null);
+            }}
+            disabled={editActionsDisabled}
+            className="catalog-scan-btn px-1.5 py-0.5 text-[7px] font-mono border border-telemetry-red/35 text-telemetry-red hover:bg-telemetry-red/10 transition-colors rounded-sm disabled:opacity-30 whitespace-nowrap"
+            title={
+              editTargetRunning
+                ? "Stop the engine before deleting"
+                : editTarget
+                  ? `Move ${editTarget.name} to Recycle Bin`
+                  : "Select a model first"
+            }
+          >
+            DEL
+          </button>
+          <button
+            type="button"
+            onClick={closeEditMode}
+            className="catalog-scan-btn px-1 py-0.5 text-[7px] font-mono transition-colors rounded-sm opacity-60"
+            title="Close file edit"
+          >
+            ✕
+          </button>
+        </>
+      );
+    }
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          setEditMode(true);
+          setFileEditError(null);
+        }}
+        disabled={fileEditBusy}
+        className="catalog-scan-btn px-1.5 py-0.5 text-[7px] font-mono transition-colors rounded-sm disabled:opacity-30 whitespace-nowrap"
+        title="Rename or delete the selected model file"
+      >
+        EDIT ▾
       </button>
     );
   };
@@ -263,8 +393,8 @@ export default function ModelCatalog(props: ModelCatalogProps) {
           style={{ width: catalogWidth }}
         >
 
-          {/* Search bar + scan meta (in-field, right) */}
-          <div className="px-3 py-2 flex-shrink-0">
+          {/* Search bar + scan meta / file edit (in-field, right) */}
+          <div className="px-3 py-2 flex-shrink-0 relative">
             <div className="catalog-search-wrap relative min-w-0">
               <input
                 type="text"
@@ -272,16 +402,90 @@ export default function ModelCatalog(props: ModelCatalogProps) {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 autoFocus
-                className={`catalog-search-input theme-input w-full text-xs font-mono pl-3 py-1.5 rounded-sm ${
-                  showScanMenu || batchScanState.active ? "pr-[8.25rem]" : "pr-[6.5rem]"
-                }`}
+                className={`catalog-search-input theme-input w-full text-xs font-mono pl-3 py-1.5 rounded-sm ${searchInputPadding()}`}
               />
               <div className="catalog-search-actions absolute inset-y-0 right-1.5 flex items-center gap-1 pointer-events-none">
                 <div className="flex items-center gap-1 pointer-events-auto">
                   {renderScanMetaControl()}
+                  {renderEditControl()}
                 </div>
               </div>
             </div>
+            {fileEditError && (
+              <p className="mt-1 text-[7px] font-mono text-telemetry-red/90 break-all">{fileEditError}</p>
+            )}
+            {renameOpen && editTarget && (
+              <div
+                className="mt-2 rounded-sm border border-stealth-border/60 bg-stealth-panel/90 px-2 py-2 space-y-2"
+                role="dialog"
+                aria-label="Rename model file"
+              >
+                <p className="text-[7px] font-mono text-stealth-muted truncate" title={editTarget.path}>
+                  RENAME — {editTarget.name}
+                </p>
+                <p className="text-[7px] font-mono text-stealth-muted/70 leading-relaxed">
+                  Renames the .gguf filename on disk. The catalog label ({editTarget.name}) is heuristic and updates after rescan.
+                </p>
+                <input
+                  type="text"
+                  value={renameValue}
+                  onChange={(e) => setRenameValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void confirmRename();
+                    if (e.key === "Escape") setRenameOpen(false);
+                  }}
+                  autoFocus
+                  className="theme-input w-full text-[10px] font-mono px-2 py-1 rounded-sm"
+                />
+                <div className="flex gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => void confirmRename()}
+                    disabled={fileEditBusy || !renameValue.trim()}
+                    className="value-chip-active text-[7px] font-mono px-2 py-0.5 rounded-sm disabled:opacity-30"
+                  >
+                    REN
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRenameOpen(false)}
+                    disabled={fileEditBusy}
+                    className="value-chip text-[7px] font-mono px-2 py-0.5 rounded-sm"
+                  >
+                    CANCEL
+                  </button>
+                </div>
+              </div>
+            )}
+            {deleteConfirmOpen && editTarget && (
+              <div
+                className="mt-2 rounded-sm border border-telemetry-red/35 bg-telemetry-red/5 px-2 py-2 space-y-2"
+                role="alertdialog"
+                aria-label="Confirm delete model file"
+              >
+                <p className="text-[7px] font-mono text-white/90 leading-relaxed">
+                  Move <span className="text-telemetry-red">{editTarget.name}</span> to Recycle Bin?
+                </p>
+                <div className="flex gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => void confirmDelete()}
+                    disabled={fileEditBusy}
+                    className="value-chip-active text-[7px] font-mono px-2 py-0.5 rounded-sm border border-telemetry-red/40 text-telemetry-red disabled:opacity-30"
+                  >
+                    YES
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDeleteConfirmOpen(false)}
+                    disabled={fileEditBusy}
+                    className="value-chip text-[7px] font-mono px-2 py-0.5 rounded-sm"
+                  >
+                    NO
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {renderSortBar()}

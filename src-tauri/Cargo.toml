@@ -1,6 +1,6 @@
 [package]
 name = "blackwell-ops"
-version = "1.0.8"
+version = "1.0.9"
 edition = "2021"
 
 [[bin]]
@@ -36,6 +36,7 @@ parking_lot = "0.12"
 # Mobile Sentinel Bridge (WebSocket)
 tokio-tungstenite = "0.26"
 futures-util = "0.3"
+trash = "5"
 
 [target.'cfg(windows)'.dependencies]
 keyring = { version = "3", default-features = false, features = ["windows-native"] }

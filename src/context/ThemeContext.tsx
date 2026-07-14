@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { KEYS, readStorage, writeStorage } from "../lib/storage";
+import { applyNativeWindowTheme } from "../lib/nativeWindowTheme";
 import {
   APP_THEMES,
   DEFAULT_THEME_ID,
@@ -34,6 +35,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     applyAppTheme(theme);
+    void applyNativeWindowTheme(theme);
   }, [theme]);
 
   const setThemeId = useCallback((id: string) => {

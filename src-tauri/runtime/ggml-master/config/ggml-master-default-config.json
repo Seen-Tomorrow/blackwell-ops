@@ -9,31 +9,30 @@
     "ABOVE-CONFIG-LEFT",
     "ABOVE-CONFIG-RIGHT",
     "PERFORMANCE",
-    "FEATURE-FLAGS",
     "SPECULATIVE-DECODING",
+    "FEATURE-FLAGS",
     "DEV-WORKFLOW",
-    "USER-ADDED-FROM-CATALOG",
     "SYSTEM"
   ],
   "id": "ggml-master",
   "layoutDefaults": {
     "aboveColumnWidths": [
-      0.3440248023150586,
-      0.6559751976849414
+      0.37318909558546304,
+      0.626810904414537
     ],
     "configColumnCount": 3,
     "configColumnWidths": [
-      0.38501364367274904,
-      0.325486536351863,
-      0.289499819975388
+      0.4125644171779141,
+      0.33805845016171004,
+      0.2493771326603759
     ],
     "groupColumn": {
       "ABOVE-CONFIG-RIGHT": 1,
       "ADVANCED": 1,
       "DEV-WORKFLOW": 2,
-      "FEATURE-FLAGS": 1,
+      "FEATURE-FLAGS": 2,
       "PERFORMANCE": 0,
-      "SPECULATIVE-DECODING": 2,
+      "SPECULATIVE-DECODING": 1,
       "USER-ADDED-FROM-CATALOG": 2
     },
     "groupDisplayZone": {
@@ -108,7 +107,8 @@
         1024,
         2048,
         4096,
-        8192
+        8192,
+        16384
       ]
     },
     {
@@ -130,7 +130,8 @@
         128,
         256,
         512,
-        1024
+        1024,
+        4096
       ]
     },
     {
@@ -193,6 +194,75 @@
         "on",
         "off",
         "auto"
+      ]
+    },
+    {
+      "default": "draft-mtp",
+      "dock": "",
+      "flag": "--spec-type",
+      "flag_pair": [],
+      "hidden_default": false,
+      "key": "spec_type",
+      "label": "SPEC-TYPE",
+      "note": "Comma-separated speculative decoding types. 'none' disables.",
+      "pattern": "",
+      "ptype": "arg_select",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "SPECULATIVE-DECODING",
+      "values": [
+        "draft-simple",
+        "draft-dflash",
+        "draft-eagle3",
+        "draft-mtp",
+        "ngram-simple",
+        "ngram-mod"
+      ]
+    },
+    {
+      "default": 3,
+      "dock": "",
+      "flag": "--spec-draft-n-max",
+      "flag_pair": [],
+      "hidden_default": false,
+      "key": "spec_draft_n_max",
+      "label": "DRAFT-N-MAX",
+      "note": "Maximum number of draft tokens per speculative decoding step.",
+      "pattern": "",
+      "ptype": "arg_select",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "SPECULATIVE-DECODING",
+      "values": [
+        1,
+        2,
+        3,
+        4,
+        6,
+        8,
+        12
+      ]
+    },
+    {
+      "default": 1,
+      "dock": "",
+      "flag": "--spec-draft-n-min",
+      "flag_pair": [],
+      "hidden_default": false,
+      "key": "spec_draft_n_min",
+      "label": "DRAFT-N-MIN",
+      "note": "minimum number of draft tokens to use for speculative decoding.",
+      "pattern": "",
+      "ptype": "arg_select",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "SPECULATIVE-DECODING",
+      "values": [
+        1,
+        2,
+        3,
+        4,
+        5
       ]
     },
     {
@@ -341,90 +411,6 @@
       ]
     },
     {
-      "default": "draft-mtp",
-      "dock": "",
-      "flag": "--spec-type",
-      "flag_pair": [],
-      "hidden_default": true,
-      "key": "spec_type",
-      "label": "SPEC-TYPE",
-      "note": "Comma-separated speculative decoding types. 'none' disables.",
-      "pattern": "",
-      "ptype": "arg_select",
-      "step": null,
-      "sub_params": null,
-      "ui_group": "SPECULATIVE-DECODING",
-      "values": [
-        "draft-simple",
-        "draft-dflash",
-        "draft-eagle3",
-        "draft-mtp",
-        "ngram-simple",
-        "ngram-mod"
-      ]
-    },
-    {
-      "default": "",
-      "dock": "runtime",
-      "flag": "--spec-draft-model",
-      "flag_pair": [],
-      "hidden_default": true,
-      "key": "spec_draft_model",
-      "label": "DRAFT-MODEL",
-      "note": "Internal — draft .gguf path set by engine config draft picker (DFlash/Eagle3).",
-      "pattern": "*dflash*",
-      "ptype": "logic_only",
-      "step": null,
-      "sub_params": null,
-      "ui_group": "SYSTEM",
-      "values": []
-    },
-    {
-      "default": 4,
-      "dock": "",
-      "flag": "--spec-draft-n-max",
-      "flag_pair": [],
-      "hidden_default": true,
-      "key": "spec_draft_n_max",
-      "label": "SPEC-DRAFT-N-MAX",
-      "note": "Maximum number of draft tokens per speculative decoding step.",
-      "pattern": "",
-      "ptype": "arg_select",
-      "step": null,
-      "sub_params": null,
-      "ui_group": "SPECULATIVE-DECODING",
-      "values": [
-        1,
-        2,
-        3,
-        6,
-        8,
-        12
-      ]
-    },
-    {
-      "default": 1,
-      "dock": "",
-      "flag": "--spec-draft-n-min",
-      "flag_pair": [],
-      "hidden_default": true,
-      "key": "spec_draft_n_min",
-      "label": "SPEC-DRAFT-N-MIN",
-      "note": "minimum number of draft tokens to use for speculative decoding.",
-      "pattern": "",
-      "ptype": "arg_select",
-      "step": null,
-      "sub_params": null,
-      "ui_group": "SPECULATIVE-DECODING",
-      "values": [
-        1,
-        2,
-        3,
-        4,
-        5
-      ]
-    },
-    {
       "default": "on",
       "dock": "",
       "flag": "--spm-infill",
@@ -480,6 +466,25 @@
         8192,
         16384,
         32768
+      ]
+    },
+    {
+      "default": "auto",
+      "dock": "runtime",
+      "flag": "--spec-draft-model",
+      "flag_pair": [],
+      "hidden_default": false,
+      "key": "spec_draft_model",
+      "label": "DRAFT-MODEL",
+      "note": "External draft GGUF for DFlash/Eagle3. auto scans target folder; must be a .gguf file.",
+      "pattern": "*dflash*",
+      "ptype": "logic_only",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "SYSTEM",
+      "values": [
+        "auto",
+        "off"
       ]
     },
     {
@@ -598,6 +603,6 @@
       "4"
     ]
   },
-  "templateVersion": 28,
+  "templateVersion": 29,
   "template_type": "ggml-llama"
 }

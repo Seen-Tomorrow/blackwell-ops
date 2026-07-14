@@ -206,6 +206,22 @@ impl EngineStack {
         })
     }
 
+    /// True when a loading/running slot is bound to this catalog model path.
+    pub fn model_path_in_active_use(&self, path: &str) -> bool {
+        let key = crate::config::model_file_cache_key(path);
+        if key.is_empty() {
+            return false;
+        }
+        self.slots.iter().any(|slot_opt| {
+            slot_opt.as_ref().map_or(false, |arc| {
+                let slot = arc.lock();
+                matches!(slot.status, SlotStatus::Loading | SlotStatus::Running)
+                    && !slot.model_path.is_empty()
+                    && crate::config::model_file_cache_key(&slot.model_path) == key
+            })
+        })
+    }
+
     /// Reserve a slot before slow launch work — prevents double-booking during port cleanup/spawn.
     pub fn reserve_slot(&self, idx: usize, alias: &str, port: u16) -> Result<(), String> {
         let slot_arc = self.slots.get(idx).and_then(|s| s.as_ref()).ok_or("Slot not found")?;
