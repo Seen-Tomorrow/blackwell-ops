@@ -709,9 +709,10 @@ pub struct HfSearchFilters {
 
 // ── Download Manager Types ───────────────────────────────────────────────
 
-/// HF model download vs portable Foundry toolchain archive.
+/// HF model download vs portable Foundry toolchain archive vs app NSIS installer.
 pub const TASK_KIND_HF: &str = "hf";
 pub const TASK_KIND_TOOLCHAIN: &str = "toolchain";
+pub const TASK_KIND_APP: &str = "app";
 
 fn default_download_task_kind() -> String {
     TASK_KIND_HF.to_string()
@@ -768,7 +769,7 @@ pub struct DownloadTask {
     /// Sharded quant batch — `.part` → `.gguf` rename deferred until all parts complete.
     #[serde(default, skip_serializing_if = "Option::is_none", rename = "batchId")]
     pub batch_id: Option<String>,
-    /// `hf` (default) or `toolchain` — toolchain tasks use `quant_type` `full`.
+    /// `hf` (default), `toolchain`, or `app` (NSIS installer).
     #[serde(default = "default_download_task_kind", rename = "taskKind")]
     pub task_kind: String,
 }

@@ -51,7 +51,7 @@ export function TelemetryProvider({
 }: {
   children: React.ReactNode;
   pollingActive: boolean;
-  /** fast = telemetry tab; normal = catalog or live engines; idle = other tabs */
+  /** fast = HW monitor open; normal = catalog or live engines; idle = other tabs */
   gpuPollTier?: GpuPollTier;
 }) {
   const [gpus, setGpus] = useState<GpuInfo[]>([]);
@@ -128,7 +128,7 @@ export function TelemetryProvider({
     };
   }, [pollGpu, pollCpu]);
 
-  // GPU poll tier: fast (telemetry) / normal (catalog or engines) / idle (other tabs).
+  // GPU poll tier: fast (HW monitor) / normal (catalog or engines) / idle (other tabs).
   useEffect(() => {
     let paused = document.visibilityState !== "visible";
     const interval = gpuPollIntervalMs(gpuPollTier);

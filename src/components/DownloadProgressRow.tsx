@@ -56,6 +56,9 @@ function statusLabel(task: DownloadTask): string {
   if (task.status === "scanning" && task.taskKind === "toolchain") {
     return "extracting";
   }
+  if (task.status === "scanning" && task.taskKind === "app") {
+    return "installing";
+  }
   return task.status;
 }
 
@@ -78,7 +81,7 @@ export default function DownloadProgressRow({
   const etaStr = formatETA(task.etaSeconds);
   const canResume =
     task.status === "paused" ||
-    (task.taskKind === "toolchain" && task.status === "failed");
+    ((task.taskKind === "toolchain" || task.taskKind === "app") && task.status === "failed");
 
   const reportActionError = useCallback(
     (action: string, e: unknown) => {
@@ -163,7 +166,12 @@ export default function DownloadProgressRow({
           {task.error ?? "Extracting toolchain…"} (~4 GB, may take a few minutes)
         </p>
       )}
-      {task.status === "scanning" && task.taskKind !== "toolchain" && task.error && (
+      {task.status === "scanning" && task.taskKind === "app" && (
+        <p className={`font-mono text-blue-400/80 ${compact ? "text-[7px]" : "text-[8px]"}`}>
+          {task.error ?? "Launching NSIS installer…"} (app will restart)
+        </p>
+      )}
+      {task.status === "scanning" && task.taskKind !== "toolchain" && task.taskKind !== "app" && task.error && (
         <p className={`font-mono text-stealth-muted/70 ${compact ? "text-[7px]" : "text-[8px]"}`}>
           {task.error}
         </p>

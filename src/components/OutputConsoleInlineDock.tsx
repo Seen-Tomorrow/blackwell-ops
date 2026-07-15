@@ -1,16 +1,13 @@
 import type { ReactNode } from "react";
-import {
-  OUTPUT_CONSOLE_CATEGORIES,
-  OUTPUT_CONSOLE_CATEGORY_LABELS,
-  type OutputConsoleCategory,
-} from "./BlackwellOutputConsole";
+import type { OutputConsoleCategory } from "./BlackwellOutputConsole";
+import OutputConsoleHeader from "./OutputConsoleHeader";
 
 interface OutputConsoleInlineDockProps {
   liveLine: string;
-  liveCategory: OutputConsoleCategory | null;
+  activeCategory: OutputConsoleCategory;
+  onCategoryChange: (category: OutputConsoleCategory) => void;
   isExpanded: boolean;
   onToggle: () => void;
-  onCategoryClick: (category: OutputConsoleCategory) => void;
   statusLeft: ReactNode;
   statusRight: ReactNode;
   foundrySlot?: ReactNode;
@@ -18,10 +15,10 @@ interface OutputConsoleInlineDockProps {
 
 export default function OutputConsoleInlineDock({
   liveLine,
-  liveCategory,
+  activeCategory,
+  onCategoryChange,
   isExpanded,
   onToggle,
-  onCategoryClick,
   statusLeft,
   statusRight,
   foundrySlot,
@@ -29,49 +26,19 @@ export default function OutputConsoleInlineDock({
   const handleToggle = () => onToggle();
 
   return (
-    <div className={`app-footer-console blackwell-output-console${isExpanded ? " app-footer-console--expanded-open" : ""}`}>
+    <div
+      className={`app-footer-console blackwell-output-console blackwell-output-console--compact${
+        isExpanded ? " app-footer-console--expanded-open" : ""
+      }`}
+    >
       {!isExpanded && (
-        <div
-          className="app-footer-console__header blackwell-output-console__header flex items-center px-2 tracking-wide cursor-pointer"
-          onClick={handleToggle}
-          title="Click to expand console"
-          role="button"
-          tabIndex={0}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              handleToggle();
-            }
-          }}
-        >
-          <span className="font-bold shrink-0 w-12">OUTPUT</span>
-
-          <div className="flex-1 flex items-center justify-center min-w-0 px-2">
-            <div className="flex items-center gap-0.5 overflow-x-auto eink-scrollbar">
-              {OUTPUT_CONSOLE_CATEGORIES.map((cat) => {
-                const isLive = liveCategory === cat;
-                return (
-                  <button
-                    type="button"
-                    key={cat}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onCategoryClick(cat);
-                    }}
-                    className={`boc-tab rounded-sm border shrink-0 cursor-pointer ${
-                      isLive ? "boc-tab--active" : "boc-tab--idle"
-                    }`}
-                    title={`Open ${OUTPUT_CONSOLE_CATEGORY_LABELS[cat]} log`}
-                  >
-                    {OUTPUT_CONSOLE_CATEGORY_LABELS[cat]}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <span className="shrink-0 opacity-60 w-4 text-right">▲</span>
-        </div>
+        <OutputConsoleHeader
+          activeCategory={activeCategory}
+          onCategoryChange={onCategoryChange}
+          showControls={false}
+          dockChevron={{ onToggle: handleToggle }}
+          className="app-footer-console__header"
+        />
       )}
 
       <div className="app-footer-console__status flex items-center font-mono min-h-0">

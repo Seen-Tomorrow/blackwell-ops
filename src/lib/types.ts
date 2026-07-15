@@ -889,8 +889,8 @@ export interface DownloadTask {
   hfAuthor?: string;
   quantType?: string;
   lfsOid?: string;     // LFS content hash for incremental scan
-  /** `hf` (default) or `toolchain` */
-  taskKind?: 'hf' | 'toolchain';
+  /** `hf` (default), `toolchain`, or `app` (NSIS installer) */
+  taskKind?: 'hf' | 'toolchain' | 'app';
 }
 
 export interface DownloadTargetCheck {

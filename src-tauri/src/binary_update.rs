@@ -1,13 +1,13 @@
 //! Binary update module — fetch, download, and activate provider binary updates from GitHub releases.
+//! App updates download the NSIS installer only (not standalone `blackwell-ops.exe`).
 
 use serde::Serialize;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tauri::Manager;
 
 /// Feature flag: set to true to enable binary update checks via GitHub API.
-/// Currently disabled because releases are not yet uploaded. Set to true when ready.
 /// Keep in sync with `BINARY_UPDATES_ENABLED` in `src/lib/foundry_constants.ts`.
-pub const BINARY_UPDATES_ENABLED: bool = false;
+pub const BINARY_UPDATES_ENABLED: bool = true;
 
 /// Bundled providers that ship with bundled binaries.
 #[allow(dead_code)]
@@ -39,23 +39,23 @@ const PROFILES: &[(&str, &str)] = &[
     ("stable", "Stable (VS2022 + CUDA 12.8)"),
 ];
 
-/// GitHub repo hosting binary release assets.
-const GITHUB_REPO: &str = "Seen-Tomorrow/blackwell-ops";
-
 /// Compare two semver strings properly (handles patch 10+).
 fn version_gt(a: &str, b: &str) -> bool {
     let parts_a: Vec<u32> = a.split('.').filter_map(|s| s.parse().ok()).collect();
     let parts_b: Vec<u32> = b.split('.').filter_map(|s| s.parse().ok()).collect();
 
-    // Pad shorter version with zeros (e.g., "0.7" → [0, 7, 0])
     let max_len = std::cmp::max(parts_a.len(), parts_b.len());
     for i in 0..max_len {
         let va = *parts_a.get(i).unwrap_or(&0);
         let vb = *parts_b.get(i).unwrap_or(&0);
-        if va > vb { return true; }
-        if va < vb { return false; }
+        if va > vb {
+            return true;
+        }
+        if va < vb {
+            return false;
+        }
     }
-    false  // Equal versions → not greater
+    false
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -71,55 +71,31 @@ pub struct BinaryUpdateInfo {
 #[tauri::command]
 pub async fn check_binary_updates(provider_id: String) -> Result<Vec<BinaryUpdateInfo>, String> {
     if !BINARY_UPDATES_ENABLED {
-        log::debug!("[binary-update] Binary update checks disabled (feature flag off). Skipping for '{}'.", provider_id);
+        log::debug!(
+            "[binary-update] Binary update checks disabled (feature flag off). Skipping for '{}'.",
+            provider_id
+        );
         return Ok(Vec::new());
     }
 
-    let client = reqwest::Client::new();
-    
-    // Fetch latest release from GitHub API
-    let url = format!("https://api.github.com/repos/{}/releases/latest", GITHUB_REPO);
-    let resp = client.get(&url)
-        .header("User-Agent", "Blackwell-Ops")
-        .send()
-        .await
-        .map_err(|e| format!("Failed to fetch release info: {}", e))?;
-
-    if !resp.status().is_success() {
-        return Err(format!("GitHub API returned {} — check repo or network", resp.status()));
-    }
-
-    let body: serde_json::Value = resp.json().await.map_err(|e| format!("Failed to parse release: {}", e))?;
-    let latest_tag = body.get("tag_name")
-        .and_then(|v| v.as_str())
-        .ok_or("No tag_name in release response")?;
-
-    // Strip "v" prefix if present (e.g., "v0.7.7" → "0.7.7")
+    let release = crate::github_releases::fetch_latest_version_release().await?;
+    let latest_tag = &release.tag_name;
     let latest_version = latest_tag.strip_prefix('v').unwrap_or(latest_tag);
 
-    // Build update info for each profile
     let mut results = Vec::new();
-    
-    for &(profile, label) in PROFILES {
-        let asset_name = format!("{}-{}.zip", provider_id, profile);
-        
-        // Check if this asset exists in the release
-        let has_asset = body.get("assets")
-            .and_then(|a| a.as_array())
-            .map_or(false, |arr| arr.iter().any(|a| 
-                a.get("name").and_then(|n| n.as_str()) == Some(&asset_name)
-            ));
 
-        if !has_asset {
-            continue;  // Skip profiles not available in this release
+    for &(profile, label) in PROFILES {
+        let asset_name = format!("{provider_id}-{profile}.zip");
+        if crate::github_releases::find_asset_by_name(&release, &asset_name).is_none() {
+            continue;
         }
 
         results.push(BinaryUpdateInfo {
             profile: profile.to_string(),
             profile_label: label.to_string(),
-            installed_version: None,  // Will be filled by frontend from build_info_per_env
+            installed_version: None,
             latest_version: latest_version.to_string(),
-            available: true,  // If asset exists and we don't know installed version, assume update available
+            available: true,
         });
     }
 
@@ -137,137 +113,129 @@ pub async fn download_binary_update(
         return Err("Binary updates are disabled".to_string());
     }
 
-    let client = reqwest::Client::new();
+    let release = crate::github_releases::fetch_latest_version_release().await?;
+    let latest_tag = release.tag_name.clone();
+    let asset_name = format!("{provider_id}-{profile}");
 
-    // Fetch latest release to get the asset URL
-    let url = format!("https://api.github.com/repos/{}/releases/latest", GITHUB_REPO);
-    let resp = client.get(&url)
-        .header("User-Agent", "Blackwell-Ops")
-        .send()
-        .await
-        .map_err(|e| format!("Failed to fetch release: {}", e))?;
+    let asset = crate::github_releases::find_asset_by_name(&release, &asset_name)
+        .ok_or_else(|| format!("Asset '{asset_name}' not found in release {latest_tag}"))?;
 
-    if !resp.status().is_success() {
-        return Err(format!("GitHub API returned {}", resp.status()));
-    }
-
-    let body: serde_json::Value = resp.json().await.map_err(|e| format!("Failed to parse: {}", e))?;
-    
-    // Capture the release tag for version tracking (used later for comparison)
-    let latest_tag = body.get("tag_name")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
-
-    let asset_name = format!("{}-{}.zip", provider_id, profile);
-
-    // Find the download URL for this asset
-    let download_url = body.get("assets")
-        .and_then(|a| a.as_array())
-        .and_then(|arr| arr.iter().find(|a| 
-            a.get("name").and_then(|n| n.as_str()) == Some(&asset_name)
-        ))
-        .and_then(|a| a.get("browser_download_url"))
-        .and_then(|u| u.as_str())
-        .ok_or_else(|| format!("Asset '{}' not found in latest release", asset_name))?;
-
-    // Emit download start event
     crate::ipc_meter::emit_tracked(
-        &app_handle,"binary-update:download-start", &BinaryUpdateEvent {
-        provider_id: provider_id.clone(),
-        profile: profile.clone(),
-        status: "downloading".to_string(),
-        message: format!("Downloading {}...", asset_name),
-    });
+        &app_handle,
+        "binary-update:download-start",
+        &BinaryUpdateEvent {
+            provider_id: provider_id.clone(),
+            profile: profile.clone(),
+            status: "downloading".to_string(),
+            message: format!("Downloading {asset_name}..."),
+        },
+    );
 
-    // Download the zip file
-    let download_resp = client.get(download_url)
+    let client = reqwest::Client::new();
+    let download_resp = crate::github_releases::apply_github_auth(client.get(&asset.download_url))
         .send()
         .await
-        .map_err(|e| format!("Failed to download {}: {}", asset_name, e))?;
+        .map_err(|e| format!("Failed to download {asset_name}: {e}"))?;
 
     if !download_resp.status().is_success() {
-        return Err(format!("Download failed with status {}", download_resp.status()));
+        return Err(format!(
+            "Download failed with status {}",
+            download_resp.status()
+        ));
     }
 
-    let bytes = download_resp.bytes().await.map_err(|e| format!("Failed to read download: {}", e))?;
+    let bytes = download_resp
+        .bytes()
+        .await
+        .map_err(|e| format!("Failed to read download: {e}"))?;
     let total_size = bytes.len();
 
-    // Emit progress
     crate::ipc_meter::emit_tracked(
-        &app_handle,"binary-update:download-progress", &BinaryUpdateEvent {
-        provider_id: provider_id.clone(),
-        profile: profile.clone(),
-        status: "downloading".to_string(),
-        message: format!("Downloaded {} MB", total_size / 1_048_576),
-    });
+        &app_handle,
+        "binary-update:download-progress",
+        &BinaryUpdateEvent {
+            provider_id: provider_id.clone(),
+            profile: profile.clone(),
+            status: "downloading".to_string(),
+            message: format!("Downloaded {} MB", total_size / 1_048_576),
+        },
+    );
 
-    // Extract directly into runtime/{id}/{profile}/ (portable, replaces bundled binary)
     let update_dir = crate::config::app_root_dir()
         .join("runtime")
         .join(&provider_id)
         .join(&profile);
 
-    // Check if the target binary is currently in use by a running engine
     let current_binary = update_dir.join("llama-server.exe");
     if current_binary.exists() {
-        log::warn!("[binary-update] Target binary exists at {} — ensure no engine is using it before overwriting", current_binary.display());
-        // Emit event to frontend asking user for confirmation
+        log::warn!(
+            "[binary-update] Target binary exists at {} — ensure no engine is using it before overwriting",
+            current_binary.display()
+        );
         crate::ipc_meter::emit_tracked(
-        &app_handle,"binary-update:confirm-overwrite", &BinaryUpdateEvent {
-            provider_id: provider_id.clone(),
-            profile: profile.clone(),
-            status: "confirm".to_string(),
-            message: format!("{} is currently installed. Stop any running engine before updating?", profile),
-        });
+            &app_handle,
+            "binary-update:confirm-overwrite",
+            &BinaryUpdateEvent {
+                provider_id: provider_id.clone(),
+                profile: profile.clone(),
+                status: "confirm".to_string(),
+                message: format!(
+                    "{profile} is currently installed. Stop any running engine before updating?"
+                ),
+            },
+        );
     }
 
-    std::fs::create_dir_all(&update_dir).map_err(|e| format!("Failed to create update dir: {}", e))?;
+    std::fs::create_dir_all(&update_dir)
+        .map_err(|e| format!("Failed to create update dir: {e}"))?;
 
-    // Write zip to temp file
-    let temp_zip = update_dir.join(format!("{}.zip", profile));
-    std::fs::write(&temp_zip, &bytes).map_err(|e| format!("Failed to write zip: {}", e))?;
+    let temp_zip = update_dir.join(format!("{profile}.zip"));
+    std::fs::write(&temp_zip, &bytes).map_err(|e| format!("Failed to write zip: {e}"))?;
 
-    // Extract using PowerShell's Expand-Archive (built-in on Windows)
     crate::ipc_meter::emit_tracked(
-        &app_handle,"binary-update:download-progress", &BinaryUpdateEvent {
-        provider_id: provider_id.clone(),
-        profile: profile.clone(),
-        status: "extracting".to_string(),
-        message: "Extracting binaries...".to_string(),
-    });
+        &app_handle,
+        "binary-update:download-progress",
+        &BinaryUpdateEvent {
+            provider_id: provider_id.clone(),
+            profile: profile.clone(),
+            status: "extracting".to_string(),
+            message: "Extracting binaries...".to_string(),
+        },
+    );
 
-    // Don't delete old files — an engine might be using them. Expand-Archive -Force overwrites in-place.
     let extract_result = std::process::Command::new("powershell")
         .args([
-            "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
-            "-Command", &format!(
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            &format!(
                 "Expand-Archive -Path '{}' -DestinationPath '{}' -Force",
                 temp_zip.display(),
                 update_dir.display()
             ),
         ])
         .output()
-        .map_err(|e| format!("Failed to run extraction: {}", e))?;
+        .map_err(|e| format!("Failed to run extraction: {e}"))?;
 
     if !extract_result.status.success() {
         let stderr = String::from_utf8_lossy(&extract_result.stderr);
-        return Err(format!("Extraction failed: {}", stderr));
+        return Err(format!("Extraction failed: {stderr}"));
     }
 
-    // Clean up temp zip
     let _ = std::fs::remove_file(&temp_zip);
 
-    // Find the extracted llama-server.exe — it might be in a subdirectory (zip may contain top-level folder)
     let server_exe = find_extracted_binary(&update_dir, "llama-server.exe")
-        .ok_or_else(|| format!("llama-server.exe not found after extraction"))?;
+        .ok_or_else(|| "llama-server.exe not found after extraction".to_string())?;
 
-    // Validate the binary exists and is accessible
     if !server_exe.exists() {
-        return Err(format!("Binary validation failed: {} not found", server_exe.display()));
+        return Err(format!(
+            "Binary validation failed: {} not found",
+            server_exe.display()
+        ));
     }
 
-    // Get version info from the new binary
     let build_info = crate::engine::get_binary_build_info(server_exe.to_string_lossy().to_string())
         .await
         .unwrap_or_else(|_| {
@@ -280,51 +248,52 @@ pub async fn download_binary_update(
             }
         });
 
-    // Emit success event with new path and build info
     crate::ipc_meter::emit_tracked(
-        &app_handle,"binary-update:download-complete", &BinaryUpdateEvent {
-        provider_id: provider_id.clone(),
-        profile: profile.clone(),
-        status: "complete".to_string(),
-        message: format!("Updated to {}", build_info.version),
-    });
+        &app_handle,
+        "binary-update:download-complete",
+        &BinaryUpdateEvent {
+            provider_id: provider_id.clone(),
+            profile: profile.clone(),
+            status: "complete".to_string(),
+            message: format!("Updated to {}", build_info.version),
+        },
+    );
 
-    // Update the provider config — set per-env path to point to new binary
     let cfg_state = app_handle.state::<std::sync::Mutex<crate::config::AppConfig>>();
-    let mut cfg = cfg_state.lock().map_err(|e| format!("Failed to lock config: {}", e))?;
+    let mut cfg = cfg_state
+        .lock()
+        .map_err(|e| format!("Failed to lock config: {e}"))?;
 
     if let Some(provider) = cfg.providers.iter_mut().find(|p| p.id == provider_id) {
-        // Set per-env path as relative (portable)
         let rel = crate::config::to_relative_path(&server_exe);
         provider.binary_path_per_env.insert(profile.clone(), rel);
-
-        // Track which GitHub release tag was downloaded (for version comparison)
-        let latest_tag_for_log = latest_tag.clone();
-        provider.downloaded_version_per_env.insert(profile.clone(), latest_tag);
-
-        // Also update build info for this env
+        provider
+            .downloaded_version_per_env
+            .insert(profile.clone(), latest_tag.clone());
         provider.build_info_per_env.insert(profile.clone(), build_info);
 
-        log::info!("[binary-update] Updated {} [{}]: {} (release: {})", provider_id, profile, server_exe.display(), latest_tag_for_log);
+        log::info!(
+            "[binary-update] Updated {} [{}]: {} (release: {})",
+            provider_id,
+            profile,
+            server_exe.display(),
+            latest_tag
+        );
     } else {
-        return Err(format!("Provider '{}' not found in config", provider_id));
+        return Err(format!("Provider '{provider_id}' not found in config"));
     }
 
-    // Persist the updated config
     crate::config::persist_user_providers_meta(&cfg.providers)
-        .map_err(|e| format!("Failed to persist provider meta after update: {}", e))?;
+        .map_err(|e| format!("Failed to persist provider meta after update: {e}"))?;
 
     Ok(())
 }
 
-/// Recursively search for a binary file in the extraction directory.
-fn find_extracted_binary(dir: &std::path::Path, filename: &str) -> Option<PathBuf> {
-    // Check direct children first
+fn find_extracted_binary(dir: &Path, filename: &str) -> Option<PathBuf> {
     if dir.join(filename).exists() {
         return Some(dir.join(filename));
     }
 
-    // Check one level deep (zip may have top-level folder)
     if let Ok(entries) = std::fs::read_dir(dir) {
         for entry in entries.flatten() {
             if entry.file_type().map_or(false, |ft| ft.is_dir()) {
@@ -343,19 +312,19 @@ fn find_extracted_binary(dir: &std::path::Path, filename: &str) -> Option<PathBu
 pub struct BinaryUpdateEvent {
     pub provider_id: String,
     pub profile: String,
-    pub status: String,  // "downloading", "extracting", "complete", "error"
+    pub status: String,
     pub message: String,
 }
 
-/// Get profile metadata for UI display.
 #[tauri::command]
 pub fn get_profile_labels() -> Vec<serde_json::Value> {
-    PROFILES.iter().map(|(id, label)| {
-        serde_json::json!({ "id": id, "label": label })
-    }).collect()
+    PROFILES
+        .iter()
+        .map(|(id, label)| serde_json::json!({ "id": id, "label": label }))
+        .collect()
 }
 
-/// Check for app update via GitHub releases API.
+/// Check for app update via GitHub semver releases (NSIS installer present).
 #[tauri::command]
 pub async fn check_app_update(app_handle: tauri::AppHandle) -> Result<AppUpdateInfo, String> {
     if !BINARY_UPDATES_ENABLED {
@@ -369,19 +338,26 @@ pub async fn check_app_update(app_handle: tauri::AppHandle) -> Result<AppUpdateI
         });
     }
 
-    let client = reqwest::Client::new();
     let current_version = app_handle.package_info().version.to_string();
 
-    // Fetch latest release from GitHub API
-    let url = format!("https://api.github.com/repos/{}/releases/latest", GITHUB_REPO);
-    let resp = client.get(&url)
-        .header("User-Agent", "Blackwell-Ops")
-        .send()
-        .await
-        .map_err(|e| format!("Failed to fetch release info: {}", e))?;
+    let release = match crate::github_releases::fetch_latest_version_release().await {
+        Ok(r) => r,
+        Err(e) => {
+            log::warn!("[app-update] {e}");
+            return Ok(AppUpdateInfo {
+                available: false,
+                version: current_version.clone(),
+                current_version,
+                release_notes: None,
+            });
+        }
+    };
 
-    if !resp.status().is_success() {
-        log::warn!("[app-update] GitHub API returned {}", resp.status());
+    if crate::github_releases::find_nsis_installer_asset(&release).is_none() {
+        log::warn!(
+            "[app-update] Release '{}' has no NSIS installer asset",
+            release.tag_name
+        );
         return Ok(AppUpdateInfo {
             available: false,
             version: current_version.clone(),
@@ -390,117 +366,47 @@ pub async fn check_app_update(app_handle: tauri::AppHandle) -> Result<AppUpdateI
         });
     }
 
-    let body: serde_json::Value = resp.json().await.map_err(|e| format!("Failed to parse release: {}", e))?;
-    let latest_tag = body.get("tag_name")
-        .and_then(|v| v.as_str())
-        .ok_or("No tag_name in release response")?;
-
-    // Strip "v" prefix for comparison (e.g., "v0.7.8" → "0.7.8")
+    let latest_tag = &release.tag_name;
     let latest_version = latest_tag.strip_prefix('v').unwrap_or(latest_tag);
-
-    // Compare versions properly (handles patch 10+)
     let available = version_gt(latest_version, &current_version);
-
-    let release_notes = body.get("body").and_then(|b| b.as_str()).map(String::from);
 
     Ok(AppUpdateInfo {
         available,
         version: latest_tag.to_string(),
         current_version,
-        release_notes,
+        release_notes: release.body,
     })
 }
 
-/// Download and install the latest app update.
+/// Enqueue NSIS installer download via the shared download manager (pause/resume/progress).
 #[tauri::command]
-pub async fn install_app_update(app_handle: tauri::AppHandle) -> Result<(), String> {
+pub async fn install_app_update(
+    app_handle: tauri::AppHandle,
+    manager: tauri::State<'_, std::sync::Arc<tokio::sync::RwLock<crate::download_manager::DownloadManager>>>,
+) -> Result<String, String> {
     if !BINARY_UPDATES_ENABLED {
         return Err("App updates are disabled".to_string());
     }
 
-    let client = reqwest::Client::new();
+    let mut dm = manager.write().await;
+    let task_id = dm
+        .start_app_update_download(app_handle.clone(), std::sync::Arc::clone(&*manager))
+        .await?;
+    drop(dm);
 
-    // Fetch latest release to find the Windows installer asset
-    let url = format!("https://api.github.com/repos/{}/releases/latest", GITHUB_REPO);
-    let resp = client.get(&url)
-        .header("User-Agent", "Blackwell-Ops")
-        .send()
-        .await
-        .map_err(|e| format!("Failed to fetch release: {}", e))?;
-
-    if !resp.status().is_success() {
-        return Err(format!("GitHub API returned {}", resp.status()));
-    }
-
-    let body: serde_json::Value = resp.json().await.map_err(|e| format!("Failed to parse: {}", e))?;
-
-    // Find the Windows NSIS installer asset (e.g., "Blackwell Ops Setup 0.7.8.exe")
-    let download_url = body.get("assets")
-        .and_then(|a| a.as_array())
-        .and_then(|arr| arr.iter().find(|a| {
-            a.get("name").and_then(|n| n.as_str()).map_or(false, |name| {
-                name.contains("Setup") && name.ends_with(".exe")
-            })
-        }))
-        .and_then(|a| a.get("browser_download_url"))
-        .and_then(|u| u.as_str())
-        .ok_or_else(|| "No Windows installer found in latest release".to_string())?;
-
-    // Emit download start event
     crate::ipc_meter::emit_tracked(
-        &app_handle,"app-update:download-start", &serde_json::json!({
-        "status": "downloading",
-        "message": "Downloading update...",
-    }));
+        &app_handle,
+        "download-event",
+        serde_json::json!({
+            "type": "queued",
+            "taskId": task_id,
+            "taskKind": "app",
+        }),
+    );
 
-    // Download the installer to a temp file
-    let download_resp = client.get(download_url)
-        .send()
-        .await
-        .map_err(|e| format!("Failed to download: {}", e))?;
-
-    if !download_resp.status().is_success() {
-        return Err(format!("Download failed with status {}", download_resp.status()));
-    }
-
-    let bytes = download_resp.bytes().await.map_err(|e| format!("Failed to read download: {}", e))?;
-
-    // Write to temp directory with unique filename (avoids conflicts from failed installs)
-    let temp_dir = std::env::temp_dir();
-    let installer_name = format!("Blackwell_Ops_Setup_{}.exe", chrono::Utc::now().format("%Y%m%d%H%M%S"));
-    let installer_path = temp_dir.join(installer_name);
-    std::fs::write(&installer_path, &bytes).map_err(|e| format!("Failed to write installer: {}", e))?;
-
-    // Emit download complete event
-    crate::ipc_meter::emit_tracked(
-        &app_handle,"app-update:download-complete", &serde_json::json!({
-        "status": "complete",
-        "message": "Update downloaded. Installing...",
-    }));
-
-    log::info!("[app-update] Launching installer at {}", installer_path.display());
-
-    // Silent in-place upgrade — /UPDATE skips uninstall-first and preserves foundry/, config/, engines/
-    std::process::Command::new("cmd")
-        .args(["/C", &format!("start \"\" /wait \"{}\" /S /UPDATE", installer_path.display())])
-        .spawn()
-        .map_err(|e| format!("Failed to launch installer: {}", e))?;
-
-    // Don't delete the temp file — Windows will clean it up. Deleting too early corrupts the install.
-    log::info!("[app-update] Installer left at {} for Windows cleanup", installer_path.display());
-
-    // Close old instance after a short delay so NSIS can replace files in use
-    let app_handle_clone = app_handle.clone();
-    tauri::async_runtime::spawn(async move {
-        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
-        log::info!("[app-update] Closing old instance to allow installer to complete");
-        app_handle_clone.exit(0);
-    });
-
-    Ok(())
+    Ok(task_id)
 }
 
-/// Combined startup check — app update + binary updates for all Bundled providers.
 #[tauri::command]
 pub async fn get_startup_updates(app_handle: tauri::AppHandle) -> Result<StartupUpdateStatus, String> {
     if !BINARY_UPDATES_ENABLED {
@@ -516,18 +422,17 @@ pub async fn get_startup_updates(app_handle: tauri::AppHandle) -> Result<Startup
         });
     }
 
-    // Run all checks in parallel (app + each provider's binary updates)
     let app_update_future = check_app_update(app_handle.clone());
     let ggml_future = check_binary_updates(crate::config::DEFAULT_PROVIDER_ID.to_string());
     let tom_future = check_binary_updates("ggml-tom".to_string());
 
-    let (app_result, ggml_result, tom_result) = tokio::join!(app_update_future, ggml_future, tom_future);
+    let (app_result, ggml_result, tom_result) =
+        tokio::join!(app_update_future, ggml_future, tom_future);
 
-    // Process app update result
     let app_update = match app_result {
         Ok(info) => info,
         Err(e) => {
-            log::warn!("[startup-updates] App update check failed: {}", e);
+            log::warn!("[startup-updates] App update check failed: {e}");
             AppUpdateInfo {
                 available: false,
                 version: String::new(),
@@ -537,10 +442,12 @@ pub async fn get_startup_updates(app_handle: tauri::AppHandle) -> Result<Startup
         }
     };
 
-    // Process binary updates results
     let mut binary_updates = Vec::new();
 
-    for (provider_id, result) in [(crate::config::DEFAULT_PROVIDER_ID, ggml_result), ("ggml-tom", tom_result)] {
+    for (provider_id, result) in [
+        (crate::config::DEFAULT_PROVIDER_ID, ggml_result),
+        ("ggml-tom", tom_result),
+    ] {
         match result {
             Ok(updates) => {
                 if !updates.is_empty() {
@@ -551,7 +458,7 @@ pub async fn get_startup_updates(app_handle: tauri::AppHandle) -> Result<Startup
                 }
             }
             Err(e) => {
-                log::warn!("[startup-updates] Binary check failed for {}: {}", provider_id, e);
+                log::warn!("[startup-updates] Binary check failed for {provider_id}: {e}");
             }
         }
     }
@@ -562,7 +469,6 @@ pub async fn get_startup_updates(app_handle: tauri::AppHandle) -> Result<Startup
     })
 }
 
-/// Revert a provider profile's binary path back to the bundled default.
 #[tauri::command]
 pub async fn revert_binary_to_bundled(
     app_handle: tauri::AppHandle,
@@ -570,7 +476,9 @@ pub async fn revert_binary_to_bundled(
     profile: String,
 ) -> Result<(), String> {
     let cfg_state = app_handle.state::<std::sync::Mutex<crate::config::AppConfig>>();
-    let mut cfg = cfg_state.lock().map_err(|e| format!("Failed to lock config: {}", e))?;
+    let mut cfg = cfg_state
+        .lock()
+        .map_err(|e| format!("Failed to lock config: {e}"))?;
 
     if let Some(provider) = cfg.providers.iter_mut().find(|p| p.id == provider_id) {
         crate::profile_binaries::set_profile_source(
@@ -581,13 +489,13 @@ pub async fn revert_binary_to_bundled(
         provider.downloaded_version_per_env.remove(&profile);
         crate::profile_binaries::resolve_after_source_change(provider);
 
-        log::info!("[binary-update] Reverted {} [{}] to bundled default", provider_id, profile);
+        log::info!("[binary-update] Reverted {provider_id} [{profile}] to bundled default");
     } else {
-        return Err(format!("Provider '{}' not found in config", provider_id));
+        return Err(format!("Provider '{provider_id}' not found in config"));
     }
 
     crate::config::persist_user_providers_meta(&cfg.providers)
-        .map_err(|e| format!("Failed to persist after revert: {}", e))?;
+        .map_err(|e| format!("Failed to persist after revert: {e}"))?;
 
     Ok(())
 }

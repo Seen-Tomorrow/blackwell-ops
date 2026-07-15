@@ -17,7 +17,7 @@
  * | BlackOps-stop-all | All engines stopped — clear slot selection |
  * | BlackOps-slot-cleared | Single slot cleared — update selection |
  * | BlackOps-download-completed | Model Hub download finished — refresh catalog |
- * | BlackOps-telemetry-view-changed | TELEMETRY tab switched standard ↔ lab |
+
  * | BlackOps-model-paths-changed | Model path added/removed/default changed — refresh catalog |
  * | BlackOps-navigate-config | Switch to CONFIG tab; detail.subTab selects sub-tab (incl. recovery) |
  * | BlackOps-setup-guide-changed | Setup guide phase/dismiss state changed |
@@ -57,7 +57,6 @@ export const EVENTS = {
   stopAll: `${STORAGE_PREFIX}stop-all`,
   slotCleared: `${STORAGE_PREFIX}slot-cleared`,
   downloadCompleted: `${STORAGE_PREFIX}download-completed`,
-  telemetryViewChanged: `${STORAGE_PREFIX}telemetry-view-changed`,
   modelPathsChanged: `${STORAGE_PREFIX}model-paths-changed`,
   navigateConfig: `${STORAGE_PREFIX}navigate-config`,
   setupGuideChanged: `${STORAGE_PREFIX}setup-guide-changed`,

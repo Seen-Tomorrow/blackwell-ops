@@ -15,8 +15,8 @@ use tokio::fs::{self, OpenOptions};
 use tokio::io::AsyncWriteExt;
 use tokio::sync::RwLock;
 use crate::types::{
-    DownloadStatus, DownloadTask, QuantBatchPart, QuantDownloadBatch, TASK_KIND_HF,
-    TASK_KIND_TOOLCHAIN,
+    DownloadStatus, DownloadTask, QuantBatchPart, QuantDownloadBatch, TASK_KIND_APP,
+    TASK_KIND_HF, TASK_KIND_TOOLCHAIN,
 };
 
 /// Persisted manifest entry — survives restart so we can recover orphaned .part files.
@@ -48,6 +48,18 @@ fn default_manifest_task_kind() -> String {
 
 fn is_toolchain_task(task: &DownloadTask) -> bool {
     task.task_kind == TASK_KIND_TOOLCHAIN
+}
+
+fn is_app_task(task: &DownloadTask) -> bool {
+    task.task_kind == TASK_KIND_APP
+}
+
+fn is_post_download_task(task: &DownloadTask) -> bool {
+    is_toolchain_task(task) || is_app_task(task)
+}
+
+fn needs_github_auth(task: &DownloadTask) -> bool {
+    is_toolchain_task(task) || is_app_task(task)
 }
 
 const MANIFEST_FILE: &str = "download_tasks.json";
@@ -191,6 +203,8 @@ pub struct DownloadManager {
     quant_batches: HashMap<String, QuantDownloadBatch>,
     /// Max concurrent downloads (default 3).
     max_concurrent: usize,
+    /// App handle for NSIS install after app-update download completes.
+    app_update_handle: Option<tauri::AppHandle>,
 }
 
 impl DownloadManager {
@@ -199,6 +213,7 @@ impl DownloadManager {
             tasks: HashMap::new(),
             quant_batches: load_quant_batches(),
             max_concurrent: DEFAULT_MAX_CONCURRENT,
+            app_update_handle: None,
         }
     }
 
@@ -497,6 +512,97 @@ impl DownloadManager {
         })
     }
 
+    /// True when an app NSIS installer download or install is in progress.
+    pub fn has_active_app_update_download(&self) -> bool {
+        self.tasks.values().any(|t| {
+            is_app_task(t)
+                && matches!(
+                    t.status,
+                    DownloadStatus::Queued
+                        | DownloadStatus::Downloading
+                        | DownloadStatus::Paused
+                        | DownloadStatus::Scanning
+                )
+        })
+    }
+
+    /// Enqueue download of the latest NSIS installer from GitHub (not standalone exe).
+    pub async fn start_app_update_download(
+        &mut self,
+        app_handle: tauri::AppHandle,
+        self_arc: Arc<RwLock<Self>>,
+    ) -> Result<String, String> {
+        if self.has_active_app_update_download() {
+            return Err("An app update download is already in progress.".into());
+        }
+
+        let (download_url, installer_name, release_tag, total_bytes) =
+            crate::github_releases::resolve_app_installer_asset().await?;
+
+        let dest_dir = crate::github_releases::app_update_cache_dir();
+        std::fs::create_dir_all(&dest_dir)
+            .map_err(|e| format!("Failed to create app update cache dir: {e}"))?;
+        let dest_path = dest_dir.join(&installer_name);
+        let dest_path_str = dest_path.to_string_lossy().to_string();
+
+        if self.has_active_task_for_dest(&dest_path_str) {
+            return Err("An app update download for this installer is already in progress.".into());
+        }
+
+        let stale_ids: Vec<String> = self
+            .tasks
+            .iter()
+            .filter(|(_, t)| {
+                is_app_task(t)
+                    && matches!(t.status, DownloadStatus::Completed | DownloadStatus::Failed)
+            })
+            .map(|(id, _)| id.clone())
+            .collect();
+        for id in stale_ids {
+            self.tasks.remove(&id);
+        }
+
+        let partial_path = partial_download_path(&dest_path_str);
+        let resume_offset = std::fs::metadata(&partial_path)
+            .ok()
+            .map(|m| m.len())
+            .unwrap_or(0);
+
+        let task_id = generate_task_id();
+        let task = DownloadTask {
+            id: task_id.clone(),
+            hf_model_id: format!("Blackwell Ops {release_tag}"),
+            file_name: installer_name,
+            download_url,
+            total_bytes,
+            downloaded_bytes: resume_offset,
+            status: DownloadStatus::Queued,
+            dest_path: dest_path_str,
+            speed_bps: 0,
+            pause_offset: resume_offset,
+            error: None,
+            eta_seconds: 0,
+            hf_author: String::new(),
+            quant_type: release_tag,
+            lfs_oid: String::new(),
+            batch_id: None,
+            task_kind: TASK_KIND_APP.to_string(),
+        };
+
+        self.app_update_handle = Some(app_handle);
+        self.tasks.insert(task_id.clone(), task);
+        let task_ref = self.tasks.get(&task_id).unwrap();
+        persist_task_to_manifest(task_ref);
+
+        let worker_arc = self_arc;
+        let task_id_for_worker = task_id.clone();
+        tokio::spawn(async move {
+            Self::download_worker(task_id_for_worker, worker_arc).await;
+        });
+
+        Ok(task_id)
+    }
+
     /// Scan persisted manifest for orphaned `.part` files — safe on a blocking thread (may stat large files).
     pub fn gather_recovered_tasks() -> Vec<DownloadTask> {
         let manifest = load_manifest();
@@ -653,7 +759,7 @@ impl DownloadManager {
 
                     Ok(())
                 }
-                DownloadStatus::Failed if is_toolchain_task(task) => {
+                DownloadStatus::Failed if is_post_download_task(task) => {
                     let partial = partial_download_path(&task.dest_path);
                     let file_len = std::fs::metadata(&partial)
                         .ok()
@@ -805,7 +911,7 @@ impl DownloadManager {
         }
 
         // Claim the task for this worker — bail if another worker already owns it.
-        let (url, dest_path, partial_path, start_offset, _total_bytes) = {
+        let (url, dest_path, partial_path, start_offset, _total_bytes, use_github_auth) = {
             let mut dm = manager.write().await;
             let Some(task) = dm.tasks.get_mut(&task_id) else {
                 return;
@@ -820,6 +926,7 @@ impl DownloadManager {
                         partial_download_path(&task.dest_path),
                         task.pause_offset,
                         task.total_bytes,
+                        needs_github_auth(task),
                     )
                 }
                 DownloadStatus::Downloading => {
@@ -861,6 +968,9 @@ impl DownloadManager {
             let mut req = base_client.get(&download_url);
             if start_offset > 0 {
                 req = req.header(RANGE, format!("bytes={}-", start_offset));
+            }
+            if use_github_auth {
+                req = crate::github_releases::apply_github_auth(req);
             }
 
             let interim = match req.send().await {
@@ -1188,7 +1298,7 @@ async fn mark_completed_worker(
     task_id: &str,
     dest_path: &str,
 ) {
-    let (batch_id, is_toolchain) = {
+    let (batch_id, is_toolchain, is_app) = {
         let mut dm = manager.write().await;
         let Some(task) = dm.tasks.get_mut(task_id) else {
             return;
@@ -1211,16 +1321,17 @@ async fn mark_completed_worker(
         }
 
         let toolchain = is_toolchain_task(task);
-        if !toolchain {
+        let app = is_app_task(task);
+        if !toolchain && !app {
             task.status = DownloadStatus::Completed;
         }
         task.speed_bps = 0;
         task.eta_seconds = 0;
         task.pause_offset = 0;
-        (task.batch_id.clone(), toolchain)
+        (task.batch_id.clone(), toolchain, app)
     };
 
-    if !is_toolchain {
+    if !is_toolchain && !is_app {
         remove_task_from_manifest(task_id);
     }
 
@@ -1280,6 +1391,25 @@ async fn mark_completed_worker(
         return;
     }
 
+    if is_app {
+        {
+            let mut dm = manager.write().await;
+            if let Some(task) = dm.tasks.get_mut(&task_id_for_finalization) {
+                task.status = DownloadStatus::Scanning;
+                task.speed_bps = 0;
+                task.eta_seconds = 0;
+                task.error = Some("Launching NSIS installer…".to_string());
+            }
+        }
+        remove_task_from_manifest(&task_id_for_finalization);
+        let manager_arc = Arc::clone(manager);
+        let installer = dest_to_rename.clone();
+        tokio::spawn(async move {
+            finalize_app_install_worker(&manager_arc, &task_id_for_finalization, &installer).await;
+        });
+        return;
+    }
+
     let dm_snapshot = manager.read().await;
     let cache_data = dm_snapshot.tasks.get(&task_id_for_finalization).map(|t| {
         (
@@ -1304,6 +1434,48 @@ async fn mark_completed_worker(
     }
 
     log::info!("Download complete: {} -> {}", task_id_for_finalization, dest_to_rename);
+}
+
+async fn finalize_app_install_worker(
+    manager: &Arc<RwLock<DownloadManager>>,
+    task_id: &str,
+    installer_path: &str,
+) {
+    let app_handle = {
+        let mut dm = manager.write().await;
+        dm.app_update_handle.take()
+    };
+
+    let result = match app_handle {
+        Some(handle) => crate::github_releases::launch_nsis_installer(
+            Path::new(installer_path),
+            &handle,
+        ),
+        None => Err("App update session lost — restart download.".to_string()),
+    };
+
+    let mut dm = manager.write().await;
+    let Some(task) = dm.tasks.get_mut(task_id) else {
+        return;
+    };
+
+    match result {
+        Ok(()) => {
+            task.status = DownloadStatus::Completed;
+            task.error = Some("Installer launched — app will restart.".to_string());
+            log::info!("[download] App NSIS install launched: {task_id}");
+        }
+        Err(e) => {
+            task.status = DownloadStatus::Failed;
+            task.error = Some(e);
+            log::warn!(
+                "[download] App install failed for {task_id}: {}",
+                task.error.as_deref().unwrap_or("")
+            );
+        }
+    }
+    task.speed_bps = 0;
+    task.eta_seconds = 0;
 }
 
 async fn finalize_toolchain_extract_worker(
@@ -1355,7 +1527,7 @@ async fn mark_failed(manager: &Arc<RwLock<DownloadManager>>, task_id: &str, erro
         let dm = manager.read().await;
         dm.tasks
             .get(task_id)
-            .map(is_toolchain_task)
+            .map(is_post_download_task)
             .unwrap_or(false)
     };
 

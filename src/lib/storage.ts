@@ -55,7 +55,7 @@ import type {
  * | BlackOps-catalog-split-width | number string (px) | Model catalog / engine config split |
  * | BlackOps-catalog-list-collapsed | "0" \| "1" | Model catalog list fully collapsed |
  * | BlackOps-model-hub-split-width | number string (0–1) | Model Hub results / quants split ratio |
- * | BlackOps-telemetry-view | standard \| lab | TELEMETRY tab: panel vs lab catalogue |
+
  * | BlackOps-setup-guide-dismissed | "1" | Setup guide dismissed (cache; authority is app_config.setup_completed) |
  * | BlackOps-setup-welcome-seen | "1" | Welcome animation seen (cache; replayed when config/ is reset) |
  * | BlackOps-setup-guide-preview | "1" | Dev: force welcome + guide in VRAM display |
@@ -160,12 +160,13 @@ export const KEYS = {
   launchRailTelemetryRatio: `${STORAGE_PREFIX}launch-rail-telemetry-ratio`,
   /** Config panel — live HW monitor column (any dock layout). */
   hwMonitorOpen: `${STORAGE_PREFIX}hw-monitor-open`,
+  /** HW monitor — per-core CPU grid expanded under CPU header. */
+  hwMonitorCpuCoresOpen: `${STORAGE_PREFIX}hw-monitor-cpu-cores-open`,
   /** Running engine / fusion switcher in launch rail instead of below VRAM display. */
   enginesInRail: `${STORAGE_PREFIX}engines-in-rail`,
   catalogSplitWidth: `${STORAGE_PREFIX}catalog-split-width`,
   catalogListCollapsed: `${STORAGE_PREFIX}catalog-list-collapsed`,
   modelHubSplitWidth: `${STORAGE_PREFIX}model-hub-split-width`,
-  telemetryView: `${STORAGE_PREFIX}telemetry-view`,
   setupGuideDismissed: `${STORAGE_PREFIX}setup-guide-dismissed`,
   setupWelcomeSeen: `${STORAGE_PREFIX}setup-welcome-seen`,
   setupGuidePreview: `${STORAGE_PREFIX}setup-guide-preview`,
@@ -366,18 +367,6 @@ export function resetSetupGuideState(): void {
   clearToolchainOnboardingSkipped();
 }
 
-// ── Telemetry view (standard panel vs lab catalogue) ───────────────────────
-
-export type TelemetryViewMode = "standard" | "lab";
-
-export function loadTelemetryViewMode(): TelemetryViewMode {
-  return readStorage(KEYS.telemetryView) === "lab" ? "lab" : "standard";
-}
-
-export function saveTelemetryViewMode(mode: TelemetryViewMode): void {
-  writeStorage(KEYS.telemetryView, mode);
-}
-
 export const CATALOG_SPLIT_WIDTH_DEFAULT = 420;
 export const CATALOG_SPLIT_WIDTH_MIN = 280;
 export const CATALOG_SPLIT_WIDTH_MAX = 880;
@@ -457,6 +446,14 @@ export function loadHwMonitorOpen(): boolean {
 
 export function saveHwMonitorOpen(open: boolean): void {
   writeStorage(KEYS.hwMonitorOpen, open ? "1" : "0");
+}
+
+export function loadHwMonitorCpuCoresOpen(): boolean {
+  return readStorage(KEYS.hwMonitorCpuCoresOpen) === "1";
+}
+
+export function saveHwMonitorCpuCoresOpen(open: boolean): void {
+  writeStorage(KEYS.hwMonitorCpuCoresOpen, open ? "1" : "0");
 }
 
 export function loadEnginesInRail(): boolean {

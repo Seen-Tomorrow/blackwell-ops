@@ -36,8 +36,24 @@ export const STEP_LABELS: Record<BuildPhase, string> = {
   BackupLocked: "LOCKED",
 };
 
+const MAPPED_STEP_LABELS: Record<string, string> = {
+  init: "INIT",
+  initializing: "INIT",
+  clone: "CLONE",
+  pull: "PULL",
+  prcherrypick: "PR-MERGE",
+  "pr-cherry-pick": "PR-MERGE",
+  configuring: "CONFIGURE",
+  "waiting-confirm": "WAIT-CONFIRM",
+  building: "BUILD",
+  validating: "VALIDATE",
+  complete: "DONE",
+  error: "FAIL",
+  "backup-locked": "LOCKED",
+};
+
 export function getStepLabel(step: string): string {
-  return STEP_LABELS[step as BuildPhase] ?? step;
+  return STEP_LABELS[step as BuildPhase] ?? MAPPED_STEP_LABELS[step] ?? step.toUpperCase();
 }
 
 export const PHASE_STEP_MAP: Record<string, string> = {
@@ -112,7 +128,7 @@ export const ENV_META: Record<Env, EnvMeta> = {
 };
 
 /** Mirror of `BINARY_UPDATES_ENABLED` in `src-tauri/src/binary_update.rs`. */
-export const BINARY_UPDATES_ENABLED = false;
+export const BINARY_UPDATES_ENABLED = true;
 
 /** Pinned GitHub release for the portable Foundry toolchain (manual download). */
 export const TOOLCHAIN_RELEASE_TAG = "toolchain";

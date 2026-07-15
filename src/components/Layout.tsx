@@ -4,7 +4,7 @@ import type { Tab } from "../App";
 import type { ProviderConfig, AppUpdateInfo } from "../lib/types";
 import { useStatus } from "../context/StatusBarContext";
 import { useFoundry, type Env } from "../hooks/useBuildDock";
-import { getStepLabel } from "../lib/foundry_constants";
+import FoundryStatusChip from "./FoundryStatusChip";
 import BlackwellOutputConsole, {
   type OutputConsoleCategory,
   parseOutputConsoleCategory,
@@ -33,6 +33,8 @@ import {
 import { resolveAppShellWidthPx } from "../lib/uiShell";
 import { isMobileDevice } from "../lib/utils";
 import IpcMeterFooter from "./IpcMeterFooter";
+import DownloadProgressRow from "./DownloadProgressRow";
+import { useDownloadTasks } from "../hooks/useDownloadTasks";
 
 const MIN_ZOOM = 0.7;
 const MAX_ZOOM = 1.5;
@@ -67,7 +69,6 @@ interface LayoutProps {
 const tabs: { id: Tab; label: string; icon: string; hidden?: boolean }[] = [
   { id: "catalog", label: "OPERATIONS", icon: "\u269B" },
   { id: "stack", label: "ENGINES", icon: "\uD83D\uDDA4" },
-  { id: "telemetry", label: "TELEMETRY", icon: "\uD83D\uDCCA" },
   { id: "logs", label: "LOGS", icon: "\uD83D\uDCCD" },
   { id: "modelhub", label: "MODEL HUB", icon: "\u2B21" },
   { id: "extras", label: "EXTRAS", icon: "\u2726" },
@@ -77,13 +78,28 @@ const tabs: { id: Tab; label: string; icon: string; hidden?: boolean }[] = [
 ];
 
 export default function Layout({ activeTab, onTabChange, children, providers = [], appUpdate, hasBinaryUpdates, onInstallAppUpdate }: LayoutProps) {
+  const appUpdateDownloads = useDownloadTasks("app");
+  const activeAppUpdateTask = appUpdateDownloads.find((t) =>
+    t.status === "queued" || t.status === "downloading" || t.status === "paused" || t.status === "scanning"
+  );
   const [zoom, setZoom] = useState(loadZoom);
   const [uiDensity, setUiDensity] = useState<UiDensity>(loadUiDensity);
   const [shellWidthPx, setShellWidthPx] = useState(() =>
     typeof window !== "undefined" ? resolveAppShellWidthPx(window.innerWidth) : 1280,
   );
   const { totalParams, hiddenCount, onShowAll, flashMessage } = useStatus();
-  const { buildProgress, foundryModal, foundryModalVisible, openBuildModal, minimizeBuildModal, restoreBuildModal, closeBuildModal, attachToActiveBuild, buildAttempt } = useFoundry();
+  const {
+    buildProgress,
+    foundryModal,
+    foundryModalVisible,
+    openBuildModal,
+    minimizeBuildModal,
+    restoreBuildModal,
+    closeBuildModal,
+    attachToActiveBuild,
+    buildAttempt,
+    compileStartedAt,
+  } = useFoundry();
   const resolvedProvider = useMemo(() => {
     if (!foundryModal) return providers?.[0] || {} as ProviderConfig;
     const prov = providers?.find(p => p.id === foundryModal.providerId);
@@ -91,6 +107,12 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
   }, [foundryModal, providers]);
 
   const resolvedEnvironment = foundryModal?.environment || "frontier";
+
+  const buildProviderLabel = useMemo(() => {
+    if (!buildProgress) return "";
+    const match = providers?.find((p) => p.id === buildProgress.providerId);
+    return match?.display_name || buildProgress.providerId;
+  }, [buildProgress, providers]);
 
   // Dock slot click: if modal exists and is visible → minimize; if exists but hidden → restore; if no modal but build running → open fresh
   const [showTooltip, setShowTooltip] = useState(false);
@@ -100,7 +122,7 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
   const consoleDockedOpen = isOutputConsoleExpanded && !isConsoleDetached;
   const [lastConsoleLine, setLastConsoleLine] = useState<string>("Ready for telemetry");
   const [lastConsoleCategory, setLastConsoleCategory] = useState<OutputConsoleCategory | null>(null);
-  const [consoleOpenCategory, setConsoleOpenCategory] = useState<OutputConsoleCategory | null>(null);
+  const [activeConsoleCategory, setActiveConsoleCategory] = useState<OutputConsoleCategory>("engines");
   const [sessionLogActive, setSessionLogActive] = useState(__BUILD_MODE__ === "dev");
   const [sessionLogEnvForced, setSessionLogEnvForced] = useState(false);
   const [sessionLogDir, setSessionLogDir] = useState<string | null>(null);
@@ -257,12 +279,16 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
 
         {/* Admin lock + zoom + appearance */}
         <div className="app-header-actions flex items-center gap-1.5 flex-shrink-0">
-          {appUpdate?.available && (
+          {activeAppUpdateTask ? (
+            <div className="w-[220px] flex-shrink-0">
+              <DownloadProgressRow task={activeAppUpdateTask} compact />
+            </div>
+          ) : appUpdate?.available ? (
             <div className="relative inline-block group flex-shrink-0">
               <button
                 onClick={onInstallAppUpdate}
                 className="app-header-update-btn text-[7px] font-mono tracking-wider text-yellow-400 hover:text-yellow-300 transition-colors cursor-pointer whitespace-nowrap"
-                title={`New app version available: ${appUpdate.version}`}
+                title={`New NSIS installer available: ${appUpdate.version}`}
               >
                 UPDATE
               </button>
@@ -273,7 +299,7 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
                 </div>
               )}
             </div>
-          )}
+          ) : null}
           <div className="app-quick-settings flex flex-col items-end gap-px flex-shrink-0">
             <AppearanceControls embedded />
             <div className="app-quick-settings__tools app-quick-settings__row flex items-center gap-2">
@@ -371,12 +397,14 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
               {children}
               <BlackwellOutputConsole
                 isOpen={isOutputConsoleExpanded}
-                openWithCategory={consoleOpenCategory}
+                isDetached={isConsoleDetached}
+                onDetachedChange={setIsConsoleDetached}
+                activeCategory={activeConsoleCategory}
+                onCategoryChange={setActiveConsoleCategory}
                 onClose={() => {
                   setIsConsoleDetached(false);
                   setIsOutputConsoleExpanded(false);
                 }}
-                onDetachedChange={setIsConsoleDetached}
                 compact={true}
               />
             </div>
@@ -386,23 +414,26 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
 
       {/* Bottom status bar — mini console is fixed chrome (amber header + inset live line) */}
       <footer
-        className={`app-footer fixed bottom-0 left-0 right-0 z-20 ${isOutputConsoleExpanded ? "app-footer-expanded" : ""}`}
+        className={`app-footer fixed bottom-0 left-0 right-0 z-20${
+          isOutputConsoleExpanded && !isConsoleDetached ? " app-footer--console-expanded" : ""
+        }`}
       >
         <OutputConsoleInlineDock
           liveLine={lastConsoleLine}
-          liveCategory={lastConsoleCategory}
+          activeCategory={activeConsoleCategory}
+          onCategoryChange={(cat) => {
+            setActiveConsoleCategory(cat);
+            setIsOutputConsoleExpanded(true);
+          }}
           isExpanded={isOutputConsoleExpanded}
           onToggle={() => {
             if (isOutputConsoleExpanded) {
+              setIsConsoleDetached(false);
               setIsOutputConsoleExpanded(false);
             } else {
-              setConsoleOpenCategory(lastConsoleCategory);
+              if (lastConsoleCategory) setActiveConsoleCategory(lastConsoleCategory);
               setIsOutputConsoleExpanded(true);
             }
-          }}
-          onCategoryClick={(cat) => {
-            setConsoleOpenCategory(cat);
-            setIsOutputConsoleExpanded(true);
           }}
           statusLeft={
             <>
@@ -417,23 +448,22 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
           }
           foundrySlot={
             buildProgress ? (
-              <button
-                type="button"
+              <FoundryStatusChip
+                buildProgress={buildProgress}
+                providerLabel={buildProviderLabel}
+                compileStartedAt={compileStartedAt}
+                isMinimized={!!foundryModal && !foundryModalVisible}
                 onClick={(e) => {
                   e.stopPropagation();
                   if (foundryModal && foundryModalVisible) minimizeBuildModal();
                   else if (foundryModal) restoreBuildModal();
-                  else if (buildProgress) openBuildModal(buildProgress.providerId, buildProgress.environment.toLowerCase() as Env);
-                  else attachToActiveBuild();
+                  else if (buildProgress) {
+                    openBuildModal(buildProgress.providerId, buildProgress.environment.toLowerCase() as Env);
+                  } else {
+                    attachToActiveBuild();
+                  }
                 }}
-                className={`foundry-status-chip${foundryModal && !foundryModalVisible ? " foundry-status-chip--minimized" : ""}`}
-                title="Build progress — click to restore or minimize"
-              >
-                <span className={`foundry-hammer-icon${foundryModal && !foundryModalVisible ? " foundry-hammer-icon--shake" : ""}`}>⚒</span>
-                <span className="foundry-status-chip__label" title={buildProgress.logLine || ""}>
-                  {getStepLabel(buildProgress.step)}...
-                </span>
-              </button>
+              />
             ) : null
           }
           statusRight={

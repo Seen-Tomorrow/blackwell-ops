@@ -61,6 +61,8 @@ export interface FoundryCtx {
 
   /** Increments every time the user explicitly clicks to start a new build (used to force-reset modal internal state) */
   buildAttempt: number;
+  /** Wall-clock ms when compile started (first Building phase after user confirms). */
+  compileStartedAt: number | null;
 }
 
 const FoundryContext = createContext<FoundryCtx>({
@@ -74,6 +76,7 @@ const FoundryContext = createContext<FoundryCtx>({
   attachToActiveBuild: () => {},
   buildAttempt: 0,
   reattachedFromBackend: false,
+  compileStartedAt: null,
 });
 
 const IN_PROGRESS_PHASES = new Set([
@@ -246,12 +249,17 @@ const initialInternalState: FoundryInternalState = {
   reattachedFromBackend: false,
 };
 
+const COMPILE_STEPS = new Set(["building", "validating"]);
+
 export const FoundryProvider: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
   const [internal, dispatch] = useReducer(foundryReducer, initialInternalState);
   const [legacyProgress, setLegacyProgress] = useState<BuildProgressState | null>(null);
+  const [compileStartedAt, setCompileStartedAt] = useState<number | null>(null);
 
   // Only a few refs remain — for build id sequencing and listener cleanup
   const lastBuildIdRef = useRef<number | null>(null);
+  const compileBuildIdRef = useRef<number | null>(null);
+  const prevBuildStepRef = useRef<string | null>(null);
   const unlistenRef = useRef<UnlistenFn | null>(null);
   const hasReconciledRef = useRef(false);
 
@@ -274,6 +282,38 @@ export const FoundryProvider: React.FC<{ children?: React.ReactNode }> = ({ chil
         buildId: session.id > 0 ? session.id : undefined,
       }
     : null);
+
+  // Compile timer — starts when user proceeds past cmake confirm into Building.
+  useEffect(() => {
+    if (!buildProgress?.buildId) {
+      if (!buildProgress) {
+        setCompileStartedAt(null);
+        compileBuildIdRef.current = null;
+        prevBuildStepRef.current = null;
+      }
+      return;
+    }
+
+    const { buildId, step } = buildProgress;
+
+    if (compileBuildIdRef.current != null && compileBuildIdRef.current !== buildId) {
+      setCompileStartedAt(null);
+      prevBuildStepRef.current = null;
+    }
+
+    const enteringCompile =
+      step === "building" && prevBuildStepRef.current !== "building" && prevBuildStepRef.current !== "validating";
+
+    if (enteringCompile) {
+      setCompileStartedAt(Date.now());
+      compileBuildIdRef.current = buildId;
+    } else if (COMPILE_STEPS.has(step) && compileBuildIdRef.current !== buildId) {
+      setCompileStartedAt(Date.now());
+      compileBuildIdRef.current = buildId;
+    }
+
+    prevBuildStepRef.current = step;
+  }, [buildProgress]);
 
   // One clean reconciliation function
   const reconcileWithBackend = useCallback(async (reason: string) => {
@@ -368,6 +408,9 @@ export const FoundryProvider: React.FC<{ children?: React.ReactNode }> = ({ chil
     dispatch({ type: 'CLOSE' });
     setLegacyProgress(null);
     lastBuildIdRef.current = null;
+    setCompileStartedAt(null);
+    compileBuildIdRef.current = null;
+    prevBuildStepRef.current = null;
   }, []);
 
   const attachToActiveBuild = useCallback(() => {
@@ -446,6 +489,7 @@ export const FoundryProvider: React.FC<{ children?: React.ReactNode }> = ({ chil
     closeBuildModal,
     attachToActiveBuild,
     buildAttempt: internal.buildAttempt,
+    compileStartedAt,
   }), [
     buildProgress,
     foundryModal,
@@ -457,6 +501,7 @@ export const FoundryProvider: React.FC<{ children?: React.ReactNode }> = ({ chil
     closeBuildModal,
     attachToActiveBuild,
     internal.buildAttempt,
+    compileStartedAt,
   ]);
 
   return (

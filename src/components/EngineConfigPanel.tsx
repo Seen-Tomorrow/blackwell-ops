@@ -53,7 +53,7 @@ import type { ConfigColumnCount } from "../lib/configColumnLayout";
 import { effectiveGroupColumn } from "../lib/configColumnLayout";
 import { isEmptyGroupDeletable } from "../lib/groupLayoutUtils";
 import { useGroupLayoutControls } from "../hooks/useGroupLayoutControls";
-import { useLaunchDockRailResize, useLaunchRailInnerResize } from "../hooks/useCatalogSplitResize";
+import { useLaunchDockRailResize } from "../hooks/useCatalogSplitResize";
 import LaunchRailTelemetry from "./LaunchRailTelemetry";
 import { suggestLaunchDockPosition } from "../lib/launchDockLayout";
 import { dispatchAppEvent, EVENTS } from "../lib/events";
@@ -384,8 +384,9 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   const [customFlagsPopoverPos, setCustomFlagsPopoverPos] = useState({
     top: 0,
     left: 0,
+    right: 0,
     width: 0,
-    placement: "above" as "above" | "below",
+    placement: "above" as "above" | "below" | "rail-left",
     maxHeight: 140,
   });
   const customFlagsAnchorRef = useRef<HTMLDivElement>(null);
@@ -435,8 +436,13 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   const [enginesInRail, setEnginesInRail] = useState(loadEnginesInRail);
   const showLaunchRail = launchDockPosition === "right";
   const showRightColumn = hwMonitorOpen || showLaunchRail;
-  const showRailInnerSplit = showLaunchRail && hwMonitorOpen;
   const showEnginesBelowVram = !(enginesInRail && showLaunchRail);
+  const hasRunningEnginesForEject = useMemo(
+    () => stack.some((s) => s.status === "RUNNING" || s.status === "LOADING"),
+    [stack],
+  );
+  const showEjectBelowVram =
+    showEnginesBelowVram && hasRunningEnginesForEject && onSelectEngine != null && models != null;
   const {
     containerRef: launchDockMainRef,
     railWidth: launchRailWidth,
@@ -444,17 +450,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     startDrag: startLaunchRailDrag,
     resetWidth: resetLaunchRailWidth,
   } = useLaunchDockRailResize(showRightColumn);
-  const {
-    railRef: launchRailInnerRef,
-    telemetryHeight: launchRailTelemetryHeight,
-    isDragging: launchRailInnerDragging,
-    startDrag: startLaunchRailInnerDrag,
-    resetRatio: resetLaunchRailInnerRatio,
-    setChromeStackHeight: setLaunchRailChromeHeight,
-  } = useLaunchRailInnerResize(showRailInnerSplit);
   const launchRailTopChromeMeasureRef = useRef<HTMLDivElement>(null);
   const launchRailDisplayMeasureRef = useRef<HTMLDivElement>(null);
-  const launchRailToolbarMeasureRef = useRef<HTMLDivElement>(null);
   const [launchRailUpperPadHeight, setLaunchRailUpperPadHeight] = useState(0);
   const [launchRailDisplayHeight, setLaunchRailDisplayHeight] = useState(0);
 
@@ -1122,23 +1119,47 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     const anchor = customFlagsAnchorRef.current;
     if (!anchor) return;
     const rect = anchor.getBoundingClientRect();
-    const placement = launchDockPosition === "right" ? "below" : "above";
-    const maxHeight =
-      placement === "below"
-        ? Math.max(120, Math.min(360, window.innerHeight - rect.bottom - 32))
-        : 140;
+    const inRailFlags = anchor.closest(".config-launch-dock__rail-flags") != null;
+    const dockRight =
+      anchor.closest("[data-config-panel]")?.getAttribute("data-launch-dock-position") === "right";
+
+    if (inRailFlags || dockRight) {
+      const panel = anchor.closest("[data-config-panel]");
+      const workspace = panel?.querySelector(".config-rail-workspace");
+      const leftCol = workspace?.querySelector(".config-rail-left");
+      const rail = anchor.closest(".config-launch-rail");
+      const leftRect = leftCol?.getBoundingClientRect();
+      const railRect = rail?.getBoundingClientRect();
+      const inset = 10;
+      const spanLeft = (leftRect?.left ?? rect.left) + inset;
+      const spanRight = (railRect?.left ?? rect.left) - inset;
+
+      setCustomFlagsPopoverPos({
+        top: rect.top,
+        left: spanLeft,
+        right: Math.max(inset, window.innerWidth - spanRight),
+        width: Math.max(280, spanRight - spanLeft),
+        placement: "rail-left",
+        maxHeight: 88,
+      });
+      return;
+    }
+
     setCustomFlagsPopoverPos({
-      top: placement === "above" ? rect.top : rect.bottom,
+      top: rect.top,
       left: rect.left,
+      right: 0,
       width: rect.width,
-      placement,
-      maxHeight,
+      placement: "above",
+      maxHeight: 140,
     });
-  }, [launchDockPosition]);
+  }, []);
 
   useLayoutEffect(() => {
     if (!customFlagsEditorOpen) return;
     updateCustomFlagsPopoverPos();
+    const raf = requestAnimationFrame(updateCustomFlagsPopoverPos);
+    return () => cancelAnimationFrame(raf);
   }, [customFlagsEditorOpen, updateCustomFlagsPopoverPos, launchDockPosition]);
 
   useEffect(() => {
@@ -1179,22 +1200,32 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         ? "custom-flags-active"
         : "";
     const popoverPlacementBelow = customFlagsPopoverPos.placement === "below";
+    const popoverRailLeft = customFlagsPopoverPos.placement === "rail-left";
     const popover = customFlagsEditorOpen
       ? createPortal(
           <div
             ref={customFlagsPopoverRef}
             className={`custom-flags-popover border rounded-sm${
               popoverPlacementBelow ? " custom-flags-popover--below" : ""
-            }${
+            }${popoverRailLeft ? " custom-flags-popover--rail-left" : ""}${
               customFlagsReplaceActive
                 ? " custom-flags-popover--replace"
                 : " custom-flags-popover--append"
             }`}
-            style={{
-              top: customFlagsPopoverPos.top,
-              left: customFlagsPopoverPos.left,
-              width: customFlagsPopoverPos.width,
-            }}
+            style={
+              popoverRailLeft
+                ? {
+                    top: customFlagsPopoverPos.top,
+                    left: customFlagsPopoverPos.left,
+                    right: customFlagsPopoverPos.right,
+                    width: "auto",
+                  }
+                : {
+                    top: customFlagsPopoverPos.top,
+                    left: customFlagsPopoverPos.left,
+                    width: customFlagsPopoverPos.width,
+                  }
+            }
             role="dialog"
             aria-label="Edit custom flags"
           >
@@ -1204,10 +1235,10 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
               onChange={(e) => setCustomFlagsDraft(e.target.value)}
               autoFocus
               placeholder="-m model.gguf --split-mode layer -c 32768 ..."
-              className="custom-flags-popover__input w-full border text-[8px] font-mono px-2 py-1.5 leading-snug focus:outline-none rounded-sm"
+              className="custom-flags-popover__input w-full border font-mono px-2 py-1.5 leading-snug focus:outline-none rounded-sm"
               style={{ maxHeight: customFlagsPopoverPos.maxHeight }}
             />
-            <p className="custom-flags-popover__hint text-[6.5px] font-mono uppercase tracking-wide mt-1 opacity-70">
+            <p className="custom-flags-popover__hint font-mono uppercase tracking-wide mt-1 opacity-70">
               Click outside to save
             </p>
           </div>,
@@ -1574,31 +1605,17 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   }, [showRightColumn, resolvedProviders, aboveGroupKeys.length]);
 
   useLayoutEffect(() => {
-    if (!hwMonitorOpen && !showLaunchRail) return;
+    if (!showLaunchRail || hwMonitorOpen) return;
     const apply = () => {
-      const displayH = launchRailDisplayMeasureRef.current?.offsetHeight ?? 0;
-      setLaunchRailDisplayHeight(displayH);
-      if (showRailInnerSplit) {
-        const toolbarH = launchRailToolbarMeasureRef.current?.offsetHeight ?? 0;
-        setLaunchRailChromeHeight(displayH + toolbarH);
-      }
+      setLaunchRailDisplayHeight(launchRailDisplayMeasureRef.current?.offsetHeight ?? 0);
     };
     apply();
     if (typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(apply);
     const displayEl = launchRailDisplayMeasureRef.current;
-    const toolbarEl = launchRailToolbarMeasureRef.current;
     if (displayEl) observer.observe(displayEl);
-    if (toolbarEl) observer.observe(toolbarEl);
     return () => observer.disconnect();
-  }, [
-    hwMonitorOpen,
-    showLaunchRail,
-    showRailInnerSplit,
-    setLaunchRailChromeHeight,
-    model,
-    gpus.length,
-  ]);
+  }, [showLaunchRail, hwMonitorOpen, model, gpus.length]);
 
   const builtProfiles = useMemo(() => {
     const currentProvider = resolvedProviders?.find((p) => p.id === effectiveBackendType);
@@ -2292,11 +2309,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           </div>
           <div className="config-provider-profile-bar__half config-provider-profile-bar__half--profile">
             <span className="config-provider-profile-bar__label">PROFILE</span>
-            {driverVersion && (
-              <span className="text-[7px] font-mono text-stealth-muted/60 ml-1" title="Driver version from nvidia-smi. Affects which CUDA profile(s) will work.">
-                display driver v{driverVersion.split(".")[0]}
-              </span>
-            )}
+            
             <div className="flex gap-1 flex-wrap flex-1 min-w-0">
               {ENV_ORDER.map((profile) => {
                 const meta = ENV_META[profile];
@@ -2369,13 +2382,16 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       <div className="config-rail-workspace flex-1 min-h-0">
       <div
         className={
-          showRightColumn
+          showRightColumn || launchDockPosition === "bottom"
             ? "config-rail-left flex flex-col flex-1 min-h-0 min-w-0"
             : "contents"
         }
       >
       <div
         ref={hwMonitorOpen || showLaunchRail ? launchRailDisplayMeasureRef : undefined}
+        className="config-display-stack flex flex-col flex-shrink-0 min-w-0"
+      >
+      <div
         className={onboardingDisplay.area}
         data-display-texture={displayTexture}
       >
@@ -2478,18 +2494,19 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                   />
               </div>
           </div>
+      </div>
 
-          {/* Running Engines — fusion switcher; default below VRAM display */}
-          {showEnginesBelowVram && onSelectEngine && models && (
-            <div className="industrial-eject-panel relative flex-shrink min-h-0">
-              <RunningEnginesPanel
-                stack={stack}
-                models={models}
-                selectedSlotIdx={selectedSlotIdx ?? null}
-                onSelectEngine={onSelectEngine}
-              />
-            </div>
-          )}
+      {/* Running Engines — fusion switcher; below VRAM bezel (outside display area flex) */}
+      {showEjectBelowVram && (
+        <div className="industrial-eject-panel relative flex-shrink-0 min-h-0">
+          <RunningEnginesPanel
+            stack={stack}
+            models={models}
+            selectedSlotIdx={selectedSlotIdx ?? null}
+            onSelectEngine={onSelectEngine}
+          />
+        </div>
+      )}
       </div>
 
       <div
@@ -2500,7 +2517,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         }
       >
       <div
-        ref={showRailInnerSplit ? launchRailToolbarMeasureRef : undefined}
         className="config-panel-toolbar px-4 py-0.5 flex items-center gap-3 flex-shrink-0 border-b section-divider"
       >
         {allParamsForDisplay.length > 0 && (
@@ -2526,10 +2542,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
               <button
                 type="button"
                 onClick={() => setLaunchDockPositionUser("bottom")}
-                className={`px-1.5 py-0.5 text-[8px] font-mono rounded-sm border transition-colors ${
-                  launchDockPosition === "bottom"
-                    ? "border-nv-green/45 text-nv-green/90 bg-nv-green/10"
-                    : "border-stealth-border/40 text-stealth-muted/45 hover:text-stealth-muted"
+                className={`config-panel-toolbar-chip px-1.5 py-0.5 text-[8px] font-mono rounded-sm ${
+                  launchDockPosition === "bottom" ? "config-panel-toolbar-chip--active" : ""
                 }`}
                 title="Launch dock along the bottom"
               >
@@ -2539,7 +2553,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                 <button
                   type="button"
                   onClick={toggleLaunchDockCollapsed}
-                  className="px-1 py-0.5 text-[8px] font-mono rounded-sm border border-stealth-border/40 text-stealth-muted/45 hover:text-stealth-muted transition-colors"
+                  className="config-panel-toolbar-chip px-1 py-0.5 text-[8px] font-mono rounded-sm"
                   title={launchDockCollapsed ? "Expand launch dock (show custom flags)" : "Collapse launch dock — alias, port, launch only"}
                 >
                   {launchDockCollapsed ? "▼" : "▲"}
@@ -2548,10 +2562,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
               <button
                 type="button"
                 onClick={() => setLaunchDockPositionUser("right")}
-                className={`px-1.5 py-0.5 text-[8px] font-mono rounded-sm border transition-colors ${
-                  launchDockPosition === "right"
-                    ? "border-nv-green/45 text-nv-green/90 bg-nv-green/10"
-                    : "border-stealth-border/40 text-stealth-muted/45 hover:text-stealth-muted"
+                className={`config-panel-toolbar-chip px-1.5 py-0.5 text-[8px] font-mono rounded-sm ${
+                  launchDockPosition === "right" ? "config-panel-toolbar-chip--active" : ""
                 }`}
                 title="Launch rail — full-height column on the right (auto on short viewports until you pick)"
               >
@@ -2566,10 +2578,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             <button
               type="button"
               onClick={toggleHwMonitor}
-              className={`px-1.5 py-0.5 text-[8px] font-mono rounded-sm border transition-colors ${
-                hwMonitorOpen
-                  ? "border-nv-green/45 text-nv-green/90 bg-nv-green/10"
-                  : "border-stealth-border/40 text-stealth-muted/45 hover:text-stealth-muted"
+              className={`config-panel-toolbar-chip px-1.5 py-0.5 text-[8px] font-mono rounded-sm ${
+                hwMonitorOpen ? "config-panel-toolbar-chip--active" : ""
               }`}
               title={
                 hwMonitorOpen
@@ -2583,10 +2593,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
               <button
                 type="button"
                 onClick={toggleEnginesInRail}
-                className={`px-1.5 py-0.5 text-[8px] font-mono rounded-sm border transition-colors ${
-                  enginesInRail
-                    ? "border-nv-green/45 text-nv-green/90 bg-nv-green/10"
-                    : "border-stealth-border/40 text-stealth-muted/45 hover:text-stealth-muted"
+                className={`config-panel-toolbar-chip px-1.5 py-0.5 text-[8px] font-mono rounded-sm ${
+                  enginesInRail ? "config-panel-toolbar-chip--active" : ""
                 }`}
                 title={
                   enginesInRail
@@ -2607,10 +2615,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                     key={n}
                     type="button"
                     onClick={() => setBelowColumnCount(n)}
-                    className={`config-column-count__btn px-1.5 py-0.5 text-[8px] font-mono rounded-sm border transition-colors ${
-                      columnCount === n
-                        ? "border-nv-green/45 text-nv-green/90 bg-nv-green/10"
-                        : "border-stealth-border/40 text-stealth-muted/45 hover:text-stealth-muted"
+                    className={`config-panel-toolbar-chip config-column-count__btn px-1.5 py-0.5 text-[8px] font-mono rounded-sm ${
+                      columnCount === n ? "config-panel-toolbar-chip--active" : ""
                     }`}
                     title={`${n} column${n > 1 ? "s" : ""} below display`}
                   >
@@ -2621,10 +2627,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
               <button
                 type="button"
                 onClick={toggleLayoutMode}
-                className={`config-layout-mode-btn px-2 py-0.5 text-[8px] font-mono rounded-sm border transition-colors ${
-                  layoutModeActive
-                    ? "config-layout-mode-btn--on border-nv-green/50 text-nv-green bg-nv-green/10"
-                    : "border-stealth-border/40 text-stealth-muted/50 hover:text-stealth-muted"
+                className={`config-panel-toolbar-chip config-layout-mode-btn px-2 py-0.5 text-[8px] font-mono rounded-sm ${
+                  layoutModeActive ? "config-panel-toolbar-chip--active config-layout-mode-btn--on" : ""
                 }`}
                 title={
                   layoutModeActive
@@ -2814,7 +2818,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                       ? "APPEND mode — custom flags are added to panel config"
                       : undefined
                 }
-                className={`w-full h-full min-h-[2.75rem] min-w-0 ignite-btn config-launch-btn px-2 py-1.5 text-[11px] font-mono tracking-[0.18em] rounded-sm disabled:opacity-40 disabled:cursor-not-allowed flex flex-col items-stretch justify-center gap-0.5 overflow-hidden ${launchAck ? "launch-ack" : ""}${customFlagsLaunchActive ? " config-launch-btn--custom-active" : ""}`}
+                className={`w-full h-full min-h-[2.75rem] min-w-0 ignite-btn config-launch-btn px-2 py-1.5 text-[11px] font-mono tracking-[0.18em] rounded-sm disabled:opacity-40 disabled:cursor-not-allowed flex flex-col items-stretch justify-center gap-0.5 ${customFlagsLaunchActive ? "overflow-visible" : "overflow-hidden"} ${launchAck ? "launch-ack" : ""}${customFlagsLaunchActive ? " config-launch-btn--custom-active" : ""}`}
               >
                 {customFlagsLaunchActive && (
                   <span
@@ -2861,26 +2865,16 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             }`}
             style={{ width: launchRailWidth }}
           >
-            {launchRailUpperPadHeight > 0 ? (
+            {launchRailUpperPadHeight > 0 && !hwMonitorOpen ? (
               <div
                 className="launch-rail-upper-pad flex-shrink-0"
                 style={{ height: launchRailUpperPadHeight }}
                 aria-hidden
               />
             ) : null}
-            <div ref={launchRailInnerRef} className="launch-rail-body flex flex-col flex-1 min-h-0 min-w-0">
+            <div className="launch-rail-body flex flex-col flex-1 min-h-0 min-w-0">
             {hwMonitorOpen && (
-              <div
-                className="launch-rail-telemetry flex-shrink-0 min-h-0 overflow-hidden"
-                style={{
-                  height:
-                    showLaunchRail && launchRailTelemetryHeight > 0
-                      ? launchRailTelemetryHeight
-                      : launchRailDisplayHeight > 0
-                        ? launchRailDisplayHeight
-                        : undefined,
-                }}
-              >
+              <div className="launch-rail-telemetry flex-1 min-h-0 overflow-hidden">
                 <LaunchRailTelemetry />
               </div>
             )}
@@ -2891,24 +2885,10 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                 aria-hidden
               />
             ) : null}
-            {showRailInnerSplit && (
-              <div
-                role="separator"
-                aria-orientation="horizontal"
-                aria-label="Resize telemetry and launch sections"
-                className={`launch-rail-inner-split-handle${launchRailInnerDragging ? " is-dragging" : ""}`}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  startLaunchRailInnerDrag();
-                }}
-                onDoubleClick={resetLaunchRailInnerRatio}
-                title="Drag to resize telemetry vs launch · double-click to reset"
-              />
-            )}
             {showLaunchRail && (
-            <div className="launch-rail-launch flex flex-col flex-1 min-h-0 min-w-0">
-            <div className="config-launch-dock flex flex-col flex-1 min-h-0 px-3 pt-2">
-              <div className="config-launch-dock__content flex flex-col flex-1 min-h-0 min-w-0">
+            <div className="launch-rail-launch flex flex-col flex-shrink-0 min-w-0">
+            <div className="config-launch-dock flex flex-col flex-shrink-0 px-3 pt-2">
+              <div className="config-launch-dock__content flex flex-col flex-shrink-0 min-w-0">
                 {enginesInRail && onSelectEngine && models && (
                   <RunningEnginesPanel
                     stack={stack}
@@ -2942,7 +2922,12 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                     </span>
                   </div>
                 )}
-                <div className="config-launch-dock__grid config-launch-dock__grid--rail flex flex-col flex-1 min-h-0 gap-2">
+                <div className="config-launch-dock__grid config-launch-dock__grid--rail flex flex-col flex-shrink-0 gap-2">
+                  {configView === "full" && (
+                    <div className="config-launch-dock__rail-flags flex-shrink-0 overflow-y-auto eink-scrollbar">
+                      {renderCustomFlagsBlock()}
+                    </div>
+                  )}
                   <div className="config-launch-dock__meta flex flex-col gap-2 shrink-0">
                     <div data-param-row className="config-launch-dock__alias flex items-center min-h-[22px] min-w-0">
                       <span
@@ -2996,11 +2981,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                       </div>
                     )}
                   </div>
-                  {configView === "full" && (
-                    <div className="config-launch-dock__rail-flags flex-1 min-h-0 overflow-y-auto eink-scrollbar">
-                      {renderCustomFlagsBlock()}
-                    </div>
-                  )}
                   <div className="config-launch-dock__action relative shrink-0">
                     {isDevBuild() && (
                       <button
@@ -3055,7 +3035,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                             ? "APPEND mode — custom flags are added to panel config"
                             : undefined
                       }
-                      className={`w-full h-full min-h-[2.75rem] min-w-0 ignite-btn config-launch-btn px-2 py-1.5 text-[11px] font-mono tracking-[0.18em] rounded-sm disabled:opacity-40 disabled:cursor-not-allowed flex flex-col items-stretch justify-center gap-0.5 overflow-hidden ${launchAck ? "launch-ack" : ""}${customFlagsLaunchActive ? " config-launch-btn--custom-active" : ""}`}
+                      className={`w-full h-full min-h-[2.75rem] min-w-0 ignite-btn config-launch-btn px-2 py-1.5 text-[11px] font-mono tracking-[0.18em] rounded-sm disabled:opacity-40 disabled:cursor-not-allowed flex flex-col items-stretch justify-center gap-0.5 ${customFlagsLaunchActive ? "overflow-visible" : "overflow-hidden"} ${launchAck ? "launch-ack" : ""}${customFlagsLaunchActive ? " config-launch-btn--custom-active" : ""}`}
                     >
                       {customFlagsLaunchActive && (
                         <span
@@ -3077,9 +3057,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             </div>
             </div>
             )}
-            {hwMonitorOpen && !showLaunchRail ? (
-              <div className="launch-rail-lower-fill flex-1 min-h-0" aria-hidden />
-            ) : null}
             </div>
           </div>
         </>

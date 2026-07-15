@@ -2,6 +2,12 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { frontendPollEnabled } from "../lib/debugFlags";
+import OutputConsoleHeader from "./OutputConsoleHeader";
+import {
+  clearAllOutputConsoleBuffers,
+  clearOutputConsoleCategory,
+  saveOutputConsoleCategory,
+} from "./outputConsoleActions";
 
 interface OutputLine {
   timestamp: string;
@@ -11,11 +17,12 @@ interface OutputLine {
 
 interface BlackwellOutputConsoleProps {
   onClose?: () => void;
-  onDetachedChange?: (detached: boolean) => void;
   isOpen?: boolean;
   compact?: boolean;
-  /** When the docked bar opens the console, jump to this tab (once per open). */
-  openWithCategory?: OutputConsoleCategory | null;
+  isDetached: boolean;
+  onDetachedChange: (detached: boolean) => void;
+  activeCategory: OutputConsoleCategory;
+  onCategoryChange: (category: OutputConsoleCategory) => void;
 }
 
 export const OUTPUT_CONSOLE_CATEGORIES = ["engines", "utils", "foundry", "error", "debug"] as const;
@@ -37,8 +44,6 @@ export const OUTPUT_CONSOLE_CATEGORY_LABELS: Record<Category, string> = {
   error: "Error",
   debug: "Debug",
 };
-
-const CATEGORY_LABELS = OUTPUT_CONSOLE_CATEGORY_LABELS;
 
 /** RFC3339 or legacy ISO strings → local HH:MM:SS.mmm for display. */
 export function formatConsoleTimestamp(timestamp: string): string {
@@ -71,16 +76,15 @@ const DETACHED_MIN_SIZE = { width: 420, height: 140 };
 
 export default function BlackwellOutputConsole({
   onClose,
-  onDetachedChange,
   isOpen = false,
   compact = false,
-  openWithCategory = null,
+  isDetached,
+  onDetachedChange,
+  activeCategory,
+  onCategoryChange,
 }: BlackwellOutputConsoleProps) {
-  const [activeCategory, setActiveCategory] = useState<Category>("engines");
-  const wasOpenRef = useRef(false);
   const [lines, setLines] = useState<OutputLine[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [isDetached, setIsDetached] = useState(false);
   const [position, setPosition] = useState({ x: 80, y: 80 });
   const [detachedSize, setDetachedSize] = useState(DETACHED_DEFAULT_SIZE);
   const [isDragging, setIsDragging] = useState(false);
@@ -90,29 +94,10 @@ export default function BlackwellOutputConsole({
 
   const pollInterval = useRef<number | null>(null);
 
-  useEffect(() => {
-    onDetachedChange?.(isDetached);
-  }, [isDetached, onDetachedChange]);
-
-  useEffect(() => {
-    if (!isOpen) setIsDetached(false);
-  }, [isOpen]);
-
-  useEffect(() => {
-    if (!isOpen) {
-      wasOpenRef.current = false;
-      return;
-    }
-    if (openWithCategory) {
-      setActiveCategory(openWithCategory);
-    }
-    wasOpenRef.current = true;
-  }, [isOpen, openWithCategory]);
-
   const handleClose = useCallback(() => {
-    setIsDetached(false);
+    onDetachedChange(false);
     onClose?.();
-  }, [onClose]);
+  }, [onClose, onDetachedChange]);
 
   const fetchBuffer = useCallback(async (category: Category, keepPrevious = false) => {
     if (!keepPrevious) setIsLoading(true);
@@ -147,24 +132,17 @@ export default function BlackwellOutputConsole({
   }, [isOpen, activeCategory, fetchBuffer]);
 
   const clearCategory = async (cat: Category) => {
-    await invoke("clear_blackwell_output_console_category", { category: cat });
+    await clearOutputConsoleCategory(cat);
     if (cat === activeCategory) setLines([]);
   };
 
   const clearAll = async () => {
-    await invoke("clear_all_blackwell_output_console_buffers");
+    await clearAllOutputConsoleBuffers();
     setLines([]);
   };
 
-  const saveCategory = (cat: Category) => {
-    const content = lines.map(l => `[${formatConsoleTimestamp(l.timestamp)}] ${l.content}`).join("\n");
-    const blob = new Blob([content], { type: "text/plain" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `blackwell-${cat}-${new Date().toISOString().slice(0, 19)}.log`;
-    a.click();
-    URL.revokeObjectURL(url);
+  const saveCategory = async (cat: Category) => {
+    await saveOutputConsoleCategory(cat);
   };
 
   const clampDetachedSize = useCallback((width: number, height: number, pos = position) => {
@@ -287,43 +265,22 @@ export default function BlackwellOutputConsole({
       }}
       onDragStart={(e) => e.preventDefault()}
     >
-      <div
-        className={`blackwell-output-console__header flex items-center justify-between px-3 tracking-[1.2px] cursor-grab active:cursor-grabbing ${compact ? "" : "px-4 tracking-[1.5px] text-[9px] py-1"}`}
-        onMouseDown={startDrag}
-      >
-        <div className="flex items-center gap-2">
-          <span className="font-bold">BLACKWELL OUTPUT CONSOLE</span>
-          {!compact && <span className="boc-version-badge px-1.5 py-px text-[7px]">v0.9</span>}
-        </div>
-
-        <div className="flex items-center gap-1.5">
-          {OUTPUT_CONSOLE_CATEGORIES.map(cat => (
-            <button
-              key={cat}
-              onClick={() => setActiveCategory(cat)}
-              className={`boc-tab boc-tab--toolbar rounded-sm border transition-all ${
-                activeCategory === cat ? "boc-tab--active" : "boc-tab--idle"
-              }`}
-            >
-              {CATEGORY_LABELS[cat]}
-            </button>
-          ))}
-
-          <div className="boc-divider w-px h-3 mx-1" />
-
-          <button onClick={() => clearCategory(activeCategory)} className="boc-action-btn boc-action-btn--clear" title="Clear tab">C</button>
-          <button onClick={() => saveCategory(activeCategory)} className="boc-action-btn boc-action-btn--save" title="Save tab">S</button>
-          <button onClick={() => void clearAll()} className="boc-action-btn boc-action-btn--clear" title="Clear all">ALL</button>
-
-          {isDetached ? (
-            <button onClick={() => setIsDetached(false)} className="boc-utility-btn">DOCK</button>
-          ) : (
-            <button onClick={() => setIsDetached(true)} className="boc-utility-btn">DETACH</button>
-          )}
-
-          <button onClick={handleClose} className="boc-close-btn ml-1">✕</button>
-        </div>
-      </div>
+      {(isDetached || isOpen) && (
+        <OutputConsoleHeader
+          activeCategory={activeCategory}
+          onCategoryChange={onCategoryChange}
+          onClearCategory={() => void clearCategory(activeCategory)}
+          onSaveCategory={() => void saveCategory(activeCategory)}
+          onClearAll={() => void clearAll()}
+          isDetached={isDetached}
+          showTitle={!isDetached}
+          onDetach={() => onDetachedChange(true)}
+          onDock={() => onDetachedChange(false)}
+          onClose={handleClose}
+          onMouseDown={isDetached ? startDrag : undefined}
+          className={compact ? "" : "px-4 tracking-[1.5px] text-[9px] py-1"}
+        />
+      )}
 
       <div className={`blackwell-output-console__body app-console-mono flex-1 overflow-auto custom-scrollbar min-h-0 ${isDetached ? "p-2 pb-4 text-[9.5px] leading-[1.35]" : compact ? "p-1.5 pb-1" : "p-2 pb-1 text-[9.5px] leading-[1.35]"}`}>
         {isLoading && <div className="boc-sync pl-1">SYNCING TELEMETRY...</div>}

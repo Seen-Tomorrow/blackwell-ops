@@ -771,62 +771,22 @@ fn promote_archive_to_cache(archive_path: &std::path::Path, archive_name: &str) 
 pub async fn fetch_toolchain_asset(pack: &str) -> Result<(String, String, u64), String> {
     let pack_key = pack.trim().to_lowercase();
     let archive_name = pack_archive_name(&pack_key)?;
-    let url = format!(
-        "https://api.github.com/repos/{}/releases/tags/{}",
-        TOOLCHAIN_GITHUB_REPO, TOOLCHAIN_RELEASE_TAG
-    );
-    let client = reqwest::Client::new();
-    let resp = client
-        .get(&url)
-        .header("User-Agent", "Blackwell-Ops")
-        .header("Accept", "application/vnd.github+json")
-        .send()
+    let release = crate::github_releases::fetch_release_by_tag(TOOLCHAIN_RELEASE_TAG)
         .await
-        .map_err(|e| format!("Failed to fetch toolchain release: {}", e))?;
-
-    if !resp.status().is_success() {
-        return Err(format!(
-            "GitHub release '{}' not found (HTTP {}). Upload toolchain assets first.",
-            TOOLCHAIN_RELEASE_TAG,
-            resp.status()
-        ));
-    }
-
-    let body: serde_json::Value = resp
-        .json()
-        .await
-        .map_err(|e| format!("Failed to parse release JSON: {}", e))?;
-
-    let asset = body
-        .get("assets")
-        .and_then(|a| a.as_array())
-        .and_then(|arr| {
-            arr.iter().find(|a| {
-                a.get("name")
-                    .and_then(|n| n.as_str())
-                    .map(|n| n == archive_name)
-                    .unwrap_or(false)
-            })
-        })
+        .map_err(|e| {
+            format!(
+                "GitHub release '{}' not found. Upload toolchain assets first. ({e})",
+                TOOLCHAIN_RELEASE_TAG
+            )
+        })?;
+    let asset = crate::github_releases::find_asset_by_name(&release, archive_name)
         .ok_or_else(|| {
             format!(
                 "Asset '{}' not found on release '{}'.",
                 archive_name, TOOLCHAIN_RELEASE_TAG
             )
         })?;
-
-    let download_url = asset
-        .get("browser_download_url")
-        .and_then(|u| u.as_str())
-        .ok_or_else(|| format!("Asset '{}' has no download URL.", archive_name))?
-        .to_string();
-
-    let total_bytes = asset
-        .get("size")
-        .and_then(|s| s.as_u64())
-        .unwrap_or(0);
-
-    Ok((download_url, archive_name.to_string(), total_bytes))
+    Ok((asset.download_url, asset.name, asset.size))
 }
 
 #[cfg(windows)]

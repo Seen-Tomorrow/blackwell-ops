@@ -4,12 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 import Layout from "./components/Layout";
 import ModelCatalog from "./components/ModelCatalog";
-import TelemetryViewToggle from "./components/TelemetryViewToggle";
-import TabPageHeader from "./components/TabPageHeader";
-
 const StackView = lazy(() => import("./components/StackView"));
-const TelemetryPanel = lazy(() => import("./components/TelemetryPanel"));
-const TelemetryLab = lazy(() => import("./components/telemetry-lab/TelemetryLab"));
 const ConfigPage = lazy(() => import("./components/ConfigPage"));
 const Reactor11 = lazy(() => import("./components/Reactor11"));
 const ExtrasPage = lazy(() => import("./components/ExtrasPage"));
@@ -40,9 +35,6 @@ import {
   saveLogsAnsiEnabled,
   saveStartupUpdatesCache,
   loadHwMonitorOpen,
-  loadTelemetryViewMode,
-  saveTelemetryViewMode,
-  type TelemetryViewMode,
 } from "./lib/storage";
 import { dispatchAppEvent, EVENTS } from "./lib/events";
 import { refreshProvidersBuildInfo } from "./lib/foundryBuildRefresh";
@@ -50,7 +42,7 @@ import { BINARY_UPDATES_ENABLED } from "./lib/foundry_constants";
 import { getActiveStackSlots, isActiveEngineSlot } from "./lib/engineStack";
 import type { ModelEntry, StackEntry, LogBatch, LogEntry, SystemEvent, ProviderConfig, AppUpdateInfo } from "./lib/types";
 
-export type Tab = "catalog" | "stack" | "extras" | "reactor11" | "telemetry" | "modelhub" | "logs" | "config" | "sentinel";
+export type Tab = "catalog" | "stack" | "extras" | "reactor11" | "modelhub" | "logs" | "config" | "sentinel";
 
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>("catalog");
@@ -152,7 +144,6 @@ function App() {
   const [totalParams, setTotalParams] = useState(0);
   const [hiddenCount, setHiddenCount] = useState(0);
   const [isPowerUser, setIsPowerUser] = useState(() => isPowerUserActive(loadPowerUserState()));
-  const [telemetryViewMode, setTelemetryViewModeState] = useState<TelemetryViewMode>(() => loadTelemetryViewMode());
   const [hwMonitorOpen, setHwMonitorOpen] = useState(() => loadHwMonitorOpen());
 
   useEffect(() => {
@@ -165,19 +156,11 @@ function App() {
   }, []);
   const setupGuide = useSetupGuide({ models, catalogLoaded, batchScanState });
 
-  const setTelemetryViewMode = useCallback((mode: TelemetryViewMode) => {
-    setTelemetryViewModeState(mode);
-    saveTelemetryViewMode(mode);
-    dispatchAppEvent(EVENTS.telemetryViewChanged);
-  }, []);
-
   useEffect(() => {
     const handler = () => setIsPowerUser(isPowerUserActive(loadPowerUserState()));
-    const telemetryHandler = () => setTelemetryViewModeState(loadTelemetryViewMode());
     window.addEventListener("storage", handler);
     const powerUserHandler = () => requestAnimationFrame(handler);
     window.addEventListener(EVENTS.powerUserChanged, powerUserHandler);
-    window.addEventListener(EVENTS.telemetryViewChanged, telemetryHandler);
     const navHandler = () => setActiveTab("stack");
     const catalogNavHandler = () => setActiveTab("catalog");
     const extrasNavHandler = () => setActiveTab("extras");
@@ -189,7 +172,6 @@ function App() {
     return () => {
       window.removeEventListener("storage", handler);
       window.removeEventListener(EVENTS.powerUserChanged, powerUserHandler);
-      window.removeEventListener(EVENTS.telemetryViewChanged, telemetryHandler);
       window.removeEventListener(EVENTS.navigateStack, navHandler);
       window.removeEventListener(EVENTS.navigateCatalog, catalogNavHandler);
       window.removeEventListener(EVENTS.navigateExtras, extrasNavHandler);
@@ -586,10 +568,10 @@ function App() {
   );
 
   const gpuPollTier = useMemo((): GpuPollTier => {
-    if (activeTab === "telemetry") return "fast";
+    if (hwMonitorOpen) return "fast";
     if (activeTab === "catalog" || hasLiveEngines) return "normal";
     return "idle";
-  }, [activeTab, hasLiveEngines]);
+  }, [activeTab, hasLiveEngines, hwMonitorOpen]);
 
   return (
     <FusionProvider stack={stack}>
@@ -598,7 +580,7 @@ function App() {
         <DisplayTextureProvider>
         <IndustrialBezelTextureProvider>
         <FoundryProvider>
-          <TelemetryProvider pollingActive={activeTab === "telemetry" || hwMonitorOpen} gpuPollTier={gpuPollTier}>
+          <TelemetryProvider pollingActive={hwMonitorOpen || activeTab === "catalog" || hasLiveEngines} gpuPollTier={gpuPollTier}>
             <StatusProvider value={{ totalParams, hiddenCount, onShowAll: handleShowAll }}>
             <Layout activeTab={activeTab} onTabChange={(tab) => { setActiveTab(tab); if (tab === "config") setHasBinaryUpdates(false); }} providers={providers} appUpdate={appUpdate} hasBinaryUpdates={hasBinaryUpdates} onInstallAppUpdate={handleInstallAppUpdate}>
         {activeTab === "catalog" && (
@@ -628,19 +610,6 @@ function App() {
           <Suspense fallback={<TabFallback />}>
             <Reactor11 models={models} />
           </Suspense>
-        )}
-        {activeTab === "telemetry" && (
-          <div className="h-full flex flex-col min-h-0 overflow-hidden" data-telemetry-page>
-            <TabPageHeader
-              title="TELEMETRY"
-              actions={<TelemetryViewToggle mode={telemetryViewMode} onChange={setTelemetryViewMode} compact />}
-            />
-            <div className="flex-1 min-h-0 p-4">
-              <Suspense fallback={<TabFallback />}>
-                {telemetryViewMode === "lab" ? <TelemetryLab stack={stack} /> : <TelemetryPanel />}
-              </Suspense>
-            </div>
-          </div>
         )}
         {activeTab === "logs" && (
           <div className="h-full flex flex-col min-h-0 overflow-hidden" data-engine-logs>

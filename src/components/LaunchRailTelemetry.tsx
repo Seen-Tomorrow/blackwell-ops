@@ -1,28 +1,22 @@
+import { useCallback, useState, type KeyboardEvent, type MouseEvent } from "react";
 import type { CpuInfo, GpuInfo, SystemInfo } from "../lib/types";
 import { useDisplayTexture } from "../context/DisplayTextureContext";
 import { useTelemetry } from "../context/TelemetryContext";
+import { useGpuControl } from "../hooks/useGpuControl";
+import {
+  loadHwMonitorCpuCoresOpen,
+  saveHwMonitorCpuCoresOpen,
+} from "../lib/storage";
+import CpuCoreGrid from "./CpuCoreGrid";
+import GpuOverclockPanel from "./GpuOverclockPanel";
+import GpuTopologyCard from "./GpuTopologyCard";
 
 const TEL_WIDGET_SURFACE = "phosphor-display-surface";
 
-function shortGpuName(name: string): string {
-  const trimmed = name.replace(/NVIDIA\s+/i, "").replace(/\s+Generation$/i, "");
-  if (trimmed.length <= 22) return trimmed;
-  return `${trimmed.slice(0, 20)}…`;
-}
-
-function tempTone(temp: number): string {
-  if (temp > 85) return "launch-rail-tel__temp--hot";
-  if (temp > 72) return "launch-rail-tel__temp--warm";
-  return "launch-rail-tel__temp--cool";
-}
-
-function utilBarClass(percent: number, kind: "gpu" | "mem" | "power"): string {
-  if (percent > 90) return `launch-rail-tel__bar-fill--${kind}-critical`;
-  if (percent > 70) return `launch-rail-tel__bar-fill--${kind}-high`;
-  return `launch-rail-tel__bar-fill--${kind}`;
-}
-
 function MemTotals({ gpus, systemInfo }: { gpus: GpuInfo[]; systemInfo: SystemInfo | null }) {
+  const totalPowerW = gpus.reduce((s, g) => s + (g.power_draw || 0), 0);
+  const totalPowerLimitW = gpus.reduce((s, g) => s + (g.power_limit || 0), 0);
+  const powerPct = totalPowerLimitW > 0 ? (totalPowerW / totalPowerLimitW) * 100 : 0;
   const totalVramGb = gpus.reduce((s, g) => s + (g.memory_total_manufactured || g.memory_total), 0) / 1024;
   const usedVramGb = gpus.reduce((s, g) => s + g.memory_used, 0) / 1024;
   const ramTotalGb = (systemInfo?.total_memory_manufactured_mib || systemInfo?.total_memory_mib || 0) / 1024;
@@ -33,9 +27,32 @@ function MemTotals({ gpus, systemInfo }: { gpus: GpuInfo[]; systemInfo: SystemIn
   const ramPct = ramTotalGb > 0 ? (ramUsedGb / ramTotalGb) * 100 : 0;
 
   return (
-    <div className="launch-rail-tel__totals">
+    <div className="launch-rail-tel__totals-stack">
+      {gpus.length > 0 && (
+        <div className={`launch-rail-tel__total-cell launch-rail-tel__total-cell--power ${TEL_WIDGET_SURFACE}`}>
+          <span className="launch-rail-tel__total-label">Total GPU power</span>
+          <span className="launch-rail-tel__total-value launch-rail-tel__total-value--power">
+            {totalPowerW.toFixed(0)}
+            <span className="launch-rail-tel__total-denom"> W</span>
+            {totalPowerLimitW > 0 && (
+              <span className="launch-rail-tel__total-denom"> / {totalPowerLimitW.toFixed(0)} W</span>
+            )}
+          </span>
+          {totalPowerLimitW > 0 && (
+            <div className="launch-rail-tel__total-track">
+              <div
+                className={`launch-rail-tel__total-fill launch-rail-tel__total-fill--power${
+                  powerPct > 88 ? " launch-rail-tel__total-fill--warn" : ""
+                }`}
+                style={{ width: `${Math.min(powerPct, 100)}%` }}
+              />
+            </div>
+          )}
+        </div>
+      )}
+      <div className="launch-rail-tel__totals">
       <div className={`launch-rail-tel__total-cell ${TEL_WIDGET_SURFACE}`}>
-        <span className="launch-rail-tel__total-label">VRAM</span>
+        <span className="launch-rail-tel__total-label">Total VRAM used</span>
         <span className="launch-rail-tel__total-value launch-rail-tel__total-value--vram">
           {usedVramGb.toFixed(1)}
           <span className="launch-rail-tel__total-denom"> / {totalVramGb.toFixed(0)} GB</span>
@@ -49,7 +66,7 @@ function MemTotals({ gpus, systemInfo }: { gpus: GpuInfo[]; systemInfo: SystemIn
       </div>
       {ramTotalGb > 0 && (
         <div className={`launch-rail-tel__total-cell ${TEL_WIDGET_SURFACE}`}>
-          <span className="launch-rail-tel__total-label">RAM</span>
+          <span className="launch-rail-tel__total-label">Total RAM used</span>
           <span className="launch-rail-tel__total-value launch-rail-tel__total-value--ram">
             {ramUsedGb.toFixed(1)}
             <span className="launch-rail-tel__total-denom"> / {ramTotalGb.toFixed(0)} GB</span>
@@ -62,6 +79,7 @@ function MemTotals({ gpus, systemInfo }: { gpus: GpuInfo[]; systemInfo: SystemIn
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }
@@ -72,12 +90,44 @@ function cpuAvgBarClass(avg: number): string {
   return "launch-rail-tel__cpu-avg-fill--normal";
 }
 
-function CpuStrip({ cpu }: { cpu: CpuInfo }) {
+function CpuStrip({
+  cpu,
+  coresOpen,
+  onToggleCores,
+}: {
+  cpu: CpuInfo;
+  coresOpen: boolean;
+  onToggleCores: () => void;
+}) {
   const avg = Math.round(cpu.avg_usage_percent);
 
+  const onHeadKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      onToggleCores();
+    }
+  };
+
+  const stopToggleBubble = (event: MouseEvent) => {
+    event.stopPropagation();
+  };
+
   return (
-    <div className={`launch-rail-tel__cpu ${TEL_WIDGET_SURFACE}`}>
-      <div className="launch-rail-tel__cpu-head">
+    <div
+      className={`launch-rail-tel__cpu ${TEL_WIDGET_SURFACE}${
+        coresOpen ? " launch-rail-tel__cpu--cores-open" : ""
+      }`}
+    >
+      <div
+        className="launch-rail-tel__cpu-head launch-rail-tel__cpu-head--toggle"
+        role="button"
+        tabIndex={0}
+        onClick={onToggleCores}
+        onKeyDown={onHeadKeyDown}
+        onMouseDown={stopToggleBubble}
+        title={coresOpen ? "Hide per-core grid" : "Show per-core grid"}
+        aria-pressed={coresOpen}
+      >
         <div className="min-w-0 flex-1">
           <p className="launch-rail-tel__cpu-name" title={cpu.name}>
             {cpu.name}
@@ -86,9 +136,18 @@ function CpuStrip({ cpu }: { cpu: CpuInfo }) {
             {cpu.cores}C/{cpu.threads}T · {cpu.max_clock_mhz} MHz
           </p>
         </div>
-        <div className="launch-rail-tel__cpu-avg">
-          <span className="launch-rail-tel__cpu-avg-val">{avg}</span>
-          <span className="launch-rail-tel__cpu-avg-unit">%</span>
+        <div className="launch-rail-tel__cpu-head-right">
+          <span
+            className={`launch-rail-tel__cpu-cores-badge${
+              coresOpen ? " launch-rail-tel__cpu-cores-badge--on" : ""
+            }`}
+          >
+            CORES {coresOpen ? "ON" : "OFF"}
+          </span>
+          <div className="launch-rail-tel__cpu-avg">
+            <span className="launch-rail-tel__cpu-avg-val">{avg}</span>
+            <span className="launch-rail-tel__cpu-avg-unit">%</span>
+          </div>
         </div>
       </div>
       <div className="launch-rail-tel__cpu-avg-track">
@@ -97,71 +156,7 @@ function CpuStrip({ cpu }: { cpu: CpuInfo }) {
           style={{ width: `${Math.min(avg, 100)}%` }}
         />
       </div>
-    </div>
-  );
-}
-
-function GpuStrip({ gpu }: { gpu: GpuInfo }) {
-  const powerPct = gpu.power_limit > 0 ? (gpu.power_draw / gpu.power_limit) * 100 : 0;
-
-  return (
-    <div className={`launch-rail-tel__gpu ${TEL_WIDGET_SURFACE}`}>
-      <div className="launch-rail-tel__gpu-head">
-        <div className="min-w-0">
-          <p className="launch-rail-tel__gpu-name" title={gpu.name}>
-            GPU-{gpu.index}
-          </p>
-          <p className="launch-rail-tel__gpu-sub" title={gpu.name}>
-            {shortGpuName(gpu.name)}
-          </p>
-        </div>
-        <span className={`launch-rail-tel__temp ${tempTone(gpu.temperature_gpu)}`}>
-          {gpu.temperature_gpu}°
-        </span>
-      </div>
-
-      <div className="launch-rail-tel__metric">
-        <div className="launch-rail-tel__metric-row">
-          <span className="launch-rail-tel__metric-label">PWR</span>
-          <span className="launch-rail-tel__metric-val">
-            {gpu.power_draw.toFixed(0)}<span className="launch-rail-tel__metric-unit">W</span>
-            <span className="launch-rail-tel__metric-denom"> / {gpu.power_limit.toFixed(0)}</span>
-          </span>
-        </div>
-        <div className="launch-rail-tel__bar-track">
-          <div
-            className={utilBarClass(powerPct, "power")}
-            style={{ width: `${Math.min(powerPct, 100)}%` }}
-          />
-        </div>
-      </div>
-
-      <div className="launch-rail-tel__metric-pair">
-        <div className="launch-rail-tel__metric launch-rail-tel__metric--half">
-          <div className="launch-rail-tel__metric-row">
-            <span className="launch-rail-tel__metric-label">GPU</span>
-            <span className="launch-rail-tel__metric-val">{gpu.utilization_gpu}%</span>
-          </div>
-          <div className="launch-rail-tel__bar-track launch-rail-tel__bar-track--thin">
-            <div
-              className={utilBarClass(gpu.utilization_gpu, "gpu")}
-              style={{ width: `${Math.min(gpu.utilization_gpu, 100)}%` }}
-            />
-          </div>
-        </div>
-        <div className="launch-rail-tel__metric launch-rail-tel__metric--half">
-          <div className="launch-rail-tel__metric-row">
-            <span className="launch-rail-tel__metric-label">MEM</span>
-            <span className="launch-rail-tel__metric-val">{gpu.utilization_memory}%</span>
-          </div>
-          <div className="launch-rail-tel__bar-track launch-rail-tel__bar-track--thin">
-            <div
-              className={utilBarClass(gpu.utilization_memory, "mem")}
-              style={{ width: `${Math.min(gpu.utilization_memory, 100)}%` }}
-            />
-          </div>
-        </div>
-      </div>
+      {coresOpen ? <CpuCoreGrid cpu={cpu} /> : null}
     </div>
   );
 }
@@ -169,7 +164,38 @@ function GpuStrip({ gpu }: { gpu: GpuInfo }) {
 export default function LaunchRailTelemetry() {
   const { gpus, cpu, systemInfo } = useTelemetry();
   const { texture: displayTexture } = useDisplayTexture();
-  const totalPower = gpus.reduce((s, g) => s + (g.power_draw || 0), 0);
+  const [cpuCoresOpen, setCpuCoresOpen] = useState(loadHwMonitorCpuCoresOpen);
+
+  const {
+    ocMode,
+    syncGroup,
+    selectedGpuIndex,
+    sliderDevice,
+    activePreset,
+    busy,
+    elevated,
+    devices,
+    initialLoading,
+    error,
+    status,
+    ocActive,
+    getOverlay,
+    isOcTarget,
+    handleModeChange,
+    patchActivePreset,
+    handleApply,
+    handleResetAll,
+    handleResetGpu,
+    handleSelectGpu,
+  } = useGpuControl();
+
+  const toggleCpuCores = useCallback(() => {
+    setCpuCoresOpen((prev) => {
+      const next = !prev;
+      saveHwMonitorCpuCoresOpen(next);
+      return next;
+    });
+  }, []);
 
   return (
     <div
@@ -181,17 +207,54 @@ export default function LaunchRailTelemetry() {
           <span className="launch-rail-tel__pulse" aria-hidden="true" />
           <span className="launch-rail-tel__title">HW MONITOR</span>
         </div>
-        {gpus.length > 0 && (
-          <span className="launch-rail-tel__power-pill">{totalPower.toFixed(0)}W Σ</span>
-        )}
       </div>
 
       <div className="launch-rail-tel__body eink-scrollbar overflow-y-auto overflow-x-hidden min-h-0 flex-1">
         <MemTotals gpus={gpus} systemInfo={systemInfo} />
-        {cpu && <CpuStrip cpu={cpu} />}
-        {gpus.map((gpu) => (
-          <GpuStrip key={gpu.index} gpu={gpu} />
-        ))}
+        {cpu && (
+          <CpuStrip cpu={cpu} coresOpen={cpuCoresOpen} onToggleCores={toggleCpuCores} />
+        )}
+
+        {gpus.length > 0 && (
+          <>
+            <div className="launch-rail-tel__gpu-stack" data-gpu-topology>
+              {gpus.map((gpu) => (
+                <GpuTopologyCard
+                  key={gpu.index}
+                  gpu={gpu}
+                  oc={getOverlay(gpu.index)}
+                  selected={isOcTarget(gpu.index)}
+                  busy={busy}
+                  compact
+                  onSelect={() => handleSelectGpu(gpu.index)}
+                />
+              ))}
+            </div>
+
+            <GpuOverclockPanel
+              layout="rail"
+              ocActive={ocActive}
+              ocMode={ocMode}
+              syncGroupCount={syncGroup.length}
+              syncGroupName={syncGroup[0]?.name ?? ""}
+              selectedGpuIndex={selectedGpuIndex}
+              sliderDevice={sliderDevice}
+              activePreset={activePreset}
+              busy={busy}
+              elevated={elevated}
+              devicesCount={devices.length}
+              initialLoading={initialLoading}
+              error={error}
+              status={status}
+              onModeChange={handleModeChange}
+              onPatchPreset={patchActivePreset}
+              onApply={handleApply}
+              onResetAll={handleResetAll}
+              onResetGpu={handleResetGpu}
+            />
+          </>
+        )}
+
         {!cpu && gpus.length === 0 && (
           <p className="launch-rail-tel__empty text-[8px] font-mono text-stealth-muted/50 px-2 py-4 text-center">
             Scanning hardware…

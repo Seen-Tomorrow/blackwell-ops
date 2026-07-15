@@ -37,6 +37,7 @@ mod fusion;
 mod provider_mgmt;
 mod llama_catalog;
 mod binary_update;
+mod github_releases;
 mod profile_binaries;
 mod secrets;
 

@@ -35,6 +35,37 @@ function mergeIndividualPresets(
   });
 }
 
+function presetIsNonDefault(
+  dev: GpuControlDeviceInfo,
+  preset: GpuControlSharedPreset,
+): boolean {
+  const defaultW = Math.round(dev.powerDefaultW);
+  return (
+    preset.coreOffsetMhz > 0 ||
+    preset.memOffsetMhz > 0 ||
+    preset.powerLimitW !== defaultW
+  );
+}
+
+function isGpuOcActive(
+  devices: GpuControlDeviceInfo[],
+  individualPresets: GpuControlPreset[],
+  sharedPreset: GpuControlSharedPreset,
+  ocMode: GpuControlOcMode,
+  selectedGpuIndex: number,
+): boolean {
+  if (devices.length === 0) return false;
+  const syncGroup = syncGroupFor(devices, selectedGpuIndex);
+  for (const dev of devices) {
+    const preset =
+      ocMode === "sync" && syncGroup.some((g) => g.index === dev.index)
+        ? sharedPreset
+        : individualPresets.find((p) => p.gpuIndex === dev.index);
+    if (preset && presetIsNonDefault(dev, preset)) return true;
+  }
+  return false;
+}
+
 function defaultSharedPreset(devices: GpuControlDeviceInfo[]): GpuControlSharedPreset {
   const first = devices[0];
   if (!first) {
@@ -178,6 +209,18 @@ export function useGpuControl() {
     [devices, selectedGpuIndex],
   );
 
+  const ocTargetIndices = useMemo(() => {
+    if (ocMode === "sync") {
+      return new Set(syncGroup.map((d) => d.index));
+    }
+    return new Set([selectedGpuIndex]);
+  }, [ocMode, syncGroup, selectedGpuIndex]);
+
+  const isOcTarget = useCallback(
+    (gpuIndex: number) => ocTargetIndices.has(gpuIndex),
+    [ocTargetIndices],
+  );
+
   const sliderDevice = useMemo(() => {
     if (ocMode === "sync") {
       return syncGroup[0] ?? devices[0] ?? null;
@@ -310,7 +353,7 @@ export function useGpuControl() {
       setIndividualPresets(resetIndividual);
       setSharedPreset(resetShared);
       persistState(resetIndividual, resetShared, ocMode, selectedGpuIndex);
-      const msg = result.ok ? "All GPUs reset to driver defaults." : formatGpuControlMessage(result);
+      const msg = result.ok ? "driver defaults SET" : formatGpuControlMessage(result);
       setStatus(result.ok ? msg : null);
       if (!result.ok) setError(msg);
       burstPollClocks();
@@ -391,9 +434,22 @@ export function useGpuControl() {
     [overlayByGpu],
   );
 
+  const ocActive = useMemo(
+    () =>
+      isGpuOcActive(
+        devices,
+        individualPresets,
+        sharedPreset,
+        ocMode,
+        selectedGpuIndex,
+      ),
+    [devices, individualPresets, sharedPreset, ocMode, selectedGpuIndex],
+  );
+
   return useMemo(
     () => ({
       devices,
+      ocActive,
       ocMode,
       selectedGpuIndex,
       syncGroup,
@@ -405,6 +461,7 @@ export function useGpuControl() {
       status,
       elevated,
       getOverlay,
+      isOcTarget,
       handleModeChange,
       handleSelectGpu,
       handleApply,
@@ -416,6 +473,7 @@ export function useGpuControl() {
     }),
     [
       devices,
+      ocActive,
       ocMode,
       selectedGpuIndex,
       syncGroup,
@@ -427,6 +485,7 @@ export function useGpuControl() {
       status,
       elevated,
       getOverlay,
+      isOcTarget,
       handleModeChange,
       handleSelectGpu,
       handleApply,
