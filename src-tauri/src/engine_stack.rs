@@ -206,6 +206,17 @@ impl EngineStack {
         })
     }
 
+    /// True when any Loading/Running slot uses this provider backend id.
+    pub fn provider_has_active_engine(&self, provider_id: &str) -> bool {
+        self.slots.iter().any(|slot_opt| {
+            slot_opt.as_ref().map_or(false, |arc| {
+                let slot = arc.lock();
+                !matches!(slot.status, SlotStatus::Idle)
+                    && slot.backend_type.eq_ignore_ascii_case(provider_id)
+            })
+        })
+    }
+
     /// True when a loading/running slot is bound to this catalog model path.
     pub fn model_path_in_active_use(&self, path: &str) -> bool {
         let key = crate::config::model_file_cache_key(path);

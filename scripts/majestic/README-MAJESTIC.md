@@ -10,13 +10,23 @@ Majestic.bat
 
 Menu: **10 BUMP** → CHECK → PACK → SHIP (plus backups and dry-runs).
 
+| Cadence | Menu | Output |
+|---------|------|--------|
+| **Daily** | 12 → 13 → 14 (or **15** pack+ship) | `Blackwell-Ops-App-vX.Y.Z.7z` (~5 MB) |
+| **Weekly** | 1 → 2 → 3 | Full NSIS + App `.7z` + `{provider}-{profile}.7z` packs |
+| **Rare** | 11 → 17 | `toolchain.7z` on tag `toolchain` |
+
 ## Or npm
 
 ```powershell
 npm run majestic:bump     # 1.0.0 → 1.0.1 in tauri.conf.json, tauri.conf.dev.json, package.json, Cargo.toml (asks YES)
-npm run majestic:check    # am I ready? (safe, read-only)
-npm run majestic:pack     # mirror → bundle → build installer (+ optional zips)
-npm run majestic:ship     # upload to GitHub (needs unlock file + type YES)
+npm run majestic:check    # full bundle ready? (safe, read-only)
+npm run majestic:check:app
+npm run majestic:pack     # weekly: NSIS + App 7z + provider packs
+npm run majestic:pack:app # daily: lean App 7z only
+npm run majestic:ship     # upload staged assets (needs unlock + YES)
+npm run majestic:toolchain
+npm run majestic:ship-toolchain
 ```
 
 ## Version bump
@@ -66,10 +76,13 @@ Does not delete source, Foundry artifacts, or dev `target/debug/`.
 - `.majestic-out/`
 - `.majestic-backup/`
 
-## Optional: in-app binary updates later
+## In-app update assets (shipped by Majestic)
 
-1. Set `"upload.binaryZips": true` in `majestic.config.json`.
-2. Re-run `pack` + `ship`.
-3. Set `BINARY_UPDATES_ENABLED = true` in `src-tauri/src/binary_update.rs`.
+| Asset | Channel |
+|-------|---------|
+| `Blackwell-Ops-App-vX.Y.Z.7z` | Portable App update (exe + templates + 7z) |
+| `*Setup*.exe` (no App-Only) | Full NSIS install |
+| `{provider}-{profile}.7z` | Selective engine pack (e.g. `ggml-master-frontier.7z`) |
+| `toolchain.7z` (tag `toolchain`) | Foundry portable toolchain |
 
-Zip names must stay `{provider}-{profile}.zip` (e.g. `ggml-master-vanguard.zip`).
+`BINARY_UPDATES_ENABLED` is on. Provider packs use the same download manager + bundled 7z as toolchain.

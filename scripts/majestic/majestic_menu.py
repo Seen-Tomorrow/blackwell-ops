@@ -301,21 +301,24 @@ def print_header() -> None:
     print("=" * 60)
     print()
     print("  1  CHECK FULL  - Foundry + full bundle ready?")
-    print("  2  PACK FULL   - engines + templates + NSIS (weekly)")
+    print("  2  PACK FULL   - NSIS + App .7z + provider .7z packs (weekly)")
     print("  3  SHIP        - upload staged assets to GitHub (asks YES)")
     print(" 10  BUMP        - patch+1 version (run before each ship)")
     print()
-    print(" 12  CHECK APP   - templates ready for App-Only?")
-    print(" 13  PACK APP    - UI + templates only (daily)")
-    print(" 14  SHIP APP    - same as 3 (uses staged manifest kind)")
+    print(" 12  CHECK APP   - templates ready for lean App update?")
+    print(" 13  PACK APP    - App .7z only (~5MB, daily)")
+    print(" 14  SHIP APP    - same as 3 (uses staged manifest)")
+    print(" 15  PACK APP + SHIP  - daily one-shot (still asks YES on ship)")
     print()
     print("  4  Pack full dry-run")
     print("  5  Ship dry-run")
+    print(" 16  Pack app dry-run")
     print("  6  Open .majestic-out folder")
     print("  7  Backup runtime (configs + binaries)")
     print("  8  Open .majestic-backup folder")
     print("  9  PARANOID backup (project zip, keeps foundry+toolchain)")
-    print(" 11  TOOLCHAIN - rebuild + pack toolchain.7z for GitHub upload")
+    print(" 11  TOOLCHAIN PACK - rebuild + pack work/toolchain.7z")
+    print(" 17  SHIP TOOLCHAIN - upload toolchain.7z to GitHub tag toolchain")
     print()
     print("  0  Exit")
     print()
@@ -353,10 +356,16 @@ def main() -> int:
             code = run_majestic("pack", variant="app")
         elif choice == "14":
             code = run_majestic("ship")
+        elif choice == "15":
+            code = run_majestic("pack", variant="app")
+            if code == 0:
+                code = run_majestic("ship")
         elif choice == "4":
             code = run_majestic("pack", variant="full", dry_run=True)
         elif choice == "5":
             code = run_majestic("ship", dry_run=True)
+        elif choice == "16":
+            code = run_majestic("pack", variant="app", dry_run=True)
         elif choice == "6":
             open_output_folder()
             code = 0
@@ -375,8 +384,10 @@ def main() -> int:
                 code = run_powershell_script(BUILD_TOOLCHAIN_PS1, "-RepackOnly")
             else:
                 code = run_powershell_script(BUILD_TOOLCHAIN_PS1)
+        elif choice == "17":
+            code = run_majestic("ship-toolchain")
         else:
-            print("Unknown choice. Use 0-14.")
+            print("Unknown choice. Use 0-17.")
             code = 1
 
         print()

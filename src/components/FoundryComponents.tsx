@@ -19,7 +19,9 @@ export function getPrNumberForEnv(provider: ProviderConfig, env: string): string
   return provider.lastPrPerEnv?.[env];
 }
 
-function isDownloadedBinary(path: string): boolean {
+function isDownloadedBinary(path: string, installedVersion?: string | null): boolean {
+  // GitHub provider packs write to portable runtime/ and stamp downloadedVersionPerEnv
+  if (installedVersion) return true;
   const normalized = path.toLowerCase();
   return normalized.includes("updates\\") || normalized.includes("updates/");
 }
@@ -256,7 +258,8 @@ export function BuildProfileRow({
   onRevert,
 }: BuildProfileRowProps) {
   const activePath = profileEnvLookup(provider.binaryPathPerEnv, env);
-  const isDownloaded = !!activePath && isDownloadedBinary(activePath);
+  const downloadedVer = profileEnvLookup(provider.downloadedVersionPerEnv, env);
+  const isDownloaded = !!activePath && isDownloadedBinary(activePath, downloadedVer);
   const foundryActive = isProfileSourceActive(provider, env, "foundry");
   const bundledActive = isProfileSourceActive(provider, env, "bundled");
 

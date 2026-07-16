@@ -709,10 +709,11 @@ pub struct HfSearchFilters {
 
 // ── Download Manager Types ───────────────────────────────────────────────
 
-/// HF model download vs portable Foundry toolchain archive vs app NSIS installer.
+/// Download task kinds: HF models, Foundry toolchain, app update (7z/NSIS), provider engine pack.
 pub const TASK_KIND_HF: &str = "hf";
 pub const TASK_KIND_TOOLCHAIN: &str = "toolchain";
 pub const TASK_KIND_APP: &str = "app";
+pub const TASK_KIND_PROVIDER: &str = "provider";
 
 fn default_download_task_kind() -> String {
     TASK_KIND_HF.to_string()

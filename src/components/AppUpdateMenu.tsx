@@ -29,6 +29,7 @@ function OfferingCard({
   const isFull = offering.channel === "full_bundle";
   const accent = isFull ? "border-nv-green/40" : "border-yellow-400/40";
   const titleColor = isFull ? "text-nv-green" : "text-yellow-400";
+  // labels come from backend (App update / Full install)
 
   return (
     <div

@@ -3,7 +3,7 @@
 
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('check', 'pack', 'ship', 'bump')]
+    [ValidateSet('check', 'pack', 'ship', 'bump', 'ship-toolchain')]
     [string]$Mode,
 
     [ValidateSet('app', 'full')]
@@ -134,14 +134,18 @@ function Get-InstallerCandidates {
         Sort-Object LastWriteTime -Descending
 }
 
-function Get-AppOnlyInstallerFileName {
+function Get-AppUpdateArchiveFileName {
     param([string]$Version)
-    "Blackwell Ops App-Only Setup $Version.exe"
+    "Blackwell-Ops-App-v$Version.7z"
+}
+
+function Get-ReleaseExePath {
+    Join-Path $root 'src-tauri\target\release\blackwell-ops.exe'
 }
 
 function Get-PackKindLabel {
     param([string]$Kind)
-    if ($Kind -eq 'app') { 'App-Only' } else { 'Full Bundle' }
+    if ($Kind -eq 'app') { 'App update (7z)' } else { 'Full Bundle (NSIS + packs)' }
 }
 
 function Get-ReleaseNotesForVariant {
@@ -183,11 +187,12 @@ function Invoke-FrontendAndTauriBuild {
     Push-Location $root
     try {
         if ($Variant -eq 'app') {
-            Write-Majestic "Building frontend + App-Only NSIS (no engine mirror)..." -Color Cyan
+            Write-Majestic "Building frontend + release exe (no NSIS, no engine mirror)..." -Color Cyan
             npm run build
             if ($LASTEXITCODE -ne 0) { throw "npm run build failed with exit code $LASTEXITCODE" }
-            npx tauri build
-            if ($LASTEXITCODE -ne 0) { throw "tauri build failed with exit code $LASTEXITCODE" }
+            # Lean App pack: PE only - NSIS is Full Bundle path
+            npx tauri build --no-bundle
+            if ($LASTEXITCODE -ne 0) { throw "tauri build --no-bundle failed with exit code $LASTEXITCODE" }
         } else {
             Write-Majestic "Running npm run release (mirror -> bundle -> NSIS)..." -Color Cyan
             npm run release
@@ -198,25 +203,72 @@ function Invoke-FrontendAndTauriBuild {
     }
 }
 
+function Invoke-PackAppUpdateArchive {
+    param(
+        [string]$Version,
+        [string]$OutRoot
+    )
+    $out_path = Join-Path $OutRoot (Get-AppUpdateArchiveFileName -Version $Version)
+    $pack_script = Join-Path $root 'scripts\pack-app-update.ps1'
+    $exe = Get-ReleaseExePath
+    if (-not (Test-Path -LiteralPath $exe)) {
+        throw "Release exe missing after build: $exe"
+    }
+    Write-Majestic "Packing lean App update .7z..." -Color Cyan
+    # Swallow ALL nested streams. Native 7z + Write-Host can pollute the success stream;
+    # assignment then feeds empty lines into Get-Item -LiteralPath and dies.
+    $pack_log = & $pack_script -Version $Version -Output $out_path -ExePath $exe *>&1
+    $pack_exit = $LASTEXITCODE
+    foreach ($line in @($pack_log)) {
+        if ($null -ne $line -and "$line".Length -gt 0) {
+            Write-Host $line
+        }
+    }
+    if ($pack_exit -ne 0) {
+        throw "pack-app-update.ps1 failed (exit $pack_exit)"
+    }
+    if (-not (Test-Path -LiteralPath $out_path)) {
+        throw "App update archive not created: $out_path"
+    }
+    $size_mb = [math]::Round((Get-Item -LiteralPath $out_path).Length / 1MB, 2)
+    Write-Majestic "App update staged: $(Split-Path -Leaf $out_path) ($size_mb MB)" -Color Green
+    # Single string only - never an Object[] of 7z chatter
+    return [string]$out_path
+}
+
+function Invoke-PackProviderArchives {
+    param([string]$OutRoot)
+    $pack_script = Join-Path $root 'scripts\pack-provider-runtime.ps1'
+    Write-Majestic "Packing provider runtime .7z archives..." -Color Cyan
+    $pack_log = & $pack_script -OutDir $OutRoot *>&1
+    $pack_exit = $LASTEXITCODE
+    foreach ($line in @($pack_log)) {
+        if ($null -ne $line -and "$line".Length -gt 0) {
+            Write-Host $line
+        }
+    }
+    if ($pack_exit -ne 0) {
+        throw "pack-provider-runtime.ps1 failed (exit $pack_exit)"
+    }
+}
+
 function Stage-InstallerForVariant {
     param(
         [string]$Version,
         [string]$Variant,
         [string]$OutRoot
     )
+    if ($Variant -eq 'app') {
+        throw "Stage-InstallerForVariant is for Full Bundle only - use Invoke-PackAppUpdateArchive"
+    }
     $installers = Get-InstallerCandidates -Version $Version
     if ($installers.Count -eq 0) {
         throw "Installer not found after build. Expected under src-tauri/target/release/bundle/nsis/"
     }
     $installer = $installers[0]
-    $dest_name = if ($Variant -eq 'app') {
-        Get-AppOnlyInstallerFileName -Version $Version
-    } else {
-        $installer.Name
-    }
-    $dest_installer = Join-Path $OutRoot $dest_name
+    $dest_installer = Join-Path $OutRoot $installer.Name
     Copy-Item -LiteralPath $installer.FullName -Destination $dest_installer -Force
-    Write-Majestic "Installer staged: $dest_name" -Color Green
+    Write-Majestic "Full installer staged: $($installer.Name)" -Color Green
     return $dest_installer
 }
 
@@ -308,13 +360,23 @@ function Invoke-MajesticCheck {
         }
     }
 
-    $installers = Get-InstallerCandidates -Version $version
-    if ($installers.Count -gt 0) {
-        $latest = $installers[0]
-        $age_min = [math]::Round(((Get-Date) - $latest.LastWriteTime).TotalMinutes, 1)
-        Write-Majestic "Installer: $($latest.FullName) - $age_min minutes old" -Color Green
+    if ($Variant -eq 'app') {
+        $exe = Get-ReleaseExePath
+        if (Test-Path -LiteralPath $exe) {
+            $age_min = [math]::Round(((Get-Date) - (Get-Item -LiteralPath $exe).LastWriteTime).TotalMinutes, 1)
+            Write-Majestic "Release exe: $exe - $age_min minutes old" -Color Green
+        } else {
+            Write-Majestic "Release exe: not built yet (pack will build --no-bundle)" -Color Yellow
+        }
     } else {
-        Write-Majestic "Installer: not built yet (pack will build)" -Color Yellow
+        $installers = Get-InstallerCandidates -Version $version
+        if ($installers.Count -gt 0) {
+            $latest = $installers[0]
+            $age_min = [math]::Round(((Get-Date) - $latest.LastWriteTime).TotalMinutes, 1)
+            Write-Majestic "Installer: $($latest.FullName) - $age_min minutes old" -Color Green
+        } else {
+            Write-Majestic "Installer: not built yet (pack will build)" -Color Yellow
+        }
     }
 
     if (Get-Command gh -ErrorAction SilentlyContinue) {
@@ -413,12 +475,12 @@ function Invoke-MajesticPack {
 
     $skip_build = ($Variant -eq 'full') -and (Test-InstallerFresh -Config $Config -Version $version)
     if ($skip_build) {
-        Write-Majestic "Installer is fresh - skipping full release build." -Color Yellow
+        Write-Majestic "Installer is fresh - skipping full release build (will still refresh packs)." -Color Yellow
     } elseif ($DryRun) {
         if ($Variant -eq 'app') {
-            Write-Majestic "[dry-run] would run: prepare-release-app-only + npm run build + tauri build" -Color Cyan
+            Write-Majestic "[dry-run] would run: prepare-release-app-only + npm run build + tauri build --no-bundle + pack-app-update.ps1" -Color Cyan
         } else {
-            Write-Majestic "[dry-run] would run: npm run release" -Color Cyan
+            Write-Majestic "[dry-run] would run: npm run release + pack-app-update + pack-provider-runtime" -Color Cyan
         }
     } else {
         if ($Variant -eq 'full') {
@@ -430,9 +492,15 @@ function Invoke-MajesticPack {
     }
 
     if (-not $skip_build -and -not $DryRun) {
-        $installers = Get-InstallerCandidates -Version $version
-        if ($installers.Count -eq 0) {
-            throw "Installer not found after build. Expected under src-tauri/target/release/bundle/nsis/"
+        if ($Variant -eq 'full') {
+            $installers = Get-InstallerCandidates -Version $version
+            if ($installers.Count -eq 0) {
+                throw "Installer not found after build. Expected under src-tauri/target/release/bundle/nsis/"
+            }
+        } else {
+            if (-not (Test-Path -LiteralPath (Get-ReleaseExePath))) {
+                throw "Release exe not found after build: $(Get-ReleaseExePath)"
+            }
         }
     }
 
@@ -446,65 +514,59 @@ function Invoke-MajesticPack {
     }
 
     $manifest_files = @()
-    $installers = Get-InstallerCandidates -Version $version
-    if ($installers.Count -gt 0) {
-        if ($DryRun) {
-            $dest_name = if ($Variant -eq 'app') {
-                Get-AppOnlyInstallerFileName -Version $version
-            } else {
-                $installers[0].Name
-            }
-            Write-Majestic "[dry-run] copy installer -> $(Join-Path $out_root $dest_name)" -Color Cyan
-        } else {
-            $dest_installer = Stage-InstallerForVariant -Version $version -Variant $Variant -OutRoot $out_root
-            $manifest_files += New-ManifestEntry -File (Get-Item -LiteralPath $dest_installer)
-        }
+    $want_provider_packs = $true
+    if ($null -ne $Config.upload.PSObject.Properties['providerPacks']) {
+        $want_provider_packs = [bool]$Config.upload.providerPacks
+    } elseif ($null -ne $Config.upload.PSObject.Properties['binaryZips']) {
+        $want_provider_packs = [bool]$Config.upload.binaryZips
     }
 
-    if ($Config.upload.binaryZips) {
-        foreach ($prop in $Config.providers.PSObject.Properties) {
-            $provider_id = $prop.Name
-            foreach ($profile_id in @($prop.Value)) {
-                $src_dir = Join-Path $bundle_root "$provider_id\$profile_id"
-                $zip_name = "$provider_id-$profile_id.zip"
-                $zip_path = Join-Path $out_root $zip_name
-
-                if (-not (Test-Path -LiteralPath $src_dir)) {
-                    Write-Majestic "Zip skip (no bundle): $zip_name" -Color Yellow
-                    continue
-                }
-
-                $dist_files = Get-RuntimeDistributionFiles -Directory $src_dir
-                if ($dist_files.Count -eq 0) {
-                    Write-Majestic "Zip skip (empty): $zip_name" -Color Yellow
-                    continue
-                }
-
-                if ($DryRun) {
-                    Write-Majestic "[dry-run] zip $($dist_files.Count) file(s) -> $zip_name" -Color Cyan
-                    continue
-                }
-
-                $staging = Join-Path $out_root "_zip-staging\$provider_id-$profile_id"
-                if (Test-Path -LiteralPath $staging) {
-                    Remove-Item -LiteralPath $staging -Recurse -Force
-                }
-                New-Item -ItemType Directory -Path $staging -Force | Out-Null
-                foreach ($file in $dist_files) {
-                    Copy-Item -LiteralPath $file.FullName -Destination $staging -Force
-                }
-                if (Test-Path -LiteralPath $zip_path) {
-                    Remove-Item -LiteralPath $zip_path -Force
-                }
-                Compress-Archive -Path (Join-Path $staging '*') -DestinationPath $zip_path -CompressionLevel Optimal
-                Remove-Item -LiteralPath (Split-Path -Parent $staging) -Recurse -Force
-
-                $manifest_files += New-ManifestEntry -File (Get-Item -LiteralPath $zip_path)
-                Write-Majestic "Zip staged: $zip_name ($($dist_files.Count) files)" -Color Green
-            }
+    if ($DryRun) {
+        Write-Majestic "[dry-run] would stage $(Get-AppUpdateArchiveFileName -Version $version)" -Color Cyan
+        if ($Variant -eq 'full') {
+            Write-Majestic "[dry-run] would stage Full Bundle NSIS + provider .7z packs (providerPacks=$want_provider_packs)" -Color Cyan
         }
     } else {
-        Write-Majestic "Binary zips: skipped (upload.binaryZips = false)" -Color DarkGray
+        # Always stage lean App update for both daily app pack and weekly full pack
+        if ($Variant -eq 'app') {
+            # app pack already prepared templates-only bundle
+        } elseif ($Variant -eq 'full') {
+            # Full release used prepare-release-runtime (engines). Rebuild app-only bundle for App .7z
+            # so the lean archive never embeds engine binaries.
+            Invoke-PrepareReleaseBundle -Variant 'app'
+        }
+
+        $app_archive = Invoke-PackAppUpdateArchive -Version $version -OutRoot $out_root
+        # Unwrap accidental multi-object capture; require a real path string
+        if ($app_archive -is [array]) {
+            $app_archive = @($app_archive | Where-Object { $_ -is [string] -and $_ } | Select-Object -Last 1)[0]
+        }
+        if ([string]::IsNullOrWhiteSpace([string]$app_archive)) {
+            throw "App update pack returned empty path (internal PowerShell capture bug)."
+        }
+        $app_archive = [string]$app_archive
+        if (-not (Test-Path -LiteralPath $app_archive)) {
+            throw "App update archive missing after pack: $app_archive"
+        }
+        $manifest_files += New-ManifestEntry -File (Get-Item -LiteralPath $app_archive)
+
+        if ($Variant -eq 'full') {
+            # Restore full runtime-bundle for provider packs (engines + templates)
+            Invoke-PrepareReleaseBundle -Variant 'full'
+            $dest_installer = Stage-InstallerForVariant -Version $version -Variant 'full' -OutRoot $out_root
+            $manifest_files += New-ManifestEntry -File (Get-Item -LiteralPath $dest_installer)
+
+            if ($want_provider_packs) {
+                Invoke-PackProviderArchives -OutRoot $out_root
+                Get-ChildItem -LiteralPath $out_root -Filter '*.7z' -File |
+                    Where-Object { $_.Name -notlike 'Blackwell-Ops-App-*' } |
+                    ForEach-Object {
+                        $manifest_files += New-ManifestEntry -File $_
+                    }
+            } else {
+                Write-Majestic "Provider packs: skipped (upload.providerPacks = false)" -Color DarkGray
+            }
+        }
     }
 
     if (-not $DryRun) {
@@ -518,7 +580,7 @@ function Invoke-MajesticPack {
         }
         $manifest_path = Join-Path $out_root "manifest-$tag.json"
         $manifest | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $manifest_path -Encoding UTF8
-        Write-Majestic "Manifest: $manifest_path" -Color Cyan
+        Write-Majestic "Manifest: $manifest_path ($($manifest_files.Count) asset(s))" -Color Cyan
         Write-Majestic "PACK DONE - output in .majestic-out/" -Color Green
     } else {
         Write-Majestic "[dry-run] PACK complete (no files written)" -Color Cyan
@@ -582,7 +644,7 @@ function Get-GhReleaseView {
         [string]$Repo
     )
 
-    # gh writes "release not found" to stderr — must not throw under $ErrorActionPreference Stop
+    # gh writes "release not found" to stderr - must not throw under $ErrorActionPreference Stop
     $prev_eap = $ErrorActionPreference
     $ErrorActionPreference = 'SilentlyContinue'
     try {
@@ -635,7 +697,7 @@ function Throw-GhReleaseCreateFailed {
     if ($GhOutput -match 'tag_name was used by an immutable release' -or
         $GhOutput -match 'Cannot create ref due to creations being restricted') {
         throw @"
-Cannot ship $Tag — GitHub permanently reserved this tag name after a prior immutable release.
+Cannot ship $Tag - GitHub permanently reserved this tag name after a prior immutable release.
 Deleting the release does not free the tag. Disabling immutability in settings does not help.
 
 Fix:
@@ -669,7 +731,7 @@ GitHub release $Tag $reason. Immutable releases stay locked even after you disab
 
 Fix:
   1. Delete the broken release:  gh release delete $Tag --repo $Repo --cleanup-tag --yes
-  2. GitHub does not allow reusing a tag from a deleted immutable release — bump patch:  npm run majestic:bump
+  2. GitHub does not allow reusing a tag from a deleted immutable release - bump patch:  npm run majestic:bump
   3. majestic:pack, then majestic:ship on the new version
 
 Future ships use 'gh release create <tag> <assets...>' so assets attach before publish.
@@ -781,6 +843,56 @@ function Invoke-MajesticShip {
 
 $config = Read-MajesticConfig
 
+function Invoke-MajesticShipToolchain {
+    param($Config)
+
+    Assert-ShipUnlocked
+
+    $archive = Join-Path $root 'work\toolchain.7z'
+    if (-not (Test-Path -LiteralPath $archive)) {
+        throw "Missing work\toolchain.7z - run menu 11 TOOLCHAIN (or npm run majestic:toolchain) first."
+    }
+
+    $tag = 'toolchain'
+    $size_mb = [math]::Round((Get-Item -LiteralPath $archive).Length / 1MB, 1)
+    Write-Majestic "About to upload toolchain.7z ($size_mb MB) to tag '$tag' on $($Config.repo)" -Color Cyan
+
+    if ($DryRun) {
+        Write-Majestic "[dry-run] would upload $archive to release $tag" -Color Yellow
+        return
+    }
+
+    $confirm = Read-Host "Type YES to ship toolchain.7z"
+    if ($confirm -ne 'YES') {
+        Write-Majestic "Ship cancelled." -Color Yellow
+        return
+    }
+
+    if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
+        throw "GitHub CLI (gh) is required. Install: https://cli.github.com/"
+    }
+
+    $release_meta = Get-GhReleaseView -Tag $tag -Repo $Config.repo
+    $notes = "Portable Foundry toolchain (CUDA + VS/SDK/CMake). Extract via in-app Config -> Foundry Toolchain."
+    if ($null -eq $release_meta) {
+        Write-Majestic "Creating GitHub release $tag with toolchain.7z..." -Color Cyan
+        $create_result = New-GhReleaseWithAssets -Tag $tag -Repo $Config.repo -Notes $notes -Assets @($archive)
+        if ($create_result.ExitCode -ne 0) {
+            throw "gh release create failed:`n$($create_result.Output)"
+        }
+    } elseif ($release_meta.isImmutable) {
+        throw "Release $tag is immutable - delete it on GitHub or use a new tag before re-uploading."
+    } else {
+        Write-Majestic "Release $tag exists - uploading toolchain.7z (clobber)..." -Color Cyan
+        gh release upload $tag --repo $Config.repo --clobber $archive
+        if ($LASTEXITCODE -ne 0) {
+            throw "gh release upload failed"
+        }
+    }
+
+    Write-Majestic "SHIPPED toolchain - https://github.com/$($Config.repo)/releases/tag/$tag" -Color Green
+}
+
 switch ($Mode) {
     'check' {
         $ready = Invoke-MajesticCheck -Config $config -Variant $Variant
@@ -789,4 +901,5 @@ switch ($Mode) {
     'pack' { Invoke-MajesticPack -Config $config -Variant $Variant }
     'ship' { Invoke-MajesticShip -Config $config }
     'bump' { Invoke-MajesticBump }
+    'ship-toolchain' { Invoke-MajesticShipToolchain -Config $config }
 }

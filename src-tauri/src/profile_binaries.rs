@@ -92,9 +92,12 @@ fn scan_foundry(provider_id: &str, profile: &str) -> Option<(String, BuildInfo)>
     Some((rel, info))
 }
 
-fn is_downloaded_path(path: &str) -> bool {
+fn is_downloaded_or_runtime_path(path: &str) -> bool {
     let norm = path.replace('\\', "/").to_lowercase();
-    norm.contains("/updates/") || norm.contains("updates/")
+    // Legacy `updates/` layout + current portable `runtime/{provider}/{profile}/` packs
+    norm.contains("/updates/")
+        || norm.contains("updates/")
+        || norm.contains("runtime/")
 }
 
 fn auto_pick_source(
@@ -175,17 +178,29 @@ pub fn resolve_provider_binaries(p: &mut ProviderConfig, ctx: ResolveContext<'_>
                 .insert(profile.to_string(), enrich(info.clone(), &build_profile));
         }
 
-        // GitHub download override — path under updates/ with version tag tracked.
+        // GitHub pack install — version tag tracked; path is portable runtime/ (or legacy updates/).
         let downloaded_active = p
             .downloaded_version_per_env
             .get(&profile)
             .filter(|v| !v.is_empty())
-            .and_then(|_| ctx.saved_paths.get(&profile))
-            .filter(|path| is_downloaded_path(path))
+            .and_then(|_| {
+                ctx.saved_paths
+                    .get(&profile)
+                    .filter(|path| is_downloaded_or_runtime_path(path))
+                    .cloned()
+                    .or_else(|| {
+                        let rel = format!("runtime/{}/{}/llama-server.exe", p.id, profile);
+                        if resolve_path(&rel).is_file() {
+                            Some(rel)
+                        } else {
+                            None
+                        }
+                    })
+            })
             .and_then(|path| {
-                let abs = resolve_path(path);
+                let abs = resolve_path(&path);
                 if abs.exists() {
-                    build_info_from_mtime(&abs, "downloaded").map(|info| (path.clone(), info))
+                    build_info_from_mtime(&abs, "downloaded").map(|info| (path, info))
                 } else {
                     None
                 }

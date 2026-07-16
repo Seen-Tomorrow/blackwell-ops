@@ -1,8 +1,8 @@
-//! Binary update module — fetch, download, and activate provider binary updates from GitHub releases.
-//! App updates download the NSIS installer only (not standalone `blackwell-ops.exe`).
+//! Release updates — App `.7z` / Full NSIS, and per-provider runtime packs via download_manager.
+//! Provider packs land in portable `runtime/{id}/{profile}/` (same tree as Full Bundle).
 
 use serde::Serialize;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Mutex;
 use tauri::Manager;
 
@@ -149,25 +149,6 @@ const PROFILES: &[(&str, &str)] = &[
     ("stable", "Stable (VS2022 + CUDA 12.8)"),
 ];
 
-/// Compare two semver strings properly (handles patch 10+).
-fn version_gt(a: &str, b: &str) -> bool {
-    let parts_a: Vec<u32> = a.split('.').filter_map(|s| s.parse().ok()).collect();
-    let parts_b: Vec<u32> = b.split('.').filter_map(|s| s.parse().ok()).collect();
-
-    let max_len = std::cmp::max(parts_a.len(), parts_b.len());
-    for i in 0..max_len {
-        let va = *parts_a.get(i).unwrap_or(&0);
-        let vb = *parts_b.get(i).unwrap_or(&0);
-        if va > vb {
-            return true;
-        }
-        if va < vb {
-            return false;
-        }
-    }
-    false
-}
-
 #[derive(Debug, Clone, Serialize)]
 pub struct BinaryUpdateInfo {
     pub profile: String,
@@ -177,34 +158,39 @@ pub struct BinaryUpdateInfo {
     pub available: bool,
 }
 
-/// Fetch the latest GitHub release and compare against installed versions.
+/// Scan recent releases for `{provider}-{profile}.7z` packs.
 #[tauri::command]
 pub async fn check_binary_updates(provider_id: String) -> Result<Vec<BinaryUpdateInfo>, String> {
     if !BINARY_UPDATES_ENABLED {
         log::debug!(
-            "[binary-update] Binary update checks disabled (feature flag off). Skipping for '{}'.",
+            "[binary-update] Update checks disabled (feature flag off). Skipping for '{}'.",
             provider_id
         );
         return Ok(Vec::new());
     }
 
-    let release = crate::github_releases::fetch_latest_version_release().await?;
-    let latest_tag = &release.tag_name;
-    let latest_version = latest_tag.strip_prefix('v').unwrap_or(latest_tag);
-
+    let releases = crate::github_releases::fetch_recent_version_releases(40).await?;
     let mut results = Vec::new();
 
     for &(profile, label) in PROFILES {
-        let asset_name = format!("{provider_id}-{profile}.zip");
-        if crate::github_releases::find_asset_by_name(&release, &asset_name).is_none() {
-            continue;
+        let mut found: Option<(String, String)> = None; // version, tag
+        for release in &releases {
+            if crate::github_releases::find_provider_pack(release, &provider_id, profile).is_some()
+            {
+                let ver = crate::github_releases::tag_to_version(&release.tag_name).to_string();
+                found = Some((ver, release.tag_name.clone()));
+                break;
+            }
         }
+        let Some((latest_version, _tag)) = found else {
+            continue;
+        };
 
         results.push(BinaryUpdateInfo {
             profile: profile.to_string(),
             profile_label: label.to_string(),
             installed_version: None,
-            latest_version: latest_version.to_string(),
+            latest_version,
             available: true,
         });
     }
@@ -212,23 +198,28 @@ pub async fn check_binary_updates(provider_id: String) -> Result<Vec<BinaryUpdat
     Ok(results)
 }
 
-/// Download and activate a binary update for a specific provider/profile.
+/// Enqueue provider pack download through the shared download manager (resume + 7z extract).
 #[tauri::command]
 pub async fn download_binary_update(
     app_handle: tauri::AppHandle,
+    manager: tauri::State<'_, std::sync::Arc<tokio::sync::RwLock<crate::download_manager::DownloadManager>>>,
     provider_id: String,
     profile: String,
-) -> Result<(), String> {
+) -> Result<String, String> {
     if !BINARY_UPDATES_ENABLED {
         return Err("Binary updates are disabled".to_string());
     }
 
-    let release = crate::github_releases::fetch_latest_version_release().await?;
-    let latest_tag = release.tag_name.clone();
-    let asset_name = format!("{provider_id}-{profile}");
-
-    let asset = crate::github_releases::find_asset_by_name(&release, &asset_name)
-        .ok_or_else(|| format!("Asset '{asset_name}' not found in release {latest_tag}"))?;
+    // Refuse if this provider already has a running engine (file locks on Windows).
+    {
+        let ctx = app_handle.state::<crate::engine::AppContext>();
+        let stack = ctx.stack.lock().await;
+        if stack.provider_has_active_engine(&provider_id) {
+            return Err(format!(
+                "Stop the running {provider_id} engine before updating profile '{profile}'."
+            ));
+        }
+    }
 
     crate::ipc_meter::emit_tracked(
         &app_handle,
@@ -237,185 +228,97 @@ pub async fn download_binary_update(
             provider_id: provider_id.clone(),
             profile: profile.clone(),
             status: "downloading".to_string(),
-            message: format!("Downloading {asset_name}..."),
+            message: format!("Downloading {provider_id}-{profile}.7z…"),
         },
     );
 
-    let client = reqwest::Client::new();
-    let download_resp = crate::github_releases::apply_github_auth(client.get(&asset.download_url))
-        .send()
-        .await
-        .map_err(|e| format!("Failed to download {asset_name}: {e}"))?;
-
-    if !download_resp.status().is_success() {
-        return Err(format!(
-            "Download failed with status {}",
-            download_resp.status()
-        ));
-    }
-
-    let bytes = download_resp
-        .bytes()
-        .await
-        .map_err(|e| format!("Failed to read download: {e}"))?;
-    let total_size = bytes.len();
+    let mut dm = manager.write().await;
+    let task_id = dm
+        .start_provider_pack_download(
+            app_handle.clone(),
+            provider_id,
+            profile,
+            std::sync::Arc::clone(&*manager),
+        )
+        .await?;
+    drop(dm);
 
     crate::ipc_meter::emit_tracked(
         &app_handle,
-        "binary-update:download-progress",
-        &BinaryUpdateEvent {
-            provider_id: provider_id.clone(),
-            profile: profile.clone(),
-            status: "downloading".to_string(),
-            message: format!("Downloaded {} MB", total_size / 1_048_576),
-        },
+        "download-event",
+        serde_json::json!({
+            "type": "queued",
+            "taskId": task_id,
+            "taskKind": "provider",
+        }),
     );
 
-    let update_dir = crate::config::app_root_dir()
-        .join("runtime")
-        .join(&provider_id)
-        .join(&profile);
+    Ok(task_id)
+}
 
-    let current_binary = update_dir.join("llama-server.exe");
-    if current_binary.exists() {
-        log::warn!(
-            "[binary-update] Target binary exists at {} — ensure no engine is using it before overwriting",
-            current_binary.display()
-        );
-        crate::ipc_meter::emit_tracked(
-            &app_handle,
-            "binary-update:confirm-overwrite",
-            &BinaryUpdateEvent {
-                provider_id: provider_id.clone(),
-                profile: profile.clone(),
-                status: "confirm".to_string(),
-                message: format!(
-                    "{profile} is currently installed. Stop any running engine before updating?"
-                ),
-            },
-        );
-    }
-
-    std::fs::create_dir_all(&update_dir)
-        .map_err(|e| format!("Failed to create update dir: {e}"))?;
-
-    let temp_zip = update_dir.join(format!("{profile}.zip"));
-    std::fs::write(&temp_zip, &bytes).map_err(|e| format!("Failed to write zip: {e}"))?;
-
-    crate::ipc_meter::emit_tracked(
-        &app_handle,
-        "binary-update:download-progress",
-        &BinaryUpdateEvent {
-            provider_id: provider_id.clone(),
-            profile: profile.clone(),
-            status: "extracting".to_string(),
-            message: "Extracting binaries...".to_string(),
-        },
-    );
-
-    let extract_result = std::process::Command::new("powershell")
-        .args([
-            "-NoProfile",
-            "-NonInteractive",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-Command",
-            &format!(
-                "Expand-Archive -Path '{}' -DestinationPath '{}' -Force",
-                temp_zip.display(),
-                update_dir.display()
-            ),
-        ])
-        .output()
-        .map_err(|e| format!("Failed to run extraction: {e}"))?;
-
-    if !extract_result.status.success() {
-        let stderr = String::from_utf8_lossy(&extract_result.stderr);
-        return Err(format!("Extraction failed: {stderr}"));
-    }
-
-    let _ = std::fs::remove_file(&temp_zip);
-
-    let server_exe = find_extracted_binary(&update_dir, "llama-server.exe")
-        .ok_or_else(|| "llama-server.exe not found after extraction".to_string())?;
-
-    if !server_exe.exists() {
-        return Err(format!(
-            "Binary validation failed: {} not found",
-            server_exe.display()
-        ));
-    }
-
-    let build_info = crate::engine::get_binary_build_info(server_exe.to_string_lossy().to_string())
-        .await
-        .unwrap_or_else(|_| {
-            log::warn!("Could not read build info from updated binary");
-            crate::types::BuildInfo {
-                version: String::new(),
-                build_date: String::new(),
-                cuda_version: None,
-                cuda_architectures: None,
-            }
-        });
-
-    crate::ipc_meter::emit_tracked(
-        &app_handle,
-        "binary-update:download-complete",
-        &BinaryUpdateEvent {
-            provider_id: provider_id.clone(),
-            profile: profile.clone(),
-            status: "complete".to_string(),
-            message: format!("Updated to {}", build_info.version),
-        },
-    );
-
+/// After 7z extract: point provider at `runtime/.../llama-server.exe` and record release tag.
+pub fn activate_provider_pack(
+    app_handle: &tauri::AppHandle,
+    provider_id: &str,
+    profile: &str,
+    server_exe: &Path,
+    release_tag: &str,
+) -> Result<(), String> {
     let cfg_state = app_handle.state::<std::sync::Mutex<crate::config::AppConfig>>();
     let mut cfg = cfg_state
         .lock()
         .map_err(|e| format!("Failed to lock config: {e}"))?;
 
     if let Some(provider) = cfg.providers.iter_mut().find(|p| p.id == provider_id) {
-        let rel = crate::config::to_relative_path(&server_exe);
-        provider.binary_path_per_env.insert(profile.clone(), rel);
+        let rel = crate::config::to_relative_path(&server_exe.to_path_buf());
+        provider
+            .binary_path_per_env
+            .insert(profile.to_string(), rel.clone());
         provider
             .downloaded_version_per_env
-            .insert(profile.clone(), latest_tag.clone());
-        provider.build_info_per_env.insert(profile.clone(), build_info);
+            .insert(profile.to_string(), release_tag.to_string());
+        provider
+            .binary_source_per_env
+            .insert(profile.to_string(), crate::profile_binaries::SOURCE_BUNDLED.to_string());
+
+        if let Some(info) = std::fs::metadata(server_exe)
+            .ok()
+            .and_then(|m| m.modified().ok())
+            .map(|mt| {
+                let build_date = chrono::DateTime::<chrono::Local>::from(mt)
+                    .format("%Y-%m-%d %H:%M")
+                    .to_string();
+                crate::types::BuildInfo {
+                    version: release_tag.trim_start_matches('v').to_string(),
+                    build_date,
+                    cuda_version: None,
+                    cuda_architectures: None,
+                }
+            })
+        {
+            provider
+                .build_info_per_env
+                .insert(profile.to_string(), info);
+        }
 
         log::info!(
-            "[binary-update] Updated {} [{}]: {} (release: {})",
+            "[binary-update] Activated {} [{}]: {} (release: {})",
             provider_id,
             profile,
             server_exe.display(),
-            latest_tag
+            release_tag
         );
     } else {
-        return Err(format!("Provider '{provider_id}' not found in config"));
+        // New fork: templates may have just landed; discovery on next reload will pick it up.
+        log::warn!(
+            "[binary-update] Provider '{provider_id}' not in live config yet — pack extracted to disk"
+        );
     }
 
     crate::config::persist_user_providers_meta(&cfg.providers)
         .map_err(|e| format!("Failed to persist provider meta after update: {e}"))?;
 
     Ok(())
-}
-
-fn find_extracted_binary(dir: &Path, filename: &str) -> Option<PathBuf> {
-    if dir.join(filename).exists() {
-        return Some(dir.join(filename));
-    }
-
-    if let Ok(entries) = std::fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            if entry.file_type().map_or(false, |ft| ft.is_dir()) {
-                let candidate = entry.path().join(filename);
-                if candidate.exists() {
-                    return Some(candidate);
-                }
-            }
-        }
-    }
-
-    None
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -465,8 +368,8 @@ fn empty_update_offerings(current_version: String) -> crate::github_releases::Up
             version: String::new(),
             tag: String::new(),
             size_bytes: 0,
-            label: "App-Only".to_string(),
-            summary: "UI, templates & fixes — keeps your engines".to_string(),
+            label: "App update".to_string(),
+            summary: "Portable UI + templates (~few MB) — keeps your engines".to_string(),
             release_notes: None,
         },
         full_bundle: crate::github_releases::UpdateChannelOffering {
@@ -475,8 +378,9 @@ fn empty_update_offerings(current_version: String) -> crate::github_releases::Up
             version: String::new(),
             tag: String::new(),
             size_bytes: 0,
-            label: "Full Bundle".to_string(),
-            summary: "App + pre-built CUDA engines — first install or engine refresh".to_string(),
+            label: "Full install".to_string(),
+            summary: "Setup: app + pre-built CUDA engines — first install or engine refresh"
+                .to_string(),
             release_notes: None,
         },
         recommended: "none".to_string(),
@@ -514,7 +418,7 @@ pub async fn check_app_update(app_handle: tauri::AppHandle) -> Result<AppUpdateI
     Ok(offerings_to_legacy_app_update(&offerings))
 }
 
-/// Enqueue NSIS installer download (`channel`: `app_only` | `full_bundle`).
+/// Enqueue App `.7z` or Full Bundle NSIS download (`channel`: `app_only` | `full_bundle`).
 #[tauri::command]
 pub async fn install_app_update(
     app_handle: tauri::AppHandle,

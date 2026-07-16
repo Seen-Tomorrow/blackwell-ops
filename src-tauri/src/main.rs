@@ -36,6 +36,7 @@ mod engine_port_lock;
 mod fusion;
 mod provider_mgmt;
 mod llama_catalog;
+mod archive_util;
 mod binary_update;
 mod github_releases;
 mod profile_binaries;

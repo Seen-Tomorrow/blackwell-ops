@@ -1,7 +1,8 @@
-//! Shared GitHub Releases API — App-Only vs Full Bundle NSIS installers, toolchain archives.
+//! Shared GitHub Releases API — portable App `.7z`, Full Bundle NSIS, provider packs, toolchain.
 //!
-//! App-Only: `*App-Only*Setup*.exe` — UI + provider template JSONs, no engine binaries.
-//! Full Bundle: `*Setup*.exe` without `App-Only` — complete install with bundled engines.
+//! App update: `Blackwell-Ops-App-vX.Y.Z.7z` (exe + templates + 7z) — lean daily updates.
+//! Full Bundle: `*Setup*.exe` without App markers — complete install with bundled engines.
+//! Provider: `{provider}-{profile}.7z` — selective runtime engines + factory config.
 
 use std::path::{Path, PathBuf};
 
@@ -13,7 +14,7 @@ pub const GITHUB_REPO: &str = "Seen-Tomorrow/blackwell-ops";
 pub const CHANNEL_APP_ONLY: &str = "app_only";
 pub const CHANNEL_FULL_BUNDLE: &str = "full_bundle";
 
-pub const APP_ONLY_ASSET_MARKER: &str = "App-Only";
+pub const APP_7Z_PREFIX: &str = "Blackwell-Ops-App-";
 
 #[derive(Debug, Clone)]
 pub struct ReleaseAsset {
@@ -73,21 +74,51 @@ pub fn tag_to_version(tag: &str) -> &str {
     tag.strip_prefix('v').unwrap_or(tag)
 }
 
-/// App-Only NSIS — templates + app, no bundled engine profiles.
+/// Lean App update archive (preferred): `Blackwell-Ops-App-v1.0.12.7z`.
+pub fn is_app_update_archive(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    if !lower.ends_with(".7z") {
+        return false;
+    }
+    // Canonical Majestic name
+    if name.starts_with(APP_7Z_PREFIX) || lower.starts_with("blackwell-ops-app-") {
+        return true;
+    }
+    // Loose match: App + .7z (not provider packs)
+    lower.contains("app") && !lower.contains("ggml-") && !lower.contains("provider")
+}
+
+/// Legacy App-Only NSIS (older releases). Still accepted for transition.
 pub fn is_app_only_nsis_installer(name: &str) -> bool {
     let lower = name.to_ascii_lowercase();
-    lower.contains(&APP_ONLY_ASSET_MARKER.to_ascii_lowercase())
+    (lower.contains("app-only") || lower.contains("app only"))
         && lower.contains("setup")
         && lower.ends_with(".exe")
 }
 
+/// Any App-channel asset (7z preferred, legacy NSIS fallback).
+pub fn is_app_update_asset(name: &str) -> bool {
+    is_app_update_archive(name) || is_app_only_nsis_installer(name)
+}
+
 /// Full Bundle NSIS — complete install including engine runtimes.
 pub fn is_full_bundle_nsis_installer(name: &str) -> bool {
-    if is_app_only_nsis_installer(name) {
+    if is_app_update_asset(name) {
         return false;
     }
     let lower = name.to_ascii_lowercase();
     lower.contains("setup") && lower.ends_with(".exe")
+}
+
+/// Provider runtime pack: `{provider}-{profile}.7z` (also accepts legacy `.zip`).
+pub fn is_provider_pack_asset(name: &str, provider_id: &str, profile: &str) -> bool {
+    let expected_7z = format!("{provider_id}-{profile}.7z");
+    let expected_zip = format!("{provider_id}-{profile}.zip");
+    name.eq_ignore_ascii_case(&expected_7z) || name.eq_ignore_ascii_case(&expected_zip)
+}
+
+pub fn provider_pack_asset_name(provider_id: &str, profile: &str) -> String {
+    format!("{provider_id}-{profile}.7z")
 }
 
 pub fn apply_github_auth(req: RequestBuilder) -> RequestBuilder {
@@ -200,7 +231,16 @@ pub fn find_asset_by_name(release: &GitHubRelease, name: &str) -> Option<Release
         .cloned()
 }
 
+/// Prefer lean App `.7z`, then legacy App-Only NSIS.
 pub fn find_app_only_installer(release: &GitHubRelease) -> Option<ReleaseAsset> {
+    let seven_z = release
+        .assets
+        .iter()
+        .find(|a| is_app_update_archive(&a.name))
+        .cloned();
+    if seven_z.is_some() {
+        return seven_z;
+    }
     release
         .assets
         .iter()
@@ -216,7 +256,28 @@ pub fn find_full_bundle_installer(release: &GitHubRelease) -> Option<ReleaseAsse
         .cloned()
 }
 
-fn version_gt(a: &str, b: &str) -> bool {
+pub fn find_provider_pack(
+    release: &GitHubRelease,
+    provider_id: &str,
+    profile: &str,
+) -> Option<ReleaseAsset> {
+    // Prefer .7z over .zip when both exist
+    let want_7z = provider_pack_asset_name(provider_id, profile);
+    if let Some(a) = find_asset_by_name(release, &want_7z) {
+        return Some(a);
+    }
+    let want_zip = format!("{provider_id}-{profile}.zip");
+    find_asset_by_name(release, &want_zip).or_else(|| {
+        release
+            .assets
+            .iter()
+            .find(|a| is_provider_pack_asset(&a.name, provider_id, profile))
+            .cloned()
+    })
+}
+
+/// Compare dotted numeric versions (handles patch 10+).
+pub fn version_gt(a: &str, b: &str) -> bool {
     let parts_a: Vec<u32> = a.split('.').filter_map(|s| s.parse().ok()).collect();
     let parts_b: Vec<u32> = b.split('.').filter_map(|s| s.parse().ok()).collect();
     let max_len = std::cmp::max(parts_a.len(), parts_b.len());
@@ -299,32 +360,32 @@ pub async fn fetch_update_offerings(current_version: &str) -> Result<UpdateOffer
     let app_only = if let Some((release, asset)) = app_hit {
         offering_from_hit(
             CHANNEL_APP_ONLY,
-            "App-Only",
-            "UI, templates & fixes — keeps your engines",
+            "App update",
+            "Portable UI + templates (~few MB) — keeps your engines",
             &release,
             &asset,
         )
     } else {
         empty_offering(
             CHANNEL_APP_ONLY,
-            "App-Only",
-            "UI, templates & fixes — keeps your engines",
+            "App update",
+            "Portable UI + templates (~few MB) — keeps your engines",
         )
     };
 
     let full_bundle = if let Some((release, asset)) = full_hit {
         offering_from_hit(
             CHANNEL_FULL_BUNDLE,
-            "Full Bundle",
-            "App + pre-built CUDA engines — first install or engine refresh",
+            "Full install",
+            "Setup: app + pre-built CUDA engines — first install or engine refresh",
             &release,
             &asset,
         )
     } else {
         empty_offering(
             CHANNEL_FULL_BUNDLE,
-            "Full Bundle",
-            "App + pre-built CUDA engines — first install or engine refresh",
+            "Full install",
+            "Setup: app + pre-built CUDA engines — first install or engine refresh",
         )
     };
 
@@ -348,6 +409,27 @@ pub async fn fetch_update_offerings(current_version: &str) -> Result<UpdateOffer
         recommended,
         any_available,
     })
+}
+
+/// Resolve provider pack URL from the newest semver release that contains the asset.
+pub async fn resolve_provider_pack_asset(
+    provider_id: &str,
+    profile: &str,
+) -> Result<(String, String, String, u64), String> {
+    let releases = fetch_recent_version_releases(40).await?;
+    for release in releases {
+        if let Some(asset) = find_provider_pack(&release, provider_id, profile) {
+            return Ok((
+                asset.download_url,
+                asset.name,
+                release.tag_name,
+                asset.size,
+            ));
+        }
+    }
+    Err(format!(
+        "No provider pack '{provider_id}-{profile}.7z' found on recent GitHub releases"
+    ))
 }
 
 pub async fn resolve_installer_asset_for_version(
@@ -388,9 +470,13 @@ pub async fn resolve_installer_asset_for_version(
     ))
 }
 
-/// Directory for cached NSIS installer downloads (resume-capable via download manager).
+/// Directory for cached app update downloads (resume-capable via download manager).
 pub fn app_update_cache_dir() -> PathBuf {
     crate::config::cache_dir().join("app-updates")
+}
+
+pub fn provider_pack_cache_dir() -> PathBuf {
+    crate::config::cache_dir().join("provider-packs")
 }
 
 /// Launch a downloaded NSIS installer for silent in-place upgrade (`/S /UPDATE`).
@@ -411,14 +497,164 @@ pub fn launch_nsis_installer(installer_path: &Path, app_handle: &tauri::AppHandl
         .spawn()
         .map_err(|e| format!("Failed to launch installer: {e}"))?;
 
+    schedule_app_exit(app_handle, 3);
+    Ok(())
+}
+
+fn schedule_app_exit(app_handle: &tauri::AppHandle, delay_secs: u64) {
     let app_handle_clone = app_handle.clone();
     tauri::async_runtime::spawn(async move {
-        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
-        log::info!("[app-update] Closing old instance to allow installer to complete");
+        tokio::time::sleep(std::time::Duration::from_secs(delay_secs)).await;
+        log::info!("[app-update] Closing app for update apply");
         app_handle_clone.exit(0);
     });
+}
 
+/// Apply lean App `.7z`: extract to staging, merge templates + bin, schedule exe swap + relaunch.
+pub fn apply_app_update_archive(
+    archive_path: &Path,
+    app_handle: &tauri::AppHandle,
+) -> Result<(), String> {
+    let app_root = crate::config::app_root_dir();
+    let stage = app_update_cache_dir().join("stage");
+    if stage.exists() {
+        std::fs::remove_dir_all(&stage)
+            .map_err(|e| format!("Failed to clear app update stage: {e}"))?;
+    }
+    std::fs::create_dir_all(&stage)
+        .map_err(|e| format!("Failed to create app update stage: {e}"))?;
+
+    log::info!(
+        "[app-update] Extracting {} -> {}",
+        archive_path.display(),
+        stage.display()
+    );
+    crate::archive_util::extract_7z_archive(archive_path, &stage)?;
+
+    // Accept app/ prefix or flat layout
+    let payload = if stage.join("app").is_dir() {
+        stage.join("app")
+    } else {
+        stage.clone()
+    };
+
+    let new_exe = payload.join("blackwell-ops.exe");
+    if !new_exe.is_file() {
+        return Err(
+            "App update archive missing blackwell-ops.exe (expected under app/ or archive root)"
+                .into(),
+        );
+    }
+
+    // Merge factory templates — never touch engine profile dirs
+    let staged_runtime = payload.join("runtime");
+    if staged_runtime.is_dir() {
+        for provider_entry in std::fs::read_dir(&staged_runtime)
+            .map_err(|e| format!("Failed to read staged runtime: {e}"))?
+        {
+            let provider_entry = provider_entry.map_err(|e| format!("runtime entry: {e}"))?;
+            if !provider_entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                continue;
+            }
+            let config_src = provider_entry.path().join("config");
+            if !config_src.is_dir() {
+                continue;
+            }
+            let config_dst = app_root
+                .join("runtime")
+                .join(provider_entry.file_name())
+                .join("config");
+            crate::archive_util::copy_dir_merge(&config_src, &config_dst)?;
+            log::info!(
+                "[app-update] Merged templates -> {}",
+                config_dst.display()
+            );
+        }
+    }
+
+    // Ensure 7z is always available next to the app
+    let staged_bin = payload.join("bin");
+    if staged_bin.is_dir() {
+        let bin_dst = app_root.join("bin");
+        crate::archive_util::copy_dir_merge(&staged_bin, &bin_dst)?;
+        log::info!("[app-update] Merged bin/ helpers");
+    }
+
+    let current_exe = std::env::current_exe()
+        .map_err(|e| format!("Failed to resolve current exe: {e}"))?;
+    let pid = std::process::id();
+    let helper = app_update_cache_dir().join("apply-app-update.cmd");
+    let helper_body = format!(
+        "@echo off\r\n\
+setlocal\r\n\
+set PID={pid}\r\n\
+set NEW_EXE={new_exe}\r\n\
+set DEST_EXE={dest_exe}\r\n\
+echo [app-update] Waiting for PID %PID% to exit...\r\n\
+:waitloop\r\n\
+tasklist /FI \"PID eq %PID%\" 2>NUL | find \"%PID%\" >NUL\r\n\
+if not errorlevel 1 (\r\n\
+  timeout /t 1 /nobreak >NUL\r\n\
+  goto waitloop\r\n\
+)\r\n\
+timeout /t 1 /nobreak >NUL\r\n\
+echo [app-update] Replacing executable...\r\n\
+copy /Y \"%NEW_EXE%\" \"%DEST_EXE%\" >NUL\r\nif errorlevel 1 (\r\n\
+  echo [app-update] copy failed\r\n\
+  pause\r\n\
+  exit /b 1\r\n\
+)\r\n\
+echo [app-update] Relaunching...\r\n\
+start \"\" \"%DEST_EXE%\"\r\n\
+endlocal\r\n",
+        pid = pid,
+        new_exe = new_exe.display(),
+        dest_exe = current_exe.display(),
+    );
+    std::fs::write(&helper, helper_body)
+        .map_err(|e| format!("Failed to write update helper: {e}"))?;
+
+    log::info!(
+        "[app-update] Scheduling exe swap via {}",
+        helper.display()
+    );
+    std::process::Command::new("cmd")
+        .args(["/C", "start", "", "/MIN", &helper.to_string_lossy()])
+        .spawn()
+        .map_err(|e| format!("Failed to start update helper: {e}"))?;
+
+    schedule_app_exit(app_handle, 1);
     Ok(())
+}
+
+/// Extract provider pack into app root (`runtime/{id}/{profile}/` + optional config).
+pub fn apply_provider_pack_archive(
+    archive_path: &Path,
+    provider_id: &str,
+    profile: &str,
+) -> Result<PathBuf, String> {
+    let app_root = crate::config::app_root_dir();
+    log::info!(
+        "[provider-pack] Extracting {} for {}/{} into {}",
+        archive_path.display(),
+        provider_id,
+        profile,
+        app_root.display()
+    );
+    crate::archive_util::extract_7z_archive(archive_path, &app_root)?;
+
+    let server = app_root
+        .join("runtime")
+        .join(provider_id)
+        .join(profile)
+        .join("llama-server.exe");
+    if !server.is_file() {
+        return Err(format!(
+            "Provider pack applied but llama-server.exe missing at {}",
+            server.display()
+        ));
+    }
+    Ok(server)
 }
 
 #[cfg(test)]
@@ -433,10 +669,15 @@ mod tests {
 
     #[test]
     fn installer_asset_names() {
+        assert!(is_app_update_archive("Blackwell-Ops-App-v1.0.12.7z"));
         assert!(is_app_only_nsis_installer("Blackwell Ops App-Only Setup 1.0.9.exe"));
+        assert!(is_app_update_asset("Blackwell-Ops-App-v1.0.12.7z"));
         assert!(is_full_bundle_nsis_installer("Blackwell Ops Setup 1.0.9.exe"));
         assert!(is_full_bundle_nsis_installer("Blackwell Ops_1.0.10_x64-setup.exe"));
         assert!(!is_full_bundle_nsis_installer("Blackwell Ops App-Only Setup 1.0.9.exe"));
+        assert!(!is_full_bundle_nsis_installer("Blackwell-Ops-App-v1.0.12.7z"));
         assert!(!is_full_bundle_nsis_installer("blackwell-ops.exe"));
+        assert!(is_provider_pack_asset("ggml-master-frontier.7z", "ggml-master", "frontier"));
+        assert!(is_provider_pack_asset("ggml-master-frontier.zip", "ggml-master", "frontier"));
     }
 }

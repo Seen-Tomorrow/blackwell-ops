@@ -7,14 +7,15 @@
   },
   "upload": {
     "installer": true,
-    "binaryZips": false
+    "providerPacks": true,
+    "binaryZips": true
   },
   "ship": {
     "pushTag": false,
     "pushCommit": false,
     "releaseNotes": "### Main APP + startup bundle with pre-build engines, optimized for AMPERE, ADA and BLACKWELL architectures.\n>Includes GGML Llama.cpp + Tom TQ\n>CUDA 13.3 (Frontier) + 12.8 (Stable)\n>built on VS2026 + VS2022",
-    "appOnlyReleaseNotes": "### App-Only update (`App-Only Setup`)\n\nLightweight installer — **UI, bug fixes, and provider template JSONs** only.\n\n**Choose this if you already have:**\n- A **Full Bundle** install from a prior release, or\n- Engine binaries you built with **Foundry** (1-click CMake build in the app)\n\n**Does not include** pre-built CUDA engines. Existing `runtime/` engines are preserved on in-place upgrade.\n\n**First install?** Use the **Full Bundle** installer — or download it from the in-app updater after onboarding.",
-    "fullBundleReleaseNotes": "### Full Bundle (`Setup` — complete NSIS)\n\nComplete installer — **app + provider templates + pre-built CUDA engines** (Frontier + Stable for GGML Master and Tom TQ).\n\n**Choose this if you:**\n- Are installing for the **first time**\n- Only have a standalone exe and need working engines\n- Want refreshed pre-built engines without running Foundry\n\nOptimized for Ampere, Ada, and Blackwell. CUDA 13.3 (Frontier) + 12.8 (Stable).\n\n**Only need UI/features?** Use the faster **App-Only** release when available."
+    "appOnlyReleaseNotes": "### App update (`Blackwell-Ops-App-v*.7z`)\n\nLean portable pack (~5 MB) — **UI + factory templates + bundled 7z**.\n\n**Apply from the in-app UPDATE menu** (download + extract + restart). Keeps existing engines under `runtime/`.\n\n**Choose this if you already have** a Full install or Foundry-built engines.\n\n**First install?** Use the **Full install** Setup.exe instead.",
+    "fullBundleReleaseNotes": "### Full install (`Setup` NSIS + provider packs)\n\nComplete installer — **app + templates + pre-built CUDA engines** (Frontier + Stable for GGML Master and Tom TQ).\n\nAlso attaches per-provider `.7z` packs for selective engine updates, plus the lean App `.7z`.\n\n**Choose this if you:**\n- Are installing for the **first time**\n- Need a full engine refresh\n\nCUDA 13.3 (Frontier) + 12.8 (Stable). Portable Foundry toolchain remains on the separate `toolchain` release tag."
   },
   "pack": {
     "skipBuildIfInstallerFresh": true,

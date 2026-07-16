@@ -16,7 +16,7 @@ use tokio::io::AsyncWriteExt;
 use tokio::sync::RwLock;
 use crate::types::{
     DownloadStatus, DownloadTask, QuantBatchPart, QuantDownloadBatch, TASK_KIND_APP,
-    TASK_KIND_HF, TASK_KIND_TOOLCHAIN,
+    TASK_KIND_HF, TASK_KIND_PROVIDER, TASK_KIND_TOOLCHAIN,
 };
 
 /// Persisted manifest entry — survives restart so we can recover orphaned .part files.
@@ -54,12 +54,16 @@ fn is_app_task(task: &DownloadTask) -> bool {
     task.task_kind == TASK_KIND_APP
 }
 
+fn is_provider_task(task: &DownloadTask) -> bool {
+    task.task_kind == TASK_KIND_PROVIDER
+}
+
 fn is_post_download_task(task: &DownloadTask) -> bool {
-    is_toolchain_task(task) || is_app_task(task)
+    is_toolchain_task(task) || is_app_task(task) || is_provider_task(task)
 }
 
 fn needs_github_auth(task: &DownloadTask) -> bool {
-    is_toolchain_task(task) || is_app_task(task)
+    is_toolchain_task(task) || is_app_task(task) || is_provider_task(task)
 }
 
 const MANIFEST_FILE: &str = "download_tasks.json";
@@ -203,7 +207,7 @@ pub struct DownloadManager {
     quant_batches: HashMap<String, QuantDownloadBatch>,
     /// Max concurrent downloads (default 3).
     max_concurrent: usize,
-    /// App handle for NSIS install after app-update download completes.
+    /// App handle for App update apply / provider pack config activation after download.
     app_update_handle: Option<tauri::AppHandle>,
 }
 
@@ -526,7 +530,7 @@ impl DownloadManager {
         })
     }
 
-    /// Enqueue download of an NSIS installer (`app_only` or `full_bundle` channel).
+    /// Enqueue download of an App `.7z` or Full Bundle NSIS (`app_only` | `full_bundle`).
     pub async fn start_app_update_download(
         &mut self,
         app_handle: tauri::AppHandle,
@@ -573,9 +577,9 @@ impl DownloadManager {
 
         let task_id = generate_task_id();
         let channel_label = if channel == crate::github_releases::CHANNEL_FULL_BUNDLE {
-            "Full Bundle"
+            "Full install"
         } else {
-            "App-Only"
+            "App update"
         };
         let task = DownloadTask {
             id: task_id.clone(),
@@ -595,6 +599,91 @@ impl DownloadManager {
             lfs_oid: String::new(),
             batch_id: None,
             task_kind: TASK_KIND_APP.to_string(),
+        };
+
+        self.app_update_handle = Some(app_handle);
+        self.tasks.insert(task_id.clone(), task);
+        let task_ref = self.tasks.get(&task_id).unwrap();
+        persist_task_to_manifest(task_ref);
+
+        let worker_arc = self_arc;
+        let task_id_for_worker = task_id.clone();
+        tokio::spawn(async move {
+            Self::download_worker(task_id_for_worker, worker_arc).await;
+        });
+
+        Ok(task_id)
+    }
+
+    /// True when a provider pack download/extract is active.
+    pub fn has_active_provider_download(&self, provider_id: &str, profile: &str) -> bool {
+        let key = format!("{provider_id}:{profile}");
+        self.tasks.values().any(|t| {
+            is_provider_task(t)
+                && t.quant_type == key
+                && matches!(
+                    t.status,
+                    DownloadStatus::Queued
+                        | DownloadStatus::Downloading
+                        | DownloadStatus::Paused
+                        | DownloadStatus::Scanning
+                )
+        })
+    }
+
+    /// Enqueue provider runtime pack (`{provider}-{profile}.7z`) from the latest release that has it.
+    pub async fn start_provider_pack_download(
+        &mut self,
+        app_handle: tauri::AppHandle,
+        provider_id: String,
+        profile: String,
+        self_arc: Arc<RwLock<Self>>,
+    ) -> Result<String, String> {
+        if self.has_active_provider_download(&provider_id, &profile) {
+            return Err(format!(
+                "A download for {provider_id}/{profile} is already in progress."
+            ));
+        }
+
+        let (download_url, asset_name, release_tag, total_bytes) =
+            crate::github_releases::resolve_provider_pack_asset(&provider_id, &profile).await?;
+
+        let dest_dir = crate::github_releases::provider_pack_cache_dir();
+        std::fs::create_dir_all(&dest_dir)
+            .map_err(|e| format!("Failed to create provider pack cache: {e}"))?;
+        let dest_path = dest_dir.join(&asset_name);
+        let dest_path_str = dest_path.to_string_lossy().to_string();
+
+        if self.has_active_task_for_dest(&dest_path_str) {
+            return Err("This provider pack is already downloading.".into());
+        }
+
+        let partial_path = partial_download_path(&dest_path_str);
+        let resume_offset = std::fs::metadata(&partial_path)
+            .ok()
+            .map(|m| m.len())
+            .unwrap_or(0);
+
+        let task_id = generate_task_id();
+        let quant_key = format!("{provider_id}:{profile}");
+        let task = DownloadTask {
+            id: task_id.clone(),
+            hf_model_id: format!("Engine {provider_id} [{profile}] {release_tag}"),
+            file_name: asset_name,
+            download_url,
+            total_bytes,
+            downloaded_bytes: resume_offset,
+            status: DownloadStatus::Queued,
+            dest_path: dest_path_str,
+            speed_bps: 0,
+            pause_offset: resume_offset,
+            error: None,
+            eta_seconds: 0,
+            hf_author: provider_id,
+            quant_type: quant_key,
+            lfs_oid: release_tag,
+            batch_id: None,
+            task_kind: TASK_KIND_PROVIDER.to_string(),
         };
 
         self.app_update_handle = Some(app_handle);
@@ -1400,13 +1489,18 @@ async fn mark_completed_worker(
     }
 
     if is_app {
+        let is_7z = dest_to_rename.to_ascii_lowercase().ends_with(".7z");
         {
             let mut dm = manager.write().await;
             if let Some(task) = dm.tasks.get_mut(&task_id_for_finalization) {
                 task.status = DownloadStatus::Scanning;
                 task.speed_bps = 0;
                 task.eta_seconds = 0;
-                task.error = Some("Launching NSIS installer…".to_string());
+                task.error = Some(if is_7z {
+                    "Applying portable app update…".to_string()
+                } else {
+                    "Launching NSIS installer…".to_string()
+                });
             }
         }
         remove_task_from_manifest(&task_id_for_finalization);
@@ -1414,6 +1508,32 @@ async fn mark_completed_worker(
         let installer = dest_to_rename.clone();
         tokio::spawn(async move {
             finalize_app_install_worker(&manager_arc, &task_id_for_finalization, &installer).await;
+        });
+        return;
+    }
+
+    let is_provider = {
+        let dm = manager.read().await;
+        dm.tasks
+            .get(&task_id_for_finalization)
+            .map(is_provider_task)
+            .unwrap_or(false)
+    };
+    if is_provider {
+        {
+            let mut dm = manager.write().await;
+            if let Some(task) = dm.tasks.get_mut(&task_id_for_finalization) {
+                task.status = DownloadStatus::Scanning;
+                task.speed_bps = 0;
+                task.eta_seconds = 0;
+                task.error = Some("Extracting engine pack…".to_string());
+            }
+        }
+        remove_task_from_manifest(&task_id_for_finalization);
+        let manager_arc = Arc::clone(manager);
+        let archive = dest_to_rename.clone();
+        tokio::spawn(async move {
+            finalize_provider_pack_worker(&manager_arc, &task_id_for_finalization, &archive).await;
         });
         return;
     }
@@ -1454,11 +1574,14 @@ async fn finalize_app_install_worker(
         dm.app_update_handle.take()
     };
 
+    let path = Path::new(installer_path);
+    let is_7z = installer_path.to_ascii_lowercase().ends_with(".7z");
+
     let result = match app_handle {
-        Some(handle) => crate::github_releases::launch_nsis_installer(
-            Path::new(installer_path),
-            &handle,
-        ),
+        Some(handle) if is_7z => {
+            crate::github_releases::apply_app_update_archive(path, &handle)
+        }
+        Some(handle) => crate::github_releases::launch_nsis_installer(path, &handle),
         None => Err("App update session lost — restart download.".to_string()),
     };
 
@@ -1470,8 +1593,12 @@ async fn finalize_app_install_worker(
     match result {
         Ok(()) => {
             task.status = DownloadStatus::Completed;
-            task.error = Some("Installer launched — app will restart.".to_string());
-            log::info!("[download] App NSIS install launched: {task_id}");
+            task.error = Some(if is_7z {
+                "App update applied — restarting…".to_string()
+            } else {
+                "Installer launched — app will restart.".to_string()
+            });
+            log::info!("[download] App update applied: {task_id} (7z={is_7z})");
         }
         Err(e) => {
             task.status = DownloadStatus::Failed;
@@ -1480,6 +1607,91 @@ async fn finalize_app_install_worker(
                 "[download] App install failed for {task_id}: {}",
                 task.error.as_deref().unwrap_or("")
             );
+        }
+    }
+    task.speed_bps = 0;
+    task.eta_seconds = 0;
+}
+
+async fn finalize_provider_pack_worker(
+    manager: &Arc<RwLock<DownloadManager>>,
+    task_id: &str,
+    archive_path: &str,
+) {
+    let (provider_id, profile, release_tag, app_handle) = {
+        let dm = manager.read().await;
+        let handle = dm.app_update_handle.clone();
+        match dm.tasks.get(task_id) {
+            Some(t) => {
+                let mut parts = t.quant_type.splitn(2, ':');
+                let p = parts.next().unwrap_or("").to_string();
+                let prof = parts.next().unwrap_or("").to_string();
+                (p, prof, t.lfs_oid.clone(), handle)
+            }
+            None => {
+                return;
+            }
+        }
+    };
+
+    let archive = PathBuf::from(archive_path);
+    let provider_for_extract = provider_id.clone();
+    let profile_for_extract = profile.clone();
+    let apply_result = tokio::task::spawn_blocking(move || {
+        crate::github_releases::apply_provider_pack_archive(
+            &archive,
+            &provider_for_extract,
+            &profile_for_extract,
+        )
+    })
+    .await;
+
+    let mut dm = manager.write().await;
+    let Some(task) = dm.tasks.get_mut(task_id) else {
+        return;
+    };
+
+    match apply_result {
+        Ok(Ok(server)) => {
+            let activate = match &app_handle {
+                Some(handle) => crate::binary_update::activate_provider_pack(
+                    handle,
+                    &provider_id,
+                    &profile,
+                    &server,
+                    &release_tag,
+                ),
+                None => Err("App session lost — restart provider download.".into()),
+            };
+            match activate {
+                Ok(()) => {
+                    task.status = DownloadStatus::Completed;
+                    task.error = Some(format!("Installed {provider_id}/{profile}"));
+                    log::info!("[download] Provider pack installed: {task_id}");
+                    crate::ipc_meter::emit_tracked(
+                        app_handle.as_ref().unwrap(),
+                        "binary-update:download-complete",
+                        &crate::binary_update::BinaryUpdateEvent {
+                            provider_id: provider_id.clone(),
+                            profile: profile.clone(),
+                            status: "complete".to_string(),
+                            message: format!("Updated {provider_id}/{profile}"),
+                        },
+                    );
+                }
+                Err(e) => {
+                    task.status = DownloadStatus::Failed;
+                    task.error = Some(e);
+                }
+            }
+        }
+        Ok(Err(e)) => {
+            task.status = DownloadStatus::Failed;
+            task.error = Some(e);
+        }
+        Err(e) => {
+            task.status = DownloadStatus::Failed;
+            task.error = Some(format!("Provider extract task failed: {e}"));
         }
     }
     task.speed_bps = 0;
