@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, type CSSProperties } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { Tab } from "../App";
-import type { ProviderConfig, AppUpdateInfo } from "../lib/types";
+import type { ProviderConfig, UpdateOfferings } from "../lib/types";
 import { useStatus } from "../context/StatusBarContext";
 import { useFoundry, type Env } from "../hooks/useBuildDock";
 import FoundryStatusChip from "./FoundryStatusChip";
@@ -30,11 +30,14 @@ import {
   dispatchReplaySetupGuideOnboardingOnly,
   EVENTS,
 } from "../lib/events";
+import {
+  loadDevUpdateVersionFake,
+  saveDevUpdateVersionFake,
+} from "../lib/storage";
 import { resolveAppShellWidthPx } from "../lib/uiShell";
 import { isMobileDevice } from "../lib/utils";
 import IpcMeterFooter from "./IpcMeterFooter";
-import DownloadProgressRow from "./DownloadProgressRow";
-import { useDownloadTasks } from "../hooks/useDownloadTasks";
+import AppUpdateMenu from "./AppUpdateMenu";
 
 const MIN_ZOOM = 0.7;
 const MAX_ZOOM = 1.5;
@@ -61,9 +64,9 @@ interface LayoutProps {
   onTabChange: (tab: Tab) => void;
   children: React.ReactNode;
   providers?: ProviderConfig[];
-  appUpdate?: AppUpdateInfo | null;
+  updateOfferings?: UpdateOfferings | null;
+  onRefreshUpdateOfferings?: () => void;
   hasBinaryUpdates?: boolean;
-  onInstallAppUpdate?: () => void;
 }
 
 const tabs: { id: Tab; label: string; icon: string; hidden?: boolean }[] = [
@@ -77,11 +80,7 @@ const tabs: { id: Tab; label: string; icon: string; hidden?: boolean }[] = [
   { id: "sentinel", label: "SENTINEL", icon: "\u2694", hidden: true },
 ];
 
-export default function Layout({ activeTab, onTabChange, children, providers = [], appUpdate, hasBinaryUpdates, onInstallAppUpdate }: LayoutProps) {
-  const appUpdateDownloads = useDownloadTasks("app");
-  const activeAppUpdateTask = appUpdateDownloads.find((t) =>
-    t.status === "queued" || t.status === "downloading" || t.status === "paused" || t.status === "scanning"
-  );
+export default function Layout({ activeTab, onTabChange, children, providers = [], updateOfferings, onRefreshUpdateOfferings, hasBinaryUpdates }: LayoutProps) {
   const [zoom, setZoom] = useState(loadZoom);
   const [uiDensity, setUiDensity] = useState<UiDensity>(loadUiDensity);
   const [shellWidthPx, setShellWidthPx] = useState(() =>
@@ -126,6 +125,47 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
   const [sessionLogActive, setSessionLogActive] = useState(__BUILD_MODE__ === "dev");
   const [sessionLogEnvForced, setSessionLogEnvForced] = useState(false);
   const [sessionLogDir, setSessionLogDir] = useState<string | null>(null);
+  const [updFakeOn, setUpdFakeOn] = useState(false);
+  const [updFakeVersion, setUpdFakeVersion] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (__BUILD_MODE__ !== "dev") return;
+    const saved = loadDevUpdateVersionFake();
+    void (async () => {
+      try {
+        await invoke("set_dev_update_version_override", { version: saved });
+        const status = await invoke<{
+          enabled: boolean;
+          overrideVersion: string | null;
+        }>("get_dev_update_version_override");
+        setUpdFakeOn(status.enabled);
+        setUpdFakeVersion(status.overrideVersion);
+        if (status.enabled) {
+          dispatchAppEvent(EVENTS.updateOfferingsRefresh);
+        }
+      } catch {
+        // non-Tauri
+      }
+    })();
+  }, []);
+
+  const toggleUpdFake = useCallback(async () => {
+    try {
+      const status = await invoke<{
+        enabled: boolean;
+        overrideVersion: string | null;
+        realVersion: string;
+        effectiveVersion: string;
+      }>("toggle_dev_update_version_fake");
+      setUpdFakeOn(status.enabled);
+      setUpdFakeVersion(status.overrideVersion);
+      saveDevUpdateVersionFake(status.overrideVersion);
+      dispatchAppEvent(EVENTS.updateOfferingsRefresh);
+      onRefreshUpdateOfferings?.();
+    } catch (err) {
+      console.error("toggle_dev_update_version_fake failed:", err);
+    }
+  }, [onRefreshUpdateOfferings]);
 
   useEffect(() => {
     if (__BUILD_MODE__ !== "dev") return;
@@ -279,27 +319,7 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
 
         {/* Admin lock + zoom + appearance */}
         <div className="app-header-actions flex items-center gap-1.5 flex-shrink-0">
-          {activeAppUpdateTask ? (
-            <div className="w-[220px] flex-shrink-0">
-              <DownloadProgressRow task={activeAppUpdateTask} compact />
-            </div>
-          ) : appUpdate?.available ? (
-            <div className="relative inline-block group flex-shrink-0">
-              <button
-                onClick={onInstallAppUpdate}
-                className="app-header-update-btn text-[7px] font-mono tracking-wider text-yellow-400 hover:text-yellow-300 transition-colors cursor-pointer whitespace-nowrap"
-                title={`New NSIS installer available: ${appUpdate.version}`}
-              >
-                UPDATE
-              </button>
-              {appUpdate.releaseNotes && (
-                <div className="absolute top-full right-0 mt-1 w-[360px] bg-[#0a0a1a] border border-yellow-400/40 rounded-sm p-3 pointer-events-none z-[9999] opacity-0 group-hover:opacity-100 transition-opacity shadow-2xl">
-                  <div className="text-[8px] font-mono text-yellow-400 mb-1 tracking-wider">RELEASE NOTES</div>
-                  <pre className="text-[8px] font-mono text-white/70 whitespace-pre-wrap leading-relaxed max-h-[200px] overflow-y-auto">{appUpdate.releaseNotes}</pre>
-                </div>
-              )}
-            </div>
-          ) : null}
+          <AppUpdateMenu offerings={updateOfferings ?? null} onRefresh={onRefreshUpdateOfferings} />
           <div className="app-quick-settings flex flex-col items-end gap-px flex-shrink-0">
             <AppearanceControls embedded />
             <div className="app-quick-settings__tools app-quick-settings__row flex items-center gap-2">
@@ -365,6 +385,22 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
                   title="Dev: clear BlackOps localStorage only (UI prefs) — does NOT reset config/ or replay setup. Use ↺ SETUP for fresh-install test."
                 >
                   CLR LS
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { void toggleUpdFake(); }}
+                  className={`app-chrome-control-btn px-1.5 text-[8px] font-mono transition-colors leading-none ${
+                    updFakeOn
+                      ? "text-orange-300 hover:text-orange-200"
+                      : "text-white/40 hover:text-white/65"
+                  }`}
+                  title={
+                    updFakeOn
+                      ? `Updater test ON — pretending installed v${updFakeVersion ?? "?"} (real ${updateOfferings?.currentVersion ?? "?"}) — click to disable`
+                      : "Updater test OFF — click to pretend patch-1 version so UPDATE menu appears against latest GitHub ship"
+                  }
+                >
+                  {updFakeOn ? `UPD FAKE v${updFakeVersion ?? "?"}` : "UPD FAKE"}
                 </button>
               </div>
               <button

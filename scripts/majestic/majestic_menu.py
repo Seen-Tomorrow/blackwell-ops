@@ -93,7 +93,7 @@ def run_powershell_script(script: Path, *extra_args: str) -> int:
     return completed.returncode
 
 
-def run_majestic(mode: str, *, dry_run: bool = False) -> int:
+def run_majestic(mode: str, *, variant: str = "full", dry_run: bool = False) -> int:
     if not MAJESTIC_PS1.is_file():
         print(f"[majestic] Missing script: {MAJESTIC_PS1}")
         return 1
@@ -107,6 +107,8 @@ def run_majestic(mode: str, *, dry_run: bool = False) -> int:
         str(MAJESTIC_PS1),
         "-Mode",
         mode,
+        "-Variant",
+        variant,
     ]
     if dry_run:
         args.append("-DryRun")
@@ -298,12 +300,16 @@ def print_header() -> None:
     print(f"  Repo: {ROOT}")
     print("=" * 60)
     print()
-    print("  1  CHECK   - am I ready to ship? (safe)")
-    print("  2  PACK    - mirror, bundle, build, stage installer")
-    print("  3  SHIP    - upload to GitHub (asks YES)")
-    print(" 10  BUMP    - patch+1 across all version files (asks YES)")
+    print("  1  CHECK FULL  - Foundry + full bundle ready?")
+    print("  2  PACK FULL   - engines + templates + NSIS (weekly)")
+    print("  3  SHIP        - upload staged assets to GitHub (asks YES)")
+    print(" 10  BUMP        - patch+1 version (run before each ship)")
     print()
-    print("  4  Pack dry-run")
+    print(" 12  CHECK APP   - templates ready for App-Only?")
+    print(" 13  PACK APP    - UI + templates only (daily)")
+    print(" 14  SHIP APP    - same as 3 (uses staged manifest kind)")
+    print()
+    print("  4  Pack full dry-run")
     print("  5  Ship dry-run")
     print("  6  Open .majestic-out folder")
     print("  7  Backup runtime (configs + binaries)")
@@ -332,17 +338,23 @@ def main() -> int:
             return 0
 
         if choice == "1":
-            code = run_majestic("check")
+            code = run_majestic("check", variant="full")
         elif choice == "2":
             offer_pack_backup()
-            code = run_majestic("pack")
+            code = run_majestic("pack", variant="full")
         elif choice == "3":
             paranoid = input("Paranoid backup before ship? [y/N]: ").strip().lower()
             if paranoid in ("y", "yes"):
                 backup_paranoid()
             code = run_majestic("ship")
+        elif choice == "12":
+            code = run_majestic("check", variant="app")
+        elif choice == "13":
+            code = run_majestic("pack", variant="app")
+        elif choice == "14":
+            code = run_majestic("ship")
         elif choice == "4":
-            code = run_majestic("pack", dry_run=True)
+            code = run_majestic("pack", variant="full", dry_run=True)
         elif choice == "5":
             code = run_majestic("ship", dry_run=True)
         elif choice == "6":
@@ -364,7 +376,7 @@ def main() -> int:
             else:
                 code = run_powershell_script(BUILD_TOOLCHAIN_PS1)
         else:
-            print("Unknown choice. Use 0-11.")
+            print("Unknown choice. Use 0-14.")
             code = 1
 
         print()

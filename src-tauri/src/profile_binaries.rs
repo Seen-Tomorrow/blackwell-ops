@@ -46,6 +46,25 @@ fn exe_modified_secs(path: &Path) -> u64 {
         .unwrap_or(0)
 }
 
+/// True when bundled `runtime/` or Foundry artifact engines exist for any factory provider profile.
+pub fn launch_engines_available() -> bool {
+    const PROVIDERS: &[&str] = &[crate::config::DEFAULT_PROVIDER_ID, "ggml-tom"];
+    const PROFILES: &[&str] = &["frontier", "stable"];
+    for provider_id in PROVIDERS {
+        for profile in PROFILES {
+            if bundled_exe_abs(provider_id, profile).is_file() {
+                return true;
+            }
+            let foundry =
+                foundry_artifact_release_dir(provider_id, profile).join("llama-server.exe");
+            if foundry.is_file() {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 fn bundled_exe_abs(provider_id: &str, profile: &str) -> PathBuf {
     resolve_path(&format!(
         "runtime/{}/{}/llama-server.exe",

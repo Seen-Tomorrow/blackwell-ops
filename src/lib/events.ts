@@ -67,6 +67,8 @@ export const EVENTS = {
   fitScanCacheChanged: `${STORAGE_PREFIX}fit-scan-cache-changed`,
   /** Config panel HW monitor open — enables CPU live polling outside TELEMETRY tab. */
   hwMonitorOpenChanged: `${STORAGE_PREFIX}hw-monitor-open-changed`,
+  /** Dev: fake update version toggled — refresh GitHub offerings. */
+  updateOfferingsRefresh: `${STORAGE_PREFIX}update-offerings-refresh`,
 } as const;
 
 export type AppEventName = (typeof EVENTS)[keyof typeof EVENTS];

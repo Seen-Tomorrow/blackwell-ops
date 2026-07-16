@@ -330,6 +330,28 @@ export interface AppUpdateInfo {
   releaseNotes: string | null;
 }
 
+export type UpdateChannel = 'app_only' | 'full_bundle';
+
+export interface UpdateChannelOffering {
+  channel: UpdateChannel | string;
+  available: boolean;
+  version: string;
+  tag: string;
+  sizeBytes: number;
+  label: string;
+  summary: string;
+  releaseNotes: string | null;
+}
+
+export interface UpdateOfferings {
+  currentVersion: string;
+  enginesAvailable: boolean;
+  appOnly: UpdateChannelOffering;
+  fullBundle: UpdateChannelOffering;
+  recommended: UpdateChannel | 'none' | string;
+  anyAvailable: boolean;
+}
+
 /** Provider binary updates grouped by provider. */
 export interface ProviderBinaryUpdates {
   providerId: string;
@@ -339,6 +361,7 @@ export interface ProviderBinaryUpdates {
 /** Combined startup update status from get_startup_updates IPC command. */
 export interface StartupUpdateStatus {
   appUpdate: AppUpdateInfo;
+  updateOfferings: UpdateOfferings;
   binaryUpdates: ProviderBinaryUpdates[];
 }
 

@@ -6,6 +6,9 @@ param(
     [ValidateSet('check', 'pack', 'ship', 'bump')]
     [string]$Mode,
 
+    [ValidateSet('app', 'full')]
+    [string]$Variant = 'full',
+
     [switch]$DryRun
 )
 
@@ -131,6 +134,92 @@ function Get-InstallerCandidates {
         Sort-Object LastWriteTime -Descending
 }
 
+function Get-AppOnlyInstallerFileName {
+    param([string]$Version)
+    "Blackwell Ops App-Only Setup $Version.exe"
+}
+
+function Get-PackKindLabel {
+    param([string]$Kind)
+    if ($Kind -eq 'app') { 'App-Only' } else { 'Full Bundle' }
+}
+
+function Get-ReleaseNotesForVariant {
+    param(
+        $Config,
+        [string]$Variant
+    )
+    if ($Variant -eq 'app') {
+        if ($Config.ship.appOnlyReleaseNotes) {
+            return [string]$Config.ship.appOnlyReleaseNotes
+        }
+    } else {
+        if ($Config.ship.fullBundleReleaseNotes) {
+            return [string]$Config.ship.fullBundleReleaseNotes
+        }
+    }
+    return [string]$Config.ship.releaseNotes
+}
+
+function Invoke-PrepareReleaseBundle {
+    param([string]$Variant)
+    $script_path = if ($Variant -eq 'app') {
+        Join-Path $root 'scripts\prepare-release-app-only.ps1'
+    } else {
+        Join-Path $root 'scripts\prepare-release-runtime.ps1'
+    }
+    if (-not (Test-Path -LiteralPath $script_path)) {
+        throw "Missing bundle script: $script_path"
+    }
+    Write-Majestic "Preparing runtime-bundle ($Variant)..." -Color Cyan
+    & $script_path
+    if ($LASTEXITCODE -ne 0) {
+        throw "Bundle prep failed: $script_path"
+    }
+}
+
+function Invoke-FrontendAndTauriBuild {
+    param([string]$Variant)
+    Push-Location $root
+    try {
+        if ($Variant -eq 'app') {
+            Write-Majestic "Building frontend + App-Only NSIS (no engine mirror)..." -Color Cyan
+            npm run build
+            if ($LASTEXITCODE -ne 0) { throw "npm run build failed with exit code $LASTEXITCODE" }
+            npx tauri build
+            if ($LASTEXITCODE -ne 0) { throw "tauri build failed with exit code $LASTEXITCODE" }
+        } else {
+            Write-Majestic "Running npm run release (mirror -> bundle -> NSIS)..." -Color Cyan
+            npm run release
+            if ($LASTEXITCODE -ne 0) { throw "npm run release failed with exit code $LASTEXITCODE" }
+        }
+    } finally {
+        Pop-Location
+    }
+}
+
+function Stage-InstallerForVariant {
+    param(
+        [string]$Version,
+        [string]$Variant,
+        [string]$OutRoot
+    )
+    $installers = Get-InstallerCandidates -Version $Version
+    if ($installers.Count -eq 0) {
+        throw "Installer not found after build. Expected under src-tauri/target/release/bundle/nsis/"
+    }
+    $installer = $installers[0]
+    $dest_name = if ($Variant -eq 'app') {
+        Get-AppOnlyInstallerFileName -Version $Version
+    } else {
+        $installer.Name
+    }
+    $dest_installer = Join-Path $OutRoot $dest_name
+    Copy-Item -LiteralPath $installer.FullName -Destination $dest_installer -Force
+    Write-Majestic "Installer staged: $dest_name" -Color Green
+    return $dest_installer
+}
+
 function Test-ProfileArtifact {
     param(
         [string]$ProviderId,
@@ -161,37 +250,61 @@ function Get-RequiredProfiles {
 }
 
 function Invoke-MajesticCheck {
-    param($Config)
+    param(
+        $Config,
+        [string]$Variant = 'full'
+    )
 
     $version = Read-AppVersion
     $tag = Get-TagName -Version $version -Prefix $Config.tagPrefix
     $required = Get-RequiredProfiles -Config $Config
+    $kind_label = Get-PackKindLabel -Kind $Variant
 
     Write-Majestic "Version $version  |  tag $tag  |  repo $($Config.repo)" -Color Cyan
-    Write-Majestic "Mode: CHECK (read-only)" -Color DarkGray
+    Write-Majestic "Mode: CHECK ($kind_label) (read-only)" -Color DarkGray
 
-    $artifact_rows = foreach ($row in $required) {
-        Test-ProfileArtifact -ProviderId $row.Provider -ProfileId $row.Profile
-    }
-
-    $missing_artifacts = @($artifact_rows | Where-Object { -not $_.Ready })
-    if ($missing_artifacts.Count -eq 0) {
-        Write-Majestic "Foundry artifacts: all $($artifact_rows.Count) profile(s) ready." -Color Green
-    } else {
-        Write-Majestic "Foundry artifacts: $($missing_artifacts.Count) missing - build in Foundry first." -Color Red
-        foreach ($m in $missing_artifacts) {
-            Write-Majestic "  - $($m.Provider)/$($m.Profile)" -Color Red
+    $missing_artifacts = @()
+    if ($Variant -eq 'full') {
+        $artifact_rows = foreach ($row in $required) {
+            Test-ProfileArtifact -ProviderId $row.Provider -ProfileId $row.Profile
         }
-    }
 
-    $runtime_root = Join-Path $root 'src-tauri\runtime'
-    foreach ($row in $required) {
-        $runtime_server = Join-Path $runtime_root "$($row.Provider)\$($row.Profile)\llama-server.exe"
-        $label = "$($row.Provider)/$($row.Profile) runtime mirror"
-        if (Test-Path -LiteralPath $runtime_server) {
-            Write-Majestic "$label : ok" -Color Green
+        $missing_artifacts = @($artifact_rows | Where-Object { -not $_.Ready })
+        if ($missing_artifacts.Count -eq 0) {
+            Write-Majestic "Foundry artifacts: all $($artifact_rows.Count) profile(s) ready." -Color Green
         } else {
-            Write-Majestic "$label : missing (pack will mirror)" -Color Yellow
+            Write-Majestic "Foundry artifacts: $($missing_artifacts.Count) missing - build in Foundry first." -Color Red
+            foreach ($m in $missing_artifacts) {
+                Write-Majestic "  - $($m.Provider)/$($m.Profile)" -Color Red
+            }
+        }
+
+        $runtime_root = Join-Path $root 'src-tauri\runtime'
+        foreach ($row in $required) {
+            $runtime_server = Join-Path $runtime_root "$($row.Provider)\$($row.Profile)\llama-server.exe"
+            $label = "$($row.Provider)/$($row.Profile) runtime mirror"
+            if (Test-Path -LiteralPath $runtime_server) {
+                Write-Majestic "$label : ok" -Color Green
+            } else {
+                Write-Majestic "$label : missing (pack will mirror)" -Color Yellow
+            }
+        }
+    } else {
+        Write-Majestic "App-Only: skipping Foundry artifact checks." -Color DarkGray
+        $runtime_root = Join-Path $root 'src-tauri\runtime'
+        $template_ok = $true
+        foreach ($prop in $Config.providers.PSObject.Properties) {
+            $provider_id = $prop.Name
+            $template = Join-Path $runtime_root "$provider_id\config\$provider_id-default-config.json"
+            if (Test-Path -LiteralPath $template) {
+                Write-Majestic "Template $provider_id : ok" -Color Green
+            } else {
+                Write-Majestic "Template $provider_id : MISSING ($template)" -Color Red
+                $template_ok = $false
+            }
+        }
+        if (-not $template_ok) {
+            $missing_artifacts = @([PSCustomObject]@{ Provider = 'templates'; Profile = 'config' })
         }
     }
 
@@ -238,9 +351,13 @@ function Invoke-MajesticCheck {
 
     $ready = ($missing_artifacts.Count -eq 0)
     if ($ready) {
-        Write-Majestic "READY TO PACK." -Color Green
+        Write-Majestic "READY TO PACK ($kind_label)." -Color Green
     } else {
-        Write-Majestic "NOT READY - finish Foundry builds first." -Color Red
+        if ($Variant -eq 'app') {
+            Write-Majestic "NOT READY - fix provider template JSONs under src-tauri/runtime/*/config/." -Color Red
+        } else {
+            Write-Majestic "NOT READY - finish Foundry builds first." -Color Red
+        }
     }
     return $ready
 }
@@ -273,11 +390,17 @@ function New-ManifestEntry {
 }
 
 function Invoke-MajesticPack {
-    param($Config)
+    param(
+        $Config,
+        [string]$Variant = 'full'
+    )
 
-    $ready = Invoke-MajesticCheck -Config $Config
+    $kind_label = Get-PackKindLabel -Kind $Variant
+    Write-Majestic "PACK ($kind_label)" -Color Cyan
+
+    $ready = Invoke-MajesticCheck -Config $Config -Variant $Variant
     if (-not $ready) {
-        throw 'Check failed - fix Foundry artifacts before pack.'
+        throw "Check failed - fix prerequisites before pack ($kind_label)."
     }
 
     $version = Read-AppVersion
@@ -288,21 +411,21 @@ function Invoke-MajesticPack {
     }
     New-Item -ItemType Directory -Path $out_root -Force | Out-Null
 
-    $skip_build = Test-InstallerFresh -Config $Config -Version $version
+    $skip_build = ($Variant -eq 'full') -and (Test-InstallerFresh -Config $Config -Version $version)
     if ($skip_build) {
-        Write-Majestic "Installer is fresh - skipping npm run release." -Color Yellow
+        Write-Majestic "Installer is fresh - skipping full release build." -Color Yellow
     } elseif ($DryRun) {
-        Write-Majestic "[dry-run] would run: npm run release" -Color Cyan
+        if ($Variant -eq 'app') {
+            Write-Majestic "[dry-run] would run: prepare-release-app-only + npm run build + tauri build" -Color Cyan
+        } else {
+            Write-Majestic "[dry-run] would run: npm run release" -Color Cyan
+        }
     } else {
-        Write-Majestic "Running npm run release (mirror -> bundle -> build)..." -Color Cyan
-        Push-Location $root
-        try {
-            npm run release
-            if ($LASTEXITCODE -ne 0) {
-                throw "npm run release failed with exit code $LASTEXITCODE"
-            }
-        } finally {
-            Pop-Location
+        if ($Variant -eq 'full') {
+            Invoke-FrontendAndTauriBuild -Variant $Variant
+        } else {
+            Invoke-PrepareReleaseBundle -Variant $Variant
+            Invoke-FrontendAndTauriBuild -Variant $Variant
         }
     }
 
@@ -316,23 +439,25 @@ function Invoke-MajesticPack {
     $bundle_root = Join-Path $root 'src-tauri\runtime-bundle'
     if (-not (Test-Path -LiteralPath $bundle_root)) {
         if ($DryRun) {
-            Write-Majestic "[dry-run] runtime-bundle missing - prepare-release-runtime would run via prerelease" -Color Yellow
+            Write-Majestic "[dry-run] runtime-bundle missing - bundle prep would run during pack" -Color Yellow
         } else {
-            throw "runtime-bundle/ missing. prerelease step may have failed."
+            throw "runtime-bundle/ missing. Bundle prep step may have failed."
         }
     }
 
     $manifest_files = @()
     $installers = Get-InstallerCandidates -Version $version
     if ($installers.Count -gt 0) {
-        $installer = $installers[0]
-        $dest_installer = Join-Path $out_root $installer.Name
         if ($DryRun) {
-            Write-Majestic "[dry-run] copy installer -> $dest_installer" -Color Cyan
+            $dest_name = if ($Variant -eq 'app') {
+                Get-AppOnlyInstallerFileName -Version $version
+            } else {
+                $installers[0].Name
+            }
+            Write-Majestic "[dry-run] copy installer -> $(Join-Path $out_root $dest_name)" -Color Cyan
         } else {
-            Copy-Item -LiteralPath $installer.FullName -Destination $dest_installer -Force
+            $dest_installer = Stage-InstallerForVariant -Version $version -Variant $Variant -OutRoot $out_root
             $manifest_files += New-ManifestEntry -File (Get-Item -LiteralPath $dest_installer)
-            Write-Majestic "Installer staged: $dest_installer" -Color Green
         }
     }
 
@@ -386,6 +511,7 @@ function Invoke-MajesticPack {
         $manifest = [PSCustomObject]@{
             version   = $version
             tag       = $tag
+            packKind  = $Variant
             createdAt = (Get-Date).ToUniversalTime().ToString('o')
             repo      = $Config.repo
             files     = $manifest_files
@@ -620,9 +746,16 @@ function Invoke-MajesticShip {
 
         $release_meta = Get-GhReleaseView -Tag $tag -Repo $Config.repo
 
+        $pack_kind = if ($manifest.PSObject.Properties.Name -contains 'packKind') {
+            [string]$manifest.packKind
+        } else {
+            'full'
+        }
+        $release_notes = Get-ReleaseNotesForVariant -Config $Config -Variant $pack_kind
+
         if ($null -eq $release_meta) {
-            Write-Majestic "Creating GitHub release $tag with $($assets.Count) asset(s)..." -Color Cyan
-            $create_result = New-GhReleaseWithAssets -Tag $tag -Repo $Config.repo -Notes $Config.ship.releaseNotes -Assets $assets
+            Write-Majestic "Creating GitHub release $tag ($pack_kind) with $($assets.Count) asset(s)..." -Color Cyan
+            $create_result = New-GhReleaseWithAssets -Tag $tag -Repo $Config.repo -Notes $release_notes -Assets $assets
             if ($create_result.ExitCode -ne 0) {
                 Throw-GhReleaseCreateFailed -Tag $tag -Repo $Config.repo -GhOutput $create_result.Output
             }
@@ -650,10 +783,10 @@ $config = Read-MajesticConfig
 
 switch ($Mode) {
     'check' {
-        $ready = Invoke-MajesticCheck -Config $config
+        $ready = Invoke-MajesticCheck -Config $config -Variant $Variant
         if (-not $ready) { exit 1 }
     }
-    'pack' { Invoke-MajesticPack -Config $config }
+    'pack' { Invoke-MajesticPack -Config $config -Variant $Variant }
     'ship' { Invoke-MajesticShip -Config $config }
     'bump' { Invoke-MajesticBump }
 }

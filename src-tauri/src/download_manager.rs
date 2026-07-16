@@ -526,10 +526,12 @@ impl DownloadManager {
         })
     }
 
-    /// Enqueue download of the latest NSIS installer from GitHub (not standalone exe).
+    /// Enqueue download of an NSIS installer (`app_only` or `full_bundle` channel).
     pub async fn start_app_update_download(
         &mut self,
         app_handle: tauri::AppHandle,
+        channel: String,
+        current_version: String,
         self_arc: Arc<RwLock<Self>>,
     ) -> Result<String, String> {
         if self.has_active_app_update_download() {
@@ -537,7 +539,8 @@ impl DownloadManager {
         }
 
         let (download_url, installer_name, release_tag, total_bytes) =
-            crate::github_releases::resolve_app_installer_asset().await?;
+            crate::github_releases::resolve_installer_asset_for_version(&channel, &current_version)
+                .await?;
 
         let dest_dir = crate::github_releases::app_update_cache_dir();
         std::fs::create_dir_all(&dest_dir)
@@ -569,9 +572,14 @@ impl DownloadManager {
             .unwrap_or(0);
 
         let task_id = generate_task_id();
+        let channel_label = if channel == crate::github_releases::CHANNEL_FULL_BUNDLE {
+            "Full Bundle"
+        } else {
+            "App-Only"
+        };
         let task = DownloadTask {
             id: task_id.clone(),
-            hf_model_id: format!("Blackwell Ops {release_tag}"),
+            hf_model_id: format!("Blackwell Ops {channel_label} {release_tag}"),
             file_name: installer_name,
             download_url,
             total_bytes,
@@ -583,7 +591,7 @@ impl DownloadManager {
             error: None,
             eta_seconds: 0,
             hf_author: String::new(),
-            quant_type: release_tag,
+            quant_type: channel,
             lfs_oid: String::new(),
             batch_id: None,
             task_kind: TASK_KIND_APP.to_string(),

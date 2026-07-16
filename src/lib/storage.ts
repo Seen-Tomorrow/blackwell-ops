@@ -144,6 +144,8 @@ export const KEYS = {
   /** DEV session file log toggle (stderr/stdout under config/logs/sessions/). */
   sessionLogEnabled: `${STORAGE_PREFIX}session-log-enabled`,
   startupUpdates: `${STORAGE_PREFIX}startup-updates`,
+  /** Dev: fake installed version for in-app updater testing (e.g. "1.0.9"). */
+  devUpdateVersionFake: `${STORAGE_PREFIX}dev-update-version-fake`,
   fusionHeroTpsMode: `${STORAGE_PREFIX}fusion-hero-tps`,
   fusionBenchTray: `${STORAGE_PREFIX}fusion-bench-tray`,
   configParamLegend: `${STORAGE_PREFIX}config-param-legend`,
@@ -351,6 +353,19 @@ export function isSetupGuidePreview(): boolean {
 
 export function enableSetupGuidePreview(): void {
   writeStorage(KEYS.setupGuidePreview, "1");
+}
+
+export function loadDevUpdateVersionFake(): string | null {
+  const raw = readStorage(KEYS.devUpdateVersionFake);
+  return raw?.trim() || null;
+}
+
+export function saveDevUpdateVersionFake(version: string | null): void {
+  if (!version?.trim()) {
+    removeStorage(KEYS.devUpdateVersionFake);
+    return;
+  }
+  writeStorage(KEYS.devUpdateVersionFake, version.trim());
 }
 
 export function disableSetupGuidePreview(): void {

@@ -1051,7 +1051,11 @@ async fn main() {
             binary_update::download_binary_update,
             binary_update::get_profile_labels,
             binary_update::check_app_update,
+            binary_update::get_update_offerings,
             binary_update::install_app_update,
+            binary_update::get_dev_update_version_override,
+            binary_update::set_dev_update_version_override,
+            binary_update::toggle_dev_update_version_fake,
             binary_update::get_startup_updates,
             binary_update::revert_binary_to_bundled,
 

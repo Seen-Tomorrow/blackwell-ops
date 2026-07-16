@@ -40,7 +40,7 @@ import { dispatchAppEvent, EVENTS } from "./lib/events";
 import { refreshProvidersBuildInfo } from "./lib/foundryBuildRefresh";
 import { BINARY_UPDATES_ENABLED } from "./lib/foundry_constants";
 import { getActiveStackSlots, isActiveEngineSlot } from "./lib/engineStack";
-import type { ModelEntry, StackEntry, LogBatch, LogEntry, SystemEvent, ProviderConfig, AppUpdateInfo } from "./lib/types";
+import type { ModelEntry, StackEntry, LogBatch, LogEntry, SystemEvent, ProviderConfig, UpdateOfferings } from "./lib/types";
 
 export type Tab = "catalog" | "stack" | "extras" | "reactor11" | "modelhub" | "logs" | "config" | "sentinel";
 
@@ -219,20 +219,31 @@ function App() {
   }, []);
 
   // ── Startup update check (app + binary updates) ──────────────────────
-  const [appUpdate, setAppUpdate] = useState<AppUpdateInfo | null>(null);
+  const [updateOfferings, setUpdateOfferings] = useState<UpdateOfferings | null>(null);
   const [hasBinaryUpdates, setHasBinaryUpdates] = useState(false);
+
+  const refreshUpdateOfferings = useCallback(async () => {
+    if (!BINARY_UPDATES_ENABLED) return;
+    try {
+      const data = await invoke<UpdateOfferings>("get_update_offerings");
+      setUpdateOfferings(data.anyAvailable ? data : null);
+    } catch {
+      /* offline / rate limit */
+    }
+  }, []);
+
+  useEffect(() => {
+    const handler = () => { void refreshUpdateOfferings(); };
+    window.addEventListener(EVENTS.updateOfferingsRefresh, handler);
+    return () => window.removeEventListener(EVENTS.updateOfferingsRefresh, handler);
+  }, [refreshUpdateOfferings]);
 
   useEffect(() => {
     if (!BINARY_UPDATES_ENABLED) return;
     invoke<any>("get_startup_updates")
       .then((data) => {
-        if (data.appUpdate?.available) {
-          setAppUpdate({
-            available: true,
-            version: data.appUpdate.version,
-            currentVersion: data.appUpdate.current_version || "",
-            releaseNotes: data.appUpdate.release_notes || null,
-          });
+        if (data.updateOfferings?.anyAvailable) {
+          setUpdateOfferings(data.updateOfferings);
         }
         if (data.binaryUpdates && data.binaryUpdates.length > 0) {
           setHasBinaryUpdates(true);
@@ -243,14 +254,6 @@ function App() {
         });
       })
       .catch(() => {});
-  }, []);
-
-  const handleInstallAppUpdate = useCallback(async () => {
-    try {
-      await invoke("install_app_update");
-    } catch (err) {
-      console.error("App update install failed:", err);
-    }
   }, []);
 
   // Reload providers when nuclear button toggles group hidden state
@@ -582,7 +585,7 @@ function App() {
         <FoundryProvider>
           <TelemetryProvider pollingActive={hwMonitorOpen || activeTab === "catalog" || hasLiveEngines} gpuPollTier={gpuPollTier}>
             <StatusProvider value={{ totalParams, hiddenCount, onShowAll: handleShowAll }}>
-            <Layout activeTab={activeTab} onTabChange={(tab) => { setActiveTab(tab); if (tab === "config") setHasBinaryUpdates(false); }} providers={providers} appUpdate={appUpdate} hasBinaryUpdates={hasBinaryUpdates} onInstallAppUpdate={handleInstallAppUpdate}>
+            <Layout activeTab={activeTab} onTabChange={(tab) => { setActiveTab(tab); if (tab === "config") setHasBinaryUpdates(false); }} providers={providers} updateOfferings={updateOfferings} onRefreshUpdateOfferings={refreshUpdateOfferings} hasBinaryUpdates={hasBinaryUpdates}>
         {activeTab === "catalog" && (
               <ModelCatalog models={models} onLaunch={handleLaunchEngine} error={catalogError} onReload={reloadModels} providers={providers} committedVramMib={committedVramMib} scanningPath={scanningPath} setScanningPath={setScanningPath} batchScanState={batchScanState} setBatchScanState={setBatchScanState} stack={stack} setupGuide={setupGuide} catalogHfUpdates={catalogHfUpdates} />
            )}

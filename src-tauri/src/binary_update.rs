@@ -3,7 +3,115 @@
 
 use serde::Serialize;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use tauri::Manager;
+
+#[cfg(debug_assertions)]
+static DEV_UPDATE_VERSION_OVERRIDE: Mutex<Option<String>> = Mutex::new(None);
+
+/// Version used for GitHub update comparison — real package version unless dev override is set.
+fn effective_update_version(app_handle: &tauri::AppHandle) -> String {
+    #[cfg(debug_assertions)]
+    if let Ok(guard) = DEV_UPDATE_VERSION_OVERRIDE.lock() {
+        if let Some(v) = guard.as_ref() {
+            return v.clone();
+        }
+    }
+    app_handle.package_info().version.to_string()
+}
+
+#[cfg(debug_assertions)]
+fn decrement_patch_version(version: &str) -> Option<String> {
+    let parts: Vec<&str> = version.split('.').collect();
+    if parts.len() < 3 {
+        return None;
+    }
+    let major: u32 = parts[0].parse().ok()?;
+    let minor: u32 = parts[1].parse().ok()?;
+    let patch: u32 = parts[2].parse().ok()?;
+    if patch == 0 {
+        return None;
+    }
+    Some(format!("{major}.{minor}.{}", patch - 1))
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DevUpdateVersionOverrideStatus {
+    pub enabled: bool,
+    pub real_version: String,
+    pub effective_version: String,
+    pub override_version: Option<String>,
+}
+
+fn dev_update_override_status(app_handle: &tauri::AppHandle) -> DevUpdateVersionOverrideStatus {
+    let real_version = app_handle.package_info().version.to_string();
+    #[cfg(debug_assertions)]
+    let override_version = DEV_UPDATE_VERSION_OVERRIDE
+        .lock()
+        .ok()
+        .and_then(|g| g.clone());
+    #[cfg(not(debug_assertions))]
+    let override_version: Option<String> = None;
+    let effective_version = override_version
+        .clone()
+        .unwrap_or_else(|| real_version.clone());
+    DevUpdateVersionOverrideStatus {
+        enabled: override_version.is_some(),
+        real_version,
+        effective_version,
+        override_version,
+    }
+}
+
+#[tauri::command]
+pub fn get_dev_update_version_override(
+    app_handle: tauri::AppHandle,
+) -> DevUpdateVersionOverrideStatus {
+    dev_update_override_status(&app_handle)
+}
+
+/// Dev-only: pretend the app is on `version` for update checks (`null` clears).
+#[tauri::command]
+pub fn set_dev_update_version_override(version: Option<String>) -> Result<(), String> {
+    #[cfg(not(debug_assertions))]
+    return Err("Dev update version override is only available in debug builds".into());
+    #[cfg(debug_assertions)]
+    {
+        let mut guard = DEV_UPDATE_VERSION_OVERRIDE
+            .lock()
+            .map_err(|e| format!("Lock failed: {e}"))?;
+        *guard = version
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty());
+        Ok(())
+    }
+}
+
+/// Dev-only: toggle fake version one patch behind real (for updater UI testing).
+#[tauri::command]
+pub fn toggle_dev_update_version_fake(
+    app_handle: tauri::AppHandle,
+) -> Result<DevUpdateVersionOverrideStatus, String> {
+    #[cfg(not(debug_assertions))]
+    return Err("Dev update version override is only available in debug builds".into());
+    #[cfg(debug_assertions)]
+    {
+        let real_version = app_handle.package_info().version.to_string();
+        let mut guard = DEV_UPDATE_VERSION_OVERRIDE
+            .lock()
+            .map_err(|e| format!("Lock failed: {e}"))?;
+        if guard.is_some() {
+            *guard = None;
+        } else {
+            let fake = decrement_patch_version(&real_version)
+                .ok_or_else(|| format!("Cannot decrement patch for version {real_version}"))?;
+            *guard = Some(fake);
+        }
+        drop(guard);
+        Ok(dev_update_override_status(&app_handle))
+    }
+}
 
 /// Feature flag: set to true to enable binary update checks via GitHub API.
 /// Keep in sync with `BINARY_UPDATES_ENABLED` in `src/lib/foundry_constants.ts`.
@@ -28,8 +136,10 @@ pub struct ProviderBinaryUpdates {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct StartupUpdateStatus {
     pub app_update: AppUpdateInfo,
+    pub update_offerings: crate::github_releases::UpdateOfferings,
     pub binary_updates: Vec<ProviderBinaryUpdates>,
 }
 
@@ -324,73 +434,112 @@ pub fn get_profile_labels() -> Vec<serde_json::Value> {
         .collect()
 }
 
-/// Check for app update via GitHub semver releases (NSIS installer present).
-#[tauri::command]
-pub async fn check_app_update(app_handle: tauri::AppHandle) -> Result<AppUpdateInfo, String> {
-    if !BINARY_UPDATES_ENABLED {
-        log::debug!("[binary-update] App update checks disabled (feature flag off). Skipping.");
-        let current_version = app_handle.package_info().version.to_string();
-        return Ok(AppUpdateInfo {
+fn offerings_to_legacy_app_update(offerings: &crate::github_releases::UpdateOfferings) -> AppUpdateInfo {
+    let pick = if offerings.app_only.available {
+        &offerings.app_only
+    } else if offerings.full_bundle.available {
+        &offerings.full_bundle
+    } else {
+        return AppUpdateInfo {
             available: false,
-            version: current_version.clone(),
-            current_version,
+            version: offerings.current_version.clone(),
+            current_version: offerings.current_version.clone(),
             release_notes: None,
-        });
-    }
-
-    let current_version = app_handle.package_info().version.to_string();
-
-    let release = match crate::github_releases::fetch_latest_version_release().await {
-        Ok(r) => r,
-        Err(e) => {
-            log::warn!("[app-update] {e}");
-            return Ok(AppUpdateInfo {
-                available: false,
-                version: current_version.clone(),
-                current_version,
-                release_notes: None,
-            });
-        }
+        };
     };
-
-    if crate::github_releases::find_nsis_installer_asset(&release).is_none() {
-        log::warn!(
-            "[app-update] Release '{}' has no NSIS installer asset",
-            release.tag_name
-        );
-        return Ok(AppUpdateInfo {
-            available: false,
-            version: current_version.clone(),
-            current_version,
-            release_notes: None,
-        });
+    AppUpdateInfo {
+        available: true,
+        version: pick.tag.clone(),
+        current_version: offerings.current_version.clone(),
+        release_notes: pick.release_notes.clone(),
     }
-
-    let latest_tag = &release.tag_name;
-    let latest_version = latest_tag.strip_prefix('v').unwrap_or(latest_tag);
-    let available = version_gt(latest_version, &current_version);
-
-    Ok(AppUpdateInfo {
-        available,
-        version: latest_tag.to_string(),
-        current_version,
-        release_notes: release.body,
-    })
 }
 
-/// Enqueue NSIS installer download via the shared download manager (pause/resume/progress).
+fn empty_update_offerings(current_version: String) -> crate::github_releases::UpdateOfferings {
+    crate::github_releases::UpdateOfferings {
+        current_version: current_version.clone(),
+        engines_available: crate::profile_binaries::launch_engines_available(),
+        app_only: crate::github_releases::UpdateChannelOffering {
+            channel: crate::github_releases::CHANNEL_APP_ONLY.to_string(),
+            available: false,
+            version: String::new(),
+            tag: String::new(),
+            size_bytes: 0,
+            label: "App-Only".to_string(),
+            summary: "UI, templates & fixes — keeps your engines".to_string(),
+            release_notes: None,
+        },
+        full_bundle: crate::github_releases::UpdateChannelOffering {
+            channel: crate::github_releases::CHANNEL_FULL_BUNDLE.to_string(),
+            available: false,
+            version: String::new(),
+            tag: String::new(),
+            size_bytes: 0,
+            label: "Full Bundle".to_string(),
+            summary: "App + pre-built CUDA engines — first install or engine refresh".to_string(),
+            release_notes: None,
+        },
+        recommended: "none".to_string(),
+        any_available: false,
+    }
+}
+
+async fn resolve_update_offerings(
+    app_handle: &tauri::AppHandle,
+) -> Result<crate::github_releases::UpdateOfferings, String> {
+    let current_version = effective_update_version(app_handle);
+    if !BINARY_UPDATES_ENABLED {
+        return Ok(empty_update_offerings(current_version));
+    }
+    crate::github_releases::fetch_update_offerings(&current_version)
+        .await
+        .map_err(|e| {
+            log::warn!("[app-update] {e}");
+            e
+        })
+}
+
+/// Dual-channel update offerings (App-Only + Full Bundle).
+#[tauri::command]
+pub async fn get_update_offerings(
+    app_handle: tauri::AppHandle,
+) -> Result<crate::github_releases::UpdateOfferings, String> {
+    resolve_update_offerings(&app_handle).await
+}
+
+/// Legacy single-channel check — maps to recommended offering.
+#[tauri::command]
+pub async fn check_app_update(app_handle: tauri::AppHandle) -> Result<AppUpdateInfo, String> {
+    let offerings = resolve_update_offerings(&app_handle).await?;
+    Ok(offerings_to_legacy_app_update(&offerings))
+}
+
+/// Enqueue NSIS installer download (`channel`: `app_only` | `full_bundle`).
 #[tauri::command]
 pub async fn install_app_update(
     app_handle: tauri::AppHandle,
     manager: tauri::State<'_, std::sync::Arc<tokio::sync::RwLock<crate::download_manager::DownloadManager>>>,
+    channel: Option<String>,
 ) -> Result<String, String> {
     if !BINARY_UPDATES_ENABLED {
         return Err("App updates are disabled".to_string());
     }
 
+    let current_version = effective_update_version(&app_handle);
+    let offerings = crate::github_releases::fetch_update_offerings(&current_version).await?;
+    let channel_key = channel.unwrap_or_else(|| offerings.recommended.clone());
+    if channel_key == "none" {
+        return Err("No update available for this channel".to_string());
+    }
+
     let mut dm = manager.write().await;
     let task_id = dm
-        .start_app_update_download(app_handle.clone(), std::sync::Arc::clone(&*manager))
+        .start_app_update_download(
+            app_handle.clone(),
+            channel_key,
+            current_version,
+            std::sync::Arc::clone(&*manager),
+        )
         .await?;
     drop(dm);
 
@@ -411,36 +560,34 @@ pub async fn install_app_update(
 pub async fn get_startup_updates(app_handle: tauri::AppHandle) -> Result<StartupUpdateStatus, String> {
     if !BINARY_UPDATES_ENABLED {
         log::debug!("[binary-update] All update checks disabled (feature flag off). Returning empty results.");
+        let current_version = app_handle.package_info().version.to_string();
         return Ok(StartupUpdateStatus {
             app_update: AppUpdateInfo {
                 available: false,
                 version: String::new(),
-                current_version: String::new(),
+                current_version: current_version.clone(),
                 release_notes: None,
             },
+            update_offerings: empty_update_offerings(current_version),
             binary_updates: Vec::new(),
         });
     }
 
-    let app_update_future = check_app_update(app_handle.clone());
+    let offerings_future = resolve_update_offerings(&app_handle);
     let ggml_future = check_binary_updates(crate::config::DEFAULT_PROVIDER_ID.to_string());
     let tom_future = check_binary_updates("ggml-tom".to_string());
 
-    let (app_result, ggml_result, tom_result) =
-        tokio::join!(app_update_future, ggml_future, tom_future);
+    let (offerings_result, ggml_result, tom_result) =
+        tokio::join!(offerings_future, ggml_future, tom_future);
 
-    let app_update = match app_result {
-        Ok(info) => info,
+    let update_offerings = match offerings_result {
+        Ok(o) => o,
         Err(e) => {
-            log::warn!("[startup-updates] App update check failed: {e}");
-            AppUpdateInfo {
-                available: false,
-                version: String::new(),
-                current_version: String::new(),
-                release_notes: None,
-            }
+            log::warn!("[startup-updates] Update offerings check failed: {e}");
+            empty_update_offerings(app_handle.package_info().version.to_string())
         }
     };
+    let app_update = offerings_to_legacy_app_update(&update_offerings);
 
     let mut binary_updates = Vec::new();
 
@@ -465,6 +612,7 @@ pub async fn get_startup_updates(app_handle: tauri::AppHandle) -> Result<Startup
 
     Ok(StartupUpdateStatus {
         app_update,
+        update_offerings,
         binary_updates,
     })
 }

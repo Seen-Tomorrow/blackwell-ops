@@ -1,7 +1,7 @@
 {
   "name": "blackwell-ops",
   "private": true,
-  "version": "1.0.10",
+  "version": "1.0.11",
   "type": "module",
   "scripts": {
     "vite": "vite --host 127.0.0.1 --port 1420",
@@ -19,10 +19,13 @@
     "prerelease": "powershell -ExecutionPolicy Bypass -File scripts/mirror-artifacts.ps1 && powershell -ExecutionPolicy Bypass -File scripts/prepare-release-runtime.ps1",
     "release": "npm run build && tauri build",
     "release:exe": "npm run build:exe",
-    "majestic:check": "powershell -ExecutionPolicy Bypass -File scripts/majestic/majestic.ps1 -Mode check",
+    "majestic:check": "powershell -ExecutionPolicy Bypass -File scripts/majestic/majestic.ps1 -Mode check -Variant full",
+    "majestic:check:app": "powershell -ExecutionPolicy Bypass -File scripts/majestic/majestic.ps1 -Mode check -Variant app",
     "majestic:bump": "powershell -ExecutionPolicy Bypass -File scripts/majestic/majestic.ps1 -Mode bump",
-    "majestic:pack": "powershell -ExecutionPolicy Bypass -File scripts/majestic/majestic.ps1 -Mode pack",
+    "majestic:pack": "powershell -ExecutionPolicy Bypass -File scripts/majestic/majestic.ps1 -Mode pack -Variant full",
+    "majestic:pack:app": "powershell -ExecutionPolicy Bypass -File scripts/majestic/majestic.ps1 -Mode pack -Variant app",
     "majestic:ship": "powershell -ExecutionPolicy Bypass -File scripts/majestic/majestic.ps1 -Mode ship",
+    "majestic:ship:app": "powershell -ExecutionPolicy Bypass -File scripts/majestic/majestic.ps1 -Mode ship",
     "majestic:toolchain": "powershell -ExecutionPolicy Bypass -File scripts/build-foundry-toolchain.ps1"
   },
   "dependencies": {
