@@ -65,6 +65,10 @@ export default defineConfig(async () => ({
     watch: {
       ignored: [
         '**/src-tauri/target/**',
+        '**/src-tauri/runtime/**/config/**',
+        '**/src-tauri/runtime/catalog/**',
+        '**/src-tauri/runtime-bundle/**',
+        '**/scripts/distribution-policy.json',
         '**/foundry/**',
         '**/llama.cpp/tools/**',
       ],

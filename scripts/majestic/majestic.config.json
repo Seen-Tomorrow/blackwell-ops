@@ -3,7 +3,11 @@
   "repo": "Seen-Tomorrow/blackwell-ops",
   "providers": {
     "ggml-master": ["frontier", "stable"],
-    "ggml-tom": ["frontier", "stable"]
+    "ggml-tom": ["frontier", "stable"],
+    "bee-llama": ["frontier"]
+  },
+  "nsisProviders": {
+    "ggml-master": ["frontier", "stable"]
   },
   "upload": {
     "installer": true,
@@ -13,9 +17,10 @@
   "ship": {
     "pushTag": false,
     "pushCommit": false,
-    "releaseNotes": "### Main APP + startup bundle with pre-build engines, optimized for AMPERE, ADA and BLACKWELL architectures.\n>Includes GGML Llama.cpp + Tom TQ\n>CUDA 13.3 (Frontier) + 12.8 (Stable)\n>built on VS2026 + VS2022",
-    "appOnlyReleaseNotes": "### App update (`Blackwell-Ops-App-v*.7z`)\n\nLean portable pack (~5 MB) — **UI + factory templates + bundled 7z**.\n\n**Apply from the in-app UPDATE menu** (download + extract + restart). Keeps existing engines under `runtime/`.\n\n**Choose this if you already have** a Full install or Foundry-built engines.\n\n**First install?** Use the **Full install** Setup.exe instead.",
-    "fullBundleReleaseNotes": "### Full install (`Setup` NSIS + provider packs)\n\nComplete installer — **app + templates + pre-built CUDA engines** (Frontier + Stable for GGML Master and Tom TQ).\n\nAlso attaches per-provider `.7z` packs for selective engine updates, plus the lean App `.7z`.\n\n**Choose this if you:**\n- Are installing for the **first time**\n- Need a full engine refresh\n\nCUDA 13.3 (Frontier) + 12.8 (Stable). Portable Foundry toolchain remains on the separate `toolchain` release tag."
+    "releaseNotes": "### Blackwell Ops release\n\nPre-built CUDA engines for Ampere, Ada, and Blackwell.\n\n- GGML Master (core NSIS)\n- Frontier: CUDA 13.3 (VS2026)\n- Stable: CUDA 12.8 (VS2022)\n\nOptional forks (Tom TQ, bee-llama, etc.) ship as separate provider packs.",
+    "appOnlyReleaseNotes": "### App update (`Blackwell-Ops-App-v*.7z`)\n\nLean portable pack (~5 MB) - **UI, core templates, plugin catalog, bundled 7z**.\n\nRefreshes the **engine catalog** (Tom TQ, bee-llama, etc.) - install optional engines from Config - UPDATES. They appear in PROVIDERS after download.\n\n**How to apply:** in-app **UPDATE** menu (download, extract, restart). Keeps existing engines under `runtime/`.\n\n**First install?** Use **Full install** (Setup.exe) from Updates catalog.",
+    "fullBundleReleaseNotes": "### Full install (NSIS Setup)\n\nCore installer: **app + GGML Master engines** (Frontier + Stable).\n\nAlso attaches lean App `.7z` and per-provider `.7z` packs (Tom TQ, bee-llama, etc.) for optional engines.\n\n**Choose this when:** first-time install or you need a full Master engine refresh.",
+    "providerReleaseNotes": "### Engine pack update (`{provider}-{profile}.7z`)\n\nOptional engine runtime - extract via Config - UPDATES.\n\nStop any running engine for that provider before updating."
   },
   "pack": {
     "skipBuildIfInstallerFresh": true,

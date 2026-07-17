@@ -1,0 +1,12 @@
+# Tauri CLI file watcher (tauri dev) — gitignore-style rules.
+# Factory templates / plugin catalog are admin data written by DEV Distribution
+# and EXPORT FACTORY. They are not Rust source; ignore so edits do not rebuild.
+
+# Provider factory JSON + spawn/layout templates
+runtime/**/config/**
+
+# Plugin catalog generated from distribution policy
+runtime/catalog/**
+
+# Staged release bundle trees (if present next to sources)
+runtime-bundle/**

@@ -29,7 +29,7 @@
  */
 
 export type NavigateConfigDetail = {
-  subTab?: "providers" | "params" | "paths" | "secrets" | "recovery";
+  subTab?: "providers" | "params" | "paths" | "secrets" | "recovery" | "updates" | "distribution";
 };
 
 import { invoke } from "@tauri-apps/api/core";
@@ -126,6 +126,11 @@ export function dispatchPowerUserChanged(): void {
  * Full first-run replay — same as CONFIG → RECOVERY → RESET CONFIG.
  * Wipes portable config/ (paths → factory models/, caches, setup_completed), clears onboarding
  * keys, reloads. GGUF files, foundry artifacts, and runtime binaries on disk are untouched.
+ */
+/**
+ * First-run replay: reset portable config/ (user provider overrides, caches) +
+ * setup_completed=false, then reload. Does NOT clear BlackOps localStorage —
+ * use CLR LS for that. Optional plugins without binaries stay hidden after rediscovery.
  */
 export async function dispatchReplayFirstRun(): Promise<void> {
   resetSetupGuideState();

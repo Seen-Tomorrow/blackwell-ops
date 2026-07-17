@@ -476,6 +476,9 @@ pub struct ProviderConfig {
     /// Factory-provided providers cannot be removed, only disabled. Binary path is managed by foundry/download.
     #[serde(default)]
     pub factory_provided: bool,
+    /// Optional fork — not in NSIS core; engine via provider pack download.
+    #[serde(default, rename = "optionalDownload")]
+    pub optional_download: bool,
     /// Template version number — bumped in default config JSON when template changes. Used for UI notification.
     #[serde(default = "default_template_version", rename = "templateVersion")]
     pub template_version: u32,

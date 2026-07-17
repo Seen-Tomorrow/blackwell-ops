@@ -130,8 +130,9 @@ export default function RecoveryConfig() {
               Resets portable app data under <span className="text-white/70">config/</span>: model paths
               (back to factory <span className="text-white/70">models/</span>), GGUF metadata cache,
               VRAM fit scan cache, learned VRAM, download queue state, and per-provider parameter
-              overrides. Replays the setup checklist on reload. In dev builds this is the same code path
-              as the header <span className="text-white/70">↺ SETUP</span> button.
+              overrides. Replays the setup checklist on reload. Does not clear localStorage (use CLEAR
+              LOCAL STORAGE / CLR LS). Optional plugins only reappear if their engines are still on disk.
+              Same path as header ↺ SETUP.
             </p>
             <ul className="text-[9px] font-mono config-muted leading-relaxed mb-3 list-disc pl-4 space-y-1">
               <li>Does <span className="text-nv-green">not</span> delete GGUF model files on disk</li>

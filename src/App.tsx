@@ -226,7 +226,8 @@ function App() {
     if (!BINARY_UPDATES_ENABLED) return;
     try {
       const data = await invoke<UpdateOfferings>("get_update_offerings");
-      setUpdateOfferings(data.anyAvailable ? data : null);
+      // Always keep catalog (not only when anyAvailable) so header UPDATE stays usable
+      setUpdateOfferings(data);
     } catch {
       /* offline / rate limit */
     }
@@ -242,12 +243,13 @@ function App() {
     if (!BINARY_UPDATES_ENABLED) return;
     invoke<any>("get_startup_updates")
       .then((data) => {
-        if (data.updateOfferings?.anyAvailable) {
+        if (data.updateOfferings) {
           setUpdateOfferings(data.updateOfferings);
         }
-        if (data.binaryUpdates && data.binaryUpdates.length > 0) {
-          setHasBinaryUpdates(true);
-        }
+        const binaryPending = (data.binaryUpdates || []).some((bu: { updates?: { available?: boolean }[] }) =>
+          (bu.updates || []).some((u) => u.available),
+        );
+        setHasBinaryUpdates(binaryPending || !!data.updateOfferings?.anyAvailable);
         saveStartupUpdatesCache({
           timestamp: Date.now(),
           binaryUpdates: data.binaryUpdates || [],
@@ -585,13 +587,19 @@ function App() {
         <FoundryProvider>
           <TelemetryProvider pollingActive={hwMonitorOpen || activeTab === "catalog" || hasLiveEngines} gpuPollTier={gpuPollTier}>
             <StatusProvider value={{ totalParams, hiddenCount, onShowAll: handleShowAll }}>
-            <Layout activeTab={activeTab} onTabChange={(tab) => { setActiveTab(tab); if (tab === "config") setHasBinaryUpdates(false); }} providers={providers} updateOfferings={updateOfferings} onRefreshUpdateOfferings={refreshUpdateOfferings} hasBinaryUpdates={hasBinaryUpdates}>
+            <Layout activeTab={activeTab} onTabChange={setActiveTab} providers={providers} updateOfferings={updateOfferings} onRefreshUpdateOfferings={refreshUpdateOfferings} hasBinaryUpdates={hasBinaryUpdates}>
         {activeTab === "catalog" && (
               <ModelCatalog models={models} onLaunch={handleLaunchEngine} error={catalogError} onReload={reloadModels} providers={providers} committedVramMib={committedVramMib} scanningPath={scanningPath} setScanningPath={setScanningPath} batchScanState={batchScanState} setBatchScanState={setBatchScanState} stack={stack} setupGuide={setupGuide} catalogHfUpdates={catalogHfUpdates} />
            )}
         {activeTab === "config" && (
           <Suspense fallback={<TabFallback />}>
-            <ConfigPage providers={providers} setupGuide={setupGuide} />
+            <ConfigPage
+              providers={providers}
+              setupGuide={setupGuide}
+              updateOfferings={updateOfferings}
+              onRefreshUpdateOfferings={refreshUpdateOfferings}
+              onBinaryUpdatesChange={setHasBinaryUpdates}
+            />
           </Suspense>
         )}
         {activeTab === "stack" && (

@@ -142,20 +142,65 @@ pub async fn export_provider_factory_template(
     Ok(result)
 }
 
+/// Uninstall live `runtime/{id}/` under the app root (engines + extracted factory).
+/// Does **not** touch `src-tauri/runtime/` (DEV factory source), distribution policy, or Majestic.
+fn uninstall_live_provider_runtime(provider_id: &str) -> Result<(), String> {
+    let live = crate::config::app_root_dir().join("runtime").join(provider_id);
+    if !live.exists() {
+        return Ok(());
+    }
+    std::fs::remove_dir_all(&live).map_err(|e| {
+        format!(
+            "Failed to remove live runtime for '{provider_id}' at {}: {e}",
+            live.display()
+        )
+    })?;
+    log::info!(
+        "[provider] Uninstalled live runtime tree {}",
+        live.display()
+    );
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn remove_provider(id: String, app: tauri::State<'_, AppContext>) -> Result<(), String> {
-    let mut cfg = app.config.lock().map_err(|e| e.to_string())?;
-
-    let before = cfg.providers.len();
-    cfg.providers.retain(|p| p.id != id);
-
-    if cfg.providers.len() == before {
-        return Err(format!("Provider '{}' not found", id));
+    if id == crate::config::DEFAULT_PROVIDER_ID {
+        return Err(
+            "Cannot remove the core NSIS provider (ggml-master). Use ON/OFF to hide it in the UI."
+                .into(),
+        );
     }
 
-    // Remove provider's user config file (targeted deletion)
-    drop(cfg);
+    let found = {
+        let cfg = app.config.lock().map_err(|e| e.to_string())?;
+        cfg.providers.iter().any(|p| p.id == id)
+    };
+    if !found {
+        return Err(format!("Provider '{id}' not found"));
+    }
+
+    {
+        let mut cfg = app.config.lock().map_err(|e| e.to_string())?;
+        cfg.providers.retain(|p| p.id != id);
+        crate::config::persist_user_providers_meta(&cfg.providers)
+            .map_err(|e| format!("Failed to persist providers after remove: {e}"))?;
+    }
+
+    // Drop user overrides
     crate::config::reset_provider_to_defaults(&id)?;
+
+    // Remove live engines so rediscovery does not bring the provider back (optional forks
+    // with no binaries stay out of PROVIDERS). Factory under src-tauri + distribution-policy
+    // + catalog shipping list are untouched — reinstall from UPDATES if still a catalog plugin.
+    uninstall_live_provider_runtime(&id)?;
+
+    // Re-scan disk (optional plugin without binaries stays out of PROVIDERS).
+    {
+        let mut cfg = app.config.lock().map_err(|e| e.to_string())?;
+        crate::config::refresh_providers_from_disk(&mut cfg);
+        crate::config::persist_user_providers_meta(&cfg.providers)
+            .map_err(|e| format!("Failed to persist after rediscover: {e}"))?;
+    }
 
     Ok(())
 }

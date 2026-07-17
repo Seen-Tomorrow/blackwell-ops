@@ -319,7 +319,6 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
 
         {/* Admin lock + zoom + appearance */}
         <div className="app-header-actions flex items-center gap-1.5 flex-shrink-0">
-          <AppUpdateMenu offerings={updateOfferings ?? null} onRefresh={onRefreshUpdateOfferings} />
           <div className="app-quick-settings flex flex-col items-end gap-px flex-shrink-0">
             <AppearanceControls embedded />
             <div className="app-quick-settings__tools app-quick-settings__row flex items-center gap-2">
@@ -350,6 +349,12 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
                 <button onClick={() => adjustZoom(ZOOM_STEP)} className="app-chrome-control-btn px-1 text-[9px] font-mono transition-colors leading-none" title="Increase text scale (Ctrl+scroll)">+</button>
               </div>
               <span className="app-quick-settings__sep app-chrome-control-btn text-[8px] font-mono opacity-40" aria-hidden>|</span>
+              <AppUpdateMenu
+                offerings={updateOfferings ?? null}
+                hasBinaryUpdates={hasBinaryUpdates}
+                onRefresh={onRefreshUpdateOfferings}
+              />
+              <span className="app-quick-settings__sep app-chrome-control-btn text-[8px] font-mono opacity-40" aria-hidden>|</span>
               <button
                 type="button"
                 onClick={dispatchNavigateRecovery}
@@ -374,7 +379,7 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
                     void dispatchReplaySetupGuide();
                   }}
                   className="app-chrome-control-btn px-1.5 text-[8px] font-mono transition-colors leading-none text-nv-green/70 hover:text-nv-green"
-                  title="Dev: full first-run replay — same as CONFIG → RECOVERY → RESET CONFIG. Shift+click: onboarding UI only (keeps paths + metadata cache)."
+                  title="Dev: reset config/ (user provider overrides, caches) + setup guide. Does NOT clear localStorage — use CLR LS. Optional plugins without binaries stay hidden. Shift+click: onboarding UI only (keeps paths + metadata cache)."
                 >
                   ↺ SETUP
                 </button>

@@ -1,0 +1,795 @@
+//! DEV distribution policy — single source of truth for NSIS core vs plugin packs.
+//! Release builds: commands return errors (UI is DEV-gated).
+
+use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
+use std::path::PathBuf;
+use std::process::Stdio;
+use std::sync::atomic::{AtomicBool, Ordering};
+use tauri::{Emitter, Manager};
+
+static RELEASE_JOB_RUNNING: AtomicBool = AtomicBool::new(false);
+
+const POLICY_VERSION: u32 = 1;
+const DEFAULT_PROFILES: &[&str] = &["frontier", "stable"];
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DistributionPolicy {
+    pub policy_version: u32,
+    pub nsis_core: BTreeMap<String, Vec<String>>,
+    pub plugins: BTreeMap<String, Vec<String>>,
+    #[serde(default = "default_plugin_profiles")]
+    pub default_plugin_profiles: Vec<String>,
+}
+
+fn default_plugin_profiles() -> Vec<String> {
+    DEFAULT_PROFILES.iter().map(|s| s.to_string()).collect()
+}
+
+impl Default for DistributionPolicy {
+    fn default() -> Self {
+        let mut nsis_core = BTreeMap::new();
+        nsis_core.insert(
+            crate::config::DEFAULT_PROVIDER_ID.to_string(),
+            vec!["frontier".into(), "stable".into()],
+        );
+        Self {
+            policy_version: POLICY_VERSION,
+            nsis_core,
+            plugins: BTreeMap::new(),
+            default_plugin_profiles: default_plugin_profiles(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProfileReadiness {
+    pub profile: String,
+    pub runtime_binary: bool,
+    pub foundry_artifact: bool,
+    pub ready: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderDistributionRow {
+    pub id: String,
+    pub display_name: String,
+    /// `core` | `plugin` | `local`
+    pub role: String,
+    pub optional_download: bool,
+    pub factory_exists: bool,
+    pub profiles: Vec<String>,
+    pub readiness: Vec<ProfileReadiness>,
+    pub all_ready: bool,
+    pub pack_commands: Vec<String>,
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DistributionDashboard {
+    pub policy_path: String,
+    pub catalog_path: String,
+    pub app_version: String,
+    pub nsis_core: BTreeMap<String, Vec<String>>,
+    pub plugins: BTreeMap<String, Vec<String>>,
+    pub providers: Vec<ProviderDistributionRow>,
+    pub release_job_running: bool,
+    pub workflow_notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetDistributionInput {
+    pub provider_id: String,
+    /// `plugin` | `local` (core is fixed to policy nsisCore)
+    pub role: String,
+    pub profiles: Option<Vec<String>>,
+}
+
+fn repo_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| PathBuf::from("."))
+}
+
+fn policy_path() -> PathBuf {
+    repo_root().join("scripts").join("distribution-policy.json")
+}
+
+fn catalog_src_path() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("runtime")
+        .join("catalog")
+        .join("plugins.json")
+}
+
+fn factory_src_path(provider_id: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("runtime")
+        .join(provider_id)
+        .join("config")
+        .join(format!("{provider_id}-default-config.json"))
+}
+
+fn runtime_src_profile_exe(provider_id: &str, profile: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("runtime")
+        .join(provider_id)
+        .join(profile)
+        .join("llama-server.exe")
+}
+
+fn foundry_artifact_exe(provider_id: &str, profile: &str) -> PathBuf {
+    crate::config::app_root_dir()
+        .join("foundry")
+        .join("artifacts")
+        .join(provider_id)
+        .join(profile)
+        .join("Release")
+        .join("llama-server.exe")
+}
+
+fn assert_dev() -> Result<(), String> {
+    if cfg!(debug_assertions) {
+        Ok(())
+    } else {
+        Err("Distribution tools are only available in DEV builds".into())
+    }
+}
+
+pub fn load_policy() -> Result<DistributionPolicy, String> {
+    let path = policy_path();
+    if !path.is_file() {
+        let p = DistributionPolicy::default();
+        save_policy(&p)?;
+        return Ok(p);
+    }
+    let raw = std::fs::read_to_string(&path)
+        .map_err(|e| format!("Failed to read {}: {e}", path.display()))?;
+    serde_json::from_str(&raw).map_err(|e| format!("Invalid distribution-policy.json: {e}"))
+}
+
+pub fn save_policy(policy: &DistributionPolicy) -> Result<(), String> {
+    let path = policy_path();
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create {}: {e}", parent.display()))?;
+    }
+    let raw = serde_json::to_string_pretty(policy)
+        .map_err(|e| format!("Failed to serialize policy: {e}"))?;
+    std::fs::write(&path, raw + "\n")
+        .map_err(|e| format!("Failed to write {}: {e}", path.display()))?;
+    Ok(())
+}
+
+fn set_factory_optional_download(provider_id: &str, optional: bool) -> Result<(), String> {
+    let path = factory_src_path(provider_id);
+    if !path.is_file() {
+        return Ok(());
+    }
+    let raw = std::fs::read_to_string(&path)
+        .map_err(|e| format!("Failed to read {}: {e}", path.display()))?;
+    let mut root: serde_json::Value =
+        serde_json::from_str(&raw).map_err(|e| format!("Invalid factory JSON: {e}"))?;
+    if let Some(obj) = root.as_object_mut() {
+        obj.insert(
+            "optionalDownload".to_string(),
+            serde_json::Value::Bool(optional),
+        );
+    }
+    let out = serde_json::to_string_pretty(&root).map_err(|e| e.to_string())?;
+    let body = format!("{out}\n");
+    std::fs::write(&path, &body)
+        .map_err(|e| format!("Failed to write {}: {e}", path.display()))?;
+
+    // Also update live runtime next to debug exe if present
+    let live = crate::config::factory_default_config_path(provider_id);
+    if live.is_file() {
+        let _ = std::fs::write(&live, &body);
+    }
+    Ok(())
+}
+
+/// Build plugins.json from policy + factory metadata (DEV + pack scripts).
+pub fn regenerate_plugin_catalog_from_policy() -> Result<PathBuf, String> {
+    let policy = load_policy()?;
+    let mut plugins = Vec::new();
+
+    for (id, profiles) in &policy.plugins {
+        let factory_path = factory_src_path(id);
+        let (display_name, description, template_type, template_version) =
+            if factory_path.is_file() {
+                let raw = std::fs::read_to_string(&factory_path).unwrap_or_default();
+                let v: serde_json::Value = serde_json::from_str(&raw).unwrap_or_default();
+                let display = v
+                    .get("display_name")
+                    .or_else(|| v.get("displayName"))
+                    .and_then(|x| x.as_str())
+                    .unwrap_or(id)
+                    .to_string();
+                let desc = v
+                    .get("description")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let tt = v
+                    .get("template_type")
+                    .or_else(|| v.get("templateType"))
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("ggml-llama")
+                    .to_string();
+                let tv = v
+                    .get("templateVersion")
+                    .and_then(|x| x.as_u64())
+                    .unwrap_or(1) as u32;
+                (display, desc, tt, tv)
+            } else {
+                (
+                    id.clone(),
+                    format!("Optional engine plugin ({id})"),
+                    "ggml-llama".into(),
+                    1,
+                )
+            };
+
+        plugins.push(serde_json::json!({
+            "id": id,
+            "displayName": display_name,
+            "description": if description.is_empty() {
+                format!("Optional engine plugin ({id})")
+            } else {
+                description
+            },
+            "templateType": template_type,
+            "templateVersion": template_version,
+            "profiles": profiles,
+        }));
+    }
+
+    let catalog = serde_json::json!({
+        "catalogVersion": 1,
+        "plugins": plugins,
+    });
+    let out = serde_json::to_string_pretty(&catalog).map_err(|e| e.to_string())?;
+
+    let dest = catalog_src_path();
+    if let Some(parent) = dest.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create {}: {e}", parent.display()))?;
+    }
+    std::fs::write(&dest, out.clone() + "\n")
+        .map_err(|e| format!("Failed to write {}: {e}", dest.display()))?;
+
+    // Live app catalog next to debug exe
+    let live_catalog = crate::config::app_root_dir()
+        .join("runtime")
+        .join("catalog")
+        .join("plugins.json");
+    if let Some(parent) = live_catalog.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::write(&live_catalog, out + "\n");
+
+    Ok(dest)
+}
+
+fn profile_readiness(provider_id: &str, profile: &str) -> ProfileReadiness {
+    let runtime_binary = runtime_src_profile_exe(provider_id, profile).is_file()
+        || crate::config::app_root_dir()
+            .join("runtime")
+            .join(provider_id)
+            .join(profile)
+            .join("llama-server.exe")
+            .is_file();
+    let foundry_artifact = foundry_artifact_exe(provider_id, profile).is_file();
+    ProfileReadiness {
+        profile: profile.to_string(),
+        runtime_binary,
+        foundry_artifact,
+        ready: runtime_binary || foundry_artifact,
+    }
+}
+
+fn role_for(provider_id: &str, policy: &DistributionPolicy) -> String {
+    if policy.nsis_core.contains_key(provider_id) {
+        "core".into()
+    } else if policy.plugins.contains_key(provider_id) {
+        "plugin".into()
+    } else {
+        "local".into()
+    }
+}
+
+fn build_row(
+    p: &crate::types::ProviderConfig,
+    policy: &DistributionPolicy,
+) -> ProviderDistributionRow {
+    let role = role_for(&p.id, policy);
+    let profiles = match role.as_str() {
+        "core" => policy
+            .nsis_core
+            .get(&p.id)
+            .cloned()
+            .unwrap_or_else(|| DEFAULT_PROFILES.iter().map(|s| s.to_string()).collect()),
+        "plugin" => policy
+            .plugins
+            .get(&p.id)
+            .cloned()
+            .unwrap_or_else(|| policy.default_plugin_profiles.clone()),
+        _ => policy.default_plugin_profiles.clone(),
+    };
+    let readiness: Vec<ProfileReadiness> = profiles
+        .iter()
+        .map(|pr| profile_readiness(&p.id, pr))
+        .collect();
+    let all_ready = !readiness.is_empty() && readiness.iter().all(|r| r.ready);
+    let mut notes = Vec::new();
+    let factory_exists = factory_src_path(&p.id).is_file();
+    if role == "plugin" && !factory_exists {
+        notes.push("Factory JSON missing — EXPORT FACTORY or turn Plugin ON again".into());
+    }
+    for r in &readiness {
+        if !r.ready {
+            notes.push(format!(
+                "{}: no runtime/ or foundry artifact — Foundry-build then pack",
+                r.profile
+            ));
+        }
+    }
+    let pack_commands = if role == "plugin" || role == "core" {
+        profiles
+            .iter()
+            .map(|pr| {
+                format!(
+                    "npm run majestic:pack:provider -- -ProviderId {} -ProfileId {}",
+                    p.id, pr
+                )
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+
+    ProviderDistributionRow {
+        id: p.id.clone(),
+        display_name: p.display_name.clone(),
+        role,
+        optional_download: p.optional_download,
+        factory_exists,
+        profiles,
+        readiness,
+        all_ready,
+        pack_commands,
+        notes,
+    }
+}
+
+#[tauri::command]
+pub fn get_distribution_dashboard(
+    app_handle: tauri::AppHandle,
+) -> Result<DistributionDashboard, String> {
+    assert_dev()?;
+    let policy = load_policy()?;
+    let providers = {
+        let ctx = app_handle.state::<crate::engine::AppContext>();
+        let cfg = ctx.config.lock().map_err(|e| e.to_string())?;
+        cfg.providers.clone()
+    };
+
+    let mut rows: Vec<ProviderDistributionRow> = providers
+        .iter()
+        .map(|p| build_row(p, &policy))
+        .collect();
+
+    // Policy plugins not currently in PROVIDERS (e.g. after UNINSTALL) still show here
+    // so DEV can Catalog ON/OFF + Pack without re-installing first.
+    let live_ids: std::collections::HashSet<_> =
+        providers.iter().map(|p| p.id.as_str()).collect();
+    for (id, profiles) in &policy.plugins {
+        if live_ids.contains(id.as_str()) {
+            continue;
+        }
+        let readiness: Vec<ProfileReadiness> = profiles
+            .iter()
+            .map(|pr| profile_readiness(id, pr))
+            .collect();
+        let all_ready = !readiness.is_empty() && readiness.iter().all(|r| r.ready);
+        let factory_exists = factory_src_path(id).is_file();
+        let mut notes = vec![
+            "Not in PROVIDERS (uninstalled or no engines) — Catalog ON still ships metadata".into(),
+        ];
+        if !factory_exists {
+            notes.push("Factory JSON missing under src-tauri/runtime".into());
+        }
+        rows.push(ProviderDistributionRow {
+            id: id.clone(),
+            display_name: id.clone(),
+            role: "plugin".into(),
+            optional_download: true,
+            factory_exists,
+            profiles: profiles.clone(),
+            readiness,
+            all_ready,
+            pack_commands: profiles
+                .iter()
+                .map(|pr| {
+                    format!(
+                        "npm run majestic:pack:provider -- -ProviderId {id} -ProfileId {pr}"
+                    )
+                })
+                .collect(),
+            notes,
+        });
+    }
+
+    rows.sort_by(|a, b| {
+        let rank = |r: &str| match r {
+            "core" => 0,
+            "plugin" => 1,
+            _ => 2,
+        };
+        rank(&a.role)
+            .cmp(&rank(&b.role))
+            .then_with(|| a.id.cmp(&b.id))
+    });
+
+    Ok(DistributionDashboard {
+        policy_path: policy_path().display().to_string(),
+        catalog_path: catalog_src_path().display().to_string(),
+        app_version: app_handle.package_info().version.to_string(),
+        nsis_core: policy.nsis_core,
+        plugins: policy.plugins,
+        providers: rows,
+        release_job_running: RELEASE_JOB_RUNNING.load(Ordering::SeqCst),
+        workflow_notes: vec![
+            "Weekly Full: NSIS = ggml-master only (nsisCore in policy)".into(),
+            "Pack+Ship App: auto bump patch + App .7z + upload".into(),
+            "Pack+Ship provider: engines for current tag (no bump)".into(),
+            "Plugin ON writes policy + optionalDownload + catalog - does not upload".into(),
+            "Job output: Tauri console [majestic] lines (primary)".into(),
+        ],
+    })
+}
+
+#[tauri::command]
+pub fn set_provider_distribution(
+    app_handle: tauri::AppHandle,
+    input: SetDistributionInput,
+) -> Result<DistributionDashboard, String> {
+    assert_dev()?;
+    let role = input.role.trim().to_ascii_lowercase();
+    if role != "plugin" && role != "local" {
+        return Err("role must be 'plugin' or 'local' (core is fixed in policy nsisCore)".into());
+    }
+
+    let mut policy = load_policy()?;
+    if policy.nsis_core.contains_key(&input.provider_id) {
+        return Err(format!(
+            "'{}' is NSIS core — edit distribution-policy.json nsisCore only if intentional",
+            input.provider_id
+        ));
+    }
+
+    let profiles = input
+        .profiles
+        .filter(|p| !p.is_empty())
+        .unwrap_or_else(|| policy.default_plugin_profiles.clone());
+
+    // optionalDownload = product type (optional fork, not NSIS core) — always true for non-core.
+    // policy.plugins = shipping: include in App catalog / Majestic packs (Plugin ON).
+    // Plugin OFF (local) only drops shipping; keeps optionalDownload so empty shells stay hidden
+    // and UNINSTALL still works when engines are on disk.
+    if role == "plugin" {
+        policy.plugins.insert(input.provider_id.clone(), profiles);
+        ensure_factory_shell(&app_handle, &input.provider_id)?;
+        set_factory_optional_download(&input.provider_id, true)?;
+    } else {
+        policy.plugins.remove(&input.provider_id);
+        // Leave optionalDownload=true on factory if already a plugin-shaped fork.
+        set_factory_optional_download(&input.provider_id, true)?;
+    }
+
+    save_policy(&policy)?;
+    regenerate_plugin_catalog_from_policy()?;
+
+    // Live config: always optional for non-core toggles (shipping is policy-only).
+    {
+        let ctx = app_handle.state::<crate::engine::AppContext>();
+        let mut cfg = ctx.config.lock().map_err(|e| e.to_string())?;
+        if let Some(p) = cfg.providers.iter_mut().find(|p| p.id == input.provider_id) {
+            p.optional_download = true;
+            let _ = crate::config::persist_user_providers_meta(&cfg.providers);
+        }
+    }
+
+    get_distribution_dashboard(app_handle)
+}
+
+fn ensure_factory_shell(
+    app_handle: &tauri::AppHandle,
+    provider_id: &str,
+) -> Result<(), String> {
+    let path = factory_src_path(provider_id);
+    if path.is_file() {
+        return Ok(());
+    }
+    let provider = {
+        let ctx = app_handle.state::<crate::engine::AppContext>();
+        let cfg = ctx.config.lock().map_err(|e| e.to_string())?;
+        cfg.providers.iter().find(|p| p.id == provider_id).cloned()
+    };
+    let Some(p) = provider else {
+        return Err(format!("Provider '{provider_id}' not in live config"));
+    };
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create {}: {e}", parent.display()))?;
+    }
+    let mut spawn = crate::config::load_master_spawn_profile_map();
+    spawn.insert(
+        "fit_adapter".into(),
+        serde_json::Value::String("ggml_master".into()),
+    );
+    spawn.insert(
+        "fusion_adapter".into(),
+        serde_json::Value::String("ggml_master".into()),
+    );
+    if !p.launch_profile.essential_param_keys.is_empty() {
+        spawn.insert(
+            "essentialParamKeys".into(),
+            serde_json::to_value(&p.launch_profile.essential_param_keys).unwrap_or_default(),
+        );
+        spawn.insert(
+            "simple_param_keys".into(),
+            serde_json::to_value(&p.launch_profile.essential_param_keys).unwrap_or_default(),
+        );
+    }
+    let seed = serde_json::json!({
+        "id": p.id,
+        "display_name": p.display_name,
+        "description": format!("Optional engine plugin ({})", p.id),
+        "binary_name": "llama-server.exe",
+        "git_url": p.git_url,
+        "branch": p.branch,
+        "build_profile": p.build_profile,
+        "template_type": p.template_type,
+        "optionalDownload": true,
+        "templateVersion": 1,
+        "groupOrder": p.group_order,
+        "layoutDefaults": {
+            "groupDisplayZone": p.group_display_zone,
+            "groupColumn": p.group_column,
+            "configColumnCount": p.config_column_count.unwrap_or(2),
+            "configColumnWidths": p.config_column_widths,
+            "aboveColumnWidths": p.above_column_widths
+        },
+        "params": [],
+        "spawn_profile": spawn
+    });
+    let out = serde_json::to_string_pretty(&seed).map_err(|e| e.to_string())?;
+    std::fs::write(&path, out + "\n")
+        .map_err(|e| format!("Failed to seed factory {}: {e}", path.display()))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn regenerate_distribution_catalog() -> Result<String, String> {
+    assert_dev()?;
+    let path = regenerate_plugin_catalog_from_policy()?;
+    Ok(path.display().to_string())
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DevReleaseAction {
+    /// Single steps or chains:
+    /// check_app | check_full | pack_app | pack_full | ship_app | ship_full |
+    /// pack_provider | ship_provider | bump |
+    /// pack_ship_app (bump+pack+ship) | pack_ship_full | pack_ship_provider
+    pub action: String,
+    pub provider_id: Option<String>,
+    pub profile_id: Option<String>,
+}
+
+fn emit_log(app: &tauri::AppHandle, line: &str) {
+    // Primary sink: Tauri / cargo console (always open during DEV work).
+    log::info!("[majestic] {line}");
+    // Secondary: panel job log (plain text).
+    let _ = app.emit("dev-release-log", serde_json::json!({ "line": line }));
+}
+
+#[tauri::command]
+pub async fn run_dev_release_action(
+    app_handle: tauri::AppHandle,
+    action: DevReleaseAction,
+) -> Result<String, String> {
+    assert_dev()?;
+    if RELEASE_JOB_RUNNING.swap(true, Ordering::SeqCst) {
+        return Err("A release job is already running".into());
+    }
+
+    let result = tokio::task::spawn_blocking({
+        let app = app_handle.clone();
+        let action = action.clone();
+        move || run_dev_release_action_blocking(&app, &action)
+    })
+    .await
+    .map_err(|e| format!("Release job join failed: {e}"));
+
+    RELEASE_JOB_RUNNING.store(false, Ordering::SeqCst);
+    result?
+}
+
+fn majestic_ps1() -> Result<PathBuf, String> {
+    let path = repo_root()
+        .join("scripts")
+        .join("majestic")
+        .join("majestic.ps1");
+    if !path.is_file() {
+        return Err(format!("Missing {}", path.display()));
+    }
+    Ok(path)
+}
+
+/// One majestic.ps1 invocation with -Force (no YES prompts).
+fn run_majestic_step(
+    app: &tauri::AppHandle,
+    mode_args: &[&str],
+) -> Result<(), String> {
+    let root = repo_root();
+    let majestic = majestic_ps1()?;
+    let mut args: Vec<String> = vec![
+        "-NoProfile".into(),
+        "-ExecutionPolicy".into(),
+        "Bypass".into(),
+        "-File".into(),
+        majestic.to_string_lossy().to_string(),
+    ];
+    for a in mode_args {
+        args.push((*a).into());
+    }
+    // Always non-interactive from the app.
+    if !mode_args.iter().any(|a| *a == "-Force") {
+        args.push("-Force".into());
+    }
+
+    emit_log(app, &format!("$ powershell {}", args.join(" ")));
+
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+    let output = std::process::Command::new("powershell.exe")
+        .args(&args)
+        .current_dir(&root)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+        .map_err(|e| format!("Failed to spawn powershell: {e}"))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    for line in stdout.lines().chain(stderr.lines()) {
+        if !line.trim().is_empty() {
+            emit_log(app, line);
+        }
+    }
+    if !output.status.success() {
+        return Err(format!(
+            "Command failed with exit {:?}",
+            output.status.code()
+        ));
+    }
+    Ok(())
+}
+
+fn run_dev_release_action_blocking(
+    app: &tauri::AppHandle,
+    action: &DevReleaseAction,
+) -> Result<String, String> {
+    let provider = action.provider_id.as_deref().filter(|s| !s.is_empty());
+    let profile = action.profile_id.as_deref().filter(|s| !s.is_empty());
+
+    match action.action.as_str() {
+        "bump" => {
+            run_majestic_step(app, &["-Mode", "bump"])?;
+        }
+        "check_app" => {
+            run_majestic_step(app, &["-Mode", "check", "-Variant", "app"])?;
+        }
+        "check_full" => {
+            run_majestic_step(app, &["-Mode", "check", "-Variant", "full"])?;
+        }
+        "pack_app" => {
+            run_majestic_step(app, &["-Mode", "pack", "-Variant", "app"])?;
+        }
+        "pack_full" => {
+            run_majestic_step(app, &["-Mode", "pack", "-Variant", "full"])?;
+        }
+        "ship_app" | "ship_full" => {
+            run_majestic_step(app, &["-Mode", "ship"])?;
+        }
+        "pack_provider" => {
+            let pid = provider.ok_or("pack_provider needs providerId")?;
+            let prof = profile.ok_or("pack_provider needs profileId")?;
+            run_majestic_step(
+                app,
+                &[
+                    "-Mode",
+                    "pack-provider",
+                    "-ProviderId",
+                    pid,
+                    "-ProfileId",
+                    prof,
+                ],
+            )?;
+        }
+        "ship_provider" => {
+            let pid = provider.ok_or("ship_provider needs providerId")?;
+            let prof = profile.ok_or("ship_provider needs profileId")?;
+            run_majestic_step(
+                app,
+                &[
+                    "-Mode",
+                    "ship-provider",
+                    "-ProviderId",
+                    pid,
+                    "-ProfileId",
+                    prof,
+                ],
+            )?;
+        }
+        // Chains (no prompts). App ship auto-bumps patch first.
+        "pack_ship_app" => {
+            emit_log(app, "=== chain: bump + pack app + ship ===");
+            run_majestic_step(app, &["-Mode", "bump"])?;
+            run_majestic_step(app, &["-Mode", "pack", "-Variant", "app"])?;
+            run_majestic_step(app, &["-Mode", "ship"])?;
+        }
+        "pack_ship_full" => {
+            emit_log(app, "=== chain: bump + pack full + ship ===");
+            run_majestic_step(app, &["-Mode", "bump"])?;
+            run_majestic_step(app, &["-Mode", "pack", "-Variant", "full"])?;
+            run_majestic_step(app, &["-Mode", "ship"])?;
+        }
+        "pack_ship_provider" => {
+            let pid = provider.ok_or("pack_ship_provider needs providerId")?;
+            let prof = profile.ok_or("pack_ship_provider needs profileId")?;
+            emit_log(
+                app,
+                &format!("=== chain: pack + ship {pid}/{prof} (no version bump) ==="),
+            );
+            run_majestic_step(
+                app,
+                &[
+                    "-Mode",
+                    "pack-provider",
+                    "-ProviderId",
+                    pid,
+                    "-ProfileId",
+                    prof,
+                ],
+            )?;
+            run_majestic_step(
+                app,
+                &[
+                    "-Mode",
+                    "ship-provider",
+                    "-ProviderId",
+                    pid,
+                    "-ProfileId",
+                    prof,
+                ],
+            )?;
+        }
+        other => return Err(format!("Unknown action '{other}'")),
+    }
+
+    Ok("ok".into())
+}

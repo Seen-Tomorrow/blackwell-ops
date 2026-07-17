@@ -17,36 +17,50 @@ fn command_no_window(program: &Path) -> std::process::Command {
 }
 
 /// Extract a `.7z` archive into `dest_root` (creates dir; overwrite all).
+///
+/// stdout is discarded: 7z progress floods the pipe; with CREATE_NO_WINDOW +
+/// `Command::output()` that deadlocks once the pipe buffer fills (hangs forever
+/// on large provider packs). stderr is still captured for error messages.
 #[cfg(windows)]
 pub fn extract_7z_archive(archive: &Path, dest_root: &Path) -> Result<(), String> {
+    use std::process::Stdio;
+
     let seven_z = resolve_7z_exe()?;
     std::fs::create_dir_all(dest_root)
         .map_err(|e| format!("Failed to create extract dir: {e}"))?;
 
     let dest = dest_root.to_string_lossy().to_string();
-    let output = command_no_window(&seven_z)
+    log::info!(
+        "[7z] Extracting {} -> {} ({})",
+        archive.display(),
+        dest_root.display(),
+        seven_z.display()
+    );
+    let status = command_no_window(&seven_z)
         .args([
             "x",
             &archive.to_string_lossy(),
             &format!("-o{dest}"),
             "-y",
             "-aoa",
+            "-bso0", // quiet normal stdout progress
+            "-bsp0",
         ])
-        .output()
+        .stdin(Stdio::null())
+        // Both null: any large pipe with CREATE_NO_WINDOW can deadlock on Windows.
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
         .map_err(|e| format!("Failed to run 7-Zip: {e}"))?;
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        let stdout = String::from_utf8_lossy(&output.stdout);
+    if !status.success() {
         return Err(format!(
-            "7-Zip extraction failed (exit {:?}): {} {}",
-            output.status.code(),
-            stderr.trim(),
-            stdout.trim()
-        )
-        .trim()
-        .to_string());
+            "7-Zip extraction failed (exit {:?}) for {}",
+            status.code(),
+            archive.display()
+        ));
     }
+    log::info!("[7z] Extract OK: {}", archive.display());
     Ok(())
 }
 

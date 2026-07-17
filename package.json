@@ -1,7 +1,7 @@
 {
   "name": "blackwell-ops",
   "private": true,
-  "version": "1.0.12",
+  "version": "1.0.17",
   "type": "module",
   "scripts": {
     "vite": "vite --host 127.0.0.1 --port 1420",
@@ -27,7 +27,11 @@
     "majestic:ship": "powershell -ExecutionPolicy Bypass -File scripts/majestic/majestic.ps1 -Mode ship",
     "majestic:ship:app": "powershell -ExecutionPolicy Bypass -File scripts/majestic/majestic.ps1 -Mode ship",
     "majestic:toolchain": "powershell -ExecutionPolicy Bypass -File scripts/build-foundry-toolchain.ps1",
-    "majestic:ship-toolchain": "powershell -ExecutionPolicy Bypass -File scripts/majestic/majestic.ps1 -Mode ship-toolchain"
+    "majestic:ship-toolchain": "powershell -ExecutionPolicy Bypass -File scripts/majestic/majestic.ps1 -Mode ship-toolchain",
+    "majestic:pack:provider": "powershell -ExecutionPolicy Bypass -File scripts/majestic/majestic.ps1 -Mode pack-provider",
+    "majestic:ship:provider": "powershell -ExecutionPolicy Bypass -File scripts/majestic/majestic.ps1 -Mode ship-provider",
+    "promote:provider": "node scripts/promote-user-provider-to-runtime.mjs",
+    "pack:provider": "powershell -ExecutionPolicy Bypass -File scripts/pack-provider-runtime.ps1"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.0",

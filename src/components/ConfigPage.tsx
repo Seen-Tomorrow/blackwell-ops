@@ -2,7 +2,7 @@
 
 import React, { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { UserEditedTemplateParam, ProviderConfig, ProviderTemplate, ProviderDefaultParam, ModelPathEntry, PathDiskUsage, LayoutDefaults, ExportFactoryTemplateResult } from "../lib/types";
+import type { UserEditedTemplateParam, ProviderConfig, ProviderTemplate, ProviderDefaultParam, ModelPathEntry, PathDiskUsage, LayoutDefaults, ExportFactoryTemplateResult, UpdateOfferings } from "../lib/types";
 import { DEFAULT_PROVIDER_ID } from "../lib/types";
 import {
   buildParamsForFactoryExport,
@@ -14,6 +14,8 @@ import ValueBubbles from "./ValueBubbles";
 import ProvidersConfig from "./ProvidersConfig";
 import SecretsConfig from "./SecretsConfig";
 import RecoveryConfig from "./RecoveryConfig";
+import UpdatesConfig from "./UpdatesConfig";
+import DistributionDevPanel from "./DistributionDevPanel";
 import ParamCatalogSearch from "./ParamCatalogSearch";
 import ConfigParamLegend from "./ConfigParamLegend";
 import {
@@ -75,11 +77,14 @@ import {
 } from "../lib/systemParams";
 
 
-type ConfigSubTab = "providers" | "params" | "paths" | "secrets" | "recovery";
+type ConfigSubTab = "providers" | "params" | "paths" | "secrets" | "recovery" | "updates" | "distribution";
 
 interface ConfigPageProps {
   providers?: ProviderConfig[];
   setupGuide: SetupGuideState;
+  updateOfferings?: UpdateOfferings | null;
+  onRefreshUpdateOfferings?: () => void | Promise<void>;
+  onBinaryUpdatesChange?: (hasUpdates: boolean) => void;
 }
 
 /** Parse a value as int, float, or string. */
@@ -90,7 +95,13 @@ function parseValue(v: string): string | number {
   return t;
 }
 
-export default function ConfigPage({ providers: externalProviders, setupGuide }: ConfigPageProps) {
+export default function ConfigPage({
+  providers: externalProviders,
+  setupGuide,
+  updateOfferings,
+  onRefreshUpdateOfferings,
+  onBinaryUpdatesChange,
+}: ConfigPageProps) {
   const [subTab, setSubTab] = useState<ConfigSubTab>(() => consumePendingConfigSubTab() ?? "providers");
   const [selectedProviderId, setSelectedProviderId] = useState<string>(DEFAULT_PROVIDER_ID);
   const [allProviders, setAllProviders] = useState<ProviderConfig[]>(externalProviders || []);
@@ -1240,6 +1251,10 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
         <button onClick={() => setSubTab("providers")} className={`app-nav-tab px-3 py-1 text-[10px] font-mono tracking-wider rounded-sm ${subTab === "providers" ? "app-nav-tab-active" : ""}`}>PROVIDERS</button>
         <button onClick={() => setSubTab("params")} className={`app-nav-tab px-3 py-1 text-[10px] font-mono tracking-wider rounded-sm ${subTab === "params" ? "app-nav-tab-active" : ""}`}>PARAMETERS</button>
         <button onClick={() => setSubTab("paths")} data-onboarding="paths-tab" className={`app-nav-tab px-3 py-1 text-[10px] font-mono tracking-wider rounded-sm ${subTab === "paths" ? "app-nav-tab-active" : ""}`}>PATHS</button>
+        <button onClick={() => setSubTab("updates")} className={`app-nav-tab px-3 py-1 text-[10px] font-mono tracking-wider rounded-sm ${subTab === "updates" ? "app-nav-tab-active" : ""}`}>UPDATES</button>
+        {factoryExportEnabled && (
+          <button onClick={() => setSubTab("distribution")} className={`app-nav-tab px-3 py-1 text-[10px] font-mono tracking-wider rounded-sm ${subTab === "distribution" ? "app-nav-tab-active" : ""}`}>DISTRIBUTION</button>
+        )}
         <button onClick={() => setSubTab("secrets")} className={`app-nav-tab px-3 py-1 text-[10px] font-mono tracking-wider rounded-sm ${subTab === "secrets" ? "app-nav-tab-active" : ""}`}>SECRETS</button>
         <button onClick={() => setSubTab("recovery")} className={`app-nav-tab px-3 py-1 text-[10px] font-mono tracking-wider rounded-sm ${subTab === "recovery" ? "app-nav-tab-active" : ""}`}>RECOVERY</button>
        </div>
@@ -1247,6 +1262,18 @@ export default function ConfigPage({ providers: externalProviders, setupGuide }:
        {subTab === "providers" ? (
          <div className="flex-1 flex flex-col overflow-hidden min-h-0">
            <ProvidersConfig providers={allProviders} onProvidersChange={setAllProviders} />
+         </div>
+       ) : subTab === "updates" ? (
+         <div className="flex-1 flex flex-col overflow-hidden min-h-0">
+           <UpdatesConfig
+             offerings={updateOfferings ?? null}
+             onRefreshOfferings={onRefreshUpdateOfferings}
+             onBinaryUpdatesChange={onBinaryUpdatesChange}
+           />
+         </div>
+       ) : subTab === "distribution" && factoryExportEnabled ? (
+         <div className="flex-1 flex flex-col overflow-hidden min-h-0">
+           <DistributionDevPanel />
          </div>
        ) : subTab === "paths" ? (
          <ModelPathsPanel />

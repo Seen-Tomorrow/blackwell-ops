@@ -158,9 +158,27 @@ pub struct BinaryUpdateInfo {
     pub available: bool,
 }
 
+fn norm_release_version(v: &str) -> String {
+    v.trim().trim_start_matches('v').trim().to_string()
+}
+
+fn is_placeholder_install_version(v: &str) -> bool {
+    let n = v.trim().to_ascii_lowercase();
+    n.is_empty()
+        || n == "disk-scanned"
+        || n == "unknown"
+        || n == "bundled"
+        || n == "local"
+}
+
 /// Scan recent releases for `{provider}-{profile}.7z` packs.
+/// `available` = **update** for an installed profile with a known release tag that differs —
+/// not “pack exists on GitHub” (that would forever light the header badge).
 #[tauri::command]
-pub async fn check_binary_updates(provider_id: String) -> Result<Vec<BinaryUpdateInfo>, String> {
+pub async fn check_binary_updates(
+    app_handle: tauri::AppHandle,
+    provider_id: String,
+) -> Result<Vec<BinaryUpdateInfo>, String> {
     if !BINARY_UPDATES_ENABLED {
         log::debug!(
             "[binary-update] Update checks disabled (feature flag off). Skipping for '{}'.",
@@ -168,6 +186,12 @@ pub async fn check_binary_updates(provider_id: String) -> Result<Vec<BinaryUpdat
         );
         return Ok(Vec::new());
     }
+
+    let provider = {
+        let ctx = app_handle.state::<crate::engine::AppContext>();
+        let cfg = ctx.config.lock().map_err(|e| e.to_string())?;
+        cfg.providers.iter().find(|p| p.id == provider_id).cloned()
+    };
 
     let releases = crate::github_releases::fetch_recent_version_releases(40).await?;
     let mut results = Vec::new();
@@ -186,12 +210,45 @@ pub async fn check_binary_updates(provider_id: String) -> Result<Vec<BinaryUpdat
             continue;
         };
 
+        let has_binary = provider
+            .as_ref()
+            .map(|p| {
+                p.binary_path_per_env
+                    .get(profile)
+                    .or_else(|| p.bundled_binary_path_per_env.get(profile))
+                    .or_else(|| p.foundry_binary_path_per_env.get(profile))
+                    .map(|s| !s.is_empty())
+                    .unwrap_or(false)
+            })
+            .unwrap_or(false);
+
+        let installed_version = provider.as_ref().and_then(|p| {
+            p.downloaded_version_per_env
+                .get(profile)
+                .cloned()
+                .or_else(|| {
+                    p.build_info_per_env
+                        .get(profile)
+                        .map(|b| b.version.clone())
+                })
+        });
+
+        // Header/CONFIG badges: only real versioned upgrades of something already installed.
+        let available = has_binary
+            && installed_version
+                .as_ref()
+                .map(|v| !is_placeholder_install_version(v))
+                .unwrap_or(false)
+            && installed_version.as_ref().map_or(false, |inst| {
+                norm_release_version(inst) != norm_release_version(&latest_version)
+            });
+
         results.push(BinaryUpdateInfo {
             profile: profile.to_string(),
             profile_label: label.to_string(),
-            installed_version: None,
+            installed_version,
             latest_version,
-            available: true,
+            available,
         });
     }
 
@@ -264,24 +321,38 @@ pub fn activate_provider_pack(
     server_exe: &Path,
     release_tag: &str,
 ) -> Result<(), String> {
-    let cfg_state = app_handle.state::<std::sync::Mutex<crate::config::AppConfig>>();
+    // Must match managed type in main.rs: Arc<Mutex<AppConfig>> (not bare Mutex).
+    let cfg_state =
+        app_handle.state::<std::sync::Arc<std::sync::Mutex<crate::config::AppConfig>>>();
     let mut cfg = cfg_state
         .lock()
         .map_err(|e| format!("Failed to lock config: {e}"))?;
 
+    let mut refreshed = false;
+    if cfg.providers.iter().all(|p| p.id != provider_id) {
+        crate::config::refresh_providers_from_disk(&mut cfg);
+        refreshed = true;
+    }
+
     if let Some(provider) = cfg.providers.iter_mut().find(|p| p.id == provider_id) {
         let rel = crate::config::to_relative_path(&server_exe.to_path_buf());
+        let tag = release_tag.trim().to_string();
+        let ver_label = tag.trim_start_matches('v').to_string();
+
         provider
             .binary_path_per_env
             .insert(profile.to_string(), rel.clone());
+        // Stamp marks this runtime/ engine as a catalog pack (not NSIS "bundled").
         provider
             .downloaded_version_per_env
-            .insert(profile.to_string(), release_tag.to_string());
+            .insert(profile.to_string(), tag.clone());
+        // Inventory still lives under runtime/ — source_pref "bundled" maps to that slot;
+        // UI uses downloaded_version_per_env to label it Catalog pack.
         provider
             .binary_source_per_env
             .insert(profile.to_string(), crate::profile_binaries::SOURCE_BUNDLED.to_string());
 
-        if let Some(info) = std::fs::metadata(server_exe)
+        if let Some(mut info) = std::fs::metadata(server_exe)
             .ok()
             .and_then(|m| m.modified().ok())
             .map(|mt| {
@@ -289,16 +360,28 @@ pub fn activate_provider_pack(
                     .format("%Y-%m-%d %H:%M")
                     .to_string();
                 crate::types::BuildInfo {
-                    version: release_tag.trim_start_matches('v').to_string(),
+                    version: ver_label.clone(),
                     build_date,
                     cuda_version: None,
                     cuda_architectures: None,
                 }
             })
         {
+            info = crate::engine_utils::enrich_build_info_cuda_arch(info, &provider.build_profile);
             provider
                 .build_info_per_env
+                .insert(profile.to_string(), info.clone());
+            // Keep inventory row in sync so PROVIDERS shows version + arch immediately.
+            provider
+                .bundled_binary_path_per_env
+                .insert(profile.to_string(), rel.clone());
+            provider
+                .bundled_build_info_per_env
                 .insert(profile.to_string(), info);
+        }
+
+        if provider.binary_path.is_empty() || profile == crate::config::DEFAULT_BINARY_PROFILE {
+            provider.binary_path = rel;
         }
 
         log::info!(
@@ -308,10 +391,13 @@ pub fn activate_provider_pack(
             server_exe.display(),
             release_tag
         );
-    } else {
-        // New fork: templates may have just landed; discovery on next reload will pick it up.
+    } else if refreshed {
         log::warn!(
-            "[binary-update] Provider '{provider_id}' not in live config yet — pack extracted to disk"
+            "[binary-update] Provider '{provider_id}' pack extracted but not activated — restart app or reload providers"
+        );
+    } else {
+        log::warn!(
+            "[binary-update] Provider '{provider_id}' not in live config after pack extract"
         );
     }
 
@@ -327,6 +413,18 @@ pub struct BinaryUpdateEvent {
     pub profile: String,
     pub status: String,
     pub message: String,
+}
+
+#[tauri::command]
+pub async fn get_plugin_catalog(
+    app_handle: tauri::AppHandle,
+) -> Result<crate::plugin_catalog::PluginCatalogResponse, String> {
+    let providers = {
+        let ctx = app_handle.state::<crate::engine::AppContext>();
+        let cfg = ctx.config.lock().map_err(|e| e.to_string())?;
+        cfg.providers.clone()
+    };
+    crate::plugin_catalog::build_plugin_catalog(&providers).await
 }
 
 #[tauri::command]
@@ -369,7 +467,7 @@ fn empty_update_offerings(current_version: String) -> crate::github_releases::Up
             tag: String::new(),
             size_bytes: 0,
             label: "App update".to_string(),
-            summary: "Portable UI + templates (~few MB) — keeps your engines".to_string(),
+            summary: "Portable UI + templates (~few MB) - keeps your engines".to_string(),
             release_notes: None,
         },
         full_bundle: crate::github_releases::UpdateChannelOffering {
@@ -478,11 +576,16 @@ pub async fn get_startup_updates(app_handle: tauri::AppHandle) -> Result<Startup
     }
 
     let offerings_future = resolve_update_offerings(&app_handle);
-    let ggml_future = check_binary_updates(crate::config::DEFAULT_PROVIDER_ID.to_string());
-    let tom_future = check_binary_updates("ggml-tom".to_string());
+    let catalog_future = async {
+        let providers = {
+            let ctx = app_handle.state::<crate::engine::AppContext>();
+            let cfg = ctx.config.lock().map_err(|e| e.to_string())?;
+            cfg.providers.clone()
+        };
+        crate::plugin_catalog::build_plugin_catalog(&providers).await
+    };
 
-    let (offerings_result, ggml_result, tom_result) =
-        tokio::join!(offerings_future, ggml_future, tom_future);
+    let (offerings_result, catalog_result) = tokio::join!(offerings_future, catalog_future);
 
     let update_offerings = match offerings_result {
         Ok(o) => o,
@@ -495,21 +598,42 @@ pub async fn get_startup_updates(app_handle: tauri::AppHandle) -> Result<Startup
 
     let mut binary_updates = Vec::new();
 
-    for (provider_id, result) in [
-        (crate::config::DEFAULT_PROVIDER_ID, ggml_result),
-        ("ggml-tom", tom_result),
-    ] {
-        match result {
-            Ok(updates) => {
-                if !updates.is_empty() {
-                    binary_updates.push(ProviderBinaryUpdates {
-                        provider_id: provider_id.to_string(),
-                        updates,
-                    });
-                }
-            }
-            Err(e) => {
-                log::warn!("[startup-updates] Binary check failed for {provider_id}: {e}");
+    match check_binary_updates(
+        app_handle.clone(),
+        crate::config::DEFAULT_PROVIDER_ID.to_string(),
+    )
+    .await
+    {
+        Ok(updates) if !updates.is_empty() => {
+            binary_updates.push(ProviderBinaryUpdates {
+                provider_id: crate::config::DEFAULT_PROVIDER_ID.to_string(),
+                updates,
+            });
+        }
+        Ok(_) => {}
+        Err(e) => log::warn!("[startup-updates] Binary check failed for ggml-master: {e}"),
+    }
+
+    // Only installed plugins with a newer pack — do not badge "not installed yet" catalog rows.
+    if let Ok(catalog) = catalog_result {
+        for plugin in &catalog.plugins {
+            let pending: Vec<BinaryUpdateInfo> = plugin
+                .profiles
+                .iter()
+                .filter(|r| r.update_available)
+                .map(|r| BinaryUpdateInfo {
+                    profile: r.profile.clone(),
+                    profile_label: r.profile_label.clone(),
+                    installed_version: r.installed_version.clone(),
+                    latest_version: r.pack_version.trim_start_matches('v').to_string(),
+                    available: true,
+                })
+                .collect();
+            if !pending.is_empty() {
+                binary_updates.push(ProviderBinaryUpdates {
+                    provider_id: plugin.id.clone(),
+                    updates: pending,
+                });
             }
         }
     }
@@ -527,7 +651,8 @@ pub async fn revert_binary_to_bundled(
     provider_id: String,
     profile: String,
 ) -> Result<(), String> {
-    let cfg_state = app_handle.state::<std::sync::Mutex<crate::config::AppConfig>>();
+    let cfg_state =
+        app_handle.state::<std::sync::Arc<std::sync::Mutex<crate::config::AppConfig>>>();
     let mut cfg = cfg_state
         .lock()
         .map_err(|e| format!("Failed to lock config: {e}"))?;

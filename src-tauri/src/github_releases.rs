@@ -361,7 +361,7 @@ pub async fn fetch_update_offerings(current_version: &str) -> Result<UpdateOffer
         offering_from_hit(
             CHANNEL_APP_ONLY,
             "App update",
-            "Portable UI + templates (~few MB) — keeps your engines",
+            "Portable UI + templates (~few MB) - keeps your engines",
             &release,
             &asset,
         )
@@ -369,7 +369,7 @@ pub async fn fetch_update_offerings(current_version: &str) -> Result<UpdateOffer
         empty_offering(
             CHANNEL_APP_ONLY,
             "App update",
-            "Portable UI + templates (~few MB) — keeps your engines",
+            "Portable UI + templates (~few MB) - keeps your engines",
         )
     };
 
@@ -412,6 +412,19 @@ pub async fn fetch_update_offerings(current_version: &str) -> Result<UpdateOffer
 }
 
 /// Resolve provider pack URL from the newest semver release that contains the asset.
+pub async fn find_provider_pack_offering(
+    provider_id: &str,
+    profile: &str,
+) -> Option<(String, u64)> {
+    let releases = fetch_recent_version_releases(40).await.ok()?;
+    for release in releases {
+        if let Some(asset) = find_provider_pack(&release, provider_id, profile) {
+            return Some((release.tag_name.clone(), asset.size));
+        }
+    }
+    None
+}
+
 pub async fn resolve_provider_pack_asset(
     provider_id: &str,
     profile: &str,
@@ -486,14 +499,15 @@ pub fn launch_nsis_installer(installer_path: &Path, app_handle: &tauri::AppHandl
         installer_path.display()
     );
 
-    std::process::Command::new("cmd")
-        .args([
-            "/C",
-            &format!(
-                "start \"\" /wait \"{}\" /S /UPDATE",
-                installer_path.display()
-            ),
-        ])
+    // Launch NSIS with no cmd chrome; /S is silent install UI.
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    std::process::Command::new(installer_path)
+        .args(["/S", "/UPDATE"])
+        .creation_flags(CREATE_NO_WINDOW)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
         .spawn()
         .map_err(|e| format!("Failed to launch installer: {e}"))?;
 
@@ -546,9 +560,24 @@ pub fn apply_app_update_archive(
         );
     }
 
-    // Merge factory templates — never touch engine profile dirs
     let staged_runtime = payload.join("runtime");
     if staged_runtime.is_dir() {
+        // Plugin catalog (optional fork metadata)
+        let catalog_src = staged_runtime.join("catalog");
+        if catalog_src.is_dir() {
+            let catalog_dst = app_root.join("runtime").join("catalog");
+            crate::archive_util::copy_dir_merge(&catalog_src, &catalog_dst)?;
+            log::info!(
+                "[app-update] Merged plugin catalog -> {}",
+                catalog_dst.display()
+            );
+        } else {
+            log::warn!(
+                "[app-update] App archive has no runtime/catalog/ — engine catalog will not refresh until a build that ships plugins.json"
+            );
+        }
+
+        // Merge core factory templates only — never touch engine profile dirs or optional plugin configs
         for provider_entry in std::fs::read_dir(&staged_runtime)
             .map_err(|e| format!("Failed to read staged runtime: {e}"))?
         {
@@ -583,14 +612,18 @@ pub fn apply_app_update_archive(
     let current_exe = std::env::current_exe()
         .map_err(|e| format!("Failed to resolve current exe: {e}"))?;
     let pid = std::process::id();
-    let helper = app_update_cache_dir().join("apply-app-update.cmd");
+    let cache = app_update_cache_dir();
+    let helper = cache.join("apply-app-update.cmd");
+    let log_path = cache.join("apply-app-update.log");
+    // Silent helper: no console UI. Progress goes only to the log file.
     let helper_body = format!(
         "@echo off\r\n\
 setlocal\r\n\
-set PID={pid}\r\n\
-set NEW_EXE={new_exe}\r\n\
-set DEST_EXE={dest_exe}\r\n\
-echo [app-update] Waiting for PID %PID% to exit...\r\n\
+set \"PID={pid}\"\r\n\
+set \"NEW_EXE={new_exe}\"\r\n\
+set \"DEST_EXE={dest_exe}\"\r\n\
+set \"LOG={log_path}\"\r\n\
+>>\"%LOG%\" echo [%DATE% %TIME%] waiting for PID %PID%\r\n\
 :waitloop\r\n\
 tasklist /FI \"PID eq %PID%\" 2>NUL | find \"%PID%\" >NUL\r\n\
 if not errorlevel 1 (\r\n\
@@ -598,32 +631,48 @@ if not errorlevel 1 (\r\n\
   goto waitloop\r\n\
 )\r\n\
 timeout /t 1 /nobreak >NUL\r\n\
-echo [app-update] Replacing executable...\r\n\
-copy /Y \"%NEW_EXE%\" \"%DEST_EXE%\" >NUL\r\nif errorlevel 1 (\r\n\
-  echo [app-update] copy failed\r\n\
-  pause\r\n\
+>>\"%LOG%\" echo [%DATE% %TIME%] replacing executable\r\n\
+copy /Y \"%NEW_EXE%\" \"%DEST_EXE%\" >NUL\r\n\
+if errorlevel 1 (\r\n\
+  >>\"%LOG%\" echo [%DATE% %TIME%] copy failed\r\n\
   exit /b 1\r\n\
 )\r\n\
-echo [app-update] Relaunching...\r\n\
+>>\"%LOG%\" echo [%DATE% %TIME%] relaunching\r\n\
 start \"\" \"%DEST_EXE%\"\r\n\
+>>\"%LOG%\" echo [%DATE% %TIME%] done\r\n\
 endlocal\r\n",
         pid = pid,
         new_exe = new_exe.display(),
         dest_exe = current_exe.display(),
+        log_path = log_path.display(),
     );
     std::fs::write(&helper, helper_body)
         .map_err(|e| format!("Failed to write update helper: {e}"))?;
 
     log::info!(
-        "[app-update] Scheduling exe swap via {}",
-        helper.display()
+        "[app-update] Scheduling silent exe swap via {} (log: {})",
+        helper.display(),
+        log_path.display()
     );
-    std::process::Command::new("cmd")
-        .args(["/C", "start", "", "/MIN", &helper.to_string_lossy()])
-        .spawn()
-        .map_err(|e| format!("Failed to start update helper: {e}"))?;
+    spawn_silent_cmd_script(&helper)?;
 
     schedule_app_exit(app_handle, 1);
+    Ok(())
+}
+
+/// Run a `.cmd`/`.bat` with no console window (CREATE_NO_WINDOW).
+fn spawn_silent_cmd_script(script: &Path) -> Result<(), String> {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+    std::process::Command::new("cmd.exe")
+        .args(["/C", &script.to_string_lossy()])
+        .creation_flags(CREATE_NO_WINDOW)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map_err(|e| format!("Failed to start update helper: {e}"))?;
     Ok(())
 }
 

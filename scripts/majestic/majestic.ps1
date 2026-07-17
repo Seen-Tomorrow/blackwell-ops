@@ -1,15 +1,22 @@
 # Majestic - private release automation for Blackwell Ops.
-# Usage: .\scripts\majestic\majestic.ps1 -Mode check|pack|ship|bump [-DryRun]
+# Usage: .\scripts\majestic\majestic.ps1 -Mode check|pack|ship|bump|pack-provider|ship-provider [-DryRun]
 
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('check', 'pack', 'ship', 'bump', 'ship-toolchain')]
+    [ValidateSet('check', 'pack', 'ship', 'bump', 'ship-toolchain', 'pack-provider', 'ship-provider')]
     [string]$Mode,
 
     [ValidateSet('app', 'full')]
     [string]$Variant = 'full',
 
-    [switch]$DryRun
+    # pack-provider / ship-provider
+    [string]$ProviderId = '',
+    [string]$ProfileId = '',
+
+    [switch]$DryRun,
+
+    # Skip YES prompts (bump / ship) - used by DEV Distribution panel
+    [switch]$Force
 )
 
 $ErrorActionPreference = 'Stop'
@@ -35,7 +42,21 @@ function Read-MajesticConfig {
     if (-not (Test-Path -LiteralPath $config_path)) {
         throw "Missing majestic.config.json at $config_path"
     }
-    Get-Content -LiteralPath $config_path -Raw | ConvertFrom-Json
+    $cfg = Get-Content -LiteralPath $config_path -Raw | ConvertFrom-Json
+    # Provider maps always come from scripts/distribution-policy.json (DEV app + scripts).
+    Import-RuntimeDistributionPolicy
+
+    $nsis_obj = New-Object PSObject
+    foreach ($kv in $script:NsisCoreProviders.GetEnumerator()) {
+        $nsis_obj | Add-Member -NotePropertyName $kv.Key -NotePropertyValue @($kv.Value) -Force
+    }
+    $packs_obj = New-Object PSObject
+    foreach ($kv in $script:RuntimeBundleProfiles.GetEnumerator()) {
+        $packs_obj | Add-Member -NotePropertyName $kv.Key -NotePropertyValue @($kv.Value) -Force
+    }
+    $cfg | Add-Member -NotePropertyName nsisProviders -NotePropertyValue $nsis_obj -Force
+    $cfg | Add-Member -NotePropertyName providers -NotePropertyValue $packs_obj -Force
+    return $cfg
 }
 
 function Get-TauriConfPath {
@@ -157,12 +178,27 @@ function Get-ReleaseNotesForVariant {
         if ($Config.ship.appOnlyReleaseNotes) {
             return [string]$Config.ship.appOnlyReleaseNotes
         }
+    } elseif ($Variant -eq 'provider') {
+        if ($Config.ship.providerReleaseNotes) {
+            return [string]$Config.ship.providerReleaseNotes
+        }
     } else {
         if ($Config.ship.fullBundleReleaseNotes) {
             return [string]$Config.ship.fullBundleReleaseNotes
         }
     }
     return [string]$Config.ship.releaseNotes
+}
+
+function Write-GhReleaseNotesFile {
+    param([string]$Notes)
+    if (-not (Test-Path -LiteralPath $out_root)) {
+        New-Item -ItemType Directory -Path $out_root -Force | Out-Null
+    }
+    $path = Join-Path $out_root 'release-notes-body.md'
+    $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+    [System.IO.File]::WriteAllText($path, $Notes, $utf8NoBom)
+    return $path
 }
 
 function Invoke-PrepareReleaseBundle {
@@ -286,10 +322,13 @@ function Test-ProfileArtifact {
     }
 }
 
-function Get-RequiredProfiles {
-    param($Config)
+function Get-ProviderProfileRows {
+    param(
+        $MapObject
+    )
     $rows = @()
-    foreach ($prop in $Config.providers.PSObject.Properties) {
+    if ($null -eq $MapObject) { return $rows }
+    foreach ($prop in $MapObject.PSObject.Properties) {
         $provider_id = $prop.Name
         foreach ($profile_id in @($prop.Value)) {
             $rows += [PSCustomObject]@{
@@ -301,6 +340,22 @@ function Get-RequiredProfiles {
     $rows
 }
 
+# NSIS Full installer engines only (ggml-master by policy).
+function Get-NsisRequiredProfiles {
+    param($Config)
+    if ($null -ne $Config.PSObject.Properties['nsisProviders'] -and $null -ne $Config.nsisProviders) {
+        return Get-ProviderProfileRows -MapObject $Config.nsisProviders
+    }
+    # Legacy: fall back to full providers map
+    return Get-ProviderProfileRows -MapObject $Config.providers
+}
+
+# Optional plugin packs + any provider listed for selective .7z shipping.
+function Get-ProviderPackProfiles {
+    param($Config)
+    return Get-ProviderProfileRows -MapObject $Config.providers
+}
+
 function Invoke-MajesticCheck {
     param(
         $Config,
@@ -309,7 +364,8 @@ function Invoke-MajesticCheck {
 
     $version = Read-AppVersion
     $tag = Get-TagName -Version $version -Prefix $Config.tagPrefix
-    $required = Get-RequiredProfiles -Config $Config
+    $nsis_required = Get-NsisRequiredProfiles -Config $Config
+    $pack_profiles = Get-ProviderPackProfiles -Config $Config
     $kind_label = Get-PackKindLabel -Kind $Variant
 
     Write-Majestic "Version $version  |  tag $tag  |  repo $($Config.repo)" -Color Cyan
@@ -317,42 +373,70 @@ function Invoke-MajesticCheck {
 
     $missing_artifacts = @()
     if ($Variant -eq 'full') {
-        $artifact_rows = foreach ($row in $required) {
+        Write-Majestic "NSIS core engines (must be ready):" -Color Cyan
+        $artifact_rows = foreach ($row in $nsis_required) {
             Test-ProfileArtifact -ProviderId $row.Provider -ProfileId $row.Profile
         }
 
         $missing_artifacts = @($artifact_rows | Where-Object { -not $_.Ready })
         if ($missing_artifacts.Count -eq 0) {
-            Write-Majestic "Foundry artifacts: all $($artifact_rows.Count) profile(s) ready." -Color Green
+            Write-Majestic "Foundry artifacts (NSIS): all $($artifact_rows.Count) profile(s) ready." -Color Green
         } else {
-            Write-Majestic "Foundry artifacts: $($missing_artifacts.Count) missing - build in Foundry first." -Color Red
+            Write-Majestic "Foundry artifacts (NSIS): $($missing_artifacts.Count) missing - build in Foundry first." -Color Red
             foreach ($m in $missing_artifacts) {
                 Write-Majestic "  - $($m.Provider)/$($m.Profile)" -Color Red
             }
         }
 
         $runtime_root = Join-Path $root 'src-tauri\runtime'
-        foreach ($row in $required) {
+        foreach ($row in $nsis_required) {
             $runtime_server = Join-Path $runtime_root "$($row.Provider)\$($row.Profile)\llama-server.exe"
-            $label = "$($row.Provider)/$($row.Profile) runtime mirror"
+            $label = "NSIS $($row.Provider)/$($row.Profile) runtime mirror"
             if (Test-Path -LiteralPath $runtime_server) {
                 Write-Majestic "$label : ok" -Color Green
             } else {
                 Write-Majestic "$label : missing (pack will mirror)" -Color Yellow
             }
         }
+
+        Write-Majestic "Optional plugin packs (warn only if missing):" -Color Cyan
+        foreach ($row in $pack_profiles) {
+            $is_nsis = $false
+            foreach ($n in $nsis_required) {
+                if ($n.Provider -eq $row.Provider -and $n.Profile -eq $row.Profile) { $is_nsis = $true; break }
+            }
+            if ($is_nsis) { continue }
+            $art = Test-ProfileArtifact -ProviderId $row.Provider -ProfileId $row.Profile
+            $label = "plugin $($row.Provider)/$($row.Profile)"
+            if ($art.Ready) {
+                Write-Majestic "$label : ready to pack" -Color Green
+            } else {
+                Write-Majestic "$label : missing (skip on pack unless Foundry-built)" -Color Yellow
+            }
+        }
     } else {
         Write-Majestic "App-Only: skipping Foundry artifact checks." -Color DarkGray
         $runtime_root = Join-Path $root 'src-tauri\runtime'
         $template_ok = $true
-        foreach ($prop in $Config.providers.PSObject.Properties) {
-            $provider_id = $prop.Name
+        # Core NSIS provider templates must exist; optional plugins only need factory JSON for catalog.
+        $core_ids = @($nsis_required | ForEach-Object { $_.Provider } | Select-Object -Unique)
+        foreach ($provider_id in $core_ids) {
             $template = Join-Path $runtime_root "$provider_id\config\$provider_id-default-config.json"
             if (Test-Path -LiteralPath $template) {
-                Write-Majestic "Template $provider_id : ok" -Color Green
+                Write-Majestic "Core template $provider_id : ok" -Color Green
             } else {
-                Write-Majestic "Template $provider_id : MISSING ($template)" -Color Red
+                Write-Majestic "Core template $provider_id : MISSING ($template)" -Color Red
                 $template_ok = $false
+            }
+        }
+        foreach ($prop in $Config.providers.PSObject.Properties) {
+            $provider_id = $prop.Name
+            if ($core_ids -contains $provider_id) { continue }
+            $template = Join-Path $runtime_root "$provider_id\config\$provider_id-default-config.json"
+            if (Test-Path -LiteralPath $template) {
+                Write-Majestic "Plugin template $provider_id : ok (catalog)" -Color Green
+            } else {
+                Write-Majestic "Plugin template $provider_id : missing (catalog entry skipped until promoted)" -Color Yellow
             }
         }
         if (-not $template_ok) {
@@ -440,9 +524,27 @@ function Test-InstallerFresh {
     return $age -le [double]$Config.pack.installerMaxAgeMinutes
 }
 
+function Get-Sha256Hex {
+    param([string]$Path)
+    if (Get-Command Get-FileHash -ErrorAction SilentlyContinue) {
+        return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
+    }
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $stream = [System.IO.File]::OpenRead($Path)
+        try {
+            return ([BitConverter]::ToString($sha.ComputeHash($stream)) -replace '-', '').ToLowerInvariant()
+        } finally {
+            $stream.Dispose()
+        }
+    } finally {
+        $sha.Dispose()
+    }
+}
+
 function New-ManifestEntry {
     param([System.IO.FileInfo]$File)
-    $hash = (Get-FileHash -LiteralPath $File.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+    $hash = Get-Sha256Hex -Path $File.FullName
     [PSCustomObject]@{
         name   = $File.Name
         path   = $File.FullName
@@ -600,10 +702,14 @@ function Invoke-MajesticBump {
         return
     }
 
-    $confirm = Read-Host "Type YES to bump to $newVersion"
-    if ($confirm -ne 'YES') {
-        Write-Majestic "Bump cancelled." -Color Yellow
-        return
+    if (-not $Force) {
+        $confirm = Read-Host "Type YES to bump to $newVersion"
+        if ($confirm -ne 'YES') {
+            Write-Majestic "Bump cancelled." -Color Yellow
+            return
+        }
+    } else {
+        Write-Majestic "Force: bumping to $newVersion without prompt" -Color DarkGray
     }
 
     Set-JsonFileVersion -Path (Get-TauriConfPath) -NewVersion $newVersion
@@ -666,12 +772,13 @@ function New-GhReleaseWithAssets {
         [string[]]$Assets
     )
 
-    # gh creates draft -> uploads files -> publishes (safe when repo immutability is on)
+    # Notes via UTF-8 file - avoids mojibake from --notes on Windows consoles
+    $notes_file = Write-GhReleaseNotesFile -Notes $Notes
     $gh_args = @(
         'release', 'create', $Tag,
         '--repo', $Repo,
         '--title', $Tag,
-        '--notes', $Notes
+        '--notes-file', $notes_file
     ) + $Assets
 
     $prev_eap = $ErrorActionPreference
@@ -777,10 +884,14 @@ function Invoke-MajesticShip {
         return
     }
 
-    $confirm = Read-Host "Type YES to ship $tag"
-    if ($confirm -ne 'YES') {
-        Write-Majestic "Ship cancelled." -Color Yellow
-        return
+    if (-not $Force) {
+        $confirm = Read-Host "Type YES to ship $tag"
+        if ($confirm -ne 'YES') {
+            Write-Majestic "Ship cancelled." -Color Yellow
+            return
+        }
+    } else {
+        Write-Majestic "Force: shipping $tag without prompt" -Color DarkGray
     }
 
     if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
@@ -830,6 +941,13 @@ function Invoke-MajesticShip {
             if ($LASTEXITCODE -ne 0) {
                 throw "gh release upload failed"
             }
+            # Refresh body so a later full ship does not leave stale App-only notes (and vice versa)
+            Write-Majestic "Updating release notes for packKind=$pack_kind..." -Color DarkGray
+            $notes_file = Write-GhReleaseNotesFile -Notes $release_notes
+            gh release edit $tag --repo $Config.repo --notes-file $notes_file
+            if ($LASTEXITCODE -ne 0) {
+                Write-Majestic "Warning: assets uploaded but release notes edit failed" -Color Yellow
+            }
         }
 
         Write-Majestic "SHIPPED $tag - https://github.com/$($Config.repo)/releases/tag/$tag" -Color Green
@@ -862,10 +980,14 @@ function Invoke-MajesticShipToolchain {
         return
     }
 
-    $confirm = Read-Host "Type YES to ship toolchain.7z"
-    if ($confirm -ne 'YES') {
-        Write-Majestic "Ship cancelled." -Color Yellow
-        return
+    if (-not $Force) {
+        $confirm = Read-Host "Type YES to ship toolchain.7z"
+        if ($confirm -ne 'YES') {
+            Write-Majestic "Ship cancelled." -Color Yellow
+            return
+        }
+    } else {
+        Write-Majestic "Force: shipping toolchain.7z without prompt" -Color DarkGray
     }
 
     if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
@@ -893,6 +1015,109 @@ function Invoke-MajesticShipToolchain {
     Write-Majestic "SHIPPED toolchain - https://github.com/$($Config.repo)/releases/tag/$tag" -Color Green
 }
 
+function Invoke-MajesticPackProvider {
+    param(
+        $Config,
+        [string]$ProviderId,
+        [string]$ProfileId
+    )
+    if ([string]::IsNullOrWhiteSpace($ProviderId) -or [string]::IsNullOrWhiteSpace($ProfileId)) {
+        throw "pack-provider requires -ProviderId and -ProfileId (e.g. bee-llama frontier)"
+    }
+    $version = Read-AppVersion
+    $tag = Get-TagName -Version $version -Prefix $Config.tagPrefix
+    Write-Majestic "PACK PROVIDER $ProviderId/$ProfileId (tag $tag)" -Color Cyan
+
+    if (-not (Test-Path -LiteralPath $out_root)) {
+        New-Item -ItemType Directory -Path $out_root -Force | Out-Null
+    }
+
+    $pack_script = Join-Path $root 'scripts\pack-provider-runtime.ps1'
+    if ($DryRun) {
+        Write-Majestic "[dry-run] would pack $ProviderId-$ProfileId.7z" -Color Yellow
+        return
+    }
+    $pack_log = & $pack_script -OutDir $out_root -ProviderId $ProviderId -ProfileId $ProfileId *>&1
+    $pack_exit = $LASTEXITCODE
+    foreach ($line in @($pack_log)) {
+        if ($null -ne $line -and "$line".Length -gt 0) { Write-Host $line }
+    }
+    if ($pack_exit -ne 0) {
+        throw "pack-provider-runtime.ps1 failed for $ProviderId/$ProfileId"
+    }
+
+    $archive = Join-Path $out_root "$ProviderId-$ProfileId.7z"
+    if (-not (Test-Path -LiteralPath $archive)) {
+        throw "Expected pack missing: $archive"
+    }
+    $manifest = [PSCustomObject]@{
+        version   = $version
+        tag       = $tag
+        packKind  = 'provider'
+        createdAt = (Get-Date).ToUniversalTime().ToString('o')
+        repo      = $Config.repo
+        files     = @(New-ManifestEntry -File (Get-Item -LiteralPath $archive))
+    }
+    $manifest_path = Join-Path $out_root "manifest-$tag-provider-$ProviderId-$ProfileId.json"
+    $manifest | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $manifest_path -Encoding UTF8
+    Write-Majestic "PACK PROVIDER DONE: $archive" -Color Green
+    Write-Majestic "Ship with: npm run majestic:ship:provider -- -ProviderId $ProviderId -ProfileId $ProfileId" -Color Cyan
+    Write-Majestic "  or: gh release upload $tag --repo $($Config.repo) --clobber `"$archive`"" -Color DarkGray
+}
+
+function Invoke-MajesticShipProvider {
+    param(
+        $Config,
+        [string]$ProviderId,
+        [string]$ProfileId
+    )
+    Assert-ShipUnlocked
+    if ([string]::IsNullOrWhiteSpace($ProviderId) -or [string]::IsNullOrWhiteSpace($ProfileId)) {
+        throw "ship-provider requires -ProviderId and -ProfileId"
+    }
+    $version = Read-AppVersion
+    $tag = Get-TagName -Version $version -Prefix $Config.tagPrefix
+    $archive = Join-Path $out_root "$ProviderId-$ProfileId.7z"
+    if (-not (Test-Path -LiteralPath $archive)) {
+        throw "No pack at $archive - run pack-provider first"
+    }
+
+    Write-Majestic "About to upload $ProviderId-$ProfileId.7z to $tag on $($Config.repo)" -Color Cyan
+    if ($DryRun) {
+        Write-Majestic "[dry-run] would upload $archive" -Color Yellow
+        return
+    }
+    if (-not $Force) {
+        $confirm = Read-Host "Type YES to ship $ProviderId-$ProfileId.7z to $tag"
+        if ($confirm -ne 'YES') {
+            Write-Majestic "Ship cancelled." -Color Yellow
+            return
+        }
+    } else {
+        Write-Majestic "Force: shipping $ProviderId-$ProfileId.7z without prompt" -Color DarkGray
+    }
+
+    $notes = [string]$Config.ship.providerReleaseNotes
+    if ([string]::IsNullOrWhiteSpace($notes)) {
+        $notes = "Engine pack $ProviderId-$ProfileId"
+    }
+    $notes = $notes -replace '\{provider\}', $ProviderId -replace '\{profile\}', $ProfileId
+
+    $release_meta = Get-GhReleaseView -Tag $tag -Repo $Config.repo
+    if ($null -eq $release_meta) {
+        $create_result = New-GhReleaseWithAssets -Tag $tag -Repo $Config.repo -Notes $notes -Assets @($archive)
+        if ($create_result.ExitCode -ne 0) {
+            Throw-GhReleaseCreateFailed -Tag $tag -Repo $Config.repo -GhOutput $create_result.Output
+        }
+    } elseif ($release_meta.isImmutable) {
+        Throw-ImmutableReleaseBlocked -Tag $tag -Repo $Config.repo -AssetCount @($release_meta.assets).Count
+    } else {
+        gh release upload $tag --repo $Config.repo --clobber $archive
+        if ($LASTEXITCODE -ne 0) { throw "gh release upload failed" }
+    }
+    Write-Majestic "SHIPPED $ProviderId-$ProfileId.7z -> https://github.com/$($Config.repo)/releases/tag/$tag" -Color Green
+}
+
 switch ($Mode) {
     'check' {
         $ready = Invoke-MajesticCheck -Config $config -Variant $Variant
@@ -902,4 +1127,6 @@ switch ($Mode) {
     'ship' { Invoke-MajesticShip -Config $config }
     'bump' { Invoke-MajesticBump }
     'ship-toolchain' { Invoke-MajesticShipToolchain -Config $config }
+    'pack-provider' { Invoke-MajesticPackProvider -Config $config -ProviderId $ProviderId -ProfileId $ProfileId }
+    'ship-provider' { Invoke-MajesticShipProvider -Config $config -ProviderId $ProviderId -ProfileId $ProfileId }
 }

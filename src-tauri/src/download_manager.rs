@@ -1646,13 +1646,12 @@ async fn finalize_provider_pack_worker(
     })
     .await;
 
-    let mut dm = manager.write().await;
-    let Some(task) = dm.tasks.get_mut(task_id) else {
-        return;
-    };
-
-    match apply_result {
+    // Activate without holding the download manager lock (avoids deadlock + panic fallout).
+    let final_status = match apply_result {
         Ok(Ok(server)) => {
+            log::info!(
+                "[download] Provider pack extracted OK, activating {provider_id}/{profile}"
+            );
             let activate = match &app_handle {
                 Some(handle) => crate::binary_update::activate_provider_pack(
                     handle,
@@ -1665,37 +1664,60 @@ async fn finalize_provider_pack_worker(
             };
             match activate {
                 Ok(()) => {
-                    task.status = DownloadStatus::Completed;
-                    task.error = Some(format!("Installed {provider_id}/{profile}"));
                     log::info!("[download] Provider pack installed: {task_id}");
-                    crate::ipc_meter::emit_tracked(
-                        app_handle.as_ref().unwrap(),
-                        "binary-update:download-complete",
-                        &crate::binary_update::BinaryUpdateEvent {
-                            provider_id: provider_id.clone(),
-                            profile: profile.clone(),
-                            status: "complete".to_string(),
-                            message: format!("Updated {provider_id}/{profile}"),
-                        },
-                    );
+                    if let Some(handle) = app_handle.as_ref() {
+                        crate::ipc_meter::emit_tracked(
+                            handle,
+                            "binary-update:download-complete",
+                            &crate::binary_update::BinaryUpdateEvent {
+                                provider_id: provider_id.clone(),
+                                profile: profile.clone(),
+                                status: "complete".to_string(),
+                                message: format!("Updated {provider_id}/{profile}"),
+                            },
+                        );
+                        crate::ipc_meter::emit_tracked(
+                            handle,
+                            "download-event",
+                            serde_json::json!({
+                                "type": "completed",
+                                "taskId": task_id,
+                                "taskKind": "provider",
+                            }),
+                        );
+                    }
+                    (
+                        DownloadStatus::Completed,
+                        Some(format!("Installed {provider_id}/{profile}")),
+                    )
                 }
                 Err(e) => {
-                    task.status = DownloadStatus::Failed;
-                    task.error = Some(e);
+                    log::error!("[download] Provider activate failed: {e}");
+                    (DownloadStatus::Failed, Some(e))
                 }
             }
         }
         Ok(Err(e)) => {
-            task.status = DownloadStatus::Failed;
-            task.error = Some(e);
+            log::error!("[download] Provider extract failed: {e}");
+            (DownloadStatus::Failed, Some(e))
         }
         Err(e) => {
-            task.status = DownloadStatus::Failed;
-            task.error = Some(format!("Provider extract task failed: {e}"));
+            log::error!("[download] Provider extract join failed: {e}");
+            (
+                DownloadStatus::Failed,
+                Some(format!("Provider extract task failed: {e}")),
+            )
         }
+    };
+
+    let mut dm = manager.write().await;
+    if let Some(task) = dm.tasks.get_mut(task_id) {
+        task.status = final_status.0;
+        task.error = final_status.1;
+        task.speed_bps = 0;
+        task.eta_seconds = 0;
+        persist_task_to_manifest(task);
     }
-    task.speed_bps = 0;
-    task.eta_seconds = 0;
 }
 
 async fn finalize_toolchain_extract_worker(

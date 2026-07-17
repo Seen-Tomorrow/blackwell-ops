@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { DownloadTask, UpdateChannelOffering, UpdateOfferings } from "@/lib/types";
+import type { DownloadTask, UpdateOfferings } from "@/lib/types";
 import DownloadProgressRow from "./DownloadProgressRow";
 import { useDownloadTasks } from "@/hooks/useDownloadTasks";
+import { BINARY_UPDATES_ENABLED } from "@/lib/foundry_constants";
+import { dispatchNavigateConfig } from "@/lib/events";
+import { ReleaseNotesBody } from "@/lib/releaseNotes";
 
 function formatSize(bytes: number): string {
   const mb = bytes / (1024 * 1024);
@@ -11,86 +14,18 @@ function formatSize(bytes: number): string {
   return `${Math.round(bytes / 1024)} KB`;
 }
 
-interface OfferingCardProps {
-  offering: UpdateChannelOffering;
-  recommended: boolean;
-  enginesMissing: boolean;
-  onInstall: (channel: string) => void;
-  busy: boolean;
-}
-
-function OfferingCard({
-  offering,
-  recommended,
-  enginesMissing,
-  onInstall,
-  busy,
-}: OfferingCardProps) {
-  const isFull = offering.channel === "full_bundle";
-  const accent = isFull ? "border-nv-green/40" : "border-yellow-400/40";
-  const titleColor = isFull ? "text-nv-green" : "text-yellow-400";
-  // labels come from backend (App update / Full install)
-
-  return (
-    <div
-      className={`rounded-sm border bg-black/30 p-2 space-y-1.5 ${accent} ${
-        recommended ? "ring-1 ring-white/10" : ""
-      }`}
-    >
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className={`text-[8px] font-mono font-bold uppercase tracking-wider ${titleColor}`}>
-              {offering.label}
-            </span>
-            {recommended && (
-              <span className="text-[6px] font-mono uppercase tracking-wider text-white/50 border border-white/15 px-1 rounded-sm">
-                suggested
-              </span>
-            )}
-            {enginesMissing && isFull && (
-              <span className="text-[6px] font-mono uppercase tracking-wider text-red-300/90 border border-red-400/30 px-1 rounded-sm">
-                engines needed
-              </span>
-            )}
-          </div>
-          <p className="text-[7px] font-mono text-white/55 leading-relaxed mt-0.5">
-            {offering.summary}
-          </p>
-        </div>
-        {offering.available && (
-          <span className="shrink-0 text-[7px] font-mono text-stealth-muted/50">
-            v{offering.version}
-            {offering.sizeBytes > 0 ? ` · ${formatSize(offering.sizeBytes)}` : ""}
-          </span>
-        )}
-      </div>
-      {offering.available ? (
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => onInstall(offering.channel)}
-          className={`w-full rounded-sm border px-2 py-1 text-[7px] font-mono uppercase tracking-wider transition-colors disabled:opacity-40 ${
-            isFull
-              ? "border-nv-green/40 text-nv-green hover:bg-nv-green/10"
-              : "border-yellow-400/40 text-yellow-400 hover:bg-yellow-400/10"
-          }`}
-        >
-          Download {offering.label}
-        </button>
-      ) : (
-        <p className="text-[7px] font-mono text-stealth-muted/40">Up to date on this channel</p>
-      )}
-    </div>
-  );
-}
-
 interface AppUpdateMenuProps {
   offerings: UpdateOfferings | null;
+  hasBinaryUpdates?: boolean;
   onRefresh?: () => void;
 }
 
-export default function AppUpdateMenu({ offerings, onRefresh }: AppUpdateMenuProps) {
+/** Header quick-settings: lean App update + link to Config UPDATES catalog. */
+export default function AppUpdateMenu({
+  offerings,
+  hasBinaryUpdates = false,
+  onRefresh,
+}: AppUpdateMenuProps) {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -102,20 +37,21 @@ export default function AppUpdateMenu({ offerings, onRefresh }: AppUpdateMenuPro
     t.status === "scanning",
   ) as DownloadTask | undefined;
 
-  const handleInstall = useCallback(
-    async (channel: string) => {
-      setError(null);
-      try {
-        await invoke("install_app_update", { channel });
-        setOpen(false);
-      } catch (err) {
-        const msg = typeof err === "string" ? err : "Update failed";
-        setError(msg);
-        console.error("App update install failed:", err);
-      }
-    },
-    [],
-  );
+  const appOffering = offerings?.appOnly;
+  const anyAppUpdate = !!appOffering?.available;
+  const highlight = anyAppUpdate || hasBinaryUpdates || !!activeTask;
+
+  const handleInstall = useCallback(async () => {
+    setError(null);
+    try {
+      await invoke("install_app_update", { channel: "app_only" });
+      setOpen(false);
+    } catch (err) {
+      const msg = typeof err === "string" ? err : "Update failed";
+      setError(msg);
+      console.error("App update install failed:", err);
+    }
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -128,19 +64,17 @@ export default function AppUpdateMenu({ offerings, onRefresh }: AppUpdateMenuPro
     return () => document.removeEventListener("mousedown", onDoc);
   }, [open]);
 
-  if (!offerings?.anyAvailable && !activeTask) {
+  if (!BINARY_UPDATES_ENABLED) {
     return null;
   }
 
-  if (activeTask) {
+  if (activeTask && !open) {
     return (
-      <div className="w-[240px] flex-shrink-0">
+      <div className="w-[200px] flex-shrink-0 max-w-[28vw]">
         <DownloadProgressRow task={activeTask} compact />
       </div>
     );
   }
-
-  const enginesMissing = !offerings?.enginesAvailable;
 
   return (
     <div ref={rootRef} className="relative flex-shrink-0">
@@ -150,40 +84,109 @@ export default function AppUpdateMenu({ offerings, onRefresh }: AppUpdateMenuPro
           setOpen((v) => !v);
           onRefresh?.();
         }}
-        className="app-header-update-btn text-[7px] font-mono tracking-wider text-yellow-400 hover:text-yellow-300 transition-colors cursor-pointer whitespace-nowrap"
+        className={`app-header-update-btn app-chrome-control-btn px-1.5 text-[8px] font-mono tracking-wider uppercase transition-colors leading-none relative ${
+          highlight
+            ? "text-yellow-400 hover:text-yellow-300"
+            : "text-stealth-muted/70 hover:text-white/70"
+        }`}
+        title={
+          highlight
+            ? "Updates available — App pack here; engine packs in UPDATES catalog"
+            : "App update (engine packs in Config → UPDATES)"
+        }
       >
         UPDATE
+        {highlight && (
+          <span
+            className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse"
+            aria-hidden
+          />
+        )}
       </button>
-      {open && offerings && (
-        <div className="absolute top-full right-0 mt-1 w-[320px] z-[9999] rounded-sm border border-yellow-400/35 bg-[#080812] shadow-2xl p-2.5 space-y-2">
+
+      {open && (
+        <div className="app-update-menu-popover absolute top-full right-0 mt-1.5 w-[320px] z-[9999] rounded-sm border border-yellow-400/30 shadow-2xl p-3 space-y-3">
           <div className="space-y-0.5">
-            <div className="text-[8px] font-mono text-yellow-400 tracking-wider uppercase">
-              Updates available
+            <div className="text-[10px] font-mono theme-accent-text tracking-wider uppercase">
+              {anyAppUpdate ? "App update available" : "App update"}
             </div>
-            <p className="text-[7px] font-mono text-white/45 leading-relaxed">
-              Comparing as v{offerings.currentVersion}
-              {enginesMissing
-                ? " · no engine runtimes detected — Full Bundle recommended"
-                : " · engines ready — App-Only is usually enough"}
+            <p className="text-[9px] font-mono config-muted leading-relaxed">
+              {offerings
+                ? `Running v${offerings.currentVersion}${
+                    !offerings.enginesAvailable ? " · no engines on disk" : ""
+                  }`
+                : "Checking GitHub…"}
             </p>
           </div>
-          <OfferingCard
-            offering={offerings.appOnly}
-            recommended={offerings.recommended === "app_only"}
-            enginesMissing={enginesMissing}
-            onInstall={handleInstall}
-            busy={!!activeTask}
-          />
-          <OfferingCard
-            offering={offerings.fullBundle}
-            recommended={offerings.recommended === "full_bundle"}
-            enginesMissing={enginesMissing}
-            onInstall={handleInstall}
-            busy={!!activeTask}
-          />
-          {error && (
-            <p className="text-[7px] font-mono text-red-400/80">{error}</p>
+
+          {appOffering ? (
+            <div
+              className={`rounded-sm border p-2.5 space-y-2 ${
+                appOffering.available
+                  ? "border-yellow-400/35 bg-yellow-400/[0.04]"
+                  : "border-white/10 bg-black/20"
+              }`}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0 space-y-0.5">
+                  <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-yellow-400">
+                    {appOffering.label}
+                  </span>
+                  <p className="text-[9px] font-mono config-muted leading-relaxed">
+                    {appOffering.summary}
+                  </p>
+                </div>
+                {appOffering.available && (
+                  <span className="shrink-0 text-[9px] font-mono text-yellow-400/85 tabular-nums">
+                    v{appOffering.version}
+                    {appOffering.sizeBytes > 0 ? ` · ${formatSize(appOffering.sizeBytes)}` : ""}
+                  </span>
+                )}
+              </div>
+
+              {appOffering.available ? (
+                <button
+                  type="button"
+                  disabled={!!activeTask}
+                  onClick={() => void handleInstall()}
+                  className="w-full value-chip-active text-[9px] font-mono uppercase tracking-wider px-2 py-1.5 rounded-sm disabled:opacity-40"
+                >
+                  Download App update
+                </button>
+              ) : (
+                <p className="text-[9px] font-mono config-muted">Up to date on this channel</p>
+              )}
+
+              {appOffering.releaseNotes && (
+                <details className="group">
+                  <summary className="text-[8px] font-mono text-stealth-muted/60 cursor-pointer hover:text-white/55 uppercase tracking-wider">
+                    Release notes
+                  </summary>
+                  <div className="mt-1.5 pt-1.5 border-t border-white/[0.06] max-h-32 overflow-y-auto">
+                    <ReleaseNotesBody text={appOffering.releaseNotes} />
+                  </div>
+                </details>
+              )}
+            </div>
+          ) : (
+            <p className="text-[9px] font-mono config-muted py-1">
+              No release data yet. Try again when online.
+            </p>
           )}
+
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(false);
+              dispatchNavigateConfig({ subTab: "updates" });
+            }}
+            className="w-full text-left rounded-sm border border-white/12 bg-white/[0.03] px-2.5 py-2 text-[9px] font-mono text-white/65 hover:border-yellow-400/30 hover:text-yellow-400/90 transition-colors uppercase tracking-wider"
+            title="Config → UPDATES — Full install, engine packs, full catalog"
+          >
+            Updates catalog →
+          </button>
+
+          {error && <p className="text-[9px] font-mono text-telemetry-red">{error}</p>}
         </div>
       )}
     </div>

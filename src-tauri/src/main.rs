@@ -38,6 +38,8 @@ mod provider_mgmt;
 mod llama_catalog;
 mod archive_util;
 mod binary_update;
+mod plugin_catalog;
+mod distribution;
 mod github_releases;
 mod profile_binaries;
 mod secrets;
@@ -1058,7 +1060,13 @@ async fn main() {
             binary_update::set_dev_update_version_override,
             binary_update::toggle_dev_update_version_fake,
             binary_update::get_startup_updates,
+            binary_update::get_plugin_catalog,
             binary_update::revert_binary_to_bundled,
+            // DEV distribution / majestic wrappers
+            distribution::get_distribution_dashboard,
+            distribution::set_provider_distribution,
+            distribution::regenerate_distribution_catalog,
+            distribution::run_dev_release_action,
 
         ])
         .run(tauri::generate_context!())

@@ -708,6 +708,14 @@ html, body, #root {
   flex-shrink: 0;
 }
 
+.app-update-menu-popover {
+  background: var(--theme-panel);
+  border-color: color-mix(in srgb, #facc15 30%, var(--theme-chrome-control-border) 70%);
+  box-shadow:
+    0 14px 36px rgba(0, 0, 0, 0.48),
+    0 6px 14px rgba(0, 0, 0, 0.32);
+}
+
 .app-appearance-panel {
   border: 1px solid var(--theme-chrome-control-border);
   flex-shrink: 0;

@@ -5,8 +5,9 @@
 # Release bundles runtime-bundle/ -> Tauri resource "runtime/" beside the installed exe.
 #
 # Profile policy (see runtime-distribution.ps1):
-#   ggml-master, ggml-tom -> frontier, stable
-#   vanguard/fresh retired - not bundled in NSIS
+#   NSIS core: ggml-master -> frontier, stable (pre-installed engines)
+#   Optional forks: catalog metadata in NSIS + App .7z; engines via provider packs only
+#   vanguard/fresh retired - not bundled
 #
 # Distribution binaries per profile:
 #   - llama-server.exe + supporting DLLs
@@ -42,11 +43,11 @@ $missing_required = @()
 foreach ($provider in $providers) {
     $provider_id = $provider.Name
 
-    if (-not (Test-RuntimeBundleProvider -ProviderId $provider_id)) {
+    if (-not (Test-RuntimeNsisProvider -ProviderId $provider_id)) {
         continue
     }
 
-    $allowed_profiles = Get-RuntimeBundleProfiles -ProviderId $provider_id
+    $allowed_profiles = Get-RuntimeNsisProfiles -ProviderId $provider_id
 
     $config_src = Join-Path $provider.FullName 'config'
     if (Test-Path -LiteralPath $config_src) {
@@ -71,7 +72,7 @@ foreach ($provider in $providers) {
     foreach ($env_dir in $profile_dirs) {
         $profile_id = $env_dir.Name
 
-        if (-not (Test-RuntimeBundleProfile -ProviderId $provider_id -ProfileId $profile_id)) {
+        if (-not (Test-RuntimeNsisProfile -ProviderId $provider_id -ProfileId $profile_id)) {
             continue
         }
 
@@ -117,10 +118,16 @@ if ($copied_profiles -eq 0) {
     exit 1
 }
 
+$catalog_dst = Join-Path $bundle_root 'catalog'
+& (Join-Path $script_dir 'generate-plugin-catalog.ps1') -OutDir $catalog_dst
+if ($LASTEXITCODE -ne 0) {
+    throw 'generate-plugin-catalog.ps1 failed'
+}
+
 $bundle_bytes = (Get-ChildItem -LiteralPath $bundle_root -Recurse -File | Measure-Object -Property Length -Sum).Sum
 $bundle_mb = [math]::Round($bundle_bytes / 1MB, 1)
 
-Write-Host ('[prepare-release-runtime] Ready: {0} profile(s), {1} config tree(s), {2} file(s) ({3} MB).' -f $copied_profiles, $copied_configs, $copied_files, $bundle_mb) -ForegroundColor Cyan
+Write-Host ('[prepare-release-runtime] Ready: {0} profile(s), {1} config tree(s), {2} file(s), plugin catalog ({3} MB).' -f $copied_profiles, $copied_configs, $copied_files, $bundle_mb) -ForegroundColor Cyan
 if ($skipped_files -gt 0) {
     Write-Host ('[prepare-release-runtime] Omitted {0} non-distribution binary file(s) from DEV runtime.' -f $skipped_files) -ForegroundColor DarkGray
 }

@@ -1,8 +1,10 @@
-# Build src-tauri/runtime-bundle/ for App-Only NSIS — provider templates only (no engine binaries).
+# Build src-tauri/runtime-bundle/ for App-Only update.
 # Usage: .\scripts\prepare-release-app-only.ps1
 #
-# Bundles runtime-bundle/{provider}/config/ -> installed as runtime/{provider}/config/
-# Skips frontier/stable engine DLLs — users keep existing engines or install Full Bundle later.
+# Ships:
+#   - Core provider templates only (ggml-master) — always in PROVIDERS
+#   - runtime/catalog/plugins.json — optional plugin metadata (NOT full templates)
+# Optional engines install via provider packs from UPDATES catalog.
 
 $ErrorActionPreference = 'Stop'
 
@@ -30,13 +32,13 @@ $missing_required = @()
 foreach ($provider in $providers) {
     $provider_id = $provider.Name
 
-    if (-not (Test-RuntimeBundleProvider -ProviderId $provider_id)) {
+    if (-not (Test-RuntimeNsisProvider -ProviderId $provider_id)) {
         continue
     }
 
     $config_src = Join-Path $provider.FullName 'config'
     if (-not (Test-Path -LiteralPath $config_src)) {
-        $missing_required += ('{0}/config/ (factory provider templates missing)' -f $provider_id)
+        $missing_required += ('{0}/config/ (core provider templates missing)' -f $provider_id)
         continue
     }
 
@@ -60,11 +62,17 @@ if ($missing_required.Count -gt 0) {
 }
 
 if ($copied_configs -eq 0) {
-    Write-Host '[prepare-release-app-only] No provider config trees prepared.' -ForegroundColor Red
+    Write-Host '[prepare-release-app-only] No core provider config trees prepared.' -ForegroundColor Red
     exit 1
+}
+
+$catalog_dst = Join-Path $bundle_root 'catalog'
+& (Join-Path $script_dir 'generate-plugin-catalog.ps1') -OutDir $catalog_dst
+if ($LASTEXITCODE -ne 0) {
+    throw 'generate-plugin-catalog.ps1 failed'
 }
 
 $bundle_bytes = (Get-ChildItem -LiteralPath $bundle_root -Recurse -File | Measure-Object -Property Length -Sum).Sum
 $bundle_mb = [math]::Round($bundle_bytes / 1MB, 2)
 
-Write-Host ('[prepare-release-app-only] Ready: {0} provider template tree(s), {1} MB (no engine binaries).' -f $copied_configs, $bundle_mb) -ForegroundColor Cyan
+Write-Host ('[prepare-release-app-only] Ready: {0} core template(s) + plugin catalog, {1} MB (no engine binaries).' -f $copied_configs, $bundle_mb) -ForegroundColor Cyan

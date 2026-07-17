@@ -30,7 +30,41 @@ if (-not $BundleRoot) {
     $BundleRoot = Join-Path $root 'src-tauri\runtime-bundle'
 }
 if (-not (Test-Path -LiteralPath $BundleRoot)) {
-    throw "runtime-bundle missing at $BundleRoot - run prepare-release-runtime.ps1 first"
+    New-Item -ItemType Directory -Path $BundleRoot -Force | Out-Null
+    Write-Host "[pack-provider] Created runtime-bundle (optional provider pack)" -ForegroundColor DarkGray
+}
+
+$runtime_root = Join-Path $root 'src-tauri\runtime'
+
+function Sync-ProviderTreeToBundle {
+    param(
+        [string]$Prov,
+        [string]$Prof
+    )
+    if (-not (Test-RuntimeBundleProvider -ProviderId $Prov)) {
+        return
+    }
+    if (-not (Test-RuntimeBundleProfile -ProviderId $Prov -ProfileId $Prof)) {
+        return
+    }
+
+    $runtime_profile = Join-Path $runtime_root "$Prov\$Prof"
+    $bundle_profile = Join-Path $BundleRoot "$Prov\$Prof"
+    if (-not (Test-Path -LiteralPath $bundle_profile) -and (Test-Path -LiteralPath $runtime_profile)) {
+        New-Item -ItemType Directory -Path $bundle_profile -Force | Out-Null
+        foreach ($file in (Get-RuntimeDistributionFiles -Directory $runtime_profile)) {
+            Copy-Item -LiteralPath $file.FullName -Destination $bundle_profile -Force
+        }
+        Write-Host "[pack-provider] staged $Prov/$Prof from runtime/ -> runtime-bundle/" -ForegroundColor DarkGray
+    }
+
+    $runtime_config = Join-Path $runtime_root "$Prov\config"
+    $bundle_config = Join-Path $BundleRoot "$Prov\config"
+    if ((Test-Path -LiteralPath $runtime_config) -and -not (Test-Path -LiteralPath $bundle_config)) {
+        New-Item -ItemType Directory -Path $bundle_config -Force | Out-Null
+        Copy-Item -Path (Join-Path $runtime_config '*') -Destination $bundle_config -Recurse -Force
+        Write-Host "[pack-provider] staged $Prov/config from runtime/" -ForegroundColor DarkGray
+    }
 }
 
 if (-not $OutDir) {
@@ -55,6 +89,8 @@ function Pack-OneProviderProfile {
         [string]$Prov,
         [string]$Prof
     )
+
+    Sync-ProviderTreeToBundle -Prov $Prov -Prof $Prof
 
     $profile_src = Join-Path $BundleRoot "$Prov\$Prof"
     if (-not (Test-Path -LiteralPath $profile_src)) {

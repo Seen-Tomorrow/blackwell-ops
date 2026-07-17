@@ -176,6 +176,37 @@ fn sync_dev_runtime_factory_configs(app_root: &std::path::Path) {
     }
 }
 
+fn sync_plugin_catalog_tree(source: &std::path::Path, app_root: &std::path::Path, label: &str) -> bool {
+    let src_catalog = source.join("catalog");
+    if !src_catalog.is_dir() {
+        log::debug!(
+            "[setup] Plugin catalog sync skipped ({label}) — no catalog at {}",
+            src_catalog.display()
+        );
+        return false;
+    }
+    let dst_catalog = app_root.join("runtime").join("catalog");
+    match crate::archive_util::copy_dir_merge(&src_catalog, &dst_catalog) {
+        Ok(()) => {
+            log::info!("[setup] Synced plugin catalog ({label}) -> {}", dst_catalog.display());
+            true
+        }
+        Err(e) => {
+            log::warn!("[setup] Plugin catalog sync failed ({label}): {e}");
+            false
+        }
+    }
+}
+
+#[cfg(debug_assertions)]
+fn sync_dev_plugin_catalog(app_root: &std::path::Path) {
+    let source = app_root.join("../../runtime");
+    if !source.is_dir() {
+        return;
+    }
+    sync_plugin_catalog_tree(&source, app_root, "dev");
+}
+
 /// REL: refresh factory config JSON from bundled resources on every launch so templateVersion
 /// bumps ship to existing installs (runtime/ binaries are not re-copied once present).
 #[cfg(not(debug_assertions))]
@@ -206,6 +237,7 @@ fn sync_runtime_factory_configs_from_resources(
             copied
         );
     }
+    sync_plugin_catalog_tree(&resource_path, app_root, "bundled runtime");
 }
 
 /// Ensure the portable directory structure exists. Copy bundled binaries from resources on first run (REL only).
@@ -214,7 +246,10 @@ pub fn ensure_portable_structure(app_handle: &tauri::AppHandle) {
     let data = config_dir();
 
     #[cfg(debug_assertions)]
-    sync_dev_runtime_factory_configs(&root);
+    {
+        sync_dev_runtime_factory_configs(&root);
+        sync_dev_plugin_catalog(&root);
+    }
     #[cfg(not(debug_assertions))]
     sync_runtime_factory_configs_from_resources(app_handle, &root);
 
@@ -863,6 +898,9 @@ fn discover_providers() -> Vec<crate::types::ProviderConfig> {
         /// Template version — bumped in default config JSON when template changes.
         #[serde(default = "default_tv", rename = "templateVersion")]
         template_version: u32,
+        /// Optional fork — templates via App update; engines via provider pack (not NSIS core).
+        #[serde(default, rename = "optionalDownload")]
+        optional_download: bool,
     }
 
     fn default_tv() -> u32 { 1 }
@@ -913,6 +951,15 @@ fn discover_providers() -> Vec<crate::types::ProviderConfig> {
                     }
                 }
 
+                // Catalog plugins: not in PROVIDERS until a pack (or Foundry) installs binaries.
+                if identity.optional_download && per_env.is_empty() {
+                    log::debug!(
+                        "[config] Skipping catalog plugin '{}' (not installed — see UPDATES catalog)",
+                        pid
+                    );
+                    continue;
+                }
+
                 let mut discovered = crate::types::ProviderConfig {
                     id: identity.id.clone(),
                     display_name: identity.display_name,
@@ -943,6 +990,7 @@ fn discover_providers() -> Vec<crate::types::ProviderConfig> {
                     last_pr_per_env: std::collections::HashMap::new(),
                     display_order: providers.len() as i32,
                     factory_provided: true,
+                    optional_download: identity.optional_download,
                     template_version: identity.template_version,
                     needs_template_attention: false,
                     launch_profile: crate::templates::load_provider_defaults(&identity.id)
@@ -2413,6 +2461,7 @@ fn build_config_with_providers_full(mut config: AppConfig) -> AppConfig {
                 last_pr_per_env: meta.last_pr_per_env.clone(),
                 display_order: meta.display_order,
                 factory_provided: false,
+                optional_download: false,
                 template_version: if tv_changed { factory_tv } else { meta.template_version },
                 needs_template_attention: tv_changed,
                 launch_profile: tmpl_key
@@ -2435,6 +2484,12 @@ fn build_config_with_providers_full(mut config: AppConfig) -> AppConfig {
     config.providers = providers;
 
     config
+}
+
+/// Re-scan runtime/ and merge user meta — after plugin pack install without app restart.
+pub fn refresh_providers_from_disk(config: &mut AppConfig) {
+    let snapshot = config.clone();
+    *config = build_config_with_providers_full(snapshot);
 }
 
 /// Delete provider's user config file so it regenerates from fresh factory template on next load.
@@ -2747,6 +2802,71 @@ fn reorder_factory_config_root(obj: serde_json::Map<String, serde_json::Value>) 
     serde_json::Value::Object(ordered)
 }
 
+/// Full `spawn_profile` from core Master factory — base for ggml-family optional forks.
+pub fn load_master_spawn_profile_map() -> serde_json::Map<String, serde_json::Value> {
+    let candidates = [
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("runtime")
+            .join(DEFAULT_PROVIDER_ID)
+            .join("config")
+            .join(format!("{DEFAULT_PROVIDER_ID}-default-config.json")),
+        app_root_dir()
+            .join("runtime")
+            .join(DEFAULT_PROVIDER_ID)
+            .join("config")
+            .join(format!("{DEFAULT_PROVIDER_ID}-default-config.json")),
+    ];
+    for path in candidates {
+        if let Ok(raw) = std::fs::read_to_string(&path) {
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&raw) {
+                if let Some(sp) = v.get("spawn_profile").and_then(|s| s.as_object()) {
+                    return sp.clone();
+                }
+            }
+        }
+    }
+    // Last resort: typed defaults (flags / fit_style filled).
+    serde_json::to_value(crate::templates::SpawnProfile::default())
+        .ok()
+        .and_then(|v| v.as_object().cloned())
+        .unwrap_or_default()
+}
+
+/// If `spawn_profile` is missing or a stub (no fit_style), start from Master and layer existing keys.
+pub fn ensure_complete_spawn_profile_map(
+    existing: Option<&serde_json::Value>,
+) -> serde_json::Map<String, serde_json::Value> {
+    let mut base = load_master_spawn_profile_map();
+    let Some(cur) = existing.and_then(|v| v.as_object()) else {
+        return base;
+    };
+    let fit_ok = cur
+        .get("fit_style")
+        .and_then(|v| v.as_str())
+        .map(|s| !s.trim().is_empty())
+        .unwrap_or(false);
+    if fit_ok {
+        // Already complete enough — keep as-is (preserve fork adapters, etc.).
+        return cur.clone();
+    }
+    // Stub seed: keep explicit keys (fit_adapter, fusion_adapter, max_engine_slots, …) on top of Master.
+    for (k, v) in cur {
+        base.insert(k.clone(), v.clone());
+    }
+    if !base
+        .get("fit_style")
+        .and_then(|v| v.as_str())
+        .map(|s| !s.is_empty())
+        .unwrap_or(false)
+    {
+        base.insert(
+            "fit_style".into(),
+            serde_json::Value::String("ggml_fit_params".into()),
+        );
+    }
+    base
+}
+
 /// Promote live UI config to factory default JSON (admin). Bumps `templateVersion` automatically.
 pub fn export_provider_factory_template(
     input: ExportFactoryTemplateInput,
@@ -2759,12 +2879,47 @@ pub fn export_provider_factory_template(
     }
 
     let path = factory_default_config_path(&input.provider_id);
+    // First export for a newly added provider: seed a factory shell if missing (dev only).
     if !path.exists() {
-        return Err(format!(
-            "Factory config not found for '{}' at {}",
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| {
+                format!("Failed to create factory dir {}: {e}", parent.display())
+            })?;
+        }
+        let seed = serde_json::json!({
+            "id": input.provider_id,
+            "display_name": input.provider_id,
+            "description": format!("Optional engine plugin ({})", input.provider_id),
+            "binary_name": "llama-server.exe",
+            "git_url": "",
+            "branch": "master",
+            "build_profile": "",
+            "template_type": "ggml-llama",
+            "optionalDownload": true,
+            "templateVersion": 0,
+            "groupOrder": [],
+            "layoutDefaults": {
+                "groupDisplayZone": {},
+                "groupColumn": {},
+                "configColumnCount": 2,
+                "configColumnWidths": [],
+                "aboveColumnWidths": []
+            },
+            "params": [],
+            "spawn_profile": {
+                "essentialParamKeys": [],
+                "simple_param_keys": []
+            }
+        });
+        let seed_txt = serde_json::to_string_pretty(&seed)
+            .map_err(|e| format!("Failed to seed factory JSON: {e}"))?;
+        std::fs::write(&path, &seed_txt)
+            .map_err(|e| format!("Failed to create {}: {}", path.display(), e))?;
+        log::info!(
+            "[config] Seeded new factory template for '{}' at {}",
             input.provider_id,
             path.display()
-        ));
+        );
     }
 
     let content = std::fs::read_to_string(&path)
@@ -2820,19 +2975,21 @@ pub fn export_provider_factory_template(
             serde_json::Value::Number(new_tv.into()),
         );
 
-        let spawn_value = obj
-            .entry("spawn_profile".to_string())
-            .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
-        if let Some(sp) = spawn_value.as_object_mut() {
-            sp.insert(
-                "essentialParamKeys".to_string(),
-                serde_json::to_value(&essential_keys).map_err(|e| e.to_string())?,
-            );
-            sp.insert(
-                "simple_param_keys".to_string(),
-                serde_json::to_value(&essential_keys).map_err(|e| e.to_string())?,
-            );
-        }
+        // Full spawn_profile for forks: backfill from ggml-master when stub/missing
+        // (EXPORT used to only write essentialParamKeys → empty fit_style / flags).
+        let mut sp = ensure_complete_spawn_profile_map(obj.get("spawn_profile"));
+        sp.insert(
+            "essentialParamKeys".to_string(),
+            serde_json::to_value(&essential_keys).map_err(|e| e.to_string())?,
+        );
+        sp.insert(
+            "simple_param_keys".to_string(),
+            serde_json::to_value(&essential_keys).map_err(|e| e.to_string())?,
+        );
+        obj.insert(
+            "spawn_profile".to_string(),
+            serde_json::Value::Object(sp),
+        );
     } else {
         return Err("Factory config root must be a JSON object".to_string());
     }
@@ -2862,7 +3019,16 @@ pub fn export_provider_factory_template(
     written.push(path.display().to_string());
 
     #[cfg(debug_assertions)]
-    if let Some(src) = dev_factory_default_config_source_path(&input.provider_id) {
+    {
+        // Always mirror into src-tauri/runtime (create if first export for a new provider).
+        let src = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("runtime")
+            .join(&input.provider_id)
+            .join("config")
+            .join(format!("{}-default-config.json", input.provider_id));
+        if let Some(parent) = src.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
         std::fs::write(&src, &output)
             .map_err(|e| format!("Failed to write dev source {}: {}", src.display(), e))?;
         written.push(src.display().to_string());

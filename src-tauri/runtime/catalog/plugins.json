@@ -1,0 +1,27 @@
+{
+  "catalogVersion": 1,
+  "plugins": [
+    {
+      "description": "Optional engine fork (bee-llama)",
+      "displayName": "Bee Llama",
+      "id": "bee-llama",
+      "profiles": [
+        "frontier",
+        "stable"
+      ],
+      "templateType": "ggml-llama",
+      "templateVersion": 1
+    },
+    {
+      "description": "TheTom turboquant fork - TQ kernels, fused MTP, Windows-first builds",
+      "displayName": "GGML TomTQ",
+      "id": "ggml-tom",
+      "profiles": [
+        "frontier",
+        "stable"
+      ],
+      "templateType": "ggml-llama",
+      "templateVersion": 2
+    }
+  ]
+}

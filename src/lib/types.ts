@@ -168,6 +168,8 @@ export interface ProviderConfig {
   downloadedVersionPerEnv?: Record<string, string>; // env -> GitHub release tag that was installed via update (e.g. "v0.7.8")
   lastPrPerEnv?: Record<string, string>; // env -> PR number (e.g. "stable" -> "21293")
   factory_provided?: boolean; // true = bundled in runtime/ or downloaded from GitHub releases
+  /** Optional fork — template via App update; engine via provider pack (not NSIS core). */
+  optionalDownload?: boolean;
   templateVersion?: number; // bumped in default config JSON when template changes, used for update notification
   needsTemplateAttention?: boolean; // set by merge when user config version differs from factory — shows banner in ConfigPage
   /** Factory launch profile — synced from spawn_profile on load (not user-persisted). */
@@ -248,8 +250,13 @@ export function isProfileSourceActive(
       ? profileEnvLookup(provider.foundryBinaryPathPerEnv, env)
       : profileEnvLookup(provider.bundledBinaryPathPerEnv, env);
   if (!active?.trim() || !inventory?.trim()) return false;
-  if (profileEnvLookup(provider.downloadedVersionPerEnv, env)) return false;
-  return normalizeBinaryPath(active) === normalizeBinaryPath(inventory);
+  if (normalizeBinaryPath(active) !== normalizeBinaryPath(inventory)) return false;
+  // Catalog packs land under runtime/ (same inventory as "bundled"). Foundry must not win
+  // while a downloadedVersion stamp is present — but the runtime row *is* the active pack.
+  if (source === 'foundry' && profileEnvLookup(provider.downloadedVersionPerEnv, env)) {
+    return false;
+  }
+  return true;
 }
 
 /**
@@ -356,6 +363,34 @@ export interface UpdateOfferings {
 export interface ProviderBinaryUpdates {
   providerId: string;
   updates: BinaryUpdateInfo[];
+}
+
+export interface PluginProfileOffering {
+  profile: string;
+  profileLabel: string;
+  packAvailable: boolean;
+  packVersion: string;
+  sizeBytes: number;
+  installed: boolean;
+  /** Release-style only (e.g. v1.0.16); foundry/git noise omitted. */
+  installedVersion: string | null;
+  updateAvailable: boolean;
+  cudaArchitectures?: string[];
+  cudaVersion?: string | null;
+}
+
+export interface PluginCatalogEntry {
+  id: string;
+  displayName: string;
+  description: string;
+  installed: boolean;
+  enabled: boolean | null;
+  profiles: PluginProfileOffering[];
+}
+
+export interface PluginCatalogResponse {
+  catalogVersion: number;
+  plugins: PluginCatalogEntry[];
 }
 
 /** Combined startup update status from get_startup_updates IPC command. */
@@ -913,7 +948,7 @@ export interface DownloadTask {
   quantType?: string;
   lfsOid?: string;     // LFS content hash for incremental scan
   /** `hf` (default), `toolchain`, or `app` (NSIS installer) */
-  taskKind?: 'hf' | 'toolchain' | 'app';
+  taskKind?: 'hf' | 'toolchain' | 'app' | 'provider';
 }
 
 export interface DownloadTargetCheck {

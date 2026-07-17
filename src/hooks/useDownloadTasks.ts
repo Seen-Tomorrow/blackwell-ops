@@ -3,11 +3,12 @@ import { invoke } from "@tauri-apps/api/core";
 import type { DownloadTask } from "@/lib/types";
 import { useTauriListen } from "./useTauriListen";
 
-export type DownloadTaskKind = "hf" | "toolchain" | "app";
+export type DownloadTaskKind = "hf" | "toolchain" | "app" | "provider";
 
 function taskKindOf(task: DownloadTask): DownloadTaskKind {
   if (task.taskKind === "toolchain") return "toolchain";
   if (task.taskKind === "app") return "app";
+  if (task.taskKind === "provider") return "provider";
   return "hf";
 }
 

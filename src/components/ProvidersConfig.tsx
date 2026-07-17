@@ -238,18 +238,36 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
     setError(null);
   }, []);
 
-  const handleDelete = useCallback(async (id: string) => {
-    if (!confirm(`Remove provider "${id}"?`)) return;
+  const handleDelete = useCallback(async (p: ProviderConfig) => {
+    const isPlugin = !!p.optionalDownload;
+    const msg = isPlugin
+      ? `Uninstall plugin "${p.display_name}"?\n\nRemoves engines under runtime/${p.id}/ and drops it from PROVIDERS.\nDoes not change distribution policy or factory sources.\nReinstall anytime from Config → UPDATES catalog.`
+      : `Remove local provider "${p.display_name}"?\n\nRemoves it from the provider list and deletes its user config.`;
+    if (!confirm(msg)) return;
 
     try {
-      await invoke("remove_provider", { id });
+      await invoke("remove_provider", { id: p.id });
       await loadProviders();
-      if (editingId === id) handleCancel();
+      if (editingId === p.id) handleCancel();
+      dispatchAppEvent(EVENTS.reloadProviders);
     } catch (err) {
       console.error("Failed to remove provider:", err);
       setError(typeof err === "string" ? err : JSON.stringify(err));
     }
   }, [loadProviders, editingId, handleCancel]);
+
+  const handleToggleEnabled = useCallback(
+    async (p: ProviderConfig) => {
+      try {
+        await invoke("save_provider", { provider: { ...p, enabled: !p.enabled } });
+        await loadProviders();
+        dispatchAppEvent(EVENTS.reloadProviders);
+      } catch (err) {
+        setError(typeof err === "string" ? err : String(err));
+      }
+    },
+    [loadProviders],
+  );
 
   const handleReorder = useCallback(async (id: string, direction: number) => {
     try {
@@ -770,6 +788,11 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
                     {p.id === DEFAULT_PROVIDER_ID && (
                       <span className="value-chip text-[7px] font-mono px-1.5 py-0.5 rounded-sm shrink-0">DEFAULT</span>
                     )}
+                    {p.optionalDownload && (
+                      <span className="text-[7px] font-mono px-1.5 py-0.5 rounded-sm border border-white/15 text-stealth-muted/60 uppercase shrink-0">
+                        plugin
+                      </span>
+                    )}
                   </div>
 
                   {/* Params badge */}
@@ -784,14 +807,37 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
 
                   {/* Actions group */}
                   <div className="flex items-center gap-2.5 flex-shrink-0">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void handleToggleEnabled(p);
+                        }}
+                        className={`value-chip text-[8px] font-mono px-2 py-0.5 rounded-sm ${
+                          p.enabled ? "value-chip-active" : ""
+                        }`}
+                        title="Enable or disable this provider in the UI"
+                      >
+                        {p.enabled ? "ON" : "OFF"}
+                      </button>
                       <button onClick={(e) => { e.stopPropagation(); handleEdit(p); }}
                        className="value-chip text-[9px] font-mono px-2 py-0.5 rounded-sm">
                        EDIT
                      </button>
-                    {!p.factory_provided && (
-                      <button onClick={(e) => { e.stopPropagation(); handleDelete(p.id); }}
-                        className="value-chip text-[9px] font-mono px-2 py-0.5 rounded-sm text-red-400">
-                        REMOVE
+                    {/* Core NSIS only: no remove. Everyone else: uninstall engines / drop from list. */}
+                    {p.id !== DEFAULT_PROVIDER_ID && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void handleDelete(p);
+                        }}
+                        className="value-chip text-[9px] font-mono px-2 py-0.5 rounded-sm text-red-400"
+                        title={
+                          p.optionalDownload || p.factory_provided
+                            ? "Remove engines from this install (runtime/{id}/). Reinstall from UPDATES if still a catalog plugin."
+                            : "Remove local provider from list"
+                        }
+                      >
+                        {p.factory_provided || p.optionalDownload ? "UNINSTALL" : "REMOVE"}
                       </button>
                     )}
 

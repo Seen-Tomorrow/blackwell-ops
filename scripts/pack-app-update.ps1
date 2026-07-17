@@ -84,6 +84,14 @@ foreach ($provider in $providers) {
     Copy-Item -Path (Join-Path $config_src '*') -Destination $config_dst -Recurse -Force
     $template_count++
 }
+$catalog_src = Join-Path $BundleRoot 'catalog'
+if (Test-Path -LiteralPath $catalog_src) {
+    $catalog_dst = Join-Path $app_stage 'runtime\catalog'
+    New-Item -ItemType Directory -Path $catalog_dst -Force | Out-Null
+    Copy-Item -Path (Join-Path $catalog_src '*') -Destination $catalog_dst -Recurse -Force
+    Write-Host "[pack-app-update] Included plugin catalog" -ForegroundColor DarkGray
+}
+
 if ($template_count -eq 0) {
     throw "No provider config trees under $BundleRoot"
 }

@@ -1,0 +1,23 @@
+{
+  "policyVersion": 1,
+  "nsisCore": {
+    "ggml-master": [
+      "frontier",
+      "stable"
+    ]
+  },
+  "plugins": {
+    "bee-llama": [
+      "frontier",
+      "stable"
+    ],
+    "ggml-tom": [
+      "frontier",
+      "stable"
+    ]
+  },
+  "defaultPluginProfiles": [
+    "frontier",
+    "stable"
+  ]
+}

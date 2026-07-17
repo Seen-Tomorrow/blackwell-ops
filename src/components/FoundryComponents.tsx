@@ -39,9 +39,17 @@ function isNewestSourceForProfile(provider: ProviderConfig, env: string, source:
 
 function originBadge(origin: string | null): ReactNode {
   if (origin === "foundry") return <span className="value-chip text-[6px] font-mono px-1 py-0.5 rounded-sm">FOUNDRY</span>;
-  if (origin === "downloaded") return <span className="value-chip text-[6px] font-mono px-1 py-0.5 rounded-sm">DOWNLOADED</span>;
+  if (origin === "downloaded") return <span className="value-chip text-[6px] font-mono px-1 py-0.5 rounded-sm">CATALOG</span>;
   if (origin === "bundled") return <span className="value-chip text-[6px] font-mono px-1 py-0.5 rounded-sm">BUNDLED</span>;
   return null;
+}
+
+/** Runtime/ inventory row is a GitHub catalog pack (not Full NSIS core engines). */
+function isCatalogPackRow(provider: ProviderConfig, env: string, source: BinarySourceKind): boolean {
+  if (source !== "bundled") return false;
+  if (profileEnvLookup(provider.downloadedVersionPerEnv, env)) return true;
+  if (provider.optionalDownload) return true;
+  return false;
 }
 
 function buildInfoLine(buildInfo: BuildInfo | undefined, provider: ProviderConfig, _env: string) {
@@ -104,24 +112,48 @@ function BinarySourceRow({
   onRevert,
   showDownloadedRevert,
 }: BinarySourceRowProps) {
-  const label = source === "foundry" ? "Foundry build" : "Bundled with installer";
+  const catalogPack = isCatalogPackRow(provider, env, source);
+  const label =
+    source === "foundry"
+      ? "Foundry build"
+      : catalogPack
+        ? "Catalog pack"
+        : "Bundled with installer";
   const path =
     source === "foundry"
       ? profileEnvLookup(provider.foundryBinaryPathPerEnv, env)
       : profileEnvLookup(provider.bundledBinaryPathPerEnv, env);
-  const buildInfo =
+  const buildInfoRaw =
     source === "foundry"
       ? profileEnvLookup(provider.foundryBuildInfoPerEnv, env)
       : profileEnvLookup(provider.bundledBuildInfoPerEnv, env);
+  // Prefer release tag from pack install over mtime "bundled"/"downloaded" labels.
+  const packVer = provider.downloadedVersionPerEnv?.[env];
+  const buildInfo =
+    catalogPack && packVer && buildInfoRaw
+      ? { ...buildInfoRaw, version: packVer.replace(/^v/i, "") }
+      : catalogPack && packVer
+        ? {
+            version: packVer.replace(/^v/i, ""),
+            buildDate: buildInfoRaw?.buildDate ?? "",
+            cudaVersion: buildInfoRaw?.cudaVersion,
+            cudaArchitectures: buildInfoRaw?.cudaArchitectures,
+          }
+        : buildInfoRaw;
   const available = !!(path?.trim() || buildInfo);
 
   const hasUpdateInfo = source === "bundled" && !!binaryUpdate;
   const installedVersion = provider.downloadedVersionPerEnv?.[env] || null;
   const latestVersion = binaryUpdate?.latestVersion || null;
-  const isLatest = installedVersion === `v${latestVersion}` && installedVersion !== null;
-  const isCustomBuild = source === "bundled" && !!path && !installedVersion && !isDownloadedBinary(path);
+  const isLatest =
+    !!installedVersion &&
+    !!latestVersion &&
+    installedVersion.replace(/^v/i, "") === latestVersion.replace(/^v/i, "");
+  const isCustomBuild =
+    source === "bundled" && !catalogPack && !!path && !installedVersion && !isDownloadedBinary(path);
   const needsDownload = source === "bundled" && !installedVersion && hasUpdateInfo;
   const isNewestBuild = isNewestSourceForProfile(provider, env, source);
+  const badgeOrigin = source === "foundry" ? "foundry" : catalogPack ? "downloaded" : "bundled";
 
   return (
     <div className={`foundry-profile-row flex items-center gap-2 px-3 py-1.5 flex-wrap ${isActive ? "foundry-profile-row--active" : ""}`}>
@@ -130,12 +162,12 @@ function BinarySourceRow({
       </span>
 
       <div className="foundry-profile-badges flex items-center gap-1 shrink-0">
-        {originBadge(source)}
+        {originBadge(badgeOrigin)}
       </div>
 
       <div className="flex-1 min-w-[120px] flex items-center gap-2 flex-wrap">
         {buildInfoLine(buildInfo, provider, env)}
-        {isNewestBuild && !!buildInfo && (
+        {isNewestBuild && !!buildInfo && !catalogPack && (
           <span className="value-chip text-[7px] font-mono px-1.5 py-0.5 rounded-sm shrink-0">LATEST</span>
         )}
         {hasUpdateInfo && !isBuilding && source === "bundled" && (
@@ -184,8 +216,12 @@ function BinarySourceRow({
         )}
       </div>
 
-      {showDownloadedRevert && onRevert && (
-        <button onClick={onRevert} className="value-chip text-[7px] font-mono px-2 py-1 shrink-0" title="Revert to bundled binary">
+      {showDownloadedRevert && onRevert && !provider.optionalDownload && (
+        <button
+          onClick={onRevert}
+          className="value-chip text-[7px] font-mono px-2 py-1 shrink-0"
+          title="Revert to NSIS-bundled binary for this profile"
+        >
           ↻ REVERT
         </button>
       )}
@@ -261,6 +297,7 @@ export function BuildProfileRow({
   const downloadedVer = profileEnvLookup(provider.downloadedVersionPerEnv, env);
   const isDownloaded = !!activePath && isDownloadedBinary(activePath, downloadedVer);
   const foundryActive = isProfileSourceActive(provider, env, "foundry");
+  // Catalog packs use the runtime/ inventory slot — must show ACTIVE when paths match.
   const bundledActive = isProfileSourceActive(provider, env, "bundled");
 
   return (
@@ -287,7 +324,7 @@ export function BuildProfileRow({
         source="foundry"
         env={env}
         provider={provider}
-        isActive={foundryActive && !isDownloaded}
+        isActive={foundryActive}
         hasBackup={hasFoundryBackup}
         isBuilding={isBuilding}
         onSelect={() => onSelectSource("foundry")}
@@ -300,7 +337,7 @@ export function BuildProfileRow({
         source="bundled"
         env={env}
         provider={provider}
-        isActive={bundledActive && !isDownloaded}
+        isActive={bundledActive}
         hasBackup={false}
         onSelect={() => onSelectSource("bundled")}
         binaryUpdate={binaryUpdate}
@@ -308,7 +345,7 @@ export function BuildProfileRow({
         updateError={updateError}
         onUpdateBinary={onUpdateBinary}
         onRevert={onRevert}
-        showDownloadedRevert={isDownloaded}
+        showDownloadedRevert={isDownloaded && !provider.optionalDownload}
       />
     </div>
   );

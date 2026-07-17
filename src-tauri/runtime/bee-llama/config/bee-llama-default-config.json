@@ -1,46 +1,48 @@
 {
   "binary_name": "llama-server.exe",
-  "branch": "master",
-  "build_profile": "-DGGML_CUDA=ON\n-DGGML_AVX512=ON",
-  "description": "TheTom turboquant fork - TQ kernels, fused MTP, Windows-first builds",
-  "display_name": "GGML TomTQ",
-  "optionalDownload": true,
-  "git_url": "https://github.com/TheTom/llama-cpp-turboquant",
+  "branch": "main",
+  "build_profile": "-DGGML_CUDA=ON\n-DCMAKE_CUDA_ARCHITECTURES=\"120\"\n-DGGML_AVX512=ON",
+  "description": "Optional engine fork (bee-llama)",
+  "display_name": "Bee Llama",
+  "git_url": "https://github.com/Anbeeld/beellama.cpp",
   "groupOrder": [
     "ABOVE-CONFIG-LEFT",
     "ABOVE-CONFIG-RIGHT",
     "PERFORMANCE",
-    "FEATURE-FLAGS",
-    "ADVANCED",
     "SPECULATIVE-DECODING",
+    "FEATURE-FLAGS",
+    "DEV-WORKFLOW",
     "SYSTEM"
   ],
-  "id": "ggml-tom",
+  "id": "bee-llama",
   "layoutDefaults": {
     "aboveColumnWidths": [
-      0.4504224771015508,
-      0.5495775228984492
+      0.37318909558546304,
+      0.626810904414537
     ],
-    "configColumnCount": 3,
+    "configColumnCount": 2,
     "configColumnWidths": [
-      0.4345092000311261,
-      0.2654907999688739,
-      0.3
+      0.5,
+      0.5
     ],
     "groupColumn": {
-      "ABOVE-CONFIG-LEFT": 0,
-      "ADVANCED": 2,
-      "FEATURE-FLAGS": 1,
-      "SPECULATIVE-DECODING": 2
+      "ABOVE-CONFIG-RIGHT": 1,
+      "ADVANCED": 1,
+      "DEV-WORKFLOW": 2,
+      "FEATURE-FLAGS": 2,
+      "PERFORMANCE": 0,
+      "SPECULATIVE-DECODING": 1,
+      "USER-ADDED-FROM-CATALOG": 2
     },
     "groupDisplayZone": {
       "ABOVE-CONFIG-LEFT": "above",
       "ABOVE-CONFIG-RIGHT": "above"
     }
   },
+  "optionalDownload": true,
   "params": [
     {
-      "default": "turbo3",
+      "default": "q4_0",
       "dock": "",
       "flag": null,
       "flag_pair": [
@@ -54,15 +56,12 @@
       "pattern": "",
       "ptype": "arg_select_double",
       "step": null,
-      "sub_params": null,
       "ui_group": "ABOVE-CONFIG-LEFT",
       "values": [
         "q4_0",
         "q8_0",
         "f16",
-        "turbo2",
-        "turbo3",
-        "turbo4"
+        "bf16"
       ]
     },
     {
@@ -76,8 +75,7 @@
       "note": "Context window size in tokens.",
       "pattern": "",
       "ptype": "slider",
-      "step": 1024.0,
-      "sub_params": null,
+      "step": 1024,
       "ui_group": "ABOVE-CONFIG-RIGHT",
       "values": [
         16384,
@@ -100,15 +98,14 @@
       "pattern": "",
       "ptype": "arg_select",
       "step": null,
-      "sub_params": null,
       "ui_group": "PERFORMANCE",
       "values": [
-        256,
         512,
         1024,
         2048,
         4096,
-        8192
+        8192,
+        16384
       ]
     },
     {
@@ -123,16 +120,14 @@
       "pattern": "",
       "ptype": "arg_select",
       "step": null,
-      "sub_params": null,
       "ui_group": "PERFORMANCE",
       "values": [
-        16,
-        32,
         64,
         128,
         256,
         512,
-        1024
+        1024,
+        4096
       ]
     },
     {
@@ -147,7 +142,6 @@
       "pattern": "",
       "ptype": "arg_select",
       "step": null,
-      "sub_params": null,
       "ui_group": "PERFORMANCE",
       "values": [
         1,
@@ -170,7 +164,6 @@
       "pattern": "",
       "ptype": "switch_inverted",
       "step": null,
-      "sub_params": null,
       "ui_group": "PERFORMANCE",
       "values": [
         "on",
@@ -189,7 +182,6 @@
       "pattern": "",
       "ptype": "arg_select",
       "step": null,
-      "sub_params": null,
       "ui_group": "PERFORMANCE",
       "values": [
         "on",
@@ -198,22 +190,69 @@
       ]
     },
     {
-      "default": "auto",
+      "default": "draft-mtp",
       "dock": "",
-      "flag": "--mmproj",
+      "flag": "--spec-type",
       "flag_pair": [],
-      "hidden_default": false,
-      "key": "vision",
-      "label": "VISION",
-      "note": "auto scans model directory for mmproj/projector files.",
-      "pattern": "*mmproj*",
-      "ptype": "path_scanner",
+      "hidden_default": true,
+      "key": "spec_type",
+      "label": "SPEC-TYPE",
+      "note": "Comma-separated speculative decoding types. 'none' disables.",
+      "pattern": "",
+      "ptype": "arg_select",
       "step": null,
-      "sub_params": null,
-      "ui_group": "FEATURE-FLAGS",
+      "ui_group": "SPECULATIVE-DECODING",
       "values": [
-        "auto",
-        "off"
+        "draft-simple",
+        "draft-dflash",
+        "draft-eagle3",
+        "draft-mtp",
+        "ngram-simple",
+        "ngram-mod"
+      ]
+    },
+    {
+      "default": 3,
+      "dock": "",
+      "flag": "--spec-draft-n-max",
+      "flag_pair": [],
+      "hidden_default": true,
+      "key": "spec_draft_n_max",
+      "label": "DRAFT-N-MAX",
+      "note": "Maximum number of draft tokens per speculative decoding step.",
+      "pattern": "",
+      "ptype": "arg_select",
+      "step": null,
+      "ui_group": "SPECULATIVE-DECODING",
+      "values": [
+        1,
+        2,
+        3,
+        4,
+        6,
+        8,
+        12
+      ]
+    },
+    {
+      "default": 1,
+      "dock": "",
+      "flag": "--spec-draft-n-min",
+      "flag_pair": [],
+      "hidden_default": true,
+      "key": "spec_draft_n_min",
+      "label": "DRAFT-N-MIN",
+      "note": "minimum number of draft tokens to use for speculative decoding.",
+      "pattern": "",
+      "ptype": "arg_select",
+      "step": null,
+      "ui_group": "SPECULATIVE-DECODING",
+      "values": [
+        1,
+        2,
+        3,
+        4,
+        5
       ]
     },
     {
@@ -223,58 +262,61 @@
       "flag_pair": [],
       "hidden_default": false,
       "key": "reasoning",
-      "label": "REASONING",
+      "label": "REASONING budget",
       "note": "Enable chain-of-thought reasoning output.",
       "pattern": "",
       "ptype": "arg_select",
       "step": null,
       "sub_params": {
-        "off": [],
+        "2000": [
+          "--reasoning-budget",
+          "2000",
+          "--reasoning-budget-message",
+          "Thinking budget exceeded, let's answer now."
+        ],
+        "4000": [
+          "--reasoning-budget",
+          "4000",
+          "--reasoning-budget-message",
+          "Thinking budget exceeded, let's answer now."
+        ],
+        "8000": [
+          "--reasoning-budget",
+          "8000",
+          "--reasoning-budget-message",
+          "Thinking budget exceeded, let's answer now."
+        ],
+        "off": [
+          "--reasoning-budget",
+          "1",
+          "--reasoning-budget-message",
+          "Proceed to final answer."
+        ],
         "on": [
           "--reasoning-budget",
-          "4096",
-          "--reasoning-format",
-          "deepseek"
+          "-1"
         ]
       },
       "ui_group": "FEATURE-FLAGS",
       "values": [
         "on",
-        "off"
+        "off",
+        2000,
+        4000
       ]
     },
     {
       "default": "off",
       "dock": "",
-      "flag": "--no-mmap",
+      "flag": "--reasoning-preserve",
       "flag_pair": [],
       "hidden_default": false,
-      "key": "mmap",
-      "label": "MMAP",
-      "note": "on = use mmap (no flag), off = --no-mmap. Inverted logic.",
-      "pattern": "",
-      "ptype": "switch_inverted",
-      "step": null,
-      "sub_params": null,
-      "ui_group": "FEATURE-FLAGS",
-      "values": [
-        "on",
-        "off"
-      ]
-    },
-    {
-      "default": "on",
-      "dock": "",
-      "flag": "--jinja",
-      "flag_pair": [],
-      "hidden_default": false,
-      "key": "jinja",
-      "label": "JINJA",
-      "note": "Enable Jinja templating for chat.",
+      "key": "reasoning_preserve",
+      "label": "Reasoning Preserve",
+      "note": "",
       "pattern": "",
       "ptype": "switch_onoff",
       "step": null,
-      "sub_params": null,
       "ui_group": "FEATURE-FLAGS",
       "values": [
         "on",
@@ -293,7 +335,42 @@
       "pattern": "",
       "ptype": "switch_onoff",
       "step": null,
-      "sub_params": null,
+      "ui_group": "FEATURE-FLAGS",
+      "values": [
+        "on",
+        "off"
+      ]
+    },
+    {
+      "default": "auto",
+      "dock": "",
+      "flag": "--mmproj",
+      "flag_pair": [],
+      "hidden_default": false,
+      "key": "vision",
+      "label": "VISION",
+      "note": "auto scans model directory for mmproj/projector files.",
+      "pattern": "*mmproj*",
+      "ptype": "path_scanner",
+      "step": null,
+      "ui_group": "FEATURE-FLAGS",
+      "values": [
+        "auto",
+        "off"
+      ]
+    },
+    {
+      "default": "off",
+      "dock": "",
+      "flag": "--no-mmap",
+      "flag_pair": [],
+      "hidden_default": false,
+      "key": "mmap",
+      "label": "MMAP",
+      "note": "on = use mmap (no flag), off = --no-mmap. Inverted logic.",
+      "pattern": "",
+      "ptype": "switch_inverted",
+      "step": null,
       "ui_group": "FEATURE-FLAGS",
       "values": [
         "on",
@@ -302,6 +379,42 @@
     },
     {
       "default": "on",
+      "dock": "",
+      "flag": "--jinja",
+      "flag_pair": [],
+      "hidden_default": false,
+      "key": "jinja",
+      "label": "JINJA",
+      "note": "Enable Jinja templating for chat.",
+      "pattern": "",
+      "ptype": "switch_onoff",
+      "step": null,
+      "ui_group": "FEATURE-FLAGS",
+      "values": [
+        "on",
+        "off"
+      ]
+    },
+    {
+      "default": "on",
+      "dock": "",
+      "flag": "--spm-infill",
+      "flag_pair": [],
+      "hidden_default": false,
+      "key": "spm_infill",
+      "label": "Spm Infill",
+      "note": "m-infill                            use Suffix/Prefix/Middle pattern for infill (instead of",
+      "pattern": "",
+      "ptype": "switch_onoff",
+      "step": null,
+      "ui_group": "DEV-WORKFLOW",
+      "values": [
+        "on",
+        "off"
+      ]
+    },
+    {
+      "default": "off",
       "dock": "",
       "flag": "--swa-full",
       "flag_pair": [],
@@ -312,103 +425,47 @@
       "pattern": "",
       "ptype": "switch_onoff",
       "step": null,
-      "sub_params": null,
-      "ui_group": "ADVANCED",
+      "ui_group": "DEV-WORKFLOW",
       "values": [
         "off",
         "on"
       ]
     },
     {
-      "default": 1,
+      "default": 8192,
       "dock": "",
-      "flag": "--cache-reuse",
+      "flag": "--cache-ram",
       "flag_pair": [],
       "hidden_default": false,
-      "key": "cache_reuse",
-      "label": "Cache Reuse",
-      "note": "he-reuse N                         min chunk size to attempt reusing from the cache via KV shifting,",
+      "key": "cache_ram",
+      "label": "Cache Ram",
+      "note": "set the maximum cache size in MiB (default: 8192, -1 - no limit, 0 -",
       "pattern": "",
       "ptype": "arg_select",
       "step": null,
-      "sub_params": null,
-      "ui_group": "ADVANCED",
+      "ui_group": "DEV-WORKFLOW",
       "values": [
-        0,
-        1
+        8192,
+        16384,
+        32768
       ]
     },
     {
-      "default": "draft-mtp",
-      "dock": "",
-      "flag": "--spec-type",
+      "default": "auto",
+      "dock": "runtime",
+      "flag": "--spec-draft-model",
       "flag_pair": [],
-      "hidden_default": true,
-      "key": "spec_type",
-      "label": "SPEC-TYPE",
-      "note": "Comma-separated speculative decoding types. 'none' disables.",
-      "pattern": "",
-      "ptype": "arg_select",
+      "hidden_default": false,
+      "key": "spec_draft_model",
+      "label": "DRAFT-MODEL",
+      "note": "External draft GGUF for DFlash/Eagle3. auto scans target folder; must be a .gguf file.",
+      "pattern": "*dflash*",
+      "ptype": "logic_only",
       "step": null,
-      "sub_params": null,
-      "ui_group": "SPECULATIVE-DECODING",
+      "ui_group": "SYSTEM",
       "values": [
-        "draft-simple",
-        "draft-eagle3",
-        "draft-mtp",
-        "ngram-simple",
-        "ngram-map-k",
-        "ngram-map-k4v",
-        "ngram-mod",
-        "ngram-cache"
-      ]
-    },
-    {
-      "default": 3,
-      "dock": "",
-      "flag": "--spec-draft-n-max",
-      "flag_pair": [],
-      "hidden_default": true,
-      "key": "spec_draft_n_max",
-      "label": "SPEC-DRAFT-N-MAX",
-      "note": "Maximum number of draft tokens per speculative decoding step.",
-      "pattern": "",
-      "ptype": "arg_select",
-      "step": null,
-      "sub_params": null,
-      "ui_group": "SPECULATIVE-DECODING",
-      "values": [
-        1,
-        2,
-        3,
-        4,
-        5,
-        6,
-        8,
-        10,
-        12
-      ]
-    },
-    {
-      "default": 1,
-      "dock": "",
-      "flag": "--spec-draft-n-min",
-      "flag_pair": [],
-      "hidden_default": true,
-      "key": "spec_draft_n_min",
-      "label": "SPEC-DRAFT-N-MIN",
-      "note": "minimum number of draft tokens to use for speculative decoding.",
-      "pattern": "",
-      "ptype": "arg_select",
-      "step": null,
-      "sub_params": null,
-      "ui_group": "SPECULATIVE-DECODING",
-      "values": [
-        1,
-        2,
-        3,
-        4,
-        5
+        "auto",
+        "off"
       ]
     },
     {
@@ -425,12 +482,8 @@
       "step": null,
       "sub_params": {
         "moe_optimal": [
-          "-ot",
-          "\\\\.ffn_.*_exps\\\\.=CPU",
-          "-ctk",
-          "q4_0",
-          "-ctv",
-          "q4_0"
+          "--no-op-offload",
+          "--cpu-moe"
         ]
       },
       "ui_group": "SYSTEM",
@@ -451,7 +504,6 @@
       "pattern": "",
       "ptype": "arg_select",
       "step": null,
-      "sub_params": null,
       "ui_group": "SYSTEM",
       "values": [
         "none",
@@ -460,7 +512,7 @@
       ]
     },
     {
-      "default": 8080,
+      "default": 8888,
       "dock": "runtime",
       "flag": null,
       "flag_pair": [],
@@ -471,7 +523,6 @@
       "pattern": "",
       "ptype": "logic_only",
       "step": null,
-      "sub_params": null,
       "ui_group": "SYSTEM",
       "values": [
         8080,
@@ -493,13 +544,13 @@
       "batch",
       "ubatch",
       "parallel",
+      "cont_batching",
       "vision",
-      "mmap",
-      "cont_batching"
+      "mmap"
     ],
-    "fit_adapter": "ggml_tom",
+    "fit_adapter": "ggml_master",
     "fit_style": "ggml_fit_params",
-    "fusion_adapter": "ggml_tom",
+    "fusion_adapter": "ggml_master",
     "gpu_env": "CUDA_VISIBLE_DEVICES",
     "max_engine_slots": 64,
     "mmproj_flag": [
@@ -520,15 +571,15 @@
       "batch",
       "ubatch",
       "parallel",
+      "cont_batching",
       "vision",
-      "mmap",
-      "cont_batching"
+      "mmap"
     ],
     "supports_fusion": true,
-    "tensor_split": false,
+    "tensor_split": true,
     "verbosity_args": [
       "-lv",
-      "3"
+      "4"
     ]
   },
   "templateVersion": 2,

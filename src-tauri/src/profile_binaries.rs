@@ -200,7 +200,13 @@ pub fn resolve_provider_binaries(p: &mut ProviderConfig, ctx: ResolveContext<'_>
             .and_then(|path| {
                 let abs = resolve_path(&path);
                 if abs.exists() {
-                    build_info_from_mtime(&abs, "downloaded").map(|info| (path, info))
+                    let ver = p
+                        .downloaded_version_per_env
+                        .get(&profile)
+                        .map(|v| v.trim().trim_start_matches('v').to_string())
+                        .filter(|v| !v.is_empty())
+                        .unwrap_or_else(|| "downloaded".to_string());
+                    build_info_from_mtime(&abs, &ver).map(|info| (path, info))
                 } else {
                     None
                 }
@@ -208,8 +214,15 @@ pub fn resolve_provider_binaries(p: &mut ProviderConfig, ctx: ResolveContext<'_>
 
         if let Some((path, mut info)) = downloaded_active {
             info = enrich(info, &build_profile);
-            p.binary_path_per_env.insert(profile.to_string(), path);
-            p.build_info_per_env.insert(profile.to_string(), info);
+            p.binary_path_per_env.insert(profile.to_string(), path.clone());
+            p.build_info_per_env.insert(profile.to_string(), info.clone());
+            // Keep runtime inventory slot filled so UI can show ACTIVE on catalog packs.
+            p.bundled_binary_path_per_env
+                .insert(profile.to_string(), path);
+            p.bundled_build_info_per_env
+                .insert(profile.to_string(), info);
+            p.binary_source_per_env
+                .insert(profile.to_string(), SOURCE_BUNDLED.to_string());
             continue;
         }
 
