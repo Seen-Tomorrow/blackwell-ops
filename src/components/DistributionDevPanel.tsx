@@ -2,7 +2,7 @@
  * DEV-only: distribution policy + thin wrappers over Majestic pack/ship scripts.
  * Job output goes to the Tauri/cargo console (log::info) + a plain text panel log.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useTauriListen } from "@/hooks/useTauriListen";
 import { isDevBuild } from "@/lib/build";
@@ -66,11 +66,25 @@ function roleLabel(role: string): string {
   return "catalog OFF";
 }
 
+interface DevReleaseJobStatus {
+  state: string;
+  chain: string;
+  message: string;
+  updatedAt: string;
+  providerId: string;
+  profileId: string;
+  logTail: string[];
+  running: boolean;
+}
+
 export default function DistributionDevPanel() {
   const [dash, setDash] = useState<DistributionDashboard | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [logLines, setLogLines] = useState<string[]>([]);
+  const [job, setJob] = useState<DevReleaseJobStatus | null>(null);
+  /** True once we have observed a detached job as running — used to clear busy only on job end. */
+  const sawJobRunningRef = useRef(false);
 
   const refresh = useCallback(async () => {
     if (!isDevBuild()) return;
@@ -83,9 +97,54 @@ export default function DistributionDevPanel() {
     }
   }, []);
 
+  const pollJob = useCallback(async () => {
+    if (!isDevBuild()) return null;
+    try {
+      const j = await invoke<DevReleaseJobStatus>("get_dev_release_job_status");
+      setJob(j);
+      if (j.logTail?.length) {
+        setLogLines(j.logTail);
+      }
+      // Only drive busy from pack/ship job lifecycle — not idle status during Catalog toggle etc.
+      if (j.running) {
+        sawJobRunningRef.current = true;
+        setBusy(true);
+      } else if (sawJobRunningRef.current) {
+        sawJobRunningRef.current = false;
+        setBusy(false);
+        void refresh();
+      }
+      return j;
+    } catch {
+      return null;
+    }
+  }, [refresh]);
+
   useEffect(() => {
     void refresh();
-  }, [refresh]);
+    void pollJob();
+  }, [refresh, pollJob]);
+
+  // Poll while busy (Pack click / spawn) or job.running. Depending only on
+  // job.running missed completion until remount when the interval never started.
+  useEffect(() => {
+    if (!busy && !job?.running) return;
+    let cancelled = false;
+
+    const tick = async () => {
+      if (cancelled) return;
+      await pollJob();
+    };
+
+    void tick();
+    const id = window.setInterval(() => {
+      void tick();
+    }, 1500);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [busy, job?.running, pollJob]);
 
   useTauriListen<{ line: string }>("dev-release-log", (payload) => {
     if (payload?.line) {
@@ -134,24 +193,45 @@ export default function DistributionDevPanel() {
         `--- ${action}${providerId ? ` ${providerId}/${profileId ?? ""}` : ""} ---`,
       ]);
       try {
-        await invoke("run_dev_release_action", {
+        const result = await invoke<string>("run_dev_release_action", {
           action: {
             action,
             providerId: providerId ?? null,
             profileId: profileId ?? null,
           },
         });
-        setLogLines((p) => [...p, `OK: ${action}`]);
-        await refresh();
+        if (result === "detached") {
+          setLogLines((p) => [
+            ...p,
+            "Detached job started — a Majestic console window should open. Polling job-log.txt …",
+          ]);
+          // Seed running so the poll effect keeps ticking even if the first status read lags.
+          sawJobRunningRef.current = true;
+          setJob((prev) => ({
+            state: "running",
+            chain: action,
+            message: "Detached spawn returned",
+            updatedAt: new Date().toISOString(),
+            providerId: providerId ?? "",
+            profileId: profileId ?? "",
+            logTail: prev?.logTail ?? [],
+            running: true,
+          }));
+          void pollJob();
+          // busy stays true until poll sees job end
+        } else {
+          setLogLines((p) => [...p, `OK: ${action}`]);
+          setBusy(false);
+          await refresh();
+        }
       } catch (e) {
         const msg = typeof e === "string" ? e : String(e);
         setError(msg);
         setLogLines((p) => [...p, `FAIL: ${msg}`]);
-      } finally {
         setBusy(false);
       }
     },
-    [refresh],
+    [refresh, pollJob],
   );
 
   if (!isDevBuild()) {
@@ -169,8 +249,10 @@ export default function DistributionDevPanel() {
           <div>
             <h2 className="text-xs font-mono theme-accent-text tracking-widest">DISTRIBUTION</h2>
             <p className="text-[10px] font-mono config-muted mt-1 max-w-2xl leading-relaxed">
-              Policy + Majestic wrappers. Job log also prints to the Tauri console (
-              <span className="text-white/60">[majestic]</span>). Chains skip YES prompts.
+              Pack+Ship opens a <span className="text-white/70">visible Majestic console</span>{" "}
+              (survives app restart / version bump). Full pack = multi-minute{" "}
+              <span className="text-white/60">npm run release</span>. Log also in{" "}
+              <span className="text-white/60">.majestic-out/job-log.txt</span>.
             </p>
           </div>
           <div className="flex gap-2 flex-wrap">
@@ -208,6 +290,29 @@ export default function DistributionDevPanel() {
         )}
       </div>
 
+      {job?.running && (
+        <p className="px-4 py-2 text-[10px] font-mono text-yellow-400/90 border-b border-yellow-400/25 bg-yellow-400/[0.06]">
+          Job running: {job.chain}
+          {job.message ? ` — ${job.message}` : ""} — watch the console window (not stuck on first
+          log line).
+        </p>
+      )}
+      {job && !job.running && job.state === "ok" && (
+        <p className="px-4 py-2 text-[10px] font-mono text-nv-green/90 border-b border-white/[0.06]">
+          Last job OK: {job.chain}
+        </p>
+      )}
+      {job && !job.running && job.state === "failed" && (
+        <div className="px-4 py-2 text-[10px] font-mono text-telemetry-red border-b border-telemetry-red/30 bg-telemetry-red/[0.06] space-y-1">
+          <p>
+            Last job FAILED: {job.chain} — {job.message}
+          </p>
+          <p className="text-white/50">
+            Scroll the job log below (or open .majestic-out/job-log.txt). Retry after fixing the
+            error.
+          </p>
+        </div>
+      )}
       {error && (
         <p className="px-4 py-2 text-[10px] font-mono text-telemetry-red border-b border-white/[0.06]">
           {error}
@@ -270,8 +375,9 @@ export default function DistributionDevPanel() {
               disabled={busy}
               onClick={() => void runAction("ship_app")}
               className="text-[8px] font-mono uppercase px-2 py-0.5 rounded-sm border border-white/10 text-stealth-muted/70 disabled:opacity-40"
+              title="Ship staged App assets for current version tag (no pack)"
             >
-              Ship only
+              Ship App only
             </button>
             <button
               type="button"
@@ -280,6 +386,15 @@ export default function DistributionDevPanel() {
               className="text-[8px] font-mono uppercase px-2 py-0.5 rounded-sm border border-white/10 text-stealth-muted/70 disabled:opacity-40"
             >
               Pack Full only
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void runAction("ship_full")}
+              className="text-[8px] font-mono uppercase px-2 py-0.5 rounded-sm border border-white/10 text-stealth-muted/70 disabled:opacity-40"
+              title="Ship staged Full assets for current version tag (no pack)"
+            >
+              Ship Full only
             </button>
           </div>
           {dash?.workflowNotes && (

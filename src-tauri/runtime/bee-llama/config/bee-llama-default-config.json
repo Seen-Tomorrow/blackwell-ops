@@ -17,8 +17,8 @@
   "id": "bee-llama",
   "layoutDefaults": {
     "aboveColumnWidths": [
-      0.37318909558546304,
-      0.626810904414537
+      0.30781714477570565,
+      0.6921828552242945
     ],
     "configColumnCount": 2,
     "configColumnWidths": [
@@ -56,6 +56,7 @@
       "pattern": "",
       "ptype": "arg_select_double",
       "step": null,
+      "sub_params": null,
       "ui_group": "ABOVE-CONFIG-LEFT",
       "values": [
         "q4_0",
@@ -75,7 +76,8 @@
       "note": "Context window size in tokens.",
       "pattern": "",
       "ptype": "slider",
-      "step": 1024,
+      "step": 1024.0,
+      "sub_params": null,
       "ui_group": "ABOVE-CONFIG-RIGHT",
       "values": [
         16384,
@@ -98,6 +100,7 @@
       "pattern": "",
       "ptype": "arg_select",
       "step": null,
+      "sub_params": null,
       "ui_group": "PERFORMANCE",
       "values": [
         512,
@@ -120,6 +123,7 @@
       "pattern": "",
       "ptype": "arg_select",
       "step": null,
+      "sub_params": null,
       "ui_group": "PERFORMANCE",
       "values": [
         64,
@@ -142,6 +146,7 @@
       "pattern": "",
       "ptype": "arg_select",
       "step": null,
+      "sub_params": null,
       "ui_group": "PERFORMANCE",
       "values": [
         1,
@@ -164,6 +169,7 @@
       "pattern": "",
       "ptype": "switch_inverted",
       "step": null,
+      "sub_params": null,
       "ui_group": "PERFORMANCE",
       "values": [
         "on",
@@ -182,6 +188,7 @@
       "pattern": "",
       "ptype": "arg_select",
       "step": null,
+      "sub_params": null,
       "ui_group": "PERFORMANCE",
       "values": [
         "on",
@@ -201,6 +208,7 @@
       "pattern": "",
       "ptype": "arg_select",
       "step": null,
+      "sub_params": null,
       "ui_group": "SPECULATIVE-DECODING",
       "values": [
         "draft-simple",
@@ -223,6 +231,7 @@
       "pattern": "",
       "ptype": "arg_select",
       "step": null,
+      "sub_params": null,
       "ui_group": "SPECULATIVE-DECODING",
       "values": [
         1,
@@ -246,6 +255,7 @@
       "pattern": "",
       "ptype": "arg_select",
       "step": null,
+      "sub_params": null,
       "ui_group": "SPECULATIVE-DECODING",
       "values": [
         1,
@@ -317,6 +327,7 @@
       "pattern": "",
       "ptype": "switch_onoff",
       "step": null,
+      "sub_params": null,
       "ui_group": "FEATURE-FLAGS",
       "values": [
         "on",
@@ -335,6 +346,7 @@
       "pattern": "",
       "ptype": "switch_onoff",
       "step": null,
+      "sub_params": null,
       "ui_group": "FEATURE-FLAGS",
       "values": [
         "on",
@@ -353,6 +365,7 @@
       "pattern": "*mmproj*",
       "ptype": "path_scanner",
       "step": null,
+      "sub_params": null,
       "ui_group": "FEATURE-FLAGS",
       "values": [
         "auto",
@@ -371,6 +384,7 @@
       "pattern": "",
       "ptype": "switch_inverted",
       "step": null,
+      "sub_params": null,
       "ui_group": "FEATURE-FLAGS",
       "values": [
         "on",
@@ -389,6 +403,7 @@
       "pattern": "",
       "ptype": "switch_onoff",
       "step": null,
+      "sub_params": null,
       "ui_group": "FEATURE-FLAGS",
       "values": [
         "on",
@@ -407,6 +422,7 @@
       "pattern": "",
       "ptype": "switch_onoff",
       "step": null,
+      "sub_params": null,
       "ui_group": "DEV-WORKFLOW",
       "values": [
         "on",
@@ -425,6 +441,7 @@
       "pattern": "",
       "ptype": "switch_onoff",
       "step": null,
+      "sub_params": null,
       "ui_group": "DEV-WORKFLOW",
       "values": [
         "off",
@@ -443,6 +460,7 @@
       "pattern": "",
       "ptype": "arg_select",
       "step": null,
+      "sub_params": null,
       "ui_group": "DEV-WORKFLOW",
       "values": [
         8192,
@@ -462,6 +480,7 @@
       "pattern": "*dflash*",
       "ptype": "logic_only",
       "step": null,
+      "sub_params": null,
       "ui_group": "SYSTEM",
       "values": [
         "auto",
@@ -504,6 +523,7 @@
       "pattern": "",
       "ptype": "arg_select",
       "step": null,
+      "sub_params": null,
       "ui_group": "SYSTEM",
       "values": [
         "none",
@@ -523,6 +543,7 @@
       "pattern": "",
       "ptype": "logic_only",
       "step": null,
+      "sub_params": null,
       "ui_group": "SYSTEM",
       "values": [
         8080,
@@ -582,6 +603,6 @@
       "4"
     ]
   },
-  "templateVersion": 2,
+  "templateVersion": 3,
   "template_type": "ggml-llama"
 }

@@ -101,7 +101,7 @@ export default function GpuOverclockPanel({
         }`}
       >
         <span className="gpu-oc-header__title text-[10px] font-mono text-white tracking-wider shrink-0">
-          OVERCLOCKING
+          OVERCLOCKING [at your own risk]
         </span>
         <span
           className={`gpu-oc-header__feedback flex-1 min-w-0 text-[8px] font-mono truncate text-right leading-none min-h-[0.65rem] ${feedback ? feedbackTone : "text-transparent select-none"}`}

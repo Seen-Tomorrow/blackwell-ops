@@ -1,12 +1,18 @@
-# Tauri CLI file watcher (tauri dev) — gitignore-style rules.
-# Factory templates / plugin catalog are admin data written by DEV Distribution
-# and EXPORT FACTORY. They are not Rust source; ignore so edits do not rebuild.
+# Tauri CLI file watcher (tauri dev) - gitignore-style rules.
+# Watcher covers ALL of src-tauri (not just .rs). Ignore non-source trees.
 
-# Provider factory JSON + spawn/layout templates
-runtime/**/config/**
+# Entire runtime tree: factory JSON, plugin catalog, AND engine binaries
+# (Pack Full runs mirror-artifacts -> copies .dll/.exe here every ship)
+runtime/**
 
-# Plugin catalog generated from distribution policy
-runtime/catalog/**
-
-# Staged release bundle trees (if present next to sources)
+# NSIS staging (prepare-release-runtime)
 runtime-bundle/**
+
+# Cargo build outputs (usually already skipped; belt-and-suspenders)
+target/**
+
+# DISTRIBUTION bump rewrites these; must not kill pack mid-chain
+Cargo.toml
+Cargo.lock
+tauri.conf.json
+tauri.conf.dev.json

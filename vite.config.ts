@@ -63,15 +63,24 @@ export default defineConfig(async () => ({
       ],
     },
     watch: {
+      // Pack/foundry drop locked .exe under work/; watching them throws EBUSY and
+      // kills Vite (unhandled FSWatcher error). Keep in sync with server.fs.deny.
       ignored: [
-        '**/src-tauri/target/**',
-        '**/src-tauri/runtime/**/config/**',
-        '**/src-tauri/runtime/catalog/**',
-        '**/src-tauri/runtime-bundle/**',
-        '**/scripts/distribution-policy.json',
-        '**/foundry/**',
-        '**/llama.cpp/tools/**',
+        "**/src-tauri/target/**",
+        "**/src-tauri/runtime/**",
+        "**/src-tauri/runtime-bundle/**",
+        "**/scripts/distribution-policy.json",
+        "**/foundry/**",
+        "**/work/**",
+        "**/llama.cpp/**",
+        "**/node_modules/**",
+        "**/.majestic-out/**",
+        "**/*.exe",
+        "**/*.dll",
+        "**/*.7z",
       ],
+      // Locked pack outputs / antivirus holds must not crash the dev server.
+      ignorePermissionErrors: true,
     },
   },
 

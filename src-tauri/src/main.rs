@@ -1067,6 +1067,7 @@ async fn main() {
             distribution::set_provider_distribution,
             distribution::regenerate_distribution_catalog,
             distribution::run_dev_release_action,
+            distribution::get_dev_release_job_status,
 
         ])
         .run(tauri::generate_context!())

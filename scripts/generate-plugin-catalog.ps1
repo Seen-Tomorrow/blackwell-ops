@@ -60,3 +60,4 @@ $json = $catalog | ConvertTo-Json -Depth 6
 $utf8NoBom = New-Object System.Text.UTF8Encoding $false
 [System.IO.File]::WriteAllText($out_path, $json + "`n", $utf8NoBom)
 Write-Host ("[plugin-catalog] Wrote {0} ({1} plugin(s))" -f $out_path, $plugins.Count) -ForegroundColor Cyan
+# Do not use `exit` here — when called via &, exit kills the parent pack process.

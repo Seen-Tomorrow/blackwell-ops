@@ -603,26 +603,254 @@ fn emit_log(app: &tauri::AppHandle, line: &str) {
     let _ = app.emit("dev-release-log", serde_json::json!({ "line": line }));
 }
 
+fn majestic_out_dir() -> PathBuf {
+    repo_root().join(".majestic-out")
+}
+
+fn job_log_path() -> PathBuf {
+    majestic_out_dir().join("job-log.txt")
+}
+
+fn job_status_path() -> PathBuf {
+    majestic_out_dir().join("job-status.json")
+}
+
+fn chain_runner_ps1() -> PathBuf {
+    repo_root()
+        .join("scripts")
+        .join("majestic")
+        .join("run-detached-chain.ps1")
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DevReleaseJobStatus {
+    pub state: String,
+    pub chain: String,
+    pub message: String,
+    pub updated_at: String,
+    pub provider_id: String,
+    pub profile_id: String,
+    pub log_tail: Vec<String>,
+    /// true while status file says running (panel should poll)
+    pub running: bool,
+}
+
+fn read_job_status_file() -> Option<serde_json::Value> {
+    let path = job_status_path();
+    let raw = std::fs::read_to_string(path).ok()?;
+    serde_json::from_str(&raw).ok()
+}
+
+/// If status says running but the process is gone (or never started), mark failed.
+fn heal_stale_running_job() {
+    let Some(j) = read_job_status_file() else {
+        return;
+    };
+    if j.get("state").and_then(|x| x.as_str()) != Some("running") {
+        return;
+    }
+    let pid = j.get("pid").and_then(|x| x.as_u64()).unwrap_or(0);
+    let updated = j
+        .get("updatedAt")
+        .and_then(|x| x.as_str())
+        .unwrap_or("");
+    // Never started (seed) for > 15s, or dead pid
+    let stale_seed = pid == 0 && job_status_is_older_than_secs(updated, 15);
+    let dead_pid = pid > 0 && !windows_pid_alive(pid as u32);
+    if !stale_seed && !dead_pid {
+        return;
+    }
+    let chain = j
+        .get("chain")
+        .and_then(|x| x.as_str())
+        .unwrap_or("?")
+        .to_string();
+    let msg = if stale_seed {
+        "Detached PowerShell never started (stale seed). Retry Pack, or run manually: scripts/majestic/run-detached-chain.ps1"
+    } else {
+        "Detached job process exited without writing final status"
+    };
+    let failed = serde_json::json!({
+        "state": "failed",
+        "chain": chain,
+        "message": msg,
+        "updatedAt": chrono::Local::now().to_rfc3339(),
+        "providerId": j.get("providerId").and_then(|x| x.as_str()).unwrap_or(""),
+        "profileId": j.get("profileId").and_then(|x| x.as_str()).unwrap_or(""),
+        "pid": pid,
+    });
+    let _ = std::fs::write(
+        job_status_path(),
+        serde_json::to_string_pretty(&failed).unwrap_or_default(),
+    );
+    let _ = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(job_log_path())
+        .and_then(|mut f| {
+            use std::io::Write;
+            writeln!(f, "[{}] HEAL: {msg}", chrono::Local::now().to_rfc3339())
+        });
+}
+
+fn job_status_is_older_than_secs(updated_at: &str, secs: i64) -> bool {
+    if updated_at.is_empty() {
+        return true;
+    }
+    // Accept RFC3339; if parse fails, treat as stale.
+    chrono::DateTime::parse_from_rfc3339(updated_at)
+        .map(|dt| {
+            let age = chrono::Local::now().signed_duration_since(dt.with_timezone(&chrono::Local));
+            age.num_seconds() > secs
+        })
+        .unwrap_or(true)
+}
+
+#[cfg(windows)]
+fn windows_pid_alive(pid: u32) -> bool {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    let out = std::process::Command::new("tasklist")
+        .args(["/FI", &format!("PID eq {pid}"), "/NH"])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output();
+    match out {
+        Ok(o) => {
+            let s = String::from_utf8_lossy(&o.stdout);
+            s.contains(&pid.to_string())
+        }
+        Err(_) => true, // unknown — don't mark failed
+    }
+}
+
+#[cfg(not(windows))]
+fn windows_pid_alive(_pid: u32) -> bool {
+    true
+}
+
+fn read_log_tail(max_lines: usize) -> Vec<String> {
+    let path = job_log_path();
+    let Ok(raw) = std::fs::read_to_string(path) else {
+        return Vec::new();
+    };
+    raw.lines()
+        .map(|s| s.to_string())
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .take(max_lines)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect()
+}
+
+#[tauri::command]
+pub fn get_dev_release_job_status() -> Result<DevReleaseJobStatus, String> {
+    assert_dev()?;
+    heal_stale_running_job();
+    let v = read_job_status_file();
+    let (state, chain, message, updated_at, provider_id, profile_id) = match v {
+        Some(j) => (
+            j.get("state")
+                .and_then(|x| x.as_str())
+                .unwrap_or("idle")
+                .to_string(),
+            j.get("chain")
+                .and_then(|x| x.as_str())
+                .unwrap_or("")
+                .to_string(),
+            j.get("message")
+                .and_then(|x| x.as_str())
+                .unwrap_or("")
+                .to_string(),
+            j.get("updatedAt")
+                .and_then(|x| x.as_str())
+                .unwrap_or("")
+                .to_string(),
+            j.get("providerId")
+                .and_then(|x| x.as_str())
+                .unwrap_or("")
+                .to_string(),
+            j.get("profileId")
+                .and_then(|x| x.as_str())
+                .unwrap_or("")
+                .to_string(),
+        ),
+        None => (
+            "idle".into(),
+            String::new(),
+            String::new(),
+            String::new(),
+            String::new(),
+            String::new(),
+        ),
+    };
+    let running = state == "running";
+    Ok(DevReleaseJobStatus {
+        state,
+        chain,
+        message,
+        updated_at,
+        provider_id,
+        profile_id,
+        log_tail: read_log_tail(200),
+        running,
+    })
+}
+
+/// Long jobs (pack/ship/bump) run in a **detached** PowerShell so tauri dev
+/// restarts from version-file bumps do not kill the chain mid-flight.
 #[tauri::command]
 pub async fn run_dev_release_action(
     app_handle: tauri::AppHandle,
     action: DevReleaseAction,
 ) -> Result<String, String> {
     assert_dev()?;
-    if RELEASE_JOB_RUNNING.swap(true, Ordering::SeqCst) {
-        return Err("A release job is already running".into());
+
+    // Fast checks stay in-process (no version bump).
+    if action.action == "check_app" || action.action == "check_full" {
+        if RELEASE_JOB_RUNNING.swap(true, Ordering::SeqCst) {
+            return Err("A release job is already running".into());
+        }
+        let result = tokio::task::spawn_blocking({
+            let app = app_handle.clone();
+            let action = action.clone();
+            move || run_check_inline(&app, &action)
+        })
+        .await
+        .map_err(|e| format!("Check join failed: {e}"));
+        RELEASE_JOB_RUNNING.store(false, Ordering::SeqCst);
+        return result?;
     }
 
-    let result = tokio::task::spawn_blocking({
+    if let Some(j) = read_job_status_file() {
+        if j.get("state").and_then(|x| x.as_str()) == Some("running") {
+            return Err(
+                "A detached pack/ship job is already running — open DISTRIBUTION and wait, or delete .majestic-out/job-status.json if stale."
+                    .into(),
+            );
+        }
+    }
+
+    tokio::task::spawn_blocking({
         let app = app_handle.clone();
         let action = action.clone();
-        move || run_dev_release_action_blocking(&app, &action)
+        move || spawn_detached_chain(&app, &action)
     })
     .await
-    .map_err(|e| format!("Release job join failed: {e}"));
+    .map_err(|e| format!("Spawn join failed: {e}"))?
+}
 
-    RELEASE_JOB_RUNNING.store(false, Ordering::SeqCst);
-    result?
+fn run_check_inline(app: &tauri::AppHandle, action: &DevReleaseAction) -> Result<String, String> {
+    let variant = if action.action == "check_full" {
+        "full"
+    } else {
+        "app"
+    };
+    run_majestic_step(app, &["-Mode", "check", "-Variant", variant])?;
+    Ok("ok".into())
 }
 
 fn majestic_ps1() -> Result<PathBuf, String> {
@@ -636,11 +864,8 @@ fn majestic_ps1() -> Result<PathBuf, String> {
     Ok(path)
 }
 
-/// One majestic.ps1 invocation with -Force (no YES prompts).
-fn run_majestic_step(
-    app: &tauri::AppHandle,
-    mode_args: &[&str],
-) -> Result<(), String> {
+/// One majestic.ps1 invocation with -Force (no YES prompts). In-process only (checks).
+fn run_majestic_step(app: &tauri::AppHandle, mode_args: &[&str]) -> Result<(), String> {
     let root = repo_root();
     let majestic = majestic_ps1()?;
     let mut args: Vec<String> = vec![
@@ -653,7 +878,6 @@ fn run_majestic_step(
     for a in mode_args {
         args.push((*a).into());
     }
-    // Always non-interactive from the app.
     if !mode_args.iter().any(|a| *a == "-Force") {
         args.push("-Force".into());
     }
@@ -689,107 +913,264 @@ fn run_majestic_step(
     Ok(())
 }
 
-fn run_dev_release_action_blocking(
-    app: &tauri::AppHandle,
-    action: &DevReleaseAction,
-) -> Result<String, String> {
-    let provider = action.provider_id.as_deref().filter(|s| !s.is_empty());
-    let profile = action.profile_id.as_deref().filter(|s| !s.is_empty());
-
-    match action.action.as_str() {
-        "bump" => {
-            run_majestic_step(app, &["-Mode", "bump"])?;
-        }
-        "check_app" => {
-            run_majestic_step(app, &["-Mode", "check", "-Variant", "app"])?;
-        }
-        "check_full" => {
-            run_majestic_step(app, &["-Mode", "check", "-Variant", "full"])?;
-        }
-        "pack_app" => {
-            run_majestic_step(app, &["-Mode", "pack", "-Variant", "app"])?;
-        }
-        "pack_full" => {
-            run_majestic_step(app, &["-Mode", "pack", "-Variant", "full"])?;
-        }
-        "ship_app" | "ship_full" => {
-            run_majestic_step(app, &["-Mode", "ship"])?;
-        }
-        "pack_provider" => {
-            let pid = provider.ok_or("pack_provider needs providerId")?;
-            let prof = profile.ok_or("pack_provider needs profileId")?;
-            run_majestic_step(
-                app,
-                &[
-                    "-Mode",
-                    "pack-provider",
-                    "-ProviderId",
-                    pid,
-                    "-ProfileId",
-                    prof,
-                ],
-            )?;
-        }
-        "ship_provider" => {
-            let pid = provider.ok_or("ship_provider needs providerId")?;
-            let prof = profile.ok_or("ship_provider needs profileId")?;
-            run_majestic_step(
-                app,
-                &[
-                    "-Mode",
-                    "ship-provider",
-                    "-ProviderId",
-                    pid,
-                    "-ProfileId",
-                    prof,
-                ],
-            )?;
-        }
-        // Chains (no prompts). App ship auto-bumps patch first.
-        "pack_ship_app" => {
-            emit_log(app, "=== chain: bump + pack app + ship ===");
-            run_majestic_step(app, &["-Mode", "bump"])?;
-            run_majestic_step(app, &["-Mode", "pack", "-Variant", "app"])?;
-            run_majestic_step(app, &["-Mode", "ship"])?;
-        }
-        "pack_ship_full" => {
-            emit_log(app, "=== chain: bump + pack full + ship ===");
-            run_majestic_step(app, &["-Mode", "bump"])?;
-            run_majestic_step(app, &["-Mode", "pack", "-Variant", "full"])?;
-            run_majestic_step(app, &["-Mode", "ship"])?;
-        }
-        "pack_ship_provider" => {
-            let pid = provider.ok_or("pack_ship_provider needs providerId")?;
-            let prof = profile.ok_or("pack_ship_provider needs profileId")?;
-            emit_log(
-                app,
-                &format!("=== chain: pack + ship {pid}/{prof} (no version bump) ==="),
-            );
-            run_majestic_step(
-                app,
-                &[
-                    "-Mode",
-                    "pack-provider",
-                    "-ProviderId",
-                    pid,
-                    "-ProfileId",
-                    prof,
-                ],
-            )?;
-            run_majestic_step(
-                app,
-                &[
-                    "-Mode",
-                    "ship-provider",
-                    "-ProviderId",
-                    pid,
-                    "-ProfileId",
-                    prof,
-                ],
-            )?;
-        }
-        other => return Err(format!("Unknown action '{other}'")),
+fn spawn_detached_chain(app: &tauri::AppHandle, action: &DevReleaseAction) -> Result<String, String> {
+    let root = repo_root();
+    let runner = chain_runner_ps1();
+    if !runner.is_file() {
+        return Err(format!("Missing chain runner: {}", runner.display()));
     }
 
-    Ok("ok".into())
+    let out = majestic_out_dir();
+    std::fs::create_dir_all(&out)
+        .map_err(|e| format!("Failed to create .majestic-out: {e}"))?;
+
+    let log = job_log_path();
+    let status = job_status_path();
+
+    // Seed status so the panel can poll immediately after app restart.
+    let seed = serde_json::json!({
+        "state": "running",
+        "chain": action.action,
+        "message": "Spawning detached PowerShell…",
+        "updatedAt": chrono::Local::now().to_rfc3339(),
+        "providerId": action.provider_id.clone().unwrap_or_default(),
+        "profileId": action.profile_id.clone().unwrap_or_default(),
+        "pid": 0,
+    });
+    std::fs::write(
+        &status,
+        serde_json::to_string_pretty(&seed).unwrap_or_default(),
+    )
+    .map_err(|e| format!("Failed to write job status: {e}"))?;
+    std::fs::write(
+        &log,
+        format!(
+            "[{}] App spawning detached chain: {}\n",
+            chrono::Local::now().to_rfc3339(),
+            action.action
+        ),
+    )
+    .ok();
+
+    // Detached visible console without CREATE_BREAKAWAY_FROM_JOB.
+    // Breakaway fails with ERROR_ACCESS_DENIED (os error 5) when cargo/tauri/dev
+    // hosts put the process in a job that does not allow breakaway — common on Windows.
+    // Same pattern as engine::spawn_nobsproof_cmd_window: hidden Start-Process helper.
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    const CREATE_NEW_CONSOLE: u32 = 0x0000_0010;
+
+    let runner_s = runner.to_string_lossy().replace('\'', "''");
+    let root_s = root.to_string_lossy().replace('\'', "''");
+    let chain_s = action.action.replace('\'', "''");
+
+    let mut ps_arg_list = format!(
+        "'-NoProfile','-ExecutionPolicy','Bypass','-File','{runner_s}','-Chain','{chain_s}'"
+    );
+    if let Some(pid) = action.provider_id.as_ref().filter(|s| !s.is_empty()) {
+        let p = pid.replace('\'', "''");
+        ps_arg_list.push_str(&format!(",'-ProviderId','{p}'"));
+    }
+    if let Some(prof) = action.profile_id.as_ref().filter(|s| !s.is_empty()) {
+        let p = prof.replace('\'', "''");
+        ps_arg_list.push_str(&format!(",'-ProfileId','{p}'"));
+    }
+
+    emit_log(
+        app,
+        &format!(
+            "Starting DETACHED job with VISIBLE console (log: {}) - survives app restart",
+            log.display()
+        ),
+    );
+    emit_log(
+        app,
+        &format!(
+            "$ Start-Process powershell -File {} -Chain {}",
+            runner.display(),
+            action.action
+        ),
+    );
+
+    // Start-Process -PassThru returns the real console process Id (not the helper).
+    let launcher = format!(
+        "$wd='{root_s}'; $al=@({ps_arg_list}); \
+         $p=Start-Process -FilePath powershell.exe -WorkingDirectory $wd \
+         -ArgumentList $al -WindowStyle Normal -PassThru; \
+         if($null -eq $p){{ exit 1 }}; Write-Output $p.Id"
+    );
+
+    let mut child_pid: u32 = 0;
+    let mut spawned = false;
+
+    match std::process::Command::new("powershell.exe")
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            &launcher,
+        ])
+        .current_dir(&root)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+    {
+        Ok(out) if out.status.success() => {
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            child_pid = stdout
+                .lines()
+                .rev()
+                .find_map(|l| l.trim().parse::<u32>().ok())
+                .unwrap_or(0);
+            spawned = true;
+            if child_pid > 0 {
+                emit_log(app, &format!("Spawned detached powershell pid={child_pid}"));
+            } else {
+                emit_log(app, "Start-Process succeeded (pid not parsed; script will write status)");
+            }
+        }
+        Ok(out) => {
+            let err = String::from_utf8_lossy(&out.stderr);
+            emit_log(
+                app,
+                &format!(
+                    "Start-Process helper failed (exit {:?}): {}",
+                    out.status.code(),
+                    err.trim()
+                ),
+            );
+        }
+        Err(e) => {
+            emit_log(app, &format!("Start-Process helper spawn failed: {e}"));
+        }
+    }
+
+    // Fallback: cmd start (empty title "" required).
+    if !spawned {
+        // Empty quoted title ("") is required; unquoted first token becomes the window title.
+        let mut start_args: Vec<String> = vec![
+            "/C".into(),
+            "start".into(),
+            "".into(),
+            "powershell.exe".into(),
+            "-NoProfile".into(),
+            "-ExecutionPolicy".into(),
+            "Bypass".into(),
+            "-File".into(),
+            runner.to_string_lossy().into_owned(),
+            "-Chain".into(),
+            action.action.clone(),
+        ];
+        if let Some(pid) = action.provider_id.as_ref().filter(|s| !s.is_empty()) {
+            start_args.push("-ProviderId".into());
+            start_args.push(pid.clone());
+        }
+        if let Some(prof) = action.profile_id.as_ref().filter(|s| !s.is_empty()) {
+            start_args.push("-ProfileId".into());
+            start_args.push(prof.clone());
+        }
+
+        match std::process::Command::new("cmd.exe")
+            .args(&start_args)
+            .current_dir(&root)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .creation_flags(CREATE_NO_WINDOW)
+            .spawn()
+        {
+            Ok(c) => {
+                drop(c);
+                spawned = true;
+                emit_log(app, "Spawned via cmd start (fallback)");
+            }
+            Err(e) => {
+                emit_log(app, &format!("cmd start fallback failed: {e}"));
+            }
+        }
+    }
+
+    // Last resort: CREATE_NEW_CONSOLE only (no breakaway — that was the access-denied bug).
+    if !spawned {
+        let mut cmd = std::process::Command::new("powershell.exe");
+        cmd.args([
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            &runner.to_string_lossy(),
+            "-Chain",
+            &action.action,
+        ]);
+        if let Some(pid) = action.provider_id.as_ref().filter(|s| !s.is_empty()) {
+            cmd.args(["-ProviderId", pid]);
+        }
+        if let Some(prof) = action.profile_id.as_ref().filter(|s| !s.is_empty()) {
+            cmd.args(["-ProfileId", prof]);
+        }
+        let child = cmd
+            .current_dir(&root)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .creation_flags(CREATE_NEW_CONSOLE)
+            .spawn()
+            .map_err(|e| {
+                format!(
+                    "Failed to spawn detached PowerShell: {e}. \
+                     If elevation is required, use gsudo from bin/; pack jobs normally do not need admin."
+                )
+            })?;
+        child_pid = child.id();
+        drop(child);
+        emit_log(app, &format!("Spawned CREATE_NEW_CONSOLE pid={child_pid}"));
+    }
+
+    // Child should rewrite status with its own $PID within a second.
+    std::thread::sleep(std::time::Duration::from_millis(1200));
+    if let Ok(raw) = std::fs::read_to_string(&status) {
+        if raw.contains("\"pid\":0") || raw.contains("\"pid\": 0") {
+            if child_pid > 0 {
+                let fallback = serde_json::json!({
+                    "state": "running",
+                    "chain": action.action,
+                    "message": format!("Spawned pid {child_pid} (awaiting script bootstrap)"),
+                    "updatedAt": chrono::Local::now().to_rfc3339(),
+                    "providerId": action.provider_id.clone().unwrap_or_default(),
+                    "profileId": action.profile_id.clone().unwrap_or_default(),
+                    "pid": child_pid,
+                });
+                let _ = std::fs::write(
+                    &status,
+                    serde_json::to_string_pretty(&fallback).unwrap_or_default(),
+                );
+                emit_log(
+                    app,
+                    &format!(
+                        "WARN: script had not rewritten status yet; seeded pid={child_pid}. Watch console + {}",
+                        log.display()
+                    ),
+                );
+            } else {
+                emit_log(
+                    app,
+                    &format!(
+                        "WARN: status still pid=0 — watch console + {}",
+                        log.display()
+                    ),
+                );
+            }
+        } else {
+            emit_log(
+                app,
+                "Detached job process is running - watch the Majestic console window + job-log.txt",
+            );
+        }
+    }
+
+    Ok("detached".into())
 }

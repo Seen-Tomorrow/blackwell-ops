@@ -67,8 +67,9 @@ if ($copied_configs -eq 0) {
 }
 
 $catalog_dst = Join-Path $bundle_root 'catalog'
+# PowerShell .ps1 success does not clear $LASTEXITCODE from earlier native tools.
 & (Join-Path $script_dir 'generate-plugin-catalog.ps1') -OutDir $catalog_dst
-if ($LASTEXITCODE -ne 0) {
+if (-not $?) {
     throw 'generate-plugin-catalog.ps1 failed'
 }
 

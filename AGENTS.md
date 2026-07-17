@@ -14,6 +14,8 @@ Traps and invariants only — not a code map. Read the source for flows, schemas
 
 **Windows `is_process_alive`** — `PROCESS_QUERY_INFORMATION` only. `PROCESS_VM_READ` is denied on child processes → false “dead” reads. `OpenProcess` failure with `ERROR_INVALID_PARAMETER` = PID gone (dead); `ERROR_ACCESS_DENIED` = treat as alive (protected process).
 
+**Windows detached console spawn** — Never use `CREATE_BREAKAWAY_FROM_JOB`. Cargo/Tauri/dev hosts put the process in a job that denies breakaway → immediate `Access is denied (os error 5)`. Detached visible windows: `Start-Process` (or `cmd start "" …`) via a `CREATE_NO_WINDOW` helper — see `engine::spawn_nobsproof_cmd_window` and `distribution::spawn_detached_chain`. `CREATE_NEW_CONSOLE` alone is last resort; breakaway is never OK. Pack/ship do not need gsudo/admin.
+
 ---
 
 ## Foundry paths
