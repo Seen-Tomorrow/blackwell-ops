@@ -177,18 +177,67 @@ fn sync_dev_runtime_factory_configs(app_root: &std::path::Path) {
 }
 
 fn sync_plugin_catalog_tree(source: &std::path::Path, app_root: &std::path::Path, label: &str) -> bool {
-    let src_catalog = source.join("catalog");
-    if !src_catalog.is_dir() {
+    // Accept source layouts:
+    //   {source}/catalog/plugins.json  (legacy pack layout under runtime/)
+    //   {source}/plugins.json          (flat)
+    //   {source}/runtime-catalog/plugins.json
+    let candidates = [
+        source.join("catalog"),
+        source.join("runtime-catalog"),
+        source.to_path_buf(),
+    ];
+    let src_catalog = candidates.into_iter().find(|p| {
+        p.join("plugins.json").is_file() || p.is_dir() && p.join("plugins.json").exists()
+    });
+    let Some(src_catalog) = src_catalog else {
+        // Also accept file directly
+        let direct = source.join("plugins.json");
+        if !direct.is_file() {
+            log::debug!(
+                "[setup] Plugin catalog sync skipped ({label}) — no plugins.json under {}",
+                source.display()
+            );
+            return false;
+        }
+        let dst = app_root.join("runtime-catalog");
+        if let Err(e) = std::fs::create_dir_all(&dst) {
+            log::warn!("[setup] Plugin catalog dir create failed ({label}): {e}");
+            return false;
+        }
+        return match std::fs::copy(&direct, dst.join("plugins.json")) {
+            Ok(_) => {
+                log::info!(
+                    "[setup] Synced plugin catalog ({label}) -> {}",
+                    dst.join("plugins.json").display()
+                );
+                true
+            }
+            Err(e) => {
+                log::warn!("[setup] Plugin catalog sync failed ({label}): {e}");
+                false
+            }
+        };
+    };
+
+    let plugins_src = if src_catalog.join("plugins.json").is_file() {
+        src_catalog.join("plugins.json")
+    } else {
         log::debug!(
-            "[setup] Plugin catalog sync skipped ({label}) — no catalog at {}",
+            "[setup] Plugin catalog sync skipped ({label}) — no plugins.json in {}",
             src_catalog.display()
         );
         return false;
+    };
+
+    let dst_dir = app_root.join("runtime-catalog");
+    if let Err(e) = std::fs::create_dir_all(&dst_dir) {
+        log::warn!("[setup] Plugin catalog dir create failed ({label}): {e}");
+        return false;
     }
-    let dst_catalog = app_root.join("runtime").join("catalog");
-    match crate::archive_util::copy_dir_merge(&src_catalog, &dst_catalog) {
-        Ok(()) => {
-            log::info!("[setup] Synced plugin catalog ({label}) -> {}", dst_catalog.display());
+    let dst = dst_dir.join("plugins.json");
+    match std::fs::copy(&plugins_src, &dst) {
+        Ok(_) => {
+            log::info!("[setup] Synced plugin catalog ({label}) -> {}", dst.display());
             true
         }
         Err(e) => {
@@ -200,11 +249,17 @@ fn sync_plugin_catalog_tree(source: &std::path::Path, app_root: &std::path::Path
 
 #[cfg(debug_assertions)]
 fn sync_dev_plugin_catalog(app_root: &std::path::Path) {
-    let source = app_root.join("../../runtime");
-    if !source.is_dir() {
-        return;
+    // Prefer repo runtime-catalog/, then legacy runtime/catalog/
+    let repo_runtime = app_root.join("../../runtime");
+    let preferred = app_root.join("../../runtime-catalog");
+    if preferred.join("plugins.json").is_file() || preferred.is_dir() {
+        if sync_plugin_catalog_tree(&preferred, app_root, "dev-runtime-catalog") {
+            return;
+        }
     }
-    sync_plugin_catalog_tree(&source, app_root, "dev");
+    if repo_runtime.is_dir() {
+        let _ = sync_plugin_catalog_tree(&repo_runtime, app_root, "dev");
+    }
 }
 
 /// REL: refresh factory config JSON from bundled resources on every launch so templateVersion
@@ -984,8 +1039,10 @@ fn discover_providers() -> Vec<crate::types::ProviderConfig> {
                     binary_source_per_env: HashMap::new(),
                     bundled_binary_path_per_env: HashMap::new(),
                     foundry_binary_path_per_env: HashMap::new(),
+                    catalog_binary_path_per_env: HashMap::new(),
                     bundled_build_info_per_env: HashMap::new(),
                     foundry_build_info_per_env: HashMap::new(),
+                    catalog_build_info_per_env: HashMap::new(),
                     downloaded_version_per_env: std::collections::HashMap::new(),
                     last_pr_per_env: std::collections::HashMap::new(),
                     display_order: providers.len() as i32,
@@ -2455,8 +2512,10 @@ fn build_config_with_providers_full(mut config: AppConfig) -> AppConfig {
                 binary_source_per_env: meta.binary_source_per_env.clone(),
                 bundled_binary_path_per_env: HashMap::new(),
                 foundry_binary_path_per_env: HashMap::new(),
+                catalog_binary_path_per_env: HashMap::new(),
                 bundled_build_info_per_env: HashMap::new(),
                 foundry_build_info_per_env: HashMap::new(),
+                catalog_build_info_per_env: HashMap::new(),
                 downloaded_version_per_env: meta.downloaded_version_per_env.clone(),
                 last_pr_per_env: meta.last_pr_per_env.clone(),
                 display_order: meta.display_order,

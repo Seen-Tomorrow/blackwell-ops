@@ -1,5 +1,11 @@
-//! Per-profile binary inventory: bundled `runtime/` vs user `foundry/artifacts/`.
-//! Resolves the active launch path with upgrade-aware defaults and explicit user choice.
+//! Per-profile binary inventory: NSIS `runtime/`, Foundry artifacts, catalog packs.
+//!
+//! - **Bundled** — `runtime/{id}/{profile}/` (Full NSIS core; plugins after first install)
+//! - **Foundry** — `foundry/artifacts/...`
+//! - **Catalog** — core: `runtime-catalog/{id}/{profile}/` (does not clobber NSIS);
+//!   plugins: same tree as bundled under `runtime/` with `downloadedVersion` stamp
+//!
+//! Active launch path is user-selectable via `binary_source_per_env`.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -14,11 +20,12 @@ use crate::types::{BuildInfo, ProviderConfig};
 
 pub const SOURCE_FOUNDRY: &str = "foundry";
 pub const SOURCE_BUNDLED: &str = "bundled";
+pub const SOURCE_CATALOG: &str = "catalog";
 
 pub struct ResolveContext<'a> {
-    /// Saved per-env source preference from user config (`foundry` | `bundled`).
+    /// Saved per-env source preference (`foundry` | `bundled` | `catalog`).
     pub source_pref: &'a HashMap<String, String>,
-    /// Prior persisted active paths — used to detect GitHub-downloaded binaries under `updates/`.
+    /// Prior persisted active paths.
     pub saved_paths: &'a HashMap<String, String>,
 }
 
@@ -55,6 +62,9 @@ pub fn launch_engines_available() -> bool {
             if bundled_exe_abs(provider_id, profile).is_file() {
                 return true;
             }
+            if catalog_exe_abs(provider_id, profile).is_file() {
+                return true;
+            }
             let foundry =
                 foundry_artifact_release_dir(provider_id, profile).join("llama-server.exe");
             if foundry.is_file() {
@@ -70,6 +80,18 @@ fn bundled_exe_abs(provider_id: &str, profile: &str) -> PathBuf {
         "runtime/{}/{}/llama-server.exe",
         provider_id, profile
     ))
+}
+
+/// Core catalog overlay — never written into NSIS `runtime/` for ggml-master.
+pub fn catalog_exe_abs(provider_id: &str, profile: &str) -> PathBuf {
+    resolve_path(&format!(
+        "runtime-catalog/{}/{}/llama-server.exe",
+        provider_id, profile
+    ))
+}
+
+fn is_core_provider(provider_id: &str) -> bool {
+    crate::github_releases::is_core_engine_provider(provider_id)
 }
 
 fn scan_bundled(provider_id: &str, profile: &str) -> Option<(String, BuildInfo)> {
@@ -92,18 +114,53 @@ fn scan_foundry(provider_id: &str, profile: &str) -> Option<(String, BuildInfo)>
     Some((rel, info))
 }
 
-fn is_downloaded_or_runtime_path(path: &str) -> bool {
-    let norm = path.replace('\\', "/").to_lowercase();
-    // Legacy `updates/` layout + current portable `runtime/{provider}/{profile}/` packs
-    norm.contains("/updates/")
-        || norm.contains("updates/")
-        || norm.contains("runtime/")
+/// Core: `runtime-catalog/`. Plugins: catalog install lives under `runtime/` with product-tag stamp.
+fn scan_catalog(
+    p: &ProviderConfig,
+    profile: &str,
+) -> Option<(String, BuildInfo)> {
+    let provider_id = &p.id;
+    let product_tag = p
+        .downloaded_version_per_env
+        .get(profile)
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty());
+
+    // Preferred core overlay path
+    let catalog_abs = catalog_exe_abs(provider_id, profile);
+    if catalog_abs.is_file() {
+        let rel = to_relative_path(&catalog_abs);
+        // Engine identity = disk/mtime label (not product tag). Product tag stays in downloadedVersion.
+        let info = build_info_from_mtime(&catalog_abs, "catalog")?;
+        return Some((rel, info));
+    }
+
+    // Plugins (and legacy core overwrite): stamp + runtime/ tree
+    if let Some(_tag) = product_tag {
+        let runtime_abs = bundled_exe_abs(provider_id, profile);
+        if runtime_abs.is_file() {
+            // For core, only treat runtime/ as catalog when overlay is missing (legacy).
+            // For plugins, runtime/ *is* the catalog install.
+            if !is_core_provider(provider_id) || !catalog_abs.is_file() {
+                let rel = to_relative_path(&runtime_abs);
+                let info = build_info_from_mtime(&runtime_abs, "catalog")?;
+                return Some((rel, info));
+            }
+        }
+    }
+
+    None
 }
 
 fn auto_pick_source(
     bundled: &Option<(String, BuildInfo)>,
     foundry: &Option<(String, BuildInfo)>,
+    catalog: &Option<(String, BuildInfo)>,
+    prefer_catalog: bool,
 ) -> &'static str {
+    if prefer_catalog && catalog.is_some() {
+        return SOURCE_CATALOG;
+    }
     match (bundled, foundry) {
         (Some((bp, _)), Some((fp, _))) => {
             let bt = exe_modified_secs(&resolve_path(bp));
@@ -116,7 +173,13 @@ fn auto_pick_source(
         }
         (Some(_), None) => SOURCE_BUNDLED,
         (None, Some(_)) => SOURCE_FOUNDRY,
-        (None, None) => SOURCE_BUNDLED,
+        (None, None) => {
+            if catalog.is_some() {
+                SOURCE_CATALOG
+            } else {
+                SOURCE_BUNDLED
+            }
+        }
     }
 }
 
@@ -145,110 +208,184 @@ pub fn migrate_provider_profile_keys(p: &mut ProviderConfig) {
     migrate_hashmap_keys(&mut p.binary_source_per_env);
     migrate_hashmap_keys(&mut p.bundled_binary_path_per_env);
     migrate_hashmap_keys(&mut p.foundry_binary_path_per_env);
+    migrate_hashmap_keys(&mut p.catalog_binary_path_per_env);
     migrate_hashmap_keys(&mut p.bundled_build_info_per_env);
     migrate_hashmap_keys(&mut p.foundry_build_info_per_env);
+    migrate_hashmap_keys(&mut p.catalog_build_info_per_env);
     migrate_hashmap_keys(&mut p.downloaded_version_per_env);
     migrate_hashmap_keys(&mut p.last_pr_per_env);
 }
 
-/// Scan both sources, resolve active path + metadata, populate inventory fields on `p`.
+fn merge_probed_version(
+    mut info: BuildInfo,
+    prev: Option<&BuildInfo>,
+    path: &str,
+    prev_path: Option<&str>,
+) -> BuildInfo {
+    // Keep a real llama --version string across inventory rescans (mtime labels are placeholders).
+    if let Some(prev) = prev {
+        let same_path = prev_path
+            .map(|pp| {
+                pp.replace('\\', "/").eq_ignore_ascii_case(&path.replace('\\', "/"))
+            })
+            .unwrap_or(true);
+        if same_path && !crate::engine::is_placeholder_build_version(&prev.version) {
+            info.version = prev.version.clone();
+            if info.cuda_version.is_none() {
+                info.cuda_version = prev.cuda_version.clone();
+            }
+            if info.cuda_architectures.is_none() {
+                info.cuda_architectures = prev.cuda_architectures.clone();
+            }
+        }
+    }
+    info
+}
+
+/// Scan sources, resolve active path + metadata, populate inventory fields on `p`.
 pub fn resolve_provider_binaries(p: &mut ProviderConfig, ctx: ResolveContext<'_>) {
+    // Preserve probed engine versions before inventory clear (rescans use mtime placeholders).
+    let prev_catalog_info = p.catalog_build_info_per_env.clone();
+    let prev_catalog_path = p.catalog_binary_path_per_env.clone();
+    let prev_bundled_info = p.bundled_build_info_per_env.clone();
+    let prev_bundled_path = p.bundled_binary_path_per_env.clone();
+    let prev_foundry_info = p.foundry_build_info_per_env.clone();
+    let prev_foundry_path = p.foundry_binary_path_per_env.clone();
+    let prev_active_info = p.build_info_per_env.clone();
+
     p.bundled_binary_path_per_env.clear();
     p.foundry_binary_path_per_env.clear();
+    p.catalog_binary_path_per_env.clear();
     p.bundled_build_info_per_env.clear();
     p.foundry_build_info_per_env.clear();
+    p.catalog_build_info_per_env.clear();
 
     let profiles = crate::foundry_toolchain::profile_ids_or_default();
     let build_profile = p.build_profile.clone();
+    let core = is_core_provider(&p.id);
 
     for profile in profiles {
         let bundled = scan_bundled(&p.id, &profile);
         let foundry = scan_foundry(&p.id, &profile);
+        let catalog = scan_catalog(p, &profile);
 
-        if let Some((path, info)) = &bundled {
+        // Core: bundled inventory is pure NSIS runtime/. Catalog is separate.
+        // Plugins: if catalog stamp exists, runtime/ is catalog (not NSIS "bundled").
+        let show_bundled_as_nsis = if core {
+            bundled.clone()
+        } else if catalog.is_some()
+            && p.downloaded_version_per_env
+                .get(&profile)
+                .map(|s| !s.trim().is_empty())
+                .unwrap_or(false)
+        {
+            // Plugin pack installed — no separate NSIS row
+            None
+        } else {
+            bundled.clone()
+        };
+
+        if let Some((path, info)) = &show_bundled_as_nsis {
+            let info = merge_probed_version(
+                enrich(info.clone(), &build_profile),
+                prev_bundled_info
+                    .get(&profile)
+                    .or_else(|| prev_active_info.get(&profile)),
+                path,
+                prev_bundled_path.get(&profile).map(|s| s.as_str()),
+            );
             p.bundled_binary_path_per_env
                 .insert(profile.to_string(), path.clone());
             p.bundled_build_info_per_env
-                .insert(profile.to_string(), enrich(info.clone(), &build_profile));
+                .insert(profile.to_string(), info);
         }
         if let Some((path, info)) = &foundry {
+            let info = merge_probed_version(
+                enrich(info.clone(), &build_profile),
+                prev_foundry_info
+                    .get(&profile)
+                    .or_else(|| prev_active_info.get(&profile)),
+                path,
+                prev_foundry_path.get(&profile).map(|s| s.as_str()),
+            );
             p.foundry_binary_path_per_env
                 .insert(profile.to_string(), path.clone());
             p.foundry_build_info_per_env
-                .insert(profile.to_string(), enrich(info.clone(), &build_profile));
-        }
-
-        // GitHub pack install — version tag tracked; path is portable runtime/ (or legacy updates/).
-        let downloaded_active = p
-            .downloaded_version_per_env
-            .get(&profile)
-            .filter(|v| !v.is_empty())
-            .and_then(|_| {
-                ctx.saved_paths
-                    .get(&profile)
-                    .filter(|path| is_downloaded_or_runtime_path(path))
-                    .cloned()
-                    .or_else(|| {
-                        let rel = format!("runtime/{}/{}/llama-server.exe", p.id, profile);
-                        if resolve_path(&rel).is_file() {
-                            Some(rel)
-                        } else {
-                            None
-                        }
-                    })
-            })
-            .and_then(|path| {
-                let abs = resolve_path(&path);
-                if abs.exists() {
-                    let ver = p
-                        .downloaded_version_per_env
-                        .get(&profile)
-                        .map(|v| v.trim().trim_start_matches('v').to_string())
-                        .filter(|v| !v.is_empty())
-                        .unwrap_or_else(|| "downloaded".to_string());
-                    build_info_from_mtime(&abs, &ver).map(|info| (path, info))
-                } else {
-                    None
-                }
-            });
-
-        if let Some((path, mut info)) = downloaded_active {
-            info = enrich(info, &build_profile);
-            p.binary_path_per_env.insert(profile.to_string(), path.clone());
-            p.build_info_per_env.insert(profile.to_string(), info.clone());
-            // Keep runtime inventory slot filled so UI can show ACTIVE on catalog packs.
-            p.bundled_binary_path_per_env
-                .insert(profile.to_string(), path);
-            p.bundled_build_info_per_env
                 .insert(profile.to_string(), info);
-            p.binary_source_per_env
-                .insert(profile.to_string(), SOURCE_BUNDLED.to_string());
-            continue;
+        }
+        if let Some((path, info)) = &catalog {
+            let info = merge_probed_version(
+                enrich(info.clone(), &build_profile),
+                prev_catalog_info
+                    .get(&profile)
+                    .or_else(|| prev_active_info.get(&profile)),
+                path,
+                prev_catalog_path.get(&profile).map(|s| s.as_str()),
+            );
+            p.catalog_binary_path_per_env
+                .insert(profile.to_string(), path.clone());
+            p.catalog_build_info_per_env
+                .insert(profile.to_string(), info);
         }
 
         let pref = ctx
             .source_pref
             .get(&profile)
             .map(|s| s.as_str())
-            .filter(|s| *s == SOURCE_BUNDLED || *s == SOURCE_FOUNDRY);
+            .filter(|s| {
+                *s == SOURCE_BUNDLED || *s == SOURCE_FOUNDRY || *s == SOURCE_CATALOG
+            });
+
+        let prefer_catalog = catalog.is_some()
+            && p.downloaded_version_per_env
+                .get(&profile)
+                .map(|s| !s.trim().is_empty())
+                .unwrap_or(false);
 
         let source = match pref {
-            Some(SOURCE_BUNDLED) if bundled.is_some() => SOURCE_BUNDLED,
+            Some(SOURCE_CATALOG) if catalog.is_some() => SOURCE_CATALOG,
+            Some(SOURCE_BUNDLED) if show_bundled_as_nsis.is_some() => SOURCE_BUNDLED,
             Some(SOURCE_FOUNDRY) if foundry.is_some() => SOURCE_FOUNDRY,
-            Some(SOURCE_BUNDLED) | Some(SOURCE_FOUNDRY) => auto_pick_source(&bundled, &foundry),
-            _ => auto_pick_source(&bundled, &foundry),
+            Some(SOURCE_CATALOG) | Some(SOURCE_BUNDLED) | Some(SOURCE_FOUNDRY) => {
+                auto_pick_source(&show_bundled_as_nsis, &foundry, &catalog, prefer_catalog)
+            }
+            _ => auto_pick_source(&show_bundled_as_nsis, &foundry, &catalog, prefer_catalog),
         };
 
-        p.binary_source_per_env.insert(profile.to_string(), source.to_string());
+        p.binary_source_per_env
+            .insert(profile.to_string(), source.to_string());
 
         let active = match source {
-            SOURCE_BUNDLED => bundled.or(foundry),
-            SOURCE_FOUNDRY => foundry.or(bundled),
-            _ => bundled.or(foundry),
+            SOURCE_CATALOG => catalog.clone().or(show_bundled_as_nsis.clone()).or(foundry.clone()),
+            SOURCE_BUNDLED => show_bundled_as_nsis
+                .clone()
+                .or(catalog.clone())
+                .or(foundry.clone()),
+            SOURCE_FOUNDRY => foundry
+                .clone()
+                .or(show_bundled_as_nsis.clone())
+                .or(catalog.clone()),
+            _ => show_bundled_as_nsis
+                .or(catalog)
+                .or(foundry),
         };
 
         if let Some((path, info)) = active {
-            let info = enrich(info, &build_profile);
+            // Prefer inventory row we just filled (may carry preserved --version).
+            let from_inv = match source {
+                SOURCE_CATALOG => p.catalog_build_info_per_env.get(&profile).cloned(),
+                SOURCE_BUNDLED => p.bundled_build_info_per_env.get(&profile).cloned(),
+                SOURCE_FOUNDRY => p.foundry_build_info_per_env.get(&profile).cloned(),
+                _ => None,
+            };
+            let info = from_inv.unwrap_or_else(|| {
+                merge_probed_version(
+                    enrich(info, &build_profile),
+                    prev_active_info.get(&profile),
+                    &path,
+                    None,
+                )
+            });
             p.binary_path_per_env.insert(profile.to_string(), path);
             p.build_info_per_env.insert(profile.to_string(), info);
         } else {
@@ -256,6 +393,8 @@ pub fn resolve_provider_binaries(p: &mut ProviderConfig, ctx: ResolveContext<'_>
             p.build_info_per_env.remove(&profile);
             p.binary_source_per_env.remove(&profile);
         }
+
+        let _ = ctx.saved_paths;
     }
 
     sync_main_binary_path(p);
@@ -263,12 +402,15 @@ pub fn resolve_provider_binaries(p: &mut ProviderConfig, ctx: ResolveContext<'_>
 }
 
 pub fn set_profile_source(p: &mut ProviderConfig, profile: &str, source: &str) -> Result<(), String> {
-    if source != SOURCE_FOUNDRY && source != SOURCE_BUNDLED {
-        return Err(format!("Invalid binary source '{}'", source));
+    if source != SOURCE_FOUNDRY && source != SOURCE_BUNDLED && source != SOURCE_CATALOG {
+        return Err(format!(
+            "Invalid binary source '{}' (use foundry | bundled | catalog)",
+            source
+        ));
     }
     p.binary_source_per_env
         .insert(profile.to_string(), source.to_string());
-    p.downloaded_version_per_env.remove(profile);
+    // Keep downloaded_version so catalog inventory remains selectable after REVERT to bundled.
     Ok(())
 }
 
@@ -290,11 +432,7 @@ fn sync_main_binary_path(p: &mut ProviderConfig) {
         p.binary_path = path.clone();
         return;
     }
-    if let Some((_, path)) = p
-        .binary_path_per_env
-        .iter()
-        .next()
-    {
+    if let Some((_, path)) = p.binary_path_per_env.iter().next() {
         p.binary_path = path.clone();
     }
 }

@@ -2,7 +2,6 @@
   "tagPrefix": "v",
   "repo": "Seen-Tomorrow/blackwell-ops",
   "providers": {
-    "ggml-master": ["frontier", "stable"],
     "ggml-tom": ["frontier", "stable"],
     "bee-llama": ["frontier"]
   },
@@ -11,16 +10,16 @@
   },
   "upload": {
     "installer": true,
-    "providerPacks": true,
-    "binaryZips": true
+    "providerPacks": false,
+    "binaryZips": false
   },
   "ship": {
     "pushTag": false,
     "pushCommit": false,
-    "releaseNotes": "### Blackwell Ops release\n\nPre-built CUDA engines for Ampere, Ada, and Blackwell.\n\n- GGML Master (core NSIS)\n- Frontier: CUDA 13.3 (VS2026)\n- Stable: CUDA 12.8 (VS2022)\n\nOptional forks (Tom TQ, bee-llama, etc.) ship as separate provider packs.",
-    "appOnlyReleaseNotes": "### App update (`Blackwell-Ops-App-v*.7z`)\n\nLean portable pack (~5 MB) - **UI, core templates, plugin catalog, bundled 7z**.\n\nRefreshes the **engine catalog** (Tom TQ, bee-llama, etc.) - install optional engines from Config - UPDATES. They appear in PROVIDERS after download.\n\n**How to apply:** in-app **UPDATE** menu (download, extract, restart). Keeps existing engines under `runtime/`.\n\n**First install?** Use **Full install** (Setup.exe) from Updates catalog.",
-    "fullBundleReleaseNotes": "### Full install (NSIS Setup)\n\nCore installer: **app + GGML Master engines** (Frontier + Stable).\n\nAlso attaches lean App `.7z` and per-provider `.7z` packs (Tom TQ, bee-llama, etc.) for optional engines.\n\n**Choose this when:** first-time install or you need a full Master engine refresh.",
-    "providerReleaseNotes": "### Engine pack update (`{provider}-{profile}.7z`)\n\nOptional engine runtime - extract via Config - UPDATES.\n\nStop any running engine for that provider before updating."
+    "releaseNotes": "### Blackwell Ops release\n\n**CORE_** assets: App `.7z`, Full NSIS Setup (includes GGML Master Frontier+Stable).\n\n**PLUGIN_** assets: optional engine packs — ship separately via DISTRIBUTION Pack+Ship per plugin (not part of Full pack).",
+    "appOnlyReleaseNotes": "### App update (`CORE_Blackwell-Ops-App-v*.7z`)\n\nLean portable pack (~5 MB) - **UI, core templates, plugin catalog, bundled 7z**.\n\nRefreshes the **engine catalog** (Tom TQ, bee-llama, etc.) - install optional engines from Config - UPDATES. They appear in PROVIDERS after download.\n\n**How to apply:** in-app **UPDATE** menu (download, extract, restart). Keeps existing engines under `runtime/`.\n\n**First install?** Use **Full install** (`CORE_*Setup*.exe`) from Updates catalog.",
+    "fullBundleReleaseNotes": "### Full install (`CORE_*Setup*.exe`)\n\nCore installer: **app + GGML Master engines** (Frontier + Stable).\n\nAlso attaches lean App `.7z`. Optional **PLUGIN_** packs are not included — pack/ship those per engine when needed.\n\n**Choose this when:** first-time install or weekly Master engine refresh.",
+    "providerReleaseNotes": "### Engine pack (`PLUGIN_{provider}-{profile}.7z` or `CORE_ggml-master-{profile}.7z`)\n\nRuntime extract via Config - UPDATES.\n\nStop any running engine for that provider before updating."
   },
   "pack": {
     "skipBuildIfInstallerFresh": true,

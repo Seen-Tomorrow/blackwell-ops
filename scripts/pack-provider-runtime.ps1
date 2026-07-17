@@ -4,6 +4,12 @@
 #   runtime/{provider}/{profile}/   # slim dist binaries
 #   runtime/{provider}/config/      # factory JSON (new-fork promotion)
 #
+# Names:
+#   PLUGIN_{provider}-{profile}.7z  — catalog plugins (default when packing "all")
+#   CORE_{provider}-{profile}.7z    — NSIS core (ggml-master) only when -ProviderId is explicit
+#
+# Full NSIS already embeds core engines — do not bulk-pack ggml-master on weekly Full.
+#
 # Usage:
 #   .\scripts\pack-provider-runtime.ps1 -OutDir .majestic-out
 #   .\scripts\pack-provider-runtime.ps1 -ProviderId ggml-master -ProfileId frontier
@@ -122,7 +128,9 @@ function Pack-OneProviderProfile {
         Copy-Item -Path (Join-Path $config_src '*') -Destination $config_dst -Recurse -Force
     }
 
-    $zip_name = "$Prov-$Prof.7z"
+    # CORE_ for NSIS core engines; PLUGIN_ for optional catalog forks.
+    $kind = if (Test-RuntimeNsisProvider -ProviderId $Prov) { 'CORE' } else { 'PLUGIN' }
+    $zip_name = "${kind}_${Prov}-${Prof}.7z"
     $zip_path = Join-Path $OutDir $zip_name
     if (Test-Path -LiteralPath $zip_path) {
         Remove-Item -LiteralPath $zip_path -Force
@@ -146,13 +154,15 @@ function Pack-OneProviderProfile {
 }
 
 if ($ProviderId -and $ProfileId) {
+    # Explicit single pack (core or plugin) — used by DISTRIBUTION Pack+Ship per profile.
     $item = Pack-OneProviderProfile -Prov $ProviderId -Prof $ProfileId
     if ($item) { $packed += $item }
 } else {
-    foreach ($provider in (Get-ChildItem -LiteralPath $BundleRoot -Directory)) {
-        $prov = $provider.Name
-        if (-not (Test-RuntimeBundleProvider -ProviderId $prov)) { continue }
-        foreach ($prof in (Get-RuntimeBundleProfiles -ProviderId $prov)) {
+    # Bulk pack for Full ship: plugins only. NSIS core (ggml-master) stays inside Setup.exe.
+    foreach ($kv in $script:OptionalDownloadProviders.GetEnumerator()) {
+        $prov = $kv.Key
+        foreach ($prof in @($kv.Value)) {
+            if (Test-RuntimeProfileRetired -ProfileId $prof) { continue }
             $item = Pack-OneProviderProfile -Prov $prov -Prof $prof
             if ($item) { $packed += $item }
         }
@@ -162,7 +172,12 @@ if ($ProviderId -and $ProfileId) {
 Remove-Item -LiteralPath $work_root -Recurse -Force -ErrorAction SilentlyContinue
 
 if ($packed.Count -eq 0) {
-    throw 'No provider packs created'
+    if ($ProviderId -and $ProfileId) {
+        throw "No provider pack created for $ProviderId/$ProfileId"
+    }
+    # Full pack with no plugins ready is OK — NSIS + App still ship.
+    Write-Host '[pack-provider] No plugin packs created (ok if plugins not built)' -ForegroundColor DarkGray
+    exit 0
 }
 
 Write-Host ("[pack-provider] Done: {0} archive(s) in {1}" -f $packed.Count, $OutDir) -ForegroundColor Cyan

@@ -1,8 +1,12 @@
 //! Shared GitHub Releases API — portable App `.7z`, Full Bundle NSIS, provider packs, toolchain.
 //!
-//! App update: `Blackwell-Ops-App-vX.Y.Z.7z` (exe + templates + 7z) — lean daily updates.
-//! Full Bundle: `*Setup*.exe` without App markers — complete install with bundled engines.
-//! Provider: `{provider}-{profile}.7z` — selective runtime engines + factory config.
+//! Asset naming (GitHub release files):
+//! - Core: `CORE_*` — App `.7z`, Full NSIS Setup, optional `CORE_ggml-master-{profile}.7z`
+//! - Plugins: `PLUGIN_{provider}-{profile}.7z`
+//! Legacy names without prefix are still accepted for older releases.
+//!
+//! Full pack embeds NSIS core engines (ggml-master) inside Setup only — it does **not**
+//! upload separate CORE runtime packs unless you run pack-provider for ggml-master.
 
 use std::path::{Path, PathBuf};
 
@@ -14,7 +18,19 @@ pub const GITHUB_REPO: &str = "Seen-Tomorrow/blackwell-ops";
 pub const CHANNEL_APP_ONLY: &str = "app_only";
 pub const CHANNEL_FULL_BUNDLE: &str = "full_bundle";
 
-pub const APP_7Z_PREFIX: &str = "Blackwell-Ops-App-";
+/// Release asset kind prefixes (Majestic pack/ship).
+pub const CORE_ASSET_PREFIX: &str = "CORE_";
+pub const PLUGIN_ASSET_PREFIX: &str = "PLUGIN_";
+
+/// App archive stem after optional CORE_ prefix: `Blackwell-Ops-App-vX.Y.Z.7z`.
+pub const APP_7Z_STEM: &str = "Blackwell-Ops-App-";
+/// Legacy / alias — same as stem (pre-prefix era).
+pub const APP_7Z_PREFIX: &str = APP_7Z_STEM;
+
+/// NSIS core engine provider(s) — runtime packs use CORE_ when shipped separately.
+pub fn is_core_engine_provider(provider_id: &str) -> bool {
+    provider_id == crate::config::DEFAULT_PROVIDER_ID
+}
 
 #[derive(Debug, Clone)]
 pub struct ReleaseAsset {
@@ -74,18 +90,29 @@ pub fn tag_to_version(tag: &str) -> &str {
     tag.strip_prefix('v').unwrap_or(tag)
 }
 
-/// Lean App update archive (preferred): `Blackwell-Ops-App-v1.0.12.7z`.
+/// Strip CORE_/PLUGIN_ for matching legacy logic.
+fn strip_asset_kind_prefix(name: &str) -> &str {
+    name.strip_prefix(CORE_ASSET_PREFIX)
+        .or_else(|| name.strip_prefix(PLUGIN_ASSET_PREFIX))
+        .unwrap_or(name)
+}
+
+/// Lean App update archive: `CORE_Blackwell-Ops-App-v1.0.12.7z` (or legacy without CORE_).
 pub fn is_app_update_archive(name: &str) -> bool {
     let lower = name.to_ascii_lowercase();
     if !lower.ends_with(".7z") {
         return false;
     }
-    // Canonical Majestic name
-    if name.starts_with(APP_7Z_PREFIX) || lower.starts_with("blackwell-ops-app-") {
+    let body = strip_asset_kind_prefix(name);
+    let body_lower = body.to_ascii_lowercase();
+    if body.starts_with(APP_7Z_STEM) || body_lower.starts_with("blackwell-ops-app-") {
         return true;
     }
     // Loose match: App + .7z (not provider packs)
-    lower.contains("app") && !lower.contains("ggml-") && !lower.contains("provider")
+    body_lower.contains("app")
+        && !body_lower.contains("ggml-")
+        && !body_lower.contains("provider")
+        && !body_lower.starts_with("plugin_")
 }
 
 /// Legacy App-Only NSIS (older releases). Still accepted for transition.
@@ -101,24 +128,45 @@ pub fn is_app_update_asset(name: &str) -> bool {
     is_app_update_archive(name) || is_app_only_nsis_installer(name)
 }
 
-/// Full Bundle NSIS — complete install including engine runtimes.
+/// Full Bundle NSIS — complete install including engine runtimes (`CORE_*Setup*.exe` preferred).
 pub fn is_full_bundle_nsis_installer(name: &str) -> bool {
     if is_app_update_asset(name) {
         return false;
     }
-    let lower = name.to_ascii_lowercase();
+    let body = strip_asset_kind_prefix(name);
+    let lower = body.to_ascii_lowercase();
     lower.contains("setup") && lower.ends_with(".exe")
 }
 
-/// Provider runtime pack: `{provider}-{profile}.7z` (also accepts legacy `.zip`).
-pub fn is_provider_pack_asset(name: &str, provider_id: &str, profile: &str) -> bool {
-    let expected_7z = format!("{provider_id}-{profile}.7z");
-    let expected_zip = format!("{provider_id}-{profile}.zip");
-    name.eq_ignore_ascii_case(&expected_7z) || name.eq_ignore_ascii_case(&expected_zip)
+/// Canonical provider pack name for new uploads.
+pub fn provider_pack_asset_name(provider_id: &str, profile: &str) -> String {
+    let bare = format!("{provider_id}-{profile}.7z");
+    if is_core_engine_provider(provider_id) {
+        format!("{CORE_ASSET_PREFIX}{bare}")
+    } else {
+        format!("{PLUGIN_ASSET_PREFIX}{bare}")
+    }
 }
 
-pub fn provider_pack_asset_name(provider_id: &str, profile: &str) -> String {
-    format!("{provider_id}-{profile}.7z")
+/// All names we accept when resolving a provider pack (new + legacy).
+pub fn provider_pack_asset_candidates(provider_id: &str, profile: &str) -> Vec<String> {
+    let bare_7z = format!("{provider_id}-{profile}.7z");
+    let bare_zip = format!("{provider_id}-{profile}.zip");
+    vec![
+        format!("{CORE_ASSET_PREFIX}{bare_7z}"),
+        format!("{PLUGIN_ASSET_PREFIX}{bare_7z}"),
+        bare_7z,
+        format!("{CORE_ASSET_PREFIX}{bare_zip}"),
+        format!("{PLUGIN_ASSET_PREFIX}{bare_zip}"),
+        bare_zip,
+    ]
+}
+
+/// Provider runtime pack: `CORE_|PLUGIN_{provider}-{profile}.7z` (+ legacy unprefixed).
+pub fn is_provider_pack_asset(name: &str, provider_id: &str, profile: &str) -> bool {
+    provider_pack_asset_candidates(provider_id, profile)
+        .iter()
+        .any(|c| name.eq_ignore_ascii_case(c))
 }
 
 pub fn apply_github_auth(req: RequestBuilder) -> RequestBuilder {
@@ -261,19 +309,17 @@ pub fn find_provider_pack(
     provider_id: &str,
     profile: &str,
 ) -> Option<ReleaseAsset> {
-    // Prefer .7z over .zip when both exist
-    let want_7z = provider_pack_asset_name(provider_id, profile);
-    if let Some(a) = find_asset_by_name(release, &want_7z) {
-        return Some(a);
+    // Prefer canonical CORE_/PLUGIN_ .7z, then legacy unprefixed, then any match.
+    for candidate in provider_pack_asset_candidates(provider_id, profile) {
+        if let Some(a) = find_asset_by_name(release, &candidate) {
+            return Some(a);
+        }
     }
-    let want_zip = format!("{provider_id}-{profile}.zip");
-    find_asset_by_name(release, &want_zip).or_else(|| {
-        release
-            .assets
-            .iter()
-            .find(|a| is_provider_pack_asset(&a.name, provider_id, profile))
-            .cloned()
-    })
+    release
+        .assets
+        .iter()
+        .find(|a| is_provider_pack_asset(&a.name, provider_id, profile))
+        .cloned()
 }
 
 /// Compare dotted numeric versions (handles patch 10+).
@@ -560,23 +606,34 @@ pub fn apply_app_update_archive(
         );
     }
 
-    let staged_runtime = payload.join("runtime");
-    if staged_runtime.is_dir() {
-        // Plugin catalog (optional fork metadata)
-        let catalog_src = staged_runtime.join("catalog");
-        if catalog_src.is_dir() {
-            let catalog_dst = app_root.join("runtime").join("catalog");
-            crate::archive_util::copy_dir_merge(&catalog_src, &catalog_dst)?;
+    // Plugin metadata: preferred app/runtime-catalog/, legacy app/runtime/catalog/
+    let catalog_candidates = [
+        payload.join("runtime-catalog"),
+        payload.join("runtime").join("catalog"),
+    ];
+    let mut catalog_merged = false;
+    for catalog_src in &catalog_candidates {
+        if catalog_src.is_dir() || catalog_src.join("plugins.json").is_file() {
+            let catalog_dst = app_root.join("runtime-catalog");
+            if catalog_src.is_dir() {
+                crate::archive_util::copy_dir_merge(catalog_src, &catalog_dst)?;
+            }
+            catalog_merged = true;
             log::info!(
                 "[app-update] Merged plugin catalog -> {}",
                 catalog_dst.display()
             );
-        } else {
-            log::warn!(
-                "[app-update] App archive has no runtime/catalog/ — engine catalog will not refresh until a build that ships plugins.json"
-            );
+            break;
         }
+    }
+    if !catalog_merged {
+        log::warn!(
+            "[app-update] App archive has no runtime-catalog/plugins.json — engine catalog may be stale"
+        );
+    }
 
+    let staged_runtime = payload.join("runtime");
+    if staged_runtime.is_dir() {
         // Merge core factory templates only — never touch engine profile dirs or optional plugin configs
         for provider_entry in std::fs::read_dir(&staged_runtime)
             .map_err(|e| format!("Failed to read staged runtime: {e}"))?
@@ -584,6 +641,10 @@ pub fn apply_app_update_archive(
             let provider_entry = provider_entry.map_err(|e| format!("runtime entry: {e}"))?;
             if !provider_entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
                 continue;
+            }
+            let name = provider_entry.file_name();
+            if name == "catalog" {
+                continue; // legacy path handled above
             }
             let config_src = provider_entry.path().join("config");
             if !config_src.is_dir() {
@@ -676,15 +737,88 @@ fn spawn_silent_cmd_script(script: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// Extract provider pack into app root (`runtime/{id}/{profile}/` + optional config).
+/// Extract provider pack.
+///
+/// - **Plugins** → `runtime/{id}/{profile}/` (only install path)
+/// - **Core (ggml-master)** → `runtime-catalog/{id}/{profile}/` so NSIS `runtime/` is not clobbered
+///
+/// Factory config from the pack still merges into `runtime/{id}/config/` when present.
 pub fn apply_provider_pack_archive(
     archive_path: &Path,
     provider_id: &str,
     profile: &str,
 ) -> Result<PathBuf, String> {
     let app_root = crate::config::app_root_dir();
+    let core = is_core_engine_provider(provider_id);
+
+    if core {
+        // Extract to temp so we never overwrite NSIS runtime/ggml-master/.
+        let stage = app_root
+            .join("work")
+            .join(format!("catalog-pack-{provider_id}-{profile}"));
+        if stage.exists() {
+            let _ = std::fs::remove_dir_all(&stage);
+        }
+        std::fs::create_dir_all(&stage)
+            .map_err(|e| format!("create catalog stage {}: {e}", stage.display()))?;
+
+        log::info!(
+            "[provider-pack] Extracting CORE pack {} → stage {} (overlay runtime-catalog/)",
+            archive_path.display(),
+            stage.display()
+        );
+        crate::archive_util::extract_7z_archive(archive_path, &stage)?;
+
+        let staged_profile = stage
+            .join("runtime")
+            .join(provider_id)
+            .join(profile);
+        if !staged_profile.is_dir() {
+            let _ = std::fs::remove_dir_all(&stage);
+            return Err(format!(
+                "CORE pack missing runtime/{provider_id}/{profile}/ inside archive"
+            ));
+        }
+
+        let dest_profile = app_root
+            .join("runtime-catalog")
+            .join(provider_id)
+            .join(profile);
+        if dest_profile.exists() {
+            std::fs::remove_dir_all(&dest_profile).map_err(|e| {
+                format!("clear previous catalog {}: {e}", dest_profile.display())
+            })?;
+        }
+        std::fs::create_dir_all(dest_profile.parent().unwrap_or(Path::new(".")))
+            .map_err(|e| format!("create runtime-catalog parent: {e}"))?;
+        copy_dir_recursive(&staged_profile, &dest_profile)?;
+
+        // Optional factory config — merge into live runtime/{id}/config (do not remove NSIS templates).
+        let staged_config = stage.join("runtime").join(provider_id).join("config");
+        if staged_config.is_dir() {
+            let dest_config = app_root.join("runtime").join(provider_id).join("config");
+            let _ = crate::archive_util::copy_dir_merge(&staged_config, &dest_config);
+        }
+
+        let _ = std::fs::remove_dir_all(&stage);
+
+        let server = dest_profile.join("llama-server.exe");
+        if !server.is_file() {
+            return Err(format!(
+                "CORE catalog pack applied but llama-server.exe missing at {}",
+                server.display()
+            ));
+        }
+        log::info!(
+            "[provider-pack] CORE catalog overlay ready: {}",
+            server.display()
+        );
+        return Ok(server);
+    }
+
+    // Plugins: extract into app root (runtime/{id}/{profile}/).
     log::info!(
-        "[provider-pack] Extracting {} for {}/{} into {}",
+        "[provider-pack] Extracting PLUGIN pack {} for {}/{} into {}",
         archive_path.display(),
         provider_id,
         profile,
@@ -706,6 +840,25 @@ pub fn apply_provider_pack_archive(
     Ok(server)
 }
 
+fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), String> {
+    std::fs::create_dir_all(dst).map_err(|e| format!("create {}: {e}", dst.display()))?;
+    for entry in std::fs::read_dir(src).map_err(|e| format!("read {}: {e}", src.display()))? {
+        let entry = entry.map_err(|e| format!("dir entry: {e}"))?;
+        let ty = entry
+            .file_type()
+            .map_err(|e| format!("file_type: {e}"))?;
+        let to = dst.join(entry.file_name());
+        if ty.is_dir() {
+            copy_dir_recursive(&entry.path(), &to)?;
+        } else if ty.is_file() {
+            std::fs::copy(entry.path(), &to).map_err(|e| {
+                format!("copy {} → {}: {e}", entry.path().display(), to.display())
+            })?;
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -719,14 +872,38 @@ mod tests {
     #[test]
     fn installer_asset_names() {
         assert!(is_app_update_archive("Blackwell-Ops-App-v1.0.12.7z"));
+        assert!(is_app_update_archive("CORE_Blackwell-Ops-App-v1.0.12.7z"));
         assert!(is_app_only_nsis_installer("Blackwell Ops App-Only Setup 1.0.9.exe"));
         assert!(is_app_update_asset("Blackwell-Ops-App-v1.0.12.7z"));
         assert!(is_full_bundle_nsis_installer("Blackwell Ops Setup 1.0.9.exe"));
+        assert!(is_full_bundle_nsis_installer("CORE_Blackwell Ops_1.0.10_x64-setup.exe"));
         assert!(is_full_bundle_nsis_installer("Blackwell Ops_1.0.10_x64-setup.exe"));
         assert!(!is_full_bundle_nsis_installer("Blackwell Ops App-Only Setup 1.0.9.exe"));
         assert!(!is_full_bundle_nsis_installer("Blackwell-Ops-App-v1.0.12.7z"));
+        assert!(!is_full_bundle_nsis_installer("CORE_Blackwell-Ops-App-v1.0.12.7z"));
         assert!(!is_full_bundle_nsis_installer("blackwell-ops.exe"));
-        assert!(is_provider_pack_asset("ggml-master-frontier.7z", "ggml-master", "frontier"));
-        assert!(is_provider_pack_asset("ggml-master-frontier.zip", "ggml-master", "frontier"));
+        assert!(is_provider_pack_asset(
+            "ggml-master-frontier.7z",
+            "ggml-master",
+            "frontier"
+        ));
+        assert!(is_provider_pack_asset(
+            "CORE_ggml-master-frontier.7z",
+            "ggml-master",
+            "frontier"
+        ));
+        assert!(is_provider_pack_asset(
+            "PLUGIN_ggml-tom-stable.7z",
+            "ggml-tom",
+            "stable"
+        ));
+        assert_eq!(
+            provider_pack_asset_name("ggml-master", "frontier"),
+            "CORE_ggml-master-frontier.7z"
+        );
+        assert_eq!(
+            provider_pack_asset_name("ggml-tom", "stable"),
+            "PLUGIN_ggml-tom-stable.7z"
+        );
     }
 }

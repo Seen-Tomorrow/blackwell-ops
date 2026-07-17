@@ -8,19 +8,26 @@ const PLACEHOLDER_VERSIONS = new Set([
   "disk-scanned",
   "foundry-artifact",
   "downloaded",
+  "catalog",
 ]);
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function bundledVersionsNeedRetry(provider: ProviderConfig): boolean {
-  const paths = provider.bundledBinaryPathPerEnv ?? {};
-  const infos = provider.bundledBuildInfoPerEnv ?? {};
-  return Object.keys(paths).some((env) => {
-    const version = infos[env]?.version ?? "";
-    return PLACEHOLDER_VERSIONS.has(version);
-  });
+/** True when any inventory row still has a mtime-only placeholder (needs --version probe). */
+function inventoryVersionsNeedRetry(provider: ProviderConfig): boolean {
+  const rows: { paths?: Record<string, string>; infos?: Record<string, BuildInfo> }[] = [
+    { paths: provider.bundledBinaryPathPerEnv, infos: provider.bundledBuildInfoPerEnv },
+    { paths: provider.foundryBinaryPathPerEnv, infos: provider.foundryBuildInfoPerEnv },
+    { paths: provider.catalogBinaryPathPerEnv, infos: provider.catalogBuildInfoPerEnv },
+  ];
+  return rows.some(({ paths, infos }) =>
+    Object.keys(paths ?? {}).some((env) => {
+      const version = infos?.[env]?.version ?? "";
+      return PLACEHOLDER_VERSIONS.has(version);
+    }),
+  );
 }
 
 async function refreshOnce(providers: ProviderConfig[]): Promise<ProviderConfig[]> {
@@ -50,7 +57,7 @@ export async function refreshProvidersBuildInfo(
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     latest = await refreshOnce(latest);
-    const needsRetry = latest.some(bundledVersionsNeedRetry);
+    const needsRetry = latest.some(inventoryVersionsNeedRetry);
     if (!needsRetry || attempt === maxAttempts - 1) {
       return latest;
     }

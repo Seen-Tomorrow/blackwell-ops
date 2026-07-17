@@ -2407,6 +2407,28 @@ async fn enrich_provider_binary_info(
             }
         }
 
+        // Catalog overlay (runtime-catalog/) — was missing; only bundled/foundry were probed.
+        if let Some(path) = provider.catalog_binary_path_per_env.get(env_label).cloned() {
+            let preserve = provider
+                .catalog_build_info_per_env
+                .get(env_label)
+                .and_then(|i| i.cuda_architectures.clone());
+            if let Some(info) =
+                enrich_build_info_for_path(&path, &build_profile, preserve).await
+            {
+                let existing = provider.catalog_build_info_per_env.get(env_label);
+                if existing
+                    .map(|e| e.version != info.version || e.build_date != info.build_date)
+                    .unwrap_or(true)
+                {
+                    provider
+                        .catalog_build_info_per_env
+                        .insert(env_label.clone(), info);
+                    changed = true;
+                }
+            }
+        }
+
         if let Some(path) = provider.binary_path_per_env.get(env_label).cloned() {
             let preserve = provider
                 .build_info_per_env
@@ -2427,6 +2449,14 @@ async fn enrich_provider_binary_info(
                     .map(|e| e.version != info.version || e.build_date != info.build_date)
                     .unwrap_or(true)
                 {
+                    // Keep catalog inventory row in sync when active is catalog.
+                    if provider.binary_source_per_env.get(env_label).map(|s| s.as_str())
+                        == Some(crate::profile_binaries::SOURCE_CATALOG)
+                    {
+                        provider
+                            .catalog_build_info_per_env
+                            .insert(env_label.clone(), info.clone());
+                    }
                     provider.build_info_per_env.insert(env_label.clone(), info);
                     changed = true;
                 }

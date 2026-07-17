@@ -122,12 +122,16 @@ if ($removed_providers -gt 0) {
     Write-Host ("[sync-dev-runtime] Removed {0} provider dir(s) outside bundle policy." -f $removed_providers) -ForegroundColor DarkGray
 }
 
-$catalog_src = Join-Path $runtime_root 'catalog'
+# Plugin metadata lives under runtime-catalog/ (not runtime/catalog/)
+$catalog_src = Join-Path (Split-Path -Parent $runtime_root) 'runtime-catalog'
+if (-not (Test-Path -LiteralPath (Join-Path $catalog_src 'plugins.json'))) {
+    $catalog_src = Join-Path $runtime_root 'catalog'
+}
 if (Test-Path -LiteralPath $catalog_src) {
-    $catalog_dst = Join-Path $dest_root 'catalog'
+    $catalog_dst = Join-Path (Split-Path -Parent $dest_root) 'runtime-catalog'
     New-Item -ItemType Directory -Path $catalog_dst -Force | Out-Null
     Copy-Item -Path (Join-Path $catalog_src '*') -Destination $catalog_dst -Recurse -Force
-    Write-Host '[sync-dev-runtime] catalog -> target/debug/runtime/catalog' -ForegroundColor Green
+    Write-Host '[sync-dev-runtime] plugins.json -> target/debug/runtime-catalog/' -ForegroundColor Green
 }
 
 if ($copied_profiles -eq 0 -and $copied_configs -eq 0) {

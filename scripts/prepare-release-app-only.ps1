@@ -3,7 +3,7 @@
 #
 # Ships:
 #   - Core provider templates only (ggml-master) — always in PROVIDERS
-#   - runtime/catalog/plugins.json — optional plugin metadata (NOT full templates)
+#   - runtime-catalog/plugins.json — optional plugin metadata (NOT full templates)
 # Optional engines install via provider packs from UPDATES catalog.
 
 $ErrorActionPreference = 'Stop'
@@ -66,7 +66,8 @@ if ($copied_configs -eq 0) {
     exit 1
 }
 
-$catalog_dst = Join-Path $bundle_root 'catalog'
+# Bundle as runtime-catalog/ so App .7z extracts to app/runtime-catalog/plugins.json
+$catalog_dst = Join-Path $bundle_root 'runtime-catalog'
 # PowerShell .ps1 success does not clear $LASTEXITCODE from earlier native tools.
 & (Join-Path $script_dir 'generate-plugin-catalog.ps1') -OutDir $catalog_dst
 if (-not $?) {

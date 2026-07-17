@@ -102,9 +102,9 @@ fn policy_path() -> PathBuf {
 }
 
 fn catalog_src_path() -> PathBuf {
+    // Canonical: runtime-catalog/plugins.json (engine overlays share this tree).
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("runtime")
-        .join("catalog")
+        .join("runtime-catalog")
         .join("plugins.json")
 }
 
@@ -265,10 +265,9 @@ pub fn regenerate_plugin_catalog_from_policy() -> Result<PathBuf, String> {
     std::fs::write(&dest, out.clone() + "\n")
         .map_err(|e| format!("Failed to write {}: {e}", dest.display()))?;
 
-    // Live app catalog next to debug exe
+    // Live app catalog next to debug/release exe
     let live_catalog = crate::config::app_root_dir()
-        .join("runtime")
-        .join("catalog")
+        .join("runtime-catalog")
         .join("plugins.json");
     if let Some(parent) = live_catalog.parent() {
         let _ = std::fs::create_dir_all(parent);
@@ -809,18 +808,25 @@ pub async fn run_dev_release_action(
 ) -> Result<String, String> {
     assert_dev()?;
 
-    // Fast checks stay in-process (no version bump).
-    if action.action == "check_app" || action.action == "check_full" {
+    // Fast paths stay in-process (no detached console).
+    // Bump is quick version-file edits — run inline so UI can refresh immediately.
+    if action.action == "check_app" || action.action == "check_full" || action.action == "bump" {
         if RELEASE_JOB_RUNNING.swap(true, Ordering::SeqCst) {
             return Err("A release job is already running".into());
         }
         let result = tokio::task::spawn_blocking({
             let app = app_handle.clone();
             let action = action.clone();
-            move || run_check_inline(&app, &action)
+            move || {
+                if action.action == "bump" {
+                    run_bump_inline(&app)
+                } else {
+                    run_check_inline(&app, &action)
+                }
+            }
         })
         .await
-        .map_err(|e| format!("Check join failed: {e}"));
+        .map_err(|e| format!("Job join failed: {e}"));
         RELEASE_JOB_RUNNING.store(false, Ordering::SeqCst);
         return result?;
     }
@@ -850,6 +856,12 @@ fn run_check_inline(app: &tauri::AppHandle, action: &DevReleaseAction) -> Result
         "app"
     };
     run_majestic_step(app, &["-Mode", "check", "-Variant", variant])?;
+    Ok("ok".into())
+}
+
+/// Patch version bump only (tauri conf + package.json + Cargo.toml). No pack/ship.
+fn run_bump_inline(app: &tauri::AppHandle) -> Result<String, String> {
+    run_majestic_step(app, &["-Mode", "bump"])?;
     Ok("ok".into())
 }
 

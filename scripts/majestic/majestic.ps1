@@ -50,8 +50,9 @@ function Read-MajesticConfig {
     foreach ($kv in $script:NsisCoreProviders.GetEnumerator()) {
         $nsis_obj | Add-Member -NotePropertyName $kv.Key -NotePropertyValue @($kv.Value) -Force
     }
+    # providers = optional PLUGIN packs only (not NSIS core). Core engines ship inside Full Setup.
     $packs_obj = New-Object PSObject
-    foreach ($kv in $script:RuntimeBundleProfiles.GetEnumerator()) {
+    foreach ($kv in $script:OptionalDownloadProviders.GetEnumerator()) {
         $packs_obj | Add-Member -NotePropertyName $kv.Key -NotePropertyValue @($kv.Value) -Force
     }
     $cfg | Add-Member -NotePropertyName nsisProviders -NotePropertyValue $nsis_obj -Force
@@ -157,7 +158,30 @@ function Get-InstallerCandidates {
 
 function Get-AppUpdateArchiveFileName {
     param([string]$Version)
-    "Blackwell-Ops-App-v$Version.7z"
+    "CORE_Blackwell-Ops-App-v$Version.7z"
+}
+
+function Get-ProviderPackArchiveFileName {
+    param(
+        [string]$ProviderId,
+        [string]$ProfileId
+    )
+    $kind = if (Test-RuntimeNsisProvider -ProviderId $ProviderId) { 'CORE' } else { 'PLUGIN' }
+    "${kind}_${ProviderId}-${ProfileId}.7z"
+}
+
+function Resolve-ProviderPackArchivePath {
+    param(
+        [string]$OutRoot,
+        [string]$ProviderId,
+        [string]$ProfileId
+    )
+    $canonical = Join-Path $OutRoot (Get-ProviderPackArchiveFileName -ProviderId $ProviderId -ProfileId $ProfileId)
+    if (Test-Path -LiteralPath $canonical) { return $canonical }
+    # Legacy unprefixed name (pre CORE_/PLUGIN_)
+    $legacy = Join-Path $OutRoot "$ProviderId-$ProfileId.7z"
+    if (Test-Path -LiteralPath $legacy) { return $legacy }
+    return $canonical
 }
 
 function Get-ReleaseExePath {
@@ -302,9 +326,11 @@ function Stage-InstallerForVariant {
         throw "Installer not found after build. Expected under src-tauri/target/release/bundle/nsis/"
     }
     $installer = $installers[0]
-    $dest_installer = Join-Path $OutRoot $installer.Name
+    # CORE_ prefix so release assets are clearly full-install vs plugins.
+    $core_name = if ($installer.Name -like 'CORE_*') { $installer.Name } else { "CORE_$($installer.Name)" }
+    $dest_installer = Join-Path $OutRoot $core_name
     Copy-Item -LiteralPath $installer.FullName -Destination $dest_installer -Force
-    Write-Majestic "Full installer staged: $($installer.Name)" -Color Green
+    Write-Majestic "Full installer staged: $core_name" -Color Green
     return $dest_installer
 }
 
@@ -616,17 +642,11 @@ function Invoke-MajesticPack {
     }
 
     $manifest_files = @()
-    $want_provider_packs = $true
-    if ($null -ne $Config.upload.PSObject.Properties['providerPacks']) {
-        $want_provider_packs = [bool]$Config.upload.providerPacks
-    } elseif ($null -ne $Config.upload.PSObject.Properties['binaryZips']) {
-        $want_provider_packs = [bool]$Config.upload.binaryZips
-    }
 
     if ($DryRun) {
         Write-Majestic "[dry-run] would stage $(Get-AppUpdateArchiveFileName -Version $version)" -Color Cyan
         if ($Variant -eq 'full') {
-            Write-Majestic "[dry-run] would stage Full Bundle NSIS + provider .7z packs (providerPacks=$want_provider_packs)" -Color Cyan
+            Write-Majestic "[dry-run] would stage CORE only: App .7z + Full NSIS (ggml-master inside). PLUGIN packs are manual (pack-provider)." -Color Cyan
         }
     } else {
         # Always stage lean App update for both daily app pack and weekly full pack
@@ -653,21 +673,14 @@ function Invoke-MajesticPack {
         $manifest_files += New-ManifestEntry -File (Get-Item -LiteralPath $app_archive)
 
         if ($Variant -eq 'full') {
-            # Restore full runtime-bundle for provider packs (engines + templates)
+            # NSIS needs full runtime-bundle (app + ggml-master engines) for the installer build artifacts.
             Invoke-PrepareReleaseBundle -Variant 'full'
             $dest_installer = Stage-InstallerForVariant -Version $version -Variant 'full' -OutRoot $out_root
             $manifest_files += New-ManifestEntry -File (Get-Item -LiteralPath $dest_installer)
 
-            if ($want_provider_packs) {
-                Invoke-PackProviderArchives -OutRoot $out_root
-                Get-ChildItem -LiteralPath $out_root -Filter '*.7z' -File |
-                    Where-Object { $_.Name -notlike 'Blackwell-Ops-App-*' } |
-                    ForEach-Object {
-                        $manifest_files += New-ManifestEntry -File $_
-                    }
-            } else {
-                Write-Majestic "Provider packs: skipped (upload.providerPacks = false)" -Color DarkGray
-            }
+            # Full = CORE assets only (App .7z + Setup with Master). PLUGIN packs are manual
+            # via DISTRIBUTION Pack+Ship per provider — not attached on weekly Full.
+            Write-Majestic "PLUGIN packs: skipped on Full pack (use Pack+Ship per plugin when needed)" -Color DarkGray
         }
     }
 
@@ -863,17 +876,41 @@ function Invoke-MajesticShip {
     }
 
     $manifest = Get-Content -LiteralPath $manifest_path -Raw | ConvertFrom-Json
-    $assets = @()
-    foreach ($entry in @($manifest.files)) {
-        if (Test-Path -LiteralPath $entry.path) {
-            $assets += $entry.path
-        }
-    }
-    if ($assets.Count -eq 0) {
-        throw "No staged assets in .majestic-out/ for $tag"
+    $pack_kind = if ($manifest.PSObject.Properties.Name -contains 'packKind') {
+        [string]$manifest.packKind
+    } else {
+        'full'
     }
 
-    Write-Majestic "About to ship $tag to $($Config.repo)" -Color Cyan
+    $assets = @()
+    foreach ($entry in @($manifest.files)) {
+        if (-not (Test-Path -LiteralPath $entry.path)) { continue }
+        $leaf = Split-Path -Leaf $entry.path
+        # Full pack/ship = CORE only (App + NSIS). Never re-upload PLUGIN leftover files.
+        if ($pack_kind -eq 'full') {
+            $is_core = ($leaf -like 'CORE_*') -or
+                ($leaf -like '*Blackwell-Ops-App*') -or
+                ($leaf -like '*Setup*.exe' -and $leaf -notlike '*App*')
+            if (-not $is_core) {
+                Write-Majestic "Ship full: skipping non-CORE asset $leaf (pack plugins separately)" -Color DarkGray
+                continue
+            }
+        } elseif ($pack_kind -eq 'app') {
+            $is_app = ($leaf -like 'CORE_*Blackwell-Ops-App*') -or
+                ($leaf -like 'Blackwell-Ops-App*') -or
+                ($leaf -like '*Blackwell-Ops-App*')
+            if (-not $is_app) {
+                Write-Majestic "Ship app: skipping non-App asset $leaf" -Color DarkGray
+                continue
+            }
+        }
+        $assets += $entry.path
+    }
+    if ($assets.Count -eq 0) {
+        throw "No staged assets in .majestic-out/ for $tag (packKind=$pack_kind)"
+    }
+
+    Write-Majestic "About to ship $tag to $($Config.repo) (packKind=$pack_kind)" -Color Cyan
     Write-Majestic "Assets:" -Color Cyan
     foreach ($asset in $assets) {
         Write-Majestic "  - $asset" -Color DarkGray
@@ -1033,8 +1070,9 @@ function Invoke-MajesticPackProvider {
     }
 
     $pack_script = Join-Path $root 'scripts\pack-provider-runtime.ps1'
+    $pack_name = Get-ProviderPackArchiveFileName -ProviderId $ProviderId -ProfileId $ProfileId
     if ($DryRun) {
-        Write-Majestic "[dry-run] would pack $ProviderId-$ProfileId.7z" -Color Yellow
+        Write-Majestic "[dry-run] would pack $pack_name" -Color Yellow
         return
     }
     $pack_log = & $pack_script -OutDir $out_root -ProviderId $ProviderId -ProfileId $ProfileId *>&1
@@ -1046,7 +1084,7 @@ function Invoke-MajesticPackProvider {
         throw "pack-provider-runtime.ps1 failed for $ProviderId/$ProfileId"
     }
 
-    $archive = Join-Path $out_root "$ProviderId-$ProfileId.7z"
+    $archive = Resolve-ProviderPackArchivePath -OutRoot $out_root -ProviderId $ProviderId -ProfileId $ProfileId
     if (-not (Test-Path -LiteralPath $archive)) {
         throw "Expected pack missing: $archive"
     }
@@ -1077,24 +1115,25 @@ function Invoke-MajesticShipProvider {
     }
     $version = Read-AppVersion
     $tag = Get-TagName -Version $version -Prefix $Config.tagPrefix
-    $archive = Join-Path $out_root "$ProviderId-$ProfileId.7z"
+    $archive = Resolve-ProviderPackArchivePath -OutRoot $out_root -ProviderId $ProviderId -ProfileId $ProfileId
     if (-not (Test-Path -LiteralPath $archive)) {
         throw "No pack at $archive - run pack-provider first"
     }
+    $pack_leaf = Split-Path -Leaf $archive
 
-    Write-Majestic "About to upload $ProviderId-$ProfileId.7z to $tag on $($Config.repo)" -Color Cyan
+    Write-Majestic "About to upload $pack_leaf to $tag on $($Config.repo)" -Color Cyan
     if ($DryRun) {
         Write-Majestic "[dry-run] would upload $archive" -Color Yellow
         return
     }
     if (-not $Force) {
-        $confirm = Read-Host "Type YES to ship $ProviderId-$ProfileId.7z to $tag"
+        $confirm = Read-Host "Type YES to ship $pack_leaf to $tag"
         if ($confirm -ne 'YES') {
             Write-Majestic "Ship cancelled." -Color Yellow
             return
         }
     } else {
-        Write-Majestic "Force: shipping $ProviderId-$ProfileId.7z without prompt" -Color DarkGray
+        Write-Majestic "Force: shipping $pack_leaf without prompt" -Color DarkGray
     }
 
     $notes = [string]$Config.ship.providerReleaseNotes

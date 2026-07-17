@@ -1,4 +1,4 @@
-# Build runtime/catalog/plugins.json from optional provider factory templates.
+# Build runtime-catalog/plugins.json from optional provider factory templates.
 # Usage: .\scripts\generate-plugin-catalog.ps1 [-OutDir path]
 
 param(
@@ -12,9 +12,10 @@ $root = Split-Path -Parent $script_dir
 . (Join-Path $script_dir 'runtime-distribution.ps1')
 
 $runtime_root = Join-Path $root 'src-tauri\runtime'
+$catalog_root = Join-Path $root 'src-tauri\runtime-catalog'
 
 if (-not $OutDir) {
-    $OutDir = Join-Path $runtime_root 'catalog'
+    $OutDir = $catalog_root
 }
 if (-not [System.IO.Path]::IsPathRooted($OutDir)) {
     $OutDir = Join-Path $root $OutDir

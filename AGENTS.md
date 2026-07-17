@@ -16,6 +16,10 @@ Traps and invariants only — not a code map. Read the source for flows, schemas
 
 **Windows detached console spawn** — Never use `CREATE_BREAKAWAY_FROM_JOB`. Cargo/Tauri/dev hosts put the process in a job that denies breakaway → immediate `Access is denied (os error 5)`. Detached visible windows: `Start-Process` (or `cmd start "" …`) via a `CREATE_NO_WINDOW` helper — see `engine::spawn_nobsproof_cmd_window` and `distribution::spawn_detached_chain`. `CREATE_NEW_CONSOLE` alone is last resort; breakaway is never OK. Pack/ship do not need gsudo/admin.
 
+**Release asset naming** — `CORE_*` = App `.7z`, Full NSIS Setup, optional `CORE_ggml-master-{profile}.7z`. `PLUGIN_*` = optional engine packs. **Pack Full** stages CORE only (App + Setup with Master) — never bulk PLUGIN packs. Plugins via explicit Pack+Ship per provider. Ship full filters to CORE assets. Client accepts legacy unprefixed names.
+
+**Binary sources** — Core: Bundled (`runtime/`) + Foundry + Catalog overlay (`runtime-catalog/{id}/{profile}/`) — catalog must **not** clobber NSIS. Plugins: Catalog install under `runtime/` (+ Foundry if built). Active source is switchable (`binarySourcePerEnv` is sole ACTIVE). Product tag (`downloadedVersion`) is for UPDATES only; engine identity = `llama-server --version` (not app tag). Plugin metadata: `runtime-catalog/plugins.json` (legacy `runtime/catalog/` still read).
+
 ---
 
 ## Foundry paths

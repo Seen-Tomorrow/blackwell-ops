@@ -1496,7 +1496,12 @@ pub async fn fit_stop_scan(app: tauri::State<'_, AppContext>) -> Result<(), Stri
 pub(crate) fn is_placeholder_build_version(version: &str) -> bool {
     matches!(
         version.trim(),
-        "" | "unknown" | "bundled" | "disk-scanned" | "foundry-artifact" | "downloaded"
+        "" | "unknown"
+            | "bundled"
+            | "disk-scanned"
+            | "foundry-artifact"
+            | "downloaded"
+            | "catalog"
     )
 }
 
@@ -1521,11 +1526,11 @@ fn parse_llama_version_line(cleaned: &str) -> Option<String> {
         .map(|caps| format!("{} ({})", &caps[1], &caps[2]))
 }
 
-async fn probe_binary_version(path: &std::path::Path) -> Result<String, String> {
+/// Blocking llama-server --version probe (safe from async tasks; no nested runtime).
+pub(crate) fn probe_binary_version_sync(path: &std::path::Path) -> Result<String, String> {
     const MAX_ATTEMPTS: u32 = 4;
     const RETRY_BASE_MS: u64 = 400;
 
-    let path_buf = path.to_path_buf();
     let work_dir = path.parent().map(|p| p.to_path_buf());
     let mut last_snippet = String::new();
 
@@ -1535,9 +1540,9 @@ async fn probe_binary_version(path: &std::path::Path) -> Result<String, String> 
     }
 
     for attempt in 1..=MAX_ATTEMPTS {
-        let path_for_probe = path_buf.clone();
+        let path_for_probe = path.to_path_buf();
         let work_dir_for_probe = work_dir.clone();
-        let output = engine_utils::run_hidden_output_async(move || {
+        let output = engine_utils::run_hidden_output(move || {
             let mut cmd = std::process::Command::new(&path_for_probe);
             cmd.args(["--version"])
                 .stdout(Stdio::piped())
@@ -1547,8 +1552,7 @@ async fn probe_binary_version(path: &std::path::Path) -> Result<String, String> 
             }
             let _ = engine_utils::apply_cuda_toolchain_for_binary(&mut cmd, &path_for_probe);
             cmd
-        })
-        .await;
+        });
 
         match output {
             Ok(o) => {
@@ -1581,7 +1585,7 @@ async fn probe_binary_version(path: &std::path::Path) -> Result<String, String> 
         }
 
         if attempt < MAX_ATTEMPTS {
-            tokio::time::sleep(Duration::from_millis(RETRY_BASE_MS * attempt as u64)).await;
+            std::thread::sleep(std::time::Duration::from_millis(RETRY_BASE_MS * attempt as u64));
         }
     }
 
@@ -1600,6 +1604,13 @@ async fn probe_binary_version(path: &std::path::Path) -> Result<String, String> 
         );
     }
     Err(format!("Version probe failed for {}", path.display()))
+}
+
+pub(crate) async fn probe_binary_version(path: &std::path::Path) -> Result<String, String> {
+    let path_buf = path.to_path_buf();
+    tokio::task::spawn_blocking(move || probe_binary_version_sync(&path_buf))
+        .await
+        .map_err(|e| format!("version probe join failed: {e}"))?
 }
 
 #[tauri::command]

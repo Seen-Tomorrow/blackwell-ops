@@ -62,19 +62,30 @@ pub struct PluginCatalogResponse {
     pub plugins: Vec<PluginCatalogEntry>,
 }
 
+/// Preferred: `runtime-catalog/plugins.json` (alongside CORE engine overlays).
+/// Legacy fallback: `runtime/catalog/plugins.json` (older App packs / NSIS).
 pub fn catalog_file_path() -> PathBuf {
-    crate::config::app_root_dir()
+    let preferred = crate::config::app_root_dir()
+        .join("runtime-catalog")
+        .join("plugins.json");
+    if preferred.is_file() {
+        return preferred;
+    }
+    let legacy = crate::config::app_root_dir()
         .join("runtime")
         .join("catalog")
-        .join("plugins.json")
+        .join("plugins.json");
+    if legacy.is_file() {
+        return legacy;
+    }
+    preferred
 }
 
 pub fn load_catalog_file() -> Result<PluginCatalogFile, String> {
     let path = catalog_file_path();
     if !path.is_file() {
         log::debug!(
-            "[plugin-catalog] No catalog at {} — App update or NSIS bundle should ship runtime/catalog/plugins.json",
-            path.display()
+            "[plugin-catalog] No catalog at runtime-catalog/plugins.json (or legacy runtime/catalog/) — App update should ship it"
         );
         return Ok(PluginCatalogFile {
             catalog_version: 1,
@@ -126,6 +137,7 @@ fn profile_installed(
     let has_binary = p
         .binary_path_per_env
         .get(profile)
+        .or_else(|| p.catalog_binary_path_per_env.get(profile))
         .or_else(|| p.bundled_binary_path_per_env.get(profile))
         .or_else(|| p.foundry_binary_path_per_env.get(profile))
         .map(|s| !s.is_empty())

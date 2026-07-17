@@ -157,15 +157,19 @@ export interface ProviderConfig {
   template_type?: string; // "ggml-llama" | "" (custom)
   display_order?: number;
   buildInfoPerEnv?: Record<string, BuildInfo>;
-  binaryPathPerEnv?: Record<string, string>; // env -> active launch path (bundled, foundry, or updates/)
-  /** User preference per profile: foundry | bundled (empty = auto by mtime on upgrade). */
+  binaryPathPerEnv?: Record<string, string>; // env -> active launch path (bundled, foundry, or catalog)
+  /** User preference per profile: foundry | bundled | catalog (empty = auto by mtime). */
   binarySourcePerEnv?: Record<string, string>;
   /** Inventory — bundled installer binary (runtime/<id>/<profile>/). */
   bundledBinaryPathPerEnv?: Record<string, string>;
   foundryBinaryPathPerEnv?: Record<string, string>;
+  /** Catalog overlay (core: runtime-catalog/; plugins: runtime/ + stamp). */
+  catalogBinaryPathPerEnv?: Record<string, string>;
   bundledBuildInfoPerEnv?: Record<string, BuildInfo>;
   foundryBuildInfoPerEnv?: Record<string, BuildInfo>;
-  downloadedVersionPerEnv?: Record<string, string>; // env -> GitHub release tag that was installed via update (e.g. "v0.7.8")
+  catalogBuildInfoPerEnv?: Record<string, BuildInfo>;
+  /** Product release tag that shipped the pack (e.g. "v1.0.18") — not engine build-info. */
+  downloadedVersionPerEnv?: Record<string, string>;
   lastPrPerEnv?: Record<string, string>; // env -> PR number (e.g. "stable" -> "21293")
   factory_provided?: boolean; // true = bundled in runtime/ or downloaded from GitHub releases
   /** Optional fork — template via App update; engine via provider pack (not NSIS core). */
@@ -208,7 +212,9 @@ export interface LaunchProfile {
 export type ConfigViewMode = "essentials" | "full";
 
 /** Provider origin classification — derived from existing fields, not stored */
-export type ProviderOrigin = 'foundry' | 'downloaded' | 'bundled';
+export type ProviderOrigin = 'foundry' | 'downloaded' | 'bundled' | 'catalog';
+
+export type BinarySourceKind = 'foundry' | 'bundled' | 'catalog';
 
 /** Case-insensitive lookup in per-env provider maps (vanguard/VANGUARD, etc.). */
 export function profileEnvLookup<T>(map: Record<string, T> | undefined, env: string): T | undefined {
@@ -242,33 +248,47 @@ function normalizeBinaryPath(path: string): string {
 export function isProfileSourceActive(
   provider: ProviderConfig,
   env: string,
-  source: 'foundry' | 'bundled',
+  source: BinarySourceKind,
 ): boolean {
   const active = profileEnvLookup(provider.binaryPathPerEnv, env);
-  const inventory =
-    source === 'foundry'
-      ? profileEnvLookup(provider.foundryBinaryPathPerEnv, env)
-      : profileEnvLookup(provider.bundledBinaryPathPerEnv, env);
-  if (!active?.trim() || !inventory?.trim()) return false;
-  if (normalizeBinaryPath(active) !== normalizeBinaryPath(inventory)) return false;
-  // Catalog packs land under runtime/ (same inventory as "bundled"). Foundry must not win
-  // while a downloadedVersion stamp is present — but the runtime row *is* the active pack.
-  if (source === 'foundry' && profileEnvLookup(provider.downloadedVersionPerEnv, env)) {
-    return false;
+  if (!active?.trim()) return false;
+
+  // Explicit user/system preference wins — avoids dual ACTIVE when paths collide
+  // (legacy catalog-on-runtime) or inventory rows both match the active path.
+  const pref = profileEnvLookup(provider.binarySourcePerEnv, env);
+  if (pref === "foundry" || pref === "bundled" || pref === "catalog") {
+    return pref === source;
   }
-  return true;
+
+  const invMap =
+    source === "foundry"
+      ? provider.foundryBinaryPathPerEnv
+      : source === "catalog"
+        ? provider.catalogBinaryPathPerEnv
+        : provider.bundledBinaryPathPerEnv;
+  const inventory = profileEnvLookup(invMap, env);
+  if (!inventory?.trim()) return false;
+  return normalizeBinaryPath(active) === normalizeBinaryPath(inventory);
 }
 
 /**
  * Derive provider origin for a given environment.
- * - foundry: binary_path_per_env[env] starts with "foundry/artifacts/"
- * - downloaded: downloaded_version_per_env[env] is non-empty
- * - bundled: path points to runtime/<id>/<env>/, no build/download info
+ * - foundry: path under foundry/artifacts/
+ * - catalog / downloaded: active catalog source or product-tag stamp
+ * - bundled: NSIS runtime/
  */
 export function getProviderOrigin(provider: ProviderConfig, env: string): ProviderOrigin {
   const norm = (profileEnvLookup(provider.binaryPathPerEnv, env) ?? '').replace(/\\/g, '/').toLowerCase();
   if (norm.includes('foundry/artifacts/')) return 'foundry';
-  if (profileEnvLookup(provider.downloadedVersionPerEnv, env)) return 'downloaded';
+  if (norm.includes('runtime-catalog/')) return 'catalog';
+  const pref = profileEnvLookup(provider.binarySourcePerEnv, env);
+  if (pref === 'catalog') return 'catalog';
+  if (profileEnvLookup(provider.downloadedVersionPerEnv, env) && provider.optionalDownload) {
+    return 'downloaded';
+  }
+  if (profileEnvLookup(provider.catalogBinaryPathPerEnv, env) && pref === 'catalog') {
+    return 'catalog';
+  }
   return 'bundled';
 }
 
@@ -327,6 +347,8 @@ export interface BinaryUpdateInfo {
   installedVersion: string | null;
   latestVersion: string;
   available: boolean;
+  /** Separate CORE_/PLUGIN_ pack exists on GitHub (core may be NSIS-only). */
+  packAvailable?: boolean;
 }
 
 /** App update info from check_app_update IPC command. */

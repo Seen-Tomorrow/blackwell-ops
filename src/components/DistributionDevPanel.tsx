@@ -223,6 +223,12 @@ export default function DistributionDevPanel() {
           setLogLines((p) => [...p, `OK: ${action}`]);
           setBusy(false);
           await refresh();
+          if (action === "bump") {
+            setLogLines((p) => [
+              ...p,
+              "Version bumped — Pack+Ship App/Full will use the new tag. (Dev rebuild may pick up Cargo.toml on next cargo run.)",
+            ]);
+          }
         }
       } catch (e) {
         const msg = typeof e === "string" ? e : String(e);
@@ -272,15 +278,6 @@ export default function DistributionDevPanel() {
             >
               Regen catalog
             </button>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void runAction("bump")}
-              className="text-[9px] font-mono uppercase tracking-wider px-2.5 py-1 rounded-sm border border-white/20 disabled:opacity-40"
-              title="Bump patch version only (no pack/ship)"
-            >
-              Bump only
-            </button>
           </div>
         </div>
         {dash && (
@@ -320,6 +317,28 @@ export default function DistributionDevPanel() {
       )}
 
       <div className="flex-1 overflow-auto px-4 py-4 space-y-5">
+        <section className="space-y-2">
+          <h3 className="text-[10px] font-mono theme-accent-text tracking-wider uppercase">
+            Version
+          </h3>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void runAction("bump")}
+              className="text-[10px] font-mono uppercase tracking-wider px-3 py-1.5 rounded-sm border border-yellow-400/50 text-yellow-400 bg-yellow-400/10 hover:bg-yellow-400/15 disabled:opacity-40"
+              title="Bump patch version only (e.g. 1.0.18 → 1.0.19). No pack/ship."
+            >
+              BUMP
+            </button>
+            {dash && (
+              <span className="text-[9px] font-mono config-muted">
+                current <span className="text-white/80">v{dash.appVersion}</span> → patch only
+              </span>
+            )}
+          </div>
+        </section>
+
         <section className="space-y-2">
           <h3 className="text-[10px] font-mono theme-accent-text tracking-wider uppercase">
             App / Full (chains)

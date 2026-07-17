@@ -1,13 +1,19 @@
 import type { ReactNode } from "react";
-import { ProviderConfig, BinaryUpdateInfo, BuildInfo } from "../lib/types";
-import { isProfileSourceActive, profileEnvLookup } from "../lib/types";
+import {
+  ProviderConfig,
+  BinaryUpdateInfo,
+  BuildInfo,
+  type BinarySourceKind,
+  isProfileSourceActive,
+  profileEnvLookup,
+} from "../lib/types";
 import type { Env } from "../hooks/useBuildDock";
 import { ENV_META } from "../lib/foundry_constants";
 import { cudaArchOptimizedLabel, resolveProfileCudaArchitectures } from "../lib/cudaArchUtils";
 
 export type UpdateStatus = "idle" | "checking" | "downloading" | "extracting" | "complete" | "error";
 
-export type BinarySourceKind = "foundry" | "bundled";
+export type { BinarySourceKind };
 
 export function parseCmakeFlags(flags: string): string[] {
   if (!flags.trim()) return [];
@@ -19,52 +25,95 @@ export function getPrNumberForEnv(provider: ProviderConfig, env: string): string
   return provider.lastPrPerEnv?.[env];
 }
 
-function isDownloadedBinary(path: string, installedVersion?: string | null): boolean {
-  // GitHub provider packs write to portable runtime/ and stamp downloadedVersionPerEnv
-  if (installedVersion) return true;
-  const normalized = path.toLowerCase();
-  return normalized.includes("updates\\") || normalized.includes("updates/");
-}
-
 /** True when this inventory row has the newer build date vs the other source for the same profile. */
 function isNewestSourceForProfile(provider: ProviderConfig, env: string, source: BinarySourceKind): boolean {
   const foundryDate = profileEnvLookup(provider.foundryBuildInfoPerEnv, env)?.buildDate ?? "";
   const bundledDate = profileEnvLookup(provider.bundledBuildInfoPerEnv, env)?.buildDate ?? "";
-  if (!foundryDate && !bundledDate) return false;
-  if (foundryDate && !bundledDate) return source === "foundry";
-  if (!foundryDate && bundledDate) return source === "bundled";
-  if (source === "foundry") return foundryDate >= bundledDate;
-  return bundledDate > foundryDate;
+  const catalogDate = profileEnvLookup(provider.catalogBuildInfoPerEnv, env)?.buildDate ?? "";
+  const dates = (
+    [
+      { s: "foundry" as const, d: foundryDate },
+      { s: "bundled" as const, d: bundledDate },
+      { s: "catalog" as const, d: catalogDate },
+    ] satisfies { s: BinarySourceKind; d: string }[]
+  ).filter((x) => !!x.d);
+  if (dates.length === 0) return false;
+  const best = dates.reduce((a, b) => (a.d >= b.d ? a : b));
+  return best.s === source;
 }
 
 function originBadge(origin: string | null): ReactNode {
   if (origin === "foundry") return <span className="value-chip text-[6px] font-mono px-1 py-0.5 rounded-sm">FOUNDRY</span>;
-  if (origin === "downloaded") return <span className="value-chip text-[6px] font-mono px-1 py-0.5 rounded-sm">CATALOG</span>;
+  if (origin === "catalog" || origin === "downloaded") {
+    return <span className="value-chip text-[6px] font-mono px-1 py-0.5 rounded-sm">CATALOG</span>;
+  }
   if (origin === "bundled") return <span className="value-chip text-[6px] font-mono px-1 py-0.5 rounded-sm">BUNDLED</span>;
   return null;
 }
 
-/** Runtime/ inventory row is a GitHub catalog pack (not Full NSIS core engines). */
-function isCatalogPackRow(provider: ProviderConfig, env: string, source: BinarySourceKind): boolean {
-  if (source !== "bundled") return false;
-  if (profileEnvLookup(provider.downloadedVersionPerEnv, env)) return true;
-  if (provider.optionalDownload) return true;
-  return false;
+function sourceLabel(source: BinarySourceKind, provider: ProviderConfig): string {
+  if (source === "foundry") return "Foundry build";
+  if (source === "catalog") {
+    return provider.optionalDownload ? "Catalog pack" : "Catalog pack (overlay)";
+  }
+  return "Bundled with installer";
 }
 
-function buildInfoLine(buildInfo: BuildInfo | undefined, provider: ProviderConfig, _env: string) {
+function inventoryPath(provider: ProviderConfig, env: string, source: BinarySourceKind): string | undefined {
+  if (source === "foundry") return profileEnvLookup(provider.foundryBinaryPathPerEnv, env);
+  if (source === "catalog") return profileEnvLookup(provider.catalogBinaryPathPerEnv, env);
+  return profileEnvLookup(provider.bundledBinaryPathPerEnv, env);
+}
+
+function inventoryBuildInfo(
+  provider: ProviderConfig,
+  env: string,
+  source: BinarySourceKind,
+): BuildInfo | undefined {
+  if (source === "foundry") return profileEnvLookup(provider.foundryBuildInfoPerEnv, env);
+  if (source === "catalog") return profileEnvLookup(provider.catalogBuildInfoPerEnv, env);
+  return profileEnvLookup(provider.bundledBuildInfoPerEnv, env);
+}
+
+/** Engine build-info primary; optional product tag secondary (catalog packs). */
+function buildInfoLine(
+  buildInfo: BuildInfo | undefined,
+  provider: ProviderConfig,
+  env: string,
+  source: BinarySourceKind,
+) {
   if (!buildInfo) {
     return <span className="text-[8px] font-mono config-muted opacity-60">not available</span>;
   }
   const cudaArchitectures = resolveProfileCudaArchitectures(provider, buildInfo);
   const cudaArchLabel = cudaArchOptimizedLabel(cudaArchitectures);
+  const productTag = source === "catalog" ? profileEnvLookup(provider.downloadedVersionPerEnv, env) : undefined;
+  const shipped =
+    productTag && !/^catalog|bundled|foundry|disk/i.test(productTag)
+      ? productTag.startsWith("v") || productTag.startsWith("V")
+        ? productTag
+        : `v${productTag}`
+      : null;
+  const verRaw = (buildInfo.version || "").trim();
+  const isPlaceholder = /^(catalog|bundled|foundry-artifact|downloaded|disk-scanned|unknown)$/i.test(
+    verRaw,
+  );
+  const engineLabel = isPlaceholder
+    ? "engine"
+    : verRaw.startsWith("v")
+      ? verRaw
+      : `v${verRaw}`;
   return (
     <>
       <span
         className="text-[8px] font-mono config-muted truncate"
-        title={`v${buildInfo.version}${buildInfo.cudaVersion ? ` · CUDA ${buildInfo.cudaVersion}` : ""} · Built: ${buildInfo.buildDate}${cudaArchLabel ? ` · ${cudaArchLabel}` : ""}`}
+        title={`Engine ${buildInfo.version}${buildInfo.cudaVersion ? ` · CUDA ${buildInfo.cudaVersion}` : ""} · Built: ${buildInfo.buildDate}${shipped ? ` · shipped ${shipped}` : ""}${cudaArchLabel ? ` · ${cudaArchLabel}` : ""}`}
       >
-        v{buildInfo.version}{buildInfo.cudaVersion ? ` · CUDA ${buildInfo.cudaVersion}` : ""} · {buildInfo.buildDate}
+        {engineLabel}
+        {buildInfo.cudaVersion ? ` · CUDA ${buildInfo.cudaVersion}` : ""} · {buildInfo.buildDate}
+        {shipped ? (
+          <span className="text-stealth-muted/55"> · shipped {shipped}</span>
+        ) : null}
       </span>
       {cudaArchLabel && (
         <span className="foundry-cuda-arch-inline text-[7px] font-mono shrink-0">
@@ -112,48 +161,21 @@ function BinarySourceRow({
   onRevert,
   showDownloadedRevert,
 }: BinarySourceRowProps) {
-  const catalogPack = isCatalogPackRow(provider, env, source);
-  const label =
-    source === "foundry"
-      ? "Foundry build"
-      : catalogPack
-        ? "Catalog pack"
-        : "Bundled with installer";
-  const path =
-    source === "foundry"
-      ? profileEnvLookup(provider.foundryBinaryPathPerEnv, env)
-      : profileEnvLookup(provider.bundledBinaryPathPerEnv, env);
-  const buildInfoRaw =
-    source === "foundry"
-      ? profileEnvLookup(provider.foundryBuildInfoPerEnv, env)
-      : profileEnvLookup(provider.bundledBuildInfoPerEnv, env);
-  // Prefer release tag from pack install over mtime "bundled"/"downloaded" labels.
-  const packVer = provider.downloadedVersionPerEnv?.[env];
-  const buildInfo =
-    catalogPack && packVer && buildInfoRaw
-      ? { ...buildInfoRaw, version: packVer.replace(/^v/i, "") }
-      : catalogPack && packVer
-        ? {
-            version: packVer.replace(/^v/i, ""),
-            buildDate: buildInfoRaw?.buildDate ?? "",
-            cudaVersion: buildInfoRaw?.cudaVersion,
-            cudaArchitectures: buildInfoRaw?.cudaArchitectures,
-          }
-        : buildInfoRaw;
+  const label = sourceLabel(source, provider);
+  const path = inventoryPath(provider, env, source);
+  const buildInfo = inventoryBuildInfo(provider, env, source);
   const available = !!(path?.trim() || buildInfo);
 
-  const hasUpdateInfo = source === "bundled" && !!binaryUpdate;
-  const installedVersion = provider.downloadedVersionPerEnv?.[env] || null;
+  const productTag = profileEnvLookup(provider.downloadedVersionPerEnv, env) || null;
   const latestVersion = binaryUpdate?.latestVersion || null;
   const isLatest =
-    !!installedVersion &&
+    !!productTag &&
     !!latestVersion &&
-    installedVersion.replace(/^v/i, "") === latestVersion.replace(/^v/i, "");
-  const isCustomBuild =
-    source === "bundled" && !catalogPack && !!path && !installedVersion && !isDownloadedBinary(path);
-  const needsDownload = source === "bundled" && !installedVersion && hasUpdateInfo;
+    productTag.replace(/^v/i, "") === latestVersion.replace(/^v/i, "");
+  const showUpdateChrome = source === "catalog" && !!binaryUpdate;
+  const needsDownload = source === "catalog" && !productTag && !!binaryUpdate?.packAvailable;
   const isNewestBuild = isNewestSourceForProfile(provider, env, source);
-  const badgeOrigin = source === "foundry" ? "foundry" : catalogPack ? "downloaded" : "bundled";
+  const badgeOrigin = source === "foundry" ? "foundry" : source === "catalog" ? "catalog" : "bundled";
 
   return (
     <div className={`foundry-profile-row flex items-center gap-2 px-3 py-1.5 flex-wrap ${isActive ? "foundry-profile-row--active" : ""}`}>
@@ -166,27 +188,24 @@ function BinarySourceRow({
       </div>
 
       <div className="flex-1 min-w-[120px] flex items-center gap-2 flex-wrap">
-        {buildInfoLine(buildInfo, provider, env)}
-        {isNewestBuild && !!buildInfo && !catalogPack && (
+        {buildInfoLine(buildInfo, provider, env, source)}
+        {isNewestBuild && !!buildInfo && source !== "catalog" && (
           <span className="value-chip text-[7px] font-mono px-1.5 py-0.5 rounded-sm shrink-0">LATEST</span>
         )}
-        {hasUpdateInfo && !isBuilding && source === "bundled" && (
+        {showUpdateChrome && !isBuilding && (
           <div className="flex-shrink-0 flex items-center gap-1.5">
-            {updateStatus === "idle" && isCustomBuild && (
-              <span className="value-chip text-[7px] font-mono px-1.5 py-0.5 rounded-sm">CUSTOM</span>
-            )}
             {updateStatus === "idle" && isLatest && (
-              <span className="text-[7px] font-mono theme-accent-text">✓ Latest</span>
+              <span className="text-[7px] font-mono theme-accent-text">✓ Latest pack</span>
             )}
-            {updateStatus === "idle" && binaryUpdate?.available && installedVersion && !isCustomBuild && (
+            {updateStatus === "idle" && binaryUpdate?.available && productTag && (
               <>
-                <span className="text-[7px] font-mono config-muted">→ v{latestVersion}</span>
+                <span className="text-[7px] font-mono config-muted">→ pack v{latestVersion}</span>
                 <button onClick={onUpdateBinary} className="value-chip text-[7px] font-mono px-2 py-0.5 rounded-sm">
                   UPDATE
                 </button>
               </>
             )}
-            {updateStatus === "idle" && needsDownload && !isCustomBuild && (
+            {updateStatus === "idle" && needsDownload && (
               <button onClick={onUpdateBinary} className="value-chip text-[7px] font-mono px-2 py-0.5 rounded-sm">
                 DOWNLOAD v{latestVersion}
               </button>
@@ -216,13 +235,13 @@ function BinarySourceRow({
         )}
       </div>
 
-      {showDownloadedRevert && onRevert && !provider.optionalDownload && (
+      {showDownloadedRevert && onRevert && source === "catalog" && !provider.optionalDownload && isActive && (
         <button
           onClick={onRevert}
           className="value-chip text-[7px] font-mono px-2 py-1 shrink-0"
-          title="Revert to NSIS-bundled binary for this profile"
+          title="Use NSIS-bundled binary (keeps catalog overlay on disk)"
         >
-          ↻ REVERT
+          ↻ USE BUNDLED
         </button>
       )}
 
@@ -293,12 +312,20 @@ export function BuildProfileRow({
   onUpdateBinary,
   onRevert,
 }: BuildProfileRowProps) {
-  const activePath = profileEnvLookup(provider.binaryPathPerEnv, env);
-  const downloadedVer = profileEnvLookup(provider.downloadedVersionPerEnv, env);
-  const isDownloaded = !!activePath && isDownloadedBinary(activePath, downloadedVer);
   const foundryActive = isProfileSourceActive(provider, env, "foundry");
-  // Catalog packs use the runtime/ inventory slot — must show ACTIVE when paths match.
   const bundledActive = isProfileSourceActive(provider, env, "bundled");
+  const catalogActive = isProfileSourceActive(provider, env, "catalog");
+  const hasCatalog =
+    !!profileEnvLookup(provider.catalogBinaryPathPerEnv, env) ||
+    !!profileEnvLookup(provider.downloadedVersionPerEnv, env) ||
+    !!binaryUpdate?.packAvailable ||
+    !!provider.optionalDownload;
+  // Bundled only when NSIS (or equivalent) actually left engines on disk — not a grey "not available" row.
+  const hasBundled =
+    !!profileEnvLookup(provider.bundledBinaryPathPerEnv, env)?.trim() ||
+    !!profileEnvLookup(provider.bundledBuildInfoPerEnv, env);
+  const showBundled = !provider.optionalDownload && hasBundled;
+  const showCatalog = hasCatalog || provider.optionalDownload;
 
   return (
     <div className="foundry-profile-group space-y-1">
@@ -307,7 +334,7 @@ export function BuildProfileRow({
           {meta.label}
         </span>
         <div className="foundry-profile-badges flex items-center gap-1 shrink-0">
-          {isDownloaded && originBadge("downloaded")}
+          {catalogActive && originBadge("catalog")}
           <span className="cuda-badge text-[7px] font-mono px-1.5 py-0.5 rounded-sm">CUDA {meta.cuda}</span>
           <span className="value-chip text-[7px] font-mono px-1.5 py-0.5 rounded-sm opacity-80 max-w-[140px] truncate" title={meta.vs}>
             {meta.vs}
@@ -333,20 +360,34 @@ export function BuildProfileRow({
         updateStatus={updateStatus}
       />
 
-      <BinarySourceRow
-        source="bundled"
-        env={env}
-        provider={provider}
-        isActive={bundledActive}
-        hasBackup={false}
-        onSelect={() => onSelectSource("bundled")}
-        binaryUpdate={binaryUpdate}
-        updateStatus={updateStatus}
-        updateError={updateError}
-        onUpdateBinary={onUpdateBinary}
-        onRevert={onRevert}
-        showDownloadedRevert={isDownloaded && !provider.optionalDownload}
-      />
+      {showBundled && (
+        <BinarySourceRow
+          source="bundled"
+          env={env}
+          provider={provider}
+          isActive={bundledActive}
+          hasBackup={false}
+          onSelect={() => onSelectSource("bundled")}
+          updateStatus={updateStatus}
+        />
+      )}
+
+      {showCatalog && (
+        <BinarySourceRow
+          source="catalog"
+          env={env}
+          provider={provider}
+          isActive={catalogActive}
+          hasBackup={false}
+          onSelect={() => onSelectSource("catalog")}
+          binaryUpdate={binaryUpdate}
+          updateStatus={updateStatus}
+          updateError={updateError}
+          onUpdateBinary={onUpdateBinary}
+          onRevert={onRevert}
+          showDownloadedRevert={catalogActive && !provider.optionalDownload}
+        />
+      )}
     </div>
   );
 }

@@ -72,6 +72,7 @@ export default defineConfig(async () => ({
         "**/scripts/distribution-policy.json",
         "**/foundry/**",
         "**/work/**",
+        "**/runtime-catalog/**",
         "**/llama.cpp/**",
         "**/node_modules/**",
         "**/.majestic-out/**",

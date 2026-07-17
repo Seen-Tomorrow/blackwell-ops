@@ -130,6 +130,7 @@ pub struct AppUpdateInfo {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ProviderBinaryUpdates {
     pub provider_id: String,
     pub updates: Vec<BinaryUpdateInfo>,
@@ -150,12 +151,16 @@ const PROFILES: &[(&str, &str)] = &[
 ];
 
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BinaryUpdateInfo {
     pub profile: String,
     pub profile_label: String,
     pub installed_version: Option<String>,
     pub latest_version: String,
     pub available: bool,
+    /// True when a CORE_/PLUGIN_ (or legacy) pack exists on recent releases.
+    #[serde(default)]
+    pub pack_available: bool,
 }
 
 fn norm_release_version(v: &str) -> String {
@@ -206,15 +211,13 @@ pub async fn check_binary_updates(
                 break;
             }
         }
-        let Some((latest_version, _tag)) = found else {
-            continue;
-        };
 
         let has_binary = provider
             .as_ref()
             .map(|p| {
                 p.binary_path_per_env
                     .get(profile)
+                    .or_else(|| p.catalog_binary_path_per_env.get(profile))
                     .or_else(|| p.bundled_binary_path_per_env.get(profile))
                     .or_else(|| p.foundry_binary_path_per_env.get(profile))
                     .map(|s| !s.is_empty())
@@ -233,8 +236,14 @@ pub async fn check_binary_updates(
                 })
         });
 
+        let (pack_available, latest_version) = match &found {
+            Some((ver, _)) => (true, ver.clone()),
+            None => (false, String::new()),
+        };
+
         // Header/CONFIG badges: only real versioned upgrades of something already installed.
-        let available = has_binary
+        let available = pack_available
+            && has_binary
             && installed_version
                 .as_ref()
                 .map(|v| !is_placeholder_install_version(v))
@@ -243,12 +252,14 @@ pub async fn check_binary_updates(
                 norm_release_version(inst) != norm_release_version(&latest_version)
             });
 
+        // Always return both profiles for UI (core may be NSIS-only with no separate pack).
         results.push(BinaryUpdateInfo {
             profile: profile.to_string(),
             profile_label: label.to_string(),
             installed_version,
             latest_version,
             available,
+            pack_available,
         });
     }
 
@@ -285,7 +296,10 @@ pub async fn download_binary_update(
             provider_id: provider_id.clone(),
             profile: profile.clone(),
             status: "downloading".to_string(),
-            message: format!("Downloading {provider_id}-{profile}.7z…"),
+            message: format!(
+                "Downloading {}…",
+                crate::github_releases::provider_pack_asset_name(&provider_id, &profile)
+            ),
         },
     );
 
@@ -313,7 +327,10 @@ pub async fn download_binary_update(
     Ok(task_id)
 }
 
-/// After 7z extract: point provider at `runtime/.../llama-server.exe` and record release tag.
+/// After 7z extract: activate catalog path and record **product** release tag.
+///
+/// Core: does **not** overwrite NSIS bundled inventory (pack lives under `runtime-catalog/`).
+/// Plugins: catalog install is the runtime/ tree; engine build-info stays mtime-based, not the app tag.
 pub fn activate_provider_pack(
     app_handle: &tauri::AppHandle,
     provider_id: &str,
@@ -337,55 +354,58 @@ pub fn activate_provider_pack(
     if let Some(provider) = cfg.providers.iter_mut().find(|p| p.id == provider_id) {
         let rel = crate::config::to_relative_path(&server_exe.to_path_buf());
         let tag = release_tag.trim().to_string();
-        let ver_label = tag.trim_start_matches('v').to_string();
 
-        provider
-            .binary_path_per_env
-            .insert(profile.to_string(), rel.clone());
-        // Stamp marks this runtime/ engine as a catalog pack (not NSIS "bundled").
+        // Product tag for UPDATES comparison only — not engine build identity.
         provider
             .downloaded_version_per_env
             .insert(profile.to_string(), tag.clone());
-        // Inventory still lives under runtime/ — source_pref "bundled" maps to that slot;
-        // UI uses downloaded_version_per_env to label it Catalog pack.
         provider
             .binary_source_per_env
-            .insert(profile.to_string(), crate::profile_binaries::SOURCE_BUNDLED.to_string());
+            .insert(
+                profile.to_string(),
+                crate::profile_binaries::SOURCE_CATALOG.to_string(),
+            );
+        provider
+            .binary_path_per_env
+            .insert(profile.to_string(), rel.clone());
 
-        if let Some(mut info) = std::fs::metadata(server_exe)
+        // Placeholder build-info only — real llama --version is filled by the standing
+        // refresh_build_info path (Providers page / App load), which now includes catalog.
+        let build_date = std::fs::metadata(server_exe)
             .ok()
             .and_then(|m| m.modified().ok())
             .map(|mt| {
-                let build_date = chrono::DateTime::<chrono::Local>::from(mt)
+                chrono::DateTime::<chrono::Local>::from(mt)
                     .format("%Y-%m-%d %H:%M")
-                    .to_string();
-                crate::types::BuildInfo {
-                    version: ver_label.clone(),
-                    build_date,
-                    cuda_version: None,
-                    cuda_architectures: None,
-                }
+                    .to_string()
             })
-        {
-            info = crate::engine_utils::enrich_build_info_cuda_arch(info, &provider.build_profile);
-            provider
-                .build_info_per_env
-                .insert(profile.to_string(), info.clone());
-            // Keep inventory row in sync so PROVIDERS shows version + arch immediately.
-            provider
-                .bundled_binary_path_per_env
-                .insert(profile.to_string(), rel.clone());
-            provider
-                .bundled_build_info_per_env
-                .insert(profile.to_string(), info);
-        }
+            .unwrap_or_else(|| "unknown".to_string());
+        let mut info = crate::types::BuildInfo {
+            version: "catalog".to_string(),
+            build_date,
+            cuda_version: None,
+            cuda_architectures: None,
+        };
+        info = crate::engine_utils::enrich_build_info_cuda_arch(info, &provider.build_profile);
+        provider
+            .build_info_per_env
+            .insert(profile.to_string(), info.clone());
+        provider
+            .catalog_binary_path_per_env
+            .insert(profile.to_string(), rel.clone());
+        provider
+            .catalog_build_info_per_env
+            .insert(profile.to_string(), info);
+        // Do NOT write bundled_* — core NSIS inventory stays intact.
 
         if provider.binary_path.is_empty() || profile == crate::config::DEFAULT_BINARY_PROFILE {
             provider.binary_path = rel;
         }
 
+        crate::profile_binaries::resolve_after_source_change(provider);
+
         log::info!(
-            "[binary-update] Activated {} [{}]: {} (release: {})",
+            "[binary-update] Activated catalog {} [{}]: {} (product tag: {})",
             provider_id,
             profile,
             server_exe.display(),
@@ -627,6 +647,7 @@ pub async fn get_startup_updates(app_handle: tauri::AppHandle) -> Result<Startup
                     installed_version: r.installed_version.clone(),
                     latest_version: r.pack_version.trim_start_matches('v').to_string(),
                     available: true,
+                    pack_available: r.pack_available,
                 })
                 .collect();
             if !pending.is_empty() {
@@ -658,15 +679,18 @@ pub async fn revert_binary_to_bundled(
         .map_err(|e| format!("Failed to lock config: {e}"))?;
 
     if let Some(provider) = cfg.providers.iter_mut().find(|p| p.id == provider_id) {
+        // Switch active launch to NSIS bundled; keep catalog overlay on disk + product tag
+        // so the Catalog row remains USE-able.
         crate::profile_binaries::set_profile_source(
             provider,
             &profile,
             crate::profile_binaries::SOURCE_BUNDLED,
         )?;
-        provider.downloaded_version_per_env.remove(&profile);
         crate::profile_binaries::resolve_after_source_change(provider);
 
-        log::info!("[binary-update] Reverted {provider_id} [{profile}] to bundled default");
+        log::info!(
+            "[binary-update] Active binary for {provider_id} [{profile}] → bundled (catalog overlay kept if present)"
+        );
     } else {
         return Err(format!("Provider '{provider_id}' not found in config"));
     }

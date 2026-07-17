@@ -8,7 +8,7 @@
 #
 # Usage:
 #   .\scripts\pack-app-update.ps1
-#   .\scripts\pack-app-update.ps1 -Version 1.0.12 -Output .majestic-out\Blackwell-Ops-App-v1.0.12.7z
+#   .\scripts\pack-app-update.ps1 -Version 1.0.12 -Output .majestic-out\CORE_Blackwell-Ops-App-v1.0.12.7z
 #   .\scripts\pack-app-update.ps1 -ExePath src-tauri\target\release\blackwell-ops.exe
 
 param(
@@ -55,7 +55,7 @@ if (-not (Test-Path -LiteralPath $BundleRoot)) {
 if (-not $Output) {
     $out_dir = Join-Path $root '.majestic-out'
     New-Item -ItemType Directory -Path $out_dir -Force | Out-Null
-    $Output = Join-Path $out_dir "Blackwell-Ops-App-v$Version.7z"
+    $Output = Join-Path $out_dir "CORE_Blackwell-Ops-App-v$Version.7z"
 }
 # Absolute path required: we chdir into work/ for 7z packing
 if (-not [System.IO.Path]::IsPathRooted($Output)) {
@@ -84,12 +84,16 @@ foreach ($provider in $providers) {
     Copy-Item -Path (Join-Path $config_src '*') -Destination $config_dst -Recurse -Force
     $template_count++
 }
-$catalog_src = Join-Path $BundleRoot 'catalog'
+# Prefer runtime-catalog/ layout; accept legacy bundle/catalog/
+$catalog_src = Join-Path $BundleRoot 'runtime-catalog'
+if (-not (Test-Path -LiteralPath $catalog_src)) {
+    $catalog_src = Join-Path $BundleRoot 'catalog'
+}
 if (Test-Path -LiteralPath $catalog_src) {
-    $catalog_dst = Join-Path $app_stage 'runtime\catalog'
+    $catalog_dst = Join-Path $app_stage 'runtime-catalog'
     New-Item -ItemType Directory -Path $catalog_dst -Force | Out-Null
     Copy-Item -Path (Join-Path $catalog_src '*') -Destination $catalog_dst -Recurse -Force
-    Write-Host "[pack-app-update] Included plugin catalog" -ForegroundColor DarkGray
+    Write-Host "[pack-app-update] Included plugin catalog (runtime-catalog/)" -ForegroundColor DarkGray
 }
 
 if ($template_count -eq 0) {

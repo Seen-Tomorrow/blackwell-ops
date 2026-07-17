@@ -450,7 +450,7 @@ pub struct ProviderConfig {
     /// Active launch path per profile (resolved from bundled / foundry / download).
     #[serde(default, skip_serializing_if = "HashMap::is_empty", rename = "binaryPathPerEnv")]
     pub binary_path_per_env: HashMap<String, String>,
-    /// User preference per profile: `foundry` | `bundled` (empty = auto by mtime on upgrade).
+    /// User preference per profile: `foundry` | `bundled` | `catalog` (empty = auto by mtime).
     #[serde(default, skip_serializing_if = "HashMap::is_empty", rename = "binarySourcePerEnv")]
     pub binary_source_per_env: HashMap<String, String>,
     /// Inventory — bundled installer binary (`runtime/<id>/<profile>/`).
@@ -458,12 +458,17 @@ pub struct ProviderConfig {
     pub bundled_binary_path_per_env: HashMap<String, String>,
     #[serde(default, skip_serializing_if = "HashMap::is_empty", rename = "foundryBinaryPathPerEnv")]
     pub foundry_binary_path_per_env: HashMap<String, String>,
+    /// Catalog pack inventory (`runtime-catalog/<id>/<profile>/` for core; plugins use runtime/ + stamp).
+    #[serde(default, skip_serializing_if = "HashMap::is_empty", rename = "catalogBinaryPathPerEnv")]
+    pub catalog_binary_path_per_env: HashMap<String, String>,
     #[serde(default, skip_serializing_if = "HashMap::is_empty", rename = "bundledBuildInfoPerEnv")]
     pub bundled_build_info_per_env: HashMap<String, BuildInfo>,
     #[serde(default, skip_serializing_if = "HashMap::is_empty", rename = "foundryBuildInfoPerEnv")]
     pub foundry_build_info_per_env: HashMap<String, BuildInfo>,
-    /// Per-environment downloaded release version — tracks which GitHub release tag was installed via update.
-    /// Used for comparing against latest release (build_info_per_env stores internal llama.cpp version, not semver).
+    #[serde(default, skip_serializing_if = "HashMap::is_empty", rename = "catalogBuildInfoPerEnv")]
+    pub catalog_build_info_per_env: HashMap<String, BuildInfo>,
+    /// Product release tag that shipped this pack (`v1.0.18`) — not engine build-info.
+    /// Used for UPDATES comparison; UI shows build-info as primary identity.
     #[serde(default, skip_serializing_if = "HashMap::is_empty", rename = "downloadedVersionPerEnv")]
     pub downloaded_version_per_env: HashMap<String, String>,
     /// Last cherry-picked PR number per environment (for badge display)
