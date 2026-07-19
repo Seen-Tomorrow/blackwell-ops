@@ -32,6 +32,7 @@ import { ENV_ORDER, ENV_META } from "../lib/foundry_constants";
 import { FIT_SCAN_PARALLEL_OPTIONS } from "../lib/onboarding";
 import { dispatchAppEvent, EVENTS } from "../lib/events";
 import { loadFoundryLastRefresh, loadStartupUpdatesCache, saveFoundryLastRefresh } from "../lib/storage";
+import { isPlaceholderBuildVersion, refreshProvidersBuildInfo } from "../lib/foundryBuildRefresh";
 import { BuildProfileRow, RestoreConfirmModal, UpdateStatus, type BinarySourceKind } from "./FoundryComponents";
 import FoundryToolchainPanel from "./FoundryToolchainPanel";
 
@@ -108,19 +109,88 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
   const [updateStatuses, setUpdateStatuses] = useState<Record<string, UpdateStatus>>({});
   const [updateErrors, setUpdateErrors] = useState<Record<string, string>>({});
 
+  /** Apply list to local + parent — always both (local state is what the table renders). */
+  const applyProviders = useCallback(
+    (data: ProviderConfig[]) => {
+      setProviders(data);
+      onProvidersChange(data);
+    },
+    [onProvidersChange],
+  );
+
   const loadProviders = useCallback(async () => {
     try {
       const data = await invoke<ProviderConfig[]>("list_providers");
-      setProviders(data);
-      onProvidersChange(data);
+      applyProviders(data);
       setError(null);
     } catch (err) {
       console.error("Failed to load providers:", err);
       setError(typeof err === "string" ? err : JSON.stringify(err));
     }
-  }, [onProvidersChange]);
+  }, [applyProviders]);
 
-  useEffect(() => { loadProviders(); }, [loadProviders]);
+  /** Provider ids currently running --version probe (progressive UI + dots). */
+  const [probingBuildInfoIds, setProbingBuildInfoIds] = useState<Set<string>>(() => new Set());
+
+  // list → --version refresh per provider → apply as each finishes.
+  // No hasBootstrapped ref (StrictMode). Throttle timestamp only after full pass succeeds.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        let data = await invoke<ProviderConfig[]>("list_providers");
+        if (cancelled) return;
+        applyProviders(data);
+        setError(null);
+
+        const providerSignature = data.map((p) => p.id).join(",");
+        const lastRefresh = loadFoundryLastRefresh(providerSignature);
+        const withinThrottle = Date.now() - lastRefresh < 5000;
+        const needsProbe = data.some((p) =>
+          [p.bundledBuildInfoPerEnv, p.foundryBuildInfoPerEnv, p.catalogBuildInfoPerEnv, p.buildInfoPerEnv]
+            .some((map) =>
+              Object.values(map ?? {}).some((info) => isPlaceholderBuildVersion(info)),
+            ),
+        );
+        if (withinThrottle && !needsProbe) {
+          return;
+        }
+
+        data = await refreshProvidersBuildInfo(data, {
+          onProviderStart: (id) => {
+            if (cancelled) return;
+            setProbingBuildInfoIds((prev) => new Set(prev).add(id));
+          },
+          onProvidersUpdated: (updated) => {
+            if (cancelled) return;
+            applyProviders(updated);
+          },
+          onProviderDone: (id) => {
+            if (cancelled) return;
+            setProbingBuildInfoIds((prev) => {
+              const next = new Set(prev);
+              next.delete(id);
+              return next;
+            });
+          },
+        });
+        if (cancelled) return;
+        applyProviders(data);
+        setProbingBuildInfoIds(new Set());
+        saveFoundryLastRefresh(providerSignature, Date.now());
+      } catch (err) {
+        console.error("Failed to bootstrap providers:", err);
+        if (!cancelled) {
+          setProbingBuildInfoIds(new Set());
+          setError(typeof err === "string" ? err : JSON.stringify(err));
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [applyProviders]);
 
   useEffect(() => {
     if (didAutoExpandRef.current || providers.length === 0) return;
@@ -138,11 +208,20 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
     });
   }, []);
 
-  // Stay in sync when parent App state reloads (e.g. after Foundry build completes).
+  // Stay in sync when parent reloads providers (e.g. ConfigPage / Foundry), without
+  // clobbering a newer local refresh that finished first (compare build-info fingerprints).
   useEffect(() => {
-    if (initialProviders.length > 0) {
-      setProviders(initialProviders);
-    }
+    if (initialProviders.length === 0) return;
+    setProviders((prev) => {
+      if (prev.length === 0) return initialProviders;
+      // Prefer whichever has more non-placeholder build versions.
+      const score = (list: ProviderConfig[]) =>
+        list.reduce((n, p) => {
+          const infos = Object.values(p.buildInfoPerEnv ?? {});
+          return n + infos.filter((i) => !isPlaceholderBuildVersion(i)).length;
+        }, 0);
+      return score(initialProviders) >= score(prev) ? initialProviders : prev;
+    });
   }, [initialProviders]);
 
   useEffect(() => {
@@ -241,7 +320,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
   const handleDelete = useCallback(async (p: ProviderConfig) => {
     const isPlugin = !!p.optionalDownload;
     const msg = isPlugin
-      ? `Uninstall plugin "${p.display_name}"?\n\nRemoves engines under runtime/${p.id}/ and drops it from PROVIDERS.\nDoes not change distribution policy or factory sources.\nReinstall anytime from Config → UPDATES catalog.`
+      ? `Uninstall plugin "${p.display_name}"?\n\nRemoves engines and drops it from PROVIDERS.\nReinstall anytime from Config → UPDATES catalog.`
       : `Remove local provider "${p.display_name}"?\n\nRemoves it from the provider list and deletes its user config.`;
     if (!confirm(msg)) return;
 
@@ -323,43 +402,25 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
     hideFitScanPanel(providerId);
   }, []);
 
-  // ── Foundry build info refresh on mount ───────────────────────
-
-  const hasRefreshed = useRef(false);
+  // ── Binary update badges (cached / check) — after providers are known ─
   useEffect(() => {
-    if (hasRefreshed.current) return;
-    hasRefreshed.current = true;
+    if (providers.length === 0) return;
+    const foundryProviders = providers.filter((p) => p.git_url && p.branch);
+    if (foundryProviders.length === 0) return;
 
-    const providerSignature = providers.map(p => p.id).join(",");
-    const lastRefresh = loadFoundryLastRefresh(providerSignature);
-    const now = Date.now();
-    if (now - lastRefresh < 5000) {
-      hasRefreshed.current = false;
-      return;
-    }
-    saveFoundryLastRefresh(providerSignature, now);
-
-    const foundryProviders = providers.filter(p => p.git_url && p.branch);
     let cancelled = false;
-    foundryProviders.forEach(async (p) => {
-      try {
-        const updated = await invoke<ProviderConfig[]>("refresh_build_info", { providerId: p.id });
-        if (!cancelled && updated.length > 0) onProvidersChange(updated);
-      } catch (err) {
-        console.error("[Foundry] Failed to refresh build info for", p.id, err);
-      }
-    });
-
     let cachedUpdates: Record<string, BinaryUpdateInfo[]> | null = null;
     try {
       const parsed = loadStartupUpdatesCache();
       if (parsed?.timestamp && Date.now() - parsed.timestamp < 300_000 && parsed.binaryUpdates) {
         cachedUpdates = {};
-        parsed.binaryUpdates.forEach((bu: any) => {
+        parsed.binaryUpdates.forEach((bu: { providerId: string; updates: BinaryUpdateInfo[] }) => {
           cachedUpdates![bu.providerId] = bu.updates;
         });
       }
-    } catch (err) { console.error("[Foundry] Build info refresh error:", err); }
+    } catch (err) {
+      console.error("[Foundry] Binary updates cache error:", err);
+    }
 
     foundryProviders.forEach(async (p) => {
       try {
@@ -370,15 +431,18 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
           updates = await invoke<BinaryUpdateInfo[]>("check_binary_updates", { providerId: p.id });
         }
         if (!cancelled && updates.length > 0) {
-          const withInstalled = updates.map(u => ({
+          const withInstalled = updates.map((u) => ({
             ...u,
-            installedVersion: (p.downloadedVersionPerEnv?.[u.profile] || null),
-            available: u.available && !(p.downloadedVersionPerEnv?.[u.profile] === `v${u.latestVersion}`),
+            installedVersion: p.downloadedVersionPerEnv?.[u.profile] || null,
+            available:
+              u.available && !(p.downloadedVersionPerEnv?.[u.profile] === `v${u.latestVersion}`),
           }));
-          setBinaryUpdates(prev => {
+          setBinaryUpdates((prev) => {
             const next = { ...prev };
             next[p.id] = {};
-            withInstalled.forEach(u => { next[p.id]![u.profile] = u; });
+            withInstalled.forEach((u) => {
+              next[p.id]![u.profile] = u;
+            });
             return next;
           });
         }
@@ -387,8 +451,12 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
       }
     });
 
-    return () => { cancelled = true; };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    return () => {
+      cancelled = true;
+    };
+    // Only re-check when provider set identity changes, not every build-info patch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [providers.map((p) => p.id).join(",")]);
 
   // ── Foundry build complete event listener ─────────────────────
 
@@ -398,15 +466,14 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
         try {
           const updated = await invoke<ProviderConfig[]>("refresh_build_info", { providerId: e.payload.provider_id });
           if (updated.length > 0) {
-            setProviders(updated);
-            onProvidersChange(updated);
+            applyProviders(updated);
           }
-          dispatchAppEvent(EVENTS.reloadProviders);
+          // Do not dispatch reloadProviders here — that re-lists and can wipe build info again.
         } catch (err) { console.error("[Foundry] Status check error:", err); }
       }
     });
     return () => { unsub.then(u => u()); };
-  }, [onProvidersChange]);
+  }, [applyProviders]);
 
   useTauriListen<{ provider_id: string; profile: string }>("binary-update:download-start", (payload) => {
     const key = `${payload.provider_id}:${payload.profile}`;
@@ -425,9 +492,9 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
     const key = `${payload.provider_id}:${payload.profile}`;
     setUpdateStatuses((prev) => ({ ...prev, [key]: "complete" }));
     invoke<ProviderConfig[]>("refresh_build_info", { providerId: payload.provider_id })
-      .then((updated) => { if (updated.length > 0) onProvidersChange(updated); })
+      .then((updated) => { if (updated.length > 0) applyProviders(updated); })
       .catch((err) => console.error("[Foundry] Binary update event error:", err));
-  }, [onProvidersChange]);
+  }, [applyProviders]);
 
   // ── Foundry handlers ──────────────────────────────────────────
 
@@ -450,12 +517,12 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
     try {
       await invoke("revert_binary_to_bundled", { providerId, profile });
       invoke<ProviderConfig[]>("refresh_build_info", { providerId })
-        .then(updated => { if (updated.length > 0) onProvidersChange(updated); })
+        .then((updated) => { if (updated.length > 0) applyProviders(updated); })
         .catch((err) => console.error("[Foundry] Binary update event error:", err));
     } catch (err) {
       console.error("[Foundry] Revert failed:", err);
     }
-  }, [onProvidersChange]);
+  }, [applyProviders]);
 
   const handleSelectSource = useCallback(async (providerId: string, profile: Env, source: BinarySourceKind) => {
     try {
@@ -465,16 +532,16 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
         source,
       });
       if (updated.length > 0) {
-        onProvidersChange(updated);
+        applyProviders(updated);
       }
       const refreshed = await invoke<ProviderConfig[]>("refresh_build_info", { providerId });
       if (refreshed.length > 0) {
-        onProvidersChange(refreshed);
+        applyProviders(refreshed);
       }
     } catch (err) {
       console.error("[Foundry] Select binary source failed:", err);
     }
-  }, [onProvidersChange]);
+  }, [applyProviders]);
 
   const handleRestore = async () => {
     if (!restoreConfirm) return;
@@ -484,7 +551,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
         environment: restoreConfirm.env,
       });
       await invoke<ProviderConfig[]>("refresh_build_info", { providerId: restoreConfirm.providerId })
-        .then(updated => { if (updated.length > 0) onProvidersChange(updated); })
+        .then((updated) => { if (updated.length > 0) applyProviders(updated); })
         .catch((err) => console.error("[Foundry] Binary update event error:", err));
     } catch (err) {
       console.error("[Foundry] Restore failed:", err);
@@ -710,32 +777,60 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
         </div>
       )}
 
-      {/* Provider list */}
-      <div className="flex-1 overflow-y-auto eink-scrollbar p-4 min-h-0">
-        {/* Add new provider button */}
-        <button onClick={() => { setEditingId(null); setShowAddForm(!showAddForm); }}
-          className={`flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wider transition-colors theme-accent-text ${showAddForm && !editingId ? "opacity-100" : "opacity-60 hover:opacity-100"}`}>
-          <span className="text-[8px]">{showAddForm && !editingId ? "\u25BC" : "\u25B6"}</span>
-          ADD NEW PROVIDER
-        </button>
+      {/* Top strip: add provider | toolchain — then full-width provider list */}
+      <div className="flex-1 overflow-y-auto eink-scrollbar p-4 min-h-0 space-y-3">
+        <div className="flex flex-col sm:flex-row gap-3 sm:items-start sm:justify-between">
+          <div className="min-w-0 flex-1 space-y-2">
+            <button
+              onClick={() => {
+                setEditingId(null);
+                setShowAddForm(!showAddForm);
+              }}
+              className={`flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wider transition-colors theme-accent-text ${
+                showAddForm && !editingId ? "opacity-100" : "opacity-60 hover:opacity-100"
+              }`}
+            >
+              <span className="text-[8px]">{showAddForm && !editingId ? "\u25BC" : "\u25B6"}</span>
+              ADD NEW PROVIDER
+            </button>
+            {showAddForm && !editingId && (
+              <ProviderFormPanel
+                mode="add"
+                form={form}
+                setForm={setForm}
+                loading={loading}
+                onSave={handleSave}
+                onCancel={handleCancel}
+                handleBrowse={handleBrowse}
+                isFactoryProvided={false}
+                detectTemplateType={detectTemplateType}
+                variant="add"
+              />
+            )}
+          </div>
 
-        {showAddForm && !editingId && (
-          <ProviderFormPanel
-            mode="add"
-            form={form}
-            setForm={setForm}
-            loading={loading}
-            onSave={handleSave}
-            onCancel={handleCancel}
-            handleBrowse={handleBrowse}
-            isFactoryProvided={false}
-            detectTemplateType={detectTemplateType}
-            variant="add"
-          />
-        )}
+          <aside className="w-full sm:w-auto sm:max-w-md sm:min-w-[240px] shrink-0">
+            <div className="foundry-build-panel border border-stealth-border/40 rounded-sm overflow-hidden">
+              <div className="foundry-build-header flex items-center gap-2 px-3 py-1.5">
+                <span style={{ fontSize: "11px" }} aria-hidden>
+                  ⚒
+                </span>
+                <span className="text-[9px] font-mono theme-accent-text tracking-wider">
+                  FOUNDRY TOOLCHAIN
+                </span>
+                <span className="text-[7px] font-mono config-muted ml-auto truncate">
+                  CUDA + VS
+                </span>
+              </div>
+              <div className="px-3 py-1.5">
+                <FoundryToolchainPanel compact />
+              </div>
+            </div>
+          </aside>
+        </div>
 
         {providers.length === 0 ? (
-          <div className="flex items-center justify-center h-full text-stealth-muted text-xs font-mono">
+          <div className="flex items-center justify-center py-12 text-stealth-muted text-xs font-mono">
             NO PROVIDERS REGISTERED — ADD ONE ABOVE
           </div>
         ) : (
@@ -786,7 +881,9 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
                       {p.display_name}
                     </span>
                     {p.id === DEFAULT_PROVIDER_ID && (
-                      <span className="value-chip text-[7px] font-mono px-1.5 py-0.5 rounded-sm shrink-0">DEFAULT</span>
+                      <span className="value-chip text-[7px] font-mono px-1.5 py-0.5 rounded-sm shrink-0" title="Core bundled engine">
+                        CORE
+                      </span>
                     )}
                     {p.optionalDownload && (
                       <span className="text-[7px] font-mono px-1.5 py-0.5 rounded-sm border border-white/15 text-stealth-muted/60 uppercase shrink-0">
@@ -841,7 +938,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
                       </button>
                     )}
 
-                    {/* SCAN LIBRARY — click to pick parallelism */}
+                    {/* FULL MODEL LIBRARY FIT SCAN — click to pick parallelism */}
                     <div className="flex items-center gap-1.5 ml-2 pl-2 border-l border-stealth-border/30">
                       {scanStates[p.id]?.status === "scanning" ? (
                         <button
@@ -874,7 +971,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
                           data-onboarding="scan-library"
                           className="value-chip text-[9px] font-mono px-2 py-0.5 rounded-sm"
                         >
-                          SCAN LIBRARY ▾
+                          FULL MODEL CATALOG FIT SCAN ▾
                         </button>
                       )}
                     </div>
@@ -913,14 +1010,22 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
                           <span className="text-[8px] font-mono config-muted truncate max-w-[240px]" title={p.git_url}>
                             {p.git_url.replace(/.*\/\/|\.git$/g, "")} :{p.branch}
                           </span>
+                          {probingBuildInfoIds.has(p.id) && (
+                            <span
+                              className="foundry-buildinfo-probing text-[8px] font-mono config-muted ml-auto shrink-0"
+                              title="Probing llama-server --version for this provider"
+                            >
+                              reading build info
+                              <span className="foundry-buildinfo-dots" aria-hidden="true">
+                                <i>.</i>
+                                <i>.</i>
+                                <i>.</i>
+                              </span>
+                            </span>
+                          )}
                         </div>
 
-                        {/* Portable toolchain — manual install guide */}
-                        <div className="px-3 pt-2 pb-1 border-b border-stealth-border/30">
-                          <FoundryToolchainPanel />
-                        </div>
-
-                        {/* Build profiles — vertical stack */}
+                        {/* Build profiles — vertical stack (toolchain is page-level, not per-provider) */}
                         <div className="p-3 space-y-2">
                           {ENV_ORDER.map(env => {
                             const meta = ENV_META[env];
@@ -933,6 +1038,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
                                 provider={p}
                                 hasFoundryBackup={!!hasFoundryBackup}
                                 isBuilding={buildProgress?.providerId === p.id && buildProgress?.environment.toLowerCase() === env}
+                                isProbingBuildInfo={probingBuildInfoIds.has(p.id)}
                                 onBuild={() => openBuildModal(p.id, env)}
                                 onRestoreConfirm={() => setRestoreConfirm({ providerId: p.id, env })}
                                 onSelectSource={(source) => handleSelectSource(p.id, env, source)}
@@ -960,7 +1066,6 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
             })}
           </div>
         )}
-
       </div>
 
       {/* Footer */}

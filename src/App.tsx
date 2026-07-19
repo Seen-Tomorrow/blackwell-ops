@@ -37,7 +37,7 @@ import {
   loadHwMonitorOpen,
 } from "./lib/storage";
 import { dispatchAppEvent, EVENTS } from "./lib/events";
-import { refreshProvidersBuildInfo } from "./lib/foundryBuildRefresh";
+
 import { BINARY_UPDATES_ENABLED } from "./lib/foundry_constants";
 import { getActiveStackSlots, isActiveEngineSlot } from "./lib/engineStack";
 import type { ModelEntry, StackEntry, LogBatch, LogEntry, SystemEvent, ProviderConfig, UpdateOfferings } from "./lib/types";
@@ -258,12 +258,11 @@ function App() {
       .catch(() => {});
   }, []);
 
-  // Reload providers when nuclear button toggles group hidden state
+  // Config/list only — do NOT re-run --version on every app reload (Providers page owns that).
   const reloadProviders = useCallback(async () => {
     try {
       const data = await invoke<ProviderConfig[]>("list_providers");
-      const refreshed = await refreshProvidersBuildInfo(data);
-      setProviders(refreshed);
+      setProviders(data);
     } catch (err) { console.error("Failed to reload providers:", err); }
   }, []);
 
@@ -273,11 +272,20 @@ function App() {
     return () => window.removeEventListener(EVENTS.reloadProviders, handler);
   }, [reloadProviders]);
 
-  useTauriListen<{ phase: string }>("foundry-progress", (payload) => {
-    if (payload.phase === "Complete") {
-      void reloadProviders();
-    }
-  }, [reloadProviders]);
+  // Foundry finished: refresh only that provider's binary metadata (not all 3×N probes).
+  useTauriListen<{ phase: string; provider_id?: string }>("foundry-progress", (payload) => {
+    if (payload.phase !== "Complete" || !payload.provider_id) return;
+    void (async () => {
+      try {
+        const updated = await invoke<ProviderConfig[]>("refresh_build_info", {
+          providerId: payload.provider_id,
+        });
+        if (updated.length > 0) setProviders(updated);
+      } catch (err) {
+        console.error("Failed to refresh build info after foundry:", err);
+      }
+    })();
+  });
 
   // Catalog HF update check disabled until catalog UX is ready — see CATALOG-HF-UPDATES.md
   const reloadModels = useCallback(async () => {

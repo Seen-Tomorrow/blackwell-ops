@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } 
 import { invoke } from "@tauri-apps/api/core";
 import type { FoundrySourcePreview, FoundryWorkCacheStatus, ProviderConfig } from "../lib/types";
 import { useTelemetry } from "../context/TelemetryContext";
-import { isDevBuild } from "../lib/build";
 import { ENV_META, type Env } from "../lib/foundry_constants";
 import FoundryToolchainPanel from "./FoundryToolchainPanel";
 import FoundryWindowShell from "./FoundryWindowShell";
@@ -61,7 +60,6 @@ export default function FoundryConfirmForm({
   const [sourcePreviewLoading, setSourcePreviewLoading] = useState(true);
   const [workCache, setWorkCache] = useState<FoundryWorkCacheStatus | null>(null);
   const [workCacheClearing, setWorkCacheClearing] = useState(false);
-  const showDevCache = isDevBuild();
   const envMeta = ENV_META[environment];
   const orderedArchs = orderCudaArchCodes(selectedArchs);
   const archCmakePreview = formatCudaArchitecturesCmakeLine(orderedArchs);
@@ -88,27 +86,27 @@ export default function FoundryConfirmForm({
   }, [provider.id, environment]);
 
   const refreshWorkCache = useCallback(() => {
-    if (!showDevCache) return;
     void invoke<FoundryWorkCacheStatus>("foundry_work_cache_status", {
       providerId: provider.id,
       profileId: environment,
     })
       .then(setWorkCache)
       .catch(() => setWorkCache(null));
-  }, [showDevCache, provider.id, environment]);
+  }, [provider.id, environment]);
 
   useEffect(() => {
     refreshWorkCache();
   }, [refreshWorkCache]);
 
   const handleClearWorkCache = useCallback(async () => {
-    if (!showDevCache || workCacheClearing) return;
+    if (workCacheClearing) return;
     const warm = workCache?.cmakeCachePresent;
+    const sizeHint = workCache?.sizeLabel ? ` (${workCache.sizeLabel})` : "";
     if (
       !window.confirm(
         warm
-          ? `Clear CMake build cache for ${provider.id} / ${environment.toUpperCase()}?\n\nNext build will be a full cold compile (~4–15 min depending on arch count).`
-          : `No warm CMake cache for build-${environment}. Clear work/ anyway?`,
+          ? `Clear CMake build cache for ${provider.id} / ${environment.toUpperCase()}${sizeHint}?\n\nNext build will be a full cold compile (~4–15 min depending on arch count).`
+          : `No warm CMake cache for build-${environment}. Clear work/ anyway${sizeHint}?`,
       )
     ) {
       return;
@@ -125,7 +123,7 @@ export default function FoundryConfirmForm({
     } finally {
       setWorkCacheClearing(false);
     }
-  }, [showDevCache, workCacheClearing, workCache?.cmakeCachePresent, provider.id, environment, refreshWorkCache]);
+  }, [workCacheClearing, workCache?.cmakeCachePresent, workCache?.sizeLabel, provider.id, environment, refreshWorkCache]);
 
   const previewToneClass =
     sourcePreview?.banner_tone === "amber"
@@ -251,20 +249,20 @@ export default function FoundryConfirmForm({
             />
           </div>
 
-          {showDevCache && (
-            <div className="foundry-dev-cache-row pt-2 flex flex-wrap items-center justify-between gap-2 border border-stealth-border/40 rounded-sm px-2 py-1.5 bg-black/25">
+          <div className="foundry-cmake-cache-row pt-2 border border-stealth-border/40 rounded-sm px-2 py-1.5 bg-black/25 space-y-1.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="min-w-0">
                 <p className="text-[8px] font-mono text-stealth-muted uppercase tracking-wider">
-                  DEV · CMake cache
+                  CMake work cache
                 </p>
                 <p className="text-[8px] font-mono leading-relaxed mt-0.5">
                   {workCache?.cmakeCachePresent ? (
                     <span className="text-nv-green">
-                      Warm — build-{environment} (incremental rebuilds when flags unchanged)
+                      WARM — build-{environment} (building as incremental - fastest build time)
                     </span>
                   ) : (
                     <span className="text-stealth-muted">
-                      Cold — full compile on next build
+                      COLD — full compile on this build (flags/arch changed, or no existing cache) - expect longer build time
                     </span>
                   )}
                 </p>
@@ -273,19 +271,33 @@ export default function FoundryConfirmForm({
                 type="button"
                 onClick={() => void handleClearWorkCache()}
                 disabled={workCacheClearing}
+                title={
+                  workCache
+                    ? `This profile: ${workCache.sizeLabel} · All profiles for ${provider.id}: ${workCache.workTotalLabel}`
+                    : undefined
+                }
                 className="foundry-clear-cache-btn shrink-0 px-2 py-1 text-[8px] font-mono border rounded-sm transition-colors disabled:opacity-50"
               >
-                {workCacheClearing ? "CLEARING…" : "CLEAR CACHE"}
+                {workCacheClearing
+                  ? "CLEARING…"
+                  : `CLEAR CACHE${
+                      workCache
+                        ? ` · ${workCache.sizeBytes > 0 ? workCache.sizeLabel : "0 B"}`
+                        : ""
+                    }`}
               </button>
             </div>
-          )}
+            <p className="text-[7px] font-mono config-muted leading-snug">
+              In case of failed config/build, CLEAR CACHE and start over
+            </p>
+          </div>
 
           <div className="pt-2">
             <label className="text-[8px] font-mono text-stealth-muted uppercase block mb-1">
               CUDA GPU architectures
             </label>
             <p className="text-[7px] font-mono text-stealth-muted/80 mb-1.5 leading-tight">
-              Pick only the generations you own — each arch adds compile time (~5 min for one vs ~15 min for all three).
+              TIP - pick only the HW architectures you own — each adds compile time (~5 min for one vs ~15 min for all three).
             </p>
             <div className="flex flex-wrap gap-1.5 mb-1.5">
               {CUDA_ARCH_BUILD_OPTIONS.map((opt) => {
@@ -333,7 +345,7 @@ export default function FoundryConfirmForm({
               Build profile (CMake flags)
             </label>
             <p className="text-[7px] font-mono text-stealth-muted/80 mb-1.5 leading-tight">
-              Base flags from provider defaults — architectures above are merged when you build. Saved to provider on start.
+              Base flags + architectures above are merged when you build. Saved to provider on start. Add whatever you need here.
             </p>
             <textarea
               placeholder={"-DGGML_CUDA=ON\n-DGGML_AVX512=ON"}
@@ -407,10 +419,10 @@ export default function FoundryConfirmForm({
               ✓ PROFILE-ISOLATED BUILD
             </p>
             <p className="text-[9px] font-mono text-white/80">
-              Builds run in isolated work trees. Only engines using the <span className="font-bold">{envMeta.label}</span> profile for this provider would be stopped — other profiles and providers keep running.
+              Builds are isloated per selected provider & profile — other providers/engines will keep running.
             </p>
             <p className="text-[8px] font-mono text-stealth-muted mt-1">
-              Minimize to the dock and continue your usual workflow while the build runs.
+              Minimize to status bar and continue your usual workflow while the build runs.
             </p>
           </div>
         )}

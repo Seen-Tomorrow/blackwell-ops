@@ -331,13 +331,20 @@ fn spawn_privileged(
     Ok(result)
 }
 
-/// Launch `cmd /c <batch>` without elevation.
-/// Foundry cmake must stay non-elevated: gsudo breaks CMake 4.3 CUDA link-line probing (nvcc ABI check).
+/// Launch `cmd /c <batch>` **without** elevation (plain cmd, no gsudo).
+///
+/// Foundry configure/build **must** stay non-elevated: wrapping cmake in gsudo breaks
+/// CMake 4.3 CUDA link-line probing (nvcc ABI check) and forces a UAC prompt for every build.
+/// gsudo is only for GPU control (nvidia-smi / Inspector), not Foundry.
+///
+/// Uses System32 `cmd.exe` (not PATH `cmd`) and `/d /s /c` so AutoRun / odd PATH
+/// cannot wedge the first seconds of a hidden batch on Windows release builds.
 pub fn cmd_script_launch(batch_path: &Path) -> (PathBuf, Vec<String>) {
     let batch_arg = path_for_cmd(batch_path).to_string_lossy().to_string();
     (
-        PathBuf::from("cmd"),
-        vec!["/c".to_string(), batch_arg],
+        PathBuf::from(r"C:\Windows\System32\cmd.exe"),
+        // /d = skip AutoRun registry, /s = strip quotes for /c string parsing
+        vec!["/d".to_string(), "/s".to_string(), "/c".to_string(), batch_arg],
     )
 }
 

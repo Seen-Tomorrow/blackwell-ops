@@ -30,8 +30,9 @@ Folder roles (what lives where)
 │   └── app_config.json               ← legacy; gpu_slots is NOT the slot cap anymore
 │
 └── foundry/                          ← build workspace (not what you ship)
-    ├── artifacts/<provider>/<env>/Release/   ← sacred foundry output
-    └── engines/<provider>/work/                ← disposable, nuked after builds
+    ├── artifacts/<provider>/<env>/Release/   ← sacred foundry output (runtime binaries)
+    └── engines/<provider>/work/              ← CMake trees kept when fingerprint matches
+                                              ← CLEAR CACHE / flag change → cold rebuild
 
 In the repo, the source of truth you edit before shipping is:
 

@@ -164,7 +164,7 @@ export default function FoundryBuildProgress({
 
         {isComplete && (
           <p className="text-[8px] font-mono text-nv-green/70">
-            Provider binary path has been updated to point to the new build output.
+            Provider binaries build and READY TO USE.
           </p>
         )}
       </div>

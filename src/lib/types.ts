@@ -323,12 +323,20 @@ export interface FoundrySourcePreview {
   banner_tone: "green" | "amber" | "cyan" | "muted";
 }
 
-/** DEV Foundry confirm modal — CMake work tree under foundry/engines/.../work/build-{profile}/ */
+/** Foundry confirm modal — CMake work tree under foundry/engines/.../work/build-{profile}/ */
 export interface FoundryWorkCacheStatus {
-  devCacheEnabled: boolean;
+  /** Always true — work cache retention is on for all builds. */
+  cacheEnabled: boolean;
   profileId: string;
   buildDirExists: boolean;
   cmakeCachePresent: boolean;
+  /** Bytes under this profile's build-{profile}/ dir. */
+  sizeBytes: number;
+  /** e.g. "1.24 GiB" */
+  sizeLabel: string;
+  /** Bytes under entire work/ for this provider. */
+  workTotalBytes: number;
+  workTotalLabel: string;
 }
 
 /** Build metadata extracted from a compiled binary via --version + file mtime. */

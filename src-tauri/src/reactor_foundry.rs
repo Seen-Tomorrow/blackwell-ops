@@ -2,13 +2,14 @@
 //!
 //! Directory policy (see FOUNDRY_DIRECTORY_STRUCTURE_MAP.md §1, §5, §6):
 //!   engines/<provider_id>/llama.cpp/   — kept source tree (git clone/pull target, reused for incremental builds)
-//!   engines/<provider_id>/work/         — **DISPOSABLE** in release; **retained in DEV** for CMake incremental cache
+//!   engines/<provider_id>/work/         — CMake build trees kept between runs when fingerprint matches
 //!   artifacts/<provider_id>/<env>/Release/ — **SACRED** — only written on successful validation; automatic cleanup never touches it
 //!
 //! Build flow: clone/pull into llama.cpp, configure+build into a temp tree under work/build-{env}/,
 //! on success copy the Release artifacts into the sacred artifacts tree.
-//! Release builds nuke work/ on exit; debug builds keep work/build-{profile}/ when the cmake fingerprint matches.
-//! No build-* directories are ever created inside llama.cpp anymore. All legacy delete guards around profile trees are gone.
+//! `work/build-{profile}/` is retained when the cmake fingerprint matches (incremental); cleared on
+//! flag change, configure fail (cold path), or explicit CLEAR CACHE. Never use work/ as a runtime binary path.
+//! No build-* directories are ever created inside llama.cpp anymore.
 
 use serde::{Deserialize, Serialize};
 use std::os::windows::process::CommandExt;
@@ -86,11 +87,53 @@ fn get_default_cmake_flags(template_type: &str) -> &'static str {
         .unwrap_or("")
 }
 
-/// DEV-only: retain `work/build-{profile}/` between Foundry runs for incremental CMake/nvcc.
+/// Fingerprint file written after successful configure — gates warm reuse of `work/build-{profile}/`.
 const FOUNDRY_CACHE_KEY_FILE: &str = ".blackwell-foundry-cache-key";
 
+/// Retain CMake work trees between Foundry runs (all users). Fingerprint miss / CLEAR CACHE → cold tree.
 fn foundry_keep_work_cache() -> bool {
-    cfg!(debug_assertions)
+    true
+}
+
+fn dir_size_bytes(path: &std::path::Path) -> u64 {
+    if !path.exists() {
+        return 0;
+    }
+    let mut total = 0u64;
+    let mut stack = vec![path.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let p = entry.path();
+            let Ok(meta) = entry.metadata() else {
+                continue;
+            };
+            if meta.is_dir() {
+                stack.push(p);
+            } else if meta.is_file() {
+                total = total.saturating_add(meta.len());
+            }
+        }
+    }
+    total
+}
+
+fn format_bytes_label(bytes: u64) -> String {
+    const KIB: f64 = 1024.0;
+    const MIB: f64 = KIB * 1024.0;
+    const GIB: f64 = MIB * 1024.0;
+    let b = bytes as f64;
+    if b >= GIB {
+        format!("{:.2} GiB", b / GIB)
+    } else if b >= MIB {
+        format!("{:.1} MiB", b / MIB)
+    } else if b >= KIB {
+        format!("{:.0} KiB", b / KIB)
+    } else {
+        format!("{bytes} B")
+    }
 }
 
 fn foundry_cache_fingerprint(profile_id: &str, cmake_configure_line: &str) -> String {
@@ -119,7 +162,7 @@ async fn write_foundry_cache_key(build_dir: &std::path::Path, key: &str) -> Resu
         .map_err(|e| format!("Failed to write Foundry cache key: {e}"))
 }
 
-/// Prepare `work/build-{profile}/` — reuse when DEV cache fingerprint matches, else fresh tree.
+/// Prepare `work/build-{profile}/` — reuse when cache fingerprint matches, else fresh tree.
 async fn prepare_foundry_build_dir(
     build_dir: &std::path::Path,
     cache_fingerprint: &str,
@@ -273,6 +316,150 @@ fn try_lock_log_buf(buf: &std::sync::Mutex<Vec<String>>) -> Option<std::sync::Mu
             e
         })
         .ok()
+}
+
+/// OS-thread line drain for one pipe (stdout or stderr).
+/// Must not use `tokio::process` + CREATE_NO_WINDOW on Windows release — that path
+/// intermittently wedges (os error 6 / silent pipes). Same pattern as `fit_scanner`.
+fn drain_pipe_lines_blocking(
+    pipe: impl std::io::Read + Send + 'static,
+    log_buffer: Arc<Mutex<Vec<String>>>,
+    stderr_capture: Option<Arc<Mutex<Vec<String>>>>,
+    as_err: bool,
+) {
+    use std::io::{BufRead, BufReader};
+    let reader = BufReader::new(pipe);
+    for line in reader.lines().flatten() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        if let Some(mut buf) = try_lock_log_buf(&log_buffer) {
+            if as_err {
+                buf.push(format!("[ERR] {line}"));
+            } else {
+                buf.push(line.clone());
+            }
+        }
+        if as_err {
+            if let Some(ref cap) = stderr_capture {
+                if let Some(mut err_buf) = try_lock_log_buf(cap) {
+                    err_buf.push(line);
+                }
+            }
+        }
+    }
+}
+
+/// Spawn Foundry batch (`cmd /c …`) with CREATE_NO_WINDOW, stream logs, honour cancel.
+///
+/// Uses **std::process** + dedicated OS threads for pipes — not `tokio::process`.
+/// Project history: tokio + CREATE_NO_WINDOW is intermittent on Windows **release**
+/// (FIT/gguf/taskkill already moved off it). Symptom: child PID exists, zero output forever.
+async fn run_foundry_batch_streaming(
+    program: &std::path::Path,
+    args: &[String],
+    cwd: &std::path::Path,
+    app_handle: &tauri::AppHandle,
+    state: &BuildState,
+) -> Result<(Option<std::process::ExitStatus>, Vec<String>), String> {
+    use std::process::{Command, Stdio};
+
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+    let mut child = Command::new(program)
+        .args(args)
+        .current_dir(cwd)
+        .creation_flags(CREATE_NO_WINDOW)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("Failed to start foundry batch ({}): {e}", program.display()))?;
+
+    let pid = child.id();
+    track_pid(pid);
+
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| "Failed to capture foundry batch stdout".to_string())?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| "Failed to capture foundry batch stderr".to_string())?;
+
+    let log_buffer: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+    let log_buffer_flush = log_buffer.clone();
+    let stderr_capture: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+    let stderr_for_stream = stderr_capture.clone();
+
+    let out_thread = std::thread::spawn({
+        let log_buffer = log_buffer.clone();
+        move || drain_pipe_lines_blocking(stdout, log_buffer, None, false)
+    });
+    let err_thread = std::thread::spawn({
+        let log_buffer = log_buffer.clone();
+        move || drain_pipe_lines_blocking(stderr, log_buffer, Some(stderr_for_stream), true)
+    });
+
+    let flush_done = Arc::new(AtomicBool::new(false));
+    let flush_done_inner = flush_done.clone();
+    let app_handle_flush = app_handle.clone();
+    let state_flush = state.clone();
+    let _flush_handle = tauri::async_runtime::spawn(async move {
+        let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(250));
+        loop {
+            if flush_done_inner.load(Ordering::SeqCst) {
+                break;
+            }
+            interval.tick().await;
+            if let Some(mut buf) = try_lock_log_buf(&log_buffer_flush) {
+                let batch = buf.drain(..).collect::<Vec<String>>();
+                if !batch.is_empty() {
+                    emit_build_batch(&app_handle_flush, &state_flush, batch);
+                }
+            }
+        }
+    });
+
+    let status = tokio::task::spawn_blocking(move || {
+        loop {
+            if BUILD_CANCELLED.load(Ordering::SeqCst) {
+                let _ = child.kill();
+                let _ = child.wait();
+                return None;
+            }
+            match child.try_wait() {
+                Ok(Some(status)) => return Some(status),
+                Ok(None) => std::thread::sleep(std::time::Duration::from_millis(100)),
+                Err(_) => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return None;
+                }
+            }
+        }
+    })
+    .await
+    .map_err(|e| format!("foundry batch wait task failed: {e}"))?;
+
+    flush_done.store(true, Ordering::SeqCst);
+    let _ = out_thread.join();
+    let _ = err_thread.join();
+
+    // Final flush of any remaining lines
+    if let Some(mut buf) = try_lock_log_buf(&log_buffer) {
+        let batch = buf.drain(..).collect::<Vec<String>>();
+        if !batch.is_empty() {
+            emit_build_batch(app_handle, state, batch);
+        }
+    }
+
+    let stderr_lines = try_lock_log_buf(&stderr_capture)
+        .map(|mut buf| buf.drain(..).collect::<Vec<String>>())
+        .unwrap_or_default();
+
+    Ok((status, stderr_lines))
 }
 
 fn track_pid(pid: u32) {
@@ -435,6 +622,39 @@ fn spawn_repo_heartbeat(
     })
 }
 
+/// Heartbeat while configure batch is alive. PID comes from tracked foundry children
+/// (std::process spawn). Dead-stuck = no [FOUNDRY-ENV] and no further lines — if that
+/// returns with the new std::process path, the old hang was tokio+CREATE_NO_WINDOW.
+fn spawn_configure_heartbeat(app_handle: tauri::AppHandle) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        let mut elapsed: u64 = 0;
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+            elapsed += 10;
+            let state = match snapshot_build_state().await {
+                Some(s) if s.phase == BuildPhase::Configuring => s,
+                _ => break,
+            };
+            let child_pid = with_child_pids(|pids| pids.last().copied()).flatten();
+            let alive = child_pid
+                .map(crate::engine_utils::is_process_alive)
+                .unwrap_or(false);
+            let pid_note = match child_pid {
+                Some(pid) if alive => format!("cmd pid {pid} still alive"),
+                Some(pid) => format!("cmd pid {pid} NOT alive — dead child / pipe"),
+                None => "no pid tracked yet".into(),
+            };
+            emit_build_event(
+                &app_handle,
+                &state,
+                Some(format!(
+                    "[STAGE 2/4] CMAKE CONFIGURE — still running… {elapsed}s ({pid_note})"
+                )),
+            );
+        }
+    })
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BuildProgress {
     pub build_id: u64,
@@ -494,11 +714,20 @@ fn build_isolated_batch_script(
     git_cmd_bin: Option<&str>,
     final_command: String,
 ) -> Vec<String> {
-    let mut lines = vec!["@echo off".to_string(), "set \"CUDA_PATH=\"".to_string()];
+    // Stage echos: UI often freezes on the last Rust-emitted cmake line until cmake itself prints.
+    // These prove whether we are stuck in env setup vs inside cmake (not elevation).
+    let mut lines = vec![
+        "@echo off".to_string(),
+        "echo [FOUNDRY-ENV] start".to_string(),
+        "set \"CUDA_PATH=\"".to_string(),
+    ];
     for var in all_cuda_vars {
         lines.push(format!("set \"{var}=\""));
     }
+    lines.push(format!("echo [FOUNDRY-ENV] call vsdevcmd: {vs_devcmd}"));
     lines.push(format!("call \"{vs_devcmd}\" -arch=amd64 -host_arch=amd64"));
+    lines.push("if errorlevel 1 (echo [FOUNDRY-ENV] vsdevcmd FAILED & exit /b 1)".to_string());
+    lines.push("echo [FOUNDRY-ENV] vsdevcmd ok".to_string());
     if let Some(git_bin) = git_cmd_bin {
         lines.push(format!("set \"PATH={git_bin};%PATH%\""));
     }
@@ -509,136 +738,17 @@ fn build_isolated_batch_script(
     lines.push(format!("set \"CUDA_PATH={cuda_path_forced}\""));
     lines.push(format!("set \"{versioned_var}={cuda_path_forced}\""));
     lines.push(format!("set \"PATH={nvcc_bin};%PATH%\""));
+    lines.push("echo [FOUNDRY-ENV] launching cmake/build command…".to_string());
     // No rmdir/mkdir/cd of build dirs here — Rust controls the disposable work/ tree.
     lines.push(final_command);
+    lines.push("set FOUNDRY_RC=%ERRORLEVEL%".to_string());
+    lines.push("echo [FOUNDRY-ENV] command finished exit=%FOUNDRY_RC%".to_string());
+    lines.push("exit /b %FOUNDRY_RC%".to_string());
     lines
 }
 
 // ── Streaming Log Infrastructure ─────────────────────────────────────
-
-async fn stream_child_output(
-    mut child: tokio::process::Child,
-    app_handle: &tauri::AppHandle,
-    state: &BuildState,
-) -> (Option<std::process::ExitStatus>, Vec<String>) {
-    let stdout = match child.stdout.take() {
-        Some(s) => s,
-        None => {
-            log::error!("[foundry] failed to capture child stdout");
-            return (None, Vec::new());
-        }
-    };
-    let stderr = match child.stderr.take() {
-        Some(s) => s,
-        None => {
-            log::error!("[foundry] failed to capture child stderr");
-            return (None, Vec::new());
-        }
-    };
-
-    let stderr_capture: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
-    let stderr_clone = stderr_capture.clone();
-
-    let app_handle_clone = app_handle.clone();
-    let state_clone = state.clone();
-
-    let log_buffer: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
-    let log_buffer_flush = log_buffer.clone();
-    let stderr_clone2 = stderr_clone.clone();
-
-    let flush_done: Arc<std::sync::atomic::AtomicBool> = Arc::new(std::sync::atomic::AtomicBool::new(false));
-    let flush_done_inner = flush_done.clone();
-    let app_handle_flush = app_handle_clone.clone();
-    let state_flush = state_clone.clone();
-
-    let _flush_handle = tauri::async_runtime::spawn(async move {
-        let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(250));
-        loop {
-            if flush_done_inner.load(Ordering::SeqCst) { break };
-            interval.tick().await;
-            if let Some(mut buf) = try_lock_log_buf(&log_buffer_flush) {
-                let batch = buf.drain(..).collect::<Vec<String>>();
-                if !batch.is_empty() {
-                    emit_build_batch(&app_handle_flush, &state_flush, batch);
-                }
-            }
-        }
-    });
-
-    let stream_handle = tauri::async_runtime::spawn(async move {
-        use tokio::io::{AsyncBufReadExt, BufReader};
-
-        let stdout_reader = BufReader::new(stdout);
-        let mut stdout_lines = stdout_reader.lines();
-        while let Ok(Some(line)) = stdout_lines.next_line().await {
-            if !line.trim().is_empty() {
-                if let Some(mut buf) = try_lock_log_buf(&log_buffer) {
-                    buf.push(line);
-                }
-            }
-        }
-
-        let stderr_reader = BufReader::new(stderr);
-        let mut stderr_lines = stderr_reader.lines();
-        while let Ok(Some(line)) = stderr_lines.next_line().await {
-            if !line.trim().is_empty() {
-                if let Some(mut buf) = try_lock_log_buf(&log_buffer) {
-                    buf.push(format!("[ERR] {}", line));
-                }
-                if let Some(mut err_buf) = try_lock_log_buf(&stderr_clone2) {
-                    err_buf.push(line);
-                }
-            }
-        }
-        if let Some(mut buf) = try_lock_log_buf(&log_buffer) {
-            let batch = buf.drain(..).collect::<Vec<String>>();
-            if !batch.is_empty() {
-                emit_build_batch(&app_handle_clone, &state_clone, batch);
-            }
-        }
-    });
-
-    let status = match wait_child_cancellable(&mut child).await {
-        Some(status) => Some(status),
-        None => {
-            let _ = child.kill().await;
-            flush_done.store(true, Ordering::SeqCst);
-            stream_handle.await.ok();
-            clear_pids();
-            return (None, Vec::new());
-        }
-    };
-
-    flush_done.store(true, Ordering::SeqCst);
-    stream_handle.await.ok();
-
-    let stderr_text = if status.is_none() {
-        Vec::new()
-    } else {
-        try_lock_log_buf(&stderr_capture)
-            .map(|mut buf| buf.drain(..).collect::<Vec<String>>())
-            .unwrap_or_default()
-    };
-
-    (status, stderr_text)
-}
-
-async fn wait_child_cancellable(child: &mut tokio::process::Child) -> Option<std::process::ExitStatus> {
-    loop {
-        if BUILD_CANCELLED.load(Ordering::SeqCst) {
-            return None;
-        }
-        match child.try_wait() {
-            Ok(Some(status)) => return Some(status),
-            Ok(None) => {
-                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-            }
-            Err(_) => {
-                return None;
-            }
-        }
-    }
-}
+// (Foundry batch run lives in `run_foundry_batch_streaming` — std::process, not tokio::process.)
 
 fn is_cancelled() -> bool {
     BUILD_CANCELLED.load(Ordering::SeqCst)
@@ -914,18 +1024,12 @@ async fn run_foundry_build_worker(
     let cmake_build_output_dir = build_dir.join("bin").join("Release");
     // NOTE: bin_bak / rename dance removed entirely from normal build flow. Sacred artifacts are never touched during a build attempt.
 
-    // Release: nuke work/ every build. DEV: keep work/ — per-profile dir validated before configure.
-    if foundry_keep_work_cache() {
-        if let Err(e) = tokio::fs::create_dir_all(&work_root).await {
-            rollback_build(app_handle, &provider_id, &profile_id, build_id).execute().await;
-            return Err(format!("Failed to create work directory: {}", e));
-        }
-    } else {
-        let _ = tokio::fs::remove_dir_all(&work_root).await;
-        if let Err(e) = tokio::fs::create_dir_all(&work_root).await {
-            rollback_build(app_handle, &provider_id, &profile_id, build_id).execute().await;
-            return Err(format!("Failed to create work directory: {}", e));
-        }
+    // Keep work/ between builds (fingerprint decides reuse of build-{profile}/). Ensure root exists.
+    if let Err(e) = tokio::fs::create_dir_all(&work_root).await {
+        rollback_build(app_handle, &provider_id, &profile_id, build_id)
+            .execute()
+            .await;
+        return Err(format!("Failed to create work directory: {}", e));
     }
 
     // ── Git Operations ───────────────────────────────────────────────
@@ -1315,10 +1419,10 @@ async fn run_foundry_build_worker(
             &profile_id,
             build_id,
             Some(format!(
-                "[CACHE] Reusing CMake build tree for build-{profile_id} (DEV incremental — flags unchanged)"
+                "[CACHE] Reusing CMake build tree for build-{profile_id} (incremental — flags unchanged)"
             )),
         );
-    } else if foundry_keep_work_cache() {
+    } else {
         emit_config_event(
             app_handle,
             &provider_id,
@@ -1358,113 +1462,51 @@ async fn run_foundry_build_worker(
         return Err(format!("Failed to write build script: {}", e));
     }
 
+    // Non-elevated. Spawn via std::process (not tokio) — see run_foundry_batch_streaming.
     let (cfg_program, cfg_args) =
         crate::sidecar_elevate::cmd_script_launch(&cfg_batch_path);
-    let mut cmd = tokio::process::Command::new(&cfg_program);
-    cmd.args(&cfg_args)
-        .current_dir(&src_dir)
-        .creation_flags(0x08000000)
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped());
-
-    let mut child = cmd
-        .spawn()
-        .map_err(|e| format!("Failed to start cmake configure: {}", e))?;
-
-    if let Some(pid) = child.id() {
-        track_pid(pid);
-    }
-
-    let stderr_capture: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
-    let stderr_capture_clone = stderr_capture.clone();
-
-    let app_handle_cfg = app_handle.clone();
     let state_cfg = require_build_state("cmake configure").await?;
 
-    let log_buffer: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
-    let log_buffer_flush = log_buffer.clone();
-    let stderr_capture_clone2 = stderr_capture_clone.clone();
+    emit_config_event(
+        app_handle,
+        &provider_id,
+        &profile_id,
+        build_id,
+        Some(
+            "[FOUNDRY] starting configure batch (std::process + OS pipe threads) — expect [FOUNDRY-ENV] next…"
+                .into(),
+        ),
+    );
 
-    let flush_done: Arc<std::sync::atomic::AtomicBool> = Arc::new(std::sync::atomic::AtomicBool::new(false));
-    let flush_done_inner = flush_done.clone();
-    let app_handle_flush = app_handle_cfg.clone();
-    let state_flush = state_cfg.clone();
+    let configure_heartbeat = spawn_configure_heartbeat(app_handle.clone());
 
-    let _flush_handle = tauri::async_runtime::spawn(async move {
-        let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(250));
-        loop {
-            if flush_done_inner.load(Ordering::SeqCst) { break };
-            interval.tick().await;
-            if let Some(mut buf) = try_lock_log_buf(&log_buffer_flush) {
-                let batch = buf.drain(..).collect::<Vec<String>>();
-                if !batch.is_empty() {
-                    emit_build_batch(&app_handle_flush, &state_flush, batch);
-                }
-            }
-        }
-    });
-
-    let stdout = child.stdout.take().ok_or("Failed to capture stdout")?;
-    let stderr = child.stderr.take().ok_or("Failed to capture stderr")?;
-
-    let stream_handle = tauri::async_runtime::spawn(async move {
-        use tokio::io::{AsyncBufReadExt, BufReader};
-
-        let stdout_reader = BufReader::new(stdout);
-        let mut stdout_lines = stdout_reader.lines();
-        while let Ok(Some(line)) = stdout_lines.next_line().await {
-            if !line.trim().is_empty() {
-                if let Some(mut buf) = try_lock_log_buf(&log_buffer) {
-                    buf.push(line);
-                }
-            }
-        }
-
-        let stderr_reader = BufReader::new(stderr);
-        let mut stderr_lines = stderr_reader.lines();
-        while let Ok(Some(line)) = stderr_lines.next_line().await {
-            if !line.trim().is_empty() {
-                if let Some(mut buf) = try_lock_log_buf(&log_buffer) {
-                    buf.push(format!("[ERR] {}", line));
-                }
-                if let Some(mut err_buf) = try_lock_log_buf(&stderr_capture_clone2) {
-                    err_buf.push(line);
-                }
-            }
-        }
-        if let Some(mut buf) = try_lock_log_buf(&log_buffer) {
-            let batch = buf.drain(..).collect::<Vec<String>>();
-            if !batch.is_empty() {
-                emit_build_batch(&app_handle_cfg, &state_cfg, batch);
-            }
-        }
-    });
-
-    let cfg_status = match wait_child_cancellable(&mut child).await {
-        Some(status) => Some(status),
-        None => {
-            let _ = child.kill().await;
-            flush_done.store(true, Ordering::SeqCst);
-            stream_handle.await.ok();
+    let (cfg_status, cfg_stderr_lines) = match run_foundry_batch_streaming(
+        &cfg_program,
+        &cfg_args,
+        &src_dir,
+        app_handle,
+        &state_cfg,
+    )
+    .await
+    {
+        Ok(v) => v,
+        Err(e) => {
+            configure_heartbeat.abort();
             clear_pids();
             clear_build_slot_if_matches(build_id, &provider_id, app_handle).await;
-            return Err("Build cancelled by user.".to_string());
+            return Err(e);
         }
     };
-
-    flush_done.store(true, Ordering::SeqCst);
-    stream_handle.await.ok();
+    configure_heartbeat.abort();
 
     let Some(cfg_status) = cfg_status else {
         clear_pids();
         clear_build_slot_if_matches(build_id, &provider_id, app_handle).await;
-        return Err("CMake configure process terminated unexpectedly.".to_string());
+        return Err("Build cancelled by user.".to_string());
     };
 
     if !cfg_status.success() {
-        let stderr_text: String = try_lock_log_buf(&stderr_capture)
-            .map(|buf| buf.join("\n"))
-            .unwrap_or_default();
+        let stderr_text = cfg_stderr_lines.join("\n");
         rollback_build(app_handle, &provider_id, &profile_id, build_id)
             .with_message(if stderr_text.is_empty() { "CMake configure failed.".into() } else { format!("CMake configure failed:\n{}", stderr_text) })
             .execute().await;
@@ -1591,30 +1633,27 @@ async fn run_foundry_build_worker(
         return Err(format!("Failed to write build script: {}", e));
     }
 
+    // Non-elevated — same std::process path as configure.
     let (build_program, build_args) =
         crate::sidecar_elevate::cmd_script_launch(&build_batch_path);
-    let mut cmd2 = tokio::process::Command::new(&build_program);
-    cmd2.args(&build_args)
-        .current_dir(&src_dir)
-        .creation_flags(0x08000000)
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped());
-
-    let child2 = cmd2
-        .spawn()
-        .map_err(|e| format!("Failed to start build: {}", e))?;
-
-    if let Some(pid) = child2.id() {
-        track_pid(pid);
-    }
-
     let state_for_stream = require_build_state("compilation").await?;
 
-    let (build_status, stderr_text) = stream_child_output(
-        child2,
+    let (build_status, stderr_text) = match run_foundry_batch_streaming(
+        &build_program,
+        &build_args,
+        &src_dir,
         app_handle,
         &state_for_stream,
-    ).await;
+    )
+    .await
+    {
+        Ok(v) => v,
+        Err(e) => {
+            clear_pids();
+            do_rollback(&cmake_build_output_dir).await;
+            return Err(e);
+        }
+    };
 
     let Some(build_status) = build_status else {
         clear_pids();
@@ -2219,10 +2258,12 @@ pub async fn refresh_build_info(
     if changed {
         let mut cfg = app.config.lock().map_err(|e| e.to_string())?;
         if let Some(p) = cfg.providers.iter_mut().find(|p| p.id == provider_id) {
-            *p = provider;
+            *p = provider.clone();
         }
         drop(cfg);
-        if let Err(e) = persist_providers_atomic(&app.config) {
+        // Persist only this provider — writing all three on every refresh was pure thrash.
+        if let Err(e) = crate::config::persist_user_providers_meta(std::slice::from_ref(&provider))
+        {
             log::error!("[foundry] Failed to persist provider config: {}", e);
         }
     }
@@ -2338,24 +2379,62 @@ pub async fn foundry_restore(
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
-async fn enrich_build_info_for_path(
+fn format_file_build_date(path: &std::path::Path) -> Option<String> {
+    let meta = std::fs::metadata(path).ok()?;
+    let mt = meta.modified().ok()?;
+    use chrono::{DateTime, Local};
+    let dt: DateTime<Local> = mt.into();
+    Some(dt.format("%Y-%m-%d %H:%M").to_string())
+}
+
+/// Keep cached --version when non-placeholder and on-disk mtime still matches.
+fn can_reuse_build_info(path: &str, existing: Option<&crate::types::BuildInfo>) -> bool {
+    let Some(info) = existing else {
+        return false;
+    };
+    if crate::engine::is_placeholder_build_version(&info.version) {
+        return false;
+    }
+    let resolved = crate::config::resolve_path(path);
+    match format_file_build_date(&resolved) {
+        Some(date) => date == info.build_date,
+        None => false,
+    }
+}
+
+fn finish_build_info(
+    mut info: crate::types::BuildInfo,
+    build_profile: &str,
+    preserve_cuda: Option<Vec<String>>,
+) -> crate::types::BuildInfo {
+    if let Some(arch) = preserve_cuda.filter(|v| !v.is_empty()) {
+        info.cuda_architectures = Some(arch);
+    }
+    crate::engine_utils::enrich_build_info_cuda_arch(info, build_profile)
+}
+
+/// One `--version` probe (catalog-style). Used only for paths that cannot be reused.
+async fn probe_build_info_fresh(
     path: &str,
     build_profile: &str,
     preserve_cuda: Option<Vec<String>>,
 ) -> Option<crate::types::BuildInfo> {
-    let mut info = crate::engine::get_binary_build_info(path.to_string()).await.ok()?;
+    let info = crate::engine::get_binary_build_info(path.to_string()).await.ok()?;
     if crate::engine::is_placeholder_build_version(&info.version) {
         return None;
     }
-    if let Some(arch) = preserve_cuda.filter(|v| !v.is_empty()) {
-        info.cuda_architectures = Some(arch);
-    }
-    Some(crate::engine_utils::enrich_build_info_cuda_arch(
-        info,
-        build_profile,
-    ))
+    Some(finish_build_info(info, build_profile, preserve_cuda))
 }
 
+struct ProbeTarget {
+    /// Absolute path key (dedupe).
+    key: String,
+    /// Config-relative path string for get_binary_build_info.
+    path: String,
+    preserve_cuda: Option<Vec<String>>,
+}
+
+/// Collect inventory + active paths; reuse mtime-matched info; probe unique cold paths **in parallel**.
 async fn enrich_provider_binary_info(
     provider: &mut crate::types::ProviderConfig,
     provider_id: &str,
@@ -2364,15 +2443,122 @@ async fn enrich_provider_binary_info(
     let profiles = foundry_toolchain::profile_ids_or_default();
     let mut changed = false;
 
+    // key → best BuildInfo (reused or freshly probed)
+    let mut resolved: std::collections::HashMap<String, crate::types::BuildInfo> =
+        std::collections::HashMap::new();
+    let mut to_probe: Vec<ProbeTarget> = Vec::new();
+    let mut seen_keys: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+    let mut consider =
+        |path: &str, existing: Option<&crate::types::BuildInfo>, preserve: Option<Vec<String>>| {
+            let key = crate::config::resolve_path(path)
+                .to_string_lossy()
+                .to_string();
+            if !seen_keys.insert(key.clone()) {
+                return;
+            }
+            if can_reuse_build_info(path, existing) {
+                if let Some(info) = existing {
+                    resolved.insert(
+                        key,
+                        finish_build_info(info.clone(), &build_profile, preserve),
+                    );
+                }
+                return;
+            }
+            to_probe.push(ProbeTarget {
+                key,
+                path: path.to_string(),
+                preserve_cuda: preserve,
+            });
+        };
+
+    for env_label in &profiles {
+        if let Some(path) = provider.bundled_binary_path_per_env.get(env_label) {
+            consider(
+                path,
+                provider.bundled_build_info_per_env.get(env_label),
+                provider
+                    .bundled_build_info_per_env
+                    .get(env_label)
+                    .and_then(|i| i.cuda_architectures.clone()),
+            );
+        }
+        if let Some(path) = provider.foundry_binary_path_per_env.get(env_label) {
+            consider(
+                path,
+                provider.foundry_build_info_per_env.get(env_label),
+                provider
+                    .foundry_build_info_per_env
+                    .get(env_label)
+                    .and_then(|i| i.cuda_architectures.clone()),
+            );
+        }
+        if let Some(path) = provider.catalog_binary_path_per_env.get(env_label) {
+            consider(
+                path,
+                provider.catalog_build_info_per_env.get(env_label),
+                provider
+                    .catalog_build_info_per_env
+                    .get(env_label)
+                    .and_then(|i| i.cuda_architectures.clone()),
+            );
+        }
+        if let Some(path) = provider.binary_path_per_env.get(env_label) {
+            consider(
+                path,
+                provider.build_info_per_env.get(env_label),
+                provider
+                    .build_info_per_env
+                    .get(env_label)
+                    .and_then(|i| i.cuda_architectures.clone()),
+            );
+        }
+    }
+
+    if !to_probe.is_empty() {
+        log::info!(
+            "[refresh] {} — probing {} unique binary path(s) in parallel (catalog-style --version)",
+            provider_id,
+            to_probe.len()
+        );
+        let profile = build_profile.clone();
+        let futs: Vec<_> = to_probe
+            .into_iter()
+            .map(|t| {
+                let profile = profile.clone();
+                async move {
+                    let info =
+                        probe_build_info_fresh(&t.path, &profile, t.preserve_cuda.clone()).await;
+                    (t.key, t.path, info)
+                }
+            })
+            .collect();
+        let results = futures_util::future::join_all(futs).await;
+        for (key, path, info) in results {
+            if let Some(info) = info {
+                log::info!(
+                    "[refresh] {} — {} → {} built {}",
+                    provider_id,
+                    path,
+                    info.version,
+                    info.build_date
+                );
+                resolved.insert(key, info);
+            }
+        }
+    }
+
+    let lookup = |path: &str| -> Option<crate::types::BuildInfo> {
+        let key = crate::config::resolve_path(path)
+            .to_string_lossy()
+            .to_string();
+        resolved.get(&key).cloned()
+    };
+
     for env_label in &profiles {
         if let Some(path) = provider.bundled_binary_path_per_env.get(env_label).cloned() {
-            let preserve = provider
-                .bundled_build_info_per_env
-                .get(env_label)
-                .and_then(|i| i.cuda_architectures.clone());
-            if let Some(info) =
-                enrich_build_info_for_path(&path, &build_profile, preserve).await
-            {
+            if let Some(info) = lookup(&path) {
                 let existing = provider.bundled_build_info_per_env.get(env_label);
                 if existing
                     .map(|e| e.version != info.version || e.build_date != info.build_date)
@@ -2385,15 +2571,8 @@ async fn enrich_provider_binary_info(
                 }
             }
         }
-
         if let Some(path) = provider.foundry_binary_path_per_env.get(env_label).cloned() {
-            let preserve = provider
-                .foundry_build_info_per_env
-                .get(env_label)
-                .and_then(|i| i.cuda_architectures.clone());
-            if let Some(info) =
-                enrich_build_info_for_path(&path, &build_profile, preserve).await
-            {
+            if let Some(info) = lookup(&path) {
                 let existing = provider.foundry_build_info_per_env.get(env_label);
                 if existing
                     .map(|e| e.version != info.version || e.build_date != info.build_date)
@@ -2406,16 +2585,8 @@ async fn enrich_provider_binary_info(
                 }
             }
         }
-
-        // Catalog overlay (runtime-catalog/) — was missing; only bundled/foundry were probed.
         if let Some(path) = provider.catalog_binary_path_per_env.get(env_label).cloned() {
-            let preserve = provider
-                .catalog_build_info_per_env
-                .get(env_label)
-                .and_then(|i| i.cuda_architectures.clone());
-            if let Some(info) =
-                enrich_build_info_for_path(&path, &build_profile, preserve).await
-            {
+            if let Some(info) = lookup(&path) {
                 let existing = provider.catalog_build_info_per_env.get(env_label);
                 if existing
                     .map(|e| e.version != info.version || e.build_date != info.build_date)
@@ -2428,16 +2599,9 @@ async fn enrich_provider_binary_info(
                 }
             }
         }
-
         if let Some(path) = provider.binary_path_per_env.get(env_label).cloned() {
-            let preserve = provider
-                .build_info_per_env
-                .get(env_label)
-                .and_then(|i| i.cuda_architectures.clone());
-            if let Some(info) =
-                enrich_build_info_for_path(&path, &build_profile, preserve).await
-            {
-                log::info!(
+            if let Some(info) = lookup(&path) {
+                log::debug!(
                     "[refresh] {} env '{}': {} built {}",
                     provider_id,
                     env_label,
@@ -2449,7 +2613,6 @@ async fn enrich_provider_binary_info(
                     .map(|e| e.version != info.version || e.build_date != info.build_date)
                     .unwrap_or(true)
                 {
-                    // Keep catalog inventory row in sync when active is catalog.
                     if provider.binary_source_per_env.get(env_label).map(|s| s.as_str())
                         == Some(crate::profile_binaries::SOURCE_CATALOG)
                     {
@@ -2653,39 +2816,58 @@ pub async fn foundry_get_profiles() -> Result<Vec<foundry_toolchain::ProfileDef>
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FoundryWorkCacheStatus {
-    /// True when the running binary is a debug (DEV) build — cache retention is active.
-    pub dev_cache_enabled: bool,
+    /// Always true — work cache retention is on for all builds (UI compatibility).
+    pub cache_enabled: bool,
     pub profile_id: String,
     pub build_dir_exists: bool,
     pub cmake_cache_present: bool,
+    /// Bytes under `work/build-{profile}/` (this profile only).
+    pub size_bytes: u64,
+    /// Human label e.g. `1.24 GiB`.
+    pub size_label: String,
+    /// Bytes under entire `work/` for this provider (all profiles).
+    pub work_total_bytes: u64,
+    pub work_total_label: String,
 }
 
-/// DEV confirm modal: whether a warm CMake tree exists for this provider/profile.
+/// Confirm modal: warm/cold CMake tree + on-disk size for this provider/profile.
 #[tauri::command]
 pub async fn foundry_work_cache_status(
     provider_id: String,
     profile_id: String,
 ) -> Result<FoundryWorkCacheStatus, String> {
     let profile_id = foundry_toolchain::normalize_profile_id(&profile_id);
-    let build_dir = crate::config::foundry_work_dir(&provider_id).join(format!("build-{profile_id}"));
+    let work_root = crate::config::foundry_work_dir(&provider_id);
+    let build_dir = work_root.join(format!("build-{profile_id}"));
+    let build_dir_for_size = build_dir.clone();
+    let work_root_for_size = work_root.clone();
+    let (size_bytes, work_total_bytes) = tokio::task::spawn_blocking(move || {
+        (
+            dir_size_bytes(&build_dir_for_size),
+            dir_size_bytes(&work_root_for_size),
+        )
+    })
+    .await
+    .map_err(|e| format!("cache size task failed: {e}"))?;
+
     Ok(FoundryWorkCacheStatus {
-        dev_cache_enabled: foundry_keep_work_cache(),
+        cache_enabled: foundry_keep_work_cache(),
         profile_id,
         build_dir_exists: build_dir.is_dir(),
         cmake_cache_present: build_dir.join("CMakeCache.txt").is_file(),
+        size_bytes,
+        size_label: format_bytes_label(size_bytes),
+        work_total_bytes,
+        work_total_label: format_bytes_label(work_total_bytes),
     })
 }
 
-/// DEV only — delete `foundry/engines/<provider>/work/` (or one `build-{profile}/` subtree).
+/// Delete `foundry/engines/<provider>/work/` or one `build-{profile}/` subtree.
 #[tauri::command]
 pub async fn foundry_clear_work_cache(
     provider_id: String,
     profile_id: Option<String>,
 ) -> Result<(), String> {
-    if !foundry_keep_work_cache() {
-        return Err("CMake work cache clear is only available in DEV builds.".into());
-    }
-
     let work_root = crate::config::foundry_work_dir(&provider_id);
     if let Some(profile) = profile_id {
         let profile_id = foundry_toolchain::normalize_profile_id(&profile);

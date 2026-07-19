@@ -24,7 +24,7 @@ Traps and invariants only — not a code map. Read the source for flows, schemas
 
 ## Foundry paths
 
-`work/` is nuked every build exit. `foundry/artifacts/.../Release/` is the only durable binary location. Provider `binary_path` / `binary_path_per_env` must point at artifacts after a foundry build, never at cmake temp output under `work/`.
+**Foundry `work/` CMake cache** — Retained between builds for all users when the configure fingerprint matches (`.blackwell-foundry-cache-key` + `CMakeCache.txt`). Fingerprint miss, configure failure (cold path), or CLEAR CACHE wipes the tree. `foundry/artifacts/.../Release/` is the only durable **runtime** binary location. Provider `binary_path` / `binary_path_per_env` must point at artifacts after a foundry build, never at cmake temp output under `work/`.
 
 ---
 ## APP/engine logs

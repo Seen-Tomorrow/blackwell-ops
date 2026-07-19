@@ -1078,6 +1078,47 @@ html, body, #root {
   margin-top: 0.05rem;
 }
 
+/* Compact “reading build info …” / “probing …” indicator */
+.foundry-buildinfo-probing {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.12rem;
+  opacity: 0.9;
+  letter-spacing: 0.02em;
+}
+
+.foundry-buildinfo-dots {
+  display: inline-flex;
+  gap: 1px;
+  width: 1.15em;
+  justify-content: flex-start;
+}
+
+.foundry-buildinfo-dots > i {
+  font-style: normal;
+  opacity: 0.2;
+  animation: foundryBuildInfoDot 1.05s ease-in-out infinite;
+}
+
+.foundry-buildinfo-dots > i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.foundry-buildinfo-dots > i:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes foundryBuildInfoDot {
+  0%,
+  80%,
+  100% {
+    opacity: 0.2;
+  }
+  40% {
+    opacity: 1;
+  }
+}
+
 .foundry-status-chip__icon {
   display: inline-block;
   transform-origin: center bottom;

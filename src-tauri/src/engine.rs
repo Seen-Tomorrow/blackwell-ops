@@ -1506,45 +1506,49 @@ pub(crate) fn is_placeholder_build_version(version: &str) -> bool {
 }
 
 fn clean_version_probe_output(stdout: &[u8], stderr: &[u8]) -> String {
+    use std::sync::LazyLock;
+    static ANSI_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
+        regex::Regex::new(r"\x1b\[[0-9;?]*[a-zA-Z]").expect("ansi regex")
+    });
     let raw = format!(
         "{}{}",
         String::from_utf8_lossy(stdout),
         String::from_utf8_lossy(stderr)
     );
-    regex::Regex::new(r"\x1b\[[0-9;?]*[a-zA-Z]")
-        .ok()
-        .map(|re| re.replace_all(&raw, "").to_string())
-        .unwrap_or(raw)
+    ANSI_RE
+        .replace_all(&raw, "")
         .chars()
         .filter(|c| *c <= '\x7F')
         .collect::<String>()
 }
 
 fn parse_llama_version_line(cleaned: &str) -> Option<String> {
-    let re = regex::Regex::new(r"version:\s*(\d+)\s*\(([^)]+)\)").ok()?;
-    re.captures(cleaned)
+    use std::sync::LazyLock;
+    static VER_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
+        regex::Regex::new(r"version:\s*(\d+)\s*\(([^)]+)\)").expect("version regex")
+    });
+    VER_RE
+        .captures(cleaned)
         .map(|caps| format!("{} ({})", &caps[1], &caps[2]))
 }
 
-/// Blocking llama-server --version probe (safe from async tasks; no nested runtime).
+/// Blocking llama-server --version — same spawn shape as catalog `get_llama_catalog` (`--help`):
+/// one `run_hidden_output`, cwd = exe dir, portable CUDA PATH, no pre-sleep / preflight.
+/// Retry only if the first spawn fails or output has no parseable version line.
 pub(crate) fn probe_binary_version_sync(path: &std::path::Path) -> Result<String, String> {
-    const MAX_ATTEMPTS: u32 = 4;
-    const RETRY_BASE_MS: u64 = 400;
+    const MAX_ATTEMPTS: u32 = 2;
+    const RETRY_MS: u64 = 100;
 
     let work_dir = path.parent().map(|p| p.to_path_buf());
     let mut last_snippet = String::new();
-
-    {
-        let mut preflight = std::process::Command::new(path);
-        engine_utils::apply_cuda_toolchain_for_binary(&mut preflight, path)?;
-    }
 
     for attempt in 1..=MAX_ATTEMPTS {
         let path_for_probe = path.to_path_buf();
         let work_dir_for_probe = work_dir.clone();
         let output = engine_utils::run_hidden_output(move || {
             let mut cmd = std::process::Command::new(&path_for_probe);
-            cmd.args(["--version"])
+            // Match llama_catalog: --help path uses arg + cwd + CUDA env only.
+            cmd.arg("--version")
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped());
             if let Some(ref dir) = work_dir_for_probe {
@@ -1563,15 +1567,13 @@ pub(crate) fn probe_binary_version_sync(path: &std::path::Path) -> Result<String
                 if let Some(version) = parse_llama_version_line(&cleaned) {
                     return Ok(version);
                 }
-                if !o.status.success() {
-                    log::debug!(
-                        "[build-info] --version exit {:?} for {} (attempt {}/{})",
-                        o.status.code(),
-                        path.display(),
-                        attempt,
-                        MAX_ATTEMPTS
-                    );
-                }
+                log::debug!(
+                    "[build-info] --version no parse for {} (attempt {}/{}, exit {:?})",
+                    path.display(),
+                    attempt,
+                    MAX_ATTEMPTS,
+                    o.status.code()
+                );
             }
             Err(e) => {
                 log::debug!(
@@ -1585,7 +1587,7 @@ pub(crate) fn probe_binary_version_sync(path: &std::path::Path) -> Result<String
         }
 
         if attempt < MAX_ATTEMPTS {
-            std::thread::sleep(std::time::Duration::from_millis(RETRY_BASE_MS * attempt as u64));
+            std::thread::sleep(std::time::Duration::from_millis(RETRY_MS));
         }
     }
 

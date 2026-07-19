@@ -30,19 +30,39 @@ function inventoryVersionsNeedRetry(provider: ProviderConfig): boolean {
   );
 }
 
-async function refreshOnce(providers: ProviderConfig[]): Promise<ProviderConfig[]> {
+export type RefreshBuildInfoHandlers = {
+  /** Called when a single provider's probe starts. */
+  onProviderStart?: (providerId: string) => void;
+  /**
+   * Called as soon as that provider's `refresh_build_info` returns (full provider list
+   * from backend — apply immediately so UI updates per provider).
+   */
+  onProvidersUpdated?: (providers: ProviderConfig[]) => void;
+  onProviderDone?: (providerId: string) => void;
+};
+
+async function refreshOnce(
+  providers: ProviderConfig[],
+  handlers?: RefreshBuildInfoHandlers,
+): Promise<ProviderConfig[]> {
   const targets = providers.filter((p) => p.git_url && p.branch);
   if (targets.length === 0) return providers;
 
   let latest = providers;
   for (const provider of targets) {
+    handlers?.onProviderStart?.(provider.id);
     try {
       const updated = await invoke<ProviderConfig[]>("refresh_build_info", {
         providerId: provider.id,
       });
-      if (updated.length > 0) latest = updated;
+      if (updated.length > 0) {
+        latest = updated;
+        handlers?.onProvidersUpdated?.(updated);
+      }
     } catch (err) {
       console.error("[Foundry] refresh_build_info failed for", provider.id, err);
+    } finally {
+      handlers?.onProviderDone?.(provider.id);
     }
   }
   return latest;
@@ -51,20 +71,14 @@ async function refreshOnce(providers: ProviderConfig[]): Promise<ProviderConfig[
 /** Probe bundled/foundry binaries via `--version` and merge into provider list. */
 export async function refreshProvidersBuildInfo(
   providers: ProviderConfig[],
+  handlers?: RefreshBuildInfoHandlers,
 ): Promise<ProviderConfig[]> {
-  const maxAttempts = 4;
-  let latest = providers;
-
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    latest = await refreshOnce(latest);
-    const needsRetry = latest.some(inventoryVersionsNeedRetry);
-    if (!needsRetry || attempt === maxAttempts - 1) {
-      return latest;
-    }
-    await sleep(600 * (attempt + 1));
+  let latest = await refreshOnce(providers, handlers);
+  if (!latest.some(inventoryVersionsNeedRetry)) {
+    return latest;
   }
-
-  return latest;
+  await sleep(200);
+  return refreshOnce(latest, handlers);
 }
 
 export function isPlaceholderBuildVersion(info: BuildInfo | undefined): boolean {

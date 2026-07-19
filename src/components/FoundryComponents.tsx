@@ -75,6 +75,21 @@ function inventoryBuildInfo(
   return profileEnvLookup(provider.bundledBuildInfoPerEnv, env);
 }
 
+function isPlaceholderBuildInfo(info: BuildInfo | undefined): boolean {
+  const verRaw = (info?.version || "").trim();
+  return !verRaw || /^(catalog|bundled|foundry-artifact|downloaded|disk-scanned|unknown)$/i.test(verRaw);
+}
+
+function BuildInfoProbingDots() {
+  return (
+    <span className="foundry-buildinfo-dots" aria-hidden="true">
+      <i>.</i>
+      <i>.</i>
+      <i>.</i>
+    </span>
+  );
+}
+
 /** Engine build-info primary; optional product tag secondary (catalog packs). */
 function buildInfoLine(
   buildInfo: BuildInfo | undefined,
@@ -133,6 +148,8 @@ interface BinarySourceRowProps {
   isActive: boolean;
   hasBackup: boolean;
   isBuilding?: boolean;
+  /** True while this provider's --version probe is in flight. */
+  isProbingBuildInfo?: boolean;
   onSelect: () => void;
   onBuild?: () => void;
   onRestoreConfirm?: () => void;
@@ -151,6 +168,7 @@ function BinarySourceRow({
   isActive,
   hasBackup,
   isBuilding,
+  isProbingBuildInfo,
   onSelect,
   onBuild,
   onRestoreConfirm,
@@ -188,8 +206,15 @@ function BinarySourceRow({
       </div>
 
       <div className="flex-1 min-w-[120px] flex items-center gap-2 flex-wrap">
-        {buildInfoLine(buildInfo, provider, env, source)}
-        {isNewestBuild && !!buildInfo && source !== "catalog" && (
+        {isProbingBuildInfo && (!buildInfo || isPlaceholderBuildInfo(buildInfo)) ? (
+          <span className="foundry-buildinfo-probing text-[8px] font-mono config-muted">
+            probing
+            <BuildInfoProbingDots />
+          </span>
+        ) : (
+          buildInfoLine(buildInfo, provider, env, source)
+        )}
+        {isNewestBuild && !!buildInfo && source !== "catalog" && !isProbingBuildInfo && (
           <span className="value-chip text-[7px] font-mono px-1.5 py-0.5 rounded-sm shrink-0">LATEST</span>
         )}
         {showUpdateChrome && !isBuilding && (
@@ -260,7 +285,7 @@ function BinarySourceRow({
           {isBuilding && (
             <span className="foundry-hammer-icon foundry-hammer-icon--shake" aria-hidden="true">⚒</span>
           )}
-          {isBuilding ? "BUILDING..." : "BUILD"}
+          {isBuilding ? "BUILDING..." : "FOUNDRY BUILD"}
         </button>
       )}
 
@@ -269,7 +294,7 @@ function BinarySourceRow({
           <span className="foundry-active-binary-badge text-[7px] font-mono px-2 py-1 shrink-0">ACTIVE BINARY</span>
         ) : (
           <button onClick={onSelect} className="value-chip text-[7px] font-mono px-2 py-1 shrink-0" title={`Use ${label.toLowerCase()} for launch`}>
-            USE
+            ACTIVATE
           </button>
         )
       ) : (
@@ -287,6 +312,7 @@ interface BuildProfileRowProps {
   provider: ProviderConfig;
   hasFoundryBackup: boolean;
   isBuilding?: boolean;
+  isProbingBuildInfo?: boolean;
   onBuild: () => void;
   onRestoreConfirm: () => void;
   onSelectSource: (source: BinarySourceKind) => void;
@@ -303,6 +329,7 @@ export function BuildProfileRow({
   provider,
   hasFoundryBackup,
   isBuilding,
+  isProbingBuildInfo,
   onBuild,
   onRestoreConfirm,
   onSelectSource,
@@ -354,6 +381,7 @@ export function BuildProfileRow({
         isActive={foundryActive}
         hasBackup={hasFoundryBackup}
         isBuilding={isBuilding}
+        isProbingBuildInfo={isProbingBuildInfo}
         onSelect={() => onSelectSource("foundry")}
         onBuild={onBuild}
         onRestoreConfirm={onRestoreConfirm}
@@ -367,6 +395,7 @@ export function BuildProfileRow({
           provider={provider}
           isActive={bundledActive}
           hasBackup={false}
+          isProbingBuildInfo={isProbingBuildInfo}
           onSelect={() => onSelectSource("bundled")}
           updateStatus={updateStatus}
         />
@@ -377,6 +406,7 @@ export function BuildProfileRow({
           source="catalog"
           env={env}
           provider={provider}
+          isProbingBuildInfo={isProbingBuildInfo}
           isActive={catalogActive}
           hasBackup={false}
           onSelect={() => onSelectSource("catalog")}
