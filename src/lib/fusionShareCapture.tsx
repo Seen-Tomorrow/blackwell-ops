@@ -17,14 +17,14 @@ import type { GpuInfo } from "./types";
 
 export const FUSION_SHARE_FRAME_SELECTOR = "[data-fusion-share-frame]";
 
-/** White = ARCTIC + phosphor-light; black = SLATE + phosphor-dark. */
+/** White = ARCTIC + CLEAN display; black = SLATE + phosphor-dark. */
 export type FusionShareVariant = "white" | "black";
 
 const SHARE_VARIANT_CONFIG: Record<
   FusionShareVariant,
   { themeId: string; texture: DisplayTexture }
 > = {
-  white: { themeId: "arctic", texture: "phosphor-light" },
+  white: { themeId: "arctic", texture: "clean" },
   black: { themeId: "slate", texture: "phosphor-dark" },
 };
 

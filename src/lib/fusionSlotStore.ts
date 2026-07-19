@@ -17,6 +17,10 @@ export function fusionPayloadEqual(a: FusionUpdate, b: FusionUpdate): boolean {
     && (a.genTpsInstant ?? 0) === (b.genTpsInstant ?? 0)
     && (a.meterLane ?? "single") === (b.meterLane ?? "single")
     && (a.busySlotCount ?? 0) === (b.busySlotCount ?? 0)
+    && (a.concurrentSlots ?? 0) === (b.concurrentSlots ?? 0)
+    && (a.genTpsPerSlot ?? 0) === (b.genTpsPerSlot ?? 0)
+    && (a.genTpsPerSlotInstant ?? 0) === (b.genTpsPerSlotInstant ?? 0)
+    && (a.meterSeq ?? 0) === (b.meterSeq ?? 0)
     && a.genTokensPerRequestSlots === b.genTokensPerRequestSlots
     && a.genTokensPerSession === b.genTokensPerSession
     && a.ctxUsedSession === b.ctxUsedSession

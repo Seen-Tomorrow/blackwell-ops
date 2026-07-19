@@ -11,7 +11,7 @@ import BenchWidget, { type BenchHeroPatch, type BenchSessionMode } from "./Bench
 import FusionBooter from "./FusionBooter";
 import type { FusionShareLaunchConfig } from "../lib/fusionShareCapture";
 import FusionBenchTrayLatch from "./FusionBenchTrayLatch";
-import SlotCtxBars, { formatTokenCount } from "./SlotCtxBars";
+import SlotCtxBars, { formatTokenCount, fusionSlotColumnLayout } from "./SlotCtxBars";
 import type { GpuInfo } from "../lib/types";
 import { useFusionBenchTray } from "../hooks/useFusionBenchTray";
 import { useFusionHeroTpsMode } from "../hooks/useFusionHeroTpsMode";
@@ -76,6 +76,10 @@ interface MicroStatsLatch {
   elapsedMs: string;
   sessionOpen: boolean;
   lastBusyAt: number;
+  /** Last seen requestElapsedMs — detect rewound clocks on consecutive benches. */
+  lastElapsedRaw: number;
+  /** Last applied fusion.meterSeq — edge-triggered wipe on NewPrompt / bench reset. */
+  lastMeterSeq: number;
 }
 
 function freshMicroLatch(): MicroStatsLatch {
@@ -86,11 +90,15 @@ function freshMicroLatch(): MicroStatsLatch {
     elapsedMs: "0ms",
     sessionOpen: false,
     lastBusyAt: 0,
+    lastElapsedRaw: 0,
+    lastMeterSeq: 0,
   };
 }
 
-function resetMicroLatch(latch: MicroStatsLatch) {
+function resetMicroLatch(latch: MicroStatsLatch, keepMeterSeq?: number) {
+  const seq = keepMeterSeq ?? latch.lastMeterSeq;
   Object.assign(latch, freshMicroLatch());
+  latch.lastMeterSeq = seq;
 }
 
 function fusionRequestInFlight(fusion: FusionUpdate): boolean {
@@ -106,8 +114,24 @@ function fusionRequestInFlight(fusion: FusionUpdate): boolean {
   );
 }
 
+/** True when backend started a new request / bench phase — wipe latched tok / PP / +1st. */
 function fusionNewPromptReset(fusion: FusionUpdate, latch: MicroStatsLatch): boolean {
-  if (fusion.phaseResetSource === "prompt") return true;
+  const seq = fusion.meterSeq ?? 0;
+  if (seq > 0 && seq !== latch.lastMeterSeq) {
+    return true;
+  }
+  if (fusion.phaseResetSource === "prompt" || fusion.phaseResetSource === "regression") {
+    return true;
+  }
+  const elapsed = fusion.requestElapsedMs ?? 0;
+  // Consecutive bench: backend restarts clock → elapsed jumps down while we still show old stats.
+  if (
+    latch.lastElapsedRaw > 800
+    && elapsed + 100 < latch.lastElapsedRaw
+    && (latch.genTokens > 0 || latch.prefillMs != null || latch.decodeTtftMs != null)
+  ) {
+    return true;
+  }
   const tokens = fusion.genTokensPerRequestSlots ?? 0;
   return (
     latch.genTokens > 0
@@ -119,20 +143,34 @@ function fusionNewPromptReset(fusion: FusionUpdate, latch: MicroStatsLatch): boo
 
 function updateMicroLatch(latch: MicroStatsLatch, fusion: FusionUpdate) {
   const now = Date.now();
+  const seq = fusion.meterSeq ?? 0;
   if (fusionNewPromptReset(fusion, latch)) {
-    resetMicroLatch(latch);
+    resetMicroLatch(latch, seq > 0 ? seq : latch.lastMeterSeq);
+  } else if (seq > 0) {
+    latch.lastMeterSeq = seq;
   }
   const timing = fusionTimingStats(fusion);
   const tokens = fusion.genTokensPerRequestSlots ?? 0;
+  const elapsed = fusion.requestElapsedMs ?? 0;
   if (fusionRequestInFlight(fusion)) {
     latch.sessionOpen = true;
     latch.lastBusyAt = now;
-    if (tokens >= latch.genTokens) latch.genTokens = tokens;
+    // Follow token count both ways after a reset (never only ratchet up forever).
+    if (tokens >= latch.genTokens || latch.genTokens === 0 || fusion.phase === "PP") {
+      latch.genTokens = tokens;
+    } else if (tokens > 0) {
+      latch.genTokens = Math.max(latch.genTokens, tokens);
+    }
+    // Early request: clear stale timings until backend reports new values.
+    if (elapsed < 400 && timing.prefillMs == null) latch.prefillMs = null;
+    if (elapsed < 400 && timing.decodeTtftMs == null) latch.decodeTtftMs = null;
     if (timing.prefillMs != null) latch.prefillMs = timing.prefillMs;
     if (timing.decodeTtftMs != null) latch.decodeTtftMs = timing.decodeTtftMs;
-    latch.elapsedMs = formatMs(fusion.requestElapsedMs);
+    latch.elapsedMs = formatMs(elapsed);
+    latch.lastElapsedRaw = elapsed;
     return;
   }
+  latch.lastElapsedRaw = elapsed;
   if (latch.sessionOpen && now - latch.lastBusyAt > MICRO_STATS_IDLE_HOLD_MS) {
     latch.sessionOpen = false;
   }
@@ -263,6 +301,7 @@ export default function FusionOverlay({
     fusion?.busySlotCount,
     fusion?.prefillProgress,
     fusion?.phaseResetSource,
+    fusion?.meterSeq,
   ]);
 
   const handleBenchHeroPatch = useCallback((patch: BenchHeroPatch) => {
@@ -393,11 +432,13 @@ export default function FusionOverlay({
       ? (fusion.genTpsInstant ?? 0)
       : (fusion.logGenTps ?? 0),
   );
-  const tgTpsAvg = clampHeroTps(
-    isParallelLane
+  // Prefer pinned genTps after request end (frozen) — genTpsSession can still spike briefly.
+  const tgTpsAvgRaw = fusion.requestClosed
+    ? (fusion.genTps ?? fusion.genTpsSession ?? 0)
+    : isParallelLane
       ? (fusion.genTpsSession ?? fusion.genTps ?? 0)
-      : ((fusion.genTpsSession ?? 0) > 0 ? (fusion.genTpsSession ?? 0) : (fusion.genTps ?? 0)),
-  );
+      : ((fusion.genTpsSession ?? 0) > 0 ? (fusion.genTpsSession ?? 0) : (fusion.genTps ?? 0));
+  const tgTpsAvg = clampHeroTps(tgTpsAvgRaw);
   const tgTpsPick = clampHeroTps(heroTpsMode === "avg" ? tgTpsAvg : tgTpsLive);
   const tgTpsValue = tgTpsPick > 0 ? tgTpsPick.toFixed(1) : "--";
   const tgHeroTps = benchHero.tg;
@@ -407,6 +448,33 @@ export default function FusionOverlay({
       ? tgHeroTps.toFixed(1)
       : tgTpsValue;
   const tgHeroActive = !suppressTgHero && (tgHeroTps != null ? tgHeroTps > 0 : tgTpsPick > 0);
+
+  // Parallel “per agent” meter — system tok/s ÷ concurrent slots (LIVE vs AVG follows hero toggle).
+  const concurrentSlots = Math.max(
+    fusion.concurrentSlots ?? 0,
+    fusion.busySlotCount ?? 0,
+    isParallelLane ? 2 : 0,
+  );
+  const showPerSlotMeter =
+    !suppressTgHero
+    && concurrentSlots > 1
+    && (isParallelLane || (fusion.busySlotCount ?? 0) > 1 || (fusion.concurrentSlots ?? 0) > 1);
+  const perSlotFromFusion = clampHeroTps(
+    heroTpsMode === "live"
+      ? (fusion.genTpsPerSlotInstant ?? fusion.genTpsPerSlot ?? 0)
+      : (fusion.genTpsPerSlot ?? fusion.genTpsPerSlotInstant ?? 0),
+  );
+  // If hero is bench-patched, derive per-slot from that system number.
+  const perSlotTps =
+    tgHeroTps != null && concurrentSlots > 1
+      ? clampHeroTps(tgHeroTps / concurrentSlots)
+      : perSlotFromFusion;
+  const perSlotLabel =
+    showPerSlotMeter && perSlotTps > 0
+      ? perSlotTps >= 100
+        ? perSlotTps.toFixed(0)
+        : perSlotTps.toFixed(1)
+      : null;
 
   const microLatch =
     engineStates.current.get(fusion.slotIdx)?.microLatch ?? freshMicroLatch();
@@ -441,6 +509,7 @@ export default function FusionOverlay({
   );
   const showPrefillProgress =
     !suppressPrefillHero && isPrefillPhase && (prefillTotal > 0 || primaryPrefillProgress > 0);
+  const slotCol = fusionSlotColumnLayout(fusion.parallel);
 
   return (
     <div className="relative w-full h-full overflow-hidden">
@@ -539,8 +608,11 @@ export default function FusionOverlay({
             style={{ height: FUSION_HERO_ROW_PX, minHeight: FUSION_HERO_ROW_PX }}
           >
 
-            {/* ── LEFT: Slot CTX bars — up to 8 individual bars; compact ×N above that ─── */}
-            <div className="flex-shrink-0 self-stretch min-h-0 min-w-0" style={{ width: "24%", minWidth: 132 }}>
+            {/* ── LEFT: Slot CTX bars — 1–8 classic row; 9–32 multi-row bank (same bar language) ─── */}
+            <div
+              className="flex-shrink-0 self-stretch min-h-0 min-w-0"
+              style={{ width: `${slotCol.widthPct}%`, minWidth: slotCol.minWidth }}
+            >
               <SlotCtxBars
                 slotCtx={fusion.slotCtx}
                 ctxTotal={ctxTotal}
@@ -557,8 +629,31 @@ export default function FusionOverlay({
                    ? "border-green-500/30 bg-black/8"
                    : "border-stone-500/10 bg-black/4"
                }`} style={{ flex: "1 1 45%", minWidth: 0 }}>
-                 <div className="flex items-center justify-between w-full mb-0.5 gap-1">
-                   <span className="text-[7px] font-mono text-stealth-muted/40 tracking-wider">GENERATION</span>
+                 {/* Per-agent rate — absolute top-right (slot count is on the CTX bank) */}
+                 {showPerSlotMeter && (
+                   <div
+                     className="fusion-per-slot-meter absolute top-1.5 right-2 z-[1] flex flex-col items-end leading-none select-none pointer-events-none"
+                     title={`Per-agent TG ≈ ${perSlotLabel ?? "—"} tok/s (system ÷ concurrent slots). Big number = total system throughput.`}
+                   >
+                     <span
+                       className="font-mono font-bold tracking-tight"
+                       style={{
+                         fontSize: "clamp(0.95rem, 2.6vh, 1.55rem)",
+                         color: perSlotLabel
+                           ? "rgba(74, 222, 128, 0.92)"
+                           : "rgba(148, 163, 184, 0.28)",
+                       }}
+                     >
+                       {perSlotLabel ?? "--"}
+                     </span>
+                     <span className="text-[6px] font-mono tracking-wider text-stealth-muted/40 mt-0.5">
+                       /slot
+                     </span>
+                   </div>
+                 )}
+
+                 <div className={`flex items-center gap-1.5 w-full mb-0.5 min-w-0 ${showPerSlotMeter ? "pr-14" : ""}`}>
+                   <span className="text-[7px] font-mono text-stealth-muted/40 tracking-wider flex-shrink-0">GENERATION</span>
                    <button
                      type="button"
                      onClick={toggleHeroTpsMode}
@@ -569,7 +664,7 @@ export default function FusionOverlay({
                    </button>
                  </div>
 
-                 {/* Big TG number */}
+                 {/* Big TG number — system aggregate; unit pinned bottom-right of the figure */}
                  <div className="flex items-baseline gap-1">
                    <span
                      className="font-mono font-bold tracking-tight leading-none"
@@ -580,7 +675,9 @@ export default function FusionOverlay({
                    >
                      {tgHeroDisplay}
                    </span>
-                   <span className="text-[7px] font-mono text-stealth-muted/30 tracking-wider">tok/s</span>
+                   <span className="text-[7px] font-mono text-stealth-muted/30 tracking-wider self-end mb-0.5">
+                     tok/s
+                   </span>
                  </div>
 
                 {/* Per-request micro-stats — latched + fixed-width cells (no jitter on multi-slot idle gaps) */}
@@ -706,6 +803,7 @@ export default function FusionOverlay({
                 <BenchWidget
                   port={displayPort}
                   footerDocked
+                  maxPpTokens={ctxPerSlot > 0 ? ctxPerSlot : ctxTotal > 0 ? ctxTotal : undefined}
                   onHeroPatch={handleBenchHeroPatch}
                   onBenchSessionChange={setBenchSessionMode}
                   onCloseResults={handleCloseBenchResults}

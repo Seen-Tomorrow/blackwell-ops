@@ -58,6 +58,26 @@ pub async fn cmd_bench_pp_burst(
 
     let repetitive = bench_prompts::is_repetitive_mode(&bench_prompt_mode);
 
+    // Probe per-slot n_ctx before release so we can clamp full-CTX PP targets.
+    let slot_n_ctx = bench_prompts::probe_min_slot_n_ctx(&client, port).await;
+    let pp_budget = bench_prompts::pp_prompt_budget_for_slot_ctx(slot_n_ctx);
+    let measured_target = if slot_n_ctx > 0 {
+        let clamped = bench_prompts::clamp_pp_target_to_slot_ctx(target_tokens, slot_n_ctx);
+        if clamped < target_tokens {
+            log::info!(
+                "[BENCH_PP] clamping PP target {} → {} (slot n_ctx={} budget={})",
+                target_tokens,
+                clamped,
+                slot_n_ctx,
+                pp_budget
+            );
+        }
+        clamped
+    } else {
+        target_tokens
+    };
+    let max_prompt_tokens = if slot_n_ctx > 0 { Some(pp_budget) } else { None };
+
     // Release all slot KV caches once before the benchmark loop to prevent prompt caching from skewing results.
     if let Ok(slots_resp) = client.get(&format!("http://127.0.0.1:{port}/slots")).send().await {
         if let Ok(slots) = slots_resp.json::<Vec<serde_json::Value>>().await {
@@ -83,7 +103,7 @@ pub async fn cmd_bench_pp_burst(
         let effective_target = if run < WARMUP_RUNS {
             TG_PREFILL_TARGET_TOKENS
         } else {
-            target_tokens
+            measured_target
         };
         crate::fusion::reset_bench_meters_for_port(port).await;
         crate::ipc_meter::emit_tracked(
@@ -98,12 +118,14 @@ pub async fn cmd_bench_pp_burst(
             }),
         );
 
-        let bench_prompt_text = match bench_prompts::build_prompt_for_token_target(
+        let bench_prompt_text = match bench_prompts::build_prompt_for_token_target_capped(
             &client,
             port,
             effective_target,
             repetitive,
             "[BENCH_PP]",
+            // Warmup is tiny — only enforce ceiling on measured full-CTX runs.
+            if run < WARMUP_RUNS { None } else { max_prompt_tokens },
         )
         .await
         {
@@ -186,10 +208,12 @@ pub async fn cmd_bench_pp_burst(
     };
 
     log::info!(
-        "[BENCH_PP] RESULT | mode={} | target={} actual={} tok | prefill: {:.1} TPS",
+        "[BENCH_PP] RESULT | mode={} | requested={} effective={} actual={} tok | slot_n_ctx={} | prefill: {:.1} TPS",
         bench_prompt_mode,
         target_tokens,
+        measured_target,
         run.prompt_tokens,
+        slot_n_ctx,
         run.prefill_tps
     );
 

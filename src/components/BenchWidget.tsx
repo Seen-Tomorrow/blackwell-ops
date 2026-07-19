@@ -185,6 +185,11 @@ interface BenchWidgetProps {
   onCloseResults?: () => void;
   /** GPUs + split used for bench result footer (included in share capture). */
   benchHw?: BenchHwContext;
+  /**
+   * Per-slot KV budget (n_ctx_seq). PP target chips above this are disabled —
+   * full-slot targets trip "out of context" after specials / calibration.
+   */
+  maxPpTokens?: number;
 }
 
 export interface BenchHwContext {
@@ -238,9 +243,13 @@ export default function BenchWidget({
   benchHw,
   footerDocked = false,
   onCloseResults,
+  maxPpTokens,
 }: BenchWidgetProps) {
   const isCompact = compact || stackMode;
   const ps = getBenchPortState(port);
+  /** Chips at or above per-slot n_ctx are not runnable (need headroom). */
+  const ppChipAllowed = (tok: number) =>
+    maxPpTokens == null || maxPpTokens <= 0 || tok < maxPpTokens;
 
   const [, setTick] = useState(0);
   const bump = () => {
@@ -257,6 +266,20 @@ export default function BenchWidget({
   const isBenchStopped = (error?: string) => error === "Cancelled" || error === "Stopped";
 
   useEffect(() => subscribeBenchPortStore(() => setTick((t) => t + 1)), []);
+
+  // If saved PP target exceeds live slot budget, drop to the largest allowed chip.
+  useEffect(() => {
+    if (maxPpTokens == null || maxPpTokens <= 0) return;
+    if (ps.ppTargetTokens < maxPpTokens) return;
+    const allowed = [...BENCH_PP_TOKEN_OPTIONS].filter((t) => t < maxPpTokens);
+    const next = allowed.length > 0 ? allowed[allowed.length - 1]! : BENCH_PP_TOKEN_OPTIONS[0]!;
+    if (next !== ps.ppTargetTokens) {
+      ps.ppTargetTokens = next;
+      persistBenchControls(ps);
+      bump();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when budget / port changes
+  }, [maxPpTokens, port]);
 
   /** Restore this port's cached results when navigating between running engines. */
   useEffect(() => {
@@ -642,19 +665,36 @@ export default function BenchWidget({
 
             <div className={benchRowClass}>
               <span className="text-[6px] font-mono text-stealth-muted/40 tracking-wider flex-shrink-0 mr-0.5">PP</span>
-              {BENCH_PP_TOKEN_OPTIONS.map((tok) => (
-                <button
-                  key={tok}
-                  onClick={() => { ps.ppTargetTokens = tok; bumpControls(); }}
-                  disabled={isAnyRunning}
-                  className={`px-1 py-0 text-[6px] font-mono rounded-sm ${chipBtnClass(ps.ppTargetTokens === tok, isAnyRunning)}`}
-                >
-                  {formatBenchK(tok)}
-                </button>
-              ))}
+              {BENCH_PP_TOKEN_OPTIONS.map((tok) => {
+                const overCtx = !ppChipAllowed(tok);
+                const disabled = isAnyRunning || overCtx;
+                return (
+                  <button
+                    key={tok}
+                    onClick={() => {
+                      if (overCtx) return;
+                      ps.ppTargetTokens = tok;
+                      bumpControls();
+                    }}
+                    disabled={disabled}
+                    title={
+                      overCtx
+                        ? `Disabled — exceeds per-slot context (${maxPpTokens?.toLocaleString() ?? "?"} tok). Full-slot targets trip out-of-context.`
+                        : undefined
+                    }
+                    className={`px-1 py-0 text-[6px] font-mono rounded-sm ${
+                      overCtx
+                        ? "opacity-30 cursor-not-allowed line-through"
+                        : chipBtnClass(ps.ppTargetTokens === tok, isAnyRunning)
+                    }`}
+                  >
+                    {formatBenchK(tok)}
+                  </button>
+                );
+              })}
               <button
                 onClick={runBenchPp}
-                disabled={isAnyRunning}
+                disabled={isAnyRunning || !ppChipAllowed(ps.ppTargetTokens)}
                 className={`${runBtnClass(isAnyRunning)} ml-0.5`}
               >
                 RUN

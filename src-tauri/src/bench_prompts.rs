@@ -10,6 +10,25 @@ use crate::bench_cancel;
 /// TG bench: fixed prefill size for warmup and measured runs (decode length = `n_predict` only).
 pub const TG_PREFILL_TARGET_TOKENS: usize = 512;
 
+/// Leave free room in each slot so a full-CTX PP target never trips "out of context".
+/// (~2% of slot n_ctx, clamped 256–512) covers specials + calibration overshoot.
+pub fn pp_prompt_budget_for_slot_ctx(slot_n_ctx: usize) -> usize {
+    if slot_n_ctx == 0 {
+        return usize::MAX;
+    }
+    let reserve = (slot_n_ctx / 50).clamp(256, 512);
+    slot_n_ctx.saturating_sub(reserve)
+}
+
+/// Cap a user PP target to what can safely fit in one slot.
+pub fn clamp_pp_target_to_slot_ctx(target: usize, slot_n_ctx: usize) -> usize {
+    let budget = pp_prompt_budget_for_slot_ctx(slot_n_ctx);
+    if budget == usize::MAX {
+        return target;
+    }
+    target.min(budget).max(64)
+}
+
 /// Large vocabulary of diverse English words for unique-mode bursts.
 pub const UNIQUE_WORDS: &[&str] = &[
     "architecture", "transformer", "attention", "mechanism", "sequence", "position", "layer",
@@ -159,6 +178,7 @@ async fn count_prompt_tokens(client: &reqwest::Client, port: u16, content: &str)
 }
 
 /// Build prompt text so `/tokenize` count is within tolerance of `target_tokens`.
+/// When `max_tokens` is set (slot CTX budget), never return a prompt over that ceiling.
 pub async fn build_prompt_for_token_target(
     client: &reqwest::Client,
     port: u16,
@@ -166,9 +186,27 @@ pub async fn build_prompt_for_token_target(
     repetitive: bool,
     log_tag: &str,
 ) -> Result<String, String> {
+    build_prompt_for_token_target_capped(client, port, target_tokens, repetitive, log_tag, None)
+        .await
+}
+
+/// Like [`build_prompt_for_token_target`], with an optional hard tokenize ceiling.
+pub async fn build_prompt_for_token_target_capped(
+    client: &reqwest::Client,
+    port: u16,
+    target_tokens: usize,
+    repetitive: bool,
+    log_tag: &str,
+    max_tokens: Option<usize>,
+) -> Result<String, String> {
     if bench_cancel::stop_after_current_requested(port) {
         return Err("Stopped".to_string());
     }
+
+    let target_tokens = match max_tokens {
+        Some(max) if max > 0 => target_tokens.min(max),
+        _ => target_tokens,
+    };
 
     if target_tokens == 0 {
         return Ok(String::new());
@@ -191,8 +229,12 @@ pub async fn build_prompt_for_token_target(
 
     let mut best_text = build(words);
     let mut best_err = i64::MAX;
+    let mut best_actual = 0usize;
+    // Prefer undershoot when we have a hard ceiling (never pick an over-budget "best").
+    let mut best_under_text: Option<String> = None;
+    let mut best_under_err = i64::MAX;
 
-    for _ in 0..5 {
+    for _ in 0..8 {
         if bench_cancel::stop_after_current_requested(port) {
             return Err("Stopped".to_string());
         }
@@ -206,19 +248,39 @@ pub async fn build_prompt_for_token_target(
             return Ok(text);
         };
 
-        let err = (actual as i64 - target_tokens as i64).abs();
-        if err <= token_target_tolerance(target_tokens) {
-            log::info!(
-                "{log_tag} prompt calibrated: mode={mode_label} target={} actual={} words={}",
-                target_tokens,
-                actual,
-                words
-            );
-            return Ok(text);
+        if let Some(max) = max_tokens {
+            if actual > max {
+                // Force shrink — do not accept over-budget prompts.
+                words = ((words as f64) * (max as f64 / actual as f64) * 0.97)
+                    .round()
+                    .max(64.0) as usize;
+                continue;
+            }
+            let err = (actual as i64 - target_tokens as i64).abs();
+            if err < best_under_err {
+                best_under_err = err;
+                best_under_text = Some(text.clone());
+            }
         }
+
+        let err = (actual as i64 - target_tokens as i64).abs();
         if err < best_err {
             best_err = err;
-            best_text = text;
+            best_text = text.clone();
+            best_actual = actual;
+        }
+
+        let within_tol = err <= token_target_tolerance(target_tokens);
+        let under_cap = max_tokens.map(|m| actual <= m).unwrap_or(true);
+        if within_tol && under_cap {
+            log::info!(
+                "{log_tag} prompt calibrated: mode={mode_label} target={} actual={} words={} max={:?}",
+                target_tokens,
+                actual,
+                words,
+                max_tokens
+            );
+            return Ok(text);
         }
         if actual == 0 {
             break;
@@ -228,23 +290,47 @@ pub async fn build_prompt_for_token_target(
         words = words.clamp(64, target_tokens.saturating_mul(3));
     }
 
-    if let Some(actual) = count_prompt_tokens(client, port, &best_text).await {
+    let chosen = best_under_text.unwrap_or(best_text);
+    if let Some(actual) = count_prompt_tokens(client, port, &chosen).await {
         log::info!(
-            "{log_tag} prompt best-effort: mode={mode_label} target={} tokenize={} err={} words={}",
+            "{log_tag} prompt best-effort: mode={mode_label} target={} tokenize={} err={} words={} max={:?} (last_best_actual={})",
             target_tokens,
             actual,
             best_err,
-            words
+            words,
+            max_tokens,
+            best_actual
         );
     } else {
         log::info!(
-            "{log_tag} prompt best-effort: mode={mode_label} target={} err={} words={}",
+            "{log_tag} prompt best-effort: mode={mode_label} target={} err={} words={} max={:?}",
             target_tokens,
             best_err,
-            words
+            words,
+            max_tokens
         );
     }
-    Ok(best_text)
+    Ok(chosen)
+}
+
+/// Min per-slot `n_ctx` from `/slots` (0 if unknown / empty).
+pub async fn probe_min_slot_n_ctx(client: &reqwest::Client, port: u16) -> usize {
+    let url = format!("http://127.0.0.1:{port}/slots");
+    let Ok(resp) = client.get(&url).send().await else {
+        return 0;
+    };
+    if !resp.status().is_success() {
+        return 0;
+    }
+    let Ok(slots) = resp.json::<Vec<serde_json::Value>>().await else {
+        return 0;
+    };
+    slots
+        .iter()
+        .filter_map(|s| s.get("n_ctx").and_then(|v| v.as_u64()).map(|n| n as usize))
+        .filter(|n| *n > 0)
+        .min()
+        .unwrap_or(0)
 }
 
 #[cfg(test)]

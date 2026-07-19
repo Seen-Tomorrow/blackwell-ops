@@ -577,6 +577,14 @@ export interface FusionUpdate {
   /** Hero meter lane — parallel bench uses poll-only aggregate wall clock. */
   meterLane?: 'single' | 'parallel';
   busySlotCount?: number;
+  /** Peak concurrent busy slots this wave (denom for per-slot TPS). */
+  concurrentSlots?: number;
+  /** System TG tok/s ÷ concurrent — “per agent” rate under multi-slot load. */
+  genTpsPerSlot?: number;
+  /** LIVE per-slot TG (instant ÷ concurrent). */
+  genTpsPerSlotInstant?: number;
+  /** Monotonic boundary id — NewPrompt / bench reset (FE micro-stats edge wipe). */
+  meterSeq?: number;
 
   genTokensPerRequestSlots: number;    // from /slots n_decoded current value
 

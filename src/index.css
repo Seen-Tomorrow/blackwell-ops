@@ -9737,6 +9737,11 @@ select option {
   color: rgba(255, 255, 255, 0.8);
 }
 
+.ctx-bar-slot-label--live {
+  color: rgba(74, 222, 128, 0.95);
+  box-shadow: 0 0 6px color-mix(in srgb, #22c55e 35%, transparent);
+}
+
 .fusion-mult-chip {
   display: inline-block;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;

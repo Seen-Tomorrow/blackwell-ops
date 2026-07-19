@@ -47,7 +47,7 @@ import type {
  * | BlackOps-logs-ansi-enabled | "0" \| "1" | ENGINE LOGS ANSI color rendering |
  * | BlackOps-startup-updates | JSON | Cached startup update check results |
  * | BlackOps-fusion-hero-tps | live \| avg | Fusion hero TPS display mode |
- * | BlackOps-fusion-bench-tray | open \| stowed | Fusion overlay benchmark tray visibility |
+ * | BlackOps-fusion-bench-tray | open \| stowed | Fusion overlay benchmark tray (default: stowed) |
  * | BlackOps-config-param-legend | open \| stowed | CONFIG PARAMETERS editor legend panel |
  * | BlackOps-display-texture | clean \| phosphor-dark \| phosphor-light | Display texture cycle (glitch legacy → clean) |
  * | BlackOps-industrial-bezel-texture | sandblast \| diamond \| brush | Dark-theme gunmetal bezel pattern |
@@ -875,7 +875,8 @@ export type FusionBenchTrayState = "open" | "stowed";
 
 export function loadFusionBenchTray(): FusionBenchTrayState {
   const v = readStorage(KEYS.fusionBenchTray);
-  return v === "stowed" ? "stowed" : "open";
+  // Fresh install / missing key → stowed (user prefs always win once set)
+  return v === "open" ? "open" : "stowed";
 }
 
 export function saveFusionBenchTray(state: FusionBenchTrayState): void {

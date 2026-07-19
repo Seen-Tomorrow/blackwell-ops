@@ -332,6 +332,18 @@ pub struct FusionUpdate {
     pub meter_lane: FusionMeterLane,
     #[serde(rename = "busySlotCount")]
     pub busy_slot_count: usize,
+    /// Peak concurrent busy slots this wave (latched) — denominator for per-slot TPS.
+    #[serde(rename = "concurrentSlots")]
+    pub concurrent_slots: usize,
+    /// System TG tok/s ÷ concurrent slots — “per agent” rate under multi-slot load.
+    #[serde(rename = "genTpsPerSlot")]
+    pub gen_tps_per_slot: f64,
+    /// LIVE counterpart of genTpsPerSlot (poll instant ÷ concurrent).
+    #[serde(rename = "genTpsPerSlotInstant")]
+    pub gen_tps_per_slot_instant: f64,
+    /// Monotonic boundary id — bumps on NewPrompt / bench meter reset (FE edge-triggered wipe).
+    #[serde(rename = "meterSeq")]
+    pub meter_seq: u64,
 }
 
 /// Quantized snapshot for emit-on-change (avoids ~10 Hz identical fusion-update IPC).
@@ -365,6 +377,9 @@ struct FusionEmitFingerprint {
     spec_draft_accept_rate_milli: u32,
     spec_draft_accepted: u64,
     spec_draft_generated: u64,
+    meter_seq: u64,
+    concurrent_slots: u32,
+    gen_tps_per_slot_deci: u32,
 }
 
 impl FusionEmitFingerprint {
@@ -401,6 +416,9 @@ impl FusionEmitFingerprint {
                 .unwrap_or(0),
             spec_draft_accepted: u.spec_draft_accepted,
             spec_draft_generated: u.spec_draft_generated,
+            meter_seq: u.meter_seq,
+            concurrent_slots: u.concurrent_slots.min(u32::MAX as usize) as u32,
+            gen_tps_per_slot_deci: (u.gen_tps_per_slot * 10.0).round() as u32,
         }
     }
 }
@@ -470,6 +488,12 @@ pub struct FusionBrain {
     last_gen_tps: f64,  // "last known" value — persists across phase transitions
     /// Pinned hero AVG when `request_closed` (immune to post-end elapsed growth).
     frozen_request_gen_tps: f64,
+    /// Pinned per-slot TG after freeze (system ÷ concurrent peak).
+    frozen_gen_tps_per_slot: f64,
+    /// Concurrent peak captured at freeze (observe_wave zeros peak on idle).
+    frozen_concurrent_slots: usize,
+    /// Boundary counter for FE micro-stats / hero wipe (NewPrompt + bench reset).
+    meter_seq: u64,
 
     // ── Log-parsed tracking fields ────────────────────────────────
     lp_prefill_progress: f64,       // exact 0→1 from print_timing PP line
@@ -575,6 +599,9 @@ impl FusionBrain {
             tg_start_n_decoded: 0,
             last_gen_tps: 0.0,
             frozen_request_gen_tps: 0.0,
+            frozen_gen_tps_per_slot: 0.0,
+            frozen_concurrent_slots: 0,
+            meter_seq: 0,
 
             // Log-parsed fields — initialized to zero/Idle
             lp_prefill_progress: 0.0,
@@ -944,15 +971,43 @@ impl FusionBrain {
         log_hub.emit("fusion-update", &update);
     }
 
+    fn bump_meter_seq(&mut self) {
+        self.meter_seq = self.meter_seq.wrapping_add(1);
+        self.emit_dirty = true;
+    }
+
+    /// Concurrent denominator for per-slot TPS (busy now, else latched peak, else 1).
+    fn concurrent_slots_for_meter(&self, busy_slots: usize) -> usize {
+        let peak = self.parallel_meter.latched_peak();
+        if self.request_closed && self.frozen_concurrent_slots > 1 {
+            return self.frozen_concurrent_slots;
+        }
+        busy_slots.max(peak).max(1)
+    }
+
+    fn per_slot_tps(system: f64, concurrent: usize) -> f64 {
+        if system <= 0.0 || concurrent <= 1 {
+            return 0.0;
+        }
+        clamp_display_tps(system / concurrent as f64)
+    }
+
     /// Authoritative request start — clears per-request timing for a new request.
+    /// `meter_seq` only advances on a true boundary (closed → open / first start), not every multi-slot NewPrompt.
     fn restart_request_clock(&mut self) {
+        let boundary = self.request_closed || self.request_start.is_none();
         self.request_closed = false;
         self.frozen_request_gen_tps = 0.0;
+        self.frozen_gen_tps_per_slot = 0.0;
+        self.frozen_concurrent_slots = 0;
         self.request_start = Some(Instant::now());
         self.request_elapsed_frozen_ms = 0;
         self.ttft_ms = None;
         self.prefill_ms = None;
         self.decode_ttft_ms = None;
+        if boundary {
+            self.bump_meter_seq();
+        }
     }
 
     fn capture_prefill_if_unset(&mut self) {
@@ -1130,12 +1185,31 @@ impl FusionBrain {
         if self.request_closed {
             return;
         }
+        // Freeze often arrives with empty slots (bench HTTP path) — use latched peaks, not zero.
+        let tokens = if !slots.is_empty() {
+            self.per_request_gen_tokens(slots)
+        } else {
+            self.tg_burst_peak_tokens
+                .max(self.prev_instant_gen_decoded)
+        };
         if let Some(start) = self.tg_start_time {
-            let tokens = self.per_request_gen_tokens(slots);
             let elapsed_ms = start.elapsed().as_millis().max(1) as u64;
             if tokens > 0 {
-                self.frozen_request_gen_tps =
+                // Prefer engine last_gen_tps when wall is absurdly short (late TG latch → 200k flash).
+                let wall_tps =
                     clamp_display_tps((tokens as f64) / (elapsed_ms as f64 / 1000.0));
+                let pinned = if elapsed_ms < MIN_TG_PER_REQUEST_AVG_MS && self.last_gen_tps > 0.0 {
+                    self.last_gen_tps
+                } else if self.last_gen_tps > 0.0
+                    && wall_tps > self.last_gen_tps * 4.0
+                    && self.last_gen_tps > 1.0
+                {
+                    // Wall math exploded vs live — keep the live-ish pin
+                    self.last_gen_tps
+                } else {
+                    wall_tps
+                };
+                self.frozen_request_gen_tps = clamp_display_tps(pinned);
                 self.last_gen_tps = self.frozen_request_gen_tps;
             } else if self.last_gen_tps > 0.0 {
                 self.frozen_request_gen_tps = self.last_gen_tps;
@@ -1143,6 +1217,14 @@ impl FusionBrain {
         } else if self.last_gen_tps > 0.0 {
             self.frozen_request_gen_tps = self.last_gen_tps;
         }
+        // Capture concurrent peak before idle observe_wave zeros it.
+        let peak = self
+            .parallel_meter
+            .latched_peak()
+            .max(self.last_busy_slot_count)
+            .max(1);
+        self.frozen_concurrent_slots = peak;
+        self.frozen_gen_tps_per_slot = Self::per_slot_tps(self.frozen_request_gen_tps, peak);
         self.close_tg_burst();
         self.log_request_open = false;
         self.stop_request_clock();
@@ -1165,6 +1247,8 @@ impl FusionBrain {
         self.request_elapsed_frozen_ms = 0;
         self.request_closed = false;
         self.frozen_request_gen_tps = 0.0;
+        self.frozen_gen_tps_per_slot = 0.0;
+        self.frozen_concurrent_slots = 0;
         self.ttft_ms = None;
         self.prefill_ms = None;
         self.decode_ttft_ms = None;
@@ -1172,18 +1256,26 @@ impl FusionBrain {
         self.tg_start_n_decoded = 0;
         self.last_gen_tps = 0.0;
         self.lp_gen_tps = 0.0;
-        self.lp_reset_prompt = false;
+        // One-shot belt so FE micro-stats (tok / PP / +1st) clear on consecutive benches.
+        self.lp_reset_prompt = true;
         self.lp_reset_regression = false;
         self.reset_prefill_counters();
         self.reset_pp_session_avg();
         self.reset_tg_session_avg();
         self.parallel_meter.reset();
         self.last_busy_slot_count = 0;
+        self.prev_instant_poll_at = None;
+        self.prev_instant_prefill_tokens = 0;
+        self.prev_instant_gen_decoded = 0;
+        self.prefill_tps_instant = 0.0;
+        self.gen_tps_instant = 0.0;
         for s in self.slot_states.values_mut() {
             s.was_processing = false;
             s.session_n_decoded = 0;
             s.log_prompt_fill = 0;
+            s.request_start_n_decoded = s.prev_n_decoded;
         }
+        self.bump_meter_seq();
         self.emit_dirty = true;
     }
 
@@ -1562,12 +1654,19 @@ impl FusionBrain {
                         }
                         BrainInbound::BenchMeterReset(ack) => {
                             brain.reset_bench_meters();
+                            // Push immediately so FE micro-stats clear before the next HTTP run.
+                            let preview = brain.build_update(&[], None);
+                            brain.force_emit(&log_hub, preview);
+                            // One-shot — do not leave phaseResetSource sticky across later polls.
+                            brain.lp_reset_prompt = false;
                             if let Some(tx) = ack {
                                 let _ = tx.send(());
                             }
                         }
                         BrainInbound::BenchMeterFreeze(ack) => {
                             brain.finalize_request_meters(&[]);
+                            let preview = brain.build_update(&[], None);
+                            brain.force_emit(&log_hub, preview);
                             if let Some(tx) = ack {
                                 let _ = tx.send(());
                             }
@@ -1662,6 +1761,8 @@ impl FusionBrain {
         // TG bench freeze can linger until reset is processed — Tom PP belt must reopen meters.
         self.request_closed = false;
         self.frozen_request_gen_tps = 0.0;
+        self.frozen_gen_tps_per_slot = 0.0;
+        self.frozen_concurrent_slots = 0;
         self.log_request_open = true;
         self.log_prefill_done = false;
         self.phase = InferencePhase::PP;
@@ -2116,6 +2217,8 @@ impl FusionBrain {
             if pp_reopening {
                 self.request_closed = false;
                 self.frozen_request_gen_tps = 0.0;
+                self.frozen_gen_tps_per_slot = 0.0;
+                self.frozen_concurrent_slots = 0;
             } else {
                 self.phase = InferencePhase::Idle;
                 self.lp_phase = InferencePhase::Idle;
@@ -2682,9 +2785,26 @@ impl FusionBrain {
             prefill_tps_session = self.prefill_tps_instant;
         }
         let mut gen_tps_session = self.tg_session_avg_tps(slots);
-        if parallel_lane && gen_tps_session <= 0.0 && gen_tps > 0.0 {
+        // After freeze, AVG must match pinned hero — session wall can still flash 200k-class spikes.
+        if self.request_closed && self.frozen_request_gen_tps > 0.0 {
+            gen_tps_session = self.frozen_request_gen_tps;
+        } else if parallel_lane && gen_tps_session <= 0.0 && gen_tps > 0.0 {
             gen_tps_session = gen_tps;
         }
+
+        let concurrent = self.concurrent_slots_for_meter(busy_slots);
+        let gen_tps_out = clamp_display_tps(gen_tps);
+        let gen_tps_instant_out = clamp_display_tps(self.gen_tps_instant);
+        let (gen_tps_per_slot, gen_tps_per_slot_instant) = if self.request_closed
+            && self.frozen_gen_tps_per_slot > 0.0
+        {
+            (self.frozen_gen_tps_per_slot, self.frozen_gen_tps_per_slot)
+        } else {
+            (
+                Self::per_slot_tps(gen_tps_out.max(gen_tps_session), concurrent),
+                Self::per_slot_tps(gen_tps_instant_out, concurrent),
+            )
+        };
 
         FusionUpdate {
             alias: self.alias.clone(),
@@ -2698,9 +2818,9 @@ impl FusionBrain {
             prefill_progress,
             prefill_tokens,
             prefill_tokens_total: self.prefill_tokens_total,
-            gen_tps: clamp_display_tps(gen_tps),
+            gen_tps: gen_tps_out,
             gen_tps_session,
-            gen_tps_instant: clamp_display_tps(self.gen_tps_instant),
+            gen_tps_instant: gen_tps_instant_out,
             gen_tokens_per_request_slots: gen_tokens_request_slots,
             gen_tokens_per_session: self.session_tokens_generated,
             ctx_used_session: ctx_used_session,
@@ -2737,6 +2857,10 @@ impl FusionBrain {
             request_closed: self.request_closed,
             meter_lane,
             busy_slot_count: busy_slots,
+            concurrent_slots: concurrent,
+            gen_tps_per_slot,
+            gen_tps_per_slot_instant,
+            meter_seq: self.meter_seq,
         }
     }
 
