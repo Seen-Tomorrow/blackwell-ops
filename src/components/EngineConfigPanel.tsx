@@ -40,6 +40,17 @@ import {
   resolveManualLaunchKeys,
 } from "../lib/launchProfile";
 import ConfigViewToggle from "./ConfigViewToggle";
+import MultiAgentBooster from "./MultiAgentBooster";
+import {
+  brainsFromKvQuant,
+  codingModeFromParallel,
+  pickHighNumeric,
+  resolveFullAutoPlan,
+  type BrainsId,
+  type CodingModeId,
+  type SpeedBoostId,
+  type ThinkId,
+} from "../lib/multiAgentBooster";
 import {
   isGroupFullyHidden,
   PANEL_CHROME_PARAM_KEYS,
@@ -439,6 +450,11 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   const [specFlash, setSpecFlash] = useState(false);
   const [fitLaunchEnabled, setFitLaunchEnabled] = useState(true);
   const [configView, setConfigView] = useState<ConfigViewMode>("essentials");
+  const [codingMode, setCodingMode] = useState<CodingModeId>("solo");
+  const [speedBoost, setSpeedBoost] = useState<SpeedBoostId>("off");
+  const [brains, setBrains] = useState<BrainsId>("solid");
+  const [think, setThink] = useState<ThinkId>("on");
+  const boosterSeededRef = useRef(false);
   const [layoutModeActive, setLayoutModeActive] = useState(
     () => readStorage(KEYS.configLayoutMode) === "1",
   );
@@ -768,10 +784,14 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     [allParamsResolved],
   );
 
+  /** Full Auto = one fixed cockpit (no Essentials/Full switch). */
+  const fullAutoFixed = fullAutoMode;
+
   const allParamsForDisplay = useMemo(() => {
+    if (fullAutoFixed) return [];
     if (configView === "full") return allParamsResolved;
     return allParamsResolved.filter((d) => isEssentialParam(d, essentialFactoryKeys));
-  }, [allParamsResolved, configView, essentialFactoryKeys]);
+  }, [allParamsResolved, configView, essentialFactoryKeys, fullAutoFixed]);
 
   const splitParamDef = useMemo(
     () => allParamsResolved.find((d) => d.key === "split"),
@@ -881,6 +901,157 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   const specActive = useMemo(
     () => hasSpecCapability && specDecodingGroupVisible,
     [hasSpecCapability, specDecodingGroupVisible],
+  );
+
+  // Seed cockpit once from live config.
+  useEffect(() => {
+    if (boosterSeededRef.current) return;
+    if (!allParamsResolved.length) return;
+    const par = resolveParallelSlots(config, allParamsResolved);
+    setCodingMode(codingModeFromParallel(par));
+    setBrains(brainsFromKvQuant(config.kv_quant != null ? String(config.kv_quant) : undefined));
+    const st = config.spec_type != null ? String(config.spec_type).toLowerCase() : "";
+    if (specDecodingGroupVisible && st.includes("mtp")) setSpeedBoost("mtp");
+    else if (specDecodingGroupVisible && st.includes("dflash")) setSpeedBoost("dflash");
+    else setSpeedBoost("off");
+    const r = config.reasoning;
+    if (r === "off" || r === 0 || r === "0") setThink("off");
+    else if (r === 4000 || r === "4000") setThink("budget");
+    else setThink("on");
+    boosterSeededRef.current = true;
+  }, [allParamsResolved, config, specDecodingGroupVisible]);
+
+  useEffect(() => {
+    boosterSeededRef.current = false;
+  }, [effectiveBackendType, model?.path]);
+
+  // Do NOT write collapsedGroups LS from Full Auto — Assisted collapse state is user-owned.
+
+  const kvQuantValues = useMemo(() => {
+    const def = allParamsResolved.find((p) => p.key === "kv_quant");
+    return def?.values ?? ["q4_0", "q8_0", "f16"];
+  }, [allParamsResolved]);
+
+  /** Any family-matched DFlash draft in library (independent of current mode). */
+  const dflashLibraryReady = useMemo(() => {
+    if (!model || !models?.length) return false;
+    return findScoredDraftCandidates(model, models, "external_dflash").length > 0;
+  }, [model, models]);
+
+  const applyFullAutoCockpit = useCallback(
+    async (
+      mode: CodingModeId,
+      speed: SpeedBoostId,
+      brainsPick: BrainsId,
+      thinkPick: ThinkId,
+    ) => {
+      setCodingMode(mode);
+      setSpeedBoost(speed);
+      setBrains(brainsPick);
+      setThink(thinkPick);
+
+      const plan = resolveFullAutoPlan({
+        codingMode: mode,
+        speed,
+        brains: brainsPick,
+        think: thinkPick,
+        capabilities: specCapabilities,
+        dflashLibraryReady,
+        kvQuantValues,
+      });
+
+      if (plan.forcedSoloForMtp) setCodingMode("solo");
+      if (plan.speed !== speed) setSpeedBoost(plan.speed);
+
+      updateParam("parallel", plan.parallel);
+      if (plan.parallel > 1 && allParamsResolved.some((p) => p.key === "cont_batching")) {
+        updateParam("cont_batching", "on");
+      }
+      updateParam("kv_quant", plan.kvQuant);
+      if (plan.vision && allParamsResolved.some((p) => p.key === "vision")) {
+        updateParam("vision", plan.vision);
+      }
+      if (plan.reasoning != null && allParamsResolved.some((p) => p.key === "reasoning")) {
+        updateParam("reasoning", plan.reasoning);
+      }
+      if (
+        plan.reasoningPreserve
+        && allParamsResolved.some((p) => p.key === "reasoning_preserve")
+      ) {
+        updateParam("reasoning_preserve", plan.reasoningPreserve);
+      }
+
+      if (plan.pushBatch) {
+        const batchDef = allParamsResolved.find((p) => p.key === "batch");
+        const ubatchDef = allParamsResolved.find((p) => p.key === "ubatch");
+        const batchPick = batchDef?.values ? pickHighNumeric(batchDef.values) : null;
+        const ubatchPick = ubatchDef?.values
+          ? pickHighNumeric(ubatchDef.values, batchPick ?? undefined)
+          : null;
+        if (batchPick != null) updateParam("batch", batchPick);
+        if (ubatchPick != null) updateParam("ubatch", ubatchPick);
+      }
+
+      const wantSpec = plan.enableSpec;
+      const currentlyOn = specDecodingGroupVisible;
+      if (wantSpec !== currentlyOn && (hasSpecCapability || !wantSpec)) {
+        try {
+          await invoke<boolean>("toggle_group_hidden", {
+            providerId: effectiveBackendType,
+            groupId: SPEC_DECODING_GROUP,
+          });
+          setSpecFlash(true);
+          window.setTimeout(() => setSpecFlash(false), 400);
+          try {
+            const data = await invoke<ProviderConfig[]>("list_providers");
+            if (data.length > 0) setResolvedProviders(data);
+          } catch { /* event */ }
+          dispatchAppEvent(EVENTS.reloadProviders);
+          dispatchAppEvent(EVENTS.paramConfigChanged);
+        } catch (err) {
+          console.error("[fullAuto] toggle_group_hidden failed:", err);
+        }
+      }
+
+      if (wantSpec && plan.specType) {
+        updateParam("spec_type", plan.specType);
+        const preset = essentialsSpecPreset(plan.specType);
+        if (preset) {
+          updateParam("spec_draft_n_max", preset.spec_draft_n_max);
+          updateParam("spec_draft_n_min", preset.spec_draft_n_min);
+        }
+        if (model && models?.length) {
+          const role = draftRoleForSpecType(plan.specType);
+          if (role) {
+            const draftPair = pickBestDraftPair(model, models, role);
+            if (draftPair) {
+              updateParam("spec_draft_model", draftPair.path);
+              saveDraftPairing(model.path, plan.specType, draftPair.path);
+            }
+          }
+        }
+      }
+    },
+    [
+      allParamsResolved,
+      dflashLibraryReady,
+      effectiveBackendType,
+      hasSpecCapability,
+      kvQuantValues,
+      model,
+      models,
+      specCapabilities,
+      specDecodingGroupVisible,
+      updateParam,
+    ],
+  );
+
+  /** Assisted mode: agents-only strip (no full cockpit). */
+  const applyCodingAgents = useCallback(
+    (mode: CodingModeId) => {
+      void applyFullAutoCockpit(mode, speedBoost, brains, think);
+    },
+    [applyFullAutoCockpit, speedBoost, brains, think],
   );
   const specLaunchActive = useMemo(() => {
     if (!model || !models?.length) return false;
@@ -1708,7 +1879,16 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     if (isSpecGroup) {
       const specAllParams = allGroupedParams[group.id] || [];
       if (specAllParams.length === 0) return null;
-      const specVisibleParams = specAllParams.filter((d) => !d.hidden);
+      // Full Auto cockpit owns draft/spec — classic block only for Assisted.
+      if (fullAutoFixed) return null;
+
+      let specVisibleParams = specAllParams.filter((d) => !d.hidden);
+      specVisibleParams = specVisibleParams.filter((d) => d.key !== "spec_draft_model");
+      if (specSimpleMode) {
+        specVisibleParams = specVisibleParams.filter(
+          (d) => d.key !== "spec_draft_n_max" && d.key !== "spec_draft_n_min",
+        );
+      }
       const allHidden = specAllParams.every((d) => d.hidden);
       const specGroupActive = hasSpecCapability && !allHidden;
 
@@ -1775,14 +1955,11 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
           {hasSpecCapability && specGroupActive && specVisibleParams.length > 0 && (
             <div className="config-spec-params space-y-2.5 mt-2">
-              {specVisibleParams
-                .filter((d) => d.key !== "spec_draft_model")
-                .filter((d) => !specSimpleMode || (d.key !== "spec_draft_n_max" && d.key !== "spec_draft_n_min"))
-                .map((def, i) => (
+              {specVisibleParams.map((def, i) => (
                   <div key={paramRowKey(def, i)} className="spec-param-unlock" style={{ opacity: 0 }}>
                     {renderParamRow(def, false, i)}
                   </div>
-                ))}
+              ))}
               {specNeedsExternalDraft && (
                 <div data-param-row className="flex flex-col gap-1.5 min-h-[22px]">
                   <div className="flex items-start min-h-[22px]">
@@ -1954,6 +2131,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     hasSpecCapability,
     specCapabilities,
     modelIsDraftOnly,
+    fullAutoMode,
+    fullAutoFixed,
     activeSpecType,
     scoredDraftCandidates,
     showAllDrafts,
@@ -2370,7 +2549,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         </div>
       )}
 
-      {aboveGroupKeys.length > 0 && (
+      {/* Full Auto: fixed cockpit — hide above chip groups. */}
+      {aboveGroupKeys.length > 0 && !fullAutoFixed && (
         <div className={`config-params-above-shell relative${paramsBypassedClass}`}>
           <ConfigBelowGroups
             zone="above"
@@ -2406,7 +2586,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         className={onboardingDisplay.area}
         data-display-texture={displayTexture}
       >
-        {model && gpus.length > 0 && (
+        {/* Full Auto locks device/split — hide dead DEVICE chrome. */}
+        {model && gpus.length > 0 && !fullAutoMode && (
           <GpuAssignPanel
             gpus={gpus}
             deviceValue={config.device}
@@ -2530,7 +2711,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       <div
         className="config-panel-toolbar px-4 py-0.5 flex items-center gap-3 flex-shrink-0 border-b section-divider"
       >
-        {allParamsForDisplay.length > 0 && (
+        {/* Full Auto = one layout (no Essentials/Full). Assisted keeps the switch. */}
+        {!fullAutoFixed && (
           <div className="config-panel-toolbar__config flex items-center gap-1.5 flex-shrink-0">
             <span className="config-panel-toolbar__label">CONFIG</span>
             <ConfigViewToggle
@@ -2544,6 +2726,11 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                 }
               }}
             />
+          </div>
+        )}
+        {fullAutoFixed && (
+          <div className="config-panel-toolbar__config flex items-center gap-1.5 flex-shrink-0">
+            <span className="config-panel-toolbar__label text-nv-green/70">FULL AUTO</span>
           </div>
         )}
         <div className="config-panel-toolbar__chrome flex items-center gap-1.5 min-w-0 ml-auto flex-shrink-0">
@@ -2653,30 +2840,89 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           )}
         </div>
       </div>
-      <div className={`config-params-scroll px-4 py-3 relative flex-1 overflow-y-auto eink-scrollbar eink-panel min-h-0${paramsBypassedClass}`}>
-        {allParamsForDisplay.length === 0 ? (
-          <div className="text-stealth-muted text-[10px] font-mono opacity-50">NO PARAMS DEFINED</div>
-        ) : belowGroupKeys.length === 0 ? null : (
-          <ConfigBelowGroups
-            columnCount={columnCount}
-            columnWidths={columnWidths}
-            belowGroupsByColumn={belowGroupsByColumn}
-            onGutterDragStart={handleGutterDragStart}
-            draggingGutterIndex={draggingGutterIndex}
-            layoutModeActive={layoutModeActive}
-            renderGroup={(groupId) => {
-              const group = belowGroupMetaById.get(groupId);
-              if (!group) return null;
-              return renderParamGroup(group, "below", undefined);
-            }}
-          />
-        )}
 
-        {uiDensityCompact && configView === "full" && launchDockPosition === "bottom" && !launchDockCollapsed ? (
-          <div className="config-launch-dock__flags-scroll">{renderCustomFlagsBlock()}</div>
-        ) : null}
+      {/* Full Auto: single 3-row cockpit. Assisted: boost strip + classic chip groups. */}
+      {fullAutoFixed ? (
+        <div className="px-4 py-3 flex-1 min-h-0 overflow-y-auto eink-scrollbar">
+          {model && !modelIsDraftOnly && (
+            <MultiAgentBooster
+              codingMode={codingMode}
+              speedBoost={speedBoost}
+              brains={brains}
+              think={think}
+              onCodingMode={(m) => { void applyFullAutoCockpit(m, speedBoost, brains, think); }}
+              onSpeedBoost={(s) => { void applyFullAutoCockpit(codingMode, s, brains, think); }}
+              onBrains={(b) => { void applyFullAutoCockpit(codingMode, speedBoost, b, think); }}
+              onThink={(t) => { void applyFullAutoCockpit(codingMode, speedBoost, brains, t); }}
+              capabilities={specCapabilities}
+              dflashLibraryReady={dflashLibraryReady}
+              kvQuantValues={kvQuantValues}
+              port={Number(config.base_port) || 9090}
+              modelId={aliasDisplayValue || autoAlias || model.name || "local-model"}
+              layout="hero"
+              ctxValue={config.ctx}
+              ctxDefault={allParamsResolved.find((p) => p.key === "ctx")?.defaultValue}
+              ctxValues={allParamsResolved.find((p) => p.key === "ctx")?.values}
+              ctxStep={allParamsResolved.find((p) => p.key === "ctx")?.step ?? 1024}
+              onCtxChange={(v) => updateParam("ctx", v)}
+              ctxSlotCount={resolveCtxSlotCount(config, allParamsResolved)}
+              ctxPerSlot={(() => {
+                const slots = resolveCtxSlotCount(config, allParamsResolved);
+                const n = typeof config.ctx === "number" ? config.ctx : parseInt(String(config.ctx), 10);
+                if (slots > 1 && Number.isFinite(n) && n > 0) return Math.floor(n / slots);
+                return undefined;
+              })()}
+            />
+          )}
+        </div>
+      ) : (
+        <>
+          {model && !modelIsDraftOnly && (
+            <div className="px-4 pt-1.5 pb-0.5 flex-shrink-0 border-b section-divider">
+              <MultiAgentBooster
+                codingMode={codingMode}
+                speedBoost={speedBoost}
+                brains={brains}
+                think={think}
+                onCodingMode={applyCodingAgents}
+                onSpeedBoost={(s) => { void applyFullAutoCockpit(codingMode, s, brains, think); }}
+                onBrains={(b) => { void applyFullAutoCockpit(codingMode, speedBoost, b, think); }}
+                onThink={(t) => { void applyFullAutoCockpit(codingMode, speedBoost, brains, t); }}
+                capabilities={specCapabilities}
+                dflashLibraryReady={dflashLibraryReady}
+                kvQuantValues={kvQuantValues}
+                port={Number(config.base_port) || 9090}
+                modelId={aliasDisplayValue || autoAlias || model.name || "local-model"}
+                layout={configView === "full" ? "dense" : "normal"}
+              />
+            </div>
+          )}
 
-      </div>
+          <div className={`config-params-scroll px-4 py-3 relative flex-1 overflow-y-auto eink-scrollbar eink-panel min-h-0${paramsBypassedClass}`}>
+            {allParamsForDisplay.length === 0 ? (
+              <div className="text-stealth-muted text-[10px] font-mono opacity-50">NO PARAMS DEFINED</div>
+            ) : belowGroupKeys.length === 0 ? null : (
+              <ConfigBelowGroups
+                columnCount={columnCount}
+                columnWidths={columnWidths}
+                belowGroupsByColumn={belowGroupsByColumn}
+                onGutterDragStart={handleGutterDragStart}
+                draggingGutterIndex={draggingGutterIndex}
+                layoutModeActive={layoutModeActive}
+                renderGroup={(groupId) => {
+                  const group = belowGroupMetaById.get(groupId);
+                  if (!group) return null;
+                  return renderParamGroup(group, "below", undefined);
+                }}
+              />
+            )}
+
+            {uiDensityCompact && configView === "full" && launchDockPosition === "bottom" && !launchDockCollapsed ? (
+              <div className="config-launch-dock__flags-scroll">{renderCustomFlagsBlock()}</div>
+            ) : null}
+          </div>
+        </>
+      )}
 
       {launchDockPosition === "bottom" && (
         <div className="config-launch-dock flex-shrink-0 px-4 flex flex-col">
@@ -2694,7 +2940,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
               CUSTOM FLAGS {customFlagsReplaceActive ? "REPLACE" : "APPEND"} — click to expand
             </button>
           )}
-          {specParallelWarn && (
+          {specParallelWarn && !fullAutoFixed && (
             <div
               className="config-mtp-launch-warn rounded-sm px-2.5 py-1.5 text-[7px] font-mono leading-snug"
               role="status"
@@ -2706,15 +2952,27 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
               </span>
             </div>
           )}
+          {specParallelWarn && fullAutoFixed && (
+            <div
+              className="config-mtp-launch-warn rounded-sm px-2.5 py-1.5 text-[7px] font-mono leading-snug"
+              role="status"
+            >
+              <span className="config-mtp-launch-warn__detail">
+                Multi-agent is on — Speed boost will use Off or DFlash (MTP needs Solo). Tap Speed → Off, or Agents → Solo for MTP.
+              </span>
+            </div>
+          )}
           {modelIsDraftOnly && (
             <div
               className="config-mtp-launch-warn rounded-sm px-2.5 py-1.5 text-[7px] font-mono leading-snug"
               role="status"
             >
-              <span className="uppercase tracking-wide">Draft model</span>
+              <span className="uppercase tracking-wide">{fullAutoFixed ? "Wrong model" : "Draft model"}</span>
               {" — "}
               <span className="config-mtp-launch-warn__detail">
-                Cannot launch draft GGUF as main. Filter catalog to MAIN and pick the base model.
+                {fullAutoFixed
+                  ? "This file is a draft helper, not a main model. Pick a full chat model from the list."
+                  : "Cannot launch draft GGUF as main. Filter catalog to MAIN and pick the base model."}
               </span>
             </div>
           )}
@@ -2909,7 +3167,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                     variant="rail"
                   />
                 )}
-                {specParallelWarn && (
+                {specParallelWarn && !fullAutoFixed && (
                   <div
                     className="config-mtp-launch-warn rounded-sm px-2.5 py-1.5 text-[7px] font-mono leading-snug shrink-0"
                     role="status"
@@ -2921,15 +3179,27 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                     </span>
                   </div>
                 )}
+                {specParallelWarn && fullAutoFixed && (
+                  <div
+                    className="config-mtp-launch-warn rounded-sm px-2.5 py-1.5 text-[7px] font-mono leading-snug shrink-0"
+                    role="status"
+                  >
+                    <span className="config-mtp-launch-warn__detail">
+                      Multi-agent is on — use Speed Off/DFlash, or Agents Solo for MTP.
+                    </span>
+                  </div>
+                )}
                 {modelIsDraftOnly && (
                   <div
                     className="config-mtp-launch-warn rounded-sm px-2.5 py-1.5 text-[7px] font-mono leading-snug shrink-0"
                     role="status"
                   >
-                    <span className="uppercase tracking-wide">Draft model</span>
+                    <span className="uppercase tracking-wide">{fullAutoFixed ? "Wrong model" : "Draft model"}</span>
                     {" — "}
                     <span className="config-mtp-launch-warn__detail">
-                      Cannot launch draft GGUF as main. Filter catalog to MAIN and pick the base model.
+                      {fullAutoFixed
+                        ? "This file is a draft helper, not a main model. Pick a full chat model from the list."
+                        : "Cannot launch draft GGUF as main. Filter catalog to MAIN and pick the base model."}
                     </span>
                   </div>
                 )}

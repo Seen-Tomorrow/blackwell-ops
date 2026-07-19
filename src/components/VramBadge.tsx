@@ -388,6 +388,12 @@ export default function VramBadge({
           <p className={`vram-forecast-hero__title font-mono tracking-[0.18em] uppercase ${s.titleColor}`}>
             {t.heroText ?? (manifest.fits ? "WILL LAUNCH" : "WON'T LAUNCH")}
           </p>
+          {/* Full Auto: one plain remain% line (Assisted-style muted type) — no GB tables */}
+          {fullAutoMode && manifest.fits && totalVramMib > 0 && (
+            <p className="vram-forecast-hero__sub text-[9px] font-mono text-stealth-muted/80 leading-snug mt-1">
+              {Math.max(0, Math.round(100 - vramUsagePct))}% total VRAM remains
+            </p>
+          )}
           {(t.heroSubtext || (showDetailedForecast && manifest.recommendation)) && (
             <p className="vram-forecast-hero__sub text-[9px] font-mono text-stealth-muted/80 leading-snug mt-1">
               {t.heroSubtext || manifest.recommendation}

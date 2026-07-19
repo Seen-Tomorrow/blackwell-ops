@@ -85,6 +85,8 @@ interface ConfigPageProps {
   updateOfferings?: UpdateOfferings | null;
   onRefreshUpdateOfferings?: () => void | Promise<void>;
   onBinaryUpdatesChange?: (hasUpdates: boolean) => void;
+  /** Amber nav pulse — also badges UPDATES sub-tab. */
+  hasBinaryUpdates?: boolean;
 }
 
 /** Parse a value as int, float, or string. */
@@ -101,6 +103,7 @@ export default function ConfigPage({
   updateOfferings,
   onRefreshUpdateOfferings,
   onBinaryUpdatesChange,
+  hasBinaryUpdates = false,
 }: ConfigPageProps) {
   const [subTab, setSubTab] = useState<ConfigSubTab>(() => consumePendingConfigSubTab() ?? "providers");
   const [selectedProviderId, setSelectedProviderId] = useState<string>(DEFAULT_PROVIDER_ID);
@@ -1251,7 +1254,16 @@ export default function ConfigPage({
         <button onClick={() => setSubTab("providers")} className={`app-nav-tab px-3 py-1 text-[10px] font-mono tracking-wider rounded-sm ${subTab === "providers" ? "app-nav-tab-active" : ""}`}>PROVIDERS</button>
         <button onClick={() => setSubTab("params")} className={`app-nav-tab px-3 py-1 text-[10px] font-mono tracking-wider rounded-sm ${subTab === "params" ? "app-nav-tab-active" : ""}`}>PARAMETERS</button>
         <button onClick={() => setSubTab("paths")} data-onboarding="paths-tab" className={`app-nav-tab px-3 py-1 text-[10px] font-mono tracking-wider rounded-sm ${subTab === "paths" ? "app-nav-tab-active" : ""}`}>PATHS</button>
-        <button onClick={() => setSubTab("updates")} className={`app-nav-tab px-3 py-1 text-[10px] font-mono tracking-wider rounded-sm ${subTab === "updates" ? "app-nav-tab-active" : ""}`}>UPDATES</button>
+        <button
+          onClick={() => setSubTab("updates")}
+          className={`relative app-nav-tab px-3 py-1 text-[10px] font-mono tracking-wider rounded-sm ${subTab === "updates" ? "app-nav-tab-active" : ""}`}
+          title={hasBinaryUpdates ? "Runtime / app packs available" : undefined}
+        >
+          UPDATES
+          {hasBinaryUpdates && (
+            <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-yellow-400 rounded-full animate-pulse" aria-hidden />
+          )}
+        </button>
         {factoryExportEnabled && (
           <button onClick={() => setSubTab("distribution")} className={`app-nav-tab px-3 py-1 text-[10px] font-mono tracking-wider rounded-sm ${subTab === "distribution" ? "app-nav-tab-active" : ""}`}>DISTRIBUTION</button>
         )}

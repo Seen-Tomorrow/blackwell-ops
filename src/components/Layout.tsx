@@ -257,10 +257,6 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
                   {/* <span className="mr-1.5">{tab.icon}</span> */}
                   {tab.label}
                 </button>
-                {/* Binary update badge on CONFIG tab */}
-                {tab.id === "config" && hasBinaryUpdates && (
-                  <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-yellow-400 rounded-full animate-pulse" title="Runtime binary updates available" />
-                )}
               </div>
             ))}
           </nav>

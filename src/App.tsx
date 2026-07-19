@@ -607,6 +607,7 @@ function App() {
               updateOfferings={updateOfferings}
               onRefreshUpdateOfferings={refreshUpdateOfferings}
               onBinaryUpdatesChange={setHasBinaryUpdates}
+              hasBinaryUpdates={hasBinaryUpdates}
             />
           </Suspense>
         )}

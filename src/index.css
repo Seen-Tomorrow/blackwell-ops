@@ -2391,6 +2391,277 @@ html, body, #root {
   opacity: 1;
 }
 
+/* ── Full Auto cockpit — theme tokens (inset well + texture) ─── */
+.full-auto-cockpit {
+  border: 1px solid color-mix(in srgb, var(--theme-border, #1a2e1a) 55%, #000 45%);
+  border-radius: 5px;
+  background-color: color-mix(in srgb, var(--theme-panel-accent, #040b01) 55%, var(--theme-industrial-bg, #111810) 45%);
+  background-image: var(--theme-industrial-texture-active, none);
+  box-shadow:
+    inset 0 3px 8px color-mix(in srgb, #000000 55%, transparent),
+    inset 0 1px 0 color-mix(in srgb, #000000 40%, transparent),
+    inset 0 -1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi, rgba(255, 255, 255, 0.06)) 35%, transparent),
+    0 1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi, rgba(255, 255, 255, 0.06)) 25%, transparent);
+}
+
+.full-auto-cockpit--hero {
+  padding: 0.75rem 0.85rem 0.85rem;
+}
+
+.full-auto-cockpit--normal {
+  padding: 0.55rem 0.65rem 0.65rem;
+}
+
+.full-auto-cockpit--dense {
+  padding: 0.35rem 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--theme-border-subtle, rgba(255, 255, 255, 0.08)) 80%, transparent);
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--theme-panel, #111810) 88%, transparent);
+}
+
+.full-auto-cockpit__header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+  min-width: 0;
+}
+
+.full-auto-cockpit__title {
+  display: block;
+  font-size: 8px;
+  letter-spacing: 0.16em;
+  color: color-mix(in srgb, var(--theme-industrial-muted, var(--theme-text-muted, #6a8a6a)) 85%, transparent);
+  margin-bottom: 0.35rem;
+}
+
+.full-auto-cockpit__status {
+  min-width: 0;
+  padding: 0.4rem 0.55rem;
+  border-radius: 3px;
+  border: 1px solid color-mix(in srgb, var(--theme-border, #1a2e1a) 65%, #000 35%);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, #000000 22%, transparent) 0%,
+      color-mix(in srgb, var(--theme-panel-accent, #040b01) 55%, transparent) 100%
+    );
+  box-shadow:
+    inset 0 2px 4px color-mix(in srgb, #000000 45%, transparent),
+    inset 0 -1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi, rgba(255, 255, 255, 0.06)) 40%, transparent);
+}
+
+.full-auto-cockpit__status-text {
+  display: block;
+  font-size: 11px;
+  line-height: 1.35;
+  color: color-mix(in srgb, var(--theme-industrial-text, var(--theme-accent-bright, #4ade80)) 92%, #fff 8%);
+  letter-spacing: 0.02em;
+}
+
+.full-auto-cockpit__status-note {
+  color: color-mix(in srgb, #fbbf24 88%, var(--theme-industrial-text, #4ade80) 12%);
+}
+
+.full-auto-cockpit__connect {
+  font-size: 8px;
+  padding: 0.35rem 0.55rem;
+  border-radius: 3px;
+  border: 1px solid var(--theme-chip-border, rgba(74, 222, 128, 0.15));
+  color: var(--theme-chip-text, var(--theme-industrial-muted, #4ade80));
+  background: color-mix(in srgb, var(--theme-chip-bg, transparent) 80%, transparent);
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.full-auto-cockpit__connect:hover {
+  color: var(--theme-chip-hover-text, var(--theme-accent-bright, #4ade80));
+  border-color: var(--theme-chip-hover-border, rgba(74, 222, 128, 0.35));
+  background: var(--theme-chip-active-bg, rgba(74, 222, 128, 0.12));
+}
+
+.full-auto-cockpit__row-label {
+  width: 4.25rem;
+  font-size: 8px;
+  color: color-mix(in srgb, var(--theme-industrial-muted, #4ade80) 55%, transparent);
+}
+
+.full-auto-cockpit__body--with-ctx {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(11rem, 38%);
+  gap: 0.85rem 1.1rem;
+  align-items: stretch;
+}
+
+.full-auto-cockpit__ctx-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.35rem 0.45rem 0.45rem;
+  border-radius: 3px;
+  border: 1px solid color-mix(in srgb, var(--theme-border, #1a2e1a) 55%, transparent);
+  background: color-mix(in srgb, #000000 18%, transparent);
+  box-shadow: inset 0 1px 3px color-mix(in srgb, #000000 35%, transparent);
+  justify-content: center;
+  min-height: 100%;
+}
+
+.full-auto-cockpit__ctx-label {
+  font-size: 8px;
+  letter-spacing: 0.14em;
+  color: color-mix(in srgb, var(--theme-industrial-muted, #4ade80) 55%, transparent);
+}
+
+.full-auto-cockpit__ctx-slider {
+  min-width: 0;
+}
+
+.full-auto-cockpit__ctx-slider .ctx-slider-row {
+  width: 100%;
+}
+
+@media (max-width: 900px) {
+  .full-auto-cockpit__body--with-ctx {
+    grid-template-columns: 1fr;
+  }
+}
+
+[data-theme="arctic"] .full-auto-cockpit__ctx-rail {
+  background: color-mix(in srgb, #2a3848 10%, rgba(255, 255, 255, 0.2));
+  border-color: color-mix(in srgb, #3a4a58 28%, transparent);
+}
+
+.full-auto-cockpit--dense .full-auto-cockpit__row-label {
+  width: 3.5rem;
+  font-size: 6px;
+}
+
+/* Same pad/height as value chips; type ~1.5× default chip (was 13px, −25%) */
+.full-auto-cockpit__chip {
+  padding: 0.15rem 0.4rem;
+  font-size: 10px;
+  line-height: 1.15;
+  border-color: var(--theme-chip-border, rgba(74, 222, 128, 0.15));
+  color: var(--theme-chip-text, var(--theme-industrial-muted, #4ade80));
+  background: var(--theme-chip-bg, rgba(74, 222, 128, 0.03));
+}
+
+.full-auto-cockpit--dense .full-auto-cockpit__chip {
+  font-size: 8px;
+  padding: 0.12rem 0.35rem;
+}
+
+.full-auto-cockpit__chip:hover:not(:disabled):not(.full-auto-cockpit__chip--disabled) {
+  border-color: var(--theme-chip-hover-border, rgba(74, 222, 128, 0.35));
+  color: var(--theme-chip-hover-text, var(--theme-accent-bright, #4ade80));
+}
+
+.full-auto-cockpit__chip--active {
+  border-color: var(--theme-chip-active-border, rgba(74, 222, 128, 0.5));
+  color: var(--theme-chip-active-text, var(--theme-accent-bright, #4ade80));
+  background: var(--theme-chip-active-bg, rgba(74, 222, 128, 0.12));
+  box-shadow: 0 0 10px color-mix(in srgb, var(--theme-accent-glow, var(--theme-accent)) 22%, transparent);
+}
+
+.full-auto-cockpit__chip--disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--theme-text-muted, #6a8a6a) 50%, transparent);
+}
+
+.full-auto-cockpit__chip-meta {
+  margin-left: 0.2rem;
+  opacity: 0.5;
+  font-size: 0.85em;
+}
+
+.full-auto-cockpit__sep {
+  color: color-mix(in srgb, var(--theme-text-muted, #6a8a6a) 35%, transparent);
+  padding: 0 0.15rem;
+  font-size: 11px;
+}
+
+.full-auto-cockpit__harness {
+  margin-top: 0.75rem;
+  padding-top: 0.65rem;
+  border-top: 1px solid color-mix(in srgb, var(--theme-border-subtle, rgba(255, 255, 255, 0.08)) 80%, transparent);
+}
+
+.full-auto-cockpit__harness-hint {
+  font-size: 8px;
+  color: color-mix(in srgb, var(--theme-industrial-muted, #4ade80) 50%, transparent);
+}
+
+.full-auto-cockpit__snippet {
+  border-radius: 3px;
+  border: 1px solid color-mix(in srgb, var(--theme-border, #1a2e1a) 75%, transparent);
+  background: color-mix(in srgb, #000000 35%, var(--theme-panel, #111810) 65%);
+}
+
+.full-auto-cockpit__snippet-bar {
+  padding: 0.25rem 0.5rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--theme-border-subtle, rgba(255, 255, 255, 0.08)) 70%, transparent);
+  font-size: 7px;
+  color: color-mix(in srgb, var(--theme-industrial-muted, #4ade80) 65%, transparent);
+}
+
+.full-auto-cockpit__copy {
+  font-size: 7px;
+  padding: 0.15rem 0.45rem;
+  border-radius: 2px;
+  border: 1px solid var(--theme-chip-border, rgba(74, 222, 128, 0.15));
+  color: var(--theme-chip-active-text, #4ade80);
+  background: transparent;
+}
+
+.full-auto-cockpit__copy:hover {
+  background: var(--theme-chip-active-bg, rgba(74, 222, 128, 0.12));
+}
+
+.full-auto-cockpit__snippet-body {
+  margin: 0;
+  padding: 0.4rem 0.5rem;
+  font-size: 7px;
+  color: color-mix(in srgb, var(--theme-industrial-text, #4ade80) 72%, transparent);
+}
+
+/* ARCTIC — same aluminium band + texture scale as provider bar / launch dock */
+[data-theme="arctic"] .full-auto-cockpit {
+  background-color: #b6c2ce;
+  background-image:
+    var(--theme-industrial-texture-active),
+    var(--arctic-aluminium-gradient);
+  /* texture layer auto; aluminium gradient sampled at viewport height (short panels) */
+  background-size: auto, var(--arctic-aluminium-band-gradient-size);
+  background-position: 0 0, 0 0;
+  background-repeat: repeat, no-repeat;
+  background-attachment: scroll, fixed;
+  border-color: color-mix(in srgb, #4a5a68 28%, transparent);
+  box-shadow:
+    inset 0 4px 12px rgba(20, 30, 40, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.42),
+    inset 0 -1px 0 rgba(30, 40, 50, 0.1),
+    0 1px 0 rgba(255, 255, 255, 0.4);
+}
+
+[data-theme="arctic"] .full-auto-cockpit__status {
+  background: linear-gradient(180deg, rgba(30, 40, 50, 0.14) 0%, rgba(255, 255, 255, 0.22) 100%);
+  border-color: color-mix(in srgb, #3a4a58 32%, transparent);
+  box-shadow:
+    inset 0 2px 5px rgba(20, 30, 40, 0.18),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.35);
+}
+
+[data-theme="arctic"] .full-auto-cockpit__status-text {
+  color: var(--theme-text, #1a2030);
+}
+
+[data-theme="arctic"] .full-auto-cockpit__title,
+[data-theme="arctic"] .full-auto-cockpit__row-label {
+  color: color-mix(in srgb, #2a3a48 72%, transparent);
+}
+
 /* Config chip keyboard focus indicator */
 .value-chip:focus-visible {
   outline: 1px solid rgba(0, 229, 255, 0.8);
