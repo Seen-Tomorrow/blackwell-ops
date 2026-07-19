@@ -2,7 +2,7 @@
 export type LaunchDockPosition = "bottom" | "right";
 
 export const LAUNCH_DOCK_POSITION_DEFAULT: LaunchDockPosition = "bottom";
-export const LAUNCH_DOCK_RAIL_WIDTH_DEFAULT = 240;
+export const LAUNCH_DOCK_RAIL_WIDTH_DEFAULT = 220;
 export const LAUNCH_DOCK_RAIL_WIDTH_MIN = 180;
 export const LAUNCH_DOCK_RAIL_WIDTH_MAX = 360;
 /** Viewports shorter than this auto-pick right rail when the user has not chosen explicitly. */

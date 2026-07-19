@@ -160,9 +160,131 @@ pub fn scan_model_metadata(model_path: &str, binary_path: &str) -> Result<ModelM
         return Err("Failed to parse model architecture — may not be a valid GGUF file".to_string());
     }
 
+    refine_file_type_str(&mut metadata, model_path);
+
     crate::spec_draft::finalize_draft_role(&mut metadata, model_path);
 
     Ok(metadata)
+}
+
+/// Improve `file_type_str` when llama print_info is wrong for mixed/IQ/UD quants.
+///
+/// Observed: IQ3_S sharded packs report `file type = Q6_K` with BPW ~3.0; Unsloth
+/// `UD-Q4_K_XL` often reports `Q4_K - Medium` (same ggml type family as M).
+/// Prefer majority weight-tensor type when available; if BPW strongly disagrees with
+/// print_info, fall back to filename quant when that matches BPW better.
+fn refine_file_type_str(meta: &mut ModelMetadata, model_path: &str) {
+    // 1) Majority non-activation tensor type (if we captured type histogram)
+    if !meta.tensor_counts.is_empty() {
+        let skip = ["f32", "f16", "bf16", "F32", "F16", "BF16"];
+        if let Some((ty, count)) = meta
+            .tensor_counts
+            .iter()
+            .filter(|(k, _)| !skip.iter().any(|s| k.eq_ignore_ascii_case(s)))
+            .max_by_key(|(_, c)| *c)
+        {
+            let total_other: u32 = meta
+                .tensor_counts
+                .iter()
+                .filter(|(k, _)| !skip.iter().any(|s| k.eq_ignore_ascii_case(s)))
+                .map(|(_, c)| *c)
+                .sum();
+            if *count * 2 >= total_other && *count >= 8 {
+                let pretty = tensor_type_to_file_type(ty);
+                if !pretty.is_empty()
+                    && !pretty.eq_ignore_ascii_case(meta.file_type_str.trim())
+                {
+                    log::info!(
+                        "[gguf_scan] file type {:?} → {:?} (majority tensors {}/{})",
+                        meta.file_type_str,
+                        pretty,
+                        count,
+                        total_other
+                    );
+                    meta.file_type_str = pretty;
+                }
+            }
+        }
+    }
+
+    // 2) BPW vs claimed type — print_info can be wildly off (e.g. IQ3_S → Q6_K)
+    if meta.bpw > 0.5 {
+        let claimed = meta.file_type_str.trim();
+        if !claimed.is_empty() && !file_type_matches_bpw(claimed, meta.bpw) {
+            let fname = Path::new(model_path)
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or("");
+            let from_name = crate::model_catalog::extract_quant(fname);
+            if from_name != "GGUF"
+                && !crate::model_catalog::is_shard_noise_quant(&from_name)
+                && file_type_matches_bpw(&from_name, meta.bpw)
+            {
+                log::warn!(
+                    "[gguf_scan] file type {:?} BPW {:.2} inconsistent; using filename quant {} (BPW match)",
+                    claimed,
+                    meta.bpw,
+                    from_name
+                );
+                meta.file_type_str = from_name;
+            }
+        }
+    }
+}
+
+fn tensor_type_to_file_type(ty: &str) -> String {
+    // llama prints "q4_K", "iq3_s", "f32" — normalize to catalog style
+    let t = ty.trim();
+    if t.is_empty() {
+        return String::new();
+    }
+    let upper = t.to_uppercase();
+    // q4_K → Q4_K, iq3_s → IQ3_S
+    if upper.starts_with("IQ") || upper.starts_with('Q') {
+        return upper.replace(' ', "_");
+    }
+    upper
+}
+
+/// Rough BPW bands for common GGUF types (tolerance is loose on purpose).
+fn file_type_matches_bpw(file_type: &str, bpw: f32) -> bool {
+    let n = file_type
+        .to_lowercase()
+        .replace(" - ", "_")
+        .replace('-', "_")
+        .replace(' ', "_");
+    let (lo, hi) = if n.contains("iq1") {
+        (1.5_f32, 2.6)
+    } else if n.contains("iq2") {
+        (2.0, 3.2)
+    } else if n.contains("iq3") {
+        (2.5, 3.8)
+    } else if n.contains("iq4") {
+        (3.5, 4.8)
+    } else if n.contains("q2") {
+        (2.2, 3.5)
+    } else if n.contains("q3") {
+        (3.0, 4.5)
+    } else if n.contains("q4") {
+        (4.0, 6.2) // includes UD-Q4_K_* (~4.9–5.5)
+    } else if n.contains("q5") {
+        (5.0, 7.0)
+    } else if n.contains("q6") {
+        (5.8, 7.8)
+    } else if n.contains("q8") {
+        (7.5, 10.0)
+    } else if n.contains("f16") || n.contains("bf16") {
+        (15.0, 17.5)
+    } else if n.contains("f32") {
+        (30.0, 34.0)
+    } else if n.contains("fp16") {
+        (15.0, 17.5)
+    } else if n.contains("nvfp4") || n.contains("mxfp4") {
+        (3.5, 6.5)
+    } else {
+        return true; // unknown tag — don't second-guess
+    };
+    bpw >= lo && bpw <= hi
 }
 
 /// Parse a single line from llama-server output and update metadata.

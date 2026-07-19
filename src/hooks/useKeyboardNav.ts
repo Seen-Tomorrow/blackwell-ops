@@ -1,6 +1,10 @@
 import { useState, useEffect, useCallback } from "react";
 
-/** Catalog list/config keyboard nav — off; Ctrl+Enter launch lives in EngineConfigPanel. */
+/**
+ * Full list/config keyboard nav — off (was thrashing focus).
+ * Model search `/` / Ctrl+K is always-on via ModelSearchPalette in ModelCatalog.
+ * Ctrl+Enter launch lives in EngineConfigPanel.
+ */
 export const MODELS_KEYBOARD_NAV_ENABLED = false;
 
 export type KeyboardZone = "search" | "config" | null;

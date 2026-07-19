@@ -1,5 +1,6 @@
 //! DEV session file log — engine stderr/stdout + launch metadata under `config/logs/sessions/`.
-//! Active when `cfg!(debug_assertions)` (default ON) unless disabled via UI or `BLACKWELL_SESSION_LOG=0`.
+//! Active when `cfg!(debug_assertions)` (default ON). Disable with `BLACKWELL_SESSION_LOG=0`
+//! (or force on with `=1`). No UI toggle — IPC `set_session_log_enabled` remains for tools.
 
 use std::collections::HashMap;
 use std::fs::{self, File, OpenOptions};

@@ -3,6 +3,7 @@ import type { CatalogDraftFilter } from "../lib/specDraft";
 import type { EngineConfig, ModelEntry, ProviderConfig, StackEntry } from "../lib/types";
 import EngineConfigPanel from "./EngineConfigPanel";
 import ModelCard from "./ModelCard";
+import ModelSearchPalette from "./ModelSearchPalette";
 
 import { useModelCatalog, type SortField } from "../hooks/useModelCatalog";
 import type { SetupGuideState } from "../hooks/useSetupGuide";
@@ -65,10 +66,14 @@ export default function ModelCatalog(props: ModelCatalogProps) {
     startDrag,
     resetWidth,
     toggleCatalogCollapsed,
+    expandCatalog,
   } = useCatalogSplitResize();
 
   const splitRailRef = useRef<HTMLDivElement>(null);
+  const catalogSearchInputRef = useRef<HTMLInputElement>(null);
   const [toggleTopPx, setToggleTopPx] = useState<number | null>(null);
+  /** Floating search palette — only when full list is closed. */
+  const [searchPaletteOpen, setSearchPaletteOpen] = useState(false);
 
   const scanBlockedByToolchain =
     setupGuide.active
@@ -138,15 +143,87 @@ export default function ModelCatalog(props: ModelCatalogProps) {
       ? ({ "--catalog-toggle-top": `${toggleTopPx}px` } as React.CSSProperties)
       : undefined;
 
+  const focusFullCatalogSearch = useCallback(() => {
+    const el = catalogSearchInputRef.current;
+    if (!el) return;
+    el.focus();
+    el.select();
+  }, []);
+
+  const openSearchPalette = useCallback(() => {
+    setSearchPaletteOpen(true);
+  }, []);
+
+  const closeSearchPalette = useCallback(() => {
+    setSearchPaletteOpen(false);
+  }, []);
+
+  const handlePaletteSelect = useCallback(
+    (model: ModelEntry) => {
+      handleSelect(model);
+      setSearchPaletteOpen(false);
+    },
+    [handleSelect],
+  );
+
+  const openFullCatalogFromPalette = useCallback(() => {
+    setSearchPaletteOpen(false);
+    expandCatalog();
+    // Focus in-panel search after layout paints the full list
+    window.setTimeout(() => {
+      catalogSearchInputRef.current?.focus();
+    }, 50);
+  }, [expandCatalog]);
+
+  // `/` / Ctrl+K: full catalog open → focus its search box; closed → floating palette.
+  // Ctrl+Shift+F: open full catalog (and focus search).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented) return;
+      const t = e.target as HTMLElement | null;
+      const tag = t?.tagName;
+      const typing =
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        tag === "SELECT" ||
+        t?.isContentEditable;
+
+      if ((e.key === "f" || e.key === "F") && (e.ctrlKey || e.metaKey) && e.shiftKey) {
+        e.preventDefault();
+        openFullCatalogFromPalette();
+        return;
+      }
+
+      if (typing) return;
+
+      const slash = e.key === "/" && !e.ctrlKey && !e.metaKey && !e.altKey;
+      const ctrlK = (e.key === "k" || e.key === "K") && (e.ctrlKey || e.metaKey) && !e.altKey;
+      if (!slash && !ctrlK) return;
+
+      e.preventDefault();
+      if (!catalogCollapsed) {
+        // Full list visible — only focus the in-panel search, never open the modal
+        focusFullCatalogSearch();
+      } else {
+        openSearchPalette();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [catalogCollapsed, openSearchPalette, openFullCatalogFromPalette, focusFullCatalogSearch]);
+
   const renderCatalogToggle = (className: string) => (
     <button
       type="button"
-      className={className}
+      className={`${className}${catalogCollapsed ? " catalog-split-toggle--collapsed-hint" : ""}`}
       style={toggleTopStyle}
-      onClick={toggleCatalogCollapsed}
-      title={catalogCollapsed ? "Expand model catalog" : "Collapse model catalog"}
+      onClick={() => {
+        // Chevron always open/closes the full catalog (persisted) — never the / search palette.
+        toggleCatalogCollapsed();
+      }}
+      title={catalogCollapsed ? "Open full model catalog" : "Close full model catalog"}
       aria-expanded={!catalogCollapsed}
-      aria-label={catalogCollapsed ? "Expand model catalog" : "Collapse model catalog"}
+      aria-label={catalogCollapsed ? "Open full model catalog" : "Close full model catalog"}
     >
       <span
         className={`catalog-split-toggle__glyph${catalogCollapsed ? "" : " catalog-split-toggle__glyph--collapse"}`}
@@ -429,11 +506,44 @@ export default function ModelCatalog(props: ModelCatalogProps) {
       <TabPageHeader
         title="OPERATIONS"
         meta={<span className="text-[8px] font-mono opacity-40">({catalogModels.length} / {models.length})</span>}
-        actions={zone === "config" ? (
-          <span className="text-[8px] font-mono px-1.5 py-0.5 rounded-sm border border-telemetry-cyan/40 text-telemetry-cyan bg-telemetry-cyan/10">
-            CONFIG [Ctrl+Enter]
+        actions={
+          <span className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => {
+                if (catalogCollapsed) openSearchPalette();
+                else focusFullCatalogSearch();
+              }}
+              className={`text-[8px] font-mono px-1.5 py-0.5 rounded-sm border transition-colors config-catalog-search-hint ${
+                catalogCollapsed
+                  ? "config-catalog-search-hint--pulse"
+                  : "border-stealth-border/50 config-muted hover:theme-accent-text"
+              }`}
+              title={
+                catalogCollapsed
+                  ? "Search models (/ or Ctrl+K) — floating picker while list is closed"
+                  : "Focus catalog search (/ or Ctrl+K)"
+              }
+            >
+              / SEARCH
+            </button>
+            {catalogCollapsed && (
+              <button
+                type="button"
+                onClick={openFullCatalogFromPalette}
+                className="text-[8px] font-mono px-1.5 py-0.5 rounded-sm border border-stealth-border/50 config-muted hover:theme-accent-text transition-colors"
+                title="Open full model catalog (Ctrl+Shift+F)"
+              >
+                FULL LIST
+              </button>
+            )}
+            {zone === "config" ? (
+              <span className="text-[8px] font-mono px-1.5 py-0.5 rounded-sm border border-telemetry-cyan/40 text-telemetry-cyan bg-telemetry-cyan/10">
+                CONFIG [Ctrl+Enter]
+              </span>
+            ) : null}
           </span>
-        ) : undefined}
+        }
       />
 
       {/* Error banner */}
@@ -467,10 +577,17 @@ export default function ModelCatalog(props: ModelCatalogProps) {
           <div className="px-3 py-2 flex-shrink-0 relative">
             <div className="catalog-search-wrap relative min-w-0">
               <input
+                ref={catalogSearchInputRef}
                 type="text"
                 placeholder="▶  SEARCH MODELS..."
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => setSearch(e.target.value.replace(/\//g, ""))}
+                onKeyDown={(e) => {
+                  // `/` is the focus/open shortcut — never type into the query
+                  if (e.key === "/" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                    e.preventDefault();
+                  }
+                }}
                 autoFocus
                 className={`catalog-search-input theme-input w-full text-xs font-mono pl-3 py-1.5 rounded-sm ${searchInputPadding()}`}
               />
@@ -669,6 +786,18 @@ export default function ModelCatalog(props: ModelCatalogProps) {
           />
         </div>
       </div>
+
+      <ModelSearchPalette
+        open={searchPaletteOpen}
+        models={catalogModels}
+        search={search}
+        onSearchChange={setSearch}
+        selectedPath={panelActiveModel?.path ?? catalogSelectedModel?.path}
+        onSelect={handlePaletteSelect}
+        onClose={closeSearchPalette}
+        onOpenFullCatalog={openFullCatalogFromPalette}
+        scanningPath={scanningPath}
+      />
     </div>
   );
 }

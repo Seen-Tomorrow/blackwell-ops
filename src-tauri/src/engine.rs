@@ -1700,6 +1700,7 @@ pub async fn scan_model_metadata_cmd(
         .file_name()
         .and_then(|s| s.to_str())
         .unwrap_or("");
+    // Prefer refined GGUF file_type_str (print_info + BPW/tensor majority in gguf_scan).
     let quant = if metadata.file_type_str.trim().is_empty()
         || crate::model_catalog::is_shard_noise_quant(&metadata.file_type_str)
     {

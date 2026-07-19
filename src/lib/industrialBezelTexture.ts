@@ -28,7 +28,7 @@ export function isIndustrialBezelTexture(value: string | null | undefined): valu
 export function normalizeIndustrialBezelTexture(value: string | null | undefined): IndustrialBezelTexture {
   if (isIndustrialBezelTexture(value)) return value;
   if (value && LEGACY_INDUSTRIAL_BEZEL_TEXTURE[value]) return LEGACY_INDUSTRIAL_BEZEL_TEXTURE[value];
-  return "sandblast";
+  return "diamond";
 }
 
 export function nextIndustrialBezelTexture(current: IndustrialBezelTexture): IndustrialBezelTexture {

@@ -496,7 +496,18 @@ pub fn merge_catalogs(
                 // Always use directory/filename derivation — proven consistent.
                 let resolved_name = internal.name.clone();
 
-                (resolved_author, resolved_name, internal.quant)
+                // Quant: prefer llama print_info / refined file_type_str from GGUF scan.
+                // Filename quant (internal.quant) only when header empty or shard-index noise.
+                let resolved_quant = {
+                    let ft = meta.file_type_str.trim();
+                    if !ft.is_empty() && !is_shard_noise_quant(ft) {
+                        ft.to_string()
+                    } else {
+                        internal.quant.clone()
+                    }
+                };
+
+                (resolved_author, resolved_name, resolved_quant)
             } else {
                 (internal.author, internal.name, internal.quant) // Filename heuristics only
             };

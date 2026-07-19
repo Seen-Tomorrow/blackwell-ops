@@ -55,7 +55,7 @@ import { isEmptyGroupDeletable } from "../lib/groupLayoutUtils";
 import { useGroupLayoutControls } from "../hooks/useGroupLayoutControls";
 import { useLaunchDockRailResize } from "../hooks/useCatalogSplitResize";
 import LaunchRailTelemetry from "./LaunchRailTelemetry";
-import { suggestLaunchDockPosition } from "../lib/launchDockLayout";
+
 import { dispatchAppEvent, EVENTS } from "../lib/events";
 import { tomMtpBlocked, TOM_MTP_SKIP_MESSAGE } from "../lib/tomMtp";
 import {
@@ -339,7 +339,23 @@ interface EngineConfigPanelProps {
 }
 
 export default function EngineConfigPanel(props: EngineConfigPanelProps) {
-  const { model, gpus, providers: externalProviders, committedVramMib, systemInfo, stack, onLaunch, isModelRunning, activeEngineAlias, activeEnginePort, selectedSlotIdx, supportsFusion = true, models, onSelectEngine, setupGuide } = props;
+  const {
+    model,
+    gpus,
+    providers: externalProviders,
+    committedVramMib,
+    systemInfo,
+    stack,
+    onLaunch,
+    isModelRunning,
+    activeEngineAlias,
+    activeEnginePort,
+    selectedSlotIdx,
+    supportsFusion = true,
+    models,
+    onSelectEngine,
+    setupGuide,
+  } = props;
   const { buildProgress } = useFoundry();
   // Catalog keeps a copy of providers from App — refresh directly so profile chips match Config after Foundry builds.
   const [resolvedProviders, setResolvedProviders] = useState<ProviderConfig[]>(externalProviders ?? []);
@@ -505,13 +521,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     });
   }, []);
 
-  useEffect(() => {
-    if (launchDockPositionExplicit) return;
-    const apply = () => setLaunchDockPosition(suggestLaunchDockPosition(window.innerHeight));
-    apply();
-    window.addEventListener("resize", apply);
-    return () => window.removeEventListener("resize", apply);
-  }, [launchDockPositionExplicit]);
+  // Default dock is bottom (right rail closed). Only an explicit user choice
+  // (BOTTOM / RIGHT chips) changes placement — no viewport-height auto-flip.
 
   const toggleGroup = useCallback((groupId: string) => {
     setCollapsedGroups(prev => {

@@ -8,7 +8,6 @@ import {
   LAUNCH_DOCK_POSITION_DEFAULT,
   LAUNCH_DOCK_RAIL_WIDTH_DEFAULT,
   LAUNCH_RAIL_TELEMETRY_RATIO_DEFAULT,
-  suggestLaunchDockPosition,
 } from "./launchDockLayout";
 import { capCodeSize, PLAYGROUND_MAX_CODE_CHARS } from "./playgroundCodegen";
 import type {
@@ -33,11 +32,11 @@ import type {
  * | BlackOps-test-flags-mode | add \| replace | Test flags merge mode |
  * | BlackOps-collapsed-groups | JSON string[] | Collapsed param groups in engine panel |
  * | BlackOps-last-model | string | Last selected model path in catalog |
- * | BlackOps-sort-field | string | Catalog sort column |
- * | BlackOps-sort-dir | asc \| desc | Catalog sort direction |
+ * | BlackOps-sort-field | string | Catalog sort column (default: date) |
+ * | BlackOps-sort-dir | asc \| desc | Catalog sort direction (default: desc) |
  * | BlackOps-ui-zoom | number string | Main content text scale (0.7–1.5) |
  * | BlackOps-ui-density | comfortable \| compact | Engine config chip/row density |
- * | BlackOps-catalog-visible-count | 4 \| 6 \| 8 \| all | Models visible per page |
+ * | BlackOps-catalog-visible-count | 4 \| 6 \| 8 \| all | Models visible per page (default: all) |
  * | BlackOps-catalog-draft-filter | regular \| draft \| all | Catalog main/draft filter |
  * | BlackOps-model-spec:{modelPath} | JSON | Per-main-model spec decode overrides |
  * | BlackOps-draft-pairings | JSON Record<targetPath, {specType, draftPath}> | Per-target spec draft pairings |
@@ -67,7 +66,7 @@ import type {
  * | BlackOps-engine-alias:{modelPath} | string | Per-model launch alias |
  * | BlackOps-binary-profile:{providerId} | fresh \| vanguard \| frontier \| stable | Selected binary env profile |
  * | BlackOps-foundry-last-refresh:{signature} | timestamp string | Foundry git refresh throttle |
- * | BlackOps-auto-vram:{providerId} | "0" \| "1" | Auto VRAM simplified mode per provider |
+ * | BlackOps-auto-vram:{providerId} | "0" \| "1" | Auto VRAM (default ON when factory autoVram / missing key) |
 
  *
  * Purged on boot (stale — no longer read by app):
@@ -141,7 +140,7 @@ export const KEYS = {
   appTheme: `${STORAGE_PREFIX}app-theme`,
   logSearchBySlot: `${STORAGE_PREFIX}log-search-by-slot`,
   logsAnsiEnabled: `${STORAGE_PREFIX}logs-ansi-enabled`,
-  /** DEV session file log toggle (stderr/stdout under config/logs/sessions/). */
+  /** Legacy DEV session log pref (UI removed — session log stays ON in debug; env BLACKWELL_SESSION_LOG still works). */
   sessionLogEnabled: `${STORAGE_PREFIX}session-log-enabled`,
   startupUpdates: `${STORAGE_PREFIX}startup-updates`,
   /** Dev: fake installed version for in-app updater testing (e.g. "1.0.9"). */
@@ -168,6 +167,8 @@ export const KEYS = {
   enginesInRail: `${STORAGE_PREFIX}engines-in-rail`,
   catalogSplitWidth: `${STORAGE_PREFIX}catalog-split-width`,
   catalogListCollapsed: `${STORAGE_PREFIX}catalog-list-collapsed`,
+  /** OPERATIONS model list: auto | open | closed */
+  catalogPresentation: `${STORAGE_PREFIX}catalog-presentation`,
   modelHubSplitWidth: `${STORAGE_PREFIX}model-hub-split-width`,
   setupGuideDismissed: `${STORAGE_PREFIX}setup-guide-dismissed`,
   setupWelcomeSeen: `${STORAGE_PREFIX}setup-welcome-seen`,
@@ -382,7 +383,7 @@ export function resetSetupGuideState(): void {
   clearToolchainOnboardingSkipped();
 }
 
-export const CATALOG_SPLIT_WIDTH_DEFAULT = 420;
+export const CATALOG_SPLIT_WIDTH_DEFAULT = 320;
 export const CATALOG_SPLIT_WIDTH_MIN = 280;
 export const CATALOG_SPLIT_WIDTH_MAX = 880;
 
@@ -412,9 +413,7 @@ export function loadLaunchDockPositionExplicit(): boolean {
 export function loadLaunchDockPosition(): LaunchDockPosition {
   const raw = readStorage(KEYS.launchDockPosition);
   if (raw === "bottom" || raw === "right") return raw;
-  if (typeof window !== "undefined") {
-    return suggestLaunchDockPosition(window.innerHeight);
-  }
+  // Fresh install / no key: bottom dock, right rail closed.
   return LAUNCH_DOCK_POSITION_DEFAULT;
 }
 
@@ -932,6 +931,27 @@ export function loadCatalogListCollapsed(): boolean {
 
 export function saveCatalogListCollapsed(collapsed: boolean): void {
   writeStorage(KEYS.catalogListCollapsed, collapsed ? "1" : "0");
+}
+
+/**
+ * OPERATIONS model list: permanent open/closed (localStorage).
+ * `/` floating search is independent and always available.
+ * Legacy `"auto"` migrates to `"open"`.
+ */
+export type CatalogPresentation = "open" | "closed";
+
+export function loadCatalogPresentation(): CatalogPresentation {
+  const v = readStorage(KEYS.catalogPresentation);
+  if (v === "closed") return "closed";
+  if (v === "open" || v === "auto") return "open"; // auto = legacy
+  // No presentation key yet — migrate from older collapsed-only flag
+  if (loadCatalogListCollapsed()) return "closed";
+  return "open";
+}
+
+export function saveCatalogPresentation(mode: CatalogPresentation): void {
+  writeStorage(KEYS.catalogPresentation, mode);
+  saveCatalogListCollapsed(mode === "closed");
 }
 
 export function loadModelHubSplitRatio(): number {

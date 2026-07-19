@@ -1,4 +1,5 @@
-export const APP_SHELL_MIN_PX = 1280;
+/** Floor for layout shell / window — panels can collapse, but stay usable. */
+export const APP_SHELL_MIN_PX = 960;
 export const APP_SHELL_MAX_PX = 1680;
 export const APP_SHELL_VW_RATIO = 0.92;
 /** Viewports wider than this use the capped ultrawide layout (4K workstation). */

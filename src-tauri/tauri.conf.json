@@ -14,7 +14,7 @@
         "title": "Blackwell Ops",
         "width": 1400,
         "height": 900,
-        "minWidth": 1280,
+        "minWidth": 960,
         "minHeight": 768,
         "resizable": true,
         "transparent": true,

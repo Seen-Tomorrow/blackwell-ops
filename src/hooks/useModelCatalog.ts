@@ -23,46 +23,156 @@ import {
 
 export type SortField = (keyof ModelEntry) | "date";
 export type SortDirection = "asc" | "desc";
-/** Searchable text from model fields + badge labels shown on ModelCard. */
-function modelSearchText(m: ModelEntry): string {
-  const parts = [m.name, m.author, m.quant];
-  const meta = m.metadata;
-  if (!meta) return parts.join(" ").toLowerCase();
-
-  const ft = meta.file_type_str?.trim();
-  if (ft) parts.push(ft);
-
-  const rawTotal = meta.modelTypeLabel || meta.total_params_str;
-  const numPart = parseFloat(rawTotal.replace(/[^0-9.]/g, ""));
-  if (!isNaN(numPart)) {
-    parts.push(meta.n_expert_used > 0 ? "moe" : "dense");
-  }
-
-  if ((meta.nextn_predict_layers ?? 0) > 0) {
-    parts.push("mtp");
-  }
-
-  const draftRole = draftRoleFromModel(m);
-  if (draftRole === "external_dflash") parts.push("dflash", "draft");
-  if (draftRole === "external_eagle3") parts.push("eagle3", "draft");
-
-  const quantUpper = ft?.toUpperCase() ?? "";
-  if (quantUpper.includes("NVFP4") || quantUpper.includes("MXFP4")) {
-    parts.push("nvfp4", "mxfp4");
-  }
-
-  return parts.join(" ").toLowerCase();
-}
-
-function modelMatchesSearch(m: ModelEntry, words: string[]): boolean {
-  const combined = modelSearchText(m);
-  return words.every(word => combined.includes(word));
-}
-
 function modelFileName(path: string): string {
   const normalized = path.replace(/[/\\]+$/, "");
   const slash = Math.max(normalized.lastIndexOf("/"), normalized.lastIndexOf("\\"));
   return (slash >= 0 ? normalized.slice(slash + 1) : normalized).toLowerCase();
+}
+
+/** Non-quant free-text fields (name/author only — quant is matched via extractModelQuants). */
+function modelGeneralSearchText(m: ModelEntry): string {
+  const parts = [m.name, m.author];
+  const meta = m.metadata;
+  if (meta) {
+    const rawTotal = meta.modelTypeLabel || meta.total_params_str;
+    const numPart = parseFloat(String(rawTotal).replace(/[^0-9.]/g, ""));
+    if (!isNaN(numPart)) {
+      parts.push(meta.n_expert_used > 0 ? "moe" : "dense");
+    }
+    if ((meta.nextn_predict_layers ?? 0) > 0) parts.push("mtp");
+  }
+  const draftRole = draftRoleFromModel(m);
+  if (draftRole === "external_dflash") parts.push("dflash", "draft");
+  if (draftRole === "external_eagle3") parts.push("eagle3", "draft");
+  return parts.join(" ").toLowerCase();
+}
+
+/**
+ * Canonical quant string for matching.
+ * Llama print_info uses "Q4_K - Medium"; normalize to q4_k_m. XL stays _xl.
+ */
+function normalizeQuantTag(raw: string): string {
+  return raw
+    .toLowerCase()
+    .trim()
+    .replace(/^\.+|\.+$/g, "")
+    .replace(/\.gguf$/i, "")
+    // "Q4_K - Medium" / "Q4_K-Medium" → q4_k_medium then _m
+    .replace(/\s*-\s*/g, "_")
+    .replace(/\s+/g, "_")
+    .replace(/_medium\b/g, "_m")
+    .replace(/_small\b/g, "_s")
+    .replace(/_large\b/g, "_l")
+    .replace(/_+/g, "_")
+    .replace(/^_|_$/g, "");
+}
+
+/**
+ * Quant for search = GGUF scan `file_type_str` only when metadata exists.
+ * Do NOT merge filename-derived `model.quant` — catalog historically filled that from the path,
+ * which made UD-Q4_K_XL (header: "Q4_K - Medium") match both `xl` and `medium`.
+ */
+function extractModelQuants(m: ModelEntry): string[] {
+  const found = new Set<string>();
+  const push = (raw: string | undefined | null) => {
+    if (!raw) return;
+    const trimmed = raw.trim();
+    if (!trimmed || trimmed.toUpperCase() === "GGUF" || trimmed === "unknown") return;
+    const n = normalizeQuantTag(trimmed);
+    if (!n) return;
+    if (
+      /^(?:iq|q)\d/.test(n) ||
+      /^(?:nvfp4|mxfp4|fp16|bf16|f16|f32)$/.test(n)
+    ) {
+      found.add(n);
+    }
+  };
+
+  if (m.metadata) {
+    push(m.metadata.file_type_str);
+  } else {
+    // Unscanned row — quant is filename heuristic only; still better than nothing for lazy search
+    push(m.quant);
+  }
+
+  return [...found];
+}
+
+/** Size-tier shortcuts lazy users type (whole word only). */
+const QUANT_SIZE_SHORTCUTS: Record<string, string[]> = {
+  xl: ["_xl"],
+  xxl: ["_xxl"],
+  xs: ["_xs"],
+  xxs: ["_xxs"],
+  medium: ["_m", "_medium"],
+  small: ["_s", "_small"],
+  large: ["_l", "_large"], // not xl
+  // bare m/s/l — only match as quant *suffix*, never free-text
+  m: ["_m"],
+  s: ["_s"],
+  l: ["_l"],
+};
+
+function isQuantSearchWord(word: string): boolean {
+  const w = word.toLowerCase().replace(/^_+/, "");
+  if (QUANT_SIZE_SHORTCUTS[w]) return true;
+  if (/^iq\d*$/.test(w)) return true; // iq, iq2, iq3, iq4
+  if (/^q\d+$/.test(w)) return true; // q4, q5, q6, q8
+  if (/^(?:iq|q)\d/.test(w)) return true; // q4_k_xl, iq3_xxs
+  if (/^(?:nvfp4|mxfp4|fp16|bf16)$/.test(w)) return true;
+  if (w === "_m" || w === "_s" || w === "_l" || w === "_xl") return true;
+  return false;
+}
+
+/**
+ * Match one search word against a model's quant set.
+ * Returns null if the word is general text (caller uses name/author includes).
+ */
+function quantWordMatches(quants: string[], word: string): boolean | null {
+  const w = word.toLowerCase().replace(/^_+/, "");
+  if (!isQuantSearchWord(word) && !isQuantSearchWord(w)) return null;
+
+  const norms = quants.map(normalizeQuantTag);
+
+  // Size shortcuts: xl → *_xl only; medium/m → *_m (not xl)
+  const sizeSufs = QUANT_SIZE_SHORTCUTS[w];
+  if (sizeSufs) {
+    return norms.some((q) => sizeSufs.some((suf) => q.endsWith(suf)));
+  }
+
+  // iq → any iq*; iq3 → iq3*
+  if (w === "iq") {
+    return norms.some((q) => q.startsWith("iq"));
+  }
+  if (/^iq\d+$/.test(w)) {
+    return norms.some((q) => q === w || q.startsWith(`${w}_`));
+  }
+
+  // q4 → q4* but never iq4*
+  if (/^q\d+$/.test(w)) {
+    return norms.some((q) => (q === w || q.startsWith(`${w}_`) || q.startsWith(w)) && !q.startsWith("iq"));
+  }
+
+  // Full / long tags: q4_k_xl, iq4_xs, q8_0
+  const want = normalizeQuantTag(w);
+  return norms.some((q) => q === want || q.startsWith(`${want}_`));
+}
+
+function modelMatchesSearch(m: ModelEntry, words: string[]): boolean {
+  const quants = extractModelQuants(m);
+  const general = modelGeneralSearchText(m);
+
+  return words.every((word) => {
+    const q = quantWordMatches(quants, word);
+    if (q !== null) {
+      // Quant words only match GGUF header quant — never path/name guesswork.
+      // Unscanned models (no quant yet) simply do not match quant queries.
+      return q;
+    }
+    const w = word.toLowerCase();
+    // Free text: name / author / badges only (not path)
+    return general.includes(w);
+  });
 }
 
 function findModelByPath(models: ModelEntry[], path: string): ModelEntry | undefined {
@@ -152,13 +262,17 @@ export function useModelCatalog({
     setSelectedSlotIdxState(v);
   }, []);
   const [visibleCount, setVisibleCount] = useState<"4" | "6" | "8" | "all">(() => {
-    return (readStorage(KEYS.catalogVisibleCount) as "4" | "6" | "8" | "all") || "6";
+    const v = readStorage(KEYS.catalogVisibleCount);
+    if (v === "4" || v === "6" || v === "8" || v === "all") return v;
+    return "all";
   });
   const [sortField, setSortField] = useState<SortField>(() => {
-    return (readStorage(KEYS.sortField) as SortField) || "name";
+    const v = readStorage(KEYS.sortField) as SortField | null;
+    return v || "date";
   });
   const [sortDirection, setSortDirection] = useState<SortDirection>(() => {
-    return (readStorage(KEYS.sortDir) as SortDirection) || "asc";
+    const v = readStorage(KEYS.sortDir);
+    return v === "asc" || v === "desc" ? v : "desc";
   });
 
   // After onboarding — pick first scannable model when nothing is selected (fresh install has no lastModel).

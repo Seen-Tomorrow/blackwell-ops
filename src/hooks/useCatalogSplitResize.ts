@@ -9,7 +9,8 @@ import {
   CATALOG_SPLIT_WIDTH_DEFAULT,
   CATALOG_SPLIT_WIDTH_MAX,
   CATALOG_SPLIT_WIDTH_MIN,
-  loadCatalogListCollapsed,
+  type CatalogPresentation,
+  loadCatalogPresentation,
   loadCatalogSplitWidth,
   loadLaunchDockRailWidth,
   loadLaunchRailTelemetryRatio,
@@ -21,6 +22,7 @@ import {
   PLAYGROUND_SPLIT_RATIO_MAX,
   PLAYGROUND_SPLIT_RATIO_MIN,
   saveCatalogListCollapsed,
+  saveCatalogPresentation,
   saveCatalogSplitWidth,
   saveLaunchDockRailWidth,
   saveLaunchRailTelemetryRatio,
@@ -123,7 +125,8 @@ export function usePanelSplitResize(config: PanelSplitResizeConfig) {
 }
 
 export function useCatalogSplitResize() {
-  const [catalogCollapsed, setCatalogCollapsed] = useState(loadCatalogListCollapsed);
+  const [presentation, setPresentationState] = useState<CatalogPresentation>(loadCatalogPresentation);
+  const catalogCollapsed = presentation === "closed";
   const split = usePanelSplitResize({
     loadWidth: loadCatalogSplitWidth,
     saveWidth: saveCatalogSplitWidth,
@@ -132,30 +135,37 @@ export function useCatalogSplitResize() {
     maxWidth: CATALOG_SPLIT_WIDTH_MAX,
   });
 
-  const setCollapsed = useCallback((next: boolean) => {
-    setCatalogCollapsed(next);
-    saveCatalogListCollapsed(next);
+  /** Permanent open/closed — persisted to localStorage. Chevron always uses this. */
+  const setCatalogPresentation = useCallback((mode: CatalogPresentation) => {
+    setPresentationState(mode);
+    saveCatalogPresentation(mode);
   }, []);
 
   const toggleCatalogCollapsed = useCallback(() => {
-    setCollapsed(!catalogCollapsed);
-  }, [catalogCollapsed, setCollapsed]);
+    setCatalogPresentation(catalogCollapsed ? "open" : "closed");
+  }, [catalogCollapsed, setCatalogPresentation]);
 
   const expandCatalog = useCallback(() => {
-    if (catalogCollapsed) setCollapsed(false);
-  }, [catalogCollapsed, setCollapsed]);
+    setCatalogPresentation("open");
+  }, [setCatalogPresentation]);
+
+  /** No soft-collapse after / search — list state is permanent Open/Close only. */
+  const softCollapseIfAuto = useCallback(() => {}, []);
 
   const startCatalogDrag = useCallback(() => {
-    if (catalogCollapsed) setCollapsed(false);
+    if (catalogCollapsed) setCatalogPresentation("open");
     split.startDrag();
-  }, [catalogCollapsed, setCollapsed, split]);
+  }, [catalogCollapsed, setCatalogPresentation, split]);
 
   return {
     ...split,
     catalogWidth: catalogCollapsed ? 0 : split.panelWidth,
     catalogCollapsed,
+    catalogPresentation: presentation,
+    setCatalogPresentation,
     toggleCatalogCollapsed,
     expandCatalog,
+    softCollapseIfAuto,
     startDrag: startCatalogDrag,
   };
 }

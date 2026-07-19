@@ -416,7 +416,7 @@ html, body, #root {
   --boc-docked-reserve: calc(var(--boc-docked-h) + var(--app-footer-h) + var(--boc-launch-gap));
   --config-launch-dock-pad: 2px;
   --config-launch-dock-pad-top: 4px;
-  --app-shell-width-px: 1280px;
+  --app-shell-width-px: 960px;
   --ui-text-scale: 1;
 }
 
@@ -698,10 +698,33 @@ html, body, #root {
   color: var(--theme-chrome-control-hover);
 }
 
+/* Stretch to Quick Settings height only — never grow the header. */
 .app-header-dev-tools {
+  align-self: stretch;
+  justify-content: space-between;
   border: 1px solid color-mix(in srgb, var(--theme-chrome-control-border) 70%, #facc15 30%);
-  border-radius: 6px;
-  padding: 3px 5px;
+  border-radius: 4px;
+  padding: 1px 2px;
+  gap: 0;
+  min-height: 0;
+  max-height: 100%;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.app-header-dev-tools__btn {
+  flex: 1 1 0;
+  min-height: 0;
+  max-height: 100%;
+  padding: 0 3px !important;
+  font-size: 6px !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important;
+  line-height: 1 !important;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .app-quick-settings__sep {
@@ -1076,6 +1099,77 @@ html, body, #root {
 .foundry-status-chip--minimized .foundry-hammer-icon--forge {
   font-size: 1.35em;
   margin-top: 0.05rem;
+}
+
+/* Floating model search palette (OPERATIONS / ) — themed panel; never use catalog-list-scroll (RTL) */
+.model-search-palette-root {
+  pointer-events: auto;
+}
+
+.model-search-palette-backdrop {
+  /* Light dim so OPERATIONS stays visible underneath */
+  background: color-mix(in srgb, #000000 42%, transparent);
+}
+
+[data-theme="arctic"] .model-search-palette-backdrop {
+  background: color-mix(in srgb, #1a2430 38%, transparent);
+}
+
+.model-search-palette {
+  animation: modelSearchPaletteIn 0.12s ease-out;
+  isolation: isolate;
+  direction: ltr;
+  background-color: var(--theme-industrial-bg);
+  background-image: var(--theme-industrial-texture-active);
+  border: 1.5px solid var(--theme-bezel-edge-hi);
+  box-shadow:
+    0 12px 40px color-mix(in srgb, #000000 45%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--theme-bezel-edge-hi) 35%, transparent);
+}
+
+[data-theme="arctic"] .model-search-palette {
+  background-color: #b6c2ce;
+  background-image:
+    var(--theme-industrial-texture-active),
+    linear-gradient(175deg, #d6dee6 0%, #b6c2ce 28%, #9aacb8 52%, #b2beca 78%, #c6ced6 100%);
+}
+
+.model-search-palette__header {
+  border-bottom: 1px solid color-mix(in srgb, var(--theme-border, #333) 55%, transparent);
+  background: color-mix(in srgb, var(--theme-industrial-bg, #0a0c0e) 40%, transparent);
+}
+
+.model-search-palette__footer {
+  border-top: 1px solid color-mix(in srgb, var(--theme-border, #333) 55%, transparent);
+  background: color-mix(in srgb, var(--theme-industrial-bg, #0a0c0e) 40%, transparent);
+}
+
+.model-search-palette__list {
+  direction: ltr;
+  min-height: 6rem;
+}
+
+/* ~2× default catalog search field */
+.model-search-palette-input {
+  font-size: 1.05rem !important;
+  line-height: 1.35 !important;
+  min-height: 2.5rem;
+}
+
+.model-search-palette-legend {
+  font-size: 0.8rem !important;
+  letter-spacing: 0.06em;
+}
+
+@keyframes modelSearchPaletteIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* Compact “reading build info …” / “probing …” indicator */
@@ -1804,30 +1898,31 @@ html, body, #root {
   background: linear-gradient(90deg, transparent, var(--theme-accent-glow), transparent);
 }
 
-/* ── Model catalog / engine config split handle ─── */
+/* ── Model catalog / engine config split handle (grip only — no grey bar) ─── */
 .catalog-split-handle {
   position: relative;
   flex-shrink: 0;
-  width: 7px;
+  width: 10px;
   margin: 0 -1px;
   cursor: col-resize;
   touch-action: none;
   z-index: 2;
   background: transparent;
-  transition: background-color 0.15s ease;
+  transition: background-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .catalog-split-handle::before {
   content: '';
   position: absolute;
-  top: 8px;
-  bottom: 8px;
+  top: 6px;
+  bottom: 6px;
   left: 50%;
   transform: translateX(-50%);
-  width: 1px;
-  background: #606060;
-  opacity: 0.45;
-  transition: opacity 0.15s ease, background-color 0.15s ease;
+  width: 2px;
+  border-radius: 1px;
+  background: color-mix(in srgb, var(--theme-accent, #76b900) 35%, #808080 65%);
+  opacity: 0.65;
+  transition: opacity 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .catalog-split-handle::after {
@@ -1836,51 +1931,58 @@ html, body, #root {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 3px;
-  height: 22px;
-  border-radius: 1px;
+  width: 4px;
+  height: 28px;
+  border-radius: 2px;
   background:
-    radial-gradient(circle, #909090 0.6px, transparent 0.6px) center 3px / 3px 5px repeat-y;
-  opacity: 0.55;
+    radial-gradient(circle, color-mix(in srgb, var(--theme-text-muted, #909090) 90%, #fff) 0.75px, transparent 0.8px)
+      center 2px / 4px 6px repeat-y;
+  opacity: 0.75;
   transition: opacity 0.15s ease;
 }
 
 .catalog-split-handle:hover,
 .catalog-split-handle.is-dragging {
-  background: rgba(255, 255, 255, 0.04);
+  background: color-mix(in srgb, var(--theme-accent, #76b900) 8%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--theme-accent, #76b900) 22%, transparent);
 }
 
 .catalog-split-handle:hover::before,
 .catalog-split-handle.is-dragging::before {
-  opacity: 0.85;
-  background: #a0a0a0;
+  opacity: 1;
+  background: var(--theme-accent, #76b900);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--theme-accent-glow, var(--theme-accent)) 50%, transparent);
 }
 
 .catalog-split-handle:hover::after,
 .catalog-split-handle.is-dragging::after {
-  opacity: 0.9;
+  opacity: 1;
+}
+
+[data-theme="arctic"] .catalog-split-handle {
+  background: transparent;
 }
 
 [data-theme="arctic"] .catalog-split-handle::before {
-  background: #4a4a4a;
-  opacity: 0.35;
+  background: color-mix(in srgb, #3a4a58 70%, #76b900 30%);
+  opacity: 0.55;
 }
 
 [data-theme="arctic"] .catalog-split-handle::after {
   background:
-    radial-gradient(circle, #5a5a5a 0.6px, transparent 0.6px) center 3px / 3px 5px repeat-y;
-  opacity: 0.5;
+    radial-gradient(circle, #5a6a78 0.75px, transparent 0.8px) center 2px / 4px 6px repeat-y;
+  opacity: 0.65;
 }
 
 [data-theme="arctic"] .catalog-split-handle:hover,
 [data-theme="arctic"] .catalog-split-handle.is-dragging {
-  background: rgba(0, 0, 0, 0.04);
+  background: color-mix(in srgb, #3a4a58 8%, transparent);
 }
 
 [data-theme="arctic"] .catalog-split-handle:hover::before,
 [data-theme="arctic"] .catalog-split-handle.is-dragging::before {
-  background: #3a3a3a;
-  opacity: 0.65;
+  background: #2a3a48;
+  opacity: 0.9;
 }
 
 /* Catalog list collapse rail — toggle + resize handle */
@@ -1891,8 +1993,8 @@ html, body, #root {
   align-items: stretch;
   align-self: stretch;
   flex-shrink: 0;
-  width: 7px;
-  min-width: 7px;
+  width: 11px;
+  min-width: 11px;
   min-height: 100%;
   margin: 0 -1px;
   z-index: 3;
@@ -1970,30 +2072,37 @@ html, body, #root {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 14px;
-  height: 28px;
+  width: 18px;
+  height: 36px;
   margin: 0;
   padding: 0;
   transform: translate(-50%, 0);
-  border: 1px solid color-mix(in srgb, var(--theme-border) 70%, transparent);
-  border-radius: 3px;
+  border: 1px solid color-mix(in srgb, var(--theme-accent, #76b900) 40%, var(--theme-border));
+  border-radius: 4px;
   background: var(--theme-bg-elevated, var(--theme-bg));
-  color: var(--theme-text-muted);
+  color: var(--theme-accent, var(--theme-text-muted));
   cursor: pointer;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--theme-accent-glow, transparent) 15%, transparent);
   transition:
     border-color 0.15s ease,
     color 0.15s ease,
-    box-shadow 0.15s ease;
+    box-shadow 0.15s ease,
+    background-color 0.15s ease;
 }
 
 .catalog-split-toggle:hover {
-  border-color: color-mix(in srgb, var(--theme-accent) 45%, var(--theme-border));
+  border-color: color-mix(in srgb, var(--theme-accent) 70%, var(--theme-border));
   color: var(--theme-accent-bright, var(--theme-text));
-  box-shadow: 0 0 8px color-mix(in srgb, var(--theme-accent-glow, transparent) 35%, transparent);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--theme-accent-glow, transparent) 45%, transparent);
+}
+
+/* Collapsed: amber pulse so the rail isn’t “invisible” */
+.catalog-split-toggle--collapsed-hint {
+  animation: catalogSplitTogglePulse 1.35s ease-in-out infinite;
 }
 
 .catalog-split-toggle__glyph {
-  font-size: 8px;
+  font-size: 10px;
   font-family: ui-monospace, monospace;
   line-height: 1;
   pointer-events: none;
@@ -2016,7 +2125,44 @@ html, body, #root {
 
 .catalog-split-rail--collapsed .catalog-split-toggle:hover {
   background: var(--theme-bg-elevated, var(--theme-bg));
-  box-shadow: 0 0 8px color-mix(in srgb, var(--theme-accent-glow, transparent) 35%, transparent);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--theme-accent-glow, transparent) 45%, transparent);
+}
+
+/* Header: soft amber / search hint when catalog is collapsed (readable on dark themes) */
+.config-catalog-search-hint--pulse {
+  border-color: color-mix(in srgb, #d97706 45%, transparent) !important;
+  color: color-mix(in srgb, #f59e0b 75%, #e5e5e5) !important;
+  background: color-mix(in srgb, #d97706 10%, transparent) !important;
+  animation: catalogSearchHintPulse 2.4s ease-in-out infinite;
+}
+
+@keyframes catalogSearchHintPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+    opacity: 0.88;
+  }
+  50% {
+    box-shadow: 0 0 8px 0 color-mix(in srgb, #d97706 28%, transparent);
+    opacity: 1;
+  }
+}
+
+@keyframes catalogSplitTogglePulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+    border-color: color-mix(in srgb, #d97706 40%, var(--theme-border));
+  }
+  50% {
+    box-shadow: 0 0 6px 0 color-mix(in srgb, #d97706 30%, transparent);
+    border-color: color-mix(in srgb, #d97706 55%, var(--theme-border));
+  }
+}
+
+.catalog-split-toggle--collapsed-hint {
+  border-color: color-mix(in srgb, #d97706 45%, var(--theme-border)) !important;
+  color: color-mix(in srgb, #f59e0b 70%, var(--theme-text-muted, #aaa)) !important;
 }
 
 .catalog-split-workspace--collapsed .catalog-list-panel {
