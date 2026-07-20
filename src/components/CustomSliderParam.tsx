@@ -190,14 +190,12 @@ export default function CustomSliderParam({
               title={formatTokenLabel(pNum)}
               aria-label={`Set ${formatTokenLabel(pNum)}`}
             />
-            {hoveredPresetIdx === idx && (
-              <span
-                className="ctx-slider-tick-tooltip absolute left-1/2 text-[7px] font-mono whitespace-nowrap pointer-events-none"
-                style={{ top: "0px", transform: "translate(-50%, -100%)" }}
-              >
-                {formatTokenLabel(pNum)}
-              </span>
-            )}
+            <span
+              className={`ctx-slider-tick-tooltip absolute left-1/2 text-[7px] font-mono whitespace-nowrap pointer-events-none${hoveredPresetIdx === idx ? " ctx-slider-tick-tooltip--active" : ""}`}
+              style={{ top: "0px", transform: "translate(-50%, -100%)" }}
+            >
+              {formatTokenLabel(pNum)}
+            </span>
           </div>
         );
       })}

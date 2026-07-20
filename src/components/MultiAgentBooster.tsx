@@ -13,7 +13,8 @@ import {
   type SpeedBoostId,
   type ThinkId,
 } from "../lib/multiAgentBooster";
-import SliderParam from "./SliderParam";
+import CustomSliderParam from "./CustomSliderParam";
+import CockpitSlider from "./CockpitSlider";
 
 export interface MultiAgentBoosterProps {
   codingMode: CodingModeId;
@@ -147,20 +148,12 @@ export default function MultiAgentBooster({
       className={`full-auto-cockpit ${hero ? "full-auto-cockpit--hero" : "full-auto-cockpit--normal"} ${className}`}
       data-booster-layout={layout}
     >
-      {/* Header: title + inset status · Connect bottom-right of header band */}
+      {/* Header: title + Connect button */}
       <div className="full-auto-cockpit__header">
         <div className="full-auto-cockpit__header-main min-w-0 flex-1">
           <span className="full-auto-cockpit__title font-mono tracking-[0.16em] uppercase">
             Full Auto cockpit
           </span>
-          <div className="full-auto-cockpit__status font-mono" title={plan.outcome}>
-            <span className="full-auto-cockpit__status-text">
-              {plan.outcome}
-              {plan.softNote ? (
-                <span className="full-auto-cockpit__status-note"> · {plan.softNote}</span>
-              ) : null}
-            </span>
-          </div>
         </div>
         <button
           type="button"
@@ -172,119 +165,118 @@ export default function MultiAgentBooster({
         </button>
       </div>
 
-      <div
-        className={`full-auto-cockpit__body ${
-          showCtxRail ? "full-auto-cockpit__body--with-ctx" : "space-y-3"
-        }`}
-      >
-        <div className="full-auto-cockpit__rows space-y-3 min-w-0">
-          {/* a) AGENTS */}
-          <div className="full-auto-cockpit__row flex flex-wrap items-center gap-x-3 gap-y-1.5 min-w-0">
-            <RowLabel>Agents</RowLabel>
-            <div className="flex flex-wrap gap-1.5 min-w-0">
-              {CODING_MODE_OPTIONS.map((opt) => (
-                <button
-                  key={opt.id}
-                  type="button"
-                  title={`${opt.blurb} (×${opt.parallel})`}
-                  onClick={() => onCodingMode(opt.id)}
-                  className={chip(codingMode === opt.id)}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* b) SPEED */}
-          <div className="full-auto-cockpit__row flex flex-wrap items-center gap-x-3 gap-y-1.5 min-w-0">
-            <RowLabel>Speed</RowLabel>
-            <div className="flex flex-wrap gap-1.5 min-w-0">
-              {SPEED_BOOST_OPTIONS.map((opt) => {
-                const needDraftLib = opt.id === "dflash" && !dflashLibraryReady;
-                const needCap = Boolean(opt.needs && !capSet.has(opt.needs));
-                const disabled = needCap || needDraftLib;
-                return (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    disabled={disabled}
-                    title={
-                      needDraftLib
-                        ? "DFlash needs a matching draft GGUF in your library"
-                        : needCap
-                          ? `${opt.label} not available for this model`
-                          : opt.blurb
-                    }
-                    onClick={() => {
-                      if (!disabled) onSpeedBoost(opt.id);
-                    }}
-                    className={chip(speedBoost === opt.id, disabled)}
-                  >
-                    {opt.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* c) BRAINS */}
-          <div className="full-auto-cockpit__row flex flex-wrap items-center gap-x-3 gap-y-1.5 min-w-0">
-            <RowLabel>Brains</RowLabel>
-            <div className="flex flex-wrap gap-1.5 min-w-0 items-center">
-              {BRAINS_OPTIONS.map((opt) => (
-                <button
-                  key={opt.id}
-                  type="button"
-                  title={opt.blurb}
-                  onClick={() => onBrains(opt.id)}
-                  className={chip(brains === opt.id)}
-                >
-                  {opt.label}
-                </button>
-              ))}
-              <span className="full-auto-cockpit__sep select-none" aria-hidden>
-                |
-              </span>
-              {THINK_OPTIONS.map((opt) => (
-                <button
-                  key={opt.id}
-                  type="button"
-                  title={opt.blurb}
-                  onClick={() => onThink(opt.id)}
-                  className={chip(think === opt.id)}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
+      <div className="full-auto-cockpit__body space-y-3">
+        {/* CTX hero section — full width, top of body */}
         {showCtxRail && (
-          <div className="full-auto-cockpit__ctx-rail min-w-0">
-            <span className="full-auto-cockpit__ctx-label font-mono tracking-wider uppercase">
-              Context
-            </span>
+          <div className="full-auto-cockpit__ctx-hero">
             <div className="full-auto-cockpit__ctx-slider min-w-0">
-              <SliderParam
+              <CustomSliderParam
                 paramKey="ctx"
                 currentValue={ctxValue}
                 defaultValue={ctxDefault}
                 onChange={onCtxChange!}
                 step={ctxStep}
                 values={ctxValues}
-                perSlotReserve={(ctxSlotCount ?? 1) > 1}
-                perSlotTokens={ctxPerSlot != null && ctxPerSlot > 0 ? ctxPerSlot : undefined}
-                perSlotTitle={
-                  ctxPerSlot != null && ctxPerSlot > 0 && ctxSlotCount != null && ctxSlotCount > 1
-                    ? `Per slot ≈ ${ctxPerSlot} tokens (total ÷ ${ctxSlotCount})`
-                    : undefined
-                }
               />
+            </div>
+            <div className="full-auto-cockpit__ctx-values">
+              <span className="full-auto-cockpit__ctx-value font-mono">
+                {typeof ctxValue === "number"
+                  ? `${Math.round(ctxValue / 1024)}K`
+                  : String(ctxValue)}
+              </span>
+              {ctxPerSlot != null && ctxPerSlot > 0 && ctxSlotCount != null && ctxSlotCount > 1 && (
+                <>
+                  <span className="full-auto-cockpit__ctx-sep font-mono">|</span>
+                  <span className="full-auto-cockpit__ctx-per-slot font-mono">
+                    {Math.round(ctxPerSlot / 1024)}K / slot
+                  </span>
+                </>
+              )}
             </div>
           </div>
         )}
+
+        {/* 2x2 grid: Agents + Speed / KV + Think */}
+        <div className="full-auto-cockpit__grid">
+          {/* Row 1: Agents | Speed */}
+          <div className="full-auto-cockpit__grid-cell">
+            <CockpitSlider
+              label="Agents"
+              value={codingMode}
+              onChange={onCodingMode}
+              options={CODING_MODE_OPTIONS.map((o) => ({
+                id: o.id,
+                label: o.label,
+                blurb: `${o.blurb} (x${o.parallel})`,
+              }))}
+              valueBadge={`x${parallelForCodingMode(codingMode)}`}
+              badgeWidth="3rem"
+              heroBadge
+            />
+          </div>
+          <div className="full-auto-cockpit__grid-cell">
+            <CockpitSlider
+              label="Speed"
+              value={speedBoost === "off" ? "smart" : speedBoost}
+              onChange={onSpeedBoost}
+              options={SPEED_BOOST_OPTIONS.filter((o) => o.id !== "off").map((o) => {
+                const needDraftLib = o.id === "dflash" && !dflashLibraryReady;
+                const needCap = Boolean(o.needs && !capSet.has(o.needs));
+                return {
+                  id: o.id,
+                  label: o.label,
+                  blurb: needDraftLib
+                    ? "DFlash needs a matching draft GGUF"
+                    : needCap
+                      ? `${o.label} not available`
+                      : o.blurb,
+                  disabled: needCap || needDraftLib,
+                  badgeColor: o.id === "mtp" ? "amber" : o.id === "dflash" ? "cyan" : undefined,
+                };
+              })}
+            />
+          </div>
+
+          {/* Row 2: KV | Think */}
+          <div className="full-auto-cockpit__grid-cell">
+            <CockpitSlider
+              label="KV"
+              value={brains}
+              onChange={onBrains}
+              options={BRAINS_OPTIONS.map((o) => ({
+                id: o.id,
+                label: o.label,
+                blurb: o.blurb,
+              }))}
+              valueBadge={BRAINS_OPTIONS.find((o) => o.id === brains)?.kvQuant}
+              badgeWidth="3rem"
+              heroBadge
+            />
+          </div>
+          <div className="full-auto-cockpit__grid-cell">
+            <CockpitSlider
+              label="Think"
+              value={think}
+              onChange={onThink}
+              options={THINK_OPTIONS.map((o) => ({
+                id: o.id,
+                label: o.label,
+                blurb: o.blurb,
+              }))}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Status line — bottom of cockpit */}
+      <div className="full-auto-cockpit__status font-mono text-center" title={plan.outcome}>
+        <span className="full-auto-cockpit__status-text">
+          {plan.outcome}
+          {plan.softNote ? (
+            <span className="full-auto-cockpit__status-note"> · {plan.softNote}</span>
+          ) : null}
+        </span>
       </div>
 
       {harnessOpen && (

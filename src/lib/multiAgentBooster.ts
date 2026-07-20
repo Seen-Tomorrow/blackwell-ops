@@ -11,7 +11,7 @@ export type SpeedBoostId = "off" | "mtp" | "dflash" | "smart";
 /** Brains row — KV quant quality (VRAM trade). */
 export type BrainsId = "light" | "solid" | "sharp";
 /** Optional thinking budget for models that expose reasoning flags. */
-export type ThinkId = "off" | "on" | "budget";
+export type ThinkId = "off" | "on" | "budget" | "budget2k";
 
 export interface CodingModeOption {
   id: CodingModeId;
@@ -45,9 +45,9 @@ export const CODING_MODE_OPTIONS: CodingModeOption[] = [
 
 export const SPEED_BOOST_OPTIONS: SpeedBoostOption[] = [
   {
-    id: "off",
-    label: "Off",
-    blurb: "No draft — pure multi-agent throughput",
+    id: "smart",
+    label: "Smart",
+    blurb: "Push batch sizes for faster prefill when VRAM allows",
   },
   {
     id: "mtp",
@@ -61,11 +61,6 @@ export const SPEED_BOOST_OPTIONS: SpeedBoostOption[] = [
     blurb: "External draft — needs a draft model in your library",
     needs: "dflash",
   },
-  {
-    id: "smart",
-    label: "Smart",
-    blurb: "Push batch sizes for faster prefill when VRAM allows",
-  },
 ];
 
 export const BRAINS_OPTIONS: BrainsOption[] = [
@@ -76,7 +71,8 @@ export const BRAINS_OPTIONS: BrainsOption[] = [
 
 export const THINK_OPTIONS: { id: ThinkId; label: string; blurb: string }[] = [
   { id: "off", label: "Off", blurb: "No chain-of-thought budget" },
-  { id: "on", label: "Think", blurb: "Full reasoning when the model supports it" },
+  { id: "on", label: "On", blurb: "Full reasoning when the model supports it" },
+  { id: "budget2k", label: "2k", blurb: "Capped thinking budget (~2000)" },
   { id: "budget", label: "4k", blurb: "Capped thinking budget (~4000)" },
 ];
 
@@ -218,6 +214,9 @@ export function resolveFullAutoPlan(opts: {
   } else if (think === "on") {
     reasoning = "on";
     reasoningPreserve = "on";
+  } else if (think === "budget2k") {
+    reasoning = 2000;
+    reasoningPreserve = "on";
   } else {
     reasoning = 4000;
     reasoningPreserve = "on";
@@ -229,14 +228,25 @@ export function resolveFullAutoPlan(opts: {
 
   let outcome: string;
   if (enableSpec && specType === "draft-mtp") {
-    outcome = `Solo-class stream · MTP on · ${brainsLabel} memory quality`;
+    outcome = `Solo-class stream · MTP active · ${brainsLabel} memory quality`;
   } else if (enableSpec && specType === "draft-dflash") {
-    outcome = `×${parallel} agents · DFlash draft · ${brainsLabel} memory`;
+    outcome = `×${parallel} agents · DFlash draft · ${brainsLabel} memory quality`;
   } else if (pushBatch) {
-    outcome = `×${parallel} agents · Smart prefill · ${brainsLabel} memory`;
+    outcome = `×${parallel} agents · Smart prefill · ${brainsLabel} memory quality`;
   } else {
-    outcome = `×${parallel} agents · pure multi-agent · ${brainsLabel} memory`;
+    outcome = `×${parallel} agents · pure multi-agent · ${brainsLabel} memory quality`;
   }
+
+  // Append reasoning budget info
+  const thinkLabel =
+    think === "off"
+      ? "no reasoning"
+      : think === "on"
+        ? "unrestricted thinking"
+        : think === "budget2k"
+          ? "thinking limited to 2000 tokens"
+          : "thinking limited to 4000 tokens";
+  outcome += ` · ${thinkLabel}`;
 
   return {
     parallel,

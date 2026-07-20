@@ -2458,6 +2458,7 @@ html, body, #root {
   line-height: 1.35;
   color: color-mix(in srgb, var(--theme-industrial-text, var(--theme-accent-bright, #4ade80)) 92%, #fff 8%);
   letter-spacing: 0.02em;
+  text-align: center;
 }
 
 .full-auto-cockpit__status-note {
@@ -2486,13 +2487,6 @@ html, body, #root {
   color: color-mix(in srgb, var(--theme-industrial-muted, #4ade80) 55%, transparent);
 }
 
-.full-auto-cockpit__body--with-ctx {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(11rem, 38%);
-  gap: 0.85rem 1.1rem;
-  align-items: stretch;
-}
-
 .full-auto-cockpit__ctx-rail {
   display: flex;
   flex-direction: column;
@@ -2506,14 +2500,101 @@ html, body, #root {
   min-height: 100%;
 }
 
+/* CTX hero section — top of body */
+.full-auto-cockpit__ctx-hero {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.7rem 0.5rem 0.5rem;
+  border-radius: 3px;
+  border: 1px solid color-mix(in srgb, var(--theme-border, #1a2e1a) 55%, transparent);
+  background: color-mix(in srgb, #000000 15%, transparent);
+  box-shadow: inset 0 1px 3px color-mix(in srgb, #000000 25%, transparent);
+}
+
+.full-auto-cockpit__ctx-slider {
+  flex: 1;
+  min-width: 0;
+}
+
+.full-auto-cockpit__ctx-values {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  flex-shrink: 0;
+  padding-left: 2ch;
+  white-space: nowrap;
+  gap: 0.4ch;
+}
+
+.full-auto-cockpit__ctx-value {
+  display: inline-block;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--theme-accent-bright, #4ade80);
+  text-shadow: 0 0 12px color-mix(in srgb, var(--theme-accent-glow, rgba(74, 222, 128, 0.3)) 55%, transparent);
+  text-align: right;
+  white-space: nowrap;
+  width: 4.5ch;
+}
+
+.full-auto-cockpit__ctx-sep {
+  display: inline;
+  font-size: 11px;
+  line-height: 1.1;
+  color: color-mix(in srgb, var(--theme-accent-bright, #4ade80) 40%, transparent);
+  white-space: nowrap;
+}
+
+.full-auto-cockpit__ctx-per-slot {
+  display: inline-block;
+  font-size: 11px;
+  line-height: 1.1;
+  color: color-mix(in srgb, var(--theme-accent-bright, #4ade80) 65%, transparent);
+  text-align: right;
+  white-space: nowrap;
+  width: 11ch;
+}
+
+/* 2x2 slider grid with center divider */
+.full-auto-cockpit__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  padding-top: 5px;
+}
+
+.full-auto-cockpit__grid-cell {
+  padding: 0.25rem 0.35rem;
+}
+
+/* Center vertical divider */
+.full-auto-cockpit__grid-cell:nth-child(odd) {
+  border-right: 1px solid color-mix(in srgb, var(--theme-border, #1a2e1a) 50%, transparent);
+}
+
+/* Bottom horizontal divider between rows */
+.full-auto-cockpit__grid-cell:nth-child(-n+2) {
+  border-bottom: 1px solid color-mix(in srgb, var(--theme-border, #1a2e1a) 50%, transparent);
+}
+
+/* Arctic overrides */
+[data-theme="arctic"] .full-auto-cockpit__grid-cell:nth-child(odd) {
+  border-right-color: color-mix(in srgb, #3a4a58 35%, transparent);
+}
+
+[data-theme="arctic"] .full-auto-cockpit__grid-cell:nth-child(-n+2) {
+  border-bottom-color: color-mix(in srgb, #3a4a58 35%, transparent);
+}
+
+
+
 .full-auto-cockpit__ctx-label {
   font-size: 8px;
   letter-spacing: 0.14em;
   color: color-mix(in srgb, var(--theme-industrial-muted, #4ade80) 55%, transparent);
-}
-
-.full-auto-cockpit__ctx-slider {
-  min-width: 0;
 }
 
 .full-auto-cockpit__ctx-slider .ctx-slider-row {
@@ -2521,14 +2602,39 @@ html, body, #root {
 }
 
 @media (max-width: 900px) {
-  .full-auto-cockpit__body--with-ctx {
-    grid-template-columns: 1fr;
+  .full-auto-cockpit__ctx-hero {
+    padding: 0.3rem 0.4rem;
+  }
+  .full-auto-cockpit__ctx-value {
+    font-size: 14px;
   }
 }
 
 [data-theme="arctic"] .full-auto-cockpit__ctx-rail {
   background: color-mix(in srgb, #2a3848 10%, rgba(255, 255, 255, 0.2));
   border-color: color-mix(in srgb, #3a4a58 28%, transparent);
+}
+
+[data-theme="arctic"] .full-auto-cockpit__ctx-hero {
+  background: color-mix(in srgb, #2a3848 10%, rgba(255, 255, 255, 0.2));
+  border-color: color-mix(in srgb, #3a4a58 28%, transparent);
+}
+
+[data-theme="arctic"] .full-auto-cockpit__ctx-value {
+  color: var(--theme-text, #1a2030);
+  text-shadow: none;
+}
+
+[data-theme="arctic"] .full-auto-cockpit__ctx-sep {
+  color: color-mix(in srgb, var(--theme-text, #1a2030) 40%, transparent);
+}
+
+[data-theme="arctic"] .full-auto-cockpit__ctx-per-slot {
+  color: color-mix(in srgb, var(--theme-text, #1a2030) 65%, transparent);
+}
+
+[data-theme="arctic"] .full-auto-cockpit__status-text {
+  color: var(--theme-text, #1a2030);
 }
 
 .full-auto-cockpit--dense .full-auto-cockpit__row-label {
@@ -2660,6 +2766,132 @@ html, body, #root {
 [data-theme="arctic"] .full-auto-cockpit__title,
 [data-theme="arctic"] .full-auto-cockpit__row-label {
   color: color-mix(in srgb, #2a3a48 72%, transparent);
+}
+
+/* ── CockpitSlider — discrete option slider for cockpit rows ─────── */
+.cockpit-slider-row {
+  min-width: 0;
+}
+
+.cockpit-slider-track-host {
+  overflow: visible;
+  align-self: center;
+}
+
+.cockpit-slider-track {
+  background: var(--theme-panel-accent, #040b01);
+  border: 1px solid color-mix(in srgb, var(--theme-accent-bright, #4ade80) 30%, transparent);
+  box-sizing: border-box;
+}
+
+.cockpit-slider-thumb {
+  background: var(--theme-accent-bright, #4ade80);
+  box-shadow: 0 0 6px var(--theme-accent-glow, rgba(74, 222, 128, 0.3));
+  pointer-events: none;
+  transition: box-shadow 0.15s ease;
+}
+
+.cockpit-slider-mark {
+  background: color-mix(in srgb, var(--theme-accent-bright, #4ade80) 35%, transparent);
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.cockpit-slider-mark--selected {
+  background: var(--theme-accent-bright, #4ade80);
+  box-shadow: 0 0 4px var(--theme-accent-glow, rgba(74, 222, 128, 0.3));
+}
+
+.cockpit-slider-mark-label {
+  font-size: 8px;
+  color: color-mix(in srgb, var(--theme-industrial-muted, #4ade80) 55%, transparent);
+  transition: color 0.15s ease, text-shadow 0.15s ease;
+}
+
+.cockpit-slider-mark-label--selected {
+  color: var(--theme-accent-bright, #4ade80);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--theme-accent-glow, rgba(74, 222, 128, 0.3)) 50%, transparent);
+  font-weight: 600;
+}
+
+/* Hover behavior removed — labels always visible */
+
+.cockpit-slider-badge {
+  border: 1px solid var(--theme-chip-border, rgba(74, 222, 128, 0.15));
+  color: var(--theme-chip-active-text, #4ade80);
+  background: var(--theme-chip-active-bg, rgba(74, 222, 128, 0.12));
+  box-shadow: 0 0 6px color-mix(in srgb, var(--theme-accent-glow, rgba(74, 222, 128, 0.3)) 20%, transparent);
+}
+
+.cockpit-slider-badge--hero {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--theme-accent-bright, #4ade80);
+  text-shadow: 0 0 12px color-mix(in srgb, var(--theme-accent-glow, rgba(74, 222, 128, 0.3)) 55%, transparent);
+  text-align: right;
+  white-space: nowrap;
+  padding: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+}
+
+/* Arctic overrides — use ARCTIC theme blue tokens */
+[data-theme="arctic"] .cockpit-slider-track {
+  background: var(--theme-panel-accent, #dce2ea);
+  border-color: color-mix(in srgb, var(--theme-accent-bright, #5b9ec4) 30%, transparent);
+}
+
+[data-theme="arctic"] .cockpit-slider-thumb {
+  background: var(--theme-accent-bright, #5b9ec4);
+  box-shadow: 0 0 4px var(--theme-accent-glow, rgba(91, 158, 196, 0.24));
+}
+
+[data-theme="arctic"] .cockpit-slider-mark {
+  background: color-mix(in srgb, var(--theme-accent-bright, #5b9ec4) 35%, transparent);
+}
+
+[data-theme="arctic"] .cockpit-slider-mark--selected {
+  background: var(--theme-accent-bright, #5b9ec4);
+  box-shadow: 0 0 4px var(--theme-accent-glow, rgba(91, 158, 196, 0.24));
+}
+
+[data-theme="arctic"] .cockpit-slider-mark-label {
+  color: color-mix(in srgb, var(--theme-industrial-muted, #4a6278) 55%, transparent);
+}
+
+[data-theme="arctic"] .cockpit-slider-mark-label--selected {
+  color: var(--theme-accent-bright, #5b9ec4);
+  text-shadow: none;
+}
+
+[data-theme="arctic"] .cockpit-slider-badge {
+  border-color: var(--theme-chip-border, rgba(70, 120, 160, 0.26));
+  color: var(--theme-chip-active-text, #1a3d5c);
+  background: var(--theme-chip-active-bg, rgba(91, 158, 196, 0.2));
+  box-shadow: none;
+}
+
+[data-theme="arctic"] .cockpit-slider-badge--hero {
+  color: var(--theme-text, #1a2030);
+  text-shadow: none;
+}
+
+/* Badge color variants for speed options */
+.cockpit-slider-mark-label--amber {
+  color: var(--theme-secondary-bright, #f5971f);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--theme-secondary-bright, #f5971f) 40%, transparent);
+}
+.cockpit-slider-mark-label--amber.cockpit-slider-mark-label--selected {
+  color: var(--theme-secondary-bright, #f5971f);
+  text-shadow: 0 0 10px color-mix(in srgb, var(--theme-secondary-bright, #f5971f) 55%, transparent);
+}
+.cockpit-slider-mark-label--cyan {
+  color: var(--theme-telemetry-cyan, #00e5ff);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--theme-telemetry-cyan, #00e5ff) 40%, transparent);
+}
+.cockpit-slider-mark-label--cyan.cockpit-slider-mark-label--selected {
+  color: var(--theme-telemetry-cyan, #00e5ff);
+  text-shadow: 0 0 10px color-mix(in srgb, var(--theme-telemetry-cyan, #00e5ff) 55%, transparent);
 }
 
 /* Config chip keyboard focus indicator */
@@ -10164,8 +10396,11 @@ select option {
 }
 
 .ctx-slider-tick-tooltip {
-  color: var(--theme-accent-bright);
+  color: color-mix(in srgb, var(--theme-accent-bright) 55%, transparent);
   z-index: 6;
+}
+.ctx-slider-tick-tooltip--active {
+  color: var(--theme-accent-bright);
 }
 
 .ctx-slider-chip--reserve {
