@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { SpecCapability } from "../lib/specDraft";
 import {
   BRAINS_OPTIONS,
@@ -16,6 +16,8 @@ import {
 import CustomSliderParam from "./CustomSliderParam";
 import CockpitSlider from "./CockpitSlider";
 
+export type DflashGetUiState = "idle" | "searching" | "downloading" | "error";
+
 export interface MultiAgentBoosterProps {
   codingMode: CodingModeId;
   speedBoost: SpeedBoostId;
@@ -27,6 +29,16 @@ export interface MultiAgentBoosterProps {
   onThink: (think: ThinkId) => void;
   capabilities: SpecCapability[];
   dflashLibraryReady: boolean;
+  /** Family likely has HF DFlash packs — offer Get draft when library empty. */
+  dflashGettable?: boolean;
+  /** Short name of paired draft when library ready. */
+  dflashDraftLabel?: string | null;
+  dflashGetState?: DflashGetUiState;
+  dflashGetError?: string | null;
+  dflashGetOfferLabel?: string | null;
+  onGetDflashDraft?: () => void;
+  /** Open local-library draft re-picker (when pairing is wrong). */
+  onChangeDflashDraft?: () => void;
   kvQuantValues: (string | number)[];
   port: number;
   modelId: string;
@@ -62,6 +74,13 @@ export default function MultiAgentBooster({
   onThink,
   capabilities,
   dflashLibraryReady,
+  dflashGettable = false,
+  dflashDraftLabel = null,
+  dflashGetState = "idle",
+  dflashGetError = null,
+  dflashGetOfferLabel = null,
+  onGetDflashDraft,
+  onChangeDflashDraft,
   kvQuantValues,
   port,
   modelId,
@@ -90,10 +109,51 @@ export default function MultiAgentBooster({
         think,
         capabilities,
         dflashLibraryReady,
+        dflashGettable,
         kvQuantValues,
       }),
-    [codingMode, speedBoost, brains, think, capabilities, dflashLibraryReady, kvQuantValues],
+    [
+      codingMode,
+      speedBoost,
+      brains,
+      think,
+      capabilities,
+      dflashLibraryReady,
+      dflashGettable,
+      kvQuantValues,
+    ],
   );
+
+  // Keep parent Boost state on the resolved plan (fixes thumb stuck on MTP after model change).
+  useEffect(() => {
+    if (plan.speed !== speedBoost) {
+      onSpeedBoost(plan.speed);
+    }
+  }, [plan.speed, speedBoost, onSpeedBoost]);
+
+  const capSet = useMemo(() => new Set(capabilities), [capabilities]);
+
+  /** Effective boost for UI (never a disabled mark). */
+  const displayBoost = plan.speed === "off" ? "smart" : plan.speed;
+
+  const showDflashGet =
+    Boolean(onGetDflashDraft) &&
+    displayBoost === "dflash" &&
+    (plan.needsDflashDraft ||
+      !dflashLibraryReady ||
+      dflashGetState === "searching" ||
+      dflashGetState === "downloading" ||
+      dflashGetState === "error");
+
+  const showDflashChange =
+    Boolean(onChangeDflashDraft) &&
+    dflashLibraryReady &&
+    displayBoost === "dflash";
+
+  const mtpAvailable = capSet.has("mtp");
+  const dflashAvailable = dflashLibraryReady || dflashGettable || capSet.has("dflash");
+  /** MTP forces Solo — multi-agent marks stay visible but locked. */
+  const mtpLocksAgents = displayBoost === "mtp";
 
   const snippets = useMemo(
     () =>
@@ -104,8 +164,6 @@ export default function MultiAgentBooster({
       }),
     [port, modelId, plan.parallel],
   );
-
-  const capSet = useMemo(() => new Set(capabilities), [capabilities]);
 
   const copy = useCallback(async (id: string, body: string) => {
     try {
@@ -148,21 +206,32 @@ export default function MultiAgentBooster({
       className={`full-auto-cockpit ${hero ? "full-auto-cockpit--hero" : "full-auto-cockpit--normal"} ${className}`}
       data-booster-layout={layout}
     >
-      {/* Header: title + Connect button */}
+      {/* Header: title + BOOST · MEMORY · AGENTS · THINK (boost tinted when MTP/DFlash) */}
       <div className="full-auto-cockpit__header">
-        <div className="full-auto-cockpit__header-main min-w-0 flex-1">
-          <span className="full-auto-cockpit__title font-mono tracking-[0.16em] uppercase">
-            Full Auto cockpit
+        <span className="full-auto-cockpit__title font-mono tracking-[0.16em] uppercase shrink-0">
+          Full Auto cockpit
+        </span>
+        <div
+          className="full-auto-cockpit__status full-auto-cockpit__status--inline font-mono min-w-0 flex-1"
+          title={plan.outcome + (plan.softNote ? ` · ${plan.softNote}` : "")}
+        >
+          <span className="full-auto-cockpit__status-text">
+            <span
+              className={`full-auto-cockpit__boost-seg full-auto-cockpit__boost-seg--${plan.boostTone}`}
+            >
+              Boost {plan.boostLabel}
+            </span>
+            <span className="full-auto-cockpit__status-sep"> · </span>
+            <span>Memory {plan.brainsLabel}</span>
+            <span className="full-auto-cockpit__status-sep"> · </span>
+            <span>Agents {plan.agentsLabel}</span>
+            <span className="full-auto-cockpit__status-sep"> · </span>
+            <span>Think {plan.thinkLabel}</span>
+            {plan.softNote ? (
+              <span className="full-auto-cockpit__status-note"> · {plan.softNote}</span>
+            ) : null}
           </span>
         </div>
-        <button
-          type="button"
-          onClick={() => setHarnessOpen((v) => !v)}
-          className="full-auto-cockpit__connect font-mono tracking-wider uppercase shrink-0 self-end"
-          title="Copy endpoint + harness setup"
-        >
-          {harnessOpen ? "Hide connect" : "Connect harness"}
-        </button>
       </div>
 
       <div className="full-auto-cockpit__body space-y-3">
@@ -197,51 +266,11 @@ export default function MultiAgentBooster({
           </div>
         )}
 
-        {/* 2x2 grid: Agents + Speed / KV + Think */}
+        {/* 2x2: LEFT Memory / Boost · RIGHT Agents / Think */}
         <div className="full-auto-cockpit__grid">
-          {/* Row 1: Agents | Speed */}
           <div className="full-auto-cockpit__grid-cell">
             <CockpitSlider
-              label="Agents"
-              value={codingMode}
-              onChange={onCodingMode}
-              options={CODING_MODE_OPTIONS.map((o) => ({
-                id: o.id,
-                label: o.label,
-                blurb: `${o.blurb} (x${o.parallel})`,
-              }))}
-              valueBadge={`x${parallelForCodingMode(codingMode)}`}
-              badgeWidth="3rem"
-              heroBadge
-            />
-          </div>
-          <div className="full-auto-cockpit__grid-cell">
-            <CockpitSlider
-              label="Speed"
-              value={speedBoost === "off" ? "smart" : speedBoost}
-              onChange={onSpeedBoost}
-              options={SPEED_BOOST_OPTIONS.filter((o) => o.id !== "off").map((o) => {
-                const needDraftLib = o.id === "dflash" && !dflashLibraryReady;
-                const needCap = Boolean(o.needs && !capSet.has(o.needs));
-                return {
-                  id: o.id,
-                  label: o.label,
-                  blurb: needDraftLib
-                    ? "DFlash needs a matching draft GGUF"
-                    : needCap
-                      ? `${o.label} not available`
-                      : o.blurb,
-                  disabled: needCap || needDraftLib,
-                  badgeColor: o.id === "mtp" ? "amber" : o.id === "dflash" ? "cyan" : undefined,
-                };
-              })}
-            />
-          </div>
-
-          {/* Row 2: KV | Think */}
-          <div className="full-auto-cockpit__grid-cell">
-            <CockpitSlider
-              label="KV"
+              label="Memory"
               value={brains}
               onChange={onBrains}
               options={BRAINS_OPTIONS.map((o) => ({
@@ -252,6 +281,77 @@ export default function MultiAgentBooster({
               valueBadge={BRAINS_OPTIONS.find((o) => o.id === brains)?.kvQuant}
               badgeWidth="3rem"
               heroBadge
+            />
+          </div>
+          <div className="full-auto-cockpit__grid-cell">
+            <CockpitSlider
+              label="Agents"
+              value={mtpLocksAgents ? "solo" : codingMode}
+              onChange={onCodingMode}
+              options={CODING_MODE_OPTIONS.map((o) => {
+                const locked = mtpLocksAgents && o.id !== "solo";
+                return {
+                  id: o.id,
+                  label: o.label,
+                  blurb: locked
+                    ? "MTP needs Solo — multi-agent disabled"
+                    : `${o.blurb} (x${o.parallel})`,
+                  disabled: locked,
+                  strike: locked,
+                };
+              })}
+              valueBadge={`x${mtpLocksAgents ? 1 : parallelForCodingMode(codingMode)}`}
+              badgeWidth="3rem"
+              heroBadge
+              className={mtpLocksAgents ? "cockpit-slider-row--mtp-agents" : ""}
+            />
+          </div>
+
+          <div className="full-auto-cockpit__grid-cell">
+            <CockpitSlider
+              label="Boost"
+              value={displayBoost}
+              onChange={onSpeedBoost}
+              options={SPEED_BOOST_OPTIONS.filter((o) => o.id !== "off").map((o) => {
+                const mtpMissing = o.id === "mtp" && !mtpAvailable;
+                const dflashMissing = o.id === "dflash" && !dflashAvailable;
+                const needCap = mtpMissing || dflashMissing;
+                const available =
+                  (o.id === "mtp" && mtpAvailable) ||
+                  (o.id === "dflash" && dflashAvailable) ||
+                  o.id === "smart";
+                let blurb = o.blurb;
+                let aboveLabel: string | undefined;
+                if (o.id === "dflash") {
+                  if (dflashLibraryReady) {
+                    aboveLabel = "draft ready";
+                    blurb = dflashDraftLabel
+                      ? `Draft ready: ${dflashDraftLabel} — change if wrong`
+                      : "Draft ready in library";
+                  } else if (dflashGettable) {
+                    aboveLabel = "downloadable";
+                    blurb = "Draft downloadable from HF — Get draft to confirm";
+                  } else if (needCap) {
+                    blurb = "DFlash not available for this model";
+                  }
+                } else if (o.id === "mtp") {
+                  if (mtpAvailable) {
+                    aboveLabel = "built-in";
+                  } else if (needCap) {
+                    blurb = "MTP not available for this model";
+                  }
+                }
+                return {
+                  id: o.id,
+                  label: o.label,
+                  blurb,
+                  disabled: needCap,
+                  // MTP = green, DFlash = violet — only when capable
+                  badgeColor: o.id === "mtp" ? "green" : o.id === "dflash" ? "violet" : undefined,
+                  emphasize: available && !needCap && (o.id === "mtp" || o.id === "dflash"),
+                  aboveLabel,
+                };
+              })}
             />
           </div>
           <div className="full-auto-cockpit__grid-cell">
@@ -267,16 +367,79 @@ export default function MultiAgentBooster({
             />
           </div>
         </div>
-      </div>
 
-      {/* Status line — bottom of cockpit */}
-      <div className="full-auto-cockpit__status font-mono text-center" title={plan.outcome}>
-        <span className="full-auto-cockpit__status-text">
-          {plan.outcome}
-          {plan.softNote ? (
-            <span className="full-auto-cockpit__status-note"> · {plan.softNote}</span>
-          ) : null}
-        </span>
+        {/* Draft strip under Boost — 2-line violet block, full filename, button right */}
+        {showDflashGet || showDflashChange ? (
+          <div className="full-auto-cockpit__dflash-get font-mono">
+            <div className="full-auto-cockpit__dflash-get-main min-w-0 flex-1">
+              {showDflashGet ? (
+                <>
+                  <div className="full-auto-cockpit__dflash-get-line">
+                    {dflashGetState === "searching"
+                      ? "Searching HF for matching drafts…"
+                      : dflashGetState === "downloading"
+                        ? "Downloading draft…"
+                        : dflashGetState === "error"
+                          ? dflashGetError || "No DFlash draft found"
+                          : "DFlash needs a draft model in your library"}
+                  </div>
+                  {dflashGetState === "downloading" && dflashGetOfferLabel ? (
+                    <div className="full-auto-cockpit__dflash-get-name" title={dflashGetOfferLabel}>
+                      {dflashGetOfferLabel}
+                    </div>
+                  ) : dflashGetState === "idle" || dflashGetState === "error" ? (
+                    <div className="full-auto-cockpit__dflash-get-sub">
+                      Confirm pack to download
+                    </div>
+                  ) : null}
+                </>
+              ) : (
+                <>
+                  <div className="full-auto-cockpit__dflash-get-line">Paired draft</div>
+                  <div
+                    className="full-auto-cockpit__dflash-get-name"
+                    title={dflashDraftLabel ?? undefined}
+                  >
+                    {dflashDraftLabel || "—"}
+                  </div>
+                </>
+              )}
+            </div>
+            <div className="full-auto-cockpit__dflash-get-actions">
+              {showDflashChange ? (
+                <button
+                  type="button"
+                  className="full-auto-cockpit__dflash-get-btn full-auto-cockpit__dflash-get-btn--ghost"
+                  onClick={() => onChangeDflashDraft?.()}
+                  title="Pick a different DFlash draft from your library"
+                >
+                  Change draft
+                </button>
+              ) : null}
+              {showDflashGet ? (
+                <button
+                  type="button"
+                  className="full-auto-cockpit__dflash-get-btn"
+                  disabled={
+                    !onGetDflashDraft ||
+                    dflashGetState === "searching" ||
+                    dflashGetState === "downloading"
+                  }
+                  onClick={() => onGetDflashDraft?.()}
+                  title="Search Hugging Face for DFlash drafts — you confirm before download"
+                >
+                  {dflashGetState === "searching"
+                    ? "Searching…"
+                    : dflashGetState === "downloading"
+                      ? "Downloading…"
+                      : dflashGetState === "error"
+                        ? "Retry Get draft"
+                        : "Get draft"}
+                </button>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
       </div>
 
       {harnessOpen && (
@@ -304,6 +467,17 @@ export default function MultiAgentBooster({
           ))}
         </div>
       )}
+
+      <div className="full-auto-cockpit__footer">
+        <button
+          type="button"
+          onClick={() => setHarnessOpen((v) => !v)}
+          className="full-auto-cockpit__connect font-mono tracking-wider uppercase"
+          title="Copy endpoint + harness setup"
+        >
+          {harnessOpen ? "Hide connect" : "Connect harness"}
+        </button>
+      </div>
     </div>
   );
 }

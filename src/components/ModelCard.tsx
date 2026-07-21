@@ -172,7 +172,7 @@ export default function ModelCard({
                 className={`text-[7px] font-mono px-1.5 py-0.5 rounded-sm transition-colors whitespace-nowrap ${
                   fitScanning
                     ? "text-nv-green border border-nv-green/40 bg-nv-green/10"
-                    : "text-violet-300 border border-violet-400/30 hover:bg-violet-400/10 disabled:opacity-30"
+                    : "text-stealth-muted border border-stealth-border/60 hover:border-stealth-muted/50 hover:text-white/70 hover:bg-white/[0.04] disabled:opacity-30"
                 }`}
                 title="Run full VRAM fit probe (same 28 points as library FIT scan)"
               >

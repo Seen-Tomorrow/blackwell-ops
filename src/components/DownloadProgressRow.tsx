@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, type MouseEvent as ReactMouseEvent } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { DownloadStatus, DownloadTask } from "@/lib/types";
 
@@ -68,13 +68,17 @@ function statusLabel(task: DownloadTask): string {
 interface DownloadProgressRowProps {
   task: DownloadTask;
   onActionError?: (msg: string | null) => void;
+  /** Stacked card (Model Hub). */
   compact?: boolean;
+  /** Single horizontal row for tab page header — no name truncation. */
+  inline?: boolean;
 }
 
 export default function DownloadProgressRow({
   task,
   onActionError,
   compact = false,
+  inline = false,
 }: DownloadProgressRowProps) {
   const pct =
     task.totalBytes > 0
@@ -96,30 +100,33 @@ export default function DownloadProgressRow({
     [onActionError],
   );
 
-  const handlePause = useCallback(async () => {
+  const handlePause = useCallback(async (e?: ReactMouseEvent) => {
+    e?.stopPropagation();
     onActionError?.(null);
     try {
       await invoke("pause_download", { taskId: task.id });
-    } catch (e) {
-      reportActionError("pause", e);
+    } catch (err) {
+      reportActionError("pause", err);
     }
   }, [task.id, onActionError, reportActionError]);
 
-  const handleResume = useCallback(async () => {
+  const handleResume = useCallback(async (e?: ReactMouseEvent) => {
+    e?.stopPropagation();
     onActionError?.(null);
     try {
       await invoke("resume_download", { taskId: task.id });
-    } catch (e) {
-      reportActionError("resume", e);
+    } catch (err) {
+      reportActionError("resume", err);
     }
   }, [task.id, onActionError, reportActionError]);
 
-  const handleCancel = useCallback(async () => {
+  const handleCancel = useCallback(async (e?: ReactMouseEvent) => {
+    e?.stopPropagation();
     onActionError?.(null);
     try {
       await invoke("cancel_download", { taskId: task.id });
-    } catch (e) {
-      reportActionError("cancel", e);
+    } catch (err) {
+      reportActionError("cancel", err);
     }
   }, [task.id, onActionError, reportActionError]);
 
@@ -129,6 +136,80 @@ export default function DownloadProgressRow({
     task.status === "paused" ||
     task.status === "failed" ||
     task.status === "scanning";
+
+  const actionBtns = (
+    <>
+      {task.status === "downloading" && (
+        <button
+          type="button"
+          onClick={(e) => { void handlePause(e); }}
+          className="rounded-sm border border-yellow-400/30 px-1.5 py-0.5 text-[8px] font-mono text-yellow-400 transition-all hover:bg-yellow-400/10 whitespace-nowrap"
+        >
+          PAUSE
+        </button>
+      )}
+      {canResume && (
+        <button
+          type="button"
+          onClick={(e) => { void handleResume(e); }}
+          className="rounded-sm border border-nv-green/30 px-1.5 py-0.5 text-[8px] font-mono text-nv-green transition-all hover:bg-nv-green/10 whitespace-nowrap"
+        >
+          RESUME
+        </button>
+      )}
+      {(task.status === "downloading" ||
+        task.status === "paused" ||
+        task.status === "queued") && (
+        <button
+          type="button"
+          onClick={(e) => { void handleCancel(e); }}
+          className="rounded-sm border border-red-400/30 px-1.5 py-0.5 text-[8px] font-mono text-red-400 transition-all hover:bg-red-400/10 whitespace-nowrap"
+        >
+          CANCEL
+        </button>
+      )}
+    </>
+  );
+
+  if (inline) {
+    return (
+      <div className="download-progress-inline flex items-center gap-2 min-w-0 font-mono text-[8px]">
+        <span className="download-progress-inline__name text-white/85 whitespace-nowrap">
+          {title}
+        </span>
+        {task.fileName && task.hfModelId && task.fileName !== task.hfModelId ? (
+          <span className="text-stealth-muted/50 whitespace-nowrap">{task.fileName}</span>
+        ) : null}
+        <span className="text-stealth-muted/55 whitespace-nowrap tabular-nums">
+          {formatSize(task.downloadedBytes)}/{formatSize(task.totalBytes)}
+        </span>
+        {task.status === "downloading" ? (
+          <>
+            <span className="text-nv-green whitespace-nowrap">{speedStr}/s</span>
+            <span className="text-stealth-muted/45 whitespace-nowrap">{etaStr}</span>
+          </>
+        ) : null}
+        <span className={`uppercase whitespace-nowrap ${statusColor(task.status)}`}>
+          {statusLabel(task)}
+          {task.status !== "scanning" && task.totalBytes > 0 ? ` ${pct}%` : ""}
+        </span>
+        {showProgress ? (
+          <div className="download-progress-inline__bar overflow-hidden rounded-full bg-stealth-dark h-1.5 flex-shrink-0">
+            <div
+              className={`h-full transition-all duration-300 ${progressColor(task.status)}`}
+              style={{ width: `${task.status === "scanning" ? 100 : pct}%` }}
+            />
+          </div>
+        ) : null}
+        <div className="flex items-center gap-1 flex-shrink-0">{actionBtns}</div>
+        {task.status === "failed" && task.error ? (
+          <span className="text-red-400/70 whitespace-nowrap" title={task.error}>
+            {task.error}
+          </span>
+        ) : null}
+      </div>
+    );
+  }
 
   return (
     <div
@@ -189,42 +270,12 @@ export default function DownloadProgressRow({
           {task.error}
         </p>
       )}
-      <div className="flex items-center gap-1.5">
-        {task.status === "downloading" && (
-          <button
-            type="button"
-            onClick={handlePause}
-            className="rounded-sm border border-yellow-400/30 px-1.5 py-0.5 text-[8px] font-mono text-yellow-400 transition-all hover:bg-yellow-400/10"
-          >
-            PAUSE
-          </button>
-        )}
-        {canResume && (
-          <button
-            type="button"
-            onClick={handleResume}
-            className="rounded-sm border border-nv-green/30 px-1.5 py-0.5 text-[8px] font-mono text-nv-green transition-all hover:bg-nv-green/10"
-          >
-            RESUME
-          </button>
-        )}
-        {(task.status === "downloading" ||
-          task.status === "paused" ||
-          task.status === "queued") && (
-          <button
-            type="button"
-            onClick={handleCancel}
-            className="rounded-sm border border-red-400/30 px-1.5 py-0.5 text-[8px] font-mono text-red-400 transition-all hover:bg-red-400/10"
-          >
-            CANCEL
-          </button>
-        )}
-        {task.status === "failed" && task.error && (
-          <span className="truncate text-[8px] font-mono text-red-400/60">
-            {task.error}
-          </span>
-        )}
-      </div>
+      <div className="flex items-center gap-1.5">{actionBtns}</div>
+      {task.status === "failed" && task.error && (
+        <span className="truncate text-[8px] font-mono text-red-400/60">
+          {task.error}
+        </span>
+      )}
     </div>
   );
 }

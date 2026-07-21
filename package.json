@@ -1,7 +1,7 @@
 {
   "name": "blackwell-ops",
   "private": true,
-  "version": "1.0.32",
+  "version": "1.0.33",
   "type": "module",
   "scripts": {
     "vite": "vite --host 127.0.0.1 --port 1420",

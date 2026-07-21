@@ -113,6 +113,8 @@ export interface GpuOcOverlay {
   coreOffsetMhz: number;
   memOffsetMhz: number;
   configPowerLimitW: number;
+  /** True when preset differs from driver defaults (offsets / power). */
+  profileActive: boolean;
 }
 
 export function useGpuControl() {
@@ -424,6 +426,7 @@ export function useGpuControl() {
         coreOffsetMhz: preset.coreOffsetMhz,
         memOffsetMhz: preset.memOffsetMhz,
         configPowerLimitW: preset.powerLimitW,
+        profileActive: presetIsNonDefault(dev, preset),
       });
     }
     return map;

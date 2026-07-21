@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { ToastAnchor } from "./Toast";
+import HeaderDownloadStrip from "./HeaderDownloadStrip";
 
 interface TabPageHeaderProps {
   title: string;
@@ -19,6 +20,8 @@ export default function TabPageHeader({ title, showIcon = true, meta, actions }:
         {actions}
       </div>
       <ToastAnchor className="tab-page-header__toast-anchor" />
+      {/* Far-right: full inline download row (name + bar + actions, no clip) */}
+      <HeaderDownloadStrip />
     </div>
   );
 }

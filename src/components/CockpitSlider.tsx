@@ -7,16 +7,24 @@ import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from
 
 const THUMB_WIDTH = 16;
 const TRACK_HEIGHT = 6;
-const TRACK_AREA_HEIGHT = 32;
-const TRACK_TOP = (TRACK_AREA_HEIGHT - TRACK_HEIGHT) / 2;
+const TRACK_AREA_BASE = 32;
+const TRACK_AREA_WITH_ABOVE = 46;
 
 export interface CockpitSliderOption {
   id: string;
   label: string;
   blurb?: string;
   disabled?: boolean;
-  /** Optional color badge variant for the label (e.g. "amber", "cyan"). */
-  badgeColor?: string;
+  /** Strikethrough label (e.g. multi-agent locked while MTP is on). */
+  strike?: boolean;
+  /**
+   * Accent when available — MTP=green, DFlash=violet.
+   * Unavailable options stay monochrome like Agents / Memory.
+   */
+  badgeColor?: "green" | "violet";
+  emphasize?: boolean;
+  /** Tiny status above the mark (e.g. "draft ready"). */
+  aboveLabel?: string;
 }
 
 interface CockpitSliderProps {
@@ -99,6 +107,10 @@ export default function CockpitSlider({
   const [dragging, setDragging] = useState(false);
   const dragRef = useRef(false);
 
+  const hasAbove = options.some((o) => Boolean(o.aboveLabel));
+  const trackAreaH = hasAbove ? TRACK_AREA_WITH_ABOVE : TRACK_AREA_BASE;
+  const trackTop = (trackAreaH - TRACK_HEIGHT) / 2 + (hasAbove ? 4 : 0);
+
   const selectedIdx = Math.max(0, options.findIndex((o) => o.id === value));
 
   const commitIndex = useCallback(
@@ -170,7 +182,7 @@ export default function CockpitSlider({
         <div
           ref={trackRef}
           className="cockpit-slider-track-host relative flex-1 min-w-0 select-none touch-none"
-          style={{ height: `${TRACK_AREA_HEIGHT}px` }}
+          style={{ height: `${trackAreaH}px` }}
           onPointerDown={handleTrackPointerDown}
           onPointerMove={handleTrackPointerMove}
           onPointerUp={endDrag}
@@ -179,18 +191,21 @@ export default function CockpitSlider({
           {/* Track line */}
           <div
             className="cockpit-slider-track absolute left-0 right-0 rounded-sm z-[1]"
-            style={{ top: `${TRACK_TOP}px`, height: `${TRACK_HEIGHT}px` }}
+            style={{ top: `${trackTop}px`, height: `${TRACK_HEIGHT}px` }}
           />
 
           {/* Option marks — always visible */}
           {options.map((opt, idx) => {
             const pct = trackWidthPx > 0 ? thumbPercent(idx, options.length, trackWidthPx) : 0;
             const isSelected = idx === selectedIdx;
+            const emphasize = Boolean(opt.emphasize && opt.badgeColor && !opt.disabled);
             return (
               <div
                 key={opt.id}
                 data-cockpit-mark
-                className="absolute z-[2] cursor-pointer"
+                className={`absolute z-[2] cursor-pointer${
+                  opt.disabled ? " cockpit-slider-mark-wrap--disabled" : ""
+                }${opt.strike ? " cockpit-slider-mark-wrap--strike" : ""}`}
                 style={{
                   left: `${pct}%`,
                   transform: "translateX(-50%)",
@@ -199,24 +214,45 @@ export default function CockpitSlider({
                 }}
                 onPointerDown={(e) => e.stopPropagation()}
                 onClick={() => commitIndex(idx)}
-                title={opt.blurb || opt.label}
+                title={
+                  opt.strike
+                    ? `${opt.label}: not available with MTP (Solo only)`
+                    : opt.blurb || opt.label
+                }
                 role="button"
                 aria-label={`Select ${opt.label}`}
+                aria-disabled={opt.disabled || undefined}
                 tabIndex={opt.disabled ? -1 : 0}
               >
+                {opt.aboveLabel ? (
+                  <span
+                    className={`cockpit-slider-above-label absolute left-1/2 -translate-x-1/2 text-center font-mono whitespace-nowrap${
+                      emphasize && opt.badgeColor === "green"
+                        ? " cockpit-slider-above-label--green"
+                        : emphasize && opt.badgeColor === "violet"
+                          ? " cockpit-slider-above-label--violet"
+                          : ""
+                    }${isSelected ? " cockpit-slider-above-label--selected" : ""}`}
+                    style={{ top: `${Math.max(0, trackTop - 12)}px` }}
+                  >
+                    {opt.aboveLabel}
+                  </span>
+                ) : null}
                 <span
                   aria-hidden
                   className={`cockpit-slider-mark absolute left-1/2 -translate-x-1/2 block w-[3px] rounded-sm transition-colors ${
                     isSelected ? "cockpit-slider-mark--selected" : ""
-                  }`}
-                  style={{ top: `${TRACK_TOP}px`, height: `${TRACK_HEIGHT}px` }}
+                  }${emphasize && isSelected && opt.badgeColor ? ` cockpit-slider-mark--${opt.badgeColor}` : ""}`}
+                  style={{ top: `${trackTop}px`, height: `${TRACK_HEIGHT}px` }}
                 />
-                {/* Label below mark — always visible */}
+                {/* Label below mark — always visible; accent only when available */}
                 <span
                   className={`cockpit-slider-mark-label absolute left-1/2 -translate-x-1/2 text-center font-mono whitespace-nowrap ${
                     isSelected ? "cockpit-slider-mark-label--selected" : ""
-                  }${opt.badgeColor ? ` cockpit-slider-mark-label--${opt.badgeColor}` : ""}`}
-                  style={{ top: `${TRACK_TOP + TRACK_HEIGHT + 4}px` }}
+                  }${emphasize && opt.badgeColor ? ` cockpit-slider-mark-label--${opt.badgeColor}` : ""}${
+                    opt.disabled ? " cockpit-slider-mark-label--muted" : ""
+                  }${opt.strike ? " cockpit-slider-mark-label--strike" : ""}`}
+                  style={{ top: `${trackTop + TRACK_HEIGHT + 4}px` }}
                 >
                   {opt.label}
                 </span>
@@ -230,7 +266,7 @@ export default function CockpitSlider({
               dragging ? "cursor-grabbing" : "cursor-grab"
             }`}
             style={{
-              top: `${TRACK_TOP + TRACK_HEIGHT / 2}px`,
+              top: `${trackTop + TRACK_HEIGHT / 2}px`,
               left: `${thumbPct}%`,
               width: `${THUMB_WIDTH}px`,
               height: `${THUMB_WIDTH}px`,

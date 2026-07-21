@@ -12,14 +12,18 @@ interface ModelHubProps {
 }
 
 export default function ModelHub({ embedded = false }: ModelHubProps) {
-  const downloads = useDownloadTasks('hf');
+  // All task kinds (HF models, app update, provider packs, toolchain) — top = download manager.
+  const downloads = useDownloadTasks();
   const completedRefs = useRef(new Set<string>());
 
   useEffect(() => {
     for (const t of downloads) {
       if (t.status === 'completed' && !completedRefs.current.has(t.id)) {
         completedRefs.current.add(t.id);
-        dispatchAppEvent(EVENTS.downloadCompleted);
+        // Catalog only cares about model files landing on disk.
+        if (!t.taskKind || t.taskKind === 'hf') {
+          dispatchAppEvent(EVENTS.downloadCompleted);
+        }
       }
     }
   }, [downloads]);

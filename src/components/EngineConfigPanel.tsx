@@ -40,7 +40,7 @@ import {
   resolveManualLaunchKeys,
 } from "../lib/launchProfile";
 import ConfigViewToggle from "./ConfigViewToggle";
-import MultiAgentBooster from "./MultiAgentBooster";
+import MultiAgentBooster, { type DflashGetUiState } from "./MultiAgentBooster";
 import {
   brainsFromKvQuant,
   codingModeFromParallel,
@@ -51,6 +51,21 @@ import {
   type SpeedBoostId,
   type ThinkId,
 } from "../lib/multiAgentBooster";
+import {
+  describeMainForDflashPick,
+  findDflashDraftCandidates,
+  mainMaySupportDflash,
+  resolveDflashOfferFromHfId,
+  startDflashDraftDownload,
+  type DflashDraftOffer,
+} from "../lib/dflashGetDraft";
+import { useDownloadTasks } from "../hooks/useDownloadTasks";
+import DraftPickModal, {
+  hfOffersToPickItems,
+  type DraftPickListItem,
+  type DraftPickMode,
+} from "./DraftPickModal";
+import { draftRoleFromModel, scoreDraftPair } from "../lib/specDraft";
 import {
   isGroupFullyHidden,
   PANEL_CHROME_PARAM_KEYS,
@@ -454,7 +469,19 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   const [speedBoost, setSpeedBoost] = useState<SpeedBoostId>("off");
   const [brains, setBrains] = useState<BrainsId>("solid");
   const [think, setThink] = useState<ThinkId>("on");
+  const [dflashGetState, setDflashGetState] = useState<DflashGetUiState>("idle");
+  const [dflashGetError, setDflashGetError] = useState<string | null>(null);
+  const [dflashGetOfferLabel, setDflashGetOfferLabel] = useState<string | null>(null);
+  const [dflashCandidates, setDflashCandidates] = useState<DflashDraftOffer[]>([]);
+  const [dflashPickOpen, setDflashPickOpen] = useState(false);
+  const [dflashPickMode, setDflashPickMode] = useState<DraftPickMode>("hf-download");
+  const [libraryPickItems, setLibraryPickItems] = useState<DraftPickListItem[]>([]);
+  const [dflashResolving, setDflashResolving] = useState(false);
+  const [dflashResolveError, setDflashResolveError] = useState<string | null>(null);
+  const dflashDownloadIdsRef = useRef<Set<string>>(new Set());
+  const prevDflashReadyRef = useRef(false);
   const boosterSeededRef = useRef(false);
+  const hfDownloads = useDownloadTasks("hf");
   const [layoutModeActive, setLayoutModeActive] = useState(
     () => readStorage(KEYS.configLayoutMode) === "1",
   );
@@ -913,7 +940,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     const st = config.spec_type != null ? String(config.spec_type).toLowerCase() : "";
     if (specDecodingGroupVisible && st.includes("mtp")) setSpeedBoost("mtp");
     else if (specDecodingGroupVisible && st.includes("dflash")) setSpeedBoost("dflash");
-    else setSpeedBoost("off");
+    else setSpeedBoost("smart");
     const r = config.reasoning;
     if (r === "off" || r === 0 || r === "0") setThink("off");
     else if (r === 4000 || r === "4000") setThink("budget");
@@ -938,6 +965,15 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     return findScoredDraftCandidates(model, models, "external_dflash").length > 0;
   }, [model, models]);
 
+  /** Family likely has HF DFlash packs — show Get draft when library empty. */
+  const dflashGettable = useMemo(() => mainMaySupportDflash(model), [model]);
+
+  const dflashDraftLabel = useMemo(() => {
+    if (!model || !models?.length || !dflashLibraryReady) return null;
+    const best = pickBestDraftPair(model, models, "external_dflash");
+    return best ? resolveDraftPathLabel(best.path) : null;
+  }, [model, models, dflashLibraryReady]);
+
   const applyFullAutoCockpit = useCallback(
     async (
       mode: CodingModeId,
@@ -957,6 +993,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         think: thinkPick,
         capabilities: specCapabilities,
         dflashLibraryReady,
+        dflashGettable,
         kvQuantValues,
       });
 
@@ -1040,6 +1077,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     },
     [
       allParamsResolved,
+      dflashGettable,
       dflashLibraryReady,
       effectiveBackendType,
       hasSpecCapability,
@@ -1051,6 +1089,198 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       updateParam,
     ],
   );
+
+  // Main model change / capability drop → snap Boost + clear stale draft UI.
+  useEffect(() => {
+    if (!model) return;
+    const plan = resolveFullAutoPlan({
+      codingMode,
+      speed: speedBoost,
+      brains,
+      think,
+      capabilities: specCapabilities,
+      dflashLibraryReady,
+      dflashGettable,
+      kvQuantValues,
+    });
+    if (plan.speed !== speedBoost) {
+      // Sync UI immediately (child also mirrors plan.speed); apply clears CLI/spec.
+      setSpeedBoost(plan.speed);
+      void applyFullAutoCockpit(codingMode, plan.speed, brains, think);
+    }
+    if (plan.speed !== "dflash") {
+      setDflashGetState("idle");
+      setDflashGetError(null);
+      setDflashGetOfferLabel(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-validate on model/caps only
+  }, [model?.path, specCapabilities, dflashLibraryReady, dflashGettable]);
+
+  /** Search HF — Joe confirms candidate (or manual HF id) before download. */
+  const handleGetDflashDraft = useCallback(async () => {
+    if (!model) return;
+    setDflashGetError(null);
+    setDflashGetOfferLabel(null);
+    setDflashCandidates([]);
+    setLibraryPickItems([]);
+    setDflashPickMode("hf-download");
+    setDflashPickOpen(false);
+    setDflashResolving(false);
+    setDflashResolveError(null);
+    setDflashGetState("searching");
+    dflashDownloadIdsRef.current = new Set();
+    try {
+      const offers = await findDflashDraftCandidates(model, 3);
+      setDflashCandidates(offers);
+      setDflashPickOpen(true);
+      setDflashGetState("idle");
+    } catch (err) {
+      console.error("[dflashGetDraft] search failed:", err);
+      setDflashCandidates([]);
+      setDflashPickOpen(true);
+      setDflashGetState("idle");
+      setDflashResolveError(typeof err === "string" ? err : "Search failed — paste HF id manually");
+    }
+  }, [model]);
+
+  /** Local library re-pair — all external DFlash files, scored (even weak matches). */
+  const handleChangeDflashDraft = useCallback(() => {
+    if (!model || !models?.length) return;
+    const items: DraftPickListItem[] = models
+      .filter((m) => m.path !== model.path && draftRoleFromModel(m) === "external_dflash")
+      .map((m) => {
+        const score = scoreDraftPair(model, m, "external_dflash");
+        const label = resolveDraftPathLabel(m.path);
+        const quant = m.quant || m.metadata?.file_type_str || "";
+        const author = m.author || m.hfMeta?.author || "";
+        return {
+          id: m.path,
+          title: label,
+          // No full path — author · quant · size only
+          meta: [author, quant, m.size_str].filter(Boolean).join(" · "),
+          score,
+        };
+      })
+      .sort((a, b) => (b.score ?? -999) - (a.score ?? -999));
+
+    // Prefer current pairing at top if present
+    const current = config.spec_draft_model != null ? String(config.spec_draft_model) : "";
+    if (current) {
+      items.sort((a, b) => {
+        if (a.id === current) return -1;
+        if (b.id === current) return 1;
+        return 0;
+      });
+    }
+
+    setDflashPickMode("library");
+    setLibraryPickItems(items);
+    setDflashCandidates([]);
+    setDflashResolveError(items.length === 0 ? "No DFlash drafts in library" : null);
+    setDflashPickOpen(true);
+    setDflashGetState("idle");
+  }, [model, models, config.spec_draft_model]);
+
+  const handleCancelDflashPick = useCallback(() => {
+    if (dflashResolving) return;
+    setDflashPickOpen(false);
+    setDflashCandidates([]);
+    setLibraryPickItems([]);
+    setDflashResolveError(null);
+    setDflashResolving(false);
+    setDflashGetState("idle");
+  }, [dflashResolving]);
+
+  const handleConfirmDflashPick = useCallback(async (offer: DflashDraftOffer) => {
+    setDflashPickOpen(false);
+    setDflashResolveError(null);
+    setDflashResolving(false);
+    setDflashGetError(null);
+    setDflashGetOfferLabel(offer.label);
+    setDflashGetState("downloading");
+    dflashDownloadIdsRef.current = new Set();
+    try {
+      const ids = await startDflashDraftDownload(offer);
+      dflashDownloadIdsRef.current = new Set(ids);
+    } catch (err) {
+      console.error("[dflashGetDraft] download failed:", err);
+      setDflashGetState("error");
+      setDflashGetError(typeof err === "string" ? err : "Could not start DFlash draft download");
+    }
+  }, []);
+
+  const handleConfirmDflashManual = useCallback(
+    async (hfModelId: string) => {
+      if (!model) return;
+      setDflashResolving(true);
+      setDflashResolveError(null);
+      try {
+        const offer = await resolveDflashOfferFromHfId(model, hfModelId);
+        await handleConfirmDflashPick(offer);
+      } catch (err) {
+        console.error("[dflashGetDraft] manual resolve failed:", err);
+        setDflashResolveError(
+          typeof err === "string" ? err : err instanceof Error ? err.message : "Could not resolve HF repo",
+        );
+      } finally {
+        setDflashResolving(false);
+      }
+    },
+    [model, handleConfirmDflashPick],
+  );
+
+  const handleConfirmLibraryDraft = useCallback(
+    (path: string) => {
+      if (!model) return;
+      updateParam("spec_draft_model", path);
+      saveDraftPairing(model.path, "draft-dflash", path);
+      setDflashPickOpen(false);
+      setLibraryPickItems([]);
+      setDflashResolveError(null);
+      // Ensure DFlash mode is active with this pairing
+      void applyFullAutoCockpit(codingMode, "dflash", brains, think);
+    },
+    [model, updateParam, applyFullAutoCockpit, codingMode, brains, think],
+  );
+
+  // Reset Get-draft UI when the main model changes.
+  useEffect(() => {
+    setDflashGetState("idle");
+    setDflashGetError(null);
+    setDflashGetOfferLabel(null);
+    setDflashCandidates([]);
+    setLibraryPickItems([]);
+    setDflashPickOpen(false);
+    setDflashResolving(false);
+    setDflashResolveError(null);
+    dflashDownloadIdsRef.current = new Set();
+    // Avoid treating an already-ready library as a "just finished download" edge.
+    prevDflashReadyRef.current = false;
+  }, [model?.path]);
+
+  // After download + catalog refresh, pair draft and turn DFlash on.
+  useEffect(() => {
+    const wasReady = prevDflashReadyRef.current;
+    prevDflashReadyRef.current = dflashLibraryReady;
+    if (wasReady || !dflashLibraryReady) return;
+    setDflashGetState("idle");
+    setDflashGetError(null);
+    if (speedBoost === "dflash") {
+      void applyFullAutoCockpit(codingMode, "dflash", brains, think);
+    }
+  }, [dflashLibraryReady, speedBoost, codingMode, brains, think, applyFullAutoCockpit]);
+
+  // Surface download failures for the tasks we started.
+  useEffect(() => {
+    if (dflashGetState !== "downloading") return;
+    const ids = dflashDownloadIdsRef.current;
+    if (ids.size === 0) return;
+    const failed = hfDownloads.find((t) => ids.has(t.id) && t.status === "failed");
+    if (failed) {
+      setDflashGetState("error");
+      setDflashGetError(failed.error || "DFlash draft download failed");
+    }
+  }, [hfDownloads, dflashGetState]);
 
   /** Assisted mode: agents-only strip (no full cockpit). */
   const applyCodingAgents = useCallback(
@@ -2872,6 +3102,13 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
               onThink={(t) => { void applyFullAutoCockpit(codingMode, speedBoost, brains, t); }}
               capabilities={specCapabilities}
               dflashLibraryReady={dflashLibraryReady}
+              dflashGettable={dflashGettable}
+              dflashDraftLabel={dflashDraftLabel}
+              dflashGetState={dflashGetState}
+              dflashGetError={dflashGetError}
+              dflashGetOfferLabel={dflashGetOfferLabel}
+              onGetDflashDraft={() => { void handleGetDflashDraft(); }}
+              onChangeDflashDraft={handleChangeDflashDraft}
               kvQuantValues={kvQuantValues}
               port={Number(config.base_port) || 9090}
               modelId={aliasDisplayValue || autoAlias || model.name || "local-model"}
@@ -2890,6 +3127,30 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
               })()}
             />
           )}
+          {model && (
+            <DraftPickModal
+              open={dflashPickOpen}
+              mode={dflashPickMode}
+              mainLabel={describeMainForDflashPick(model)}
+              items={
+                dflashPickMode === "library"
+                  ? libraryPickItems
+                  : hfOffersToPickItems(dflashCandidates)
+              }
+              initialSelectedId={
+                dflashPickMode === "library"
+                  ? (config.spec_draft_model != null ? String(config.spec_draft_model) : null)
+                  : null
+              }
+              hfOffers={dflashCandidates}
+              resolving={dflashResolving}
+              resolveError={dflashResolveError}
+              onCancel={handleCancelDflashPick}
+              onConfirmHf={(offer) => { void handleConfirmDflashPick(offer); }}
+              onConfirmManual={(id) => { void handleConfirmDflashManual(id); }}
+              onConfirmLibrary={handleConfirmLibraryDraft}
+            />
+          )}
         </div>
       ) : (
         <>
@@ -2906,11 +3167,42 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                 onThink={(t) => { void applyFullAutoCockpit(codingMode, speedBoost, brains, t); }}
                 capabilities={specCapabilities}
                 dflashLibraryReady={dflashLibraryReady}
+                dflashGettable={dflashGettable}
+                dflashDraftLabel={dflashDraftLabel}
+                dflashGetState={dflashGetState}
+                dflashGetError={dflashGetError}
+                dflashGetOfferLabel={dflashGetOfferLabel}
+                onGetDflashDraft={() => { void handleGetDflashDraft(); }}
+                onChangeDflashDraft={handleChangeDflashDraft}
                 kvQuantValues={kvQuantValues}
                 port={Number(config.base_port) || 9090}
                 modelId={aliasDisplayValue || autoAlias || model.name || "local-model"}
                 layout={configView === "full" ? "dense" : "normal"}
               />
+              {model && (
+                <DraftPickModal
+                  open={dflashPickOpen}
+                  mode={dflashPickMode}
+                  mainLabel={describeMainForDflashPick(model)}
+                  items={
+                    dflashPickMode === "library"
+                      ? libraryPickItems
+                      : hfOffersToPickItems(dflashCandidates)
+                  }
+                  initialSelectedId={
+                    dflashPickMode === "library"
+                      ? (config.spec_draft_model != null ? String(config.spec_draft_model) : null)
+                      : null
+                  }
+                  hfOffers={dflashCandidates}
+                  resolving={dflashResolving}
+                  resolveError={dflashResolveError}
+                  onCancel={handleCancelDflashPick}
+                  onConfirmHf={(offer) => { void handleConfirmDflashPick(offer); }}
+                  onConfirmManual={(id) => { void handleConfirmDflashManual(id); }}
+                  onConfirmLibrary={handleConfirmLibraryDraft}
+                />
+              )}
             </div>
           )}
 

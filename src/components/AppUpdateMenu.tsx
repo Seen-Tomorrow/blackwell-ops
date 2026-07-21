@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { DownloadTask, UpdateOfferings } from "@/lib/types";
-import DownloadProgressRow from "./DownloadProgressRow";
 import { useDownloadTasks } from "@/hooks/useDownloadTasks";
 import { BINARY_UPDATES_ENABLED } from "@/lib/foundry_constants";
 import { dispatchNavigateConfig } from "@/lib/events";
@@ -68,13 +67,8 @@ export default function AppUpdateMenu({
     return null;
   }
 
-  if (activeTask && !open) {
-    return (
-      <div className="w-[200px] flex-shrink-0 max-w-[28vw]">
-        <DownloadProgressRow task={activeTask} compact />
-      </div>
-    );
-  }
+  // Active app-download progress lives in the tab page header (far right) —
+  // keep this control as a stable UPDATE button so Quick Settings does not jump.
 
   return (
     <div ref={rootRef} className="relative flex-shrink-0">
@@ -90,12 +84,14 @@ export default function AppUpdateMenu({
             : "text-stealth-muted/70 hover:text-white/70"
         }`}
         title={
-          highlight
-            ? "Updates available — App pack here; engine packs in UPDATES catalog"
-            : "App update (engine packs in Config → UPDATES)"
+          activeTask
+            ? "App update downloading — progress is in the page header (right)"
+            : highlight
+              ? "Updates available — App pack here; engine packs in UPDATES catalog"
+              : "App update (engine packs in Config → UPDATES)"
         }
       >
-        UPDATE
+        {activeTask ? "UPDATING…" : "UPDATE"}
         {highlight && (
           <span
             className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse"

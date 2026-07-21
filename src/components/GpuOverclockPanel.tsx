@@ -116,15 +116,7 @@ export default function GpuOverclockPanel({
 
       {expanded && (
         <div className={rail ? "gpu-oc-rail-body" : "px-3 py-3 space-y-3"}>
-          <p
-            className={
-              rail
-                ? "gpu-oc-rail-disclaimer font-mono text-stealth-muted/80"
-                : "text-[8px] font-mono text-stealth-muted/80 leading-relaxed"
-            }
-          >
-            {rail ? "O/C is at your own risk" : "Power limits and clock offsets via nvidia-smi + Nvidia Inspector — at your own risk. Mem clock may only change under load."}
-          </p>
+          
 
           {rail ? (
             <div className="gpu-oc-rail-stack">

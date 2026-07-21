@@ -154,6 +154,15 @@ export interface FullAutoPlan {
   outcome: string;
   /** Joe-facing soft note (not CLI jargon). */
   softNote: string | null;
+  /** DFlash selected but no matching draft in library yet. */
+  needsDflashDraft: boolean;
+  /** Resolved boost for header tint: mtp | dflash | smart. */
+  boostTone: "mtp" | "dflash" | "smart";
+  /** Short boost label for header (MTP / DFlash / Smart / DFlash…). */
+  boostLabel: string;
+  brainsLabel: string;
+  agentsLabel: string;
+  thinkLabel: string;
 }
 
 export function resolveFullAutoPlan(opts: {
@@ -163,15 +172,32 @@ export function resolveFullAutoPlan(opts: {
   think: ThinkId;
   capabilities: SpecCapability[];
   dflashLibraryReady: boolean;
+  /** Family likely has a HF DFlash pack even if library empty. */
+  dflashGettable?: boolean;
   kvQuantValues: (string | number)[];
 }): FullAutoPlan {
-  const { codingMode, brains, think, capabilities, dflashLibraryReady, kvQuantValues } = opts;
-  let speed = opts.speed;
+  const {
+    codingMode,
+    brains,
+    think,
+    capabilities,
+    dflashLibraryReady,
+    dflashGettable = false,
+    kvQuantValues,
+  } = opts;
+  let speed: SpeedBoostId = opts.speed === "off" ? "smart" : opts.speed;
   const hasMtp = capabilities.includes("mtp");
-  const hasDflash = capabilities.includes("dflash") && dflashLibraryReady;
+  const hasDflashLib = capabilities.includes("dflash") || dflashLibraryReady;
+  const canAttemptDflash = hasDflashLib || dflashGettable;
 
-  if (speed === "mtp" && !hasMtp) speed = hasDflash ? "dflash" : "smart";
-  if (speed === "dflash" && !hasDflash) speed = hasMtp ? "mtp" : "off";
+  // Invalid boost for this main → fall through to another capable mode, else Smart.
+  // Never land on a disabled mark (e.g. DFlash → MTP when MTP also unavailable).
+  if (speed === "mtp" && !hasMtp) {
+    speed = canAttemptDflash ? "dflash" : "smart";
+  }
+  if (speed === "dflash" && !canAttemptDflash) {
+    speed = hasMtp ? "mtp" : "smart";
+  }
 
   let parallel = parallelForCodingMode(codingMode);
   let enableSpec = false;
@@ -179,10 +205,9 @@ export function resolveFullAutoPlan(opts: {
   let forcedSoloForMtp = false;
   let pushBatch = false;
   let softNote: string | null = null;
+  let needsDflashDraft = false;
 
-  if (speed === "off") {
-    enableSpec = false;
-  } else if (speed === "mtp") {
+  if (speed === "mtp") {
     enableSpec = true;
     specType = "draft-mtp";
     if (parallel > 1) {
@@ -191,17 +216,20 @@ export function resolveFullAutoPlan(opts: {
       softNote = "MTP works best with one agent — Agents set to Solo";
     }
   } else if (speed === "dflash") {
-    enableSpec = true;
-    specType = "draft-dflash";
+    if (dflashLibraryReady) {
+      enableSpec = true;
+      specType = "draft-dflash";
+    } else {
+      enableSpec = false;
+      specType = null;
+      needsDflashDraft = true;
+      // softNote intentionally empty — draft CTA lives only under Boost strip
+    }
   } else {
-    // smart — no draft by default under multi-agent; push prefill batch
+    // smart — push prefill batch; do not auto-enable MTP (Boost stays on Smart)
     pushBatch = true;
     enableSpec = false;
     specType = null;
-    if (parallel <= 1 && hasMtp) {
-      enableSpec = true;
-      specType = "draft-mtp";
-    }
   }
 
   const kvQuant = pickKvQuantForBrains(brains, kvQuantValues);
@@ -222,34 +250,36 @@ export function resolveFullAutoPlan(opts: {
     reasoningPreserve = "on";
   }
 
-  const modeLabel = CODING_MODE_OPTIONS.find((o) => o.id === codingMode)?.label ?? "Solo";
-  const speedLabel = SPEED_BOOST_OPTIONS.find((o) => o.id === speed)?.label ?? "Off";
-  const brainsLabel = BRAINS_OPTIONS.find((o) => o.id === brains)?.label ?? "Solid";
-
-  let outcome: string;
-  if (enableSpec && specType === "draft-mtp") {
-    outcome = `Solo-class stream · MTP active · ${brainsLabel} memory quality`;
-  } else if (enableSpec && specType === "draft-dflash") {
-    outcome = `×${parallel} agents · DFlash draft · ${brainsLabel} memory quality`;
-  } else if (pushBatch) {
-    outcome = `×${parallel} agents · Smart prefill · ${brainsLabel} memory quality`;
-  } else {
-    outcome = `×${parallel} agents · pure multi-agent · ${brainsLabel} memory quality`;
-  }
-
-  // Append reasoning budget info
+  const brainsLabel = BRAINS_OPTIONS.find((b) => b.id === brains)?.label ?? "Solid";
+  const agentsN = forcedSoloForMtp ? 1 : parallel;
+  const agentsLabel = `×${agentsN}`;
   const thinkLabel =
     think === "off"
-      ? "no reasoning"
+      ? "Off"
       : think === "on"
-        ? "unrestricted thinking"
+        ? "On"
         : think === "budget2k"
-          ? "thinking limited to 2000 tokens"
-          : "thinking limited to 4000 tokens";
-  outcome += ` · ${thinkLabel}`;
+          ? "2k"
+          : "4k";
+
+  let boostTone: "mtp" | "dflash" | "smart" = "smart";
+  let boostLabel = "Smart";
+  if (speed === "mtp" && enableSpec) {
+    boostTone = "mtp";
+    boostLabel = "MTP";
+  } else if (speed === "dflash" && enableSpec) {
+    boostTone = "dflash";
+    boostLabel = "DFlash";
+  } else if (speed === "dflash" && needsDflashDraft) {
+    boostTone = "dflash";
+    boostLabel = "DFlash…";
+  }
+
+  // Header order: BOOST · MEMORY · AGENTS · THINK
+  const outcome = `Boost ${boostLabel} · Memory ${brainsLabel} · Agents ${agentsLabel} · Think ${thinkLabel}`;
 
   return {
-    parallel,
+    parallel: agentsN,
     codingMode: forcedSoloForMtp ? "solo" : codingMode,
     speed,
     brains,
@@ -264,6 +294,12 @@ export function resolveFullAutoPlan(opts: {
     vision: "auto",
     outcome,
     softNote,
+    needsDflashDraft,
+    boostTone,
+    boostLabel,
+    brainsLabel,
+    agentsLabel,
+    thinkLabel,
   };
 }
 

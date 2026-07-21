@@ -475,7 +475,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
       </div>
       <div className="catalog-sort-actions flex items-center gap-1 shrink-0">
         {fitScanningCount > 0 && (
-          <span className="catalog-scan-status text-[8px] font-mono text-violet-300/80 whitespace-nowrap">
+          <span className="catalog-scan-status text-[8px] font-mono text-stealth-muted whitespace-nowrap">
             FIT {fitScanningCount}
           </span>
         )}

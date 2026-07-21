@@ -61,7 +61,15 @@ export default function GpuTopologyCard({
             GPU-{gpu.index}
             {driverVer ? ` · drv ${driverVer}` : ""}
           </span>
-          {selected ? <span className="gpu-topo-card__oc-badge">OC target</span> : null}
+          {selected ? (
+            <span
+              className={`gpu-topo-card__oc-badge${
+                oc?.profileActive ? " gpu-topo-card__oc-badge--active" : " gpu-topo-card__oc-badge--idle"
+              }`}
+            >
+              OC target
+            </span>
+          ) : null}
         </p>
       </div>
 
