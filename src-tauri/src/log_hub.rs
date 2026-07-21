@@ -66,6 +66,9 @@ impl LogHub {
 
     /// Emit a generic event to all frontend windows.
     pub fn emit(&self, event: &str, payload: impl serde::Serialize + Clone) {
+        if crate::app_lifecycle::is_shutting_down() {
+            return;
+        }
         if crate::debug_flags::flags().disable_ipc_emit {
             return;
         }
@@ -290,6 +293,11 @@ impl LogHub {
                                 engine_pid,
                                 model_ready.load(Ordering::Acquire),
                             );
+                            // App exit: engines were taskkilled on purpose. Skip FIT persist + IPC
+                            // into a dying WebView (heap corruption smoke trail after teardown DONE).
+                            if crate::app_lifecycle::is_shutting_down() {
+                                break;
+                            }
                             if model_ready.load(Ordering::Acquire) {
                                 let prev = tables_persisted;
                                 if let Some((mib, total, gpu_breakdown)) = Self::persist_pending_fit_tables(
@@ -1017,6 +1025,9 @@ impl LogHub {
 
     /// Emit a system-level event (launch debug, errors) visible in the frontend.
     pub async fn emit_system_event(&self, slot: usize, alias: &str, text: &str) {
+        if crate::app_lifecycle::is_shutting_down() {
+            return;
+        }
         let event = SystemEvent {
             slot,
             alias: alias.to_string(),

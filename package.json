@@ -1,12 +1,14 @@
 {
   "name": "blackwell-ops",
   "private": true,
-  "version": "1.0.28",
+  "version": "1.0.32",
   "type": "module",
   "scripts": {
     "vite": "vite --host 127.0.0.1 --port 1420",
     "server": "node scripts/warm-vite-dev.mjs",
     "predev": "powershell -ExecutionPolicy Bypass -File scripts/sync-dev-runtime.ps1",
+    "sync:dev-runtime": "powershell -ExecutionPolicy Bypass -File scripts/sync-dev-runtime.ps1",
+    "sync:dev-runtime:force": "powershell -ExecutionPolicy Bypass -File scripts/sync-dev-runtime.ps1 -Force",
     "dev": "tauri dev --config src-tauri/tauri.conf.dev.json",
     "build": "tsc && vite build",
     "build:frontend": "tsc && vite build",

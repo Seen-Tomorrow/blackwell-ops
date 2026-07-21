@@ -69,8 +69,10 @@ mod imp {
         }
 
         let code = (*record).ExceptionCode as u32;
-        // Benign Windows noise — not crash-related (instrumentation + MSVC thread naming).
-        if matches!(code, 0x4008_0201 | 0x406D_1388) {
+        // Benign Windows noise — not process-fatal:
+        // - 0x40080201 / 0x406D1388: instrumentation + MSVC thread naming
+        // - 0xE06D7363: MSVC C++ exception ("msc") — WebView/COM throw/catch noise (tens of thousands)
+        if matches!(code, 0x4008_0201 | 0x406D_1388 | 0xE06D_7363) {
             return 0;
         }
 

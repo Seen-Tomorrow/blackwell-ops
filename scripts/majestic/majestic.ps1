@@ -188,6 +188,83 @@ function Get-ReleaseExePath {
     Join-Path $root 'src-tauri\target\release\blackwell-ops.exe'
 }
 
+function Get-AssertReleaseExeScript {
+    Join-Path $root 'scripts\assert-release-exe.ps1'
+}
+
+function Get-AssertAppArchiveScript {
+    Join-Path $root 'scripts\assert-app-archive.ps1'
+}
+
+function Clear-ReleaseBuildEnvironment {
+    # DEV app / tauri dev can leave config merge vars in the process tree when
+    # DISTRIBUTION spawns Pack. Those must never influence `tauri build`.
+    $kill = @(
+        'TAURI_CONFIG',
+        'TAURI_ANDROID_PACKAGE_NAME',
+        'TAURI_ANDROID_PACKAGE_NAME_PREFIX',
+        'TAURI_DEV_HOST'
+    )
+    foreach ($name in $kill) {
+        if (Test-Path "Env:$name") {
+            Remove-Item "Env:$name" -ErrorAction SilentlyContinue
+            Write-Majestic "Cleared env $name (DEV pollution guard)" -Color DarkGray
+        }
+    }
+    $env:NODE_ENV = 'production'
+}
+
+function Assert-ReleaseExe {
+    param(
+        [string]$ExePath,
+        [string]$ExpectedVersion
+    )
+    $script = Get-AssertReleaseExeScript
+    if (-not (Test-Path -LiteralPath $script)) {
+        throw "Missing assert script: $script"
+    }
+    & $script -ExePath $ExePath -ExpectedVersion $ExpectedVersion -ExpectedProductName 'Blackwell Ops'
+    if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
+        throw "assert-release-exe failed (exit $LASTEXITCODE)"
+    }
+}
+
+function Assert-AppArchive {
+    param(
+        [string]$ArchivePath,
+        [string]$ExpectedVersion
+    )
+    $script = Get-AssertAppArchiveScript
+    if (-not (Test-Path -LiteralPath $script)) {
+        throw "Missing assert script: $script"
+    }
+    & $script -ArchivePath $ArchivePath -ExpectedVersion $ExpectedVersion -ExpectedProductName 'Blackwell Ops'
+    if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
+        throw "assert-app-archive failed (exit $LASTEXITCODE)"
+    }
+}
+
+function Invoke-ForceReleasePackageClean {
+    # VERSIONINFO / productName can stick across conf switches if only source is "unchanged".
+    # Drop crate release artifacts so the next tauri build re-embeds identity from tauri.conf.json.
+    $manifest = Join-Path $root 'src-tauri\Cargo.toml'
+    Write-Majestic "Forcing clean release package rebuild (cargo clean -p blackwell-ops --release)..." -Color Cyan
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        cargo clean -p blackwell-ops --release --manifest-path $manifest 2>&1 | ForEach-Object {
+            if ($_ -and "$_".Trim().Length -gt 0) { Write-Host $_ }
+        }
+    } finally {
+        $ErrorActionPreference = $prev
+    }
+    $exe = Get-ReleaseExePath
+    if (Test-Path -LiteralPath $exe) {
+        Remove-Item -LiteralPath $exe -Force -ErrorAction SilentlyContinue
+        Write-Majestic "Removed stale release exe before rebuild" -Color DarkGray
+    }
+}
+
 function Get-PackKindLabel {
     param([string]$Kind)
     if ($Kind -eq 'app') { 'App update (7z)' } else { 'Full Bundle (NSIS + packs)' }
@@ -246,11 +323,17 @@ function Invoke-FrontendAndTauriBuild {
     param([string]$Variant)
     Push-Location $root
     try {
+        Clear-ReleaseBuildEnvironment
+        $version = Read-AppVersion
+        Write-Majestic "Build target version $version | conf: tauri.conf.json only (never conf.dev)" -Color Cyan
+        Invoke-ForceReleasePackageClean
+
         if ($Variant -eq 'app') {
             Write-Majestic "Building frontend + release exe (no NSIS, no engine mirror)..." -Color Cyan
             npm run build
             if ($LASTEXITCODE -ne 0) { throw "npm run build failed with exit code $LASTEXITCODE" }
-            # Lean App pack: PE only - NSIS is Full Bundle path
+            # Lean App pack: PE only - NSIS is Full Bundle path.
+            # Do NOT pass -c/--config (would merge conf.dev and ship "Blackwell Ops DEV").
             npx tauri build --no-bundle
             if ($LASTEXITCODE -ne 0) { throw "tauri build --no-bundle failed with exit code $LASTEXITCODE" }
         } else {
@@ -258,6 +341,13 @@ function Invoke-FrontendAndTauriBuild {
             npm run release
             if ($LASTEXITCODE -ne 0) { throw "npm run release failed with exit code $LASTEXITCODE" }
         }
+
+        $exe = Get-ReleaseExePath
+        if (-not (Test-Path -LiteralPath $exe)) {
+            throw "Release exe missing after build: $exe"
+        }
+        Assert-ReleaseExe -ExePath $exe -ExpectedVersion $version
+        Write-Majestic "Release PE identity verified (Blackwell Ops v$version)" -Color Green
     } finally {
         Pop-Location
     }
@@ -274,6 +364,8 @@ function Invoke-PackAppUpdateArchive {
     if (-not (Test-Path -LiteralPath $exe)) {
         throw "Release exe missing after build: $exe"
     }
+    # Gate before 7z - never stage a DEV / wrong-version PE.
+    Assert-ReleaseExe -ExePath $exe -ExpectedVersion $Version
     Write-Majestic "Packing lean App update .7z..." -Color Cyan
     # Swallow ALL nested streams. Native 7z + Write-Host can pollute the success stream;
     # assignment then feeds empty lines into Get-Item -LiteralPath and dies.
@@ -290,6 +382,8 @@ function Invoke-PackAppUpdateArchive {
     if (-not (Test-Path -LiteralPath $out_path)) {
         throw "App update archive not created: $out_path"
     }
+    # Gate after 7z - archive must embed the same REL PE (tag/name alone is not enough).
+    Assert-AppArchive -ArchivePath $out_path -ExpectedVersion $Version
     $size_mb = [math]::Round((Get-Item -LiteralPath $out_path).Length / 1MB, 2)
     Write-Majestic "App update staged: $(Split-Path -Leaf $out_path) ($size_mb MB)" -Color Green
     # Single string only - never an Object[] of 7z chatter
@@ -603,12 +697,30 @@ function Invoke-MajesticPack {
 
     $skip_build = ($Variant -eq 'full') -and (Test-InstallerFresh -Config $Config -Version $version)
     if ($skip_build) {
-        Write-Majestic "Installer is fresh - skipping full release build (will still refresh packs)." -Color Yellow
+        Write-Majestic "Installer is fresh - skipping full release build (will still refresh App .7z)." -Color Yellow
+        # Still require a correct REL PE for the App archive - never pack a stale/DEV binary.
+        if (-not $DryRun) {
+            $exe = Get-ReleaseExePath
+            if (-not (Test-Path -LiteralPath $exe)) {
+                Write-Majestic "Release exe missing during skip-build - forcing full rebuild." -Color Yellow
+                $skip_build = $false
+            } else {
+                try {
+                    Assert-ReleaseExe -ExePath $exe -ExpectedVersion $version
+                } catch {
+                    Write-Majestic "Skip-build PE failed identity check - forcing full rebuild. $_" -Color Yellow
+                    $skip_build = $false
+                }
+            }
+        }
+    }
+    if ($skip_build) {
+        # already validated above
     } elseif ($DryRun) {
         if ($Variant -eq 'app') {
-            Write-Majestic "[dry-run] would run: prepare-release-app-only + npm run build + tauri build --no-bundle + pack-app-update.ps1" -Color Cyan
+            Write-Majestic "[dry-run] would run: clean + prepare-release-app-only + npm run build + tauri build --no-bundle + PE assert + pack-app-update.ps1" -Color Cyan
         } else {
-            Write-Majestic "[dry-run] would run: npm run release + pack-app-update + pack-provider-runtime" -Color Cyan
+            Write-Majestic "[dry-run] would run: clean + npm run release + PE assert + pack-app-update" -Color Cyan
         }
     } else {
         if ($Variant -eq 'full') {
@@ -619,7 +731,7 @@ function Invoke-MajesticPack {
         }
     }
 
-    if (-not $skip_build -and -not $DryRun) {
+    if (-not $DryRun) {
         if ($Variant -eq 'full') {
             $installers = Get-InstallerCandidates -Version $version
             if ($installers.Count -eq 0) {
@@ -630,6 +742,8 @@ function Invoke-MajesticPack {
                 throw "Release exe not found after build: $(Get-ReleaseExePath)"
             }
         }
+        # Final gate: release PE must match version files before any staging.
+        Assert-ReleaseExe -ExePath (Get-ReleaseExePath) -ExpectedVersion $version
     }
 
     $bundle_root = Join-Path $root 'src-tauri\runtime-bundle'
@@ -679,7 +793,7 @@ function Invoke-MajesticPack {
             $manifest_files += New-ManifestEntry -File (Get-Item -LiteralPath $dest_installer)
 
             # Full = CORE assets only (App .7z + Setup with Master). PLUGIN packs are manual
-            # via DISTRIBUTION Pack+Ship per provider — not attached on weekly Full.
+            # via DISTRIBUTION Pack+Ship per provider - not attached on weekly Full.
             Write-Majestic "PLUGIN packs: skipped on Full pack (use Pack+Ship per plugin when needed)" -Color DarkGray
         }
     }
@@ -908,6 +1022,22 @@ function Invoke-MajesticShip {
     }
     if ($assets.Count -eq 0) {
         throw "No staged assets in .majestic-out/ for $tag (packKind=$pack_kind)"
+    }
+
+    # Never upload an App .7z whose embedded PE is DEV or wrong version (the historic off-by-one).
+    Write-Majestic "Verifying staged App archive PE identity before upload..." -Color Cyan
+    $app_assets = @($assets | Where-Object {
+        $n = Split-Path -Leaf $_
+        ($n -like '*Blackwell-Ops-App*.7z') -or ($n -like '*Blackwell-Ops-App*.zip')
+    })
+    if ($app_assets.Count -eq 0 -and ($pack_kind -eq 'app' -or $pack_kind -eq 'full')) {
+        throw "Ship ${pack_kind}: no App .7z among staged assets - refuse upload (would publish incomplete release)."
+    }
+    foreach ($app_asset in $app_assets) {
+        Assert-AppArchive -ArchivePath $app_asset -ExpectedVersion $version
+    }
+    if ($app_assets.Count -gt 0) {
+        Write-Majestic ("App archive PE identity OK for v{0} ({1} file(s))" -f $version, $app_assets.Count) -Color Green
     }
 
     Write-Majestic "About to ship $tag to $($Config.repo) (packKind=$pack_kind)" -Color Cyan

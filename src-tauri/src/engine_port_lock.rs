@@ -88,6 +88,150 @@ fn live_stack_engine_error(port: u16, listener_pid: u32) -> String {
     )
 }
 
+/// Kill engines whose owning app process is dead (orphans after update/crash/Task Manager).
+/// Safe: only kills when lock matches a managed llama-server image and owner PID is gone.
+/// Call on startup before [`sweep_stale_locks`].
+pub async fn kill_orphans_of_dead_owners() {
+    use crate::output_console::{
+        emit_blackwell_output_console_debug_line, emit_blackwell_output_console_engines_line,
+        BlackwellOutputConsoleLineStyle,
+    };
+
+    let dir = locks_dir();
+    let Ok(entries) = std::fs::read_dir(&dir) else {
+        emit_blackwell_output_console_debug_line(
+            "[port_lock] Startup orphan reaper: no engine-locks directory",
+        );
+        return;
+    };
+
+    let current_app_pid = std::process::id();
+    let mut killed = 0usize;
+    let mut scanned = 0usize;
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Some(port) = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .and_then(|s| s.parse::<u16>().ok())
+        else {
+            continue;
+        };
+
+        let Some(lock) = read_lock(port) else {
+            continue;
+        };
+        scanned += 1;
+
+        // Still owned by a live app (us or another instance) — leave alone.
+        if lock.owner_app_pid == current_app_pid
+            || crate::engine_utils::is_process_alive(lock.owner_app_pid)
+        {
+            continue;
+        }
+
+        if !crate::engine_utils::is_process_alive(lock.engine_pid) {
+            let msg = format!(
+                "[port_lock] Dead-owner lock port {port}: engine PID {} already gone — remove lock",
+                lock.engine_pid
+            );
+            log::info!("{msg}");
+            emit_blackwell_output_console_debug_line(&msg);
+            delete_lock(port);
+            continue;
+        }
+
+        // Verify image before kill — never touch foreign servers.
+        let engine_pid = lock.engine_pid;
+        let image = tokio::task::spawn_blocking(move || {
+            crate::engine_utils::get_process_image_path(engine_pid)
+        })
+        .await
+        .ok()
+        .flatten();
+
+        let Some(image) = image else {
+            let msg = format!(
+                "[port_lock] Dead-owner orphan PID {engine_pid} on port {port}: image unreadable — skip kill"
+            );
+            log::warn!("{msg}");
+            emit_blackwell_output_console_engines_line(
+                &msg,
+                BlackwellOutputConsoleLineStyle::Warning,
+            );
+            continue;
+        };
+
+        let managed = crate::engine_utils::is_managed_llama_server_image(&image);
+        let locked_binary = crate::config::resolve_path(&lock.binary_path);
+        let same_binary =
+            crate::engine_utils::same_executable_path(&image, &locked_binary);
+        if !managed && !same_binary {
+            let msg = format!(
+                "[port_lock] Dead-owner PID {engine_pid} on port {port} is not a managed engine ({}) — skip",
+                image.display()
+            );
+            log::warn!("{msg}");
+            emit_blackwell_output_console_debug_line(&msg);
+            delete_lock(port);
+            continue;
+        }
+
+        let msg = format!(
+            "[port_lock] Killing orphan engine PID {engine_pid} on port {port} \
+             (owner app PID {} is dead; image={})",
+            lock.owner_app_pid,
+            image.display()
+        );
+        log::info!("{msg}");
+        emit_blackwell_output_console_engines_line(
+            &msg,
+            BlackwellOutputConsoleLineStyle::Warning,
+        );
+        emit_blackwell_output_console_debug_line(&msg);
+        if let Err(e) = crate::engine_utils::kill_process_by_pid(engine_pid).await {
+            let fail = format!("[port_lock] Failed to kill orphan PID {engine_pid}: {e}");
+            log::warn!("{fail}");
+            emit_blackwell_output_console_engines_line(
+                &fail,
+                BlackwellOutputConsoleLineStyle::Error,
+            );
+            continue;
+        }
+        killed += 1;
+
+        // Wait briefly for port release, then drop lock.
+        for _ in 0..10 {
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            if !crate::engine_utils::is_port_in_use(port).await {
+                break;
+            }
+        }
+        delete_lock(port);
+    }
+
+    let summary = if killed > 0 {
+        format!(
+            "[port_lock] Startup orphan reaper: scanned {scanned} lock(s), killed {killed} orphan engine(s)"
+        )
+    } else {
+        format!(
+            "[port_lock] Startup orphan reaper: scanned {scanned} lock(s), no dead-owner orphans"
+        )
+    };
+    log::info!("{summary}");
+    emit_blackwell_output_console_engines_line(
+        &summary,
+        if killed > 0 {
+            BlackwellOutputConsoleLineStyle::Warning
+        } else {
+            BlackwellOutputConsoleLineStyle::Normal
+        },
+    );
+    emit_blackwell_output_console_debug_line(&summary);
+}
+
 /// Remove lock files left after engine/app crashes (engine dead and/or port free).
 pub async fn sweep_stale_locks() {
     let dir = locks_dir();
@@ -227,14 +371,26 @@ pub async fn reclaim_our_ghost_or_fail(
             ));
         }
 
-        log::info!(
+        let msg = format!(
             "[port_lock] Reclaiming orphan engine on port {port} (PID {listener_pid}, owner_app_pid={})",
             lock.owner_app_pid
         );
+        log::info!("{msg}");
+        crate::output_console::emit_blackwell_output_console_engines_line(
+            &msg,
+            crate::output_console::BlackwellOutputConsoleLineStyle::Warning,
+        );
+        crate::output_console::emit_blackwell_output_console_debug_line(&msg);
     } else if crate::engine_utils::is_managed_llama_server_image(&listener_image) {
-        log::info!(
+        let msg = format!(
             "[port_lock] Reclaiming orphan engine on port {port} without lock metadata (PID {listener_pid})",
         );
+        log::info!("{msg}");
+        crate::output_console::emit_blackwell_output_console_engines_line(
+            &msg,
+            crate::output_console::BlackwellOutputConsoleLineStyle::Warning,
+        );
+        crate::output_console::emit_blackwell_output_console_debug_line(&msg);
     } else {
         return Err(format!(
             "Port {port} is in use by PID {listener_pid} (not a Blackwell Ops engine lock). \

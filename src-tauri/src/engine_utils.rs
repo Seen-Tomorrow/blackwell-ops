@@ -163,56 +163,6 @@ pub fn resolve_nvidia_smi_path() -> PathBuf {
     PathBuf::from("nvidia-smi")
 }
 
-/// Ask llama-server to shut down via CTRL+C on its console (prints memory breakdown on exit).
-#[cfg(windows)]
-pub fn request_console_ctrl_c(pid: u32) -> bool {
-    use windows_sys::Win32::System::Console::{
-        AttachConsole, FreeConsole, GenerateConsoleCtrlEvent, SetConsoleCtrlHandler, CTRL_C_EVENT,
-    };
-    use windows_sys::Win32::System::Threading::{
-        GetExitCodeProcess, OpenProcess, PROCESS_QUERY_INFORMATION,
-    };
-    use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
-
-    unsafe extern "system" fn swallow_ctrl_c(_ctrl_type: u32) -> i32 {
-        1
-    }
-
-    unsafe {
-        let handle = OpenProcess(PROCESS_QUERY_INFORMATION, 0, pid);
-        if handle == INVALID_HANDLE_VALUE {
-            log::debug!("[stop] pid {pid} already exited — skip AttachConsole");
-            return false;
-        }
-        let mut exit_code: u32 = 0;
-        let ok = GetExitCodeProcess(handle, &mut exit_code) != 0;
-        CloseHandle(handle);
-        const STILL_ACTIVE: u32 = 259;
-        if !ok || exit_code != STILL_ACTIVE {
-            log::debug!("[stop] pid {pid} not running (exit={exit_code}) — skip AttachConsole");
-            return false;
-        }
-
-        if AttachConsole(pid) == 0 {
-            log::debug!("[stop] AttachConsole failed for pid {pid} — will force-kill");
-            return false;
-        }
-        let _ = SetConsoleCtrlHandler(Some(swallow_ctrl_c), 1);
-        let sent = GenerateConsoleCtrlEvent(CTRL_C_EVENT, 0) != 0;
-        let _ = SetConsoleCtrlHandler(None, 0);
-        FreeConsole();
-        if !sent {
-            log::warn!("[stop] GenerateConsoleCtrlEvent failed for pid {pid}");
-        }
-        sent
-    }
-}
-
-#[cfg(not(windows))]
-pub fn request_console_ctrl_c(_pid: u32) -> bool {
-    false
-}
-
 /// Reap a child handle after the OS process is already gone (or being killed).
 pub fn reap_child_handle(child: &mut std::process::Child) -> bool {
     for _ in 0..40 {
@@ -232,25 +182,15 @@ pub fn reap_child_handle(child: &mut std::process::Child) -> bool {
     false
 }
 
-/// Stop a no-console engine: brief CTRL+C attempt, then taskkill by PID, then reap handle.
-/// Release builds spawn with CREATE_NO_WINDOW — AttachConsole usually fails, so taskkill is the reliable path.
-/// Never scans or kills by port — foreign listeners (LM Studio, other Blackwell instances) must not be touched.
+/// Stop a no-console engine: `taskkill /F /T /PID` then reap the child handle.
+///
+/// Engines spawn with `CREATE_NO_WINDOW` — there is no reliable graceful console signal.
+/// PID-only kill (never by port) so foreign listeners / sibling instances stay untouched.
 pub async fn stop_child_fast(
     mut child: std::process::Child,
     pid: Option<u32>,
 ) -> bool {
     if let Some(p) = pid {
-        if request_console_ctrl_c(p) {
-            for _ in 0..10 {
-                match child.try_wait() {
-                    Ok(Some(_)) => return true,
-                    Ok(None) => {
-                        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-                    }
-                    Err(_) => break,
-                }
-            }
-        }
         let _ = kill_process_by_pid(p).await;
     }
 
@@ -504,6 +444,9 @@ pub fn is_managed_llama_server_image(path: &Path) -> bool {
 
 /// Check if a Windows process is still alive by PID.
 /// Uses `PROCESS_QUERY_INFORMATION` only — do NOT add `PROCESS_VM_READ` (denied on child processes).
+///
+/// **OpenProcess failure is NULL (0), not INVALID_HANDLE_VALUE (-1).** Treating only -1 as failure
+/// left a null handle path that called GetExitCodeProcess(NULL) and falsely reported "alive".
 pub fn is_process_alive(pid: u32) -> bool {
     use windows_sys::Win32::Foundation::{CloseHandle, GetLastError, INVALID_HANDLE_VALUE};
     use windows_sys::Win32::System::Threading::{
@@ -515,8 +458,10 @@ pub fn is_process_alive(pid: u32) -> bool {
     }
 
     let handle = unsafe { OpenProcess(PROCESS_QUERY_INFORMATION, 0, pid) };
-    if handle == INVALID_HANDLE_VALUE {
-        // ERROR_INVALID_PARAMETER (87) — PID does not exist. ERROR_ACCESS_DENIED (5) — exists but protected.
+    // OpenProcess returns NULL on failure (not INVALID_HANDLE_VALUE).
+    if handle.is_null() || handle == INVALID_HANDLE_VALUE {
+        // ERROR_INVALID_PARAMETER (87) — PID does not exist.
+        // ERROR_ACCESS_DENIED (5) — process exists but is protected → treat as alive.
         let err = unsafe { GetLastError() };
         return err == windows_sys::Win32::Foundation::ERROR_ACCESS_DENIED;
     }
@@ -526,6 +471,7 @@ pub fn is_process_alive(pid: u32) -> bool {
     unsafe { CloseHandle(handle) };
 
     if !success {
+        // Handle opened but exit code unreadable — process likely still exists.
         return true;
     }
 

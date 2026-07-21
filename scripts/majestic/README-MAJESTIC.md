@@ -50,6 +50,18 @@ npm run majestic:ship-toolchain
 
 **BUMP** increments the **patch** only (`1.0.0` → `1.0.1`). Syncs `tauri.conf.json`, `tauri.conf.dev.json`, `package.json`, and `Cargo.toml`. Run **before PACK** so the installer name matches.
 
+## Release integrity (App / Full pack)
+
+Pack always:
+
+1. Scrubs `TAURI_CONFIG` / DEV env pollution (critical when Pack is launched from DISTRIBUTION inside `tauri dev`)
+2. `cargo clean -p blackwell-ops --release` so VERSIONINFO / ProductName cannot stick from a prior conf
+3. Builds with **default** `tauri.conf.json` only (never merges `tauri.conf.dev.json`)
+4. Asserts PE: ProductName = `Blackwell Ops`, FileVersion = conf version, no `.app.dev` / `:1420`
+5. Asserts the staged App `.7z` embeds that same PE
+
+Ship re-asserts App archives before `gh release` upload. A DEV-named or off-by-one PE **fails the job** instead of publishing.
+
 ## Git tags on SHIP
 
 SHIP does **not** commit your code. It does:

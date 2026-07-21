@@ -391,27 +391,39 @@ pub fn register_blackwell_output_console_app_handle(handle: tauri::AppHandle) {
     let _ = BLACKWELL_OUTPUT_CONSOLE_APP.set(handle);
 }
 
-fn emit_blackwell_output_console_line(
+/// Emit to Blackwell Output Console when AppContext is registered (REL-visible; no Tauri console needed).
+pub fn emit_blackwell_output_console_line(
     category: BlackwellOutputConsoleCategory,
-    content: String,
+    content: impl Into<String>,
     style: BlackwellOutputConsoleLineStyle,
 ) {
     use tauri::Manager;
+    let content = content.into();
     let Some(handle) = BLACKWELL_OUTPUT_CONSOLE_APP.get() else {
-        log::debug!("[console] {content}");
+        log::info!("[console-early] {}", content);
         return;
     };
     if let Some(ctx) = handle.try_state::<crate::engine::AppContext>() {
         ctx.blackwell_output_console_manager
             .emit_line_to_category(category, content, style);
+    } else {
+        log::info!("[console-no-ctx] {}", content);
     }
 }
 
-/// Debug tab — portable toolchain / CUDA PATH diagnostics.
+/// Debug tab — portable toolchain / CUDA PATH / lifecycle diagnostics.
 pub fn emit_blackwell_output_console_debug_line(content: impl Into<String>) {
     emit_blackwell_output_console_line(
         BlackwellOutputConsoleCategory::Debug,
-        content.into(),
+        content,
         BlackwellOutputConsoleLineStyle::Normal,
     );
+}
+
+/// Engines tab — launch/stop/job/teardown (primary REL visibility for engine lifecycle).
+pub fn emit_blackwell_output_console_engines_line(
+    content: impl Into<String>,
+    style: BlackwellOutputConsoleLineStyle,
+) {
+    emit_blackwell_output_console_line(BlackwellOutputConsoleCategory::Engines, content, style);
 }

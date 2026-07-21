@@ -421,7 +421,8 @@ export default function DistributionDevPanel() {
               {dash.workflowNotes.map((n) => (
                 <li key={n}>{n}</li>
               ))}
-              <li>Pack+Ship App auto-bumps patch version first</li>
+              <li>Pack+Ship App: bump → clean REL rebuild → PE assert → ship</li>
+              <li>Ship refuses DEV ProductName or version mismatch in App .7z</li>
               <li>Plugin Pack+Ship uses current version tag (no bump)</li>
             </ul>
           )}

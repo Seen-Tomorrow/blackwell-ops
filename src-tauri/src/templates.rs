@@ -589,7 +589,16 @@ impl ProviderTemplate {
                 },
                 "logic_only" => {
                     if param.key == "spec_draft_model" {
-                        Self::inject_spec_draft_model_user(&mut args, param, &config.model_path, &final_value_str);
+                        // MTP / ngram / off must never carry a leftover external draft path.
+                        let st = config.get_param_str("spec_type").unwrap_or_default();
+                        if crate::spec_draft::spec_type_needs_external_draft(&st) {
+                            Self::inject_spec_draft_model_user(
+                                &mut args,
+                                param,
+                                &config.model_path,
+                                &final_value_str,
+                            );
+                        }
                     }
                 },
                 _ => { log::debug!("[build_cmd] unknown ptype '{}' for '{}', skipping", param.ptype, param.key); }

@@ -1,6 +1,6 @@
 {
   "productName": "Blackwell Ops DEV",
-  "version": "1.0.28",
+  "version": "1.0.32",
   "identifier": "com.blackwell-ops.app.dev",
   "build": {
     "frontendDist": "../dist",

@@ -685,6 +685,7 @@ function unmountCaptureShell(shell: HTMLElement): void {
 }
 
 function shareAppVersionText(): string {
+  // Build counter is Vite-time; semver should match PE when share meta supplies appVersion.
   return `v${__TAURI_VERSION__} · BUILD ${__APP_VERSION__}`;
 }
 

@@ -135,6 +135,25 @@ export default function CustomSliderParam({
       : NaN;
   const hasDefault = !isNaN(defaultNumeric);
 
+  // Always-visible labels crowd the low end of a linear token scale (4K/8K/16K/32K).
+  // Show the lowest mark, skip every other label while value < 64K, then show all larger marks.
+  // Selected + hovered always stay labeled (ticks remain clickable regardless).
+  const labelVisible = useCallback(
+    (idx: number, pNum: number, isSelected: boolean) => {
+      if (isSelected || hoveredPresetIdx === idx) return true;
+      if (pNum >= 65_536) return true;
+      let lowOrdinal = 0;
+      for (let i = 0; i < numericValues.length; i++) {
+        const v = numericValues[i]!;
+        if (v >= 65_536) break;
+        if (i === idx) return lowOrdinal % 2 === 0;
+        lowOrdinal += 1;
+      }
+      return true;
+    },
+    [hoveredPresetIdx, numericValues],
+  );
+
   return (
     <div
       ref={trackRef}
@@ -155,6 +174,7 @@ export default function CustomSliderParam({
           trackWidthPx > 0 ? thumbCenterPercent(pNum, min, max, trackWidthPx) : 0;
         const isDefault = hasDefault && pNum === defaultNumeric;
         const isSelected = safeValue === pNum && !isDefault;
+        const showLabel = labelVisible(idx, pNum, safeValue === pNum);
         return (
           <div
             key={`${paramKey}-tick-${pNum}`}
@@ -190,12 +210,14 @@ export default function CustomSliderParam({
               title={formatTokenLabel(pNum)}
               aria-label={`Set ${formatTokenLabel(pNum)}`}
             />
-            <span
-              className={`ctx-slider-tick-tooltip absolute left-1/2 text-[7px] font-mono whitespace-nowrap pointer-events-none${hoveredPresetIdx === idx ? " ctx-slider-tick-tooltip--active" : ""}`}
-              style={{ top: "0px", transform: "translate(-50%, -100%)" }}
-            >
-              {formatTokenLabel(pNum)}
-            </span>
+            {showLabel ? (
+              <span
+                className={`ctx-slider-tick-tooltip absolute left-1/2 text-[7px] font-mono whitespace-nowrap pointer-events-none${hoveredPresetIdx === idx || safeValue === pNum ? " ctx-slider-tick-tooltip--active" : ""}`}
+                style={{ top: "0px", transform: "translate(-50%, -100%)" }}
+              >
+                {formatTokenLabel(pNum)}
+              </span>
+            ) : null}
           </div>
         );
       })}

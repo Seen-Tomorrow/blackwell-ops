@@ -240,7 +240,9 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
       <header className="app-header flex items-center justify-between gap-3 px-6 py-3 backdrop-blur-sm relative z-30 layout-header-enter min-w-0">
         <div className="app-header__start flex items-center gap-4 min-w-0 flex-1">
           {/* Logo / Brand */}
-          <BlackwellBrandMark />
+          <BlackwellBrandMark
+            packageVersion={updateOfferings?.currentVersion ?? null}
+          />
 
           {/* Nav tabs */}
           <nav className="app-header__nav flex items-stretch min-w-0">

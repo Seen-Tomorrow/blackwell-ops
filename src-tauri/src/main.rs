@@ -31,6 +31,8 @@ mod download_manager;
 mod model_catalog;
 mod spec_draft;
 mod engine_utils;
+mod engine_job;
+mod app_lifecycle;
 mod trash_util;
 mod engine_port_lock;
 mod fusion;
@@ -807,6 +809,9 @@ async fn main() {
                 }
             }
 
+            // Private job: engines die with the app process (KILL_ON_JOB_CLOSE).
+            crate::engine_job::init_engine_job();
+
             let slot_count = crate::templates::resolve_engine_slot_count();
             let stack = Arc::new(Mutex::new(EngineStack::new(slot_count)));
             log::info!("Initializing EngineStack with {} engine slot(s) (from provider spawn_profile)", slot_count);
@@ -831,6 +836,8 @@ async fn main() {
             app.manage(ctx);
 
             crate::output_console::register_blackwell_output_console_app_handle(app.handle().clone());
+            // Console is registered — surface job status (init ran earlier, before AppContext).
+            crate::engine_job::emit_engine_job_status_to_console();
 
             app.manage(config_arc);
 
@@ -870,8 +877,9 @@ async fn main() {
                 });
             }
 
-            // Remove engine-locks left when engines crashed or the app was killed
+            // Kill orphans from prior app death (update/crash), then scrub stale lock files.
             tauri::async_runtime::spawn(async move {
+                engine_port_lock::kill_orphans_of_dead_owners().await;
                 engine_port_lock::sweep_stale_locks().await;
             });
 
@@ -893,20 +901,13 @@ async fn main() {
         })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                // Block exit until engines are torn down — fire-and-forget left orphans under cargo.exe in dev.
+                // Block exit until engines are torn down — bare exit left orphans under cargo.exe in dev.
                 api.prevent_close();
                 let app_handle = window.app_handle().clone();
-                let stack_clone = app_handle.state::<AppContext>().stack.clone();
-                let fit_cancel = app_handle.state::<AppContext>().fit_scan_cancel.clone();
                 tauri::async_runtime::spawn(async move {
-                    fusion::stop_all_brains().await;
-                    {
-                        let guard = fit_cancel.lock().await;
-                        guard.store(true, std::sync::atomic::Ordering::Relaxed);
-                    }
-                    reactor_foundry::foundry_kill_all_children();
-                    EngineStack::kill_all(&stack_clone).await;
-                    app_handle.exit(0);
+                    engine::teardown_all_for_app_exit(&app_handle).await;
+                    // Do not AppHandle::exit — that path heap-corrupted after clean engine teardown.
+                    crate::app_lifecycle::finish_process_exit(&app_handle).await;
                 });
             }
         })
@@ -1050,6 +1051,7 @@ async fn main() {
             // Llama catalog (live --help parser)
             llama_catalog::get_llama_catalog,
             // Binary update commands
+            binary_update::get_app_package_version,
             binary_update::check_binary_updates,
             binary_update::download_binary_update,
             binary_update::get_profile_labels,

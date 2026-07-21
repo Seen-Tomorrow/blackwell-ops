@@ -1020,15 +1020,21 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           updateParam("spec_draft_n_max", preset.spec_draft_n_max);
           updateParam("spec_draft_n_min", preset.spec_draft_n_min);
         }
-        if (model && models?.length) {
-          const role = draftRoleForSpecType(plan.specType);
-          if (role) {
-            const draftPair = pickBestDraftPair(model, models, role);
-            if (draftPair) {
-              updateParam("spec_draft_model", draftPair.path);
-              saveDraftPairing(model.path, plan.specType, draftPair.path);
+        // External draft (DFlash/Eagle3) needs a paired GGUF. MTP is embedded — must clear any
+        // leftover --spec-draft-model from a prior DFlash selection or launch fails.
+        if (specTypeNeedsExternalDraft(plan.specType)) {
+          if (model && models?.length) {
+            const role = draftRoleForSpecType(plan.specType);
+            if (role) {
+              const draftPair = pickBestDraftPair(model, models, role);
+              if (draftPair) {
+                updateParam("spec_draft_model", draftPair.path);
+                saveDraftPairing(model.path, plan.specType, draftPair.path);
+              }
             }
           }
+        } else {
+          updateParam("spec_draft_model", "off");
         }
       }
     },
@@ -1171,10 +1177,14 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       updateParam("spec_draft_n_max", preset.spec_draft_n_max);
       updateParam("spec_draft_n_min", preset.spec_draft_n_min);
     }
-    const role = draftRoleForSpecType(replacement);
-    if (role) {
-      const draft = pickBestDraftPair(model, models, role);
-      if (draft) updateParam("spec_draft_model", draft.path);
+    if (specTypeNeedsExternalDraft(replacement)) {
+      const role = draftRoleForSpecType(replacement);
+      if (role) {
+        const draft = pickBestDraftPair(model, models, role);
+        if (draft) updateParam("spec_draft_model", draft.path);
+      }
+    } else {
+      updateParam("spec_draft_model", "off");
     }
   }, [
     model,
@@ -1674,8 +1684,14 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
               onClick={() => {
                 if (isLocked) return;
                 updateParam(def.key, val);
-                if (specSimpleMode && def.key === "spec_type") {
-                  applyEssentialsSpecPreset(String(val), updateParam);
+                if (def.key === "spec_type") {
+                  if (specSimpleMode) {
+                    applyEssentialsSpecPreset(String(val), updateParam);
+                  }
+                  // MTP (and other non-external modes) must not keep a DFlash draft path.
+                  if (!specTypeNeedsExternalDraft(String(val))) {
+                    updateParam("spec_draft_model", "off");
+                  }
                 }
               }}
               className={paramChipClass(paramValuesMatch(currentValue, val))}

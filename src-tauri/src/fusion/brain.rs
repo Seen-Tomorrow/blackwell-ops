@@ -32,7 +32,10 @@ fn poll_idle_ms() -> u64 {
     crate::debug_flags::flags().fusion_idle_poll_ms
 }
 /// Warm idle: recently-used engine between agent turns — /slots only, no /metrics.
-const WARM_IDLE_POLL_MS: u64 = 50;
+/// Was 50ms: 10 engines ≈ 200 HTTP polls/s for a full minute after bench — correlated with
+/// ~60–90s idle `STATUS_ILLEGAL_INSTRUCTION` / latent heap corruption (close only *detects* it).
+/// 250ms keeps agent-turn responsiveness without sustained stampede.
+const WARM_IDLE_POLL_MS: u64 = 250;
 /// Stay on warm cadence for this long after last slot activity (coding-session belt).
 const WARM_IDLE_WINDOW_MS: u64 = 60_000;
 /// Re-emit idle snapshots periodically so frontend can rehydrate after HMR/remount.
@@ -1557,15 +1560,15 @@ impl FusionBrain {
     pub fn spawn(
         log_hub: LogHub,
         config: FusionConfig,
-    ) -> (tokio_util::task::AbortOnDropHandle<()>, tokio_util::sync::CancellationToken) {
+    ) -> (tokio::task::JoinHandle<()>, tokio_util::sync::CancellationToken) {
         let cancel = tokio_util::sync::CancellationToken::new();
         let cancel_spawn = cancel.clone();
 
-       // Fusion brain startup now routed to Blackwell Output Console
-
-        let handle = tokio_util::task::AbortOnDropHandle::new(tokio::spawn(async move {
+        // JoinHandle (not AbortOnDrop): app exit must cancel+await cleanly.
+        // Abort-on-drop mid-HTTP/IPC with 10 brains correlated with STATUS_HEAP_CORRUPTION after teardown.
+        let handle = tokio::spawn(async move {
             Self::run(log_hub, config, cancel_spawn).await;
-        }));
+        });
 
         (handle, cancel)
     }
@@ -1601,13 +1604,19 @@ impl FusionBrain {
             tokio::time::Instant::now() + tokio::time::Duration::from_millis(poll_active_ms());
         let mut last_idle_heartbeat = std::time::Instant::now();
         let mut idle_cheap_streak: u32 = 0;
+        // Last logged poll tier (ms) — session markers for idle-crash bisect.
+        let mut last_logged_tier_ms: u64 = 0;
 
         loop {
             tokio::select! {
                 _ = cancel.cancelled() => {
                     unregister_brain_inbound(slot_idx);
-                    let term = brain.build_terminal_update();
-                    brain.force_emit(&log_hub, term);
+                    // Skip IPC on full app shutdown — concurrent fusion-update into a dying
+                    // WebView during exit has been a heap-corruption smoke trail.
+                    if !FUSION_SHUTTING_DOWN.load(std::sync::atomic::Ordering::Acquire) {
+                        let term = brain.build_terminal_update();
+                        brain.force_emit(&log_hub, term);
+                    }
                     return;
                 }
 
@@ -1676,7 +1685,17 @@ impl FusionBrain {
 
                 _ = tokio::time::sleep_until(next_poll) => {
                     if crate::debug_flags::flags().disable_fusion_poll {
+                        // Still schedule so disable flag can be flipped without wedging the loop.
+                        next_poll = tokio::time::Instant::now()
+                            + tokio::time::Duration::from_millis(poll_idle_ms());
                         continue;
+                    }
+
+                    // Skip HTTP entirely once app exit started (close races with idle poll).
+                    if crate::app_lifecycle::is_shutting_down()
+                        || FUSION_SHUTTING_DOWN.load(std::sync::atomic::Ordering::Acquire)
+                    {
+                        return;
                     }
 
                     let _ = brain
@@ -1688,7 +1707,25 @@ impl FusionBrain {
                         )
                         .await;
 
-                    let poll_ms = brain.poll_tier_ms(std::time::Instant::now());
+                    let now = std::time::Instant::now();
+                    let poll_ms = brain.poll_tier_ms(now);
+                    // Log tier changes once per brain (active ↔ warm ↔ cold) for session bisect.
+                    if poll_ms != last_logged_tier_ms {
+                        let label = if !brain.is_idle_ready() || brain.wants_active_poll() {
+                            "ACTIVE"
+                        } else if brain.is_warm_idle(now) {
+                            "WARM"
+                        } else {
+                            "COLD"
+                        };
+                        let msg = format!(
+                            "[fusion] slot={slot_idx} port={} tier={label} poll={poll_ms}ms (prev={last_logged_tier_ms}ms)",
+                            brain.port
+                        );
+                        log::info!("{msg}");
+                        crate::session_log::append_session_line(&msg);
+                        last_logged_tier_ms = poll_ms;
+                    }
                     next_poll = tokio::time::Instant::now()
                         + tokio::time::Duration::from_millis(poll_ms);
                 }
@@ -2924,14 +2961,42 @@ pub enum BrainInbound {
 }
 
 static BRAIN_REGISTRY: std::sync::LazyLock<
-    TokioMutex<HashMap<usize, (tokio_util::task::AbortOnDropHandle<()>, tokio_util::sync::CancellationToken)>>,
+    TokioMutex<HashMap<usize, (tokio::task::JoinHandle<()>, tokio_util::sync::CancellationToken)>>,
 > = std::sync::LazyLock::new(|| TokioMutex::new(HashMap::new()));
+
+/// Set by [`stop_all_brains`] so cancel paths skip WebView IPC during process exit.
+static FUSION_SHUTTING_DOWN: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// Max wait for a brain to leave after cancel before hard-abort (ms).
+const BRAIN_STOP_JOIN_MS: u64 = 750;
 
 /// Registry of brain inbound senders — keyed by slot_idx.
 /// Uses parking_lot Mutex so .lock() is safe inside both blocking & async contexts.
 static BRAIN_INBOUND_SENDERS: std::sync::LazyLock<
     parking_lot::Mutex<HashMap<usize, tokio::sync::mpsc::Sender<BrainInbound>>>,
 > = std::sync::LazyLock::new(|| parking_lot::Mutex::new(HashMap::new()));
+
+/// Cancel, await clean exit; abort only if still running after [`BRAIN_STOP_JOIN_MS`].
+async fn stop_brain_handle(
+    handle: tokio::task::JoinHandle<()>,
+    cancel: tokio_util::sync::CancellationToken,
+) {
+    let abort = handle.abort_handle();
+    cancel.cancel();
+    match tokio::time::timeout(
+        std::time::Duration::from_millis(BRAIN_STOP_JOIN_MS),
+        handle,
+    )
+    .await
+    {
+        Ok(_) => {}
+        Err(_timeout) => {
+            // Hung in HTTP or elsewhere — force-stop so app exit is not blocked.
+            abort.abort();
+        }
+    }
+}
 
 /// Register this brain's inbound channel. Called from run() before polling starts.
 pub fn register_brain_inbound(slot_idx: usize, tx: tokio::sync::mpsc::Sender<BrainInbound>) {
@@ -3005,10 +3070,12 @@ pub async fn start_brain(log_hub: LogHub, config: FusionConfig) {
         config.adapter.as_str(),
         config.port
     );
-    let mut registry = BRAIN_REGISTRY.lock().await;
-
-    if let Some((_, cancel)) = registry.remove(&config.slot_idx) {
-        cancel.cancel();
+    let old = {
+        let mut registry = BRAIN_REGISTRY.lock().await;
+        registry.remove(&config.slot_idx)
+    };
+    if let Some((handle, cancel)) = old {
+        stop_brain_handle(handle, cancel).await;
     }
     // Clear old inbound sender so events between cancel and new register don't route to dead channel
     {
@@ -3018,37 +3085,57 @@ pub async fn start_brain(log_hub: LogHub, config: FusionConfig) {
 
     let idx = config.slot_idx;
     let (handle, cancel) = FusionBrain::spawn(log_hub, config);
-    registry.insert(idx, (handle, cancel));
+    BRAIN_REGISTRY.lock().await.insert(idx, (handle, cancel));
 }
 
 /// Stop the fusion brain for a specific slot.
 pub async fn stop_brain(slot_idx: usize) {
-    let mut registry = BRAIN_REGISTRY.lock().await;
-    if let Some((_, cancel)) = registry.remove(&slot_idx) {
-        // Fusion brain stopping now routed to Blackwell Output Console
-        cancel.cancel();
-    }
-    // Also clean up inbound channel for this slot
+    let entry = {
+        let mut registry = BRAIN_REGISTRY.lock().await;
+        registry.remove(&slot_idx)
+    };
     {
         let mut senders = BRAIN_INBOUND_SENDERS.lock();
         senders.remove(&slot_idx);
+    }
+    if let Some((handle, cancel)) = entry {
+        stop_brain_handle(handle, cancel).await;
     }
     registry::unregister_slot_adapter(slot_idx);
     remove_fusion_snapshot(slot_idx);
 }
 
 /// Stop all fusion brains. Call on app shutdown.
+///
+/// Cancels every brain, awaits clean exit (no AbortOnDrop), skips fusion IPC into WebView.
+/// Hard-aborts only brains still stuck after [`BRAIN_STOP_JOIN_MS`].
 pub async fn stop_all_brains() {
-    let mut registry = BRAIN_REGISTRY.lock().await;
-    for (_slot_idx, (_, cancel)) in registry.drain() {
-        // Fusion brain stopping now routed to Blackwell Output Console
-        cancel.cancel();
-    }
-    // Drain all inbound channels too
+    FUSION_SHUTTING_DOWN.store(true, std::sync::atomic::Ordering::Release);
+
+    let entries: Vec<_> = {
+        let mut registry = BRAIN_REGISTRY.lock().await;
+        registry.drain().map(|(_, v)| v).collect()
+    };
     {
         let mut senders = BRAIN_INBOUND_SENDERS.lock();
         senders.clear();
     }
+
+    // Parallel join — 10 brains × 750ms sequential would block close UI.
+    let mut joins = Vec::with_capacity(entries.len());
+    for (handle, cancel) in entries {
+        joins.push(tokio::spawn(async move {
+            stop_brain_handle(handle, cancel).await;
+        }));
+    }
+    for j in joins {
+        let _ = j.await;
+    }
+
     registry::clear_slot_adapters();
     FUSION_SNAPSHOT_CACHE.lock().clear();
+    log::info!(
+        "[fusion] stop_all_brains complete (shutting_down=true, brains joined/aborted)"
+    );
+    crate::session_log::append_session_line("[fusion] stop_all_brains complete");
 }

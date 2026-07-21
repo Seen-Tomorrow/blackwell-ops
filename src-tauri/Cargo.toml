@@ -1,6 +1,6 @@
 [package]
 name = "blackwell-ops"
-version = "1.0.28"
+version = "1.0.32"
 edition = "2021"
 
 [[bin]]
@@ -20,7 +20,7 @@ tokio = { version = "1", features = ["full"] }
 tokio-util = { version = "0.7", features = ["rt"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-reqwest = { version = "0.12", features = ["json", "stream"] }
+reqwest = { version = "0.13", features = ["json", "stream"] }
 thiserror = "2"
 chrono = "0.4"
 log = "0.4"
@@ -40,7 +40,7 @@ trash = "5"
 
 [target.'cfg(windows)'.dependencies]
 keyring = { version = "3", default-features = false, features = ["windows-native"] }
-windows-sys = { version = "0.61", features = ["Win32_System_Console", "Win32_System_Threading", "Win32_Foundation", "Win32_System_Performance", "Win32_System_Diagnostics_Debug", "Win32_System_Kernel", "Win32_System_Memory", "Win32_System_LibraryLoader"] }
+windows-sys = { version = "0.61", features = ["Win32_System_Console", "Win32_System_Threading", "Win32_Foundation", "Win32_System_Performance", "Win32_System_Diagnostics_Debug", "Win32_System_Kernel", "Win32_System_Memory", "Win32_System_LibraryLoader", "Win32_System_JobObjects"] }
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

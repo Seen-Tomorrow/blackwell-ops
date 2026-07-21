@@ -306,9 +306,10 @@ impl EngineStack {
         }
 
         use std::os::windows::process::CommandExt;
+        // No console window — stop is PID taskkill only (see stop_child_fast).
+        // Do not CREATE_NEW_PROCESS_GROUP; engines join our kill-on-close job instead.
         const CREATE_NO_WINDOW: u32 = 0x08000000;
-        const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
-        cmd.creation_flags(CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP)
+        cmd.creation_flags(CREATE_NO_WINDOW)
             .args(&cmd_args)
             .env("CUDA_VISIBLE_DEVICES", &gpu_mask)
             .env("LLAMA_LOG_COLORS", "on")
@@ -330,6 +331,8 @@ impl EngineStack {
         };
 
         let pid = child.id();
+        // OS safety net: job close on app death kills this engine even if we skip explicit teardown.
+        crate::engine_job::assign_engine_to_job(pid, &config.alias, slot_idx, config.port);
         let launch_cmd = format!("{} {}", binary_path.display(), cmd_args.join(" "));
         crate::session_log::record_launch(
             slot_idx,
@@ -407,12 +410,23 @@ impl EngineStack {
         }
 
         if let Err(e) = crate::engine_port_lock::write_lock(config.port, pid, binary_path) {
-            log::warn!(
+            let msg = format!(
                 "[port_lock] Failed to write lock for port {} (PID {}): {}",
+                config.port, pid, e
+            );
+            log::warn!("{msg}");
+            crate::output_console::emit_blackwell_output_console_engines_line(
+                &msg,
+                crate::output_console::BlackwellOutputConsoleLineStyle::Warning,
+            );
+        } else {
+            crate::output_console::emit_blackwell_output_console_debug_line(format!(
+                "[port_lock] Wrote lock port={} pid={} alias={} owner_app_pid={}",
                 config.port,
                 pid,
-                e
-            );
+                config.alias,
+                std::process::id()
+            ));
         }
 
         // Update slot state under per-slot lock only
@@ -626,20 +640,62 @@ impl EngineStack {
         alias: String,
         emit_console: bool,
     ) {
-        let exited = crate::engine_utils::stop_child_fast(proc, pid).await;
+        let pid_label = pid.map(|p| p.to_string()).unwrap_or_else(|| "?".into());
+        let reaped = crate::engine_utils::stop_child_fast(proc, pid).await;
 
-        if emit_console {
+        // Child handle reaped = OS reported exit to us. Double-check PID only if reap failed.
+        let still_alive = if reaped {
+            false
+        } else {
+            // Brief settle — taskkill can leave STILL_ACTIVE for a few ms.
+            let mut alive = pid.map(crate::engine_utils::is_process_alive).unwrap_or(false);
+            if alive {
+                for _ in 0..10 {
+                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                    alive = pid.map(crate::engine_utils::is_process_alive).unwrap_or(false);
+                    if !alive {
+                        break;
+                    }
+                }
+            }
+            alive
+        };
+
+        let (msg, style) = if still_alive {
+            (
+                format!(
+                    "taskkill pid={pid_label} — still alive after wait (job close is safety net)"
+                ),
+                crate::output_console::BlackwellOutputConsoleLineStyle::Error,
+            )
+        } else if reaped {
+            (
+                format!("taskkill OK pid={pid_label} — process exited"),
+                crate::output_console::BlackwellOutputConsoleLineStyle::Warning,
+            )
+        } else {
+            (
+                format!("taskkill OK pid={pid_label} — process gone (PID check)"),
+                crate::output_console::BlackwellOutputConsoleLineStyle::Warning,
+            )
+        };
+
+        log::info!("[STOP] slot={slot_idx} alias={alias} {msg}");
+        if emit_console || still_alive {
+            let line = format!("[STOP] slot={slot_idx} alias={alias} {msg}");
             if let Some(hub) = hub {
-                let msg = if exited {
-                    "[STOP] graceful — stderr draining (exit breakdown may refine learned VRAM)".to_string()
-                } else {
-                    "[STOP] force-killed (exit breakdown skipped)".to_string()
-                };
                 hub.emit_console_line(
                     crate::output_console::BlackwellOutputConsoleCategory::Engines,
-                    &format!("[STOP] slot={} alias={} {}", slot_idx, alias, msg),
-                    crate::output_console::BlackwellOutputConsoleLineStyle::Warning,
+                    &line,
+                    style,
                 );
+                hub.emit_console_line(
+                    crate::output_console::BlackwellOutputConsoleCategory::Debug,
+                    &line,
+                    crate::output_console::BlackwellOutputConsoleLineStyle::Normal,
+                );
+            } else {
+                crate::output_console::emit_blackwell_output_console_engines_line(&line, style);
             }
         }
     }
@@ -1003,6 +1059,8 @@ impl EngineStack {
     }
 
     /// Stops all running slots in parallel. Static self-locking.
+    /// Does **not** await process teardown — UI stays responsive; kills run in background tasks.
+    /// For app exit / binary replace, use [`kill_all`] which awaits PID teardown.
     pub async fn stop_all_parallel(
         stack_ref: &Arc<tokio::sync::Mutex<EngineStack>>,
     ) -> Vec<usize> {
@@ -1039,6 +1097,7 @@ impl EngineStack {
     }
 
     /// Stops slots for a provider + runtime profile only (other profiles keep running).
+    /// Awaits taskkill — used before foundry rebuild / binary replace so files unlock.
     pub async fn stop_slots_by_provider_and_profile_parallel(
         backend_type: &str,
         binary_profile: &str,
@@ -1054,20 +1113,21 @@ impl EngineStack {
                     && Self::normalized_slot_profile(&slot.binary_profile) == bp
             },
             true,
-            false,
+            true,
         )
         .await
     }
 
     /// Emergency kill all — used during app exit. Awaits process teardown.
-    pub async fn kill_all(stack_ref: &Arc<tokio::sync::Mutex<EngineStack>>) {
+    /// Returns slot indices that had a process to kill.
+    pub async fn kill_all(stack_ref: &Arc<tokio::sync::Mutex<EngineStack>>) -> Vec<usize> {
         Self::shutdown_slots_generic(
             stack_ref,
             |slot| matches!(slot.status, SlotStatus::Running | SlotStatus::Loading),
             false,
             true,
         )
-        .await;
+        .await
     }
 
     /// Create a StackEntry from an engine slot.

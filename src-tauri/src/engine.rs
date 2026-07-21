@@ -3,6 +3,7 @@ use std::process::Stdio;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
+use tauri::Manager;
 use tokio::sync::Mutex;
 use tokio::sync::broadcast; // For fit scanner progress channel
 
@@ -722,15 +723,116 @@ pub async fn get_stack_status(app: tauri::State<'_, AppContext>) -> Result<Vec<S
     Ok(entries)
 }
 
+/// Single app-exit teardown: fusion brains, fit scan cancel, foundry children, engines (awaited).
+/// Used by window close, REL update exit, and `clean_exit` so no path can bare-`exit(0)` with live engines.
+pub async fn teardown_all_for_app_exit(app_handle: &tauri::AppHandle) {
+    use crate::output_console::{
+        emit_blackwell_output_console_debug_line, emit_blackwell_output_console_engines_line,
+        BlackwellOutputConsoleLineStyle,
+    };
+
+    let job = if crate::engine_job::is_job_active() {
+        "job=active"
+    } else {
+        "job=inactive"
+    };
+    let start_msg = format!(
+        "[teardown] START app_pid={} {job} — fusion brains, foundry children, then taskkill all engines",
+        std::process::id()
+    );
+    log::info!("{start_msg}");
+    crate::session_log::append_session_line(&start_msg);
+    // Before any cancel/kill: suppress IPC + pipe-exit FIT work (must beat concurrent pipe EOF).
+    crate::app_lifecycle::begin_shutdown();
+    emit_blackwell_output_console_engines_line(
+        &start_msg,
+        BlackwellOutputConsoleLineStyle::Highlight,
+    );
+    emit_blackwell_output_console_debug_line(&start_msg);
+
+    fusion::stop_all_brains().await;
+    emit_blackwell_output_console_debug_line("[teardown] fusion brains stopped");
+    crate::session_log::append_session_line("[teardown] fusion brains stopped");
+
+    if let Some(ctx) = app_handle.try_state::<AppContext>() {
+        {
+            let guard = ctx.fit_scan_cancel.lock().await;
+            guard.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
+        crate::reactor_foundry::foundry_kill_all_children();
+        let stopped = EngineStack::kill_all(&ctx.stack).await;
+        // Pipe readers (blocking BufRead) need a beat to EOF-exit before runtime/WebView teardown.
+        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+        let done = format!(
+            "[teardown] DONE — taskkill awaited for {} engine slot(s); job will also kill any residual on process exit",
+            stopped.len()
+        );
+        log::info!("{done}");
+        crate::session_log::append_session_line(&done);
+        crate::session_log::append_session_line(&format!(
+            "[teardown] slots={stopped:?} app_pid={}",
+            std::process::id()
+        ));
+        emit_blackwell_output_console_engines_line(&done, BlackwellOutputConsoleLineStyle::Success);
+        emit_blackwell_output_console_debug_line(format!(
+            "[teardown] slots={:?} app_pid={}",
+            stopped,
+            std::process::id()
+        ));
+    } else {
+        crate::reactor_foundry::foundry_kill_all_children();
+        let msg = "[teardown] AppContext unavailable — engines may only die via job object on process exit";
+        log::warn!("{msg}");
+        crate::session_log::append_session_line(msg);
+        emit_blackwell_output_console_engines_line(msg, BlackwellOutputConsoleLineStyle::Warning);
+        emit_blackwell_output_console_debug_line(msg);
+    }
+}
+
+/// Same as [`teardown_all_for_app_exit`] when only stack/cancel handles are available.
+pub async fn teardown_stack_for_app_exit(
+    stack: &Arc<Mutex<EngineStack>>,
+    fit_scan_cancel: &Arc<Mutex<Arc<AtomicBool>>>,
+) {
+    use crate::output_console::{
+        emit_blackwell_output_console_debug_line, emit_blackwell_output_console_engines_line,
+        BlackwellOutputConsoleLineStyle,
+    };
+
+    let start_msg = format!(
+        "[teardown] START (stack path) app_pid={} job_active={}",
+        std::process::id(),
+        crate::engine_job::is_job_active()
+    );
+    log::info!("{start_msg}");
+    crate::app_lifecycle::begin_shutdown();
+    emit_blackwell_output_console_engines_line(
+        &start_msg,
+        BlackwellOutputConsoleLineStyle::Highlight,
+    );
+    emit_blackwell_output_console_debug_line(&start_msg);
+
+    fusion::stop_all_brains().await;
+    {
+        let guard = fit_scan_cancel.lock().await;
+        guard.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+    crate::reactor_foundry::foundry_kill_all_children();
+    let stopped = EngineStack::kill_all(stack).await;
+    tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+    let done = format!(
+        "[teardown] DONE — taskkill awaited for {} engine slot(s)",
+        stopped.len()
+    );
+    log::info!("{done}");
+    emit_blackwell_output_console_engines_line(&done, BlackwellOutputConsoleLineStyle::Success);
+    emit_blackwell_output_console_debug_line(format!("[teardown] slots={stopped:?}"));
+}
+
 #[tauri::command]
 pub async fn clean_exit(app: tauri::State<'_, AppContext>) -> Result<(), String> {
-    log::info!("Clean exit requested — killing all orphaned processes");
-
-    // Stop fusion brains first to prevent orphaned HTTP polling
-    fusion::stop_all_brains().await;
-
-    // kill_all is self-locking — no stack lock needed
-    EngineStack::kill_all(&app.stack).await;
+    log::info!("Clean exit requested — killing all engines");
+    teardown_stack_for_app_exit(&app.stack, &app.fit_scan_cancel).await;
     Ok(())
 }
 

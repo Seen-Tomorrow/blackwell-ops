@@ -1,5 +1,6 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
+import { invoke } from "@tauri-apps/api/core";
 import {
   copyFusionSharePngToClipboard,
   downloadFusionSharePng,
@@ -182,10 +183,17 @@ export default function FusionShareMenu({
           );
         } else {
           const blob = await renderFusionSharePng(shareMeta, variant);
+          let appVersion = __TAURI_VERSION__;
+          try {
+            const v = await invoke<string>("get_app_package_version");
+            if (v?.trim()) appVersion = v.trim();
+          } catch {
+            /* fall back to Vite define */
+          }
           downloadFusionSharePng(blob, {
             modelName,
             tgTps,
-            appVersion: __TAURI_VERSION__,
+            appVersion,
           });
           toastFusionShare(
             `Fusion card downloaded (${variant === "white" ? "light" : "dark"})`,

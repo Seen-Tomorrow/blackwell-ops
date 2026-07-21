@@ -15,6 +15,20 @@ $root = Split-Path -Parent (Split-Path -Parent $script_dir)
 $out = Join-Path $root '.majestic-out'
 New-Item -ItemType Directory -Path $out -Force | Out-Null
 
+# Scrub DEV / tauri-dev pollution inherited when DISTRIBUTION spawns this console
+# from a running `tauri dev` process. Pack must only use tauri.conf.json.
+foreach ($name in @(
+        'TAURI_CONFIG',
+        'TAURI_ANDROID_PACKAGE_NAME',
+        'TAURI_ANDROID_PACKAGE_NAME_PREFIX',
+        'TAURI_DEV_HOST'
+    )) {
+    if (Test-Path "Env:$name") {
+        Remove-Item "Env:$name" -ErrorAction SilentlyContinue
+    }
+}
+$env:NODE_ENV = 'production'
+
 $log_path = Join-Path $out 'job-log.txt'
 $status_path = Join-Path $out 'job-status.json'
 $majestic = Join-Path $script_dir 'majestic.ps1'

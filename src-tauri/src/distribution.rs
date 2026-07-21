@@ -447,10 +447,11 @@ pub fn get_distribution_dashboard(
         release_job_running: RELEASE_JOB_RUNNING.load(Ordering::SeqCst),
         workflow_notes: vec![
             "Weekly Full: NSIS = ggml-master only (nsisCore in policy)".into(),
-            "Pack+Ship App: auto bump patch + App .7z + upload".into(),
+            "Pack+Ship App: bump + clean REL rebuild + PE identity assert + App .7z + ship".into(),
+            "Ship refuses DEV ProductName / version mismatch inside App .7z".into(),
             "Pack+Ship provider: engines for current tag (no bump)".into(),
             "Plugin ON writes policy + optionalDownload + catalog - does not upload".into(),
-            "Job output: Tauri console [majestic] lines (primary)".into(),
+            "Job output: Tauri console [majestic] lines + visible Majestic console".into(),
         ],
     })
 }
@@ -1005,8 +1006,13 @@ fn spawn_detached_chain(app: &tauri::AppHandle, action: &DevReleaseAction) -> Re
     );
 
     // Start-Process -PassThru returns the real console process Id (not the helper).
+    // Scrub TAURI_* from the helper process first so the child does not inherit
+    // conf.dev merge env from the running DEV app (ships "Blackwell Ops DEV").
     let launcher = format!(
-        "$wd='{root_s}'; $al=@({ps_arg_list}); \
+        "foreach($n in @('TAURI_CONFIG','TAURI_ANDROID_PACKAGE_NAME','TAURI_ANDROID_PACKAGE_NAME_PREFIX','TAURI_DEV_HOST')){{ \
+           Remove-Item \"Env:$n\" -ErrorAction SilentlyContinue }}; \
+         $env:NODE_ENV='production'; \
+         $wd='{root_s}'; $al=@({ps_arg_list}); \
          $p=Start-Process -FilePath powershell.exe -WorkingDirectory $wd \
          -ArgumentList $al -WindowStyle Normal -PassThru; \
          if($null -eq $p){{ exit 1 }}; Write-Output $p.Id"

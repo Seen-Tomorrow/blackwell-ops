@@ -113,6 +113,13 @@ pub fn toggle_dev_update_version_fake(
     }
 }
 
+/// Runtime package version (same source as updater `current_version` / PE identity).
+/// Prefer this over Vite `__TAURI_VERSION__` so header and UPDATES never desync.
+#[tauri::command]
+pub fn get_app_package_version(app_handle: tauri::AppHandle) -> String {
+    app_handle.package_info().version.to_string()
+}
+
 /// Feature flag: set to true to enable binary update checks via GitHub API.
 /// Keep in sync with `BINARY_UPDATES_ENABLED` in `src/lib/foundry_constants.ts`.
 pub const BINARY_UPDATES_ENABLED: bool = true;

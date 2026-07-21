@@ -45,6 +45,15 @@ if (-not (Test-Path -LiteralPath $ExePath)) {
     throw "Release exe not found: $ExePath - build first (tauri build --no-bundle or npm run build:exe)"
 }
 
+# Refuse to pack DEV-config / wrong-version PEs (DISTRIBUTION / majestic integrity).
+$assert_exe = Join-Path $script_dir 'assert-release-exe.ps1'
+if (Test-Path -LiteralPath $assert_exe) {
+    & $assert_exe -ExePath $ExePath -ExpectedVersion $Version -ExpectedProductName 'Blackwell Ops'
+    if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
+        throw "assert-release-exe failed (exit $LASTEXITCODE)"
+    }
+}
+
 if (-not $BundleRoot) {
     $BundleRoot = Join-Path $root 'src-tauri\runtime-bundle'
 }

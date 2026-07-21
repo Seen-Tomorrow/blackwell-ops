@@ -8,15 +8,21 @@ Traps and invariants only — not a code map. Read the source for flows, schemas
 
 **Engine ports** — Do not reintroduce port-based taskkill (`kill_process_by_port` or netstat carpet-bomb) on launch, stop, or fail paths. Launch uses `engine_port_lock::reclaim_our_ghost_or_fail` (verified orphan only); teardown is PID-only via `stop_child_fast` / `kill_process_by_pid`. Old behavior killed ESTABLISHED fusion/health clients and sibling app instances.
 
+**Engine lifetime** — Engines join a private Job Object (`engine_job`, `KILL_ON_JOB_CLOSE`). Never bare `AppHandle::exit` without `engine::teardown_all_for_app_exit` (update path included). Stop is taskkill-by-PID only (no console CTRL+C). Startup runs `kill_orphans_of_dead_owners` then `sweep_stale_locks`.
+
+**App exit / heap corruption (`0xC0000374`)** — After engines are stopped, do **not** use `AppHandle::exit(0)` or `WebviewWindow::destroy()` for process death. Session logs showed STATUS_HEAP_CORRUPTION in ntdll immediately after “main window destroyed” / Tauri Drop, even when taskkill + fusion stop had completed cleanly. Close/update path: `teardown_all_for_app_exit` → `app_lifecycle::finish_process_exit` → `std::process::exit(0)` (skip webview destroy + Tauri Drop cascade). During shutdown: `app_lifecycle::begin_shutdown` suppresses fusion/IPC and pipe-EOF FIT work. Fusion warm-idle poll is 250ms (not 50ms) to avoid multi-engine HTTP stampede before exit.
+
 **Tauri listeners** — Use `useTauriListen`; raw `listen()` in `useEffect` leaks under StrictMode because unsubscribe resolves after first cleanup.
 
 **Frontend persistence** — New localStorage keys → `storage.ts`. New window events → `events.ts`. Tauri event names (`engine-log-batch`, etc.) are backend-owned strings.
 
-**Windows `is_process_alive`** — `PROCESS_QUERY_INFORMATION` only. `PROCESS_VM_READ` is denied on child processes → false “dead” reads. `OpenProcess` failure with `ERROR_INVALID_PARAMETER` = PID gone (dead); `ERROR_ACCESS_DENIED` = treat as alive (protected process).
+**Windows `is_process_alive`** — `PROCESS_QUERY_INFORMATION` only. `PROCESS_VM_READ` is denied on child processes → false “dead” reads. `OpenProcess` failure is **NULL (0)**, not `INVALID_HANDLE_VALUE` — must treat both as failure or dead PIDs look “alive” via `GetExitCodeProcess(null)`. On open failure: `ERROR_INVALID_PARAMETER` = PID gone (dead); `ERROR_ACCESS_DENIED` = treat as alive (protected process).
 
 **Windows detached console spawn** — Never use `CREATE_BREAKAWAY_FROM_JOB`. Cargo/Tauri/dev hosts put the process in a job that denies breakaway → immediate `Access is denied (os error 5)`. Detached visible windows: `Start-Process` (or `cmd start "" …`) via a `CREATE_NO_WINDOW` helper — see `engine::spawn_nobsproof_cmd_window` and `distribution::spawn_detached_chain`. `CREATE_NEW_CONSOLE` alone is last resort; breakaway is never OK. Pack/ship do not need gsudo/admin.
 
 **Release asset naming** — `CORE_*` = App `.7z`, Full NSIS Setup, optional `CORE_ggml-master-{profile}.7z`. `PLUGIN_*` = optional engine packs. **Pack Full** stages CORE only (App + Setup with Master) — never bulk PLUGIN packs. Plugins via explicit Pack+Ship per provider. Ship full filters to CORE assets. Client accepts legacy unprefixed names.
+
+**App Pack/Ship identity** — DISTRIBUTION Pack+Ship must never publish a DEV PE under a REL tag. Pack scrubbs `TAURI_CONFIG`, forces `cargo clean -p blackwell-ops --release`, builds with default `tauri.conf.json` only (never merge `tauri.conf.dev.json`), then asserts PE ProductName=`Blackwell Ops`, FileVersion=conf version, no `.app.dev`/`:1420`. Ship re-asserts App `.7z` contents before `gh release`. Header semver uses runtime `package_info` (`get_app_package_version`), not Vite `__TAURI_VERSION__` alone.
 
 **Binary sources** — Core: Bundled (`runtime/`) + Foundry + Catalog overlay (`runtime-catalog/{id}/{profile}/`) — catalog must **not** clobber NSIS. Plugins: Catalog install under `runtime/` (+ Foundry if built). Active source is switchable (`binarySourcePerEnv` is sole ACTIVE). Product tag (`downloadedVersion`) is for UPDATES only; engine identity = `llama-server --version` (not app tag). Plugin metadata: `runtime-catalog/plugins.json` (legacy `runtime/catalog/` still read).
 
@@ -28,7 +34,10 @@ Traps and invariants only — not a code map. Read the source for flows, schemas
 
 ---
 ## APP/engine logs
-C:\Users\GHOST-TOWER\INFRA\blackwell-ops\src-tauri\target\debug\config\logs
+DEV session files (engine stderr/stdout + launch): `{exe_dir}/config/logs/sessions/`  
+→ typically `src-tauri/target/debug/config/logs/sessions/session-*/`  
+Always ON in debug builds; `BLACKWELL_SESSION_LOG=0` off, `=1` force-on (incl. REL). Last **25** sessions kept.  
+Native crashes also append `%TEMP%\blackwell-crash.log` (heap `0xC0000374`, illegal insn `0xC000001D`).
 ---
 
 ## Provider config merge
@@ -69,7 +78,7 @@ C:\Users\GHOST-TOWER\INFRA\blackwell-ops\src-tauri\target\debug\config\logs
 | `npm run server` | Warm Vite (`:1421` internal → `:1420` proxy) — start before the app for fast WebView load |
 | `npm run dev` | Tauri + Rust only — waits for `:1420`, then `cargo run` |
 
-`npm run dev` still runs `predev` (`sync-dev-runtime.ps1`) — dev runtime binary sync, not Vite.
+`npm run dev` still runs `predev` (`sync-dev-runtime.ps1`) — mirrors `src-tauri/runtime` → `target/debug/runtime` only when the source fingerprint changes (path/size/mtime). Use `npm run sync:dev-runtime:force` after foundry installs if the stamp is wrong.
 
 **Typical workflow** — two terminals:
 

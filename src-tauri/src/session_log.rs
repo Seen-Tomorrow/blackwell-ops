@@ -1,6 +1,11 @@
 //! DEV session file log — engine stderr/stdout + launch metadata under `config/logs/sessions/`.
-//! Active when `cfg!(debug_assertions)` (default ON). Disable with `BLACKWELL_SESSION_LOG=0`
-//! (or force on with `=1`). No UI toggle — IPC `set_session_log_enabled` remains for tools.
+//!
+//! **Always ON in debug builds** (`cfg!(debug_assertions)`). Not active in release/REL unless
+//! `BLACKWELL_SESSION_LOG=1` (escape hatch). Disable in DEV with `BLACKWELL_SESSION_LOG=0`.
+//! IPC `set_session_log_enabled` remains for tools.
+//!
+//! Path: `{exe_dir}/config/logs/sessions/session-YYYY-MM-DD_HHMMSS/`
+//! (DEV → `src-tauri/target/debug/config/logs/sessions/`).
 
 use std::collections::HashMap;
 use std::fs::{self, File, OpenOptions};
@@ -12,7 +17,8 @@ use std::sync::{Mutex, OnceLock};
 use serde::Serialize;
 
 const SESSION_LOG_ENV: &str = "BLACKWELL_SESSION_LOG";
-const MAX_SESSIONS: usize = 5;
+/// Keep enough history through crash/restart loops (was 5 — useful engine sessions vanished).
+const MAX_SESSIONS: usize = 25;
 const MAX_STREAM_BYTES: u64 = 50 * 1024 * 1024;
 
 static RUNTIME_ENABLED: AtomicBool = AtomicBool::new(cfg!(debug_assertions));
@@ -60,14 +66,22 @@ fn env_disabled() -> bool {
         .unwrap_or(false)
 }
 
+/// True when file capture should run.
+/// DEV default ON; `BLACKWELL_SESSION_LOG=0` forces off; REL only if env forces on.
 pub fn is_active() -> bool {
-    dev_build() && (env_enabled() || RUNTIME_ENABLED.load(Ordering::Relaxed))
+    if env_disabled() {
+        return false;
+    }
+    if env_enabled() {
+        // Explicit force-on works in REL too (crash forensics escape hatch).
+        return true;
+    }
+    // Default: debug builds only, unless runtime toggle disabled.
+    dev_build() && RUNTIME_ENABLED.load(Ordering::Relaxed)
 }
 
 pub fn set_runtime_enabled(enabled: bool) {
-    if !dev_build() {
-        return;
-    }
+    // Allow tools to toggle in DEV; env force-off still wins via is_active().
     if !enabled {
         if let Some(dir) = current_dir() {
             write_session_log_file(&dir, "[session_log] runtime disabled — file capture paused");
@@ -170,16 +184,29 @@ fn ensure_session() -> Option<PathBuf> {
 }
 
 pub fn init() {
-    if !dev_build() {
-        return;
-    }
     if env_disabled() {
         RUNTIME_ENABLED.store(false, Ordering::Relaxed);
     } else if env_enabled() {
         RUNTIME_ENABLED.store(true, Ordering::Relaxed);
     }
     if is_active() {
-        ensure_session();
+        if let Some(dir) = ensure_session() {
+            log::info!(
+                "[session_log] ACTIVE → {} (dev_build={} env_on={} env_off={})",
+                dir.display(),
+                dev_build(),
+                env_enabled(),
+                env_disabled()
+            );
+        }
+    } else {
+        log::info!(
+            "[session_log] inactive (dev_build={} env_on={} env_off={} runtime={})",
+            dev_build(),
+            env_enabled(),
+            env_disabled(),
+            runtime_enabled()
+        );
     }
 }
 
@@ -249,6 +276,8 @@ fn write_stream(
         writers.stdout_bytes += bytes;
         if let Some(w) = writers.stdout.as_mut() {
             let _ = w.write_all(payload.as_bytes());
+            // Flush every line — heap crash / hard kill must not lose buffered stderr.
+            let _ = w.flush();
         }
     } else {
         if writers.stderr_capped {
@@ -265,6 +294,7 @@ fn write_stream(
         writers.stderr_bytes += bytes;
         if let Some(w) = writers.stderr.as_mut() {
             let _ = w.write_all(payload.as_bytes());
+            let _ = w.flush();
         }
     }
 }

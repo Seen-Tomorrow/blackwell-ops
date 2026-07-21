@@ -561,12 +561,34 @@ pub fn launch_nsis_installer(installer_path: &Path, app_handle: &tauri::AppHandl
     Ok(())
 }
 
+/// Exit after delay — always tears down engines first (`AppHandle::exit` skips CloseRequested).
 fn schedule_app_exit(app_handle: &tauri::AppHandle, delay_secs: u64) {
+    use crate::output_console::{
+        emit_blackwell_output_console_debug_line, emit_blackwell_output_console_engines_line,
+        BlackwellOutputConsoleLineStyle,
+    };
+
     let app_handle_clone = app_handle.clone();
     tauri::async_runtime::spawn(async move {
-        tokio::time::sleep(std::time::Duration::from_secs(delay_secs)).await;
+        let msg = format!(
+            "[app-update] Exit scheduled in {delay_secs}s — tearing down engines first (no bare exit)"
+        );
+        log::info!("{msg}");
+        emit_blackwell_output_console_engines_line(
+            &msg,
+            BlackwellOutputConsoleLineStyle::Highlight,
+        );
+        emit_blackwell_output_console_debug_line(&msg);
+
+        // Kill engines immediately so VRAM/ports free while UI shows "restarting…".
+        // Job object is the safety net if exit races ahead of taskkill.
+        crate::engine::teardown_all_for_app_exit(&app_handle_clone).await;
+        if delay_secs > 0 {
+            tokio::time::sleep(std::time::Duration::from_secs(delay_secs)).await;
+        }
         log::info!("[app-update] Closing app for update apply");
-        app_handle_clone.exit(0);
+        crate::session_log::append_session_line("[app-update] finish_process_exit after teardown");
+        crate::app_lifecycle::finish_process_exit(&app_handle_clone).await;
     });
 }
 
