@@ -1042,6 +1042,10 @@ export interface GpuControlDeviceInfo {
   memClockMhz: number;
   maxCoreClockMhz: number;
   maxMemClockMhz: number;
+  /** Windows: TCC | WDDM (empty if N/A). */
+  driverModel?: string;
+  /** Pending after hot switch (may need process recycle / reboot). */
+  driverModelPending?: string;
 }
 
 export type GpuControlOcMode = "sync" | "individual";

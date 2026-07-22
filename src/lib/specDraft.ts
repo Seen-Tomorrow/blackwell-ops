@@ -87,8 +87,15 @@ const DRAFT_ARCH_FOR_SPEC: Record<string, DraftRole> = {
   "draft-eagle3": "external_eagle3",
 };
 
-/** Minimum pairing score — blocks same-folder-only false positives. */
-export const MIN_DRAFT_PAIR_SCORE = 58;
+/**
+ * Minimum library pairing score (0–100).
+ * Aligns with HF suggest tier: below this = ignore for auto-capability / auto-pair.
+ * (Same-folder-only weak hits still fail stem overlap before reaching this floor.)
+ */
+export const MIN_DRAFT_PAIR_SCORE = 50;
+
+/** High-confidence local pair — UI can badge as strong match. */
+export const HIGH_DRAFT_PAIR_SCORE = 80;
 
 const FAMILY_RULES: { id: string; pattern: RegExp }[] = [
   { id: "qwen35", pattern: /qwen3\.?5|qwen35/i },
@@ -360,13 +367,15 @@ export function scoreDraftPair(main: ModelEntry, draft: ModelEntry, draftRole: D
   const overlap = stemOverlapScore(mainStem, draftStem);
   if (overlap <= 0) return -1;
 
+  // Overlap is already ~52–70; bonuses pad toward 100% confidence.
   let score = overlap;
-  if (sameParent(main.path, draft.path)) score += 20;
+  if (sameParent(main.path, draft.path)) score += 12;
   const mq = quantToken(main);
   const dq = quantToken(draft);
-  if (mq && dq && mq === dq) score += 15;
-  if (draft.metadata?.architecture?.toLowerCase() === draftRole.replace("external_", "")) score += 10;
-  return score;
+  if (mq && dq && mq === dq) score += 10;
+  if (draft.metadata?.architecture?.toLowerCase() === draftRole.replace("external_", "")) score += 8;
+  // Cap at 100 — UI shows this as a percentage.
+  return Math.min(100, score);
 }
 
 export type ScoredDraft = { model: ModelEntry; score: number };

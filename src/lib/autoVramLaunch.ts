@@ -4,6 +4,14 @@ import {
   computeGpuAvailableList,
   type RunningSlotInfo,
 } from "../services/vram/scenarios/scenarios_factory";
+import { fullAutoSingleDeviceLabel } from "./fullAutoGpuPick";
+
+export {
+  gpuArchFamily,
+  pickFullAutoSingleGpuIndex,
+  pickFullAutoSingleGpuListPos,
+  fullAutoSingleDeviceLabel,
+} from "./fullAutoGpuPick";
 
 function headroomGb(capacityGb: number): number {
   return Math.max(1.0, capacityGb * 0.03);
@@ -86,6 +94,10 @@ export function buildAutoVramLaunchParams(opts: {
       if (autoSplit) {
         params.split = "layer";
         params.gpu_sync = config.gpu_sync ?? "1";
+        // Split mask = all GPUs; device chrome ignored by CUDA mask helper.
+      } else {
+        // Single-GPU Full Auto: freest card among same-arch peers (not always GPU-0).
+        params.device = fullAutoSingleDeviceLabel(gpus, perGpu);
       }
     } else {
       const userSplit = config.split != null ? String(config.split).trim().toLowerCase() : "";
@@ -97,6 +109,8 @@ export function buildAutoVramLaunchParams(opts: {
         params.gpu_sync = config.gpu_sync ?? "1";
       }
     }
+  } else if (fullAutoMode && gpus.length >= 1 && params.split === undefined && !autoSplit) {
+    params.device = fullAutoSingleDeviceLabel(gpus, perGpu);
   }
 
   return params;

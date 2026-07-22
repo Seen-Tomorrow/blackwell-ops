@@ -2749,10 +2749,20 @@ html, body, #root {
 .dflash-pick-modal__list {
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
+  gap: 0.35rem;
   min-height: 0;
   overflow-y: auto;
   padding: 0.1rem 0;
+}
+
+/* In-place roll: about 3 cards, wheel/KB cycles selection */
+.dflash-pick-modal__list--capped {
+  max-height: 11.5rem;
+  overflow-y: auto;
+}
+
+.dflash-pick-modal__list--remote {
+  /* cyan plate list sits inside remote section */
 }
 
 .dflash-pick-modal__card {
@@ -2765,6 +2775,25 @@ html, body, #root {
   color: inherit;
   cursor: pointer;
   transition: border-color 0.12s ease, background 0.12s ease;
+}
+
+.dflash-pick-modal__card--local {
+  border-color: color-mix(in srgb, #a78bfa 28%, transparent);
+}
+
+.dflash-pick-modal__card--remote {
+  border-color: color-mix(in srgb, #22d3ee 32%, transparent);
+  background: color-mix(in srgb, #042f2e 40%, #000 60%);
+}
+
+.dflash-pick-modal__card--remote:hover {
+  border-color: color-mix(in srgb, #22d3ee 55%, transparent);
+}
+
+.dflash-pick-modal__card--remote.dflash-pick-modal__card--active {
+  border-color: color-mix(in srgb, #22d3ee 72%, transparent);
+  background: color-mix(in srgb, #0e7490 28%, #000 72%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, #22d3ee 28%, transparent);
 }
 
 .dflash-pick-modal__card:hover {
@@ -2826,11 +2855,21 @@ html, body, #root {
   word-break: break-word;
 }
 
+/* Right stack: Rec/Best pill above match % */
+.dflash-pick-modal__match-col {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 0.2rem;
+  max-width: 42%;
+}
+
 .dflash-pick-modal__match {
   flex: 0 0 auto;
-  max-width: 38%;
   text-align: right;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 800;
   letter-spacing: 0.04em;
   line-height: 1.15;
@@ -2840,12 +2879,53 @@ html, body, #root {
   white-space: nowrap;
 }
 
+/* 50–79 confirm tier */
+.dflash-pick-modal__match--suggest {
+  color: #c4b5fd;
+  text-shadow: 0 0 12px color-mix(in srgb, #a78bfa 45%, transparent);
+}
+
+/* ≥80 high confidence */
+.dflash-pick-modal__match--high {
+  color: #6ee7b7;
+  text-shadow: 0 0 12px color-mix(in srgb, #34d399 50%, transparent);
+}
+
 .dflash-pick-modal__match--weak {
   font-size: 11px;
   font-weight: 700;
   color: color-mix(in srgb, #fbbf24 85%, #a78bfa 15%);
   text-shadow: none;
   opacity: 0.9;
+}
+
+.dflash-pick-modal__card--high {
+  border-color: color-mix(in srgb, #34d399 40%, transparent);
+}
+
+.dflash-pick-modal__card--high.dflash-pick-modal__card--active {
+  border-color: color-mix(in srgb, #34d399 65%, transparent);
+  background: color-mix(in srgb, #065f46 22%, #000 78%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, #34d399 22%, transparent);
+}
+
+.dflash-pick-modal__rec-pill {
+  flex-shrink: 0;
+  font-size: 7px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 0.1rem 0.3rem;
+  border-radius: 2px;
+  color: #a7f3d0;
+  border: 1px solid color-mix(in srgb, #34d399 50%, transparent);
+  background: color-mix(in srgb, #065f46 35%, transparent);
+}
+
+.dflash-pick-modal__rec-pill--suggest {
+  color: #ddd6fe;
+  border-color: color-mix(in srgb, #a78bfa 45%, transparent);
+  background: color-mix(in srgb, #5b21b6 28%, transparent);
 }
 
 .dflash-pick-modal__actions {
@@ -2895,53 +2975,199 @@ html, body, #root {
   color: color-mix(in srgb, #fbbf24 85%, transparent);
 }
 
+/* Local list vs remote download — clear visual split */
+.dflash-pick-modal__section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-height: 0;
+}
+
+.dflash-pick-modal__section--local {
+  flex: 0 1 auto;
+  min-height: 0;
+  padding: 0.35rem 0.4rem 0.4rem;
+  border-radius: 3px;
+  border: 1px solid color-mix(in srgb, #a78bfa 30%, transparent);
+  background: color-mix(in srgb, #120a1c 50%, #000 50%);
+}
+
+.dflash-pick-modal__section--remote {
+  flex: 0 0 auto;
+  padding: 0.35rem 0.4rem 0.4rem;
+  border-radius: 3px;
+  border: 1px dashed color-mix(in srgb, #22d3ee 40%, transparent);
+  background: color-mix(in srgb, #042f2e 35%, #000 65%);
+}
+
+.dflash-pick-modal__section--remote-open {
+  border-style: solid;
+  border-color: color-mix(in srgb, #22d3ee 50%, transparent);
+}
+
+.dflash-pick-modal__remote-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.15rem 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.dflash-pick-modal__remote-toggle:hover .dflash-pick-modal__section-label--remote {
+  color: #a5f3fc;
+}
+
+.dflash-pick-modal__remote-toggle:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.dflash-pick-modal__remote-body {
+  margin-top: 0.3rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.dflash-pick-modal__remote-status,
+.dflash-pick-modal__remote-collapsed-hint {
+  margin: 0;
+  font-size: 8px;
+  line-height: 1.35;
+  color: color-mix(in srgb, #67e8f9 65%, transparent);
+}
+
+.dflash-pick-modal__section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.dflash-pick-modal__section-label {
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, #c4b5fd 88%, transparent);
+}
+
+.dflash-pick-modal__section-label--remote {
+  color: color-mix(in srgb, #67e8f9 90%, transparent);
+}
+
+.dflash-pick-modal__section-badge {
+  flex-shrink: 0;
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 0.12rem 0.35rem;
+  border-radius: 2px;
+  border: 1px solid transparent;
+}
+
+.dflash-pick-modal__section-badge--local {
+  color: #c4b5fd;
+  border-color: color-mix(in srgb, #a78bfa 40%, transparent);
+  background: color-mix(in srgb, #6d28d9 18%, transparent);
+}
+
+.dflash-pick-modal__section-badge--match {
+  color: #ddd6fe;
+  border-color: color-mix(in srgb, #a78bfa 45%, transparent);
+  background: color-mix(in srgb, #5b21b6 28%, transparent);
+}
+
+.dflash-pick-modal__section-badge--remote {
+  color: #a5f3fc;
+  border-color: color-mix(in srgb, #22d3ee 45%, transparent);
+  background: color-mix(in srgb, #0891b2 22%, transparent);
+}
+
+/* Remote HF paste — cyan dashed plate, distinct from violet local cards */
 .dflash-pick-modal__manual {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
-  padding: 0.45rem 0.5rem;
+  gap: 0.3rem;
+  flex-shrink: 0;
+  margin-top: 0.15rem;
+  padding: 0.55rem 0.55rem 0.5rem;
   border-radius: 3px;
-  border: 1px solid color-mix(in srgb, #a78bfa 28%, transparent);
-  background: color-mix(in srgb, #000 40%, transparent);
+  border: 1px dashed color-mix(in srgb, #22d3ee 48%, transparent);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, #042f2e 55%, #000 45%) 0%,
+      color-mix(in srgb, #000 70%, #083344 30%) 100%
+    );
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #22d3ee 12%, transparent);
 }
 
 .dflash-pick-modal__manual--active {
-  border-color: color-mix(in srgb, #a78bfa 50%, transparent);
-  background: color-mix(in srgb, #6d28d9 12%, #000 88%);
+  border-style: solid;
+  border-color: color-mix(in srgb, #22d3ee 70%, transparent);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, #0e7490 28%, #000 72%) 0%,
+      color-mix(in srgb, #042f2e 50%, #000 50%) 100%
+    );
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #67e8f9 18%, transparent),
+    0 0 0 1px color-mix(in srgb, #22d3ee 18%, transparent);
 }
 
 .dflash-pick-modal__manual-label {
   font-size: 8px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: color-mix(in srgb, #c4b5fd 80%, transparent);
+  color: color-mix(in srgb, #a5f3fc 85%, transparent);
 }
 
 .dflash-pick-modal__manual-input {
   width: 100%;
   font-size: 11px;
   font-family: inherit;
-  padding: 0.35rem 0.45rem;
+  padding: 0.4rem 0.5rem;
   border-radius: 2px;
-  border: 1px solid color-mix(in srgb, #a78bfa 30%, transparent);
-  background: color-mix(in srgb, #000 60%, transparent);
-  color: #f5f3ff;
+  border: 1px solid color-mix(in srgb, #22d3ee 35%, transparent);
+  background: color-mix(in srgb, #000 72%, transparent);
+  color: #ecfeff;
   outline: none;
 }
 
 .dflash-pick-modal__manual-input:focus {
-  border-color: color-mix(in srgb, #a78bfa 70%, transparent);
+  border-color: color-mix(in srgb, #67e8f9 75%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, #22d3ee 25%, transparent);
 }
 
 .dflash-pick-modal__manual-input::placeholder {
-  color: color-mix(in srgb, #94a3b8 55%, transparent);
+  color: color-mix(in srgb, #67e8f9 38%, transparent);
 }
 
 .dflash-pick-modal__manual-hint {
   margin: 0;
   font-size: 7px;
   line-height: 1.35;
-  color: color-mix(in srgb, #94a3b8 80%, transparent);
+  color: color-mix(in srgb, #99f6e4 72%, transparent);
+}
+
+.dflash-pick-modal__btn--primary-remote {
+  color: #ecfeff;
+  border-color: color-mix(in srgb, #22d3ee 55%, transparent);
+  background: color-mix(in srgb, #0e7490 60%, #041016 40%);
+}
+
+.dflash-pick-modal__btn--primary-remote:hover {
+  background: color-mix(in srgb, #0891b2 70%, #041016 30%);
 }
 
 .dflash-pick-modal__error {
@@ -6290,10 +6516,21 @@ html[data-industrial-bezel="brush"] {
   z-index: 80;
 }
 
+/* Hero TG/PP only — do not select [style*="6vh"] (matches 2.6vh per-slot as well). */
 .fusion-share-capture-stage[data-fusion-share-capture] .fusion-prefill-hero-value,
-.fusion-share-capture-stage[data-fusion-share-capture] [style*="6vh"] {
+.fusion-share-capture-stage[data-fusion-share-capture] .fusion-tg-hero-value {
   font-size: 2.5rem !important;
   line-height: 1 !important;
+}
+
+.fusion-share-capture-stage[data-fusion-share-capture] .fusion-per-slot-meter__value {
+  font-size: 1.15rem !important;
+  line-height: 1 !important;
+}
+
+.fusion-share-capture-stage[data-fusion-share-capture] .fusion-per-slot-meter {
+  top: 6px !important;
+  right: 8px !important;
 }
 
 .fusion-share-capture-stage[data-fusion-share-capture] .bench-concurrency-badge {
@@ -7319,6 +7556,21 @@ html:not([data-theme="arctic"]) [data-display-texture="clean"] .phosphor-display
   flex-shrink: 0;
   margin-top: auto;
   min-width: 0;
+  /* Visual break above pinned launch when HW monitor / rail stacks above */
+  border-top: 1.5px solid color-mix(in srgb, var(--theme-bezel-edge-hi) 70%, transparent);
+  box-shadow:
+    0 -3px 10px color-mix(in srgb, #000000 28%, transparent),
+    0 -1px 0 color-mix(in srgb, var(--theme-bezel-edge-lo) 40%, transparent);
+  padding-top: 2px;
+  position: relative;
+  z-index: 2;
+}
+
+[data-theme="arctic"] .launch-rail-launch {
+  border-top-color: color-mix(in srgb, #8a9aaa 55%, transparent);
+  box-shadow:
+    0 -3px 10px color-mix(in srgb, #000000 12%, transparent),
+    0 -1px 0 color-mix(in srgb, #d0d8e0 50%, transparent);
 }
 
 .config-launch-rail--hw-only {
@@ -7336,14 +7588,14 @@ html:not([data-theme="arctic"]) [data-display-texture="clean"] .phosphor-display
 }
 
 [data-config-panel][data-launch-dock-position="right"] .config-launch-rail .config-launch-dock {
-  border-top: none;
+  border-top: none; /* separator lives on .launch-rail-launch */
   border-left: none;
   box-shadow: none;
   background: transparent;
   flex: 0 0 auto;
   min-height: 0;
   z-index: 1;
-  padding-top: 0.5rem;
+  padding-top: 0.45rem;
   padding-bottom: calc(var(--config-launch-dock-pad) + var(--app-footer-h));
 }
 
@@ -7484,6 +7736,22 @@ html:not([data-theme="arctic"]) [data-display-texture="clean"] .phosphor-display
   display: flex;
   flex-direction: column;
   gap: 8px;
+  /* Scroll when zoom/OC overflows — no visible scrollbar (still wheel/trackpad). */
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* legacy Edge */
+}
+
+.launch-rail-tel__body::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+/* Prefer not to fight the dock: keep OC panel fully in view when open */
+.launch-rail-tel__body:has([data-gpu-overclock] .gpu-oc-rail-body) {
+  scroll-padding-bottom: 8px;
 }
 
 .launch-rail-tel__gpu-stack {
@@ -11940,9 +12208,10 @@ body[data-onboarding-phase="scan-meta"] [data-onboarding="scan-meta"],
   white-space: nowrap;
 }
 
+/* SYNC / PER GPU + TCC / WDDM — ~25% smaller than prior rail mode chips */
 [data-gpu-overclock] .gpu-oc-rail-btn--mode.app-nav-tab {
-  padding: 6px 12px !important;
-  font-size: 18px !important;
+  padding: 4px 9px !important;
+  font-size: 13.5px !important;
 }
 
 [data-gpu-overclock] .gpu-oc-rail-btn--action.app-nav-tab {
@@ -11957,14 +12226,157 @@ body[data-onboarding-phase="scan-meta"] [data-onboarding="scan-meta"],
 
 .app-shell[data-ui-density="compact"] [data-gpu-overclock] .gpu-oc-rail-btn--mode.app-nav-tab {
   min-height: 0 !important;
-  padding: 6px 12px !important;
-  font-size: 18px !important;
+  padding: 4px 9px !important;
+  font-size: 13.5px !important;
 }
 
 .app-shell[data-ui-density="compact"] [data-gpu-overclock] .gpu-oc-rail-btn--action.app-nav-tab {
   min-height: 0 !important;
   padding: 4px 4px !important;
   font-size: 12px !important;
+}
+
+/* Page layout SYNC / PER GPU (same ~25% shrink vs text-[9px] py-2) */
+[data-gpu-overclock] .gpu-oc-mode-btn.app-nav-tab {
+  min-height: 0 !important;
+  padding: 6px 8px !important;
+  font-size: 7px !important;
+  line-height: 1.15 !important;
+  letter-spacing: 0.06em;
+}
+
+/* Driver model status + toggles */
+[data-gpu-overclock] .gpu-oc-driver-model__label--tcc {
+  color: var(--color-telemetry-amber, #ffb800);
+  font-weight: 700;
+  text-shadow: 0 0 8px color-mix(in srgb, var(--color-telemetry-amber, #ffb800) 35%, transparent);
+}
+
+[data-gpu-overclock] .gpu-oc-driver-model__label--wddm {
+  color: color-mix(in srgb, var(--theme-text-muted, #94a3b8) 88%, transparent);
+  font-weight: 600;
+}
+
+[data-gpu-overclock] .gpu-oc-driver-model__btn--tcc.app-nav-tab {
+  color: color-mix(in srgb, var(--color-telemetry-amber, #ffb800) 75%, transparent);
+  border-color: color-mix(in srgb, var(--color-telemetry-amber, #ffb800) 35%, transparent);
+}
+
+[data-gpu-overclock] .gpu-oc-driver-model__btn--tcc-active.app-nav-tab,
+[data-gpu-overclock] .gpu-oc-driver-model__btn--tcc.app-nav-tab.app-nav-tab-active {
+  color: #1a1400 !important;
+  background: color-mix(in srgb, var(--color-telemetry-amber, #ffb800) 78%, #1a1400) !important;
+  border-color: color-mix(in srgb, var(--color-telemetry-amber, #ffb800) 70%, transparent) !important;
+  box-shadow: 0 0 10px color-mix(in srgb, var(--color-telemetry-amber, #ffb800) 30%, transparent);
+}
+
+[data-gpu-overclock] .gpu-oc-driver-model__btn--wddm.app-nav-tab {
+  color: color-mix(in srgb, var(--theme-text-muted, #94a3b8) 90%, transparent);
+  border-color: color-mix(in srgb, var(--theme-border, #64748b) 45%, transparent);
+}
+
+[data-gpu-overclock] .gpu-oc-driver-model__btn--wddm-active.app-nav-tab,
+[data-gpu-overclock] .gpu-oc-driver-model__btn--wddm.app-nav-tab.app-nav-tab-active {
+  color: color-mix(in srgb, var(--theme-text, #e2e8f0) 92%, transparent) !important;
+  background: color-mix(in srgb, var(--theme-chip-bg, #1e293b) 70%, transparent) !important;
+  border-color: color-mix(in srgb, var(--theme-border, #94a3b8) 55%, transparent) !important;
+}
+
+/* TCC confirm modal */
+.gpu-oc-tcc-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10060;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: color-mix(in srgb, #000 48%, transparent);
+}
+
+.gpu-oc-tcc-modal {
+  width: min(380px, 100%);
+  padding: 0.85rem 0.9rem 0.75rem;
+  border-radius: 4px;
+  border: 1px solid color-mix(in srgb, var(--color-telemetry-amber, #ffb800) 45%, transparent);
+  background: linear-gradient(180deg, #1a1408 0%, #0a0804 100%);
+  box-shadow: 0 12px 40px color-mix(in srgb, #000 55%, transparent);
+  color: #f5f0e0;
+}
+
+.gpu-oc-tcc-modal__title {
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-telemetry-amber, #ffb800);
+}
+
+.gpu-oc-tcc-modal__target {
+  margin: 0.3rem 0 0.55rem;
+  font-size: 9px;
+  color: color-mix(in srgb, #f5f0e0 70%, transparent);
+}
+
+.gpu-oc-tcc-modal__list {
+  margin: 0 0 0.75rem;
+  padding-left: 1.1rem;
+  font-size: 8px;
+  line-height: 1.45;
+  color: color-mix(in srgb, #e8e0c8 85%, transparent);
+}
+
+.gpu-oc-tcc-modal__list li {
+  margin-bottom: 0.35rem;
+}
+
+.gpu-oc-tcc-modal__list strong {
+  color: var(--color-telemetry-amber, #ffb800);
+  font-weight: 700;
+}
+
+.gpu-oc-tcc-modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.45rem;
+}
+
+.gpu-oc-tcc-modal__btn {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0.4rem 0.75rem;
+  border-radius: 3px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.gpu-oc-tcc-modal__btn--no {
+  color: color-mix(in srgb, #e2e8f0 75%, transparent);
+  border-color: color-mix(in srgb, #64748b 50%, transparent);
+  background: transparent;
+}
+
+.gpu-oc-tcc-modal__btn--no:hover {
+  color: #f8fafc;
+  border-color: color-mix(in srgb, #94a3b8 55%, transparent);
+}
+
+.gpu-oc-tcc-modal__btn--yes {
+  color: #1a1400;
+  border-color: color-mix(in srgb, var(--color-telemetry-amber, #ffb800) 70%, transparent);
+  background: color-mix(in srgb, var(--color-telemetry-amber, #ffb800) 85%, #1a1400);
+}
+
+.gpu-oc-tcc-modal__btn--yes:hover {
+  background: var(--color-telemetry-amber, #ffb800);
+}
+
+.gpu-oc-tcc-modal__btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 /* GPU overclock sliders — thick track, theme thumb */

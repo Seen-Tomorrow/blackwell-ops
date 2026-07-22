@@ -61,7 +61,6 @@ import {
 } from "../lib/dflashGetDraft";
 import { useDownloadTasks } from "../hooks/useDownloadTasks";
 import DraftPickModal, {
-  hfOffersToPickItems,
   type DraftPickListItem,
   type DraftPickMode,
 } from "./DraftPickModal";
@@ -1116,36 +1115,9 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- re-validate on model/caps only
   }, [model?.path, specCapabilities, dflashLibraryReady, dflashGettable]);
 
-  /** Search HF — Joe confirms candidate (or manual HF id) before download. */
-  const handleGetDflashDraft = useCallback(async () => {
-    if (!model) return;
-    setDflashGetError(null);
-    setDflashGetOfferLabel(null);
-    setDflashCandidates([]);
-    setLibraryPickItems([]);
-    setDflashPickMode("hf-download");
-    setDflashPickOpen(false);
-    setDflashResolving(false);
-    setDflashResolveError(null);
-    setDflashGetState("searching");
-    dflashDownloadIdsRef.current = new Set();
-    try {
-      const offers = await findDflashDraftCandidates(model, 3);
-      setDflashCandidates(offers);
-      setDflashPickOpen(true);
-      setDflashGetState("idle");
-    } catch (err) {
-      console.error("[dflashGetDraft] search failed:", err);
-      setDflashCandidates([]);
-      setDflashPickOpen(true);
-      setDflashGetState("idle");
-      setDflashResolveError(typeof err === "string" ? err : "Search failed — paste HF id manually");
-    }
-  }, [model]);
-
-  /** Local library re-pair — all external DFlash files, scored (even weak matches). */
-  const handleChangeDflashDraft = useCallback(() => {
-    if (!model || !models?.length) return;
+  /** Local on-disk DFlash drafts, scored (best first). Cap applied in modal (3). */
+  const buildLocalDflashPickItems = useCallback((): DraftPickListItem[] => {
+    if (!model || !models?.length) return [];
     const items: DraftPickListItem[] = models
       .filter((m) => m.path !== model.path && draftRoleFromModel(m) === "external_dflash")
       .map((m) => {
@@ -1156,14 +1128,12 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         return {
           id: m.path,
           title: label,
-          // No full path — author · quant · size only
           meta: [author, quant, m.size_str].filter(Boolean).join(" · "),
           score,
         };
       })
       .sort((a, b) => (b.score ?? -999) - (a.score ?? -999));
 
-    // Prefer current pairing at top if present
     const current = config.spec_draft_model != null ? String(config.spec_draft_model) : "";
     if (current) {
       items.sort((a, b) => {
@@ -1172,14 +1142,63 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         return 0;
       });
     }
+    return items;
+  }, [model, models, config.spec_draft_model]);
 
+  /** HF search — fills remote list (cache / early-stop). Does not close modal. */
+  const loadDflashHfCandidates = useCallback(async () => {
+    if (!model) return;
+    setDflashGetState("searching");
+    setDflashResolveError(null);
+    try {
+      const offers = await findDflashDraftCandidates(model, 3);
+      setDflashCandidates(offers);
+      setDflashGetState("idle");
+    } catch (err) {
+      console.error("[dflashGetDraft] search failed:", err);
+      setDflashCandidates([]);
+      setDflashGetState("idle");
+      setDflashResolveError(
+        typeof err === "string"
+          ? err
+          : err instanceof Error
+            ? err.message
+            : "Search failed — paste HF id manually",
+      );
+    }
+  }, [model]);
+
+  /** Get draft: local (if any) + HF search; remote section opens when packs arrive. */
+  const handleGetDflashDraft = useCallback(async () => {
+    if (!model) return;
+    setDflashGetError(null);
+    setDflashGetOfferLabel(null);
+    setDflashCandidates([]);
+    setLibraryPickItems(buildLocalDflashPickItems());
+    setDflashPickMode("hf-download");
+    setDflashResolving(false);
+    setDflashResolveError(null);
+    dflashDownloadIdsRef.current = new Set();
+    // Open immediately so local list + manual paste are usable while HF loads.
+    setDflashPickOpen(true);
+    setDflashGetState("searching");
+    await loadDflashHfCandidates();
+  }, [model, buildLocalDflashPickItems, loadDflashHfCandidates]);
+
+  /**
+   * Change draft / re-pair: local list first.
+   * HF packs load only when user expands remote (onRequestRemote).
+   */
+  const handleChangeDflashDraft = useCallback(() => {
+    if (!model) return;
+    const items = buildLocalDflashPickItems();
     setDflashPickMode("library");
     setLibraryPickItems(items);
     setDflashCandidates([]);
-    setDflashResolveError(items.length === 0 ? "No DFlash drafts in library" : null);
+    setDflashResolveError(null);
     setDflashPickOpen(true);
     setDflashGetState("idle");
-  }, [model, models, config.spec_draft_model]);
+  }, [model, buildLocalDflashPickItems]);
 
   const handleCancelDflashPick = useCallback(() => {
     if (dflashResolving) return;
@@ -1242,6 +1261,13 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     },
     [model, updateParam, applyFullAutoCockpit, codingMode, brains, think],
   );
+
+  /** Stable local list for DraftPickModal — both Get draft and Change draft. */
+  const dflashLocalPickItems = useMemo(() => libraryPickItems, [libraryPickItems]);
+
+  const dflashPickInitialSelectedId = useMemo(() => {
+    return config.spec_draft_model != null ? String(config.spec_draft_model) : null;
+  }, [config.spec_draft_model]);
 
   // Reset Get-draft UI when the main model changes.
   useEffect(() => {
@@ -2237,7 +2263,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                                     }
                                   }}
                                   className={paramChipClass(selected)}
-                                  title={`${draft.path} (match ${score})`}
+                                  title={`${draft.path} (match ${Math.min(100, Math.round(score))}%)`}
                                 >
                                   {recommended ? "★ " : ""}
                                   {resolveDraftPathLabel(draft.path)}
@@ -3132,23 +3158,17 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
               open={dflashPickOpen}
               mode={dflashPickMode}
               mainLabel={describeMainForDflashPick(model)}
-              items={
-                dflashPickMode === "library"
-                  ? libraryPickItems
-                  : hfOffersToPickItems(dflashCandidates)
-              }
-              initialSelectedId={
-                dflashPickMode === "library"
-                  ? (config.spec_draft_model != null ? String(config.spec_draft_model) : null)
-                  : null
-              }
+              localItems={dflashLocalPickItems}
+              initialSelectedId={dflashPickInitialSelectedId}
               hfOffers={dflashCandidates}
+              remoteLoading={dflashGetState === "searching"}
               resolving={dflashResolving}
               resolveError={dflashResolveError}
               onCancel={handleCancelDflashPick}
               onConfirmHf={(offer) => { void handleConfirmDflashPick(offer); }}
               onConfirmManual={(id) => { void handleConfirmDflashManual(id); }}
               onConfirmLibrary={handleConfirmLibraryDraft}
+              onRequestRemote={() => { void loadDflashHfCandidates(); }}
             />
           )}
         </div>
@@ -3184,23 +3204,17 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                   open={dflashPickOpen}
                   mode={dflashPickMode}
                   mainLabel={describeMainForDflashPick(model)}
-                  items={
-                    dflashPickMode === "library"
-                      ? libraryPickItems
-                      : hfOffersToPickItems(dflashCandidates)
-                  }
-                  initialSelectedId={
-                    dflashPickMode === "library"
-                      ? (config.spec_draft_model != null ? String(config.spec_draft_model) : null)
-                      : null
-                  }
+                  localItems={dflashLocalPickItems}
+                  initialSelectedId={dflashPickInitialSelectedId}
                   hfOffers={dflashCandidates}
+                  remoteLoading={dflashGetState === "searching"}
                   resolving={dflashResolving}
                   resolveError={dflashResolveError}
                   onCancel={handleCancelDflashPick}
                   onConfirmHf={(offer) => { void handleConfirmDflashPick(offer); }}
                   onConfirmManual={(id) => { void handleConfirmDflashManual(id); }}
                   onConfirmLibrary={handleConfirmLibraryDraft}
+                  onRequestRemote={() => { void loadDflashHfCandidates(); }}
                 />
               )}
             </div>

@@ -410,6 +410,60 @@ export function useGpuControl() {
     burstPollClocks,
   ]);
 
+  /** TCC (1) / WDDM (0) hot switch — targets sync group or selected GPU. */
+  const handleSetDriverModel = useCallback(
+    async (mode: "tcc" | "wddm") => {
+      if (devices.length === 0) return;
+      setBusy(true);
+      setStatus(null);
+      setError(null);
+      const indices =
+        ocMode === "sync"
+          ? syncGroup.map((d) => d.index)
+          : [selectedGpuIndex];
+      const label = mode.toUpperCase();
+      const scope =
+        indices.length > 1 ? `GPUs ${indices.join(", ")}` : `GPU ${indices[0]}`;
+      window.__blackopsToasts?.addToast(
+        `Switching ${scope} → ${label}…`,
+        "success",
+        3500,
+      );
+      try {
+        const result = await invoke<GpuControlApplyResult>("set_gpu_driver_model", {
+          gpuIndices: indices,
+          mode,
+        });
+        if (result.ok) {
+          const msg = `${label} on ${scope} — topology will rediscover; recycle engines if pending`;
+          setStatus(msg);
+          window.__blackopsToasts?.addToast(msg, "success", 6000);
+        } else {
+          const msg = formatGpuControlMessage(result);
+          setError(msg);
+          window.__blackopsToasts?.addToast(msg, "error");
+        }
+        burstPollClocks();
+        window.setTimeout(() => void pollClocks(), 400);
+        window.setTimeout(() => void pollClocks(), 1200);
+      } catch (e) {
+        const msg = formatGpuControlError(e);
+        setError(msg);
+        window.__blackopsToasts?.addToast(msg, "error");
+      } finally {
+        setBusy(false);
+      }
+    },
+    [
+      devices.length,
+      ocMode,
+      syncGroup,
+      selectedGpuIndex,
+      burstPollClocks,
+      pollClocks,
+    ],
+  );
+
   const overlayByGpu = useMemo(() => {
     const map = new Map<number, GpuOcOverlay>();
     for (const dev of devices) {
@@ -470,6 +524,7 @@ export function useGpuControl() {
       handleApply,
       handleResetAll,
       handleResetGpu,
+      handleSetDriverModel,
       /** @deprecated use handleResetAll */
       handleReset: handleResetAll,
       patchActivePreset,
@@ -494,6 +549,7 @@ export function useGpuControl() {
       handleApply,
       handleResetAll,
       handleResetGpu,
+      handleSetDriverModel,
       patchActivePreset,
     ],
   );

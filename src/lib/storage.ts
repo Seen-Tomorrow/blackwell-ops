@@ -40,6 +40,7 @@ import type {
  * | BlackOps-catalog-draft-filter | regular \| draft \| all | Catalog main/draft filter |
  * | BlackOps-model-spec:{modelPath} | JSON | Per-main-model spec decode overrides |
  * | BlackOps-draft-pairings | JSON Record<targetPath, {specType, draftPath}> | Per-target spec draft pairings |
+ * | BlackOps-dflash-hf-candidates | JSON | TTL cache of HF Get-draft scored candidates per main identity |
  * | BlackOps-param-creator-mode | simple \| advanced | Param creator UI mode |
  * | BlackOps-selected-slot-idx | number string | Last selected engine slot (-1 = none) |
  * | BlackOps-app-theme | string | Active app theme id (matrix, amber, …) |
@@ -135,6 +136,8 @@ export const KEYS = {
   catalogVisibleCount: `${STORAGE_PREFIX}catalog-visible-count`,
   catalogDraftFilter: `${STORAGE_PREFIX}catalog-draft-filter`,
   draftPairings: `${STORAGE_PREFIX}draft-pairings`,
+  /** HF Get-draft scored candidate list cache (TTL ~4h, stale OK on 429). */
+  dflashHfCandidates: `${STORAGE_PREFIX}dflash-hf-candidates`,
   paramCreatorMode: `${STORAGE_PREFIX}param-creator-mode`,
   selectedSlotIdx: `${STORAGE_PREFIX}selected-slot-idx`,
   appTheme: `${STORAGE_PREFIX}app-theme`,

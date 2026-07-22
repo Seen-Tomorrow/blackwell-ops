@@ -23,6 +23,12 @@ pub struct GpuControlDeviceInfo {
     pub mem_clock_mhz: u32,
     pub max_core_clock_mhz: u32,
     pub max_mem_clock_mhz: u32,
+    /// Windows driver model: `TCC` | `WDDM` | empty if unavailable.
+    #[serde(default)]
+    pub driver_model: String,
+    /// Pending driver model after a hot switch (often needs process recycle; may show until reboot).
+    #[serde(default)]
+    pub driver_model_pending: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -275,14 +281,28 @@ fn execute_reset(
     Ok(steps)
 }
 
+fn normalize_driver_model(raw: &str) -> String {
+    let s = raw.trim().to_uppercase();
+    if s.contains("TCC") {
+        "TCC".into()
+    } else if s.contains("WDDM") {
+        "WDDM".into()
+    } else if s.is_empty() || s == "[N/A]" || s == "N/A" {
+        String::new()
+    } else {
+        s
+    }
+}
+
 fn parse_gpu_line(line: &str) -> Option<GpuControlDeviceInfo> {
     let parts: Vec<&str> = line.split(',').map(|s| s.trim()).collect();
-    if parts.len() < 10 {
+    // index, name..., power×4, clocks×4, driver_model.current, driver_model.pending
+    if parts.len() < 12 {
         return None;
     }
 
     let index: u32 = parts[0].parse().ok()?;
-    let num_trailing = 8;
+    let num_trailing = 10;
     let name_end = parts.len().saturating_sub(num_trailing);
     if name_end <= 1 {
         return None;
@@ -292,6 +312,7 @@ fn parse_gpu_line(line: &str) -> Option<GpuControlDeviceInfo> {
     let base = name_end;
     let read_u32 = |i: usize| parts.get(i).and_then(|s| s.parse().ok()).unwrap_or(0);
     let read_f32 = |i: usize| parts.get(i).and_then(|s| s.parse().ok()).unwrap_or(0.0);
+    let read_model = |i: usize| normalize_driver_model(parts.get(i).copied().unwrap_or(""));
 
     Some(GpuControlDeviceInfo {
         index,
@@ -304,6 +325,8 @@ fn parse_gpu_line(line: &str) -> Option<GpuControlDeviceInfo> {
         mem_clock_mhz: read_u32(base + 5),
         max_core_clock_mhz: read_u32(base + 6),
         max_mem_clock_mhz: read_u32(base + 7),
+        driver_model: read_model(base + 8),
+        driver_model_pending: read_model(base + 9),
     })
 }
 
@@ -311,7 +334,7 @@ fn parse_gpu_line(line: &str) -> Option<GpuControlDeviceInfo> {
 pub async fn get_gpu_control_devices() -> Result<Vec<GpuControlDeviceInfo>, String> {
     tokio::task::spawn_blocking(|| {
         let output = run_nvidia_smi(&[
-            "--query-gpu=index,name,power.limit,power.min_limit,power.max_limit,power.default_limit,clocks.current.graphics,clocks.current.memory,clocks.max.graphics,clocks.max.memory",
+            "--query-gpu=index,name,power.limit,power.min_limit,power.max_limit,power.default_limit,clocks.current.graphics,clocks.current.memory,clocks.max.graphics,clocks.max.memory,driver_model.current,driver_model.pending",
             "--format=csv,noheader,nounits",
         ])?;
 
@@ -339,6 +362,62 @@ pub async fn get_gpu_control_devices() -> Result<Vec<GpuControlDeviceInfo>, Stri
     })
     .await
     .map_err(|e| format!("get_gpu_control_devices task failed: {e}"))?
+}
+
+/// Hot-switch Windows driver model: `tcc` → `-dm 1`, `wddm` → `-dm 0`.
+/// Requires elevation. May fail if a display is attached; some stacks apply without reboot.
+#[tauri::command]
+pub async fn set_gpu_driver_model(
+    app: AppHandle,
+    gpu_indices: Vec<u32>,
+    mode: String,
+) -> Result<GpuControlApplyResult, String> {
+    if gpu_indices.is_empty() {
+        return Err("No GPU indices".into());
+    }
+    let mode_l = mode.trim().to_ascii_lowercase();
+    let dm = match mode_l.as_str() {
+        "tcc" | "1" => 1u32,
+        "wddm" | "0" => 0u32,
+        _ => return Err(format!("mode must be tcc or wddm, got '{mode}'")),
+    };
+
+    tokio::task::spawn_blocking(move || {
+        sidecar_elevate::stage_bin(&app, GSUDO_EXE)?;
+        let smi = resolve_nvidia_smi_path();
+        let smi_q = quote_exe(&smi);
+        let mut indices = gpu_indices;
+        indices.sort_unstable();
+        indices.dedup();
+
+        let lines: Vec<String> = indices
+            .iter()
+            .map(|i| format!("{smi_q} -i {i} -dm {dm}"))
+            .collect();
+
+        let elevated = sidecar_elevate::is_process_elevated();
+        let out = sidecar_elevate::run_privileged_batch(&app, &lines, None)?;
+        if !out.success() && sidecar_elevate::is_uac_denied_output(&out) {
+            return Err(sidecar_elevate::UAC_DENIED_MESSAGE.to_string());
+        }
+
+        let label = if dm == 1 { "TCC" } else { "WDDM" };
+        let mut steps = Vec::new();
+        for &gpu_index in &indices {
+            steps.push(step_from_output(
+                gpu_index,
+                format!("nvidia-smi -i {gpu_index} -dm {dm} ({label})"),
+                &out,
+            ));
+        }
+        Ok(GpuControlApplyResult {
+            ok: out.success(),
+            steps,
+            elevated,
+        })
+    })
+    .await
+    .map_err(|e| format!("set_gpu_driver_model task failed: {e}"))?
 }
 
 #[tauri::command]

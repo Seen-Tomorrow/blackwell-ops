@@ -636,7 +636,7 @@ export default function FusionOverlay({
                      title={`Per-agent TG ≈ ${perSlotLabel ?? "—"} tok/s (system ÷ concurrent slots). Big number = total system throughput.`}
                    >
                      <span
-                       className="font-mono font-bold tracking-tight"
+                       className="fusion-per-slot-meter__value font-mono font-bold tracking-tight"
                        style={{
                          fontSize: "clamp(0.95rem, 2.6vh, 1.55rem)",
                          color: perSlotLabel
@@ -667,7 +667,7 @@ export default function FusionOverlay({
                  {/* Big TG number — system aggregate; unit pinned bottom-right of the figure */}
                  <div className="flex items-baseline gap-1">
                    <span
-                     className="font-mono font-bold tracking-tight leading-none"
+                     className="fusion-tg-hero-value font-mono font-bold tracking-tight leading-none"
                      style={{
                        fontSize: 'clamp(2rem, 6vh, 3.5rem)',
                        color: tgHeroActive ? '#22c55e' : 'rgba(148,163,184,0.25)'

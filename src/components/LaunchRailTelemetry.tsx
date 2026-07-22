@@ -1,4 +1,4 @@
-import { useCallback, useState, type KeyboardEvent, type MouseEvent } from "react";
+import { useCallback, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
 import type { CpuInfo, GpuInfo, SystemInfo } from "../lib/types";
 import { useDisplayTexture } from "../context/DisplayTextureContext";
 import { useTelemetry } from "../context/TelemetryContext";
@@ -165,6 +165,9 @@ export default function LaunchRailTelemetry() {
   const { gpus, cpu, systemInfo } = useTelemetry();
   const { texture: displayTexture } = useDisplayTexture();
   const [cpuCoresOpen, setCpuCoresOpen] = useState(loadHwMonitorCpuCoresOpen);
+  /** User cores pref while OC is open — restored on OC collapse. */
+  const coresPrefBeforeOcRef = useRef(loadHwMonitorCpuCoresOpen());
+  const [ocExpanded, setOcExpanded] = useState(false);
 
   const {
     ocMode,
@@ -186,6 +189,7 @@ export default function LaunchRailTelemetry() {
     handleApply,
     handleResetAll,
     handleResetGpu,
+    handleSetDriverModel,
     handleSelectGpu,
   } = useGpuControl();
 
@@ -193,14 +197,27 @@ export default function LaunchRailTelemetry() {
     setCpuCoresOpen((prev) => {
       const next = !prev;
       saveHwMonitorCpuCoresOpen(next);
+      if (!ocExpanded) coresPrefBeforeOcRef.current = next;
       return next;
     });
+  }, [ocExpanded]);
+
+  const handleOcExpandedChange = useCallback((open: boolean) => {
+    setOcExpanded(open);
+    if (open) {
+      // Free vertical room at high zoom — temp collapse cores (keep user pref).
+      coresPrefBeforeOcRef.current = loadHwMonitorCpuCoresOpen();
+      setCpuCoresOpen(false);
+    } else {
+      setCpuCoresOpen(coresPrefBeforeOcRef.current);
+    }
   }, []);
 
   return (
     <div
       className="launch-rail-tel h-full min-h-0 flex flex-col"
       data-display-texture={displayTexture}
+      data-oc-expanded={ocExpanded ? "true" : "false"}
     >
       <div className="launch-rail-tel__header">
         <div className="launch-rail-tel__header-left">
@@ -209,10 +226,15 @@ export default function LaunchRailTelemetry() {
         </div>
       </div>
 
-      <div className="launch-rail-tel__body eink-scrollbar overflow-y-auto overflow-x-hidden min-h-0 flex-1">
+      {/* No scrollbar chrome — wheel/trackpad still scrolls when zoom packs the rail */}
+      <div className="launch-rail-tel__body min-h-0 flex-1">
         <MemTotals gpus={gpus} systemInfo={systemInfo} />
         {cpu && (
-          <CpuStrip cpu={cpu} coresOpen={cpuCoresOpen} onToggleCores={toggleCpuCores} />
+          <CpuStrip
+            cpu={cpu}
+            coresOpen={cpuCoresOpen}
+            onToggleCores={toggleCpuCores}
+          />
         )}
 
         {gpus.length > 0 && (
@@ -251,6 +273,8 @@ export default function LaunchRailTelemetry() {
               onApply={handleApply}
               onResetAll={handleResetAll}
               onResetGpu={handleResetGpu}
+              onSetDriverModel={handleSetDriverModel}
+              onExpandedChange={handleOcExpandedChange}
             />
           </>
         )}

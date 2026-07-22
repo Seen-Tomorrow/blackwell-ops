@@ -1,6 +1,9 @@
 /**
  * Full Auto — resolve DFlash draft candidates on HF for user confirmation.
  * Never auto-starts a download; Joe always picks from the candidate list.
+ *
+ * Caching: in-memory + localStorage TTL (~4h). Early-stop search when enough
+ * ≥50% hits (or one ≥80%). On 429, serve stale cache if present.
  */
 
 import { invoke } from "@tauri-apps/api/core";
@@ -10,6 +13,7 @@ import {
   isExternalDraftOnly,
   signalContainsDflash,
 } from "./specDraft";
+import { KEYS, readJsonStorage, writeJsonStorage } from "./storage";
 
 const DFLASH_FAMILY_HINTS = new Set([
   "qwen3",
@@ -49,12 +53,174 @@ export interface DflashDraftOffer {
   sizeBytes: number;
   /** Short UI label, e.g. "org/repo · Q4_K_M · 1.8 GB" */
   label: string;
-  /** Ranking score (higher = better match). */
+  /** Match confidence 0–100 (percentage). */
   score: number;
   /** Joe-facing match notes (family / size / author). */
   matchNotes: string[];
   downloads: number;
 }
+
+/**
+ * Operational thresholds (0–100 confidence):
+ *   ≥ HIGH  → pre-select / “high confidence” badge (still no auto-download)
+ *   ≥ SUGGEST → show as recommended candidate (user confirms)
+ *   < SUGGEST → ignore for auto-suggestions (drop from HF list)
+ */
+export const DFLASH_SCORE_SUGGEST = 50;
+export const DFLASH_SCORE_HIGH = 80;
+
+export type DflashMatchTier = "ignore" | "suggest" | "high";
+
+export function dflashMatchTier(score: number | null | undefined): DflashMatchTier {
+  if (score == null || !Number.isFinite(score) || score < DFLASH_SCORE_SUGGEST) return "ignore";
+  if (score >= DFLASH_SCORE_HIGH) return "high";
+  return "suggest";
+}
+
+/** Fresh cache TTL — high-confidence packs rarely flip hour-to-hour. */
+export const DFLASH_CACHE_TTL_MS = 4 * 60 * 60 * 1000;
+/** Stale entries still served on HF 429 (shared IP / CGNAT). */
+export const DFLASH_CACHE_STALE_MAX_MS = 24 * 60 * 60 * 1000;
+/** Cap disk map growth (per-main keys). */
+const DFLASH_CACHE_MAX_KEYS = 40;
+
+interface DflashCandidateCacheEntry {
+  savedAt: number;
+  offers: DflashDraftOffer[];
+}
+
+type DflashCandidateCacheMap = Record<string, DflashCandidateCacheEntry>;
+
+/** Session memory — faster than re-reading localStorage every open. */
+const memoryCache = new Map<string, DflashCandidateCacheEntry>();
+
+/** Stable key for main model → candidate list. */
+export function dflashCandidateCacheKey(main: ModelEntry): string {
+  const family = extractModelFamily(main) ?? "";
+  const sizeB = extractParamBillions(mainIdentityHay(main));
+  const id =
+    main.hfModelId?.trim() ||
+    main.hfMeta?.hfModelId?.trim() ||
+    main.path?.trim() ||
+    main.name?.trim() ||
+    "unknown";
+  return `${id}|${family}|${sizeB ?? "na"}`.toLowerCase().replace(/\\/g, "/");
+}
+
+function cloneOffers(offers: DflashDraftOffer[]): DflashDraftOffer[] {
+  return offers.map((o) => ({
+    ...o,
+    file: { ...o.file, shards: o.file.shards ? [...o.file.shards] : [] },
+    matchNotes: [...(o.matchNotes || [])],
+  }));
+}
+
+function isCacheFresh(entry: DflashCandidateCacheEntry, now = Date.now()): boolean {
+  return now - entry.savedAt <= DFLASH_CACHE_TTL_MS;
+}
+
+function isCacheUsableStale(entry: DflashCandidateCacheEntry, now = Date.now()): boolean {
+  return now - entry.savedAt <= DFLASH_CACHE_STALE_MAX_MS;
+}
+
+function readDiskCache(): DflashCandidateCacheMap {
+  return readJsonStorage<DflashCandidateCacheMap>(KEYS.dflashHfCandidates) ?? {};
+}
+
+function writeDiskCache(map: DflashCandidateCacheMap): void {
+  writeJsonStorage(KEYS.dflashHfCandidates, map);
+}
+
+/** Drop stale cache rows that predate size hard-gates (full 15GB "drafts"). */
+function sanitizeCachedOffers(offers: DflashDraftOffer[]): DflashDraftOffer[] {
+  return offers.filter(
+    (o) =>
+      o.file?.size_bytes > 0 &&
+      o.file.size_bytes <= DFLASH_DRAFT_MAX_FILE_BYTES &&
+      o.score >= DFLASH_SCORE_SUGGEST,
+  );
+}
+
+function getCachedEntry(key: string): DflashCandidateCacheEntry | null {
+  const mem = memoryCache.get(key);
+  if (mem) {
+    const offers = sanitizeCachedOffers(mem.offers);
+    if (!offers.length) {
+      memoryCache.delete(key);
+      return null;
+    }
+    if (offers.length !== mem.offers.length) {
+      const next = { ...mem, offers };
+      memoryCache.set(key, next);
+      return next;
+    }
+    return mem;
+  }
+  const disk = readDiskCache()[key];
+  if (disk?.offers?.length) {
+    const offers = sanitizeCachedOffers(disk.offers);
+    if (!offers.length) return null;
+    const next = { ...disk, offers };
+    memoryCache.set(key, next);
+    return next;
+  }
+  return null;
+}
+
+function putCache(key: string, offers: DflashDraftOffer[]): void {
+  const entry: DflashCandidateCacheEntry = {
+    savedAt: Date.now(),
+    offers: cloneOffers(offers),
+  };
+  memoryCache.set(key, entry);
+
+  const map = readDiskCache();
+  map[key] = entry;
+  // Prune oldest when over cap
+  const keys = Object.keys(map);
+  if (keys.length > DFLASH_CACHE_MAX_KEYS) {
+    keys
+      .map((k) => ({ k, t: map[k]?.savedAt ?? 0 }))
+      .sort((a, b) => a.t - b.t)
+      .slice(0, keys.length - DFLASH_CACHE_MAX_KEYS)
+      .forEach(({ k }) => {
+        delete map[k];
+        memoryCache.delete(k);
+      });
+  }
+  writeDiskCache(map);
+}
+
+/** Test / diagnostics — clear memory + disk candidate cache. */
+export function clearDflashCandidateCache(): void {
+  memoryCache.clear();
+  writeDiskCache({});
+}
+
+function isRateLimitError(err: unknown): boolean {
+  const s = typeof err === "string" ? err : err instanceof Error ? err.message : String(err ?? "");
+  return /\b429\b/.test(s) || /rate.?limit/i.test(s) || /too many requests/i.test(s);
+}
+
+/** Early-stop: one high-confidence hit, or enough suggest-tier rows. */
+function hasEnoughSearchHits(byId: Map<string, ScoredRepo>, limit: number): boolean {
+  let suggest = 0;
+  let high = 0;
+  for (const row of byId.values()) {
+    if (row.score >= DFLASH_SCORE_HIGH) high += 1;
+    if (row.score >= DFLASH_SCORE_SUGGEST) suggest += 1;
+  }
+  if (high >= 1) return true;
+  return suggest >= Math.max(limit, 3);
+}
+
+/** Known DFlash / speculator publishers (soft boost only). */
+const DFLASH_TRUSTED_AUTHORS = new Set([
+  "z-lab",
+  "zlab",
+  "redhatai",
+  "redhat-ai",
+]);
 
 export function mainMaySupportDflash(main: ModelEntry | null | undefined): boolean {
   if (!main || isExternalDraftOnly(main)) return false;
@@ -205,23 +371,82 @@ export function dflashSearchQueries(main: ModelEntry): string[] {
   return uniqueStrings(queries).slice(0, 8);
 }
 
+/** True draft packs are small; full 27B Q4 ≈15GB must never pass as DFlash. */
+export const DFLASH_DRAFT_MAX_FILE_BYTES = 6 * 1024 * 1024 * 1024; // 6 GiB
+
+function smallestGgufBytes(m: HfModel): number | null {
+  const sizes = (m.gguf_files || [])
+    .map((f) => f.size_bytes)
+    .filter((n) => Number.isFinite(n) && n > 0);
+  if (!sizes.length) return null;
+  return Math.min(...sizes);
+}
+
 function repoLooksLikeDflash(m: HfModel): boolean {
   const id = m.id || "";
+  // Prefer repo id — tags alone often hitch-hike onto full-model cards from search.
   if (signalContainsDflash(id)) return true;
-  if ((m.tags || []).some((t) => signalContainsDflash(t))) return true;
-  return (m.gguf_files || []).some((f) => signalContainsDflash(f.type) || signalContainsDflash(f.url));
+  if ((m.gguf_files || []).some((f) => signalContainsDflash(f.type) || signalContainsDflash(f.url))) {
+    return true;
+  }
+  // Tags only: require at least one compact GGUF so we don't promote 15GB mains.
+  if ((m.tags || []).some((t) => signalContainsDflash(t))) {
+    const smallest = smallestGgufBytes(m);
+    return smallest != null && smallest <= DFLASH_DRAFT_MAX_FILE_BYTES;
+  }
+  return false;
 }
 
 interface ScoredRepo {
   model: HfModel;
+  /** 0–100 match confidence. */
   score: number;
   notes: string[];
 }
 
+/** Compact stem tokens from main identity for repo-name overlap (0–100 scorer). */
+function mainNameTokens(main: ModelEntry): string[] {
+  const hay = [
+    main.hfMeta?.repoName,
+    main.hfModelId?.split("/")[1],
+    main.hfMeta?.hfModelId?.split("/")[1],
+    stripGgufNoise(main.name || ""),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  const cleaned = hay
+    .replace(/qwen3\.5/g, "qwen35")
+    .replace(/qwen3\.6/g, "qwen36")
+    .replace(/[^a-z0-9]+/g, " ");
+  return cleaned
+    .split(/\s+/)
+    .map((t) => t.trim())
+    .filter((t) => t.length >= 3 && !/^(gguf|instruct|chat|thinking|base|preview|exp|ud)$/.test(t));
+}
+
+/**
+ * Weighted 0–100 matrix for HF DFlash candidates.
+ * Hard gates reject obvious mismatches; remaining weight is a confidence %.
+ *
+ * Budget (max 100):
+ *   30  DFlash identity (id / tags / files)
+ *   30  family
+ *   25  param size
+ *   10  repo name ↔ main slug overlap
+ *    5  trusted / same author
+ *  (+ downloads as sub-point tie-break only, never dominates)
+ */
 function scoreDflashRepo(m: HfModel, main: ModelEntry): ScoredRepo | null {
   if (!repoLooksLikeDflash(m)) return null;
   const idLower = m.id.toLowerCase();
   if (idLower.includes("mtp") && !signalContainsDflash(m.id)) return null;
+
+  // Hard gate: full-size weights are not draft packs (e.g. 15GB Q4_K_M of 27B).
+  const smallestKnown = smallestGgufBytes(m);
+  if (smallestKnown != null && smallestKnown > DFLASH_DRAFT_MAX_FILE_BYTES) {
+    return null;
+  }
 
   const mainFamily = extractModelFamily(main);
   const candFamily = familyFromHay(m.id);
@@ -232,8 +457,16 @@ function scoreDflashRepo(m: HfModel, main: ModelEntry): ScoredRepo | null {
   // Hard gates: wrong specific family or wrong param count.
   if (mainFamily && candFamily && mainFamily !== candFamily) {
     // qwen3 (generic) may still match qwen35/36 packs — only soft-penalize later
-    const mainSpecific = mainFamily !== "qwen3" && mainFamily !== "qwen2" && mainFamily !== "gemma" && mainFamily !== "llama";
-    const candSpecific = candFamily !== "qwen3" && candFamily !== "qwen2" && candFamily !== "gemma" && candFamily !== "llama";
+    const mainSpecific =
+      mainFamily !== "qwen3" &&
+      mainFamily !== "qwen2" &&
+      mainFamily !== "gemma" &&
+      mainFamily !== "llama";
+    const candSpecific =
+      candFamily !== "qwen3" &&
+      candFamily !== "qwen2" &&
+      candFamily !== "gemma" &&
+      candFamily !== "llama";
     if (mainSpecific && candSpecific) {
       return null;
     }
@@ -242,55 +475,93 @@ function scoreDflashRepo(m: HfModel, main: ModelEntry): ScoredRepo | null {
     return null;
   }
 
-  let score = Math.min(m.downloads || 0, 2_000_000) / 5000; // weak popularity tie-break only
-  if (signalContainsDflash(m.id)) {
-    score += 2_000;
-    notes.push("DFlash pack");
-  }
-  if (idLower.includes("gguf")) score += 50;
+  let score = 0;
 
+  // ── 1. DFlash identity (0–30) ──────────────────────────────────────────
+  if (signalContainsDflash(m.id)) {
+    score += 30;
+    notes.push("DFlash pack");
+  } else if ((m.tags || []).some((t) => signalContainsDflash(t))) {
+    score += 18;
+    notes.push("DFlash tag");
+  } else {
+    score += 10;
+    notes.push("DFlash in files only");
+  }
+
+  // ── 2. Family (0–30) ───────────────────────────────────────────────────
   if (mainFamily && candFamily) {
     if (mainFamily === candFamily) {
-      score += 8_000;
+      score += 30;
       notes.push(`family ${familyLabel(mainFamily)}`);
     } else if (mainFamily === "qwen3" && (candFamily === "qwen35" || candFamily === "qwen36")) {
-      score += 1_500;
+      score += 14;
       notes.push(`family ${familyLabel(candFamily)} (generic Qwen3 main)`);
     } else {
-      score -= 3_000;
+      // Soft miss past hard gate (e.g. generic llama vs llama3)
+      score += 4;
       notes.push(`family soft-miss ${familyLabel(candFamily)}`);
     }
   } else if (mainFamily && !candFamily) {
-    score -= 500;
+    score += 6;
     notes.push("family unclear on HF id");
+  } else {
+    score += 10;
   }
 
+  // ── 3. Param size (0–25) ───────────────────────────────────────────────
   if (mainSize != null && candSize != null) {
     if (sizesClose(mainSize, candSize)) {
-      score += 6_000;
+      score += 25;
       notes.push(`${candSize}B params`);
     }
   } else if (mainSize != null && candSize == null) {
-    score -= 1_500;
+    score += 6;
     notes.push("param size not in repo name");
   } else if (mainSize == null && candSize != null) {
+    score += 10;
     notes.push(`draft lists ${candSize}B`);
+  } else {
+    score += 8;
   }
 
-  const author = (main.hfMeta?.author || main.author || "").toLowerCase();
-  if (author && m.author?.toLowerCase() === author) {
-    score += 400;
+  // ── 4. Repo name ↔ main slug (0–10) ─────────────────────────────────────
+  const tokens = mainNameTokens(main);
+  const matched = tokens.filter((t) => idLower.includes(t));
+  if (matched.length >= 2 || (matched.length === 1 && matched[0].length >= 6)) {
+    score += 10;
+    notes.push("name overlap");
+  } else if (matched.length === 1) {
+    score += 5;
+    notes.push("partial name");
+  }
+
+  // ── 5. Author / trusted publishers (0–5) ───────────────────────────────
+  const candAuthor = (m.author || m.id.split("/")[0] || "").toLowerCase();
+  const mainAuthor = (main.hfMeta?.author || main.author || "").toLowerCase();
+  if (candAuthor && DFLASH_TRUSTED_AUTHORS.has(candAuthor)) {
+    score += 5;
+    notes.push(`trusted ${candAuthor}`);
+  } else if (mainAuthor && candAuthor && mainAuthor === candAuthor) {
+    score += 4;
     notes.push("same author");
   }
 
-  // Prefer drafts that are actually small (true draft packs).
-  const smallest = (m.gguf_files || [])
-    .map((f) => f.size_bytes)
-    .filter((n) => n > 0)
-    .sort((a, b) => a - b)[0];
-  if (smallest != null && smallest < 8 * 1024 * 1024 * 1024) score += 80;
+  // Prefer compact draft packs (≤2 GiB strong, ≤6 GiB ok).
+  if (smallestKnown != null) {
+    if (smallestKnown <= 2 * 1024 * 1024 * 1024) {
+      score += 3;
+      notes.push("compact draft size");
+    } else if (smallestKnown <= DFLASH_DRAFT_MAX_FILE_BYTES) {
+      score += 1;
+    }
+  }
 
-  return { model: m, score, notes };
+  // Downloads: sub-percent tie-break only (never more than ~1 pt).
+  score += Math.min(1, Math.min(m.downloads || 0, 500_000) / 500_000);
+
+  const pct = Math.max(0, Math.min(100, Math.round(score)));
+  return { model: m, score: pct, notes };
 }
 
 const QUANT_PREF = [
@@ -307,21 +578,33 @@ const QUANT_PREF = [
 
 export function pickDflashQuant(files: GgufFile[], main: ModelEntry): GgufFile | null {
   if (!files.length) return null;
-  const usable = files.filter((f) => f.url?.trim() && f.size_bytes > 0);
+  // Never offer full-size mains as "draft" (15GB Q4 of 27B, etc.).
+  const usable = files.filter(
+    (f) =>
+      f.url?.trim() &&
+      f.size_bytes > 0 &&
+      f.size_bytes <= DFLASH_DRAFT_MAX_FILE_BYTES,
+  );
   if (!usable.length) return null;
+
+  // Prefer files whose name/type still says dflash when available.
+  const dflashFirst = usable.filter(
+    (f) => signalContainsDflash(f.type) || signalContainsDflash(f.url),
+  );
+  const pool = dflashFirst.length > 0 ? dflashFirst : usable;
 
   const mq = (main.quant || main.metadata?.file_type_str || "").toLowerCase().trim();
   const prefs = mq ? [mq, ...QUANT_PREF] : QUANT_PREF;
 
   for (const p of prefs) {
-    const hit = usable.find((f) => {
+    const hit = pool.find((f) => {
       const t = f.type.toLowerCase();
       return t === p || t.includes(p);
     });
     if (hit) return hit;
   }
 
-  const sorted = [...usable].sort((a, b) => a.size_bytes - b.size_bytes);
+  const sorted = [...pool].sort((a, b) => a.size_bytes - b.size_bytes);
   const compact = sorted.find((f) => f.size_bytes <= 4 * 1024 * 1024 * 1024);
   return compact ?? sorted[0] ?? null;
 }
@@ -339,16 +622,28 @@ function offerLabel(hfModelId: string, quantType: string, sizeBytes: number): st
 
 /**
  * Search HF for up to `limit` DFlash draft candidates (default 3).
+ * Drops scores &lt; {@link DFLASH_SCORE_SUGGEST} (ignore tier).
+ * Fresh cache (~4h) short-circuits; stale cache (≤24h) used on 429.
+ * Early-stops search after one ≥80% hit or enough ≥50% hits.
  * Always returns a list for user confirmation — never auto-downloads.
  */
 export async function findDflashDraftCandidates(
   main: ModelEntry,
   limit = 3,
 ): Promise<DflashDraftOffer[]> {
+  const cacheKey = dflashCandidateCacheKey(main);
+  const cached = getCachedEntry(cacheKey);
+  if (cached && isCacheFresh(cached) && cached.offers.length > 0) {
+    return cloneOffers(cached.offers).slice(0, Math.max(1, limit));
+  }
+
   const queries = dflashSearchQueries(main);
   const byId = new Map<string, ScoredRepo>();
+  let hitRateLimit = false;
+  let anySearchOk = false;
 
   for (const query of queries) {
+    if (hasEnoughSearchHits(byId, limit)) break;
     try {
       const resp = await invoke<HfSearchResponse>("search_hf_models", {
         query,
@@ -356,30 +651,67 @@ export async function findDflashDraftCandidates(
         sort: "downloads",
         limit: 40,
       });
+      anySearchOk = true;
       for (const m of resp.models || []) {
         const scored = scoreDflashRepo(m, main);
         if (!scored) continue;
+        // Ignore tier: too weak for auto-suggestions (vocab / tensor risk).
+        if (scored.score < DFLASH_SCORE_SUGGEST) continue;
         const prev = byId.get(m.id);
         if (!prev || scored.score > prev.score) {
           byId.set(m.id, scored);
         }
       }
     } catch (err) {
-      console.warn("[dflashGetDraft] search failed:", query, err);
+      if (isRateLimitError(err)) {
+        hitRateLimit = true;
+        console.warn("[dflashGetDraft] HF rate limit on search:", query, err);
+      } else {
+        console.warn("[dflashGetDraft] search failed:", query, err);
+      }
     }
   }
 
-  const ranked = [...byId.values()].sort((a, b) => b.score - a.score).slice(0, Math.max(1, limit));
-  if (ranked.length === 0) return [];
+  // 429 and no usable live hits → stale cache (up to 24h)
+  if (byId.size === 0 && hitRateLimit && cached && isCacheUsableStale(cached) && cached.offers.length > 0) {
+    console.warn("[dflashGetDraft] serving stale cache after HF 429");
+    return cloneOffers(cached.offers).slice(0, Math.max(1, limit));
+  }
+
+  const ranked = [...byId.values()]
+    .sort((a, b) => b.score - a.score)
+    .slice(0, Math.max(1, limit));
+
+  if (ranked.length === 0) {
+    if (hitRateLimit && !anySearchOk) {
+      throw new Error(
+        "HF rate limit (429) — retry later, or set HF token in CONFIG → Secrets",
+      );
+    }
+    // Soft 429 after partial fails with empty score set
+    if (hitRateLimit && cached && isCacheUsableStale(cached) && cached.offers.length > 0) {
+      return cloneOffers(cached.offers).slice(0, Math.max(1, limit));
+    }
+    return [];
+  }
 
   const offers: DflashDraftOffer[] = [];
   for (const row of ranked) {
     let files = row.model.gguf_files || [];
-    try {
-      const info = await invoke<HfModelInfo>("get_hf_model_info", { modelId: row.model.id });
-      if (info.gguf_files?.length) files = info.gguf_files;
-    } catch (err) {
-      console.warn("[dflashGetDraft] get_hf_model_info failed:", row.model.id, err);
+    const searchHasUsable = files.some((f) => f.url?.trim() && f.size_bytes > 0);
+    // Search already returns siblings when full=true — skip extra tree fetch if usable.
+    if (!searchHasUsable) {
+      try {
+        const info = await invoke<HfModelInfo>("get_hf_model_info", { modelId: row.model.id });
+        if (info.gguf_files?.length) files = info.gguf_files;
+      } catch (err) {
+        if (isRateLimitError(err)) {
+          hitRateLimit = true;
+          console.warn("[dflashGetDraft] HF rate limit on model info:", row.model.id, err);
+        } else {
+          console.warn("[dflashGetDraft] get_hf_model_info failed:", row.model.id, err);
+        }
+      }
     }
     const file = pickDflashQuant(files, main);
     if (!file) continue;
@@ -401,6 +733,15 @@ export async function findDflashDraftCandidates(
     });
   }
 
+  if (offers.length === 0) {
+    if (hitRateLimit && cached && isCacheUsableStale(cached) && cached.offers.length > 0) {
+      console.warn("[dflashGetDraft] serving stale cache after resolve 429");
+      return cloneOffers(cached.offers).slice(0, Math.max(1, limit));
+    }
+    return [];
+  }
+
+  putCache(cacheKey, offers);
   return offers;
 }
 

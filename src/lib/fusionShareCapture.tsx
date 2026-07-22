@@ -895,6 +895,8 @@ function forceFusionCapturePaint(frame: HTMLElement): void {
 
 /** Live overlay hero uses `clamp(…, 6vh, …)` — offscreen capture must pin a fixed size. */
 const FUSION_CAPTURE_HERO_FONT_PX = 40;
+/** Per-slot TG meter stays smaller than hero (do not match via `6vh` substring on `2.6vh`). */
+const FUSION_CAPTURE_PER_SLOT_FONT_PX = 20;
 
 function stripForecastPaddingForCapture(frame: HTMLElement): PaddingRestore[] {
   const restores: PaddingRestore[] = [];
@@ -1015,17 +1017,17 @@ function normalizeFusionCaptureLayout(frame: HTMLElement, phosphorHeightPx: numb
     fusionPanel.style.maxHeight = phosphorH;
   }
 
-  frame.querySelectorAll<HTMLElement>(".fusion-prefill-hero-value").forEach((el) => {
-    el.style.fontSize = `${FUSION_CAPTURE_HERO_FONT_PX}px`;
-    el.style.lineHeight = "1";
-  });
-
-  frame.querySelectorAll<HTMLElement>("[style]").forEach((el) => {
-    const fontSize = el.style.fontSize;
-    if (fontSize.includes("vh") || fontSize.includes("clamp")) {
+  // Hero TG / PP only — never blanket-match style*="6vh" (hits 2.6vh per-slot too).
+  frame
+    .querySelectorAll<HTMLElement>(".fusion-prefill-hero-value, .fusion-tg-hero-value")
+    .forEach((el) => {
       el.style.fontSize = `${FUSION_CAPTURE_HERO_FONT_PX}px`;
       el.style.lineHeight = "1";
-    }
+    });
+
+  frame.querySelectorAll<HTMLElement>(".fusion-per-slot-meter__value").forEach((el) => {
+    el.style.fontSize = `${FUSION_CAPTURE_PER_SLOT_FONT_PX}px`;
+    el.style.lineHeight = "1";
   });
 }
 

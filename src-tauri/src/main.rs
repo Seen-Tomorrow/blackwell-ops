@@ -982,6 +982,7 @@ async fn main() {
             gpu_control::is_gpu_control_elevated,
             gpu_control::apply_gpu_control_presets,
             gpu_control::reset_gpu_control,
+            gpu_control::set_gpu_driver_model,
             // Mobile Sentinel Bridge commands (always active)
             mobile_bridge::cmd_mobile_bridge_start,
             mobile_bridge::cmd_mobile_bridge_stop,

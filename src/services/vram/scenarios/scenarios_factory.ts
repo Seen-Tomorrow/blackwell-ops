@@ -1,4 +1,5 @@
 import type { GpuInfo, ModelMetadata, EngineConfig, Scenario, StyleObject, RunningEngine, GpuAllocation, VramManifest, MoeSuggestion } from "../../../lib/types";
+import { pickFullAutoSingleGpuListPos } from "../../../lib/fullAutoGpuPick";
 import { attachMemorySource } from "../memorySource";
 
 // ── Constants (derived from real launch data) ────────────────────────────────
@@ -670,8 +671,11 @@ export function computeValues(input: ScenarioInput, validatedVramMib?: number): 
   const singleMaxAvailable = Math.max(...gpuAvailable, 0);
   const multiTotalAvailable = gpuAvailable.reduce((a, b) => a + b, 0);
 
-  // Target GPU from config
-  const targetGpuIdx = parseInt(deviceStr.replace("GPU-", "").split("/")[0], 10) || 0;
+  // Target GPU from config — Full Auto single path mirrors launch pick (freest same-arch).
+  let targetGpuIdx = parseInt(deviceStr.replace("GPU-", "").split("/")[0], 10) || 0;
+  if (input.fullAutoMode === true && !splitActive && gpus.length > 0) {
+    targetGpuIdx = pickFullAutoSingleGpuListPos(gpus, gpuAvailable);
+  }
 
   return {
     weightsGb, kvCacheGb, overheadGb, visionGb, vramTotalGb,

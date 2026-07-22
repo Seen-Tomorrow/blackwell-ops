@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import type { GpuControlDeviceInfo, GpuControlOcMode, GpuControlSharedPreset } from "../lib/types";
 
 interface GpuOverclockPanelProps {
@@ -21,14 +22,19 @@ interface GpuOverclockPanelProps {
   onApply: () => void | Promise<void>;
   onResetAll: () => void | Promise<void>;
   onResetGpu: () => void | Promise<void>;
+  /** Hot-switch Windows driver model (nvidia-smi -dm). */
+  onSetDriverModel?: (mode: "tcc" | "wddm") => void | Promise<void>;
+  /** Notify parent when OC body expands (rail can free vertical space). */
+  onExpandedChange?: (expanded: boolean) => void;
 }
 
 const modeBtn =
-  "app-nav-tab w-full px-2.5 py-2 text-[9px] font-mono tracking-wider rounded-sm";
+  "app-nav-tab gpu-oc-mode-btn w-full font-mono tracking-wider rounded-sm";
 
 const actionBtn =
   "app-nav-tab w-full px-2 text-[9px] font-mono tracking-wider rounded-sm flex items-center justify-center";
 
+/** SYNC / PER GPU / TCC / WDDM — size from CSS (rail mode ~25% smaller). */
 const railModeBtn = "app-nav-tab gpu-oc-rail-btn gpu-oc-rail-btn--mode w-full font-mono rounded-sm";
 
 const railActionBtn =
@@ -67,10 +73,21 @@ export default function GpuOverclockPanel({
   onApply,
   onResetAll,
   onResetGpu,
+  onSetDriverModel,
+  onExpandedChange,
   layout = "page",
 }: GpuOverclockPanelProps) {
   const [expanded, setExpanded] = useState(false);
+  const [tccConfirmOpen, setTccConfirmOpen] = useState(false);
   const rail = layout === "rail";
+
+  const setExpandedAndNotify = (next: boolean | ((v: boolean) => boolean)) => {
+    setExpanded((prev) => {
+      const value = typeof next === "function" ? next(prev) : next;
+      onExpandedChange?.(value);
+      return value;
+    });
+  };
 
   const powerMin = sliderDevice ? Math.round(sliderDevice.powerMinW) : 0;
   const powerMax = sliderDevice ? Math.round(sliderDevice.powerMaxW) : 0;
@@ -81,12 +98,154 @@ export default function GpuOverclockPanel({
       ? `${syncGroupCount}× ${syncGroupName}`
       : `GPU ${selectedGpuIndex}`;
 
+  const driverModel = (sliderDevice?.driverModel ?? "").toUpperCase();
+  const driverPending = (sliderDevice?.driverModelPending ?? "").toUpperCase();
+  const driverKnown = driverModel === "TCC" || driverModel === "WDDM";
+  const driverActive = driverPending || driverModel;
+  const isTcc = driverModel === "TCC";
+  const isWddm = driverModel === "WDDM";
+
   const feedback = error ?? (status && !error ? status : null);
   const feedbackTone = error
     ? "gpu-oc-header__feedback--error"
     : feedback
       ? "gpu-oc-header__feedback--ok"
       : "";
+
+  const requestTcc = () => {
+    if (!onSetDriverModel || busy || devicesCount === 0 || isTcc) return;
+    setTccConfirmOpen(true);
+  };
+
+  const confirmTcc = () => {
+    setTccConfirmOpen(false);
+    void onSetDriverModel?.("tcc");
+  };
+
+  const requestWddm = () => {
+    if (!onSetDriverModel || busy || devicesCount === 0 || isWddm) return;
+    void onSetDriverModel("wddm");
+  };
+
+  const tccBtnClass = isTcc
+    ? "gpu-oc-driver-model__btn gpu-oc-driver-model__btn--tcc-active"
+    : "gpu-oc-driver-model__btn gpu-oc-driver-model__btn--tcc";
+  const wddmBtnClass = isWddm
+    ? "gpu-oc-driver-model__btn gpu-oc-driver-model__btn--wddm-active"
+    : "gpu-oc-driver-model__btn gpu-oc-driver-model__btn--wddm";
+
+  const driverModelRow = onSetDriverModel ? (
+    <div className="gpu-oc-driver-model space-y-1">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[7px] font-mono tracking-wider uppercase text-stealth-muted">
+          Driver model
+        </span>
+        <span
+          className="text-[8px] font-mono truncate"
+          title={
+            driverPending && driverPending !== driverModel
+              ? `current ${driverModel || "?"} · pending ${driverPending}`
+              : driverModel || "N/A"
+          }
+        >
+          {driverKnown ? (
+            <>
+              <span className={isTcc ? "gpu-oc-driver-model__label--tcc" : "gpu-oc-driver-model__label--wddm"}>
+                {driverModel}
+              </span>
+              {driverPending && driverPending !== driverModel ? (
+                <span className="text-telemetry-amber/90"> → {driverPending}</span>
+              ) : null}
+            </>
+          ) : (
+            <span className="text-stealth-muted">{driverActive || "N/A"}</span>
+          )}
+        </span>
+      </div>
+      <div className="grid grid-cols-2 gap-1">
+        <button
+          type="button"
+          disabled={busy || devicesCount === 0 || isTcc}
+          onClick={requestTcc}
+          className={`${rail ? railModeBtn : modeBtn} ${tccBtnClass} disabled:opacity-40`}
+          title="nvidia-smi -dm 1 — TCC (compute). Confirms before switch."
+        >
+          TCC
+        </button>
+        <button
+          type="button"
+          disabled={busy || devicesCount === 0 || isWddm}
+          onClick={requestWddm}
+          className={`${rail ? railModeBtn : modeBtn} ${wddmBtnClass} disabled:opacity-40`}
+          title="nvidia-smi -dm 0 — WDDM (display)."
+        >
+          WDDM
+        </button>
+      </div>
+      <p className="text-[6px] font-mono text-stealth-muted/80 leading-snug">
+        Hot switch · UAC ·  stop engines first
+      </p>
+      <p> </p>
+    </div>
+  ) : null;
+
+  const tccConfirmModal =
+    tccConfirmOpen && typeof document !== "undefined"
+      ? createPortal(
+          <div
+            className="gpu-oc-tcc-modal-backdrop"
+            role="presentation"
+            onMouseDown={(e) => {
+              if (e.target === e.currentTarget && !busy) setTccConfirmOpen(false);
+            }}
+          >
+            <div
+              className="gpu-oc-tcc-modal font-mono"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="gpu-oc-tcc-title"
+            >
+              <h3 id="gpu-oc-tcc-title" className="gpu-oc-tcc-modal__title">
+                Switch to TCC?
+              </h3>
+              <p className="gpu-oc-tcc-modal__target">{targetLabel}</p>
+              <ul className="gpu-oc-tcc-modal__list">
+                <li>
+                  May not work on consumer GeForce cards — <strong>RTX PRO / datacenter verified</strong>.
+                </li>
+                <li>
+                  Not for monitor-connected GPUs. Use <strong>iGPU or another WDDM dGPU</strong> for
+                  display, before switching.
+                </li>
+                <li>
+                  Under TCC the card leaves the WDDM world until switched back — no desktop /
+                  Task Manager GPU view / gaming on that device.
+                </li>
+                <li>Hot switch needs admin (UAC). Topology will blink and rediscover.</li>
+              </ul>
+              <div className="gpu-oc-tcc-modal__actions">
+                <button
+                  type="button"
+                  className="gpu-oc-tcc-modal__btn gpu-oc-tcc-modal__btn--no"
+                  disabled={busy}
+                  onClick={() => setTccConfirmOpen(false)}
+                >
+                  NO
+                </button>
+                <button
+                  type="button"
+                  className="gpu-oc-tcc-modal__btn gpu-oc-tcc-modal__btn--yes"
+                  disabled={busy}
+                  onClick={confirmTcc}
+                >
+                  YES — TCC
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )
+      : null;
 
   return (
     <div
@@ -95,7 +254,7 @@ export default function GpuOverclockPanel({
     >
       <button
         type="button"
-        onClick={() => setExpanded((v) => !v)}
+        onClick={() => setExpandedAndNotify((v) => !v)}
         className={`theme-surface-header gpu-oc-header w-full px-3 py-2 border-b border-stealth-border flex items-center gap-3 text-left transition-colors ${
           ocActive ? "gpu-oc-header--active" : "hover:bg-white/[0.02]"
         }`}
@@ -189,6 +348,8 @@ export default function GpuOverclockPanel({
                   {initialLoading ? "Loading…" : "Select a GPU block above"}
                 </p>
               )}
+
+              {driverModelRow}
 
               <div className="gpu-oc-rail-btn-row grid grid-cols-3">
                 <button
@@ -338,8 +499,13 @@ export default function GpuOverclockPanel({
               </div>
             </div>
           )}
+
+          {!rail && driverModelRow ? (
+            <div className="pt-1 border-t border-stealth-border/40">{driverModelRow}</div>
+          ) : null}
         </div>
       )}
+      {tccConfirmModal}
     </div>
   );
 }
