@@ -567,8 +567,12 @@ export function loadConfigColumnCount(
 ): ConfigColumnCount {
   const stored = readJsonStorage<ConfigColumnCount>(configColumnCountKey(providerId));
   if (stored === 2 || stored === 3) return stored;
+  // Explicit 1C is a valid stored choice (user picked 1C in toolbar).
+  if (stored === 1) return 1;
   if (fromProvider === 2 || fromProvider === 3) return fromProvider;
-  return 1;
+  if (fromProvider === 1) return 1;
+  // Product default: two columns (1C wastes horizontal space on typical windows).
+  return 2;
 }
 
 export function saveConfigColumnCount(providerId: string, count: ConfigColumnCount): void {

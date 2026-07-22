@@ -69,6 +69,9 @@ import {
   isGroupFullyHidden,
   PANEL_CHROME_PARAM_KEYS,
 } from "../lib/paramDisplayZone";
+import { isCockpitOwnedParam } from "../lib/systemParams";
+import ParamCatalogSearch from "./ParamCatalogSearch";
+import { catalogEntryToParam, type RawCatalogEntry } from "../lib/catalog";
 import type { GroupDisplayZone } from "../lib/storage";
 import ConfigBelowGroups from "./ConfigBelowGroups";
 import GpuAssignPanel from "./GpuAssignPanel";
@@ -464,6 +467,10 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   const [specFlash, setSpecFlash] = useState(false);
   const [fitLaunchEnabled, setFitLaunchEnabled] = useState(true);
   const [configView, setConfigView] = useState<ConfigViewMode>("essentials");
+  const [showEngineCatalogSearch, setShowEngineCatalogSearch] = useState(false);
+  /** After catalog add — place the new key into a group (default USER-ADDED-FROM-CATALOG). */
+  const [catalogPlaceKey, setCatalogPlaceKey] = useState<string | null>(null);
+  const [catalogPlaceGroup, setCatalogPlaceGroup] = useState("USER-ADDED-FROM-CATALOG");
   const [codingMode, setCodingMode] = useState<CodingModeId>("solo");
   const [speedBoost, setSpeedBoost] = useState<SpeedBoostId>("off");
   const [brains, setBrains] = useState<BrainsId>("solid");
@@ -718,8 +725,13 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   const launchProfile = currentProvider?.launchProfile;
   const fitLaunchSupported = providerSupportsFitLaunch(launchProfile);
   const fullAutoMode = fitLaunchSupported && fitLaunchEnabled;
-  /** FULL-AUTO + Essentials — MTP/DFLASH only, presets, auto-enable when capable. */
-  const specSimpleMode = fullAutoMode && configView === "essentials";
+  /**
+   * Joe essentials presets only on Full Auto (not Assisted Full chips).
+   * Assisted Full stays raw factory values for power users.
+   */
+  const specSimpleMode = fullAutoMode;
+  /** Assisted Full — power cockpit (no Smart batch push; raw extra spec types). */
+  const powerCockpitMode = !fullAutoMode && configView === "full";
   const tensorSplitSupported = launchProfile?.tensorSplit !== false;
   const essentialFactoryKeys = useMemo(
     () => resolveEssentialParamKeys(launchProfile),
@@ -979,7 +991,9 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       speed: SpeedBoostId,
       brainsPick: BrainsId,
       thinkPick: ThinkId,
+      opts?: { powerUser?: boolean; rawSpecType?: string | null },
     ) => {
+      const powerUser = opts?.powerUser ?? false;
       setCodingMode(mode);
       setSpeedBoost(speed);
       setBrains(brainsPick);
@@ -994,6 +1008,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         dflashLibraryReady,
         dflashGettable,
         kvQuantValues,
+        powerUser,
       });
 
       if (plan.forcedSoloForMtp) setCodingMode("solo");
@@ -1017,7 +1032,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         updateParam("reasoning_preserve", plan.reasoningPreserve);
       }
 
-      if (plan.pushBatch) {
+      // Joe Smart only — Power never mutates batch/ubatch from the cockpit.
+      if (plan.pushBatch && !powerUser) {
         const batchDef = allParamsResolved.find((p) => p.key === "batch");
         const ubatchDef = allParamsResolved.find((p) => p.key === "ubatch");
         const batchPick = batchDef?.values ? pickHighNumeric(batchDef.values) : null;
@@ -1028,7 +1044,13 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         if (ubatchPick != null) updateParam("ubatch", ubatchPick);
       }
 
-      const wantSpec = plan.enableSpec;
+      // Power raw factory types (eagle, ngram, …) — not covered by Joe plan.
+      const rawSpec =
+        powerUser && opts?.rawSpecType != null && String(opts.rawSpecType).trim()
+          ? String(opts.rawSpecType).trim()
+          : null;
+      const wantSpec = Boolean(rawSpec) || plan.enableSpec;
+      const effectiveSpecType = rawSpec ?? plan.specType;
       const currentlyOn = specDecodingGroupVisible;
       if (wantSpec !== currentlyOn && (hasSpecCapability || !wantSpec)) {
         try {
@@ -1045,33 +1067,39 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           dispatchAppEvent(EVENTS.reloadProviders);
           dispatchAppEvent(EVENTS.paramConfigChanged);
         } catch (err) {
-          console.error("[fullAuto] toggle_group_hidden failed:", err);
+          console.error("[cockpit] toggle_group_hidden failed:", err);
         }
       }
 
-      if (wantSpec && plan.specType) {
-        updateParam("spec_type", plan.specType);
-        const preset = essentialsSpecPreset(plan.specType);
-        if (preset) {
-          updateParam("spec_draft_n_max", preset.spec_draft_n_max);
-          updateParam("spec_draft_n_min", preset.spec_draft_n_min);
+      if (wantSpec && effectiveSpecType) {
+        updateParam("spec_type", effectiveSpecType);
+        // Joe path may apply MTP/DFlash n_min/n_max presets; Power leaves raw values.
+        if (!powerUser) {
+          const preset = essentialsSpecPreset(effectiveSpecType);
+          if (preset) {
+            updateParam("spec_draft_n_max", preset.spec_draft_n_max);
+            updateParam("spec_draft_n_min", preset.spec_draft_n_min);
+          }
         }
         // External draft (DFlash/Eagle3) needs a paired GGUF. MTP is embedded — must clear any
         // leftover --spec-draft-model from a prior DFlash selection or launch fails.
-        if (specTypeNeedsExternalDraft(plan.specType)) {
+        if (specTypeNeedsExternalDraft(effectiveSpecType)) {
           if (model && models?.length) {
-            const role = draftRoleForSpecType(plan.specType);
+            const role = draftRoleForSpecType(effectiveSpecType);
             if (role) {
               const draftPair = pickBestDraftPair(model, models, role);
               if (draftPair) {
                 updateParam("spec_draft_model", draftPair.path);
-                saveDraftPairing(model.path, plan.specType, draftPair.path);
+                saveDraftPairing(model.path, effectiveSpecType, draftPair.path);
               }
             }
           }
         } else {
           updateParam("spec_draft_model", "off");
         }
+      } else if (powerUser && !wantSpec) {
+        // Explicit Off — leave n_min/n_max alone; clear external draft path only.
+        updateParam("spec_draft_model", "off");
       }
     },
     [
@@ -1089,6 +1117,21 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     ],
   );
 
+  const factoryRawSpecTypes = useMemo(() => {
+    const def = allParamsResolved.find((p) => p.key === "spec_type");
+    if (!def?.values?.length) return [] as string[];
+    return filterSpecTypeValues(def.values, specCapabilities, false).map(String);
+  }, [allParamsResolved, specCapabilities]);
+
+  const activeRawSpecForPower = useMemo(() => {
+    if (!powerCockpitMode) return null;
+    const st = config.spec_type != null ? String(config.spec_type).trim() : "";
+    if (!st) return null;
+    const low = st.toLowerCase();
+    if (low.includes("mtp") || low.includes("dflash")) return null;
+    return st;
+  }, [powerCockpitMode, config.spec_type]);
+
   // Main model change / capability drop → snap Boost + clear stale draft UI.
   useEffect(() => {
     if (!model) return;
@@ -1101,11 +1144,14 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       dflashLibraryReady,
       dflashGettable,
       kvQuantValues,
+      powerUser: powerCockpitMode,
     });
     if (plan.speed !== speedBoost) {
       // Sync UI immediately (child also mirrors plan.speed); apply clears CLI/spec.
       setSpeedBoost(plan.speed);
-      void applyFullAutoCockpit(codingMode, plan.speed, brains, think);
+      void applyFullAutoCockpit(codingMode, plan.speed, brains, think, {
+        powerUser: powerCockpitMode,
+      });
     }
     if (plan.speed !== "dflash") {
       setDflashGetState("idle");
@@ -1257,9 +1303,11 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       setLibraryPickItems([]);
       setDflashResolveError(null);
       // Ensure DFlash mode is active with this pairing
-      void applyFullAutoCockpit(codingMode, "dflash", brains, think);
+      void applyFullAutoCockpit(codingMode, "dflash", brains, think, {
+        powerUser: powerCockpitMode,
+      });
     },
-    [model, updateParam, applyFullAutoCockpit, codingMode, brains, think],
+    [model, updateParam, applyFullAutoCockpit, codingMode, brains, think, powerCockpitMode],
   );
 
   /** Stable local list for DraftPickModal — both Get draft and Change draft. */
@@ -1292,9 +1340,11 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     setDflashGetState("idle");
     setDflashGetError(null);
     if (speedBoost === "dflash") {
-      void applyFullAutoCockpit(codingMode, "dflash", brains, think);
+      void applyFullAutoCockpit(codingMode, "dflash", brains, think, {
+        powerUser: powerCockpitMode,
+      });
     }
-  }, [dflashLibraryReady, speedBoost, codingMode, brains, think, applyFullAutoCockpit]);
+  }, [dflashLibraryReady, speedBoost, codingMode, brains, think, applyFullAutoCockpit, powerCockpitMode]);
 
   // Surface download failures for the tasks we started.
   useEffect(() => {
@@ -1308,13 +1358,95 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     }
   }, [hfDownloads, dflashGetState]);
 
-  /** Assisted mode: agents-only strip (no full cockpit). */
-  const applyCodingAgents = useCallback(
-    (mode: CodingModeId) => {
-      void applyFullAutoCockpit(mode, speedBoost, brains, think);
-    },
-    [applyFullAutoCockpit, speedBoost, brains, think],
+  const cockpitOpts = useMemo(
+    () => ({ powerUser: powerCockpitMode }),
+    [powerCockpitMode],
   );
+
+  const existingGroupNames = useMemo(() => {
+    const names = new Set<string>();
+    for (const p of allParamsResolved) {
+      names.add(paramUiGroup(p.ui_group));
+    }
+    names.add("USER-ADDED-FROM-CATALOG");
+    return Array.from(names).sort((a, b) => a.localeCompare(b));
+  }, [allParamsResolved]);
+
+  const handleEngineCatalogAdd = useCallback(
+    async (entry: RawCatalogEntry) => {
+      if (!currentProvider) return;
+      const currentUserParams = currentProvider.userEditedTemplateParams || [];
+      if (currentUserParams.some((d) => d.key === entry.key) || allParamsResolved.some((d) => d.key === entry.key)) {
+        setShowEngineCatalogSearch(false);
+        return;
+      }
+      const maxOrder = Math.max(...currentUserParams.map((d) => d.order), ...allParamsResolved.map((d) => d.order), -1);
+      const newParam = catalogEntryToParam(entry, currentUserParams, maxOrder);
+      const newUserParam: UserEditedTemplateParam = {
+        ...newParam,
+        order: maxOrder + 1,
+        essential: configView === "essentials" ? true : undefined,
+      };
+      const catalogGroup = "USER-ADDED-FROM-CATALOG";
+      let groupOrder = currentProvider.groupOrder ? [...currentProvider.groupOrder] : undefined;
+      if (groupOrder && !groupOrder.some((g) => normalizeUiGroup(g) === catalogGroup)) {
+        groupOrder = [...groupOrder, catalogGroup];
+      }
+      const updatedProvider: ProviderConfig = {
+        ...currentProvider,
+        userEditedTemplateParams: [...currentUserParams, newUserParam],
+        ...(groupOrder ? { groupOrder } : {}),
+      };
+      try {
+        await invoke("save_provider", { provider: updatedProvider });
+        setResolvedProviders((prev) =>
+          prev ? prev.map((p) => (p.id === effectiveBackendType ? updatedProvider : p)) : prev,
+        );
+        setUserEditedParams(updatedProvider.userEditedTemplateParams || []);
+        dispatchAppEvent(EVENTS.reloadProviders);
+        dispatchAppEvent(EVENTS.paramConfigChanged);
+        setShowEngineCatalogSearch(false);
+        setCatalogPlaceKey(entry.key);
+        setCatalogPlaceGroup(catalogGroup);
+      } catch (err) {
+        console.error("[engine catalog] save_provider failed:", err);
+      }
+    },
+    [currentProvider, allParamsResolved, configView, effectiveBackendType],
+  );
+
+  const handleCatalogPlaceConfirm = useCallback(async () => {
+    if (!currentProvider || !catalogPlaceKey) {
+      setCatalogPlaceKey(null);
+      return;
+    }
+    const group = normalizeUiGroup(catalogPlaceGroup || "USER-ADDED-FROM-CATALOG");
+    const currentUserParams = currentProvider.userEditedTemplateParams || [];
+    const updatedUserParams = currentUserParams.map((d) =>
+      d.key === catalogPlaceKey ? { ...d, ui_group: group } : d,
+    );
+    let groupOrder = currentProvider.groupOrder ? [...currentProvider.groupOrder] : undefined;
+    if (groupOrder && !groupOrder.some((g) => normalizeUiGroup(g) === group)) {
+      groupOrder = [...groupOrder, group];
+    }
+    const updatedProvider: ProviderConfig = {
+      ...currentProvider,
+      userEditedTemplateParams: updatedUserParams,
+      ...(groupOrder ? { groupOrder } : {}),
+    };
+    try {
+      await invoke("save_provider", { provider: updatedProvider });
+      setResolvedProviders((prev) =>
+        prev ? prev.map((p) => (p.id === effectiveBackendType ? updatedProvider : p)) : prev,
+      );
+      setUserEditedParams(updatedUserParams);
+      dispatchAppEvent(EVENTS.reloadProviders);
+      dispatchAppEvent(EVENTS.paramConfigChanged);
+    } catch (err) {
+      console.error("[engine catalog] place group failed:", err);
+    }
+    setCatalogPlaceKey(null);
+  }, [currentProvider, catalogPlaceKey, catalogPlaceGroup, effectiveBackendType]);
   const specLaunchActive = useMemo(() => {
     if (!model || !models?.length) return false;
     return resolveSpecLaunchActive({
@@ -1966,11 +2098,13 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     return Boolean(def.dock) || PANEL_CHROME_PARAM_KEYS.has(def.key);
   }, []);
 
-  // Grouped params — panel chrome (device, split, port, offload) rendered elsewhere
+  // Grouped params — panel chrome + cockpit-owned keys rendered elsewhere
   const groupedParams = useMemo(() => {
     const groups: Record<string, UserEditedTemplateParam[]> = {};
     for (const def of allParamsForDisplay) {
       if (def.hidden || isPanelChromeParam(def)) continue;
+      // Cockpit is the UI for these shared knobs (no chip dedup / double control).
+      if (isCockpitOwnedParam(def.key)) continue;
       const groupId = paramUiGroup(def.ui_group);
       if (!groups[groupId]) groups[groupId] = [];
       groups[groupId].push(def);
@@ -2291,6 +2425,36 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                       Draft model paired by model family + name
                     </div>
                   )}
+                  {/* Same Get/Change draft pipeline as cockpit — local library + HF */}
+                  <div className="flex flex-wrap items-center gap-1.5 ml-6 mt-0.5">
+                    {dflashLibraryReady && (
+                      <button
+                        type="button"
+                        className="value-chip text-[7px] font-mono uppercase px-1.5 py-0.5 rounded-sm"
+                        onClick={handleChangeDflashDraft}
+                        title="Pick a different draft from your library or HF"
+                      >
+                        Change draft
+                      </button>
+                    )}
+                    {(dflashGettable || !dflashLibraryReady) && (
+                      <button
+                        type="button"
+                        className="value-chip text-[7px] font-mono uppercase px-1.5 py-0.5 rounded-sm border border-violet-400/40 text-violet-200/90"
+                        disabled={dflashGetState === "searching" || dflashGetState === "downloading"}
+                        onClick={() => { void handleGetDflashDraft(); }}
+                        title="Search Hugging Face for DFlash drafts — confirm before download"
+                      >
+                        {dflashGetState === "searching"
+                          ? "Searching…"
+                          : dflashGetState === "downloading"
+                            ? "Downloading…"
+                            : dflashGetState === "error"
+                              ? "Retry Get draft"
+                              : "Get draft"}
+                      </button>
+                    )}
+                  </div>
                   {specNeedsExternalDraft && !draftPathValid && (
                     <div className="text-[7px] font-mono text-telemetry-red/75 uppercase ml-6 tracking-wide">
                       Select a .gguf draft file before launch
@@ -2998,6 +3162,14 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                 }
               }}
             />
+            <button
+              type="button"
+              onClick={() => setShowEngineCatalogSearch(true)}
+              className="config-panel-toolbar-chip px-1.5 py-0.5 text-[8px] font-mono rounded-sm"
+              title="Add any llama-server param from the live --help catalog"
+            >
+              + PARAM
+            </button>
           </div>
         )}
         {fullAutoFixed && (
@@ -3113,19 +3285,31 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         </div>
       </div>
 
-      {/* Full Auto: single 3-row cockpit. Assisted: boost strip + classic chip groups. */}
-      {fullAutoFixed ? (
-        <div className="px-4 py-3 flex-1 min-h-0 overflow-y-auto eink-scrollbar">
-          {model && !modelIsDraftOnly && (
+      {/*
+        Unified scroll column: cockpit + (Assisted) chip groups + open harness.
+        Full Auto = hero cockpit only. Assisted Essentials = command cockpit + essentials.
+        Assisted Full = compact power cockpit (no Smart) + full chips.
+      */}
+      <div className={`config-params-scroll px-4 py-3 relative flex-1 overflow-y-auto eink-scrollbar eink-panel min-h-0${paramsBypassedClass}`}>
+        {model && !modelIsDraftOnly && (
+          <div className={fullAutoFixed ? "mb-3" : "mb-3 pb-3 border-b section-divider"}>
             <MultiAgentBooster
               codingMode={codingMode}
               speedBoost={speedBoost}
               brains={brains}
               think={think}
-              onCodingMode={(m) => { void applyFullAutoCockpit(m, speedBoost, brains, think); }}
-              onSpeedBoost={(s) => { void applyFullAutoCockpit(codingMode, s, brains, think); }}
-              onBrains={(b) => { void applyFullAutoCockpit(codingMode, speedBoost, b, think); }}
-              onThink={(t) => { void applyFullAutoCockpit(codingMode, speedBoost, brains, t); }}
+              onCodingMode={(m) => {
+                void applyFullAutoCockpit(m, speedBoost, brains, think, cockpitOpts);
+              }}
+              onSpeedBoost={(s) => {
+                void applyFullAutoCockpit(codingMode, s, brains, think, cockpitOpts);
+              }}
+              onBrains={(b) => {
+                void applyFullAutoCockpit(codingMode, speedBoost, b, think, cockpitOpts);
+              }}
+              onThink={(t) => {
+                void applyFullAutoCockpit(codingMode, speedBoost, brains, t, cockpitOpts);
+              }}
               capabilities={specCapabilities}
               dflashLibraryReady={dflashLibraryReady}
               dflashGettable={dflashGettable}
@@ -3138,89 +3322,60 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
               kvQuantValues={kvQuantValues}
               port={Number(config.base_port) || 9090}
               modelId={aliasDisplayValue || autoAlias || model.name || "local-model"}
-              layout="hero"
-              ctxValue={config.ctx}
-              ctxDefault={allParamsResolved.find((p) => p.key === "ctx")?.defaultValue}
-              ctxValues={allParamsResolved.find((p) => p.key === "ctx")?.values}
-              ctxStep={allParamsResolved.find((p) => p.key === "ctx")?.step ?? 1024}
-              onCtxChange={(v) => updateParam("ctx", v)}
-              ctxSlotCount={resolveCtxSlotCount(config, allParamsResolved)}
-              ctxPerSlot={(() => {
-                const slots = resolveCtxSlotCount(config, allParamsResolved);
-                const n = typeof config.ctx === "number" ? config.ctx : parseInt(String(config.ctx), 10);
-                if (slots > 1 && Number.isFinite(n) && n > 0) return Math.floor(n / slots);
-                return undefined;
-              })()}
+              layout={fullAutoFixed ? "hero" : powerCockpitMode ? "compact" : "normal"}
+              powerMode={powerCockpitMode}
+              rawSpecTypes={powerCockpitMode ? factoryRawSpecTypes : undefined}
+              activeRawSpecType={powerCockpitMode ? activeRawSpecForPower : null}
+              onRawSpecType={
+                powerCockpitMode
+                  ? (raw) => {
+                      void applyFullAutoCockpit(codingMode, "off", brains, think, {
+                        powerUser: true,
+                        rawSpecType: raw,
+                      });
+                    }
+                  : undefined
+              }
+              ctxValue={fullAutoFixed ? config.ctx : undefined}
+              ctxDefault={fullAutoFixed ? allParamsResolved.find((p) => p.key === "ctx")?.defaultValue : undefined}
+              ctxValues={fullAutoFixed ? allParamsResolved.find((p) => p.key === "ctx")?.values : undefined}
+              ctxStep={fullAutoFixed ? (allParamsResolved.find((p) => p.key === "ctx")?.step ?? 1024) : undefined}
+              onCtxChange={fullAutoFixed ? (v) => updateParam("ctx", v) : undefined}
+              ctxSlotCount={fullAutoFixed ? resolveCtxSlotCount(config, allParamsResolved) : undefined}
+              ctxPerSlot={
+                fullAutoFixed
+                  ? (() => {
+                      const slots = resolveCtxSlotCount(config, allParamsResolved);
+                      const n = typeof config.ctx === "number" ? config.ctx : parseInt(String(config.ctx), 10);
+                      if (slots > 1 && Number.isFinite(n) && n > 0) return Math.floor(n / slots);
+                      return undefined;
+                    })()
+                  : undefined
+              }
             />
-          )}
-          {model && (
-            <DraftPickModal
-              open={dflashPickOpen}
-              mode={dflashPickMode}
-              mainLabel={describeMainForDflashPick(model)}
-              localItems={dflashLocalPickItems}
-              initialSelectedId={dflashPickInitialSelectedId}
-              hfOffers={dflashCandidates}
-              remoteLoading={dflashGetState === "searching"}
-              resolving={dflashResolving}
-              resolveError={dflashResolveError}
-              onCancel={handleCancelDflashPick}
-              onConfirmHf={(offer) => { void handleConfirmDflashPick(offer); }}
-              onConfirmManual={(id) => { void handleConfirmDflashManual(id); }}
-              onConfirmLibrary={handleConfirmLibraryDraft}
-              onRequestRemote={() => { void loadDflashHfCandidates(); }}
-            />
-          )}
-        </div>
-      ) : (
-        <>
-          {model && !modelIsDraftOnly && (
-            <div className="px-4 pt-1.5 pb-0.5 flex-shrink-0 border-b section-divider">
-              <MultiAgentBooster
-                codingMode={codingMode}
-                speedBoost={speedBoost}
-                brains={brains}
-                think={think}
-                onCodingMode={applyCodingAgents}
-                onSpeedBoost={(s) => { void applyFullAutoCockpit(codingMode, s, brains, think); }}
-                onBrains={(b) => { void applyFullAutoCockpit(codingMode, speedBoost, b, think); }}
-                onThink={(t) => { void applyFullAutoCockpit(codingMode, speedBoost, brains, t); }}
-                capabilities={specCapabilities}
-                dflashLibraryReady={dflashLibraryReady}
-                dflashGettable={dflashGettable}
-                dflashDraftLabel={dflashDraftLabel}
-                dflashGetState={dflashGetState}
-                dflashGetError={dflashGetError}
-                dflashGetOfferLabel={dflashGetOfferLabel}
-                onGetDflashDraft={() => { void handleGetDflashDraft(); }}
-                onChangeDflashDraft={handleChangeDflashDraft}
-                kvQuantValues={kvQuantValues}
-                port={Number(config.base_port) || 9090}
-                modelId={aliasDisplayValue || autoAlias || model.name || "local-model"}
-                layout={configView === "full" ? "dense" : "normal"}
-              />
-              {model && (
-                <DraftPickModal
-                  open={dflashPickOpen}
-                  mode={dflashPickMode}
-                  mainLabel={describeMainForDflashPick(model)}
-                  localItems={dflashLocalPickItems}
-                  initialSelectedId={dflashPickInitialSelectedId}
-                  hfOffers={dflashCandidates}
-                  remoteLoading={dflashGetState === "searching"}
-                  resolving={dflashResolving}
-                  resolveError={dflashResolveError}
-                  onCancel={handleCancelDflashPick}
-                  onConfirmHf={(offer) => { void handleConfirmDflashPick(offer); }}
-                  onConfirmManual={(id) => { void handleConfirmDflashManual(id); }}
-                  onConfirmLibrary={handleConfirmLibraryDraft}
-                  onRequestRemote={() => { void loadDflashHfCandidates(); }}
-                />
-              )}
-            </div>
-          )}
+          </div>
+        )}
+        {model && (
+          <DraftPickModal
+            open={dflashPickOpen}
+            mode={dflashPickMode}
+            mainLabel={describeMainForDflashPick(model)}
+            localItems={dflashLocalPickItems}
+            initialSelectedId={dflashPickInitialSelectedId}
+            hfOffers={dflashCandidates}
+            remoteLoading={dflashGetState === "searching"}
+            resolving={dflashResolving}
+            resolveError={dflashResolveError}
+            onCancel={handleCancelDflashPick}
+            onConfirmHf={(offer) => { void handleConfirmDflashPick(offer); }}
+            onConfirmManual={(id) => { void handleConfirmDflashManual(id); }}
+            onConfirmLibrary={handleConfirmLibraryDraft}
+            onRequestRemote={() => { void loadDflashHfCandidates(); }}
+          />
+        )}
 
-          <div className={`config-params-scroll px-4 py-3 relative flex-1 overflow-y-auto eink-scrollbar eink-panel min-h-0${paramsBypassedClass}`}>
+        {!fullAutoFixed && (
+          <>
             {allParamsForDisplay.length === 0 ? (
               <div className="text-stealth-muted text-[10px] font-mono opacity-50">NO PARAMS DEFINED</div>
             ) : belowGroupKeys.length === 0 ? null : (
@@ -3242,9 +3397,9 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             {uiDensityCompact && configView === "full" && launchDockPosition === "bottom" && !launchDockCollapsed ? (
               <div className="config-launch-dock__flags-scroll">{renderCustomFlagsBlock()}</div>
             ) : null}
-          </div>
-        </>
-      )}
+          </>
+        )}
+      </div>
 
       {launchDockPosition === "bottom" && (
         <div className="config-launch-dock flex-shrink-0 px-4 flex flex-col">
@@ -3665,6 +3820,73 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         </>
       )}
       </div>
+
+      {showEngineCatalogSearch && (
+        <ParamCatalogSearch
+          providerId={effectiveBackendType}
+          existingKeys={allParamsResolved.map((d) => d.key)}
+          onAdd={(entry) => { void handleEngineCatalogAdd(entry); }}
+          onClose={() => setShowEngineCatalogSearch(false)}
+        />
+      )}
+
+      {catalogPlaceKey && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-start justify-center pt-20"
+          onClick={() => setCatalogPlaceKey(null)}
+        >
+          <div
+            className="config-form-panel rounded-sm w-full max-w-md mx-4 shadow-2xl border border-stealth-border/40"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-4 py-3 config-section-bar flex items-center justify-between">
+              <h2 className="text-[11px] font-mono theme-accent-text tracking-widest">
+                PLACE PARAM
+              </h2>
+              <span className="text-[9px] font-mono config-muted truncate max-w-[12rem]" title={catalogPlaceKey}>
+                {catalogPlaceKey}
+              </span>
+            </div>
+            <div className="px-4 py-3 space-y-3">
+              <p className="text-[9px] font-mono text-stealth-muted/70 leading-snug">
+                Added from catalog. Default group is USER-ADDED-FROM-CATALOG — pick another group or keep it.
+              </p>
+              <label className="block">
+                <span className="text-[8px] font-mono tracking-wider uppercase text-stealth-muted/50">
+                  Group
+                </span>
+                <select
+                  value={catalogPlaceGroup}
+                  onChange={(e) => setCatalogPlaceGroup(e.target.value)}
+                  className="mt-1 w-full bg-black/40 border border-stealth-border/40 rounded-sm px-2 py-1.5 text-[10px] font-mono text-nv-green focus:outline-none"
+                >
+                  {existingGroupNames.map((g) => (
+                    <option key={g} value={g}>
+                      {g}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="flex justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  className="px-2 py-1 text-[9px] font-mono text-stealth-muted hover:text-white"
+                  onClick={() => setCatalogPlaceKey(null)}
+                >
+                  Keep default
+                </button>
+                <button
+                  type="button"
+                  className="px-2.5 py-1 text-[9px] font-mono rounded-sm border border-nv-green/40 text-nv-green hover:bg-nv-green/10"
+                  onClick={() => { void handleCatalogPlaceConfirm(); }}
+                >
+                  Assign group
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

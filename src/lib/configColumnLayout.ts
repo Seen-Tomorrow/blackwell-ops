@@ -21,8 +21,9 @@ export function defaultColumnWidths(count: ConfigColumnCount): number[] {
 
 export function normalizeColumnCount(raw: unknown): ConfigColumnCount {
   const n = Number(raw);
-  if (n === 2 || n === 3) return n;
-  return 1;
+  if (n === 1 || n === 2 || n === 3) return n;
+  // Default product density — two columns.
+  return 2;
 }
 
 export function normalizeColumnWidths(count: ConfigColumnCount, widths?: number[] | null): number[] {

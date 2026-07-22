@@ -2545,6 +2545,37 @@ html, body, #root {
   border-top: 1px solid var(--cockpit-header-line);
 }
 
+/* Draft strip + Connect harness share one footer row */
+.full-auto-cockpit__footer--actions {
+  justify-content: flex-end;
+  align-items: stretch;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+
+.full-auto-cockpit__footer--actions .full-auto-cockpit__dflash-get--footer {
+  max-width: none;
+  flex: 1 1 12rem;
+  margin-top: 0;
+}
+
+.full-auto-cockpit__footer--actions .full-auto-cockpit__connect {
+  align-self: center;
+}
+
+/* Assisted Full — denser body padding */
+.full-auto-cockpit--compact {
+  padding-bottom: 0.35rem;
+}
+
+.full-auto-cockpit--compact .full-auto-cockpit__grid-cell {
+  padding: 0.15rem 0.3rem;
+}
+
+.full-auto-cockpit--compact .full-auto-cockpit__header {
+  margin-bottom: 0.25rem;
+}
+
 /* Arctic — brighter header plate; MTP/DFlash accents same as dark (green / violet) */
 [data-theme="arctic"] .full-auto-cockpit {
   --cockpit-mtp: #16a34a;

@@ -1,6 +1,7 @@
 /**
- * Full Auto fixed cockpit — product language over parallel / spec / kv_quant / batch.
- * Assisted mode keeps Essentials/Full + classic chips. Factory param keys unchanged.
+ * Launch cockpit — product language over parallel / spec / kv_quant / batch.
+ * Full Auto (Joe): Smart/MTP/DFlash + optional batch push.
+ * Assisted Full (Power): same Memory/Agents/Think; raw spec types; no Smart batch push.
  */
 
 import type { SpecCapability } from "./specDraft";
@@ -175,6 +176,11 @@ export function resolveFullAutoPlan(opts: {
   /** Family likely has a HF DFlash pack even if library empty. */
   dflashGettable?: boolean;
   kvQuantValues: (string | number)[];
+  /**
+   * Power (Assisted Full): never invent Smart→batch/ubatch; allow speed "off".
+   * Joe / Full Auto / Essentials: default off→smart and may push batch.
+   */
+  powerUser?: boolean;
 }): FullAutoPlan {
   const {
     codingMode,
@@ -184,19 +190,28 @@ export function resolveFullAutoPlan(opts: {
     dflashLibraryReady,
     dflashGettable = false,
     kvQuantValues,
+    powerUser = false,
   } = opts;
-  let speed: SpeedBoostId = opts.speed === "off" ? "smart" : opts.speed;
+  let speed: SpeedBoostId = powerUser
+    ? opts.speed
+    : opts.speed === "off"
+      ? "smart"
+      : opts.speed;
   const hasMtp = capabilities.includes("mtp");
   const hasDflashLib = capabilities.includes("dflash") || dflashLibraryReady;
   const canAttemptDflash = hasDflashLib || dflashGettable;
 
-  // Invalid boost for this main → fall through to another capable mode, else Smart.
-  // Never land on a disabled mark (e.g. DFlash → MTP when MTP also unavailable).
+  // Invalid boost for this main → fall through to another capable mode.
+  // Joe path ends on Smart; Power path ends on Off (no silent batch push).
   if (speed === "mtp" && !hasMtp) {
-    speed = canAttemptDflash ? "dflash" : "smart";
+    speed = canAttemptDflash ? "dflash" : powerUser ? "off" : "smart";
   }
   if (speed === "dflash" && !canAttemptDflash) {
-    speed = hasMtp ? "mtp" : "smart";
+    speed = hasMtp ? "mtp" : powerUser ? "off" : "smart";
+  }
+  if (powerUser && speed === "smart") {
+    // Power never uses Smart as a product mode — treat as Off.
+    speed = "off";
   }
 
   let parallel = parallelForCodingMode(codingMode);
@@ -225,9 +240,14 @@ export function resolveFullAutoPlan(opts: {
       needsDflashDraft = true;
       // softNote intentionally empty — draft CTA lives only under Boost strip
     }
-  } else {
-    // smart — push prefill batch; do not auto-enable MTP (Boost stays on Smart)
+  } else if (speed === "smart" && !powerUser) {
+    // Joe Smart — push prefill batch; do not auto-enable MTP
     pushBatch = true;
+    enableSpec = false;
+    specType = null;
+  } else {
+    // off (Power) or unknown — leave batch alone, spec off
+    pushBatch = false;
     enableSpec = false;
     specType = null;
   }
@@ -263,7 +283,7 @@ export function resolveFullAutoPlan(opts: {
           : "4k";
 
   let boostTone: "mtp" | "dflash" | "smart" = "smart";
-  let boostLabel = "Smart";
+  let boostLabel = powerUser ? "Off" : "Smart";
   if (speed === "mtp" && enableSpec) {
     boostTone = "mtp";
     boostLabel = "MTP";
@@ -273,6 +293,12 @@ export function resolveFullAutoPlan(opts: {
   } else if (speed === "dflash" && needsDflashDraft) {
     boostTone = "dflash";
     boostLabel = "DFlash…";
+  } else if (speed === "off") {
+    boostTone = "smart";
+    boostLabel = "Off";
+  } else if (speed === "smart") {
+    boostTone = "smart";
+    boostLabel = "Smart";
   }
 
   // Header order: BOOST · MEMORY · AGENTS · THINK

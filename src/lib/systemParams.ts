@@ -14,6 +14,23 @@ export const SYSTEM_CATALOG_PARAM_KEYS = new Set([
   "base_port",
 ]);
 
+/**
+ * Cockpit-owned knobs (shared across llama forks). Rendered only via the Launch cockpit —
+ * never as free chip rows when the cockpit is visible. Pin to SYSTEM in templates over time.
+ * SPECULATIVE-DECODING stays its own group (toggle + draft pipeline).
+ */
+export const COCKPIT_OWNED_PARAM_KEYS = new Set([
+  "parallel",
+  "kv_quant",
+  "reasoning",
+  "reasoning_preserve",
+  "cont_batching",
+]);
+
+export function isCockpitOwnedParam(key: string): boolean {
+  return COCKPIT_OWNED_PARAM_KEYS.has(key);
+}
+
 export const SYSTEM_CATALOG_PARAM_TOOLTIP =
   "Fixed position in engine panel — edit values and defaults only; group and reorder have no effect.";
 
