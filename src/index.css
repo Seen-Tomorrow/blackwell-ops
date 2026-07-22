@@ -2563,6 +2563,75 @@ html, body, #root {
   align-self: center;
 }
 
+/* Contextual SPEC knobs under Boost */
+.full-auto-cockpit__spec-details {
+  margin-top: 0.15rem;
+  padding: 0.35rem 0.45rem;
+  border-radius: 3px;
+  border: 1px solid color-mix(in srgb, var(--theme-border, #1a2e1a) 50%, transparent);
+  background: color-mix(in srgb, #000000 12%, transparent);
+}
+
+.full-auto-cockpit__spec-details-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 8px;
+  color: color-mix(in srgb, var(--theme-industrial-muted, #4ade80) 80%, transparent);
+  padding: 0.15rem 0.2rem;
+}
+
+.full-auto-cockpit__spec-details-toggle:hover {
+  color: var(--theme-accent-bright, #4ade80);
+}
+
+.full-auto-cockpit__spec-details-count {
+  font-size: 7px;
+  opacity: 0.55;
+  border: 1px solid color-mix(in srgb, var(--theme-border, #1a2e1a) 60%, transparent);
+  border-radius: 2px;
+  padding: 0 0.3rem;
+}
+
+.full-auto-cockpit__spec-details-body {
+  margin-top: 0.4rem;
+  padding-top: 0.35rem;
+  border-top: 1px solid color-mix(in srgb, var(--theme-border, #1a2e1a) 40%, transparent);
+}
+
+.full-auto-cockpit__spec-detail-label {
+  width: 5.5rem;
+  font-size: 8px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--theme-industrial-muted, #4ade80) 55%, transparent);
+  padding-top: 0.2rem;
+}
+
+.full-auto-cockpit__spec-detail-label--custom {
+  color: color-mix(in srgb, #fbbf24 70%, var(--theme-industrial-muted, #4ade80) 30%);
+  font-style: italic;
+}
+
+.full-auto-cockpit__spec-chip {
+  font-size: 8px;
+  padding: 0.15rem 0.4rem;
+  border-radius: 2px;
+  border: 1px solid color-mix(in srgb, var(--theme-chip-border, rgba(74, 222, 128, 0.15)) 90%, transparent);
+  color: var(--theme-chip-text, var(--theme-industrial-muted, #4ade80));
+  background: transparent;
+}
+
+.full-auto-cockpit__spec-chip:hover {
+  border-color: var(--theme-chip-hover-border, rgba(74, 222, 128, 0.35));
+}
+
+.full-auto-cockpit__spec-chip--active {
+  border-color: var(--theme-chip-active-border, rgba(74, 222, 128, 0.45));
+  background: var(--theme-chip-active-bg, rgba(74, 222, 128, 0.12));
+  color: var(--theme-chip-hover-text, var(--theme-accent-bright, #4ade80));
+}
+
 /* Assisted Full — denser body padding */
 .full-auto-cockpit--compact {
   padding-bottom: 0.35rem;
@@ -3634,6 +3703,23 @@ html, body, #root {
 
 .cockpit-slider-mark-label--muted {
   opacity: 0.42;
+}
+
+.cockpit-slider-mark-label--custom {
+  font-style: italic;
+  letter-spacing: 0.02em;
+  opacity: 0.92;
+  color: color-mix(in srgb, #fbbf24 75%, var(--theme-industrial-muted, #4ade80) 25%);
+}
+
+.cockpit-slider-mark-label--custom.cockpit-slider-mark-label--selected {
+  color: #fcd34d;
+  opacity: 1;
+}
+
+.cockpit-slider-mark-wrap--custom .cockpit-slider-mark {
+  width: 2px;
+  background: color-mix(in srgb, #fbbf24 55%, transparent);
 }
 
 .cockpit-slider-mark-label--strike {

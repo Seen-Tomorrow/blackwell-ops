@@ -16,8 +16,9 @@ export const SYSTEM_CATALOG_PARAM_KEYS = new Set([
 
 /**
  * Cockpit-owned knobs (shared across llama forks). Rendered only via the Launch cockpit —
- * never as free chip rows when the cockpit is visible. Pin to SYSTEM in templates over time.
- * SPECULATIVE-DECODING stays its own group (toggle + draft pipeline).
+ * never as free chip rows. Pinned to SYSTEM like chrome — not deletable / not re-groupable;
+ * values + custom user values still editable in Config.
+ * SPECULATIVE-DECODING stays its own group (toggle + draft + contextual knobs under Boost).
  */
 export const COCKPIT_OWNED_PARAM_KEYS = new Set([
   "parallel",
@@ -38,9 +39,19 @@ export function isCatalogVisibleParam(def: { key: string }): boolean {
   return !ENGINE_ONLY_PARAM_KEYS.has(def.key);
 }
 
-export function isSystemCatalogParam(def: { key: string; dock?: string | null }): boolean {
+/**
+ * SYSTEM chrome + cockpit-owned + docked params — locked placement in Config catalog.
+ * Custom values (userAddedValues) remain allowed.
+ */
+export function isSystemCatalogParam(def: {
+  key: string;
+  dock?: string | null;
+  ui_group?: string;
+}): boolean {
   if (ENGINE_ONLY_PARAM_KEYS.has(def.key)) return false;
   if (SYSTEM_CATALOG_PARAM_KEYS.has(def.key)) return true;
+  if (COCKPIT_OWNED_PARAM_KEYS.has(def.key)) return true;
+  if (def.ui_group && normalizeUiGroup(def.ui_group) === SYSTEM_UI_GROUP) return true;
   return Boolean(def.dock);
 }
 
@@ -69,7 +80,7 @@ function sortedValuesIfNeeded(values: (string | number)[] | undefined): {
   return { values: sorted, changed };
 }
 
-/** Normalize persisted rows: drop device, pin chrome params to SYSTEM, unhide system rows, sort values. */
+/** Normalize persisted rows: drop device, pin chrome + cockpit keys to SYSTEM, unhide system rows, sort values. */
 export function migrateCatalogParams<T extends MigratableParam>(
   params: T[],
 ): { params: T[]; changed: boolean } {
@@ -82,7 +93,7 @@ export function migrateCatalogParams<T extends MigratableParam>(
     }
 
     let row: T = p;
-    if (isSystemCatalogParam(p)) {
+    if (isSystemCatalogParam(p) || COCKPIT_OWNED_PARAM_KEYS.has(p.key)) {
       let rowChanged = false;
       if (paramUiGroup(p.ui_group) !== SYSTEM_UI_GROUP) {
         row = { ...row, ui_group: SYSTEM_UI_GROUP };

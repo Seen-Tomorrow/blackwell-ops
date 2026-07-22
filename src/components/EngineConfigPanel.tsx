@@ -40,10 +40,14 @@ import {
   resolveManualLaunchKeys,
 } from "../lib/launchProfile";
 import ConfigViewToggle from "./ConfigViewToggle";
-import MultiAgentBooster, { type DflashGetUiState } from "./MultiAgentBooster";
+import MultiAgentBooster, {
+  type CockpitSpecDetailParam,
+  type DflashGetUiState,
+} from "./MultiAgentBooster";
 import {
   brainsFromKvQuant,
   codingModeFromParallel,
+  FULL_AUTO_COLLAPSE_GROUPS,
   pickHighNumeric,
   resolveFullAutoPlan,
   type BrainsId,
@@ -69,9 +73,18 @@ import {
   isGroupFullyHidden,
   PANEL_CHROME_PARAM_KEYS,
 } from "../lib/paramDisplayZone";
-import { isCockpitOwnedParam } from "../lib/systemParams";
+import {
+  COCKPIT_OWNED_PARAM_KEYS,
+  isCockpitOwnedParam,
+  isSystemCatalogParam,
+  SYSTEM_CATALOG_PARAM_KEYS,
+} from "../lib/systemParams";
 import ParamCatalogSearch from "./ParamCatalogSearch";
-import { catalogEntryToParam, type RawCatalogEntry } from "../lib/catalog";
+import {
+  catalogEntryToParam,
+  isCatalogEntryAlreadyActive,
+  type RawCatalogEntry,
+} from "../lib/catalog";
 import type { GroupDisplayZone } from "../lib/storage";
 import ConfigBelowGroups from "./ConfigBelowGroups";
 import GpuAssignPanel from "./GpuAssignPanel";
@@ -540,9 +553,10 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       const saved = readStorage(KEYS.collapsedGroups);
       if (saved) return new Set(JSON.parse(saved));
     } catch {}
-    // Fresh install: only tuck away ADVANCED; FEATURE-FLAGS stays expanded (no LS entry yet).
-    return new Set(["ADVANCED"]);
+    // Fresh install: tuck Performance / Feature-flags / Advanced (Power Full default).
+    return new Set([...FULL_AUTO_COLLAPSE_GROUPS]);
   });
+  const [paramFilter, setParamFilter] = useState("");
 
   const toggleLayoutMode = useCallback(() => {
     setLayoutModeActive((prev) => {
@@ -967,8 +981,58 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
   const kvQuantValues = useMemo(() => {
     const def = allParamsResolved.find((p) => p.key === "kv_quant");
-    return def?.values ?? ["q4_0", "q8_0", "f16"];
+    if (!def) return ["q4_0", "q8_0", "f16", "bf16"];
+    const seen = new Set<string>();
+    const out: (string | number)[] = [];
+    for (const v of [...(def.values || []), ...(def.userAddedValues || [])]) {
+      const s = String(v);
+      if (seen.has(s)) continue;
+      seen.add(s);
+      out.push(v);
+    }
+    return out.length > 0 ? out : ["q4_0", "q8_0", "f16", "bf16"];
   }, [allParamsResolved]);
+
+  const parallelValues = useMemo(() => {
+    const def = allParamsResolved.find((p) => p.key === "parallel");
+    if (!def) return [1, 4, 8, 16, 32];
+    const seen = new Set<string>();
+    const out: (string | number)[] = [];
+    for (const v of [...(def.values || []), ...(def.userAddedValues || [])]) {
+      const s = String(v);
+      if (seen.has(s)) continue;
+      seen.add(s);
+      out.push(v);
+    }
+    return out.length > 0 ? out : [1, 4, 8, 16, 32];
+  }, [allParamsResolved]);
+
+  /** SPEC knobs under Boost (exclude type + draft path — owned by cockpit Boost / draft strip). */
+  const cockpitSpecDetailParams = useMemo((): CockpitSpecDetailParam[] => {
+    const skip = new Set(["spec_type", "spec_draft_model"]);
+    return allParamsResolved
+      .filter(
+        (d) =>
+          paramUiGroup(d.ui_group) === SPEC_DECODING_GROUP
+          && !d.hidden
+          && !skip.has(d.key),
+      )
+      .map((d) => {
+        const seen = new Set((d.values || []).map(String));
+        const values = [
+          ...(d.values || []),
+          ...(d.userAddedValues || []).filter((v) => !seen.has(String(v))),
+        ];
+        return {
+          key: d.key,
+          label: d.label || d.key,
+          values,
+          current: config[d.key] as string | number | undefined,
+          userAdded: Boolean(d.userAddedValues?.length),
+          onChange: (v: string | number) => updateParam(d.key, v),
+        };
+      });
+  }, [allParamsResolved, config, updateParam]);
 
   /** Any family-matched DFlash draft in library (independent of current mode). */
   const dflashLibraryReady = useMemo(() => {
@@ -1376,7 +1440,13 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     async (entry: RawCatalogEntry) => {
       if (!currentProvider) return;
       const currentUserParams = currentProvider.userEditedTemplateParams || [];
-      if (currentUserParams.some((d) => d.key === entry.key) || allParamsResolved.some((d) => d.key === entry.key)) {
+      const identity = allParamsResolved.map((d) => ({ key: d.key, flag: d.flag, ui_group: d.ui_group }));
+      if (
+        isCatalogEntryAlreadyActive(entry, identity)
+        || isSystemCatalogParam({ key: entry.key })
+        || SYSTEM_CATALOG_PARAM_KEYS.has(entry.key)
+        || COCKPIT_OWNED_PARAM_KEYS.has(entry.key)
+      ) {
         setShowEngineCatalogSearch(false);
         return;
       }
@@ -2134,17 +2204,12 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
   const isGroupVisible = useCallback(
     (groupId: string) => {
+      // SPECULATIVE-DECODING lives under cockpit Boost / Spec details — not chip columns.
+      if (groupId === SPEC_DECODING_GROUP) return false;
       if ((groupedParams[groupId]?.length ?? 0) > 0) return true;
-      if (
-        groupId === SPEC_DECODING_GROUP &&
-        hasSpecCapability &&
-        allParamsResolved.some((d) => paramUiGroup(d.ui_group) === SPEC_DECODING_GROUP)
-      ) {
-        return true;
-      }
       return layoutModeActive && isGroupFullyHidden(groupId, allGroupedParams);
     },
-    [groupedParams, hasSpecCapability, allParamsResolved, layoutModeActive, allGroupedParams],
+    [groupedParams, layoutModeActive, allGroupedParams],
   );
 
   const {
@@ -2216,6 +2281,28 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     return map;
   }, [belowGroupKeys]);
 
+  /** Local panel filter — matches group id/label or any param key/label in the group. */
+  const filteredBelowGroupsByColumn = useMemo(() => {
+    const q = paramFilter.trim().toLowerCase();
+    if (!q) return belowGroupsByColumn;
+    return belowGroupsByColumn.map((col) =>
+      col.filter((groupId) => {
+        if (groupId.toLowerCase().includes(q)) return true;
+        const params = groupedParams[groupId] || [];
+        return params.some(
+          (p) =>
+            p.key.toLowerCase().includes(q)
+            || (p.label || "").toLowerCase().includes(q),
+        );
+      }),
+    );
+  }, [belowGroupsByColumn, paramFilter, groupedParams]);
+
+  const filteredBelowHasAny = useMemo(
+    () => filteredBelowGroupsByColumn.some((c) => c.length > 0),
+    [filteredBelowGroupsByColumn],
+  );
+
   const renderGroupLayoutControls = useCallback(
     (groupId: string, zone: GroupDisplayZone, opts?: { hideZoneToggle?: boolean; hideHideToggle?: boolean }) => {
       if (!layoutModeActive) return null;
@@ -2283,213 +2370,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       && !isSpecGroup;
 
     if (isSpecGroup) {
-      const specAllParams = allGroupedParams[group.id] || [];
-      if (specAllParams.length === 0) return null;
-      // Full Auto cockpit owns draft/spec — classic block only for Assisted.
-      if (fullAutoFixed) return null;
-
-      let specVisibleParams = specAllParams.filter((d) => !d.hidden);
-      specVisibleParams = specVisibleParams.filter((d) => d.key !== "spec_draft_model");
-      if (specSimpleMode) {
-        specVisibleParams = specVisibleParams.filter(
-          (d) => d.key !== "spec_draft_n_max" && d.key !== "spec_draft_n_min",
-        );
-      }
-      const allHidden = specAllParams.every((d) => d.hidden);
-      const specGroupActive = hasSpecCapability && !allHidden;
-
-      return (
-        <div key={group.id}>
-          <div
-            data-param-row
-            className={`nuclear-btn-container config-spec-decoding config-section-row flex items-center gap-1 ${specFlash ? "flash" : ""} ${draggingGroup === group.id ? "config-group-header--dragging" : ""}`}
-          >
-            <div className="w-0.5 h-4 flex-shrink-0 mr-1.5" />
-            <span className={SECTION_LABEL_CLASS}>SPECULATIVE DECODING</span>
-            <div className="flex flex-1 min-w-0 items-center">
-              <label className={`toggle-switch ${!hasSpecCapability ? "opacity-40 pointer-events-none" : ""}`}>
-                <input
-                  type="checkbox"
-                  className="toggle-input"
-                  checked={specGroupActive}
-                  disabled={!hasSpecCapability}
-                  onChange={() => {
-                    invoke<boolean>("toggle_group_hidden", { providerId: effectiveBackendType, groupId: group.id })
-                      .then(async () => {
-                        setSpecFlash(true);
-                        setTimeout(() => setSpecFlash(false), 400);
-                        try {
-                          const data = await invoke<ProviderConfig[]>("list_providers");
-                          if (data.length > 0) setResolvedProviders(data);
-                        } catch { /* reloadProviders event is fallback */ }
-                        dispatchAppEvent(EVENTS.reloadProviders);
-                        dispatchAppEvent(EVENTS.paramConfigChanged);
-                      })
-                      .catch((err) => console.error("[toggle_group_hidden] failed:", err));
-                  }}
-                />
-                <span className="toggle-track">
-                  <span className="toggle-rust" />
-                  <span className="toggle-glow" />
-                  <span className="toggle-thumb">
-                    <span className="thumb-inner" />
-                    <span className="thumb-shine" />
-                  </span>
-                  <span className="toggle-icons">
-                    <svg className="icon-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <circle cx="12" cy="12" r="5" />
-                      <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
-                    </svg>
-                    <svg className="icon-on" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313-12.454z" />
-                    </svg>
-                  </span>
-                </span>
-                <span className="toggle-label">
-                  <span className="label-off">OFF</span>
-                  <span className="label-on">ON</span>
-                </span>
-              </label>
-              {specGroupActive && activeSpecType && (
-                <span className={specModeBadgeClass(activeSpecType)}>
-                  {String(activeSpecType).replace("draft-", "").toUpperCase()}
-                </span>
-              )}
-            </div>
-            {renderGroupLayoutControls(group.id, zone, { hideHideToggle: true })}
-          </div>
-
-          {hasSpecCapability && specGroupActive && specVisibleParams.length > 0 && (
-            <div className="config-spec-params space-y-2.5 mt-2">
-              {specVisibleParams.map((def, i) => (
-                  <div key={paramRowKey(def, i)} className="spec-param-unlock" style={{ opacity: 0 }}>
-                    {renderParamRow(def, false, i)}
-                  </div>
-              ))}
-              {specNeedsExternalDraft && (
-                <div data-param-row className="flex flex-col gap-1.5 min-h-[22px]">
-                  <div className="flex items-start min-h-[22px]">
-                    <div className="w-0.5 h-4 flex-shrink-0 mr-1.5 mt-0.5" />
-                    <span className={`${PARAM_LABEL_CLASS} mt-0.5`} title="External draft GGUF paired with this main model">
-                      {specSimpleMode ? "DRAFT" : "DRAFT MODEL"}
-                    </span>
-                    <div className="config-chip-row flex gap-1.5 flex-wrap flex-1 min-w-0 items-center min-h-[18px]">
-                      {scoredDraftCandidates.length === 0 ? (
-                        <span className="text-[8px] font-mono text-telemetry-red/80 uppercase">
-                          {specSimpleMode
-                            ? "Add a matching draft model to your library"
-                            : "No family-matched draft in library"}
-                        </span>
-                      ) : (
-                        <>
-                          {(showAllDrafts ? scoredDraftCandidates : scoredDraftCandidates.slice(0, 2)).map(
-                            ({ model: draft, score }, idx) => {
-                              const selected = currentDraftPath === draft.path;
-                              const recommended = idx === 0;
-                              return (
-                                <button
-                                  key={draft.path}
-                                  type="button"
-                                  onClick={() => {
-                                    updateParam("spec_draft_model", draft.path);
-                                    if (model && activeSpecType) {
-                                      saveDraftPairing(model.path, activeSpecType, draft.path);
-                                    }
-                                  }}
-                                  className={paramChipClass(selected)}
-                                  title={`${draft.path} (match ${Math.min(100, Math.round(score))}%)`}
-                                >
-                                  {recommended ? "★ " : ""}
-                                  {resolveDraftPathLabel(draft.path)}
-                                </button>
-                              );
-                            },
-                          )}
-                          {scoredDraftCandidates.length > 2 && (
-                            <button
-                              type="button"
-                              onClick={() => setShowAllDrafts((v) => !v)}
-                              className="value-chip text-[7px] font-mono uppercase px-1.5 py-0.5 rounded-sm"
-                            >
-                              {showAllDrafts
-                                ? "LESS"
-                                : `+${scoredDraftCandidates.length - 2} MORE`}
-                            </button>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  </div>
-                  {scoredDraftCandidates.length > 0 && (
-                    <div className="text-[7px] font-mono text-stealth-muted/45 uppercase ml-6 tracking-wide">
-                      Draft model paired by model family + name
-                    </div>
-                  )}
-                  {/* Same Get/Change draft pipeline as cockpit — local library + HF */}
-                  <div className="flex flex-wrap items-center gap-1.5 ml-6 mt-0.5">
-                    {dflashLibraryReady && (
-                      <button
-                        type="button"
-                        className="value-chip text-[7px] font-mono uppercase px-1.5 py-0.5 rounded-sm"
-                        onClick={handleChangeDflashDraft}
-                        title="Pick a different draft from your library or HF"
-                      >
-                        Change draft
-                      </button>
-                    )}
-                    {(dflashGettable || !dflashLibraryReady) && (
-                      <button
-                        type="button"
-                        className="value-chip text-[7px] font-mono uppercase px-1.5 py-0.5 rounded-sm border border-violet-400/40 text-violet-200/90"
-                        disabled={dflashGetState === "searching" || dflashGetState === "downloading"}
-                        onClick={() => { void handleGetDflashDraft(); }}
-                        title="Search Hugging Face for DFlash drafts — confirm before download"
-                      >
-                        {dflashGetState === "searching"
-                          ? "Searching…"
-                          : dflashGetState === "downloading"
-                            ? "Downloading…"
-                            : dflashGetState === "error"
-                              ? "Retry Get draft"
-                              : "Get draft"}
-                      </button>
-                    )}
-                  </div>
-                  {specNeedsExternalDraft && !draftPathValid && (
-                    <div className="text-[7px] font-mono text-telemetry-red/75 uppercase ml-6 tracking-wide">
-                      Select a .gguf draft file before launch
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
-          {!hasSpecCapability && (
-            <div className="text-[8px] font-mono text-stealth-muted/30 tracking-wider uppercase mt-1 ml-2">
-              {modelIsDraftOnly
-                ? "Draft model — select a main model to launch with speculative decoding"
-                : "No speculative decoding available for this model"}
-            </div>
-          )}
-
-          {hasSpecCapability && !specGroupActive && specAllParams.length > 0 && (
-            <div className="text-[8px] font-mono text-stealth-muted/30 tracking-wider uppercase mt-1 ml-2">
-              {specSimpleMode
-                ? "Turn on for faster generation (MTP or DFlash)"
-                : `${specAllParams.length} parameter${specAllParams.length > 1 ? "s" : ""} locked — activate to configure${
-                    specCapabilities.includes("dflash") && specCapabilities.includes("mtp")
-                      ? " (MTP baked-in · DFlash ready)"
-                      : specCapabilities.includes("dflash")
-                        ? " (DFlash ready)"
-                        : specCapabilities.includes("mtp")
-                          ? " (MTP)"
-                          : ""
-                  }`}
-            </div>
-          )}
-        </div>
-      );
+      // Cockpit owns Boost + draft + Spec details (n_max/n_min). Classic chip block removed.
+      return null;
     }
 
     const allInGroup = allGroupedParams[group.id] || [];
@@ -3170,6 +3052,14 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             >
               + PARAM
             </button>
+            <input
+              type="search"
+              value={paramFilter}
+              onChange={(e) => setParamFilter(e.target.value)}
+              placeholder="Filter params…"
+              className="config-panel-param-filter ml-1 w-[9rem] max-w-[28vw] bg-black/30 border border-stealth-border/35 rounded-sm px-1.5 py-0.5 text-[8px] font-mono text-nv-green/90 placeholder:text-stealth-muted/35 focus:outline-none focus:border-nv-green/40"
+              title="Filter chip groups by name or key (local to this panel — not model search)"
+            />
           </div>
         )}
         {fullAutoFixed && (
@@ -3320,6 +3210,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
               onGetDflashDraft={() => { void handleGetDflashDraft(); }}
               onChangeDflashDraft={handleChangeDflashDraft}
               kvQuantValues={kvQuantValues}
+              parallelValues={parallelValues}
               port={Number(config.base_port) || 9090}
               modelId={aliasDisplayValue || autoAlias || model.name || "local-model"}
               layout={fullAutoFixed ? "hero" : powerCockpitMode ? "compact" : "normal"}
@@ -3336,6 +3227,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                     }
                   : undefined
               }
+              specDetailParams={cockpitSpecDetailParams}
               ctxValue={fullAutoFixed ? config.ctx : undefined}
               ctxDefault={fullAutoFixed ? allParamsResolved.find((p) => p.key === "ctx")?.defaultValue : undefined}
               ctxValues={fullAutoFixed ? allParamsResolved.find((p) => p.key === "ctx")?.values : undefined}
@@ -3378,11 +3270,15 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           <>
             {allParamsForDisplay.length === 0 ? (
               <div className="text-stealth-muted text-[10px] font-mono opacity-50">NO PARAMS DEFINED</div>
-            ) : belowGroupKeys.length === 0 ? null : (
+            ) : belowGroupKeys.length === 0 ? null : !filteredBelowHasAny ? (
+              <div className="text-stealth-muted text-[10px] font-mono opacity-50">
+                NO PARAMS MATCH “{paramFilter.trim()}”
+              </div>
+            ) : (
               <ConfigBelowGroups
                 columnCount={columnCount}
                 columnWidths={columnWidths}
-                belowGroupsByColumn={belowGroupsByColumn}
+                belowGroupsByColumn={filteredBelowGroupsByColumn}
                 onGutterDragStart={handleGutterDragStart}
                 draggingGutterIndex={draggingGutterIndex}
                 layoutModeActive={layoutModeActive}
@@ -3825,6 +3721,16 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         <ParamCatalogSearch
           providerId={effectiveBackendType}
           existingKeys={allParamsResolved.map((d) => d.key)}
+          existingParams={allParamsResolved.map((d) => ({
+            key: d.key,
+            flag: d.flag,
+            ui_group: d.ui_group,
+          }))}
+          blockedKeys={[
+            ...SYSTEM_CATALOG_PARAM_KEYS,
+            ...COCKPIT_OWNED_PARAM_KEYS,
+            ...allParamsResolved.filter((d) => isSystemCatalogParam(d)).map((d) => d.key),
+          ]}
           onAdd={(entry) => { void handleEngineCatalogAdd(entry); }}
           onClose={() => setShowEngineCatalogSearch(false)}
         />
@@ -3832,7 +3738,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
       {catalogPlaceKey && (
         <div
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-start justify-center pt-20"
+          className="fixed inset-0 bg-black/70 z-50 flex items-start justify-center pt-20"
           onClick={() => setCatalogPlaceKey(null)}
         >
           <div

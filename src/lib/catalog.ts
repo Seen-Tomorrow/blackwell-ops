@@ -103,6 +103,82 @@ export function isKeyActive(key: string, existingParams: UserEditedTemplateParam
   return existingParams.some((p) => p.key === key);
 }
 
+/** Normalize CLI flag / key for alias compare (`--kv-unified` ↔ `kv_unified`). */
+export function normalizeCatalogToken(raw: string | undefined | null): string {
+  if (!raw) return "";
+  return String(raw)
+    .trim()
+    .toLowerCase()
+    .replace(/^-+/, "")
+    .replace(/_/g, "-")
+    .replace(/\s+/g, "-");
+}
+
+/**
+ * Key reorder aliases — llama renames sometimes swap segments
+ * (`kv_unified` ↔ `unified_kv`).
+ */
+export function catalogKeyReorderVariants(key: string): string[] {
+  const k = key.trim().toLowerCase();
+  if (!k) return [];
+  const out = new Set<string>([k]);
+  const parts = k.split(/[_-]+/).filter(Boolean);
+  if (parts.length === 2) {
+    out.add(`${parts[1]}_${parts[0]}`);
+    out.add(`${parts[1]}-${parts[0]}`);
+    out.add(`${parts[0]}_${parts[1]}`);
+  }
+  if (parts.length === 3) {
+    // mild: reverse all segments
+    out.add(parts.slice().reverse().join("_"));
+    out.add(parts.slice().reverse().join("-"));
+  }
+  return [...out];
+}
+
+export type CatalogIdentityParam = {
+  key: string;
+  flag?: string | null;
+  ui_group?: string;
+};
+
+/**
+ * True when a live --help catalog entry is already represented in the provider
+ * (same key, reordered key, flag, or alternate flag).
+ */
+export function isCatalogEntryAlreadyActive(
+  entry: RawCatalogEntry,
+  existingParams: CatalogIdentityParam[],
+): boolean {
+  const entryKey = entry.key.trim().toLowerCase();
+  const entryKeyNorm = normalizeCatalogToken(entry.key);
+  const entryFlagNorm = normalizeCatalogToken(entry.flag);
+  const altNorms = new Set(
+    [
+      entryFlagNorm,
+      entryKeyNorm,
+      ...(entry.alternates || []).map(normalizeCatalogToken),
+      entry.short ? normalizeCatalogToken(entry.short) : "",
+      ...catalogKeyReorderVariants(entry.key).map(normalizeCatalogToken),
+    ].filter(Boolean),
+  );
+
+  for (const p of existingParams) {
+    const pk = (p.key || "").trim().toLowerCase();
+    if (pk && (pk === entryKey || catalogKeyReorderVariants(pk).includes(entryKey))) {
+      return true;
+    }
+    const pKeyNorm = normalizeCatalogToken(p.key);
+    const pFlagNorm = normalizeCatalogToken(p.flag);
+    if (pKeyNorm && altNorms.has(pKeyNorm)) return true;
+    if (pFlagNorm && altNorms.has(pFlagNorm)) return true;
+    for (const v of catalogKeyReorderVariants(p.key || "")) {
+      if (altNorms.has(normalizeCatalogToken(v))) return true;
+    }
+  }
+  return false;
+}
+
 /** Fulltext search: score entries by query relevance. */
 export function searchCatalog(
   entries: RawCatalogEntry[],

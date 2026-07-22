@@ -6,11 +6,12 @@
 
 import type { SpecCapability } from "./specDraft";
 
-export type CodingModeId = "solo" | "group" | "squad" | "team" | "army";
+/** Known agent presets + `p:N` for custom parallel values. */
+export type CodingModeId = string;
 /** Speed boost row — speculative draft / batch aggressiveness. */
 export type SpeedBoostId = "off" | "mtp" | "dflash" | "smart";
-/** Brains row — KV quant quality (VRAM trade). */
-export type BrainsId = "light" | "solid" | "sharp";
+/** Brains row — KV quant quality (VRAM trade) + `kv:VALUE` for custom. */
+export type BrainsId = string;
 /** Optional thinking budget for models that expose reasoning flags. */
 export type ThinkId = "off" | "on" | "budget" | "budget2k";
 
@@ -19,6 +20,8 @@ export interface CodingModeOption {
   label: string;
   parallel: number;
   blurb: string;
+  /** True when value comes from user-added / non-preset factory chip. */
+  custom?: boolean;
 }
 
 export interface SpeedBoostOption {
@@ -34,6 +37,7 @@ export interface BrainsOption {
   /** Preferred kv_quant value (factory values: q4_0 | q8_0 | f16 | bf16). */
   kvQuant: string;
   blurb: string;
+  custom?: boolean;
 }
 
 export const CODING_MODE_OPTIONS: CodingModeOption[] = [
@@ -43,6 +47,8 @@ export const CODING_MODE_OPTIONS: CodingModeOption[] = [
   { id: "team", label: "Team", parallel: 16, blurb: "16 agents — heavy harnesses" },
   { id: "army", label: "Army", parallel: 32, blurb: "32 agents — max concurrency" },
 ];
+
+const PRESET_PARALLEL = new Set(CODING_MODE_OPTIONS.map((o) => o.parallel));
 
 export const SPEED_BOOST_OPTIONS: SpeedBoostOption[] = [
   {
@@ -68,7 +74,12 @@ export const BRAINS_OPTIONS: BrainsOption[] = [
   { id: "light", label: "Light", kvQuant: "q4_0", blurb: "Smaller KV — more room for agents / context" },
   { id: "solid", label: "Solid", kvQuant: "q8_0", blurb: "Balanced quality vs memory" },
   { id: "sharp", label: "Sharp", kvQuant: "f16", blurb: "Highest KV quality — hungriest VRAM" },
+  { id: "bf16", label: "BF16", kvQuant: "bf16", blurb: "BF16 KV — max quality when the binary supports it" },
 ];
+
+const KNOWN_KV_BY_NORM = new Map(
+  BRAINS_OPTIONS.map((o) => [o.kvQuant.toLowerCase(), o] as const),
+);
 
 export const THINK_OPTIONS: { id: ThinkId; label: string; blurb: string }[] = [
   { id: "off", label: "Off", blurb: "No chain-of-thought budget" },
@@ -81,43 +92,122 @@ export const THINK_OPTIONS: { id: ThinkId; label: string; blurb: string }[] = [
 export const FULL_AUTO_COLLAPSE_GROUPS = ["PERFORMANCE", "FEATURE-FLAGS", "ADVANCED"] as const;
 
 export function codingModeFromParallel(parallel: number): CodingModeId {
-  if (parallel >= 32) return "army";
-  if (parallel >= 16) return "team";
-  if (parallel >= 8) return "squad";
-  if (parallel >= 4) return "group";
-  return "solo";
+  const exact = CODING_MODE_OPTIONS.find((o) => o.parallel === parallel);
+  if (exact) return exact.id;
+  if (!Number.isFinite(parallel) || parallel < 1) return "solo";
+  // Custom / non-preset chip (e.g. user-added 128) — exact mark, not nearest preset.
+  return `p:${Math.floor(parallel)}`;
 }
 
 export function parallelForCodingMode(mode: CodingModeId): number {
+  if (typeof mode === "string" && mode.startsWith("p:")) {
+    const n = parseInt(mode.slice(2), 10);
+    return Number.isFinite(n) && n > 0 ? n : 1;
+  }
   return CODING_MODE_OPTIONS.find((o) => o.id === mode)?.parallel ?? 1;
 }
 
+/** Build Agents slider options from factory + user-added parallel values. */
+export function buildAgentOptions(
+  parallelValues: (string | number)[] | undefined,
+): CodingModeOption[] {
+  const nums = new Set<number>();
+  for (const o of CODING_MODE_OPTIONS) nums.add(o.parallel);
+  for (const v of parallelValues ?? []) {
+    const n = typeof v === "number" ? v : parseInt(String(v), 10);
+    if (Number.isFinite(n) && n > 0) nums.add(n);
+  }
+  const sorted = [...nums].sort((a, b) => a - b);
+  return sorted.map((parallel) => {
+    const preset = CODING_MODE_OPTIONS.find((o) => o.parallel === parallel);
+    if (preset) return { ...preset };
+    return {
+      id: `p:${parallel}`,
+      label: `×${parallel}`,
+      parallel,
+      blurb: `Custom parallel ${parallel} (from config values)`,
+      custom: !PRESET_PARALLEL.has(parallel),
+    };
+  });
+}
+
 export function brainsFromKvQuant(kv: string | undefined): BrainsId {
-  const s = (kv ?? "").toLowerCase();
-  if (s.includes("q4")) return "light";
-  if (s.includes("q8")) return "solid";
-  return "sharp";
+  const s = (kv ?? "").trim();
+  if (!s) return "solid";
+  const known = KNOWN_KV_BY_NORM.get(s.toLowerCase());
+  if (known) return known.id;
+  const low = s.toLowerCase();
+  if (low.includes("q4")) return "light";
+  if (low.includes("q8")) return "solid";
+  if (low === "bf16" || low.includes("bf16")) return "bf16";
+  if (low === "f16" || low.includes("f16")) return "sharp";
+  return `kv:${s}`;
 }
 
 export function pickKvQuantForBrains(
   brains: BrainsId,
   available: (string | number)[],
 ): string {
+  if (typeof brains === "string" && brains.startsWith("kv:")) {
+    return brains.slice(3);
+  }
   const want = BRAINS_OPTIONS.find((b) => b.id === brains)?.kvQuant ?? "q8_0";
   const strs = available.map(String);
-  if (strs.some((v) => v.toLowerCase() === want.toLowerCase())) return want;
+  if (strs.some((v) => v.toLowerCase() === want.toLowerCase())) {
+    return strs.find((v) => v.toLowerCase() === want.toLowerCase()) ?? want;
+  }
   // Fallbacks along the quality ladder
   const ladder =
     brains === "light"
       ? ["q4_0", "q8_0", "f16", "bf16"]
       : brains === "solid"
         ? ["q8_0", "q4_0", "f16", "bf16"]
-        : ["f16", "bf16", "q8_0", "q4_0"];
+        : brains === "bf16"
+          ? ["bf16", "f16", "q8_0", "q4_0"]
+          : ["f16", "bf16", "q8_0", "q4_0"];
   for (const c of ladder) {
     const hit = strs.find((v) => v.toLowerCase() === c);
     if (hit) return hit;
   }
   return strs[0] ?? want;
+}
+
+/** Build Memory slider options from factory + user-added kv_quant values. */
+export function buildMemoryOptions(
+  kvQuantValues: (string | number)[] | undefined,
+): BrainsOption[] {
+  const vals = (kvQuantValues ?? []).map(String).filter(Boolean);
+  const list = vals.length > 0 ? vals : BRAINS_OPTIONS.map((o) => o.kvQuant);
+  const seen = new Set<string>();
+  const out: BrainsOption[] = [];
+  for (const v of list) {
+    const norm = v.toLowerCase();
+    if (seen.has(norm)) continue;
+    seen.add(norm);
+    const known = KNOWN_KV_BY_NORM.get(norm);
+    if (known) {
+      out.push({ ...known, kvQuant: v });
+      continue;
+    }
+    out.push({
+      id: `kv:${v}`,
+      label: v,
+      kvQuant: v,
+      blurb: `Custom KV quant ${v}`,
+      custom: true,
+    });
+  }
+  // Prefer quality ladder order when possible
+  const order = ["q4_0", "q8_0", "f16", "bf16"];
+  out.sort((a, b) => {
+    const ia = order.indexOf(a.kvQuant.toLowerCase());
+    const ib = order.indexOf(b.kvQuant.toLowerCase());
+    if (ia >= 0 && ib >= 0) return ia - ib;
+    if (ia >= 0) return -1;
+    if (ib >= 0) return 1;
+    return a.kvQuant.localeCompare(b.kvQuant);
+  });
+  return out;
 }
 
 /** Highest numeric chip ≤ maxHint (or top of list). */
@@ -270,7 +360,11 @@ export function resolveFullAutoPlan(opts: {
     reasoningPreserve = "on";
   }
 
-  const brainsLabel = BRAINS_OPTIONS.find((b) => b.id === brains)?.label ?? "Solid";
+  const brainsLabel =
+    BRAINS_OPTIONS.find((b) => b.id === brains)?.label
+    ?? (typeof brains === "string" && brains.startsWith("kv:")
+      ? brains.slice(3)
+      : "Solid");
   const agentsN = forcedSoloForMtp ? 1 : parallel;
   const agentsLabel = `×${agentsN}`;
   const thinkLabel =

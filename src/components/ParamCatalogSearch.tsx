@@ -1,23 +1,48 @@
 // Live llama-server --help catalog search modal.
 // Fetches fresh --help output on open, allows searching and adding params.
 
-import React, { useState, useCallback, useEffect, useRef } from "react";
+import React, { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { RawCatalogEntry } from "../lib/catalog";
-import { searchCatalog } from "../lib/catalog";
+import {
+  isCatalogEntryAlreadyActive,
+  searchCatalog,
+  type CatalogIdentityParam,
+} from "../lib/catalog";
+import {
+  COCKPIT_OWNED_PARAM_KEYS,
+  SYSTEM_CATALOG_PARAM_KEYS,
+} from "../lib/systemParams";
 
 interface ParamCatalogSearchProps {
   providerId: string;
   existingKeys: string[];
+  /** Full identity for alias/flag/reorder match (preferred over existingKeys alone). */
+  existingParams?: CatalogIdentityParam[];
+  /**
+   * Keys that must never be added (SYSTEM chrome, cockpit-owned, etc.).
+   * Shown as SYSTEM / blocked rather than ADD.
+   */
+  blockedKeys?: string[];
   /** When true (editor unlocked), show unfiltered --help catalog. */
   editorUnlocked?: boolean;
   onAdd: (entry: RawCatalogEntry) => void;
   onClose: () => void;
 }
 
+function defaultBlockedKeys(): Set<string> {
+  return new Set([
+    ...SYSTEM_CATALOG_PARAM_KEYS,
+    ...COCKPIT_OWNED_PARAM_KEYS,
+    "device",
+  ]);
+}
+
 export default function ParamCatalogSearch({
   providerId,
   existingKeys,
+  existingParams,
+  blockedKeys,
   editorUnlocked = false,
   onAdd,
   onClose,
@@ -27,6 +52,23 @@ export default function ParamCatalogSearch({
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const identityParams = useMemo<CatalogIdentityParam[]>(() => {
+    if (existingParams && existingParams.length > 0) return existingParams;
+    return existingKeys.map((key) => ({ key }));
+  }, [existingParams, existingKeys]);
+
+  const blocked = useMemo(() => {
+    const s = defaultBlockedKeys();
+    for (const k of blockedKeys ?? []) s.add(k);
+    // Existing SYSTEM-group / system-catalog params are also banned from re-add.
+    for (const p of identityParams) {
+      if (SYSTEM_CATALOG_PARAM_KEYS.has(p.key) || COCKPIT_OWNED_PARAM_KEYS.has(p.key)) {
+        s.add(p.key);
+      }
+    }
+    return s;
+  }, [blockedKeys, identityParams]);
 
   useEffect(() => {
     setLoading(true);
@@ -51,16 +93,35 @@ export default function ParamCatalogSearch({
     }
   }, [loading]);
 
-  const filtered = React.useMemo(() => searchCatalog(entries, query), [entries, query]);
+  const filtered = useMemo(() => searchCatalog(entries, query), [entries, query]);
+
+  const entryStatus = useCallback(
+    (entry: RawCatalogEntry): "active" | "system" | "free" => {
+      if (blocked.has(entry.key) || blocked.has(entry.key.toLowerCase())) return "system";
+      // Block alias hits against system/cockpit keys
+      if (isCatalogEntryAlreadyActive(entry, [...blocked].map((key) => ({ key })))) {
+        // only if that match is against blocked, not all existing — check blocked identity
+        for (const k of blocked) {
+          if (isCatalogEntryAlreadyActive(entry, [{ key: k }])) return "system";
+        }
+      }
+      if (isCatalogEntryAlreadyActive(entry, identityParams)) return "active";
+      return "free";
+    },
+    [blocked, identityParams],
+  );
 
   const handleAdd = useCallback(
-    (entry: RawCatalogEntry) => onAdd(entry),
-    [onAdd],
+    (entry: RawCatalogEntry) => {
+      if (entryStatus(entry) !== "free") return;
+      onAdd(entry);
+    },
+    [onAdd, entryStatus],
   );
 
   return (
     <div
-      className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-start justify-center pt-14"
+      className="fixed inset-0 bg-black/70 z-50 flex items-start justify-center pt-14"
       onClick={onClose}
     >
       <div
@@ -130,13 +191,13 @@ export default function ParamCatalogSearch({
           )}
 
           {!loading && !error && filtered.map((entry, idx) => {
-            const existing = existingKeys.includes(entry.key);
+            const status = entryStatus(entry);
             const rowKey = entry.key ? `${entry.key}-${entry.flag}-${idx}` : `catalog-row-${idx}`;
             return (
               <div
                 key={rowKey}
                 className={`config-provider-card rounded-sm transition-all ${
-                  existing ? "opacity-50" : "hover:border-[color:var(--theme-chip-hover-border)]"
+                  status !== "free" ? "opacity-50" : "hover:border-[color:var(--theme-chip-hover-border)]"
                 }`}
               >
                 <div className="flex items-center gap-2 px-3 pt-2.5 pb-1">
@@ -144,12 +205,20 @@ export default function ParamCatalogSearch({
                     {entry.label}
                   </span>
                   <div className="flex-1" />
-                  {existing ? (
+                  {status === "active" ? (
                     <span className="value-chip-active text-[8px] font-mono px-2 py-1 rounded-sm tracking-wider">
                       ACTIVE
                     </span>
+                  ) : status === "system" ? (
+                    <span
+                      className="text-[8px] font-mono px-2 py-1 rounded-sm tracking-wider border border-electric-blue/35 text-electric-blue/80"
+                      title="SYSTEM / cockpit chrome — not addable"
+                    >
+                      SYSTEM
+                    </span>
                   ) : (
                     <button
+                      type="button"
                       onClick={() => handleAdd(entry)}
                       className="value-chip-active text-[9px] font-mono px-3 py-1 rounded-sm tracking-wider"
                     >

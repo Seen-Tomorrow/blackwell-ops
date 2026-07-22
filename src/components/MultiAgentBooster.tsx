@@ -2,10 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { SpecCapability } from "../lib/specDraft";
 import {
   BRAINS_OPTIONS,
-  CODING_MODE_OPTIONS,
   SPEED_BOOST_OPTIONS,
   THINK_OPTIONS,
+  buildAgentOptions,
   buildHarnessSnippets,
+  buildMemoryOptions,
   parallelForCodingMode,
   resolveFullAutoPlan,
   type BrainsId,
@@ -17,6 +18,16 @@ import CustomSliderParam from "./CustomSliderParam";
 import CockpitSlider from "./CockpitSlider";
 
 export type DflashGetUiState = "idle" | "searching" | "downloading" | "error";
+
+/** Contextual SPECULATIVE-DECODING knobs under Boost (n_max, n_min, …). */
+export interface CockpitSpecDetailParam {
+  key: string;
+  label: string;
+  values: (string | number)[];
+  current: string | number | undefined;
+  userAdded?: boolean;
+  onChange: (v: string | number) => void;
+}
 
 export interface MultiAgentBoosterProps {
   codingMode: CodingModeId;
@@ -40,6 +51,8 @@ export interface MultiAgentBoosterProps {
   /** Open local-library draft re-picker (when pairing is wrong). */
   onChangeDflashDraft?: () => void;
   kvQuantValues: (string | number)[];
+  /** Factory + user-added parallel values for Agents marks. */
+  parallelValues?: (string | number)[];
   port: number;
   modelId: string;
   /**
@@ -62,6 +75,10 @@ export interface MultiAgentBoosterProps {
   onRawSpecType?: (specType: string | null) => void;
   /** Active factory spec_type when power boost is a raw (non mtp/dflash) mode. */
   activeRawSpecType?: string | null;
+  /**
+   * Extra SPEC group params (not type / not draft path) — shown under Boost on demand.
+   */
+  specDetailParams?: CockpitSpecDetailParam[];
   className?: string;
   /** CTX rail (hero Full Auto only). */
   ctxValue?: number | string;
@@ -102,6 +119,7 @@ export default function MultiAgentBooster({
   onGetDflashDraft,
   onChangeDflashDraft,
   kvQuantValues,
+  parallelValues,
   port,
   modelId,
   layout = "normal",
@@ -109,6 +127,7 @@ export default function MultiAgentBooster({
   rawSpecTypes = [],
   onRawSpecType,
   activeRawSpecType = null,
+  specDetailParams = [],
   className = "",
   ctxValue,
   ctxDefault,
@@ -120,9 +139,19 @@ export default function MultiAgentBooster({
 }: MultiAgentBoosterProps) {
   const [harnessOpen, setHarnessOpen] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [specDetailsOpen, setSpecDetailsOpen] = useState(false);
   const hero = layout === "hero";
   const compact = layout === "compact";
   const showCtxRail = hero && onCtxChange != null && (ctxValues?.length ?? 0) > 0;
+
+  const memoryOptions = useMemo(
+    () => buildMemoryOptions(kvQuantValues),
+    [kvQuantValues],
+  );
+  const agentOptions = useMemo(
+    () => buildAgentOptions(parallelValues),
+    [parallelValues],
+  );
 
   const plan = useMemo(
     () =>
@@ -370,14 +399,25 @@ export default function MultiAgentBooster({
           <div className="full-auto-cockpit__grid-cell">
             <CockpitSlider
               label="Memory"
-              value={brains}
+              value={
+                memoryOptions.some((o) => o.id === brains)
+                  ? brains
+                  : memoryOptions[0]?.id ?? brains
+              }
               onChange={onBrains}
-              options={BRAINS_OPTIONS.map((o) => ({
+              options={memoryOptions.map((o) => ({
                 id: o.id,
                 label: o.label,
                 blurb: o.blurb,
+                custom: o.custom,
               }))}
-              valueBadge={BRAINS_OPTIONS.find((o) => o.id === brains)?.kvQuant}
+              valueBadge={
+                memoryOptions.find((o) => o.id === brains)?.kvQuant
+                ?? BRAINS_OPTIONS.find((o) => o.id === brains)?.kvQuant
+                ?? (typeof brains === "string" && brains.startsWith("kv:")
+                  ? brains.slice(3)
+                  : undefined)
+              }
               badgeWidth="3rem"
               heroBadge
             />
@@ -387,7 +427,7 @@ export default function MultiAgentBooster({
               label="Agents"
               value={mtpLocksAgents ? "solo" : codingMode}
               onChange={onCodingMode}
-              options={CODING_MODE_OPTIONS.map((o) => {
+              options={agentOptions.map((o) => {
                 const locked = mtpLocksAgents && o.id !== "solo";
                 return {
                   id: o.id,
@@ -397,6 +437,7 @@ export default function MultiAgentBooster({
                     : `${o.blurb} (x${o.parallel})`,
                   disabled: locked,
                   strike: locked,
+                  custom: o.custom,
                 };
               })}
               valueBadge={`x${mtpLocksAgents ? 1 : parallelForCodingMode(codingMode)}`}
@@ -531,6 +572,59 @@ export default function MultiAgentBooster({
             />
           </div>
         </div>
+
+        {/* Contextual SPEC knobs (n_max / n_min / extras) — under Boost, on demand */}
+        {specDetailParams.length > 0 && (
+          <div className="full-auto-cockpit__spec-details">
+            <button
+              type="button"
+              className="full-auto-cockpit__spec-details-toggle font-mono tracking-wider uppercase"
+              onClick={() => setSpecDetailsOpen((v) => !v)}
+              aria-expanded={specDetailsOpen}
+            >
+              {specDetailsOpen ? "▾ Spec details" : "▸ Spec details"}
+              <span className="full-auto-cockpit__spec-details-count">
+                {specDetailParams.length}
+              </span>
+            </button>
+            {specDetailsOpen && (
+              <div className="full-auto-cockpit__spec-details-body space-y-2">
+                {specDetailParams.map((p) => (
+                  <div
+                    key={p.key}
+                    className="full-auto-cockpit__spec-detail-row flex items-start gap-2 min-w-0"
+                  >
+                    <span
+                      className={`full-auto-cockpit__spec-detail-label font-mono shrink-0${
+                        p.userAdded ? " full-auto-cockpit__spec-detail-label--custom" : ""
+                      }`}
+                      title={p.key}
+                    >
+                      {p.label}
+                    </span>
+                    <div className="flex flex-wrap gap-1 min-w-0 flex-1">
+                      {p.values.map((val) => {
+                        const selected = String(p.current) === String(val);
+                        return (
+                          <button
+                            key={`${p.key}-${String(val)}`}
+                            type="button"
+                            onClick={() => p.onChange(val)}
+                            className={`full-auto-cockpit__spec-chip font-mono${
+                              selected ? " full-auto-cockpit__spec-chip--active" : ""
+                            }`}
+                          >
+                            {String(val)}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {harnessOpen && (

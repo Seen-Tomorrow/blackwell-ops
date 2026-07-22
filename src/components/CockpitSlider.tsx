@@ -25,6 +25,8 @@ export interface CockpitSliderOption {
   emphasize?: boolean;
   /** Tiny status above the mark (e.g. "draft ready"). */
   aboveLabel?: string;
+  /** User-added / non-preset factory value — slightly different mark style. */
+  custom?: boolean;
 }
 
 interface CockpitSliderProps {
@@ -205,7 +207,9 @@ export default function CockpitSlider({
                 data-cockpit-mark
                 className={`absolute z-[2] cursor-pointer${
                   opt.disabled ? " cockpit-slider-mark-wrap--disabled" : ""
-                }${opt.strike ? " cockpit-slider-mark-wrap--strike" : ""}`}
+                }${opt.strike ? " cockpit-slider-mark-wrap--strike" : ""}${
+                  opt.custom ? " cockpit-slider-mark-wrap--custom" : ""
+                }`}
                 style={{
                   left: `${pct}%`,
                   transform: "translateX(-50%)",
@@ -251,10 +255,12 @@ export default function CockpitSlider({
                     isSelected ? "cockpit-slider-mark-label--selected" : ""
                   }${emphasize && opt.badgeColor ? ` cockpit-slider-mark-label--${opt.badgeColor}` : ""}${
                     opt.disabled ? " cockpit-slider-mark-label--muted" : ""
-                  }${opt.strike ? " cockpit-slider-mark-label--strike" : ""}`}
+                  }${opt.strike ? " cockpit-slider-mark-label--strike" : ""}${
+                    opt.custom ? " cockpit-slider-mark-label--custom" : ""
+                  }`}
                   style={{ top: `${trackTop + TRACK_HEIGHT + 4}px` }}
                 >
-                  {opt.label}
+                  {opt.custom ? `·${opt.label}` : opt.label}
                 </span>
               </div>
             );

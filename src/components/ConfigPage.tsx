@@ -53,7 +53,7 @@ import {
 import type { SetupGuideState } from "../hooks/useSetupGuide";
 import TabPageHeader from "./TabPageHeader";
 import type { RawCatalogEntry } from "../lib/catalog";
-import { catalogEntryToParam } from "../lib/catalog";
+import { catalogEntryToParam, isCatalogEntryAlreadyActive } from "../lib/catalog";
 import { isDevBuild } from "../lib/build";
 import { formatCliArgString, parseCliArgString, repairBrokenQuotedSubParams } from "../lib/cliArgString";
 import { sortParamValues } from "../lib/paramValueSort";
@@ -697,8 +697,11 @@ export default function ConfigPage({
     if (!currentProvider) return;
 
     const currentUserParams = buildUserSavedParams(currentProvider);
-    // Skip if already exists
-    if (currentUserParams.some(d => d.key === entry.key)) {
+    // Skip if already exists (key, flag, or reordered alias like kv_unified ↔ unified_kv)
+    if (
+      isCatalogEntryAlreadyActive(entry, currentUserParams)
+      || isSystemCatalogParam({ key: entry.key })
+    ) {
       setShowCatalogSearch(false);
       showSaved("ALREADY ACTIVE");
       return;
@@ -1771,6 +1774,12 @@ hiddenValues={def.hiddenValues || []}
         <ParamCatalogSearch
           providerId={selectedProviderId}
           existingKeys={catalogVisibleParams.map((d) => d.key)}
+          existingParams={catalogVisibleParams.map((d) => ({
+            key: d.key,
+            flag: d.flag,
+            ui_group: d.ui_group,
+          }))}
+          blockedKeys={catalogVisibleParams.filter((d) => isSystemCatalogParam(d)).map((d) => d.key)}
           editorUnlocked={editorUnlocked}
           onAdd={handleCatalogAdd}
           onClose={() => setShowCatalogSearch(false)}
