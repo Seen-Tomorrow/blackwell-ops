@@ -21,6 +21,9 @@ interface ValueBubblesProps {
   addValue?: (value: string | number) => void;            // admin adds new value to param's available list
   toggleHiddenValue?: (_key: string, value: string | number) => void;
   hiddenValues?: (string | number)[];
+  /** Toggle value out of Essentials engine view only. */
+  toggleEssentialsHiddenValue?: (_key: string, value: string | number) => void;
+  essentialsHiddenValues?: (string | number)[];
   availableValues?: (string | number)[];
   userAddedValues?: (string | number)[];
   /** Current default for this param (what the UI shows as selected by default). */
@@ -46,6 +49,8 @@ export default function ValueBubbles({
   addValue,
   toggleHiddenValue,
   hiddenValues = [],
+  toggleEssentialsHiddenValue,
+  essentialsHiddenValues = [],
   availableValues,
   userAddedValues = [],
   defaultValue,
@@ -114,6 +119,10 @@ export default function ValueBubbles({
     hiddenValues.some(hv => String(hv) === String(val)),
   [hiddenValues]);
 
+  const isEssentialsHidden = useCallback((val: string | number): boolean =>
+    essentialsHiddenValues.some((hv) => String(hv) === String(val)),
+  [essentialsHiddenValues]);
+
   // ── Sub-args for a given value (from subParams mapping, case-insensitive key lookup) ─
   const getSubArgs = (val: string | number): string[] => {
     if (!subParams) return [];
@@ -131,6 +140,7 @@ export default function ValueBubbles({
     const { val, isUserAdded } = item;
     const selected = String(val) === String(currentValue);
     const hidden = isHidden(val);
+    const essHidden = isEssentialsHidden(val);
 
     // Hidden value — shown greyed-out with eye icon to un-hide
     if (hidden) {
@@ -176,7 +186,9 @@ export default function ValueBubbles({
 
     return (
       <span key={`${paramKey}-${idx}`}
-        className={`inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-mono rounded-sm transition-all ${style}`}>
+        className={`inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-mono rounded-sm transition-all ${style}${
+          essHidden ? " opacity-55" : ""
+        }`}>
 
         {/* Set as default button — admin only (only on non-default values) */}
         {editorUnlocked && defaultValue !== undefined && String(val) !== String(defaultValue) && onChangeDefault && (
@@ -187,7 +199,32 @@ export default function ValueBubbles({
           </button>
         )}
 
-        {String(val)}
+        {/* Essentials value flag — hide/show this value in engine ESSENTIALS only */}
+        {editorUnlocked && toggleEssentialsHiddenValue && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleEssentialsHiddenValue(paramKey, val);
+            }}
+            className={`leading-none text-[9px] font-mono font-bold transition-colors ${
+              essHidden
+                ? "text-stealth-muted/40 line-through"
+                : "text-nv-green/75 hover:text-nv-green"
+            }`}
+            title={
+              essHidden
+                ? "Excluded from Essentials engine view — click to include"
+                : "In Essentials engine view — click to hide this value from Essentials only"
+            }
+          >
+            e
+          </button>
+        )}
+
+        <span className={essHidden ? "line-through decoration-stealth-muted/50" : undefined}>
+          {String(val)}
+        </span>
 
         {/* Expand sub-args disclosure — show on any value with sub_args */}
         {hasSubArgs(String(val)) && (

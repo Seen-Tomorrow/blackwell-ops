@@ -168,7 +168,11 @@ export default function ConfigParamLegend({ editorUnlocked }: ConfigParamLegendP
           <LegendRow chip={<span className="text-[10px] font-mono text-stealth-muted">☰</span>} label="Drag to reorder" />
           <LegendRow
             chip={<span className="text-[8px] font-mono text-nv-green/70">ESS</span>}
-            label="Include in MODELS Essentials view (green = on, struck = excluded)"
+            label="Include param in engine Essentials (green = on, struck = excluded)"
+          />
+          <LegendRow
+            chip={<span className="text-[9px] font-mono text-nv-green/75 font-bold">e</span>}
+            label="On a value bubble: hide that value from Essentials only (Full still shows it)"
           />
           <LegendRow chip={<span className="text-[12px] font-mono text-nv-green/50">E</span>} label="Edit label, group, flags" />
           <LegendRow chip={<span className="text-[12px] font-mono text-red-500/50">D</span>} label="Remove parameter" />

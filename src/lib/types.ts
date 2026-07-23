@@ -110,6 +110,11 @@ export interface UserEditedTemplateParam {
   /** Per-param catalog hide — survives SPECULATIVE-DECODING group OFF/ON. */
   userHidden?: boolean;
   hiddenValues?: (string | number)[];
+  /**
+   * Values hidden only in Essentials engine view (Full still shows them).
+   * Empty/unset = all non-catalog-hidden values appear when the param is essential.
+   */
+  essentialsHiddenValues?: (string | number)[];
   defaultValue?: string | number;
 
   // ── CLI Mapping Fields (schema-driven command generation) ──

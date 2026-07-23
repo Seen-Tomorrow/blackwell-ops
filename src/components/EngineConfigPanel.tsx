@@ -37,6 +37,7 @@ import {
   writeStorage,
 } from "../lib/storage";
 import {
+  filterParamValuesForConfigView,
   isEssentialParam,
   providerSupportsFitLaunch,
   resolveEssentialParamKeys,
@@ -1032,6 +1033,29 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     return out;
   }, [allParamsResolved, parallelFactoryValues]);
 
+  /** Cockpit value lists for current config view (Essentials may drop essentialsHiddenValues). */
+  const cockpitKvValues = useMemo(() => {
+    const def = allParamsResolved.find((p) => p.key === "kv_quant");
+    const base = fullAutoFixed ? kvQuantFactoryValues : kvQuantValues;
+    if (!def) return base;
+    return filterParamValuesForConfigView(
+      def,
+      base,
+      fullAutoFixed ? "full" : configView,
+    );
+  }, [allParamsResolved, fullAutoFixed, configView, kvQuantFactoryValues, kvQuantValues]);
+
+  const cockpitParallelValues = useMemo(() => {
+    const def = allParamsResolved.find((p) => p.key === "parallel");
+    const base = fullAutoFixed ? parallelFactoryValues : parallelValues;
+    if (!def) return base;
+    return filterParamValuesForConfigView(
+      def,
+      base,
+      fullAutoFixed ? "full" : configView,
+    );
+  }, [allParamsResolved, fullAutoFixed, configView, parallelFactoryValues, parallelValues]);
+
   /** SPEC knobs under Boost (exclude type + draft path — owned by cockpit Boost / draft strip). */
   const cockpitSpecDetailParams = useMemo((): CockpitSpecDetailParam[] => {
     const skip = new Set(["spec_type", "spec_draft_model"]);
@@ -1209,8 +1233,14 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   /** Boost source list: factory + user-added (eagle omitted; 2-word marks in cockpit). */
   const factoryRawSpecTypes = useMemo(() => {
     const def = allParamsResolved.find((p) => p.key === "spec_type");
-    return collectBoostSpecTypes(def?.values, def?.userAddedValues);
-  }, [allParamsResolved]);
+    if (!def) return [] as string[];
+    const merged = collectBoostSpecTypes(def.values, def.userAddedValues);
+    // Essentials: honor per-value essentialsHiddenValues on spec_type
+    if (configView === "essentials" && !fullAutoFixed) {
+      return filterParamValuesForConfigView(def, merged, "essentials").map(String);
+    }
+    return merged;
+  }, [allParamsResolved, configView, fullAutoFixed]);
 
   /** Non-MTP/DFlash active factory type — drives Boost thumb for ngram / draft-simple / etc. */
   const activeRawSpecType = useMemo(() => {
@@ -2092,7 +2122,11 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     // Merge values + userAddedValues (user-added params from ConfigPage admin edit)
     const seenVals = new Set((def.values || []).map(v => String(v)));
     const allValues = [...(def.values || []), ...(def.userAddedValues || []).filter(v => !seenVals.has(String(v)))];
-    let baseValues = allValues.filter(v => !(def.hiddenValues || []).some(hv => String(hv) === String(v)));
+    let baseValues = filterParamValuesForConfigView(
+      def,
+      allValues,
+      fullAutoFixed ? "full" : configView,
+    );
     if (def.key === "spec_type" && specCapabilities.length > 0) {
       baseValues = filterSpecTypeValues(baseValues, specCapabilities, specSimpleMode);
     }
@@ -2189,7 +2223,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         </div>
       </div>
     );
-  }, [config, gpus.length, providerDefaultKeys, updateParam, allParamsResolved, specCapabilities, specSimpleMode]);
+  }, [config, gpus.length, providerDefaultKeys, updateParam, allParamsResolved, specCapabilities, specSimpleMode, configView, fullAutoFixed]);
 
   const isPanelChromeParam = useCallback((def: UserEditedTemplateParam) => {
     return Boolean(def.dock) || PANEL_CHROME_PARAM_KEYS.has(def.key);
@@ -3112,58 +3146,32 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             >
               + PARAM
             </button>
-            <button
-              type="button"
-              onClick={() => {
-                const next: CtxCockpitDock = ctxCockpitDock === "cockpit" ? "above" : "cockpit";
-                setCtxCockpitDock(next);
-                saveCtxCockpitDock(next);
-              }}
-              className={`config-panel-toolbar-chip px-1.5 py-0.5 text-[8px] font-mono rounded-sm ${
-                ctxCockpitDock === "above" ? "config-panel-toolbar-chip--active" : ""
-              }`}
-              title={
-                ctxCockpitDock === "cockpit"
-                  ? "CTX docked in cockpit — click to place in above-config zone (near VRAM)"
-                  : "CTX in above-config zone — click to dock inside cockpit"
-              }
-            >
-              CTX {ctxCockpitDock === "cockpit" ? "COCKPIT" : "ABOVE"}
-            </button>
-            <input
-              type="search"
-              value={paramFilter}
-              onChange={(e) => setParamFilter(e.target.value)}
-              placeholder="Filter params…"
-              className="config-panel-param-filter ml-1 w-[9rem] max-w-[28vw] bg-black/30 border border-stealth-border/35 rounded-sm px-1.5 py-0.5 text-[8px] font-mono text-nv-green/90 placeholder:text-stealth-muted/35 focus:outline-none focus:border-nv-green/40"
-              title="Filter chip groups by name or key (local to this panel — not model search)"
-            />
           </div>
         )}
         {fullAutoFixed && (
           <div className="config-panel-toolbar__config flex items-center gap-1.5 flex-shrink-0">
             <span className="config-panel-toolbar__label text-nv-green/70">FULL AUTO</span>
-            <button
-              type="button"
-              onClick={() => {
-                const next: CtxCockpitDock = ctxCockpitDock === "cockpit" ? "above" : "cockpit";
-                setCtxCockpitDock(next);
-                saveCtxCockpitDock(next);
-              }}
-              className={`config-panel-toolbar-chip px-1.5 py-0.5 text-[8px] font-mono rounded-sm ${
-                ctxCockpitDock === "above" ? "config-panel-toolbar-chip--active" : ""
-              }`}
-              title={
-                ctxCockpitDock === "cockpit"
-                  ? "CTX docked in cockpit — click to place in above-config zone (near VRAM)"
-                  : "CTX in above-config zone — click to dock inside cockpit"
-              }
-            >
-              CTX {ctxCockpitDock === "cockpit" ? "COCKPIT" : "ABOVE"}
-            </button>
           </div>
         )}
         <div className="config-panel-toolbar__chrome flex items-center gap-1.5 min-w-0 ml-auto flex-shrink-0">
+          <button
+            type="button"
+            onClick={() => {
+              const next: CtxCockpitDock = ctxCockpitDock === "cockpit" ? "above" : "cockpit";
+              setCtxCockpitDock(next);
+              saveCtxCockpitDock(next);
+            }}
+            className={`config-panel-toolbar-chip px-1.5 py-0.5 text-[8px] font-mono rounded-sm ${
+              ctxCockpitDock === "above" ? "config-panel-toolbar-chip--active" : ""
+            }`}
+            title={
+              ctxCockpitDock === "cockpit"
+                ? "CTX docked in cockpit — click to place in above-config zone (near VRAM)"
+                : "CTX in above-config zone — click to dock inside cockpit"
+            }
+          >
+            CTX {ctxCockpitDock === "cockpit" ? "COCKPIT" : "ABOVE"}
+          </button>
           <div className="config-launch-dock-controls flex items-center gap-1.5 min-w-0">
             <span className="config-panel-toolbar__label">LAUNCH DOCK</span>
             <div className="flex items-center gap-0.5">
@@ -3305,8 +3313,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
               dflashGetOfferLabel={dflashGetOfferLabel}
               onGetDflashDraft={() => { void handleGetDflashDraft(); }}
               onChangeDflashDraft={handleChangeDflashDraft}
-              kvQuantValues={fullAutoFixed ? kvQuantFactoryValues : kvQuantValues}
-              parallelValues={fullAutoFixed ? parallelFactoryValues : parallelValues}
+              kvQuantValues={cockpitKvValues}
+              parallelValues={cockpitParallelValues}
               port={Number(config.base_port) || 9090}
               modelId={aliasDisplayValue || autoAlias || model.name || "local-model"}
               layout={fullAutoFixed ? "hero" : "normal"}
@@ -3357,6 +3365,19 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
         {!fullAutoFixed && (
           <>
+            {/* Sticky chip-area filter — no extra toolbar height; sits on first chips row */}
+            {allParamsForDisplay.length > 0 && (
+              <div className="config-params-filter-bar sticky top-0 z-[5] flex justify-end -mt-0.5 mb-0.5 pointer-events-none">
+                <input
+                  type="search"
+                  value={paramFilter}
+                  onChange={(e) => setParamFilter(e.target.value)}
+                  placeholder="Filter…"
+                  className="config-panel-param-filter pointer-events-auto w-[7.5rem] max-w-[40%] bg-[color-mix(in_srgb,var(--theme-panel-accent,#040b01)_88%,transparent)] border border-stealth-border/30 rounded-sm px-1.5 py-0.5 text-[8px] font-mono text-nv-green/90 placeholder:text-stealth-muted/35 focus:outline-none focus:border-nv-green/40 shadow-sm"
+                  title="Filter chip groups by name or key (local — not model search)"
+                />
+              </div>
+            )}
             {allParamsForDisplay.length === 0 ? (
               <div className="text-stealth-muted text-[10px] font-mono opacity-50">NO PARAMS DEFINED</div>
             ) : belowGroupKeys.length === 0 ? null : !filteredBelowHasAny ? (

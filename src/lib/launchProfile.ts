@@ -71,6 +71,32 @@ export function isEssentialParam(
   return factoryEssentialKeys.has(def.key);
 }
 
+/** True when a value is excluded from Essentials UI only (not Full, not catalog). */
+export function isEssentialsHiddenValue(
+  def: { essentialsHiddenValues?: (string | number)[] },
+  value: string | number,
+): boolean {
+  return (def.essentialsHiddenValues || []).some((v) => String(v) === String(value));
+}
+
+/**
+ * Filter display values for engine Essentials mode.
+ * Always drops catalog hiddenValues; in essentials also drops essentialsHiddenValues.
+ */
+export function filterParamValuesForConfigView(
+  def: UserEditedTemplateParam,
+  values: (string | number)[],
+  configView: ConfigViewMode,
+): (string | number)[] {
+  const catalogHidden = new Set((def.hiddenValues || []).map(String));
+  let out = values.filter((v) => !catalogHidden.has(String(v)));
+  if (configView === "essentials") {
+    const essHidden = new Set((def.essentialsHiddenValues || []).map(String));
+    out = out.filter((v) => !essHidden.has(String(v)));
+  }
+  return out;
+}
+
 function factoryParamToExportRow(fp: ProviderDefaultParam, order: number): UserEditedTemplateParam {
   return {
     key: fp.key,

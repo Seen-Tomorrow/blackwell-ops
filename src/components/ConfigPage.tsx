@@ -796,6 +796,32 @@ export default function ConfigPage({
     showSaved("SAVED");
   }, [currentProvider, editorUnlocked, buildUserSavedParams, persistProviderToConfig, selectedProviderId]);
 
+  /** Hide/show a value in engine Essentials only (Full config still shows it). */
+  const toggleEssentialsHiddenValue = useCallback(async (key: string, value: string | number) => {
+    if (!currentProvider || !editorUnlocked) return;
+
+    const currentUserParams = buildUserSavedParams(currentProvider);
+    const updatedUserParams = currentUserParams.map((d) => {
+      if (d.key !== key) return d;
+      const ev = d.essentialsHiddenValues || [];
+      const idx = ev.findIndex((v) => String(v) === String(value));
+      let next: (string | number)[];
+      if (idx >= 0) {
+        next = [...ev];
+        next.splice(idx, 1);
+      } else {
+        next = [...ev, value];
+      }
+      return { ...d, essentialsHiddenValues: next.length > 0 ? next : undefined };
+    });
+    const updatedProvider = { ...currentProvider, userEditedTemplateParams: updatedUserParams };
+
+    setAllProviders((prev) => prev.map((p) => (p.id !== selectedProviderId ? p : updatedProvider)));
+    await persistProviderToConfig(updatedProvider);
+    dispatchAppEvent(EVENTS.paramConfigChanged);
+    showSaved("SAVED");
+  }, [currentProvider, editorUnlocked, buildUserSavedParams, persistProviderToConfig, selectedProviderId]);
+
   // ── Admin: change default value for a param ─────────────────────
   const changeDefaultValue = useCallback(async (key: string, value: string | number) => {
     if (!currentProvider || !editorUnlocked) return;
@@ -1710,7 +1736,13 @@ export default function ConfigPage({
                                      addValue={editorUnlocked ? (v: string | number) => addValueToParam(def.key, v) : undefined}
                                      removeValue={editorUnlocked ? (v: string | number) => removeValueFromParam(def.key, v) : undefined}
                                      toggleHiddenValue={editorUnlocked ? (_k: string, v: string | number) => toggleHiddenValue(def.key, v) : undefined}
-hiddenValues={def.hiddenValues || []}
+                                     hiddenValues={def.hiddenValues || []}
+                                     toggleEssentialsHiddenValue={
+                                       editorUnlocked
+                                         ? (_k: string, v: string | number) => toggleEssentialsHiddenValue(def.key, v)
+                                         : undefined
+                                     }
+                                     essentialsHiddenValues={def.essentialsHiddenValues || []}
                                       availableValues={def.values || []}
                                       userAddedValues={def.userAddedValues || []}
                                       defaultValue={effectiveDefault !== undefined ? String(effectiveDefault) : undefined}
