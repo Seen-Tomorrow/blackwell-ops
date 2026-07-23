@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import type { ModelEntry, StackEntry } from "../lib/types";
 import { DEFAULT_BINARY_PROFILE, ENV_META, type Env } from "../lib/foundry_constants";
 
@@ -7,9 +7,95 @@ function runtimeProfileLabel(binaryProfile?: string): string {
   return ENV_META[key]?.label ?? key.toUpperCase();
 }
 
-function runtimeSplitLabel(splitMode?: string): string {
+function runtimeProviderLabel(entry: StackEntry): string {
+  const name = (entry.provider_name || entry.provider_type || "").trim();
+  return name;
+}
+
+/** e.g. "GGML master | FRONTIER" — provider + runtime profile for mixed stacks */
+function runtimeEngineSourceLabel(entry: StackEntry): string {
+  const profile = runtimeProfileLabel(entry.binaryProfile);
+  const provider = runtimeProviderLabel(entry);
+  return provider ? `${provider} | ${profile}` : profile;
+}
+
+function runtimeSplitMode(splitMode?: string): string {
   const raw = String(splitMode ?? "none").trim().toLowerCase();
   return raw.length > 0 ? raw : "none";
+}
+
+function parseGpuIndices(gpuField: string): string[] {
+  return String(gpuField ?? "")
+    .split(",")
+    .map((g) => g.trim().replace(/^GPU-/i, ""))
+    .filter((g) => g.length > 0);
+}
+
+/** ≤8: GPU0 · >8: G0 (fits dense multi-GPU). */
+function gpuTag(id: string, short: boolean): string {
+  return short ? `G${id}` : `GPU${id}`;
+}
+
+function runtimeGpuTitle(gpuField: string, splitMode?: string): string {
+  const indices = parseGpuIndices(gpuField);
+  const split = runtimeSplitMode(splitMode);
+  const list = indices.length > 0 ? indices.map((id) => `GPU${id}`).join(", ") : "—";
+  return split !== "none" ? `${list} · split ${split}` : list;
+}
+
+/**
+ * Individual GPU badges; active split sits between chips with bidirectional arrows.
+ * e.g. [GPU0] ⇄layer⇄ [GPU1] ⇄layer⇄ [GPU2]
+ */
+function GpuTopoBadges({
+  gpuField,
+  splitMode,
+  compact = false,
+}: {
+  gpuField: string;
+  splitMode?: string;
+  /** Rail chips — slightly tighter. */
+  compact?: boolean;
+}) {
+  const indices = parseGpuIndices(gpuField);
+  const short = indices.length > 8;
+  const split = runtimeSplitMode(splitMode);
+  const title = runtimeGpuTitle(gpuField, splitMode);
+
+  if (indices.length === 0) {
+    return (
+      <span className="running-engine-gpu-badge" title={title}>
+        GPU?
+      </span>
+    );
+  }
+
+  const nodes: ReactNode[] = [];
+  indices.forEach((id, i) => {
+    if (i > 0) {
+      if (split !== "none") {
+        nodes.push(
+          <span key={`link-${i}`} className="running-engine-gpu-link" aria-hidden>
+            ⇄{split}⇄
+          </span>,
+        );
+      }
+    }
+    nodes.push(
+      <span key={`gpu-${id}-${i}`} className="running-engine-gpu-badge">
+        {gpuTag(id, short)}
+      </span>,
+    );
+  });
+
+  return (
+    <span
+      className={`running-engine-gpu-badges${compact ? " running-engine-gpu-badges--compact" : ""}`}
+      title={title}
+    >
+      {nodes}
+    </span>
+  );
 }
 
 interface RunningEnginesPanelProps {
@@ -55,7 +141,6 @@ export default function RunningEnginesPanel({
         <div className="launch-rail-engines__list flex flex-col gap-1">
           {instances.map((item) => {
             const isThisSelected = selectedSlotIdx === item.entry.idx;
-            const gpuLabel = item.entry.gpu.split(",").map((g) => `G${g.trim()}`).join(",");
             return (
               <button
                 key={`slot-${item.entry.idx}`}
@@ -71,7 +156,17 @@ export default function RunningEnginesPanel({
                 <span className="text-[8px] font-mono text-nv-green/90 shrink-0 truncate max-w-[3.5rem]" title={item.entry.alias}>
                   {item.entry.alias}
                 </span>
-                <span className="text-[7px] font-mono text-telemetry-cyan/80 shrink-0">{gpuLabel}</span>
+                <span
+                  className="text-[6px] font-mono text-stealth-muted/70 shrink-0 truncate max-w-[5.5rem] uppercase tracking-wide"
+                  title={runtimeEngineSourceLabel(item.entry)}
+                >
+                  {runtimeEngineSourceLabel(item.entry)}
+                </span>
+                <GpuTopoBadges
+                  gpuField={item.entry.gpu}
+                  splitMode={item.entry.splitMode}
+                  compact
+                />
                 <span className="text-[7px] font-mono text-stealth-muted/55 truncate flex-1 min-w-0" title={item.modelName}>
                   {item.modelName}
                 </span>
@@ -95,54 +190,62 @@ export default function RunningEnginesPanel({
         {instances.map(item => {
           const isThisSelected = selectedSlotIdx === item.entry.idx;
           const isNvfp = item.quant.toLowerCase().includes("nvfp");
-          const gpuLabel = item.entry.gpu.split(',').map(g => `GPU${g.trim()}`).join(', ');
+          const sourceLabel = runtimeEngineSourceLabel(item.entry);
           return (
             <div
               key={`slot-${item.entry.idx}`}
               onClick={() => onSelectEngine(item.entry.idx)}
-              className={`cursor-pointer rounded-sm px-2.5 py-2 border flex items-center gap-2 running-engine-card engine-panel-enter ${
+              className={`cursor-pointer rounded-sm px-2.5 py-1.5 border flex flex-col gap-0.5 min-w-0 running-engine-card engine-panel-enter ${
                 isThisSelected
                   ? "running-engine-card-selected"
                   : ""
               }`}
             >
-              <div className="flex flex-col shrink-0 gap-0.5 max-w-[4.5rem]">
-                <span className="text-[9px] font-mono text-white/70 truncate" title={item.entry.alias}>
+              {/* Row 1: fixed-width alias → model names align across cards */}
+              <div className="flex items-center gap-2 min-w-0 w-full">
+                <span
+                  className="running-engine-alias font-mono text-[9px] text-white/70 shrink-0 truncate"
+                  title={item.entry.alias}
+                >
                   {item.entry.alias}
                 </span>
-                <span className="running-engine-profile-label font-mono uppercase tracking-wider truncate">
-                  {runtimeProfileLabel(item.entry.binaryProfile)}
+                <span
+                  className={`text-[10px] font-mono truncate flex-1 min-w-0 ${isThisSelected ? "text-nv-green" : "text-white"}`}
+                  title={item.modelName}
+                >
+                  {item.modelName}
+                </span>
+                {item.quant && (
+                  <span className={`text-[7px] font-mono px-1 py-0.5 rounded-sm shrink-0 ${isNvfp
+                    ? "bg-nv-green/20 border border-nv-green/40 text-nv-green"
+                    : "border border-telemetry-cyan/30 text-telemetry-cyan"}`}>
+                    {item.quant}
+                  </span>
+                )}
+                {item.vramUsedGb != null && (
+                  <span className="text-[8px] font-mono text-stealth-muted shrink-0">
+                    {item.vramUsedGb.toFixed(1)} GB
+                  </span>
+                )}
+                <span className="text-[7px] font-mono text-stealth-muted/50 shrink-0">
+                  :{item.entry.port}
                 </span>
               </div>
-              <div className="flex flex-col shrink-0 gap-0.5 items-start max-w-[4.25rem]">
-                <span className="text-[8px] font-mono text-telemetry-cyan bg-telemetry-cyan/10 border border-telemetry-cyan/20 px-1 py-0.5 rounded-sm leading-none">
-                  {gpuLabel}
-                </span>
-                <span className="running-engine-profile-label pl-0.5">
-                  S: {runtimeSplitLabel(item.entry.splitMode)}
+              {/*
+                Row 2: per-GPU badges (+ split links); provider|profile hugs right.
+              */}
+              <div className="running-engine-card__meta flex items-center gap-1.5 min-w-0 w-full">
+                <GpuTopoBadges
+                  gpuField={item.entry.gpu}
+                  splitMode={item.entry.splitMode}
+                />
+                <span
+                  className="running-engine-profile-label font-mono uppercase tracking-wider shrink-0 whitespace-nowrap ml-auto"
+                  title={sourceLabel}
+                >
+                  {sourceLabel}
                 </span>
               </div>
-              <span
-                className={`text-[10px] font-mono truncate flex-1 min-w-0 ${isThisSelected ? "text-nv-green" : "text-white"}`}
-                title={item.modelName}
-              >
-                {item.modelName}
-              </span>
-              {item.quant && (
-                <span className={`text-[7px] font-mono px-1 py-0.5 rounded-sm shrink-0 ${isNvfp
-                  ? 'bg-nv-green/20 border border-nv-green/40 text-nv-green'
-                  : 'border border-telemetry-cyan/30 text-telemetry-cyan'}`}>
-                  {item.quant}
-                </span>
-              )}
-              {item.vramUsedGb != null && (
-                <span className="text-[8px] font-mono text-stealth-muted shrink-0">
-                  {item.vramUsedGb.toFixed(1)} GB
-                </span>
-              )}
-              <span className="text-[7px] font-mono text-stealth-muted/50 shrink-0">
-                :{item.entry.port}
-              </span>
             </div>
           );
         })}

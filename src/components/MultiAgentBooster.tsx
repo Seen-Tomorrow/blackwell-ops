@@ -489,6 +489,7 @@ export default function MultiAgentBooster({
       data-booster-layout={layout}
       data-power-mode={powerMode ? "on" : "off"}
       data-density-unified={densityUnified ? "on" : "off"}
+      data-ctx-dock={showCtxRail ? "in" : "above"}
     >
       {/* Compact title only — status line removed; selected values live on slider marks */}
       <div className="full-auto-cockpit__header full-auto-cockpit__header--minimal">

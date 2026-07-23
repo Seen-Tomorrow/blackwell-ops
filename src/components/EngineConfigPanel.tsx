@@ -3036,9 +3036,13 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         Full Auto hides chip groups; CTX can still dock here when not embedded in cockpit.
       */}
       {(showCtxAboveConfig || (aboveGroupKeys.length > 0 && !fullAutoFixed)) && (
-        <div className={`config-params-above-shell relative${paramsBypassedClass}`}>
+        <div
+          className={`config-params-above-shell relative${paramsBypassedClass}${
+            showCtxAboveConfig ? " config-params-above-shell--with-ctx" : ""
+          }`}
+        >
           {showCtxAboveConfig && (
-            <div className="px-3 pt-2 pb-1.5 min-w-0">
+            <div className="config-params-above-ctx px-3 pb-1.5 min-w-0">
               <CockpitCtxStrip {...ctxStripProps} className="w-full" />
             </div>
           )}
