@@ -14,7 +14,6 @@ export interface LaunchChromePolicy {
   deviceLocked: boolean;
   splitLocked: boolean;
   hideSplitNone: boolean;
-  tensorSplitWarn: boolean;
   reason?: string;
 }
 
@@ -41,8 +40,6 @@ export function resolveLaunchChromePolicy(opts: {
   runningSlots: RunningSlotInfo[];
 }): LaunchChromePolicy {
   const mode: LaunchMemoryMode = opts.fullAutoMode ? "full_auto" : "assisted";
-  const split = String(opts.config.split ?? "none").trim().toLowerCase();
-  const tensorSplitWarn = split === "tensor" || split === "row";
 
   if (mode === "full_auto") {
     return {
@@ -51,7 +48,6 @@ export function resolveLaunchChromePolicy(opts: {
       deviceLocked: true,
       splitLocked: true,
       hideSplitNone: false,
-      tensorSplitWarn: false,
     };
   }
 
@@ -62,7 +58,6 @@ export function resolveLaunchChromePolicy(opts: {
       deviceLocked: false,
       splitLocked: true,
       hideSplitNone: false,
-      tensorSplitWarn,
     };
   }
 
@@ -86,7 +81,6 @@ export function resolveLaunchChromePolicy(opts: {
       deviceLocked: true,
       splitLocked: true,
       hideSplitNone: true,
-      tensorSplitWarn,
       reason: "Insufficient memory for this configuration",
     };
   }
@@ -98,7 +92,6 @@ export function resolveLaunchChromePolicy(opts: {
       deviceLocked: true,
       splitLocked: false,
       hideSplitNone: true,
-      tensorSplitWarn,
       reason: "Model needs multiple GPUs — device locked to ALL",
     };
   }
@@ -110,7 +103,6 @@ export function resolveLaunchChromePolicy(opts: {
       deviceLocked: true,
       splitLocked: false,
       hideSplitNone: false,
-      tensorSplitWarn,
     };
   }
 
@@ -120,6 +112,5 @@ export function resolveLaunchChromePolicy(opts: {
     deviceLocked: false,
     splitLocked: false,
     hideSplitNone: false,
-    tensorSplitWarn,
   };
 }

@@ -1,11 +1,20 @@
-import { useCallback, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
+import {
+  useCallback,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent,
+  type MouseEvent,
+} from "react";
 import type { CpuInfo, GpuInfo, SystemInfo } from "../lib/types";
 import { useDisplayTexture } from "../context/DisplayTextureContext";
 import { useTelemetry } from "../context/TelemetryContext";
 import { useGpuControl } from "../hooks/useGpuControl";
 import {
   loadHwMonitorCpuCoresOpen,
+  loadHwMonitorDim,
   saveHwMonitorCpuCoresOpen,
+  saveHwMonitorDim,
 } from "../lib/storage";
 import CpuCoreGrid from "./CpuCoreGrid";
 import GpuOverclockPanel from "./GpuOverclockPanel";
@@ -168,6 +177,8 @@ export default function LaunchRailTelemetry() {
   /** User cores pref while OC is open — restored on OC collapse. */
   const coresPrefBeforeOcRef = useRef(loadHwMonitorCpuCoresOpen());
   const [ocExpanded, setOcExpanded] = useState(false);
+  /** Opacity of HW body + OC (not launch block). 1 = full, 0.2 = min dim. */
+  const [hwDim, setHwDim] = useState(loadHwMonitorDim);
 
   const {
     ocMode,
@@ -213,21 +224,47 @@ export default function LaunchRailTelemetry() {
     }
   }, []);
 
+  const onHwDimChange = useCallback((value: number) => {
+    const next = Math.min(1, Math.max(0.2, value));
+    setHwDim(next);
+    saveHwMonitorDim(next);
+  }, []);
+
   return (
     <div
       className="launch-rail-tel h-full min-h-0 flex flex-col"
       data-display-texture={displayTexture}
       data-oc-expanded={ocExpanded ? "true" : "false"}
+      style={{ "--hw-monitor-dim": hwDim } as CSSProperties}
     >
       <div className="launch-rail-tel__header">
         <div className="launch-rail-tel__header-left">
           <span className="launch-rail-tel__pulse" aria-hidden="true" />
           <span className="launch-rail-tel__title">HW MONITOR</span>
         </div>
+        <label
+          className="launch-rail-tel__dim"
+          title={`HW monitor dim — ${Math.round(hwDim * 100)}% (launch block unaffected)`}
+        >
+          <span className="launch-rail-tel__dim-label">DIM</span>
+          <input
+            type="range"
+            className="launch-rail-tel__dim-slider"
+            min={20}
+            max={100}
+            step={1}
+            value={Math.round(hwDim * 100)}
+            onChange={(e) => onHwDimChange(Number(e.target.value) / 100)}
+            aria-label="HW monitor dim"
+          />
+        </label>
       </div>
 
-      {/* No scrollbar chrome — wheel/trackpad still scrolls when zoom packs the rail */}
-      <div className="launch-rail-tel__body min-h-0 flex-1">
+      {/* Dimmed body: telemetry + OC. Launch dock is outside this tree. */}
+      <div
+        className="launch-rail-tel__body min-h-0 flex-1"
+        style={{ opacity: hwDim }}
+      >
         <MemTotals gpus={gpus} systemInfo={systemInfo} />
         {cpu && (
           <CpuStrip

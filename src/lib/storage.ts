@@ -166,6 +166,8 @@ export const KEYS = {
   hwMonitorOpen: `${STORAGE_PREFIX}hw-monitor-open`,
   /** HW monitor — per-core CPU grid expanded under CPU header. */
   hwMonitorCpuCoresOpen: `${STORAGE_PREFIX}hw-monitor-cpu-cores-open`,
+  /** HW monitor + OC panel opacity (0.2–1); launch block excluded. */
+  hwMonitorDim: `${STORAGE_PREFIX}hw-monitor-dim`,
   /** Running engine / fusion switcher in launch rail instead of below VRAM display. */
   enginesInRail: `${STORAGE_PREFIX}engines-in-rail`,
   /** CTX strip: docked inside cockpit vs standalone above cockpit. */
@@ -473,6 +475,19 @@ export function loadHwMonitorCpuCoresOpen(): boolean {
 
 export function saveHwMonitorCpuCoresOpen(open: boolean): void {
   writeStorage(KEYS.hwMonitorCpuCoresOpen, open ? "1" : "0");
+}
+
+/** HW monitor body opacity (telemetry + OC). Range 0.2–1, default 1. */
+export function loadHwMonitorDim(): number {
+  const raw = readStorage(KEYS.hwMonitorDim);
+  const n = raw ? Number(raw) : 1;
+  if (!Number.isFinite(n)) return 1;
+  return Math.min(1, Math.max(0.2, n));
+}
+
+export function saveHwMonitorDim(dim: number): void {
+  const n = Math.min(1, Math.max(0.2, dim));
+  writeStorage(KEYS.hwMonitorDim, String(Math.round(n * 100) / 100));
 }
 
 export function loadEnginesInRail(): boolean {

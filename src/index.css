@@ -4787,32 +4787,37 @@ html, body, #root {
 }
 
 /*
- * Top bezel chrome: fit-launch | Device …… Split (far right).
- * Keep pad tight — only ~control height, no empty “two lines” above.
+ * Top bezel chrome: fit-launch | Split | Device (device claims right).
+ *
+ * CRITICAL: `.industrial-display-frame > * { position: relative }` is more specific
+ * than a bare `.industrial-display-frame__top-chrome { position: absolute }`.
+ * Use the `>` selector so chrome stays absolute (overlays pad — does not stack).
+ *
+ * Top pad = 2× side pad (36px) so the control row can breathe; switches are
+ * vertically centered in that band.
  */
 .industrial-display-frame--top-chrome,
 .industrial-display-frame:has(> .industrial-display-frame__top-chrome) {
-  /* Default frame pad is 18px; +6px seats the segment switches without dead air */
-  padding-top: 24px;
+  padding-top: 36px;
   overflow: visible;
 }
 
-.industrial-display-frame__top-chrome {
+.industrial-display-frame > .industrial-display-frame__top-chrome {
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
-  height: 24px;
-  z-index: 40 !important;
+  height: 36px;
+  z-index: 40;
   display: flex;
   align-items: center;
   gap: 0;
-  padding: 0 10px 0 14px;
+  padding: 0 12px 0 14px;
   box-sizing: border-box;
   pointer-events: none;
 }
 
-.industrial-display-frame__top-chrome > * {
+.industrial-display-frame > .industrial-display-frame__top-chrome > * {
   pointer-events: auto;
 }
 
@@ -4824,7 +4829,7 @@ html, body, #root {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   line-height: 0;
   z-index: 1;
 }
@@ -4834,16 +4839,36 @@ html, body, #root {
   content: "";
   display: block;
   width: 1px;
-  height: 16px;
+  height: 22px;
   flex-shrink: 0;
   background: color-mix(in srgb, var(--theme-bezel-edge-lo, #1a2e1a) 75%, transparent);
   box-shadow: 0 0 0 0.5px color-mix(in srgb, var(--theme-bezel-edge-hi) 25%, transparent);
 }
 
+/* ASSISTED / FULL AUTO — taller, primary control in the chrome row */
 .industrial-display-frame__top-chrome .vram-badge-fit-launch-dock .segment-switch--fit-launch {
+  min-width: 11.5rem;
+  min-height: 26px;
+  padding: 2px;
+  border-radius: 4px;
   box-shadow:
-    inset 0 1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 18%, transparent),
-    inset 0 -1px 2px color-mix(in srgb, #000 28%, transparent);
+    inset 0 1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 22%, transparent),
+    inset 0 -1px 3px color-mix(in srgb, #000 32%, transparent),
+    0 0 10px color-mix(in srgb, var(--theme-accent-glow) 18%, transparent);
+}
+
+.industrial-display-frame__top-chrome .vram-badge-fit-launch-dock .segment-switch--fit-launch .segment-switch__option {
+  padding: 5px 12px;
+  font-size: 8px;
+  letter-spacing: 0.16em;
+  line-height: 1.2;
+}
+
+.industrial-display-frame__top-chrome .vram-badge-fit-launch-dock .segment-switch--fit-launch .segment-switch__thumb {
+  top: 2px;
+  bottom: 2px;
+  left: 2px;
+  width: calc(50% - 2px);
   border-radius: 3px;
 }
 
@@ -4856,13 +4881,14 @@ html, body, #root {
   border: none;
   border-radius: 0;
   isolation: auto;
+  width: auto;
 }
 
 .industrial-display-frame__top-chrome .gpu-assign-panel--bezel::before {
   display: none;
 }
 
-/* Device flexes for many GPUs; Split hugs the far right */
+/* Split (content-hug) → Device (claims leftover rail to the right) */
 .industrial-display-frame__top-chrome .gpu-assign-panel--bezel .gpu-assign-panel__grid {
   display: flex;
   align-items: center;
@@ -4875,82 +4901,103 @@ html, body, #root {
   display: flex;
 }
 
+.industrial-display-frame__top-chrome .gpu-assign-panel--bezel .gpu-assign-panel__half {
+  min-height: 0;
+  gap: 6px;
+  align-items: center;
+}
+
+/* Split first — content-sized only; grows with option count */
+.industrial-display-frame__top-chrome .gpu-assign-panel--bezel .gpu-assign-panel__half--split {
+  flex: 0 0 auto;
+  margin-left: 0;
+  justify-content: flex-start;
+  max-width: none;
+  min-width: 0;
+}
+
+.industrial-display-frame__top-chrome .gpu-assign-panel--bezel .gpu-assign-panel__half--split .segment-switch--gpu-bezel {
+  flex: 0 0 auto;
+  width: max-content;
+  max-width: none;
+  min-width: 0;
+}
+
+.industrial-display-frame__top-chrome .gpu-assign-panel--bezel .gpu-assign-panel__divider {
+  flex: 0 0 auto;
+  width: 1px;
+  height: 20px;
+  align-self: center;
+  margin: 0 10px;
+  background: color-mix(in srgb, var(--theme-bezel-edge-lo) 75%, transparent);
+}
+
+/* Device last — claims empty space to the right (many GPUs) */
 .industrial-display-frame__top-chrome .gpu-assign-panel--bezel .gpu-assign-panel__half--device {
   flex: 1 1 auto;
   min-width: 0;
   justify-content: flex-start;
 }
 
-.industrial-display-frame__top-chrome .gpu-assign-panel--bezel .gpu-assign-panel__half--device .gpu-assign-panel__chips {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow-x: auto;
-  overflow-y: hidden;
-  flex-wrap: nowrap;
-  scrollbar-width: thin;
-  gap: 4px;
-}
-
-.industrial-display-frame__top-chrome .gpu-assign-panel--bezel .gpu-assign-panel__divider {
-  flex: 0 0 auto;
-  width: 1px;
-  height: 16px;
-  align-self: center;
-  margin: 0 8px;
-  background: color-mix(in srgb, var(--theme-bezel-edge-lo) 75%, transparent);
-}
-
-.industrial-display-frame__top-chrome .gpu-assign-panel--bezel .gpu-assign-panel__half--split {
-  flex: 0 0 auto;
-  margin-left: auto;
-  justify-content: flex-end;
-  max-width: 42%;
-}
-
-.industrial-display-frame__top-chrome .gpu-assign-panel--bezel .gpu-assign-panel__half--split .gpu-assign-panel__chips {
+.industrial-display-frame__top-chrome .gpu-assign-panel--bezel .gpu-assign-panel__half--device .segment-switch--gpu-bezel {
   flex: 0 1 auto;
-  justify-content: flex-end;
-  flex-wrap: nowrap;
-  gap: 4px;
-}
-
-.industrial-display-frame__top-chrome .gpu-assign-panel--bezel .gpu-assign-panel__label {
-  width: auto;
-  min-width: 0;
-  font-size: 8px;
-  opacity: 0.75;
-}
-
-.industrial-display-frame__top-chrome .gpu-assign-panel--bezel .value-chip,
-.industrial-display-frame__top-chrome .gpu-assign-panel--bezel .value-chip-active {
-  padding: 2px 6px;
-  font-size: 8px;
-  flex-shrink: 0;
-}
-
-/* Device / Split multi-option segment switches (match ASSISTED/FULL AUTO) */
-.segment-switch--gpu-bezel {
-  display: inline-grid;
-  grid-template-columns: repeat(var(--seg-n, 2), minmax(0, auto));
   min-width: 0;
   max-width: 100%;
-  padding: 1px;
+  width: max-content;
 }
 
-.segment-switch--gpu-bezel .segment-switch__option {
+.industrial-display-frame__top-chrome .gpu-assign-panel--bezel .gpu-assign-panel__label--bezel {
+  width: auto;
+  min-width: 0;
+  flex-shrink: 0;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
   font-size: 7px;
-  letter-spacing: 0.1em;
-  padding: 3px 7px;
-  line-height: 1.15;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  line-height: 1;
+  opacity: 0.7;
+  color: var(--theme-text-muted, #8a9a8a);
 }
 
-.segment-switch--gpu-bezel .segment-switch__thumb {
-  top: 1px;
-  bottom: 1px;
-  left: 1px;
-  width: calc((100% - 2px) / var(--seg-n, 2));
-  transform: translateX(calc(var(--seg-i, 0) * 100%));
-  transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+/*
+ * Multi-option segments (Device / Split) — must beat base `.segment-switch`
+ * (later in this file: grid 1fr 1fr). Flex + content-sized options; thumb
+ * left/width come from measured active option (--seg-thumb-*).
+ */
+.segment-switch.segment-switch--gpu-bezel {
+  display: inline-flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  grid-template-columns: none; /* kill base 1fr 1fr so options never wrap */
+  width: max-content;
+  max-width: none;
+  min-height: 22px;
+  padding: 2px;
+  border-radius: 4px;
+  flex: 0 0 auto;
+  gap: 0;
+}
+
+.segment-switch.segment-switch--gpu-bezel .segment-switch__option {
+  flex: 0 0 auto;
+  font-size: 7px;
+  letter-spacing: 0.06em;
+  padding: 4px 7px;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+.segment-switch.segment-switch--gpu-bezel .segment-switch__thumb {
+  top: 2px;
+  bottom: 2px;
+  left: var(--seg-thumb-left, 2px);
+  width: var(--seg-thumb-width, 0px);
+  transform: none;
+  transition:
+    left 0.2s cubic-bezier(0.22, 1, 0.36, 1),
+    width 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+  border-radius: 3px;
 }
 
 .segment-switch--gpu-bezel-disabled {
@@ -4958,26 +5005,10 @@ html, body, #root {
   pointer-events: none;
 }
 
-.industrial-display-frame__top-chrome .segment-switch--gpu-bezel {
+.industrial-display-frame__top-chrome .segment-switch.segment-switch--gpu-bezel {
   box-shadow:
     inset 0 1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 18%, transparent),
     inset 0 -1px 2px color-mix(in srgb, #000 28%, transparent);
-}
-
-.industrial-display-frame__top-chrome .vram-badge-fit-launch-dock .segment-switch--fit-launch {
-  /* Match compact height of gpu bezel switches */
-  padding: 1px;
-}
-
-.industrial-display-frame__top-chrome .vram-badge-fit-launch-dock .segment-switch--fit-launch .segment-switch__option {
-  padding: 3px 8px;
-  font-size: 7px;
-  line-height: 1.15;
-}
-
-.industrial-display-frame__top-chrome .vram-badge-fit-launch-dock .segment-switch--fit-launch .segment-switch__thumb {
-  top: 1px;
-  bottom: 1px;
 }
 
 .vram-badge-forecast[data-fusion-only="1"] {
@@ -5696,14 +5727,14 @@ html:not([data-theme="arctic"]) [data-display-texture="clean"] .bench-widget-pan
 }
 
 .fusion-bench-latch--open {
-  margin-top: -6px;
+  margin-top: 4px;
   margin-bottom: 2px;
   opacity: 0.72;
 }
 
 .fusion-bench-latch--stowed {
   /* Pull latch into hero slack so OPEN is fully clickable (was clipped to top lip only) */
-  margin-top: -10px;
+  margin-top: 0px;
   margin-bottom: 0;
   opacity: 0.88;
   position: relative;
@@ -7556,39 +7587,37 @@ html:not([data-theme="arctic"]) [data-display-texture="clean"] .phosphor-display
   scrollbar-width: thin;
 }
 
-/* Pre-launch chrome hints — VRAM display bezel top edge (aligned with GPU assign columns) */
+/* Pre-launch chrome hints — top bezel far right (empty rail after Device) */
 .display-chrome-hints {
   position: absolute;
-  top: 3px;
+  top: 0;
   left: 0;
   right: 0;
-  height: 0;
+  height: 36px; /* match top chrome band */
   pointer-events: none;
-  z-index: 12;
+  z-index: 35; /* under top-chrome controls (40), over phosphor */
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  box-sizing: border-box;
+  padding: 0 12px 0 0;
 }
 
 .display-chrome-hints__hint {
-  position: absolute;
-  top: 0;
   margin: 0;
   padding: 0 2px;
   font-size: 6px;
   font-family: ui-monospace, monospace;
-  line-height: 1.15;
+  line-height: 1.2;
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 
-.display-chrome-hints__hint--left {
-  left: 56px;
-  max-width: 46%;
-  color: color-mix(in srgb, var(--theme-text-muted) 78%, transparent);
-}
-
 .display-chrome-hints__hint--right {
-  right: 8px;
-  padding-right: 15px;
-  max-width: 30%;
+  position: relative;
+  right: auto;
+  left: auto;
+  max-width: min(42%, 14rem);
   text-align: right;
   color: color-mix(in srgb, #f59e0b 82%, var(--theme-text-muted));
 }
@@ -8141,6 +8170,64 @@ html:not([data-theme="arctic"]) [data-display-texture="clean"] .phosphor-display
   min-width: 0;
 }
 
+/* Tiny dim control — HW body + OC only (launch dock is outside .launch-rail-tel) */
+.launch-rail-tel__dim {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  margin-left: auto;
+  cursor: pointer;
+  user-select: none;
+}
+
+.launch-rail-tel__dim-label {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 7px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--theme-text-muted) 75%, transparent);
+  line-height: 1;
+}
+
+.launch-rail-tel__dim-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 52px;
+  height: 3px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--theme-border) 70%, transparent);
+  outline: none;
+  cursor: pointer;
+}
+
+.launch-rail-tel__dim-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--theme-accent-bright, #76b900);
+  border: 1px solid color-mix(in srgb, var(--theme-bezel-edge-hi) 40%, transparent);
+  box-shadow: 0 0 4px color-mix(in srgb, var(--theme-accent-glow) 45%, transparent);
+  cursor: pointer;
+}
+
+.launch-rail-tel__dim-slider::-moz-range-thumb {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--theme-accent-bright, #76b900);
+  border: 1px solid color-mix(in srgb, var(--theme-bezel-edge-hi) 40%, transparent);
+  cursor: pointer;
+}
+
+.launch-rail-tel__dim-slider::-moz-range-track {
+  height: 3px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--theme-border) 70%, transparent);
+}
+
 .launch-rail-tel__pulse {
   width: 6px;
   height: 6px;
@@ -8173,6 +8260,7 @@ html:not([data-theme="arctic"]) [data-display-texture="clean"] .phosphor-display
   overflow-y: auto;
   scrollbar-width: none; /* Firefox */
   -ms-overflow-style: none; /* legacy Edge */
+  transition: opacity 0.15s ease;
 }
 
 .launch-rail-tel__body::-webkit-scrollbar {

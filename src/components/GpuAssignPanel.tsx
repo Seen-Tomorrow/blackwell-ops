@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import type { GpuInfo } from "../lib/types";
 
 const DEVICE_LABEL_CLASS =
@@ -18,7 +19,11 @@ function isSplitModeActive(split: unknown): boolean {
   return mode.length > 0 && mode.toUpperCase() !== "NONE";
 }
 
-/** Multi-option segment switch (same visual language as ASSISTED/FULL AUTO). */
+/**
+ * Multi-option segment switch — same chrome language as ASSISTED / FULL AUTO.
+ * Options size to label content (config can add/rename freely). Thumb left/width
+ * are measured from the active button so unequal labels stay aligned.
+ */
 function SegmentOptionGroup({
   options,
   activeIndex,
@@ -36,8 +41,41 @@ function SegmentOptionGroup({
 }) {
   const n = Math.max(1, options.length);
   const safeIdx = activeIndex >= 0 && activeIndex < n ? activeIndex : 0;
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [thumb, setThumb] = useState({ left: 2, width: 0 });
+
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+
+    const measure = () => {
+      const btn = root.querySelector<HTMLElement>(
+        `.segment-switch__option[data-seg-i="${safeIdx}"]`,
+      );
+      if (!btn) return;
+      // offset* is relative to the padding edge of the offsetParent (the switch)
+      setThumb({
+        left: btn.offsetLeft,
+        width: btn.offsetWidth,
+      });
+    };
+
+    measure();
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(measure) : null;
+    ro?.observe(root);
+    for (const el of root.querySelectorAll(".segment-switch__option")) {
+      ro?.observe(el);
+    }
+    window.addEventListener("resize", measure);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [safeIdx, options.map((o) => `${o.id}:${o.label}`).join("|")]);
+
   return (
     <div
+      ref={rootRef}
       className={`segment-switch segment-switch--gpu-bezel${disabled ? " segment-switch--gpu-bezel-disabled" : ""}`}
       data-segment-switch
       data-active-index={safeIdx}
@@ -46,9 +84,9 @@ function SegmentOptionGroup({
       title={title}
       style={
         {
-          "--seg-n": n,
-          "--seg-i": safeIdx,
-        } as React.CSSProperties
+          "--seg-thumb-left": `${thumb.left}px`,
+          "--seg-thumb-width": `${thumb.width}px`,
+        } as CSSProperties
       }
     >
       <span className="segment-switch__thumb" aria-hidden />
@@ -56,6 +94,7 @@ function SegmentOptionGroup({
         <button
           key={opt.id}
           type="button"
+          data-seg-i={i}
           disabled={disabled}
           aria-pressed={i === safeIdx}
           title={opt.title}
@@ -127,7 +166,7 @@ export default function GpuAssignPanel({
       : Math.max(0, deviceOptions.findIndex((v) => String(deviceValue) === v));
     const splitSegOpts = visibleSplitValues.map((val) => ({
       id: String(val),
-      label: String(val),
+      label: String(val).toUpperCase(),
     }));
     const splitActiveIdx = Math.max(
       0,
@@ -142,8 +181,25 @@ export default function GpuAssignPanel({
         data-gpu-assign-panel
         data-bezel="1"
       >
+        {/* Split first (content-hug), Device last (claims space to the right) */}
         <div className={`gpu-assign-panel__grid${!showSplitRow ? " gpu-assign-panel__grid--solo" : ""}`}>
+          {showSplitRow && (
+            <>
+              <div className="gpu-assign-panel__half gpu-assign-panel__half--split">
+                <span className="gpu-assign-panel__label gpu-assign-panel__label--bezel">Split</span>
+                <SegmentOptionGroup
+                  ariaLabel="Split"
+                  disabled={chipDisabled(splitLocked)}
+                  activeIndex={splitActiveIdx}
+                  options={splitSegOpts}
+                  onSelect={(id) => onSplitChange(id)}
+                />
+              </div>
+              <div className="gpu-assign-panel__divider" aria-hidden />
+            </>
+          )}
           <div className="gpu-assign-panel__half gpu-assign-panel__half--device">
+            <span className="gpu-assign-panel__label gpu-assign-panel__label--bezel">Device</span>
             <SegmentOptionGroup
               ariaLabel="Device"
               disabled={chipDisabled(deviceLocked) || splitActive}
@@ -160,20 +216,6 @@ export default function GpuAssignPanel({
               }
             />
           </div>
-          {showSplitRow && (
-            <>
-              <div className="gpu-assign-panel__divider" aria-hidden />
-              <div className="gpu-assign-panel__half gpu-assign-panel__half--split">
-                <SegmentOptionGroup
-                  ariaLabel="Split"
-                  disabled={chipDisabled(splitLocked)}
-                  activeIndex={splitActiveIdx}
-                  options={splitSegOpts}
-                  onSelect={(id) => onSplitChange(id)}
-                />
-              </div>
-            </>
-          )}
         </div>
       </div>
     );
@@ -185,6 +227,30 @@ export default function GpuAssignPanel({
       data-gpu-assign-panel
     >
       <div className={`gpu-assign-panel__grid${!showSplitRow ? " gpu-assign-panel__grid--solo" : ""}`}>
+        {showSplitRow && (
+          <>
+            <div className="gpu-assign-panel__half gpu-assign-panel__half--split">
+              <span className={SPLIT_LABEL_CLASS}>Split</span>
+              <div className="gpu-assign-panel__chips config-chip-row flex items-center gap-1.5 min-w-0">
+                {visibleSplitValues.map((val) => (
+                  <button
+                    key={String(val)}
+                    type="button"
+                    disabled={chipDisabled(splitLocked)}
+                    onClick={() => onSplitChange(val)}
+                    className={paramChipClass(
+                      String(splitValue).toLowerCase() === String(val).toLowerCase(),
+                      chromeDisabled || splitLocked,
+                    )}
+                  >
+                    {String(val)}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="gpu-assign-panel__divider" aria-hidden />
+          </>
+        )}
         <div className="gpu-assign-panel__half gpu-assign-panel__half--device">
           <span className={DEVICE_LABEL_CLASS}>Device</span>
           <div className="gpu-assign-panel__chips config-chip-row flex items-center gap-1.5 min-w-0">
@@ -214,30 +280,6 @@ export default function GpuAssignPanel({
             )}
           </div>
         </div>
-        {showSplitRow && (
-          <>
-            <div className="gpu-assign-panel__divider" aria-hidden />
-            <div className="gpu-assign-panel__half gpu-assign-panel__half--split">
-              <span className={SPLIT_LABEL_CLASS}>Split</span>
-              <div className="gpu-assign-panel__chips config-chip-row flex items-center gap-1.5 min-w-0">
-                {visibleSplitValues.map((val) => (
-                  <button
-                    key={String(val)}
-                    type="button"
-                    disabled={chipDisabled(splitLocked)}
-                    onClick={() => onSplitChange(val)}
-                    className={paramChipClass(
-                      String(splitValue).toLowerCase() === String(val).toLowerCase(),
-                      chromeDisabled || splitLocked,
-                    )}
-                  >
-                    {String(val)}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </>
-        )}
       </div>
     </div>
   );
