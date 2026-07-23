@@ -190,6 +190,13 @@ pub struct ProviderDefaultParam {
     /// Hidden by default — param is excluded from catalog UI and launch command until user toggles it on.
     #[serde(default)]
     pub hidden_default: bool,
+    /// Values hidden only in engine Essentials / Full Auto cockpit (Full Assisted still shows).
+    #[serde(
+        default,
+        rename = "essentialsHiddenValues",
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub essentials_hidden_values: Vec<serde_json::Value>,
 }
 
 // ── Provider Default Config Loading (disk-based) ────────────────────

@@ -1033,28 +1033,28 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     return out;
   }, [allParamsResolved, parallelFactoryValues]);
 
-  /** Cockpit value lists for current config view (Essentials may drop essentialsHiddenValues). */
+  /**
+   * Cockpit (Full Auto + Assisted Essentials + Assisted Full for Memory/Agents base):
+   * Full Auto always follows Essentials value curation (essentialsHiddenValues) so
+   * factory-shipped daily-driver marks apply to Joe path too.
+   * Assisted Full shows all non-catalog-hidden values (+ user customs).
+   */
+  const cockpitValueView: "essentials" | "full" =
+    fullAutoFixed || configView === "essentials" ? "essentials" : "full";
+
   const cockpitKvValues = useMemo(() => {
     const def = allParamsResolved.find((p) => p.key === "kv_quant");
     const base = fullAutoFixed ? kvQuantFactoryValues : kvQuantValues;
     if (!def) return base;
-    return filterParamValuesForConfigView(
-      def,
-      base,
-      fullAutoFixed ? "full" : configView,
-    );
-  }, [allParamsResolved, fullAutoFixed, configView, kvQuantFactoryValues, kvQuantValues]);
+    return filterParamValuesForConfigView(def, base, cockpitValueView);
+  }, [allParamsResolved, fullAutoFixed, cockpitValueView, kvQuantFactoryValues, kvQuantValues]);
 
   const cockpitParallelValues = useMemo(() => {
     const def = allParamsResolved.find((p) => p.key === "parallel");
     const base = fullAutoFixed ? parallelFactoryValues : parallelValues;
     if (!def) return base;
-    return filterParamValuesForConfigView(
-      def,
-      base,
-      fullAutoFixed ? "full" : configView,
-    );
-  }, [allParamsResolved, fullAutoFixed, configView, parallelFactoryValues, parallelValues]);
+    return filterParamValuesForConfigView(def, base, cockpitValueView);
+  }, [allParamsResolved, fullAutoFixed, cockpitValueView, parallelFactoryValues, parallelValues]);
 
   /** SPEC knobs under Boost (exclude type + draft path — owned by cockpit Boost / draft strip). */
   const cockpitSpecDetailParams = useMemo((): CockpitSpecDetailParam[] => {
@@ -1230,17 +1230,17 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     ],
   );
 
-  /** Boost source list: factory + user-added (eagle omitted; 2-word marks in cockpit). */
+  /**
+   * Boost marks — factory + user-added (eagle omitted).
+   * Full Auto + Assisted Essentials honor essentialsHiddenValues (factory-shippable).
+   * Assisted Full shows all non-catalog-hidden types.
+   */
   const factoryRawSpecTypes = useMemo(() => {
     const def = allParamsResolved.find((p) => p.key === "spec_type");
     if (!def) return [] as string[];
     const merged = collectBoostSpecTypes(def.values, def.userAddedValues);
-    // Essentials: honor per-value essentialsHiddenValues on spec_type
-    if (configView === "essentials" && !fullAutoFixed) {
-      return filterParamValuesForConfigView(def, merged, "essentials").map(String);
-    }
-    return merged;
-  }, [allParamsResolved, configView, fullAutoFixed]);
+    return filterParamValuesForConfigView(def, merged, cockpitValueView).map(String);
+  }, [allParamsResolved, cockpitValueView]);
 
   /** Non-MTP/DFlash active factory type — drives Boost thumb for ngram / draft-simple / etc. */
   const activeRawSpecType = useMemo(() => {

@@ -892,7 +892,7 @@ fn user_edited_param_from_template(tp: &crate::templates::ProviderDefaultParam, 
         hidden: tp.hidden_default,
         user_hidden: false,
         hidden_values: Vec::new(),
-        essentials_hidden_values: Vec::new(),
+        essentials_hidden_values: tp.essentials_hidden_values.clone(),
         flag: tp.flag.clone(),
         flag_pair: tp.flag_pair.clone(),
         ptype: tp.ptype.clone(),
@@ -2278,6 +2278,11 @@ fn merge_user_params_with_template(
             if m.dock.is_empty() && !tmpl.dock.is_empty() {
                 m.dock = tmpl.dock.clone();
             }
+
+            // Factory-curated Essentials values — backfill when user has none (ships with templates).
+            if m.essentials_hidden_values.is_empty() && !tmpl.essentials_hidden_values.is_empty() {
+                m.essentials_hidden_values = tmpl.essentials_hidden_values.clone();
+            }
         }
         merged.push(m);
     }
@@ -2298,7 +2303,7 @@ fn merge_user_params_with_template(
                 hidden: tmpl.hidden_default,
                 user_hidden: false,
                 hidden_values: Vec::new(),
-                essentials_hidden_values: Vec::new(),
+                essentials_hidden_values: tmpl.essentials_hidden_values.clone(),
                 flag: tmpl.flag.clone(),
                 flag_pair: tmpl.flag_pair.clone(),
                 ptype: tmpl.ptype.clone(),
@@ -2771,6 +2776,7 @@ fn user_param_to_factory_param(p: &crate::types::UserEditedTemplateParam) -> cra
         sub_params,
         dock: p.dock.clone(),
         hidden_default: p.hidden || p.user_hidden,
+        essentials_hidden_values: p.essentials_hidden_values.clone(),
     }
 }
 
