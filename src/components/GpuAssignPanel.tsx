@@ -18,6 +18,57 @@ function isSplitModeActive(split: unknown): boolean {
   return mode.length > 0 && mode.toUpperCase() !== "NONE";
 }
 
+/** Multi-option segment switch (same visual language as ASSISTED/FULL AUTO). */
+function SegmentOptionGroup({
+  options,
+  activeIndex,
+  disabled,
+  ariaLabel,
+  onSelect,
+  title,
+}: {
+  options: { id: string; label: string; title?: string }[];
+  activeIndex: number;
+  disabled?: boolean;
+  ariaLabel: string;
+  onSelect: (id: string) => void;
+  title?: string;
+}) {
+  const n = Math.max(1, options.length);
+  const safeIdx = activeIndex >= 0 && activeIndex < n ? activeIndex : 0;
+  return (
+    <div
+      className={`segment-switch segment-switch--gpu-bezel${disabled ? " segment-switch--gpu-bezel-disabled" : ""}`}
+      data-segment-switch
+      data-active-index={safeIdx}
+      role="group"
+      aria-label={ariaLabel}
+      title={title}
+      style={
+        {
+          "--seg-n": n,
+          "--seg-i": safeIdx,
+        } as React.CSSProperties
+      }
+    >
+      <span className="segment-switch__thumb" aria-hidden />
+      {options.map((opt, i) => (
+        <button
+          key={opt.id}
+          type="button"
+          disabled={disabled}
+          aria-pressed={i === safeIdx}
+          title={opt.title}
+          onClick={() => onSelect(opt.id)}
+          className={`segment-switch__option${i === safeIdx ? " segment-switch__option--active" : ""}`}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 interface GpuAssignPanelProps {
   gpus: GpuInfo[];
   deviceValue: unknown;
@@ -67,11 +118,71 @@ export default function GpuAssignPanel({
 
   const chipDisabled = (locked: boolean) => chromeDisabled || locked;
 
+  if (bezel) {
+    const deviceSegOpts = splitActive
+      ? [{ id: "__all__", label: `ALL (${gpus.length})`, title: "Split mode uses all GPUs" }]
+      : deviceOptions.map((val) => ({ id: val, label: val }));
+    const deviceActive = splitActive
+      ? 0
+      : Math.max(0, deviceOptions.findIndex((v) => String(deviceValue) === v));
+    const splitSegOpts = visibleSplitValues.map((val) => ({
+      id: String(val),
+      label: String(val),
+    }));
+    const splitActiveIdx = Math.max(
+      0,
+      splitSegOpts.findIndex(
+        (o) => o.id.toLowerCase() === String(splitValue).toLowerCase(),
+      ),
+    );
+
+    return (
+      <div
+        className={`gpu-assign-panel flex-shrink-0 min-w-0${panelClass}`}
+        data-gpu-assign-panel
+        data-bezel="1"
+      >
+        <div className={`gpu-assign-panel__grid${!showSplitRow ? " gpu-assign-panel__grid--solo" : ""}`}>
+          <div className="gpu-assign-panel__half gpu-assign-panel__half--device">
+            <SegmentOptionGroup
+              ariaLabel="Device"
+              disabled={chipDisabled(deviceLocked) || splitActive}
+              activeIndex={deviceActive}
+              options={deviceSegOpts}
+              onSelect={(id) => {
+                if (id === "__all__" || splitActive) return;
+                onDeviceChange(id);
+              }}
+              title={
+                splitActive
+                  ? "Split mode uses all detected GPUs. Set SPLIT to none to pick a single GPU."
+                  : undefined
+              }
+            />
+          </div>
+          {showSplitRow && (
+            <>
+              <div className="gpu-assign-panel__divider" aria-hidden />
+              <div className="gpu-assign-panel__half gpu-assign-panel__half--split">
+                <SegmentOptionGroup
+                  ariaLabel="Split"
+                  disabled={chipDisabled(splitLocked)}
+                  activeIndex={splitActiveIdx}
+                  options={splitSegOpts}
+                  onSelect={(id) => onSplitChange(id)}
+                />
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       className={`gpu-assign-panel flex-shrink-0 min-w-0${panelClass}`}
       data-gpu-assign-panel
-      data-bezel={bezel ? "1" : undefined}
     >
       <div className={`gpu-assign-panel__grid${!showSplitRow ? " gpu-assign-panel__grid--solo" : ""}`}>
         <div className="gpu-assign-panel__half gpu-assign-panel__half--device">

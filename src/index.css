@@ -4787,11 +4787,13 @@ html, body, #root {
 }
 
 /*
- * Top bezel chrome: fit-launch | Device (flex) …… Split (far right).
+ * Top bezel chrome: fit-launch | Device …… Split (far right).
+ * Keep pad tight — only ~control height, no empty “two lines” above.
  */
 .industrial-display-frame--top-chrome,
 .industrial-display-frame:has(> .industrial-display-frame__top-chrome) {
-  padding-top: 32px;
+  /* Default frame pad is 18px; +6px seats the segment switches without dead air */
+  padding-top: 24px;
   overflow: visible;
 }
 
@@ -4800,12 +4802,12 @@ html, body, #root {
   top: 0;
   left: 0;
   right: 0;
-  height: 32px;
+  height: 24px;
   z-index: 40 !important;
   display: flex;
   align-items: center;
   gap: 0;
-  padding: 0 12px 0 16px;
+  padding: 0 10px 0 14px;
   box-sizing: border-box;
   pointer-events: none;
 }
@@ -4924,6 +4926,58 @@ html, body, #root {
   padding: 2px 6px;
   font-size: 8px;
   flex-shrink: 0;
+}
+
+/* Device / Split multi-option segment switches (match ASSISTED/FULL AUTO) */
+.segment-switch--gpu-bezel {
+  display: inline-grid;
+  grid-template-columns: repeat(var(--seg-n, 2), minmax(0, auto));
+  min-width: 0;
+  max-width: 100%;
+  padding: 1px;
+}
+
+.segment-switch--gpu-bezel .segment-switch__option {
+  font-size: 7px;
+  letter-spacing: 0.1em;
+  padding: 3px 7px;
+  line-height: 1.15;
+}
+
+.segment-switch--gpu-bezel .segment-switch__thumb {
+  top: 1px;
+  bottom: 1px;
+  left: 1px;
+  width: calc((100% - 2px) / var(--seg-n, 2));
+  transform: translateX(calc(var(--seg-i, 0) * 100%));
+  transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.segment-switch--gpu-bezel-disabled {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.industrial-display-frame__top-chrome .segment-switch--gpu-bezel {
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 18%, transparent),
+    inset 0 -1px 2px color-mix(in srgb, #000 28%, transparent);
+}
+
+.industrial-display-frame__top-chrome .vram-badge-fit-launch-dock .segment-switch--fit-launch {
+  /* Match compact height of gpu bezel switches */
+  padding: 1px;
+}
+
+.industrial-display-frame__top-chrome .vram-badge-fit-launch-dock .segment-switch--fit-launch .segment-switch__option {
+  padding: 3px 8px;
+  font-size: 7px;
+  line-height: 1.15;
+}
+
+.industrial-display-frame__top-chrome .vram-badge-fit-launch-dock .segment-switch--fit-launch .segment-switch__thumb {
+  top: 1px;
+  bottom: 1px;
 }
 
 .vram-badge-forecast[data-fusion-only="1"] {
