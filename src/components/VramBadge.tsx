@@ -357,9 +357,7 @@ export default function VramBadge({
   return (
     <div
       ref={rootRef}
-      className={`vram-badge-forecast px-3 py-2 relative flex flex-col min-h-0 overflow-hidden ${className || ""}${
-        fitLaunchAvailable ? " vram-badge-forecast--fit-dock" : ""
-      }`}
+      className={`vram-badge-forecast px-3 py-2 relative flex flex-col min-h-0 overflow-hidden ${className || ""}`}
     >
       {fitLaunchDock}
 

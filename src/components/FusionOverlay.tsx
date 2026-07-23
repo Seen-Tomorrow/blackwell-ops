@@ -544,7 +544,7 @@ export default function FusionOverlay({
           className="flex flex-col w-full h-full px-2 py-1 gap-0 overflow-hidden absolute inset-0"
           style={{ animation: 'fadeIn 0.2s ease' }}
         >
-          {/* ═══ HEADER — alias + phase indicator + controls ═══════ */}
+          {/* ═══ HEADER — context slots + alias/stop (phase lives on TG block) ═══════ */}
           <div className="flex items-center flex-shrink-0 mb-1 gap-2">
             <div className="flex items-center flex-1 min-w-0 justify-start gap-1.5">
               <span className="text-[9px] font-mono text-stealth-muted/40 tracking-widest">
@@ -564,23 +564,6 @@ export default function FusionOverlay({
                     {formatTokenCount(ctxTotal)} total
                   </span>
                 </>
-              )}
-            </div>
-            <div className="flex items-center justify-center gap-2 flex-shrink-0">
-              {isPrefillPhase && (
-                <span className="text-[9px] font-mono font-bold tracking-widest text-orange-400">
-                  PROMPT PROCESSING
-                </span>
-              )}
-              {fusion.phase === "IDLE" && fusion.engine_state !== "ACTIVE" && (
-                <span className="text-[9px] font-mono font-bold tracking-widest text-stealth-muted/60">
-                  AWAITING REQUEST
-                </span>
-              )}
-              {fusion.phase === "TG" && (
-                <span className="text-[9px] font-mono font-bold tracking-widest text-nv-green">
-                  GENERATION
-                </span>
               )}
             </div>
             <div className="flex items-center gap-2 flex-1 min-w-0 justify-end">
@@ -652,8 +635,27 @@ export default function FusionOverlay({
                    </div>
                  )}
 
+                 {/* Phase + LIVE/AVG — left of TG hero figure (was centered in header) */}
                  <div className={`flex items-center gap-1.5 w-full mb-0.5 min-w-0 ${showPerSlotMeter ? "pr-14" : ""}`}>
-                   <span className="text-[7px] font-mono text-stealth-muted/40 tracking-wider flex-shrink-0">GENERATION</span>
+                   {isPrefillPhase ? (
+                     <span className="text-[7px] font-mono font-bold tracking-widest text-orange-400 flex-shrink-0">
+                       PROMPT PROCESSING
+                     </span>
+                   ) : fusion.phase === "IDLE" && fusion.engine_state !== "ACTIVE" ? (
+                     <span className="text-[7px] font-mono font-bold tracking-widest text-stealth-muted/60 flex-shrink-0">
+                       AWAITING REQUEST
+                     </span>
+                   ) : (
+                     <span
+                       className={`text-[7px] font-mono tracking-wider flex-shrink-0 ${
+                         fusion.phase === "TG"
+                           ? "font-bold text-nv-green tracking-widest"
+                           : "text-stealth-muted/40"
+                       }`}
+                     >
+                       GENERATION
+                     </span>
+                   )}
                    <button
                      type="button"
                      onClick={toggleHeroTpsMode}

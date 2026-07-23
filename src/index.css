@@ -4786,28 +4786,26 @@ html, body, #root {
   flex-shrink: 0;
 }
 
-/* ASSISTED / FULL AUTO — top-center of phosphor; reachable under fusion */
+/* ASSISTED / FULL AUTO — absolute on phosphor top edge (bezel touch); does not push content */
 .vram-badge-fit-launch-dock {
   position: absolute;
-  top: 0.35rem;
+  top: 0;
   left: 50%;
   transform: translateX(-50%);
   z-index: 60;
   pointer-events: auto;
+  line-height: 0;
 }
 
 .vram-badge-fit-launch-dock .segment-switch--fit-launch {
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  border-radius: 0 0 3px 3px; /* flush with bezel top */
 }
 
 .vram-badge-forecast[data-fusion-only="1"] {
   flex: 1 1 auto;
   min-height: 0;
-  padding-top: 1.75rem; /* room for fit-launch dock over fusion */
-}
-
-.vram-badge-forecast--fit-dock {
-  padding-top: 1.75rem; /* room for top-center ASSISTED/FULL AUTO dock */
+  /* no padding-top — dock overlays; fusion fills full height */
 }
 
 .vram-forecast-needs-row {
