@@ -4786,26 +4786,42 @@ html, body, #root {
   flex-shrink: 0;
 }
 
-/* ASSISTED / FULL AUTO — absolute on phosphor top edge (bezel touch); does not push content */
+/*
+ * ASSISTED / FULL AUTO — half on bezel frame, half over phosphor.
+ * Parent overflow must allow the dock to stick out (see :has rules below).
+ */
 .vram-badge-fit-launch-dock {
   position: absolute;
   top: 0;
   left: 50%;
-  transform: translateX(-50%);
+  /* -50% X center; -50% Y = half above phosphor into frame/bezel */
+  transform: translate(-50%, -50%);
   z-index: 60;
   pointer-events: auto;
   line-height: 0;
 }
 
 .vram-badge-fit-launch-dock .segment-switch--fit-launch {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
-  border-radius: 0 0 3px 3px; /* flush with bezel top */
+  box-shadow:
+    0 2px 10px rgba(0, 0, 0, 0.5),
+    0 0 0 1px color-mix(in srgb, var(--theme-bezel-edge-lo, #000) 35%, transparent);
+  border-radius: 3px;
+}
+
+/* Let the dock straddle phosphor → bezel without clipping */
+.vram-forecast-display:has(.vram-badge-fit-launch-dock),
+.vram-badge-forecast:has(.vram-badge-fit-launch-dock) {
+  overflow: visible;
+}
+
+.vram-forecast-display[data-fusion-height-managed]:has(.vram-badge-fit-launch-dock) {
+  /* fusion still fills; allow dock to paint into bezel */
+  overflow: visible;
 }
 
 .vram-badge-forecast[data-fusion-only="1"] {
   flex: 1 1 auto;
   min-height: 0;
-  /* no padding-top — dock overlays; fusion fills full height */
 }
 
 .vram-forecast-needs-row {
