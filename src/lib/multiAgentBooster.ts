@@ -107,11 +107,18 @@ export function parallelForCodingMode(mode: CodingModeId): number {
   return CODING_MODE_OPTIONS.find((o) => o.id === mode)?.parallel ?? 1;
 }
 
-/** Build Agents slider options from factory + user-added parallel values. */
+/**
+ * Build Agents slider options from a value list.
+ * Marks not in Solo…Army presets are treated as custom (Assisted user-added).
+ * Full Auto should pass factory values only; Assisted passes factory + userAdded.
+ */
 export function buildAgentOptions(
   parallelValues: (string | number)[] | undefined,
+  opts?: { markNonPresetAsCustom?: boolean },
 ): CodingModeOption[] {
+  const markCustom = opts?.markNonPresetAsCustom !== false;
   const nums = new Set<number>();
+  // Always include named presets so Solo…Army stay available
   for (const o of CODING_MODE_OPTIONS) nums.add(o.parallel);
   for (const v of parallelValues ?? []) {
     const n = typeof v === "number" ? v : parseInt(String(v), 10);
@@ -125,8 +132,8 @@ export function buildAgentOptions(
       id: `p:${parallel}`,
       label: `×${parallel}`,
       parallel,
-      blurb: `Custom parallel ${parallel} (from config values)`,
-      custom: !PRESET_PARALLEL.has(parallel),
+      blurb: `Parallel ${parallel}`,
+      custom: markCustom && !PRESET_PARALLEL.has(parallel),
     };
   });
 }
@@ -172,10 +179,16 @@ export function pickKvQuantForBrains(
   return strs[0] ?? want;
 }
 
-/** Build Memory slider options from factory + user-added kv_quant values. */
+/**
+ * Build Memory slider options from a value list.
+ * Full Auto should pass factory values only; Assisted passes factory + userAdded.
+ * Unknown values are custom-styled when markUnknownAsCustom is true (Assisted).
+ */
 export function buildMemoryOptions(
   kvQuantValues: (string | number)[] | undefined,
+  opts?: { markUnknownAsCustom?: boolean },
 ): BrainsOption[] {
+  const markCustom = opts?.markUnknownAsCustom !== false;
   const vals = (kvQuantValues ?? []).map(String).filter(Boolean);
   const list = vals.length > 0 ? vals : BRAINS_OPTIONS.map((o) => o.kvQuant);
   const seen = new Set<string>();
@@ -193,8 +206,8 @@ export function buildMemoryOptions(
       id: `kv:${v}`,
       label: v,
       kvQuant: v,
-      blurb: `Custom KV quant ${v}`,
-      custom: true,
+      blurb: `KV quant ${v}`,
+      custom: markCustom,
     });
   }
   // Prefer quality ladder order when possible
@@ -208,6 +221,93 @@ export function buildMemoryOptions(
     return a.kvQuant.localeCompare(b.kvQuant);
   });
   return out;
+}
+
+// ── Boost (spec type) display: 2-word naming, family above track ───────────
+
+export type BoostMarkColor = "green" | "violet";
+
+export interface BoostMarkParts {
+  /** Id for the slider (smart | off | mtp | dflash | raw:TYPE). */
+  id: string;
+  /** Word under the track (MTP, DFlash, mod, Eagle3, Smart…). */
+  label: string;
+  /** Family above track (draft / ngram) — empty for Off/Smart. */
+  aboveLabel?: string;
+  blurb: string;
+  badgeColor?: BoostMarkColor;
+  /** Sort: simple → complex; MTP/DFlash last. */
+  rank: number;
+}
+
+/**
+ * Parse factory / capability spec_type into cockpit 2-word marks.
+ * Above = family (draft | ngram); under = mode name.
+ */
+export function parseSpecTypeBoostMark(specType: string): BoostMarkParts {
+  const raw = String(specType).trim();
+  const s = raw.toLowerCase();
+
+  if (s === "draft-mtp" || s === "mtp") {
+    return {
+      id: "mtp",
+      label: "MTP",
+      aboveLabel: "draft",
+      blurb: "Built-in speculative tokens — one agent only",
+      badgeColor: "green",
+      rank: 90,
+    };
+  }
+  if (s === "draft-dflash" || s === "dflash") {
+    return {
+      id: "dflash",
+      label: "DFlash",
+      aboveLabel: "draft",
+      blurb: "External draft model — needs a draft GGUF in library",
+      badgeColor: "violet",
+      rank: 100,
+    };
+  }
+  if (s.startsWith("ngram")) {
+    const rest = s.replace(/^ngram[-_]?/, "") || "mod";
+    return {
+      id: `raw:${raw}`,
+      label: rest.length <= 8 ? rest : "mod",
+      aboveLabel: "ngram",
+      blurb: `N-gram speculative mode (${raw})`,
+      rank: 10,
+    };
+  }
+  if (s.startsWith("draft-")) {
+    const rest = raw.slice("draft-".length) || raw;
+    const pretty =
+      rest.toLowerCase() === "eagle3"
+        ? "Eagle3"
+        : rest.toLowerCase() === "simple"
+          ? "Simple"
+          : rest.charAt(0).toUpperCase() + rest.slice(1);
+    return {
+      id: `raw:${raw}`,
+      label: pretty,
+      aboveLabel: "draft",
+      blurb: `Speculative draft mode (${raw})`,
+      rank: rest.toLowerCase().includes("eagle") ? 40 : 30,
+    };
+  }
+  // Unknown factory value
+  return {
+    id: `raw:${raw}`,
+    label: raw.length > 10 ? raw.slice(0, 8) + "…" : raw,
+    aboveLabel: undefined,
+    blurb: `Spec type ${raw}`,
+    rank: 50,
+  };
+}
+
+/** Complexity order for Boost marks — simplest first, MTP then DFlash last. */
+export function compareBoostRank(a: BoostMarkParts, b: BoostMarkParts): number {
+  if (a.rank !== b.rank) return a.rank - b.rank;
+  return a.label.localeCompare(b.label);
 }
 
 /** Highest numeric chip ≤ maxHint (or top of list). */

@@ -979,33 +979,44 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
   // Do NOT write collapsedGroups LS from Full Auto — Assisted collapse state is user-owned.
 
+  /** Factory values only — Full Auto cockpit uses these (ignores user-added). */
+  const kvQuantFactoryValues = useMemo(() => {
+    const def = allParamsResolved.find((p) => p.key === "kv_quant");
+    const vals = def?.values?.length ? def.values : ["q4_0", "q8_0", "f16", "bf16"];
+    return vals;
+  }, [allParamsResolved]);
+
+  /** Assisted: factory + user-added custom values. */
   const kvQuantValues = useMemo(() => {
     const def = allParamsResolved.find((p) => p.key === "kv_quant");
-    if (!def) return ["q4_0", "q8_0", "f16", "bf16"];
     const seen = new Set<string>();
     const out: (string | number)[] = [];
-    for (const v of [...(def.values || []), ...(def.userAddedValues || [])]) {
+    for (const v of [...kvQuantFactoryValues, ...(def?.userAddedValues || [])]) {
       const s = String(v);
       if (seen.has(s)) continue;
       seen.add(s);
       out.push(v);
     }
-    return out.length > 0 ? out : ["q4_0", "q8_0", "f16", "bf16"];
+    return out;
+  }, [allParamsResolved, kvQuantFactoryValues]);
+
+  const parallelFactoryValues = useMemo(() => {
+    const def = allParamsResolved.find((p) => p.key === "parallel");
+    return def?.values?.length ? def.values : [1, 4, 8, 16, 32];
   }, [allParamsResolved]);
 
   const parallelValues = useMemo(() => {
     const def = allParamsResolved.find((p) => p.key === "parallel");
-    if (!def) return [1, 4, 8, 16, 32];
     const seen = new Set<string>();
     const out: (string | number)[] = [];
-    for (const v of [...(def.values || []), ...(def.userAddedValues || [])]) {
+    for (const v of [...parallelFactoryValues, ...(def?.userAddedValues || [])]) {
       const s = String(v);
       if (seen.has(s)) continue;
       seen.add(s);
       out.push(v);
     }
-    return out.length > 0 ? out : [1, 4, 8, 16, 32];
-  }, [allParamsResolved]);
+    return out;
+  }, [allParamsResolved, parallelFactoryValues]);
 
   /** SPEC knobs under Boost (exclude type + draft path — owned by cockpit Boost / draft strip). */
   const cockpitSpecDetailParams = useMemo((): CockpitSpecDetailParam[] => {
@@ -3209,13 +3220,13 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
               dflashGetOfferLabel={dflashGetOfferLabel}
               onGetDflashDraft={() => { void handleGetDflashDraft(); }}
               onChangeDflashDraft={handleChangeDflashDraft}
-              kvQuantValues={kvQuantValues}
-              parallelValues={parallelValues}
+              kvQuantValues={fullAutoFixed ? kvQuantFactoryValues : kvQuantValues}
+              parallelValues={fullAutoFixed ? parallelFactoryValues : parallelValues}
               port={Number(config.base_port) || 9090}
               modelId={aliasDisplayValue || autoAlias || model.name || "local-model"}
               layout={fullAutoFixed ? "hero" : powerCockpitMode ? "compact" : "normal"}
               powerMode={powerCockpitMode}
-              rawSpecTypes={powerCockpitMode ? factoryRawSpecTypes : undefined}
+              rawSpecTypes={factoryRawSpecTypes}
               activeRawSpecType={powerCockpitMode ? activeRawSpecForPower : null}
               onRawSpecType={
                 powerCockpitMode

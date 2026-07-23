@@ -2563,73 +2563,97 @@ html, body, #root {
   align-self: center;
 }
 
-/* Contextual SPEC knobs under Boost */
-.full-auto-cockpit__spec-details {
-  margin-top: 0.15rem;
-  padding: 0.35rem 0.45rem;
-  border-radius: 3px;
-  border: 1px solid color-mix(in srgb, var(--theme-border, #1a2e1a) 50%, transparent);
-  background: color-mix(in srgb, #000000 12%, transparent);
+/* SPEC-EXTRA — inline in violet draft strip (Assisted only) */
+.full-auto-cockpit__dflash-get--spec-extra {
+  max-width: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem 0.55rem;
 }
 
-.full-auto-cockpit__spec-details-toggle {
-  display: inline-flex;
+.full-auto-cockpit__spec-extra {
+  display: flex;
   align-items: center;
   gap: 0.4rem;
-  font-size: 8px;
-  color: color-mix(in srgb, var(--theme-industrial-muted, #4ade80) 80%, transparent);
-  padding: 0.15rem 0.2rem;
+  min-width: 0;
+  flex: 1 1 12rem;
 }
 
-.full-auto-cockpit__spec-details-toggle:hover {
-  color: var(--theme-accent-bright, #4ade80);
-}
-
-.full-auto-cockpit__spec-details-count {
+.full-auto-cockpit__spec-extra-title {
   font-size: 7px;
-  opacity: 0.55;
-  border: 1px solid color-mix(in srgb, var(--theme-border, #1a2e1a) 60%, transparent);
-  border-radius: 2px;
-  padding: 0 0.3rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, #c4b5fd 85%, #fff 15%);
+  opacity: 0.9;
+  white-space: nowrap;
 }
 
-.full-auto-cockpit__spec-details-body {
-  margin-top: 0.4rem;
-  padding-top: 0.35rem;
-  border-top: 1px solid color-mix(in srgb, var(--theme-border, #1a2e1a) 40%, transparent);
+.full-auto-cockpit__spec-extra-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.35rem;
+  min-width: 0;
 }
 
-.full-auto-cockpit__spec-detail-label {
-  width: 5.5rem;
-  font-size: 8px;
+.full-auto-cockpit__spec-extra-sep {
+  color: color-mix(in srgb, #a78bfa 55%, transparent);
+  font-size: 9px;
+  padding: 0 0.15rem;
+  user-select: none;
+}
+
+.full-auto-cockpit__spec-extra-sep--block {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  padding: 0 0.1rem;
+}
+
+.full-auto-cockpit__spec-extra-key {
+  font-size: 7px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: color-mix(in srgb, var(--theme-industrial-muted, #4ade80) 55%, transparent);
-  padding-top: 0.2rem;
+  color: color-mix(in srgb, #ddd6fe 70%, transparent);
+  white-space: nowrap;
 }
 
-.full-auto-cockpit__spec-detail-label--custom {
-  color: color-mix(in srgb, #fbbf24 70%, var(--theme-industrial-muted, #4ade80) 30%);
+.full-auto-cockpit__spec-extra-key--custom {
+  color: #fcd34d;
   font-style: italic;
 }
 
 .full-auto-cockpit__spec-chip {
   font-size: 8px;
-  padding: 0.15rem 0.4rem;
+  padding: 0.12rem 0.35rem;
   border-radius: 2px;
-  border: 1px solid color-mix(in srgb, var(--theme-chip-border, rgba(74, 222, 128, 0.15)) 90%, transparent);
-  color: var(--theme-chip-text, var(--theme-industrial-muted, #4ade80));
-  background: transparent;
+  border: 1px solid color-mix(in srgb, #a78bfa 40%, transparent);
+  color: #ddd6fe;
+  background: color-mix(in srgb, #0a0612 70%, #a78bfa 8%);
 }
 
 .full-auto-cockpit__spec-chip:hover {
-  border-color: var(--theme-chip-hover-border, rgba(74, 222, 128, 0.35));
+  border-color: color-mix(in srgb, #a78bfa 70%, transparent);
 }
 
 .full-auto-cockpit__spec-chip--active {
-  border-color: var(--theme-chip-active-border, rgba(74, 222, 128, 0.45));
-  background: var(--theme-chip-active-bg, rgba(74, 222, 128, 0.12));
-  color: var(--theme-chip-hover-text, var(--theme-accent-bright, #4ade80));
+  border-color: #a78bfa;
+  background: color-mix(in srgb, #a78bfa 22%, #0a0612 78%);
+  color: #ede9fe;
+}
+
+/* Param catalog modal — solid panel (engine panel is outside [data-config-page]) */
+.param-catalog-modal.config-form-panel,
+.param-catalog-modal {
+  background: var(--theme-panel, #0b120b);
+  border: 1px solid var(--theme-border-subtle, color-mix(in srgb, #4ade80 18%, transparent));
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
+}
+
+[data-theme="arctic"] .param-catalog-modal.config-form-panel,
+[data-theme="arctic"] .param-catalog-modal {
+  background: #f4f7fa;
+  border-color: color-mix(in srgb, #3a4a58 22%, transparent);
 }
 
 /* Assisted Full — denser body padding */
@@ -3743,6 +3767,14 @@ html, body, #root {
   opacity: 0.72;
 }
 
+.cockpit-slider-mark--tint.cockpit-slider-mark--green {
+  opacity: 0.75;
+}
+
+.cockpit-slider-mark--tint.cockpit-slider-mark--violet {
+  opacity: 0.75;
+}
+
 .cockpit-slider-mark--green {
   background: var(--cockpit-mtp, #4ade80);
   box-shadow: 0 0 5px var(--cockpit-mtp-dim, color-mix(in srgb, #4ade80 45%, transparent));
@@ -3753,6 +3785,15 @@ html, body, #root {
 }
 
 /* Status above mark (draft ready / downloadable / built-in) */
+/* Family word above track (draft / ngram) — tint with mark color when selected */
+.cockpit-slider-above-label--green {
+  color: var(--cockpit-mtp, #4ade80);
+}
+
+.cockpit-slider-above-label--violet {
+  color: var(--cockpit-dflash, #a78bfa);
+}
+
 .cockpit-slider-above-label {
   font-size: 6px;
   letter-spacing: 0.04em;

@@ -2,13 +2,15 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { SpecCapability } from "../lib/specDraft";
 import {
   BRAINS_OPTIONS,
-  SPEED_BOOST_OPTIONS,
   THINK_OPTIONS,
   buildAgentOptions,
   buildHarnessSnippets,
   buildMemoryOptions,
+  compareBoostRank,
   parallelForCodingMode,
+  parseSpecTypeBoostMark,
   resolveFullAutoPlan,
+  type BoostMarkParts,
   type BrainsId,
   type CodingModeId,
   type SpeedBoostId,
@@ -90,14 +92,11 @@ export interface MultiAgentBoosterProps {
   ctxSlotCount?: number;
 }
 
-function specTypeShortLabel(specType: string): string {
-  const s = specType.trim().toLowerCase();
-  if (s === "draft-mtp" || s === "mtp") return "MTP";
-  if (s === "draft-dflash" || s === "dflash") return "DFlash";
-  if (s === "draft-eagle3" || s === "eagle3") return "Eagle3";
-  if (s.startsWith("draft-")) return s.slice("draft-".length).toUpperCase();
-  if (s.startsWith("ngram")) return "Ngram";
-  return specType;
+function boostHeaderLabel(parts: {
+  aboveLabel?: string;
+  label: string;
+}): string {
+  return parts.aboveLabel ? `${parts.aboveLabel} ${parts.label}` : parts.label;
 }
 
 export default function MultiAgentBooster({
@@ -139,18 +138,24 @@ export default function MultiAgentBooster({
 }: MultiAgentBoosterProps) {
   const [harnessOpen, setHarnessOpen] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [specDetailsOpen, setSpecDetailsOpen] = useState(false);
   const hero = layout === "hero";
   const compact = layout === "compact";
   const showCtxRail = hero && onCtxChange != null && (ctxValues?.length ?? 0) > 0;
+  /** SPEC-EXTRA — Assisted Full only (hidden Full Auto + Essentials). */
+  const showSpecExtra = powerMode;
+  /**
+   * Full Auto (hero): parent passes factory-only values.
+   * Assisted: factory + user-added; unknown marks styled as custom.
+   */
+  const markCustomValues = !hero;
 
   const memoryOptions = useMemo(
-    () => buildMemoryOptions(kvQuantValues),
-    [kvQuantValues],
+    () => buildMemoryOptions(kvQuantValues, { markUnknownAsCustom: markCustomValues }),
+    [kvQuantValues, markCustomValues],
   );
   const agentOptions = useMemo(
-    () => buildAgentOptions(parallelValues),
-    [parallelValues],
+    () => buildAgentOptions(parallelValues, { markNonPresetAsCustom: markCustomValues }),
+    [parallelValues, markCustomValues],
   );
 
   const plan = useMemo(
@@ -216,21 +221,88 @@ export default function MultiAgentBooster({
   /** MTP forces Solo — multi-agent marks stay visible but locked. */
   const mtpLocksAgents = displayBoost === "mtp";
 
-  const extraRawTypes = useMemo(() => {
+  /**
+   * Boost marks: 2-word naming (family above track, mode under).
+   * Order simple → complex; MTP then DFlash always last.
+   */
+  const boostMarks = useMemo((): BoostMarkParts[] => {
+    const marks: BoostMarkParts[] = [];
+    if (powerMode) {
+      marks.push({
+        id: "off",
+        label: "Off",
+        blurb: "Speculative decoding off — raw batch/ubatch in chips",
+        rank: 0,
+      });
+    } else {
+      marks.push({
+        id: "smart",
+        label: "Smart",
+        blurb: "Push batch sizes for faster prefill when VRAM allows",
+        rank: 0,
+      });
+    }
+
     const skip = new Set(["draft-mtp", "draft-dflash", "mtp", "dflash", "off", "none", ""]);
-    return rawSpecTypes
-      .map((s) => String(s).trim())
-      .filter((s) => s && !skip.has(s.toLowerCase()));
-  }, [rawSpecTypes]);
+    for (const t of rawSpecTypes) {
+      const s = String(t).trim();
+      if (!s || skip.has(s.toLowerCase())) continue;
+      marks.push(parseSpecTypeBoostMark(s));
+    }
+
+    if (mtpAvailable || !powerMode) {
+      const m = parseSpecTypeBoostMark("draft-mtp");
+      m.blurb = mtpAvailable
+        ? m.blurb
+        : "MTP not available for this model";
+      marks.push(m);
+    }
+    if (dflashAvailable || !powerMode) {
+      const m = parseSpecTypeBoostMark("draft-dflash");
+      m.blurb = dflashAvailable
+        ? dflashLibraryReady
+          ? dflashDraftLabel
+            ? `Draft ready: ${dflashDraftLabel}`
+            : "Draft ready in library"
+          : dflashGettable
+            ? "Draft downloadable — Get draft to confirm"
+            : m.blurb
+        : "DFlash not available for this model";
+      marks.push(m);
+    }
+
+    // Dedupe by id, keep first (then re-sort)
+    const byId = new Map<string, BoostMarkParts>();
+    for (const m of marks) {
+      if (!byId.has(m.id)) byId.set(m.id, m);
+    }
+    return [...byId.values()].sort(compareBoostRank);
+  }, [
+    powerMode,
+    rawSpecTypes,
+    mtpAvailable,
+    dflashAvailable,
+    dflashLibraryReady,
+    dflashGettable,
+    dflashDraftLabel,
+  ]);
 
   const powerBoostValue = useMemo(() => {
     if (!powerMode) return displayBoost;
     if (displayBoost === "mtp" || displayBoost === "dflash" || displayBoost === "off") {
       return displayBoost;
     }
-    if (activeRawSpecType) return `raw:${activeRawSpecType}`;
+    if (activeRawSpecType) {
+      const m = parseSpecTypeBoostMark(activeRawSpecType);
+      return m.id;
+    }
     return "off";
   }, [powerMode, displayBoost, activeRawSpecType]);
+
+  const activeBoostMark = useMemo(() => {
+    const id = powerMode ? powerBoostValue : displayBoost;
+    return boostMarks.find((m) => m.id === id);
+  }, [powerMode, powerBoostValue, displayBoost, boostMarks]);
 
   const snippets = useMemo(
     () =>
@@ -252,8 +324,13 @@ export default function MultiAgentBooster({
     }
   }, []);
 
-  const draftStrip = showDflashGet || showDflashChange ? (
-    <div className="full-auto-cockpit__dflash-get full-auto-cockpit__dflash-get--footer font-mono min-w-0 flex-1">
+  const showDraftStrip = showDflashGet || showDflashChange;
+  /** Assisted: violet strip for draft and/or SPEC-EXTRA. Full Auto: draft only (no SPEC-EXTRA). */
+  const showVioletStrip =
+    showDraftStrip || (showSpecExtra && specDetailParams.length > 0);
+
+  const draftStripInner = showDraftStrip ? (
+    <>
       <div className="full-auto-cockpit__dflash-get-main min-w-0 flex-1">
         {showDflashGet ? (
           <>
@@ -319,6 +396,58 @@ export default function MultiAgentBooster({
           </button>
         ) : null}
       </div>
+    </>
+  ) : null;
+
+  /** SPEC-EXTRA: one inline row of n_max / n_min / extras (Assisted only). */
+  const specExtraInline =
+    showSpecExtra && specDetailParams.length > 0 ? (
+      <div className="full-auto-cockpit__spec-extra font-mono min-w-0 flex-1">
+        <span className="full-auto-cockpit__spec-extra-title shrink-0">SPEC-EXTRA</span>
+        <div className="full-auto-cockpit__spec-extra-row min-w-0">
+          {specDetailParams.map((p, i) => (
+            <div key={p.key} className="full-auto-cockpit__spec-extra-param inline-flex items-center gap-1 min-w-0">
+              {i > 0 ? <span className="full-auto-cockpit__spec-extra-sep" aria-hidden>|</span> : null}
+              <span
+                className={`full-auto-cockpit__spec-extra-key shrink-0${
+                  p.userAdded ? " full-auto-cockpit__spec-extra-key--custom" : ""
+                }`}
+                title={p.key}
+              >
+                {p.label}
+              </span>
+              <div className="inline-flex flex-wrap gap-0.5">
+                {p.values.map((val) => {
+                  const selected = String(p.current) === String(val);
+                  return (
+                    <button
+                      key={`${p.key}-${String(val)}`}
+                      type="button"
+                      onClick={() => p.onChange(val)}
+                      className={`full-auto-cockpit__spec-chip font-mono${
+                        selected ? " full-auto-cockpit__spec-chip--active" : ""
+                      }`}
+                    >
+                      {String(val)}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    ) : null;
+
+  const violetStrip = showVioletStrip ? (
+    <div className="full-auto-cockpit__dflash-get full-auto-cockpit__dflash-get--footer full-auto-cockpit__dflash-get--spec-extra font-mono min-w-0 flex-1">
+      {draftStripInner}
+      {draftStripInner && specExtraInline ? (
+        <span className="full-auto-cockpit__spec-extra-sep full-auto-cockpit__spec-extra-sep--block" aria-hidden>
+          |
+        </span>
+      ) : null}
+      {specExtraInline}
     </div>
   ) : null;
 
@@ -347,8 +476,9 @@ export default function MultiAgentBooster({
             <span
               className={`full-auto-cockpit__boost-seg full-auto-cockpit__boost-seg--${plan.boostTone}`}
             >
-              Boost {activeRawSpecType && powerMode && displayBoost !== "mtp" && displayBoost !== "dflash"
-                ? specTypeShortLabel(activeRawSpecType)
+              Boost{" "}
+              {activeBoostMark
+                ? boostHeaderLabel(activeBoostMark)
                 : plan.boostLabel}
             </span>
             <span className="full-auto-cockpit__status-sep"> · </span>
@@ -472,91 +602,27 @@ export default function MultiAgentBooster({
                 }
                 onSpeedBoost(id as SpeedBoostId);
               }}
-              options={
-                powerMode
-                  ? [
-                      {
-                        id: "off",
-                        label: "Off",
-                        blurb: "Speculative decoding off — set raw batch/ubatch in chips",
-                      },
-                      {
-                        id: "mtp",
-                        label: "MTP",
-                        blurb: mtpAvailable
-                          ? "Built-in speculative tokens — one agent only"
-                          : "MTP not available for this model",
-                        disabled: !mtpAvailable,
-                        badgeColor: "green" as const,
-                        emphasize: mtpAvailable,
-                        aboveLabel: mtpAvailable ? "built-in" : undefined,
-                      },
-                      {
-                        id: "dflash",
-                        label: "DFlash",
-                        blurb: dflashAvailable
-                          ? dflashLibraryReady
-                            ? dflashDraftLabel
-                              ? `Draft ready: ${dflashDraftLabel}`
-                              : "Draft ready in library"
-                            : "Draft downloadable — Get draft to confirm"
-                          : "DFlash not available for this model",
-                        disabled: !dflashAvailable,
-                        badgeColor: "violet" as const,
-                        emphasize: dflashAvailable,
-                        aboveLabel: dflashLibraryReady
-                          ? "draft ready"
-                          : dflashGettable
-                            ? "downloadable"
-                            : undefined,
-                      },
-                      ...extraRawTypes.map((t) => ({
-                        id: `raw:${t}`,
-                        label: specTypeShortLabel(t),
-                        blurb: `Factory spec type: ${t}`,
-                      })),
-                    ]
-                  : SPEED_BOOST_OPTIONS.filter((o) => o.id !== "off").map((o) => {
-                      const mtpMissing = o.id === "mtp" && !mtpAvailable;
-                      const dflashMissing = o.id === "dflash" && !dflashAvailable;
-                      const needCap = mtpMissing || dflashMissing;
-                      const available =
-                        (o.id === "mtp" && mtpAvailable) ||
-                        (o.id === "dflash" && dflashAvailable) ||
-                        o.id === "smart";
-                      let blurb = o.blurb;
-                      let aboveLabel: string | undefined;
-                      if (o.id === "dflash") {
-                        if (dflashLibraryReady) {
-                          aboveLabel = "draft ready";
-                          blurb = dflashDraftLabel
-                            ? `Draft ready: ${dflashDraftLabel} — change if wrong`
-                            : "Draft ready in library";
-                        } else if (dflashGettable) {
-                          aboveLabel = "downloadable";
-                          blurb = "Draft downloadable from HF — Get draft to confirm";
-                        } else if (needCap) {
-                          blurb = "DFlash not available for this model";
-                        }
-                      } else if (o.id === "mtp") {
-                        if (mtpAvailable) {
-                          aboveLabel = "built-in";
-                        } else if (needCap) {
-                          blurb = "MTP not available for this model";
-                        }
-                      }
-                      return {
-                        id: o.id,
-                        label: o.label,
-                        blurb,
-                        disabled: needCap,
-                        badgeColor:
-                          o.id === "mtp" ? ("green" as const) : o.id === "dflash" ? ("violet" as const) : undefined,
-                        emphasize: available && !needCap && (o.id === "mtp" || o.id === "dflash"),
-                        aboveLabel,
-                      };
-                    })
-              }
+              options={boostMarks.map((m) => {
+                const mtpMissing = m.id === "mtp" && !mtpAvailable;
+                const dflashMissing = m.id === "dflash" && !dflashAvailable;
+                const needCap = mtpMissing || dflashMissing;
+                const available =
+                  m.id === "smart" ||
+                  m.id === "off" ||
+                  (m.id === "mtp" && mtpAvailable) ||
+                  (m.id === "dflash" && dflashAvailable) ||
+                  m.id.startsWith("raw:");
+                return {
+                  id: m.id,
+                  label: m.label,
+                  aboveLabel: m.aboveLabel,
+                  blurb: m.blurb,
+                  disabled: needCap,
+                  badgeColor: m.badgeColor,
+                  // Keep MTP green / DFlash violet even when not selected
+                  emphasize: Boolean(m.badgeColor) && available && !needCap,
+                };
+              })}
             />
           </div>
           <div className="full-auto-cockpit__grid-cell">
@@ -573,58 +639,6 @@ export default function MultiAgentBooster({
           </div>
         </div>
 
-        {/* Contextual SPEC knobs (n_max / n_min / extras) — under Boost, on demand */}
-        {specDetailParams.length > 0 && (
-          <div className="full-auto-cockpit__spec-details">
-            <button
-              type="button"
-              className="full-auto-cockpit__spec-details-toggle font-mono tracking-wider uppercase"
-              onClick={() => setSpecDetailsOpen((v) => !v)}
-              aria-expanded={specDetailsOpen}
-            >
-              {specDetailsOpen ? "▾ Spec details" : "▸ Spec details"}
-              <span className="full-auto-cockpit__spec-details-count">
-                {specDetailParams.length}
-              </span>
-            </button>
-            {specDetailsOpen && (
-              <div className="full-auto-cockpit__spec-details-body space-y-2">
-                {specDetailParams.map((p) => (
-                  <div
-                    key={p.key}
-                    className="full-auto-cockpit__spec-detail-row flex items-start gap-2 min-w-0"
-                  >
-                    <span
-                      className={`full-auto-cockpit__spec-detail-label font-mono shrink-0${
-                        p.userAdded ? " full-auto-cockpit__spec-detail-label--custom" : ""
-                      }`}
-                      title={p.key}
-                    >
-                      {p.label}
-                    </span>
-                    <div className="flex flex-wrap gap-1 min-w-0 flex-1">
-                      {p.values.map((val) => {
-                        const selected = String(p.current) === String(val);
-                        return (
-                          <button
-                            key={`${p.key}-${String(val)}`}
-                            type="button"
-                            onClick={() => p.onChange(val)}
-                            className={`full-auto-cockpit__spec-chip font-mono${
-                              selected ? " full-auto-cockpit__spec-chip--active" : ""
-                            }`}
-                          >
-                            {String(val)}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
       </div>
 
       {harnessOpen && (
@@ -653,9 +667,9 @@ export default function MultiAgentBooster({
         </div>
       )}
 
-      {/* Footer: draft strip + Connect on one row (saves vertical space) */}
+      {/* Footer: violet draft + SPEC-EXTRA (Assisted) + Connect */}
       <div className="full-auto-cockpit__footer full-auto-cockpit__footer--actions">
-        {draftStrip}
+        {violetStrip}
         <button
           type="button"
           onClick={() => setHarnessOpen((v) => !v)}

@@ -246,10 +246,14 @@ export default function CockpitSlider({
                   aria-hidden
                   className={`cockpit-slider-mark absolute left-1/2 -translate-x-1/2 block w-[3px] rounded-sm transition-colors ${
                     isSelected ? "cockpit-slider-mark--selected" : ""
-                  }${emphasize && isSelected && opt.badgeColor ? ` cockpit-slider-mark--${opt.badgeColor}` : ""}`}
+                  }${
+                    emphasize && opt.badgeColor
+                      ? ` cockpit-slider-mark--${opt.badgeColor}${isSelected ? "" : " cockpit-slider-mark--tint"}`
+                      : ""
+                  }`}
                   style={{ top: `${trackTop}px`, height: `${TRACK_HEIGHT}px` }}
                 />
-                {/* Label below mark — always visible; accent only when available */}
+                {/* Label below mark — MTP green / DFlash violet when capable */}
                 <span
                   className={`cockpit-slider-mark-label absolute left-1/2 -translate-x-1/2 text-center font-mono whitespace-nowrap ${
                     isSelected ? "cockpit-slider-mark-label--selected" : ""
