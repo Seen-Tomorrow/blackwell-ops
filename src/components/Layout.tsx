@@ -66,8 +66,6 @@ const tabs: { id: Tab; label: string; icon: string; hidden?: boolean }[] = [
   { id: "modelhub", label: "MODEL HUB", icon: "\u2B21" },
   { id: "extras", label: "EXTRAS", icon: "\u2726" },
   { id: "config", label: "CONFIG", icon: "\u2699" },
-  { id: "reactor11", label: "Reactor11", icon: "\u269B", hidden: true },
-  { id: "sentinel", label: "SENTINEL", icon: "\u2694", hidden: true },
 ];
 
 export default function Layout({ activeTab, onTabChange, children, providers = [], updateOfferings, onRefreshUpdateOfferings, hasBinaryUpdates }: LayoutProps) {

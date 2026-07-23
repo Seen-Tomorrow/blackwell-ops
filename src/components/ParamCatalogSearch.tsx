@@ -211,7 +211,7 @@ export default function ParamCatalogSearch({
                     </span>
                   ) : status === "system" ? (
                     <span
-                      className="text-[8px] font-mono px-2 py-1 rounded-sm tracking-wider border border-electric-blue/35 text-electric-blue/80"
+                      className="text-[8px] font-mono px-2 py-1 rounded-sm tracking-wider border border-theme-accent/35 text-theme-accent/80"
                       title="SYSTEM / cockpit chrome — not addable"
                     >
                       SYSTEM

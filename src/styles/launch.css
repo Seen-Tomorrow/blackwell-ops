@@ -1,0 +1,1660 @@
+/* ── Launch / ignite — all themes via --theme-launch-* tokens (see app-themes.ts) ─── */
+.ignite-btn,
+[data-config-panel] .config-launch-btn {
+  background: var(--theme-launch-bg);
+  border: 1px solid var(--theme-launch-border);
+  color: var(--theme-launch-text);
+  box-shadow: var(--theme-launch-shadow, none);
+  text-transform: uppercase;
+  font-weight: 600;
+  position: relative;
+  transition: border-color 0.12s ease, background-color 0.12s ease, color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.ignite-btn:hover:not(:disabled),
+[data-config-panel] .config-launch-btn:hover:not(:disabled) {
+  background: var(--theme-launch-hover-bg);
+  border-color: var(--theme-launch-hover-border);
+  color: var(--theme-launch-hover-text);
+  box-shadow: var(--theme-launch-hover-shadow, var(--theme-launch-shadow, none));
+}
+
+.ignite-btn:active:not(:disabled),
+[data-config-panel] .config-launch-btn:active:not(:disabled) {
+  background: var(--theme-launch-active-bg);
+  border-color: var(--theme-launch-active-border);
+  color: var(--theme-launch-active-text);
+  box-shadow: var(--theme-launch-active-shadow, none);
+}
+
+@keyframes launchAckPulse {
+  0%, 100% {
+    border-color: var(--theme-launch-border);
+    background-color: var(--theme-launch-bg);
+    color: var(--theme-launch-text);
+  }
+  40% {
+    border-color: var(--theme-launch-hover-border);
+    background-color: var(--theme-launch-hover-bg);
+    color: var(--theme-launch-hover-text);
+  }
+}
+
+.ignite-btn.launch-ack {
+  animation: launchAckPulse 0.14s ease-out;
+}
+
+/* Provider pill button — themed amber/secondary */
+.provider-pill {
+  background: var(--theme-provider-pill-bg) !important;
+  border: 1px solid var(--theme-provider-pill-border);
+  color: var(--theme-provider-pill-text);
+  transition: all 0.3s ease;
+}
+
+.provider-pill:hover {
+  border-color: var(--theme-provider-pill-hover-border);
+  color: var(--theme-provider-pill-hover-text);
+}
+
+.provider-pill-active {
+  background: var(--theme-provider-pill-active-bg) !important;
+  border-color: var(--theme-provider-pill-active-border);
+  color: var(--theme-provider-pill-active-text);
+  font-weight: 600;
+  box-shadow: 0 0 6px color-mix(in srgb, var(--theme-provider-pill-active-bg) 40%, transparent);
+}
+
+/* Value chip */
+.value-chip {
+  background: var(--theme-chip-bg);
+  border: 1px solid var(--theme-chip-border);
+  color: var(--theme-chip-text);
+  transition: all 0.2s ease;
+}
+
+.value-chip:hover {
+  border-color: var(--theme-chip-hover-border);
+  color: var(--theme-chip-hover-text);
+}
+
+.value-chip-active {
+  background: var(--theme-chip-active-bg) !important;
+  border-color: var(--theme-chip-active-border);
+  color: var(--theme-chip-active-text);
+}
+
+[data-config-panel] input.value-chip,
+[data-config-panel] input.value-chip-active {
+  outline: none;
+  min-width: 0;
+  line-height: 1.35;
+}
+
+/* ENGINE LOGS — per-slot search highlight */
+.log-search-hit {
+  background: rgba(255, 184, 0, 0.35);
+  color: #ffd966;
+  border-radius: 1px;
+  padding: 0 1px;
+  box-shadow: 0 0 6px rgba(255, 184, 0, 0.25);
+}
+
+
+.log-search-hit--current {
+  outline: 1px solid rgba(255, 220, 120, 0.9);
+  outline-offset: 1px;
+}
+
+/* Section divider with glow */
+.section-divider {
+  border-color: rgba(26, 46, 26, 0.5);
+  position: relative;
+}
+
+.section-divider::after {
+  content: '';
+  position: absolute;
+  top: -1px;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--theme-accent-glow), transparent);
+}
+
+/* ── Launch dock layout — bottom bar vs right rail ─── */
+.config-panel-body {
+  min-width: 0;
+}
+
+.config-panel-body--split {
+  flex-direction: row;
+  align-items: stretch;
+}
+
+.config-panel-body--stacked {
+  flex-direction: column;
+}
+
+.config-panel-center-stack {
+  min-width: 0;
+}
+
+.config-rail-workspace {
+  min-width: 0;
+}
+
+[data-config-panel][data-launch-dock-position="bottom"] .config-rail-workspace {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+[data-config-panel][data-launch-dock-position="bottom"] .config-rail-left {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+}
+
+[data-config-panel][data-launch-dock-position="right"] .config-rail-workspace,
+[data-config-panel][data-hw-monitor-open="true"] .config-rail-workspace {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  min-height: 0;
+}
+
+[data-config-panel][data-launch-dock-position="right"] .config-rail-left,
+[data-config-panel][data-hw-monitor-open="true"] .config-rail-left {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+[data-config-panel][data-launch-dock-position="right"] .config-rail-main-column {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* VRAM bezel must stack above eject tuck (-10px margin) — was right-rail only; bottom dock needs it too */
+[data-config-panel] .industrial-display-frame {
+  position: relative;
+  z-index: 4;
+}
+
+.config-panel-main {
+  min-width: 0;
+}
+
+.config-panel-center {
+  min-width: 0;
+}
+
+.config-panel-toolbar {
+  background: var(--theme-panel-accent);
+}
+
+[data-config-panel] .config-panel-toolbar {
+  padding-top: calc(0.125rem + 2px);
+}
+
+[data-config-panel] .config-panel-toolbar-chip {
+  border: 1px solid color-mix(in srgb, var(--theme-border) 40%, transparent);
+  color: color-mix(in srgb, var(--theme-text-muted) 45%, transparent);
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+[data-config-panel] .config-panel-toolbar-chip:hover:not(.config-panel-toolbar-chip--active) {
+  color: var(--theme-text-muted);
+}
+
+[data-config-panel] .config-panel-toolbar-chip--active {
+  border-color: color-mix(in srgb, var(--theme-accent) 45%, var(--theme-border)) !important;
+  color: color-mix(in srgb, var(--theme-accent-bright) 90%, var(--theme-text)) !important;
+  background: var(--theme-accent-soft) !important;
+}
+
+[data-config-panel] .config-panel-toolbar-chip--muted:not(.config-panel-toolbar-chip--active) {
+  opacity: 0.5;
+}
+
+.config-panel-toolbar__label {
+  font-size: 7px;
+  font-family: ui-monospace, monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--theme-text-muted) 45%, transparent);
+  flex-shrink: 0;
+}
+
+.config-panel-toolbar__chrome {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.config-panel-toolbar__sep {
+  align-self: stretch;
+  width: 1px;
+  min-height: 1.1rem;
+  margin: 0 2px;
+  background: color-mix(in srgb, var(--theme-border-subtle) 70%, transparent);
+  flex-shrink: 0;
+}
+
+.config-launch-rail {
+  position: relative;
+  z-index: 1;
+  isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-left: 1.5px solid var(--theme-bezel-edge-hi);
+  box-shadow:
+    -2px 0 6px color-mix(in srgb, #000000 24%, transparent),
+    -8px 0 20px color-mix(in srgb, #000000 12%, transparent);
+  background-color: var(--theme-industrial-bg);
+  background-image: var(--theme-industrial-texture-active);
+}
+
+.launch-rail-upper-pad,
+.launch-rail-align-pad,
+.launch-rail-lower-fill {
+  flex-shrink: 0;
+  min-width: 0;
+  pointer-events: none;
+}
+
+.launch-rail-lower-fill {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.launch-rail-body {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+}
+
+/* ARCTIC — full-height launch rail matches catalog aluminium panel */
+
+.launch-rail-telemetry {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+}
+
+.launch-rail-launch {
+  flex-shrink: 0;
+  margin-top: auto;
+  min-width: 0;
+  /* Visual break above pinned launch when HW monitor / rail stacks above */
+  border-top: 1.5px solid color-mix(in srgb, var(--theme-bezel-edge-hi) 70%, transparent);
+  box-shadow:
+    0 -3px 10px color-mix(in srgb, #000000 28%, transparent),
+    0 -1px 0 color-mix(in srgb, var(--theme-bezel-edge-lo) 40%, transparent);
+  padding-top: 2px;
+  position: relative;
+  z-index: 2;
+}
+
+
+.config-launch-rail--hw-only {
+  display: flex;
+  flex-direction: column;
+}
+
+.config-launch-rail--hw-only .launch-rail-body {
+  flex: 1 1 auto;
+}
+
+.config-launch-rail--hw-only .launch-rail-telemetry {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+[data-config-panel][data-launch-dock-position="right"] .config-launch-rail .config-launch-dock {
+  border-top: none; /* separator lives on .launch-rail-launch */
+  border-left: none;
+  box-shadow: none;
+  background: transparent;
+  flex: 0 0 auto;
+  min-height: 0;
+  z-index: 1;
+  padding-top: 0.45rem;
+  padding-bottom: calc(var(--config-launch-dock-pad) + var(--app-footer-h));
+}
+
+[data-config-panel][data-launch-dock-position="right"] .config-launch-rail .config-launch-dock::before {
+  display: none;
+}
+
+[data-config-panel][data-launch-dock-position="right"] .config-launch-dock__grid--rail {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  min-height: 0;
+}
+
+[data-config-panel][data-launch-dock-position="right"] .config-launch-dock__meta {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+
+[data-config-panel][data-launch-dock-position="right"] .config-launch-dock__port [data-param-row] {
+  flex-wrap: wrap;
+}
+
+[data-config-panel][data-launch-dock-position="right"] .config-launch-dock__rail-flags {
+  display: flex;
+  flex-direction: column;
+  max-height: 10rem;
+  min-height: 0;
+}
+
+[data-config-panel][data-launch-dock-position="right"] .config-launch-dock__rail-flags .custom-flags-anchor {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+[data-config-panel][data-launch-dock-position="right"] .config-launch-dock__rail-flags .custom-flags-block {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+[data-config-panel][data-launch-dock-position="right"] .config-launch-dock__rail-flags .custom-flags-body {
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+
+[data-config-panel][data-launch-dock-position="right"] .config-launch-dock__rail-flags .custom-flags-input {
+  width: 100%;
+  min-height: 22px;
+  height: auto;
+}
+
+[data-config-panel][data-launch-dock-position="right"] .config-launch-dock__rail-flags .custom-flags-body > .flex.items-center {
+  width: 100%;
+  margin-left: 0 !important;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 4px;
+}
+
+[data-config-panel][data-launch-dock-position="right"] .config-launch-dock__rail-flags .custom-flags-block .mode-btn-add,
+[data-config-panel][data-launch-dock-position="right"] .config-launch-dock__rail-flags .custom-flags-block .mode-btn-replace,
+[data-config-panel][data-launch-dock-position="right"] .config-launch-dock__rail-flags .custom-flags-block .mode-btn-off {
+  white-space: normal;
+  text-align: center;
+  line-height: 1.15;
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+
+/* ── Launch rail — HW telemetry HUD ─── */
+.launch-rail-tel {
+  --tel-vram: var(--theme-accent-bright, #76b900);
+  --tel-ram: #4da3ff;
+  --tel-amber: #f59e0b;
+  --tel-cyan: #22d3ee;
+  --tel-hot: #ef4444;
+  padding: 0;
+}
+
+.launch-rail-tel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 6px 10px 5px;
+  border-bottom: 1px solid color-mix(in srgb, var(--theme-bezel-edge-hi) 35%, transparent);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--theme-accent) 8%, transparent) 0%,
+    transparent 100%
+  );
+}
+
+.config-launch-rail .launch-rail-tel__header {
+  background: transparent;
+  border-bottom-color: color-mix(in srgb, var(--theme-bezel-edge-lo) 45%, transparent);
+}
+
+.launch-rail-tel__header-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* Tiny dim control — HW body + OC only (launch dock is outside .launch-rail-tel) */
+.launch-rail-tel__dim {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  margin-left: auto;
+  cursor: pointer;
+  user-select: none;
+}
+
+.launch-rail-tel__dim-label {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 7px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--theme-text-muted) 75%, transparent);
+  line-height: 1;
+}
+
+.launch-rail-tel__dim-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 52px;
+  height: 3px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--theme-border) 70%, transparent);
+  outline: none;
+  cursor: pointer;
+}
+
+.launch-rail-tel__dim-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--theme-accent-bright, #76b900);
+  border: 1px solid color-mix(in srgb, var(--theme-bezel-edge-hi) 40%, transparent);
+  box-shadow: 0 0 4px color-mix(in srgb, var(--theme-accent-glow) 45%, transparent);
+  cursor: pointer;
+}
+
+.launch-rail-tel__dim-slider::-moz-range-thumb {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--theme-accent-bright, #76b900);
+  border: 1px solid color-mix(in srgb, var(--theme-bezel-edge-hi) 40%, transparent);
+  cursor: pointer;
+}
+
+.launch-rail-tel__dim-slider::-moz-range-track {
+  height: 3px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--theme-border) 70%, transparent);
+}
+
+.launch-rail-tel__pulse {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--tel-vram);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--tel-vram) 65%, transparent);
+  animation: launch-rail-tel-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes launch-rail-tel-pulse {
+  0%, 100% { opacity: 0.55; transform: scale(0.92); }
+  50% { opacity: 1; transform: scale(1); }
+}
+
+.launch-rail-tel__title {
+  font-family: ui-monospace, monospace;
+  font-size: 8px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--theme-text) 78%, var(--theme-text-muted));
+}
+
+.launch-rail-tel__body {
+  padding: 6px 8px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  /* Scroll when zoom/OC overflows — no visible scrollbar (still wheel/trackpad). */
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* legacy Edge */
+  transition: opacity 0.15s ease;
+}
+
+.launch-rail-tel__body::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+/* Prefer not to fight the dock: keep OC panel fully in view when open */
+.launch-rail-tel__body:has([data-gpu-overclock] .gpu-oc-rail-body) {
+  scroll-padding-bottom: 8px;
+}
+
+.launch-rail-tel__gpu-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* HW monitor — GPU topology card (selection = border/shadow only) */
+.gpu-topo-card {
+  border-radius: 4px;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 40%, transparent);
+  /* No fill — phosphor-display-surface owns the face texture */
+  background: transparent;
+  overflow: hidden;
+}
+
+.gpu-topo-card:hover:not(.gpu-topo-card--selected) {
+  border-color: color-mix(in srgb, var(--theme-border) 70%, transparent);
+}
+
+.gpu-topo-card--selected {
+  border-color: color-mix(in srgb, var(--color-nv-green) 55%, transparent);
+  /* Border-only selection in HW monitor — no glow halo */
+  box-shadow: none;
+}
+
+.gpu-topo-card__head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 10px 5px;
+  border-bottom: 1px solid color-mix(in srgb, var(--theme-border) 35%, transparent);
+}
+
+.gpu-topo-card__head-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+}
+
+.gpu-topo-card--compact .gpu-topo-card__head {
+  padding-top: 5px;
+  padding-bottom: 4px;
+}
+
+.gpu-topo-card__name {
+  flex: 1;
+  min-width: 0;
+  font-family: ui-monospace, monospace;
+  font-size: 10px;
+  color: color-mix(in srgb, var(--theme-text) 95%, #fff);
+  line-height: 1.15;
+}
+
+.gpu-topo-card--compact .gpu-topo-card__name {
+  font-size: 9px;
+}
+
+.gpu-topo-card__meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0;
+  font-family: ui-monospace, monospace;
+  font-size: 8px;
+  color: var(--theme-text-muted);
+}
+
+.gpu-topo-card__oc-badge {
+  font-size: 6px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  line-height: 1.2;
+  padding: 1px 4px;
+  border-radius: 2px;
+  box-shadow: none;
+}
+
+/* Reset / default profile — neutral chip */
+.gpu-topo-card__oc-badge--idle {
+  color: color-mix(in srgb, var(--theme-text-muted, #6a8a6a) 88%, transparent);
+  background: color-mix(in srgb, var(--theme-text-muted, #6a8a6a) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--theme-border, #1a2e1a) 70%, transparent);
+}
+
+/* Non-default OC applied — soft amber (same treatment as OVERCLOCKING header) */
+.gpu-topo-card__oc-badge--active {
+  color: color-mix(in srgb, #fbbf24 78%, #fff 22%);
+  background: color-mix(in srgb, var(--tel-amber, #f59e0b) 22%, transparent);
+  border: 1px solid color-mix(in srgb, var(--tel-amber, #f59e0b) 38%, transparent);
+}
+
+
+.gpu-topo-card__temp {
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.gpu-topo-card--compact .gpu-topo-card__temp {
+  font-size: 11px;
+}
+
+.gpu-topo-card__temp--cool { color: var(--tel-vram); }
+.gpu-topo-card__temp--warm { color: var(--tel-amber); }
+.gpu-topo-card__temp--hot {
+  color: var(--tel-hot);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--tel-hot) 40%, transparent);
+}
+
+.gpu-topo-card__body {
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+.gpu-topo-card--compact .gpu-topo-card__body {
+  padding-top: 5px;
+  padding-bottom: 5px;
+}
+
+.gpu-topo-card__value--readout {
+  color: color-mix(in srgb, var(--theme-text) 85%, #fff);
+}
+
+.gpu-topo-card__value--gpu { color: var(--color-nv-green); }
+.gpu-topo-card__value--mem { color: var(--color-telemetry-cyan); }
+
+.gpu-topo-card--compact .gpu-topo-card__value {
+  font-size: 11px;
+}
+
+.gpu-topo-card:not(.gpu-topo-card--compact) .gpu-topo-card__value {
+  font-size: 0.875rem;
+}
+
+.gpu-topo-card__empty {
+  color: var(--theme-text-muted);
+}
+
+.gpu-topo-card__offset {
+  color: color-mix(in srgb, var(--color-nv-green) 90%, transparent);
+}
+
+.gpu-topo-card__power-watt {
+  color: var(--color-telemetry-amber);
+  font-size: 11px;
+}
+
+.gpu-topo-card--compact .gpu-topo-card__power-watt {
+  font-size: 11px;
+}
+
+.gpu-topo-card__power-val {
+  color: color-mix(in srgb, var(--theme-text) 80%, #fff);
+}
+
+.gpu-topo-card__power-target {
+  color: color-mix(in srgb, var(--color-nv-green) 80%, transparent);
+}
+
+/* HW monitor — GPU topology card grid */
+.gpu-topo-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.gpu-topo-card__pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  align-items: start;
+}
+
+.gpu-topo-card__cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.gpu-topo-card__label {
+  font-family: ui-monospace, monospace;
+  font-size: 6.5px;
+  letter-spacing: 0.12em;
+  color: var(--theme-text-muted);
+  opacity: 0.75;
+}
+
+.gpu-topo-card__value {
+  margin: 0;
+  line-height: 1.1;
+}
+
+.gpu-topo-card__offset {
+  font-size: 0.5em;
+  vertical-align: baseline;
+  letter-spacing: 0.02em;
+}
+
+.gpu-topo-card__util-track {
+  height: 3px;
+  margin-top: 2px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--theme-text-muted) 16%, transparent);
+  overflow: hidden;
+}
+
+.gpu-topo-card__util-track > div {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.1s linear;
+}
+
+.gpu-topo-card__util-fill--gpu {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--tel-vram) 45%, #000), var(--tel-vram));
+}
+
+.gpu-topo-card__util-fill--gpu-high {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--tel-amber) 50%, #1a1005), var(--tel-amber));
+}
+
+.gpu-topo-card__util-fill--gpu-critical {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--tel-hot) 55%, #1a0505), #f97316);
+}
+
+.gpu-topo-card__util-fill--mem {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--tel-cyan) 45%, #0a1628), var(--tel-cyan));
+}
+
+.gpu-topo-card__util-fill--mem-high {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--tel-amber) 50%, #1a1005), var(--tel-amber));
+}
+
+.gpu-topo-card__util-fill--mem-critical {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--tel-hot) 55%, #1a0505), #f97316);
+}
+
+.gpu-topo-card__power {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.gpu-topo-card__power-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.gpu-topo-card__power-val {
+  font-size: 9px;
+  line-height: 1.1;
+  text-align: right;
+}
+
+.gpu-topo-card__power-denom {
+  font-size: 7px;
+  opacity: 0.55;
+}
+
+.gpu-topo-card__power-track {
+  height: 10px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--theme-text-muted) 14%, transparent);
+  overflow: hidden;
+  box-shadow: inset 0 1px 3px color-mix(in srgb, #000 35%, transparent);
+}
+
+.gpu-topo-card__power-track > div {
+  height: 100%;
+  min-width: 2px;
+  border-radius: 3px;
+  transition: width 0.12s linear;
+}
+
+.gpu-topo-card__power-fill {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--tel-amber) 50%, #000), var(--tel-amber));
+  box-shadow: none;
+}
+
+.gpu-topo-card__power-fill--high {
+  background: linear-gradient(90deg, #b45309, #fbbf24);
+  box-shadow: none;
+}
+
+.gpu-topo-card__power-fill--critical {
+  background: linear-gradient(90deg, #991b1b, #f87171);
+  box-shadow: none;
+}
+
+.launch-rail-tel__totals-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.launch-rail-tel__totals {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.launch-rail-tel__total-cell {
+  padding: 5px 6px;
+  border-radius: 4px;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
+  background: color-mix(in srgb, #000 22%, transparent);
+}
+
+.launch-rail-tel__total-cell--power .launch-rail-tel__total-label,
+.launch-rail-tel__total-cell--power .launch-rail-tel__total-value {
+  text-align: center;
+}
+
+/* HW monitor widgets — phosphor display texture (inherits data-display-texture from panel) */
+.launch-rail-tel__total-cell.phosphor-display-surface,
+.launch-rail-tel__cpu.phosphor-display-surface,
+.launch-rail-tel__gpu.phosphor-display-surface,
+.gpu-topo-card.phosphor-display-surface {
+  position: relative;
+  overflow: hidden;
+  background: none;
+  /*
+   * Flat widget faces: no per-cell inset/glow (ugly on LIGHT + ARCTIC).
+   * Depth stays on tracks/bars/core cells only (see below).
+   */
+  box-shadow: none !important;
+}
+
+/* Soften outer chrome borders on HW cells — hairline only, not theme-glow frames */
+.launch-rail-tel__total-cell,
+.launch-rail-tel__cpu,
+.launch-rail-tel__gpu,
+.launch-rail-tel .gpu-topo-card:not(.gpu-topo-card--selected) {
+  border-color: color-mix(in srgb, var(--theme-border) 28%, transparent);
+}
+
+/* Selection ring only when selected — no colored drop glow on every card */
+.launch-rail-tel .gpu-topo-card--selected {
+  box-shadow: none !important;
+  border-color: var(--theme-industrial-gpu-selected, rgba(74, 222, 128, 0.7)) !important;
+}
+
+.launch-rail-tel__total-label {
+  display: block;
+  font-family: ui-monospace, monospace;
+  font-size: 6.5px;
+  letter-spacing: 0.06em;
+  line-height: 1.25;
+  color: var(--theme-text-muted);
+  opacity: 0.75;
+  text-align: right;
+}
+
+.launch-rail-tel__total-value {
+  display: block;
+  font-family: ui-monospace, monospace;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1;
+  margin-top: 1px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.launch-rail-tel__total-value--power { color: var(--tel-amber); }
+.launch-rail-tel__total-value--vram { color: var(--tel-vram); }
+.launch-rail-tel__total-value--ram { color: var(--tel-ram); }
+
+.launch-rail-tel__total-denom {
+  font-size: 8px;
+  font-weight: 400;
+  opacity: 0.55;
+}
+
+.launch-rail-tel__total-track {
+  margin-top: 4px;
+  height: 3px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--theme-text-muted) 18%, transparent);
+  overflow: hidden;
+}
+
+.launch-rail-tel__total-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.12s linear;
+}
+
+.launch-rail-tel__total-fill--power {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--tel-amber) 70%, #000), var(--tel-amber));
+}
+
+.launch-rail-tel__total-fill--vram {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--tel-vram) 70%, #000), var(--tel-vram));
+}
+
+.launch-rail-tel__total-fill--ram {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--tel-ram) 70%, #000), var(--tel-ram));
+}
+
+.launch-rail-tel__total-fill--warn {
+  filter: saturate(1.2);
+  box-shadow: none;
+}
+
+.launch-rail-tel__cpu,
+.launch-rail-tel__gpu {
+  border-radius: 4px;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 50%, transparent);
+  background: color-mix(in srgb, #000 18%, transparent);
+  overflow: hidden;
+}
+
+/* PHOSPHOR LIGHT — e-ink label palette on HW monitor widget faces */
+.launch-rail-tel[data-display-texture="phosphor-light"] .phosphor-display-surface .launch-rail-tel__total-label,
+.launch-rail-tel[data-display-texture="phosphor-light"] .phosphor-display-surface .launch-rail-tel__cpu-meta,
+.launch-rail-tel[data-display-texture="phosphor-light"] .phosphor-display-surface .launch-rail-tel__gpu-sub,
+.launch-rail-tel[data-display-texture="phosphor-light"] .phosphor-display-surface .launch-rail-tel__metric-label,
+.launch-rail-tel[data-display-texture="phosphor-light"] .phosphor-display-surface .launch-rail-tel__cpu-avg-unit,
+.launch-rail-tel[data-display-texture="phosphor-light"] .phosphor-display-surface .launch-rail-tel__metric-denom,
+.launch-rail-tel[data-display-texture="phosphor-light"] .phosphor-display-surface .launch-rail-tel__total-denom {
+  color: var(--fusion-eink-text-muted) !important;
+  opacity: 1;
+}
+
+.launch-rail-tel[data-display-texture="phosphor-light"] .phosphor-display-surface .launch-rail-tel__cpu-name,
+.launch-rail-tel[data-display-texture="phosphor-light"] .phosphor-display-surface .launch-rail-tel__gpu-name,
+.launch-rail-tel[data-display-texture="phosphor-light"] .phosphor-display-surface .launch-rail-tel__cpu-avg-val,
+.launch-rail-tel[data-display-texture="phosphor-light"] .phosphor-display-surface .launch-rail-tel__total-value,
+.launch-rail-tel[data-display-texture="phosphor-light"] .phosphor-display-surface .launch-rail-tel__metric-val {
+  color: var(--fusion-eink-readout) !important;
+}
+
+
+/* PHOSPHOR LIGHT — GPU topo cards in HW monitor (e-ink ink tokens) */
+.launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card .gpu-topo-card__label,
+.launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card .gpu-topo-card__meta-text,
+.launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card .gpu-topo-card__power-denom,
+.launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card .gpu-topo-card__empty {
+  color: var(--fusion-eink-text-muted) !important;
+  opacity: 1;
+}
+
+.launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card .gpu-topo-card__name,
+.launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card .gpu-topo-card__value--readout,
+.launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card .gpu-topo-card__power-val {
+  color: var(--fusion-eink-readout) !important;
+}
+
+.launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card--selected .gpu-topo-card__name {
+  color: var(--fusion-eink-gpu-name-selected) !important;
+}
+
+.launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card .gpu-topo-card__value--gpu,
+.launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card .gpu-topo-card__offset,
+.launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card .gpu-topo-card__power-target,
+.launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card .gpu-topo-card__temp--cool {
+  color: var(--fusion-eink-text-accent) !important;
+  text-shadow: none;
+}
+
+.launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card .gpu-topo-card__value--mem {
+  color: var(--fusion-eink-text-cyan) !important;
+}
+
+.launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card .gpu-topo-card__power-watt,
+.launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card .gpu-topo-card__temp--warm {
+  color: var(--fusion-eink-text-amber) !important;
+  text-shadow: none;
+}
+
+.launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card .gpu-topo-card__temp--hot {
+  color: var(--fusion-eink-text-red) !important;
+  text-shadow: none;
+}
+
+/* Selected GPU topo — border only (no colored drop shadow) */
+.launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card--selected {
+  border-color: var(--fusion-eink-gpu-selected-border, #526848) !important;
+}
+
+.launch-rail-tel[data-display-texture="clean"] .gpu-topo-card--selected,
+.launch-rail-tel[data-display-texture="phosphor-dark"] .gpu-topo-card--selected {
+  border-color: var(--theme-industrial-gpu-selected, rgba(74, 222, 128, 0.7)) !important;
+}
+
+.launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card:not(.gpu-topo-card--selected) {
+  border-color: var(--fusion-eink-border) !important;
+}
+
+.launch-rail-tel[data-display-texture="phosphor-light"] .gpu-topo-card__head {
+  border-bottom-color: var(--fusion-eink-border) !important;
+}
+
+.launch-rail-tel__cpu-head,
+.launch-rail-tel__gpu-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 5px 7px 4px;
+  border-bottom: 1px solid color-mix(in srgb, var(--theme-border) 35%, transparent);
+}
+
+.launch-rail-tel__cpu-name,
+.launch-rail-tel__gpu-name {
+  font-family: ui-monospace, monospace;
+  font-size: 7.5px;
+  color: color-mix(in srgb, var(--theme-text) 88%, #fff);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 11rem;
+}
+
+.launch-rail-tel__cpu-meta,
+.launch-rail-tel__gpu-sub {
+  font-family: ui-monospace, monospace;
+  font-size: 6.5px;
+  color: var(--theme-text-muted);
+  opacity: 0.7;
+  margin-top: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.launch-rail-tel__cpu-avg {
+  display: flex;
+  align-items: baseline;
+  gap: 1px;
+  flex-shrink: 0;
+}
+
+.launch-rail-tel__cpu-avg-val {
+  font-family: ui-monospace, monospace;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1;
+  color: color-mix(in srgb, var(--theme-text) 92%, #fff);
+  font-variant-numeric: tabular-nums;
+}
+
+.launch-rail-tel__cpu-avg-unit {
+  font-family: ui-monospace, monospace;
+  font-size: 8px;
+  color: var(--theme-text-muted);
+}
+
+.launch-rail-tel__cpu-head--toggle {
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.12s ease;
+}
+
+.launch-rail-tel__cpu-head--toggle:hover {
+  background: color-mix(in srgb, var(--tel-cyan) 6%, transparent);
+}
+
+.launch-rail-tel__cpu-head--toggle:focus-visible {
+  outline: 1px solid color-mix(in srgb, var(--tel-cyan) 55%, transparent);
+  outline-offset: -1px;
+}
+
+.launch-rail-tel__cpu-head-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.launch-rail-tel__cpu-cores-badge {
+  font-family: ui-monospace, monospace;
+  font-size: 6px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: color-mix(in srgb, var(--theme-text-muted) 80%, transparent);
+  border: 1px solid color-mix(in srgb, var(--theme-border) 45%, transparent);
+  border-radius: 2px;
+  padding: 1px 3px;
+  line-height: 1.2;
+}
+
+.launch-rail-tel__cpu-cores-badge--on {
+  color: var(--tel-cyan);
+  border-color: color-mix(in srgb, var(--tel-cyan) 45%, transparent);
+  /* badge = label only; no glow ring */
+  box-shadow: none;
+}
+
+.launch-rail-tel__cpu--cores-open {
+  border-color: color-mix(in srgb, var(--tel-cyan) 28%, var(--theme-border) 72%);
+}
+
+.launch-rail-tel__cpu-grid {
+  display: grid;
+  gap: 2px;
+  margin: 0 7px 7px;
+  width: calc(100% - 14px);
+}
+
+.launch-rail-tel__cpu-core {
+  position: relative;
+  height: 1rem;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--theme-text-muted) 12%, transparent);
+  overflow: hidden;
+  box-shadow: inset 0 1px 2px color-mix(in srgb, #000 30%, transparent);
+}
+
+.launch-rail-tel__cpu-core-fill {
+  height: 100%;
+  min-width: 1px;
+  border-radius: 2px;
+  transition: width 0.12s linear;
+}
+
+.launch-rail-tel__cpu-core-fill--low {
+  background: color-mix(in srgb, var(--tel-cyan) 22%, transparent);
+}
+
+.launch-rail-tel__cpu-core-fill--mid {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--tel-cyan) 45%, #0a1628),
+    color-mix(in srgb, var(--tel-cyan) 72%, #fff)
+  );
+}
+
+.launch-rail-tel__cpu-core-fill--hot {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--tel-amber) 55%, #3a1800),
+    var(--tel-amber)
+  );
+  box-shadow: 0 0 5px color-mix(in srgb, var(--tel-amber) 35%, transparent);
+}
+
+.launch-rail-tel__cpu-avg-track {
+  margin: 4px 7px 6px;
+  height: 10px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--theme-text-muted) 14%, transparent);
+  overflow: hidden;
+  box-shadow: inset 0 1px 3px color-mix(in srgb, #000 35%, transparent);
+}
+
+.launch-rail-tel__cpu-avg-fill {
+  height: 100%;
+  min-width: 2px;
+  border-radius: 3px;
+  transition: width 0.12s linear;
+}
+
+.launch-rail-tel__cpu-avg-fill--normal {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--tel-cyan) 45%, #0a1628),
+    var(--tel-cyan)
+  );
+  /* fill color only; track owns inset depth */
+  box-shadow: none;
+}
+
+.launch-rail-tel__cpu-avg-fill--high {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--tel-amber) 50%, #1a1005), var(--tel-amber));
+  box-shadow: none;
+}
+
+.launch-rail-tel__cpu-avg-fill--critical {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--tel-hot) 55%, #1a0505), #f97316);
+  box-shadow: none;
+}
+
+.launch-rail-tel__temp {
+  font-family: ui-monospace, monospace;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.launch-rail-tel__temp--cool { color: var(--tel-vram); }
+.launch-rail-tel__temp--warm { color: var(--tel-amber); }
+.launch-rail-tel__temp--hot {
+  color: var(--tel-hot);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--tel-hot) 40%, transparent);
+}
+
+.launch-rail-tel__metric {
+  padding: 4px 7px 5px;
+}
+
+.launch-rail-tel__metric-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 0 7px 6px;
+}
+
+.launch-rail-tel__metric--half {
+  padding: 0;
+}
+
+.launch-rail-tel__metric-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px;
+  margin-bottom: 2px;
+}
+
+.launch-rail-tel__metric-label {
+  font-family: ui-monospace, monospace;
+  font-size: 6.5px;
+  letter-spacing: 0.12em;
+  color: var(--theme-text-muted);
+  opacity: 0.75;
+}
+
+.launch-rail-tel__metric-val {
+  font-family: ui-monospace, monospace;
+  font-size: 9px;
+  color: color-mix(in srgb, var(--theme-text) 90%, #fff);
+  font-variant-numeric: tabular-nums;
+}
+
+.launch-rail-tel__metric-unit {
+  font-size: 7px;
+  opacity: 0.7;
+}
+
+.launch-rail-tel__metric-denom {
+  font-size: 7px;
+  opacity: 0.45;
+}
+
+.launch-rail-tel__bar-track {
+  height: 4px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--theme-text-muted) 16%, transparent);
+  overflow: hidden;
+}
+
+.launch-rail-tel__bar-track--thin {
+  height: 3px;
+}
+
+.launch-rail-tel__bar-track > div {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.1s linear;
+}
+
+.launch-rail-tel__bar-fill--power {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--tel-amber) 50%, #000), var(--tel-amber));
+}
+
+.launch-rail-tel__bar-fill--power-high {
+  background: linear-gradient(90deg, #b45309, #fbbf24);
+}
+
+.launch-rail-tel__bar-fill--power-critical {
+  background: linear-gradient(90deg, #991b1b, #f87171);
+  box-shadow: none;
+}
+
+.launch-rail-tel__bar-fill--gpu {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--tel-vram) 45%, #000), var(--tel-vram));
+}
+
+.launch-rail-tel__bar-fill--gpu-high {
+  background: linear-gradient(90deg, #3f6212, #a3e635);
+}
+
+.launch-rail-tel__bar-fill--gpu-critical {
+  background: linear-gradient(90deg, #14532d, #4ade80);
+  box-shadow: none;
+}
+
+.launch-rail-tel__bar-fill--mem {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--tel-cyan) 45%, #000), var(--tel-cyan));
+}
+
+.launch-rail-tel__bar-fill--mem-high {
+  background: linear-gradient(90deg, #0e7490, #67e8f9);
+}
+
+.launch-rail-tel__bar-fill--mem-critical {
+  background: linear-gradient(90deg, #155e75, #22d3ee);
+  box-shadow: none;
+}
+
+/* Launch rail — running engine chips */
+.launch-rail-engines {
+  margin-bottom: 6px;
+}
+
+.launch-rail-engine-chip {
+  border-color: color-mix(in srgb, var(--theme-border) 55%, transparent);
+  background: color-mix(in srgb, #000 20%, transparent);
+}
+
+.launch-rail-engine-chip:hover {
+  border-color: color-mix(in srgb, var(--theme-accent) 35%, var(--theme-border));
+  background: color-mix(in srgb, var(--theme-accent) 6%, #000);
+}
+
+.launch-rail-engine-chip--selected {
+  border-color: color-mix(in srgb, var(--theme-accent) 50%, transparent);
+  background: color-mix(in srgb, var(--theme-accent) 10%, #000);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--theme-accent) 18%, transparent);
+}
+
+[data-config-panel][data-launch-dock-collapsed="true"] .config-launch-dock__grid {
+  grid-template-columns: minmax(0, 2.2fr) minmax(0, 2.2fr) minmax(0, 1.6fr);
+  align-items: stretch;
+}
+
+[data-config-panel][data-launch-dock-collapsed="true"] .config-launch-dock__left {
+  display: contents;
+}
+
+[data-config-panel][data-launch-dock-collapsed="true"] .config-launch-dock__meta {
+  display: contents;
+}
+
+[data-config-panel][data-launch-dock-collapsed="true"] .config-launch-dock__alias {
+  grid-column: 1;
+}
+
+[data-config-panel][data-launch-dock-collapsed="true"] .config-launch-dock__port {
+  grid-column: 2;
+}
+
+[data-config-panel][data-launch-dock-collapsed="true"] .config-launch-dock__action {
+  grid-column: 3;
+}
+
+[data-config-panel][data-launch-dock-collapsed="true"] .config-launch-dock .config-launch-btn {
+  min-height: 2.25rem !important;
+}
+
+[data-config-panel][data-launch-dock-collapsed="true"] .config-launch-dock .config-launch-btn__hint {
+  display: none;
+}
+
+.app-shell--console-docked [data-config-panel][data-launch-dock-position="right"] .config-launch-rail .config-launch-dock {
+  padding-bottom: 0;
+}
+
+/* ── Launch dock — left meta/flags (70%) | launch btn (30%) ─── */
+.config-launch-dock__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 7fr) minmax(0, 3fr);
+  gap: 10px;
+  align-items: stretch;
+}
+
+.config-launch-dock__left {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  justify-content: center;
+}
+
+.config-launch-dock__meta {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.config-launch-dock__action {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  align-self: stretch;
+  justify-content: stretch;
+}
+
+.config-launch-btn__hint {
+  color: color-mix(in srgb, currentColor 62%, transparent);
+  letter-spacing: 0.06em;
+  line-height: 1;
+}
+
+.config-nobsproof-btn {
+  border-color: color-mix(in srgb, var(--dev-rosso, #c41e3a) 55%, transparent);
+  background: color-mix(in srgb, var(--dev-rosso, #c41e3a) 12%, transparent);
+  color: color-mix(in srgb, var(--dev-rosso, #c41e3a) 88%, #fff 12%);
+}
+
+.config-nobsproof-btn:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--dev-rosso, #c41e3a) 75%, transparent);
+  background: color-mix(in srgb, var(--dev-rosso, #c41e3a) 22%, transparent);
+  color: #fff;
+}
+
+.config-mtp-launch-warn {
+  border: 1px solid color-mix(in srgb, #ffb800 30%, transparent);
+  background: color-mix(in srgb, #ffb800 8%, transparent);
+  color: color-mix(in srgb, #ffb800 95%, transparent);
+}
+
+.config-mtp-launch-warn__detail {
+  color: color-mix(in srgb, #ffb800 85%, transparent);
+}
+
+
+.mono-autoset {
+  opacity: 0.55;
+  text-transform: none;
+  letter-spacing: 0.02em;
+}
+
+.config-launch-dock__meta [data-param-row] {
+  min-height: 22px;
+}
+
+.config-launch-dock__meta [data-param-row] > span.font-mono:first-of-type,
+.config-launch-dock__label {
+  width: 2.75rem;
+  flex-shrink: 0;
+}
+
+.config-launch-dock__port [data-param-row] > div:first-child {
+  display: none;
+}
+
+.config-launch-dock__port {
+  flex: 4 1 0;
+  display: flex;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.config-launch-dock__port [data-param-row] {
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  width: auto;
+  max-width: 100%;
+}
+
+.config-launch-dock__port [data-param-row] > span.font-mono:first-of-type {
+  width: auto;
+  max-width: none;
+  overflow: visible;
+  text-overflow: unset;
+  white-space: nowrap;
+}
+
+.config-launch-dock__port .config-chip-row {
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+}
+
+.config-launch-dock__alias {
+  flex: 6 1 0;
+}
+
+.config-launch-dock__alias-field {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.config-launch-dock__alias-field--has-clr input {
+  padding-right: 1.75rem;
+}
+
+.config-launch-dock__alias-clr {
+  position: absolute;
+  right: 3px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 13px;
+  padding: 1px 3px;
+  font-size: 6px;
+  font-family: ui-monospace, monospace;
+  letter-spacing: 0.05em;
+  line-height: 1;
+  border: 1px solid #000000;
+  border-radius: 3px;
+  background: #000000;
+  color: #f87171;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.config-launch-dock__alias-clr:hover {
+  background: #141414;
+  border-color: #000000;
+  color: #fca5a5;
+}
+
+/* Segmented switch — MANUAL/AUTO FIT + ESSENTIALS/FULL */
+.segment-switch {
+  position: relative;
+  display: inline-grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: stretch;
+  gap: 0;
+  padding: 2px;
+  border-radius: 4px;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 85%, transparent);
+  background: linear-gradient(165deg, color-mix(in srgb, var(--theme-panel-accent) 88%, #000 12%) 0%, var(--theme-panel-accent) 100%);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 22%, transparent),
+    inset 0 -1px 3px color-mix(in srgb, #000 35%, transparent),
+    0 1px 4px color-mix(in srgb, #000 28%, transparent);
+  user-select: none;
+}
+
+.segment-switch__thumb {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 2px;
+  width: calc(50% - 2px);
+  border-radius: 3px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--theme-accent-bright) 22%, var(--theme-panel)) 0%,
+    color-mix(in srgb, var(--theme-accent) 14%, var(--theme-panel-accent)) 100%
+  );
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 42%, transparent);
+  box-shadow:
+    0 0 8px color-mix(in srgb, var(--theme-accent-glow) 55%, transparent),
+    inset 0 1px 0 color-mix(in srgb, #fff 12%, transparent);
+  transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.segment-switch[data-active="right"] .segment-switch__thumb {
+  transform: translateX(100%);
+}
+
+.segment-switch__option {
+  position: relative;
+  z-index: 1;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 7px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  line-height: 1.2;
+  color: var(--theme-text-muted);
+  transition: color 0.18s ease;
+  white-space: nowrap;
+}
+
+.segment-switch__option:hover {
+  color: var(--theme-chip-hover-text);
+}
+
+.segment-switch__option--active {
+  color: var(--theme-accent-bright);
+  text-shadow: 0 0 10px color-mix(in srgb, var(--theme-accent-glow) 65%, transparent);
+}
+
+.segment-switch--fit-launch {
+  min-width: 9.5rem;
+}
+
+.segment-switch--config-view {
+  min-width: 10.5rem;
+}
+
+.segment-switch--config-view .segment-switch__option {
+  font-size: 7px;
+  padding: 4px 8px;
+}
+
+.toggle-switch--compact .toggle-track {
+  width: 2.75rem;
+  height: 1.1rem;
+}
+
+.toggle-switch--compact .toggle-label {
+  font-size: 6px;
+}

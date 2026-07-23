@@ -181,7 +181,7 @@ export default function ConfigParamLegend({ editorUnlocked }: ConfigParamLegendP
         </LegendSection>
       </div>
       <p className="mt-2 pt-2 border-t border-stealth-border/25 text-[7px] font-mono config-muted leading-relaxed">
-        Blue row = <span className="text-electric-blue/80">SYSTEM</span> engine chrome — edit values and defaults only; group and reorder have no effect on engine placement.
+        Blue row = <span className="text-theme-accent/80">SYSTEM</span> engine chrome — edit values and defaults only; group and reorder have no effect on engine placement.
       </p>
       <p className="mt-1 text-[7px] font-mono config-muted leading-relaxed">
         Yellow row border = param you added from catalog. Changes save to your config only —{" "}

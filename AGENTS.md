@@ -4,6 +4,20 @@ Traps and invariants only — not a code map. Read the source for flows, schemas
 
 ---
 
+## CSS / themes (frontend)
+
+**Tokens only** — Theme differences live in `src/themes/app-themes.ts` (`--theme-*`, `--fusion-eink-*`, `--theme-launch-*`). Apply via `applyAppTheme()`. Do **not** add new `[data-theme="…"]` or `html:not([data-theme=…])` component rules in CSS.
+
+**Domain partials** — Styles live under `src/styles/*.css`; `src/index.css` is Tailwind + `@import` only. Edit the matching partial (chrome, cockpit, fusion-display, config, launch, …).
+
+**No theme forks** — New colors/surfaces: add a token on **all** themes, then use `var(--theme-…)` in one rule. Arctic is not special-cased in CSS.
+
+**Tailwind** — Prefer layout utilities + semantic theme classes / CSS variables. `stealth` / `nv` utilities resolve to CSS vars (theme-aware). Do not reintroduce hard-coded multi-theme palettes in `tailwind.config.js`.
+
+**Dead modules** — Reactor11 and SENTINEL are removed; do not revive their CSS or tabs.
+
+---
+
 ## Regressions to avoid
 
 **Engine ports** — Do not reintroduce port-based taskkill (`kill_process_by_port` or netstat carpet-bomb) on launch, stop, or fail paths. Launch uses `engine_port_lock::reclaim_our_ghost_or_fail` (verified orphan only); teardown is PID-only via `stop_child_fast` / `kill_process_by_pid`. Old behavior killed ESTABLISHED fusion/health clients and sibling app instances.

@@ -6,7 +6,6 @@ import Layout from "./components/Layout";
 import ModelCatalog from "./components/ModelCatalog";
 const StackView = lazy(() => import("./components/StackView"));
 const ConfigPage = lazy(() => import("./components/ConfigPage"));
-const Reactor11 = lazy(() => import("./components/Reactor11"));
 const ExtrasPage = lazy(() => import("./components/ExtrasPage"));
 const ModelHub = lazy(() => import("./components/ModelHub"));
 const LogLineText = lazy(() => import("./components/LogLineText"));
@@ -42,7 +41,7 @@ import { BINARY_UPDATES_ENABLED } from "./lib/foundry_constants";
 import { getActiveStackSlots, isActiveEngineSlot } from "./lib/engineStack";
 import type { ModelEntry, StackEntry, LogBatch, LogEntry, SystemEvent, ProviderConfig, UpdateOfferings } from "./lib/types";
 
-export type Tab = "catalog" | "stack" | "extras" | "reactor11" | "modelhub" | "logs" | "config" | "sentinel";
+export type Tab = "catalog" | "stack" | "extras" | "modelhub" | "logs" | "config";
 
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>("catalog");
@@ -425,12 +424,6 @@ function App() {
       .catch(() => {});
   }, []);
 
-  useEffect(() => {
-    if (activeTab === "sentinel") {
-      setActiveTab("catalog");
-    }
-  }, [activeTab]);
-
   const handleLaunchEngine = useCallback(
     async (config: any) => {
       try {
@@ -624,11 +617,6 @@ function App() {
         {activeTab === "extras" && (
           <Suspense fallback={<TabFallback />}>
             <ExtrasPage stack={stack} models={models} />
-          </Suspense>
-        )}
-        {activeTab === "reactor11" && (
-          <Suspense fallback={<TabFallback />}>
-            <Reactor11 models={models} />
           </Suspense>
         )}
         {activeTab === "logs" && (

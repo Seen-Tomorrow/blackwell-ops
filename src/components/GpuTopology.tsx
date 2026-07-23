@@ -98,7 +98,7 @@ export default function GpuTopology({
             <div
               key={alloc.gpuIndex}
               onClick={() => onDeviceSelect?.(alloc.gpuIndex)}
-              className={`rounded-sm p-2 bg-depth-black/30 gpu-card gpu-card-enter ${
+              className={`rounded-sm p-2 bg-theme-bg/30 gpu-card gpu-card-enter ${
                 isSelected
                   ? "gpu-selected"
                   : onDeviceSelect
@@ -176,10 +176,10 @@ export default function GpuTopology({
         <div className="pt-2 border-t border-stealth-border/20 gpu-ram-enter">
           {/* RAM header + spill info */}
           <div className="flex items-center gap-2 mb-1.5">
-            <span className="text-[9px] font-mono text-electric-blue">SYSTEM RAM</span>
+            <span className="text-[9px] font-mono text-theme-accent">SYSTEM RAM</span>
             <span className="text-[8px] font-mono text-stealth-muted/40">|</span>
             {ramManufacturedGb > 0 ? (
-              <span className="text-[8px] font-mono text-electric-blue">
+              <span className="text-[8px] font-mono text-theme-accent">
                 {ramTotalGb.toFixed(0)} GB spill / {ramManufacturedGb.toFixed(0)} GB ({((ramTotalGb / ramManufacturedGb) * 100).toFixed(0)}%)
               </span>
             ) : (
@@ -193,13 +193,13 @@ export default function GpuTopology({
           <div style={{ backgroundColor: 'rgb(20,20,20)' }} className="relative h-4 rounded-sm overflow-hidden border border-stealth-border/30">
             <div
               style={{ width: `${ramManufacturedGb > 0 ? Math.min((ramTotalGb / ramManufacturedGb) * 100, 100) : 0}%` }}
-              className="h-full rounded-sm bg-electric-blue gpu-bar-fill"
+              className="h-full rounded-sm bg-theme-accent gpu-bar-fill"
             />
           </div>
 
           {/* Spill info below bar */}
           <div className="flex justify-start mt-1">
-            <span className="text-[8px] font-mono text-electric-blue">
+            <span className="text-[8px] font-mono text-theme-accent">
               {ramTotalGb.toFixed(0)} GB will spill to RAM — expect slower inference
             </span>
           </div>

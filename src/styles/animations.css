@@ -1,0 +1,357 @@
+/* ── FusionOverlay animations ─── */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes pulseScale {
+  0%, 100% { transform: scale(1); opacity: 0.6; }
+  50% { transform: scale(1.15); opacity: 1; }
+}
+
+/* ── EngineBanner animations ─── */
+@keyframes bannerEnter {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes bannerFadeDelayed {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes bannerSlideIn {
+  from { opacity: 0; transform: translateX(10px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes bannerDotPulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+@keyframes bannerLoadPulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+.banner-enter-anim {
+  animation: bannerEnter 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+}
+
+.banner-fade-delayed {
+  animation: bannerFadeDelayed 0.5s ease-out 0.2s both;
+}
+
+.banner-slide-in {
+  animation: bannerSlideIn 0.4s ease-out 0.3s both;
+}
+
+.banner-dot-pulse {
+  animation: bannerDotPulse 2s ease-in-out infinite;
+}
+
+/* ── GpuTopology animations ─── */
+@keyframes gpuCardEnter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes gpuBarFill {
+  from { width: 0 !important; }
+}
+
+.gpu-card-enter {
+  animation: gpuCardEnter 0.3s ease-out both;
+}
+
+.gpu-bar-fill {
+  transition: width 0.4s ease-out;
+}
+
+.gpu-ram-enter {
+  animation: fadeIn 0.4s ease-out both;
+}
+
+/* ── Layout animations ─── */
+@keyframes layoutHeaderEnter {
+  from { opacity: 0; transform: translateY(-40px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.layout-header-enter {
+  animation: layoutHeaderEnter 0.5s ease-out both;
+}
+
+/* ── EngineConfigPanel animations ─── */
+@keyframes configEmptyEnter {
+  from { opacity: 0; transform: scale(0.9); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.config-empty-enter {
+  animation: configEmptyEnter 0.5s ease-out both;
+}
+
+.config-launch-btn:not(:disabled):not(.launch-ack) {
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35), 0 0 10px 1px var(--theme-accent-glow);
+  overflow: hidden;
+}
+
+.config-launch-btn:not(:disabled):not(.launch-ack)::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--theme-chip-active-text) 22%, transparent);
+  opacity: 0.85;
+  pointer-events: none;
+}
+
+.config-launch-btn:not(:disabled):hover {
+  transform: translateY(-1px);
+  transition: transform 0.15s ease, border-color 0.12s ease, background-color 0.12s ease, color 0.12s ease;
+}
+
+.config-launch-btn:not(:disabled)::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    105deg,
+    transparent 38%,
+    color-mix(in srgb, var(--theme-accent-bright) 18%, transparent) 50%,
+    transparent 62%
+  );
+  transform: translateX(-130%);
+  transition: transform 0.55s ease;
+  pointer-events: none;
+}
+
+.config-launch-btn:not(:disabled):hover::after {
+  transform: translateX(130%);
+}
+
+.config-launch-btn:active:not(:disabled) {
+  transform: scale(0.992) translateY(0);
+  transition: transform 0.08s ease;
+}
+
+/* Launch dock shine/glow — per-theme (must follow generic rules above) */
+
+
+/* Launch dock — pinned to bottom of engine config panel, clears fixed footer/console */
+[data-config-panel] .config-launch-dock {
+  background: transparent;
+  border-top: 1.5px solid var(--theme-bezel-edge-hi);
+  box-shadow:
+    0 -2px 6px color-mix(in srgb, #000000 30%, transparent),
+    0 -10px 24px color-mix(in srgb, #000000 16%, transparent);
+  position: relative;
+  z-index: 4;
+  isolation: isolate;
+  padding-top: var(--config-launch-dock-pad-top);
+  padding-bottom: calc(var(--config-launch-dock-pad) + var(--app-footer-h));
+  gap: 0.25rem;
+}
+
+[data-config-panel] .config-launch-dock::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-color: var(--theme-industrial-bg);
+  background-image: var(--theme-industrial-texture-active);
+}
+
+[data-config-panel] .config-launch-dock__content {
+  position: relative;
+  z-index: 1;
+  isolation: isolate;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+/* Gunmetal grain sits on ::before only — controls need opaque fills so grain does not bleed through. */
+[data-config-panel] .config-launch-dock input.value-chip,
+[data-config-panel] .config-launch-dock input.value-chip-active,
+[data-config-panel] .config-launch-dock .config-chip-row .value-chip,
+[data-config-panel] .config-launch-dock .config-chip-row .value-chip-active,
+[data-config-panel] .config-launch-dock .custom-flags-input,
+[data-config-panel] .config-launch-dock__flags-scroll .custom-flags-input {
+  background-color: var(--theme-panel-accent) !important;
+  background-image: none !important;
+}
+
+[data-config-panel] .config-launch-dock input.value-chip-active,
+[data-config-panel] .config-launch-dock .config-chip-row .value-chip-active {
+  background-color: var(--theme-chip-solid-bg) !important;
+  color: var(--theme-chip-solid-text) !important;
+  border-color: var(--theme-chip-solid-bg) !important;
+}
+
+[data-config-panel] .config-launch-dock .custom-flags-block:not(.custom-flags-active):not(.custom-flags-replace) .mode-btn-add,
+[data-config-panel] .config-launch-dock__flags-scroll .custom-flags-block:not(.custom-flags-active):not(.custom-flags-replace) .mode-btn-add {
+  background-color: color-mix(in srgb, #4ade80 14%, var(--theme-panel-accent) 86%) !important;
+}
+
+[data-config-panel] .config-launch-dock .custom-flags-block:not(.custom-flags-active):not(.custom-flags-replace) .mode-btn-replace,
+[data-config-panel] .config-launch-dock__flags-scroll .custom-flags-block:not(.custom-flags-active):not(.custom-flags-replace) .mode-btn-replace {
+  background-color: color-mix(in srgb, #f87171 14%, var(--theme-panel-accent) 86%) !important;
+}
+
+[data-config-panel] .config-launch-dock .custom-flags-block:not(.custom-flags-active):not(.custom-flags-replace) .mode-btn-off,
+[data-config-panel] .config-launch-dock__flags-scroll .custom-flags-block:not(.custom-flags-active):not(.custom-flags-replace) .mode-btn-off {
+  background-color: color-mix(in srgb, #b87a00 10%, var(--theme-panel-accent) 90%) !important;
+}
+
+[data-config-panel] .config-launch-dock .config-mtp-launch-warn {
+  background-color: color-mix(in srgb, #ffb800 14%, var(--theme-panel-accent) 86%) !important;
+}
+
+
+/* Collapsed input only — APPEND/REPLACE chrome keeps amber/rosso tokens below */
+
+
+[data-config-panel] .config-params-scroll {
+  padding-bottom: 0.5rem;
+  scrollbar-gutter: stable;
+  overflow-x: hidden;
+  min-width: 0;
+}
+
+[data-config-panel] .config-params-columns {
+  min-width: 0;
+}
+
+/* ── MiniModelCard animations ─── */
+@keyframes miniCardEnter {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes miniCardNewPulse {
+  0%, 100% { border-color: #76B900; }
+  50% { border-color: #00FFFF; }
+}
+
+.mini-card-enter {
+  animation: miniCardEnter 0.2s ease-out both;
+}
+
+.mini-card-new-pulse {
+  animation: miniCardNewPulse 2s ease-in-out;
+}
+
+/* ── RunningEnginesPanel animations ─── */
+@keyframes enginePanelEnter {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.engine-panel-enter {
+  animation: enginePanelEnter 0.2s ease-out both;
+}
+
+/* ── ModelHubSearch animations ─── */
+@keyframes hubResultEnter {
+  from { opacity: 0; transform: translateX(-12px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes hubFileEnter {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes hubSearchPulse {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 1; }
+}
+
+@keyframes toastEnter {
+  from { opacity: 0; transform: translateY(-20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.hub-result-enter {
+  animation: hubResultEnter 0.2s ease-out both;
+}
+
+.hub-file-enter {
+  animation: hubFileEnter 0.2s ease-out both;
+}
+
+.hub-search-pulse {
+  animation: hubSearchPulse 1.5s ease-in-out infinite;
+}
+
+.toast-enter {
+  animation: toastEnter 0.3s ease-out both;
+}
+
+/* FusionBooter — NVMe read hero: fixed MiB/s slot (no GiB flip / font resize during load) */
+.fusion-disk-hero {
+  box-sizing: border-box;
+}
+
+.fusion-disk-hero > span {
+  max-width: 100%;
+}
+
+.fusion-disk-hero__value {
+  font-size: clamp(1.55rem, 5vh, 2.25rem);
+  min-width: 7ch;
+}
+
+.fusion-disk-hero__mbit {
+  font-size: clamp(0.65rem, 1.65vh, 0.8rem);
+  min-width: 11ch;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  color: rgba(34, 211, 238, 0.62);
+}
+
+/* FusionBooter — animated GPU interconnect during model load */
+@keyframes fusion-boot-dash {
+  to { stroke-dashoffset: -20; }
+}
+
+.fusion-boot-link-active {
+  animation: fusion-boot-dash 0.6s linear infinite;
+}
+
+/* CUDA version badges — NVIDIA green in every theme */
+.cuda-badge {
+  display: inline-block;
+  background: rgba(118, 185, 0, 0.22) !important;
+  border: 1px solid rgba(118, 185, 0, 0.55) !important;
+  color: #76b900 !important;
+}
+
+/* CMAKE_CUDA_ARCHITECTURES — inline after build version */
+.foundry-cuda-arch-inline {
+  color: rgba(118, 185, 0, 0.75);
+  letter-spacing: 0.02em;
+  opacity: 0.85;
+}
+
+.foundry-clear-cache-btn {
+  color: var(--color-telemetry-red);
+  border-color: color-mix(in srgb, var(--color-telemetry-red) 45%, var(--theme-chip-border) 55%);
+  background: color-mix(in srgb, var(--color-telemetry-red) 8%, var(--theme-chip-bg) 92%);
+}
+
+.foundry-clear-cache-btn:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--color-telemetry-red) 65%, var(--theme-chip-border) 35%);
+  background: color-mix(in srgb, var(--color-telemetry-red) 14%, var(--theme-chip-bg) 86%);
+}
+
+.foundry-arch-chip {
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.foundry-arch-chip--active {
+  color: #e8ffe0;
+}

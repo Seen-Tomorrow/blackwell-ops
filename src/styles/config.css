@@ -1,0 +1,2175 @@
+/* ── Runtime docked block — full-width green section ─── */
+.runtime-section-green {
+  background: #76B900;
+}
+
+.runtime-section-green * {
+  color: #1a1a1a !important;
+}
+
+/* Chips on green bg — dark contrast */
+.runtime-section-green .value-chip {
+  background: rgba(0, 0, 0, 0.25) !important;
+  border-color: rgba(0, 0, 0, 0.3) !important;
+  color: #1a1a1a !important;
+}
+
+.runtime-section-green .value-chip:hover {
+  background: rgba(0, 0, 0, 0.4) !important;
+  border-color: rgba(0, 0, 0, 0.6) !important;
+  color: #000 !important;
+}
+
+.runtime-section-green .value-chip-active {
+  background: #1a1a1a !important;
+  border-color: #1a1a1a !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.3) !important;
+}
+
+/* Param label on green */
+.runtime-section-green [data-param-row] > span:first-child {
+  color: #1a1a1a !important;
+  opacity: 0.7;
+}
+
+/* ── Mono panel — runtime config ─── */
+.mono-panel {
+  background: var(--theme-panel-accent);
+  position: relative;
+}
+
+.mono-panel * {
+  color: var(--theme-accent-bright) !important;
+}
+
+/* Group labels on mono */
+.mono-label {
+  opacity: 0.45;
+}
+
+/* User-set alias label — white, overrides .mono-panel green and mono-label opacity */
+.mono-user-set {
+  color: #ffffff !important;
+  opacity: 1 !important;
+}
+
+/* User-set alias input text — white instead of green */
+.mono-user-input {
+  color: #ffffff !important;
+}
+.mono-panel .mono-user-input {
+  color: #ffffff !important;
+}
+
+/* Chips on mono — themed outline, dark fill */
+.mono-panel .value-chip {
+  background: var(--theme-chip-bg) !important;
+  border-color: var(--theme-chip-border) !important;
+  color: var(--theme-chip-hover-text) !important;
+}
+
+.mono-panel .value-chip:hover {
+  background: var(--theme-chip-active-bg) !important;
+  border-color: var(--theme-chip-hover-border) !important;
+  color: var(--theme-chip-active-text) !important;
+}
+
+.mono-panel .value-chip-active {
+  background: var(--theme-chip-solid-bg) !important;
+  border-color: var(--theme-chip-solid-bg) !important;
+  color: var(--theme-chip-solid-text) !important;
+  box-shadow: 0 0 4px var(--theme-accent-glow) !important;
+}
+
+/* Param rows — label + chips; chips wrap instead of forcing horizontal scroll */
+.mono-panel [data-param-row],
+.eink-panel [data-param-row] {
+  min-height: 22px;
+  min-width: 0;
+  width: 100%;
+}
+
+.mono-panel [data-param-row] .value-chip,
+.mono-panel [data-param-row] .value-chip-active,
+.eink-panel [data-param-row] .value-chip,
+.eink-panel [data-param-row] .value-chip-active,
+[data-config-panel] [data-param-row] input.value-chip,
+[data-config-panel] [data-param-row] input.value-chip-active {
+  box-shadow: 0 0 4px transparent !important;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease !important;
+}
+
+.mono-panel [data-param-row] .value-chip-active,
+.eink-panel [data-param-row] .value-chip-active,
+[data-config-panel] [data-param-row] input.value-chip-active {
+  box-shadow: 0 0 4px var(--theme-accent-glow) !important;
+}
+
+.mono-panel input.value-chip-active.mono-user-input {
+  color: #ffffff !important;
+}
+
+/* Runtime profile — amber accent (unified chip sizing, distinct color) */
+.runtime-profile-row .runtime-profile-label,
+.mono-panel .runtime-profile-row .runtime-profile-label {
+  color: #b87a00 !important;
+  opacity: 1 !important;
+}
+
+.runtime-profile-row .value-chip {
+  background: rgba(184, 122, 0, 0.06) !important;
+  border-color: rgba(184, 122, 0, 0.35) !important;
+  color: #b87a00 !important;
+}
+
+.runtime-profile-row .value-chip:hover {
+  background: rgba(184, 122, 0, 0.12) !important;
+  border-color: rgba(184, 122, 0, 0.6) !important;
+  color: #d4950a !important;
+}
+
+.runtime-profile-row .value-chip {
+  box-shadow: 0 0 6px transparent !important;
+}
+
+.runtime-profile-row .value-chip-active {
+  background: #b87a00 !important;
+  border-color: #b87a00 !important;
+  color: #1a1a1a !important;
+  box-shadow: 0 0 6px rgba(184, 122, 0, 0.3) !important;
+}
+
+/* Param labels on mono */
+.mono-panel [data-param-row] > span:first-child:not(.runtime-profile-label) {
+  color: #4ade80 !important;
+  opacity: 0.45;
+}
+
+/* Profile badges on mono */
+.mono-badge-active {
+  background: #4ade80 !important;
+  border-color: #4ade80 !important;
+  color: #0c120a !important;
+  box-shadow: 0 0 4px rgba(74, 222, 128, 0.3) !important;
+}
+
+.mono-badge-inactive {
+  background: rgba(74, 222, 128, 0.04) !important;
+  border-color: rgba(74, 222, 128, 0.2) !important;
+  color: #4ade80 !important;
+}
+
+.mono-badge-disabled {
+  background: rgba(74, 222, 128, 0.02) !important;
+  border-color: rgba(74, 222, 128, 0.1) !important;
+  color: #4ade80 !important;
+}
+
+/* Scrollbar on mono */
+.mono-panel::-webkit-scrollbar-thumb {
+  background: rgba(74, 222, 128, 0.15) !important;
+}
+
+.mono-panel::-webkit-scrollbar-track {
+  background: rgba(74, 222, 128, 0.03) !important;
+}
+
+/* ── Provider + runtime profile bar (50/50) ─── */
+.config-provider-profile-bar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0;
+  align-items: stretch;
+}
+
+.config-panel-top-chrome {
+  min-width: 0;
+  /* Air between provider bar (and any above-shell) and VRAM industrial frame */
+  margin-bottom: 6px;
+}
+
+.config-params-above-shell {
+  min-width: 0;
+  width: 100%;
+  flex-shrink: 0;
+}
+
+/* CTX docked above — also 6px under provider before the CTX strip */
+.config-params-above-shell--with-ctx {
+  margin-top: 6px;
+}
+
+.config-params-above-ctx {
+  min-width: 0;
+}
+
+.config-provider-profile-bar__half {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+
+.config-provider-profile-bar__half--providers {
+  padding-right: 8px;
+}
+
+.config-provider-profile-bar__half--profile {
+  padding-left: 8px;
+  border-left: 1px solid color-mix(in srgb, var(--theme-border-subtle) 65%, transparent);
+}
+
+.config-provider-profile-bar__half--profile > .flex {
+  justify-content: flex-end;
+  margin-left: auto;
+}
+
+.config-provider-profile-bar__label {
+  font-size: 8px;
+  font-family: ui-monospace, monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--theme-text-muted) 72%, transparent);
+  flex-shrink: 0;
+  margin-right: 8px;
+}
+
+/* Config panel — textured provider/profile bar (all themes) */
+[data-config-panel] .config-provider-profile-bar {
+  background-color: var(--theme-industrial-bg);
+  background-image: var(--theme-industrial-texture-active);
+  border-bottom: 1.5px solid color-mix(in srgb, var(--theme-bezel-edge-hi) 75%, var(--theme-border)) !important;
+  box-shadow:
+    0 2px 10px color-mix(in srgb, var(--theme-panel) 55%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 50%, transparent);
+  position: relative;
+  z-index: 2;
+}
+
+[data-config-panel] .config-provider-profile-bar.section-divider::after {
+  opacity: 0.35;
+}
+
+[data-config-panel] .config-provider-profile-bar__label {
+  color: color-mix(in srgb, var(--theme-text) 68%, var(--theme-text-muted));
+  font-weight: 600;
+  letter-spacing: 0.1em;
+}
+
+[data-config-panel] .config-provider-profile-bar .provider-pill {
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--theme-panel) 40%, transparent);
+}
+
+[data-config-panel] .config-provider-profile-bar .provider-pill-active {
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--theme-provider-pill-active-bg) 32%, transparent),
+    0 2px 8px color-mix(in srgb, var(--theme-panel) 45%, transparent);
+}
+
+/* ── GPU assign inject panel (above bezel) — full-width chrome row ─── */
+.gpu-assign-panel {
+  margin: 0 0 -6px;
+  padding: 2px 10px 5px;
+  width: 100%;
+  box-sizing: border-box;
+  background-color: var(--theme-industrial-bg);
+  background-image: none;
+  border-radius: 4px 4px 0 0;
+  border-top: 1px solid color-mix(in srgb, var(--theme-bezel-edge-hi) 55%, transparent);
+  border-left: 1px solid color-mix(in srgb, var(--theme-bezel-edge-hi) 35%, transparent);
+  border-right: 1px solid var(--theme-bezel-edge-lo);
+  position: relative;
+  z-index: 2;
+  isolation: isolate;
+}
+
+.gpu-assign-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background-color: var(--theme-industrial-bg);
+  background-image: var(--theme-industrial-texture-active);
+}
+
+.gpu-assign-panel > * {
+  position: relative;
+  z-index: 1;
+}
+
+.gpu-assign-panel__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 1px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  min-height: 28px;
+  width: 100%;
+}
+
+.gpu-assign-panel__grid--solo {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.gpu-assign-panel__divider {
+  align-self: stretch;
+  width: 1px;
+  background: color-mix(in srgb, var(--theme-bezel-edge-lo) 70%, transparent);
+}
+
+.gpu-assign-panel__half {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 22px;
+}
+
+/* Device — left anchor; chips grow/scroll across the wide column (many GPUs). */
+.gpu-assign-panel__half--device {
+  justify-content: flex-start;
+}
+
+.gpu-assign-panel__half--device .gpu-assign-panel__chips {
+  flex: 1 1 auto;
+  justify-content: flex-start;
+  flex-wrap: nowrap;
+}
+
+/* Split — uses full right column of the chrome row. */
+.gpu-assign-panel__half--split {
+  justify-content: flex-start;
+}
+
+.gpu-assign-panel__half--split .gpu-assign-panel__label {
+  flex-shrink: 0;
+}
+
+.gpu-assign-panel__half--split .gpu-assign-panel__chips {
+  flex: 1 1 auto;
+  justify-content: flex-start;
+  flex-wrap: nowrap;
+}
+
+.gpu-assign-panel__label {
+  line-height: 1.35;
+  align-self: center;
+}
+
+[data-config-panel] .gpu-assign-panel {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+[data-config-panel] .gpu-assign-panel::before {
+  display: none;
+}
+
+[data-config-panel] .gpu-assign-panel .gpu-assign-panel__label {
+  color: var(--theme-text-muted) !important;
+  opacity: 0.88;
+}
+
+[data-config-panel] .gpu-assign-panel__divider {
+  background: color-mix(in srgb, var(--theme-border-subtle) 90%, transparent);
+}
+
+.gpu-assign-panel__chips {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  scrollbar-width: thin;
+}
+
+/* Pre-launch chrome hints — top bezel far right (empty rail after Device) */
+.display-chrome-hints {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 36px; /* match top chrome band */
+  pointer-events: none;
+  z-index: 35; /* under top-chrome controls (40), over phosphor */
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  box-sizing: border-box;
+  padding: 0 12px 0 0;
+}
+
+.display-chrome-hints__hint {
+  margin: 0;
+  padding: 0 2px;
+  font-size: 6px;
+  font-family: ui-monospace, monospace;
+  line-height: 1.2;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.display-chrome-hints__hint--right {
+  position: relative;
+  right: auto;
+  left: auto;
+  max-width: min(42%, 14rem);
+  text-align: right;
+  color: color-mix(in srgb, #f59e0b 82%, var(--theme-text-muted));
+}
+
+
+.gpu-assign-panel--chrome-disabled .gpu-assign-panel__chips {
+  position: relative;
+}
+
+.gpu-assign-panel--chrome-disabled .gpu-assign-panel__chips::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 2px;
+  pointer-events: none;
+  background-image: repeating-linear-gradient(
+    -45deg,
+    color-mix(in srgb, var(--theme-stealth-muted) 18%, transparent) 0px,
+    color-mix(in srgb, var(--theme-stealth-muted) 18%, transparent) 1px,
+    transparent 1px,
+    transparent 5px
+  );
+  opacity: 0.85;
+}
+
+.gpu-assign-chip--locked,
+.gpu-assign-panel--chrome-disabled .value-chip,
+.gpu-assign-panel--chrome-disabled .value-chip-active {
+  opacity: 0.55;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+[data-config-panel] .gpu-assign-panel__chips .value-chip,
+[data-config-panel] .gpu-assign-panel__chips .value-chip-active {
+  line-height: 1.35;
+  min-height: 18px;
+}
+
+/* ── Pinned param groups above VRAM display ─── */
+.config-params-above {
+  flex-shrink: 0;
+  overflow-x: hidden;
+  overflow-y: visible;
+  /* Top pad — room for CTX preset hover labels (32K / 64K) above the track */
+  padding: 12px 16px 4px;
+}
+
+.config-params-above--multi {
+  --config-col-gutter-w: 7px;
+  display: grid;
+  align-items: start;
+  width: 100%;
+  min-width: 0;
+  gap: 0 0;
+}
+
+.config-params-above--multi .config-params-col {
+  min-height: 0;
+  overflow: visible;
+}
+
+.config-params-above--multi .config-params-col__stack {
+  min-height: 0;
+  overflow: visible;
+}
+
+.config-params-above [data-group-zone] {
+  overflow: visible;
+}
+
+.config-params-above--multi .config-col-split-handle {
+  align-self: stretch;
+  min-height: 2.5rem;
+  height: 100%;
+}
+
+.config-params-above--1c {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.config-params-below-toolbar {
+  background: var(--theme-panel-accent);
+}
+
+.config-params-below {
+  width: 100%;
+  min-width: 0;
+}
+
+.config-params-below--1c {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.config-params-below--1c > [data-group-zone] {
+  width: 100%;
+  min-width: 0;
+  flex-shrink: 0;
+}
+
+.config-params-below--multi {
+  --config-col-gutter-w: 7px;
+  display: grid;
+  align-items: stretch;
+  width: 100%;
+  min-width: 0;
+  gap: 0 0;
+}
+
+.config-params-col {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 100%;
+  overflow: hidden;
+}
+
+.config-params-col__stack {
+  flex: 1;
+  min-width: 0;
+  min-height: 2.5rem;
+}
+
+.config-column-drop-zone {
+  flex: 1;
+  min-height: 3.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Reuse catalog/catalog split handle between config columns */
+.config-params-below--multi .config-col-split-handle {
+  align-self: stretch;
+  min-height: 100%;
+  height: auto;
+}
+
+/* ── Power-user group layout controls (engine config headers) ─── */
+[data-config-panel] .config-group-header {
+  color: var(--theme-accent-bright);
+  opacity: 0.45;
+}
+
+[data-config-panel] .config-group-header button:hover {
+  color: var(--theme-text);
+}
+
+.config-group-header--dragging {
+  color: #facc15 !important;
+  opacity: 1 !important;
+}
+
+.config-layout-mode-btn--on {
+  box-shadow: 0 0 8px color-mix(in srgb, var(--theme-accent-glow) 40%, transparent);
+}
+
+[data-config-panel][data-layout-mode="on"] .config-param-group-tile,
+[data-config-panel][data-layout-mode="on"] [data-group-zone] {
+  outline: 1px dashed color-mix(in srgb, var(--theme-accent) 18%, transparent);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+.config-group-layout-controls__drag {
+  color: color-mix(in srgb, var(--theme-text-muted) 55%, transparent);
+  font-size: 10px;
+  line-height: 1;
+  touch-action: none;
+  -webkit-user-drag: none;
+  user-select: none;
+}
+
+.config-group-layout-controls__drag:hover,
+.config-group-layout-controls--dragging .config-group-layout-controls__drag {
+  color: var(--color-nv-green);
+}
+
+.config-param-group--hidden {
+  filter: saturate(0.65);
+}
+
+[data-config-page] .config-param-group-header--system {
+  color: color-mix(in srgb, var(--color-electric-blue, #4da3ff) 72%, var(--color-stealth-muted));
+  border-color: color-mix(in srgb, var(--color-electric-blue, #4da3ff) 22%, transparent);
+}
+
+[data-config-page] .config-param-row--system {
+  border-color: color-mix(in srgb, var(--color-electric-blue, #4da3ff) 28%, var(--color-stealth-border)) !important;
+  background: color-mix(in srgb, var(--color-electric-blue, #4da3ff) 6%, transparent);
+}
+
+[data-config-page] .config-param-ess {
+  min-width: 1.65rem;
+  letter-spacing: 0.06em;
+}
+
+[data-config-page] .config-param-ess--forced {
+  text-shadow: 0 0 8px color-mix(in srgb, var(--theme-accent-glow) 50%, transparent);
+}
+
+[data-config-page] .config-param-row--system:hover {
+  border-color: color-mix(in srgb, var(--color-electric-blue, #4da3ff) 42%, var(--color-stealth-border)) !important;
+}
+
+/* ── Eject panel — running engines, gunmetal bg, flush below display bevel ─── */
+.industrial-eject-panel {
+  margin: -10px 24px 0;
+  padding: 4px 8px 0px;
+  background-color: var(--theme-industrial-bg);
+  background-image: none;
+  border-radius: 4px;
+  border-top: 1px solid color-mix(in srgb, var(--theme-bezel-edge-hi) 50%, transparent);
+  border-left: 1px solid color-mix(in srgb, var(--theme-bezel-edge-hi) 35%, transparent);
+  border-right: 1px solid var(--theme-bezel-edge-lo);
+  border-bottom: 1px solid var(--theme-bezel-edge-lo);
+  position: relative;
+  z-index: 1;
+  isolation: isolate;
+}
+
+.industrial-eject-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background-color: var(--theme-industrial-bg);
+  background-image:
+    var(--theme-industrial-texture-active),
+    var(--theme-industrial-face-gradient, none);
+}
+
+.industrial-eject-panel > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Eject panel — tuck under frame (z-index 1); cast shadow onto toolbar below */
+[data-config-panel] .industrial-eject-panel {
+  z-index: 1;
+  box-shadow: var(--theme-bezel-cast-shadow);
+}
+
+/* Themed text on industrial display frame */
+.industrial-display-area .text-stealth-muted,
+.industrial-display-area .text-stealth-muted\/30,
+.industrial-display-area .text-stealth-muted\/40,
+.industrial-display-area .text-stealth-muted\/50,
+.industrial-display-area .text-stealth-muted\/60 {
+  color: var(--theme-industrial-muted) !important;
+}
+
+.industrial-display-area .text-nv-green {
+  color: var(--theme-industrial-text) !important;
+}
+
+.industrial-display-area .text-cyan-400 {
+  color: #22d3ee !important;
+}
+
+.industrial-display-area .text-electric-blue,
+.industrial-display-area .text-blue-700 {
+  color: #3b82f6 !important;
+}
+
+.industrial-display-area .text-orange-400,
+.industrial-display-area .text-telemetry-amber {
+  color: #f59e0b !important;
+}
+
+.industrial-display-area .text-red-400,
+.industrial-display-area .text-telemetry-red {
+  color: #f87171 !important;
+}
+
+.industrial-display-area .text-yellow-400 {
+  color: #facc15 !important;
+}
+
+.industrial-display-area .bg-stealth-dark {
+  background-color: var(--theme-accent-soft) !important;
+}
+
+.industrial-display-area .border-stealth-border,
+.industrial-display-area .border-stealth-border\/30,
+.industrial-display-area .border-stealth-border\/50 {
+  border-color: var(--theme-industrial-gpu-border) !important;
+}
+
+/* GPU topology cards on industrial display */
+.industrial-display-area .gpu-card {
+  background-color: var(--theme-industrial-gpu-card-bg) !important;
+  border-color: var(--theme-industrial-gpu-border) !important;
+}
+
+/* Forecast phosphor — no bar width / card fade animations on param-driven updates */
+.industrial-display-area .gpu-bar-fill {
+  transition: none !important;
+}
+
+.industrial-display-area .gpu-card-enter {
+  animation: none !important;
+}
+
+.industrial-display-area .gpu-ram-enter {
+  animation: none !important;
+}
+
+/* Selected GPU — card ring/glow only; name color stays with siblings */
+
+/* VRAM/RAM bar tracks on display bg (DARK / CLEAN); phosphor-light uses --fusion-eink-bar-bg below */
+.industrial-display-area .relative.overflow-hidden.border-stealth-border\/30 {
+  background-color: var(--theme-industrial-bar-track) !important;
+}
+
+/* PHOSPHOR LIGHT — VRAM forecast: dark e-ink ink (beats industrial-display-area brights) */
+[data-display-texture="phosphor-light"] .vram-forecast-display .text-cyan-400,
+[data-display-texture="phosphor-light"] .industrial-display-area .vram-forecast-display .text-cyan-400,
+[data-display-texture="phosphor-light"] .vram-forecast-display .text-electric-blue,
+[data-display-texture="phosphor-light"] .vram-forecast-display .text-blue-700,
+[data-display-texture="phosphor-light"] .industrial-display-area .vram-forecast-display .text-electric-blue,
+[data-display-texture="phosphor-light"] .industrial-display-area .vram-forecast-display .text-blue-700 {
+  color: var(--fusion-eink-text-cyan) !important;
+}
+
+[data-display-texture="phosphor-light"] .vram-forecast-display .text-nv-green,
+[data-display-texture="phosphor-light"] .industrial-display-area .vram-forecast-display .text-nv-green {
+  color: var(--fusion-eink-text-accent) !important;
+}
+
+[data-display-texture="phosphor-light"] .vram-forecast-display .text-orange-400,
+[data-display-texture="phosphor-light"] .vram-forecast-display .text-telemetry-amber,
+[data-display-texture="phosphor-light"] .vram-forecast-display .text-amber-400,
+[data-display-texture="phosphor-light"] .industrial-display-area .vram-forecast-display .text-orange-400,
+[data-display-texture="phosphor-light"] .industrial-display-area .vram-forecast-display .text-telemetry-amber,
+[data-display-texture="phosphor-light"] .industrial-display-area .vram-forecast-display .text-amber-400 {
+  color: var(--fusion-eink-text-amber) !important;
+}
+
+[data-display-texture="phosphor-light"] .vram-forecast-display .text-red-400,
+[data-display-texture="phosphor-light"] .vram-forecast-display .text-telemetry-red,
+[data-display-texture="phosphor-light"] .industrial-display-area .vram-forecast-display .text-red-400,
+[data-display-texture="phosphor-light"] .industrial-display-area .vram-forecast-display .text-telemetry-red {
+  color: var(--fusion-eink-text-red) !important;
+}
+
+[data-display-texture="phosphor-light"] .vram-forecast-display .text-violet-400,
+[data-display-texture="phosphor-light"] .industrial-display-area .vram-forecast-display .text-violet-400 {
+  color: var(--fusion-eink-text-violet) !important;
+}
+
+[data-display-texture="phosphor-light"] .vram-forecast-display .text-gray-500,
+[data-display-texture="phosphor-light"] .industrial-display-area .vram-forecast-display .text-gray-500 {
+  color: var(--fusion-eink-text-muted) !important;
+}
+
+/* PHOSPHOR LIGHT — measured GB digits: drop neon gradients for flat e-ink */
+[data-display-texture="phosphor-light"] .vram-forecast-display .vram-forecast-gb-accented,
+[data-display-texture="phosphor-light"] .industrial-display-area .vram-forecast-display .vram-forecast-gb-accented {
+  background-image: none !important;
+  background-clip: unset !important;
+  -webkit-background-clip: unset !important;
+  -webkit-text-fill-color: currentColor !important;
+  filter: none !important;
+  text-shadow: none !important;
+}
+
+[data-display-texture="phosphor-light"] .vram-forecast-display .vram-forecast-gb-accented--learned,
+[data-display-texture="phosphor-light"] .industrial-display-area .vram-forecast-display .vram-forecast-gb-accented--learned {
+  color: var(--fusion-eink-text-cyan) !important;
+}
+
+[data-display-texture="phosphor-light"] .vram-forecast-display .vram-forecast-gb-accented--fit_probe,
+[data-display-texture="phosphor-light"] .industrial-display-area .vram-forecast-display .vram-forecast-gb-accented--fit_probe {
+  color: var(--fusion-eink-text-amber) !important;
+}
+
+[data-display-texture="phosphor-light"] .vram-forecast-display .vram-forecast-gb-accented--fit_cache,
+[data-display-texture="phosphor-light"] .industrial-display-area .vram-forecast-display .vram-forecast-gb-accented--fit_cache {
+  color: var(--fusion-eink-text-violet) !important;
+}
+
+/* PHOSPHOR LIGHT — GPU topo selected: darkened theme-accent ring */
+[data-display-texture="phosphor-light"] .vram-forecast-display .gpu-card.gpu-selected,
+[data-display-texture="phosphor-light"] .industrial-display-area .vram-forecast-display .gpu-card.gpu-selected {
+  border-color: var(--fusion-eink-gpu-selected-border) !important;
+  background-color: var(--fusion-eink-gpu-selected-bg) !important;
+  box-shadow: var(--fusion-eink-gpu-selected-shadow) !important;
+}
+
+/* selected name = same ink as unselected (selection = card chrome only) */
+[data-display-texture="phosphor-light"] .vram-forecast-display .gpu-card-name,
+[data-display-texture="phosphor-light"] .industrial-display-area .vram-forecast-display .gpu-card-name,
+[data-display-texture="phosphor-light"] .vram-forecast-display .gpu-selected .gpu-card-name,
+[data-display-texture="phosphor-light"] .industrial-display-area .vram-forecast-display .gpu-selected .gpu-card-name {
+  color: var(--fusion-eink-gpu-name) !important;
+}
+
+
+/* ── Running engines panel — grey bg, compact row cards (below VRAM) ─── */
+/* 4 grid rows (2 cols) visible before eject panel scrolls — 2-line cards */
+.running-engines-scroll {
+  --running-engine-row-h: 3.1rem;
+  --running-engine-alias-w: 5.5rem;
+  max-height: calc(var(--running-engine-row-h) * 4 + 0.25rem * 3);
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* Fixed alias column so model names share one horizontal start edge */
+.running-engine-alias {
+  display: inline-block;
+  width: var(--running-engine-alias-w, 5.5rem);
+  max-width: var(--running-engine-alias-w, 5.5rem);
+  box-sizing: border-box;
+}
+
+/* Row 2: GPU badges + split links; provider|profile compact on the right */
+.running-engine-card__meta {
+  padding-left: 0;
+}
+
+.running-engine-gpu-badges {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 3px;
+  min-width: 0;
+  flex: 1 1 auto;
+  /* No full-width fill — only the badge chips carry background */
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+
+.running-engine-gpu-badge {
+  display: inline-block;
+  flex-shrink: 0;
+  font-family: ui-monospace, "JetBrains Mono", monospace;
+  font-size: 8px;
+  line-height: 1;
+  padding: 2px 5px;
+  border-radius: 2px;
+  color: color-mix(in srgb, var(--theme-text, #e8e8e8) 72%, transparent);
+  background: #000;
+  border: 1px solid color-mix(in srgb, #fff 12%, transparent);
+  white-space: nowrap;
+}
+
+.running-engine-gpu-link {
+  flex-shrink: 0;
+  font-family: ui-monospace, "JetBrains Mono", monospace;
+  font-size: 7px;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  color: color-mix(in srgb, var(--theme-text-muted, #8a9a8a) 80%, transparent);
+  white-space: nowrap;
+  padding: 0 1px;
+  background: transparent;
+}
+
+/* Dark themes — solid black GPU chips (cut color noise) */
+[data-config-panel] .running-engine-gpu-badge {
+  color: color-mix(in srgb, var(--theme-text, #e8e8e8) 72%, transparent) !important;
+  background: #000 !important;
+  border-color: color-mix(in srgb, #fff 12%, transparent) !important;
+}
+
+/* Arctic — accent blue chips (light workspace; black would look like holes) */
+
+
+.running-engine-gpu-badges--compact .running-engine-gpu-badge {
+  font-size: 7px;
+  padding: 1px 3px;
+}
+
+.running-engine-gpu-badges--compact .running-engine-gpu-link {
+  font-size: 6px;
+}
+
+.running-engines-header-row {
+  background: transparent;
+}
+
+.running-engine-card {
+  background: #222522;
+  border-color: rgba(120, 120, 120, 0.25);
+  transition: all 0.15s ease;
+}
+
+.running-engine-card:hover {
+  background: #2a2e2a;
+  border-color: rgba(120, 120, 120, 0.4);
+}
+
+.running-engine-card-selected {
+  background: #2a3020;
+  border-color: rgba(118, 185, 0, 0.5);
+  box-shadow: 0 0 8px rgba(118, 185, 0, 0.12);
+}
+
+/* ── Running engines — black banner + amber text ─── */
+[data-config-panel] .running-engines-header-row {
+  background: transparent;
+  padding-top: 4px;
+  padding-bottom: 2px;
+}
+
+[data-config-panel] .running-engines-header-row h3 {
+  background: var(--theme-eject-header-bg);
+  padding: 6px 12px;
+  color: var(--theme-eject-header-text) !important;
+}
+
+/* Cards — themed glass */
+[data-config-panel] .running-engine-card {
+  background: var(--theme-eject-card-bg) !important;
+  backdrop-filter: blur(2px) !important;
+  -webkit-backdrop-filter: blur(2px) !important;
+  border: 1px solid var(--theme-eject-card-border) !important;
+  border-radius: 6px !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 1px 2px rgba(0, 0, 0, 0.15) !important;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    opacity 0.15s ease;
+}
+
+/* Idle cards recede; selected card stays full strength */
+[data-config-panel] .running-engine-card:not(.running-engine-card-selected) {
+  opacity: 0.58;
+}
+
+[data-config-panel] .running-engine-card:not(.running-engine-card-selected):hover {
+  opacity: 0.82;
+}
+
+[data-config-panel] .running-engine-card:hover {
+  background: var(--theme-eject-card-hover-bg) !important;
+  border-color: var(--theme-eject-card-hover-border) !important;
+}
+
+[data-config-panel] .running-engine-card-selected {
+  opacity: 1;
+  background: var(--theme-eject-card-selected-bg) !important;
+  border-color: var(--theme-eject-card-selected-border) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 0 0 1px color-mix(in srgb, var(--theme-eject-card-selected-border) 45%, transparent),
+    0 2px 10px color-mix(in srgb, var(--theme-eject-card-selected-border) 24%, transparent) !important;
+}
+
+
+/* Runtime profile tag — tiny amber line under model name */
+[data-config-panel] .running-engine-profile-label {
+  font-size: 6px;
+  line-height: 1;
+  color: #b87a00;
+  opacity: 0.95;
+}
+
+/* Status dot — secondary accent pulse */
+[data-config-panel] .status-pulse {
+  background-color: var(--theme-secondary) !important;
+  animation: status-pulse-anim-eink 2s ease-in-out infinite !important;
+}
+
+@keyframes status-pulse-anim-eink {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 color-mix(in srgb, var(--theme-secondary) 40%, transparent); }
+  50% { opacity: 0.6; box-shadow: 0 0 0 3px transparent; }
+}
+
+/* Text inside running engine cards */
+[data-config-panel] .running-engine-card .text-white\/70,
+[data-config-panel] .running-engine-card .text-white {
+  color: var(--theme-eject-card-text) !important;
+}
+
+[data-config-panel] .running-engine-card .text-stealth-muted {
+  color: var(--theme-eject-card-muted) !important;
+}
+
+[data-config-panel] .running-engine-card .text-stealth-muted\/50 {
+  color: color-mix(in srgb, var(--theme-eject-card-muted) 50%, transparent) !important;
+}
+
+/* GPU + quant badges inside engine cards */
+[data-config-panel] .running-engine-card .bg-telemetry-cyan\/10,
+[data-config-panel] .running-engine-card .bg-nv-green\/20 {
+  background: var(--theme-eject-badge-bg) !important;
+}
+
+[data-config-panel] .running-engine-card .border-telemetry-cyan\/20,
+[data-config-panel] .running-engine-card .border-telemetry-cyan\/30,
+[data-config-panel] .running-engine-card .border-nv-green\/40 {
+  border-color: var(--theme-eject-card-border) !important;
+}
+
+[data-config-panel] .running-engine-card .text-telemetry-cyan,
+[data-config-panel] .running-engine-card .text-nv-green {
+  color: var(--theme-eject-card-text) !important;
+}
+
+
+/* Pulsing status dot */
+.status-pulse {
+  animation: status-pulse-anim 2s ease-in-out infinite;
+}
+
+@keyframes status-pulse-anim {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(118, 185, 0, 0.4); }
+  50% { opacity: 0.6; box-shadow: 0 0 0 3px rgba(118, 185, 0, 0); }
+}
+
+/* ── Gunmetal Card — selected model, frame texture + accent rail ─── */
+.gunmetal-card {
+  background-color: var(--theme-card-selected-bg);
+  background-image: var(--theme-industrial-texture-active);
+  border: 1px solid color-mix(in srgb, var(--theme-card-selected-accent) 32%, var(--theme-border-subtle)) !important;
+  border-radius: 6px !important;
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--theme-text) 8%, transparent);
+}
+
+
+.gunmetal-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  background: var(--theme-card-selected-accent);
+  border-radius: 2px;
+  box-shadow: 0 0 3px color-mix(in srgb, var(--theme-card-selected-accent) 30%, transparent);
+}
+
+/* Selected model card text — keep readable on gunmetal bg */
+.gunmetal-card .text-white {
+  color: #e0e0e0 !important;
+}
+
+.gunmetal-card .text-stealth-muted {
+  color: #9a9488 !important;
+}
+
+.gunmetal-card .border-stealth-border\/30 {
+  border-color: rgba(154, 148, 136, 0.25) !important;
+}
+
+/* Brushed steel — narrow variant for model cards (vertical grain, stretched pattern) */
+.gunmetal-card-narrow {
+  background-image:
+    linear-gradient(180deg, #7a7d7a 0%, #959895 47%, #7a7d7a 53%, #6e716e 100%);
+  background-size: 1000% 300%;
+  border-color: rgba(118, 185, 0, 0.4);
+}
+
+/* ── E-ink Panel — parameters section, themed phosphor text ─── */
+.eink-panel {
+  background: var(--theme-panel-accent);
+}
+
+.eink-panel * {
+  color: var(--theme-accent-bright) !important;
+}
+
+/* Group headers on e-ink */
+.eink-panel .border-stealth-border\/30 {
+  border-color: var(--theme-accent-soft) !important;
+}
+
+/* Chips — themed outline, dark fill */
+.eink-panel .value-chip {
+  background: var(--theme-chip-bg) !important;
+  border-color: var(--theme-chip-border) !important;
+  color: var(--theme-chip-hover-text) !important;
+}
+
+.eink-panel .value-chip:hover {
+  background: var(--theme-chip-active-bg) !important;
+  border-color: var(--theme-chip-hover-border) !important;
+  color: var(--theme-chip-active-text) !important;
+}
+
+.eink-panel .value-chip-active {
+  background: var(--theme-chip-solid-bg) !important;
+  border-color: var(--theme-chip-solid-bg) !important;
+  color: var(--theme-chip-solid-text) !important;
+  box-shadow: 0 0 4px var(--theme-accent-glow) !important;
+}
+
+/* Chip value area — wrap to panel width (spec decoding, KV quant, etc.) */
+[data-config-panel] [data-param-row] > .flex.gap-1,
+[data-config-panel] [data-param-row] > .config-chip-row {
+  flex-wrap: wrap !important;
+  align-items: center;
+  align-content: flex-start;
+  column-gap: 0.375rem;
+  row-gap: 0.25rem;
+  min-height: 18px;
+  min-width: 0;
+}
+
+
+/* Param labels on e-ink */
+.eink-panel [data-param-row] > span:first-of-type {
+  color: var(--theme-accent-bright) !important;
+}
+
+/* Section titles — short column wrap (MEMORY MANAGEMENT, …) */
+[data-config-panel] [data-param-row] > .config-section-label {
+  width: auto;
+  max-width: 6.5rem;
+  line-height: 1.2;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+[data-config-panel] [data-param-row].config-section-row {
+  flex-wrap: wrap;
+  row-gap: 0.25rem;
+  column-gap: 0.5rem;
+}
+
+/* Spec decoding row has toggle inline — keep title on one line */
+[data-config-panel] .config-spec-decoding.config-section-row {
+  flex-wrap: nowrap;
+}
+
+[data-config-panel] .config-spec-decoding > .config-section-label {
+  max-width: none;
+  white-space: nowrap;
+}
+
+.config-spec-mode-badge {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 0.3rem 0.55rem;
+  border-radius: 2px;
+  white-space: nowrap;
+  line-height: 1;
+}
+
+/* Align with cockpit: DFlash = violet, MTP = green */
+.config-spec-mode-badge--dflash {
+  background: rgba(139, 92, 246, 0.18);
+  border: 1px solid rgba(167, 139, 250, 0.4);
+  color: rgba(216, 201, 255, 0.95);
+  box-shadow: 0 0 10px rgba(139, 92, 246, 0.12);
+}
+
+.config-spec-mode-badge--mtp {
+  background: rgba(74, 222, 128, 0.14);
+  border: 1px solid rgba(74, 222, 128, 0.42);
+  color: rgba(187, 247, 208, 0.95);
+  box-shadow: 0 0 10px rgba(74, 222, 128, 0.12);
+}
+
+
+.config-spec-mode-badge--eagle3 {
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.38);
+  color: rgba(253, 211, 77, 0.95);
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.08);
+}
+
+.config-spec-mode-badge--default {
+  background: var(--theme-chip-active-bg);
+  border: 1px solid var(--theme-chip-active-border);
+  color: var(--theme-chip-active-text);
+}
+
+/* Scrollbar on e-ink */
+.eink-panel::-webkit-scrollbar-thumb {
+  background: var(--theme-scrollbar-thumb) !important;
+}
+
+.eink-panel::-webkit-scrollbar-track {
+  background: var(--theme-accent-soft) !important;
+}
+
+/* Engine card exceptions — preserve non-green colors in eink context */
+
+/* Red: STOP button */
+.eink-panel .text-red-400\/70 {
+  color: rgba(248, 113, 113, 0.7) !important;
+}
+.eink-panel .text-red-400 {
+  color: rgb(248, 113, 113) !important;
+}
+
+/* Yellow/amber: system events, phase bar, TTFT, prefill bench */
+.eink-panel .text-yellow-400\/70 {
+  color: rgba(250, 204, 21, 0.7) !important;
+}
+.eink-panel .text-yellow-400 {
+  color: rgb(250, 204, 21) !important;
+}
+.eink-panel .text-telemetry-amber\/80 {
+  color: rgba(245, 167, 39, 0.8) !important;
+}
+.eink-panel .text-telemetry-amber {
+  color: rgb(245, 167, 39) !important;
+}
+
+/* White: bench ITL/tokens values */
+.eink-panel .text-white {
+  color: rgb(255, 255, 255) !important;
+}
+.eink-panel .text-white\/80 {
+  color: rgba(255, 255, 255, 0.8) !important;
+}
+
+/* Stealth muted: placeholders, secondary labels */
+.eink-panel .text-stealth-muted {
+  color: rgb(100, 100, 116) !important;
+}
+.eink-panel .text-stealth-muted\/50 {
+  color: rgba(100, 100, 116, 0.5) !important;
+}
+.eink-panel .text-stealth-muted\/60 {
+  color: rgba(100, 100, 116, 0.6) !important;
+}
+
+/* Electric blue: RAM bar labels */
+.eink-panel .text-electric-blue {
+  color: rgb(59, 130, 246) !important;
+}
+
+/* ── Amber label — ENGINE PROVIDER, RUNTIME PROFILE, etc. ─── */
+.amber-label {
+  color: var(--theme-provider-label);
+}
+
+/* ── Custom Flags block (launch dock + compact scroll slot) ─── */
+[data-config-panel] .config-launch-dock .custom-flags-block,
+[data-config-panel] .config-launch-dock__flags-scroll .custom-flags-block {
+  border-color: rgba(184, 122, 0, 0.32);
+  margin-top: 0;
+}
+
+[data-config-panel] .config-launch-dock .custom-flags-body,
+[data-config-panel] .config-launch-dock__flags-scroll .custom-flags-body {
+  background: transparent;
+}
+
+[data-config-panel] .config-launch-dock .custom-flags-label,
+[data-config-panel] .config-launch-dock__flags-scroll .custom-flags-label {
+  color: rgba(184, 122, 0, 0.72);
+}
+
+/* Custom flags chrome tokens (config panel — not only dev builds) */
+[data-config-panel] {
+  --dev-rosso: #d40000;
+  --dev-rosso-deep: #8f0000;
+  --custom-flags-amber: #b45309;
+  --custom-flags-amber-deep: #92400e;
+}
+
+/* APPEND mode — solid amber chrome (matches launch button banner) */
+[data-config-panel] .custom-flags-block.custom-flags-active {
+  border-color: var(--custom-flags-amber);
+}
+
+[data-config-panel] .custom-flags-block.custom-flags-active .custom-flags-body {
+  background: var(--custom-flags-amber);
+}
+
+[data-config-panel] .custom-flags-block.custom-flags-active .custom-flags-label {
+  color: #fff;
+}
+
+[data-config-panel] .custom-flags-block.custom-flags-active .custom-flags-input {
+  background: var(--custom-flags-amber-deep);
+  border-color: #fde68a !important;
+  color: #fff;
+}
+
+[data-config-panel] .custom-flags-block.custom-flags-active .custom-flags-input::placeholder {
+  color: #fef3c7;
+}
+
+[data-config-panel] .custom-flags-block.custom-flags-active .mode-btn-add {
+  border-color: #fef3c7;
+  color: #fff;
+  background: var(--custom-flags-amber);
+}
+
+[data-config-panel] .custom-flags-block.custom-flags-active .mode-btn-replace {
+  border-color: #fde68a;
+  color: #fffbeb;
+  background: var(--custom-flags-amber-deep);
+}
+
+[data-config-panel] .custom-flags-block.custom-flags-active .mode-btn-off {
+  border-color: #fde68a;
+  color: #fffbeb;
+  background: var(--custom-flags-amber-deep);
+}
+
+/* REPLACE mode — dev rosso chrome; panel config is bypassed at launch */
+[data-config-panel] .custom-flags-block.custom-flags-replace {
+  border-color: var(--dev-rosso);
+}
+
+[data-config-panel] .custom-flags-block.custom-flags-replace .custom-flags-body {
+  background: var(--dev-rosso);
+}
+
+[data-config-panel] .custom-flags-block.custom-flags-replace .custom-flags-label {
+  color: #fff;
+}
+
+[data-config-panel] .custom-flags-block.custom-flags-replace .custom-flags-input {
+  background: var(--dev-rosso-deep);
+  border-color: #ffb4b4 !important;
+  color: #fff;
+}
+
+[data-config-panel] .custom-flags-block.custom-flags-replace .custom-flags-input::placeholder {
+  color: #ffc9c9;
+}
+
+[data-config-panel] .custom-flags-block.custom-flags-replace .mode-btn-replace {
+  border-color: #fff;
+  color: #fff;
+  background: var(--dev-rosso);
+}
+
+[data-config-panel] .custom-flags-block.custom-flags-replace .mode-btn-add {
+  border-color: #ffb4b4;
+  color: #ffe4e4;
+  background: var(--dev-rosso-deep);
+}
+
+[data-config-panel] .custom-flags-block.custom-flags-replace .mode-btn-off {
+  border-color: #ffb4b4;
+  color: #ffe4e4;
+  background: var(--dev-rosso-deep);
+}
+
+.config-panel-params--bypassed {
+  opacity: 0.38;
+  filter: saturate(0.25);
+  transition: opacity 0.2s ease, filter 0.2s ease;
+}
+
+.config-launch-btn--custom-active {
+  min-height: 3.75rem;
+  padding-top: 0.125rem;
+  padding-bottom: 0.125rem;
+  gap: 0.2rem;
+  overflow: visible;
+}
+
+.config-launch-btn--custom-active .config-launch-btn__custom-warn {
+  width: 100%;
+  margin: 0 0 0.15rem;
+}
+
+.config-launch-btn__custom-warn {
+  display: block;
+  width: calc(100% + 1rem);
+  margin: -0.375rem -0.5rem 0.2rem;
+  padding: 3px 6px;
+  background: var(--dev-rosso);
+  color: #fff;
+  font-size: 7px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  line-height: 1.2;
+}
+
+.config-launch-btn__custom-warn--append {
+  background: var(--custom-flags-amber, #b45309);
+  color: #fff;
+}
+
+.config-replace-confirm {
+  border: 1px solid var(--dev-rosso);
+  background: var(--dev-rosso-shell, #120000);
+  backdrop-filter: blur(2px);
+}
+
+.config-replace-confirm__launch {
+  border: 1px solid var(--dev-rosso);
+  background: var(--dev-rosso);
+  color: #fff;
+}
+
+.config-replace-confirm__launch:hover {
+  background: var(--dev-rosso-deep);
+}
+
+.config-replace-confirm__cancel {
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.custom-flags-popover {
+  position: fixed;
+  z-index: 220;
+  transform: translateY(calc(-100% - 8px));
+  padding: 8px;
+  background: var(--theme-surface-inset, #0a0a0c);
+  border-color: rgba(184, 122, 0, 0.45);
+  box-shadow:
+    0 10px 28px rgba(0, 0, 0, 0.55),
+    0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
+.custom-flags-popover--below {
+  transform: translateY(8px);
+}
+
+.custom-flags-popover--below .custom-flags-popover__input {
+  min-height: 120px;
+  max-height: none;
+  resize: vertical;
+}
+
+/* Right rail — wide 3-line editor spanning over central config panel */
+.custom-flags-popover--rail-left {
+  transform: none;
+  max-width: none;
+  box-sizing: border-box;
+  padding: 10px 12px;
+}
+
+.custom-flags-popover--rail-left .custom-flags-popover__input {
+  min-height: 0;
+  max-height: 4.1em;
+  resize: none;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.custom-flags-popover--append {
+  background: var(--custom-flags-amber-deep, #92400e);
+  border-color: var(--custom-flags-amber, #b45309);
+  box-shadow:
+    0 10px 28px rgba(0, 0, 0, 0.55),
+    0 0 0 1px var(--custom-flags-amber, #b45309);
+}
+
+.custom-flags-popover--replace {
+  background: var(--dev-rosso-deep);
+  border-color: var(--dev-rosso);
+  box-shadow:
+    0 10px 28px rgba(0, 0, 0, 0.6),
+    0 0 0 1px var(--dev-rosso);
+}
+
+.custom-flags-popover__input {
+  display: block;
+  font-size: 16px;
+  min-height: 54px;
+  resize: vertical;
+  line-height: 1.35;
+  max-height: 140px;
+  background: rgba(0, 0, 0, 0.35);
+  border-color: rgba(184, 122, 0, 0.35);
+  color: var(--theme-text, #e8e8ec);
+}
+
+.custom-flags-popover--append .custom-flags-popover__input {
+  background: #000;
+  border-color: #fde68a;
+  color: #fff;
+}
+
+.custom-flags-popover--replace .custom-flags-popover__input {
+  background: #000;
+  border-color: #ffb4b4;
+  color: #fff;
+}
+
+.custom-flags-popover__hint {
+  font-size: 13px;
+  color: var(--theme-text-muted, #9ca3af);
+}
+
+.custom-flags-popover--append .custom-flags-popover__hint {
+  color: #fef3c7;
+}
+
+.custom-flags-popover--replace .custom-flags-popover__hint {
+  color: #ffe0e0;
+}
+
+/* Mode toggle buttons inside Custom Flags */
+.mode-btn-add {
+  border-color: rgba(74, 222, 128, 0.3);
+  color: #4ade80;
+  background: rgba(74, 222, 128, 0.06);
+}
+
+.mode-btn-replace {
+  border-color: rgba(248, 113, 113, 0.3);
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.06);
+}
+
+.mode-btn-disabled {
+  border-color: rgba(26, 46, 26, 0.3);
+  color: rgba(100, 100, 116, 0.3);
+  cursor: not-allowed;
+}
+
+.mode-btn-off {
+  border-color: rgba(184, 122, 0, 0.25);
+  color: rgba(184, 122, 0, 0.55);
+  background: rgba(184, 122, 0, 0.04);
+  cursor: pointer;
+}
+
+.mode-btn-off:hover {
+  border-color: rgba(184, 122, 0, 0.4);
+  color: rgba(184, 122, 0, 0.75);
+  background: rgba(184, 122, 0, 0.08);
+}
+
+.custom-flags-input {
+  background: rgba(0, 0, 0, 0.3);
+  height: 18px;
+  min-height: 18px;
+}
+
+.custom-flags-block .mode-btn-add,
+.custom-flags-block .mode-btn-replace,
+.custom-flags-block .mode-btn-off {
+  line-height: 1.2;
+  min-height: 18px;
+}
+
+/* ── CONFIG page — reuse chip/panel tokens, no rainbow profiles ─── */
+[data-config-page] {
+  background: var(--theme-bg);
+  color: var(--theme-text);
+}
+
+[data-config-page] .config-muted,
+[data-config-page] .text-stealth-muted {
+  color: var(--theme-text-muted) !important;
+}
+
+[data-config-page] .text-white,
+[data-config-page] .text-white\/80,
+[data-config-page] .text-white\/90 {
+  color: var(--theme-text) !important;
+}
+
+[data-config-page] .text-white\/75 {
+  color: var(--theme-text-muted) !important;
+}
+
+[data-config-page] .foundry-toolchain-install-guide__body {
+  color: var(--theme-text-muted) !important;
+}
+
+[data-config-page] .foundry-toolchain-install-guide__emph {
+  color: var(--theme-text) !important;
+}
+
+[data-config-page] .text-nv-green,
+[data-config-page] .text-nv-green\/60,
+[data-config-page] .text-nv-green\/80 {
+  color: var(--theme-accent-bright) !important;
+}
+
+[data-config-page] .text-telemetry-cyan {
+  color: var(--theme-accent-bright) !important;
+}
+
+[data-config-page] .bg-\[\#0a0a1a\],
+[data-config-page] .bg-\[\#1a1a2e\] {
+  background: var(--theme-panel) !important;
+}
+
+[data-config-page] .config-section-bar {
+  border-bottom: 1px solid var(--theme-border-subtle);
+}
+
+[data-config-page] .config-provider-card {
+  background: var(--theme-eject-card-bg);
+  border: 1px solid var(--theme-eject-card-border);
+  border-radius: 6px;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+[data-config-page] .config-provider-card:hover {
+  border-color: var(--theme-eject-card-hover-border);
+  background: var(--theme-eject-card-hover-bg);
+}
+
+[data-config-page] .config-provider-card.is-expanded {
+  border-color: var(--theme-chip-active-border);
+  background: var(--theme-eject-card-selected-bg);
+}
+
+[data-config-page] .config-provider-card.is-editing {
+  border-color: color-mix(in srgb, var(--theme-secondary) 45%, transparent);
+}
+
+[data-config-page] .foundry-build-panel {
+  background: var(--theme-panel-accent);
+  border: 1px solid var(--theme-border-subtle);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+[data-config-page] .foundry-build-header {
+  background: var(--theme-panel);
+  border-bottom: 1px solid var(--theme-border-subtle);
+}
+
+[data-config-page] .foundry-profile-group {
+  border: 1px solid var(--theme-eject-card-border);
+  border-radius: 2px;
+  overflow: hidden;
+  background: var(--theme-eject-card-bg);
+}
+
+[data-config-page] .foundry-profile-row {
+  background: var(--theme-eject-card-bg);
+  border: 1px solid transparent;
+  border-left: 3px solid transparent;
+}
+
+[data-config-page] .foundry-profile-row--active {
+  background: color-mix(in srgb, var(--config-user-accent, #facc15) 12%, var(--theme-eject-card-bg));
+  border-left-color: var(--config-user-accent, #facc15);
+}
+
+[data-config-page] .foundry-active-binary-badge {
+  background: color-mix(in srgb, var(--config-user-accent, #facc15) 22%, transparent);
+  border: 1px solid var(--config-user-accent, #facc15);
+  color: var(--config-user-accent, #facc15);
+  border-radius: 2px;
+  letter-spacing: 0.04em;
+}
+
+
+[data-config-page] .foundry-source-label {
+  color: var(--config-muted, #9ca3af);
+}
+
+[data-config-page] .foundry-profile-label {
+  color: #facc15;
+}
+
+
+/* CONFIG — user-accent amber; arctic panels need muted brown-gold, not bright yellow */
+
+
+[data-config-page] .foundry-profile-badges {
+  flex-wrap: nowrap;
+  align-items: center;
+}
+
+[data-config-page] .config-form-panel {
+  background: var(--theme-panel);
+  border: 1px solid var(--theme-border-subtle);
+}
+
+[data-config-page] .provider-row-group {
+  position: relative;
+  margin-bottom: 8px;
+}
+
+[data-config-page] .provider-form-popover {
+  position: relative;
+  z-index: 12;
+  background: var(--theme-panel);
+  border: 1px solid color-mix(in srgb, var(--theme-secondary) 28%, var(--theme-border-subtle));
+  box-shadow:
+    0 14px 36px rgba(0, 0, 0, 0.48),
+    0 6px 14px rgba(0, 0, 0, 0.32),
+    0 0 0 1px color-mix(in srgb, var(--theme-secondary) 10%, transparent);
+}
+
+[data-config-page] .provider-form-popover--edit {
+  margin: 6px 0 4px auto;
+  max-width: min(520px, 100%);
+  width: 100%;
+}
+
+[data-config-page] .provider-form-popover--add {
+  margin: 8px 0 16px 0;
+  max-width: min(520px, 100%);
+}
+
+[data-config-page] .config-input,
+[data-config-page] .config-textarea {
+  background: transparent;
+  color: var(--theme-text);
+  border-color: var(--theme-chip-border);
+}
+
+[data-config-page] .config-input {
+  border-bottom: 1px solid var(--theme-chip-border);
+}
+
+[data-config-page] .config-input:focus,
+[data-config-page] .config-textarea:focus {
+  border-color: var(--theme-chip-active-border);
+  outline: none;
+}
+
+[data-config-page] .config-input::placeholder,
+[data-config-page] .config-textarea::placeholder {
+  color: var(--theme-text-muted);
+}
+
+[data-config-page] .config-scan-panel {
+  background: var(--theme-panel-accent);
+  border: 1px solid var(--theme-border-subtle);
+}
+
+[data-config-page] .value-chip,
+[data-config-page] .value-chip-active {
+  font-family: 'JetBrains Mono', 'Roboto Mono', monospace;
+}
+
+[data-config-page] .param-catalog-modal {
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+[data-config-page] .param-catalog-modal .config-provider-card {
+  padding: 0;
+}
+
+/* ── Config panel root background ─── */
+[data-config-panel] {
+  background: var(--theme-panel-accent);
+}
+
+/* ── Selected model card name color ─── */
+.gunmetal-card .model-card-name {
+  color: #b87a00;
+}
+
+
+/* ARCTIC catalog — unselected cards sample rail aluminium; selected lifts to white face */
+
+
+/* ARCTIC catalog — quant badge: dark teal ink on white/light cards */
+
+
+/* ── Select option styling (WebView2 ignores inline styles on <option>) ─── */
+select option {
+  background: var(--theme-panel) !important;
+  color: var(--theme-text) !important;
+}
+
+/* ── MOE Suggestion Animations ─────────────────────────────── */
+
+/* Simple pulsing border for suggestion state */
+@keyframes pulseBorder {
+  0%, 100% { 
+    box-shadow: 0 0 12px rgba(251, 146, 60, 0.35), inset 0 0 4px rgba(251, 146, 60, 0.2);
+    border-color: rgba(251, 146, 60, 0.8);
+  }
+  50% { 
+    box-shadow: 0 0 12px rgba(251, 146, 60, 0.7), inset 0 0 8px rgba(251, 146, 60, 0.4);
+    border-color: rgba(251, 146, 60, 1);
+  }
+}
+
+/* MOE badge — reserved outer glow so gold ↔ suggest ↔ idle does not nudge bars */
+.moe-badge-root {
+  box-shadow: 0 0 15px transparent;
+}
+
+.moe-badge-root.moe-badge-gold {
+  box-shadow: 0 0 15px rgba(251, 191, 36, 0.5);
+}
+
+.moe-badge-root.moe-badge-suggest {
+  box-shadow: 0 0 12px transparent;
+}
+
+.animate-dashed-border {
+  animation: pulseBorder 1.5s ease-in-out infinite;
+}
+
+
+/* Metallic gold texture for active MOE_OPTIMAL state */
+.bg-gold-metallic {
+  background: linear-gradient(180deg, #dfc9a8 0%, #FBBF24 40%, #b08700 100%);
+  box-shadow: inset 0 1px 2px rgba(255,255,255,0.4), 0 0 12px rgba(251,191,36,0.3);
+}
+
+/* Orange hatched pattern for MOE_OPTIMAL RAM bar */
+.bg-orange-hatched {
+  background-image: 
+    repeating-linear-gradient(45deg, #FB923C 0px, #FB923C 1px, transparent 1px, transparent 3px),
+    linear-gradient(90deg, #3B82F6, #60A5FA);
+  background-blend-mode: overlay;
+}
+
+/* ── Speculative Decoding Toggle ─── */
+
+@keyframes nuclearFlash {
+  0% { opacity: 0; }
+  30% { opacity: 1; }
+  100% { opacity: 1; }
+}
+
+@keyframes specUnlockStagger {
+  from { opacity: 0; transform: translateY(8px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes warningStripe {
+  0% { background-position: 0 0; }
+  100% { background-position: 28px 0; }
+}
+
+.nuclear-btn-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.nuclear-btn-container.flash .toggle-switch {
+  animation: nuclearFlash 0.4s ease-out forwards;
+}
+
+.nuclear-btn-text {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 7px;
+  font-weight: bold;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  background: #111;
+  padding: 3px 8px;
+  color: rgba(234, 179, 8, 0.7);
+  text-shadow: 0 1px 2px rgba(0,0,0,0.9);
+}
+
+.nuclear-btn-container.flash .nuclear-btn-text {
+  color: #fff;
+}
+
+/* Warning banner for active speculative decoding group */
+.spec-warning-banner {
+  background: repeating-linear-gradient(
+    -45deg,
+    rgba(234, 179, 8, 0.06),
+    rgba(234, 179, 8, 0.06) 3px,
+    transparent 3px,
+    transparent 7px
+  );
+  border: 1px solid rgba(234, 179, 8, 0.25);
+  padding: 6px 10px;
+  margin-bottom: 8px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: rgba(234, 179, 8, 0.75);
+  text-transform: uppercase;
+}
+
+.spec-warning-banner.active {
+  border-color: rgba(234, 179, 8, 0.4);
+  color: rgba(250, 204, 21, 0.9);
+}
+
+/* Params that unlock when speculative decoding is ON */
+.spec-param-unlock {
+  animation: specUnlockStagger 0.3s ease-out forwards;
+}
+
+.spec-param-unlock:nth-child(1) { animation-delay: 0.05s; }
+.spec-param-unlock:nth-child(2) { animation-delay: 0.1s; }
+.spec-param-unlock:nth-child(3) { animation-delay: 0.15s; }
+
+/* Locked state — greyed out */
+.spec-locked {
+  opacity: 0.2;
+  pointer-events: none;
+  filter: grayscale(1);
+}
+
+/* ── CTX slider track (native + custom) — uses app theme accent tokens ── */
+:root {
+  --ctx-slider-control-h: 18px;
+  /* Reserved chip width — 4 glyphs (e.g. 512K); editing scrolls longer raw integers. */
+  --ctx-chip-w: calc(4.25ch + 0.45rem);
+}
+
+.ctx-slider-track-host {
+  overflow: visible;
+  align-self: center;
+}
+
+.config-params-above .ctx-slider-row,
+.config-params-above .ctx-slider-field,
+.config-params-above .ctx-slider-param-row {
+  overflow: visible;
+}
+
+.ctx-slider-track {
+  background: var(--theme-panel-accent);
+  border: 1px solid color-mix(in srgb, var(--theme-accent-bright) 30%, transparent);
+  box-sizing: border-box;
+}
+
+.ctx-slider-thumb {
+  background: var(--theme-accent-bright);
+  box-shadow: 0 0 6px var(--theme-accent-glow);
+  pointer-events: none;
+}
+
+.ctx-slider-tick {
+  background: color-mix(in srgb, var(--theme-accent-bright) 35%, transparent);
+}
+
+.ctx-slider-tick--default {
+  background: var(--theme-accent-bright);
+  box-shadow: 0 0 4px var(--theme-accent-glow);
+  width: 4px;
+}
+
+.ctx-slider-tick--selected {
+  background: color-mix(in srgb, var(--theme-accent-bright) 65%, transparent);
+}
+
+.ctx-slider-tick-tooltip {
+  color: color-mix(in srgb, var(--theme-accent-bright) 55%, transparent);
+  z-index: 6;
+}
+.ctx-slider-tick-tooltip--active {
+  color: var(--theme-accent-bright);
+}
+
+.ctx-slider-chip--reserve {
+  width: var(--ctx-chip-w);
+  min-width: var(--ctx-chip-w);
+  max-width: var(--ctx-chip-w);
+}
+
+.ctx-slider-value-input {
+  height: var(--ctx-slider-control-h);
+  min-height: var(--ctx-slider-control-h);
+  padding: 0 0.2rem;
+  line-height: calc(var(--ctx-slider-control-h) - 2px);
+  box-sizing: border-box;
+}
+
+.ctx-slider-row {
+  min-width: 0;
+  min-height: var(--ctx-slider-control-h);
+  overflow: visible;
+  align-items: flex-start;
+}
+
+.ctx-slider-row > .ctx-slider-track-host {
+  flex: 1 1 0%;
+  min-width: 0;
+}
+
+[data-param-row]:has(.ctx-slider-row),
+.ctx-slider-param-row {
+  align-items: flex-start;
+  min-height: 22px;
+  overflow: visible;
+}
+
+.ctx-slider-param-label {
+  margin-right: 1ch;
+}
+
+.ctx-slider-param-row {
+  padding-right: 1ch;
+}
+
+.ctx-slider-field {
+  min-width: 0;
+}
+
+.ctx-slider-per-slot-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 1px;
+  user-select: none;
+}
+
+.ctx-slider-per-slot-chip {
+  font-variant-numeric: tabular-nums;
+  display: block;
+  height: var(--ctx-slider-control-h);
+  min-height: var(--ctx-slider-control-h);
+  padding: 0 0.2rem;
+  line-height: calc(var(--ctx-slider-control-h) - 2px);
+  box-sizing: border-box;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ctx-slider-per-slot-caption {
+  font-size: 6px;
+  line-height: 1;
+  text-align: center;
+  color: var(--theme-text-muted);
+  opacity: 0.72;
+  letter-spacing: 0.06em;
+}
+
+/* Config panel — machined chips: crisp bevel, matte fill, no outer glow (launch dock excluded) */
+[data-config-panel] .gpu-assign-panel .value-chip,
+[data-config-panel] .gpu-assign-panel .value-chip-active,
+[data-config-panel] .config-params-above [data-param-row] .value-chip,
+[data-config-panel] .config-params-above [data-param-row] .value-chip-active,
+[data-config-panel] .config-params-above [data-param-row] input.value-chip,
+[data-config-panel] .config-params-above [data-param-row] input.value-chip-active,
+[data-config-panel] .config-params-scroll [data-param-row] .value-chip,
+[data-config-panel] .config-params-scroll [data-param-row] .value-chip-active,
+[data-config-panel] .config-params-scroll [data-param-row] input.value-chip,
+[data-config-panel] .config-params-scroll [data-param-row] input.value-chip-active {
+  background: color-mix(in srgb, var(--theme-chip-bg) 82%, var(--theme-panel-accent)) !important;
+  border: 1px solid var(--theme-chip-border) !important;
+  border-top-color: color-mix(in srgb, var(--theme-chip-border) 42%, var(--theme-bezel-edge-hi)) !important;
+  border-bottom-color: color-mix(in srgb, var(--theme-chip-border) 68%, var(--theme-panel)) !important;
+  color: var(--theme-chip-text) !important;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 16%, transparent) !important;
+  transform: none;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease !important;
+}
+
+[data-config-panel] .gpu-assign-panel .value-chip:hover,
+[data-config-panel] .config-params-above [data-param-row] .value-chip:hover,
+[data-config-panel] .config-params-above [data-param-row] input.value-chip:hover,
+[data-config-panel] .config-params-scroll [data-param-row] .value-chip:hover,
+[data-config-panel] .config-params-scroll [data-param-row] input.value-chip:hover {
+  background: var(--theme-chip-active-bg) !important;
+  border-color: var(--theme-chip-hover-border) !important;
+  border-top-color: color-mix(in srgb, var(--theme-chip-hover-border) 48%, var(--theme-bezel-edge-hi)) !important;
+  border-bottom-color: color-mix(in srgb, var(--theme-chip-hover-border) 72%, var(--theme-panel)) !important;
+  color: var(--theme-chip-hover-text) !important;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 20%, transparent) !important;
+}
+
+[data-config-panel] .gpu-assign-panel .value-chip-active,
+[data-config-panel] .config-params-above [data-param-row] .value-chip-active,
+[data-config-panel] .config-params-above [data-param-row] input.value-chip-active,
+[data-config-panel] .config-params-scroll [data-param-row] .value-chip-active,
+[data-config-panel] .config-params-scroll [data-param-row] input.value-chip-active {
+  background: var(--theme-chip-solid-bg) !important;
+  border-color: color-mix(in srgb, var(--theme-chip-solid-bg) 78%, var(--theme-panel)) !important;
+  border-top-color: color-mix(in srgb, var(--theme-chip-solid-bg) 62%, var(--theme-panel)) !important;
+  border-bottom-color: color-mix(in srgb, var(--theme-chip-solid-bg) 48%, #000000) !important;
+  color: var(--theme-chip-solid-text) !important;
+  box-shadow: inset 0 1px 2px color-mix(in srgb, var(--theme-panel) 32%, transparent) !important;
+}
+
+/* ARCTIC — matte paper chips (no glossy plastic) */
+
+
+/* Native range — transparent track so .ctx-slider-track shows through */
+.slider-param-ghost::-webkit-slider-runnable-track {
+  background: transparent !important;
+  border: none !important;
+}
+
+.slider-param-ghost::-moz-range-track {
+  background: transparent !important;
+  border: none !important;
+}
+
+.slider-param-ghost::-moz-range-progress {
+  background: transparent !important;
+}
+
+/* ── Slider Param (slider-param class) — theme accent track + thumb ── */
+
+.slider-param::-webkit-slider-runnable-track {
+  height: 6px;
+  background: var(--theme-panel-accent) !important;
+  border: 1px solid color-mix(in srgb, var(--theme-accent-bright) 30%, transparent);
+  border-radius: 2px;
+}
+
+.slider-param::-moz-range-track {
+  height: 6px;
+  background: var(--theme-panel-accent) !important;
+  border: 1px solid color-mix(in srgb, var(--theme-accent-bright) 30%, transparent);
+  border-radius: 2px;
+}
+
+.slider-param::-moz-range-progress {
+  background: transparent !important;
+}
+
+.slider-param::-webkit-slider-thumb {
+  appearance: none;
+  width: 15px;
+  height: 15px;
+  border-radius: 2px;
+  background: var(--theme-accent-bright) !important;
+  box-shadow: 0 0 6px var(--theme-accent-glow);
+  margin-top: -3px; /* center thumb on track */
+}
+
+.slider-param::-moz-range-thumb {
+  width: 15px;
+  height: 15px;
+  border-radius: 2px;
+  background: var(--theme-accent-bright) !important;
+  box-shadow: 0 0 6px var(--theme-accent-glow);
+  border: none;
+}
+
+/* Preset snap dots */
+.slider-snap-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--theme-accent-bright) 20%, transparent);
+  transition: all 0.15s ease;
+}
+.slider-snap-dot-active {
+  width: 7px !important;
+  height: 7px !important;
+  background: var(--theme-accent-bright) !important;
+  box-shadow: 0 0 6px var(--theme-accent-glow);
+}

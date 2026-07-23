@@ -1,0 +1,8 @@
+/* ── Utility Classes ───────────────────────────────────────────── */
+.font-mono {
+  font-family: 'JetBrains Mono', 'Roboto Mono', monospace;
+}
+
+.theme-accent-text {
+  color: var(--theme-accent);
+}

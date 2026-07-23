@@ -1,0 +1,1615 @@
+/* ── App chrome — header, nav, footer ─── */
+.app-shell {
+  background-color: var(--theme-bg);
+  color: var(--theme-text);
+}
+
+.app-header {
+  background: var(--theme-header-bg);
+  border-bottom: 1px solid var(--theme-header-border);
+  isolation: isolate;
+  overflow: visible;
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--theme-header-title) 6%, transparent),
+    0 2px 6px color-mix(in srgb, #000000 30%, transparent),
+    0 10px 24px color-mix(in srgb, #000000 16%, transparent);
+}
+
+.app-header__start {
+  flex: 1 1 auto;
+}
+
+.app-header__nav {
+  flex: 1 1 auto;
+  margin-left: 1.25rem;
+  gap: 0.375rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.app-header__nav::-webkit-scrollbar {
+  display: none;
+}
+
+.app-header__nav-item {
+  flex: 1 1 0;
+  min-width: 3.75rem;
+  display: flex;
+}
+
+.app-header__nav-item .app-nav-tab {
+  flex: 1 1 auto;
+}
+
+.app-header-brand {
+  position: relative;
+  flex-shrink: 0;
+  width: fit-content;
+  height: 40px;
+}
+
+.app-header-brand .app-header-logo {
+  transform: translateY(-5px);
+}
+
+.app-header-version {
+  position: absolute;
+  right: 0;
+  left: auto;
+  top: calc(100% + 3px);
+  margin: 0;
+  font-size: 6.5px;
+  line-height: 1.1;
+  white-space: nowrap;
+  text-align: right;
+  opacity: 1;
+  color: color-mix(in srgb, var(--theme-header-title) 42%, var(--theme-chrome-control-text) 58%);
+  pointer-events: none;
+}
+
+
+.app-header-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-content: center;
+  max-width: min(56vw, 34rem);
+}
+
+.app-header-update-btn {
+  flex-shrink: 0;
+}
+
+/* Keep chrome shadows above scrolling main content (same z-order issue as output console). */
+.app-main-scroll {
+  position: relative;
+  z-index: 1;
+}
+
+/* Footer + docked console footprint — single source of truth for fixed chrome. */
+:root {
+  --app-footer-console-header-h: 24px;
+  --app-footer-status-h: 20px;
+  --app-footer-h: calc(var(--app-footer-console-header-h) + var(--app-footer-status-h));
+  --boc-docked-h: 100px;
+  --boc-launch-gap: 3px;
+  --boc-docked-reserve: calc(var(--boc-docked-h) + var(--app-footer-h) + var(--boc-launch-gap));
+  --config-launch-dock-pad: 2px;
+  --config-launch-dock-pad-top: 4px;
+  --app-shell-width-px: 960px;
+  --ui-text-scale: 1;
+}
+
+/* Fluid shell — width resolved in JS; scale via transform (zoom property shrinks canvas in WebView2). */
+.app-main-zoom {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  box-sizing: border-box;
+}
+
+.app-main-frame {
+  position: relative;
+  width: calc(var(--app-shell-width-px) / var(--ui-text-scale));
+  height: calc(100% / var(--ui-text-scale));
+  min-height: 0;
+  flex-shrink: 0;
+  transform: scale(var(--ui-text-scale));
+  transform-origin: top center;
+}
+
+/* Compact density — tighter engine config rows/chips when text scale is high */
+.app-shell[data-ui-density="compact"] [data-config-panel] .config-params-scroll .space-y-2\.5 > :not([hidden]) ~ :not([hidden]) {
+  margin-top: 0.375rem !important;
+}
+
+.app-shell[data-ui-density="compact"] [data-config-panel] .config-params-scroll .space-y-3 > :not([hidden]) ~ :not([hidden]) {
+  margin-top: 0.5rem !important;
+}
+
+.app-shell[data-ui-density="compact"] [data-config-panel] .config-params-scroll .flex.gap-4 {
+  gap: 0.75rem;
+}
+
+.app-shell[data-ui-density="compact"] [data-config-panel] .value-chip,
+.app-shell[data-ui-density="compact"] [data-config-panel] .value-chip-active,
+.app-shell[data-ui-density="compact"] [data-config-panel] input.value-chip,
+.app-shell[data-ui-density="compact"] [data-config-panel] input.value-chip-active {
+  padding-top: 0;
+  padding-bottom: 0;
+  font-size: 8px;
+}
+
+.app-shell[data-ui-density="compact"] [data-config-panel] [data-param-row] > span:first-child {
+  font-size: 8px;
+}
+
+.app-shell[data-ui-density="compact"] [data-config-panel] .config-params-scroll {
+  padding-top: 0.5rem;
+  padding-bottom: 0.25rem;
+}
+
+/* Compact — CONFIG / PARAMS list (chips unchanged; tighten row/group padding) */
+.app-shell[data-ui-density="compact"] [data-config-page] .config-params-list {
+  padding: 0.5rem 0.75rem !important;
+}
+
+.app-shell[data-ui-density="compact"] [data-config-page] .config-param-row {
+  padding: 0.25rem 0.5rem !important;
+  gap: 0.375rem !important;
+}
+
+.app-shell[data-ui-density="compact"] [data-config-page] .config-param-group-block > :not([hidden]) ~ :not([hidden]) {
+  margin-top: 0.375rem !important;
+}
+
+.app-shell[data-ui-density="compact"] [data-config-page] .config-param-group-header {
+  margin-bottom: 0.25rem !important;
+  padding-bottom: 0.125rem !important;
+}
+
+.app-shell[data-ui-density="compact"] [data-config-panel] .config-launch-dock__grid {
+  gap: 6px;
+}
+
+.app-shell[data-ui-density="compact"] [data-config-panel] .config-launch-dock__left {
+  gap: 0;
+}
+
+.app-shell[data-ui-density="compact"] [data-config-panel] .config-launch-dock__meta [data-param-row] {
+  min-height: 18px;
+}
+
+.app-shell[data-ui-density="compact"] [data-config-panel] .config-launch-dock .config-launch-btn {
+  min-height: 2rem !important;
+  padding-top: 0.2rem !important;
+  padding-bottom: 0.2rem !important;
+  font-size: 10px !important;
+  letter-spacing: 0.14em !important;
+}
+
+.app-shell[data-ui-density="compact"] [data-config-panel] .config-launch-dock .config-launch-btn__hint {
+  display: none;
+}
+
+.app-shell[data-ui-density="compact"] [data-config-panel] .config-launch-dock__flags-scroll {
+  margin-top: 0.5rem;
+  padding-bottom: 0.25rem;
+}
+
+/* Docked full console — reserve footer + console height so launch dock sits just above console */
+.app-shell--console-docked {
+  --app-footer-h: var(--app-footer-status-h);
+  --boc-docked-h: 120px;
+  --boc-docked-reserve: calc(var(--boc-docked-h) + var(--app-footer-h) + var(--boc-launch-gap));
+}
+
+.app-shell--console-docked .app-main-frame {
+  padding-bottom: var(--boc-docked-reserve);
+  box-sizing: border-box;
+}
+
+.app-shell--console-docked [data-config-panel] .config-launch-dock {
+  padding-bottom: 0;
+}
+
+/* Compact — hide running engines banner only; keep engine cards visible */
+.app-shell[data-ui-density="compact"] [data-config-panel] .running-engines-header-row {
+  display: none;
+}
+
+.app-shell[data-ui-density="compact"] [data-config-panel] .industrial-eject-panel {
+  margin-top: -6px;
+  padding-top: 6px;
+}
+
+.app-shell[data-ui-density="compact"] [data-config-panel] .running-engines-scroll {
+  --running-engine-row-h: 2.75rem;
+  --running-engine-alias-w: 5rem;
+  padding-top: 0.5rem;
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+  padding-bottom: 0.25rem;
+  max-height: calc(var(--running-engine-row-h) * 4 + 0.2rem * 3);
+}
+
+.app-shell[data-ui-density="compact"] [data-config-panel] .running-engine-card {
+  padding: 0.25rem 0.5rem !important;
+  gap: 0.15rem;
+}
+
+/* Compact — mono runtime block (alias, profile, multi-gpu dock) */
+.app-shell[data-ui-density="compact"] [data-config-panel] .mono-panel-body {
+  padding: 0.25rem 0.75rem 0.375rem 1rem !important;
+}
+
+.app-shell[data-ui-density="compact"] [data-config-panel] .mono-panel-body > .flex.gap-4 {
+  gap: 0.5rem;
+}
+
+.app-shell[data-ui-density="compact"] [data-config-panel] .mono-panel .mono-label {
+  font-size: 7px;
+  margin-bottom: 0.25rem !important;
+}
+
+.app-shell[data-ui-density="compact"] [data-config-panel] .mono-panel .space-y-2\.5 > :not([hidden]) ~ :not([hidden]) {
+  margin-top: 0.25rem !important;
+}
+
+/* Compact — speculative decoding header row */
+.app-shell[data-ui-density="compact"] [data-config-panel] .config-spec-decoding {
+  gap: 0.25rem;
+  min-height: 0;
+}
+
+.app-shell[data-ui-density="compact"] [data-config-panel] .config-spec-decoding .toggle-switch {
+  transform: scale(0.78);
+  transform-origin: left center;
+}
+
+.app-shell[data-ui-density="compact"] [data-config-panel] .config-spec-params {
+  margin-top: 0.25rem !important;
+}
+
+.app-shell[data-ui-density="compact"] [data-config-panel] .config-spec-params > :not([hidden]) ~ :not([hidden]) {
+  margin-top: 0.25rem !important;
+}
+
+.app-shell[data-ui-density="compact"] [data-config-panel] .config-spec-decoding ~ div.text-\[8px\] {
+  font-size: 7px !important;
+  margin-top: 0.125rem !important;
+  padding-top: 0.125rem !important;
+  padding-bottom: 0.125rem !important;
+}
+
+.app-header-title {
+  color: var(--theme-header-title);
+}
+
+.app-header-subtitle {
+  color: var(--theme-header-subtitle);
+}
+
+.app-header-logo {
+  color: var(--theme-header-logo);
+}
+
+.app-nav-tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 2rem;
+  padding:
+    clamp(0.35rem, calc(0.2rem + 0.35vw), 0.75rem)
+    clamp(0.5rem, calc(0.35rem + 1.1vw), 2rem);
+  font-size: clamp(0.625rem, calc(0.55rem + 0.42vw), 0.9375rem);
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+  color: var(--theme-nav-text);
+  border: 1px solid transparent;
+  transition:
+    color 0.2s ease,
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    padding 0.15s ease,
+    font-size 0.15s ease;
+}
+
+.app-shell[data-ui-density="compact"] .app-nav-tab {
+  min-height: 1.65rem;
+  padding:
+    clamp(0.25rem, calc(0.15rem + 0.25vw), 0.5rem)
+    clamp(0.4rem, calc(0.3rem + 0.8vw), 1.25rem);
+  font-size: clamp(0.5625rem, calc(0.5rem + 0.32vw), 0.75rem);
+}
+
+.app-nav-tab:hover {
+  color: var(--theme-nav-hover-text);
+  background: var(--theme-nav-hover-bg);
+}
+
+.app-nav-tab-active {
+  background: var(--theme-nav-active-bg) !important;
+  color: var(--theme-nav-active-text) !important;
+  border-color: var(--theme-nav-active-border) !important;
+}
+
+.app-quick-settings {
+  border: 1px solid var(--theme-chrome-control-border);
+  border-radius: 6px;
+  padding: 3px 5px 2px;
+  flex-shrink: 0;
+  width: fit-content;
+  max-width: 100%;
+  align-items: flex-end;
+}
+
+.app-quick-settings__tools {
+  align-self: stretch;
+  border-top: 1px solid color-mix(in srgb, var(--theme-chrome-control-border) 55%, transparent);
+  margin-top: 2px;
+  padding-top: 3px;
+  min-width: 0;
+}
+
+.app-quick-settings__title {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  color: var(--theme-chrome-control-text);
+  opacity: 0.72;
+  line-height: 1;
+}
+
+.app-quick-settings__tool-group {
+  flex: 1 1 auto;
+}
+
+.app-quick-settings__recovery.app-chrome-control-btn {
+  font-weight: 700;
+  color: var(--theme-status-nominal);
+}
+
+.app-quick-settings__recovery.app-chrome-control-btn:hover {
+  color: var(--theme-chrome-control-hover);
+}
+
+/* Stretch to Quick Settings height only — never grow the header. */
+.app-header-dev-tools {
+  align-self: stretch;
+  justify-content: space-between;
+  border: 1px solid color-mix(in srgb, var(--theme-chrome-control-border) 70%, #facc15 30%);
+  border-radius: 4px;
+  padding: 1px 2px;
+  gap: 0;
+  min-height: 0;
+  max-height: 100%;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.app-header-dev-tools__btn {
+  flex: 1 1 0;
+  min-height: 0;
+  max-height: 100%;
+  padding: 0 3px !important;
+  font-size: 6px !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important;
+  line-height: 1 !important;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.app-quick-settings__sep {
+  flex-shrink: 0;
+}
+
+.app-update-menu-popover {
+  background: var(--theme-panel);
+  border-color: color-mix(in srgb, #facc15 30%, var(--theme-chrome-control-border) 70%);
+  box-shadow:
+    0 14px 36px rgba(0, 0, 0, 0.48),
+    0 6px 14px rgba(0, 0, 0, 0.32);
+}
+
+.app-appearance-panel {
+  border: 1px solid var(--theme-chrome-control-border);
+  flex-shrink: 0;
+}
+
+.app-appearance-panel--embedded {
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.app-appearance-section {
+  min-height: 0;
+}
+
+.app-appearance-section--inline {
+  flex-wrap: nowrap;
+}
+
+.app-appearance-section__label {
+  color: var(--theme-chrome-control-text);
+  opacity: 0.45;
+  line-height: 1;
+  flex-shrink: 0;
+  width: 4.25rem;
+  white-space: nowrap;
+}
+
+.app-appearance-section__label--compact {
+  width: auto;
+  letter-spacing: 0.08em;
+}
+
+.app-appearance-inline-group {
+  min-width: 0;
+}
+
+.app-appearance-section__chips {
+  flex: 1 1 auto;
+  flex-wrap: nowrap;
+}
+
+.app-appearance-tab {
+  color: var(--theme-nav-text);
+  border: 1px solid transparent;
+  transition: color 0.2s ease, background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.app-appearance-tab:hover {
+  color: var(--theme-nav-hover-text);
+  background: var(--theme-nav-hover-bg);
+}
+
+.app-appearance-tab--active {
+  background: var(--theme-nav-active-bg) !important;
+  color: var(--theme-nav-active-text) !important;
+  border-color: var(--theme-nav-active-border) !important;
+}
+
+.app-chrome-control {
+  border: 1px solid var(--theme-chrome-control-border);
+}
+
+.app-chrome-control-btn {
+  color: var(--theme-chrome-control-text);
+}
+
+.app-chrome-control-btn:hover {
+  color: var(--theme-chrome-control-hover);
+}
+
+.app-chrome-muted {
+  color: var(--theme-chrome-control-text);
+}
+
+.app-chrome-muted:hover {
+  color: var(--theme-nav-hover-text);
+}
+
+.app-footer {
+  background: var(--theme-footer-bg);
+  border-top: 1px solid var(--theme-footer-border);
+  color: var(--theme-footer-text);
+  height: var(--app-footer-h);
+  min-height: var(--app-footer-h);
+  padding: 0;
+}
+
+/* Expanded docked console — footer is status row only */
+.app-footer--console-expanded {
+  height: var(--app-footer-status-h);
+  min-height: var(--app-footer-status-h);
+}
+
+.app-footer-console--expanded-open .app-footer-console__status {
+  flex: 1 1 100%;
+}
+
+/* Inline status-bar console — single top edge (footer owns border, not .blackwell-output-console shell) */
+.app-footer > .app-footer-console.blackwell-output-console {
+  border: none;
+  box-shadow: none;
+  background: transparent;
+}
+
+/* DEV build — Rosso badge only; footer/console keep release chrome */
+.app-build--dev {
+  --dev-rosso: #d40000;
+  --dev-rosso-deep: #8f0000;
+  --dev-rosso-shell: #120000;
+}
+
+.app-build--dev .app-footer-dev-tag {
+  padding: 0 0.35rem !important;
+  font-size: 9px !important;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  border-radius: 2px;
+  border: 1px solid #8f0000;
+  background: var(--dev-rosso);
+  color: #000000;
+}
+
+/* Status bar — upper half amber console header, lower half stats + inset live line */
+.app-footer-console {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.app-footer-console__header {
+  flex: 0 0 var(--app-footer-console-header-h);
+  min-height: var(--app-footer-console-header-h);
+}
+
+.app-footer-console__status {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding-left: 1rem;
+  padding-right: 1rem;
+  font-size: 9px;
+  gap: 0.5rem;
+  background: #000000;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.app-footer-console__collapse {
+  padding: 0 0.35rem;
+  font-size: 8px;
+  line-height: 1;
+  opacity: 0.65;
+  transition: opacity 0.15s ease;
+}
+
+.app-footer-console__collapse:hover {
+  opacity: 1;
+}
+
+.app-footer .foundry-status-chip {
+  min-width: 96px;
+  padding: 0 0.45rem;
+  font-size: 8px;
+  gap: 0.35rem;
+}
+
+.app-footer .foundry-status-chip--minimized {
+  width: 272px;
+  min-width: 272px;
+  max-width: 272px;
+  padding: 0.2rem 0.55rem 0.35rem;
+  gap: 0.45rem;
+}
+
+.app-footer-dev-tag {
+  font-size: 8px !important;
+  padding: 0 0.25rem !important;
+}
+
+
+.app-footer-console__live {
+  margin: 0;
+  padding: 1px 8px;
+  gap: 6px;
+  border-radius: 2px;
+  background: var(--boc-body-bg, rgba(0, 0, 0, 0.55));
+  border: 1px solid color-mix(in srgb, var(--theme-footer-border) 55%, transparent);
+  box-shadow: inset 0 1px 3px color-mix(in srgb, #000000 35%, transparent);
+  color: var(--boc-text, rgba(255, 255, 255, 0.85));
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.app-footer-console__live:hover {
+  border-color: color-mix(in srgb, var(--boc-amber, #b87a00) 40%, transparent);
+  box-shadow:
+    inset 0 1px 3px color-mix(in srgb, #000000 35%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--boc-amber, #b87a00) 20%, transparent);
+}
+
+.app-footer-console__live-label {
+  font-size: 7px;
+  color: var(--boc-sync, rgba(34, 211, 238, 0.5));
+}
+
+/* System UI monospace — FORECAST layer captions, bar inset labels */
+.system-console-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+/* Output console log typography — live line + expanded body share one face */
+.app-console-mono {
+  font-family: "JetBrains Mono", "Roboto Mono", monospace;
+}
+
+.app-footer-console__live-text {
+  font-size: 10.5px;
+  color: var(--boc-text, rgba(255, 255, 255, 0.85));
+}
+
+
+/* Foundry build chip — footer dock widget; amplified when modal minimized */
+@keyframes foundryHammerShake {
+  0%, 72%, 100% { transform: rotate(0deg) scale(1); }
+  74% { transform: rotate(-16deg) scale(1.08); }
+  76% { transform: rotate(16deg) scale(1.08); }
+  78% { transform: rotate(-12deg) scale(1.04); }
+  80% { transform: rotate(12deg) scale(1.04); }
+  82% { transform: rotate(-6deg) scale(1); }
+  84% { transform: rotate(0deg) scale(1); }
+}
+
+@keyframes foundryChipGlow {
+  0%, 100% {
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, #facc15 35%, transparent),
+      0 0 10px color-mix(in srgb, #facc15 18%, transparent);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, #facc15 75%, transparent),
+      0 0 18px color-mix(in srgb, #facc15 42%, transparent),
+      0 0 28px color-mix(in srgb, #f59e0b 18%, transparent);
+  }
+}
+
+@keyframes foundryChipScan {
+  0% { transform: translateX(-120%); opacity: 0; }
+  12% { opacity: 0.55; }
+  100% { transform: translateX(220%); opacity: 0; }
+}
+
+@keyframes foundryProgressShine {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(220%); }
+}
+
+.foundry-status-chip {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 110px;
+  padding: 0.125rem 0.625rem;
+  font-size: 9px;
+  font-family: ui-monospace, monospace;
+  border-radius: 3px;
+  border: 1px solid color-mix(in srgb, #facc15 40%, transparent);
+  background: color-mix(in srgb, #facc15 10%, #000000 90%);
+  color: #facc15;
+  overflow: hidden;
+  isolation: isolate;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+
+.foundry-status-chip:hover {
+  background: color-mix(in srgb, #facc15 18%, #000000 82%);
+  transform: translateY(-1px);
+}
+
+.foundry-status-chip--minimized {
+  align-items: flex-start;
+  width: 272px;
+  min-width: 272px;
+  max-width: 272px;
+  padding: 0.28rem 0.6rem 0.42rem;
+  border-color: color-mix(in srgb, #facc15 65%, transparent);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, #facc15 16%, #000000 84%) 0%, color-mix(in srgb, #facc15 8%, #000000 92%) 100%);
+  animation: foundryChipGlow 2.2s ease-in-out infinite;
+}
+
+.foundry-status-chip--minimized:hover {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, #facc15 22%, #000000 78%) 0%, color-mix(in srgb, #facc15 12%, #000000 88%) 100%);
+}
+
+.foundry-status-chip--paused {
+  border-color: color-mix(in srgb, #22d3ee 55%, #facc15 45%);
+  animation-name: foundryChipGlow;
+}
+
+.foundry-status-chip__glow,
+.foundry-status-chip__scan {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.foundry-status-chip__scan {
+  background: linear-gradient(
+    105deg,
+    transparent 0%,
+    color-mix(in srgb, #fde68a 0%, transparent) 42%,
+    color-mix(in srgb, #fde68a 35%, transparent) 50%,
+    color-mix(in srgb, #fde68a 0%, transparent) 58%,
+    transparent 100%
+  );
+  opacity: 0;
+}
+
+.foundry-status-chip--minimized .foundry-status-chip__scan {
+  animation: foundryChipScan 3.6s linear infinite;
+}
+
+.foundry-hammer-icon {
+  display: inline-block;
+  flex-shrink: 0;
+  transform-origin: center bottom;
+  font-size: 1.05em;
+  line-height: 1;
+}
+
+.foundry-hammer-icon--shake {
+  animation: foundryHammerShake 2.8s ease-in-out infinite;
+}
+
+.foundry-hammer-icon--forge {
+  animation: foundryHammerShake 1.45s ease-in-out infinite;
+  filter: drop-shadow(0 0 4px color-mix(in srgb, #facc15 55%, transparent));
+}
+
+.foundry-status-chip--minimized .foundry-hammer-icon--forge {
+  font-size: 1.35em;
+  margin-top: 0.05rem;
+}
+
+/* Floating model search palette (OPERATIONS / ) — themed panel; never use catalog-list-scroll (RTL) */
+.model-search-palette-root {
+  pointer-events: auto;
+}
+
+.model-search-palette-backdrop {
+  /* Light dim so OPERATIONS stays visible underneath */
+  background: color-mix(in srgb, #000000 42%, transparent);
+}
+
+
+.model-search-palette {
+  animation: modelSearchPaletteIn 0.12s ease-out;
+  isolation: isolate;
+  direction: ltr;
+  background-color: var(--theme-industrial-bg);
+  background-image: var(--theme-industrial-texture-active);
+  border: 1.5px solid var(--theme-bezel-edge-hi);
+  box-shadow:
+    0 12px 40px color-mix(in srgb, #000000 45%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--theme-bezel-edge-hi) 35%, transparent);
+}
+
+
+.model-search-palette__header {
+  border-bottom: 1px solid color-mix(in srgb, var(--theme-border, #333) 55%, transparent);
+  background: color-mix(in srgb, var(--theme-industrial-bg, #0a0c0e) 40%, transparent);
+}
+
+.model-search-palette__footer {
+  border-top: 1px solid color-mix(in srgb, var(--theme-border, #333) 55%, transparent);
+  background: color-mix(in srgb, var(--theme-industrial-bg, #0a0c0e) 40%, transparent);
+}
+
+.model-search-palette__list {
+  direction: ltr;
+  min-height: 6rem;
+}
+
+/* ~2× default catalog search field */
+.model-search-palette-input {
+  font-size: 1.05rem !important;
+  line-height: 1.35 !important;
+  min-height: 2.5rem;
+}
+
+.model-search-palette-legend {
+  font-size: 0.8rem !important;
+  letter-spacing: 0.06em;
+}
+
+@keyframes modelSearchPaletteIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Compact “reading build info …” / “probing …” indicator */
+.foundry-buildinfo-probing {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.12rem;
+  opacity: 0.9;
+  letter-spacing: 0.02em;
+}
+
+.foundry-buildinfo-dots {
+  display: inline-flex;
+  gap: 1px;
+  width: 1.15em;
+  justify-content: flex-start;
+}
+
+.foundry-buildinfo-dots > i {
+  font-style: normal;
+  opacity: 0.2;
+  animation: foundryBuildInfoDot 1.05s ease-in-out infinite;
+}
+
+.foundry-buildinfo-dots > i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.foundry-buildinfo-dots > i:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes foundryBuildInfoDot {
+  0%,
+  80%,
+  100% {
+    opacity: 0.2;
+  }
+  40% {
+    opacity: 1;
+  }
+}
+
+.foundry-status-chip__icon {
+  display: inline-block;
+  transform-origin: center bottom;
+}
+
+.foundry-status-chip__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.foundry-status-chip__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.foundry-status-chip__row--title {
+  letter-spacing: 0.1em;
+}
+
+.foundry-status-chip__kicker {
+  font-size: 8px;
+  font-weight: 700;
+  color: #fde68a;
+  text-shadow: 0 0 8px color-mix(in srgb, #facc15 35%, transparent);
+}
+
+.foundry-status-chip__env {
+  flex-shrink: 0;
+  padding: 0 0.3rem;
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  border-radius: 2px;
+  border: 1px solid color-mix(in srgb, #facc15 55%, transparent);
+  background: color-mix(in srgb, #000000 55%, transparent);
+  color: #fef3c7;
+}
+
+.foundry-status-chip__step {
+  flex-shrink: 0;
+  font-size: 9px;
+  font-weight: 700;
+  color: #22d3ee;
+  animation: pulse 1.8s ease-in-out infinite;
+}
+
+.foundry-status-chip--paused .foundry-status-chip__step {
+  color: #facc15;
+}
+
+.foundry-status-chip__provider {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 8px;
+  color: color-mix(in srgb, #fde68a 72%, #ffffff 28%);
+}
+
+.foundry-status-chip__timer {
+  flex-shrink: 0;
+  min-width: 3.25rem;
+  font-size: 10px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.06em;
+  color: color-mix(in srgb, #fde68a 65%, #ffffff 35%);
+  text-align: right;
+}
+
+.foundry-status-chip__timer--live {
+  color: #22d3ee;
+  text-shadow: 0 0 8px color-mix(in srgb, #22d3ee 35%, transparent);
+}
+
+.foundry-status-chip__progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  background: color-mix(in srgb, #000000 70%, transparent);
+  overflow: hidden;
+}
+
+.foundry-status-chip__progress-fill {
+  display: block;
+  height: 100%;
+  width: var(--foundry-progress, 12%);
+  background: linear-gradient(90deg, #b45309 0%, #facc15 55%, #fde68a 100%);
+  transition: width 0.45s ease;
+}
+
+.foundry-status-chip__progress-shine {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, #ffffff 45%, transparent) 50%,
+    transparent 100%
+  );
+  animation: foundryProgressShine 2.4s ease-in-out infinite;
+}
+
+.foundry-status-chip__label {
+  color: #facc15;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 140px;
+}
+
+/* Foundry — environment profile badge (FRONTIER, VANGUARD, …) */
+.foundry-env-badge {
+  color: #facc15;
+  border: 1px solid color-mix(in srgb, #facc15 55%, transparent);
+  background: color-mix(in srgb, #facc15 12%, #000000 88%);
+}
+
+
+/* Foundry confirm — YES BUILD (amber) */
+.foundry-confirm-build-btn {
+  padding: 0.25rem 1rem;
+  font-size: 9px;
+  font-family: ui-monospace, monospace;
+  letter-spacing: 0.04em;
+  border-radius: 2px;
+  color: #facc15;
+  border: 1px solid color-mix(in srgb, #facc15 65%, transparent);
+  background: color-mix(in srgb, #facc15 18%, #000000 82%);
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.foundry-confirm-build-btn:hover:not(:disabled) {
+  color: #fde68a;
+  border-color: color-mix(in srgb, #facc15 85%, transparent);
+  background: color-mix(in srgb, #facc15 28%, #000000 72%);
+}
+
+.foundry-confirm-build-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+
+/* Foundry confirm — pre-build source vs binary revision banner */
+.foundry-source-banner--amber {
+  border-color: rgba(250, 204, 21, 0.45);
+  background: rgba(250, 204, 21, 0.08);
+  color: rgba(253, 224, 71, 0.95);
+  box-shadow: 0 0 18px rgba(250, 204, 21, 0.08);
+}
+
+.foundry-source-banner--cyan {
+  border-color: rgba(34, 211, 238, 0.4);
+  background: rgba(34, 211, 238, 0.07);
+  color: rgba(165, 243, 252, 0.95);
+}
+
+.foundry-source-banner--green {
+  border-color: rgba(118, 185, 0, 0.45);
+  background: rgba(118, 185, 0, 0.08);
+  color: rgba(163, 230, 53, 0.95);
+}
+
+.foundry-source-banner--muted {
+  border-color: rgba(148, 163, 184, 0.25);
+  background: rgba(15, 23, 42, 0.35);
+  color: rgba(148, 163, 184, 0.9);
+}
+
+/* Providers page — BUILD row action */
+.foundry-build-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 8px;
+  font-family: ui-monospace, monospace;
+  padding: 0.25rem 0.75rem;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.foundry-build-btn--active {
+  opacity: 1;
+  color: #facc15;
+  border-color: color-mix(in srgb, #facc15 50%, transparent);
+  background: color-mix(in srgb, #facc15 10%, #000000 90%);
+}
+
+
+/* Foundry modal — minimize action; navy so it pairs with amber YES BUILD */
+.foundry-minimize-btn {
+  padding: 0.25rem 0.75rem;
+  font-size: 9px;
+  font-family: ui-monospace, monospace;
+  letter-spacing: 0.04em;
+  border: 1px solid #1e3a5f;
+  border-radius: 2px;
+  color: #6b9fd4;
+  background: color-mix(in srgb, #0a1628 70%, #000000 30%);
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.foundry-minimize-btn:hover {
+  color: #8bb8e8;
+  border-color: #3d6ea8;
+  background: color-mix(in srgb, #0f2240 75%, #000000 25%);
+}
+
+
+/* Foundry toolchain — install guide action buttons (config + confirm modal) */
+.foundry-toolchain-btn {
+  padding: 0.125rem 0.5rem;
+  font-size: 8px;
+  font-family: ui-monospace, monospace;
+  border-radius: 2px;
+  border: 1px solid transparent;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.foundry-toolchain-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.foundry-toolchain-btn--link {
+  color: #6b9fd4;
+  border-color: color-mix(in srgb, #3d6ea8 55%, transparent);
+  background: color-mix(in srgb, #0a1628 32%, transparent);
+}
+
+.foundry-toolchain-btn--link:hover:not(:disabled) {
+  color: #8bb8e8;
+  border-color: #3d6ea8;
+  background: color-mix(in srgb, #0f2240 42%, transparent);
+}
+
+.foundry-toolchain-btn--neutral {
+  color: var(--theme-text-muted);
+  border-color: var(--theme-border-subtle);
+  background: transparent;
+}
+
+.foundry-toolchain-btn--neutral:hover:not(:disabled) {
+  color: var(--theme-text);
+  border-color: color-mix(in srgb, var(--theme-text-muted) 50%, transparent);
+  background: color-mix(in srgb, var(--theme-text) 5%, transparent);
+}
+
+.foundry-toolchain-btn--action {
+  color: var(--theme-accent-bright);
+  border-color: color-mix(in srgb, var(--theme-accent-bright) 45%, transparent);
+  background: transparent;
+}
+
+.foundry-toolchain-btn--action:hover:not(:disabled) {
+  color: var(--theme-chip-hover-text, var(--theme-accent-bright));
+  border-color: color-mix(in srgb, var(--theme-accent-bright) 65%, transparent);
+  background: var(--theme-accent-soft);
+}
+
+
+/* Foundry — floating window above status bar (no fullscreen blur overlay) */
+.foundry-window {
+  position: fixed;
+  z-index: 120;
+  left: 10px;
+  right: 10px;
+  bottom: calc(var(--app-footer-h) + 10px);
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  max-height: calc(100vh - var(--app-footer-h) - 20px);
+  pointer-events: none;
+}
+
+.foundry-window__chrome {
+  --foundry-window-amber: #b87a00;
+  pointer-events: auto;
+  width: 100%;
+  max-height: inherit;
+  display: flex;
+  flex-direction: column;
+  border: 2px solid color-mix(in srgb, var(--foundry-window-amber) 82%, transparent);
+  border-radius: 4px;
+  background: var(--theme-panel, #111810);
+  box-shadow:
+    0 10px 28px color-mix(in srgb, #000000 55%, transparent),
+    0 4px 10px color-mix(in srgb, #000000 35%, transparent);
+  overflow: hidden;
+}
+
+.foundry-window--confirm .foundry-window__chrome {
+  max-width: min(720px, 92vw);
+  zoom: 1.15;
+}
+
+.foundry-window--build .foundry-window__chrome {
+  max-width: min(960px, 96vw);
+  height: min(75vh, calc(100vh - var(--app-footer-h) - 20px));
+}
+
+.foundry-window--build .foundry-window__body {
+  display: flex;
+  flex-direction: column;
+}
+
+.foundry-window--compact .foundry-window__chrome {
+  max-width: min(620px, 92vw);
+}
+
+.foundry-window__header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.35rem 0.75rem;
+  border-bottom: 1px solid #000000;
+  font-family: ui-monospace, monospace;
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.foundry-window__header--amber {
+  background: var(--foundry-window-amber);
+  color: #000000;
+}
+
+.foundry-window__header--green {
+  background: color-mix(in srgb, #4ade80 88%, #0a1208 12%);
+  color: #000000;
+}
+
+.foundry-window__header--red {
+  background: color-mix(in srgb, #f87171 88%, #1a0808 12%);
+  color: #000000;
+}
+
+.foundry-window__header-main {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.foundry-window__title {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.foundry-window__minimize {
+  flex-shrink: 0;
+  padding: 0 0.45rem;
+  font-size: 11px;
+  line-height: 1;
+  border: 1px solid color-mix(in srgb, #000000 35%, transparent);
+  border-radius: 2px;
+  background: color-mix(in srgb, #000000 12%, transparent);
+  color: inherit;
+  transition: background 0.15s ease;
+}
+
+.foundry-window__minimize:hover {
+  background: color-mix(in srgb, #000000 22%, transparent);
+}
+
+.foundry-window__body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.foundry-window__footer {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 0.65rem 1rem;
+  border-top: 1px solid var(--theme-border-subtle, rgba(255, 255, 255, 0.08));
+}
+
+
+.foundry-build-profile-textarea {
+  font-family: ui-monospace, monospace;
+  font-size: 9px;
+  line-height: 1.45;
+  color: #e8e8e8;
+  background: color-mix(in srgb, #000000 55%, transparent);
+  border: 1px solid var(--theme-border-subtle, rgba(255, 255, 255, 0.12));
+  border-radius: 2px;
+  resize: vertical;
+}
+
+.foundry-build-profile-textarea:focus {
+  outline: none;
+  border-color: color-mix(in srgb, #facc15 55%, transparent);
+}
+
+.foundry-pr-label {
+  color: #3d6ea8;
+  font-family: ui-monospace, monospace;
+  font-size: 8px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.foundry-pr-input {
+  font-family: ui-monospace, monospace;
+  font-size: 9px;
+  color: #6b9fd4;
+  background: color-mix(in srgb, #0a1628 70%, #000000 30%);
+  border: 1px solid #1e3a5f;
+  border-radius: 2px;
+}
+
+.foundry-pr-input::placeholder {
+  color: color-mix(in srgb, #3d6ea8 45%, transparent);
+}
+
+.foundry-pr-input:focus {
+  outline: none;
+  border-color: #3d6ea8;
+  color: #8bb8e8;
+}
+
+
+.app-status-nominal {
+  color: var(--theme-status-nominal);
+}
+
+.app-footer-ipc {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.app-footer-ipc__detail {
+  margin-left: 0.35rem;
+  opacity: 0.72;
+  font-size: 0.92em;
+}
+
+.app-footer-ipc--green {
+  color: var(--theme-status-nominal);
+}
+
+.app-footer-ipc--yellow {
+  color: #facc15;
+}
+
+.app-footer-ipc--orange {
+  color: #fb923c;
+}
+
+.app-footer-ipc--red {
+  color: #f87171;
+}
+
+.app-footer-stat-link {
+  color: var(--theme-status-nominal);
+}
+
+.app-footer-stat-link:hover {
+  color: var(--theme-accent-bright);
+}
+
+.glow-border {
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 30%, transparent);
+  box-shadow: 0 0 8px var(--theme-accent-soft), inset 0 0 8px var(--theme-accent-soft);
+}
+
+.glow-border-warning {
+  border: 1px solid rgba(255, 184, 0, 0.3);
+  box-shadow: 0 0 8px rgba(255, 184, 0, 0.1), inset 0 0 8px rgba(255, 184, 0, 0.05);
+}
+
+.glow-border-error {
+  border: 1px solid rgba(255, 51, 51, 0.3);
+  box-shadow: 0 0 8px rgba(255, 51, 51, 0.1), inset 0 0 8px rgba(255, 51, 51, 0.05);
+}
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.status-online {
+  background-color: var(--color-nv-green);
+  box-shadow: 0 0 6px var(--color-nv-green);
+}
+
+.status-loading {
+  background-color: var(--color-telemetry-amber);
+  box-shadow: 0 0 6px var(--color-telemetry-amber);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.status-error {
+  background-color: #ff3333;
+  box-shadow: 0 0 6px #ff3333;
+}
+
+.status-offline {
+  background-color: #4a4a5a;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* Grid pattern background */
+.grid-bg {
+  background-image:
+      linear-gradient(to bottom, color-mix(in srgb, var(--theme-accent) 2.5%, transparent) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+/* ── Toast notification styles ─────────────────────────────────── */
+.toast-container {
+  position: fixed;
+  top: 60px;
+  right: 20px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+
+/* Unified tab page header — title left, toasts center-right, downloads far right */
+.tab-page-header {
+  min-height: 1.65rem;
+}
+
+.tab-page-header__toast-anchor {
+  flex: 1 1 auto;
+  width: auto;
+  max-width: none;
+  min-width: 0;
+  margin-left: 0.5rem;
+  height: 1.3rem;
+  display: flex;
+  align-items: center;
+}
+
+.tab-page-header__downloads {
+  max-width: none;
+  min-width: 0;
+  overflow: visible;
+}
+
+.download-progress-inline {
+  max-width: none;
+  overflow: visible;
+}
+
+.download-progress-inline__name {
+  max-width: none;
+}
+
+.download-progress-inline__bar {
+  width: 4.5rem;
+  min-width: 3.5rem;
+}
+
+.toast-container--inline {
+  position: static;
+  top: auto;
+  right: auto;
+  z-index: auto;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  justify-content: flex-end;
+  gap: 5px;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.toast-container--inline .toast-item {
+  flex: 0 0 auto;
+  min-width: 0;
+  max-width: min(220px, 26vw);
+  padding: 2px 8px;
+  font-size: 8px;
+  line-height: 1.2;
+  animation: toastSlideInInline 0.2s ease-out forwards;
+}
+
+.toast-container--inline .toast-item__message {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@keyframes toastSlideInInline {
+  from { transform: translateX(-10px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+.toast-item {
+  position: relative;
+  pointer-events: auto;
+  min-width: 280px;
+  max-width: 400px;
+  padding: 10px 14px;
+  border-radius: 4px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  backdrop-filter: blur(8px);
+  animation: toastSlideIn 0.3s ease-out forwards;
+  overflow: hidden;
+}
+
+.toast-item.success {
+  background: rgba(17, 17, 24, 0.95);
+  border: 1px solid rgba(118, 185, 0, 0.6);
+  color: #76B900;
+  box-shadow: 0 0 15px rgba(118, 185, 0, 0.2);
+}
+
+.toast-item.error {
+  background: rgba(17, 17, 24, 0.95);
+  border: 1px solid rgba(255, 51, 51, 0.6);
+  color: #ff3333;
+  box-shadow: 0 0 15px rgba(255, 51, 51, 0.2);
+}
+
+.toast-item.removing {
+  animation: toastSlideOut 0.25s ease-in forwards;
+}
+
+@keyframes toastSlideIn {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes toastSlideOut {
+  from { transform: translateX(0); opacity: 1; }
+  to { transform: translateX(100%); opacity: 0; }
+}
+
+.toast-progress {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  border-radius: 0 0 4px 4px;
+  animation: toastProgress linear forwards;
+}
+
+.toast-item.success .toast-progress { background: rgba(118, 185, 0, 0.6); }
+.toast-item.error .toast-progress { background: rgba(255, 51, 51, 0.6); }
+
+@keyframes toastProgress {
+  from { width: 100%; }
+  to { width: 0%; }
+}
+
+/* ── Status bar flash animation ────────────────────────────────── */
+.status-flash {
+  color: #00e5ff !important;
+  animation: statusPulse 0.5s ease-in-out;
+}
+
+@keyframes statusPulse {
+  0% { opacity: 0; transform: translateY(4px); }
+  50% { opacity: 1; transform: translateY(-2px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+/* VRAM progress bar */
+.vram-bar-track {
+  background: rgba(17, 17, 24, 0.8);
+  border: 1px solid rgba(26, 26, 46, 0.6);
+  height: 12px;
+  border-radius: 1px;
+  overflow: hidden;
+}
+
+.vram-bar-fill {
+  height: 100%;
+  border-radius: 1px;
+  transition: width 1s ease-out;
+  position: relative;
+}
+
+.vram-bar-fill::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 20px;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3));
+}
+
+.vram-bar-fit {
+  background: linear-gradient(90deg, #76B900, #88cc00);
+  box-shadow: 0 0 8px rgba(118, 185, 0, 0.4);
+}
+
+.vram-bar-warn {
+  background: linear-gradient(90deg, #FFB800, #ffcc00);
+  box-shadow: 0 0 8px rgba(255, 184, 0, 0.4);
+}
+
+.vram-bar-overflow {
+  background: linear-gradient(90deg, #ff3333, #ff6644);
+  box-shadow: 0 0 8px rgba(255, 51, 51, 0.4);
+}
+
+/* glitch-text removed — unused + glitchFlicker keyframes never defined */
+
+/* MATRIX — param config chip green (value-chip-active) */
+
+
+/* AMBER + CYAN — theme accent (not chip outline) */
+
+
+/* SLATE — provider-pill-active amber (selected provider chip) */
+
+
+/* ARCTIC — launch: glacier steel on light brushed bezel */

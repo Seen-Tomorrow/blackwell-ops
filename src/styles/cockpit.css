@@ -1,0 +1,1356 @@
+/* ── Full Auto cockpit — theme tokens (inset well + texture) ─── */
+.full-auto-cockpit {
+  border: 1px solid color-mix(in srgb, var(--theme-border, #1a2e1a) 55%, #000 45%);
+  border-radius: 5px;
+  background-color: color-mix(in srgb, var(--theme-panel-accent, #040b01) 55%, var(--theme-industrial-bg, #111810) 45%);
+  background-image: var(--theme-industrial-texture-active, none);
+  /* Recess depth — --theme-cockpit-well-shadow (softer on ARCTIC) */
+  box-shadow: var(--theme-cockpit-well-shadow);
+}
+
+.full-auto-cockpit--hero {
+  padding: 0.75rem 0.85rem 0.85rem;
+}
+
+.full-auto-cockpit--normal {
+  padding: 0.55rem 0.65rem 0.65rem;
+}
+
+.full-auto-cockpit--dense {
+  padding: 0.35rem 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--theme-border-subtle, rgba(255, 255, 255, 0.08)) 80%, transparent);
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--theme-panel, #111810) 88%, transparent);
+}
+
+/* Spec mode product colors — MTP green, DFlash violet (all themes) */
+.full-auto-cockpit {
+  --cockpit-mtp: #4ade80;
+  --cockpit-mtp-dim: color-mix(in srgb, #4ade80 55%, transparent);
+  --cockpit-dflash: #a78bfa;
+  --cockpit-dflash-dim: color-mix(in srgb, #a78bfa 55%, transparent);
+  --cockpit-header-line: color-mix(in srgb, var(--theme-border, #1a2e1a) 55%, transparent);
+  --cockpit-status-fg: color-mix(in srgb, var(--theme-industrial-text, var(--theme-accent-bright, #4ade80)) 92%, #fff 8%);
+  --cockpit-status-note: color-mix(in srgb, #fbbf24 88%, var(--theme-industrial-text, #4ade80) 12%);
+  --cockpit-status-rail: color-mix(in srgb, var(--theme-accent-bright, #4ade80) 22%, transparent);
+  --cockpit-status-bg: color-mix(in srgb, var(--theme-panel-accent, #040b01) 40%, transparent);
+}
+
+.full-auto-cockpit__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.85rem;
+  margin-bottom: 0.9rem;
+  padding: 0.45rem 0.55rem 0.5rem;
+  min-width: 0;
+  border-radius: 3px;
+  border: 1px solid var(--cockpit-header-line);
+  background:
+    linear-gradient(
+      105deg,
+      color-mix(in srgb, var(--theme-panel, #111810) 70%, transparent) 0%,
+      var(--cockpit-status-bg) 55%,
+      color-mix(in srgb, var(--theme-panel, #111810) 55%, transparent) 100%
+    );
+  box-shadow: var(--theme-cockpit-header-shadow);
+}
+
+.full-auto-cockpit__title {
+  display: block;
+  font-size: 8px;
+  letter-spacing: 0.16em;
+  color: color-mix(in srgb, var(--theme-industrial-muted, var(--theme-text-muted, #6a8a6a)) 90%, transparent);
+  margin-bottom: 0;
+  white-space: nowrap;
+  padding-right: 0.35rem;
+  border-right: 1px solid var(--cockpit-header-line);
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+}
+
+.full-auto-cockpit__status {
+  min-width: 0;
+  padding: 0.4rem 0.55rem;
+  border-radius: 3px;
+}
+
+/* Single outcome line in header */
+.full-auto-cockpit__status--inline {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0;
+  padding: 0.15rem 0.35rem 0.15rem 0.55rem;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  overflow: hidden;
+  border-left: 2px solid var(--cockpit-status-rail);
+}
+
+.full-auto-cockpit__status-text {
+  display: block;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--cockpit-status-fg);
+  letter-spacing: 0.02em;
+  text-align: center;
+}
+
+.full-auto-cockpit__status--inline .full-auto-cockpit__status-text {
+  font-size: 10px;
+  line-height: 1.4;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.full-auto-cockpit__status-sep {
+  opacity: 0.55;
+}
+
+.full-auto-cockpit__boost-seg {
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.full-auto-cockpit__boost-seg--mtp {
+  color: var(--cockpit-mtp, #4ade80);
+  text-shadow: 0 0 8px var(--cockpit-mtp-dim, color-mix(in srgb, #4ade80 40%, transparent));
+}
+
+.full-auto-cockpit__boost-seg--dflash {
+  color: var(--cockpit-dflash, #a78bfa);
+  text-shadow: 0 0 8px var(--cockpit-dflash-dim, color-mix(in srgb, #a78bfa 40%, transparent));
+}
+
+.full-auto-cockpit__boost-seg--smart {
+  color: inherit;
+  font-weight: 600;
+}
+
+.full-auto-cockpit__status-note {
+  color: var(--cockpit-status-note);
+}
+
+
+.full-auto-cockpit__footer {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  margin-top: 0.55rem;
+  padding-top: 0.45rem;
+  border-top: 1px solid var(--cockpit-header-line);
+}
+
+/* Draft strip + Connect harness share one footer row */
+.full-auto-cockpit__footer--actions {
+  justify-content: flex-end;
+  align-items: stretch;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+
+.full-auto-cockpit__footer--actions .full-auto-cockpit__dflash-get--footer {
+  max-width: none;
+  flex: 1 1 12rem;
+  margin-top: 0;
+}
+
+.full-auto-cockpit__footer--actions .full-auto-cockpit__connect {
+  align-self: center;
+}
+
+/* SPEC-EXTRA — inline in violet draft strip (Assisted only) */
+.full-auto-cockpit__dflash-get--spec-extra {
+  max-width: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem 0.55rem;
+}
+
+/* SPEC-EXTRA / draft strip tone from Boost (MTP green, DFlash violet, else neutral) */
+.full-auto-cockpit__dflash-get--tone-mtp {
+  border-color: color-mix(in srgb, #4ade80 50%, transparent);
+  background: color-mix(in srgb, #040b06 92%, #4ade80 8%);
+  color: #bbf7d0;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #4ade80 12%, transparent);
+}
+
+.full-auto-cockpit__dflash-get--tone-mtp .full-auto-cockpit__spec-extra-title,
+.full-auto-cockpit__dflash-get--tone-mtp .full-auto-cockpit__spec-extra-key {
+  color: color-mix(in srgb, #bbf7d0 80%, transparent);
+}
+
+.full-auto-cockpit__dflash-get--tone-mtp .full-auto-cockpit__spec-chip {
+  border-color: color-mix(in srgb, #4ade80 40%, transparent);
+  color: #bbf7d0;
+  background: color-mix(in srgb, #040b06 70%, #4ade80 8%);
+}
+
+.full-auto-cockpit__dflash-get--tone-mtp .full-auto-cockpit__spec-chip--active {
+  border-color: #4ade80;
+  background: color-mix(in srgb, #4ade80 22%, #040b06 78%);
+  color: #ecfdf5;
+}
+
+.full-auto-cockpit__dflash-get--tone-mtp .full-auto-cockpit__dflash-get-btn {
+  border-color: color-mix(in srgb, #4ade80 45%, transparent);
+  color: #bbf7d0;
+}
+
+.full-auto-cockpit__dflash-get--tone-neutral {
+  border-color: color-mix(in srgb, var(--theme-border, #1a2e1a) 60%, transparent);
+  background: color-mix(in srgb, #000000 18%, transparent);
+  color: color-mix(in srgb, var(--theme-industrial-text, #4ade80) 85%, #fff 15%);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #ffffff 4%, transparent);
+}
+
+.full-auto-cockpit__dflash-get--tone-neutral .full-auto-cockpit__spec-extra-title,
+.full-auto-cockpit__dflash-get--tone-neutral .full-auto-cockpit__spec-extra-key {
+  color: color-mix(in srgb, var(--theme-industrial-muted, #4ade80) 70%, transparent);
+}
+
+.full-auto-cockpit__dflash-get--tone-neutral .full-auto-cockpit__spec-chip {
+  border-color: color-mix(in srgb, var(--theme-chip-border, rgba(74, 222, 128, 0.2)) 90%, transparent);
+  color: var(--theme-chip-text, var(--theme-industrial-muted, #4ade80));
+  background: transparent;
+}
+
+.full-auto-cockpit__header--minimal {
+  justify-content: flex-start;
+  gap: 0.75rem;
+  padding: 0.3rem 0.45rem;
+  min-height: 0;
+}
+
+.full-auto-cockpit__header--minimal .full-auto-cockpit__status-note {
+  font-size: 8px;
+  opacity: 0.85;
+}
+
+.full-auto-cockpit__spec-extra {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+  flex: 1 1 12rem;
+}
+
+.full-auto-cockpit__spec-extra-title {
+  font-size: 7px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, #c4b5fd 85%, #fff 15%);
+  opacity: 0.9;
+  white-space: nowrap;
+}
+
+.full-auto-cockpit__spec-extra-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.35rem;
+  min-width: 0;
+}
+
+.full-auto-cockpit__spec-extra-sep {
+  color: color-mix(in srgb, #a78bfa 55%, transparent);
+  font-size: 9px;
+  padding: 0 0.15rem;
+  user-select: none;
+}
+
+.full-auto-cockpit__spec-extra-sep--block {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  padding: 0 0.1rem;
+}
+
+.full-auto-cockpit__spec-extra-key {
+  font-size: 7px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, #ddd6fe 70%, transparent);
+  white-space: nowrap;
+}
+
+.full-auto-cockpit__spec-extra-key--custom {
+  color: #fcd34d;
+  font-style: italic;
+}
+
+.full-auto-cockpit__spec-chip {
+  font-size: 8px;
+  padding: 0.12rem 0.35rem;
+  border-radius: 2px;
+  border: 1px solid color-mix(in srgb, #a78bfa 40%, transparent);
+  color: #ddd6fe;
+  background: color-mix(in srgb, #0a0612 70%, #a78bfa 8%);
+}
+
+.full-auto-cockpit__spec-chip:hover {
+  border-color: color-mix(in srgb, #a78bfa 70%, transparent);
+}
+
+.full-auto-cockpit__spec-chip--active {
+  border-color: #a78bfa;
+  background: color-mix(in srgb, #a78bfa 22%, #0a0612 78%);
+  color: #ede9fe;
+}
+
+/* Param catalog modal — solid panel (engine panel is outside [data-config-page]) */
+.param-catalog-modal.config-form-panel,
+.param-catalog-modal {
+  background: var(--theme-panel, #0b120b);
+  border: 1px solid var(--theme-border-subtle, color-mix(in srgb, #4ade80 18%, transparent));
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
+}
+
+
+/* Assisted Full — denser body padding */
+.full-auto-cockpit--compact {
+  padding-bottom: 0.35rem;
+}
+
+.full-auto-cockpit--compact .full-auto-cockpit__grid-cell {
+  padding: 0.15rem 0.3rem;
+}
+
+.full-auto-cockpit--compact .full-auto-cockpit__header {
+  margin-bottom: 0.25rem;
+}
+
+/* CTX strip is above the cockpit — tighten header → first slider gap by 6px */
+.full-auto-cockpit[data-ctx-dock="above"] .full-auto-cockpit__header {
+  margin-bottom: calc(0.9rem - 6px);
+}
+
+.full-auto-cockpit--compact[data-ctx-dock="above"] .full-auto-cockpit__header {
+  margin-bottom: max(0px, calc(0.25rem - 6px));
+}
+
+/* Arctic — brighter header plate; MTP/DFlash accents same as dark (green / violet) */
+
+
+/* DFlash strip — violet on black (all themes, including Arctic) */
+.full-auto-cockpit__dflash-get {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  max-width: calc(50% - 0.15rem);
+  margin-top: 0.2rem;
+  padding: 0.4rem 0.55rem;
+  border-radius: 3px;
+  border: 1px solid color-mix(in srgb, #a78bfa 50%, transparent);
+  background: color-mix(in srgb, #0a0612 92%, #a78bfa 8%);
+  color: #ddd6fe;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #a78bfa 12%, transparent);
+}
+
+.full-auto-cockpit__dflash-get-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+  min-width: 0;
+}
+
+.full-auto-cockpit__dflash-get-line {
+  font-size: 8px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.85;
+  line-height: 1.25;
+}
+
+.full-auto-cockpit__dflash-get-name {
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: 0.01em;
+  color: #ede9fe;
+  word-break: break-all;
+  white-space: normal;
+}
+
+.full-auto-cockpit__dflash-get-sub {
+  font-size: 8px;
+  opacity: 0.7;
+  line-height: 1.25;
+}
+
+.full-auto-cockpit__dflash-get-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-shrink: 0;
+  margin-left: auto;
+  align-self: center;
+}
+
+.full-auto-cockpit__dflash-get-btn {
+  flex-shrink: 0;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0.35rem 0.65rem;
+  border-radius: 3px;
+  border: 1px solid color-mix(in srgb, #a78bfa 55%, transparent);
+  color: #f5f3ff;
+  background: color-mix(in srgb, #6d28d9 50%, #0a0612 50%);
+  transition: background 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+}
+
+.full-auto-cockpit__dflash-get-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, #7c3aed 60%, #0a0612 40%);
+  border-color: color-mix(in srgb, #a78bfa 75%, transparent);
+}
+
+.full-auto-cockpit__dflash-get-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.full-auto-cockpit__dflash-get-btn--ghost {
+  color: #ddd6fe;
+  border-color: color-mix(in srgb, #a78bfa 40%, transparent);
+  background: transparent;
+}
+
+.full-auto-cockpit__dflash-get-btn--ghost:hover:not(:disabled) {
+  background: color-mix(in srgb, #a78bfa 16%, transparent);
+  border-color: color-mix(in srgb, #a78bfa 60%, transparent);
+}
+
+/* ── DFlash draft pick modal — violet on black (all themes, including Arctic) ─ */
+.dflash-pick-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10050;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  /* Dim only — no backdrop-filter blur (WebView GPU cost) */
+  background: color-mix(in srgb, #000000 42%, transparent);
+}
+
+
+.dflash-pick-modal {
+  width: min(420px, 100%);
+  max-height: min(80vh, 560px);
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  padding: 0.85rem 0.9rem 0.75rem;
+  border-radius: 4px;
+  border: 1px solid color-mix(in srgb, #a78bfa 45%, transparent);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, #120a1c 94%, #a78bfa 6%) 0%,
+      #050308 100%
+    );
+  box-shadow:
+    0 12px 40px color-mix(in srgb, #000 60%, transparent),
+    inset 0 1px 0 color-mix(in srgb, #a78bfa 14%, transparent);
+  color: #e9e5ff;
+}
+
+.dflash-pick-modal__title {
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #c4b5fd;
+}
+
+.dflash-pick-modal__sub {
+  margin: 0.25rem 0 0;
+  font-size: 9px;
+  line-height: 1.35;
+  color: color-mix(in srgb, #e2e8f0 72%, transparent);
+}
+
+.dflash-pick-modal__main {
+  color: #f5f3ff;
+  word-break: break-all;
+}
+
+.dflash-pick-modal__hint {
+  margin: 0.35rem 0 0;
+  font-size: 8px;
+  line-height: 1.4;
+  color: color-mix(in srgb, #a78bfa 70%, transparent);
+}
+
+.dflash-pick-modal__list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0.1rem 0;
+}
+
+/* In-place roll: about 3 cards, wheel/KB cycles selection */
+.dflash-pick-modal__list--capped {
+  max-height: 11.5rem;
+  overflow-y: auto;
+}
+
+.dflash-pick-modal__list--remote {
+  /* cyan plate list sits inside remote section */
+}
+
+.dflash-pick-modal__card {
+  text-align: left;
+  width: 100%;
+  padding: 0.5rem 0.6rem;
+  border-radius: 3px;
+  border: 1px solid color-mix(in srgb, #a78bfa 22%, transparent);
+  background: color-mix(in srgb, #000 45%, transparent);
+  color: inherit;
+  cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+
+.dflash-pick-modal__card--local {
+  border-color: color-mix(in srgb, #a78bfa 28%, transparent);
+}
+
+.dflash-pick-modal__card--remote {
+  border-color: color-mix(in srgb, #22d3ee 32%, transparent);
+  background: color-mix(in srgb, #042f2e 40%, #000 60%);
+}
+
+.dflash-pick-modal__card--remote:hover {
+  border-color: color-mix(in srgb, #22d3ee 55%, transparent);
+}
+
+.dflash-pick-modal__card--remote.dflash-pick-modal__card--active {
+  border-color: color-mix(in srgb, #22d3ee 72%, transparent);
+  background: color-mix(in srgb, #0e7490 28%, #000 72%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, #22d3ee 28%, transparent);
+}
+
+.dflash-pick-modal__card:hover {
+  border-color: color-mix(in srgb, #a78bfa 48%, transparent);
+}
+
+.dflash-pick-modal__card--active {
+  border-color: color-mix(in srgb, #a78bfa 72%, transparent);
+  background: color-mix(in srgb, #6d28d9 22%, #000 78%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, #a78bfa 28%, transparent);
+}
+
+/* 2-col: left = name + meta · right = hero match score */
+.dflash-pick-modal__card-cols {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 0;
+}
+
+.dflash-pick-modal__card-left {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.dflash-pick-modal__card-top {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.dflash-pick-modal__rank {
+  flex-shrink: 0;
+  font-size: 9px;
+  font-weight: 700;
+  color: #a78bfa;
+  opacity: 0.95;
+  letter-spacing: 0.04em;
+}
+
+.dflash-pick-modal__repo {
+  min-width: 0;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: #f5f3ff;
+  word-break: break-word;
+}
+
+.dflash-pick-modal__meta {
+  font-size: 8px;
+  line-height: 1.3;
+  color: color-mix(in srgb, #c4b5fd 78%, transparent);
+  padding-left: 1.35rem;
+  word-break: break-word;
+}
+
+/* Right stack: Rec/Best pill above match % */
+.dflash-pick-modal__match-col {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 0.2rem;
+  max-width: 42%;
+}
+
+.dflash-pick-modal__match {
+  flex: 0 0 auto;
+  text-align: right;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 1.15;
+  text-transform: uppercase;
+  color: #c4b5fd;
+  text-shadow: 0 0 12px color-mix(in srgb, #a78bfa 45%, transparent);
+  white-space: nowrap;
+}
+
+/* 50–79 confirm tier */
+.dflash-pick-modal__match--suggest {
+  color: #c4b5fd;
+  text-shadow: 0 0 12px color-mix(in srgb, #a78bfa 45%, transparent);
+}
+
+/* ≥80 high confidence */
+.dflash-pick-modal__match--high {
+  color: #6ee7b7;
+  text-shadow: 0 0 12px color-mix(in srgb, #34d399 50%, transparent);
+}
+
+.dflash-pick-modal__match--weak {
+  font-size: 11px;
+  font-weight: 700;
+  color: color-mix(in srgb, #fbbf24 85%, #a78bfa 15%);
+  text-shadow: none;
+  opacity: 0.9;
+}
+
+.dflash-pick-modal__card--high {
+  border-color: color-mix(in srgb, #34d399 40%, transparent);
+}
+
+.dflash-pick-modal__card--high.dflash-pick-modal__card--active {
+  border-color: color-mix(in srgb, #34d399 65%, transparent);
+  background: color-mix(in srgb, #065f46 22%, #000 78%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, #34d399 22%, transparent);
+}
+
+.dflash-pick-modal__rec-pill {
+  flex-shrink: 0;
+  font-size: 7px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 0.1rem 0.3rem;
+  border-radius: 2px;
+  color: #a7f3d0;
+  border: 1px solid color-mix(in srgb, #34d399 50%, transparent);
+  background: color-mix(in srgb, #065f46 35%, transparent);
+}
+
+.dflash-pick-modal__rec-pill--suggest {
+  color: #ddd6fe;
+  border-color: color-mix(in srgb, #a78bfa 45%, transparent);
+  background: color-mix(in srgb, #5b21b6 28%, transparent);
+}
+
+.dflash-pick-modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.45rem;
+  padding-top: 0.15rem;
+}
+
+.dflash-pick-modal__btn {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0.4rem 0.7rem;
+  border-radius: 3px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease, opacity 0.12s ease;
+}
+
+.dflash-pick-modal__btn--ghost {
+  color: color-mix(in srgb, #e2e8f0 72%, transparent);
+  border-color: color-mix(in srgb, #64748b 45%, transparent);
+  background: transparent;
+}
+
+.dflash-pick-modal__btn--ghost:hover {
+  color: #f8fafc;
+  border-color: color-mix(in srgb, #94a3b8 55%, transparent);
+}
+
+.dflash-pick-modal__btn--primary {
+  color: #f5f3ff;
+  border-color: color-mix(in srgb, #a78bfa 55%, transparent);
+  background: color-mix(in srgb, #6d28d9 55%, #0a0612 45%);
+}
+
+.dflash-pick-modal__btn--primary:hover {
+  background: color-mix(in srgb, #7c3aed 65%, #0a0612 35%);
+}
+
+.dflash-pick-modal__empty {
+  margin: 0;
+  font-size: 9px;
+  line-height: 1.35;
+  color: color-mix(in srgb, #fbbf24 85%, transparent);
+}
+
+/* Local list vs remote download — clear visual split */
+.dflash-pick-modal__section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-height: 0;
+}
+
+.dflash-pick-modal__section--local {
+  flex: 0 1 auto;
+  min-height: 0;
+  padding: 0.35rem 0.4rem 0.4rem;
+  border-radius: 3px;
+  border: 1px solid color-mix(in srgb, #a78bfa 30%, transparent);
+  background: color-mix(in srgb, #120a1c 50%, #000 50%);
+}
+
+.dflash-pick-modal__section--remote {
+  flex: 0 0 auto;
+  padding: 0.35rem 0.4rem 0.4rem;
+  border-radius: 3px;
+  border: 1px dashed color-mix(in srgb, #22d3ee 40%, transparent);
+  background: color-mix(in srgb, #042f2e 35%, #000 65%);
+}
+
+.dflash-pick-modal__section--remote-open {
+  border-style: solid;
+  border-color: color-mix(in srgb, #22d3ee 50%, transparent);
+}
+
+.dflash-pick-modal__remote-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.15rem 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.dflash-pick-modal__remote-toggle:hover .dflash-pick-modal__section-label--remote {
+  color: #a5f3fc;
+}
+
+.dflash-pick-modal__remote-toggle:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.dflash-pick-modal__remote-body {
+  margin-top: 0.3rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.dflash-pick-modal__remote-status,
+.dflash-pick-modal__remote-collapsed-hint {
+  margin: 0;
+  font-size: 8px;
+  line-height: 1.35;
+  color: color-mix(in srgb, #67e8f9 65%, transparent);
+}
+
+.dflash-pick-modal__section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.dflash-pick-modal__section-label {
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, #c4b5fd 88%, transparent);
+}
+
+.dflash-pick-modal__section-label--remote {
+  color: color-mix(in srgb, #67e8f9 90%, transparent);
+}
+
+.dflash-pick-modal__section-badge {
+  flex-shrink: 0;
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 0.12rem 0.35rem;
+  border-radius: 2px;
+  border: 1px solid transparent;
+}
+
+.dflash-pick-modal__section-badge--local {
+  color: #c4b5fd;
+  border-color: color-mix(in srgb, #a78bfa 40%, transparent);
+  background: color-mix(in srgb, #6d28d9 18%, transparent);
+}
+
+.dflash-pick-modal__section-badge--match {
+  color: #ddd6fe;
+  border-color: color-mix(in srgb, #a78bfa 45%, transparent);
+  background: color-mix(in srgb, #5b21b6 28%, transparent);
+}
+
+.dflash-pick-modal__section-badge--remote {
+  color: #a5f3fc;
+  border-color: color-mix(in srgb, #22d3ee 45%, transparent);
+  background: color-mix(in srgb, #0891b2 22%, transparent);
+}
+
+/* Remote HF paste — cyan dashed plate, distinct from violet local cards */
+.dflash-pick-modal__manual {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  flex-shrink: 0;
+  margin-top: 0.15rem;
+  padding: 0.55rem 0.55rem 0.5rem;
+  border-radius: 3px;
+  border: 1px dashed color-mix(in srgb, #22d3ee 48%, transparent);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, #042f2e 55%, #000 45%) 0%,
+      color-mix(in srgb, #000 70%, #083344 30%) 100%
+    );
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #22d3ee 12%, transparent);
+}
+
+.dflash-pick-modal__manual--active {
+  border-style: solid;
+  border-color: color-mix(in srgb, #22d3ee 70%, transparent);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, #0e7490 28%, #000 72%) 0%,
+      color-mix(in srgb, #042f2e 50%, #000 50%) 100%
+    );
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #67e8f9 18%, transparent),
+    0 0 0 1px color-mix(in srgb, #22d3ee 18%, transparent);
+}
+
+.dflash-pick-modal__manual-label {
+  font-size: 8px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, #a5f3fc 85%, transparent);
+}
+
+.dflash-pick-modal__manual-input {
+  width: 100%;
+  font-size: 11px;
+  font-family: inherit;
+  padding: 0.4rem 0.5rem;
+  border-radius: 2px;
+  border: 1px solid color-mix(in srgb, #22d3ee 35%, transparent);
+  background: color-mix(in srgb, #000 72%, transparent);
+  color: #ecfeff;
+  outline: none;
+}
+
+.dflash-pick-modal__manual-input:focus {
+  border-color: color-mix(in srgb, #67e8f9 75%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, #22d3ee 25%, transparent);
+}
+
+.dflash-pick-modal__manual-input::placeholder {
+  color: color-mix(in srgb, #67e8f9 38%, transparent);
+}
+
+.dflash-pick-modal__manual-hint {
+  margin: 0;
+  font-size: 7px;
+  line-height: 1.35;
+  color: color-mix(in srgb, #99f6e4 72%, transparent);
+}
+
+.dflash-pick-modal__btn--primary-remote {
+  color: #ecfeff;
+  border-color: color-mix(in srgb, #22d3ee 55%, transparent);
+  background: color-mix(in srgb, #0e7490 60%, #041016 40%);
+}
+
+.dflash-pick-modal__btn--primary-remote:hover {
+  background: color-mix(in srgb, #0891b2 70%, #041016 30%);
+}
+
+.dflash-pick-modal__error {
+  margin: 0;
+  font-size: 8px;
+  line-height: 1.35;
+  color: #fca5a5;
+}
+
+.full-auto-cockpit__connect {
+  font-size: 8px;
+  padding: 0.35rem 0.55rem;
+  border-radius: 3px;
+  border: 1px solid var(--theme-chip-border, rgba(74, 222, 128, 0.15));
+  color: var(--theme-chip-text, var(--theme-industrial-muted, #4ade80));
+  background: color-mix(in srgb, var(--theme-chip-bg, transparent) 80%, transparent);
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.full-auto-cockpit__connect:hover {
+  color: var(--theme-chip-hover-text, var(--theme-accent-bright, #4ade80));
+  border-color: var(--theme-chip-hover-border, rgba(74, 222, 128, 0.35));
+  background: var(--theme-chip-active-bg, rgba(74, 222, 128, 0.12));
+}
+
+.full-auto-cockpit__row-label {
+  width: 4.75rem;
+  font-size: 8px;
+  color: color-mix(in srgb, var(--theme-industrial-muted, #4ade80) 55%, transparent);
+}
+
+.full-auto-cockpit__ctx-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.35rem 0.45rem 0.45rem;
+  border-radius: 3px;
+  border: 1px solid color-mix(in srgb, var(--theme-border, #1a2e1a) 55%, transparent);
+  background: color-mix(in srgb, #000000 18%, transparent);
+  box-shadow: inset 0 1px 3px color-mix(in srgb, #000000 35%, transparent);
+  justify-content: center;
+  min-height: 100%;
+}
+
+/* CTX hero section — cockpit dock or above-config standalone */
+.full-auto-cockpit__ctx-hero {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.7rem 0.5rem 0.5rem;
+  border-radius: 3px;
+  border: 1px solid color-mix(in srgb, var(--theme-border, #1a2e1a) 55%, transparent);
+  background: color-mix(in srgb, #000000 15%, transparent);
+  box-shadow: inset 0 1px 3px color-mix(in srgb, #000000 25%, transparent);
+}
+
+.full-auto-cockpit__ctx-hero--standalone {
+  /* Same design as docked; sits in above-config shell near VRAM */
+  margin: 0;
+}
+
+.full-auto-cockpit__ctx-slider {
+  flex: 1;
+  min-width: 0;
+}
+
+.full-auto-cockpit__ctx-values {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  flex-shrink: 0;
+  padding-left: 2ch;
+  white-space: nowrap;
+  gap: 0.4ch;
+}
+
+.full-auto-cockpit__ctx-value {
+  display: inline-block;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--theme-accent-bright, #4ade80);
+  text-shadow: 0 0 12px color-mix(in srgb, var(--theme-accent-glow, rgba(74, 222, 128, 0.3)) 55%, transparent);
+  text-align: right;
+  white-space: nowrap;
+  width: 4.5ch;
+}
+
+.full-auto-cockpit__ctx-sep {
+  display: inline;
+  font-size: 11px;
+  line-height: 1.1;
+  color: color-mix(in srgb, var(--theme-accent-bright, #4ade80) 40%, transparent);
+  white-space: nowrap;
+}
+
+.full-auto-cockpit__ctx-per-slot {
+  display: inline-block;
+  font-size: 11px;
+  line-height: 1.1;
+  color: color-mix(in srgb, var(--theme-accent-bright, #4ade80) 65%, transparent);
+  text-align: right;
+  white-space: nowrap;
+  width: 11ch;
+}
+
+/* 2x2 slider grid with center divider */
+.full-auto-cockpit__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  padding-top: 5px;
+}
+
+.full-auto-cockpit__grid-cell {
+  padding: 0.25rem 0.35rem;
+}
+
+/* Center vertical divider */
+.full-auto-cockpit__grid-cell:nth-child(odd) {
+  border-right: 1px solid color-mix(in srgb, var(--theme-border, #1a2e1a) 50%, transparent);
+}
+
+/* Bottom horizontal divider between rows */
+.full-auto-cockpit__grid-cell:nth-child(-n+2) {
+  border-bottom: 1px solid color-mix(in srgb, var(--theme-border, #1a2e1a) 50%, transparent);
+}
+
+/* Arctic overrides */
+
+
+.full-auto-cockpit__ctx-label {
+  font-size: 8px;
+  letter-spacing: 0.14em;
+  color: color-mix(in srgb, var(--theme-industrial-muted, #4ade80) 55%, transparent);
+}
+
+.full-auto-cockpit__ctx-slider .ctx-slider-row {
+  width: 100%;
+}
+
+@media (max-width: 900px) {
+  .full-auto-cockpit__ctx-hero {
+    padding: 0.3rem 0.4rem;
+  }
+  .full-auto-cockpit__ctx-value {
+    font-size: 14px;
+  }
+}
+
+
+.full-auto-cockpit--dense .full-auto-cockpit__row-label {
+  width: 3.5rem;
+  font-size: 6px;
+}
+
+/* Same pad/height as value chips; type ~1.5× default chip (was 13px, −25%) */
+.full-auto-cockpit__chip {
+  padding: 0.15rem 0.4rem;
+  font-size: 10px;
+  line-height: 1.15;
+  border-color: var(--theme-chip-border, rgba(74, 222, 128, 0.15));
+  color: var(--theme-chip-text, var(--theme-industrial-muted, #4ade80));
+  background: var(--theme-chip-bg, rgba(74, 222, 128, 0.03));
+}
+
+.full-auto-cockpit--dense .full-auto-cockpit__chip {
+  font-size: 8px;
+  padding: 0.12rem 0.35rem;
+}
+
+.full-auto-cockpit__chip:hover:not(:disabled):not(.full-auto-cockpit__chip--disabled) {
+  border-color: var(--theme-chip-hover-border, rgba(74, 222, 128, 0.35));
+  color: var(--theme-chip-hover-text, var(--theme-accent-bright, #4ade80));
+}
+
+.full-auto-cockpit__chip--active {
+  border-color: var(--theme-chip-active-border, rgba(74, 222, 128, 0.5));
+  color: var(--theme-chip-active-text, var(--theme-accent-bright, #4ade80));
+  background: var(--theme-chip-active-bg, rgba(74, 222, 128, 0.12));
+  box-shadow: 0 0 10px color-mix(in srgb, var(--theme-accent-glow, var(--theme-accent)) 22%, transparent);
+}
+
+.full-auto-cockpit__chip--disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--theme-text-muted, #6a8a6a) 50%, transparent);
+}
+
+.full-auto-cockpit__chip-meta {
+  margin-left: 0.2rem;
+  opacity: 0.5;
+  font-size: 0.85em;
+}
+
+.full-auto-cockpit__sep {
+  color: color-mix(in srgb, var(--theme-text-muted, #6a8a6a) 35%, transparent);
+  padding: 0 0.15rem;
+  font-size: 11px;
+}
+
+.full-auto-cockpit__harness {
+  margin-top: 0.75rem;
+  padding-top: 0.65rem;
+  border-top: 1px solid color-mix(in srgb, var(--theme-border-subtle, rgba(255, 255, 255, 0.08)) 80%, transparent);
+}
+
+.full-auto-cockpit__harness-hint {
+  font-size: 8px;
+  color: color-mix(in srgb, var(--theme-industrial-muted, #4ade80) 50%, transparent);
+}
+
+.full-auto-cockpit__snippet {
+  border-radius: 3px;
+  border: 1px solid color-mix(in srgb, var(--theme-border, #1a2e1a) 75%, transparent);
+  background: color-mix(in srgb, #000000 35%, var(--theme-panel, #111810) 65%);
+}
+
+.full-auto-cockpit__snippet-bar {
+  padding: 0.25rem 0.5rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--theme-border-subtle, rgba(255, 255, 255, 0.08)) 70%, transparent);
+  font-size: 7px;
+  color: color-mix(in srgb, var(--theme-industrial-muted, #4ade80) 65%, transparent);
+}
+
+.full-auto-cockpit__copy {
+  font-size: 7px;
+  padding: 0.15rem 0.45rem;
+  border-radius: 2px;
+  border: 1px solid var(--theme-chip-border, rgba(74, 222, 128, 0.15));
+  color: var(--theme-chip-active-text, #4ade80);
+  background: transparent;
+}
+
+.full-auto-cockpit__copy:hover {
+  background: var(--theme-chip-active-bg, rgba(74, 222, 128, 0.12));
+}
+
+.full-auto-cockpit__snippet-body {
+  margin: 0;
+  padding: 0.4rem 0.5rem;
+  font-size: 7px;
+  color: color-mix(in srgb, var(--theme-industrial-text, #4ade80) 72%, transparent);
+}
+
+/* ARCTIC — same aluminium band + texture scale as provider bar / launch dock */
+
+
+/* ── CockpitSlider — discrete option slider for cockpit rows ─────── */
+.cockpit-slider-row {
+  min-width: 0;
+}
+
+.cockpit-slider-track-host {
+  overflow: visible;
+  align-self: center;
+}
+
+.cockpit-slider-track {
+  background: var(--theme-panel-accent, #040b01);
+  border: 1px solid color-mix(in srgb, var(--theme-accent-bright, #4ade80) 30%, transparent);
+  box-sizing: border-box;
+}
+
+.cockpit-slider-thumb {
+  background: var(--theme-accent-bright, #4ade80);
+  box-shadow: 0 0 6px var(--theme-accent-glow, rgba(74, 222, 128, 0.3));
+  pointer-events: none;
+  transition: box-shadow 0.15s ease;
+}
+
+.cockpit-slider-mark {
+  background: color-mix(in srgb, var(--theme-accent-bright, #4ade80) 35%, transparent);
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.cockpit-slider-mark--selected {
+  background: var(--theme-accent-bright, #4ade80);
+  box-shadow: 0 0 4px var(--theme-accent-glow, rgba(74, 222, 128, 0.3));
+}
+
+.cockpit-slider-mark-label {
+  font-size: 8px;
+  color: color-mix(in srgb, var(--theme-industrial-muted, #4ade80) 55%, transparent);
+  transition: color 0.15s ease, text-shadow 0.15s ease;
+}
+
+.cockpit-slider-mark-label--selected {
+  color: var(--theme-accent-bright, #4ade80);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--theme-accent-glow, rgba(74, 222, 128, 0.3)) 50%, transparent);
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+/* Hover behavior removed — labels always visible */
+
+.cockpit-slider-badge {
+  border: 1px solid var(--theme-chip-border, rgba(74, 222, 128, 0.15));
+  color: var(--theme-chip-active-text, #4ade80);
+  background: var(--theme-chip-active-bg, rgba(74, 222, 128, 0.12));
+  box-shadow: 0 0 6px color-mix(in srgb, var(--theme-accent-glow, rgba(74, 222, 128, 0.3)) 20%, transparent);
+}
+
+.cockpit-slider-badge--hero {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--theme-accent-bright, #4ade80);
+  text-shadow: 0 0 12px color-mix(in srgb, var(--theme-accent-glow, rgba(74, 222, 128, 0.3)) 55%, transparent);
+  text-align: right;
+  white-space: nowrap;
+  padding: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+}
+
+/* Arctic overrides — use ARCTIC theme blue tokens */
+
+
+/* Boost accents — only when emphasize=true (capable). MTP=green, DFlash=violet */
+.cockpit-slider-mark-label--green {
+  color: var(--cockpit-mtp, #4ade80);
+  text-shadow: 0 0 8px var(--cockpit-mtp-dim, color-mix(in srgb, #4ade80 40%, transparent));
+}
+.cockpit-slider-mark-label--green.cockpit-slider-mark-label--selected {
+  color: var(--cockpit-mtp, #4ade80);
+  text-shadow: 0 0 10px var(--cockpit-mtp-dim, color-mix(in srgb, #4ade80 55%, transparent));
+}
+.cockpit-slider-mark-label--violet {
+  color: var(--cockpit-dflash, #a78bfa);
+  text-shadow: 0 0 8px var(--cockpit-dflash-dim, color-mix(in srgb, #a78bfa 40%, transparent));
+}
+.cockpit-slider-mark-label--violet.cockpit-slider-mark-label--selected {
+  color: var(--cockpit-dflash, #a78bfa);
+  text-shadow: 0 0 10px var(--cockpit-dflash-dim, color-mix(in srgb, #a78bfa 55%, transparent));
+}
+
+.cockpit-slider-mark-label--muted {
+  opacity: 0.42;
+}
+
+.cockpit-slider-mark-label--custom {
+  font-style: italic;
+  letter-spacing: 0.02em;
+  opacity: 0.92;
+  color: color-mix(in srgb, #fbbf24 75%, var(--theme-industrial-muted, #4ade80) 25%);
+}
+
+.cockpit-slider-mark-label--custom.cockpit-slider-mark-label--selected {
+  color: #fcd34d;
+  opacity: 1;
+}
+
+.cockpit-slider-mark-wrap--custom .cockpit-slider-mark {
+  width: 2px;
+  background: color-mix(in srgb, #fbbf24 55%, transparent);
+}
+
+.cockpit-slider-mark-label--strike {
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+  text-decoration-color: color-mix(in srgb, var(--theme-industrial-muted, #4ade80) 55%, transparent);
+  opacity: 0.38;
+}
+
+.cockpit-slider-mark-wrap--disabled {
+  cursor: not-allowed;
+  opacity: 0.85;
+}
+
+.cockpit-slider-mark-wrap--strike .cockpit-slider-mark {
+  opacity: 0.35;
+}
+
+/* MTP on — agents track feels locked except Solo */
+.cockpit-slider-row--mtp-agents .cockpit-slider-track {
+  opacity: 0.72;
+}
+
+.cockpit-slider-mark--tint.cockpit-slider-mark--green {
+  opacity: 0.75;
+}
+
+.cockpit-slider-mark--tint.cockpit-slider-mark--violet {
+  opacity: 0.75;
+}
+
+.cockpit-slider-mark--green {
+  background: var(--cockpit-mtp, #4ade80);
+  box-shadow: 0 0 5px var(--cockpit-mtp-dim, color-mix(in srgb, #4ade80 45%, transparent));
+}
+.cockpit-slider-mark--violet {
+  background: var(--cockpit-dflash, #a78bfa);
+  box-shadow: 0 0 5px var(--cockpit-dflash-dim, color-mix(in srgb, #a78bfa 45%, transparent));
+}
+
+/* Status above mark (draft ready / downloadable / built-in) */
+/* Family word above track (draft / ngram) — tint with mark color when selected */
+.cockpit-slider-above-label--green {
+  color: var(--cockpit-mtp, #4ade80);
+}
+
+.cockpit-slider-above-label--violet {
+  color: var(--cockpit-dflash, #a78bfa);
+}
+
+.cockpit-slider-above-label {
+  font-size: 6px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  line-height: 1;
+  color: color-mix(in srgb, var(--theme-industrial-muted, #4ade80) 45%, transparent);
+  pointer-events: none;
+  white-space: nowrap;
+}
+.cockpit-slider-above-label--green {
+  color: var(--cockpit-mtp, #4ade80);
+}
+.cockpit-slider-above-label--violet {
+  color: var(--cockpit-dflash, #a78bfa);
+}
+.cockpit-slider-above-label--selected {
+  font-weight: 700;
+  opacity: 1;
+}
+
+
+/* Config chip keyboard focus indicator */
+.value-chip:focus-visible {
+  outline: 1px solid rgba(0, 229, 255, 0.8);
+  outline-offset: 1px;
+  box-shadow: 0 0 8px rgba(0, 229, 255, 0.3);
+}
+
+.value-chip-active:focus-visible {
+  outline: 1px solid rgba(0, 229, 255, 0.8);
+  outline-offset: 1px;
+  box-shadow: 0 0 12px rgba(0, 229, 255, 0.4);
+}

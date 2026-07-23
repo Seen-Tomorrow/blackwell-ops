@@ -1,0 +1,594 @@
+/* ── E-ink Panel Wrapper — shared panel background ─────────────────────────────── */
+
+.eink-panel-wrapper {
+  background: var(--theme-panel-accent);
+  border: 1px solid var(--theme-border-subtle);
+  position: relative;
+  overflow: hidden;
+}
+
+.eink-panel-wrapper::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--theme-accent-glow), transparent);
+}
+
+/* ── Model catalog / engine config split handle (grip only — no grey bar) ─── */
+.catalog-split-handle {
+  position: relative;
+  flex-shrink: 0;
+  width: 10px;
+  margin: 0 -1px;
+  cursor: col-resize;
+  touch-action: none;
+  z-index: 2;
+  background: transparent;
+  transition: background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.catalog-split-handle::before {
+  content: '';
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 2px;
+  border-radius: 1px;
+  background: color-mix(in srgb, var(--theme-accent, #76b900) 35%, #808080 65%);
+  opacity: 0.65;
+  transition: opacity 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.catalog-split-handle::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 4px;
+  height: 28px;
+  border-radius: 2px;
+  background:
+    radial-gradient(circle, color-mix(in srgb, var(--theme-text-muted, #909090) 90%, #fff) 0.75px, transparent 0.8px)
+      center 2px / 4px 6px repeat-y;
+  opacity: 0.75;
+  transition: opacity 0.15s ease;
+}
+
+.catalog-split-handle:hover,
+.catalog-split-handle.is-dragging {
+  background: color-mix(in srgb, var(--theme-accent, #76b900) 8%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--theme-accent, #76b900) 22%, transparent);
+}
+
+.catalog-split-handle:hover::before,
+.catalog-split-handle.is-dragging::before {
+  opacity: 1;
+  background: var(--theme-accent, #76b900);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--theme-accent-glow, var(--theme-accent)) 50%, transparent);
+}
+
+.catalog-split-handle:hover::after,
+.catalog-split-handle.is-dragging::after {
+  opacity: 1;
+}
+
+
+/* Catalog list collapse rail — toggle + resize handle */
+.catalog-split-rail {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  align-self: stretch;
+  flex-shrink: 0;
+  width: 11px;
+  min-width: 11px;
+  min-height: 100%;
+  margin: 0 -1px;
+  z-index: 3;
+}
+
+.catalog-split-rail .catalog-split-handle {
+  flex: 1 1 auto;
+  align-self: stretch;
+  min-height: 0;
+  margin: 0;
+}
+
+.catalog-list-panel {
+  position: relative;
+}
+
+/* Catalog list — industrial rail texture (mirrors config-launch-rail) */
+[data-model-catalog] .catalog-list-panel.eink-panel-wrapper {
+  isolation: isolate;
+  background-color: var(--theme-industrial-bg);
+  background-image: var(--theme-industrial-texture-active);
+  border: none;
+  border-right: 1.5px solid var(--theme-bezel-edge-hi);
+  box-shadow:
+    2px 0 6px color-mix(in srgb, #000000 24%, transparent),
+    8px 0 20px color-mix(in srgb, #000000 12%, transparent);
+}
+
+[data-model-catalog] .catalog-list-panel.eink-panel-wrapper::before {
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--theme-bezel-edge-hi) 75%, transparent),
+    transparent
+  );
+}
+
+
+[data-model-catalog] .catalog-list-scroll.eink-scrollbar::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--theme-industrial-muted) 40%, var(--theme-industrial-bg) 60%);
+}
+
+[data-model-catalog] .catalog-list-scroll.eink-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--theme-accent) 36%, var(--theme-industrial-bg) 64%);
+}
+
+
+.catalog-split-rail--collapsed {
+  overflow: visible;
+}
+
+.catalog-split-rail--collapsed .catalog-split-handle {
+  cursor: col-resize;
+}
+
+.catalog-split-toggle {
+  position: absolute;
+  top: var(--catalog-toggle-top, 0px);
+  left: 50%;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 36px;
+  margin: 0;
+  padding: 0;
+  transform: translate(-50%, 0);
+  border: 1px solid color-mix(in srgb, var(--theme-accent, #76b900) 40%, var(--theme-border));
+  border-radius: 4px;
+  background: var(--theme-bg-elevated, var(--theme-bg));
+  color: var(--theme-accent, var(--theme-text-muted));
+  cursor: pointer;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--theme-accent-glow, transparent) 15%, transparent);
+  transition:
+    border-color 0.15s ease,
+    color 0.15s ease,
+    box-shadow 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.catalog-split-toggle:hover {
+  border-color: color-mix(in srgb, var(--theme-accent) 70%, var(--theme-border));
+  color: var(--theme-accent-bright, var(--theme-text));
+  box-shadow: 0 0 10px color-mix(in srgb, var(--theme-accent-glow, transparent) 45%, transparent);
+}
+
+/* Collapsed: amber pulse so the rail isn’t “invisible” */
+.catalog-split-toggle--collapsed-hint {
+  animation: catalogSplitTogglePulse 1.35s ease-in-out infinite;
+}
+
+.catalog-split-toggle__glyph {
+  font-size: 10px;
+  font-family: ui-monospace, monospace;
+  line-height: 1;
+  pointer-events: none;
+  transition: transform 0.2s ease;
+}
+
+.catalog-split-toggle__glyph--collapse {
+  transform: rotate(180deg);
+}
+
+.catalog-split-rail .catalog-split-toggle {
+  left: 0;
+  transform: translate(-50%, 0);
+}
+
+.catalog-split-rail--collapsed .catalog-split-toggle {
+  left: 0;
+  transform: translate(0, 0);
+}
+
+.catalog-split-rail--collapsed .catalog-split-toggle:hover {
+  background: var(--theme-bg-elevated, var(--theme-bg));
+  box-shadow: 0 0 10px color-mix(in srgb, var(--theme-accent-glow, transparent) 45%, transparent);
+}
+
+/* Header: soft amber / search hint when catalog is collapsed (readable on dark themes) */
+.config-catalog-search-hint--pulse {
+  border-color: color-mix(in srgb, #d97706 45%, transparent) !important;
+  color: color-mix(in srgb, #f59e0b 75%, #e5e5e5) !important;
+  background: color-mix(in srgb, #d97706 10%, transparent) !important;
+  animation: catalogSearchHintPulse 2.4s ease-in-out infinite;
+}
+
+@keyframes catalogSearchHintPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+    opacity: 0.88;
+  }
+  50% {
+    box-shadow: 0 0 8px 0 color-mix(in srgb, #d97706 28%, transparent);
+    opacity: 1;
+  }
+}
+
+@keyframes catalogSplitTogglePulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+    border-color: color-mix(in srgb, #d97706 40%, var(--theme-border));
+  }
+  50% {
+    box-shadow: 0 0 6px 0 color-mix(in srgb, #d97706 30%, transparent);
+    border-color: color-mix(in srgb, #d97706 55%, var(--theme-border));
+  }
+}
+
+.catalog-split-toggle--collapsed-hint {
+  border-color: color-mix(in srgb, #d97706 45%, var(--theme-border)) !important;
+  color: color-mix(in srgb, #f59e0b 70%, var(--theme-text-muted, #aaa)) !important;
+}
+
+.catalog-split-workspace--collapsed .catalog-list-panel {
+  display: none;
+}
+
+/* Neon glow borders */
+.neon-border-green {
+  border-color: rgba(118, 185, 0, 0.4) !important;
+  box-shadow: 0 0 8px rgba(118, 185, 0, 0.2), inset 0 0 8px rgba(118, 185, 0, 0.05);
+}
+
+.neon-border-cyan {
+  border-color: rgba(0, 229, 255, 0.4) !important;
+  box-shadow: 0 0 8px rgba(0, 229, 255, 0.2), inset 0 0 8px rgba(0, 229, 255, 0.05);
+}
+
+.neon-border-magenta {
+  border-color: rgba(255, 0, 170, 0.4) !important;
+  box-shadow: 0 0 8px rgba(255, 0, 170, 0.2), inset 0 0 8px rgba(255, 0, 170, 0.05);
+}
+
+/* Model catalog — skip paint for off-screen cards; stable intrinsic height for scroll */
+[data-model-path] {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 4.75rem;
+}
+
+.model-catalog-card {
+  contain: layout style paint;
+}
+
+.model-catalog-card--draft {
+  opacity: 0.82;
+}
+
+.catalog-sort-bar {
+  min-width: 0;
+}
+
+.catalog-sort-group {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.catalog-sort-group::-webkit-scrollbar {
+  display: none;
+}
+
+.catalog-sort-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.125rem;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.catalog-sort-arrow {
+  display: inline-block;
+  width: 0.5rem;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.catalog-sort-actions {
+  flex-shrink: 0;
+}
+
+.catalog-cycle-btn {
+  min-width: 2.125rem;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.catalog-search-wrap {
+  min-width: 0;
+}
+
+.catalog-search-input {
+  min-width: 0;
+}
+
+.catalog-search-actions {
+  max-width: 42%;
+}
+
+/* Catalog list — vertical scrollbar on the left (Chromium / WebView2) */
+.catalog-list-scroll {
+  direction: rtl;
+  /* Physical right = split side — keep list content off the resize rail */
+  padding-right: 1.125rem;
+}
+
+.catalog-list-scroll > * {
+  direction: ltr;
+}
+
+/* Visible-count viewport — CSS estimate avoids post-mount measure layout shifts */
+.catalog-scroll--limited[data-visible-count="4"] {
+  max-height: calc(2rem + 4 * 4.75rem + 3 * 0.5rem);
+}
+
+.catalog-scroll--limited[data-visible-count="6"] {
+  max-height: calc(2rem + 6 * 4.75rem + 5 * 0.5rem);
+}
+
+.catalog-scroll--limited[data-visible-count="8"] {
+  max-height: calc(2rem + 8 * 4.75rem + 7 * 0.5rem);
+}
+
+/* Model card styles */
+/* ── Catalog card (unselected) — flat rest state on e-ink panel ─── */
+.buried-card {
+  background: color-mix(in srgb, var(--theme-panel) 55%, transparent);
+  border: 1px solid var(--theme-border-subtle);
+  border-radius: 6px;
+  box-shadow: none;
+  transition: background 0.2s ease, border-color 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Reserve selection rail slot on every card — gunmetal only changes color */
+.buried-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  border-radius: 2px;
+  background: transparent;
+  box-shadow: none;
+  pointer-events: none;
+}
+
+.buried-card:hover {
+  background: color-mix(in srgb, var(--theme-panel-accent) 70%, var(--theme-panel) 30%);
+  border-color: color-mix(in srgb, var(--theme-border) 75%, var(--theme-accent) 25%);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--theme-text) 6%, transparent);
+}
+
+/* Catalog cards on industrial panel — flat rest state, raised selection ring */
+[data-model-catalog] .buried-card {
+  background: color-mix(in srgb, var(--theme-panel) 62%, transparent);
+  border-color: color-mix(in srgb, var(--theme-border-subtle) 88%, transparent);
+}
+
+[data-model-catalog] .buried-card:hover {
+  background: color-mix(in srgb, var(--theme-panel) 78%, var(--theme-panel-accent) 22%);
+  border-color: color-mix(in srgb, var(--theme-border) 68%, var(--theme-accent) 32%);
+}
+
+[data-model-catalog] .gunmetal-card {
+  background-color: color-mix(in srgb, var(--theme-panel) 74%, var(--theme-card-selected-accent) 6%);
+  background-image: linear-gradient(
+    165deg,
+    color-mix(in srgb, var(--theme-panel) 90%, transparent) 0%,
+    color-mix(in srgb, var(--theme-panel-accent) 62%, transparent) 100%
+  );
+  border: 2px solid color-mix(in srgb, var(--theme-card-selected-accent) 72%, var(--theme-border)) !important;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--theme-card-selected-accent) 38%, transparent),
+    0 0 14px color-mix(in srgb, var(--theme-card-selected-accent) 22%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 24%, transparent);
+}
+
+[data-model-catalog] .gunmetal-card::before {
+  width: 4px;
+  box-shadow: 0 0 8px color-mix(in srgb, var(--theme-card-selected-accent) 52%, transparent);
+}
+
+/* ── E-ink Card — glass panel over eink surface ─── */
+.eink-card {
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.03) 0%,
+    rgba(255, 255, 255, 0.01) 100%
+  );
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-top-color: rgba(255, 255, 255, 0.10);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 1px 2px rgba(0, 0, 0, 0.3);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.eink-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--theme-chip-border) 50%,
+    transparent 100%
+  );
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.eink-card:hover {
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.05) 0%,
+    rgba(255, 255, 255, 0.02) 100%
+  );
+  border-color: var(--theme-chip-border);
+  border-top-color: var(--theme-chip-hover-border);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 0 16px var(--theme-accent-soft),
+    0 2px 8px rgba(0, 0, 0, 0.4);
+  transform: translateY(-1px);
+}
+
+.eink-card:hover::before {
+  opacity: 1;
+}
+
+/* ── E-ink Scrollbar ─── */
+.eink-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+
+.eink-scrollbar::-webkit-scrollbar-track {
+  background: var(--theme-scrollbar-track);
+}
+
+.eink-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--theme-scrollbar-thumb);
+  border-radius: 2px;
+}
+
+.eink-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--theme-scrollbar-thumb) 70%, var(--theme-accent-bright) 30%);
+}
+
+/* ── Engine Stack page — unified with MODELS tab ─── */
+[data-engine-stack] .engine-stack-empty-icon {
+  color: var(--theme-accent);
+}
+
+[data-engine-stack] .engine-stack-card {
+  position: relative;
+  border: 1px solid var(--theme-border-subtle);
+}
+
+[data-engine-stack] .engine-stack-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--theme-accent-glow), transparent);
+  pointer-events: none;
+  z-index: 1;
+}
+
+[data-engine-stack] .engine-stack-banner {
+  background: var(--theme-eject-card-bg);
+}
+
+[data-engine-stack] .engine-stack-banner .text-stealth-muted {
+  color: var(--theme-eject-card-muted) !important;
+}
+
+[data-engine-stack] .engine-stack-log {
+  background: var(--theme-industrial-bar-track);
+}
+
+[data-engine-stack] .engine-stack-footer {
+  background: var(--theme-accent-soft);
+}
+
+[data-engine-stack] .engine-stack-phase-pp {
+  background: color-mix(in srgb, var(--theme-secondary) 10%, transparent) !important;
+  border-color: color-mix(in srgb, var(--theme-secondary) 30%, transparent) !important;
+}
+
+[data-engine-stack] .engine-stack-phase-tg {
+  background: var(--theme-accent-soft) !important;
+  border-color: color-mix(in srgb, var(--theme-accent) 30%, transparent) !important;
+}
+
+[data-engine-stack] .engine-stack-phase-idle {
+  background: var(--theme-panel) !important;
+  border-color: var(--theme-border-subtle) !important;
+}
+
+[data-engine-stack] .status-online {
+  background-color: var(--theme-accent) !important;
+  box-shadow: 0 0 6px var(--theme-accent-glow) !important;
+}
+
+[data-engine-stack] .status-loading {
+  background-color: var(--theme-secondary-bright) !important;
+  box-shadow: 0 0 6px color-mix(in srgb, var(--theme-secondary) 40%, transparent) !important;
+}
+
+[data-engine-stack] .eink-panel .provider-pill-active {
+  background: var(--theme-provider-pill-active-bg) !important;
+  border: 1px solid var(--theme-provider-pill-active-border) !important;
+  color: var(--theme-provider-pill-active-text) !important;
+}
+
+[data-engine-stack] .eink-panel .engine-stack-profile-pill {
+  background: rgba(184, 122, 0, 0.08) !important;
+  border: 1px solid rgba(184, 122, 0, 0.4) !important;
+  color: #b87a00 !important;
+}
+
+[data-engine-stack] .eink-panel .engine-stack-banner .text-stealth-muted {
+  color: var(--theme-eject-card-muted) !important;
+}
+
+[data-engine-stack] .engine-stack-header {
+  background: var(--theme-panel);
+}
+
+[data-engine-stack] .engine-stack-bench {
+  background: var(--theme-panel);
+}
+
+[data-engine-stack] .engine-stack-bench-toggle {
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  transition: background-color 0.15s ease;
+}
+
+[data-engine-stack] .engine-stack-bench-toggle:hover {
+  background: color-mix(in srgb, var(--theme-accent) 6%, transparent);
+}
+
+[data-engine-stack] .engine-stack-bench .bench-widget-panel {
+  border: 1px solid var(--theme-border-subtle);
+  background: var(--theme-industrial-bar-track);
+}

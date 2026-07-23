@@ -1,0 +1,329 @@
+/* ── Stealth & Silicon Base Styles ─────────────────────────────── */
+:root {
+  --color-stealth-black: #000000;
+  --color-stealth-dark: #0c120a;
+  --color-stealth-panel: #111810;
+  --color-stealth-border: #1a2e1a;
+  --color-nv-green: #76B900;
+  --color-nv-dim: #4d7a00;
+  --color-telemetry-amber: #FFB800;
+  --color-telemetry-cyan: #00e5ff;
+
+  /* App theme tokens — defaults (matrix); overridden by applyAppTheme() */
+  --theme-bg: #000000;
+  --theme-text: #e0e0e0;
+  --theme-text-muted: #4a4a5a;
+  --theme-panel: #111810;
+  --theme-panel-accent: #040b01;
+  --theme-border: #1a2e1a;
+  --theme-border-subtle: rgba(255, 255, 255, 0.08);
+  --theme-accent: #76B900;
+  --theme-accent-bright: #4ade80;
+  --theme-accent-dim: #4a6a5a;
+  --theme-accent-glow: rgba(74, 222, 128, 0.3);
+  --theme-accent-soft: rgba(74, 222, 128, 0.06);
+  --theme-chip-bg: rgba(74, 222, 128, 0.03);
+  --theme-chip-border: rgba(74, 222, 128, 0.15);
+  --theme-chip-text: #4a6a5a;
+  --theme-chip-hover-border: rgba(74, 222, 128, 0.35);
+  --theme-chip-hover-text: #4ade80;
+  --theme-chip-active-bg: rgba(74, 222, 128, 0.12);
+  --theme-chip-active-border: rgba(74, 222, 128, 0.5);
+  --theme-chip-active-text: #4ade80;
+  --theme-chip-solid-bg: #4ade80;
+  --theme-chip-solid-text: #0c120a;
+  /* CLEAN face; DARK uses --phosphor-bg-dark (same on most themes; ARCTIC splits white/black) */
+  --phosphor-bg: #030805;
+  --phosphor-bg-dark: #030805;
+  --phosphor-glow: rgba(74, 222, 128, 0.04);
+  --phosphor-glow-dark: rgba(74, 222, 128, 0.04);
+  --theme-phosphor-text: #4ade80;
+  --theme-phosphor-text-muted: #3a6a4a;
+  --theme-phosphor-bar-bg: rgba(74, 222, 128, 0.08);
+  --theme-phosphor-border: rgba(74, 222, 128, 0.12);
+  --theme-industrial-bg: #111810;
+  --theme-industrial-text: #4ade80;
+  --theme-industrial-muted: #4ade80;
+  --theme-industrial-bar-track: rgba(74, 222, 128, 0.03);
+  --theme-industrial-gpu-card-bg: rgba(74, 222, 128, 0.04);
+  --theme-industrial-gpu-border: rgba(74, 222, 128, 0.15);
+  --theme-industrial-gpu-selected: rgba(74, 222, 128, 0.7);
+  /* Face gradient under bezel texture (arctic aluminium; none on dark themes) */
+  --theme-industrial-face-gradient: none;
+  /* Launch / ignite — overridden per theme in app-themes.ts */
+  --theme-launch-bg: color-mix(in srgb, var(--theme-chip-solid-bg) 58%, var(--theme-industrial-bg) 42%);
+  --theme-launch-border: color-mix(in srgb, var(--theme-chip-active-border) 82%, transparent);
+  --theme-launch-text: var(--theme-chip-active-text);
+  --theme-launch-shadow: none;
+  --theme-launch-hover-bg: color-mix(in srgb, var(--theme-chip-solid-bg) 68%, var(--theme-industrial-bg) 32%);
+  --theme-launch-hover-border: var(--theme-chip-active-border);
+  --theme-launch-hover-text: var(--theme-chip-hover-text);
+  --theme-launch-active-bg: color-mix(in srgb, var(--theme-chip-solid-bg) 72%, var(--theme-industrial-bg) 28%);
+  --theme-launch-active-border: var(--theme-chip-solid-bg);
+  --theme-launch-active-text: var(--theme-chip-solid-text);
+  /* Full Auto cockpit wells — dark default; ARCTIC overrides lighter */
+  --theme-cockpit-well-shadow:
+    inset 0 3px 8px color-mix(in srgb, #000000 55%, transparent),
+    inset 0 1px 0 color-mix(in srgb, #000000 40%, transparent),
+    inset 0 -1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi, rgba(255, 255, 255, 0.06)) 35%, transparent),
+    0 1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi, rgba(255, 255, 255, 0.06)) 25%, transparent);
+  --theme-cockpit-header-shadow:
+    inset 0 1px 0 color-mix(in srgb, #ffffff 6%, transparent),
+    inset 0 -1px 0 color-mix(in srgb, #000000 28%, transparent);
+  --theme-gpu-topo-selected-border: rgba(148, 163, 184, 0.5);
+  --theme-gpu-topo-selected-shadow: 0 0 10px rgba(148, 163, 184, 0.22);
+  --theme-bezel-edge-hi: rgba(74, 222, 128, 0.07);
+  --theme-bezel-edge-lo: rgba(0, 0, 0, 0.28);
+  --theme-bezel-grain: rgba(74, 222, 128, 0.03);
+  /* Bezel pattern variants — grain tokens adapt per theme (incl. ARCTIC). */
+  --theme-industrial-texture-sandblast:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--theme-bezel-edge-hi) 20%, transparent) 0%,
+      transparent 14%,
+      transparent 86%,
+      color-mix(in srgb, #000000 26%, transparent) 100%
+    ),
+    radial-gradient(
+      circle,
+      color-mix(in srgb, var(--theme-bezel-grain) 110%, transparent) 0.55px,
+      transparent 0.65px
+    )
+      0 0 / 3px 3px,
+    radial-gradient(
+      circle,
+      color-mix(in srgb, #000000 14%, transparent) 0.4px,
+      transparent 0.5px
+    )
+      1.5px 1.5px / 3px 3px;
+  --theme-industrial-texture-diamond:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--theme-bezel-edge-hi) 18%, transparent) 0%,
+      transparent 12%,
+      transparent 88%,
+      color-mix(in srgb, #000000 28%, transparent) 100%
+    ),
+    repeating-linear-gradient(
+      60deg,
+      transparent 0px,
+      transparent 2px,
+      color-mix(in srgb, var(--theme-bezel-grain) 95%, transparent) 2px,
+      transparent 3px,
+      transparent 5px
+    ),
+    repeating-linear-gradient(
+      -60deg,
+      transparent 0px,
+      transparent 2px,
+      color-mix(in srgb, var(--theme-bezel-grain) 95%, transparent) 2px,
+      transparent 3px,
+      transparent 5px
+    );
+  /* Fine horizontal brush strokes — distinct from grit stipple and diamond mesh. */
+  --theme-industrial-texture-brush:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--theme-bezel-edge-hi) 18%, transparent) 0%,
+      transparent 12%,
+      transparent 88%,
+      color-mix(in srgb, #000000 28%, transparent) 100%
+    ),
+    repeating-linear-gradient(
+      0deg,
+      transparent 0px,
+      transparent 2px,
+      color-mix(in srgb, var(--theme-bezel-grain) 85%, transparent) 2px,
+      transparent 2.5px,
+      transparent 4px
+    ),
+    repeating-linear-gradient(
+      0deg,
+      transparent 0px,
+      transparent 4px,
+      color-mix(in srgb, #000000 12%, transparent) 4px,
+      transparent 4.5px,
+      transparent 8px
+    );
+  --theme-industrial-texture-active: var(--theme-industrial-texture-sandblast);
+  --theme-bezel-inset-hi: rgba(74, 222, 128, 0.07);
+  --theme-bezel-inset-lo: rgba(0, 0, 0, 0.22);
+  --theme-phosphor-inset-top: rgba(0, 0, 0, 0.35);
+  --theme-phosphor-inset-bottom: rgba(0, 0, 0, 0.12);
+  --theme-bezel-cast-shadow: 0 8px 24px rgba(0, 0, 0, 0.75), 0 3px 8px rgba(0, 0, 0, 0.55);
+  --theme-bench-inset-shadow: rgba(0, 0, 0, 0.22);
+  /* Display combo references — bench tray: dark theme+LIGHT; inner face recess: ARCTIC+LIGHT */
+  --display-profile-bench-inset: rgba(0, 0, 0, 0.22);
+  --display-profile-phosphor-inset-top: rgba(0, 0, 0, 0.25);
+  --display-profile-phosphor-inset-bottom: rgba(0, 0, 0, 0.15);
+  --display-profile-phosphor-inset-glare: rgba(255, 255, 255, 0.3);
+  /* Outer frame drop shadow (not the inner display recess) */
+  --display-profile-bezel-cast: 0 6px 18px rgba(40, 60, 80, 0.28), 0 2px 6px rgba(40, 60, 80, 0.16);
+  --theme-display-texture-scan: color-mix(in srgb, var(--theme-bg) 42%, transparent);
+  --theme-display-texture-scan-bright: color-mix(in srgb, var(--theme-phosphor-text) 18%, transparent);
+  --theme-display-texture-vignette: color-mix(in srgb, var(--theme-bg) 38%, transparent);
+  --theme-display-texture-aperture: color-mix(in srgb, var(--theme-phosphor-text) 6%, transparent);
+  --theme-display-texture-beam: color-mix(in srgb, var(--theme-phosphor-text) 28%, transparent);
+  --theme-display-texture-glare: color-mix(in srgb, var(--theme-text) 12%, transparent);
+  /* Legacy names (glitch / docs); DARK CRT grain is fixed in fusion-display.css */
+  --theme-display-dot-matrix: rgba(148, 163, 184, 0.05);
+  --theme-display-lcd-band: rgba(148, 163, 184, 0.02);
+  /* Phosphor LIGHT — e-ink LCD (fusion overlay) */
+  --fusion-eink-surface: #c8d4b8;
+  --fusion-eink-dot: rgba(0, 0, 0, 0.025);
+  --fusion-eink-band: rgba(0, 0, 0, 0.01);
+  --fusion-eink-band-opacity: 0.55;
+  --fusion-eink-texture-blend: multiply;
+  --fusion-eink-text-muted: #4a6a4a;
+  --fusion-eink-text-accent: #4d7a00;
+  --fusion-eink-text-cyan: #0088aa;
+  --fusion-eink-text-amber: #b87a00;
+  --fusion-eink-text-red: #5a2828;
+  --fusion-eink-text-violet: #4a3858;
+  --fusion-eink-bar-bg: #465a40;
+  --fusion-eink-gpu-selected-border: #526848;
+  --fusion-eink-gpu-selected-bg: rgba(70, 90, 64, 0.45);
+  --fusion-eink-gpu-selected-shadow: 0 0 0 1px rgba(82, 104, 72, 0.55), 0 2px 5px rgba(40, 50, 36, 0.25);
+  --fusion-eink-border: rgba(60, 60, 60, 0.25);
+  /* PHOSPHOR LIGHT readout ink — per-theme overrides in app-themes.ts */
+  --fusion-eink-readout: #1e3a14;
+  --fusion-eink-readout-divider: #1e3a14;
+  --fusion-eink-readout-divider-opacity: 0.32;
+  --fusion-eink-readout-idle: #5a6a52;
+  --fusion-eink-readout-idle-divider: #5a6a52;
+  --fusion-eink-readout-idle-divider-opacity: 0.48;
+  --fusion-eink-concurrency-label: #4a6a4a;
+  --fusion-eink-concurrency-chip-bg: #243818;
+  --fusion-eink-concurrency-chip-fg: #9ed44a;
+  --fusion-eink-concurrency-chip-border: #4d7a00;
+  --fusion-eink-ctx-chip-border: rgba(77, 122, 0, 0.5);
+  --fusion-eink-ctx-chip-fg: #4a6a4a;
+  --fusion-eink-ctx-fill-pct: #1e3a14;
+  --fusion-eink-ctx-fill-pct-shadow: rgba(200, 212, 184, 0.9);
+  --fusion-eink-ctx-track-bg: rgba(0, 0, 0, 0.06);
+  --fusion-eink-ctx-track-border: rgba(60, 60, 60, 0.2);
+  --fusion-eink-ctx-fill-processing: #22c55e;
+  --fusion-eink-ctx-fill-idle: rgba(74, 222, 128, 0.4);
+  --fusion-eink-ctx-slot-bg: rgba(0, 0, 0, 0.06);
+  --fusion-eink-ctx-slot-fg: #4a6a4a;
+  --fusion-eink-hw-label: #3a5a32;
+  --fusion-eink-hw-driver: #5a7050;
+  --fusion-eink-gpu-name: #4a6a4a;
+  --fusion-eink-gpu-name-selected: #1e3a14;
+  --theme-card-recessed-border: #111810;
+  --theme-card-selected-bg: #111810;
+  --theme-card-selected-accent: #b87a00;
+  --theme-scrollbar-track: rgba(10, 10, 15, 0.5);
+  --theme-scrollbar-thumb: rgba(118, 185, 0, 0.3);
+  --theme-secondary: #b87a00;
+  --theme-secondary-bright: #f5971f;
+  --theme-selection-bg: #76B900;
+  --theme-selection-text: #000000;
+  --theme-eject-header-bg: #000000;
+  --theme-eject-header-text: #b87a00;
+  --theme-eject-card-bg: rgba(255, 255, 255, 0.025);
+  --theme-eject-card-hover-bg: rgba(255, 255, 255, 0.05);
+  --theme-eject-card-text: #e8e2d6;
+  --theme-eject-card-muted: #9a9488;
+  --theme-eject-badge-bg: #000000;
+  --theme-eject-card-border: rgba(255, 255, 255, 0.05);
+  --theme-eject-card-hover-border: rgba(184, 122, 0, 0.22);
+  --theme-eject-card-selected-bg: rgba(184, 122, 0, 0.16);
+  --theme-eject-card-selected-border: rgba(184, 122, 0, 0.55);
+  --theme-provider-label: rgba(245, 151, 31, 0.8);
+  --theme-provider-pill-bg: #1a1206;
+  --theme-provider-pill-border: #b87a00;
+  --theme-provider-pill-text: #b87a00;
+  --theme-provider-pill-hover-border: #f5971f;
+  --theme-provider-pill-hover-text: #f5971f;
+  --theme-provider-pill-active-bg: #f5971f;
+  --theme-provider-pill-active-border: #f5971f;
+  --theme-provider-pill-active-text: #0a0804;
+  --theme-header-bg: #000000;
+  --theme-header-border: #1a2e1a;
+  --theme-header-title: #ffffff;
+  --theme-header-subtitle: rgba(255, 255, 255, 0.25);
+  --theme-header-logo: #76B900;
+  --theme-nav-text: #4a4a5a;
+  --theme-nav-hover-text: #e0e0e0;
+  --theme-nav-hover-bg: rgba(255, 255, 255, 0.05);
+  --theme-nav-active-bg: rgba(74, 222, 128, 0.12);
+  --theme-nav-active-border: rgba(74, 222, 128, 0.5);
+  --theme-nav-active-text: #4ade80;
+  --theme-chrome-control-border: #1a2e1a;
+  --theme-chrome-control-text: #4a4a5a;
+  --theme-chrome-control-hover: #4ade80;
+  --theme-footer-bg: #000000;
+  --theme-footer-border: #b87a00;
+  --theme-footer-text: rgba(255, 255, 255, 0.4);
+  --theme-footer-output-bg: rgba(184, 122, 0, 0.05);
+  --theme-footer-output-bg-hover: rgba(184, 122, 0, 0.1);
+  --theme-footer-output-text: #f5971f;
+  --theme-status-nominal: #4ade80;
+
+  /* Dock panel dimensions (single source of truth) */
+  --dock-panel-bottom: 32px;
+  --dock-panel-height: 75vh;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background-color: var(--theme-bg);
+  color: var(--theme-text);
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-stealth-dark);
+}
+
+::-webkit-scrollbar-thumb {
+  background: #2a2a3e;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #3a3a4e;
+}
+
+/* Selection color */
+::selection {
+  background: var(--theme-selection-bg);
+  color: var(--theme-selection-text);
+}
+
+/* GPU topo — above phosphor/CRT texture overlays (z-index 4–5) to kill scan-line moiré */
+.gpu-topology-root {
+  position: relative;
+  z-index: 6;
+  isolation: isolate;
+}
+
+/* Selected card — solid border tint + drop shadow lift (no inset ring) */
+.gpu-card {
+  position: relative;
+  z-index: 1;
+  border: 2px solid transparent;
+  box-sizing: border-box;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.gpu-selected {
+  z-index: 2;
+  border-color: var(--theme-gpu-topo-selected-border) !important;
+  box-shadow: var(--theme-gpu-topo-selected-shadow);
+}

@@ -168,7 +168,7 @@ export default function GpuOverclockPanel({
           disabled={busy || devicesCount === 0 || isTcc}
           onClick={requestTcc}
           className={`${rail ? railModeBtn : modeBtn} ${tccBtnClass} disabled:opacity-40`}
-          title="nvidia-smi -dm 1 — TCC (compute). Confirms before switch."
+          title="switch to TCC mode (compute). Confirms before switch."
         >
           TCC
         </button>
@@ -177,7 +177,7 @@ export default function GpuOverclockPanel({
           disabled={busy || devicesCount === 0 || isWddm}
           onClick={requestWddm}
           className={`${rail ? railModeBtn : modeBtn} ${wddmBtnClass} disabled:opacity-40`}
-          title="nvidia-smi -dm 0 — WDDM (display)."
+          title="switch to WDDM mode (display)."
         >
           WDDM
         </button>
