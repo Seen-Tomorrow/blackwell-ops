@@ -168,6 +168,8 @@ export const KEYS = {
   hwMonitorCpuCoresOpen: `${STORAGE_PREFIX}hw-monitor-cpu-cores-open`,
   /** Running engine / fusion switcher in launch rail instead of below VRAM display. */
   enginesInRail: `${STORAGE_PREFIX}engines-in-rail`,
+  /** CTX strip: docked inside cockpit vs standalone above cockpit. */
+  ctxCockpitDock: `${STORAGE_PREFIX}ctx-cockpit-dock`,
   catalogSplitWidth: `${STORAGE_PREFIX}catalog-split-width`,
   catalogListCollapsed: `${STORAGE_PREFIX}catalog-list-collapsed`,
   /** OPERATIONS model list: auto | open | closed */
@@ -479,6 +481,17 @@ export function loadEnginesInRail(): boolean {
 
 export function saveEnginesInRail(inRail: boolean): void {
   writeStorage(KEYS.enginesInRail, inRail ? "1" : "0");
+}
+
+/** CTX strip placement: inside Launch cockpit or standalone above it. */
+export type CtxCockpitDock = "cockpit" | "above";
+
+export function loadCtxCockpitDock(): CtxCockpitDock {
+  return readStorage(KEYS.ctxCockpitDock) === "above" ? "above" : "cockpit";
+}
+
+export function saveCtxCockpitDock(dock: CtxCockpitDock): void {
+  writeStorage(KEYS.ctxCockpitDock, dock);
 }
 
 // ── Dynamic key builders (BlackOps-{namespace}:{id}) ─────────────────────────

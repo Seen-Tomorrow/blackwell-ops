@@ -12,6 +12,8 @@ export const SYSTEM_CATALOG_PARAM_KEYS = new Set([
   "split",
   "offload_mode",
   "base_port",
+  /** CTX lives in CockpitCtxStrip / docked cockpit — never chip rows. */
+  "ctx",
 ]);
 
 /**
@@ -26,6 +28,7 @@ export const COCKPIT_OWNED_PARAM_KEYS = new Set([
   "reasoning",
   "reasoning_preserve",
   "cont_batching",
+  "ctx",
 ]);
 
 export function isCockpitOwnedParam(key: string): boolean {

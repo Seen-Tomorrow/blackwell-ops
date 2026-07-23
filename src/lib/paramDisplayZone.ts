@@ -6,6 +6,8 @@ export const PANEL_CHROME_PARAM_KEYS = new Set([
   "split",
   "base_port",
   "offload_mode",
+  /** CTX is cockpit strip / dock — not a group chip. */
+  "ctx",
 ]);
 
 export function resolveGroupDisplayZone(

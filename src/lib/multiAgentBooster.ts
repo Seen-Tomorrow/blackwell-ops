@@ -241,13 +241,26 @@ export interface BoostMarkParts {
 }
 
 /**
- * Parse factory / capability spec_type into cockpit 2-word marks.
- * Above = family (draft | ngram); under = mode name.
+ * Spec types we omit from Boost (no draft UX yet; DFlash covers external draft).
+ * Matching is case-insensitive on key and label tokens.
+ */
+export function shouldOmitSpecTypeFromBoost(specType: string): boolean {
+  const s = String(specType).trim().toLowerCase();
+  if (!s || s === "off" || s === "none") return true;
+  // Eagle3 needs external draft pairing we do not ship — prefer DFlash.
+  if (s.includes("eagle")) return true;
+  return false;
+}
+
+/**
+ * Parse any factory / user-added spec_type into cockpit 2-word marks.
+ * First token above track, remainder under — no hardcoding beyond MTP/DFlash accents + rank.
  */
 export function parseSpecTypeBoostMark(specType: string): BoostMarkParts {
   const raw = String(specType).trim();
   const s = raw.toLowerCase();
 
+  // Canonical product accents (still 2-word: draft / MTP|DFlash)
   if (s === "draft-mtp" || s === "mtp") {
     return {
       id: "mtp",
@@ -268,40 +281,48 @@ export function parseSpecTypeBoostMark(specType: string): BoostMarkParts {
       rank: 100,
     };
   }
-  if (s.startsWith("ngram")) {
-    const rest = s.replace(/^ngram[-_]?/, "") || "mod";
-    return {
-      id: `raw:${raw}`,
-      label: rest.length <= 8 ? rest : "mod",
-      aboveLabel: "ngram",
-      blurb: `N-gram speculative mode (${raw})`,
-      rank: 10,
-    };
-  }
-  if (s.startsWith("draft-")) {
-    const rest = raw.slice("draft-".length) || raw;
-    const pretty =
-      rest.toLowerCase() === "eagle3"
-        ? "Eagle3"
-        : rest.toLowerCase() === "simple"
-          ? "Simple"
-          : rest.charAt(0).toUpperCase() + rest.slice(1);
-    return {
-      id: `raw:${raw}`,
-      label: pretty,
-      aboveLabel: "draft",
-      blurb: `Speculative draft mode (${raw})`,
-      rank: rest.toLowerCase().includes("eagle") ? 40 : 30,
-    };
-  }
-  // Unknown factory value
+
+  // Generic 2-word split on first delimiter (- _ space)
+  const parts = raw.split(/[-_\s]+/).filter(Boolean);
+  const above = (parts[0] || raw).toLowerCase();
+  const underRaw = parts.length > 1 ? parts.slice(1).join("-") : parts[0] || raw;
+  const under =
+    underRaw.length <= 10
+      ? underRaw.charAt(0).toUpperCase() + underRaw.slice(1)
+      : underRaw.slice(0, 8) + "…";
+
+  // Rank: ngram early, other mid, unknown mid-high (MTP/DFlash stay last via specials above)
+  let rank = 50;
+  if (above === "ngram" || s.startsWith("ngram")) rank = 10;
+  else if (above === "draft" || s.startsWith("draft")) rank = 30;
+  else if (s.includes("simple")) rank = 20;
+
   return {
     id: `raw:${raw}`,
-    label: raw.length > 10 ? raw.slice(0, 8) + "…" : raw,
-    aboveLabel: undefined,
+    label: under,
+    aboveLabel: above,
     blurb: `Spec type ${raw}`,
-    rank: 50,
+    rank,
   };
+}
+
+/** Collect Boost mark source list: factory values + userAdded, minus omitted. */
+export function collectBoostSpecTypes(
+  values: (string | number)[] | undefined,
+  userAdded?: (string | number)[] | undefined,
+): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const v of [...(values || []), ...(userAdded || [])]) {
+    const s = String(v).trim();
+    if (!s) continue;
+    const key = s.toLowerCase();
+    if (seen.has(key)) continue;
+    if (shouldOmitSpecTypeFromBoost(s)) continue;
+    seen.add(key);
+    out.push(s);
+  }
+  return out;
 }
 
 /** Complexity order for Boost marks — simplest first, MTP then DFlash last. */

@@ -6,10 +6,12 @@ import {
   buildAgentOptions,
   buildHarnessSnippets,
   buildMemoryOptions,
+  collectBoostSpecTypes,
   compareBoostRank,
   parallelForCodingMode,
   parseSpecTypeBoostMark,
   resolveFullAutoPlan,
+  shouldOmitSpecTypeFromBoost,
   type BoostMarkParts,
   type BrainsId,
   type CodingModeId,
@@ -69,20 +71,21 @@ export interface MultiAgentBoosterProps {
    */
   powerMode?: boolean;
   /**
-   * Extra raw spec_type values for Power boost (e.g. draft-eagle3, ngram).
-   * MTP/DFlash still driven by capabilities; these fill the rest of the factory set.
+   * All factory + user-added spec_type values (Boost builds 2-word marks from these).
+   * Eagle omitted by collector; MTP/DFlash get product accents.
    */
   rawSpecTypes?: string[];
-  /** When set with powerMode, selecting a raw type (not mtp/dflash/off) calls this. */
+  /** Selecting a non-MTP/DFlash/off/smart type. */
   onRawSpecType?: (specType: string | null) => void;
-  /** Active factory spec_type when power boost is a raw (non mtp/dflash) mode. */
+  /** Active non-MTP/DFlash spec_type (drives Boost thumb). */
   activeRawSpecType?: string | null;
   /**
-   * Extra SPEC group params (not type / not draft path) — shown under Boost on demand.
+   * SPEC-EXTRA knobs (Assisted Full) — n_max/n_min etc. Simple ngram needs no strip.
    */
   specDetailParams?: CockpitSpecDetailParam[];
   className?: string;
-  /** CTX rail (hero Full Auto only). */
+  /** When false, CTX is rendered outside (standalone strip). Default true when props present. */
+  embedCtx?: boolean;
   ctxValue?: number | string;
   ctxDefault?: number | string;
   ctxValues?: (string | number)[];
@@ -121,6 +124,7 @@ export default function MultiAgentBooster({
   activeRawSpecType = null,
   specDetailParams = [],
   className = "",
+  embedCtx = true,
   ctxValue,
   ctxDefault,
   ctxValues,
@@ -132,11 +136,11 @@ export default function MultiAgentBooster({
   const [harnessOpen, setHarnessOpen] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const hero = layout === "hero";
-  const compact = layout === "compact";
-  /** CTX on top for all modes (unifies Full Auto + Assisted). */
-  const showCtxRail = onCtxChange != null && (ctxValues?.length ?? 0) > 0;
-  /** SPEC-EXTRA — Assisted Full only (hidden Full Auto + Essentials). */
-  const showSpecExtra = powerMode;
+  /** Single assisted density — Essentials/Full no longer reflow padding. */
+  const densityUnified = !hero;
+  /** CTX docked inside cockpit (standalone strip when embedCtx false). */
+  const showCtxRail =
+    embedCtx && onCtxChange != null && (ctxValues?.length ?? 0) > 0;
   /**
    * Full Auto (hero): parent passes factory-only values.
    * Assisted: factory + user-added; unknown marks styled as custom.
@@ -198,6 +202,20 @@ export default function MultiAgentBooster({
       ? "smart"
       : plan.speed;
 
+  /**
+   * SPEC-EXTRA — Assisted Full only, when Boost is MTP/DFlash (or a raw draft type that needs knobs).
+   * Simple ngram: no strip.
+   */
+  const showSpecExtra = useMemo(() => {
+    if (!powerMode || specDetailParams.length === 0) return false;
+    if (displayBoost === "mtp" || displayBoost === "dflash") return true;
+    if (!activeRawSpecType) return false;
+    // ngram / simple: no SPEC-EXTRA; other draft-* may show knobs
+    const s = activeRawSpecType.toLowerCase();
+    if (s.startsWith("ngram") || s.includes("simple")) return false;
+    return s.startsWith("draft") || s.includes("draft");
+  }, [powerMode, specDetailParams.length, displayBoost, activeRawSpecType]);
+
   const showDflashGet =
     Boolean(onGetDflashDraft) &&
     displayBoost === "dflash" &&
@@ -218,8 +236,8 @@ export default function MultiAgentBooster({
   const mtpLocksAgents = displayBoost === "mtp";
 
   /**
-   * Boost marks: 2-word naming (family above track, mode under).
-   * Order simple → complex; MTP then DFlash always last.
+   * Boost marks from full factory+user list (2-word split).
+   * Off/Smart bookend; MTP/DFlash last with product colors.
    */
   const boostMarks = useMemo((): BoostMarkParts[] => {
     const marks: BoostMarkParts[] = [];
@@ -239,21 +257,27 @@ export default function MultiAgentBooster({
       });
     }
 
-    const skip = new Set(["draft-mtp", "draft-dflash", "mtp", "dflash", "off", "none", ""]);
-    for (const t of rawSpecTypes) {
-      const s = String(t).trim();
-      if (!s || skip.has(s.toLowerCase())) continue;
-      marks.push(parseSpecTypeBoostMark(s));
+    // rawSpecTypes already = factory + user-added, eagle omitted by collectBoostSpecTypes
+    const types = collectBoostSpecTypes(rawSpecTypes);
+    for (const t of types) {
+      const low = t.toLowerCase();
+      // MTP / DFlash handled below with availability + accents
+      if (low === "draft-mtp" || low === "mtp" || low === "draft-dflash" || low === "dflash") {
+        continue;
+      }
+      if (shouldOmitSpecTypeFromBoost(t)) continue;
+      marks.push(parseSpecTypeBoostMark(t));
     }
 
-    if (mtpAvailable || !powerMode) {
+    // Always surface MTP / DFlash product marks (capability-gated disable)
+    {
       const m = parseSpecTypeBoostMark("draft-mtp");
       m.blurb = mtpAvailable
         ? m.blurb
         : "MTP not available for this model";
       marks.push(m);
     }
-    if (dflashAvailable || !powerMode) {
+    {
       const m = parseSpecTypeBoostMark("draft-dflash");
       m.blurb = dflashAvailable
         ? dflashLibraryReady
@@ -267,7 +291,6 @@ export default function MultiAgentBooster({
       marks.push(m);
     }
 
-    // Dedupe by id, keep first (then re-sort)
     const byId = new Map<string, BoostMarkParts>();
     for (const m of marks) {
       if (!byId.has(m.id)) byId.set(m.id, m);
@@ -455,17 +478,17 @@ export default function MultiAgentBooster({
     </div>
   ) : null;
 
+  // One assisted density for Essentials + Full (no padding jump on switch).
   const densityClass = hero
     ? "full-auto-cockpit--hero"
-    : compact
-      ? "full-auto-cockpit--compact"
-      : "full-auto-cockpit--normal";
+    : "full-auto-cockpit--normal";
 
   return (
     <div
       className={`full-auto-cockpit ${densityClass} ${className}`}
       data-booster-layout={layout}
       data-power-mode={powerMode ? "on" : "off"}
+      data-density-unified={densityUnified ? "on" : "off"}
     >
       {/* Compact title only — status line removed; selected values live on slider marks */}
       <div className="full-auto-cockpit__header full-auto-cockpit__header--minimal">
@@ -479,7 +502,7 @@ export default function MultiAgentBooster({
         ) : null}
       </div>
 
-      <div className={`full-auto-cockpit__body ${compact ? "space-y-2" : "space-y-3"}`}>
+      <div className="full-auto-cockpit__body space-y-3">
         {/* CTX on top for Full Auto + Assisted (unifies layout) */}
         {showCtxRail && (
           <div className="full-auto-cockpit__ctx-hero">

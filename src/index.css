@@ -3396,7 +3396,7 @@ html, body, #root {
   min-height: 100%;
 }
 
-/* CTX hero section — top of body */
+/* CTX hero section — cockpit dock or above-config standalone */
 .full-auto-cockpit__ctx-hero {
   display: flex;
   flex-direction: row;
@@ -3407,6 +3407,11 @@ html, body, #root {
   border: 1px solid color-mix(in srgb, var(--theme-border, #1a2e1a) 55%, transparent);
   background: color-mix(in srgb, #000000 15%, transparent);
   box-shadow: inset 0 1px 3px color-mix(in srgb, #000000 25%, transparent);
+}
+
+.full-auto-cockpit__ctx-hero--standalone {
+  /* Same design as docked; sits in above-config shell near VRAM */
+  margin: 0;
 }
 
 .full-auto-cockpit__ctx-slider {

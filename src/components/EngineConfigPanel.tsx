@@ -12,14 +12,17 @@ import {
   normalizeModelPathKey,
   loadAutoVramEnabled,
   loadConfigView,
+  loadCtxCockpitDock,
   loadEnginesInRail,
   loadHwMonitorOpen,
   loadLaunchDockCollapsed,
   loadLaunchDockPosition,
   loadLaunchDockPositionExplicit,
   loadUiDensity,
+  type CtxCockpitDock,
   type LaunchDockPosition,
   normalizeUiGroup,
+  saveCtxCockpitDock,
   saveEnginesInRail,
   saveHwMonitorOpen,
   saveLaunchDockCollapsed,
@@ -44,9 +47,11 @@ import MultiAgentBooster, {
   type CockpitSpecDetailParam,
   type DflashGetUiState,
 } from "./MultiAgentBooster";
+import CockpitCtxStrip from "./CockpitCtxStrip";
 import {
   brainsFromKvQuant,
   codingModeFromParallel,
+  collectBoostSpecTypes,
   FULL_AUTO_COLLAPSE_GROUPS,
   pickHighNumeric,
   resolveFullAutoPlan,
@@ -78,6 +83,7 @@ import {
   isCockpitOwnedParam,
   isSystemCatalogParam,
   SYSTEM_CATALOG_PARAM_KEYS,
+  SYSTEM_UI_GROUP,
 } from "../lib/systemParams";
 import ParamCatalogSearch from "./ParamCatalogSearch";
 import {
@@ -512,6 +518,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   const [launchDockCollapsed, setLaunchDockCollapsed] = useState(loadLaunchDockCollapsed);
   const [hwMonitorOpen, setHwMonitorOpen] = useState(loadHwMonitorOpen);
   const [enginesInRail, setEnginesInRail] = useState(loadEnginesInRail);
+  /** CTX strip: docked in cockpit vs above-config zone (near VRAM / pin-above groups). */
+  const [ctxCockpitDock, setCtxCockpitDock] = useState<CtxCockpitDock>(() => loadCtxCockpitDock());
   const showLaunchRail = launchDockPosition === "right";
   const showRightColumn = hwMonitorOpen || showLaunchRail;
   const showEnginesBelowVram = !(enginesInRail && showLaunchRail);
@@ -1198,11 +1206,11 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     ],
   );
 
+  /** Boost source list: factory + user-added (eagle omitted; 2-word marks in cockpit). */
   const factoryRawSpecTypes = useMemo(() => {
     const def = allParamsResolved.find((p) => p.key === "spec_type");
-    if (!def?.values?.length) return [] as string[];
-    return filterSpecTypeValues(def.values, specCapabilities, false).map(String);
-  }, [allParamsResolved, specCapabilities]);
+    return collectBoostSpecTypes(def?.values, def?.userAddedValues);
+  }, [allParamsResolved]);
 
   /** Non-MTP/DFlash active factory type — drives Boost thumb for ngram / draft-simple / etc. */
   const activeRawSpecType = useMemo(() => {
@@ -2192,9 +2200,11 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     const groups: Record<string, UserEditedTemplateParam[]> = {};
     for (const def of allParamsForDisplay) {
       if (def.hidden || isPanelChromeParam(def)) continue;
-      // Cockpit is the UI for these shared knobs (no chip dedup / double control).
-      if (isCockpitOwnedParam(def.key)) continue;
+      // Cockpit / SYSTEM chrome — never free chip rows (ctx, parallel, …)
+      if (isCockpitOwnedParam(def.key) || isSystemCatalogParam(def)) continue;
       const groupId = paramUiGroup(def.ui_group);
+      // SYSTEM group is placement-only chrome; never show as a chip tile
+      if (groupId === SYSTEM_UI_GROUP) continue;
       if (!groups[groupId]) groups[groupId] = [];
       groups[groupId].push(def);
     }
@@ -2225,11 +2235,32 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     (groupId: string) => {
       // SPECULATIVE-DECODING lives under cockpit Boost / Spec details — not chip columns.
       if (groupId === SPEC_DECODING_GROUP) return false;
+      if (groupId === SYSTEM_UI_GROUP) return false;
       if ((groupedParams[groupId]?.length ?? 0) > 0) return true;
       return layoutModeActive && isGroupFullyHidden(groupId, allGroupedParams);
     },
     [groupedParams, layoutModeActive, allGroupedParams],
   );
+
+  const ctxStripProps = useMemo(() => {
+    const slots = resolveCtxSlotCount(config, allParamsResolved);
+    const n = typeof config.ctx === "number" ? config.ctx : parseInt(String(config.ctx), 10);
+    const perSlot =
+      slots > 1 && Number.isFinite(n) && n > 0 ? Math.floor(n / slots) : undefined;
+    return {
+      ctxValue: config.ctx as number | string | undefined,
+      ctxDefault: allParamsResolved.find((p) => p.key === "ctx")?.defaultValue,
+      ctxValues: allParamsResolved.find((p) => p.key === "ctx")?.values,
+      ctxStep: allParamsResolved.find((p) => p.key === "ctx")?.step ?? 1024,
+      onCtxChange: (v: number) => updateParam("ctx", v),
+      ctxSlotCount: slots,
+      ctxPerSlot: perSlot,
+    };
+  }, [config, allParamsResolved, updateParam]);
+
+  const ctxDockedInCockpit = ctxCockpitDock === "cockpit";
+  const showCtxAboveConfig =
+    model && !modelIsDraftOnly && (ctxStripProps.ctxValues?.length ?? 0) > 0 && !ctxDockedInCockpit;
 
   const {
     aboveGroupKeys,
@@ -2886,23 +2917,33 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         </div>
       )}
 
-      {/* Full Auto: fixed cockpit — hide above chip groups. */}
-      {aboveGroupKeys.length > 0 && !fullAutoFixed && (
+      {/*
+        Above-config zone (near VRAM): pin-above chip groups + optional CTX strip.
+        Full Auto hides chip groups; CTX can still dock here when not embedded in cockpit.
+      */}
+      {(showCtxAboveConfig || (aboveGroupKeys.length > 0 && !fullAutoFixed)) && (
         <div className={`config-params-above-shell relative${paramsBypassedClass}`}>
-          <ConfigBelowGroups
-            zone="above"
-            columnCount={2}
-            columnWidths={[...aboveColumnWidths]}
-            belowGroupsByColumn={aboveGroupsByColumn}
-            onGutterDragStart={handleAboveGutterDragStart}
-            draggingGutterIndex={draggingAboveGutterIndex}
-            layoutModeActive={layoutModeActive}
-            renderGroup={(groupId, _columnIdx, groupIdx) => {
-              const group = deriveParamGroups(aboveGroupKeys).find((g) => g.id === groupId);
-              if (!group) return null;
-              return renderParamGroup(group, "above", { groupIdx });
-            }}
-          />
+          {showCtxAboveConfig && (
+            <div className="px-3 pt-2 pb-1.5 min-w-0">
+              <CockpitCtxStrip {...ctxStripProps} className="w-full" />
+            </div>
+          )}
+          {aboveGroupKeys.length > 0 && !fullAutoFixed && (
+            <ConfigBelowGroups
+              zone="above"
+              columnCount={2}
+              columnWidths={[...aboveColumnWidths]}
+              belowGroupsByColumn={aboveGroupsByColumn}
+              onGutterDragStart={handleAboveGutterDragStart}
+              draggingGutterIndex={draggingAboveGutterIndex}
+              layoutModeActive={layoutModeActive}
+              renderGroup={(groupId, _columnIdx, groupIdx) => {
+                const group = deriveParamGroups(aboveGroupKeys).find((g) => g.id === groupId);
+                if (!group) return null;
+                return renderParamGroup(group, "above", { groupIdx });
+              }}
+            />
+          )}
         </div>
       )}
           </div>
@@ -3071,6 +3112,24 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             >
               + PARAM
             </button>
+            <button
+              type="button"
+              onClick={() => {
+                const next: CtxCockpitDock = ctxCockpitDock === "cockpit" ? "above" : "cockpit";
+                setCtxCockpitDock(next);
+                saveCtxCockpitDock(next);
+              }}
+              className={`config-panel-toolbar-chip px-1.5 py-0.5 text-[8px] font-mono rounded-sm ${
+                ctxCockpitDock === "above" ? "config-panel-toolbar-chip--active" : ""
+              }`}
+              title={
+                ctxCockpitDock === "cockpit"
+                  ? "CTX docked in cockpit — click to place in above-config zone (near VRAM)"
+                  : "CTX in above-config zone — click to dock inside cockpit"
+              }
+            >
+              CTX {ctxCockpitDock === "cockpit" ? "COCKPIT" : "ABOVE"}
+            </button>
             <input
               type="search"
               value={paramFilter}
@@ -3084,6 +3143,24 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         {fullAutoFixed && (
           <div className="config-panel-toolbar__config flex items-center gap-1.5 flex-shrink-0">
             <span className="config-panel-toolbar__label text-nv-green/70">FULL AUTO</span>
+            <button
+              type="button"
+              onClick={() => {
+                const next: CtxCockpitDock = ctxCockpitDock === "cockpit" ? "above" : "cockpit";
+                setCtxCockpitDock(next);
+                saveCtxCockpitDock(next);
+              }}
+              className={`config-panel-toolbar-chip px-1.5 py-0.5 text-[8px] font-mono rounded-sm ${
+                ctxCockpitDock === "above" ? "config-panel-toolbar-chip--active" : ""
+              }`}
+              title={
+                ctxCockpitDock === "cockpit"
+                  ? "CTX docked in cockpit — click to place in above-config zone (near VRAM)"
+                  : "CTX in above-config zone — click to dock inside cockpit"
+              }
+            >
+              CTX {ctxCockpitDock === "cockpit" ? "COCKPIT" : "ABOVE"}
+            </button>
           </div>
         )}
         <div className="config-panel-toolbar__chrome flex items-center gap-1.5 min-w-0 ml-auto flex-shrink-0">
@@ -3232,7 +3309,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
               parallelValues={fullAutoFixed ? parallelFactoryValues : parallelValues}
               port={Number(config.base_port) || 9090}
               modelId={aliasDisplayValue || autoAlias || model.name || "local-model"}
-              layout={fullAutoFixed ? "hero" : powerCockpitMode ? "compact" : "normal"}
+              layout={fullAutoFixed ? "hero" : "normal"}
               powerMode={powerCockpitMode}
               rawSpecTypes={factoryRawSpecTypes}
               activeRawSpecType={activeRawSpecType}
@@ -3254,18 +3331,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                 });
               }}
               specDetailParams={cockpitSpecDetailParams}
-              ctxValue={config.ctx}
-              ctxDefault={allParamsResolved.find((p) => p.key === "ctx")?.defaultValue}
-              ctxValues={allParamsResolved.find((p) => p.key === "ctx")?.values}
-              ctxStep={allParamsResolved.find((p) => p.key === "ctx")?.step ?? 1024}
-              onCtxChange={(v) => updateParam("ctx", v)}
-              ctxSlotCount={resolveCtxSlotCount(config, allParamsResolved)}
-              ctxPerSlot={(() => {
-                const slots = resolveCtxSlotCount(config, allParamsResolved);
-                const n = typeof config.ctx === "number" ? config.ctx : parseInt(String(config.ctx), 10);
-                if (slots > 1 && Number.isFinite(n) && n > 0) return Math.floor(n / slots);
-                return undefined;
-              })()}
+              embedCtx={ctxDockedInCockpit}
+              {...(ctxDockedInCockpit ? ctxStripProps : {})}
             />
           </div>
         )}
