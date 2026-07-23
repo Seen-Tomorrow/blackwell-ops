@@ -285,7 +285,8 @@ export function computeFusionPhosphorFixedHeight(
 
 /** Metrics-only phosphor — header + hero + tray latch (no bench slack). */
 export function computeFusionPhosphorStowedHeight(): number {
-  return FUSION_DASHBOARD_TIGHT_CHROME_PX + FUSION_BENCH_TRAY_LATCH_PX;
+  // +16px: room for bench latch fully visible (was only showing the top lip)
+  return FUSION_DASHBOARD_TIGHT_CHROME_PX + FUSION_BENCH_TRAY_LATCH_PX + 16;
 }
 
 /** Fusion overlay phosphor height from tray open/closed. */
