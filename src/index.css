@@ -4787,23 +4787,21 @@ html, body, #root {
 }
 
 /*
- * ASSISTED / FULL AUTO — half on bezel frame, half over phosphor.
- * Frame uses isolation:isolate — dock needs a sky-high z-index inside that context
- * so the bezel texture (::before) does not paint over the switch.
+ * ASSISTED / FULL AUTO — direct child of .industrial-display-frame (not phosphor).
+ * Frame padding is 18px; dock centers on the phosphor top lip (half bezel / half glass).
  */
-.vram-badge-fit-launch-dock {
+.industrial-display-frame > .vram-badge-fit-launch-dock {
   position: absolute;
-  top: 0;
+  /* Frame content-box top + padding = phosphor lip */
+  top: 18px;
   left: 50%;
-  /* -50% X center; -50% Y = half above phosphor into frame/bezel */
   transform: translate(-50%, -50%);
-  z-index: 10050;
+  z-index: 40;
   pointer-events: auto;
   line-height: 0;
-  isolation: isolate;
 }
 
-.vram-badge-fit-launch-dock .segment-switch--fit-launch {
+.industrial-display-frame > .vram-badge-fit-launch-dock .segment-switch--fit-launch {
   position: relative;
   z-index: 1;
   box-shadow:
@@ -4812,27 +4810,24 @@ html, body, #root {
   border-radius: 3px;
 }
 
-/* Let the dock straddle phosphor → bezel without clipping */
-.vram-forecast-display:has(.vram-badge-fit-launch-dock),
-.vram-badge-forecast:has(.vram-badge-fit-launch-dock),
-.phosphor-screen-inner:has(.vram-badge-fit-launch-dock),
-.industrial-display-frame:has(.vram-badge-fit-launch-dock) {
+/* Frame child must stack above ::before texture (z-index: 0) and phosphor (z-index: 1) */
+.industrial-display-frame:has(> .vram-badge-fit-launch-dock) {
   overflow: visible;
 }
 
-/* Raise the whole display frame stacking so the dock clears neighboring chrome */
-[data-config-panel] .industrial-display-frame:has(.vram-badge-fit-launch-dock) {
-  z-index: 30;
-  isolation: isolate;
-}
-
-.vram-forecast-display[data-fusion-height-managed]:has(.vram-badge-fit-launch-dock) {
-  overflow: visible;
+.industrial-display-frame > .vram-badge-fit-launch-dock {
+  /* beat industrial-display-frame > * { z-index: 1 } */
+  z-index: 40 !important;
 }
 
 .vram-badge-forecast[data-fusion-only="1"] {
   flex: 1 1 auto;
   min-height: 0;
+}
+
+/* Legacy class kept if dock ever re-homes inside phosphor */
+.vram-badge-fit-launch-dock {
+  pointer-events: auto;
 }
 
 .vram-forecast-needs-row {
@@ -5542,14 +5537,18 @@ html:not([data-theme="arctic"]) [data-display-texture="clean"] .bench-widget-pan
 }
 
 .fusion-bench-latch--open {
-  margin-top: 4px;
+  margin-top: -6px;
   margin-bottom: 2px;
   opacity: 0.72;
 }
 
 .fusion-bench-latch--stowed {
-  margin-top: 6px;
+  /* Pull latch into hero slack so OPEN is fully clickable (was clipped to top lip only) */
+  margin-top: -10px;
+  margin-bottom: 0;
   opacity: 0.88;
+  position: relative;
+  z-index: 5;
 }
 
 .fusion-bench-latch__rule {

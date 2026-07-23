@@ -136,6 +136,7 @@ import { DEFAULT_BINARY_PROFILE, ENV_META, ENV_ORDER, normalizeBinaryProfile, ty
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import VramBadge from "./VramBadge";
+import FitLaunchToggle from "./FitLaunchToggle";
 import WelcomeAnimation from "./onboarding/WelcomeAnimation";
 import SetupGuideDisplay from "./onboarding/SetupGuideDisplay";
 import RunningEnginesPanel from "./RunningEnginesPanel";
@@ -3029,6 +3030,32 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           />
         )}
           <div className={onboardingDisplay.frame} data-fusion-share-frame>
+              {/*
+                ASSISTED / FULL AUTO lives on the frame (not inside phosphor) so it stacks
+                above the bezel texture — half on chrome, half over glass.
+              */}
+              {fitLaunchSupported && (
+                <div className="vram-badge-fit-launch-dock" data-fit-launch-dock>
+                  <FitLaunchToggle
+                    available={fitLaunchSupported}
+                    fullAuto={fullAutoMode}
+                    onChange={(nextFullAuto) => {
+                      setFitLaunchEnabled(nextFullAuto);
+                      saveAutoVramEnabled(effectiveBackendType, nextFullAuto);
+                      if (nextFullAuto) {
+                        autoSplitPromotedRef.current = false;
+                        updateParam("split", "none");
+                        if (String(config["offload_mode"] ?? "regular").toLowerCase() === "moe_optimal") {
+                          updateParam("offload_mode", "regular");
+                        }
+                      } else {
+                        setConfigView("full");
+                        saveConfigView(effectiveBackendType, "full");
+                      }
+                    }}
+                  />
+                </div>
+              )}
               {showChromeHints && (
                 <DisplayChromeHints
                   policyReason={launchChrome.reason}
@@ -3074,22 +3101,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                         config["offload_mode"] === "moe_optimal" ? "regular" : "moe_optimal",
                       );
                     }}
-                    fitLaunchAvailable={fitLaunchSupported}
+                    fitLaunchAvailable={false}
                     fullAutoMode={fullAutoMode}
-                    onFitLaunchChange={(nextFullAuto) => {
-                      setFitLaunchEnabled(nextFullAuto);
-                      saveAutoVramEnabled(effectiveBackendType, nextFullAuto);
-                      if (nextFullAuto) {
-                        autoSplitPromotedRef.current = false;
-                        updateParam("split", "none");
-                        if (String(config["offload_mode"] ?? "regular").toLowerCase() === "moe_optimal") {
-                          updateParam("offload_mode", "regular");
-                        }
-                      } else {
-                        setConfigView("full");
-                        saveConfigView(effectiveBackendType, "full");
-                      }
-                    }}
                     hideMoeBadge={fullAutoMode || !((model?.metadata?.n_expert ?? 0) > 0)}
                     modelMeta={model?.metadata}
                     modelName={model?.name}
