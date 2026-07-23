@@ -4787,16 +4787,17 @@ html, body, #root {
 }
 
 /*
- * ASSISTED / FULL AUTO — direct child of .industrial-display-frame (not phosphor).
- * Frame padding is 18px; dock centers on the phosphor top lip (half bezel / half glass).
+ * ASSISTED / FULL AUTO — on industrial-display-frame (above bezel paint).
+ * Left-aligned over FORECAST title; half on bezel lip / half over glass.
+ * Frame padding is 18px — matches phosphor content inset (px-3 ≈ 12px + a bit).
  */
 .industrial-display-frame > .vram-badge-fit-launch-dock {
   position: absolute;
-  /* Frame content-box top + padding = phosphor lip */
   top: 18px;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  z-index: 40;
+  /* Align with forecast header text (phosphor px-3 = 12px) */
+  left: calc(18px + 12px);
+  transform: translateY(-50%);
+  z-index: 40 !important; /* above frame ::before + phosphor sibling */
   pointer-events: auto;
   line-height: 0;
 }
@@ -4804,20 +4805,15 @@ html, body, #root {
 .industrial-display-frame > .vram-badge-fit-launch-dock .segment-switch--fit-launch {
   position: relative;
   z-index: 1;
+  /* Flat — no drop shadow (was reading as floating) */
   box-shadow:
-    0 2px 12px rgba(0, 0, 0, 0.55),
-    0 0 0 1px color-mix(in srgb, var(--theme-bezel-edge-lo, #000) 35%, transparent);
+    inset 0 1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 18%, transparent),
+    inset 0 -1px 2px color-mix(in srgb, #000 28%, transparent);
   border-radius: 3px;
 }
 
-/* Frame child must stack above ::before texture (z-index: 0) and phosphor (z-index: 1) */
 .industrial-display-frame:has(> .vram-badge-fit-launch-dock) {
   overflow: visible;
-}
-
-.industrial-display-frame > .vram-badge-fit-launch-dock {
-  /* beat industrial-display-frame > * { z-index: 1 } */
-  z-index: 40 !important;
 }
 
 .vram-badge-forecast[data-fusion-only="1"] {
@@ -4825,7 +4821,6 @@ html, body, #root {
   min-height: 0;
 }
 
-/* Legacy class kept if dock ever re-homes inside phosphor */
 .vram-badge-fit-launch-dock {
   pointer-events: auto;
 }
