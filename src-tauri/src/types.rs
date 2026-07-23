@@ -536,6 +536,13 @@ pub struct UserEditedTemplateParam {
     /// Values hidden from the catalog UI (persisted, but still usable).
     #[serde(default, rename = "hiddenValues")]
     pub hidden_values: Vec<serde_json::Value>,
+    /// Values hidden only in engine Essentials view (Full still shows them).
+    #[serde(
+        default,
+        rename = "essentialsHiddenValues",
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub essentials_hidden_values: Vec<serde_json::Value>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub flag: Option<String>,
@@ -571,6 +578,13 @@ impl UserEditedTemplateParam {
     /// Returns true if this value is hidden from the catalog UI.
     pub fn is_value_hidden(&self, value: &str) -> bool {
         self.hidden_values.iter().any(|v| v.as_str() == Some(value))
+    }
+
+    /// True when value is excluded from engine Essentials UI only.
+    pub fn is_value_essentials_hidden(&self, value: &str) -> bool {
+        self.essentials_hidden_values
+            .iter()
+            .any(|v| v.as_str() == Some(value) || v.to_string() == value)
     }
 
     /// The first non-hidden value — used when the saved default is hidden so launch always has a visible selection.

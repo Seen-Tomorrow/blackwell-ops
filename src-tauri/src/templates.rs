@@ -1027,6 +1027,7 @@ mod build_cmd_tests {
             hidden: false,
             user_hidden: false,
             hidden_values: Vec::new(),
+            essentials_hidden_values: Vec::new(),
             flag: Some(flag.to_string()),
             flag_pair: Vec::new(),
             ptype: "arg_select".to_string(),

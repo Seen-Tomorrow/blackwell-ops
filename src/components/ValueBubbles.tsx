@@ -199,7 +199,7 @@ export default function ValueBubbles({
           </button>
         )}
 
-        {/* Essentials value flag — hide/show this value in engine ESSENTIALS only */}
+        {/* Essentials value flag — same ESS on/off visual as param row */}
         {editorUnlocked && toggleEssentialsHiddenValue && (
           <button
             type="button"
@@ -207,10 +207,10 @@ export default function ValueBubbles({
               e.stopPropagation();
               toggleEssentialsHiddenValue(paramKey, val);
             }}
-            className={`leading-none text-[9px] font-mono font-bold transition-colors ${
+            className={`config-param-ess text-[8px] font-mono px-0.5 select-none transition-colors ${
               essHidden
-                ? "text-stealth-muted/40 line-through"
-                : "text-nv-green/75 hover:text-nv-green"
+                ? "text-stealth-muted/30 line-through"
+                : "text-nv-green/70 hover:text-nv-green"
             }`}
             title={
               essHidden
@@ -218,11 +218,11 @@ export default function ValueBubbles({
                 : "In Essentials engine view — click to hide this value from Essentials only"
             }
           >
-            e
+            ESS
           </button>
         )}
 
-        <span className={essHidden ? "line-through decoration-stealth-muted/50" : undefined}>
+        <span className={essHidden ? "line-through decoration-stealth-muted/40 opacity-70" : undefined}>
           {String(val)}
         </span>
 

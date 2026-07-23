@@ -305,6 +305,7 @@ mod tests {
             hidden,
             user_hidden,
             hidden_values: Vec::new(),
+            essentials_hidden_values: Vec::new(),
             flag: None,
             flag_pair: Vec::new(),
             ptype: "arg_select".to_string(),
