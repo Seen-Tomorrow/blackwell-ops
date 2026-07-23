@@ -387,15 +387,16 @@
   box-shadow: 0 1px 3px color-mix(in srgb, var(--theme-text) 6%, transparent);
 }
 
-/* Catalog cards on industrial panel — flat rest state, raised selection ring */
+/* Catalog cards — unselected: no fill so list panel tint shows through */
 [data-model-catalog] .buried-card {
-  background: color-mix(in srgb, var(--theme-panel) 62%, transparent);
-  border-color: color-mix(in srgb, var(--theme-border-subtle) 88%, transparent);
+  background: transparent;
+  border-color: color-mix(in srgb, var(--theme-border-subtle) 75%, transparent);
+  box-shadow: none;
 }
 
 [data-model-catalog] .buried-card:hover {
-  background: color-mix(in srgb, var(--theme-panel) 78%, var(--theme-panel-accent) 22%);
-  border-color: color-mix(in srgb, var(--theme-border) 68%, var(--theme-accent) 32%);
+  background: color-mix(in srgb, var(--theme-accent) 4%, transparent);
+  border-color: color-mix(in srgb, var(--theme-border) 55%, var(--theme-accent) 45%);
 }
 
 [data-model-catalog] .gunmetal-card {
