@@ -3005,55 +3005,64 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         className={onboardingDisplay.area}
         data-display-texture={displayTexture}
       >
-        {/* Full Auto locks device/split — hide dead DEVICE chrome. */}
-        {model && gpus.length > 0 && !fullAutoMode && (
-          <GpuAssignPanel
-            gpus={gpus}
-            deviceValue={config.device}
-            splitValue={config.split}
-            splitValues={splitParamDef?.values ?? ["none"]}
-            chromeDisabled={launchChrome.chromeDisabled}
-            deviceLocked={launchChrome.deviceLocked}
-            splitLocked={launchChrome.splitLocked}
-            hideSplitNone={launchChrome.hideSplitNone}
-            hideTensorSplit={!tensorSplitSupported}
-            onDeviceChange={(v) => {
-              if (launchChrome.chromeDisabled || launchChrome.deviceLocked) return;
-              updateParam("device", v);
-              if (isSplitModeActive(config.split)) updateParam("split", "none");
-            }}
-            onSplitChange={(v) => {
-              if (launchChrome.chromeDisabled || launchChrome.splitLocked) return;
-              autoSplitPromotedRef.current = false;
-              updateParam("split", v);
-            }}
-          />
-        )}
-          <div className={onboardingDisplay.frame} data-fusion-share-frame>
+          <div
+            className={`${onboardingDisplay.frame}${
+              fitLaunchSupported || (model && gpus.length > 0) ? " industrial-display-frame--top-chrome" : ""
+            }`}
+            data-fusion-share-frame
+          >
               {/*
-                ASSISTED / FULL AUTO lives on the frame (not inside phosphor) so it stacks
-                above the bezel texture — half on chrome, half over glass.
+                Top bezel chrome: ASSISTED/FULL AUTO + Device/Split (Assisted only).
+                Seated fully in frame pad so thick chrome isn't wasted on one control.
               */}
-              {fitLaunchSupported && (
-                <div className="vram-badge-fit-launch-dock" data-fit-launch-dock>
-                  <FitLaunchToggle
-                    available={fitLaunchSupported}
-                    fullAuto={fullAutoMode}
-                    onChange={(nextFullAuto) => {
-                      setFitLaunchEnabled(nextFullAuto);
-                      saveAutoVramEnabled(effectiveBackendType, nextFullAuto);
-                      if (nextFullAuto) {
+              {(fitLaunchSupported || (model && gpus.length > 0 && !fullAutoMode)) && (
+                <div className="industrial-display-frame__top-chrome" data-frame-top-chrome>
+                  {fitLaunchSupported && (
+                    <div className="vram-badge-fit-launch-dock" data-fit-launch-dock>
+                      <FitLaunchToggle
+                        available={fitLaunchSupported}
+                        fullAuto={fullAutoMode}
+                        onChange={(nextFullAuto) => {
+                          setFitLaunchEnabled(nextFullAuto);
+                          saveAutoVramEnabled(effectiveBackendType, nextFullAuto);
+                          if (nextFullAuto) {
+                            autoSplitPromotedRef.current = false;
+                            updateParam("split", "none");
+                            if (String(config["offload_mode"] ?? "regular").toLowerCase() === "moe_optimal") {
+                              updateParam("offload_mode", "regular");
+                            }
+                          } else {
+                            setConfigView("full");
+                            saveConfigView(effectiveBackendType, "full");
+                          }
+                        }}
+                      />
+                    </div>
+                  )}
+                  {model && gpus.length > 0 && !fullAutoMode && (
+                    <GpuAssignPanel
+                      bezel
+                      gpus={gpus}
+                      deviceValue={config.device}
+                      splitValue={config.split}
+                      splitValues={splitParamDef?.values ?? ["none"]}
+                      chromeDisabled={launchChrome.chromeDisabled}
+                      deviceLocked={launchChrome.deviceLocked}
+                      splitLocked={launchChrome.splitLocked}
+                      hideSplitNone={launchChrome.hideSplitNone}
+                      hideTensorSplit={!tensorSplitSupported}
+                      onDeviceChange={(v) => {
+                        if (launchChrome.chromeDisabled || launchChrome.deviceLocked) return;
+                        updateParam("device", v);
+                        if (isSplitModeActive(config.split)) updateParam("split", "none");
+                      }}
+                      onSplitChange={(v) => {
+                        if (launchChrome.chromeDisabled || launchChrome.splitLocked) return;
                         autoSplitPromotedRef.current = false;
-                        updateParam("split", "none");
-                        if (String(config["offload_mode"] ?? "regular").toLowerCase() === "moe_optimal") {
-                          updateParam("offload_mode", "regular");
-                        }
-                      } else {
-                        setConfigView("full");
-                        saveConfigView(effectiveBackendType, "full");
-                      }
-                    }}
-                  />
+                        updateParam("split", v);
+                      }}
+                    />
+                  )}
                 </div>
               )}
               {showChromeHints && (

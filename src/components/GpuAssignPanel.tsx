@@ -32,6 +32,8 @@ interface GpuAssignPanelProps {
   hideSplitNone?: boolean;
   /** Hide tensor/row when provider spawn_profile.tensor_split is false. */
   hideTensorSplit?: boolean;
+  /** Compact row for industrial-display-frame top chrome. */
+  bezel?: boolean;
 }
 
 export default function GpuAssignPanel({
@@ -46,6 +48,7 @@ export default function GpuAssignPanel({
   splitLocked = false,
   hideSplitNone = false,
   hideTensorSplit = false,
+  bezel = false,
 }: GpuAssignPanelProps) {
   if (gpus.length === 0) return null;
 
@@ -58,12 +61,18 @@ export default function GpuAssignPanel({
     return true;
   });
   const showSplitRow = gpus.length > 1;
-  const panelClass = chromeDisabled ? " gpu-assign-panel--chrome-disabled" : "";
+  const panelClass =
+    (chromeDisabled ? " gpu-assign-panel--chrome-disabled" : "")
+    + (bezel ? " gpu-assign-panel--bezel" : "");
 
   const chipDisabled = (locked: boolean) => chromeDisabled || locked;
 
   return (
-    <div className={`gpu-assign-panel flex-shrink-0${panelClass}`} data-gpu-assign-panel>
+    <div
+      className={`gpu-assign-panel flex-shrink-0 min-w-0${panelClass}`}
+      data-gpu-assign-panel
+      data-bezel={bezel ? "1" : undefined}
+    >
       <div className={`gpu-assign-panel__grid${!showSplitRow ? " gpu-assign-panel__grid--solo" : ""}`}>
         <div className="gpu-assign-panel__half gpu-assign-panel__half--device">
           <span className={DEVICE_LABEL_CLASS}>Device</span>
