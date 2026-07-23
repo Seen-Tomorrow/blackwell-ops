@@ -4788,15 +4788,14 @@ html, body, #root {
 
 /*
  * ASSISTED / FULL AUTO — on industrial-display-frame (above bezel paint).
- * Left-aligned over FORECAST title; half on bezel lip / half over glass.
- * Frame padding is 18px — matches phosphor content inset (px-3 ≈ 12px + a bit).
+ * Left-aligned over FORECAST; flush with the top of the bezel chrome.
  */
 .industrial-display-frame > .vram-badge-fit-launch-dock {
   position: absolute;
-  top: 18px;
-  /* Align with forecast header text (phosphor px-3 = 12px) */
+  top: 0;
+  /* Align with forecast header text (frame pad 18px + phosphor px-3) */
   left: calc(18px + 12px);
-  transform: translateY(-50%);
+  transform: none;
   z-index: 40 !important; /* above frame ::before + phosphor sibling */
   pointer-events: auto;
   line-height: 0;
@@ -4805,11 +4804,11 @@ html, body, #root {
 .industrial-display-frame > .vram-badge-fit-launch-dock .segment-switch--fit-launch {
   position: relative;
   z-index: 1;
-  /* Flat — no drop shadow (was reading as floating) */
+  /* Flat inset; square top so it seats into the bezel edge */
   box-shadow:
     inset 0 1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 18%, transparent),
     inset 0 -1px 2px color-mix(in srgb, #000 28%, transparent);
-  border-radius: 3px;
+  border-radius: 0 0 3px 3px;
 }
 
 .industrial-display-frame:has(> .vram-badge-fit-launch-dock) {
