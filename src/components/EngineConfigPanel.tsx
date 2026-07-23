@@ -1056,22 +1056,27 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     return filterParamValuesForConfigView(def, base, cockpitValueView);
   }, [allParamsResolved, fullAutoFixed, cockpitValueView, parallelFactoryValues, parallelValues]);
 
-  /** SPEC knobs under Boost (exclude type + draft path — owned by cockpit Boost / draft strip). */
+  /**
+   * SPEC knobs under Boost strip (n_max / n_min / extras).
+   * Include group params even when group is toggled hidden (boost path still needs them);
+   * filter value chips by Essentials curation for Full Auto / Essentials view.
+   */
   const cockpitSpecDetailParams = useMemo((): CockpitSpecDetailParam[] => {
     const skip = new Set(["spec_type", "spec_draft_model"]);
     return allParamsResolved
       .filter(
         (d) =>
           paramUiGroup(d.ui_group) === SPEC_DECODING_GROUP
-          && !d.hidden
-          && !skip.has(d.key),
+          && !skip.has(d.key)
+          && !d.userHidden,
       )
       .map((d) => {
         const seen = new Set((d.values || []).map(String));
-        const values = [
+        const rawValues = [
           ...(d.values || []),
           ...(d.userAddedValues || []).filter((v) => !seen.has(String(v))),
         ];
+        const values = filterParamValuesForConfigView(d, rawValues, cockpitValueView);
         return {
           key: d.key,
           label: d.label || d.key,
@@ -1080,8 +1085,9 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           userAdded: Boolean(d.userAddedValues?.length),
           onChange: (v: string | number) => updateParam(d.key, v),
         };
-      });
-  }, [allParamsResolved, config, updateParam]);
+      })
+      .filter((p) => p.values.length > 0);
+  }, [allParamsResolved, config, updateParam, cockpitValueView]);
 
   /** Any family-matched DFlash draft in library (independent of current mode). */
   const dflashLibraryReady = useMemo(() => {

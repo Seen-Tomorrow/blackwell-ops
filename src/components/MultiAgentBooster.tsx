@@ -203,18 +203,18 @@ export default function MultiAgentBooster({
       : plan.speed;
 
   /**
-   * SPEC-EXTRA — Assisted Full only, when Boost is MTP/DFlash (or a raw draft type that needs knobs).
-   * Simple ngram: no strip.
+   * SPEC-EXTRA strip — Assisted Essentials + Full (not Full Auto hero).
+   * When Boost is MTP/DFlash (or draft-* raw). Ngram/simple: no strip.
    */
   const showSpecExtra = useMemo(() => {
-    if (!powerMode || specDetailParams.length === 0) return false;
+    if (hero || specDetailParams.length === 0) return false;
     if (displayBoost === "mtp" || displayBoost === "dflash") return true;
     if (!activeRawSpecType) return false;
     // ngram / simple: no SPEC-EXTRA; other draft-* may show knobs
     const s = activeRawSpecType.toLowerCase();
     if (s.startsWith("ngram") || s.includes("simple")) return false;
     return s.startsWith("draft") || s.includes("draft");
-  }, [powerMode, specDetailParams.length, displayBoost, activeRawSpecType]);
+  }, [hero, specDetailParams.length, displayBoost, activeRawSpecType]);
 
   const showDflashGet =
     Boolean(onGetDflashDraft) &&

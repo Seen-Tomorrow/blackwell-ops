@@ -101,9 +101,10 @@ function VramBadgeFusionLayer({
   const fusion = useFusionSlot(active ? selectedSlotIdx : null);
   if (!active) return null;
 
+  // Fills the phosphor when forecast is unmounted (no overlay-on-forecast veil).
   return (
     <div
-      className="!absolute inset-0 z-50 phosphor-screen phosphor-display-surface overflow-hidden flex flex-col rounded-xl border border-stealth-border p-[6px]"
+      className="relative z-10 flex-1 min-h-0 w-full phosphor-screen phosphor-display-surface overflow-hidden flex flex-col rounded-xl border border-stealth-border p-[6px]"
       style={{ animation: "fadeIn 0.2s ease" }}
     >
       <DisplayGlitchOverlay />
@@ -230,6 +231,54 @@ export default function VramBadge({
     forecastContentKey,
   );
 
+  const fitLaunchToggle = fitLaunchAvailable ? (
+    <FitLaunchToggle
+      available={fitLaunchAvailable}
+      fullAuto={fullAutoMode}
+      onChange={(fullAuto) => onFitLaunchChange?.(fullAuto)}
+    />
+  ) : null;
+
+  const fitLaunchDock = fitLaunchToggle ? (
+    <div className="vram-badge-fit-launch-dock" data-fit-launch-dock>
+      {fitLaunchToggle}
+    </div>
+  ) : null;
+
+  // Engine LOADING/RUNNING: fusion only — no forecast mount underneath (kills veil/collapse flash).
+  if (fusionOverlayActive) {
+    return (
+      <div
+        ref={rootRef}
+        className={`vram-badge-forecast px-3 py-2 relative flex flex-col min-h-0 overflow-hidden ${className || ""}`}
+        data-fusion-only="1"
+      >
+        {fitLaunchDock}
+        <VramBadgeFusionLayer
+          active
+          selectedSlotIdx={selectedSlotIdx}
+          activeEngineAlias={activeEngineAlias}
+          activeEnginePort={activeEnginePort}
+          supportsFusion={supportsFusion}
+          engineStatus={engineStatus}
+          gpus={gpus}
+          gpuMask={gpuMask}
+          vramTargetMib={vramTargetMib}
+          modelLayerTotal={modelLayerTotal}
+          gpuLoadTargetsMib={gpuLoadTargetsMib}
+          modelName={modelName}
+          modelQuant={modelQuant}
+          providerName={providerName}
+          providerBuildVersion={providerBuildVersion}
+          profileLabel={profileLabel}
+          cudaVersion={cudaVersion}
+          launchConfig={launchConfig}
+          hwTopo={hwTopo}
+        />
+      </div>
+    );
+  }
+
   if (!manifest) return null;
 
   const s = manifest.style;
@@ -271,14 +320,6 @@ export default function VramBadge({
   const ramUsagePct = manifest.ramManufacturedGb > 0 ? Math.min((manifest.ramTotalGb / manifest.ramManufacturedGb) * 100, 100) : 0;
   const ramMfgGb = manifest.ramManufacturedGb.toFixed(0);
 
-  const fitLaunchToggle = fitLaunchAvailable ? (
-    <FitLaunchToggle
-      available={fitLaunchAvailable}
-      fullAuto={fullAutoMode}
-      onChange={(fullAuto) => onFitLaunchChange?.(fullAuto)}
-    />
-  ) : null;
-
   const fitProbeButton = !hideFitProbe && onValidate ? (
     <FitProbeButton
       isValidating={isValidating}
@@ -297,11 +338,11 @@ export default function VramBadge({
     />
   ) : null;
 
-  const forecastFitRow = (memorySourcePanel || fitLaunchToggle || fitProbeButton) ? (
+  // Fit probe + memory source stay in forecast body; ASSISTED/FULL AUTO is the top dock.
+  const forecastFitRow = (memorySourcePanel || fitProbeButton) ? (
     <div className="vram-forecast-header__fit-row">
-      {(fitLaunchToggle || fitProbeButton) && (
+      {fitProbeButton && (
         <div className="vram-forecast-header__fit-controls">
-          {fitLaunchToggle}
           {fitProbeButton}
         </div>
       )}
@@ -316,33 +357,15 @@ export default function VramBadge({
   return (
     <div
       ref={rootRef}
-      className={`vram-badge-forecast px-3 py-2 relative flex flex-col min-h-0 overflow-hidden ${className || ""}`}
+      className={`vram-badge-forecast px-3 py-2 relative flex flex-col min-h-0 overflow-hidden ${className || ""}${
+        fitLaunchAvailable ? " vram-badge-forecast--fit-dock" : ""
+      }`}
     >
-      <VramBadgeFusionLayer
-        active={fusionOverlayActive}
-        selectedSlotIdx={selectedSlotIdx}
-        activeEngineAlias={activeEngineAlias}
-        activeEnginePort={activeEnginePort}
-        supportsFusion={supportsFusion}
-        engineStatus={engineStatus}
-        gpus={gpus}
-        gpuMask={gpuMask}
-        vramTargetMib={vramTargetMib}
-        modelLayerTotal={modelLayerTotal}
-        gpuLoadTargetsMib={gpuLoadTargetsMib}
-        modelName={modelName}
-        modelQuant={modelQuant}
-        providerName={providerName}
-        providerBuildVersion={providerBuildVersion}
-        profileLabel={profileLabel}
-        cudaVersion={cudaVersion}
-        launchConfig={launchConfig}
-        hwTopo={hwTopo}
-      />
+      {fitLaunchDock}
 
       {/* FORECAST header — detailed (ASSISTED) or compact (FULL AUTO) */}
       {showDetailedForecast ? (
-        <div className="vram-forecast-header vram-forecast-header--assisted flex-shrink-0 mb-1 min-w-0 pr-16">
+        <div className="vram-forecast-header vram-forecast-header--assisted flex-shrink-0 mb-1 min-w-0">
           <div
             className="vram-forecast-header__top grid gap-x-1 min-w-0"
             style={{ gridTemplateColumns: "auto 1fr" }}
@@ -384,7 +407,7 @@ export default function VramBadge({
           {forecastFitRow}
         </div>
       ) : (
-        <div className="vram-forecast-hero flex-shrink-0 mb-1 min-w-0 pr-16">
+        <div className="vram-forecast-hero flex-shrink-0 mb-1 min-w-0">
           <p className={`vram-forecast-hero__title font-mono tracking-[0.18em] uppercase ${s.titleColor}`}>
             {t.heroText ?? (manifest.fits ? "WILL LAUNCH" : "WON'T LAUNCH")}
           </p>
