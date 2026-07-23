@@ -231,13 +231,10 @@ export default function CockpitSlider({
                 {opt.aboveLabel ? (
                   <span
                     className={`cockpit-slider-above-label absolute left-1/2 -translate-x-1/2 text-center font-mono whitespace-nowrap${
-                      emphasize && opt.badgeColor === "green"
-                        ? " cockpit-slider-above-label--green"
-                        : emphasize && opt.badgeColor === "violet"
-                          ? " cockpit-slider-above-label--violet"
-                          : ""
-                    }${isSelected ? " cockpit-slider-above-label--selected" : ""}`}
+                      isSelected ? " cockpit-slider-above-label--selected" : ""
+                    }`}
                     style={{ top: `${Math.max(0, trackTop - 12)}px` }}
+                    // Family word (draft/ngram) stays neutral — color only mark + under-label
                   >
                     {opt.aboveLabel}
                   </span>

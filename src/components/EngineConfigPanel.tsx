@@ -979,11 +979,15 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
   // Do NOT write collapsedGroups LS from Full Auto — Assisted collapse state is user-owned.
 
-  /** Factory values only — Full Auto cockpit uses these (ignores user-added). */
+  /**
+   * Factory-only vs full value lists for cockpit.
+   * User-added customs are subtracted even if they were also merged into `values`.
+   */
   const kvQuantFactoryValues = useMemo(() => {
     const def = allParamsResolved.find((p) => p.key === "kv_quant");
-    const vals = def?.values?.length ? def.values : ["q4_0", "q8_0", "f16", "bf16"];
-    return vals;
+    const user = new Set((def?.userAddedValues || []).map(String));
+    const base = (def?.values || []).filter((v) => !user.has(String(v)));
+    return base.length > 0 ? base : ["q4_0", "q8_0", "f16", "bf16"];
   }, [allParamsResolved]);
 
   /** Assisted: factory + user-added custom values. */
@@ -1002,7 +1006,9 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
   const parallelFactoryValues = useMemo(() => {
     const def = allParamsResolved.find((p) => p.key === "parallel");
-    return def?.values?.length ? def.values : [1, 4, 8, 16, 32];
+    const user = new Set((def?.userAddedValues || []).map(String));
+    const base = (def?.values || []).filter((v) => !user.has(String(v)));
+    return base.length > 0 ? base : [1, 4, 8, 16, 32];
   }, [allParamsResolved]);
 
   const parallelValues = useMemo(() => {
@@ -1198,14 +1204,16 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     return filterSpecTypeValues(def.values, specCapabilities, false).map(String);
   }, [allParamsResolved, specCapabilities]);
 
-  const activeRawSpecForPower = useMemo(() => {
-    if (!powerCockpitMode) return null;
+  /** Non-MTP/DFlash active factory type — drives Boost thumb for ngram / draft-simple / etc. */
+  const activeRawSpecType = useMemo(() => {
+    if (!specDecodingGroupVisible) return null;
     const st = config.spec_type != null ? String(config.spec_type).trim() : "";
     if (!st) return null;
     const low = st.toLowerCase();
-    if (low.includes("mtp") || low.includes("dflash")) return null;
+    if (low.includes("mtp") || low === "draft-mtp") return null;
+    if (low.includes("dflash") || low === "draft-dflash") return null;
     return st;
-  }, [powerCockpitMode, config.spec_type]);
+  }, [specDecodingGroupVisible, config.spec_type]);
 
   // Main model change / capability drop → snap Boost + clear stale draft UI.
   useEffect(() => {
@@ -3227,34 +3235,37 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
               layout={fullAutoFixed ? "hero" : powerCockpitMode ? "compact" : "normal"}
               powerMode={powerCockpitMode}
               rawSpecTypes={factoryRawSpecTypes}
-              activeRawSpecType={powerCockpitMode ? activeRawSpecForPower : null}
-              onRawSpecType={
-                powerCockpitMode
-                  ? (raw) => {
-                      void applyFullAutoCockpit(codingMode, "off", brains, think, {
-                        powerUser: true,
-                        rawSpecType: raw,
-                      });
-                    }
-                  : undefined
-              }
+              activeRawSpecType={activeRawSpecType}
+              onRawSpecType={(raw) => {
+                if (raw == null) {
+                  void applyFullAutoCockpit(
+                    codingMode,
+                    powerCockpitMode ? "off" : "smart",
+                    brains,
+                    think,
+                    { powerUser: powerCockpitMode, rawSpecType: null },
+                  );
+                  return;
+                }
+                // powerUser true: keep speed Off (no Smart snap / batch push) while setting raw type
+                void applyFullAutoCockpit(codingMode, "off", brains, think, {
+                  powerUser: true,
+                  rawSpecType: raw,
+                });
+              }}
               specDetailParams={cockpitSpecDetailParams}
-              ctxValue={fullAutoFixed ? config.ctx : undefined}
-              ctxDefault={fullAutoFixed ? allParamsResolved.find((p) => p.key === "ctx")?.defaultValue : undefined}
-              ctxValues={fullAutoFixed ? allParamsResolved.find((p) => p.key === "ctx")?.values : undefined}
-              ctxStep={fullAutoFixed ? (allParamsResolved.find((p) => p.key === "ctx")?.step ?? 1024) : undefined}
-              onCtxChange={fullAutoFixed ? (v) => updateParam("ctx", v) : undefined}
-              ctxSlotCount={fullAutoFixed ? resolveCtxSlotCount(config, allParamsResolved) : undefined}
-              ctxPerSlot={
-                fullAutoFixed
-                  ? (() => {
-                      const slots = resolveCtxSlotCount(config, allParamsResolved);
-                      const n = typeof config.ctx === "number" ? config.ctx : parseInt(String(config.ctx), 10);
-                      if (slots > 1 && Number.isFinite(n) && n > 0) return Math.floor(n / slots);
-                      return undefined;
-                    })()
-                  : undefined
-              }
+              ctxValue={config.ctx}
+              ctxDefault={allParamsResolved.find((p) => p.key === "ctx")?.defaultValue}
+              ctxValues={allParamsResolved.find((p) => p.key === "ctx")?.values}
+              ctxStep={allParamsResolved.find((p) => p.key === "ctx")?.step ?? 1024}
+              onCtxChange={(v) => updateParam("ctx", v)}
+              ctxSlotCount={resolveCtxSlotCount(config, allParamsResolved)}
+              ctxPerSlot={(() => {
+                const slots = resolveCtxSlotCount(config, allParamsResolved);
+                const n = typeof config.ctx === "number" ? config.ctx : parseInt(String(config.ctx), 10);
+                if (slots > 1 && Number.isFinite(n) && n > 0) return Math.floor(n / slots);
+                return undefined;
+              })()}
             />
           </div>
         )}

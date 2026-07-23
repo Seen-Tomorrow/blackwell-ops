@@ -92,13 +92,6 @@ export interface MultiAgentBoosterProps {
   ctxSlotCount?: number;
 }
 
-function boostHeaderLabel(parts: {
-  aboveLabel?: string;
-  label: string;
-}): string {
-  return parts.aboveLabel ? `${parts.aboveLabel} ${parts.label}` : parts.label;
-}
-
 export default function MultiAgentBooster({
   codingMode,
   speedBoost,
@@ -140,7 +133,8 @@ export default function MultiAgentBooster({
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const hero = layout === "hero";
   const compact = layout === "compact";
-  const showCtxRail = hero && onCtxChange != null && (ctxValues?.length ?? 0) > 0;
+  /** CTX on top for all modes (unifies Full Auto + Assisted). */
+  const showCtxRail = onCtxChange != null && (ctxValues?.length ?? 0) > 0;
   /** SPEC-EXTRA — Assisted Full only (hidden Full Auto + Essentials). */
   const showSpecExtra = powerMode;
   /**
@@ -185,11 +179,13 @@ export default function MultiAgentBooster({
   );
 
   // Keep parent Boost state on the resolved plan (fixes thumb stuck on MTP after model change).
+  // Skip while a raw factory type is active — Joe Off→Smart rewrite would wipe ngram/draft-simple.
   useEffect(() => {
+    if (activeRawSpecType) return;
     if (plan.speed !== speedBoost) {
       onSpeedBoost(plan.speed);
     }
-  }, [plan.speed, speedBoost, onSpeedBoost]);
+  }, [plan.speed, speedBoost, onSpeedBoost, activeRawSpecType]);
 
   const capSet = useMemo(() => new Set(capabilities), [capabilities]);
 
@@ -287,22 +283,27 @@ export default function MultiAgentBooster({
     dflashDraftLabel,
   ]);
 
-  const powerBoostValue = useMemo(() => {
-    if (!powerMode) return displayBoost;
-    if (displayBoost === "mtp" || displayBoost === "dflash" || displayBoost === "off") {
-      return displayBoost;
-    }
+  /**
+   * Unified Boost thumb value — raw factory types (ngram / draft-simple / …) win over Smart/Off.
+   * Fixes unselectable marks that only existed in powerMode path before.
+   */
+  const boostSliderValue = useMemo(() => {
     if (activeRawSpecType) {
-      const m = parseSpecTypeBoostMark(activeRawSpecType);
-      return m.id;
+      return parseSpecTypeBoostMark(activeRawSpecType).id;
     }
-    return "off";
+    if (displayBoost === "mtp" || displayBoost === "dflash") return displayBoost;
+    if (powerMode) return displayBoost === "smart" ? "off" : displayBoost;
+    // Joe: Off maps to Smart presentation only when no raw type is active
+    return displayBoost === "off" ? "smart" : displayBoost;
   }, [powerMode, displayBoost, activeRawSpecType]);
 
-  const activeBoostMark = useMemo(() => {
-    const id = powerMode ? powerBoostValue : displayBoost;
-    return boostMarks.find((m) => m.id === id);
-  }, [powerMode, powerBoostValue, displayBoost, boostMarks]);
+  /** SPEC-EXTRA / draft strip accent: green MTP, violet DFlash, neutral otherwise. */
+  const stripTone: "mtp" | "dflash" | "neutral" =
+    boostSliderValue === "mtp"
+      ? "mtp"
+      : boostSliderValue === "dflash"
+        ? "dflash"
+        : "neutral";
 
   const snippets = useMemo(
     () =>
@@ -440,7 +441,10 @@ export default function MultiAgentBooster({
     ) : null;
 
   const violetStrip = showVioletStrip ? (
-    <div className="full-auto-cockpit__dflash-get full-auto-cockpit__dflash-get--footer full-auto-cockpit__dflash-get--spec-extra font-mono min-w-0 flex-1">
+    <div
+      className={`full-auto-cockpit__dflash-get full-auto-cockpit__dflash-get--footer full-auto-cockpit__dflash-get--spec-extra full-auto-cockpit__dflash-get--tone-${stripTone} font-mono min-w-0 flex-1`}
+      data-strip-tone={stripTone}
+    >
       {draftStripInner}
       {draftStripInner && specExtraInline ? (
         <span className="full-auto-cockpit__spec-extra-sep full-auto-cockpit__spec-extra-sep--block" aria-hidden>
@@ -463,38 +467,20 @@ export default function MultiAgentBooster({
       data-booster-layout={layout}
       data-power-mode={powerMode ? "on" : "off"}
     >
-      {/* Header: title + BOOST · MEMORY · AGENTS · THINK */}
-      <div className="full-auto-cockpit__header">
+      {/* Compact title only — status line removed; selected values live on slider marks */}
+      <div className="full-auto-cockpit__header full-auto-cockpit__header--minimal">
         <span className="full-auto-cockpit__title font-mono tracking-[0.16em] uppercase shrink-0">
           {powerMode ? "Power cockpit" : "Launch cockpit"}
         </span>
-        <div
-          className="full-auto-cockpit__status full-auto-cockpit__status--inline font-mono min-w-0 flex-1"
-          title={plan.outcome + (plan.softNote ? ` · ${plan.softNote}` : "")}
-        >
-          <span className="full-auto-cockpit__status-text">
-            <span
-              className={`full-auto-cockpit__boost-seg full-auto-cockpit__boost-seg--${plan.boostTone}`}
-            >
-              Boost{" "}
-              {activeBoostMark
-                ? boostHeaderLabel(activeBoostMark)
-                : plan.boostLabel}
-            </span>
-            <span className="full-auto-cockpit__status-sep"> · </span>
-            <span>Memory {plan.brainsLabel}</span>
-            <span className="full-auto-cockpit__status-sep"> · </span>
-            <span>Agents {plan.agentsLabel}</span>
-            <span className="full-auto-cockpit__status-sep"> · </span>
-            <span>Think {plan.thinkLabel}</span>
-            {plan.softNote ? (
-              <span className="full-auto-cockpit__status-note"> · {plan.softNote}</span>
-            ) : null}
+        {plan.softNote ? (
+          <span className="full-auto-cockpit__status-note font-mono min-w-0 truncate" title={plan.softNote}>
+            {plan.softNote}
           </span>
-        </div>
+        ) : null}
       </div>
 
       <div className={`full-auto-cockpit__body ${compact ? "space-y-2" : "space-y-3"}`}>
+        {/* CTX on top for Full Auto + Assisted (unifies layout) */}
         {showCtxRail && (
           <div className="full-auto-cockpit__ctx-hero">
             <div className="full-auto-cockpit__ctx-slider min-w-0">
@@ -580,26 +566,29 @@ export default function MultiAgentBooster({
           <div className="full-auto-cockpit__grid-cell">
             <CockpitSlider
               label="Boost"
-              value={powerMode ? powerBoostValue : displayBoost}
+              value={boostSliderValue}
               onChange={(id) => {
-                if (powerMode) {
-                  if (id === "off") {
-                    onRawSpecType?.(null);
-                    onSpeedBoost("off");
-                    return;
-                  }
-                  if (id === "mtp" || id === "dflash") {
-                    onRawSpecType?.(null);
-                    onSpeedBoost(id);
-                    return;
-                  }
-                  if (id.startsWith("raw:")) {
-                    const raw = id.slice(4);
-                    onSpeedBoost("off");
-                    onRawSpecType?.(raw);
-                    return;
-                  }
+                if (id === "off") {
+                  onRawSpecType?.(null);
+                  onSpeedBoost("off");
+                  return;
                 }
+                if (id === "smart") {
+                  onRawSpecType?.(null);
+                  onSpeedBoost("smart");
+                  return;
+                }
+                if (id === "mtp" || id === "dflash") {
+                  onRawSpecType?.(null);
+                  onSpeedBoost(id);
+                  return;
+                }
+                if (id.startsWith("raw:")) {
+                  // Single apply path — parent sets spec_type + group (do not fire Smart first)
+                  onRawSpecType?.(id.slice(4));
+                  return;
+                }
+                onRawSpecType?.(null);
                 onSpeedBoost(id as SpeedBoostId);
               }}
               options={boostMarks.map((m) => {
@@ -619,7 +608,7 @@ export default function MultiAgentBooster({
                   blurb: m.blurb,
                   disabled: needCap,
                   badgeColor: m.badgeColor,
-                  // Keep MTP green / DFlash violet even when not selected
+                  // Color track mark + under-label only (not above family word)
                   emphasize: Boolean(m.badgeColor) && available && !needCap,
                 };
               })}

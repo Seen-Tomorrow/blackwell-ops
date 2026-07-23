@@ -2571,6 +2571,66 @@ html, body, #root {
   gap: 0.45rem 0.55rem;
 }
 
+/* SPEC-EXTRA / draft strip tone from Boost (MTP green, DFlash violet, else neutral) */
+.full-auto-cockpit__dflash-get--tone-mtp {
+  border-color: color-mix(in srgb, #4ade80 50%, transparent);
+  background: color-mix(in srgb, #040b06 92%, #4ade80 8%);
+  color: #bbf7d0;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #4ade80 12%, transparent);
+}
+
+.full-auto-cockpit__dflash-get--tone-mtp .full-auto-cockpit__spec-extra-title,
+.full-auto-cockpit__dflash-get--tone-mtp .full-auto-cockpit__spec-extra-key {
+  color: color-mix(in srgb, #bbf7d0 80%, transparent);
+}
+
+.full-auto-cockpit__dflash-get--tone-mtp .full-auto-cockpit__spec-chip {
+  border-color: color-mix(in srgb, #4ade80 40%, transparent);
+  color: #bbf7d0;
+  background: color-mix(in srgb, #040b06 70%, #4ade80 8%);
+}
+
+.full-auto-cockpit__dflash-get--tone-mtp .full-auto-cockpit__spec-chip--active {
+  border-color: #4ade80;
+  background: color-mix(in srgb, #4ade80 22%, #040b06 78%);
+  color: #ecfdf5;
+}
+
+.full-auto-cockpit__dflash-get--tone-mtp .full-auto-cockpit__dflash-get-btn {
+  border-color: color-mix(in srgb, #4ade80 45%, transparent);
+  color: #bbf7d0;
+}
+
+.full-auto-cockpit__dflash-get--tone-neutral {
+  border-color: color-mix(in srgb, var(--theme-border, #1a2e1a) 60%, transparent);
+  background: color-mix(in srgb, #000000 18%, transparent);
+  color: color-mix(in srgb, var(--theme-industrial-text, #4ade80) 85%, #fff 15%);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #ffffff 4%, transparent);
+}
+
+.full-auto-cockpit__dflash-get--tone-neutral .full-auto-cockpit__spec-extra-title,
+.full-auto-cockpit__dflash-get--tone-neutral .full-auto-cockpit__spec-extra-key {
+  color: color-mix(in srgb, var(--theme-industrial-muted, #4ade80) 70%, transparent);
+}
+
+.full-auto-cockpit__dflash-get--tone-neutral .full-auto-cockpit__spec-chip {
+  border-color: color-mix(in srgb, var(--theme-chip-border, rgba(74, 222, 128, 0.2)) 90%, transparent);
+  color: var(--theme-chip-text, var(--theme-industrial-muted, #4ade80));
+  background: transparent;
+}
+
+.full-auto-cockpit__header--minimal {
+  justify-content: flex-start;
+  gap: 0.75rem;
+  padding: 0.3rem 0.45rem;
+  min-height: 0;
+}
+
+.full-auto-cockpit__header--minimal .full-auto-cockpit__status-note {
+  font-size: 8px;
+  opacity: 0.85;
+}
+
 .full-auto-cockpit__spec-extra {
   display: flex;
   align-items: center;
@@ -3641,7 +3701,9 @@ html, body, #root {
 .cockpit-slider-mark-label--selected {
   color: var(--theme-accent-bright, #4ade80);
   text-shadow: 0 0 8px color-mix(in srgb, var(--theme-accent-glow, rgba(74, 222, 128, 0.3)) 50%, transparent);
-  font-weight: 600;
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.04em;
 }
 
 /* Hover behavior removed — labels always visible */
