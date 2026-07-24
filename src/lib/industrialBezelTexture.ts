@@ -1,6 +1,6 @@
 /** Dark-theme gunmetal bezel surface patterns (VRAM frame, launch dock, eject panel). */
 
-export const INDUSTRIAL_BEZEL_TEXTURE_ORDER = ["sandblast", "diamond", "brush"] as const;
+export const INDUSTRIAL_BEZEL_TEXTURE_ORDER = ["sandblast", "brush", "diamond"] as const;
 
 export type IndustrialBezelTexture = (typeof INDUSTRIAL_BEZEL_TEXTURE_ORDER)[number];
 

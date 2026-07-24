@@ -54,6 +54,7 @@ import type {
  * | BlackOps-industrial-bezel-texture | sandblast \| diamond \| brush | Dark-theme gunmetal bezel pattern |
  * | BlackOps-catalog-split-width | number string (px) | Model catalog / engine config split |
  * | BlackOps-catalog-list-collapsed | "0" \| "1" | Model catalog list fully collapsed |
+ * | BlackOps-catalog-list-dim | 0.2–1 | OPERATIONS catalog list body opacity (search chrome excluded) |
  * | BlackOps-model-hub-split-width | number string (0–1) | Model Hub results / quants split ratio |
 
  * | BlackOps-setup-guide-dismissed | "1" | Setup guide dismissed (cache; authority is app_config.setup_completed) |
@@ -174,6 +175,8 @@ export const KEYS = {
   ctxCockpitDock: `${STORAGE_PREFIX}ctx-cockpit-dock`,
   catalogSplitWidth: `${STORAGE_PREFIX}catalog-split-width`,
   catalogListCollapsed: `${STORAGE_PREFIX}catalog-list-collapsed`,
+  /** OPERATIONS catalog list body opacity (0.2–1); search chrome excluded. */
+  catalogListDim: `${STORAGE_PREFIX}catalog-list-dim`,
   /** OPERATIONS model list: auto | open | closed */
   catalogPresentation: `${STORAGE_PREFIX}catalog-presentation`,
   modelHubSplitWidth: `${STORAGE_PREFIX}model-hub-split-width`,
@@ -488,6 +491,19 @@ export function loadHwMonitorDim(): number {
 export function saveHwMonitorDim(dim: number): void {
   const n = Math.min(1, Math.max(0.2, dim));
   writeStorage(KEYS.hwMonitorDim, String(Math.round(n * 100) / 100));
+}
+
+/** Catalog list body opacity (sort + cards). Range 0.2–1, default 1. Search chrome stays full. */
+export function loadCatalogListDim(): number {
+  const raw = readStorage(KEYS.catalogListDim);
+  const n = raw ? Number(raw) : 1;
+  if (!Number.isFinite(n)) return 1;
+  return Math.min(1, Math.max(0.2, n));
+}
+
+export function saveCatalogListDim(dim: number): void {
+  const n = Math.min(1, Math.max(0.2, dim));
+  writeStorage(KEYS.catalogListDim, String(Math.round(n * 100) / 100));
 }
 
 export function loadEnginesInRail(): boolean {

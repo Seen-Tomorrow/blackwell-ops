@@ -12,7 +12,6 @@ import MemorySourcePanel, { FitProbeButton, manifestHasFitProbe } from "./Memory
 import { useForecastContentHeight } from "../hooks/useForecastContentHeight";
 import { useFusionSlot } from "../hooks/useFusionData";
 import { MEMORY_SOURCE_ACCENT } from "../services/vram/memorySource";
-import DisplayGlitchOverlay from "./DisplayGlitchOverlay";
 import type { FusionShareLaunchConfig } from "../lib/fusionShareCapture";
 
 interface VramBadgeProps {
@@ -101,13 +100,12 @@ function VramBadgeFusionLayer({
   const fusion = useFusionSlot(active ? selectedSlotIdx : null);
   if (!active) return null;
 
-  // Fills the phosphor when forecast is unmounted (no overlay-on-forecast veil).
+  // Content fill only — glass/texture/shadow live on outer `.phosphor-screen-inner`.
   return (
     <div
-      className="relative z-10 flex-1 min-h-0 w-full phosphor-screen phosphor-display-surface overflow-hidden flex flex-col rounded-xl border border-stealth-border p-[6px]"
+      className="relative z-10 flex-1 min-h-0 w-full overflow-hidden flex flex-col fusion-overlay-fill"
       style={{ animation: "fadeIn 0.2s ease" }}
     >
-      <DisplayGlitchOverlay />
       <FusionOverlay
         alias={activeEngineAlias}
         enginePort={activeEnginePort}
@@ -246,11 +244,12 @@ export default function VramBadge({
   ) : null;
 
   // Engine LOADING/RUNNING: fusion only — no forecast mount underneath (kills veil/collapse flash).
+  // No px/py inset: glass is full phosphor-screen-inner; content pads itself.
   if (fusionOverlayActive) {
     return (
       <div
         ref={rootRef}
-        className={`vram-badge-forecast px-3 py-2 relative flex flex-col min-h-0 overflow-hidden ${className || ""}`}
+        className={`vram-badge-forecast relative flex flex-col min-h-0 overflow-hidden ${className || ""}`}
         data-fusion-only="1"
       >
         {fitLaunchDock}

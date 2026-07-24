@@ -147,7 +147,6 @@ import type { SetupGuideState } from "../hooks/useSetupGuide";
 import { useConfigResolver } from "../hooks/useConfigResolver";
 import { useDisplayTexture } from "../context/DisplayTextureContext";
 
-import DisplayGlitchOverlay from "./DisplayGlitchOverlay";
 import { useFoundry } from "../hooks/useBuildDock";
 import { isDevBuild } from "../lib/build";
 import { buildLaunchFullConfig } from "../lib/buildLaunchFullConfig";
@@ -2894,7 +2893,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         >
           <div className={onboardingDisplay.frame}>
             <div className="phosphor-screen-inner phosphor-display-surface">
-              <DisplayGlitchOverlay />
               {setupGuide.showWelcome ? (
                 <WelcomeAnimation onComplete={setupGuide.completeWelcome} />
               ) : (
@@ -3149,7 +3147,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                 key="forecast-phosphor"
                 className="phosphor-screen-inner phosphor-display-surface vram-forecast-display"
               >
-                <DisplayGlitchOverlay />
                 <VramBadge
                     manifest={vramCalc.manifest}
                     gpus={gpus}

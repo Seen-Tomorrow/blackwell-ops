@@ -3,22 +3,27 @@ import { invoke } from "@tauri-apps/api/core";
 import { APP_BRAND_LOGO_SIZE, BrandLogoIcon } from "../lib/brandLogos";
 
 interface BlackwellBrandMarkProps {
-  /** Header chrome vs centered share-card branding */
-  variant?: "header" | "share";
+  /**
+   * header — logo only in app chrome (version lives in footer).
+   * share — logo + optional version on share cards.
+   * footer — compact version text for status bar (after PLATFORM).
+   */
+  variant?: "header" | "share" | "footer";
   showVersion?: boolean;
   /**
    * Runtime PE/package version (same as updater). Prefer over Vite bake-time
-   * `__TAURI_VERSION__` so header never lies ahead of the installed binary.
+   * `__TAURI_VERSION__` so UI never lies ahead of the installed binary.
    */
   packageVersion?: string | null;
 }
 
 export default function BlackwellBrandMark({
   variant = "header",
-  showVersion = variant === "header",
+  showVersion = variant === "share" || variant === "footer",
   packageVersion = null,
 }: BlackwellBrandMarkProps) {
   const isShare = variant === "share";
+  const isFooter = variant === "footer";
   const [runtimeVersion, setRuntimeVersion] = useState<string | null>(
     packageVersion && packageVersion.trim() ? packageVersion.trim() : null,
   );
@@ -43,6 +48,18 @@ export default function BlackwellBrandMark({
 
   // Prefer runtime package_info; Vite define is last resort only.
   const semver = runtimeVersion || __TAURI_VERSION__;
+  const versionText = `v${semver} · ${__APP_VERSION__}`;
+
+  if (isFooter) {
+    return (
+      <span
+        className="app-footer-version font-mono tracking-wide"
+        title={`Blackwell Ops ${versionText}`}
+      >
+        {versionText}
+      </span>
+    );
+  }
 
   return (
     <div
@@ -54,7 +71,7 @@ export default function BlackwellBrandMark({
       />
       {showVersion && (
         <p className="app-header-version font-mono tracking-wide">
-          v{semver} · {__APP_VERSION__}
+          {versionText}
         </p>
       )}
     </div>

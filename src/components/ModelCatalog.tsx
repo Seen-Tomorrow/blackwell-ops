@@ -10,6 +10,7 @@ import type { SetupGuideState } from "../hooks/useSetupGuide";
 import { useCatalogSplitResize } from "../hooks/useCatalogSplitResize";
 import { useTelemetry } from "../context/TelemetryContext";
 import { dispatchNavigateConfig } from "../lib/events";
+import { loadCatalogListDim, saveCatalogListDim } from "../lib/storage";
 import TabPageHeader from "./TabPageHeader";
 
 
@@ -30,8 +31,12 @@ interface ModelCatalogProps {
   catalogHfUpdates?: Set<string>;
 }
 
+/** Sort chips — no NAME (search covers free-text); keep one row when rail is narrow. */
+const CATALOG_SORT_FIELDS = ["author", "size_str", "date"] as const satisfies readonly SortField[];
 const sortLabels: Record<string, string> = {
-  name: 'NAME', author: 'AUTHOR', size_str: 'SIZE', date: 'DATE'
+  author: "AUTHOR",
+  size_str: "SIZE",
+  date: "DATE",
 };
 
 const DRAFT_FILTER_CYCLE: CatalogDraftFilter[] = ["regular", "draft", "all"];
@@ -48,6 +53,13 @@ export default function ModelCatalog(props: ModelCatalogProps) {
   const { gpus, systemInfo } = useTelemetry();
   const [showScanMenu, setShowScanMenu] = useState(false);
   const [editMode, setEditMode] = useState(false);
+  /** Opacity of sort + model cards (search chrome stays full). Same range as HW monitor dim. */
+  const [catalogListDim, setCatalogListDim] = useState(loadCatalogListDim);
+  const onCatalogListDimChange = useCallback((value: number) => {
+    const next = Math.min(1, Math.max(0.2, value));
+    setCatalogListDim(next);
+    saveCatalogListDim(next);
+  }, []);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameValue, setRenameValue] = useState("");
@@ -104,17 +116,32 @@ export default function ModelCatalog(props: ModelCatalogProps) {
     const workspace = splitContainerRef.current;
     if (!workspace) return;
 
+    /** Open/close chevron aligns with top of first model card (list body). */
     const measureToggleTop = () => {
       const rail = splitRailRef.current;
       if (!rail) {
         setToggleTopPx(null);
         return;
       }
-      const catalogPanel = workspace.querySelector(".catalog-list-panel");
-      const anchor = catalogPanel ?? workspace;
-      const anchorRect = anchor.getBoundingClientRect();
       const railRect = rail.getBoundingClientRect();
-      setToggleTopPx(Math.round(anchorRect.top - railRect.top));
+      const firstCard =
+        workspace.querySelector(".catalog-list-card-wrap") ??
+        workspace.querySelector(".model-catalog-card");
+      if (firstCard) {
+        setToggleTopPx(
+          Math.max(0, Math.round(firstCard.getBoundingClientRect().top - railRect.top)),
+        );
+        return;
+      }
+      // Empty list — top of scroll pad (first-card line)
+      const scroll = workspace.querySelector(".catalog-list-scroll");
+      if (scroll) {
+        setToggleTopPx(
+          Math.max(0, Math.round(scroll.getBoundingClientRect().top + 12 - railRect.top)),
+        );
+        return;
+      }
+      setToggleTopPx(0);
     };
 
     measureToggleTop();
@@ -123,6 +150,10 @@ export default function ModelCatalog(props: ModelCatalogProps) {
     observer.observe(workspace);
     const catalogPanel = workspace.querySelector(".catalog-list-panel");
     if (catalogPanel) observer.observe(catalogPanel);
+    const body = workspace.querySelector(".catalog-list-panel__body");
+    if (body) observer.observe(body);
+    const scroll = workspace.querySelector(".catalog-list-scroll");
+    if (scroll) observer.observe(scroll);
     const rail = splitRailRef.current;
     if (rail) observer.observe(rail);
 
@@ -131,7 +162,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
       observer.disconnect();
       window.removeEventListener("resize", measureToggleTop);
     };
-  }, [splitContainerRef, catalogCollapsed]);
+  }, [splitContainerRef, catalogCollapsed, catalogModels.length, visibleCount]);
 
   const startScan = (concurrency: number) => {
     setShowScanMenu(false);
@@ -452,11 +483,11 @@ export default function ModelCatalog(props: ModelCatalogProps) {
     );
   };
 
-  // ── Sort bar ────────────────
-  const renderSortBar = () => (
-    <div className="catalog-sort-bar flex items-center gap-2 px-3 py-1.5 min-w-0">
+  // ── Chrome tools row: sort + MAIN/MAX + dim (always full opacity) ────────────────
+  const renderChromeTools = () => (
+    <div className="catalog-list-panel__chrome-tools">
       <div className="catalog-sort-group flex items-center gap-0.5 min-w-0 flex-1">
-        {(["name", "author", "size_str", "date"] as SortField[]).map((field) => (
+        {CATALOG_SORT_FIELDS.map((field) => (
           <button
             key={field}
             onClick={() => handleSort(field)}
@@ -473,7 +504,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
           </button>
         ))}
       </div>
-      <div className="catalog-sort-actions flex items-center gap-1 shrink-0">
+      <div className="catalog-sort-actions flex items-center gap-1.5 shrink-0">
         {fitScanningCount > 0 && (
           <span className="catalog-scan-status text-[8px] font-mono text-stealth-muted whitespace-nowrap">
             FIT {fitScanningCount}
@@ -495,6 +526,22 @@ export default function ModelCatalog(props: ModelCatalogProps) {
         >
           {visibleCount === "all" ? "MAX" : visibleCount}
         </button>
+        <label
+          className="panel-dim-control"
+          title={`Catalog list dim — ${Math.round(catalogListDim * 100)}% (header + selected model stay full)`}
+        >
+          <span className="panel-dim-control__label">DIM</span>
+          <input
+            type="range"
+            className="panel-dim-control__slider"
+            min={20}
+            max={100}
+            step={1}
+            value={Math.round(catalogListDim * 100)}
+            onChange={(e) => onCatalogListDimChange(Number(e.target.value) / 100)}
+            aria-label="Catalog list dim"
+          />
+        </label>
       </div>
     </div>
   );
@@ -573,37 +620,45 @@ export default function ModelCatalog(props: ModelCatalogProps) {
           style={{ width: catalogWidth }}
         >
 
-          {/* Search bar + scan meta / file edit (in-field, right) */}
-          <div className="px-3 py-2 flex-shrink-0 relative">
-            <div className="catalog-search-wrap relative min-w-0">
-              <input
-                ref={catalogSearchInputRef}
-                type="text"
-                placeholder="▶  SEARCH MODELS..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value.replace(/\//g, ""))}
-                onKeyDown={(e) => {
-                  // `/` is the focus/open shortcut — never type into the query
-                  if (e.key === "/" && !e.ctrlKey && !e.metaKey && !e.altKey) {
-                    e.preventDefault();
-                  }
-                }}
-                autoFocus
-                className={`catalog-search-input theme-input w-full text-xs font-mono pl-3 py-1.5 rounded-sm ${searchInputPadding()}`}
-              />
-              <div className="catalog-search-actions absolute inset-y-0 right-1.5 flex items-center gap-1 pointer-events-none">
-                <div className="flex items-center gap-1 pointer-events-auto">
-                  {renderScanMetaControl()}
-                  {renderEditControl()}
+          {/*
+            Chrome header — full opacity always (search, sort, MAIN/MAX, dim).
+            Only unselected cards dim; selected card stays full strength.
+          */}
+          <div className="catalog-list-panel__chrome">
+            <div className="catalog-list-panel__chrome-search">
+              <div className="catalog-search-wrap relative min-w-0">
+                <input
+                  ref={catalogSearchInputRef}
+                  type="text"
+                  placeholder="▶  SEARCH MODELS..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value.replace(/\//g, ""))}
+                  onKeyDown={(e) => {
+                    // `/` is the focus/open shortcut — never type into the query
+                    if (e.key === "/" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                      e.preventDefault();
+                    }
+                  }}
+                  autoFocus
+                  className={`catalog-search-input theme-input w-full text-xs font-mono pl-3 py-1.5 rounded-sm ${searchInputPadding()}`}
+                />
+                <div className="catalog-search-actions absolute inset-y-0 right-1.5 flex items-center gap-1 pointer-events-none">
+                  <div className="flex items-center gap-1 pointer-events-auto">
+                    {renderScanMetaControl()}
+                    {renderEditControl()}
+                  </div>
                 </div>
               </div>
             </div>
+            {renderChromeTools()}
             {fileEditError && (
-              <p className="mt-1 text-[7px] font-mono text-telemetry-red/90 break-all">{fileEditError}</p>
+              <p className="catalog-list-panel__chrome-msg text-[7px] font-mono text-telemetry-red/90 break-all">
+                {fileEditError}
+              </p>
             )}
             {renameOpen && editTarget && (
               <div
-                className="mt-2 rounded-sm border border-stealth-border/60 bg-stealth-panel/90 px-2 py-2 space-y-2"
+                className="catalog-list-panel__chrome-dialog rounded-sm border border-stealth-border/60 bg-stealth-panel/90 px-2 py-2 space-y-2"
                 role="dialog"
                 aria-label="Rename model file"
               >
@@ -646,7 +701,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
             )}
             {deleteConfirmOpen && editTarget && (
               <div
-                className="mt-2 rounded-sm border border-telemetry-red/35 bg-telemetry-red/5 px-2 py-2 space-y-2"
+                className="catalog-list-panel__chrome-dialog rounded-sm border border-telemetry-red/35 bg-telemetry-red/5 px-2 py-2 space-y-2"
                 role="alertdialog"
                 aria-label="Confirm delete model file"
               >
@@ -675,9 +730,8 @@ export default function ModelCatalog(props: ModelCatalogProps) {
             )}
           </div>
 
-          {renderSortBar()}
-
-          {/* Scrollable catalog zone — all models, height constrained by visibleCount */}
+          {/* Card list only — dim unselected rows; selected stays full opacity */}
+          <div className="catalog-list-panel__body">
           <div
             ref={catalogScrollRef}
             id="model-table-container"
@@ -687,7 +741,10 @@ export default function ModelCatalog(props: ModelCatalogProps) {
             }`}
           >
             {catalogModels.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full min-h-[8rem] text-center px-4 py-6 gap-3">
+              <div
+                className="flex flex-col items-center justify-center h-full min-h-[8rem] text-center px-4 py-6 gap-3"
+                style={{ opacity: catalogListDim }}
+              >
                 <p className="text-stealth-muted text-xs font-mono opacity-50">
                   {models.length > 0 && search.trim() ? "NO MATCHING MODELS" : "NO MODELS FOUND"}
                 </p>
@@ -711,7 +768,16 @@ export default function ModelCatalog(props: ModelCatalogProps) {
                 {catalogModels.map((model) => {
                   const isSelected = catalogSelectedModel?.path === model.path;
                   return (
-                    <div key={model.path} data-model-path={model.path}>
+                    <div
+                      key={model.path}
+                      data-model-path={model.path}
+                      className={
+                        isSelected
+                          ? "catalog-list-card-wrap catalog-list-card-wrap--selected"
+                          : "catalog-list-card-wrap"
+                      }
+                      style={isSelected ? undefined : { opacity: catalogListDim }}
+                    >
                       <ModelCard
                         model={model}
                         isSelected={isSelected}
@@ -731,6 +797,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
                 })}
               </div>
             )}
+          </div>
           </div>
         </div>
         )}

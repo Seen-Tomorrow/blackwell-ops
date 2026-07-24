@@ -872,9 +872,10 @@
   line-height: 1;
   padding: 2px 5px;
   border-radius: 2px;
-  color: color-mix(in srgb, var(--theme-text, #e8e8e8) 72%, transparent);
-  background: #000;
-  border: 1px solid color-mix(in srgb, #fff 12%, transparent);
+  /* Theme ink on lifted chip — never grey-on-black or black-on-black */
+  color: var(--theme-text);
+  background: color-mix(in srgb, var(--theme-text) 11%, var(--theme-bg));
+  border: 1px solid color-mix(in srgb, var(--theme-border) 85%, var(--theme-text-muted) 15%);
   white-space: nowrap;
 }
 
@@ -884,20 +885,17 @@
   font-size: 7px;
   line-height: 1;
   letter-spacing: 0.02em;
-  color: color-mix(in srgb, var(--theme-text-muted, #8a9a8a) 80%, transparent);
+  color: var(--theme-text-muted);
   white-space: nowrap;
   padding: 0 1px;
   background: transparent;
 }
 
-/* Dark themes — solid black GPU chips (cut color noise) */
 [data-config-panel] .running-engine-gpu-badge {
-  color: color-mix(in srgb, var(--theme-text, #e8e8e8) 72%, transparent) !important;
-  background: #000 !important;
-  border-color: color-mix(in srgb, #fff 12%, transparent) !important;
+  color: var(--theme-text) !important;
+  background: color-mix(in srgb, var(--theme-text) 11%, var(--theme-bg)) !important;
+  border-color: color-mix(in srgb, var(--theme-border) 85%, var(--theme-text-muted) 15%) !important;
 }
-
-/* Arctic — accent blue chips (light workspace; black would look like holes) */
 
 
 .running-engine-gpu-badges--compact .running-engine-gpu-badge {

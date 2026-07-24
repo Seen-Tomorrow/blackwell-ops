@@ -64,19 +64,14 @@
   transform: translateY(-5px);
 }
 
+/* Share cards / legacy — header logo no longer carries version (see .app-footer-version) */
 .app-header-version {
-  position: absolute;
-  right: 0;
-  left: auto;
-  top: calc(100% + 3px);
   margin: 0;
   font-size: 6.5px;
   line-height: 1.1;
   white-space: nowrap;
-  text-align: right;
-  opacity: 1;
+  opacity: 0.85;
   color: color-mix(in srgb, var(--theme-header-title) 42%, var(--theme-chrome-control-text) 58%);
-  pointer-events: none;
 }
 
 
@@ -522,7 +517,12 @@
 
 .app-footer {
   background: var(--theme-footer-bg);
-  border-top: 1px solid var(--theme-footer-border);
+  /* Amber-led seam with a soft theme accent kiss (console header stays pure amber) */
+  border-top: 1px solid color-mix(
+    in srgb,
+    var(--theme-footer-border) 78%,
+    var(--theme-accent, var(--theme-footer-border)) 22%
+  );
   color: var(--theme-footer-text);
   height: var(--app-footer-h);
   min-height: var(--app-footer-h);
@@ -584,9 +584,28 @@
   padding-left: 1rem;
   padding-right: 1rem;
   font-size: 9px;
-  gap: 0.5rem;
+  gap: 0.45rem;
   background: #000000;
   color: rgba(255, 255, 255, 0.4);
+}
+
+/* DEV · PLATFORM · version */
+.app-footer-status-left {
+  gap: 0.4rem;
+}
+
+.app-footer-status-sep {
+  opacity: 0.35;
+  user-select: none;
+}
+
+.app-footer-version {
+  font-size: 8px;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  color: color-mix(in srgb, var(--theme-footer-text) 88%, #fff 12%);
+  opacity: 0.9;
 }
 
 .app-footer-console__collapse {
@@ -623,27 +642,49 @@
 
 
 .app-footer-console__live {
+  /* Cap width — was flex:1 and stole the status bar from PLATFORM / version / stats */
+  flex: 1 1 10rem;
+  max-width: min(36vw, 20rem);
+  min-width: 0;
   margin: 0;
   padding: 1px 8px;
   gap: 6px;
   border-radius: 2px;
   background: var(--boc-body-bg, rgba(0, 0, 0, 0.55));
-  border: 1px solid color-mix(in srgb, var(--theme-footer-border) 55%, transparent);
+  border: 1px solid color-mix(
+    in srgb,
+    color-mix(in srgb, var(--theme-footer-border) 72%, var(--theme-accent, var(--theme-footer-border)) 28%)
+      50%,
+    transparent 50%
+  );
   box-shadow: inset 0 1px 3px color-mix(in srgb, #000000 35%, transparent);
   color: var(--boc-text, rgba(255, 255, 255, 0.85));
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .app-footer-console__live:hover {
-  border-color: color-mix(in srgb, var(--boc-amber, #b87a00) 40%, transparent);
+  /* Amber stays primary; accent only tints the ring */
+  border-color: color-mix(
+    in srgb,
+    color-mix(in srgb, var(--boc-amber, #b87a00) 70%, var(--theme-accent, #b87a00) 30%) 42%,
+    transparent 58%
+  );
   box-shadow:
     inset 0 1px 3px color-mix(in srgb, #000000 35%, transparent),
-    0 0 0 1px color-mix(in srgb, var(--boc-amber, #b87a00) 20%, transparent);
+    0 0 0 1px color-mix(
+      in srgb,
+      color-mix(in srgb, var(--boc-amber, #b87a00) 65%, var(--theme-accent, #b87a00) 35%) 22%,
+      transparent 78%
+    );
 }
 
 .app-footer-console__live-label {
   font-size: 7px;
-  color: var(--boc-sync, rgba(34, 211, 238, 0.5));
+  color: color-mix(
+    in srgb,
+    var(--boc-sync, rgba(34, 211, 238, 0.5)) 78%,
+    var(--theme-accent, rgba(34, 211, 238, 0.5)) 22%
+  );
 }
 
 /* System UI monospace — FORECAST layer captions, bar inset labels */

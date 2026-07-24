@@ -715,7 +715,8 @@ const ARCTIC: AppTheme = {
     "--theme-gpu-topo-selected-shadow": "0 6px 14px rgba(91, 158, 196, 0.22), 0 2px 6px rgba(50, 70, 90, 0.16)",
     "--theme-bezel-edge-hi": "rgba(255, 255, 255, 0.55)",
     "--theme-bezel-edge-lo": "rgba(70, 90, 110, 0.18)",
-    "--theme-bezel-grain": "rgba(255, 255, 255, 0.22)",
+    /* Softer grain — 0.22 made BRUSH look noisy on light aluminium / cockpit */
+    "--theme-bezel-grain": "rgba(70, 90, 110, 0.1)",
     "--theme-bezel-inset-hi": "rgba(255, 255, 255, 0.45)",
     "--theme-bezel-inset-lo": "rgba(80, 100, 120, 0.1)",
     /* Soft recess on white face — avoid grey-blue dunk */

@@ -105,35 +105,159 @@
   position: relative;
 }
 
-/* Catalog list — industrial rail texture (mirrors config-launch-rail) */
-[data-model-catalog] .catalog-list-panel.eink-panel-wrapper {
+/*
+ * Catalog chrome header — industrial panel face (same stack as app header /
+ * provider bar / bezel frame). Always full opacity; dim does not apply here.
+ * Row 1: search · Row 2: sort + MAIN/MAX + DIM
+ */
+.catalog-list-panel__chrome {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 8px 12px 8px;
+  position: relative;
+  z-index: 2;
   isolation: isolate;
+  overflow: hidden;
+  /* Gunmetal industrial face — not flat panel-accent */
   background-color: var(--theme-industrial-bg);
-  background-image: var(--theme-industrial-texture-active);
-  border: none;
-  border-right: 1.5px solid var(--theme-bezel-edge-hi);
+  background-image:
+    var(--theme-industrial-texture-active),
+    var(--theme-industrial-face-gradient, none);
+  border-bottom: 1.5px solid color-mix(in srgb, var(--theme-bezel-edge-hi) 75%, var(--theme-border));
   box-shadow:
-    2px 0 6px color-mix(in srgb, #000000 24%, transparent),
-    8px 0 20px color-mix(in srgb, #000000 12%, transparent);
+    inset 0 1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 50%, transparent),
+    inset 0 -1px 0 color-mix(in srgb, var(--theme-bezel-edge-lo) 45%, transparent),
+    0 2px 10px color-mix(in srgb, var(--theme-panel) 45%, transparent);
+}
+
+.catalog-list-panel__chrome > * {
+  position: relative;
+  z-index: 1;
+}
+
+.catalog-list-panel__chrome-search {
+  min-width: 0;
+  width: 100%;
+}
+
+.catalog-list-panel__chrome-search .catalog-search-wrap {
+  width: 100%;
+  min-width: 0;
+}
+
+.catalog-list-panel__chrome-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  width: 100%;
+}
+
+.catalog-list-panel__chrome-tools .panel-dim-control {
+  margin-left: 0;
+  flex-shrink: 0;
+}
+
+.catalog-list-panel__chrome-msg {
+  margin: 0;
+}
+
+.catalog-list-panel__chrome-dialog {
+  flex-shrink: 0;
+}
+
+/* Card list only — dim is per-card (selected stays full) */
+.catalog-list-panel__body {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+}
+
+.catalog-list-card-wrap {
+  transition: opacity 0.15s ease;
+}
+
+/* Selected model — full opacity + full chroma under quiet-wing desaturate */
+.catalog-list-card-wrap--selected {
+  opacity: 1 !important;
+  position: relative;
+  z-index: 1;
+}
+
+[data-model-catalog] .catalog-list-panel .catalog-list-card-wrap--selected .gunmetal-card {
+  filter: saturate(1.55) brightness(1.08);
+}
+
+/*
+ * OPERATIONS workspace — one continuous field with the engine-config panel.
+ * Same face as .eink-panel-wrapper (theme-panel-accent); list is a quiet wing,
+ * not a second chrome room. Engine config stays full chroma.
+ */
+[data-model-catalog] .catalog-split-workspace {
+  background: var(--theme-panel-accent);
+}
+
+/* List column = same face as right config panel (no grit, no extra shell) */
+[data-model-catalog] .catalog-list-panel,
+[data-model-catalog] .catalog-list-panel.eink-panel-wrapper {
+  isolation: auto;
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  border: none !important;
+  box-shadow: none !important;
 }
 
 [data-model-catalog] .catalog-list-panel.eink-panel-wrapper::before {
-  height: 1px;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    color-mix(in srgb, var(--theme-bezel-edge-hi) 75%, transparent),
-    transparent
-  );
+  display: none !important;
 }
 
+/* Right config panel already uses eink-panel-wrapper panel-accent — no double edge */
+[data-model-catalog] .catalog-split-workspace > .eink-panel-wrapper:not(.catalog-list-panel) {
+  border-left: none !important;
+  box-shadow: none !important;
+}
+
+[data-model-catalog] .catalog-list-scroll {
+  background: transparent !important;
+  background-image: none !important;
+}
+
+/*
+ * Quiet wing on list body only — chrome keeps full industrial chroma/texture.
+ * Opacity dim is separate (per unselected card).
+ */
+[data-model-catalog] .catalog-list-panel__body {
+  filter: saturate(0.42) brightness(0.97);
+}
+
+/* Unselected cards stay quiet; selected is boosted via .catalog-list-card-wrap--selected */
+[data-model-catalog] .catalog-list-panel .buried-card {
+  filter: none;
+}
+
+[data-model-catalog] .catalog-list-panel .gunmetal-card {
+  filter: saturate(1.35) brightness(1.04);
+}
+
+/* Override any flat transparent wipe so industrial face sticks */
+[data-model-catalog] .catalog-list-panel__chrome {
+  background-color: var(--theme-industrial-bg) !important;
+  background-image:
+    var(--theme-industrial-texture-active),
+    var(--theme-industrial-face-gradient, none) !important;
+}
 
 [data-model-catalog] .catalog-list-scroll.eink-scrollbar::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--theme-industrial-muted) 40%, var(--theme-industrial-bg) 60%);
+  background: color-mix(in srgb, var(--theme-text-muted) 35%, var(--theme-panel-accent) 65%);
 }
 
 [data-model-catalog] .catalog-list-scroll.eink-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--theme-accent) 36%, var(--theme-industrial-bg) 64%);
+  background: color-mix(in srgb, var(--theme-accent) 28%, var(--theme-panel-accent) 72%);
 }
 
 
@@ -147,6 +271,7 @@
 
 .catalog-split-toggle {
   position: absolute;
+  /* Aligned to bottom of catalog chrome header (set via --catalog-toggle-top) */
   top: var(--catalog-toggle-top, 0px);
   left: 50%;
   z-index: 4;
@@ -157,7 +282,8 @@
   height: 36px;
   margin: 0;
   padding: 0;
-  transform: translate(-50%, 0);
+  /* Center the chevron on the chrome/list seam */
+  transform: translate(-50%, -50%);
   border: 1px solid color-mix(in srgb, var(--theme-accent, #76b900) 40%, var(--theme-border));
   border-radius: 4px;
   background: var(--theme-bg-elevated, var(--theme-bg));
@@ -196,11 +322,13 @@
 
 .catalog-split-rail .catalog-split-toggle {
   left: 0;
+  /* --catalog-toggle-top = first model card top; pin glyph top-aligned to that line */
   transform: translate(-50%, 0);
 }
 
 .catalog-split-rail--collapsed .catalog-split-toggle {
   left: 0;
+  /* No chrome when collapsed — pin near rail top */
   transform: translate(0, 0);
 }
 
@@ -356,9 +484,10 @@
 }
 
 /* Model card styles */
-/* ── Catalog card (unselected) — flat rest state on e-ink panel ─── */
+/* ── Catalog card (unselected) — no fill; list panel tint shows through ─── */
 .buried-card {
-  background: color-mix(in srgb, var(--theme-panel) 55%, transparent);
+  background: transparent;
+  background-image: none;
   border: 1px solid var(--theme-border-subtle);
   border-radius: 6px;
   box-shadow: none;
@@ -382,40 +511,93 @@
 }
 
 .buried-card:hover {
-  background: color-mix(in srgb, var(--theme-panel-accent) 70%, var(--theme-panel) 30%);
-  border-color: color-mix(in srgb, var(--theme-border) 75%, var(--theme-accent) 25%);
-  box-shadow: 0 1px 3px color-mix(in srgb, var(--theme-text) 6%, transparent);
-}
-
-/* Catalog cards — unselected: no fill so list panel tint shows through */
-[data-model-catalog] .buried-card {
-  background: transparent;
-  border-color: color-mix(in srgb, var(--theme-border-subtle) 75%, transparent);
+  background: color-mix(in srgb, var(--theme-accent) 5%, transparent);
+  background-image: none;
+  border-color: color-mix(in srgb, var(--theme-border) 55%, var(--theme-accent) 45%);
   box-shadow: none;
 }
 
-[data-model-catalog] .buried-card:hover {
-  background: color-mix(in srgb, var(--theme-accent) 4%, transparent);
-  border-color: color-mix(in srgb, var(--theme-border) 55%, var(--theme-accent) 45%);
+/* Unselected — stronger contour so edges read on light faces (ARCTIC) too */
+[data-model-catalog] .model-catalog-card.buried-card,
+[data-model-catalog] .buried-card,
+[data-model-catalog] [data-model-path] .model-catalog-card {
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  border-color: color-mix(in srgb, var(--theme-border) 78%, var(--theme-text-muted) 22%);
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
 
+[data-model-catalog] .model-catalog-card.buried-card:hover,
+[data-model-catalog] .buried-card:hover {
+  background: color-mix(in srgb, var(--theme-text) 4%, transparent) !important;
+  background-image: none !important;
+  border-color: color-mix(in srgb, var(--theme-border) 50%, var(--theme-accent) 50%);
+  box-shadow: none !important;
+}
+
+/* Selected — quiet lift into the same face (no grit, soft accent rail) */
+[data-model-catalog] .model-catalog-card.gunmetal-card,
 [data-model-catalog] .gunmetal-card {
-  background-color: color-mix(in srgb, var(--theme-panel) 74%, var(--theme-card-selected-accent) 6%);
-  background-image: linear-gradient(
-    165deg,
-    color-mix(in srgb, var(--theme-panel) 90%, transparent) 0%,
-    color-mix(in srgb, var(--theme-panel-accent) 62%, transparent) 100%
-  );
-  border: 2px solid color-mix(in srgb, var(--theme-card-selected-accent) 72%, var(--theme-border)) !important;
+  background-color: color-mix(in srgb, var(--theme-panel) 55%, var(--theme-panel-accent) 45%) !important;
+  background-image: none !important;
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 42%, var(--theme-border)) !important;
   box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--theme-card-selected-accent) 38%, transparent),
-    0 0 14px color-mix(in srgb, var(--theme-card-selected-accent) 22%, transparent),
-    inset 0 1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi) 24%, transparent);
+    inset 0 0 0 1px color-mix(in srgb, var(--theme-accent) 14%, transparent),
+    0 1px 4px color-mix(in srgb, #000 18%, transparent) !important;
 }
 
 [data-model-catalog] .gunmetal-card::before {
-  width: 4px;
-  box-shadow: 0 0 8px color-mix(in srgb, var(--theme-card-selected-accent) 52%, transparent);
+  width: 3px;
+  background: color-mix(in srgb, var(--theme-accent) 70%, transparent);
+  box-shadow: none;
+}
+
+/* Badges on catalog cards — mono mute (less cyan/green noise) */
+[data-model-catalog] .model-card-quant-badge,
+[data-model-catalog] .model-card-quant-badge--cyan,
+[data-model-catalog] .model-card-quant-badge--nvfp {
+  color: color-mix(in srgb, var(--theme-text-muted) 85%, var(--theme-text) 15%) !important;
+  border-color: color-mix(in srgb, var(--theme-border) 80%, transparent) !important;
+  background: color-mix(in srgb, var(--theme-text) 4%, transparent) !important;
+}
+
+/*
+ * Card ink — ModelCard uses text-white/* for dark UIs; map to theme text so
+ * size/date/labels stay readable on light ARCTIC panel faces.
+ */
+[data-model-catalog] .model-catalog-card .text-white,
+[data-model-catalog] .model-catalog-card .text-white\/90,
+[data-model-catalog] .model-catalog-card .text-white\/80 {
+  color: var(--theme-text) !important;
+}
+
+[data-model-catalog] .model-catalog-card .text-white\/70,
+[data-model-catalog] .model-catalog-card .text-white\/60 {
+  color: var(--theme-text-muted) !important;
+}
+
+[data-model-catalog] .model-catalog-card .text-white\/\[0\.06\] {
+  color: color-mix(in srgb, var(--theme-text-muted) 50%, transparent) !important;
+}
+
+[data-model-catalog] .model-catalog-card .model-card-name {
+  color: var(--theme-text) !important;
+}
+
+[data-model-catalog] .model-catalog-card .text-stealth-muted {
+  color: var(--theme-text-muted) !important;
+}
+
+[data-model-catalog] .model-catalog-card .bg-black {
+  background-color: color-mix(in srgb, var(--theme-text) 14%, transparent) !important;
+}
+
+[data-model-catalog] .model-catalog-card .bg-black.text-white\/70,
+[data-model-catalog] .model-catalog-card .bg-black {
+  color: var(--theme-text) !important;
 }
 
 /* ── E-ink Card — glass panel over eink surface ─── */

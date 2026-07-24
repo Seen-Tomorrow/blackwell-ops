@@ -102,9 +102,6 @@ const CAPTURE_STRIP_SELECTORS = [
   "[data-fusion-share-exclude]",
   ".display-texture-toggle",
   ".industrial-bezel-texture-toggle",
-  ".display-glitch-ambient",
-  ".display-glitch-chroma",
-  ".display-glitch-block",
   ".vram-forecast-scenario-badge",
   ".fusion-bench-latch",
   ".bench-hw-topo",
@@ -710,10 +707,11 @@ function createShareBezelBrand(): HTMLElement {
 }
 
 function resolveSharePhosphorHost(frame: HTMLElement): HTMLElement | null {
+  /* Brand sits on the glass face (outer phosphor), not nested content fill */
   const selectors = [
-    ".vram-badge-forecast > .phosphor-screen.phosphor-display-surface",
-    ".vram-forecast-display .phosphor-screen.phosphor-display-surface",
-    ".vram-badge-forecast > .phosphor-screen-inner.phosphor-display-surface",
+    ".vram-forecast-display.phosphor-screen-inner",
+    ".vram-forecast-display.phosphor-display-surface",
+    ".vram-forecast-display",
   ];
   for (const selector of selectors) {
     const el = frame.querySelector(selector);
@@ -876,8 +874,7 @@ function forceFusionCapturePaint(frame: HTMLElement): void {
     frame,
     frame.querySelector(".vram-forecast-display"),
     frame.querySelector(".vram-badge-forecast"),
-    frame.querySelector(".vram-badge-forecast > .phosphor-screen.phosphor-display-surface"),
-    frame.querySelector(".vram-forecast-display .phosphor-screen.phosphor-display-surface"),
+    frame.querySelector(".vram-badge-forecast > .fusion-overlay-fill"),
   ];
 
   roots.forEach((node) => {
@@ -911,9 +908,7 @@ function stripForecastPaddingForCapture(frame: HTMLElement): PaddingRestore[] {
   const header = frame.querySelector(".vram-forecast-header");
   if (header instanceof HTMLElement) nodes.push(header);
 
-  const fusionPanel = frame.querySelector(
-    ".vram-badge-forecast > .phosphor-screen.phosphor-display-surface",
-  );
+  const fusionPanel = frame.querySelector(".vram-badge-forecast > .fusion-overlay-fill");
   if (fusionPanel instanceof HTMLElement) nodes.push(fusionPanel);
 
   nodes.forEach((el) => {
@@ -1006,15 +1001,12 @@ function normalizeFusionCaptureLayout(frame: HTMLElement, phosphorHeightPx: numb
     forecast.style.maxHeight = phosphorH;
   }
 
-  const fusionPanel = frame.querySelector(
-    ".vram-badge-forecast > .phosphor-screen.phosphor-display-surface",
-  );
+  const fusionPanel = frame.querySelector(".vram-badge-forecast > .fusion-overlay-fill");
   if (fusionPanel instanceof HTMLElement) {
     fusionPanel.style.inset = "0";
     fusionPanel.style.width = "100%";
-    fusionPanel.style.height = phosphorH;
-    fusionPanel.style.minHeight = phosphorH;
-    fusionPanel.style.maxHeight = phosphorH;
+    fusionPanel.style.height = "100%";
+    fusionPanel.style.minHeight = "0";
   }
 
   // Hero TG / PP only — never blanket-match style*="6vh" (hits 2.6vh per-slot too).
@@ -1203,9 +1195,7 @@ function prepareFusionOverlayForCapture(frame: HTMLElement): HiddenNode[] {
   const hidden: HiddenNode[] = [];
 
   const forecast = frame.querySelector(".vram-badge-forecast");
-  const fusionPanel = frame.querySelector(
-    ".vram-badge-forecast > .phosphor-screen.phosphor-display-surface",
-  );
+  const fusionPanel = frame.querySelector(".vram-badge-forecast > .fusion-overlay-fill");
 
   if (forecast instanceof HTMLElement && fusionPanel instanceof HTMLElement) {
     Array.from(forecast.children).forEach((child) => {

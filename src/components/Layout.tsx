@@ -237,8 +237,9 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
       {/* Top bar */}
       <header className="app-header flex items-center justify-between gap-3 px-6 py-3 backdrop-blur-sm relative z-30 layout-header-enter min-w-0">
         <div className="app-header__start flex items-center gap-4 min-w-0 flex-1">
-          {/* Logo / Brand */}
+          {/* Logo only — version lives in footer after PLATFORM */}
           <BlackwellBrandMark
+            showVersion={false}
             packageVersion={updateOfferings?.currentVersion ?? null}
           />
 
@@ -413,7 +414,13 @@ export default function Layout({ activeTab, onTabChange, children, providers = [
                 </span>
               )}
               <span>PLATFORM: WINDOWS</span>
-              
+              <span className="app-footer-status-sep" aria-hidden>
+                ·
+              </span>
+              <BlackwellBrandMark
+                variant="footer"
+                packageVersion={updateOfferings?.currentVersion ?? null}
+              />
             </>
           }
           foundrySlot={

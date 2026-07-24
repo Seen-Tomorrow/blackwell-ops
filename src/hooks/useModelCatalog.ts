@@ -268,7 +268,9 @@ export function useModelCatalog({
   });
   const [sortField, setSortField] = useState<SortField>(() => {
     const v = readStorage(KEYS.sortField) as SortField | null;
-    return v || "date";
+    // NAME removed from UI (search covers it) — migrate legacy storage
+    if (!v || v === "name") return "date";
+    return v;
   });
   const [sortDirection, setSortDirection] = useState<SortDirection>(() => {
     const v = readStorage(KEYS.sortDir);

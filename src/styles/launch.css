@@ -450,8 +450,12 @@
   min-width: 0;
 }
 
-/* Tiny dim control — HW body + OC only (launch dock is outside .launch-rail-tel) */
-.launch-rail-tel__dim {
+/*
+ * Shared dim control — HW monitor body + catalog list body.
+ * HW: launch dock stays full; catalog: search chrome stays full.
+ */
+.launch-rail-tel__dim,
+.panel-dim-control {
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -461,7 +465,8 @@
   user-select: none;
 }
 
-.launch-rail-tel__dim-label {
+.launch-rail-tel__dim-label,
+.panel-dim-control__label {
   font-family: "JetBrains Mono", ui-monospace, monospace;
   font-size: 7px;
   letter-spacing: 0.12em;
@@ -470,7 +475,8 @@
   line-height: 1;
 }
 
-.launch-rail-tel__dim-slider {
+.launch-rail-tel__dim-slider,
+.panel-dim-control__slider {
   -webkit-appearance: none;
   appearance: none;
   width: 52px;
@@ -481,7 +487,8 @@
   cursor: pointer;
 }
 
-.launch-rail-tel__dim-slider::-webkit-slider-thumb {
+.launch-rail-tel__dim-slider::-webkit-slider-thumb,
+.panel-dim-control__slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
   width: 9px;
@@ -493,7 +500,8 @@
   cursor: pointer;
 }
 
-.launch-rail-tel__dim-slider::-moz-range-thumb {
+.launch-rail-tel__dim-slider::-moz-range-thumb,
+.panel-dim-control__slider::-moz-range-thumb {
   width: 9px;
   height: 9px;
   border-radius: 50%;
@@ -502,7 +510,8 @@
   cursor: pointer;
 }
 
-.launch-rail-tel__dim-slider::-moz-range-track {
+.launch-rail-tel__dim-slider::-moz-range-track,
+.panel-dim-control__slider::-moz-range-track {
   height: 3px;
   border-radius: 2px;
   background: color-mix(in srgb, var(--theme-border) 70%, transparent);
@@ -875,19 +884,27 @@
   text-align: center;
 }
 
-/* HW monitor widgets — phosphor display texture (inherits data-display-texture from panel) */
+/*
+ * HW monitor widgets — same display-texture modes as forecast/fusion glass faces
+ * (DARK / LIGHT / CLEAN applied in fusion-display.css via
+ * `.launch-rail-tel[data-display-texture] .phosphor-display-surface`).
+ * Catalog quiet-wing desaturate is ONLY `[data-model-catalog] .catalog-list-panel`
+ * — never on this rail.
+ */
 .launch-rail-tel__total-cell.phosphor-display-surface,
 .launch-rail-tel__cpu.phosphor-display-surface,
 .launch-rail-tel__gpu.phosphor-display-surface,
 .gpu-topo-card.phosphor-display-surface {
   position: relative;
   overflow: hidden;
-  background: none;
+  /* Face fill comes from texture mode; no base black wash (that + LIGHT ink = veil) */
+  background: transparent;
   /*
    * Flat widget faces: no per-cell inset/glow (ugly on LIGHT + ARCTIC).
-   * Depth stays on tracks/bars/core cells only (see below).
+   * Glass recess stays on main phosphor-screen-inner only.
    */
   box-shadow: none !important;
+  filter: none;
 }
 
 /* Soften outer chrome borders on HW cells — hairline only, not theme-glow frames */

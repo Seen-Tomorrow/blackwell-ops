@@ -120,30 +120,32 @@
       transparent 3px,
       transparent 5px
     );
-  /* Fine horizontal brush strokes — distinct from grit stipple and diamond mesh. */
+  /*
+   * Horizontal brush — soft grain strokes only (no dark black line layer).
+   */
   --theme-industrial-texture-brush:
     linear-gradient(
       180deg,
-      color-mix(in srgb, var(--theme-bezel-edge-hi) 18%, transparent) 0%,
-      transparent 12%,
-      transparent 88%,
-      color-mix(in srgb, #000000 28%, transparent) 100%
+      color-mix(in srgb, var(--theme-bezel-edge-hi) 14%, transparent) 0%,
+      transparent 14%,
+      transparent 86%,
+      color-mix(in srgb, #000000 14%, transparent) 100%
     ),
     repeating-linear-gradient(
       0deg,
       transparent 0px,
-      transparent 2px,
-      color-mix(in srgb, var(--theme-bezel-grain) 85%, transparent) 2px,
-      transparent 2.5px,
-      transparent 4px
+      transparent 7px,
+      color-mix(in srgb, var(--theme-bezel-grain) 55%, transparent) 7px,
+      transparent 8px,
+      transparent 15px
     ),
     repeating-linear-gradient(
       0deg,
       transparent 0px,
-      transparent 4px,
-      color-mix(in srgb, #000000 12%, transparent) 4px,
-      transparent 4.5px,
-      transparent 8px
+      transparent 11px,
+      color-mix(in srgb, var(--theme-bezel-grain) 28%, transparent) 11px,
+      transparent 12px,
+      transparent 22px
     );
   --theme-industrial-texture-active: var(--theme-industrial-texture-sandblast);
   --theme-bezel-inset-hi: rgba(74, 222, 128, 0.07);

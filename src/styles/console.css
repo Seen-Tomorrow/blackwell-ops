@@ -1,5 +1,6 @@
 /* ── Blackwell Output Console (expanded / docked) ─── */
 .blackwell-output-console {
+  /* Fixed amber = ops channel identity (all themes). Accent only soft-mixes edges/body. */
   --boc-amber: #b87a00;
   --boc-body-bg: rgba(0, 0, 0, 0.7);
   --boc-shell-bg: #0a0f1a;
@@ -8,6 +9,7 @@
   --boc-text-muted: rgba(255, 255, 255, 0.25);
   --boc-sync: rgba(34, 211, 238, 0.5);
   --boc-border: #000000;
+  --boc-accent-edge: color-mix(in srgb, var(--theme-accent, #76b900) 28%, transparent);
   background: var(--boc-shell-bg);
   border: 1px solid var(--boc-border);
   color: var(--boc-text);
@@ -22,6 +24,7 @@
   overflow: hidden;
   border-bottom: none;
   box-shadow:
+    0 -1px 0 var(--boc-accent-edge),
     0 -4px 12px color-mix(in srgb, #000000 35%, transparent),
     0 -12px 32px color-mix(in srgb, #000000 45%, transparent);
 }
@@ -191,15 +194,26 @@
   background: var(--boc-body-bg);
 }
 
+/* Theme-tinted selection only — body stays dark, header stays amber */
+.blackwell-output-console__body ::selection,
+.app-footer-console__live-text ::selection {
+  background: color-mix(in srgb, var(--theme-accent, #76b900) 38%, transparent);
+  color: var(--theme-text, #fff);
+}
+
 .blackwell-output-console__footer {
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  border-top: 1px solid color-mix(
+    in srgb,
+    rgba(255, 255, 255, 0.1) 70%,
+    var(--theme-accent, transparent) 30%
+  );
   background: var(--boc-footer-bg);
   color: rgba(255, 255, 255, 0.4);
   flex-shrink: 0;
 }
 
 .boc-sync {
-  color: var(--boc-sync);
+  color: color-mix(in srgb, var(--boc-sync) 80%, var(--theme-accent, var(--boc-sync)) 20%);
 }
 
 .boc-empty {
@@ -214,18 +228,20 @@
 .boc-line--error { color: #f87171; }
 .boc-line--warning { color: #fbbf24; }
 .boc-line--success { color: #34d399; }
-.boc-line--command { color: #67e8f9; }
+.boc-line--command {
+  color: color-mix(in srgb, #67e8f9 78%, var(--theme-accent, #67e8f9) 22%);
+}
 .boc-line--highlight { color: #fde047; font-weight: 600; }
 
 .boc-refresh:hover {
-  color: #67e8f9;
+  color: color-mix(in srgb, #67e8f9 70%, var(--theme-accent, #67e8f9) 30%);
 }
 
 .boc-refresh:active {
   color: #ffffff;
 }
 
-/* ARCTIC — inverted console body/footer; amber header unchanged */
+/* Amber header fill is global — do not recolor per theme */
 
 
 /* ── Dock expanded panel slide-up animation ─── */
