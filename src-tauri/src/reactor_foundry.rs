@@ -355,24 +355,31 @@ fn drain_pipe_lines_blocking(
 /// Uses **std::process** + dedicated OS threads for pipes — not `tokio::process`.
 /// Project history: tokio + CREATE_NO_WINDOW is intermittent on Windows **release**
 /// (FIT/gguf/taskkill already moved off it). Symptom: child PID exists, zero output forever.
+///
+/// `raw_cmd_tail` is the full `/d /s /c ""batch""` string from
+/// [`crate::sidecar_elevate::cmd_script_launch`] — attached via `raw_arg` so install
+/// paths with spaces are not destroyed by `cmd /s` quote stripping.
 async fn run_foundry_batch_streaming(
     program: &std::path::Path,
-    args: &[String],
+    raw_cmd_tail: &str,
     cwd: &std::path::Path,
     app_handle: &tauri::AppHandle,
     state: &BuildState,
 ) -> Result<(Option<std::process::ExitStatus>, Vec<String>), String> {
+    use std::os::windows::process::CommandExt;
     use std::process::{Command, Stdio};
 
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
-    let mut child = Command::new(program)
-        .args(args)
+    let mut child_cmd = Command::new(program);
+    child_cmd
+        .raw_arg(raw_cmd_tail)
         .current_dir(cwd)
         .creation_flags(CREATE_NO_WINDOW)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut child = child_cmd
         .spawn()
         .map_err(|e| format!("Failed to start foundry batch ({}): {e}", program.display()))?;
 
@@ -1463,7 +1470,7 @@ async fn run_foundry_build_worker(
     }
 
     // Non-elevated. Spawn via std::process (not tokio) — see run_foundry_batch_streaming.
-    let (cfg_program, cfg_args) =
+    let (cfg_program, cfg_raw_tail) =
         crate::sidecar_elevate::cmd_script_launch(&cfg_batch_path);
     let state_cfg = require_build_state("cmake configure").await?;
 
@@ -1482,7 +1489,7 @@ async fn run_foundry_build_worker(
 
     let (cfg_status, cfg_stderr_lines) = match run_foundry_batch_streaming(
         &cfg_program,
-        &cfg_args,
+        &cfg_raw_tail,
         &src_dir,
         app_handle,
         &state_cfg,
@@ -1634,13 +1641,13 @@ async fn run_foundry_build_worker(
     }
 
     // Non-elevated — same std::process path as configure.
-    let (build_program, build_args) =
+    let (build_program, build_raw_tail) =
         crate::sidecar_elevate::cmd_script_launch(&build_batch_path);
     let state_for_stream = require_build_state("compilation").await?;
 
     let (build_status, stderr_text) = match run_foundry_batch_streaming(
         &build_program,
-        &build_args,
+        &build_raw_tail,
         &src_dir,
         app_handle,
         &state_for_stream,

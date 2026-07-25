@@ -11,8 +11,10 @@ pub async fn playground_open_html_in_browser(html: String) -> Result<String, Str
 
     #[cfg(windows)]
     {
+        // Quote URL/path: %TEMP% often has spaces (e.g. C:\Users\First Last\AppData\Local\Temp).
+        let path_arg = format!("\"{}\"", path.to_string_lossy());
         std::process::Command::new("cmd")
-            .args(["/C", "start", "", &path.to_string_lossy()])
+            .args(["/C", "start", "", &path_arg])
             .spawn()
             .map_err(|e| format!("Failed to open browser: {e}"))?;
     }

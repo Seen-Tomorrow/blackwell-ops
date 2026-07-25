@@ -333,7 +333,7 @@ impl EngineStack {
         let pid = child.id();
         // OS safety net: job close on app death kills this engine even if we skip explicit teardown.
         crate::engine_job::assign_engine_to_job(pid, &config.alias, slot_idx, config.port);
-        let launch_cmd = format!("{} {}", binary_path.display(), cmd_args.join(" "));
+        let launch_cmd = crate::engine_utils::format_cmd_line(binary_path, &cmd_args);
         crate::session_log::record_launch(
             slot_idx,
             &config.alias,

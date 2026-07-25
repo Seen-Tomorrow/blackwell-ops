@@ -1,6 +1,10 @@
-import { useMemo, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { ModelEntry, StackEntry } from "../lib/types";
 import { DEFAULT_BINARY_PROFILE, ENV_META, type Env } from "../lib/foundry_constants";
+import {
+  EVENTS,
+  type AtomcodeHarnessHighlightDetail,
+} from "../lib/events";
 
 function runtimeProfileLabel(binaryProfile?: string): string {
   const key = (binaryProfile || DEFAULT_BINARY_PROFILE).toLowerCase() as Env;
@@ -107,6 +111,20 @@ interface RunningEnginesPanelProps {
   variant?: "default" | "rail";
 }
 
+function atomcodeRoleForPort(
+  port: number,
+  hl: AtomcodeHarnessHighlightDetail | null,
+): "brain" | "worker" | "solo" | null {
+  if (!hl?.open) return null;
+  if (hl.brainPort != null && port === hl.brainPort) return "brain";
+  if (hl.workerPort != null && port === hl.workerPort) return "worker";
+  if (hl.soloPort != null && port === hl.soloPort && hl.brainPort == null) return "solo";
+  // Twin open: non-brain non-worker still live — no role badge
+  if (hl.brainPort != null) return null;
+  if (hl.soloPort != null && port === hl.soloPort) return "solo";
+  return null;
+}
+
 export default function RunningEnginesPanel({
   stack,
   models,
@@ -114,6 +132,17 @@ export default function RunningEnginesPanel({
   onSelectEngine,
   variant = "default",
 }: RunningEnginesPanelProps) {
+  const [atomHl, setAtomHl] = useState<AtomcodeHarnessHighlightDetail | null>(null);
+
+  useEffect(() => {
+    const onHl = (e: Event) => {
+      const detail = (e as CustomEvent<AtomcodeHarnessHighlightDetail>).detail;
+      setAtomHl(detail?.open ? detail : null);
+    };
+    window.addEventListener(EVENTS.atomcodeHarnessHighlight, onHl);
+    return () => window.removeEventListener(EVENTS.atomcodeHarnessHighlight, onHl);
+  }, []);
+
   const instances = useMemo(() => {
     const result: { entry: StackEntry; modelName: string; quant: string; sizeStr: string; vramUsedGb?: number }[] = [];
     for (const s of stack) {
@@ -141,15 +170,35 @@ export default function RunningEnginesPanel({
         <div className="launch-rail-engines__list flex flex-col gap-1">
           {instances.map((item) => {
             const isThisSelected = selectedSlotIdx === item.entry.idx;
+            const role = atomcodeRoleForPort(item.entry.port, atomHl);
+            const roleClass =
+              role === "brain"
+                ? " atomcode-engine--brain"
+                : role === "worker"
+                  ? " atomcode-engine--worker"
+                  : role === "solo"
+                    ? " atomcode-engine--solo"
+                    : atomHl?.open
+                      ? " atomcode-engine--live"
+                      : "";
             return (
               <button
                 key={`slot-${item.entry.idx}`}
                 type="button"
                 onClick={() => onSelectEngine(item.entry.idx)}
+                data-engine-port={item.entry.port}
+                data-engine-slot={item.entry.idx}
                 className={`launch-rail-engine-chip w-full text-left rounded-sm px-2 py-1 border flex items-center gap-1.5 min-w-0 transition-colors ${
                   isThisSelected ? "launch-rail-engine-chip--selected" : ""
-                }`}
+                }${roleClass}${isThisSelected && atomHl?.open ? " atomcode-engine--picked" : ""}`}
               >
+                {role && (
+                  <span
+                    className={`atomcode-engine-role-chip atomcode-engine-role-chip--${role} shrink-0`}
+                  >
+                    {role === "brain" ? "1·B" : role === "worker" ? "2·W" : "●"}
+                  </span>
+                )}
                 <span className="text-[8px] font-mono text-white/80 shrink-0 tabular-nums">
                   :{item.entry.port}
                 </span>
@@ -191,18 +240,38 @@ export default function RunningEnginesPanel({
           const isThisSelected = selectedSlotIdx === item.entry.idx;
           const isNvfp = item.quant.toLowerCase().includes("nvfp");
           const sourceLabel = runtimeEngineSourceLabel(item.entry);
+          const role = atomcodeRoleForPort(item.entry.port, atomHl);
+          const roleClass =
+            role === "brain"
+              ? " atomcode-engine--brain"
+              : role === "worker"
+                ? " atomcode-engine--worker"
+                : role === "solo"
+                  ? " atomcode-engine--solo"
+                  : atomHl?.open
+                    ? " atomcode-engine--live"
+                    : "";
           return (
             <div
               key={`slot-${item.entry.idx}`}
               onClick={() => onSelectEngine(item.entry.idx)}
+              data-engine-port={item.entry.port}
+              data-engine-slot={item.entry.idx}
               className={`cursor-pointer rounded-sm px-2.5 py-1.5 border flex flex-col gap-0.5 min-w-0 running-engine-card engine-panel-enter ${
                 isThisSelected
                   ? "running-engine-card-selected"
                   : ""
-              }`}
+              }${roleClass}${isThisSelected && atomHl?.open ? " atomcode-engine--picked" : ""}`}
             >
               {/* Row 1: fixed-width alias → model names align across cards */}
               <div className="flex items-center gap-2 min-w-0 w-full">
+                {role && (
+                  <span
+                    className={`atomcode-engine-role-chip atomcode-engine-role-chip--${role} shrink-0`}
+                  >
+                    {role === "brain" ? "1·BRAIN" : role === "worker" ? "2·WORKER" : "SOLO"}
+                  </span>
+                )}
                 <span
                   className="running-engine-alias font-mono text-[9px] text-white/70 shrink-0 truncate"
                   title={item.entry.alias}

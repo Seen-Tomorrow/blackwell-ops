@@ -101,6 +101,47 @@ Blackwell Ops treats faster generation as a first-class feature, not a hidden CL
 - **Multi-engine stack** — orchestrate many `llama-server` instances (or parallel slots) with a shared config system
 - **Fusion telemetry** — real-time metrics from stderr + /slots without extra overhead
 
+## Technical deep-dive
+
+<details><summary><strong>Architecture</strong> — click to expand</summary>
+
+**Process model**
+- Each `llama-server` instance runs in a private **Job Object** (`engine_job`, `KILL_ON_JOB_CLOSE`)
+- Teardown is **PID-only** via `stop_child_fast` — never port-based carpet-bombing
+- Launch verifies orphan status via `engine_port_lock::reclaim_our_ghost_or_fail` (checked against verified orphans only)
+- App exit: `teardown_all_for_app_exit` → `std::process::exit(0)` (skips Tauri Drop to avoid heap corruption `0xC0000374`)
+
+**Fusion telemetry**
+- Single constant `TELEMETRY_TICK_MS` drives: stderr batch flush, `/slots` poll, and `RENDER_INTERVAL_MS`
+- Currently 25ms (~80 HTTP polls/s per active engine)
+- Merges `NewPrompt` (prefill) + `/slots` (decode) metrics — `n_decoded` compared per-request, not absolute
+- Spec flags respect per-param `hidden` from ConfigPage — spec group fully omitted from CLI when OFF
+
+**Foundry**
+- CMake cache retained in `work/` when fingerprint matches (`.blackwell-foundry-cache-key` + `CMakeCache.txt`)
+- Durable runtime binary: `foundry/artifacts/.../Release/`
+- Supports VS2022 (CUDA 12.8 / `stable`) and VS2026 (CUDA 13.3 / `frontier`)
+
+**Speculative decoding**
+- MTP: draft tokens baked into main GGUF (`nextn` layers) — single-slot best
+- DFlash: separate lightweight draft, family-aware pairing (Gemma/Qwen) via `llama-fit-params`
+- Toggle state reads all group params; rows use `specVisibleParams` (respects `hidden`)
+
+**Performance**
+| Metric | Value |
+|---|---|
+| Core binary | ~14 MB |
+| App RAM (idle) | ~40 MB |
+| Max concurrent engines | 64 |
+| Stress test RAM overhead | ~400 MB (64 instances) |
+| Telemetry poll rate | 25ms per active engine |
+| Parallel slot throughput (8× Qwen3.6 27B) | 330+ TPS |
+| 2× RTX PRO tensor split | 850 TPS combined |
+
+</details>
+
+---
+
 ## Why Windows — on purpose
 
 - **Native Rust, Win32/Tauri shell** — no Electron bloat, no Linux subsystem tax  
@@ -162,11 +203,9 @@ A short auto-playing demo GIF lives in the Quick Start section below.
 
 First-run onboarding walks the rest.
 
-**Quick demo (replace the image below with a short `onboarding-demo.gif` for auto-playing inline preview):**
+**Quick demo** — click the thumbnail to play (30s MP4):
 
-![Onboarding demo](docs/screenshots/Dashboard.png)
-
-[Full video (MP4, 25s)](https://raw.githubusercontent.com/Seen-Tomorrow/blackwell-ops/main/docs/videos/blackwell_ops_onboarding.mp4)
+[![Blackwell Ops onboarding](docs/gifs/blackwell_ops_onboarding-thumb.gif)](https://raw.githubusercontent.com/Seen-Tomorrow/blackwell-ops/main/docs/videos/blackwell_ops_onboarding.mp4)
 
 ### Requirements
 

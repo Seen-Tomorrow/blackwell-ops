@@ -331,21 +331,58 @@ fn spawn_privileged(
     Ok(result)
 }
 
+/// System32 `cmd.exe` (not PATH `cmd`) — used for Foundry batch and other hidden scripts.
+pub fn system_cmd_exe() -> PathBuf {
+    PathBuf::from(r"C:\Windows\System32\cmd.exe")
+}
+
+/// Build the `/d /s /c ""<batch>""` tail for `cmd.exe`.
+///
+/// **Why double quotes:** `cmd /s /c` always strips the first and last `"` from the
+/// remainder after `/c`. A single quoted path from CreateProcess becomes unquoted
+/// after that strip, so install dirs with spaces break:
+/// `C:\AI-MASTER\Blackwell OPS portable\...\_build_cfg.bat` →
+/// `'C:\AI-MASTER\Blackwell' is not recognized as an internal or external command`.
+///
+/// Literal command line must be:
+/// `cmd.exe /d /s /c ""C:\path with spaces\script.bat""`
+/// After `/s` strip: `"C:\path with spaces\script.bat"` — one token.
+///
+/// Attach with [`CommandExt::raw_arg`] (see [`apply_cmd_script_raw_arg`]) so Rust's
+/// normal argv quoting does not turn inner quotes into `\"` escapes that cmd would
+/// leave literal.
+pub fn cmd_script_raw_tail(batch_path: &Path) -> String {
+    let batch = path_for_cmd(batch_path)
+        .to_string_lossy()
+        .replace('"', "");
+    // /d = skip AutoRun registry; /s = strip outer quotes for /c (we pair with "")
+    format!(r#"/d /s /c ""{}"""#, batch)
+}
+
+/// Append Foundry/script launch args so paths with spaces work under `cmd /s /c`.
+#[cfg(windows)]
+pub fn apply_cmd_script_raw_arg(cmd: &mut std::process::Command, batch_path: &Path) {
+    use std::os::windows::process::CommandExt;
+    cmd.raw_arg(cmd_script_raw_tail(batch_path));
+}
+
+#[cfg(not(windows))]
+pub fn apply_cmd_script_raw_arg(cmd: &mut std::process::Command, batch_path: &Path) {
+    let batch = path_for_cmd(batch_path).to_string_lossy().to_string();
+    cmd.args(["/d", "/s", "/c", &batch]);
+}
+
 /// Launch `cmd /c <batch>` **without** elevation (plain cmd, no gsudo).
 ///
 /// Foundry configure/build **must** stay non-elevated: wrapping cmake in gsudo breaks
 /// CMake 4.3 CUDA link-line probing (nvcc ABI check) and forces a UAC prompt for every build.
 /// gsudo is only for GPU control (nvidia-smi / Inspector), not Foundry.
 ///
-/// Uses System32 `cmd.exe` (not PATH `cmd`) and `/d /s /c` so AutoRun / odd PATH
-/// cannot wedge the first seconds of a hidden batch on Windows release builds.
-pub fn cmd_script_launch(batch_path: &Path) -> (PathBuf, Vec<String>) {
-    let batch_arg = path_for_cmd(batch_path).to_string_lossy().to_string();
-    (
-        PathBuf::from(r"C:\Windows\System32\cmd.exe"),
-        // /d = skip AutoRun registry, /s = strip quotes for /c string parsing
-        vec!["/d".to_string(), "/s".to_string(), "/c".to_string(), batch_arg],
-    )
+/// Prefer [`apply_cmd_script_raw_arg`] when building a `Command` directly so spaced
+/// install paths (e.g. `Blackwell OPS portable`) work. This tuple form returns the
+/// program plus a **single** raw_arg tail — do **not** pass the tail through `.args()`.
+pub fn cmd_script_launch(batch_path: &Path) -> (PathBuf, String) {
+    (system_cmd_exe(), cmd_script_raw_tail(batch_path))
 }
 
 /// Run `program` with admin rights. Uses gsudo when not elevated.
@@ -392,9 +429,107 @@ pub fn run_privileged_batch(
 
     std::fs::write(&script_path, script).map_err(|e| format!("write priv script: {e}"))?;
 
-    let cmd = PathBuf::from(r"C:\Windows\System32\cmd.exe");
-    let script_arg = path_for_cmd(&script_path).to_string_lossy().to_string();
-    let result = run_privileged(app, &cmd, &["/c".to_string(), script_arg]);
+    // Same space-safe /c quoting as Foundry: config_dir can live under "…\Blackwell OPS\…".
+    let result = run_privileged_cmd_script(app, &script_path);
     let _ = std::fs::remove_file(&script_path);
     result
+}
+
+/// Run a `.cmd`/`.bat` via System32 `cmd` with admin rights when needed.
+/// Uses space-safe `/d /s /c ""path""` quoting (see [`cmd_script_raw_tail`]).
+pub fn run_privileged_cmd_script(
+    app: &AppHandle,
+    batch_path: &Path,
+) -> Result<PrivilegedOutput, String> {
+    let cmd_exe = system_cmd_exe();
+    let raw = cmd_script_raw_tail(batch_path);
+    // One argv after cmd.exe so CreateProcess / gsudo keep the double-quoted /c form intact.
+    if is_process_elevated() {
+        return spawn_privileged_raw(None, &cmd_exe, &raw, None);
+    }
+    let gsudo = stage_gsudo(app)?;
+    spawn_privileged_raw(Some(&gsudo), &cmd_exe, &raw, None)
+}
+
+fn spawn_privileged_raw(
+    gsudo: Option<&Path>,
+    program: &Path,
+    raw_arg: &str,
+    cwd: Option<&Path>,
+) -> Result<PrivilegedOutput, String> {
+    let program = path_for_cmd(program);
+    let output = crate::engine_utils::run_hidden_output(|| {
+        let mut cmd = if let Some(gsudo_path) = gsudo {
+            let gsudo_path = path_for_cmd(gsudo_path);
+            let mut c = std::process::Command::new(&gsudo_path);
+            // -w = wait. Pass program then a single raw /d /s /c ""path"" tail.
+            c.arg("-w").arg(&program);
+            #[cfg(windows)]
+            {
+                use std::os::windows::process::CommandExt;
+                c.raw_arg(raw_arg);
+            }
+            #[cfg(not(windows))]
+            {
+                c.arg(raw_arg);
+            }
+            c
+        } else {
+            let mut c = std::process::Command::new(&program);
+            #[cfg(windows)]
+            {
+                use std::os::windows::process::CommandExt;
+                c.raw_arg(raw_arg);
+            }
+            #[cfg(not(windows))]
+            {
+                c.arg(raw_arg);
+            }
+            c
+        };
+        if let Some(dir) = cwd {
+            cmd.current_dir(path_for_cmd(dir));
+        }
+        cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+        cmd
+    })
+    .map_err(|e| {
+        if gsudo.is_some() {
+            format!("gsudo launch failed: {e}")
+        } else {
+            format!("{} failed: {e}", program.display())
+        }
+    })?;
+
+    let result = PrivilegedOutput::from(output);
+    if gsudo.is_some() && is_uac_denied_output(&result) {
+        return Err(UAC_DENIED_MESSAGE.into());
+    }
+    Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn cmd_script_raw_tail_double_quotes_paths_with_spaces() {
+        let p = PathBuf::from(
+            r"C:\AI-MASTER\Blackwell OPS portable\foundry\work\_build_cfg_frontier.bat",
+        );
+        let tail = cmd_script_raw_tail(&p);
+        assert_eq!(
+            tail,
+            r#"/d /s /c ""C:\AI-MASTER\Blackwell OPS portable\foundry\work\_build_cfg_frontier.bat"""#
+        );
+    }
+
+    #[test]
+    fn cmd_script_launch_returns_system32_cmd() {
+        let (prog, tail) = cmd_script_launch(Path::new(r"C:\Blackwell Ops\x.bat"));
+        assert_eq!(prog, PathBuf::from(r"C:\Windows\System32\cmd.exe"));
+        assert!(tail.starts_with(r#"/d /s /c """#));
+        assert!(tail.ends_with('"'));
+    }
 }

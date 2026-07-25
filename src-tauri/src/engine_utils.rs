@@ -100,8 +100,24 @@ pub fn find_provider_binary(cfg: &AppConfig, provider_id: &str, binary_profile: 
 
 /// Quote an executable path for debug/CMD display — safe when install dir contains spaces.
 pub fn format_debug_executable(path: &Path) -> String {
-    let rendered = path.display().to_string();
-    format!("\"{}\"", rendered.replace('"', "\\\""))
+    format_cmd_arg(&path.display().to_string())
+}
+
+/// Quote one argv token for a `cmd.exe` / batch command line (spaces, empty, specials).
+/// Uses cmd doubling of embedded `"` (`""`), not C-style `\"`.
+pub fn format_cmd_arg(arg: &str) -> String {
+    // Always quote so model paths under "…\My Models\…" survive join → batch.
+    format!("\"{}\"", arg.replace('"', "\"\""))
+}
+
+/// Full command line for logs / NoBSproof batch: quoted exe + quoted args.
+pub fn format_cmd_line(exe: &Path, args: &[String]) -> String {
+    let mut parts = Vec::with_capacity(1 + args.len());
+    parts.push(format_debug_executable(exe));
+    for a in args {
+        parts.push(format_cmd_arg(a));
+    }
+    parts.join(" ")
 }
 
 /// Compute CUDA_VISIBLE_DEVICES mask from config + detected GPU count.

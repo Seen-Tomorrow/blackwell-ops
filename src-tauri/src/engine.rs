@@ -402,11 +402,8 @@ pub async fn launch_engine(
         Some(template.spawn_profile.fusion_adapter.as_str()),
     );
     let cmd_args = template.build_command(&config, &gpu_mask, &final_user_params);
-    let launch_cmd = format!(
-        "{} {}",
-        engine_utils::format_debug_executable(&binary_path),
-        cmd_args.join(" ")
-    );
+    // Quoted for console + session logs when install/model dirs contain spaces.
+    let launch_cmd = engine_utils::format_cmd_line(&binary_path, &cmd_args);
 
     if config.extra_params.get("__test_args").is_some() {
         app.blackwell_output_console_manager.emit_line_to_category(
@@ -904,11 +901,8 @@ fn assemble_launch_command(
     let gpu_mask = engine_utils::compute_gpu_mask(&config, gpu_count, test_has_split);
     let final_user_params = guard_speculative_decoding(user_params, &config.model_path, &config);
     let cmd_args = template.build_command(&config, &gpu_mask, &final_user_params);
-    let launch_cmd = format!(
-        "{} {}",
-        engine_utils::format_debug_executable(&binary_path),
-        cmd_args.join(" ")
-    );
+    // Must be cmd-safe: NoBSproof runs this string inside a .cmd with spaces possible.
+    let launch_cmd = engine_utils::format_cmd_line(&binary_path, &cmd_args);
 
     let model_dir = std::path::Path::new(&config.model_path)
         .parent()
@@ -1045,9 +1039,10 @@ fn spawn_nobsproof_cmd_window(script_path: &std::path::Path) -> Result<(), Strin
     const CREATE_NEW_CONSOLE: u32 = 0x00000010;
 
     let script = script_path.to_string_lossy().to_string();
+    // PowerShell single-quoted literal: double embedded single quotes.
     let script_ps = script.replace('\'', "''");
 
-    let mut spawn_hidden = |program: &str, args: &[&str]| -> Result<(), std::io::Error> {
+    let spawn_hidden = |program: &str, args: &[&str]| -> Result<(), std::io::Error> {
         std::process::Command::new(program)
             .args(args)
             .stdin(Stdio::null())
@@ -1059,8 +1054,9 @@ fn spawn_nobsproof_cmd_window(script_path: &std::path::Path) -> Result<(), Strin
     };
 
     // 1) PowerShell Start-Process — fully detached visible console, no job breakaway needed.
+    // ArgumentList as an array keeps paths with spaces as one argument to cmd /k.
     let ps_cmd = format!(
-        "$p='{script_ps}'; Start-Process -FilePath cmd.exe -ArgumentList '/k',$p -WindowStyle Normal"
+        "$p='{script_ps}'; Start-Process -FilePath cmd.exe -ArgumentList @('/k', $p) -WindowStyle Normal"
     );
     if spawn_hidden(
         "powershell",
@@ -1079,9 +1075,11 @@ fn spawn_nobsproof_cmd_window(script_path: &std::path::Path) -> Result<(), Strin
     }
 
     // 2) cmd start — empty quoted title ("") is required; unquoted first token = program name.
+    // Quote the script path so "…\Blackwell OPS\…\script.cmd" is one token after start.
+    let quoted_script = format!("\"{script}\"");
     if spawn_hidden(
         "cmd",
-        &["/C", "start", "", "/k", &script],
+        &["/C", "start", "", "/k", &quoted_script],
     )
     .is_ok()
     {
@@ -1089,10 +1087,11 @@ fn spawn_nobsproof_cmd_window(script_path: &std::path::Path) -> Result<(), Strin
     }
 
     // 3) Last resort — direct console (may share dev terminal stderr; still usable).
-    std::process::Command::new("cmd")
-        .args(["/k", &script])
-        .creation_flags(CREATE_NEW_CONSOLE)
-        .spawn()
+    // raw_arg so /k keeps a path with spaces as one command after cmd's quote rules.
+    let mut last = std::process::Command::new(crate::sidecar_elevate::system_cmd_exe());
+    last.raw_arg(format!(r#"/k ""{}"""#, script.replace('"', "")))
+        .creation_flags(CREATE_NEW_CONSOLE);
+    last.spawn()
         .map(|_| ())
         .map_err(|e| format!("Failed to open CMD window: {}", e))
 }

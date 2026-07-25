@@ -69,7 +69,18 @@ export const EVENTS = {
   hwMonitorOpenChanged: `${STORAGE_PREFIX}hw-monitor-open-changed`,
   /** Dev: fake update version toggled — refresh GitHub offerings. */
   updateOfferingsRefresh: `${STORAGE_PREFIX}update-offerings-refresh`,
+  /** AtomCode harness open — highlight running engines (brain/worker/solo roles). */
+  atomcodeHarnessHighlight: `${STORAGE_PREFIX}atomcode-harness-highlight`,
 } as const;
+
+/** Detail for `EVENTS.atomcodeHarnessHighlight`. */
+export type AtomcodeHarnessHighlightDetail = {
+  open: boolean;
+  soloPort?: number | null;
+  brainPort?: number | null;
+  workerPort?: number | null;
+  selectedSlotIdx?: number | null;
+};
 
 export type AppEventName = (typeof EVENTS)[keyof typeof EVENTS];
 

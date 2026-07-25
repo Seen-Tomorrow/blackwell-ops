@@ -594,6 +594,11 @@
   gap: 0.4rem;
 }
 
+/* Foundry chip · SYSTEM NOMINAL · IPC — pinned far right (live line is width-capped) */
+.app-footer-status-right {
+  gap: 0.45rem;
+}
+
 .app-footer-status-sep {
   opacity: 0.35;
   user-select: none;
@@ -642,7 +647,8 @@
 
 
 .app-footer-console__live {
-  /* Cap width — was flex:1 and stole the status bar from PLATFORM / version / stats */
+  /* Cap width — was unconstrained flex:1 and stole space from PLATFORM / version / stats.
+     Pair with .app-footer-status-right { ml-auto } so NOMINAL/IPC stay far right. */
   flex: 1 1 10rem;
   max-width: min(36vw, 20rem);
   min-width: 0;

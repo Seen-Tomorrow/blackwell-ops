@@ -744,13 +744,14 @@ endlocal\r\n",
 }
 
 /// Run a `.cmd`/`.bat` with no console window (CREATE_NO_WINDOW).
+/// Space-safe: app install dirs may contain spaces (`Blackwell OPS portable`, etc.).
 fn spawn_silent_cmd_script(script: &Path) -> Result<(), String> {
     use std::os::windows::process::CommandExt;
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
-    std::process::Command::new("cmd.exe")
-        .args(["/C", &script.to_string_lossy()])
-        .creation_flags(CREATE_NO_WINDOW)
+    let mut cmd = std::process::Command::new(crate::sidecar_elevate::system_cmd_exe());
+    crate::sidecar_elevate::apply_cmd_script_raw_arg(&mut cmd, script);
+    cmd.creation_flags(CREATE_NO_WINDOW)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())

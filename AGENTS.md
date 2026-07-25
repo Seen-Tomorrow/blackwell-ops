@@ -36,6 +36,12 @@ Traps and invariants only — not a code map. Read the source for flows, schemas
 
 **Windows detached console spawn** — Never use `CREATE_BREAKAWAY_FROM_JOB`. Cargo/Tauri/dev hosts put the process in a job that denies breakaway → immediate `Access is denied (os error 5)`. Detached visible windows: `Start-Process` (or `cmd start "" …`) via a `CREATE_NO_WINDOW` helper — see `engine::spawn_nobsproof_cmd_window` and `distribution::spawn_detached_chain`. `CREATE_NEW_CONSOLE` alone is last resort; breakaway is never OK. Pack/ship do not need gsudo/admin.
 
+**Windows paths with spaces** — Users may install anywhere (incl. `"C:\AI-MASTER\Blackwell OPS portable"`). NSIS default folder is `Blackwell-Ops` (no space) for hygiene only — **do not** require space-free paths. Symptom of broken quoting: `'C:\…\Blackwell' is not recognized as an internal or external command` at Foundry cmake configure.
+
+- **`cmd /s /c` batch launch** — `/s` strips the outer quotes CreateProcess adds. A bare path arg becomes unquoted and splits on spaces. Always launch `.cmd`/`.bat` via `sidecar_elevate::cmd_script_raw_tail` / `apply_cmd_script_raw_arg` / `cmd_script_launch` → literal `cmd /d /s /c ""path\to\script.bat""` attached with `CommandExt::raw_arg` (not `.args()` on the tail). Same for app-update helper, GPU priv scripts, silent update spawn. Do **not** reintroduce `cmd … /c` + unquoted path or `.args(["/c", path])`.
+- **Command lines embedded in `.cmd`** — Prefer `Command::new(exe).args([...])` (CreateProcess argv — spaces OK). When a full line must run inside a batch (Foundry cmake, NoBSproof, session `LAUNCH_CMD`), quote every token: `engine_utils::format_cmd_line` / `format_cmd_arg` / `format_debug_executable`. Never `binary.display()` + `args.join(" ")` without quoting. Inside batches: `call "vsdevcmd"`, `set "PATH=…"`, cmake `-B "…" -S "…"` already.
+- **Safe patterns already** — Engine/FIT/GGUF spawn via argv; explorer `/select,` + path as separate args; 7z `-o{dest}` as one argv; GPU smi/inspector via `quote_exe` in priv batch; PS `Start-Process -ArgumentList @(...)` with single-quoted paths.
+
 **Release asset naming** — `CORE_*` = App `.7z`, Full NSIS Setup, optional `CORE_ggml-master-{profile}.7z`. `PLUGIN_*` = optional engine packs. **Pack Full** stages CORE only (App + Setup with Master) — never bulk PLUGIN packs. Plugins via explicit Pack+Ship per provider. Ship full filters to CORE assets. Client accepts legacy unprefixed names.
 
 **App Pack/Ship identity** — DISTRIBUTION Pack+Ship must never publish a DEV PE under a REL tag. Pack scrubbs `TAURI_CONFIG`, forces `cargo clean -p blackwell-ops --release`, builds with default `tauri.conf.json` only (never merge `tauri.conf.dev.json`), then asserts PE ProductName=`Blackwell Ops`, FileVersion=conf version, no `.app.dev`/`:1420`. Ship re-asserts App `.7z` contents before `gh release`. Header semver uses runtime `package_info` (`get_app_package_version`), not Vite `__TAURI_VERSION__` alone.
@@ -47,6 +53,8 @@ Traps and invariants only — not a code map. Read the source for flows, schemas
 ## Foundry paths
 
 **Foundry `work/` CMake cache** — Retained between builds for all users when the configure fingerprint matches (`.blackwell-foundry-cache-key` + `CMakeCache.txt`). Fingerprint miss, configure failure (cold path), or CLEAR CACHE wipes the tree. `foundry/artifacts/.../Release/` is the only durable **runtime** binary location. Provider `binary_path` / `binary_path_per_env` must point at artifacts after a foundry build, never at cmake temp output under `work/`.
+
+**Foundry batch spawn** — Configure/build write `_build_cfg_*.bat` / `_build_run_*.bat` under `work/` then run via `cmd_script_launch` + `run_foundry_batch_streaming` (`raw_arg` tail). Do not spawn those batches with plain `cmd /c path` — install dirs with spaces fail before cmake starts (see **Windows paths with spaces** above).
 
 ---
 ## APP/engine logs

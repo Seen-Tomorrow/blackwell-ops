@@ -52,6 +52,7 @@ mod foundry_toolchain;
 mod reactor_foundry;
 mod output_console;
 mod playground;
+mod atomcode;
 mod gpu_control;
 mod sidecar_elevate;
 
@@ -939,6 +940,11 @@ async fn main() {
             engine::get_template_for_provider,
             engine::preview_launch_command,
             engine::open_nobsproof_cmd,
+            atomcode::atomcode_status,
+            atomcode::atomcode_accept_disclaimer,
+            atomcode::atomcode_set_project,
+            atomcode::atomcode_install,
+            atomcode::atomcode_launch,
             intel::fetch_github_intel,
             telemetry::scan_gpus,
             telemetry::scan_cpu,

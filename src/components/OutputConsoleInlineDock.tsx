@@ -67,22 +67,28 @@ export default function OutputConsoleInlineDock({
           </div>
         </div>
 
-        {foundrySlot ? (
-          <div className="flex items-center shrink-0">{foundrySlot}</div>
-        ) : null}
+        {/*
+          Live line is width-capped (see .app-footer-console__live). ml-auto keeps
+          foundry / SYSTEM NOMINAL / IPC on the far right instead of packing mid-bar.
+        */}
+        <div className="app-footer-status-right flex items-center gap-2 shrink-0 ml-auto min-w-0">
+          {foundrySlot ? (
+            <div className="flex items-center shrink-0">{foundrySlot}</div>
+          ) : null}
 
-        {isExpanded ? (
-          <button
-            type="button"
-            className="app-footer-console__collapse shrink-0"
-            onClick={handleToggle}
-            title="Close console"
-          >
-            ▼
-          </button>
-        ) : null}
+          {isExpanded ? (
+            <button
+              type="button"
+              className="app-footer-console__collapse shrink-0"
+              onClick={handleToggle}
+              title="Close console"
+            >
+              ▼
+            </button>
+          ) : null}
 
-        <div className="flex items-center gap-2 shrink-0">{statusRight}</div>
+          <div className="flex items-center gap-2 shrink-0">{statusRight}</div>
+        </div>
       </div>
     </div>
   );

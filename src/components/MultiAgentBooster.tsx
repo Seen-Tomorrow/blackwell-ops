@@ -1,5 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
+import { invoke } from "@tauri-apps/api/core";
 import type { SpecCapability } from "../lib/specDraft";
+import type { StackEntry } from "../lib/types";
+import {
+  ATOMCODE_DISCLAIMER,
+  type AtomcodeLaunchRequest,
+  type AtomcodeLaunchResult,
+  type AtomcodeStatus,
+} from "../lib/atomcode";
+import { dispatchAppEvent, EVENTS } from "../lib/events";
 import {
   BRAINS_OPTIONS,
   THINK_OPTIONS,
@@ -93,6 +103,13 @@ export interface MultiAgentBoosterProps {
   onCtxChange?: (v: number) => void;
   ctxPerSlot?: number;
   ctxSlotCount?: number;
+  /**
+   * Live engine stack — used for AtomCode one-click (solo against RUNNING, or Brain+Workers).
+   * When omitted, AtomCode uses port/modelId config values only.
+   */
+  stack?: StackEntry[];
+  /** Preferred running slot (e.g. selected engine). */
+  preferredSlotIdx?: number | null;
 }
 
 export default function MultiAgentBooster({
@@ -132,9 +149,20 @@ export default function MultiAgentBooster({
   onCtxChange,
   ctxPerSlot,
   ctxSlotCount = 1,
+  stack = [],
+  preferredSlotIdx = null,
 }: MultiAgentBoosterProps) {
   const [harnessOpen, setHarnessOpen] = useState(false);
+  /** Manual OpenAI snippets — collapsed by default; AtomCode is the primary surface. */
+  const [manualOpen, setManualOpen] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [atomStatus, setAtomStatus] = useState<AtomcodeStatus | null>(null);
+  const [atomBusy, setAtomBusy] = useState<"idle" | "install" | "launch">("idle");
+  const [atomError, setAtomError] = useState<string | null>(null);
+  const [atomMsg, setAtomMsg] = useState<string | null>(null);
+  const [showDisclaimer, setShowDisclaimer] = useState(false);
+  /** Confirm modal before external launch. */
+  const [confirmMode, setConfirmMode] = useState<"solo" | "brain_workers" | null>(null);
   const hero = layout === "hero";
   /** Single assisted density — Essentials/Full no longer reflow padding. */
   const densityUnified = !hero;
@@ -347,6 +375,304 @@ export default function MultiAgentBooster({
       /* ignore */
     }
   }, []);
+
+  const refreshAtomStatus = useCallback(async () => {
+    try {
+      const s = await invoke<AtomcodeStatus>("atomcode_status");
+      setAtomStatus(s);
+      return s;
+    } catch (e) {
+      setAtomError(String(e));
+      return null;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!harnessOpen) return;
+    void refreshAtomStatus();
+  }, [harnessOpen, refreshAtomStatus]);
+
+  useEffect(() => {
+    if (!harnessOpen) {
+      setManualOpen(false);
+      setConfirmMode(null);
+    }
+  }, [harnessOpen]);
+
+  useEffect(() => {
+    if (!confirmMode) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && atomBusy === "idle") setConfirmMode(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [confirmMode, atomBusy]);
+
+  const runningEngines = useMemo(() => {
+    return stack
+      .filter((s) => s.status === "RUNNING" && s.port > 0)
+      .slice()
+      .sort((a, b) => a.idx - b.idx);
+  }, [stack]);
+
+  /**
+   * OpenAI `model` id = engine launch alias only (what llama-server reports).
+   * Weights stay in our UI; no need to push model filenames into the harness.
+   */
+  const soloTarget = useMemo(() => {
+    const fromHit = (hit: StackEntry) => {
+      const alias = (hit.alias || "").trim() || "local-model";
+      return {
+        port: hit.port,
+        model: alias,
+        displayId: `${alias} :${hit.port}`,
+        contextWindow: hit.n_ctx && hit.n_ctx > 0 ? hit.n_ctx : undefined,
+        live: true as const,
+      };
+    };
+    if (preferredSlotIdx != null && preferredSlotIdx >= 0) {
+      const hit = runningEngines.find((s) => s.idx === preferredSlotIdx);
+      if (hit) return fromHit(hit);
+    }
+    if (runningEngines.length > 0) return fromHit(runningEngines[0]);
+    return {
+      port: Number(port) || 0,
+      model: "local-model",
+      displayId: "no Running engine",
+      contextWindow: undefined as number | undefined,
+      live: false as const,
+    };
+  }, [runningEngines, preferredSlotIdx, port]);
+
+  /**
+   * Twin attach: selected/first Running = BRAIN (default provider), other = WORKER (subagents).
+   * Roles are ports in launch-config — aliases need not be the words BRAIN/WORKER.
+   */
+  const dualTargets = useMemo(() => {
+    if (runningEngines.length < 2) return null;
+    let brain = runningEngines[0];
+    if (preferredSlotIdx != null && preferredSlotIdx >= 0) {
+      const pref = runningEngines.find((s) => s.idx === preferredSlotIdx);
+      if (pref) brain = pref;
+    }
+    const worker =
+      runningEngines.find((s) => s.port !== brain.port) ?? runningEngines[1];
+    if (worker.port === brain.port) return null;
+    const brainAlias = (brain.alias || "").trim() || "ENGINE-BRAIN";
+    const workerAlias = (worker.alias || "").trim() || "ENGINE-WORKER";
+    return {
+      brain: {
+        port: brain.port,
+        model: brainAlias,
+        displayId: `BRAIN ${brainAlias} :${brain.port}`,
+        contextWindow: brain.n_ctx && brain.n_ctx > 0 ? brain.n_ctx : undefined,
+        label: brain.alias || brain.model_name,
+      },
+      worker: {
+        port: worker.port,
+        model: workerAlias,
+        displayId: `WORKER ${workerAlias} :${worker.port}`,
+        contextWindow: worker.n_ctx && worker.n_ctx > 0 ? worker.n_ctx : undefined,
+        label: worker.alias || worker.model_name,
+      },
+    };
+  }, [runningEngines, preferredSlotIdx]);
+
+  /** Highlight running engines (rail + panel) while harness is open. */
+  useEffect(() => {
+    const root = document.documentElement;
+    if (!harnessOpen) {
+      delete root.dataset.atomcodeHarness;
+      dispatchAppEvent(EVENTS.atomcodeHarnessHighlight, { open: false });
+      return;
+    }
+    root.dataset.atomcodeHarness = "1";
+    dispatchAppEvent(EVENTS.atomcodeHarnessHighlight, {
+      open: true,
+      soloPort: soloTarget.live ? soloTarget.port : null,
+      brainPort: dualTargets?.brain.port ?? null,
+      workerPort: dualTargets?.worker.port ?? null,
+      selectedSlotIdx: preferredSlotIdx,
+    });
+    return () => {
+      delete root.dataset.atomcodeHarness;
+      dispatchAppEvent(EVENTS.atomcodeHarnessHighlight, { open: false });
+    };
+  }, [harnessOpen, soloTarget, dualTargets, preferredSlotIdx]);
+
+  const pickProjectDir = useCallback(async (): Promise<string | null> => {
+    const picked = await invoke<string | null>("open_folder_dialog", {
+      title: "AtomCode project folder",
+    });
+    return picked;
+  }, []);
+
+  const ensureInstalled = useCallback(async (): Promise<AtomcodeStatus | null> => {
+    setAtomError(null);
+    setAtomMsg(null);
+    let s = atomStatus ?? (await refreshAtomStatus());
+    if (!s) return null;
+    if (!s.disclaimerAccepted) {
+      setShowDisclaimer(true);
+      return null;
+    }
+    if (!s.installed) {
+      setAtomBusy("install");
+      setAtomMsg(`Downloading AtomCode ${s.pinnedVersion} (~30 MB)…`);
+      try {
+        s = await invoke<AtomcodeStatus>("atomcode_install", { version: null });
+        setAtomStatus(s);
+        setAtomMsg(`Installed ${s.version ?? s.pinnedVersion}`);
+      } catch (e) {
+        setAtomError(String(e));
+        setAtomBusy("idle");
+        return null;
+      }
+      setAtomBusy("idle");
+    }
+    return s;
+  }, [atomStatus, refreshAtomStatus]);
+
+  const executeAtomcodeLaunch = useCallback(
+    async (mode: "solo" | "brain_workers") => {
+      setAtomError(null);
+      setAtomMsg(null);
+      const s = await ensureInstalled();
+      if (!s) return;
+
+      if (mode === "solo" && soloTarget.port <= 0) {
+        setAtomError("No port — launch an engine first, or set base port.");
+        return;
+      }
+      if (mode === "solo" && !soloTarget.live) {
+        setAtomError("Start an engine (Running) before opening AtomCode.");
+        return;
+      }
+      if (mode === "brain_workers" && !dualTargets) {
+        setAtomError("Twin needs two Running engines on different ports.");
+        return;
+      }
+
+      let projectDir = s.lastProject;
+      if (!projectDir) {
+        projectDir = await pickProjectDir();
+        if (!projectDir) {
+          setAtomError("Pick a project folder to continue.");
+          return;
+        }
+      }
+
+      const concurrent = Math.max(1, parallelForCodingMode(plan.codingMode));
+      const req: AtomcodeLaunchRequest =
+        mode === "solo"
+          ? {
+              mode: "solo",
+              primary: {
+                port: soloTarget.port,
+                model: soloTarget.model,
+                contextWindow: soloTarget.contextWindow,
+              },
+              maxConcurrent: concurrent,
+              projectDir,
+            }
+          : {
+              mode: "brain_workers",
+              primary: {
+                port: dualTargets!.brain.port,
+                model: dualTargets!.brain.model,
+                contextWindow: dualTargets!.brain.contextWindow,
+              },
+              worker: {
+                port: dualTargets!.worker.port,
+                model: dualTargets!.worker.model,
+                contextWindow: dualTargets!.worker.contextWindow,
+              },
+              maxConcurrent: concurrent,
+              projectDir,
+            };
+
+      setAtomBusy("launch");
+      try {
+        const result = await invoke<AtomcodeLaunchResult>("atomcode_launch", {
+          request: req,
+        });
+        setConfirmMode(null);
+        setAtomMsg(
+          `Opened AtomCode (${result.mode}) → :${req.primary.port}` +
+            (req.worker ? ` + worker :${req.worker.port}` : ""),
+        );
+        void refreshAtomStatus();
+      } catch (e) {
+        setAtomError(String(e));
+      } finally {
+        setAtomBusy("idle");
+      }
+    },
+    [
+      ensureInstalled,
+      soloTarget,
+      dualTargets,
+      pickProjectDir,
+      plan.codingMode,
+      refreshAtomStatus,
+    ],
+  );
+
+  /** Validate + open confirm modal (or disclaimer first). */
+  const requestAtomcode = useCallback(
+    (mode: "solo" | "brain_workers") => {
+      setAtomError(null);
+      setAtomMsg(null);
+      if (mode === "solo" && !soloTarget.live) {
+        setAtomError("Start an engine (Running) before opening AtomCode.");
+        return;
+      }
+      if (mode === "brain_workers" && !dualTargets) {
+        setAtomError("Twin needs two Running engines on different ports.");
+        return;
+      }
+      if (atomStatus && !atomStatus.disclaimerAccepted) {
+        setShowDisclaimer(true);
+        setConfirmMode(mode);
+        return;
+      }
+      setConfirmMode(mode);
+    },
+    [soloTarget.live, dualTargets, atomStatus],
+  );
+
+  const acceptDisclaimerAndInstall = useCallback(async () => {
+    setAtomError(null);
+    try {
+      await invoke("atomcode_accept_disclaimer");
+      setShowDisclaimer(false);
+      setAtomBusy("install");
+      setAtomMsg("Downloading AtomCode…");
+      const s = await invoke<AtomcodeStatus>("atomcode_install", { version: null });
+      setAtomStatus(s);
+      setAtomMsg(`Installed ${s.version ?? s.pinnedVersion}`);
+      // Keep confirmMode if user was mid-launch; modal reopens ready to confirm.
+    } catch (e) {
+      setAtomError(String(e));
+      setConfirmMode(null);
+    } finally {
+      setAtomBusy("idle");
+    }
+  }, []);
+
+  const changeProjectDir = useCallback(async () => {
+    const picked = await pickProjectDir();
+    if (!picked) return;
+    try {
+      const s = await invoke<AtomcodeStatus>("atomcode_set_project", {
+        projectDir: picked,
+      });
+      setAtomStatus(s);
+      setAtomMsg(`Project: ${picked}`);
+    } catch (e) {
+      setAtomError(String(e));
+    }
+  }, [pickProjectDir]);
 
   const showDraftStrip = showDflashGet || showDflashChange;
   /** Assisted: violet strip for draft and/or SPEC-EXTRA. Full Auto: draft only (no SPEC-EXTRA). */
@@ -655,30 +981,314 @@ export default function MultiAgentBooster({
       </div>
 
       {harnessOpen && (
-        <div className="full-auto-cockpit__harness space-y-2">
-          <p className="full-auto-cockpit__harness-hint font-mono leading-snug">
-            Point an OpenAI-compatible harness here. Multi-agent only helps if the harness runs
-            concurrent agents (≈ {parallelForCodingMode(plan.codingMode)} slots ready).
-          </p>
-          {snippets.map((s) => (
-            <div key={s.id} className="full-auto-cockpit__snippet overflow-hidden">
-              <div className="full-auto-cockpit__snippet-bar flex items-center justify-between gap-2">
-                <span className="font-mono tracking-wider uppercase">{s.title}</span>
-                <button
-                  type="button"
-                  onClick={() => void copy(s.id, s.body)}
-                  className="full-auto-cockpit__copy font-mono"
-                >
-                  {copiedId === s.id ? "Copied" : "Copy"}
-                </button>
-              </div>
-              <pre className="full-auto-cockpit__snippet-body font-mono whitespace-pre-wrap break-all leading-relaxed max-h-32 overflow-y-auto eink-scrollbar">
-                {s.body}
-              </pre>
+        <div className="full-auto-cockpit__harness full-auto-cockpit__harness--atom space-y-2">
+          <div className="full-auto-cockpit__snippet full-auto-cockpit__atom-panel overflow-hidden">
+            <div className="full-auto-cockpit__snippet-bar flex items-center justify-between gap-2">
+              <span className="font-mono tracking-wider uppercase">AtomCode</span>
+              <span className="font-mono opacity-60" style={{ fontSize: 7 }}>
+                {atomStatus?.installed
+                  ? atomStatus.version ?? atomStatus.pinnedVersion
+                  : `not installed · ${atomStatus?.pinnedVersion ?? "…"}`}
+              </span>
             </div>
-          ))}
+            <div className="full-auto-cockpit__snippet-body space-y-2">
+              <p className="full-auto-cockpit__harness-hint font-mono leading-snug m-0">
+                External agent · telemetry off. Click a running engine to choose single / BRAIN.
+                Twin uses selected as <strong className="atomcode-role-badge atomcode-role-badge--brain">1 · BRAIN</strong>
+                {" "}and the other as{" "}
+                <strong className="atomcode-role-badge atomcode-role-badge--worker">2 · WORKER</strong>.
+              </p>
+
+              {/* Live routing summary — badges match engine chrome */}
+              <div className="atomcode-route-row font-mono flex flex-wrap items-center gap-1.5">
+                <span className="atomcode-route-label">Single</span>
+                {soloTarget.live ? (
+                  <span className="atomcode-role-badge atomcode-role-badge--solo atomcode-role-badge--selected">
+                    {soloTarget.displayId}
+                  </span>
+                ) : (
+                  <span className="atomcode-role-badge atomcode-role-badge--muted">no Running engine</span>
+                )}
+                <span className="atomcode-route-sep">·</span>
+                <span className="atomcode-role-badge atomcode-role-badge--agents">
+                  Agents ×{parallelForCodingMode(plan.codingMode)}
+                </span>
+              </div>
+              <div className="atomcode-route-row font-mono flex flex-wrap items-center gap-1.5">
+                <span className="atomcode-route-label">Twin</span>
+                {dualTargets ? (
+                  <>
+                    <span className="atomcode-role-badge atomcode-role-badge--brain">
+                      1 · {dualTargets.brain.model} :{dualTargets.brain.port}
+                    </span>
+                    <span className="atomcode-route-arrow" aria-hidden>
+                      →
+                    </span>
+                    <span className="atomcode-role-badge atomcode-role-badge--worker">
+                      2 · {dualTargets.worker.model} :{dualTargets.worker.port}
+                    </span>
+                  </>
+                ) : (
+                  <span className="atomcode-role-badge atomcode-role-badge--muted">need 2 Running engines</span>
+                )}
+              </div>
+
+              {atomStatus?.lastProject && (
+                <p
+                  className="full-auto-cockpit__harness-hint font-mono leading-snug m-0 truncate"
+                  title={atomStatus.lastProject}
+                >
+                  Project: {atomStatus.lastProject}
+                </p>
+              )}
+
+              {showDisclaimer && (
+                <div className="full-auto-cockpit__atom-disclaimer space-y-2">
+                  <pre className="full-auto-cockpit__snippet-body font-mono whitespace-pre-wrap break-words m-0 max-h-40 overflow-y-auto eink-scrollbar">
+                    {ATOMCODE_DISCLAIMER}
+                  </pre>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      className="full-auto-cockpit__connect font-mono"
+                      disabled={atomBusy !== "idle"}
+                      onClick={() => void acceptDisclaimerAndInstall()}
+                    >
+                      Accept &amp; install
+                    </button>
+                    <button
+                      type="button"
+                      className="full-auto-cockpit__copy font-mono"
+                      onClick={() => {
+                        setShowDisclaimer(false);
+                        setConfirmMode(null);
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {!showDisclaimer && (
+                <div className="atomcode-launch-actions flex flex-col gap-1.5">
+                  <button
+                    type="button"
+                    className="atomcode-launch-btn atomcode-launch-btn--solo font-mono tracking-wider uppercase"
+                    disabled={atomBusy !== "idle" || !soloTarget.live}
+                    title="Open AtomCode against the selected / first Running engine"
+                    onClick={() => requestAtomcode("solo")}
+                  >
+                    {atomBusy === "install"
+                      ? "Installing…"
+                      : atomBusy === "launch" && confirmMode === "solo"
+                        ? "Launching…"
+                        : "Open AtomCode — single engine"}
+                  </button>
+                  <button
+                    type="button"
+                    className="atomcode-launch-btn atomcode-launch-btn--twin font-mono tracking-wider uppercase"
+                    disabled={atomBusy !== "idle" || !dualTargets}
+                    title={
+                      dualTargets
+                        ? `1 BRAIN ${dualTargets.brain.model}:${dualTargets.brain.port} · 2 WORKER ${dualTargets.worker.model}:${dualTargets.worker.port}`
+                        : "Start two engines first (any aliases)"
+                    }
+                    onClick={() => requestAtomcode("brain_workers")}
+                  >
+                    {atomBusy === "launch" && confirmMode === "brain_workers"
+                      ? "Launching…"
+                      : "Open AtomCode — twin engine"}
+                  </button>
+                  <div className="flex flex-wrap gap-2 items-center">
+                    <button
+                      type="button"
+                      className="full-auto-cockpit__copy font-mono"
+                      disabled={atomBusy !== "idle"}
+                      onClick={() => void changeProjectDir()}
+                    >
+                      Project…
+                    </button>
+                    {!atomStatus?.installed && (
+                      <button
+                        type="button"
+                        className="full-auto-cockpit__copy font-mono"
+                        disabled={atomBusy !== "idle"}
+                        onClick={() => {
+                          if (atomStatus && !atomStatus.disclaimerAccepted) {
+                            setShowDisclaimer(true);
+                          } else {
+                            void ensureInstalled();
+                          }
+                        }}
+                      >
+                        Install tool
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {atomMsg && (
+                <p className="full-auto-cockpit__harness-hint font-mono m-0 atomcode-msg-ok">
+                  {atomMsg}
+                </p>
+              )}
+              {atomError && (
+                <p className="full-auto-cockpit__harness-hint font-mono m-0 atomcode-msg-err">
+                  {atomError}
+                </p>
+              )}
+            </div>
+          </div>
+
+          <button
+            type="button"
+            className="full-auto-cockpit__copy font-mono tracking-wider uppercase atomcode-manual-toggle"
+            onClick={() => setManualOpen((v) => !v)}
+          >
+            {manualOpen ? "Hide manual connect" : "Manual connect…"}
+          </button>
+
+          {manualOpen && (
+            <div className="atomcode-manual-block space-y-2">
+              <p className="full-auto-cockpit__harness-hint font-mono leading-snug m-0">
+                Copy endpoint snippets for other harnesses (≈{" "}
+                {parallelForCodingMode(plan.codingMode)} parallel slots on single engine).
+              </p>
+              {snippets.map((s) => (
+                <div key={s.id} className="full-auto-cockpit__snippet overflow-hidden">
+                  <div className="full-auto-cockpit__snippet-bar flex items-center justify-between gap-2">
+                    <span className="font-mono tracking-wider uppercase">{s.title}</span>
+                    <button
+                      type="button"
+                      onClick={() => void copy(s.id, s.body)}
+                      className="full-auto-cockpit__copy font-mono"
+                    >
+                      {copiedId === s.id ? "Copied" : "Copy"}
+                    </button>
+                  </div>
+                  <pre className="full-auto-cockpit__snippet-body font-mono whitespace-pre-wrap break-all leading-relaxed max-h-32 overflow-y-auto eink-scrollbar">
+                    {s.body}
+                  </pre>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
+
+      {/* Confirm launch modal */}
+      {confirmMode && !showDisclaimer && typeof document !== "undefined" &&
+        createPortal(
+          <div
+            className="atomcode-confirm-overlay"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="atomcode-confirm-title"
+            onClick={(e) => {
+              if (e.target === e.currentTarget && atomBusy === "idle") setConfirmMode(null);
+            }}
+          >
+            <div className="atomcode-confirm-modal font-mono">
+              <h3 id="atomcode-confirm-title" className="atomcode-confirm-title">
+                {confirmMode === "solo"
+                  ? "Open AtomCode — single engine"
+                  : "Open AtomCode — twin engine"}
+              </h3>
+              <p className="atomcode-confirm-lead">
+                Spawns an external AtomCode window (not inside this app). Telemetry off. Project
+                scoped to the folder below.
+              </p>
+              <dl className="atomcode-confirm-dl">
+                {confirmMode === "solo" ? (
+                  <>
+                    <div>
+                      <dt>Engine</dt>
+                      <dd>
+                        <span className="atomcode-role-badge atomcode-role-badge--solo">
+                          {soloTarget.displayId}
+                        </span>
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>OpenAI model id</dt>
+                      <dd>{soloTarget.model}</dd>
+                    </div>
+                  </>
+                ) : dualTargets ? (
+                  <>
+                    <div>
+                      <dt>1 · BRAIN (default)</dt>
+                      <dd>
+                        <span className="atomcode-role-badge atomcode-role-badge--brain">
+                          {dualTargets.brain.model} :{dualTargets.brain.port}
+                        </span>
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>2 · WORKER (subagents)</dt>
+                      <dd>
+                        <span className="atomcode-role-badge atomcode-role-badge--worker">
+                          {dualTargets.worker.model} :{dualTargets.worker.port}
+                        </span>
+                      </dd>
+                    </div>
+                  </>
+                ) : null}
+                <div>
+                  <dt>Agents / subagents</dt>
+                  <dd>×{parallelForCodingMode(plan.codingMode)}</dd>
+                </div>
+                <div>
+                  <dt>Project</dt>
+                  <dd className="atomcode-confirm-path" title={atomStatus?.lastProject ?? undefined}>
+                    {atomStatus?.lastProject || "(pick on confirm if unset)"}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Tool</dt>
+                  <dd>
+                    {atomStatus?.installed
+                      ? `installed ${atomStatus.version ?? atomStatus.pinnedVersion}`
+                      : `will download ~30 MB (${atomStatus?.pinnedVersion ?? "…"})`}
+                  </dd>
+                </div>
+              </dl>
+              <div className="atomcode-confirm-actions">
+                <button
+                  type="button"
+                  className="atomcode-launch-btn atomcode-launch-btn--solo font-mono tracking-wider uppercase"
+                  disabled={atomBusy !== "idle"}
+                  onClick={() => void executeAtomcodeLaunch(confirmMode)}
+                >
+                  {atomBusy === "install"
+                    ? "Installing…"
+                    : atomBusy === "launch"
+                      ? "Launching…"
+                      : "Confirm & open"}
+                </button>
+                <button
+                  type="button"
+                  className="full-auto-cockpit__copy font-mono"
+                  disabled={atomBusy !== "idle"}
+                  onClick={() => setConfirmMode(null)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="full-auto-cockpit__copy font-mono"
+                  disabled={atomBusy !== "idle"}
+                  onClick={() => void changeProjectDir()}
+                >
+                  Change project…
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
 
       {/* Footer: violet draft + SPEC-EXTRA (Assisted) + Connect */}
       <div className="full-auto-cockpit__footer full-auto-cockpit__footer--actions">
@@ -686,10 +1296,10 @@ export default function MultiAgentBooster({
         <button
           type="button"
           onClick={() => setHarnessOpen((v) => !v)}
-          className="full-auto-cockpit__connect font-mono tracking-wider uppercase shrink-0"
-          title="Copy endpoint + harness setup"
+          className={`full-auto-cockpit__connect font-mono tracking-wider uppercase shrink-0${harnessOpen ? " full-auto-cockpit__connect--active" : ""}`}
+          title="AtomCode external agent"
         >
-          {harnessOpen ? "Hide connect" : "Connect harness"}
+          {harnessOpen ? "Hide AtomCode" : "AtomCode"}
         </button>
       </div>
     </div>

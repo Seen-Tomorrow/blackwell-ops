@@ -3414,8 +3414,22 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
               onChangeDflashDraft={handleChangeDflashDraft}
               kvQuantValues={cockpitKvValues}
               parallelValues={cockpitParallelValues}
-              port={Number(config.base_port) || 9090}
-              modelId={aliasDisplayValue || autoAlias || model.name || "local-model"}
+              port={
+                (selectedSlotIdx != null &&
+                  stack.find((s) => s.idx === selectedSlotIdx && s.status === "RUNNING")?.port) ||
+                Number(config.base_port) ||
+                9090
+              }
+              modelId={
+                (selectedSlotIdx != null &&
+                  stack.find((s) => s.idx === selectedSlotIdx)?.model_name) ||
+                aliasDisplayValue ||
+                autoAlias ||
+                model.name ||
+                "local-model"
+              }
+              stack={stack}
+              preferredSlotIdx={selectedSlotIdx ?? null}
               layout={fullAutoFixed ? "hero" : "normal"}
               powerMode={powerCockpitMode}
               rawSpecTypes={factoryRawSpecTypes}
