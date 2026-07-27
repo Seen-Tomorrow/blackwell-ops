@@ -97,6 +97,8 @@ pub struct EngineSlot {
     pub vram_mib: f64,
     pub gpu_breakdown_mib: Option<Vec<f64>>,
     pub n_ctx: usize,
+    /// llama-server `--parallel` at launch.
+    pub parallel: i64,
     pub provider_name: String,
     pub backend_type: String,
     /// Multi-GPU split mode at launch (`none` / `layer` / `row` / `tensor`) — for load-failure hints.
@@ -131,6 +133,7 @@ impl EngineStack {
                 vram_mib: 0.0,
                 gpu_breakdown_mib: None,
                 n_ctx: DEFAULT_N_CTX,
+                parallel: 1,
                 provider_name: String::new(),
                 backend_type: String::new(),
                 split_mode: String::new(),
@@ -442,6 +445,7 @@ impl EngineStack {
             slot.n_ctx = config.get_param_str("ctx")
                 .and_then(|v| v.parse::<usize>().ok())
                 .unwrap_or(32768);
+            slot.parallel = config.get_parallel().max(1);
             slot.provider_name = provider_display_name;
             slot.backend_type = backend_type;
             slot.split_mode = config.get_param_str("split").unwrap_or_default();
@@ -899,6 +903,7 @@ impl EngineStack {
             slot.vram_mib = 0.0;
             slot.gpu_breakdown_mib = None;
             slot.n_ctx = DEFAULT_N_CTX;
+            slot.parallel = 1;
             slot.provider_name.clear();
             slot.backend_type.clear();
             slot.split_mode.clear();
@@ -1159,6 +1164,7 @@ impl EngineStack {
             build_info: None,
             supports_fusion: slot.supports_fusion,
             split_mode: slot.split_mode.clone(),
+            parallel: slot.parallel.max(1),
         }
     }
 
@@ -1182,6 +1188,7 @@ impl EngineStack {
             build_info: None,
             supports_fusion: false,
             split_mode: String::new(),
+            parallel: 1,
         }
     }
 

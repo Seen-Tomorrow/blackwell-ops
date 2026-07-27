@@ -325,10 +325,16 @@ pub async fn launch_engine(
         return Err(note.to_string());
     }
 
-    // Compute port dynamically from provider's base_port with global collision avoidance
+    // Compute port dynamically from provider's base_port with global collision avoidance.
+    // Non-zero `config.port` = prefer same port (hot-swap / harness relaunch) when free.
     let provider_base_port = config.get_param_str("base_port")
         .and_then(|v| v.parse::<u16>().ok())
         .unwrap_or(DEFAULT_BASE_PORT);
+    let prefer_port = if config.port > PRIVILEGED_PORT_THRESHOLD {
+        Some(config.port)
+    } else {
+        None
+    };
 
     // Validate base_port is in safe range (avoid privileged ports below PRIVILEGED_PORT_THRESHOLD)
     if provider_base_port <= PRIVILEGED_PORT_THRESHOLD {
@@ -367,8 +373,15 @@ pub async fn launch_engine(
         let mut used_ports = stack.reserved_ports();
         used_ports.extend(crate::engine_port_lock::occupied_ports_from_locks());
         let live_pids = stack.live_engine_pids();
-        let slot_port =
-            pick_next_engine_port(provider_base_port, &used_ports, &live_pids).await;
+        let slot_port = if let Some(p) = prefer_port {
+            if !used_ports.contains(&p) {
+                p
+            } else {
+                pick_next_engine_port(provider_base_port, &used_ports, &live_pids).await
+            }
+        } else {
+            pick_next_engine_port(provider_base_port, &used_ports, &live_pids).await
+        };
         stack.reserve_slot(slot_idx, &config.alias, slot_port)?;
         stack.emit_stack_changed();
         (slot_idx, slot_port, live_pids)
@@ -576,6 +589,7 @@ pub async fn launch_engine(
         build_info: None,
         supports_fusion,
         split_mode: config.get_param_str("split").unwrap_or_else(|| "none".to_string()),
+        parallel: config.get_parallel().max(1),
     })
 }
 
@@ -713,6 +727,7 @@ pub async fn get_stack_status(app: tauri::State<'_, AppContext>) -> Result<Vec<S
                 build_info,
                 supports_fusion: e.supports_fusion,
                 split_mode: e.split_mode.clone(),
+                parallel: e.parallel.max(1),
             }
         })
         .collect();

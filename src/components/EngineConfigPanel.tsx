@@ -110,6 +110,7 @@ import {
   type DraftRole,
   type ScoredDraft,
   type SpecCapability,
+  HIGH_DRAFT_PAIR_SCORE,
   defaultSpecTypeForMain,
   draftRoleForSpecType,
   findScoredDraftCandidates,
@@ -519,6 +520,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   const [launchDockCollapsed, setLaunchDockCollapsed] = useState(loadLaunchDockCollapsed);
   const [hwMonitorOpen, setHwMonitorOpen] = useState(loadHwMonitorOpen);
   const [enginesInRail, setEnginesInRail] = useState(loadEnginesInRail);
+  /** AtomCode harness wizard open — full cockpit takeover; skip param dim. */
+  const [atomcodeHarnessOpen, setAtomcodeHarnessOpen] = useState(false);
   /** CTX strip: docked in cockpit vs above-config zone (near VRAM / pin-above groups). */
   const [ctxCockpitDock, setCtxCockpitDock] = useState<CtxCockpitDock>(() => loadCtxCockpitDock());
   const showLaunchRail = launchDockPosition === "right";
@@ -887,6 +890,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   configRef.current = config;
 
   const applyParamsLiveDim = useCallback(() => {
+    if (atomcodeHarnessOpen) return;
     skipNextModelPathUndimRef.current = true;
     liveDimConfigSnapRef.current = JSON.stringify(configRef.current);
     setParamsLiveDimmed(true);
@@ -894,7 +898,15 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       // Path effect did not run (same model) — drop the one-shot skip
       skipNextModelPathUndimRef.current = false;
     }, 0);
-  }, []);
+  }, [atomcodeHarnessOpen]);
+
+  // Harness wizard needs full brightness — clear live dim while open
+  useEffect(() => {
+    if (!atomcodeHarnessOpen) return;
+    setParamsLiveDimmed(false);
+    liveDimConfigSnapRef.current = null;
+    skipNextModelPathUndimRef.current = false;
+  }, [atomcodeHarnessOpen]);
 
   // Catalog model cycle → clear live dim (not the path change that follows engine focus/launch)
   useEffect(() => {
@@ -1160,10 +1172,15 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       .filter((p) => p.values.length > 0);
   }, [allParamsResolved, config, updateParam, cockpitValueView]);
 
-  /** Any family-matched DFlash draft in library (independent of current mode). */
+  /**
+   * HIGH-confidence DFlash draft in library — silent pair / "ready" for Boost.
+   * Weaker local drafts still appear in Change-draft picker (MIN score list).
+   */
   const dflashLibraryReady = useMemo(() => {
     if (!model || !models?.length) return false;
-    return findScoredDraftCandidates(model, models, "external_dflash").length > 0;
+    return Boolean(
+      pickBestDraftPair(model, models, "external_dflash", HIGH_DRAFT_PAIR_SCORE),
+    );
   }, [model, models]);
 
   /** Family likely has HF DFlash packs — show Get draft when library empty. */
@@ -1171,7 +1188,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
   const dflashDraftLabel = useMemo(() => {
     if (!model || !models?.length || !dflashLibraryReady) return null;
-    const best = pickBestDraftPair(model, models, "external_dflash");
+    const best = pickBestDraftPair(model, models, "external_dflash", HIGH_DRAFT_PAIR_SCORE);
     return best ? resolveDraftPathLabel(best.path) : null;
   }, [model, models, dflashLibraryReady]);
 
@@ -1273,22 +1290,32 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         }
         // External draft (DFlash/Eagle3) needs a paired GGUF. MTP is embedded — must clear any
         // leftover --spec-draft-model from a prior DFlash selection or launch fails.
+        // Silent auto-pair requires HIGH confidence — weak (~50–79) pairs often GGML_ASSERT at load.
         if (specTypeNeedsExternalDraft(effectiveSpecType)) {
           if (model && models?.length) {
             const role = draftRoleForSpecType(effectiveSpecType);
             if (role) {
-              const draftPair = pickBestDraftPair(model, models, role);
+              const draftPair = pickBestDraftPair(
+                model,
+                models,
+                role,
+                HIGH_DRAFT_PAIR_SCORE,
+              );
               if (draftPair) {
                 updateParam("spec_draft_model", draftPair.path);
                 saveDraftPairing(model.path, effectiveSpecType, draftPair.path);
+              } else {
+                // Do not keep a stale/weak draft from a prior selection.
+                updateParam("spec_draft_model", "off");
               }
             }
           }
         } else {
           updateParam("spec_draft_model", "off");
         }
-      } else if (powerUser && !wantSpec) {
-        // Explicit Off — leave n_min/n_max alone; clear external draft path only.
+      } else if (!wantSpec) {
+        // Off / Smart — always clear external draft so Boost OFF can launch and does not snap
+        // back to a broken DFlash pair (group hide alone is not enough if draft path lingers).
         updateParam("spec_draft_model", "off");
       }
     },
@@ -1696,13 +1723,16 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     !specNeedsExternalDraft
     || isValidGgufDraftPath(currentDraftPath);
 
-  // Legacy template stored auto/on — resolve to picker selection.
+  // Legacy template stored auto/on — resolve only to HIGH-confidence pair.
   useEffect(() => {
     if (!specNeedsExternalDraft || !model) return;
     const cur = currentDraftPath.trim().toLowerCase();
     if (cur !== "auto" && cur !== "on") return;
-    const best = scoredDraftCandidates[0]?.model;
-    if (!best) return;
+    const best = scoredDraftCandidates.find((x) => x.score >= HIGH_DRAFT_PAIR_SCORE)?.model;
+    if (!best) {
+      updateParam("spec_draft_model", "off");
+      return;
+    }
     updateParam("spec_draft_model", best.path);
     if (activeSpecType) {
       saveDraftPairing(model.path, activeSpecType, best.path);
@@ -1772,8 +1802,9 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     if (specTypeNeedsExternalDraft(replacement)) {
       const role = draftRoleForSpecType(replacement);
       if (role) {
-        const draft = pickBestDraftPair(model, models, role);
+        const draft = pickBestDraftPair(model, models, role, HIGH_DRAFT_PAIR_SCORE);
         if (draft) updateParam("spec_draft_model", draft.path);
+        else updateParam("spec_draft_model", "off");
       }
     } else {
       updateParam("spec_draft_model", "off");
@@ -1866,8 +1897,14 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     }
 
     const defaultType = defaultSpecTypeForMain(model, models, effectiveBackendType);
+    // Silent auto-prefill only with HIGH-confidence local pairs (weak auto-picks → GGML_ASSERT).
     if (defaultType === "draft-dflash") {
-      const draft = pickBestDraftPair(model, models, "external_dflash");
+      const draft = pickBestDraftPair(
+        model,
+        models,
+        "external_dflash",
+        HIGH_DRAFT_PAIR_SCORE,
+      );
       if (draft) applyPrefill("draft-dflash", draft.path);
     } else if (defaultType === "draft-mtp") {
       applyPrefill("draft-mtp");
@@ -1878,9 +1915,12 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
   const customFlagsReplaceActive = testFlagsEnabled && testFlagsMode === "replace";
   const customFlagsLaunchActive = testFlagsEnabled;
-  // REPLACE mode OR live-dim after launch / focus running engine (visual only — launch stays free)
+  // REPLACE mode OR live-dim after launch / focus running engine (visual only — launch stays free).
+  // Never dim while AtomCode harness wizard is open (user is picking engines).
   const paramsBypassedClass =
-    customFlagsReplaceActive || paramsLiveDimmed ? " config-panel-params--bypassed" : "";
+    !atomcodeHarnessOpen && (customFlagsReplaceActive || paramsLiveDimmed)
+      ? " config-panel-params--bypassed"
+      : "";
 
   useEffect(() => {
     if (!customFlagsReplaceActive) {
@@ -2739,6 +2779,65 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     testFlagsMode,
   ]);
 
+  /** HS button hint: panel model / CTX / parallel differ from the live seat. */
+  const isHotSwapStale = useCallback(
+    (entry: StackEntry) => {
+      if (entry.status !== "RUNNING") return false;
+      const norm = (p: string) => p.replace(/\\/g, "/").toLowerCase();
+      if (model?.path && entry.model_path) {
+        if (norm(model.path) !== norm(entry.model_path)) return true;
+      }
+      const panelParallel = Math.max(1, Number(config.parallel) || 1);
+      const liveParallel = Math.max(1, Number(entry.parallel) || 1);
+      if (panelParallel !== liveParallel) return true;
+      const panelCtx = Number(config.ctx);
+      if (Number.isFinite(panelCtx) && panelCtx > 0 && entry.n_ctx > 0) {
+        if (panelCtx !== entry.n_ctx) return true;
+      }
+      return false;
+    },
+    [model?.path, config.parallel, config.ctx],
+  );
+
+  /** Same-port relaunch: panel model + current chip config + parallel override. */
+  const hotSwapEngineSeat = useCallback(
+    async (opts: { slotIdx: number; port: number; alias: string; parallel?: number }) => {
+      const parallel =
+        opts.parallel != null
+          ? Math.max(1, opts.parallel)
+          : Math.max(1, Number(config.parallel) || 1);
+      await invoke("stop_engine_slot", { slotIdx: opts.slotIdx });
+      await new Promise((r) => setTimeout(r, 450));
+      updateParam("parallel", parallel);
+      if (parallel > 1) updateParam("cont_batching", "on");
+      const base = buildCurrentLaunchConfig();
+      if (!base) throw new Error("No model selected in panel — pick a model first.");
+      const extra: Record<string, unknown> = { ...(base.extra_params || {}), parallel };
+      if (parallel > 1) extra.cont_batching = "on";
+      const launched = await invoke<{ idx: number; port: number; alias: string }>("launch_engine", {
+        config: {
+          ...base,
+          alias: opts.alias,
+          port: opts.port,
+          extra_params: extra,
+        },
+      });
+      // Re-focus the replaced seat (slot index may change after stop+launch)
+      const focusIdx =
+        typeof launched?.idx === "number"
+          ? launched.idx
+          : opts.slotIdx;
+      handleSelectEngine(focusIdx);
+      if (launched?.port) {
+        dispatchAppEvent(EVENTS.launchSuccess, {
+          alias: launched.alias ?? opts.alias,
+          port: launched.port,
+        });
+      }
+    },
+    [config.parallel, buildCurrentLaunchConfig, updateParam, handleSelectEngine],
+  );
+
   const performLaunch = useCallback(() => {
     if (!model) return;
     pulseLaunchAck();
@@ -3207,6 +3306,18 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             models={models}
             selectedSlotIdx={selectedSlotIdx ?? null}
             onSelectEngine={handleSelectEngine}
+            isHotSwapStale={isHotSwapStale}
+            onHotSwap={(entry) => {
+              void hotSwapEngineSeat({
+                slotIdx: entry.idx,
+                port: entry.port,
+                alias: entry.alias,
+              }).catch((e) => {
+                dispatchAppEvent(EVENTS.launchError, {
+                  message: `Hot-swap failed: ${String(e)}`,
+                });
+              });
+            }}
           />
         </div>
       )}
@@ -3383,9 +3494,21 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         Full Auto = hero cockpit only. Assisted Essentials = command cockpit + essentials.
         Assisted Full = compact power cockpit (no Smart) + full chips.
       */}
-      <div className={`config-params-scroll px-4 py-3 relative flex-1 overflow-y-auto eink-scrollbar eink-panel min-h-0${paramsBypassedClass}`}>
+      <div
+        className={`config-params-scroll px-4 py-3 relative flex-1 overflow-y-auto eink-scrollbar eink-panel min-h-0${
+          atomcodeHarnessOpen ? " config-params-scroll--atomcode-wizard" : ""
+        }`}
+      >
         {model && !modelIsDraftOnly && (
-          <div className={fullAutoFixed ? "mb-3" : "mb-3 pb-3 border-b section-divider"}>
+          <div
+            className={
+              atomcodeHarnessOpen
+                ? "mb-0 min-h-0 flex-1"
+                : fullAutoFixed
+                  ? "mb-3"
+                  : "mb-3 pb-3 border-b section-divider"
+            }
+          >
             <MultiAgentBooster
               codingMode={codingMode}
               speedBoost={speedBoost}
@@ -3430,6 +3553,11 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
               }
               stack={stack}
               preferredSlotIdx={selectedSlotIdx ?? null}
+              onHarnessOpenChange={setAtomcodeHarnessOpen}
+              onRelaunchSeat={async ({ slotIdx, port, alias, parallel }) => {
+                await hotSwapEngineSeat({ slotIdx, port, alias, parallel });
+              }}
+              onSelectEngine={handleSelectEngine}
               layout={fullAutoFixed ? "hero" : "normal"}
               powerMode={powerCockpitMode}
               rawSpecTypes={factoryRawSpecTypes}
@@ -3476,8 +3604,9 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           />
         )}
 
-        {!fullAutoFixed && (
-          <>
+        {/* Engine chips hidden while harness wizard owns the panel */}
+        {!fullAutoFixed && !atomcodeHarnessOpen && (
+          <div className={paramsBypassedClass}>
             {/* Sticky chip-area filter — no extra toolbar height; sits on first chips row */}
             {allParamsForDisplay.length > 0 && (
               <div className="config-params-filter-bar sticky top-0 z-[5] flex justify-end -mt-0.5 mb-0.5 pointer-events-none">
@@ -3516,7 +3645,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             {uiDensityCompact && configView === "full" && launchDockPosition === "bottom" && !launchDockCollapsed ? (
               <div className="config-launch-dock__flags-scroll">{renderCustomFlagsBlock()}</div>
             ) : null}
-          </>
+          </div>
         )}
       </div>
 
@@ -3761,6 +3890,18 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                     selectedSlotIdx={selectedSlotIdx ?? null}
                     onSelectEngine={handleSelectEngine}
                     variant="rail"
+                    isHotSwapStale={isHotSwapStale}
+                    onHotSwap={(entry) => {
+                      void hotSwapEngineSeat({
+                        slotIdx: entry.idx,
+                        port: entry.port,
+                        alias: entry.alias,
+                      }).catch((e) => {
+                        dispatchAppEvent(EVENTS.launchError, {
+                          message: `Hot-swap failed: ${String(e)}`,
+                        });
+                      });
+                    }}
                   />
                 )}
                 {specParallelWarn && !fullAutoFixed && (

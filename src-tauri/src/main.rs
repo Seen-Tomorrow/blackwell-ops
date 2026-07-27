@@ -53,6 +53,7 @@ mod reactor_foundry;
 mod output_console;
 mod playground;
 mod atomcode;
+mod qwen_code;
 mod gpu_control;
 mod sidecar_elevate;
 
@@ -945,6 +946,12 @@ async fn main() {
             atomcode::atomcode_set_project,
             atomcode::atomcode_install,
             atomcode::atomcode_launch,
+            atomcode::atomcode_open_webui,
+            qwen_code::qwen_code_status,
+            qwen_code::qwen_code_accept_disclaimer,
+            qwen_code::qwen_code_set_project,
+            qwen_code::qwen_code_install,
+            qwen_code::qwen_code_launch,
             intel::fetch_github_intel,
             telemetry::scan_gpus,
             telemetry::scan_cpu,

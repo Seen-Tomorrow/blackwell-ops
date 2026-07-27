@@ -960,23 +960,23 @@
 }
 
 .atomcode-launch-btn--solo {
-  color: #ecfeff;
-  border-color: color-mix(in srgb, #22d3ee 45%, transparent);
-  background: color-mix(in srgb, #0e7490 45%, #041016 55%);
+  color: var(--theme-provider-pill-active-text);
+  border-color: var(--theme-provider-pill-active-border);
+  background: var(--theme-provider-pill-active-bg);
 }
 
 .atomcode-launch-btn--solo:hover:not(:disabled) {
-  background: color-mix(in srgb, #0891b2 55%, #041016 45%);
+  box-shadow: var(--theme-launch-hover-shadow, none);
 }
 
 .atomcode-launch-btn--twin {
-  color: #faf5ff;
-  border-color: color-mix(in srgb, #a78bfa 50%, transparent);
-  background: color-mix(in srgb, #6d28d9 40%, #0c0618 60%);
+  color: var(--theme-chip-solid-text);
+  border-color: var(--theme-chip-solid-bg);
+  background: var(--theme-chip-solid-bg);
 }
 
 .atomcode-launch-btn--twin:hover:not(:disabled) {
-  background: color-mix(in srgb, #7c3aed 50%, #0c0618 50%);
+  filter: none;
 }
 
 .atomcode-role-badge {
@@ -991,38 +991,37 @@
   vertical-align: middle;
 }
 
-.atomcode-role-badge--brain {
-  color: #fef3c7;
-  border-color: color-mix(in srgb, #f59e0b 55%, transparent);
-  background: color-mix(in srgb, #b45309 35%, #1a1000 65%);
+.atomcode-role-badge--brain,
+.atomcode-role-badge--solo {
+  color: var(--theme-provider-pill-active-text);
+  border-color: var(--theme-provider-pill-active-border);
+  background: var(--theme-provider-pill-active-bg);
 }
 
 .atomcode-role-badge--worker {
-  color: #ede9fe;
-  border-color: color-mix(in srgb, #a78bfa 50%, transparent);
-  background: color-mix(in srgb, #5b21b6 40%, #0c0618 60%);
-}
-
-.atomcode-role-badge--solo {
-  color: #ecfeff;
-  border-color: color-mix(in srgb, #22d3ee 50%, transparent);
-  background: color-mix(in srgb, #0e7490 40%, #041016 60%);
+  color: var(--theme-pair-secondary-text, var(--theme-chip-solid-text));
+  border-color: var(--theme-pair-secondary-bg, var(--theme-chip-solid-bg));
+  background: color-mix(
+    in srgb,
+    var(--theme-pair-secondary-bg, var(--theme-chip-solid-bg)) 75%,
+    var(--theme-panel, #111) 25%
+  );
 }
 
 .atomcode-role-badge--solo.atomcode-role-badge--selected,
 .atomcode-role-badge--selected {
-  box-shadow: 0 0 0 1px color-mix(in srgb, #22d3ee 40%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--theme-provider-pill-active-bg) 40%, transparent);
 }
 
 .atomcode-role-badge--agents {
-  color: color-mix(in srgb, var(--theme-industrial-muted, #4ade80) 90%, transparent);
-  border-color: color-mix(in srgb, var(--theme-border, #1a2e1a) 80%, transparent);
-  background: color-mix(in srgb, #000 25%, transparent);
+  color: var(--theme-chip-text);
+  border-color: var(--theme-chip-border);
+  background: var(--theme-chip-bg);
 }
 
 .atomcode-role-badge--muted {
-  color: color-mix(in srgb, var(--theme-text-muted, #6a8a6a) 80%, transparent);
-  border-color: color-mix(in srgb, var(--theme-border-subtle, rgba(255,255,255,0.08)) 80%, transparent);
+  color: var(--theme-text-muted);
+  border-color: var(--theme-border-subtle);
   background: transparent;
   font-weight: 500;
 }
@@ -1042,7 +1041,7 @@
 }
 
 .atomcode-msg-ok {
-  color: var(--theme-chip-active-text, #4ade80);
+  color: var(--theme-status-nominal);
 }
 
 .atomcode-msg-err {
@@ -1221,6 +1220,568 @@ html[data-atomcode-harness="1"] .running-engine-card.atomcode-engine--picked,
 html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--picked {
   outline: 1px dashed color-mix(in srgb, #ecfeff 55%, transparent);
   outline-offset: 1px;
+}
+
+/* ── AtomCode full cockpit wizard (compact, amber/green) ─── */
+.config-params-scroll--atomcode-wizard {
+  display: flex;
+  flex-direction: column;
+}
+
+.config-params-scroll--atomcode-wizard > div:first-child {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.atomcode-wizard {
+  /*
+   * Theme-native selected fills (AGENTS.md: tokens only).
+   * BRAIN/SOLO = provider-pill-active · WORKER = pair-secondary (warm on AMBER, green on MATRIX, …)
+   * Soften punchy solids by mixing with panel (~68% solid).
+   */
+  --atom-brain-bg-raw: var(--theme-provider-pill-active-bg);
+  --atom-brain-border: var(--theme-provider-pill-active-border);
+  --atom-brain-text: var(--theme-provider-pill-active-text);
+  --atom-brain-bg: color-mix(in srgb, var(--atom-brain-bg-raw) 68%, var(--theme-panel, #111) 32%);
+  --atom-worker-bg-raw: var(--theme-pair-secondary-bg, var(--theme-chip-solid-bg));
+  --atom-worker-border: var(--theme-pair-secondary-bg, var(--theme-chip-solid-bg));
+  --atom-worker-text: var(--theme-pair-secondary-text, var(--theme-chip-solid-text));
+  --atom-worker-bg: color-mix(in srgb, var(--atom-worker-bg-raw) 68%, var(--theme-panel, #111) 32%);
+  --atom-worker-fg: var(--theme-chip-active-text);
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.5rem 0.7rem 0.6rem !important;
+  border-color: color-mix(in srgb, var(--atom-brain-bg) 45%, transparent) !important;
+}
+
+.atomcode-wizard__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem 0.55rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--atom-brain-bg) 40%, transparent);
+}
+
+.atomcode-wizard__title {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--theme-provider-pill-text);
+  letter-spacing: 0.16em;
+}
+
+.atomcode-wizard__subtitle {
+  flex: 1 1 auto;
+  font-size: 7px;
+  opacity: 0.65;
+  min-width: 6rem;
+  line-height: 1.3;
+}
+
+.atomcode-wizard__tool-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0.15rem 0 0.1rem;
+}
+
+.atomcode-wizard__tool-chip {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+  padding: 0.35rem 0.6rem;
+  border-radius: 3px;
+  border: 1px solid color-mix(in srgb, var(--theme-border, #334155) 70%, transparent);
+  background: color-mix(in srgb, var(--theme-bg, #0f172a) 80%, transparent);
+  color: color-mix(in srgb, var(--theme-text, #e2e8f0) 75%, transparent);
+  font-size: 8px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  min-width: 6.5rem;
+}
+
+.atomcode-wizard__tool-chip:hover {
+  border-color: color-mix(in srgb, var(--theme-accent, #76b900) 45%, transparent);
+}
+
+.atomcode-wizard__tool-chip--on {
+  border-color: color-mix(in srgb, var(--theme-accent, #76b900) 70%, transparent);
+  background: color-mix(in srgb, var(--theme-accent, #76b900) 18%, transparent);
+  color: var(--theme-text, #f8fafc);
+  font-weight: 700;
+}
+
+.atomcode-wizard__tool-meta {
+  font-size: 6px;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  opacity: 0.7;
+  font-weight: 400;
+}
+
+.atomcode-wizard__close {
+  font-size: 7px;
+  padding: 0.3rem 0.55rem;
+  border-radius: 3px;
+  border: 1px solid color-mix(in srgb, #94a3b8 40%, transparent);
+  color: #e2e8f0;
+  background: color-mix(in srgb, #1e293b 50%, transparent);
+}
+
+.atomcode-wizard__close:hover {
+  border-color: color-mix(in srgb, #f87171 50%, transparent);
+  color: #fecaca;
+}
+
+.atomcode-wizard__blurb {
+  margin: 0;
+  font-size: 7.5px;
+  line-height: 1.4;
+  color: color-mix(in srgb, #cbd5e1 88%, transparent);
+  padding: 0.35rem 0.45rem;
+  border-radius: 3px;
+  border: 1px solid color-mix(in srgb, var(--theme-border, #1a2e1a) 70%, transparent);
+  background: color-mix(in srgb, #000 22%, transparent);
+}
+
+.atomcode-wizard__blurb-brain {
+  color: var(--theme-provider-pill-hover-text);
+  font-weight: 700;
+}
+
+.atomcode-wizard__blurb-worker {
+  color: var(--atom-worker-fg);
+  font-weight: 700;
+}
+
+/* Full-width stacked SOLO + TWIN */
+.atomcode-wizard__mode-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  width: 100%;
+}
+
+.atomcode-wizard__mode-btn {
+  display: block;
+  width: 100%;
+  border-radius: 4px;
+  border: 1px solid color-mix(in srgb, var(--theme-border, #1a2e1a) 80%, transparent);
+  background: color-mix(in srgb, #000 28%, transparent);
+  text-align: left;
+  /* No background dissolve on mode switch */
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+  overflow: hidden;
+}
+
+.atomcode-wizard__mode-btn-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 0.15rem;
+  padding: 0.55rem 0.75rem 0.5rem;
+  min-height: 4.25rem;
+  width: 100%;
+}
+
+.atomcode-wizard__mode-btn--disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+/* SOLO on = softened provider-pill-active */
+.atomcode-wizard__mode-btn--solo.atomcode-wizard__mode-btn--on {
+  border-color: var(--atom-brain-border);
+  background: var(--atom-brain-bg);
+  box-shadow: 0 0 5px color-mix(in srgb, var(--atom-brain-bg-raw) 28%, transparent);
+}
+
+.atomcode-wizard__mode-btn--solo.atomcode-wizard__mode-btn--on .atomcode-wizard__mode-name,
+.atomcode-wizard__mode-btn--solo.atomcode-wizard__mode-btn--on .atomcode-wizard__mode-desc,
+.atomcode-wizard__mode-btn--solo.atomcode-wizard__mode-btn--on .atomcode-wizard__mode-engine,
+.atomcode-wizard__mode-btn--solo.atomcode-wizard__mode-btn--on .atomcode-wizard__mode-meta {
+  color: var(--atom-brain-text);
+  opacity: 1;
+}
+
+/* TWIN: two true halves, full width */
+.atomcode-wizard__mode-btn--twin {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  padding: 0;
+  min-height: 4.5rem;
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--theme-border, #1a2e1a) 80%, transparent);
+}
+
+.atomcode-wizard__mode-btn--twin.atomcode-wizard__mode-btn--on {
+  border-color: color-mix(in srgb, var(--atom-brain-border) 55%, var(--atom-worker) 45%);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--atom-brain-bg) 28%, transparent);
+}
+
+.atomcode-wizard__twin-half {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.12rem;
+  padding: 0.55rem 0.7rem 0.5rem;
+  min-height: 4.5rem;
+  border: none;
+  text-align: left;
+  background: color-mix(in srgb, #000 30%, transparent);
+  color: #e2e8f0;
+  /* Hard fills only — no soft dissolve */
+  transition: none;
+}
+
+.atomcode-wizard__twin-half:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Divider always between halves (order may flip) */
+.atomcode-wizard__mode-btn--twin > .atomcode-wizard__twin-half:first-child {
+  border-right: 1px solid color-mix(in srgb, #fff 10%, transparent);
+}
+
+.atomcode-wizard__mode-btn--twin.atomcode-wizard__mode-btn--on .atomcode-wizard__twin-half--brain {
+  background: var(--atom-brain-bg);
+  color: var(--atom-brain-text);
+}
+
+.atomcode-wizard__mode-btn--twin.atomcode-wizard__mode-btn--on .atomcode-wizard__twin-half--brain .atomcode-wizard__mode-name,
+.atomcode-wizard__mode-btn--twin.atomcode-wizard__mode-btn--on .atomcode-wizard__twin-half--brain .atomcode-wizard__mode-desc,
+.atomcode-wizard__mode-btn--twin.atomcode-wizard__mode-btn--on .atomcode-wizard__twin-half--brain .atomcode-wizard__mode-engine {
+  color: var(--atom-brain-text);
+  opacity: 1;
+}
+
+.atomcode-wizard__mode-btn--twin.atomcode-wizard__mode-btn--on .atomcode-wizard__twin-half--worker {
+  background: var(--atom-worker-bg);
+  color: var(--atom-worker-text);
+}
+
+.atomcode-wizard__mode-btn--twin.atomcode-wizard__mode-btn--on .atomcode-wizard__twin-half--worker .atomcode-wizard__mode-name,
+.atomcode-wizard__mode-btn--twin.atomcode-wizard__mode-btn--on .atomcode-wizard__twin-half--worker .atomcode-wizard__mode-desc,
+.atomcode-wizard__mode-btn--twin.atomcode-wizard__mode-btn--on .atomcode-wizard__twin-half--worker .atomcode-wizard__mode-engine {
+  color: var(--atom-worker-text);
+  opacity: 1;
+}
+
+.atomcode-wizard__twin-half:hover:not(:disabled) {
+  filter: none;
+  outline: 1px solid color-mix(in srgb, #fff 25%, transparent);
+  outline-offset: -1px;
+}
+
+.atomcode-wizard__mode-name {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--theme-industrial-text, var(--theme-text, #e2e8f0));
+}
+
+.atomcode-wizard__mode-desc {
+  font-size: 7px;
+  line-height: 1.25;
+  opacity: 0.78;
+  color: var(--theme-text-muted, #94a3b8);
+}
+
+.atomcode-wizard__mode-engine {
+  margin-top: 0.1rem;
+  font-size: 9px;
+  font-weight: 600;
+  word-break: break-all;
+  line-height: 1.25;
+  color: var(--theme-provider-pill-text);
+}
+
+.atomcode-wizard__mode-meta {
+  font-size: 7px;
+  opacity: 0.7;
+  margin-top: auto;
+  color: var(--theme-text-muted, #94a3b8);
+}
+
+.atomcode-wizard__step-label {
+  margin: 0.1rem 0 0.15rem;
+  font-size: 7px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  opacity: 0.55;
+}
+
+.atomcode-wizard__agents {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.atomcode-wizard__agent-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.05rem;
+  min-width: 2.9rem;
+  padding: 0.35rem 0.4rem;
+  border-radius: 3px;
+  border: 1px solid var(--theme-chip-border);
+  background: var(--theme-chip-bg);
+  color: var(--theme-chip-text);
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.atomcode-wizard__agent-chip:hover {
+  border-color: var(--theme-chip-hover-border, var(--theme-chip-border));
+  color: var(--theme-chip-hover-text, var(--theme-chip-text));
+}
+
+.atomcode-wizard__agent-chip--on {
+  border-color: var(--atom-worker-border);
+  background: var(--atom-worker-bg);
+  color: var(--atom-worker-text);
+  box-shadow: none;
+}
+
+.atomcode-wizard__agent-n {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.atomcode-wizard__agent-label {
+  font-size: 6px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.8;
+}
+
+.atomcode-wizard__agents-hint {
+  margin: 0;
+  font-size: 6.5px;
+  line-height: 1.35;
+  opacity: 0.68;
+  color: var(--theme-text-muted, #94a3b8);
+}
+
+.atomcode-wizard__relaunch {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.4rem 0.5rem;
+  border-radius: 3px;
+  border: 1px solid color-mix(in srgb, var(--theme-provider-pill-active-bg) 45%, transparent);
+  background: color-mix(in srgb, var(--theme-provider-pill-active-bg) 10%, transparent);
+}
+
+.atomcode-wizard__relaunch-msg {
+  font-size: 7px;
+  line-height: 1.4;
+  color: var(--theme-text-muted, #94a3b8);
+}
+
+.atomcode-wizard__relaunch-msg strong {
+  color: var(--theme-provider-pill-hover-text, var(--theme-provider-pill-text));
+}
+
+.atomcode-wizard__relaunch-btn {
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 0.45rem 0.55rem;
+  border-radius: 3px;
+  border: 1px solid var(--theme-provider-pill-active-border);
+  color: var(--theme-provider-pill-active-text);
+  background: color-mix(in srgb, var(--theme-provider-pill-active-bg) 72%, var(--theme-panel) 28%);
+  text-align: left;
+}
+
+.atomcode-wizard__relaunch-btn:disabled {
+  opacity: 0.45;
+}
+
+.atomcode-wizard__hotswap {
+  align-self: flex-start;
+  font-size: 7px !important;
+  opacity: 0.85;
+}
+
+.atomcode-wizard__launch-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  gap: 0.45rem;
+  align-items: stretch;
+  margin-top: 0.25rem;
+}
+
+.atomcode-wizard__project-side {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.atomcode-wizard__project-btn {
+  width: 100%;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 0.55rem 0.65rem;
+  border-radius: 3px;
+  border: 1px solid var(--theme-chip-active-border);
+  color: var(--theme-chip-active-text);
+  background: var(--theme-chip-active-bg);
+  text-align: left;
+}
+
+.atomcode-wizard__project-btn:hover:not(:disabled) {
+  border-color: var(--theme-chip-hover-border, var(--theme-chip-active-border));
+  color: var(--theme-chip-hover-text, var(--theme-chip-active-text));
+  background: color-mix(in srgb, var(--theme-chip-active-bg) 70%, var(--theme-panel, #111) 30%);
+}
+
+.atomcode-wizard__project-btn:disabled {
+  opacity: 0.45;
+}
+
+.atomcode-wizard__project-path {
+  margin: 0;
+  font-size: 6.5px;
+  line-height: 1.3;
+  opacity: 0.7;
+  word-break: break-all;
+  max-height: 2.4em;
+  overflow: hidden;
+}
+
+.atomcode-wizard__go {
+  width: 100%;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 0.65rem 0.75rem;
+  border-radius: 3px;
+  border: 1px solid transparent;
+  align-self: stretch;
+  /* Kill dissolve/blend when switching SOLO↔TWIN */
+  transition: none;
+  background-size: 100% 100%;
+}
+
+.atomcode-wizard__go:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.atomcode-wizard__go--solo {
+  color: var(--atom-brain-text);
+  border-color: var(--atom-brain-border);
+  background: var(--atom-brain-bg);
+  background-image: none;
+  box-shadow: var(--theme-launch-shadow, none);
+}
+
+.atomcode-wizard__go--solo:hover:not(:disabled) {
+  filter: none;
+  box-shadow: var(--theme-launch-hover-shadow, var(--theme-launch-shadow, none));
+}
+
+/* Hard 50/50 split — solid theme fills, no soft midpoint blend */
+.atomcode-wizard__go--twin {
+  color: var(--atom-brain-text);
+  border-color: color-mix(in srgb, var(--atom-brain-border) 50%, var(--atom-worker-border) 50%);
+  background-color: var(--atom-brain-bg);
+  background-image: linear-gradient(
+    90deg,
+    var(--atom-brain-bg) 0%,
+    var(--atom-brain-bg) 50%,
+    var(--atom-worker-bg) 50%,
+    var(--atom-worker-bg) 100%
+  );
+  box-shadow: none;
+}
+
+.atomcode-wizard__go--twin.atomcode-wizard__go--twin-flip {
+  color: var(--atom-worker-text);
+  background-image: linear-gradient(
+    90deg,
+    var(--atom-worker-bg) 0%,
+    var(--atom-worker-bg) 50%,
+    var(--atom-brain-bg) 50%,
+    var(--atom-brain-bg) 100%
+  );
+}
+
+.atomcode-wizard__go--twin:hover:not(:disabled) {
+  filter: none;
+}
+
+.atomcode-wizard__disclaimer-body {
+  margin: 0;
+  padding: 0.4rem;
+  font-size: 7px;
+  line-height: 1.35;
+  white-space: pre-wrap;
+  max-height: 7rem;
+  overflow: auto;
+  border-radius: 3px;
+  border: 1px solid color-mix(in srgb, #64748b 40%, transparent);
+  background: color-mix(in srgb, #000 35%, transparent);
+}
+
+/* Engine cards while harness open — tint from theme solids */
+html[data-atomcode-harness="1"] .running-engine-card.atomcode-engine--worker,
+html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--worker {
+  border-color: color-mix(
+    in srgb,
+    var(--theme-pair-secondary-bg, var(--theme-chip-solid-bg)) 70%,
+    transparent
+  ) !important;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--theme-pair-secondary-bg, var(--theme-chip-solid-bg)) 40%, transparent),
+    0 0 12px color-mix(in srgb, var(--theme-pair-secondary-bg, var(--theme-chip-solid-bg)) 18%, transparent) !important;
+  background: color-mix(
+    in srgb,
+    var(--theme-pair-secondary-bg, var(--theme-chip-solid-bg)) 20%,
+    var(--theme-eject-card-bg) 80%
+  ) !important;
+}
+
+html[data-atomcode-harness="1"] .running-engine-card.atomcode-engine--brain,
+html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--brain {
+  border-color: var(--theme-provider-pill-active-border) !important;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--theme-provider-pill-active-bg) 45%, transparent),
+    0 0 12px color-mix(in srgb, var(--theme-provider-pill-active-bg) 22%, transparent) !important;
+  background: color-mix(
+    in srgb,
+    var(--theme-provider-pill-active-bg) 22%,
+    var(--theme-eject-card-bg) 78%
+  ) !important;
+}
+
+.atomcode-engine-role-chip--brain {
+  color: var(--theme-provider-pill-active-text);
+  border-color: var(--theme-provider-pill-active-border);
+  background: var(--theme-provider-pill-active-bg);
+}
+
+.atomcode-engine-role-chip--worker {
+  color: var(--theme-pair-secondary-text, var(--theme-chip-solid-text));
+  border-color: var(--theme-pair-secondary-bg, var(--theme-chip-solid-bg));
+  background: var(--theme-pair-secondary-bg, var(--theme-chip-solid-bg));
 }
 
 .full-auto-cockpit__row-label {

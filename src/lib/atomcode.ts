@@ -32,9 +32,17 @@ export interface AtomcodeLaunchResult {
   mode: string;
 }
 
+/** Result of starting AtomCode browser webui (token is in the URL). */
+export interface AtomcodeWebuiResult {
+  url: string;
+  port: number;
+  token: string;
+}
+
 export const ATOMCODE_DISCLAIMER = [
   "AtomCode is a third-party coding agent (Rust binary).",
-  "Blackwell downloads it into the app tools folder (~30 MB) — separate from any AtomCode you installed yourself.",
+  "Blackwell installs it under external-tools/atomcode/ (~30 MB) — separate from any AtomCode you installed yourself.",
+  "Config lives under config/external-tools/atomcode-home (isolated; not ~/.atomcode).",
   "It can read/write files and run shell commands inside the project folder you choose.",
   "Telemetry is disabled on our launches; we do not auto-update the tool without your action.",
   "Never runs with auto-approve permissions from this app.",

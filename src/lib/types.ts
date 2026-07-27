@@ -529,6 +529,8 @@ export interface StackEntry {
   supportsFusion?: boolean;
   /** Multi-GPU split at launch (`none` / `layer` / `row` / `tensor`). */
   splitMode?: string;
+  /** Engine `--parallel` at launch (for harness advice / same-port relaunch). */
+  parallel?: number;
 }
 
 /** Per-slot context bar info — matches Rust SlotCtxInfo struct */

@@ -946,10 +946,12 @@
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--fusion-eink-concurrency-chip-border) 45%, transparent);
 }
 
-/* TG result unit row — fixed height so the amber badge can overlay without growing the grid */
+/* TG result unit row — room under GENERATION number so CONCURRENCY ×N does not overlap */
 .bench-widget-panel .bench-result-unit-slot {
   position: relative;
-  height: 7px;
+  height: 16px;
+  /* Push CONCURRENCY ×N ~6–8px below gen TPS readout */
+  margin-top: 7px;
   flex-shrink: 0;
   overflow: visible;
 }
@@ -958,8 +960,8 @@
 .bench-widget-panel .bench-concurrency-badge {
   position: absolute;
   left: 0;
-  /* Sit inside padded bottom instead of hanging under overflow:hidden */
   bottom: 0;
+  top: auto;
   display: inline-flex;
   align-items: baseline;
   gap: 3px;

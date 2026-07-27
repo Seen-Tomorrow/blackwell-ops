@@ -71,6 +71,8 @@ export const EVENTS = {
   updateOfferingsRefresh: `${STORAGE_PREFIX}update-offerings-refresh`,
   /** AtomCode harness open — highlight running engines (brain/worker/solo roles). */
   atomcodeHarnessHighlight: `${STORAGE_PREFIX}atomcode-harness-highlight`,
+  /** AtomCode harness: user clicked a running engine card (twin role cycle). */
+  atomcodeEngineClick: `${STORAGE_PREFIX}atomcode-engine-click`,
 } as const;
 
 /** Detail for `EVENTS.atomcodeHarnessHighlight`. */
@@ -80,6 +82,12 @@ export type AtomcodeHarnessHighlightDetail = {
   brainPort?: number | null;
   workerPort?: number | null;
   selectedSlotIdx?: number | null;
+};
+
+/** Running-engine card click while harness open (role cycle for twin). */
+export type AtomcodeEngineClickDetail = {
+  port: number;
+  slotIdx: number;
 };
 
 export type AppEventName = (typeof EVENTS)[keyof typeof EVENTS];

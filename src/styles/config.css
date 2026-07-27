@@ -982,6 +982,65 @@
     0 2px 10px color-mix(in srgb, var(--theme-eject-card-selected-border) 24%, transparent) !important;
 }
 
+/* Same-port hot-swap control on running engine cards */
+.running-engine-hs-btn {
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 1;
+  padding: 0.2rem 0.3rem;
+  border-radius: 2px;
+  border: 1px solid var(--theme-provider-pill-border, rgba(184, 122, 0, 0.55));
+  color: var(--theme-provider-pill-text, #b87a00);
+  background: color-mix(in srgb, var(--theme-provider-pill-bg, #1a1206) 80%, transparent);
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    color 0.15s ease,
+    background 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.15s ease;
+}
+
+.running-engine-hs-btn:hover {
+  border-color: var(--theme-provider-pill-hover-border, #f5971f);
+  color: var(--theme-provider-pill-hover-text, #f5971f);
+  background: color-mix(in srgb, var(--theme-provider-pill-active-bg, #f5971f) 18%, transparent);
+}
+
+/* Panel model/CTX/parallel differs from this live seat — invite hot-swap */
+.running-engine-hs-btn--hint {
+  border-color: var(--theme-provider-pill-active-border);
+  color: var(--theme-provider-pill-active-text);
+  background: var(--theme-provider-pill-active-bg);
+  animation: running-engine-hs-hint 1.35s ease-in-out infinite;
+}
+
+@keyframes running-engine-hs-hint {
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--theme-provider-pill-active-bg) 0%, transparent);
+  }
+  45% {
+    transform: scale(1.12);
+    box-shadow:
+      0 0 0 2px color-mix(in srgb, var(--theme-provider-pill-active-bg) 35%, transparent),
+      0 0 10px color-mix(in srgb, var(--theme-provider-pill-active-bg) 45%, transparent);
+  }
+  70% {
+    transform: scale(1.04);
+    box-shadow: 0 0 6px color-mix(in srgb, var(--theme-provider-pill-active-bg) 30%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .running-engine-hs-btn--hint {
+    animation: none;
+    outline: 1px dashed var(--theme-provider-pill-active-border);
+  }
+}
+
 
 /* Runtime profile tag — tiny amber line under model name */
 [data-config-panel] .running-engine-profile-label {

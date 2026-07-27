@@ -531,18 +531,24 @@ impl ProviderTemplate {
         sorted_params.sort_by(|a, b| a.order.cmp(&b.order));
 
         for param in &sorted_params {
-            if param.hidden && !param.key.eq_ignore_ascii_case("spec_draft_model") {
+            let key_in_extra = config
+                .extra_params
+                .keys()
+                .any(|k| k.eq_ignore_ascii_case(&param.key));
+
+            // Hidden params are skipped unless launch explicitly overrides via extra_params
+            // (e.g. cockpit parallel / cont_batching on hot-swap or essentials FIT launches).
+            if param.hidden
+                && !param.key.eq_ignore_ascii_case("spec_draft_model")
+                && !key_in_extra
+            {
                 continue;
             }
 
             // Whitelist launch — AUTO_FIT always; MANUAL when frontend sent a filtered extra_params
             // set (Essentials vs Full). Without user keys in extra_params, emit all visible params.
             if launch_uses_extra_params_whitelist(config) {
-                let key_present = config
-                    .extra_params
-                    .keys()
-                    .any(|k| k.eq_ignore_ascii_case(&param.key));
-                if !key_present {
+                if !key_in_extra {
                     continue;
                 }
             }

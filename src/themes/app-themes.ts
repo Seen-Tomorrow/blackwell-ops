@@ -50,6 +50,9 @@ const MATRIX: AppTheme = {
     "--theme-chip-active-text": "#4ade80",
     "--theme-chip-solid-bg": "#4ade80",
     "--theme-chip-solid-text": "#0c120a",
+    /* Pair seat B (WORKER) — solid with theme-correct contrast */
+    "--theme-pair-secondary-bg": "#4ade80",
+    "--theme-pair-secondary-text": "#0c120a",
     /* Near-black + green tint (CLEAN + DARK share face) */
     "--phosphor-bg": "#030805",
     "--phosphor-glow": "rgba(74, 222, 128, 0.035)",
@@ -200,6 +203,9 @@ const AMBER: AppTheme = {
     "--theme-chip-active-text": "#f5b942",
     "--theme-chip-solid-bg": "#d4950a",
     "--theme-chip-solid-text": "#1a1000",
+    /* Warm sand/bronze — distinct from provider-pill orange (night-eye friendly) */
+    "--theme-pair-secondary-bg": "#c9a66b",
+    "--theme-pair-secondary-text": "#1a1000",
     "--phosphor-bg": "#0a0801",
     "--phosphor-glow": "rgba(245, 150, 0, 0.06)",
     "--theme-phosphor-text": "#f5b942",
@@ -349,6 +355,8 @@ const CYAN: AppTheme = {
     "--theme-chip-active-text": "#22d3ee",
     "--theme-chip-solid-bg": "#00b8d4",
     "--theme-chip-solid-text": "#010a0a",
+    "--theme-pair-secondary-bg": "#00b8d4",
+    "--theme-pair-secondary-text": "#010a0a",
     "--phosphor-bg": "#010a0a",
     "--phosphor-glow": "rgba(0, 229, 255, 0.05)",
     "--theme-phosphor-text": "#22d3ee",
@@ -498,6 +506,8 @@ const SLATE: AppTheme = {
     "--theme-chip-active-text": "#e0e0e8",
     "--theme-chip-solid-bg": "#8a8a9a",
     "--theme-chip-solid-text": "#0c0c0c",
+    "--theme-pair-secondary-bg": "#8a8a9a",
+    "--theme-pair-secondary-text": "#0c0c0c",
     "--phosphor-bg": "#080808",
     "--phosphor-glow": "rgba(200, 200, 200, 0.05)",
     "--theme-phosphor-text": "#c8c8d0",
@@ -649,6 +659,8 @@ const ARCTIC: AppTheme = {
     "--theme-chip-active-text": "#1a3d5c",
     "--theme-chip-solid-bg": "#5b8fb8",
     "--theme-chip-solid-text": "#f8fafc",
+    "--theme-pair-secondary-bg": "#5b8fb8",
+    "--theme-pair-secondary-text": "#f8fafc",
     /* CLEAN = cool near-white; DARK = near-black CRT (shared dark stack) */
     "--phosphor-bg": "#f4f6f8",
     "--phosphor-glow": "rgba(255, 255, 255, 0.65)",

@@ -1,6 +1,11 @@
 import type { ConfigViewMode, LaunchProfile, ProviderDefaultParam, UserEditedTemplateParam } from "./types";
 import { PANEL_CHROME_PARAM_KEYS } from "./paramDisplayZone";
-import { ENGINE_ONLY_PARAM_KEYS, isCatalogVisibleParam, isSystemCatalogParam } from "./systemParams";
+import {
+  COCKPIT_OWNED_PARAM_KEYS,
+  ENGINE_ONLY_PARAM_KEYS,
+  isCatalogVisibleParam,
+  isSystemCatalogParam,
+} from "./systemParams";
 import { isModelSpecParamKey, SPEC_DECODING_UI_GROUP } from "./specDraft";
 import { paramUiGroup } from "./storage";
 
@@ -202,6 +207,12 @@ export function resolveManualLaunchKeys(opts: {
         keys.add(p.key);
       }
     }
+  }
+
+  // Cockpit-owned knobs (Agents / Memory / Think / cont_batching / ctx) must always
+  // reach CLI — they are not in factory essentialParamKeys and must not vanish on FIT/Essentials.
+  for (const k of COCKPIT_OWNED_PARAM_KEYS) {
+    keys.add(k);
   }
 
   if (opts.specActive) {

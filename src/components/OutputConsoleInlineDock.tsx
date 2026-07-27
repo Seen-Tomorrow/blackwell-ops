@@ -41,13 +41,14 @@ export default function OutputConsoleInlineDock({
         />
       )}
 
-      <div className="app-footer-console__status flex items-center font-mono min-h-0">
+      {/* min-height/flex live in chrome.css — do not add Tailwind min-h-0 (collapses click target) */}
+      <div className="app-footer-console__status font-mono">
         <div className="app-footer-status-left flex items-center gap-2 shrink-0 min-w-0">
           {statusLeft}
         </div>
 
         <div
-          className="app-footer-console__live flex items-center gap-2 min-w-0 cursor-pointer"
+          className="app-footer-console__live cursor-pointer"
           onClick={handleToggle}
           title={isExpanded ? "Click to close console" : "Click to expand console"}
           role="button"

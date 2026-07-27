@@ -405,8 +405,11 @@ export function pickBestDraftPair(
   main: ModelEntry,
   models: ModelEntry[],
   draftRole: DraftRole,
+  /** Default MIN — use HIGH for silent auto-apply (weak ~50–79 pairs often GGML_ASSERT at load). */
+  minScore: number = MIN_DRAFT_PAIR_SCORE,
 ): ModelEntry | undefined {
-  return findScoredDraftCandidates(main, models, draftRole)[0]?.model;
+  return findScoredDraftCandidates(main, models, draftRole).find((x) => x.score >= minScore)
+    ?.model;
 }
 
 /** Spec modes a main model supports. MTP (baked-in nextn) and DFlash (external draft) are independent. */
@@ -527,5 +530,7 @@ export function isDraftPairingValid(
   if (!role) return false;
   const draft = models.find((m) => normalizeModelPathKey(m.path) === normalizeModelPathKey(pairing.draftPath));
   if (!draft) return false;
-  return scoreDraftPair(main, draft, role) >= MIN_DRAFT_PAIR_SCORE;
+  // Silent restore / capability reuse — HIGH only. Weak (~50–79) auto-pairs often
+  // GGML_ASSERT at load; user can still pick them live via Change draft.
+  return scoreDraftPair(main, draft, role) >= HIGH_DRAFT_PAIR_SCORE;
 }

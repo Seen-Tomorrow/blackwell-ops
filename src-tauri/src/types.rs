@@ -328,6 +328,13 @@ pub struct StackEntry {
     /// Multi-GPU split at launch (`none` / `layer` / `row` / `tensor`).
     #[serde(default, rename = "splitMode")]
     pub split_mode: String,
+    /// Engine `--parallel` at launch (for harness restart advice / hot-swap).
+    #[serde(default = "default_stack_parallel")]
+    pub parallel: i64,
+}
+
+fn default_stack_parallel() -> i64 {
+    1
 }
 
 #[allow(dead_code)]

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { ModelEntry, StackEntry } from "../lib/types";
 import { DEFAULT_BINARY_PROFILE, ENV_META, type Env } from "../lib/foundry_constants";
 import {
+  dispatchAppEvent,
   EVENTS,
   type AtomcodeHarnessHighlightDetail,
 } from "../lib/events";
@@ -107,6 +108,10 @@ interface RunningEnginesPanelProps {
   models: ModelEntry[];
   selectedSlotIdx: number | null;
   onSelectEngine: (slotIdx: number) => void;
+  /** Same-port hot-swap: panel model/config + optional parallel. */
+  onHotSwap?: (entry: StackEntry) => void;
+  /** True when panel model/CTX/parallel differs from this live seat — HS hint animation. */
+  isHotSwapStale?: (entry: StackEntry) => boolean;
   /** Compact vertical chips for launch rail. */
   variant?: "default" | "rail";
 }
@@ -118,10 +123,11 @@ function atomcodeRoleForPort(
   if (!hl?.open) return null;
   if (hl.brainPort != null && port === hl.brainPort) return "brain";
   if (hl.workerPort != null && port === hl.workerPort) return "worker";
-  if (hl.soloPort != null && port === hl.soloPort && hl.brainPort == null) return "solo";
-  // Twin open: non-brain non-worker still live — no role badge
-  if (hl.brainPort != null) return null;
-  if (hl.soloPort != null && port === hl.soloPort) return "solo";
+  // Solo harness mode uses same amber “brain” treatment as twin BRAIN
+  if (hl.soloPort != null && port === hl.soloPort && hl.brainPort == null && hl.workerPort == null) {
+    return "brain";
+  }
+  if (hl.brainPort != null || hl.workerPort != null) return null;
   return null;
 }
 
@@ -130,6 +136,8 @@ export default function RunningEnginesPanel({
   models,
   selectedSlotIdx,
   onSelectEngine,
+  onHotSwap,
+  isHotSwapStale,
   variant = "default",
 }: RunningEnginesPanelProps) {
   const [atomHl, setAtomHl] = useState<AtomcodeHarnessHighlightDetail | null>(null);
@@ -161,6 +169,13 @@ export default function RunningEnginesPanel({
 
   if (instances.length === 0) return null;
 
+  const onEngineActivate = (slotIdx: number, port: number) => {
+    onSelectEngine(slotIdx);
+    if (atomHl?.open) {
+      dispatchAppEvent(EVENTS.atomcodeEngineClick, { port, slotIdx });
+    }
+  };
+
   if (variant === "rail") {
     return (
       <div className="launch-rail-engines shrink-0">
@@ -176,50 +191,71 @@ export default function RunningEnginesPanel({
                 ? " atomcode-engine--brain"
                 : role === "worker"
                   ? " atomcode-engine--worker"
-                  : role === "solo"
-                    ? " atomcode-engine--solo"
-                    : atomHl?.open
-                      ? " atomcode-engine--live"
-                      : "";
+                  : atomHl?.open
+                    ? " atomcode-engine--live"
+                    : "";
             return (
-              <button
+              <div
                 key={`slot-${item.entry.idx}`}
-                type="button"
-                onClick={() => onSelectEngine(item.entry.idx)}
-                data-engine-port={item.entry.port}
-                data-engine-slot={item.entry.idx}
-                className={`launch-rail-engine-chip w-full text-left rounded-sm px-2 py-1 border flex items-center gap-1.5 min-w-0 transition-colors ${
+                className={`launch-rail-engine-chip w-full rounded-sm px-2 py-1 border flex items-center gap-1 min-w-0 transition-colors ${
                   isThisSelected ? "launch-rail-engine-chip--selected" : ""
                 }${roleClass}${isThisSelected && atomHl?.open ? " atomcode-engine--picked" : ""}`}
+                data-engine-port={item.entry.port}
+                data-engine-slot={item.entry.idx}
               >
-                {role && (
-                  <span
-                    className={`atomcode-engine-role-chip atomcode-engine-role-chip--${role} shrink-0`}
-                  >
-                    {role === "brain" ? "1·B" : role === "worker" ? "2·W" : "●"}
-                  </span>
-                )}
-                <span className="text-[8px] font-mono text-white/80 shrink-0 tabular-nums">
-                  :{item.entry.port}
-                </span>
-                <span className="text-[8px] font-mono text-nv-green/90 shrink-0 truncate max-w-[3.5rem]" title={item.entry.alias}>
-                  {item.entry.alias}
-                </span>
-                <span
-                  className="text-[6px] font-mono text-stealth-muted/70 shrink-0 truncate max-w-[5.5rem] uppercase tracking-wide"
-                  title={runtimeEngineSourceLabel(item.entry)}
+                <button
+                  type="button"
+                  onClick={() => onEngineActivate(item.entry.idx, item.entry.port)}
+                  className="flex items-center gap-1.5 min-w-0 flex-1 text-left bg-transparent border-0 p-0 cursor-pointer"
                 >
-                  {runtimeEngineSourceLabel(item.entry)}
-                </span>
-                <GpuTopoBadges
-                  gpuField={item.entry.gpu}
-                  splitMode={item.entry.splitMode}
-                  compact
-                />
-                <span className="text-[7px] font-mono text-stealth-muted/55 truncate flex-1 min-w-0" title={item.modelName}>
-                  {item.modelName}
-                </span>
-              </button>
+                  {role && (
+                    <span
+                      className={`atomcode-engine-role-chip atomcode-engine-role-chip--${role} shrink-0`}
+                    >
+                      {role === "brain" ? "1·B" : "2·W"}
+                    </span>
+                  )}
+                  <span className="text-[8px] font-mono text-white/80 shrink-0 tabular-nums">
+                    :{item.entry.port}
+                  </span>
+                  <span className="text-[8px] font-mono text-nv-green/90 shrink-0 truncate max-w-[3.5rem]" title={item.entry.alias}>
+                    {item.entry.alias}
+                  </span>
+                  <span
+                    className="text-[6px] font-mono text-stealth-muted/70 shrink-0 truncate max-w-[5.5rem] uppercase tracking-wide"
+                    title={runtimeEngineSourceLabel(item.entry)}
+                  >
+                    {runtimeEngineSourceLabel(item.entry)}
+                  </span>
+                  <GpuTopoBadges
+                    gpuField={item.entry.gpu}
+                    splitMode={item.entry.splitMode}
+                    compact
+                  />
+                  <span className="text-[7px] font-mono text-stealth-muted/55 truncate flex-1 min-w-0" title={item.modelName}>
+                    {item.modelName}
+                  </span>
+                </button>
+                {onHotSwap && item.entry.status === "RUNNING" && (
+                  <button
+                    type="button"
+                    className={`running-engine-hs-btn shrink-0 font-mono${
+                      isHotSwapStale?.(item.entry) ? " running-engine-hs-btn--hint" : ""
+                    }`}
+                    title={
+                      isHotSwapStale?.(item.entry)
+                        ? "Panel config differs from this engine — hot-swap to apply (same port)"
+                        : "Hot-swap: stop this seat and launch panel model/config on the same port"
+                    }
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onHotSwap(item.entry);
+                    }}
+                  >
+                    HS
+                  </button>
+                )}
+              </div>
             );
           })}
         </div>
@@ -246,15 +282,13 @@ export default function RunningEnginesPanel({
               ? " atomcode-engine--brain"
               : role === "worker"
                 ? " atomcode-engine--worker"
-                : role === "solo"
-                  ? " atomcode-engine--solo"
-                  : atomHl?.open
-                    ? " atomcode-engine--live"
-                    : "";
+                : atomHl?.open
+                  ? " atomcode-engine--live"
+                  : "";
           return (
             <div
               key={`slot-${item.entry.idx}`}
-              onClick={() => onSelectEngine(item.entry.idx)}
+              onClick={() => onEngineActivate(item.entry.idx, item.entry.port)}
               data-engine-port={item.entry.port}
               data-engine-slot={item.entry.idx}
               className={`cursor-pointer rounded-sm px-2.5 py-1.5 border flex flex-col gap-0.5 min-w-0 running-engine-card engine-panel-enter ${
@@ -269,7 +303,7 @@ export default function RunningEnginesPanel({
                   <span
                     className={`atomcode-engine-role-chip atomcode-engine-role-chip--${role} shrink-0`}
                   >
-                    {role === "brain" ? "1·BRAIN" : role === "worker" ? "2·WORKER" : "SOLO"}
+                    {role === "brain" ? "1·BRAIN" : "2·WORKER"}
                   </span>
                 )}
                 <span
@@ -299,6 +333,25 @@ export default function RunningEnginesPanel({
                 <span className="text-[7px] font-mono text-stealth-muted/50 shrink-0">
                   :{item.entry.port}
                 </span>
+                {onHotSwap && item.entry.status === "RUNNING" && (
+                  <button
+                    type="button"
+                    className={`running-engine-hs-btn shrink-0 font-mono${
+                      isHotSwapStale?.(item.entry) ? " running-engine-hs-btn--hint" : ""
+                    }`}
+                    title={
+                      isHotSwapStale?.(item.entry)
+                        ? "Panel config differs from this engine — hot-swap to apply (same port)"
+                        : "Hot-swap: panel model/config on same port (keeps alias)"
+                    }
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onHotSwap(item.entry);
+                    }}
+                  >
+                    HS
+                  </button>
+                )}
               </div>
               {/*
                 Row 2: per-GPU badges (+ split links); provider|profile hugs right.
@@ -313,6 +366,9 @@ export default function RunningEnginesPanel({
                   title={sourceLabel}
                 >
                   {sourceLabel}
+                  {item.entry.parallel != null && item.entry.parallel > 0
+                    ? ` · ×${item.entry.parallel}`
+                    : ""}
                 </span>
               </div>
             </div>

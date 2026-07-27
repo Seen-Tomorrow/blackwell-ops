@@ -84,6 +84,10 @@ export function buildLaunchFullConfig(input: BuildLaunchFullConfigInput): Engine
     ? extraParams
     : stripSpecExtraParams(extraParams);
 
+  // Ensure cockpit parallel survives even if resolve skipped a hidden/default edge case
+  const parallelRaw = config.parallel ?? launchExtra.parallel ?? 1;
+  const parallelN = Math.max(1, Number(parallelRaw) || 1);
+
   const fullConfig: EngineConfig = {
     alias: finalAlias,
     model_path: model.path,
@@ -92,6 +96,8 @@ export function buildLaunchFullConfig(input: BuildLaunchFullConfigInput): Engine
     binary_profile: selectedBinaryProfile,
     extra_params: {
       ...launchExtra,
+      parallel: parallelN,
+      ...(parallelN > 1 ? { cont_batching: config.cont_batching ?? "on" } : {}),
       __memory_mode: fullAutoMode ? "full_auto" : "assisted",
     },
   };
