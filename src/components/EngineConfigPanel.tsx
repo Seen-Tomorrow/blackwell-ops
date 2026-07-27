@@ -908,6 +908,61 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     skipNextModelPathUndimRef.current = false;
   }, [atomcodeHarnessOpen]);
 
+  /**
+   * When the harness wizard opens and the launch dock is docked at the BOTTOM,
+   * the wizard's big "Open {tool}" CTA stacks visually right next to the
+   * "LAUNCH ENGINE" button below — same column, same accent color, both
+   * primary actions. Confusing.
+   *
+   * Behavior:
+   * - Right rail is OPEN (HW monitor / launch rail visible):
+   *     Auto-move the dock to the right rail so the two CTAs are visually
+   *     separated. Restore on close.
+   * - Right rail is CLOSED:
+   *     Don't move the dock (would force the user to discover the right rail
+   *     for no good reason). Instead dim the dock via `data-launch-dock-dim`
+   *     so the user sees one clear CTA — the harness's "Open {tool}" — and
+   *     the launch dock fades behind it. Un-dim on close.
+   */
+  const preHarnessDockPositionRef = useRef<LaunchDockPosition | null>(null);
+
+  // Direct mutators that don't touch the explicit flag (so opening/closing
+  // the harness doesn't mark the user's choice as "explicit"). The "public"
+  // setLaunchDockPositionUser() always sets explicit=true which is wrong for
+  // auto-managed moves.
+  const setLaunchDockPositionAuto = useCallback((position: LaunchDockPosition) => {
+    setLaunchDockPosition(position);
+    saveLaunchDockPosition(position, launchDockPositionExplicit);
+    if (position === "right") {
+      setLaunchDockCollapsed(false);
+      saveLaunchDockCollapsed(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (atomcodeHarnessOpen) {
+      // Only auto-move when the right rail is open — otherwise the dock
+      // already has its own column below the wizard and dimming is the
+      // less-invasive fix.
+      if (
+        launchDockPosition === "bottom" &&
+        showRightColumn &&
+        preHarnessDockPositionRef.current == null
+      ) {
+        preHarnessDockPositionRef.current = launchDockPosition;
+        setLaunchDockPositionAuto("right");
+      }
+    } else if (preHarnessDockPositionRef.current != null) {
+      const restore = preHarnessDockPositionRef.current;
+      preHarnessDockPositionRef.current = null;
+      setLaunchDockPositionAuto(restore);
+    }
+    // Re-fire when showRightColumn flips mid-session (e.g. user opens HW
+    // monitor while harness is already open). The ref guard prevents a loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [atomcodeHarnessOpen, showRightColumn]);
+
   // Catalog model cycle → clear live dim (not the path change that follows engine focus/launch)
   useEffect(() => {
     if (skipNextModelPathUndimRef.current) {
@@ -3650,7 +3705,12 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       </div>
 
       {launchDockPosition === "bottom" && (
-        <div className="config-launch-dock flex-shrink-0 px-4 flex flex-col">
+        <div
+          className="config-launch-dock flex-shrink-0 px-4 flex flex-col"
+          data-launch-dock-dim={
+            atomcodeHarnessOpen && !showRightColumn ? "true" : "false"
+          }
+        >
           <div className="config-launch-dock__content flex flex-col min-w-0">
           {launchDockCollapsed && customFlagsLaunchActive && configView === "full" && (
             <button

@@ -1254,8 +1254,8 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--picked
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.45rem;
-  padding: 0.5rem 0.7rem 0.6rem !important;
+  gap: 0.4rem;
+  padding: 0.5rem 0.7rem 0.55rem !important;
   border-color: color-mix(in srgb, var(--atom-brain-bg) 45%, transparent) !important;
 }
 
@@ -1266,6 +1266,48 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--picked
   gap: 0.3rem 0.55rem;
   padding-bottom: 0.35rem;
   border-bottom: 1px solid color-mix(in srgb, var(--atom-brain-bg) 40%, transparent);
+}
+
+/* Inline tool-picker slots into the header next to the title. Replaces the
+   older subtitle slot ("AtomCode · v5.0.2") which is now collapsed into
+   the active tool chip itself. */
+.atomcode-wizard__header-tools {
+  display: inline-flex;
+  flex: 1 1 auto;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+/* Project directory + path — moved into the header so it sits with the
+   other "what is this session pointed at" controls. `flex: 1 1 100%`
+   forces it to wrap to its own full-width row below the title + tools. */
+.atomcode-wizard__header-project {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 100%;
+  min-width: 0;
+  gap: 0.2rem;
+  order: 10;
+  padding-top: 0.4rem;
+  border-top: 1px dashed
+    color-mix(in srgb, var(--atom-brain-bg) 35%, transparent);
+  margin-top: 0.4rem;
+}
+
+.atomcode-wizard__header-project .atomcode-wizard__project-btn {
+  width: 100%;
+  font-size: 9px;
+}
+
+.atomcode-wizard__header-project .atomcode-wizard__project-path {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: var(--theme-accent-bright);
+  word-break: break-all;
+  max-height: 3.6em;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .atomcode-wizard__title {
@@ -1659,12 +1701,15 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--picked
 
 .atomcode-wizard__project-path {
   margin: 0;
-  font-size: 6.5px;
-  line-height: 1.3;
-  opacity: 0.7;
+  font-size: 11px;
+  line-height: 1.35;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: var(--theme-accent-bright);
   word-break: break-all;
-  max-height: 2.4em;
+  max-height: 3.6em;
   overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .atomcode-wizard__go {
@@ -1726,6 +1771,354 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--picked
 
 .atomcode-wizard__go--twin:hover:not(:disabled) {
   filter: none;
+}
+
+/* ── Install progress strip ───────────────────────────────────────────
+   Visible only while a Rust install is in flight. 4 phase steps + an
+   indeterminate bar so the user sees the app is alive during a 30-90s
+   blocking download. Colors ride existing theme tokens (--theme-accent
+   / --theme-accent-bright / --theme-accent-soft) — no theme forks. */
+.atomcode-wizard__install {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.55rem 0.6rem;
+  border-radius: 3px;
+  border: 1px solid
+    color-mix(in srgb, var(--theme-accent) 35%, transparent);
+  background: var(--theme-accent-soft);
+}
+
+.atomcode-wizard__install-label {
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--theme-accent-bright);
+}
+
+.atomcode-wizard__install-phases {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  font-size: 9px;
+}
+
+.atomcode-wizard__install-step {
+  padding: 0.15rem 0.4rem;
+  border-radius: 2px;
+  border: 1px solid
+    color-mix(in srgb, var(--theme-accent-dim, #4a6a5a) 60%, transparent);
+  background: transparent;
+  color: color-mix(in srgb, var(--theme-accent) 55%, transparent);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.atomcode-wizard__install-step--reached {
+  border-color: color-mix(in srgb, var(--theme-accent) 70%, transparent);
+  color: var(--theme-accent);
+}
+
+.atomcode-wizard__install-step--active {
+  border-color: var(--theme-accent-bright);
+  background: color-mix(in srgb, var(--theme-accent) 22%, transparent);
+  color: var(--theme-accent-bright);
+  /* Subtle pulse so the active step catches the eye without flashing. */
+  animation: atomcode-install-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes atomcode-install-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.65; }
+}
+
+/* Indeterminate bar — sliding highlight inside a recessed track. */
+.atomcode-wizard__install-bar {
+  position: relative;
+  height: 4px;
+  border-radius: 2px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--theme-accent-dim, #4a6a5a) 35%, transparent);
+}
+
+.atomcode-wizard__install-bar-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 35%;
+  border-radius: 2px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--theme-accent-bright) 50%,
+    transparent 100%
+  );
+  animation: atomcode-install-slide 1.28s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes atomcode-install-slide {
+  0%   { transform: translateX(-110%); }
+  100% { transform: translateX(370%); }
+}
+
+/* ── Harness wizard layout (manual) ─────────────────────────────────
+   Driven by JS class swaps, not container queries — so app zoom and
+   user-resized rails never break the layout. */
+
+/* SOLO/TWIN switch — sits directly above the unified mode button.
+   Reuses .segment-switch primitives from launch.css. */
+.atomcode-wizard__mode-switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 0.15rem;
+}
+
+.atomcode-wizard__mode-switch-row .segment-switch {
+  min-width: 0;
+}
+
+.atomcode-wizard__mode-switch-row .segment-switch__option {
+  font-size: 8px;
+  padding: 4px 12px;
+}
+
+.atomcode-wizard__mode-switch-label {
+  font-size: 7px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--theme-text-muted, #4a4a5a);
+}
+
+/* Unified mode button — same element renders either solo (full-width
+   label) or twin (split BRAIN/WORKER halves). Both faces share the same
+   grid cell so swapping between SOLO and TWIN doesn't reflow the row —
+   they have identical outer dimensions by construction. */
+.atomcode-wizard__mode-shell {
+  display: grid;
+  grid-template-areas: "content";
+  width: 100%;
+  min-height: 7.5rem;
+  position: relative;
+  border-radius: 4px;
+  border: 1px solid color-mix(in srgb, var(--atom-brain-bg) 50%, transparent);
+  background: color-mix(in srgb, var(--atom-brain-bg-raw) 14%, var(--theme-panel, #111) 86%);
+  overflow: hidden;
+  cursor: pointer;
+  text-align: left;
+  font-family: "JetBrains Mono", monospace;
+}
+
+.atomcode-wizard__mode-solo,
+.atomcode-wizard__mode-twin {
+  grid-area: content;
+  width: 100%;
+  min-height: inherit;
+}
+
+/* Hide the inactive face. display:none pulls it from the grid layout so the
+   other face fully owns the shared cell (no overlap, no z-index fighting). */
+.atomcode-wizard__mode-shell--solo .atomcode-wizard__mode-twin {
+  display: none;
+}
+
+.atomcode-wizard__mode-shell--twin .atomcode-wizard__mode-solo {
+  display: none;
+}
+
+/* SOLO face fills its shell as a single column with the new 2-col top split. */
+.atomcode-wizard__mode-solo {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.4rem;
+  padding: 0.7rem 0.85rem;
+}
+
+/* TWIN face is a 50/50 grid filling the same shell — outer box matches SOLO. */
+.atomcode-wizard__mode-twin {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+}
+
+/* Each TWIN half mirrors the SOLO layout: 2-col top + engine line below. */
+.atomcode-wizard__mode-twin-half {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.4rem;
+  padding: 0.7rem 0.85rem;
+  min-width: 0;
+}
+
+.atomcode-wizard__mode-twin-half--brain {
+  background: color-mix(in srgb, var(--atom-brain-bg-raw) 22%, transparent);
+  border-right: 1px solid color-mix(in srgb, var(--atom-brain-bg) 35%, transparent);
+}
+
+.atomcode-wizard__mode-twin-half--worker {
+  background: color-mix(in srgb, var(--atom-worker-bg-raw) 16%, transparent);
+}
+
+/* Top split: BIG label (30%) | HERO title + desc (70%) */
+.atomcode-wizard__mode-half-top {
+  display: grid;
+  grid-template-columns: 30% 1fr;
+  gap: 0.5rem;
+  align-items: center;
+  min-width: 0;
+}
+
+/* "double size" tag on the left — anchors the half visually. */
+.atomcode-wizard__mode-half-tag {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  line-height: 1;
+  color: var(--atom-brain-text);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--atom-brain-bg-raw) 35%, transparent);
+}
+
+.atomcode-wizard__mode-half-tag--worker {
+  color: var(--atom-worker-text);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--atom-worker-bg-raw) 35%, transparent);
+}
+
+.atomcode-wizard__mode-half-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+/* "hero size" title on the right — slightly smaller than the tag. */
+.atomcode-wizard__mode-half-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--atom-brain-text);
+}
+
+.atomcode-wizard__mode-half-title--worker {
+  color: var(--atom-worker-text);
+}
+
+.atomcode-wizard__mode-half-desc {
+  font-size: 8px;
+  line-height: 1.3;
+  opacity: 0.78;
+  /* Allow wrap, don't truncate — the description is short by design. */
+}
+
+/* Engine line below the 2-col split: alias:port · model_name */
+.atomcode-wizard__mode-half-engine {
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  padding-top: 0.3rem;
+  border-top: 1px dashed color-mix(in srgb, currentColor 22%, transparent);
+}
+
+.atomcode-wizard__mode-half-engine--brain { color: var(--atom-brain-text); }
+.atomcode-wizard__mode-half-engine--worker { color: var(--atom-worker-text); }
+
+/* Shared SOLO-side type rows */
+.atomcode-wizard__mode-name {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  color: var(--atom-brain-text);
+}
+
+.atomcode-wizard__mode-desc {
+  font-size: 8px;
+  opacity: 0.75;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.atomcode-wizard__mode-engine {
+  font-size: 9px;
+  margin-top: 0.15rem;
+}
+
+.atomcode-wizard__mode-meta {
+  font-size: 8px;
+  opacity: 0.7;
+  margin-top: 0.1rem;
+}
+
+/* ── Wizard bottom row ── concurrency chips (left) + Open CTA (right). */
+.atomcode-wizard__footer {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 0.5rem;
+  align-items: stretch;
+  /* 2-line gap above the bottom row so the eye registers it as a separate
+     decision from the mode button above. */
+  margin-top: 1.4rem;
+  padding-top: 0.9rem;
+  border-top: 1px dashed
+    color-mix(in srgb, var(--atom-brain-bg) 30%, transparent);
+}
+
+.atomcode-wizard__footer-agents {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.atomcode-wizard__footer-cta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+/* Make the existing atomcode-wizard__go fit the footer height. */
+.atomcode-wizard__footer-cta .atomcode-wizard__go {
+  flex: 1 1 auto;
+  min-height: 2.5rem;
+}
+
+/* Stack header tool chips — same look as the old tool-row but tighter. */
+.atomcode-wizard__header-tools .atomcode-wizard__tool-chip {
+  padding: 3px 8px;
+  font-size: 8px;
+}
+
+.atomcode-wizard__header-tools .atomcode-wizard__tool-chip .atomcode-wizard__tool-meta {
+  font-size: 7px;
+  opacity: 0.65;
+  margin-top: 1px;
+}
+
+/* ── Launch dock dim while harness is open ──────────────────────────
+   When the right rail is closed, the launch dock sits directly under
+   the wizard — visually colliding with the "Open {tool}" CTA. Instead
+   of force-moving the dock (which would surprise the user), fade the
+   dock so the wizard's CTA is the unambiguous primary action. */
+[data-launch-dock-dim="true"] {
+  opacity: 0.32;
+  filter: saturate(0.5);
+  pointer-events: none;
+  transition: opacity 0.22s ease, filter 0.22s ease;
+}
+
+[data-launch-dock-dim="false"] {
+  opacity: 1;
+  filter: none;
+  pointer-events: auto;
+  transition: opacity 0.22s ease, filter 0.22s ease;
 }
 
 .atomcode-wizard__disclaimer-body {

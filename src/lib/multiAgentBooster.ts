@@ -41,7 +41,7 @@ export interface BrainsOption {
 }
 
 export const CODING_MODE_OPTIONS: CodingModeOption[] = [
-  { id: "solo", label: "Solo", parallel: 1, blurb: "One stream — snappiest single agent" },
+  { id: "solo", label: "", parallel: 1, blurb: "One stream - snappiest single agent" },
   { id: "group", label: "Group", parallel: 4, blurb: "4 agents in parallel" },
   { id: "squad", label: "Squad", parallel: 8, blurb: "8 agents — coding swarm sweet spot" },
   { id: "team", label: "Team", parallel: 16, blurb: "16 agents — heavy harnesses" },

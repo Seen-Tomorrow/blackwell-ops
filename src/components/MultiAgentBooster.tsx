@@ -43,6 +43,34 @@ import CockpitSlider from "./CockpitSlider";
 
 export type DflashGetUiState = "idle" | "searching" | "downloading" | "error";
 
+/**
+ * High-level install phases. The Rust install is opaque to JS (we don't see
+ * bytes/percent without an explicit event), but we can split it into these
+ * 4 buckets the user actually feels: download → verify → extract → finalize.
+ * The phase strip + indeterminate bar under the wizard proves the app is
+ * alive during the 30-90s Qwen install (180 MB).
+ */
+export type InstallPhase = "download" | "verify" | "extract" | "finalize";
+
+const INSTALL_PHASES: ReadonlyArray<{
+  id: InstallPhase;
+  label: string;
+  /** Approximate weight — used only for visual pacing of the indeterminate bar. */
+  weight: number;
+}> = [
+  { id: "download", label: "Downloading", weight: 70 },
+  { id: "verify", label: "Verifying", weight: 10 },
+  { id: "extract", label: "Extracting", weight: 15 },
+  { id: "finalize", label: "Finalizing", weight: 5 },
+] as const;
+
+const INSTALL_PHASE_LABEL: Record<InstallPhase, string> = {
+  download: "Downloading tool…",
+  verify: "Verifying checksum…",
+  extract: "Extracting archive…",
+  finalize: "Finalizing install…",
+};
+
 /** Contextual SPECULATIVE-DECODING knobs under Boost (n_max, n_min, …). */
 export interface CockpitSpecDetailParam {
   key: string;
@@ -201,6 +229,14 @@ export default function MultiAgentBooster({
   const [atomBusy, setAtomBusy] = useState<"idle" | "install" | "launch" | "webui">("idle");
   const [atomError, setAtomError] = useState<string | null>(null);
   const [atomMsg, setAtomMsg] = useState<string | null>(null);
+  /**
+   * Install progress: which step the Rust side is in. Drives the phase strip +
+   * indeterminate bar so the user knows the app isn't stuck. `null` = no install
+   * in flight (or install finished — fall back to the success toast).
+   */
+  const [installPhase, setInstallPhase] = useState<InstallPhase | null>(null);
+  /** Bumped at ~6Hz to drive the indeterminate bar animation. */
+  const [installTick, setInstallTick] = useState(0);
   const [showDisclaimer, setShowDisclaimer] = useState(false);
   /** Confirm modal before external launch. */
   const [confirmMode, setConfirmMode] = useState<"solo" | "brain_workers" | null>(null);
@@ -398,16 +434,26 @@ export default function MultiAgentBooster({
         ? "dflash"
         : "neutral";
 
+  /**
+   * Reduce a Tauri-side error into a one-liner the user can act on. Rust panics
+   * can dump multi-line messages; we only want the first sentence and a hint.
+   */
+  const normalizeError = useCallback((e: unknown): string => {
+    const raw = e instanceof Error ? e.message : String(e);
+    const firstLine = raw.split(/\r?\n/).find((l) => l.trim().length > 0) ?? raw;
+    return firstLine.length > 200 ? `${firstLine.slice(0, 197)}…` : firstLine;
+  }, []);
+
   const refreshAtomStatus = useCallback(async () => {
     try {
       const s = await invoke<AtomcodeStatus>("atomcode_status");
       setAtomStatus(s);
       return s;
     } catch (e) {
-      setAtomError(String(e));
+      setAtomError(normalizeError(e));
       return null;
     }
-  }, []);
+  }, [normalizeError]);
 
   const refreshQwenStatus = useCallback(async () => {
     try {
@@ -415,10 +461,10 @@ export default function MultiAgentBooster({
       setQwenStatus(s);
       return s;
     } catch (e) {
-      setAtomError(String(e));
+      setAtomError(normalizeError(e));
       return null;
     }
-  }, []);
+  }, [normalizeError]);
 
   const activeToolStatus = harnessTool === "qwen" ? qwenStatus : atomStatus;
 
@@ -438,6 +484,12 @@ export default function MultiAgentBooster({
       // Drop prior open/install toast so reconnect does not show a stale "Opened AtomCode…"
       setAtomMsg(null);
       setAtomError(null);
+      // Defensive: a relaunch in flight when the user closed the wizard shouldn't leave
+      // us stuck with relaunchBusy=true (which would grey out the relaunch button forever).
+      setRelaunchBusy(false);
+      // Don't reset installPhase here — a user closing the wizard mid-install shouldn't
+      // cancel the Rust install, only the UI. The phase strip stays visible until the
+      // install completes (which sets installPhase back to null in its own finally).
     }
     onHarnessOpenChange?.(harnessOpen);
   }, [harnessOpen, onHarnessOpenChange]); // eslint-disable-line react-hooks/exhaustive-deps -- seed only on open
@@ -448,6 +500,17 @@ export default function MultiAgentBooster({
     const t = window.setTimeout(() => setAtomMsg(null), 4000);
     return () => window.clearTimeout(t);
   }, [atomMsg]);
+
+  /**
+   * Indeterminate progress bar — increments ~6Hz while an install is in flight.
+   * Cheap (one setState) and gives the eye motion during a 30-90s blocking invoke.
+   * Cleared on unmount via the cleanup callback.
+   */
+  useEffect(() => {
+    if (installPhase == null) return;
+    const id = window.setInterval(() => setInstallTick((t) => (t + 1) % 1000), 160);
+    return () => window.clearInterval(id);
+  }, [installPhase]);
 
   useEffect(() => {
     if (!confirmMode) return;
@@ -475,6 +538,9 @@ export default function MultiAgentBooster({
       return {
         port: hit.port,
         model: alias,
+        // Actual model weights name (e.g. "Qwen2.5-0.5B-Instruct") — surfaced
+        // alongside the alias on the harness button so the user sees both.
+        modelName: hit.model_name || alias,
         displayId: `${alias} :${hit.port}`,
         contextWindow: hit.n_ctx && hit.n_ctx > 0 ? hit.n_ctx : undefined,
         live: true as const,
@@ -488,6 +554,7 @@ export default function MultiAgentBooster({
     return {
       port: Number(port) || 0,
       model: "local-model",
+      modelName: "local-model",
       displayId: "no Running engine",
       contextWindow: undefined as number | undefined,
       live: false as const,
@@ -643,6 +710,8 @@ export default function MultiAgentBooster({
     return picked;
   }, []);
 
+
+
   const ensureAtomInstalled = useCallback(async (): Promise<AtomcodeStatus | null> => {
     setAtomError(null);
     setAtomMsg(null);
@@ -654,20 +723,28 @@ export default function MultiAgentBooster({
     }
     if (!s.installed) {
       setAtomBusy("install");
+      setInstallPhase("download");
       setAtomMsg(`Downloading AtomCode ${s.pinnedVersion} (~30 MB)…`);
       try {
+        // The Rust install is one blocking call; we mark verify/extract/finalize
+        // visually to give the user a sense of progress without lying about % done.
+        setInstallPhase("verify");
         s = await invoke<AtomcodeStatus>("atomcode_install", { version: null });
+        setInstallPhase("finalize");
         setAtomStatus(s);
         setAtomMsg(`Installed ${s.version ?? s.pinnedVersion}`);
       } catch (e) {
-        setAtomError(String(e));
+        setAtomError(normalizeError(e));
+        // Keep atomBusy cleared so the user can retry from the wizard footer's "Install" button.
         setAtomBusy("idle");
+        setInstallPhase(null);
         return null;
       }
       setAtomBusy("idle");
+      setInstallPhase(null);
     }
     return s;
-  }, [atomStatus, refreshAtomStatus]);
+  }, [atomStatus, refreshAtomStatus, normalizeError]);
 
   const ensureQwenInstalled = useCallback(async (): Promise<QwenCodeStatus | null> => {
     setAtomError(null);
@@ -680,20 +757,25 @@ export default function MultiAgentBooster({
     }
     if (!s.installed) {
       setAtomBusy("install");
+      setInstallPhase("download");
       setAtomMsg(`Downloading Qwen Code ${s.pinnedVersion} (~180 MB standalone)…`);
       try {
+        setInstallPhase("verify");
         s = await invoke<QwenCodeStatus>("qwen_code_install", { version: null });
+        setInstallPhase("finalize");
         setQwenStatus(s);
         setAtomMsg(`Installed Qwen ${s.version ?? s.pinnedVersion}`);
       } catch (e) {
-        setAtomError(String(e));
+        setAtomError(normalizeError(e));
         setAtomBusy("idle");
+        setInstallPhase(null);
         return null;
       }
       setAtomBusy("idle");
+      setInstallPhase(null);
     }
     return s;
-  }, [qwenStatus, refreshQwenStatus]);
+  }, [qwenStatus, refreshQwenStatus, normalizeError]);
 
   const executeHarnessLaunch = useCallback(
     async (mode: "solo" | "brain_workers") => {
@@ -800,7 +882,10 @@ export default function MultiAgentBooster({
         }
         setHarnessOpen(false);
       } catch (e) {
-        setAtomError(String(e));
+        setAtomError(normalizeError(e));
+        // Drop the confirm modal so the user can react to the error (retry install, change
+        // project, etc.) without manually closing the dialog first.
+        setConfirmMode(null);
       } finally {
         setAtomBusy("idle");
       }
@@ -819,6 +904,7 @@ export default function MultiAgentBooster({
       refreshQwenStatus,
       runningEngines,
       onSelectEngine,
+      normalizeError,
     ],
   );
 
@@ -837,11 +923,11 @@ export default function MultiAgentBooster({
       });
       setAtomMsg(`WebUI opened → ${result.url}`);
     } catch (e) {
-      setAtomError(String(e));
+      setAtomError(normalizeError(e));
     } finally {
       setAtomBusy("idle");
     }
-  }, [atomStatus?.installed]);
+  }, [atomStatus?.installed, normalizeError]);
 
   /** Validate + open confirm modal (or disclaimer first). */
   const requestHarnessOpen = useCallback(
@@ -874,26 +960,39 @@ export default function MultiAgentBooster({
         await invoke("qwen_code_accept_disclaimer");
         setShowDisclaimer(false);
         setAtomBusy("install");
+        setInstallPhase("download");
         setAtomMsg("Downloading Qwen Code standalone (~180 MB)…");
+        setInstallPhase("verify");
         const s = await invoke<QwenCodeStatus>("qwen_code_install", { version: null });
+        setInstallPhase("finalize");
         setQwenStatus(s);
         setAtomMsg(`Installed Qwen ${s.version ?? s.pinnedVersion}`);
+        // Refresh in case the Rust side stored additional fields (e.g. install path) the
+        // install response didn't surface — keeps the confirm modal in sync.
+        void refreshQwenStatus();
       } else {
         await invoke("atomcode_accept_disclaimer");
         setShowDisclaimer(false);
         setAtomBusy("install");
+        setInstallPhase("download");
         setAtomMsg("Downloading AtomCode…");
+        setInstallPhase("verify");
         const s = await invoke<AtomcodeStatus>("atomcode_install", { version: null });
+        setInstallPhase("finalize");
         setAtomStatus(s);
         setAtomMsg(`Installed ${s.version ?? s.pinnedVersion}`);
+        void refreshAtomStatus();
       }
     } catch (e) {
-      setAtomError(String(e));
+      setAtomError(normalizeError(e));
+      // On install failure, drop the confirm modal but leave showDisclaimer false — the
+      // wizard footer's "Install {tool} only" button becomes the retry path.
       setConfirmMode(null);
     } finally {
       setAtomBusy("idle");
+      setInstallPhase(null);
     }
-  }, [harnessTool]);
+  }, [harnessTool, normalizeError, refreshAtomStatus, refreshQwenStatus]);
 
   const changeProjectDir = useCallback(async () => {
     const picked = await pickProjectDir();
@@ -912,9 +1011,9 @@ export default function MultiAgentBooster({
       }
       setAtomMsg(`Project: ${picked}`);
     } catch (e) {
-      setAtomError(String(e));
+      setAtomError(normalizeError(e));
     }
-  }, [pickProjectDir, harnessTool]);
+  }, [pickProjectDir, harnessTool, normalizeError]);
 
   const showDraftStrip = showDflashGet || showDflashChange;
   /** Assisted: violet strip for draft and/or SPEC-EXTRA. Full Auto: draft only (no SPEC-EXTRA). */
@@ -1102,11 +1201,11 @@ export default function MultiAgentBooster({
         `Relaunching ${relaunchTarget.alias} on :${relaunchTarget.port} with parallel ×${agentsN} (panel model/config)…`,
       );
     } catch (e) {
-      setAtomError(String(e));
+      setAtomError(normalizeError(e));
     } finally {
       setRelaunchBusy(false);
     }
-  }, [onRelaunchSeat, relaunchTarget, agentsN]);
+  }, [onRelaunchSeat, relaunchTarget, agentsN, normalizeError]);
 
   const confirmPortal =
     confirmMode && !showDisclaimer && typeof document !== "undefined"
@@ -1230,13 +1329,21 @@ export default function MultiAgentBooster({
       : null;
 
   const soloEngineLine = soloReady
-    ? soloTarget.displayId
+    ? `${soloTarget.model} :${soloTarget.port} · ${soloTarget.modelName}`
     : "Click a running engine above";
   const twinBrainLine = twinBrainPort != null
-    ? `${engineByPort(twinBrainPort)?.alias ?? "?"} :${twinBrainPort}`
+    ? (() => {
+        const e = engineByPort(twinBrainPort);
+        if (!e) return `? :${twinBrainPort}`;
+        return `${e.alias} :${e.port} · ${e.model_name}`;
+      })()
     : "Click half or engines → BRAIN";
   const twinWorkerLine = twinWorkerPort != null
-    ? `${engineByPort(twinWorkerPort)?.alias ?? "?"} :${twinWorkerPort}`
+    ? (() => {
+        const e = engineByPort(twinWorkerPort);
+        if (!e) return `? :${twinWorkerPort}`;
+        return `${e.alias} :${e.port} · ${e.model_name}`;
+      })()
     : "Click half or engines → WORKER";
 
   /**
@@ -1274,50 +1381,11 @@ export default function MultiAgentBooster({
     [runningEngines],
   );
 
-  const twinBrainHalf = (
-    <button
-      type="button"
-      className="atomcode-wizard__twin-half atomcode-wizard__twin-half--brain font-mono"
-      disabled={runningEngines.length < 2}
-      title="Select twin · click again to cycle BRAIN among running engines"
-      onClick={() => {
-        if (runningEngines.length < 2) return;
-        if (wizardMode !== "twin") {
-          setWizardMode("twin");
-          return;
-        }
-        cycleTwinSeat("brain");
-      }}
-    >
-      <span className="atomcode-wizard__mode-name">TWIN · BRAIN</span>
-      <span className="atomcode-wizard__mode-desc">Orchestrator</span>
-      <span className="atomcode-wizard__mode-engine font-mono">{twinBrainLine}</span>
-    </button>
-  );
-
-  const twinWorkerHalf = (
-    <button
-      type="button"
-      className="atomcode-wizard__twin-half atomcode-wizard__twin-half--worker font-mono"
-      disabled={runningEngines.length < 2}
-      title="Select twin · click again to cycle WORKER among running engines"
-      onClick={() => {
-        if (runningEngines.length < 2) return;
-        if (wizardMode !== "twin") {
-          setWizardMode("twin");
-          return;
-        }
-        cycleTwinSeat("worker");
-      }}
-    >
-      <span className="atomcode-wizard__mode-name">WORKER</span>
-      <span className="atomcode-wizard__mode-desc">Subagents ×{agentsN}</span>
-      <span className="atomcode-wizard__mode-engine font-mono">{twinWorkerLine}</span>
-    </button>
-  );
-
   /* ── Full takeover wizard (replaces power cockpit while open) ── */
   if (harnessOpen) {
+    const toolName = harnessTool === "qwen" ? "Qwen Code" : "AtomCode";
+    const toolShort = harnessTool === "qwen" ? "Qwen" : "AtomCode";
+    const twinDisabled = runningEngines.length < 2;
     return (
       <div
         className={`full-auto-cockpit atomcode-wizard ${className}`}
@@ -1327,12 +1395,76 @@ export default function MultiAgentBooster({
           <span className="atomcode-wizard__title font-mono tracking-[0.18em] uppercase">
             Harness connect
           </span>
-          <span className="atomcode-wizard__subtitle font-mono">
-            {harnessTool === "qwen" ? "Qwen Code" : "AtomCode"} ·{" "}
-            {activeToolStatus?.installed
-              ? activeToolStatus.version ?? activeToolStatus.pinnedVersion
-              : "install on first open"}
-          </span>
+          {/* Tool picker chips live in the header now (replaces the older
+              "AtomCode · v5.0.2" subtitle) — version installs on first open,
+              so the chip itself carries that info implicitly. */}
+          <div className="atomcode-wizard__header-tools" role="group" aria-label="Harness tool">
+            <button
+              type="button"
+              className={`atomcode-wizard__tool-chip font-mono${harnessTool === "atomcode" ? " atomcode-wizard__tool-chip--on" : ""}`}
+              onClick={() => {
+                setHarnessTool("atomcode");
+                setShowDisclaimer(false);
+                setAtomError(null);
+              }}
+              aria-pressed={harnessTool === "atomcode"}
+              title={
+                atomStatus?.installed
+                  ? `AtomCode ${atomStatus.version ?? atomStatus.pinnedVersion} installed`
+                  : "AtomCode — installs on first open (~30 MB)"
+              }
+            >
+              AtomCode
+              <span className="atomcode-wizard__tool-meta">
+                {atomStatus?.installed
+                  ? atomStatus.version ?? atomStatus.pinnedVersion
+                  : "~30 MB"}
+              </span>
+            </button>
+            <button
+              type="button"
+              className={`atomcode-wizard__tool-chip font-mono${harnessTool === "qwen" ? " atomcode-wizard__tool-chip--on" : ""}`}
+              onClick={() => {
+                setHarnessTool("qwen");
+                setShowDisclaimer(false);
+                setAtomError(null);
+              }}
+              aria-pressed={harnessTool === "qwen"}
+              title={
+                qwenStatus?.installed
+                  ? `Qwen Code ${qwenStatus.version ?? qwenStatus.pinnedVersion} installed`
+                  : "Qwen Code — installs on first open (~180 MB · vision)"
+              }
+            >
+              Qwen Code
+              <span className="atomcode-wizard__tool-meta">
+                {qwenStatus?.installed
+                  ? qwenStatus.version ?? qwenStatus.pinnedVersion
+                  : "~180 MB · vision"}
+              </span>
+            </button>
+          </div>
+
+          {/* Project directory + path — moved into the header so it sits
+              with the other "what is this session pointed at" controls.
+              Wraps to its own row below the tools. */}
+          <div className="atomcode-wizard__header-project">
+            <button
+              type="button"
+              className="atomcode-wizard__project-btn font-mono"
+              disabled={atomBusy !== "idle"}
+              onClick={() => void changeProjectDir()}
+            >
+              POINT THE AGENT — SELECT YOUR PROJECT DIRECTORY
+            </button>
+            <p
+              className="atomcode-wizard__project-path font-mono"
+              title={activeToolStatus?.lastProject ?? undefined}
+            >
+              {activeToolStatus?.lastProject || "No folder yet — pick one to continue"}
+            </p>
+          </div>
+
           <button
             type="button"
             className="atomcode-wizard__close font-mono tracking-wider uppercase"
@@ -1342,163 +1474,213 @@ export default function MultiAgentBooster({
           </button>
         </div>
 
-        {/* Tool picker — AtomCode (Rust PE) vs Qwen Code (Node standalone) */}
-        <div className="atomcode-wizard__tool-row" role="group" aria-label="Harness tool">
-          <button
-            type="button"
-            className={`atomcode-wizard__tool-chip font-mono${harnessTool === "atomcode" ? " atomcode-wizard__tool-chip--on" : ""}`}
-            onClick={() => {
-              setHarnessTool("atomcode");
-              setShowDisclaimer(false);
-              setAtomError(null);
-            }}
-          >
-            AtomCode
-            <span className="atomcode-wizard__tool-meta">
-              {atomStatus?.installed
-                ? atomStatus.version ?? atomStatus.pinnedVersion
-                : "~30 MB"}
-            </span>
-          </button>
-          <button
-            type="button"
-            className={`atomcode-wizard__tool-chip font-mono${harnessTool === "qwen" ? " atomcode-wizard__tool-chip--on" : ""}`}
-            onClick={() => {
-              setHarnessTool("qwen");
-              setShowDisclaimer(false);
-              setAtomError(null);
-            }}
-          >
-            Qwen Code
-            <span className="atomcode-wizard__tool-meta">
-              {qwenStatus?.installed
-                ? qwenStatus.version ?? qwenStatus.pinnedVersion
-                : "~180 MB · vision"}
-            </span>
-          </button>
-        </div>
-
-        {/* Compact full-width blurb — not a side column */}
-        <p className="atomcode-wizard__blurb font-mono">
-          External agent on your engines · isolated home · no cloud keys.{" "}
-          <span className="atomcode-wizard__blurb-brain">BRAIN</span> plans ·{" "}
-          <span className="atomcode-wizard__blurb-worker">WORKER</span> swarms. Twin: click engine
-          cards or the halves below.
-          {harnessTool === "qwen"
-            ? " Qwen: native image paste / multimodal."
-            : " AtomCode: fast Rust TUI + optional WebUI."}
-        </p>
-
-        {/* Full-width stacked mode buttons */}
-        <div className="atomcode-wizard__mode-stack">
-          <button
-            type="button"
-            className={`atomcode-wizard__mode-btn atomcode-wizard__mode-btn--solo font-mono${wizardMode === "solo" ? " atomcode-wizard__mode-btn--on" : ""}`}
-            onClick={() => setWizardMode("solo")}
-          >
-            <div className="atomcode-wizard__mode-btn-inner">
-              <span className="atomcode-wizard__mode-name">SOLO</span>
-              <span className="atomcode-wizard__mode-desc">One engine · BRAIN does everything</span>
-              <span className="atomcode-wizard__mode-engine font-mono">{soloEngineLine}</span>
-              <span className="atomcode-wizard__mode-meta font-mono">Agents ×{agentsN}</span>
-            </div>
-          </button>
-
+        {/* Install progress strip — visible only while a Rust install is in flight.
+            Phase steps give the user a journey to follow; the indeterminate bar
+            moves so the eye sees activity. Suppresses the rest of the wizard
+            (mode/project/concurrency) being interactable during a blocking invoke. */}
+        {installPhase != null && (
           <div
-            className={`atomcode-wizard__mode-btn atomcode-wizard__mode-btn--twin font-mono${wizardMode === "twin" ? " atomcode-wizard__mode-btn--on" : ""}${runningEngines.length < 2 ? " atomcode-wizard__mode-btn--disabled" : ""}${twinWorkerOnLeft ? " atomcode-wizard__mode-btn--twin-flip" : ""}`}
-            role="group"
-            aria-label="Twin mode BRAIN and WORKER"
+            className="atomcode-wizard__install font-mono"
+            role="status"
+            aria-live="polite"
           >
-            {twinWorkerOnLeft ? (
-              <>
-                {twinWorkerHalf}
-                {twinBrainHalf}
-              </>
-            ) : (
-              <>
-                {twinBrainHalf}
-                {twinWorkerHalf}
-              </>
-            )}
+            <div className="atomcode-wizard__install-label">
+              {INSTALL_PHASE_LABEL[installPhase]}
+            </div>
+            <div className="atomcode-wizard__install-phases">
+              {INSTALL_PHASES.map((p) => {
+                const reached =
+                  INSTALL_PHASES.findIndex((x) => x.id === installPhase) >=
+                  INSTALL_PHASES.findIndex((x) => x.id === p.id);
+                return (
+                  <span
+                    key={p.id}
+                    className={`atomcode-wizard__install-step${reached ? " atomcode-wizard__install-step--reached" : ""}${p.id === installPhase ? " atomcode-wizard__install-step--active" : ""}`}
+                    title={p.label}
+                  >
+                    {p.label}
+                  </span>
+                );
+              })}
+            </div>
+            <div className="atomcode-wizard__install-bar" aria-hidden>
+              <div
+                className="atomcode-wizard__install-bar-fill"
+                style={{ animationDelay: `${(installTick % 8) * 120}ms` }}
+              />
+            </div>
           </div>
-          {runningEngines.length < 2 && (
-            <p className="atomcode-wizard__agents-hint font-mono m-0">
-              Twin needs 2+ running engines.
-            </p>
-          )}
-        </div>
+        )}
 
-        <p className="atomcode-wizard__step-label font-mono">
-          {wizardMode === "twin" ? "Worker concurrency" : "Agent concurrency"}
-        </p>
-        <div className="atomcode-wizard__agents" role="group" aria-label="Concurrent agents">
-          {agentOptions.map((o) => {
-            const active = o.parallel === agentsN;
-            return (
-              <button
-                key={o.id}
-                type="button"
-                className={`atomcode-wizard__agent-chip font-mono${active ? " atomcode-wizard__agent-chip--on" : ""}`}
-                title={o.blurb}
-                onClick={() => {
-                  setHarnessAgents(o.parallel);
-                  // Best-effort sync cockpit parallel (may no-op under MTP force Solo)
-                  onCodingMode(o.id);
-                }}
-              >
-                <span className="atomcode-wizard__agent-n">×{o.parallel}</span>
-                <span className="atomcode-wizard__agent-label">{o.label}</span>
-              </button>
-            );
-          })}
-        </div>
-        <p className="atomcode-wizard__agents-hint font-mono">
-          Harness cap ×{agentsN}
-          {workerEngineParallel > 0
-            ? ` · engine parallel now ×${workerEngineParallel}`
-            : ""}
-          {needsEngineParallelBump
-            ? " · extras will queue until engine is relaunched"
-            : ""}
+        {/* One-line "what is this" subtitle. Keeps the original "isolated home · no cloud keys" promise
+            and the BRAIN / WORKER legend in a single readable sentence. */}
+        <p className="atomcode-wizard__blurb font-mono">
+          External coding agent on your engines · isolated home · no cloud keys.{" "}
+          <span className="atomcode-wizard__blurb-brain">BRAIN</span> plans ·{" "}
+          <span className="atomcode-wizard__blurb-worker">WORKER</span> swarms.
         </p>
 
-        {needsEngineParallelBump && relaunchTarget && onRelaunchSeat && (
-          <div className="atomcode-wizard__relaunch font-mono">
-            <p className="atomcode-wizard__relaunch-msg m-0">
-              {wizardMode === "twin" ? "WORKER" : "Engine"}{" "}
-              <strong>{relaunchTarget.alias}</strong> is live at parallel ×
-              {workerEngineParallel}, harness wants ×{agentsN}. Relaunch uses the{" "}
-              <strong>current panel model + chip settings</strong> (not the old process’s GGUF),
-              same port/alias, with <strong>--parallel {agentsN}</strong>. Or use{" "}
-              <strong>HS</strong> on any running-engine card anytime.
-            </p>
+        {/* Mode switch — directly above the unified mode button. Uses the same
+            .segment-switch styling as the engine config Essentials/FULL toggle. */}
+        <div className="atomcode-wizard__mode-switch-row">
+          <span className="atomcode-wizard__mode-switch-label">Mode</span>
+          <div
+            className="segment-switch segment-switch--harness"
+            data-segment-switch
+            data-active={wizardMode === "solo" ? "left" : "right"}
+            role="group"
+            aria-label="Harness mode"
+          >
+            <span className="segment-switch__thumb" aria-hidden />
             <button
               type="button"
-              className="atomcode-wizard__relaunch-btn font-mono"
-              disabled={relaunchBusy || atomBusy !== "idle"}
-              onClick={() => void doRelaunchSeat()}
+              className={`segment-switch__option${wizardMode === "solo" ? " segment-switch__option--active" : ""}`}
+              aria-pressed={wizardMode === "solo"}
+              onClick={() => setWizardMode("solo")}
             >
-              {relaunchBusy
-                ? "Relaunching…"
-                : `Relaunch ${relaunchTarget.alias} :${relaunchTarget.port} · ×${agentsN}`}
+              SOLO
+            </button>
+            <button
+              type="button"
+              className={`segment-switch__option${wizardMode === "twin" ? " segment-switch__option--active" : ""}`}
+              aria-pressed={wizardMode === "twin"}
+              onClick={() => {
+                if (twinDisabled) return;
+                setWizardMode("twin");
+              }}
+              disabled={twinDisabled}
+              title={
+                twinDisabled
+                  ? "Twin needs 2+ running engines"
+                  : undefined
+              }
+            >
+              TWIN
             </button>
           </div>
-        )}
+        </div>
 
-        {/* Always offer same-port hot-swap when a seat is selected */}
-        {!needsEngineParallelBump && relaunchTarget && onRelaunchSeat && (
+        {/* Unified mode button — single visual element, renders either a
+            SOLO label or the BRAIN/WORKER split depending on `wizardMode`. */}
+        {twinDisabled && wizardMode === "twin" ? null : (
           <button
             type="button"
-            className="full-auto-cockpit__copy font-mono atomcode-wizard__hotswap"
-            disabled={relaunchBusy || atomBusy !== "idle"}
-            title="Stop this seat and launch the catalog/panel model on the same port (keep alias)"
-            onClick={() => void doRelaunchSeat()}
+            className={`atomcode-wizard__mode-shell font-mono${wizardMode === "solo" ? " atomcode-wizard__mode-shell--solo" : " atomcode-wizard__mode-shell--twin"}`}
+            aria-label={wizardMode === "solo" ? "Solo mode details" : "Twin mode seat details"}
           >
-            {relaunchBusy
-              ? "Relaunching…"
-              : `Hot-swap ${relaunchTarget.alias} :${relaunchTarget.port} ← panel model · ×${agentsN}`}
+            {/* SOLO face — full-width single label */}
+            <div className="atomcode-wizard__mode-solo">
+              <div className="atomcode-wizard__mode-half-top">
+                <span className="atomcode-wizard__mode-half-tag">SOLO</span>
+                <div className="atomcode-wizard__mode-half-info">
+                  <span className="atomcode-wizard__mode-half-title">BRAIN</span>
+                  <span className="atomcode-wizard__mode-half-desc">
+                    One engine — reads the repo, plans, and acts without delegation.
+                  </span>
+                </div>
+              </div>
+              <div
+                className="atomcode-wizard__mode-half-engine font-mono"
+                title={soloEngineLine}
+              >
+                {soloEngineLine}
+              </div>
+            </div>
+
+            {/* TWIN face — equal-split BRAIN / WORKER halves */}
+            <div
+              className={`atomcode-wizard__mode-twin${twinWorkerOnLeft ? " atomcode-wizard__mode-twin--flip" : ""}`}
+            >
+              {twinWorkerOnLeft ? (
+                <>
+                  <div className="atomcode-wizard__mode-twin-half atomcode-wizard__mode-twin-half--worker">
+                    <div className="atomcode-wizard__mode-half-top">
+                      <span className="atomcode-wizard__mode-half-tag atomcode-wizard__mode-half-tag--worker">
+                        WORKER
+                      </span>
+                      <div className="atomcode-wizard__mode-half-info">
+                        <span className="atomcode-wizard__mode-half-title">SUB AGENTS ×{agentsN}</span>
+                        <span className="atomcode-wizard__mode-half-desc">
+                          Run delegated subtasks in parallel — file edits, tests, repo research.
+                        </span>
+                      </div>
+                    </div>
+                    <div
+                      className="atomcode-wizard__mode-half-engine font-mono"
+                      title={twinWorkerLine}
+                    >
+                      {twinWorkerLine}
+                    </div>
+                  </div>
+                  <div className="atomcode-wizard__mode-twin-half atomcode-wizard__mode-twin-half--brain">
+                    <div className="atomcode-wizard__mode-half-top">
+                      <span className="atomcode-wizard__mode-half-tag">BRAIN</span>
+                      <div className="atomcode-wizard__mode-half-info">
+                        <span className="atomcode-wizard__mode-half-title">ORCHESTRATOR</span>
+                        <span className="atomcode-wizard__mode-half-desc">
+                          Reads the repo, plans, and delegates subtasks to the worker.
+                        </span>
+                      </div>
+                    </div>
+                    <div
+                      className="atomcode-wizard__mode-half-engine font-mono"
+                      title={twinBrainLine}
+                    >
+                      {twinBrainLine}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="atomcode-wizard__mode-twin-half atomcode-wizard__mode-twin-half--brain">
+                    <div className="atomcode-wizard__mode-half-top">
+                      <span className="atomcode-wizard__mode-half-tag">BRAIN</span>
+                      <div className="atomcode-wizard__mode-half-info">
+                        <span className="atomcode-wizard__mode-half-title">ORCHESTRATOR</span>
+                        <span className="atomcode-wizard__mode-half-desc">
+                          Reads the repo, plans, and delegates subtasks to the worker.
+                        </span>
+                      </div>
+                    </div>
+                    <div
+                      className="atomcode-wizard__mode-half-engine font-mono"
+                      title={twinBrainLine}
+                    >
+                      {twinBrainLine}
+                    </div>
+                  </div>
+                  <div className="atomcode-wizard__mode-twin-half atomcode-wizard__mode-twin-half--worker">
+                    <div className="atomcode-wizard__mode-half-top">
+                      <span className="atomcode-wizard__mode-half-tag atomcode-wizard__mode-half-tag--worker">
+                        WORKER
+                      </span>
+                      <div className="atomcode-wizard__mode-half-info">
+                        <span className="atomcode-wizard__mode-half-title">SUB AGENTS ×{agentsN}</span>
+                        <span className="atomcode-wizard__mode-half-desc">
+                          Run delegated subtasks in parallel — file edits, tests, repo research.
+                        </span>
+                      </div>
+                    </div>
+                    <div
+                      className="atomcode-wizard__mode-half-engine font-mono"
+                      title={twinWorkerLine}
+                    >
+                      {twinWorkerLine}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
           </button>
         )}
+        {twinDisabled && wizardMode === "twin" && (
+          <p className="atomcode-wizard__agents-hint font-mono m-0">
+            Twin needs 2+ running engines. Start another engine to unlock TWIN.
+          </p>
+        )}
+
+        {/* Project folder — single full-width row, single CTA, no extra subhead. */}
+        {/* Project directory + path live in the wizard header now. */}
 
         {showDisclaimer && (
           <div className="atomcode-wizard__disclaimer space-y-2">
@@ -1528,79 +1710,132 @@ export default function MultiAgentBooster({
           </div>
         )}
 
+        {/* Bottom row — LEFT: concurrency chips + relaunch advice if any.
+            RIGHT: Open CTA + quiet secondary actions (WebUI / pre-install). */}
         {!showDisclaimer && (
-          <div className="atomcode-wizard__launch-row">
-            <button
-              type="button"
-              className={`atomcode-wizard__go font-mono tracking-wider uppercase${
-                wizardMode === "twin"
-                  ? ` atomcode-wizard__go--twin${twinWorkerOnLeft ? " atomcode-wizard__go--twin-flip" : ""}`
-                  : " atomcode-wizard__go--solo"
-              }`}
-              disabled={!canLaunch}
-              onClick={() =>
-                requestHarnessOpen(wizardMode === "solo" ? "solo" : "brain_workers")
-              }
-            >
-              {atomBusy === "install"
-                ? "Installing…"
-                : atomBusy === "launch"
-                  ? "Launching…"
-                  : wizardMode === "solo"
-                    ? `Open ${harnessTool === "qwen" ? "Qwen" : "AtomCode"} — single`
-                    : `Open ${harnessTool === "qwen" ? "Qwen" : "AtomCode"} — twin`}
-            </button>
-            <div className="atomcode-wizard__project-side">
+          <div className="atomcode-wizard__footer">
+            {/* LEFT — concurrency chips */}
+            <div className="atomcode-wizard__footer-agents">
+              <p className="atomcode-wizard__step-label font-mono m-0">
+                {wizardMode === "twin" ? "Worker concurrency" : "Agent concurrency"}
+              </p>
+              <div className="atomcode-wizard__agents" role="group" aria-label="Concurrent agents">
+                {agentOptions.map((o) => {
+                  const active = o.parallel === agentsN;
+                  return (
+                    <button
+                      key={o.id}
+                      type="button"
+                      className={`atomcode-wizard__agent-chip font-mono${active ? " atomcode-wizard__agent-chip--on" : ""}`}
+                      title={o.blurb}
+                      onClick={() => {
+                        setHarnessAgents(o.parallel);
+                        // Best-effort sync cockpit parallel (may no-op under MTP force Solo)
+                        onCodingMode(o.id);
+                      }}
+                    >
+                      <span className="atomcode-wizard__agent-n">×{o.parallel}</span>
+                      <span className="atomcode-wizard__agent-label">{o.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              {/* The verbose "Harness cap ×N · engine parallel now ×N · extras
+                  will queue…" hint was removed — the relaunch message below
+                  already conveys the only case where any of that matters. */}
+
+              {needsEngineParallelBump && relaunchTarget && onRelaunchSeat && (
+                <div className="atomcode-wizard__relaunch font-mono">
+                  <p className="atomcode-wizard__relaunch-msg m-0">
+                    {wizardMode === "twin"
+                      ? "RESTART the WORKER model to match AGENTS concurrency"
+                      : "RESTART the BRAIN model to match AGENTS concurrency"}
+                  </p>
+                  <button
+                    type="button"
+                    className="atomcode-wizard__relaunch-btn font-mono"
+                    disabled={relaunchBusy || atomBusy !== "idle"}
+                    onClick={() => void doRelaunchSeat()}
+                  >
+                    {relaunchBusy
+                      ? "Restarting…"
+                      : `RESTART ${relaunchTarget.alias} :${relaunchTarget.port} · ×${agentsN}`}
+                  </button>
+                </div>
+              )}
+
+              {!needsEngineParallelBump && relaunchTarget && onRelaunchSeat && (
+                <button
+                  type="button"
+                  className="full-auto-cockpit__copy font-mono atomcode-wizard__hotswap"
+                  disabled={relaunchBusy || atomBusy !== "idle"}
+                  title="Stop this seat and launch the catalog/panel model on the same port (keep alias)"
+                  onClick={() => void doRelaunchSeat()}
+                >
+                  {relaunchBusy
+                    ? "Relaunching…"
+                    : `Hot-swap ${relaunchTarget.alias} :${relaunchTarget.port} ← panel model · ×${agentsN}`}
+                </button>
+              )}
+            </div>
+
+            {/* RIGHT — Open CTA + secondary */}
+            <div className="atomcode-wizard__footer-cta">
               <button
                 type="button"
-                className="atomcode-wizard__project-btn font-mono"
-                disabled={atomBusy !== "idle"}
-                onClick={() => void changeProjectDir()}
+                className={`atomcode-wizard__go font-mono tracking-wider uppercase${
+                  wizardMode === "twin"
+                    ? ` atomcode-wizard__go--twin${twinWorkerOnLeft ? " atomcode-wizard__go--twin-flip" : ""}`
+                    : " atomcode-wizard__go--solo"
+                }`}
+                disabled={!canLaunch}
+                onClick={() =>
+                  requestHarnessOpen(wizardMode === "solo" ? "solo" : "brain_workers")
+                }
               >
-                {activeToolStatus?.lastProject ? "Project…" : "Choose project"}
+                {atomBusy === "install"
+                  ? "Installing…"
+                  : atomBusy === "launch"
+                    ? "Launching…"
+                    : wizardMode === "solo"
+                      ? `Open ${toolShort} on this engine`
+                      : `Open ${toolShort} on BRAIN + WORKER`}
               </button>
-              <p
-                className="atomcode-wizard__project-path font-mono"
-                title={activeToolStatus?.lastProject ?? undefined}
-              >
-                {activeToolStatus?.lastProject || "No folder yet"}
-              </p>
+
+              {harnessTool === "atomcode" && atomStatus?.installed && (
+                <button
+                  type="button"
+                  className="full-auto-cockpit__copy font-mono atomcode-wizard__webui"
+                  disabled={atomBusy !== "idle"}
+                  title="Start AtomCode webui, capture token URL, open system browser (standalone — not TUI sync)"
+                  onClick={() => void openAtomcodeWebui()}
+                >
+                  {atomBusy === "webui" ? "Starting WebUI…" : "Or open AtomCode WebUI"}
+                </button>
+              )}
+
+              {activeToolStatus && !activeToolStatus.installed && (
+                <button
+                  type="button"
+                  className="full-auto-cockpit__copy font-mono"
+                  disabled={atomBusy !== "idle"}
+                  onClick={() => {
+                    if (!activeToolStatus.disclaimerAccepted) {
+                      setShowDisclaimer(true);
+                    } else if (harnessTool === "qwen") {
+                      void ensureQwenInstalled();
+                    } else {
+                      void ensureAtomInstalled();
+                    }
+                  }}
+                >
+                  {harnessTool === "qwen"
+                    ? "Pre-install Qwen Code (~180 MB)"
+                    : "Pre-install AtomCode (~30 MB)"}
+                </button>
+              )}
             </div>
           </div>
-        )}
-
-        {/* AtomCode-only: browser UI */}
-        {!showDisclaimer && harnessTool === "atomcode" && atomStatus?.installed && (
-          <button
-            type="button"
-            className="full-auto-cockpit__copy font-mono atomcode-wizard__webui"
-            disabled={atomBusy !== "idle"}
-            title="Start AtomCode webui, capture token URL, open system browser (standalone — not TUI sync)"
-            onClick={() => void openAtomcodeWebui()}
-          >
-            {atomBusy === "webui" ? "Starting WebUI…" : "Open AtomCode WebUI"}
-          </button>
-        )}
-
-        {!showDisclaimer && activeToolStatus && !activeToolStatus.installed && (
-          <button
-            type="button"
-            className="full-auto-cockpit__copy font-mono"
-            disabled={atomBusy !== "idle"}
-            onClick={() => {
-              if (!activeToolStatus.disclaimerAccepted) {
-                setShowDisclaimer(true);
-              } else if (harnessTool === "qwen") {
-                void ensureQwenInstalled();
-              } else {
-                void ensureAtomInstalled();
-              }
-            }}
-          >
-            {harnessTool === "qwen"
-              ? "Install Qwen only (~180 MB)"
-              : "Install AtomCode only (~30 MB)"}
-          </button>
         )}
 
         {atomMsg && <p className="atomcode-msg-ok font-mono m-0">{atomMsg}</p>}
@@ -1782,17 +2017,23 @@ export default function MultiAgentBooster({
 
       </div>
 
-      {/* Footer: violet draft + SPEC-EXTRA (Assisted) + Connect */}
+      {/* Footer: violet draft + SPEC-EXTRA (Assisted) + Connect.
+          Connect trigger is hidden while the wizard is open — the wizard's own
+          Close button in its header serves the toggle, and keeping the trigger
+          visible created a confusing two-CTA stack with the launch-dock button
+          when launchDockPosition === "bottom". */}
       <div className="full-auto-cockpit__footer full-auto-cockpit__footer--actions">
         {violetStrip}
-        <button
-          type="button"
-          onClick={() => setHarnessOpen((v) => !v)}
-          className={`full-auto-cockpit__connect font-mono tracking-wider uppercase shrink-0${harnessOpen ? " full-auto-cockpit__connect--active" : ""}`}
-          title="AtomCode external agent"
-        >
-          {harnessOpen ? "Hide AtomCode" : "AtomCode"}
-        </button>
+        {!harnessOpen && (
+          <button
+            type="button"
+            onClick={() => setHarnessOpen(true)}
+            className="full-auto-cockpit__connect font-mono tracking-wider uppercase shrink-0"
+            title="Connect an external coding agent to your engines (AtomCode or Qwen Code)"
+          >
+            TAKE ME TO AGENTIC WORK
+          </button>
+        )}
       </div>
     </div>
   );
