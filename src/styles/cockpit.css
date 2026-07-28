@@ -1280,13 +1280,15 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--picked
 
 /* Project directory + path — moved into the header so it sits with the
    other "what is this session pointed at" controls. `flex: 1 1 100%`
-   forces it to wrap to its own full-width row below the title + tools. */
+   forces it to wrap to its own full-width row below the title + tools.
+   2 cols: button on the left, path on the right. */
 .atomcode-wizard__header-project {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   flex: 1 1 100%;
   min-width: 0;
-  gap: 0.2rem;
+  gap: 0.55rem;
+  align-items: center;
   order: 10;
   padding-top: 0.4rem;
   border-top: 1px dashed
@@ -1295,7 +1297,6 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--picked
 }
 
 .atomcode-wizard__header-project .atomcode-wizard__project-btn {
-  width: 100%;
   font-size: 9px;
 }
 
@@ -1305,7 +1306,7 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--picked
   letter-spacing: 0.01em;
   color: var(--theme-accent-bright);
   word-break: break-all;
-  max-height: 3.6em;
+  max-height: 2.2em;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -1383,23 +1384,24 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--picked
 }
 
 .atomcode-wizard__blurb {
+  /* Lives in the header now — quieter than the body version, no card chrome,
+     sits as a single-line subtitle under the title. `flex: 1 1 100%` makes it
+     wrap to its own row across the full header width. */
   margin: 0;
-  font-size: 7.5px;
-  line-height: 1.4;
-  color: color-mix(in srgb, #cbd5e1 88%, transparent);
-  padding: 0.35rem 0.45rem;
-  border-radius: 3px;
-  border: 1px solid color-mix(in srgb, var(--theme-border, #1a2e1a) 70%, transparent);
-  background: color-mix(in srgb, #000 22%, transparent);
+  font-size: 8.5px;
+  line-height: 1.35;
+  color: color-mix(in srgb, var(--theme-text) 72%, transparent);
+  flex: 1 1 100%;
+  min-width: 0;
 }
 
 .atomcode-wizard__blurb-brain {
-  color: var(--theme-provider-pill-hover-text);
+  color: var(--theme-secondary-bright, var(--theme-provider-pill-hover-text));
   font-weight: 700;
 }
 
 .atomcode-wizard__blurb-worker {
-  color: var(--atom-worker-fg);
+  color: var(--atom-worker-fg, var(--theme-chip-active-text));
   font-weight: 700;
 }
 
@@ -1872,17 +1874,29 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--picked
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.5rem;
+  gap: 0.7rem;
   margin-top: 0.15rem;
 }
 
 .atomcode-wizard__mode-switch-row .segment-switch {
-  min-width: 0;
+  min-width: 11rem;
 }
 
+/* Doubled size via real font-size + padding — NOT transform (transform
+   grows the visual without growing the layout box, so siblings overlap).
+   Doubling the font + padding gives a natural 2x footprint. */
 .atomcode-wizard__mode-switch-row .segment-switch__option {
-  font-size: 8px;
-  padding: 4px 12px;
+  font-size: 13px;
+  padding: 6px 22px;
+  letter-spacing: 0.16em;
+}
+
+/* Thumb scales with the larger option. */
+.atomcode-wizard__mode-switch-row .segment-switch__thumb {
+  border-radius: 4px;
+  box-shadow:
+    0 0 12px color-mix(in srgb, var(--theme-accent-glow) 70%, transparent),
+    inset 0 1px 0 color-mix(in srgb, #fff 14%, transparent);
 }
 
 .atomcode-wizard__mode-switch-label {
@@ -1900,7 +1914,10 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--picked
   display: grid;
   grid-template-areas: "content";
   width: 100%;
-  min-height: 7.5rem;
+  /* Trimmed from 7.5rem — the SOLO/TWIN button no longer needs to be
+     ~2x taller than the natural content; the below-row footer already
+     provides vertical room. */
+  min-height: 5.4rem;
   position: relative;
   border-radius: 4px;
   border: 1px solid color-mix(in srgb, var(--atom-brain-bg) 50%, transparent);
@@ -1933,8 +1950,8 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--picked
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  gap: 0.4rem;
-  padding: 0.7rem 0.85rem;
+  gap: 0.3rem;
+  padding: 0.5rem 0.7rem;
 }
 
 /* TWIN face is a 50/50 grid filling the same shell — outer box matches SOLO. */
@@ -1949,8 +1966,8 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--picked
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  gap: 0.4rem;
-  padding: 0.7rem 0.85rem;
+  gap: 0.3rem;
+  padding: 0.5rem 0.7rem;
   min-width: 0;
 }
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
 import type { SpecCapability } from "../lib/specDraft";
@@ -241,6 +241,60 @@ export default function MultiAgentBooster({
   /** Confirm modal before external launch. */
   const [confirmMode, setConfirmMode] = useState<"solo" | "brain_workers" | null>(null);
   const [relaunchBusy, setRelaunchBusy] = useState(false);
+
+  /**
+   * Hot-swap pending pin — single source of truth for twin-role survival across stop→launch.
+   * While set: drop-stale keeps the relaunched seat even if its port is briefly missing.
+   * Rematch only after the port has vacated once (avoids clearing pending before stop runs).
+   * Port-first rematch, then non-empty alias. Timeout / wizard close / failure clear pending.
+   */
+  type PendingRelaunch = {
+    port: number;
+    /** Trimmed; empty → port-only rematch (never match blank aliases). */
+    alias: string;
+    /** Twin seat to re-pin; null in solo (no twin role update). */
+    seat: "worker" | "brain" | null;
+    /** True once `port` was absent from runningEngines after arming. */
+    vacated: boolean;
+  };
+  const PENDING_RELAUNCH_MS = 12_000;
+  const pendingRelaunchRef = useRef<PendingRelaunch | null>(null);
+  const pendingRelaunchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Bumps when pending is armed/cleared so the prune effect re-runs without a stack change. */
+  const [roleSyncTick, setRoleSyncTick] = useState(0);
+
+  const clearPendingRelaunch = useCallback(() => {
+    pendingRelaunchRef.current = null;
+    if (pendingRelaunchTimerRef.current != null) {
+      clearTimeout(pendingRelaunchTimerRef.current);
+      pendingRelaunchTimerRef.current = null;
+    }
+  }, []);
+
+  const armPendingRelaunch = useCallback((next: Omit<PendingRelaunch, "vacated">) => {
+    if (pendingRelaunchTimerRef.current != null) {
+      clearTimeout(pendingRelaunchTimerRef.current);
+    }
+    pendingRelaunchRef.current = { ...next, vacated: false };
+    pendingRelaunchTimerRef.current = setTimeout(() => {
+      pendingRelaunchTimerRef.current = null;
+      if (pendingRelaunchRef.current) {
+        pendingRelaunchRef.current = null;
+        setRoleSyncTick((n) => n + 1);
+      }
+    }, PENDING_RELAUNCH_MS);
+    setRoleSyncTick((n) => n + 1);
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (pendingRelaunchTimerRef.current != null) {
+        clearTimeout(pendingRelaunchTimerRef.current);
+      }
+    },
+    [],
+  );
+
   const hero = layout === "hero";
   /** Single assisted density — Essentials/Full no longer reflow padding. */
   const densityUnified = !hero;
@@ -478,21 +532,23 @@ export default function MultiAgentBooster({
     if (!harnessOpen) {
       setConfirmMode(null);
       setShowDisclaimer(false);
+      // Closing mid-relaunch must not leave busy UI or frozen twin roles.
+      setRelaunchBusy(false);
+      clearPendingRelaunch();
     } else {
       // Seed from UI codingMode (not plan — MTP may force plan to Solo)
       setHarnessAgents(Math.max(1, parallelForCodingMode(codingMode)));
       // Drop prior open/install toast so reconnect does not show a stale "Opened AtomCode…"
       setAtomMsg(null);
       setAtomError(null);
-      // Defensive: a relaunch in flight when the user closed the wizard shouldn't leave
-      // us stuck with relaunchBusy=true (which would grey out the relaunch button forever).
       setRelaunchBusy(false);
+      clearPendingRelaunch();
       // Don't reset installPhase here — a user closing the wizard mid-install shouldn't
       // cancel the Rust install, only the UI. The phase strip stays visible until the
       // install completes (which sets installPhase back to null in its own finally).
     }
     onHarnessOpenChange?.(harnessOpen);
-  }, [harnessOpen, onHarnessOpenChange]); // eslint-disable-line react-hooks/exhaustive-deps -- seed only on open
+  }, [harnessOpen, onHarnessOpenChange, clearPendingRelaunch]); // eslint-disable-line react-hooks/exhaustive-deps -- seed only on open
 
   // Ephemeral success toasts (install / open / relaunch) — auto-clear so they never stick
   useEffect(() => {
@@ -568,8 +624,9 @@ export default function MultiAgentBooster({
   );
 
   /**
-   * Twin: explicit BRAIN/WORKER ports from click-cycle on running engine cards.
-   * Click same card: none → BRAIN → WORKER → clear. Works with 3+ engines.
+   * Twin: explicit BRAIN/WORKER ports from engine-card clicks (and half-button cycle).
+   * Same-card cycle: NONE → BRAIN → untag BRAIN (worker kept) · WORKER → clear.
+   * Free card: fill empty BRAIN, else empty WORKER, else claim BRAIN. Works with 3+ engines.
    */
   const dualTargets = useMemo(() => {
     if (runningEngines.length < 2) return null;
@@ -596,21 +653,76 @@ export default function MultiAgentBooster({
     };
   }, [runningEngines, twinBrainPort, twinWorkerPort, engineByPort]);
 
-  // Drop roles for engines that stopped
+  /**
+   * Prune twin roles for dead ports, or preserve/rematch during pending relaunch.
+   * Rematch only after the relaunched port has vacated once; then port-first,
+   * non-empty alias second.
+   */
   useEffect(() => {
+    const pending = pendingRelaunchRef.current;
     const ports = new Set(runningEngines.map((e) => e.port));
+
+    let rematch: { seat: "worker" | "brain"; port: number } | null = null;
+    let activePending = pending;
+
+    if (pending) {
+      if (!pending.vacated) {
+        if (!ports.has(pending.port)) {
+          pending.vacated = true;
+        }
+      }
+      if (pending.vacated) {
+        const byPort = runningEngines.find((e) => e.port === pending.port) ?? null;
+        let found = byPort;
+        if (!found) {
+          const aliasKey = pending.alias.trim();
+          if (aliasKey) {
+            found =
+              runningEngines.find((e) => (e.alias || "").trim() === aliasKey) ?? null;
+          }
+        }
+        if (found) {
+          if (pending.seat === "worker" || pending.seat === "brain") {
+            rematch = { seat: pending.seat, port: found.port };
+          }
+          clearPendingRelaunch();
+          activePending = null;
+        }
+      }
+    }
+
     setTwinRoles((r) => {
-      const brain = r.brain != null && ports.has(r.brain) ? r.brain : null;
-      const worker = r.worker != null && ports.has(r.worker) ? r.worker : null;
+      let brain = r.brain;
+      let worker = r.worker;
+
+      if (rematch?.seat === "worker") {
+        worker = rematch.port;
+        if (brain === rematch.port) brain = null;
+      } else if (rematch?.seat === "brain") {
+        brain = rematch.port;
+        if (worker === rematch.port) worker = null;
+      }
+
+      const preservePort = activePending?.port ?? null;
+      const preserveSeat = activePending?.seat ?? null;
+
+      if (brain != null && !ports.has(brain)) {
+        if (!(preserveSeat === "brain" && brain === preservePort)) brain = null;
+      }
+      if (worker != null && !ports.has(worker)) {
+        if (!(preserveSeat === "worker" && worker === preservePort)) worker = null;
+      }
+
       if (brain === r.brain && worker === r.worker) return r;
       return { brain, worker };
     });
-  }, [runningEngines]);
+  }, [runningEngines, roleSyncTick, clearPendingRelaunch]);
 
   // Soft seed twin when both roles empty
   useEffect(() => {
     if (!harnessOpen || wizardMode !== "twin") return;
     if (twinBrainPort != null || twinWorkerPort != null) return;
+    if (pendingRelaunchRef.current) return;
     if (runningEngines.length < 2) return;
     let brain = runningEngines[0];
     if (preferredSlotIdx != null && preferredSlotIdx >= 0) {
@@ -627,11 +739,14 @@ export default function MultiAgentBooster({
     twinWorkerPort,
     runningEngines,
     preferredSlotIdx,
+    roleSyncTick,
   ]);
 
   // Twin roles via running-engine clicks:
-  // · Same card: BRAIN → WORKER → clear
-  // · Free card: fill empty BRAIN, else empty WORKER, else take BRAIN seat
+  // · Same card BRAIN:    click → untag BRAIN (keep WORKER untouched)
+  // · Same card WORKER:   click → clear (NONE)
+  // · Same card NONE:     click → becomes BRAIN
+  // · Free card:          fill empty BRAIN, else empty WORKER, else claim BRAIN seat
   useEffect(() => {
     if (!harnessOpen) return;
     const onClick = (e: Event) => {
@@ -642,8 +757,10 @@ export default function MultiAgentBooster({
         const isBrain = brain === port;
         const isWorker = worker === port;
         if (isBrain) {
-          // BRAIN → WORKER (other worker seat replaced)
-          return { brain: null, worker: port };
+          // BRAIN → just untag (keep WORKER untouched). This avoids
+          // accidentally clobbering a real worker seat when the user
+          // meant to clear BRAIN alone.
+          return { brain: null, worker };
         }
         if (isWorker) {
           // WORKER → clear
@@ -1190,6 +1307,21 @@ export default function MultiAgentBooster({
     setRelaunchBusy(true);
     setAtomError(null);
     setAtomMsg(null);
+    // Pin the seat until the engine vacates and returns (or timeout / fail).
+    // Twin: rematch WORKER (or BRAIN if that seat was the target). Solo: seat null.
+    const seat: "worker" | "brain" | null =
+      wizardMode === "twin"
+        ? twinWorkerPort != null && relaunchTarget.port === twinWorkerPort
+          ? "worker"
+          : twinBrainPort != null && relaunchTarget.port === twinBrainPort
+            ? "brain"
+            : "worker"
+        : null;
+    armPendingRelaunch({
+      port: relaunchTarget.port,
+      alias: (relaunchTarget.alias || "").trim(),
+      seat,
+    });
     try {
       await onRelaunchSeat({
         slotIdx: relaunchTarget.idx,
@@ -1200,12 +1332,25 @@ export default function MultiAgentBooster({
       setAtomMsg(
         `Relaunching ${relaunchTarget.alias} on :${relaunchTarget.port} with parallel ×${agentsN} (panel model/config)…`,
       );
+      // Keep pending until prune effect rematches (port may lag invoke resolve).
     } catch (e) {
       setAtomError(normalizeError(e));
+      clearPendingRelaunch();
+      setRoleSyncTick((n) => n + 1);
     } finally {
       setRelaunchBusy(false);
     }
-  }, [onRelaunchSeat, relaunchTarget, agentsN, normalizeError]);
+  }, [
+    onRelaunchSeat,
+    relaunchTarget,
+    agentsN,
+    normalizeError,
+    wizardMode,
+    twinWorkerPort,
+    twinBrainPort,
+    armPendingRelaunch,
+    clearPendingRelaunch,
+  ]);
 
   const confirmPortal =
     confirmMode && !showDisclaimer && typeof document !== "undefined"
@@ -1395,6 +1540,14 @@ export default function MultiAgentBooster({
           <span className="atomcode-wizard__title font-mono tracking-[0.18em] uppercase">
             Harness connect
           </span>
+          {/* One-line "what is this" subtitle. Now lives in the header right
+              under the title — keeps the wizard body focused on actionable
+              choices (mode / project / concurrency / launch). */}
+          <p className="atomcode-wizard__blurb font-mono">
+            External coding agent on your engines · isolated home · no cloud keys.{" "}
+            <span className="atomcode-wizard__blurb-brain">BRAIN</span> plans ·{" "}
+            <span className="atomcode-wizard__blurb-worker">WORKER</span> swarms.
+          </p>
           {/* Tool picker chips live in the header now (replaces the older
               "AtomCode · v5.0.2" subtitle) — version installs on first open,
               so the chip itself carries that info implicitly. */}
@@ -1511,14 +1664,6 @@ export default function MultiAgentBooster({
             </div>
           </div>
         )}
-
-        {/* One-line "what is this" subtitle. Keeps the original "isolated home · no cloud keys" promise
-            and the BRAIN / WORKER legend in a single readable sentence. */}
-        <p className="atomcode-wizard__blurb font-mono">
-          External coding agent on your engines · isolated home · no cloud keys.{" "}
-          <span className="atomcode-wizard__blurb-brain">BRAIN</span> plans ·{" "}
-          <span className="atomcode-wizard__blurb-worker">WORKER</span> swarms.
-        </p>
 
         {/* Mode switch — directly above the unified mode button. Uses the same
             .segment-switch styling as the engine config Essentials/FULL toggle. */}
