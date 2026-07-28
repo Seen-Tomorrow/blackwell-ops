@@ -16,7 +16,14 @@
   --theme-panel: #111810;
   --theme-panel-accent: #040b01;
   --theme-border: #1a2e1a;
-  --theme-border-subtle: rgba(255, 255, 255, 0.08);
+  /*
+   * Frame edges — structural cards/sections/buttons (CONFIG secrets, MODEL HUB, …).
+   * Dark: soft accent (never white glass). Light/ARCTIC: ink-dark enough to read.
+   * Tailwind border-stealth-border/* remaps to these in surfaces.css.
+   */
+  --theme-frame-border: rgba(74, 222, 128, 0.14);
+  --theme-frame-border-strong: rgba(74, 222, 128, 0.26);
+  --theme-border-subtle: var(--theme-frame-border);
   --theme-accent: #76B900;
   --theme-accent-bright: #4ade80;
   --theme-accent-dim: #4a6a5a;
@@ -75,6 +82,9 @@
   --theme-bezel-edge-hi: rgba(74, 222, 128, 0.07);
   --theme-bezel-edge-lo: rgba(0, 0, 0, 0.28);
   --theme-bezel-grain: rgba(74, 222, 128, 0.03);
+  /* Bottom vignette in grit/brush/diamond — ARCTIC softens (hard black looks like a drop shadow) */
+  --theme-bezel-bottom-shade: color-mix(in srgb, #000000 26%, transparent);
+  --theme-bezel-dot-shade: color-mix(in srgb, #000000 14%, transparent);
   /* Bezel pattern variants — grain tokens adapt per theme (incl. ARCTIC). */
   --theme-industrial-texture-sandblast:
     linear-gradient(
@@ -82,7 +92,7 @@
       color-mix(in srgb, var(--theme-bezel-edge-hi) 20%, transparent) 0%,
       transparent 14%,
       transparent 86%,
-      color-mix(in srgb, #000000 26%, transparent) 100%
+      var(--theme-bezel-bottom-shade) 100%
     ),
     radial-gradient(
       circle,
@@ -92,7 +102,7 @@
       0 0 / 3px 3px,
     radial-gradient(
       circle,
-      color-mix(in srgb, #000000 14%, transparent) 0.4px,
+      var(--theme-bezel-dot-shade) 0.4px,
       transparent 0.5px
     )
       1.5px 1.5px / 3px 3px;
@@ -102,7 +112,7 @@
       color-mix(in srgb, var(--theme-bezel-edge-hi) 18%, transparent) 0%,
       transparent 12%,
       transparent 88%,
-      color-mix(in srgb, #000000 28%, transparent) 100%
+      var(--theme-bezel-bottom-shade) 100%
     ),
     repeating-linear-gradient(
       60deg,
@@ -129,7 +139,7 @@
       color-mix(in srgb, var(--theme-bezel-edge-hi) 14%, transparent) 0%,
       transparent 14%,
       transparent 86%,
-      color-mix(in srgb, #000000 14%, transparent) 100%
+      var(--theme-bezel-bottom-shade) 100%
     ),
     repeating-linear-gradient(
       0deg,
@@ -160,7 +170,7 @@
   --display-profile-phosphor-inset-bottom: rgba(0, 0, 0, 0.15);
   --display-profile-phosphor-inset-glare: rgba(255, 255, 255, 0.3);
   /* Outer frame drop shadow (not the inner display recess) */
-  --display-profile-bezel-cast: 0 6px 18px rgba(40, 60, 80, 0.28), 0 2px 6px rgba(40, 60, 80, 0.16);
+  --display-profile-bezel-cast: 0 3px 10px rgba(40, 60, 80, 0.14), 0 1px 3px rgba(40, 60, 80, 0.1);
   --theme-display-texture-scan: color-mix(in srgb, var(--theme-bg) 42%, transparent);
   --theme-display-texture-scan-bright: color-mix(in srgb, var(--theme-phosphor-text) 18%, transparent);
   --theme-display-texture-vignette: color-mix(in srgb, var(--theme-bg) 38%, transparent);
@@ -223,12 +233,13 @@
   --theme-selection-text: #000000;
   --theme-eject-header-bg: #000000;
   --theme-eject-header-text: #b87a00;
-  --theme-eject-card-bg: rgba(255, 255, 255, 0.025);
-  --theme-eject-card-hover-bg: rgba(255, 255, 255, 0.05);
+  --theme-eject-card-bg: rgba(74, 222, 128, 0.03);
+  --theme-eject-card-hover-bg: rgba(74, 222, 128, 0.06);
   --theme-eject-card-text: #e8e2d6;
   --theme-eject-card-muted: #9a9488;
   --theme-eject-badge-bg: #000000;
-  --theme-eject-card-border: rgba(255, 255, 255, 0.05);
+  --theme-eject-card-border: var(--theme-frame-border);
+  /* frame-border-strong available for buttons / inputs */
   --theme-eject-card-hover-border: rgba(184, 122, 0, 0.22);
   --theme-eject-card-selected-bg: rgba(184, 122, 0, 0.16);
   --theme-eject-card-selected-border: rgba(184, 122, 0, 0.55);

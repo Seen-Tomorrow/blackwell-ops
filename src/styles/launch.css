@@ -65,23 +65,25 @@
   box-shadow: 0 0 6px color-mix(in srgb, var(--theme-provider-pill-active-bg) 40%, transparent);
 }
 
-/* Value chip */
+/* Value chip — theme tokens only (no Tailwind opacity borders) */
 .value-chip {
   background: var(--theme-chip-bg);
   border: 1px solid var(--theme-chip-border);
   color: var(--theme-chip-text);
-  transition: all 0.2s ease;
+  border-radius: 0.125rem;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
 .value-chip:hover {
   border-color: var(--theme-chip-hover-border);
   color: var(--theme-chip-hover-text);
+  background: var(--theme-chip-active-bg);
 }
 
 .value-chip-active {
   background: var(--theme-chip-active-bg) !important;
-  border-color: var(--theme-chip-active-border);
-  color: var(--theme-chip-active-text);
+  border: 1px solid var(--theme-chip-active-border) !important;
+  color: var(--theme-chip-active-text) !important;
 }
 
 [data-config-panel] input.value-chip,

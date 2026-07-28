@@ -33,7 +33,7 @@ export default function ModelHub({ embedded = false }: ModelHubProps) {
       {!embedded && <TabPageHeader title="MODEL HUB" />}
 
       <div className={`flex-1 overflow-hidden flex flex-col min-h-0 gap-0 ${embedded ? "px-3 py-2" : "px-4 py-3"}`}>
-        <div className="grid shrink-0 grid-cols-2 min-h-[160px] max-h-[40%] border border-stealth-border/60 rounded-sm overflow-hidden divide-x divide-stealth-border/60">
+        <div className="theme-surface grid shrink-0 grid-cols-2 min-h-[160px] max-h-[40%] rounded-sm overflow-hidden divide-x">
           <ModelHubDownloadPaths downloads={downloads} />
           <ModelHubDownloads downloads={downloads} />
         </div>

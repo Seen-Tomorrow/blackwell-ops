@@ -53,12 +53,12 @@ interface BuildLogEntry {
  *
  * 1. Initial Build Confirmation (this modal in "confirm" phase)
  *    - User sets PR, custom flags, thread count, etc.
- *    - Clicks "YES — BUILD" → this starts the real `foundry_build` (engine stop + configure).
+ *    - Clicks "PROCEED TO CONFIGURE" → starts `foundry_build` (engine stop + configure).
  *    - Component: FoundryConfirmForm
  *
  * 2. Compilation Confirmation (WaitingForConfirm phase, rendered inside FoundryBuildProgress)
  *    - After successful CMake configure, the backend pauses and asks for final approval.
- *    - User sees the configure log and must click "PROCEED WITH BUILD" or "REJECT — ABORT".
+ *    - User sees the configure log and must click "BUILD THE ENGINE" or "REJECT — ABORT".
  *    - This is the last chance before the long/expensive MSBuild compilation starts.
  *
  * These two points used to have overlapping/confusing "confirm" names. We are trying to keep

@@ -173,7 +173,7 @@ export default function FoundryConfirmForm({
         disabled={!toolchainReady}
         className="foundry-confirm-build-btn"
       >
-        YES — BUILD
+        PROCEED TO CONFIGURE
       </button>
     </>
   );
@@ -307,14 +307,12 @@ export default function FoundryConfirmForm({
                     key={opt.code}
                     type="button"
                     onClick={() => toggleArch(opt.code)}
-                    className={`foundry-arch-chip px-2 py-1 text-left border rounded-sm transition-all max-w-[11rem] ${
-                      active
-                        ? "foundry-arch-chip--active bg-nv-green/20 border-nv-green/60"
-                        : "border-stealth-border/70 text-stealth-muted hover:text-white hover:border-stealth-border"
+                    className={`foundry-arch-chip px-2 py-1 text-left rounded-sm transition-all max-w-[11rem]${
+                      active ? " foundry-arch-chip--active" : ""
                     }`}
                   >
                     <div className="flex items-center gap-1.5">
-                      <span className={`text-[9px] font-mono font-bold ${active ? "text-nv-green" : ""}`}>
+                      <span className="text-[9px] font-mono font-bold">
                         {opt.label}
                       </span>
                       <span className="cuda-badge text-[6px] font-mono px-1 py-0 rounded-sm">sm_{opt.code}</span>
@@ -326,10 +324,10 @@ export default function FoundryConfirmForm({
               <button
                 type="button"
                 onClick={() => setSelectedArchs([...DEFAULT_CUDA_ARCH_CODES])}
-                className={`px-2 py-1 text-[8px] font-mono border rounded-sm transition-all self-stretch ${
+                className={`foundry-arch-chip px-2 py-1 text-[8px] font-mono rounded-sm transition-all self-stretch${
                   orderedArchs.length === DEFAULT_CUDA_ARCH_CODES.length
-                    ? "bg-nv-green/15 border-nv-green/50 text-nv-green"
-                    : "border-stealth-border text-stealth-muted hover:text-white"
+                    ? " foundry-arch-chip--active"
+                    : ""
                 }`}
               >
                 ALL (ship)

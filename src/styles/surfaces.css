@@ -1,12 +1,41 @@
+/*
+ * Remap Tailwind border-stealth-border/* → theme frame tokens.
+ * Opacity modifiers on CSS-var colors are unreliable (often read as harsh grey/white
+ * on dark, or vanish on ARCTIC). One remap = CONFIG secrets, MODEL HUB, Foundry, …
+ */
+.border-stealth-border {
+  border-color: var(--theme-frame-border-strong, var(--theme-border)) !important;
+}
+.border-stealth-border\/20,
+.border-stealth-border\/25,
+.border-stealth-border\/30 {
+  border-color: var(--theme-frame-border, var(--theme-border-subtle)) !important;
+}
+.border-stealth-border\/40,
+.border-stealth-border\/50,
+.border-stealth-border\/60,
+.border-stealth-border\/70 {
+  border-color: var(--theme-frame-border-strong, var(--theme-border-subtle)) !important;
+}
+
+.divide-stealth-border > :not([hidden]) ~ :not([hidden]),
+.divide-stealth-border\/30 > :not([hidden]) ~ :not([hidden]),
+.divide-stealth-border\/40 > :not([hidden]) ~ :not([hidden]),
+.divide-stealth-border\/50 > :not([hidden]) ~ :not([hidden]),
+.divide-stealth-border\/60 > :not([hidden]) ~ :not([hidden]) {
+  border-color: var(--theme-frame-border, var(--theme-border-subtle)) !important;
+}
+
 /* ── Shared theme surfaces — reusable across tabs ─── */
 .theme-surface {
   background: var(--theme-panel);
-  border: 1px solid var(--theme-border-subtle);
+  /* Hairline frame from theme tokens (accent-tinted; not white glass) */
+  border: 1px solid var(--theme-frame-border, var(--theme-border-subtle));
 }
 
 .theme-surface-header {
   background: var(--theme-panel-accent);
-  border-color: var(--theme-border-subtle);
+  border-color: var(--theme-frame-border, var(--theme-border-subtle));
 }
 
 .theme-surface-row {
@@ -22,13 +51,18 @@
 
 .theme-surface-inset {
   background: var(--theme-panel-accent);
-  border: 1px solid var(--theme-border-subtle);
+  border: 1px solid var(--theme-frame-border, var(--theme-border-subtle));
 }
 
 .theme-tag {
   background: var(--theme-panel-accent);
-  border: 1px solid var(--theme-border-subtle);
+  border: 1px solid var(--theme-frame-border, var(--theme-border-subtle));
   color: var(--theme-text-muted);
+}
+
+/* Model Hub split panels — themed hairline instead of white stealth rings */
+[data-model-hub] .theme-surface.divide-x > * + * {
+  border-left-color: var(--theme-border-subtle);
 }
 
 .theme-input {

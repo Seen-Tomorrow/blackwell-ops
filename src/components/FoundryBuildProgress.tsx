@@ -60,9 +60,12 @@ export default function FoundryBuildProgress({
         className="px-3 py-1 text-[9px] font-mono border border-red-400/60 text-red-400 hover:bg-red-500/20 transition-colors">
         REJECT — ABORT
       </button>
-      <button onClick={onConfirmProceed}
-        className="px-4 py-1 text-[9px] font-mono border rounded-sm bg-nv-green/20 border-nv-green/60 text-nv-green hover:bg-nv-green/30 transition-all animate-pulse">
-        PROCEED WITH BUILD
+      <button
+        type="button"
+        onClick={onConfirmProceed}
+        className="foundry-confirm-build-btn animate-pulse"
+      >
+        BUILD THE ENGINE
       </button>
     </>
   ) : !isComplete && !isError ? (
@@ -121,32 +124,41 @@ export default function FoundryBuildProgress({
 
         {waitingForConfirm && (
           <div className="border border-yellow-400/30 bg-yellow-400/[0.05] rounded-sm px-3 py-2 text-center">
-            <span className="text-[9px] font-mono text-yellow-400 animate-pulse">⏸ PAUSED — REVIEW CMAKE OUTPUT ABOVE, THEN CLICK PROCEED TO START COMPILATION</span>
+            <span className="text-[9px] font-mono text-yellow-400 animate-pulse">⏸ PAUSED — REVIEW CMAKE OUTPUT ABOVE, THEN CLICK BUILD THE ENGINE</span>
           </div>
         )}
 
-        <div ref={effectiveLogRef} className="flex-1 min-h-0 overflow-y-auto border border-stealth-border/50 bg-black/40 rounded-sm p-2 font-mono text-[8px]">
+        <div
+          ref={effectiveLogRef}
+          className="foundry-build-log flex-1 min-h-0 overflow-y-auto rounded-sm p-2 font-mono text-[8px]"
+        >
           {logLines.length === 0 ? (
-            <span className="text-stealth-muted/50">Initializing build pipeline...</span>
+            <span className="foundry-build-log__idle">Initializing build pipeline...</span>
           ) : (
             logLines.slice(-200).map((entry, i) => {
               const isCmakeBox = entry.text.includes("═════") ||
                 entry.text.startsWith("SET ") ||
                 entry.text.startsWith("cmake ");
+              let lineTone = "foundry-build-log__line";
+              if (entry.step === "ERROR" || entry.step === "FAIL") lineTone += " foundry-build-log__line--error";
+              else if (entry.step === "WARNING") lineTone += " foundry-build-log__line--warn";
+              else if (entry.step === "DONE") lineTone += " foundry-build-log__line--done";
+              else if (isCmakeBox) lineTone += " foundry-build-log__line--cmake";
+              else if (
+                entry.step.startsWith("INIT") ||
+                entry.step.startsWith("CLONE") ||
+                entry.step.startsWith("PULL")
+              ) {
+                lineTone += " foundry-build-log__line--phase";
+              } else if (entry.step === "BUILD" || entry.step === "CONFIGURE") {
+                lineTone += " foundry-build-log__line--build";
+              }
               return (
-                <div key={i} className={`py-0.5 ${
-                  entry.step === "ERROR" || entry.step === "FAIL" ? "text-red-400" :
-                  entry.step === "WARNING" ? "text-yellow-400 font-bold" :
-                  entry.step === "DONE" ? "text-nv-green" :
-                  isCmakeBox ? "text-telemetry-cyan font-bold" :
-                  entry.step.startsWith("INIT") || entry.step.startsWith("CLONE") || entry.step.startsWith("PULL") ? "text-telemetry-cyan/80" :
-                  entry.step === "BUILD" ? "text-yellow-400/70" :
-                  "text-white/60"
-                }`}>
+                <div key={i} className={`py-0.5 ${lineTone}`}>
                   {!isCmakeBox && (
                     <>
-                      <span className="text-stealth-muted/40">[{entry.timestamp}]</span>{" "}
-                      <span className="text-stealth-muted/60">{entry.step.padEnd(10)}</span>{" "}
+                      <span className="foundry-build-log__ts">[{entry.timestamp}]</span>{" "}
+                      <span className="foundry-build-log__step">{entry.step.padEnd(10)}</span>{" "}
                     </>
                   )}
                   {entry.text}

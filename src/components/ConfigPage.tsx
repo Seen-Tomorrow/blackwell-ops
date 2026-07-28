@@ -1280,7 +1280,7 @@ export default function ConfigPage({
     <div className="h-full flex flex-col overflow-hidden" data-config-page>
       <TabPageHeader title="CONFIG" />
       <div className="px-4 py-1 config-section-bar flex items-center gap-1">
-        <button onClick={() => setSubTab("providers")} className={`app-nav-tab px-3 py-1 text-[10px] font-mono tracking-wider rounded-sm ${subTab === "providers" ? "app-nav-tab-active" : ""}`}>PROVIDERS</button>
+        <button onClick={() => setSubTab("providers")} className={`app-nav-tab px-3 py-1 text-[10px] font-mono tracking-wider rounded-sm ${subTab === "providers" ? "app-nav-tab-active" : ""}`}>PROVIDERS &amp; FOUNDRY</button>
         <button onClick={() => setSubTab("params")} className={`app-nav-tab px-3 py-1 text-[10px] font-mono tracking-wider rounded-sm ${subTab === "params" ? "app-nav-tab-active" : ""}`}>PARAMETERS</button>
         <button onClick={() => setSubTab("paths")} data-onboarding="paths-tab" className={`app-nav-tab px-3 py-1 text-[10px] font-mono tracking-wider rounded-sm ${subTab === "paths" ? "app-nav-tab-active" : ""}`}>PATHS</button>
         <button

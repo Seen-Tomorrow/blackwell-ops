@@ -107,7 +107,7 @@ export default function ConfigParamLegend({ editorUnlocked }: ConfigParamLegendP
         <LegendSection title="Value chips">
           <LegendRow
             chip={
-              <LegendChip className="bg-nv-green/30 border-double border-2 border-nv-green/70 text-nv-green">
+              <LegendChip className="value-chip value-chip--factory-default">
                 32K
               </LegendChip>
             }
@@ -115,7 +115,7 @@ export default function ConfigParamLegend({ editorUnlocked }: ConfigParamLegendP
           />
           <LegendRow
             chip={
-              <LegendChip className="bg-nv-green/30 border-double border-2 border-yellow-400/80 text-yellow-300">
+              <LegendChip className="value-chip value-chip--user-default">
                 64K
               </LegendChip>
             }
@@ -123,7 +123,7 @@ export default function ConfigParamLegend({ editorUnlocked }: ConfigParamLegendP
           />
           <LegendRow
             chip={
-              <LegendChip className="bg-nv-green/10 border border-nv-green/30 text-yellow-300">
+              <LegendChip className="value-chip value-chip--user-added">
                 custom
               </LegendChip>
             }
@@ -131,7 +131,7 @@ export default function ConfigParamLegend({ editorUnlocked }: ConfigParamLegendP
           />
           <LegendRow
             chip={
-              <LegendChip className="bg-nv-green/10 border border-nv-green/30 text-nv-green/70">
+              <LegendChip className="value-chip">
                 opt
               </LegendChip>
             }
@@ -139,7 +139,7 @@ export default function ConfigParamLegend({ editorUnlocked }: ConfigParamLegendP
           />
           <LegendRow
             chip={
-              <LegendChip className="bg-nv-green/8 border border-nv-green/30 text-nv-green line-through opacity-40">
+              <LegendChip className="value-chip value-chip--hidden line-through opacity-40">
                 old
               </LegendChip>
             }

@@ -18,6 +18,8 @@ Traps and invariants only — not a code map. Read the source for flows, schemas
 
 **Industrial display (bezel / glass)** — One glass only: frame pad = metal, `.phosphor-screen-inner` = full face + unified recess shadow, children = content (no nested phosphor surface). Display texture also paints HW monitor widget faces (`.launch-rail-tel .phosphor-display-surface`) — not catalog quiet-wing desaturate. Full memo: `docs/display-bezel-glass.md`. Do not revive `DisplayGlitchOverlay` / `.display-glitch-*`.
 
+**No `backdrop-filter: blur` (or `-webkit-backdrop-filter: blur`)** — Modal/scrim overlays must **dim only** (semi-opaque `background`, e.g. `color-mix(in srgb, #000 60%, transparent)`). Blur forces continuous full-compositor work in WebView2 and pegs the **iGPU at ~100%** for as long as the overlay is open (AtomCode harness confirm, etc.). Prefer stronger dim over blur. Do not reintroduce blur for “frosted glass” aesthetics without an explicit exception.
+
 ---
 
 ## Regressions to avoid

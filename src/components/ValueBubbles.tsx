@@ -1,11 +1,13 @@
 /**
  * ValueBubbles — Render parameter values as clickable bubbles.
  *
- * STYLING LOGIC (single source of truth):
- * - User-added value     → yellow text/border always
- * - Factory default      → green styling only
- * - User-set default    → yellow double border + yellow text (distinct from factory)
- * - Selected non-default → green or overridden highlight
+ * STYLING (theme value-chip tokens — not Tailwind border-nv-green/N):
+ * - Idle              → .value-chip
+ * - Selected          → .value-chip-active
+ * - Factory default   → .value-chip--factory-default
+ * - User-set default  → .value-chip--user-default
+ * - User-added value  → .value-chip--user-added
+ * - Hidden            → .value-chip--hidden
  */
 
 import React, { useState, useCallback, useMemo } from "react";
@@ -146,7 +148,7 @@ export default function ValueBubbles({
     if (hidden) {
       return (
         <span key={`hidden-${paramKey}-${idx}`}
-          className="inline-flex items-center gap-1 px-2 py-0.5 border text-[11px] font-mono rounded-sm bg-nv-green/8 border-nv-green/30 text-nv-green line-through opacity-40">
+          className="value-chip value-chip--hidden inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-mono rounded-sm line-through opacity-40">
           {String(val)}
           {editorUnlocked && toggleHiddenValue && (
             <button onClick={() => toggleHiddenValue(paramKey, val)}
@@ -159,42 +161,57 @@ export default function ValueBubbles({
       );
     }
 
-    // Determine styling based on value type and selection state
-    let style = "";
-    
-    if (isUserAdded) {
-      // User-added values: always yellow text + border
-      style = "bg-nv-green/10 border border-nv-green/30 text-yellow-300";
-    } else {
-      const isDefault = defaultValue !== undefined && String(val) === String(defaultValue);
-      const isFactoryDefault = factoryDefault !== undefined &&
-        String(val).toUpperCase() === String(factoryDefault).toUpperCase();
+    /*
+     * Theme chips (value-chip*) — never Tailwind border-nv-green/N (opacity on CSS
+     * vars washes to white on dark / vanishes on ARCTIC).
+     */
+    const isDefault = defaultValue !== undefined && String(val) === String(defaultValue);
+    const isFactoryDefault =
+      factoryDefault !== undefined &&
+      String(val).toUpperCase() === String(factoryDefault).toUpperCase();
 
-      if (isDefault && !isFactoryDefault) {
-        // User-set default: yellow border + yellow text (distinct from green factory)
-        style = "bg-nv-green/30 border-double border-2 border-yellow-400/80 text-yellow-300";
-      } else if (isDefault && isFactoryDefault) {
-        // Factory default — strong green badge regardless of runtime selection
-        style = "bg-nv-green/30 border-double border-2 border-nv-green/70 text-nv-green";
-      } else if (selected) {
-        // Runtime override / active pick — lighter than default badge
-        style = "bg-nv-green/15 border border-nv-green/45 text-nv-green";
-      } else {
-        style = "bg-nv-green/10 border border-nv-green/30 text-nv-green/70 hover:text-white";
-      }
+    let chipClass = "value-chip";
+    if (isUserAdded) {
+      chipClass = "value-chip value-chip--user-added";
+    } else if (isDefault && !isFactoryDefault) {
+      chipClass = "value-chip value-chip--user-default";
+    } else if (isDefault && isFactoryDefault) {
+      chipClass = "value-chip value-chip--factory-default";
+    } else if (selected) {
+      chipClass = "value-chip value-chip-active";
     }
 
     return (
-      <span key={`${paramKey}-${idx}`}
-        className={`inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-mono rounded-sm transition-all ${style}${
+      <span
+        key={`${paramKey}-${idx}`}
+        role={onOverrideChange ? "button" : undefined}
+        tabIndex={onOverrideChange ? 0 : undefined}
+        onClick={() => {
+          if (onOverrideChange) onOverrideChange(val);
+        }}
+        onKeyDown={(e) => {
+          if (!onOverrideChange) return;
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onOverrideChange(val);
+          }
+        }}
+        className={`inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-mono rounded-sm transition-all cursor-pointer select-none ${chipClass}${
           essHidden ? " opacity-55" : ""
-        }`}>
+        }`}
+      >
 
         {/* Set as default button — admin only (only on non-default values) */}
         {editorUnlocked && defaultValue !== undefined && String(val) !== String(defaultValue) && onChangeDefault && (
-          <button onClick={() => onChangeDefault(val)}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onChangeDefault(val);
+            }}
             className="leading-none font-bold text-[12px] text-nv-green/60 hover:text-yellow-400 transition-colors"
-            title="Set as default value">
+            title="Set as default value"
+          >
             *
           </button>
         )}

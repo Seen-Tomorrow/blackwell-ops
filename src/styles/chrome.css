@@ -1074,7 +1074,10 @@
 }
 
 
-/* Foundry confirm — YES BUILD (amber) */
+/*
+ * Foundry primary CTA — dark amber (shared by confirm + post-configure).
+ * Labels: "PROCEED TO CONFIGURE" then "BUILD THE ENGINE".
+ */
 .foundry-confirm-build-btn {
   padding: 0.25rem 1rem;
   font-size: 9px;
@@ -1099,53 +1102,135 @@
 }
 
 
-/* Foundry confirm — pre-build source vs binary revision banner */
+/* Foundry confirm — banners use theme tokens (readable on ARCTIC light panels) */
 .foundry-source-banner--amber {
-  border-color: rgba(250, 204, 21, 0.45);
-  background: rgba(250, 204, 21, 0.08);
-  color: rgba(253, 224, 71, 0.95);
-  box-shadow: 0 0 18px rgba(250, 204, 21, 0.08);
+  border-color: color-mix(in srgb, var(--theme-secondary) 45%, transparent);
+  background: color-mix(in srgb, var(--theme-secondary) 10%, var(--theme-panel));
+  color: var(--theme-secondary-bright);
+  box-shadow: 0 0 14px color-mix(in srgb, var(--theme-secondary) 12%, transparent);
 }
 
 .foundry-source-banner--cyan {
-  border-color: rgba(34, 211, 238, 0.4);
-  background: rgba(34, 211, 238, 0.07);
-  color: rgba(165, 243, 252, 0.95);
+  border-color: color-mix(in srgb, var(--theme-accent) 42%, transparent);
+  background: color-mix(in srgb, var(--theme-accent) 9%, var(--theme-panel));
+  color: var(--theme-accent-bright);
 }
 
 .foundry-source-banner--green {
-  border-color: rgba(118, 185, 0, 0.45);
-  background: rgba(118, 185, 0, 0.08);
-  color: rgba(163, 230, 53, 0.95);
+  border-color: color-mix(in srgb, var(--theme-accent) 45%, transparent);
+  background: color-mix(in srgb, var(--theme-accent) 10%, var(--theme-panel));
+  color: var(--theme-accent-bright);
 }
 
 .foundry-source-banner--muted {
-  border-color: rgba(148, 163, 184, 0.25);
-  background: rgba(15, 23, 42, 0.35);
-  color: rgba(148, 163, 184, 0.9);
+  border-color: var(--theme-frame-border, var(--theme-border-subtle));
+  background: color-mix(in srgb, var(--theme-text) 5%, var(--theme-panel));
+  color: var(--theme-text-muted);
 }
 
-/* Providers page — BUILD row action */
+/*
+ * Providers page — FOUNDRY BUILD CTA (must stand out from plain value-chips).
+ * Dark amber forge chip + hammer; active = brighter pulse-ready state.
+ */
 .foundry-build-btn {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: 0.4rem;
+  flex-shrink: 0;
+  padding: 0.3rem 0.7rem;
   font-size: 8px;
   font-family: ui-monospace, monospace;
-  padding: 0.25rem 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   border-radius: 2px;
-  flex-shrink: 0;
+  color: #facc15;
+  border: 1px solid color-mix(in srgb, #facc15 70%, transparent);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, #facc15 22%, #1a1206 78%) 0%,
+      color-mix(in srgb, #facc15 10%, #0a0804 90%) 100%
+    );
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #fde68a 22%, transparent),
+    0 0 0 1px color-mix(in srgb, #000 55%, transparent),
+    0 0 10px color-mix(in srgb, #facc15 18%, transparent);
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease,
+    background 0.15s ease,
+    box-shadow 0.15s ease,
+    opacity 0.15s ease;
+}
+
+.foundry-build-btn:hover:not(:disabled) {
+  color: #fef08a;
+  border-color: color-mix(in srgb, #fde68a 85%, transparent);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, #facc15 32%, #1a1206 68%) 0%,
+      color-mix(in srgb, #facc15 16%, #0a0804 84%) 100%
+    );
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #fef08a 28%, transparent),
+    0 0 0 1px color-mix(in srgb, #000 45%, transparent),
+    0 0 14px color-mix(in srgb, #facc15 32%, transparent);
+}
+
+.foundry-build-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  box-shadow: none;
 }
 
 .foundry-build-btn--active {
-  opacity: 1;
-  color: #facc15;
-  border-color: color-mix(in srgb, #facc15 50%, transparent);
-  background: color-mix(in srgb, #facc15 10%, #000000 90%);
+  color: #fef08a;
+  border-color: color-mix(in srgb, #fde68a 90%, transparent);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, #facc15 38%, #1a1206 62%) 0%,
+      color-mix(in srgb, #facc15 18%, #0a0804 82%) 100%
+    );
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #fef08a 30%, transparent),
+    0 0 0 1px color-mix(in srgb, #facc15 35%, transparent),
+    0 0 16px color-mix(in srgb, #facc15 40%, transparent);
+  animation: foundryBuildBtnPulse 1.6s ease-in-out infinite;
+}
+
+.foundry-build-btn .foundry-hammer-icon {
+  font-size: 11px;
+  line-height: 1;
+  filter: drop-shadow(0 0 3px color-mix(in srgb, #facc15 45%, transparent));
+}
+
+@keyframes foundryBuildBtnPulse {
+  0%,
+  100% {
+    box-shadow:
+      inset 0 1px 0 color-mix(in srgb, #fef08a 30%, transparent),
+      0 0 0 1px color-mix(in srgb, #facc15 35%, transparent),
+      0 0 12px color-mix(in srgb, #facc15 28%, transparent);
+  }
+  50% {
+    box-shadow:
+      inset 0 1px 0 color-mix(in srgb, #fef08a 35%, transparent),
+      0 0 0 1px color-mix(in srgb, #fde68a 55%, transparent),
+      0 0 20px color-mix(in srgb, #facc15 48%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .foundry-build-btn--active {
+    animation: none;
+  }
 }
 
 
-/* Foundry modal — minimize action; navy so it pairs with amber YES BUILD */
+/* Foundry modal — minimize action; navy so it pairs with amber primary CTA */
 .foundry-minimize-btn {
   padding: 0.25rem 0.75rem;
   font-size: 9px;
@@ -1260,6 +1345,113 @@
 .foundry-window--build .foundry-window__body {
   display: flex;
   flex-direction: column;
+}
+
+/*
+ * Foundry window body — remap neon Tailwind ink for light panels (ARCTIC).
+ * Dark themes keep gold/cyan via secondary/accent tokens.
+ */
+.foundry-window .text-yellow-400,
+.foundry-window .text-yellow-400\/60,
+.foundry-window .text-yellow-400\/70,
+.foundry-window .text-yellow-400\/90,
+.foundry-window .text-yellow-300 {
+  color: var(--theme-secondary-bright) !important;
+}
+
+.foundry-window .text-telemetry-cyan,
+.foundry-window .text-telemetry-cyan\/70,
+.foundry-window .text-telemetry-cyan\/80 {
+  color: var(--theme-accent-bright) !important;
+}
+
+.foundry-window .text-white,
+.foundry-window .text-white\/90,
+.foundry-window .text-white\/80,
+.foundry-window .text-white\/70 {
+  color: var(--theme-text) !important;
+}
+
+.foundry-window .border-yellow-400\/30,
+.foundry-window .border-yellow-400\/40,
+.foundry-window .border-yellow-400\/50 {
+  border-color: color-mix(in srgb, var(--theme-secondary) 48%, transparent) !important;
+}
+
+.foundry-window .bg-yellow-400\/5,
+.foundry-window .bg-yellow-400\/10,
+.foundry-window .bg-yellow-400\/\[0\.05\] {
+  background: color-mix(in srgb, var(--theme-secondary) 12%, var(--theme-panel)) !important;
+}
+
+/* Soft fills outside the log terminal (not the build log — that stays dark) */
+.foundry-window .bg-black\/20,
+.foundry-window .bg-black\/25,
+.foundry-window .bg-black\/30 {
+  background: color-mix(in srgb, var(--theme-text) 6%, var(--theme-panel-accent)) !important;
+}
+
+/*
+ * Build log terminal — always near-black so white/cyan/yellow phase lines stay readable
+ * on ARCTIC (do not lighten with theme-panel remaps).
+ */
+.foundry-build-log {
+  background: #0a0c10 !important;
+  border: 1px solid color-mix(in srgb, #000 70%, var(--theme-frame-border, #333)) !important;
+  color: rgba(220, 228, 236, 0.72);
+  box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.55);
+}
+
+.foundry-build-log__idle {
+  color: rgba(148, 163, 184, 0.55);
+}
+
+.foundry-build-log__ts {
+  color: rgba(148, 163, 184, 0.4);
+}
+
+.foundry-build-log__step {
+  color: rgba(148, 163, 184, 0.55);
+}
+
+.foundry-build-log__line {
+  color: rgba(220, 228, 236, 0.72);
+}
+
+.foundry-build-log__line--error {
+  color: #f87171;
+}
+
+.foundry-build-log__line--warn {
+  color: #fbbf24;
+  font-weight: 700;
+}
+
+.foundry-build-log__line--done {
+  color: #4ade80;
+}
+
+.foundry-build-log__line--cmake,
+.foundry-build-log__line--phase {
+  color: #67e8f9;
+}
+
+.foundry-build-log__line--cmake {
+  font-weight: 700;
+}
+
+.foundry-build-log__line--build {
+  color: rgba(250, 204, 21, 0.78);
+}
+
+/* Keep log ink fixed — ignore foundry-window yellow/cyan/white remaps inside terminal */
+.foundry-window .foundry-build-log .text-yellow-400,
+.foundry-window .foundry-build-log .text-yellow-400\/70,
+.foundry-window .foundry-build-log .text-telemetry-cyan,
+.foundry-window .foundry-build-log .text-telemetry-cyan\/80,
+.foundry-window .foundry-build-log .text-white\/60,
+.foundry-window .foundry-build-log .text-nv-green {
+  color: inherit !important;
 }
 
 .foundry-window--compact .foundry-window__chrome {

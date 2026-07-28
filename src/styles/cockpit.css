@@ -1061,71 +1061,95 @@
   align-items: center;
   justify-content: center;
   padding: 1rem;
-  background: color-mix(in srgb, #000 65%, transparent);
-  backdrop-filter: blur(3px);
+  /* Dim only — never backdrop-filter blur (keeps iGPU pegged while open) */
+  background: color-mix(in srgb, #000 62%, transparent);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .atomcode-confirm-modal {
-  width: min(28rem, 100%);
-  max-height: min(90vh, 36rem);
+  width: min(36rem, 100%);
+  max-height: min(90vh, 28rem);
   overflow: auto;
-  padding: 0.85rem 1rem 1rem;
+  padding: 1rem 1.15rem 1.1rem;
   border-radius: 4px;
-  border: 1px solid color-mix(in srgb, #22d3ee 35%, transparent);
-  background: color-mix(in srgb, #0a1214 92%, #000 8%);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+  border: 1px solid color-mix(in srgb, var(--theme-accent, #22d3ee) 40%, var(--theme-frame-border, transparent));
+  background: var(--theme-panel, #0a1214);
+  box-shadow:
+    0 12px 40px rgba(0, 0, 0, 0.45),
+    0 0 0 1px color-mix(in srgb, var(--theme-frame-border, transparent) 50%, transparent);
+  color: var(--theme-text);
 }
 
 .atomcode-confirm-title {
-  margin: 0 0 0.4rem;
+  margin: 0 0 0.65rem;
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: #ecfeff;
+  color: var(--theme-text);
 }
 
-.atomcode-confirm-lead {
+/* One large line: BRAIN SOLO/TWIN · engine(s) · AGENTS ×N */
+.atomcode-confirm-summary {
   margin: 0 0 0.75rem;
-  font-size: 8px;
-  line-height: 1.45;
-  color: color-mix(in srgb, #a5f3fc 70%, transparent);
-}
-
-.atomcode-confirm-dl {
-  margin: 0 0 0.85rem;
   display: flex;
-  flex-direction: column;
-  gap: 0.45rem;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.45rem 0.65rem;
+  font-size: clamp(13px, 2.1vw, 17px);
+  font-weight: 700;
+  line-height: 1.35;
+  letter-spacing: 0.04em;
+  color: var(--theme-text);
 }
 
-.atomcode-confirm-dl > div {
-  display: grid;
-  grid-template-columns: 7.5rem 1fr;
-  gap: 0.35rem;
-  align-items: start;
+.atomcode-confirm-summary__mode {
+  color: var(--theme-accent-bright, var(--theme-accent));
+  letter-spacing: 0.1em;
 }
 
-.atomcode-confirm-dl dt {
-  margin: 0;
-  font-size: 7px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  opacity: 0.55;
-  padding-top: 0.15rem;
+.atomcode-confirm-summary__engine {
+  color: var(--theme-text);
+  font-variant-numeric: tabular-nums;
 }
 
-.atomcode-confirm-dl dd {
-  margin: 0;
-  font-size: 8px;
-  line-height: 1.4;
-  color: color-mix(in srgb, #e2e8f0 90%, transparent);
-  word-break: break-word;
+.atomcode-confirm-summary__engine--worker {
+  color: var(--theme-secondary-bright, var(--theme-text));
+  background: color-mix(in srgb, var(--theme-secondary) 14%, transparent);
+  padding: 0.1rem 0.35rem;
+  border-radius: 2px;
+  border: 1px solid color-mix(in srgb, var(--theme-secondary) 40%, transparent);
+}
+
+.atomcode-confirm-summary__sep {
+  opacity: 0.4;
+  font-weight: 500;
+}
+
+.atomcode-confirm-summary__agents {
+  color: var(--theme-secondary-bright, var(--theme-accent-bright));
+  letter-spacing: 0.08em;
 }
 
 .atomcode-confirm-path {
-  font-size: 7px !important;
-  opacity: 0.85;
+  margin: 0 0 1rem;
+  font-size: 9px !important;
+  line-height: 1.4;
+  word-break: break-all;
+  color: var(--theme-text-muted);
+  opacity: 1;
+}
+
+.atomcode-confirm-path__label {
+  display: inline-block;
+  margin-right: 0.45rem;
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--theme-text);
+  opacity: 0.75;
 }
 
 .atomcode-confirm-actions {
@@ -1369,18 +1393,24 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--picked
   font-weight: 400;
 }
 
+/* Blocks CONFIG until dismissed — large control, red border only */
 .atomcode-wizard__close {
-  font-size: 7px;
-  padding: 0.3rem 0.55rem;
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  padding: 0.5rem 0.9rem;
   border-radius: 3px;
-  border: 1px solid color-mix(in srgb, #94a3b8 40%, transparent);
-  color: #e2e8f0;
-  background: color-mix(in srgb, #1e293b 50%, transparent);
+  border: 1.5px solid color-mix(in srgb, #ef4444 72%, transparent);
+  color: var(--theme-text, #e2e8f0);
+  background: transparent;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
 }
 
 .atomcode-wizard__close:hover {
-  border-color: color-mix(in srgb, #f87171 50%, transparent);
-  color: #fecaca;
+  border-color: #f87171;
+  color: #f87171;
+  background: color-mix(in srgb, #ef4444 8%, transparent);
 }
 
 .atomcode-wizard__blurb {
@@ -2213,7 +2243,7 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--brain 
   min-height: 100%;
 }
 
-/* CTX hero section — cockpit dock or above-config standalone */
+/* CTX hero — match industrial/panel face (not a black inset well) */
 .full-auto-cockpit__ctx-hero {
   display: flex;
   flex-direction: row;
@@ -2221,14 +2251,20 @@ html[data-atomcode-harness="1"] .launch-rail-engine-chip.atomcode-engine--brain 
   gap: 0.4rem;
   padding: 0.7rem 0.5rem 0.5rem;
   border-radius: 3px;
-  border: 1px solid color-mix(in srgb, var(--theme-border, #1a2e1a) 55%, transparent);
-  background: color-mix(in srgb, #000000 15%, transparent);
-  box-shadow: inset 0 1px 3px color-mix(in srgb, #000000 25%, transparent);
+  border: 1px solid var(--theme-frame-border, color-mix(in srgb, var(--theme-border) 55%, transparent));
+  background: color-mix(
+    in srgb,
+    var(--theme-industrial-bg, var(--theme-panel)) 42%,
+    var(--theme-panel-accent) 58%
+  );
+  background-image: var(--theme-industrial-texture-active, none);
+  box-shadow: none;
 }
 
 .full-auto-cockpit__ctx-hero--standalone {
-  /* Same design as docked; sits in above-config shell near VRAM */
+  /* ABOVE dock — same face as cockpit/params, no extra drop shadow */
   margin: 0;
+  box-shadow: none;
 }
 
 .full-auto-cockpit__ctx-slider {

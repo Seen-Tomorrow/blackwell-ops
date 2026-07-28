@@ -1367,76 +1367,43 @@ export default function MultiAgentBooster({
             <div className="atomcode-confirm-modal font-mono">
               <h3 id="atomcode-confirm-title" className="atomcode-confirm-title">
                 {confirmMode === "solo"
-                  ? `Open ${harnessTool === "qwen" ? "Qwen Code" : "AtomCode"} — single engine`
-                  : `Open ${harnessTool === "qwen" ? "Qwen Code" : "AtomCode"} — twin engine`}
+                  ? `Open ${harnessTool === "qwen" ? "Qwen Code" : "AtomCode"} — SOLO`
+                  : `Open ${harnessTool === "qwen" ? "Qwen Code" : "AtomCode"} — TWIN`}
               </h3>
-              <p className="atomcode-confirm-lead">
-                Opens an external {harnessTool === "qwen" ? "Qwen Code" : "AtomCode"} window.
-                Isolated home · files only under the project folder.
-                {harnessTool === "qwen" ? " Multimodal image paste enabled." : ""}
-              </p>
-              <dl className="atomcode-confirm-dl">
+              <p className="atomcode-confirm-summary" aria-live="polite">
                 {confirmMode === "solo" ? (
                   <>
-                    <div>
-                      <dt>BRAIN (solo)</dt>
-                      <dd>
-                        <span className="atomcode-role-badge atomcode-role-badge--brain">
-                          {soloTarget.displayId}
-                        </span>
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>OpenAI model id</dt>
-                      <dd>{soloTarget.model}</dd>
-                    </div>
+                    <span className="atomcode-confirm-summary__mode">BRAIN SOLO</span>
+                    <span className="atomcode-confirm-summary__engine">{soloTarget.displayId}</span>
+                    {harnessTool === "atomcode" && (
+                      <span className="atomcode-confirm-summary__agents">AGENTS ×{agentsN}</span>
+                    )}
                   </>
                 ) : dualTargets ? (
                   <>
-                    <div>
-                      <dt>1 · BRAIN</dt>
-                      <dd>
-                        <span className="atomcode-role-badge atomcode-role-badge--brain">
-                          {dualTargets.brain.model} :{dualTargets.brain.port}
-                        </span>
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>2 · WORKER</dt>
-                      <dd>
-                        <span className="atomcode-role-badge atomcode-role-badge--worker">
-                          {dualTargets.worker.model} :{dualTargets.worker.port}
-                        </span>
-                      </dd>
-                    </div>
+                    <span className="atomcode-confirm-summary__mode">BRAIN TWIN</span>
+                    <span className="atomcode-confirm-summary__engine">
+                      {dualTargets.brain.model} : {dualTargets.brain.port}
+                    </span>
+                    <span className="atomcode-confirm-summary__sep">·</span>
+                    <span className="atomcode-confirm-summary__engine atomcode-confirm-summary__engine--worker">
+                      WORKER {dualTargets.worker.model} : {dualTargets.worker.port}
+                    </span>
+                    {harnessTool === "atomcode" && (
+                      <span className="atomcode-confirm-summary__agents">AGENTS ×{agentsN}</span>
+                    )}
                   </>
-                ) : null}
-                {harnessTool === "atomcode" && (
-                  <div>
-                    <dt>Agents</dt>
-                    <dd>×{agentsN}</dd>
-                  </div>
+                ) : (
+                  <span className="atomcode-confirm-summary__mode">TWIN — pick engines</span>
                 )}
-                <div>
-                  <dt>Project</dt>
-                  <dd
-                    className="atomcode-confirm-path"
-                    title={activeToolStatus?.lastProject ?? undefined}
-                  >
-                    {activeToolStatus?.lastProject || "(pick on confirm if unset)"}
-                  </dd>
-                </div>
-                <div>
-                  <dt>Tool</dt>
-                  <dd>
-                    {activeToolStatus?.installed
-                      ? `installed ${activeToolStatus.version ?? activeToolStatus.pinnedVersion}`
-                      : harnessTool === "qwen"
-                        ? `will download ~180 MB (${activeToolStatus?.pinnedVersion ?? "…"})`
-                        : `will download ~30 MB (${activeToolStatus?.pinnedVersion ?? "…"})`}
-                  </dd>
-                </div>
-              </dl>
+              </p>
+              <p
+                className="atomcode-confirm-path"
+                title={activeToolStatus?.lastProject ?? undefined}
+              >
+                <span className="atomcode-confirm-path__label">Project</span>
+                {activeToolStatus?.lastProject || "(pick on confirm if unset)"}
+              </p>
               <div className="atomcode-confirm-actions">
                 <button
                   type="button"
@@ -1622,8 +1589,9 @@ export default function MultiAgentBooster({
             type="button"
             className="atomcode-wizard__close font-mono tracking-wider uppercase"
             onClick={() => setHarnessOpen(false)}
+            title="Close harness — unlocks engine config"
           >
-            Close
+            CLOSE
           </button>
         </div>
 

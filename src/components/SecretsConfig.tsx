@@ -111,7 +111,7 @@ export default function SecretsConfig() {
           return (
             <div
               key={slot.key}
-              className="rounded-sm border border-stealth-border/40 bg-stealth-surface/30 p-3 flex flex-col gap-2"
+              className="theme-surface-row rounded-sm p-3 flex flex-col gap-2"
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
@@ -122,7 +122,7 @@ export default function SecretsConfig() {
                   className={`text-[7px] font-mono px-1.5 py-0.5 rounded-sm border flex-shrink-0 ${
                     slot.configured
                       ? "border-nv-green/40 text-nv-green/90 bg-nv-green/10"
-                      : "border-stealth-border/50 text-stealth-muted/50"
+                      : "border-[color:var(--theme-frame-border-strong)] text-stealth-muted/50"
                   }`}
                 >
                   {slot.configured ? "SET" : "NOT SET"}
@@ -144,7 +144,7 @@ export default function SecretsConfig() {
                     placeholder={slot.key === "hf_token" ? "hf_…" : "ghp_…"}
                     value={draft}
                     onChange={(e) => setDraft(e.target.value)}
-                    className="w-full px-2 py-1.5 text-[10px] font-mono rounded-sm bg-black/40 border border-stealth-border/50 text-white focus:outline-none focus:border-nv-green/50"
+                    className="theme-input w-full px-2 py-1.5 text-[10px] font-mono rounded-sm focus:outline-none focus:border-nv-green/50"
                   />
                   <div className="flex items-center gap-2 justify-end">
                     <button

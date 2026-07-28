@@ -106,31 +106,31 @@ export default function ModelHubDownloadPaths({ downloads }: ModelHubDownloadPat
         return (
         <div
           key={entry.path}
-          className={`flex items-center justify-between gap-3 rounded-sm px-2.5 py-1.5 ${
-            entry.isDefault ? 'border border-nv-green/30 bg-nv-green/5' : 'border border-stealth-border/60 bg-stealth-surface/40'
+          className={`theme-surface-row flex items-center justify-between gap-3 rounded-sm px-2.5 py-1.5 ${
+            entry.isDefault ? "model-hub-path-row--default" : ""
           }`}
         >
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               {entry.isDefault && (
-                <span className="shrink-0 text-[8px] font-mono text-nv-green bg-nv-green/15 px-1.5 py-0.5 rounded-sm">
+                <span className="value-chip value-chip-active shrink-0 text-[8px] font-mono px-1.5 py-0.5">
                   DEFAULT
                 </span>
               )}
               {activeHere && (
-                <span className="shrink-0 text-[8px] font-mono text-yellow-400/80 bg-yellow-400/10 px-1.5 py-0.5 rounded-sm">
+                <span className="model-hub-badge-download shrink-0 text-[8px] font-mono px-1.5 py-0.5 rounded-sm">
                   DOWNLOADING
                 </span>
               )}
-              <span className="truncate text-[10px] font-mono text-white/90">
+              <span className="truncate text-[10px] font-mono text-theme-text">
                 {entry.label || entry.path}
               </span>
             </div>
-            <div className="truncate text-[8px] font-mono text-stealth-muted/80">
+            <div className="truncate text-[8px] font-mono text-stealth-muted">
               {displayModelPath(entry.path)}
             </div>
             {activeHere && !entry.isDefault && (
-              <div className="mt-0.5 text-[7px] font-mono text-stealth-muted/60">
+              <div className="mt-0.5 text-[7px] font-mono text-stealth-muted">
                 In-progress downloads stay in this folder
               </div>
             )}
@@ -140,7 +140,7 @@ export default function ModelHubDownloadPaths({ downloads }: ModelHubDownloadPat
               type="button"
               onClick={() => handleSetDefault(entry.path)}
               title="Set as default for download"
-              className="shrink-0 px-2 py-0.5 text-[8px] font-mono border border-yellow-400/30 text-yellow-400/70 hover:bg-yellow-400/10 transition-colors whitespace-nowrap"
+              className="value-chip shrink-0 px-2 py-0.5 text-[8px] font-mono whitespace-nowrap"
             >
               SET AS DEFAULT FOR DOWNLOAD
             </button>

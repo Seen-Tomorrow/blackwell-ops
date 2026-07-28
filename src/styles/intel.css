@@ -223,7 +223,11 @@
 [data-model-hub] .buried-card .text-white\/90,
 [data-model-hub] .eink-panel-wrapper .text-white,
 [data-model-hub] .eink-panel-wrapper .text-white\/90,
-[data-model-hub] .eink-panel-wrapper .text-white\/80 {
+[data-model-hub] .eink-panel-wrapper .text-white\/80,
+[data-model-hub] .text-white,
+[data-model-hub] .text-white\/90,
+[data-model-hub] .text-white\/80,
+[data-model-hub] .text-theme-text {
   color: var(--theme-text) !important;
 }
 
@@ -237,6 +241,62 @@
 [data-model-hub] .eink-panel-wrapper .text-stealth-muted\/60,
 [data-model-hub] .eink-panel-wrapper .text-white\/60 {
   color: var(--theme-text-muted) !important;
+}
+
+/* Gold/yellow badges & CTAs — theme secondary (readable on ARCTIC grey panels) */
+[data-model-hub] .text-yellow-400,
+[data-model-hub] .text-yellow-400\/70,
+[data-model-hub] .text-yellow-400\/80,
+[data-model-hub] .text-yellow-400\/90,
+[data-model-hub] .text-yellow-300 {
+  color: var(--theme-secondary-bright) !important;
+}
+
+[data-model-hub] .border-yellow-400\/30,
+[data-model-hub] .border-yellow-400\/40,
+[data-model-hub] .border-yellow-400\/50 {
+  border-color: color-mix(in srgb, var(--theme-secondary) 48%, transparent) !important;
+}
+
+[data-model-hub] .bg-yellow-400\/10,
+[data-model-hub] .bg-yellow-400\/15 {
+  background: color-mix(in srgb, var(--theme-secondary) 12%, var(--theme-panel)) !important;
+}
+
+[data-model-hub] .text-nv-green,
+[data-model-hub] .text-nv-green\/80,
+[data-model-hub] .text-nv-green\/85 {
+  color: var(--theme-accent-bright) !important;
+}
+
+/* Download-folder rows */
+[data-model-hub] .model-hub-path-row--default {
+  border-color: color-mix(in srgb, var(--theme-accent) 40%, var(--theme-frame-border, var(--theme-border-subtle))) !important;
+  background: color-mix(in srgb, var(--theme-accent) 8%, var(--theme-eject-card-bg)) !important;
+}
+
+[data-model-hub] .model-hub-badge-download {
+  border: 1px solid color-mix(in srgb, var(--theme-secondary) 45%, transparent);
+  background: color-mix(in srgb, var(--theme-secondary) 12%, var(--theme-panel));
+  color: var(--theme-secondary-bright);
+}
+
+[data-model-hub] .value-chip {
+  background: var(--theme-chip-bg);
+  border: 1px solid var(--theme-chip-border);
+  color: var(--theme-chip-text);
+}
+
+[data-model-hub] .value-chip:hover {
+  border-color: var(--theme-chip-hover-border);
+  color: var(--theme-chip-hover-text);
+  background: var(--theme-chip-active-bg);
+}
+
+[data-model-hub] .value-chip-active {
+  background: var(--theme-chip-active-bg) !important;
+  border-color: var(--theme-chip-active-border) !important;
+  color: var(--theme-chip-active-text) !important;
 }
 
 [data-model-catalog] .text-white {

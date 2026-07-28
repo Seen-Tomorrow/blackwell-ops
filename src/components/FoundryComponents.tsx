@@ -278,14 +278,19 @@ function BinarySourceRow({
 
       {source === "foundry" && onBuild && (
         <button
+          type="button"
           onClick={onBuild}
           disabled={!provider.git_url || !!isBuilding}
-          className={`foundry-build-btn value-chip shrink-0 disabled:opacity-30 disabled:cursor-not-allowed ${isBuilding ? "foundry-build-btn--active" : ""}`}
+          className={`foundry-build-btn shrink-0${isBuilding ? " foundry-build-btn--active" : ""}`}
+          title="Open Reactor Foundry — configure and compile this provider binary"
         >
-          {isBuilding && (
-            <span className="foundry-hammer-icon foundry-hammer-icon--shake" aria-hidden="true">⚒</span>
-          )}
-          {isBuilding ? "BUILDING..." : "FOUNDRY BUILD"}
+          <span
+            className={`foundry-hammer-icon${isBuilding ? " foundry-hammer-icon--shake" : ""}`}
+            aria-hidden="true"
+          >
+            ⚒
+          </span>
+          {isBuilding ? "BUILDING…" : "FOUNDRY BUILD"}
         </button>
       )}
 
