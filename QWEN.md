@@ -24,7 +24,7 @@ Launch mode: **solo**
 
 | id (use with `/model`) | Role | Engine alias (OpenAI model string) | Endpoint |
 |------------------------|------|--------------------------------------|----------|
-| `local` | SOLO | `ENGINE_1` | `http://127.0.0.1:8888/v1` |
+| `local` | SOLO | `B-QWEN3.6-27` | `http://127.0.0.1:8888/v1` |
 
 - Default **main** chat model is **`brain`** (twin) or **`local`** (solo).
 - You (the agent) **cannot** switch the main session model; the user uses **`/model brain`** or **`/model worker`**.

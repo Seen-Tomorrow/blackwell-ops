@@ -1249,16 +1249,33 @@ export default function MultiAgentBooster({
 
   const violetStrip = showVioletStrip ? (
     <div
-      className={`full-auto-cockpit__dflash-get full-auto-cockpit__dflash-get--footer full-auto-cockpit__dflash-get--spec-extra full-auto-cockpit__dflash-get--tone-${stripTone} font-mono min-w-0 flex-1`}
+      className={`full-auto-cockpit__dflash-get full-auto-cockpit__dflash-get--footer full-auto-cockpit__dflash-get--tone-${stripTone} font-mono min-w-0 flex-1${
+        draftStripInner && specExtraInline ? " full-auto-cockpit__dflash-get--2row" : " full-auto-cockpit__dflash-get--spec-extra"
+      }`}
       data-strip-tone={stripTone}
     >
-      {draftStripInner}
       {draftStripInner && specExtraInline ? (
-        <span className="full-auto-cockpit__spec-extra-sep full-auto-cockpit__spec-extra-sep--block" aria-hidden>
-          |
-        </span>
-      ) : null}
-      {specExtraInline}
+        <>
+          {/* Row 1: params */}
+          <div className="full-auto-cockpit__dflash-row full-auto-cockpit__dflash-row--params">
+            {specExtraInline}
+          </div>
+          {/* Row 2: DFlash info + button */}
+          <div className="full-auto-cockpit__dflash-row full-auto-cockpit__dflash-row--draft">
+            {draftStripInner}
+          </div>
+        </>
+      ) : (
+        <>
+          {draftStripInner}
+          {draftStripInner && specExtraInline ? (
+            <span className="full-auto-cockpit__spec-extra-sep full-auto-cockpit__spec-extra-sep--block" aria-hidden>
+              |
+            </span>
+          ) : null}
+          {specExtraInline}
+        </>
+      )}
     </div>
   ) : null;
 
@@ -1565,26 +1582,6 @@ export default function MultiAgentBooster({
             </button>
           </div>
 
-          {/* Project directory + path — moved into the header so it sits
-              with the other "what is this session pointed at" controls.
-              Wraps to its own row below the tools. */}
-          <div className="atomcode-wizard__header-project">
-            <button
-              type="button"
-              className="atomcode-wizard__project-btn font-mono"
-              disabled={atomBusy !== "idle"}
-              onClick={() => void changeProjectDir()}
-            >
-              POINT THE AGENT — SELECT YOUR PROJECT DIRECTORY
-            </button>
-            <p
-              className="atomcode-wizard__project-path font-mono"
-              title={activeToolStatus?.lastProject ?? undefined}
-            >
-              {activeToolStatus?.lastProject || "No folder yet — pick one to continue"}
-            </p>
-          </div>
-
           <button
             type="button"
             className="atomcode-wizard__close font-mono tracking-wider uppercase"
@@ -1792,8 +1789,23 @@ export default function MultiAgentBooster({
           </p>
         )}
 
-        {/* Project folder — single full-width row, single CTA, no extra subhead. */}
-        {/* Project directory + path live in the wizard header now. */}
+        {/* Project directory + path — below the half-card */}
+        <div className="atomcode-wizard__header-project">
+          <button
+            type="button"
+            className="atomcode-wizard__project-btn font-mono"
+            disabled={atomBusy !== "idle"}
+            onClick={() => void changeProjectDir()}
+          >
+            POINT THE AGENT — SELECT YOUR PROJECT DIRECTORY
+          </button>
+          <p
+            className="atomcode-wizard__project-path font-mono"
+            title={activeToolStatus?.lastProject ?? undefined}
+          >
+            {activeToolStatus?.lastProject || "No folder yet — pick one to continue"}
+          </p>
+        </div>
 
         {showDisclaimer && (
           <div className="atomcode-wizard__disclaimer space-y-2">

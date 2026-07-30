@@ -580,6 +580,20 @@
   opacity: 1 !important;
 }
 
+/* ── Detailed config panel (catalog + filter) ─── */
+.config-detailed-panel {
+  background: var(--theme-panel-accent);
+  padding: 0.2rem 0.4rem;
+}
+
+.config-detailed-panel__label {
+  opacity: 0.65;
+}
+
+.config-detailed-panel__row {
+  min-height: 1.4rem;
+}
+
 .config-layout-mode-btn--on {
   box-shadow: 0 0 8px color-mix(in srgb, var(--theme-accent-glow) 40%, transparent);
 }

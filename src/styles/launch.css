@@ -418,11 +418,12 @@
 
 /* ── Launch rail — HW telemetry HUD ─── */
 .launch-rail-tel {
-  --tel-vram: var(--theme-accent-bright, #76b900);
-  --tel-ram: #4da3ff;
-  --tel-amber: #f59e0b;
-  --tel-cyan: #22d3ee;
-  --tel-hot: #ef4444;
+  /* Signal colors from theme tokens (ARCTIC = sky + copper, dark = classic HUD) */
+  --tel-vram: var(--theme-tel-vram, var(--theme-accent-bright, #76b900));
+  --tel-ram: var(--theme-tel-ram, #4da3ff);
+  --tel-amber: var(--theme-tel-amber, #f59e0b);
+  --tel-cyan: var(--theme-tel-cyan, #22d3ee);
+  --tel-hot: var(--theme-tel-hot, #ef4444);
   padding: 0;
 }
 
@@ -585,7 +586,11 @@
 }
 
 .gpu-topo-card--selected {
-  border-color: color-mix(in srgb, var(--color-nv-green) 55%, transparent);
+  border-color: color-mix(
+    in srgb,
+    var(--theme-industrial-gpu-selected, var(--color-nv-green)) 55%,
+    transparent
+  );
   /* Border-only selection in HW monitor — no glow halo */
   box-shadow: none;
 }
@@ -654,9 +659,9 @@
   border: 1px solid color-mix(in srgb, var(--theme-border, #1a2e1a) 70%, transparent);
 }
 
-/* Non-default OC applied — soft amber (same treatment as OVERCLOCKING header) */
+/* Non-default OC applied — soft amber/copper (same treatment as OVERCLOCKING header) */
 .gpu-topo-card__oc-badge--active {
-  color: color-mix(in srgb, #fbbf24 78%, #fff 22%);
+  color: var(--theme-tel-amber-ink, color-mix(in srgb, #fbbf24 78%, #fff 22%));
   background: color-mix(in srgb, var(--tel-amber, #f59e0b) 22%, transparent);
   border: 1px solid color-mix(in srgb, var(--tel-amber, #f59e0b) 38%, transparent);
 }
@@ -694,8 +699,8 @@
   color: color-mix(in srgb, var(--theme-text) 85%, #fff);
 }
 
-.gpu-topo-card__value--gpu { color: var(--color-nv-green); }
-.gpu-topo-card__value--mem { color: var(--color-telemetry-cyan); }
+.gpu-topo-card__value--gpu { color: var(--tel-vram, var(--color-nv-green)); }
+.gpu-topo-card__value--mem { color: var(--tel-cyan, var(--color-telemetry-cyan)); }
 
 .gpu-topo-card--compact .gpu-topo-card__value {
   font-size: 11px;
@@ -878,7 +883,7 @@
   padding: 5px 6px;
   border-radius: 4px;
   border: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent);
-  background: color-mix(in srgb, #000 22%, transparent);
+  background: var(--theme-tel-cell-bg, color-mix(in srgb, #000 22%, transparent));
 }
 
 .launch-rail-tel__total-cell--power .launch-rail-tel__total-label,
@@ -990,7 +995,7 @@
 .launch-rail-tel__gpu {
   border-radius: 4px;
   border: 1px solid color-mix(in srgb, var(--theme-border) 50%, transparent);
-  background: color-mix(in srgb, #000 18%, transparent);
+  background: var(--theme-tel-cell-bg, color-mix(in srgb, #000 18%, transparent));
   overflow: hidden;
 }
 

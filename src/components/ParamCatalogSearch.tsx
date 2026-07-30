@@ -93,6 +93,17 @@ export default function ParamCatalogSearch({
     }
   }, [loading]);
 
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose]);
+
   const filtered = useMemo(() => searchCatalog(entries, query), [entries, query]);
 
   const entryStatus = useCallback(

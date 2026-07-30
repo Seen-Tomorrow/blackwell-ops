@@ -89,11 +89,14 @@ body[data-onboarding-phase="scan-meta"] [data-onboarding="scan-meta"],
   animation: onboarding-pulse 1.8s ease-in-out infinite;
 }
 
-/* GPU overclock — muted amber header when active (no phosphor texture on OC panel) */
+/* GPU overclock — theme tel amber (ARCTIC copper; dark themes classic amber) */
 [data-gpu-overclock] {
-  --gpu-oc-amber: #f59e0b;
-  --gpu-oc-amber-deep: #b45309;
-  --gpu-oc-amber-ink: color-mix(in srgb, #fbbf24 78%, #fff 22%);
+  --gpu-oc-amber: var(--theme-tel-amber, #f59e0b);
+  --gpu-oc-amber-deep: var(--theme-tel-amber-deep, #b45309);
+  --gpu-oc-amber-ink: var(
+    --theme-tel-amber-ink,
+    color-mix(in srgb, #fbbf24 78%, #fff 22%)
+  );
 }
 
 [data-gpu-overclock] .gpu-oc-header--active {
@@ -235,9 +238,13 @@ body[data-onboarding-phase="scan-meta"] [data-onboarding="scan-meta"],
 
 /* Driver model status + toggles */
 [data-gpu-overclock] .gpu-oc-driver-model__label--tcc {
-  color: var(--color-telemetry-amber, #ffb800);
+  color: var(--theme-tel-amber, var(--color-telemetry-amber, #ffb800));
   font-weight: 700;
-  text-shadow: 0 0 8px color-mix(in srgb, var(--color-telemetry-amber, #ffb800) 35%, transparent);
+  text-shadow: 0 0 8px color-mix(
+    in srgb,
+    var(--theme-tel-amber, var(--color-telemetry-amber, #ffb800)) 35%,
+    transparent
+  );
 }
 
 [data-gpu-overclock] .gpu-oc-driver-model__label--wddm {
@@ -246,16 +253,36 @@ body[data-onboarding-phase="scan-meta"] [data-onboarding="scan-meta"],
 }
 
 [data-gpu-overclock] .gpu-oc-driver-model__btn--tcc.app-nav-tab {
-  color: color-mix(in srgb, var(--color-telemetry-amber, #ffb800) 75%, transparent);
-  border-color: color-mix(in srgb, var(--color-telemetry-amber, #ffb800) 35%, transparent);
+  color: color-mix(
+    in srgb,
+    var(--theme-tel-amber, var(--color-telemetry-amber, #ffb800)) 75%,
+    transparent
+  );
+  border-color: color-mix(
+    in srgb,
+    var(--theme-tel-amber, var(--color-telemetry-amber, #ffb800)) 35%,
+    transparent
+  );
 }
 
 [data-gpu-overclock] .gpu-oc-driver-model__btn--tcc-active.app-nav-tab,
 [data-gpu-overclock] .gpu-oc-driver-model__btn--tcc.app-nav-tab.app-nav-tab-active {
   color: #1a1400 !important;
-  background: color-mix(in srgb, var(--color-telemetry-amber, #ffb800) 78%, #1a1400) !important;
-  border-color: color-mix(in srgb, var(--color-telemetry-amber, #ffb800) 70%, transparent) !important;
-  box-shadow: 0 0 10px color-mix(in srgb, var(--color-telemetry-amber, #ffb800) 30%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--theme-tel-amber, var(--color-telemetry-amber, #ffb800)) 78%,
+    #1a1400
+  ) !important;
+  border-color: color-mix(
+    in srgb,
+    var(--theme-tel-amber, var(--color-telemetry-amber, #ffb800)) 70%,
+    transparent
+  ) !important;
+  box-shadow: 0 0 10px color-mix(
+    in srgb,
+    var(--theme-tel-amber, var(--color-telemetry-amber, #ffb800)) 30%,
+    transparent
+  );
 }
 
 [data-gpu-overclock] .gpu-oc-driver-model__btn--wddm.app-nav-tab {
@@ -286,7 +313,11 @@ body[data-onboarding-phase="scan-meta"] [data-onboarding="scan-meta"],
   width: min(380px, 100%);
   padding: 0.85rem 0.9rem 0.75rem;
   border-radius: 4px;
-  border: 1px solid color-mix(in srgb, var(--color-telemetry-amber, #ffb800) 45%, transparent);
+  border: 1px solid color-mix(
+    in srgb,
+    var(--theme-tel-amber, var(--color-telemetry-amber, #ffb800)) 45%,
+    transparent
+  );
   background: linear-gradient(180deg, #1a1408 0%, #0a0804 100%);
   box-shadow: 0 12px 40px color-mix(in srgb, #000 55%, transparent);
   color: #f5f0e0;

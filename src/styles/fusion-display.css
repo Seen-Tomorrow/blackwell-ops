@@ -1413,15 +1413,15 @@ html[data-industrial-bezel="brush"] {
   position: relative;
   background-color: #080808;
   background-image:
-    radial-gradient(circle, rgba(200, 200, 208, 0.055) 1px, transparent 1px),
+    radial-gradient(circle, rgba(200, 200, 208, 0.055) 0.75px, transparent 0.75px),
     repeating-linear-gradient(
       to bottom,
       transparent 0px,
-      transparent 2px,
-      rgba(0, 0, 0, 0.22) 2px,
-      rgba(0, 0, 0, 0.22) 4px
+      transparent 1.5px,
+      rgba(0, 0, 0, 0.22) 1.5px,
+      rgba(0, 0, 0, 0.22) 3px
     );
-  background-size: 2px 2px, 100% 4px;
+  background-size: 1.5px 1.5px, 100% 3px;
 }
 
 /* DARK: texture is on the face, not ::before/::after */
@@ -1940,15 +1940,15 @@ html[data-industrial-bezel="brush"] {
 .launch-rail-tel[data-display-texture="phosphor-dark"] .phosphor-display-surface {
   background-color: #080808 !important;
   background-image:
-    radial-gradient(circle, rgba(200, 200, 208, 0.055) 1px, transparent 1px),
+    radial-gradient(circle, rgba(200, 200, 208, 0.055) 0.75px, transparent 0.75px),
     repeating-linear-gradient(
       to bottom,
       transparent 0px,
-      transparent 2px,
-      rgba(0, 0, 0, 0.22) 2px,
-      rgba(0, 0, 0, 0.22) 4px
+      transparent 1.5px,
+      rgba(0, 0, 0, 0.22) 1.5px,
+      rgba(0, 0, 0, 0.22) 3px
     ) !important;
-  background-size: 2px 2px, 100% 4px !important;
+  background-size: 1.5px 1.5px, 100% 3px !important;
 }
 
 [data-display-texture="phosphor-light"] .phosphor-screen-inner.phosphor-display-surface,

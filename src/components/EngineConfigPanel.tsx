@@ -2627,13 +2627,22 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       && !layoutModeActive
       && !isSpecGroup;
 
+    const filterQuery = paramFilter.trim().toLowerCase();
+    const filteredGroupParams = (!filterQuery || !groupParams)
+      ? groupParams
+      : groupParams.filter(
+          (p) =>
+            p.key.toLowerCase().includes(filterQuery)
+            || (p.label || "").toLowerCase().includes(filterQuery),
+        );
+
     if (isSpecGroup) {
       // Cockpit owns Boost + draft + Spec details (n_max/n_min). Classic chip block removed.
       return null;
     }
 
     const allInGroup = allGroupedParams[group.id] || [];
-    if (!groupParams || groupParams.length === 0) {
+    if (!filteredGroupParams || filteredGroupParams.length === 0) {
       if (layoutModeActive && isEmptyGroupDeletable(group.id, allGroupedParams)) {
         return (
           <div key={group.id} className="config-param-group--empty opacity-70">
@@ -2681,7 +2690,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             >
               <span className="text-[7px]">{isCollapsed ? "▶" : "▼"}</span>
               <span className="truncate">{group.label}</span>
-              <span className="opacity-40 flex-shrink-0">({groupParams.length})</span>
+              <span className="opacity-40 flex-shrink-0">({filteredGroupParams.length})</span>
             </button>
             {renderGroupLayoutControls(group.id, zone)}
           </div>
@@ -2689,7 +2698,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
         {showContent && (
           <div className="space-y-2.5">
-            {groupParams.map((def, i) => renderParamRow(def, false, i))}
+            {filteredGroupParams.map((def, i) => renderParamRow(def, false, i))}
           </div>
         )}
       </div>
@@ -2697,6 +2706,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   }, [
     groupedParams,
     allGroupedParams,
+    paramFilter,
     model,
     specFlash,
     effectiveBackendType,
@@ -3403,14 +3413,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                 }
               }}
             />
-            <button
-              type="button"
-              onClick={() => setShowEngineCatalogSearch(true)}
-              className="config-panel-toolbar-chip px-1.5 py-0.5 text-[8px] font-mono rounded-sm"
-              title="Add any parameter from the live catalog"
-            >
-              + PARAM CATALOG
-            </button>
           </div>
         )}
         {fullAutoFixed && (
@@ -3659,22 +3661,38 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           />
         )}
 
-        {/* Engine chips hidden while harness wizard owns the panel */}
         {!fullAutoFixed && !atomcodeHarnessOpen && (
-          <div className={paramsBypassedClass}>
-            {/* Sticky chip-area filter — no extra toolbar height; sits on first chips row */}
-            {allParamsForDisplay.length > 0 && (
-              <div className="config-params-filter-bar sticky top-0 z-[5] flex justify-end -mt-0.5 mb-0.5 pointer-events-none">
+          <div className="config-detailed-panel mb-1.5 border border-stealth-border/30 rounded-sm">
+            <div className="config-detailed-panel__row flex items-center gap-1.5">
+              <span className="config-detailed-panel__label text-[8px] font-mono tracking-widest uppercase text-stealth-muted/70 flex-shrink-0">
+                DETAILED CONFIG
+              </span>
+              <span className="config-panel-toolbar__sep mx-1 h-3 w-px flex-shrink-0" />
+              <button
+                type="button"
+                onClick={() => setShowEngineCatalogSearch(true)}
+                className="config-panel-toolbar-chip px-1.5 py-0.5 text-[8px] font-mono rounded-sm flex-shrink-0"
+                title="Add any parameter from the live catalog"
+              >
+                + PARAM CATALOG
+              </button>
+              {allParamsForDisplay.length > 0 && (
                 <input
                   type="search"
                   value={paramFilter}
                   onChange={(e) => setParamFilter(e.target.value)}
                   placeholder="Filter…"
-                  className="config-panel-param-filter pointer-events-auto w-[7.5rem] max-w-[40%] bg-[color-mix(in_srgb,var(--theme-panel-accent,#040b01)_88%,transparent)] border border-stealth-border/30 rounded-sm px-1.5 py-0.5 text-[8px] font-mono text-nv-green/90 placeholder:text-stealth-muted/35 focus:outline-none focus:border-nv-green/40 shadow-sm"
+                  className="config-panel-param-filter w-[7.5rem] max-w-[40%] bg-[color-mix(in_srgb,var(--theme-panel-accent,#040b01)_88%,transparent)] border border-stealth-border/30 rounded-sm px-1.5 py-0.5 text-[8px] font-mono text-nv-green/90 placeholder:text-stealth-muted/35 focus:outline-none focus:border-nv-green/40 shadow-sm flex-shrink-0"
                   title="Filter chip groups by name or key (local — not model search)"
                 />
-              </div>
-            )}
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Engine chips hidden while harness wizard owns the panel */}
+        {!fullAutoFixed && !atomcodeHarnessOpen && (
+          <div className={paramsBypassedClass}>
             {allParamsForDisplay.length === 0 ? (
               <div className="text-stealth-muted text-[10px] font-mono opacity-50">NO PARAMS DEFINED</div>
             ) : belowGroupKeys.length === 0 ? null : !filteredBelowHasAny ? (
