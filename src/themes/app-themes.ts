@@ -793,8 +793,8 @@ const ARCTIC: AppTheme = {
     "--theme-bezel-dot-shade": "color-mix(in srgb, #64748b 5%, transparent)",
     "--theme-bezel-inset-hi": "rgba(255, 255, 255, 0.55)",
     "--theme-bezel-inset-lo": "rgba(100, 120, 140, 0.08)",
-    "--theme-phosphor-inset-top": "rgba(15, 40, 70, 0.04)",
-    "--theme-phosphor-inset-bottom": "rgba(15, 40, 70, 0.02)",
+    "--theme-phosphor-inset-top": "rgba(15, 40, 70, 0.18)",
+    "--theme-phosphor-inset-bottom": "rgba(15, 40, 70, 0.1)",
     "--theme-bezel-cast-shadow": DISPLAY_PROFILE_BEZEL_CAST,
     "--theme-bench-inset-shadow": "rgba(15, 40, 70, 0.08)",
     "--theme-card-recessed-border": "#c8d4e0",
@@ -872,9 +872,9 @@ const ARCTIC: AppTheme = {
     "--theme-launch-active-text": "#f8fafc",
     "--theme-launch-active-shadow": "0 1px 6px rgba(2, 132, 199, 0.4)",
 
-    /* Bright aluminium face under grit/brush/diamond */
+    /* Bright aluminium face under grit/brush/diamond — tighter range (not glare-white) */
     "--theme-industrial-face-gradient":
-      "linear-gradient(168deg, #f8fafc 0%, #e8f0f7 20%, #cdd9e6 46%, #dce6f0 70%, #f0f5fa 100%)",
+      "linear-gradient(168deg, #d8e2ec 0%, #c8d6e4 20%, #b4c4d4 46%, #c2d0de 70%, #dce6f0 100%)",
     "--theme-cockpit-well-shadow":
       "inset 0 1px 3px color-mix(in srgb, #64748b 8%, transparent), inset 0 1px 0 color-mix(in srgb, #ffffff 70%, transparent), inset 0 -1px 0 color-mix(in srgb, #ffffff 40%, transparent)",
     "--theme-cockpit-header-shadow":
