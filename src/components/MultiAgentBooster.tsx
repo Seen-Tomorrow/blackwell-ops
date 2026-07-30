@@ -1249,16 +1249,33 @@ export default function MultiAgentBooster({
 
   const violetStrip = showVioletStrip ? (
     <div
-      className={`full-auto-cockpit__dflash-get full-auto-cockpit__dflash-get--footer full-auto-cockpit__dflash-get--spec-extra full-auto-cockpit__dflash-get--tone-${stripTone} font-mono min-w-0 flex-1`}
+      className={`full-auto-cockpit__dflash-get full-auto-cockpit__dflash-get--footer full-auto-cockpit__dflash-get--tone-${stripTone} font-mono min-w-0 flex-1${
+        draftStripInner && specExtraInline ? " full-auto-cockpit__dflash-get--2row" : " full-auto-cockpit__dflash-get--spec-extra"
+      }`}
       data-strip-tone={stripTone}
     >
-      {draftStripInner}
       {draftStripInner && specExtraInline ? (
-        <span className="full-auto-cockpit__spec-extra-sep full-auto-cockpit__spec-extra-sep--block" aria-hidden>
-          |
-        </span>
-      ) : null}
-      {specExtraInline}
+        <>
+          {/* Row 1: params */}
+          <div className="full-auto-cockpit__dflash-row full-auto-cockpit__dflash-row--params">
+            {specExtraInline}
+          </div>
+          {/* Row 2: DFlash info + button */}
+          <div className="full-auto-cockpit__dflash-row full-auto-cockpit__dflash-row--draft">
+            {draftStripInner}
+          </div>
+        </>
+      ) : (
+        <>
+          {draftStripInner}
+          {draftStripInner && specExtraInline ? (
+            <span className="full-auto-cockpit__spec-extra-sep full-auto-cockpit__spec-extra-sep--block" aria-hidden>
+              |
+            </span>
+          ) : null}
+          {specExtraInline}
+        </>
+      )}
     </div>
   ) : null;
 

@@ -7,9 +7,9 @@
 
 | Role | Absolute path |
 |------|----------------|
-| **QWEN_HOME** (settings, this file if user-scoped) | `C:\AI-MASTER\Blackwell OPS portable\config\external-tools\qwencode-home` |
+| **QWEN_HOME** (settings, this file if user-scoped) | `C:\Users\GHOST-TOWER\INFRA\blackwell-ops\src-tauri\target\debug\config\external-tools\qwencode-home` |
 | **Project cwd** (workspace / default file ops) | `C:\Users\GHOST-TOWER\INFRA\blackwell-ops` |
-| **settings.json** | `C:\AI-MASTER\Blackwell OPS portable\config\external-tools\qwencode-home\settings.json` |
+| **settings.json** | `C:\Users\GHOST-TOWER\INFRA\blackwell-ops\src-tauri\target\debug\config\external-tools\qwencode-home\settings.json` |
 
 - Prefer project files under **Project cwd**.
 - Config / session state live under **QWEN_HOME**, not `%USERPROFILE%\.qwen`.
@@ -24,7 +24,7 @@ Launch mode: **solo**
 
 | id (use with `/model`) | Role | Engine alias (OpenAI model string) | Endpoint |
 |------------------------|------|--------------------------------------|----------|
-| `local` | SOLO | `ENGINE_1` | `http://127.0.0.1:8888/v1` |
+| `local` | SOLO | `B-QWEN3.6-27` | `http://127.0.0.1:8888/v1` |
 
 - Default **main** chat model is **`brain`** (twin) or **`local`** (solo).
 - You (the agent) **cannot** switch the main session model; the user uses **`/model brain`** or **`/model worker`**.
