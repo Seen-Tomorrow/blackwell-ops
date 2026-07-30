@@ -63,12 +63,11 @@ export default defineConfig(async () => ({
       ],
     },
     watch: {
-      // Pack/foundry drop locked .exe under work/; watching them throws EBUSY and
-      // kills Vite (unhandled FSWatcher error). Keep in sync with server.fs.deny.
+      // Ignore ALL of src-tauri — Vite watching Rust files triggers a frontend reload
+      // at the exact moment Rust starts recompiling, causing a race condition on the
+      // WebView window. The sub-patterns below are kept for explicitness (target, runtime).
       ignored: [
-        "**/src-tauri/target/**",
-        "**/src-tauri/runtime/**",
-        "**/src-tauri/runtime-bundle/**",
+        "**/src-tauri/**",
         "**/scripts/distribution-policy.json",
         "**/foundry/**",
         "**/work/**",
