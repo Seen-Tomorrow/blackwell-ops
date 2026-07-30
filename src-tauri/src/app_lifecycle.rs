@@ -6,10 +6,15 @@
 //!
 //! After engines are killed we `std::process::exit(0)` **without** destroying the webview —
 //! session logs showed destroy itself is the heap-smash trigger.
+//!
+//! **Frontend detachment** (F5 / page reload): The JS context dies instantly on reload.
+//! Rust-side Tokio tasks (log batch flush, fusion poll, telemetry) must suppress IPC into
+//! a dead WebView2 until the new frontend reconnects via `startup_frontend_ping`.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
 static SHUTTING_DOWN: AtomicBool = AtomicBool::new(false);
+static FRONTEND_DETACHED: AtomicBool = AtomicBool::new(false);
 
 /// Mark app exit in progress. Idempotent. Call at the start of teardown (before stopping brains).
 pub fn begin_shutdown() {
@@ -20,6 +25,31 @@ pub fn begin_shutdown() {
 
 pub fn is_shutting_down() -> bool {
     SHUTTING_DOWN.load(Ordering::Acquire)
+}
+
+/// Check if frontend is detached (F5 reload) OR shutting down.
+/// Use this guard before any WebView IPC emit.
+pub fn should_suppress_ipc() -> bool {
+    is_shutting_down() || is_frontend_detached()
+}
+
+/// Frontend is about to unload (beforeunload event). Suppress IPC into WebView2.
+pub fn set_frontend_detached() {
+    FRONTEND_DETACHED.store(true, Ordering::SeqCst);
+    log::info!("[lifecycle] frontend detached — IPC suppressed until re-connect");
+    crate::session_log::append_session_line("[lifecycle] frontend detached (F5 / reload)");
+}
+
+/// Frontend has reconnected (startup_frontend_ping). Resume IPC.
+pub fn clear_frontend_detached() {
+    FRONTEND_DETACHED.store(false, Ordering::SeqCst);
+    log::info!("[lifecycle] frontend re-connected — IPC resumed");
+    crate::session_log::append_session_line("[lifecycle] frontend re-connected");
+}
+
+/// Check if frontend is currently detached (page reload in progress).
+pub fn is_frontend_detached() -> bool {
+    FRONTEND_DETACHED.load(Ordering::Acquire)
 }
 
 /// Finish app exit after engines/fusion are already torn down.

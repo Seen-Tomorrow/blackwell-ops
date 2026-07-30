@@ -20,6 +20,12 @@ import {
   resetSetupGuideState,
 } from "./lib/storage";
 
+// Signal Rust to suppress WebView IPC before JS context dies (F5 / page reload).
+// Fire-and-forget: the beforeunload handler must be synchronous.
+window.addEventListener("beforeunload", () => {
+  void invoke("frontend_will_unload").catch(() => {});
+});
+
 migrateLegacyStorageKeys();
 
 if (__BUILD_MODE__ === "dev") {

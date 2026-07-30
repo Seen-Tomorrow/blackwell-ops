@@ -120,7 +120,7 @@ impl LogHub {
 
     /// Emit a generic event to all frontend windows.
     pub fn emit(&self, event: &str, payload: impl serde::Serialize + Clone) {
-        if crate::app_lifecycle::is_shutting_down() {
+        if crate::app_lifecycle::should_suppress_ipc() {
             return;
         }
         if crate::debug_flags::flags().disable_ipc_emit {
@@ -1078,7 +1078,7 @@ impl LogHub {
 
     /// Emit a system-level event (launch debug, errors) visible in the frontend.
     pub async fn emit_system_event(&self, slot: usize, alias: &str, text: &str) {
-        if crate::app_lifecycle::is_shutting_down() {
+        if crate::app_lifecycle::should_suppress_ipc() {
             return;
         }
         let event = SystemEvent {

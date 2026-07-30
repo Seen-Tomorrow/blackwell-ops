@@ -69,7 +69,7 @@ pub fn emit_tracked<R: Runtime, P: serde::Serialize + Clone>(
     event: &str,
     payload: P,
 ) {
-    if crate::app_lifecycle::is_shutting_down() {
+    if crate::app_lifecycle::should_suppress_ipc() {
         return;
     }
     if crate::debug_flags::flags().disable_ipc_emit {

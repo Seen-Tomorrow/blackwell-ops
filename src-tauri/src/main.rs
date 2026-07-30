@@ -683,9 +683,17 @@ use download_manager::DownloadManager;
 use tauri::{Emitter, Manager};
 
 /// First frontend IPC after WebView loads the dev/bundled JS module — used to bisect startup delay.
+/// Also clears the FRONTEND_DETACHED flag so Rust-side IPC resumes after F5 / page reload.
 #[tauri::command]
 fn startup_frontend_ping() {
+    crate::app_lifecycle::clear_frontend_detached();
     log::info!("[startup] frontend module loaded — IPC bridge live");
+}
+
+/// Called from frontend `beforeunload` handler. Suppress Rust→WebView IPC until next ping.
+#[tauri::command]
+fn frontend_will_unload() {
+    crate::app_lifecycle::set_frontend_detached();
 }
 
 #[tokio::main]
@@ -974,6 +982,7 @@ async fn main() {
             session_log::get_session_log_status,
             session_log::set_session_log_enabled,
             startup_frontend_ping,
+            frontend_will_unload,
             ipc_meter::get_ipc_meter_stats,
             gpu_control::get_gpu_control_devices,
             gpu_control::is_gpu_control_elevated,
