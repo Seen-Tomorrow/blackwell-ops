@@ -269,22 +269,23 @@ pub async fn list_models(
     })
     .await
     .map_err(|e| format!("catalog scan task failed: {}", e))??;
-    log::info!(
-        "[list_models] complete: {:.0}ms ({} models)",
-        t0.elapsed().as_secs_f64() * 1000.0,
-        entries.len()
-    );
-    // Emit summary to app console so it's visible in the UI.
+    // Summary for both Tauri log and app console.
     {
         let with_meta = entries.iter().filter(|e| e.metadata.is_some()).count();
         let with_hf = entries.iter().filter(|e| e.hf_meta.is_some()).count();
+        let summary = format!("[MERGE] ✅ {} models cataloged ({} with GGUF metadata, {} with HF data)",
+            entries.len(), with_meta, with_hf);
+        log::info!("{}", summary);
         app.blackwell_output_console_manager.emit_line_to_category(
             crate::output_console::BlackwellOutputConsoleCategory::Utils,
-            format!("[MERGE] ✅ {} models cataloged ({} with GGUF metadata, {} with HF data)",
-                entries.len(), with_meta, with_hf),
+            summary,
             crate::output_console::BlackwellOutputConsoleLineStyle::Success,
         );
     }
+    log::info!(
+        "[list_models] complete: {:.0}ms",
+        t0.elapsed().as_secs_f64() * 1000.0
+    );
     if !_conflicts.is_empty() {
         log::warn!("[list_models] Found {} cross-path duplicates (keeping largest)", _conflicts.len());
     }
