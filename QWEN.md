@@ -7,9 +7,9 @@
 
 | Role | Absolute path |
 |------|----------------|
-| **QWEN_HOME** (settings, this file if user-scoped) | `C:\Users\GHOST-TOWER\INFRA\blackwell-ops\src-tauri\target\debug\config\external-tools\qwencode-home` |
+| **QWEN_HOME** (settings, this file if user-scoped) | `C:\AI-MASTER\Blackwell OPS portable\config\external-tools\qwencode-home` |
 | **Project cwd** (workspace / default file ops) | `C:\Users\GHOST-TOWER\INFRA\blackwell-ops` |
-| **settings.json** | `C:\Users\GHOST-TOWER\INFRA\blackwell-ops\src-tauri\target\debug\config\external-tools\qwencode-home\settings.json` |
+| **settings.json** | `C:\AI-MASTER\Blackwell OPS portable\config\external-tools\qwencode-home\settings.json` |
 
 - Prefer project files under **Project cwd**.
 - Config / session state live under **QWEN_HOME**, not `%USERPROFILE%\.qwen`.
