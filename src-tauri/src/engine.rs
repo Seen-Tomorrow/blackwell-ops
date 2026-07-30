@@ -240,6 +240,7 @@ pub struct AppContext {
 pub async fn list_models(
     config: tauri::State<'_, Arc<std::sync::Mutex<AppConfig>>>,
     downloads: tauri::State<'_, Arc<tokio::sync::RwLock<crate::download_manager::DownloadManager>>>,
+    app: tauri::State<'_, AppContext>,
 ) -> Result<Vec<ModelEntry>, String> {
     let paths = {
         let cfg = config.lock().map_err(|e| e.to_string())?;
@@ -273,6 +274,17 @@ pub async fn list_models(
         t0.elapsed().as_secs_f64() * 1000.0,
         entries.len()
     );
+    // Emit summary to app console so it's visible in the UI.
+    {
+        let with_meta = entries.iter().filter(|e| e.metadata.is_some()).count();
+        let with_hf = entries.iter().filter(|e| e.hf_meta.is_some()).count();
+        app.blackwell_output_console_manager.emit_line_to_category(
+            crate::output_console::BlackwellOutputConsoleCategory::Utils,
+            format!("[MERGE] ✅ {} models cataloged ({} with GGUF metadata, {} with HF data)",
+                entries.len(), with_meta, with_hf),
+            crate::output_console::BlackwellOutputConsoleLineStyle::Success,
+        );
+    }
     if !_conflicts.is_empty() {
         log::warn!("[list_models] Found {} cross-path duplicates (keeping largest)", _conflicts.len());
     }
