@@ -192,6 +192,40 @@
   --fusion-eink-text-amber: #b87a00;
   --fusion-eink-text-red: #5a2828;
   --fusion-eink-text-violet: #4a3858;
+  /*
+   * HW monitor + OVERCLOCKING signal colors (launch-rail-tel / gpu-oc).
+   * Themes override for palette cohesion; CSS falls back to these.
+   */
+  --theme-tel-vram: var(--theme-accent-bright, #76b900);
+  --theme-tel-ram: #4da3ff;
+  --theme-tel-amber: #f59e0b;
+  --theme-tel-amber-deep: #b45309;
+  --theme-tel-amber-ink: color-mix(in srgb, #fbbf24 78%, #fff 22%);
+  --theme-tel-cyan: #22d3ee;
+  --theme-tel-hot: #ef4444;
+  /* Widget face wash under display texture (dark themes: soft black) */
+  --theme-tel-cell-bg: color-mix(in srgb, #000 20%, transparent);
+  /*
+   * Model catalog cards — transparent wing by default; ARCTIC sets ice-slab face.
+   */
+  --theme-catalog-card-bg: transparent;
+  --theme-catalog-card-bg-image: none;
+  --theme-catalog-card-border: color-mix(in srgb, var(--theme-border) 78%, var(--theme-text-muted) 22%);
+  --theme-catalog-card-shadow: none;
+  --theme-catalog-card-hover-bg: color-mix(in srgb, var(--theme-text) 4%, transparent);
+  --theme-catalog-card-hover-border: color-mix(in srgb, var(--theme-border) 50%, var(--theme-accent) 50%);
+  --theme-catalog-card-hover-shadow: none;
+  --theme-catalog-card-selected-bg: color-mix(in srgb, var(--theme-panel) 55%, var(--theme-panel-accent) 45%);
+  --theme-catalog-card-selected-bg-image: none;
+  --theme-catalog-card-selected-border: color-mix(in srgb, var(--theme-accent) 42%, var(--theme-border));
+  --theme-catalog-card-selected-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--theme-accent) 14%, transparent),
+    0 1px 4px color-mix(in srgb, #000 18%, transparent);
+  --theme-catalog-card-rail: color-mix(in srgb, var(--theme-accent) 70%, transparent);
+  --theme-catalog-fit-fg: color-mix(in srgb, var(--theme-text-muted) 72%, transparent);
+  --theme-catalog-fit-border: color-mix(in srgb, var(--theme-border) 55%, transparent);
+  --theme-catalog-fit-bg: color-mix(in srgb, var(--theme-text) 3%, transparent);
+  --theme-catalog-fit-opacity: 0.55;
   --fusion-eink-bar-bg: #465a40;
   --fusion-eink-gpu-selected-border: #526848;
   --fusion-eink-gpu-selected-bg: rgba(70, 90, 64, 0.45);

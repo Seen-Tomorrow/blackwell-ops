@@ -159,7 +159,7 @@ export default function ModelCard({
           <div className="flex items-center gap-0.5 flex-shrink-0 ml-2">
             {fitScanBadge && (
               <span
-                className="text-[7px] font-mono px-1 py-0.5 rounded-sm border border-nv-green/25 text-nv-green/70 bg-nv-green/10 whitespace-nowrap"
+                className="model-card-fit-badge text-[7px] font-mono px-1 py-0.5 rounded-sm border whitespace-nowrap"
                 title="VRAM fit probe data cached for forecast"
               >
                 {fitScanBadge}
@@ -169,7 +169,7 @@ export default function ModelCard({
               <button
                 onClick={(e) => { e.stopPropagation(); onFitScanModel?.(model); }}
                 disabled={fitScanning}
-                className={`text-[7px] font-mono px-1.5 py-0.5 rounded-sm transition-colors whitespace-nowrap ${
+                className={`model-card-fit-scan text-[7px] font-mono px-1.5 py-0.5 rounded-sm transition-colors whitespace-nowrap ${
                   fitScanning
                     ? "text-nv-green border border-nv-green/40 bg-nv-green/10"
                     : "text-stealth-muted border border-stealth-border/60 hover:border-stealth-muted/50 hover:text-white/70 hover:bg-white/[0.04] disabled:opacity-30"
