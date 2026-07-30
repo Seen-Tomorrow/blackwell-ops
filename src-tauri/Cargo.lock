@@ -383,7 +383,7 @@ dependencies = [
 
 [[package]]
 name = "blackwell-ops"
-version = "1.0.36"
+version = "1.0.37"
 dependencies = [
  "async-trait",
  "chrono",
