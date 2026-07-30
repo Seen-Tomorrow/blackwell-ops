@@ -99,9 +99,9 @@ function startProxy() {
         });
         const reqLine = `${req.method} ${req.url} HTTP/1.1\r\n`;
         upstream.write(`${reqLine}${formatHeaders(req.headers)}\r\n\r\n`);
-        if (head.length) upstream.write(head);
         upstream.pipe(clientSocket);
         clientSocket.pipe(upstream);
+        if (head.length) upstream.write(head);
       });
     });
 
