@@ -461,9 +461,7 @@ pub fn merge_catalogs(
 
             log::debug!("[catalog] Cache lookup for '{}', path='{}'", internal.name, lookup_path);
             let mut cached_meta = crate::model_cache::get_cached_with_cache(&model_cache, lookup_path);
-            if cached_meta.is_some() {
-                log::info!("[catalog] ✅ Cached metadata loaded for {}", internal.name);
-            } else {
+            if cached_meta.is_none() {
                 log::debug!("[catalog] ❌ No cached metadata for {} (path: {})", internal.name, lookup_path);
             }
 

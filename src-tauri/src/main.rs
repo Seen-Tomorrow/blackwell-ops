@@ -692,8 +692,14 @@ fn startup_frontend_ping() {
 
 /// Called from frontend `beforeunload` handler. Suppress Rust→WebView IPC until next ping.
 #[tauri::command]
-fn frontend_will_unload() {
+fn frontend_will_unload(app: tauri::State<'_, AppContext>) {
     crate::app_lifecycle::set_frontend_detached();
+    // Log to app console DEBUG category so it survives the page reload (buffer is Rust-side).
+    app.blackwell_output_console_manager.emit_line_to_category(
+        crate::output_console::BlackwellOutputConsoleCategory::Debug,
+        "[LIFECYCLE] frontend_will_unload — IPC suppression engaged".to_string(),
+        crate::output_console::BlackwellOutputConsoleLineStyle::Normal,
+    );
 }
 
 #[tokio::main]

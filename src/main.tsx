@@ -23,6 +23,14 @@ import {
 // Signal Rust to suppress WebView IPC before JS context dies (F5 / page reload).
 // Fire-and-forget: the beforeunload handler must be synchronous.
 window.addEventListener("beforeunload", () => {
+  // Post a marker to the app debug console so it's visible before the page dies.
+  const now = new Date().toISOString().slice(11, 12 + 3).replace("T", " ");
+  window.__TAURI__?.event?.emit("engine-system", {
+    slot: -1,
+    alias: "--",
+    text: "[LIFECYCLE] frontend_will_unload — IPC suppression engaged",
+    timestamp: now,
+  });
   void invoke("frontend_will_unload").catch(() => {});
 });
 
