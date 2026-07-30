@@ -1582,26 +1582,6 @@ export default function MultiAgentBooster({
             </button>
           </div>
 
-          {/* Project directory + path — moved into the header so it sits
-              with the other "what is this session pointed at" controls.
-              Wraps to its own row below the tools. */}
-          <div className="atomcode-wizard__header-project">
-            <button
-              type="button"
-              className="atomcode-wizard__project-btn font-mono"
-              disabled={atomBusy !== "idle"}
-              onClick={() => void changeProjectDir()}
-            >
-              POINT THE AGENT — SELECT YOUR PROJECT DIRECTORY
-            </button>
-            <p
-              className="atomcode-wizard__project-path font-mono"
-              title={activeToolStatus?.lastProject ?? undefined}
-            >
-              {activeToolStatus?.lastProject || "No folder yet — pick one to continue"}
-            </p>
-          </div>
-
           <button
             type="button"
             className="atomcode-wizard__close font-mono tracking-wider uppercase"
@@ -1809,8 +1789,23 @@ export default function MultiAgentBooster({
           </p>
         )}
 
-        {/* Project folder — single full-width row, single CTA, no extra subhead. */}
-        {/* Project directory + path live in the wizard header now. */}
+        {/* Project directory + path — below the half-card */}
+        <div className="atomcode-wizard__header-project">
+          <button
+            type="button"
+            className="atomcode-wizard__project-btn font-mono"
+            disabled={atomBusy !== "idle"}
+            onClick={() => void changeProjectDir()}
+          >
+            POINT THE AGENT — SELECT YOUR PROJECT DIRECTORY
+          </button>
+          <p
+            className="atomcode-wizard__project-path font-mono"
+            title={activeToolStatus?.lastProject ?? undefined}
+          >
+            {activeToolStatus?.lastProject || "No folder yet — pick one to continue"}
+          </p>
+        </div>
 
         {showDisclaimer && (
           <div className="atomcode-wizard__disclaimer space-y-2">

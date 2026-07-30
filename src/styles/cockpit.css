@@ -1458,11 +1458,9 @@ html[data-atomcode-harness="1"][data-theme="arctic"] .launch-rail-engine-chip.at
 .atomcode-wizard__header-project {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  flex: 1 1 100%;
   min-width: 0;
   gap: 0.55rem;
   align-items: center;
-  order: 10;
   padding-top: 0.4rem;
   border-top: 1px dashed
     color-mix(in srgb, var(--atom-brain-bg) 35%, transparent);
@@ -2158,7 +2156,7 @@ html[data-atomcode-harness="1"][data-theme="arctic"] .launch-rail-engine-chip.at
 }
 
 .atomcode-wizard__mode-twin-half--brain {
-  background: color-mix(in srgb, var(--atom-brain-bg-raw) 22%, transparent);
+  background: color-mix(in srgb, var(--atom-brain-bg-raw) 22%, var(--theme-eject-card-bg, #111) 78%);
   border-right: 1px solid color-mix(in srgb, var(--atom-brain-bg) 35%, transparent);
 }
 
@@ -2175,7 +2173,7 @@ html[data-atomcode-harness="1"][data-theme="arctic"] .launch-rail-engine-chip.at
 }
 
 .atomcode-wizard__mode-twin-half--worker {
-  background: color-mix(in srgb, var(--atom-worker-bg-raw) 16%, transparent);
+  background: color-mix(in srgb, var(--atom-worker-bg-raw) 16%, var(--theme-eject-card-bg, #111) 84%);
 }
 
 /* ARCTIC — WORKER half uses warm copper bg (not blue) to match the running engine card */
