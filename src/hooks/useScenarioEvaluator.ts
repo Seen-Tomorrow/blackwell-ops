@@ -172,6 +172,38 @@ function emitScenarioDebug(
   });
 }
 
+/** Survive OPERATIONS tab unmount — last good forecast for instant remount paint. */
+const manifestCacheByKey = new Map<string, VramManifest>();
+const MANIFEST_CACHE_MAX = 24;
+
+/** Cache identity — ignore exact VRAM digits (NVML noise) so remount still hits. */
+function manifestCacheKey(
+  modelPath: string,
+  configKey: string,
+  gpuTopologyKey: string,
+  stack: Array<{ status: string; alias: string }>,
+): string {
+  const stackAliases = stack
+    .filter((s) => s.status === "RUNNING" || s.status === "LOADING")
+    .map((s) => s.alias)
+    .join("|");
+  return `${modelPath}\0${configKey}\0${gpuTopologyKey}\0${stackAliases}`;
+}
+
+function readManifestCache(key: string): VramManifest | null {
+  return manifestCacheByKey.get(key) ?? null;
+}
+
+function writeManifestCache(key: string, manifest: VramManifest): void {
+  if (manifestCacheByKey.has(key)) manifestCacheByKey.delete(key);
+  manifestCacheByKey.set(key, manifest);
+  while (manifestCacheByKey.size > MANIFEST_CACHE_MAX) {
+    const oldest = manifestCacheByKey.keys().next().value;
+    if (oldest === undefined) break;
+    manifestCacheByKey.delete(oldest);
+  }
+}
+
 export function useScenarioEvaluator({
   model,
   config,
@@ -182,16 +214,31 @@ export function useScenarioEvaluator({
   fullAutoMode = true,
   fitStyle = "",
 }: UseScenarioEvaluatorProps) {
-  const [manifest, setManifest] = useState<VramManifest | null>(null);
-  const manifestRef = useRef<VramManifest | null>(null);
+  // GPU count/capacity — stable across NVML noise (needed before useState seed).
+  const gpuTopologyKeyInit = gpus.length > 0
+    ? `${gpus.length}-${gpus.reduce((s, g) => s + (g.memory_total_manufactured || g.memory_total), 0)}`
+    : "0";
+  const memoryModeInit = fullAutoMode ? "full_auto" : "assisted";
+  const configKeyInit = scenarioConfigKey(config, autoVramLaunch, memoryModeInit);
+  const seedCacheKey = model?.path
+    ? manifestCacheKey(model.path, configKeyInit, gpuTopologyKeyInit, stack)
+    : "";
+  const seedManifest = seedCacheKey ? readManifestCache(seedCacheKey) : null;
+
+  const [manifest, setManifest] = useState<VramManifest | null>(seedManifest);
+  const manifestRef = useRef<VramManifest | null>(seedManifest);
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [isValidating, setIsValidating] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastWrittenCacheKeyRef = useRef(seedCacheKey);
 
   const commitManifest = useCallback((next: VramManifest | null) => {
     if (vramManifestSnapshotEqual(manifestRef.current, next)) return;
     manifestRef.current = next;
     setManifest(next);
+    if (next && lastWrittenCacheKeyRef.current) {
+      writeManifestCache(lastWrittenCacheKeyRef.current, next);
+    }
   }, []);
 
   // GPU count/capacity — stable across NVML noise.
@@ -227,7 +274,7 @@ export function useScenarioEvaluator({
   const probeSessionRef = useRef<ProbeSession | null>(null);
   const hadSysInfoRef = useRef(systemInfo != null);
   const runEvaluationRef = useRef<() => void>(() => {});
-  const scheduleEvaluationRef = useRef<() => void>(() => {});
+  const scheduleEvaluationRef = useRef<(immediate?: boolean) => void>(() => {});
 
   // Unstable refs: these objects change every render/poll but shouldn't churn deps.
   // Read from refs inside the callback to get latest values without re-creating the callback.
@@ -356,13 +403,20 @@ export function useScenarioEvaluator({
 
   runEvaluationRef.current = runEvaluation;
 
-  const scheduleEvaluation = useCallback(() => {
+  /**
+   * Schedule a re-eval. First paint / remount runs immediately (0ms) so the phosphor
+   * is not blank while learned-VRAM / FIT IPC settles. Config churn keeps a short debounce.
+   * Do NOT gate on learnedFetchPending — paint formula/cache first, re-run when IPC lands.
+   */
+  const scheduleEvaluation = useCallback((immediate = false) => {
     if (timerRef.current) clearTimeout(timerRef.current);
+    if (immediate) {
+      timerRef.current = null;
+      runEvaluationRef.current();
+      return;
+    }
     timerRef.current = setTimeout(() => {
-      if (learnedFetchPendingRef.current) {
-        scheduleEvaluationRef.current();
-        return;
-      }
+      timerRef.current = null;
       runEvaluationRef.current();
     }, 150);
   }, []);
@@ -431,7 +485,8 @@ export function useScenarioEvaluator({
       .finally(() => {
         if (fetchGen !== learnedFetchGenRef.current) return;
         learnedFetchPendingRef.current = false;
-        scheduleEvaluationRef.current();
+        // Re-eval with learned numbers when IPC lands (immediate — UI already painted).
+        scheduleEvaluationRef.current(true);
       });
   }, [model?.path, configKey]);
 
@@ -469,7 +524,7 @@ export function useScenarioEvaluator({
     invoke("get_fit_scan_points", { modelPath: model.path, providerId })
       .then((result: any) => {
         fitPointsRef.current = result ?? null;
-        scheduleEvaluationRef.current();
+        scheduleEvaluationRef.current(true);
       })
       .catch(() => {
         fitPointsRef.current = null;
@@ -488,6 +543,7 @@ export function useScenarioEvaluator({
 
   useEffect(() => {
     if (!model || gpus.length === 0) {
+      lastWrittenCacheKeyRef.current = "";
       commitManifest(null);
       lastTopologyRef.current = "";
       lastGpuMemoryRef.current = "";
@@ -497,6 +553,13 @@ export function useScenarioEvaluator({
       fitPointsRef.current = null;
       return;
     }
+
+    lastWrittenCacheKeyRef.current = manifestCacheKey(
+      model.path,
+      configKey,
+      gpuTopologyKey,
+      stack,
+    );
 
     // Force evaluation on first mount (Strict Mode safe via isMountedRef)
     const isFirstMount = !isMountedRef.current;
@@ -522,9 +585,12 @@ export function useScenarioEvaluator({
     lastConfigKeyRef.current = configKey;
     lastStackKeyRef.current = stackKey;
 
-    scheduleEvaluationRef.current();
+    // Immediate on remount / model change so phosphor is never empty for 150ms+.
+    // Config/stack/gpu-memory chatter keeps the debounce to coalesce bursts.
+    const immediate = isFirstMount || modelChanged || sysInfoJustLoaded;
+    scheduleEvaluationRef.current(immediate);
     return () => { if (timerRef.current) clearTimeout(timerRef.current); };
-  }, [model, gpuTopologyKey, gpuMemoryKey, gpus.length, configKey, stackKey, sysInfoLoaded, commitManifest]);
+  }, [model, stack, gpuTopologyKey, gpuMemoryKey, gpus.length, configKey, stackKey, sysInfoLoaded, commitManifest]);
 
   // FIT validation — runs llama-fit-params with current config, re-evaluates scenario with measured total
   const validate = useCallback(async () => {

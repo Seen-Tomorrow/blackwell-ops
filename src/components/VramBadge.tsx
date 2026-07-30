@@ -278,7 +278,28 @@ export default function VramBadge({
     );
   }
 
-  if (!manifest) return null;
+  // Tab remount / scenario re-eval: keep phosphor height so the bezel does not collapse.
+  // Parent still mounts VramBadge when a model is selected; null manifest is only a brief gap.
+  if (!manifest) {
+    return (
+      <div
+        ref={rootRef}
+        className={`vram-badge-forecast vram-badge-forecast--skeleton px-3 py-2 relative flex flex-col min-h-0 overflow-hidden ${className || ""}`}
+        style={{ minHeight: FORECAST_PHOSPHOR_HEIGHT_PX }}
+        data-forecast-skeleton="1"
+        aria-busy="true"
+        aria-label="Loading VRAM forecast"
+      >
+        {fitLaunchDock}
+        <div className="vram-forecast-skeleton flex flex-col gap-2 flex-1 min-h-0 justify-center">
+          <div className="vram-forecast-skeleton__line h-3 w-[42%] rounded-sm" />
+          <div className="vram-forecast-skeleton__line h-4 w-[70%] rounded-sm" />
+          <div className="vram-forecast-skeleton__line h-3 w-[55%] rounded-sm mt-1" />
+          <div className="vram-forecast-skeleton__line h-10 w-full rounded-sm mt-2" />
+        </div>
+      </div>
+    );
+  }
 
   const s = manifest.style;
   const t = s.uiTemplate;
