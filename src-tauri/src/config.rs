@@ -869,24 +869,8 @@ fn check_user_providers_meta(metas: &[ProviderMeta]) -> Vec<String> {
         if !seen_ids.insert(&meta.id) {
             all_errors.push(format!("duplicate provider id: '{}'", meta.id));
         }
-
-        // Duplicate param keys within this provider
-        let mut seen_keys: std::collections::HashMap<&str, i32> = std::collections::HashMap::new();
-        for ep in &meta.user_edited_template_params {
-            if let Some(&prev_order) = seen_keys.get(ep.key.as_str()) {
-                all_errors.push(format!(
-                    "provider '{}': duplicate param key '{}' (order {} and {})",
-                    meta.id, ep.key, prev_order, ep.order
-                ));
-            } else {
-                seen_keys.insert(&ep.key, ep.order);
-            }
-
-            // Validate each UserEditedTemplateParam
-            for e in validate_user_edited_param(ep) {
-                all_errors.push(format!("provider '{}' param '{}': {}", meta.id, ep.key, e));
-            }
-        }
+        // Reuse the per-provider validator (duplicate param keys + per-param checks)
+        all_errors.extend(validate_provider_params(&meta.id, &meta.user_edited_template_params));
     }
 
     all_errors

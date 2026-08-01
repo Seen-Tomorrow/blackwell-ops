@@ -369,11 +369,6 @@ fn apply_spawn_profile_overrides(provider_id: &str, tmpl: &mut ProviderTemplate)
 }
 
 impl ProviderTemplate {
-    pub fn load(provider_id: &str) -> Result<Self, String> {
-        load_provider_defaults(provider_id)
-            .ok_or_else(|| format!("Provider defaults not found for '{}'. Check runtime/{}/config/{}-default-config.json exists.", provider_id, provider_id, provider_id))
-    }
-
     pub fn template_type_for_id(id: &str) -> String {
         // Try to load from disk defaults first (has explicit template_type field)
         #[derive(Deserialize)]
@@ -394,11 +389,6 @@ impl ProviderTemplate {
         }
         // Fallback: GGML family
         "ggml-llama".to_string()
-    }
-
-    /// Get a specific provider template by ID from disk.
-    pub fn load_by_id(id: &str) -> Option<Self> {
-        load_provider_defaults(id)
     }
 
     /// Minimal spawn shell for custom providers (no factory JSON): model/port/alias only.
@@ -463,7 +453,7 @@ impl ProviderTemplate {
     /// Factory providers: their JSON (+ spawn overrides). No silent fallback to master flags.
     /// Missing factory → bare custom shell + optional user capability toggles from meta.
     pub fn load_for_provider(provider_id: &str) -> Result<Self, String> {
-        if let Some(mut tmpl) = Self::load_by_id(provider_id) {
+        if let Some(mut tmpl) = load_provider_defaults(provider_id) {
             apply_spawn_profile_overrides(provider_id, &mut tmpl);
             return Ok(tmpl);
         }
