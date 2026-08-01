@@ -30,13 +30,26 @@ pub const ABSOLUTE_MAX_ENGINE_SLOTS: usize = 128;
 /// Default provider ID — bundled with the app, always present.
 pub const DEFAULT_PROVIDER_ID: &str = "ggml-master";
 
-/// Removed from factory/runtime — dropped from discovery and user meta on load.
+/// Retired **factory** plugin ids — not rediscovered from runtime/, not merged as factory.
+/// User-created `template_type=custom` providers may reuse these ids (e.g. a custom "ik" fork).
 pub const PHASED_OUT_PROVIDER_IDS: &[&str] = &["ik"];
 
 pub fn is_phased_out_provider(id: &str) -> bool {
     PHASED_OUT_PROVIDER_IDS
         .iter()
         .any(|p| p.eq_ignore_ascii_case(id))
+}
+
+/// Drop phased-out **factory** metas only — keep user custom providers with the same id.
+pub fn should_drop_user_meta(meta: &ProviderMeta) -> bool {
+    if !is_phased_out_provider(&meta.id) {
+        return false;
+    }
+    // Custom re-registration of a retired id is allowed
+    if is_custom_template_type(&meta.template_type) {
+        return false;
+    }
+    true
 }
 
 /// Default runtime binary profile when none is selected (fresh install / empty slot).
@@ -2462,7 +2475,7 @@ fn merge_template_into_user_params_by_key(
 fn build_config_with_providers_full(mut config: AppConfig) -> AppConfig {
     let metas: Vec<ProviderMeta> = load_user_providers_meta()
         .into_iter()
-        .filter(|m| !is_phased_out_provider(&m.id))
+        .filter(|m| !should_drop_user_meta(m))
         .collect();
 
     let meta_map: std::collections::HashMap<_, _> = metas.iter()
@@ -2542,7 +2555,7 @@ fn build_config_with_providers_full(mut config: AppConfig) -> AppConfig {
 
     // Custom/user-created providers not found in runtime/ defaults
     for meta in metas_clone {
-        if is_phased_out_provider(&meta.id) {
+        if should_drop_user_meta(&meta) {
             continue;
         }
         if !providers.iter().any(|p| p.id == meta.id) {

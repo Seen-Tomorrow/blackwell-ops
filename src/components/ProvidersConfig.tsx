@@ -1095,59 +1095,85 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
               {/* ── Expanded section ─────────── */}
               {isExpanded && (
                 <div className="ml-8 mr-2 mb-3 space-y-3">
-                  {/* Foundry build environments — only show for providers with git config */}
-                  {p.git_url && p.branch && (
-                      <div className="foundry-build-panel">
-                        {/* Foundry header */}
-                        <div className="foundry-build-header flex items-center gap-3 px-3 py-2">
-                          <span style={{ fontSize: '12px' }}>⚒</span>
-                          <span className="text-[9px] font-mono theme-accent-text tracking-wider">FOUNDRY BUILDS</span>
-                          <span className="text-[8px] font-mono config-muted truncate max-w-[240px]" title={p.git_url}>
-                            {p.git_url.replace(/.*\/\/|\.git$/g, "")} :{p.branch}
+                  {/* Profile / Foundry table — always for expand (not only factory+git) */}
+                  <div className="foundry-build-panel">
+                    <div className="foundry-build-header flex items-center gap-3 px-3 py-2">
+                      <span style={{ fontSize: "12px" }}>⚒</span>
+                      <span className="text-[9px] font-mono theme-accent-text tracking-wider">
+                        {p.git_url && p.branch ? "FOUNDRY BUILDS" : "BINARY PROFILES"}
+                      </span>
+                      {p.git_url && p.branch ? (
+                        <span
+                          className="text-[8px] font-mono config-muted truncate max-w-[240px]"
+                          title={p.git_url}
+                        >
+                          {p.git_url.replace(/.*\/\/|\.git$/g, "")} :{p.branch}
+                        </span>
+                      ) : (
+                        <span className="text-[8px] font-mono config-muted truncate">
+                          Set Git URL + Branch in EDIT for Foundry builds
+                        </span>
+                      )}
+                      {probingBuildInfoIds.has(p.id) && (
+                        <span
+                          className="foundry-buildinfo-probing text-[8px] font-mono config-muted ml-auto shrink-0"
+                          title="Probing llama-server --version for this provider"
+                        >
+                          reading build info
+                          <span className="foundry-buildinfo-dots" aria-hidden="true">
+                            <i>.</i>
+                            <i>.</i>
+                            <i>.</i>
                           </span>
-                          {probingBuildInfoIds.has(p.id) && (
-                            <span
-                              className="foundry-buildinfo-probing text-[8px] font-mono config-muted ml-auto shrink-0"
-                              title="Probing llama-server --version for this provider"
-                            >
-                              reading build info
-                              <span className="foundry-buildinfo-dots" aria-hidden="true">
-                                <i>.</i>
-                                <i>.</i>
-                                <i>.</i>
-                              </span>
-                            </span>
-                          )}
-                        </div>
+                        </span>
+                      )}
+                    </div>
 
-                        {/* Build profiles — vertical stack (toolchain is page-level, not per-provider) */}
-                        <div className="p-3 space-y-2">
-                          {ENV_ORDER.map(env => {
-                            const meta = ENV_META[env];
-                            const hasFoundryBackup = isFoundryProfileBuilt(p, env);
-                            return (
-                              <BuildProfileRow
-                                key={env}
-                                env={env}
-                                meta={meta}
-                                provider={p}
-                                hasFoundryBackup={!!hasFoundryBackup}
-                                isBuilding={buildProgress?.providerId === p.id && buildProgress?.environment.toLowerCase() === env}
-                                isProbingBuildInfo={probingBuildInfoIds.has(p.id)}
-                                onBuild={() => openBuildModal(p.id, env)}
-                                onRestoreConfirm={() => setRestoreConfirm({ providerId: p.id, env })}
-                                onSelectSource={(source) => handleSelectSource(p.id, env, source)}
-                                binaryUpdate={(binaryUpdates[p.id] || {})[env]}
-                                updateStatus={updateStatuses[`${p.id}:${env}`] || "idle"}
-                                updateError={updateErrors[`${p.id}:${env}`]}
-                                onUpdateBinary={() => handleBinaryUpdate(p.id, env)}
-                                onRevert={() => handleRevert(p.id, env)}
-                              />
-                            );
-                          })}
-                        </div>
+                    {!(p.git_url && p.branch) && (
+                      <div className="px-3 py-2 border-b border-stealth-border/25">
+                        <p className="text-[8px] font-mono config-muted leading-relaxed">
+                          Profile rows show inventory / active binary.{" "}
+                          <span className="text-white/70">Foundry BUILD</span> needs Git URL + Branch
+                          on this provider (EDIT). Binary Path alone is enough to launch and probe
+                          --version.
+                        </p>
                       </div>
-                  )}
+                    )}
+
+                    <div className="p-3 space-y-2">
+                      {ENV_ORDER.map((env) => {
+                        const meta = ENV_META[env];
+                        const hasFoundryBackup = isFoundryProfileBuilt(p, env);
+                        const canFoundry = Boolean(p.git_url?.trim() && p.branch?.trim());
+                        return (
+                          <BuildProfileRow
+                            key={env}
+                            env={env}
+                            meta={meta}
+                            provider={p}
+                            hasFoundryBackup={!!hasFoundryBackup}
+                            isBuilding={
+                              buildProgress?.providerId === p.id
+                              && buildProgress?.environment.toLowerCase() === env
+                            }
+                            isProbingBuildInfo={probingBuildInfoIds.has(p.id)}
+                            onBuild={() => {
+                              if (canFoundry) openBuildModal(p.id, env);
+                            }}
+                            onRestoreConfirm={() => {
+                              if (canFoundry) setRestoreConfirm({ providerId: p.id, env });
+                            }}
+                            onSelectSource={(source) => handleSelectSource(p.id, env, source)}
+                            binaryUpdate={(binaryUpdates[p.id] || {})[env]}
+                            updateStatus={updateStatuses[`${p.id}:${env}`] || "idle"}
+                            updateError={updateErrors[`${p.id}:${env}`]}
+                            onUpdateBinary={() => handleBinaryUpdate(p.id, env)}
+                            onRevert={() => handleRevert(p.id, env)}
+                          />
+                        );
+                      })}
+                    </div>
+                  </div>
 
                   {/* Scan progress/results */}
                   {renderScanProgress(p.id)}

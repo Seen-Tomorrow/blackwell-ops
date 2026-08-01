@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { BuildInfo, ProviderConfig } from "./types";
+import { isCustomTemplateType } from "./customProvider";
 
 const PLACEHOLDER_VERSIONS = new Set([
   "",
@@ -41,11 +42,24 @@ export type RefreshBuildInfoHandlers = {
   onProviderDone?: (providerId: string) => void;
 };
 
+/** Probe targets: Foundry (git) and any provider with a launch binary (incl. custom). */
+function shouldProbeBuildInfo(p: ProviderConfig): boolean {
+  if (p.git_url?.trim() && p.branch?.trim()) return true;
+  if (p.binary_path?.trim()) return true;
+  if (Object.keys(p.binaryPathPerEnv ?? {}).length > 0) return true;
+  if (Object.keys(p.foundryBinaryPathPerEnv ?? {}).length > 0) return true;
+  if (Object.keys(p.bundledBinaryPathPerEnv ?? {}).length > 0) return true;
+  if (Object.keys(p.catalogBinaryPathPerEnv ?? {}).length > 0) return true;
+  // Custom with no path yet — still attempt (resolves artifacts if present)
+  if (isCustomTemplateType(p.template_type)) return true;
+  return false;
+}
+
 async function refreshOnce(
   providers: ProviderConfig[],
   handlers?: RefreshBuildInfoHandlers,
 ): Promise<ProviderConfig[]> {
-  const targets = providers.filter((p) => p.git_url && p.branch);
+  const targets = providers.filter(shouldProbeBuildInfo);
   if (targets.length === 0) return providers;
 
   let latest = providers;
