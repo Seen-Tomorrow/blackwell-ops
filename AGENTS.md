@@ -133,6 +133,21 @@ Release exe: `src-tauri/target/release/blackwell-ops.exe`. Run `npm run build` f
 
 ---
 
+## Tests (Rust)
+
+`cargo test` → **108 pass / 2 pre-existing failures** (unrelated to config — do not "fix" them as part of config work):
+- `fit_scanner::cache_key_tests::insert_fit_scan_result_rekeys_to_canonical_storage_key`
+- `launch_memory_parse::tests::parses_qwen36_mtp_buffer_inventory`
+
+**What the tests cover** (each lives in `#[cfg(test)] mod …` next to its code):
+- `config.rs::merge_tests` — template↔user param merge, validation, dedup (the **largest**; validates live merge logic)
+- `templates.rs::build_cmd_tests` — launch CLI assembly
+- `provider_mgmt.rs`, `log_hub.rs`, `engine_stack.rs`, `model_catalog.rs`, `llama_catalog.rs`, `gguf_scan.rs`, `hf_api.rs`, `download_manager.rs`, `github_releases.rs`, `bench_cancel.rs`, `bench_prompts.rs`, `vram_learn.rs::dedup_tests`, `fit_scanner.rs::memory_breakdown_tests`/`cache_key_tests`, `launch_memory_parse.rs`, `spec_draft.rs`, `sidecar_elevate.rs`
+
+**Stale / low-value (TO-DO: update later to be useful):** several of these modules were written by an agent and never requested — they may not reflect current behavior. In particular `config.rs::merge_tests` and `fit_scanner.rs::memory_breakdown_tests` currently exercise some dead/helper-only code and generate cosmetic "never used" dead-code warnings in non-test builds. Keep them for now; a future pass should refresh them to assert real current behavior (or drop the ones with no value). Tests are **not** a gate for releases.
+
+---
+
 ## Optional reference
 
 `docs/FUSION-metrics.md` — fusion poller field names when working on metrics/TG-PP, if that file is still current.
