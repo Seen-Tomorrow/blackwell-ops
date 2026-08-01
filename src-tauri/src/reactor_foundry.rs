@@ -1814,9 +1814,6 @@ async fn run_foundry_build_worker(
                 provider
                     .build_info_per_env
                     .insert(profile_id.clone(), build_info.clone());
-                provider
-                    .build_info_per_env
-                    .insert("current".to_string(), build_info.clone());
                 let inv = provider
                     .inventory_per_env
                     .entry(profile_id.clone())
@@ -2375,8 +2372,6 @@ pub async fn foundry_restore(
             crate::profile_binaries::resolve_after_source_change(p);
             p.build_info_per_env
                 .insert(env_label.to_string(), info.clone());
-            p.build_info_per_env
-                .insert("current".to_string(), info.clone());
             let inv = p
                 .inventory_per_env
                 .entry(env_label.to_string())
@@ -2648,26 +2643,6 @@ async fn enrich_provider_binary_info(
                     changed = true;
                 }
             }
-        }
-    }
-
-    let profiles_set: std::collections::HashSet<&str> =
-        profiles.iter().map(|s| s.as_str()).collect();
-    if let Some((_, latest)) = provider
-        .build_info_per_env
-        .iter()
-        .filter(|(k, _)| profiles_set.contains(k.as_str()))
-        .max_by_key(|(_, info)| info.build_date.as_str())
-    {
-        let current_existing = provider.build_info_per_env.get("current");
-        if current_existing
-            .map(|e| e.version != latest.version || e.build_date != latest.build_date)
-            .unwrap_or(true)
-        {
-            provider
-                .build_info_per_env
-                .insert("current".to_string(), latest.clone());
-            changed = true;
         }
     }
 

@@ -366,7 +366,6 @@ pub fn resolve_provider_binaries(p: &mut ProviderConfig, ctx: ResolveContext<'_>
     }
 
     sync_main_binary_path(p);
-    sync_current_build_info(p);
 }
 
 pub fn set_profile_source(p: &mut ProviderConfig, profile: &str, source: &str) -> Result<(), String> {
@@ -405,15 +404,3 @@ fn sync_main_binary_path(p: &mut ProviderConfig) {
     }
 }
 
-fn sync_current_build_info(p: &mut ProviderConfig) {
-    let profiles = crate::foundry_toolchain::profile_ids_or_default();
-    if let Some((_, info)) = p
-        .build_info_per_env
-        .iter()
-        .filter(|(k, _)| profiles.iter().any(|pr| pr == k.as_str()))
-        .max_by_key(|(_, info)| info.build_date.as_str())
-    {
-        p.build_info_per_env
-            .insert("current".to_string(), info.clone());
-    }
-}
