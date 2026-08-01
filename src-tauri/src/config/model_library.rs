@@ -353,7 +353,10 @@ pub fn model_path_key(path: &str) -> String {
 /// Stable on-disk cache key for a model `.gguf` file.
 /// Canonicalizes when the file exists so config path remove/re-add still hits cache.
 pub fn model_file_cache_key(path: &str) -> String {
-    resolve_model_path(path)
+    // Normalize `\` → `/` so the same logical model keyed with either separator maps to
+    // one cache entry, even before the path exists on disk (resolve_model_path only
+    // canonicalizes real paths). Stored path VALUES are untouched — this is key-only.
+    resolve_model_path(path).replace('\\', "/")
 }
 
 /// Resolve to canonical stored path when the directory exists.

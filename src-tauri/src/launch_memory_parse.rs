@@ -471,7 +471,8 @@ fn parse_host_components_from_table(output: &str) -> Option<GpuComponentMib> {
 mod tests {
     use super::*;
 
-    const QWEN_LOAD_TAIL: &str = r#"0.01.878.440 I load_tensors:          CPU model buffer size =   682.03 MiB
+    const QWEN_LOAD_TAIL: &str = r#"0.00.000.000 I load_hparams: general.architecture = "qwen35"
+0.01.878.440 I load_tensors:          CPU model buffer size =   682.03 MiB
 0.01.878.441 I load_tensors:        CUDA0 model buffer size =  7788.32 MiB
 0.01.878.442 I load_tensors:        CUDA1 model buffer size =  8598.61 MiB
 0.05.518.272 I llama_kv_cache:      CUDA0 KV buffer size = 16384.00 MiB
