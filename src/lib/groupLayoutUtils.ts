@@ -166,10 +166,6 @@ export function renameGroupInLayout(
   };
 }
 
-/** Pin SYSTEM to the end of a group order list (legacy helper). */
-export function pinSystemGroupLast(order: string[]): string[] {
-  return pinProtectedGroupsLast(order, [SYSTEM_UI_GROUP]);
-}
 
 /**
  * Factory export group order — preserves the full saved layout order (including empty

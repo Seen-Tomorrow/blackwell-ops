@@ -4,7 +4,7 @@ import {
   COCKPIT_OWNED_PARAM_KEYS,
   ENGINE_ONLY_PARAM_KEYS,
   isCatalogVisibleParam,
-  isSystemCatalogParam,
+  isPlacementChromeParam,
 } from "./systemParams";
 import { isModelSpecParamKey, SPEC_DECODING_UI_GROUP } from "./specDraft";
 import { paramUiGroup } from "./storage";
@@ -188,7 +188,7 @@ export function computeEssentialParamKeysForExport(
   const keys: string[] = [];
   const seen = new Set<string>();
   for (const p of sorted) {
-    if (p.hidden || !isCatalogVisibleParam(p) || isSystemCatalogParam(p)) continue;
+    if (p.hidden || !isCatalogVisibleParam(p) || isPlacementChromeParam(p)) continue;
     if (!isEssentialParam(p, factoryEssentialKeys)) continue;
     if (seen.has(p.key)) continue;
     seen.add(p.key);

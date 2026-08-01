@@ -385,9 +385,6 @@ pub struct LaunchProfile {
     /// Param keys shown in Essentials view (engine config panel filter).
     #[serde(default, rename = "essentialParamKeys")]
     pub essential_param_keys: Vec<String>,
-    /// Legacy field — kept for config merge compatibility.
-    #[serde(default, rename = "fitMarginMib")]
-    pub fit_margin_mib: u32,
     /// Default true — Default trait must not force false (hid tensor split for custom).
     #[serde(default = "default_true", rename = "tensorSplit")]
     pub tensor_split: bool,
@@ -400,7 +397,6 @@ impl Default for LaunchProfile {
             fit_style: String::new(),
             simple_param_keys: Vec::new(),
             essential_param_keys: Vec::new(),
-            fit_margin_mib: 0,
             tensor_split: true,
         }
     }
@@ -418,7 +414,6 @@ impl LaunchProfile {
             fit_style: sp.fit_style.clone(),
             simple_param_keys: sp.simple_param_keys.clone(),
             essential_param_keys: essential,
-            fit_margin_mib: sp.fit_margin_mib,
             tensor_split: sp.tensor_split,
         }
     }

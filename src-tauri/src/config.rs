@@ -514,9 +514,6 @@ fn default_providers() -> Vec<ProviderConfig> { Vec::new() }
 pub struct AppConfig {
     #[serde(default)]
     pub model_paths: Vec<ModelPathEntry>,
-    /// Legacy field — engine slot count comes from provider `spawn_profile.max_engine_slots`. Ignored at runtime.
-    #[serde(default)]
-    pub gpu_slots: usize,
     /// HuggingFace API token — stored in app_config.json. Empty string if not set.
     #[serde(default)]
     pub hf_token: String,
@@ -535,7 +532,6 @@ impl Default for AppConfig {
         let entry = default_model_path_entry();
         Self {
             model_paths: vec![entry.clone()],
-            gpu_slots: 0,
             hf_token: String::new(),
             providers: Vec::new(),
             default_download_path: Some(entry.path),
@@ -2182,18 +2178,6 @@ pub fn merge_template_for_provider(
     dedupe_user_params_by_key(merged)
 }
 
-/// Merge using template_type → folder mapping (custom providers without factory JSON).
-#[allow(dead_code)]
-pub fn merge_template_into_user_params(
-    template_type: &str,
-    user_edited: &[crate::types::UserEditedTemplateParam],
-) -> Vec<crate::types::UserEditedTemplateParam> {
-    merge_template_into_user_params_by_key(
-        template_key_for_type(template_type).as_deref(),
-        user_edited,
-        &[],
-    )
-}
 
 fn template_sub_params_to_map(
     sp: &serde_json::Value,
@@ -3502,7 +3486,6 @@ mod merge_tests {
                 label: "Empty".to_string(),
                 is_default: true,
             }],
-            gpu_slots: 0,
             hf_token: String::new(),
             providers: Vec::new(),
             default_download_path: Some(base.to_string_lossy().to_string()),
@@ -3516,7 +3499,6 @@ mod merge_tests {
                 label: "My Models".to_string(),
                 is_default: true,
             }],
-            gpu_slots: 0,
             hf_token: String::new(),
             providers: Vec::new(),
             default_download_path: Some(base.to_string_lossy().to_string()),
@@ -3579,7 +3561,6 @@ mod merge_tests {
                     is_default: true,
                 },
             ],
-            gpu_slots: 0,
             hf_token: String::new(),
             providers: Vec::new(),
             default_download_path: Some("C:\\other\\models".to_string()),
@@ -3616,7 +3597,6 @@ mod merge_tests {
                     is_default: true,
                 },
             ],
-            gpu_slots: 4,
             hf_token: String::new(),
             providers: Vec::new(),
             default_download_path: Some("C:\\path-b".to_string()),
@@ -3643,7 +3623,6 @@ mod merge_tests {
                     is_default: false,
                 },
             ],
-            gpu_slots: 4,
             hf_token: String::new(),
             providers: Vec::new(),
             default_download_path: Some("C:\\path-b".to_string()),
@@ -3671,7 +3650,6 @@ mod merge_tests {
                 label: "Models".to_string(),
                 is_default: true,
             }],
-            gpu_slots: 0,
             hf_token: String::new(),
             providers: Vec::new(),
             default_download_path: Some(models.to_string_lossy().to_string()),
@@ -3702,7 +3680,6 @@ mod merge_tests {
                 label: "Models".to_string(),
                 is_default: true,
             }],
-            gpu_slots: 0,
             hf_token: String::new(),
             providers: Vec::new(),
             default_download_path: Some(models.to_string_lossy().to_string()),

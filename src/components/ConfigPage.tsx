@@ -79,7 +79,6 @@ import {
   isCatalogVisibleParam,
   isPlacementChromeParam,
   isProtectedGroup,
-  isSystemCatalogParam,
   migrateCatalogParams,
   normalizeProtectedGroups,
   paramEditCaps,
@@ -833,7 +832,7 @@ export default function ConfigPage({
     // Skip if already exists (key, flag, or reordered alias like kv_unified ↔ unified_kv)
     if (
       isCatalogEntryAlreadyActive(entry, currentUserParams)
-      || isSystemCatalogParam({ key: entry.key })
+      || isPlacementChromeParam({ key: entry.key })
     ) {
       setShowCatalogSearch(false);
       showSaved("ALREADY ACTIVE");
@@ -2163,7 +2162,7 @@ export default function ConfigPage({
             flag: d.flag,
             ui_group: d.ui_group,
           }))}
-          blockedKeys={catalogVisibleParams.filter((d) => isSystemCatalogParam(d)).map((d) => d.key)}
+          blockedKeys={catalogVisibleParams.filter((d) => isPlacementChromeParam(d)).map((d) => d.key)}
           editorUnlocked={editorUnlocked}
           onAdd={handleCatalogAdd}
           onClose={() => setShowCatalogSearch(false)}

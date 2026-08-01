@@ -54,11 +54,6 @@ export function essentialsSpecChipLabel(specType: string): string {
   return specType;
 }
 
-/** @deprecated Presets removed — template profile defaults only. */
-export function essentialsSpecPreset(_specType: string): null {
-  return null;
-}
-
 const DRAFT_ARCH_FOR_SPEC: Record<string, DraftRole> = {
   "draft-dflash": "external_dflash",
   "draft-eagle3": "external_eagle3",
@@ -239,9 +234,6 @@ export function isLaunchableMain(
   return !isExternalDraftOnly(model);
 }
 
-/** @deprecated Use isLaunchableMain */
-export const isLaunchableTarget = isLaunchableMain;
-
 export function matchesCatalogDraftFilter(
   model: Pick<ModelEntry, "path" | "name" | "metadata" | "hfMeta" | "hfModelId" | "sourcePathLabel" | "draftRoleHint">,
   filter: CatalogDraftFilter,
@@ -412,9 +404,6 @@ export function specCapabilitiesForMain(
   }
   return caps;
 }
-
-/** @deprecated Use specCapabilitiesForMain */
-export const specCapabilitiesForTarget = specCapabilitiesForMain;
 
 export function defaultSpecTypeForMain(
   main: ModelEntry,

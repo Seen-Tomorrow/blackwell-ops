@@ -578,8 +578,6 @@ export function migrateGlobalSpecOutOfCatalogOverrides(providerId: string): void
   if (changed) writeJsonStorage(key, stored);
 }
 
-/** @deprecated Use `catalogOverrideKey` */
-export const overridesKey = catalogOverrideKey;
 
 export function groupOrderKey(providerId: string): string {
   return `${STORAGE_PREFIX}group-order:${providerId}`;

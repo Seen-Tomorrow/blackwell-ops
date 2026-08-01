@@ -82,7 +82,7 @@ import {
 import {
   COCKPIT_OWNED_PARAM_KEYS,
   isCockpitOwnedParam,
-  isSystemCatalogParam,
+  isPlacementChromeParam,
   SYSTEM_CATALOG_PARAM_KEYS,
   SYSTEM_UI_GROUP,
 } from "../lib/systemParams";
@@ -1739,7 +1739,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       const identity = allParamsResolved.map((d) => ({ key: d.key, flag: d.flag, ui_group: d.ui_group }));
       if (
         isCatalogEntryAlreadyActive(entry, identity)
-        || isSystemCatalogParam({ key: entry.key })
+        || isPlacementChromeParam({ key: entry.key })
         || SYSTEM_CATALOG_PARAM_KEYS.has(entry.key)
         || COCKPIT_OWNED_PARAM_KEYS.has(entry.key)
       ) {
@@ -2294,7 +2294,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     for (const def of allParamsForDisplay) {
       if (def.hidden || isPanelChromeParam(def)) continue;
       // Cockpit / SYSTEM chrome — never free chip rows (ctx, parallel, …)
-      if (isCockpitOwnedParam(def.key) || isSystemCatalogParam(def)) continue;
+      if (isCockpitOwnedParam(def.key) || isPlacementChromeParam(def)) continue;
       const groupId = paramUiGroup(def.ui_group);
       // SYSTEM group is placement-only chrome; never show as a chip tile
       if (groupId === SYSTEM_UI_GROUP) continue;
@@ -4115,7 +4115,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           blockedKeys={[
             ...SYSTEM_CATALOG_PARAM_KEYS,
             ...COCKPIT_OWNED_PARAM_KEYS,
-            ...allParamsResolved.filter((d) => isSystemCatalogParam(d)).map((d) => d.key),
+            ...allParamsResolved.filter((d) => isPlacementChromeParam(d)).map((d) => d.key),
           ]}
           onAdd={(entry) => { void handleEngineCatalogAdd(entry); }}
           onClose={() => setShowEngineCatalogSearch(false)}

@@ -120,10 +120,6 @@ export function pinProtectedGroupsLast(order: string[], protectedGroups: string[
   return [...normal, ...locked];
 }
 
-/** @deprecated Prefer pinProtectedGroupsLast — kept for call sites that only know SYSTEM. */
-export function pinSystemGroupLast(order: string[]): string[] {
-  return pinProtectedGroupsLast(order, [SYSTEM_UI_GROUP]);
-}
 
 // ── Axis B: placement chrome (engine panel) — key-based ─────────────────
 
@@ -151,18 +147,6 @@ export function isPlacementChromeParam(def: {
   return Boolean(def.dock);
 }
 
-/**
- * SYSTEM chrome + cockpit-owned + docked params — locked placement in Config catalog.
- * Custom values (userAddedValues) remain allowed.
- * @deprecated Prefer isPlacementChromeParam + isProtectedGroup for policy.
- */
-export function isSystemCatalogParam(def: {
-  key: string;
-  dock?: string | null;
-  ui_group?: string;
-}): boolean {
-  return isPlacementChromeParam(def);
-}
 
 /** Spec profile group names (Boost / template identity — not policy). */
 export function isSpecProfileUiGroup(groupName: string): boolean {

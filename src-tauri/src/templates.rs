@@ -93,9 +93,6 @@ pub struct SpawnProfile {
     /// Param keys shown in Essentials view (engine config panel filter).
     #[serde(default, rename = "essentialParamKeys")]
     pub essential_param_keys: Vec<String>,
-    /// Reserved — unused (legacy field kept for config merge compatibility).
-    #[serde(default)]
-    pub fit_margin_mib: u32,
     /// When false, UI omits tensor/row from SPLIT chips (provider lacks stable tensor+FIT).
     #[serde(default = "default_true")]
     pub tensor_split: bool,
@@ -133,7 +130,6 @@ impl Default for SpawnProfile {
             fit_style: String::new(),
             simple_param_keys: Vec::new(),
             essential_param_keys: Vec::new(),
-            fit_margin_mib: 256,
             tensor_split: true,
         }
     }
@@ -431,7 +427,6 @@ impl ProviderTemplate {
                 fit_style: String::new(),
                 simple_param_keys: Vec::new(),
                 essential_param_keys: Vec::new(),
-                fit_margin_mib: 0,
                 tensor_split: true,
             },
             params: Vec::new(),
