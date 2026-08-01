@@ -3279,6 +3279,7 @@ mod merge_tests {
             sub_params: None,
             dock: String::new(),
             hidden_default: false,
+            essentials_hidden_values: Vec::new(),
         }]);
 
         let user = vec![make_user_param("ctx", &["8192", "user_custom"], "8192", 0)];
@@ -3311,6 +3312,7 @@ mod merge_tests {
             sub_params: None,
             dock: String::new(),
             hidden_default: false,
+            essentials_hidden_values: Vec::new(),
         }]);
 
         let user = make_user_param("kv_quant", &["q4_0"], "q4_0", 0);
@@ -3337,6 +3339,7 @@ mod merge_tests {
             sub_params: None,
             dock: String::new(),
             hidden_default: false,
+            essentials_hidden_values: Vec::new(),
         }]);
 
         let mut user = make_user_param("kv_quant", &["q4_0"], "stale_removed", 0);
@@ -3374,6 +3377,7 @@ mod merge_tests {
             sub_params: None,
             dock: String::new(),
             hidden_default: false,
+            essentials_hidden_values: Vec::new(),
         }]);
 
         let user = vec![make_user_param("existing", &["a"], "a", 0)];
@@ -3404,6 +3408,7 @@ mod merge_tests {
             })),
             dock: String::new(),
             hidden_default: false,
+            essentials_hidden_values: Vec::new(),
         }]);
 
         let mut user = make_user_param("feat", &["ON"], "ON", 0);
@@ -3472,6 +3477,7 @@ mod merge_tests {
             }],
             hf_token: String::new(),
             providers: Vec::new(),
+            setup_completed: false,
             default_download_path: Some(base.to_string_lossy().to_string()),
         };
         assert!(!super::model_library_configured(&empty_library));
@@ -3485,6 +3491,7 @@ mod merge_tests {
             }],
             hf_token: String::new(),
             providers: Vec::new(),
+            setup_completed: false,
             default_download_path: Some(base.to_string_lossy().to_string()),
         };
         assert!(super::model_library_configured(&with_models));
@@ -3547,6 +3554,7 @@ mod merge_tests {
             ],
             hf_token: String::new(),
             providers: Vec::new(),
+            setup_completed: false,
             default_download_path: Some("C:\\other\\models".to_string()),
         };
 
@@ -3583,6 +3591,7 @@ mod merge_tests {
             ],
             hf_token: String::new(),
             providers: Vec::new(),
+            setup_completed: false,
             default_download_path: Some("C:\\path-b".to_string()),
         };
         assert!(super::sanitize_model_paths(&mut config));
@@ -3609,6 +3618,7 @@ mod merge_tests {
             ],
             hf_token: String::new(),
             providers: Vec::new(),
+            setup_completed: false,
             default_download_path: Some("C:\\path-b".to_string()),
         };
         assert!(super::sanitize_model_paths(&mut config));
@@ -3636,6 +3646,7 @@ mod merge_tests {
             }],
             hf_token: String::new(),
             providers: Vec::new(),
+            setup_completed: false,
             default_download_path: Some(models.to_string_lossy().to_string()),
         };
 
@@ -3666,6 +3677,7 @@ mod merge_tests {
             }],
             hf_token: String::new(),
             providers: Vec::new(),
+            setup_completed: false,
             default_download_path: Some(models.to_string_lossy().to_string()),
         };
 
