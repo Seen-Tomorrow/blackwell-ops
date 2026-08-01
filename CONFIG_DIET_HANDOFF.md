@@ -1,15 +1,20 @@
 # ENGINE-CONFIG-DIET — Handoff / Resume Notes
 
-> Written at context-compaction pause. **Read this first, then the commits, then
-> the relevant AGENTS.md.** Working tree is clean.
+> ⚠️ **STATUS: SCOPE COMPLETE — SKIP THIS AREA.** The engine-config maintenance
+> reduction described here is **done** and merged on `ENGINE-CONFIG-DIET` (**21
+> commits ahead of `main`**, clean tree, all gates green). A future agent working
+> on a NEW area of the app should **not** re-open engine-config / provider
+> config / binary-inventory refactoring — that work is finished and the remaining
+> items were explicitly deferred by the user. See **"What REMAINS"** below. If you
+> are starting a fresh assessment session, read this only to know what to skip.
 
 ## Where we are
 
-- **Branch:** `ENGINE-CONFIG-DIET` — **17 commits ahead of `main`**, working tree clean.
+- **Branch:** `ENGINE-CONFIG-DIET` — **21 commits ahead of `main`**, working tree clean.
 - **Project goal:** reduce the **maintenance surface** of the engine-config system
   (NOT just line count — *simpler logic = fewer issues long-term*). The system has
   been edited/added/removed across hundreds of iterations, so there is dead and
-  redundant code to remove.
+  redundant code to remove. **This goal is now met** — see gates below.
 - **Key decision that changed the whole plan:** **the app has NO users** → **no
   migration logic is needed**. Any code that exists only to migrate/convert old data
   (old template formats, retired profiles, legacy file layouts) can be **deleted**,
