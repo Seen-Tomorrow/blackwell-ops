@@ -5,7 +5,7 @@
 
 ## Where we are
 
-- **Branch:** `ENGINE-CONFIG-DIET` — **8 commits ahead of `main`**, working tree clean.
+- **Branch:** `ENGINE-CONFIG-DIET` — **13 commits ahead of `main`**, working tree clean.
 - **Project goal:** reduce the **maintenance surface** of the engine-config system
   (NOT just line count — *simpler logic = fewer issues long-term*). The system has
   been edited/added/removed across hundreds of iterations, so there is dead and
@@ -78,10 +78,40 @@ fields directly off `spawnProfile`: `auto_vram`, `fit_style`, `simple_param_keys
 Removed `fitLaunchKeys` / `fitMarginMib` (never populated by backend) and dead
 `emptyCustomLaunchProfile` (`customProvider.ts`).
 
+### 5. Dropped dead `ProviderConfig.params` (eade230) — item B
+`params: serde_json::Value` (always `json!({})`, never read in Rust; frontend only used
+it as a 2048/512 FIT-scan fallback that never fired). Removed from struct + the two
+`json!({})` construction sites + TS type + custom-provider form's unused params + the
+FIT-scan fallbacks (now explicit `batch: 2048, ubatch: 512`).
+
+### 6. Removed dead production code (0828fb8) — item C tier 1
+Dead-code warnings 19 → 12. Removed `github_releases` `APP_7Z_PREFIX` +
+`fetch_latest_version_release`, `plugin_catalog::catalog_has_pending_updates`,
+`spec_draft::DraftRole::from_str` + `spec_type_parallel_conflict`, `config/meta` unused
+`HashMap` import, and the unused `backend_type` param from `engine::peek_next_launch_port`.
+**Excluded** (user actively uses): `sidecar_elevate` `run_privileged`/`spawn_privileged`/`cmd_quote`,
+`trash_util::move_all_to_trash`, `qwen_code` `context_window`. Kept `default_stack_parallel`
+(serde-default false positive) and the fit_scanner parse helpers + config `make_*` test helpers
+(used by stale test modules — see AGENTS.md Tests section).
+
+### 7. Collapsed 6 inventory maps → one field (2d29404) — item A slice A2
+`ProviderConfig` had 6 parallel per-env inventory maps (`bundled_/foundry_/catalog_` ×
+`_binary_path_per_env`/`_build_info_per_env`). Collapsed to a single serialized field
+`inventory_per_env: HashMap<String, EnvBinaryInventory>` where
+`EnvBinaryInventory { bundled/foundry/catalog: Option<BinaryEntry> }`,
+`BinaryEntry { path, info: Option<BuildInfo> }`. Wire rename `"inventoryPerEnv"`.
+Backend: `profile_binaries` resolver + `reactor_foundry` probe/write-back +
+`binary_update` + `plugin_catalog` + `config/discovery`. Frontend: `types.ts`
+(`envBinaryLookup` helper + new TS types) + `FoundryComponents`/`UpdatesConfig`/
+`ProvidersConfig`/`foundryBuildRefresh` — all **read-only** rewrites via `envBinaryLookup`.
+`merge_probed_version` (real `llama --version` preservation) intact via a prev-inventory clone.
+**Launch path untouched** (active `binary_path_per_env`/`build_info_per_env` maps unchanged).
+
 ## Gates (all currently green)
 
 ```
-cargo build           ✅  (~19 pre-existing warnings, incl. test-module/dead-code)
+cargo build           ✅  (12 pre-existing warnings: 5 excluded active-features,
+                          1 serde false-positive, 6 stale-test-module — see AGENTS.md Tests)
 cargo test            ✅  108 pass / 2 FAIL pre-existing & UNRELATED:
                         - fit_scanner::cache_key_tests::insert_fit_scan_result_rekeys...
                         - launch_memory_parse::tests::parses_qwen36_mtp_buffer_inventory
@@ -90,31 +120,19 @@ npx tsc --noEmit      ✅
 
 ## What REMAINS (reassessment order)
 
-**A. Collapse the 10 per-env binary maps → `Vec<EnvBinaryState>` — the biggest
-remaining win (~200–300 lines + 10→1 field) but the RISKIEST.**
-The 10 maps are NOT truly parallel — they form 3 layers:
-- **Inventory (transient, re-scanned each load, NOT persisted):** `bundled_/foundry_/catalog_`
-  × `_binary_path_per_env` + `_build_info_per_env` (6 maps).
-- **Active (persisted):** `binary_path_per_env` + `build_info_per_env` (2 maps, + synthetic
-  `"current"` key).
-- **Preference/tags (persisted):** `binary_source_per_env`, `downloaded_version_per_env`,
-  `last_pr_per_env` (3 maps).
+**A2 (rest). Full collapse of the ACTIVE + PREFERENCE/TAG maps** — the remaining layer.
+The 6 inventory maps are DONE (2d29404). Still on the table: `binary_path_per_env` +
+`build_info_per_env` (active, incl. synthetic `"current"` key) and `binary_source_per_env` /
+`downloaded_version_per_env` / `last_pr_per_env` (preference/tags). These are the **launch
+path** (AGENTS.md flags as regression-prone) and the `"current"` synthetic key + `merge_probed_version`
+are load-bearing. Higher risk than A2; defer unless the surface is worth it.
 
-Critical subtlety: `profile_binaries.rs::merge_probed_version` preserves a **real
-`llama --version` string** across rescans (engine identity = `llama-server --version`,
-per AGENTS.md) because disk rescans only produce mtime placeholder labels. A collapse
-must preserve this. Changing the wire contract (maps-keyed-by-profile → Vec) touches
-**8 backend files + 7 frontend files** and needs a serialization migration. This is the
-launch/binary path AGENTS.md flags as regression-prone.
-
-**B. `ProviderConfig.params` field — dead** (always written `json!({})`, never read in
-Rust; frontend reads `provider.params.batch/ubatch` only as a `|| 2048/512` fallback,
-already undefined). Low value, trivial backend change + tiny frontend touch.
-
-**C. Codebase-wide dead-code sweep** (a separate pass, NOT config-specific):
-`sidecar_elevate` `run_privileged`/`cmd_quote`, `trash_util::move_all_to_trash`,
-`github_releases` `fetch_latest_version_release`/`APP_7Z_PREFIX`, `fit_scanner` parse
-helpers, `qwen_code` `context_window`, `types.rs` `default_stack_parallel`, etc.
+**C tier 2 — stale test modules.** Decided (per user): KEEP the test modules for now; the
+remaining 6 dead-code warnings are cosmetic and test-sourced (`config.rs::merge_tests` +
+`fit_scanner.rs::memory_breakdown_tests`). Documented in AGENTS.md "Tests" section; a future
+pass should refresh them to assert real current behavior (or drop the valueless ones).
+The 2 pre-existing failing tests (`cache_key_tests`, `launch_memory_parse`) are NOT to be
+"fixed" as part of config work.
 
 ## CONSTRAINTS / GOTCHAS
 
