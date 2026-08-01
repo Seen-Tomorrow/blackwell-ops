@@ -5,7 +5,7 @@
 
 ## Where we are
 
-- **Branch:** `ENGINE-CONFIG-DIET` — **13 commits ahead of `main`**, working tree clean.
+- **Branch:** `ENGINE-CONFIG-DIET` — **15 commits ahead of `main`**, working tree clean.
 - **Project goal:** reduce the **maintenance surface** of the engine-config system
   (NOT just line count — *simpler logic = fewer issues long-term*). The system has
   been edited/added/removed across hundreds of iterations, so there is dead and
@@ -110,8 +110,9 @@ Backend: `profile_binaries` resolver + `reactor_foundry` probe/write-back +
 ## Gates (all currently green)
 
 ```
-cargo build           ✅  (12 pre-existing warnings: 5 excluded active-features,
-                          1 serde false-positive, 6 stale-test-module — see AGENTS.md Tests)
+cargo build           ✅  ZERO warnings (dead-code warnings fully eliminated: 19 → 0;
+                          test helpers #[cfg(test)]-gated, serde default #[allow(dead_code)],
+                          dead fns removed)
 cargo test            ✅  108 pass / 2 FAIL pre-existing & UNRELATED:
                         - fit_scanner::cache_key_tests::insert_fit_scan_result_rekeys...
                         - launch_memory_parse::tests::parses_qwen36_mtp_buffer_inventory
@@ -127,12 +128,18 @@ The 6 inventory maps are DONE (2d29404). Still on the table: `binary_path_per_en
 path** (AGENTS.md flags as regression-prone) and the `"current"` synthetic key + `merge_probed_version`
 are load-bearing. Higher risk than A2; defer unless the surface is worth it.
 
-**C tier 2 — stale test modules.** Decided (per user): KEEP the test modules for now; the
-remaining 6 dead-code warnings are cosmetic and test-sourced (`config.rs::merge_tests` +
-`fit_scanner.rs::memory_breakdown_tests`). Documented in AGENTS.md "Tests" section; a future
-pass should refresh them to assert real current behavior (or drop the valueless ones).
-The 2 pre-existing failing tests (`cache_key_tests`, `launch_memory_parse`) are NOT to be
+**C tier 2 — stale test modules.** Decided (per user): KEEP the test modules for now; they're
+`#[cfg(test)]`-gated so they add zero `cargo build` warnings. Documented in AGENTS.md "Tests"
+section; a future pass should refresh them to assert real current behavior (or drop the valueless
+ones). The 2 pre-existing failing tests (`cache_key_tests`, `launch_memory_parse`) are NOT to be
 "fixed" as part of config work.
+
+**Dead-code warnings: eliminated (19 → 0).** d502138 gated test helpers with `#[cfg(test)]`
+(merge_tests + fit_scanner helpers) and `#[allow(dead_code)]` on the serde-default
+`default_stack_parallel`. eab9f30 removed the last 5 genuinely-dead items (verified no callers):
+`sidecar_elevate` `run_privileged`/`spawn_privileged` (live path uses `run_privileged_batch`),
+`atomcode::cmd_quote`, `trash_util::move_all_to_trash` (keep `move_to_trash`, used by engine),
+`qwen_code::QwenEngineRef.context_window` field.
 
 ## CONSTRAINTS / GOTCHAS
 
