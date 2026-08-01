@@ -313,7 +313,6 @@ pub fn build_config_with_providers_full(mut config: AppConfig) -> AppConfig {
                 p.above_column_widths = meta.above_column_widths.clone();
             }
         }
-        crate::profile_binaries::migrate_provider_profile_keys(&mut p);
         let pid = p.id.clone();
         resolve_provider_binaries_from_meta(&mut p, meta_map.get(&pid).copied());
         if let Some(tmpl) = crate::templates::load_provider_defaults(&p.id) {

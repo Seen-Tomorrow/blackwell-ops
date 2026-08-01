@@ -160,19 +160,6 @@ pub fn factory_default_config_path(provider_id: &str) -> PathBuf {
         .join(format!("{provider_id}-default-config.json"))
 }
 
-#[cfg(debug_assertions)]
-fn dev_factory_default_config_source_path(provider_id: &str) -> Option<PathBuf> {
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("runtime")
-        .join(provider_id)
-        .join("config")
-        .join(format!("{provider_id}-default-config.json"));
-    if path.exists() {
-        Some(path)
-    } else {
-        None
-    }
-}
 
 pub fn apply_factory_layout_defaults(
     provider: &mut crate::types::ProviderConfig,
@@ -295,20 +282,8 @@ pub fn load_user_providers_meta() -> Vec<ProviderMeta> {
         }
 
         if let Ok(content) = std::fs::read_to_string(&path) {
-            // Try loading as single ProviderMeta first, then fallback to array
             if let Ok(meta) = serde_json::from_str::<ProviderMeta>(&content) {
                 metas.push(meta);
-            } else if let Ok(arr) = serde_json::from_str::<Vec<ProviderMeta>>(&content) {
-                // Legacy format: array in single file — migrate to individual files
-                for m in arr {
-                    let individual_path = provider_user_config_path(&m.id);
-                    if !individual_path.exists() {
-                        if let Ok(json) = serde_json::to_string_pretty(&m) {
-                            let _ = std::fs::write(&individual_path, json);
-                        }
-                    }
-                    metas.push(m);
-                }
             } else {
                 log::warn!("[config] Failed to parse {}: skipping (check for corrupt JSON)", path.display());
             }
