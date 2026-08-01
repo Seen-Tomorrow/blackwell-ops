@@ -135,9 +135,9 @@ Release exe: `src-tauri/target/release/blackwell-ops.exe`. Run `npm run build` f
 
 ## Tests (Rust)
 
-`cargo test` → **108 pass / 2 pre-existing failures** (unrelated to config — do not "fix" them as part of config work):
-- `fit_scanner::cache_key_tests::insert_fit_scan_result_rekeys_to_canonical_storage_key`
-- `launch_memory_parse::tests::parses_qwen36_mtp_buffer_inventory`
+`cargo test` → **110 pass / 0 fail** (all green). Note: two earlier failures were fixed by
+making `model_file_cache_key` slash-normalize (`\`→`/`, key-only) and completing the qwen36
+fixture's architecture line — see commit `125706b`.
 
 **What the tests cover** (each lives in `#[cfg(test)] mod …` next to its code):
 - `config.rs::merge_tests` — template↔user param merge, validation, dedup (the **largest**; validates live merge logic)

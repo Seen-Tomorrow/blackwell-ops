@@ -5,7 +5,7 @@
 
 ## Where we are
 
-- **Branch:** `ENGINE-CONFIG-DIET` — **15 commits ahead of `main`**, working tree clean.
+- **Branch:** `ENGINE-CONFIG-DIET` — **17 commits ahead of `main`**, working tree clean.
 - **Project goal:** reduce the **maintenance surface** of the engine-config system
   (NOT just line count — *simpler logic = fewer issues long-term*). The system has
   been edited/added/removed across hundreds of iterations, so there is dead and
@@ -113,9 +113,8 @@ Backend: `profile_binaries` resolver + `reactor_foundry` probe/write-back +
 cargo build           ✅  ZERO warnings (dead-code warnings fully eliminated: 19 → 0;
                           test helpers #[cfg(test)]-gated, serde default #[allow(dead_code)],
                           dead fns removed)
-cargo test            ✅  108 pass / 2 FAIL pre-existing & UNRELATED:
-                        - fit_scanner::cache_key_tests::insert_fit_scan_result_rekeys...
-                        - launch_memory_parse::tests::parses_qwen36_mtp_buffer_inventory
+cargo test            ✅  110 pass / 0 fail (the 2 old failures fixed in 125706b: FIT
+                        cache key now slash-normalized; qwen36 fixture got its arch line)
 npx tsc --noEmit      ✅
 ```
 
@@ -131,8 +130,8 @@ are load-bearing. Higher risk than A2; defer unless the surface is worth it.
 **C tier 2 — stale test modules.** Decided (per user): KEEP the test modules for now; they're
 `#[cfg(test)]`-gated so they add zero `cargo build` warnings. Documented in AGENTS.md "Tests"
 section; a future pass should refresh them to assert real current behavior (or drop the valueless
-ones). The 2 pre-existing failing tests (`cache_key_tests`, `launch_memory_parse`) are NOT to be
-"fixed" as part of config work.
+ones). (The old 2 failing tests — `cache_key_tests`, `launch_memory_parse` — were fixed in
+`125706b`; `cargo test` is now 110/0.)
 
 **Dead-code warnings: eliminated (19 → 0).** d502138 gated test helpers with `#[cfg(test)]`
 (merge_tests + fit_scanner helpers) and `#[allow(dead_code)]` on the serde-default
