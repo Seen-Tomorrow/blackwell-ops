@@ -447,8 +447,6 @@ pub struct QwenEngineRef {
     pub port: u16,
     /// OpenAI model id — must match engine launch alias.
     pub model: String,
-    #[serde(default)]
-    pub context_window: Option<u64>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

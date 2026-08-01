@@ -687,10 +687,6 @@ pub async fn atomcode_launch(
     }
 }
 
-/// Quote for `cmd.exe` / `start` (double quotes; double any embedded `"`).
-fn cmd_quote(s: &str) -> String {
-    format!("\"{}\"", s.replace('"', "\"\""))
-}
 
 const ATOMCODE_MD_BODY: &str = r#"# Blackwell Ops - AtomCode operational notes
 

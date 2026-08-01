@@ -291,46 +291,6 @@ pub fn is_process_elevated() -> bool {
     false
 }
 
-fn spawn_privileged(
-    gsudo: Option<&Path>,
-    program: &Path,
-    args: &[String],
-    cwd: Option<&Path>,
-) -> Result<PrivilegedOutput, String> {
-    let program = path_for_cmd(program);
-    let output = crate::engine_utils::run_hidden_output(|| {
-        let mut cmd = if let Some(gsudo_path) = gsudo {
-            let gsudo_path = path_for_cmd(gsudo_path);
-            // -w = wait for exit code. Do NOT pass -n/--new — that opens a visible console.
-            let mut c = std::process::Command::new(&gsudo_path);
-            c.arg("-w").arg(&program).args(args);
-            c
-        } else {
-            let mut c = std::process::Command::new(&program);
-            c.args(args);
-            c
-        };
-        if let Some(dir) = cwd {
-            cmd.current_dir(path_for_cmd(dir));
-        }
-        cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
-        cmd
-    })
-    .map_err(|e| {
-        if gsudo.is_some() {
-            format!("gsudo launch failed: {e}")
-        } else {
-            format!("{} failed: {e}", program.display())
-        }
-    })?;
-
-    let result = PrivilegedOutput::from(output);
-    if gsudo.is_some() && is_uac_denied_output(&result) {
-        return Err(UAC_DENIED_MESSAGE.into());
-    }
-    Ok(result)
-}
-
 /// System32 `cmd.exe` (not PATH `cmd`) — used for Foundry batch and other hidden scripts.
 pub fn system_cmd_exe() -> PathBuf {
     PathBuf::from(r"C:\Windows\System32\cmd.exe")
@@ -383,20 +343,6 @@ pub fn apply_cmd_script_raw_arg(cmd: &mut std::process::Command, batch_path: &Pa
 /// program plus a **single** raw_arg tail — do **not** pass the tail through `.args()`.
 pub fn cmd_script_launch(batch_path: &Path) -> (PathBuf, String) {
     (system_cmd_exe(), cmd_script_raw_tail(batch_path))
-}
-
-/// Run `program` with admin rights. Uses gsudo when not elevated.
-pub fn run_privileged(
-    app: &AppHandle,
-    program: &Path,
-    args: &[String],
-) -> Result<PrivilegedOutput, String> {
-    let cwd = program.parent().filter(|p| p.is_dir());
-    if is_process_elevated() {
-        return spawn_privileged(None, program, args, cwd);
-    }
-    let gsudo = stage_gsudo(app)?;
-    spawn_privileged(Some(&gsudo), program, args, cwd)
 }
 
 /// Run multiple commands under a single elevation (one UAC prompt via one gsudo → cmd script).

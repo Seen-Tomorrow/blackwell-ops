@@ -20,10 +20,3 @@ pub fn move_to_trash(path: impl AsRef<Path>) -> Result<(), String> {
     trash::delete(path).map_err(|e| format!("Failed to move to Recycle Bin: {e}"))
 }
 
-/// Move multiple paths to the OS Recycle Bin / Trash. Stops on the first failure.
-pub fn move_all_to_trash(paths: impl IntoIterator<Item = impl AsRef<Path>>) -> Result<(), String> {
-    for path in paths {
-        move_to_trash(path)?;
-    }
-    Ok(())
-}
