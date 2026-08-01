@@ -120,12 +120,23 @@ npx tsc --noEmit      ✅
 
 ## What REMAINS (reassessment order)
 
-**A2 (rest). Full collapse of the ACTIVE + PREFERENCE/TAG maps** — the remaining layer.
-The 6 inventory maps are DONE (2d29404). Still on the table: `binary_path_per_env` +
-`build_info_per_env` (active, incl. synthetic `"current"` key) and `binary_source_per_env` /
-`downloaded_version_per_env` / `last_pr_per_env` (preference/tags). These are the **launch
-path** (AGENTS.md flags as regression-prone) and the `"current"` synthetic key + `merge_probed_version`
-are load-bearing. Higher risk than A2; defer unless the surface is worth it.
+**A2 (rest). Full collapse of the ACTIVE + PREFERENCE/TAG maps** — DECIDED: **NOT doing it**.
+Investigation showed these 5 maps hold genuinely **distinct** data (not parallel copies of the
+same data, unlike the 6 inventory maps), so there's no drift-bug class to kill — the payoff is
+only ergonomics. And most are load-bearing in subtle ways, so the risk isn't justified:
+- `binary_path` (singular): default-profile active path — launch fallback, stored in port locks,
+  AND written directly by discovery / binary_update / migration. Not safely derivable.
+- `downloaded_version_per_env`: dual role — updates tag AND gates `prefer_catalog` (plugin-pack
+  installed detection) in resolve. Not purely cosmetic.
+- `binary_source_per_env`: the mechanism that makes a fresh Foundry build ACTIVE (pref +
+  `resolve_after_source_change`), plus user choice that must persist. Load-bearing.
+- `last_pr_per_env`: display only.
+
+**Synthetic `"current"` build-info key: REMOVED (deb9041).** Verified it was dead — written by
+the backend but never read by name on the frontend (only surfaced as one more entry in
+`Object.values()` iterations, where the real profile key is already present). Active binary is
+NEVER selected via `"current"` (that's `binary_source_per_env` + resolve). Deleted
+`sync_current_build_info` + the 3 `reactor_foundry` write sites. No frontend change needed.
 
 **C tier 2 — stale test modules.** Decided (per user): KEEP the test modules for now; they're
 `#[cfg(test)]`-gated so they add zero `cargo build` warnings. Documented in AGENTS.md "Tests"
