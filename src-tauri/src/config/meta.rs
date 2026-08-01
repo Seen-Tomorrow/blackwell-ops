@@ -1,116 +1,10 @@
-//! Provider persistence: ProviderMeta, AppConfig, per-provider user config files.
+//! Provider persistence: ProviderConfig, AppConfig, per-provider user config files.
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use crate::config::*;
 use crate::types::ProviderConfig;
-
-
-// ── Provider Metadata (persisted to disk) ───────────────────────────
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ProviderMeta {
-    pub id: String,
-    pub display_name: String,
-    pub binary_path: String,
-    #[serde(default = "crate::types::default_true")]
-    pub enabled: bool,
-    #[serde(default)]
-    pub git_url: String,
-    #[serde(default)]
-    pub branch: String,
-    #[serde(default)]
-    pub build_profile: String,
-    #[serde(default)]
-    pub template_type: String,
-    #[serde(default, rename = "userEditedTemplateParams")]
-    pub user_edited_template_params: Vec<crate::types::UserEditedTemplateParam>,
-    /// Factory param keys removed by admin — merge will not re-append from template.
-    #[serde(default, rename = "excludedParamKeys", skip_serializing_if = "Vec::is_empty")]
-    pub excluded_param_keys: Vec<String>,
-    /// Custom group order set by user (overrides template insertion order). Empty = use template order.
-    #[serde(default, rename = "groupOrder")]
-    pub group_order: Vec<String>,
-    /// Groups flagged protected (factory structure lock for users).
-    #[serde(default, rename = "protectedGroups", skip_serializing_if = "Vec::is_empty")]
-    pub protected_groups: Vec<String>,
-    /// Custom providers — fusion / metrics / verbose opt-ins.
-    #[serde(
-        default,
-        rename = "customCapabilities",
-        skip_serializing_if = "crate::types::CustomProviderCapabilities::is_default"
-    )]
-    pub custom_capabilities: crate::types::CustomProviderCapabilities,
-    #[serde(default, rename = "groupDisplayZone", skip_serializing_if = "HashMap::is_empty")]
-    pub group_display_zone: HashMap<String, String>,
-    #[serde(default, rename = "configColumnCount", skip_serializing_if = "Option::is_none")]
-    pub config_column_count: Option<u8>,
-    #[serde(default, rename = "configColumnWidths", skip_serializing_if = "Vec::is_empty")]
-    pub config_column_widths: Vec<f64>,
-    #[serde(default, rename = "groupColumn", skip_serializing_if = "HashMap::is_empty")]
-    pub group_column: HashMap<String, u32>,
-    #[serde(default, rename = "aboveColumnWidths", skip_serializing_if = "Vec::is_empty")]
-    pub above_column_widths: Vec<f64>,
-    /// Per-environment build info captured from binary --version + file mtime.
-    #[serde(default, skip_serializing_if = "HashMap::is_empty", rename = "buildInfoPerEnv")]
-    pub build_info_per_env: HashMap<String, crate::types::BuildInfo>,
-    /// Active launch path per profile (resolved).
-    #[serde(default, skip_serializing_if = "HashMap::is_empty", rename = "binaryPathPerEnv")]
-    pub binary_path_per_env: HashMap<String, String>,
-    /// User preference: `foundry` | `bundled`.
-    #[serde(default, skip_serializing_if = "HashMap::is_empty", rename = "binarySourcePerEnv")]
-    pub binary_source_per_env: HashMap<String, String>,
-    /// Per-environment downloaded release version — tracks which GitHub release tag was installed via update.
-    #[serde(default, skip_serializing_if = "HashMap::is_empty", rename = "downloadedVersionPerEnv")]
-    pub downloaded_version_per_env: HashMap<String, String>,
-    /// Last cherry-picked PR number per environment (for badge display)
-    #[serde(default, skip_serializing_if = "HashMap::is_empty", rename = "lastPrPerEnv")]
-    pub last_pr_per_env: HashMap<String, String>,
-    /// Display order in provider list (0 = first). Auto-assigned on save if not set.
-    #[serde(default)]
-    pub display_order: i32,
-    /// True when the provider was discovered from runtime/ directory (bundled or downloaded).
-    #[serde(default)]
-    pub factory_provided: bool,
-    /// Template version from default config — synced to user meta on merge.
-    #[serde(default = "crate::types::default_template_version", rename = "templateVersion")]
-    pub template_version: u32,
-}
-
-impl ProviderMeta {
-    /// Convert a runtime ProviderConfig into persistence format (ProviderMeta).
-    pub fn from_config(p: &ProviderConfig) -> Self {
-        ProviderMeta {
-            id: p.id.clone(),
-            display_name: p.display_name.clone(),
-            binary_path: to_relative_path(&PathBuf::from(&p.binary_path)),
-            enabled: p.enabled,
-            git_url: p.git_url.clone(),
-            branch: p.branch.clone(),
-            build_profile: p.build_profile.clone(),
-            user_edited_template_params: p.user_edited_template_params.clone(),
-            excluded_param_keys: p.excluded_param_keys.clone(),
-            group_order: p.group_order.clone(),
-            protected_groups: p.protected_groups.clone(),
-            custom_capabilities: p.custom_capabilities.clone(),
-            group_display_zone: p.group_display_zone.clone(),
-            config_column_count: p.config_column_count,
-            config_column_widths: p.config_column_widths.clone(),
-            group_column: p.group_column.clone(),
-            above_column_widths: p.above_column_widths.clone(),
-            template_type: p.template_type.clone(),
-            build_info_per_env: p.build_info_per_env.clone(),
-            binary_path_per_env: p.binary_path_per_env.iter().map(|(k, v)| (k.clone(), to_relative_path(&PathBuf::from(v)))).collect(),
-            binary_source_per_env: p.binary_source_per_env.clone(),
-            downloaded_version_per_env: p.downloaded_version_per_env.clone(),
-            last_pr_per_env: p.last_pr_per_env.clone(),
-            display_order: p.display_order,
-            factory_provided: p.factory_provided,
-            template_version: p.template_version,
-        }
-    }
-}
 
 fn default_providers() -> Vec<ProviderConfig> { Vec::new() }
 
@@ -198,7 +92,7 @@ pub fn apply_factory_layout_defaults(
 
 pub fn apply_meta_layout_overrides(
     provider: &mut crate::types::ProviderConfig,
-    meta: &ProviderMeta,
+    meta: &crate::types::ProviderConfig,
     factory_key: &str,
 ) {
     if !meta.group_order.is_empty() {
@@ -263,7 +157,7 @@ pub fn apply_meta_layout_overrides(
 }
 
 /// Load all per-provider user configs from disk.
-pub fn load_user_providers_meta() -> Vec<ProviderMeta> {
+pub fn load_user_providers_meta() -> Vec<crate::types::ProviderConfig> {
     let mut metas = Vec::new();
     let cd = config_dir();
 
@@ -282,7 +176,7 @@ pub fn load_user_providers_meta() -> Vec<ProviderMeta> {
         }
 
         if let Ok(content) = std::fs::read_to_string(&path) {
-            if let Ok(meta) = serde_json::from_str::<ProviderMeta>(&content) {
+            if let Ok(meta) = serde_json::from_str::<crate::types::ProviderConfig>(&content) {
                 metas.push(meta);
             } else {
                 log::warn!("[config] Failed to parse {}: skipping (check for corrupt JSON)", path.display());
@@ -297,14 +191,14 @@ pub fn load_user_providers_meta() -> Vec<ProviderMeta> {
 }
 
 /// Save a single provider's user config to its own file.
-pub fn save_provider_user_config(meta: &ProviderMeta) -> Result<(), String> {
+pub fn save_provider_user_config(provider: &crate::types::ProviderConfig) -> Result<(), String> {
     std::fs::create_dir_all(config_dir()).map_err(|e| format!("Failed to create config dir: {}", e))?;
 
-    let path = provider_user_config_path(&meta.id);
-    let json = serde_json::to_string_pretty(meta).map_err(|e| format!("Serialization failed: {}", e))?;
+    let path = provider_user_config_path(&provider.id);
+    let json = serde_json::to_string_pretty(provider).map_err(|e| format!("Serialization failed: {}", e))?;
     std::fs::write(&path, &json).map_err(|e| format!("Failed to write {}: {}", path.display(), e))?;
 
-    log::info!("[config] Saved user config for {} -> {}", meta.id, path.display());
+    log::info!("[config] Saved user config for {} -> {}", provider.id, path.display());
     Ok(())
 }
 
@@ -326,8 +220,7 @@ pub fn persist_user_providers_meta(providers: &[ProviderConfig]) -> Result<(), S
         if p.template_type.is_empty() {
             continue;
         }
-        let meta = ProviderMeta::from_config(p);
-        save_provider_user_config(&meta)?;
+        save_provider_user_config(p)?;
     }
     Ok(())
 }

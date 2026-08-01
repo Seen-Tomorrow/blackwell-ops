@@ -242,7 +242,7 @@ pub fn resolve_template_type(provider_id: &str, disk_type: Option<&String>) -> S
 
 /// Backfill dock fields from provider defaults into user-edited params.
 pub fn build_config_with_providers_full(mut config: AppConfig) -> AppConfig {
-    let metas: Vec<ProviderMeta> = load_user_providers_meta()
+    let metas: Vec<crate::types::ProviderConfig> = load_user_providers_meta()
         .into_iter()
         .filter(|m| !should_drop_user_meta(m))
         .collect();

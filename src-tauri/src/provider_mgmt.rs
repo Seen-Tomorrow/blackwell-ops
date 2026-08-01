@@ -6,8 +6,7 @@ use crate::engine::AppContext;
 
 /// Persist a single provider's config to disk.
 fn persist_single_provider(provider: &crate::types::ProviderConfig) -> Result<(), String> {
-    let meta = crate::config::ProviderMeta::from_config(provider);
-    crate::config::save_provider_user_config(&meta)
+    crate::config::save_provider_user_config(provider)
 }
 
 #[tauri::command]

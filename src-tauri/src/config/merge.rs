@@ -306,7 +306,7 @@ pub fn merge_user_params_with_template(
 
 pub fn resolve_provider_binaries_from_meta(
     p: &mut crate::types::ProviderConfig,
-    meta: Option<&ProviderMeta>,
+    meta: Option<&crate::types::ProviderConfig>,
 ) {
     let empty = HashMap::new();
     let source_pref = meta

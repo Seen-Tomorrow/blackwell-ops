@@ -22,7 +22,7 @@ pub fn is_phased_out_provider(id: &str) -> bool {
 }
 
 /// Drop phased-out **factory** metas only — keep user custom providers with the same id.
-pub fn should_drop_user_meta(meta: &ProviderMeta) -> bool {
+pub fn should_drop_user_meta(meta: &crate::types::ProviderConfig) -> bool {
     if !is_phased_out_provider(&meta.id) {
         return false;
     }

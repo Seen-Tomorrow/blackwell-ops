@@ -21,7 +21,7 @@
 //! submodules below; `pub use` keeps the historical `crate::config::…` call sites working unchanged.
 //!
 //! - [`paths`] — path/dir infra, portable-structure setup, shared constants
-//! - [`meta`] — `ProviderMeta` / `AppConfig` persistence, per-provider user config files
+//! - [`meta`] — `ProviderConfig` / `AppConfig` persistence, per-provider user config files
 //! - [`validate`] — provider param validation + block-save
 //! - [`discovery`] — disk discovery, full config assembly, template-type resolution
 //! - [`model_library`] — model path management + download destination validation

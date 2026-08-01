@@ -110,7 +110,7 @@ fn validate_user_edited_param(ep: &crate::types::UserEditedTemplateParam) -> Vec
     errors
 }
 
-fn check_user_providers_meta(metas: &[ProviderMeta]) -> Vec<String> {
+fn check_user_providers_meta(metas: &[crate::types::ProviderConfig]) -> Vec<String> {
     let mut all_errors: Vec<String> = Vec::new();
 
     // Duplicate provider IDs
@@ -127,7 +127,7 @@ fn check_user_providers_meta(metas: &[ProviderMeta]) -> Vec<String> {
 }
 
 #[tauri::command]
-pub fn save_user_providers_meta(metas: Vec<ProviderMeta>) -> Result<(), String> {
+pub fn save_user_providers_meta(metas: Vec<crate::types::ProviderConfig>) -> Result<(), String> {
     // Block-save validation — force user to correct manually
     let errors = check_user_providers_meta(&metas);
     if !errors.is_empty() {
