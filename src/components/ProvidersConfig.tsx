@@ -58,7 +58,6 @@ interface FormState {
   display_name: string;
   binary_path: string;
   enabled: boolean;
-  params: Record<string, string>;
   userEditedTemplateParams?: UserEditedTemplateParam[];
   _original_id?: string;
   git_url: string;
@@ -82,7 +81,6 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
     display_name: "",
     binary_path: "",
     enabled: true,
-    params: {},
     git_url: "",
     branch: "",
     build_profile: "",
@@ -265,7 +263,6 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
       display_name: "",
       binary_path: "",
       enabled: true,
-      params: {},
       git_url: "",
       branch: "",
       build_profile: "",
@@ -299,9 +296,6 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
         display_name: form.display_name.trim(),
         binary_path: form.binary_path.trim(),
         enabled: form.enabled,
-        params: Object.fromEntries(
-          Object.entries(form.params).filter(([_, v]) => v.trim() !== "")
-        ),
         userEditedTemplateParams: form.userEditedTemplateParams || [],
         _original_id: form._original_id || undefined,
         git_url: form.git_url || "",
@@ -332,19 +326,11 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
   }, [form, loadProviders, resetProviderForm]);
 
   const handleEdit = useCallback((p: ProviderConfig) => {
-    let paramPairs: Record<string, string> = {};
-    if (p.params && typeof p.params === "object" && !Array.isArray(p.params)) {
-      for (const [k, v] of Object.entries(p.params)) {
-        paramPairs[k] = String(v);
-      }
-    }
-
     setForm({
       id: p.id,
       display_name: p.display_name,
       binary_path: p.binary_path,
       enabled: p.enabled,
-      params: paramPairs,
       userEditedTemplateParams: p.userEditedTemplateParams || [],
       _original_id: p.id,
       git_url: p.git_url || "",
@@ -458,17 +444,12 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
     beginFitScanSession(providerId, currentParallel, cached, forceRescan);
 
     try {
-      const allProviders = await invoke<ProviderConfig[]>("list_providers");
-      const provider = allProviders.find(p => p.id === providerId);
-      const batch = provider?.params?.batch || 2048;
-      const ubatch = provider?.params?.ubatch || provider?.params?.ubatch_size || 512;
-
       const result = await invoke<FitScanComplete>("fit_scan_library", {
         providerId,
         modelBase: "",
         parallelCount: Math.max(currentParallel, 1),
-        batch,
-        ubatch,
+        batch: 2048,
+        ubatch: 512,
         forceRescan,
       });
 

@@ -180,17 +180,12 @@ export default function SetupGuideDisplay({
     });
 
     try {
-      const allProviders = await invoke<ProviderConfig[]>("list_providers");
-      const provider = allProviders.find((p) => p.id === DEFAULT_FIT_PROVIDER);
-      const batch = provider?.params?.batch || 2048;
-      const ubatch = provider?.params?.ubatch || provider?.params?.ubatch_size || 512;
-
       await invoke<FitScanComplete>("fit_scan_library", {
         providerId: DEFAULT_FIT_PROVIDER,
         modelBase: "",
         parallelCount: parallel,
-        batch,
-        ubatch,
+        batch: 2048,
+        ubatch: 512,
         forceRescan: false,
       });
 

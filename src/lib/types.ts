@@ -140,7 +140,6 @@ export interface ProviderConfig {
   display_name: string;
   binary_path: string;
   enabled: boolean;
-  params?: Record<string, any>;
   userEditedTemplateParams?: UserEditedTemplateParam[];
   /** Factory param keys removed by admin — merge will not re-append from template. */
   excludedParamKeys?: string[];

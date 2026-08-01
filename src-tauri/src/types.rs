@@ -392,8 +392,6 @@ pub struct ProviderConfig {
     pub binary_path: String,
     #[serde(default = "default_true")]
     pub enabled: bool,
-    #[serde(default)]
-    pub params: serde_json::Value,
     #[serde(default, rename = "userEditedTemplateParams")]
     pub user_edited_template_params: Vec<UserEditedTemplateParam>,
     /// Factory param keys removed by admin — merge will not re-append from template.
