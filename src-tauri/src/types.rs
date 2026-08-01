@@ -627,14 +627,6 @@ impl UserEditedTemplateParam {
         self.hidden_values.iter().any(|v| json_value_matches_str(v, key))
     }
 
-    /// True when value is excluded from engine Essentials UI only.
-    pub fn is_value_essentials_hidden(&self, value: &str) -> bool {
-        let key = value.trim();
-        self.essentials_hidden_values
-            .iter()
-            .any(|v| json_value_matches_str(v, key))
-    }
-
     /// The first non-hidden value — used when the saved default is hidden so launch always has a visible selection.
     pub fn effective_default(&self) -> Option<&serde_json::Value> {
         for v in &self.values {

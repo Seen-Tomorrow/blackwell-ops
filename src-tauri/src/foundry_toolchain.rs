@@ -180,10 +180,6 @@ pub fn normalize_profile_id(id: &str) -> String {
     }
 }
 
-pub fn is_retired_profile(id: &str) -> bool {
-    matches!(id.trim().to_lowercase().as_str(), "vanguard" | "fresh")
-}
-
 pub fn find_profile_def<'a>(manifest: &'a ToolchainManifest, id: &str) -> Result<&'a ProfileDef, String> {
     let key = id.to_lowercase();
     manifest
