@@ -1,4 +1,4 @@
-import type { ConfigViewMode, LaunchProfile, ProviderDefaultParam, UserEditedTemplateParam } from "./types";
+import type { ConfigViewMode, ProviderDefaultParam, SpawnProfile, UserEditedTemplateParam } from "./types";
 import { PANEL_CHROME_PARAM_KEYS } from "./paramDisplayZone";
 import {
   COCKPIT_OWNED_PARAM_KEYS,
@@ -32,14 +32,14 @@ function skipSpecParamForLaunch(p: UserEditedTemplateParam, _specActive: boolean
 const DEFAULT_ESSENTIAL_KEYS = ["device", "ctx"] as const;
 
 /** Factory FIT whitelist (param keys only — split handled separately for multi-GPU). */
-export function resolveFitLaunchKeys(profile?: LaunchProfile): string[] {
-  const raw = profile?.fitLaunchKeys ?? profile?.simpleParamKeys ?? [...DEFAULT_ESSENTIAL_KEYS];
+export function resolveFitLaunchKeys(profile?: SpawnProfile): string[] {
+  const raw = profile?.simple_param_keys ?? [...DEFAULT_ESSENTIAL_KEYS];
   return raw.filter((k) => k !== "split");
 }
 
 /** AUTO FIT launch + panel filter keys (split included when multi-GPU). */
 export function resolveFitLaunchExtraKeys(opts: {
-  profile?: LaunchProfile;
+  profile?: SpawnProfile;
   specActive: boolean;
   multiGpu: boolean;
 }): string[] {
@@ -67,8 +67,8 @@ export function filterParamsForFitLaunchDisplay(
 }
 
 /** Factory baseline for Essentials view (param panel filter only). */
-export function resolveEssentialParamKeys(profile?: LaunchProfile): Set<string> {
-  const raw = profile?.essentialParamKeys ?? profile?.simpleParamKeys ?? [...DEFAULT_ESSENTIAL_KEYS];
+export function resolveEssentialParamKeys(profile?: SpawnProfile): Set<string> {
+  const raw = profile?.essentialParamKeys ?? profile?.simple_param_keys ?? [...DEFAULT_ESSENTIAL_KEYS];
   return new Set([...raw, ...LAUNCH_DOCK_PARAM_KEYS]);
 }
 
@@ -197,8 +197,8 @@ export function computeEssentialParamKeysForExport(
   return keys;
 }
 
-export function providerSupportsFitLaunch(profile?: LaunchProfile): boolean {
-  return Boolean(profile?.autoVram || profile?.fitStyle);
+export function providerSupportsFitLaunch(profile?: SpawnProfile): boolean {
+  return Boolean(profile?.auto_vram || profile?.fit_style);
 }
 
 /** Keys emitted on MANUAL launch — essentials view filters; full passes all visible params. */

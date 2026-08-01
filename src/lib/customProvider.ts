@@ -3,7 +3,7 @@
  * Bare launch shell + optional capabilities; cockpit binds by Master param keys only.
  */
 
-import type { LaunchProfile, ProviderConfig, UserEditedTemplateParam } from "./types";
+import type { ProviderConfig, UserEditedTemplateParam } from "./types";
 import { COCKPIT_OWNED_PARAM_KEYS } from "./systemParams";
 
 /** Canonical custom type string persisted on providers. */
@@ -121,17 +121,6 @@ export function shouldSoftLaunchOnForecast(
   provider: ProviderConfig | undefined | null,
 ): boolean {
   return isCustomTemplateType(provider?.template_type);
-}
-
-/** Empty launch profile for custom (no Full Auto / FIT unless we add that later). */
-export function emptyCustomLaunchProfile(): LaunchProfile {
-  return {
-    autoVram: false,
-    fitStyle: "",
-    essentialParamKeys: [],
-    simpleParamKeys: [],
-    tensorSplit: true,
-  };
 }
 
 /**

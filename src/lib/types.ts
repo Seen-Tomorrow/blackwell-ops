@@ -198,7 +198,7 @@ export interface ProviderConfig {
   templateVersion?: number; // bumped in default config JSON when template changes, used for update notification
   needsTemplateAttention?: boolean; // set by merge when user config version differs from factory — shows banner in ConfigPage
   /** Factory launch profile — synced from spawn_profile on load (not user-persisted). */
-  launchProfile?: LaunchProfile;
+  spawnProfile?: SpawnProfile;
 }
 
 /** Factory engine-config layout defaults — shipped in *-default-config.json. */
@@ -215,19 +215,16 @@ export interface ExportFactoryTemplateResult {
   paths: string[];
 }
 
-/** Factory launch profile — synced from spawn_profile on load. */
-export interface LaunchProfile {
-  autoVram?: boolean;
-  fitStyle?: string;
+/** Factory launch profile — the provider template's spawn_profile (subset the frontend reads). */
+export interface SpawnProfile {
+  auto_vram?: boolean;
+  fit_style?: string;
   /** When false, hide tensor (and row) from SPLIT chips — provider lacks stable tensor+FIT. */
-  tensorSplit?: boolean;
-  /** @deprecated Use fitLaunchKeys / essentialParamKeys — kept for factory JSON compat. */
-  simpleParamKeys?: string[];
-  /** CLI whitelist for AUTO FIT launch (excludes split — engine decides). */
-  fitLaunchKeys?: string[];
+  tensor_split?: boolean;
+  /** Param keys visible in Auto VRAM / fallback essentials. */
+  simple_param_keys?: string[];
   /** Param keys shown in Essentials view (panel filter only). */
   essentialParamKeys?: string[];
-  fitMarginMib?: number;
 }
 
 export type ConfigViewMode = "essentials" | "full";

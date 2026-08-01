@@ -370,55 +370,6 @@ impl LayoutDefaults {
     }
 }
 
-/// Factory launch profile synced from `spawn_profile` — drives Auto VRAM UI and --fit wiring.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LaunchProfile {
-    /// When true, non-power-users see simplified engine config (simple_param_keys only).
-    #[serde(default, rename = "autoVram")]
-    pub auto_vram: bool,
-    /// `ggml_fit_params` | `none`
-    #[serde(default, rename = "fitStyle")]
-    pub fit_style: String,
-    /// Param keys visible in Auto VRAM mode (e.g. device, ctx, kv_quant).
-    #[serde(default, rename = "simpleParamKeys")]
-    pub simple_param_keys: Vec<String>,
-    /// Param keys shown in Essentials view (engine config panel filter).
-    #[serde(default, rename = "essentialParamKeys")]
-    pub essential_param_keys: Vec<String>,
-    /// Default true — Default trait must not force false (hid tensor split for custom).
-    #[serde(default = "default_true", rename = "tensorSplit")]
-    pub tensor_split: bool,
-}
-
-impl Default for LaunchProfile {
-    fn default() -> Self {
-        Self {
-            auto_vram: false,
-            fit_style: String::new(),
-            simple_param_keys: Vec::new(),
-            essential_param_keys: Vec::new(),
-            tensor_split: true,
-        }
-    }
-}
-
-impl LaunchProfile {
-    pub fn from_spawn_profile(sp: &crate::templates::SpawnProfile) -> Self {
-        let essential = if !sp.essential_param_keys.is_empty() {
-            sp.essential_param_keys.clone()
-        } else {
-            sp.simple_param_keys.clone()
-        };
-        Self {
-            auto_vram: sp.auto_vram,
-            fit_style: sp.fit_style.clone(),
-            simple_param_keys: sp.simple_param_keys.clone(),
-            essential_param_keys: essential,
-            tensor_split: sp.tensor_split,
-        }
-    }
-}
-
 /// Optional features for `template_type = custom` providers (all off by default).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -530,8 +481,8 @@ pub struct ProviderConfig {
     #[serde(default, skip_deserializing, rename = "needsTemplateAttention")]
     pub needs_template_attention: bool,
     /// Factory launch profile — synced from runtime default config on load (not user-persisted).
-    #[serde(default, rename = "launchProfile")]
-    pub launch_profile: LaunchProfile,
+    #[serde(default, rename = "spawnProfile")]
+    pub spawn_profile: crate::templates::SpawnProfile,
 }
 
 pub fn default_template_version() -> u32 { 1 }

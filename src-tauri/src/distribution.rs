@@ -539,14 +539,14 @@ fn ensure_factory_shell(
         "fusion_adapter".into(),
         serde_json::Value::String("ggml_master".into()),
     );
-    if !p.launch_profile.essential_param_keys.is_empty() {
+    if !p.spawn_profile.essential_param_keys.is_empty() {
         spawn.insert(
             "essentialParamKeys".into(),
-            serde_json::to_value(&p.launch_profile.essential_param_keys).unwrap_or_default(),
+            serde_json::to_value(&p.spawn_profile.essential_param_keys).unwrap_or_default(),
         );
         spawn.insert(
             "simple_param_keys".into(),
-            serde_json::to_value(&p.launch_profile.essential_param_keys).unwrap_or_default(),
+            serde_json::to_value(&p.spawn_profile.essential_param_keys).unwrap_or_default(),
         );
     }
     let seed = serde_json::json!({

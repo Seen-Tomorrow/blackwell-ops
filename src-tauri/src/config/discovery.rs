@@ -188,8 +188,8 @@ fn discover_providers() -> Vec<crate::types::ProviderConfig> {
                     optional_download: identity.optional_download,
                     template_version: identity.template_version,
                     needs_template_attention: false,
-                    launch_profile: crate::templates::load_provider_defaults(&identity.id)
-                        .map(|t| crate::types::LaunchProfile::from_spawn_profile(&t.spawn_profile))
+                    spawn_profile: crate::templates::load_provider_defaults(&identity.id)
+                        .map(|t| t.spawn_profile.clone())
                         .unwrap_or_default(),
                 };
                 apply_factory_layout_defaults(&mut discovered, &identity.id);
@@ -316,7 +316,7 @@ pub fn build_config_with_providers_full(mut config: AppConfig) -> AppConfig {
         let pid = p.id.clone();
         resolve_provider_binaries_from_meta(&mut p, meta_map.get(&pid).copied());
         if let Some(tmpl) = crate::templates::load_provider_defaults(&p.id) {
-            p.launch_profile = crate::types::LaunchProfile::from_spawn_profile(&tmpl.spawn_profile);
+            p.spawn_profile = tmpl.spawn_profile.clone();
         }
         providers.push(p);
     }
@@ -389,15 +389,15 @@ pub fn build_config_with_providers_full(mut config: AppConfig) -> AppConfig {
                 optional_download: false,
                 template_version: if tv_changed { factory_tv } else { meta.template_version },
                 needs_template_attention: tv_changed,
-                launch_profile: tmpl_key
+                spawn_profile: tmpl_key
                     .as_ref()
                     .and_then(|key| crate::templates::load_provider_defaults(key))
-                    .map(|t| crate::types::LaunchProfile::from_spawn_profile(&t.spawn_profile))
+                    .map(|t| t.spawn_profile.clone())
                     .unwrap_or_default(),
             };
             apply_meta_layout_overrides(&mut custom, &meta, &factory_key);
             resolve_provider_binaries_from_meta(&mut custom, Some(&meta));
-            // Custom: launch_profile stays empty (no Full Auto); caps live on custom_capabilities.
+            // Custom: spawn_profile stays empty (no Full Auto); caps live on custom_capabilities.
             if is_custom_template_type(&custom.template_type) {
                 custom.custom_capabilities = meta.custom_capabilities.clone();
             }

@@ -760,8 +760,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     [resolvedProviders, effectiveBackendType],
   );
   const isCustomProvider = isCustomTemplateType(currentProvider?.template_type);
-  const launchProfile = currentProvider?.launchProfile;
-  const fitLaunchSupported = providerSupportsFitLaunch(launchProfile);
+  const spawnProfile = currentProvider?.spawnProfile;
+  const fitLaunchSupported = providerSupportsFitLaunch(spawnProfile);
   const fullAutoMode = fitLaunchSupported && fitLaunchEnabled;
   /**
    * Joe essentials presets only on Full Auto (not Assisted Full chips).
@@ -772,18 +772,18 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   const powerCockpitMode = !fullAutoMode && configView === "full";
   // Custom / empty profile: always allow tensor/row if present in template values.
   const tensorSplitSupported =
-    isCustomProvider || launchProfile?.tensorSplit !== false;
+    isCustomProvider || spawnProfile?.tensor_split !== false;
   const essentialFactoryKeys = useMemo(
-    () => resolveEssentialParamKeys(launchProfile),
-    [launchProfile],
+    () => resolveEssentialParamKeys(spawnProfile),
+    [spawnProfile],
   );
   useEffect(() => {
     if (!fitLaunchSupported) {
       setFitLaunchEnabled(false);
       return;
     }
-    setFitLaunchEnabled(loadAutoVramEnabled(effectiveBackendType, launchProfile?.autoVram ?? true));
-  }, [effectiveBackendType, fitLaunchSupported, launchProfile?.autoVram]);
+    setFitLaunchEnabled(loadAutoVramEnabled(effectiveBackendType, spawnProfile?.auto_vram ?? true));
+  }, [effectiveBackendType, fitLaunchSupported, spawnProfile?.auto_vram]);
 
   useEffect(() => {
     setConfigView(loadConfigView(effectiveBackendType, "essentials"));
@@ -1053,7 +1053,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     systemInfo,
     autoVramLaunch: fitLaunchSupported,
     fullAutoMode,
-    fitStyle: launchProfile?.fitStyle ?? "",
+    fitStyle: spawnProfile?.fit_style ?? "",
   });
 
   const splitModeActive = isSplitModeActive(config.split);

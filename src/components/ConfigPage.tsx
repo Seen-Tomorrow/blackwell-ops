@@ -766,7 +766,7 @@ export default function ConfigPage({
       exportGroupOrderBase,
       protectedGroups,
     );
-    const essentialFactoryKeys = resolveEssentialParamKeys(currentProvider.launchProfile);
+    const essentialFactoryKeys = resolveEssentialParamKeys(currentProvider.spawnProfile);
     const essentialParamKeys = computeEssentialParamKeysForExport(
       exportParams,
       essentialFactoryKeys,
@@ -885,8 +885,8 @@ export default function ConfigPage({
   }, [currentProvider, editorUnlocked, buildUserSavedParams, persistProviderToConfig, selectedProviderId, configActor, protectedGroups]);
 
   const essentialFactoryKeys = useMemo(
-    () => resolveEssentialParamKeys(currentProvider?.launchProfile),
-    [currentProvider?.launchProfile],
+    () => resolveEssentialParamKeys(currentProvider?.spawnProfile),
+    [currentProvider?.spawnProfile],
   );
 
   const toggleParamEssential = useCallback(async (key: string) => {
