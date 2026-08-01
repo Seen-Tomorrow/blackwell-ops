@@ -3,6 +3,7 @@
 
 use serde::Serialize;
 use std::path::Path;
+#[cfg(debug_assertions)]
 use std::sync::Mutex;
 use tauri::Manager;
 
@@ -72,6 +73,7 @@ pub fn get_dev_update_version_override(
 }
 
 /// Dev-only: pretend the app is on `version` for update checks (`null` clears).
+#[cfg_attr(not(debug_assertions), allow(unused_variables))]
 #[tauri::command]
 pub fn set_dev_update_version_override(version: Option<String>) -> Result<(), String> {
     #[cfg(not(debug_assertions))]
@@ -89,6 +91,7 @@ pub fn set_dev_update_version_override(version: Option<String>) -> Result<(), St
 }
 
 /// Dev-only: toggle fake version one patch behind real (for updater UI testing).
+#[cfg_attr(not(debug_assertions), allow(unused_variables))]
 #[tauri::command]
 pub fn toggle_dev_update_version_fake(
     app_handle: tauri::AppHandle,

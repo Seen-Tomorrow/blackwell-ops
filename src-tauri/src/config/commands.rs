@@ -75,39 +75,41 @@ pub fn reset_param_to_template(provider_id: String, param_key: String) -> Result
 /// re-discover bundled providers, persist, and sync in-memory config (webview reload ≠ Rust restart).
 #[tauri::command]
 pub fn dev_reset_first_run(
-    config: tauri::State<'_, std::sync::Arc<std::sync::Mutex<AppConfig>>>,
+    _config: tauri::State<'_, std::sync::Arc<std::sync::Mutex<AppConfig>>>,
 ) -> Result<(), String> {
     #[cfg(not(debug_assertions))]
     {
         return Err("dev_reset_first_run is only available in debug builds".to_string());
     }
-
-    crate::model_cache::clear_cache()?;
-
-    let hf_token = {
-        let cfg = config.lock().map_err(|e| e.to_string())?;
-        cfg.hf_token.clone()
-    };
-
-    let mut fresh = build_fresh_config();
-    fresh.hf_token = hf_token;
-    fresh.setup_completed = false;
-
-    let built = build_config_with_providers_full(fresh);
-
-    let provider_count = built.providers.len();
-    let mut to_persist = built.clone();
-    save_config(&mut to_persist)?;
-
+    #[cfg(debug_assertions)]
     {
-        let mut cfg = config.lock().map_err(|e| e.to_string())?;
-        *cfg = built;
+        crate::model_cache::clear_cache()?;
+
+        let hf_token = {
+            let cfg = _config.lock().map_err(|e| e.to_string())?;
+            cfg.hf_token.clone()
+        };
+
+        let mut fresh = build_fresh_config();
+        fresh.hf_token = hf_token;
+        fresh.setup_completed = false;
+
+        let built = build_config_with_providers_full(fresh);
+
+        let provider_count = built.providers.len();
+        let mut to_persist = built.clone();
+        save_config(&mut to_persist)?;
+
+        {
+            let mut cfg = _config.lock().map_err(|e| e.to_string())?;
+            *cfg = built;
+        }
+        let _ = std::fs::create_dir_all(default_models_dir());
+        log::info!(
+            "[config] dev_reset_first_run: paths reset, cache cleared, {provider_count} provider(s) rediscovered",
+        );
+        Ok(())
     }
-    let _ = std::fs::create_dir_all(default_models_dir());
-    log::info!(
-        "[config] dev_reset_first_run: paths reset, cache cleared, {provider_count} provider(s) rediscovered",
-    );
-    Ok(())
 }
 
 /// Portable config folder path for UI (e.g. CONFIG → RECOVERY).
