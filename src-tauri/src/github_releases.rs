@@ -24,8 +24,6 @@ pub const PLUGIN_ASSET_PREFIX: &str = "PLUGIN_";
 
 /// App archive stem after optional CORE_ prefix: `Blackwell-Ops-App-vX.Y.Z.7z`.
 pub const APP_7Z_STEM: &str = "Blackwell-Ops-App-";
-/// Legacy / alias — same as stem (pre-prefix era).
-pub const APP_7Z_PREFIX: &str = APP_7Z_STEM;
 
 /// NSIS core engine provider(s) — runtime packs use CORE_ when shipped separately.
 pub fn is_core_engine_provider(provider_id: &str) -> bool {
@@ -261,14 +259,6 @@ pub async fn fetch_recent_version_releases(per_page: u32) -> Result<Vec<GitHubRe
         }
     }
     Ok(out)
-}
-
-pub async fn fetch_latest_version_release() -> Result<GitHubRelease, String> {
-    fetch_recent_version_releases(30)
-        .await?
-        .into_iter()
-        .next()
-        .ok_or_else(|| "No semver app release found on GitHub".to_string())
 }
 
 pub fn find_asset_by_name(release: &GitHubRelease, name: &str) -> Option<ReleaseAsset> {

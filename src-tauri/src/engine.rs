@@ -953,7 +953,6 @@ fn assemble_launch_command(
 async fn peek_next_launch_port(
     app: &tauri::State<'_, AppContext>,
     config: &EngineConfig,
-    backend_type: &str,
 ) -> Result<u16, String> {
     let provider_base_port = config
         .get_param_str("base_port")
@@ -1143,7 +1142,7 @@ pub async fn preview_launch_command(
     };
 
     let mut config = config;
-    config.port = peek_next_launch_port(&app, &config, &backend_type).await?;
+    config.port = peek_next_launch_port(&app, &config).await?;
     assemble_launch_command(&cfg, &config, &backend_type).map(|a| a.launch_cmd)
 }
 
@@ -1174,7 +1173,7 @@ pub async fn open_nobsproof_cmd(
     crate::config::validate_model_path(&config.model_path)?;
 
     let mut config = config;
-    config.port = peek_next_launch_port(&app, &config, &backend_type).await?;
+    config.port = peek_next_launch_port(&app, &config).await?;
     let assembled = assemble_launch_command(&cfg, &config, &backend_type)?;
     let cuda = crate::foundry_toolchain::portable_cuda_env_for_profile(&assembled.binary_profile)?;
 

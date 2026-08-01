@@ -235,9 +235,3 @@ pub async fn build_plugin_catalog(
     })
 }
 
-pub fn catalog_has_pending_updates(response: &PluginCatalogResponse) -> bool {
-    response
-        .plugins
-        .iter()
-        .any(|p| p.profiles.iter().any(|row| row.update_available))
-}

@@ -1,7 +1,6 @@
 //! Provider persistence: ProviderConfig, AppConfig, per-provider user config files.
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::path::PathBuf;
 use crate::config::*;
 use crate::types::ProviderConfig;

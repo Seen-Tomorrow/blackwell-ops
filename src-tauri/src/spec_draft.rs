@@ -22,15 +22,6 @@ impl DraftRole {
         }
     }
 
-    pub fn from_str(s: &str) -> Self {
-        match s.trim().to_lowercase().as_str() {
-            "mtp_embedded" => DraftRole::MtpEmbedded,
-            "external_dflash" => DraftRole::ExternalDflash,
-            "external_eagle3" => DraftRole::ExternalEagle3,
-            _ => DraftRole::None,
-        }
-    }
-
     pub fn is_external_draft_only(self) -> bool {
         matches!(self, DraftRole::ExternalDflash | DraftRole::ExternalEagle3)
     }
@@ -181,10 +172,6 @@ pub fn spec_type_needs_external_draft(spec_type: &str) -> bool {
             && lower != "draft-mtp"
             && lower != "draft-simple"
     }
-}
-
-pub fn spec_type_parallel_conflict(spec_type: &str) -> bool {
-    spec_type.trim().eq_ignore_ascii_case("draft-mtp")
 }
 
 pub fn resolve_spec_draft_model_path(
