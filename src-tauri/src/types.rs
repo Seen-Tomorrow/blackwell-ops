@@ -333,6 +333,8 @@ pub struct StackEntry {
     pub parallel: i64,
 }
 
+/// serde `#[serde(default = ...)]` calls this by name — the dead-code lint can't see it.
+#[allow(dead_code)]
 fn default_stack_parallel() -> i64 {
     1
 }

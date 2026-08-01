@@ -930,6 +930,7 @@ fn is_memory_breakdown_header(line: &str) -> bool {
 }
 
 /// Trailing unaccounted MiB after the SELF paren: `... (2395 = 500 + 1632 + 263) + 133`
+#[cfg(test)]
 fn extract_unaccounted_mib_from_cuda_breakdown_line(line: &str) -> Option<f64> {
     let last_close = line.rfind(')')?;
     let after = line[last_close + 1..].trim();
@@ -940,6 +941,7 @@ fn extract_unaccounted_mib_from_cuda_breakdown_line(line: &str) -> Option<f64> {
 /// Sum of positive per-GPU `unaccounted` from the last complete memory breakdown table.
 /// Engine definition: `unaccounted = total - free - self` (accounting residual, NOT split tax).
 /// Values are often negative during --fit; do not surface in forecast UI.
+#[cfg(test)]
 pub fn parse_last_breakdown_unaccounted_mib(output: &str) -> Option<f64> {
     let mut last_sum: Option<f64> = None;
     let mut in_table = false;

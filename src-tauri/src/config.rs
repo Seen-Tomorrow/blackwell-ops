@@ -52,6 +52,7 @@ pub use validate::*;
 
 use crate::types::ModelPathEntry;
 
+#[cfg(test)]
 mod merge_tests {
     use super::*;
     use crate::templates::{ProviderDefaultParam, ProviderTemplate};
