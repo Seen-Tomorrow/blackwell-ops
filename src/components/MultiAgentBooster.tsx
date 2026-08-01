@@ -163,6 +163,16 @@ export interface MultiAgentBoosterProps {
   }) => Promise<void>;
   /** Select a running engine card (e.g. BRAIN after AtomCode opens). */
   onSelectEngine?: (slotIdx: number) => void;
+  /**
+   * Which product sliders to show. Default all on (Master).
+   * Custom providers pass false for missing template keys (no Solo–Army / Think / Boost fill).
+   */
+  showAgents?: boolean;
+  showMemory?: boolean;
+  showThink?: boolean;
+  showBoost?: boolean;
+  /** When true, Agents marks come only from parallelValues (no hardcoded 1–32 presets). */
+  agentsFromTemplateOnly?: boolean;
 }
 
 export default function MultiAgentBooster({
@@ -207,6 +217,11 @@ export default function MultiAgentBooster({
   onHarnessOpenChange,
   onRelaunchSeat,
   onSelectEngine,
+  showAgents = true,
+  showMemory = true,
+  showThink = true,
+  showBoost = true,
+  agentsFromTemplateOnly = false,
 }: MultiAgentBoosterProps) {
   const [harnessOpen, setHarnessOpen] = useState(false);
   /** Which external agent tool the harness targets. */
@@ -313,8 +328,12 @@ export default function MultiAgentBooster({
     [kvQuantValues, markCustomValues],
   );
   const agentOptions = useMemo(
-    () => buildAgentOptions(parallelValues, { markNonPresetAsCustom: markCustomValues }),
-    [parallelValues, markCustomValues],
+    () =>
+      buildAgentOptions(parallelValues, {
+        markNonPresetAsCustom: markCustomValues,
+        onlyTemplateValues: agentsFromTemplateOnly,
+      }),
+    [parallelValues, markCustomValues, agentsFromTemplateOnly],
   );
 
   const plan = useMemo(
@@ -2026,6 +2045,7 @@ export default function MultiAgentBooster({
         )}
 
         <div className="full-auto-cockpit__grid">
+          {showMemory && memoryOptions.length > 0 && (
           <div className="full-auto-cockpit__grid-cell">
             <CockpitSlider
               label="Memory"
@@ -2052,6 +2072,8 @@ export default function MultiAgentBooster({
               heroBadge
             />
           </div>
+          )}
+          {showAgents && agentOptions.length > 0 && (
           <div className="full-auto-cockpit__grid-cell">
             <CockpitSlider
               label="Agents"
@@ -2076,7 +2098,9 @@ export default function MultiAgentBooster({
               className={mtpLocksAgents ? "cockpit-slider-row--mtp-agents" : ""}
             />
           </div>
+          )}
 
+          {showBoost && (
           <div className="full-auto-cockpit__grid-cell">
             <CockpitSlider
               label="Boost"
@@ -2126,6 +2150,8 @@ export default function MultiAgentBooster({
               })}
             />
           </div>
+          )}
+          {showThink && (
           <div className="full-auto-cockpit__grid-cell">
             <CockpitSlider
               label="Think"
@@ -2138,6 +2164,7 @@ export default function MultiAgentBooster({
               }))}
             />
           </div>
+          )}
         </div>
 
       </div>

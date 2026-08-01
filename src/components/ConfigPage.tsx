@@ -70,6 +70,11 @@ import {
   stripGroupFromLayout,
 } from "../lib/groupLayoutUtils";
 import {
+  isCustomTemplateType,
+  masterParamsToUserEssentials,
+  repairCustomEssentialsGroups,
+} from "../lib/customProvider";
+import {
   groupEditCaps,
   isCatalogVisibleParam,
   isPlacementChromeParam,
@@ -633,9 +638,16 @@ export default function ConfigPage({
     if (!currentProvider) return;
     const currentUserParams = buildUserSavedParams(currentProvider);
     const { params: migratedParams, changed: paramsChanged } = migrateCatalogParams(currentUserParams);
+    let paramsAfter = migratedParams;
+    let customRepairChanged = false;
+    if (isCustomTemplateType(currentProvider.template_type)) {
+      const repaired = repairCustomEssentialsGroups(paramsAfter);
+      paramsAfter = repaired.params;
+      customRepairChanged = repaired.changed;
+    }
     const baseOrder = customGroupOrder ?? currentProvider.groupOrder ?? [];
     const { order: migratedOrder, changed: orderChanged } = migrateCatalogGroupOrder(baseOrder);
-    const present = new Set(migratedParams.map((p) => paramUiGroup(p.ui_group)));
+    const present = new Set(paramsAfter.map((p) => paramUiGroup(p.ui_group)));
     for (const g of migratedOrder) present.add(normalizeUiGroup(g));
     const resolvedProt = resolveProtectedGroups(currentProvider.protectedGroups, present);
     const hadProt = (currentProvider.protectedGroups?.length ?? 0) > 0;
@@ -644,11 +656,11 @@ export default function ConfigPage({
       resolvedProt.length > 0 &&
       JSON.stringify(normalizeProtectedGroups(currentProvider.protectedGroups)) !==
         JSON.stringify(resolvedProt);
-    if (!paramsChanged && !orderChanged && !protChanged) return;
+    if (!paramsChanged && !orderChanged && !protChanged && !customRepairChanged) return;
 
     let updatedProvider: ProviderConfig = {
       ...currentProvider,
-      userEditedTemplateParams: migratedParams,
+      userEditedTemplateParams: paramsAfter,
     };
     if (orderChanged) {
       updatedProvider = {
@@ -989,6 +1001,52 @@ export default function ConfigPage({
     await persistProviderToConfig(updatedProvider);
     showSaved("SAVED");
   }, [currentProvider, editorUnlocked, buildUserSavedParams, persistProviderToConfig, selectedProviderId]);
+
+  /** P3: seed Master-aligned essentials as regular user rows (not protected). */
+  const handleAddEssentialsPack = useCallback(async () => {
+    if (!currentProvider || !editorUnlocked) return;
+    try {
+      const master = await invoke<ProviderTemplate>("get_template", {
+        providerId: DEFAULT_PROVIDER_ID,
+      });
+      const currentUserParams = buildUserSavedParams(currentProvider);
+      const existing = new Set(currentUserParams.map((p) => p.key));
+      const maxOrder = Math.max(...currentUserParams.map((p) => p.order), -1);
+      const pack = masterParamsToUserEssentials(
+        (master.params || []) as Parameters<typeof masterParamsToUserEssentials>[0],
+        existing,
+        maxOrder + 1,
+      );
+      if (pack.length === 0) {
+        showSaved("PACK ALREADY PRESENT");
+        return;
+      }
+      // Clear excluded keys for pack so merge doesn't keep them out
+      const excluded = (currentProvider.excludedParamKeys || []).filter(
+        (k) => !pack.some((p) => p.key === k),
+      );
+      const updated: ProviderConfig = {
+        ...currentProvider,
+        userEditedTemplateParams: [...currentUserParams, ...pack],
+        excludedParamKeys: excluded.length > 0 ? excluded : undefined,
+      };
+      setAllProviders((prev) =>
+        prev.map((p) => (p.id !== selectedProviderId ? p : updated)),
+      );
+      await persistProviderToConfig(updated);
+      dispatchAppEvent(EVENTS.paramConfigChanged);
+      showSaved(`ADDED ${pack.length} STARTER`);
+    } catch (err) {
+      console.error("[CONFIG] essentials pack failed:", err);
+      showSaved("PACK FAILED");
+    }
+  }, [
+    currentProvider,
+    editorUnlocked,
+    buildUserSavedParams,
+    persistProviderToConfig,
+    selectedProviderId,
+  ]);
 
   // ── Admin: add value to param (writes to BOTH values and userAddedValues) ───
   const addValueToParam = useCallback(async (key: string, value: string | number) => {
@@ -1666,7 +1724,34 @@ export default function ConfigPage({
           {/* Param rows */}
           <div className="config-params-list flex-1 overflow-y-auto eink-scrollbar p-4 min-h-0">
             {catalogVisibleParams.length === 0 ? (
-              <div className="flex items-center justify-center h-full text-stealth-muted text-xs font-mono">LOADING PARAMETERS...</div>
+              <div className="flex flex-col items-center justify-center h-full gap-3 px-4 text-center">
+                <p className="text-stealth-muted text-xs font-mono">
+                  {editorUnlocked
+                    ? "No parameters yet — add from catalog or seed a starter pack."
+                    : "No parameters on this provider. Unlock EDITOR to add from catalog."}
+                </p>
+                {editorUnlocked && (
+                  <div className="flex flex-col sm:flex-row gap-2 w-full max-w-md">
+                    <button
+                      type="button"
+                      onClick={() => setShowCatalogSearch(true)}
+                      className="flex-1 py-3 text-sm font-mono bg-nv-green/15 border border-nv-green/40 text-nv-green hover:bg-nv-green/25 transition-colors rounded tracking-wider"
+                    >
+                      + ADD FROM CATALOG
+                    </button>
+                    {isCustomTemplateType(currentProvider?.template_type) && (
+                      <button
+                        type="button"
+                        onClick={() => { void handleAddEssentialsPack(); }}
+                        className="flex-1 py-3 text-sm font-mono border border-stealth-border/50 text-stealth-muted hover:text-nv-green hover:border-nv-green/40 transition-colors rounded tracking-wider"
+                        title="Insert Master-aligned ctx/parallel/kv/port/split/… as normal user-editable rows"
+                      >
+                        + STARTER PACK
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
             ) : (
               (() => {
                 const rawOrder = editorUnlocked
@@ -1686,13 +1771,23 @@ export default function ConfigPage({
                 return (
                   <div className="config-param-group-block space-y-3">
                       {editorUnlocked && (
-                        <div className="mb-3">
+                        <div className="mb-3 flex flex-col gap-2">
                           <button
                             onClick={() => setShowCatalogSearch(true)}
                             className="w-full py-3 text-xl font-mono bg-nv-green/15 border border-nv-green/40 text-nv-green hover:bg-nv-green/25 transition-colors rounded tracking-wider"
                           >
                             + ADD NEW FROM CATALOG
                           </button>
+                          {isCustomTemplateType(currentProvider?.template_type) && (
+                            <button
+                              type="button"
+                              onClick={() => { void handleAddEssentialsPack(); }}
+                              className="w-full py-2 text-[10px] font-mono border border-stealth-border/40 text-stealth-muted hover:text-nv-green hover:border-nv-green/40 transition-colors rounded tracking-wider"
+                              title="Insert Master-aligned essentials as editable user rows"
+                            >
+                              + STARTER PACK (MASTER KEYS)
+                            </button>
+                          )}
                         </div>
                       )}
                     {groupOrder.map((groupName, groupIdx) => {

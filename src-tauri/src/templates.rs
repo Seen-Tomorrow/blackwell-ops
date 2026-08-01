@@ -438,9 +438,35 @@ impl ProviderTemplate {
         }
     }
 
+    /// Apply custom-provider capability toggles onto a bare spawn profile.
+    pub fn apply_custom_capabilities(
+        sp: &mut SpawnProfile,
+        caps: &crate::types::CustomProviderCapabilities,
+    ) {
+        sp.supports_fusion = caps.fusion;
+        if caps.fusion && sp.fusion_adapter.is_empty() {
+            sp.fusion_adapter = "ggml_master".into();
+        }
+        sp.enable_metrics = caps.metrics;
+        if caps.verbose {
+            let raw = if caps.verbose_args.trim().is_empty() {
+                "-lv 4"
+            } else {
+                caps.verbose_args.trim()
+            };
+            sp.verbosity_args = raw
+                .split_whitespace()
+                .map(|s| s.to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+        } else {
+            sp.verbosity_args.clear();
+        }
+    }
+
     /// Load template for CLI launch.
     /// Factory providers: their JSON (+ spawn overrides). No silent fallback to master flags.
-    /// Missing factory → bare custom shell (custom template_type / user binary).
+    /// Missing factory → bare custom shell + optional user capability toggles from meta.
     pub fn load_for_provider(provider_id: &str) -> Result<Self, String> {
         if let Some(mut tmpl) = Self::load_by_id(provider_id) {
             apply_spawn_profile_overrides(provider_id, &mut tmpl);
@@ -451,7 +477,14 @@ impl ProviderTemplate {
             "[template] No factory defaults for '{}' — using bare custom launch shell",
             provider_id
         );
-        Ok(Self::bare_custom_shell())
+        let mut shell = Self::bare_custom_shell();
+        if let Some(meta) = crate::config::load_user_providers_meta()
+            .into_iter()
+            .find(|m| m.id == provider_id)
+        {
+            Self::apply_custom_capabilities(&mut shell.spawn_profile, &meta.custom_capabilities);
+        }
+        Ok(shell)
     }
 
     /// Resolve a param value from extra_params override, then user's saved default_value.

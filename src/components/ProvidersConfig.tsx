@@ -35,6 +35,11 @@ import { loadFoundryLastRefresh, loadStartupUpdatesCache, saveFoundryLastRefresh
 import { isPlaceholderBuildVersion, refreshProvidersBuildInfo } from "../lib/foundryBuildRefresh";
 import { BuildProfileRow, RestoreConfirmModal, UpdateStatus, type BinarySourceKind } from "./FoundryComponents";
 import FoundryToolchainPanel from "./FoundryToolchainPanel";
+import {
+  DEFAULT_CUSTOM_CAPABILITIES,
+  isCustomTemplateType,
+  resolveCustomCapabilities,
+} from "../lib/customProvider";
 
 function formatElapsed(startTime: number): string {
   const secs = Math.floor((Date.now() - startTime) / 1000);
@@ -61,6 +66,13 @@ interface FormState {
   build_profile: string;
   template_type: string;
   factory_provided?: boolean;
+  /** Custom only */
+  customCapabilities?: {
+    fusion?: boolean;
+    metrics?: boolean;
+    verbose?: boolean;
+    verboseArgs?: string;
+  };
 }
 
 export default function ProvidersConfig({ providers: initialProviders, onProvidersChange }: ProvidersConfigProps) {
@@ -300,6 +312,9 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
           !form.template_type.trim() || form.template_type === "custom"
             ? "custom"
             : form.template_type,
+        customCapabilities: isCustomTemplateType(form.template_type)
+          ? resolveCustomCapabilities(form.customCapabilities)
+          : undefined,
       };
 
       await invoke("save_provider", { provider });
@@ -340,6 +355,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
           ? "custom"
           : p.template_type,
       factory_provided: p.factory_provided,
+      customCapabilities: resolveCustomCapabilities(p.customCapabilities),
     });
     setEditingId(p.id);
     setShowAddForm(false);
@@ -1362,6 +1378,9 @@ function ProviderFormPanel({
         />
       </div>
       <ProviderFormFields form={form} setForm={setForm} handleBrowse={handleBrowse} isFactoryProvided={isFactoryProvided} />
+      {isCustomTemplateType(form.template_type) && (
+        <CustomCapabilitiesFields form={form} setForm={setForm} />
+      )}
       <div className="flex gap-2 pt-1">
         <button
           type="button"
@@ -1377,6 +1396,79 @@ function ProviderFormPanel({
           </button>
         )}
       </div>
+    </div>
+  );
+}
+
+/** P2: custom provider spawn/product toggles (all off by default). */
+function CustomCapabilitiesFields({
+  form,
+  setForm,
+}: {
+  form: FormState;
+  setForm: React.Dispatch<React.SetStateAction<FormState>>;
+}) {
+  const caps = resolveCustomCapabilities(form.customCapabilities);
+  const patch = (partial: FormState["customCapabilities"]) => {
+    setForm((prev) => ({
+      ...prev,
+      customCapabilities: {
+        ...resolveCustomCapabilities(prev.customCapabilities),
+        ...partial,
+      },
+    }));
+  };
+
+  return (
+    <div className="mt-2 pt-2 border-t border-stealth-border/30 space-y-2">
+      <div className="text-[8px] font-mono theme-accent-text tracking-widest uppercase">
+        Custom capabilities
+      </div>
+      <p className="text-[8px] font-mono config-muted leading-relaxed">
+        Bare shell by default. Opt in only if this fork supports the feature. Cockpit binds by Master
+        param keys after you add them in CONFIG.
+      </p>
+      <label className="flex items-center gap-2 text-[10px] font-mono cursor-pointer">
+        <input
+          type="checkbox"
+          checked={caps.fusion}
+          onChange={(e) => patch({ fusion: e.target.checked })}
+          className="accent-nv-green"
+        />
+        <span>Fusion telemetry</span>
+        <span className="text-[8px] config-muted">(needs /slots + logs)</span>
+      </label>
+      <label className="flex items-center gap-2 text-[10px] font-mono cursor-pointer">
+        <input
+          type="checkbox"
+          checked={caps.metrics}
+          onChange={(e) => patch({ metrics: e.target.checked })}
+          className="accent-nv-green"
+        />
+        <span>Inject --metrics</span>
+      </label>
+      <label className="flex items-center gap-2 text-[10px] font-mono cursor-pointer">
+        <input
+          type="checkbox"
+          checked={caps.verbose}
+          onChange={(e) => patch({ verbose: e.target.checked })}
+          className="accent-nv-green"
+        />
+        <span>Verbose logs</span>
+      </label>
+      {caps.verbose && (
+        <div className="flex items-center gap-2 pl-5">
+          <label className="text-[8px] font-mono config-muted shrink-0">Flags</label>
+          <input
+            type="text"
+            value={caps.verboseArgs}
+            onChange={(e) => patch({ verboseArgs: e.target.value })}
+            placeholder={DEFAULT_CUSTOM_CAPABILITIES.verboseArgs}
+            className="config-input flex-1 text-[10px] font-mono px-1 py-0.5"
+            title='Space-separated CLI tokens, e.g. "-lv 4" or "--verbose"'
+          />
+        </div>
+      )}
     </div>
   );
 }

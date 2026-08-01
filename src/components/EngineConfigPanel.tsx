@@ -86,6 +86,12 @@ import {
   SYSTEM_CATALOG_PARAM_KEYS,
   SYSTEM_UI_GROUP,
 } from "../lib/systemParams";
+import {
+  isCustomTemplateType,
+  providerHasAnyCockpitBinding,
+  providerHasParamKey,
+  shouldSoftLaunchOnForecast,
+} from "../lib/customProvider";
 import ParamCatalogSearch from "./ParamCatalogSearch";
 import {
   catalogEntryToParam,
@@ -753,6 +759,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     () => resolvedProviders?.find((p) => p.id === effectiveBackendType),
     [resolvedProviders, effectiveBackendType],
   );
+  const isCustomProvider = isCustomTemplateType(currentProvider?.template_type);
   const launchProfile = currentProvider?.launchProfile;
   const fitLaunchSupported = providerSupportsFitLaunch(launchProfile);
   const fullAutoMode = fitLaunchSupported && fitLaunchEnabled;
@@ -763,7 +770,9 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   const specSimpleMode = fullAutoMode;
   /** Assisted Full — power cockpit (no Smart batch push; raw extra spec types). */
   const powerCockpitMode = !fullAutoMode && configView === "full";
-  const tensorSplitSupported = launchProfile?.tensorSplit !== false;
+  // Custom / empty profile: always allow tensor/row if present in template values.
+  const tensorSplitSupported =
+    isCustomProvider || launchProfile?.tensorSplit !== false;
   const essentialFactoryKeys = useMemo(
     () => resolveEssentialParamKeys(launchProfile),
     [launchProfile],
@@ -1049,17 +1058,43 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
   const splitModeActive = isSplitModeActive(config.split);
 
-  const launchChrome = useMemo(
-    () => resolveLaunchChromePolicy({
+  const hasSplitParam = providerHasParamKey(allParamsResolved, "split");
+  const softLaunchForecast = shouldSoftLaunchOnForecast(currentProvider);
+
+  const launchChrome = useMemo(() => {
+    // Custom: never multi-GPU lock / device ALL / hide split none — user owns chrome.
+    if (isCustomProvider && !fullAutoMode) {
+      const forecastNo =
+        vramCalc.manifest != null && !vramCalc.manifest.fits;
+      return {
+        mode: "assisted" as const,
+        chromeDisabled: false,
+        deviceLocked: false,
+        splitLocked: !hasSplitParam,
+        hideSplitNone: false,
+        reason: forecastNo
+          ? "Forecast incomplete or tight — launch still allowed for custom providers"
+          : undefined,
+      };
+    }
+    return resolveLaunchChromePolicy({
       fullAutoMode,
       gpus,
       config,
       manifest: vramCalc.manifest,
       weightGb: (model?.metadata?.file_size_bytes ?? 0) / (1024 ** 3),
       runningSlots: runningSlotsForPlan,
-    }),
-    [fullAutoMode, gpus, config, vramCalc.manifest, model?.metadata?.file_size_bytes, runningSlotsForPlan],
-  );
+    });
+  }, [
+    isCustomProvider,
+    hasSplitParam,
+    fullAutoMode,
+    gpus,
+    config,
+    vramCalc.manifest,
+    model?.metadata?.file_size_bytes,
+    runningSlotsForPlan,
+  ]);
 
   useEffect(() => {
     if (!fullAutoMode) return;
@@ -1070,6 +1105,15 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
   useEffect(() => {
     if (fullAutoMode) return;
+    // Custom: never auto-promote split to layer (false multi-GPU for tiny models).
+    if (isCustomProvider) {
+      const split = String(config.split ?? "none").trim().toLowerCase();
+      if (split === "layer" && autoSplitPromotedRef.current) {
+        autoSplitPromotedRef.current = false;
+        updateParam("split", "none");
+      }
+      return;
+    }
     const split = String(config.split ?? "none").trim().toLowerCase();
     if (launchChrome.hideSplitNone) {
       if (split === "none" || split === "") {
@@ -1082,7 +1126,21 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       autoSplitPromotedRef.current = false;
       updateParam("split", "none");
     }
-  }, [fullAutoMode, launchChrome.hideSplitNone, config.split, updateParam]);
+  }, [fullAutoMode, isCustomProvider, launchChrome.hideSplitNone, config.split, updateParam]);
+
+  // Custom: on provider switch, reset topology to solo (starter pack defaults often leave split=layer → ALL GPUs).
+  // User can change split/device after; we only reset when the provider id changes.
+  const customTopoInitForRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!isCustomProvider) {
+      customTopoInitForRef.current = null;
+      return;
+    }
+    if (customTopoInitForRef.current === effectiveBackendType) return;
+    customTopoInitForRef.current = effectiveBackendType;
+    updateParam("device", "GPU-0");
+    updateParam("split", "none");
+  }, [isCustomProvider, effectiveBackendType, updateParam]);
 
   const showChromeHints = useMemo(
     () => !fullAutoMode && !stack.some((s) => s.status === "LOADING"),
@@ -1167,10 +1225,13 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
   const parallelFactoryValues = useMemo(() => {
     const def = allParamsResolved.find((p) => p.key === "parallel");
+    if (!def) return []; // no hardcoded Solo…Army when param missing
     const user = new Set((def?.userAddedValues || []).map(String));
     const base = (def?.values || []).filter((v) => !user.has(String(v)));
-    return base.length > 0 ? base : [1, 4, 8, 16, 32];
-  }, [allParamsResolved]);
+    // Master family: if values empty, keep presets; custom with empty values → []
+    if (base.length > 0) return base;
+    return isCustomProvider ? [] : [1, 4, 8, 16, 32];
+  }, [allParamsResolved, isCustomProvider]);
 
   const parallelValues = useMemo(() => {
     const def = allParamsResolved.find((p) => p.key === "parallel");
@@ -1196,17 +1257,44 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
   const cockpitKvValues = useMemo(() => {
     const def = allParamsResolved.find((p) => p.key === "kv_quant");
+    if (!def) return [];
     const base = fullAutoFixed ? kvQuantFactoryValues : kvQuantValues;
-    if (!def) return base;
     return filterParamValuesForConfigView(def, base, cockpitValueView);
   }, [allParamsResolved, fullAutoFixed, cockpitValueView, kvQuantFactoryValues, kvQuantValues]);
 
   const cockpitParallelValues = useMemo(() => {
     const def = allParamsResolved.find((p) => p.key === "parallel");
+    if (!def) return []; // 2B: no parallel param → no Agents slider values
     const base = fullAutoFixed ? parallelFactoryValues : parallelValues;
-    if (!def) return base;
     return filterParamValuesForConfigView(def, base, cockpitValueView);
   }, [allParamsResolved, fullAutoFixed, cockpitValueView, parallelFactoryValues, parallelValues]);
+
+  const cockpitKvValuesBound = useMemo(() => {
+    if (!providerHasParamKey(allParamsResolved, "kv_quant")) return [];
+    return cockpitKvValues;
+  }, [allParamsResolved, cockpitKvValues]);
+
+  const showCockpitSurface = useMemo(
+    () => providerHasAnyCockpitBinding(allParamsResolved),
+    [allParamsResolved],
+  );
+
+  const cockpitShowAgents = providerHasParamKey(allParamsResolved, "parallel");
+  const cockpitShowMemory = providerHasParamKey(allParamsResolved, "kv_quant");
+  const cockpitShowThink =
+    providerHasParamKey(allParamsResolved, "reasoning")
+    || providerHasParamKey(allParamsResolved, "reasoning_preserve");
+  const cockpitShowBoost = useMemo(() => {
+    if (!isCustomProvider) return true;
+    // Custom: only if template has speculative profile keys / groups
+    return allParamsResolved.some(
+      (p) =>
+        p.key.startsWith("mtp_")
+        || p.key.startsWith("dflash_")
+        || p.key === "spec_type"
+        || (p.ui_group && /SPECULATIVE/i.test(p.ui_group)),
+    );
+  }, [isCustomProvider, allParamsResolved]);
 
   /** Active product method from Boost (source of truth for launch + SPEC-EXTRA). */
   const specBoostMethod: SpecBoostMethod = useMemo(() => {
@@ -2277,7 +2365,11 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
   const ctxDockedInCockpit = ctxCockpitDock === "cockpit";
   const showCtxAboveConfig =
-    model && !modelIsDraftOnly && (ctxStripProps.ctxValues?.length ?? 0) > 0 && !ctxDockedInCockpit;
+    model
+    && !modelIsDraftOnly
+    && providerHasParamKey(allParamsResolved, "ctx")
+    && (ctxStripProps.ctxValues?.length ?? 0) > 0
+    && !ctxDockedInCockpit;
 
   const {
     aboveGroupKeys,
@@ -2822,13 +2914,21 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     performLaunch,
   ]);
 
+  // Custom providers: never hard-block on VRAM forecast / HW_LOCKED (soft warn only).
+  // Soft message can show while fits=false; button must stay clickable.
   const launchDisabled =
     !model
     || modelIsDraftOnly
     || (specNeedsExternalDraft && !draftPathValid)
     || selectedProfileIsBuilding
-    || vramCalc.manifest?.scenario === "HW_LOCKED"
-    || (vramCalc.manifest != null && !vramCalc.manifest.fits);
+    || (
+      !isCustomProvider
+      && !softLaunchForecast
+      && (
+        vramCalc.manifest?.scenario === "HW_LOCKED"
+        || (vramCalc.manifest != null && !vramCalc.manifest.fits)
+      )
+    );
 
   // Keyboard launch — Ctrl+Enter triggers ignite (must track handleAddToStack for fresh manifest)
   useEffect(() => {
@@ -3095,12 +3195,17 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                       gpus={gpus}
                       deviceValue={config.device}
                       splitValue={config.split}
-                      splitValues={splitParamDef?.values ?? ["none"]}
+                      splitValues={
+                        // Prefer live template values (incl. tensor); filter still applied in panel
+                        (splitParamDef?.values?.length
+                          ? splitParamDef.values
+                          : ["none", "layer", "row", "tensor"])
+                      }
                       chromeDisabled={launchChrome.chromeDisabled}
                       deviceLocked={launchChrome.deviceLocked}
                       splitLocked={launchChrome.splitLocked}
-                      hideSplitNone={launchChrome.hideSplitNone}
-                      hideTensorSplit={!tensorSplitSupported}
+                      hideSplitNone={false}
+                      hideTensorSplit={!tensorSplitSupported && !isCustomProvider}
                       onDeviceChange={(v) => {
                         if (launchChrome.chromeDisabled || launchChrome.deviceLocked) return;
                         updateParam("device", v);
@@ -3367,7 +3472,15 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           atomcodeHarnessOpen ? " config-params-scroll--atomcode-wizard" : ""
         }`}
       >
-        {model && !modelIsDraftOnly && (
+        {model && !modelIsDraftOnly && !showCockpitSurface && isCustomProvider && (
+          <div className="mb-3 pb-3 border-b section-divider px-1">
+            <p className="text-[9px] font-mono config-muted leading-relaxed">
+              Cockpit controls bind to Master param keys (ctx, parallel, kv_quant, reasoning…).
+              Add them via CONFIG catalog or <span className="text-white/70">Starter pack</span>.
+            </p>
+          </div>
+        )}
+        {model && !modelIsDraftOnly && showCockpitSurface && (
           <div
             className={
               atomcodeHarnessOpen
@@ -3403,8 +3516,13 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
               dflashGetOfferLabel={dflashGetOfferLabel}
               onGetDflashDraft={() => { void handleGetDflashDraft(); }}
               onChangeDflashDraft={handleChangeDflashDraft}
-              kvQuantValues={cockpitKvValues}
+              kvQuantValues={cockpitKvValuesBound}
               parallelValues={cockpitParallelValues}
+              showAgents={cockpitShowAgents}
+              showMemory={cockpitShowMemory}
+              showThink={cockpitShowThink}
+              showBoost={cockpitShowBoost}
+              agentsFromTemplateOnly={isCustomProvider}
               port={
                 (selectedSlotIdx != null &&
                   stack.find((s) => s.idx === selectedSlotIdx && s.status === "RUNNING")?.port) ||
@@ -3686,11 +3804,23 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                 onClick={handleAddToStack}
                 disabled={launchDisabled}
                 title={
-                  customFlagsReplaceActive
-                    ? "REPLACE mode — panel config is bypassed; only custom flags are used"
-                    : customFlagsLaunchActive
-                      ? "APPEND mode — custom flags are added to panel config"
-                      : undefined
+                  launchDisabled
+                    ? !model
+                      ? "Select a model first"
+                      : modelIsDraftOnly
+                        ? "Draft models cannot launch as mains"
+                        : selectedProfileIsBuilding
+                          ? "Binary profile is building"
+                          : specNeedsExternalDraft && !draftPathValid
+                            ? "Select a draft model for speculative decoding"
+                            : "Launch blocked"
+                    : customFlagsReplaceActive
+                      ? "REPLACE mode — panel config is bypassed; only custom flags are used"
+                      : customFlagsLaunchActive
+                        ? "APPEND mode — custom flags are added to panel config"
+                        : isCustomProvider
+                          ? "Custom provider — VRAM forecast does not block launch"
+                          : undefined
                 }
                 className={`w-full h-full min-h-[2.75rem] min-w-0 ignite-btn config-launch-btn px-2 py-1.5 text-[11px] font-mono tracking-[0.18em] rounded-sm disabled:opacity-40 disabled:cursor-not-allowed flex flex-col items-stretch justify-center gap-0.5 ${customFlagsLaunchActive ? "overflow-visible" : "overflow-hidden"} ${launchAck ? "launch-ack" : ""}${customFlagsLaunchActive ? " config-launch-btn--custom-active" : ""}`}
               >
@@ -3927,11 +4057,23 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                       onClick={handleAddToStack}
                       disabled={launchDisabled}
                       title={
-                        customFlagsReplaceActive
-                          ? "REPLACE mode — panel config is bypassed; only custom flags are used"
-                          : customFlagsLaunchActive
-                            ? "APPEND mode — custom flags are added to panel config"
-                            : undefined
+                        launchDisabled
+                          ? !model
+                            ? "Select a model first"
+                            : modelIsDraftOnly
+                              ? "Draft models cannot launch as mains"
+                              : selectedProfileIsBuilding
+                                ? "Binary profile is building"
+                                : specNeedsExternalDraft && !draftPathValid
+                                  ? "Select a draft model for speculative decoding"
+                                  : "Launch blocked"
+                          : customFlagsReplaceActive
+                            ? "REPLACE mode — panel config is bypassed; only custom flags are used"
+                            : customFlagsLaunchActive
+                              ? "APPEND mode — custom flags are added to panel config"
+                              : isCustomProvider
+                                ? "Custom provider — VRAM forecast does not block launch"
+                                : undefined
                       }
                       className={`w-full h-full min-h-[2.75rem] min-w-0 ignite-btn config-launch-btn px-2 py-1.5 text-[11px] font-mono tracking-[0.18em] rounded-sm disabled:opacity-40 disabled:cursor-not-allowed flex flex-col items-stretch justify-center gap-0.5 ${customFlagsLaunchActive ? "overflow-visible" : "overflow-hidden"} ${launchAck ? "launch-ack" : ""}${customFlagsLaunchActive ? " config-launch-btn--custom-active" : ""}`}
                     >

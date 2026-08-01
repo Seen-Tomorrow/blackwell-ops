@@ -418,6 +418,13 @@ pub struct ProviderMeta {
     /// Groups flagged protected (factory structure lock for users).
     #[serde(default, rename = "protectedGroups", skip_serializing_if = "Vec::is_empty")]
     pub protected_groups: Vec<String>,
+    /// Custom providers — fusion / metrics / verbose opt-ins.
+    #[serde(
+        default,
+        rename = "customCapabilities",
+        skip_serializing_if = "crate::types::CustomProviderCapabilities::is_default"
+    )]
+    pub custom_capabilities: crate::types::CustomProviderCapabilities,
     #[serde(default, rename = "groupDisplayZone", skip_serializing_if = "HashMap::is_empty")]
     pub group_display_zone: HashMap<String, String>,
     #[serde(default, rename = "configColumnCount", skip_serializing_if = "Option::is_none")]
@@ -469,6 +476,7 @@ impl ProviderMeta {
             excluded_param_keys: p.excluded_param_keys.clone(),
             group_order: p.group_order.clone(),
             protected_groups: p.protected_groups.clone(),
+            custom_capabilities: p.custom_capabilities.clone(),
             group_display_zone: p.group_display_zone.clone(),
             config_column_count: p.config_column_count,
             config_column_widths: p.config_column_widths.clone(),
@@ -1051,6 +1059,7 @@ fn discover_providers() -> Vec<crate::types::ProviderConfig> {
                     excluded_param_keys: Vec::new(),
                     group_order: Vec::new(),
                     protected_groups: Vec::new(),
+                    custom_capabilities: crate::types::CustomProviderCapabilities::default(),
                     group_display_zone: HashMap::new(),
                     config_column_count: None,
                     config_column_widths: Vec::new(),
@@ -2517,6 +2526,7 @@ fn build_config_with_providers_full(mut config: AppConfig) -> AppConfig {
                 p.template_type = meta.template_type.clone();
             }
             p.excluded_param_keys = meta.excluded_param_keys.clone();
+            p.custom_capabilities = meta.custom_capabilities.clone();
             if !meta.above_column_widths.is_empty() {
                 p.above_column_widths = meta.above_column_widths.clone();
             }
@@ -2571,6 +2581,7 @@ fn build_config_with_providers_full(mut config: AppConfig) -> AppConfig {
                 excluded_param_keys: meta.excluded_param_keys.clone(),
                 group_order: Vec::new(),
                 protected_groups: Vec::new(),
+                custom_capabilities: meta.custom_capabilities.clone(),
                 group_display_zone: HashMap::new(),
                 config_column_count: None,
                 config_column_widths: Vec::new(),
@@ -2605,6 +2616,10 @@ fn build_config_with_providers_full(mut config: AppConfig) -> AppConfig {
             };
             apply_meta_layout_overrides(&mut custom, &meta, &factory_key);
             resolve_provider_binaries_from_meta(&mut custom, Some(&meta));
+            // Custom: launch_profile stays empty (no Full Auto); caps live on custom_capabilities.
+            if is_custom_template_type(&custom.template_type) {
+                custom.custom_capabilities = meta.custom_capabilities.clone();
+            }
             providers.push(custom);
         }
     }

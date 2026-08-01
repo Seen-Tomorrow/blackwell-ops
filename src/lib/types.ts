@@ -164,7 +164,18 @@ export interface ProviderConfig {
   git_url?: string;
   branch?: string;
   build_profile?: string;
-  template_type?: string; // "ggml-llama" | "" (custom)
+  template_type?: string; // "ggml-llama" | "custom"
+  /**
+   * Custom providers only — optional spawn/product features (all off by default).
+   * Persisted on user config; applied to bare launch shell.
+   */
+  customCapabilities?: {
+    fusion?: boolean;
+    metrics?: boolean;
+    verbose?: boolean;
+    /** Free-form, e.g. "-lv 4" or "--verbose" */
+    verboseArgs?: string;
+  };
   display_order?: number;
   buildInfoPerEnv?: Record<string, BuildInfo>;
   binaryPathPerEnv?: Record<string, string>; // env -> active launch path (bundled, foundry, or catalog)

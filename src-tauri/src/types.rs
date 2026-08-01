@@ -371,7 +371,7 @@ impl LayoutDefaults {
 }
 
 /// Factory launch profile synced from `spawn_profile` — drives Auto VRAM UI and --fit wiring.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LaunchProfile {
     /// When true, non-power-users see simplified engine config (simple_param_keys only).
     #[serde(default, rename = "autoVram")]
@@ -388,8 +388,22 @@ pub struct LaunchProfile {
     /// Legacy field — kept for config merge compatibility.
     #[serde(default, rename = "fitMarginMib")]
     pub fit_margin_mib: u32,
+    /// Default true — Default trait must not force false (hid tensor split for custom).
     #[serde(default = "default_true", rename = "tensorSplit")]
     pub tensor_split: bool,
+}
+
+impl Default for LaunchProfile {
+    fn default() -> Self {
+        Self {
+            auto_vram: false,
+            fit_style: String::new(),
+            simple_param_keys: Vec::new(),
+            essential_param_keys: Vec::new(),
+            fit_margin_mib: 0,
+            tensor_split: true,
+        }
+    }
 }
 
 impl LaunchProfile {
@@ -408,6 +422,21 @@ impl LaunchProfile {
             tensor_split: sp.tensor_split,
         }
     }
+}
+
+/// Optional features for `template_type = custom` providers (all off by default).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CustomProviderCapabilities {
+    #[serde(default)]
+    pub fusion: bool,
+    #[serde(default)]
+    pub metrics: bool,
+    #[serde(default)]
+    pub verbose: bool,
+    /// Free-form verbosity CLI (e.g. "-lv 4" or "--verbose").
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub verbose_args: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -430,6 +459,9 @@ pub struct ProviderConfig {
     /// Groups flagged protected (factory structure lock for users). Flag-driven, not name magic.
     #[serde(default, rename = "protectedGroups", skip_serializing_if = "Vec::is_empty")]
     pub protected_groups: Vec<String>,
+    /// Custom providers — fusion / metrics / verbose opt-ins.
+    #[serde(default, rename = "customCapabilities", skip_serializing_if = "CustomProviderCapabilities::is_default")]
+    pub custom_capabilities: CustomProviderCapabilities,
     #[serde(default, rename = "groupDisplayZone", skip_serializing_if = "HashMap::is_empty")]
     pub group_display_zone: HashMap<String, String>,
     #[serde(default, rename = "configColumnCount", skip_serializing_if = "Option::is_none")]
@@ -511,6 +543,15 @@ pub fn default_template_version() -> u32 { 1 }
 
 pub fn default_true() -> bool { true }
 pub fn default_ptype() -> String { "arg_select".to_string() }
+
+impl CustomProviderCapabilities {
+    pub fn is_default(&self) -> bool {
+        !self.fusion
+            && !self.metrics
+            && !self.verbose
+            && self.verbose_args.is_empty()
+    }
+}
 
 /// Build metadata extracted from a compiled binary via --version flag + file mtime.
 #[derive(Debug, Clone, Serialize, Deserialize)]

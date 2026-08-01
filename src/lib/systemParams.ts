@@ -139,10 +139,13 @@ export function isPlacementChromeParam(def: {
   if (ENGINE_ONLY_PARAM_KEYS.has(def.key)) return false;
   // Profile knobs must NOT be treated as chrome — they live in Spec profile groups.
   if (def.key.startsWith("mtp_") || def.key.startsWith("dflash_")) return false;
-  if (SYSTEM_CATALOG_PARAM_KEYS.has(def.key)) return true;
-  if (COCKPIT_OWNED_PARAM_KEYS.has(def.key)) return true;
-  if (def.ui_group && normalizeUiGroup(def.ui_group) === SYSTEM_UI_GROUP) {
-    // Entire SYSTEM bucket is chrome for placement (split, ports, …).
+  const g = def.ui_group ? normalizeUiGroup(def.ui_group) : "";
+  // Product chrome keys only lock when in SYSTEM (or docked). Custom essentials pack
+  // lives in PERFORMANCE and stays fully user-editable / deletable.
+  if (SYSTEM_CATALOG_PARAM_KEYS.has(def.key) || COCKPIT_OWNED_PARAM_KEYS.has(def.key)) {
+    return g === SYSTEM_UI_GROUP || Boolean(def.dock);
+  }
+  if (g === SYSTEM_UI_GROUP) {
     return true;
   }
   return Boolean(def.dock);
@@ -393,13 +396,20 @@ export function migrateCatalogParams<T extends MigratableParam>(
       changed = true;
     }
 
-    // SYSTEM chrome / cockpit only — never pull profile knobs into SYSTEM.
-    if (
+    // SYSTEM chrome / cockpit: only re-pin when already in chrome bucket (or empty/legacy).
+    // Do NOT steal PERFORMANCE / user groups (custom essentials pack stays editable).
+    const gNow = paramUiGroup(p.ui_group);
+    const chromeKey =
       !profileGroup
-      && (isPlacementChromeParam(p) || COCKPIT_OWNED_PARAM_KEYS.has(p.key))
-    ) {
+      && (SYSTEM_CATALOG_PARAM_KEYS.has(p.key) || COCKPIT_OWNED_PARAM_KEYS.has(p.key));
+    const alreadyChromeBucket =
+      gNow === SYSTEM_UI_GROUP
+      || gNow === "MULTI-GPU"
+      || gNow === ""
+      || gNow === "RUNTIME-CONFIG";
+    if (chromeKey && alreadyChromeBucket) {
       let rowChanged = false;
-      if (paramUiGroup(p.ui_group) !== SYSTEM_UI_GROUP) {
+      if (gNow !== SYSTEM_UI_GROUP) {
         row = { ...row, ui_group: SYSTEM_UI_GROUP };
         rowChanged = true;
       }

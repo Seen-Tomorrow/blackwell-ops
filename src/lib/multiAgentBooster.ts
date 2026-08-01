@@ -111,19 +111,26 @@ export function parallelForCodingMode(mode: CodingModeId): number {
  * Build Agents slider options from a value list.
  * Marks not in Solo…Army presets are treated as custom (Assisted user-added).
  * Full Auto should pass factory values only; Assisted passes factory + userAdded.
+ *
+ * `onlyTemplateValues: true` — no Solo…Army fill; empty input → empty options
+ * (custom providers with no `parallel` param must not show 1–32 defaults).
  */
 export function buildAgentOptions(
   parallelValues: (string | number)[] | undefined,
-  opts?: { markNonPresetAsCustom?: boolean },
+  opts?: { markNonPresetAsCustom?: boolean; onlyTemplateValues?: boolean },
 ): CodingModeOption[] {
   const markCustom = opts?.markNonPresetAsCustom !== false;
+  const onlyTemplate = opts?.onlyTemplateValues === true;
   const nums = new Set<number>();
-  // Always include named presets so Solo…Army stay available
-  for (const o of CODING_MODE_OPTIONS) nums.add(o.parallel);
+  if (!onlyTemplate) {
+    // Named presets so Solo…Army stay available on Master / family templates
+    for (const o of CODING_MODE_OPTIONS) nums.add(o.parallel);
+  }
   for (const v of parallelValues ?? []) {
     const n = typeof v === "number" ? v : parseInt(String(v), 10);
     if (Number.isFinite(n) && n > 0) nums.add(n);
   }
+  if (onlyTemplate && nums.size === 0) return [];
   const sorted = [...nums].sort((a, b) => a - b);
   return sorted.map((parallel) => {
     const preset = CODING_MODE_OPTIONS.find((o) => o.parallel === parallel);
