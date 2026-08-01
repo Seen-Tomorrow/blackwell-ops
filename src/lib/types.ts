@@ -180,14 +180,8 @@ export interface ProviderConfig {
   binaryPathPerEnv?: Record<string, string>; // env -> active launch path (bundled, foundry, or catalog)
   /** User preference per profile: foundry | bundled | catalog (empty = auto by mtime). */
   binarySourcePerEnv?: Record<string, string>;
-  /** Inventory — bundled installer binary (runtime/<id>/<profile>/). */
-  bundledBinaryPathPerEnv?: Record<string, string>;
-  foundryBinaryPathPerEnv?: Record<string, string>;
-  /** Catalog overlay (core: runtime-catalog/; plugins: runtime/ + stamp). */
-  catalogBinaryPathPerEnv?: Record<string, string>;
-  bundledBuildInfoPerEnv?: Record<string, BuildInfo>;
-  foundryBuildInfoPerEnv?: Record<string, BuildInfo>;
-  catalogBuildInfoPerEnv?: Record<string, BuildInfo>;
+  /** Per-profile binary inventory (bundled / foundry / catalog) — re-scanned from disk on load. */
+  inventoryPerEnv?: Record<string, EnvBinaryInventory>;
   /** Product release tag that shipped the pack (e.g. "v1.0.18") — not engine build-info. */
   downloadedVersionPerEnv?: Record<string, string>;
   lastPrPerEnv?: Record<string, string>; // env -> PR number (e.g. "stable" -> "21293")
@@ -241,12 +235,33 @@ export function profileEnvLookup<T>(map: Record<string, T> | undefined, env: str
   return key ? map[key] : undefined;
 }
 
+/** One inventory source's binary entry (path + optional build info) for a profile. */
+export interface BinaryEntry {
+  path: string;
+  info?: BuildInfo;
+}
+
+/** All inventory sources for one env profile. */
+export interface EnvBinaryInventory {
+  bundled?: BinaryEntry;
+  foundry?: BinaryEntry;
+  catalog?: BinaryEntry;
+}
+
+/** Look up one inventory source (bundled | foundry | catalog) for a profile (case-insensitive env). */
+export function envBinaryLookup(
+  provider: ProviderConfig | undefined,
+  env: string,
+  source: "bundled" | "foundry" | "catalog",
+): BinaryEntry | undefined {
+  if (!provider) return undefined;
+  return profileEnvLookup(provider.inventoryPerEnv, env)?.[source];
+}
+
 /** True when a foundry artifact exists for this profile. */
 export function isFoundryProfileBuilt(provider: ProviderConfig | undefined, env: string): boolean {
-  if (!provider) return false;
-  const path = profileEnvLookup(provider.foundryBinaryPathPerEnv, env);
-  const info = profileEnvLookup(provider.foundryBuildInfoPerEnv, env);
-  return !!(path?.trim() || info);
+  const entry = envBinaryLookup(provider, env, "foundry");
+  return !!(entry?.path?.trim() || entry?.info);
 }
 
 /** True when the active launch binary exists for this profile. */
@@ -277,13 +292,7 @@ export function isProfileSourceActive(
     return pref === source;
   }
 
-  const invMap =
-    source === "foundry"
-      ? provider.foundryBinaryPathPerEnv
-      : source === "catalog"
-        ? provider.catalogBinaryPathPerEnv
-        : provider.bundledBinaryPathPerEnv;
-  const inventory = profileEnvLookup(invMap, env);
+  const inventory = envBinaryLookup(provider, env, source)?.path;
   if (!inventory?.trim()) return false;
   return normalizeBinaryPath(active) === normalizeBinaryPath(inventory);
 }
@@ -303,7 +312,7 @@ export function getProviderOrigin(provider: ProviderConfig, env: string): Provid
   if (profileEnvLookup(provider.downloadedVersionPerEnv, env) && provider.optionalDownload) {
     return 'downloaded';
   }
-  if (profileEnvLookup(provider.catalogBinaryPathPerEnv, env) && pref === 'catalog') {
+  if (envBinaryLookup(provider, env, 'catalog')?.path && pref === 'catalog') {
     return 'catalog';
   }
   return 'bundled';

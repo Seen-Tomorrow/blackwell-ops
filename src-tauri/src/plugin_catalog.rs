@@ -134,12 +134,13 @@ fn profile_installed(
     let Some(p) = provider else {
         return (false, None, Vec::new(), None);
     };
+    let inv = p.inventory_per_env.get(profile);
     let has_binary = p
         .binary_path_per_env
         .get(profile)
-        .or_else(|| p.catalog_binary_path_per_env.get(profile))
-        .or_else(|| p.bundled_binary_path_per_env.get(profile))
-        .or_else(|| p.foundry_binary_path_per_env.get(profile))
+        .or_else(|| inv.and_then(|i| i.catalog.as_ref()).map(|e| &e.path))
+        .or_else(|| inv.and_then(|i| i.bundled.as_ref()).map(|e| &e.path))
+        .or_else(|| inv.and_then(|i| i.foundry.as_ref()).map(|e| &e.path))
         .map(|s| !s.is_empty())
         .unwrap_or(false);
     if !has_binary {
@@ -155,11 +156,14 @@ fn profile_installed(
                 .map(|b| b.version.clone())
         });
     let ver = raw_ver.filter(|v| is_release_style_version(v));
+    let inv_info = inv
+        .and_then(|i| i.bundled.as_ref())
+        .and_then(|e| e.info.as_ref())
+        .or_else(|| inv.and_then(|i| i.foundry.as_ref()).and_then(|e| e.info.as_ref()));
     let info = p
         .build_info_per_env
         .get(profile)
-        .or_else(|| p.bundled_build_info_per_env.get(profile))
-        .or_else(|| p.foundry_build_info_per_env.get(profile));
+        .or(inv_info);
     let arches = info
         .and_then(|b| b.cuda_architectures.clone())
         .unwrap_or_default();

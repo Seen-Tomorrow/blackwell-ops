@@ -222,11 +222,12 @@ pub async fn check_binary_updates(
         let has_binary = provider
             .as_ref()
             .map(|p| {
+                let inv = p.inventory_per_env.get(profile);
                 p.binary_path_per_env
                     .get(profile)
-                    .or_else(|| p.catalog_binary_path_per_env.get(profile))
-                    .or_else(|| p.bundled_binary_path_per_env.get(profile))
-                    .or_else(|| p.foundry_binary_path_per_env.get(profile))
+                    .or_else(|| inv.and_then(|i| i.catalog.as_ref()).map(|e| &e.path))
+                    .or_else(|| inv.and_then(|i| i.bundled.as_ref()).map(|e| &e.path))
+                    .or_else(|| inv.and_then(|i| i.foundry.as_ref()).map(|e| &e.path))
                     .map(|s| !s.is_empty())
                     .unwrap_or(false)
             })
@@ -397,12 +398,14 @@ pub fn activate_provider_pack(
         provider
             .build_info_per_env
             .insert(profile.to_string(), info.clone());
-        provider
-            .catalog_binary_path_per_env
-            .insert(profile.to_string(), rel.clone());
-        provider
-            .catalog_build_info_per_env
-            .insert(profile.to_string(), info);
+        let inv = provider
+            .inventory_per_env
+            .entry(profile.to_string())
+            .or_default();
+        inv.catalog = Some(crate::types::BinaryEntry {
+            path: rel.clone(),
+            info: Some(info),
+        });
         // Do NOT write bundled_* — core NSIS inventory stays intact.
 
         if provider.binary_path.is_empty() || profile == crate::config::DEFAULT_BINARY_PROFILE {

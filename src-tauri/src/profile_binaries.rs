@@ -216,20 +216,10 @@ fn merge_probed_version(
 /// Scan sources, resolve active path + metadata, populate inventory fields on `p`.
 pub fn resolve_provider_binaries(p: &mut ProviderConfig, ctx: ResolveContext<'_>) {
     // Preserve probed engine versions before inventory clear (rescans use mtime placeholders).
-    let prev_catalog_info = p.catalog_build_info_per_env.clone();
-    let prev_catalog_path = p.catalog_binary_path_per_env.clone();
-    let prev_bundled_info = p.bundled_build_info_per_env.clone();
-    let prev_bundled_path = p.bundled_binary_path_per_env.clone();
-    let prev_foundry_info = p.foundry_build_info_per_env.clone();
-    let prev_foundry_path = p.foundry_binary_path_per_env.clone();
+    let prev_inventory = p.inventory_per_env.clone();
     let prev_active_info = p.build_info_per_env.clone();
 
-    p.bundled_binary_path_per_env.clear();
-    p.foundry_binary_path_per_env.clear();
-    p.catalog_binary_path_per_env.clear();
-    p.bundled_build_info_per_env.clear();
-    p.foundry_build_info_per_env.clear();
-    p.catalog_build_info_per_env.clear();
+    p.inventory_per_env.clear();
 
     let profiles = crate::foundry_toolchain::profile_ids_or_default();
     let build_profile = p.build_profile.clone();
@@ -256,47 +246,50 @@ pub fn resolve_provider_binaries(p: &mut ProviderConfig, ctx: ResolveContext<'_>
             bundled.clone()
         };
 
+        let prev = prev_inventory.get(&profile);
+        let prev_bundled_info = prev.and_then(|i| i.bundled.as_ref()).and_then(|e| e.info.as_ref());
+        let prev_bundled_path = prev.and_then(|i| i.bundled.as_ref()).map(|e| e.path.as_str());
+        let prev_foundry_info = prev.and_then(|i| i.foundry.as_ref()).and_then(|e| e.info.as_ref());
+        let prev_foundry_path = prev.and_then(|i| i.foundry.as_ref()).map(|e| e.path.as_str());
+        let prev_catalog_info = prev.and_then(|i| i.catalog.as_ref()).and_then(|e| e.info.as_ref());
+        let prev_catalog_path = prev.and_then(|i| i.catalog.as_ref()).map(|e| e.path.as_str());
+
+        let mut inv = crate::types::EnvBinaryInventory::default();
         if let Some((path, info)) = &show_bundled_as_nsis {
             let info = merge_probed_version(
                 enrich(info.clone(), &build_profile),
-                prev_bundled_info
-                    .get(&profile)
-                    .or_else(|| prev_active_info.get(&profile)),
+                prev_bundled_info.or_else(|| prev_active_info.get(&profile)),
                 path,
-                prev_bundled_path.get(&profile).map(|s| s.as_str()),
+                prev_bundled_path,
             );
-            p.bundled_binary_path_per_env
-                .insert(profile.to_string(), path.clone());
-            p.bundled_build_info_per_env
-                .insert(profile.to_string(), info);
+            inv.bundled = Some(crate::types::BinaryEntry {
+                path: path.clone(),
+                info: Some(info),
+            });
         }
         if let Some((path, info)) = &foundry {
             let info = merge_probed_version(
                 enrich(info.clone(), &build_profile),
-                prev_foundry_info
-                    .get(&profile)
-                    .or_else(|| prev_active_info.get(&profile)),
+                prev_foundry_info.or_else(|| prev_active_info.get(&profile)),
                 path,
-                prev_foundry_path.get(&profile).map(|s| s.as_str()),
+                prev_foundry_path,
             );
-            p.foundry_binary_path_per_env
-                .insert(profile.to_string(), path.clone());
-            p.foundry_build_info_per_env
-                .insert(profile.to_string(), info);
+            inv.foundry = Some(crate::types::BinaryEntry {
+                path: path.clone(),
+                info: Some(info),
+            });
         }
         if let Some((path, info)) = &catalog {
             let info = merge_probed_version(
                 enrich(info.clone(), &build_profile),
-                prev_catalog_info
-                    .get(&profile)
-                    .or_else(|| prev_active_info.get(&profile)),
+                prev_catalog_info.or_else(|| prev_active_info.get(&profile)),
                 path,
-                prev_catalog_path.get(&profile).map(|s| s.as_str()),
+                prev_catalog_path,
             );
-            p.catalog_binary_path_per_env
-                .insert(profile.to_string(), path.clone());
-            p.catalog_build_info_per_env
-                .insert(profile.to_string(), info);
+            inv.catalog = Some(crate::types::BinaryEntry {
+                path: path.clone(),
+                info: Some(info),
+            });
         }
 
         let pref = ctx
@@ -344,9 +337,9 @@ pub fn resolve_provider_binaries(p: &mut ProviderConfig, ctx: ResolveContext<'_>
         if let Some((path, info)) = active {
             // Prefer inventory row we just filled (may carry preserved --version).
             let from_inv = match source {
-                SOURCE_CATALOG => p.catalog_build_info_per_env.get(&profile).cloned(),
-                SOURCE_BUNDLED => p.bundled_build_info_per_env.get(&profile).cloned(),
-                SOURCE_FOUNDRY => p.foundry_build_info_per_env.get(&profile).cloned(),
+                SOURCE_CATALOG => inv.catalog.as_ref().and_then(|e| e.info.clone()),
+                SOURCE_BUNDLED => inv.bundled.as_ref().and_then(|e| e.info.clone()),
+                SOURCE_FOUNDRY => inv.foundry.as_ref().and_then(|e| e.info.clone()),
                 _ => None,
             };
             let info = from_inv.unwrap_or_else(|| {
@@ -363,6 +356,10 @@ pub fn resolve_provider_binaries(p: &mut ProviderConfig, ctx: ResolveContext<'_>
             p.binary_path_per_env.remove(&profile);
             p.build_info_per_env.remove(&profile);
             p.binary_source_per_env.remove(&profile);
+        }
+
+        if inv.bundled.is_some() || inv.foundry.is_some() || inv.catalog.is_some() {
+            p.inventory_per_env.insert(profile.to_string(), inv);
         }
 
         let _ = ctx.saved_paths;

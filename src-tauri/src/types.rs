@@ -439,20 +439,9 @@ pub struct ProviderConfig {
     /// User preference per profile: `foundry` | `bundled` | `catalog` (empty = auto by mtime).
     #[serde(default, skip_serializing_if = "HashMap::is_empty", rename = "binarySourcePerEnv")]
     pub binary_source_per_env: HashMap<String, String>,
-    /// Inventory — bundled installer binary (`runtime/<id>/<profile>/`).
-    #[serde(default, skip_serializing_if = "HashMap::is_empty", rename = "bundledBinaryPathPerEnv")]
-    pub bundled_binary_path_per_env: HashMap<String, String>,
-    #[serde(default, skip_serializing_if = "HashMap::is_empty", rename = "foundryBinaryPathPerEnv")]
-    pub foundry_binary_path_per_env: HashMap<String, String>,
-    /// Catalog pack inventory (`runtime-catalog/<id>/<profile>/` for core; plugins use runtime/ + stamp).
-    #[serde(default, skip_serializing_if = "HashMap::is_empty", rename = "catalogBinaryPathPerEnv")]
-    pub catalog_binary_path_per_env: HashMap<String, String>,
-    #[serde(default, skip_serializing_if = "HashMap::is_empty", rename = "bundledBuildInfoPerEnv")]
-    pub bundled_build_info_per_env: HashMap<String, BuildInfo>,
-    #[serde(default, skip_serializing_if = "HashMap::is_empty", rename = "foundryBuildInfoPerEnv")]
-    pub foundry_build_info_per_env: HashMap<String, BuildInfo>,
-    #[serde(default, skip_serializing_if = "HashMap::is_empty", rename = "catalogBuildInfoPerEnv")]
-    pub catalog_build_info_per_env: HashMap<String, BuildInfo>,
+    /// Per-profile binary inventory (bundled / foundry / catalog) — re-scanned from disk on every load.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty", rename = "inventoryPerEnv")]
+    pub inventory_per_env: HashMap<String, EnvBinaryInventory>,
     /// Product release tag that shipped this pack (`v1.0.18`) — not engine build-info.
     /// Used for UPDATES comparison; UI shows build-info as primary identity.
     #[serde(default, skip_serializing_if = "HashMap::is_empty", rename = "downloadedVersionPerEnv")]
@@ -511,6 +500,31 @@ pub struct BuildInfo {
     /// GPU architectures from CMAKE_CUDA_ARCHITECTURES at build time (e.g., ["86", "89", "120"]).
     #[serde(default, rename = "cudaArchitectures", skip_serializing_if = "Option::is_none")]
     pub cuda_architectures: Option<Vec<String>>,
+}
+
+// ── Per-profile binary inventory ──────────────────────────────────────
+/// One inventory source's binary entry for an env profile (bundled/foundry/catalog).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct BinaryEntry {
+    /// Relative path to the engine binary (resolved via `resolve_path`).
+    pub path: String,
+    /// Build info for the binary (mtime placeholder until a `--version` probe resolves it).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub info: Option<BuildInfo>,
+}
+
+/// All inventory sources for one env profile. Re-scanned from disk on every load.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct EnvBinaryInventory {
+    /// NSIS `runtime/{id}/{profile}/` installer binary.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bundled: Option<BinaryEntry>,
+    /// `foundry/artifacts/.../Release/` build.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub foundry: Option<BinaryEntry>,
+    /// Catalog pack (`runtime-catalog/{id}/{profile}/` core; plugins use runtime/ + stamp).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub catalog: Option<BinaryEntry>,
 }
 
 // ── User-edited Template Param (persisted to disk) ────────────────────

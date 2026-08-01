@@ -18,16 +18,10 @@ function sleep(ms: number): Promise<void> {
 
 /** True when any inventory row still has a mtime-only placeholder (needs --version probe). */
 function inventoryVersionsNeedRetry(provider: ProviderConfig): boolean {
-  const rows: { paths?: Record<string, string>; infos?: Record<string, BuildInfo> }[] = [
-    { paths: provider.bundledBinaryPathPerEnv, infos: provider.bundledBuildInfoPerEnv },
-    { paths: provider.foundryBinaryPathPerEnv, infos: provider.foundryBuildInfoPerEnv },
-    { paths: provider.catalogBinaryPathPerEnv, infos: provider.catalogBuildInfoPerEnv },
-  ];
-  return rows.some(({ paths, infos }) =>
-    Object.keys(paths ?? {}).some((env) => {
-      const version = infos?.[env]?.version ?? "";
-      return PLACEHOLDER_VERSIONS.has(version);
-    }),
+  return Object.values(provider.inventoryPerEnv ?? {}).some((inv) =>
+    [inv.bundled, inv.foundry, inv.catalog].some(
+      (e) => e && PLACEHOLDER_VERSIONS.has(e.info?.version ?? ""),
+    ),
   );
 }
 
@@ -47,9 +41,12 @@ function shouldProbeBuildInfo(p: ProviderConfig): boolean {
   if (p.git_url?.trim() && p.branch?.trim()) return true;
   if (p.binary_path?.trim()) return true;
   if (Object.keys(p.binaryPathPerEnv ?? {}).length > 0) return true;
-  if (Object.keys(p.foundryBinaryPathPerEnv ?? {}).length > 0) return true;
-  if (Object.keys(p.bundledBinaryPathPerEnv ?? {}).length > 0) return true;
-  if (Object.keys(p.catalogBinaryPathPerEnv ?? {}).length > 0) return true;
+  if (
+    Object.values(p.inventoryPerEnv ?? {}).some(
+      (inv) => inv.bundled?.path || inv.foundry?.path || inv.catalog?.path,
+    )
+  )
+    return true;
   // Custom with no path yet — still attempt (resolves artifacts if present)
   if (isCustomTemplateType(p.template_type)) return true;
   return false;

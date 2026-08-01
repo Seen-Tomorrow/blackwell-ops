@@ -1812,14 +1812,25 @@ async fn run_foundry_build_worker(
                 crate::profile_binaries::resolve_after_source_change(provider);
 
                 provider
-                    .foundry_build_info_per_env
-                    .insert(profile_id.clone(), build_info.clone());
-                provider
                     .build_info_per_env
                     .insert(profile_id.clone(), build_info.clone());
                 provider
                     .build_info_per_env
-                    .insert("current".to_string(), build_info);
+                    .insert("current".to_string(), build_info.clone());
+                let inv = provider
+                    .inventory_per_env
+                    .entry(profile_id.clone())
+                    .or_default();
+                let foundry_path = inv
+                    .foundry
+                    .as_ref()
+                    .map(|e| e.path.clone())
+                    .or_else(|| provider.binary_path_per_env.get(&profile_id).cloned())
+                    .unwrap_or_default();
+                inv.foundry = Some(crate::types::BinaryEntry {
+                    path: foundry_path,
+                    info: Some(build_info),
+                });
             }
             drop(cfg);
             if let Err(e) = persist_providers_atomic(&worker.config) {
@@ -2007,10 +2018,14 @@ pub async fn foundry_preview_source(
         } else {
             provider.branch.clone()
         };
-        let build_info = provider
-            .foundry_build_info_per_env
-            .get(&profile_key)
-            .or_else(|| provider.bundled_build_info_per_env.get(&profile_key));
+        let inv = provider.inventory_per_env.get(&profile_key);
+        let build_info = inv
+            .and_then(|i| i.foundry.as_ref())
+            .and_then(|e| e.info.as_ref())
+            .or_else(|| {
+                inv.and_then(|i| i.bundled.as_ref())
+                    .and_then(|e| e.info.as_ref())
+            });
         let installed_version = build_info.map(|b| b.version.clone());
         let installed_commit = installed_version
             .as_deref()
@@ -2358,12 +2373,24 @@ pub async fn foundry_restore(
                 crate::profile_binaries::SOURCE_FOUNDRY,
             );
             crate::profile_binaries::resolve_after_source_change(p);
-            p.foundry_build_info_per_env
-                .insert(env_label.to_string(), info.clone());
             p.build_info_per_env
                 .insert(env_label.to_string(), info.clone());
             p.build_info_per_env
-                .insert("current".to_string(), info);
+                .insert("current".to_string(), info.clone());
+            let inv = p
+                .inventory_per_env
+                .entry(env_label.to_string())
+                .or_default();
+            let foundry_path = inv
+                .foundry
+                .as_ref()
+                .map(|e| e.path.clone())
+                .or_else(|| p.binary_path_per_env.get(&env_label).cloned())
+                .unwrap_or_default();
+            inv.foundry = Some(crate::types::BinaryEntry {
+                path: foundry_path,
+                info: Some(info),
+            });
         }
         drop(cfg);
     }
@@ -2481,34 +2508,26 @@ async fn enrich_provider_binary_info(
         };
 
     for env_label in &profiles {
-        if let Some(path) = provider.bundled_binary_path_per_env.get(env_label) {
+        let inv = provider.inventory_per_env.get(env_label);
+        if let Some(entry) = inv.and_then(|i| i.bundled.as_ref()) {
             consider(
-                path,
-                provider.bundled_build_info_per_env.get(env_label),
-                provider
-                    .bundled_build_info_per_env
-                    .get(env_label)
-                    .and_then(|i| i.cuda_architectures.clone()),
+                &entry.path,
+                entry.info.as_ref(),
+                entry.info.as_ref().and_then(|i| i.cuda_architectures.clone()),
             );
         }
-        if let Some(path) = provider.foundry_binary_path_per_env.get(env_label) {
+        if let Some(entry) = inv.and_then(|i| i.foundry.as_ref()) {
             consider(
-                path,
-                provider.foundry_build_info_per_env.get(env_label),
-                provider
-                    .foundry_build_info_per_env
-                    .get(env_label)
-                    .and_then(|i| i.cuda_architectures.clone()),
+                &entry.path,
+                entry.info.as_ref(),
+                entry.info.as_ref().and_then(|i| i.cuda_architectures.clone()),
             );
         }
-        if let Some(path) = provider.catalog_binary_path_per_env.get(env_label) {
+        if let Some(entry) = inv.and_then(|i| i.catalog.as_ref()) {
             consider(
-                path,
-                provider.catalog_build_info_per_env.get(env_label),
-                provider
-                    .catalog_build_info_per_env
-                    .get(env_label)
-                    .and_then(|i| i.cuda_architectures.clone()),
+                &entry.path,
+                entry.info.as_ref(),
+                entry.info.as_ref().and_then(|i| i.cuda_architectures.clone()),
             );
         }
         if let Some(path) = provider.binary_path_per_env.get(env_label) {
@@ -2564,45 +2583,41 @@ async fn enrich_provider_binary_info(
     };
 
     for env_label in &profiles {
-        if let Some(path) = provider.bundled_binary_path_per_env.get(env_label).cloned() {
-            if let Some(info) = lookup(&path) {
-                let existing = provider.bundled_build_info_per_env.get(env_label);
-                if existing
-                    .map(|e| e.version != info.version || e.build_date != info.build_date)
-                    .unwrap_or(true)
-                {
-                    provider
-                        .bundled_build_info_per_env
-                        .insert(env_label.clone(), info);
-                    changed = true;
+        if let Some(inv) = provider.inventory_per_env.get_mut(env_label) {
+            if let Some(entry) = inv.bundled.as_mut() {
+                if let Some(info) = lookup(&entry.path) {
+                    let existing = entry.info.as_ref();
+                    if existing
+                        .map(|e| e.version != info.version || e.build_date != info.build_date)
+                        .unwrap_or(true)
+                    {
+                        entry.info = Some(info);
+                        changed = true;
+                    }
                 }
             }
-        }
-        if let Some(path) = provider.foundry_binary_path_per_env.get(env_label).cloned() {
-            if let Some(info) = lookup(&path) {
-                let existing = provider.foundry_build_info_per_env.get(env_label);
-                if existing
-                    .map(|e| e.version != info.version || e.build_date != info.build_date)
-                    .unwrap_or(true)
-                {
-                    provider
-                        .foundry_build_info_per_env
-                        .insert(env_label.clone(), info);
-                    changed = true;
+            if let Some(entry) = inv.foundry.as_mut() {
+                if let Some(info) = lookup(&entry.path) {
+                    let existing = entry.info.as_ref();
+                    if existing
+                        .map(|e| e.version != info.version || e.build_date != info.build_date)
+                        .unwrap_or(true)
+                    {
+                        entry.info = Some(info);
+                        changed = true;
+                    }
                 }
             }
-        }
-        if let Some(path) = provider.catalog_binary_path_per_env.get(env_label).cloned() {
-            if let Some(info) = lookup(&path) {
-                let existing = provider.catalog_build_info_per_env.get(env_label);
-                if existing
-                    .map(|e| e.version != info.version || e.build_date != info.build_date)
-                    .unwrap_or(true)
-                {
-                    provider
-                        .catalog_build_info_per_env
-                        .insert(env_label.clone(), info);
-                    changed = true;
+            if let Some(entry) = inv.catalog.as_mut() {
+                if let Some(info) = lookup(&entry.path) {
+                    let existing = entry.info.as_ref();
+                    if existing
+                        .map(|e| e.version != info.version || e.build_date != info.build_date)
+                        .unwrap_or(true)
+                    {
+                        entry.info = Some(info);
+                        changed = true;
+                    }
                 }
             }
         }
@@ -2623,9 +2638,11 @@ async fn enrich_provider_binary_info(
                     if provider.binary_source_per_env.get(env_label).map(|s| s.as_str())
                         == Some(crate::profile_binaries::SOURCE_CATALOG)
                     {
-                        provider
-                            .catalog_build_info_per_env
-                            .insert(env_label.clone(), info.clone());
+                        if let Some(inv) = provider.inventory_per_env.get_mut(env_label) {
+                            if let Some(entry) = inv.catalog.as_mut() {
+                                entry.info = Some(info.clone());
+                            }
+                        }
                     }
                     provider.build_info_per_env.insert(env_label.clone(), info);
                     changed = true;

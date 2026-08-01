@@ -6,6 +6,7 @@ import {
   type BinarySourceKind,
   isProfileSourceActive,
   profileEnvLookup,
+  envBinaryLookup,
 } from "../lib/types";
 import type { Env } from "../hooks/useBuildDock";
 import { ENV_META } from "../lib/foundry_constants";
@@ -27,9 +28,9 @@ export function getPrNumberForEnv(provider: ProviderConfig, env: string): string
 
 /** True when this inventory row has the newer build date vs the other source for the same profile. */
 function isNewestSourceForProfile(provider: ProviderConfig, env: string, source: BinarySourceKind): boolean {
-  const foundryDate = profileEnvLookup(provider.foundryBuildInfoPerEnv, env)?.buildDate ?? "";
-  const bundledDate = profileEnvLookup(provider.bundledBuildInfoPerEnv, env)?.buildDate ?? "";
-  const catalogDate = profileEnvLookup(provider.catalogBuildInfoPerEnv, env)?.buildDate ?? "";
+  const foundryDate = envBinaryLookup(provider, env, "foundry")?.info?.buildDate ?? "";
+  const bundledDate = envBinaryLookup(provider, env, "bundled")?.info?.buildDate ?? "";
+  const catalogDate = envBinaryLookup(provider, env, "catalog")?.info?.buildDate ?? "";
   const dates = (
     [
       { s: "foundry" as const, d: foundryDate },
@@ -60,9 +61,7 @@ function sourceLabel(source: BinarySourceKind, provider: ProviderConfig): string
 }
 
 function inventoryPath(provider: ProviderConfig, env: string, source: BinarySourceKind): string | undefined {
-  if (source === "foundry") return profileEnvLookup(provider.foundryBinaryPathPerEnv, env);
-  if (source === "catalog") return profileEnvLookup(provider.catalogBinaryPathPerEnv, env);
-  return profileEnvLookup(provider.bundledBinaryPathPerEnv, env);
+  return envBinaryLookup(provider, env, source)?.path;
 }
 
 function inventoryBuildInfo(
@@ -70,9 +69,7 @@ function inventoryBuildInfo(
   env: string,
   source: BinarySourceKind,
 ): BuildInfo | undefined {
-  if (source === "foundry") return profileEnvLookup(provider.foundryBuildInfoPerEnv, env);
-  if (source === "catalog") return profileEnvLookup(provider.catalogBuildInfoPerEnv, env);
-  return profileEnvLookup(provider.bundledBuildInfoPerEnv, env);
+  return envBinaryLookup(provider, env, source)?.info;
 }
 
 function isPlaceholderBuildInfo(info: BuildInfo | undefined): boolean {
@@ -348,14 +345,14 @@ export function BuildProfileRow({
   const bundledActive = isProfileSourceActive(provider, env, "bundled");
   const catalogActive = isProfileSourceActive(provider, env, "catalog");
   const hasCatalog =
-    !!profileEnvLookup(provider.catalogBinaryPathPerEnv, env) ||
+    !!envBinaryLookup(provider, env, "catalog")?.path ||
     !!profileEnvLookup(provider.downloadedVersionPerEnv, env) ||
     !!binaryUpdate?.packAvailable ||
     !!provider.optionalDownload;
   // Bundled only when NSIS (or equivalent) actually left engines on disk — not a grey "not available" row.
   const hasBundled =
-    !!profileEnvLookup(provider.bundledBinaryPathPerEnv, env)?.trim() ||
-    !!profileEnvLookup(provider.bundledBuildInfoPerEnv, env);
+    !!envBinaryLookup(provider, env, "bundled")?.path?.trim() ||
+    !!envBinaryLookup(provider, env, "bundled")?.info;
   const showBundled = !provider.optionalDownload && hasBundled;
   const showCatalog = hasCatalog || provider.optionalDownload;
 

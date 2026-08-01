@@ -12,7 +12,7 @@ import type {
   UpdateChannelOffering,
   UpdateOfferings,
 } from "@/lib/types";
-import { DEFAULT_PROVIDER_ID } from "@/lib/types";
+import { DEFAULT_PROVIDER_ID, envBinaryLookup } from "@/lib/types";
 import { BINARY_UPDATES_ENABLED } from "@/lib/foundry_constants";
 import { useDownloadTasks } from "@/hooks/useDownloadTasks";
 import { useTauriListen } from "@/hooks/useTauriListen";
@@ -143,15 +143,15 @@ export default function UpdatesConfig({
       const coreRows: PluginProfileOffering[] = coreUpdates.map((u) => {
         const bi =
           coreProv?.buildInfoPerEnv?.[u.profile] ??
-          coreProv?.bundledBuildInfoPerEnv?.[u.profile] ??
-          coreProv?.foundryBuildInfoPerEnv?.[u.profile];
+          envBinaryLookup(coreProv, u.profile, "bundled")?.info ??
+          envBinaryLookup(coreProv, u.profile, "foundry")?.info;
         const arches = coreProv
           ? resolveProfileCudaArchitectures(coreProv, bi)
           : (bi?.cudaArchitectures ?? []);
         const hasBin = !!(
           coreProv?.binaryPathPerEnv?.[u.profile] ||
-          coreProv?.bundledBinaryPathPerEnv?.[u.profile] ||
-          coreProv?.foundryBinaryPathPerEnv?.[u.profile]
+          envBinaryLookup(coreProv, u.profile, "bundled")?.path ||
+          envBinaryLookup(coreProv, u.profile, "foundry")?.path
         );
         const packOk = u.packAvailable ?? !!u.latestVersion;
         return {

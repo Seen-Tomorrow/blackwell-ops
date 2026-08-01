@@ -160,10 +160,14 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
         const lastRefresh = loadFoundryLastRefresh(providerSignature);
         const withinThrottle = Date.now() - lastRefresh < 5000;
         const needsProbe = data.some((p) =>
-          [p.bundledBuildInfoPerEnv, p.foundryBuildInfoPerEnv, p.catalogBuildInfoPerEnv, p.buildInfoPerEnv]
-            .some((map) =>
-              Object.values(map ?? {}).some((info) => isPlaceholderBuildVersion(info)),
-            ),
+          [
+            ...Object.values(p.inventoryPerEnv ?? {}).flatMap((inv) => [
+              inv.bundled?.info,
+              inv.foundry?.info,
+              inv.catalog?.info,
+            ]),
+            ...Object.values(p.buildInfoPerEnv ?? {}),
+          ].some((info) => isPlaceholderBuildVersion(info)),
         );
         if (withinThrottle && !needsProbe) {
           return;
