@@ -34,26 +34,29 @@ export function parseSliderValues(values: (string | number)[]): number[] {
     .filter((n) => !isNaN(n));
 }
 
+/**
+ * Compact token label for CTX ticks / hero.
+ * Prefer clean decimal K/M when the value is a round 1000/1e6 multiple (750000 → 750K);
+ * otherwise binary-style rounded K/M (262144 → 256K). Never emit long fractions.
+ */
 export function formatTokenLabel(n: number): string {
-  if (n >= 1_048_576) {
-    return `${(n / 1_048_576).toFixed(n % 1_048_576 === 0 ? 0 : 1)}M`;
-  }
-  if (n >= 1024) {
-    return `${n / 1024}K`;
-  }
-  return String(n);
-}
-
-/** Rounded K/M chip label — CTX total + per-slot (e.g. 256K, not 262144 or 59.125K). */
-export function formatCtxChipLabel(n: number): string {
-  if (n >= 1_048_576) {
+  if (!Number.isFinite(n)) return String(n);
+  const abs = Math.abs(n);
+  if (abs >= 1_000_000 && n % 1_000_000 === 0) return `${n / 1_000_000}M`;
+  if (abs >= 1000 && n % 1000 === 0) return `${n / 1000}K`;
+  if (abs >= 1_048_576) {
     const m = n / 1_048_576;
     return m % 1 === 0 ? `${m}M` : `${Math.round(m * 10) / 10}M`;
   }
-  if (n >= 1024) {
+  if (abs >= 1024) {
     return `${Math.round(n / 1024)}K`;
   }
   return String(Math.round(n));
+}
+
+/** Rounded K/M chip label — same rules as formatTokenLabel (CTX total + per-slot). */
+export function formatCtxChipLabel(n: number): string {
+  return formatTokenLabel(n);
 }
 
 /** @deprecated Use formatCtxChipLabel */

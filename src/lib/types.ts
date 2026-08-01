@@ -145,6 +145,11 @@ export interface ProviderConfig {
   /** Factory param keys removed by admin — merge will not re-append from template. */
   excludedParamKeys?: string[];
   groupOrder?: string[]; // Custom group order (empty = use template insertion order)
+  /**
+   * Groups flagged protected (factory structure lock for users).
+   * Flag-driven — not inferred from group name. Empty → frontend seeds defaults.
+   */
+  protectedGroups?: string[];
   /** Per-group pin above VRAM display (default: below). */
   groupDisplayZone?: Record<string, "above" | "below">;
   /** Below-zone column layout (1–3). */

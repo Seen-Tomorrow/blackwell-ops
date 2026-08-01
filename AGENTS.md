@@ -70,7 +70,11 @@ Native crashes also append `%TEMP%\blackwell-crash.log` (heap `0xC0000374`, ille
 
 `merge_template_for_provider` syncs structure from factory templates on every load/save. User-owned fields that must not be overwritten: `hidden`, `order`, `userAddedValues`, `hidden_values`. Bump factory `templateVersion` when shipping param changes — mismatch surfaces `needs_template_attention` in ConfigPage.
 
-**Spec decoding group (`SPECULATIVE-DECODING`)** — Exception to normal per-group hiding. Engine config has an ON/OFF toggle that flips `hidden` on the whole group (`toggle_group_hidden`); spec flags must be fully omitted from CLI — zero/off is not enough. Toggle state reads **all** group params (any visible = ON). Rows shown in engine config and values in `useConfigResolver` must still respect per-param `hidden` from ConfigPage — use `specVisibleParams` (`!hidden`), not the full `allGroupedParams` list. Rust `build_cmd` already skips `param.hidden`.
+**Spec profiles (`SPECULATIVE-MTP` / `SPECULATIVE-DFLASH`)** — Template-owned groups with independent knobs (`mtp_*` / `dflash_*`). Boost selects which profile is visible (`set_group_hidden`); Off hides both. Launch flattens the active profile to CLI keys (`spec_type`, `spec_draft_n_max`, …) via `buildSpecCliExtraParams` — do not emit profile row keys as raw extras. Defaults live only in factory templates (Config editor), not hardcoded presets.
+
+**Protected groups (CONFIG policy)** — Flag-driven via provider `protectedGroups` (not name hardcoding). Factory ships the list; DEV can toggle **SYS** on a group header. Protected groups sort under a **SYSTEM PARAMS** section (auto-collapsed on open). Actors: locked / user (editor unlocked) / dev (`isDevBuild` unrestricted, or **USER VIEW** preview). Users on protected groups: set defaults, add/hide values (not whole-row hide); cannot delete factory values (hide only) or tear down factory structure. Placement chrome (`split`/`ctx`/SYSTEM bucket) remains Launch placement-locked for users. Do not pin `mtp_*`/`dflash_*` into SYSTEM.
+
+**Launch forces vs template** — Prefer `spawn_profile` (verbosity_args, enable_metrics, fit_style) and template params only. Do **not** invent CLI keys absent from the provider param list (no silent `cont_batching` force). Custom `template_type=""` uses bare launch shell (model/port/alias only — no master `-lv`/`--metrics` fallback). Cockpit-owned keys are added to the launch whitelist only if that key exists on the template.
 
 ---
 

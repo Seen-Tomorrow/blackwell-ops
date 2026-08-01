@@ -32,8 +32,10 @@ pub async fn save_provider(provider: crate::types::ProviderConfig, app: tauri::S
     }
 
     let mut save_provider = provider.clone();
-    if save_provider.template_type.is_empty() {
-        save_provider.template_type = crate::templates::ProviderTemplate::template_type_for_id(&save_provider.id);
+    // Empty / "custom" = intentional manual template — do NOT coerce to ggml-llama
+    // (old code called template_type_for_id → always ggml-llama → 25 master params).
+    if crate::config::is_custom_template_type(&save_provider.template_type) {
+        save_provider.template_type = "custom".to_string();
     }
 
     for ep in &mut save_provider.user_edited_template_params {
@@ -82,7 +84,23 @@ pub async fn save_provider(provider: crate::types::ProviderConfig, app: tauri::S
         return Err(validation_errors.join("\n"));
     }
 
-    save_provider.group_order = save_provider.group_order.iter().map(|g| crate::config::normalize_ui_group(g)).collect();
+    save_provider.group_order = save_provider
+        .group_order
+        .iter()
+        .map(|g| crate::config::normalize_ui_group(g))
+        .collect();
+    save_provider.protected_groups = {
+        let mut seen = std::collections::HashSet::new();
+        let mut out = Vec::new();
+        for g in &save_provider.protected_groups {
+            let norm = crate::config::normalize_ui_group(g);
+            if norm.is_empty() || !seen.insert(norm.clone()) {
+                continue;
+            }
+            out.push(norm);
+        }
+        out
+    };
 
     // Acknowledge factory template on save — dismisses ConfigPage banner and persists current templateVersion.
     save_provider.template_version = crate::config::factory_template_version_for_provider(
@@ -258,6 +276,37 @@ pub async fn toggle_group_hidden(provider_id: String, group_id: String, app: tau
     }
 
     Ok(group_off)
+}
+
+/// Set absolute group visibility (Boost profile switch). `hidden=true` → all group params hidden;
+/// `hidden=false` → restore unless `user_hidden`.
+#[tauri::command]
+pub async fn set_group_hidden(
+    provider_id: String,
+    group_id: String,
+    hidden: bool,
+    app: tauri::State<'_, AppContext>,
+) -> Result<(), String> {
+    let mut cfg = app.config.lock().map_err(|e| e.to_string())?;
+    let prov = cfg
+        .providers
+        .iter_mut()
+        .find(|p| p.id == provider_id)
+        .ok_or(format!("Provider '{}' not found", provider_id))?;
+    let norm_group = crate::config::normalize_ui_group(&group_id);
+    for ep in prov.user_edited_template_params.iter_mut() {
+        if crate::config::normalize_ui_group(&ep.ui_group) == norm_group {
+            if hidden {
+                ep.hidden = true;
+            } else {
+                ep.hidden = ep.user_hidden;
+            }
+        }
+    }
+    let updated = prov.clone();
+    drop(cfg);
+    persist_single_provider(&updated)?;
+    Ok(())
 }
 
 /// Switch active launch binary for a profile between foundry artifact and bundled runtime.

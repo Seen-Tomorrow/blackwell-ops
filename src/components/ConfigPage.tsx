@@ -22,6 +22,8 @@ import {
   cyclePowerUserState,
   isEditorUnlocked,
   loadPowerUserState,
+  loadConfigDevPreviewAsUser,
+  saveConfigDevPreviewAsUser,
   catalogOverrideKey,
   effectiveParamDefault,
   groupOrderKey,
@@ -68,12 +70,21 @@ import {
   stripGroupFromLayout,
 } from "../lib/groupLayoutUtils";
 import {
+  groupEditCaps,
   isCatalogVisibleParam,
+  isPlacementChromeParam,
+  isProtectedGroup,
   isSystemCatalogParam,
-  isSystemUiGroup,
   migrateCatalogParams,
+  normalizeProtectedGroups,
+  paramEditCaps,
+  pinProtectedGroupsLast,
+  PROTECTED_GROUP_TOOLTIP,
+  resolveConfigActor,
+  resolveProtectedGroups,
   SYSTEM_CATALOG_PARAM_TOOLTIP,
   SYSTEM_UI_GROUP,
+  type ConfigActor,
 } from "../lib/systemParams";
 
 
@@ -112,6 +123,18 @@ export default function ConfigPage({
   const [powerUserState, setPowerUserState] = useState<PowerUserState>(loadPowerUserState);
   const editorUnlocked = isEditorUnlocked(powerUserState);
   const factoryExportEnabled = isDevBuild();
+  /** DEV: preview CONFIG as user (restricted) vs unrestricted. */
+  const [devPreviewAsUser, setDevPreviewAsUser] = useState(loadConfigDevPreviewAsUser);
+  const configActor: ConfigActor = useMemo(
+    () =>
+      resolveConfigActor({
+        editorUnlocked,
+        isDev: isDevBuild(),
+        devPreviewAsUser,
+      }),
+    [editorUnlocked, devPreviewAsUser],
+  );
+  const isDevActor = configActor === "dev";
 
   useEffect(() => {
     const handler = () => setPowerUserState(loadPowerUserState());
@@ -234,10 +257,6 @@ export default function ConfigPage({
   }, []);
 
   useEffect(() => {
-    setCollapsedConfigGroups(new Set());
-  }, [selectedProviderId]);
-
-  useEffect(() => {
     setCustomGroupDisplayZone(loadGroupDisplayZone(selectedProviderId, currentProvider?.groupDisplayZone));
   }, [selectedProviderId, currentProvider]);
 
@@ -264,13 +283,25 @@ export default function ConfigPage({
   );
 
   const saveGroupOrder = useCallback(async (newOrder: string[]) => {
-    const normalized = newOrder.map(normalizeUiGroup);
+    // Prefer live protectedGroups from provider; pin after reorder.
+    const prot = resolveProtectedGroups(
+      currentProvider?.protectedGroups,
+      newOrder,
+    );
+    const normalized = pinProtectedGroupsLast(
+      newOrder.map(normalizeUiGroup),
+      prot,
+    );
     // Persist to localStorage (A)
     writeJsonStorage(groupOrderKey(selectedProviderId), normalized);
     setCustomGroupOrder(normalized);
-    // Persist to user_providers_config.json via save_provider (B)
+    // Persist to user_providers_config.json via save_provider (B) — keep protectedGroups intact
     if (currentProvider) {
-      const updated = { ...currentProvider, groupOrder: normalized };
+      const updated = {
+        ...currentProvider,
+        groupOrder: normalized,
+        protectedGroups: prot,
+      };
       try { await invoke("save_provider", { provider: updated }); dispatchAppEvent(EVENTS.reloadProviders); } catch {}
     }
   }, [selectedProviderId, currentProvider]);
@@ -321,12 +352,32 @@ export default function ConfigPage({
     [userSavedParamsWithDefaults],
   );
 
+  /** Effective protected group ids (factory flag + seed fallback). */
+  const protectedGroups = useMemo(() => {
+    const present = new Set<string>();
+    for (const d of catalogVisibleParams) present.add(paramUiGroup(d.ui_group));
+    for (const g of currentProvider?.groupOrder ?? []) present.add(normalizeUiGroup(g));
+    for (const g of customGroupOrder ?? []) present.add(normalizeUiGroup(g));
+    return resolveProtectedGroups(currentProvider?.protectedGroups, present);
+  }, [catalogVisibleParams, currentProvider?.protectedGroups, currentProvider?.groupOrder, customGroupOrder]);
+
+  /** Auto-collapse SYSTEM PARAMS (protected) groups when opening a provider — free groups stay open. */
+  const autoCollapsedProviderRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!selectedProviderId) return;
+    if (protectedGroups.length === 0) return;
+    if (autoCollapsedProviderRef.current === selectedProviderId) return;
+    autoCollapsedProviderRef.current = selectedProviderId;
+    setCollapsedConfigGroups(new Set(protectedGroups));
+  }, [selectedProviderId, protectedGroups]);
+
   const visibleParamGroups = useMemo(() => {
     if (catalogVisibleParams.length === 0) return [] as string[];
 
-    const groupOrder = editorUnlocked
+    const rawOrder = editorUnlocked
       ? resolveGroupOrderForAdmin(catalogVisibleParams, customGroupOrder)
       : resolveGroupOrder(catalogVisibleParams, customGroupOrder);
+    const groupOrder = pinProtectedGroupsLast(rawOrder, protectedGroups);
 
     const groups: Record<string, UserEditedTemplateParam[]> = {};
     for (const def of catalogVisibleParams) {
@@ -339,10 +390,10 @@ export default function ConfigPage({
       const groupParams = groups[groupName] ?? [];
       const isEmpty = groupParams.length === 0;
       if (isEmpty && !editorUnlocked) return false;
-      if (isEmpty && !isEmptyGroupDeletable(groupName, groups)) return false;
+      if (isEmpty && !isEmptyGroupDeletable(groupName, groups, protectedGroups)) return false;
       return true;
     });
-  }, [catalogVisibleParams, customGroupOrder, editorUnlocked]);
+  }, [catalogVisibleParams, customGroupOrder, editorUnlocked, protectedGroups]);
 
   const allParamGroupsCollapsed = useMemo(
     () => visibleParamGroups.length > 0 && visibleParamGroups.every((g) => collapsedConfigGroups.has(g)),
@@ -378,12 +429,57 @@ export default function ConfigPage({
     return Array.from(seen);
   }, [userSavedParamsWithDefaults, providerDefaultParams]);
 
+  const toggleGroupProtected = useCallback(
+    async (groupName: string) => {
+      if (!isDevActor || !currentProvider) return;
+      const norm = normalizeUiGroup(groupName);
+      const set = new Set(protectedGroups);
+      if (set.has(norm)) set.delete(norm);
+      else set.add(norm);
+      const nextProt = normalizeProtectedGroups([...set]);
+      // Single atomic save — do not call saveGroupOrder after (it used stale protectedGroups and overwrote the flag).
+      const base =
+        customGroupOrder ??
+        resolveGroupOrderForAdmin(catalogVisibleParams, customGroupOrder);
+      const nextOrder = pinProtectedGroupsLast(base, nextProt);
+      writeJsonStorage(groupOrderKey(selectedProviderId), nextOrder);
+      setCustomGroupOrder(nextOrder);
+      const updated: ProviderConfig = {
+        ...currentProvider,
+        protectedGroups: nextProt,
+        groupOrder: nextOrder,
+      };
+      setAllProviders((prev) =>
+        prev.map((p) => (p.id !== selectedProviderId ? p : updated)),
+      );
+      try {
+        await invoke("save_provider", { provider: updated });
+        dispatchAppEvent(EVENTS.reloadProviders);
+      } catch (err) {
+        console.error("[CONFIG] toggle protected failed:", err);
+      }
+      dispatchAppEvent(EVENTS.paramConfigChanged);
+      showSaved(set.has(norm) ? "PROTECTED" : "UNPROTECTED");
+    },
+    [
+      isDevActor,
+      currentProvider,
+      protectedGroups,
+      customGroupOrder,
+      catalogVisibleParams,
+      selectedProviderId,
+    ],
+  );
+
   const renameGroup = useCallback(
     async (oldName: string, rawNewName: string) => {
       if (!editorUnlocked || !currentProvider) return;
+      const gCaps = groupEditCaps(configActor, {
+        protectedGroup: isProtectedGroup(oldName, protectedGroups),
+      });
       const newName = normalizeUiGroup(rawNewName.trim());
       const oldNorm = normalizeUiGroup(oldName);
-      if (!newName || !isGroupRenamable(oldName)) {
+      if (!newName || !gCaps.rename || !isGroupRenamable(oldName, protectedGroups)) {
         showSaved("CANNOT RENAME");
         return;
       }
@@ -448,6 +544,8 @@ export default function ConfigPage({
       selectedProviderId,
       buildUserSavedParams,
       saveGroupOrder,
+      configActor,
+      protectedGroups,
     ],
   );
 
@@ -468,7 +566,7 @@ export default function ConfigPage({
         if (!groups[g]) groups[g] = [];
         groups[g].push(def);
       }
-      if (!isEmptyGroupDeletable(groupName, groups)) return;
+      if (!isEmptyGroupDeletable(groupName, groups, protectedGroups)) return;
 
       const baseOrder = customGroupOrder ?? currentProvider.groupOrder ?? [];
       const groupColumn = loadGroupColumn(selectedProviderId, currentProvider.groupColumn);
@@ -506,6 +604,7 @@ export default function ConfigPage({
       customGroupDisplayZone,
       selectedProviderId,
       saveGroupOrder,
+      protectedGroups,
     ],
   );
 
@@ -528,23 +627,39 @@ export default function ConfigPage({
     } catch (err) { console.error("[CONFIG] save_provider FAILED:", err); }
   }, []);
 
-  // Drop device from catalog; pin chrome params to SYSTEM; migrate MULTI-GPU → SYSTEM.
+  // Drop device from catalog; pin chrome params to SYSTEM; migrate MULTI-GPU → SYSTEM;
+  // seed protectedGroups from factory defaults when missing.
   useEffect(() => {
     if (!currentProvider) return;
     const currentUserParams = buildUserSavedParams(currentProvider);
     const { params: migratedParams, changed: paramsChanged } = migrateCatalogParams(currentUserParams);
     const baseOrder = customGroupOrder ?? currentProvider.groupOrder ?? [];
     const { order: migratedOrder, changed: orderChanged } = migrateCatalogGroupOrder(baseOrder);
-    if (!paramsChanged && !orderChanged) return;
+    const present = new Set(migratedParams.map((p) => paramUiGroup(p.ui_group)));
+    for (const g of migratedOrder) present.add(normalizeUiGroup(g));
+    const resolvedProt = resolveProtectedGroups(currentProvider.protectedGroups, present);
+    const hadProt = (currentProvider.protectedGroups?.length ?? 0) > 0;
+    const protChanged =
+      !hadProt &&
+      resolvedProt.length > 0 &&
+      JSON.stringify(normalizeProtectedGroups(currentProvider.protectedGroups)) !==
+        JSON.stringify(resolvedProt);
+    if (!paramsChanged && !orderChanged && !protChanged) return;
 
     let updatedProvider: ProviderConfig = {
       ...currentProvider,
       userEditedTemplateParams: migratedParams,
     };
     if (orderChanged) {
-      updatedProvider = { ...updatedProvider, groupOrder: migratedOrder };
-      writeJsonStorage(groupOrderKey(selectedProviderId), migratedOrder);
-      setCustomGroupOrder(migratedOrder);
+      updatedProvider = {
+        ...updatedProvider,
+        groupOrder: pinProtectedGroupsLast(migratedOrder, resolvedProt),
+      };
+      writeJsonStorage(groupOrderKey(selectedProviderId), updatedProvider.groupOrder!);
+      setCustomGroupOrder(updatedProvider.groupOrder!);
+    }
+    if (protChanged) {
+      updatedProvider = { ...updatedProvider, protectedGroups: resolvedProt };
     }
     setAllProviders((prev) =>
       prev.map((p) => (p.id !== selectedProviderId ? p : updatedProvider)),
@@ -635,7 +750,11 @@ export default function ConfigPage({
       providerDefaultParams,
       currentProvider.excludedParamKeys,
     );
-    const groupOrder = resolveGroupOrderForExport(exportParams, exportGroupOrderBase);
+    const groupOrder = resolveGroupOrderForExport(
+      exportParams,
+      exportGroupOrderBase,
+      protectedGroups,
+    );
     const essentialFactoryKeys = resolveEssentialParamKeys(currentProvider.launchProfile);
     const essentialParamKeys = computeEssentialParamKeysForExport(
       exportParams,
@@ -647,6 +766,7 @@ export default function ConfigPage({
           providerId: selectedProviderId,
           userEditedTemplateParams: exportParams,
           groupOrder,
+          protectedGroups,
           layoutDefaults,
           essentialParamKeys,
         },
@@ -664,6 +784,7 @@ export default function ConfigPage({
     userSavedParamsWithDefaults,
     providerDefaultParams,
     customGroupOrder,
+    protectedGroups,
   ]);
 
   useEffect(() => {
@@ -729,8 +850,16 @@ export default function ConfigPage({
   // ── Admin: toggle hidden row (catalog visibility) ───────────────
   const toggleRowHidden = useCallback(async (key: string) => {
     if (!currentProvider || !editorUnlocked) return;
-
     const currentUserParams = buildUserSavedParams(currentProvider);
+    const def = currentUserParams.find((d) => d.key === key);
+    if (!def) return;
+    const caps = paramEditCaps(configActor, {
+      protectedGroup: isProtectedGroup(def.ui_group, protectedGroups),
+      placementChrome: isPlacementChromeParam(def),
+      userAddedParam: false,
+    });
+    if (!caps.hideParam) return;
+
     const updatedUserParams = currentUserParams.map((d) => {
       if (d.key !== key) return d;
       const hidden = !d.hidden;
@@ -742,7 +871,7 @@ export default function ConfigPage({
     await persistProviderToConfig(updatedProvider);
     dispatchAppEvent(EVENTS.paramConfigChanged);
     showSaved("SAVED");
-  }, [currentProvider, editorUnlocked, buildUserSavedParams, persistProviderToConfig, selectedProviderId]);
+  }, [currentProvider, editorUnlocked, buildUserSavedParams, persistProviderToConfig, selectedProviderId, configActor, protectedGroups]);
 
   const essentialFactoryKeys = useMemo(
     () => resolveEssentialParamKeys(currentProvider?.launchProfile),
@@ -751,7 +880,14 @@ export default function ConfigPage({
 
   const toggleParamEssential = useCallback(async (key: string) => {
     if (!currentProvider || !editorUnlocked) return;
-    if (isSystemCatalogParam({ key })) return;
+    const def = buildUserSavedParams(currentProvider).find((d) => d.key === key);
+    if (!def) return;
+    const caps = paramEditCaps(configActor, {
+      protectedGroup: isProtectedGroup(def.ui_group, protectedGroups),
+      placementChrome: isPlacementChromeParam(def),
+      userAddedParam: false,
+    });
+    if (!caps.structure) return;
 
     const currentUserParams = buildUserSavedParams(currentProvider);
     const updatedUserParams = currentUserParams.map((d) => {
@@ -772,6 +908,8 @@ export default function ConfigPage({
     buildUserSavedParams,
     persistProviderToConfig,
     selectedProviderId,
+    configActor,
+    protectedGroups,
   ]);
 
   // ── Admin: toggle hidden value (hide from catalog only) ─────────
@@ -886,6 +1024,16 @@ export default function ConfigPage({
     if (!currentProvider || !editorUnlocked) return;
 
     const currentUserParams = buildUserSavedParams(currentProvider);
+    const def = currentUserParams.find((d) => d.key === key);
+    if (!def) return;
+    const isUserVal = (def.userAddedValues || []).some((v) => String(v) === String(value));
+    const caps = paramEditCaps(configActor, {
+      protectedGroup: isProtectedGroup(def.ui_group, protectedGroups),
+      placementChrome: isPlacementChromeParam(def),
+      userAddedParam: false,
+    });
+    if (isUserVal ? !caps.deleteUserValue : !caps.deleteFactoryValue) return;
+
     const updatedUserParams = currentUserParams.map(d => {
       if (d.key !== key) return d;
       const vals = sortParamValues((d.values || []).filter(v => String(v) !== String(value)));
@@ -909,7 +1057,7 @@ export default function ConfigPage({
     dispatchAppEvent(EVENTS.paramConfigChanged);
     await persistProviderToConfig(updatedProvider);
     showSaved("SAVED");
-  }, [currentProvider, editorUnlocked, buildUserSavedParams, persistProviderToConfig, selectedProviderId]);
+  }, [currentProvider, editorUnlocked, buildUserSavedParams, persistProviderToConfig, selectedProviderId, configActor, protectedGroups]);
 
   // ── Admin: open sub-params editor for a value ───────────────────
   const openSubParamsEditor = useCallback((paramKey: string, valueName: string) => {
@@ -1021,11 +1169,20 @@ export default function ConfigPage({
   // ── Admin: remove user-added param entirely ──────────────────────
   const handleRemoveParam = useCallback(async (key: string) => {
     if (!currentProvider || !editorUnlocked) return;
-    if (isSystemCatalogParam({ key })) return;
     try {
+      const currentUserParams = buildUserSavedParams(currentProvider);
+      const def = currentUserParams.find((d) => d.key === key);
+      if (!def) return;
       const isFactoryParam =
         providerDefaultParams.length > 0 && providerDefaultParams.some((gp) => gp.key === key);
-      const currentUserParams = buildUserSavedParams(currentProvider);
+      const isUserAdded =
+        providerDefaultParams.length > 0 && !providerDefaultParams.some((gp) => gp.key === key);
+      const caps = paramEditCaps(configActor, {
+        protectedGroup: isProtectedGroup(def.ui_group, protectedGroups),
+        placementChrome: isPlacementChromeParam(def),
+        userAddedParam: isUserAdded,
+      });
+      if (isFactoryParam ? !caps.deleteFactoryParam : !caps.deleteUserParam) return;
       const updatedUserParams = currentUserParams.filter((d) => d.key !== key);
       const excluded = [...(currentProvider.excludedParamKeys || [])];
       if (isFactoryParam) {
@@ -1047,6 +1204,8 @@ export default function ConfigPage({
       console.error("[CONFIG] remove param failed:", err);
     }
   }, [
+    configActor,
+    protectedGroups,
     currentProvider,
     editorUnlocked,
     buildUserSavedParams,
@@ -1104,15 +1263,15 @@ export default function ConfigPage({
         // Preserve original type: try number first
         return Number.isFinite(Number(s)) ? Number(s) : s;
       });
-      const isSystem = isSystemCatalogParam(d);
+      const placementLocked = isPlacementChromeParam(d) && !isDevActor;
       const rawGroup =
         paramMetaForm.uiGroup === "__custom__" ? paramMetaForm.customGroup : paramMetaForm.uiGroup;
-      const newUiGroup = isSystem
+      const newUiGroup = placementLocked
         ? paramUiGroup(d.ui_group)
         : rawGroup
           ? paramUiGroup(rawGroup)
           : paramUiGroup("Feature Flags");
-      const nextPtype = isSystem
+      const nextPtype = placementLocked
         ? d.ptype
         : ((paramMetaForm.ptype === d.ptype ? d.ptype : paramMetaForm.ptype) as UserEditedTemplateParam["ptype"]);
       const nextDefault = paramMetaForm.defaultValue !== "" && paramMetaForm.defaultValue != null
@@ -1123,8 +1282,8 @@ export default function ConfigPage({
         ...d,
         label: nextLabel,
         ptype: nextPtype,
-        flag: isSystem ? d.flag : paramMetaForm.flag || null,
-        pattern: isSystem
+        flag: placementLocked ? d.flag : paramMetaForm.flag || null,
+        pattern: placementLocked
           ? d.pattern
           : paramMetaForm.ptype === "path_scanner"
             ? paramMetaForm.pattern
@@ -1155,7 +1314,7 @@ export default function ConfigPage({
     setEditingParamKey(null);
     setParamMetaForm(null);
     showSaved("SAVED");
-  }, [paramMetaForm, editingParamKey, currentProvider, buildUserSavedParams, persistProviderToConfig, selectedProviderId, customGroupOrder]);
+  }, [paramMetaForm, editingParamKey, currentProvider, buildUserSavedParams, persistProviderToConfig, selectedProviderId, customGroupOrder, isDevActor]);
 
   // ── Drag state for reorder ───────────────────────────────────────
   const dragKeyRef = useRef<string | null>(null);
@@ -1166,7 +1325,13 @@ export default function ConfigPage({
   const handleDragStart = (e: React.MouseEvent, idx: number) => {
     e.stopPropagation();
     const def = catalogVisibleParams[idx];
-    if (!def || isSystemCatalogParam(def)) return;
+    if (!def) return;
+    const caps = paramEditCaps(configActor, {
+      protectedGroup: isProtectedGroup(def.ui_group, protectedGroups),
+      placementChrome: isPlacementChromeParam(def),
+      userAddedParam: false,
+    });
+    if (!caps.structure) return;
     startPosRef.current = { x: e.clientX, y: e.clientY };
     hasMovedRef.current = false;
     dragKeyRef.current = def.key ?? null;
@@ -1195,11 +1360,18 @@ export default function ConfigPage({
       const sourceKey = dragKeyRef.current;
       const fromIdx = catalogVisibleParams.findIndex((d) => d.key === sourceKey);
       const targetDef = catalogVisibleParams[targetIdx];
+      const targetCaps = targetDef
+        ? paramEditCaps(configActor, {
+            protectedGroup: isProtectedGroup(targetDef.ui_group, protectedGroups),
+            placementChrome: isPlacementChromeParam(targetDef),
+            userAddedParam: false,
+          })
+        : null;
       if (
         fromIdx < 0 ||
         targetIdx === fromIdx ||
         !targetDef ||
-        isSystemCatalogParam(targetDef)
+        !targetCaps?.structure
       ) {
         setDragging(false);
         dragKeyRef.current = null;
@@ -1219,7 +1391,7 @@ export default function ConfigPage({
     };
     window.addEventListener("mouseup", h, { once: true });
     return () => window.removeEventListener("mouseup", h);
-  }, [dragging, catalogVisibleParams, userSavedParamsWithDefaults, swapItems]);
+  }, [dragging, catalogVisibleParams, userSavedParamsWithDefaults, swapItems, configActor, protectedGroups]);
 
   // ── Group drag state for reorder ───────────────────────────────
   const groupDragRef = useRef<string | null>(null);
@@ -1229,7 +1401,10 @@ export default function ConfigPage({
 
   const handleGroupDragStart = (e: React.MouseEvent, groupName: string) => {
     e.stopPropagation();
-    if (isSystemUiGroup(groupName)) return;
+    const gCaps = groupEditCaps(configActor, {
+      protectedGroup: isProtectedGroup(groupName, protectedGroups),
+    });
+    if (!gCaps.reorder) return;
     groupStartPosRef.current = { x: e.clientX, y: e.clientY };
     groupHasMovedRef.current = false;
     groupDragRef.current = groupName;
@@ -1262,16 +1437,27 @@ export default function ConfigPage({
       const fromIdx = currentOrder.indexOf(sourceName);
       if (fromIdx < 0 || targetIdx === fromIdx) { setDraggingGroup(null); groupDragRef.current = null; groupHasMovedRef.current = false; return; }
 
-      // Reorder groups and persist
+      // Reorder groups and persist (saveGroupOrder pins protected last)
       const newOrder = [...currentOrder];
       const [moved] = newOrder.splice(fromIdx, 1);
       newOrder.splice(targetIdx, 0, moved);
+      // User cannot drag protected groups; DEV can reorder within section only for UX:
+      // pin always re-applies. Block dropping a free group into protected zone for users.
+      const srcProt = isProtectedGroup(sourceName, protectedGroups);
+      const tgtName = currentOrder[targetIdx];
+      const tgtProt = tgtName ? isProtectedGroup(tgtName, protectedGroups) : false;
+      if (!isDevActor && srcProt !== tgtProt) {
+        setDraggingGroup(null);
+        groupDragRef.current = null;
+        groupHasMovedRef.current = false;
+        return;
+      }
       saveGroupOrder(newOrder);
       setDraggingGroup(null); groupDragRef.current = null; groupHasMovedRef.current = false;
     };
     window.addEventListener("mouseup", h, { once: true });
     return () => window.removeEventListener("mouseup", h);
-  }, [draggingGroup, catalogVisibleParams, customGroupOrder, saveGroupOrder]);
+  }, [draggingGroup, catalogVisibleParams, customGroupOrder, saveGroupOrder, protectedGroups, isDevActor]);
 
   const enabledProviders = useMemo(() => allProviders.filter(p => p.enabled), [allProviders]);
 
@@ -1338,6 +1524,26 @@ export default function ConfigPage({
                     : powerUserState === "unlocked" ? "\u{1F513} EDITOR — UNLOCKED"
                     : "\u{1F512} EDITOR — LOCKED"}
                 </button>
+                {isDevBuild() && editorUnlocked && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = !devPreviewAsUser;
+                      setDevPreviewAsUser(next);
+                      saveConfigDevPreviewAsUser(next);
+                    }}
+                    className={`value-chip text-[9px] font-mono px-2 py-0.5 rounded-sm transition-colors ${
+                      devPreviewAsUser ? "border-yellow-400/50 text-yellow-300" : "value-chip-active"
+                    }`}
+                    title={
+                      devPreviewAsUser
+                        ? "Previewing user restrictions — click for unrestricted DEV edit"
+                        : "Unrestricted DEV edit — click to preview what users can do"
+                    }
+                  >
+                    {devPreviewAsUser ? "👁 USER VIEW" : "🛠 DEV EDIT"}
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={toggleAllParamGroupsCollapsed}
@@ -1463,9 +1669,10 @@ export default function ConfigPage({
               <div className="flex items-center justify-center h-full text-stealth-muted text-xs font-mono">LOADING PARAMETERS...</div>
             ) : (
               (() => {
-                const groupOrder = editorUnlocked
+                const rawOrder = editorUnlocked
                   ? resolveGroupOrderForAdmin(catalogVisibleParams, customGroupOrder)
                   : resolveGroupOrder(catalogVisibleParams, customGroupOrder);
+                const groupOrder = pinProtectedGroupsLast(rawOrder, protectedGroups);
 
                 const groups: Record<string, UserEditedTemplateParam[]> = {};
                 for (const def of catalogVisibleParams) {
@@ -1473,6 +1680,8 @@ export default function ConfigPage({
                   if (!groups[g]) groups[g] = [];
                   groups[g].push(def);
                 }
+
+                let systemSectionStarted = false;
 
                 return (
                   <div className="config-param-group-block space-y-3">
@@ -1490,22 +1699,35 @@ export default function ConfigPage({
                       const groupParams = groups[groupName] ?? [];
                       const isEmpty = groupParams.length === 0;
                       if (isEmpty && !editorUnlocked) return null;
-                      if (isEmpty && !isEmptyGroupDeletable(groupName, groups)) return null;
+                      if (isEmpty && !isEmptyGroupDeletable(groupName, groups, protectedGroups)) return null;
                       const isGroupCollapsed = collapsedConfigGroups.has(groupName);
-                      const isSystemGroup = isSystemUiGroup(groupName);
+                      const groupProtected = isProtectedGroup(groupName, protectedGroups);
+                      const gCaps = groupEditCaps(configActor, { protectedGroup: groupProtected });
                       const isRenaming = renamingGroup === groupName;
+                      const showSystemHeader = groupProtected && !systemSectionStarted;
+                      if (groupProtected) systemSectionStarted = true;
                       return (
                         <div key={groupName} data-group-idx={groupIdx}>
+                          {showSystemHeader && (
+                            <div className="mt-4 mb-2 pt-3 border-t border-stealth-border/50">
+                              <div className="text-[9px] font-mono tracking-[0.2em] uppercase text-theme-accent/80">
+                                SYSTEM PARAMS
+                              </div>
+                              <p className="text-[7px] font-mono config-muted mt-0.5">
+                                Protected factory groups — expand values and hide options; structure locked for users
+                              </p>
+                            </div>
+                          )}
                           {/* Group header — click to collapse/expand (session only) */}
                           <div
                             className={`config-param-group-header flex items-center gap-1 text-[8px] font-mono tracking-widest uppercase mb-1.5 pb-1 border-b ${
                               isEmpty ? "border-dashed border-stealth-border/25" : "border-stealth-border/30"
-                            } ${isSystemGroup ? "config-param-group-header--system" : ""} ${
-                              draggingGroup === groupName ? "text-yellow-400" : isSystemGroup ? "" : "text-stealth-muted/60"
+                            } ${groupProtected ? "config-param-group-header--system" : ""} ${
+                              draggingGroup === groupName ? "text-yellow-400" : groupProtected ? "" : "text-stealth-muted/60"
                             }`}
-                            title={isSystemGroup ? "Engine panel placement — catalog bucket only" : undefined}
+                            title={groupProtected ? PROTECTED_GROUP_TOOLTIP : undefined}
                           >
-                            {editorUnlocked && !isSystemGroup && (
+                            {editorUnlocked && gCaps.reorder && (
                               <button onMouseDown={(e) => handleGroupDragStart(e, groupName)}
                                 className="select-none px-1 cursor-grab active:cursor-grabbing hover:text-nv-green transition-colors"
                                 title="Click and drag to reorder group">
@@ -1560,7 +1782,25 @@ export default function ConfigPage({
                               </span>
                             </button>
                             )}
-                            {editorUnlocked && isGroupRenamable(groupName) && !isRenaming && (
+                            {editorUnlocked && gCaps.toggleProtected && !isRenaming && (
+                              <button
+                                type="button"
+                                onClick={() => { void toggleGroupProtected(groupName); }}
+                                className={`flex-shrink-0 px-1.5 py-0 text-[7px] font-mono rounded-sm border transition-colors ${
+                                  groupProtected
+                                    ? "border-theme-accent/50 text-theme-accent/90 bg-theme-accent/10"
+                                    : "border-stealth-border/40 text-stealth-muted/55 hover:text-stealth-muted"
+                                }`}
+                                title={
+                                  groupProtected
+                                    ? "Protected — click to unflag (DEV)"
+                                    : "Flag as protected / SYSTEM PARAMS (DEV)"
+                                }
+                              >
+                                {groupProtected ? "SYS" : "SYS?"}
+                              </button>
+                            )}
+                            {editorUnlocked && gCaps.rename && isGroupRenamable(groupName, protectedGroups) && !isRenaming && (
                               <button
                                 type="button"
                                 onClick={() => {
@@ -1573,7 +1813,7 @@ export default function ConfigPage({
                                 REN
                               </button>
                             )}
-                            {editorUnlocked && isEmpty && (
+                            {editorUnlocked && isEmpty && gCaps.deleteEmpty && (
                               <button
                                 type="button"
                                 onClick={() => { void deleteEmptyGroup(groupName); }}
@@ -1583,7 +1823,7 @@ export default function ConfigPage({
                                 DEL
                               </button>
                             )}
-                            {editorUnlocked && !isEmpty && !isSystemGroup && (
+                            {editorUnlocked && !isEmpty && gCaps.pinDisplay && (
                             <button
                               type="button"
                               onClick={() => toggleGroupDisplayZone(groupName)}
@@ -1610,7 +1850,13 @@ export default function ConfigPage({
                                );
                                const rowKey = `${def.key || "param"}-${def.order}-${localIdx}`;
                                const defKey = def.key;
-                               const isSystemParam = isSystemCatalogParam(def);
+                               const isChromeParam = isPlacementChromeParam(def);
+                               const isUserAdded = providerDefaultParams.length > 0 && !providerDefaultParams.some(gp => gp.key === def.key);
+                               const caps = paramEditCaps(configActor, {
+                                 protectedGroup: groupProtected,
+                                 placementChrome: isChromeParam,
+                                 userAddedParam: isUserAdded,
+                               });
 
                                // Effective value: user override > current default
                                const factoryDefault = effectiveParamDefault(def.factoryDefault);
@@ -1620,8 +1866,6 @@ export default function ConfigPage({
                                  ? String(currentOverride)
                                  : (effectiveDefault !== undefined ? String(effectiveDefault) : "");
 
-                               // Yellow accent: not in provider default params
-                               const isUserAdded = providerDefaultParams.length > 0 && !providerDefaultParams.some(gp => gp.key === def.key);
                                const essentialActive = isEssentialParam(def, essentialFactoryKeys);
                                const essentialForced = def.essential === true;
                                const essentialExcluded = def.essential === false;
@@ -1630,9 +1874,15 @@ export default function ConfigPage({
                                     <React.Fragment key={rowKey}>
                                     <div
                                       data-row-idx={catalogIdx}
-                                      title={isSystemParam ? SYSTEM_CATALOG_PARAM_TOOLTIP : def.key}
+                                      title={
+                                        isChromeParam
+                                          ? SYSTEM_CATALOG_PARAM_TOOLTIP
+                                          : groupProtected
+                                            ? PROTECTED_GROUP_TOOLTIP
+                                            : def.key
+                                      }
                                       className={`config-param-row flex items-center gap-2 p-2 rounded transition-all duration-150 ${
-                                        isSystemParam ? "config-param-row--system" : ""
+                                        isChromeParam || groupProtected ? "config-param-row--system" : ""
                                       } ${
                                        (dragging && def.key === dragKeyRef.current)
                                          ? "border-yellow-400/60 bg-yellow-400/10 opacity-70"
@@ -1641,18 +1891,18 @@ export default function ConfigPage({
                                            : `border ${isUserAdded ? 'border-yellow-400/30' : 'border-stealth-border'} hover:border-stealth-muted ${isUserAdded ? 'bg-yellow-400/3' : ''}`
                                      }`}>
 
-                                   {/* Drag handle — admin only */}
-                                   {editorUnlocked && !isSystemParam && (
+                                   {/* Drag handle */}
+                                   {editorUnlocked && caps.structure && (
                                      <button onMouseDown={(e) => handleDragStart(e, catalogIdx)}
                                        className="text-[8px] text-stealth-muted select-none px-1 cursor-grab active:cursor-grabbing hover:text-nv-green transition-colors"
                                        title="Click and drag to reorder">&#x2630;</button>
                                    )}
-                                   {editorUnlocked && isSystemParam && (
-                                     <span className="text-[8px] text-stealth-muted/25 select-none px-1" title={SYSTEM_CATALOG_PARAM_TOOLTIP}>&#x2630;</span>
+                                   {editorUnlocked && !caps.structure && (
+                                     <span className="text-[8px] text-stealth-muted/25 select-none px-1" title={isChromeParam ? SYSTEM_CATALOG_PARAM_TOOLTIP : PROTECTED_GROUP_TOOLTIP}>&#x2630;</span>
                                    )}
 
-                                   {/* Essentials toggle — admin only (MODELS Essentials view) */}
-                                   {editorUnlocked && !isSystemParam && (
+                                   {/* Essentials toggle */}
+                                   {editorUnlocked && caps.structure && (
                                      <button
                                        onClick={() => toggleParamEssential(def.key)}
                                        className={`config-param-ess text-[8px] font-mono px-0.5 select-none transition-colors ${
@@ -1677,16 +1927,16 @@ export default function ConfigPage({
                                        ESS
                                      </button>
                                    )}
-                                   {editorUnlocked && isSystemParam && (
-                                     <span className="config-param-ess text-[8px] font-mono px-0.5 text-stealth-muted/20 select-none" title={SYSTEM_CATALOG_PARAM_TOOLTIP}>ESS</span>
+                                   {editorUnlocked && !caps.structure && (
+                                     <span className="config-param-ess text-[8px] font-mono px-0.5 text-stealth-muted/20 select-none" title={PROTECTED_GROUP_TOOLTIP}>ESS</span>
                                    )}
 
-                                   {/* Hidden toggle — admin only (catalog visibility; engine chrome placement unchanged) */}
-                                   {editorUnlocked && (
+                                   {/* Hidden toggle — whole param row (not for protected groups under user/DEV-preview) */}
+                                   {editorUnlocked && caps.hideParam && (
                                      <button onClick={() => toggleRowHidden(def.key)}
                                        className={`text-[10px] select-none transition-colors ${def.hidden ? "text-yellow-400/35" : "text-nv-green/25 hover:text-nv-green"}`}
                                        title={
-                                         isSystemParam
+                                         isChromeParam
                                            ? def.hidden
                                              ? "Show in catalog (engine panel placement unchanged)"
                                              : "Hide from catalog (engine panel placement unchanged)"
@@ -1698,24 +1948,28 @@ export default function ConfigPage({
                                      </button>
                                    )}
 
-                                   {/* Edit param metadata + Restore to provider default — admin only */}
-{editorUnlocked && !isSystemParam && (
+                                   {/* Edit meta / Restore / Delete */}
+{editorUnlocked && (caps.editMeta || caps.restore || caps.deleteFactoryParam || caps.deleteUserParam) && (
                                       <div className="flex items-center gap-1 mr-2">
+                                        {caps.editMeta && (
                                         <button onClick={() => openParamMetaEditor(def)}
                                           className="leading-none text-[15px] font-mono text-nv-green/40 hover:text-yellow-400 transition-colors"
                                           title="Edit param metadata">E</button>
-                                        {!isUserAdded && (
+                                        )}
+                                        {caps.restore && !isUserAdded && (
                                           <button onClick={() => handleRestoreParam(def.key)}
                                             className="leading-none text-[15px] font-mono text-blue-500/50 hover:text-blue-400 transition-colors"
                                             title="Restore this parameter row to DEFAULT">R</button>
                                         )}
+                                        {((isUserAdded && caps.deleteUserParam) || (!isUserAdded && caps.deleteFactoryParam)) && (
                                         <button onClick={() => handleRemoveParam(def.key)}
                                           className="leading-none text-[15px] font-mono text-red-500/50 hover:text-red-400 transition-colors"
                                           title={isUserAdded ? "Remove this parameter entirely" : "Remove factory param from config (excluded until reset)"}>D</button>
+                                        )}
                                       </div>
                                     )}
-                                   {editorUnlocked && isSystemParam && (
-                                     <div className="flex items-center gap-1 mr-2 w-[3.25rem]" title={SYSTEM_CATALOG_PARAM_TOOLTIP} />
+                                   {editorUnlocked && !caps.editMeta && !caps.restore && !caps.deleteFactoryParam && !caps.deleteUserParam && (
+                                     <div className="flex items-center gap-1 mr-2 w-[3.25rem]" title={isChromeParam ? SYSTEM_CATALOG_PARAM_TOOLTIP : PROTECTED_GROUP_TOOLTIP} />
                                    )}
 
 <span className="w-32 flex flex-col gap-0.5 px-1 py-0.5 truncate" title={def.key}>
@@ -1733,12 +1987,15 @@ export default function ConfigPage({
                                      currentValue={currentValue}
                                       onOverrideChange={(val) => setOverride(defKey, val)}
                                       onClearOverride={() => clearOverride(def.key)}
-                                     addValue={editorUnlocked ? (v: string | number) => addValueToParam(def.key, v) : undefined}
+                                     addValue={editorUnlocked && caps.addValue ? (v: string | number) => addValueToParam(def.key, v) : undefined}
                                      removeValue={editorUnlocked ? (v: string | number) => removeValueFromParam(def.key, v) : undefined}
-                                     toggleHiddenValue={editorUnlocked ? (_k: string, v: string | number) => toggleHiddenValue(def.key, v) : undefined}
+                                     canRemoveValue={(_v, isUa) =>
+                                       isUa ? caps.deleteUserValue : caps.deleteFactoryValue
+                                     }
+                                     toggleHiddenValue={editorUnlocked && caps.hideValue ? (_k: string, v: string | number) => toggleHiddenValue(def.key, v) : undefined}
                                      hiddenValues={def.hiddenValues || []}
                                      toggleEssentialsHiddenValue={
-                                       editorUnlocked
+                                       editorUnlocked && caps.structure
                                          ? (_k: string, v: string | number) => toggleEssentialsHiddenValue(def.key, v)
                                          : undefined
                                      }
@@ -1747,17 +2004,17 @@ export default function ConfigPage({
                                       userAddedValues={def.userAddedValues || []}
                                       defaultValue={effectiveDefault !== undefined ? String(effectiveDefault) : undefined}
                                       factoryDefault={factoryDefault !== undefined ? String(factoryDefault) : undefined}
-                                      onChangeDefault={editorUnlocked
+                                      onChangeDefault={editorUnlocked && caps.setDefault
                                         ? (v: string | number) => changeDefaultValue(def.key, v)
                                         : undefined}
-                                      onEditValue={editorUnlocked ? (val: string | number) => openSubParamsEditor(def.key, String(val)) : undefined}
+                                      onEditValue={editorUnlocked && caps.editMeta ? (val: string | number) => openSubParamsEditor(def.key, String(val)) : undefined}
                                       ptype={def.ptype}
                                       subParams={def.sub_params || undefined}
                                    />
                                  </div>
 
                                   {/* Inline editors below the row being edited */}
-{editingParamKey === def.key && (
+{editingParamKey === def.key && caps.editMeta && (
                                      <ParamMetaEditor
                                        editingKey={editingParamKey}
                                        form={paramMetaForm!}
@@ -1765,7 +2022,7 @@ export default function ConfigPage({
                                        onSave={saveParamMetaEdit}
                                        onCancel={() => { setEditingParamKey(null); setParamMetaForm(null); }}
                                        existingGroups={existingGroups}
-                                       lockGroup={isSystemCatalogParam(def)}
+                                       lockGroup={isChromeParam && !isDevActor}
                                      />
                                    )}
 

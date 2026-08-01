@@ -181,10 +181,13 @@ export default function ConfigParamLegend({ editorUnlocked }: ConfigParamLegendP
         </LegendSection>
       </div>
       <p className="mt-2 pt-2 border-t border-stealth-border/25 text-[7px] font-mono config-muted leading-relaxed">
-        Blue row = <span className="text-theme-accent/80">SYSTEM</span> engine chrome — edit values and defaults only; group and reorder have no effect on engine placement.
+        <span className="text-theme-accent/80">SYSTEM PARAMS</span> section = protected factory groups (flag, not name).
+        Expand values, set defaults, hide options; factory chips cannot be deleted (hide only). Engine chrome
+        placement is still fixed for Launch panel keys.
       </p>
       <p className="mt-1 text-[7px] font-mono config-muted leading-relaxed">
-        Yellow row border = param you added from catalog. Changes save to your config only —{" "}
+        Yellow row border = param you added from catalog. DEV builds can toggle{" "}
+        <span className="text-stealth-muted">DEV EDIT / USER VIEW</span> to preview restrictions.{" "}
         <span className="text-stealth-muted">RESET TO DEFAULTS</span> undoes everything.
       </p>
     </div>

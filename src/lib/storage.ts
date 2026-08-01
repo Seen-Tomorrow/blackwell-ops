@@ -38,8 +38,8 @@ import type {
  * | BlackOps-ui-density | comfortable \| compact | Engine config chip/row density |
  * | BlackOps-catalog-visible-count | 4 \| 6 \| 8 \| all | Models visible per page (default: all) |
  * | BlackOps-catalog-draft-filter | regular \| draft \| all | Catalog main/draft filter |
- * | BlackOps-model-spec:{modelPath} | JSON | Per-main-model spec decode overrides |
- * | BlackOps-draft-pairings | JSON Record<targetPath, {specType, draftPath}> | Per-target spec draft pairings |
+ * | BlackOps-model-spec:{modelPath} | JSON | Per-main-model profile knobs (mtp_ / dflash_ keys) |
+ * | BlackOps-draft-pairings | JSON Record<targetPath, {specType, draftPath}> | Per-target DFlash draft pairings |
  * | BlackOps-dflash-hf-candidates | JSON | TTL cache of HF Get-draft scored candidates per main identity |
  * | BlackOps-param-creator-mode | simple \| advanced | Param creator UI mode |
  * | BlackOps-selected-slot-idx | number string | Last selected engine slot (-1 = none) |
@@ -112,6 +112,15 @@ export function isEditorUnlocked(state: PowerUserState): boolean {
   return isPowerUserActive(state);
 }
 
+/** DEV preview: show CONFIG as user (restricted) instead of unrestricted DEV. */
+export function loadConfigDevPreviewAsUser(): boolean {
+  return readStorage(KEYS.configDevPreviewAsUser) === "1";
+}
+
+export function saveConfigDevPreviewAsUser(previewAsUser: boolean): void {
+  writeStorage(KEYS.configDevPreviewAsUser, previewAsUser ? "1" : "0");
+}
+
 export function cyclePowerUserState(current: PowerUserState): PowerUserState {
   if (current === "locked") return "unlocked";
   if (current === "unlocked") return "permanently";
@@ -122,6 +131,8 @@ export function cyclePowerUserState(current: PowerUserState): PowerUserState {
 
 export const KEYS = {
   powerUser: `${STORAGE_PREFIX}power-user`,
+  /** DEV only — when "user", CONFIG applies user restrictions for preview. */
+  configDevPreviewAsUser: `${STORAGE_PREFIX}config-dev-preview-as-user`,
   lastProvider: `${STORAGE_PREFIX}last-provider`,
   testFlags: `${STORAGE_PREFIX}test-flags`,
   testFlagsOn: `${STORAGE_PREFIX}test-flags-on`,
@@ -531,12 +542,8 @@ export function catalogOverrideKey(providerId: string): string {
   return `${STORAGE_PREFIX}catalog-override:${providerId}`;
 }
 
-export type ModelSpecOverride = {
-  spec_type?: string;
-  spec_draft_model?: string;
-  spec_draft_n_max?: number | string;
-  spec_draft_n_min?: number | string;
-};
+/** Per-model overrides for template profile knobs (mtp_* / dflash_*). */
+export type ModelSpecOverride = Record<string, string | number | undefined>;
 
 export function modelSpecOverrideKey(modelPath: string): string {
   return `${STORAGE_PREFIX}model-spec:${normalizeModelPathKey(modelPath)}`;
@@ -547,7 +554,20 @@ export function migrateGlobalSpecOutOfCatalogOverrides(providerId: string): void
   const key = catalogOverrideKey(providerId);
   const stored = readJsonStorage<Record<string, unknown>>(key);
   if (!stored) return;
-  const specKeys = ["spec_type", "spec_draft_model", "spec_draft_n_max", "spec_draft_n_min"];
+  const specKeys = [
+    "spec_type",
+    "spec_draft_model",
+    "spec_draft_n_max",
+    "spec_draft_n_min",
+    "spec_draft_p_min",
+    "mtp_n_max",
+    "mtp_n_min",
+    "mtp_p_min",
+    "dflash_n_max",
+    "dflash_n_min",
+    "dflash_p_min",
+    "dflash_draft_model",
+  ];
   let changed = false;
   for (const k of specKeys) {
     if (k in stored) {

@@ -928,6 +928,7 @@ async fn main() {
             provider_mgmt::export_provider_factory_template,
             provider_mgmt::remove_provider,
             provider_mgmt::toggle_group_hidden,
+            provider_mgmt::set_group_hidden,
             provider_mgmt::set_profile_binary_source,
             engine::get_binary_build_info,
             engine::set_build_info_for_env,

@@ -4,11 +4,11 @@ import { useState, useCallback, useEffect, useMemo } from "react";
 import type { ModelEntry, UserEditedTemplateParam } from "../lib/types";
 import { paramsVisibilityFingerprint, resolveParamDefaultValue } from "../lib/paramConfigResolve";
 import {
-  isSpecDecodingGroupActive,
-  loadModelSpecOverride,
-  MODEL_SPEC_PARAM_KEYS,
-  saveModelSpecOverride,
-} from "../lib/specDraft";
+  isSpecProfileParamKey,
+  isObsoleteSpecParamKey,
+  SPEC_PROFILE_PARAM_KEYS,
+  stripObsoleteSpecParams,
+} from "../lib/specProfiles";
 import {
   catalogOverrideKey,
   modelSpecOverrideKey,
@@ -33,7 +33,7 @@ const normalizeValue = (value: any): any => {
   return value.toLowerCase();
 };
 
-const SPEC_KEY_SET = new Set<string>(MODEL_SPEC_PARAM_KEYS);
+const SPEC_KEY_SET = new Set<string>(SPEC_PROFILE_PARAM_KEYS);
 
 interface UseConfigResolverOptions {
   model: ModelEntry | null;
@@ -48,40 +48,39 @@ export function useConfigResolver({
 }: UseConfigResolverOptions) {
   const [config, setConfig] = useState<Record<string, any>>({});
   const modelPath = model?.path ?? "";
-  const paramsFingerprint = useMemo(
-    () => paramsVisibilityFingerprint(userEditedParams),
+
+  const cleanedParams = useMemo(
+    () => stripObsoleteSpecParams(userEditedParams),
     [userEditedParams],
   );
 
+  const paramsFingerprint = useMemo(
+    () => paramsVisibilityFingerprint(cleanedParams),
+    [cleanedParams],
+  );
+
   const loadConfig = useCallback(() => {
-    if (!userEditedParams.length) {
+    if (!cleanedParams.length) {
       setConfig({});
       return;
     }
 
     const stored = readJsonStorage<Record<string, unknown>>(catalogOverrideKey(backendType)) ?? {};
-    const modelSpec = modelPath ? loadModelSpecOverride(modelPath) : null;
-    const specGroupActive = isSpecDecodingGroupActive(userEditedParams);
+    const modelSpec = modelPath ? readJsonStorage<ModelSpecOverride>(modelSpecOverrideKey(modelPath)) : null;
     const resolved: Record<string, any> = {};
 
-    // Only visible params enter active config — hidden group params stay omitted from CLI path.
-    for (const p of userEditedParams) {
+    for (const p of cleanedParams) {
       const isSpecKey = SPEC_KEY_SET.has(p.key);
-      const internalSpec = p.key === "spec_draft_model";
-      if (isSpecKey && !specGroupActive) continue;
-      if (!internalSpec && (p.hidden || !p.values?.length)) continue;
-      if (internalSpec && p.hidden) {
-        if (!specGroupActive) continue;
+      // Profile knobs: always load defaults even when group hidden (Boost paints from them).
+      if (isSpecKey) {
         const modelVal = modelSpec?.[p.key as keyof ModelSpecOverride];
-        if (modelVal !== undefined) resolved[p.key] = modelVal;
+        const fallback = resolveParamDefaultValue(p);
+        resolved[p.key] = modelVal ?? stored[p.key] ?? fallback;
         continue;
       }
+      if (p.hidden || !p.values?.length) continue;
       const fallback = resolveParamDefaultValue(p);
-      const modelVal =
-        modelSpec && isSpecKey
-          ? (modelSpec as Record<string, unknown>)[p.key]
-          : undefined;
-      resolved[p.key] = modelVal ?? stored[p.key] ?? fallback;
+      resolved[p.key] = stored[p.key] ?? fallback;
     }
 
     const normalized = Object.fromEntries(
@@ -89,7 +88,7 @@ export function useConfigResolver({
     );
 
     setConfig(normalized);
-  }, [userEditedParams, backendType, modelPath]);
+  }, [cleanedParams, backendType, modelPath]);
 
   useEffect(() => {
     loadConfig();
@@ -103,11 +102,13 @@ export function useConfigResolver({
 
   const updateParam = useCallback(
     (key: string, value: any) => {
+      if (isObsoleteSpecParamKey(key)) return;
       const normalizedValue = normalizeValue(value);
       setConfig((prev) => ({ ...prev, [key]: normalizedValue }));
 
       if (modelPath && SPEC_KEY_SET.has(key)) {
-        saveModelSpecOverride(modelPath, { [key]: normalizedValue } as ModelSpecOverride);
+        const prev = readJsonStorage<ModelSpecOverride>(modelSpecOverrideKey(modelPath)) ?? {};
+        writeJsonStorage(modelSpecOverrideKey(modelPath), { ...prev, [key]: normalizedValue });
         return;
       }
 
@@ -119,11 +120,69 @@ export function useConfigResolver({
     [backendType, modelPath],
   );
 
+  const updateParams = useCallback(
+    (patch: Record<string, unknown>) => {
+      const normalized: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(patch)) {
+        if (isObsoleteSpecParamKey(k)) continue;
+        normalized[k] = normalizeValue(v);
+      }
+      setConfig((prev) => ({ ...prev, ...normalized }));
+
+      const modelPatch: Record<string, unknown> = {};
+      const catalogPatch: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(normalized)) {
+        if (SPEC_KEY_SET.has(k)) modelPatch[k] = v;
+        else catalogPatch[k] = v;
+      }
+      if (modelPath && Object.keys(modelPatch).length > 0) {
+        const prev = readJsonStorage<ModelSpecOverride>(modelSpecOverrideKey(modelPath)) ?? {};
+        writeJsonStorage(modelSpecOverrideKey(modelPath), { ...prev, ...modelPatch });
+      }
+      if (Object.keys(catalogPatch).length > 0) {
+        const storageKey = catalogOverrideKey(backendType);
+        const overrides = readJsonStorage<Record<string, unknown>>(storageKey) ?? {};
+        writeJsonStorage(storageKey, { ...overrides, ...catalogPatch });
+      }
+    },
+    [backendType, modelPath],
+  );
+
   const clearOverrides = useCallback(() => {
     removeStorage(catalogOverrideKey(backendType));
     if (modelPath) removeStorage(modelSpecOverrideKey(modelPath));
     loadConfig();
   }, [backendType, modelPath, loadConfig]);
 
-  return { config, updateParam, clearOverrides };
+  const clearSpecConfig = useCallback(() => {
+    if (modelPath) {
+      const prev = readJsonStorage<Record<string, unknown>>(modelSpecOverrideKey(modelPath)) ?? {};
+      let changed = false;
+      for (const k of SPEC_PROFILE_PARAM_KEYS) {
+        if (k in prev) {
+          delete prev[k];
+          changed = true;
+        }
+      }
+      if (changed) {
+        if (Object.keys(prev).length) writeJsonStorage(modelSpecOverrideKey(modelPath), prev);
+        else removeStorage(modelSpecOverrideKey(modelPath));
+      }
+    }
+    setConfig((prev) => {
+      const next = { ...prev };
+      for (const k of SPEC_PROFILE_PARAM_KEYS) delete next[k];
+      return next;
+    });
+  }, [modelPath]);
+
+  return {
+    config,
+    updateParam,
+    updateParams,
+    clearOverrides,
+    clearSpecConfig,
+    /** Params with obsolete SPECULATIVE-DECODING rows removed. */
+    resolvedParams: cleanedParams,
+  };
 }

@@ -27,7 +27,8 @@ function ConfidencePips({ level }: { level: MemorySource["confidence"] }) {
   );
 }
 
-/** SOURCE block — row 1: kind; rows 2–4: provenance + two-line breakdown. */
+/** SOURCE block — header + fixed 3 body slots (detail / breakdown / secondary).
+ *  Always mount all three lines so formula ↔ learned ↔ FIT cache never shifts VramBadge height. */
 export default function MemorySourcePanel({
   memorySource,
   isValidating = false,
@@ -39,8 +40,8 @@ export default function MemorySourcePanel({
   const label = MEMORY_SOURCE_LABELS[memorySource.kind];
 
   return (
-    <div className="memory-source-strip flex flex-col justify-between gap-px min-w-0">
-      <div className="flex items-center gap-1 min-w-0 text-[8px] font-mono leading-none">
+    <div className="memory-source-strip flex flex-col gap-px min-w-0">
+      <div className="memory-source-header flex items-center gap-1 min-w-0 text-[8px] font-mono leading-none">
         <span className="text-[7px] tracking-widest text-stealth-muted uppercase shrink-0">
           SOURCE
         </span>
@@ -58,18 +59,24 @@ export default function MemorySourcePanel({
         )}
       </div>
 
-      <div className="memory-source-body flex flex-col gap-px min-w-0 text-[8px] font-mono leading-tight text-stealth-muted">
-        <span className="truncate min-w-0">{memorySource.detail}</span>
-        {memorySource.breakdown ? (
-          <span className="min-w-0 text-stealth-muted/80 leading-snug">
-            {memorySource.breakdown}
-          </span>
-        ) : null}
-        {memorySource.breakdownSecondary ? (
-          <span className="min-w-0 text-stealth-muted/65 leading-snug">
-            {memorySource.breakdownSecondary}
-          </span>
-        ) : null}
+      <div className="memory-source-body min-w-0 text-[8px] font-mono text-stealth-muted">
+        <span className="memory-source-body__line memory-source-body__line--detail">
+          {memorySource.detail || "\u00a0"}
+        </span>
+        <span
+          className={`memory-source-body__line memory-source-body__line--breakdown${
+            memorySource.breakdown ? "" : " memory-source-body__line--empty"
+          }`}
+        >
+          {memorySource.breakdown || "\u00a0"}
+        </span>
+        <span
+          className={`memory-source-body__line memory-source-body__line--secondary${
+            memorySource.breakdownSecondary ? "" : " memory-source-body__line--empty"
+          }`}
+        >
+          {memorySource.breakdownSecondary || "\u00a0"}
+        </span>
       </div>
     </div>
   );

@@ -88,6 +88,9 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
   const didAutoExpandRef = useRef(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Custom template notice — select (switch dropdown) or register (save new). */
+  const [customNotice, setCustomNotice] = useState<null | "select" | "register">(null);
+  const customTemplateAckRef = useRef(false);
 
   useSyncExternalStore(subscribeFitScanSessions, getFitScanRevision, getFitScanRevision);
   const scanStates = getFitScanSessions();
@@ -244,9 +247,34 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
     }
   }, []);
 
+  const resetProviderForm = useCallback(() => {
+    setForm({
+      id: "",
+      display_name: "",
+      binary_path: "",
+      enabled: true,
+      params: {},
+      git_url: "",
+      branch: "",
+      build_profile: "",
+      template_type: "ggml-llama",
+      factory_provided: false,
+    });
+    customTemplateAckRef.current = false;
+    setCustomNotice(null);
+  }, []);
+
   const handleSave = useCallback(async () => {
     if (!form.id.trim() || !form.display_name.trim()) {
       setError("Type ID and Name are required.");
+      return;
+    }
+
+    const isCustom =
+      !form.template_type.trim() || form.template_type === "custom";
+    const isNewCustom = !form._original_id && isCustom;
+    if (isNewCustom && !customTemplateAckRef.current) {
+      setCustomNotice("register");
       return;
     }
 
@@ -267,13 +295,17 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
         git_url: form.git_url || "",
         branch: form.branch || "",
         build_profile: form.build_profile || "",
-        template_type: form.template_type || "ggml-llama",
+        // "custom" / empty = manual bare shell — never coerce to ggml-llama on the server.
+        template_type:
+          !form.template_type.trim() || form.template_type === "custom"
+            ? "custom"
+            : form.template_type,
       };
 
       await invoke("save_provider", { provider });
       await loadProviders();
 
-  setForm({ id: "", display_name: "", binary_path: "", enabled: true, params: {}, git_url: "", branch: "", build_profile: "", template_type: "ggml-llama", factory_provided: false });
+      resetProviderForm();
       setEditingId(null);
       setShowAddForm(false);
     } catch (err) {
@@ -282,7 +314,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
     } finally {
       setLoading(false);
     }
-  }, [form, loadProviders]);
+  }, [form, loadProviders, resetProviderForm]);
 
   const handleEdit = useCallback((p: ProviderConfig) => {
     let paramPairs: Record<string, string> = {};
@@ -303,7 +335,10 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
       git_url: p.git_url || "",
       branch: p.branch || "",
       build_profile: p.build_profile || "",
-      template_type: p.template_type || "ggml-llama",
+      template_type:
+        !p.template_type || p.template_type === "custom"
+          ? "custom"
+          : p.template_type,
       factory_provided: p.factory_provided,
     });
     setEditingId(p.id);
@@ -311,10 +346,52 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
   }, []);
 
   const handleCancel = useCallback(() => {
-    setForm({ id: "", display_name: "", binary_path: "", enabled: true, params: {}, git_url: "", branch: "", build_profile: "", template_type: "ggml-llama", factory_provided: false });
+    resetProviderForm();
     setEditingId(null);
     setShowAddForm(false);
     setError(null);
+  }, [resetProviderForm]);
+
+  const handleTemplateTypeChange = useCallback(
+    (next: string) => {
+      const nextCustom = !next.trim() || next === "custom";
+      const wasCustom =
+        !form.template_type.trim() || form.template_type === "custom";
+      if (nextCustom && !wasCustom) {
+        // Switching to Custom — warn before committing the choice
+        setCustomNotice("select");
+        return;
+      }
+      if (!nextCustom) {
+        customTemplateAckRef.current = false;
+      }
+      setForm((prev) => ({
+        ...prev,
+        template_type: nextCustom ? "custom" : next,
+      }));
+    },
+    [form.template_type],
+  );
+
+  const confirmCustomTemplate = useCallback(() => {
+    const kind = customNotice;
+    customTemplateAckRef.current = true;
+    setCustomNotice(null);
+    if (kind === "select") {
+      setForm((prev) => ({ ...prev, template_type: "custom" }));
+      return;
+    }
+    if (kind === "register") {
+      void (async () => {
+        await Promise.resolve();
+        await handleSave();
+      })();
+    }
+  }, [customNotice, handleSave]);
+
+  const cancelCustomTemplate = useCallback(() => {
+    // Select path never applied "" until confirm — cancel leaves previous family template.
+    setCustomNotice(null);
   }, []);
 
   const handleDelete = useCallback(async (p: ProviderConfig) => {
@@ -804,6 +881,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
                 handleBrowse={handleBrowse}
                 isFactoryProvided={false}
                 detectTemplateType={detectTemplateType}
+                onTemplateTypeChange={handleTemplateTypeChange}
                 variant="add"
               />
             )}
@@ -993,6 +1071,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
                   handleBrowse={handleBrowse}
                   isFactoryProvided={!!form.factory_provided}
                   providerId={p.id}
+                  onTemplateTypeChange={handleTemplateTypeChange}
                   variant="edit"
                 />
               )}
@@ -1084,6 +1163,109 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
           onCancel={() => setRestoreConfirm(null)}
         />
       )}
+
+      {customNotice && (
+        <CustomProviderNoticeModal
+          onConfirm={confirmCustomTemplate}
+          onCancel={cancelCustomTemplate}
+          confirmLabel={customNotice === "register" ? "YES — REGISTER CUSTOM" : "YES — USE CUSTOM"}
+        />
+      )}
+    </div>
+  );
+}
+
+/** Dim-only overlay (no blur) — custom providers are bare shells. */
+function CustomProviderNoticeModal({
+  onConfirm,
+  onCancel,
+  confirmLabel,
+}: {
+  onConfirm: () => void;
+  onCancel: () => void;
+  confirmLabel: string;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-[200] flex items-center justify-center"
+      style={{ background: "color-mix(in srgb, #000 60%, transparent)" }}
+      onClick={onCancel}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="custom-provider-notice-title"
+    >
+      <div
+        className="config-form-panel rounded-sm shadow-2xl w-[min(92vw,28rem)] max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-4 py-3 border-b border-stealth-border/30">
+          <h3
+            id="custom-provider-notice-title"
+            className="text-xs font-mono theme-accent-text tracking-wider"
+          >
+            CUSTOM PROVIDER — LIMITED MODE
+          </h3>
+          <button
+            type="button"
+            onClick={onCancel}
+            className="config-muted hover:theme-accent-text transition-colors text-sm leading-none"
+            aria-label="Close"
+          >
+            &times;
+          </button>
+        </div>
+        <div className="px-4 py-4 space-y-3 text-[10px] font-mono leading-relaxed config-muted">
+          <p className="theme-accent-text/90 uppercase tracking-wider text-[9px]">
+            You are on your own for the param set
+          </p>
+          <p>
+            Custom templates get a <span className="text-white/80">bare launch shell</span> only:{" "}
+            model path, port, and alias. No factory param pack, no automatic{" "}
+            <span className="text-white/70">-lv</span> / FIT / metrics flags from Master.
+          </p>
+          <p>
+            Add every CLI flag you need in CONFIG (PARAMETERS). Invalid or missing flags are
+            between you and the binary — Blackwell will not invent them.
+          </p>
+          <div className="foundry-profile-row rounded-sm p-3 space-y-2 border border-stealth-border/35">
+            <p className="text-[9px] font-mono uppercase tracking-wider theme-accent-text/80">
+              Fusion metrics
+            </p>
+            <p>
+              Live Fusion (TPS, phase, fuel) needs the engine to expose the same telemetry paths
+              Master does: typically <span className="text-white/80">/slots</span>, stderr/stdout
+              logs, and often <span className="text-white/80">--metrics</span> (if your fork
+              supports it).
+            </p>
+            <p>
+              Logs and <span className="text-white/80">/slots</span> work on most llama.cpp-family
+              forks unless they strip them. If you add{" "}
+              <span className="text-white/80">--metrics</span> (and the rest matches), Fusion can
+              work the same as on Master — there is no separate “custom Fusion off” switch.
+            </p>
+          </div>
+          <p className="text-[9px] opacity-80">
+            Prefer <span className="text-white/70">GGML-Llama</span> template when the fork is
+            Master-compatible. Use Custom only when you know the CLI contract.
+          </p>
+        </div>
+        <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-stealth-border/30">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="value-chip text-[9px] font-mono px-3 py-1 rounded-sm text-red-400/90"
+          >
+            NO — CANCEL
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className="value-chip-active text-[9px] font-mono px-4 py-1 rounded-sm"
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1100,6 +1282,7 @@ interface ProviderFormPanelProps {
   isFactoryProvided: boolean;
   providerId?: string;
   detectTemplateType?: (id: string) => string;
+  onTemplateTypeChange?: (next: string) => void;
 }
 
 function ProviderFormPanel({
@@ -1114,6 +1297,7 @@ function ProviderFormPanel({
   isFactoryProvided,
   providerId,
   detectTemplateType,
+  onTemplateTypeChange,
 }: ProviderFormPanelProps) {
   const title = mode === "add" ? "NEW PROVIDER" : `${providerId} — EDIT PROVIDER`;
   const saveLabel = loading ? "SAVING..." : mode === "add" ? "REGISTER" : "UPDATE";
@@ -1156,11 +1340,15 @@ function ProviderFormPanel({
         <label className="text-[10px] font-mono config-muted w-24 flex-shrink-0 uppercase tracking-wider">Template</label>
         <select
           value={form.template_type}
-          onChange={(e) => setForm((prev) => ({ ...prev, template_type: e.target.value }))}
+          onChange={(e) => {
+            const v = e.target.value;
+            if (onTemplateTypeChange) onTemplateTypeChange(v);
+            else setForm((prev) => ({ ...prev, template_type: v }));
+          }}
           className="config-input flex-1 text-[11px] font-mono px-1 py-0.5 appearance-none"
         >
-          <option value="ggml-llama">GGML-Llama (22 params)</option>
-          <option value="">Custom (manual)</option>
+          <option value="ggml-llama">GGML-Llama (factory params)</option>
+          <option value="custom">Custom (manual / bare shell)</option>
         </select>
       </div>
       <div className="flex items-center gap-2">

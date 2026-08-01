@@ -415,6 +415,9 @@ pub struct ProviderMeta {
     /// Custom group order set by user (overrides template insertion order). Empty = use template order.
     #[serde(default, rename = "groupOrder")]
     pub group_order: Vec<String>,
+    /// Groups flagged protected (factory structure lock for users).
+    #[serde(default, rename = "protectedGroups", skip_serializing_if = "Vec::is_empty")]
+    pub protected_groups: Vec<String>,
     #[serde(default, rename = "groupDisplayZone", skip_serializing_if = "HashMap::is_empty")]
     pub group_display_zone: HashMap<String, String>,
     #[serde(default, rename = "configColumnCount", skip_serializing_if = "Option::is_none")]
@@ -465,6 +468,7 @@ impl ProviderMeta {
             user_edited_template_params: p.user_edited_template_params.clone(),
             excluded_param_keys: p.excluded_param_keys.clone(),
             group_order: p.group_order.clone(),
+            protected_groups: p.protected_groups.clone(),
             group_display_zone: p.group_display_zone.clone(),
             config_column_count: p.config_column_count,
             config_column_widths: p.config_column_widths.clone(),
@@ -553,10 +557,16 @@ fn apply_factory_layout_defaults(
     provider: &mut crate::types::ProviderConfig,
     factory_key: &str,
 ) {
-    let (factory_group_order, factory_layout) =
+    let (factory_group_order, factory_layout, factory_protected) =
         crate::templates::load_factory_layout_supplement(factory_key);
     if provider.group_order.is_empty() && !factory_group_order.is_empty() {
         provider.group_order = factory_group_order
+            .into_iter()
+            .map(|g| normalize_ui_group(&g))
+            .collect();
+    }
+    if provider.protected_groups.is_empty() && !factory_protected.is_empty() {
+        provider.protected_groups = factory_protected
             .into_iter()
             .map(|g| normalize_ui_group(&g))
             .collect();
@@ -587,7 +597,22 @@ fn apply_meta_layout_overrides(
         provider.group_order = meta.group_order.clone();
     } else {
         apply_factory_layout_defaults(provider, factory_key);
+        if !meta.protected_groups.is_empty() {
+            provider.protected_groups = meta.protected_groups.clone();
+        }
         return;
+    }
+    if !meta.protected_groups.is_empty() {
+        provider.protected_groups = meta.protected_groups.clone();
+    } else if provider.protected_groups.is_empty() {
+        let (_, _, factory_protected) =
+            crate::templates::load_factory_layout_supplement(factory_key);
+        if !factory_protected.is_empty() {
+            provider.protected_groups = factory_protected
+                .into_iter()
+                .map(|g| normalize_ui_group(&g))
+                .collect();
+        }
     }
     if !meta.group_display_zone.is_empty() {
         provider.group_display_zone = meta.group_display_zone.clone();
@@ -610,7 +635,7 @@ fn apply_meta_layout_overrides(
         || provider.group_column.is_empty()
         || provider.above_column_widths.is_empty()
     {
-        let (_, factory_layout) = crate::templates::load_factory_layout_supplement(factory_key);
+        let (_, factory_layout, _) = crate::templates::load_factory_layout_supplement(factory_key);
         if provider.group_display_zone.is_empty() && !factory_layout.group_display_zone.is_empty() {
             provider.group_display_zone = factory_layout.group_display_zone;
         }
@@ -1025,6 +1050,7 @@ fn discover_providers() -> Vec<crate::types::ProviderConfig> {
                     user_edited_template_params: params_for_provider(&identity.id),
                     excluded_param_keys: Vec::new(),
                     group_order: Vec::new(),
+                    protected_groups: Vec::new(),
                     group_display_zone: HashMap::new(),
                     config_column_count: None,
                     config_column_widths: Vec::new(),
@@ -1075,8 +1101,18 @@ fn discover_providers() -> Vec<crate::types::ProviderConfig> {
     providers
 }
 
+/// True when the provider owns its param set (no factory family merge).
+pub fn is_custom_template_type(template_type: &str) -> bool {
+    let t = template_type.trim();
+    t.is_empty() || t.eq_ignore_ascii_case("custom")
+}
+
 /// Map template_type to provider ID for loading defaults.
+/// `custom` / empty → None (no master param pack).
 pub fn template_key_for_type(template_type: &str) -> Option<String> {
+    if is_custom_template_type(template_type) {
+        return None;
+    }
     match template_type {
         "ggml-llama" => Some(DEFAULT_PROVIDER_ID.to_string()),
         _ => None,
@@ -1084,10 +1120,12 @@ pub fn template_key_for_type(template_type: &str) -> Option<String> {
 }
 
 /// Resolve effective template type: use disk value if set, otherwise auto-detect from provider ID.
+/// Explicit custom is preserved (never rewritten to ggml-llama).
 pub fn resolve_template_type(provider_id: &str, disk_type: Option<&String>) -> String {
-    match disk_type.and_then(|t| if t.is_empty() { None } else { Some(t.clone()) }) {
-        Some(t) => t,
-        None => crate::templates::ProviderTemplate::template_type_for_id(provider_id),
+    match disk_type {
+        Some(t) if is_custom_template_type(t) => "custom".to_string(),
+        Some(t) if !t.is_empty() => t.clone(),
+        _ => crate::templates::ProviderTemplate::template_type_for_id(provider_id),
     }
 }
 
@@ -2249,8 +2287,18 @@ fn merge_user_params_with_template(
                 m.ptype = tmpl.ptype.clone();
             }
 
-            if m.ui_group.is_empty() {
-                m.ui_group = normalize_ui_group(&tmpl.ui_group);
+            // Spec profiles: always take factory group (repairs SYSTEM mis-pin from old migrate).
+            let tmpl_g = normalize_ui_group(&tmpl.ui_group);
+            let is_profile = tmpl_g == "SPECULATIVE-MTP"
+                || tmpl_g == "SPECULATIVE-DFLASH"
+                || m.key.starts_with("mtp_")
+                || m.key.starts_with("dflash_");
+            if m.ui_group.is_empty() || is_profile {
+                if normalize_ui_group(&m.ui_group) != tmpl_g {
+                    m.ui_group = tmpl_g;
+                } else if m.ui_group.is_empty() {
+                    m.ui_group = tmpl_g;
+                }
             }
             if m.note.is_empty() {
                 m.note = tmpl.note.clone();
@@ -2282,6 +2330,24 @@ fn merge_user_params_with_template(
             // Factory-curated Essentials values — backfill when user has none (ships with templates).
             if m.essentials_hidden_values.is_empty() && !tmpl.essentials_hidden_values.is_empty() {
                 m.essentials_hidden_values = tmpl.essentials_hidden_values.clone();
+            }
+
+            // Assisted Full expansion chips: ensure factory essentialsHidden values exist in
+            // the values list even when the catalog is user-owned (no re-delete of other chips).
+            // Without this, only providers that already shipped the high-end list (historically
+            // ggml-master) show extra Agents/batch/spec chips in ASSISTED Full.
+            if !tmpl.essentials_hidden_values.is_empty() {
+                let mut changed = false;
+                for tv in &tmpl.essentials_hidden_values {
+                    let key = json_val_key(tv);
+                    if !m.values.iter().any(|v| json_val_key(v) == key) {
+                        m.values.push(tv.clone());
+                        changed = true;
+                    }
+                }
+                if changed && !tmpl.values.is_empty() {
+                    m.values = reorder_values_to_template(&m.values, &tmpl.values);
+                }
             }
         }
         merged.push(m);
@@ -2504,6 +2570,7 @@ fn build_config_with_providers_full(mut config: AppConfig) -> AppConfig {
                 user_edited_template_params: user_edited_params,
                 excluded_param_keys: meta.excluded_param_keys.clone(),
                 group_order: Vec::new(),
+                protected_groups: Vec::new(),
                 group_display_zone: HashMap::new(),
                 config_column_count: None,
                 config_column_widths: Vec::new(),
@@ -2707,6 +2774,8 @@ pub struct ExportFactoryTemplateInput {
     pub user_edited_template_params: Vec<crate::types::UserEditedTemplateParam>,
     #[serde(default, rename = "groupOrder")]
     pub group_order: Vec<String>,
+    #[serde(default, rename = "protectedGroups")]
+    pub protected_groups: Vec<String>,
     #[serde(default, rename = "layoutDefaults")]
     pub layout_defaults: crate::types::LayoutDefaults,
     #[serde(default, rename = "essentialParamKeys")]
@@ -2798,33 +2867,50 @@ const FACTORY_CONFIG_KEY_ORDER: &[&str] = &[
     "spawn_profile",
     "params",
     "groupOrder",
+    "protectedGroups",
     "layoutDefaults",
 ];
 
 const SYSTEM_UI_GROUP: &str = "SYSTEM";
 
-/// Factory export: preserve saved group order, dedupe, pin SYSTEM last.
-fn finalize_factory_group_order(order: Vec<String>) -> Vec<String> {
+/// Factory export: preserve saved group order, dedupe, pin protected groups last.
+fn finalize_factory_group_order(order: Vec<String>, protected_groups: &[String]) -> Vec<String> {
+    let prot: std::collections::HashSet<String> = protected_groups
+        .iter()
+        .map(|g| normalize_ui_group(g))
+        .filter(|g| !g.is_empty())
+        .collect();
     let mut seen = std::collections::HashSet::new();
-    let mut deduped = Vec::new();
-    let mut had_system = false;
-    for g in order {
-        let norm = normalize_ui_group(&g);
-        if norm == SYSTEM_UI_GROUP {
-            had_system = true;
+    let mut normal = Vec::new();
+    let mut locked = Vec::new();
+    for g in &order {
+        let norm = normalize_ui_group(g);
+        if norm.is_empty() || !seen.insert(norm.clone()) {
             continue;
         }
-        if seen.insert(norm.clone()) {
-            deduped.push(norm);
+        if prot.contains(&norm) || norm == SYSTEM_UI_GROUP {
+            locked.push(norm);
+        } else {
+            normal.push(norm);
         }
     }
-    if had_system {
-        deduped.push(SYSTEM_UI_GROUP.to_string());
+    for p in protected_groups {
+        let norm = normalize_ui_group(p);
+        if !norm.is_empty() && !seen.contains(&norm) {
+            seen.insert(norm.clone());
+            locked.push(norm);
+        }
     }
-    deduped
+    if !seen.contains(SYSTEM_UI_GROUP)
+        && order.iter().any(|g| normalize_ui_group(g) == SYSTEM_UI_GROUP)
+    {
+        locked.push(SYSTEM_UI_GROUP.to_string());
+    }
+    normal.extend(locked);
+    normal
 }
 
-/// Sort params for factory JSON: group order first, `order` within group, SYSTEM group last.
+/// Sort params for factory JSON: group order first, `order` within group, protected last.
 fn sort_params_for_factory_export(
     params: &mut [crate::types::UserEditedTemplateParam],
     group_order: &[String],
@@ -2832,25 +2918,14 @@ fn sort_params_for_factory_export(
     let mut group_rank: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
     for (i, g) in group_order.iter().enumerate() {
         let norm = normalize_ui_group(g);
-        if norm != SYSTEM_UI_GROUP {
-            group_rank.entry(norm).or_insert(i);
-        }
+        group_rank.entry(norm).or_insert(i);
     }
-    let system_rank = group_order.len().max(1);
 
     params.sort_by(|a, b| {
         let ga = normalize_ui_group(&a.ui_group);
         let gb = normalize_ui_group(&b.ui_group);
-        let ra = if ga == SYSTEM_UI_GROUP {
-            system_rank
-        } else {
-            *group_rank.get(&ga).unwrap_or(&usize::MAX)
-        };
-        let rb = if gb == SYSTEM_UI_GROUP {
-            system_rank
-        } else {
-            *group_rank.get(&gb).unwrap_or(&usize::MAX)
-        };
+        let ra = *group_rank.get(&ga).unwrap_or(&usize::MAX);
+        let rb = *group_rank.get(&gb).unwrap_or(&usize::MAX);
         ra.cmp(&rb).then(a.order.cmp(&b.order))
     });
 }
@@ -3006,12 +3081,29 @@ pub fn export_provider_factory_template(
         return Err(validation_errors.join("\n"));
     }
 
+    let protected_groups: Vec<String> = {
+        let mut seen = std::collections::HashSet::new();
+        let mut out = Vec::new();
+        for g in &input.protected_groups {
+            let norm = normalize_ui_group(g);
+            if norm.is_empty() || !seen.insert(norm.clone()) {
+                continue;
+            }
+            out.push(norm);
+        }
+        if out.is_empty() {
+            out.push(SYSTEM_UI_GROUP.to_string());
+        }
+        out
+    };
+
     let group_order = finalize_factory_group_order(
         input
             .group_order
             .iter()
             .map(|g| normalize_ui_group(g))
             .collect(),
+        &protected_groups,
     );
 
     let mut sorted = input.user_edited_template_params.clone();
@@ -3032,6 +3124,10 @@ pub fn export_provider_factory_template(
         obj.insert(
             "groupOrder".to_string(),
             serde_json::to_value(&group_order).map_err(|e| e.to_string())?,
+        );
+        obj.insert(
+            "protectedGroups".to_string(),
+            serde_json::to_value(&protected_groups).map_err(|e| e.to_string())?,
         );
         obj.insert(
             "layoutDefaults".to_string(),
@@ -3685,11 +3781,14 @@ mod merge_tests {
 
     #[test]
     fn finalize_factory_group_order_pins_system_last() {
-        let order = finalize_factory_group_order(vec![
-            "SYSTEM".into(),
-            "PERFORMANCE".into(),
-            "FEATURE-FLAGS".into(),
-        ]);
+        let order = finalize_factory_group_order(
+            vec![
+                "SYSTEM".into(),
+                "PERFORMANCE".into(),
+                "FEATURE-FLAGS".into(),
+            ],
+            &["SYSTEM".into()],
+        );
         assert_eq!(order, vec!["PERFORMANCE", "FEATURE-FLAGS", "SYSTEM"]);
     }
 

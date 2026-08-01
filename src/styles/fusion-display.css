@@ -532,6 +532,13 @@
 
 .vram-forecast-hero__sub {
   max-width: 28rem;
+  min-height: 1.125rem; /* 9px × 1.25 — always one row reserved in FULL AUTO */
+}
+
+.vram-forecast-hero__sub--placeholder {
+  visibility: hidden;
+  pointer-events: none;
+  user-select: none;
 }
 
 /* Tabular digits + fixed slots so 9.1 → 88.4 does not shift "of VRAM / RAM" */
@@ -613,13 +620,47 @@
   text-shadow: none;
 }
 
-/* SOURCE band — header row + up to 3 provenance/breakdown lines */
+/* SOURCE band — header + fixed 3 body lines (formula/learned/FIT must not reflow height) */
 .memory-source-strip {
-  min-height: 22px;
+  /* header (~10px) + 3×10px body + gaps */
+  min-height: 44px;
+}
+
+.memory-source-header {
+  min-height: 10px;
 }
 
 .memory-source-body {
-  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  /* 8px mono × leading 1.25 × 3 lines + 2×1px gap */
+  min-height: 32px;
+  flex: 0 0 auto;
+}
+
+.memory-source-body__line {
+  display: block;
+  min-width: 0;
+  min-height: 10px;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.memory-source-body__line--breakdown {
+  color: color-mix(in srgb, currentColor 80%, transparent);
+}
+
+.memory-source-body__line--secondary {
+  color: color-mix(in srgb, currentColor 65%, transparent);
+}
+
+.memory-source-body__line--empty {
+  visibility: hidden;
+  pointer-events: none;
+  user-select: none;
 }
 
 /* SOURCE kind — widest label (FIT PROBE) reserves width */

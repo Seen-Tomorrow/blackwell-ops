@@ -219,8 +219,10 @@ export default function VramBadge({
     ? !fullAutoMode
     : (manifest?.style.uiTemplate.showDetailedForecast !== false);
 
+  // Structural layout only — ignore memory-source kind (SOURCE band is fixed 3 lines).
+  // Kind changes formula→learned used to re-pin phosphor and nudge height by a row.
   const forecastContentKey = manifest
-    ? `${manifest.scenario}|${manifest.gpuAllocations.length}|${manifest.memorySource?.kind ?? ""}|${showDetailedForecast ? 1 : 0}|${fullAutoMode ? "auto" : "assist"}`
+    ? `${manifest.gpuAllocations.length}|${showDetailedForecast ? 1 : 0}|${fullAutoMode ? "auto" : "assist"}|${gpus.length}`
     : "";
 
   useForecastContentHeight(
@@ -429,16 +431,23 @@ export default function VramBadge({
           <p className={`vram-forecast-hero__title font-mono tracking-[0.18em] uppercase ${s.titleColor}`}>
             {t.heroText ?? (manifest.fits ? "WILL LAUNCH" : "WON'T LAUNCH")}
           </p>
-          {/* Full Auto: one plain remain% line (Assisted-style muted type) — no GB tables */}
-          {fullAutoMode && manifest.fits && totalVramMib > 0 && (
-            <p className="vram-forecast-hero__sub text-[9px] font-mono text-stealth-muted/80 leading-snug mt-1">
-              {Math.max(0, Math.round(100 - vramUsagePct))}% total VRAM remains
+          {/* Always reserve one sub line in FULL AUTO so fits/won't + learned swap don't nudge height. */}
+          {fullAutoMode ? (
+            <p
+              className={`vram-forecast-hero__sub text-[9px] font-mono text-stealth-muted/80 leading-snug mt-1${
+                manifest.fits && totalVramMib > 0 ? "" : " vram-forecast-hero__sub--placeholder"
+              }`}
+            >
+              {manifest.fits && totalVramMib > 0
+                ? `${Math.max(0, Math.round(100 - vramUsagePct))}% total VRAM remains`
+                : (t.heroSubtext || "\u00a0")}
             </p>
-          )}
-          {(t.heroSubtext || (showDetailedForecast && manifest.recommendation)) && (
-            <p className="vram-forecast-hero__sub text-[9px] font-mono text-stealth-muted/80 leading-snug mt-1">
-              {t.heroSubtext || manifest.recommendation}
-            </p>
+          ) : (
+            (t.heroSubtext || (showDetailedForecast && manifest.recommendation)) && (
+              <p className="vram-forecast-hero__sub text-[9px] font-mono text-stealth-muted/80 leading-snug mt-1">
+                {t.heroSubtext || manifest.recommendation}
+              </p>
+            )
           )}
           {forecastFitRow}
         </div>

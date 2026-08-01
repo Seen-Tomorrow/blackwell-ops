@@ -114,25 +114,35 @@ import {
   defaultSpecTypeForMain,
   draftRoleForSpecType,
   findScoredDraftCandidates,
-  isDraftPairingValid,
+  hasReadyDflashDraft,
   isExternalDraftOnly,
   isLaunchableMain,
   isValidGgufDraftPath,
-  essentialsSpecChipLabel,
-  essentialsSpecPreset,
-  clearModelSpecOverride,
   isSpecTypeValidForMain,
   loadDraftPairing,
   loadModelSpecOverride,
   pickBestDraftPair,
-  resolveSpecLaunchActive,
-  saveModelSpecOverride,
+  resolveExternalDraftPath,
   resolveDraftPathLabel,
   saveDraftPairing,
   specCapabilitiesForMain,
   specTypeAllowsParallel,
   specTypeNeedsExternalDraft,
+  isSpecDecodingGroupActive,
+  essentialsSpecChipLabel,
 } from "../lib/specDraft";
+import {
+  type SpecBoostMethod,
+  SPEC_PROFILE_MTP,
+  SPEC_PROFILE_DFLASH,
+  DFLASH_DRAFT_MODEL,
+  cockpitProfileKnobRows,
+  stripObsoleteSpecParams,
+  activeBoostMethodFromParams,
+  cliSpecTypeForMethod,
+} from "../lib/specProfiles";
+import { applySpecBoostProfiles } from "../lib/applySpecBoost";
+import { migrateCatalogParams } from "../lib/systemParams";
 import { DEFAULT_BINARY_PROFILE, ENV_META, ENV_ORDER, normalizeBinaryProfile, type Env, isDriverSufficientForProfile, getMinDriverMajorForCuda } from "../lib/foundry_constants";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -238,14 +248,12 @@ function deriveParamGroups(groupKeys: string[]): ParamGroupMeta[] {
   }));
 }
 
-const SPEC_DECODING_GROUP = "SPECULATIVE-DECODING";
+const SPEC_DECODING_GROUP = "SPECULATIVE-DECODING"; // legacy label only
 
 const BASE_PORT_CHIP_TOOLTIP = "Set your starting port, we will increment from here";
 
 function isSpecDecodingActive(params: UserEditedTemplateParam[]): boolean {
-  return params
-    .filter((p) => paramUiGroup(p.ui_group) === SPEC_DECODING_GROUP)
-    .some((p) => !p.hidden);
+  return isSpecDecodingGroupActive(params);
 }
 
 function configFlagEnabled(config: Record<string, unknown>, key: string): boolean {
@@ -314,13 +322,10 @@ function filterSpecTypeValues(
 }
 
 function applyEssentialsSpecPreset(
-  specType: string,
-  updateParam: (key: string, value: string | number) => void,
+  _specType: string,
+  _updateParam: (key: string, value: string | number) => void,
 ): void {
-  const preset = essentialsSpecPreset(specType);
-  if (!preset) return;
-  updateParam("spec_draft_n_max", preset.spec_draft_n_max);
-  updateParam("spec_draft_n_min", preset.spec_draft_n_min);
+  // Profile templates own defaults — Boost no longer pushes hardcoded presets.
 }
 
 function collectActiveAliases(stack: StackEntry[]): Set<string> {
@@ -825,7 +830,10 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   }, [gpus.length, userEditedParams]);
 
   const allParamsResolved = useMemo(() => {
-    const defs = deviceParam ? [deviceParam, ...userEditedParams] : [...userEditedParams];
+    const cleaned = stripObsoleteSpecParams(userEditedParams);
+    // Repair mtp_*/dflash_* if an older migrate pinned them into SYSTEM.
+    const { params: migrated } = migrateCatalogParams(cleaned);
+    const defs = deviceParam ? [deviceParam, ...migrated] : [...migrated];
     const gpuValues = gpus.map((_, i) => `GPU-${i}`);
     return defs
       .map((d) => {
@@ -868,7 +876,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   );
 
   // ── Hooks ────────────────────────────────────────────────────────────────
-  const { config, updateParam } = useConfigResolver({
+  const { config, updateParam, updateParams, clearSpecConfig } = useConfigResolver({
     model,
     userEditedParams: allParamsResolved,
     backendType: effectiveBackendType,
@@ -1081,11 +1089,18 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     [fullAutoMode, stack],
   );
 
-  const activeSpecType = config.spec_type != null ? String(config.spec_type) : undefined;
-
   const specParallelWarn = useMemo(
-    () => specParallelConflict(activeSpecType, allParamsResolved, config),
-    [activeSpecType, allParamsResolved, config],
+    () =>
+      specParallelConflict(
+        speedBoost === "mtp"
+          ? "draft-mtp"
+          : speedBoost === "dflash"
+            ? "draft-dflash"
+            : undefined,
+        allParamsResolved,
+        config,
+      ),
+    [speedBoost, allParamsResolved, config],
   );
   const mtpParallelSlotCount = useMemo(
     () => resolveParallelSlots(config, allParamsResolved),
@@ -1109,10 +1124,9 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     const par = resolveParallelSlots(config, allParamsResolved);
     setCodingMode(codingModeFromParallel(par));
     setBrains(brainsFromKvQuant(config.kv_quant != null ? String(config.kv_quant) : undefined));
-    const st = config.spec_type != null ? String(config.spec_type).toLowerCase() : "";
-    if (specDecodingGroupVisible && st.includes("mtp")) setSpeedBoost("mtp");
-    else if (specDecodingGroupVisible && st.includes("dflash")) setSpeedBoost("dflash");
-    else setSpeedBoost("smart");
+    const method = activeBoostMethodFromParams(allParamsResolved);
+    if (method === "mtp" || method === "dflash") setSpeedBoost(method);
+    else setSpeedBoost(fullAutoMode ? "smart" : "off");
     const r = config.reasoning;
     if (r === "off" || r === 0 || r === "0") setThink("off");
     else if (r === 4000 || r === "4000") setThink("budget");
@@ -1194,58 +1208,44 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     return filterParamValuesForConfigView(def, base, cockpitValueView);
   }, [allParamsResolved, fullAutoFixed, cockpitValueView, parallelFactoryValues, parallelValues]);
 
-  /**
-   * SPEC knobs under Boost strip (n_max / n_min / extras).
-   * Include group params even when group is toggled hidden (boost path still needs them);
-   * filter value chips by Essentials curation for Full Auto / Essentials view.
-   */
-  const cockpitSpecDetailParams = useMemo((): CockpitSpecDetailParam[] => {
-    const skip = new Set(["spec_type", "spec_draft_model"]);
-    return allParamsResolved
-      .filter(
-        (d) =>
-          paramUiGroup(d.ui_group) === SPEC_DECODING_GROUP
-          && !skip.has(d.key)
-          && !d.userHidden,
-      )
-      .map((d) => {
-        const seen = new Set((d.values || []).map(String));
-        const rawValues = [
-          ...(d.values || []),
-          ...(d.userAddedValues || []).filter((v) => !seen.has(String(v))),
-        ];
-        const values = filterParamValuesForConfigView(d, rawValues, cockpitValueView);
-        return {
-          key: d.key,
-          label: d.label || d.key,
-          values,
-          current: config[d.key] as string | number | undefined,
-          userAdded: Boolean(d.userAddedValues?.length),
-          onChange: (v: string | number) => updateParam(d.key, v),
-        };
-      })
-      .filter((p) => p.values.length > 0);
-  }, [allParamsResolved, config, updateParam, cockpitValueView]);
+  /** Active product method from Boost (source of truth for launch + SPEC-EXTRA). */
+  const specBoostMethod: SpecBoostMethod = useMemo(() => {
+    if (speedBoost === "mtp" || speedBoost === "dflash") return speedBoost;
+    if (speedBoost === "off" || speedBoost === "smart") return "off";
+    return activeBoostMethodFromParams(allParamsResolved);
+  }, [speedBoost, allParamsResolved]);
 
-  /**
-   * HIGH-confidence DFlash draft in library — silent pair / "ready" for Boost.
-   * Weaker local drafts still appear in Change-draft picker (MIN score list).
-   */
+  /** SPEC-EXTRA chips — template profile knobs only (MTP or DFlash group). */
+  const cockpitSpecDetailParams = useMemo((): CockpitSpecDetailParam[] => {
+    return cockpitProfileKnobRows(
+      specBoostMethod,
+      allParamsResolved,
+      config,
+      cockpitValueView,
+      updateParam,
+    );
+  }, [specBoostMethod, allParamsResolved, config, cockpitValueView, updateParam]);
+
+  /** DFlash draft ready: HIGH auto, pairing, or dflash_draft_model path. */
   const dflashLibraryReady = useMemo(() => {
     if (!model || !models?.length) return false;
-    return Boolean(
-      pickBestDraftPair(model, models, "external_dflash", HIGH_DRAFT_PAIR_SCORE),
-    );
-  }, [model, models]);
+    const cur =
+      config[DFLASH_DRAFT_MODEL] != null ? String(config[DFLASH_DRAFT_MODEL]) : null;
+    return hasReadyDflashDraft(model, models, cur);
+  }, [model, models, config]);
 
   /** Family likely has HF DFlash packs — show Get draft when library empty. */
   const dflashGettable = useMemo(() => mainMaySupportDflash(model), [model]);
 
   const dflashDraftLabel = useMemo(() => {
     if (!model || !models?.length || !dflashLibraryReady) return null;
-    const best = pickBestDraftPair(model, models, "external_dflash", HIGH_DRAFT_PAIR_SCORE);
-    return best ? resolveDraftPathLabel(best.path) : null;
-  }, [model, models, dflashLibraryReady]);
+    const path = resolveExternalDraftPath(model, models, "external_dflash", {
+      currentPath:
+        config[DFLASH_DRAFT_MODEL] != null ? String(config[DFLASH_DRAFT_MODEL]) : null,
+      specType: "draft-dflash",
+    });
+    return path ? resolveDraftPathLabel(path) : null;
+  }, [model, models, dflashLibraryReady, config]);
 
   const applyFullAutoCockpit = useCallback(
     async (
@@ -1253,7 +1253,12 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       speed: SpeedBoostId,
       brainsPick: BrainsId,
       thinkPick: ThinkId,
-      opts?: { powerUser?: boolean; rawSpecType?: string | null },
+      opts?: {
+        powerUser?: boolean;
+        rawSpecType?: string | null;
+        /** Explicit draft path (Change draft / Get draft confirm) — never wiped by HIGH-only auto. */
+        preferredDraftPath?: string | null;
+      },
     ) => {
       const powerUser = opts?.powerUser ?? false;
       setCodingMode(mode);
@@ -1261,13 +1266,26 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       setBrains(brainsPick);
       setThink(thinkPick);
 
+      // Prefer just-picked path when deciding if DFlash can enable CLI this turn.
+      const draftReadyNow =
+        dflashLibraryReady
+        || Boolean(
+          opts?.preferredDraftPath
+          && model
+          && models?.length
+          && resolveExternalDraftPath(model, models, "external_dflash", {
+            preferredPath: opts.preferredDraftPath,
+            specType: "draft-dflash",
+          }),
+        );
+
       const plan = resolveFullAutoPlan({
         codingMode: mode,
         speed,
         brains: brainsPick,
         think: thinkPick,
         capabilities: specCapabilities,
-        dflashLibraryReady,
+        dflashLibraryReady: draftReadyNow,
         dflashGettable,
         kvQuantValues,
         powerUser,
@@ -1277,9 +1295,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       if (plan.speed !== speed) setSpeedBoost(plan.speed);
 
       updateParam("parallel", plan.parallel);
-      if (plan.parallel > 1 && allParamsResolved.some((p) => p.key === "cont_batching")) {
-        updateParam("cont_batching", "on");
-      }
       updateParam("kv_quant", plan.kvQuant);
       if (plan.vision && allParamsResolved.some((p) => p.key === "vision")) {
         updateParam("vision", plan.vision);
@@ -1306,86 +1321,61 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         if (ubatchPick != null) updateParam("ubatch", ubatchPick);
       }
 
-      // Power raw factory types (eagle, ngram, …) — not covered by Joe plan.
-      const rawSpec =
-        powerUser && opts?.rawSpecType != null && String(opts.rawSpecType).trim()
-          ? String(opts.rawSpecType).trim()
-          : null;
-      const wantSpec = Boolean(rawSpec) || plan.enableSpec;
-      const effectiveSpecType = rawSpec ?? plan.specType;
-      const currentlyOn = specDecodingGroupVisible;
-      if (wantSpec !== currentlyOn && (hasSpecCapability || !wantSpec)) {
-        try {
-          await invoke<boolean>("toggle_group_hidden", {
-            providerId: effectiveBackendType,
-            groupId: SPEC_DECODING_GROUP,
+      // Template profiles: Boost method → show SPECULATIVE-MTP or SPECULATIVE-DFLASH (or neither).
+      const method: SpecBoostMethod =
+        plan.speed === "mtp" || plan.speed === "dflash"
+          ? plan.speed
+          : opts?.rawSpecType
+            ? "off" // raw types: leave profiles off; power chips handle rare cases
+            : "off";
+
+      try {
+        await applySpecBoostProfiles({
+          providerId: effectiveBackendType,
+          method,
+          setProviders: setResolvedProviders,
+        });
+        setSpecFlash(true);
+        window.setTimeout(() => setSpecFlash(false), 400);
+      } catch (err) {
+        console.error("[cockpit] applySpecBoostProfiles failed:", err);
+      }
+
+      // DFlash: resolve draft path into profile key (template-owned).
+      if (method === "dflash" && model && models?.length) {
+        const resolved =
+          opts?.preferredDraftPath
+          || resolveExternalDraftPath(model, models, "external_dflash", {
+            preferredPath: opts?.preferredDraftPath,
+            currentPath:
+              config[DFLASH_DRAFT_MODEL] != null
+              && String(config[DFLASH_DRAFT_MODEL]).toLowerCase() !== "off"
+                ? String(config[DFLASH_DRAFT_MODEL])
+                : null,
+            specType: "draft-dflash",
           });
-          setSpecFlash(true);
-          window.setTimeout(() => setSpecFlash(false), 400);
-          try {
-            const data = await invoke<ProviderConfig[]>("list_providers");
-            if (data.length > 0) setResolvedProviders(data);
-          } catch { /* event */ }
-          dispatchAppEvent(EVENTS.reloadProviders);
-          dispatchAppEvent(EVENTS.paramConfigChanged);
-        } catch (err) {
-          console.error("[cockpit] toggle_group_hidden failed:", err);
+        if (resolved) {
+          updateParam(DFLASH_DRAFT_MODEL, resolved);
+          saveDraftPairing(model.path, "draft-dflash", resolved);
         }
       }
 
-      if (wantSpec && effectiveSpecType) {
-        updateParam("spec_type", effectiveSpecType);
-        // Joe path may apply MTP/DFlash n_min/n_max presets; Power leaves raw values.
-        if (!powerUser) {
-          const preset = essentialsSpecPreset(effectiveSpecType);
-          if (preset) {
-            updateParam("spec_draft_n_max", preset.spec_draft_n_max);
-            updateParam("spec_draft_n_min", preset.spec_draft_n_min);
-          }
-        }
-        // External draft (DFlash/Eagle3) needs a paired GGUF. MTP is embedded — must clear any
-        // leftover --spec-draft-model from a prior DFlash selection or launch fails.
-        // Silent auto-pair requires HIGH confidence — weak (~50–79) pairs often GGML_ASSERT at load.
-        if (specTypeNeedsExternalDraft(effectiveSpecType)) {
-          if (model && models?.length) {
-            const role = draftRoleForSpecType(effectiveSpecType);
-            if (role) {
-              const draftPair = pickBestDraftPair(
-                model,
-                models,
-                role,
-                HIGH_DRAFT_PAIR_SCORE,
-              );
-              if (draftPair) {
-                updateParam("spec_draft_model", draftPair.path);
-                saveDraftPairing(model.path, effectiveSpecType, draftPair.path);
-              } else {
-                // Do not keep a stale/weak draft from a prior selection.
-                updateParam("spec_draft_model", "off");
-              }
-            }
-          }
-        } else {
-          updateParam("spec_draft_model", "off");
-        }
-      } else if (!wantSpec) {
-        // Off / Smart — always clear external draft so Boost OFF can launch and does not snap
-        // back to a broken DFlash pair (group hide alone is not enough if draft path lingers).
-        updateParam("spec_draft_model", "off");
+      if (method === "off") {
+        clearSpecConfig();
       }
     },
     [
-      allParamsResolved,
       dflashGettable,
       dflashLibraryReady,
       effectiveBackendType,
-      hasSpecCapability,
       kvQuantValues,
       model,
       models,
       specCapabilities,
-      specDecodingGroupVisible,
+      config,
       updateParam,
+      clearSpecConfig,
+      allParamsResolved,
     ],
   );
 
@@ -1577,14 +1567,16 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   const handleConfirmLibraryDraft = useCallback(
     (path: string) => {
       if (!model) return;
-      updateParam("spec_draft_model", path);
+      updateParam(DFLASH_DRAFT_MODEL, path);
       saveDraftPairing(model.path, "draft-dflash", path);
       setDflashPickOpen(false);
       setLibraryPickItems([]);
       setDflashResolveError(null);
-      // Ensure DFlash mode is active with this pairing
+      setDflashGetState("idle");
+      setDflashGetError(null);
       void applyFullAutoCockpit(codingMode, "dflash", brains, think, {
         powerUser: powerCockpitMode,
+        preferredDraftPath: path,
       });
     },
     [model, updateParam, applyFullAutoCockpit, codingMode, brains, think, powerCockpitMode],
@@ -1594,8 +1586,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   const dflashLocalPickItems = useMemo(() => libraryPickItems, [libraryPickItems]);
 
   const dflashPickInitialSelectedId = useMemo(() => {
-    return config.spec_draft_model != null ? String(config.spec_draft_model) : null;
-  }, [config.spec_draft_model]);
+    return config[DFLASH_DRAFT_MODEL] != null ? String(config[DFLASH_DRAFT_MODEL]) : null;
+  }, [config]);
 
   // Reset Get-draft UI when the main model changes.
   useEffect(() => {
@@ -1733,25 +1725,14 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     }
     setCatalogPlaceKey(null);
   }, [currentProvider, catalogPlaceKey, catalogPlaceGroup, effectiveBackendType]);
-  const specLaunchActive = useMemo(() => {
-    if (!model || !models?.length) return false;
-    return resolveSpecLaunchActive({
-      groupActive: specDecodingGroupVisible,
-      hasCapability: hasSpecCapability,
-      specType: activeSpecType,
-      model,
-      models,
-      providerId: effectiveBackendType,
-    });
-  }, [
-    model,
-    models,
-    specDecodingGroupVisible,
-    hasSpecCapability,
-    activeSpecType,
-    effectiveBackendType,
-  ]);
   const modelIsDraftOnly = model ? isExternalDraftOnly(model) : false;
+
+  const activeSpecType = cliSpecTypeForMethod(specBoostMethod) ?? undefined;
+  const specNeedsExternalDraft = specBoostMethod === "dflash";
+  const currentDraftPath =
+    config[DFLASH_DRAFT_MODEL] != null ? String(config[DFLASH_DRAFT_MODEL]) : "";
+  const draftPathValid = !specNeedsExternalDraft || isValidGgufDraftPath(currentDraftPath);
+  const specLaunchActive = specBoostMethod !== "off" && hasSpecCapability;
 
   const activeDraftRole: DraftRole | null = useMemo(() => {
     if (!activeSpecType) return null;
@@ -1769,204 +1750,20 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     setShowAllDrafts(false);
   }, [model?.path, activeDraftRole]);
 
-  const specNeedsExternalDraft = Boolean(
-    activeSpecType && specTypeNeedsExternalDraft(activeSpecType) && specLaunchActive,
-  );
-
-  const currentDraftPath = config.spec_draft_model != null ? String(config.spec_draft_model) : "";
-  const draftPathValid =
-    !specNeedsExternalDraft
-    || isValidGgufDraftPath(currentDraftPath);
-
-  // Legacy template stored auto/on — resolve only to HIGH-confidence pair.
-  useEffect(() => {
-    if (!specNeedsExternalDraft || !model) return;
-    const cur = currentDraftPath.trim().toLowerCase();
-    if (cur !== "auto" && cur !== "on") return;
-    const best = scoredDraftCandidates.find((x) => x.score >= HIGH_DRAFT_PAIR_SCORE)?.model;
-    if (!best) {
-      updateParam("spec_draft_model", "off");
-      return;
-    }
-    updateParam("spec_draft_model", best.path);
-    if (activeSpecType) {
-      saveDraftPairing(model.path, activeSpecType, best.path);
-    }
-  }, [
-    specNeedsExternalDraft,
-    model,
-    currentDraftPath,
-    scoredDraftCandidates,
-    activeSpecType,
-    updateParam,
-  ]);
-
-  const specAutoConfiguredRef = useRef<string | null>(null);
-  const specSimpleBootRef = useRef<string | null>(null);
-  const specGroupAutoHideRef = useRef<string | null>(null);
-
   useEffect(() => {
     migrateGlobalSpecOutOfCatalogOverrides(effectiveBackendType);
   }, [effectiveBackendType]);
 
+  // HIGH auto-pair into dflash_draft_model when Boost is DFlash and path is auto/empty.
   useEffect(() => {
-    if (!model) return;
-    if (specLaunchActive) return;
-    if (!loadModelSpecOverride(model.path)) return;
-    clearModelSpecOverride(model.path);
-    dispatchAppEvent(EVENTS.paramConfigChanged);
-  }, [model?.path, specLaunchActive]);
-
-  useEffect(() => {
-    if (!model || hasSpecCapability || !specDecodingGroupVisible) return;
-    const pathKey = normalizeModelPathKey(model.path);
-    if (specGroupAutoHideRef.current === pathKey) return;
-    specGroupAutoHideRef.current = pathKey;
-
-    invoke<boolean>("toggle_group_hidden", { providerId: effectiveBackendType, groupId: SPEC_DECODING_GROUP })
-      .then(async () => {
-        setSpecFlash(true);
-        setTimeout(() => setSpecFlash(false), 400);
-        try {
-          const data = await invoke<ProviderConfig[]>("list_providers");
-          if (data.length > 0) setResolvedProviders(data);
-        } catch { /* reloadProviders event is fallback */ }
-        dispatchAppEvent(EVENTS.reloadProviders);
-        dispatchAppEvent(EVENTS.paramConfigChanged);
-      })
-      .catch((err) => console.error("[specGroupAutoHide] toggle_group_hidden failed:", err));
-  }, [model, hasSpecCapability, specDecodingGroupVisible, effectiveBackendType]);
-
-  useEffect(() => {
-    if (!model || !models?.length || modelIsDraftOnly) return;
-    if (!specDecodingGroupVisible || !hasSpecCapability) return;
-
-    const currentType = config.spec_type != null ? String(config.spec_type).trim() : "";
-    if (!currentType || currentType.toLowerCase() === "none") return;
-    if (isSpecTypeValidForMain(currentType, model, models, effectiveBackendType)) return;
-
-    const replacement = defaultSpecTypeForMain(model, models, effectiveBackendType);
-    if (!replacement) return;
-
-    updateParam("spec_type", replacement);
-    const preset = specSimpleMode ? essentialsSpecPreset(replacement) : null;
-    if (preset) {
-      updateParam("spec_draft_n_max", preset.spec_draft_n_max);
-      updateParam("spec_draft_n_min", preset.spec_draft_n_min);
-    }
-    if (specTypeNeedsExternalDraft(replacement)) {
-      const role = draftRoleForSpecType(replacement);
-      if (role) {
-        const draft = pickBestDraftPair(model, models, role, HIGH_DRAFT_PAIR_SCORE);
-        if (draft) updateParam("spec_draft_model", draft.path);
-        else updateParam("spec_draft_model", "off");
-      }
-    } else {
-      updateParam("spec_draft_model", "off");
-    }
-  }, [
-    model,
-    models,
-    modelIsDraftOnly,
-    specDecodingGroupVisible,
-    hasSpecCapability,
-    config.spec_type,
-    effectiveBackendType,
-    specSimpleMode,
-    updateParam,
-  ]);
-
-  useEffect(() => {
-    if (!specSimpleMode || !model || !hasSpecCapability || specActive) return;
-    if (loadModelSpecOverride(model.path)?.spec_type) return;
-
-    const pathKey = normalizeModelPathKey(model.path);
-    if (specSimpleBootRef.current === pathKey) return;
-    specSimpleBootRef.current = pathKey;
-
-    invoke<boolean>("toggle_group_hidden", { providerId: effectiveBackendType, groupId: SPEC_DECODING_GROUP })
-      .then(async () => {
-        setSpecFlash(true);
-        setTimeout(() => setSpecFlash(false), 400);
-        try {
-          const data = await invoke<ProviderConfig[]>("list_providers");
-          if (data.length > 0) setResolvedProviders(data);
-        } catch { /* reloadProviders event is fallback */ }
-        dispatchAppEvent(EVENTS.reloadProviders);
-        dispatchAppEvent(EVENTS.paramConfigChanged);
-      })
-      .catch((err) => console.error("[specSimpleBoot] toggle_group_hidden failed:", err));
-  }, [specSimpleMode, model, hasSpecCapability, specActive, effectiveBackendType]);
-
-  useEffect(() => {
-    if (!specSimpleMode || !specActive || !activeSpecType) return;
-    const preset = essentialsSpecPreset(activeSpecType);
-    if (!preset) return;
-    const max = Number(config.spec_draft_n_max);
-    const min = Number(config.spec_draft_n_min);
-    if (max !== preset.spec_draft_n_max) updateParam("spec_draft_n_max", preset.spec_draft_n_max);
-    if (min !== preset.spec_draft_n_min) updateParam("spec_draft_n_min", preset.spec_draft_n_min);
-  }, [
-    specSimpleMode,
-    specActive,
-    activeSpecType,
-    config.spec_draft_n_max,
-    config.spec_draft_n_min,
-    updateParam,
-  ]);
-
-  useEffect(() => {
-    if (!model || !models?.length || modelIsDraftOnly) return;
-    const pathKey = normalizeModelPathKey(model.path);
-    if (specAutoConfiguredRef.current === pathKey) return;
-
-    const savedOverride = loadModelSpecOverride(model.path);
-    if (
-      savedOverride?.spec_type
-      && isSpecTypeValidForMain(String(savedOverride.spec_type), model, models, effectiveBackendType)
-    ) {
-      specAutoConfiguredRef.current = pathKey;
-      return;
-    }
-
-    const applyPrefill = (specType: string, draftPath?: string) => {
-      const patch: Record<string, string | number> = { spec_type: specType };
-      if (draftPath) patch.spec_draft_model = draftPath;
-      const preset = specSimpleMode ? essentialsSpecPreset(specType) : null;
-      if (preset) {
-        patch.spec_draft_n_max = preset.spec_draft_n_max;
-        patch.spec_draft_n_min = preset.spec_draft_n_min;
-      } else if (specType === "draft-dflash") {
-        patch.spec_draft_n_max = 4;
-      }
-      saveModelSpecOverride(model.path, patch);
-      if (draftPath) saveDraftPairing(model.path, specType, draftPath);
-      dispatchAppEvent(EVENTS.paramConfigChanged);
-    };
-
-    const saved = loadDraftPairing(model.path);
-    if (saved && isDraftPairingValid(saved, model, models)) {
-      applyPrefill(saved.specType, saved.draftPath);
-      specAutoConfiguredRef.current = pathKey;
-      return;
-    }
-
-    const defaultType = defaultSpecTypeForMain(model, models, effectiveBackendType);
-    // Silent auto-prefill only with HIGH-confidence local pairs (weak auto-picks → GGML_ASSERT).
-    if (defaultType === "draft-dflash") {
-      const draft = pickBestDraftPair(
-        model,
-        models,
-        "external_dflash",
-        HIGH_DRAFT_PAIR_SCORE,
-      );
-      if (draft) applyPrefill("draft-dflash", draft.path);
-    } else if (defaultType === "draft-mtp") {
-      applyPrefill("draft-mtp");
-    }
-
-    specAutoConfiguredRef.current = pathKey;
-  }, [model, models, effectiveBackendType, modelIsDraftOnly, specSimpleMode]);
+    if (specBoostMethod !== "dflash" || !model || !models?.length) return;
+    const cur = currentDraftPath.trim().toLowerCase();
+    if (cur && cur !== "auto" && cur !== "on" && cur !== "off") return;
+    const best = pickBestDraftPair(model, models, "external_dflash", HIGH_DRAFT_PAIR_SCORE);
+    if (!best) return;
+    updateParam(DFLASH_DRAFT_MODEL, best.path);
+    saveDraftPairing(model.path, "draft-dflash", best.path);
+  }, [specBoostMethod, model, models, currentDraftPath, updateParam]);
 
   const customFlagsReplaceActive = testFlagsEnabled && testFlagsMode === "replace";
   const customFlagsLaunchActive = testFlagsEnabled;
@@ -2455,16 +2252,28 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     const n = typeof config.ctx === "number" ? config.ctx : parseInt(String(config.ctx), 10);
     const perSlot =
       slots > 1 && Number.isFinite(n) && n > 0 ? Math.floor(n / slots) : undefined;
+    const ctxDef = allParamsResolved.find((p) => p.key === "ctx");
+    const rawCtxValues = (() => {
+      if (!ctxDef) return undefined;
+      const seen = new Set((ctxDef.values || []).map(String));
+      return [
+        ...(ctxDef.values || []),
+        ...(ctxDef.userAddedValues || []).filter((v) => !seen.has(String(v))),
+      ];
+    })();
+    const ctxValues = ctxDef && rawCtxValues
+      ? filterParamValuesForConfigView(ctxDef, rawCtxValues, cockpitValueView)
+      : rawCtxValues;
     return {
       ctxValue: config.ctx as number | string | undefined,
-      ctxDefault: allParamsResolved.find((p) => p.key === "ctx")?.defaultValue,
-      ctxValues: allParamsResolved.find((p) => p.key === "ctx")?.values,
-      ctxStep: allParamsResolved.find((p) => p.key === "ctx")?.step ?? 1024,
+      ctxDefault: ctxDef?.defaultValue,
+      ctxValues,
+      ctxStep: ctxDef?.step ?? 1024,
       onCtxChange: (v: number) => updateParam("ctx", v),
       ctxSlotCount: slots,
       ctxPerSlot: perSlot,
     };
-  }, [config, allParamsResolved, updateParam]);
+  }, [config, allParamsResolved, updateParam, cockpitValueView]);
 
   const ctxDockedInCockpit = ctxCockpitDock === "cockpit";
   const showCtxAboveConfig =
@@ -2636,8 +2445,12 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             || (p.label || "").toLowerCase().includes(filterQuery),
         );
 
-    if (isSpecGroup) {
-      // Cockpit owns Boost + draft + Spec details (n_max/n_min). Classic chip block removed.
+    if (
+      isSpecGroup
+      || group.id === SPEC_PROFILE_MTP
+      || group.id === SPEC_PROFILE_DFLASH
+    ) {
+      // Cockpit owns Boost + profile knobs. Classic chip block removed for profile groups.
       return null;
     }
 
@@ -2811,7 +2624,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       fullAutoMode,
       configView,
       essentialFactoryKeys,
-      specActive: specLaunchActive,
+      specMethod: specBoostMethod,
       allParamsResolved,
       gpus,
       runningSlotsForPlan,
@@ -2834,7 +2647,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     fullAutoMode,
     configView,
     essentialFactoryKeys,
-    specLaunchActive,
+    specBoostMethod,
     allParamsResolved,
     gpus,
     runningSlotsForPlan,
@@ -2874,11 +2687,9 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       await invoke("stop_engine_slot", { slotIdx: opts.slotIdx });
       await new Promise((r) => setTimeout(r, 450));
       updateParam("parallel", parallel);
-      if (parallel > 1) updateParam("cont_batching", "on");
       const base = buildCurrentLaunchConfig();
       if (!base) throw new Error("No model selected in panel — pick a model first.");
       const extra: Record<string, unknown> = { ...(base.extra_params || {}), parallel };
-      if (parallel > 1) extra.cont_batching = "on";
       const launched = await invoke<{ idx: number; port: number; alias: string }>("launch_engine", {
         config: {
           ...base,
@@ -3620,17 +3431,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
               rawSpecTypes={factoryRawSpecTypes}
               activeRawSpecType={activeRawSpecType}
               onRawSpecType={(raw) => {
-                if (raw == null) {
-                  void applyFullAutoCockpit(
-                    codingMode,
-                    powerCockpitMode ? "off" : "smart",
-                    brains,
-                    think,
-                    { powerUser: powerCockpitMode, rawSpecType: null },
-                  );
-                  return;
-                }
-                // powerUser true: keep speed Off (no Smart snap / batch push) while setting raw type
+                // Raw factory types only — product Off/MTP/DFlash use onSpeedBoost alone.
+                if (raw == null) return;
                 void applyFullAutoCockpit(codingMode, "off", brains, think, {
                   powerUser: true,
                   rawSpecType: raw,

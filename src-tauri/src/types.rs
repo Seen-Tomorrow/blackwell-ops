@@ -427,6 +427,9 @@ pub struct ProviderConfig {
     /// Custom group order set by user (overrides template insertion order). Empty = use template order.
     #[serde(default, rename = "groupOrder")]
     pub group_order: Vec<String>,
+    /// Groups flagged protected (factory structure lock for users). Flag-driven, not name magic.
+    #[serde(default, rename = "protectedGroups", skip_serializing_if = "Vec::is_empty")]
+    pub protected_groups: Vec<String>,
     #[serde(default, rename = "groupDisplayZone", skip_serializing_if = "HashMap::is_empty")]
     pub group_display_zone: HashMap<String, String>,
     #[serde(default, rename = "configColumnCount", skip_serializing_if = "Option::is_none")]
@@ -582,27 +585,52 @@ pub struct UserEditedTemplateParam {
 }
 
 impl UserEditedTemplateParam {
-    /// Returns true if this value is hidden from the catalog UI.
+    /// Returns true if this value is hidden from the catalog UI (numeric or string).
     pub fn is_value_hidden(&self, value: &str) -> bool {
-        self.hidden_values.iter().any(|v| v.as_str() == Some(value))
+        let key = value.trim();
+        self.hidden_values.iter().any(|v| json_value_matches_str(v, key))
     }
 
     /// True when value is excluded from engine Essentials UI only.
     pub fn is_value_essentials_hidden(&self, value: &str) -> bool {
+        let key = value.trim();
         self.essentials_hidden_values
             .iter()
-            .any(|v| v.as_str() == Some(value) || v.to_string() == value)
+            .any(|v| json_value_matches_str(v, key))
     }
 
     /// The first non-hidden value — used when the saved default is hidden so launch always has a visible selection.
     pub fn effective_default(&self) -> Option<&serde_json::Value> {
         for v in &self.values {
-            if !self.is_value_hidden(v.as_str().unwrap_or("")) {
+            let s = match v {
+                serde_json::Value::String(s) => s.clone(),
+                serde_json::Value::Number(n) => n.to_string(),
+                other => other.to_string(),
+            };
+            if !self.is_value_hidden(&s) {
                 return Some(v);
             }
         }
         None
     }
+}
+
+fn json_value_matches_str(v: &serde_json::Value, key: &str) -> bool {
+    if key.is_empty() {
+        return false;
+    }
+    if let Some(s) = v.as_str() {
+        return s == key;
+    }
+    if let Some(n) = v.as_f64() {
+        if let Ok(k) = key.parse::<f64>() {
+            if (n - k).abs() < f64::EPSILON {
+                return true;
+            }
+        }
+        return n.to_string() == key || (n as i64).to_string() == key;
+    }
+    v.to_string() == key || v.to_string().trim_matches('"') == key
 }
 
 // ── Hugging Face Hub Types ───────────────────────────────────────────────

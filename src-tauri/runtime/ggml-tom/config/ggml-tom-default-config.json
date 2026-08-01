@@ -12,7 +12,8 @@
     "PERFORMANCE",
     "FEATURE-FLAGS",
     "ADVANCED",
-    "SPECULATIVE-DECODING",
+    "SPECULATIVE-MTP",
+    "SPECULATIVE-DFLASH",
     "SYSTEM"
   ],
   "id": "ggml-tom",
@@ -31,7 +32,8 @@
       "ABOVE-CONFIG-LEFT": 0,
       "ADVANCED": 2,
       "FEATURE-FLAGS": 1,
-      "SPECULATIVE-DECODING": 2
+      "SPECULATIVE-MTP": 1,
+      "SPECULATIVE-DFLASH": 1
     },
     "groupDisplayZone": {
       "ABOVE-CONFIG-LEFT": "above",
@@ -63,6 +65,11 @@
         "turbo2",
         "turbo3",
         "turbo4"
+      ],
+      "essentialsHiddenValues": [
+        "turbo2",
+        "turbo3",
+        "turbo4"
       ]
     },
     {
@@ -76,7 +83,7 @@
       "note": "Context window size in tokens.",
       "pattern": "",
       "ptype": "slider",
-      "step": 1024.0,
+      "step": 1024,
       "sub_params": null,
       "ui_group": "ABOVE-CONFIG-RIGHT",
       "values": [
@@ -108,7 +115,11 @@
         1024,
         2048,
         4096,
-        8192
+        8192,
+        16384
+      ],
+      "essentialsHiddenValues": [
+        16384
       ]
     },
     {
@@ -132,7 +143,11 @@
         128,
         256,
         512,
-        1024
+        1024,
+        4096
+      ],
+      "essentialsHiddenValues": [
+        4096
       ]
     },
     {
@@ -155,7 +170,13 @@
         4,
         8,
         16,
-        32
+        32,
+        64,
+        128
+      ],
+      "essentialsHiddenValues": [
+        64,
+        128
       ]
     },
     {
@@ -284,25 +305,6 @@
     {
       "default": "on",
       "dock": "",
-      "flag": "--cont-batching",
-      "flag_pair": [],
-      "hidden_default": false,
-      "key": "cont_batching",
-      "label": "CONT-BATCHING",
-      "note": "Enable continuous batching.",
-      "pattern": "",
-      "ptype": "switch_onoff",
-      "step": null,
-      "sub_params": null,
-      "ui_group": "FEATURE-FLAGS",
-      "values": [
-        "on",
-        "off"
-      ]
-    },
-    {
-      "default": "on",
-      "dock": "",
       "flag": "--swa-full",
       "flag_pair": [],
       "hidden_default": false,
@@ -336,79 +338,6 @@
       "values": [
         0,
         1
-      ]
-    },
-    {
-      "default": "draft-mtp",
-      "dock": "",
-      "flag": "--spec-type",
-      "flag_pair": [],
-      "hidden_default": true,
-      "key": "spec_type",
-      "label": "SPEC-TYPE",
-      "note": "Comma-separated speculative decoding types. 'none' disables.",
-      "pattern": "",
-      "ptype": "arg_select",
-      "step": null,
-      "sub_params": null,
-      "ui_group": "SPECULATIVE-DECODING",
-      "values": [
-        "draft-simple",
-        "draft-eagle3",
-        "draft-mtp",
-        "ngram-simple",
-        "ngram-map-k",
-        "ngram-map-k4v",
-        "ngram-mod",
-        "ngram-cache"
-      ]
-    },
-    {
-      "default": 3,
-      "dock": "",
-      "flag": "--spec-draft-n-max",
-      "flag_pair": [],
-      "hidden_default": true,
-      "key": "spec_draft_n_max",
-      "label": "SPEC-DRAFT-N-MAX",
-      "note": "Maximum number of draft tokens per speculative decoding step.",
-      "pattern": "",
-      "ptype": "arg_select",
-      "step": null,
-      "sub_params": null,
-      "ui_group": "SPECULATIVE-DECODING",
-      "values": [
-        1,
-        2,
-        3,
-        4,
-        5,
-        6,
-        8,
-        10,
-        12
-      ]
-    },
-    {
-      "default": 1,
-      "dock": "",
-      "flag": "--spec-draft-n-min",
-      "flag_pair": [],
-      "hidden_default": true,
-      "key": "spec_draft_n_min",
-      "label": "SPEC-DRAFT-N-MIN",
-      "note": "minimum number of draft tokens to use for speculative decoding.",
-      "pattern": "",
-      "ptype": "arg_select",
-      "step": null,
-      "sub_params": null,
-      "ui_group": "SPECULATIVE-DECODING",
-      "values": [
-        1,
-        2,
-        3,
-        4,
-        5
       ]
     },
     {
@@ -479,6 +408,159 @@
         8888,
         9090
       ]
+    },
+    {
+      "default": 3,
+      "dock": "",
+      "flag": "--spec-draft-n-max",
+      "flag_pair": [],
+      "hidden_default": true,
+      "key": "mtp_n_max",
+      "label": "DRAFT-N-MAX",
+      "note": "MTP: maximum draft tokens per speculative step.",
+      "pattern": "",
+      "ptype": "arg_select",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "SPECULATIVE-MTP",
+      "values": [
+        1,
+        2,
+        3,
+        4,
+        6,
+        8,
+        12
+      ]
+    },
+    {
+      "default": 1,
+      "dock": "",
+      "flag": "--spec-draft-n-min",
+      "flag_pair": [],
+      "hidden_default": true,
+      "key": "mtp_n_min",
+      "label": "DRAFT-N-MIN",
+      "note": "MTP: minimum draft tokens per speculative step.",
+      "pattern": "",
+      "ptype": "arg_select",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "SPECULATIVE-MTP",
+      "values": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    {
+      "default": 0,
+      "dock": "",
+      "flag": "--spec-draft-p-min",
+      "flag_pair": [],
+      "hidden_default": true,
+      "key": "mtp_p_min",
+      "label": "DRAFT-P-MIN",
+      "note": "MTP: minimum speculative decoding probability (greedy).",
+      "pattern": "",
+      "ptype": "arg_select",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "SPECULATIVE-MTP",
+      "values": [
+        0,
+        0.6,
+        0.75,
+        0.8
+      ]
+    },
+    {
+      "default": 6,
+      "dock": "",
+      "flag": "--spec-draft-n-max",
+      "flag_pair": [],
+      "hidden_default": true,
+      "key": "dflash_n_max",
+      "label": "DRAFT-N-MAX",
+      "note": "DFlash: maximum draft tokens per speculative step.",
+      "pattern": "",
+      "ptype": "arg_select",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "SPECULATIVE-DFLASH",
+      "values": [
+        1,
+        2,
+        3,
+        4,
+        6,
+        8,
+        12
+      ]
+    },
+    {
+      "default": 1,
+      "dock": "",
+      "flag": "--spec-draft-n-min",
+      "flag_pair": [],
+      "hidden_default": true,
+      "key": "dflash_n_min",
+      "label": "DRAFT-N-MIN",
+      "note": "DFlash: minimum draft tokens per speculative step.",
+      "pattern": "",
+      "ptype": "arg_select",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "SPECULATIVE-DFLASH",
+      "values": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    {
+      "default": 0,
+      "dock": "",
+      "flag": "--spec-draft-p-min",
+      "flag_pair": [],
+      "hidden_default": true,
+      "key": "dflash_p_min",
+      "label": "DRAFT-P-MIN",
+      "note": "DFlash: minimum speculative decoding probability (greedy).",
+      "pattern": "",
+      "ptype": "arg_select",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "SPECULATIVE-DFLASH",
+      "values": [
+        0,
+        0.6,
+        0.75,
+        0.8
+      ]
+    },
+    {
+      "default": "off",
+      "dock": "",
+      "flag": "--spec-draft-model",
+      "flag_pair": [],
+      "hidden_default": true,
+      "key": "dflash_draft_model",
+      "label": "DRAFT-MODEL",
+      "note": "External DFlash draft GGUF path. Set via Boost Get/Change draft.",
+      "pattern": "*dflash*",
+      "ptype": "logic_only",
+      "step": null,
+      "sub_params": null,
+      "ui_group": "SPECULATIVE-DFLASH",
+      "values": [
+        "off",
+        "auto"
+      ]
     }
   ],
   "spawn_profile": {
@@ -488,14 +570,10 @@
     "auto_vram": true,
     "enable_metrics": true,
     "essentialParamKeys": [
-      "kv_quant",
-      "ctx",
       "batch",
       "ubatch",
-      "parallel",
       "vision",
-      "mmap",
-      "cont_batching"
+      "mmap"
     ],
     "fit_adapter": "ggml_tom",
     "fit_style": "ggml_fit_params",
@@ -515,14 +593,10 @@
       "--port"
     ],
     "simple_param_keys": [
-      "kv_quant",
-      "ctx",
       "batch",
       "ubatch",
-      "parallel",
       "vision",
-      "mmap",
-      "cont_batching"
+      "mmap"
     ],
     "supports_fusion": true,
     "tensor_split": false,
@@ -531,6 +605,6 @@
       "3"
     ]
   },
-  "templateVersion": 2,
+  "templateVersion": 14,
   "template_type": "ggml-llama"
 }

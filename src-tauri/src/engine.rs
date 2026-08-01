@@ -61,13 +61,17 @@ const SPEC_EXTRA_PARAM_KEYS: &[&str] = &[
     "spec_draft_model",
     "spec_draft_n_max",
     "spec_draft_n_min",
+    "spec_draft_p_min",
 ];
 
 fn is_spec_decoding_group_active(user_params: &[crate::types::UserEditedTemplateParam]) -> bool {
-    user_params
-        .iter()
-        .filter(|p| p.ui_group == "SPECULATIVE-DECODING")
-        .any(|p| !p.hidden)
+    user_params.iter().any(|p| {
+        let g = p.ui_group.as_str();
+        !p.hidden
+            && (g.eq_ignore_ascii_case("SPECULATIVE-MTP")
+                || g.eq_ignore_ascii_case("SPECULATIVE-DFLASH")
+                || g.eq_ignore_ascii_case("SPECULATIVE-DECODING"))
+    })
 }
 
 fn model_has_embedded_mtp(model_path: &str) -> bool {
@@ -90,12 +94,16 @@ fn sanitize_spec_extra_params(
     user_params: &[crate::types::UserEditedTemplateParam],
 ) {
     let group_active = is_spec_decoding_group_active(user_params);
+    // Frontend may inject CLI keys even when groups were mis-filed; trust explicit spec_type.
+    let has_spec_type = config
+        .get_param_str("spec_type")
+        .is_some_and(|t| !t.trim().is_empty() && !t.eq_ignore_ascii_case("none"));
     let stale_mtp = config
         .get_param_str("spec_type")
         .is_some_and(|t| t.eq_ignore_ascii_case("draft-mtp"))
         && !model_has_embedded_mtp(&config.model_path);
 
-    if !group_active || stale_mtp {
+    if stale_mtp || (!group_active && !has_spec_type) {
         strip_spec_extra_params(config);
     }
 }
@@ -118,7 +126,11 @@ fn guard_speculative_decoding(
 
     if !launchable || !group_active || stale_mtp {
         for p in &mut filtered {
-            if p.ui_group == "SPECULATIVE-DECODING" && !p.hidden {
+            let g = p.ui_group.as_str();
+            let is_spec = g.eq_ignore_ascii_case("SPECULATIVE-MTP")
+                || g.eq_ignore_ascii_case("SPECULATIVE-DFLASH")
+                || g.eq_ignore_ascii_case("SPECULATIVE-DECODING");
+            if is_spec && !p.hidden {
                 p.hidden = true;
             }
         }

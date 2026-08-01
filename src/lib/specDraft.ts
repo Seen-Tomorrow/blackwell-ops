@@ -10,30 +10,29 @@ import {
   type ModelSpecOverride,
 } from "./storage";
 import { isTomProvider } from "./tomMtp";
+import {
+  isAnySpecProfileActive,
+  isSpecProfileParamKey,
+  SPEC_PROFILE_PARAM_KEYS,
+} from "./specProfiles";
 
 export type DraftRole = "none" | "mtp_embedded" | "external_dflash" | "external_eagle3";
 export type CatalogDraftFilter = "regular" | "draft" | "all";
 export type SpecCapability = "mtp" | "dflash" | "eagle3";
 
-export const MODEL_SPEC_PARAM_KEYS = [
-  "spec_type",
-  "spec_draft_model",
-  "spec_draft_n_max",
-  "spec_draft_n_min",
-] as const;
-
+/** @deprecated Old single group — profiles use SPECULATIVE-MTP / SPECULATIVE-DFLASH. */
 export const SPEC_DECODING_UI_GROUP = "SPECULATIVE-DECODING";
 
-const MODEL_SPEC_KEY_SET = new Set<string>(MODEL_SPEC_PARAM_KEYS);
-
-/** Any visible param in SPECULATIVE-DECODING — matches backend group toggle state. */
-export function isSpecDecodingGroupActive(params: UserEditedTemplateParam[]): boolean {
-  return params
-    .filter((p) => paramUiGroup(p.ui_group) === SPEC_DECODING_UI_GROUP)
-    .some((p) => !p.hidden);
+/** Profile knob keys are model-scoped (per-main overrides). */
+export function isModelSpecParamKey(key: string): boolean {
+  return isSpecProfileParamKey(key);
 }
 
-/** Authoritative launch gate — group on, model capable, spec mode valid for this main. */
+/** Any visible param in a SPEC profile group. */
+export function isSpecDecodingGroupActive(params: UserEditedTemplateParam[]): boolean {
+  return isAnySpecProfileActive(params);
+}
+
 export function resolveSpecLaunchActive(opts: {
   groupActive: boolean;
   hasCapability: boolean;
@@ -48,38 +47,16 @@ export function resolveSpecLaunchActive(opts: {
   return isSpecTypeValidForMain(st, opts.model, opts.models, opts.providerId);
 }
 
-export function isModelSpecParamKey(key: string): boolean {
-  return MODEL_SPEC_KEY_SET.has(key);
-}
-
-export function stripSpecExtraParams<T extends Record<string, unknown>>(params: T): T {
-  const out = { ...params };
-  for (const k of MODEL_SPEC_PARAM_KEYS) {
-    delete out[k];
-  }
-  return out;
-}
-
-/** FULL-AUTO + Essentials — fixed N-max / N-min (hidden from UI). */
-export const ESSENTIALS_SPEC_PRESETS: Record<
-  string,
-  { spec_draft_n_max: number; spec_draft_n_min: number }
-> = {
-  "draft-mtp": { spec_draft_n_max: 3, spec_draft_n_min: 1 },
-  "draft-dflash": { spec_draft_n_max: 6, spec_draft_n_min: 1 },
-};
-
-export function essentialsSpecPreset(
-  specType: string,
-): { spec_draft_n_max: number; spec_draft_n_min: number } | null {
-  return ESSENTIALS_SPEC_PRESETS[specType.trim().toLowerCase()] ?? null;
-}
-
 export function essentialsSpecChipLabel(specType: string): string {
   const s = specType.trim().toLowerCase();
   if (s === "draft-mtp") return "MTP";
   if (s === "draft-dflash") return "DFLASH";
   return specType;
+}
+
+/** @deprecated Presets removed — template profile defaults only. */
+export function essentialsSpecPreset(_specType: string): null {
+  return null;
 }
 
 const DRAFT_ARCH_FOR_SPEC: Record<string, DraftRole> = {
@@ -533,4 +510,118 @@ export function isDraftPairingValid(
   // Silent restore / capability reuse — HIGH only. Weak (~50–79) auto-pairs often
   // GGML_ASSERT at load; user can still pick them live via Change draft.
   return scoreDraftPair(main, draft, role) >= HIGH_DRAFT_PAIR_SCORE;
+}
+
+/**
+ * User-confirmed pairing still on disk (Change draft / Get draft / prior save).
+ * MIN score — weaker than silent HIGH auto, but must not be wiped after the user picks it.
+ */
+export function isUsableDraftPairing(
+  pairing: DraftPairing,
+  main: ModelEntry,
+  models: ModelEntry[],
+): boolean {
+  const role = draftRoleForSpecType(pairing.specType);
+  if (!role) return false;
+  const draft = models.find(
+    (m) => normalizeModelPathKey(m.path) === normalizeModelPathKey(pairing.draftPath),
+  );
+  if (draft) {
+    if (draftRoleFromModel(draft) !== role) return false;
+    return scoreDraftPair(main, draft, role) >= MIN_DRAFT_PAIR_SCORE;
+  }
+  // Catalog lag after download — path still launchable if it looks like a GGUF.
+  return isValidGgufDraftPath(pairing.draftPath);
+}
+
+/**
+ * Resolve --spec-draft-model for DFlash/Eagle:
+ * 1) explicit preferred (just-picked), 2) current config, 3) saved pairing, 4) HIGH silent auto.
+ * Preferred path skips score floor (user confirmed). Auto stays HIGH-only.
+ */
+export function resolveExternalDraftPath(
+  main: ModelEntry,
+  models: ModelEntry[],
+  draftRole: DraftRole,
+  opts?: {
+    preferredPath?: string | null;
+    currentPath?: string | null;
+    specType?: string;
+  },
+): string | null {
+  const matchCatalog = (raw: string): ModelEntry | undefined =>
+    models.find((m) => normalizeModelPathKey(m.path) === normalizeModelPathKey(raw));
+
+  const tryPath = (
+    raw: string | null | undefined,
+    mode: "user" | "restored" | "auto",
+  ): string | null => {
+    if (raw == null) return null;
+    const p = String(raw).trim();
+    if (!p) return null;
+    const low = p.toLowerCase();
+    if (low === "off" || low === "auto" || low === "on" || low === "none") return null;
+
+    const draft = matchCatalog(p);
+    if (draft) {
+      if (draftRoleFromModel(draft) !== draftRole) return null;
+      if (mode === "user") return draft.path;
+      const score = scoreDraftPair(main, draft, draftRole);
+      if (mode === "restored" && score < MIN_DRAFT_PAIR_SCORE) return null;
+      if (mode === "auto" && score < HIGH_DRAFT_PAIR_SCORE) return null;
+      return draft.path;
+    }
+
+    // Absolute path not yet in catalog (download just finished / external file).
+    if (mode === "user" && isValidGgufDraftPath(p)) return p;
+    if (mode === "restored" && isValidGgufDraftPath(p)) return p;
+    return null;
+  };
+
+  const preferred = tryPath(opts?.preferredPath, "user");
+  if (preferred) return preferred;
+
+  const current = tryPath(opts?.currentPath, "restored");
+  if (current) return current;
+
+  const pairing = loadDraftPairing(main.path);
+  if (pairing) {
+    const pairingRole = draftRoleForSpecType(pairing.specType);
+    // Accept saved pair when roles match, or when saved under draft-dflash / draft-eagle3 alias.
+    const roleOk =
+      pairingRole === draftRole
+      || (draftRole === "external_dflash" && String(pairing.specType).toLowerCase().includes("dflash"))
+      || (draftRole === "external_eagle3" && String(pairing.specType).toLowerCase().includes("eagle"));
+    if (roleOk) {
+      const saved = tryPath(pairing.draftPath, "restored");
+      if (saved) return saved;
+    }
+  }
+
+  return pickBestDraftPair(main, models, draftRole, HIGH_DRAFT_PAIR_SCORE)?.path ?? null;
+}
+
+/** True when Boost DFlash can enable CLI (draft path ready — not waiting on Get draft). */
+export function hasReadyDflashDraft(
+  main: ModelEntry | null | undefined,
+  models: ModelEntry[] | null | undefined,
+  currentDraftPath?: string | null,
+): boolean {
+  if (!main || !models?.length) return false;
+  if (pickBestDraftPair(main, models, "external_dflash", HIGH_DRAFT_PAIR_SCORE)) return true;
+
+  const pairing = loadDraftPairing(main.path);
+  if (
+    pairing
+    && String(pairing.specType).toLowerCase().includes("dflash")
+    && isUsableDraftPairing(pairing, main, models)
+  ) {
+    return true;
+  }
+
+  const resolved = resolveExternalDraftPath(main, models, "external_dflash", {
+    currentPath: currentDraftPath,
+    specType: "draft-dflash",
+  });
+  return Boolean(resolved);
 }

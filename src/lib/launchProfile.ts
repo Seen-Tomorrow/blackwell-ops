@@ -12,16 +12,21 @@ import { paramUiGroup } from "./storage";
 /** Dock / launch chrome — always shown in essentials (alias uses separate row). */
 export const LAUNCH_DOCK_PARAM_KEYS = ["base_port"] as const;
 
+/** CLI keys injected by buildSpecCliExtraParams — not template row keys. */
 export const SPEC_DECODING_LAUNCH_KEYS = [
   "spec_type",
   "spec_draft_model",
   "spec_draft_n_max",
   "spec_draft_n_min",
+  "spec_draft_p_min",
 ] as const;
 
-function skipSpecParamForLaunch(p: UserEditedTemplateParam, specActive: boolean): boolean {
-  if (specActive) return false;
-  return paramUiGroup(p.ui_group) === SPEC_DECODING_UI_GROUP || isModelSpecParamKey(p.key);
+function skipSpecParamForLaunch(p: UserEditedTemplateParam, _specActive: boolean): boolean {
+  // Profile knobs flatten to CLI keys at launch — never emit mtp_*/dflash_* rows as raw extras.
+  const g = paramUiGroup(p.ui_group);
+  if (g === "SPECULATIVE-MTP" || g === "SPECULATIVE-DFLASH") return true;
+  if (g === SPEC_DECODING_UI_GROUP || isModelSpecParamKey(p.key)) return true;
+  return false;
 }
 
 const DEFAULT_ESSENTIAL_KEYS = ["device", "ctx"] as const;
@@ -88,16 +93,29 @@ export function isEssentialsHiddenValue(
  * Filter display values for engine Essentials mode.
  * Always drops catalog hiddenValues; in essentials also drops essentialsHiddenValues.
  */
+function valueKeyForHide(v: string | number): string {
+  if (typeof v === "number" && Number.isFinite(v)) {
+    // Canonical numeric key so 8192 and "8192" match.
+    return String(v);
+  }
+  const s = String(v).trim();
+  if (/^-?\d+(\.\d+)?$/.test(s)) {
+    const n = Number(s);
+    if (Number.isFinite(n)) return String(n);
+  }
+  return s;
+}
+
 export function filterParamValuesForConfigView(
   def: UserEditedTemplateParam,
   values: (string | number)[],
   configView: ConfigViewMode,
 ): (string | number)[] {
-  const catalogHidden = new Set((def.hiddenValues || []).map(String));
-  let out = values.filter((v) => !catalogHidden.has(String(v)));
+  const catalogHidden = new Set((def.hiddenValues || []).map(valueKeyForHide));
+  let out = values.filter((v) => !catalogHidden.has(valueKeyForHide(v)));
   if (configView === "essentials") {
-    const essHidden = new Set((def.essentialsHiddenValues || []).map(String));
-    out = out.filter((v) => !essHidden.has(String(v)));
+    const essHidden = new Set((def.essentialsHiddenValues || []).map(valueKeyForHide));
+    out = out.filter((v) => !essHidden.has(valueKeyForHide(v)));
   }
   return out;
 }
@@ -209,10 +227,12 @@ export function resolveManualLaunchKeys(opts: {
     }
   }
 
-  // Cockpit-owned knobs (Agents / Memory / Think / cont_batching / ctx) must always
-  // reach CLI — they are not in factory essentialParamKeys and must not vanish on FIT/Essentials.
+  // Cockpit-owned knobs (Agents / Memory / Think / ctx) must always reach CLI when present —
+  // not in factory essentialParamKeys and must not vanish on FIT/Essentials.
+  // Only emit if the provider template actually has the param (build_cmd matches keys).
+  const templateKeys = new Set(opts.allParams.map((p) => p.key));
   for (const k of COCKPIT_OWNED_PARAM_KEYS) {
-    keys.add(k);
+    if (templateKeys.has(k)) keys.add(k);
   }
 
   if (opts.specActive) {

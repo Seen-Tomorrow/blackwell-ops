@@ -201,29 +201,18 @@
   flex: 1 1 auto;
 }
 
-/* SPEC-EXTRA / draft strip tone from Boost (MTP green, DFlash violet, else neutral) */
+/* SPEC-EXTRA / draft strip — product tones (MTP green, DFlash violet). Chips = theme value-chip. */
 .full-auto-cockpit__dflash-get--tone-mtp {
   border-color: color-mix(in srgb, #4ade80 50%, transparent);
-  background: color-mix(in srgb, #040b06 92%, #4ade80 8%);
+  background: color-mix(in srgb, #040b06 88%, #4ade80 12%);
   color: #bbf7d0;
-  box-shadow: inset 0 1px 0 color-mix(in srgb, #4ade80 12%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #4ade80 14%, transparent);
 }
 
 .full-auto-cockpit__dflash-get--tone-mtp .full-auto-cockpit__spec-extra-title,
-.full-auto-cockpit__dflash-get--tone-mtp .full-auto-cockpit__spec-extra-key {
-  color: color-mix(in srgb, #bbf7d0 80%, transparent);
-}
-
-.full-auto-cockpit__dflash-get--tone-mtp .full-auto-cockpit__spec-chip {
-  border-color: color-mix(in srgb, #4ade80 40%, transparent);
-  color: #bbf7d0;
-  background: color-mix(in srgb, #040b06 70%, #4ade80 8%);
-}
-
-.full-auto-cockpit__dflash-get--tone-mtp .full-auto-cockpit__spec-chip--active {
-  border-color: #4ade80;
-  background: color-mix(in srgb, #4ade80 22%, #040b06 78%);
-  color: #ecfdf5;
+.full-auto-cockpit__dflash-get--tone-mtp .full-auto-cockpit__spec-extra-key,
+.full-auto-cockpit__dflash-get--tone-mtp .full-auto-cockpit__spec-extra-sep {
+  color: color-mix(in srgb, #bbf7d0 82%, transparent);
 }
 
 .full-auto-cockpit__dflash-get--tone-mtp .full-auto-cockpit__dflash-get-btn {
@@ -231,9 +220,28 @@
   color: #bbf7d0;
 }
 
-/* ARCTIC — MTP strip: soft green wash (not dark blob), green border, buttons keep green identity */
+/* Explicit DFlash tone (do not rely only on base violet — footer class can lose it) */
+.full-auto-cockpit__dflash-get--tone-dflash {
+  border-color: color-mix(in srgb, #a78bfa 50%, transparent);
+  background: color-mix(in srgb, #0a0612 88%, #a78bfa 12%);
+  color: #ddd6fe;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #a78bfa 14%, transparent);
+}
+
+.full-auto-cockpit__dflash-get--tone-dflash .full-auto-cockpit__spec-extra-title,
+.full-auto-cockpit__dflash-get--tone-dflash .full-auto-cockpit__spec-extra-key,
+.full-auto-cockpit__dflash-get--tone-dflash .full-auto-cockpit__spec-extra-sep {
+  color: color-mix(in srgb, #ddd6fe 82%, transparent);
+}
+
+.full-auto-cockpit__dflash-get--tone-dflash .full-auto-cockpit__dflash-get-btn {
+  border-color: color-mix(in srgb, #a78bfa 45%, transparent);
+  color: #ddd6fe;
+}
+
+/* ARCTIC — MTP strip wash (product green; chips stay theme value-chip) */
 [data-theme="arctic"] .full-auto-cockpit__dflash-get--tone-mtp {
-  background: rgba(74, 222, 128, 0.08);
+  background: rgba(74, 222, 128, 0.1);
   border-color: color-mix(in srgb, #4ade80 70%, transparent);
   color: #1e6b40;
   box-shadow: none;
@@ -241,18 +249,6 @@
 
 [data-theme="arctic"] .full-auto-cockpit__dflash-get--tone-mtp .full-auto-cockpit__dflash-get-name {
   color: #1e6b40;
-}
-
-[data-theme="arctic"] .full-auto-cockpit__dflash-get--tone-mtp .full-auto-cockpit__spec-chip {
-  border-color: color-mix(in srgb, #4ade80 50%, transparent);
-  color: #1e6b40;
-  background: color-mix(in srgb, #4ade80 8%, transparent);
-}
-
-[data-theme="arctic"] .full-auto-cockpit__dflash-get--tone-mtp .full-auto-cockpit__spec-chip--active {
-  border-color: #4ade80;
-  background: color-mix(in srgb, #4ade80 16%, transparent);
-  color: #14532d;
 }
 
 [data-theme="arctic"] .full-auto-cockpit__dflash-get--tone-mtp .full-auto-cockpit__dflash-get-btn {
@@ -267,8 +263,32 @@
 }
 
 [data-theme="arctic"] .full-auto-cockpit__dflash-get--tone-mtp .full-auto-cockpit__spec-extra-title,
-[data-theme="arctic"] .full-auto-cockpit__dflash-get--tone-mtp .full-auto-cockpit__spec-extra-key {
-  color: color-mix(in srgb, #1e6b40 75%, transparent);
+[data-theme="arctic"] .full-auto-cockpit__dflash-get--tone-mtp .full-auto-cockpit__spec-extra-key,
+[data-theme="arctic"] .full-auto-cockpit__dflash-get--tone-mtp .full-auto-cockpit__spec-extra-sep {
+  color: color-mix(in srgb, #1e6b40 80%, transparent);
+}
+
+[data-theme="arctic"] .full-auto-cockpit__dflash-get--tone-dflash {
+  background: rgba(167, 139, 250, 0.1);
+  border-color: color-mix(in srgb, #a78bfa 70%, transparent);
+  color: #4a3858;
+  box-shadow: none;
+}
+
+[data-theme="arctic"] .full-auto-cockpit__dflash-get--tone-dflash .full-auto-cockpit__dflash-get-name {
+  color: #4a3858;
+}
+
+[data-theme="arctic"] .full-auto-cockpit__dflash-get--tone-dflash .full-auto-cockpit__dflash-get-btn {
+  background: color-mix(in srgb, #7c3aed 12%, transparent);
+  color: #6d28d9;
+  border-color: color-mix(in srgb, #a78bfa 60%, transparent);
+}
+
+[data-theme="arctic"] .full-auto-cockpit__dflash-get--tone-dflash .full-auto-cockpit__spec-extra-title,
+[data-theme="arctic"] .full-auto-cockpit__dflash-get--tone-dflash .full-auto-cockpit__spec-extra-key,
+[data-theme="arctic"] .full-auto-cockpit__dflash-get--tone-dflash .full-auto-cockpit__spec-extra-sep {
+  color: color-mix(in srgb, #4a3858 80%, transparent);
 }
 
 .full-auto-cockpit__dflash-get--tone-neutral {
@@ -406,7 +426,7 @@
 /* Arctic — brighter header plate; MTP/DFlash accents same as dark (green / violet) */
 
 
-/* DFlash strip — violet on black (all themes, including Arctic) */
+/* SPEC strip layout base — tones override border/background (must not win over --tone-*) */
 .full-auto-cockpit__dflash-get {
   display: flex;
   align-items: center;
@@ -416,10 +436,32 @@
   margin-top: 0.2rem;
   padding: 0.4rem 0.55rem;
   border-radius: 3px;
-  border: 1px solid color-mix(in srgb, #a78bfa 50%, transparent);
-  background: color-mix(in srgb, #0a0612 92%, #a78bfa 8%);
+  border: 1px solid color-mix(in srgb, var(--theme-border, #1a2e1a) 60%, transparent);
+  background: color-mix(in srgb, #000000 18%, transparent);
+  color: color-mix(in srgb, var(--theme-industrial-text, #4ade80) 85%, #fff 15%);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #ffffff 4%, transparent);
+}
+
+/* Higher specificity than base so MTP green / DFlash violet always paint */
+.full-auto-cockpit__dflash-get.full-auto-cockpit__dflash-get--tone-mtp {
+  border-color: color-mix(in srgb, #4ade80 50%, transparent);
+  background: color-mix(in srgb, #040b06 88%, #4ade80 12%);
+  color: #bbf7d0;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #4ade80 14%, transparent);
+}
+
+.full-auto-cockpit__dflash-get.full-auto-cockpit__dflash-get--tone-dflash {
+  border-color: color-mix(in srgb, #a78bfa 50%, transparent);
+  background: color-mix(in srgb, #0a0612 88%, #a78bfa 12%);
   color: #ddd6fe;
-  box-shadow: inset 0 1px 0 color-mix(in srgb, #a78bfa 12%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #a78bfa 14%, transparent);
+}
+
+.full-auto-cockpit__dflash-get.full-auto-cockpit__dflash-get--tone-neutral {
+  border-color: color-mix(in srgb, var(--theme-border, #1a2e1a) 60%, transparent);
+  background: color-mix(in srgb, #000000 18%, transparent);
+  color: color-mix(in srgb, var(--theme-industrial-text, #4ade80) 85%, #fff 15%);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #ffffff 4%, transparent);
 }
 
 .full-auto-cockpit__dflash-get-main {
@@ -497,54 +539,53 @@
   border-color: color-mix(in srgb, #a78bfa 60%, transparent);
 }
 
-/* ARCTIC — DFlash strip: soft violet wash (not dark blob), violet border, buttons keep purple identity */
-[data-theme="arctic"] .full-auto-cockpit__dflash-get {
-  background: rgba(167, 139, 250, 0.08);
-  border: 1px solid color-mix(in srgb, #a78bfa 70%, transparent);
+/* ARCTIC — tone washes (never paint all strips violet) */
+[data-theme="arctic"] .full-auto-cockpit__dflash-get.full-auto-cockpit__dflash-get--tone-dflash {
+  background: rgba(167, 139, 250, 0.1);
+  border-color: color-mix(in srgb, #a78bfa 70%, transparent);
   color: #4a3858;
   box-shadow: none;
 }
 
-[data-theme="arctic"] .full-auto-cockpit__dflash-get-name {
+[data-theme="arctic"] .full-auto-cockpit__dflash-get.full-auto-cockpit__dflash-get--tone-mtp {
+  background: rgba(74, 222, 128, 0.1);
+  border-color: color-mix(in srgb, #4ade80 70%, transparent);
+  color: #1e6b40;
+  box-shadow: none;
+}
+
+[data-theme="arctic"] .full-auto-cockpit__dflash-get.full-auto-cockpit__dflash-get--tone-dflash .full-auto-cockpit__dflash-get-name {
   color: #4a3858;
 }
 
-[data-theme="arctic"] .full-auto-cockpit__dflash-get-btn {
+[data-theme="arctic"] .full-auto-cockpit__dflash-get.full-auto-cockpit__dflash-get--tone-mtp .full-auto-cockpit__dflash-get-name {
+  color: #1e6b40;
+}
+
+[data-theme="arctic"] .full-auto-cockpit__dflash-get.full-auto-cockpit__dflash-get--tone-dflash .full-auto-cockpit__dflash-get-btn {
   background: color-mix(in srgb, #7c3aed 12%, transparent);
   color: #6d28d9;
-  border: 1px solid color-mix(in srgb, #a78bfa 60%, transparent);
-}
-
-[data-theme="arctic"] .full-auto-cockpit__dflash-get-btn:hover:not(:disabled) {
-  background: color-mix(in srgb, #7c3aed 20%, transparent);
-  border-color: #a78bfa;
-}
-
-[data-theme="arctic"] .full-auto-cockpit__dflash-get-btn--ghost {
-  color: #6d28d9;
-  border-color: color-mix(in srgb, #a78bfa 40%, transparent);
-  background: transparent;
-}
-
-[data-theme="arctic"] .full-auto-cockpit__dflash-get-btn--ghost:hover:not(:disabled) {
-  background: color-mix(in srgb, #a78bfa 10%, transparent);
   border-color: color-mix(in srgb, #a78bfa 60%, transparent);
 }
 
-[data-theme="arctic"] .full-auto-cockpit__dflash-get .full-auto-cockpit__spec-extra-key {
-  color: color-mix(in srgb, #4a3858 75%, transparent);
+[data-theme="arctic"] .full-auto-cockpit__dflash-get.full-auto-cockpit__dflash-get--tone-mtp .full-auto-cockpit__dflash-get-btn {
+  background: color-mix(in srgb, #22c55e 10%, transparent);
+  color: #15803d;
+  border-color: color-mix(in srgb, #4ade80 60%, transparent);
 }
 
-[data-theme="arctic"] .full-auto-cockpit__dflash-get .full-auto-cockpit__spec-chip {
-  border-color: color-mix(in srgb, #a78bfa 50%, transparent);
-  color: #4a3858;
-  background: color-mix(in srgb, #a78bfa 8%, transparent);
+[data-theme="arctic"] .full-auto-cockpit__dflash-get-btn--ghost {
+  background: transparent;
 }
 
-[data-theme="arctic"] .full-auto-cockpit__dflash-get .full-auto-cockpit__spec-chip--active {
-  border-color: #a78bfa;
-  background: color-mix(in srgb, #a78bfa 16%, transparent);
-  color: #4a3858;
+[data-theme="arctic"] .full-auto-cockpit__dflash-get.full-auto-cockpit__dflash-get--tone-dflash .full-auto-cockpit__dflash-get-btn--ghost {
+  color: #6d28d9;
+  border-color: color-mix(in srgb, #a78bfa 40%, transparent);
+}
+
+[data-theme="arctic"] .full-auto-cockpit__dflash-get.full-auto-cockpit__dflash-get--tone-mtp .full-auto-cockpit__dflash-get-btn--ghost {
+  color: #15803d;
+  border-color: color-mix(in srgb, #4ade80 40%, transparent);
 }
 
 /* ── DFlash draft pick modal — violet on black (all themes, including Arctic) ─ */

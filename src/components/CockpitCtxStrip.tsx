@@ -4,6 +4,7 @@
  */
 
 import CustomSliderParam from "./CustomSliderParam";
+import { formatCtxChipLabel } from "../lib/sliderParamUtils";
 
 export interface CockpitCtxStripProps {
   ctxValue?: number | string;
@@ -41,14 +42,14 @@ export default function CockpitCtxStrip({
       <div className="full-auto-cockpit__ctx-values">
         <span className="full-auto-cockpit__ctx-value font-mono">
           {typeof ctxValue === "number"
-            ? `${Math.round(ctxValue / 1024)}K`
+            ? formatCtxChipLabel(ctxValue)
             : String(ctxValue ?? "")}
         </span>
         {ctxPerSlot != null && ctxPerSlot > 0 && ctxSlotCount != null && ctxSlotCount > 1 && (
           <>
             <span className="full-auto-cockpit__ctx-sep font-mono">|</span>
             <span className="full-auto-cockpit__ctx-per-slot font-mono">
-              {Math.round(ctxPerSlot / 1024)}K / slot
+              {formatCtxChipLabel(ctxPerSlot)} / slot
             </span>
           </>
         )}

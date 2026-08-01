@@ -39,6 +39,11 @@ interface ValueBubblesProps {
   /** Opens editor for this specific value's sub_params (admin only). */
   onEditValue?: (value: string | number) => void;
   removeValue?: (value: string | number) => void;
+  /**
+   * When set, × only shown if true. Default: allow all when removeValue is set.
+   * Used for protected groups: factory values hide-only; user values removable.
+   */
+  canRemoveValue?: (value: string | number, isUserAdded: boolean) => boolean;
   /** Sub-params injected by Rust templates.rs when a specific value is selected (e.g. MOE_OPTIMAL). */
   subParams?: Record<string, string[]>;
 }
@@ -60,6 +65,7 @@ export default function ValueBubbles({
   onChangeDefault,
   onEditValue,
   removeValue,
+  canRemoveValue,
   ptype,
   onClearOverride,
   subParams,
@@ -275,11 +281,11 @@ export default function ValueBubbles({
           </span>
         )}
 
-        {/* Remove value — admin only */}
-        {editorUnlocked && removeValue && (
+        {/* Remove value — admin only; factory chips may be hide-only under protected policy */}
+        {editorUnlocked && removeValue && (canRemoveValue ? canRemoveValue(val, isUserAdded) : true) && (
           <button onClick={(e) => { e.stopPropagation(); removeValue(val); }}
             className="leading-none text-red-400/60 hover:text-red-400 transition-colors"
-            title="Remove this value">
+            title={isUserAdded ? "Remove user value" : "Remove this value"}>
             ×
           </button>
         )}

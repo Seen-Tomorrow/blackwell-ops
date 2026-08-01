@@ -38,6 +38,7 @@ import {
   type SpeedBoostId,
   type ThinkId,
 } from "../lib/multiAgentBooster";
+import { formatCtxChipLabel } from "../lib/sliderParamUtils";
 import CustomSliderParam from "./CustomSliderParam";
 import CockpitSlider from "./CockpitSlider";
 
@@ -480,11 +481,11 @@ export default function MultiAgentBooster({
     return displayBoost === "off" ? "smart" : displayBoost;
   }, [powerMode, displayBoost, activeRawSpecType]);
 
-  /** SPEC-EXTRA / draft strip accent: green MTP, violet DFlash, neutral otherwise. */
+  /** SPEC-EXTRA strip tone from Boost product mode (not raw-type slider id). */
   const stripTone: "mtp" | "dflash" | "neutral" =
-    boostSliderValue === "mtp"
+    displayBoost === "mtp"
       ? "mtp"
-      : boostSliderValue === "dflash"
+      : displayBoost === "dflash"
         ? "dflash"
         : "neutral";
 
@@ -1207,7 +1208,8 @@ export default function MultiAgentBooster({
     </>
   ) : null;
 
-  /** SPEC-EXTRA: one inline row of n_max / n_min / extras (Assisted only). */
+  /** SPEC-EXTRA: one inline row of n_max / n_min / extras (Assisted only).
+   *  Block gets MTP green / DFlash violet via strip tone; chips use theme value-chip. */
   const specExtraInline =
     showSpecExtra && specDetailParams.length > 0 ? (
       <div className="full-auto-cockpit__spec-extra font-mono min-w-0 flex-1">
@@ -1224,7 +1226,7 @@ export default function MultiAgentBooster({
               >
                 {p.label}
               </span>
-              <div className="inline-flex flex-wrap gap-0.5">
+              <div className="config-chip-row inline-flex flex-wrap gap-0.5">
                 {p.values.map((val) => {
                   const selected = String(p.current) === String(val);
                   return (
@@ -1232,8 +1234,8 @@ export default function MultiAgentBooster({
                       key={`${p.key}-${String(val)}`}
                       type="button"
                       onClick={() => p.onChange(val)}
-                      className={`full-auto-cockpit__spec-chip font-mono${
-                        selected ? " full-auto-cockpit__spec-chip--active" : ""
+                      className={`px-2 py-0.5 text-[9px] font-mono rounded-sm focus:outline-none ${
+                        selected ? "value-chip-active" : "value-chip"
                       }`}
                     >
                       {String(val)}
@@ -2008,14 +2010,14 @@ export default function MultiAgentBooster({
             <div className="full-auto-cockpit__ctx-values">
               <span className="full-auto-cockpit__ctx-value font-mono">
                 {typeof ctxValue === "number"
-                  ? `${Math.round(ctxValue / 1024)}K`
+                  ? formatCtxChipLabel(ctxValue)
                   : String(ctxValue)}
               </span>
               {ctxPerSlot != null && ctxPerSlot > 0 && ctxSlotCount != null && ctxSlotCount > 1 && (
                 <>
                   <span className="full-auto-cockpit__ctx-sep font-mono">|</span>
                   <span className="full-auto-cockpit__ctx-per-slot font-mono">
-                    {Math.round(ctxPerSlot / 1024)}K / slot
+                    {formatCtxChipLabel(ctxPerSlot)} / slot
                   </span>
                 </>
               )}
@@ -2080,27 +2082,25 @@ export default function MultiAgentBooster({
               label="Boost"
               value={boostSliderValue}
               onChange={(id) => {
+                // One parent apply only — do NOT call onRawSpecType(null) before MTP/DFlash/Off.
+                // That used to fire apply(off) then apply(mtp) and the off path often won the race
+                // (MTP only worked after Off→MTP; raw types blocked Off).
                 if (id === "off") {
-                  onRawSpecType?.(null);
                   onSpeedBoost("off");
                   return;
                 }
                 if (id === "smart") {
-                  onRawSpecType?.(null);
                   onSpeedBoost("smart");
                   return;
                 }
                 if (id === "mtp" || id === "dflash") {
-                  onRawSpecType?.(null);
                   onSpeedBoost(id);
                   return;
                 }
                 if (id.startsWith("raw:")) {
-                  // Single apply path — parent sets spec_type + group (do not fire Smart first)
                   onRawSpecType?.(id.slice(4));
                   return;
                 }
-                onRawSpecType?.(null);
                 onSpeedBoost(id as SpeedBoostId);
               }}
               options={boostMarks.map((m) => {

@@ -1,9 +1,13 @@
 import type { GroupDisplayZone } from "./storage";
 import { normalizeUiGroup, paramUiGroup } from "./storage";
 
-import { SYSTEM_UI_GROUP } from "./systemParams";
+import {
+  isProtectedGroup,
+  pinProtectedGroupsLast,
+  SYSTEM_UI_GROUP,
+} from "./systemParams";
 
-/** Groups that must not be removed even when they have no params. */
+/** Groups that must not be removed even when they have no params (always-keep slots). */
 export const PROTECTED_EMPTY_GROUPS = new Set([
   SYSTEM_UI_GROUP,
   "USER-ADDED-FROM-CATALOG",
@@ -17,14 +21,24 @@ export const LEGACY_UI_GROUPS = new Set(["RUNTIME-CONFIG"]);
 /** Pre-SYSTEM catalog bucket — migrated to SYSTEM on load. */
 export const LEGACY_CATALOG_GROUPS = new Set(["MULTI-GPU"]);
 
-/** Groups that cannot be renamed in CONFIG editor. */
+/** Groups that cannot be renamed for legacy reasons (not policy flags). */
 export const PROTECTED_GROUP_NAMES = new Set([
   ...PROTECTED_EMPTY_GROUPS,
   ...LEGACY_UI_GROUPS,
 ]);
 
-export function isGroupRenamable(groupName: string): boolean {
-  return !PROTECTED_GROUP_NAMES.has(normalizeUiGroup(groupName));
+/**
+ * Group rename allowed for layout utils when not legacy-locked.
+ * Callers should also pass `protectedGroups` and deny when flagged protected (user actor).
+ */
+export function isGroupRenamable(
+  groupName: string,
+  protectedGroups?: string[],
+): boolean {
+  const norm = normalizeUiGroup(groupName);
+  if (PROTECTED_GROUP_NAMES.has(norm)) return false;
+  if (protectedGroups && isProtectedGroup(norm, protectedGroups)) return false;
+  return true;
 }
 
 export function isLegacyLayoutGroup(groupName: string): boolean {
@@ -75,9 +89,11 @@ export function resolveGroupOrderForAdmin(
 export function isEmptyGroupDeletable(
   groupName: string,
   paramsByGroup: Record<string, unknown[] | undefined>,
+  protectedGroups?: string[],
 ): boolean {
   const norm = normalizeUiGroup(groupName);
   if (PROTECTED_EMPTY_GROUPS.has(norm)) return false;
+  if (protectedGroups && isProtectedGroup(norm, protectedGroups)) return false;
   return (paramsByGroup[norm]?.length ?? 0) === 0;
 }
 
@@ -134,7 +150,7 @@ export function renameGroupInLayout(
 } | null {
   const oldNorm = normalizeUiGroup(oldName);
   const newNorm = normalizeUiGroup(newName.trim());
-  if (!newNorm || oldNorm === newNorm || !isGroupRenamable(oldNorm)) return null;
+  if (!newNorm || oldNorm === newNorm || !isGroupRenamable(oldNorm, undefined)) return null;
   if (groupOrder.some((g) => normalizeUiGroup(g) === newNorm && normalizeUiGroup(g) !== oldNorm)) {
     return null;
   }
@@ -150,22 +166,20 @@ export function renameGroupInLayout(
   };
 }
 
-/** Pin SYSTEM to the end of a group order list (factory export / release JSON). */
+/** Pin SYSTEM to the end of a group order list (legacy helper). */
 export function pinSystemGroupLast(order: string[]): string[] {
-  const without = order.filter((g) => normalizeUiGroup(g) !== SYSTEM_UI_GROUP);
-  if (order.some((g) => normalizeUiGroup(g) === SYSTEM_UI_GROUP)) {
-    return [...without, SYSTEM_UI_GROUP];
-  }
-  return without;
+  return pinProtectedGroupsLast(order, [SYSTEM_UI_GROUP]);
 }
 
 /**
  * Factory export group order — preserves the full saved layout order (including empty
- * placeholder groups), appends any param groups missing from the saved order, pins SYSTEM last.
+ * placeholder groups), appends any param groups missing from the saved order,
+ * pins protected groups last.
  */
 export function resolveGroupOrderForExport(
   params: Array<{ ui_group?: string }>,
   customGroupOrder: string[] | null,
+  protectedGroups: string[] = [SYSTEM_UI_GROUP],
 ): string[] {
   const paramGroups: string[] = [];
   const paramGroupSet = new Set<string>();
@@ -194,7 +208,7 @@ export function resolveGroupOrderForExport(
     order = [...paramGroups];
   }
 
-  return pinSystemGroupLast(order);
+  return pinProtectedGroupsLast(order, protectedGroups);
 }
 
 /** Replace retired MULTI-GPU bucket with SYSTEM in saved group order. */

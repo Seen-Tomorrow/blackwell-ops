@@ -9,7 +9,18 @@ import type {
 import { buildAutoVramLaunchParams } from "./autoVramLaunch";
 import { buildLaunchExtraParams } from "./paramConfigResolve";
 import { resolveManualLaunchKeys } from "./launchProfile";
-import { stripSpecExtraParams } from "./specDraft";
+import {
+  type SpecBoostMethod,
+  buildSpecCliExtraParams,
+  activeBoostMethodFromParams,
+  isAnySpecProfileActive,
+  SPEC_CLI_TYPE,
+  SPEC_CLI_N_MAX,
+  SPEC_CLI_N_MIN,
+  SPEC_CLI_P_MIN,
+  SPEC_CLI_DRAFT,
+  SPEC_PROFILE_PARAM_KEYS,
+} from "./specProfiles";
 import type { RunningSlotInfo } from "../services/vram/scenarios/scenarios_factory";
 
 export type BuildLaunchFullConfigInput = {
@@ -22,7 +33,8 @@ export type BuildLaunchFullConfigInput = {
   fullAutoMode: boolean;
   configView: ConfigViewMode;
   essentialFactoryKeys: Set<string>;
-  specActive: boolean;
+  /** Product Boost method; if omitted, derived from visible profile groups. */
+  specMethod?: SpecBoostMethod;
   allParamsResolved: UserEditedTemplateParam[];
   gpus: GpuInfo[];
   runningSlotsForPlan: RunningSlotInfo[];
@@ -31,6 +43,25 @@ export type BuildLaunchFullConfigInput = {
   testFlags: string;
   testFlagsMode: "replace" | "add";
 };
+
+const SPEC_CLI_KEYS = new Set([
+  SPEC_CLI_TYPE,
+  SPEC_CLI_N_MAX,
+  SPEC_CLI_N_MIN,
+  SPEC_CLI_P_MIN,
+  SPEC_CLI_DRAFT,
+  ...SPEC_PROFILE_PARAM_KEYS,
+]);
+
+function stripAllSpecKeys(extra: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(extra)) {
+    if (SPEC_CLI_KEYS.has(k) || k.startsWith("mtp_") || k.startsWith("dflash_")) continue;
+    if (k === "spec_type" || k.startsWith("spec_draft")) continue;
+    out[k] = v;
+  }
+  return out;
+}
 
 /** Same EngineConfig payload the app sends to `launch_engine` (port resolved on backend). */
 export function buildLaunchFullConfig(input: BuildLaunchFullConfigInput): EngineConfig {
@@ -44,7 +75,7 @@ export function buildLaunchFullConfig(input: BuildLaunchFullConfigInput): Engine
     fullAutoMode,
     configView,
     essentialFactoryKeys,
-    specActive,
+    specMethod: specMethodIn,
     allParamsResolved,
     gpus,
     runningSlotsForPlan,
@@ -54,12 +85,18 @@ export function buildLaunchFullConfig(input: BuildLaunchFullConfigInput): Engine
     testFlagsMode,
   } = input;
 
+  const method: SpecBoostMethod =
+    specMethodIn
+    ?? (isAnySpecProfileActive(allParamsResolved)
+      ? activeBoostMethodFromParams(allParamsResolved)
+      : "off");
+
   const launchKeys = resolveManualLaunchKeys({
     configView,
     essentialFactoryKeys,
-    specActive,
+    specActive: method !== "off",
     allParams: allParamsResolved,
-  });
+  }).filter((k) => !SPEC_CLI_KEYS.has(k) && !k.startsWith("mtp_") && !k.startsWith("dflash_"));
 
   const extraParams: Record<string, unknown> =
     fitLaunchSupported && model.metadata
@@ -80,11 +117,14 @@ export function buildLaunchFullConfig(input: BuildLaunchFullConfigInput): Engine
           paramDefs: allParamsResolved,
         });
 
-  const launchExtra = specActive
-    ? extraParams
-    : stripSpecExtraParams(extraParams);
+  let launchExtra = stripAllSpecKeys(extraParams);
+  if (method !== "off") {
+    launchExtra = {
+      ...launchExtra,
+      ...buildSpecCliExtraParams(method, config, allParamsResolved),
+    };
+  }
 
-  // Ensure cockpit parallel survives even if resolve skipped a hidden/default edge case
   const parallelRaw = config.parallel ?? launchExtra.parallel ?? 1;
   const parallelN = Math.max(1, Number(parallelRaw) || 1);
 
@@ -97,7 +137,6 @@ export function buildLaunchFullConfig(input: BuildLaunchFullConfigInput): Engine
     extra_params: {
       ...launchExtra,
       parallel: parallelN,
-      ...(parallelN > 1 ? { cont_batching: config.cont_batching ?? "on" } : {}),
       __memory_mode: fullAutoMode ? "full_auto" : "assisted",
     },
   };

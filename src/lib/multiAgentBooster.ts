@@ -442,15 +442,11 @@ export function resolveFullAutoPlan(opts: {
       softNote = "MTP works best with one agent — Agents set to Solo";
     }
   } else if (speed === "dflash") {
-    if (dflashLibraryReady) {
-      enableSpec = true;
-      specType = "draft-dflash";
-    } else {
-      enableSpec = false;
-      specType = null;
-      needsDflashDraft = true;
-      // softNote intentionally empty — draft CTA lives only under Boost strip
-    }
+    // Always keep SPEC group ON for DFlash boost so n_max/n_min survive MTP↔DFlash switches.
+    // Missing draft only gates the Get-draft CTA / launch validity — never tears down knobs.
+    enableSpec = true;
+    specType = "draft-dflash";
+    needsDflashDraft = !dflashLibraryReady;
   } else if (speed === "smart" && !powerUser) {
     // Joe Smart — push prefill batch; do not auto-enable MTP
     pushBatch = true;

@@ -279,15 +279,17 @@ fn factory_default_config_path(provider_id: &str) -> std::path::PathBuf {
         .join(format!("{provider_id}-default-config.json"))
 }
 
-/// Read factory `groupOrder` + `layoutDefaults` from default config JSON.
-pub fn load_factory_layout_supplement(provider_id: &str) -> (Vec<String>, crate::types::LayoutDefaults) {
+/// Read factory `groupOrder` + `layoutDefaults` + `protectedGroups` from default config JSON.
+pub fn load_factory_layout_supplement(
+    provider_id: &str,
+) -> (Vec<String>, crate::types::LayoutDefaults, Vec<String>) {
     let path = factory_default_config_path(provider_id);
     if !path.exists() {
-        return (Vec::new(), crate::types::LayoutDefaults::default());
+        return (Vec::new(), crate::types::LayoutDefaults::default(), Vec::new());
     }
     let content = match std::fs::read_to_string(&path) {
         Ok(c) => c,
-        Err(_) => return (Vec::new(), crate::types::LayoutDefaults::default()),
+        Err(_) => return (Vec::new(), crate::types::LayoutDefaults::default(), Vec::new()),
     };
     #[derive(Deserialize, Default)]
     struct Supplement {
@@ -295,10 +297,12 @@ pub fn load_factory_layout_supplement(provider_id: &str) -> (Vec<String>, crate:
         group_order: Vec<String>,
         #[serde(default, rename = "layoutDefaults")]
         layout_defaults: crate::types::LayoutDefaults,
+        #[serde(default, rename = "protectedGroups")]
+        protected_groups: Vec<String>,
     }
     match serde_json::from_str::<Supplement>(&content) {
-        Ok(s) => (s.group_order, s.layout_defaults),
-        Err(_) => (Vec::new(), crate::types::LayoutDefaults::default()),
+        Ok(s) => (s.group_order, s.layout_defaults, s.protected_groups),
+        Err(_) => (Vec::new(), crate::types::LayoutDefaults::default(), Vec::new()),
     }
 }
 
@@ -401,13 +405,53 @@ impl ProviderTemplate {
         load_provider_defaults(id)
     }
 
-    /// Load template for CLI launch — family fallback + per-provider spawn overrides.
+    /// Minimal spawn shell for custom providers (no factory JSON): model/port/alias only.
+    /// No verbosity, metrics, FIT, or master param catalog — user owns the param set.
+    pub fn bare_custom_shell() -> Self {
+        Self {
+            binary_name: "llama-server.exe".into(),
+            description: "Custom provider (manual params)".into(),
+            spawn_profile: SpawnProfile {
+                model_flag: default_model_flag(),
+                port_flag: default_port_flag(),
+                alias_flag: default_alias_flag(),
+                verbosity_args: Vec::new(),
+                spawn_flags: Vec::new(),
+                fit_binary_provider: String::new(),
+                enable_metrics: false,
+                supports_fusion: false,
+                fusion_adapter: String::new(),
+                fit_adapter: String::new(),
+                gpu_env: default_gpu_env(),
+                ngl_flag: default_ngl_flag(),
+                mmproj_flag: default_mmproj_flag(),
+                max_engine_slots: default_max_engine_slots(),
+                help_flag_max_indent: default_help_flag_max_indent(),
+                auto_vram: false,
+                fit_style: String::new(),
+                simple_param_keys: Vec::new(),
+                essential_param_keys: Vec::new(),
+                fit_margin_mib: 0,
+                tensor_split: true,
+            },
+            params: Vec::new(),
+        }
+    }
+
+    /// Load template for CLI launch.
+    /// Factory providers: their JSON (+ spawn overrides). No silent fallback to master flags.
+    /// Missing factory → bare custom shell (custom template_type / user binary).
     pub fn load_for_provider(provider_id: &str) -> Result<Self, String> {
-        let mut tmpl = Self::load_by_id(provider_id)
-            .or_else(|| Self::load(crate::config::DEFAULT_PROVIDER_ID).ok())
-            .ok_or_else(|| format!("No provider template available for '{}'", provider_id))?;
-        apply_spawn_profile_overrides(provider_id, &mut tmpl);
-        Ok(tmpl)
+        if let Some(mut tmpl) = Self::load_by_id(provider_id) {
+            apply_spawn_profile_overrides(provider_id, &mut tmpl);
+            return Ok(tmpl);
+        }
+        // Custom / unknown id: do NOT inherit ggml-master -lv/--metrics/params.
+        log::info!(
+            "[template] No factory defaults for '{}' — using bare custom launch shell",
+            provider_id
+        );
+        Ok(Self::bare_custom_shell())
     }
 
     /// Resolve a param value from extra_params override, then user's saved default_value.
@@ -527,8 +571,25 @@ impl ProviderTemplate {
         }
 
         // ── Iterate user params (sorted by order) — single source of truth ────────────
+        // Spec profile / CLI flags always emit last so they group together on the CLI.
         let mut sorted_params = user_params.to_vec();
-        sorted_params.sort_by(|a, b| a.order.cmp(&b.order));
+        sorted_params.sort_by(|a, b| {
+            let is_spec = |p: &crate::types::UserEditedTemplateParam| {
+                let g = p.ui_group.as_str();
+                g.eq_ignore_ascii_case("SPECULATIVE-MTP")
+                    || g.eq_ignore_ascii_case("SPECULATIVE-DFLASH")
+                    || g.eq_ignore_ascii_case("SPECULATIVE-DECODING")
+                    || p.key.starts_with("mtp_")
+                    || p.key.starts_with("dflash_")
+                    || p.key.eq_ignore_ascii_case("spec_type")
+                    || p.key.starts_with("spec_draft")
+            };
+            match (is_spec(a), is_spec(b)) {
+                (false, true) => std::cmp::Ordering::Less,
+                (true, false) => std::cmp::Ordering::Greater,
+                _ => a.order.cmp(&b.order),
+            }
+        });
 
         for param in &sorted_params {
             let key_in_extra = config
@@ -537,9 +598,10 @@ impl ProviderTemplate {
                 .any(|k| k.eq_ignore_ascii_case(&param.key));
 
             // Hidden params are skipped unless launch explicitly overrides via extra_params
-            // (e.g. cockpit parallel / cont_batching on hot-swap or essentials FIT launches).
+            // (e.g. cockpit parallel / active SPEC profile knobs that exist on this template).
             if param.hidden
                 && !param.key.eq_ignore_ascii_case("spec_draft_model")
+                && !param.key.eq_ignore_ascii_case("dflash_draft_model")
                 && !key_in_extra
             {
                 continue;
@@ -601,8 +663,10 @@ impl ProviderTemplate {
                     }
                 },
                 "logic_only" => {
-                    if param.key == "spec_draft_model" {
-                        // MTP / ngram / off must never carry a leftover external draft path.
+                    // Draft path: legacy key or profile key `dflash_draft_model`
+                    let is_draft_key = param.key.eq_ignore_ascii_case("spec_draft_model")
+                        || param.key.eq_ignore_ascii_case("dflash_draft_model");
+                    if is_draft_key {
                         let st = config.get_param_str("spec_type").unwrap_or_default();
                         if crate::spec_draft::spec_type_needs_external_draft(&st) {
                             Self::inject_spec_draft_model_user(
@@ -621,11 +685,24 @@ impl ProviderTemplate {
             Self::inject_sub_params_user(&mut args, param, &final_value_str);
         }
 
-        // Picker-driven draft path — SYSTEM/hidden param may be absent from merged user_params.
+        // --spec-type from launch payload (no template row after profile rewrite)
+        if !args.iter().any(|a| a == "--spec-type") {
+            if let Some(st) = config.get_param_str("spec_type") {
+                let t = st.trim();
+                if !t.is_empty() && !t.eq_ignore_ascii_case("none") {
+                    args.extend(["--spec-type".into(), t.to_string()]);
+                }
+            }
+        }
+
+        // Picker-driven draft path — profile or legacy key in extra_params
         if external_draft_spec
             && !args.iter().any(|a| a == "--spec-draft-model")
         {
-            if let Some(draft_val) = config.get_param_str("spec_draft_model") {
+            let draft_val = config
+                .get_param_str("dflash_draft_model")
+                .or_else(|| config.get_param_str("spec_draft_model"));
+            if let Some(draft_val) = draft_val {
                 let spec_lower = config
                     .get_param_str("spec_type")
                     .unwrap_or_default()
@@ -641,6 +718,49 @@ impl ProviderTemplate {
                     pattern,
                 ) {
                     args.extend(["--spec-draft-model".into(), path]);
+                } else if draft_val.to_lowercase().ends_with(".gguf")
+                    && std::path::Path::new(&draft_val).is_file()
+                {
+                    args.extend(["--spec-draft-model".into(), draft_val]);
+                }
+            }
+        }
+
+        // Belt-and-suspenders: emit n-max/n-min/p-min from extra if template rows were skipped
+        for (key, flag) in [
+            ("spec_draft_n_max", "--spec-draft-n-max"),
+            ("spec_draft_n_min", "--spec-draft-n-min"),
+            ("spec_draft_p_min", "--spec-draft-p-min"),
+            ("mtp_n_max", "--spec-draft-n-max"),
+            ("mtp_n_min", "--spec-draft-n-min"),
+            ("mtp_p_min", "--spec-draft-p-min"),
+            ("dflash_n_max", "--spec-draft-n-max"),
+            ("dflash_n_min", "--spec-draft-n-min"),
+            ("dflash_p_min", "--spec-draft-p-min"),
+        ] {
+            if args.iter().any(|a| a == flag) {
+                continue;
+            }
+            if let Some(v) = config
+                .extra_params
+                .iter()
+                .find(|(k, _)| k.eq_ignore_ascii_case(key))
+                .map(|(_, v)| v)
+            {
+                let s = v.as_str().map(String::from).unwrap_or_else(|| {
+                    if let Some(n) = v.as_f64() {
+                        // Keep integers clean (3 not 3.0)
+                        if (n - n.trunc()).abs() < f64::EPSILON {
+                            format!("{}", n as i64)
+                        } else {
+                            format!("{}", n)
+                        }
+                    } else {
+                        v.to_string()
+                    }
+                });
+                if !s.is_empty() && s != "null" {
+                    args.extend([flag.to_string(), s]);
                 }
             }
         }
