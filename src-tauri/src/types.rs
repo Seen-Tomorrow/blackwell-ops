@@ -426,6 +426,12 @@ pub struct ProviderConfig {
     pub branch: String,
     #[serde(default)]
     pub build_profile: String,
+    /// Foundry generator override for this provider. Empty = follow the toolchain manifest
+    /// (`ninja` flag per profile). `"ninja"` = force Ninja Multi-Config. `"visual-studio"`
+    /// = force the VS generator (stable path). Useful for experimental forks that misbehave
+    /// under one generator.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub foundry_generator: String,
     /// Template type determines which provider default config to load.
     /// "ggml-llama" = ggml-master (21 params, master for GGML family),
 

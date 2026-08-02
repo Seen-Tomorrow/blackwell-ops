@@ -360,8 +360,8 @@ impl ResolvedProfile {
         toolchain_dir().join("vs").join(&self.def.vs)
     }
 
-    pub fn cmake_generator_flag(&self, vs: &VsDef) -> String {
-        if self.def.ninja {
+    pub fn cmake_generator_flag(&self, vs: &VsDef, use_ninja: bool) -> String {
+        if use_ninja {
             // Ninja Multi-Config keeps `--config Release` and the `bin/Release` output layout.
             // No `-A` (arch comes from the devcmd env) and no `CMAKE_GENERATOR_INSTANCE` (VS-only).
             r#"-G "Ninja Multi-Config""#.to_string()
@@ -376,8 +376,8 @@ impl ResolvedProfile {
 
     /// VS-only `-T "cuda=..."` toolset selection. The Ninja generator picks the host compiler
     /// from the devcmd environment, so this flag is omitted there.
-    pub fn vs_cuda_toolset_flag(&self, cuda_ver_short: &str) -> String {
-        if self.def.ninja {
+    pub fn vs_cuda_toolset_flag(&self, cuda_ver_short: &str, use_ninja: bool) -> String {
+        if use_ninja {
             String::new()
         } else {
             format!("-T \"cuda={}\"", cuda_ver_short)
@@ -386,13 +386,13 @@ impl ResolvedProfile {
 
     /// CUDA compiler/root flags. `CMAKE_VS_PLATFORM_TOOLSET_CUDA` is VS-only; Ninja relies on
     /// nvcc + `CUDAToolkit_ROOT` + the devcmd host environment.
-    pub fn forced_cuda_flags(&self) -> String {
+    pub fn forced_cuda_flags(&self, use_ninja: bool) -> String {
         let compiler = format!(
             "-DCMAKE_CUDA_COMPILER=\"{}\" -DCUDAToolkit_ROOT=\"{}\"",
             self.nvcc.to_string_lossy().replace('\\', "/"),
             self.cuda_root.to_string_lossy().replace('\\', "/")
         );
-        if self.def.ninja {
+        if use_ninja {
             compiler
         } else {
             format!(
@@ -400,6 +400,16 @@ impl ResolvedProfile {
                 compiler,
                 self.cuda_version_short()
             )
+        }
+    }
+
+    /// Resolve the effective generator from a provider override, falling back to the manifest
+    /// profile's `ninja` flag when the override is empty/auto.
+    pub fn effective_use_ninja(manifest_ninja: bool, override_str: &str) -> bool {
+        match override_str.trim().to_lowercase().as_str() {
+            "ninja" => true,
+            "visual-studio" | "vs" | "msbuild" | "cmake" => false,
+            _ => manifest_ninja,
         }
     }
 

@@ -163,6 +163,8 @@ export interface ProviderConfig {
   git_url?: string;
   branch?: string;
   build_profile?: string;
+  /** Foundry generator override: "" (auto/manifest) | "ninja" | "visual-studio". */
+  foundry_generator?: string;
   template_type?: string; // "ggml-llama" | "custom"
   /**
    * Custom providers only — optional spawn/product features (all off by default).

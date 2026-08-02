@@ -63,6 +63,7 @@ interface FormState {
   git_url: string;
   branch: string;
   build_profile: string;
+  foundry_generator: string;
   template_type: string;
   factory_provided?: boolean;
   /** Custom only */
@@ -84,6 +85,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
     git_url: "",
     branch: "",
     build_profile: "",
+    foundry_generator: "",
     template_type: "ggml-llama",
   });
 
@@ -270,6 +272,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
       git_url: "",
       branch: "",
       build_profile: "",
+      foundry_generator: "",
       template_type: "ggml-llama",
       factory_provided: false,
     });
@@ -305,6 +308,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
         git_url: form.git_url || "",
         branch: form.branch || "",
         build_profile: form.build_profile || "",
+        foundry_generator: form.foundry_generator || "",
         // "custom" / empty = manual bare shell — never coerce to ggml-llama on the server.
         template_type:
           !form.template_type.trim() || form.template_type === "custom"
@@ -340,6 +344,7 @@ export default function ProvidersConfig({ providers: initialProviders, onProvide
       git_url: p.git_url || "",
       branch: p.branch || "",
       build_profile: p.build_profile || "",
+      foundry_generator: p.foundry_generator || "",
       template_type:
         !p.template_type || p.template_type === "custom"
           ? "custom"
@@ -1538,6 +1543,22 @@ function ProviderFormFields({ form, setForm, handleBrowse, isFactoryProvided }: 
         <input type="text" placeholder="master, main, dev" value={form.branch}
           onChange={(e) => setForm((prev) => ({ ...prev, branch: e.target.value }))}
           className="config-input flex-1 text-[11px] font-mono px-1 py-0.5" />
+      </div>
+      {/* Foundry generator override */}
+      <div className="flex items-center gap-2">
+        <label className="text-[10px] font-mono config-muted w-24 flex-shrink-0 uppercase tracking-wider">
+          Generator
+        </label>
+        <select
+          value={form.foundry_generator || ""}
+          onChange={(e) => setForm((prev) => ({ ...prev, foundry_generator: e.target.value }))}
+          className="config-input flex-1 text-[10px] font-mono px-1 py-0.5"
+          title="CMake generator for Foundry builds. Auto follows the toolchain pack (Ninja by default). Visual Studio is the long-term-stable fallback."
+        >
+          <option value="">AUTO (pack default — Ninja)</option>
+          <option value="ninja">NINJA (fast, Multi-Config)</option>
+          <option value="visual-studio">VISUAL STUDIO (stable)</option>
+        </select>
       </div>
       {/* Build Profile (CMake flags) */}
       <div className="flex items-start gap-2">

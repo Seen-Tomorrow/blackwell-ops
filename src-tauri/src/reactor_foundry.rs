@@ -1436,10 +1436,21 @@ async fn run_foundry_build_worker(
 
     emit_config_event(app_handle, &provider_id, &profile_id, build_id, Some("[STAGE 2/4] CMAKE CONFIGURE — Reviewing flags below. Click PROCEED to start compilation.".into()));
 
-    // VS-only vs Ninja generator flags. Ninja drops `-T`, `-A` and the VS toolset CUDA var;
-    // it picks the host compiler from the devcmd environment (sourced earlier in the batch).
-    let toolset_flag = profile.vs_cuda_toolset_flag(profile.cuda_version_short());
-    let forced_cuda_flags = profile.forced_cuda_flags();
+    // Effective generator: provider override wins, else the manifest profile's `ninja` flag.
+    // VS-only vs Ninja: Ninja drops `-T`, `-A` and the VS toolset CUDA var; it picks the host
+    // compiler from the devcmd environment (sourced earlier in the batch).
+    let use_ninja = {
+        let cfg = worker.config.lock().map_err(|e| e.to_string())?;
+        let override_str = cfg
+            .providers
+            .iter()
+            .find(|p| p.id == provider_id)
+            .map(|p| p.foundry_generator.clone())
+            .unwrap_or_default();
+        foundry_toolchain::ResolvedProfile::effective_use_ninja(profile.def.ninja, &override_str)
+    };
+    let toolset_flag = profile.vs_cuda_toolset_flag(profile.cuda_version_short(), use_ninja);
+    let forced_cuda_flags = profile.forced_cuda_flags(use_ninja);
 
     let asm_flag = profile.cmake_asm_compiler_flag(&manifest)?;
     let ml64_bin = profile
@@ -1457,13 +1468,13 @@ async fn run_foundry_build_worker(
     let joined_extra_batch = cmd_escape_batch(&joined_extra);
 
     let vs_def = foundry_toolchain::vs_def(&manifest, &profile.def.vs)?;
-    let gen_flag = profile.cmake_generator_flag(vs_def);
+    let gen_flag = profile.cmake_generator_flag(vs_def, use_ninja);
     let nvcc_bin = profile.cuda_root.join("bin").to_string_lossy().to_string();
     let versioned_var = profile.cuda_path_var();
 
     // Ninja generator requires ninja.exe beside cmake.exe. Ensure it's present before we
     // write/run the configure batch (downloads it on demand if the stripped-down pack lacks it).
-    if profile.def.ninja {
+    if use_ninja {
         if let Err(e) = foundry_toolchain::ensure_ninja_available().await {
             rollback_build(app_handle, &provider_id, &profile_id, build_id).execute().await;
             return Err(format!(
@@ -1471,10 +1482,15 @@ async fn run_foundry_build_worker(
                 profile_id, e
             ));
         }
-        emit_config_event(app_handle, &provider_id, &profile_id, build_id, Some(
-            "[GENERATOR] Ninja Multi-Config — VS-only flags (-T/-A/toolset-CUDA) omitted".into(),
-        ));
     }
+    emit_config_event(app_handle, &provider_id, &profile_id, build_id, Some(if use_ninja {
+        "[GENERATOR] Ninja Multi-Config — VS-only flags (-T/-A/toolset-CUDA) omitted".to_string()
+    } else {
+        format!(
+            "[GENERATOR] {} — VS toolset flags applied",
+            profile.def.generator
+        )
+    }));
 
     let cmake_exe = foundry_toolchain::resolve_cmake_exe()?;
     let cmake_cmd = cmake_exe.to_string_lossy().replace('\\', "/");
