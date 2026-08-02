@@ -319,11 +319,8 @@ impl DownloadManager {
             task_kind: TASK_KIND_HF.to_string(),
         };
 
+                persist_task_to_manifest(&task);
         self.tasks.insert(task_id.clone(), task);
-
-        // Persist to manifest for crash recovery
-        let task_ref = self.tasks.get(&task_id).unwrap();
-        persist_task_to_manifest(task_ref);
 
         let worker_arc = self_arc;
         let task_id_for_worker = task_id.clone();
@@ -419,9 +416,8 @@ impl DownloadManager {
             task_kind: TASK_KIND_TOOLCHAIN.to_string(),
         };
 
+                persist_task_to_manifest(&task);
         self.tasks.insert(task_id.clone(), task);
-        let task_ref = self.tasks.get(&task_id).unwrap();
-        persist_task_to_manifest(task_ref);
 
         let worker_arc = self_arc;
         let task_id_for_worker = task_id.clone();
@@ -602,9 +598,8 @@ impl DownloadManager {
         };
 
         self.app_update_handle = Some(app_handle);
+                persist_task_to_manifest(&task);
         self.tasks.insert(task_id.clone(), task);
-        let task_ref = self.tasks.get(&task_id).unwrap();
-        persist_task_to_manifest(task_ref);
 
         let worker_arc = self_arc;
         let task_id_for_worker = task_id.clone();
@@ -687,9 +682,8 @@ impl DownloadManager {
         };
 
         self.app_update_handle = Some(app_handle);
+                persist_task_to_manifest(&task);
         self.tasks.insert(task_id.clone(), task);
-        let task_ref = self.tasks.get(&task_id).unwrap();
-        persist_task_to_manifest(task_ref);
 
         let worker_arc = self_arc;
         let task_id_for_worker = task_id.clone();
