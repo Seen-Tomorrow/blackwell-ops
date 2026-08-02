@@ -153,6 +153,35 @@ mod tests {
     }
 }
 
+/// RAII guard — drops `bench_cancel::end(port)` when the bench scope exits.
+pub struct BenchPortGuard(pub u16);
+
+impl Drop for BenchPortGuard {
+    fn drop(&mut self) {
+        end(self.0);
+    }
+}
+
+/// Release every llama-server slot KV cache on a port (prompt-cache clear before bench).
+pub async fn release_all_slots(client: &reqwest::Client, port: u16, label: &str) {
+    if let Ok(slots_resp) = client
+        .get(format!("http://127.0.0.1:{port}/slots"))
+        .send()
+        .await
+    {
+        if let Ok(slots) = slots_resp.json::<Vec<serde_json::Value>>().await {
+            for slot in &slots {
+                let idx = slot["id"].as_u64().unwrap_or(0);
+                let _ = client
+                    .post(format!("http://127.0.0.1:{port}/slots/{idx}/release"))
+                    .send()
+                    .await;
+            }
+            log::debug!("[BENCH] released {} slots {}", slots.len(), label);
+        }
+    }
+}
+
 /// Bench HTTP client — enough idle connections for parallel completion feeds.
 pub fn bench_http_client(max_parallel: usize) -> Result<reqwest::Client, String> {
     reqwest::Client::builder()

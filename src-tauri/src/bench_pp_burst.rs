@@ -4,18 +4,10 @@
 //! Generates a synthetic prompt targeting ~N tokens, POSTs to /completion with n_predict=0,
 //! and returns prefill TPS from engine-reported timings.
 
-use crate::bench_cancel::{self, post_json};
+use crate::bench_cancel::{self, post_json, release_all_slots, BenchPortGuard};
 use crate::bench_prompts::{self, TG_PREFILL_TARGET_TOKENS};
 use serde::Serialize;
 
-
-struct BenchPortGuard(u16);
-
-impl Drop for BenchPortGuard {
-    fn drop(&mut self) {
-        bench_cancel::end(self.0);
-    }
-}
 
 fn bench_stopped_pp_result() -> BenchPPResult {
     BenchPPResult {
@@ -79,18 +71,7 @@ pub async fn cmd_bench_pp_burst(
     let max_prompt_tokens = if slot_n_ctx > 0 { Some(pp_budget) } else { None };
 
     // Release all slot KV caches once before the benchmark loop to prevent prompt caching from skewing results.
-    if let Ok(slots_resp) = client.get(&format!("http://127.0.0.1:{port}/slots")).send().await {
-        if let Ok(slots) = slots_resp.json::<Vec<serde_json::Value>>().await {
-            for slot in &slots {
-                let idx = slot["id"].as_u64().unwrap_or(0);
-                let _ = client
-                    .post(&format!("http://127.0.0.1:{port}/slots/{idx}/release"))
-                    .send()
-                    .await;
-            }
-            log::debug!("[BENCH_PP] released {} slots before benchmark", slots.len());
-        }
-    }
+    release_all_slots(&client, port, "before benchmark").await;
 
     let mut measured_run: Option<RunStats> = None;
 
@@ -176,22 +157,7 @@ pub async fn cmd_bench_pp_burst(
         }
 
         if run < WARMUP_RUNS {
-            if let Ok(slots_resp) = client.get(&format!("http://127.0.0.1:{port}/slots")).send().await
-            {
-                if let Ok(slots) = slots_resp.json::<Vec<serde_json::Value>>().await {
-                    for slot in &slots {
-                        let idx = slot["id"].as_u64().unwrap_or(0);
-                        let _ = client
-                            .post(&format!("http://127.0.0.1:{port}/slots/{idx}/release"))
-                            .send()
-                            .await;
-                    }
-                    log::debug!(
-                        "[BENCH_PP] released {} slots after warmup for cold measured run",
-                        slots.len()
-                    );
-                }
-            }
+            release_all_slots(&client, port, "after warmup for cold measured run").await;
         }
     }
 

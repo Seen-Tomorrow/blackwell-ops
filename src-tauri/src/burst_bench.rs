@@ -10,19 +10,11 @@
 
 use std::time::Instant;
 
-use crate::bench_cancel::{self, post_json};
+use crate::bench_cancel::{self, post_json, release_all_slots, BenchPortGuard};
 use crate::bench_prompts::{self, TG_PREFILL_TARGET_TOKENS};
 use serde::Serialize;
 
 use tokio::task::JoinSet;
-
-struct BenchPortGuard(u16);
-
-impl Drop for BenchPortGuard {
-    fn drop(&mut self) {
-        bench_cancel::end(self.0);
-    }
-}
 
 #[derive(Debug, Clone)]
 struct RunStats {
@@ -275,25 +267,6 @@ fn aggregate_parallel_runs(
         gen_tokens: total_gen,
         prompt_ms: max_prompt_ms,
         predicted_ms: decode_window_ms,
-    }
-}
-
-async fn release_all_slots(client: &reqwest::Client, port: u16, label: &str) {
-    if let Ok(slots_resp) = client
-        .get(format!("http://127.0.0.1:{port}/slots"))
-        .send()
-        .await
-    {
-        if let Ok(slots) = slots_resp.json::<Vec<serde_json::Value>>().await {
-            for slot in &slots {
-                let idx = slot["id"].as_u64().unwrap_or(0);
-                let _ = client
-                    .post(format!("http://127.0.0.1:{port}/slots/{idx}/release"))
-                    .send()
-                    .await;
-            }
-            log::debug!("[BENCH_TG] released {} slots {}", slots.len(), label);
-        }
     }
 }
 
