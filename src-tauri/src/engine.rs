@@ -523,11 +523,12 @@ pub async fn launch_engine(
                 if e == crate::engine_stack::LOAD_FAILURE_ALREADY_REPORTED {
                     return Err("Model load failed".to_string());
                 }
+                let err_msg = e.to_string();
                 last_err = Some(e);
                 if attempt == 0 {
                     app.blackwell_output_console_manager.emit_line_to_category(
                         crate::output_console::BlackwellOutputConsoleCategory::Error,
-                        format!("[{}] [RETRY] Launch failed: {} — retrying...", config.alias, last_err.as_ref().unwrap()),
+                        format!("[{}] [RETRY] Launch failed: {} — retrying...", config.alias, err_msg),
                         crate::output_console::BlackwellOutputConsoleLineStyle::Warning,
                     );
                     tokio::time::sleep(Duration::from_millis(500)).await;

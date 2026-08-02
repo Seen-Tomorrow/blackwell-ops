@@ -196,12 +196,10 @@ pub fn merge_user_params_with_template(
                 || tmpl_g == "SPECULATIVE-DFLASH"
                 || m.key.starts_with("mtp_")
                 || m.key.starts_with("dflash_");
-            if m.ui_group.is_empty() || is_profile {
-                if normalize_ui_group(&m.ui_group) != tmpl_g {
-                    m.ui_group = tmpl_g;
-                } else if m.ui_group.is_empty() {
-                    m.ui_group = tmpl_g;
-                }
+            // Collapsed: an empty group or a spec-profile always adopts the factory group;
+            // otherwise adopt only when the normalized group actually differs (no-op otherwise).
+            if (m.ui_group.is_empty() || is_profile) && normalize_ui_group(&m.ui_group) != tmpl_g {
+                m.ui_group = tmpl_g;
             }
             if m.note.is_empty() {
                 m.note = tmpl.note.clone();

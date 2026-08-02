@@ -134,9 +134,8 @@ fn discover_providers() -> Vec<crate::types::ProviderConfig> {
                             });
                         }
                         let rel = format!("runtime/{}/{}/llama-server.exe", pid, profile);
-                        if profile == DEFAULT_BINARY_PROFILE {
-                            main_binary = rel;
-                        } else if main_binary.is_empty() {
+                        // Prefer the default profile, else the first installed profile.
+                        if profile == DEFAULT_BINARY_PROFILE || main_binary.is_empty() {
                             main_binary = rel;
                         }
                     }

@@ -156,7 +156,8 @@ fn collect_gguf_files(dir: &Path, out: &mut Vec<PathBuf>) {
                 collect_gguf_files(&path, out);
             }
         } else if path.extension().map_or(false, |e| e == "gguf") {
-            let fname = path.file_name().unwrap().to_string_lossy();
+            let Some(fname) = path.file_name() else { continue; };
+            let fname = fname.to_string_lossy();
             if fname.to_lowercase().contains("mmproj") {
                 continue;
             }
@@ -241,13 +242,16 @@ pub fn scan_path(
     let mut temp_catalog: HashMap<String, ModelEntryInternal> = HashMap::new();
 
     for file_path in gguf_files {
-        let fname = file_path.file_name().unwrap().to_string_lossy().to_string();
+        // Skip malformed/external paths instead of panicking on user-controlled model dirs
+        // (e.g. a symlink pointing outside base_path breaks file_name/parent/strip_prefix).
+        let Some(fname_os) = file_path.file_name() else { continue; };
+        let fname = fname_os.to_string_lossy().to_string();
         let base_name = strip_shard_pattern(&fname);
-        let parent = file_path.parent().unwrap();
+        let Some(parent) = file_path.parent() else { continue; };
         let (mmproj_file, mmproj_size) = dir_mmprojs.get(parent).cloned().unwrap_or((None, 0));
 
         // Identity from directory structure — fallback only (GGUF data overrides in merge_catalogs)
-        let rel = file_path.strip_prefix(base_path).unwrap();
+        let Ok(rel) = file_path.strip_prefix(base_path) else { continue; };
         let components: Vec<String> = rel.parent()
             .map(|p| p.components()
                 .map(|c| c.as_os_str().to_string_lossy().to_string())
