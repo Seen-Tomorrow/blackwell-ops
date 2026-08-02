@@ -167,6 +167,7 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
   const [selectedArchs, setSelectedArchs] = useState<string[]>(
     () => splitFoundryBuildProfile(provider.build_profile ?? "").archCodes,
   );
+  const [generator, setGenerator] = useState(provider.foundry_generator ?? "");
   const [backupRetryCount, setBackupRetryCount] = useState(0);
   const [showEngineWarning, setShowEngineWarning] = useState(false);
   const [engineListText, setEngineListText] = useState("");
@@ -194,6 +195,7 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
     const split = splitFoundryBuildProfile(provider.build_profile ?? "");
     setBuildProfile(split.base);
     setSelectedArchs(split.archCodes);
+    setGenerator(provider.foundry_generator ?? "");
     setBackupRetryCount(0);
     setShowEngineWarning(false);
     setEngineListText("");
@@ -339,14 +341,22 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
 
     const trimmedProfile = mergeBuildProfileWithArchitectures(buildProfile, selectedArchs);
     const savedProfile = provider.build_profile?.trim() ?? "";
-    if (trimmedProfile !== savedProfile) {
+    const chosenGenerator = generator.trim();
+    const savedGenerator = provider.foundry_generator?.trim() ?? "";
+    // Persist the build profile + generator choice to the provider when either changed
+    // (so the confirm-modal selection becomes the provider default, like build profile).
+    if (trimmedProfile !== savedProfile || chosenGenerator !== savedGenerator) {
       try {
         await invoke("save_provider", {
-          provider: { ...provider, build_profile: trimmedProfile },
+          provider: {
+            ...provider,
+            build_profile: trimmedProfile,
+            foundry_generator: chosenGenerator,
+          },
         });
         dispatchAppEvent(EVENTS.reloadProviders);
       } catch (persistErr) {
-        console.error("[Foundry] Failed to persist build profile:", persistErr);
+        console.error("[Foundry] Failed to persist build profile/generator:", persistErr);
       }
     }
 
@@ -371,6 +381,7 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
         prUrl: prUrl.trim() || null,
         maxCores: maxCores ?? undefined,
         cmakeFlags: trimmedProfile || null,
+        generator: chosenGenerator || null,
       });
     } catch (err) {
       clearTimeout(overlayTimeout);
@@ -403,7 +414,7 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
       clearTimeout(overlayTimeout);
       buildInvokeInFlightRef.current = false;
     }
-  }, [provider, environment, prUrl, maxCores, buildProfile, selectedArchs]);
+  }, [provider, environment, prUrl, maxCores, buildProfile, selectedArchs, generator]);
 
   const handleConfirmBuild = useCallback(async () => {
     try {
@@ -505,6 +516,8 @@ export default function FoundryModal({ provider, environment, onClose, onComplet
         setPrUrl={setPrUrl}
         buildProfile={buildProfile}
         setBuildProfile={setBuildProfile}
+        generator={generator}
+        setGenerator={setGenerator}
         selectedArchs={selectedArchs}
         setSelectedArchs={setSelectedArchs}
         maxCores={maxCores}

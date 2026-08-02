@@ -19,6 +19,8 @@ interface FoundryConfirmFormProps {
   setPrUrl: (v: string) => void;
   buildProfile: string;
   setBuildProfile: (v: string) => void;
+  generator: string;
+  setGenerator: (v: string) => void;
   selectedArchs: string[];
   setSelectedArchs: Dispatch<SetStateAction<string[]>>;
   maxCores: number | null;
@@ -39,6 +41,8 @@ export default function FoundryConfirmForm({
   setPrUrl,
   buildProfile,
   setBuildProfile,
+  generator,
+  setGenerator,
   selectedArchs,
   setSelectedArchs,
   maxCores,
@@ -339,6 +343,24 @@ export default function FoundryConfirmForm({
           </div>
 
           <div className="pt-1">
+            <label className="text-[8px] font-mono text-stealth-muted uppercase block mb-1">
+              CMake generator
+            </label>
+            <p className="text-[7px] font-mono text-stealth-muted/80 mb-1.5 leading-tight">
+              Ninja is faster (recommended). Visual Studio is the long-term-stable fallback. Saved to provider on start.
+            </p>
+            <select
+              value={generator}
+              onChange={(e) => setGenerator(e.target.value)}
+              className="foundry-build-profile-textarea w-full px-2 py-1.5 font-mono text-[10px]"
+            >
+              <option value="">AUTO (pack default — Ninja)</option>
+              <option value="ninja">NINJA (fast, Multi-Config)</option>
+              <option value="visual-studio">VISUAL STUDIO (stable)</option>
+            </select>
+          </div>
+
+          <div className="pt-2">
             <label className="text-[8px] font-mono text-stealth-muted uppercase block mb-1">
               Build profile (CMake flags)
             </label>

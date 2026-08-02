@@ -921,6 +921,7 @@ pub async fn foundry_build(
     pr_url: Option<String>,
     max_cores: Option<u32>,
     cmake_flags: Option<String>,
+    generator: Option<String>,
     app: tauri::State<'_, crate::engine::AppContext>,
     app_handle: tauri::AppHandle,
 ) -> Result<(), String> {
@@ -968,6 +969,7 @@ pub async fn foundry_build(
             pr_url,
             max_cores,
             cmake_flags,
+            generator,
             build_id,
         )
         .await
@@ -986,6 +988,7 @@ async fn run_foundry_build_worker(
     pr_url: Option<String>,
     max_cores: Option<u32>,
     cmake_flags: Option<String>,
+    generator: Option<String>,
     build_id: u64,
 ) -> Result<(), String> {
     let manifest = foundry_toolchain::load_manifest()?;
@@ -1441,11 +1444,15 @@ async fn run_foundry_build_worker(
     // compiler from the devcmd environment (sourced earlier in the batch).
     let use_ninja = {
         let cfg = worker.config.lock().map_err(|e| e.to_string())?;
-        let override_str = cfg
-            .providers
-            .iter()
-            .find(|p| p.id == provider_id)
-            .map(|p| p.foundry_generator.clone())
+        // Per-build override (from the confirm modal) wins, else the provider's saved choice.
+        let override_str = generator
+            .filter(|s| !s.trim().is_empty())
+            .or_else(|| {
+                cfg.providers
+                    .iter()
+                    .find(|p| p.id == provider_id)
+                    .map(|p| p.foundry_generator.clone())
+            })
             .unwrap_or_default();
         foundry_toolchain::ResolvedProfile::effective_use_ninja(profile.def.ninja, &override_str)
     };
