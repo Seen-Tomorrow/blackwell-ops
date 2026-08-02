@@ -10,7 +10,10 @@ import { invoke } from "@tauri-apps/api/core";
 import type { GgufFile, HfModel, HfModelInfo, HfSearchResponse, ModelEntry } from "./types";
 import {
   extractModelFamily,
+  FAMILY_RULES,
+  HIGH_DRAFT_PAIR_SCORE,
   isExternalDraftOnly,
+  MIN_DRAFT_PAIR_SCORE,
   signalContainsDflash,
 } from "./specDraft";
 import { KEYS, readJsonStorage, writeJsonStorage } from "./storage";
@@ -27,23 +30,6 @@ const DFLASH_FAMILY_HINTS = new Set([
   "mistral",
   "deepseek",
 ]);
-
-/** Ordered like catalog family rules — more specific first. */
-const FAMILY_DETECT: { id: string; pattern: RegExp }[] = [
-  { id: "qwen35", pattern: /qwen3\.?5|qwen35/i },
-  { id: "qwen36", pattern: /qwen3\.?6|qwen36/i },
-  { id: "qwen3-coder", pattern: /qwen3[-_.]?coder/i },
-  { id: "qwen3", pattern: /qwen3/i },
-  { id: "qwen2", pattern: /qwen2/i },
-  { id: "gemma4", pattern: /gemma[-_.]?4|gemma4/i },
-  { id: "gemma3", pattern: /gemma[-_.]?3|gemma3/i },
-  { id: "gemma", pattern: /gemma/i },
-  { id: "llama4", pattern: /llama[-_.]?4|llama4/i },
-  { id: "llama3", pattern: /llama[-_.]?3|llama3/i },
-  { id: "llama", pattern: /llama/i },
-  { id: "mistral", pattern: /mistral/i },
-  { id: "deepseek", pattern: /deepseek/i },
-];
 
 export interface DflashDraftOffer {
   hfModelId: string;
@@ -66,8 +52,8 @@ export interface DflashDraftOffer {
  *   ≥ SUGGEST → show as recommended candidate (user confirms)
  *   < SUGGEST → ignore for auto-suggestions (drop from HF list)
  */
-export const DFLASH_SCORE_SUGGEST = 50;
-export const DFLASH_SCORE_HIGH = 80;
+export const DFLASH_SCORE_SUGGEST = MIN_DRAFT_PAIR_SCORE;
+export const DFLASH_SCORE_HIGH = HIGH_DRAFT_PAIR_SCORE;
 
 export type DflashMatchTier = "ignore" | "suggest" | "high";
 
@@ -270,7 +256,7 @@ function stripGgufNoise(raw: string): string {
 }
 
 function familyFromHay(hay: string): string | null {
-  for (const rule of FAMILY_DETECT) {
+  for (const rule of FAMILY_RULES) {
     if (rule.pattern.test(hay)) return rule.id;
   }
   return null;

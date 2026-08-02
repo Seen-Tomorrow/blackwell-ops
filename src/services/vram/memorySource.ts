@@ -2,6 +2,7 @@ import type { EngineConfig, MemorySource, VramManifest } from "../../lib/types";
 import {
   extrapolateVramFromPoints,
   parseCtx,
+  type ComputedValues,
   type ScenarioInput,
 } from "./scenarios/scenarios_factory";
 
@@ -135,6 +136,7 @@ function wasFitCacheUsed(input: ScenarioInput): boolean {
 export function resolveMemorySource(
   manifest: VramManifest,
   input: ScenarioInput,
+  computed?: ComputedValues,
 ): MemorySource {
   const ctx = parseCtx(cfgStr(input.engineConfig, "ctx", "32k"));
   const split = cfgStr(input.engineConfig, "split", "none");
@@ -184,7 +186,7 @@ export function resolveMemorySource(
     };
   }
 
-  if (wasFitCacheUsed(input)) {
+  if (computed?.fitCacheUsed ?? wasFitCacheUsed(input)) {
     const count = input.fitPoints?.length ?? 0;
     return {
       kind: "fit_cache",
@@ -204,10 +206,11 @@ export function resolveMemorySource(
 export function attachMemorySource(
   manifest: VramManifest,
   input: ScenarioInput,
+  computed?: ComputedValues,
 ): VramManifest {
   return {
     ...manifest,
-    memorySource: resolveMemorySource(manifest, input),
+    memorySource: resolveMemorySource(manifest, input, computed),
   };
 }
 

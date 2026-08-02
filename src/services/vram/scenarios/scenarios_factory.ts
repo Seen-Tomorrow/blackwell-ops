@@ -459,22 +459,6 @@ export function findFitPoint(points: FitPoint[], label: string): FitPoint | unde
   return points.find(p => p.label === label);
 }
 
-export function getBaseVramMib(points: FitPoint[]): number | null {
-  const noBatch = findFitPoint(points, "base_no_batch");
-  if (noBatch) return noBatch.vram_mib;
-  const base = findFitPoint(points, "base");
-  return base ? base.vram_mib : null;
-}
-
-export function estimateOverheadMib(points: FitPoint[], weightsGb: number, userCtx: number): number | null {
-  const noBatch = findFitPoint(points, "base_no_batch");
-  if (!noBatch) return null;
-  const kvBytesPerToken = kvBytesForQuant(noBatch.kv_quant);
-  const headDim = 128; // approximate, actual depends on model arch
-  const estimatedKVAtCtx = (2 * noBatch.ctx * kvBytesPerToken * headDim) / (1024 * 1024);
-  return noBatch.vram_mib - (weightsGb * 1024) - estimatedKVAtCtx;
-}
-
 export function estimateActivationPerBatchToken(points: FitPoint[]): number | null {
   const base = findFitPoint(points, "base");
   const noBatch = findFitPoint(points, "base_no_batch");
@@ -572,6 +556,8 @@ export interface ComputedValues {
   weightsOnGpuGb: number;
   /** Portion of model weights offloaded to RAM (MoE expert FFN in MOE_OPTIMAL mode) */
   ramWeightsGb: number;
+  /** True when the FIT library cache drove the estimate (extrapolation produced a value). */
+  fitCacheUsed: boolean;
 }
 
 export function computeValues(input: ScenarioInput, validatedVramMib?: number): ComputedValues {
@@ -620,6 +606,7 @@ export function computeValues(input: ScenarioInput, validatedVramMib?: number): 
 
   let overheadGb: number;
   let fitCacheExtrapolatedGb: number | null = null;
+  let fitCacheUsed = false;
 
   if (input.fitPoints && input.fitPoints.length > 0) {
     // ── FIT-based estimation ────────────────────────────────────────────
@@ -629,6 +616,7 @@ export function computeValues(input: ScenarioInput, validatedVramMib?: number): 
     );
 
     if (extrapolatedMib !== null) {
+      fitCacheUsed = true;
       fitCacheExtrapolatedGb = extrapolatedMib / 1024;
       const formulaOverheadGb = computeDefaultOverhead(
         engineConfig, modelMeta, weightsGb, weightsOnGpuGb, numGpusUsed, effectiveCtx, isMoe, moeOptimal,
@@ -681,7 +669,7 @@ export function computeValues(input: ScenarioInput, validatedVramMib?: number): 
     weightsGb, kvCacheGb, overheadGb, visionGb, vramTotalGb,
     gpuAvailable, singleMaxAvailable, multiTotalAvailable,
     targetGpuIdx, splitActive, numGpus: numGpusUsed,
-    gpuWeightFraction, weightsOnGpuGb, ramWeightsGb,
+    gpuWeightFraction, weightsOnGpuGb, ramWeightsGb, fitCacheUsed,
   };
 }
 
@@ -833,16 +821,6 @@ interface VramManifestWithMoe extends VramManifest {
   moeSuggestion?: MoeSuggestion | null;
 }
 
-/** Learned VRAM totals + per-GPU projection are owned by AUTO_FIT — do not stomp forecast bars here. */
-export function applyLearnedVramOverlay(
-  manifest: VramManifest,
-  _input: ScenarioInput,
-  validatedVramMib?: number,
-): VramManifest {
-  if (validatedVramMib != null) return manifest;
-  return manifest;
-}
-
 export function evaluate(input: ScenarioInput, validatedVramMib?: number): VramManifest {
   const computed = computeValues(input, validatedVramMib);
 
@@ -866,10 +844,7 @@ export function evaluate(input: ScenarioInput, validatedVramMib?: number): VramM
   // Always sync moeSuggestion (remove when not applicable)
   (manifest as VramManifestWithMoe).moeSuggestion = moeSuggestion;
 
-  return attachMemorySource(
-    applyLearnedVramOverlay(manifest, input, validatedVramMib),
-    input,
-  );
+  return attachMemorySource(manifest, input, computed);
 }
 
 /** Apply FIT-validated total to a formula-based manifest.

@@ -69,7 +69,7 @@ export const MIN_DRAFT_PAIR_SCORE = 50;
 /** High-confidence local pair — UI can badge as strong match. */
 export const HIGH_DRAFT_PAIR_SCORE = 80;
 
-const FAMILY_RULES: { id: string; pattern: RegExp }[] = [
+export const FAMILY_RULES: { id: string; pattern: RegExp }[] = [
   { id: "qwen35", pattern: /qwen3\.?5|qwen35/i },
   { id: "qwen36", pattern: /qwen3\.?6|qwen36/i },
   { id: "qwen3-coder", pattern: /qwen3[-_.]?coder/i },

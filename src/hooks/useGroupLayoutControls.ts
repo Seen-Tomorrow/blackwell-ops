@@ -19,8 +19,8 @@ import {
   isGroupFullyHidden,
   partitionGroupsByDisplayZone,
   reorderGroupsWithinZone,
-  type GroupDisplayZone,
 } from "../lib/paramDisplayZone";
+import type { GroupDisplayZone } from "../lib/storage";
 import {
   isEmptyGroupDeletable,
   pruneStaleGroupOrder,

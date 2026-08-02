@@ -13,9 +13,10 @@ import type { UserEditedTemplateParam } from "./types";
 import { filterParamValuesForConfigView } from "./launchProfile";
 import type { ConfigViewMode } from "./types";
 import { normalizeUiGroup, paramUiGroup } from "./storage";
+import { SPEC_PROFILE_DFLASH_GROUP, SPEC_PROFILE_MTP_GROUP } from "./systemParams";
 
-export const SPEC_PROFILE_MTP = "SPECULATIVE-MTP";
-export const SPEC_PROFILE_DFLASH = "SPECULATIVE-DFLASH";
+export const SPEC_PROFILE_MTP = SPEC_PROFILE_MTP_GROUP;
+export const SPEC_PROFILE_DFLASH = SPEC_PROFILE_DFLASH_GROUP;
 
 /** Protected profile groups — cannot delete; params may be hidden. */
 export const SPEC_PROFILE_GROUPS = [SPEC_PROFILE_MTP, SPEC_PROFILE_DFLASH] as const;

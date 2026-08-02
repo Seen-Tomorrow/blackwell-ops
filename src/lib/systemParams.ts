@@ -148,25 +148,6 @@ export function isPlacementChromeParam(def: {
 }
 
 
-/** Spec profile group names (Boost / template identity — not policy). */
-export function isSpecProfileUiGroup(groupName: string): boolean {
-  const g = normalizeUiGroup(groupName);
-  return g === SPEC_PROFILE_MTP_GROUP || g === SPEC_PROFILE_DFLASH_GROUP;
-}
-
-/**
- * @deprecated Prefer isProtectedGroup(group, protectedGroups).
- * Fallback for call sites without provider list: SYSTEM + seed profile names.
- */
-export function isSystemUiGroup(groupName: string): boolean {
-  const g = normalizeUiGroup(groupName);
-  return (
-    g === SYSTEM_UI_GROUP ||
-    isSpecProfileUiGroup(g) ||
-    DEFAULT_PROTECTED_GROUPS.some((p) => p === g)
-  );
-}
-
 /** Canonical group for profile keys (repairs bad SYSTEM migration). */
 export function profileGroupForParamKey(key: string): string | null {
   if (key.startsWith("mtp_")) return SPEC_PROFILE_MTP_GROUP;

@@ -1,4 +1,4 @@
-export type GroupDisplayZone = "above" | "below";
+import type { GroupDisplayZone } from "./storage";
 
 /** Params rendered outside the scroll groups (GpuAssignPanel, launch dock, MOE badge). */
 export const PANEL_CHROME_PARAM_KEYS = new Set([
@@ -10,13 +10,6 @@ export const PANEL_CHROME_PARAM_KEYS = new Set([
   "ctx",
 ]);
 
-export function resolveGroupDisplayZone(
-  groupId: string,
-  zones: Record<string, GroupDisplayZone> | undefined,
-): GroupDisplayZone {
-  return zones?.[groupId] === "above" ? "above" : "below";
-}
-
 export function partitionGroupsByDisplayZone(
   orderedGroupKeys: string[],
   zones: Record<string, GroupDisplayZone> | undefined,
@@ -26,7 +19,7 @@ export function partitionGroupsByDisplayZone(
   const belowKeys: string[] = [];
   for (const key of orderedGroupKeys) {
     if (!hasVisibleParams(key)) continue;
-    if (resolveGroupDisplayZone(key, zones) === "above") aboveKeys.push(key);
+    if (zones?.[key] === "above") aboveKeys.push(key);
     else belowKeys.push(key);
   }
   return { aboveKeys, belowKeys };
