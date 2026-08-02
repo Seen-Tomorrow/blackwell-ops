@@ -136,12 +136,19 @@ fn format_bytes_label(bytes: u64) -> String {
     }
 }
 
-fn foundry_cache_fingerprint(profile_id: &str, cmake_configure_line: &str) -> String {
+fn foundry_cache_fingerprint(
+    profile_id: &str,
+    cmake_configure_line: &str,
+    toolchain_id: &str,
+) -> String {
     use sha2::{Digest, Sha256};
     let mut hasher = Sha256::new();
     hasher.update(profile_id.as_bytes());
     hasher.update(b"\0");
     hasher.update(cmake_configure_line.as_bytes());
+    hasher.update(b"\0");
+    // Toolchain swaps (VS/CUDA/version) must cold-start even if the configure line is unchanged.
+    hasher.update(toolchain_id.as_bytes());
     format!("{:x}", hasher.finalize())
 }
 
@@ -215,6 +222,7 @@ const FOUNDRY_CORE_BINARIES: &[&str] = &[
     "llama-server.exe",
     "llama-cli.exe",
     "llama-quantize.exe",
+    "llama-fit-params.exe",
 ];
 
 struct FoundryCoreBinaryCheck {
@@ -275,6 +283,25 @@ fn check_foundry_core_binaries(candidate_dirs: &[PathBuf]) -> FoundryCoreBinaryC
 
 fn is_windows_vs_tail_batch_flake(stderr: &str) -> bool {
     stderr.to_ascii_lowercase().contains("the batch file cannot be found")
+}
+
+/// Escape cmd batch metacharacters in user-supplied CMake flags so a `%`, `&`, `|`, `^`, `(`, `)`
+/// or redirection char cannot split/corrupt the generated `.bat` command line. `%`→`%%` (var
+/// expansion), the rest are caret-escaped. Applied only to the batch-embedded copy; the display
+/// message keeps the raw flags for readability.
+fn cmd_escape_batch(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '%' => out.push_str("%%"),
+            '&' | '|' | '<' | '>' | '^' | '(' | ')' => {
+                out.push('^');
+                out.push(c);
+            }
+            _ => out.push(c),
+        }
+    }
+    out
 }
 
 async fn nuke_foundry_build_dir_on_configure_fail(
@@ -365,6 +392,7 @@ async fn run_foundry_batch_streaming(
     cwd: &std::path::Path,
     app_handle: &tauri::AppHandle,
     state: &BuildState,
+    timeout: Option<std::time::Duration>,
 ) -> Result<(Option<std::process::ExitStatus>, Vec<String>), String> {
     use std::os::windows::process::CommandExt;
     use std::process::{Command, Stdio};
@@ -429,26 +457,37 @@ async fn run_foundry_batch_streaming(
         }
     });
 
+    let deadline = timeout.map(|t| std::time::Instant::now() + t);
     let status = tokio::task::spawn_blocking(move || {
         loop {
             if BUILD_CANCELLED.load(Ordering::SeqCst) {
                 let _ = child.kill();
                 let _ = child.wait();
-                return None;
+                return Ok(None);
+            }
+            if let Some(deadline) = deadline {
+                if std::time::Instant::now() >= deadline {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return Err(format!(
+                        "Foundry batch timed out after {}s — killed.",
+                        timeout.map(|t| t.as_secs()).unwrap_or(0)
+                    ));
+                }
             }
             match child.try_wait() {
-                Ok(Some(status)) => return Some(status),
+                Ok(Some(status)) => return Ok(Some(status)),
                 Ok(None) => std::thread::sleep(std::time::Duration::from_millis(100)),
                 Err(_) => {
                     let _ = child.kill();
                     let _ = child.wait();
-                    return None;
+                    return Err("Foundry batch wait failed (child error).".to_string());
                 }
             }
         }
     })
     .await
-    .map_err(|e| format!("foundry batch wait task failed: {e}"))?;
+    .map_err(|e| format!("foundry batch wait task failed: {e}"))??;
 
     flush_done.store(true, Ordering::SeqCst);
     let _ = out_thread.join();
@@ -623,6 +662,38 @@ fn spawn_repo_heartbeat(
                 Some(format!(
                     "[STAGE 1/4] REPOSITORY — Still {}… {}s elapsed (slow internet is normal — do not close the app)",
                     action_label, elapsed
+                )),
+            );
+        }
+    })
+}
+
+/// Heartbeat while the compile batch is alive (the longest phase, and the one with no other
+/// liveness signal). Surfaces a wedged MSBuild/Ninja child that is alive but producing no output.
+fn spawn_build_heartbeat(app_handle: tauri::AppHandle) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        let mut elapsed: u64 = 0;
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+            elapsed += 30;
+            let state = match snapshot_build_state().await {
+                Some(s) if s.phase == BuildPhase::Building => s,
+                _ => break,
+            };
+            let child_pid = with_child_pids(|pids| pids.last().copied()).flatten();
+            let alive = child_pid
+                .map(crate::engine_utils::is_process_alive)
+                .unwrap_or(false);
+            let pid_note = match child_pid {
+                Some(pid) if alive => format!("compile pid {pid} alive"),
+                Some(pid) => format!("compile pid {pid} NOT alive — wedged / pipe"),
+                None => "no pid tracked yet".into(),
+            };
+            emit_build_event(
+                &app_handle,
+                &state,
+                Some(format!(
+                    "[STAGE 3/4] BUILD — still compiling… {elapsed}s ({pid_note})"
                 )),
             );
         }
@@ -1365,16 +1436,10 @@ async fn run_foundry_build_worker(
 
     emit_config_event(app_handle, &provider_id, &profile_id, build_id, Some("[STAGE 2/4] CMAKE CONFIGURE — Reviewing flags below. Click PROCEED to start compilation.".into()));
 
-    let cuda_ver_short = profile.cuda_version_short();
-    let toolset_flag = format!("-T \"cuda={}\"", cuda_ver_short);
-
-    let forced_cuda_flags = format!(
-        "-DCMAKE_CUDA_COMPILER=\"{}\" -DCUDAToolkit_ROOT=\"{}\" \
-         -DCMAKE_VS_PLATFORM_TOOLSET_CUDA=\"{}\"",
-        profile.nvcc.to_string_lossy().replace('\\', "/"),
-        cuda_path_forced.replace('\\', "/"),
-        cuda_ver_short
-    );
+    // VS-only vs Ninja generator flags. Ninja drops `-T`, `-A` and the VS toolset CUDA var;
+    // it picks the host compiler from the devcmd environment (sourced earlier in the batch).
+    let toolset_flag = profile.vs_cuda_toolset_flag(profile.cuda_version_short());
+    let forced_cuda_flags = profile.forced_cuda_flags();
 
     let asm_flag = profile.cmake_asm_compiler_flag(&manifest)?;
     let ml64_bin = profile
@@ -1387,11 +1452,29 @@ async fn run_foundry_build_worker(
     } else {
         cmake_extra.lines().map(|l| l.trim()).filter(|l| !l.is_empty()).collect::<Vec<_>>().join(" ")
     };
+    // Batch-safe copy (escapes cmd metachars) used only inside the generated .bat; the raw
+    // flags are kept for the display message and the cache fingerprint stays deterministic.
+    let joined_extra_batch = cmd_escape_batch(&joined_extra);
 
     let vs_def = foundry_toolchain::vs_def(&manifest, &profile.def.vs)?;
     let gen_flag = profile.cmake_generator_flag(vs_def);
     let nvcc_bin = profile.cuda_root.join("bin").to_string_lossy().to_string();
     let versioned_var = profile.cuda_path_var();
+
+    // Ninja generator requires ninja.exe beside cmake.exe. Ensure it's present before we
+    // write/run the configure batch (downloads it on demand if the stripped-down pack lacks it).
+    if profile.def.ninja {
+        if let Err(e) = foundry_toolchain::ensure_ninja_available().await {
+            rollback_build(app_handle, &provider_id, &profile_id, build_id).execute().await;
+            return Err(format!(
+                "Profile '{}' uses the Ninja generator but ninja.exe is unavailable: {}",
+                profile_id, e
+            ));
+        }
+        emit_config_event(app_handle, &provider_id, &profile_id, build_id, Some(
+            "[GENERATOR] Ninja Multi-Config — VS-only flags (-T/-A/toolset-CUDA) omitted".into(),
+        ));
+    }
 
     let cmake_exe = foundry_toolchain::resolve_cmake_exe()?;
     let cmake_cmd = cmake_exe.to_string_lossy().replace('\\', "/");
@@ -1399,7 +1482,7 @@ async fn run_foundry_build_worker(
     // Absolute out-of-source configure (build tree lives in disposable work/ — never inside source)
     let build_dir_str = build_dir.to_string_lossy().replace('\\', "/");
     let src_dir_str   = src_dir.to_string_lossy().replace('\\', "/");
-    let cmake_configure_line = if joined_extra.is_empty() {
+    let cmake_configure_line = if joined_extra_batch.is_empty() {
         format!(
             r#""{}" -B "{}" -S "{}" {} {} {} {}"#,
             cmake_cmd, build_dir_str, src_dir_str, gen_flag, toolset_flag, forced_cuda_flags, asm_flag
@@ -1407,11 +1490,12 @@ async fn run_foundry_build_worker(
     } else {
         format!(
             r#""{}" -B "{}" -S "{}" {} {} {} {} {}"#,
-            cmake_cmd, build_dir_str, src_dir_str, gen_flag, toolset_flag, forced_cuda_flags, asm_flag, joined_extra
+            cmake_cmd, build_dir_str, src_dir_str, gen_flag, toolset_flag, forced_cuda_flags, asm_flag, joined_extra_batch
         )
     };
 
-    let cache_fingerprint = foundry_cache_fingerprint(&profile_id, &cmake_configure_line);
+    let toolchain_id = profile.toolchain_id(&manifest);
+    let cache_fingerprint = foundry_cache_fingerprint(&profile_id, &cmake_configure_line, &toolchain_id);
     let cache_reused = match prepare_foundry_build_dir(&build_dir, &cache_fingerprint).await {
         Ok(reused) => reused,
         Err(e) => {
@@ -1493,6 +1577,7 @@ async fn run_foundry_build_worker(
         &src_dir,
         app_handle,
         &state_cfg,
+        Some(std::time::Duration::from_secs(20 * 60)), // configure guard
     )
     .await
     {
@@ -1521,9 +1606,7 @@ async fn run_foundry_build_worker(
         clear_pids();
 
         nuke_foundry_build_dir_on_configure_fail(&provider_id, &profile_id).await;
-        foundry_console_end_session(app_handle, build_id);
-
-        *CURRENT_BUILD.lock().await = None;
+        // rollback_build(...).execute() already ended the console session above.
         return Err("CMake configure failed. Check the log above for details.".to_string());
     }
 
@@ -1588,6 +1671,7 @@ async fn run_foundry_build_worker(
             if let Some(state) = snapshot_build_state().await {
                 emit_build_event(app_handle, &state, None);
             }
+            foundry_console_end_session(app_handle, build_id);
             *CURRENT_BUILD.lock().await = None;
             return Err("Build cancelled: user did not confirm.".to_string());
         }
@@ -1645,25 +1729,34 @@ async fn run_foundry_build_worker(
         crate::sidecar_elevate::cmd_script_launch(&build_batch_path);
     let state_for_stream = require_build_state("compilation").await?;
 
+    // Compile is the longest phase with no liveness signal — add a heartbeat so a wedged
+    // MSBuild/Ninja child (silent, still alive) is surfaced instead of hanging forever.
+    let build_heartbeat = spawn_build_heartbeat(app_handle.clone());
+
     let (build_status, stderr_text) = match run_foundry_batch_streaming(
         &build_program,
         &build_raw_tail,
         &src_dir,
         app_handle,
         &state_for_stream,
+        Some(std::time::Duration::from_secs(120 * 60)), // 2h guard for large CUDA builds
     )
     .await
     {
         Ok(v) => v,
         Err(e) => {
+            build_heartbeat.abort();
             clear_pids();
+            foundry_console_end_session(app_handle, build_id);
             do_rollback(&cmake_build_output_dir).await;
             return Err(e);
         }
     };
+    build_heartbeat.abort();
 
     let Some(build_status) = build_status else {
         clear_pids();
+        foundry_console_end_session(app_handle, build_id);
         do_rollback(&cmake_build_output_dir).await;
         return Err("Build cancelled by user.".to_string());
     };
@@ -1785,7 +1878,8 @@ async fn run_foundry_build_worker(
     let sacred_binary_path = match publish_artifacts_to_sacred(&provider_id, &profile_id, &build_dir, &src_dir).await {
         Ok(p) => p,
         Err(e) => {
-            // Still nuke work/ on the way out (via later finalize), but report the publish failure
+            foundry_console_end_session(app_handle, build_id);
+            *CURRENT_BUILD.lock().await = None;
             return Err(format!("Build succeeded but failed to publish sacred artifacts: {}", e));
         }
     };
@@ -2706,6 +2800,9 @@ impl<'a> RollbackBuilder<'a> {
         });
 
         crate::ipc_meter::emit_tracked(&app_handle, "foundry-progress", &event);
+        // Central cleanup — every rollback path ends the output-console session so its buffer
+        // is released instead of leaking until the next build.
+        foundry_console_end_session(&app_handle, build_id);
         *CURRENT_BUILD.lock().await = None;
     }
 }

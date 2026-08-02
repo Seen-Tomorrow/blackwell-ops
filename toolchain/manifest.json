@@ -23,7 +23,8 @@
       "cuda": "13.3",
       "generator": "Visual Studio 18 2026",
       "arch": "x64",
-      "description": "Bleeding-edge CUDA 13.3 on VS2026"
+      "ninja": true,
+      "description": "Bleeding-edge CUDA 13.3 on VS2026 (Ninja Multi-Config)"
     },
     {
       "id": "stable",
@@ -32,7 +33,8 @@
       "cuda": "12.8",
       "generator": "Visual Studio 17 2022",
       "arch": "x64",
-      "description": "Long-lived compatibility profile"
+      "ninja": true,
+      "description": "Long-lived compatibility profile (Ninja Multi-Config)"
     }
   ]
 }

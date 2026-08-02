@@ -37,6 +37,12 @@ pub struct ProfileDef {
     pub cuda: String,
     pub generator: String,
     pub arch: String,
+    /// When true, use the `Ninja Multi-Config` generator instead of the Visual Studio
+    /// generator. `Ninja Multi-Config` preserves the `--config Release` build step and the
+    /// `bin/Release` output layout, but drops VS-only flags (`-A`, `-T`, `CMAKE_GENERATOR_INSTANCE`).
+    /// Requires `ninja.exe` next to the portable `cmake.exe` (downloaded on demand if absent).
+    #[serde(default)]
+    pub ninja: bool,
     #[serde(default)]
     pub description: String,
 }
@@ -104,6 +110,113 @@ pub fn toolchain_dir() -> PathBuf {
 /// Portable CMake shipped inside the Full Foundry toolchain pack (`toolchain/cmake/bin/cmake.exe`).
 pub fn cmake_exe_path() -> PathBuf {
     toolchain_dir().join("cmake").join("bin").join("cmake.exe")
+}
+
+/// Ninja lives beside the portable cmake.exe — CMake auto-finds the make program there.
+pub fn ninja_exe_path() -> PathBuf {
+    toolchain_dir().join("cmake").join("bin").join("ninja.exe")
+}
+
+/// Pinned Ninja release used when the stripped-down CMake pack lacks ninja.exe.
+pub const NINJA_VERSION: &str = "v1.12.1";
+pub const NINJA_WIN_ZIP: &str = "ninja-win.zip";
+
+pub fn ninja_download_url() -> String {
+    format!(
+        "https://github.com/ninja-build/ninja/releases/download/{NINJA_VERSION}/{NINJA_WIN_ZIP}"
+    )
+}
+
+pub fn resolve_ninja_exe() -> Result<PathBuf, String> {
+    let path = ninja_exe_path();
+    if path.is_file() {
+        Ok(path)
+    } else {
+        Err(format!(
+            "Ninja not found at {}. Download it (or re-extract the Full Foundry toolchain pack) so ninja.exe sits next to cmake.exe.",
+            path.display()
+        ))
+    }
+}
+
+/// Ensure `ninja.exe` sits next to the portable `cmake.exe`. Downloads the pinned `ninja-win.zip`
+/// and extracts just the binary into `toolchain/cmake/bin/` when the stripped-down CMake pack
+/// didn't bundle it. Idempotent — once present it is reused across builds.
+#[cfg(windows)]
+pub async fn ensure_ninja_available() -> Result<PathBuf, String> {
+    if let Ok(p) = resolve_ninja_exe() {
+        return Ok(p);
+    }
+
+    let seven_z = resolve_7z_exe()?;
+    let download_dir = toolchain_download_dir();
+    std::fs::create_dir_all(&download_dir)
+        .map_err(|e| format!("Failed to create ninja download dir: {e}"))?;
+
+    let zip_path = download_dir.join(NINJA_WIN_ZIP);
+    let url = ninja_download_url();
+    log::info!("[toolchain] Downloading ninja {NINJA_VERSION} from {url}");
+    let resp = reqwest::get(&url)
+        .await
+        .map_err(|e| format!("Failed to download ninja ({url}): {e}"))?;
+    if !resp.status().is_success() {
+        return Err(format!(
+            "Ninja download failed (HTTP {}): {url}",
+            resp.status()
+        ));
+    }
+    let data = resp
+        .bytes()
+        .await
+        .map_err(|e| format!("Failed to read ninja download: {e}"))?;
+    tokio::fs::write(&zip_path, &data)
+        .await
+        .map_err(|e| format!("Failed to write ninja archive: {e}"))?;
+
+    let extract_dir = download_dir.join("ninja-extract");
+    let _ = std::fs::remove_dir_all(&extract_dir);
+    std::fs::create_dir_all(&extract_dir)
+        .map_err(|e| format!("Failed to create ninja extract dir: {e}"))?;
+
+    // Synchronous 7z extract (~300 KB zip, fast) — mirrors extract_toolchain_archive.
+    let zip_str = zip_path.to_string_lossy().to_string();
+    let extract_str = format!("-o{}", extract_dir.to_string_lossy());
+    let output = command_no_window(&seven_z)
+        .args(["x", &zip_str, &extract_str, "-y", "-aoa"])
+        .output()
+        .map_err(|e| format!("Failed to run 7-Zip for ninja: {e}"))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        return Err(format!(
+            "7-Zip extraction of ninja failed: {} {}",
+            stderr.trim(),
+            stdout.trim()
+        ));
+    }
+
+    let extracted = extract_dir.join("ninja.exe");
+    if !extracted.is_file() {
+        return Err("Ninja archive did not contain ninja.exe".to_string());
+    }
+    let cmake_bin = cmake_exe_path()
+        .parent()
+        .ok_or_else(|| "Invalid portable cmake path".to_string())?
+        .to_path_buf();
+    std::fs::create_dir_all(&cmake_bin)
+        .map_err(|e| format!("Failed to create cmake bin dir: {e}"))?;
+    std::fs::rename(&extracted, ninja_exe_path())
+        .map_err(|e| format!("Failed to place ninja.exe next to cmake: {e}"))?;
+
+    let _ = std::fs::remove_file(&zip_path);
+    let _ = std::fs::remove_dir_all(&extract_dir);
+    log::info!("[toolchain] Installed ninja {NINJA_VERSION} at {}", ninja_exe_path().display());
+    Ok(ninja_exe_path())
+}
+
+#[cfg(not(windows))]
+pub async fn ensure_ninja_available() -> Result<PathBuf, String> {
+    Err("Ninja install is supported on Windows only.".into())
 }
 
 pub fn resolve_cmake_exe() -> Result<PathBuf, String> {
@@ -248,10 +361,58 @@ impl ResolvedProfile {
     }
 
     pub fn cmake_generator_flag(&self, vs: &VsDef) -> String {
-        let instance = self.vs_instance_dir().to_string_lossy().replace('\\', "/");
+        if self.def.ninja {
+            // Ninja Multi-Config keeps `--config Release` and the `bin/Release` output layout.
+            // No `-A` (arch comes from the devcmd env) and no `CMAKE_GENERATOR_INSTANCE` (VS-only).
+            r#"-G "Ninja Multi-Config""#.to_string()
+        } else {
+            let instance = self.vs_instance_dir().to_string_lossy().replace('\\', "/");
+            format!(
+                r#"-G "{}" -A {} -DCMAKE_GENERATOR_INSTANCE="{},version={}""#,
+                self.def.generator, self.def.arch, instance, vs.cmake_version
+            )
+        }
+    }
+
+    /// VS-only `-T "cuda=..."` toolset selection. The Ninja generator picks the host compiler
+    /// from the devcmd environment, so this flag is omitted there.
+    pub fn vs_cuda_toolset_flag(&self, cuda_ver_short: &str) -> String {
+        if self.def.ninja {
+            String::new()
+        } else {
+            format!("-T \"cuda={}\"", cuda_ver_short)
+        }
+    }
+
+    /// CUDA compiler/root flags. `CMAKE_VS_PLATFORM_TOOLSET_CUDA` is VS-only; Ninja relies on
+    /// nvcc + `CUDAToolkit_ROOT` + the devcmd host environment.
+    pub fn forced_cuda_flags(&self) -> String {
+        let compiler = format!(
+            "-DCMAKE_CUDA_COMPILER=\"{}\" -DCUDAToolkit_ROOT=\"{}\"",
+            self.nvcc.to_string_lossy().replace('\\', "/"),
+            self.cuda_root.to_string_lossy().replace('\\', "/")
+        );
+        if self.def.ninja {
+            compiler
+        } else {
+            format!(
+                "{} -DCMAKE_VS_PLATFORM_TOOLSET_CUDA=\"{}\"",
+                compiler,
+                self.cuda_version_short()
+            )
+        }
+    }
+
+    /// Stable toolchain identity used to invalidate the CMake work-tree cache. A VS/CUDA/version
+    /// bump must cold-start even when the configure line is byte-identical (paths under the stable
+    /// `toolchain/` root don't change, so the configure line alone can't detect a toolchain swap).
+    pub fn toolchain_id(&self, manifest: &ToolchainManifest) -> String {
+        let msvc = vs_def(manifest, &self.def.vs)
+            .map(|v| v.msvc_version.clone())
+            .unwrap_or_default();
         format!(
-            r#"-G "{}" -A {} -DCMAKE_GENERATOR_INSTANCE="{},version={}""#,
-            self.def.generator, self.def.arch, instance, vs.cmake_version
+            "v{}|{}|msvc{}|cuda{}|ninja={}",
+            manifest.version, self.def.vs, msvc, self.def.cuda, self.def.ninja
         )
     }
 
