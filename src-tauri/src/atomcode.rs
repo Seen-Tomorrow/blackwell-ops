@@ -5,6 +5,7 @@
 //! Never uses the user's PATH or `%LOCALAPPDATA%\AtomCode` / `~\.atomcode`.
 //! Launch is always a detached external console.
 
+use crate::external_agents::emit_dbg;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
@@ -55,15 +56,15 @@ fn migrate_legacy_paths() {
 }
 
 fn version_stamp_path() -> PathBuf {
-    tools_dir().join("version.txt")
+    crate::external_agents::version_stamp_path(&tools_dir())
 }
 
 fn disclaimer_path() -> PathBuf {
-    home_dir().join(".disclaimer_accepted")
+    crate::external_agents::disclaimer_path(&home_dir())
 }
 
 fn last_project_path() -> PathBuf {
-    home_dir().join("last_project.txt")
+    crate::external_agents::last_project_path(&home_dir())
 }
 
 // ── Status ─────────────────────────────────────────────────────────────
@@ -81,10 +82,7 @@ pub struct AtomcodeStatus {
 }
 
 fn read_version_stamp() -> Option<String> {
-    std::fs::read_to_string(version_stamp_path())
-        .ok()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
+    crate::external_agents::read_trimmed(&version_stamp_path())
 }
 
 fn probe_exe_version(exe: &Path) -> Option<String> {
@@ -115,10 +113,7 @@ pub async fn atomcode_status() -> Result<AtomcodeStatus, String> {
     } else {
         None
     };
-    let last_project = std::fs::read_to_string(last_project_path())
-        .ok()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty());
+    let last_project = crate::external_agents::read_trimmed(&last_project_path());
     Ok(AtomcodeStatus {
         installed,
         exe_path: exe.to_string_lossy().to_string(),
@@ -132,19 +127,7 @@ pub async fn atomcode_status() -> Result<AtomcodeStatus, String> {
 
 #[tauri::command]
 pub async fn atomcode_accept_disclaimer() -> Result<(), String> {
-    std::fs::create_dir_all(home_dir()).map_err(|e| format!("atomcode home: {e}"))?;
-    std::fs::write(
-        disclaimer_path(),
-        format!(
-            "accepted_at_unix={}\npinned={}\n",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_secs())
-                .unwrap_or(0),
-            PINNED_VERSION
-        ),
-    )
-    .map_err(|e| format!("disclaimer: {e}"))
+    crate::external_agents::write_disclaimer(&home_dir(), PINNED_VERSION)
 }
 
 #[tauri::command]
@@ -222,7 +205,17 @@ pub async fn atomcode_install(
         let tmp = dir.join("atomcode.download.exe");
         let dest = exe_path();
 
-        download_file(&url, &tmp).await?;
+        let bytes = crate::external_agents::download_bytes(&url).await?;
+        // Tiny body is almost certainly an HTML error page.
+        if bytes.len() < 1_000_000 {
+            let head = String::from_utf8_lossy(&bytes[..bytes.len().min(200)]);
+            if head.trim_start().starts_with('<') {
+                return Err(format!(
+                    "Download looks like HTML, not a binary (release may be missing). URL: {url}"
+                ));
+            }
+        }
+        crate::external_agents::write_binary(&tmp, &bytes)?;
 
         // Sanity: PE MZ header
         let header = std::fs::read(&tmp).map_err(|e| format!("read download: {e}"))?;
@@ -259,51 +252,6 @@ pub async fn atomcode_install(
 
         atomcode_status().await
     }
-}
-
-fn emit_dbg(line: &str) {
-    crate::output_console::emit_blackwell_output_console_debug_line(line);
-}
-
-async fn download_file(url: &str, dest: &Path) -> Result<(), String> {
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(600))
-        .build()
-        .map_err(|e| format!("http client: {e}"))?;
-
-    let resp = client
-        .get(url)
-        .send()
-        .await
-        .map_err(|e| format!("download request failed: {e}"))?;
-
-    if !resp.status().is_success() {
-        return Err(format!(
-            "download HTTP {} for {url}",
-            resp.status()
-        ));
-    }
-
-    let bytes = resp
-        .bytes()
-        .await
-        .map_err(|e| format!("download body: {e}"))?;
-
-    if bytes.len() < 1_000_000 {
-        // AtomCode is ~30MB; tiny body is almost certainly an HTML error page.
-        let head = String::from_utf8_lossy(&bytes[..bytes.len().min(200)]);
-        if head.trim_start().starts_with('<') {
-            return Err(format!(
-                "download looks like HTML, not a binary (release may be missing). URL: {url}"
-            ));
-        }
-    }
-
-    if let Some(parent) = dest.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| format!("create parent: {e}"))?;
-    }
-    std::fs::write(dest, &bytes).map_err(|e| format!("write download: {e}"))?;
-    Ok(())
 }
 
 fn ensure_base_home_config() -> Result<(), String> {
@@ -1010,10 +958,7 @@ pub async fn atomcode_open_webui(port: Option<u16>) -> Result<AtomcodeWebuiResul
         // Prefer static URL from our token file; stderr parse is fallback only.
         let static_url = webui_url(port, &token);
 
-        let project = std::fs::read_to_string(last_project_path())
-            .ok()
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
+        let project = crate::external_agents::read_trimmed(&last_project_path())
             .map(PathBuf::from)
             .filter(|p| p.is_dir())
             .unwrap_or_else(|| home.clone());

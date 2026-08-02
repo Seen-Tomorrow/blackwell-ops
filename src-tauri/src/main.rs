@@ -54,6 +54,7 @@ mod output_console;
 mod playground;
 mod atomcode;
 mod qwen_code;
+mod external_agents;
 mod gpu_control;
 mod sidecar_elevate;
 

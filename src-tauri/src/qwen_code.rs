@@ -6,7 +6,7 @@
 //! Standalone pack = embedded Node + app on disk (~180 MB), not a single PE.
 
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
+use crate::external_agents::emit_dbg;
 use std::path::{Path, PathBuf};
 
 /// Pinned standalone release we verified against local OpenAI engines.
@@ -75,15 +75,15 @@ fn migrate_legacy_paths() {
 }
 
 fn version_stamp_path() -> PathBuf {
-    tools_dir().join("version.txt")
+    crate::external_agents::version_stamp_path(&tools_dir())
 }
 
 fn disclaimer_path() -> PathBuf {
-    home_dir().join(".disclaimer_accepted")
+    crate::external_agents::disclaimer_path(&home_dir())
 }
 
 fn last_project_path() -> PathBuf {
-    home_dir().join("last_project.txt")
+    crate::external_agents::last_project_path(&home_dir())
 }
 
 fn settings_path() -> PathBuf {
@@ -105,10 +105,7 @@ pub struct QwenCodeStatus {
 }
 
 fn read_version_stamp() -> Option<String> {
-    std::fs::read_to_string(version_stamp_path())
-        .ok()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
+    crate::external_agents::read_trimmed(&version_stamp_path())
 }
 
 fn is_installed() -> bool {
@@ -146,10 +143,7 @@ pub async fn qwen_code_status() -> Result<QwenCodeStatus, String> {
     } else {
         None
     };
-    let last_project = std::fs::read_to_string(last_project_path())
-        .ok()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty());
+    let last_project = crate::external_agents::read_trimmed(&last_project_path());
     Ok(QwenCodeStatus {
         installed,
         launcher_path: launcher_path().to_string_lossy().to_string(),
@@ -163,19 +157,7 @@ pub async fn qwen_code_status() -> Result<QwenCodeStatus, String> {
 
 #[tauri::command]
 pub async fn qwen_code_accept_disclaimer() -> Result<(), String> {
-    std::fs::create_dir_all(home_dir()).map_err(|e| format!("qwen home: {e}"))?;
-    std::fs::write(
-        disclaimer_path(),
-        format!(
-            "accepted_at_unix={}\npinned={}\n",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_secs())
-                .unwrap_or(0),
-            PINNED_VERSION
-        ),
-    )
-    .map_err(|e| format!("disclaimer: {e}"))
+    crate::external_agents::write_disclaimer(&home_dir(), PINNED_VERSION)
 }
 
 #[tauri::command]
@@ -215,37 +197,6 @@ fn release_sums_url(version: &str) -> String {
         format!("v{version}")
     };
     format!("{GITHUB_RELEASE_BASE}/{tag}/SHA256SUMS")
-}
-
-fn emit_dbg(line: &str) {
-    crate::output_console::emit_blackwell_output_console_debug_line(line);
-}
-
-async fn download_bytes(url: &str) -> Result<Vec<u8>, String> {
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(600))
-        .redirect(reqwest::redirect::Policy::limited(10))
-        .build()
-        .map_err(|e| format!("http client: {e}"))?;
-    let resp = client
-        .get(url)
-        .send()
-        .await
-        .map_err(|e| format!("download request failed: {e}"))?;
-    if !resp.status().is_success() {
-        return Err(format!("download HTTP {} for {url}", resp.status()));
-    }
-    let bytes = resp
-        .bytes()
-        .await
-        .map_err(|e| format!("download body: {e}"))?;
-    Ok(bytes.to_vec())
-}
-
-fn sha256_hex(data: &[u8]) -> String {
-    let mut h = Sha256::new();
-    h.update(data);
-    format!("{:x}", h.finalize())
 }
 
 fn parse_sums_expected(sums: &str, archive_name: &str) -> Option<String> {
@@ -341,15 +292,15 @@ pub async fn qwen_code_install(
         emit_dbg(&format!("[QwenCode] Downloading standalone {ver}…"));
         emit_dbg(&format!("[QwenCode] {zip_url}"));
 
-        let zip_bytes = download_bytes(&zip_url).await?;
+        let zip_bytes = crate::external_agents::download_bytes(&zip_url).await?;
         if zip_bytes.len() < 1_000_000 {
             return Err(format!(
                 "Standalone zip too small ({} bytes) — release may be missing: {zip_url}",
                 zip_bytes.len()
             ));
         }
-        let actual = sha256_hex(&zip_bytes);
-        let sums_text = match download_bytes(&sums_url).await {
+        let actual = crate::external_agents::sha256_hex(&zip_bytes);
+        let sums_text = match crate::external_agents::download_bytes(&sums_url).await {
             Ok(b) => String::from_utf8_lossy(&b).to_string(),
             Err(e) => {
                 emit_dbg(&format!("[QwenCode] SHA256SUMS download failed: {e}"));
