@@ -43,11 +43,14 @@ import {
   resolveEssentialParamKeys,
   resolveManualLaunchKeys,
 } from "../lib/launchProfile";
-import ConfigViewToggle from "./ConfigViewToggle";
-import MultiAgentBooster, {
-  type CockpitSpecDetailParam,
-  type DflashGetUiState,
+import EngineToolbar from "./EngineToolbar";
+import ParamPlaceDialog from "./ParamPlaceDialog";
+import type {
+  CockpitSpecDetailParam,
+  DflashGetUiState,
 } from "./MultiAgentBooster";
+import EngineBoostSection from "./EngineBoostSection";
+import EngineProviderProfileBar from "./EngineProviderProfileBar";
 import CockpitCtxStrip from "./CockpitCtxStrip";
 import {
   brainsFromKvQuant,
@@ -100,12 +103,7 @@ import {
 } from "../lib/catalog";
 import type { GroupDisplayZone } from "../lib/storage";
 import ConfigBelowGroups from "./ConfigBelowGroups";
-import GpuAssignPanel from "./GpuAssignPanel";
-import DisplayChromeHints from "./DisplayChromeHints";
-import GroupHeaderControls from "./GroupHeaderControls";
 import type { ConfigColumnCount } from "../lib/configColumnLayout";
-import { effectiveGroupColumn } from "../lib/configColumnLayout";
-import { isEmptyGroupDeletable } from "../lib/groupLayoutUtils";
 import { useGroupLayoutControls } from "../hooks/useGroupLayoutControls";
 import { useLaunchDockRailResize } from "../hooks/useCatalogSplitResize";
 import LaunchRailTelemetry from "./LaunchRailTelemetry";
@@ -133,9 +131,7 @@ import {
   saveDraftPairing,
   specCapabilitiesForMain,
   specTypeAllowsParallel,
-  specTypeNeedsExternalDraft,
   isSpecDecodingGroupActive,
-  essentialsSpecChipLabel,
 } from "../lib/specDraft";
 import {
   type SpecBoostMethod,
@@ -149,16 +145,25 @@ import {
 } from "../lib/specProfiles";
 import { applySpecBoostProfiles } from "../lib/applySpecBoost";
 import { migrateCatalogParams } from "../lib/systemParams";
-import { DEFAULT_BINARY_PROFILE, ENV_META, ENV_ORDER, normalizeBinaryProfile, type Env, isDriverSufficientForProfile, getMinDriverMajorForCuda } from "../lib/foundry_constants";
+import { DEFAULT_BINARY_PROFILE, ENV_META, ENV_ORDER, normalizeBinaryProfile, type Env } from "../lib/foundry_constants";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import VramBadge from "./VramBadge";
-import FitLaunchToggle from "./FitLaunchToggle";
+import EngineGpuForecast from "./EngineGpuForecast";
+import {
+  renderParamRow,
+  renderParamGroup,
+  deriveParamGroups,
+  resolveCtxSlotCount,
+  resolveParallelSlots,
+  SPEC_DECODING_GROUP,
+  type ParamGroupMeta,
+  type ParamGroupsCtx,
+} from "./EngineParamGroups";
 import WelcomeAnimation from "./onboarding/WelcomeAnimation";
 import SetupGuideDisplay from "./onboarding/SetupGuideDisplay";
 import RunningEnginesPanel from "./RunningEnginesPanel";
-import SliderParam from "./SliderParam";
-import { formatCtxChipLabel, formatTokenLabel } from "../lib/sliderParamUtils";
+import EngineLaunchDock from "./EngineLaunchDock";
+import { formatTokenLabel } from "../lib/sliderParamUtils";
 import { useScenarioEvaluator } from "../hooks/useScenarioEvaluator";
 import type { SetupGuideState } from "../hooks/useSetupGuide";
 import { useConfigResolver } from "../hooks/useConfigResolver";
@@ -168,7 +173,6 @@ import { useFoundry } from "../hooks/useBuildDock";
 import { isDevBuild } from "../lib/build";
 import { buildLaunchFullConfig } from "../lib/buildLaunchFullConfig";
 import { resolveLaunchChromePolicy } from "../lib/launchChromePolicy";
-import { paramValuesMatch } from "../lib/paramConfigResolve";
 import { committedSlotsFromStack } from "../services/vram/scenarios/scenarios_factory";
 import { useGpuIdleBaseline } from "../hooks/useGpuIdleBaseline";
 import { formatShareHwTopo, type FusionShareLaunchConfig } from "../lib/fusionShareCapture";
@@ -201,29 +205,6 @@ function onboardingDisplayClasses(setupGuide: SetupGuideState): {
   };
 }
 
-const PARAM_LABEL_CLASS =
-  "font-mono w-24 flex-shrink-0 uppercase tracking-wider truncate text-[9px] text-stealth-muted";
-
-const LAUNCH_DOCK_LABEL_CLASS =
-  "config-launch-dock__label font-mono w-11 flex-shrink-0 uppercase tracking-wider truncate text-[9px] text-stealth-muted";
-
-/** Section headers (MEMORY MANAGEMENT, speculative decoding) — narrow column, wraps short. */
-const SECTION_LABEL_CLASS =
-  "config-section-label font-mono flex-shrink-0 uppercase tracking-wider text-[9px] text-stealth-muted leading-tight";
-
-function paramChipClass(active: boolean): string {
-  return `px-2 py-0.5 text-[9px] font-mono rounded-sm focus:outline-none ${
-    active ? "value-chip-active" : "value-chip"
-  }`;
-}
-
-function specModeBadgeClass(specType: string): string {
-  const mode = specType.trim().toLowerCase().replace("draft-", "");
-  if (mode === "dflash") return "config-spec-mode-badge config-spec-mode-badge--dflash";
-  if (mode === "mtp") return "config-spec-mode-badge config-spec-mode-badge--mtp";
-  if (mode === "eagle3") return "config-spec-mode-badge config-spec-mode-badge--eagle3";
-  return "config-spec-mode-badge config-spec-mode-badge--default";
-}
 
 function isSplitModeActive(split: unknown): boolean {
   const mode = String(split ?? "none").trim();
@@ -244,53 +225,8 @@ const PROFILE_COLORS: Record<string, string> = {
   "nv-green": "#76B900",
 };
 
-// Group metadata derived dynamically from template — no hardcoded group names.
-interface ParamGroupMeta { id: string; label: string; alwaysOpen: boolean }
-function deriveParamGroups(groupKeys: string[]): ParamGroupMeta[] {
-  return groupKeys.map(id => ({
-    id,
-    label: id.toUpperCase(),
-    alwaysOpen: id === 'Core' || id === 'Performance', // Core/Performance always open by convention
-  }));
-}
-
-const SPEC_DECODING_GROUP = "SPECULATIVE-DECODING"; // legacy label only
-
-const BASE_PORT_CHIP_TOOLTIP = "Set your starting port, we will increment from here";
-
 function isSpecDecodingActive(params: UserEditedTemplateParam[]): boolean {
   return isSpecDecodingGroupActive(params);
-}
-
-function configFlagEnabled(config: Record<string, unknown>, key: string): boolean {
-  const v = config[key];
-  if (v === true || v === 1 || v === "1") return true;
-  if (v === false || v === 0 || v === "0") return false;
-  return String(v ?? "").trim().toLowerCase() === "true";
-}
-
-function resolveParallelSlots(
-  config: Record<string, unknown>,
-  params: UserEditedTemplateParam[],
-): number {
-  const raw = config.parallel;
-  if (raw != null && raw !== "") {
-    const n = Number(raw);
-    if (Number.isFinite(n) && n > 0) return n;
-  }
-  const parallelDef = params.find((p) => p.key === "parallel");
-  const fallback = parallelDef?.defaultValue ?? parallelDef?.values?.[0] ?? 1;
-  const n = Number(fallback);
-  return Number.isFinite(n) && n > 0 ? n : 1;
-}
-
-/** CTX ÷ slots — unified KV uses one pool; otherwise parallel slot count. */
-function resolveCtxSlotCount(
-  config: Record<string, unknown>,
-  params: UserEditedTemplateParam[],
-): number {
-  if (configFlagEnabled(config, "unified_kv")) return 1;
-  return resolveParallelSlots(config, params);
 }
 
 function specParallelConflict(
@@ -303,36 +239,8 @@ function specParallelConflict(
   return resolveParallelSlots(config, params) > 1;
 }
 
-const SPEC_TYPE_BY_CAPABILITY: Record<SpecCapability, string> = {
-  dflash: "draft-dflash",
-  mtp: "draft-mtp",
-  eagle3: "draft-eagle3",
-};
 
-function filterSpecTypeValues(
-  values: (string | number)[],
-  caps: SpecCapability[],
-  essentialsSimpleMode?: boolean,
-): (string | number)[] {
-  const allowed = new Set<string>();
-  for (const cap of caps) {
-    if (essentialsSimpleMode && cap !== "mtp" && cap !== "dflash") continue;
-    allowed.add(SPEC_TYPE_BY_CAPABILITY[cap]);
-  }
-  return values.filter((v) => {
-    const s = String(v).toLowerCase();
-    if (essentialsSimpleMode) return allowed.has(s);
-    if (s.startsWith("ngram") || s === "draft-simple") return true;
-    return allowed.has(s);
-  });
-}
 
-function applyEssentialsSpecPreset(
-  _specType: string,
-  _updateParam: (key: string, value: string | number) => void,
-): void {
-  // Profile templates own defaults — Boost no longer pushes hardcoded presets.
-}
 
 function collectActiveAliases(stack: StackEntry[]): Set<string> {
   const used = new Set<string>();
@@ -2173,116 +2081,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       .catch(() => setProviderDefaultKeys(new Set()));
   }, [effectiveBackendType]);
 
-  // Extracted param row renderer for reuse
-  const paramRowKey = (def: UserEditedTemplateParam, idx?: number) =>
-    `${def.key || "param"}-${def.order}-${idx ?? 0}`;
-
-  const renderParamRow = useCallback((def: UserEditedTemplateParam, isLocked?: boolean, rowIdx?: number) => {
-    // Merge values + userAddedValues (user-added params from ConfigPage admin edit)
-    const seenVals = new Set((def.values || []).map(v => String(v)));
-    const allValues = [...(def.values || []), ...(def.userAddedValues || []).filter(v => !seenVals.has(String(v)))];
-    let baseValues = filterParamValuesForConfigView(
-      def,
-      allValues,
-      fullAutoFixed ? "full" : configView,
-    );
-    if (def.key === "spec_type" && specCapabilities.length > 0) {
-      baseValues = filterSpecTypeValues(baseValues, specCapabilities, specSimpleMode);
-    }
-    const currentValue = config[def.key];
-
-    // Yellow accent: user-added params (not in provider default params, not system-injected via dock)
-    const isUserAdded = providerDefaultKeys.size > 0 && !providerDefaultKeys.has(def.key) && !def.dock;
-
-    // ── Slider ptype — render range input instead of value chips ───────────
-    if (def.ptype === 'slider') {
-      const ctxNumeric =
-        def.key === "ctx"
-          ? (typeof currentValue === "number" ? currentValue : parseInt(String(currentValue), 10))
-          : 0;
-      const ctxSlotCount = def.key === "ctx" ? resolveCtxSlotCount(config, allParamsResolved) : 1;
-      const ctxPerSlot =
-        def.key === "ctx" && ctxSlotCount > 1 && Number.isFinite(ctxNumeric) && ctxNumeric > 0
-          ? Math.floor(ctxNumeric / ctxSlotCount)
-          : 0;
-      return (
-        <div
-          key={paramRowKey(def, rowIdx)}
-          data-param-row
-          className={`ctx-slider-param-row flex items-start min-h-[22px] ${isLocked ? "opacity-50" : ""}`}
-        >
-          {isUserAdded && <div className="w-0.5 h-4 flex-shrink-0 bg-yellow-400/40 mr-1.5 mt-0.5" />}
-          {!isUserAdded && <div className="w-0.5 h-4 flex-shrink-0 mr-1.5 mt-0.5" />}
-          <span
-            className={`ctx-slider-param-label ${PARAM_LABEL_CLASS} mt-0.5 ${def.key === "ctx" && ctxPerSlot > 0 ? "!w-auto max-w-[40%]" : ""} ${isUserAdded ? "text-yellow-400/80" : ""}`}
-            title={def.key === "ctx" && ctxPerSlot > 0
-              ? `${formatCtxChipLabel(ctxNumeric)} (${ctxNumeric}) ÷ ${ctxSlotCount} slots = ${formatCtxChipLabel(ctxPerSlot)} per slot`
-              : def.label}
-          >
-            {def.label}
-          </span>
-          <div className="ctx-slider-field flex-1 min-w-0 min-h-[18px] flex items-center">
-            <SliderParam
-              paramKey={def.key}
-              currentValue={currentValue}
-              defaultValue={def.defaultValue}
-              onChange={(v) => updateParam(def.key, v)}
-              step={def.step ?? 1024}
-              values={baseValues}
-              perSlotReserve={ctxSlotCount > 1}
-              perSlotTokens={ctxPerSlot > 0 ? ctxPerSlot : undefined}
-              perSlotTitle={
-                ctxPerSlot > 0
-                  ? `Per slot: ${formatCtxChipLabel(ctxNumeric)} (${ctxNumeric}) ÷ ${ctxSlotCount}`
-                  : undefined
-              }
-            />
-          </div>
-        </div>
-      );
-    }
-
-    return (
-      <div key={paramRowKey(def, rowIdx)} data-param-row className={`flex items-start min-h-[22px] ${isLocked ? 'opacity-50' : ''}`}>
-        {isUserAdded && <div className="w-0.5 h-4 flex-shrink-0 bg-yellow-400/40 mr-1.5 mt-0.5" />}
-        {!isUserAdded && <div className="w-0.5 h-4 flex-shrink-0 mr-1.5 mt-0.5" />}
-        <span
-          className={`${PARAM_LABEL_CLASS} mt-0.5 ${isUserAdded ? 'text-yellow-400/80' : ''}`}
-          title={def.label}
-        >
-          {specSimpleMode && def.key === "spec_type" ? "MODE" : def.label}
-        </span>
-
-        <div className="config-chip-row flex gap-1.5 flex-wrap flex-1 min-w-0 items-center min-h-[18px]">
-          {baseValues.filter((v: any) => !(v?._hidden)).map((val, valIdx) => (
-            <button
-              key={`${paramRowKey(def, rowIdx)}-val-${valIdx}-${String(val)}`}
-              tabIndex={isLocked ? -1 : 0}
-              title={def.key === "base_port" ? BASE_PORT_CHIP_TOOLTIP : undefined}
-              onClick={() => {
-                if (isLocked) return;
-                updateParam(def.key, val);
-                if (def.key === "spec_type") {
-                  if (specSimpleMode) {
-                    applyEssentialsSpecPreset(String(val), updateParam);
-                  }
-                  // MTP (and other non-external modes) must not keep a DFlash draft path.
-                  if (!specTypeNeedsExternalDraft(String(val))) {
-                    updateParam("spec_draft_model", "off");
-                  }
-                }
-              }}
-              className={paramChipClass(paramValuesMatch(currentValue, val))}
-            >
-              {specSimpleMode && def.key === "spec_type"
-                ? essentialsSpecChipLabel(String(val))
-                : String(val)}
-            </button>
-          ))}
-        </div>
-      </div>
-    );
-  }, [config, gpus.length, providerDefaultKeys, updateParam, allParamsResolved, specCapabilities, specSimpleMode, configView, fullAutoFixed]);
 
   const isPanelChromeParam = useCallback((def: UserEditedTemplateParam) => {
     return Boolean(def.dock) || PANEL_CHROME_PARAM_KEYS.has(def.key);
@@ -2462,182 +2260,36 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     [filteredBelowGroupsByColumn],
   );
 
-  const renderGroupLayoutControls = useCallback(
-    (groupId: string, zone: GroupDisplayZone, opts?: { hideZoneToggle?: boolean; hideHideToggle?: boolean }) => {
-      if (!layoutModeActive) return null;
-      const displayZone = groupDisplayZone[normalizeUiGroup(groupId)] === "above" ? "above" : "below";
-      const zoneKeys = zone === "above" ? aboveGroupKeys : belowGroupKeys;
-      const zoneColumnCount = zone === "above" ? 2 : columnCount;
-      const colIdx = effectiveGroupColumn(
-        groupId,
-        zoneKeys,
-        groupColumn,
-        zoneColumnCount,
-        zone,
-      );
-      const emptyDeletable = isEmptyGroupDeletable(groupId, allGroupedParams);
-      return (
-        <GroupHeaderControls
-          zone={zone}
-          displayZone={displayZone}
-          isHidden={isGroupHidden(groupId)}
-          isDragging={draggingGroup === groupId}
-          hideZoneToggle={opts?.hideZoneToggle}
-          hideHideToggle={opts?.hideHideToggle || emptyDeletable}
-          showDelete={emptyDeletable}
-          columnIdx={colIdx}
-          columnCount={zoneColumnCount}
-          onMoveColumnLeft={() => shiftGroupColumn(groupId, -1, zone)}
-          onMoveColumnRight={() => shiftGroupColumn(groupId, 1, zone)}
-          onDragStart={(e) => handleGroupDragStart(e, zone, groupId)}
-          onToggleZone={() => { void toggleGroupDisplayZone(groupId); }}
-          onToggleHide={() => { void toggleGroupHidden(groupId); }}
-          onDelete={() => { void deleteEmptyGroup(groupId); }}
-        />
-      );
-    },
-    [
-      layoutModeActive,
-      groupDisplayZone,
-      groupColumn,
-      columnCount,
-      aboveGroupKeys,
-      belowGroupKeys,
-      allGroupedParams,
-      isGroupHidden,
-      draggingGroup,
-      handleGroupDragStart,
-      shiftGroupColumn,
-      toggleGroupDisplayZone,
-      toggleGroupHidden,
-      deleteEmptyGroup,
-    ],
-  );
 
-  const renderParamGroup = useCallback((
-    group: ParamGroupMeta,
-    zone: GroupDisplayZone,
-    placement?: { groupIdx?: number },
-  ) => {
-    const groupParams = groupedParams[group.id];
-    const isSpecGroup = group.id === SPEC_DECODING_GROUP;
-    const groupHidden = !isSpecGroup && isGroupHidden(group.id);
-    const hideLeadHeader =
-      zone === "above"
-      && placement?.groupIdx === 0
-      && !layoutModeActive
-      && !isSpecGroup;
 
-    const filterQuery = paramFilter.trim().toLowerCase();
-    const filteredGroupParams = (!filterQuery || !groupParams)
-      ? groupParams
-      : groupParams.filter(
-          (p) =>
-            p.key.toLowerCase().includes(filterQuery)
-            || (p.label || "").toLowerCase().includes(filterQuery),
-        );
-
-    if (
-      isSpecGroup
-      || group.id === SPEC_PROFILE_MTP
-      || group.id === SPEC_PROFILE_DFLASH
-    ) {
-      // Cockpit owns Boost + profile knobs. Classic chip block removed for profile groups.
-      return null;
-    }
-
-    const allInGroup = allGroupedParams[group.id] || [];
-    if (!filteredGroupParams || filteredGroupParams.length === 0) {
-      if (layoutModeActive && isEmptyGroupDeletable(group.id, allGroupedParams)) {
-        return (
-          <div key={group.id} className="config-param-group--empty opacity-70">
-            <div
-              className={`config-group-header flex items-center gap-1.5 text-[8px] font-mono tracking-widest uppercase mb-2 pb-1 border-b border-dashed border-stealth-border/35 text-stealth-muted/55 ${draggingGroup === group.id ? "config-group-header--dragging" : ""}`}
-            >
-              <span className="flex-1 min-w-0 truncate">{group.label}</span>
-              <span className="opacity-50 flex-shrink-0">(empty)</span>
-              {renderGroupLayoutControls(group.id, zone)}
-            </div>
-          </div>
-        );
-      }
-      if (!layoutModeActive || !groupHidden || allInGroup.length === 0) return null;
-      return (
-        <div key={group.id} className="config-param-group--hidden opacity-50">
-          <div
-            className={`config-group-header flex items-center gap-1.5 text-[8px] font-mono tracking-widest uppercase mb-2 pb-1 border-b border-stealth-border/30 text-stealth-muted/50 ${draggingGroup === group.id ? "config-group-header--dragging" : ""}`}
-          >
-            <span>{group.label}</span>
-            <span className="opacity-40">(hidden)</span>
-            {renderGroupLayoutControls(group.id, zone)}
-          </div>
-        </div>
-      );
-    }
-
-    const isCollapsed = collapsedGroups.has(group.id);
-    const showContent = hideLeadHeader || !isCollapsed;
-    const headerClass = `config-group-header flex items-center gap-1.5 text-[8px] font-mono tracking-widest uppercase mb-2 pb-1 border-b border-stealth-border/30 w-full ${draggingGroup === group.id ? "config-group-header--dragging" : ""}`;
-
-    return (
-      <div key={group.id} className={groupHidden ? "config-param-group--hidden opacity-50" : undefined}>
-        {!hideLeadHeader && (group.alwaysOpen ? (
-          <div className={headerClass}>
-            <span className="flex-1 min-w-0 truncate">{group.label}</span>
-            {renderGroupLayoutControls(group.id, zone)}
-          </div>
-        ) : (
-          <div className={headerClass}>
-            <button
-              type="button"
-              onClick={() => toggleGroup(group.id)}
-              className="flex items-center gap-1.5 flex-1 min-w-0 hover:text-white hover:opacity-100 transition-colors text-left"
-            >
-              <span className="text-[7px]">{isCollapsed ? "▶" : "▼"}</span>
-              <span className="truncate">{group.label}</span>
-              <span className="opacity-40 flex-shrink-0">({filteredGroupParams.length})</span>
-            </button>
-            {renderGroupLayoutControls(group.id, zone)}
-          </div>
-        ))}
-
-        {showContent && (
-          <div className="space-y-2.5">
-            {filteredGroupParams.map((def, i) => renderParamRow(def, false, i))}
-          </div>
-        )}
-      </div>
-    );
-  }, [
-    groupedParams,
-    allGroupedParams,
-    paramFilter,
-    model,
-    specFlash,
-    effectiveBackendType,
-    collapsedGroups,
-    toggleGroup,
-    renderParamRow,
-    mtpParallelSlotCount,
-    hasSpecCapability,
-    specCapabilities,
-    modelIsDraftOnly,
-    fullAutoMode,
+  const paramGroupsCtx = useMemo<ParamGroupsCtx>(() => ({
+    config,
     fullAutoFixed,
-    activeSpecType,
-    scoredDraftCandidates,
-    showAllDrafts,
-    setShowAllDrafts,
-    specNeedsExternalDraft,
-    config.spec_draft_model,
-    updateParam,
-    model,
+    configView,
+    specCapabilities,
     specSimpleMode,
+    providerDefaultKeys,
+    updateParam,
+    allParamsResolved,
     layoutModeActive,
+    groupDisplayZone,
+    groupColumn,
+    columnCount,
+    aboveGroupKeys,
+    belowGroupKeys,
+    allGroupedParams,
     isGroupHidden,
     draggingGroup,
-    renderGroupLayoutControls,
-  ]);
+    handleGroupDragStart,
+    shiftGroupColumn,
+    toggleGroupDisplayZone,
+    toggleGroupHidden,
+    deleteEmptyGroup,
+    groupedParams,
+    paramFilter,
+    collapsedGroups,
+    toggleGroup,
+  }), [config, fullAutoFixed, configView, specCapabilities, specSimpleMode, providerDefaultKeys, updateParam, allParamsResolved, layoutModeActive, groupDisplayZone, groupColumn, columnCount, aboveGroupKeys, belowGroupKeys, allGroupedParams, isGroupHidden, draggingGroup, handleGroupDragStart, shiftGroupColumn, toggleGroupDisplayZone, toggleGroupHidden, deleteEmptyGroup, groupedParams, paramFilter, collapsedGroups, toggleGroup]);
 
   // ── Load param definitions when model/provider changes ───────────────────
   useEffect(() => {
@@ -3027,82 +2679,20 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       >
         <div className="config-panel-center-stack flex flex-col flex-1 min-h-0 min-w-0">
           <div ref={launchRailTopChromeMeasureRef} className="config-panel-top-chrome flex-shrink-0">
-      {resolvedProviders && resolvedProviders.length > 0 && (
-        <div className="px-4 py-2 border-b section-divider relative flex-shrink-0 config-provider-profile-bar">
-          <div className="config-provider-profile-bar__half config-provider-profile-bar__half--providers">
-            <span className="config-provider-profile-bar__label">PROVIDER</span>
-            <div className="flex gap-1 flex-wrap flex-1 min-w-0">
-              {resolvedProviders.filter((p) => p.enabled).map((p) => (
-                <button
-                  key={p.id}
-                  onClick={() => {
-                    setSelectedProvider(p.id);
-                    writeStorage(KEYS.lastProvider, p.id);
-                    dispatchAppEvent(EVENTS.providerChanged, { providerId: p.id });
-                  }}
-                  className={`flex-shrink-0 px-2 py-0.5 text-[9px] font-mono rounded-sm ${
-                    selectedProvider === p.id ? "provider-pill-active" : "provider-pill"
-                  }`}
-                >
-                  {p.display_name || p.id}
-                  <span className="ml-1 opacity-40 text-[7px]">
-                    ({(p.userEditedTemplateParams || []).length})
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="config-provider-profile-bar__half config-provider-profile-bar__half--profile">
-            <span className="config-provider-profile-bar__label">PROFILE</span>
-            
-            <div className="flex gap-1 flex-wrap flex-1 min-w-0">
-              {ENV_ORDER.map((profile) => {
-                const meta = ENV_META[profile];
-                const hasBuild = builtProfiles.includes(profile);
-                const building = isProfileBuilding(profile);
-                const isSelected = selectedBinaryProfile === profile;
-                const driverOk = isDriverSufficientForProfile(driverVersion, meta.cuda);
-                const driverStatus = driverVersion
-                  ? (driverOk ? "driver OK" : `driver too old (need ${meta.cuda} compat)`)
-                  : "driver unknown";
-
-                const driverClass = !hasBuild || building
-                  ? ""
-                  : driverOk
-                    ? "ring-1 ring-nv-green/50"
-                    : "ring-1 ring-red-400/60 text-red-300/90";
-
-                return (
-                  <button
-                    key={profile}
-                    onClick={() => setSelectedBinaryProfile(profile)}
-                    disabled={!hasBuild || building}
-                    className={`flex-shrink-0 px-2 py-0.5 text-[9px] font-mono rounded-sm ${
-                      isSelected ? "provider-pill-active" : "provider-pill"
-                    } ${driverClass} ${
-                      building
-                        ? "opacity-40 cursor-not-allowed animate-pulse"
-                        : !hasBuild
-                          ? "opacity-25 cursor-not-allowed"
-                          : ""
-                    }`}
-                    title={`${meta.label} — CUDA ${meta.cuda} (min driver ~${getMinDriverMajorForCuda(meta.cuda)}+)\n${meta.vs}\n${driverStatus}${
-                      building ? "\n(build in progress)" : hasBuild ? "" : "\n(not yet built or mirrored)"
-                    }`}
-                  >
-                    {meta.label}
-                    {hasBuild && !building && (
-                      <span className={`ml-1 text-[7px] ${driverOk ? "text-nv-green/70" : "text-red-400/80"}`}>
-                        {driverOk ? "●" : "!"}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      )}
+        <EngineProviderProfileBar
+          providers={resolvedProviders}
+          selectedProvider={selectedProvider}
+          onSelectProvider={(id) => {
+            setSelectedProvider(id);
+            writeStorage(KEYS.lastProvider, id);
+            dispatchAppEvent(EVENTS.providerChanged, { providerId: id });
+          }}
+          builtProfiles={builtProfiles}
+          selectedBinaryProfile={selectedBinaryProfile}
+          onSelectProfile={setSelectedBinaryProfile}
+          isProfileBuilding={isProfileBuilding}
+          driverVersion={driverVersion}
+        />
 
       {/*
         Above-config zone (near VRAM): pin-above chip groups + optional CTX strip.
@@ -3131,7 +2721,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
               renderGroup={(groupId, _columnIdx, groupIdx) => {
                 const group = deriveParamGroups(aboveGroupKeys).find((g) => g.id === groupId);
                 if (!group) return null;
-                return renderParamGroup(group, "above", { groupIdx });
+                return renderParamGroup(paramGroupsCtx, group, "above", { groupIdx });
               }}
             />
           )}
@@ -3147,162 +2737,93 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             : "contents"
         }
       >
-      <div
-        ref={hwMonitorOpen || showLaunchRail ? launchRailDisplayMeasureRef : undefined}
-        className="config-display-stack flex flex-col flex-shrink-0 min-w-0"
-      >
-      <div
-        className={onboardingDisplay.area}
-        data-display-texture={displayTexture}
-      >
-          <div
-            className={`${onboardingDisplay.frame}${
-              fitLaunchSupported || (model && gpus.length > 0) ? " industrial-display-frame--top-chrome" : ""
-            }`}
-            data-fusion-share-frame
-          >
-              {/*
-                Top bezel chrome: ASSISTED/FULL AUTO + Device/Split (Assisted only).
-                Seated fully in frame pad so thick chrome isn't wasted on one control.
-              */}
-              {(fitLaunchSupported || (model && gpus.length > 0 && !fullAutoMode)) && (
-                <div className="industrial-display-frame__top-chrome" data-frame-top-chrome>
-                  {fitLaunchSupported && (
-                    <div className="vram-badge-fit-launch-dock" data-fit-launch-dock>
-                      <FitLaunchToggle
-                        available={fitLaunchSupported}
-                        fullAuto={fullAutoMode}
-                        onChange={(nextFullAuto) => {
-                          setFitLaunchEnabled(nextFullAuto);
-                          saveAutoVramEnabled(effectiveBackendType, nextFullAuto);
-                          if (nextFullAuto) {
-                            autoSplitPromotedRef.current = false;
-                            updateParam("split", "none");
-                            if (String(config["offload_mode"] ?? "regular").toLowerCase() === "moe_optimal") {
-                              updateParam("offload_mode", "regular");
-                            }
-                          } else {
-                            setConfigView("full");
-                            saveConfigView(effectiveBackendType, "full");
-                          }
-                        }}
-                      />
-                    </div>
-                  )}
-                  {model && gpus.length > 0 && !fullAutoMode && (
-                    <GpuAssignPanel
-                      bezel
-                      gpus={gpus}
-                      deviceValue={config.device}
-                      splitValue={config.split}
-                      splitValues={
-                        // Prefer live template values (incl. tensor); filter still applied in panel
-                        (splitParamDef?.values?.length
-                          ? splitParamDef.values
-                          : ["none", "layer", "row", "tensor"])
-                      }
-                      chromeDisabled={launchChrome.chromeDisabled}
-                      deviceLocked={launchChrome.deviceLocked}
-                      splitLocked={launchChrome.splitLocked}
-                      hideSplitNone={false}
-                      hideTensorSplit={!tensorSplitSupported && !isCustomProvider}
-                      onDeviceChange={(v) => {
-                        if (launchChrome.chromeDisabled || launchChrome.deviceLocked) return;
-                        updateParam("device", v);
-                        if (isSplitModeActive(config.split)) updateParam("split", "none");
-                      }}
-                      onSplitChange={(v) => {
-                        if (launchChrome.chromeDisabled || launchChrome.splitLocked) return;
-                        autoSplitPromotedRef.current = false;
-                        updateParam("split", v);
-                      }}
-                    />
-                  )}
-                </div>
-              )}
-              {showChromeHints && (
-                <DisplayChromeHints policyReason={launchChrome.reason} />
-              )}
-              <div
-                key="forecast-phosphor"
-                className="phosphor-screen-inner phosphor-display-surface vram-forecast-display"
-              >
-                <VramBadge
-                    manifest={vramCalc.manifest}
-                    gpus={gpus}
-                    selectedGpuIndices={selectedGpuIndices.length > 0 ? selectedGpuIndices : undefined}
-                    onDeviceSelect={(gpuIndex) => {
-                      if (launchChrome.chromeDisabled || launchChrome.deviceLocked) return;
-                      updateParam("device", `GPU-${gpuIndex}`);
-                      if (isSplitModeActive(config.split)) {
-                        updateParam("split", "none");
-                      }
-                    }}
-                    isValidating={vramCalc.isValidating}
-                    onValidate={vramCalc.validate}
-                    isModelRunning={isModelRunning}
-                    activeEngineAlias={activeEngineAlias}
-                    activeEnginePort={activeEnginePort}
-                    selectedSlotIdx={selectedSlotIdx}
-                    supportsFusion={supportsFusion}
-                    engineStatus={
-                      selectedSlotIdx != null && selectedSlotIdx >= 0
-                        ? stack.find((s) => s.idx === selectedSlotIdx)?.status
-                        : undefined
-                    }
-                    gpuMask={booterProps.gpuMask}
-                    vramTargetMib={booterProps.vramTargetMib}
-                    modelLayerTotal={booterProps.modelLayerTotal}
-                    gpuLoadTargetsMib={booterProps.gpuLoadTargetsMib}
-                    offloadMode={config["offload_mode"]}
-                    onMoeSuggestionClick={() => {
-                      updateParam(
-                        "offload_mode",
-                        config["offload_mode"] === "moe_optimal" ? "regular" : "moe_optimal",
-                      );
-                    }}
-                    fitLaunchAvailable={false}
-                    fullAutoMode={fullAutoMode}
-                    hideMoeBadge={fullAutoMode || !((model?.metadata?.n_expert ?? 0) > 0)}
-                    modelMeta={model?.metadata}
-                    modelName={model?.name}
-                    modelQuant={model?.quant}
-                    providerName={shareProfileMeta.providerName}
-                    providerBuildVersion={shareProfileMeta.providerBuildVersion}
-                    profileLabel={shareProfileMeta.profileLabel}
-                    cudaVersion={shareProfileMeta.cudaVersion}
-                    launchConfig={shareLaunchConfig}
-                    hwTopo={shareHwTopo}
-                    gpuIdleBaselineMib={gpuIdleBaselineMib}
-                  />
-              </div>
-          </div>
-      </div>
-
-      {/* Running Engines — fusion switcher; below VRAM bezel (outside display area flex) */}
-      {showEjectBelowVram && (
-        <div className="industrial-eject-panel relative flex-shrink-0 min-h-0">
-          <RunningEnginesPanel
-            stack={stack}
-            models={models}
-            selectedSlotIdx={selectedSlotIdx ?? null}
-            onSelectEngine={handleSelectEngine}
-            isHotSwapStale={isHotSwapStale}
-            onHotSwap={(entry) => {
-              void hotSwapEngineSeat({
-                slotIdx: entry.idx,
-                port: entry.port,
-                alias: entry.alias,
-              }).catch((e) => {
-                dispatchAppEvent(EVENTS.launchError, {
-                  message: `Hot-swap failed: ${String(e)}`,
-                });
-              });
-            }}
-          />
-        </div>
-      )}
-      </div>
+      <EngineGpuForecast
+        displayMeasureRef={hwMonitorOpen || showLaunchRail ? launchRailDisplayMeasureRef : undefined}
+        onboardingArea={onboardingDisplay.area}
+        onboardingFrame={onboardingDisplay.frame}
+        displayTexture={displayTexture}
+        fitLaunchSupported={fitLaunchSupported}
+        fullAutoMode={fullAutoMode}
+        onFitLaunchChange={(nextFullAuto) => {
+          setFitLaunchEnabled(nextFullAuto);
+          saveAutoVramEnabled(effectiveBackendType, nextFullAuto);
+          if (nextFullAuto) {
+            autoSplitPromotedRef.current = false;
+            updateParam("split", "none");
+            if (String(config["offload_mode"] ?? "regular").toLowerCase() === "moe_optimal") {
+              updateParam("offload_mode", "regular");
+            }
+          } else {
+            setConfigView("full");
+            saveConfigView(effectiveBackendType, "full");
+          }
+        }}
+        showFitOrDeviceChrome={fitLaunchSupported || Boolean(model && gpus.length > 0)}
+        showGpuAssign={Boolean(model && gpus.length > 0 && !fullAutoMode)}
+        gpus={gpus}
+        deviceValue={config.device}
+        splitValue={config.split}
+        splitValues={splitParamDef?.values?.length ? splitParamDef.values : ["none", "layer", "row", "tensor"]}
+        launchChrome={launchChrome}
+        hideTensorSplit={!tensorSplitSupported && !isCustomProvider}
+        onDeviceChange={(v) => {
+          if (launchChrome.chromeDisabled || launchChrome.deviceLocked) return;
+          updateParam("device", v);
+          if (isSplitModeActive(config.split)) updateParam("split", "none");
+        }}
+        onSplitChange={(v) => {
+          if (launchChrome.chromeDisabled || launchChrome.splitLocked) return;
+          autoSplitPromotedRef.current = false;
+          updateParam("split", v);
+        }}
+        onDeviceSelect={(gpuIndex) => {
+          if (launchChrome.chromeDisabled || launchChrome.deviceLocked) return;
+          updateParam("device", `GPU-${gpuIndex}`);
+          if (isSplitModeActive(config.split)) {
+            updateParam("split", "none");
+          }
+        }}
+        showChromeHints={showChromeHints}
+        manifest={vramCalc.manifest}
+        selectedGpuIndices={selectedGpuIndices}
+        isValidating={vramCalc.isValidating}
+        onValidate={vramCalc.validate}
+        isModelRunning={isModelRunning}
+        activeEngineAlias={activeEngineAlias}
+        activeEnginePort={activeEnginePort}
+        selectedSlotIdx={selectedSlotIdx}
+        supportsFusion={supportsFusion}
+        engineStatus={selectedSlotIdx != null && selectedSlotIdx >= 0 ? stack.find((s) => s.idx === selectedSlotIdx)?.status : undefined}
+        booterProps={booterProps}
+        offloadMode={config["offload_mode"]}
+        onMoeSuggestionClick={() => {
+          updateParam("offload_mode", config["offload_mode"] === "moe_optimal" ? "regular" : "moe_optimal");
+        }}
+        hideMoeBadge={fullAutoMode || !((model?.metadata?.n_expert ?? 0) > 0)}
+        modelMeta={model?.metadata}
+        modelName={model?.name}
+        modelQuant={model?.quant}
+        shareProfileMeta={shareProfileMeta}
+        shareLaunchConfig={shareLaunchConfig}
+        shareHwTopo={shareHwTopo}
+        gpuIdleBaselineMib={gpuIdleBaselineMib}
+        showEjectBelowVram={showEjectBelowVram}
+        stack={stack}
+        models={models}
+        onSelectEngine={handleSelectEngine}
+        isHotSwapStale={isHotSwapStale}
+        onHotSwap={(entry) => {
+          void hotSwapEngineSeat({
+            slotIdx: entry.idx,
+            port: entry.port,
+            alias: entry.alias,
+          }).catch((e) => {
+            dispatchAppEvent(EVENTS.launchError, {
+              message: `Hot-swap failed: ${String(e)}`,
+            });
+          });
+        }}
+      />
 
       <div
         className={
@@ -3311,156 +2832,39 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             : `config-panel-center flex flex-col min-h-0 ${launchDockPosition === "bottom" ? "flex-1" : ""}`
         }
       >
-      <div
-        className="config-panel-toolbar px-4 py-0.5 flex items-center gap-3 flex-shrink-0 border-b section-divider"
-      >
-        {/* Full Auto = one layout (no Essentials/Full). Assisted keeps the switch. */}
-        {!fullAutoFixed && (
-          <div className="config-panel-toolbar__config flex items-center gap-1.5 flex-shrink-0">
-            <span className="config-panel-toolbar__label">CONFIG</span>
-            <ConfigViewToggle
-              view={configView}
-              onChange={(view) => {
-                setConfigView(view);
-                saveConfigView(effectiveBackendType, view);
-                if (view === "essentials") {
-                  setTestFlagsEnabled(false);
-                  setCustomFlagsEditorOpen(false);
-                }
-              }}
-            />
-          </div>
-        )}
-        {fullAutoFixed && (
-          <div className="config-panel-toolbar__config flex items-center gap-1.5 flex-shrink-0">
-            <span className="config-panel-toolbar__label text-nv-green/70">FULL AUTO</span>
-          </div>
-        )}
-        <div className="config-panel-toolbar__chrome flex items-center gap-1.5 min-w-0 ml-auto flex-shrink-0">
-          <button
-            type="button"
-            onClick={() => {
-              const next: CtxCockpitDock = ctxCockpitDock === "cockpit" ? "above" : "cockpit";
-              setCtxCockpitDock(next);
-              saveCtxCockpitDock(next);
-            }}
-            className={`config-panel-toolbar-chip px-1.5 py-0.5 text-[8px] font-mono rounded-sm ${
-              ctxCockpitDock === "above" ? "config-panel-toolbar-chip--active" : ""
-            }`}
-            title={
-              ctxCockpitDock === "cockpit"
-                ? "CTX docked in cockpit — click to place in above-config zone (near VRAM)"
-                : "CTX in above-config zone — click to dock inside cockpit"
-            }
-          >
-            CTX {ctxCockpitDock === "cockpit" ? "COCKPIT" : "ABOVE"}
-          </button>
-          <div className="config-launch-dock-controls flex items-center gap-1.5 min-w-0">
-            <span className="config-panel-toolbar__label">LAUNCH DOCK</span>
-            <div className="flex items-center gap-0.5">
-              <button
-                type="button"
-                onClick={() => setLaunchDockPositionUser("bottom")}
-                className={`config-panel-toolbar-chip px-1.5 py-0.5 text-[8px] font-mono rounded-sm ${
-                  launchDockPosition === "bottom" ? "config-panel-toolbar-chip--active" : ""
-                }`}
-                title="Launch dock along the bottom"
-              >
-                BOTOM
-              </button>
-              {launchDockPosition === "bottom" && (
-                <button
-                  type="button"
-                  onClick={toggleLaunchDockCollapsed}
-                  className="config-panel-toolbar-chip px-1 py-0.5 text-[8px] font-mono rounded-sm"
-                  title={launchDockCollapsed ? "Expand launch dock (show custom flags)" : "Collapse launch dock — alias, port, launch only"}
-                >
-                  {launchDockCollapsed ? "▼" : "▲"}
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => setLaunchDockPositionUser("right")}
-                className={`config-panel-toolbar-chip px-1.5 py-0.5 text-[8px] font-mono rounded-sm ${
-                  launchDockPosition === "right" ? "config-panel-toolbar-chip--active" : ""
-                }`}
-                title="Launch rail — full-height column on the right (auto on short viewports until you pick)"
-              >
-                RIGHT RAIL
-              </button>
-            </div>
-            {!launchDockPositionExplicit && (
-              <span className="text-[7px] font-mono text-stealth-muted/40 hidden md:inline shrink-0">
-                auto
-              </span>
-            )}
-            <button
-              type="button"
-              onClick={toggleHwMonitor}
-              className={`config-panel-toolbar-chip px-1.5 py-0.5 text-[8px] font-mono rounded-sm ${
-                hwMonitorOpen ? "config-panel-toolbar-chip--active" : ""
-              }`}
-              title={
-                hwMonitorOpen
-                  ? "HW monitor on — live CPU/GPU stats (CPU polling active)"
-                  : "HW monitor off — open for live CPU/GPU column (works with BOT or RAIL dock)"
-              }
-            >
-              HW MONITOR
-            </button>
-            {showLaunchRail && (
-              <button
-                type="button"
-                onClick={toggleEnginesInRail}
-                className={`config-panel-toolbar-chip px-1.5 py-0.5 text-[8px] font-mono rounded-sm ${
-                  enginesInRail ? "config-panel-toolbar-chip--active" : ""
-                }`}
-                title={
-                  enginesInRail
-                    ? "Engine switcher in launch rail — click to restore below VRAM display"
-                    : "Engine switcher below VRAM display — click to move into launch rail"
-                }
-              >
-                ENGINES{enginesInRail ? "↑RAIL" : "↓DSP"}
-              </button>
-            )}
-          </div>
-          {allParamsForDisplay.length > 0 && (
-            <>
-              <span className="config-panel-toolbar__sep" aria-hidden />
-              <div className="config-column-count flex items-center gap-0.5 flex-shrink-0">
-                {([1, 2, 3] as ConfigColumnCount[]).map((n) => (
-                  <button
-                    key={n}
-                    type="button"
-                    onClick={() => setBelowColumnCount(n)}
-                    className={`config-panel-toolbar-chip config-column-count__btn px-1.5 py-0.5 text-[8px] font-mono rounded-sm ${
-                      columnCount === n ? "config-panel-toolbar-chip--active" : ""
-                    }`}
-                    title={`${n} column${n > 1 ? "s" : ""} below display`}
-                  >
-                    {n}C
-                  </button>
-                ))}
-              </div>
-              <button
-                type="button"
-                onClick={toggleLayoutMode}
-                className={`config-panel-toolbar-chip config-layout-mode-btn px-2 py-0.5 text-[8px] font-mono rounded-sm ${
-                  layoutModeActive ? "config-panel-toolbar-chip--active config-layout-mode-btn--on" : ""
-                }`}
-                title={
-                  layoutModeActive
-                    ? "Layout mode on — drag, pin, and hide groups"
-                    : "Edit group layout — reorder, pin above/below, hide"
-                }
-              >
-                LAYOUT{layoutModeActive ? " ON" : ""}
-              </button>
-            </>
-          )}
-        </div>
-      </div>
+      <EngineToolbar
+        fullAutoFixed={fullAutoFixed}
+        configView={configView}
+        onConfigViewChange={(view) => {
+          setConfigView(view);
+          saveConfigView(effectiveBackendType, view);
+          if (view === "essentials") {
+            setTestFlagsEnabled(false);
+            setCustomFlagsEditorOpen(false);
+          }
+        }}
+        ctxCockpitDock={ctxCockpitDock}
+        onToggleCtxDock={() => {
+          const next = ctxCockpitDock === "cockpit" ? "above" : "cockpit";
+          setCtxCockpitDock(next);
+          saveCtxCockpitDock(next);
+        }}
+        launchDockPosition={launchDockPosition}
+        launchDockPositionExplicit={launchDockPositionExplicit}
+        onSetLaunchDockPosition={setLaunchDockPositionUser}
+        launchDockCollapsed={launchDockCollapsed}
+        onToggleLaunchDockCollapsed={toggleLaunchDockCollapsed}
+        hwMonitorOpen={hwMonitorOpen}
+        onToggleHwMonitor={toggleHwMonitor}
+        showLaunchRail={showLaunchRail}
+        enginesInRail={enginesInRail}
+        onToggleEnginesInRail={toggleEnginesInRail}
+        hasParams={allParamsForDisplay.length > 0}
+        columnCount={columnCount}
+        onSetColumnCount={setBelowColumnCount}
+        layoutModeActive={layoutModeActive}
+        onToggleLayoutMode={toggleLayoutMode}
+      />
 
       {/*
         Unified scroll column: cockpit + (Assisted) chip groups + open harness.
@@ -3480,88 +2884,74 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             </p>
           </div>
         )}
-        {model && !modelIsDraftOnly && showCockpitSurface && (
-          <div
-            className={
-              atomcodeHarnessOpen
-                ? "mb-0 min-h-0 flex-1"
-                : fullAutoFixed
-                  ? "mb-3"
-                  : "mb-3 pb-3 border-b section-divider"
-            }
-          >
-            <MultiAgentBooster
-              codingMode={codingMode}
-              speedBoost={speedBoost}
-              brains={brains}
-              think={think}
-              onCodingMode={(m) => {
-                void applyFullAutoCockpit(m, speedBoost, brains, think, cockpitOpts);
-              }}
-              onSpeedBoost={(s) => {
-                void applyFullAutoCockpit(codingMode, s, brains, think, cockpitOpts);
-              }}
-              onBrains={(b) => {
-                void applyFullAutoCockpit(codingMode, speedBoost, b, think, cockpitOpts);
-              }}
-              onThink={(t) => {
-                void applyFullAutoCockpit(codingMode, speedBoost, brains, t, cockpitOpts);
-              }}
-              capabilities={specCapabilities}
-              dflashLibraryReady={dflashLibraryReady}
-              dflashGettable={dflashGettable}
-              dflashDraftLabel={dflashDraftLabel}
-              dflashGetState={dflashGetState}
-              dflashGetError={dflashGetError}
-              dflashGetOfferLabel={dflashGetOfferLabel}
-              onGetDflashDraft={() => { void handleGetDflashDraft(); }}
-              onChangeDflashDraft={handleChangeDflashDraft}
-              kvQuantValues={cockpitKvValuesBound}
-              parallelValues={cockpitParallelValues}
-              showAgents={cockpitShowAgents}
-              showMemory={cockpitShowMemory}
-              showThink={cockpitShowThink}
-              showBoost={cockpitShowBoost}
-              agentsFromTemplateOnly={isCustomProvider}
-              port={
-                (selectedSlotIdx != null &&
-                  stack.find((s) => s.idx === selectedSlotIdx && s.status === "RUNNING")?.port) ||
-                Number(config.base_port) ||
-                9090
-              }
-              modelId={
-                (selectedSlotIdx != null &&
-                  stack.find((s) => s.idx === selectedSlotIdx)?.model_name) ||
-                aliasDisplayValue ||
-                autoAlias ||
-                model.name ||
-                "local-model"
-              }
-              stack={stack}
-              preferredSlotIdx={selectedSlotIdx ?? null}
-              onHarnessOpenChange={setAtomcodeHarnessOpen}
-              onRelaunchSeat={async ({ slotIdx, port, alias, parallel }) => {
-                await hotSwapEngineSeat({ slotIdx, port, alias, parallel });
-              }}
-              onSelectEngine={handleSelectEngine}
-              layout={fullAutoFixed ? "hero" : "normal"}
-              powerMode={powerCockpitMode}
-              rawSpecTypes={factoryRawSpecTypes}
-              activeRawSpecType={activeRawSpecType}
-              onRawSpecType={(raw) => {
-                // Raw factory types only — product Off/MTP/DFlash use onSpeedBoost alone.
-                if (raw == null) return;
-                void applyFullAutoCockpit(codingMode, "off", brains, think, {
-                  powerUser: true,
-                  rawSpecType: raw,
-                });
-              }}
-              specDetailParams={cockpitSpecDetailParams}
-              embedCtx={ctxDockedInCockpit}
-              {...(ctxDockedInCockpit ? ctxStripProps : {})}
-            />
-          </div>
-        )}
+        <EngineBoostSection
+          show={Boolean(model && !modelIsDraftOnly && showCockpitSurface)}
+          wrapperClass={
+            atomcodeHarnessOpen
+              ? "mb-0 min-h-0 flex-1"
+              : fullAutoFixed
+                ? "mb-3"
+                : "mb-3 pb-3 border-b section-divider"
+          }
+          codingMode={codingMode}
+          speedBoost={speedBoost}
+          brains={brains}
+          think={think}
+          applyCockpit={applyFullAutoCockpit}
+          cockpitOpts={cockpitOpts}
+          capabilities={specCapabilities}
+          dflashLibraryReady={dflashLibraryReady}
+          dflashGettable={dflashGettable}
+          dflashDraftLabel={dflashDraftLabel}
+          dflashGetState={dflashGetState}
+          dflashGetError={dflashGetError}
+          dflashGetOfferLabel={dflashGetOfferLabel}
+          onGetDflashDraft={() => { void handleGetDflashDraft(); }}
+          onChangeDflashDraft={handleChangeDflashDraft}
+          kvQuantValues={cockpitKvValuesBound}
+          parallelValues={cockpitParallelValues}
+          showAgents={cockpitShowAgents}
+          showMemory={cockpitShowMemory}
+          showThink={cockpitShowThink}
+          showBoost={cockpitShowBoost}
+          agentsFromTemplateOnly={isCustomProvider}
+          port={
+            (selectedSlotIdx != null &&
+              stack.find((s) => s.idx === selectedSlotIdx && s.status === "RUNNING")?.port) ||
+            Number(config.base_port) ||
+            9090
+          }
+          modelId={
+            (selectedSlotIdx != null &&
+              stack.find((s) => s.idx === selectedSlotIdx)?.model_name) ||
+            aliasDisplayValue ||
+            autoAlias ||
+            model?.name ||
+            "local-model"
+          }
+          stack={stack}
+          preferredSlotIdx={selectedSlotIdx ?? null}
+          onHarnessOpenChange={setAtomcodeHarnessOpen}
+          onRelaunchSeat={async ({ slotIdx, port, alias, parallel }) => {
+            await hotSwapEngineSeat({ slotIdx, port, alias, parallel });
+          }}
+          onSelectEngine={handleSelectEngine}
+          layout={fullAutoFixed ? "hero" : "normal"}
+          powerMode={powerCockpitMode}
+          rawSpecTypes={factoryRawSpecTypes}
+          activeRawSpecType={activeRawSpecType}
+          onRawSpecType={(raw) => {
+            // Raw factory types only — product Off/MTP/DFlash use onSpeedBoost alone.
+            if (raw == null) return;
+            void applyFullAutoCockpit(codingMode, "off", brains, think, {
+              powerUser: true,
+              rawSpecType: raw,
+            });
+          }}
+          specDetailParams={cockpitSpecDetailParams}
+          embedCtx={ctxDockedInCockpit}
+          ctxStripProps={ctxStripProps}
+        />
         {model && (
           <DraftPickModal
             open={dflashPickOpen}
@@ -3630,7 +3020,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
                 renderGroup={(groupId) => {
                   const group = belowGroupMetaById.get(groupId);
                   if (!group) return null;
-                  return renderParamGroup(group, "below", undefined);
+                  return renderParamGroup(paramGroupsCtx, group, "below", undefined);
                 }}
               />
             )}
@@ -3643,205 +3033,64 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       </div>
 
       {launchDockPosition === "bottom" && (
-        <div
-          className="config-launch-dock flex-shrink-0 px-4 flex flex-col"
-          data-launch-dock-dim={
-            atomcodeHarnessOpen && !showRightColumn ? "true" : "false"
-          }
-        >
-          <div className="config-launch-dock__content flex flex-col min-w-0">
-          {launchDockCollapsed && customFlagsLaunchActive && configView === "full" && (
-            <button
-              type="button"
-              onClick={() => {
-                setLaunchDockCollapsed(false);
-                saveLaunchDockCollapsed(false);
-              }}
-              className="config-launch-dock__flags-pill w-full text-left rounded-sm px-2 py-1 text-[7px] font-mono border border-amber-500/35 text-amber-300/85 bg-amber-500/10 hover:bg-amber-500/15 transition-colors"
-              title="Expand dock to edit custom flags"
-            >
-              CUSTOM FLAGS {customFlagsReplaceActive ? "REPLACE" : "APPEND"} — click to expand
-            </button>
-          )}
-          {specParallelWarn && !fullAutoFixed && (
-            <div
-              className="config-mtp-launch-warn rounded-sm px-2.5 py-1.5 text-[7px] font-mono leading-snug"
-              role="status"
-            >
-              <span className="uppercase tracking-wide">⚠ MTP limited at launch</span>
-              {" — "}
-              <span className="config-mtp-launch-warn__detail">
-                parallel ×{mtpParallelSlotCount} strips MTP speculative decoding. Use parallel = 1 for MTP, or switch to DFlash for multi-slot.
-              </span>
-            </div>
-          )}
-          {specParallelWarn && fullAutoFixed && (
-            <div
-              className="config-mtp-launch-warn rounded-sm px-2.5 py-1.5 text-[7px] font-mono leading-snug"
-              role="status"
-            >
-              <span className="config-mtp-launch-warn__detail">
-                Multi-agent is on — Speed boost will use Off or DFlash (MTP needs Solo). Tap Speed → Off, or Agents → Solo for MTP.
-              </span>
-            </div>
-          )}
-          {modelIsDraftOnly && (
-            <div
-              className="config-mtp-launch-warn rounded-sm px-2.5 py-1.5 text-[7px] font-mono leading-snug"
-              role="status"
-            >
-              <span className="uppercase tracking-wide">{fullAutoFixed ? "Wrong model" : "Draft model"}</span>
-              {" — "}
-              <span className="config-mtp-launch-warn__detail">
-                {fullAutoFixed
-                  ? "This file is a draft helper, not a main model. Pick a full chat model from the list."
-                  : "Cannot launch draft GGUF as main. Filter catalog to MAIN and pick the base model."}
-              </span>
-            </div>
-          )}
-          <div className="config-launch-dock__grid">
-            <div className="config-launch-dock__left">
-              <div className="config-launch-dock__meta">
-                <div data-param-row className="config-launch-dock__alias flex items-center min-h-[22px] min-w-0">
-                  <span
-                    className={LAUNCH_DOCK_LABEL_CLASS}
-                    title={
-                      aliasIsUserSet
-                        ? "Alias — user set"
-                        : `Alias — autoset to ${autoAlias}`
-                    }
-                  >
-                    Alias
-                  </span>
-                  <div
-                    className={`config-launch-dock__alias-field flex-1 min-w-0${
-                      aliasShowClr ? " config-launch-dock__alias-field--has-clr" : ""
-                    }`}
-                  >
-                    <input
-                      type="text"
-                      value={aliasDisplayValue}
-                      onFocus={handleAliasFocus}
-                      onBlur={handleAliasBlur}
-                      onChange={(e) => setAliasInput(e.target.value)}
-                      title={
-                        aliasIsUserSet
-                          ? "User-set launch alias"
-                          : `Autoset to ${autoAlias} — updates as engines start/stop`
-                      }
-                      className={`w-full min-w-0 transition-colors ${
-                        aliasIsUserSet
-                          ? `${paramChipClass(true)} mono-user-input`
-                          : paramChipClass(false)
-                      }`}
-                    />
-                    {aliasShowClr ? (
-                      <button
-                        type="button"
-                        className="config-launch-dock__alias-clr"
-                        title={`Clear custom alias — revert to ${autoAlias}`}
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={handleAliasClear}
-                      >
-                        CLR
-                      </button>
-                    ) : null}
-                  </div>
-                </div>
-                {basePortParamDef && (
-                  <div className="config-launch-dock__port min-w-0">
-                    {renderParamRow(basePortParamDef, false, 0)}
-                  </div>
-                )}
-              </div>
-              {!uiDensityCompact && !launchDockCollapsed && renderCustomFlagsBlock()}
-            </div>
-            <div className="config-launch-dock__action relative">
-              {isDevBuild() && (
-                <button
-                  type="button"
-                  onClick={handleOpenNobsproofCmd}
-                  disabled={launchDisabled}
-                  className="config-nobsproof-btn absolute bottom-1 right-1 z-20 px-1.5 py-0.5 text-[7px] font-mono uppercase tracking-wider rounded-sm border disabled:opacity-40 disabled:cursor-not-allowed"
-                  title="NoBSproof — open exact launch CLI in a new CMD window (DEV)"
-                >
-                  CMD
-                </button>
-              )}
-              {replaceLaunchConfirmOpen && (
-                <div
-                  className="config-replace-confirm absolute inset-0 z-10 flex flex-col justify-center gap-2 rounded-sm px-2 py-2"
-                  role="alertdialog"
-                  aria-labelledby="replace-confirm-title"
-                >
-                  <p
-                    id="replace-confirm-title"
-                    className="text-[7px] font-mono leading-snug text-white/95"
-                  >
-                    <span className="uppercase tracking-wide font-semibold">Replace mode</span>
-                    {" — "}
-                    panel settings are ignored. Only your custom flags are sent to the engine.
-                  </p>
-                  <div className="flex gap-1.5">
-                    <button
-                      type="button"
-                      onClick={acknowledgeReplaceLaunch}
-                      className="config-replace-confirm__launch flex-1 px-2 py-1 text-[7px] font-mono uppercase tracking-wide rounded-sm"
-                    >
-                      Launch anyway
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setReplaceLaunchConfirmOpen(false)}
-                      className="config-replace-confirm__cancel px-2 py-1 text-[7px] font-mono uppercase tracking-wide rounded-sm"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              )}
-              <button
-                onClick={handleAddToStack}
-                disabled={launchDisabled}
-                title={
-                  launchDisabled
-                    ? !model
-                      ? "Select a model first"
-                      : modelIsDraftOnly
-                        ? "Draft models cannot launch as mains"
-                        : selectedProfileIsBuilding
-                          ? "Binary profile is building"
-                          : specNeedsExternalDraft && !draftPathValid
-                            ? "Select a draft model for speculative decoding"
-                            : "Launch blocked"
-                    : customFlagsReplaceActive
-                      ? "REPLACE mode — panel config is bypassed; only custom flags are used"
-                      : customFlagsLaunchActive
-                        ? "APPEND mode — custom flags are added to panel config"
-                        : isCustomProvider
-                          ? "Custom provider — VRAM forecast does not block launch"
-                          : undefined
-                }
-                className={`w-full h-full min-h-[2.75rem] min-w-0 ignite-btn config-launch-btn px-2 py-1.5 text-[11px] font-mono tracking-[0.18em] rounded-sm disabled:opacity-40 disabled:cursor-not-allowed flex flex-col items-stretch justify-center gap-0.5 ${customFlagsLaunchActive ? "overflow-visible" : "overflow-hidden"} ${launchAck ? "launch-ack" : ""}${customFlagsLaunchActive ? " config-launch-btn--custom-active" : ""}`}
-              >
-                {customFlagsLaunchActive && (
-                  <span
-                    className={`config-launch-btn__custom-warn uppercase tracking-wide${
-                      customFlagsReplaceActive ? "" : " config-launch-btn__custom-warn--append"
-                    }`}
-                  >
-                    Custom engine config active
-                  </span>
-                )}
-                <span className="text-center">LAUNCH ENGINE</span>
-                <span className="config-launch-btn__hint text-[7px] font-mono tracking-wider normal-case font-normal text-center">
-                  Ctrl+Enter
-                </span>
-              </button>
-            </div>
-          </div>
-          </div>
-        </div>
+        <EngineLaunchDock
+          position="bottom"
+          atomcodeHarnessOpen={atomcodeHarnessOpen}
+          showRightColumn={showRightColumn}
+          launchDockCollapsed={launchDockCollapsed}
+          onExpandCollapsedDock={() => {
+            setLaunchDockCollapsed(false);
+            saveLaunchDockCollapsed(false);
+          }}
+          specParallelWarn={specParallelWarn}
+          mtpParallelSlotCount={mtpParallelSlotCount}
+          fullAutoFixed={fullAutoFixed}
+          modelIsDraftOnly={modelIsDraftOnly}
+          renderCustomFlags={renderCustomFlagsBlock}
+          uiDensityCompact={uiDensityCompact}
+          configView={configView}
+          aliasDisplayValue={aliasDisplayValue}
+          aliasIsUserSet={aliasIsUserSet}
+          aliasShowClr={aliasShowClr}
+          autoAlias={autoAlias}
+          onAliasChange={(v) => setAliasInput(v)}
+          onAliasFocus={handleAliasFocus}
+          onAliasBlur={handleAliasBlur}
+          onAliasClear={handleAliasClear}
+          portRow={basePortParamDef ? renderParamRow(paramGroupsCtx, basePortParamDef, false, 0) : null}
+          isDev={isDevBuild()}
+          onOpenNobsproofCmd={handleOpenNobsproofCmd}
+          launchDisabled={launchDisabled}
+          replaceLaunchConfirmOpen={replaceLaunchConfirmOpen}
+          onCancelReplaceLaunch={() => setReplaceLaunchConfirmOpen(false)}
+          acknowledgeReplaceLaunch={acknowledgeReplaceLaunch}
+          onLaunchClick={handleAddToStack}
+          launchAck={launchAck}
+          customFlagsReplaceActive={customFlagsReplaceActive}
+          customFlagsLaunchActive={customFlagsLaunchActive}
+          isCustomProvider={isCustomProvider}
+          hasModel={Boolean(model)}
+          selectedProfileIsBuilding={selectedProfileIsBuilding}
+          specNeedsExternalDraft={specNeedsExternalDraft}
+          draftPathValid={draftPathValid}
+          enginesInRail={enginesInRail}
+          stack={stack}
+          models={models}
+          selectedSlotIdx={selectedSlotIdx ?? null}
+          onSelectEngine={handleSelectEngine}
+          isHotSwapStale={isHotSwapStale}
+          onHotSwap={(entry) => {
+            void hotSwapEngineSeat({
+              slotIdx: entry.idx,
+              port: entry.port,
+              alias: entry.alias,
+            }).catch((e) => {
+              dispatchAppEvent(EVENTS.launchError, {
+                message: `Hot-swap failed: ${String(e)}`,
+              });
+            });
+          }}
+        />
       )}
       </div>
       </div>
@@ -3890,212 +3139,57 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
               />
             ) : null}
             {showLaunchRail && (
-            <div className="launch-rail-launch flex flex-col flex-shrink-0 min-w-0">
-            <div className="config-launch-dock flex flex-col flex-shrink-0 px-3 pt-2">
-              <div className="config-launch-dock__content flex flex-col flex-shrink-0 min-w-0">
-                {enginesInRail && onSelectEngine && models && (
-                  <RunningEnginesPanel
-                    stack={stack}
-                    models={models}
-                    selectedSlotIdx={selectedSlotIdx ?? null}
-                    onSelectEngine={handleSelectEngine}
-                    variant="rail"
-                    isHotSwapStale={isHotSwapStale}
-                    onHotSwap={(entry) => {
-                      void hotSwapEngineSeat({
-                        slotIdx: entry.idx,
-                        port: entry.port,
-                        alias: entry.alias,
-                      }).catch((e) => {
-                        dispatchAppEvent(EVENTS.launchError, {
-                          message: `Hot-swap failed: ${String(e)}`,
-                        });
-                      });
-                    }}
-                  />
-                )}
-                {specParallelWarn && !fullAutoFixed && (
-                  <div
-                    className="config-mtp-launch-warn rounded-sm px-2.5 py-1.5 text-[7px] font-mono leading-snug shrink-0"
-                    role="status"
-                  >
-                    <span className="uppercase tracking-wide">⚠ MTP limited at launch</span>
-                    {" — "}
-                    <span className="config-mtp-launch-warn__detail">
-                      parallel ×{mtpParallelSlotCount} strips MTP speculative decoding. Use parallel = 1 for MTP, or switch to DFlash for multi-slot.
-                    </span>
-                  </div>
-                )}
-                {specParallelWarn && fullAutoFixed && (
-                  <div
-                    className="config-mtp-launch-warn rounded-sm px-2.5 py-1.5 text-[7px] font-mono leading-snug shrink-0"
-                    role="status"
-                  >
-                    <span className="config-mtp-launch-warn__detail">
-                      Multi-agent is on — use Speed Off/DFlash, or Agents Solo for MTP.
-                    </span>
-                  </div>
-                )}
-                {modelIsDraftOnly && (
-                  <div
-                    className="config-mtp-launch-warn rounded-sm px-2.5 py-1.5 text-[7px] font-mono leading-snug shrink-0"
-                    role="status"
-                  >
-                    <span className="uppercase tracking-wide">{fullAutoFixed ? "Wrong model" : "Draft model"}</span>
-                    {" — "}
-                    <span className="config-mtp-launch-warn__detail">
-                      {fullAutoFixed
-                        ? "This file is a draft helper, not a main model. Pick a full chat model from the list."
-                        : "Cannot launch draft GGUF as main. Filter catalog to MAIN and pick the base model."}
-                    </span>
-                  </div>
-                )}
-                <div className="config-launch-dock__grid config-launch-dock__grid--rail flex flex-col flex-shrink-0 gap-2">
-                  {configView === "full" && (
-                    <div className="config-launch-dock__rail-flags flex-shrink-0 overflow-y-auto eink-scrollbar">
-                      {renderCustomFlagsBlock()}
-                    </div>
-                  )}
-                  <div className="config-launch-dock__meta flex flex-col gap-2 shrink-0">
-                    <div data-param-row className="config-launch-dock__alias flex items-center min-h-[22px] min-w-0">
-                      <span
-                        className={LAUNCH_DOCK_LABEL_CLASS}
-                        title={
-                          aliasIsUserSet
-                            ? "Alias — user set"
-                            : `Alias — autoset to ${autoAlias}`
-                        }
-                      >
-                        Alias
-                      </span>
-                      <div
-                        className={`config-launch-dock__alias-field flex-1 min-w-0${
-                          aliasShowClr ? " config-launch-dock__alias-field--has-clr" : ""
-                        }`}
-                      >
-                        <input
-                          type="text"
-                          value={aliasDisplayValue}
-                          onFocus={handleAliasFocus}
-                          onBlur={handleAliasBlur}
-                          onChange={(e) => setAliasInput(e.target.value)}
-                          title={
-                            aliasIsUserSet
-                              ? "User-set launch alias"
-                              : `Autoset to ${autoAlias} — updates as engines start/stop`
-                          }
-                          className={`w-full min-w-0 transition-colors ${
-                            aliasIsUserSet
-                              ? `${paramChipClass(true)} mono-user-input`
-                              : paramChipClass(false)
-                          }`}
-                        />
-                        {aliasShowClr ? (
-                          <button
-                            type="button"
-                            className="config-launch-dock__alias-clr"
-                            title={`Clear custom alias — revert to ${autoAlias}`}
-                            onMouseDown={(e) => e.preventDefault()}
-                            onClick={handleAliasClear}
-                          >
-                            CLR
-                          </button>
-                        ) : null}
-                      </div>
-                    </div>
-                    {basePortParamDef && (
-                      <div className="config-launch-dock__port min-w-0">
-                        {renderParamRow(basePortParamDef, false, 0)}
-                      </div>
-                    )}
-                  </div>
-                  <div className="config-launch-dock__action relative shrink-0">
-                    {isDevBuild() && (
-                      <button
-                        type="button"
-                        onClick={handleOpenNobsproofCmd}
-                        disabled={launchDisabled}
-                        className="config-nobsproof-btn absolute bottom-1 right-1 z-20 px-1.5 py-0.5 text-[7px] font-mono uppercase tracking-wider rounded-sm border disabled:opacity-40 disabled:cursor-not-allowed"
-                        title="NoBSproof — open exact launch CLI in a new CMD window (DEV)"
-                      >
-                        CMD
-                      </button>
-                    )}
-                    {replaceLaunchConfirmOpen && (
-                      <div
-                        className="config-replace-confirm absolute inset-0 z-10 flex flex-col justify-center gap-2 rounded-sm px-2 py-2"
-                        role="alertdialog"
-                        aria-labelledby="replace-confirm-title-rail"
-                      >
-                        <p
-                          id="replace-confirm-title-rail"
-                          className="text-[7px] font-mono leading-snug text-white/95"
-                        >
-                          <span className="uppercase tracking-wide font-semibold">Replace mode</span>
-                          {" — "}
-                          panel settings are ignored. Only your custom flags are sent to the engine.
-                        </p>
-                        <div className="flex gap-1.5">
-                          <button
-                            type="button"
-                            onClick={acknowledgeReplaceLaunch}
-                            className="config-replace-confirm__launch flex-1 px-2 py-1 text-[7px] font-mono uppercase tracking-wide rounded-sm"
-                          >
-                            Launch anyway
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setReplaceLaunchConfirmOpen(false)}
-                            className="config-replace-confirm__cancel px-2 py-1 text-[7px] font-mono uppercase tracking-wide rounded-sm"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                    <button
-                      onClick={handleAddToStack}
-                      disabled={launchDisabled}
-                      title={
-                        launchDisabled
-                          ? !model
-                            ? "Select a model first"
-                            : modelIsDraftOnly
-                              ? "Draft models cannot launch as mains"
-                              : selectedProfileIsBuilding
-                                ? "Binary profile is building"
-                                : specNeedsExternalDraft && !draftPathValid
-                                  ? "Select a draft model for speculative decoding"
-                                  : "Launch blocked"
-                          : customFlagsReplaceActive
-                            ? "REPLACE mode — panel config is bypassed; only custom flags are used"
-                            : customFlagsLaunchActive
-                              ? "APPEND mode — custom flags are added to panel config"
-                              : isCustomProvider
-                                ? "Custom provider — VRAM forecast does not block launch"
-                                : undefined
-                      }
-                      className={`w-full h-full min-h-[2.75rem] min-w-0 ignite-btn config-launch-btn px-2 py-1.5 text-[11px] font-mono tracking-[0.18em] rounded-sm disabled:opacity-40 disabled:cursor-not-allowed flex flex-col items-stretch justify-center gap-0.5 ${customFlagsLaunchActive ? "overflow-visible" : "overflow-hidden"} ${launchAck ? "launch-ack" : ""}${customFlagsLaunchActive ? " config-launch-btn--custom-active" : ""}`}
-                    >
-                      {customFlagsLaunchActive && (
-                        <span
-                          className={`config-launch-btn__custom-warn uppercase tracking-wide${
-                            customFlagsReplaceActive ? "" : " config-launch-btn__custom-warn--append"
-                          }`}
-                        >
-                          Custom engine config active
-                        </span>
-                      )}
-                      <span className="text-center">LAUNCH ENGINE</span>
-                      <span className="config-launch-btn__hint text-[7px] font-mono tracking-wider normal-case font-normal text-center">
-                        Ctrl+Enter
-                      </span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-            </div>
+              <EngineLaunchDock
+                position="right"
+                specParallelWarn={specParallelWarn}
+                mtpParallelSlotCount={mtpParallelSlotCount}
+                fullAutoFixed={fullAutoFixed}
+                modelIsDraftOnly={modelIsDraftOnly}
+                renderCustomFlags={renderCustomFlagsBlock}
+                uiDensityCompact={uiDensityCompact}
+                configView={configView}
+                aliasDisplayValue={aliasDisplayValue}
+                aliasIsUserSet={aliasIsUserSet}
+                aliasShowClr={aliasShowClr}
+                autoAlias={autoAlias}
+                onAliasChange={(v) => setAliasInput(v)}
+                onAliasFocus={handleAliasFocus}
+                onAliasBlur={handleAliasBlur}
+                onAliasClear={handleAliasClear}
+                portRow={basePortParamDef ? renderParamRow(paramGroupsCtx, basePortParamDef, false, 0) : null}
+                isDev={isDevBuild()}
+                onOpenNobsproofCmd={handleOpenNobsproofCmd}
+                launchDisabled={launchDisabled}
+                replaceLaunchConfirmOpen={replaceLaunchConfirmOpen}
+                onCancelReplaceLaunch={() => setReplaceLaunchConfirmOpen(false)}
+                acknowledgeReplaceLaunch={acknowledgeReplaceLaunch}
+                onLaunchClick={handleAddToStack}
+                launchAck={launchAck}
+                customFlagsReplaceActive={customFlagsReplaceActive}
+                customFlagsLaunchActive={customFlagsLaunchActive}
+                isCustomProvider={isCustomProvider}
+                hasModel={Boolean(model)}
+                selectedProfileIsBuilding={selectedProfileIsBuilding}
+                specNeedsExternalDraft={specNeedsExternalDraft}
+                draftPathValid={draftPathValid}
+                enginesInRail={enginesInRail}
+                stack={stack}
+                models={models}
+                selectedSlotIdx={selectedSlotIdx ?? null}
+                onSelectEngine={handleSelectEngine}
+                isHotSwapStale={isHotSwapStale}
+                onHotSwap={(entry) => {
+                  void hotSwapEngineSeat({
+                    slotIdx: entry.idx,
+                    port: entry.port,
+                    alias: entry.alias,
+                  }).catch((e) => {
+                    dispatchAppEvent(EVENTS.launchError, {
+                      message: `Hot-swap failed: ${String(e)}`,
+                    });
+                  });
+                }}
+              />
             )}
             </div>
           </div>
@@ -4122,63 +3216,15 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         />
       )}
 
-      {catalogPlaceKey && (
-        <div
-          className="fixed inset-0 bg-black/70 z-50 flex items-start justify-center pt-20"
-          onClick={() => setCatalogPlaceKey(null)}
-        >
-          <div
-            className="config-form-panel rounded-sm w-full max-w-md mx-4 shadow-2xl border border-stealth-border/40"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="px-4 py-3 config-section-bar flex items-center justify-between">
-              <h2 className="text-[11px] font-mono theme-accent-text tracking-widest">
-                PLACE PARAM
-              </h2>
-              <span className="text-[9px] font-mono config-muted truncate max-w-[12rem]" title={catalogPlaceKey}>
-                {catalogPlaceKey}
-              </span>
-            </div>
-            <div className="px-4 py-3 space-y-3">
-              <p className="text-[9px] font-mono text-stealth-muted/70 leading-snug">
-                Added from catalog. Default group is USER-ADDED-FROM-CATALOG — pick another group or keep it.
-              </p>
-              <label className="block">
-                <span className="text-[8px] font-mono tracking-wider uppercase text-stealth-muted/50">
-                  Group
-                </span>
-                <select
-                  value={catalogPlaceGroup}
-                  onChange={(e) => setCatalogPlaceGroup(e.target.value)}
-                  className="mt-1 w-full bg-black/40 border border-stealth-border/40 rounded-sm px-2 py-1.5 text-[10px] font-mono text-nv-green focus:outline-none"
-                >
-                  {existingGroupNames.map((g) => (
-                    <option key={g} value={g}>
-                      {g}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <div className="flex justify-end gap-2 pt-1">
-                <button
-                  type="button"
-                  className="px-2 py-1 text-[9px] font-mono text-stealth-muted hover:text-white"
-                  onClick={() => setCatalogPlaceKey(null)}
-                >
-                  Keep default
-                </button>
-                <button
-                  type="button"
-                  className="px-2.5 py-1 text-[9px] font-mono rounded-sm border border-nv-green/40 text-nv-green hover:bg-nv-green/10"
-                  onClick={() => { void handleCatalogPlaceConfirm(); }}
-                >
-                  Assign group
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <ParamPlaceDialog
+        open={catalogPlaceKey != null}
+        paramKey={catalogPlaceKey}
+        group={catalogPlaceGroup}
+        groupNames={existingGroupNames}
+        onGroupChange={setCatalogPlaceGroup}
+        onClose={() => setCatalogPlaceKey(null)}
+        onConfirm={() => { void handleCatalogPlaceConfirm(); }}
+      />
     </div>
   );
 }
