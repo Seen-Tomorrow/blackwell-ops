@@ -1,6 +1,95 @@
-import type { ModelEntry } from "../lib/types";
+import type { ModelEntry, ModelMetadata } from "../lib/types";
 import { draftRoleBadge, draftRoleFromModel, isExternalDraftOnly } from "../lib/specDraft";
 import { revealPathInExplorer } from "../lib/utils";
+
+/**
+ * Compact param-count formatting with T/B/M suffix.
+ * Keeps 1 decimal for values < 10 (e.g. 8.4B), rounds above (e.g. 284B).
+ */
+function fmtParamCount(val: number, suffix: string): string {
+  const s = suffix.toUpperCase();
+  if (s === "T") return `${val}T`;
+  if (s === "M") return `${val}M`;
+  return val >= 10 ? `${Math.round(val)}B` : `${val.toFixed(1)}B`;
+}
+
+/** Parse "284.33 B", "122.11 B", "20.91 B" → { val, suffix } or null. */
+function parseParamCount(raw: string | undefined | null): { val: number; suffix: string } | null {
+  if (!raw) return null;
+  const m = raw.trim().match(/^([\d.]+)\s*([TMB])$/i);
+  if (!m) return null;
+  const val = parseFloat(m[1]);
+  if (isNaN(val)) return null;
+  return { val, suffix: m[2].toUpperCase() };
+}
+
+/**
+ * Extract the ACTIVE param count from a size label string.
+ * Handles "230B.A10B" (total.active), "122B-A10B" (dash), "256x8.4B" (experts x active).
+ * Returns null if the label carries no active-params info (e.g. plain "20B").
+ */
+function parseActiveFromLabel(label: string): { val: number; suffix: string } | null {
+  if (!label) return null;
+  // TOTAL.Active / TOTAL-Active → active is after the A marker
+  const taMatch = label.match(/^[\d.]+[TMB][.-]A([\d.]+)([TMB])$/i);
+  if (taMatch) {
+    const val = parseFloat(taMatch[1]);
+    if (!isNaN(val)) return { val, suffix: taMatch[2].toUpperCase() };
+  }
+  // NxActive (256x8.4B) → active is the second component. The expert count is NOT a
+  // param total — never derive total from it (256 × 8.4B ≠ total).
+  const xMatch = label.match(/^(\d+)x([\d.]+)([TMB])$/i);
+  if (xMatch) {
+    const val = parseFloat(xMatch[2]);
+    if (!isNaN(val)) return { val, suffix: xMatch[3].toUpperCase() };
+  }
+  return null;
+}
+
+/**
+ * Resolve the TOTAL / ACTIVE param display for a scanned model.
+ *
+ * Sources (in order of authority):
+ *   - total_params_str  → print_info "model params" (e.g. "284.33 B"). Authoritative total.
+ *   - modelTypeLabel    → "230B.A10B" | "122B-A10B" | "256x8.4B" | "20B"
+ *   - rawKvs[general.size_label] → original quantizer label (kept when print_info is ?B)
+ *
+ * The "NxX" format means "N experts, X active params". It does NOT mean X params per
+ * expert, so multiplying N × X to get a total is wrong (it produced bogus 2.2T for
+ * DeepSeek V4 Flash). Total must come from total_params_str; if absent we show the
+ * active count alone rather than fabricating a total.
+ */
+function resolveParamsDisplay(meta: ModelMetadata): { paramsNum: string; archBadge: string } {
+  const isMoE = meta.n_expert_used > 0;
+
+  // Prefer rawKvs size_label when modelTypeLabel is unparseable (e.g. deepseek4 prints
+  // "?B" for model type, which would otherwise discard the informative "256x8.4B").
+  let label = meta.modelTypeLabel || "";
+  const rawLabel = meta.rawKvs?.["general.size_label"];
+  if (!label.trim() || label.trim().toLowerCase() === "?b" || label.trim() === "?B") {
+    label = rawLabel || label;
+  }
+
+  const active = parseActiveFromLabel(label);
+  // Authoritative total from print_info "model params".
+  let total = parseParamCount(meta.total_params_str);
+  // Fallback: leading number of TOTAL.Active / plain label (NOT the expert count of NxX).
+  if (!total && label && !/^\d+x/i.test(label)) {
+    const lead = label.match(/^([\d.]+)([TMB])/i);
+    if (lead) total = { val: parseFloat(lead[1]), suffix: lead[2].toUpperCase() };
+  }
+
+  let paramsNum = "";
+  if (total && active) {
+    paramsNum = `${fmtParamCount(total.val, total.suffix)} / ${fmtParamCount(active.val, active.suffix)}`;
+  } else if (total) {
+    paramsNum = fmtParamCount(total.val, total.suffix);
+  } else if (active) {
+    paramsNum = `${fmtParamCount(active.val, active.suffix)} active`;
+  }
+
+  return { paramsNum, archBadge: isMoE ? "MOE" : "DENSE" };
+}
 
 interface ModelCardProps {
   model: ModelEntry;
@@ -54,15 +143,9 @@ export default function ModelCard({
   let paramsNum = "";
   let archBadge = "";
   if (hasMetadata) {
-    const rawTotal = model.metadata.modelTypeLabel || model.metadata.total_params_str;
-    const numPart = parseFloat(rawTotal.replace(/[^0-9.]/g, ""));
-    const suffixMatch = rawTotal.match(/([TMB])$/i);
-    const suffix = suffixMatch ? suffixMatch[1].toUpperCase() : "B";
-    if (!isNaN(numPart)) {
-      const rounded = Math.round(numPart);
-      paramsNum = `${rounded}${suffix}`;
-      archBadge = model.metadata.n_expert_used > 0 ? "MOE" : "DENSE";
-    }
+    const resolved = resolveParamsDisplay(model.metadata);
+    paramsNum = resolved.paramsNum;
+    archBadge = resolved.archBadge;
   }
 
   const hasMultimodal = model.vision;

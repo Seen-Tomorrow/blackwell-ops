@@ -85,7 +85,7 @@ export interface ModelMetadata {
   scan_timestamp: number;
   file_created?: number;
   nextn_predict_layers?: number;
-  /** none | mtp_embedded | external_dflash | external_eagle3 */
+  /** none | mtp_embedded | external_dflash | external_eagle3 | external_mtp */
   draft_role?: string;
   rawKvs?: Record<string, string>;
 }

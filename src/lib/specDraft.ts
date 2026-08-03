@@ -16,7 +16,7 @@ import {
   SPEC_PROFILE_PARAM_KEYS,
 } from "./specProfiles";
 
-export type DraftRole = "none" | "mtp_embedded" | "external_dflash" | "external_eagle3";
+export type DraftRole = "none" | "mtp_embedded" | "external_dflash" | "external_eagle3" | "external_mtp";
 export type CatalogDraftFilter = "regular" | "draft" | "all";
 export type SpecCapability = "mtp" | "dflash" | "eagle3";
 
@@ -57,6 +57,7 @@ export function essentialsSpecChipLabel(specType: string): string {
 const DRAFT_ARCH_FOR_SPEC: Record<string, DraftRole> = {
   "draft-dflash": "external_dflash",
   "draft-eagle3": "external_eagle3",
+  "draft-external-mtp": "external_mtp",
 };
 
 /**
@@ -104,6 +105,27 @@ export function signalContainsEagle3(signal: string): boolean {
   if (lower.includes("eagle3")) return true;
   if (EAGLE3_SIGNAL_RE.test(signal)) return true;
   return compactAlnumLower(signal).includes("eagle3");
+}
+
+/**
+ * Detect standalone MTP head signals — explicit "head" tokens only.
+ *
+ * Deliberately NOT matching bare "-MTP-" or "MTP-GGUF": MTP-enabled *main* models use those
+ * in their folder/file names (e.g. "Qwen3.6-27B-MTP-GGUF/..."), which are baked-in MTP, not
+ * separate head files. Standalone heads are caught reliably by the vocab_size==0 / tiny-file
+ * metadata heuristics in `draftRoleFromModel` — the path signal is only a pre-scan convenience
+ * for names that explicitly say "head".
+ */
+export function signalContainsMtpHead(signal: string): boolean {
+  const lower = signal.toLowerCase();
+  // mtp-head, mtp_head, mtphead
+  if (lower.includes("mtp-head") || lower.includes("mtp_head") || compactAlnumLower(signal).includes("mtphead")) return true;
+  // head-mtp, head_mtp, headmtp
+  if (lower.includes("head-mtp") || lower.includes("head_mtp") || compactAlnumLower(signal).includes("headmtp")) return true;
+  // File literally named "X.mtp.gguf" (literal dot before mtp, not a dash) — a clear
+  // head-export naming. "-mtp.gguf" is ambiguous and intentionally not matched.
+  if (lower.endsWith(".mtp.gguf")) return true;
+  return false;
 }
 
 function pathSegmentSignals(modelPath: string): string[] {
@@ -158,6 +180,7 @@ function pathIdentityDraftRole(
   for (const signal of catalogDraftSignals(model)) {
     if (signalContainsDflash(signal)) return "external_dflash";
     if (signalContainsEagle3(signal)) return "external_eagle3";
+    if (signalContainsMtpHead(signal)) return "external_mtp";
   }
   return null;
 }
@@ -190,7 +213,7 @@ function metadataSuggestsDflash(
 
 function parseDraftRoleHint(hint: string | undefined): DraftRole | null {
   if (!hint || hint === "none") return null;
-  if (hint === "external_dflash" || hint === "external_eagle3" || hint === "mtp_embedded") {
+  if (hint === "external_dflash" || hint === "external_eagle3" || hint === "mtp_embedded" || hint === "external_mtp") {
     return hint;
   }
   return null;
@@ -216,6 +239,21 @@ export function draftRoleFromModel(
     if (role !== "none") return role;
   }
 
+  // Standalone MTP head: has nextn layers AND path signals a separate head file.
+  if ((meta?.nextn_predict_layers ?? 0) > 0 && signalContainsMtpHead(modelHaystack(model))) {
+    return "external_mtp";
+  }
+  // Head-only GGUF: has nextn layers but no vocabulary (embedding-free head file).
+  // Full models always carry a tokenizer + vocab; standalone heads don't.
+  if ((meta?.nextn_predict_layers ?? 0) > 0 && (meta?.vocab_size ?? 0) === 0 && meta?.architecture) {
+    return "external_mtp";
+  }
+  // Small-file MTP head: has nextn layers AND the file is tiny (<10 GiB) compared to a full model
+  // of the same architecture. Catches head exports that carry a full tokenizer.
+  if ((meta?.nextn_predict_layers ?? 0) > 0 && (meta?.file_size_bytes ?? 0) > 0 && (meta?.file_size_bytes ?? 0) < 10_737_418_240) {
+    return "external_mtp";
+  }
+
   if ((meta?.nextn_predict_layers ?? 0) > 0) return "mtp_embedded";
 
   return "none";
@@ -225,7 +263,7 @@ export function isExternalDraftOnly(
   model: Pick<ModelEntry, "path" | "name" | "metadata" | "hfMeta" | "hfModelId" | "sourcePathLabel" | "draftRoleHint">,
 ): boolean {
   const role = draftRoleFromModel(model);
-  return role === "external_dflash" || role === "external_eagle3";
+  return role === "external_dflash" || role === "external_eagle3" || role === "external_mtp";
 }
 
 export function isLaunchableMain(
@@ -250,6 +288,8 @@ export function draftRoleBadge(role: DraftRole): string | null {
       return "DFLASH";
     case "external_eagle3":
       return "EAGLE3";
+    case "external_mtp":
+      return "MTP";
     case "mtp_embedded":
       return "MTP";
     default:
@@ -327,8 +367,16 @@ function stemOverlapScore(mainStem: string, draftStem: string): number {
   return 0;
 }
 
+/// Roles that are interchangeable for pairing (e.g. external_mtp pairs with external_dflash).
+function draftRolesMatch(asked: DraftRole, actual: DraftRole): boolean {
+  if (actual === asked) return true;
+  // External MTP heads are loaded via DFlash mechanism — compatible for pairing.
+  if (asked === "external_dflash" && actual === "external_mtp") return true;
+  return false;
+}
+
 export function scoreDraftPair(main: ModelEntry, draft: ModelEntry, draftRole: DraftRole): number {
-  if (draftRoleFromModel(draft) !== draftRole) return -1;
+  if (!draftRolesMatch(draftRole, draftRoleFromModel(draft))) return -1;
   if (!familiesCompatible(main, draft)) return -1;
 
   const mainStem = normalizeBaseStem(main);
@@ -342,7 +390,8 @@ export function scoreDraftPair(main: ModelEntry, draft: ModelEntry, draftRole: D
   const mq = quantToken(main);
   const dq = quantToken(draft);
   if (mq && dq && mq === dq) score += 10;
-  if (draft.metadata?.architecture?.toLowerCase() === draftRole.replace("external_", "")) score += 8;
+  // External MTP heads use the same arch as the main model — trust stem overlap instead.
+  if (draftRole !== "external_mtp" && draft.metadata?.architecture?.toLowerCase() === draftRole.replace("external_", "")) score += 8;
   // Cap at 100 — UI shows this as a percentage.
   return Math.min(100, score);
 }
@@ -356,7 +405,7 @@ export function findScoredDraftCandidates(
 ): ScoredDraft[] {
   if (isExternalDraftOnly(main)) return [];
   return models
-    .filter((m) => m.path !== main.path && draftRoleFromModel(m) === draftRole)
+    .filter((m) => m.path !== main.path && draftRolesMatch(draftRole, draftRoleFromModel(m)))
     .map((m) => ({ model: m, score: scoreDraftPair(main, m, draftRole) }))
     .filter((x) => x.score >= MIN_DRAFT_PAIR_SCORE)
     .sort((a, b) => b.score - a.score);
@@ -397,6 +446,10 @@ export function specCapabilitiesForMain(
     if (findDraftCandidates(main, models, "external_eagle3").length > 0) {
       caps.push("eagle3");
     }
+    // External MTP heads are loaded via DFlash mechanism — same Boost profile.
+    if (findDraftCandidates(main, models, "external_mtp").length > 0) {
+      caps.push("dflash");
+    }
   }
   // Baked-in MTP does not exclude external DFlash — user picks spec_type at launch.
   if ((main.metadata?.nextn_predict_layers ?? 0) > 0) {
@@ -417,6 +470,15 @@ export function defaultSpecTypeForMain(
   return null;
 }
 
+/** Whether external MTP candidates are available for a main model. */
+export function hasExternalMtpDraft(
+  main: ModelEntry | null | undefined,
+  models: ModelEntry[] | null | undefined,
+): boolean {
+  if (!main || !models?.length || isExternalDraftOnly(main)) return false;
+  return findDraftCandidates(main, models, "external_mtp").length > 0;
+}
+
 /** Whether the chosen spec mode is supported by this main model (e.g. MTP needs nextn layers). */
 export function isSpecTypeValidForMain(
   specType: string,
@@ -435,7 +497,7 @@ export function isSpecTypeValidForMain(
 
 export function specTypeNeedsExternalDraft(specType: string): boolean {
   const lower = specType.trim().toLowerCase();
-  if (lower.includes("dflash") || lower.includes("eagle3")) return true;
+  if (lower.includes("dflash") || lower.includes("eagle3") || lower.includes("external-mtp")) return true;
   return lower.startsWith("draft-") && lower !== "draft-mtp" && lower !== "draft-simple";
 }
 
@@ -516,18 +578,14 @@ export function isUsableDraftPairing(
     (m) => normalizeModelPathKey(m.path) === normalizeModelPathKey(pairing.draftPath),
   );
   if (draft) {
-    if (draftRoleFromModel(draft) !== role) return false;
+    if (!draftRolesMatch(role, draftRoleFromModel(draft))) return false;
     return scoreDraftPair(main, draft, role) >= MIN_DRAFT_PAIR_SCORE;
   }
   // Catalog lag after download — path still launchable if it looks like a GGUF.
   return isValidGgufDraftPath(pairing.draftPath);
 }
 
-/**
- * Resolve --spec-draft-model for DFlash/Eagle:
- * 1) explicit preferred (just-picked), 2) current config, 3) saved pairing, 4) HIGH silent auto.
- * Preferred path skips score floor (user confirmed). Auto stays HIGH-only.
- */
+/** Resolve external draft path via DFlash mechanism (also finds external MTP heads). */
 export function resolveExternalDraftPath(
   main: ModelEntry,
   models: ModelEntry[],
@@ -553,7 +611,7 @@ export function resolveExternalDraftPath(
 
     const draft = matchCatalog(p);
     if (draft) {
-      if (draftRoleFromModel(draft) !== draftRole) return null;
+      if (!draftRolesMatch(draftRole, draftRoleFromModel(draft))) return null;
       if (mode === "user") return draft.path;
       const score = scoreDraftPair(main, draft, draftRole);
       if (mode === "restored" && score < MIN_DRAFT_PAIR_SCORE) return null;
@@ -580,7 +638,8 @@ export function resolveExternalDraftPath(
     const roleOk =
       pairingRole === draftRole
       || (draftRole === "external_dflash" && String(pairing.specType).toLowerCase().includes("dflash"))
-      || (draftRole === "external_eagle3" && String(pairing.specType).toLowerCase().includes("eagle"));
+      || (draftRole === "external_eagle3" && String(pairing.specType).toLowerCase().includes("eagle"))
+      || (draftRole === "external_mtp" && String(pairing.specType).toLowerCase().includes("mtp"));
     if (roleOk) {
       const saved = tryPath(pairing.draftPath, "restored");
       if (saved) return saved;
@@ -599,6 +658,9 @@ export function hasReadyDflashDraft(
   if (!main || !models?.length) return false;
   if (pickBestDraftPair(main, models, "external_dflash", HIGH_DRAFT_PAIR_SCORE)) return true;
 
+  // Also check external MTP candidates.
+  if (pickBestDraftPair(main, models, "external_mtp", HIGH_DRAFT_PAIR_SCORE)) return true;
+
   const pairing = loadDraftPairing(main.path);
   if (
     pairing
@@ -614,3 +676,4 @@ export function hasReadyDflashDraft(
   });
   return Boolean(resolved);
 }
+

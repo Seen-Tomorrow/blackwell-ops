@@ -319,7 +319,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
     if (batchScanState.active) return "pr-[8.25rem]";
     if (showScanMenu && editMode) return "pr-[15rem]";
     if (showScanMenu) return "pr-[8.25rem]";
-    if (editMode) return "pr-[11.5rem]";
+    if (editMode) return "pr-[16rem]";
     return "pr-[8.5rem]";
   };
 
@@ -456,6 +456,21 @@ export default function ModelCatalog(props: ModelCatalogProps) {
           >
             DEL
           </button>
+          {editTarget && (
+            <button
+              type="button"
+              onClick={() => handleScanModel(editTarget)}
+              disabled={scanningPath !== null}
+              className={`catalog-scan-btn px-1.5 py-0.5 text-[7px] font-mono transition-colors rounded-sm whitespace-nowrap ${
+                scanningPath === editTarget.path
+                  ? 'text-telemetry-cyan border border-telemetry-cyan/40 bg-telemetry-cyan/10'
+                  : 'text-orange-400 border border-orange-400/30 hover:bg-orange-400/10 disabled:opacity-30'
+              }`}
+              title="Re-scan GGUF metadata — updates draft role, architecture, param count, etc."
+            >
+              {scanningPath === editTarget.path ? '⠋ RESCAN…' : 'RESCAN'}
+            </button>
+          )}
           <button
             type="button"
             onClick={closeEditMode}
@@ -864,6 +879,7 @@ export default function ModelCatalog(props: ModelCatalogProps) {
         onClose={closeSearchPalette}
         onOpenFullCatalog={openFullCatalogFromPalette}
         scanningPath={scanningPath}
+        onScanModel={handleScanModel}
       />
     </div>
   );

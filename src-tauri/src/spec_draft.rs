@@ -10,6 +10,7 @@ pub enum DraftRole {
     MtpEmbedded,
     ExternalDflash,
     ExternalEagle3,
+    ExternalMtp,
 }
 
 impl DraftRole {
@@ -19,11 +20,12 @@ impl DraftRole {
             DraftRole::MtpEmbedded => "mtp_embedded",
             DraftRole::ExternalDflash => "external_dflash",
             DraftRole::ExternalEagle3 => "external_eagle3",
+            DraftRole::ExternalMtp => "external_mtp",
         }
     }
 
     pub fn is_external_draft_only(self) -> bool {
-        matches!(self, DraftRole::ExternalDflash | DraftRole::ExternalEagle3)
+        matches!(self, DraftRole::ExternalDflash | DraftRole::ExternalEagle3 | DraftRole::ExternalMtp)
     }
 }
 
@@ -51,6 +53,21 @@ pub fn classify_draft_role(meta: &ModelMetadata, model_path: &str) -> DraftRole 
     // target_layers beats nextn_predict_layers — external DFlash GGUFs often carry both.
     if metadata_has_target_layers(meta) && arch != "eagle3" {
         return DraftRole::ExternalDflash;
+    }
+    // Standalone MTP head: has nextn layers AND path signals a separate head file.
+    if meta.nextn_predict_layers > 0 && signal_contains_mtp_head(model_path) {
+        return DraftRole::ExternalMtp;
+    }
+    // Head-only GGUF: has nextn layers but no vocabulary (embedding-free head file).
+    // Full models always carry a tokenizer + vocab; standalone heads don't.
+    if meta.nextn_predict_layers > 0 && meta.vocab_size == 0 && !meta.architecture.is_empty() {
+        return DraftRole::ExternalMtp;
+    }
+    // Small-file MTP head: has nextn layers AND the file is tiny compared to a full model
+    // of the same architecture (e.g., <10 GiB for a multi-hundred-GB MoE model).
+    // This catches head exports that carry a full tokenizer but are clearly not the main model.
+    if meta.nextn_predict_layers > 0 && meta.file_size_bytes > 0 && meta.file_size_bytes < 10_737_418_240 {
+        return DraftRole::ExternalMtp;
     }
     if meta.nextn_predict_layers > 0 {
         return DraftRole::MtpEmbedded;
@@ -85,6 +102,29 @@ fn signal_contains_eagle3(signal: &str) -> bool {
     lower.contains("eagle3") || compact_alnum_lower(signal).contains("eagle3")
 }
 
+/// Detect standalone MTP head signals — explicit "head" tokens only.
+///
+/// Deliberately NOT matching bare "-MTP-" or "MTP-GGUF": MTP-enabled *main* models use
+/// those in their folder/file names (e.g. "Qwen3.6-27B-MTP-GGUF/..."), which are baked-in
+/// MTP, not separate head files. Standalone heads are caught reliably by the
+/// vocab_size==0 / tiny-file metadata heuristics in `classify_draft_role` — the path signal
+/// is only a pre-scan convenience for names that explicitly say "head".
+fn signal_contains_mtp_head(signal: &str) -> bool {
+    let lower = signal.to_lowercase();
+    let alnum = compact_alnum_lower(signal);
+    // Exact mtp-head / mtp_head / mtphead tokens
+    if lower.contains("mtp-head") || lower.contains("mtp_head") || alnum.contains("mtphead") {
+        return true;
+    }
+    // head-mtp / head_mtp / headmtp
+    if lower.contains("head-mtp") || lower.contains("head_mtp") || alnum.contains("headmtp") {
+        return true;
+    }
+    // File literally named "X.mtp.gguf" (literal dot before mtp, not a dash) — a clear
+    // head-export naming. "-mtp.gguf" is ambiguous and intentionally not matched.
+    lower.ends_with(".mtp.gguf")
+}
+
 fn path_segment_signals(model_path: &str) -> impl Iterator<Item = &str> {
     model_path.split(['/', '\\']).filter(|s| !s.is_empty())
 }
@@ -97,12 +137,18 @@ fn draft_role_from_path_heuristics(model_path: &str) -> DraftRole {
         if signal_contains_eagle3(segment) {
             return DraftRole::ExternalEagle3;
         }
+        if signal_contains_mtp_head(segment) {
+            return DraftRole::ExternalMtp;
+        }
     }
     if signal_contains_dflash(model_path) {
         return DraftRole::ExternalDflash;
     }
     if signal_contains_eagle3(model_path) {
         return DraftRole::ExternalEagle3;
+    }
+    if signal_contains_mtp_head(model_path) {
+        return DraftRole::ExternalMtp;
     }
     DraftRole::None
 }
@@ -133,6 +179,9 @@ pub fn draft_identity_from_catalog_signals(
         }
         if signal_contains_eagle3(signal) {
             return Some(DraftRole::ExternalEagle3);
+        }
+        if signal_contains_mtp_head(signal) {
+            return Some(DraftRole::ExternalMtp);
         }
     }
     None
@@ -167,7 +216,8 @@ pub fn is_launchable_target(meta: Option<&ModelMetadata>, model_path: &str) -> b
 
 pub fn spec_type_needs_external_draft(spec_type: &str) -> bool {
     let lower = spec_type.trim().to_lowercase();
-    lower.contains("dflash") || lower.contains("eagle3") || {
+    // External MTP heads are loaded via --spec-draft-model, same as DFlash.
+    lower.contains("dflash") || lower.contains("eagle3") || lower.contains("external-mtp") || {
         lower.starts_with("draft-")
             && lower != "draft-mtp"
             && lower != "draft-simple"
@@ -311,7 +361,12 @@ mod tests {
 
     #[test]
     fn mtp_layers_classify_embedded() {
-        let meta = minimal_meta("qwen35", 1);
+        let meta = ModelMetadata {
+            architecture: "qwen35".into(),
+            nextn_predict_layers: 1,
+            vocab_size: 128000,
+            ..empty_meta()
+        };
         assert_eq!(
             classify_draft_role(&meta, r"C:\models\target.gguf"),
             DraftRole::MtpEmbedded
@@ -326,7 +381,12 @@ mod tests {
 
     #[test]
     fn dflash_path_segment_wins_over_mtp_nextn() {
-        let mut meta = minimal_meta("qwen3", 1);
+        let mut meta = ModelMetadata {
+            architecture: "qwen3".into(),
+            nextn_predict_layers: 1,
+            vocab_size: 152000,
+            ..empty_meta()
+        };
         meta.raw_kvs.insert("dflash.target_layers".to_string(), "[]".to_string());
         let path = r"C:\models\unsloth\Qwen3.5-4B-GGUF\DFlash\Qwen3.5-4B-Q4_K_M.gguf";
         assert_eq!(classify_draft_role(&meta, path), DraftRole::ExternalDflash);
@@ -350,5 +410,123 @@ mod tests {
             draft_identity_from_catalog_signals(path, "Qwen3-4B", None, None),
             Some(DraftRole::ExternalDflash)
         );
+    }
+
+    #[test]
+    fn standalone_mtp_head_path_classifies_external() {
+        let meta = minimal_meta("deepseek", 2);
+        let path = r"C:\models\DeepSeek-v4-0732-mtp-head-q4.gguf";
+        assert_eq!(classify_draft_role(&meta, path), DraftRole::ExternalMtp);
+    }
+
+    #[test]
+    fn mtp_head_signal_beats_embedded_nextn() {
+        let meta = minimal_meta("llama", 1);
+        let path = r"C:\drafts\mtp_head\draft-q4.gguf";
+        assert_eq!(classify_draft_role(&meta, path), DraftRole::ExternalMtp);
+    }
+
+    #[test]
+    fn mtp_head_path_heuristic_returns_external_mtp() {
+        assert_eq!(
+            draft_role_from_path_heuristics(r"C:\models\mtp-head.gguf"),
+            DraftRole::ExternalMtp
+        );
+        assert_eq!(
+            draft_role_from_path_heuristics(r"C:\models\mtp_head\draft.bin"),
+            DraftRole::ExternalMtp
+        );
+    }
+
+    #[test]
+    fn mtp_head_detected_via_catalog_signals() {
+        let path = r"C:\models\DeepSeek-v4-mtp-head-q4.gguf";
+        assert_eq!(
+            draft_identity_from_catalog_signals(path, "MTP Head", None, None),
+            Some(DraftRole::ExternalMtp)
+        );
+    }
+
+    #[test]
+    fn external_mtp_is_external_draft_only() {
+        assert!(DraftRole::ExternalMtp.is_external_draft_only());
+    }
+
+    #[test]
+    fn external_mtp_spec_type_needs_draft() {
+        assert!(spec_type_needs_external_draft("draft-dflash"));
+        assert!(spec_type_needs_external_draft("external-mtp"));
+    }
+
+    #[test]
+    fn non_mtp_main_models_remain_launchable() {
+        let meta = minimal_meta("deepseek", 0);
+        assert!(is_launchable_target(Some(&meta), r"C:\models\main.gguf"));
+    }
+
+    #[test]
+    fn external_mtp_is_not_launchable_as_main() {
+        let meta = minimal_meta("deepseek", 2);
+        assert!(!is_launchable_target(Some(&meta), r"C:\models\mtp-head-q4.gguf"));
+    }
+
+    #[test]
+    fn head_only_gguf_without_vocab_classifies_external() {
+        let meta = ModelMetadata {
+            architecture: "deepseek".into(),
+            nextn_predict_layers: 2,
+            vocab_size: 0,
+            ..empty_meta()
+        };
+        assert_eq!(
+            classify_draft_role(&meta, r"C:\models\DeepSeek-V4-Flash-Q4.gguf"),
+            DraftRole::ExternalMtp
+        );
+    }
+
+    #[test]
+    fn full_model_with_vocab_stays_mtp_embedded() {
+        let meta = ModelMetadata {
+            architecture: "deepseek".into(),
+            nextn_predict_layers: 2,
+            vocab_size: 128000,
+            ..empty_meta()
+        };
+        assert_eq!(
+            classify_draft_role(&meta, r"C:\models\full-deepseek.gguf"),
+            DraftRole::MtpEmbedded
+        );
+    }
+
+    #[test]
+    fn mtp_gguf_main_model_stays_embedded_not_external() {
+        // "-MTP-GGUF" folder naming means "main model with MTP baked in", NOT a head file.
+        // Regression: bare "mtp-gguf"/"-mtp-" path signals must not misclassify these.
+        let meta = ModelMetadata {
+            architecture: "qwen35".into(),
+            nextn_predict_layers: 1,
+            vocab_size: 248320,
+            file_size_bytes: 17_909_097_600,
+            ..empty_meta()
+        };
+        let path = r"C:\models\unsloth\Qwen3.6-27B-MTP-GGUF\Qwen3.6-27B-UD-Q4_K_XL.gguf";
+        assert_eq!(classify_draft_role(&meta, path), DraftRole::MtpEmbedded);
+        assert!(is_launchable_target(Some(&meta), path));
+    }
+
+    #[test]
+    fn deepseek_mtp_head_still_external_via_vocab_heuristic() {
+        // Even though "-MTP-Q8_0.gguf" has no explicit "head" token in the name, the
+        // vocab==0 (embedding-free head) heuristic must still classify it external.
+        let meta = ModelMetadata {
+            architecture: "deepseek4".into(),
+            nextn_predict_layers: 1,
+            vocab_size: 0,
+            file_size_bytes: 4_734_696_224,
+            ..empty_meta()
+        };
+        let path = r"C:\models\ddh0\DeepSeek-V4-Flash-GGUF\DeepSeek-V4-Flash-MTP-Q8_0.gguf";
+        assert_eq!(classify_draft_role(&meta, path), DraftRole::ExternalMtp);
+        assert!(!is_launchable_target(Some(&meta), path));
     }
 }

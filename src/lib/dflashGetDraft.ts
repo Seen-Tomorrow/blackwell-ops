@@ -15,6 +15,7 @@ import {
   isExternalDraftOnly,
   MIN_DRAFT_PAIR_SCORE,
   signalContainsDflash,
+  signalContainsMtpHead,
 } from "./specDraft";
 import { KEYS, readJsonStorage, writeJsonStorage } from "./storage";
 
@@ -368,10 +369,24 @@ function smallestGgufBytes(m: HfModel): number | null {
   return Math.min(...sizes);
 }
 
+/**
+ * True for a tiny file whose repo id carries a bare "mtp" token — a standalone MTP head.
+ * Main models with baked-in MTP are far larger (e.g. Qwen3.6-27B-MTP is 16GB+), so the
+ * 6 GiB size gate keeps them out while still catching ~4-5 GiB head exports like
+ * ddh0/DeepSeek-V4-Flash-MTP-Q8_0.
+ */
+function isTinyMtpHeadRepo(m: HfModel): boolean {
+  if (!/\bmtp\b/i.test(m.id || "")) return false;
+  const smallest = smallestGgufBytes(m);
+  return smallest != null && smallest <= DFLASH_DRAFT_MAX_FILE_BYTES;
+}
+
 function repoLooksLikeDflash(m: HfModel): boolean {
   const id = m.id || "";
   // Prefer repo id — tags alone often hitch-hike onto full-model cards from search.
   if (signalContainsDflash(id)) return true;
+  if (signalContainsMtpHead(id)) return true;
+  if (isTinyMtpHeadRepo(m)) return true;
   if ((m.gguf_files || []).some((f) => signalContainsDflash(f.type) || signalContainsDflash(f.url))) {
     return true;
   }
@@ -426,7 +441,8 @@ function mainNameTokens(main: ModelEntry): string[] {
 function scoreDflashRepo(m: HfModel, main: ModelEntry): ScoredRepo | null {
   if (!repoLooksLikeDflash(m)) return null;
   const idLower = m.id.toLowerCase();
-  if (idLower.includes("mtp") && !signalContainsDflash(m.id)) return null;
+  // MTP head repos are valid — don't reject them here (explicit head name OR tiny head file).
+  if (idLower.includes("mtp") && !signalContainsDflash(m.id) && !signalContainsMtpHead(m.id) && !isTinyMtpHeadRepo(m)) return null;
 
   // Hard gate: full-size weights are not draft packs (e.g. 15GB Q4_K_M of 27B).
   const smallestKnown = smallestGgufBytes(m);
@@ -463,10 +479,13 @@ function scoreDflashRepo(m: HfModel, main: ModelEntry): ScoredRepo | null {
 
   let score = 0;
 
-  // ── 1. DFlash identity (0–30) ──────────────────────────────────────────
+  // ── 1. Draft identity (0–30) ──────────────────────────────────────────
   if (signalContainsDflash(m.id)) {
     score += 30;
     notes.push("DFlash pack");
+  } else if (signalContainsMtpHead(m.id) || isTinyMtpHeadRepo(m)) {
+    score += 30;
+    notes.push("MTP head");
   } else if ((m.tags || []).some((t) => signalContainsDflash(t))) {
     score += 18;
     notes.push("DFlash tag");

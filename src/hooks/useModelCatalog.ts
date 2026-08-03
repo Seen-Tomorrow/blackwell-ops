@@ -44,6 +44,7 @@ function modelGeneralSearchText(m: ModelEntry): string {
   const draftRole = draftRoleFromModel(m);
   if (draftRole === "external_dflash") parts.push("dflash", "draft");
   if (draftRole === "external_eagle3") parts.push("eagle3", "draft");
+  if (draftRole === "external_mtp") parts.push("mtp", "draft");
   return parts.join(" ").toLowerCase();
 }
 

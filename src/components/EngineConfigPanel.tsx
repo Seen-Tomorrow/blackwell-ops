@@ -1431,7 +1431,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   const buildLocalDflashPickItems = useCallback((): DraftPickListItem[] => {
     if (!model || !models?.length) return [];
     const items: DraftPickListItem[] = models
-      .filter((m) => m.path !== model.path && draftRoleFromModel(m) === "external_dflash")
+      .filter((m) => m.path !== model.path && (draftRoleFromModel(m) === "external_dflash" || draftRoleFromModel(m) === "external_mtp"))
       .map((m) => {
         const score = scoreDraftPair(model, m, "external_dflash");
         const label = resolveDraftPathLabel(m.path);
@@ -1442,6 +1442,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           title: label,
           meta: [author, quant, m.size_str].filter(Boolean).join(" · "),
           score,
+          draftRole: draftRoleFromModel(m),
         };
       })
       .sort((a, b) => (b.score ?? -999) - (a.score ?? -999));
