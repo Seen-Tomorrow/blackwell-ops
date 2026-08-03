@@ -27,6 +27,11 @@ export type CustomProviderCapabilities = {
    * Used only when verbose is true. Default "-lv 4" when empty.
    */
   verboseArgs?: string;
+  /** Fusion telemetry adapter: `ggml_master` (full log belt), `ggml_tom`, or `ggml_quiet`
+   * (silent server — no stderr PP/TG logs; brain derives PP + multi-slot TG from
+   * /slots + /metrics). Default `ggml_master` when fusion is on.
+   */
+  fusionAdapter?: string;
 };
 
 export const DEFAULT_CUSTOM_CAPABILITIES: Required<
@@ -40,12 +45,13 @@ export const DEFAULT_CUSTOM_CAPABILITIES: Required<
 
 export function resolveCustomCapabilities(
   caps: CustomProviderCapabilities | undefined | null,
-): typeof DEFAULT_CUSTOM_CAPABILITIES {
+): typeof DEFAULT_CUSTOM_CAPABILITIES & { fusionAdapter: string } {
   return {
     fusion: Boolean(caps?.fusion),
     metrics: Boolean(caps?.metrics),
     verbose: Boolean(caps?.verbose),
     verboseArgs: (caps?.verboseArgs ?? "").trim() || DEFAULT_CUSTOM_CAPABILITIES.verboseArgs,
+    fusionAdapter: (caps?.fusionAdapter ?? "").trim(),
   };
 }
 

@@ -29,8 +29,16 @@ const outlineChip =
   "ctx-bar-capacity-chip text-[6px] font-mono tracking-wider px-1 py-0.5 rounded-sm border bg-transparent";
 
 export function formatTokenCount(n: number): string {
-  if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
-  if (n >= 1000) return `${Math.floor(n / 1000)}K`;
+  // Binary K/M (÷1024) — matches the app's own `750k` → 750×1024 = 768,000 token
+  // convention (see parse_ctx_token_str). A 768,000-token ctx displays as "750K".
+  if (n >= 1024 * 1024) {
+    const v = n / (1024 * 1024);
+    return Number.isInteger(v) ? `${v}M` : `${v.toFixed(1)}M`;
+  }
+  if (n >= 1024) {
+    const v = n / 1024;
+    return Number.isInteger(v) ? `${v}K` : `${v.toFixed(1)}K`;
+  }
   return n.toString();
 }
 

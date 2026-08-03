@@ -317,6 +317,27 @@ export default function FusionOverlay({
     setIsBenchWarmup(payload.phase === "warmup");
   }, [displayPort]);
 
+  // ── Quiet-mode toggle (silent models like DS4 emit no stderr PP/TG logs) ──
+  // Persisted per model so it re-applies on the next launch of the same model.
+  const quietKey = `fusion.quiet.${(modelName || displayAlias).trim().toLowerCase()}`;
+  const [quietMode, setQuietMode] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(quietKey) === "1";
+    } catch {
+      return false;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem(quietKey, quietMode ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+    // Push the runtime flip to the backend so the live brain switches between
+    // log-belt (master/tom) and /slots-derived (quiet) PP + multi-slot TG math.
+    invoke("set_fusion_quiet_mode", { port: displayPort, quiet: quietMode }).catch(() => {});
+  }, [quietMode, quietKey, displayPort]);
+
   if (!supportsFusion) {
     const isLaunching = engineStatus === "LOADING";
 
@@ -571,6 +592,22 @@ export default function FusionOverlay({
                 {displayAlias.toUpperCase()}
               </span>
               <span className="text-[12px] font-mono text-stealth-muted/30">:{displayPort}</span>
+              <button
+                type="button"
+                onClick={() => setQuietMode((q) => !q)}
+                title={
+                  quietMode
+                    ? "Quiet mode: /slots-derived PP + multi-slot TG (no stderr logs). Click for log-belt mode."
+                    : "Log-belt mode: expects stderr print_timing/NewPrompt logs. Click for quiet (/slots-only) mode — use for silent models like DS4."
+                }
+                className={`text-[7px] font-bold tracking-wider px-1.5 py-0.5 rounded select-none ${
+                  quietMode
+                    ? "bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30"
+                    : "bg-black/20 text-stealth-muted/40 border border-stealth-border/30 hover:text-stealth-muted/70"
+                }`}
+              >
+                {quietMode ? "QUIET" : "LOGS"}
+              </button>
               <button
                 onClick={handleStopEngine}
                 disabled={isStopping}

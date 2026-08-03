@@ -40,7 +40,10 @@ HTTP ~25ms ──► fusion::poller::poll_slots  ──┐
 | `fusion/adapters/parse_ggml.rs` | Shared ggml-org stderr regex belt |
 | `fusion/log.rs` | Canonical `LogEvent` enum |
 | `fusion/registry.rs` | `resolve_adapter`, per-slot adapter map for log_hub |
-| `fusion/brain.rs` | State machine, fusion, `FusionUpdate` build |
+| `fusion/brain.rs` | Orchestrator + phase state machine + log handlers + `FusionUpdate` build |
+| `fusion/emit.rs` | `FusionUpdate` contract + `SlotCtxInfo` + emit-on-change fingerprint + snapshot cache (rehydrate) |
+| `fusion/slotstate.rs` | `SlotBank` — per-slot KV/decode/prompt tracking + self-contained slot queries |
+| `fusion/meter.rs` | `ParallelMeter`, `clamp_display_tps`, pure `session_avg_tps` / `per_slot_tps` hero math |
 | `log_hub.rs` | Stderr + stdout readers → fusion parse; stderr → UI batch |
 | `bench_pp_burst.rs` | PP bench (uses `/completion` + `/tokenize` calibration) |
 | `FusionOverlay.tsx` | Hero PP/TG, LIVE/AVG toggle, phase banner |
@@ -55,7 +58,20 @@ Adapter id is set via `spawn_profile.fusion_adapter` in factory JSON, with auto-
 |---------|------------------|---------------|--------------------|---------------------|
 | **ggml-master** | `ggml_master` | `-lv 4` stderr | Yes (`n_prompt_tokens_processed`) | `/slots` + stderr belt |
 | **ggml-tom** | `ggml_tom` | `-lv 3` (poll quiet) | **No** — omitted from JSON | stdout `PromptProcessingProgress` + `NewPrompt` |
+| **ggml-quiet** | `ggml_quiet` | none (silent) | Yes | `/slots` peak `n_prompt_tokens` (see §1.1.1) |
 | **IK** | `ik_llama` | `-lv 4` stderr | Yes | `/slots` + stderr; `normalize_slots` maps `state`/`command` → `is_processing` |
+
+#### 1.1.1 Silent engines (`ggml_quiet`)
+
+Some llama-server builds/model architectures stop logging after boot — no `new prompt`, `print_timing`, `cached n_tokens`, or `init sampler` on stderr. Only HTTP `/slots` (full PP fields) and `/metrics` are available. `ggml_quiet` tells the brain `has_log_belt() = false`, so it:
+
+* **PP progress** — derives the per-slot request total from the running **peak** `n_prompt_tokens` (`prompt.tokens.size()` grows during eval → final size), summed across busy slots. Less precise than `task.n_tokens` (progress starts low and converges) but real. Multi-slot wave progress = aggregate `n_prompt_tokens_processed` ÷ sum of per-slot peaks.
+* **Multi-slot TG** — opens the decode wall / TG window once any slot is decoding (decode on a slot means it left PP) and trusts the latched wave peak without the +2 hysteresis margin, so staggered polls (never >1 busy at once) still yield system TG throughput instead of locking at 0.
+* **PP TPS** — unchanged; comes from per-poll `/slots` `n_prompt_tokens_processed` deltas and the `/metrics` `prompt_tokens_seconds` gauge.
+
+Wire-up: factory `spawn_profile.fusion_adapter = "ggml_quiet"`, or custom provider capability `fusionAdapter: "ggml_quiet"` (UI: CONFIG → custom provider → Fusion telemetry → Adapter).
+
+**Runtime toggle (per model, no restart):** a quiet model (e.g. DS4) running on a normal ggml-master provider can be flipped live via the fusion-display header `QUIET`/`LOGS` button. It sends `set_fusion_quiet_mode(port, quiet)` → `BrainInbound::SetQuietMode` → toggles the brain's `has_log_belt` and immediately re-polls `/slots`. The preference is persisted per model name in `localStorage` (`fusion.quiet.<model>`) and re-applied on the next launch of that model.
 
 **Tuning a new fork:** add `fusion/adapters/<id>.rs`, register in `FusionAdapterId`, set factory `fusion_adapter`, add a unit test with a real log line. Keep phase/TPS math in `brain.rs`; adapters only translate I/O.
 

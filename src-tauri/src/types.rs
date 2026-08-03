@@ -385,6 +385,10 @@ pub struct CustomProviderCapabilities {
     /// Free-form verbosity CLI (e.g. "-lv 4" or "--verbose").
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub verbose_args: String,
+    /// Fusion telemetry adapter — `ggml_master` (full log belt), `ggml_tom`, or `ggml_quiet`
+    /// (silent server: no stderr PP/TG logs, brain derives PP + multi-slot TG from /slots+/metrics).
+    #[serde(default, rename = "fusionAdapter", skip_serializing_if = "String::is_empty")]
+    pub fusion_adapter: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -491,6 +495,7 @@ impl CustomProviderCapabilities {
             && !self.metrics
             && !self.verbose
             && self.verbose_args.is_empty()
+            && self.fusion_adapter.is_empty()
     }
 }
 

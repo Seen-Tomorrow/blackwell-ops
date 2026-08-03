@@ -8,10 +8,12 @@ use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 
 use crate::fusion::adapters::FusionAdapterId;
+use crate::fusion::emit::{cache_fusion_snapshot, clear_snapshots, find_slot_idx_for_port, remove_fusion_snapshot, FusionEmitFingerprint, FusionUpdate, SlotCtxInfo};
 use crate::fusion::meter::{self, FusionMeterLane, ParallelMeter};
-use crate::fusion::registry;
-use crate::log_hub::LogHub;
 use crate::fusion::poller::MetricsSnapshot;
+use crate::fusion::registry;
+use crate::fusion::slotstate::{apply_log_primary_ctx_live, default_ctx_per_slot, SlotBank};
+use crate::log_hub::LogHub;
 
 /// PP hero AVG: need sustained prefill wall time (sparse agent file bursts skew tokens/request_elapsed).
 const MIN_PP_SESSION_AVG_MS: u64 = 10_000;
@@ -66,36 +68,6 @@ fn clamp_display_tps(tps: f64) -> f64 {
     meter::clamp_display_tps(tps)
 }
 
-/// Per-slot KV budget when engine has not reported `n_ctx` yet (llama.cpp: n_ctx_seq = n_ctx / n_parallel).
-fn default_ctx_per_slot(ctx_total: usize, parallel: i64) -> usize {
-    let slots = parallel.max(1) as usize;
-    if slots <= 1 {
-        ctx_total
-    } else if ctx_total > 0 {
-        ctx_total / slots
-    } else {
-        0
-    }
-}
-
-/// Live TG extension on the busy slot only — fill numerator is log-primary (`log_prompt_fill` + gen delta).
-fn apply_log_primary_ctx_live(s: &mut SlotTrackState, n_decoded: usize, slot_busy: bool) {
-    if !slot_busy {
-        return;
-    }
-    let gen_delta = n_decoded.saturating_sub(s.request_start_n_decoded);
-    let live = s.log_prompt_fill.saturating_add(gen_delta);
-    if live == 0 {
-        return;
-    }
-    if live > s.session_n_decoded {
-        s.session_n_decoded = live;
-    }
-    if live > s.total_tokens_lifetime {
-        s.total_tokens_lifetime = live;
-    }
-}
-
 // ── Configuration (immutable after construction) ─────────────────────
 
 #[derive(Clone)]
@@ -108,6 +80,8 @@ pub struct FusionConfig {
     pub unified_kv: bool,
     pub provider_id: String,
     pub adapter: FusionAdapterId,
+    /// Engine emits no stderr PP/TG log belt → derive PP totals/progress + multi-slot TG from /slots+/metrics.
+    pub has_log_belt: bool,
 }
 
 // ── Phase state machine ──────────────────────────────────────────────
@@ -130,337 +104,7 @@ pub enum EngineState {
     Active,
 }
 
-// ── Per-slot tracking state (from /slots polling) ────────────────────
-
-struct SlotTrackState {
-    prev_n_decoded: usize,
-    session_n_decoded: usize,
-    prev_timestamp: Instant,
-    request_start_n_decoded: usize,
-    was_processing: bool,
-    current_task_id: Option<i64>,
-    total_tokens_lifetime: usize,
-    // Current prompt snapshot (for prefill progress + accurate ctx fill including cached history)
-    current_prompt_tokens: usize,
-    current_prompt_processed: usize,
-    current_prompt_cache: usize,
-    /// Per-slot PP fill from stderr (`print_timing` / `cached n_tokens`) when /slots omits prompt fields.
-    log_prompt_fill: usize,
-    /// Per-slot KV budget from engine (`/slots` n_ctx or log `n_ctx_slot`).
-    n_ctx_slot: usize,
-    /// Throttle per-slot `cached n_tokens` log lines (global throttle starved compaction on other slots).
-    last_cached_log_at: Option<Instant>,
-    last_cached_log_tokens: usize,
-}
-
-impl SlotTrackState {
-    fn new() -> Self {
-        Self {
-            prev_n_decoded: 0,
-            session_n_decoded: 0,
-            prev_timestamp: Instant::now(),
-            request_start_n_decoded: 0,
-            was_processing: false,
-            current_task_id: None,
-            total_tokens_lifetime: 0,
-            current_prompt_tokens: 0,
-            current_prompt_processed: 0,
-            current_prompt_cache: 0,
-            log_prompt_fill: 0,
-            n_ctx_slot: 0,
-            last_cached_log_at: None,
-            last_cached_log_tokens: 0,
-        }
-    }
-}
-
-// ── Per-slot CTX info emitted to frontend ────────────────────────────
-
-#[derive(Debug, Clone, Serialize)]
-pub struct SlotCtxInfo {
-    pub id: usize,
-    pub n_decoded: usize,
-    #[serde(rename = "sessionNDecoded")]
-    pub session_n_decoded: usize,
-    #[serde(rename = "totalTokensLifetime")]
-    pub total_tokens_lifetime: usize,
-    pub is_processing: bool,
-    // Full context usage for this slot (n_prompt_tokens + n_decoded). Enables accurate "ctx fill" including prefill + cached history.
-    #[serde(rename = "promptTokens")]
-    pub prompt_tokens: usize,
-    #[serde(rename = "promptTokensProcessed")]
-    pub prompt_tokens_processed: usize,
-    #[serde(rename = "promptTokensCache")]
-    pub prompt_tokens_cache: usize,
-    // Additional from full /slots (useful for UI: remaining budget in this request, task id, etc.)
-    #[serde(rename = "nRemain")]
-    pub n_remain: i64,
-    #[serde(rename = "idTask", skip_serializing_if = "Option::is_none")]
-    pub id_task: Option<i64>,
-    #[serde(rename = "speculative")]
-    pub speculative: bool,
-    /// Per-slot KV budget from engine (`/slots` n_ctx or log `n_ctx_slot`).
-    #[serde(rename = "nCtxSlot")]
-    pub n_ctx_slot: usize,
-}
-
-// ── FusionUpdate — curated data structure for frontend subscribers ───
-
-#[derive(Debug, Clone, Serialize)]
-pub struct FusionUpdate {
-    pub alias: String,
-    #[serde(rename = "slotIdx")]
-    pub slot_idx: usize,
-    pub port: u16,
-
-    // Lifecycle (3 states)
-    pub engine_state: EngineState,
-
-    // Phase — fused from both sources
-    pub phase: InferencePhase,
-
-    // ── Prefill metrics (primary source = /metrics for TPS; /slots for progress/tokens — log parser is secondary/debug) ────────────────
-    #[serde(rename = "prefillTpsMetrics")]
-    pub prefill_tps_metrics: f64,
-
-    /// Request-average prefill TPS (tokens processed / wall elapsed) — matches bench `tokens_evaluated / prompt_ms`.
-    #[serde(rename = "prefillTpsSession")]
-    pub prefill_tps_session: f64,
-
-    /// Per-poll / log-chunk prefill TPS (responsive; use with hero LIVE mode).
-    #[serde(rename = "prefillTpsInstant")]
-    pub prefill_tps_instant: f64,
-
-    /// Primary prefill progress 0→1 computed from /slots (n_prompt_tokens_processed / n_prompt_tokens). Bypasses log throttle/miss issues.
-    #[serde(rename = "prefillProgress")]
-    pub prefill_progress: f64,
-    /// n_prompt_tokens_processed from /slots for current request (real-time, no log dependency).
-    #[serde(rename = "prefillTokens")]
-    pub prefill_tokens: usize,
-    /// Target prompt size for current request (from /slots n_prompt_tokens or NewPrompt log).
-    #[serde(rename = "prefillTokensTotal")]
-    pub prefill_tokens_total: usize,
-
-    // ── Generation metrics (primary source = /slots) ─────────────
-    #[serde(rename = "genTps")]
-    pub gen_tps: f64,
-
-    /// Session-average TG TPS (cumulative decode wall) — hero AVG mode, mirrors prefillTpsSession.
-    #[serde(rename = "genTpsSession")]
-    pub gen_tps_session: f64,
-
-    /// Per-poll / log-chunk generation TPS (responsive; use with hero LIVE mode).
-    #[serde(rename = "genTpsInstant")]
-    pub gen_tps_instant: f64,
-
-    #[serde(rename = "genTokensPerRequestSlots")]
-    pub gen_tokens_per_request_slots: usize,
-
-    // Combined session total
-    #[serde(rename = "genTokensPerSession")]
-    pub gen_tokens_per_session: usize,
-
-    // ── Context usage (primary source = /slots only) ───────────────
-    #[serde(rename = "ctxUsedSession")]
-    pub ctx_used_session: usize,
-    #[serde(rename = "ctxFillPct")]
-    pub ctx_fill_pct: f64,
-    #[serde(rename = "ctxTotal")]
-    pub ctx_total: usize,
-    /// Per-slot KV budget (engine `n_ctx_seq`); fallback `ctx_total / parallel`.
-    #[serde(rename = "ctxPerSlot")]
-    pub ctx_per_slot: usize,
-
-    // ── Request timing ─────────────────────────────────────────────
-    #[serde(rename = "requestElapsedMs")]
-    pub request_elapsed_ms: u64,
-    #[serde(rename = "ttftMs", skip_serializing_if = "Option::is_none")]
-    pub ttft_ms: Option<f64>,
-    /// Wall ms for prompt prefill only (sampler_init / prompt eval complete).
-    #[serde(rename = "prefillMs", skip_serializing_if = "Option::is_none")]
-    pub prefill_ms: Option<f64>,
-    /// Wall ms from prefill complete → first output token (TG decode start).
-    #[serde(rename = "decodeTtftMs", skip_serializing_if = "Option::is_none")]
-    pub decode_ttft_ms: Option<f64>,
-
-    // ── Per-slot CTX bars (from /slots only) ───────────────────────
-    #[serde(rename = "slotCtx")]
-    pub slot_ctx: Vec<SlotCtxInfo>,
-
-    // ── Engine config ──────────────────────────────────────────────
-    pub parallel: i64,
-    pub unified_kv: bool,
-
-  // ── Log-parsed values (stderr print_timing lines — red in UI for comparison) ──
-    #[serde(rename = "logPrefillProgress")]
-    pub lp_prefill_progress: f64,       // exact 0→1 from "prompt processing, progress = X.XX"
-
-    #[serde(rename = "logPrefillTps")]
-    pub lp_prefill_tps: f64,            // instantaneous tokens/s during PP (engine's own calc)
-
-    #[serde(rename = "logPromptTokens")]
-    pub lp_prompt_tokens: usize,        // n_tokens processed so far in current PP request
-
-    #[serde(rename = "logGenTps")]
-    pub lp_gen_tps: f64,               // tg = X t/s from generation print_timing line
-
-    #[serde(rename = "logPhase")]
-    pub lp_phase: InferencePhase,       // phase derived purely from log events (PP→TG via sampler_init)
-
-    /// Session cumulative MTP draft acceptance rate (accepted / generated), 0–1.
-    #[serde(rename = "specDraftAcceptRate", skip_serializing_if = "Option::is_none")]
-    pub spec_draft_accept_rate: Option<f64>,
-    #[serde(rename = "specDraftAccepted")]
-    pub spec_draft_accepted: u64,
-    #[serde(rename = "specDraftGenerated")]
-    pub spec_draft_generated: u64,
-    /// Last completed request draft acceptance (from print_timing line).
-    #[serde(rename = "specDraftAcceptRateLast", skip_serializing_if = "Option::is_none")]
-    pub spec_draft_accept_rate_last: Option<f64>,
-    #[serde(rename = "specDraftAcceptedLast", skip_serializing_if = "Option::is_none")]
-    pub spec_draft_accepted_last: Option<usize>,
-    #[serde(rename = "specDraftGeneratedLast", skip_serializing_if = "Option::is_none")]
-    pub spec_draft_generated_last: Option<usize>,
-
-    /// Reset source indicator — "prompt" if NewPrompt caught request start (belt), "regression" if fallback detected (suspenders). Flashes for visual feedback then clears on next PP line.
-    #[serde(rename = "phaseResetSource", skip_serializing_if = "Option::is_none")]
-    pub lp_reset_source: Option<&'static str>,  // Some("prompt") or Some("regression")
-
-    /// Wall clock + hero AVG/LIVE must not tick after request end (bench HTTP return, stop processing, idle tail).
-    #[serde(rename = "requestClosed")]
-    pub request_closed: bool,
-
-    /// Hero meter lane — parallel bench uses poll-only aggregate wall clock (stderr is per-slot).
-    #[serde(rename = "meterLane")]
-    pub meter_lane: FusionMeterLane,
-    #[serde(rename = "busySlotCount")]
-    pub busy_slot_count: usize,
-    /// Peak concurrent busy slots this wave (latched) — denominator for per-slot TPS.
-    #[serde(rename = "concurrentSlots")]
-    pub concurrent_slots: usize,
-    /// System TG tok/s ÷ concurrent slots — “per agent” rate under multi-slot load.
-    #[serde(rename = "genTpsPerSlot")]
-    pub gen_tps_per_slot: f64,
-    /// LIVE counterpart of genTpsPerSlot (poll instant ÷ concurrent).
-    #[serde(rename = "genTpsPerSlotInstant")]
-    pub gen_tps_per_slot_instant: f64,
-    /// Monotonic boundary id — bumps on NewPrompt / bench meter reset (FE edge-triggered wipe).
-    #[serde(rename = "meterSeq")]
-    pub meter_seq: u64,
-}
-
-/// Quantized snapshot for emit-on-change (avoids ~10 Hz identical fusion-update IPC).
-#[derive(Clone, PartialEq, Eq)]
-struct FusionEmitFingerprint {
-    engine_state_tag: u8,
-    phase_tag: u8,
-    prefill_progress_milli: u32,
-    prefill_tokens: u32,
-    prefill_tokens_total: u32,
-    prefill_tps_session_centi: u32,
-    prefill_tps_instant_centi: u32,
-    prefill_tps_metrics_centi: u32,
-    gen_tps_deci: u32,
-    gen_tps_session_deci: u32,
-    gen_tps_instant_deci: u32,
-    gen_tokens_request: u32,
-    gen_tokens_session: u32,
-    ctx_used: u32,
-    ctx_fill_centi: u32,
-    request_elapsed_ms: u64,
-    ttft_ms: u64,
-    prefill_ms: u64,
-    decode_ttft_ms: u64,
-    slot_ctx_hash: u64,
-    log_progress_milli: u32,
-    log_pp_tps_centi: u32,
-    log_prompt_tokens: u32,
-    log_gen_tps_deci: u32,
-    log_phase_tag: u8,
-    spec_draft_accept_rate_milli: u32,
-    spec_draft_accepted: u64,
-    spec_draft_generated: u64,
-    meter_seq: u64,
-    concurrent_slots: u32,
-    gen_tps_per_slot_deci: u32,
-}
-
-impl FusionEmitFingerprint {
-    fn from_update(u: &FusionUpdate) -> Self {
-        Self {
-            engine_state_tag: engine_state_tag(&u.engine_state),
-            phase_tag: phase_tag(&u.phase),
-            prefill_progress_milli: (u.prefill_progress * 1000.0).round() as u32,
-            prefill_tokens: u.prefill_tokens.min(u32::MAX as usize) as u32,
-            prefill_tokens_total: u.prefill_tokens_total.min(u32::MAX as usize) as u32,
-            prefill_tps_session_centi: (u.prefill_tps_session * 100.0).round() as u32,
-            prefill_tps_instant_centi: (u.prefill_tps_instant * 100.0).round() as u32,
-            prefill_tps_metrics_centi: (u.prefill_tps_metrics * 100.0).round() as u32,
-            gen_tps_deci: (u.gen_tps * 10.0).round() as u32,
-            gen_tps_session_deci: (u.gen_tps_session * 10.0).round() as u32,
-            gen_tps_instant_deci: (u.gen_tps_instant * 10.0).round() as u32,
-            gen_tokens_request: u.gen_tokens_per_request_slots.min(u32::MAX as usize) as u32,
-            gen_tokens_session: u.gen_tokens_per_session.min(u32::MAX as usize) as u32,
-            ctx_used: u.ctx_used_session.min(u32::MAX as usize) as u32,
-            ctx_fill_centi: (u.ctx_fill_pct * 100.0).round() as u32,
-            request_elapsed_ms: u.request_elapsed_ms,
-            ttft_ms: u.ttft_ms.map(|v| v.round() as u64).unwrap_or(0),
-            prefill_ms: u.prefill_ms.map(|v| v.round() as u64).unwrap_or(0),
-            decode_ttft_ms: u.decode_ttft_ms.map(|v| v.round() as u64).unwrap_or(0),
-            slot_ctx_hash: hash_slot_ctx(&u.slot_ctx),
-            log_progress_milli: (u.lp_prefill_progress * 1000.0).round() as u32,
-            log_pp_tps_centi: (u.lp_prefill_tps * 100.0).round() as u32,
-            log_prompt_tokens: u.lp_prompt_tokens.min(u32::MAX as usize) as u32,
-            log_gen_tps_deci: (u.lp_gen_tps * 10.0).round() as u32,
-            log_phase_tag: phase_tag(&u.lp_phase),
-            spec_draft_accept_rate_milli: u
-                .spec_draft_accept_rate
-                .map(|r| (r * 1000.0).round() as u32)
-                .unwrap_or(0),
-            spec_draft_accepted: u.spec_draft_accepted,
-            spec_draft_generated: u.spec_draft_generated,
-            meter_seq: u.meter_seq,
-            concurrent_slots: u.concurrent_slots.min(u32::MAX as usize) as u32,
-            gen_tps_per_slot_deci: (u.gen_tps_per_slot * 10.0).round() as u32,
-        }
-    }
-}
-
-fn engine_state_tag(s: &EngineState) -> u8 {
-    match s {
-        EngineState::Loading => 0,
-        EngineState::Ready => 1,
-        EngineState::Active => 2,
-    }
-}
-
-fn phase_tag(p: &InferencePhase) -> u8 {
-    match p {
-        InferencePhase::Idle => 0,
-        InferencePhase::PP => 1,
-        InferencePhase::Tg => 2,
-    }
-}
-
-fn hash_slot_ctx(ctx: &[SlotCtxInfo]) -> u64 {
-    let mut h: u64 = 0;
-    for s in ctx {
-        h = h
-            .wrapping_mul(31)
-            .wrapping_add(s.id as u64)
-            .wrapping_mul(31)
-            .wrapping_add(s.session_n_decoded as u64)
-            .wrapping_mul(31)
-            .wrapping_add(s.n_decoded as u64)
-            .wrapping_mul(31)
-            .wrapping_add(s.prompt_tokens_processed as u64)
-            .wrapping_mul(31)
-            .wrapping_add(s.prompt_tokens_cache as u64)
-            .wrapping_mul(31)
-            .wrapping_add(s.is_processing as u64);
-    }
-    h
-}
+// ── Per-slot tracking state — lives in `fusion/slotstate.rs` (`SlotBank`) ──
 
 // ── Brain internal state ─────────────────────────────────────────────
 
@@ -472,6 +116,7 @@ pub struct FusionBrain {
     parallel: i64,
     unified_kv: bool,
     adapter: FusionAdapterId,
+    has_log_belt: bool,
     phase: InferencePhase,
     engine_state: EngineState,
     request_start: Option<Instant>,
@@ -480,7 +125,7 @@ pub struct FusionBrain {
     ttft_ms: Option<f64>,
     prefill_ms: Option<f64>,
     decode_ttft_ms: Option<f64>,
-    slot_states: HashMap<usize, SlotTrackState>,
+    slot_bank: SlotBank,
     session_tokens_generated: usize,
     prev_metrics: Option<MetricsSnapshot>,
     prev_metrics_time: Option<Instant>,
@@ -584,6 +229,7 @@ impl FusionBrain {
             parallel: config.parallel,
             unified_kv: config.unified_kv,
             adapter: config.adapter,
+            has_log_belt: config.has_log_belt,
             phase: InferencePhase::Idle,
             engine_state: EngineState::Loading,
             request_start: None,
@@ -592,7 +238,7 @@ impl FusionBrain {
             ttft_ms: None,
             prefill_ms: None,
             decode_ttft_ms: None,
-            slot_states: HashMap::new(),
+            slot_bank: SlotBank::new(),
             session_tokens_generated: 0,
             prev_metrics: None,
             prev_metrics_time: None,
@@ -681,7 +327,7 @@ impl FusionBrain {
 
     fn parallel_wave_ready(&self, slots: &[crate::fusion::poller::SlotData]) -> bool {
         self.parallel_meter
-            .wave_ready(self.busy_slot_count(slots))
+            .wave_ready(self.busy_slot_count(slots), !self.has_log_belt)
     }
 
     fn parallel_decode_tps(&self, slots: &[crate::fusion::poller::SlotData]) -> f64 {
@@ -760,7 +406,7 @@ impl FusionBrain {
             total_tokens = self.pp_completed_tokens.saturating_add(peak);
         }
         if total_ms >= MIN_PP_SESSION_AVG_MS && total_tokens > 0 {
-            clamp_display_tps((total_tokens as f64 / total_ms as f64) * 1000.0)
+            meter::session_avg_tps(total_tokens, total_ms, MIN_PP_SESSION_AVG_MS)
         } else {
             0.0
         }
@@ -827,7 +473,7 @@ impl FusionBrain {
             total_tokens = self.tg_completed_tokens.saturating_add(peak);
         }
         if total_ms >= MIN_TG_PER_REQUEST_AVG_MS && total_tokens > 0 {
-            clamp_display_tps((total_tokens as f64 / total_ms as f64) * 1000.0)
+            meter::session_avg_tps(total_tokens, total_ms, MIN_TG_PER_REQUEST_AVG_MS)
         } else {
             0.0
         }
@@ -988,13 +634,6 @@ impl FusionBrain {
         busy_slots.max(peak).max(1)
     }
 
-    fn per_slot_tps(system: f64, concurrent: usize) -> f64 {
-        if system <= 0.0 || concurrent <= 1 {
-            return 0.0;
-        }
-        clamp_display_tps(system / concurrent as f64)
-    }
-
     /// Authoritative request start — clears per-request timing for a new request.
     /// `meter_seq` only advances on a true boundary (closed → open / first start), not every multi-slot NewPrompt.
     fn restart_request_clock(&mut self) {
@@ -1088,7 +727,7 @@ impl FusionBrain {
     }
 
     fn busy_slot_count(&self, slots: &[crate::fusion::poller::SlotData]) -> usize {
-        slots.iter().filter(|s| s.is_processing).count()
+        self.slot_bank.busy_slot_count(slots)
     }
 
     /// Single slot still in PP on a busy /slots row (parallel-safe).
@@ -1118,12 +757,7 @@ impl FusionBrain {
     /// Sum `n_prompt_tokens_processed` across busy slots (64× concurrent prefill).
     fn aggregate_prefill_work_tokens(&self, slots: &[crate::fusion::poller::SlotData]) -> usize {
         if self.adapter.slots_expose_prompt_processed() {
-            let mut sum = 0usize;
-            for slot in slots {
-                if slot.is_processing {
-                    sum = sum.saturating_add(slot.n_prompt_tokens_processed);
-                }
-            }
+            let sum = self.slot_bank.aggregate_prefill_work_tokens(slots, 0);
             if sum > 0 {
                 return sum;
             }
@@ -1132,6 +766,8 @@ impl FusionBrain {
     }
 
     /// TG AVG/LIVE window — multi-slot waits until every busy slot exits PP.
+    /// No-log-belt engines: open once any slot is decoding (decode on a slot means it left PP);
+    /// a straggler PP row must not hold the hero TG locked when there is no log signal to confirm.
     fn parallel_tg_decode_window_open(&self, slots: &[crate::fusion::poller::SlotData]) -> bool {
         if self.request_closed {
             return false;
@@ -1144,6 +780,9 @@ impl FusionBrain {
             return false;
         }
         if busy <= 1 {
+            return true;
+        }
+        if !self.has_log_belt {
             return true;
         }
         !self.any_busy_slot_prefilling(slots)
@@ -1227,7 +866,7 @@ impl FusionBrain {
             .max(self.last_busy_slot_count)
             .max(1);
         self.frozen_concurrent_slots = peak;
-        self.frozen_gen_tps_per_slot = Self::per_slot_tps(self.frozen_request_gen_tps, peak);
+        self.frozen_gen_tps_per_slot = meter::per_slot_tps(self.frozen_request_gen_tps, peak);
         self.close_tg_burst();
         self.log_request_open = false;
         self.stop_request_clock();
@@ -1272,7 +911,7 @@ impl FusionBrain {
         self.prev_instant_gen_decoded = 0;
         self.prefill_tps_instant = 0.0;
         self.gen_tps_instant = 0.0;
-        for s in self.slot_states.values_mut() {
+        for s in self.slot_bank.states.values_mut() {
             s.was_processing = false;
             s.session_n_decoded = 0;
             s.log_prompt_fill = 0;
@@ -1290,7 +929,7 @@ impl FusionBrain {
             }
             let decoded = slot.next_token[0].n_decoded;
             let baseline = self
-                .slot_states
+                .slot_bank.states
                 .get(&slot.id)
                 .map(|s| s.request_start_n_decoded)
                 .unwrap_or(0);
@@ -1345,65 +984,23 @@ impl FusionBrain {
     }
 
     fn pin_slot_ctx_capacity(&mut self, slot_id: usize, n_ctx: usize) {
-        if n_ctx == 0 {
-            return;
-        }
-        let s = self
-            .slot_states
-            .entry(slot_id)
-            .or_insert_with(SlotTrackState::new);
-        if s.n_ctx_slot != n_ctx {
-            s.n_ctx_slot = n_ctx;
+        if self.slot_bank.pin_ctx_capacity(slot_id, n_ctx) {
             self.emit_dirty = true;
         }
     }
 
     /// Authoritative KV occupancy — `stop processing`, compaction, sampler total (exact set).
     fn pin_slot_ctx_fill(&mut self, slot_id: usize, n_tokens: usize) {
-        let s = self
-            .slot_states
-            .entry(slot_id)
-            .or_insert_with(SlotTrackState::new);
-        s.log_prompt_fill = n_tokens;
-        s.session_n_decoded = n_tokens;
-        s.current_prompt_processed = n_tokens;
-        if n_tokens > s.total_tokens_lifetime {
-            s.total_tokens_lifetime = n_tokens;
+        if self.slot_bank.pin_ctx_fill(slot_id, n_tokens) {
+            self.emit_dirty = true;
         }
-        self.emit_dirty = true;
     }
 
     /// Live in-request growth only (monotonic) — PP chunks / TG decode between authoritative pins.
     fn bump_slot_ctx_from_log(&mut self, slot_id: usize, prompt_fill: usize, n_decoded: usize) {
-        if prompt_fill == 0 && n_decoded == 0 {
-            return;
+        if self.slot_bank.bump_ctx_from_log(slot_id, prompt_fill, n_decoded) {
+            self.emit_dirty = true;
         }
-        let used = if prompt_fill > 0 {
-            let gen_delta = n_decoded.saturating_sub(
-                self.slot_states
-                    .get(&slot_id)
-                    .map(|s| s.request_start_n_decoded)
-                    .unwrap_or(0),
-            );
-            prompt_fill.saturating_add(gen_delta)
-        } else {
-            n_decoded
-        };
-        let s = self
-            .slot_states
-            .entry(slot_id)
-            .or_insert_with(SlotTrackState::new);
-        if prompt_fill > 0 {
-            s.log_prompt_fill = prompt_fill;
-            s.current_prompt_processed = prompt_fill;
-        }
-        if used > s.session_n_decoded {
-            s.session_n_decoded = used;
-        }
-        if used > s.total_tokens_lifetime {
-            s.total_tokens_lifetime = used;
-        }
-        self.emit_dirty = true;
     }
 
     /// Pin TG decode baseline when a request (or SWA re-prefill) starts on a slot that never went idle.
@@ -1415,16 +1012,15 @@ impl FusionBrain {
         decode_baseline: Option<usize>,
     ) {
         let baseline = decode_baseline.unwrap_or_else(|| {
-            self.slot_states
+            self.slot_bank
+                .states
                 .get(&slot_id)
                 .map(|s| s.prev_n_decoded)
                 .unwrap_or(0)
         });
-        let s = self
-            .slot_states
-            .entry(slot_id)
-            .or_insert_with(SlotTrackState::new);
+        let s = self.slot_bank.entry(slot_id);
         s.request_start_n_decoded = baseline;
+        s.peak_prompt_tokens = 0;
         if let Some(tid) = task_id {
             s.current_task_id = Some(tid);
         }
@@ -1435,7 +1031,7 @@ impl FusionBrain {
 
     /// Engine resets per-task `n_decoded` while we still hold the prior request's high baseline (common after bench/MTP).
     fn rebaseline_decode_if_stale(&mut self, slot_id: usize, n_decoded: usize) {
-        if let Some(s) = self.slot_states.get_mut(&slot_id) {
+        if let Some(s) = self.slot_bank.states.get_mut(&slot_id) {
             if n_decoded < s.request_start_n_decoded {
                 s.request_start_n_decoded = n_decoded;
                 if self.tg_start_n_decoded > n_decoded {
@@ -1446,22 +1042,12 @@ impl FusionBrain {
     }
 
     /// Per-request decode progress — `n_decoded > request_start_n_decoded` (not raw `n_decoded > 0`).
-    /// Do not gate on `n_remain <= 0`: unlimited chat uses negative `n_remain`; MTP can report 0 while finishing.
     fn slot_has_request_decode(&self, slot: &crate::fusion::poller::SlotData) -> bool {
-        if !slot.is_processing || slot.next_token.is_empty() {
-            return false;
-        }
-        let t = &slot.next_token[0];
-        let baseline = self
-            .slot_states
-            .get(&slot.id)
-            .map(|st| st.request_start_n_decoded)
-            .unwrap_or(0);
-        t.n_decoded > baseline
+        self.slot_bank.slot_has_request_decode(slot)
     }
 
     fn slots_have_active_generation(&self, slots: &[crate::fusion::poller::SlotData]) -> bool {
-        slots.iter().any(|s| self.slot_has_request_decode(s))
+        self.slot_bank.slots_have_active_generation(slots)
     }
 
     /// TG belt: fused phase OR log print_timing `tg =` while request is open (MTP emits sparse gen lines).
@@ -1508,14 +1094,15 @@ impl FusionBrain {
         &self,
         slots: &[crate::fusion::poller::SlotData],
     ) -> (f64, usize) {
-        let total = self.prefill_tokens_total;
+        // total = log-derived request size when a belt exists; otherwise per-slot /slots peak sum.
+        let total = self.request_prompt_total(slots).unwrap_or(0);
         let busy_count = self.busy_slot_count(slots);
         let aggregate_tokens = self.aggregate_prefill_work_tokens(slots);
 
         if busy_count > 1 && self.adapter.slots_expose_prompt_processed() && total > 0 {
-            let wave_total = total.saturating_mul(busy_count);
-            let mut progress = (aggregate_tokens as f64 / wave_total as f64).clamp(0.0, 1.0);
-            if aggregate_tokens + 2 >= wave_total {
+            // Multi-slot wave: aggregate processed ÷ summed per-slot targets.
+            let mut progress = (aggregate_tokens as f64 / total as f64).clamp(0.0, 1.0);
+            if aggregate_tokens + 2 >= total {
                 progress = 1.0;
             }
             progress = progress
@@ -1680,6 +1267,36 @@ impl FusionBrain {
                                 let _ = tx.send(());
                             }
                         }
+                        BrainInbound::SetQuietMode(quiet) => {
+                            brain.has_log_belt = !quiet;
+                            // Clear any log-derived totals so /slots peak derivation kicks in for quiet mode.
+                            brain.reset_prefill_counters();
+                            brain.parallel_meter.reset();
+                            brain.last_busy_slot_count = 0;
+                            brain.lp_phase = InferencePhase::Idle;
+                            brain.prefill_progress = 0.0;
+                            brain.lp_prefill_progress = 0.0;
+                            brain.prefill_tokens_total = 0;
+                            let msg = format!(
+                                "[fusion] slot={slot_idx} port={} quiet_mode={quiet}",
+                                brain.port
+                            );
+                            log::info!("{msg}");
+                            crate::session_log::append_session_line(&msg);
+                            let preview = brain.build_update(&[], None);
+                            brain.force_emit(&log_hub, preview);
+                            // Wake an immediate /slots poll so quiet-mode PP derivation engages right away.
+                            if quiet {
+                                let _ = brain
+                                    .fusion_poll_cycle(
+                                        &client,
+                                        &log_hub,
+                                        &mut idle_cheap_streak,
+                                        &mut last_idle_heartbeat,
+                                    )
+                                    .await;
+                            }
+                        }
                     }
                 }
 
@@ -1819,7 +1436,7 @@ impl FusionBrain {
                 self.prefill_tokens_total = total;
             }
         }
-        if self.slot_states.get(&slot_id).map(|s| s.current_task_id).flatten().is_none() {
+        if self.slot_bank.states.get(&slot_id).map(|s| s.current_task_id).flatten().is_none() {
             self.begin_request_on_slot(slot_id, Some(task_id), None);
         }
         self.restart_request_clock();
@@ -1858,7 +1475,7 @@ impl FusionBrain {
         self.prefill_progress = 0.0;
         self.prefill_tokens = 0;
         self.lp_prompt_tokens = 0;
-        if let Some(s) = self.slot_states.get_mut(&slot_id) {
+        if let Some(s) = self.slot_bank.states.get_mut(&slot_id) {
             s.last_cached_log_at = None;
             s.last_cached_log_tokens = 0;
         }
@@ -1937,7 +1554,7 @@ impl FusionBrain {
             self.fold_pp_eval_burst(tokens, eval_ms);
         }
         let n_decoded = self
-            .slot_states
+            .slot_bank.states
             .get(&slot_id)
             .map(|s| s.prev_n_decoded)
             .unwrap_or(0);
@@ -1984,7 +1601,7 @@ impl FusionBrain {
                 }
             }
             let n_decoded = self
-                .slot_states
+                .slot_bank.states
                 .get(slot_id)
                 .map(|s| s.prev_n_decoded)
                 .unwrap_or(0);
@@ -2014,7 +1631,7 @@ impl FusionBrain {
                 if self.tg_start_time.is_none() {
                     self.tg_start_time = Some(Instant::now());
                     self.tg_start_n_decoded = self
-                        .slot_states
+                        .slot_bank.states
                         .get(slot_id)
                         .map(|s| s.request_start_n_decoded)
                         .unwrap_or(0);
@@ -2059,7 +1676,7 @@ impl FusionBrain {
         }
         let now = Instant::now();
         let (prior_cached, prior_session, n_decoded, request_start) = self
-            .slot_states
+            .slot_bank.states
             .get(&slot_id)
             .map(|s| {
                 (
@@ -2076,7 +1693,7 @@ impl FusionBrain {
             || cached_tokens + 256 < prior_session
             || (cached_tokens == 0 && prior_session > 512);
         if !compaction {
-            if let Some(s) = self.slot_states.get(&slot_id) {
+            if let Some(s) = self.slot_bank.states.get(&slot_id) {
                 if let Some(last) = s.last_cached_log_at {
                     if cached_tokens <= s.last_cached_log_tokens
                         && now.duration_since(last).as_millis() < 80
@@ -2107,7 +1724,7 @@ impl FusionBrain {
         } else {
             self.bump_slot_ctx_from_log(slot_id, cached_tokens, n_decoded);
         }
-        if let Some(s) = self.slot_states.get_mut(&slot_id) {
+        if let Some(s) = self.slot_bank.states.get_mut(&slot_id) {
             s.last_cached_log_at = Some(now);
             s.last_cached_log_tokens = cached_tokens;
         }
@@ -2126,12 +1743,12 @@ impl FusionBrain {
         }
         // Authoritative KV size at PP→TG boundary (`init sampler … total = N`).
         let n_decoded = self
-            .slot_states
+            .slot_bank.states
             .get(&slot_id)
             .map(|s| s.prev_n_decoded)
             .unwrap_or(0);
         let gen_delta = n_decoded.saturating_sub(
-            self.slot_states
+            self.slot_bank.states
                 .get(&slot_id)
                 .map(|s| s.request_start_n_decoded)
                 .unwrap_or(0),
@@ -2142,7 +1759,7 @@ impl FusionBrain {
     fn handle_stop_processing(&mut self, slot_id: usize, n_tokens: usize) {
         // Exact pin — monotonic max here kept bars at 100% after compaction / new session.
         self.pin_slot_ctx_fill(slot_id, n_tokens);
-        if let Some(s) = self.slot_states.get_mut(&slot_id) {
+        if let Some(s) = self.slot_bank.states.get_mut(&slot_id) {
             s.was_processing = false;
         }
         self.lp_reset_prompt = false;
@@ -2224,7 +1841,7 @@ impl FusionBrain {
         // updates in one batch at request end (bench TG showed multi-second bogus TTFT).
         if tt_delta > 0 && self.phase == InferencePhase::Tg && self.tg_start_time.is_none() {
             let baseline: usize = self
-                .slot_states
+                .slot_bank.states
                 .values()
                 .map(|s| s.request_start_n_decoded)
                 .sum();
@@ -2318,24 +1935,61 @@ impl FusionBrain {
         }
     }
 
+    /// Per-slot prompt target for the current request — log `prefill_tokens_total` when a belt exists,
+    /// otherwise the running peak `n_prompt_tokens` (prompt.tokens.size() grows during eval → final size).
+    /// Returns `None` when no usable denominator is known yet.
+    fn request_prompt_total(&self, slots: &[crate::fusion::poller::SlotData]) -> Option<usize> {
+        if self.prefill_tokens_total > 0 {
+            return Some(self.prefill_tokens_total);
+        }
+        if self.has_log_belt || !self.adapter.slots_expose_prompt_processed() {
+            return None;
+        }
+        // Sum per-slot peaks (each busy slot carries its own prompt in the wave).
+        let busy_ids: std::collections::HashSet<usize> = slots
+            .iter()
+            .filter(|s| s.is_processing)
+            .map(|s| s.id)
+            .collect();
+        let mut sum = 0usize;
+        for (id, st) in &self.slot_bank.states {
+            if busy_ids.contains(id) && st.peak_prompt_tokens > 0 {
+                sum = sum.saturating_add(st.peak_prompt_tokens);
+            }
+        }
+        if sum == 0 {
+            // Fall back to the single highest peak so a lone slot still yields progress.
+            for (_id, st) in &self.slot_bank.states {
+                if st.peak_prompt_tokens > sum {
+                    sum = st.peak_prompt_tokens;
+                }
+            }
+        }
+        if sum > 0 {
+            Some(sum)
+        } else {
+            None
+        }
+    }
+
     /// Update prefill progress from /slots `n_prompt_tokens_processed` only (never `n_prompt_tokens` — that is prompt.tokens.size()).
     fn update_prefill_from_slots(&mut self, slots: &[crate::fusion::poller::SlotData]) {
-        if !self.adapter.slots_expose_prompt_processed() || self.prefill_tokens_total == 0 {
+        if !self.adapter.slots_expose_prompt_processed() {
             return;
         }
-        let total = self.prefill_tokens_total;
-        let busy_count = self.busy_slot_count(slots).max(1);
+        let Some(total) = self.request_prompt_total(slots) else {
+            return;
+        };
         let aggregate = self.aggregate_prefill_work_tokens(slots);
         if aggregate > self.prefill_tokens {
             self.prefill_tokens = aggregate;
         }
-        let wave_total = total.saturating_mul(busy_count);
-        let mut prog = if wave_total > 0 {
-            (aggregate as f64 / wave_total as f64).clamp(0.0, 1.0)
+        let mut prog = if total > 0 {
+            (aggregate as f64 / total as f64).clamp(0.0, 1.0)
         } else {
             0.0
         };
-        if aggregate + 2 >= wave_total {
+        if aggregate + 2 >= total {
             prog = 1.0;
         }
         // Log belt is ahead of /slots during long text prefill — never regress below log progress.
@@ -2381,7 +2035,7 @@ impl FusionBrain {
             }
 
             let n_decoded = if has_token_data { slot.next_token[0].n_decoded } else { 0 };
-            let s = self.slot_states.entry(slot.id).or_insert_with(SlotTrackState::new);
+            let s = self.slot_bank.entry(slot.id);
 
             let task_changed = match (slot.id_task, s.current_task_id) {
                 (Some(new_id), Some(old_id)) => new_id != old_id,
@@ -2426,7 +2080,7 @@ impl FusionBrain {
                     .iter()
                     .find(|sl| sl.id == d.id)
                     .and_then(|sl| sl.id_task);
-                if let Some(s) = self.slot_states.get_mut(&d.id) {
+                if let Some(s) = self.slot_bank.states.get_mut(&d.id) {
                     s.log_prompt_fill = 0;
                 }
                 self.begin_request_on_slot(d.id, task_id, Some(d.n_decoded));
@@ -2447,7 +2101,7 @@ impl FusionBrain {
                 if d.request_tokens_on_end > 0 {
                     self.capture_ttft_if_unset();
                 }
-                if let Some(s) = self.slot_states.get_mut(&d.id) {
+                if let Some(s) = self.slot_bank.states.get_mut(&d.id) {
                     // Pure generated tokens for the "gen per session" stats (separate from ctx fill bars)
                     s.total_tokens_lifetime += d.request_tokens_on_end;
                 }
@@ -2467,7 +2121,7 @@ impl FusionBrain {
 
             if d.is_proc {
                 if self
-                    .slot_states
+                    .slot_bank.states
                     .get(&d.id)
                     .map(|s| d.n_decoded > s.request_start_n_decoded)
                     .unwrap_or(false)
@@ -2477,13 +2131,19 @@ impl FusionBrain {
             }
 
             // Update slot state from live /slots data.
-            if let Some(s) = self.slot_states.get_mut(&d.id) {
+            if let Some(s) = self.slot_bank.states.get_mut(&d.id) {
                 let new_val = d.n_decoded;
 
                 // Update current prompt snapshot for this slot (for prefill + ctx bars)
                 s.current_prompt_tokens = d.prompt_tokens;
                 s.current_prompt_processed = d.prompt_tokens_processed;
                 s.current_prompt_cache = d.prompt_tokens_cache;
+
+                // No-log-belt engines: n_prompt_tokens grows during eval → track the peak as the
+                // per-slot request total for /slots-derived PP progress (reset on new request).
+                if d.prompt_tokens > s.peak_prompt_tokens {
+                    s.peak_prompt_tokens = d.prompt_tokens;
+                }
 
                 if d.n_ctx > 0 {
                     s.n_ctx_slot = d.n_ctx;
@@ -2518,7 +2178,7 @@ impl FusionBrain {
         let any_decode = self.slots_have_active_generation(slots);
         let any_pp = self.any_busy_slot_prefilling(slots);
         self.parallel_meter
-            .note_decode_wave(now, busy_count, any_decode, any_pp);
+            .note_decode_wave(now, busy_count, any_decode, any_pp, !self.has_log_belt);
 
         self.update_prefill_from_slots(slots);
         self.reconcile_phase(slots, any_processing, now);
@@ -2528,7 +2188,7 @@ impl FusionBrain {
         self.update_instant_tps(slots, now);
 
         let seen_ids: HashSet<usize> = slots.iter().map(|s| s.id).collect();
-        self.slot_states.retain(|id, _| seen_ids.contains(id));
+        self.slot_bank.states.retain(|id, _| seen_ids.contains(id));
 
         // Update engine state from /slots
         if self.engine_state == EngineState::Loading && !any_processing {
@@ -2559,7 +2219,7 @@ impl FusionBrain {
             }
             if total_at_transition == 0 {
                 total_at_transition = self
-                    .slot_states
+                    .slot_bank.states
                     .values()
                     .map(|s| s.request_start_n_decoded)
                     .sum();
@@ -2619,7 +2279,7 @@ impl FusionBrain {
         for slot in slots {
             if !slot.next_token.is_empty() {
                 let n_decoded = slot.next_token[0].n_decoded;
-                if let Some(s) = self.slot_states.get(&slot.id) {
+                if let Some(s) = self.slot_bank.states.get(&slot.id) {
                     gen_tokens_request_slots += n_decoded.saturating_sub(s.request_start_n_decoded);
                 }
             }
@@ -2681,7 +2341,7 @@ impl FusionBrain {
         let mut ctx_per_slot = fallback_per_slot;
         let mut peak_slot_used: usize = 0;
         let mut ctx_fill_pct = 0.0_f64;
-        for (_id, s) in &self.slot_states {
+        for (_id, s) in &self.slot_bank.states {
             if s.n_ctx_slot > 0 {
                 ctx_per_slot = s.n_ctx_slot;
             }
@@ -2720,7 +2380,7 @@ impl FusionBrain {
         };
 
         // Per-slot CTX info for bars
-        let mut slot_ctx: Vec<SlotCtxInfo> = self.slot_states.iter()
+        let mut slot_ctx: Vec<SlotCtxInfo> = self.slot_bank.states.iter()
             .map(|(id, s)| SlotCtxInfo {
                 id: *id,
                 n_decoded: s.prev_n_decoded,
@@ -2769,7 +2429,7 @@ impl FusionBrain {
                     && info.prompt_tokens_processed == 0
                     && info.prompt_tokens_cache == 0
                 {
-                    if let Some(s) = self.slot_states.get(&slot.id) {
+                    if let Some(s) = self.slot_bank.states.get(&slot.id) {
                         if s.log_prompt_fill > 0 {
                             info.prompt_tokens_processed = s.log_prompt_fill;
                         }
@@ -2784,12 +2444,12 @@ impl FusionBrain {
                         .map(|t| t.n_decoded)
                         .unwrap_or(0),
                     session_n_decoded: self
-                        .slot_states
+                        .slot_bank.states
                         .get(&slot.id)
                         .map(|s| s.session_n_decoded)
                         .unwrap_or(0),
                     total_tokens_lifetime: self
-                        .slot_states
+                        .slot_bank.states
                         .get(&slot.id)
                         .map(|s| s.total_tokens_lifetime)
                         .unwrap_or(0),
@@ -2838,8 +2498,8 @@ impl FusionBrain {
             (self.frozen_gen_tps_per_slot, self.frozen_gen_tps_per_slot)
         } else {
             (
-                Self::per_slot_tps(gen_tps_out.max(gen_tps_session), concurrent),
-                Self::per_slot_tps(gen_tps_instant_out, concurrent),
+                meter::per_slot_tps(gen_tps_out.max(gen_tps_session), concurrent),
+                meter::per_slot_tps(gen_tps_instant_out, concurrent),
             )
         };
 
@@ -2854,7 +2514,11 @@ impl FusionBrain {
             prefill_tps_instant: clamp_display_tps(self.prefill_tps_instant),
             prefill_progress,
             prefill_tokens,
-            prefill_tokens_total: self.prefill_tokens_total,
+            // Emit the effective request total (log-derived, or /slots peak sum when no log belt)
+            // so the frontend can render `processed / total` even without engine stderr.
+            prefill_tokens_total: self
+                .request_prompt_total(slots)
+                .unwrap_or(self.prefill_tokens_total),
             gen_tps: gen_tps_out,
             gen_tps_session,
             gen_tps_instant: gen_tps_instant_out,
@@ -2926,26 +2590,11 @@ impl FusionBrain {
     }
 }
 
-// ── Last emitted snapshot cache (frontend rehydrate after HMR / remount) ──
-
-static FUSION_SNAPSHOT_CACHE: std::sync::LazyLock<
-    parking_lot::Mutex<HashMap<usize, FusionUpdate>>,
-> = std::sync::LazyLock::new(|| parking_lot::Mutex::new(HashMap::new()));
-
-fn cache_fusion_snapshot(update: &FusionUpdate) {
-    FUSION_SNAPSHOT_CACHE
-        .lock()
-        .insert(update.slot_idx, update.clone());
-}
-
-fn remove_fusion_snapshot(slot_idx: usize) {
-    FUSION_SNAPSHOT_CACHE.lock().remove(&slot_idx);
-}
-
-/// Return last emitted FusionUpdate per active slot — used to rehydrate frontend listeners.
+/// Flip a live engine's fusion brain between log-belt mode (ggml_master/tom) and quiet mode
+/// (/slots-derived PP + multi-slot TG) — for silent models like DS4 running on master.
 #[tauri::command]
-pub fn get_fusion_snapshots() -> Vec<FusionUpdate> {
-    FUSION_SNAPSHOT_CACHE.lock().values().cloned().collect()
+pub async fn set_fusion_quiet_mode(port: u16, quiet: bool) {
+    crate::fusion::set_quiet_mode_for_port(port, quiet).await;
 }
 
 // ── Fusion task registry (replaces old global FUSION_TASKS) ─────────
@@ -2958,6 +2607,8 @@ pub enum BrainInbound {
     BenchMeterReset(Option<tokio::sync::oneshot::Sender<()>>),
     /// Bench HTTP returned — freeze meters before trailing print_timing / stop log.
     BenchMeterFreeze(Option<tokio::sync::oneshot::Sender<()>>),
+    /// Runtime flip between log-belt (ggml_master-style) and quiet (/slots-derived) fusion mode.
+    SetQuietMode(bool),
 }
 
 static BRAIN_REGISTRY: std::sync::LazyLock<
@@ -3019,12 +2670,7 @@ pub fn route_log_event(slot_idx: usize, event: crate::fusion::log::LogEvent) {
 
 /// Freeze fusion hero meters when a bench HTTP run completes (definitive for stream:false).
 pub async fn freeze_request_meters_for_port(port: u16) {
-    let slot_idx = FUSION_SNAPSHOT_CACHE
-        .lock()
-        .values()
-        .find(|u| u.port == port)
-        .map(|u| u.slot_idx);
-    if let Some(idx) = slot_idx {
+    if let Some(idx) = find_slot_idx_for_port(port) {
         let (ack_tx, ack_rx) = tokio::sync::oneshot::channel();
         let brain_tx = BRAIN_INBOUND_SENDERS.lock().get(&idx).cloned();
         if let Some(tx) = brain_tx {
@@ -3039,14 +2685,20 @@ pub async fn freeze_request_meters_for_port(port: u16) {
     }
 }
 
+/// Flip a running brain between log-belt mode (master/tom) and quiet (/slots-derived) mode.
+/// Used by the fusion-display toggle for models like DS4 that emit no stderr PP/TG logs.
+pub async fn set_quiet_mode_for_port(port: u16, quiet: bool) {
+    if let Some(idx) = find_slot_idx_for_port(port) {
+        let brain_tx = BRAIN_INBOUND_SENDERS.lock().get(&idx).cloned();
+        if let Some(tx) = brain_tx {
+            let _ = tx.try_send(BrainInbound::SetQuietMode(quiet));
+        }
+    }
+}
+
 /// Reset fusion hero meters at bench phase boundaries (warmup ↔ measured, TG → PP).
 pub async fn reset_bench_meters_for_port(port: u16) {
-    let slot_idx = FUSION_SNAPSHOT_CACHE
-        .lock()
-        .values()
-        .find(|u| u.port == port)
-        .map(|u| u.slot_idx);
-    if let Some(idx) = slot_idx {
+    if let Some(idx) = find_slot_idx_for_port(port) {
         let (ack_tx, ack_rx) = tokio::sync::oneshot::channel();
         let brain_tx = BRAIN_INBOUND_SENDERS.lock().get(&idx).cloned();
         if let Some(tx) = brain_tx {
@@ -3133,9 +2785,99 @@ pub async fn stop_all_brains() {
     }
 
     registry::clear_slot_adapters();
-    FUSION_SNAPSHOT_CACHE.lock().clear();
+    clear_snapshots();
     log::info!(
         "[fusion] stop_all_brains complete (shutting_down=true, brains joined/aborted)"
     );
     crate::session_log::append_session_line("[fusion] stop_all_brains complete");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::fusion::adapters::FusionAdapterId;
+    use crate::fusion::poller::SlotData;
+
+    fn quiet_config() -> FusionConfig {
+        FusionConfig {
+            alias: "quiet".into(),
+            slot_idx: 0,
+            port: 9999,
+            ctx_total: 4096,
+            parallel: 4,
+            unified_kv: true,
+            provider_id: "ggml-quiet".into(),
+            adapter: FusionAdapterId::GgmlQuiet,
+            has_log_belt: false,
+        }
+    }
+
+    fn slot(id: usize, is_processing: bool, prompt_tokens: usize, processed: usize) -> SlotData {
+        SlotData {
+            id,
+            is_processing,
+            next_token: vec![crate::fusion::poller::TokenInfo {
+                n_decoded: 0,
+                has_next_token: is_processing,
+                n_remain: -1,
+                has_new_line: false,
+            }],
+            n_prompt_tokens: prompt_tokens,
+            n_prompt_tokens_processed: processed,
+            n_prompt_tokens_cache: 0,
+            n_ctx: 4096,
+            id_task: Some(10),
+            speculative: false,
+            state: 0,
+            command: 0,
+        }
+    }
+
+    #[test]
+    fn quiet_brain_derives_pp_total_from_slots_peak() {
+        let mut brain = FusionBrain::new(&quiet_config());
+        // Two busy slots with growing n_prompt_tokens (prompt.tokens.size() during eval).
+        let slots = vec![slot(0, true, 512, 256), slot(1, true, 640, 320)];
+        brain.process_slots(&slots);
+
+        let total = brain.request_prompt_total(&slots).expect("derived total");
+        // Sum of per-slot peaks (512 + 640).
+        assert_eq!(total, 1152);
+
+        // Progress should be (256 + 320) / 1152 ≈ 0.50.
+        let (prog, tokens) = brain.merged_prefill_display(&slots);
+        assert!((prog - 0.50).abs() < 0.01, "progress = {prog}");
+        assert_eq!(tokens, 576);
+
+        // A log-belt engine must NOT synthesize a total from /slots.
+        let mut master = brain;
+        master.has_log_belt = true;
+        let mslots = vec![slot(0, true, 512, 256)];
+        assert!(master.request_prompt_total(&mslots).is_none());
+    }
+
+    #[test]
+    fn quiet_brain_falls_back_to_lone_slot_peak() {
+        let mut brain = FusionBrain::new(&quiet_config());
+        let slots = vec![slot(0, true, 300, 150)];
+        brain.process_slots(&slots);
+        let total = brain.request_prompt_total(&slots).expect("derived total");
+        assert_eq!(total, 300);
+    }
+
+    #[test]
+    fn quiet_adapter_no_log_belt_relaxes_decode_wall() {
+        let mut meter = ParallelMeter::default();
+        // Simulate a wave peak of 8 with only 1 slot observed busy (staggered multi-slot).
+        meter.observe_wave(8, 1);
+        let now = std::time::Instant::now();
+        // Tolerant (no log belt): decode wall starts with any decode even at busy=1.
+        meter.note_decode_wave(now, 1, true, false, true);
+        assert!(meter.decode_wall_at().is_some());
+        // Non-tolerant (log belt): busy=1 must not start the wall.
+        let mut strict = ParallelMeter::default();
+        strict.observe_wave(8, 1);
+        strict.note_decode_wave(now, 1, true, false, false);
+        assert!(strict.decode_wall_at().is_none());
+    }
 }

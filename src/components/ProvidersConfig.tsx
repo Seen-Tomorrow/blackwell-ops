@@ -71,6 +71,7 @@ interface FormState {
     metrics?: boolean;
     verbose?: boolean;
     verboseArgs?: string;
+    fusionAdapter?: string;
   };
 }
 
@@ -1449,6 +1450,21 @@ function CustomCapabilitiesFields({
         <span>Fusion telemetry</span>
         <span className="text-[8px] config-muted">(needs /slots + logs)</span>
       </label>
+      {caps.fusion && (
+        <div className="flex items-center gap-2 pl-5">
+          <label className="text-[8px] font-mono config-muted shrink-0">Adapter</label>
+          <select
+            value={caps.fusionAdapter}
+            onChange={(e) => patch({ fusionAdapter: e.target.value })}
+            className="config-input flex-1 text-[10px] font-mono px-1 py-0.5"
+            title="ggml_master = full stderr log belt; ggml_quiet = silent server (no PP/TG logs), brain derives PP + multi-slot TG from /slots + /metrics"
+          >
+            <option value="">ggml_master (full logs)</option>
+            <option value="ggml_quiet">ggml_quiet (silent /slots-only)</option>
+            <option value="ggml_tom">ggml_tom</option>
+          </select>
+        </div>
+      )}
       <label className="flex items-center gap-2 text-[10px] font-mono cursor-pointer">
         <input
           type="checkbox"

@@ -176,6 +176,8 @@ export interface ProviderConfig {
     verbose?: boolean;
     /** Free-form, e.g. "-lv 4" or "--verbose" */
     verboseArgs?: string;
+    /** Fusion adapter: `ggml_master` (full log belt), `ggml_quiet` (silent /slots-only), `ggml_tom`. */
+    fusionAdapter?: string;
   };
   display_order?: number;
   buildInfoPerEnv?: Record<string, BuildInfo>;

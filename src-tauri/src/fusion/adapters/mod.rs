@@ -15,6 +15,7 @@
 
 mod parse_ggml;
 pub mod ggml_master;
+pub mod ggml_quiet;
 pub mod ggml_tom;
 
 use crate::fusion::log::LogEvent;
@@ -25,6 +26,8 @@ use crate::fusion::poller::SlotData;
 pub enum FusionAdapterId {
     GgmlMaster,
     GgmlTom,
+    /// Silent server build — no stderr log belt; brain derives PP + multi-slot TG from /slots+/metrics only.
+    GgmlQuiet,
 }
 
 impl FusionAdapterId {
@@ -32,6 +35,7 @@ impl FusionAdapterId {
         match self {
             Self::GgmlMaster => "ggml_master",
             Self::GgmlTom => "ggml_tom",
+            Self::GgmlQuiet => "ggml_quiet",
         }
     }
 
@@ -39,6 +43,7 @@ impl FusionAdapterId {
         match s.trim().to_lowercase().as_str() {
             "ggml_master" | "ggml-master" | "ggml_llama" | "ggml-llama" => Some(Self::GgmlMaster),
             "ggml_tom" | "ggml-tom" => Some(Self::GgmlTom),
+            "ggml_quiet" | "ggml-quiet" | "slots_only" | "slots-only" => Some(Self::GgmlQuiet),
             _ => None,
         }
     }
@@ -47,6 +52,7 @@ impl FusionAdapterId {
         match self {
             Self::GgmlMaster => ggml_master::parse_log_line(line),
             Self::GgmlTom => ggml_tom::parse_log_line(line),
+            Self::GgmlQuiet => ggml_quiet::parse_log_line(line),
         }
     }
 
@@ -54,6 +60,7 @@ impl FusionAdapterId {
         match self {
             Self::GgmlMaster => ggml_master::normalize_slots(slots),
             Self::GgmlTom => ggml_tom::normalize_slots(slots),
+            Self::GgmlQuiet => ggml_quiet::normalize_slots(slots),
         }
     }
 
@@ -61,6 +68,17 @@ impl FusionAdapterId {
         match self {
             Self::GgmlMaster => ggml_master::slots_expose_prompt_processed(),
             Self::GgmlTom => ggml_tom::slots_expose_prompt_processed(),
+            Self::GgmlQuiet => ggml_quiet::slots_expose_prompt_processed(),
+        }
+    }
+
+    /// Does this engine emit the stderr `print_timing` / `new prompt` PP-TG log belt?
+    /// `false` for silent builds — brain must derive PP totals + progress and the
+    /// multi-slot TG decode window from HTTP polling alone.
+    pub fn has_log_belt(self) -> bool {
+        match self {
+            Self::GgmlMaster | Self::GgmlTom => true,
+            Self::GgmlQuiet => ggml_quiet::has_log_belt(),
         }
     }
 }

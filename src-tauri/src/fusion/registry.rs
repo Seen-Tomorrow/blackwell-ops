@@ -29,6 +29,11 @@ pub fn resolve_adapter(
     match template_type {
         "ggml-llama" => FusionAdapterId::GgmlMaster,
         _ if provider_id.eq_ignore_ascii_case("ggml-tom") => FusionAdapterId::GgmlTom,
+        _ if provider_id.eq_ignore_ascii_case("ggml-quiet")
+            || provider_id.eq_ignore_ascii_case("ggml_quiet") =>
+        {
+            FusionAdapterId::GgmlQuiet
+        }
         _ => FusionAdapterId::GgmlMaster,
     }
 }

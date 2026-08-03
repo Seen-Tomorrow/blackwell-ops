@@ -6,15 +6,17 @@
 
 pub mod adapters;
 pub mod brain;
+pub mod emit;
 pub mod log;
 pub mod meter;
 pub mod poller;
 pub mod registry;
+pub mod slotstate;
 
 pub use adapters::FusionAdapterId;
 pub use brain::{
-    freeze_request_meters_for_port, reset_bench_meters_for_port, start_brain, stop_all_brains,
-    stop_brain, FusionConfig,
+    freeze_request_meters_for_port, reset_bench_meters_for_port, set_quiet_mode_for_port,
+    start_brain, stop_all_brains, stop_brain, FusionConfig,
 };
 pub use poller::SlotData;
 pub use registry::resolve_adapter;

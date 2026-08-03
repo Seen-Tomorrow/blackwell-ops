@@ -567,6 +567,7 @@ pub async fn launch_engine(
                     unified_kv: fusion_unified_kv,
                     provider_id: fusion_provider_id,
                     adapter: fusion_adapter,
+                    has_log_belt: fusion_adapter.has_log_belt(),
                 },
             ).await;
         });

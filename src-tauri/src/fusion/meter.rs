@@ -52,11 +52,18 @@ impl ParallelMeter {
     }
 
     /// Hysteresis — /slots busy can trail /metrics by a tick during launch/teardown.
-    pub fn wave_ready(&self, busy_slots: usize) -> bool {
+    /// `tolerant` (no-log-belt engines): trust the latched peak without the +2 margin, so a
+    /// staggered multi-slot wave (polls never see all slots busy at once) still opens the TG/PP
+    /// windows instead of staying locked on a peak that no single poll reproduces.
+    pub fn wave_ready(&self, busy_slots: usize, tolerant: bool) -> bool {
         if self.latched_peak <= 1 {
             return true;
         }
-        busy_slots + 2 >= self.latched_peak
+        if tolerant {
+            busy_slots > 0
+        } else {
+            busy_slots + 2 >= self.latched_peak
+        }
     }
 
     pub fn latched_peak(&self) -> usize {
@@ -70,11 +77,33 @@ impl ParallelMeter {
     }
 
     /// Start decode wall when every busy slot has left PP (matches bench aggregate window).
-    pub fn note_decode_wave(&mut self, now: Instant, busy_slots: usize, any_decode: bool, any_pp: bool) {
-        if self.latched_peak <= 1 || busy_slots <= 1 {
+    /// `tolerant` (no-log-belt engines): trust the latched wave peak even when a single poll only
+    /// sees one busy slot, and start decode once ANY decode is observed — without stderr log lines
+    /// there is no exact "all PP done" signal, so the wall must not be locked by a straggler PP row.
+    pub fn note_decode_wave(
+        &mut self,
+        now: Instant,
+        busy_slots: usize,
+        any_decode: bool,
+        any_pp: bool,
+        tolerant: bool,
+    ) {
+        if self.latched_peak <= 1 {
             return;
         }
-        if any_decode && !any_pp && self.decode_wall_at.is_none() {
+        let concurrent = if tolerant { busy_slots.max(1) } else { busy_slots };
+        if concurrent < 2 && !tolerant {
+            return;
+        }
+        let pp_block = if tolerant {
+            // Without a log belt, only block decode-wall start while a slot is still clearly mid-prefill
+            // (decode on the same slot means it has left PP). A lone straggler PP row must not hold the
+            // wall forever, so allow start once decode is observed and the peak wave is known.
+            false
+        } else {
+            any_pp
+        };
+        if any_decode && !pp_block && self.decode_wall_at.is_none() {
             self.decode_wall_at = Some(now);
         }
     }
@@ -106,4 +135,23 @@ pub fn clamp_display_tps(tps: f64) -> f64 {
     } else {
         tps.min(MAX_DISPLAY_TPS)
     }
+}
+
+/// Session-average tok/s from cumulative tokens + cumulative wall ms (hero AVG mode).
+/// Pure — no brain state. Returns 0 until the wall exceeds `min_ms` (filters elapsed≈0 spikes).
+pub fn session_avg_tps(total_tokens: u64, total_ms: u64, min_ms: u64) -> f64 {
+    if total_ms >= min_ms && total_tokens > 0 {
+        clamp_display_tps((total_tokens as f64 / total_ms as f64) * 1000.0)
+    } else {
+        0.0
+    }
+}
+
+/// System TG tok/s ÷ concurrent slots — “per agent” rate under multi-slot load.
+/// Returns 0 when there's nothing to divide (no system rate, or ≤1 slot).
+pub fn per_slot_tps(system: f64, concurrent: usize) -> f64 {
+    if system <= 0.0 || concurrent <= 1 {
+        return 0.0;
+    }
+    clamp_display_tps(system / concurrent as f64)
 }

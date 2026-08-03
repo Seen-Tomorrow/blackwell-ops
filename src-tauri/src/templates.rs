@@ -429,7 +429,11 @@ impl ProviderTemplate {
         caps: &crate::types::CustomProviderCapabilities,
     ) {
         sp.supports_fusion = caps.fusion;
-        if caps.fusion && sp.fusion_adapter.is_empty() {
+        // Respect an explicit adapter (e.g. `ggml_quiet` for silent server builds); otherwise
+        // default custom providers to the full master log belt.
+        if caps.fusion && !caps.fusion_adapter.trim().is_empty() {
+            sp.fusion_adapter = caps.fusion_adapter.trim().to_string();
+        } else if caps.fusion && sp.fusion_adapter.is_empty() {
             sp.fusion_adapter = "ggml_master".into();
         }
         sp.enable_metrics = caps.metrics;
