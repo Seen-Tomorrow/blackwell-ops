@@ -96,11 +96,11 @@ export default function GpuTopologyCard({
             <p className="gpu-topo-card__value gpu-topo-card__value--readout font-mono tabular-nums">
               {oc ? (
                 <>
-                  {oc.memClockMhz}
+                  {oc.memClockMhz * 2}
                   {oc.memOffsetMhz > 0 && (
-                    <span className="gpu-topo-card__offset"> +{oc.memOffsetMhz}</span>
+                    <span className="gpu-topo-card__offset"> +{oc.memOffsetMhz * 2}</span>
                   )}
-                  {" MHz"}
+                  {" MT/s"}
                 </>
               ) : (
                 <span className="gpu-topo-card__empty">—</span>
