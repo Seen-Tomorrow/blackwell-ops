@@ -53,6 +53,7 @@ mod reactor_foundry;
 mod output_console;
 mod playground;
 mod atomcode;
+mod pi_code;
 mod qwen_code;
 mod external_agents;
 mod gpu_control;
@@ -763,7 +764,11 @@ async fn main() {
 
     #[cfg(debug_assertions)]
     {
-        builder = builder.plugin(tauri_plugin_mcp_bridge::init());
+        builder = builder.plugin(
+            tauri_plugin_mcp_bridge::Builder::new()
+                .bind_address("127.0.0.1")
+                .build(),
+        );
     }
 
     builder
@@ -949,6 +954,11 @@ async fn main() {
             atomcode::atomcode_install,
             atomcode::atomcode_launch,
             atomcode::atomcode_open_webui,
+            pi_code::pi_code_status,
+            pi_code::pi_code_accept_disclaimer,
+            pi_code::pi_code_set_project,
+            pi_code::pi_code_install,
+            pi_code::pi_code_launch,
             qwen_code::qwen_code_status,
             qwen_code::qwen_code_accept_disclaimer,
             qwen_code::qwen_code_set_project,
