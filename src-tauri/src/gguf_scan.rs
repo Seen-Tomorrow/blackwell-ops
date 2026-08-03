@@ -453,7 +453,14 @@ fn parse_print_info(line: &str, m: &mut ModelMetadata) {
 
     match key {
         "arch" => m.architecture = value_str.clone(),
-        "model type" => m.model_type_label = value_str.clone(),
+        "model type" => {
+            // Some arches (e.g. deepseek4) print an unparseable "?B" for model type when
+            // they can't derive a total.active label. Keep the informative size_label-derived
+            // value (e.g. "256x8.4B" — experts x active) instead of discarding it.
+            if !value_str.trim().is_empty() && !value_str.trim().eq_ignore_ascii_case("?B") {
+                m.model_type_label = value_str.clone();
+            }
+        },
         "n_layer" | "n_layers" => parse_u32(&value_str, &mut m.n_layer),
         "n_ctx_train" => parse_u32(&value_str, &mut m.n_ctx_train),
         "n_embd" => parse_u32(&value_str, &mut m.n_embd),
