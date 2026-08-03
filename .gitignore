@@ -83,3 +83,8 @@ opencode.db*
 worktree/
 snapshot/
 log/
+
+# --- pi coding agent artefacts ---
+.pi-subagents/
+.pi/
+

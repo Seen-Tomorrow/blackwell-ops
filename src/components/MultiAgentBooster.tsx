@@ -17,6 +17,12 @@ import {
   type QwenLaunchResult,
 } from "../lib/qwenCode";
 import {
+  PI_CODE_DISCLAIMER,
+  type PiCodeStatus,
+  type PiLaunchRequest,
+  type PiLaunchResult,
+} from "../lib/piCode";
+import {
   dispatchAppEvent,
   EVENTS,
   type AtomcodeEngineClickDetail,
@@ -225,7 +231,7 @@ export default function MultiAgentBooster({
 }: MultiAgentBoosterProps) {
   const [harnessOpen, setHarnessOpen] = useState(false);
   /** Which external agent tool the harness targets. */
-  const [harnessTool, setHarnessTool] = useState<"atomcode" | "qwen">("atomcode");
+  const [harnessTool, setHarnessTool] = useState<"atomcode" | "qwen" | "pi">("atomcode");
   /** Wizard: SOLO vs TWIN (even if more than 2 engines run). */
   const [wizardMode, setWizardMode] = useState<"solo" | "twin">("solo");
   /** Twin: explicit ports from click cycle (none → BRAIN → WORKER → clear). */
@@ -242,6 +248,7 @@ export default function MultiAgentBooster({
   const [harnessAgents, setHarnessAgents] = useState(1);
   const [atomStatus, setAtomStatus] = useState<AtomcodeStatus | null>(null);
   const [qwenStatus, setQwenStatus] = useState<QwenCodeStatus | null>(null);
+  const [piStatus, setPiStatus] = useState<PiCodeStatus | null>(null);
   const [atomBusy, setAtomBusy] = useState<"idle" | "install" | "launch" | "webui">("idle");
   const [atomError, setAtomError] = useState<string | null>(null);
   const [atomMsg, setAtomMsg] = useState<string | null>(null);
@@ -540,13 +547,26 @@ export default function MultiAgentBooster({
     }
   }, [normalizeError]);
 
-  const activeToolStatus = harnessTool === "qwen" ? qwenStatus : atomStatus;
+  const refreshPiStatus = useCallback(async () => {
+    try {
+      const s = await invoke<PiCodeStatus>("pi_code_status");
+      setPiStatus(s);
+      return s;
+    } catch (e) {
+      setAtomError(normalizeError(e));
+      return null;
+    }
+  }, [normalizeError]);
+
+  const activeToolStatus =
+    harnessTool === "qwen" ? qwenStatus : harnessTool === "pi" ? piStatus : atomStatus;
 
   useEffect(() => {
     if (!harnessOpen) return;
     void refreshAtomStatus();
     void refreshQwenStatus();
-  }, [harnessOpen, refreshAtomStatus, refreshQwenStatus]);
+    void refreshPiStatus();
+  }, [harnessOpen, refreshAtomStatus, refreshQwenStatus, refreshPiStatus]);
 
   useEffect(() => {
     if (!harnessOpen) {
@@ -914,6 +934,37 @@ export default function MultiAgentBooster({
     return s;
   }, [qwenStatus, refreshQwenStatus, normalizeError]);
 
+  const ensurePiInstalled = useCallback(async (): Promise<PiCodeStatus | null> => {
+    setAtomError(null);
+    setAtomMsg(null);
+    let s = piStatus ?? (await refreshPiStatus());
+    if (!s) return null;
+    if (!s.disclaimerAccepted) {
+      setShowDisclaimer(true);
+      return null;
+    }
+    if (!s.installed) {
+      setAtomBusy("install");
+      setInstallPhase("download");
+      setAtomMsg(`Downloading pi ${s.pinnedVersion} (~46 MB standalone)…`);
+      try {
+        setInstallPhase("verify");
+        s = await invoke<PiCodeStatus>("pi_code_install", { version: null });
+        setInstallPhase("finalize");
+        setPiStatus(s);
+        setAtomMsg(`Installed pi ${s.version ?? s.pinnedVersion}`);
+      } catch (e) {
+        setAtomError(normalizeError(e));
+        setAtomBusy("idle");
+        setInstallPhase(null);
+        return null;
+      }
+      setAtomBusy("idle");
+      setInstallPhase(null);
+    }
+    return s;
+  }, [piStatus, refreshPiStatus, normalizeError]);
+
   const executeHarnessLaunch = useCallback(
     async (mode: "solo" | "brain_workers") => {
       setAtomError(null);
@@ -934,14 +985,22 @@ export default function MultiAgentBooster({
 
       const tool = harnessTool;
       let projectDir: string | null | undefined =
-        tool === "qwen" ? qwenStatus?.lastProject : atomStatus?.lastProject;
+        tool === "qwen"
+          ? qwenStatus?.lastProject
+          : tool === "pi"
+            ? piStatus?.lastProject
+            : atomStatus?.lastProject;
 
       if (tool === "atomcode") {
         const s = await ensureAtomInstalled();
         if (!s) return;
         projectDir = s.lastProject;
-      } else {
+      } else if (tool === "qwen") {
         const s = await ensureQwenInstalled();
+        if (!s) return;
+        projectDir = s.lastProject;
+      } else {
+        const s = await ensurePiInstalled();
         if (!s) return;
         projectDir = s.lastProject;
       }
@@ -994,7 +1053,7 @@ export default function MultiAgentBooster({
               (worker ? ` + worker :${worker.port}` : ""),
           );
           void refreshAtomStatus();
-        } else {
+        } else if (tool === "qwen") {
           const req: QwenLaunchRequest = {
             mode,
             primary,
@@ -1009,6 +1068,21 @@ export default function MultiAgentBooster({
               (worker ? ` + worker :${worker.port}` : ""),
           );
           void refreshQwenStatus();
+        } else {
+          const req: PiLaunchRequest = {
+            mode,
+            primary,
+            worker,
+            projectDir,
+          };
+          const result = await invoke<PiLaunchResult>("pi_code_launch", {
+            request: req,
+          });
+          setAtomMsg(
+            `Opened pi (${result.mode}) → :${primary.port}` +
+              (worker ? ` + worker :${worker.port}` : ""),
+          );
+          void refreshPiStatus();
         }
         setConfirmMode(null);
 
@@ -1031,14 +1105,17 @@ export default function MultiAgentBooster({
       harnessTool,
       atomStatus?.lastProject,
       qwenStatus?.lastProject,
+      piStatus?.lastProject,
       ensureAtomInstalled,
       ensureQwenInstalled,
+      ensurePiInstalled,
       soloTarget,
       dualTargets,
       pickProjectDir,
       harnessAgents,
       refreshAtomStatus,
       refreshQwenStatus,
+      refreshPiStatus,
       runningEngines,
       onSelectEngine,
       normalizeError,
@@ -1079,7 +1156,12 @@ export default function MultiAgentBooster({
         setAtomError("Twin needs two Running engines on different ports.");
         return;
       }
-      const st = harnessTool === "qwen" ? qwenStatus : atomStatus;
+      const st =
+        harnessTool === "qwen"
+          ? qwenStatus
+          : harnessTool === "pi"
+            ? piStatus
+            : atomStatus;
       if (st && !st.disclaimerAccepted) {
         setShowDisclaimer(true);
         setConfirmMode(mode);
@@ -1087,7 +1169,7 @@ export default function MultiAgentBooster({
       }
       setConfirmMode(mode);
     },
-    [soloTarget.live, dualTargets, harnessTool, atomStatus, qwenStatus],
+    [soloTarget.live, dualTargets, harnessTool, atomStatus, qwenStatus, piStatus],
   );
 
   const acceptDisclaimerAndInstall = useCallback(async () => {
@@ -1104,9 +1186,19 @@ export default function MultiAgentBooster({
         setInstallPhase("finalize");
         setQwenStatus(s);
         setAtomMsg(`Installed Qwen ${s.version ?? s.pinnedVersion}`);
-        // Refresh in case the Rust side stored additional fields (e.g. install path) the
-        // install response didn't surface — keeps the confirm modal in sync.
         void refreshQwenStatus();
+      } else if (harnessTool === "pi") {
+        await invoke("pi_code_accept_disclaimer");
+        setShowDisclaimer(false);
+        setAtomBusy("install");
+        setInstallPhase("download");
+        setAtomMsg("Downloading pi standalone (~46 MB)…");
+        setInstallPhase("verify");
+        const s = await invoke<PiCodeStatus>("pi_code_install", { version: null });
+        setInstallPhase("finalize");
+        setPiStatus(s);
+        setAtomMsg(`Installed pi ${s.version ?? s.pinnedVersion}`);
+        void refreshPiStatus();
       } else {
         await invoke("atomcode_accept_disclaimer");
         setShowDisclaimer(false);
@@ -1129,7 +1221,7 @@ export default function MultiAgentBooster({
       setAtomBusy("idle");
       setInstallPhase(null);
     }
-  }, [harnessTool, normalizeError, refreshAtomStatus, refreshQwenStatus]);
+  }, [harnessTool, normalizeError, refreshAtomStatus, refreshQwenStatus, refreshPiStatus]);
 
   const changeProjectDir = useCallback(async () => {
     const picked = await pickProjectDir();
@@ -1140,6 +1232,11 @@ export default function MultiAgentBooster({
           projectDir: picked,
         });
         setQwenStatus(s);
+      } else if (harnessTool === "pi") {
+        const s = await invoke<PiCodeStatus>("pi_code_set_project", {
+          projectDir: picked,
+        });
+        setPiStatus(s);
       } else {
         const s = await invoke<AtomcodeStatus>("atomcode_set_project", {
           projectDir: picked,
@@ -1405,15 +1502,19 @@ export default function MultiAgentBooster({
             <div className="atomcode-confirm-modal font-mono">
               <h3 id="atomcode-confirm-title" className="atomcode-confirm-title">
                 {confirmMode === "solo"
-                  ? `Open ${harnessTool === "qwen" ? "Qwen Code" : "AtomCode"} — SOLO`
-                  : `Open ${harnessTool === "qwen" ? "Qwen Code" : "AtomCode"} — TWIN`}
+                  ? `Open ${
+                      harnessTool === "qwen" ? "Qwen Code" : harnessTool === "pi" ? "pi" : "AtomCode"
+                    } — SOLO`
+                  : `Open ${
+                      harnessTool === "qwen" ? "Qwen Code" : harnessTool === "pi" ? "pi" : "AtomCode"
+                    } — TWIN`}
               </h3>
               <p className="atomcode-confirm-summary" aria-live="polite">
                 {confirmMode === "solo" ? (
                   <>
                     <span className="atomcode-confirm-summary__mode">BRAIN SOLO</span>
                     <span className="atomcode-confirm-summary__engine">{soloTarget.displayId}</span>
-                    {harnessTool === "atomcode" && (
+                    {harnessTool !== "qwen" && (
                       <span className="atomcode-confirm-summary__agents">AGENTS ×{agentsN}</span>
                     )}
                   </>
@@ -1427,7 +1528,7 @@ export default function MultiAgentBooster({
                     <span className="atomcode-confirm-summary__engine atomcode-confirm-summary__engine--worker">
                       WORKER {dualTargets.worker.model} : {dualTargets.worker.port}
                     </span>
-                    {harnessTool === "atomcode" && (
+                    {harnessTool !== "qwen" && (
                       <span className="atomcode-confirm-summary__agents">AGENTS ×{agentsN}</span>
                     )}
                   </>
@@ -1533,8 +1634,10 @@ export default function MultiAgentBooster({
 
   /* ── Full takeover wizard (replaces power cockpit while open) ── */
   if (harnessOpen) {
-    const toolName = harnessTool === "qwen" ? "Qwen Code" : "AtomCode";
-    const toolShort = harnessTool === "qwen" ? "Qwen" : "AtomCode";
+    const toolName =
+      harnessTool === "qwen" ? "Qwen Code" : harnessTool === "pi" ? "pi" : "AtomCode";
+    const toolShort =
+      harnessTool === "qwen" ? "Qwen" : harnessTool === "pi" ? "pi" : "AtomCode";
     const twinDisabled = runningEngines.length < 2;
     return (
       <div
@@ -1599,6 +1702,28 @@ export default function MultiAgentBooster({
                 {qwenStatus?.installed
                   ? qwenStatus.version ?? qwenStatus.pinnedVersion
                   : "~180 MB · vision"}
+              </span>
+            </button>
+            <button
+              type="button"
+              className={`atomcode-wizard__tool-chip font-mono${harnessTool === "pi" ? " atomcode-wizard__tool-chip--on" : ""}`}
+              onClick={() => {
+                setHarnessTool("pi");
+                setShowDisclaimer(false);
+                setAtomError(null);
+              }}
+              aria-pressed={harnessTool === "pi"}
+              title={
+                piStatus?.installed
+                  ? `pi ${piStatus.version ?? piStatus.pinnedVersion} installed`
+                  : "pi — installs on first open (~46 MB standalone)"
+              }
+            >
+              pi
+              <span className="atomcode-wizard__tool-meta">
+                {piStatus?.installed
+                  ? piStatus.version ?? piStatus.pinnedVersion
+                  : "~46 MB standalone"}
               </span>
             </button>
           </div>
@@ -1831,7 +1956,11 @@ export default function MultiAgentBooster({
         {showDisclaimer && (
           <div className="atomcode-wizard__disclaimer space-y-2">
             <pre className="atomcode-wizard__disclaimer-body font-mono">
-              {harnessTool === "qwen" ? QWEN_CODE_DISCLAIMER : ATOMCODE_DISCLAIMER}
+              {harnessTool === "qwen"
+                ? QWEN_CODE_DISCLAIMER
+                : harnessTool === "pi"
+                  ? PI_CODE_DISCLAIMER
+                  : ATOMCODE_DISCLAIMER}
             </pre>
             <div className="flex flex-wrap gap-2">
               <button
@@ -1970,6 +2099,8 @@ export default function MultiAgentBooster({
                       setShowDisclaimer(true);
                     } else if (harnessTool === "qwen") {
                       void ensureQwenInstalled();
+                    } else if (harnessTool === "pi") {
+                      void ensurePiInstalled();
                     } else {
                       void ensureAtomInstalled();
                     }
@@ -1977,7 +2108,9 @@ export default function MultiAgentBooster({
                 >
                   {harnessTool === "qwen"
                     ? "Pre-install Qwen Code (~180 MB)"
-                    : "Pre-install AtomCode (~30 MB)"}
+                    : harnessTool === "pi"
+                      ? "Pre-install pi (~46 MB)"
+                      : "Pre-install AtomCode (~30 MB)"}
                 </button>
               )}
             </div>
