@@ -349,6 +349,25 @@
   flex-shrink: 0;
 }
 
+/* Split label + compact FIT/FORMULA driver badge stacked under it —
+   contextual, does not grow the chrome row height. */
+.gpu-assign-panel__split-head {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 1px;
+  flex-shrink: 0;
+  align-self: stretch;
+}
+
+.gpu-assign-panel__split-driver {
+  font-size: 6px;
+  letter-spacing: 0.12em;
+  text-align: right;
+  opacity: 0.9;
+}
+
 .gpu-assign-panel__half--split .gpu-assign-panel__chips {
   flex: 1 1 auto;
   justify-content: flex-start;

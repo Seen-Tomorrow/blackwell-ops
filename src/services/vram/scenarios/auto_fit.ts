@@ -31,8 +31,15 @@ export function tryEvaluate(input: ScenarioInput, computed: ComputedValues): Vra
     : null;
 
   const formulaGb = probeGb ?? computed.vramTotalGb;
+  // Weight-only floor is a safety net for UNKNOWN models. A real measurement
+  // (FIT probe or learned prior launch) is trusted over this crude floor —
+  // otherwise a borderline model proven to fit one GPU by a probe gets forced
+  // into split by weightGb*1.05.
+  const hasMeasurement = probeGb != null || learnedGb != null;
   const weightFloorGb = moeOptimalActive ? computed.weightsOnGpuGb * 1.05 : weightGb * 1.05;
-  const estimateGb = Math.max(learnedGb ?? 0, formulaGb, weightFloorGb);
+  const estimateGb = hasMeasurement
+    ? Math.max(learnedGb ?? 0, formulaGb)
+    : Math.max(formulaGb, weightFloorGb);
 
   // GPU-side only — MoE expert weights live in ramWeightsGb, not stacked on VRAM.
   const gpuNeedGb = moeOptimalActive ? computed.vramTotalGb : estimateGb;

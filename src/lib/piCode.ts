@@ -15,6 +15,8 @@ export interface PiEngineRef {
   /** Must match engine launch alias (OpenAI /v1 model id). */
   model: string;
   contextWindow?: number;
+  /** Engine `--parallel` slot count (concurrent subagent capacity). */
+  parallel?: number;
 }
 
 export interface PiLaunchRequest {

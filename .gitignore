@@ -34,6 +34,7 @@ src-tauri/binaries/*
 !src-tauri/binaries/.gitkeep
 src-tauri/runtime-bundle/
 src-tauri/bin/git/
+src-tauri/pi-ext/
 
 # --- AI / Llama Server Specific ---
 # Ignore the actual server executable if you download it externally
@@ -87,4 +88,6 @@ log/
 # --- pi coding agent artefacts ---
 .pi-subagents/
 .pi/
+# Blackwell-managed pi routing doc written into the project cwd on each launch
+PI.md
 

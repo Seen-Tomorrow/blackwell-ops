@@ -30,7 +30,8 @@
     "targets": ["nsis"],
     "resources": {
       "runtime-bundle/": "runtime/",
-      "bin/": "bin/"
+      "bin/": "bin/",
+      "pi-ext/": "pi-ext/"
     },
     "icon": [
       "icons/icon-release.ico"

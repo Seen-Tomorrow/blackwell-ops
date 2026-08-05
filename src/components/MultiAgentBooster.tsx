@@ -639,6 +639,7 @@ export default function MultiAgentBooster({
         modelName: hit.model_name || alias,
         displayId: `${alias} :${hit.port}`,
         contextWindow: hit.n_ctx && hit.n_ctx > 0 ? hit.n_ctx : undefined,
+        parallel: Math.max(1, Number(hit.parallel) || 1),
         live: true as const,
       };
     };
@@ -653,6 +654,7 @@ export default function MultiAgentBooster({
       modelName: "local-model",
       displayId: "no Running engine",
       contextWindow: undefined as number | undefined,
+      parallel: 1,
       live: false as const,
     };
   }, [runningEngines, preferredSlotIdx, port]);
@@ -681,6 +683,7 @@ export default function MultiAgentBooster({
         model: brainAlias,
         displayId: `BRAIN ${brainAlias} :${brain.port}`,
         contextWindow: brain.n_ctx && brain.n_ctx > 0 ? brain.n_ctx : undefined,
+        parallel: Math.max(1, Number(brain.parallel) || 1),
         label: brain.alias || brain.model_name,
       },
       worker: {
@@ -688,6 +691,7 @@ export default function MultiAgentBooster({
         model: workerAlias,
         displayId: `WORKER ${workerAlias} :${worker.port}`,
         contextWindow: worker.n_ctx && worker.n_ctx > 0 ? worker.n_ctx : undefined,
+        parallel: Math.max(1, Number(worker.parallel) || 1),
         label: worker.alias || worker.model_name,
       },
     };
@@ -1019,11 +1023,13 @@ export default function MultiAgentBooster({
               port: soloTarget.port,
               model: soloTarget.model,
               contextWindow: soloTarget.contextWindow,
+              parallel: soloTarget.parallel,
             }
           : {
               port: dualTargets!.brain.port,
               model: dualTargets!.brain.model,
               contextWindow: dualTargets!.brain.contextWindow,
+              parallel: dualTargets!.brain.parallel,
             };
       const worker =
         mode === "solo"
@@ -1032,6 +1038,7 @@ export default function MultiAgentBooster({
               port: dualTargets!.worker.port,
               model: dualTargets!.worker.model,
               contextWindow: dualTargets!.worker.contextWindow,
+              parallel: dualTargets!.worker.parallel,
             };
 
       setAtomBusy("launch");

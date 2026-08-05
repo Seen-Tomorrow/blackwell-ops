@@ -1,5 +1,5 @@
 import type { GpuInfo, VramManifest } from "./types";
-import { needsAutoLayerSplit } from "./autoVramLaunch";
+import { needsAutoLayerSplit, bestVramEstimateGb, weightFloorGb } from "./autoVramLaunch";
 import {
   computeGpuAvailableList,
   type RunningSlotInfo,
@@ -65,9 +65,11 @@ export function resolveLaunchChromePolicy(opts: {
   const targetIdx = parseTargetGpuIdx(opts.config.device);
   const splitActive = isSplitActive(opts.config.split);
 
-  const formulaGb = opts.manifest?.formulaVramTotalGb ?? opts.manifest?.vramTotalGb ?? 0;
-  const learnedGb = opts.manifest?.learnedFromPreviousRun ? (opts.manifest?.vramTotalGb ?? 0) : 0;
-  const estimateGb = Math.max(formulaGb, learnedGb, opts.weightGb * 1.05);
+  const measured = !!opts.manifest
+    && (!!opts.manifest.validatedVramMib || !!opts.manifest.learnedFromPreviousRun);
+  const estimateGb = measured
+    ? bestVramEstimateGb(opts.manifest)
+    : Math.max(bestVramEstimateGb(opts.manifest), weightFloorGb(opts.weightGb));
 
   const selectedAvail = perGpu[targetIdx] ?? 0;
   const fitsOnSelected = estimateGb <= selectedAvail - headroomGb(selectedAvail);

@@ -353,6 +353,7 @@ export default function VramBadge({
   const memorySourcePanel = memorySource ? (
     <MemorySourcePanel
       memorySource={memorySource}
+      manifest={manifest}
       isValidating={isValidating}
       hasProbed={manifestHasFitProbe(manifest)}
       onValidate={onValidate}

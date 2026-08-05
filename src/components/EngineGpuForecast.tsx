@@ -132,6 +132,7 @@ export default function EngineGpuForecast(props: EngineGpuForecastProps) {
                   hideTensorSplit={hideTensorSplit}
                   onDeviceChange={onDeviceChange}
                   onSplitChange={onSplitChange}
+                  manifest={manifest}
                 />
               )}
             </div>

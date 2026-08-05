@@ -119,6 +119,29 @@ function Test-DestLooksPresent {
 $source_dirs = @(Get-SyncSourceRoots)
 $fingerprint = Get-SourceFingerprint -SourceDirs $source_dirs
 
+# ── pi-ext (bundled pi-subagents package) ─────────────────────────────
+# Mirrors src-tauri/pi-ext -> target/debug/pi-ext so the app's `pi_code.rs` can
+# find the local-path pi-subagents bundle in DEV (release ships it via tauri
+# resources instead). Independent fingerprint so engine-runtime cache skips
+# don't block a pi-subagents bump. Uses the same fingerprint helper.
+$piext_src = Join-Path $root 'src-tauri\pi-ext'
+$piext_dst = Join-Path (Split-Path -Parent $dest_root) 'pi-ext'
+$piext_fp_path = Join-Path (Split-Path -Parent $dest_root) '.blackwell-dev-pi-ext-sync'
+if (Test-Path -LiteralPath $piext_src) {
+    $piext_fp = Get-SourceFingerprint -SourceDirs @($piext_src)
+    $piext_stale = -not (Test-Path -LiteralPath $piext_fp_path) -or
+        ((Get-Content -LiteralPath $piext_fp_path -Raw -ErrorAction SilentlyContinue).Trim() -ne $piext_fp)
+    if ($Force -or $piext_stale) {
+        if (Test-Path -LiteralPath $piext_dst) {
+            Remove-Item -LiteralPath $piext_dst -Recurse -Force -ErrorAction SilentlyContinue
+        }
+        New-Item -ItemType Directory -Path $piext_dst -Force | Out-Null
+        Copy-Item -Path (Join-Path $piext_src '*') -Destination $piext_dst -Recurse -Force
+        Set-Content -LiteralPath $piext_fp_path -Value $piext_fp -NoNewline -Encoding ascii
+        Write-Host '[sync-dev-runtime] pi-ext -> target/debug/pi-ext' -ForegroundColor Green
+    }
+}
+
 if (-not $Force -and (Test-Path -LiteralPath $fingerprint_path) -and (Test-DestLooksPresent)) {
     $prev = (Get-Content -LiteralPath $fingerprint_path -Raw -ErrorAction SilentlyContinue).Trim()
     if ($prev -eq $fingerprint) {

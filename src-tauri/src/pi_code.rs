@@ -363,6 +363,9 @@ pub struct PiEngineRef {
     pub model: String,
     #[serde(default)]
     pub context_window: Option<u64>,
+    /// Engine `--parallel` slot count (concurrent subagent capacity).
+    #[serde(default)]
+    pub parallel: u32,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -402,13 +405,210 @@ fn settings_path() -> PathBuf {
     home_dir().join("settings.json")
 }
 
+/// Bundled pi-subagents package source (shipped with the app as a tauri resource
+/// under `{app_root}/pi-ext/pi-subagents`). Contains the package + its leaf deps
+/// (yaml/typebox/jiti) so pi can load it as a local-path package without npm/network.
+fn bundled_subagents_dir() -> PathBuf {
+    crate::config::app_root_dir()
+        .join("pi-ext")
+        .join("pi-subagents")
+}
+
+/// Version of the bundled pi-subagents package, read from its package.json.
+/// Used to stamp the copied tree so we only re-sync when Blackwell ships a new
+/// package (never wipe a user's existing install on a routine launch).
+fn bundled_subagents_version() -> Option<String> {
+    let pkg = bundled_subagents_dir().join("package.json");
+    let raw = std::fs::read_to_string(&pkg).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&raw).ok()?;
+    v.get("version")?.as_str().map(|s| s.to_string())
+}
+
+/// Copy the bundled pi-subagents package into the isolated home so pi can resolve
+/// `./pi-subagents` from settings.json.
+///
+/// **Persistent** (not wiped every launch): only re-syncs when the bundled package
+/// version differs from the `.blackwell-version` stamp in the installed tree, so a
+/// user's pi-subagents install (and any edits under it) survive routine launches.
+/// The Blackwell-owned `settings.json` merge is what keeps routing fresh.
+fn sync_bundled_subagents(home: &Path) -> Result<(), String> {
+    let src = bundled_subagents_dir();
+    if !src.is_dir() {
+        emit_dbg(&format!(
+            "[Pi] pi-subagents bundle missing (expected {} — app resource not provisioned)",
+            src.display()
+        ));
+        // Non-fatal: pi still launches; BRAIN/WORKER routing is just unavailable.
+        return Ok(());
+    }
+    let dst = home.join("pi-subagents");
+    let stamp = dst.join(".blackwell-version");
+    let bundled = bundled_subagents_version();
+
+    // Already installed and matches the shipped version → leave it alone.
+    if dst.is_dir() {
+        let installed = std::fs::read_to_string(&stamp).ok().map(|s| s.trim().to_string());
+        if bundled.is_some() && installed == bundled {
+            emit_dbg(&format!(
+                "[Pi] pi-subagents {} up to date → {}",
+                bundled.unwrap_or_default(),
+                dst.display()
+            ));
+            return Ok(());
+        }
+    }
+
+    if dst.exists() {
+        std::fs::remove_dir_all(&dst)
+            .map_err(|e| format!("clear pi-subagents in home: {e}"))?;
+    }
+    copy_dir_all(&src, &dst).map_err(|e| format!("sync pi-subagents: {e}"))?;
+    if let Some(v) = bundled {
+        let _ = std::fs::write(&stamp, format!("{v}\n"));
+    }
+    emit_dbg(&format!("[Pi] Synced pi-subagents → {}", dst.display()));
+    Ok(())
+}
+
+/// Write the pi-subagents extension config so subagent run artifacts land inside the
+/// pi home (session dir) instead of the project cwd, and so the parallel fan-out
+/// concurrency matches the running engine's slot count (no hardcoded ×4). Default is
+/// "project" which drops a `.pi-subagents/` folder into whatever repo the user is
+/// editing — this keeps all external-tool output inside its own folder
+/// (`{home}/agent/extensions/subagent/`).
+///
+/// `slots` = engine `--parallel` (concurrent subagent capacity). We set BOTH the
+/// per-parallel-batch `parallel.concurrency` and the global `globalConcurrencyLimit`
+/// to `slots` so a fan-out of N tasks actually runs N agents concurrently on the
+/// engine's N slots (extension defaults cap per-batch at 4 and global at 20). No upper
+/// clamp here — the user's engine slot count is the source of truth.
+fn write_subagents_config(home: &Path, slots: u32) -> Result<(), String> {
+    let cfg_dir = home.join("agent").join("extensions").join("subagent");
+    std::fs::create_dir_all(&cfg_dir).map_err(|e| format!("subagent cfg dir: {e}"))?;
+    let cfg_path = cfg_dir.join("config.json");
+    let n = slots.max(1);
+    let cfg = serde_json::json!({
+        "artifactDir": "session",
+        "parallel": { "concurrency": n },
+        "globalConcurrencyLimit": n
+    });
+    let body = serde_json::to_string_pretty(&cfg)
+        .map_err(|e| format!("subagent cfg json: {e}"))?;
+    std::fs::write(&cfg_path, body).map_err(|e| format!("write subagent cfg: {e}"))?;
+    emit_dbg(&format!(
+        "[Pi] Wrote subagents config → {} (concurrency={})",
+        cfg_path.display(),
+        n
+    ));
+    Ok(())
+}
+
+/// Write the Blackwell `worker` subagent definition for parallel fan-out. Lives in
+/// `{home}/agents/worker.md` so it shadows the pi-subagents package's bundled `worker`
+/// agent (user source outranks package).
+///
+/// - `twin` mode: worker runs on the separate WORKER engine — a leaner/faster model
+///   with `slots` concurrent slots. BRAIN stays the big-context orchestrator.
+/// - `solo` mode: there is no separate engine — the worker resolves to the SAME
+///   engine as BRAIN, so all `slots` fan-out agents are EQUAL-CAPABILITY workers on the
+///   shared slots (no "1× brain + N−1 virtual workers" competing for the same slots).
+///
+/// `target_model` is the `provider/model` the agent front-matter pins (e.g.
+/// `local/DS4` for solo, `worker/DS4` for twin). `slots` drives the concurrency
+/// description (no hardcoded ×4).
+fn write_worker_agent(
+    home: &Path,
+    target_model: &str,
+    worker_ctx: u64,
+    slots: u32,
+    twin: bool,
+) -> Result<(), String> {
+    let agents_dir = home.join("agents");
+    std::fs::create_dir_all(&agents_dir).map_err(|e| format!("agents dir: {e}"))?;
+    let n = slots.max(1);
+    let (desc, body_para) = if twin {
+        (
+            format!(
+                "{}x-concurrent worker agent running on the WORKER engine ({}). Executes narrow tasks delegated by the BRAIN orchestrator and reports results back via contact_supervisor.",
+                n, target_model
+            ),
+            format!(
+                "You are `worker`: a fast, execution-focused subagent running on a smaller/faster model than the orchestrator with {} concurrent slots. You are one of several identical workers dispatched by the BRAIN orchestrator to distribute work across slots. Do NOT attempt deep architectural reasoning or big-picture design — that is BRAIN's job. Focus on concrete execution, file inspection, narrow edits, running commands, and reporting concrete findings.",
+                n
+            ),
+        )
+    } else {
+        (
+            format!(
+                "{}x-concurrent equal-capability worker agent on the BRAIN engine ({}). One of several identical full-capability agents sharing the engine's {} slots; reports results back via contact_supervisor.",
+                n, target_model, n
+            ),
+            format!(
+                "You are `worker`: an execution-focused subagent on the same engine as the orchestrator, which runs {} concurrent slots. You are one of {} identical full-capability agents sharing those slots to distribute work. You have the same model and tools as the orchestrator — tackle the assigned task with full capability, but stay lean and concise because your slot is shared with other concurrent work.",
+                n, n
+            ),
+        )
+    };
+    let body = format!(
+        "---\n\
+         name: worker\n\
+         description: {desc}\n\
+         tools: read, grep, find, ls, bash, edit, write, contact_supervisor\n\
+         model: {target_model}\n\
+         systemPromptMode: replace\n\
+         inheritProjectContext: true\n\
+         inheritSkills: false\n\
+         defaultContext: fresh\n\
+         ---\n\
+         \n\
+         {body_para}\n\
+         \n\
+         You have a context budget ({}K tokens) shared with other concurrent work in your slot. Stay lean: read only what you need, avoid dumping large files, and keep your final report concise and factual.\n\
+         \n\
+         Use the provided tools directly. Understand the task, then implement carefully and minimally.\n\
+         \n\
+         Reporting back to the orchestrator:\n\
+         - After completing your task, report back via `contact_supervisor` with `reason: \"progress_update\"` containing a concise structured summary: what you did, changed files, validation results, and any open questions.\n\
+         - If you are blocked or need a decision, use `contact_supervisor` with `reason: \"need_decision\"` and stay alive for the reply.\n\
+         - Do not invent decisions that belong to the orchestrator. If the task requires an architectural choice you were not given, pause and escalate.\n",
+        worker_ctx / 1024,
+    );
+    let path = agents_dir.join("worker.md");
+    std::fs::write(&path, body).map_err(|e| format!("write worker agent: {e}"))?;
+    emit_dbg(&format!("[Pi] Wrote worker agent → {}", path.display()));
+    Ok(())
+}
+
+/// Resolved routing facts shared between `build_models_and_settings`, the worker
+/// agent writer, and the subagents config writer.
+#[derive(Debug, Clone)]
+struct PiRouting {
+    /// Provider/model the `worker` subagent front-matter pins, e.g. `worker/DS4`
+    /// (twin) or `local/DS4` (solo — same engine as BRAIN, equal capability).
+    worker_target: String,
+    /// Engine `--parallel` slot count (concurrent subagent capacity).
+    slots: u32,
+    /// True when BRAIN and WORKER are separate engines.
+    is_twin: bool,
+}
+
 /// Build the isolated pi `models.json` (PI_CODING_AGENT_DIR/models.json) so pi
-/// routes BRAIN/WORKER to the two llama engines, plus a minimal settings.json.
+/// routes BRAIN/WORKER to the llama engine(s), plus a minimal settings.json and the
+/// PI.md routing note. Also returns the resolved `PiRouting` for the worker agent +
+/// subagents config writers.
 ///
 /// pi reads `models.json` each time `/model` opens (no restart). Providers are
 /// keyed by name; the model `id` MUST equal the engine launch alias (what the
 /// llama server reports as the OpenAI model id).
-fn build_models_and_settings(req: &PiLaunchRequest) -> Result<(String, String, String), String> {
+///
+/// Topology:
+/// - **twin** (`brain_workers`/`dual`): `local` = BRAIN (big context, orchestrator),
+///   `worker` = the separate WORKER engine with `slots` concurrent slots.
+/// - **solo**: a single engine running `slots` parallel slots. We still emit a
+///   `worker` provider so subagent fan-out resolves, but it points at the SAME
+///   engine/model as `local` — all `slots` fan-out agents are equal-capability
+///   workers sharing the engine's slots (NOT "1× brain + N−1 virtual workers").
+fn build_models_and_settings(req: &PiLaunchRequest) -> Result<(String, String, String, PiRouting), String> {
     if req.primary.port == 0 {
         return Err("Primary engine port is 0.".into());
     }
@@ -417,11 +617,14 @@ fn build_models_and_settings(req: &PiLaunchRequest) -> Result<(String, String, S
     let primary_ctx = req.primary.context_window.unwrap_or(262_144);
     let primary_url = format!("http://localhost:{}/v1", req.primary.port);
     let primary_max = if primary_ctx >= 262_144 { 65536 } else { 32768 };
+    let primary_slots = req.primary.parallel.max(1);
 
     let is_twin = matches!(mode.as_str(), "brain_workers" | "brain+workers" | "dual");
 
     // ── Hoist worker refs (needed by both models.json and the PI.md routing) ──
-    let worker_ref = if is_twin {
+    // Twin: a real second engine. Solo: the worker aliases the primary engine so
+    // subagents fan out across the same slots (equal capability).
+    let (w_model, w_ctx, w_url, w_max, w_slots) = if is_twin {
         let worker = req
             .worker
             .as_ref()
@@ -432,18 +635,14 @@ fn build_models_and_settings(req: &PiLaunchRequest) -> Result<(String, String, S
         if worker.port == req.primary.port {
             return Err("Brain and worker must use different ports.".into());
         }
-        Some(worker)
-    } else {
-        None
-    };
-    let (w_model, w_ctx, w_url, w_max) = if let Some(worker) = worker_ref {
         let w_model = openai_model_id(&worker.model);
         let w_ctx = worker.context_window.unwrap_or(131_072);
         let w_url = format!("http://localhost:{}/v1", worker.port);
         let w_max = if w_ctx >= 131_072 { 32768 } else { 16384 };
-        (w_model, w_ctx, w_url, w_max)
+        (w_model, w_ctx, w_url, w_max, worker.parallel.max(1))
     } else {
-        (String::new(), 0_u64, String::new(), 0_u32)
+        // Solo → worker = same engine, same model, equal capability.
+        (primary_model.clone(), primary_ctx, primary_url.clone(), primary_max, primary_slots)
     };
 
     // ── models.json ───────────────────────────────────────────────────
@@ -455,98 +654,89 @@ fn build_models_and_settings(req: &PiLaunchRequest) -> Result<(String, String, S
         "supportsUsageInStreaming": false
     });
 
-    if is_twin {
-        models["providers"]["local"] = serde_json::json!({
-            "baseUrl": primary_url,
-            "api": "openai-completions",
-            "apiKey": "local",
-            "compat": brain_compat,
-            "models": [{
-                "id": primary_model,
-                "name": "brain",
-                "input": ["text", "image"],
-                "contextWindow": primary_ctx,
-                "maxTokens": primary_max,
-                "reasoning": true,
-                "thinkingLevelMap": {
-                    "off": "none",
-                    "minimal": "minimal",
-                    "low": "low",
-                    "medium": "medium",
-                    "high": "high",
-                    "xhigh": "high",
-                    "max": "max"
-                }
-            }]
-        });
-        models["providers"]["worker"] = serde_json::json!({
-            "baseUrl": w_url,
-            "api": "openai-completions",
-            "apiKey": "local",
-            "compat": {
-                "supportsDeveloperRole": false,
-                "supportsReasoningEffort": false,
-                "supportsUsageInStreaming": false
-            },
-            "models": [{
-                "id": w_model,
-                "name": "worker",
-                "input": ["text"],
-                "contextWindow": w_ctx,
-                "maxTokens": w_max,
-                "reasoning": true,
-                "thinkingLevelMap": { "off": null }
-            }]
-        });
-    } else {
-        models["providers"]["local"] = serde_json::json!({
-            "baseUrl": primary_url,
-            "api": "openai-completions",
-            "apiKey": "local",
-            "compat": brain_compat,
-            "models": [{
-                "id": primary_model,
-                "name": "brain",
-                "input": ["text", "image"],
-                "contextWindow": primary_ctx,
-                "maxTokens": primary_max,
-                "reasoning": true,
-                "thinkingLevelMap": {
-                    "off": "none",
-                    "minimal": "minimal",
-                    "low": "low",
-                    "medium": "medium",
-                    "high": "high",
-                    "xhigh": "high",
-                    "max": "max"
-                }
-            }]
-        });
-    }
+    models["providers"]["local"] = serde_json::json!({
+        "baseUrl": primary_url,
+        "api": "openai-completions",
+        "apiKey": "local",
+        "compat": brain_compat,
+        "models": [{
+            "id": primary_model,
+            "name": "brain",
+            "input": ["text", "image"],
+            "contextWindow": primary_ctx,
+            "maxTokens": primary_max,
+            "reasoning": true,
+            "thinkingLevelMap": {
+                "off": "none",
+                "minimal": "minimal",
+                "low": "low",
+                "medium": "medium",
+                "high": "high",
+                "xhigh": "high",
+                "max": "max"
+            }
+        }]
+    });
+
+    // Worker provider always present so subagent fan-out resolves in BOTH modes.
+    // Solo: same engine/model as brain → equal-capability workers on shared slots.
+    models["providers"]["worker"] = serde_json::json!({
+        "baseUrl": w_url,
+        "api": "openai-completions",
+        "apiKey": "local",
+        "compat": if is_twin {
+            serde_json::json!({ "supportsDeveloperRole": false, "supportsReasoningEffort": false, "supportsUsageInStreaming": false })
+        } else {
+            brain_compat.clone()
+        },
+        "models": [{
+            "id": w_model,
+            "name": "worker",
+            "input": if is_twin { serde_json::json!(["text"]) } else { serde_json::json!(["text", "image"]) },
+            "contextWindow": w_ctx,
+            "maxTokens": w_max,
+            "reasoning": true,
+            "thinkingLevelMap": { "off": null }
+        }]
+    });
 
     let models_str =
         serde_json::to_string_pretty(&models).map_err(|e| format!("models json: {e}"))?;
 
     // ── settings.json ─────────────────────────────────────────────────
+    // Blackwell owns ONLY a small allowlist of routing keys. Everything else
+    // (theme, compaction, transport, trust, user-installed packages/extensions,
+    // `/settings` changes, pi's own bookkeeping like lastChangelogVersion) is
+    // pi's domain — we never write it, so pi fills in its own defaults and a
+    // future pi settings-structure change cannot break us. We merge our managed
+    // keys on top of any existing settings.json so user/pi state persists.
     let home_note = home_dir().to_string_lossy().to_string();
     let routing_note = if is_twin {
         "BRAIN = provider local / model <brain-alias>. WORKER = provider worker / model <worker-alias>. Subagents point at worker."
     } else {
-        "SOLO — single engine, provider local."
+        "SOLO — single engine, provider local (worker aliases the same engine for equal-capability fan-out)."
     };
-    let settings = serde_json::json!({
-        "compaction": { "enabled": true },
-        "defaultProjectTrust": "ask",
-        "enableInstallTelemetry": false,
-        "images": { "blockImages": true },
-        "theme": "dark",
-        "transport": "auto",
+
+    // Read existing settings.json (pi/user-owned) if present; start fresh otherwise.
+    let settings_path = settings_path();
+    let mut settings: serde_json::Value = std::fs::read_to_string(&settings_path)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_else(|| serde_json::json!({}));
+    if !settings.is_object() {
+        settings = serde_json::json!({});
+    }
+
+    // Overlay ONLY the keys Blackwell genuinely owns (routing + our shipped package
+    // + telemetry opinion + metadata). Never delete a non-Blackwell key.
+    let managed = serde_json::json!({
         "defaultProvider": "local",
         "defaultModel": primary_model,
-        "hideThinkingBlock": false,
-        "collapseChangelog": true,
         "defaultThinkingLevel": "off",
-        "steeringMode": "all",
+        "enableInstallTelemetry": false,
+        // Blackwell-shipped pi-subagents package (bundled local-path, no npm needed).
+        // pi resolves this relative to this settings file → {home}/pi-subagents.
+        "packages": ["./pi-subagents"],
         "_blackwell": {
             "managed": true,
             "piHome": home_note,
@@ -554,6 +744,11 @@ fn build_models_and_settings(req: &PiLaunchRequest) -> Result<(String, String, S
             "routing": routing_note
         }
     });
+    if let Some(obj) = settings.as_object_mut() {
+        for (k, v) in managed.as_object().expect("managed is an object") {
+            obj.insert(k.clone(), v.clone());
+        }
+    }
     let settings_str =
         serde_json::to_string_pretty(&settings).map_err(|e| format!("settings json: {e}"))?;
 
@@ -569,28 +764,41 @@ fn build_models_and_settings(req: &PiLaunchRequest) -> Result<(String, String, S
              | `worker` | WORKER | `{w_model}` | `{w_url}` |\n\n\
              - BRAIN = provider `local`, model `{primary_model}`.\n\
              - WORKER = provider `worker`, model `{w_model}` — point subagents at this for parallel fan-out.\n\
+             - The worker engine runs `{w_slots}` concurrent slots; fan-out concurrency is set to `{w_slots}`.\n\
              - You (the agent) cannot switch the main session model; the user uses `/model`.\n",
             primary_model = primary_model,
             primary_url = primary_url,
             w_model = w_model,
             w_url = w_url,
+            w_slots = w_slots,
         )
     } else {
         format!(
             "# Blackwell Ops — pi (managed)\n\n\
              ## Model routing\n\n\
-             pi reads `models.json` from PI_CODING_AGENT_DIR. Single engine:\n\n\
+             pi reads `models.json` from PI_CODING_AGENT_DIR. Single engine, parallel fan-out:\n\n\
              | Provider | Role | Model id (engine alias) | Endpoint |\n\
              |----------|------|--------------------------|----------|\n\
-             | `local`  | BRAIN | `{primary_model}` | `{primary_url}` |\n\n\
+             | `local`  | BRAIN | `{primary_model}` | `{primary_url}` |\n\
+             | `worker` | WORKER (same engine) | `{w_model}` | `{w_url}` |\n\n\
              - BRAIN = provider `local`, model `{primary_model}`.\n\
+             - WORKER = provider `worker`, model `{w_model}` — points at the SAME engine as BRAIN so subagents fan out as `{w_slots}` equal-capability agents across the engine's `{w_slots}` slots.\n\
              - You (the agent) cannot switch the main session model; the user uses `/model`.\n",
             primary_model = primary_model,
             primary_url = primary_url,
+            w_model = w_model,
+            w_url = w_url,
+            w_slots = w_slots,
         )
     };
 
-    Ok((models_str, settings_str, routing))
+    let routing_facts = PiRouting {
+        worker_target: format!("{}/{}", if is_twin { "worker" } else { "local" }, w_model),
+        slots: w_slots,
+        is_twin,
+    };
+
+    Ok((models_str, settings_str, routing, routing_facts))
 }
 
 const PI_MD_BEGIN: &str = "<!-- BLACKWELL-PI:BEGIN -->";
@@ -676,11 +884,16 @@ fn write_session_launch_bat(home: &Path, launcher: &Path, project: &Path) -> Res
     let home_s = home.to_string_lossy().replace('"', "");
     let launch_s = launcher.to_string_lossy().replace('"', "");
     let proj_s = project.to_string_lossy().replace('"', "");
+    // Point the pi-subagents extension at the real pi.exe so child subagent processes
+    // can spawn. The extension falls back to a bare `pi` on PATH (which does not exist
+    // in the Blackwell standalone layout) unless PI_SUBAGENT_PI_BINARY is set.
+    let pi_bin_s = package_binary().to_string_lossy().replace('"', "");
     let body = format!(
         "@echo off\r\n\
          setlocal\r\n\
          REM Blackwell managed — forces isolated home (never %USERPROFILE%\\.pi)\r\n\
          set \"PI_CODING_AGENT_DIR={home_s}\"\r\n\
+         set \"PI_SUBAGENT_PI_BINARY={pi_bin_s}\"\r\n\
          cd /d \"{proj_s}\"\r\n\
          call \"{launch_s}\"\r\n\
          endlocal\r\n"
@@ -766,7 +979,8 @@ pub async fn pi_code_launch(
         std::fs::create_dir_all(&home).map_err(|e| format!("home: {e}"))?;
 
         let mode = request.mode.trim().to_lowercase();
-        let (models_str, settings_str, routing) = build_models_and_settings(&request)?;
+        let (models_str, settings_str, routing, routing_facts) =
+            build_models_and_settings(&request)?;
         let models_file = models_path();
         std::fs::write(&models_file, &models_str).map_err(|e| format!("write models: {e}"))?;
         let settings_file = settings_path();
@@ -779,6 +993,36 @@ pub async fn pi_code_launch(
 
         if let Err(e) = write_pi_context_files(&home, &project, &models_file, &mode, &routing) {
             emit_dbg(&format!("[Pi] PI.md write warning: {e}"));
+        }
+
+        // Blackwell-shipped pi-subagents (local-path package) + WORKER agent.
+        // Keeps the BRAIN/WORKER fan-out topology working without npm/network.
+        if let Err(e) = sync_bundled_subagents(&home) {
+            emit_dbg(&format!("[Pi] pi-subagents sync warning: {e}"));
+        }
+        // Set the subagent fan-out concurrency to the engine's slot count (both modes).
+        if let Err(e) = write_subagents_config(&home, routing_facts.slots) {
+            emit_dbg(&format!("[Pi] subagents config warning: {e}"));
+        }
+        // Write the worker agent in BOTH modes. Twin: worker engine (leaner/faster).
+        // Solo: worker aliases the same engine → equal-capability fan-out on shared slots.
+        let w_ctx = if routing_facts.is_twin {
+            request
+                .worker
+                .as_ref()
+                .and_then(|w| w.context_window)
+                .unwrap_or(131_072)
+        } else {
+            request.primary.context_window.unwrap_or(262_144)
+        };
+        if let Err(e) = write_worker_agent(
+            &home,
+            &routing_facts.worker_target,
+            w_ctx,
+            routing_facts.slots,
+            routing_facts.is_twin,
+        ) {
+            emit_dbg(&format!("[Pi] worker agent warning: {e}"));
         }
 
         let _ = std::fs::write(

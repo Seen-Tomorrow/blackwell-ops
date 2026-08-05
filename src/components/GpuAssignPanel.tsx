@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState, type CSSProperties } from "react";
-import type { GpuInfo } from "../lib/types";
+import type { GpuInfo, VramManifest } from "../lib/types";
+import { resolveSplitDriver } from "../lib/autoVramLaunch";
 
 const DEVICE_LABEL_CLASS =
   "gpu-assign-panel__label font-mono w-14 flex-shrink-0 uppercase tracking-wider truncate text-[9px] text-stealth-muted";
@@ -124,6 +125,8 @@ interface GpuAssignPanelProps {
   hideTensorSplit?: boolean;
   /** Compact row for industrial-display-frame top chrome. */
   bezel?: boolean;
+  /** Forecast manifest — drives a compact FIT/FORMULA badge under the Split label. */
+  manifest?: VramManifest | null;
 }
 
 export default function GpuAssignPanel({
@@ -139,8 +142,11 @@ export default function GpuAssignPanel({
   hideSplitNone = false,
   hideTensorSplit = false,
   bezel = false,
+  manifest,
 }: GpuAssignPanelProps) {
   if (gpus.length === 0) return null;
+
+  const splitDriver = manifest ? resolveSplitDriver(manifest) : null;
 
   const splitActive = isSplitModeActive(splitValue);
   const deviceOptions = gpus.map((_, i) => `GPU-${i}`);
@@ -186,7 +192,25 @@ export default function GpuAssignPanel({
           {showSplitRow && (
             <>
               <div className="gpu-assign-panel__half gpu-assign-panel__half--split">
-                <span className="gpu-assign-panel__label gpu-assign-panel__label--bezel">Split</span>
+                <div className="gpu-assign-panel__split-head">
+                  <span className="gpu-assign-panel__label gpu-assign-panel__label--bezel">Split</span>
+                  {splitDriver && (
+                    <span
+                      className={`gpu-assign-panel__split-driver font-mono leading-none ${
+                        splitDriver.measured
+                          ? "text-nv-green"
+                          : "text-stealth-muted"
+                      }`}
+                      title={`Split decision driven by ${splitDriver.label} (${splitDriver.estimateGb.toFixed(1)} GB). ${
+                        splitDriver.willSplit
+                          ? "Forecast exceeds best single GPU → layer split."
+                          : "Fits a single GPU."
+                      }`}
+                    >
+                      {splitDriver.label}
+                    </span>
+                  )}
+                </div>
                 <SegmentOptionGroup
                   ariaLabel="Split"
                   disabled={chipDisabled(splitLocked)}

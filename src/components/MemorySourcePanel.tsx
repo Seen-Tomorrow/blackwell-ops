@@ -3,9 +3,12 @@ import {
   MEMORY_SOURCE_ACCENT,
   MEMORY_SOURCE_LABELS,
 } from "../services/vram/memorySource";
+import { resolveSplitDriver } from "../lib/autoVramLaunch";
 
 interface MemorySourcePanelProps {
   memorySource: MemorySource;
+  /** Full manifest — lets the SOURCE strip show what drives the split/device decision. */
+  manifest?: VramManifest | null;
   isValidating?: boolean;
   hasProbed?: boolean;
   onValidate?: () => void;
@@ -31,6 +34,7 @@ function ConfidencePips({ level }: { level: MemorySource["confidence"] }) {
  *  Always mount all three lines so formula ↔ learned ↔ FIT cache never shifts VramBadge height. */
 export default function MemorySourcePanel({
   memorySource,
+  manifest,
   isValidating = false,
   hasProbed = false,
   onValidate,
@@ -38,6 +42,7 @@ export default function MemorySourcePanel({
 }: MemorySourcePanelProps) {
   const accent = MEMORY_SOURCE_ACCENT[memorySource.kind];
   const label = MEMORY_SOURCE_LABELS[memorySource.kind];
+  const driver = manifest ? resolveSplitDriver(manifest) : null;
 
   return (
     <div className="memory-source-strip flex flex-col gap-px min-w-0">
@@ -50,6 +55,24 @@ export default function MemorySourcePanel({
           <ConfidencePips level={memorySource.confidence} />
           <span className="memory-source-kind-label tracking-wider">{label}</span>
         </span>
+        {driver && (
+          <span
+            className={`inline-flex items-center gap-0.5 shrink-0 border rounded-sm px-1 py-px text-[7px] leading-none tracking-wider ${
+              driver.willSplit
+                ? "border-violet-400/40 text-violet-300"
+                : driver.measured
+                  ? "border-nv-green/50 text-nv-green"
+                  : "border-stealth-muted/40 text-stealth-muted"
+            }`}
+            title={`Split decision driven by ${driver.label} estimate (~${driver.estimateGb.toFixed(1)} GB). ${
+              driver.willSplit
+                ? "Forecast exceeds best single GPU → layer split."
+                : "Fits a single GPU."
+            }`}
+          >
+            {driver.willSplit ? "SPLIT" : "SINGLE"}:{driver.label}
+          </span>
+        )}
         {onValidate && !hideValidate && (
           <FitProbeButton
             isValidating={isValidating}
