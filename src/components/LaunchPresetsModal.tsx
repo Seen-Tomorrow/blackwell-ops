@@ -86,18 +86,25 @@ export default function LaunchPresetsModal({
 
   return (
     <div
-      className="launch-presets-modal-overlay fixed inset-0 z-[120] flex items-center justify-center"
-      style={{ background: "color-mix(in srgb, #000 60%, transparent)" }}
+      className="launch-presets-modal-overlay fixed inset-0 z-[120] flex items-center justify-center bg-black/70"
       role="presentation"
       onClick={onClose}
     >
       <div
-        className="launch-presets-modal theme-surface-raised border border-stealth-border/60 w-[min(920px,94vw)] max-h-[88vh] flex flex-col font-mono text-[10px] shadow-xl"
+        className="launch-presets-modal border border-stealth-border/60 w-[min(920px,94vw)] max-h-[88vh] flex flex-col font-mono text-[10px] shadow-xl rounded-sm text-stealth-text"
+        style={{
+          // Solid panel — theme-surface-raised alone can be transparent in WebView2
+          backgroundColor: "var(--color-stealth-panel, #111810)",
+          color: "var(--color-stealth-text, #c8d4c0)",
+        }}
         role="dialog"
         aria-labelledby="launch-presets-modal-title"
         onClick={(e) => e.stopPropagation()}
       >
-        <header className="flex items-center gap-2 px-3 py-2 border-b border-stealth-border/50 flex-shrink-0">
+        <header
+          className="flex items-center gap-2 px-3 py-2 border-b border-stealth-border/50 flex-shrink-0"
+          style={{ backgroundColor: "var(--color-stealth-panel, #111810)" }}
+        >
           <h2
             id="launch-presets-modal-title"
             className="m-0 text-[11px] tracking-widest uppercase text-nv-green/90"
@@ -114,9 +121,12 @@ export default function LaunchPresetsModal({
           </button>
         </header>
 
-        <div className="flex flex-1 min-h-0">
+        <div className="flex flex-1 min-h-0" style={{ backgroundColor: "var(--color-stealth-panel, #111810)" }}>
           {/* List */}
-          <aside className="w-[200px] flex-shrink-0 border-r border-stealth-border/40 overflow-y-auto">
+          <aside
+            className="w-[200px] flex-shrink-0 border-r border-stealth-border/40 overflow-y-auto"
+            style={{ backgroundColor: "color-mix(in srgb, #000 25%, var(--color-stealth-panel, #111810))" }}
+          >
             {combos.length === 0 && (
               <p className="p-2 text-stealth-muted/60 m-0">No presets saved yet.</p>
             )}
@@ -125,7 +135,7 @@ export default function LaunchPresetsModal({
                 key={c.id}
                 type="button"
                 className={`w-full text-left px-2 py-2 border-b border-stealth-border/20 ${
-                  c.id === selectedId ? "bg-nv-green/15 text-nv-green" : "hover:bg-stealth-hover/30"
+                  c.id === selectedId ? "bg-nv-green/15 text-nv-green" : "hover:bg-white/5"
                 }`}
                 onClick={() => setSelectedId(c.id)}
               >
@@ -147,7 +157,8 @@ export default function LaunchPresetsModal({
                 <label className="flex flex-col gap-0.5">
                   <span className="text-stealth-muted uppercase text-[8px]">Name</span>
                   <input
-                    className="bg-stealth-input border border-stealth-border/50 px-2 py-1 rounded-sm"
+                    className="border border-stealth-border/50 px-2 py-1 rounded-sm text-stealth-text"
+                    style={{ backgroundColor: "color-mix(in srgb, #000 35%, var(--color-stealth-panel, #111810))" }}
                     value={draft.name}
                     onChange={(e) => setDraft({ ...draft, name: e.target.value })}
                   />
@@ -156,7 +167,8 @@ export default function LaunchPresetsModal({
                 <label className="flex flex-col gap-0.5">
                   <span className="text-stealth-muted uppercase text-[8px]">Notes</span>
                   <input
-                    className="bg-stealth-input border border-stealth-border/50 px-2 py-1 rounded-sm"
+                    className="border border-stealth-border/50 px-2 py-1 rounded-sm text-stealth-text"
+                    style={{ backgroundColor: "color-mix(in srgb, #000 35%, var(--color-stealth-panel, #111810))" }}
                     value={draft.notes ?? ""}
                     onChange={(e) => setDraft({ ...draft, notes: e.target.value })}
                     placeholder="optional"
@@ -206,11 +218,13 @@ export default function LaunchPresetsModal({
                   {draft.seats.map((seat) => (
                     <div
                       key={seat.id}
-                      className="border border-stealth-border/40 rounded-sm p-2 space-y-1.5 bg-stealth-panel/40"
+                      className="border border-stealth-border/40 rounded-sm p-2 space-y-1.5"
+                      style={{ backgroundColor: "color-mix(in srgb, #000 20%, var(--color-stealth-panel, #111810))" }}
                     >
                       <div className="flex items-center gap-2 flex-wrap">
                         <select
-                          className="bg-stealth-input border border-stealth-border/50 px-1 py-0.5"
+                          className="border border-stealth-border/50 px-1 py-0.5 text-stealth-text"
+                          style={{ backgroundColor: "color-mix(in srgb, #000 35%, var(--color-stealth-panel, #111810))" }}
                           value={seat.role}
                           onChange={(e) =>
                             updateSeat(seat.id, { role: e.target.value as SeatRole })
@@ -229,7 +243,8 @@ export default function LaunchPresetsModal({
                         <label className="flex flex-col gap-0.5">
                           <span className="text-stealth-muted text-[7px] uppercase">Policy</span>
                           <select
-                            className="bg-stealth-input border border-stealth-border/50 px-1 py-0.5"
+                            className="border border-stealth-border/50 px-1 py-0.5 text-stealth-text"
+                            style={{ backgroundColor: "color-mix(in srgb, #000 35%, var(--color-stealth-panel, #111810))" }}
                             value={seat.policyId}
                             onChange={(e) => {
                               const v = e.target.value;

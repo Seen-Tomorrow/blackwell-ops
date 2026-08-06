@@ -2021,8 +2021,58 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     [models],
   );
 
+  /**
+   * Provisional VRAM reservation so the next seat's Full Auto topology
+   * sees this engine before NVML/stack catch up (esp. multi-seat presets).
+   */
+  const syntheticSlotForLaunch = useCallback(
+    (
+      alias: string,
+      m: ModelEntry,
+      extra: Record<string, unknown> | undefined,
+    ): import("../services/vram/scenarios/scenarios_factory").RunningSlotInfo => {
+      const weightMib =
+        m.metadata?.file_size_bytes != null
+          ? m.metadata.file_size_bytes / (1024 * 1024)
+          : 8192;
+      // Weights + modest activation headroom — placement only, not a real FIT total.
+      const est = Math.max(weightMib * 1.12, weightMib + 2048);
+      const split = String(extra?.split ?? "none").trim().toLowerCase();
+      const multi = split.length > 0 && split !== "none";
+      if (multi && gpus.length > 1) {
+        const n = gpus.length;
+        return {
+          alias,
+          modelShort: (m.name || alias).slice(0, 30),
+          vramMib: est,
+          // computeGpuAvailableList matches numeric CUDA indices in the mask
+          gpuMask: gpus.map((g) => String(g.index)).join(","),
+          gpuBreakdownMib: gpus.map(() => est / n),
+        };
+      }
+      const deviceStr = String(extra?.device ?? "GPU-0");
+      const nvIdx = parseInt(deviceStr.replace(/^GPU-/i, "").split("/")[0] || "0", 10) || 0;
+      return {
+        alias,
+        modelShort: (m.name || alias).slice(0, 30),
+        vramMib: est,
+        gpuMask: String(nvIdx),
+        gpuBreakdownMib: gpus.map((g) => (g.index === nvIdx ? est : 0)),
+      };
+    },
+    [gpus],
+  );
+
   const launchSeat = useCallback(
-    async (seat: LaunchSeat): Promise<{ port: number; alias: string; idx: number } | null> => {
+    async (
+      seat: LaunchSeat,
+      runningSlots: import("../services/vram/scenarios/scenarios_factory").RunningSlotInfo[],
+    ): Promise<{
+      port: number;
+      alias: string;
+      idx: number;
+      slotInfo: import("../services/vram/scenarios/scenarios_factory").RunningSlotInfo;
+    } | null> => {
       const m = findModelForSeat(seat);
       if (!m) {
         dispatchAppEvent(EVENTS.launchError, {
@@ -2039,34 +2089,41 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             : (seat.label || m.name || "ENGINE").slice(0, 24);
       const finalAlias = resolveUniqueAlias(aliasBase, stack);
       const port = resolveSeatLaunchPort(seat);
+
+      // Per-seat topology: never reuse the panel's FIT manifest (wrong model).
+      // Null manifest → weight-based auto-split + freest-GPU pick vs runningSlots.
       const fullConfig = buildLaunchFullConfig({
         model: m,
         finalAlias,
         config: { ...seat.paramOverrides },
         effectiveBackendType: seat.providerId,
-        selectedBinaryProfile: (seat.binaryProfile as typeof selectedBinaryProfile) || selectedBinaryProfile,
+        selectedBinaryProfile:
+          (seat.binaryProfile as typeof selectedBinaryProfile) || selectedBinaryProfile,
         fitLaunchSupported: policy.fitImplied || fitLaunchSupported,
         fullAutoMode: seat.policyId === "full_auto",
         configView: seat.policyId === "assisted_full" ? "full" : "essentials",
         essentialFactoryKeys,
         allParamsResolved,
         gpus,
-        runningSlotsForPlan,
-        vramManifest: vramCalc.manifest,
+        runningSlotsForPlan: runningSlots,
+        vramManifest: null,
         testFlagsEnabled: false,
         testFlags: "",
         testFlagsMode: "add",
         smartBatchPush: false,
       });
       fullConfig.port = port;
-      // fixed/prefer: if fixed and busy, backend may fail — surface error
+
       const launched = await invoke<{ idx: number; port: number; alias: string }>("launch_engine", {
         config: fullConfig,
       });
+      const alias = launched?.alias ?? finalAlias;
+      const slotInfo = syntheticSlotForLaunch(alias, m, fullConfig.extra_params);
       return {
         port: launched?.port ?? port,
-        alias: launched?.alias ?? finalAlias,
+        alias,
         idx: launched?.idx ?? -1,
+        slotInfo,
       };
     },
     [
@@ -2077,8 +2134,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       essentialFactoryKeys,
       allParamsResolved,
       gpus,
-      runningSlotsForPlan,
-      vramCalc.manifest,
+      syntheticSlotForLaunch,
     ],
   );
 
@@ -2099,9 +2155,32 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
       const bindByRole = new Map(plan.bind.map((b) => [b.role, b]));
 
-      const doLaunch = async (seat: LaunchSeat) => {
+      // Multi-seat: always sequential so Full Auto topology sees prior seats'
+      // provisional VRAM (parallel dual launch both pick freest GPU → Windows RAM thrash).
+      let runningAcc = [...runningSlotsForPlan];
+      // Seed provisional slots for already-bound engines that lack vram_mib on stack.
+      for (const b of plan.bind) {
+        if (runningAcc.some((s) => s.alias === b.alias)) continue;
+        const entry = stack.find((s) => s.idx === b.slotIdx);
+        if (entry) {
+          runningAcc.push({
+            alias: entry.alias,
+            modelShort: (entry.model_name || "").slice(0, 30),
+            vramMib: entry.vram_mib || 0,
+            gpuMask: entry.gpu || "0",
+            gpuBreakdownMib: entry.gpu_breakdown_mib,
+          });
+        }
+      }
+
+      const ordered = orderSeatsForLaunch(
+        plan.launch,
+        plan.launchOrder === "sequence_brain_first",
+      );
+
+      for (const seat of ordered) {
         try {
-          const r = await launchSeat(seat);
+          const r = await launchSeat(seat, runningAcc);
           if (r && r.port > 0) {
             bindByRole.set(seat.role, {
               seatId: seat.id,
@@ -2111,10 +2190,15 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
               alias: r.alias,
               modelPath: seat.modelPath,
             });
+            runningAcc = [...runningAcc, r.slotInfo];
             dispatchAppEvent(EVENTS.launchSuccess, {
               alias: r.alias,
               port: r.port,
             });
+            // Brief pause so driver/NVML can settle before next Full Auto placement.
+            if (ordered.indexOf(seat) < ordered.length - 1) {
+              await new Promise((res) => setTimeout(res, 400));
+            }
           }
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
@@ -2122,21 +2206,11 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             message: `Preset ${seat.role}: ${msg}`,
           });
         }
-      };
-
-      const ordered = orderSeatsForLaunch(plan.launch, plan.launchOrder === "sequence_brain_first");
-      if (plan.launchOrder === "sequence_brain_first") {
-        for (const seat of ordered) await doLaunch(seat);
-      } else {
-        await Promise.all(ordered.map((s) => doLaunch(s)));
       }
 
-      // Load first seat into panel (optional)
       if (opts.loadIntoPanel && combo.seats[0]) {
         const seat = combo.seats[0];
-        const m = findModelForSeat(seat);
-        if (m) {
-          // Parent catalog selection is external — patch active profile params only
+        if (findModelForSeat(seat)) {
           updateParams(seat.paramOverrides as Record<string, unknown>);
         }
       }
@@ -2157,7 +2231,14 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         }
       }
     },
-    [models, stack, launchSeat, findModelForSeat, updateParams],
+    [
+      models,
+      stack,
+      launchSeat,
+      findModelForSeat,
+      updateParams,
+      runningSlotsForPlan,
+    ],
   );
 
   const handleSaveSoloPreset = useCallback(() => {
