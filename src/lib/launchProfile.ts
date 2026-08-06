@@ -120,6 +120,68 @@ export function filterParamValuesForConfigView(
   return out;
 }
 
+export { valueKeyForHide };
+
+/**
+ * Snap a single value out of essentialsHiddenValues (and catalog hiddenValues)
+ * onto a still-visible chip for Essentials / Full Auto launch.
+ * Assisted Full must not call this — power keeps the fat bag.
+ */
+export function snapValueOutOfEssentialsHide(
+  def: UserEditedTemplateParam,
+  current: unknown,
+): unknown {
+  if (current === undefined || current === null) return current;
+  const asChip: string | number =
+    typeof current === "number" || typeof current === "string"
+      ? current
+      : String(current);
+
+  const seen = new Set((def.values || []).map((v) => valueKeyForHide(v as string | number)));
+  const allValues: (string | number)[] = [
+    ...(def.values || []).map((v) => v as string | number),
+    ...(def.userAddedValues || []).filter((v) => !seen.has(valueKeyForHide(v as string | number))) as (string | number)[],
+  ];
+  const visible = filterParamValuesForConfigView(def, allValues, "essentials");
+  if (visible.length === 0) return current;
+
+  const curKey = valueKeyForHide(asChip);
+  if (visible.some((v) => valueKeyForHide(v) === curKey)) return current;
+
+  // Prefer factory / row default if still visible
+  const preferred = def.defaultValue ?? def.factoryDefault;
+  if (preferred !== undefined && preferred !== null && preferred !== "") {
+    const pChip: string | number =
+      typeof preferred === "number" || typeof preferred === "string"
+        ? preferred
+        : String(preferred);
+    if (visible.some((v) => valueKeyForHide(v) === valueKeyForHide(pChip))) {
+      return preferred;
+    }
+  }
+  return visible[0];
+}
+
+/**
+ * Enforce essentials value curation on a launch value bag (UI + CLI agree).
+ * Call only for Full Auto / Assisted Essentials — not Assisted Full.
+ */
+export function snapEssentialsHiddenInValues(
+  values: Record<string, unknown>,
+  allParams: UserEditedTemplateParam[],
+): Record<string, unknown> {
+  const byKey = new Map(allParams.map((p) => [p.key, p]));
+  const out = { ...values };
+  for (const [key, val] of Object.entries(out)) {
+    const def = byKey.get(key);
+    if (!def) continue;
+    if (!def.essentialsHiddenValues?.length && !def.hiddenValues?.length) continue;
+    const snapped = snapValueOutOfEssentialsHide(def, val);
+    if (snapped !== val) out[key] = snapped;
+  }
+  return out;
+}
+
 function factoryParamToExportRow(fp: ProviderDefaultParam, order: number): UserEditedTemplateParam {
   return {
     key: fp.key,

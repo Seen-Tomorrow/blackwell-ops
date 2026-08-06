@@ -179,6 +179,64 @@ describe("§8 leakage cases", () => {
     expect(merged.parallel).toBe(8);
   });
 
+  it("ESS-hidden value is snapped off Full Auto / Essentials CLI", () => {
+    const model = {
+      path: "C:/models/test.gguf",
+      author: "t",
+      name: "test",
+      quant: "Q4",
+      size_str: "1G",
+      vision: false,
+    };
+    const params = template.map((p) =>
+      p.key === "batch"
+        ? { ...p, essentialsHiddenValues: [16384], defaultValue: 512, factoryDefault: 512 }
+        : p,
+    );
+    const cfg = buildLaunchConfig({
+      model,
+      finalAlias: "test",
+      profileValues: {
+        ...seedFullAutoProfile({ legacyValues: { parallel: 1 }, factoryDefaults }),
+        batch: 16384,
+      },
+      policy: getLaunchPolicy("full_auto"),
+      effectiveBackendType: "ggml-master",
+      selectedBinaryProfile: "frontier",
+      fitLaunchSupported: false,
+      essentialFactoryKeys: essentialKeys,
+      allParamsResolved: params,
+      gpus: [],
+      runningSlotsForPlan: [],
+      vramManifest: null,
+      testFlagsEnabled: false,
+      testFlags: "",
+      testFlagsMode: "add",
+    });
+    expect(cfg.extra_params?.batch).not.toBe(16384);
+    expect(cfg.extra_params?.batch).toBe(512);
+
+    // Assisted Full keeps the power value
+    const power = buildLaunchConfig({
+      model,
+      finalAlias: "test",
+      profileValues: { batch: 16384, parallel: 1 },
+      policy: getLaunchPolicy("assisted_full"),
+      effectiveBackendType: "ggml-master",
+      selectedBinaryProfile: "frontier",
+      fitLaunchSupported: false,
+      essentialFactoryKeys: essentialKeys,
+      allParamsResolved: params,
+      gpus: [],
+      runningSlotsForPlan: [],
+      vramManifest: null,
+      testFlagsEnabled: false,
+      testFlags: "",
+      testFlagsMode: "add",
+    });
+    expect(power.extra_params?.batch).toBe(16384);
+  });
+
   it("5: Assisted Full temp=1.0 does not appear on Full Auto essentials key set", () => {
     const policy = getLaunchPolicy("full_auto");
     // Even if temp sneaks into merged values, key set filters it out

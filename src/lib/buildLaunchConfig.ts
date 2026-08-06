@@ -160,6 +160,12 @@ export function buildLaunchConfig(input: BuildLaunchConfigInput): EngineConfig {
     if (push.ubatch != null) merged.ubatch = push.ubatch;
   }
 
+  // Essentials curation is hard on Full Auto + Assisted Essentials (not Assisted Full).
+  // Prevents profile residue of ESS-hidden chips (e.g. batch 16k) from reaching CLI.
+  if (policy.keySet !== "full") {
+    merged = snapEssentialsHiddenInValues(merged, allParamsResolved);
+  }
+
   const launchKeys = resolveLaunchKeySet({
     policy,
     essentialFactoryKeys,

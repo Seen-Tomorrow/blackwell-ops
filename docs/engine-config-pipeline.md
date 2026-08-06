@@ -81,7 +81,7 @@ Rust merge tests: `config.rs::merge_tests` (`cargo test`).
 |-----------|--------|-------------|
 | `hidden` / `userHidden` on row | Catalog + Launch matrix | Skipped (except cockpit-owned / profile knobs) |
 | `hiddenValues` | Value chip catalog-hidden | Still usable if currently selected |
-| `essentialsHiddenValues` | Essentials + Full Auto cockpit UI only | **UI only** — does not strip CLI if profile holds that value |
+| `essentialsHiddenValues` | Essentials + Full Auto cockpit **and** launch | **Hard on Full Auto / Assisted Essentials** — `snapEssentialsHiddenInValues` in `buildLaunchConfig` replaces ESS-hidden chips with factory/default visible value. **Assisted Full** keeps the value (power). |
 | `essential` / `essentialParamKeys` | Which params show in Essentials matrix | Key set for essentials / full_auto launch |
 | `protectedGroups` | CONFIG structure lock | N/A |
 | Cockpit-owned keys | Header / MultiAgentBooster only | Always on key set when template has key |
