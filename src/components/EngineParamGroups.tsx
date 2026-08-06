@@ -26,8 +26,9 @@ const PARAM_LABEL_CLASS =
   "font-mono w-24 flex-shrink-0 uppercase tracking-wider truncate text-[9px] text-stealth-muted";
 
 function paramChipClass(active: boolean): string {
-  return `px-2 py-0.5 text-[9px] font-mono rounded-sm focus:outline-none ${
-    active ? "value-chip-active" : "value-chip"
+  // Segment-rail options (config-value-segment) — same language as cockpit flags / VRAM bezel.
+  return `config-value-segment__opt value-chip font-mono focus:outline-none ${
+    active ? "value-chip-active" : ""
   }`;
 }
 
@@ -231,31 +232,38 @@ export function renderParamRow(
       </span>
 
       <div className="config-chip-row flex gap-1.5 flex-wrap flex-1 min-w-0 items-center min-h-[18px]">
-        {baseValues.filter((v: any) => !(v?._hidden)).map((val, valIdx) => (
-          <button
-            key={`${paramRowKey(def, rowIdx)}-val-${valIdx}-${String(val)}`}
-            tabIndex={isLocked ? -1 : 0}
-            title={def.key === "base_port" ? BASE_PORT_CHIP_TOOLTIP : undefined}
-            onClick={() => {
-              if (isLocked) return;
-              updateParam(def.key, val);
-              if (def.key === "spec_type") {
-                if (specSimpleMode) {
-                  applyEssentialsSpecPreset(String(val), updateParam);
-                }
-                // MTP (and other non-external modes) must not keep a DFlash draft path.
-                if (!specTypeNeedsExternalDraft(String(val))) {
-                  updateParam("spec_draft_model", "off");
-                }
-              }
-            }}
-            className={paramChipClass(paramValuesMatch(currentValue, val))}
-          >
-            {specSimpleMode && def.key === "spec_type"
-              ? essentialsSpecChipLabel(String(val))
-              : String(val)}
-          </button>
-        ))}
+        <div className="config-value-segment" role="group" aria-label={`${def.label} values`}>
+          {baseValues.filter((v: any) => !(v?._hidden)).map((val, valIdx) => {
+            const active = paramValuesMatch(currentValue, val);
+            return (
+              <button
+                key={`${paramRowKey(def, rowIdx)}-val-${valIdx}-${String(val)}`}
+                type="button"
+                tabIndex={isLocked ? -1 : 0}
+                data-selected={active ? "1" : undefined}
+                title={def.key === "base_port" ? BASE_PORT_CHIP_TOOLTIP : undefined}
+                onClick={() => {
+                  if (isLocked) return;
+                  updateParam(def.key, val);
+                  if (def.key === "spec_type") {
+                    if (specSimpleMode) {
+                      applyEssentialsSpecPreset(String(val), updateParam);
+                    }
+                    // MTP (and other non-external modes) must not keep a DFlash draft path.
+                    if (!specTypeNeedsExternalDraft(String(val))) {
+                      updateParam("spec_draft_model", "off");
+                    }
+                  }
+                }}
+                className={paramChipClass(active)}
+              >
+                {specSimpleMode && def.key === "spec_type"
+                  ? essentialsSpecChipLabel(String(val))
+                  : String(val)}
+              </button>
+            );
+          })}
+        </div>
       </div>
     </div>
   );

@@ -39,6 +39,12 @@ import {
   type PowerUserState,
 } from "../lib/storage";
 import {
+  readActiveProfileFlat,
+  removeConfigEditorDefault,
+  writeConfigEditorDefault,
+} from "../lib/launchProfiles";
+import { isCockpitOwnedParam } from "../lib/systemParams";
+import {
   dispatchAppEvent,
   EVENTS,
 } from "../lib/events";
@@ -144,15 +150,20 @@ export default function ParamConfigPanel({
   const [editingParamKey, setEditingParamKey] = useState<string | null>(null);
   const [paramMetaForm, setParamMetaForm] = useState<ParamMetaForm | null>(null);
 
-  // ── User overrides (localStorage per provider) ─────────────────────
+  // ── User overrides (per-mode launch profiles; editor shows active bag) ─
   const [userOverrides, setUserOverrides] = useState<Record<string, string | number>>({});
 
   useEffect(() => {
     try {
-      const stored = readJsonStorage<Record<string, string | number>>(catalogOverrideKey(selectedProviderId));
-      if (stored) setUserOverrides(stored);
-      else setUserOverrides({});
-    } catch { setUserOverrides({}); }
+      const flat = readActiveProfileFlat(selectedProviderId);
+      const asNums: Record<string, string | number> = {};
+      for (const [k, v] of Object.entries(flat)) {
+        if (typeof v === "string" || typeof v === "number") asNums[k] = v;
+      }
+      setUserOverrides(asNums);
+    } catch {
+      setUserOverrides({});
+    }
   }, [selectedProviderId]);
 
   // ── Current provider & param definitions ───────────────────────────
@@ -621,20 +632,23 @@ export default function ParamConfigPanel({
   // ── User override (selecting a value for this model + provider) ───
   const setOverride = useCallback((defKey: string, value: string | number) => {
     try {
-      const existing = readJsonStorage<Record<string, string | number>>(catalogOverrideKey(selectedProviderId)) ?? {};
-      writeJsonStorage(catalogOverrideKey(selectedProviderId), { ...existing, [defKey]: value });
-    } catch {}
-    setUserOverrides(prev => ({ ...prev, [defKey]: value }));
+      writeConfigEditorDefault(selectedProviderId, defKey, value, {
+        isCockpitOwned: isCockpitOwnedParam(defKey),
+      });
+    } catch { /* ignore */ }
+    setUserOverrides((prev) => ({ ...prev, [defKey]: value }));
     dispatchAppEvent(EVENTS.paramConfigChanged);
   }, [selectedProviderId]);
 
   const clearOverride = useCallback((defKey: string) => {
-    const existing = readJsonStorage<Record<string, string | number>>(catalogOverrideKey(selectedProviderId));
-    if (existing) {
-      const { [defKey]: _, ...rest } = existing;
-      writeJsonStorage(catalogOverrideKey(selectedProviderId), rest);
-    }
-    setUserOverrides(prev => { const n = { ...prev }; delete n[defKey]; return n; });
+    try {
+      removeConfigEditorDefault(selectedProviderId, defKey);
+    } catch { /* ignore */ }
+    setUserOverrides((prev) => {
+      const n = { ...prev };
+      delete n[defKey];
+      return n;
+    });
     dispatchAppEvent(EVENTS.paramConfigChanged);
   }, [selectedProviderId]);
 

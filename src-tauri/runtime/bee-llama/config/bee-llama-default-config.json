@@ -268,7 +268,7 @@
       "hidden_default": false,
       "key": "reasoning_preserve",
       "label": "Reasoning Preserve",
-      "note": "",
+      "note": "Keep prior reasoning trace in context (server --reasoning-preserve). Independent of Think / REASONING budget.",
       "pattern": "",
       "ptype": "switch_onoff",
       "step": null,
@@ -655,6 +655,6 @@
       "4"
     ]
   },
-  "templateVersion": 15,
+  "templateVersion": 16,
   "template_type": "ggml-llama"
 }

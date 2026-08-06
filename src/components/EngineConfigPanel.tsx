@@ -41,8 +41,11 @@ import {
   isEssentialParam,
   providerSupportsFitLaunch,
   resolveEssentialParamKeys,
-  resolveManualLaunchKeys,
 } from "../lib/launchProfile";
+import {
+  getLaunchPolicy,
+  resolveLaunchPolicyId,
+} from "../lib/launchPolicy";
 import EngineToolbar from "./EngineToolbar";
 import ParamPlaceDialog from "./ParamPlaceDialog";
 import type {
@@ -57,13 +60,17 @@ import {
   codingModeFromParallel,
   collectBoostSpecTypes,
   FULL_AUTO_COLLAPSE_GROUPS,
-  pickHighNumeric,
   resolveFullAutoPlan,
   type BrainsId,
   type CodingModeId,
   type SpeedBoostId,
   type ThinkId,
 } from "../lib/multiAgentBooster";
+import {
+  getFusionBenchTrayOpen,
+  setFusionBenchTray,
+} from "../lib/fusionBenchTrayStore";
+import type { CockpitFlagToggle } from "./CockpitFlagToolbar";
 import {
   describeMainForDflashPick,
   findDflashDraftCandidates,
@@ -83,6 +90,7 @@ import {
   PANEL_CHROME_PARAM_KEYS,
 } from "../lib/paramDisplayZone";
 import {
+  COCKPIT_FLAG_PARAM_KEYS,
   COCKPIT_OWNED_PARAM_KEYS,
   isCockpitOwnedParam,
   isPlacementChromeParam,
@@ -671,13 +679,17 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   const spawnProfile = currentProvider?.spawnProfile;
   const fitLaunchSupported = providerSupportsFitLaunch(spawnProfile);
   const fullAutoMode = fitLaunchSupported && fitLaunchEnabled;
+  const activeLaunchPolicy = useMemo(
+    () => getLaunchPolicy(resolveLaunchPolicyId({ fullAutoMode, configView })),
+    [fullAutoMode, configView],
+  );
   /**
    * Joe essentials presets only on Full Auto (not Assisted Full chips).
    * Assisted Full stays raw factory values for power users.
    */
   const specSimpleMode = fullAutoMode;
   /** Assisted Full — power cockpit (no Smart batch push; raw extra spec types). */
-  const powerCockpitMode = !fullAutoMode && configView === "full";
+  const powerCockpitMode = activeLaunchPolicy.powerUser;
   // Custom / empty profile: always allow tensor/row if present in template values.
   const tensorSplitSupported =
     isCustomProvider || spawnProfile?.tensor_split !== false;
@@ -793,10 +805,13 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   );
 
   // ── Hooks ────────────────────────────────────────────────────────────────
+  // Per-mode profiles: Full Auto / Assisted Essentials / Assisted Full never share one bag.
   const { config, updateParam, updateParams, clearSpecConfig } = useConfigResolver({
     model,
     userEditedParams: allParamsResolved,
     backendType: effectiveBackendType,
+    fullAutoMode,
+    configView,
   });
 
   /**
@@ -850,6 +865,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
    *     the launch dock fades behind it. Un-dim on close.
    */
   const preHarnessDockPositionRef = useRef<LaunchDockPosition | null>(null);
+  /** Bench tray open/stowed before harness — restore on close (tray tallies VRAM badge height). */
+  const preHarnessBenchTrayRef = useRef<"open" | "stowed" | null>(null);
 
   // Direct mutators that don't touch the explicit flag (so opening/closing
   // the harness doesn't mark the user's choice as "explicit"). The "public"
@@ -878,10 +895,23 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         preHarnessDockPositionRef.current = launchDockPosition;
         setLaunchDockPositionAuto("right");
       }
-    } else if (preHarnessDockPositionRef.current != null) {
-      const restore = preHarnessDockPositionRef.current;
-      preHarnessDockPositionRef.current = null;
-      setLaunchDockPositionAuto(restore);
+      // Stow fusion BENCHMARK tray while harness is open — open tray expands the
+      // phosphor/VRAM badge tall enough to collide with Harness Connect (even 4K).
+      if (preHarnessBenchTrayRef.current == null) {
+        preHarnessBenchTrayRef.current = getFusionBenchTrayOpen() ? "open" : "stowed";
+        setFusionBenchTray("stowed");
+      }
+    } else {
+      if (preHarnessDockPositionRef.current != null) {
+        const restore = preHarnessDockPositionRef.current;
+        preHarnessDockPositionRef.current = null;
+        setLaunchDockPositionAuto(restore);
+      }
+      if (preHarnessBenchTrayRef.current != null) {
+        const restoreTray = preHarnessBenchTrayRef.current;
+        preHarnessBenchTrayRef.current = null;
+        setFusionBenchTray(restoreTray);
+      }
     }
     // Re-fire when showRightColumn flips mid-session (e.g. user opens HW
     // monitor while harness is already open). The ref guard prevents a loop.
@@ -1083,26 +1113,45 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     [hasSpecCapability, specDecodingGroupVisible],
   );
 
-  // Seed cockpit once from live config.
+  /**
+   * Keep Agents / Memory / Think UI in lockstep with resolved config.
+   *
+   * Must NOT be a one-shot seed: on mount `config` is `{}` until useConfigResolver
+   * loadConfig runs — a one-shot flag left the cockpit on useState defaults forever
+   * (and the next slider apply then wrote those defaults over storage).
+   */
   useEffect(() => {
-    if (boosterSeededRef.current) return;
     if (!allParamsResolved.length) return;
+    if (config.parallel == null && config.kv_quant == null && config.reasoning == null) {
+      return; // still hydrating catalog overrides
+    }
     const par = resolveParallelSlots(config, allParamsResolved);
     setCodingMode(codingModeFromParallel(par));
     setBrains(brainsFromKvQuant(config.kv_quant != null ? String(config.kv_quant) : undefined));
-    const method = activeBoostMethodFromParams(allParamsResolved);
-    if (method === "mtp" || method === "dflash") setSpeedBoost(method);
-    else setSpeedBoost(fullAutoMode ? "smart" : "off");
     const r = config.reasoning;
     if (r === "off" || r === 0 || r === "0") setThink("off");
+    else if (r === 2000 || r === "2000") setThink("budget2k");
     else if (r === 4000 || r === "4000") setThink("budget");
+    else if (r === 8000 || r === "8000") setThink("budget");
     else setThink("on");
-    boosterSeededRef.current = true;
-  }, [allParamsResolved, config, specDecodingGroupVisible]);
+  }, [allParamsResolved, config.parallel, config.kv_quant, config.reasoning]);
 
+  // Boost (MTP/DFlash/Smart/Off) — re-seed when model/provider changes only.
   useEffect(() => {
     boosterSeededRef.current = false;
   }, [effectiveBackendType, model?.path]);
+
+  useEffect(() => {
+    if (boosterSeededRef.current) return;
+    if (!allParamsResolved.length) return;
+    if (config.parallel == null && config.kv_quant == null && Object.keys(config).length === 0) {
+      return;
+    }
+    const method = activeBoostMethodFromParams(allParamsResolved);
+    if (method === "mtp" || method === "dflash") setSpeedBoost(method);
+    else setSpeedBoost(fullAutoMode ? "smart" : "off");
+    boosterSeededRef.current = true;
+  }, [allParamsResolved, config, fullAutoMode, specDecodingGroupVisible]);
 
   // Do NOT write collapsedGroups LS from Full Auto — Assisted collapse state is user-owned.
 
@@ -1189,9 +1238,51 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
   const cockpitShowAgents = providerHasParamKey(allParamsResolved, "parallel");
   const cockpitShowMemory = providerHasParamKey(allParamsResolved, "kv_quant");
-  const cockpitShowThink =
-    providerHasParamKey(allParamsResolved, "reasoning")
-    || providerHasParamKey(allParamsResolved, "reasoning_preserve");
+  // Think slider binds REASONING budget only — not reasoning_preserve (FEATURE-FLAGS chip).
+  const cockpitShowThink = providerHasParamKey(allParamsResolved, "reasoning");
+
+  /**
+   * Header flag toolbar (VISION / FLASH-ATT / LOAD-mode).
+   * Direct updateParam — never Full Auto plan (VISION consent must stick).
+   * Factory keys; always listed when present on the template (no soft hide).
+   */
+  const cockpitFlagToggles = useMemo((): CockpitFlagToggle[] => {
+    const meta: Record<
+      string,
+      { label: string; title: string }
+    > = {
+      vision: {
+        label: "VISION",
+        title: "mmproj / vision projector (auto = scan & load; can be multi-GB)",
+      },
+      flash_attn: {
+        label: "FLASH",
+        title: "Flash Attention (--flash-attn)",
+      },
+      load_mode: {
+        label: "LOAD",
+        title: "Model load mode (--load-mode): mmap / mlock / dio",
+      },
+    };
+    const out: CockpitFlagToggle[] = [];
+    for (const key of COCKPIT_FLAG_PARAM_KEYS) {
+      const def = allParamsResolved.find((p) => p.key === key);
+      if (!def || def.hidden || def.userHidden) continue;
+      const vals = (def.values?.length ? def.values : ["off"]).map(String);
+      const raw = config[key];
+      const current = raw != null && String(raw).trim() !== "" ? String(raw) : vals[0]!;
+      const m = meta[key]!;
+      out.push({
+        key,
+        label: m.label,
+        title: m.title,
+        values: vals,
+        current,
+        onChange: (v) => updateParam(key, v),
+      });
+    }
+    return out;
+  }, [allParamsResolved, config, updateParam]);
   const cockpitShowBoost = useMemo(() => {
     if (!isCustomProvider) return true;
     // Custom: only if template has speculative profile keys / groups
@@ -1292,29 +1383,11 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
       updateParam("parallel", plan.parallel);
       updateParam("kv_quant", plan.kvQuant);
-      if (plan.vision && allParamsResolved.some((p) => p.key === "vision")) {
-        updateParam("vision", plan.vision);
-      }
+      // Cockpit may only write cockpit-owned keys (+ profile knobs via Boost).
+      // Never touch vision / flash_attn / load_mode here — header flags own those.
+      // Never persist batch/ubatch from Smart — policy injects them ephemerally at launch.
       if (plan.reasoning != null && allParamsResolved.some((p) => p.key === "reasoning")) {
         updateParam("reasoning", plan.reasoning);
-      }
-      if (
-        plan.reasoningPreserve
-        && allParamsResolved.some((p) => p.key === "reasoning_preserve")
-      ) {
-        updateParam("reasoning_preserve", plan.reasoningPreserve);
-      }
-
-      // Joe Smart only — Power never mutates batch/ubatch from the cockpit.
-      if (plan.pushBatch && !powerUser) {
-        const batchDef = allParamsResolved.find((p) => p.key === "batch");
-        const ubatchDef = allParamsResolved.find((p) => p.key === "ubatch");
-        const batchPick = batchDef?.values ? pickHighNumeric(batchDef.values) : null;
-        const ubatchPick = ubatchDef?.values
-          ? pickHighNumeric(ubatchDef.values, batchPick ?? undefined)
-          : null;
-        if (batchPick != null) updateParam("batch", batchPick);
-        if (ubatchPick != null) updateParam("ubatch", ubatchPick);
       }
 
       // Template profiles: Boost method → show SPECULATIVE-MTP or SPECULATIVE-DFLASH (or neither).
@@ -1399,13 +1472,28 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   }, [specDecodingGroupVisible, config.spec_type]);
 
   // Main model change / capability drop → snap Boost + clear stale draft UI.
+  // Derive Agents/Memory/Think from *config* (not React defaults) so we never
+  // clobber catalog overrides before the cockpit sync effect has run.
   useEffect(() => {
     if (!model) return;
+    if (!allParamsResolved.length || Object.keys(config).length === 0) return;
+    const modeFromCfg = codingModeFromParallel(
+      resolveParallelSlots(config, allParamsResolved),
+    );
+    const brainsFromCfg = brainsFromKvQuant(
+      config.kv_quant != null ? String(config.kv_quant) : undefined,
+    );
+    let thinkFromCfg: ThinkId = "on";
+    const r = config.reasoning;
+    if (r === "off" || r === 0 || r === "0") thinkFromCfg = "off";
+    else if (r === 2000 || r === "2000") thinkFromCfg = "budget2k";
+    else if (r === 4000 || r === "4000" || r === 8000 || r === "8000") thinkFromCfg = "budget";
+
     const plan = resolveFullAutoPlan({
-      codingMode,
+      codingMode: modeFromCfg,
       speed: speedBoost,
-      brains,
-      think,
+      brains: brainsFromCfg,
+      think: thinkFromCfg,
       capabilities: specCapabilities,
       dflashLibraryReady,
       dflashGettable,
@@ -1415,7 +1503,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     if (plan.speed !== speedBoost) {
       // Sync UI immediately (child also mirrors plan.speed); apply clears CLI/spec.
       setSpeedBoost(plan.speed);
-      void applyFullAutoCockpit(codingMode, plan.speed, brains, think, {
+      void applyFullAutoCockpit(modeFromCfg, plan.speed, brainsFromCfg, thinkFromCfg, {
         powerUser: powerCockpitMode,
       });
     }
@@ -2359,6 +2447,10 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       stack,
     );
 
+    // Smart batch is ephemeral (Full Auto + Boost=Smart only) — never from Assisted residue.
+    const smartBatchPush =
+      fullAutoMode && speedBoost === "smart";
+
     return buildLaunchFullConfig({
       model,
       finalAlias,
@@ -2377,6 +2469,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       testFlagsEnabled,
       testFlags,
       testFlagsMode,
+      smartBatchPush,
     });
   }, [
     model,
@@ -2393,6 +2486,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     configView,
     essentialFactoryKeys,
     specBoostMethod,
+    speedBoost,
     allParamsResolved,
     gpus,
     runningSlotsForPlan,
@@ -2915,6 +3009,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           showMemory={cockpitShowMemory}
           showThink={cockpitShowThink}
           showBoost={cockpitShowBoost}
+          flagToggles={cockpitFlagToggles}
           agentsFromTemplateOnly={isCustomProvider}
           port={
             (selectedSlotIdx != null &&

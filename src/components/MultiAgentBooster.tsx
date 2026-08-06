@@ -47,6 +47,7 @@ import {
 import { formatCtxChipLabel } from "../lib/sliderParamUtils";
 import CustomSliderParam from "./CustomSliderParam";
 import CockpitSlider from "./CockpitSlider";
+import CockpitFlagToolbar, { type CockpitFlagToggle } from "./CockpitFlagToolbar";
 
 export type DflashGetUiState = "idle" | "searching" | "downloading" | "error";
 
@@ -77,6 +78,19 @@ const INSTALL_PHASE_LABEL: Record<InstallPhase, string> = {
   extract: "Extracting archive…",
   finalize: "Finalizing install…",
 };
+
+/**
+ * Harness product surface: **pi is primary** (isolated install, BRAIN/WORKER
+ * routing, pi-subagents fan-out; also the only candidate with native
+ * llama-server / router-style management later).
+ *
+ * AtomCode + Qwen Code stay fully wired in code (install/launch/Tauri cmds)
+ * but their tool chips are hidden until we re-expose them. Flip this to
+ * `true` to show the three-way picker again — no delete required.
+ */
+const SHOW_LEGACY_HARNESS_TOOLS = false;
+
+type HarnessToolId = "atomcode" | "qwen" | "pi";
 
 /** Contextual SPECULATIVE-DECODING knobs under Boost (n_max, n_min, …). */
 export interface CockpitSpecDetailParam {
@@ -173,6 +187,11 @@ export interface MultiAgentBoosterProps {
    * Which product sliders to show. Default all on (Master).
    * Custom providers pass false for missing template keys (no Solo–Army / Think / Boost fill).
    */
+  /**
+   * Header mini-toolbar flags (VISION / FLASH-ATT / LOAD-mode).
+   * Direct catalog writes — not Full Auto plan (consent-friendly).
+   */
+  flagToggles?: CockpitFlagToggle[];
   showAgents?: boolean;
   showMemory?: boolean;
   showThink?: boolean;
@@ -223,6 +242,7 @@ export default function MultiAgentBooster({
   onHarnessOpenChange,
   onRelaunchSeat,
   onSelectEngine,
+  flagToggles = [],
   showAgents = true,
   showMemory = true,
   showThink = true,
@@ -231,7 +251,13 @@ export default function MultiAgentBooster({
 }: MultiAgentBoosterProps) {
   const [harnessOpen, setHarnessOpen] = useState(false);
   /** Which external agent tool the harness targets. */
-  const [harnessTool, setHarnessTool] = useState<"atomcode" | "qwen" | "pi">("atomcode");
+  const [harnessTool, setHarnessTool] = useState<HarnessToolId>("pi");
+  // Legacy tools hidden → keep selection pinned to pi (no dead code paths in UI).
+  useEffect(() => {
+    if (!SHOW_LEGACY_HARNESS_TOOLS && harnessTool !== "pi") {
+      setHarnessTool("pi");
+    }
+  }, [harnessTool]);
   /** Wizard: SOLO vs TWIN (even if more than 2 engines run). */
   const [wizardMode, setWizardMode] = useState<"solo" | "twin">("solo");
   /** Twin: explicit ports from click cycle (none → BRAIN → WORKER → clear). */
@@ -1659,58 +1685,63 @@ export default function MultiAgentBooster({
               under the title — keeps the wizard body focused on actionable
               choices (mode / project / concurrency / launch). */}
           <p className="atomcode-wizard__blurb font-mono">
-            External coding agent on your engines · isolated home · no cloud keys.{" "}
+            {SHOW_LEGACY_HARNESS_TOOLS
+              ? "External coding agent on your engines · isolated home · no cloud keys. "
+              : "pi on your engines · isolated home · BRAIN/WORKER routing · no cloud keys. "}
             <span className="atomcode-wizard__blurb-brain">BRAIN</span> plans ·{" "}
             <span className="atomcode-wizard__blurb-worker">WORKER</span> swarms.
           </p>
-          {/* Tool picker chips live in the header now (replaces the older
-              "AtomCode · v5.0.2" subtitle) — version installs on first open,
-              so the chip itself carries that info implicitly. */}
+          {/* Tool chips: pi is the only exposed harness. AtomCode/Qwen remain
+              in the tree behind SHOW_LEGACY_HARNESS_TOOLS (code not deleted). */}
           <div className="atomcode-wizard__header-tools" role="group" aria-label="Harness tool">
-            <button
-              type="button"
-              className={`atomcode-wizard__tool-chip font-mono${harnessTool === "atomcode" ? " atomcode-wizard__tool-chip--on" : ""}`}
-              onClick={() => {
-                setHarnessTool("atomcode");
-                setShowDisclaimer(false);
-                setAtomError(null);
-              }}
-              aria-pressed={harnessTool === "atomcode"}
-              title={
-                atomStatus?.installed
-                  ? `AtomCode ${atomStatus.version ?? atomStatus.pinnedVersion} installed`
-                  : "AtomCode — installs on first open (~30 MB)"
-              }
-            >
-              AtomCode
-              <span className="atomcode-wizard__tool-meta">
-                {atomStatus?.installed
-                  ? atomStatus.version ?? atomStatus.pinnedVersion
-                  : "~30 MB"}
-              </span>
-            </button>
-            <button
-              type="button"
-              className={`atomcode-wizard__tool-chip font-mono${harnessTool === "qwen" ? " atomcode-wizard__tool-chip--on" : ""}`}
-              onClick={() => {
-                setHarnessTool("qwen");
-                setShowDisclaimer(false);
-                setAtomError(null);
-              }}
-              aria-pressed={harnessTool === "qwen"}
-              title={
-                qwenStatus?.installed
-                  ? `Qwen Code ${qwenStatus.version ?? qwenStatus.pinnedVersion} installed`
-                  : "Qwen Code — installs on first open (~180 MB · vision)"
-              }
-            >
-              Qwen Code
-              <span className="atomcode-wizard__tool-meta">
-                {qwenStatus?.installed
-                  ? qwenStatus.version ?? qwenStatus.pinnedVersion
-                  : "~180 MB · vision"}
-              </span>
-            </button>
+            {SHOW_LEGACY_HARNESS_TOOLS && (
+              <>
+                <button
+                  type="button"
+                  className={`atomcode-wizard__tool-chip font-mono${harnessTool === "atomcode" ? " atomcode-wizard__tool-chip--on" : ""}`}
+                  onClick={() => {
+                    setHarnessTool("atomcode");
+                    setShowDisclaimer(false);
+                    setAtomError(null);
+                  }}
+                  aria-pressed={harnessTool === "atomcode"}
+                  title={
+                    atomStatus?.installed
+                      ? `AtomCode ${atomStatus.version ?? atomStatus.pinnedVersion} installed`
+                      : "AtomCode — installs on first open (~30 MB)"
+                  }
+                >
+                  AtomCode
+                  <span className="atomcode-wizard__tool-meta">
+                    {atomStatus?.installed
+                      ? atomStatus.version ?? atomStatus.pinnedVersion
+                      : "~30 MB"}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className={`atomcode-wizard__tool-chip font-mono${harnessTool === "qwen" ? " atomcode-wizard__tool-chip--on" : ""}`}
+                  onClick={() => {
+                    setHarnessTool("qwen");
+                    setShowDisclaimer(false);
+                    setAtomError(null);
+                  }}
+                  aria-pressed={harnessTool === "qwen"}
+                  title={
+                    qwenStatus?.installed
+                      ? `Qwen Code ${qwenStatus.version ?? qwenStatus.pinnedVersion} installed`
+                      : "Qwen Code — installs on first open (~180 MB · vision)"
+                  }
+                >
+                  Qwen Code
+                  <span className="atomcode-wizard__tool-meta">
+                    {qwenStatus?.installed
+                      ? qwenStatus.version ?? qwenStatus.pinnedVersion
+                      : "~180 MB · vision"}
+                  </span>
+                </button>
+              </>
+            )}
             <button
               type="button"
               className={`atomcode-wizard__tool-chip font-mono${harnessTool === "pi" ? " atomcode-wizard__tool-chip--on" : ""}`}
@@ -2140,7 +2171,7 @@ export default function MultiAgentBooster({
       data-density-unified={densityUnified ? "on" : "off"}
       data-ctx-dock={showCtxRail ? "in" : "above"}
     >
-      {/* Compact title only — status line removed; selected values live on slider marks */}
+      {/* Title left · optional soft note · flag toolbar far right (VISION / FLASH / LOAD) */}
       <div className="full-auto-cockpit__header full-auto-cockpit__header--minimal">
         <span className="full-auto-cockpit__title font-mono tracking-[0.16em] uppercase shrink-0">
           {powerMode ? "Power cockpit" : "Launch cockpit"}
@@ -2150,6 +2181,7 @@ export default function MultiAgentBooster({
             {plan.softNote}
           </span>
         ) : null}
+        <CockpitFlagToolbar flags={flagToggles} />
       </div>
 
       <div className="full-auto-cockpit__body space-y-3">

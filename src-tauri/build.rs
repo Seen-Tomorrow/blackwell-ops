@@ -2,6 +2,27 @@ use std::env;
 use std::path::PathBuf;
 
 fn main() {
+    // REL `tauri.conf.json` ships `pi-ext/` as a bundle resource (Blackwell pi-subagents).
+    // The tree is gitignored (`src-tauri/pi-ext/`) because of node_modules size — it must
+    // exist on disk before `tauri_build` or you get: resource path `pi-ext` doesn't exist.
+    // DEV uses `tauri.conf.dev.json` with empty resources and syncs via sync-dev-runtime.ps1.
+    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
+    let piext_pkg = manifest_dir
+        .join("pi-ext")
+        .join("pi-subagents")
+        .join("package.json");
+    println!("cargo:rerun-if-changed=pi-ext/pi-subagents/package.json");
+    let profile = env::var("PROFILE").unwrap_or_default();
+    if profile == "release" && !piext_pkg.is_file() {
+        panic!(
+            "\n\n[blackwell-ops] REL requires src-tauri/pi-ext/pi-subagents (gitignored).\n\
+             Missing: {}\n\
+             Restore the tree (copy from a prior target/*/pi-ext, or re-vendor pi-subagents),\n\
+             then rebuild. Without it Tauri fails with: resource path `pi-ext` doesn't exist.\n",
+            piext_pkg.display()
+        );
+    }
+
     tauri_build::build();
 
     // No hardcoded paths — all DLL discovery happens at runtime via config.providers.

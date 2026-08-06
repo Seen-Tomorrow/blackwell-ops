@@ -62,7 +62,7 @@ import type {
  * | BlackOps-setup-guide-preview | "1" | Dev: force welcome + guide in VRAM display |
  * | BlackOps-bench-controls | JSON | Global TG/PP bench control chips (n_predict, concurrency, warmup, prompt mode) |
 
- * | BlackOps-catalog-override:{providerId} | JSON Record<paramKey, value> | Launch-time param chip overrides |
+ * | BlackOps-catalog-override:{providerId} | JSON v2 { version, activePolicy, profiles } | Per-mode launch value profiles (full_auto / assisted_essentials / assisted_full); flat v1 migrates on read |
  * | BlackOps-group-order:{providerId} | JSON string[] | CONFIG param group order |
  * | BlackOps-group-display-zone:{providerId} | JSON Record<group, above\|below> | Pin groups above VRAM display |
  * | BlackOps-engine-alias:{modelPath} | string | Per-model launch alias |
@@ -568,6 +568,28 @@ export function migrateGlobalSpecOutOfCatalogOverrides(providerId: string): void
     "dflash_p_min",
     "dflash_draft_model",
   ];
+
+  // v2 nested profiles
+  if (
+    stored.version === 2
+    && stored.profiles
+    && typeof stored.profiles === "object"
+  ) {
+    const profiles = stored.profiles as Record<string, Record<string, unknown>>;
+    let changed = false;
+    for (const profile of Object.values(profiles)) {
+      if (!profile || typeof profile !== "object") continue;
+      for (const k of specKeys) {
+        if (k in profile) {
+          delete profile[k];
+          changed = true;
+        }
+      }
+    }
+    if (changed) writeJsonStorage(key, stored);
+    return;
+  }
+
   let changed = false;
   for (const k of specKeys) {
     if (k in stored) {

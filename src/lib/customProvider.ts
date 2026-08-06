@@ -93,7 +93,9 @@ export const COCKPIT_BIND_KEYS = [
   "parallel",
   "kv_quant",
   "reasoning",
-  "reasoning_preserve",
+  "vision",
+  "flash_attn",
+  "load_mode",
 ] as const;
 
 export function providerHasParamKey(

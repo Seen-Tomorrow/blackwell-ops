@@ -202,9 +202,10 @@ export default function ValueBubbles({
             onOverrideChange(val);
           }
         }}
-        className={`inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-mono rounded-sm transition-all cursor-pointer select-none ${chipClass}${
-          essHidden ? " opacity-55" : ""
-        }`}
+        className={`config-value-segment__opt inline-flex items-center gap-1 font-mono cursor-pointer select-none ${chipClass}${
+          selected ? " value-chip-active" : ""
+        }${essHidden ? " opacity-55" : ""}`}
+        data-selected={selected ? "1" : undefined}
       >
 
         {/* Set as default button — admin only (only on non-default values) */}
@@ -317,10 +318,16 @@ export default function ValueBubbles({
 
 
   return (
-    <div className="flex-1 flex flex-col gap-0.5">
-      {/* Inline row: bubbles + override selector + add input */}
-      <div className="flex items-center gap-1.5 flex-wrap">
-        {allDisplayValues.map((item, idx) => renderBubble(item, idx))}
+    <div className="flex-1 flex flex-col gap-0.5 min-w-0">
+      {/* Segment track (bezel language) + add/override outside the rail */}
+      <div className="config-chip-row flex items-center gap-1.5 flex-wrap min-w-0">
+        <div
+          className="config-value-segment"
+          role="group"
+          aria-label={`${paramKey} values`}
+        >
+          {allDisplayValues.map((item, idx) => renderBubble(item, idx))}
+        </div>
 
         {/* Override selector — show current override when not in any list (skip for slider — custom values are normal) */}
         {onOverrideChange && currentValue && ptype !== 'slider' &&
@@ -341,8 +348,6 @@ export default function ValueBubbles({
             className="config-param-add-input w-12 bg-transparent border-b border-stealth-border/50 text-[9px] font-mono text-nv-green focus:outline-none px-1 py-0.5 placeholder:text-white/40" />
         )}
       </div>
-
-
     </div>
   );
 }

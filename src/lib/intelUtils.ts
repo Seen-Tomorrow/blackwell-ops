@@ -61,10 +61,21 @@ export function defaultIntelChannelId(
 export function loadOverridesByProvider(providerIds: string[]): Record<string, Record<string, unknown>> {
   const out: Record<string, Record<string, unknown>> = {};
   for (const id of providerIds) {
+    // Prefer active launch profile (v2); fall back to flat legacy bag.
     const stored = readJsonStorage<Record<string, unknown>>(catalogOverrideKey(id));
-    if (stored && Object.keys(stored).length > 0) {
-      out[id] = stored;
+    if (!stored) continue;
+    if (
+      stored.version === 2
+      && stored.profiles
+      && typeof stored.profiles === "object"
+    ) {
+      const profiles = stored.profiles as Record<string, Record<string, unknown>>;
+      const active = typeof stored.activePolicy === "string" ? stored.activePolicy : "assisted_full";
+      const bag = profiles[active] ?? profiles.assisted_full ?? {};
+      if (Object.keys(bag).length > 0) out[id] = bag;
+      continue;
     }
+    if (Object.keys(stored).length > 0) out[id] = stored;
   }
   return out;
 }

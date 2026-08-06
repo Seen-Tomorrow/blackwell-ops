@@ -193,36 +193,75 @@ fn parse_sums_expected(sums: &str, archive_name: &str) -> Option<String> {
 }
 
 /// Write the Blackwell outer shim. ROOT = package (pi/) relative to bin/.
+///
+/// **Always** forces `PI_CODING_AGENT_DIR` to the app-isolated agent dir
+/// (`{app_root}/config/external-tools/pi-home`), which **replaces** pi's default
+/// `~/.pi/agent` (see pi docs). Without this, a bare `pi.cmd` / double-click
+/// falls back to `%USERPROFILE%\.pi\agent` and the model will correctly claim
+/// that path — which is exactly the isolation failure we must prevent.
+///
+/// Layout from `bin\`: `..\..\..\config\external-tools\pi-home`
+/// (`bin` → `pi` tools → `external-tools` → app root).
 fn write_outer_shim(tools: &Path) -> Result<(), String> {
     let bin = tools.join("bin");
     std::fs::create_dir_all(&bin).map_err(|e| format!("bin dir: {e}"))?;
-    let shim = r#"@echo off
+    // Prefer absolute home when we know it (spaces-safe); fall back to relative
+    // resolution from this shim so portable moves still work.
+    let home_abs = home_dir().to_string_lossy().replace('"', "");
+    let shim = format!(
+        r#"@echo off
 setlocal
 REM Blackwell-isolated pi launcher (package lives in ..\pi)
+REM PI_CODING_AGENT_DIR overrides pi default ~/.pi/agent - never user profile.
+if not defined PI_CODING_AGENT_DIR (
+  if exist "{home_abs}\" (
+    set "PI_CODING_AGENT_DIR={home_abs}"
+  ) else (
+    set "PI_CODING_AGENT_DIR=%~dp0..\..\..\config\external-tools\pi-home"
+  )
+)
 set "PKG=%~dp0..\pi"
+if not defined PI_SUBAGENT_PI_BINARY set "PI_SUBAGENT_PI_BINARY=%PKG%\pi.exe"
 "%PKG%\pi.exe" %*
 exit /b %ERRORLEVEL%
-"#;
+"#
+    );
     std::fs::write(bin.join("pi.cmd"), shim).map_err(|e| format!("write shim: {e}"))?;
     Ok(())
 }
 
 fn extract_zip_windows(zip: &Path, dest: &Path) -> Result<(), String> {
-    // PowerShell Expand-Archive is reliable on Win10+.
+    // Prefer bundled 7z: silent (CREATE_NO_WINDOW), no PowerShell console flash.
+    // 7z extracts .zip the same as .7z.
+    if crate::archive_util::extract_7z_archive(zip, dest).is_ok() {
+        return Ok(());
+    }
+
+    // Fallback: Expand-Archive with CREATE_NO_WINDOW so no external console pops.
+    use std::os::windows::process::CommandExt;
+    use std::process::{Command, Stdio};
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
     let zip_s = zip.to_string_lossy().replace('\'', "''");
     let dest_s = dest.to_string_lossy().replace('\'', "''");
     let ps = format!(
         "Expand-Archive -LiteralPath '{zip_s}' -DestinationPath '{dest_s}' -Force"
     );
-    let out = std::process::Command::new("powershell")
+    let out = Command::new("powershell")
         .args([
             "-NoProfile",
             "-NonInteractive",
+            "-WindowStyle",
+            "Hidden",
             "-ExecutionPolicy",
             "Bypass",
             "-Command",
             &ps,
         ])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .creation_flags(CREATE_NO_WINDOW)
         .output()
         .map_err(|e| format!("Expand-Archive spawn: {e}"))?;
     if !out.status.success() {
@@ -405,9 +444,11 @@ fn settings_path() -> PathBuf {
     home_dir().join("settings.json")
 }
 
-/// Bundled pi-subagents package source (shipped with the app as a tauri resource
-/// under `{app_root}/pi-ext/pi-subagents`). Contains the package + its leaf deps
-/// (yaml/typebox/jiti) so pi can load it as a local-path package without npm/network.
+/// Bundled pi-subagents package source (shipped with the app as a tauri resource,
+/// then materialized to `{app_root}/pi-ext/pi-subagents` on REL first run).
+/// Contains the package + leaf deps so pi can load it as a local-path package
+/// without npm/network. Not the same as the pi **binary** under
+/// `external-tools/pi/pi/` (exe + docs).
 fn bundled_subagents_dir() -> PathBuf {
     crate::config::app_root_dir()
         .join("pi-ext")
@@ -431,15 +472,18 @@ fn bundled_subagents_version() -> Option<String> {
 /// version differs from the `.blackwell-version` stamp in the installed tree, so a
 /// user's pi-subagents install (and any edits under it) survive routine launches.
 /// The Blackwell-owned `settings.json` merge is what keeps routing fresh.
+///
+/// **Fatal when the factory tree is missing** — without it new users get a solo
+/// chat with no multi-agent fan-out. Call after `ensure_pi_ext_materialized`.
 fn sync_bundled_subagents(home: &Path) -> Result<(), String> {
     let src = bundled_subagents_dir();
-    if !src.is_dir() {
-        emit_dbg(&format!(
-            "[Pi] pi-subagents bundle missing (expected {} — app resource not provisioned)",
+    if !src.is_dir() || !src.join("package.json").is_file() {
+        return Err(format!(
+            "pi-subagents bundle missing at {}.\n\
+             NSIS/App must ship the pi-ext resource; on first run it is copied next to the exe.\n\
+             Reinstall Blackwell Ops or restore app_root/pi-ext/pi-subagents.",
             src.display()
         ));
-        // Non-fatal: pi still launches; BRAIN/WORKER routing is just unavailable.
-        return Ok(());
     }
     let dst = home.join("pi-subagents");
     let stamp = dst.join(".blackwell-version");
@@ -471,11 +515,12 @@ fn sync_bundled_subagents(home: &Path) -> Result<(), String> {
 }
 
 /// Write the pi-subagents extension config so subagent run artifacts land inside the
-/// pi home (session dir) instead of the project cwd, and so the parallel fan-out
+/// agent dir (session) instead of the project cwd, and so the parallel fan-out
 /// concurrency matches the running engine's slot count (no hardcoded ×4). Default is
 /// "project" which drops a `.pi-subagents/` folder into whatever repo the user is
 /// editing — this keeps all external-tool output inside its own folder
-/// (`{home}/agent/extensions/subagent/`).
+/// (`{PI_CODING_AGENT_DIR}/extensions/subagent/` — pi default is
+/// `~/.pi/agent/extensions/subagent/`; our `home` **is** the agent dir).
 ///
 /// `slots` = engine `--parallel` (concurrent subagent capacity). We set BOTH the
 /// per-parallel-batch `parallel.concurrency` and the global `globalConcurrencyLimit`
@@ -483,7 +528,9 @@ fn sync_bundled_subagents(home: &Path) -> Result<(), String> {
 /// engine's N slots (extension defaults cap per-batch at 4 and global at 20). No upper
 /// clamp here — the user's engine slot count is the source of truth.
 fn write_subagents_config(home: &Path, slots: u32) -> Result<(), String> {
-    let cfg_dir = home.join("agent").join("extensions").join("subagent");
+    // PI_CODING_AGENT_DIR replaces ~/.pi/agent — config is extensions/subagent under
+    // that dir, NOT a nested agent/extensions (legacy wrong path).
+    let cfg_dir = home.join("extensions").join("subagent");
     std::fs::create_dir_all(&cfg_dir).map_err(|e| format!("subagent cfg dir: {e}"))?;
     let cfg_path = cfg_dir.join("config.json");
     let n = slots.max(1);
@@ -495,6 +542,11 @@ fn write_subagents_config(home: &Path, slots: u32) -> Result<(), String> {
     let body = serde_json::to_string_pretty(&cfg)
         .map_err(|e| format!("subagent cfg json: {e}"))?;
     std::fs::write(&cfg_path, body).map_err(|e| format!("write subagent cfg: {e}"))?;
+    // Drop legacy nested path so we never re-read a stale wrong config.
+    let legacy = home.join("agent").join("extensions").join("subagent").join("config.json");
+    if legacy.is_file() {
+        let _ = std::fs::remove_file(&legacy);
+    }
     emit_dbg(&format!(
         "[Pi] Wrote subagents config → {} (concurrency={})",
         cfg_path.display(),
@@ -648,6 +700,16 @@ fn build_models_and_settings(req: &PiLaunchRequest) -> Result<(String, String, S
     // ── models.json ───────────────────────────────────────────────────
     let mut models = serde_json::json!({ "providers": {} });
 
+    // Thinking levels exposed in pi: low / high / max only (plus off → server "none").
+    // Live-tested on local llama OpenAI API: low/high/max/none all return 200; the wider
+    // minimal/medium/xhigh ladder is unused noise for our models.
+    let thinking_map = serde_json::json!({
+        "off": "none",
+        "low": "low",
+        "high": "high",
+        "max": "max"
+    });
+
     let brain_compat = serde_json::json!({
         "supportsDeveloperRole": false,
         "supportsReasoningEffort": true,
@@ -666,28 +728,22 @@ fn build_models_and_settings(req: &PiLaunchRequest) -> Result<(String, String, S
             "contextWindow": primary_ctx,
             "maxTokens": primary_max,
             "reasoning": true,
-            "thinkingLevelMap": {
-                "off": "none",
-                "minimal": "minimal",
-                "low": "low",
-                "medium": "medium",
-                "high": "high",
-                "xhigh": "high",
-                "max": "max"
-            }
+            "thinkingLevelMap": thinking_map
         }]
     });
 
     // Worker provider always present so subagent fan-out resolves in BOTH modes.
     // Solo: same engine/model as brain → equal-capability workers on shared slots.
+    // Twin: still advertise the same level ladder; effort is off by default on workers
+    // (execution seat). supportsReasoningEffort stays true so solo can raise if needed.
     models["providers"]["worker"] = serde_json::json!({
         "baseUrl": w_url,
         "api": "openai-completions",
         "apiKey": "local",
-        "compat": if is_twin {
-            serde_json::json!({ "supportsDeveloperRole": false, "supportsReasoningEffort": false, "supportsUsageInStreaming": false })
-        } else {
-            brain_compat.clone()
+        "compat": {
+            "supportsDeveloperRole": false,
+            "supportsReasoningEffort": true,
+            "supportsUsageInStreaming": false
         },
         "models": [{
             "id": w_model,
@@ -696,7 +752,7 @@ fn build_models_and_settings(req: &PiLaunchRequest) -> Result<(String, String, S
             "contextWindow": w_ctx,
             "maxTokens": w_max,
             "reasoning": true,
-            "thinkingLevelMap": { "off": null }
+            "thinkingLevelMap": thinking_map
         }]
     });
 
@@ -727,16 +783,15 @@ fn build_models_and_settings(req: &PiLaunchRequest) -> Result<(String, String, S
         settings = serde_json::json!({});
     }
 
-    // Overlay ONLY the keys Blackwell genuinely owns (routing + our shipped package
-    // + telemetry opinion + metadata). Never delete a non-Blackwell key.
+    // Overlay ONLY the keys Blackwell genuinely owns (routing + telemetry + metadata).
+    // Never delete a non-Blackwell key. `packages` is handled separately as a *union*
+    // so `pi install npm:…` / user extensions survive relaunch (we only guarantee
+    // `./pi-subagents` is present — we do not wipe the list).
     let managed = serde_json::json!({
         "defaultProvider": "local",
         "defaultModel": primary_model,
         "defaultThinkingLevel": "off",
         "enableInstallTelemetry": false,
-        // Blackwell-shipped pi-subagents package (bundled local-path, no npm needed).
-        // pi resolves this relative to this settings file → {home}/pi-subagents.
-        "packages": ["./pi-subagents"],
         "_blackwell": {
             "managed": true,
             "piHome": home_note,
@@ -748,6 +803,29 @@ fn build_models_and_settings(req: &PiLaunchRequest) -> Result<(String, String, S
         for (k, v) in managed.as_object().expect("managed is an object") {
             obj.insert(k.clone(), v.clone());
         }
+        // Union-merge packages: keep every existing entry, ensure ./pi-subagents.
+        let mut pkgs: Vec<String> = obj
+            .get("packages")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|x| x.as_str().map(|s| s.trim().to_string()))
+                    .filter(|s| !s.is_empty())
+                    .collect()
+            })
+            .unwrap_or_default();
+        const SHIPPED: &str = "./pi-subagents";
+        if !pkgs.iter().any(|p| p == SHIPPED || p.ends_with("/pi-subagents") || p.ends_with("\\pi-subagents"))
+        {
+            pkgs.insert(0, SHIPPED.to_string());
+        }
+        // De-dupe preserving order.
+        let mut seen = std::collections::HashSet::new();
+        pkgs.retain(|p| seen.insert(p.clone()));
+        obj.insert(
+            "packages".into(),
+            serde_json::Value::Array(pkgs.into_iter().map(serde_json::Value::String).collect()),
+        );
     }
     let settings_str =
         serde_json::to_string_pretty(&settings).map_err(|e| format!("settings json: {e}"))?;
@@ -833,27 +911,80 @@ fn pi_md_block(
     models: &Path,
     mode: &str,
     routing: &str,
+    slots: u32,
+    is_twin: bool,
 ) -> String {
+    let n = slots.max(1);
+    let topology = if is_twin {
+        format!(
+            "**TWIN** — BRAIN (provider `local`) orchestrates; WORKER (provider `worker`) runs \
+             up to **{n}** concurrent subagents on a separate engine. Prefer the `worker` \
+             subagent for implementation / explore / parallel lanes."
+        )
+    } else {
+        format!(
+            "**SOLO** — one engine. Provider `worker` aliases the **same** endpoint as `local`. \
+             Fan-out uses **{n}** equal-capability workers sharing that engine’s slots \
+             (not “1× brain + N−1 weaker virtual workers”)."
+        )
+    };
     format!(
         r#"{PI_MD_BEGIN}
 ## Blackwell Ops — pi (managed)
 
-### Paths (do not invent `~/.pi`)
+### STOP — environment truth (read before answering path questions)
 
-| Role | Absolute path |
-|------|----------------|
-| **PI_CODING_AGENT_DIR** (models, settings, sessions) | `{home}` |
-| **Project cwd** (workspace / default file ops) | `{project}` |
-| **models.json** | `{models}` |
+| Concept | Truth for **this** session |
+|---------|----------------------------|
+| **Agent config dir** | **`PI_CODING_AGENT_DIR`** = `{home}` |
+| **What that replaces** | Default `~/.pi/agent` (only used when the env var is **unset**) |
+| **settings / models / sessions / packages** | Under `{home}` only |
+| **pi-subagents package** | `{home}/pi-subagents` via `settings.packages` → `"./pi-subagents"` |
+| **Project / workspace cwd** | `{project}` |
+| **pi.exe install (binary + docs)** | app `external-tools/pi/pi/` — **not** the agent home |
+| **OS / Git Bash `$HOME`** | User profile only — **never** “pi config home” |
 
-- pi config lives under **PI_CODING_AGENT_DIR**, not `%USERPROFILE%\.pi` or a global npm install.
-- Install binary lives under `external-tools/pi/` (self-contained pi.exe, no Node/Bun needed).
+**Forbidden conclusions (always wrong in Blackwell harness):**
 
-### Model routing
+- Claiming config is `~/.pi`, `~/.pi/agent`, `~/.config/pi`, or `%USERPROFILE%\.pi`
+- Inventing `PI_HOME`, `PI_PROJECT_DIR`, `PI_ACTIVE_PROJECT_DIR` as the config root
+- Saying pi-subagents is “not wired” because pi is not on PATH or there is no `~/.config/pi/extensions`
+- Equating “user home” with agent home
+
+**Required check when asked about config:**
+
+```bash
+printf 'PI_CODING_AGENT_DIR=%s\n' "${{PI_CODING_AGENT_DIR:-<UNSET>}}"
+printf 'PI_MODEL=%s PI_PROVIDER=%s\n' "${{PI_MODEL:-?}}" "${{PI_PROVIDER:-?}}"
+```
+
+If `PI_CODING_AGENT_DIR` is set, report **that** path as config home. Do not “helpfully” expand `~/.pi`.
+
+**How packages load here:** `settings.json` → `"packages": ["./pi-subagents", …]` relative to `PI_CODING_AGENT_DIR`. That **is** the normal pi package mechanism for this isolated home. No PATH, no global symlink required. If the `subagent` tool works, the package **is** active.
+
+### Topology
 
 Launch mode: **{mode}**
 
+{topology}
+
+Fan-out concurrency is set to **{n}** (`extensions/subagent/config.json` → `parallel.concurrency` + `globalConcurrencyLimit`). Match engine `--parallel` slots.
+
+### Parallel work (use workers)
+
+- Parallelize independent reads / searches / edits across up to **{n}** `worker` subagents.
+- Non-overlapping write scopes; you own synthesis and final decisions.
+- Stay sequential for tiny tasks, strict data dependencies, or pure Q&A.
+- Twin: keep architecture / validation on BRAIN; dump grunt work to WORKER.
+- Solo: same model on all slots — still fan out when the work splits cleanly.
+
+### Model routing
+
 {routing}
+
+### models.json
+
+`{models}`
 {PI_MD_END}
 "#,
         home = home.display(),
@@ -861,7 +992,53 @@ Launch mode: **{mode}**
         models = models.display(),
         mode = mode,
         routing = routing,
+        topology = topology,
+        n = n,
     )
+}
+
+/// Global agent instructions (pi loads `AGENTS.md` from the agent dir =
+/// `PI_CODING_AGENT_DIR`). Overwritten each launch so path truth cannot drift.
+fn write_agents_md(home: &Path, project: &Path, slots: u32, is_twin: bool) -> Result<(), String> {
+    let n = slots.max(1);
+    let mode_line = if is_twin {
+        format!("TWIN: BRAIN=`local`, WORKER=`worker`, up to {n} concurrent workers on the worker engine.")
+    } else {
+        format!("SOLO: `local` and `worker` share one engine; up to {n} equal-capability workers.")
+    };
+    let body = format!(
+        r#"# Blackwell Ops — pi session (managed)
+
+You are running under **Blackwell Ops Harness Connect**, not a stock global pi install.
+
+## Config home (mandatory)
+
+- **Only** trust env **`PI_CODING_AGENT_DIR`** = `{home}`
+- That directory **is** your agent dir (settings, models, sessions, packages).
+- It **replaces** the docs default `~/.pi/agent`.
+- **`$HOME` / `C:\Users\...` is NOT your config directory.**
+- Do **not** mention `PI_HOME`, `~/.config/pi`, or “not on PATH” as reasons packages are inactive.
+- **pi-subagents** is loaded from `{home}/pi-subagents` via `settings.packages` (`./pi-subagents`). If you have a `subagent` tool, it is active.
+
+## Workspace
+
+- Project cwd: `{project}`
+
+## Topology
+
+{mode_line}
+
+Use the `worker` subagent and parallel fan-out (up to {n}) for independent multi-file work. You remain the orchestrator.
+
+When asked “where is pi home?”, answer with the value of `PI_CODING_AGENT_DIR` only.
+"#,
+        home = home.display(),
+        project = project.display(),
+        mode_line = mode_line,
+        n = n,
+    );
+    std::fs::write(home.join("AGENTS.md"), body).map_err(|e| format!("AGENTS.md: {e}"))?;
+    Ok(())
 }
 
 fn write_pi_context_files(
@@ -870,10 +1047,13 @@ fn write_pi_context_files(
     models: &Path,
     mode: &str,
     routing: &str,
+    slots: u32,
+    is_twin: bool,
 ) -> Result<(), String> {
-    let block = pi_md_block(home, project, models, mode, routing);
+    let block = pi_md_block(home, project, models, mode, routing, slots, is_twin);
     upsert_pi_md(&home.join("PI.md"), &block)?;
     upsert_pi_md(&project.join("PI.md"), &block)?;
+    write_agents_md(home, project, slots, is_twin)?;
     Ok(())
 }
 
@@ -978,6 +1158,17 @@ pub async fn pi_code_launch(
         let home = home_dir();
         std::fs::create_dir_all(&home).map_err(|e| format!("home: {e}"))?;
 
+        // REL: ensure Tauri-bundled pi-ext is on disk next to the exe (first run).
+        if let Err(e) = crate::config::ensure_pi_ext_materialized(&app) {
+            emit_dbg(&format!("[Pi] pi-ext materialize: {e}"));
+        }
+
+        // Refresh outer shim every launch so older installs pick up isolation fixes
+        // (always set PI_CODING_AGENT_DIR; never fall through to ~/.pi/agent).
+        if let Err(e) = write_outer_shim(&tools_dir()) {
+            emit_dbg(&format!("[Pi] outer shim refresh warning: {e}"));
+        }
+
         let mode = request.mode.trim().to_lowercase();
         let (models_str, settings_str, routing, routing_facts) =
             build_models_and_settings(&request)?;
@@ -986,20 +1177,26 @@ pub async fn pi_code_launch(
         let settings_file = settings_path();
         std::fs::write(&settings_file, &settings_str).map_err(|e| format!("write settings: {e}"))?;
         emit_dbg(&format!(
-            "[Pi] Wrote models.json → {} ({} bytes)",
+            "[Pi] Wrote models.json → {} ({} bytes); PI_CODING_AGENT_DIR={}",
             models_file.display(),
-            models_str.len()
+            models_str.len(),
+            home.display()
         ));
 
-        if let Err(e) = write_pi_context_files(&home, &project, &models_file, &mode, &routing) {
-            emit_dbg(&format!("[Pi] PI.md write warning: {e}"));
+        if let Err(e) = write_pi_context_files(
+            &home,
+            &project,
+            &models_file,
+            &mode,
+            &routing,
+            routing_facts.slots,
+            routing_facts.is_twin,
+        ) {
+            emit_dbg(&format!("[Pi] PI.md / AGENTS.md write warning: {e}"));
         }
 
-        // Blackwell-shipped pi-subagents (local-path package) + WORKER agent.
-        // Keeps the BRAIN/WORKER fan-out topology working without npm/network.
-        if let Err(e) = sync_bundled_subagents(&home) {
-            emit_dbg(&format!("[Pi] pi-subagents sync warning: {e}"));
-        }
+        // Blackwell-shipped pi-subagents (local-path package) — required for multi-agent.
+        sync_bundled_subagents(&home)?;
         // Set the subagent fan-out concurrency to the engine's slot count (both modes).
         if let Err(e) = write_subagents_config(&home, routing_facts.slots) {
             emit_dbg(&format!("[Pi] subagents config warning: {e}"));

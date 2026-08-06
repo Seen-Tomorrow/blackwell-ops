@@ -10,6 +10,7 @@ import MultiAgentBooster, {
   type CockpitSpecDetailParam,
   type DflashGetUiState,
 } from "./MultiAgentBooster";
+import type { CockpitFlagToggle } from "./CockpitFlagToolbar";
 import type { CockpitCtxStripProps } from "./CockpitCtxStrip";
 
 /**
@@ -58,6 +59,7 @@ export default function EngineBoostSection(props: EngineBoostSectionProps) {
     specDetailParams,
     embedCtx,
     ctxStripProps,
+    flagToggles,
   } = props;
 
   if (!show) return null;
@@ -81,6 +83,7 @@ export default function EngineBoostSection(props: EngineBoostSectionProps) {
         onThink={(t) => {
           void applyCockpit(codingMode, speedBoost, brains, t, cockpitOpts);
         }}
+        flagToggles={flagToggles}
         capabilities={capabilities}
         dflashLibraryReady={dflashLibraryReady}
         dflashGettable={dflashGettable}
@@ -182,4 +185,5 @@ export interface EngineBoostSectionProps {
   specDetailParams: CockpitSpecDetailParam[];
   embedCtx: boolean;
   ctxStripProps: Omit<CockpitCtxStripProps, "className">;
+  flagToggles: CockpitFlagToggle[];
 }

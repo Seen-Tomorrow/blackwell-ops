@@ -56,6 +56,53 @@
   box-shadow: var(--theme-cockpit-header-shadow);
 }
 
+/* Far-right flag strip (VISION / FLASH / LOAD) — same segment language as VRAM Split/Device */
+.full-auto-cockpit__header--minimal {
+  gap: 0.5rem;
+}
+
+.full-auto-cockpit__flag-toolbar {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.55rem;
+  margin-left: auto;
+  min-width: 0;
+  flex: 0 1 auto;
+}
+
+.full-auto-cockpit__flag-unit {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.full-auto-cockpit__flag-label {
+  font-size: 7px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--theme-industrial-muted, var(--theme-text-muted, #6a8a6a)) 92%, transparent);
+  white-space: nowrap;
+  line-height: 1;
+}
+
+.full-auto-cockpit .segment-switch.segment-switch--cockpit-flag {
+  min-height: 20px;
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--theme-bezel-edge-hi, rgba(255, 255, 255, 0.12)) 16%, transparent),
+    inset 0 -1px 2px color-mix(in srgb, #000 26%, transparent);
+}
+
+.full-auto-cockpit .segment-switch.segment-switch--cockpit-flag .segment-switch__option {
+  font-size: 7px;
+  letter-spacing: 0.05em;
+  padding: 3px 6px;
+}
+
 .full-auto-cockpit__title {
   display: block;
   font-size: 8px;

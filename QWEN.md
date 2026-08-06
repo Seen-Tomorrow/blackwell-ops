@@ -20,11 +20,12 @@
 Qwen identifies models by **`id` + `baseUrl`** in `settings.json` → `modelProviders.openai[]`.
 Use **`/model <id>`** (not the raw GGUF name alone).
 
-Launch mode: **solo**
+Launch mode: **brain_workers**
 
 | id (use with `/model`) | Role | Engine alias (OpenAI model string) | Endpoint |
 |------------------------|------|--------------------------------------|----------|
-| `local` | SOLO | `BRAIN` | `http://127.0.0.1:8888/v1` |
+| `brain` | BRAIN (default chat) | `DS4` | `http://127.0.0.1:8888/v1` |
+| `worker` | WORKER (fastModel + worker-* agents) | `WORKER` | `http://127.0.0.1:8889/v1` |
 
 - Default **main** chat model is **`brain`** (twin) or **`local`** (solo).
 - You (the agent) **cannot** switch the main session model; the user uses **`/model brain`** or **`/model worker`**.

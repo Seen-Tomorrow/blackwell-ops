@@ -12,6 +12,15 @@ $script_dir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $root = Split-Path -Parent $script_dir
 . (Join-Path $script_dir 'runtime-distribution.ps1')
 
+# REL tauri.conf.json bundles gitignored src-tauri/pi-ext/ as a resource.
+$piext_pkg = Join-Path $root 'src-tauri\pi-ext\pi-subagents\package.json'
+if (-not (Test-Path -LiteralPath $piext_pkg)) {
+    Write-Host '[prepare-release-app-only] Missing src-tauri/pi-ext/pi-subagents (gitignored).' -ForegroundColor Red
+    Write-Host '  Tauri will fail: resource path `pi-ext` does not exist.' -ForegroundColor Red
+    Write-Host '  Restore pi-ext (e.g. copy from target/release/pi-ext) then re-run.' -ForegroundColor Yellow
+    exit 1
+}
+
 $runtime_root = Join-Path $root 'src-tauri\runtime'
 $bundle_root = Join-Path $root 'src-tauri\runtime-bundle'
 

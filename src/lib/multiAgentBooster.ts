@@ -368,8 +368,6 @@ export interface FullAutoPlan {
   pushBatch: boolean;
   kvQuant: string;
   reasoning: string | number | null;
-  reasoningPreserve: "on" | "off" | null;
-  vision: "auto" | null;
   outcome: string;
   /** Joe-facing soft note (not CLI jargon). */
   softNote: string | null;
@@ -468,20 +466,17 @@ export function resolveFullAutoPlan(opts: {
 
   const kvQuant = pickKvQuantForBrains(brains, kvQuantValues);
 
+  // Think slider only drives REASONING budget (--reasoning / budget).
+  // Reasoning Preserve is a free FEATURE-FLAGS chip — never cockpit-owned.
   let reasoning: string | number | null = null;
-  let reasoningPreserve: "on" | "off" | null = null;
   if (think === "off") {
     reasoning = "off";
-    reasoningPreserve = "off";
   } else if (think === "on") {
     reasoning = "on";
-    reasoningPreserve = "on";
   } else if (think === "budget2k") {
     reasoning = 2000;
-    reasoningPreserve = "on";
   } else {
     reasoning = 4000;
-    reasoningPreserve = "on";
   }
 
   const brainsLabel =
@@ -534,8 +529,6 @@ export function resolveFullAutoPlan(opts: {
     pushBatch,
     kvQuant,
     reasoning,
-    reasoningPreserve,
-    vision: "auto",
     outcome,
     softNote,
     needsDflashDraft,

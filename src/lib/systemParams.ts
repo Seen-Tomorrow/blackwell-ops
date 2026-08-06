@@ -40,13 +40,21 @@ export const COCKPIT_OWNED_PARAM_KEYS = new Set([
   "parallel",
   "kv_quant",
   "reasoning",
-  "reasoning_preserve",
+  // reasoning_preserve is a normal FEATURE-FLAGS chip (not Think / Full Auto).
   "ctx",
+  /** Header mini-toolbar flags (VISION / FLASH-ATT / LOAD) — not free chips. */
+  "vision",
+  "flash_attn",
+  "load_mode",
 ]);
 
 export function isCockpitOwnedParam(key: string): boolean {
   return COCKPIT_OWNED_PARAM_KEYS.has(key);
 }
+
+/** Cockpit header flag toolbar — always bound when present on the template. */
+export const COCKPIT_FLAG_PARAM_KEYS = ["vision", "flash_attn", "load_mode"] as const;
+export type CockpitFlagParamKey = (typeof COCKPIT_FLAG_PARAM_KEYS)[number];
 
 export const SYSTEM_CATALOG_PARAM_TOOLTIP =
   "Fixed position in engine panel — edit values and defaults only; group and reorder have no effect.";
@@ -138,6 +146,14 @@ export function isPlacementChromeParam(def: {
   const g = def.ui_group ? normalizeUiGroup(def.ui_group) : "";
   // Product chrome keys only lock when in SYSTEM (or docked). Custom essentials pack
   // lives in PERFORMANCE and stays fully user-editable / deletable.
+  // Header flag toolbar keys hide as free chips in every group (FEATURE-FLAGS too).
+  if (
+    def.key === "vision"
+    || def.key === "flash_attn"
+    || def.key === "load_mode"
+  ) {
+    return true;
+  }
   if (SYSTEM_CATALOG_PARAM_KEYS.has(def.key) || COCKPIT_OWNED_PARAM_KEYS.has(def.key)) {
     return g === SYSTEM_UI_GROUP || Boolean(def.dock);
   }
@@ -359,6 +375,15 @@ export function migrateCatalogParams<T extends MigratableParam>(
     if (profileGroup && paramUiGroup(p.ui_group) !== profileGroup) {
       row = { ...row, ui_group: profileGroup };
       changed = true;
+    }
+
+    // Repair: reasoning_preserve was briefly cockpit/SYSTEM chrome — free FEATURE-FLAGS chip.
+    if (p.key === "reasoning_preserve") {
+      const gPreserve = paramUiGroup(p.ui_group);
+      if (gPreserve === SYSTEM_UI_GROUP || gPreserve === "" || Boolean(p.dock && String(p.dock).trim())) {
+        row = { ...row, ui_group: "FEATURE-FLAGS", dock: "" };
+        changed = true;
+      }
     }
 
     // SYSTEM chrome / cockpit: only re-pin when already in chrome bucket (or empty/legacy).

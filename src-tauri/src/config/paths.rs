@@ -317,9 +317,59 @@ pub fn ensure_portable_structure(app_handle: &tauri::AppHandle) {
             log::info!("[setup] Copying bundled binaries from resources to {}", dest_binaries.display());
             let _ = copy_resources_to_binaries(app_handle, &dest_binaries);
         }
+        // pi-ext (pi-subagents factory) — same pattern: Tauri Resource → app_root/pi-ext
+        // so pi_code can seed the isolated pi-home without a manual copy.
+        if let Err(e) = ensure_pi_ext_materialized(app_handle) {
+            log::warn!("[setup] pi-ext materialize: {e}");
+        }
     }
 
     log::info!("[setup] Portable structure ready at {}", root.display());
+}
+
+/// Materialize bundled `pi-ext/` next to the exe (REL).
+///
+/// Tauri ships it under BaseDirectory::Resource; portable/NSIS layouts may not
+/// leave a ready `app_root/pi-ext` until we copy it (mirrors runtime/).
+/// Safe to call every launch — no-ops when `pi-ext/pi-subagents/package.json` exists.
+pub fn ensure_pi_ext_materialized(app_handle: &tauri::AppHandle) -> Result<(), String> {
+    let dest = app_root_dir().join("pi-ext");
+    let marker = dest.join("pi-subagents").join("package.json");
+    if marker.is_file() {
+        return Ok(());
+    }
+
+    let resource_path = app_handle
+        .path()
+        .resolve("pi-ext", BaseDirectory::Resource)
+        .map_err(|e| format!("resolve pi-ext resource: {e}"))?;
+
+    if !resource_path.is_dir() {
+        return Err(format!(
+            "pi-ext resource missing at {} (NSIS/App bundle incomplete)",
+            resource_path.display()
+        ));
+    }
+
+    let src_pkg = resource_path.join("pi-subagents").join("package.json");
+    if !src_pkg.is_file() {
+        return Err(format!(
+            "pi-ext resource incomplete (no pi-subagents/package.json under {})",
+            resource_path.display()
+        ));
+    }
+
+    if dest.exists() {
+        let _ = std::fs::remove_dir_all(&dest);
+    }
+    copy_directory_tree(&resource_path, &dest)
+        .map_err(|e| format!("copy pi-ext → app root: {e}"))?;
+    log::info!(
+        "[setup] Materialized pi-ext → {} (from resource {})",
+        dest.display(),
+        resource_path.display()
+    );
+    Ok(())
 }
 
 /// Copy bundled binaries from Tauri resources to app_root/runtime/.

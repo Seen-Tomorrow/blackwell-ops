@@ -201,7 +201,10 @@ export function providerSupportsFitLaunch(profile?: SpawnProfile): boolean {
   return Boolean(profile?.auto_vram || profile?.fit_style);
 }
 
-/** Keys emitted on MANUAL launch — essentials view filters; full passes all visible params. */
+/**
+ * Keys emitted on MANUAL launch — essentials view filters; full passes all visible params.
+ * Prefer `resolveLaunchKeySet` + LaunchPolicy for new code (see launchPolicy.ts).
+ */
 export function resolveManualLaunchKeys(opts: {
   configView: ConfigViewMode;
   essentialFactoryKeys: Set<string>;
@@ -227,9 +230,7 @@ export function resolveManualLaunchKeys(opts: {
     }
   }
 
-  // Cockpit-owned knobs (Agents / Memory / Think / ctx) must always reach CLI when present —
-  // not in factory essentialParamKeys and must not vanish on FIT/Essentials.
-  // Only emit if the provider template actually has the param (build_cmd matches keys).
+  // Cockpit-owned knobs must always reach CLI when present on the template.
   const templateKeys = new Set(opts.allParams.map((p) => p.key));
   for (const k of COCKPIT_OWNED_PARAM_KEYS) {
     if (templateKeys.has(k)) keys.add(k);

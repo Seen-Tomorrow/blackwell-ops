@@ -1,6 +1,11 @@
-// Merges param defaults with localStorage overrides.
+/**
+ * Merges param factory defaults with per-mode profile overrides.
+ *
+ * Full Auto / Assisted Essentials / Assisted Full each have their own value map
+ * (see launchProfiles). Switching modes loads another profile — no silent leakage.
+ */
 
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import type { ModelEntry, UserEditedTemplateParam } from "../lib/types";
 import { paramsVisibilityFingerprint, resolveParamDefaultValue } from "../lib/paramConfigResolve";
 import {
@@ -10,7 +15,6 @@ import {
   stripObsoleteSpecParams,
 } from "../lib/specProfiles";
 import {
-  catalogOverrideKey,
   modelSpecOverrideKey,
   readJsonStorage,
   removeStorage,
@@ -18,9 +22,24 @@ import {
   type ModelSpecOverride,
 } from "../lib/storage";
 import { EVENTS } from "../lib/events";
+import {
+  type LaunchPolicyId,
+  resolveLaunchPolicyId,
+  getLaunchPolicy,
+  mergeLaunchValues,
+} from "../lib/launchPolicy";
+import { factoryDefaultsFromParams } from "../lib/buildLaunchConfig";
+import {
+  clearAllProfiles,
+  patchProfileValues,
+  readCatalogOverrideStore,
+  switchActivePolicy,
+  writeCatalogOverrideStore,
+} from "../lib/launchProfiles";
+import type { ConfigViewMode } from "../lib/types";
 
 // Preserve mixed-case values like "8K", "GPU-0"; lowercase pure-alpha strings.
-const normalizeValue = (value: any): any => {
+const normalizeValue = (value: unknown): unknown => {
   if (typeof value !== "string") return value;
 
   const hasLower = /[a-z]/.test(value);
@@ -39,15 +58,31 @@ interface UseConfigResolverOptions {
   model: ModelEntry | null;
   userEditedParams: UserEditedTemplateParam[];
   backendType: string;
+  /** Active launch policy — drives which profile is read/written. */
+  fullAutoMode: boolean;
+  configView: ConfigViewMode;
 }
 
 export function useConfigResolver({
   model,
   userEditedParams,
   backendType,
+  fullAutoMode,
+  configView,
 }: UseConfigResolverOptions) {
+  // Heterogeneous param bag — panel treats values as any; pure builder re-types at launch.
   const [config, setConfig] = useState<Record<string, any>>({});
   const modelPath = model?.path ?? "";
+
+  const policyId = useMemo(
+    () => resolveLaunchPolicyId({ fullAutoMode, configView }),
+    [fullAutoMode, configView],
+  );
+
+  const policyIdRef = useRef(policyId);
+  const configRef = useRef(config);
+  policyIdRef.current = policyId;
+  configRef.current = config;
 
   const cleanedParams = useMemo(
     () => stripObsoleteSpecParams(userEditedParams),
@@ -59,40 +94,96 @@ export function useConfigResolver({
     [cleanedParams],
   );
 
+  const factoryDefaults = useMemo(
+    () => factoryDefaultsFromParams(cleanedParams),
+    [cleanedParams],
+  );
+
   const loadConfig = useCallback(() => {
     if (!cleanedParams.length) {
       setConfig({});
       return;
     }
 
-    const stored = readJsonStorage<Record<string, unknown>>(catalogOverrideKey(backendType)) ?? {};
-    const modelSpec = modelPath ? readJsonStorage<ModelSpecOverride>(modelSpecOverrideKey(modelPath)) : null;
+    const store = readCatalogOverrideStore(backendType, factoryDefaults, policyId);
+    // Keep activePolicy in sync with UI mode
+    if (store.activePolicy !== policyId) {
+      store.activePolicy = policyId;
+      writeCatalogOverrideStore(backendType, store);
+    }
+
+    const profile = store.profiles[policyId] ?? {};
+    const modelSpec = modelPath
+      ? readJsonStorage<ModelSpecOverride>(modelSpecOverrideKey(modelPath))
+      : null;
+
+    const policy = getLaunchPolicy(policyId);
+    const baseMerged = mergeLaunchValues({
+      policy,
+      factoryDefaults,
+      profileValues: profile,
+    });
+
     const resolved: Record<string, any> = {};
 
     for (const p of cleanedParams) {
       const isSpecKey = SPEC_KEY_SET.has(p.key);
-      // Profile knobs: always load defaults even when group hidden (Boost paints from them).
       if (isSpecKey) {
         const modelVal = modelSpec?.[p.key as keyof ModelSpecOverride];
         const fallback = resolveParamDefaultValue(p);
-        resolved[p.key] = modelVal ?? stored[p.key] ?? fallback;
+        resolved[p.key] = modelVal ?? profile[p.key] ?? fallback;
         continue;
       }
       if (p.hidden || !p.values?.length) continue;
-      const fallback = resolveParamDefaultValue(p);
-      resolved[p.key] = stored[p.key] ?? fallback;
+      // Prefer merged (factory → Joe → profile) so Full Auto flags are correct even if missing in profile
+      resolved[p.key] = baseMerged[p.key] ?? resolveParamDefaultValue(p);
     }
 
-    const normalized = Object.fromEntries(
+    const normalized: Record<string, any> = Object.fromEntries(
       Object.entries(resolved).map(([k, v]) => [k, normalizeValue(v)]),
     );
 
     setConfig(normalized);
-  }, [cleanedParams, backendType, modelPath]);
+  }, [cleanedParams, backendType, modelPath, policyId, factoryDefaults]);
 
+  // Load when model / params / provider change
   useEffect(() => {
     loadConfig();
   }, [modelPath, paramsFingerprint, backendType, loadConfig]);
+
+  // Mode switch: flush current profile, load target (no cross-copy).
+  // Never flush across provider changes — that would pollute the new provider bag.
+  const prevPolicyRef = useRef<LaunchPolicyId | null>(null);
+  const prevBackendRef = useRef(backendType);
+  useEffect(() => {
+    if (prevBackendRef.current !== backendType) {
+      prevBackendRef.current = backendType;
+      prevPolicyRef.current = policyId;
+      return;
+    }
+    if (prevPolicyRef.current === null) {
+      prevPolicyRef.current = policyId;
+      return;
+    }
+    if (prevPolicyRef.current === policyId) return;
+
+    const from = prevPolicyRef.current;
+    prevPolicyRef.current = policyId;
+
+    // Flush in-memory config into the profile we are leaving (same provider only)
+    const flushValues: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(configRef.current)) {
+      if (SPEC_KEY_SET.has(k)) continue;
+      flushValues[k] = v;
+    }
+
+    switchActivePolicy(backendType, policyId, factoryDefaults, {
+      policyId: from,
+      values: flushValues,
+    });
+
+    loadConfig();
+  }, [policyId, backendType, factoryDefaults, loadConfig]);
 
   useEffect(() => {
     const handler = () => loadConfig();
@@ -101,7 +192,7 @@ export function useConfigResolver({
   }, [loadConfig]);
 
   const updateParam = useCallback(
-    (key: string, value: any) => {
+    (key: string, value: unknown) => {
       if (isObsoleteSpecParamKey(key)) return;
       const normalizedValue = normalizeValue(value);
       setConfig((prev) => ({ ...prev, [key]: normalizedValue }));
@@ -112,12 +203,14 @@ export function useConfigResolver({
         return;
       }
 
-      const storageKey = catalogOverrideKey(backendType);
-      const overrides = readJsonStorage<Record<string, unknown>>(storageKey) ?? {};
-      overrides[key] = normalizedValue;
-      writeJsonStorage(storageKey, overrides);
+      patchProfileValues(
+        backendType,
+        policyIdRef.current,
+        { [key]: normalizedValue },
+        factoryDefaults,
+      );
     },
-    [backendType, modelPath],
+    [backendType, modelPath, factoryDefaults],
   );
 
   const updateParams = useCallback(
@@ -140,16 +233,14 @@ export function useConfigResolver({
         writeJsonStorage(modelSpecOverrideKey(modelPath), { ...prev, ...modelPatch });
       }
       if (Object.keys(catalogPatch).length > 0) {
-        const storageKey = catalogOverrideKey(backendType);
-        const overrides = readJsonStorage<Record<string, unknown>>(storageKey) ?? {};
-        writeJsonStorage(storageKey, { ...overrides, ...catalogPatch });
+        patchProfileValues(backendType, policyIdRef.current, catalogPatch, factoryDefaults);
       }
     },
-    [backendType, modelPath],
+    [backendType, modelPath, factoryDefaults],
   );
 
   const clearOverrides = useCallback(() => {
-    removeStorage(catalogOverrideKey(backendType));
+    clearAllProfiles(backendType);
     if (modelPath) removeStorage(modelSpecOverrideKey(modelPath));
     loadConfig();
   }, [backendType, modelPath, loadConfig]);
@@ -182,7 +273,12 @@ export function useConfigResolver({
     updateParams,
     clearOverrides,
     clearSpecConfig,
+    /** Active launch policy id for this resolver. */
+    policyId,
     /** Params with obsolete SPECULATIVE-DECODING rows removed. */
     resolvedParams: cleanedParams,
   };
 }
+
+// Re-export for callers that want factory defaults without importing buildLaunchConfig
+export { factoryDefaultsFromParams };

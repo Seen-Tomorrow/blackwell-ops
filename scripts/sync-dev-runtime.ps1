@@ -140,6 +140,8 @@ if (Test-Path -LiteralPath $piext_src) {
         Set-Content -LiteralPath $piext_fp_path -Value $piext_fp -NoNewline -Encoding ascii
         Write-Host '[sync-dev-runtime] pi-ext -> target/debug/pi-ext' -ForegroundColor Green
     }
+} else {
+    Write-Host '[sync-dev-runtime] WARNING: src-tauri/pi-ext missing (gitignored). DEV pi harness will not sync pi-subagents; REL will fail resource bundle.' -ForegroundColor Yellow
 }
 
 if (-not $Force -and (Test-Path -LiteralPath $fingerprint_path) -and (Test-DestLooksPresent)) {

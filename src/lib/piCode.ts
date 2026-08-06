@@ -36,8 +36,8 @@ export interface PiLaunchResult {
 
 export const PI_CODE_DISCLAIMER = [
   "pi is a third-party coding agent (Bun-compiled standalone Windows binary).",
-  "Blackwell installs it under external-tools/pi/ (pi-windows-x64.zip, ~46 MB download) — not npm, not on PATH.",
-  "It can read/write files and run shell commands inside the project folder you choose.",
-  "Config is isolated under config/external-tools/pi-home (PI_CODING_AGENT_DIR) — never your global ~/.pi unless you opt in later.",
-  "Local-only: points at your Blackwell engines (BRAIN/WORKER); no cloud keys.",
+  "Blackwell installs the binary under external-tools/pi/ (~46 MB) — not npm, not on PATH.",
+  "Config is isolated under config/external-tools/pi-home via PI_CODING_AGENT_DIR (not ~/.pi, not ~/.config/pi).",
+  "Multi-agent (SOLO ×N or TWIN BRAIN+WORKER) uses the bundled pi-subagents package shipped as app pi-ext/ — synced into pi-home on connect.",
+  "It can read/write files and run shell commands inside the project folder you choose. Local engines only; no cloud keys.",
 ].join("\n\n");
