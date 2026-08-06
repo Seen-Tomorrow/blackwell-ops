@@ -336,7 +336,8 @@ pub fn apply_cmd_script_raw_arg(cmd: &mut std::process::Command, batch_path: &Pa
 ///
 /// Foundry configure/build **must** stay non-elevated: wrapping cmake in gsudo breaks
 /// CMake 4.3 CUDA link-line probing (nvcc ABI check) and forces a UAC prompt for every build.
-/// gsudo is only for GPU control (nvidia-smi / Inspector), not Foundry.
+/// gsudo is for GPU control (nvidia-smi / Inspector) and optional elevated pi console
+/// (`pi_code_launch` with `elevated: true`) — not Foundry.
 ///
 /// Prefer [`apply_cmd_script_raw_arg`] when building a `Command` directly so spaced
 /// install paths (e.g. `Blackwell OPS portable`) work. This tuple form returns the

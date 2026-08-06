@@ -27,6 +27,7 @@ import {
   EVENTS,
   type AtomcodeEngineClickDetail,
 } from "../lib/events";
+import { KEYS, readStorage, writeStorage } from "../lib/storage";
 import {
   BRAINS_OPTIONS,
   THINK_OPTIONS,
@@ -299,6 +300,10 @@ export default function MultiAgentBooster({
    * Seed once when opening; chips update this only (launch uses this value).
    */
   const [harnessAgents, setHarnessAgents] = useState(1);
+  /** Launch pi elevated (gsudo UAC) — system ops inside the agent. */
+  const [piElevated, setPiElevated] = useState(
+    () => readStorage(KEYS.piCodeElevated) === "1",
+  );
   /** Preset-applied twin: freeze role clicks until both engines RUNNING. */
   const [presetRolesLocked, setPresetRolesLocked] = useState(false);
 
@@ -1178,12 +1183,15 @@ export default function MultiAgentBooster({
             primary,
             worker,
             projectDir,
+            elevated: piElevated,
           };
           const result = await invoke<PiLaunchResult>("pi_code_launch", {
             request: req,
           });
+          const elev =
+            result.elevated || piElevated ? " · elevated" : "";
           setAtomMsg(
-            `Opened pi (${result.mode}) → :${primary.port}` +
+            `Opened pi (${result.mode}${elev}) → :${primary.port}` +
               (worker ? ` + worker :${worker.port}` : ""),
           );
           void refreshPiStatus();
@@ -1223,6 +1231,7 @@ export default function MultiAgentBooster({
       runningEngines,
       onSelectEngine,
       normalizeError,
+      piElevated,
     ],
   );
 
@@ -1613,6 +1622,11 @@ export default function MultiAgentBooster({
                       harnessTool === "qwen" ? "Qwen Code" : harnessTool === "pi" ? "pi" : "AtomCode"
                     } — TWIN`}
               </h3>
+              {harnessTool === "pi" && piElevated && (
+                <p className="atomcode-confirm-elevated font-mono text-[9px] text-yellow-400/90 m-0 mb-2">
+                  Elevated (gsudo) — UAC prompt, then admin pi console
+                </p>
+              )}
               <p className="atomcode-confirm-summary" aria-live="polite">
                 {confirmMode === "solo" ? (
                   <>
@@ -2151,6 +2165,26 @@ export default function MultiAgentBooster({
                   Manage…
                 </button>
               </div>
+            )}
+            {harnessTool === "pi" && (
+              <label
+                className="atomcode-wizard__elevated flex items-center gap-1.5 mb-1.5 w-full cursor-pointer select-none"
+                title="Run pi console elevated via bundled gsudo (UAC). Use for system ops (services, hosts, privileged shell)."
+              >
+                <input
+                  type="checkbox"
+                  className="accent-nv-green"
+                  checked={piElevated}
+                  onChange={(e) => {
+                    const on = e.target.checked;
+                    setPiElevated(on);
+                    writeStorage(KEYS.piCodeElevated, on ? "1" : "0");
+                  }}
+                />
+                <span className="text-[8px] font-mono uppercase tracking-wide text-stealth-muted">
+                  Elevated (gsudo)
+                </span>
+              </label>
             )}
             {/* LEFT — concurrency chips */}
             <div className="atomcode-wizard__footer-agents">

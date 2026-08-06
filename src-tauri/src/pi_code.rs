@@ -415,6 +415,10 @@ pub struct PiLaunchRequest {
     pub primary: PiEngineRef,
     pub worker: Option<PiEngineRef>,
     pub project_dir: String,
+    /// When true, spawn the pi console elevated via bundled gsudo (UAC).
+    /// Needed for system-level shell ops inside the agent (services, hosts, etc.).
+    #[serde(default)]
+    pub elevated: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -425,6 +429,8 @@ pub struct PiLaunchResult {
     pub project_dir: String,
     pub mode: String,
     pub home_path: String,
+    /// True when the console was started with elevation (or app already elevated).
+    pub elevated: bool,
 }
 
 fn openai_model_id(raw: &str) -> String {
@@ -1082,8 +1088,9 @@ fn write_session_launch_bat(home: &Path, launcher: &Path, project: &Path) -> Res
     Ok(bat)
 }
 
+/// Detached visible pi console (normal integrity). Session bat sets PI_CODING_AGENT_DIR.
 #[cfg(windows)]
-fn spawn_pi_console(launcher: &Path, home: &Path, project: &Path) -> Result<(), String> {
+fn spawn_pi_console_user(launcher: &Path, home: &Path, project: &Path) -> Result<(), String> {
     use std::os::windows::process::CommandExt;
     use std::process::{Command, Stdio};
 
@@ -1122,6 +1129,87 @@ fn spawn_pi_console(launcher: &Path, home: &Path, project: &Path) -> Result<(), 
         .map_err(|e| format!("Failed to spawn pi: {e}"))?;
 
     Ok(())
+}
+
+/// Elevated detached pi console via bundled gsudo (one UAC prompt unless already admin).
+/// Uses `gsudo --new` so the elevated window stays open and the app does not wait.
+#[cfg(windows)]
+fn spawn_pi_console_elevated(
+    app: &tauri::AppHandle,
+    launcher: &Path,
+    home: &Path,
+    project: &Path,
+) -> Result<(), String> {
+    use std::os::windows::process::CommandExt;
+    use std::process::{Command, Stdio};
+
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+    const CREATE_NEW_CONSOLE: u32 = 0x00000010;
+
+    let session_bat = write_session_launch_bat(home, launcher, project)?;
+    let cmd_exe = crate::sidecar_elevate::system_cmd_exe();
+    let raw_tail = crate::sidecar_elevate::cmd_script_raw_tail(&session_bat);
+
+    // Already elevated → new console, no UAC.
+    if crate::sidecar_elevate::is_process_elevated() {
+        let mut c = Command::new(&cmd_exe);
+        c.raw_arg(&raw_tail)
+            .current_dir(project)
+            .env("PI_CODING_AGENT_DIR", home)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .creation_flags(CREATE_NEW_CONSOLE);
+        c.spawn()
+            .map_err(|e| format!("Failed to spawn elevated pi (already admin): {e}"))?;
+        return Ok(());
+    }
+
+    let gsudo = crate::sidecar_elevate::stage_gsudo(app)?;
+    // --new = new elevated console window, return immediately (do not -w wait).
+    // Space-safe cmd /d /s /c ""session.bat"" via raw_arg (same as Foundry/GPU priv).
+    let mut c = Command::new(&gsudo);
+    c.arg("--new")
+        .arg(&cmd_exe)
+        .raw_arg(&raw_tail)
+        .current_dir(project)
+        .env("PI_CODING_AGENT_DIR", home)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .creation_flags(CREATE_NO_WINDOW);
+    let status = c
+        .status()
+        .map_err(|e| format!("gsudo elevated pi launch failed: {e}"))?;
+    if !status.success() {
+        let code = status.code().unwrap_or(-1);
+        // gsudo UAC cancel codes
+        if code == 1223 || code == 999 {
+            return Err(crate::sidecar_elevate::UAC_DENIED_MESSAGE.to_string());
+        }
+        return Err(format!(
+            "gsudo elevated pi launch failed (exit {code}). Approve UAC or install gsudo in bin/."
+        ));
+    }
+    let _ = launcher;
+    Ok(())
+}
+
+#[cfg(windows)]
+fn spawn_pi_console(
+    app: &tauri::AppHandle,
+    launcher: &Path,
+    home: &Path,
+    project: &Path,
+    elevated: bool,
+) -> Result<bool, String> {
+    if elevated {
+        spawn_pi_console_elevated(app, launcher, home, project)?;
+        Ok(true)
+    } else {
+        spawn_pi_console_user(launcher, home, project)?;
+        Ok(false)
+    }
 }
 
 #[tauri::command]
@@ -1228,11 +1316,11 @@ pub async fn pi_code_launch(
         );
 
         let launcher = launcher_path();
-        spawn_pi_console(&launcher, &home, &project)?;
+        let elevated = spawn_pi_console(&app, &launcher, &home, &project, request.elevated)?;
 
-        let _ = app;
         emit_dbg(&format!(
-            "[Pi] Launched ({mode}) project={} PI_CODING_AGENT_DIR={}",
+            "[Pi] Launched ({mode}{}) project={} PI_CODING_AGENT_DIR={}",
+            if elevated { ", elevated/gsudo" } else { "" },
             project.display(),
             home.display()
         ));
@@ -1243,6 +1331,7 @@ pub async fn pi_code_launch(
             project_dir: project.to_string_lossy().to_string(),
             mode,
             home_path: home.to_string_lossy().to_string(),
+            elevated,
         })
     }
 }

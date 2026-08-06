@@ -24,6 +24,8 @@ export interface PiLaunchRequest {
   primary: PiEngineRef;
   worker?: PiEngineRef;
   projectDir: string;
+  /** Spawn pi console elevated via bundled gsudo (UAC). */
+  elevated?: boolean;
 }
 
 export interface PiLaunchResult {
@@ -32,6 +34,8 @@ export interface PiLaunchResult {
   projectDir: string;
   mode: string;
   homePath: string;
+  /** True when the console was started elevated. */
+  elevated?: boolean;
 }
 
 export const PI_CODE_DISCLAIMER = [

@@ -153,6 +153,8 @@ export const KEYS = {
   dflashHfCandidates: `${STORAGE_PREFIX}dflash-hf-candidates`,
   paramCreatorMode: `${STORAGE_PREFIX}param-creator-mode`,
   selectedSlotIdx: `${STORAGE_PREFIX}selected-slot-idx`,
+  /** Harness: launch pi console elevated via gsudo ("1" = on). */
+  piCodeElevated: `${STORAGE_PREFIX}pi-code-elevated`,
   appTheme: `${STORAGE_PREFIX}app-theme`,
   logSearchBySlot: `${STORAGE_PREFIX}log-search-by-slot`,
   logsAnsiEnabled: `${STORAGE_PREFIX}logs-ansi-enabled`,
