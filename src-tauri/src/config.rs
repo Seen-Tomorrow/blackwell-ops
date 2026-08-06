@@ -7,7 +7,9 @@
 //!
 //! ## Merge (`merge_template_for_provider`)
 //! Runs on every load and `save_provider`. Factory structural fields backfill; user cosmetic choices
-//! (hidden, userHidden, order, userAddedValues, hidden_values, values) are never overwritten.
+//! (hidden, userHidden, order, userAddedValues, hidden_values, essentials_hidden_values, values)
+//! are never overwritten. Empty essentials_hidden_values means user cleared ESS hides — do not
+//! re-apply factory. New template params still get factory ESS hides on append.
 //!
 //! ## RESET TO DEFAULTS
 //! Deletes user config file + frontend clears overrides and group-order localStorage. Full factory wipe.
@@ -219,6 +221,75 @@ mod merge_tests {
         assert_eq!(merged.len(), 2);
         assert!(merged.iter().any(|p| p.key == "new_param"));
         assert!(merged.iter().any(|p| p.key == "existing"));
+    }
+
+    #[test]
+    fn merge_preserves_empty_essentials_hidden_values() {
+        // User cleared all ESS hides — must not re-apply factory list.
+        let template = make_template(vec![ProviderDefaultParam {
+            key: "batch".to_string(),
+            label: "BATCH".to_string(),
+            flag: Some("--batch-size".to_string()),
+            flag_pair: Vec::new(),
+            ptype: "arg_select".to_string(),
+            values: vec![
+                serde_json::json!(512),
+                serde_json::json!(2048),
+                serde_json::json!(16384),
+            ],
+            step: None,
+            default: serde_json::json!(512),
+            ui_group: "PERFORMANCE".to_string(),
+            note: String::new(),
+            pattern: String::new(),
+            sub_params: None,
+            dock: String::new(),
+            hidden_default: false,
+            essentials_hidden_values: vec![serde_json::json!(16384)],
+        }]);
+
+        let mut user = make_user_param("batch", &["512", "2048", "16384"], "512", 0);
+        user.essentials_hidden_values = Vec::new(); // user showed all in Essentials
+        let merged = merge_user_params_with_template(&template, &[user], &[]);
+        let batch = merged.iter().find(|p| p.key == "batch").unwrap();
+        assert!(
+            batch.essentials_hidden_values.is_empty(),
+            "empty ESS hide list must stay empty (not factory 16384)"
+        );
+        // Factory high value still present in catalog for Assisted Full chips
+        assert!(
+            batch.values.iter().any(|v| {
+                v.as_i64() == Some(16384)
+                    || v.as_u64() == Some(16384)
+                    || v.as_str() == Some("16384")
+            }),
+            "factory high batch must remain in values for Full chips"
+        );
+    }
+
+    #[test]
+    fn merge_new_param_gets_factory_essentials_hidden() {
+        let template = make_template(vec![ProviderDefaultParam {
+            key: "batch".to_string(),
+            label: "BATCH".to_string(),
+            flag: Some("--batch-size".to_string()),
+            flag_pair: Vec::new(),
+            ptype: "arg_select".to_string(),
+            values: vec![serde_json::json!(512), serde_json::json!(16384)],
+            step: None,
+            default: serde_json::json!(512),
+            ui_group: "PERFORMANCE".to_string(),
+            note: String::new(),
+            pattern: String::new(),
+            sub_params: None,
+            dock: String::new(),
+            hidden_default: false,
+            essentials_hidden_values: vec![serde_json::json!(16384)],
+        }]);
+
+        let merged = merge_user_params_with_template(&template, &[], &[]);
+        let batch = merged.iter().find(|p| p.key == "batch").unwrap();
+        assert_eq!(batch.essentials_hidden_values.len(), 1);
     }
 
     #[test]

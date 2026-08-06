@@ -1,5 +1,6 @@
 import type { UserEditedTemplateParam } from "./types";
 import { isSpecProfileParamKey } from "./specProfiles";
+import { isCockpitOwnedParam } from "./systemParams";
 
 /** Fingerprint visibility + defaults so config reloads when SPEC group toggles. */
 export function paramsVisibilityFingerprint(params: UserEditedTemplateParam[]): string {
@@ -13,7 +14,12 @@ export function resolveParamDefaultValue(def: UserEditedTemplateParam): unknown 
   return def.defaultValue ?? def.values[0];
 }
 
-/** Resolve launch/config value: override → catalog default. Skips hidden params (except profile knobs). */
+/**
+ * Resolve launch/config value: override → catalog default.
+ * Skips hidden free-chip rows, except:
+ *   • profile knobs (group may be hidden while Boost still owns them)
+ *   • cockpit-owned keys (always emit when on key set — header / cockpit bind)
+ */
 export function resolveVisibleParamValue(
   key: string,
   config: Record<string, unknown>,
@@ -28,7 +34,8 @@ export function resolveVisibleParamValue(
     return resolveParamDefaultValue(def);
   }
   if (!def) return undefined;
-  if (def.hidden) return undefined;
+  // Cockpit surface must still resolve if someone hid the catalog row.
+  if (def.hidden && !isCockpitOwnedParam(key)) return undefined;
   if (config[key] !== undefined) return config[key];
   return resolveParamDefaultValue(def);
 }

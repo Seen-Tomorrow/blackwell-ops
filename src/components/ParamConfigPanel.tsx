@@ -153,7 +153,7 @@ export default function ParamConfigPanel({
   // ── User overrides (per-mode launch profiles; editor shows active bag) ─
   const [userOverrides, setUserOverrides] = useState<Record<string, string | number>>({});
 
-  useEffect(() => {
+  const reloadUserOverrides = useCallback(() => {
     try {
       const flat = readActiveProfileFlat(selectedProviderId);
       const asNums: Record<string, string | number> = {};
@@ -165,6 +165,17 @@ export default function ParamConfigPanel({
       setUserOverrides({});
     }
   }, [selectedProviderId]);
+
+  useEffect(() => {
+    reloadUserOverrides();
+  }, [reloadUserOverrides]);
+
+  // Launch panel chip/cockpit writes also hit profiles — keep CONFIG chips in sync.
+  useEffect(() => {
+    const onChanged = () => reloadUserOverrides();
+    window.addEventListener(EVENTS.paramConfigChanged, onChanged);
+    return () => window.removeEventListener(EVENTS.paramConfigChanged, onChanged);
+  }, [reloadUserOverrides]);
 
   // ── Current provider & param definitions ───────────────────────────
   const currentProvider = useMemo(() => providers.find(p => p.id === selectedProviderId), [providers, selectedProviderId]);

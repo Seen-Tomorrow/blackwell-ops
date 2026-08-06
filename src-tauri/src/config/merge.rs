@@ -228,15 +228,17 @@ pub fn merge_user_params_with_template(
                 m.dock = tmpl.dock.clone();
             }
 
-            // Factory-curated Essentials values — backfill when user has none (ships with templates).
-            if m.essentials_hidden_values.is_empty() && !tmpl.essentials_hidden_values.is_empty() {
-                m.essentials_hidden_values = tmpl.essentials_hidden_values.clone();
-            }
+            // essentials_hidden_values is USER-OWNED once a param exists on disk.
+            // Do NOT re-apply factory when the list is empty — empty means "user showed all
+            // in Essentials" (or never curated). Factory ESS hides only land via:
+            //   • new param append (below)
+            //   • first-run user_edited_param_from_template / RESET TO DEFAULTS
+            // Re-backfilling empty→factory made ESS un-hide sticky-regress on every merge
+            // (empty also skip_serializing → reloads as [] → looked "unset").
 
-            // Assisted Full expansion chips: ensure factory essentialsHidden values exist in
-            // the values list even when the catalog is user-owned (no re-delete of other chips).
-            // Without this, only providers that already shipped the high-end list (historically
-            // ggml-master) show extra Agents/batch/spec chips in ASSISTED Full.
+            // Assisted Full expansion chips: ensure factory essentialsHidden *values* exist in
+            // the values catalog (chips available in Full) even when ESS-hide list is user-owned.
+            // Does not re-hide; only ensures the token is in `values`.
             if !tmpl.essentials_hidden_values.is_empty() {
                 let mut changed = false;
                 for tv in &tmpl.essentials_hidden_values {
