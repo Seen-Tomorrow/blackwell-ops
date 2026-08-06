@@ -247,11 +247,15 @@ export function useModelCatalog({
     } catch { return null; }
   });
 
-  // Validate restored slotIdx against current stack — discard if engine no longer running
+  // Validate selected slot against stack — only clear when the slot is *known dead*.
+  // Do not clear when idx is missing: stack-changed can lag launch_engine (preset multi-seat).
   useEffect(() => {
     if (selectedSlotIdxState === null || stack.length === 0) return;
-    const stillRunning = stack.some(s => s.idx === selectedSlotIdxState && (s.status === "RUNNING" || s.status === "LOADING"));
-    if (!stillRunning) setSelectedSlotIdxState(null);
+    const entry = stack.find((s) => s.idx === selectedSlotIdxState);
+    if (!entry) return; // wait for stack push
+    if (entry.status !== "RUNNING" && entry.status !== "LOADING") {
+      setSelectedSlotIdxState(null);
+    }
   }, [stack, selectedSlotIdxState]);
 
   // Persist to localStorage on change + listen for slot-cleared to clear stale selection

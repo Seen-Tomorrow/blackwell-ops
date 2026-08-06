@@ -400,6 +400,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     brainPort: number;
     workerPort: number;
     agentsN?: number;
+    /** Freeze BRAIN/WORKER tags until both RUNNING or user unlocks. */
+    rolesLocked?: boolean;
   } | null>(null);
   const launchPresetsApi = useLaunchPresets();
   /** Request apply → compact summary modal (not immediate launch). */
@@ -2126,15 +2128,29 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       });
       fullConfig.port = port;
 
-      const launched = await invoke<{ idx: number; port: number; alias: string }>("launch_engine", {
+      // Same path as App.handleLaunchEngine — returns StackEntry (idx, model_path, …)
+      const launched = await invoke<{
+        idx: number;
+        port: number;
+        alias: string;
+        model_path?: string;
+      }>("launch_engine", {
         config: fullConfig,
       });
       const alias = launched?.alias ?? finalAlias;
+      const idx = typeof launched?.idx === "number" ? launched.idx : -1;
+      // Catalog selection listens on engineLaunched (not launchSuccess).
+      if (idx >= 0) {
+        dispatchAppEvent(EVENTS.engineLaunched, {
+          slotIdx: idx,
+          modelPath: launched?.model_path || m.path,
+        });
+      }
       const slotInfo = syntheticSlotForLaunch(alias, m, fullConfig.extra_params);
       return {
         port: launched?.port ?? port,
         alias,
-        idx: launched?.idx ?? -1,
+        idx,
         slotInfo,
       };
     },
@@ -2205,8 +2221,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
               modelPath: seat.modelPath,
             });
             runningAcc = [...runningAcc, r.slotInfo];
-            // Select first seat immediately so Fusion BOOT / VRAM track that load
-            // (no useEffect — direct callback after launch_engine returns).
+            // First seat: select for Fusion BOOT / VRAM (engineLaunched already fired).
             if (!selectedFirst && r.idx >= 0) {
               handleSelectEngine(r.idx);
               selectedFirst = true;
@@ -2215,7 +2230,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
               alias: r.alias,
               port: r.port,
             });
-            // Brief pause so driver/NVML can settle before next Full Auto placement.
             if (i < ordered.length - 1) {
               await new Promise((res) => setTimeout(res, 400));
             }
@@ -2235,6 +2249,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         }
       }
 
+      // Twin: open harness only after seats exist; lock roles so boot-time clicks
+      // cannot scramble BRAIN/WORKER (re-apply preset still re-binds if needed).
       if (combo.kind === "twin") {
         const brain = bindByRole.get("brain");
         const worker = bindByRole.get("worker");
@@ -2243,12 +2259,16 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             brainPort: brain.port,
             workerPort: worker.port,
             agentsN: plan.agentsN,
+            rolesLocked: true,
           });
         } else if (!brain || !worker) {
           dispatchAppEvent(EVENTS.launchError, {
             message: `Twin preset “${combo.name}”: need both BRAIN and WORKER running`,
           });
         }
+      } else if (combo.kind === "solo" && combo.harness) {
+        // Solo harness preset: open wizard in solo mode on the selected seat (optional)
+        // — leave closed unless we later add solo preset open; twin is the conflict case.
       }
     },
     [

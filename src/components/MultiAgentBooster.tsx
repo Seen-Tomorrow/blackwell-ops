@@ -212,8 +212,14 @@ export interface MultiAgentBoosterProps {
   /**
    * After parent applies a twin combo — set BRAIN/WORKER ports and twin mode.
    * Parent clears by setting null after consume.
+   * rolesLocked: ignore engine-card role cycling until both seats RUNNING.
    */
-  presetTwinBind?: { brainPort: number; workerPort: number; agentsN?: number } | null;
+  presetTwinBind?: {
+    brainPort: number;
+    workerPort: number;
+    agentsN?: number;
+    rolesLocked?: boolean;
+  } | null;
   onPresetTwinBindConsumed?: () => void;
 }
 
@@ -293,6 +299,8 @@ export default function MultiAgentBooster({
    * Seed once when opening; chips update this only (launch uses this value).
    */
   const [harnessAgents, setHarnessAgents] = useState(1);
+  /** Preset-applied twin: freeze role clicks until both engines RUNNING. */
+  const [presetRolesLocked, setPresetRolesLocked] = useState(false);
 
   // Parent applied a twin combo — bind roles + optional agents N
   useEffect(() => {
@@ -305,9 +313,11 @@ export default function MultiAgentBooster({
     if (presetTwinBind.agentsN != null && presetTwinBind.agentsN > 0) {
       setHarnessAgents(Math.max(1, presetTwinBind.agentsN));
     }
+    setPresetRolesLocked(Boolean(presetTwinBind.rolesLocked));
     setHarnessOpen(true);
     onPresetTwinBindConsumed?.();
   }, [presetTwinBind, onPresetTwinBindConsumed]);
+
   const [atomStatus, setAtomStatus] = useState<AtomcodeStatus | null>(null);
   const [qwenStatus, setQwenStatus] = useState<QwenCodeStatus | null>(null);
   const [piStatus, setPiStatus] = useState<PiCodeStatus | null>(null);
@@ -681,10 +691,33 @@ export default function MultiAgentBooster({
 
   const runningEngines = useMemo(() => {
     return stack
-      .filter((s) => s.status === "RUNNING" && s.port > 0)
+      .filter((s) => (s.status === "RUNNING" || s.status === "LOADING") && s.port > 0)
       .slice()
       .sort((a, b) => a.idx - b.idx);
   }, [stack]);
+
+  // Unlock role cycling once both tagged engines are RUNNING.
+  useEffect(() => {
+    if (!presetRolesLocked || !harnessOpen) return;
+    const brain =
+      twinBrainPort != null
+        ? runningEngines.find((e) => e.port === twinBrainPort)
+        : null;
+    const worker =
+      twinWorkerPort != null
+        ? runningEngines.find((e) => e.port === twinWorkerPort)
+        : null;
+    if (!brain || !worker) return;
+    if (brain.status === "RUNNING" && worker.status === "RUNNING") {
+      setPresetRolesLocked(false);
+    }
+  }, [
+    presetRolesLocked,
+    harnessOpen,
+    twinBrainPort,
+    twinWorkerPort,
+    runningEngines,
+  ]);
 
   /**
    * OpenAI `model` id = engine launch alias only (what llama-server reports).
@@ -853,11 +886,13 @@ export default function MultiAgentBooster({
   // · Same card WORKER:   click → clear (NONE)
   // · Same card NONE:     click → becomes BRAIN
   // · Free card:          fill empty BRAIN, else empty WORKER, else claim BRAIN seat
+  // · Preset-locked: ignore until both seats RUNNING (boot-safe)
   useEffect(() => {
     if (!harnessOpen) return;
     const onClick = (e: Event) => {
       const d = (e as CustomEvent<AtomcodeEngineClickDetail>).detail;
       if (!d?.port || wizardMode !== "twin") return;
+      if (presetRolesLocked) return;
       const port = d.port;
       setTwinRoles(({ brain, worker }) => {
         const isBrain = brain === port;
@@ -885,7 +920,7 @@ export default function MultiAgentBooster({
     };
     window.addEventListener(EVENTS.atomcodeEngineClick, onClick);
     return () => window.removeEventListener(EVENTS.atomcodeEngineClick, onClick);
-  }, [harnessOpen, wizardMode]);
+  }, [harnessOpen, wizardMode, presetRolesLocked]);
 
   /** Highlight running engines while harness open. */
   useEffect(() => {
@@ -2063,6 +2098,19 @@ export default function MultiAgentBooster({
             RIGHT: Open CTA + quiet secondary actions (WebUI / pre-install). */}
         {!showDisclaimer && (
           <div className="atomcode-wizard__footer">
+            {presetRolesLocked && wizardMode === "twin" && (
+              <p className="atomcode-wizard__roles-locked font-mono text-[8px] text-yellow-400/85 m-0 mb-1.5 w-full">
+                BRAIN/WORKER locked from preset until both engines finish loading — clicks ignored
+                {" · "}
+                <button
+                  type="button"
+                  className="underline text-yellow-400/90 bg-transparent border-0 p-0 cursor-pointer font-mono text-[8px]"
+                  onClick={() => setPresetRolesLocked(false)}
+                >
+                  Unlock now
+                </button>
+              </p>
+            )}
             {launchPresets && (
               <div className="atomcode-wizard__presets flex flex-wrap items-center gap-1.5 mb-2 w-full">
                 <span className="text-[8px] uppercase tracking-wider text-stealth-muted/70">Combo</span>
