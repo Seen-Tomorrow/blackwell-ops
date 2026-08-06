@@ -72,6 +72,7 @@ import { useDflashDraft } from "../hooks/useDflashDraft";
 import { useLaunchPresets } from "../hooks/useLaunchPresets";
 import LaunchPresetsMenu from "./LaunchPresetsMenu";
 import LaunchPresetsModal from "./LaunchPresetsModal";
+import LaunchPresetConfirmModal from "./LaunchPresetConfirmModal";
 import {
   type ComboPreset,
   type LaunchSeat,
@@ -391,12 +392,23 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   const [catalogPlaceKey, setCatalogPlaceKey] = useState<string | null>(null);
   const [catalogPlaceGroup, setCatalogPlaceGroup] = useState("USER-ADDED-FROM-CATALOG");
   const [presetsManageOpen, setPresetsManageOpen] = useState(false);
+  const [presetConfirm, setPresetConfirm] = useState<{
+    combo: ComboPreset;
+    loadIntoPanel: boolean;
+  } | null>(null);
   const [presetTwinBind, setPresetTwinBind] = useState<{
     brainPort: number;
     workerPort: number;
     agentsN?: number;
   } | null>(null);
   const launchPresetsApi = useLaunchPresets();
+  /** Request apply → compact summary modal (not immediate launch). */
+  const requestApplyCombo = useCallback(
+    (combo: ComboPreset, opts: { loadIntoPanel: boolean }) => {
+      setPresetConfirm({ combo, loadIntoPanel: opts.loadIntoPanel });
+    },
+    [],
+  );
   const [layoutModeActive, setLayoutModeActive] = useState(
     () => readStorage(KEYS.configLayoutMode) === "1",
   );
@@ -2178,7 +2190,9 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         plan.launchOrder === "sequence_brain_first",
       );
 
-      for (const seat of ordered) {
+      let selectedFirst = false;
+      for (let i = 0; i < ordered.length; i++) {
+        const seat = ordered[i]!;
         try {
           const r = await launchSeat(seat, runningAcc);
           if (r && r.port > 0) {
@@ -2191,12 +2205,18 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
               modelPath: seat.modelPath,
             });
             runningAcc = [...runningAcc, r.slotInfo];
+            // Select first seat immediately so Fusion BOOT / VRAM track that load
+            // (no useEffect — direct callback after launch_engine returns).
+            if (!selectedFirst && r.idx >= 0) {
+              handleSelectEngine(r.idx);
+              selectedFirst = true;
+            }
             dispatchAppEvent(EVENTS.launchSuccess, {
               alias: r.alias,
               port: r.port,
             });
             // Brief pause so driver/NVML can settle before next Full Auto placement.
-            if (ordered.indexOf(seat) < ordered.length - 1) {
+            if (i < ordered.length - 1) {
               await new Promise((res) => setTimeout(res, 400));
             }
           }
@@ -2238,6 +2258,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       findModelForSeat,
       updateParams,
       runningSlotsForPlan,
+      handleSelectEngine,
     ],
   );
 
@@ -2653,9 +2674,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
             canSaveTwin={
               stack.filter((s) => s.status === "RUNNING" && s.port > 0).length >= 2
             }
-            onApply={(c, o) => {
-              void applyComboPreset(c, o);
-            }}
+            onApply={requestApplyCombo}
             onSaveSolo={handleSaveSoloPreset}
             onSaveTwin={handleSaveTwinPreset}
             onManage={() => setPresetsManageOpen(true)}
@@ -2714,9 +2733,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           flagToggles={cockpitFlagToggles}
           launchPresets={{
             combos: launchPresetsApi.combos,
-            onApply: (c, o) => {
-              void applyComboPreset(c, o);
-            },
+            onApply: requestApplyCombo,
             onSaveTwin: handleSaveTwinPreset,
             onManage: () => setPresetsManageOpen(true),
             canSaveTwin:
@@ -3039,6 +3056,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       <LaunchPresetsModal
         open={presetsManageOpen}
         combos={launchPresetsApi.combos}
+        models={models ?? []}
         onClose={() => setPresetsManageOpen(false)}
         onSave={(c) => {
           launchPresetsApi.upsert(c);
@@ -3046,7 +3064,24 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         onDelete={(id) => launchPresetsApi.remove(id)}
         onDuplicate={(c) => launchPresetsApi.duplicate(c)}
         onApply={(c, o) => {
-          void applyComboPreset(c, o);
+          setPresetsManageOpen(false);
+          requestApplyCombo(c, o);
+        }}
+      />
+
+      <LaunchPresetConfirmModal
+        open={presetConfirm != null}
+        combo={presetConfirm?.combo ?? null}
+        loadIntoPanel={presetConfirm?.loadIntoPanel ?? false}
+        models={models ?? []}
+        onLoadIntoPanelChange={(v) =>
+          setPresetConfirm((prev) => (prev ? { ...prev, loadIntoPanel: v } : prev))
+        }
+        onCancel={() => setPresetConfirm(null)}
+        onConfirm={() => {
+          const pending = presetConfirm;
+          setPresetConfirm(null);
+          if (pending) void applyComboPreset(pending.combo, { loadIntoPanel: pending.loadIntoPanel });
         }}
       />
     </div>

@@ -10,25 +10,27 @@ import type {
   PortPolicyMode,
   SeatRole,
 } from "../lib/launchPresets";
-import { isLaunchPolicyId, type LaunchPolicyId } from "../lib/launchPolicy";
+import { estimateComboMemory, formatGb } from "../lib/launchPresets";
 
 export type LaunchPresetsModalProps = {
   open: boolean;
   combos: ComboPreset[];
+  models?: Array<{ path: string; metadata?: { file_size_bytes?: number }; name?: string }>;
   onClose: () => void;
   onSave: (combo: ComboPreset) => void;
   onDelete: (id: string) => void;
   onDuplicate: (combo: ComboPreset) => void;
+  /** Opens confirm / apply path — parent owns confirmation. */
   onApply: (combo: ComboPreset, opts: { loadIntoPanel: boolean }) => void;
 };
 
-const POLICY_OPTS: LaunchPolicyId[] = [
-  "full_auto",
-  "assisted_essentials",
-  "assisted_full",
-];
-
 const PORT_MODES: PortPolicyMode[] = ["auto", "prefer", "fixed"];
+
+const POLICY_LABEL: Record<string, string> = {
+  full_auto: "Full Auto",
+  assisted_essentials: "Assisted Essentials",
+  assisted_full: "Assisted Full",
+};
 
 function seatSummary(s: LaunchSeat): string {
   const name = s.modelName || s.modelPath.split(/[/\\]/).pop() || s.modelPath;
@@ -38,6 +40,7 @@ function seatSummary(s: LaunchSeat): string {
 export default function LaunchPresetsModal({
   open,
   combos,
+  models = [],
   onClose,
   onSave,
   onDelete,
@@ -213,6 +216,21 @@ export default function LaunchPresetsModal({
                   </label>
                 )}
 
+                {(() => {
+                  const mem = estimateComboMemory(draft, models);
+                  return (
+                    <div className="text-[9px] text-stealth-muted flex flex-wrap gap-x-3 gap-y-0.5">
+                      <span>
+                        Est. VRAM{" "}
+                        <strong className="text-stealth-text tabular-nums">
+                          ~{formatGb(mem.totalVramGb)}
+                        </strong>
+                      </span>
+                      <span className="opacity-60">weights×1.12 · not full FIT</span>
+                    </div>
+                  );
+                })()}
+
                 <div className="space-y-2">
                   <div className="text-stealth-muted uppercase text-[8px] tracking-wider">Seats</div>
                   {draft.seats.map((seat) => (
@@ -237,27 +255,15 @@ export default function LaunchPresetsModal({
                           ))}
                         </select>
                         <span className="truncate opacity-80">{seatSummary(seat)}</span>
+                        <span
+                          className="ml-auto text-[7px] uppercase tracking-wide px-1.5 py-0.5 rounded-sm border border-stealth-border/40 text-stealth-muted"
+                          title="Launch mode at save — edit by re-saving from Full Auto / Assisted panel"
+                        >
+                          {POLICY_LABEL[seat.policyId] ?? seat.policyId}
+                        </span>
                       </div>
                       <div className="text-[8px] text-stealth-muted break-all">{seat.modelPath}</div>
                       <div className="flex flex-wrap gap-2 items-end">
-                        <label className="flex flex-col gap-0.5">
-                          <span className="text-stealth-muted text-[7px] uppercase">Policy</span>
-                          <select
-                            className="border border-stealth-border/50 px-1 py-0.5 text-stealth-text"
-                            style={{ backgroundColor: "color-mix(in srgb, #000 35%, var(--color-stealth-panel, #111810))" }}
-                            value={seat.policyId}
-                            onChange={(e) => {
-                              const v = e.target.value;
-                              if (isLaunchPolicyId(v)) updateSeat(seat.id, { policyId: v });
-                            }}
-                          >
-                            {POLICY_OPTS.map((p) => (
-                              <option key={p} value={p}>
-                                {p}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
                         <label className="flex flex-col gap-0.5">
                           <span className="text-stealth-muted text-[7px] uppercase">Port</span>
                           <select

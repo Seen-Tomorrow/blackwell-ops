@@ -201,11 +201,22 @@ export default function FusionBooter({
         ? `LAYER ${state.layerCurrent}`
         : "LAYER —";
 
+  const elapsed = state.elapsedSec;
+  const mm = Math.floor(elapsed / 60);
+  const ss = Math.floor(elapsed % 60);
+  const timerLabel = `${mm}:${ss.toString().padStart(2, "0")}`;
+
   return (
     <div className="flex flex-col w-full h-full gap-1.5 px-2 py-1 overflow-hidden">
-      <div className="flex items-center justify-between flex-shrink-0">
-        <span className="text-[9px] font-mono text-nv-green tracking-widest">FUSION BOOT</span>
-        <span className="text-[8px] font-mono text-stealth-muted/50">
+      <div className="flex items-center justify-between flex-shrink-0 gap-2">
+        <span className="text-[9px] font-mono text-nv-green tracking-widest shrink-0">FUSION BOOT</span>
+        <span
+          className="text-[11px] font-mono font-bold tabular-nums text-nv-green tracking-wider shrink-0"
+          title="Time since load started"
+        >
+          {timerLabel}
+        </span>
+        <span className="text-[8px] font-mono text-stealth-muted/50 truncate min-w-0 text-right">
           {alias.toUpperCase()} :{port}
         </span>
       </div>

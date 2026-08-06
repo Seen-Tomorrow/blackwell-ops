@@ -463,3 +463,61 @@ export function duplicateCombo(combo: ComboPreset, nameSuffix = " (copy)"): Comb
     updatedAt: now,
   };
 }
+
+// ── Memory estimates (placement / UX only — not full FIT) ───────────────────
+
+export type SeatMemoryEstimate = {
+  seatId: string;
+  role: SeatRole;
+  label: string;
+  weightGb: number;
+  /** Rough resident VRAM (weights × 1.12 + small headroom). */
+  vramGb: number;
+  /** Host spill risk placeholder — 0 unless we lack GPU pool (not computed here). */
+  ramGb: number;
+};
+
+export type ComboMemoryEstimate = {
+  seats: SeatMemoryEstimate[];
+  totalWeightGb: number;
+  totalVramGb: number;
+  totalRamGb: number;
+};
+
+/** Weight from GGUF size; vram ≈ weights × 1.12 (same order as synthetic placement). */
+export function estimateSeatMemory(
+  seat: LaunchSeat,
+  models: Array<{ path: string; metadata?: { file_size_bytes?: number }; name?: string }>,
+): SeatMemoryEstimate {
+  const want = normalizeModelPath(seat.modelPath);
+  const m = models.find((x) => normalizeModelPath(x.path) === want);
+  const bytes = m?.metadata?.file_size_bytes ?? 0;
+  const weightGb = bytes > 0 ? bytes / 1024 ** 3 : 0;
+  const vramGb = weightGb > 0 ? weightGb * 1.12 + 0.5 : 0;
+  return {
+    seatId: seat.id,
+    role: seat.role,
+    label: seat.modelName || m?.name || seat.modelPath.split(/[/\\]/).pop() || seat.role,
+    weightGb,
+    vramGb,
+    ramGb: 0,
+  };
+}
+
+export function estimateComboMemory(
+  combo: ComboPreset,
+  models: Array<{ path: string; metadata?: { file_size_bytes?: number }; name?: string }>,
+): ComboMemoryEstimate {
+  const seats = combo.seats.map((s) => estimateSeatMemory(s, models));
+  return {
+    seats,
+    totalWeightGb: seats.reduce((a, s) => a + s.weightGb, 0),
+    totalVramGb: seats.reduce((a, s) => a + s.vramGb, 0),
+    totalRamGb: seats.reduce((a, s) => a + s.ramGb, 0),
+  };
+}
+
+export function formatGb(n: number): string {
+  if (!Number.isFinite(n) || n <= 0) return "—";
+  return n >= 10 ? `${n.toFixed(0)} GB` : `${n.toFixed(1)} GB`;
+}
