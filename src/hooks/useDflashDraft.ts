@@ -223,7 +223,10 @@ export function useDflashDraft({
       setDflashResolveError(null);
       setDflashGetState("idle");
       setDflashGetError(null);
-      void applyFullAutoCockpit(codingMode, "dflash", brains, think, {
+      // Keep current Boost method (dflash or dspark) when confirming a path
+      const speed =
+        speedBoost === "dspark" || speedBoost === "dflash" ? speedBoost : "dflash";
+      void applyFullAutoCockpit(codingMode, speed, brains, think, {
         powerUser: powerCockpitMode,
         preferredDraftPath: path,
       });
@@ -236,6 +239,7 @@ export function useDflashDraft({
       brains,
       think,
       powerCockpitMode,
+      speedBoost,
     ],
   );
 
@@ -269,8 +273,8 @@ export function useDflashDraft({
     if (wasReady || !dflashLibraryReady) return;
     setDflashGetState("idle");
     setDflashGetError(null);
-    if (speedBoost === "dflash") {
-      void applyFullAutoCockpit(codingMode, "dflash", brains, think, {
+    if (speedBoost === "dflash" || speedBoost === "dspark") {
+      void applyFullAutoCockpit(codingMode, speedBoost, brains, think, {
         powerUser: powerCockpitMode,
       });
     }
@@ -295,9 +299,9 @@ export function useDflashDraft({
     }
   }, [hfDownloads, dflashGetState]);
 
-  // Capability drop away from dflash → clear CTA noise
+  // Capability drop away from external-draft boost → clear CTA noise
   useEffect(() => {
-    if (speedBoost !== "dflash") {
+    if (speedBoost !== "dflash" && speedBoost !== "dspark") {
       setDflashGetState("idle");
       setDflashGetError(null);
       setDflashGetOfferLabel(null);

@@ -184,10 +184,15 @@ fn validate_spec_launch(config: &crate::types::EngineConfig) -> Result<(), Strin
         ));
     }
 
-    let pattern = if spec_type.to_lowercase().contains("eagle3") {
-        "*eagle3*"
-    } else {
-        "*dflash*"
+    let pattern = {
+        let lower = spec_type.to_lowercase();
+        if lower.contains("eagle3") {
+            "*eagle3*"
+        } else if lower.contains("dspark") {
+            "*dspark*"
+        } else {
+            "*dflash*"
+        }
     };
     let resolved = crate::spec_draft::resolve_spec_draft_model_path(
         &config.model_path,

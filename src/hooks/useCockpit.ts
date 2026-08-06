@@ -244,7 +244,9 @@ export function useCockpit({
   }, [allParamsResolved, config, updateParam]);
 
   const specBoostMethod: SpecBoostMethod = useMemo(() => {
-    if (speedBoost === "mtp" || speedBoost === "dflash") return speedBoost;
+    if (speedBoost === "mtp" || speedBoost === "dflash" || speedBoost === "dspark") {
+      return speedBoost;
+    }
     if (speedBoost === "off" || speedBoost === "smart") return "off";
     return activeBoostMethodFromParams(allParamsResolved);
   }, [speedBoost, allParamsResolved]);
@@ -327,7 +329,7 @@ export function useCockpit({
       }
 
       const method: SpecBoostMethod =
-        plan.speed === "mtp" || plan.speed === "dflash"
+        plan.speed === "mtp" || plan.speed === "dflash" || plan.speed === "dspark"
           ? plan.speed
           : "off";
 
@@ -343,7 +345,9 @@ export function useCockpit({
         console.error("[cockpit] applySpecBoostProfiles failed:", err);
       }
 
-      if (method === "dflash" && model && models?.length) {
+      // External draft path (DFlash + DSpark share dflash_draft_model key → --spec-draft-model)
+      if ((method === "dflash" || method === "dspark") && model && models?.length) {
+        const cliType = method === "dspark" ? "draft-dspark" : "draft-dflash";
         const resolved =
           opts?.preferredDraftPath
           || resolveExternalDraftPath(model, models, "external_dflash", {
@@ -353,11 +357,15 @@ export function useCockpit({
               && String(config[DFLASH_DRAFT_MODEL]).toLowerCase() !== "off"
                 ? String(config[DFLASH_DRAFT_MODEL])
                 : null,
-            specType: "draft-dflash",
+            specType: cliType,
           });
         if (resolved) {
           updateParam(DFLASH_DRAFT_MODEL, resolved);
-          saveDraftPairing(model.path, "draft-dflash", resolved);
+          saveDraftPairing(model.path, cliType, resolved);
+        } else if (opts?.preferredDraftPath) {
+          // Explicit path (Change draft) even if not scored as dflash role
+          updateParam(DFLASH_DRAFT_MODEL, opts.preferredDraftPath);
+          saveDraftPairing(model.path, cliType, opts.preferredDraftPath);
         }
       }
 
@@ -395,6 +403,7 @@ export function useCockpit({
     const low = st.toLowerCase();
     if (low.includes("mtp") || low === "draft-mtp") return null;
     if (low.includes("dflash") || low === "draft-dflash") return null;
+    if (low.includes("dspark") || low === "draft-dspark") return null;
     return st;
   }, [specDecodingGroupVisible, config.spec_type]);
 
@@ -426,7 +435,9 @@ export function useCockpit({
       return;
     }
     const method = activeBoostMethodFromParams(allParamsResolved);
-    if (method === "mtp" || method === "dflash") setSpeedBoost(method);
+    if (method === "mtp" || method === "dflash" || method === "dspark") {
+      setSpeedBoost(method);
+    }
     else setSpeedBoost(fullAutoMode ? "smart" : "off");
     boosterSeededRef.current = true;
   }, [allParamsResolved, config, fullAutoMode, specDecodingGroupVisible]);

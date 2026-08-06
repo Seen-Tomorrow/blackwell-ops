@@ -526,14 +526,21 @@ export default function MultiAgentBooster({
     for (const t of types) {
       const low = t.toLowerCase();
       // MTP / DFlash handled below with availability + accents
-      if (low === "draft-mtp" || low === "mtp" || low === "draft-dflash" || low === "dflash") {
+      if (
+        low === "draft-mtp"
+        || low === "mtp"
+        || low === "draft-dflash"
+        || low === "dflash"
+        || low === "draft-dspark"
+        || low === "dspark"
+      ) {
         continue;
       }
       if (shouldOmitSpecTypeFromBoost(t)) continue;
       marks.push(parseSpecTypeBoostMark(t));
     }
 
-    // Always surface MTP / DFlash product marks (capability-gated disable)
+    // Always surface MTP / DFlash / DSpark product marks (capability-gated where needed)
     {
       const m = parseSpecTypeBoostMark("draft-mtp");
       m.blurb = mtpAvailable
@@ -552,6 +559,15 @@ export default function MultiAgentBooster({
             ? "Draft downloadable — Get draft to confirm"
             : m.blurb
         : "DFlash not available for this model";
+      marks.push(m);
+    }
+    {
+      const m = parseSpecTypeBoostMark("draft-dspark");
+      m.blurb = dflashLibraryReady
+        ? dflashDraftLabel
+          ? `Draft ready: ${dflashDraftLabel}`
+          : "Draft path set — DeepSeek DSpark"
+        : "Set draft GGUF via Change draft (dspark head)";
       marks.push(m);
     }
 
@@ -578,7 +594,9 @@ export default function MultiAgentBooster({
     if (activeRawSpecType) {
       return parseSpecTypeBoostMark(activeRawSpecType).id;
     }
-    if (displayBoost === "mtp" || displayBoost === "dflash") return displayBoost;
+    if (displayBoost === "mtp" || displayBoost === "dflash" || displayBoost === "dspark") {
+      return displayBoost;
+    }
     if (powerMode) return displayBoost === "smart" ? "off" : displayBoost;
     // Joe: Off maps to Smart presentation only when no raw type is active
     return displayBoost === "off" ? "smart" : displayBoost;
@@ -2448,7 +2466,7 @@ export default function MultiAgentBooster({
                   onSpeedBoost("smart");
                   return;
                 }
-                if (id === "mtp" || id === "dflash") {
+                if (id === "mtp" || id === "dflash" || id === "dspark") {
                   onSpeedBoost(id);
                   return;
                 }
@@ -2465,6 +2483,7 @@ export default function MultiAgentBooster({
                 const available =
                   m.id === "smart" ||
                   m.id === "off" ||
+                  m.id === "dspark" ||
                   (m.id === "mtp" && mtpAvailable) ||
                   (m.id === "dflash" && dflashAvailable) ||
                   m.id.startsWith("raw:");

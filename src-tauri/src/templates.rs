@@ -1105,7 +1105,7 @@ fn external_draft_spec_needs_fit_off(config: &EngineConfig) -> bool {
 
     for spec in spec_types_in_launch(config) {
         let lower = spec.to_lowercase();
-        if lower.contains("dflash") || lower.contains("eagle3") {
+        if lower.contains("dflash") || lower.contains("eagle3") || lower.contains("dspark") {
             return true;
         }
         // MTP reuses the target weights — fit probe skips full draft-model load.

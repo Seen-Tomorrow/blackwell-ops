@@ -23,8 +23,11 @@ export const SPEC_PROFILE_GROUPS = [SPEC_PROFILE_MTP, SPEC_PROFILE_DFLASH] as co
 
 export type SpecProfileGroup = (typeof SPEC_PROFILE_GROUPS)[number];
 
-/** Product Boost methods that map 1:1 to a profile group (plus off). */
-export type SpecBoostMethod = "off" | "mtp" | "dflash";
+/**
+ * Product Boost methods that map 1:1 to a profile group (plus off).
+ * DSpark reuses the DFlash profile knobs + draft path UI; CLI type is draft-dspark.
+ */
+export type SpecBoostMethod = "off" | "mtp" | "dflash" | "dspark";
 
 /** CLI keys emitted at launch (llama.cpp). */
 export const SPEC_CLI_TYPE = "spec_type";
@@ -81,13 +84,15 @@ export function isObsoleteSpecParamKey(key: string): boolean {
 
 export function groupForBoostMethod(method: SpecBoostMethod): SpecProfileGroup | null {
   if (method === "mtp") return SPEC_PROFILE_MTP;
-  if (method === "dflash") return SPEC_PROFILE_DFLASH;
+  // DFlash + DSpark share SPECULATIVE-DFLASH knobs / draft path chip
+  if (method === "dflash" || method === "dspark") return SPEC_PROFILE_DFLASH;
   return null;
 }
 
 export function boostMethodForGroup(group: string): SpecBoostMethod | null {
   const g = normalizeUiGroup(group);
   if (g === SPEC_PROFILE_MTP) return "mtp";
+  // Group alone cannot distinguish dflash vs dspark — UI Boost is source of truth
   if (g === SPEC_PROFILE_DFLASH) return "dflash";
   return null;
 }
@@ -95,6 +100,7 @@ export function boostMethodForGroup(group: string): SpecBoostMethod | null {
 export function cliSpecTypeForMethod(method: SpecBoostMethod): string | null {
   if (method === "mtp") return "draft-mtp";
   if (method === "dflash") return "draft-dflash";
+  if (method === "dspark") return "draft-dspark";
   return null;
 }
 
@@ -184,7 +190,8 @@ export function buildSpecCliExtraParams(
     pickProfileKey(MTP_N_MAX);
     pickProfileKey(MTP_N_MIN);
     pickProfileKey(MTP_P_MIN);
-  } else if (method === "dflash") {
+  } else if (method === "dflash" || method === "dspark") {
+    // Shared external-draft knobs (template SPECULATIVE-DFLASH)
     pickProfileKey(DFLASH_N_MAX);
     pickProfileKey(DFLASH_N_MIN);
     pickProfileKey(DFLASH_P_MIN);
@@ -192,6 +199,7 @@ export function buildSpecCliExtraParams(
     if (draft != null && String(draft).trim() !== "") {
       out[DFLASH_DRAFT_MODEL] = draft;
       // Alias for post-loop draft inject / validate_spec_launch
+      // CLI: --spec-draft-model / -md (same flag)
       if (String(draft).toLowerCase() !== "auto") {
         out[SPEC_CLI_DRAFT] = draft;
       }

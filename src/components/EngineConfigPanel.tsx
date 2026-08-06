@@ -1126,7 +1126,9 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           ? "draft-mtp"
           : speedBoost === "dflash"
             ? "draft-dflash"
-            : undefined,
+            : speedBoost === "dspark"
+              ? "draft-dspark"
+              : undefined,
         allParamsResolved,
         config,
       ),
@@ -1235,7 +1237,8 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   const modelIsDraftOnly = model ? isExternalDraftOnly(model) : false;
 
   const activeSpecType = cliSpecTypeForMethod(specBoostMethod) ?? undefined;
-  const specNeedsExternalDraft = specBoostMethod === "dflash";
+  const specNeedsExternalDraft =
+    specBoostMethod === "dflash" || specBoostMethod === "dspark";
   const currentDraftPath =
     config[DFLASH_DRAFT_MODEL] != null ? String(config[DFLASH_DRAFT_MODEL]) : "";
   const draftPathValid = !specNeedsExternalDraft || isValidGgufDraftPath(currentDraftPath);
@@ -1263,7 +1266,13 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
 
   // HIGH auto-pair into dflash_draft_model when Boost is DFlash and path is auto/empty.
   useEffect(() => {
-    if (specBoostMethod !== "dflash" || !model || !models?.length) return;
+    if (
+      (specBoostMethod !== "dflash" && specBoostMethod !== "dspark")
+      || !model
+      || !models?.length
+    ) {
+      return;
+    }
     const cur = currentDraftPath.trim().toLowerCase();
     if (cur && cur !== "auto" && cur !== "on" && cur !== "off") return;
     const best = pickBestDraftPair(model, models, "external_dflash", HIGH_DRAFT_PAIR_SCORE);

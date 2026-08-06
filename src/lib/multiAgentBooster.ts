@@ -9,7 +9,7 @@ import type { SpecCapability } from "./specDraft";
 /** Known agent presets + `p:N` for custom parallel values. */
 export type CodingModeId = string;
 /** Speed boost row — speculative draft / batch aggressiveness. */
-export type SpeedBoostId = "off" | "mtp" | "dflash" | "smart";
+export type SpeedBoostId = "off" | "mtp" | "dflash" | "dspark" | "smart";
 /** Brains row — KV quant quality (VRAM trade) + `kv:VALUE` for custom. */
 export type BrainsId = string;
 /** Optional thinking budget for models that expose reasoning flags. */
@@ -67,6 +67,12 @@ export const SPEED_BOOST_OPTIONS: SpeedBoostOption[] = [
     label: "DFlash",
     blurb: "External draft — needs a draft model in your library",
     needs: "dflash",
+  },
+  {
+    id: "dspark",
+    label: "DSpark",
+    blurb: "DeepSeek DSpark draft head — set draft GGUF path (Change draft)",
+    // Always offered (path-based); not gated on catalog dflash capability
   },
 ];
 
@@ -288,6 +294,16 @@ export function parseSpecTypeBoostMark(specType: string): BoostMarkParts {
       rank: 100,
     };
   }
+  if (s === "draft-dspark" || s === "dspark") {
+    return {
+      id: "dspark",
+      label: "DSpark",
+      aboveLabel: "draft",
+      blurb: "DeepSeek DSpark external draft head",
+      badgeColor: "violet",
+      rank: 105,
+    };
+  }
 
   // Generic 2-word split on first delimiter (- _ space)
   const parts = raw.split(/[-_\s]+/).filter(Boolean);
@@ -374,7 +390,7 @@ export interface FullAutoPlan {
   /** DFlash selected but no matching draft in library yet. */
   needsDflashDraft: boolean;
   /** Resolved boost for header tint: mtp | dflash | smart. */
-  boostTone: "mtp" | "dflash" | "smart";
+  boostTone: "mtp" | "dflash" | "dspark" | "smart";
   /** Short boost label for header (MTP / DFlash / Smart / DFlash…). */
   boostLabel: string;
   brainsLabel: string;
@@ -452,6 +468,11 @@ export function resolveFullAutoPlan(opts: {
     enableSpec = true;
     specType = "draft-dflash";
     needsDflashDraft = !dflashLibraryReady;
+  } else if (speed === "dspark") {
+    // Same external-draft UX as DFlash; CLI type is draft-dspark (DeepSeek V4 head).
+    enableSpec = true;
+    specType = "draft-dspark";
+    needsDflashDraft = !dflashLibraryReady;
   } else if (speed === "smart" && !powerUser) {
     // Joe Smart = safe "Off" wording until a real algo exists.
     // batch/ubatch come from factory via LaunchPolicy.batch = "factory" — do not max.
@@ -496,7 +517,7 @@ export function resolveFullAutoPlan(opts: {
           ? "2k"
           : "4k";
 
-  let boostTone: "mtp" | "dflash" | "smart" = "smart";
+  let boostTone: "mtp" | "dflash" | "dspark" | "smart" = "smart";
   let boostLabel = powerUser ? "Off" : "Smart";
   if (speed === "mtp" && enableSpec) {
     boostTone = "mtp";
@@ -507,6 +528,9 @@ export function resolveFullAutoPlan(opts: {
   } else if (speed === "dflash" && needsDflashDraft) {
     boostTone = "dflash";
     boostLabel = "DFlash…";
+  } else if (speed === "dspark" && enableSpec) {
+    boostTone = "dspark";
+    boostLabel = needsDflashDraft ? "DSpark…" : "DSpark";
   } else if (speed === "off") {
     boostTone = "smart";
     boostLabel = "Off";
