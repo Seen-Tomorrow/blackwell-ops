@@ -10,8 +10,6 @@ import {
   engineAliasKey,
   migrateGlobalSpecOutOfCatalogOverrides,
   normalizeModelPathKey,
-  loadAutoVramEnabled,
-  loadConfigView,
   loadCtxCockpitDock,
   loadEnginesInRail,
   loadHwMonitorOpen,
@@ -31,66 +29,32 @@ import {
   readJsonStorage,
   readStorage,
   removeStorage,
-  saveAutoVramEnabled,
-  saveConfigView,
   writeJsonStorage,
   writeStorage,
 } from "../lib/storage";
 import {
   filterParamValuesForConfigView,
   isEssentialParam,
-  providerSupportsFitLaunch,
-  resolveEssentialParamKeys,
 } from "../lib/launchProfile";
-import {
-  getLaunchPolicy,
-  resolveLaunchPolicyId,
-} from "../lib/launchPolicy";
 import EngineToolbar from "./EngineToolbar";
 import ParamPlaceDialog from "./ParamPlaceDialog";
-import type {
-  CockpitSpecDetailParam,
-  DflashGetUiState,
-} from "./MultiAgentBooster";
 import EngineBoostSection from "./EngineBoostSection";
 import EngineProviderProfileBar from "./EngineProviderProfileBar";
 import CockpitCtxStrip from "./CockpitCtxStrip";
 import {
-  brainsFromKvQuant,
-  codingModeFromParallel,
-  collectBoostSpecTypes,
   FULL_AUTO_COLLAPSE_GROUPS,
-  resolveFullAutoPlan,
-  type BrainsId,
-  type CodingModeId,
-  type SpeedBoostId,
-  type ThinkId,
 } from "../lib/multiAgentBooster";
 import {
   getFusionBenchTrayOpen,
   setFusionBenchTray,
 } from "../lib/fusionBenchTrayStore";
-import type { CockpitFlagToggle } from "./CockpitFlagToolbar";
-import {
-  describeMainForDflashPick,
-  findDflashDraftCandidates,
-  mainMaySupportDflash,
-  resolveDflashOfferFromHfId,
-  startDflashDraftDownload,
-  type DflashDraftOffer,
-} from "../lib/dflashGetDraft";
-import { useDownloadTasks } from "../hooks/useDownloadTasks";
-import DraftPickModal, {
-  type DraftPickListItem,
-  type DraftPickMode,
-} from "./DraftPickModal";
-import { draftRoleFromModel, scoreDraftPair } from "../lib/specDraft";
+import type { DflashDraftOffer } from "../lib/dflashGetDraft";
+import DraftPickModal from "./DraftPickModal";
 import {
   isGroupFullyHidden,
   PANEL_CHROME_PARAM_KEYS,
 } from "../lib/paramDisplayZone";
 import {
-  COCKPIT_FLAG_PARAM_KEYS,
   COCKPIT_OWNED_PARAM_KEYS,
   isCockpitOwnedParam,
   isPlacementChromeParam,
@@ -99,10 +63,12 @@ import {
 } from "../lib/systemParams";
 import {
   isCustomTemplateType,
-  providerHasAnyCockpitBinding,
   providerHasParamKey,
   shouldSoftLaunchOnForecast,
 } from "../lib/customProvider";
+import { useLaunchMode } from "../hooks/useLaunchMode";
+import { useCockpit } from "../hooks/useCockpit";
+import { useDflashDraft } from "../hooks/useDflashDraft";
 import ParamCatalogSearch from "./ParamCatalogSearch";
 import {
   catalogEntryToParam,
@@ -126,7 +92,6 @@ import {
   defaultSpecTypeForMain,
   draftRoleForSpecType,
   findScoredDraftCandidates,
-  hasReadyDflashDraft,
   isExternalDraftOnly,
   isLaunchableMain,
   isValidGgufDraftPath,
@@ -137,7 +102,6 @@ import {
   resolveExternalDraftPath,
   resolveDraftPathLabel,
   saveDraftPairing,
-  specCapabilitiesForMain,
   specTypeAllowsParallel,
   isSpecDecodingGroupActive,
 } from "../lib/specDraft";
@@ -146,12 +110,10 @@ import {
   SPEC_PROFILE_MTP,
   SPEC_PROFILE_DFLASH,
   DFLASH_DRAFT_MODEL,
-  cockpitProfileKnobRows,
   stripObsoleteSpecParams,
   activeBoostMethodFromParams,
   cliSpecTypeForMethod,
 } from "../lib/specProfiles";
-import { applySpecBoostProfiles } from "../lib/applySpecBoost";
 import { migrateCatalogParams } from "../lib/systemParams";
 import { DEFAULT_BINARY_PROFILE, ENV_META, ENV_ORDER, normalizeBinaryProfile, type Env } from "../lib/foundry_constants";
 import { invoke } from "@tauri-apps/api/core";
@@ -412,30 +374,10 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     return () => { mounted = false; };
   }, []);
 
-  const [specFlash, setSpecFlash] = useState(false);
-  const [fitLaunchEnabled, setFitLaunchEnabled] = useState(true);
-  const [configView, setConfigView] = useState<ConfigViewMode>("essentials");
   const [showEngineCatalogSearch, setShowEngineCatalogSearch] = useState(false);
   /** After catalog add — place the new key into a group (default USER-ADDED-FROM-CATALOG). */
   const [catalogPlaceKey, setCatalogPlaceKey] = useState<string | null>(null);
   const [catalogPlaceGroup, setCatalogPlaceGroup] = useState("USER-ADDED-FROM-CATALOG");
-  const [codingMode, setCodingMode] = useState<CodingModeId>("solo");
-  const [speedBoost, setSpeedBoost] = useState<SpeedBoostId>("off");
-  const [brains, setBrains] = useState<BrainsId>("solid");
-  const [think, setThink] = useState<ThinkId>("on");
-  const [dflashGetState, setDflashGetState] = useState<DflashGetUiState>("idle");
-  const [dflashGetError, setDflashGetError] = useState<string | null>(null);
-  const [dflashGetOfferLabel, setDflashGetOfferLabel] = useState<string | null>(null);
-  const [dflashCandidates, setDflashCandidates] = useState<DflashDraftOffer[]>([]);
-  const [dflashPickOpen, setDflashPickOpen] = useState(false);
-  const [dflashPickMode, setDflashPickMode] = useState<DraftPickMode>("hf-download");
-  const [libraryPickItems, setLibraryPickItems] = useState<DraftPickListItem[]>([]);
-  const [dflashResolving, setDflashResolving] = useState(false);
-  const [dflashResolveError, setDflashResolveError] = useState<string | null>(null);
-  const dflashDownloadIdsRef = useRef<Set<string>>(new Set());
-  const prevDflashReadyRef = useRef(false);
-  const boosterSeededRef = useRef(false);
-  const hfDownloads = useDownloadTasks("hf");
   const [layoutModeActive, setLayoutModeActive] = useState(
     () => readStorage(KEYS.configLayoutMode) === "1",
   );
@@ -677,37 +619,23 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   );
   const isCustomProvider = isCustomTemplateType(currentProvider?.template_type);
   const spawnProfile = currentProvider?.spawnProfile;
-  const fitLaunchSupported = providerSupportsFitLaunch(spawnProfile);
-  const fullAutoMode = fitLaunchSupported && fitLaunchEnabled;
-  const activeLaunchPolicy = useMemo(
-    () => getLaunchPolicy(resolveLaunchPolicyId({ fullAutoMode, configView })),
-    [fullAutoMode, configView],
-  );
-  /**
-   * Joe essentials presets only on Full Auto (not Assisted Full chips).
-   * Assisted Full stays raw factory values for power users.
-   */
-  const specSimpleMode = fullAutoMode;
-  /** Assisted Full — power cockpit (no Smart batch push; raw extra spec types). */
-  const powerCockpitMode = activeLaunchPolicy.powerUser;
+  const {
+    fitLaunchSupported,
+    fullAutoMode,
+    fullAutoFixed,
+    powerCockpitMode,
+    configView,
+    setConfigViewMode,
+    setFullAuto,
+    essentialFactoryKeys,
+    specSimpleMode,
+  } = useLaunchMode({
+    providerId: effectiveBackendType,
+    spawnProfile,
+  });
   // Custom / empty profile: always allow tensor/row if present in template values.
   const tensorSplitSupported =
     isCustomProvider || spawnProfile?.tensor_split !== false;
-  const essentialFactoryKeys = useMemo(
-    () => resolveEssentialParamKeys(spawnProfile),
-    [spawnProfile],
-  );
-  useEffect(() => {
-    if (!fitLaunchSupported) {
-      setFitLaunchEnabled(false);
-      return;
-    }
-    setFitLaunchEnabled(loadAutoVramEnabled(effectiveBackendType, spawnProfile?.auto_vram ?? true));
-  }, [effectiveBackendType, fitLaunchSupported, spawnProfile?.auto_vram]);
-
-  useEffect(() => {
-    setConfigView(loadConfigView(effectiveBackendType, "essentials"));
-  }, [effectiveBackendType]);
 
   const isProfileBuilding = useCallback((profile: EnvProfile): boolean => {
     if (!buildProgress) return false;
@@ -784,9 +712,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     () => isSpecDecodingActive(allParamsResolved),
     [allParamsResolved],
   );
-
-  /** Full Auto = one fixed cockpit (no Essentials/Full switch). */
-  const fullAutoFixed = fullAutoMode;
 
   const allParamsForDisplay = useMemo(() => {
     if (fullAutoFixed) return [];
@@ -1085,6 +1010,82 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     [fullAutoMode, stack],
   );
 
+  const cockpit = useCockpit({
+    model,
+    models,
+    allParamsResolved,
+    config,
+    updateParam,
+    clearSpecConfig,
+    effectiveBackendType,
+    fullAutoMode,
+    powerCockpitMode,
+    configView,
+    isCustomProvider,
+    specDecodingGroupVisible,
+    setResolvedProviders,
+  });
+  const {
+    codingMode,
+    speedBoost,
+    brains,
+    think,
+    specFlash,
+    applyFullAutoCockpit,
+    cockpitOpts,
+    specCapabilities,
+    specBoostMethod,
+    cockpitValueView,
+    cockpitKvValuesBound,
+    cockpitParallelValues,
+    showCockpitSurface,
+    cockpitShowAgents,
+    cockpitShowMemory,
+    cockpitShowThink,
+    cockpitShowBoost,
+    cockpitFlagToggles,
+    cockpitSpecDetailParams,
+    factoryRawSpecTypes,
+    activeRawSpecType,
+    dflashLibraryReady,
+    dflashGettable,
+    dflashDraftLabel,
+  } = cockpit;
+
+  const dflash = useDflashDraft({
+    model,
+    models,
+    config,
+    updateParam,
+    dflashLibraryReady,
+    speedBoost,
+    codingMode,
+    brains,
+    think,
+    powerCockpitMode,
+    applyFullAutoCockpit,
+  });
+  const {
+    dflashGetState,
+    dflashGetError,
+    dflashGetOfferLabel,
+    dflashCandidates,
+    dflashPickOpen,
+    dflashPickMode,
+    dflashResolving,
+    dflashResolveError,
+    dflashLocalPickItems,
+    dflashPickInitialSelectedId,
+    dflashMainDescribe,
+    handleGetDflashDraft,
+    handleChangeDflashDraft,
+    handleCancelDflashPick,
+    handleConfirmDflashPick,
+    handleConfirmDflashManual,
+    handleConfirmLibraryDraft,
+    loadDflashHfCandidates,
+  } = dflash;
+
   const specParallelWarn = useMemo(
     () =>
       specParallelConflict(
@@ -1102,622 +1103,10 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     () => resolveParallelSlots(config, allParamsResolved),
     [config, allParamsResolved],
   );
-
-  const specCapabilities = useMemo(
-    () => (model && models?.length ? specCapabilitiesForMain(model, models, effectiveBackendType) : []),
-    [model, models, effectiveBackendType],
-  );
   const hasSpecCapability = specCapabilities.length > 0;
   const specActive = useMemo(
     () => hasSpecCapability && specDecodingGroupVisible,
     [hasSpecCapability, specDecodingGroupVisible],
-  );
-
-  /**
-   * Keep Agents / Memory / Think UI in lockstep with resolved config.
-   *
-   * Must NOT be a one-shot seed: on mount `config` is `{}` until useConfigResolver
-   * loadConfig runs — a one-shot flag left the cockpit on useState defaults forever
-   * (and the next slider apply then wrote those defaults over storage).
-   */
-  useEffect(() => {
-    if (!allParamsResolved.length) return;
-    if (config.parallel == null && config.kv_quant == null && config.reasoning == null) {
-      return; // still hydrating catalog overrides
-    }
-    const par = resolveParallelSlots(config, allParamsResolved);
-    setCodingMode(codingModeFromParallel(par));
-    setBrains(brainsFromKvQuant(config.kv_quant != null ? String(config.kv_quant) : undefined));
-    const r = config.reasoning;
-    if (r === "off" || r === 0 || r === "0") setThink("off");
-    else if (r === 2000 || r === "2000") setThink("budget2k");
-    else if (r === 4000 || r === "4000") setThink("budget");
-    else if (r === 8000 || r === "8000") setThink("budget");
-    else setThink("on");
-  }, [allParamsResolved, config.parallel, config.kv_quant, config.reasoning]);
-
-  // Boost (MTP/DFlash/Smart/Off) — re-seed when model/provider changes only.
-  useEffect(() => {
-    boosterSeededRef.current = false;
-  }, [effectiveBackendType, model?.path]);
-
-  useEffect(() => {
-    if (boosterSeededRef.current) return;
-    if (!allParamsResolved.length) return;
-    if (config.parallel == null && config.kv_quant == null && Object.keys(config).length === 0) {
-      return;
-    }
-    const method = activeBoostMethodFromParams(allParamsResolved);
-    if (method === "mtp" || method === "dflash") setSpeedBoost(method);
-    else setSpeedBoost(fullAutoMode ? "smart" : "off");
-    boosterSeededRef.current = true;
-  }, [allParamsResolved, config, fullAutoMode, specDecodingGroupVisible]);
-
-  // Do NOT write collapsedGroups LS from Full Auto — Assisted collapse state is user-owned.
-
-  /**
-   * Factory-only vs full value lists for cockpit.
-   * User-added customs are subtracted even if they were also merged into `values`.
-   */
-  const kvQuantFactoryValues = useMemo(() => {
-    const def = allParamsResolved.find((p) => p.key === "kv_quant");
-    const user = new Set((def?.userAddedValues || []).map(String));
-    const base = (def?.values || []).filter((v) => !user.has(String(v)));
-    return base.length > 0 ? base : ["q4_0", "q8_0", "f16", "bf16"];
-  }, [allParamsResolved]);
-
-  /** Assisted: factory + user-added custom values. */
-  const kvQuantValues = useMemo(() => {
-    const def = allParamsResolved.find((p) => p.key === "kv_quant");
-    const seen = new Set<string>();
-    const out: (string | number)[] = [];
-    for (const v of [...kvQuantFactoryValues, ...(def?.userAddedValues || [])]) {
-      const s = String(v);
-      if (seen.has(s)) continue;
-      seen.add(s);
-      out.push(v);
-    }
-    return out;
-  }, [allParamsResolved, kvQuantFactoryValues]);
-
-  const parallelFactoryValues = useMemo(() => {
-    const def = allParamsResolved.find((p) => p.key === "parallel");
-    if (!def) return []; // no hardcoded Solo…Army when param missing
-    const user = new Set((def?.userAddedValues || []).map(String));
-    const base = (def?.values || []).filter((v) => !user.has(String(v)));
-    // Master family: if values empty, keep presets; custom with empty values → []
-    if (base.length > 0) return base;
-    return isCustomProvider ? [] : [1, 4, 8, 16, 32];
-  }, [allParamsResolved, isCustomProvider]);
-
-  const parallelValues = useMemo(() => {
-    const def = allParamsResolved.find((p) => p.key === "parallel");
-    const seen = new Set<string>();
-    const out: (string | number)[] = [];
-    for (const v of [...parallelFactoryValues, ...(def?.userAddedValues || [])]) {
-      const s = String(v);
-      if (seen.has(s)) continue;
-      seen.add(s);
-      out.push(v);
-    }
-    return out;
-  }, [allParamsResolved, parallelFactoryValues]);
-
-  /**
-   * Cockpit (Full Auto + Assisted Essentials + Assisted Full for Memory/Agents base):
-   * Full Auto always follows Essentials value curation (essentialsHiddenValues) so
-   * factory-shipped daily-driver marks apply to Joe path too.
-   * Assisted Full shows all non-catalog-hidden values (+ user customs).
-   */
-  const cockpitValueView: "essentials" | "full" =
-    fullAutoFixed || configView === "essentials" ? "essentials" : "full";
-
-  const cockpitKvValues = useMemo(() => {
-    const def = allParamsResolved.find((p) => p.key === "kv_quant");
-    if (!def) return [];
-    const base = fullAutoFixed ? kvQuantFactoryValues : kvQuantValues;
-    return filterParamValuesForConfigView(def, base, cockpitValueView);
-  }, [allParamsResolved, fullAutoFixed, cockpitValueView, kvQuantFactoryValues, kvQuantValues]);
-
-  const cockpitParallelValues = useMemo(() => {
-    const def = allParamsResolved.find((p) => p.key === "parallel");
-    if (!def) return []; // 2B: no parallel param → no Agents slider values
-    const base = fullAutoFixed ? parallelFactoryValues : parallelValues;
-    return filterParamValuesForConfigView(def, base, cockpitValueView);
-  }, [allParamsResolved, fullAutoFixed, cockpitValueView, parallelFactoryValues, parallelValues]);
-
-  const cockpitKvValuesBound = useMemo(() => {
-    if (!providerHasParamKey(allParamsResolved, "kv_quant")) return [];
-    return cockpitKvValues;
-  }, [allParamsResolved, cockpitKvValues]);
-
-  const showCockpitSurface = useMemo(
-    () => providerHasAnyCockpitBinding(allParamsResolved),
-    [allParamsResolved],
-  );
-
-  const cockpitShowAgents = providerHasParamKey(allParamsResolved, "parallel");
-  const cockpitShowMemory = providerHasParamKey(allParamsResolved, "kv_quant");
-  // Think slider binds REASONING budget only — not reasoning_preserve (FEATURE-FLAGS chip).
-  const cockpitShowThink = providerHasParamKey(allParamsResolved, "reasoning");
-
-  /**
-   * Header flag toolbar (VISION / FLASH-ATT / LOAD-mode).
-   * Direct updateParam — never Full Auto plan (VISION consent must stick).
-   * Factory keys; always listed when present on the template (no soft hide).
-   */
-  const cockpitFlagToggles = useMemo((): CockpitFlagToggle[] => {
-    const meta: Record<
-      string,
-      { label: string; title: string }
-    > = {
-      vision: {
-        label: "VISION",
-        title: "mmproj / vision projector (auto = scan & load; can be multi-GB)",
-      },
-      flash_attn: {
-        label: "FLASH",
-        title: "Flash Attention (--flash-attn)",
-      },
-      load_mode: {
-        label: "LOAD",
-        title: "Model load mode (--load-mode): mmap / mlock / dio",
-      },
-    };
-    const out: CockpitFlagToggle[] = [];
-    for (const key of COCKPIT_FLAG_PARAM_KEYS) {
-      const def = allParamsResolved.find((p) => p.key === key);
-      if (!def || def.hidden || def.userHidden) continue;
-      const vals = (def.values?.length ? def.values : ["off"]).map(String);
-      const raw = config[key];
-      const current = raw != null && String(raw).trim() !== "" ? String(raw) : vals[0]!;
-      const m = meta[key]!;
-      out.push({
-        key,
-        label: m.label,
-        title: m.title,
-        values: vals,
-        current,
-        onChange: (v) => updateParam(key, v),
-      });
-    }
-    return out;
-  }, [allParamsResolved, config, updateParam]);
-  const cockpitShowBoost = useMemo(() => {
-    if (!isCustomProvider) return true;
-    // Custom: only if template has speculative profile keys / groups
-    return allParamsResolved.some(
-      (p) =>
-        p.key.startsWith("mtp_")
-        || p.key.startsWith("dflash_")
-        || p.key === "spec_type"
-        || (p.ui_group && /SPECULATIVE/i.test(p.ui_group)),
-    );
-  }, [isCustomProvider, allParamsResolved]);
-
-  /** Active product method from Boost (source of truth for launch + SPEC-EXTRA). */
-  const specBoostMethod: SpecBoostMethod = useMemo(() => {
-    if (speedBoost === "mtp" || speedBoost === "dflash") return speedBoost;
-    if (speedBoost === "off" || speedBoost === "smart") return "off";
-    return activeBoostMethodFromParams(allParamsResolved);
-  }, [speedBoost, allParamsResolved]);
-
-  /** SPEC-EXTRA chips — template profile knobs only (MTP or DFlash group). */
-  const cockpitSpecDetailParams = useMemo((): CockpitSpecDetailParam[] => {
-    return cockpitProfileKnobRows(
-      specBoostMethod,
-      allParamsResolved,
-      config,
-      cockpitValueView,
-      updateParam,
-    );
-  }, [specBoostMethod, allParamsResolved, config, cockpitValueView, updateParam]);
-
-  /** DFlash draft ready: HIGH auto, pairing, or dflash_draft_model path. */
-  const dflashLibraryReady = useMemo(() => {
-    if (!model || !models?.length) return false;
-    const cur =
-      config[DFLASH_DRAFT_MODEL] != null ? String(config[DFLASH_DRAFT_MODEL]) : null;
-    return hasReadyDflashDraft(model, models, cur);
-  }, [model, models, config]);
-
-  /** Family likely has HF DFlash packs — show Get draft when library empty. */
-  const dflashGettable = useMemo(() => mainMaySupportDflash(model), [model]);
-
-  const dflashDraftLabel = useMemo(() => {
-    if (!model || !models?.length || !dflashLibraryReady) return null;
-    const path = resolveExternalDraftPath(model, models, "external_dflash", {
-      currentPath:
-        config[DFLASH_DRAFT_MODEL] != null ? String(config[DFLASH_DRAFT_MODEL]) : null,
-      specType: "draft-dflash",
-    });
-    return path ? resolveDraftPathLabel(path) : null;
-  }, [model, models, dflashLibraryReady, config]);
-
-  const applyFullAutoCockpit = useCallback(
-    async (
-      mode: CodingModeId,
-      speed: SpeedBoostId,
-      brainsPick: BrainsId,
-      thinkPick: ThinkId,
-      opts?: {
-        powerUser?: boolean;
-        rawSpecType?: string | null;
-        /** Explicit draft path (Change draft / Get draft confirm) — never wiped by HIGH-only auto. */
-        preferredDraftPath?: string | null;
-      },
-    ) => {
-      const powerUser = opts?.powerUser ?? false;
-      setCodingMode(mode);
-      setSpeedBoost(speed);
-      setBrains(brainsPick);
-      setThink(thinkPick);
-
-      // Prefer just-picked path when deciding if DFlash can enable CLI this turn.
-      const draftReadyNow =
-        dflashLibraryReady
-        || Boolean(
-          opts?.preferredDraftPath
-          && model
-          && models?.length
-          && resolveExternalDraftPath(model, models, "external_dflash", {
-            preferredPath: opts.preferredDraftPath,
-            specType: "draft-dflash",
-          }),
-        );
-
-      const plan = resolveFullAutoPlan({
-        codingMode: mode,
-        speed,
-        brains: brainsPick,
-        think: thinkPick,
-        capabilities: specCapabilities,
-        dflashLibraryReady: draftReadyNow,
-        dflashGettable,
-        kvQuantValues,
-        powerUser,
-      });
-
-      if (plan.forcedSoloForMtp) setCodingMode("solo");
-      if (plan.speed !== speed) setSpeedBoost(plan.speed);
-
-      updateParam("parallel", plan.parallel);
-      updateParam("kv_quant", plan.kvQuant);
-      // Cockpit may only write cockpit-owned keys (+ profile knobs via Boost).
-      // Never touch vision / flash_attn / load_mode here — header flags own those.
-      // Never persist batch/ubatch from Smart — policy injects them ephemerally at launch.
-      if (plan.reasoning != null && allParamsResolved.some((p) => p.key === "reasoning")) {
-        updateParam("reasoning", plan.reasoning);
-      }
-
-      // Template profiles: Boost method → show SPECULATIVE-MTP or SPECULATIVE-DFLASH (or neither).
-      const method: SpecBoostMethod =
-        plan.speed === "mtp" || plan.speed === "dflash"
-          ? plan.speed
-          : opts?.rawSpecType
-            ? "off" // raw types: leave profiles off; power chips handle rare cases
-            : "off";
-
-      try {
-        await applySpecBoostProfiles({
-          providerId: effectiveBackendType,
-          method,
-          setProviders: setResolvedProviders,
-        });
-        setSpecFlash(true);
-        window.setTimeout(() => setSpecFlash(false), 400);
-      } catch (err) {
-        console.error("[cockpit] applySpecBoostProfiles failed:", err);
-      }
-
-      // DFlash: resolve draft path into profile key (template-owned).
-      if (method === "dflash" && model && models?.length) {
-        const resolved =
-          opts?.preferredDraftPath
-          || resolveExternalDraftPath(model, models, "external_dflash", {
-            preferredPath: opts?.preferredDraftPath,
-            currentPath:
-              config[DFLASH_DRAFT_MODEL] != null
-              && String(config[DFLASH_DRAFT_MODEL]).toLowerCase() !== "off"
-                ? String(config[DFLASH_DRAFT_MODEL])
-                : null,
-            specType: "draft-dflash",
-          });
-        if (resolved) {
-          updateParam(DFLASH_DRAFT_MODEL, resolved);
-          saveDraftPairing(model.path, "draft-dflash", resolved);
-        }
-      }
-
-      if (method === "off") {
-        clearSpecConfig();
-      }
-    },
-    [
-      dflashGettable,
-      dflashLibraryReady,
-      effectiveBackendType,
-      kvQuantValues,
-      model,
-      models,
-      specCapabilities,
-      config,
-      updateParam,
-      clearSpecConfig,
-      allParamsResolved,
-    ],
-  );
-
-  /**
-   * Boost marks — factory + user-added (eagle omitted).
-   * Full Auto + Assisted Essentials honor essentialsHiddenValues (factory-shippable).
-   * Assisted Full shows all non-catalog-hidden types.
-   */
-  const factoryRawSpecTypes = useMemo(() => {
-    const def = allParamsResolved.find((p) => p.key === "spec_type");
-    if (!def) return [] as string[];
-    const merged = collectBoostSpecTypes(def.values, def.userAddedValues);
-    return filterParamValuesForConfigView(def, merged, cockpitValueView).map(String);
-  }, [allParamsResolved, cockpitValueView]);
-
-  /** Non-MTP/DFlash active factory type — drives Boost thumb for ngram / draft-simple / etc. */
-  const activeRawSpecType = useMemo(() => {
-    if (!specDecodingGroupVisible) return null;
-    const st = config.spec_type != null ? String(config.spec_type).trim() : "";
-    if (!st) return null;
-    const low = st.toLowerCase();
-    if (low.includes("mtp") || low === "draft-mtp") return null;
-    if (low.includes("dflash") || low === "draft-dflash") return null;
-    return st;
-  }, [specDecodingGroupVisible, config.spec_type]);
-
-  // Main model change / capability drop → snap Boost + clear stale draft UI.
-  // Derive Agents/Memory/Think from *config* (not React defaults) so we never
-  // clobber catalog overrides before the cockpit sync effect has run.
-  useEffect(() => {
-    if (!model) return;
-    if (!allParamsResolved.length || Object.keys(config).length === 0) return;
-    const modeFromCfg = codingModeFromParallel(
-      resolveParallelSlots(config, allParamsResolved),
-    );
-    const brainsFromCfg = brainsFromKvQuant(
-      config.kv_quant != null ? String(config.kv_quant) : undefined,
-    );
-    let thinkFromCfg: ThinkId = "on";
-    const r = config.reasoning;
-    if (r === "off" || r === 0 || r === "0") thinkFromCfg = "off";
-    else if (r === 2000 || r === "2000") thinkFromCfg = "budget2k";
-    else if (r === 4000 || r === "4000" || r === 8000 || r === "8000") thinkFromCfg = "budget";
-
-    const plan = resolveFullAutoPlan({
-      codingMode: modeFromCfg,
-      speed: speedBoost,
-      brains: brainsFromCfg,
-      think: thinkFromCfg,
-      capabilities: specCapabilities,
-      dflashLibraryReady,
-      dflashGettable,
-      kvQuantValues,
-      powerUser: powerCockpitMode,
-    });
-    if (plan.speed !== speedBoost) {
-      // Sync UI immediately (child also mirrors plan.speed); apply clears CLI/spec.
-      setSpeedBoost(plan.speed);
-      void applyFullAutoCockpit(modeFromCfg, plan.speed, brainsFromCfg, thinkFromCfg, {
-        powerUser: powerCockpitMode,
-      });
-    }
-    if (plan.speed !== "dflash") {
-      setDflashGetState("idle");
-      setDflashGetError(null);
-      setDflashGetOfferLabel(null);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-validate on model/caps only
-  }, [model?.path, specCapabilities, dflashLibraryReady, dflashGettable]);
-
-  /** Local on-disk DFlash drafts, scored (best first). Cap applied in modal (3). */
-  const buildLocalDflashPickItems = useCallback((): DraftPickListItem[] => {
-    if (!model || !models?.length) return [];
-    const items: DraftPickListItem[] = models
-      .filter((m) => m.path !== model.path && (draftRoleFromModel(m) === "external_dflash" || draftRoleFromModel(m) === "external_mtp"))
-      .map((m) => {
-        const score = scoreDraftPair(model, m, "external_dflash");
-        const label = resolveDraftPathLabel(m.path);
-        const quant = m.quant || m.metadata?.file_type_str || "";
-        const author = m.author || m.hfMeta?.author || "";
-        return {
-          id: m.path,
-          title: label,
-          meta: [author, quant, m.size_str].filter(Boolean).join(" · "),
-          score,
-          draftRole: draftRoleFromModel(m),
-        };
-      })
-      .sort((a, b) => (b.score ?? -999) - (a.score ?? -999));
-
-    const current = config.spec_draft_model != null ? String(config.spec_draft_model) : "";
-    if (current) {
-      items.sort((a, b) => {
-        if (a.id === current) return -1;
-        if (b.id === current) return 1;
-        return 0;
-      });
-    }
-    return items;
-  }, [model, models, config.spec_draft_model]);
-
-  /** HF search — fills remote list (cache / early-stop). Does not close modal. */
-  const loadDflashHfCandidates = useCallback(async () => {
-    if (!model) return;
-    setDflashGetState("searching");
-    setDflashResolveError(null);
-    try {
-      const offers = await findDflashDraftCandidates(model, 3);
-      setDflashCandidates(offers);
-      setDflashGetState("idle");
-    } catch (err) {
-      console.error("[dflashGetDraft] search failed:", err);
-      setDflashCandidates([]);
-      setDflashGetState("idle");
-      setDflashResolveError(
-        typeof err === "string"
-          ? err
-          : err instanceof Error
-            ? err.message
-            : "Search failed — paste HF id manually",
-      );
-    }
-  }, [model]);
-
-  /** Get draft: local (if any) + HF search; remote section opens when packs arrive. */
-  const handleGetDflashDraft = useCallback(async () => {
-    if (!model) return;
-    setDflashGetError(null);
-    setDflashGetOfferLabel(null);
-    setDflashCandidates([]);
-    setLibraryPickItems(buildLocalDflashPickItems());
-    setDflashPickMode("hf-download");
-    setDflashResolving(false);
-    setDflashResolveError(null);
-    dflashDownloadIdsRef.current = new Set();
-    // Open immediately so local list + manual paste are usable while HF loads.
-    setDflashPickOpen(true);
-    setDflashGetState("searching");
-    await loadDflashHfCandidates();
-  }, [model, buildLocalDflashPickItems, loadDflashHfCandidates]);
-
-  /**
-   * Change draft / re-pair: local list first.
-   * HF packs load only when user expands remote (onRequestRemote).
-   */
-  const handleChangeDflashDraft = useCallback(() => {
-    if (!model) return;
-    const items = buildLocalDflashPickItems();
-    setDflashPickMode("library");
-    setLibraryPickItems(items);
-    setDflashCandidates([]);
-    setDflashResolveError(null);
-    setDflashPickOpen(true);
-    setDflashGetState("idle");
-  }, [model, buildLocalDflashPickItems]);
-
-  const handleCancelDflashPick = useCallback(() => {
-    if (dflashResolving) return;
-    setDflashPickOpen(false);
-    setDflashCandidates([]);
-    setLibraryPickItems([]);
-    setDflashResolveError(null);
-    setDflashResolving(false);
-    setDflashGetState("idle");
-  }, [dflashResolving]);
-
-  const handleConfirmDflashPick = useCallback(async (offer: DflashDraftOffer) => {
-    setDflashPickOpen(false);
-    setDflashResolveError(null);
-    setDflashResolving(false);
-    setDflashGetError(null);
-    setDflashGetOfferLabel(offer.label);
-    setDflashGetState("downloading");
-    dflashDownloadIdsRef.current = new Set();
-    try {
-      const ids = await startDflashDraftDownload(offer);
-      dflashDownloadIdsRef.current = new Set(ids);
-    } catch (err) {
-      console.error("[dflashGetDraft] download failed:", err);
-      setDflashGetState("error");
-      setDflashGetError(typeof err === "string" ? err : "Could not start DFlash draft download");
-    }
-  }, []);
-
-  const handleConfirmDflashManual = useCallback(
-    async (hfModelId: string) => {
-      if (!model) return;
-      setDflashResolving(true);
-      setDflashResolveError(null);
-      try {
-        const offer = await resolveDflashOfferFromHfId(model, hfModelId);
-        await handleConfirmDflashPick(offer);
-      } catch (err) {
-        console.error("[dflashGetDraft] manual resolve failed:", err);
-        setDflashResolveError(
-          typeof err === "string" ? err : err instanceof Error ? err.message : "Could not resolve HF repo",
-        );
-      } finally {
-        setDflashResolving(false);
-      }
-    },
-    [model, handleConfirmDflashPick],
-  );
-
-  const handleConfirmLibraryDraft = useCallback(
-    (path: string) => {
-      if (!model) return;
-      updateParam(DFLASH_DRAFT_MODEL, path);
-      saveDraftPairing(model.path, "draft-dflash", path);
-      setDflashPickOpen(false);
-      setLibraryPickItems([]);
-      setDflashResolveError(null);
-      setDflashGetState("idle");
-      setDflashGetError(null);
-      void applyFullAutoCockpit(codingMode, "dflash", brains, think, {
-        powerUser: powerCockpitMode,
-        preferredDraftPath: path,
-      });
-    },
-    [model, updateParam, applyFullAutoCockpit, codingMode, brains, think, powerCockpitMode],
-  );
-
-  /** Stable local list for DraftPickModal — both Get draft and Change draft. */
-  const dflashLocalPickItems = useMemo(() => libraryPickItems, [libraryPickItems]);
-
-  const dflashPickInitialSelectedId = useMemo(() => {
-    return config[DFLASH_DRAFT_MODEL] != null ? String(config[DFLASH_DRAFT_MODEL]) : null;
-  }, [config]);
-
-  // Reset Get-draft UI when the main model changes.
-  useEffect(() => {
-    setDflashGetState("idle");
-    setDflashGetError(null);
-    setDflashGetOfferLabel(null);
-    setDflashCandidates([]);
-    setLibraryPickItems([]);
-    setDflashPickOpen(false);
-    setDflashResolving(false);
-    setDflashResolveError(null);
-    dflashDownloadIdsRef.current = new Set();
-    // Avoid treating an already-ready library as a "just finished download" edge.
-    prevDflashReadyRef.current = false;
-  }, [model?.path]);
-
-  // After download + catalog refresh, pair draft and turn DFlash on.
-  useEffect(() => {
-    const wasReady = prevDflashReadyRef.current;
-    prevDflashReadyRef.current = dflashLibraryReady;
-    if (wasReady || !dflashLibraryReady) return;
-    setDflashGetState("idle");
-    setDflashGetError(null);
-    if (speedBoost === "dflash") {
-      void applyFullAutoCockpit(codingMode, "dflash", brains, think, {
-        powerUser: powerCockpitMode,
-      });
-    }
-  }, [dflashLibraryReady, speedBoost, codingMode, brains, think, applyFullAutoCockpit, powerCockpitMode]);
-
-  // Surface download failures for the tasks we started.
-  useEffect(() => {
-    if (dflashGetState !== "downloading") return;
-    const ids = dflashDownloadIdsRef.current;
-    if (ids.size === 0) return;
-    const failed = hfDownloads.find((t) => ids.has(t.id) && t.status === "failed");
-    if (failed) {
-      setDflashGetState("error");
-      setDflashGetError(failed.error || "DFlash draft download failed");
-    }
-  }, [hfDownloads, dflashGetState]);
-
-  const cockpitOpts = useMemo(
-    () => ({ powerUser: powerCockpitMode }),
-    [powerCockpitMode],
   );
 
   const existingGroupNames = useMemo(() => {
@@ -2836,17 +2225,13 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         fitLaunchSupported={fitLaunchSupported}
         fullAutoMode={fullAutoMode}
         onFitLaunchChange={(nextFullAuto) => {
-          setFitLaunchEnabled(nextFullAuto);
-          saveAutoVramEnabled(effectiveBackendType, nextFullAuto);
+          setFullAuto(nextFullAuto);
           if (nextFullAuto) {
             autoSplitPromotedRef.current = false;
             updateParam("split", "none");
             if (String(config["offload_mode"] ?? "regular").toLowerCase() === "moe_optimal") {
               updateParam("offload_mode", "regular");
             }
-          } else {
-            setConfigView("full");
-            saveConfigView(effectiveBackendType, "full");
           }
         }}
         showFitOrDeviceChrome={fitLaunchSupported || Boolean(model && gpus.length > 0)}
@@ -2927,8 +2312,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         fullAutoFixed={fullAutoFixed}
         configView={configView}
         onConfigViewChange={(view) => {
-          setConfigView(view);
-          saveConfigView(effectiveBackendType, view);
+          setConfigViewMode(view);
           if (view === "essentials") {
             setTestFlagsEnabled(false);
             setCustomFlagsEditorOpen(false);
@@ -3048,7 +2432,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           <DraftPickModal
             open={dflashPickOpen}
             mode={dflashPickMode}
-            mainLabel={describeMainForDflashPick(model)}
+            mainLabel={dflashMainDescribe ?? undefined}
             localItems={dflashLocalPickItems}
             initialSelectedId={dflashPickInitialSelectedId}
             hfOffers={dflashCandidates}

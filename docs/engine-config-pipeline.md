@@ -138,11 +138,22 @@ Rust merge tests: `config.rs::merge_tests` (`cargo test`).
 
 ---
 
+## Hooks (post extract)
+
+| Hook | File | Owns |
+|------|------|------|
+| `useLaunchMode` | `src/hooks/useLaunchMode.ts` | FIT / configView / policy id / essentials keys |
+| `useConfigResolver` | `src/hooks/useConfigResolver.ts` | Per-mode profile values |
+| `useCockpit` | `src/hooks/useCockpit.ts` | Agents/Memory/Think/Boost + apply plan + flag toggles |
+| `useDflashDraft` | `src/hooks/useDflashDraft.ts` | Get/Change draft modal + HF download |
+
+`EngineConfigPanel` composes these — do not re-inline applyFullAutoCockpit.
+
 ## Suggested next coding order
 
 1. Optional: ESS value snap on launch for essentials/full_auto (product call).
-2. Extract `useCockpit` / slim `EngineConfigPanel` to composition (design §7 step 5).
-3. Only then more presentational file splits.
+2. ~~Extract `useCockpit` / slim panel~~ done.
+3. Only then more presentational file splits / optional Launch reset-profiles UI.
 
 ---
 
