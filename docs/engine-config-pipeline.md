@@ -118,11 +118,10 @@ Rust merge tests: `config.rs::merge_tests` (`cargo test`).
 
 | Item | Severity | Notes |
 |------|----------|--------|
-| ESS hide is UI-only for launch | Medium / product | Optional snap-to-visible on essentials key set |
-| Rapid mode toggle + chip edit race | Low | `policyIdRef` updates before effect; rare |
-| Launch has no “reset profiles” button | Low | CONFIG RESET wipes v2 key; `clearOverrides` exists unused |
-| Protected groups: ESS toggle needs structure cap | Low | Users can catalog-hide values, not ESS-toggle on protected rows |
-| Deeper `useCockpit` / panel slim | Next refactor step | After this core is stable |
+| ~~ESS hide UI-only~~ | — | **Done** — hard snap on full_auto / assisted_essentials in `buildLaunchConfig` |
+| Rapid mode toggle + chip edit race | Low | rare |
+| Launch “reset profiles” button | Low / product | **Not** auto-reset after launch. Optional explicit “clear overrides for this mode”. CONFIG RESET already wipes v2 store. |
+| Protected groups: ESS toggle needs structure cap | Low | Users can catalog-hide; ESS-toggle may stay structure-gated |
 
 ---
 

@@ -16,6 +16,7 @@ import type {
 } from "./types";
 import { buildAutoVramLaunchParams } from "./autoVramLaunch";
 import { buildLaunchExtraParams, resolveParamDefaultValue } from "./paramConfigResolve";
+import { snapEssentialsHiddenInValues } from "./launchProfile";
 import {
   type LaunchPolicy,
   type LaunchPolicyId,
