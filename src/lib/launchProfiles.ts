@@ -223,27 +223,23 @@ export function readActiveProfileFlat(
 }
 
 /**
- * Config editor writes a default — update assisted profiles (and cockpit keys on full_auto).
- * Power defaults must not silently redefine Joe non-cockpit keys.
+ * CONFIG editor set-default / override — write into **all** mode profiles.
+ *
+ * CONFIG is global catalog UX (one star / override), not a per-mode editor.
+ * Full Auto launch still filters CLI via policy.keySet, so non-cockpit keys
+ * (e.g. temp) never leak onto Joe CLI even if present in full_auto profile.
+ * Writing all profiles keeps CONFIG display correct regardless of activePolicy.
  */
 export function writeConfigEditorDefault(
   providerId: string,
   key: string,
   value: unknown,
-  opts?: { isCockpitOwned?: boolean },
+  _opts?: { isCockpitOwned?: boolean },
 ): void {
   const store = readCatalogOverrideStore(providerId, {});
-  store.profiles.assisted_essentials = {
-    ...store.profiles.assisted_essentials,
-    [key]: value,
-  };
-  store.profiles.assisted_full = {
-    ...store.profiles.assisted_full,
-    [key]: value,
-  };
-  if (opts?.isCockpitOwned) {
-    store.profiles.full_auto = {
-      ...store.profiles.full_auto,
+  for (const id of Object.keys(store.profiles) as LaunchPolicyId[]) {
+    store.profiles[id] = {
+      ...store.profiles[id],
       [key]: value,
     };
   }

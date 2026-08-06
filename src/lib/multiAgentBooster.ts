@@ -54,7 +54,7 @@ export const SPEED_BOOST_OPTIONS: SpeedBoostOption[] = [
   {
     id: "smart",
     label: "Smart",
-    blurb: "Push batch sizes for faster prefill when VRAM allows",
+    blurb: "Factory-safe defaults — no speculative draft (placeholder until Smart algo)",
   },
   {
     id: "mtp",
@@ -453,8 +453,9 @@ export function resolveFullAutoPlan(opts: {
     specType = "draft-dflash";
     needsDflashDraft = !dflashLibraryReady;
   } else if (speed === "smart" && !powerUser) {
-    // Joe Smart — push prefill batch; do not auto-enable MTP
-    pushBatch = true;
+    // Joe Smart = safe "Off" wording until a real algo exists.
+    // batch/ubatch come from factory via LaunchPolicy.batch = "factory" — do not max.
+    pushBatch = false;
     enableSpec = false;
     specType = null;
   } else {

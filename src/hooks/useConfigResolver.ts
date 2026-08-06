@@ -80,9 +80,7 @@ export function useConfigResolver({
   );
 
   const policyIdRef = useRef(policyId);
-  const configRef = useRef(config);
   policyIdRef.current = policyId;
-  configRef.current = config;
 
   const cleanedParams = useMemo(
     () => stripObsoleteSpecParams(userEditedParams),
@@ -151,8 +149,9 @@ export function useConfigResolver({
     loadConfig();
   }, [modelPath, paramsFingerprint, backendType, loadConfig]);
 
-  // Mode switch: flush current profile, load target (no cross-copy).
-  // Never flush across provider changes — that would pollute the new provider bag.
+  // Mode switch: only change activePolicy + reload. Do NOT flush the full resolved
+  // config bag into the profile — that materializes factory defaults as "overrides"
+  // and freezes them forever. updateParam/updateParams already patch sparsely.
   const prevPolicyRef = useRef<LaunchPolicyId | null>(null);
   const prevBackendRef = useRef(backendType);
   useEffect(() => {
@@ -167,21 +166,8 @@ export function useConfigResolver({
     }
     if (prevPolicyRef.current === policyId) return;
 
-    const from = prevPolicyRef.current;
     prevPolicyRef.current = policyId;
-
-    // Flush in-memory config into the profile we are leaving (same provider only)
-    const flushValues: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(configRef.current)) {
-      if (SPEC_KEY_SET.has(k)) continue;
-      flushValues[k] = v;
-    }
-
-    switchActivePolicy(backendType, policyId, factoryDefaults, {
-      policyId: from,
-      values: flushValues,
-    });
-
+    switchActivePolicy(backendType, policyId, factoryDefaults);
     loadConfig();
   }, [policyId, backendType, factoryDefaults, loadConfig]);
 

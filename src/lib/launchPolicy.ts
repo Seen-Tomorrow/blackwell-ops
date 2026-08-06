@@ -34,9 +34,12 @@ export type LaunchTopologyOwner = "fit_owned" | "user_chrome";
 
 /**
  * Where batch/ubatch values come from at launch:
- * - smart_push — Joe Smart may inject high batch for this launch only (ephemeral)
+ * - smart_push — reserved: inject high batch for this launch only (ephemeral)
  * - profile    — use profile values as-is
- * - factory    — prefer factory defaults over profile residue
+ * - factory    — force template factory defaults (ignore profile residue for batch/ubatch)
+ *
+ * Product (2026-08-06): Full Auto Smart uses **factory** until a real algo exists.
+ * Smart is the Joe "Off" wording — safe middle ground, not max batch.
  */
 export type LaunchBatchSource = "smart_push" | "profile" | "factory";
 
@@ -93,7 +96,8 @@ export const LAUNCH_POLICIES: Readonly<Record<LaunchPolicyId, LaunchPolicy>> = O
     keySet: "cockpit_plus_essentials" as const,
     fitImplied: true,
     topology: "fit_owned" as const,
-    batch: "smart_push" as const,
+    /** Safe middle until Smart has a real algo — not max batch. */
+    batch: "factory" as const,
     fallbackDefaults: JOE_FULL_AUTO_DEFAULTS,
     powerUser: false,
     defaultSpeed: "smart" as const,
@@ -287,8 +291,8 @@ export function seedFullAutoProfile(input: {
 }
 
 /**
- * Smart batch picks (ephemeral). Pure — caller injects into launch values only.
- * Returns null fields when no high numeric available.
+ * Smart batch picks (ephemeral). Pure — only when policy.batch === "smart_push".
+ * Full Auto currently uses batch: "factory" (no push). Kept for a future algo.
  */
 export function resolveSmartBatchPush(input: {
   policy: LaunchPolicy;
@@ -306,6 +310,19 @@ export function resolveSmartBatchPush(input: {
   const out: { batch?: number; ubatch?: number } = {};
   if (batch != null) out.batch = batch;
   if (ubatch != null) out.ubatch = ubatch;
+  return out;
+}
+
+/** Apply policy.batch source onto a merged launch value bag. */
+export function applyBatchPolicy(input: {
+  policy: LaunchPolicy;
+  merged: Record<string, unknown>;
+  factoryDefaults: FactoryDefaultsMap;
+}): Record<string, unknown> {
+  if (input.policy.batch !== "factory") return input.merged;
+  const out = { ...input.merged };
+  if (input.factoryDefaults.batch !== undefined) out.batch = input.factoryDefaults.batch;
+  if (input.factoryDefaults.ubatch !== undefined) out.ubatch = input.factoryDefaults.ubatch;
   return out;
 }
 

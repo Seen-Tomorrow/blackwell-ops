@@ -159,10 +159,12 @@ export function renderParamRow(
   // Merge values + userAddedValues (user-added params from ConfigPage admin edit)
   const seenVals = new Set((def.values || []).map(v => String(v)));
   const allValues = [...(def.values || []), ...(def.userAddedValues || []).filter(v => !seenVals.has(String(v)))];
+  // Full Auto hides the chip matrix; if chips ever show, use essentials filter
+  // (not "full") so essentialsHiddenValues still apply.
   let baseValues = filterParamValuesForConfigView(
     def,
     allValues,
-    fullAutoFixed ? "full" : configView,
+    fullAutoFixed ? "essentials" : configView,
   );
   if (def.key === "spec_type" && specCapabilities.length > 0) {
     baseValues = filterSpecTypeValues(baseValues, specCapabilities, specSimpleMode);

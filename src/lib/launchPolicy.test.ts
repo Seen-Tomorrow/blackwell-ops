@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import type { UserEditedTemplateParam } from "./types";
 import {
   JOE_FULL_AUTO_DEFAULTS,
+  applyBatchPolicy,
   filterValuesToKeySet,
   getLaunchPolicy,
   mergeLaunchValues,
@@ -118,8 +119,10 @@ describe("§8 leakage cases", () => {
     expect(String(filtered.load_mode)).not.toBe("mlock");
   });
 
-  it("2: Smart batch is ephemeral (resolveSmartBatchPush only when policy allows)", () => {
+  it("2: Full Auto Smart uses factory batch (not max smart_push)", () => {
     const policy = getLaunchPolicy("full_auto");
+    expect(policy.batch).toBe("factory");
+    // smart_push helper stays inert under factory policy
     const push = resolveSmartBatchPush({
       policy,
       pushBatch: true,
@@ -127,19 +130,19 @@ describe("§8 leakage cases", () => {
       ubatchValues: [256, 512, 2048],
       pickHigh: pickHighNumeric,
     });
-    expect(push.batch).toBe(16384);
-    expect(push.ubatch).toBe(2048);
+    expect(push.batch).toBeUndefined();
+    expect(push.ubatch).toBeUndefined();
+
+    const forced = applyBatchPolicy({
+      policy,
+      merged: { batch: 16384, ubatch: 2048, parallel: 1 },
+      factoryDefaults: { batch: 512, ubatch: 256 },
+    });
+    expect(forced.batch).toBe(512);
+    expect(forced.ubatch).toBe(256);
 
     const power = getLaunchPolicy("assisted_full");
-    const noPush = resolveSmartBatchPush({
-      policy: power,
-      pushBatch: true,
-      batchValues: [512, 16384],
-      ubatchValues: [256, 2048],
-      pickHigh: pickHighNumeric,
-    });
-    expect(noPush.batch).toBeUndefined();
-    expect(noPush.ubatch).toBeUndefined();
+    expect(power.batch).toBe("profile");
   });
 
   it("3: Full Auto Think 2k sets reasoning budget; never forces vision", () => {
@@ -300,7 +303,7 @@ describe("buildLaunchConfig policy metadata", () => {
     expect(cfg.extra_params?.temp).toBeUndefined();
   });
 
-  it("Smart batch injects high batch only for full_auto + smartBatchPush", () => {
+  it("Full Auto Smart uses factory batch even if profile has huge batch residue", () => {
     const model = {
       path: "C:/models/test.gguf",
       author: "t",
@@ -312,9 +315,13 @@ describe("buildLaunchConfig policy metadata", () => {
     const withSmart = buildLaunchConfig({
       model,
       finalAlias: "test",
-      profileValues: seedFullAutoProfile({ legacyValues: { parallel: 1 }, factoryDefaults }),
+      profileValues: {
+        ...seedFullAutoProfile({ legacyValues: { parallel: 1 }, factoryDefaults }),
+        batch: 16384,
+        ubatch: 2048,
+      },
       policy: getLaunchPolicy("full_auto"),
-      smartBatchPush: true,
+      smartBatchPush: true, // ignored — policy.batch is factory
       effectiveBackendType: "ggml-master",
       selectedBinaryProfile: "frontier",
       fitLaunchSupported: false,
@@ -327,14 +334,16 @@ describe("buildLaunchConfig policy metadata", () => {
       testFlags: "",
       testFlagsMode: "add",
     });
-    expect(withSmart.extra_params?.batch).toBe(16384);
+    // template factory default is first value in values list (512)
+    expect(withSmart.extra_params?.batch).toBe(factoryDefaults.batch);
+    expect(withSmart.extra_params?.batch).not.toBe(16384);
 
     const assisted = buildLaunchConfig({
       model,
       finalAlias: "test",
       profileValues: { batch: 512, parallel: 1, temp: 1.0 },
       policy: getLaunchPolicy("assisted_full"),
-      smartBatchPush: true, // ignored for power policy
+      smartBatchPush: true,
       effectiveBackendType: "ggml-master",
       selectedBinaryProfile: "frontier",
       fitLaunchSupported: false,

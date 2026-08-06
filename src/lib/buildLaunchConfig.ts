@@ -22,6 +22,7 @@ import {
   filterValuesToKeySet,
   getLaunchPolicy,
   mergeLaunchValues,
+  applyBatchPolicy,
   resolveLaunchKeySet,
   resolveLaunchPolicyId,
   resolveSmartBatchPush,
@@ -143,7 +144,8 @@ export function buildLaunchConfig(input: BuildLaunchConfigInput): EngineConfig {
     cockpitLive,
   });
 
-  // Ephemeral Smart batch — never read from Assisted; never required to be in profile
+  // batch/ubatch policy: factory (Joe Smart safe) | profile | smart_push (future)
+  merged = applyBatchPolicy({ policy, merged, factoryDefaults });
   if (policy.batch === "smart_push" && smartBatchPush) {
     const batchDef = allParamsResolved.find((p) => p.key === "batch");
     const ubatchDef = allParamsResolved.find((p) => p.key === "ubatch");

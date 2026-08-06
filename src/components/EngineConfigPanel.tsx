@@ -2447,10 +2447,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       stack,
     );
 
-    // Smart batch is ephemeral (Full Auto + Boost=Smart only) — never from Assisted residue.
-    const smartBatchPush =
-      fullAutoMode && speedBoost === "smart";
-
+    // Smart = factory batch (policy.batch); no max-batch push until a real algo exists.
     return buildLaunchFullConfig({
       model,
       finalAlias,
@@ -2469,7 +2466,7 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
       testFlagsEnabled,
       testFlags,
       testFlagsMode,
-      smartBatchPush,
+      smartBatchPush: false,
     });
   }, [
     model,
@@ -2486,7 +2483,6 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     configView,
     essentialFactoryKeys,
     specBoostMethod,
-    speedBoost,
     allParamsResolved,
     gpus,
     runningSlotsForPlan,
