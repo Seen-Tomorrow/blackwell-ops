@@ -198,6 +198,23 @@ export interface MultiAgentBoosterProps {
   showBoost?: boolean;
   /** When true, Agents marks come only from parallelValues (no hardcoded 1–32 presets). */
   agentsFromTemplateOnly?: boolean;
+  /** Launch combo presets — compact Load/Save in harness footer. */
+  launchPresets?: {
+    combos: import("../lib/launchPresets").ComboPreset[];
+    onApply: (
+      combo: import("../lib/launchPresets").ComboPreset,
+      opts: { loadIntoPanel: boolean },
+    ) => void;
+    onSaveTwin: () => void;
+    onManage: () => void;
+    canSaveTwin?: boolean;
+  };
+  /**
+   * After parent applies a twin combo — set BRAIN/WORKER ports and twin mode.
+   * Parent clears by setting null after consume.
+   */
+  presetTwinBind?: { brainPort: number; workerPort: number; agentsN?: number } | null;
+  onPresetTwinBindConsumed?: () => void;
 }
 
 export default function MultiAgentBooster({
@@ -248,6 +265,9 @@ export default function MultiAgentBooster({
   showThink = true,
   showBoost = true,
   agentsFromTemplateOnly = false,
+  launchPresets,
+  presetTwinBind = null,
+  onPresetTwinBindConsumed,
 }: MultiAgentBoosterProps) {
   const [harnessOpen, setHarnessOpen] = useState(false);
   /** Which external agent tool the harness targets. */
@@ -267,11 +287,27 @@ export default function MultiAgentBooster({
   }>({ brain: null, worker: null });
   const twinBrainPort = twinRoles.brain;
   const twinWorkerPort = twinRoles.worker;
+
   /**
    * Harness concurrency is independent of cockpit MTP “force Solo”.
    * Seed once when opening; chips update this only (launch uses this value).
    */
   const [harnessAgents, setHarnessAgents] = useState(1);
+
+  // Parent applied a twin combo — bind roles + optional agents N
+  useEffect(() => {
+    if (!presetTwinBind) return;
+    setWizardMode("twin");
+    setTwinRoles({
+      brain: presetTwinBind.brainPort,
+      worker: presetTwinBind.workerPort,
+    });
+    if (presetTwinBind.agentsN != null && presetTwinBind.agentsN > 0) {
+      setHarnessAgents(Math.max(1, presetTwinBind.agentsN));
+    }
+    setHarnessOpen(true);
+    onPresetTwinBindConsumed?.();
+  }, [presetTwinBind, onPresetTwinBindConsumed]);
   const [atomStatus, setAtomStatus] = useState<AtomcodeStatus | null>(null);
   const [qwenStatus, setQwenStatus] = useState<QwenCodeStatus | null>(null);
   const [piStatus, setPiStatus] = useState<PiCodeStatus | null>(null);
@@ -2027,6 +2063,47 @@ export default function MultiAgentBooster({
             RIGHT: Open CTA + quiet secondary actions (WebUI / pre-install). */}
         {!showDisclaimer && (
           <div className="atomcode-wizard__footer">
+            {launchPresets && (
+              <div className="atomcode-wizard__presets flex flex-wrap items-center gap-1.5 mb-2 w-full">
+                <span className="text-[8px] uppercase tracking-wider text-stealth-muted/70">Combo</span>
+                <select
+                  className="bg-stealth-input border border-stealth-border/50 px-1.5 py-0.5 text-[9px] font-mono max-w-[180px]"
+                  defaultValue=""
+                  onChange={(e) => {
+                    const id = e.target.value;
+                    e.target.value = "";
+                    const c = launchPresets.combos.find((x) => x.id === id);
+                    if (c) launchPresets.onApply(c, { loadIntoPanel: false });
+                  }}
+                  aria-label="Load launch combo"
+                >
+                  <option value="" disabled>
+                    Load combo…
+                  </option>
+                  {launchPresets.combos.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.kind === "twin" ? "Twin" : "Solo"} · {c.name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  className="full-auto-cockpit__copy font-mono text-[8px]"
+                  disabled={launchPresets.canSaveTwin === false}
+                  title="Save BRAIN+WORKER from tagged engines"
+                  onClick={() => launchPresets.onSaveTwin()}
+                >
+                  Save combo
+                </button>
+                <button
+                  type="button"
+                  className="full-auto-cockpit__copy font-mono text-[8px]"
+                  onClick={() => launchPresets.onManage()}
+                >
+                  Manage…
+                </button>
+              </div>
+            )}
             {/* LEFT — concurrency chips */}
             <div className="atomcode-wizard__footer-agents">
               <p className="atomcode-wizard__step-label font-mono m-0">

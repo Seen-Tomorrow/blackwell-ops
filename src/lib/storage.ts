@@ -63,6 +63,7 @@ import type {
  * | BlackOps-bench-controls | JSON | Global TG/PP bench control chips (n_predict, concurrency, warmup, prompt mode) |
 
  * | BlackOps-catalog-override:{providerId} | JSON v2 { version, activePolicy, profiles } | Per-mode launch value profiles (full_auto / assisted_essentials / assisted_full); flat v1 migrates on read |
+ * | BlackOps-launch-presets:v1 | JSON { version, combos } | Named solo/twin launch combo presets |
  * | BlackOps-group-order:{providerId} | JSON string[] | CONFIG param group order |
  * | BlackOps-group-display-zone:{providerId} | JSON Record<group, above\|below> | Pin groups above VRAM display |
  * | BlackOps-engine-alias:{modelPath} | string | Per-model launch alias |

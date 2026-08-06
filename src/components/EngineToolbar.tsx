@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { ConfigViewMode } from "../lib/types";
 import type { ConfigColumnCount } from "../lib/configColumnLayout";
 import type { CtxCockpitDock, LaunchDockPosition } from "../lib/storage";
@@ -31,6 +32,7 @@ export default function EngineToolbar(props: EngineToolbarProps) {
     onSetColumnCount,
     layoutModeActive,
     onToggleLayoutMode,
+    presetsSlot,
   } = props;
 
   return (
@@ -47,6 +49,7 @@ export default function EngineToolbar(props: EngineToolbarProps) {
           <span className="config-panel-toolbar__label text-nv-green/70">FULL AUTO</span>
         </div>
       )}
+      {presetsSlot}
       <div className="config-panel-toolbar__chrome flex items-center gap-1.5 min-w-0 ml-auto flex-shrink-0">
         <button
           type="button"
@@ -197,4 +200,6 @@ export interface EngineToolbarProps {
   onSetColumnCount: (n: ConfigColumnCount) => void;
   layoutModeActive: boolean;
   onToggleLayoutMode: () => void;
+  /** Compact PRESETS control (LaunchPresetsMenu). */
+  presetsSlot?: ReactNode;
 }

@@ -9,6 +9,7 @@ import type { SpecCapability } from "../lib/specDraft";
 import MultiAgentBooster, {
   type CockpitSpecDetailParam,
   type DflashGetUiState,
+  type MultiAgentBoosterProps,
 } from "./MultiAgentBooster";
 import type { CockpitFlagToggle } from "./CockpitFlagToolbar";
 import type { CockpitCtxStripProps } from "./CockpitCtxStrip";
@@ -60,6 +61,9 @@ export default function EngineBoostSection(props: EngineBoostSectionProps) {
     embedCtx,
     ctxStripProps,
     flagToggles,
+    launchPresets,
+    presetTwinBind,
+    onPresetTwinBindConsumed,
   } = props;
 
   if (!show) return null;
@@ -84,6 +88,9 @@ export default function EngineBoostSection(props: EngineBoostSectionProps) {
           void applyCockpit(codingMode, speedBoost, brains, t, cockpitOpts);
         }}
         flagToggles={flagToggles}
+        launchPresets={launchPresets}
+        presetTwinBind={presetTwinBind}
+        onPresetTwinBindConsumed={onPresetTwinBindConsumed}
         capabilities={capabilities}
         dflashLibraryReady={dflashLibraryReady}
         dflashGettable={dflashGettable}
@@ -186,4 +193,7 @@ export interface EngineBoostSectionProps {
   embedCtx: boolean;
   ctxStripProps: Omit<CockpitCtxStripProps, "className">;
   flagToggles: CockpitFlagToggle[];
+  launchPresets?: MultiAgentBoosterProps["launchPresets"];
+  presetTwinBind?: MultiAgentBoosterProps["presetTwinBind"];
+  onPresetTwinBindConsumed?: MultiAgentBoosterProps["onPresetTwinBindConsumed"];
 }

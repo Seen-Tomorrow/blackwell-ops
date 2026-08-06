@@ -69,6 +69,18 @@ import {
 import { useLaunchMode } from "../hooks/useLaunchMode";
 import { useCockpit } from "../hooks/useCockpit";
 import { useDflashDraft } from "../hooks/useDflashDraft";
+import { useLaunchPresets } from "../hooks/useLaunchPresets";
+import LaunchPresetsMenu from "./LaunchPresetsMenu";
+import LaunchPresetsModal from "./LaunchPresetsModal";
+import {
+  type ComboPreset,
+  type LaunchSeat,
+  normalizeModelPath,
+  orderSeatsForLaunch,
+  resolveComboApply,
+  resolveSeatLaunchPort,
+} from "../lib/launchPresets";
+import { getLaunchPolicy, resolveLaunchPolicyId } from "../lib/launchPolicy";
 import ParamCatalogSearch from "./ParamCatalogSearch";
 import {
   catalogEntryToParam,
@@ -378,6 +390,13 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
   /** After catalog add — place the new key into a group (default USER-ADDED-FROM-CATALOG). */
   const [catalogPlaceKey, setCatalogPlaceKey] = useState<string | null>(null);
   const [catalogPlaceGroup, setCatalogPlaceGroup] = useState("USER-ADDED-FROM-CATALOG");
+  const [presetsManageOpen, setPresetsManageOpen] = useState(false);
+  const [presetTwinBind, setPresetTwinBind] = useState<{
+    brainPort: number;
+    workerPort: number;
+    agentsN?: number;
+  } | null>(null);
+  const launchPresetsApi = useLaunchPresets();
   const [layoutModeActive, setLayoutModeActive] = useState(
     () => readStorage(KEYS.configLayoutMode) === "1",
   );
@@ -1993,6 +2012,213 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
     });
   }, [buildCurrentLaunchConfig, effectiveBackendType]);
 
+  const findModelForSeat = useCallback(
+    (seat: LaunchSeat): ModelEntry | null => {
+      const want = normalizeModelPath(seat.modelPath);
+      const list = models ?? [];
+      return list.find((m) => normalizeModelPath(m.path) === want) ?? null;
+    },
+    [models],
+  );
+
+  const launchSeat = useCallback(
+    async (seat: LaunchSeat): Promise<{ port: number; alias: string; idx: number } | null> => {
+      const m = findModelForSeat(seat);
+      if (!m) {
+        dispatchAppEvent(EVENTS.launchError, {
+          message: `Preset seat: model not in library — ${seat.modelName || seat.modelPath}`,
+        });
+        return null;
+      }
+      const policy = getLaunchPolicy(seat.policyId);
+      const aliasBase =
+        seat.role === "brain"
+          ? "BRAIN"
+          : seat.role === "worker"
+            ? "WORKER"
+            : (seat.label || m.name || "ENGINE").slice(0, 24);
+      const finalAlias = resolveUniqueAlias(aliasBase, stack);
+      const port = resolveSeatLaunchPort(seat);
+      const fullConfig = buildLaunchFullConfig({
+        model: m,
+        finalAlias,
+        config: { ...seat.paramOverrides },
+        effectiveBackendType: seat.providerId,
+        selectedBinaryProfile: (seat.binaryProfile as typeof selectedBinaryProfile) || selectedBinaryProfile,
+        fitLaunchSupported: policy.fitImplied || fitLaunchSupported,
+        fullAutoMode: seat.policyId === "full_auto",
+        configView: seat.policyId === "assisted_full" ? "full" : "essentials",
+        essentialFactoryKeys,
+        allParamsResolved,
+        gpus,
+        runningSlotsForPlan,
+        vramManifest: vramCalc.manifest,
+        testFlagsEnabled: false,
+        testFlags: "",
+        testFlagsMode: "add",
+        smartBatchPush: false,
+      });
+      fullConfig.port = port;
+      // fixed/prefer: if fixed and busy, backend may fail — surface error
+      const launched = await invoke<{ idx: number; port: number; alias: string }>("launch_engine", {
+        config: fullConfig,
+      });
+      return {
+        port: launched?.port ?? port,
+        alias: launched?.alias ?? finalAlias,
+        idx: launched?.idx ?? -1,
+      };
+    },
+    [
+      findModelForSeat,
+      stack,
+      selectedBinaryProfile,
+      fitLaunchSupported,
+      essentialFactoryKeys,
+      allParamsResolved,
+      gpus,
+      runningSlotsForPlan,
+      vramCalc.manifest,
+    ],
+  );
+
+  const applyComboPreset = useCallback(
+    async (combo: ComboPreset, opts: { loadIntoPanel: boolean }) => {
+      const available = (models ?? []).map((m) => m.path);
+      const plan = resolveComboApply({
+        combo,
+        stack,
+        availableModelPaths: available,
+      });
+      if (plan.errors.length) {
+        dispatchAppEvent(EVENTS.launchError, {
+          message: `Preset “${combo.name}”: ${plan.errors.join("; ")}`,
+        });
+        if (plan.launch.length === 0 && plan.bind.length === 0) return;
+      }
+
+      const bindByRole = new Map(plan.bind.map((b) => [b.role, b]));
+
+      const doLaunch = async (seat: LaunchSeat) => {
+        try {
+          const r = await launchSeat(seat);
+          if (r && r.port > 0) {
+            bindByRole.set(seat.role, {
+              seatId: seat.id,
+              role: seat.role,
+              port: r.port,
+              slotIdx: r.idx,
+              alias: r.alias,
+              modelPath: seat.modelPath,
+            });
+            dispatchAppEvent(EVENTS.launchSuccess, {
+              alias: r.alias,
+              port: r.port,
+            });
+          }
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          dispatchAppEvent(EVENTS.launchError, {
+            message: `Preset ${seat.role}: ${msg}`,
+          });
+        }
+      };
+
+      const ordered = orderSeatsForLaunch(plan.launch, plan.launchOrder === "sequence_brain_first");
+      if (plan.launchOrder === "sequence_brain_first") {
+        for (const seat of ordered) await doLaunch(seat);
+      } else {
+        await Promise.all(ordered.map((s) => doLaunch(s)));
+      }
+
+      // Load first seat into panel (optional)
+      if (opts.loadIntoPanel && combo.seats[0]) {
+        const seat = combo.seats[0];
+        const m = findModelForSeat(seat);
+        if (m) {
+          // Parent catalog selection is external — patch active profile params only
+          updateParams(seat.paramOverrides as Record<string, unknown>);
+        }
+      }
+
+      if (combo.kind === "twin") {
+        const brain = bindByRole.get("brain");
+        const worker = bindByRole.get("worker");
+        if (brain && worker && brain.port !== worker.port) {
+          setPresetTwinBind({
+            brainPort: brain.port,
+            workerPort: worker.port,
+            agentsN: plan.agentsN,
+          });
+        } else if (!brain || !worker) {
+          dispatchAppEvent(EVENTS.launchError, {
+            message: `Twin preset “${combo.name}”: need both BRAIN and WORKER running`,
+          });
+        }
+      }
+    },
+    [models, stack, launchSeat, findModelForSeat, updateParams],
+  );
+
+  const handleSaveSoloPreset = useCallback(() => {
+    if (!model) return;
+    const name = window.prompt("Preset name (solo)", model.name || "Solo");
+    if (!name?.trim()) return;
+    launchPresetsApi.saveSoloFromPanel({
+      name: name.trim(),
+      model,
+      providerId: effectiveBackendType,
+      binaryProfile: selectedBinaryProfile,
+      policyId: resolveLaunchPolicyId({ fullAutoMode, configView }),
+      config,
+    });
+  }, [
+    model,
+    launchPresetsApi,
+    effectiveBackendType,
+    selectedBinaryProfile,
+    fullAutoMode,
+    configView,
+    config,
+  ]);
+
+  const handleSaveTwinPreset = useCallback(() => {
+    const running = stack.filter((s) => s.status === "RUNNING" && s.port > 0 && s.model_path);
+    if (running.length < 2) {
+      dispatchAppEvent(EVENTS.launchError, {
+        message: "Save twin: need at least two Running engines",
+      });
+      return;
+    }
+    // Prefer preferred slot as BRAIN, else first two by idx
+    let brain = running[0]!;
+    let worker = running[1]!;
+    if (selectedSlotIdx != null) {
+      const pref = running.find((s) => s.idx === selectedSlotIdx);
+      if (pref) {
+        brain = pref;
+        worker = running.find((s) => s.idx !== pref.idx) ?? worker;
+      }
+    }
+    const name = window.prompt(
+      "Preset name (twin)",
+      `${brain.model_name || "BRAIN"} + ${worker.model_name || "WORKER"}`,
+    );
+    if (!name?.trim()) return;
+    // Default product: parallel cold launch. Optional sequence BRAIN first.
+    const sequenceBrainFirst = window.confirm(
+      "Cold launch order for this twin preset:\n\nOK = Sequence BRAIN first\nCancel = Parallel (recommended default)",
+    );
+    launchPresetsApi.saveTwinFromStack({
+      name: name.trim(),
+      brain,
+      worker,
+      sequenceBrainFirst,
+      panelConfig: config,
+      panelModelPath: model?.path,
+    });
+  }, [stack, selectedSlotIdx, launchPresetsApi, config, model?.path]);
+
   const acknowledgeReplaceLaunch = useCallback(() => {
     try {
       sessionStorage.setItem(KEYS.customFlagsReplaceAck, "1");
@@ -2339,6 +2565,21 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         onSetColumnCount={setBelowColumnCount}
         layoutModeActive={layoutModeActive}
         onToggleLayoutMode={toggleLayoutMode}
+        presetsSlot={
+          <LaunchPresetsMenu
+            combos={launchPresetsApi.combos}
+            canSaveSolo={Boolean(model)}
+            canSaveTwin={
+              stack.filter((s) => s.status === "RUNNING" && s.port > 0).length >= 2
+            }
+            onApply={(c, o) => {
+              void applyComboPreset(c, o);
+            }}
+            onSaveSolo={handleSaveSoloPreset}
+            onSaveTwin={handleSaveTwinPreset}
+            onManage={() => setPresetsManageOpen(true)}
+          />
+        }
       />
 
       {/*
@@ -2390,6 +2631,18 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
           showThink={cockpitShowThink}
           showBoost={cockpitShowBoost}
           flagToggles={cockpitFlagToggles}
+          launchPresets={{
+            combos: launchPresetsApi.combos,
+            onApply: (c, o) => {
+              void applyComboPreset(c, o);
+            },
+            onSaveTwin: handleSaveTwinPreset,
+            onManage: () => setPresetsManageOpen(true),
+            canSaveTwin:
+              stack.filter((s) => s.status === "RUNNING" && s.port > 0).length >= 2,
+          }}
+          presetTwinBind={presetTwinBind}
+          onPresetTwinBindConsumed={() => setPresetTwinBind(null)}
           agentsFromTemplateOnly={isCustomProvider}
           port={
             (selectedSlotIdx != null &&
@@ -2700,6 +2953,20 @@ export default function EngineConfigPanel(props: EngineConfigPanelProps) {
         onGroupChange={setCatalogPlaceGroup}
         onClose={() => setCatalogPlaceKey(null)}
         onConfirm={() => { void handleCatalogPlaceConfirm(); }}
+      />
+
+      <LaunchPresetsModal
+        open={presetsManageOpen}
+        combos={launchPresetsApi.combos}
+        onClose={() => setPresetsManageOpen(false)}
+        onSave={(c) => {
+          launchPresetsApi.upsert(c);
+        }}
+        onDelete={(id) => launchPresetsApi.remove(id)}
+        onDuplicate={(c) => launchPresetsApi.duplicate(c)}
+        onApply={(c, o) => {
+          void applyComboPreset(c, o);
+        }}
       />
     </div>
   );
